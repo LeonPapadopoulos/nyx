@@ -22,6 +22,10 @@ set(ENGINE_SOURCES
 	src/TypedHandle.cpp
 	src/Entity.cpp
 	src/Log.cpp
+	src/ResourceManager.cpp
+	src/Texture.cpp
+	src/Mesh.cpp
+	src/Shader.cpp
 )
 set(ENGINE_HEADERS
 	src/Enginepch.h	# Only meant to be included by .cpp files
@@ -33,10 +37,16 @@ set(ENGINE_HEADERS
 	include/TypedHandle.h
 	include/Entity.h
 	include/Log.h
+	include/ResourceManager.h
+	include/Texture.h
+	include/Mesh.h
+	include/Shader.h
 )
 
 # SHARED to switch from static library to dynamic one producing .dll
 add_library(Engine SHARED ${ENGINE_SOURCES} ${ENGINE_HEADERS})
+
+target_compile_features(Engine PUBLIC cxx_std_17)
 
 # Link against spdlog; Needs to be AFTER adding of Engine library
 # @todo: Make PRIVATE after we hid away the spdlog calls from the Application Side

@@ -15,7 +15,6 @@ int main(int argc, char** argv)
 	CORE_LOG_WARNING("Initialized Log! {0}", 0);
 	LOG_INFO("Initialized Log! {0}", 1);
 	ASSERT(true);
-	ASSERT(false && "Default false");
 
 	auto app = Engine::CreateApplication();
 	app->Run();
