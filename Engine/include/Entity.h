@@ -13,24 +13,6 @@
 #include <utility>
 #include <vector>
 
-// @todo: Remove Test Scenario from here
-namespace Engine
-{
-	struct Name
-	{
-		std::string Value;
-	};
-
-	struct Transform
-	{
-		float X = 0.0f;
-		float Y = 0.0f;
-		float Rotation = 0.0f;
-	};
-
-	void ENGINE_API TestECS();
-}
-
 namespace Engine
 {
 	struct EntityTag {};

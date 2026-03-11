@@ -14,12 +14,8 @@ int main(int argc, char** argv)
 	Engine::Log::Init();
 	CORE_LOG_WARNING("Initialized Log! {0}", 0);
 	LOG_INFO("Initialized Log! {0}", 1);
-	ASSERT(true); // Example
-
-	// Test scenario ECS
-	{
-		Engine::TestECS();
-	}
+	ASSERT(true);
+	ASSERT(false && "Default false");
 
 	auto app = Engine::CreateApplication();
 	app->Run();
