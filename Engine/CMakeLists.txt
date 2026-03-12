@@ -48,11 +48,20 @@ add_library(Engine SHARED ${ENGINE_SOURCES} ${ENGINE_HEADERS})
 
 target_compile_features(Engine PUBLIC cxx_std_17)
 
+find_package(Vulkan QUIET)
+
+if(NOT Vulkan_FOUND)
+    message(FATAL_ERROR
+        "Vulkan SDK not found.\n"
+        "Install the Vulkan SDK, then regenerate project files.")
+endif()
+
 # Link against spdlog; Needs to be AFTER adding of Engine library
 # @todo: Make PRIVATE after we hid away the spdlog calls from the Application Side
 target_link_libraries(Engine
 	PUBLIC EnginePCH
 	PUBLIC spdlog::spdlog
+	PRIVATE Vulkan::Vulkan
 )
 
 # Expose Engine Module Source Directory to linked Modules

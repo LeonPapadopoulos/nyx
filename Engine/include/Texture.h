@@ -1,5 +1,6 @@
 #pragma once
 #include "ResourceManager.h"
+#include <vulkan/vulkan.hpp>
 
 namespace Engine
 {
@@ -11,22 +12,31 @@ namespace Engine
 		{
 		}
 
-		~Texture() override
-		{
-			Unload();
-		}
+		~Texture() override;
 
-		bool DoLoad() override
-		{
-			// @todo
-		}
+		bool DoLoad() override;
+		bool DoUnload() override;
 
-		bool DoUnload() override
-		{
-			// @todo
-		}
+		vk::Image GetImage() const;
+		vk::ImageView GetImageView() const;
+		vk::Sampler GetSampler() const;
 
 	private:
+		unsigned char* LoadImageData(const std::string& filePath, int* width, int* height, int* channels);
+		void FreeImageData(unsigned char* data);
+		void CreateVulkanImage(unsigned char* data, int width, int height, int channels);
+		vk::Device GetDevice();
+
+	private:
+		vk::Image Image;
+		vk::DeviceMemory Memory;
+		vk::DeviceSize Offset;
+		vk::ImageView ImageView;
+		vk::Sampler Sampler;
+
+		int Width = 0;
+		int Heigh = 0;
+		int channels = 0;
 	};
 
 } // Engine

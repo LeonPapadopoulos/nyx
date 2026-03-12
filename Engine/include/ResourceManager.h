@@ -122,26 +122,21 @@ namespace Engine
 		{
 			static_assert(std::is_base_of<Resource, T>::value, "T must derive from Resource");
 
-			// Check existing resource cache to avoid redundant loading
 			auto& typeResources = Resources[std::type_index(typeid(T))];
 			auto it = typeResources.find(resourceId);
 
 			if (it != typeResources.end())
 			{
-				// Resource exists in cache
 				RefCounts[resourceId]++;
 				return ResourceHandle<T>(resourceId, this);
 			}
 
-			// Create new resource instance and attempt loading
 			auto resource = std::make_shared<T>(resourceId);
 			if (!resource->Load())
 			{
-				// Loading failed, return invalid handle
 				return ResourceHandle<T>();
 			}
 
-			// Cache successful resource and initialize reference tracking
 			typeResources[resourceId] = resource;
 			RefCounts[resourceId] = 1;
 
@@ -156,7 +151,6 @@ namespace Engine
 
 			if (it != typeResources.end())
 			{
-				// safe downcast because of typeid
 				return static_cast<T*>(it->second.get());
 			}
 
@@ -176,7 +170,6 @@ namespace Engine
 			auto resourceTypeIt = Resources.find(std::type_index(typeid(T)));
 			if (resourceTypeIt == Resources.end())
 			{
-				// no resource of the given type being tracked
 				return;
 			}
 
@@ -405,7 +398,6 @@ namespace Engine
 						auto currentTimestamp = std::filesystem::last_write_time(filePath);
 						if (currentTimestamp != timestamp)
 						{
-							// file has changed, reload resource
 							ReloadResource(filePath);
 							timestamp = currentTimestamp;
 						}
