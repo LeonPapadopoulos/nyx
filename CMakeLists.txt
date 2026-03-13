@@ -33,6 +33,7 @@ target_include_directories(EnginePCH
 # Execute CMake files in subdirectories
 # add_subdirectory(Dependencies/entt-main) Why does this fail?
 add_subdirectory(Dependencies/spdlog)
+add_subdirectory(Dependencies/glfw)
 add_subdirectory(Engine)
 add_subdirectory(Sandbox)
 

@@ -2,3 +2,7 @@
 	path = Dependencies/spdlog
 	url = https://github.com/gabime/spdlog.git
 	branch = v1.x
+[submodule "Dependencies/glfw"]
+	path = Dependencies/glfw
+	url = https://github.com/LeonPapadopoulos/glfw.git
+	branch = master

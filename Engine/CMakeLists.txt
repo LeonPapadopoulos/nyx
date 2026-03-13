@@ -56,12 +56,12 @@ if(NOT Vulkan_FOUND)
         "Install the Vulkan SDK, then regenerate project files.")
 endif()
 
-# Link against spdlog; Needs to be AFTER adding of Engine library
-# @todo: Make PRIVATE after we hid away the spdlog calls from the Application Side
+# Dependencies
 target_link_libraries(Engine
 	PUBLIC EnginePCH
 	PUBLIC spdlog::spdlog
 	PRIVATE Vulkan::Vulkan
+	PUBLIC glfw
 )
 
 # Expose Engine Module Source Directory to linked Modules
