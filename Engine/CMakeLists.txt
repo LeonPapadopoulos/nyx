@@ -26,6 +26,7 @@ set(ENGINE_SOURCES
 	src/Texture.cpp
 	src/Mesh.cpp
 	src/Shader.cpp
+	src/WindowsWindow.cpp # only include on Windows
 )
 set(ENGINE_HEADERS
 	src/Enginepch.h	# Only meant to be included by .cpp files
@@ -41,6 +42,8 @@ set(ENGINE_HEADERS
 	include/Texture.h
 	include/Mesh.h
 	include/Shader.h
+	include/Window.h
+	include/WindowsWindow.h # only include on Windows
 )
 
 # SHARED to switch from static library to dynamic one producing .dll

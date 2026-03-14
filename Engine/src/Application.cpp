@@ -1,15 +1,29 @@
 #include "Enginepch.h"
 #include "Application.h"
+#include "Window.h"
 
-Engine::Application::Application()
+namespace Engine
 {
-}
+	Application::Application()
+	{
+		Window = std::unique_ptr<IWindow>(IWindow::Create());
+	}
 
-Engine::Application::~Application()
-{
-}
+	Application::~Application()
+	{
+	}
 
-void Engine::Application::Run()
-{
-	while (true);
-}
+	void Application::Run()
+	{
+		while (bRunning)
+		{
+			Window->OnUpdate();
+
+			if (Window->ShouldClose())
+			{
+				bRunning = false;
+			}
+		}
+	}
+
+} // Engine
