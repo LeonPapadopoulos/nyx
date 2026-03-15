@@ -21,6 +21,8 @@ namespace Engine
 		virtual bool IsVSync() const override;
 		virtual bool ShouldClose() const override;
 
+		bool IsTitleBarHovered() const { return bTitlebarHovered; }
+
 	private:
 		void Initialize(const WindowSpecs& specs);
 		void Shutdown();
@@ -37,6 +39,7 @@ namespace Engine
 		};
 
 		WindowData Data;
+		bool bTitlebarHovered = false;
 	};
 
 } // Engine

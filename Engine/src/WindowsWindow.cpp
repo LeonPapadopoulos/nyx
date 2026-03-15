@@ -80,6 +80,9 @@ namespace Engine
             bGLFWInitialized = true;
         }
 
+        // Custom Titlebar
+        glfwWindowHint(GLFW_TITLEBAR, true);
+
         Window = glfwCreateWindow(
             static_cast<int>(Data.Width),
             static_cast<int>(Data.Height),
@@ -88,7 +91,15 @@ namespace Engine
             nullptr);
 
         glfwMakeContextCurrent(Window);
-        glfwSetWindowUserPointer(Window, &Data);
+
+        // @todo: what's the most sensible UserPointer to set?
+        glfwSetWindowUserPointer(Window, this);
+        glfwSetTitlebarHitTestCallback(Window, [](GLFWwindow* window, int posX, int posY, int* hit)
+            {
+                WindowsWindow* windowsWindow = static_cast<WindowsWindow*>(glfwGetWindowUserPointer(window));
+                *hit = windowsWindow->IsTitleBarHovered();
+            });
+
         SetVSync(true);
     }
 
