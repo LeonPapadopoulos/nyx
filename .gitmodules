@@ -6,3 +6,7 @@
 	path = Dependencies/glfw
 	url = https://github.com/LeonPapadopoulos/glfw.git
 	branch = master
+[submodule "Dependencies/imgui"]
+	path = Dependencies/imgui
+	url = https://github.com/LeonPapadopoulos/imgui.git
+	branch = docking

@@ -65,6 +65,7 @@ target_link_libraries(Engine
 	PUBLIC spdlog::spdlog
 	PRIVATE Vulkan::Vulkan
 	PUBLIC glfw
+	PRIVATE imgui::imgui
 )
 
 # Expose Engine Module Source Directory to linked Modules
