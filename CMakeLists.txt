@@ -35,6 +35,7 @@ target_include_directories(EnginePCH
 add_subdirectory(ThirdParty/imgui)
 add_subdirectory(Dependencies/spdlog)
 add_subdirectory(Dependencies/glfw)
+add_subdirectory(Dependencies/glm)
 add_subdirectory(Engine)
 add_subdirectory(Sandbox)
 
