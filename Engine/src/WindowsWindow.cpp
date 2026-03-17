@@ -25,7 +25,7 @@ namespace Icon::Util
         Close
     };
 
-    static float s_IconSize = 8.0f;
+    static float s_CenteredSquareRectPadding = 8.0f;
     static float s_IconThickness = 1.5f;
 
     static ImRect MakeCenteredSquareRect(const ImVec2& min, const ImVec2& max, float padding = 0.0f)
@@ -49,7 +49,7 @@ namespace Icon::Util
 
     static void DrawMinimizeIcon(ImDrawList* drawList, const ImVec2& min, const ImVec2& max, ImU32 color)
     {
-        const ImRect r = MakeCenteredSquareRect(min, max, s_IconSize);
+        const ImRect r = MakeCenteredSquareRect(min, max, s_CenteredSquareRectPadding);
 
         const float y = std::floor((r.Min.y + r.Max.y) * 0.5f) + 0.5f;
         const float padX = (r.Max.x - r.Min.x) * 0.15f;
@@ -64,7 +64,10 @@ namespace Icon::Util
 
     static void DrawMaximizeIcon(ImDrawList* drawList, const ImVec2& min, const ImVec2& max, ImU32 color)
     {
-        const ImRect r = MakeCenteredSquareRect(min, max, s_IconSize);
+        // HACK: An equally sized square will always 'look' bigger than the 'close' icon,
+        // so we make it inherently smaller
+        const float iconSize = ImMax(0.0f, s_CenteredSquareRectPadding + 2.0f);
+        const ImRect r = MakeCenteredSquareRect(min, max, iconSize);
 
         drawList->AddRect(
             ImVec2(std::floor(r.Min.x) + 0.5f, std::floor(r.Min.y) + 0.5f),
@@ -78,7 +81,7 @@ namespace Icon::Util
 
     static void DrawRestoreIcon(ImDrawList* drawList, const ImVec2& min, const ImVec2& max, ImU32 color)
     {
-        const ImRect r = MakeCenteredSquareRect(min, max, s_IconSize);
+        const ImRect r = MakeCenteredSquareRect(min, max, s_CenteredSquareRectPadding);
 
         const float side = r.GetWidth();
         const float offset = side * 0.18f;
@@ -107,7 +110,7 @@ namespace Icon::Util
 
     static void DrawCloseIcon(ImDrawList* drawList, const ImVec2& min, const ImVec2& max, ImU32 color)
     {
-        const ImRect r = MakeCenteredSquareRect(min, max, s_IconSize);
+        const ImRect r = MakeCenteredSquareRect(min, max, s_CenteredSquareRectPadding);
 
         const float pad = r.GetWidth() * 0.18f;
 
