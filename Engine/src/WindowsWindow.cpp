@@ -263,6 +263,8 @@ namespace Engine
         Data.Title = specs.Title;
         Data.Width = specs.Width;
         Data.Height = specs.Height;
+        Data.bCustomTitlebar = specs.bUseCustomTitlebar;
+        Data.bResizable = specs.bResizable;
 
         LOG_INFO("Creating Window. {0} {1} {2}", Data.Title, Data.Width, Data.Height);
 
@@ -278,10 +280,10 @@ namespace Engine
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
         // Custom Titlebar
-        glfwWindowHint(GLFW_TITLEBAR, GLFW_FALSE);
+        glfwWindowHint(GLFW_TITLEBAR, Data.bCustomTitlebar ? GLFW_FALSE : GLFW_TRUE);
 
         // @todo: Update renderer to handle resizing
-        glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+        glfwWindowHint(GLFW_RESIZABLE, Data.bResizable ? GLFW_TRUE : GLFW_FALSE);
 
         //GLFWmonitor* primaryMonitor = glfwGetPrimaryMonitor();
         //const GLFWvidmode* videoMode = glfwGetVideoMode(primaryMonitor);
@@ -381,11 +383,14 @@ namespace Engine
 
         ImGui::PopStyleVar(3);
 
-        const float titlebarHeight = 32.0f;
-        DrawTitlebar(titlebarHeight);
+        if (Data.bCustomTitlebar)
+        {
+            const float titlebarHeight = 32.0f;
+            DrawTitlebar(titlebarHeight);
 
-        // Reserve space so docked content starts below the custom titlebar
-        ImGui::Dummy(ImVec2(0.0f, titlebarHeight));
+            // Reserve space so docked content starts below the custom titlebar
+            ImGui::Dummy(ImVec2(0.0f, titlebarHeight));
+        }
 
         ImGuiStyle& style = ImGui::GetStyle();
         const float prevMinWinSizeX = style.WindowMinSize.x;

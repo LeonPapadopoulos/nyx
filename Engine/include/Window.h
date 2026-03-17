@@ -6,19 +6,11 @@ namespace Engine
 {
 	struct WindowSpecs
 	{
-		std::string Title;
-		unsigned int Width;
-		unsigned int Height;
-
-		WindowSpecs(
-			const std::string& title = "Nyx Engine",
-			unsigned int width = 1280,
-			unsigned int height = 720)
-			: Title(title)
-			, Width (width)
-			, Height (height)
-		{
-		}
+		std::string Title = "Nyx Engine";
+		unsigned int Width = 1280;
+		unsigned int Height = 720;
+		bool bUseCustomTitlebar = true;
+		bool bResizable = true;
 	};
 
 	// Platform Abstraction

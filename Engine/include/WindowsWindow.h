@@ -47,6 +47,8 @@ namespace Engine
 			std::string Title;
 			unsigned int Width;
 			unsigned int Height;
+			bool bCustomTitlebar;
+			bool bResizable;
 			bool bVSync;
 		};
 
