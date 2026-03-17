@@ -4,6 +4,8 @@
 #include "Entity.h"
 #include "TypedHandle.h"
 
+#include "Application.h"
+
 //@todo define
 //#ifdef ENGINE_PLATFORM_WINDOWS
 

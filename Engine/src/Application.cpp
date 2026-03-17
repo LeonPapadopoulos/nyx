@@ -21,6 +21,7 @@ namespace Engine
 
 			if (Window->ShouldClose())
 			{
+				// glfwPollEvents(); ?
 				bRunning = false;
 			}
 		}

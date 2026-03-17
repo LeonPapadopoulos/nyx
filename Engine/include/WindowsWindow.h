@@ -6,6 +6,8 @@ class GLFWwindow;
 
 namespace Engine
 {
+	class VulkanUtil;
+	class ImGuiVulkanUtil;
 
 	class WindowsWindow : public IWindow
 	{
@@ -26,9 +28,12 @@ namespace Engine
 	private:
 		void Initialize(const WindowSpecs& specs);
 		void Shutdown();
+		void SetupVulkan();
 
 	private:
-		GLFWwindow* Window;
+		GLFWwindow* Window = nullptr;
+		VulkanUtil* VulkanHandler = nullptr;
+		ImGuiVulkanUtil* ImGui = nullptr;
 
 		struct WindowData
 		{

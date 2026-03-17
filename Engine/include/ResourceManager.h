@@ -10,7 +10,11 @@
 #include <mutex>
 #include <filesystem>
 
+
 class ResourceManager;
+class Mesh;
+class Texture;
+class Shader;
 
 namespace Engine
 {
@@ -34,12 +38,12 @@ namespace Engine
 
 		T* Get() const
 		{
-			return ResourceManager ? ResourceManager->GetResource<T>(ResourceId) : nullptr;
+			return ResourceManager ? ResourceManager->template GetResource<T>(ResourceId) : nullptr;
 		}
 
 		bool IsValid() const
 		{
-			return ResourceManager && ResourceManager->HasResource<T>(ResourceId);
+			return ResourceManager && ResourceManager->template HasResource<T>(ResourceId);
 		}
 
 		const std::string& GetId() const
@@ -127,7 +131,7 @@ namespace Engine
 
 			if (it != typeResources.end())
 			{
-				RefCounts[resourceId]++;
+				RefCounts[std::type_index(typeid(T))][resourceId]++;
 				return ResourceHandle<T>(resourceId, this);
 			}
 
@@ -138,7 +142,7 @@ namespace Engine
 			}
 
 			typeResources[resourceId] = resource;
-			RefCounts[resourceId] = 1;
+			RefCounts[std::type_index(typeid(T))][resourceId] = 1;
 
 			return ResourceHandle<T>(resourceId, this);
 		}
@@ -161,7 +165,7 @@ namespace Engine
 		bool HasResource(const std::string& resourceId)
 		{
 			auto resourceIt = Resources.find(std::type_index(typeid(T)));
-			return resourceIt != resources.end();
+			return resourceIt != Resources.end();
 		}
 
 		template<typename T>
@@ -348,10 +352,10 @@ namespace Engine
 			auto handle = ResourceManager::Load<T>(resourceId);
 
 			// Store file timestamp
-			std::string filepath = GetFilePath<T>(resourceId);
+			std::string filePath = GetFilePath<T>(resourceId);
 			try
 			{
-				FileTimestamps[filePath] = std::filesystem::last_write_time(filepath);
+				FileTimestamps[filePath] = std::filesystem::last_write_time(filePath);
 			}
 			catch (const std::filesystem::filesystem_error& error)
 			{

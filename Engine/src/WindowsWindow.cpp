@@ -2,7 +2,14 @@
 #include "WindowsWindow.h"
 #include "Log.h"
 #include "Assertions.h"
+#include "VulkanUtil.h"
+#include "ImGuiVulkanUtil.h"
+
+#define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+
+#include "backends/imgui_impl_glfw.h"
+#include "backends/imgui_impl_vulkan.h"
 
 namespace Engine
 {
@@ -26,7 +33,24 @@ namespace Engine
     void WindowsWindow::OnUpdate()
     {
         glfwPollEvents();
-        glfwSwapBuffers(Window);
+
+        VulkanHandler->DrawFrame(
+            [this](vk::raii::CommandBuffer& commandBuffer)
+            {
+                ImGui->BeginFrame();
+
+                if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_DockingEnable)
+                {
+                    ImGui::DockSpaceOverViewport();
+                }
+
+                // @todo LP: Draw Game Engine Editor
+                {
+                    ImGui::ShowDemoWindow();
+                }
+
+                ImGui->DrawFrame(commandBuffer);
+            });
     }
 
     unsigned int WindowsWindow::GetWidth()
@@ -83,6 +107,11 @@ namespace Engine
         // Custom Titlebar
         glfwWindowHint(GLFW_TITLEBAR, true);
 
+        // Tell glfw to not set up the default OpenGL context
+        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+        // @todo: Update renderer to handle resizing
+        glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+
         Window = glfwCreateWindow(
             static_cast<int>(Data.Width),
             static_cast<int>(Data.Height),
@@ -101,10 +130,42 @@ namespace Engine
             });
 
         SetVSync(true);
+
+        // @todo: SetupVulkan
+        ASSERT(glfwVulkanSupported() && "Currently only Vulkan is supported.");
+
+        SetupVulkan();
+
+        ASSERT(VulkanHandler->GetMinImageCount() >= 2 && "Failed to fulfill ImGui Vulkan requirements.");
+        ASSERT(VulkanHandler->GetSwapChainImageCount() >= VulkanHandler->GetMinImageCount() && "Failed to fulfill ImGui Vulkan requirements.");
+
+        ImGui = new ImGuiVulkanUtil(Window, VulkanHandler);
+        ImGui->Initialize(
+            static_cast<float>(VulkanHandler->GetSwapChainExtent().width),
+            static_cast<float>(VulkanHandler->GetSwapChainExtent().height));
     }
 
     void WindowsWindow::Shutdown()
     {
+        if (VulkanHandler)
+        {
+            VulkanHandler->WaitIdle();
+        }
+
+        delete ImGui;
+        ImGui = nullptr;
+
+        delete VulkanHandler;
+        VulkanHandler = nullptr;
+
         glfwDestroyWindow(Window);
+        glfwTerminate();
+    }
+
+    void WindowsWindow::SetupVulkan()
+    {
+        ASSERT(!VulkanHandler && "Create VulkanHandler only once!");
+        VulkanHandler = new Engine::VulkanUtil();
+        VulkanHandler->InitVulkan(Data.Title, Window);
     }
 }

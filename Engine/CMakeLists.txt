@@ -26,6 +26,9 @@ set(ENGINE_SOURCES
 	src/Texture.cpp
 	src/Mesh.cpp
 	src/Shader.cpp
+	src/VulkanUtil.cpp
+	src/ImGuiVulkanUtil.cpp
+	src/Renderer.cpp
 	src/WindowsWindow.cpp # only include on Windows
 )
 set(ENGINE_HEADERS
@@ -43,13 +46,16 @@ set(ENGINE_HEADERS
 	include/Mesh.h
 	include/Shader.h
 	include/Window.h
+	include/VulkanUtil.h
+	include/ImGuiVulkanUtil.h
+	include/Renderer.h
 	include/WindowsWindow.h # only include on Windows
 )
 
 # SHARED to switch from static library to dynamic one producing .dll
 add_library(Engine SHARED ${ENGINE_SOURCES} ${ENGINE_HEADERS})
 
-target_compile_features(Engine PUBLIC cxx_std_17)
+target_compile_features(Engine PUBLIC cxx_std_20)
 
 find_package(Vulkan QUIET)
 
@@ -66,6 +72,7 @@ target_link_libraries(Engine
 	PRIVATE Vulkan::Vulkan
 	PUBLIC glfw
 	PRIVATE imgui::imgui
+	PUBLIC glm::glm
 )
 
 # Expose Engine Module Source Directory to linked Modules
