@@ -66,23 +66,27 @@ namespace Engine
 	{
 		// 1) Wait until previous submitted frame is done
 		Device.waitForFences({ *InFlightFence }, true, UINT64_MAX);
-		Device.resetFences({ *InFlightFence });
 
 		// 2) Acquire next swapchain image
-		const auto acquireResult = SwapChain.acquireNextImage(UINT64_MAX, *ImageAvailableSemaphore);
-		const vk::Result acquireVkResult = acquireResult.result;
-		const uint32_t imageIndex = acquireResult.value;
+		const vk::ResultValue<uint32_t> acquireResult =
+			SwapChain.acquireNextImage(UINT64_MAX, *ImageAvailableSemaphore);
 
-		if (acquireVkResult == vk::Result::eErrorOutOfDateKHR)
+		if (acquireResult.result == vk::Result::eErrorOutOfDateKHR)
 		{
-			// later: recreate swapchain
+			RecreateSwapChain();
 			return;
 		}
 
-		if (acquireVkResult != vk::Result::eSuccess && acquireVkResult != vk::Result::eSuboptimalKHR)
+		if (acquireResult.result != vk::Result::eSuccess &&
+			acquireResult.result != vk::Result::eSuboptimalKHR)
 		{
 			throw std::runtime_error("Failed to acquire swapchain image.");
 		}
+
+		const uint32_t imageIndex = acquireResult.value;
+
+		// Only reset once we know we will submit work
+		Device.resetFences({ *InFlightFence });
 
 		// 3) Record command buffer for this image
 		vk::raii::CommandBuffer& cmd = CommandBuffers[imageIndex];
@@ -135,9 +139,11 @@ namespace Engine
 		presentInfo.pImageIndices = &imageIndex;
 
 		const vk::Result presentResult = GraphicsQueue.presentKHR(presentInfo);
-		if (presentResult == vk::Result::eErrorOutOfDateKHR || presentResult == vk::Result::eSuboptimalKHR)
+		if (presentResult == vk::Result::eErrorOutOfDateKHR ||
+			presentResult == vk::Result::eSuboptimalKHR ||
+			bRecreateSwapChain)
 		{
-			// later: recreate swapchain
+			RecreateSwapChain();
 			return;
 		}
 
@@ -160,6 +166,11 @@ namespace Engine
 	vk::raii::Queue& VulkanUtil::GetGraphicsQueue()
 	{
 		return GraphicsQueue;
+	}
+
+	void VulkanUtil::OnFramebufferResized()
+	{
+		bRecreateSwapChain = true;
 	}
 
 	const vk::Extent2D& VulkanUtil::GetSwapChainExtent()
@@ -463,6 +474,40 @@ namespace Engine
 		InFlightFence = vk::raii::Fence(Device, fenceInfo);
 	}
 
+	void VulkanUtil::CleanupSwapChain()
+	{
+		CommandBuffers.clear();
+		Framebuffers.clear();
+		RenderPass = nullptr;
+		SwapChainImageViews.clear();
+		SwapChain = nullptr;
+		SwapChainImages.clear();
+	}
+
+	void VulkanUtil::RecreateSwapChain()
+	{
+		int width = 0;
+		int height = 0;
+
+		while (width == 0 || height == 0)
+		{
+			glfwGetFramebufferSize(Window, &width, &height);
+			glfwWaitEvents();
+		}
+
+		Device.waitIdle();
+
+		CleanupSwapChain();
+
+		CreateSwapChain();
+		CreateImageViews();
+		CreateRenderPass();
+		CreateFramebuffers();
+		CreateCommandBuffers();
+
+		bRecreateSwapChain = false;
+	}
+
 	uint32_t VulkanUtil::ChooseSwapMinImageCount(vk::SurfaceCapabilitiesKHR const& surfaceCapabilities)
 	{
 		auto minImageCount = std::max(3u, surfaceCapabilities.minImageCount);
@@ -476,10 +521,22 @@ namespace Engine
 	vk::SurfaceFormatKHR VulkanUtil::ChooseSwapSurfaceFormat(std::vector<vk::SurfaceFormatKHR> const& availableFormats)
 	{
 		assert(!availableFormats.empty());
-		const auto formatIt = std::ranges::find_if(
+
+		// Preferred: UNORM format with standard SRGB nonlinear presentation colorspace.
+		// This avoids the washed-out ImGui look you can get with SRGB swapchain formats.
+		if (const auto it = std::ranges::find_if(
 			availableFormats,
-			[](const auto& format) { return format.format == vk::Format::eB8G8R8A8Srgb && format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear; });
-		return formatIt != availableFormats.end() ? *formatIt : availableFormats[0];
+			[](const vk::SurfaceFormatKHR& format)
+			{
+				return format.format == vk::Format::eB8G8R8A8Unorm &&
+					format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear;
+			});
+			it != availableFormats.end())
+		{
+			return *it;
+		}
+
+		return availableFormats[0];
 	}
 
 	vk::PresentModeKHR VulkanUtil::ChooseSwapPresentMode(std::vector<vk::PresentModeKHR> const& availablePresentModes)

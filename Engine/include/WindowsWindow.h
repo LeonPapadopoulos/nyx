@@ -30,6 +30,13 @@ namespace Engine
 		void Shutdown();
 		void SetupVulkan();
 
+		// @todo: Is there a better place to put this?
+		void DrawUserInterface();
+		void DrawTitlebar(float titlebarHeight);
+		void DrawMenubar();
+
+		bool IsMaximized() const;
+
 	private:
 		GLFWwindow* Window = nullptr;
 		VulkanUtil* VulkanHandler = nullptr;

@@ -33,6 +33,7 @@ target_include_directories(EnginePCH
 # Execute CMake files in subdirectories
 # add_subdirectory(Dependencies/entt-main) Why does this fail?
 add_subdirectory(ThirdParty/imgui)
+add_subdirectory(ThirdParty/stb_image)
 add_subdirectory(Dependencies/spdlog)
 add_subdirectory(Dependencies/glfw)
 add_subdirectory(Dependencies/glm)
@@ -43,6 +44,8 @@ add_subdirectory(Sandbox)
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT Sandbox)
 set_property(TARGET imgui PROPERTY FOLDER "ThirdParty")
 set_property(TARGET spdlog PROPERTY FOLDER "ThirdParty")
+set_property(TARGET stb_image PROPERTY FOLDER "ThirdParty")
+set_property(TARGET glm PROPERTY FOLDER "ThirdParty")
 
 # Todo: cleanup targets
 if(TARGET glfw)

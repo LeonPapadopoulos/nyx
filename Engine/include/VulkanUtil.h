@@ -29,6 +29,8 @@ namespace Engine
 		vk::raii::Queue& GetGraphicsQueue();
 		uint32_t GetGraphicsQueueFamily() const { return GraphicsQueueFamily; };
 
+		void OnFramebufferResized();
+
 	private:
 		void CreateInstance(const std::string& applicationName);
 		void SetupDebugMessenger();
@@ -44,6 +46,10 @@ namespace Engine
 		void CreateFramebuffers();
 		void CreateCommandBuffers();
 		void CreateSyncObjects();
+
+	private:
+		void CleanupSwapChain();
+		void RecreateSwapChain();
 
 	private:
 		static uint32_t ChooseSwapMinImageCount(vk::SurfaceCapabilitiesKHR const& surfaceCapabilities);
@@ -88,6 +94,8 @@ namespace Engine
 		{
 			vk::KHRSwapchainExtensionName
 		};
+
+		bool bRecreateSwapChain = false;
 	};
 
 } // Engine

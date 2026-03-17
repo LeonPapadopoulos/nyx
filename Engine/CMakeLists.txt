@@ -28,8 +28,8 @@ set(ENGINE_SOURCES
 	src/Shader.cpp
 	src/VulkanUtil.cpp
 	src/ImGuiVulkanUtil.cpp
-	src/Renderer.cpp
 	src/WindowsWindow.cpp # only include on Windows
+	src/ImGuiTheme.cpp
 )
 set(ENGINE_HEADERS
 	src/Enginepch.h	# Only meant to be included by .cpp files
@@ -48,7 +48,6 @@ set(ENGINE_HEADERS
 	include/Window.h
 	include/VulkanUtil.h
 	include/ImGuiVulkanUtil.h
-	include/Renderer.h
 	include/WindowsWindow.h # only include on Windows
 )
 
@@ -73,6 +72,7 @@ target_link_libraries(Engine
 	PUBLIC glfw
 	PRIVATE imgui::imgui
 	PUBLIC glm::glm
+	PRIVATE stb_image
 )
 
 # Expose Engine Module Source Directory to linked Modules
@@ -93,6 +93,8 @@ target_compile_definitions(Engine
 	PUBLIC $<$<CONFIG:Debug>:ENGINE_DEBUG>
     PUBLIC $<$<CONFIG:Release>:ENGINE_RELEASE>
 	PUBLIC $<$<CONFIG:Debug>:ASSERTIONS_ENABLED>
+	#PRIVATE VULKAN_HPP_NO_EXCEPTIONS # @todo: turn off runtime exceptions in favor of using vk::Results
+	PRIVATE VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS # allows us to catch window resizing via vk::Results over exceptions
 )
 
 # Precompiled Headers | src/... , as it is only meant to be included by .cpp files

@@ -2,6 +2,7 @@
 #include "ImGuiVulkanUtil.h"
 #include "VulkanUtil.h"
 #include "Log.h"
+#include "ImGuiTheme.h"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -47,7 +48,24 @@ namespace Engine
 		VulkanStyle.Colors[ImGuiCol_CheckMark] = ImVec4(0.0f, 1.0f, 0.0f, 1.0f);
 
 		// Apply default style
-		SetStyle(0); // @todo: Expose to the user via Editor UI
+		SetStyle(4); // @todo: Expose to the user via Editor UI
+
+		// Style
+		ImGuiStyle& style = ImGui::GetStyle();
+		style.WindowPadding = ImVec2(10.0f, 10.0f);
+		style.FramePadding = ImVec2(8.0f, 6.0f);
+		style.ItemSpacing = ImVec2(6.0f, 6.0f);
+		style.ChildRounding = 6.0f;
+		style.PopupRounding = 6.0f;
+		style.FrameRounding = 6.0f;
+		style.WindowTitleAlign = ImVec2(0.5f, 0.5f);
+
+		// When viewports are enabled we tweak WindowRounding/WindowBg so platform windows can look identical to regular ones.
+		if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+		{
+			style.WindowRounding = 0.0f;
+			style.Colors[ImGuiCol_WindowBg].w = 1.0f;
+		}
 
 		CreateDescriptorPool();
 
@@ -115,6 +133,9 @@ namespace Engine
 			break;
 		case 3:
 			ImGui::StyleColorsLight();
+			break;
+		case 4:
+			SetNyxTheme();
 			break;
 		default:
 			LOG_ERROR("Failed to set ImGuiStyle - No style associated with given index: {0}", index);
