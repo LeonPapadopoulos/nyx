@@ -7,6 +7,11 @@
 #include "ImGuiTheme.h"
 #include "Image.h"
 
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include <GLFW/glfw3native.h>
+#include <dwmapi.h>
+#pragma comment(lib, "dwmapi.lib")
+
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
@@ -279,6 +284,7 @@ namespace Engine
         // Tell glfw to NOT set up the default OpenGL context
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
+        glfwWindowHint(GLFW_DECORATED, GLFW_TRUE);
         // Custom Titlebar
         glfwWindowHint(GLFW_TITLEBAR, Data.bCustomTitlebar ? GLFW_FALSE : GLFW_TRUE);
 
@@ -309,6 +315,8 @@ namespace Engine
             glfwSetWindowSize(Window, w, h);
         }
         glfwShowWindow(Window);
+
+        ApplyRoundedCorners(Window);
 
         // @todo: what's the most sensible UserPointer to set?
         glfwSetWindowUserPointer(Window, this);
@@ -361,8 +369,31 @@ namespace Engine
         VulkanHandler->InitVulkan(Data.Title, Window);
     }
 
+    void WindowsWindow::ApplyRoundedCorners(GLFWwindow* window)
+    {
+        ASSERT(window != nullptr);
+        HWND hwnd = glfwGetWin32Window(window);
+        if (!hwnd)
+            return;
+
+        const DWM_WINDOW_CORNER_PREFERENCE pref = DWMWCP_ROUND;
+        const HRESULT hr = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_WINDOW_CORNER_PREFERENCE,
+            &pref,
+            sizeof(pref)
+        );
+
+        // optional: log hr if failed
+    }
+
     void WindowsWindow::DrawUserInterface()
     {
+        // @todo: Expose as parameter
+        const bool bColoredBorderOnFocus = true;
+
+        const bool bAppFocused = glfwGetWindowAttrib(Window, GLFW_FOCUSED) == GLFW_TRUE;
+        const bool bIsMaximized = IsMaximized();
         ImGuiViewport* viewport = ImGui::GetMainViewport();
 
         ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoDocking;
@@ -374,18 +405,19 @@ namespace Engine
         ImGui::SetNextWindowSize(viewport->Size);
         ImGui::SetNextWindowViewport(viewport->ID);
 
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, bIsMaximized ? 0.0f : 5.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(2.0f, 2.0f));
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, Colors::Theme::background);
 
-        // Creates window inside the main GLFWwindow
         ImGui::Begin("DockSpaceWindow", nullptr, windowFlags);
 
+        ImGui::PopStyleColor();
         ImGui::PopStyleVar(3);
 
+        const float titlebarHeight = Data.bCustomTitlebar ? 32.0f : 0.0f;
         if (Data.bCustomTitlebar)
         {
-            const float titlebarHeight = 32.0f;
             DrawTitlebar(titlebarHeight);
 
             // Reserve space so docked content starts below the custom titlebar
@@ -398,7 +430,44 @@ namespace Engine
         ImGui::DockSpace(ImGui::GetID("MyDockspace"));
         style.WindowMinSize.x = prevMinWinSizeX;
 
-        ImGui::End();
+        // Draw the colored border last, so it's on top of everything else
+        if(bColoredBorderOnFocus && bAppFocused)
+        {
+            ImDrawList* drawList = ImGui::GetForegroundDrawList(viewport);
+
+            const ImVec2 winMin = ImGui::GetWindowPos();
+            const ImVec2 winMax(winMin.x + ImGui::GetWindowWidth(), winMin.y + ImGui::GetWindowHeight());
+
+            // rounding to match that of win11 windows
+            const float rounding = bIsMaximized ? 0.0f : 10.0f;
+            // thickness to match the look of a focussed visual studio window
+            const float borderThickness = 3.0f;
+
+            constexpr ImU32 borderColor = Colors::Theme::windowBorder;
+
+            // Optional debug: outer frame outline
+            drawList->AddRect(
+                winMin,
+                winMax,
+                borderColor,
+                rounding,
+                0,
+                borderThickness
+            );
+
+            //// @todo: do we want more titlebar-framing?
+            //if (Data.bCustomTitlebar)
+            //{
+            //    drawList->AddLine(
+            //        ImVec2(winMin.x, winMin.y + titlebarHeight),
+            //        ImVec2(winMax.x, winMin.y + titlebarHeight),
+            //        borderColor,
+            //        1.0f
+            //    );
+            //}
+        }
+
+        ImGui::End(); // DockSpaceWindow
     }
 
     void WindowsWindow::DrawTitlebar(float titlebarHeight)

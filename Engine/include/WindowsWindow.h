@@ -30,6 +30,8 @@ namespace Engine
 		void Shutdown();
 		void SetupVulkan();
 
+		static void ApplyRoundedCorners(GLFWwindow* window);
+
 		// @todo: Is there a better place to put this?
 		void DrawUserInterface();
 		void DrawTitlebar(float titlebarHeight);
