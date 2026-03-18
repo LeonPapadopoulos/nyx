@@ -297,6 +297,8 @@ namespace Engine
         //int monitorX, monitorY;
         //glfwGetMonitorPos(primaryMonitor, &monitorX, &monitorY);
 
+        glfwWindowHint(GLFW_TRANSPARENT_FRAMEBUFFER, GLFW_TRUE);
+
         // By constructing it in an invisible state first, we can get rid of the windows titlebar
         // (assuming we use a custom one) without the need of having to manually resize the window first
         glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
@@ -315,6 +317,9 @@ namespace Engine
             glfwSetWindowSize(Window, w, h);
         }
         glfwShowWindow(Window);
+
+        const bool bTransparent = glfwGetWindowAttrib(Window, GLFW_TRANSPARENT_FRAMEBUFFER) == GLFW_TRUE;
+        ASSERT(bTransparent && "Transparent framebuffer not supported on this platform/path.");
 
         ApplyRoundedCorners(Window);
 
@@ -420,8 +425,10 @@ namespace Engine
         {
             DrawTitlebar(titlebarHeight);
 
+            // @todo LP: Figure out where the padding between titlebar-drag-zone and dockarea comes from
+            const float paddingToRemoveHACK = 8.0f;
             // Reserve space so docked content starts below the custom titlebar
-            ImGui::Dummy(ImVec2(0.0f, titlebarHeight));
+            ImGui::Dummy(ImVec2(0.0f, titlebarHeight - paddingToRemoveHACK));
         }
 
         ImGuiStyle& style = ImGui::GetStyle();
@@ -443,7 +450,7 @@ namespace Engine
             // thickness to match the look of a focussed visual studio window
             const float borderThickness = 3.0f;
 
-            constexpr ImU32 borderColor = Colors::Theme::windowBorder;
+            constexpr ImU32 borderColor = Colors::Theme::windowBorderER_1;
 
             // Optional debug: outer frame outline
             drawList->AddRect(

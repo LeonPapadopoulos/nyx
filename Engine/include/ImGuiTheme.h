@@ -10,6 +10,8 @@ namespace Engine
 		// members of a static "Theme" class and add a quick ImGui window to adjust the colour values
 		namespace Theme
 		{
+			constexpr auto windowBorderER_1 = IM_COL32(197, 162, 102, 255);
+
 			constexpr auto windowBorderNP_1 = IM_COL32(32, 93, 150, 205);
 			constexpr auto windowBorderNP_2 = IM_COL32(168, 193, 218, 205);
 			constexpr auto windowBorderNP_3 = IM_COL32(199, 247, 212, 205);
@@ -21,6 +23,7 @@ namespace Engine
 			constexpr auto windowBorderHR_4 = IM_COL32(0, 254, 243, 205);
 
 			constexpr auto windowBorderVS = IM_COL32(111, 100, 224, 225);
+			constexpr auto windowBorderVS_2 = IM_COL32(119, 47, 46, 255);
 			constexpr auto windowBorder = IM_COL32(245, 174, 39, 200);
 
 			constexpr auto accent = IM_COL32(236, 158, 36, 255);
