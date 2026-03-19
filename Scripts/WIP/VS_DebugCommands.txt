@@ -1,0 +1,7 @@
+
+// Examples
+dumpbin /exports <absoluteFilepath>.dll | findstr <className>
+dumpbin /linkermember:2 <absoluteFilepath>.lib | findstr <className>
+
+// 'U' before export name indicates 'export as struct'
+// 'V' before export name indicates 'export as class'
