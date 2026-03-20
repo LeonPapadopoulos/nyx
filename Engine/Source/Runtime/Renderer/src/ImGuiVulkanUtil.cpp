@@ -77,12 +77,14 @@ namespace Nyx
 
 		ImGui_ImplGlfw_InitForVulkan(Window, true);
 
+		VulkanContext& Context = Vulkan->GetContext();
+
 		ImGui_ImplVulkan_InitInfo init_info{};
-		init_info.Instance = *Vulkan->GetInstance();
-		init_info.PhysicalDevice = *Vulkan->GetPhysicalDevice();
-		init_info.Device = *Vulkan->GetDevice();
-		init_info.QueueFamily = Vulkan->GetGraphicsQueueFamily();
-		init_info.Queue = *Vulkan->GetGraphicsQueue();
+		init_info.Instance = *Context.GetInstance();
+		init_info.PhysicalDevice = *Context.GetPhysicalDevice();
+		init_info.Device = *Context.GetDevice();
+		init_info.QueueFamily = Context.GetGraphicsQueueFamily();
+		init_info.Queue = *Context.GetGraphicsQueue();
 		init_info.DescriptorPool = *DescriptorPool;
 		init_info.MinImageCount = Vulkan->GetMinImageCount();
 		init_info.ImageCount = Vulkan->GetSwapChainImageCount();
@@ -109,7 +111,7 @@ namespace Nyx
 		if (Vulkan)
 		{
 			// 'waitIdle' only considered acceptable inside destructors
-			Vulkan->GetDevice().waitIdle();
+			Vulkan->GetContext().GetDevice().waitIdle();
 		}
 
 		// vk resources are automatically cleaned up by their destructors
@@ -256,6 +258,6 @@ namespace Nyx
 		poolInfo.poolSizeCount = static_cast<uint32_t>(std::size(poolSizes));
 		poolInfo.pPoolSizes = poolSizes;
 
-		DescriptorPool = Vulkan->GetDevice().createDescriptorPool(poolInfo);
+		DescriptorPool = Vulkan->GetContext().GetDevice().createDescriptorPool(poolInfo);
 	}
 }
