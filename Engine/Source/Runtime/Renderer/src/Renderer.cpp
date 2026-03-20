@@ -2,15 +2,11 @@
 #include "Renderer.h"
 #include "VulkanRenderer.h"
 
-
 namespace Nyx
 {
-	namespace Renderer
+	std::unique_ptr<IRenderer> CreateRenderer()
 	{
-		std::unique_ptr<IRenderer> CreateRenderer()
-		{
-			return std::make_unique<VulkanRenderer>();
-		}
+		return std::make_unique<VulkanRenderer>();
 	}
 }
 

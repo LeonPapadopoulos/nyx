@@ -1,30 +1,29 @@
 #pragma once
 #include "NyxEngineAPI.h"
-#include <vulkan/vulkan_raii.hpp>
-//#include "ResourceManager.h"
 
 struct GLFWwindow;
 
 namespace Nyx
 {
-	namespace Renderer
+	class NYXENGINE_API IRenderer
 	{
-		class NYXENGINE_API IRenderer
-		{
-		public:
-			virtual ~IRenderer() = default;
+	public:
+		virtual ~IRenderer() = default;
 
-			virtual void Initialize(const char* applicationName, GLFWwindow* window) = 0;
-			virtual void Shutdown() = 0;
+		virtual void Initialize(const char* applicationName, GLFWwindow* window) = 0;
+		virtual void Shutdown() = 0;
 
-			virtual void BeginFrame() = 0;
-			virtual void EndFrame() = 0;
+		virtual void BeginFrame() = 0;
+		virtual void EndFrame() = 0;
 
-			virtual void OnFramebufferResized() = 0;
-		};
+		virtual void OnFramebufferResized() = 0;
 
-		NYXENGINE_API std::unique_ptr<IRenderer> CreateRenderer();
-	}
+		virtual void DrawFrame(const std::function<void()>& buildUI) = 0;
+
+		virtual void WaitIdle() = 0;
+	};
+
+	NYXENGINE_API std::unique_ptr<IRenderer> CreateRenderer();
 }
 
 

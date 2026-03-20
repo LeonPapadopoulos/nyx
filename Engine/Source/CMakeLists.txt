@@ -33,7 +33,6 @@ set(NYX_ENGINE_SOURCES
     # Runtime/Renderer
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ImGuiTheme.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ImGuiVulkanUtil.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanUtil.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/Mesh.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/Shader.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/Texture.cpp
@@ -63,7 +62,6 @@ set(NYX_ENGINE_HEADERS
     # Runtime/Renderer
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ImGuiTheme.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ImGuiVulkanUtil.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanUtil.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/Mesh.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/Shader.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/Texture.h
@@ -106,6 +104,7 @@ target_link_libraries(NyxEngine
         imgui::imgui
         glm::glm
     PRIVATE
+        dwmapi
         Vulkan::Vulkan
         stb_image
 )

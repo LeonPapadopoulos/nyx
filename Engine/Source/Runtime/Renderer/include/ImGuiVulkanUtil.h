@@ -10,44 +10,43 @@
 
 namespace Nyx
 {
-	namespace Renderer
+	class VulkanRenderer;
+}
+
+namespace Nyx
+{
+	class NYXENGINE_API ImGuiVulkanUtil
 	{
-		class VulkanUtil;
+	public:
+		ImGuiVulkanUtil(GLFWwindow* window, VulkanRenderer& vulkan);
+		~ImGuiVulkanUtil();
 
-		class NYXENGINE_API ImGuiVulkanUtil
-		{
-		public:
-			ImGuiVulkanUtil(GLFWwindow* window, VulkanUtil* vulkan);
-			~ImGuiVulkanUtil();
+		// Core functionality methods for ImGui integration
+		void Initialize(float width, float height);
+		void Shutdown();
+		void SetStyle(uint32_t index);
 
-			// Core functionality methods for ImGui integration
-			void Initialize(float width, float height);
-			void Shutdown();
-			void SetStyle(uint32_t index);
+		// Frame-by-frame rendering operations
+		void BeginFrame();
+		void DrawFrame(vk::raii::CommandBuffer& commandBuffer);
 
-			// Frame-by-frame rendering operations
-			void BeginFrame();
-			void DrawFrame(vk::raii::CommandBuffer& commandBuffer);
+		// Input event handling for interactive UI elements
+		void HandleKey(int key, int scancode, int action, int mods);
+		bool GetWantKeyCapture();
+		void CharPressed(uint32_t key);
 
-			// Input event handling for interactive UI elements
-			void HandleKey(int key, int scancode, int action, int mods);
-			bool GetWantKeyCapture();
-			void CharPressed(uint32_t key);
+	private:
+		void CreateDescriptorPool();
 
-		private:
-			void CreateDescriptorPool();
+	private:
+		GLFWwindow* Window = nullptr;
+		VulkanRenderer* Vulkan = nullptr;
 
-		private:
-			GLFWwindow* Window = nullptr;
-			VulkanUtil* Vulkan = nullptr;
+		vk::raii::Device* Device = nullptr;
+		vk::raii::DescriptorPool DescriptorPool{ nullptr };
 
-			vk::raii::Device* Device = nullptr;
-			vk::raii::DescriptorPool DescriptorPool{ nullptr };
+		ImGuiStyle VulkanStyle;
 
-			ImGuiStyle VulkanStyle;
-
-			bool bInitialized = false;
-		};
-
-	} // Engine
-} // Nyx
+		bool bInitialized = false;
+	};
+}
