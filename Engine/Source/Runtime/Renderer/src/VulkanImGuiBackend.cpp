@@ -1,5 +1,5 @@
 #include "NyxPCH.h"
-#include "ImGuiVulkanUtil.h"
+#include "VulkanImGuiBackend.h"
 #include "VulkanRenderer.h"
 #include "Log.h"
 #include "ImGuiTheme.h"
@@ -31,11 +31,11 @@ namespace Nyx
 			return;
 		}
 
-		// Initialize ImGuiBackend context
+		// Initialize ImGui context
 		IMGUI_CHECKVERSION();
 		ImGui::CreateContext();
 
-		// Configure ImGuiBackend
+		// Configure ImGui
 		ImGuiIO& io = ImGui::GetIO();
 		io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 		io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
@@ -116,7 +116,7 @@ namespace Nyx
 
 		// vk resources are automatically cleaned up by their destructors
 
-		// ImGuiBackend context is destroyed separately
+		// ImGui context is destroyed separately
 		ImGui_ImplVulkan_Shutdown();
 		ImGui_ImplGlfw_Shutdown();
 		ImGui::DestroyContext();
@@ -160,12 +160,12 @@ namespace Nyx
 
 		//// Create your UI elements here
 		//// For example:
-		//ImGuiBackend::Begin("Vulkan ImGuiBackend Demo");
-		//ImGuiBackend::Text("Hello, Vulkan!");
-		//if (ImGuiBackend::Button("Click me!")) {
+		//ImGui::Begin("Vulkan ImGui Demo");
+		//ImGui::Text("Hello, Vulkan!");
+		//if (ImGui::Button("Click me!")) {
 		//	// Handle button click
 		//}
-		//ImGuiBackend::End();
+		//ImGui::End();
 	}
 
 	void VulkanImGuiBackend::DrawFrame(vk::raii::CommandBuffer & commandBuffer)
@@ -194,7 +194,7 @@ namespace Nyx
 		// This example uses GLFW key codes and actions, but you can adapt this
 		// to work with any windowing library's input system
 
-		// Map the platform-specific key action to ImGuiBackend's key state
+		// Map the platform-specific key action to ImGui's key state
 		// In GLFW: GLFW_PRESS = 1, GLFW_RELEASE = 0
 		const int KEY_PRESSED = 1;  // Generic key pressed value
 		const int KEY_RELEASED = 0; // Generic key released value

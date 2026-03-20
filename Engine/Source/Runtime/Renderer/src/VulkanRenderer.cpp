@@ -1,7 +1,7 @@
 #include "NyxPCH.h"
 #include "Assertions.h"
 #include "VulkanRenderer.h"
-#include "ImGuiVulkanUtil.h"
+#include "VulkanImGuiBackend.h"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -20,8 +20,8 @@ namespace Nyx
 		Window = window;
 
 		SetupVulkan(applicationName, window);
-		ASSERT(GetMinImageCount() >= 2 && "Failed to fulfill ImGui Vulkan requirements.");
-		ASSERT(GetSwapChainImageCount() >= GetMinImageCount() && "Failed to fulfill ImGui Vulkan requirements.");
+		ASSERT(GetMinImageCount() >= 2 && "Failed to fulfill VulkanImGuiBackend requirements.");
+		ASSERT(GetSwapChainImageCount() >= GetMinImageCount() && "Failed to fulfill VulkanImGuiBackend requirements.");
 		SetupImGui();
 	}
 
@@ -59,8 +59,8 @@ namespace Nyx
 
 	void VulkanRenderer::SetupImGui()
 	{
-		ImGui = std::make_unique<ImGuiVulkanUtil>(Window, *this);
-		ImGui->Initialize(
+		ImGuiBackend = std::make_unique<VulkanImGuiBackend>(Window, *this);
+		ImGuiBackend->Initialize(
 			static_cast<float>(GetSwapChainExtent().width),
 			static_cast<float>(GetSwapChainExtent().height));
 	}
@@ -111,11 +111,11 @@ namespace Nyx
 
 		cmd.beginRenderPass(renderPassInfo, vk::SubpassContents::eInline);
 
-		// This is where ImGui records into the active frame command buffer.
+		// This is where ImGuiBackend records into the active frame command buffer.
 		{
-			ImGui->BeginFrame();
+			ImGuiBackend->BeginFrame();
 			buildUI();
-			ImGui->DrawFrame(cmd);
+			ImGuiBackend->DrawFrame(cmd);
 		}
 
 		cmd.endRenderPass();
@@ -376,7 +376,7 @@ namespace Nyx
 		assert(!availableFormats.empty());
 
 		// Preferred: UNORM format with standard SRGB nonlinear presentation colorspace.
-		// This avoids the washed-out ImGui look you can get with SRGB swapchain formats.
+		// This avoids the washed-out ImGuiBackend look you can get with SRGB swapchain formats.
 		if (const auto it = std::ranges::find_if(
 			availableFormats,
 			[](const vk::SurfaceFormatKHR& format)

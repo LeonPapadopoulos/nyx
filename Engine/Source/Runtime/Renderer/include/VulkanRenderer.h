@@ -5,7 +5,7 @@
 
 namespace Nyx
 {
-	class ImGuiVulkanUtil;
+	class VulkanImGuiBackend;
 }
 
 namespace Nyx
@@ -84,6 +84,6 @@ namespace Nyx
 
 		bool bRecreateSwapChain = false;
 
-		std::unique_ptr<ImGuiVulkanUtil> ImGui;
+		std::unique_ptr<VulkanImGuiBackend> ImGuiBackend;
 	};
 }

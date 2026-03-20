@@ -21,7 +21,7 @@ namespace Nyx
 		VulkanImGuiBackend(GLFWwindow* window, VulkanRenderer& vulkan);
 		~VulkanImGuiBackend();
 
-		// Core functionality methods for ImGuiBackend integration
+		// Core functionality methods for ImGui integration
 		void Initialize(float width, float height);
 		void Shutdown();
 		void SetStyle(uint32_t index);

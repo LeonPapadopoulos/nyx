@@ -32,11 +32,11 @@ set(NYX_ENGINE_SOURCES
 
     # Runtime/Renderer
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ImGuiTheme.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ImGuiVulkanUtil.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/Mesh.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/Shader.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/Texture.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/Renderer.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanImGuiBackend.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanRenderer.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanContext.cpp
 
@@ -62,11 +62,11 @@ set(NYX_ENGINE_HEADERS
 
     # Runtime/Renderer
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ImGuiTheme.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ImGuiVulkanUtil.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/Mesh.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/Shader.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/Texture.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/Renderer.h
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanImGuiBackend.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanRenderer.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanContext.h
 
