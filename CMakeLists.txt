@@ -1,7 +1,7 @@
 # Default Start for CMAKE
 cmake_minimum_required(VERSION 3.23)
 # Solution Name
-project(GameEngine)
+project(Nyx)
 
 # ~Start setup shared output directories
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Binaries)
@@ -19,16 +19,15 @@ endforeach()
 
 ## Execute CMake files in subdirectories
 # Dependencies
-add_subdirectory(ThirdParty/imgui)
-add_subdirectory(ThirdParty/stb_image)
 add_subdirectory(Dependencies/spdlog)
 add_subdirectory(Dependencies/glfw)
 add_subdirectory(Dependencies/glm)
+add_subdirectory(ThirdParty/imgui)
+add_subdirectory(ThirdParty/stb_image)
+
 # Main Modules
-add_subdirectory(NyxCore)
-add_subdirectory(NyxEngine)
-add_subdirectory(NyxRenderer)
-add_subdirectory(NyxEditor)
+add_subdirectory(Engine/Source)
+add_subdirectory(Editor/Source)
 
 # Set default startup project
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT NyxEditor)
