@@ -17,31 +17,21 @@ foreach(CONFIG ${CMAKE_CONFIGURATION_TYPES})
 endforeach()
 # ~End setup shared output directories
 
-# START PRECOMPILED HEADER
-# Create shared PCH target, so other targets like Engine, or Sandbox 
-# can use it without independently compiling it; effectively speeding up the process
-add_library(EnginePCH INTERFACE)
-target_precompile_headers(EnginePCH 
-    INTERFACE ${CMAKE_SOURCE_DIR}/Engine/src/Enginepch.h
-)
-target_include_directories(EnginePCH 
-    INTERFACE ${CMAKE_SOURCE_DIR}/Engine/include
-    INTERFACE ${CMAKE_SOURCE_DIR}/Engine/src
-)
-# END PRECOMPILED HEADER
-
-# Execute CMake files in subdirectories
-# add_subdirectory(Dependencies/entt-main) Why does this fail?
+## Execute CMake files in subdirectories
+# Dependencies
 add_subdirectory(ThirdParty/imgui)
 add_subdirectory(ThirdParty/stb_image)
 add_subdirectory(Dependencies/spdlog)
 add_subdirectory(Dependencies/glfw)
 add_subdirectory(Dependencies/glm)
-add_subdirectory(Engine)
-add_subdirectory(Sandbox)
+# Main Modules
+add_subdirectory(NyxCore)
+add_subdirectory(NyxEngine)
+add_subdirectory(NyxRenderer)
+add_subdirectory(NyxEditor)
 
 # Set default startup project
-set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT Sandbox)
+set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT NyxEditor)
 set_property(TARGET imgui PROPERTY FOLDER "ThirdParty")
 set_property(TARGET spdlog PROPERTY FOLDER "ThirdParty")
 set_property(TARGET stb_image PROPERTY FOLDER "ThirdParty")
