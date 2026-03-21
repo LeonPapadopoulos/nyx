@@ -215,6 +215,15 @@ namespace Nyx
         Renderer->DrawFrame(
             [this]()
             {
+                {
+                    ImGui::Begin("Scene");
+
+                    ImVec2 size(640, 360);
+                    ImGui::Image(Renderer->GetSceneTextureId(), size);
+
+                    ImGui::End();
+                }
+
                 // @todo LP: Draw Game Engine Editor
                 DrawUserInterface();
                 ImGui::ShowDemoWindow();
@@ -340,9 +349,12 @@ namespace Nyx
         if (Renderer)
         {
             Renderer->WaitIdle();
+            Renderer->Shutdown();
+            Renderer.reset();
         }
 
         glfwDestroyWindow(Window);
+        Window = nullptr;
         glfwTerminate();
     }
 

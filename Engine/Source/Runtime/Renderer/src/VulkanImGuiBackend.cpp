@@ -108,16 +108,13 @@ namespace Nyx
 			return;
 		}
 
-		// Wait for device to finish operations before destroying resources
-		if (Vulkan)
+		bInitialized = false;
+
+		if (ImGui::GetCurrentContext())
 		{
-			// 'waitIdle' only considered acceptable inside destructors
-			Vulkan->GetContext().GetDevice().waitIdle();
+			ImGui::DestroyPlatformWindows();
 		}
 
-		// vk resources are automatically cleaned up by their destructors
-
-		// ImGui context is destroyed separately
 		ImGui_ImplVulkan_Shutdown();
 		ImGui_ImplGlfw_Shutdown();
 		ImGui::DestroyContext();

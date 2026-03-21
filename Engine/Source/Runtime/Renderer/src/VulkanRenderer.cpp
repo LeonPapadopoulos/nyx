@@ -10,6 +10,8 @@
 #include <ranges>
 #include <string>
 
+#include "backends/imgui_impl_vulkan.h"
+
 namespace Nyx
 {
 	VulkanRenderer::VulkanRenderer()
@@ -25,10 +27,96 @@ namespace Nyx
 		ASSERT(Swapchain.GetMinImageCount() >= 2 && "Failed to fulfill VulkanImGuiBackend requirements.");
 		ASSERT(Swapchain.GetImageCount() >= Swapchain.GetMinImageCount() && "Failed to fulfill VulkanImGuiBackend requirements.");
 		SetupImGui();
+
+		// OffscreenRenderTarget
+		{
+			SceneTarget.Initialize(Context, 1280, 720, vk::Format::eR8G8B8A8Unorm);
+
+			vk::SamplerCreateInfo samplerInfo{};
+			samplerInfo.magFilter = vk::Filter::eLinear;
+			samplerInfo.minFilter = vk::Filter::eLinear;
+			samplerInfo.mipmapMode = vk::SamplerMipmapMode::eLinear;
+			samplerInfo.addressModeU = vk::SamplerAddressMode::eClampToEdge;
+			samplerInfo.addressModeV = vk::SamplerAddressMode::eClampToEdge;
+			samplerInfo.addressModeW = vk::SamplerAddressMode::eClampToEdge;
+			samplerInfo.minLod = 0.0f;
+			samplerInfo.maxLod = 0.0f;
+
+			SceneSampler = vk::raii::Sampler(Context.GetDevice(), samplerInfo);
+
+			// @todo: Is this cast really the way to go? ImGui says VkDescriptorSet == ImTextureID
+			SceneTextureId = (ImTextureID)ImGui_ImplVulkan_AddTexture(
+				*SceneSampler,
+				SceneTarget.GetImageView(),
+				VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+			);
+
+			vk::AttachmentDescription colorAttachment{};
+			colorAttachment.format = SceneTarget.GetFormat();
+			colorAttachment.samples = vk::SampleCountFlagBits::e1;
+			colorAttachment.loadOp = vk::AttachmentLoadOp::eClear;
+			colorAttachment.storeOp = vk::AttachmentStoreOp::eStore;
+			colorAttachment.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;
+			colorAttachment.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
+			colorAttachment.initialLayout = vk::ImageLayout::eUndefined;
+			colorAttachment.finalLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+
+			vk::AttachmentReference colorRef{};
+			colorRef.attachment = 0;
+			colorRef.layout = vk::ImageLayout::eColorAttachmentOptimal;
+
+			vk::SubpassDescription subpass{};
+			subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
+			subpass.colorAttachmentCount = 1;
+			subpass.pColorAttachments = &colorRef;
+
+			vk::RenderPassCreateInfo rpInfo{};
+			rpInfo.attachmentCount = 1;
+			rpInfo.pAttachments = &colorAttachment;
+			rpInfo.subpassCount = 1;
+			rpInfo.pSubpasses = &subpass;
+
+			OffscreenRenderPass = vk::raii::RenderPass(Context.GetDevice(), rpInfo);
+
+			vk::ImageView attachments[] = { SceneTarget.GetImageView() };
+
+			vk::FramebufferCreateInfo fbInfo{};
+			fbInfo.renderPass = *OffscreenRenderPass;
+			fbInfo.attachmentCount = 1;
+			fbInfo.pAttachments = attachments;
+			fbInfo.width = SceneTarget.GetExtent().width;
+			fbInfo.height = SceneTarget.GetExtent().height;
+			fbInfo.layers = 1;
+
+			OffscreenFramebuffer = vk::raii::Framebuffer(Context.GetDevice(), fbInfo);
+		}
 	}
 
 	void VulkanRenderer::Shutdown()
 	{
+		if (*Context.GetDevice())
+		{
+			Context.GetDevice().waitIdle();
+		}
+
+		if (ImGuiBackend)
+		{
+			ImGuiBackend->Shutdown();
+			ImGuiBackend.reset();
+		}
+
+		SceneTarget.Shutdown();
+
+		Swapchain.Shutdown();
+
+		// destroy command buffers / semaphores / fences / pools
+		CommandBuffers.clear();
+		RenderFinishedSemaphores.clear();
+		ImageAvailableSemaphore = nullptr;
+		InFlightFence = nullptr;
+		CommandPool = nullptr;
+
+		Context.Shutdown();
 	}
 
 	void VulkanRenderer::BeginFrame()
@@ -97,6 +185,23 @@ namespace Nyx
 
 		vk::CommandBufferBeginInfo beginInfo{};
 		cmd.begin(beginInfo);
+
+		// OffscreenRenderTarget
+		{
+			vk::ClearValue offscreenClear{};
+			offscreenClear.color = vk::ClearColorValue(std::array<float, 4>{ 0.2f, 0.05f, 0.35f, 1.0f });
+
+			vk::RenderPassBeginInfo offscreenRpInfo{};
+			offscreenRpInfo.renderPass = *OffscreenRenderPass;
+			offscreenRpInfo.framebuffer = *OffscreenFramebuffer;
+			offscreenRpInfo.renderArea.offset = vk::Offset2D{ 0, 0 };
+			offscreenRpInfo.renderArea.extent = SceneTarget.GetExtent();
+			offscreenRpInfo.clearValueCount = 1;
+			offscreenRpInfo.pClearValues = &offscreenClear;
+
+			cmd.beginRenderPass(offscreenRpInfo, vk::SubpassContents::eInline);
+			cmd.endRenderPass();
+		}
 
 		vk::ClearValue clearValue{};
 		clearValue.color = vk::ClearColorValue(std::array<float, 4>{ 0.1f, 0.1f, 0.1f, 1.0f });

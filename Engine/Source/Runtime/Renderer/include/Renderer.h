@@ -1,5 +1,6 @@
 #pragma once
 #include "NyxEngineAPI.h"
+#include <imgui.h>
 
 struct GLFWwindow;
 
@@ -21,6 +22,8 @@ namespace Nyx
 		virtual void DrawFrame(const std::function<void()>& buildUI) = 0;
 
 		virtual void WaitIdle() = 0;
+
+		virtual ImTextureID GetSceneTextureId() const = 0;
 	};
 
 	NYXENGINE_API std::unique_ptr<IRenderer> CreateRenderer();

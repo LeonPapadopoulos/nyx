@@ -3,6 +3,8 @@
 #include <vulkan/vulkan_raii.hpp>
 #include "VulkanContext.h"
 #include "VulkanSwapchain.h"
+#include "OffscreenRenderTarget.h"
+#include <imgui.h>
 
 namespace Nyx
 {
@@ -32,6 +34,8 @@ namespace Nyx
 		VulkanContext& GetContext();
 		VulkanSwapchain& GetSwapchain();
 
+		virtual ImTextureID GetSceneTextureId() const { return SceneTextureId; }
+
 	private:
 		void SetupVulkan(const char* applicationName, GLFWwindow* window);
 		void SetupImGui();
@@ -47,8 +51,16 @@ namespace Nyx
 
 	private:
 		GLFWwindow* Window = nullptr;
+		std::unique_ptr<VulkanImGuiBackend> ImGuiBackend;
+
 		VulkanContext Context;
 		VulkanSwapchain Swapchain;
+
+		OffscreenRenderTarget SceneTarget;
+		vk::raii::Sampler SceneSampler{ nullptr };
+		ImTextureID SceneTextureId = 0ull;
+		vk::raii::RenderPass OffscreenRenderPass{ nullptr };
+		vk::raii::Framebuffer OffscreenFramebuffer{ nullptr };
 
 		//vk::PhysicalDeviceFeatures DeviceFeatures;
 
@@ -61,6 +73,5 @@ namespace Nyx
 
 		bool bRecreateSwapChain = false;
 
-		std::unique_ptr<VulkanImGuiBackend> ImGuiBackend;
 	};
 }
