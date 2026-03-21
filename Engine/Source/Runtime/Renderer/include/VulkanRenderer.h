@@ -2,6 +2,7 @@
 #include "Renderer.h"
 #include <vulkan/vulkan_raii.hpp>
 #include "VulkanContext.h"
+#include "VulkanSwapchain.h"
 
 namespace Nyx
 {
@@ -29,51 +30,27 @@ namespace Nyx
 		virtual void WaitIdle();
 	public:
 		VulkanContext& GetContext();
-
-		uint32_t GetMinImageCount() const { return MinImageCount; };
-		uint32_t GetSwapChainImageCount() const { return static_cast<uint32_t>(SwapChainImages.size()); }
-		vk::raii::RenderPass& GetRenderPass() { return RenderPass; }
-		const vk::Extent2D& GetSwapChainExtent();
+		VulkanSwapchain& GetSwapchain();
 
 	private:
 		void SetupVulkan(const char* applicationName, GLFWwindow* window);
 		void SetupImGui();
 
-		void CreateSwapChain();
-		void CreateImageViews();
 		void CreateGraphicsPipeline();
-
 		void CreateCommandPool();
-		void CreateRenderPass();
-		void CreateFramebuffers();
 		void CreateCommandBuffers();
 		void CreateSyncObjects();
 
 	private:
-		void CleanupSwapChain();
 		void RecreateSwapChain();
-
-	private:
-		static uint32_t ChooseSwapMinImageCount(vk::SurfaceCapabilitiesKHR const& surfaceCapabilities);
-		static vk::SurfaceFormatKHR ChooseSwapSurfaceFormat(std::vector<vk::SurfaceFormatKHR> const& availableFormats);
-		static vk::PresentModeKHR ChooseSwapPresentMode(std::vector<vk::PresentModeKHR> const& availablePresentModes);
-		vk::Extent2D ChooseSwapExtent(vk::SurfaceCapabilitiesKHR const& capabilities);
+		void WaitForValidFramebufferSize();
 
 	private:
 		GLFWwindow* Window = nullptr;
 		VulkanContext Context;
-
-		vk::raii::SwapchainKHR SwapChain = nullptr;
-		std::vector<vk::Image> SwapChainImages;
-		vk::SurfaceFormatKHR SwapChainSurfaceFormat;
-		vk::Extent2D SwapChainExtent;
-		std::vector<vk::raii::ImageView> SwapChainImageViews;
-		uint32_t MinImageCount = 0u;
+		VulkanSwapchain Swapchain;
 
 		//vk::PhysicalDeviceFeatures DeviceFeatures;
-
-		vk::raii::RenderPass RenderPass{ nullptr };
-		std::vector<vk::raii::Framebuffer> Framebuffers;
 
 		vk::raii::CommandPool CommandPool{ nullptr };
 		std::vector<vk::raii::CommandBuffer> CommandBuffers;

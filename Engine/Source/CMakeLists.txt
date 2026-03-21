@@ -39,6 +39,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanImGuiBackend.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanRenderer.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanContext.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanSwapchain.cpp
 
     # Editor
     # ${NYX_ENGINE_ROOT}/Editor/src/EditorLayer.cpp
@@ -69,6 +70,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanImGuiBackend.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanRenderer.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanContext.h
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanSwapchain.h
 
     # Editor
     # ${NYX_ENGINE_ROOT}/Editor/include/EditorLayer.h

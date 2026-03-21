@@ -78,6 +78,7 @@ namespace Nyx
 		ImGui_ImplGlfw_InitForVulkan(Window, true);
 
 		VulkanContext& Context = Vulkan->GetContext();
+		VulkanSwapchain& Swapchain = Vulkan->GetSwapchain();
 
 		ImGui_ImplVulkan_InitInfo init_info{};
 		init_info.Instance = *Context.GetInstance();
@@ -86,12 +87,12 @@ namespace Nyx
 		init_info.QueueFamily = Context.GetGraphicsQueueFamily();
 		init_info.Queue = *Context.GetGraphicsQueue();
 		init_info.DescriptorPool = *DescriptorPool;
-		init_info.MinImageCount = Vulkan->GetMinImageCount();
-		init_info.ImageCount = Vulkan->GetSwapChainImageCount();
+		init_info.MinImageCount = Swapchain.GetMinImageCount();
+		init_info.ImageCount = Swapchain.GetImageCount();
 		init_info.PipelineCache = VK_NULL_HANDLE;
 
 		init_info.UseDynamicRendering = false;
-		init_info.PipelineInfoMain.RenderPass = *Vulkan->GetRenderPass();
+		init_info.PipelineInfoMain.RenderPass = *Swapchain.GetRenderPass();
 		init_info.PipelineInfoMain.Subpass = 0;
 		init_info.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
 		ImGui_ImplVulkan_Init(&init_info);

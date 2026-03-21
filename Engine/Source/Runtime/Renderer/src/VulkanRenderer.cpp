@@ -2,6 +2,8 @@
 #include "Assertions.h"
 #include "VulkanRenderer.h"
 #include "VulkanImGuiBackend.h"
+#include "VulkanContext.h"
+#include "VulkanSwapchain.h"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -20,8 +22,8 @@ namespace Nyx
 		Window = window;
 
 		SetupVulkan(applicationName, window);
-		ASSERT(GetMinImageCount() >= 2 && "Failed to fulfill VulkanImGuiBackend requirements.");
-		ASSERT(GetSwapChainImageCount() >= GetMinImageCount() && "Failed to fulfill VulkanImGuiBackend requirements.");
+		ASSERT(Swapchain.GetMinImageCount() >= 2 && "Failed to fulfill VulkanImGuiBackend requirements.");
+		ASSERT(Swapchain.GetImageCount() >= Swapchain.GetMinImageCount() && "Failed to fulfill VulkanImGuiBackend requirements.");
 		SetupImGui();
 	}
 
@@ -45,14 +47,12 @@ namespace Nyx
 	void VulkanRenderer::SetupVulkan(const char* applicationName, GLFWwindow* window)
 	{
 		Context.Initialize(applicationName, window);
-		CreateSwapChain();
-		CreateImageViews();
+		Swapchain.Initialize(Context, window);
+
 		CreateGraphicsPipeline();
 
 		// @todo: check order
 		CreateCommandPool();
-		CreateRenderPass();
-		CreateFramebuffers();
 		CreateCommandBuffers();
 		CreateSyncObjects();
 	}
@@ -61,18 +61,18 @@ namespace Nyx
 	{
 		ImGuiBackend = std::make_unique<VulkanImGuiBackend>(Window, *this);
 		ImGuiBackend->Initialize(
-			static_cast<float>(GetSwapChainExtent().width),
-			static_cast<float>(GetSwapChainExtent().height));
+			static_cast<float>(Swapchain.GetExtent().width),
+			static_cast<float>(Swapchain.GetExtent().height));
 	}
 
 	void VulkanRenderer::DrawFrame(const std::function<void()>& buildUI)
 	{
 		// 1) Wait until previous submitted frame is done
-		Context.GetDevice().waitForFences({ *InFlightFence }, true, UINT64_MAX);
+		vk::Result result = Context.GetDevice().waitForFences({ *InFlightFence }, true, UINT64_MAX);
 
 		// 2) Acquire next swapchain image
 		const vk::ResultValue<uint32_t> acquireResult =
-			SwapChain.acquireNextImage(UINT64_MAX, *ImageAvailableSemaphore);
+			Swapchain.GetSwapchain().acquireNextImage(UINT64_MAX, *ImageAvailableSemaphore);
 
 		if (acquireResult.result == vk::Result::eErrorOutOfDateKHR)
 		{
@@ -102,10 +102,10 @@ namespace Nyx
 		clearValue.color = vk::ClearColorValue(std::array<float, 4>{ 0.1f, 0.1f, 0.1f, 1.0f });
 
 		vk::RenderPassBeginInfo renderPassInfo{};
-		renderPassInfo.renderPass = *RenderPass;
-		renderPassInfo.framebuffer = *Framebuffers[imageIndex];
+		renderPassInfo.renderPass = *Swapchain.GetRenderPass();
+		renderPassInfo.framebuffer = *Swapchain.GetFramebuffers()[imageIndex];
 		renderPassInfo.renderArea.offset = vk::Offset2D{ 0, 0 };
-		renderPassInfo.renderArea.extent = SwapChainExtent;
+		renderPassInfo.renderArea.extent = Swapchain.GetExtent();
 		renderPassInfo.clearValueCount = 1;
 		renderPassInfo.pClearValues = &clearValue;
 
@@ -142,7 +142,7 @@ namespace Nyx
 		presentInfo.waitSemaphoreCount = 1;
 		presentInfo.pWaitSemaphores = &*renderFinishedSemaphore;
 		presentInfo.swapchainCount = 1;
-		presentInfo.pSwapchains = &*SwapChain;
+		presentInfo.pSwapchains = &*Swapchain.GetSwapchain();
 		presentInfo.pImageIndices = &imageIndex;
 
 		const vk::Result presentResult = Context.GetGraphicsQueue().presentKHR(presentInfo);
@@ -173,57 +173,9 @@ namespace Nyx
 		return Context;
 	}
 
-	const vk::Extent2D& VulkanRenderer::GetSwapChainExtent()
+	VulkanSwapchain& VulkanRenderer::GetSwapchain()
 	{
-		return SwapChainExtent;
-	}
-
-	void VulkanRenderer::CreateSwapChain()
-	{
-		vk::raii::SurfaceKHR& Surface = Context.GetSurface();
-
-		vk::SurfaceCapabilitiesKHR surfaceCapabilities = Context.GetPhysicalDevice().getSurfaceCapabilitiesKHR(Surface);
-		SwapChainExtent = ChooseSwapExtent(surfaceCapabilities);
-		MinImageCount = ChooseSwapMinImageCount(surfaceCapabilities);
-
-		std::vector<vk::SurfaceFormatKHR> availableFormats = Context.GetPhysicalDevice().getSurfaceFormatsKHR(Surface);
-		SwapChainSurfaceFormat = ChooseSwapSurfaceFormat(availableFormats);
-
-		std::vector<vk::PresentModeKHR> availablePresentModes = Context.GetPhysicalDevice().getSurfacePresentModesKHR(Surface);
-		vk::PresentModeKHR presentMode = ChooseSwapPresentMode(availablePresentModes);
-
-		vk::SwapchainCreateInfoKHR swapChainCreateInfo{};
-		swapChainCreateInfo.surface = *Context.GetSurface();
-		swapChainCreateInfo.minImageCount = MinImageCount;
-		swapChainCreateInfo.imageFormat = SwapChainSurfaceFormat.format;
-		swapChainCreateInfo.imageColorSpace = SwapChainSurfaceFormat.colorSpace;
-		swapChainCreateInfo.imageExtent = SwapChainExtent;
-		swapChainCreateInfo.imageArrayLayers = 1;
-		swapChainCreateInfo.imageUsage = vk::ImageUsageFlagBits::eColorAttachment;
-		swapChainCreateInfo.imageSharingMode = vk::SharingMode::eExclusive;
-		swapChainCreateInfo.preTransform = surfaceCapabilities.currentTransform;
-		swapChainCreateInfo.compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque;
-		swapChainCreateInfo.presentMode = presentMode;
-		swapChainCreateInfo.clipped = true;
-
-		SwapChain = vk::raii::SwapchainKHR(Context.GetDevice(), swapChainCreateInfo);
-		SwapChainImages = SwapChain.getImages();
-	}
-
-	void VulkanRenderer::CreateImageViews()
-	{
-		assert(SwapChainImageViews.empty());
-
-		vk::ImageViewCreateInfo imageViewCreateInfo{};
-		imageViewCreateInfo.viewType = vk::ImageViewType::e2D;
-		imageViewCreateInfo.format = SwapChainSurfaceFormat.format;
-		imageViewCreateInfo.subresourceRange = { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 };
-
-		for (auto& image : SwapChainImages)
-		{
-			imageViewCreateInfo.image = image;
-			SwapChainImageViews.emplace_back(Context.GetDevice(), imageViewCreateInfo);
-		}
+		return Swapchain;
 	}
 
 	void VulkanRenderer::CreateGraphicsPipeline()
@@ -240,72 +192,14 @@ namespace Nyx
 		CommandPool = vk::raii::CommandPool(Context.GetDevice(), poolInfo);
 	}
 
-	void VulkanRenderer::CreateRenderPass()
-	{
-		vk::AttachmentDescription colorAttachment{};
-		colorAttachment.format = SwapChainSurfaceFormat.format;
-		colorAttachment.samples = vk::SampleCountFlagBits::e1;
-		colorAttachment.loadOp = vk::AttachmentLoadOp::eClear;
-		colorAttachment.storeOp = vk::AttachmentStoreOp::eStore;
-		colorAttachment.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;
-		colorAttachment.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
-		colorAttachment.initialLayout = vk::ImageLayout::eUndefined;
-		colorAttachment.finalLayout = vk::ImageLayout::ePresentSrcKHR;
-
-		vk::AttachmentReference colorRef{};
-		colorRef.attachment = 0;
-		colorRef.layout = vk::ImageLayout::eColorAttachmentOptimal;
-
-		vk::SubpassDescription subpass{};
-		subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
-		subpass.colorAttachmentCount = 1;
-		subpass.pColorAttachments = &colorRef;
-
-		vk::SubpassDependency dependency{};
-		dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-		dependency.dstSubpass = 0;
-		dependency.srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
-		dependency.dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
-		dependency.dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
-
-		vk::RenderPassCreateInfo renderPassInfo{};
-		renderPassInfo.attachmentCount = 1;
-		renderPassInfo.pAttachments = &colorAttachment;
-		renderPassInfo.subpassCount = 1;
-		renderPassInfo.pSubpasses = &subpass;
-		renderPassInfo.dependencyCount = 1;
-		renderPassInfo.pDependencies = &dependency;
-
-		RenderPass = vk::raii::RenderPass(Context.GetDevice(), renderPassInfo);
-	}
-
-	void VulkanRenderer::CreateFramebuffers()
-	{
-		Framebuffers.clear();
-		Framebuffers.reserve(SwapChainImageViews.size());
-
-		for (const vk::raii::ImageView& imageView : SwapChainImageViews)
-		{
-			vk::ImageView attachments[] = { *imageView };
-
-			vk::FramebufferCreateInfo framebufferInfo{};
-			framebufferInfo.renderPass = *RenderPass;
-			framebufferInfo.attachmentCount = 1;
-			framebufferInfo.pAttachments = attachments;
-			framebufferInfo.width = SwapChainExtent.width;
-			framebufferInfo.height = SwapChainExtent.height;
-			framebufferInfo.layers = 1;
-
-			Framebuffers.emplace_back(Context.GetDevice(), framebufferInfo);
-		}
-	}
-
 	void VulkanRenderer::CreateCommandBuffers()
 	{
+		CommandBuffers.clear();
+
 		vk::CommandBufferAllocateInfo allocInfo{};
 		allocInfo.commandPool = *CommandPool;
 		allocInfo.level = vk::CommandBufferLevel::ePrimary;
-		allocInfo.commandBufferCount = static_cast<uint32_t>(SwapChainImages.size());
+		allocInfo.commandBufferCount = Swapchain.GetImageCount();
 
 		CommandBuffers = vk::raii::CommandBuffers(Context.GetDevice(), allocInfo);
 	}
@@ -316,8 +210,8 @@ namespace Nyx
 		ImageAvailableSemaphore = vk::raii::Semaphore(Context.GetDevice(), semaphoreInfo);
 
 		RenderFinishedSemaphores.clear();
-		RenderFinishedSemaphores.reserve(SwapChainImages.size());
-		for (size_t i = 0; i < SwapChainImages.size(); ++i)
+		RenderFinishedSemaphores.reserve(Swapchain.GetImageCount());
+		for (size_t i = 0; i < Swapchain.GetImageCount(); ++i)
 		{
 			RenderFinishedSemaphores.emplace_back(Context.GetDevice(), semaphoreInfo);
 		}
@@ -327,17 +221,19 @@ namespace Nyx
 		InFlightFence = vk::raii::Fence(Context.GetDevice(), fenceInfo);
 	}
 
-	void VulkanRenderer::CleanupSwapChain()
+	void VulkanRenderer::RecreateSwapChain()
 	{
-		CommandBuffers.clear();
-		Framebuffers.clear();
-		RenderPass = nullptr;
-		SwapChainImageViews.clear();
-		SwapChain = nullptr;
-		SwapChainImages.clear();
+		WaitForValidFramebufferSize();
+		Context.GetDevice().waitIdle();
+		Swapchain.Recreate(Context, Window);
+
+		CreateCommandBuffers();
+		//ImGuiBackend.OnSwapchainChanged() // @todo:
+
+		bRecreateSwapChain = false;
 	}
 
-	void VulkanRenderer::RecreateSwapChain()
+	void VulkanRenderer::WaitForValidFramebufferSize()
 	{
 		int width = 0;
 		int height = 0;
@@ -347,71 +243,5 @@ namespace Nyx
 			glfwGetFramebufferSize(Window, &width, &height);
 			glfwWaitEvents();
 		}
-
-		Context.GetDevice().waitIdle();
-
-		CleanupSwapChain();
-
-		CreateSwapChain();
-		CreateImageViews();
-		CreateRenderPass();
-		CreateFramebuffers();
-		CreateCommandBuffers();
-
-		bRecreateSwapChain = false;
-	}
-
-	uint32_t VulkanRenderer::ChooseSwapMinImageCount(vk::SurfaceCapabilitiesKHR const& surfaceCapabilities)
-	{
-		auto minImageCount = std::max(3u, surfaceCapabilities.minImageCount);
-		if ((0 < surfaceCapabilities.maxImageCount) && (surfaceCapabilities.maxImageCount < minImageCount))
-		{
-			minImageCount = surfaceCapabilities.maxImageCount;
-		}
-		return minImageCount;
-	}
-
-	vk::SurfaceFormatKHR VulkanRenderer::ChooseSwapSurfaceFormat(std::vector<vk::SurfaceFormatKHR> const& availableFormats)
-	{
-		assert(!availableFormats.empty());
-
-		// Preferred: UNORM format with standard SRGB nonlinear presentation colorspace.
-		// This avoids the washed-out ImGuiBackend look you can get with SRGB swapchain formats.
-		if (const auto it = std::ranges::find_if(
-			availableFormats,
-			[](const vk::SurfaceFormatKHR& format)
-			{
-				return format.format == vk::Format::eB8G8R8A8Unorm &&
-					format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear;
-			});
-			it != availableFormats.end())
-		{
-			return *it;
-		}
-
-		return availableFormats[0];
-	}
-
-	vk::PresentModeKHR VulkanRenderer::ChooseSwapPresentMode(std::vector<vk::PresentModeKHR> const& availablePresentModes)
-	{
-		assert(std::ranges::any_of(availablePresentModes, [](auto presentMode) { return presentMode == vk::PresentModeKHR::eFifo; }));
-		return std::ranges::any_of(availablePresentModes,
-			[](const vk::PresentModeKHR value) { return vk::PresentModeKHR::eMailbox == value; }) ?
-			vk::PresentModeKHR::eMailbox :
-			vk::PresentModeKHR::eFifo;
-	}
-
-	vk::Extent2D VulkanRenderer::ChooseSwapExtent(vk::SurfaceCapabilitiesKHR const& capabilities)
-	{
-		if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
-		{
-			return capabilities.currentExtent;
-		}
-		int width, height;
-		glfwGetFramebufferSize(Window, &width, &height);
-
-		return {
-			std::clamp<uint32_t>(width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width),
-			std::clamp<uint32_t>(height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height) };
 	}
 }
