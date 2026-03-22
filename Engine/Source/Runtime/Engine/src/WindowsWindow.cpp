@@ -218,8 +218,13 @@ namespace Nyx
                 {
                     ImGui::Begin("Scene");
 
-                    ImVec2 size(640, 360);
-                    ImGui::Image(Renderer->GetSceneTextureId(), size);
+                    const ImVec2 avail = ImGui::GetContentRegionAvail();
+                    Renderer->SetSceneViewportSize(
+                        static_cast<uint32_t>(avail.x),
+                        static_cast<uint32_t>(avail.y)
+                    );
+
+                    ImGui::Image(Renderer->GetSceneTextureId(), avail);
 
                     ImGui::End();
                 }

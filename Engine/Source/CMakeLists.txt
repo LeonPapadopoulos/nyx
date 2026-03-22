@@ -41,6 +41,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanContext.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanSwapchain.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/OffscreenRenderTarget.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanViewportTarget.cpp
 
     # Editor
     # ${NYX_ENGINE_ROOT}/Editor/src/EditorLayer.cpp
@@ -73,6 +74,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanContext.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanSwapchain.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/OffscreenRenderTarget.h
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanViewportTarget.h
 
     # Editor
     # ${NYX_ENGINE_ROOT}/Editor/include/EditorLayer.h

@@ -1,0 +1,53 @@
+#pragma once
+#include <vulkan/vulkan_raii.hpp>
+#include <imgui.h>
+
+namespace Nyx
+{
+	class VulkanContext;
+
+	class VulkanViewportTarget
+	{
+	public:
+		void Initialize(VulkanContext& context, uint32_t width, uint32_t height, vk::Format format);
+		void Shutdown(VulkanContext& context);
+
+		void EnsureSize(VulkanContext& context, uint32_t width, uint32_t height);
+		void Recreate(VulkanContext& context, uint32_t width, uint32_t height, vk::Format format);
+
+		void BeginRenderPass(vk::raii::CommandBuffer& commandBuffer, const vk::ClearValue& clearValue);
+		void EndRenderPass(vk::raii::CommandBuffer& commandBuffer);
+
+		ImTextureID GetImGuiTextureId() const { return ImGuiTextureId; }
+		vk::Extent2D GetExtent() const { return Extent; }
+		vk::Format GetFormat() const { return Format; }
+
+	private:
+		void CreateImage(VulkanContext& context);
+		void CreateImageView(VulkanContext& context);
+		void CreateSampler(VulkanContext& context);
+		void CreateRenderPass(VulkanContext& context);
+		void CreateFramebuffer(VulkanContext& context);
+		void RegisterImGuiTexture();
+		void DestroyImGuiTexture();
+
+		uint32_t FindMemoryType(
+			vk::PhysicalDevice physicalDevice,
+			uint32_t typeFilter,
+			vk::MemoryPropertyFlags properties);
+
+	private:
+		vk::Extent2D Extent{ 0, 0 };
+		vk::Format Format = vk::Format::eUndefined;
+
+		vk::raii::Image Image{ nullptr };
+		vk::raii::DeviceMemory Memory{ nullptr };
+		vk::raii::ImageView ImageView{ nullptr };
+		vk::raii::Sampler Sampler{ nullptr };
+
+		vk::raii::RenderPass RenderPass{ nullptr };
+		vk::raii::Framebuffer Framebuffer{ nullptr };
+
+		ImTextureID ImGuiTextureId{};
+	};
+}

@@ -6,6 +6,12 @@ struct GLFWwindow;
 
 namespace Nyx
 {
+	struct Extent2D
+	{
+		uint32_t Width = 0;
+		uint32_t Height = 0;
+	};
+
 	class NYXENGINE_API IRenderer
 	{
 	public:
@@ -24,6 +30,9 @@ namespace Nyx
 		virtual void WaitIdle() = 0;
 
 		virtual ImTextureID GetSceneTextureId() const = 0;
+		virtual Extent2D GetSceneViewportExtent() const = 0;
+		virtual void EnsureSceneViewportSize(uint32_t width, uint32_t height) = 0;
+		virtual void SetSceneViewportSize(uint32_t width, uint32_t height) = 0;
 	};
 
 	NYXENGINE_API std::unique_ptr<IRenderer> CreateRenderer();

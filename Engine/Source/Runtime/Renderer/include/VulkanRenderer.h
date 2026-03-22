@@ -4,6 +4,7 @@
 #include "VulkanContext.h"
 #include "VulkanSwapchain.h"
 #include "OffscreenRenderTarget.h"
+#include "VulkanViewportTarget.h"
 #include <imgui.h>
 
 namespace Nyx
@@ -34,7 +35,24 @@ namespace Nyx
 		VulkanContext& GetContext();
 		VulkanSwapchain& GetSwapchain();
 
-		virtual ImTextureID GetSceneTextureId() const { return SceneTextureId; }
+		virtual ImTextureID GetSceneTextureId() const;
+		virtual Extent2D GetSceneViewportExtent() const;
+		virtual void EnsureSceneViewportSize(uint32_t width, uint32_t height);
+
+		virtual void SetSceneViewportSize(uint32_t width, uint32_t height)
+		{
+			width = std::max(1u, width);
+			height = std::max(1u, height);
+
+			if (width == PendingSceneViewportWidth && height == PendingSceneViewportHeight)
+			{
+				return;
+			}
+
+			PendingSceneViewportWidth = width;
+			PendingSceneViewportHeight = height;
+			bSceneViewportResizePending = true;
+		}
 
 	private:
 		void SetupVulkan(const char* applicationName, GLFWwindow* window);
@@ -56,11 +74,10 @@ namespace Nyx
 		VulkanContext Context;
 		VulkanSwapchain Swapchain;
 
-		OffscreenRenderTarget SceneTarget;
-		vk::raii::Sampler SceneSampler{ nullptr };
-		ImTextureID SceneTextureId = 0ull;
-		vk::raii::RenderPass OffscreenRenderPass{ nullptr };
-		vk::raii::Framebuffer OffscreenFramebuffer{ nullptr };
+		VulkanViewportTarget SceneViewport;
+		uint32_t PendingSceneViewportWidth = 1280;
+		uint32_t PendingSceneViewportHeight = 720;
+		bool bSceneViewportResizePending = false;
 
 		//vk::PhysicalDeviceFeatures DeviceFeatures;
 
