@@ -215,6 +215,10 @@ namespace Nyx
         Renderer->DrawFrame(
             [this]()
             {
+                // @todo LP: Draw Game Engine Editor
+                DrawUserInterface();
+                ImGui::ShowDemoWindow();
+
                 {
                     ImGui::Begin("Scene");
 
@@ -235,10 +239,6 @@ namespace Nyx
 
                     ImGui::End();
                 }
-
-                // @todo LP: Draw Game Engine Editor
-                DrawUserInterface();
-                ImGui::ShowDemoWindow();
             });
     }
 
