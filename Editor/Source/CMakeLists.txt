@@ -27,7 +27,7 @@ set_target_properties(NyxEditor PROPERTIES
 find_program(GLSLC glslc REQUIRED)
 
 set(NYX_SHADER_SOURCE_DIR ${CMAKE_SOURCE_DIR}/Engine/Shaders)
-set(NYX_SHADER_OUTPUT_DIR $<TARGET_FILE_DIR:NyxEditor>/Shaders)
+set(NYX_SHADER_BUILD_DIR ${CMAKE_CURRENT_BINARY_DIR}/Shaders)
 
 set(NYX_SHADER_SOURCES
     ${NYX_SHADER_SOURCE_DIR}/DefaultShader.vert
@@ -38,13 +38,14 @@ set(NYX_SHADER_OUTPUTS)
 
 foreach(SHADER ${NYX_SHADER_SOURCES})
     get_filename_component(SHADER_NAME ${SHADER} NAME)
-    set(SPV ${CMAKE_CURRENT_BINARY_DIR}/${SHADER_NAME}.spv)
+    set(SPV ${NYX_SHADER_BUILD_DIR}/${SHADER_NAME}.spv)
 
     add_custom_command(
         OUTPUT ${SPV}
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}
-        COMMAND ${GLSLC} -o ${SPV} ${SHADER}
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${NYX_SHADER_BUILD_DIR}"
+        COMMAND ${GLSLC} "${SHADER}" -o "${SPV}"
         DEPENDS ${SHADER}
+        MAIN_DEPENDENCY ${SHADER}
         COMMENT "Compiling shader ${SHADER_NAME}"
         VERBATIM
     )
@@ -52,16 +53,19 @@ foreach(SHADER ${NYX_SHADER_SOURCES})
     list(APPEND NYX_SHADER_OUTPUTS ${SPV})
 endforeach()
 
-add_custom_target(NyxShaders ALL DEPENDS ${NYX_SHADER_OUTPUTS})
+add_custom_target(NyxShadersCompile ALL
+    DEPENDS ${NYX_SHADER_OUTPUTS}
+)
 
-add_dependencies(NyxEditor NyxShaders)
-
-# Copy compiled SPIR-V files next to the executable
-add_custom_command(TARGET NyxEditor POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${NYX_SHADER_OUTPUT_DIR}
+add_custom_target(NyxShadersCopy ALL
+    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:NyxEditor>/Shaders"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${NYX_SHADER_OUTPUTS}
-        ${NYX_SHADER_OUTPUT_DIR}
+        "$<TARGET_FILE_DIR:NyxEditor>/Shaders"
+    COMMAND_EXPAND_LISTS
+    DEPENDS NyxShadersCompile
 )
+
+add_dependencies(NyxEditor NyxShadersCopy)
 
 #######################################################################################

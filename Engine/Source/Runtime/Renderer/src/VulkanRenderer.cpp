@@ -12,6 +12,7 @@
 #include <fstream>
 
 #include "backends/imgui_impl_vulkan.h"
+#include <glm/gtc/matrix_transform.hpp>
 
 namespace Nyx
 {
@@ -30,6 +31,8 @@ namespace Nyx
 		SetupImGui();
 
 		SceneViewport.Initialize(Context, 1280, 720, vk::Format::eR8G8B8A8Unorm);
+		CreateSceneUniformBuffer();
+		CreateSceneDescriptors();
 		CreateScenePipeline();
 	}
 
@@ -164,7 +167,16 @@ namespace Nyx
 				cmd.setViewport(0, viewport);
 				cmd.setScissor(0, scissor);
 
+				UpdateSceneUniforms();
+
 				cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *ScenePipeline);
+				cmd.bindDescriptorSets(
+					vk::PipelineBindPoint::eGraphics,
+					*ScenePipelineLayout,
+					0,
+					{ *SceneDescriptorSets.front() },
+					{}
+				);
 				cmd.draw(3, 1, 0, 0);
 			}
 			SceneViewport.EndRenderPass(cmd);
@@ -422,6 +434,10 @@ namespace Nyx
 		dynamicState.pDynamicStates = dynamicStates.data();
 
 		vk::PipelineLayoutCreateInfo pipelineLayoutInfo{};
+		vk::DescriptorSetLayout setLayouts[] = { *SceneDescriptorSetLayout };
+		pipelineLayoutInfo.setLayoutCount = 1;
+		pipelineLayoutInfo.pSetLayouts = setLayouts;
+
 		ScenePipelineLayout = vk::raii::PipelineLayout(Context.GetDevice(), pipelineLayoutInfo);
 
 		vk::GraphicsPipelineCreateInfo pipelineInfo{};
@@ -479,5 +495,112 @@ namespace Nyx
 		}
 
 		return buffer;
+	}
+
+	void VulkanRenderer::CreateSceneDescriptors()
+	{
+		vk::DescriptorSetLayoutBinding uboLayoutBinding{};
+		uboLayoutBinding.binding = 0;
+		uboLayoutBinding.descriptorType = vk::DescriptorType::eUniformBuffer;
+		uboLayoutBinding.descriptorCount = 1;
+		uboLayoutBinding.stageFlags = vk::ShaderStageFlagBits::eVertex;
+		uboLayoutBinding.pImmutableSamplers = nullptr;
+
+		vk::DescriptorSetLayoutCreateInfo layoutInfo{};
+		layoutInfo.bindingCount = 1;
+		layoutInfo.pBindings = &uboLayoutBinding;
+
+		SceneDescriptorSetLayout = vk::raii::DescriptorSetLayout(Context.GetDevice(), layoutInfo);
+
+		vk::DescriptorPoolSize poolSize{};
+		poolSize.type = vk::DescriptorType::eUniformBuffer;
+		poolSize.descriptorCount = 1;
+
+		vk::DescriptorPoolCreateInfo poolInfo{};
+		poolInfo.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
+		poolInfo.poolSizeCount = 1;
+		poolInfo.pPoolSizes = &poolSize;
+		poolInfo.maxSets = 1;
+
+		SceneDescriptorPool = vk::raii::DescriptorPool(Context.GetDevice(), poolInfo);
+
+		vk::DescriptorSetAllocateInfo allocInfo{};
+		allocInfo.descriptorPool = *SceneDescriptorPool;
+		allocInfo.descriptorSetCount = 1;
+		vk::DescriptorSetLayout layout = *SceneDescriptorSetLayout;
+		allocInfo.pSetLayouts = &layout;
+
+		SceneDescriptorSets = vk::raii::DescriptorSets(Context.GetDevice(), allocInfo);
+
+		vk::DescriptorBufferInfo bufferInfo{};
+		bufferInfo.buffer = *SceneUniformBuffer;
+		bufferInfo.offset = 0;
+		bufferInfo.range = sizeof(SceneUBO);
+
+		vk::WriteDescriptorSet descriptorWrite{};
+		descriptorWrite.dstSet = *SceneDescriptorSets.front();
+		descriptorWrite.dstBinding = 0;
+		descriptorWrite.dstArrayElement = 0;
+		descriptorWrite.descriptorType = vk::DescriptorType::eUniformBuffer;
+		descriptorWrite.descriptorCount = 1;
+		descriptorWrite.pBufferInfo = &bufferInfo;
+
+		Context.GetDevice().updateDescriptorSets(descriptorWrite, nullptr);
+	}
+
+	void VulkanRenderer::CreateSceneUniformBuffer()
+	{
+		vk::DeviceSize bufferSize = sizeof(SceneUBO);
+
+		vk::BufferCreateInfo bufferInfo{};
+		bufferInfo.size = bufferSize;
+		bufferInfo.usage = vk::BufferUsageFlagBits::eUniformBuffer;
+		bufferInfo.sharingMode = vk::SharingMode::eExclusive;
+
+		SceneUniformBuffer = vk::raii::Buffer(Context.GetDevice(), bufferInfo);
+
+		vk::MemoryRequirements memRequirements = SceneUniformBuffer.getMemoryRequirements();
+
+		vk::MemoryAllocateInfo allocInfo{};
+		allocInfo.allocationSize = memRequirements.size;
+		allocInfo.memoryTypeIndex = FindMemoryType(
+			*Context.GetPhysicalDevice(),
+			memRequirements.memoryTypeBits,
+			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent
+		);
+
+		SceneUniformBufferMemory = vk::raii::DeviceMemory(Context.GetDevice(), allocInfo);
+		SceneUniformBuffer.bindMemory(*SceneUniformBufferMemory, 0);
+	}
+
+	void VulkanRenderer::UpdateSceneUniforms()
+	{
+		static float t = 0.0f;
+		t += 0.001f;
+
+		SceneUBO ubo{};
+
+		ubo.ViewProj = glm::mat4(1.0f);
+		ubo.Model = glm::rotate(glm::mat4(1.0f), t, glm::vec3(0.0f, 0.0f, 1.0f));
+
+		void* data = SceneUniformBufferMemory.mapMemory(0, sizeof(SceneUBO));
+		std::memcpy(data, &ubo, sizeof(SceneUBO));
+		SceneUniformBufferMemory.unmapMemory();
+	}
+
+	uint32_t VulkanRenderer::FindMemoryType(vk::PhysicalDevice physicalDevice, uint32_t typeFilter, vk::MemoryPropertyFlags properties)
+	{
+		const vk::PhysicalDeviceMemoryProperties memProperties = physicalDevice.getMemoryProperties();
+
+		for (uint32_t i = 0; i < memProperties.memoryTypeCount; ++i)
+		{
+			if ((typeFilter & (1 << i)) &&
+				(memProperties.memoryTypes[i].propertyFlags & properties) == properties)
+			{
+				return i;
+			}
+		}
+
+		throw std::runtime_error("Failed to find suitable memory type.");
 	}
 }

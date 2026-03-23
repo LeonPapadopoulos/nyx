@@ -6,10 +6,17 @@
 #include "OffscreenRenderTarget.h"
 #include "VulkanViewportTarget.h"
 #include <imgui.h>
+#include <glm/gtc/matrix_transform.hpp>
 
 namespace Nyx
 {
 	class VulkanImGuiBackend;
+
+	struct SceneUBO
+	{
+		glm::mat4 ViewProj{ 1.0f };
+		glm::mat4 Model{ 1.0f };
+	};
 }
 
 namespace Nyx
@@ -59,6 +66,12 @@ namespace Nyx
 		vk::raii::ShaderModule CreateShaderModule(const std::vector<uint32_t>& spirv);
 		std::vector<uint32_t> ReadSpirvFile(const std::string& path);
 
+		void CreateSceneDescriptors();
+		void CreateSceneUniformBuffer();
+		void UpdateSceneUniforms();
+
+		uint32_t FindMemoryType(vk::PhysicalDevice physicalDevice, uint32_t typeFilter, vk::MemoryPropertyFlags properties);
+
 	private:
 		GLFWwindow* Window = nullptr;
 		std::unique_ptr<VulkanImGuiBackend> ImGuiBackend;
@@ -73,6 +86,13 @@ namespace Nyx
 
 		vk::raii::PipelineLayout ScenePipelineLayout{ nullptr };
 		vk::raii::Pipeline ScenePipeline{ nullptr };
+
+		vk::raii::DescriptorSetLayout SceneDescriptorSetLayout{ nullptr };
+		vk::raii::DescriptorPool SceneDescriptorPool{ nullptr };
+		vk::raii::DescriptorSets SceneDescriptorSets{ nullptr };
+
+		vk::raii::Buffer SceneUniformBuffer{ nullptr };
+		vk::raii::DeviceMemory SceneUniformBufferMemory{ nullptr };
 
 		//vk::PhysicalDeviceFeatures DeviceFeatures;
 
