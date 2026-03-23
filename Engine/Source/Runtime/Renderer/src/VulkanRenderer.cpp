@@ -167,6 +167,7 @@ namespace Nyx
 				cmd.setViewport(0, viewport);
 				cmd.setScissor(0, scissor);
 
+				TickCameraFromInput();
 				UpdateSceneUniforms();
 
 				cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *ScenePipeline);
@@ -296,6 +297,27 @@ namespace Nyx
 	bool VulkanRenderer::WasSceneViewportRecreatedThisFrame() const
 	{
 		return bSceneViewportRecreatedThisFrame;
+	}
+
+	void VulkanRenderer::TickCameraFromInput()
+	{
+		if (!Window)
+		{
+			return;
+		}
+
+		const float panSpeed = 0.001f * Camera.OrthoHalfHeight;
+		const float zoomSpeed = 0.001f;
+
+		if (glfwGetKey(Window, GLFW_KEY_A) == GLFW_PRESS) Camera.Position.x -= panSpeed;
+		if (glfwGetKey(Window, GLFW_KEY_D) == GLFW_PRESS) Camera.Position.x += panSpeed;
+		if (glfwGetKey(Window, GLFW_KEY_W) == GLFW_PRESS) Camera.Position.y -= panSpeed;
+		if (glfwGetKey(Window, GLFW_KEY_S) == GLFW_PRESS) Camera.Position.y += panSpeed;
+
+		if (glfwGetKey(Window, GLFW_KEY_Q) == GLFW_PRESS) Camera.OrthoHalfHeight += zoomSpeed;
+		if (glfwGetKey(Window, GLFW_KEY_E) == GLFW_PRESS) Camera.OrthoHalfHeight -= zoomSpeed;
+
+		Camera.OrthoHalfHeight = std::max(0.1f, Camera.OrthoHalfHeight);
 	}
 
 	void VulkanRenderer::CreateGraphicsPipeline()
@@ -578,13 +600,17 @@ namespace Nyx
 		static float t = 0.0f;
 		t += 0.001f;
 
-		SceneUBO ubo{};
+		const vk::Extent2D extent = SceneViewport.GetExtent();
+		Camera.AspectRatio = extent.height > 0
+			? static_cast<float>(extent.width) / static_cast<float>(extent.height)
+			: 1.0f;
 
-		ubo.ViewProj = glm::mat4(1.0f);
+		SceneUBO ubo{};
+		ubo.ViewProj = Camera.GetViewProjectionMatrix();
 		ubo.Model = glm::rotate(glm::mat4(1.0f), t, glm::vec3(0.0f, 0.0f, 1.0f));
 
-		void* data = SceneUniformBufferMemory.mapMemory(0, sizeof(SceneUBO));
-		std::memcpy(data, &ubo, sizeof(SceneUBO));
+		void* mapped = SceneUniformBufferMemory.mapMemory(0, sizeof(SceneUBO));
+		std::memcpy(mapped, &ubo, sizeof(SceneUBO));
 		SceneUniformBufferMemory.unmapMemory();
 	}
 
