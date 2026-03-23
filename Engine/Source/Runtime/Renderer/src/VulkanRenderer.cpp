@@ -132,6 +132,11 @@ namespace Nyx
 				Context.GetDevice().waitIdle();
 				SceneViewport.Recreate(Context, PendingSceneViewportWidth, PendingSceneViewportHeight, vk::Format::eR8G8B8A8Unorm);
 				bSceneViewportResizePending = false;
+				bSceneViewportRecreatedThisFrame = true;
+			}
+			else
+			{
+				bSceneViewportRecreatedThisFrame = false;
 			}
 
 			vk::ClearValue clear{};
@@ -251,6 +256,11 @@ namespace Nyx
 		PendingSceneViewportWidth = width;
 		PendingSceneViewportHeight = height;
 		bSceneViewportResizePending = true;
+	}
+
+	bool VulkanRenderer::WasSceneViewportRecreatedThisFrame() const
+	{
+		return bSceneViewportRecreatedThisFrame;
 	}
 
 	void VulkanRenderer::CreateGraphicsPipeline()

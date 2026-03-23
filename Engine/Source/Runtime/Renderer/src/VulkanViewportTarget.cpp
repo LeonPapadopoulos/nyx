@@ -157,21 +157,31 @@ namespace Nyx
 		subpass.colorAttachmentCount = 1;
 		subpass.pColorAttachments = &colorRef;
 
-		vk::SubpassDependency dependency{};
-		dependency.srcSubpass = 0;
-		dependency.dstSubpass = VK_SUBPASS_EXTERNAL;
-		dependency.srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
-		dependency.dstStageMask = vk::PipelineStageFlagBits::eFragmentShader;
-		dependency.srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
-		dependency.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+		vk::SubpassDependency deps[2]{};
+
+		// External -> subpass
+		deps[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+		deps[0].dstSubpass = 0;
+		deps[0].srcStageMask = vk::PipelineStageFlagBits::eTopOfPipe;
+		deps[0].dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+		deps[0].srcAccessMask = {};
+		deps[0].dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
+
+		// Subpass -> external
+		deps[1].srcSubpass = 0;
+		deps[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+		deps[1].srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+		deps[1].dstStageMask = vk::PipelineStageFlagBits::eFragmentShader;
+		deps[1].srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
+		deps[1].dstAccessMask = vk::AccessFlagBits::eShaderRead;
 
 		vk::RenderPassCreateInfo renderPassInfo{};
 		renderPassInfo.attachmentCount = 1;
 		renderPassInfo.pAttachments = &colorAttachment;
 		renderPassInfo.subpassCount = 1;
 		renderPassInfo.pSubpasses = &subpass;
-		renderPassInfo.dependencyCount = 1;
-		renderPassInfo.pDependencies = &dependency;
+		renderPassInfo.dependencyCount = 2;
+		renderPassInfo.pDependencies = deps;
 
 		RenderPass = vk::raii::RenderPass(context.GetDevice(), renderPassInfo);
 	}

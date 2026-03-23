@@ -224,7 +224,14 @@ namespace Nyx
                         static_cast<uint32_t>(avail.y)
                     );
 
-                    ImGui::Image(Renderer->GetSceneTextureId(), avail);
+                    if (!Renderer->WasSceneViewportRecreatedThisFrame())
+                    {
+                        ImGui::Image(Renderer->GetSceneTextureId(), avail);
+                    }
+                    else
+                    {
+                        ImGui::Dummy(avail);
+                    }
 
                     ImGui::End();
                 }

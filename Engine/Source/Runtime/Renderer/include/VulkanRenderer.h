@@ -40,6 +40,7 @@ namespace Nyx
 		virtual void EnsureSceneViewportSize(uint32_t width, uint32_t height);
 
 		virtual void SetSceneViewportSize(uint32_t width, uint32_t height);
+		virtual bool WasSceneViewportRecreatedThisFrame() const;
 
 	private:
 		void SetupVulkan(const char* applicationName, GLFWwindow* window);
@@ -76,6 +77,6 @@ namespace Nyx
 		vk::raii::Fence InFlightFence{ nullptr };
 
 		bool bRecreateSwapChain = false;
-
+		bool bSceneViewportRecreatedThisFrame = false;
 	};
 }

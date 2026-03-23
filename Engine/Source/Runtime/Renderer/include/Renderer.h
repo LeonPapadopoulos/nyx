@@ -33,6 +33,7 @@ namespace Nyx
 		virtual Extent2D GetSceneViewportExtent() const = 0;
 		virtual void EnsureSceneViewportSize(uint32_t width, uint32_t height) = 0;
 		virtual void SetSceneViewportSize(uint32_t width, uint32_t height) = 0;
+		virtual bool WasSceneViewportRecreatedThisFrame() const = 0;
 	};
 
 	NYXENGINE_API std::unique_ptr<IRenderer> CreateRenderer();
