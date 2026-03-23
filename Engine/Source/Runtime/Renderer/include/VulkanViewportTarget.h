@@ -21,6 +21,7 @@ namespace Nyx
 		ImTextureID GetImGuiTextureId() const { return ImGuiTextureId; }
 		vk::Extent2D GetExtent() const { return Extent; }
 		vk::Format GetFormat() const { return Format; }
+		vk::raii::RenderPass& GetRenderPass() { return RenderPass; }
 
 	private:
 		void CreateImage(VulkanContext& context);

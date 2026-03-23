@@ -55,6 +55,10 @@ namespace Nyx
 		void RecreateSwapChain();
 		void WaitForValidFramebufferSize();
 
+		void CreateScenePipeline();
+		vk::raii::ShaderModule CreateShaderModule(const std::vector<uint32_t>& spirv);
+		std::vector<uint32_t> ReadSpirvFile(const std::string& path);
+
 	private:
 		GLFWwindow* Window = nullptr;
 		std::unique_ptr<VulkanImGuiBackend> ImGuiBackend;
@@ -66,6 +70,9 @@ namespace Nyx
 		uint32_t PendingSceneViewportWidth = 1280;
 		uint32_t PendingSceneViewportHeight = 720;
 		bool bSceneViewportResizePending = false;
+
+		vk::raii::PipelineLayout ScenePipelineLayout{ nullptr };
+		vk::raii::Pipeline ScenePipeline{ nullptr };
 
 		//vk::PhysicalDeviceFeatures DeviceFeatures;
 

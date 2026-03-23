@@ -9,6 +9,7 @@
 #include <GLFW/glfw3.h>
 #include <ranges>
 #include <string>
+#include <fstream>
 
 #include "backends/imgui_impl_vulkan.h"
 
@@ -29,6 +30,7 @@ namespace Nyx
 		SetupImGui();
 
 		SceneViewport.Initialize(Context, 1280, 720, vk::Format::eR8G8B8A8Unorm);
+		CreateScenePipeline();
 	}
 
 	void VulkanRenderer::Shutdown()
@@ -130,6 +132,10 @@ namespace Nyx
 			if (bSceneViewportResizePending)
 			{
 				SceneViewport.Recreate(Context, PendingSceneViewportWidth, PendingSceneViewportHeight, vk::Format::eR8G8B8A8Unorm);
+				ScenePipeline = nullptr;
+				ScenePipelineLayout = nullptr;
+				CreateScenePipeline();
+								
 				bSceneViewportResizePending = false;
 				bSceneViewportRecreatedThisFrame = true;
 			}
@@ -142,7 +148,25 @@ namespace Nyx
 			clear.color = vk::ClearColorValue(std::array<float, 4>{ 0.2f, 0.05f, 0.35f, 1.0f });
 
 			SceneViewport.BeginRenderPass(cmd, clear);
-			// draw scene later
+			{
+				vk::Viewport viewport{};
+				viewport.x = 0.0f;
+				viewport.y = 0.0f;
+				viewport.width = static_cast<float>(SceneViewport.GetExtent().width);
+				viewport.height = static_cast<float>(SceneViewport.GetExtent().height);
+				viewport.minDepth = 0.0f;
+				viewport.maxDepth = 1.0f;
+
+				vk::Rect2D scissor{};
+				scissor.offset = vk::Offset2D{ 0, 0 };
+				scissor.extent = SceneViewport.GetExtent();
+
+				cmd.setViewport(0, viewport);
+				cmd.setScissor(0, scissor);
+
+				cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *ScenePipeline);
+				cmd.draw(3, 1, 0, 0);
+			}
 			SceneViewport.EndRenderPass(cmd);
 		}
 
@@ -327,5 +351,133 @@ namespace Nyx
 			glfwGetFramebufferSize(Window, &width, &height);
 			glfwWaitEvents();
 		}
+	}
+
+	void VulkanRenderer::CreateScenePipeline()
+	{
+		// File directory relative to the working directory of the .exe
+		// Set up to be that way inside the .exe's CMake
+		const std::vector<uint32_t> vertCode = ReadSpirvFile("Shaders/DefaultShader.vert.spv");
+		const std::vector<uint32_t> fragCode = ReadSpirvFile("Shaders/DefaultShader.frag.spv");
+
+		vk::raii::ShaderModule vertShaderModule = CreateShaderModule(vertCode);
+		vk::raii::ShaderModule fragShaderModule = CreateShaderModule(fragCode);
+
+		vk::PipelineShaderStageCreateInfo vertStageInfo{};
+		vertStageInfo.stage = vk::ShaderStageFlagBits::eVertex;
+		vertStageInfo.module = *vertShaderModule;
+		vertStageInfo.pName = "main";
+
+		vk::PipelineShaderStageCreateInfo fragStageInfo{};
+		fragStageInfo.stage = vk::ShaderStageFlagBits::eFragment;
+		fragStageInfo.module = *fragShaderModule;
+		fragStageInfo.pName = "main";
+
+		vk::PipelineShaderStageCreateInfo shaderStages[] = { vertStageInfo, fragStageInfo };
+
+		vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
+
+		vk::PipelineInputAssemblyStateCreateInfo inputAssembly{};
+		inputAssembly.topology = vk::PrimitiveTopology::eTriangleList;
+		inputAssembly.primitiveRestartEnable = VK_FALSE;
+
+		vk::PipelineViewportStateCreateInfo viewportState{};
+		viewportState.viewportCount = 1;
+		viewportState.scissorCount = 1;
+
+		vk::PipelineRasterizationStateCreateInfo rasterizer{};
+		rasterizer.depthClampEnable = VK_FALSE;
+		rasterizer.rasterizerDiscardEnable = VK_FALSE;
+		rasterizer.polygonMode = vk::PolygonMode::eFill;
+		rasterizer.lineWidth = 1.0f;
+		rasterizer.cullMode = vk::CullModeFlagBits::eBack;
+		rasterizer.frontFace = vk::FrontFace::eClockwise;
+		rasterizer.depthBiasEnable = VK_FALSE;
+
+		vk::PipelineMultisampleStateCreateInfo multisampling{};
+		multisampling.sampleShadingEnable = VK_FALSE;
+		multisampling.rasterizationSamples = vk::SampleCountFlagBits::e1;
+
+		vk::PipelineColorBlendAttachmentState colorBlendAttachment{};
+		colorBlendAttachment.blendEnable = VK_FALSE;
+		colorBlendAttachment.colorWriteMask =
+			vk::ColorComponentFlagBits::eR |
+			vk::ColorComponentFlagBits::eG |
+			vk::ColorComponentFlagBits::eB |
+			vk::ColorComponentFlagBits::eA;
+
+		vk::PipelineColorBlendStateCreateInfo colorBlending{};
+		colorBlending.logicOpEnable = VK_FALSE;
+		colorBlending.attachmentCount = 1;
+		colorBlending.pAttachments = &colorBlendAttachment;
+
+		std::array<vk::DynamicState, 2> dynamicStates =
+		{
+			vk::DynamicState::eViewport,
+			vk::DynamicState::eScissor
+		};
+
+		vk::PipelineDynamicStateCreateInfo dynamicState{};
+		dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
+		dynamicState.pDynamicStates = dynamicStates.data();
+
+		vk::PipelineLayoutCreateInfo pipelineLayoutInfo{};
+		ScenePipelineLayout = vk::raii::PipelineLayout(Context.GetDevice(), pipelineLayoutInfo);
+
+		vk::GraphicsPipelineCreateInfo pipelineInfo{};
+		pipelineInfo.stageCount = 2;
+		pipelineInfo.pStages = shaderStages;
+		pipelineInfo.pVertexInputState = &vertexInputInfo;
+		pipelineInfo.pInputAssemblyState = &inputAssembly;
+		pipelineInfo.pViewportState = &viewportState;
+		pipelineInfo.pRasterizationState = &rasterizer;
+		pipelineInfo.pMultisampleState = &multisampling;
+		pipelineInfo.pColorBlendState = &colorBlending;
+		pipelineInfo.pDynamicState = &dynamicState;
+		pipelineInfo.layout = *ScenePipelineLayout;
+		pipelineInfo.renderPass = *SceneViewport.GetRenderPass();
+		pipelineInfo.subpass = 0;
+
+		ScenePipeline = std::move(vk::raii::Pipeline(
+			Context.GetDevice(),
+			nullptr,
+			pipelineInfo
+		));
+	}
+
+	vk::raii::ShaderModule VulkanRenderer::CreateShaderModule(const std::vector<uint32_t>& spirv)
+	{
+		vk::ShaderModuleCreateInfo createInfo{};
+		createInfo.codeSize = spirv.size() * sizeof(uint32_t);
+		createInfo.pCode = spirv.data();
+
+		return vk::raii::ShaderModule(Context.GetDevice(), createInfo);
+	}
+
+	std::vector<uint32_t> VulkanRenderer::ReadSpirvFile(const std::string& path)
+	{
+		std::ifstream file(path, std::ios::ate | std::ios::binary);
+		if (!file.is_open())
+		{
+			throw std::runtime_error("Failed to open SPIR-V file: " + path);
+		}
+
+		const std::streamsize fileSize = file.tellg();
+		if (fileSize <= 0 || (fileSize % sizeof(uint32_t)) != 0)
+		{
+			throw std::runtime_error("Invalid SPIR-V file size: " + path);
+		}
+
+		std::vector<uint32_t> buffer(static_cast<size_t>(fileSize) / sizeof(uint32_t));
+
+		file.seekg(0);
+		file.read(reinterpret_cast<char*>(buffer.data()), fileSize);
+
+		if (!file)
+		{
+			throw std::runtime_error("Failed to read SPIR-V file: " + path);
+		}
+
+		return buffer;
 	}
 }
