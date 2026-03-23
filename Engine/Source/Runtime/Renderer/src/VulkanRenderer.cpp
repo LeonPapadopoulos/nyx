@@ -238,6 +238,21 @@ namespace Nyx
 		SceneViewport.EnsureSize(Context, width, height);
 	}
 
+	void VulkanRenderer::SetSceneViewportSize(uint32_t width, uint32_t height)
+	{
+		width = std::max(1u, width);
+		height = std::max(1u, height);
+
+		if (width == PendingSceneViewportWidth && height == PendingSceneViewportHeight)
+		{
+			return;
+		}
+
+		PendingSceneViewportWidth = width;
+		PendingSceneViewportHeight = height;
+		bSceneViewportResizePending = true;
+	}
+
 	void VulkanRenderer::CreateGraphicsPipeline()
 	{
 		// @todo:

@@ -39,20 +39,7 @@ namespace Nyx
 		virtual Extent2D GetSceneViewportExtent() const;
 		virtual void EnsureSceneViewportSize(uint32_t width, uint32_t height);
 
-		virtual void SetSceneViewportSize(uint32_t width, uint32_t height)
-		{
-			width = std::max(1u, width);
-			height = std::max(1u, height);
-
-			if (width == PendingSceneViewportWidth && height == PendingSceneViewportHeight)
-			{
-				return;
-			}
-
-			PendingSceneViewportWidth = width;
-			PendingSceneViewportHeight = height;
-			bSceneViewportResizePending = true;
-		}
+		virtual void SetSceneViewportSize(uint32_t width, uint32_t height);
 
 	private:
 		void SetupVulkan(const char* applicationName, GLFWwindow* window);
