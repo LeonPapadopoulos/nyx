@@ -129,7 +129,6 @@ namespace Nyx
 		{
 			if (bSceneViewportResizePending)
 			{
-				Context.GetDevice().waitIdle();
 				SceneViewport.Recreate(Context, PendingSceneViewportWidth, PendingSceneViewportHeight, vk::Format::eR8G8B8A8Unorm);
 				bSceneViewportResizePending = false;
 				bSceneViewportRecreatedThisFrame = true;
