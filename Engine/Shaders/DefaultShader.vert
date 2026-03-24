@@ -3,7 +3,10 @@
 layout(binding = 0) uniform SceneUBO
 {
     mat4 uViewProj;
+    mat4 uInvViewProj;
     mat4 uModel;
+    vec2 uViewportSize;
+    vec2 _Padding;
 };
 
 vec2 positions[3] = vec2[](

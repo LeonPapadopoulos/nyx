@@ -32,6 +32,8 @@ set(NYX_SHADER_BUILD_DIR ${CMAKE_CURRENT_BINARY_DIR}/Shaders)
 set(NYX_SHADER_SOURCES
     ${NYX_SHADER_SOURCE_DIR}/DefaultShader.vert
     ${NYX_SHADER_SOURCE_DIR}/DefaultShader.frag
+    ${NYX_SHADER_SOURCE_DIR}/Grid.vert
+    ${NYX_SHADER_SOURCE_DIR}/Grid.frag
 )
 
 set(NYX_SHADER_OUTPUTS)

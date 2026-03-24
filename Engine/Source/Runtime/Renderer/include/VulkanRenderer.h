@@ -14,8 +14,11 @@ namespace Nyx
 
 	struct SceneUBO
 	{
-		glm::mat4 ViewProj{ 1.0f };
-		glm::mat4 Model{ 1.0f };
+		glm::mat4 ViewProj;
+		glm::mat4 InvViewProj;
+		glm::mat4 Model;
+		glm::vec2 ViewportSize;
+		glm::vec2 Padding;
 	};
 
 	struct SceneCamera
@@ -98,6 +101,8 @@ namespace Nyx
 		void WaitForValidFramebufferSize();
 
 		void CreateScenePipeline();
+		void CreateGridPipeline();
+
 		vk::raii::ShaderModule CreateShaderModule(const std::vector<uint32_t>& spirv);
 		std::vector<uint32_t> ReadSpirvFile(const std::string& path);
 
@@ -130,6 +135,8 @@ namespace Nyx
 		vk::raii::Buffer SceneUniformBuffer{ nullptr };
 		vk::raii::DeviceMemory SceneUniformBufferMemory{ nullptr };
 
+		vk::raii::PipelineLayout GridPipelineLayout{ nullptr };
+		vk::raii::Pipeline GridPipeline{ nullptr };
 
 		//vk::PhysicalDeviceFeatures DeviceFeatures;
 

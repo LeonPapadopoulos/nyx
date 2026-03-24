@@ -33,6 +33,7 @@ namespace Nyx
 		SceneViewport.Initialize(Context, 1280, 720, vk::Format::eR8G8B8A8Unorm);
 		CreateSceneUniformBuffer();
 		CreateSceneDescriptors();
+		CreateGridPipeline();
 		CreateScenePipeline();
 	}
 
@@ -135,6 +136,9 @@ namespace Nyx
 			if (bSceneViewportResizePending)
 			{
 				SceneViewport.Recreate(Context, PendingSceneViewportWidth, PendingSceneViewportHeight, vk::Format::eR8G8B8A8Unorm);
+				GridPipeline = nullptr;
+				GridPipelineLayout = nullptr;
+				CreateGridPipeline();
 				ScenePipeline = nullptr;
 				ScenePipelineLayout = nullptr;
 				CreateScenePipeline();
@@ -169,6 +173,19 @@ namespace Nyx
 
 				TickCameraFromInput();
 				UpdateSceneUniforms();
+
+				// Scene Grid
+				{
+					cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *GridPipeline);
+					cmd.bindDescriptorSets(
+						vk::PipelineBindPoint::eGraphics,
+						*GridPipelineLayout,
+						0,
+						{ *SceneDescriptorSets.front() },
+						{}
+					);
+					cmd.draw(3, 1, 0, 0);
+				}
 
 				cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *ScenePipeline);
 				cmd.bindDescriptorSets(
@@ -483,6 +500,91 @@ namespace Nyx
 		));
 	}
 
+	void VulkanRenderer::CreateGridPipeline()
+	{
+		const std::vector<uint32_t> vertCode = ReadSpirvFile("Shaders/Grid.vert.spv");
+		const std::vector<uint32_t> fragCode = ReadSpirvFile("Shaders/Grid.frag.spv");
+
+		vk::raii::ShaderModule vertShaderModule = CreateShaderModule(vertCode);
+		vk::raii::ShaderModule fragShaderModule = CreateShaderModule(fragCode);
+
+		vk::PipelineShaderStageCreateInfo vertStageInfo{};
+		vertStageInfo.stage = vk::ShaderStageFlagBits::eVertex;
+		vertStageInfo.module = *vertShaderModule;
+		vertStageInfo.pName = "main";
+
+		vk::PipelineShaderStageCreateInfo fragStageInfo{};
+		fragStageInfo.stage = vk::ShaderStageFlagBits::eFragment;
+		fragStageInfo.module = *fragShaderModule;
+		fragStageInfo.pName = "main";
+
+		vk::PipelineShaderStageCreateInfo shaderStages[] = { vertStageInfo, fragStageInfo };
+
+		vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
+
+		vk::PipelineInputAssemblyStateCreateInfo inputAssembly{};
+		inputAssembly.topology = vk::PrimitiveTopology::eTriangleList;
+
+		vk::PipelineViewportStateCreateInfo viewportState{};
+		viewportState.viewportCount = 1;
+		viewportState.scissorCount = 1;
+
+		vk::PipelineRasterizationStateCreateInfo rasterizer{};
+		rasterizer.polygonMode = vk::PolygonMode::eFill;
+		rasterizer.lineWidth = 1.0f;
+		rasterizer.cullMode = vk::CullModeFlagBits::eNone;
+		rasterizer.frontFace = vk::FrontFace::eCounterClockwise;
+
+		vk::PipelineMultisampleStateCreateInfo multisampling{};
+		multisampling.rasterizationSamples = vk::SampleCountFlagBits::e1;
+
+		vk::PipelineColorBlendAttachmentState colorBlendAttachment{};
+		colorBlendAttachment.blendEnable = VK_FALSE;
+		colorBlendAttachment.colorWriteMask =
+			vk::ColorComponentFlagBits::eR |
+			vk::ColorComponentFlagBits::eG |
+			vk::ColorComponentFlagBits::eB |
+			vk::ColorComponentFlagBits::eA;
+
+		vk::PipelineColorBlendStateCreateInfo colorBlending{};
+		colorBlending.attachmentCount = 1;
+		colorBlending.pAttachments = &colorBlendAttachment;
+
+		std::array<vk::DynamicState, 2> dynamicStates =
+		{
+			vk::DynamicState::eViewport,
+			vk::DynamicState::eScissor
+		};
+
+		vk::PipelineDynamicStateCreateInfo dynamicState{};
+		dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
+		dynamicState.pDynamicStates = dynamicStates.data();
+
+		vk::DescriptorSetLayout setLayouts[] = { *SceneDescriptorSetLayout };
+
+		vk::PipelineLayoutCreateInfo pipelineLayoutInfo{};
+		pipelineLayoutInfo.setLayoutCount = 1;
+		pipelineLayoutInfo.pSetLayouts = setLayouts;
+
+		GridPipelineLayout = vk::raii::PipelineLayout(Context.GetDevice(), pipelineLayoutInfo);
+
+		vk::GraphicsPipelineCreateInfo pipelineInfo{};
+		pipelineInfo.stageCount = 2;
+		pipelineInfo.pStages = shaderStages;
+		pipelineInfo.pVertexInputState = &vertexInputInfo;
+		pipelineInfo.pInputAssemblyState = &inputAssembly;
+		pipelineInfo.pViewportState = &viewportState;
+		pipelineInfo.pRasterizationState = &rasterizer;
+		pipelineInfo.pMultisampleState = &multisampling;
+		pipelineInfo.pColorBlendState = &colorBlending;
+		pipelineInfo.pDynamicState = &dynamicState;
+		pipelineInfo.layout = *GridPipelineLayout;
+		pipelineInfo.renderPass = *SceneViewport.GetRenderPass();
+		pipelineInfo.subpass = 0;
+
+		GridPipeline = std::move(vk::raii::Pipeline(Context.GetDevice(), nullptr, pipelineInfo));
+	}
+
 	vk::raii::ShaderModule VulkanRenderer::CreateShaderModule(const std::vector<uint32_t>& spirv)
 	{
 		vk::ShaderModuleCreateInfo createInfo{};
@@ -525,7 +627,8 @@ namespace Nyx
 		uboLayoutBinding.binding = 0;
 		uboLayoutBinding.descriptorType = vk::DescriptorType::eUniformBuffer;
 		uboLayoutBinding.descriptorCount = 1;
-		uboLayoutBinding.stageFlags = vk::ShaderStageFlagBits::eVertex;
+		uboLayoutBinding.stageFlags = vk::ShaderStageFlagBits::eVertex | 
+			                          vk::ShaderStageFlagBits::eFragment;
 		uboLayoutBinding.pImmutableSamplers = nullptr;
 
 		vk::DescriptorSetLayoutCreateInfo layoutInfo{};
@@ -607,7 +710,9 @@ namespace Nyx
 
 		SceneUBO ubo{};
 		ubo.ViewProj = Camera.GetViewProjectionMatrix();
+		ubo.InvViewProj = glm::inverse(ubo.ViewProj);
 		ubo.Model = glm::rotate(glm::mat4(1.0f), t, glm::vec3(0.0f, 0.0f, 1.0f));
+		ubo.ViewportSize = glm::vec2(static_cast<float>(extent.width), static_cast<float>(extent.height));
 
 		void* mapped = SceneUniformBufferMemory.mapMemory(0, sizeof(SceneUBO));
 		std::memcpy(mapped, &ubo, sizeof(SceneUBO));
