@@ -9,23 +9,13 @@ layout(binding = 0) uniform SceneUBO
     vec2 _Padding;
 };
 
-vec2 positions[3] = vec2[](
-    vec2( 0.0, -0.5),
-    vec2( 0.5,  0.5),
-    vec2(-0.5,  0.5)
-);
-
-vec3 colors[3] = vec3[](
-    vec3(1.0, 0.0, 0.0),
-    vec3(0.0, 1.0, 0.0),
-    vec3(0.0, 0.0, 1.0)
-);
+layout(location = 0) in vec3 aPosition;
+layout(location = 1) in vec3 aColor;
 
 layout(location = 0) out vec3 vColor;
 
 void main()
 {
-    vec4 localPos = vec4(positions[gl_VertexIndex], 0.0, 1.0);
-    gl_Position = uViewProj * uModel * localPos;
-    vColor = colors[gl_VertexIndex];
+    gl_Position = uViewProj * uModel * vec4(aPosition, 1.0);
+    vColor = aColor;
 }

@@ -34,6 +34,8 @@ namespace Nyx
 		CreateSceneUniformBuffer();
 		CreateSceneDescriptors();
 		CreateGridPipeline();
+		CreateTestMeshData();
+		CreateTestMeshBuffers();
 		CreateScenePipeline();
 	}
 
@@ -60,6 +62,11 @@ namespace Nyx
 		ImageAvailableSemaphore = nullptr;
 		InFlightFence = nullptr;
 		CommandPool = nullptr;
+
+		TestIndexBuffer = nullptr;
+		TestIndexBufferMemory = nullptr;
+		TestVertexBuffer = nullptr;
+		TestVertexBufferMemory = nullptr;
 
 		Context.Shutdown();
 	}
@@ -195,7 +202,12 @@ namespace Nyx
 					{ *SceneDescriptorSets.front() },
 					{}
 				);
-				cmd.draw(3, 1, 0, 0);
+				
+				// Draw Mesh
+				vk::DeviceSize offsets[] = { 0 };
+				cmd.bindVertexBuffers(0, { *TestVertexBuffer }, offsets);
+				cmd.bindIndexBuffer(*TestIndexBuffer, 0, vk::IndexType::eUint32);
+				cmd.drawIndexed(static_cast<uint32_t>(TestIndices.size()), 1, 0, 0, 0);
 			}
 			SceneViewport.EndRenderPass(cmd);
 		}
@@ -426,7 +438,14 @@ namespace Nyx
 
 		vk::PipelineShaderStageCreateInfo shaderStages[] = { vertStageInfo, fragStageInfo };
 
+		const auto bindingDescription = Vertex::GetBindingDescription();
+		const auto attributeDescriptions = Vertex::GetAttributeDescriptions();
+
 		vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
+		vertexInputInfo.vertexBindingDescriptionCount = 1;
+		vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+		vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
+		vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 
 		vk::PipelineInputAssemblyStateCreateInfo inputAssembly{};
 		inputAssembly.topology = vk::PrimitiveTopology::eTriangleList;
@@ -717,6 +736,76 @@ namespace Nyx
 		void* mapped = SceneUniformBufferMemory.mapMemory(0, sizeof(SceneUBO));
 		std::memcpy(mapped, &ubo, sizeof(SceneUBO));
 		SceneUniformBufferMemory.unmapMemory();
+	}
+
+	void VulkanRenderer::CreateTestMeshData()
+	{
+		TestVertices =
+		{
+			{ {-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f} },
+			{ { 0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f} },
+			{ { 0.5f,  0.5f, 0.0f}, {0.0f, 0.0f, 1.0f} },
+			{ {-0.5f,  0.5f, 0.0f}, {1.0f, 1.0f, 0.0f} }
+		};
+
+		TestIndices = { 0, 1, 2, 2, 3, 0 };
+	}
+
+	void VulkanRenderer::CreateTestMeshBuffers()
+	{
+		const vk::DeviceSize vertexBufferSize = sizeof(Vertex) * TestVertices.size();
+		const vk::DeviceSize indexBufferSize = sizeof(uint32_t) * TestIndices.size();
+
+		CreateBuffer(
+			vertexBufferSize,
+			vk::BufferUsageFlagBits::eVertexBuffer,
+			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+			TestVertexBuffer,
+			TestVertexBufferMemory
+		);
+
+		CreateBuffer(
+			indexBufferSize,
+			vk::BufferUsageFlagBits::eIndexBuffer,
+			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+			TestIndexBuffer,
+			TestIndexBufferMemory
+		);
+
+		{
+			void* mapped = TestVertexBufferMemory.mapMemory(0, vertexBufferSize);
+			std::memcpy(mapped, TestVertices.data(), static_cast<size_t>(vertexBufferSize));
+			TestVertexBufferMemory.unmapMemory();
+		}
+
+		{
+			void* mapped = TestIndexBufferMemory.mapMemory(0, indexBufferSize);
+			std::memcpy(mapped, TestIndices.data(), static_cast<size_t>(indexBufferSize));
+			TestIndexBufferMemory.unmapMemory();
+		}
+	}
+
+	void VulkanRenderer::CreateBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties, vk::raii::Buffer& outBuffer, vk::raii::DeviceMemory& outMemory)
+	{
+		vk::BufferCreateInfo bufferInfo{};
+		bufferInfo.size = size;
+		bufferInfo.usage = usage;
+		bufferInfo.sharingMode = vk::SharingMode::eExclusive;
+
+		outBuffer = vk::raii::Buffer(Context.GetDevice(), bufferInfo);
+
+		const vk::MemoryRequirements memRequirements = outBuffer.getMemoryRequirements();
+
+		vk::MemoryAllocateInfo allocInfo{};
+		allocInfo.allocationSize = memRequirements.size;
+		allocInfo.memoryTypeIndex = FindMemoryType(
+			*Context.GetPhysicalDevice(),
+			memRequirements.memoryTypeBits,
+			properties
+		);
+
+		outMemory = vk::raii::DeviceMemory(Context.GetDevice(), allocInfo);
+		outBuffer.bindMemory(*outMemory, 0);
 	}
 
 	uint32_t VulkanRenderer::FindMemoryType(vk::PhysicalDevice physicalDevice, uint32_t typeFilter, vk::MemoryPropertyFlags properties)

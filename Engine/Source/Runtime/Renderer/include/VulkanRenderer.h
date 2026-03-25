@@ -54,6 +54,38 @@ namespace Nyx
 			return GetProjectionMatrix() * GetViewMatrix();
 		}
 	};
+
+	struct Vertex
+	{
+		glm::vec3 Position;
+		glm::vec3 Color;
+
+		static vk::VertexInputBindingDescription GetBindingDescription()
+		{
+			vk::VertexInputBindingDescription binding{};
+			binding.binding = 0;
+			binding.stride = sizeof(Vertex);
+			binding.inputRate = vk::VertexInputRate::eVertex;
+			return binding;
+		}
+
+		static std::array<vk::VertexInputAttributeDescription, 2> GetAttributeDescriptions()
+		{
+			std::array<vk::VertexInputAttributeDescription, 2> attributes{};
+
+			attributes[0].location = 0;
+			attributes[0].binding = 0;
+			attributes[0].format = vk::Format::eR32G32B32Sfloat;
+			attributes[0].offset = offsetof(Vertex, Position);
+
+			attributes[1].location = 1;
+			attributes[1].binding = 0;
+			attributes[1].format = vk::Format::eR32G32B32Sfloat;
+			attributes[1].offset = offsetof(Vertex, Color);
+
+			return attributes;
+		}
+	};
 }
 
 namespace Nyx
@@ -110,6 +142,16 @@ namespace Nyx
 		void CreateSceneUniformBuffer();
 		void UpdateSceneUniforms();
 
+		void CreateTestMeshData();
+		void CreateTestMeshBuffers();
+		
+		void CreateBuffer(
+			vk::DeviceSize size,
+			vk::BufferUsageFlags usage,
+			vk::MemoryPropertyFlags properties,
+			vk::raii::Buffer& outBuffer,
+			vk::raii::DeviceMemory& outMemory);
+
 		uint32_t FindMemoryType(vk::PhysicalDevice physicalDevice, uint32_t typeFilter, vk::MemoryPropertyFlags properties);
 
 	private:
@@ -125,6 +167,7 @@ namespace Nyx
 		uint32_t PendingSceneViewportHeight = 720;
 		bool bSceneViewportResizePending = false;
 
+		// Scene
 		vk::raii::PipelineLayout ScenePipelineLayout{ nullptr };
 		vk::raii::Pipeline ScenePipeline{ nullptr };
 
@@ -137,6 +180,16 @@ namespace Nyx
 
 		vk::raii::PipelineLayout GridPipelineLayout{ nullptr };
 		vk::raii::Pipeline GridPipeline{ nullptr };
+
+		// Mesh
+		std::vector<Vertex> TestVertices;
+		std::vector<uint32_t> TestIndices;
+
+		vk::raii::Buffer TestVertexBuffer{ nullptr };
+		vk::raii::DeviceMemory TestVertexBufferMemory{ nullptr };
+
+		vk::raii::Buffer TestIndexBuffer{ nullptr };
+		vk::raii::DeviceMemory TestIndexBufferMemory{ nullptr };
 
 		//vk::PhysicalDeviceFeatures DeviceFeatures;
 
