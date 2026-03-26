@@ -15,7 +15,7 @@ namespace Nyx
 		void EnsureSize(VulkanContext& context, uint32_t width, uint32_t height);
 		void Recreate(VulkanContext& context, uint32_t width, uint32_t height, vk::Format format);
 
-		void BeginRenderPass(vk::raii::CommandBuffer& commandBuffer, const vk::ClearValue& clearValue);
+		void BeginRenderPass(vk::raii::CommandBuffer& commandBuffer, const vk::ClearColorValue& clearValue, float clearDepth = 1.0f);
 		void EndRenderPass(vk::raii::CommandBuffer& commandBuffer);
 
 		ImTextureID GetImGuiTextureId() const { return ImGuiTextureId; }
@@ -32,6 +32,18 @@ namespace Nyx
 		void RegisterImGuiTexture();
 		void DestroyImGuiTexture();
 
+		void CreateDepthResources(VulkanContext& context);
+		void CreateDepthImage(VulkanContext& context);
+		void CreateDepthImageView(VulkanContext& context);
+
+		vk::Format FindSupportedFormat(
+			vk::PhysicalDevice physicalDevice,
+			const std::vector<vk::Format>& candidates,
+			vk::ImageTiling tiling,
+			vk::FormatFeatureFlags features);
+
+		vk::Format FindDepthFormat(vk::PhysicalDevice physicalDevice);
+
 		uint32_t FindMemoryType(
 			vk::PhysicalDevice physicalDevice,
 			uint32_t typeFilter,
@@ -45,6 +57,12 @@ namespace Nyx
 		vk::raii::DeviceMemory Memory{ nullptr };
 		vk::raii::ImageView ImageView{ nullptr };
 		vk::raii::Sampler Sampler{ nullptr };
+
+		vk::Format DepthFormat = vk::Format::eUndefined;
+
+		vk::raii::Image DepthImage{ nullptr };
+		vk::raii::DeviceMemory DepthMemory{ nullptr };
+		vk::raii::ImageView DepthImageView{ nullptr };
 
 		vk::raii::RenderPass RenderPass{ nullptr };
 		vk::raii::Framebuffer Framebuffer{ nullptr };

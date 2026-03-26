@@ -6,6 +6,9 @@
 #include "OffscreenRenderTarget.h"
 #include "VulkanViewportTarget.h"
 #include <imgui.h>
+
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
 namespace Nyx
@@ -23,30 +26,53 @@ namespace Nyx
 
 	struct SceneCamera
 	{
-		float OrthoHalfHeight = 5.0f;
 		float AspectRatio = 16.0f / 9.0f;
 
-		glm::vec3 Position = glm::vec3(0.0f, 0.0f, 1.0f);
-		float RotationRadians = 0.0f;
+		glm::vec3 Position = glm::vec3(0.0f, 3.0f, 6.0f);
+
+		float YawRadians = -glm::half_pi<float>(); // looking along -Z
+		float PitchRadians = glm::radians(-10.0f);
+
+		glm::vec3 GetForwardVector() const
+		{
+			glm::vec3 forward;
+			forward.x = cos(YawRadians) * cos(PitchRadians);
+			forward.y = sin(PitchRadians);
+			forward.z = sin(YawRadians) * cos(PitchRadians);
+			return glm::normalize(forward);
+		}
+
+		glm::vec3 GetRightVector() const
+		{
+			return glm::normalize(glm::cross(GetForwardVector(), glm::vec3(0.0f, 1.0f, 0.0f)));
+		}
+
+		glm::vec3 GetUpVector() const
+		{
+			return glm::normalize(glm::cross(GetRightVector(), GetForwardVector()));
+		}
 
 		glm::mat4 GetViewMatrix() const
 		{
-			glm::mat4 transform =
-				glm::translate(glm::mat4(1.0f), Position) *
-				glm::rotate(glm::mat4(1.0f), RotationRadians, glm::vec3(0.0f, 0.0f, 1.0f));
-
-			return glm::inverse(transform);
+			return glm::lookAt(
+				Position,
+				Position + GetForwardVector(),
+				glm::vec3(0.0f, 1.0f, 0.0f)
+			);
 		}
 
 		glm::mat4 GetProjectionMatrix() const
 		{
-			const float halfWidth = OrthoHalfHeight * AspectRatio;
-
-			return glm::ortho(
-				-halfWidth, halfWidth,
-				-OrthoHalfHeight, OrthoHalfHeight,
-				-10.0f, 10.0f
+			glm::mat4 proj = glm::perspective(
+				glm::radians(60.0f),
+				AspectRatio,
+				0.1f,
+				100.0f
 			);
+
+			// Vulkan clip-space convention with GLM
+			proj[1][1] *= -1.0f;
+			return proj;
 		}
 
 		glm::mat4 GetViewProjectionMatrix() const

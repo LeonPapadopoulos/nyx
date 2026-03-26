@@ -12,6 +12,9 @@
 #include <fstream>
 
 #include "backends/imgui_impl_vulkan.h"
+
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
 namespace Nyx
@@ -158,26 +161,10 @@ namespace Nyx
 				bSceneViewportRecreatedThisFrame = false;
 			}
 
-			vk::ClearValue clear{};
-			clear.color = vk::ClearColorValue(std::array<float, 4>{ 0.2f, 0.05f, 0.35f, 1.0f });
+			vk::ClearColorValue clear = vk::ClearColorValue(std::array<float, 4>{ 0.2f, 0.05f, 0.35f, 1.0f });
 
 			SceneViewport.BeginRenderPass(cmd, clear);
 			{
-				vk::Viewport viewport{};
-				viewport.x = 0.0f;
-				viewport.y = 0.0f;
-				viewport.width = static_cast<float>(SceneViewport.GetExtent().width);
-				viewport.height = static_cast<float>(SceneViewport.GetExtent().height);
-				viewport.minDepth = 0.0f;
-				viewport.maxDepth = 1.0f;
-
-				vk::Rect2D scissor{};
-				scissor.offset = vk::Offset2D{ 0, 0 };
-				scissor.extent = SceneViewport.GetExtent();
-
-				cmd.setViewport(0, viewport);
-				cmd.setScissor(0, scissor);
-
 				TickCameraFromInput();
 				UpdateSceneUniforms();
 
@@ -335,18 +322,19 @@ namespace Nyx
 			return;
 		}
 
-		const float panSpeed = 0.001f * Camera.OrthoHalfHeight;
-		const float zoomSpeed = 0.001f;
+		const float moveSpeed = 0.001f; // @todo: *deltaTime;
 
-		if (glfwGetKey(Window, GLFW_KEY_A) == GLFW_PRESS) Camera.Position.x -= panSpeed;
-		if (glfwGetKey(Window, GLFW_KEY_D) == GLFW_PRESS) Camera.Position.x += panSpeed;
-		if (glfwGetKey(Window, GLFW_KEY_W) == GLFW_PRESS) Camera.Position.y -= panSpeed;
-		if (glfwGetKey(Window, GLFW_KEY_S) == GLFW_PRESS) Camera.Position.y += panSpeed;
+		const glm::vec3 forward = Camera.GetForwardVector();
+		const glm::vec3 right = Camera.GetRightVector();
+		const glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
 
-		if (glfwGetKey(Window, GLFW_KEY_Q) == GLFW_PRESS) Camera.OrthoHalfHeight += zoomSpeed;
-		if (glfwGetKey(Window, GLFW_KEY_E) == GLFW_PRESS) Camera.OrthoHalfHeight -= zoomSpeed;
+		if (glfwGetKey(Window, GLFW_KEY_W) == GLFW_PRESS) Camera.Position += forward * moveSpeed;
+		if (glfwGetKey(Window, GLFW_KEY_S) == GLFW_PRESS) Camera.Position -= forward * moveSpeed;
+		if (glfwGetKey(Window, GLFW_KEY_A) == GLFW_PRESS) Camera.Position -= right * moveSpeed;
+		if (glfwGetKey(Window, GLFW_KEY_D) == GLFW_PRESS) Camera.Position += right * moveSpeed;
 
-		Camera.OrthoHalfHeight = std::max(0.1f, Camera.OrthoHalfHeight);
+		if (glfwGetKey(Window, GLFW_KEY_Q) == GLFW_PRESS) Camera.Position -= up * moveSpeed;
+		if (glfwGetKey(Window, GLFW_KEY_E) == GLFW_PRESS) Camera.Position += up * moveSpeed;
 	}
 
 	void VulkanRenderer::CreateGraphicsPipeline()
@@ -460,7 +448,7 @@ namespace Nyx
 		rasterizer.rasterizerDiscardEnable = VK_FALSE;
 		rasterizer.polygonMode = vk::PolygonMode::eFill;
 		rasterizer.lineWidth = 1.0f;
-		rasterizer.cullMode = vk::CullModeFlagBits::eBack;
+		rasterizer.cullMode = vk::CullModeFlagBits::eNone; // @todo: Re-enable Backface Culling vk::CullModeFlagBits::eBack;
 		rasterizer.frontFace = vk::FrontFace::eClockwise;
 		rasterizer.depthBiasEnable = VK_FALSE;
 
@@ -491,6 +479,13 @@ namespace Nyx
 		dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
 		dynamicState.pDynamicStates = dynamicStates.data();
 
+		vk::PipelineDepthStencilStateCreateInfo depthStencil{};
+		depthStencil.depthTestEnable = VK_TRUE;
+		depthStencil.depthWriteEnable = VK_TRUE;
+		depthStencil.depthCompareOp = vk::CompareOp::eLess;
+		depthStencil.depthBoundsTestEnable = VK_FALSE;
+		depthStencil.stencilTestEnable = VK_FALSE;
+
 		vk::PipelineLayoutCreateInfo pipelineLayoutInfo{};
 		vk::DescriptorSetLayout setLayouts[] = { *SceneDescriptorSetLayout };
 		pipelineLayoutInfo.setLayoutCount = 1;
@@ -506,6 +501,7 @@ namespace Nyx
 		pipelineInfo.pViewportState = &viewportState;
 		pipelineInfo.pRasterizationState = &rasterizer;
 		pipelineInfo.pMultisampleState = &multisampling;
+		pipelineInfo.pDepthStencilState = &depthStencil;
 		pipelineInfo.pColorBlendState = &colorBlending;
 		pipelineInfo.pDynamicState = &dynamicState;
 		pipelineInfo.layout = *ScenePipelineLayout;
@@ -581,6 +577,22 @@ namespace Nyx
 
 		vk::DescriptorSetLayout setLayouts[] = { *SceneDescriptorSetLayout };
 
+		// @todo: Is the depthStencil something we want for the grid?
+		// Disabled it for now because it was hiding the rendered Quad
+		//vk::PipelineDepthStencilStateCreateInfo depthStencil{};
+		//depthStencil.depthTestEnable = VK_TRUE;
+		//depthStencil.depthWriteEnable = VK_TRUE;
+		//depthStencil.depthCompareOp = vk::CompareOp::eLess;
+		//depthStencil.depthBoundsTestEnable = VK_FALSE;
+		//depthStencil.stencilTestEnable = VK_FALSE;
+
+		vk::PipelineDepthStencilStateCreateInfo depthStencil{};
+		depthStencil.depthTestEnable = VK_FALSE;
+		depthStencil.depthWriteEnable = VK_FALSE;
+		depthStencil.depthCompareOp = vk::CompareOp::eAlways;
+		depthStencil.depthBoundsTestEnable = VK_FALSE;
+		depthStencil.stencilTestEnable = VK_FALSE;
+
 		vk::PipelineLayoutCreateInfo pipelineLayoutInfo{};
 		pipelineLayoutInfo.setLayoutCount = 1;
 		pipelineLayoutInfo.pSetLayouts = setLayouts;
@@ -595,6 +607,7 @@ namespace Nyx
 		pipelineInfo.pViewportState = &viewportState;
 		pipelineInfo.pRasterizationState = &rasterizer;
 		pipelineInfo.pMultisampleState = &multisampling;
+		pipelineInfo.pDepthStencilState = &depthStencil;
 		pipelineInfo.pColorBlendState = &colorBlending;
 		pipelineInfo.pDynamicState = &dynamicState;
 		pipelineInfo.layout = *GridPipelineLayout;
@@ -730,7 +743,7 @@ namespace Nyx
 		SceneUBO ubo{};
 		ubo.ViewProj = Camera.GetViewProjectionMatrix();
 		ubo.InvViewProj = glm::inverse(ubo.ViewProj);
-		ubo.Model = glm::rotate(glm::mat4(1.0f), t, glm::vec3(0.0f, 0.0f, 1.0f));
+		ubo.Model = glm::rotate(glm::mat4(1.0f), t, glm::vec3(0.0f, 1.0f, 0.0f));
 		ubo.ViewportSize = glm::vec2(static_cast<float>(extent.width), static_cast<float>(extent.height));
 
 		void* mapped = SceneUniformBufferMemory.mapMemory(0, sizeof(SceneUBO));

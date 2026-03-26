@@ -1,6 +1,6 @@
 #version 450
 
-layout(location = 0) out vec2 vNdc; // varying Normalized Device Coordinates
+layout(location = 0) noperspective out vec2 vNdc;
 
 vec2 positions[3] = vec2[](
     vec2(-1.0, -1.0),

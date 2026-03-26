@@ -18,6 +18,9 @@ namespace Nyx
 		CreateImage(context);
 		CreateImageView(context);
 		CreateSampler(context);
+
+		CreateDepthResources(context);
+
 		CreateRenderPass(context);
 		CreateFramebuffer(context);
 		RegisterImGuiTexture();
@@ -59,17 +62,34 @@ namespace Nyx
 		Initialize(context, width, height, format);
 	}
 
-	void VulkanViewportTarget::BeginRenderPass(vk::raii::CommandBuffer& commandBuffer, const vk::ClearValue& clearValue)
+	void VulkanViewportTarget::BeginRenderPass(vk::raii::CommandBuffer& commandBuffer, const vk::ClearColorValue& clearValue, float clearDepth)
 	{
-		vk::RenderPassBeginInfo rpInfo{};
-		rpInfo.renderPass = *RenderPass;
-		rpInfo.framebuffer = *Framebuffer;
-		rpInfo.renderArea.offset = vk::Offset2D{ 0, 0 };
-		rpInfo.renderArea.extent = Extent;
-		rpInfo.clearValueCount = 1;
-		rpInfo.pClearValues = &clearValue;
+		std::array<vk::ClearValue, 2> clearValues;
+		clearValues[0].color = clearValue;
+		clearValues[1].depthStencil = vk::ClearDepthStencilValue(clearDepth, 0);
 
-		commandBuffer.beginRenderPass(rpInfo, vk::SubpassContents::eInline);
+		vk::RenderPassBeginInfo beginInfo{};
+		beginInfo.renderPass = *RenderPass;
+		beginInfo.framebuffer = *Framebuffer;
+		beginInfo.renderArea.offset = vk::Offset2D{ 0, 0 };
+		beginInfo.renderArea.extent = Extent;
+		beginInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+		beginInfo.pClearValues = clearValues.data();
+
+		commandBuffer.beginRenderPass(beginInfo, vk::SubpassContents::eInline);
+
+		vk::Viewport viewport(
+			0.0f,
+			0.0f,
+			static_cast<float>(Extent.width),
+			static_cast<float>(Extent.height),
+			0.0f,
+			1.0f);
+
+		vk::Rect2D scissor({ 0, 0 }, Extent);
+
+		commandBuffer.setViewport(0, viewport);
+		commandBuffer.setScissor(0, scissor);
 	}
 
 	void VulkanViewportTarget::EndRenderPass(vk::raii::CommandBuffer& commandBuffer)
@@ -148,14 +168,35 @@ namespace Nyx
 		colorAttachment.initialLayout = vk::ImageLayout::eUndefined;
 		colorAttachment.finalLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
 
+		vk::AttachmentDescription depthAttachment{};
+		depthAttachment.format = DepthFormat;
+		depthAttachment.samples = vk::SampleCountFlagBits::e1;
+		depthAttachment.loadOp = vk::AttachmentLoadOp::eClear;
+		depthAttachment.storeOp = vk::AttachmentStoreOp::eDontCare;
+		depthAttachment.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;
+		depthAttachment.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
+		depthAttachment.initialLayout = vk::ImageLayout::eUndefined;
+		depthAttachment.finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
+
 		vk::AttachmentReference colorRef{};
 		colorRef.attachment = 0;
 		colorRef.layout = vk::ImageLayout::eColorAttachmentOptimal;
+
+		vk::AttachmentReference depthRef{};
+		depthRef.attachment = 1;
+		depthRef.layout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
 
 		vk::SubpassDescription subpass{};
 		subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
 		subpass.colorAttachmentCount = 1;
 		subpass.pColorAttachments = &colorRef;
+		subpass.pDepthStencilAttachment = &depthRef;
+
+		std::array<vk::AttachmentDescription, 2> attachments =
+		{
+			colorAttachment,
+			depthAttachment
+		};
 
 		vk::SubpassDependency deps[2]{};
 
@@ -163,9 +204,13 @@ namespace Nyx
 		deps[0].srcSubpass = VK_SUBPASS_EXTERNAL;
 		deps[0].dstSubpass = 0;
 		deps[0].srcStageMask = vk::PipelineStageFlagBits::eTopOfPipe;
-		deps[0].dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+		deps[0].dstStageMask =
+			vk::PipelineStageFlagBits::eColorAttachmentOutput |
+			vk::PipelineStageFlagBits::eEarlyFragmentTests;
 		deps[0].srcAccessMask = {};
-		deps[0].dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
+		deps[0].dstAccessMask =
+			vk::AccessFlagBits::eColorAttachmentWrite |
+			vk::AccessFlagBits::eDepthStencilAttachmentWrite;
 
 		// Subpass -> external
 		deps[1].srcSubpass = 0;
@@ -176,8 +221,8 @@ namespace Nyx
 		deps[1].dstAccessMask = vk::AccessFlagBits::eShaderRead;
 
 		vk::RenderPassCreateInfo renderPassInfo{};
-		renderPassInfo.attachmentCount = 1;
-		renderPassInfo.pAttachments = &colorAttachment;
+		renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+		renderPassInfo.pAttachments = attachments.data();
 		renderPassInfo.subpassCount = 1;
 		renderPassInfo.pSubpasses = &subpass;
 		renderPassInfo.dependencyCount = 2;
@@ -188,12 +233,16 @@ namespace Nyx
 
 	void VulkanViewportTarget::CreateFramebuffer(VulkanContext& context)
 	{
-		vk::ImageView attachments[] = { *ImageView };
+		std::array<vk::ImageView, 2> attachments =
+		{
+			*ImageView,
+			*DepthImageView
+		};
 
 		vk::FramebufferCreateInfo fbInfo{};
 		fbInfo.renderPass = *RenderPass;
-		fbInfo.attachmentCount = 1;
-		fbInfo.pAttachments = attachments;
+		fbInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+		fbInfo.pAttachments = attachments.data();
 		fbInfo.width = Extent.width;
 		fbInfo.height = Extent.height;
 		fbInfo.layers = 1;
@@ -217,6 +266,95 @@ namespace Nyx
 			ImGui_ImplVulkan_RemoveTexture(reinterpret_cast<VkDescriptorSet>(ImGuiTextureId));
 			ImGuiTextureId = ImTextureID{};
 		}
+	}
+
+	void VulkanViewportTarget::CreateDepthResources(VulkanContext& context)
+	{
+		DepthFormat = FindDepthFormat(*context.GetPhysicalDevice());
+		CreateDepthImage(context);
+		CreateDepthImageView(context);
+	}
+
+	void VulkanViewportTarget::CreateDepthImage(VulkanContext& context)
+	{
+		vk::ImageCreateInfo imageInfo(
+			{},
+			vk::ImageType::e2D,
+			DepthFormat,
+			vk::Extent3D(Extent.width, Extent.height, 1),
+			1,
+			1,
+			vk::SampleCountFlagBits::e1,
+			vk::ImageTiling::eOptimal,
+			vk::ImageUsageFlagBits::eDepthStencilAttachment,
+			vk::SharingMode::eExclusive,
+			{},
+			vk::ImageLayout::eUndefined);
+
+		DepthImage = vk::raii::Image(context.GetDevice(), imageInfo);
+
+		vk::MemoryRequirements memRequirements = DepthImage.getMemoryRequirements();
+
+		vk::MemoryAllocateInfo allocInfo(
+			memRequirements.size,
+			FindMemoryType(
+				*context.GetPhysicalDevice(),
+				memRequirements.memoryTypeBits,
+				vk::MemoryPropertyFlagBits::eDeviceLocal));
+
+		DepthMemory = vk::raii::DeviceMemory(context.GetDevice(), allocInfo);
+		DepthImage.bindMemory(*DepthMemory, 0);
+	}
+
+	void VulkanViewportTarget::CreateDepthImageView(VulkanContext& context)
+	{
+		vk::ImageViewCreateInfo viewInfo(
+			{},
+			*DepthImage,
+			vk::ImageViewType::e2D,
+			DepthFormat,
+			{},
+			vk::ImageSubresourceRange(
+				vk::ImageAspectFlagBits::eDepth,
+				0, 1,
+				0, 1));
+
+		DepthImageView = vk::raii::ImageView(context.GetDevice(), viewInfo);
+	}
+
+	vk::Format VulkanViewportTarget::FindSupportedFormat(vk::PhysicalDevice physicalDevice, const std::vector<vk::Format>& candidates, vk::ImageTiling tiling, vk::FormatFeatureFlags features)
+	{
+		for (vk::Format format : candidates)
+		{
+			vk::FormatProperties props = physicalDevice.getFormatProperties(format);
+
+			if (tiling == vk::ImageTiling::eLinear &&
+				(props.linearTilingFeatures & features) == features)
+			{
+				return format;
+			}
+
+			if (tiling == vk::ImageTiling::eOptimal &&
+				(props.optimalTilingFeatures & features) == features)
+			{
+				return format;
+			}
+		}
+
+		throw std::runtime_error("Failed to find supported Vulkan format.");
+	}
+
+	vk::Format VulkanViewportTarget::FindDepthFormat(vk::PhysicalDevice physicalDevice)
+	{
+		return FindSupportedFormat(
+			physicalDevice,
+			{
+				vk::Format::eD32Sfloat,
+				vk::Format::eD32SfloatS8Uint,
+				vk::Format::eD24UnormS8Uint
+			},
+			vk::ImageTiling::eOptimal,
+			vk::FormatFeatureFlagBits::eDepthStencilAttachment);
 	}
 
 	uint32_t VulkanViewportTarget::FindMemoryType(

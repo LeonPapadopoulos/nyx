@@ -9,13 +9,13 @@ layout(binding = 0) uniform SceneUBO
     vec2 _Padding;
 };
 
-layout(location = 0) in vec2 vNdc; // varying Normalized Device Coordinates
+layout(location = 0) noperspective in vec2 vNdc;
 layout(location = 0) out vec4 outColor;
 
-vec2 WorldFromNdc(vec2 ndc)
+vec3 Unproject(vec2 ndc, float depth01)
 {
-    vec4 world = uInvViewProj * vec4(ndc, 0.0, 1.0);
-    return world.xy / world.w;
+    vec4 p = uInvViewProj * vec4(ndc, depth01, 1.0);
+    return p.xyz / p.w;
 }
 
 float GridLine(vec2 worldPos, float spacing, float lineWidthPx)
@@ -31,19 +31,45 @@ float GridLine(vec2 worldPos, float spacing, float lineWidthPx)
 
 void main()
 {
-    vec2 worldPos = WorldFromNdc(vNdc);
+    // For Vulkan-style depth with GLM_FORCE_DEPTH_ZERO_TO_ONE:
+    // near = 0, far = 1
+    vec3 nearPoint = Unproject(vNdc, 0.0);
+    vec3 farPoint  = Unproject(vNdc, 1.0);
 
-    float minor = GridLine(worldPos, 0.5, 1.0);
-    float major = GridLine(worldPos, 2.5, 1.2);
+    vec3 rayDir = farPoint - nearPoint;
 
-    float axisX = 1.0 - clamp(abs(worldPos.y) / max(fwidth(worldPos.y), 1e-6), 0.0, 1.0);
-    float axisY = 1.0 - clamp(abs(worldPos.x) / max(fwidth(worldPos.x), 1e-6), 0.0, 1.0);
+    // Intersect view ray with plane y = 0
+    if (abs(rayDir.y) < 1e-6)
+    {
+        discard;
+    }
+
+    float t = -nearPoint.y / rayDir.y;
+    if (t <= 0.0)
+    {
+        discard;
+    }
+
+    vec3 worldPos = nearPoint + rayDir * t;
+
+    // Ground plane uses XZ
+    vec2 gridPos = worldPos.xz;
+
+    float minor = GridLine(gridPos, 0.5, 1.0);
+    float major = GridLine(gridPos, 2.5, 1.2);
+
+    float axisX = 1.0 - clamp(abs(worldPos.z) / max(fwidth(worldPos.z), 1e-6), 0.0, 1.0);
+    float axisZ = 1.0 - clamp(abs(worldPos.x) / max(fwidth(worldPos.x), 1e-6), 0.0, 1.0);
 
     vec3 color = vec3(0.0);
     color += vec3(0.16) * minor;
     color += vec3(0.28) * major;
+
+    // z == 0 line
     color = mix(color, vec3(0.65, 0.15, 0.15), axisX);
-    color = mix(color, vec3(0.15, 0.65, 0.15), axisY);
+
+    // x == 0 line
+    color = mix(color, vec3(0.15, 0.65, 0.15), axisZ);
 
     outColor = vec4(color, 1.0);
 }
