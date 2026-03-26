@@ -6,7 +6,9 @@ layout(binding = 0) uniform SceneUBO
     mat4 uInvViewProj;
     mat4 uModel;
     vec2 uViewportSize;
-    vec2 _Padding;
+    vec2 _Padding0;
+    vec3 uCameraWorldPos;
+    float _Padding1;
 };
 
 layout(location = 0) in vec3 aPosition;

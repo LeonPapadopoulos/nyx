@@ -745,6 +745,7 @@ namespace Nyx
 		ubo.InvViewProj = glm::inverse(ubo.ViewProj);
 		ubo.Model = glm::rotate(glm::mat4(1.0f), t, glm::vec3(0.0f, 1.0f, 0.0f));
 		ubo.ViewportSize = glm::vec2(static_cast<float>(extent.width), static_cast<float>(extent.height));
+		ubo.CameraWorldPos = Camera.Position;
 
 		void* mapped = SceneUniformBufferMemory.mapMemory(0, sizeof(SceneUBO));
 		std::memcpy(mapped, &ubo, sizeof(SceneUBO));

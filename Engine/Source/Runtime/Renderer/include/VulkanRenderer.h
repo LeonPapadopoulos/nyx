@@ -21,7 +21,9 @@ namespace Nyx
 		glm::mat4 InvViewProj;
 		glm::mat4 Model;
 		glm::vec2 ViewportSize;
-		glm::vec2 Padding;
+		glm::vec2 Padding0;
+		glm::vec3 CameraWorldPos;
+		float Padding1 = 0.0f;
 	};
 
 	struct SceneCamera

@@ -6,7 +6,9 @@ layout(binding = 0) uniform SceneUBO
     mat4 uInvViewProj;
     mat4 uModel;
     vec2 uViewportSize;
-    vec2 _Padding;
+    vec2 _Padding0;
+    vec3 uCameraWorldPos;
+    float _Padding1;
 };
 
 layout(location = 0) noperspective in vec2 vNdc;
@@ -52,6 +54,13 @@ void main()
 
     vec3 worldPos = nearPoint + rayDir * t;
 
+    float distToCamera = length(worldPos - uCameraWorldPos);
+
+    const float fadeStartDistance = 5.0;
+    const float fadeEndDistance = 50.0;
+    const float fadeStrength = 0.8;
+    float fade = 1.0 - smoothstep(fadeStartDistance, fadeEndDistance, distToCamera) * fadeStrength;
+
     // Ground plane uses XZ
     vec2 gridPos = worldPos.xz;
 
@@ -70,6 +79,8 @@ void main()
 
     // x == 0 line
     color = mix(color, vec3(0.15, 0.65, 0.15), axisZ);
+
+    color *= fade;
 
     outColor = vec4(color, 1.0);
 }
