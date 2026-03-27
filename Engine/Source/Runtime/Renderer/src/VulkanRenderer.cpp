@@ -739,7 +739,7 @@ namespace Nyx
 		Camera.AspectRatio = extent.height > 0
 			? static_cast<float>(extent.width) / static_cast<float>(extent.height)
 			: 1.0f;
-
+		
 		SceneUBO ubo{};
 		ubo.ViewProj = Camera.GetViewProjectionMatrix();
 		ubo.InvViewProj = glm::inverse(ubo.ViewProj);
@@ -754,15 +754,43 @@ namespace Nyx
 
 	void VulkanRenderer::CreateTestMeshData()
 	{
+		// Construct Cube
+
 		TestVertices =
 		{
-			{ {-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f} },
-			{ { 0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f} },
-			{ { 0.5f,  0.5f, 0.0f}, {0.0f, 0.0f, 1.0f} },
-			{ {-0.5f,  0.5f, 0.0f}, {1.0f, 1.0f, 0.0f} }
+			// Front
+			{ {-0.5f, -0.5f,  0.5f}, {1.0f, 0.0f, 0.0f} },
+			{ { 0.5f, -0.5f,  0.5f}, {0.0f, 1.0f, 0.0f} },
+			{ { 0.5f,  0.5f,  0.5f}, {0.0f, 0.0f, 1.0f} },
+			{ {-0.5f,  0.5f,  0.5f}, {1.0f, 1.0f, 0.0f} },
+
+			// Back
+			{ {-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 1.0f} },
+			{ { 0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 1.0f} },
+			{ { 0.5f,  0.5f, -0.5f}, {1.0f, 1.0f, 1.0f} },
+			{ {-0.5f,  0.5f, -0.5f}, {0.2f, 0.2f, 0.2f} }
 		};
 
-		TestIndices = { 0, 1, 2, 2, 3, 0 };
+		TestIndices =
+		{
+			// Front
+			0, 1, 2,  2, 3, 0,
+
+			// Back
+			5, 4, 7,  7, 6, 5,
+
+			// Left
+			4, 0, 3,  3, 7, 4,
+
+			// Right
+			1, 5, 6,  6, 2, 1,
+
+			// Top
+			3, 2, 6,  6, 7, 3,
+
+			// Bottom
+			4, 5, 1,  1, 0, 4
+		};
 	}
 
 	void VulkanRenderer::CreateTestMeshBuffers()
