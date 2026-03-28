@@ -222,6 +222,8 @@ namespace Nyx
                 {
                     ImGui::Begin("Scene");
 
+                    Renderer->SetSceneWindowHovered(ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows));
+
                     const ImVec2 avail = ImGui::GetContentRegionAvail();
                     Renderer->SetSceneViewportSize(
                         static_cast<uint32_t>(avail.x),
@@ -348,6 +350,8 @@ namespace Nyx
                 auto* self = static_cast<WindowsWindow*>(glfwGetWindowUserPointer(window));
                 self->Renderer->OnFramebufferResized();
             });
+
+        glfwSetScrollCallback(Window, &WindowsWindow::GLFW_ScrollCallback);
 
         SetVSync(true);
 
@@ -682,5 +686,16 @@ namespace Nyx
     bool WindowsWindow::IsMaximized() const
     {
         return static_cast<bool>(glfwGetWindowAttrib(Window, GLFW_MAXIMIZED));
+    }
+
+    void WindowsWindow::GLFW_ScrollCallback(GLFWwindow* window, double xOffset, double yOffset)
+    {
+        WindowsWindow* windowsWindow = static_cast<WindowsWindow*>(glfwGetWindowUserPointer(window));
+        if (!windowsWindow)
+        {
+            return;
+        }
+
+        windowsWindow->Renderer->OnMouseWheelScrolled(yOffset);
     }
 }

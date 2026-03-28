@@ -40,6 +40,8 @@ namespace Nyx
 
 		bool IsMaximized() const;
 
+		static void GLFW_ScrollCallback(GLFWwindow* window, double xOffset, double yOffset);
+
 	private:
 		GLFWwindow* Window = nullptr;
 		std::unique_ptr<IRenderer> Renderer = nullptr;

@@ -17,6 +17,9 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/norm.hpp>
+
 namespace Nyx
 {
 	VulkanRenderer::VulkanRenderer()
@@ -165,7 +168,10 @@ namespace Nyx
 
 			SceneViewport.BeginRenderPass(cmd, clear);
 			{
-				TickCameraFromInput();
+				// @todo: Introduce a more proper 'Tick'
+				const float deltaTime = ComputeDeltaTime();
+
+				TickCameraFromInput(deltaTime);
 				UpdateSceneUniforms();
 
 				// Scene Grid
@@ -315,26 +321,95 @@ namespace Nyx
 		return bSceneViewportRecreatedThisFrame;
 	}
 
-	void VulkanRenderer::TickCameraFromInput()
+	void VulkanRenderer::TickCameraFromInput(float deltaTime)
 	{
 		if (!Window)
 		{
 			return;
 		}
 
-		const float moveSpeed = 0.001f; // @todo: *deltaTime;
+		const bool bWantsMouseLook =
+			glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
+
+		// Enter / leave mouse-look mode
+		if (bWantsMouseLook && !bMouseLookActive)
+		{
+			bMouseLookActive = true;
+			bFirstMouseLookSample = true;
+			glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+		}
+		else if (!bWantsMouseLook && bMouseLookActive)
+		{
+			bMouseLookActive = false;
+			bFirstMouseLookSample = true;
+			glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+		}
+
+		// Mouse look
+		if (bMouseLookActive)
+		{
+			double mouseX = 0.0;
+			double mouseY = 0.0;
+			glfwGetCursorPos(Window, &mouseX, &mouseY);
+
+			if (bFirstMouseLookSample)
+			{
+				LastMouseX = mouseX;
+				LastMouseY = mouseY;
+				bFirstMouseLookSample = false;
+			}
+			else
+			{
+				const double deltaX = mouseX - LastMouseX;
+				const double deltaY = mouseY - LastMouseY;
+
+				LastMouseX = mouseX;
+				LastMouseY = mouseY;
+
+				Camera.YawRadians += static_cast<float>(deltaX) * CameraMouseSensitivity;
+				Camera.PitchRadians -= static_cast<float>(deltaY) * CameraMouseSensitivity;
+
+				const float pitchLimit = glm::radians(89.0f);
+				Camera.PitchRadians = glm::clamp(Camera.PitchRadians, -pitchLimit, pitchLimit);
+			}
+		}
+
+		const float moveSpeed = CameraMoveSpeed * deltaTime;
 
 		const glm::vec3 forward = Camera.GetForwardVector();
 		const glm::vec3 right = Camera.GetRightVector();
-		const glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+		const glm::vec3 worldUp(0.0f, 1.0f, 0.0f);
+
+		// Flatten movement to the ground plane for WASD
+		glm::vec3 flatForward = glm::normalize(glm::vec3(forward.x, 0.0f, forward.z));
+		glm::vec3 flatRight = glm::normalize(glm::vec3(right.x, 0.0f, right.z));
+
+		// avoid issues when looking straight up/down
+		if (glm::length2(flatForward) > 1e-6f)
+		{
+			flatForward = glm::normalize(flatForward);
+		}
+		else
+		{
+			flatForward = glm::vec3(0.0f, 0.0f, -1.0f);
+		}
+
+		if (glm::length2(flatRight) > 1e-6f)
+		{
+			flatRight = glm::normalize(flatRight);
+		}
+		else
+		{
+			flatRight = glm::vec3(1.0f, 0.0f, 0.0f);
+		}
 
 		if (glfwGetKey(Window, GLFW_KEY_W) == GLFW_PRESS) Camera.Position += forward * moveSpeed;
 		if (glfwGetKey(Window, GLFW_KEY_S) == GLFW_PRESS) Camera.Position -= forward * moveSpeed;
-		if (glfwGetKey(Window, GLFW_KEY_A) == GLFW_PRESS) Camera.Position -= right * moveSpeed;
-		if (glfwGetKey(Window, GLFW_KEY_D) == GLFW_PRESS) Camera.Position += right * moveSpeed;
+		if (glfwGetKey(Window, GLFW_KEY_A) == GLFW_PRESS) Camera.Position -= flatRight * moveSpeed;
+		if (glfwGetKey(Window, GLFW_KEY_D) == GLFW_PRESS) Camera.Position += flatRight * moveSpeed;
 
-		if (glfwGetKey(Window, GLFW_KEY_Q) == GLFW_PRESS) Camera.Position -= up * moveSpeed;
-		if (glfwGetKey(Window, GLFW_KEY_E) == GLFW_PRESS) Camera.Position += up * moveSpeed;
+		if (glfwGetKey(Window, GLFW_KEY_Q) == GLFW_PRESS) Camera.Position -= worldUp * moveSpeed;
+		if (glfwGetKey(Window, GLFW_KEY_E) == GLFW_PRESS) Camera.Position += worldUp * moveSpeed;
 	}
 
 	void VulkanRenderer::CreateGraphicsPipeline()
@@ -864,5 +939,39 @@ namespace Nyx
 		}
 
 		throw std::runtime_error("Failed to find suitable memory type.");
+	}
+
+	float VulkanRenderer::ComputeDeltaTime()
+	{
+		static double lastTime = glfwGetTime();
+		const double currentTime = glfwGetTime();
+		const float deltaTime = static_cast<float>(currentTime - lastTime);
+		lastTime = currentTime;
+		return deltaTime;
+	}
+
+	void VulkanRenderer::OnMouseWheelScrolled(double yOffset)
+	{
+		// Don't change anything if the mouse interacting with UI
+		if (ImGui::GetIO().WantCaptureMouse && !bSceneViewportHovered)
+		{
+			return;
+		}
+
+		if (yOffset > 0.0)
+		{
+			CameraMoveSpeed *= CameraSpeedStep;
+		}
+		else if (yOffset < 0.0)
+		{
+			CameraMoveSpeed /= CameraSpeedStep;
+		}
+
+		CameraMoveSpeed = glm::clamp(CameraMoveSpeed, CameraSpeedMin, CameraSpeedMax);
+	}
+
+	void VulkanRenderer::SetSceneWindowHovered(bool hovered)
+	{
+		bSceneViewportHovered = hovered;
 	}
 }

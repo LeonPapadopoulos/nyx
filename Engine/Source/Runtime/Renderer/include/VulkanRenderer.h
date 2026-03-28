@@ -133,6 +133,8 @@ namespace Nyx
 		virtual void OnFramebufferResized();
 
 		virtual void DrawFrame(const std::function<void()>& buildUI);
+		virtual void OnMouseWheelScrolled(double yOffset);
+		virtual void SetSceneWindowHovered(bool hovered);
 		
 		virtual void WaitIdle();
 	public:
@@ -146,7 +148,7 @@ namespace Nyx
 		virtual void SetSceneViewportSize(uint32_t width, uint32_t height);
 		virtual bool WasSceneViewportRecreatedThisFrame() const;
 
-		void TickCameraFromInput();
+		void TickCameraFromInput(float deltaTime);
 	private:
 		void SetupVulkan(const char* applicationName, GLFWwindow* window);
 		void SetupImGui();
@@ -181,6 +183,8 @@ namespace Nyx
 			vk::raii::DeviceMemory& outMemory);
 
 		uint32_t FindMemoryType(vk::PhysicalDevice physicalDevice, uint32_t typeFilter, vk::MemoryPropertyFlags properties);
+
+		float ComputeDeltaTime();
 
 	private:
 		GLFWwindow* Window = nullptr;
@@ -218,6 +222,21 @@ namespace Nyx
 
 		vk::raii::Buffer TestIndexBuffer{ nullptr };
 		vk::raii::DeviceMemory TestIndexBufferMemory{ nullptr };
+
+		// Input
+		bool bMouseLookActive = false;
+		bool bFirstMouseLookSample = true;
+		double LastMouseX = 0.0;
+		double LastMouseY = 0.0;
+
+		// Camera
+		float CameraMoveSpeed = 4.0f;
+		float CameraMouseSensitivity = 0.003f; // radians per pixel
+		float CameraSpeedMin = 0.25f;
+		float CameraSpeedMax = 100.0f;
+		float CameraSpeedStep = 1.2f;
+
+		bool bSceneViewportHovered = false;
 
 		//vk::PhysicalDeviceFeatures DeviceFeatures;
 

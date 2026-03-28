@@ -26,6 +26,8 @@ namespace Nyx
 		virtual void OnFramebufferResized() = 0;
 
 		virtual void DrawFrame(const std::function<void()>& buildUI) = 0;
+		virtual void OnMouseWheelScrolled(double yOffset) = 0;
+		virtual void SetSceneWindowHovered(bool hovered) = 0;
 
 		virtual void WaitIdle() = 0;
 
