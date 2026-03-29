@@ -230,7 +230,7 @@ namespace Nyx
 		double LastMouseY = 0.0;
 
 		// Camera
-		float CameraMoveSpeed = 4.0f;
+		float CameraMoveSpeed = 5.0f;
 		float CameraMouseSensitivity = 0.003f; // radians per pixel
 		float CameraSpeedMin = 0.25f;
 		float CameraSpeedMax = 100.0f;
