@@ -55,6 +55,7 @@ foreach(SHADER ${NYX_SHADER_SOURCES})
     list(APPEND NYX_SHADER_OUTPUTS ${SPV})
 endforeach()
 
+# Custom target to catch changes to shader files and have them recompiled automatically on build
 add_custom_target(NyxShadersCompile ALL
     DEPENDS ${NYX_SHADER_OUTPUTS}
 )
