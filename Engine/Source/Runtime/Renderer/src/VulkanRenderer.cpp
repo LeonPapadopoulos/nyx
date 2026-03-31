@@ -345,7 +345,6 @@ namespace Nyx
 			glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 		}
 
-		// Mouse look
 		if (bMouseLookActive)
 		{
 			double mouseX = 0.0;
@@ -381,19 +380,9 @@ namespace Nyx
 		const glm::vec3 worldUp(0.0f, 1.0f, 0.0f);
 
 		// Flatten movement to the ground plane for WASD
-		glm::vec3 flatForward = glm::normalize(glm::vec3(forward.x, 0.0f, forward.z));
 		glm::vec3 flatRight = glm::normalize(glm::vec3(right.x, 0.0f, right.z));
 
-		// avoid issues when looking straight up/down
-		if (glm::length2(flatForward) > 1e-6f)
-		{
-			flatForward = glm::normalize(flatForward);
-		}
-		else
-		{
-			flatForward = glm::vec3(0.0f, 0.0f, -1.0f);
-		}
-
+		// avoid issues when looking straight right
 		if (glm::length2(flatRight) > 1e-6f)
 		{
 			flatRight = glm::normalize(flatRight);
