@@ -7,13 +7,13 @@ namespace Nyx
 {
 	namespace Core
 	{
-		Log& Log::Get()
+		Logger& Logger::Get()
 		{
-			static Log Instance{};
+			static Logger Instance{};
 			return Instance;
 		}
 
-		void Log::Init()
+		void Logger::Init()
 		{
 			spdlog::set_pattern("%^[%T] %n: %v%$");
 
@@ -24,12 +24,12 @@ namespace Nyx
 			ClientLogger->set_level(spdlog::level::trace);
 		}
 
-		std::shared_ptr<spdlog::logger>& Log::GetCoreLogger()
+		std::shared_ptr<spdlog::logger>& Logger::GetCoreLogger()
 		{
 			return CoreLogger;
 		}
 
-		std::shared_ptr<spdlog::logger>& Log::GetClientLogger()
+		std::shared_ptr<spdlog::logger>& Logger::GetClientLogger()
 		{
 			return ClientLogger;
 		}

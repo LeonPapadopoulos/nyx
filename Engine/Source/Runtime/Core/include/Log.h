@@ -8,20 +8,20 @@ namespace Nyx
 {
 	namespace Core
 	{
-		class NYXENGINE_API Log
+		class NYXENGINE_API Logger
 		{
 		public:
-			static Log& Get();
+			static Logger& Get();
 			void Init();
 
 		public:
-			Log() = default;
+			Logger() = default;
 
-			Log(const Log&) = delete;
-			Log(Log&&) = delete;
+			Logger(const Logger&) = delete;
+			Logger(Logger&&) = delete;
 
-			Log& operator=(const Log&) = delete;
-			Log& operator=(Log&&) = delete;
+			Logger& operator=(const Logger&) = delete;
+			Logger& operator=(Logger&&) = delete;
 
 			std::shared_ptr<spdlog::logger>& GetCoreLogger();
 			std::shared_ptr<spdlog::logger>& GetClientLogger();
@@ -34,15 +34,15 @@ namespace Nyx
 }
 
 // Core Log Macros
-#define CORE_LOG_TRACE(...)    ::Nyx::Core::Log::Get().GetCoreLogger()->trace(__VA_ARGS__)
-#define CORE_LOG_INFO(...)     ::Nyx::Core::Log::Get().GetCoreLogger()->info(__VA_ARGS__)
-#define CORE_LOG_WARNING(...)  ::Nyx::Core::Log::Get().GetCoreLogger()->warn(__VA_ARGS__)
-#define CORE_LOG_ERROR(...)    ::Nyx::Core::Log::Get().GetCoreLogger()->error(__VA_ARGS__)
-#define CORE_LOG_CRITICAL(...) ::Nyx::Core::Log::Get().GetCoreLogger()->critical(__VA_ARGS__)
+#define CORE_LOG_TRACE(...)    ::Nyx::Core::Logger::Get().GetCoreLogger()->trace(__VA_ARGS__)
+#define CORE_LOG_INFO(...)     ::Nyx::Core::Logger::Get().GetCoreLogger()->info(__VA_ARGS__)
+#define CORE_LOG_WARNING(...)  ::Nyx::Core::Logger::Get().GetCoreLogger()->warn(__VA_ARGS__)
+#define CORE_LOG_ERROR(...)    ::Nyx::Core::Logger::Get().GetCoreLogger()->error(__VA_ARGS__)
+#define CORE_LOG_CRITICAL(...) ::Nyx::Core::Logger::Get().GetCoreLogger()->critical(__VA_ARGS__)
 
 // Client Log Macros
-#define LOG_TRACE(...)         ::Nyx::Core::Log::Get().GetClientLogger()->trace(__VA_ARGS__)
-#define LOG_INFO(...)          ::Nyx::Core::Log::Get().GetClientLogger()->info(__VA_ARGS__)
-#define LOG_WARNING(...)       ::Nyx::Core::Log::Get().GetClientLogger()->warn(__VA_ARGS__)
-#define LOG_ERROR(...)         ::Nyx::Core::Log::Get().GetClientLogger()->error(__VA_ARGS__)
-#define LOG_CRITICAL(...)      ::Nyx::Core::Log::Get().GetClientLogger()->critical(__VA_ARGS__)
+#define LOG_TRACE(...)         ::Nyx::Core::Logger::Get().GetClientLogger()->trace(__VA_ARGS__)
+#define LOG_INFO(...)          ::Nyx::Core::Logger::Get().GetClientLogger()->info(__VA_ARGS__)
+#define LOG_WARNING(...)       ::Nyx::Core::Logger::Get().GetClientLogger()->warn(__VA_ARGS__)
+#define LOG_ERROR(...)         ::Nyx::Core::Logger::Get().GetClientLogger()->error(__VA_ARGS__)
+#define LOG_CRITICAL(...)      ::Nyx::Core::Logger::Get().GetClientLogger()->critical(__VA_ARGS__)
