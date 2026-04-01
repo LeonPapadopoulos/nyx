@@ -13,7 +13,7 @@
 
 int main(int argc, char** argv)
 {
-	Nyx::Core::Log::Init();
+	Nyx::Core::Log::Get().Init();
 	CORE_LOG_WARNING("Initialized Log! {0}", 0);
 	LOG_INFO("Initialized Log! {0}", 1);
 	ASSERT(true);
