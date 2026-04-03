@@ -300,7 +300,6 @@ namespace Nyx
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
         glfwWindowHint(GLFW_DECORATED, GLFW_TRUE);
-        // Custom Titlebar
         glfwWindowHint(GLFW_TITLEBAR, Data.bCustomTitlebar ? GLFW_FALSE : GLFW_TRUE);
 
         // @todo: Update renderer to handle resizing
@@ -312,6 +311,8 @@ namespace Nyx
         //int monitorX, monitorY;
         //glfwGetMonitorPos(primaryMonitor, &monitorX, &monitorY);
 
+        // @todo: Figure out why transparent client space area doesn't seem to be supported,
+        // and find a way to make it work anyways; Purpose being a window-wide startup animation
         glfwWindowHint(GLFW_TRANSPARENT_FRAMEBUFFER, GLFW_TRUE);
 
         // By constructing it in an invisible state first, we can get rid of the windows titlebar
@@ -379,7 +380,9 @@ namespace Nyx
         ASSERT(window != nullptr);
         HWND hwnd = glfwGetWin32Window(window);
         if (!hwnd)
+        {
             return;
+        }
 
         const DWM_WINDOW_CORNER_PREFERENCE pref = DWMWCP_ROUND;
         const HRESULT hr = DwmSetWindowAttribute(
