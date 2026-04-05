@@ -5,6 +5,7 @@
 #include "VulkanSwapchain.h"
 #include "OffscreenRenderTarget.h"
 #include "VulkanViewportTarget.h"
+#include "Mesh.h"
 #include <imgui.h>
 
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -80,38 +81,6 @@ namespace Nyx
 		glm::mat4 GetViewProjectionMatrix() const
 		{
 			return GetProjectionMatrix() * GetViewMatrix();
-		}
-	};
-
-	struct Vertex
-	{
-		glm::vec3 Position;
-		glm::vec3 Color;
-
-		static vk::VertexInputBindingDescription GetBindingDescription()
-		{
-			vk::VertexInputBindingDescription binding{};
-			binding.binding = 0;
-			binding.stride = sizeof(Vertex);
-			binding.inputRate = vk::VertexInputRate::eVertex;
-			return binding;
-		}
-
-		static std::array<vk::VertexInputAttributeDescription, 2> GetAttributeDescriptions()
-		{
-			std::array<vk::VertexInputAttributeDescription, 2> attributes{};
-
-			attributes[0].location = 0;
-			attributes[0].binding = 0;
-			attributes[0].format = vk::Format::eR32G32B32Sfloat;
-			attributes[0].offset = offsetof(Vertex, Position);
-
-			attributes[1].location = 1;
-			attributes[1].binding = 0;
-			attributes[1].format = vk::Format::eR32G32B32Sfloat;
-			attributes[1].offset = offsetof(Vertex, Color);
-
-			return attributes;
 		}
 	};
 }
