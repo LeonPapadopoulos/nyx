@@ -197,10 +197,19 @@ namespace Nyx
 				);
 				
 				// Draw Mesh
-				vk::DeviceSize offsets[] = { 0 };
-				cmd.bindVertexBuffers(0, { *TestVertexBuffer }, offsets);
-				cmd.bindIndexBuffer(*TestIndexBuffer, 0, vk::IndexType::eUint32);
-				cmd.drawIndexed(static_cast<uint32_t>(TestIndices.size()), 1, 0, 0, 0);
+				{
+					//vk::DeviceSize offsets[] = { 0 };
+					//cmd.bindVertexBuffers(0, { *TestVertexBuffer }, offsets);
+					//cmd.bindIndexBuffer(*TestIndexBuffer, 0, vk::IndexType::eUint32);
+					//cmd.drawIndexed(static_cast<uint32_t>(TestIndices.size()), 1, 0, 0, 0);
+				}
+				// Draw Cube Mesh
+				{
+					vk::DeviceSize offsets[] = { 0 };
+					cmd.bindVertexBuffers(0, { CubeMesh.GetVertexBuffer() }, offsets);
+					cmd.bindIndexBuffer(CubeMesh.GetIndexBuffer(), 0, vk::IndexType::eUint32);
+					cmd.drawIndexed(CubeMesh.GetIndexCount(), 1, 0, 0, 0);
+				}
 			}
 			SceneViewport.EndRenderPass(cmd);
 		}
@@ -855,6 +864,17 @@ namespace Nyx
 			// Bottom
 			4, 5, 1,  1, 0, 4
 		};
+
+		// @todo: Move Cube Mesh Management to a more generalized place for mesh handling
+		{
+			CubeMesh.Release();
+
+			Nyx::MeshData cubeData;
+			cubeData.Vertices = TestVertices;
+			cubeData.Indices = TestIndices;
+
+			CubeMesh.Upload(Context, cubeData);
+		}
 	}
 
 	void VulkanRenderer::CreateTestMeshBuffers()

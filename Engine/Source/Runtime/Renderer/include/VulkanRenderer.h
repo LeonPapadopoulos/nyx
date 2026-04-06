@@ -183,6 +183,8 @@ namespace Nyx
 		vk::raii::Pipeline GridPipeline{ nullptr };
 
 		// Mesh
+		Mesh CubeMesh = Mesh("Cube");
+
 		std::vector<Vertex> TestVertices;
 		std::vector<uint32_t> TestIndices;
 
