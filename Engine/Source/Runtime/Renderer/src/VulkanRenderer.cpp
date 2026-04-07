@@ -196,13 +196,6 @@ namespace Nyx
 					{}
 				);
 				
-				// Draw Mesh
-				{
-					//vk::DeviceSize offsets[] = { 0 };
-					//cmd.bindVertexBuffers(0, { *TestVertexBuffer }, offsets);
-					//cmd.bindIndexBuffer(*TestIndexBuffer, 0, vk::IndexType::eUint32);
-					//cmd.drawIndexed(static_cast<uint32_t>(TestIndices.size()), 1, 0, 0, 0);
-				}
 				// Draw Cube Mesh
 				{
 					vk::DeviceSize offsets[] = { 0 };
