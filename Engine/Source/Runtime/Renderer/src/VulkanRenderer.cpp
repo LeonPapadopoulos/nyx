@@ -69,10 +69,10 @@ namespace Nyx
 		InFlightFence = nullptr;
 		CommandPool = nullptr;
 
-		TestIndexBuffer = nullptr;
-		TestIndexBufferMemory = nullptr;
-		TestVertexBuffer = nullptr;
-		TestVertexBufferMemory = nullptr;
+		MeshIndexBuffer = nullptr;
+		MeshIndexBufferMemory = nullptr;
+		MeshVertexBuffer = nullptr;
+		MeshVertexBufferMemory = nullptr;
 
 		Context.Shutdown();
 	}
@@ -822,7 +822,7 @@ namespace Nyx
 	{
 		// Construct Cube
 
-		TestVertices =
+		MeshVertices =
 		{
 			// Front
 			{ {-0.5f, -0.5f,  0.5f}, {1.0f, 0.0f, 0.0f} },
@@ -837,7 +837,7 @@ namespace Nyx
 			{ {-0.5f,  0.5f, -0.5f}, {0.2f, 0.2f, 0.2f} }
 		};
 
-		TestIndices =
+		MeshIndices =
 		{
 			// Front
 			0, 1, 2,  2, 3, 0,
@@ -863,8 +863,8 @@ namespace Nyx
 			CubeMesh.Release();
 
 			Nyx::MeshData cubeData;
-			cubeData.Vertices = TestVertices;
-			cubeData.Indices = TestIndices;
+			cubeData.Vertices = MeshVertices;
+			cubeData.Indices = MeshIndices;
 
 			CubeMesh.Upload(Context, cubeData);
 		}
@@ -872,35 +872,35 @@ namespace Nyx
 
 	void VulkanRenderer::CreateTestMeshBuffers()
 	{
-		const vk::DeviceSize vertexBufferSize = sizeof(Vertex) * TestVertices.size();
-		const vk::DeviceSize indexBufferSize = sizeof(uint32_t) * TestIndices.size();
+		const vk::DeviceSize vertexBufferSize = sizeof(Vertex) * MeshVertices.size();
+		const vk::DeviceSize indexBufferSize = sizeof(uint32_t) * MeshIndices.size();
 
 		CreateBuffer(
 			vertexBufferSize,
 			vk::BufferUsageFlagBits::eVertexBuffer,
 			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
-			TestVertexBuffer,
-			TestVertexBufferMemory
+			MeshVertexBuffer,
+			MeshVertexBufferMemory
 		);
 
 		CreateBuffer(
 			indexBufferSize,
 			vk::BufferUsageFlagBits::eIndexBuffer,
 			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
-			TestIndexBuffer,
-			TestIndexBufferMemory
+			MeshIndexBuffer,
+			MeshIndexBufferMemory
 		);
 
 		{
-			void* mapped = TestVertexBufferMemory.mapMemory(0, vertexBufferSize);
-			std::memcpy(mapped, TestVertices.data(), static_cast<size_t>(vertexBufferSize));
-			TestVertexBufferMemory.unmapMemory();
+			void* mapped = MeshVertexBufferMemory.mapMemory(0, vertexBufferSize);
+			std::memcpy(mapped, MeshVertices.data(), static_cast<size_t>(vertexBufferSize));
+			MeshVertexBufferMemory.unmapMemory();
 		}
 
 		{
-			void* mapped = TestIndexBufferMemory.mapMemory(0, indexBufferSize);
-			std::memcpy(mapped, TestIndices.data(), static_cast<size_t>(indexBufferSize));
-			TestIndexBufferMemory.unmapMemory();
+			void* mapped = MeshIndexBufferMemory.mapMemory(0, indexBufferSize);
+			std::memcpy(mapped, MeshIndices.data(), static_cast<size_t>(indexBufferSize));
+			MeshIndexBufferMemory.unmapMemory();
 		}
 	}
 

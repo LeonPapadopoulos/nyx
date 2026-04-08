@@ -185,14 +185,14 @@ namespace Nyx
 		// Mesh
 		Mesh CubeMesh = Mesh("Cube");
 
-		std::vector<Vertex> TestVertices;
-		std::vector<uint32_t> TestIndices;
+		std::vector<Vertex> MeshVertices;
+		std::vector<uint32_t> MeshIndices;
 
-		vk::raii::Buffer TestVertexBuffer{ nullptr };
-		vk::raii::DeviceMemory TestVertexBufferMemory{ nullptr };
+		vk::raii::Buffer MeshVertexBuffer{ nullptr };
+		vk::raii::DeviceMemory MeshVertexBufferMemory{ nullptr };
 
-		vk::raii::Buffer TestIndexBuffer{ nullptr };
-		vk::raii::DeviceMemory TestIndexBufferMemory{ nullptr };
+		vk::raii::Buffer MeshIndexBuffer{ nullptr };
+		vk::raii::DeviceMemory MeshIndexBufferMemory{ nullptr };
 
 		// Input
 		bool bMouseLookActive = false;
