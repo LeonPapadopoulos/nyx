@@ -16,8 +16,9 @@ namespace Nyx
         vk::raii::Device& GetDevice();
         vk::raii::SurfaceKHR& GetSurface();
         vk::raii::Queue& GetGraphicsQueue();
-
         uint32_t GetGraphicsQueueFamily() const;
+        vk::raii::CommandPool& GetGraphicsCommandPool();
+
 
     private:
         void CreateInstance(const char* applicationName);
@@ -25,6 +26,7 @@ namespace Nyx
         void CreateSurface(GLFWwindow* window);
         void PickPhysicalDevice();
         void CreateLogicalDevice();
+        void CreateGraphicsCommandPool();
 
     private:
         std::vector<const char*> GetRequiredInstanceExtensions();
@@ -39,6 +41,7 @@ namespace Nyx
         vk::raii::PhysicalDevice PhysicalDevice{ nullptr };
         vk::raii::Device Device{ nullptr };
         vk::raii::Queue GraphicsQueue{ nullptr };
+        vk::raii::CommandPool GraphicsCommandPool{ nullptr };
 
         uint32_t GraphicsQueueFamily = 0;
 

@@ -36,6 +36,7 @@ namespace Nyx
 		CreateSurface(window);
 		PickPhysicalDevice();
 		CreateLogicalDevice();
+		CreateGraphicsCommandPool();
 	}
 
 	void VulkanContext::Shutdown()
@@ -71,6 +72,12 @@ namespace Nyx
 	uint32_t VulkanContext::GetGraphicsQueueFamily() const
 	{
 		return GraphicsQueueFamily;
+	}
+
+
+	vk::raii::CommandPool& VulkanContext::GetGraphicsCommandPool()
+	{
+		return GraphicsCommandPool;
 	}
 
 	void VulkanContext::CreateInstance(const char* applicationName)
@@ -220,6 +227,15 @@ namespace Nyx
 		Device = vk::raii::Device(PhysicalDevice, deviceCreateInfo);
 		GraphicsQueue = vk::raii::Queue(Device, graphicsQueueFamilyIndex, 0 /*queueInThatFamily*/);
 		GraphicsQueueFamily = graphicsQueueFamilyIndex;
+	}
+
+	void VulkanContext::CreateGraphicsCommandPool()
+	{
+		vk::CommandPoolCreateInfo poolInfo{};
+		poolInfo.queueFamilyIndex = GraphicsQueueFamily;
+		poolInfo.flags = vk::CommandPoolCreateFlagBits::eTransient;
+
+		GraphicsCommandPool = vk::raii::CommandPool(Device, poolInfo);
 	}
 
 	std::vector<const char*> VulkanContext::GetRequiredInstanceExtensions()
