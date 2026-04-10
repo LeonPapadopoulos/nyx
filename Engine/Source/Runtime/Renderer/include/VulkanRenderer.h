@@ -6,6 +6,7 @@
 #include "OffscreenRenderTarget.h"
 #include "VulkanViewportTarget.h"
 #include "Mesh.h"
+#include "Texture.h"
 #include <imgui.h>
 
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -193,6 +194,9 @@ namespace Nyx
 
 		vk::raii::Buffer MeshIndexBuffer{ nullptr };
 		vk::raii::DeviceMemory MeshIndexBufferMemory{ nullptr };
+
+		// Texture
+		Texture TestTexture{ "checker" };
 
 		// Input
 		bool bMouseLookActive = false;

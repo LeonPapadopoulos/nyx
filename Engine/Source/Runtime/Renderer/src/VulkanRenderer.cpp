@@ -4,6 +4,7 @@
 #include "VulkanImGuiBackend.h"
 #include "VulkanContext.h"
 #include "VulkanSwapchain.h"
+#include "Log.h"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -37,6 +38,16 @@ namespace Nyx
 		SetupImGui();
 
 		SceneViewport.Initialize(Context, 1280, 720, vk::Format::eR8G8B8A8Unorm);
+		// @todo: Move to dedicated method
+		{
+			TestTexture.SetContext(Context);
+			const bool bLoaded = TestTexture.Load();
+			ASSERT(bLoaded);
+
+			LOG_INFO("Texture image view valid: {}", static_cast<bool>(static_cast<VkImageView>(TestTexture.GetImageView())));
+			LOG_INFO("Texture sampler valid: {}", static_cast<bool>(static_cast<VkSampler>(TestTexture.GetSampler())));
+		}
+
 		CreateSceneUniformBuffer();
 		CreateSceneDescriptors();
 		CreateGridPipeline();
@@ -721,29 +732,46 @@ namespace Nyx
 
 	void VulkanRenderer::CreateSceneDescriptors()
 	{
-		vk::DescriptorSetLayoutBinding uboLayoutBinding{};
-		uboLayoutBinding.binding = 0;
-		uboLayoutBinding.descriptorType = vk::DescriptorType::eUniformBuffer;
-		uboLayoutBinding.descriptorCount = 1;
-		uboLayoutBinding.stageFlags = vk::ShaderStageFlagBits::eVertex | 
+		vk::DescriptorSetLayoutBinding uboBinding{};
+		uboBinding.binding = 0;
+		uboBinding.descriptorType = vk::DescriptorType::eUniformBuffer;
+		uboBinding.descriptorCount = 1;
+		uboBinding.stageFlags = vk::ShaderStageFlagBits::eVertex | 
 			                          vk::ShaderStageFlagBits::eFragment;
-		uboLayoutBinding.pImmutableSamplers = nullptr;
+		uboBinding.pImmutableSamplers = nullptr;
+
+		vk::DescriptorSetLayoutBinding textureBinding{};
+		textureBinding.binding = 1;
+		textureBinding.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+		textureBinding.descriptorCount = 1;
+		textureBinding.stageFlags = vk::ShaderStageFlagBits::eFragment;
+
+
+		std::array<vk::DescriptorSetLayoutBinding, 2> bindings =
+		{
+			uboBinding,
+			textureBinding
+		};
 
 		vk::DescriptorSetLayoutCreateInfo layoutInfo{};
-		layoutInfo.bindingCount = 1;
-		layoutInfo.pBindings = &uboLayoutBinding;
+		layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+		layoutInfo.pBindings = bindings.data();
 
 		SceneDescriptorSetLayout = vk::raii::DescriptorSetLayout(Context.GetDevice(), layoutInfo);
 
-		vk::DescriptorPoolSize poolSize{};
-		poolSize.type = vk::DescriptorType::eUniformBuffer;
-		poolSize.descriptorCount = 1;
+		vk::DescriptorPoolSize poolSizes[2]{};
+
+		poolSizes[0].type = vk::DescriptorType::eUniformBuffer;
+		poolSizes[0].descriptorCount = 1; // @todo: FrameCount;
+
+		poolSizes[1].type = vk::DescriptorType::eCombinedImageSampler;
+		poolSizes[1].descriptorCount = 1; // @todo: FrameCount;
 
 		vk::DescriptorPoolCreateInfo poolInfo{};
 		poolInfo.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
-		poolInfo.poolSizeCount = 1;
-		poolInfo.pPoolSizes = &poolSize;
-		poolInfo.maxSets = 1;
+		poolInfo.maxSets = 1; // @todo: FrameCount;
+		poolInfo.poolSizeCount = 2;
+		poolInfo.pPoolSizes = poolSizes;
 
 		SceneDescriptorPool = vk::raii::DescriptorPool(Context.GetDevice(), poolInfo);
 
@@ -760,15 +788,28 @@ namespace Nyx
 		bufferInfo.offset = 0;
 		bufferInfo.range = sizeof(SceneUBO);
 
-		vk::WriteDescriptorSet descriptorWrite{};
-		descriptorWrite.dstSet = *SceneDescriptorSets.front();
-		descriptorWrite.dstBinding = 0;
-		descriptorWrite.dstArrayElement = 0;
-		descriptorWrite.descriptorType = vk::DescriptorType::eUniformBuffer;
-		descriptorWrite.descriptorCount = 1;
-		descriptorWrite.pBufferInfo = &bufferInfo;
+		vk::DescriptorImageInfo imageInfo{};
+		imageInfo.sampler = TestTexture.GetSampler();
+		imageInfo.imageView = TestTexture.GetImageView();
+		imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
 
-		Context.GetDevice().updateDescriptorSets(descriptorWrite, nullptr);
+		vk::WriteDescriptorSet writes[2]{};
+
+		writes[0].dstSet = *SceneDescriptorSets[0]; // @todo: i];
+		writes[0].dstBinding = 0;
+		writes[0].dstArrayElement = 0;
+		writes[0].descriptorType = vk::DescriptorType::eUniformBuffer;
+		writes[0].descriptorCount = 1;
+		writes[0].pBufferInfo = &bufferInfo;
+
+		writes[1].dstSet = *SceneDescriptorSets[0]; // @todo: i];
+		writes[1].dstBinding = 1;
+		writes[1].dstArrayElement = 0;
+		writes[1].descriptorType = vk::DescriptorType::eCombinedImageSampler;
+		writes[1].descriptorCount = 1;
+		writes[1].pImageInfo = &imageInfo;
+
+		Context.GetDevice().updateDescriptorSets(writes, {});
 	}
 
 	void VulkanRenderer::CreateSceneUniformBuffer()
@@ -820,21 +861,44 @@ namespace Nyx
 
 	void VulkanRenderer::CreateTestMeshData()
 	{
-		// Construct Cube
-
+		// Cube with individual faces (no shared corner vertices)
 		MeshVertices =
 		{
-			// Front
-			{ {-0.5f, -0.5f,  0.5f}, {1.0f, 0.0f, 0.0f} },
-			{ { 0.5f, -0.5f,  0.5f}, {0.0f, 1.0f, 0.0f} },
-			{ { 0.5f,  0.5f,  0.5f}, {0.0f, 0.0f, 1.0f} },
-			{ {-0.5f,  0.5f,  0.5f}, {1.0f, 1.0f, 0.0f} },
+			// Front (+Z)
+			{ {-0.5f, -0.5f,  0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f} },
+			{ { 0.5f, -0.5f,  0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f} },
+			{ { 0.5f,  0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f} },
+			{ {-0.5f,  0.5f,  0.5f}, {1.0f, 1.0f, 0.0f}, {0.0f, 1.0f} },
 
-			// Back
-			{ {-0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 1.0f} },
-			{ { 0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 1.0f} },
-			{ { 0.5f,  0.5f, -0.5f}, {1.0f, 1.0f, 1.0f} },
-			{ {-0.5f,  0.5f, -0.5f}, {0.2f, 0.2f, 0.2f} }
+			// Back (-Z)
+			{ { 0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 1.0f}, {0.0f, 0.0f} },
+			{ {-0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 1.0f}, {1.0f, 0.0f} },
+			{ {-0.5f,  0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f} },
+			{ { 0.5f,  0.5f, -0.5f}, {0.2f, 0.2f, 0.2f}, {0.0f, 1.0f} },
+
+			// Left (-X)
+			{ {-0.5f, -0.5f, -0.5f}, {1.0f, 0.4f, 0.4f}, {0.0f, 0.0f} },
+			{ {-0.5f, -0.5f,  0.5f}, {0.4f, 1.0f, 0.4f}, {1.0f, 0.0f} },
+			{ {-0.5f,  0.5f,  0.5f}, {0.4f, 0.4f, 1.0f}, {1.0f, 1.0f} },
+			{ {-0.5f,  0.5f, -0.5f}, {1.0f, 1.0f, 0.4f}, {0.0f, 1.0f} },
+
+			// Right (+X)
+			{ { 0.5f, -0.5f,  0.5f}, {1.0f, 0.5f, 0.2f}, {0.0f, 0.0f} },
+			{ { 0.5f, -0.5f, -0.5f}, {0.2f, 1.0f, 0.5f}, {1.0f, 0.0f} },
+			{ { 0.5f,  0.5f, -0.5f}, {0.5f, 0.2f, 1.0f}, {1.0f, 1.0f} },
+			{ { 0.5f,  0.5f,  0.5f}, {1.0f, 1.0f, 0.5f}, {0.0f, 1.0f} },
+
+			// Top (+Y)
+			{ {-0.5f,  0.5f,  0.5f}, {1.0f, 0.3f, 0.3f}, {0.0f, 0.0f} },
+			{ { 0.5f,  0.5f,  0.5f}, {0.3f, 1.0f, 0.3f}, {1.0f, 0.0f} },
+			{ { 0.5f,  0.5f, -0.5f}, {0.3f, 0.3f, 1.0f}, {1.0f, 1.0f} },
+			{ {-0.5f,  0.5f, -0.5f}, {1.0f, 1.0f, 0.3f}, {0.0f, 1.0f} },
+
+			// Bottom (-Y)
+			{ {-0.5f, -0.5f, -0.5f}, {0.7f, 0.2f, 0.2f}, {0.0f, 0.0f} },
+			{ { 0.5f, -0.5f, -0.5f}, {0.2f, 0.7f, 0.2f}, {1.0f, 0.0f} },
+			{ { 0.5f, -0.5f,  0.5f}, {0.2f, 0.2f, 0.7f}, {1.0f, 1.0f} },
+			{ {-0.5f, -0.5f,  0.5f}, {0.7f, 0.7f, 0.2f}, {0.0f, 1.0f} }
 		};
 
 		MeshIndices =
@@ -843,19 +907,19 @@ namespace Nyx
 			0, 1, 2,  2, 3, 0,
 
 			// Back
-			5, 4, 7,  7, 6, 5,
+			4, 5, 6,  6, 7, 4,
 
 			// Left
-			4, 0, 3,  3, 7, 4,
+			8, 9, 10,  10, 11, 8,
 
 			// Right
-			1, 5, 6,  6, 2, 1,
+			12, 13, 14,  14, 15, 12,
 
 			// Top
-			3, 2, 6,  6, 7, 3,
+			16, 17, 18,  18, 19, 16,
 
 			// Bottom
-			4, 5, 1,  1, 0, 4
+			20, 21, 22,  22, 23, 20
 		};
 
 		// @todo: Move Cube Mesh Management to a more generalized place for mesh handling

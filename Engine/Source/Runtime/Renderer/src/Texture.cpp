@@ -1,9 +1,77 @@
 #include "NyxPCH.h"
 #include "Texture.h"
+#include "Log.h"
 
 #include <cstring>
 #include <stdexcept>
 #include <stb_image.h>
+
+#pragma once
+
+#include <filesystem>
+#include <Windows.h>
+
+#pragma once
+
+#include <filesystem>
+#include <stdexcept>
+#include <Windows.h>
+
+namespace Nyx
+{
+	class Paths
+	{
+	public:
+		static std::filesystem::path GetExecutablePath()
+		{
+			wchar_t buffer[MAX_PATH];
+			const DWORD length = ::GetModuleFileNameW(nullptr, buffer, MAX_PATH);
+			return std::filesystem::path(std::wstring(buffer, length));
+		}
+
+		static std::filesystem::path GetExecutableDir()
+		{
+			return GetExecutablePath().parent_path();
+		}
+
+		// @todo: Find a more elegant way of actually determining this directory.
+		// Also, only do it once.
+		static std::filesystem::path FindProjectRoot()
+		{
+			std::filesystem::path current = GetExecutableDir();
+
+			while (!current.empty())
+			{
+				const std::filesystem::path assetsDir = current / "Assets";
+
+				if (std::filesystem::exists(assetsDir) && std::filesystem::is_directory(assetsDir))
+				{
+					return current;
+				}
+
+				const std::filesystem::path parent = current.parent_path();
+				if (parent == current)
+				{
+					break;
+				}
+
+				current = parent;
+			}
+
+			throw std::runtime_error("Could not locate project root containing an Assets directory.");
+		}
+
+		static std::filesystem::path GetAssetsDir()
+		{
+			return FindProjectRoot() / "Assets";
+		}
+
+		static std::filesystem::path GetTexturesDir()
+		{
+			return GetAssetsDir() / "Textures";
+		}
+	};
+}
 
 namespace
 {
@@ -229,15 +297,26 @@ namespace Nyx
 			return false;
 		}
 
-		const std::string filePath = "Textures/" + GetId() + ".png";
+		const std::array<std::string, 3> extensions =
+		{
+			".png",
+			".jpg",
+			".jpeg"
+		};
 
 		ImageData imageData;
-		if (!LoadImageData(filePath, imageData))
+
+		for (const std::string& ext : extensions)
 		{
-			return false;
+			const std::filesystem::path filePath = Nyx::Paths::GetTexturesDir() / (GetId() + ext);
+
+			if (LoadImageData(filePath.string(), imageData))
+			{
+				return Upload(*BoundContext, imageData);
+			}
 		}
 
-		return Upload(*BoundContext, imageData);
+		return false;
 	}
 
 	bool Texture::DoUnload()
