@@ -38,16 +38,7 @@ namespace Nyx
 		SetupImGui();
 
 		SceneViewport.Initialize(Context, 1280, 720, vk::Format::eR8G8B8A8Unorm);
-		// @todo: Move to dedicated method
-		{
-			TestTexture.SetContext(Context);
-			const bool bLoaded = TestTexture.Load();
-			ASSERT(bLoaded);
-
-			LOG_INFO("Texture image view valid: {}", static_cast<bool>(static_cast<VkImageView>(TestTexture.GetImageView())));
-			LOG_INFO("Texture sampler valid: {}", static_cast<bool>(static_cast<VkSampler>(TestTexture.GetSampler())));
-		}
-
+		CreateTestTextureData();
 		CreateSceneUniformBuffer();
 		CreateSceneDescriptors();
 		CreateGridPipeline();
@@ -857,6 +848,16 @@ namespace Nyx
 		void* mapped = SceneUniformBufferMemory.mapMemory(0, sizeof(SceneUBO));
 		std::memcpy(mapped, &ubo, sizeof(SceneUBO));
 		SceneUniformBufferMemory.unmapMemory();
+	}
+
+	void VulkanRenderer::CreateTestTextureData()
+	{
+		TestTexture.SetContext(Context);
+		const bool bLoaded = TestTexture.Load();
+		ASSERT(bLoaded);
+
+		LOG_INFO("Texture image view valid: {}", static_cast<bool>(static_cast<VkImageView>(TestTexture.GetImageView())));
+		LOG_INFO("Texture sampler valid: {}", static_cast<bool>(static_cast<VkSampler>(TestTexture.GetSampler())));
 	}
 
 	void VulkanRenderer::CreateTestMeshData()

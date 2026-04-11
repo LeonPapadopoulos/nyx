@@ -17,6 +17,7 @@
 #include <stdexcept>
 #include <Windows.h>
 
+// @todo: Move away from the hardcoded location of textures
 namespace Nyx
 {
 	class Paths

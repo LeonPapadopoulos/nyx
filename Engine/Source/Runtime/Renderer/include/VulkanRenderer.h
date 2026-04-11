@@ -142,6 +142,7 @@ namespace Nyx
 		void CreateSceneUniformBuffer();
 		void UpdateSceneUniforms();
 
+		void CreateTestTextureData();
 		void CreateTestMeshData();
 		void CreateTestMeshBuffers();
 		
