@@ -58,7 +58,6 @@ namespace Nyx
 
 		if (ImGuiBackend)
 		{
-			ImGuiBackend->Shutdown();
 			ImGuiBackend.reset();
 		}
 
