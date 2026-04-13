@@ -22,10 +22,13 @@ namespace Nyx
 		glm::mat4 ViewProj;
 		glm::mat4 InvViewProj;
 		glm::mat4 Model;
+
 		glm::vec2 ViewportSize;
 		glm::vec2 Padding0;
-		glm::vec3 CameraWorldPos;
-		float Padding1 = 0.0f;
+
+		glm::vec4 CameraWorldPos;    // xyz used
+		glm::vec4 LightDirectionWS;  // xyz used, normalized
+		glm::vec4 LightColor;        // rgb = light color, a = ambient strength
 	};
 
 	struct SceneCamera
@@ -140,7 +143,7 @@ namespace Nyx
 
 		void CreateSceneDescriptors();
 		void CreateSceneUniformBuffer();
-		void UpdateSceneUniforms();
+		void UpdateSceneUniforms(float deltaTime);
 
 		void CreateTestTextureData();
 		void CreateTestMeshData();

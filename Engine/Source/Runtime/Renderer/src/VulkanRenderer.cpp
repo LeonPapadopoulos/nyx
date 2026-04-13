@@ -173,7 +173,7 @@ namespace Nyx
 				const float deltaTime = ComputeDeltaTime();
 
 				TickCameraFromInput(deltaTime);
-				UpdateSceneUniforms();
+				UpdateSceneUniforms(deltaTime);
 
 				// Scene Grid
 				{
@@ -827,22 +827,29 @@ namespace Nyx
 		SceneUniformBuffer.bindMemory(*SceneUniformBufferMemory, 0);
 	}
 
-	void VulkanRenderer::UpdateSceneUniforms()
+	void VulkanRenderer::UpdateSceneUniforms(float deltaTime)
 	{
 		static float t = 0.0f;
-		t += 0.001f;
+		t += deltaTime;
 
 		const vk::Extent2D extent = SceneViewport.GetExtent();
 		Camera.AspectRatio = extent.height > 0
 			? static_cast<float>(extent.width) / static_cast<float>(extent.height)
 			: 1.0f;
-		
+
 		SceneUBO ubo{};
 		ubo.ViewProj = Camera.GetViewProjectionMatrix();
 		ubo.InvViewProj = glm::inverse(ubo.ViewProj);
 		ubo.Model = glm::rotate(glm::mat4(1.0f), t, glm::vec3(0.0f, 1.0f, 0.0f));
 		ubo.ViewportSize = glm::vec2(static_cast<float>(extent.width), static_cast<float>(extent.height));
-		ubo.CameraWorldPos = Camera.Position;
+
+		ubo.CameraWorldPos = glm::vec4(Camera.Position, 1.0f);
+
+		// Direction from surface toward the light
+		ubo.LightDirectionWS = glm::vec4(glm::normalize(glm::vec3(0.4f, 1.0f, 0.2f)), 0.0f);
+
+		// rgb = light color, a = ambient strength
+		ubo.LightColor = glm::vec4(1.0f, 0.98f, 0.95f, 0.18f);
 
 		void* mapped = SceneUniformBufferMemory.mapMemory(0, sizeof(SceneUBO));
 		std::memcpy(mapped, &ubo, sizeof(SceneUBO));
@@ -862,43 +869,44 @@ namespace Nyx
 	void VulkanRenderer::CreateTestMeshData()
 	{
 		// Cube with individual faces (no shared corner vertices)
+		// {Position}, {Color}, {UV}, {Normal}
 		MeshVertices =
 		{
 			// Front (+Z)
-			{ {-0.5f, -0.5f,  0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f} },
-			{ { 0.5f, -0.5f,  0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f} },
-			{ { 0.5f,  0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f} },
-			{ {-0.5f,  0.5f,  0.5f}, {1.0f, 1.0f, 0.0f}, {0.0f, 1.0f} },
+			{ {-0.5f, -0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f}, { 0.0f,  0.0f,  1.0f} },
+			{ { 0.5f, -0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 0.0f}, { 0.0f,  0.0f,  1.0f} },
+			{ { 0.5f,  0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}, { 0.0f,  0.0f,  1.0f} },
+			{ {-0.5f,  0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}, { 0.0f,  0.0f,  1.0f} },
 
 			// Back (-Z)
-			{ { 0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 1.0f}, {0.0f, 0.0f} },
-			{ {-0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 1.0f}, {1.0f, 0.0f} },
-			{ {-0.5f,  0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f} },
-			{ { 0.5f,  0.5f, -0.5f}, {0.2f, 0.2f, 0.2f}, {0.0f, 1.0f} },
+			{ { 0.5f, -0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f}, { 0.0f,  0.0f, -1.0f} },
+			{ {-0.5f, -0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 0.0f}, { 0.0f,  0.0f, -1.0f} },
+			{ {-0.5f,  0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}, { 0.0f,  0.0f, -1.0f} },
+			{ { 0.5f,  0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}, { 0.0f,  0.0f, -1.0f} },
 
 			// Left (-X)
-			{ {-0.5f, -0.5f, -0.5f}, {1.0f, 0.4f, 0.4f}, {0.0f, 0.0f} },
-			{ {-0.5f, -0.5f,  0.5f}, {0.4f, 1.0f, 0.4f}, {1.0f, 0.0f} },
-			{ {-0.5f,  0.5f,  0.5f}, {0.4f, 0.4f, 1.0f}, {1.0f, 1.0f} },
-			{ {-0.5f,  0.5f, -0.5f}, {1.0f, 1.0f, 0.4f}, {0.0f, 1.0f} },
+			{ {-0.5f, -0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f}, {-1.0f,  0.0f,  0.0f} },
+			{ {-0.5f, -0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 0.0f}, {-1.0f,  0.0f,  0.0f} },
+			{ {-0.5f,  0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}, {-1.0f,  0.0f,  0.0f} },
+			{ {-0.5f,  0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}, {-1.0f,  0.0f,  0.0f} },
 
 			// Right (+X)
-			{ { 0.5f, -0.5f,  0.5f}, {1.0f, 0.5f, 0.2f}, {0.0f, 0.0f} },
-			{ { 0.5f, -0.5f, -0.5f}, {0.2f, 1.0f, 0.5f}, {1.0f, 0.0f} },
-			{ { 0.5f,  0.5f, -0.5f}, {0.5f, 0.2f, 1.0f}, {1.0f, 1.0f} },
-			{ { 0.5f,  0.5f,  0.5f}, {1.0f, 1.0f, 0.5f}, {0.0f, 1.0f} },
+			{ { 0.5f, -0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f}, { 1.0f,  0.0f,  0.0f} },
+			{ { 0.5f, -0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 0.0f}, { 1.0f,  0.0f,  0.0f} },
+			{ { 0.5f,  0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}, { 1.0f,  0.0f,  0.0f} },
+			{ { 0.5f,  0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}, { 1.0f,  0.0f,  0.0f} },
 
 			// Top (+Y)
-			{ {-0.5f,  0.5f,  0.5f}, {1.0f, 0.3f, 0.3f}, {0.0f, 0.0f} },
-			{ { 0.5f,  0.5f,  0.5f}, {0.3f, 1.0f, 0.3f}, {1.0f, 0.0f} },
-			{ { 0.5f,  0.5f, -0.5f}, {0.3f, 0.3f, 1.0f}, {1.0f, 1.0f} },
-			{ {-0.5f,  0.5f, -0.5f}, {1.0f, 1.0f, 0.3f}, {0.0f, 1.0f} },
+			{ {-0.5f,  0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f}, { 0.0f,  1.0f,  0.0f} },
+			{ { 0.5f,  0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 0.0f}, { 0.0f,  1.0f,  0.0f} },
+			{ { 0.5f,  0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}, { 0.0f,  1.0f,  0.0f} },
+			{ {-0.5f,  0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}, { 0.0f,  1.0f,  0.0f} },
 
 			// Bottom (-Y)
-			{ {-0.5f, -0.5f, -0.5f}, {0.7f, 0.2f, 0.2f}, {0.0f, 0.0f} },
-			{ { 0.5f, -0.5f, -0.5f}, {0.2f, 0.7f, 0.2f}, {1.0f, 0.0f} },
-			{ { 0.5f, -0.5f,  0.5f}, {0.2f, 0.2f, 0.7f}, {1.0f, 1.0f} },
-			{ {-0.5f, -0.5f,  0.5f}, {0.7f, 0.7f, 0.2f}, {0.0f, 1.0f} }
+			{ {-0.5f, -0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f}, { 0.0f, -1.0f,  0.0f} },
+			{ { 0.5f, -0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 0.0f}, { 0.0f, -1.0f,  0.0f} },
+			{ { 0.5f, -0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}, { 0.0f, -1.0f,  0.0f} },
+			{ {-0.5f, -0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}, { 0.0f, -1.0f,  0.0f} }
 		};
 
 		MeshIndices =

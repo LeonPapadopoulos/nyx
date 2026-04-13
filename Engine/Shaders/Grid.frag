@@ -7,8 +7,9 @@ layout(binding = 0) uniform SceneUBO
     mat4 uModel;
     vec2 uViewportSize;
     vec2 _Padding0;
-    vec3 uCameraWorldPos;
-    float _Padding1;
+    vec4 uCameraWorldPos;
+    vec4 uLightDirectionWS;
+    vec4 uLightColor;
 };
 
 layout(location = 0) noperspective in vec2 vNdc;
@@ -54,7 +55,7 @@ void main()
 
     vec3 worldPos = nearPoint + rayDir * t;
 
-    float distToCamera = length(worldPos - uCameraWorldPos);
+    float distToCamera = length(worldPos - uCameraWorldPos.xyz);
 
     const float fadeStartDistance = 5.0;
     const float fadeEndDistance = 50.0;

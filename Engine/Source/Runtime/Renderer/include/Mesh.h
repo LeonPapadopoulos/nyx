@@ -12,6 +12,7 @@ namespace Nyx
 		glm::vec3 Position{ 0.0f, 0.0f ,0.0f };
 		glm::vec3 Color{ 1.0f, 1.0f, 1.0f };
 		glm::vec2 UV{ 0.0f, 0.0f };
+		glm::vec3 Normal{ 0.0f, 1.0f, 0.0f };
 
 		static vk::VertexInputBindingDescription GetBindingDescription()
 		{
@@ -22,9 +23,9 @@ namespace Nyx
 			return binding;
 		}
 
-		static std::array<vk::VertexInputAttributeDescription, 3> GetAttributeDescriptions()
+		static std::array<vk::VertexInputAttributeDescription, 4> GetAttributeDescriptions()
 		{
-			std::array<vk::VertexInputAttributeDescription, 3> attributes{};
+			std::array<vk::VertexInputAttributeDescription, 4> attributes{};
 
 			attributes[0].binding = 0;
 			attributes[0].location = 0;
@@ -40,6 +41,11 @@ namespace Nyx
 			attributes[2].location = 2;
 			attributes[2].format = vk::Format::eR32G32Sfloat;
 			attributes[2].offset = offsetof(Vertex, UV);
+
+			attributes[3].binding = 0;
+			attributes[3].location = 3;
+			attributes[3].format = vk::Format::eR32G32B32Sfloat;
+			attributes[3].offset = offsetof(Vertex, Normal);
 
 			return attributes;
 		}
