@@ -371,7 +371,7 @@ namespace Nyx
 				Camera.YawRadians += static_cast<float>(deltaX) * CameraMouseSensitivity;
 				Camera.PitchRadians -= static_cast<float>(deltaY) * CameraMouseSensitivity;
 
-				const float pitchLimit = glm::radians(89.0f);
+				constexpr float pitchLimit = glm::radians<float>(89.0f);
 				Camera.PitchRadians = glm::clamp(Camera.PitchRadians, -pitchLimit, pitchLimit);
 			}
 		}
