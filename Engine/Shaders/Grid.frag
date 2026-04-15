@@ -55,6 +55,10 @@ void main()
 
     vec3 worldPos = nearPoint + rayDir * t;
 
+    // Write grid plane depth so it correctly intersects other objects in the scene
+    vec4 clipPos = uViewProj * vec4(worldPos, 1.0);
+    gl_FragDepth = clipPos.z / clipPos.w;
+
     float distToCamera = length(worldPos - uCameraWorldPos.xyz);
 
     const float fadeStartDistance = 5.0;

@@ -175,8 +175,28 @@ namespace Nyx
 				TickCameraFromInput(deltaTime);
 				UpdateSceneUniforms(deltaTime);
 
+				// Draw Scene Content
+				{
+					cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *ScenePipeline);
+					cmd.bindDescriptorSets(
+						vk::PipelineBindPoint::eGraphics,
+						*ScenePipelineLayout,
+						0,
+						{ *SceneDescriptorSets.front() },
+						{}
+					);
+
+					// Draw Cube Mesh
+					vk::DeviceSize offsets[] = { 0 };
+					cmd.bindVertexBuffers(0, { CubeMesh.GetVertexBuffer() }, offsets);
+					cmd.bindIndexBuffer(CubeMesh.GetIndexBuffer(), 0, vk::IndexType::eUint32);
+					cmd.drawIndexed(CubeMesh.GetIndexCount(), 1, 0, 0, 0);
+				}
+
 				// Scene Grid
 				{
+					// Draw Grid after opaque geometry, so depth test can occlude it
+
 					cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *GridPipeline);
 					cmd.bindDescriptorSets(
 						vk::PipelineBindPoint::eGraphics,
@@ -186,23 +206,6 @@ namespace Nyx
 						{}
 					);
 					cmd.draw(3, 1, 0, 0);
-				}
-
-				cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *ScenePipeline);
-				cmd.bindDescriptorSets(
-					vk::PipelineBindPoint::eGraphics,
-					*ScenePipelineLayout,
-					0,
-					{ *SceneDescriptorSets.front() },
-					{}
-				);
-				
-				// Draw Cube Mesh
-				{
-					vk::DeviceSize offsets[] = { 0 };
-					cmd.bindVertexBuffers(0, { CubeMesh.GetVertexBuffer() }, offsets);
-					cmd.bindIndexBuffer(CubeMesh.GetIndexBuffer(), 0, vk::IndexType::eUint32);
-					cmd.drawIndexed(CubeMesh.GetIndexCount(), 1, 0, 0, 0);
 				}
 			}
 			SceneViewport.EndRenderPass(cmd);
@@ -654,9 +657,9 @@ namespace Nyx
 		//depthStencil.stencilTestEnable = VK_FALSE;
 
 		vk::PipelineDepthStencilStateCreateInfo depthStencil{};
-		depthStencil.depthTestEnable = VK_FALSE;
+		depthStencil.depthTestEnable = VK_TRUE;
 		depthStencil.depthWriteEnable = VK_FALSE;
-		depthStencil.depthCompareOp = vk::CompareOp::eAlways;
+		depthStencil.depthCompareOp = vk::CompareOp::eLessOrEqual;
 		depthStencil.depthBoundsTestEnable = VK_FALSE;
 		depthStencil.stencilTestEnable = VK_FALSE;
 
