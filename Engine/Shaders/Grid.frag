@@ -87,5 +87,17 @@ void main()
 
     color *= fade;
 
-    outColor = vec4(color, 1.0);
+    // we only want to see the grid lines, so we make the area inbetween transparent
+    float lineAlpha = max(minor, major);
+    lineAlpha = max(lineAlpha, axisX);
+    lineAlpha = max(lineAlpha, axisZ);
+    lineAlpha *= fade;
+
+    // remove nearly invisible fragments completely
+    if (lineAlpha <= 0.001)
+    {
+        discard;
+    }
+
+    outColor = vec4(color, lineAlpha);
 }
