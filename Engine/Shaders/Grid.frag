@@ -50,6 +50,7 @@ void main()
     float t = -nearPoint.y / rayDir.y;
     if (t <= 0.0)
     {
+        // Prevents multiple grids from appearing above and beyond the horizon 
         discard;
     }
 
