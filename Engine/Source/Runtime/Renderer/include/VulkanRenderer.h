@@ -87,6 +87,19 @@ namespace Nyx
 			return GetProjectionMatrix() * GetViewMatrix();
 		}
 	};
+
+	struct ShaderHotReloadState
+	{
+		std::filesystem::path VertSourcePath;
+		std::filesystem::path FragSourcePath;
+		std::filesystem::path VertSpvPath;
+		std::filesystem::path FragSpvPath;
+
+		std::filesystem::file_time_type LastVertWriteTime{};
+		std::filesystem::file_time_type LastFragWriteTime{};
+
+		bool bReloadPending = false;
+	};
 }
 
 namespace Nyx
@@ -160,6 +173,9 @@ namespace Nyx
 
 		float ComputeDeltaTime();
 
+		bool RecompileGridShaders();
+		void PollGridShaderHotReload();
+
 	private:
 		GLFWwindow* Window = nullptr;
 		std::unique_ptr<VulkanImGuiBackend> ImGuiBackend;
@@ -186,6 +202,8 @@ namespace Nyx
 
 		vk::raii::PipelineLayout GridPipelineLayout{ nullptr };
 		vk::raii::Pipeline GridPipeline{ nullptr };
+
+		ShaderHotReloadState GridShaderHotReload;
 
 		// Mesh
 		Mesh CubeMesh = Mesh("Cube");

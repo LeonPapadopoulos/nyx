@@ -6,72 +6,65 @@
 #include <stdexcept>
 #include <stb_image.h>
 
-#pragma once
-
 #include <filesystem>
-#include <Windows.h>
-
-#pragma once
-
-#include <filesystem>
-#include <stdexcept>
 #include <Windows.h>
 
 // @todo: Move away from the hardcoded location of textures
 namespace Nyx
 {
-	class Paths
+	std::filesystem::path Paths::GetExecutablePath()
 	{
-	public:
-		static std::filesystem::path GetExecutablePath()
-		{
-			wchar_t buffer[MAX_PATH];
-			const DWORD length = ::GetModuleFileNameW(nullptr, buffer, MAX_PATH);
-			return std::filesystem::path(std::wstring(buffer, length));
-		}
+		wchar_t buffer[MAX_PATH];
+		const DWORD length = ::GetModuleFileNameW(nullptr, buffer, MAX_PATH);
+		return std::filesystem::path(std::wstring(buffer, length));
+	}
 
-		static std::filesystem::path GetExecutableDir()
-		{
-			return GetExecutablePath().parent_path();
-		}
+	std::filesystem::path Paths::GetExecutableDir()
+	{
+		return GetExecutablePath().parent_path();
+	}
 
-		// @todo: Find a more elegant way of actually determining this directory.
-		// Also, only do it once.
-		static std::filesystem::path FindProjectRoot()
-		{
-			std::filesystem::path current = GetExecutableDir();
+	// @todo: Find a more elegant way of actually determining this directory.
+	// Also, only do it once.
+	std::filesystem::path Paths::FindProjectRoot()
+	{
+		std::filesystem::path current = GetExecutableDir();
 
-			while (!current.empty())
+		while (!current.empty())
+		{
+			const std::filesystem::path assetsDir = current / "Assets";
+
+			if (std::filesystem::exists(assetsDir) && std::filesystem::is_directory(assetsDir))
 			{
-				const std::filesystem::path assetsDir = current / "Assets";
-
-				if (std::filesystem::exists(assetsDir) && std::filesystem::is_directory(assetsDir))
-				{
-					return current;
-				}
-
-				const std::filesystem::path parent = current.parent_path();
-				if (parent == current)
-				{
-					break;
-				}
-
-				current = parent;
+				return current;
 			}
 
-			throw std::runtime_error("Could not locate project root containing an Assets directory.");
+			const std::filesystem::path parent = current.parent_path();
+			if (parent == current)
+			{
+				break;
+			}
+
+			current = parent;
 		}
 
-		static std::filesystem::path GetAssetsDir()
-		{
-			return FindProjectRoot() / "Assets";
-		}
+		throw std::runtime_error("Could not locate project root containing an Assets directory.");
+	}
 
-		static std::filesystem::path GetTexturesDir()
-		{
-			return GetAssetsDir() / "Textures";
-		}
-	};
+	std::filesystem::path Paths::GetAssetsDir()
+	{
+		return FindProjectRoot() / "Assets";
+	}
+
+	std::filesystem::path Paths::GetTexturesDir()
+	{
+		return GetAssetsDir() / "Textures";
+	}
+
+	std::filesystem::path Paths::GetShadersDir()
+	{
+		return FindProjectRoot() / "Shaders";
+	}
 }
 
 namespace

@@ -21,6 +21,16 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/norm.hpp>
 
+std::filesystem::file_time_type TryGetLastWriteTime(
+	const std::filesystem::path& path,
+	bool& bSuccess)
+{
+	std::error_code ec;
+	const auto time = std::filesystem::last_write_time(path, ec);
+	bSuccess = !ec;
+	return time;
+}
+
 namespace Nyx
 {
 	VulkanRenderer::VulkanRenderer()
@@ -36,6 +46,30 @@ namespace Nyx
 		ASSERT(Swapchain.GetMinImageCount() >= 2 && "Failed to fulfill VulkanImGuiBackend requirements.");
 		ASSERT(Swapchain.GetImageCount() >= Swapchain.GetMinImageCount() && "Failed to fulfill VulkanImGuiBackend requirements.");
 		SetupImGui();
+
+		{
+			GridShaderHotReload.VertSourcePath = Nyx::Paths::GetShadersDir() / "Grid.vert";
+			GridShaderHotReload.FragSourcePath = Nyx::Paths::GetShadersDir() / "Grid.frag";
+			GridShaderHotReload.VertSpvPath = Nyx::Paths::GetShadersDir() / "Grid.vert.spv";
+			GridShaderHotReload.FragSpvPath = Nyx::Paths::GetShadersDir() / "Grid.frag.spv";
+
+			LOG_INFO("Grid vert source: {}", GridShaderHotReload.VertSourcePath.string());
+			LOG_INFO("Grid frag source: {}", GridShaderHotReload.FragSourcePath.string());
+			LOG_INFO("Grid vert spv: {}", GridShaderHotReload.VertSpvPath.string());
+			LOG_INFO("Grid frag spv: {}", GridShaderHotReload.FragSpvPath.string());
+
+			bool bVertOk = false;
+			bool bFragOk = false;
+
+			GridShaderHotReload.LastVertWriteTime =
+				TryGetLastWriteTime(GridShaderHotReload.VertSourcePath, bVertOk);
+
+			GridShaderHotReload.LastFragWriteTime =
+				TryGetLastWriteTime(GridShaderHotReload.FragSourcePath, bFragOk);
+
+			ASSERT(bVertOk && "Grid vertex shader source file not found.");
+			ASSERT(bFragOk && "Grid fragment shader source file not found.");
+		}
 
 		SceneViewport.Initialize(Context, 1280, 720, vk::Format::eR8G8B8A8Unorm);
 		CreateTestTextureData();
@@ -137,6 +171,13 @@ namespace Nyx
 
 		// Only reset once we know we will submit work
 		Context.GetDevice().resetFences({ *InFlightFence });
+
+		if (GridShaderHotReload.bReloadPending)
+		{
+			GridPipeline = nullptr;
+			CreateGridPipeline();
+			GridShaderHotReload.bReloadPending = false;
+		}
 
 		// 3) Record command buffer for this image
 		vk::raii::CommandBuffer& cmd = CommandBuffers[imageIndex];
@@ -1025,6 +1066,46 @@ namespace Nyx
 		const float deltaTime = static_cast<float>(currentTime - lastTime);
 		lastTime = currentTime;
 		return deltaTime;
+	}
+
+	bool VulkanRenderer::RecompileGridShaders()
+	{
+		const std::string vertCmd =
+			"glslc \"" + GridShaderHotReload.VertSourcePath.string() +
+			"\" -o \"" + GridShaderHotReload.VertSpvPath.string() + "\"";
+
+		const std::string fragCmd =
+			"glslc \"" + GridShaderHotReload.FragSourcePath.string() +
+			"\" -o \"" + GridShaderHotReload.FragSpvPath.string() + "\"";
+
+		const int vertResult = std::system(vertCmd.c_str());
+		const int fragResult = std::system(fragCmd.c_str());
+
+		return vertResult == 0 && fragResult == 0;
+	}
+
+	void VulkanRenderer::PollGridShaderHotReload()
+	{
+		const auto newVertTime = std::filesystem::last_write_time(GridShaderHotReload.VertSourcePath);
+		const auto newFragTime = std::filesystem::last_write_time(GridShaderHotReload.FragSourcePath);
+
+		const bool bChanged =
+			newVertTime != GridShaderHotReload.LastVertWriteTime ||
+			newFragTime != GridShaderHotReload.LastFragWriteTime;
+
+		if (!bChanged)
+		{
+			return;
+		}
+
+		GridShaderHotReload.LastVertWriteTime = newVertTime;
+		GridShaderHotReload.LastFragWriteTime = newFragTime;
+
+		const bool bCompileOk = RecompileGridShaders();
+		if (bCompileOk)
+		{
+			GridShaderHotReload.bReloadPending = true;
+		}
 	}
 
 	void VulkanRenderer::OnMouseWheelScrolled(double yOffset)

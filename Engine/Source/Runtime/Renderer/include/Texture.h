@@ -9,6 +9,29 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <filesystem>
+
+// @todo: Move away from the hardcoded location of textures
+namespace Nyx
+{
+	class Paths
+	{
+	public:
+		static std::filesystem::path GetExecutablePath();
+
+		static std::filesystem::path GetExecutableDir();
+
+		// @todo: Find a more elegant way of actually determining this directory.
+		// Also, only do it once.
+		static std::filesystem::path FindProjectRoot();
+
+		static std::filesystem::path GetAssetsDir();
+
+		static std::filesystem::path GetTexturesDir();
+
+		static std::filesystem::path GetShadersDir();
+	};
+}
 
 namespace Nyx
 {
