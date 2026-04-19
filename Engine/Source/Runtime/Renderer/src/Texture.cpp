@@ -63,7 +63,8 @@ namespace Nyx
 
 	std::filesystem::path Paths::GetShadersDir()
 	{
-		return FindProjectRoot() / "Shaders";
+		// @todo: Make it clear we're getting the Engine's shaders
+		return FindProjectRoot() / "Engine" / "Shaders";
 	}
 }
 
