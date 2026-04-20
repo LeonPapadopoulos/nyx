@@ -678,7 +678,18 @@ namespace Nyx
 		multisampling.rasterizationSamples = vk::SampleCountFlagBits::e1;
 
 		vk::PipelineColorBlendAttachmentState colorBlendAttachment{};
-		colorBlendAttachment.blendEnable = VK_FALSE;
+		colorBlendAttachment.blendEnable = VK_TRUE;
+
+		// Add source color on top of destination, modulated by source alpha
+		colorBlendAttachment.srcColorBlendFactor = vk::BlendFactor::eSrcAlpha;
+		colorBlendAttachment.dstColorBlendFactor = vk::BlendFactor::eOne;
+		colorBlendAttachment.colorBlendOp = vk::BlendOp::eAdd;
+
+		// Alpha channel itself does not matter much here
+		colorBlendAttachment.srcAlphaBlendFactor = vk::BlendFactor::eOne;
+		colorBlendAttachment.dstAlphaBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
+		colorBlendAttachment.alphaBlendOp = vk::BlendOp::eAdd;
+
 		colorBlendAttachment.colorWriteMask =
 			vk::ColorComponentFlagBits::eR |
 			vk::ColorComponentFlagBits::eG |

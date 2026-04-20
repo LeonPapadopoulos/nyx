@@ -32,6 +32,18 @@ float GridLine(vec2 worldPos, float spacing, float lineWidthPx)
     return 1.0 - clamp(line / lineWidthPx, 0.0, 1.0);
 }
 
+float GridLevelVisibility(vec2 planePos, float spacing)
+{
+    vec2 ddx = dFdx(planePos);
+    vec2 ddy = dFdy(planePos);
+
+    float worldUnitsPerPixel = max(length(ddx), length(ddy));
+    float pixelsPerCell = spacing / max(worldUnitsPerPixel, 1e-6);
+
+    // 0 when a cell is subpixel, 1 when it is comfortably resolvable
+    return smoothstep(0.8, 2.0, pixelsPerCell);
+}
+
 void main()
 {
     // For Vulkan-style depth with GLM_FORCE_DEPTH_ZERO_TO_ONE:
@@ -72,6 +84,10 @@ void main()
 
     float minor = GridLine(gridPos, 0.5, 1.0);
     float major = GridLine(gridPos, 2.5, 1.2);
+
+    // Fade out grid levels once they become too dense on screen.
+    minor *= GridLevelVisibility(gridPos, 0.5);
+    major *= GridLevelVisibility(gridPos, 2.5);
 
     float axisX = 1.0 - clamp(abs(worldPos.z) / max(fwidth(worldPos.z), 1e-6), 0.0, 1.0);
     float axisZ = 1.0 - clamp(abs(worldPos.x) / max(fwidth(worldPos.x), 1e-6), 0.0, 1.0);
