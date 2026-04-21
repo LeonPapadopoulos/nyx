@@ -7,6 +7,7 @@
 #include "VulkanViewportTarget.h"
 #include "Mesh.h"
 #include "Texture.h"
+#include "CubemapTexture.h"
 #include <imgui.h>
 
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -29,6 +30,11 @@ namespace Nyx
 		glm::vec4 CameraWorldPos;    // xyz used
 		glm::vec4 LightDirectionWS;  // xyz used, normalized
 		glm::vec4 LightColor;        // rgb = light color, a = ambient strength
+	};
+
+	struct SkyboxUBO
+	{
+		glm::mat4 ViewProj = glm::mat4(1.0f);
 	};
 
 	struct SceneCamera
@@ -151,6 +157,16 @@ namespace Nyx
 		void CreateScenePipeline();
 		void CreateGridPipeline();
 
+		void CreateSkyboxResources();
+		void CreateSkyboxUniformBuffer();
+		void CreateSkyboxDescriptorSetLayout();
+		void CreateSkyboxDescriptorPool();
+		void AllocateSkyboxDescriptorSets();
+		void UpdateSkyboxDescriptorSet();
+		void UpdateSkyboxUniforms(float deltaTime);
+		void CreateSkyboxPipeline();
+		void DrawSkybox(vk::raii::CommandBuffer& cmd);
+
 		vk::raii::ShaderModule CreateShaderModule(const std::vector<uint32_t>& spirv);
 		std::vector<uint32_t> ReadSpirvFile(const std::string& path);
 
@@ -200,10 +216,24 @@ namespace Nyx
 		vk::raii::Buffer SceneUniformBuffer{ nullptr };
 		vk::raii::DeviceMemory SceneUniformBufferMemory{ nullptr };
 
+		// Grid
 		vk::raii::PipelineLayout GridPipelineLayout{ nullptr };
 		vk::raii::Pipeline GridPipeline{ nullptr };
 
 		ShaderHotReloadState GridShaderHotReload;
+
+		// Skybox
+		CubemapTexture SkyboxCubemap{ "Skybox01" };
+
+		vk::raii::Buffer SkyboxUniformBuffer{ nullptr };
+		vk::raii::DeviceMemory SkyboxUniformBufferMemory{ nullptr };
+
+		vk::raii::DescriptorSetLayout SkyboxDescriptorSetLayout{ nullptr };
+		vk::raii::DescriptorPool SkyboxDescriptorPool{ nullptr };
+		vk::raii::DescriptorSets SkyboxDescriptorSets{ nullptr };
+
+		vk::raii::PipelineLayout SkyboxPipelineLayout{ nullptr };
+		vk::raii::Pipeline SkyboxPipeline{ nullptr };
 
 		// Mesh
 		Mesh CubeMesh = Mesh("Cube");
