@@ -977,6 +977,7 @@ namespace Nyx
 		poolSizes[1].descriptorCount = 1;
 
 		vk::DescriptorPoolCreateInfo poolInfo{};
+		poolInfo.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
 		poolInfo.maxSets = 1;
 		poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
 		poolInfo.pPoolSizes = poolSizes.data();
