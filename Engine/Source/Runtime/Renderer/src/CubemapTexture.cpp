@@ -331,6 +331,11 @@ namespace Nyx
 		const std::filesystem::path cubemapDir =
 			Nyx::Paths::GetAssetsDir() / "Textures" / "Skybox" / GetId();
 
+		// We expect the following layouting
+		//		  | top	   |
+		//	left  |	front  |  right  |	back
+		//		  |	bottom |
+
 		const bool bLoaded =
 			LoadFaceImageData(cubemapDir / "right.png", outFaces[0]) &&
 			LoadFaceImageData(cubemapDir / "left.png", outFaces[1]) &&
