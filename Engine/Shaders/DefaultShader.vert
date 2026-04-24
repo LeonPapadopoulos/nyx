@@ -20,6 +20,7 @@ layout(location = 3) in vec3 aNormal;
 layout(location = 0) out vec3 vColor;
 layout(location = 1) out vec2 vUV;
 layout(location = 2) out vec3 vNormalWS;
+layout(location = 3) out vec3 vWorldPos;
 
 void main()
 {
@@ -31,4 +32,6 @@ void main()
 
     mat3 normalMatrix = mat3(transpose(inverse(uModel)));
     vNormalWS = normalize(normalMatrix * aNormal);
+
+    vWorldPos = worldPos.xyz;
 }

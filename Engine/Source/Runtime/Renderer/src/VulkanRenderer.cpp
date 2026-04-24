@@ -114,16 +114,22 @@ namespace Nyx
 			ASSERT(bFragOk && "Failed to stat Grid.frag");
 		}
 
-		SceneViewport.Initialize(Context, 1280, 720, vk::Format::eR8G8B8A8Unorm);
 		CreateTestTextureData();
-		CreateSceneUniformBuffer();
-		CreateSceneDescriptors();
-		CreateGridPipeline();
 		CreateTestMeshData();
 		CreateTestMeshBuffers();
-		CreateScenePipeline();
 
+		SceneViewport.Initialize(Context, 1280, 720, vk::Format::eR8G8B8A8Unorm);
+	
+		// With Skybox reflections being a thing;
+		// Skybox cubemap needs to be loaded before updating scene descriptor sets
 		CreateSkyboxResources();
+		
+		CreateSceneUniformBuffer();
+		CreateSceneDescriptors();
+		UpdateSceneDescriptorSets();
+		CreateGridPipeline();
+
+		CreateScenePipeline();
 	}
 
 	void VulkanRenderer::Shutdown()
@@ -1095,11 +1101,17 @@ namespace Nyx
 		textureBinding.descriptorCount = 1;
 		textureBinding.stageFlags = vk::ShaderStageFlagBits::eFragment;
 
+		vk::DescriptorSetLayoutBinding cubemapBinding{};
+		cubemapBinding.binding = 2;
+		cubemapBinding.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+		cubemapBinding.descriptorCount = 1;
+		cubemapBinding.stageFlags = vk::ShaderStageFlagBits::eFragment;
 
-		std::array<vk::DescriptorSetLayoutBinding, 2> bindings =
+		std::array<vk::DescriptorSetLayoutBinding, 3> bindings =
 		{
 			uboBinding,
-			textureBinding
+			textureBinding,
+			cubemapBinding
 		};
 
 		vk::DescriptorSetLayoutCreateInfo layoutInfo{};
@@ -1108,7 +1120,7 @@ namespace Nyx
 
 		SceneDescriptorSetLayout = vk::raii::DescriptorSetLayout(Context.GetDevice(), layoutInfo);
 
-		vk::DescriptorPoolSize poolSizes[2]{};
+		vk::DescriptorPoolSize poolSizes[3]{};
 
 		poolSizes[0].type = vk::DescriptorType::eUniformBuffer;
 		poolSizes[0].descriptorCount = 1; // @todo: FrameCount;
@@ -1116,10 +1128,13 @@ namespace Nyx
 		poolSizes[1].type = vk::DescriptorType::eCombinedImageSampler;
 		poolSizes[1].descriptorCount = 1; // @todo: FrameCount;
 
+		poolSizes[2].type = vk::DescriptorType::eCombinedImageSampler;
+		poolSizes[2].descriptorCount = 1; // @todo: FrameCount;
+
 		vk::DescriptorPoolCreateInfo poolInfo{};
 		poolInfo.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
 		poolInfo.maxSets = 1; // @todo: FrameCount;
-		poolInfo.poolSizeCount = 2;
+		poolInfo.poolSizeCount = poolInfo.poolSizeCount = static_cast<uint32_t>(std::size(poolSizes));
 		poolInfo.pPoolSizes = poolSizes;
 
 		SceneDescriptorPool = vk::raii::DescriptorPool(Context.GetDevice(), poolInfo);
@@ -1157,6 +1172,49 @@ namespace Nyx
 		writes[1].descriptorType = vk::DescriptorType::eCombinedImageSampler;
 		writes[1].descriptorCount = 1;
 		writes[1].pImageInfo = &imageInfo;
+
+		Context.GetDevice().updateDescriptorSets(writes, {});
+	}
+
+	void VulkanRenderer::UpdateSceneDescriptorSets()
+	{
+		vk::DescriptorBufferInfo bufferInfo{};
+		bufferInfo.buffer = *SceneUniformBuffer;
+		bufferInfo.offset = 0;
+		bufferInfo.range = sizeof(SceneUBO);
+
+		vk::DescriptorImageInfo albedoImageInfo{};
+		albedoImageInfo.sampler = TestTexture.GetSampler();
+		albedoImageInfo.imageView = TestTexture.GetImageView();
+		albedoImageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+
+		vk::DescriptorImageInfo cubemapImageInfo{};
+		cubemapImageInfo.sampler = SkyboxCubemap.GetSampler();
+		cubemapImageInfo.imageView = SkyboxCubemap.GetImageView();
+		cubemapImageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+
+		std::array<vk::WriteDescriptorSet, 3> writes{};
+
+		writes[0].dstSet = *SceneDescriptorSets.front();
+		writes[0].dstBinding = 0;
+		writes[0].dstArrayElement = 0;
+		writes[0].descriptorType = vk::DescriptorType::eUniformBuffer;
+		writes[0].descriptorCount = 1;
+		writes[0].pBufferInfo = &bufferInfo;
+
+		writes[1].dstSet = *SceneDescriptorSets.front();
+		writes[1].dstBinding = 1;
+		writes[1].dstArrayElement = 0;
+		writes[1].descriptorType = vk::DescriptorType::eCombinedImageSampler;
+		writes[1].descriptorCount = 1;
+		writes[1].pImageInfo = &albedoImageInfo;
+
+		writes[2].dstSet = *SceneDescriptorSets.front();
+		writes[2].dstBinding = 2;
+		writes[2].dstArrayElement = 0;
+		writes[2].descriptorType = vk::DescriptorType::eCombinedImageSampler;
+		writes[2].descriptorCount = 1;
+		writes[2].pImageInfo = &cubemapImageInfo;
 
 		Context.GetDevice().updateDescriptorSets(writes, {});
 	}

@@ -171,6 +171,7 @@ namespace Nyx
 		std::vector<uint32_t> ReadSpirvFile(const std::string& path);
 
 		void CreateSceneDescriptors();
+		void UpdateSceneDescriptorSets();
 		void CreateSceneUniformBuffer();
 		void UpdateSceneUniforms(float deltaTime);
 
