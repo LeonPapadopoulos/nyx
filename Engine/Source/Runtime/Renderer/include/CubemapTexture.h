@@ -38,7 +38,6 @@ namespace Nyx
 		void CreateImageView(VulkanContext& context);
 		void CreateSampler(VulkanContext& context);
 
-
 	private:
 		VulkanContext* BoundContext = nullptr;
 		vk::Format Format = vk::Format::eR8G8B8A8Srgb;

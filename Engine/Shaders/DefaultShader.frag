@@ -36,6 +36,7 @@ void main()
     vec3 lighting = ambient + (NdotL * uLightColor.rgb);
     vec3 litBaseColor = albedo.rgb * vColor * lighting;
 
+    // Simple Skybox reflection
     vec3 R = reflect(-V, N);
     vec3 reflectedColor = texture(uSkybox, R).rgb;
 
