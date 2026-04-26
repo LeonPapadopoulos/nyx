@@ -22,7 +22,6 @@ namespace Nyx
 	{
 		glm::mat4 ViewProj;
 		glm::mat4 InvViewProj;
-		glm::mat4 Model;
 
 		glm::vec2 ViewportSize;
 		glm::vec2 Padding0;
@@ -30,6 +29,47 @@ namespace Nyx
 		glm::vec4 CameraWorldPos;    // xyz used
 		glm::vec4 LightDirectionWS;  // xyz used, normalized
 		glm::vec4 LightColor;        // rgb = light color, a = ambient strength
+	};
+
+	struct ObjectPushConstants
+	{
+		glm::mat4 Model{ 1.0f };
+
+		// x = base reflectivity
+		// y = use texture? (1.0 = yes, 0.0 = no)
+		// z,w = reserved
+		glm::vec4 Params{ 0.0f, 1.0f, 0.0f, 0.0f };
+
+		// rgb = per-object tint
+		// a   = unused for now
+		glm::vec4 Tint{ 1.0f, 1.0f, 1.0f, 1.0f };
+	};
+
+	struct Transform
+	{
+		glm::vec3 Position{ 0.0f, 0.0f, 0.0f };
+		glm::vec3 RotationRadians{ 0.0f, 0.0f, 0.0f };
+		glm::vec3 Scale{ 1.0f, 1.0f, 1.0f };
+
+		glm::mat4 ToMatrix() const
+		{
+			glm::mat4 m = glm::translate(glm::mat4(1.0f), Position);
+			m = glm::rotate(m, RotationRadians.x, glm::vec3(1.0f, 0.0f, 0.0f));
+			m = glm::rotate(m, RotationRadians.y, glm::vec3(0.0f, 1.0f, 0.0f));
+			m = glm::rotate(m, RotationRadians.z, glm::vec3(0.0f, 0.0f, 1.0f));
+			m = glm::scale(m, Scale);
+			return m;
+		}
+	};
+
+	struct RenderObject
+	{
+		Nyx::Mesh* MeshAsset = nullptr;
+		Transform LocalTransform{};
+
+		float Reflectivity = 0.0f;
+		bool bUseTexture = true;
+		glm::vec3 Tint{ 1.0f, 1.0f, 1.0f };
 	};
 
 	struct SkyboxUBO
@@ -154,6 +194,10 @@ namespace Nyx
 		void RecreateSwapChain();
 		void WaitForValidFramebufferSize();
 
+		void CreateSceneObjects();
+		void UpdateSceneObjects(float deltaTime);
+		void DrawSceneObjects(vk::raii::CommandBuffer& cmd);
+
 		void CreateScenePipeline();
 		void CreateGridPipeline();
 
@@ -216,6 +260,9 @@ namespace Nyx
 
 		vk::raii::Buffer SceneUniformBuffer{ nullptr };
 		vk::raii::DeviceMemory SceneUniformBufferMemory{ nullptr };
+
+		std::vector<RenderObject> SceneObjects;
+		float SceneTime = 0.0f;
 
 		// Grid
 		vk::raii::PipelineLayout GridPipelineLayout{ nullptr };

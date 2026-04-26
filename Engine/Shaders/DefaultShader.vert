@@ -4,13 +4,19 @@ layout(binding = 0) uniform SceneUBO
 {
     mat4 uViewProj;
     mat4 uInvViewProj;
-    mat4 uModel;
     vec2 uViewportSize;
     vec2 _Padding0;
     vec4 uCameraWorldPos;
     vec4 uLightDirectionWS;
     vec4 uLightColor;
 };
+
+layout(push_constant) uniform ObjectPushConstants
+{
+    mat4 uModel;
+    vec4 uParams;
+    vec4 uTint;
+} PC;
 
 layout(location = 0) in vec3 aPosition;
 layout(location = 1) in vec3 aColor;
@@ -24,13 +30,13 @@ layout(location = 3) out vec3 vWorldPos;
 
 void main()
 {
-    vec4 worldPos = uModel * vec4(aPosition, 1.0);
+    vec4 worldPos = PC.uModel * vec4(aPosition, 1.0);
     gl_Position = uViewProj * worldPos;
 
     vColor = aColor;
     vUV = aUV;
 
-    mat3 normalMatrix = mat3(transpose(inverse(uModel)));
+    mat3 normalMatrix = mat3(transpose(inverse(PC.uModel)));
     vNormalWS = normalize(normalMatrix * aNormal);
 
     vWorldPos = worldPos.xyz;

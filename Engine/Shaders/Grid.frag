@@ -4,7 +4,6 @@ layout(binding = 0) uniform SceneUBO
 {
     mat4 uViewProj;
     mat4 uInvViewProj;
-    mat4 uModel;
     vec2 uViewportSize;
     vec2 _Padding0;
     vec4 uCameraWorldPos;

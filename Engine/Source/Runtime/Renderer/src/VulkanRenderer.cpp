@@ -118,6 +118,8 @@ namespace Nyx
 		CreateTestMeshData();
 		CreateTestMeshBuffers();
 
+		CreateSceneObjects();
+
 		SceneViewport.Initialize(Context, 1280, 720, vk::Format::eR8G8B8A8Unorm);
 	
 		// With Skybox reflections being a thing;
@@ -270,32 +272,35 @@ namespace Nyx
 
 				TickCameraFromInput(deltaTime);
 				UpdateSceneUniforms(deltaTime);
+				UpdateSceneObjects(deltaTime);
 				UpdateSkyboxUniforms(deltaTime);
 
-				// Draw Scene Content
+				// 1. Opaque scene objects
 				{
-					cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *ScenePipeline);
-					cmd.bindDescriptorSets(
-						vk::PipelineBindPoint::eGraphics,
-						*ScenePipelineLayout,
-						0,
-						{ *SceneDescriptorSets.front() },
-						{}
-					);
+					//cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *ScenePipeline);
+					//cmd.bindDescriptorSets(
+					//	vk::PipelineBindPoint::eGraphics,
+					//	*ScenePipelineLayout,
+					//	0,
+					//	{ *SceneDescriptorSets.front() },
+					//	{}
+					//);
 
-					// Draw Cube Mesh
-					vk::DeviceSize offsets[] = { 0 };
-					cmd.bindVertexBuffers(0, { CubeMesh.GetVertexBuffer() }, offsets);
-					cmd.bindIndexBuffer(CubeMesh.GetIndexBuffer(), 0, vk::IndexType::eUint32);
-					cmd.drawIndexed(CubeMesh.GetIndexCount(), 1, 0, 0, 0);
+					//// Draw Cube Mesh
+					//vk::DeviceSize offsets[] = { 0 };
+					//cmd.bindVertexBuffers(0, { CubeMesh.GetVertexBuffer() }, offsets);
+					//cmd.bindIndexBuffer(CubeMesh.GetIndexBuffer(), 0, vk::IndexType::eUint32);
+					//cmd.drawIndexed(CubeMesh.GetIndexCount(), 1, 0, 0, 0);
+					
+					DrawSceneObjects(cmd);
 				}
 
-				// Skybox
+				// 2. Skybox
 				{
 					DrawSkybox(cmd);
 				}
 
-				// Scene Grid
+				// 3. Grid
 				{
 					// Draw Grid after opaque geometry, so depth test can occlude it
 
@@ -576,6 +581,105 @@ namespace Nyx
 		}
 	}
 
+	void VulkanRenderer::CreateSceneObjects()
+	{
+		SceneObjects.clear();
+
+		// 1) Textured cube
+		{
+			RenderObject obj{};
+			obj.MeshAsset = &CubeMesh;
+			obj.LocalTransform.Position = glm::vec3(-2.0f, 0.0f, 0.0f);
+			obj.LocalTransform.Scale = glm::vec3(1.0f);
+			obj.Reflectivity = 0.0f;
+			obj.bUseTexture = true;
+			obj.Tint = glm::vec3(1.0f);
+			SceneObjects.push_back(obj);
+		}
+
+		// 2) Reflective textured cube
+		{
+			RenderObject obj{};
+			obj.MeshAsset = &CubeMesh;
+			obj.LocalTransform.Position = glm::vec3(0.0f, 0.0f, 0.0f);
+			obj.LocalTransform.Scale = glm::vec3(1.0f);
+			obj.Reflectivity = 0.35f;
+			obj.bUseTexture = true;
+			obj.Tint = glm::vec3(1.0f);
+			SceneObjects.push_back(obj);
+		}
+
+		// 3) Colored cube without texture
+		{
+			RenderObject obj{};
+			obj.MeshAsset = &CubeMesh;
+			obj.LocalTransform.Position = glm::vec3(2.0f, 0.0f, 0.0f);
+			obj.LocalTransform.Scale = glm::vec3(1.0f);
+			obj.Reflectivity = 0.05f;
+			obj.bUseTexture = false;
+			obj.Tint = glm::vec3(0.2f, 0.8f, 1.0f);
+			SceneObjects.push_back(obj);
+		}
+	}
+
+	void VulkanRenderer::UpdateSceneObjects(float deltaTime)
+	{
+		SceneTime += deltaTime;
+
+		if (SceneObjects.size() >= 3)
+		{
+			SceneObjects[0].LocalTransform.RotationRadians.y = SceneTime * 0.7f;
+			SceneObjects[1].LocalTransform.RotationRadians.y = SceneTime * 1.1f;
+			SceneObjects[1].LocalTransform.RotationRadians.x = SceneTime * 0.35f;
+			SceneObjects[2].LocalTransform.RotationRadians.z = SceneTime * 0.8f;
+		}
+	}
+
+	void VulkanRenderer::DrawSceneObjects(vk::raii::CommandBuffer& cmd)
+	{
+		cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *ScenePipeline);
+
+		cmd.bindDescriptorSets(
+			vk::PipelineBindPoint::eGraphics,
+			*ScenePipelineLayout,
+			0,
+			{ *SceneDescriptorSets.front() },
+			{}
+		);
+
+		for (const RenderObject& obj : SceneObjects)
+		{
+			if (!obj.MeshAsset)
+			{
+				continue;
+			}
+
+			ObjectPushConstants pushConstants{};
+			pushConstants.Model = obj.LocalTransform.ToMatrix();
+			pushConstants.Params = glm::vec4(
+				obj.Reflectivity,
+				obj.bUseTexture ? 1.0f : 0.0f,
+				0.0f,
+				0.0f
+			);
+			pushConstants.Tint = glm::vec4(obj.Tint, 1.0f);
+
+			std::array<ObjectPushConstants, 1> values{ pushConstants };
+
+			cmd.pushConstants<ObjectPushConstants>(
+				*ScenePipelineLayout,
+				vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
+				0,
+				values
+			);
+
+			vk::DeviceSize offsets[] = { 0 };
+			cmd.bindVertexBuffers(0, { obj.MeshAsset->GetVertexBuffer() }, offsets);
+			cmd.bindIndexBuffer(obj.MeshAsset->GetIndexBuffer(), 0, vk::IndexType::eUint32);
+			cmd.drawIndexed(obj.MeshAsset->GetIndexCount(), 1, 0, 0, 0);
+		}
+	}
+
 	void VulkanRenderer::CreateScenePipeline()
 	{
 		// File directory relative to the working directory of the .exe
@@ -658,10 +762,17 @@ namespace Nyx
 		depthStencil.depthBoundsTestEnable = VK_FALSE;
 		depthStencil.stencilTestEnable = VK_FALSE;
 
+		vk::PushConstantRange pushConstantRange{};
+		pushConstantRange.stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment;
+		pushConstantRange.offset = 0;
+		pushConstantRange.size = sizeof(ObjectPushConstants);
+
 		vk::PipelineLayoutCreateInfo pipelineLayoutInfo{};
 		vk::DescriptorSetLayout setLayouts[] = { *SceneDescriptorSetLayout };
 		pipelineLayoutInfo.setLayoutCount = 1;
 		pipelineLayoutInfo.pSetLayouts = setLayouts;
+		pipelineLayoutInfo.pushConstantRangeCount = 1;
+		pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
 
 		ScenePipelineLayout = vk::raii::PipelineLayout(Context.GetDevice(), pipelineLayoutInfo);
 
@@ -1246,9 +1357,6 @@ namespace Nyx
 
 	void VulkanRenderer::UpdateSceneUniforms(float deltaTime)
 	{
-		static float t = 0.0f;
-		t += deltaTime;
-
 		const vk::Extent2D extent = SceneViewport.GetExtent();
 		Camera.AspectRatio = extent.height > 0
 			? static_cast<float>(extent.width) / static_cast<float>(extent.height)
@@ -1257,7 +1365,6 @@ namespace Nyx
 		SceneUBO ubo{};
 		ubo.ViewProj = Camera.GetViewProjectionMatrix();
 		ubo.InvViewProj = glm::inverse(ubo.ViewProj);
-		ubo.Model = glm::rotate(glm::mat4(1.0f), t, glm::vec3(0.0f, 1.0f, 0.0f));
 		ubo.ViewportSize = glm::vec2(static_cast<float>(extent.width), static_cast<float>(extent.height));
 
 		ubo.CameraWorldPos = glm::vec4(Camera.Position, 1.0f);
