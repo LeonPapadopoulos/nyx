@@ -93,6 +93,9 @@ namespace Nyx
 		ASSERT(Swapchain.GetImageCount() >= Swapchain.GetMinImageCount() && "Failed to fulfill VulkanImGuiBackend requirements.");
 		SetupImGui();
 
+		// ------------------------------------------------------------------------------------------------------
+		// Shader hot reload Setup
+		// ------------------------------------------------------------------------------------------------------
 		std::filesystem::create_directories(Nyx::Paths::GetExecutableDir() / "Shaders");
 		{
 			GridShaderHotReload.VertSourcePath = Nyx::Paths::GetShadersDir() / "Grid.vert";
@@ -114,24 +117,36 @@ namespace Nyx
 			ASSERT(bFragOk && "Failed to stat Grid.frag");
 		}
 
+		// ------------------------------------------------------------------------------------------------------
+		// CPU / GPU resources needed by rendering
+		// ------------------------------------------------------------------------------------------------------
 		CreateTestTextureData();
 		CreateTestMeshData();
 		CreateTestMeshBuffers();
 
-		CreateSceneObjects();
-
+		// Render pass / framebuffer target must exist before pipelines
 		SceneViewport.Initialize(Context, 1280, 720, vk::Format::eR8G8B8A8Unorm);
+		
+		// Global scene resources
+		CreateSceneUniformBuffer();
 	
 		// With Skybox reflections being a thing;
 		// Skybox cubemap needs to be loaded before updating scene descriptor sets
 		CreateSkyboxResources();
 		
-		CreateSceneUniformBuffer();
+		// Descriptor(Sets) depend on SceneUniformBuffer, TestTexture & SkyboxCubemap
 		CreateSceneDescriptors();
 		UpdateSceneDescriptorSets();
+
+		// Pipelines depend on SceneViewport & DescriptorSetLayouts
+		CreateScenePipeline();
 		CreateGridPipeline();
 
-		CreateScenePipeline();
+		// Materials depend on ScenePipeline, ScenePipelineLayout & SceneDescriptorSets
+		CreateMaterials();
+
+		// RenderObjects depend on Meshes & Materials
+		CreateRenderObjects();
 	}
 
 	void VulkanRenderer::Shutdown()
@@ -272,7 +287,7 @@ namespace Nyx
 
 				TickCameraFromInput(deltaTime);
 				UpdateSceneUniforms(deltaTime);
-				UpdateSceneObjects(deltaTime);
+				UpdateRenderObjects(deltaTime);
 				UpdateSkyboxUniforms(deltaTime);
 
 				// 1. Opaque scene objects
@@ -292,7 +307,7 @@ namespace Nyx
 					//cmd.bindIndexBuffer(CubeMesh.GetIndexBuffer(), 0, vk::IndexType::eUint32);
 					//cmd.drawIndexed(CubeMesh.GetIndexCount(), 1, 0, 0, 0);
 					
-					DrawSceneObjects(cmd);
+					DrawRenderObjects(cmd);
 				}
 
 				// 2. Skybox
@@ -581,96 +596,114 @@ namespace Nyx
 		}
 	}
 
-	void VulkanRenderer::CreateSceneObjects()
+	void VulkanRenderer::CreateMaterials()
 	{
-		SceneObjects.clear();
+		TexturedMaterial.Pipeline = &ScenePipeline;
+		TexturedMaterial.PipelineLayout = &ScenePipelineLayout;
+		TexturedMaterial.DescriptorSet = &SceneDescriptorSets.front();
+		TexturedMaterial.Reflectivity = 0.0f;
+		TexturedMaterial.bUseTexture = true;
+		TexturedMaterial.Tint = glm::vec3(1.0f, 1.0f, 1.0f);
 
-		// 1) Textured cube
+		ReflectiveMaterial.Pipeline = &ScenePipeline;
+		ReflectiveMaterial.PipelineLayout = &ScenePipelineLayout;
+		ReflectiveMaterial.DescriptorSet = &SceneDescriptorSets.front();
+		ReflectiveMaterial.Reflectivity = 0.35f;
+		ReflectiveMaterial.bUseTexture = true;
+		ReflectiveMaterial.Tint = glm::vec3(1.0f, 1.0f, 1.0f);
+
+		UntexturedMaterial.Pipeline = &ScenePipeline;
+		UntexturedMaterial.PipelineLayout = &ScenePipelineLayout;
+		UntexturedMaterial.DescriptorSet = &SceneDescriptorSets.front();
+		UntexturedMaterial.Reflectivity = 0.05f;
+		UntexturedMaterial.bUseTexture = false;
+		UntexturedMaterial.Tint = glm::vec3(0.2f, 0.8f, 1.0f);
+	}
+
+	void VulkanRenderer::CreateRenderObjects()
+	{
+		RenderObjects.clear();
+
 		{
 			RenderObject obj{};
 			obj.MeshAsset = &CubeMesh;
-			obj.LocalTransform.Position = glm::vec3(-2.0f, 0.0f, 0.0f);
-			obj.LocalTransform.Scale = glm::vec3(1.0f);
-			obj.Reflectivity = 0.0f;
-			obj.bUseTexture = true;
-			obj.Tint = glm::vec3(1.0f);
-			SceneObjects.push_back(obj);
+			obj.MaterialAsset = &TexturedMaterial;
+			obj.WorldTransform = glm::translate(glm::mat4(1.0f), glm::vec3(-2.0f, 0.0f, 0.0f));
+			RenderObjects.push_back(obj);
 		}
 
-		// 2) Reflective textured cube
 		{
 			RenderObject obj{};
 			obj.MeshAsset = &CubeMesh;
-			obj.LocalTransform.Position = glm::vec3(0.0f, 0.0f, 0.0f);
-			obj.LocalTransform.Scale = glm::vec3(1.0f);
-			obj.Reflectivity = 0.35f;
-			obj.bUseTexture = true;
-			obj.Tint = glm::vec3(1.0f);
-			SceneObjects.push_back(obj);
+			obj.MaterialAsset = &ReflectiveMaterial;
+			obj.WorldTransform = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
+			RenderObjects.push_back(obj);
 		}
 
-		// 3) Colored cube without texture
 		{
 			RenderObject obj{};
 			obj.MeshAsset = &CubeMesh;
-			obj.LocalTransform.Position = glm::vec3(2.0f, 0.0f, 0.0f);
-			obj.LocalTransform.Scale = glm::vec3(1.0f);
-			obj.Reflectivity = 0.05f;
-			obj.bUseTexture = false;
-			obj.Tint = glm::vec3(0.2f, 0.8f, 1.0f);
-			SceneObjects.push_back(obj);
+			obj.MaterialAsset = &UntexturedMaterial;
+			obj.WorldTransform = glm::translate(glm::mat4(1.0f), glm::vec3(2.0f, 0.0f, 0.0f));
+			RenderObjects.push_back(obj);
 		}
 	}
 
-	void VulkanRenderer::UpdateSceneObjects(float deltaTime)
+	void VulkanRenderer::UpdateRenderObjects(float deltaTime)
 	{
 		SceneTime += deltaTime;
 
-		if (SceneObjects.size() >= 3)
+		if (RenderObjects.size() >= 3)
 		{
-			SceneObjects[0].LocalTransform.RotationRadians.y = SceneTime * 0.7f;
-			SceneObjects[1].LocalTransform.RotationRadians.y = SceneTime * 1.1f;
-			SceneObjects[1].LocalTransform.RotationRadians.x = SceneTime * 0.35f;
-			SceneObjects[2].LocalTransform.RotationRadians.z = SceneTime * 0.8f;
+			RenderObjects[0].WorldTransform =
+				glm::translate(glm::mat4(1.0f), glm::vec3(-2.0f, 0.0f, 0.0f)) *
+				glm::rotate(glm::mat4(1.0f), SceneTime * 0.7f, glm::vec3(0.0f, 1.0f, 0.0f));
+
+			RenderObjects[1].WorldTransform =
+				glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f)) *
+				glm::rotate(glm::mat4(1.0f), SceneTime * 1.1f, glm::vec3(0.0f, 1.0f, 0.0f)) *
+				glm::rotate(glm::mat4(1.0f), SceneTime * 0.35f, glm::vec3(1.0f, 0.0f, 0.0f));
+
+			RenderObjects[2].WorldTransform =
+				glm::translate(glm::mat4(1.0f), glm::vec3(2.0f, 0.0f, 0.0f)) *
+				glm::rotate(glm::mat4(1.0f), SceneTime * 0.8f, glm::vec3(0.0f, 0.0f, 1.0f));
 		}
 	}
 
-	void VulkanRenderer::DrawSceneObjects(vk::raii::CommandBuffer& cmd)
+	void VulkanRenderer::DrawRenderObjects(vk::raii::CommandBuffer& cmd)
 	{
-		cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *ScenePipeline);
-
-		cmd.bindDescriptorSets(
-			vk::PipelineBindPoint::eGraphics,
-			*ScenePipelineLayout,
-			0,
-			{ *SceneDescriptorSets.front() },
-			{}
-		);
-
-		for (const RenderObject& obj : SceneObjects)
+		for (const RenderObject& obj : RenderObjects)
 		{
-			if (!obj.MeshAsset)
+			if (!obj.MeshAsset || !obj.MaterialAsset)
 			{
 				continue;
 			}
 
+			cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, **obj.MaterialAsset->Pipeline);
+
+			cmd.bindDescriptorSets(
+				vk::PipelineBindPoint::eGraphics,
+				**obj.MaterialAsset->PipelineLayout,
+				0,
+				{ **obj.MaterialAsset->DescriptorSet },
+				{}
+			);
+
 			ObjectPushConstants pushConstants{};
-			pushConstants.Model = obj.LocalTransform.ToMatrix();
+			pushConstants.Model = obj.WorldTransform;
 			pushConstants.Params = glm::vec4(
-				obj.Reflectivity,
-				obj.bUseTexture ? 1.0f : 0.0f,
+				obj.MaterialAsset->Reflectivity,
+				obj.MaterialAsset->bUseTexture ? 1.0f : 0.0f,
 				0.0f,
 				0.0f
 			);
-			pushConstants.Tint = glm::vec4(obj.Tint, 1.0f);
-
-			std::array<ObjectPushConstants, 1> values{ pushConstants };
+			pushConstants.Tint = glm::vec4(obj.MaterialAsset->Tint, 1.0f);
 
 			cmd.pushConstants<ObjectPushConstants>(
-				*ScenePipelineLayout,
+				**obj.MaterialAsset->PipelineLayout,
 				vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
 				0,
-				values
+				{ pushConstants }
 			);
 
 			vk::DeviceSize offsets[] = { 0 };

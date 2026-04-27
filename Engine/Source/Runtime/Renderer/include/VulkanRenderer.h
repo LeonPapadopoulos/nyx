@@ -8,6 +8,7 @@
 #include "Mesh.h"
 #include "Texture.h"
 #include "CubemapTexture.h"
+#include "Material.h"
 #include <imgui.h>
 
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -65,11 +66,8 @@ namespace Nyx
 	struct RenderObject
 	{
 		Nyx::Mesh* MeshAsset = nullptr;
-		Transform LocalTransform{};
-
-		float Reflectivity = 0.0f;
-		bool bUseTexture = true;
-		glm::vec3 Tint{ 1.0f, 1.0f, 1.0f };
+		Material* MaterialAsset = nullptr;
+		glm::mat4 WorldTransform{ 1.0f };
 	};
 
 	struct SkyboxUBO
@@ -194,9 +192,10 @@ namespace Nyx
 		void RecreateSwapChain();
 		void WaitForValidFramebufferSize();
 
-		void CreateSceneObjects();
-		void UpdateSceneObjects(float deltaTime);
-		void DrawSceneObjects(vk::raii::CommandBuffer& cmd);
+		void CreateMaterials();
+		void CreateRenderObjects();
+		void UpdateRenderObjects(float deltaTime);
+		void DrawRenderObjects(vk::raii::CommandBuffer& cmd);
 
 		void CreateScenePipeline();
 		void CreateGridPipeline();
@@ -261,7 +260,11 @@ namespace Nyx
 		vk::raii::Buffer SceneUniformBuffer{ nullptr };
 		vk::raii::DeviceMemory SceneUniformBufferMemory{ nullptr };
 
-		std::vector<RenderObject> SceneObjects;
+		Material TexturedMaterial;
+		Material ReflectiveMaterial;
+		Material UntexturedMaterial;
+
+		std::vector<RenderObject> RenderObjects;
 		float SceneTime = 0.0f;
 
 		// Grid

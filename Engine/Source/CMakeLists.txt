@@ -36,6 +36,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/Shader.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/Texture.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/CubemapTexture.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/Material.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/Renderer.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanImGuiBackend.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanRenderer.cpp
@@ -70,6 +71,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/Shader.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/Texture.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/CubemapTexture.h
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/Material.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/Renderer.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanImGuiBackend.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanRenderer.h
