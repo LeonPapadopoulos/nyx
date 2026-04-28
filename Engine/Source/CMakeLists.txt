@@ -29,6 +29,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/ResourceManager.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/TypedHandle.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/WindowsWindow.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/cgltf_impl.cpp
 
     # Runtime/Renderer
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ImGuiTheme.cpp
@@ -107,6 +108,7 @@ target_include_directories(NyxEngine
         ${NYX_ENGINE_ROOT}/Runtime/Engine/src
         ${NYX_ENGINE_ROOT}/Runtime/Renderer/src
         ${NYX_ENGINE_ROOT}/Editor/src
+        ${CMAKE_SOURCE_DIR}/Dependencies/cgltf
 )
 
 target_link_libraries(NyxEngine
