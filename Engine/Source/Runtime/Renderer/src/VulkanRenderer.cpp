@@ -5,6 +5,7 @@
 #include "VulkanContext.h"
 #include "VulkanSwapchain.h"
 #include "Log.h"
+#include "GltfImporter.h"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -147,6 +148,8 @@ namespace Nyx
 
 		// RenderObjects depend on Meshes & Materials
 		CreateRenderObjects();
+
+		LoadTestGltfScene();
 	}
 
 	void VulkanRenderer::Shutdown()
@@ -1627,6 +1630,60 @@ namespace Nyx
 		if (bCompileOk)
 		{
 			GridShaderHotReload.bReloadPending = true;
+		}
+	}
+
+	void VulkanRenderer::LoadTestGltfScene()
+	{
+		ImportedScene imported{};
+		const bool bLoaded = Nyx::LoadStaticGltfScene(
+			(Nyx::Paths::GetAssetsDir() / "Models" / "Debug" / "DebugCube.gltf").string(),
+			imported
+		);
+		ASSERT(bLoaded && "Failed to load test glTF scene.");
+
+		// Create mesh resources
+		std::vector<Nyx::Mesh*> importedMeshPtrs;
+		importedMeshPtrs.reserve(imported.Primitives.size());
+
+		for (size_t i = 0; i < imported.Primitives.size(); ++i)
+		{
+			auto mesh = std::make_unique<Nyx::Mesh>("ImportedPrimitive_" + std::to_string(i));
+			const bool bUploaded = mesh->Upload(Context, imported.Primitives[i].Mesh);
+			ASSERT(bUploaded && "Failed to upload imported mesh.");
+
+			importedMeshPtrs.push_back(mesh.get());
+			LoadedMeshes.push_back(std::move(mesh));
+		}
+
+		// Very minimal material choice:
+		// if imported material has a base color texture, use textured material,
+		// otherwise use untextured one.
+		for (const ImportedNodeInstance& instance : imported.Instances)
+		{
+			if (instance.PrimitiveIndex < 0 || instance.PrimitiveIndex >= static_cast<int>(imported.Primitives.size()))
+			{
+				continue;
+			}
+
+			const ImportedPrimitive& importedPrim = imported.Primitives[instance.PrimitiveIndex];
+
+			RenderObject obj{};
+			obj.MeshAsset = importedMeshPtrs[instance.PrimitiveIndex];
+			obj.WorldTransform = instance.WorldTransform;
+
+			if (importedPrim.MaterialIndex >= 0 &&
+				importedPrim.MaterialIndex < static_cast<int>(imported.Materials.size()) &&
+				!imported.Materials[importedPrim.MaterialIndex].BaseColorTexturePath.empty())
+			{
+				obj.MaterialAsset = &TexturedMaterial;
+			}
+			else
+			{
+				obj.MaterialAsset = &UntexturedMaterial;
+			}
+
+			RenderObjects.push_back(obj);
 		}
 	}
 

@@ -9,7 +9,9 @@
 #include "Texture.h"
 #include "CubemapTexture.h"
 #include "Material.h"
+#include "GltfImporter.h"
 #include <imgui.h>
+#include <memory>
 
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
@@ -236,6 +238,8 @@ namespace Nyx
 		bool RecompileGridShaders();
 		void PollGridShaderHotReload();
 
+		void LoadTestGltfScene();
+
 	private:
 		GLFWwindow* Window = nullptr;
 		std::unique_ptr<VulkanImGuiBackend> ImGuiBackend;
@@ -248,6 +252,9 @@ namespace Nyx
 		uint32_t PendingSceneViewportWidth = 1280;
 		uint32_t PendingSceneViewportHeight = 720;
 		bool bSceneViewportResizePending = false;
+
+		std::vector<std::unique_ptr<Nyx::Mesh>> LoadedMeshes;
+		std::vector<std::unique_ptr<Nyx::Texture>> LoadedTextures;
 
 		// Scene
 		vk::raii::PipelineLayout ScenePipelineLayout{ nullptr };

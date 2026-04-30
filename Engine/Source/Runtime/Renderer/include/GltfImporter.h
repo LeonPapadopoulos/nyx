@@ -34,5 +34,5 @@ namespace Nyx
 	};
 
 	// @todo: actually load a stored scene from disk and show it inside the viewport
-	// bool LoadStaticGltfScene(const std::string& filePath, ImportedScene& outScene);
+	bool LoadStaticGltfScene(const std::string& filePath, ImportedScene& outScene);
 }
