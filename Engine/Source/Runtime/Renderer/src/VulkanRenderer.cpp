@@ -1637,7 +1637,7 @@ namespace Nyx
 	{
 		ImportedScene imported{};
 		const bool bLoaded = Nyx::LoadStaticGltfScene(
-			(Nyx::Paths::GetAssetsDir() / "Models" / "Debug" / "DebugCube.gltf").string(),
+			(Nyx::Paths::GetAssetsDir() / "Models" / "Debug" / "teapot.gltf").string(),
 			imported
 		);
 		ASSERT(bLoaded && "Failed to load test glTF scene.");
