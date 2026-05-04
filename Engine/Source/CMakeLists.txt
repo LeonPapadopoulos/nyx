@@ -27,6 +27,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/Application.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/Entity.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/TransformComponent.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/MeshRendererComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/ResourceManager.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/TypedHandle.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/WindowsWindow.cpp
@@ -64,6 +65,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/Application.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/Entity.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/TransformComponent.h
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/MeshRendererComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/ResourceManager.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/TypedHandle.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/Window.h
