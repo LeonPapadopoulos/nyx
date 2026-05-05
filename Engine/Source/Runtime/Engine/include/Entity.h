@@ -176,6 +176,9 @@ namespace Nyx
 			template<typename T, typename Func>
 			void Each(Func&& func);
 
+			template<typename T, typename Func>
+			void Each(Func&& func) const;
+
 		private:
 			struct EntitySlot
 			{
@@ -272,6 +275,21 @@ namespace Nyx
 		void Registry::Each(Func && func)
 		{
 			ComponentPool<T>* pool = TryGetPool<T>();
+			if (!pool)
+			{
+				return;
+			}
+
+			for (size_t i = 0; i < pool->Components.size(); ++i)
+			{
+				func(pool->Entities[i], pool->Components[i]);
+			}
+		}
+
+		template<typename T, typename Func>
+		void Registry::Each(Func&& func) const
+		{
+			const ComponentPool<T>* pool = TryGetPool<T>();
 			if (!pool)
 			{
 				return;

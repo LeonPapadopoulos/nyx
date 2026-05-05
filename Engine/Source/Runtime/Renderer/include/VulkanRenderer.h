@@ -13,6 +13,8 @@
 #include <imgui.h>
 #include <memory>
 
+#include "Entity.h"
+
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -197,6 +199,7 @@ namespace Nyx
 		void CreateMaterials();
 		void CreateRenderObjects();
 		void UpdateRenderObjects(float deltaTime);
+		void ExtractRenderObjects(const Nyx::Engine::Registry& registry);
 		void DrawRenderObjects(vk::raii::CommandBuffer& cmd);
 
 		void CreateScenePipeline();
@@ -270,6 +273,9 @@ namespace Nyx
 		Material TexturedMaterial;
 		Material ReflectiveMaterial;
 		Material UntexturedMaterial;
+
+		// @todo: Move this world out of the renderer, into the game/editor-layer
+		Nyx::Engine::Registry World;
 
 		std::vector<RenderObject> RenderObjects;
 		float SceneTime = 0.0f;

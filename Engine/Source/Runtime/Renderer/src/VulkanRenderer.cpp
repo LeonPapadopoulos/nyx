@@ -6,6 +6,8 @@
 #include "VulkanSwapchain.h"
 #include "Log.h"
 #include "GltfImporter.h"
+#include "TransformComponent.h"
+#include "MeshRendererComponent.h"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -125,6 +127,48 @@ namespace Nyx
 		CreateTestMeshData();
 		CreateTestMeshBuffers();
 
+		// @todo: Move World and population of it out of the renderer!
+		{
+			auto e0 = World.CreateEntity();
+			World.Add<Nyx::Engine::TransformComponent>(e0,
+				Nyx::Engine::TransformComponent{
+					.Position = glm::vec3(-2.0f, 0.0f, 0.0f)
+				}
+			);
+			World.Add<Nyx::Engine::MeshRendererComponent>(e0,
+				Nyx::Engine::MeshRendererComponent{
+					.MeshAsset = &CubeMesh,
+					.MaterialAsset = &TexturedMaterial
+				}
+			);
+
+			auto e1 = World.CreateEntity();
+			World.Add<Nyx::Engine::TransformComponent>(e1,
+				Nyx::Engine::TransformComponent{
+					.Position = glm::vec3(0.0f, 0.0f, 0.0f)
+				}
+			);
+			World.Add<Nyx::Engine::MeshRendererComponent>(e1,
+				Nyx::Engine::MeshRendererComponent{
+					.MeshAsset = &CubeMesh,
+					.MaterialAsset = &ReflectiveMaterial
+				}
+			);
+
+			auto e2 = World.CreateEntity();
+			World.Add<Nyx::Engine::TransformComponent>(e2,
+				Nyx::Engine::TransformComponent{
+					.Position = glm::vec3(2.0f, 0.0f, 0.0f)
+				}
+			);
+			World.Add<Nyx::Engine::MeshRendererComponent>(e2,
+				Nyx::Engine::MeshRendererComponent{
+					.MeshAsset = &CubeMesh,
+					.MaterialAsset = &UntexturedMaterial
+				}
+			);
+		}
+
 		// Render pass / framebuffer target must exist before pipelines
 		SceneViewport.Initialize(Context, 1280, 720, vk::Format::eR8G8B8A8Unorm);
 		
@@ -149,7 +193,12 @@ namespace Nyx
 		// RenderObjects depend on Meshes & Materials
 		CreateRenderObjects();
 
-		LoadTestGltfScene();
+		// @note: Gltf Meshes currently not visible, because the RenderObjects get 
+		// cleared and then populated by the world / entity-registry; So manually pushed
+		// RenderObjects, as is currently the case with this GltfScene setup, won't be
+		// rendered.
+		// @todo: Figure out to what extend Gltf scenes should be supported from hereon out.
+		//LoadTestGltfScene();
 	}
 
 	void VulkanRenderer::Shutdown()
@@ -288,9 +337,20 @@ namespace Nyx
 				// @todo: Introduce a more proper 'Tick'
 				const float deltaTime = ComputeDeltaTime();
 
+				// @todo: Move animation-like behavior out of the renderer
+				{
+					World.Each<Nyx::Engine::TransformComponent>(
+						[this, deltaTime](Nyx::Engine::Entity entity, Nyx::Engine::TransformComponent& transform)
+						{
+							transform.RotationRadians.y += deltaTime;
+						}
+					);
+				}
+
 				TickCameraFromInput(deltaTime);
 				UpdateSceneUniforms(deltaTime);
-				UpdateRenderObjects(deltaTime);
+				// @todo: Get rid of functionality relating to the previously hardcoded test meshes
+				//UpdateRenderObjects(deltaTime);
 				UpdateSkyboxUniforms(deltaTime);
 
 				// 1. Opaque scene objects
@@ -310,6 +370,7 @@ namespace Nyx
 					//cmd.bindIndexBuffer(CubeMesh.GetIndexBuffer(), 0, vk::IndexType::eUint32);
 					//cmd.drawIndexed(CubeMesh.GetIndexCount(), 1, 0, 0, 0);
 					
+					ExtractRenderObjects(World);
 					DrawRenderObjects(cmd);
 				}
 
@@ -671,6 +732,42 @@ namespace Nyx
 				glm::translate(glm::mat4(1.0f), glm::vec3(2.0f, 0.0f, 0.0f)) *
 				glm::rotate(glm::mat4(1.0f), SceneTime * 0.8f, glm::vec3(0.0f, 0.0f, 1.0f));
 		}
+	}
+
+	void VulkanRenderer::ExtractRenderObjects(const Nyx::Engine::Registry& registry)
+	{
+		RenderObjects.clear();
+
+		// Registry::Each<T> iterates one component pool and gives (Entity, Component&).
+		// So we iterate MeshRendererComponent and then query TransformComponent for the same entity.
+		const_cast<Nyx::Engine::Registry&>(registry).Each<Nyx::Engine::MeshRendererComponent>(
+			[this, &registry](Nyx::Engine::Entity entity, Nyx::Engine::MeshRendererComponent& meshRenderer)
+			{
+				if (!meshRenderer.bVisible)
+				{
+					return;
+				}
+
+				if (!meshRenderer.MeshAsset || !meshRenderer.MaterialAsset)
+				{
+					return;
+				}
+
+				glm::mat4 worldTransform = glm::mat4(1.0f);
+
+				if (registry.Has<Nyx::Engine::TransformComponent>(entity))
+				{
+					worldTransform = registry.Get<Nyx::Engine::TransformComponent>(entity).ToMatrix();
+				}
+
+				RenderObject obj{};
+				obj.MeshAsset = meshRenderer.MeshAsset;
+				obj.MaterialAsset = meshRenderer.MaterialAsset;
+				obj.WorldTransform = worldTransform;
+
+				RenderObjects.push_back(obj);
+			}
+		);
 	}
 
 	void VulkanRenderer::DrawRenderObjects(vk::raii::CommandBuffer& cmd)
