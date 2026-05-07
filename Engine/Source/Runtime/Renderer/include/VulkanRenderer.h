@@ -14,6 +14,10 @@
 #include <memory>
 
 #include "Entity.h"
+#include "TransformComponent.h"
+#include "MeshRendererComponent.h"
+#include "CameraComponent.h"
+#include "DirectionalLightComponent.h"
 
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
@@ -22,6 +26,49 @@
 namespace Nyx
 {
 	class VulkanImGuiBackend;
+
+	enum class EViewportCameraMode : uint8_t
+	{
+		EditorFreeCamera,
+		ScenePrimaryCamera
+	};
+
+	struct EditorCamera
+	{
+		float AspectRatio = 16.0f / 9.0f;
+
+		glm::vec3 Position = glm::vec3(0.0f, 2.0f, 6.0f);
+		glm::vec3 RotationRadians = glm::vec3(0.0f);
+
+		glm::mat4 GetViewMatrix() const
+		{
+			glm::mat4 transform =
+				glm::translate(glm::mat4(1.0f), Position) *
+				glm::rotate(glm::mat4(1.0f), RotationRadians.y, glm::vec3(0.0f, 1.0f, 0.0f)) *
+				glm::rotate(glm::mat4(1.0f), RotationRadians.x, glm::vec3(1.0f, 0.0f, 0.0f)) *
+				glm::rotate(glm::mat4(1.0f), RotationRadians.z, glm::vec3(0.0f, 0.0f, 1.0f));
+
+			return glm::inverse(transform);
+		}
+
+		glm::mat4 GetProjectionMatrix() const
+		{
+			glm::mat4 proj = glm::perspective(
+				glm::radians(60.0f),
+				AspectRatio,
+				0.1f,
+				1000.0f
+			);
+
+			proj[1][1] *= -1.0f;
+			return proj;
+		}
+
+		glm::mat4 GetViewProjectionMatrix() const
+		{
+			return GetProjectionMatrix() * GetViewMatrix();
+		}
+	};
 
 	struct SceneUBO
 	{
@@ -136,6 +183,21 @@ namespace Nyx
 		}
 	};
 
+	struct ExtractedSceneGlobals
+	{
+		glm::mat4 View{ 1.0f };
+		glm::mat4 Projection{ 1.0f };
+		glm::mat4 ViewProjection{ 1.0f };
+
+		glm::vec3 CameraWorldPos{ 0.0f, 0.0f, 3.0f };
+		glm::vec3 LightDirectionWS{ glm::normalize(glm::vec3(0.4f, 1.0f, 0.2f)) };
+		glm::vec3 LightColor{ 1.0f, 0.98f, 0.95f };
+		float Ambient = 0.18f;
+
+		bool bHasCamera = false;
+		bool bHasDirectionalLight = false;
+	};
+
 	struct ShaderHotReloadState
 	{
 		std::filesystem::path VertSourcePath;
@@ -182,7 +244,10 @@ namespace Nyx
 		virtual void SetSceneViewportSize(uint32_t width, uint32_t height);
 		virtual bool WasSceneViewportRecreatedThisFrame() const;
 
-		void TickCameraFromInput(float deltaTime);
+		void SetViewportCameraMode(EViewportCameraMode newMode);
+		EViewportCameraMode GetViewportCameraMode() const;
+
+		void TickEditorCameraFromInput(float deltaTime);
 	private:
 		void SetupVulkan(const char* applicationName, GLFWwindow* window);
 		void SetupImGui();
@@ -211,7 +276,7 @@ namespace Nyx
 		void CreateSkyboxDescriptorPool();
 		void AllocateSkyboxDescriptorSets();
 		void UpdateSkyboxDescriptorSet();
-		void UpdateSkyboxUniforms(float deltaTime);
+		void UpdateSkyboxUniforms();
 		void CreateSkyboxPipeline();
 		void DrawSkybox(vk::raii::CommandBuffer& cmd);
 
@@ -221,7 +286,7 @@ namespace Nyx
 		void CreateSceneDescriptors();
 		void UpdateSceneDescriptorSets();
 		void CreateSceneUniformBuffer();
-		void UpdateSceneUniforms(float deltaTime);
+		void UpdateSceneUniforms();
 
 		void CreateTestTextureData();
 		void CreateTestMeshData();
@@ -242,6 +307,10 @@ namespace Nyx
 		void PollGridShaderHotReload();
 
 		void LoadTestGltfScene();
+
+		void ExtractSceneGlobalsFromEditorCamera();
+		void ExtractSceneGlobalsFromWorldCamera(const Nyx::Engine::Registry& registry);
+		void UpdateViewportSceneGlobals(const Nyx::Engine::Registry& registry);
 
 	private:
 		GLFWwindow* Window = nullptr;
@@ -273,6 +342,8 @@ namespace Nyx
 		Material TexturedMaterial;
 		Material ReflectiveMaterial;
 		Material UntexturedMaterial;
+
+		ExtractedSceneGlobals SceneGlobals;
 
 		// @todo: Move this world out of the renderer, into the game/editor-layer
 		Nyx::Engine::Registry World;
@@ -321,6 +392,9 @@ namespace Nyx
 		double LastMouseY = 0.0;
 
 		// Camera
+		EViewportCameraMode ViewportCameraMode = EViewportCameraMode::EditorFreeCamera;
+		EditorCamera ViewportEditorCamera;
+
 		float CameraMoveSpeed = 5.0f;
 		float CameraMouseSensitivity = 0.003f; // radians per pixel
 		float CameraSpeedMin = 0.25f;
@@ -328,6 +402,7 @@ namespace Nyx
 		float CameraSpeedStep = 1.2f;
 
 		bool bSceneViewportHovered = false;
+		bool bHaveLastMousePosition = false;
 
 		//vk::PhysicalDeviceFeatures DeviceFeatures;
 

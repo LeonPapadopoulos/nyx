@@ -26,6 +26,48 @@
 
 #include <stb_image.h>
 
+static glm::mat4 BuildRotationMatrix(const Nyx::Engine::TransformComponent& transform)
+{
+	glm::mat4 r = glm::mat4(1.0f);
+	r = glm::rotate(r, transform.RotationRadians.x, glm::vec3(1.0f, 0.0f, 0.0f));
+	r = glm::rotate(r, transform.RotationRadians.y, glm::vec3(0.0f, 1.0f, 0.0f));
+	r = glm::rotate(r, transform.RotationRadians.z, glm::vec3(0.0f, 0.0f, 1.0f));
+	return r;
+}
+
+static glm::vec3 GetForwardVector(const Nyx::Engine::TransformComponent& transform)
+{
+	const glm::mat4 rotation = BuildRotationMatrix(transform);
+	return glm::normalize(glm::vec3(rotation * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f)));
+}
+
+static glm::vec3 GetRightVector(const Nyx::Engine::TransformComponent& transform)
+{
+	const glm::mat4 rotation = BuildRotationMatrix(transform);
+	return glm::normalize(glm::vec3(rotation * glm::vec4(1.0f, 0.0f, 0.0f, 0.0f)));
+}
+
+namespace
+{
+	glm::mat4 BuildProjectionMatrix(float fovYRadians, float aspectRatio, float nearPlane, float farPlane)
+	{
+		glm::mat4 proj = glm::perspective(fovYRadians, aspectRatio, nearPlane, farPlane);
+
+		// Vulkan clip-space convention with GLM
+		proj[1][1] *= -1.0f;
+		return proj;
+	}
+
+	glm::vec3 GetForwardVectorWS(const Nyx::Engine::TransformComponent& transform)
+	{
+		const glm::mat4 world = transform.ToMatrix();
+
+		// Local forward = -Z
+		const glm::vec3 forward = glm::normalize(glm::vec3(world * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f)));
+		return forward;
+	}
+}
+
 namespace
 {
 	bool LoadImageDataRGBA(const std::filesystem::path& path, Nyx::ImageData& outImageData)
@@ -129,6 +171,48 @@ namespace Nyx
 
 		// @todo: Move World and population of it out of the renderer!
 		{
+			Nyx::Engine::Entity cameraEntity = World.CreateEntity();
+
+			World.Add<Nyx::Engine::TransformComponent>(
+				cameraEntity,
+				Nyx::Engine::TransformComponent{
+					.Position = glm::vec3(0.0f, 2.0f, 6.0f),
+					.RotationRadians = glm::vec3(0.0f, 0.0f, 0.0f),
+					.Scale = glm::vec3(1.0f)
+				}
+			);
+
+			World.Add<Nyx::Engine::CameraComponent>(
+				cameraEntity,
+				Nyx::Engine::CameraComponent{
+					.FovYRadians = glm::radians(60.0f),
+					.NearPlane = 0.1f,
+					.FarPlane = 1000.0f,
+					.bPrimary = true
+				}
+			);
+
+			Nyx::Engine::Entity lightEntity = World.CreateEntity();
+
+			World.Add<Nyx::Engine::TransformComponent>(
+				lightEntity,
+				Nyx::Engine::TransformComponent{
+					.Position = glm::vec3(0.0f),
+					.RotationRadians = glm::vec3(glm::radians(-45.0f), glm::radians(35.0f), 0.0f),
+					.Scale = glm::vec3(1.0f)
+				}
+			);
+
+			World.Add<Nyx::Engine::DirectionalLightComponent>(
+				lightEntity,
+				Nyx::Engine::DirectionalLightComponent{
+					.Color = glm::vec3(1.0f, 0.98f, 0.95f),
+					.Intensity = 1.0f,
+					.Ambient = 0.18f,
+					.bPrimary = true
+				}
+			);
+
 			auto e0 = World.CreateEntity();
 			World.Add<Nyx::Engine::TransformComponent>(e0,
 				Nyx::Engine::TransformComponent{
@@ -339,19 +423,27 @@ namespace Nyx
 
 				// @todo: Move animation-like behavior out of the renderer
 				{
-					World.Each<Nyx::Engine::TransformComponent>(
-						[this, deltaTime](Nyx::Engine::Entity entity, Nyx::Engine::TransformComponent& transform)
-						{
-							transform.RotationRadians.y += deltaTime;
-						}
-					);
+					// @note: temporarily disabled so it doesn't affect the main camera
+					//World.Each<Nyx::Engine::TransformComponent>(
+					//	[this, deltaTime](Nyx::Engine::Entity entity, Nyx::Engine::TransformComponent& transform)
+					//	{
+					//		transform.RotationRadians.y += deltaTime;
+					//	}
+					//);
 				}
 
-				TickCameraFromInput(deltaTime);
-				UpdateSceneUniforms(deltaTime);
+				if (ViewportCameraMode == EViewportCameraMode::EditorFreeCamera)
+				{
+					TickEditorCameraFromInput(deltaTime);
+				}
+
+				UpdateViewportSceneGlobals(World);
+
+				UpdateSceneUniforms();
 				// @todo: Get rid of functionality relating to the previously hardcoded test meshes
 				//UpdateRenderObjects(deltaTime);
-				UpdateSkyboxUniforms(deltaTime);
+				UpdateSkyboxUniforms();
+				ExtractRenderObjects(World);
 
 				// 1. Opaque scene objects
 				{
@@ -370,7 +462,6 @@ namespace Nyx
 					//cmd.bindIndexBuffer(CubeMesh.GetIndexBuffer(), 0, vk::IndexType::eUint32);
 					//cmd.drawIndexed(CubeMesh.GetIndexCount(), 1, 0, 0, 0);
 					
-					ExtractRenderObjects(World);
 					DrawRenderObjects(cmd);
 				}
 
@@ -513,84 +604,75 @@ namespace Nyx
 		return bSceneViewportRecreatedThisFrame;
 	}
 
-	void VulkanRenderer::TickCameraFromInput(float deltaTime)
+	void VulkanRenderer::SetViewportCameraMode(EViewportCameraMode newMode)
+	{
+		ViewportCameraMode = newMode;
+	}
+
+	EViewportCameraMode VulkanRenderer::GetViewportCameraMode() const
+	{
+		return ViewportCameraMode;
+	}
+
+	void VulkanRenderer::TickEditorCameraFromInput(float deltaTime)
 	{
 		if (!Window)
 		{
 			return;
 		}
 
-		const bool bWantsMouseLook =
-			glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
+		const float moveSpeed = 5.0f * deltaTime;
+		const float lookSpeed = 0.0025f;
 
-		// Enter / leave mouse-look mode
-		if (bWantsMouseLook && !bMouseLookActive)
-		{
-			bMouseLookActive = true;
-			bFirstMouseLookSample = true;
-			glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-		}
-		else if (!bWantsMouseLook && bMouseLookActive)
-		{
-			bMouseLookActive = false;
-			bFirstMouseLookSample = true;
-			glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-		}
+		glm::mat4 rotation =
+			glm::rotate(glm::mat4(1.0f), ViewportEditorCamera.RotationRadians.y, glm::vec3(0.0f, 1.0f, 0.0f)) *
+			glm::rotate(glm::mat4(1.0f), ViewportEditorCamera.RotationRadians.x, glm::vec3(1.0f, 0.0f, 0.0f));
 
-		if (bMouseLookActive)
+		const glm::vec3 forward = glm::normalize(glm::vec3(rotation * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f)));
+		const glm::vec3 right = glm::normalize(glm::vec3(rotation * glm::vec4(1.0f, 0.0f, 0.0f, 0.0f)));
+		const glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+
+		if (glfwGetKey(Window, GLFW_KEY_W) == GLFW_PRESS) ViewportEditorCamera.Position += forward * moveSpeed;
+		if (glfwGetKey(Window, GLFW_KEY_S) == GLFW_PRESS) ViewportEditorCamera.Position -= forward * moveSpeed;
+		if (glfwGetKey(Window, GLFW_KEY_D) == GLFW_PRESS) ViewportEditorCamera.Position += right * moveSpeed;
+		if (glfwGetKey(Window, GLFW_KEY_A) == GLFW_PRESS) ViewportEditorCamera.Position -= right * moveSpeed;
+		if (glfwGetKey(Window, GLFW_KEY_E) == GLFW_PRESS) ViewportEditorCamera.Position += up * moveSpeed;
+		if (glfwGetKey(Window, GLFW_KEY_Q) == GLFW_PRESS) ViewportEditorCamera.Position -= up * moveSpeed;
+
+		const bool bRightMouseDown = glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
+
+		if (bRightMouseDown)
 		{
 			double mouseX = 0.0;
 			double mouseY = 0.0;
 			glfwGetCursorPos(Window, &mouseX, &mouseY);
 
-			if (bFirstMouseLookSample)
+			if (!bHaveLastMousePosition)
 			{
 				LastMouseX = mouseX;
 				LastMouseY = mouseY;
-				bFirstMouseLookSample = false;
+				bHaveLastMousePosition = true;
 			}
-			else
-			{
-				const double deltaX = mouseX - LastMouseX;
-				const double deltaY = mouseY - LastMouseY;
 
-				LastMouseX = mouseX;
-				LastMouseY = mouseY;
+			const double deltaX = mouseX - LastMouseX;
+			const double deltaY = mouseY - LastMouseY;
 
-				Camera.YawRadians += static_cast<float>(deltaX) * CameraMouseSensitivity;
-				Camera.PitchRadians -= static_cast<float>(deltaY) * CameraMouseSensitivity;
+			LastMouseX = mouseX;
+			LastMouseY = mouseY;
 
-				constexpr float pitchLimit = glm::radians<float>(89.0f);
-				Camera.PitchRadians = glm::clamp(Camera.PitchRadians, -pitchLimit, pitchLimit);
-			}
-		}
+			ViewportEditorCamera.RotationRadians.y -= static_cast<float>(deltaX) * lookSpeed;
+			ViewportEditorCamera.RotationRadians.x -= static_cast<float>(deltaY) * lookSpeed;
 
-		const float moveSpeed = CameraMoveSpeed * deltaTime;
-
-		const glm::vec3 forward = Camera.GetForwardVector();
-		const glm::vec3 right = Camera.GetRightVector();
-		const glm::vec3 worldUp(0.0f, 1.0f, 0.0f);
-
-		// Flatten movement to the ground plane for WASD
-		glm::vec3 flatRight = glm::normalize(glm::vec3(right.x, 0.0f, right.z));
-
-		// avoid issues when looking straight right
-		if (glm::length2(flatRight) > 1e-6f)
-		{
-			flatRight = glm::normalize(flatRight);
+			ViewportEditorCamera.RotationRadians.x = glm::clamp(
+				ViewportEditorCamera.RotationRadians.x,
+				glm::radians(-89.0f),
+				glm::radians(89.0f)
+			);
 		}
 		else
 		{
-			flatRight = glm::vec3(1.0f, 0.0f, 0.0f);
+			bHaveLastMousePosition = false;
 		}
-
-		if (glfwGetKey(Window, GLFW_KEY_W) == GLFW_PRESS) Camera.Position += forward * moveSpeed;
-		if (glfwGetKey(Window, GLFW_KEY_S) == GLFW_PRESS) Camera.Position -= forward * moveSpeed;
-		if (glfwGetKey(Window, GLFW_KEY_A) == GLFW_PRESS) Camera.Position -= flatRight * moveSpeed;
-		if (glfwGetKey(Window, GLFW_KEY_D) == GLFW_PRESS) Camera.Position += flatRight * moveSpeed;
-
-		if (glfwGetKey(Window, GLFW_KEY_Q) == GLFW_PRESS) Camera.Position -= worldUp * moveSpeed;
-		if (glfwGetKey(Window, GLFW_KEY_E) == GLFW_PRESS) Camera.Position += worldUp * moveSpeed;
 	}
 
 	void VulkanRenderer::CreateGraphicsPipeline()
@@ -1278,15 +1360,13 @@ namespace Nyx
 		Context.GetDevice().updateDescriptorSets(writes, {});
 	}
 
-	void VulkanRenderer::UpdateSkyboxUniforms(float deltaTime)
+	void VulkanRenderer::UpdateSkyboxUniforms()
 	{
 		SkyboxUBO ubo{};
 
-		// Remove translation so the skybox stays centered on the camera.
-		const glm::mat4 skyboxView = glm::mat4(glm::mat3(Camera.GetViewMatrix()));
-		const glm::mat4 skyboxProj = Camera.GetProjectionMatrix();
-
-		ubo.ViewProj = skyboxProj * skyboxView;
+		// Remove translation so the skybox stays centered on the active camera.
+		const glm::mat4 skyboxView = glm::mat4(glm::mat3(SceneGlobals.View));
+		ubo.ViewProj = SceneGlobals.Projection * skyboxView;
 
 		void* mapped = SkyboxUniformBufferMemory.mapMemory(0, sizeof(SkyboxUBO));
 		std::memcpy(mapped, &ubo, sizeof(SkyboxUBO));
@@ -1488,25 +1568,25 @@ namespace Nyx
 		SceneUniformBuffer.bindMemory(*SceneUniformBufferMemory, 0);
 	}
 
-	void VulkanRenderer::UpdateSceneUniforms(float deltaTime)
+	void VulkanRenderer::UpdateSceneUniforms()
 	{
 		const vk::Extent2D extent = SceneViewport.GetExtent();
-		Camera.AspectRatio = extent.height > 0
-			? static_cast<float>(extent.width) / static_cast<float>(extent.height)
-			: 1.0f;
 
 		SceneUBO ubo{};
-		ubo.ViewProj = Camera.GetViewProjectionMatrix();
-		ubo.InvViewProj = glm::inverse(ubo.ViewProj);
-		ubo.ViewportSize = glm::vec2(static_cast<float>(extent.width), static_cast<float>(extent.height));
+		ubo.ViewProj = SceneGlobals.ViewProjection;
+		ubo.InvViewProj = glm::inverse(SceneGlobals.ViewProjection);
+		ubo.ViewportSize = glm::vec2(
+			static_cast<float>(extent.width),
+			static_cast<float>(extent.height)
+		);
 
-		ubo.CameraWorldPos = glm::vec4(Camera.Position, 1.0f);
+		ubo.CameraWorldPos = glm::vec4(SceneGlobals.CameraWorldPos, 1.0f);
 
 		// Direction from surface toward the light
-		ubo.LightDirectionWS = glm::vec4(glm::normalize(glm::vec3(0.4f, 1.0f, 0.2f)), 0.0f);
+		ubo.LightDirectionWS = glm::vec4(SceneGlobals.LightDirectionWS, 0.0f);
 
 		// rgb = light color, a = ambient strength
-		ubo.LightColor = glm::vec4(1.0f, 0.98f, 0.95f, 0.18f);
+		ubo.LightColor = glm::vec4(SceneGlobals.LightColor, SceneGlobals.Ambient);
 
 		void* mapped = SceneUniformBufferMemory.mapMemory(0, sizeof(SceneUBO));
 		std::memcpy(mapped, &ubo, sizeof(SceneUBO));
@@ -1781,6 +1861,128 @@ namespace Nyx
 			}
 
 			RenderObjects.push_back(obj);
+		}
+	}
+
+	void VulkanRenderer::ExtractSceneGlobalsFromEditorCamera()
+	{
+		const vk::Extent2D extent = SceneViewport.GetExtent();
+		ViewportEditorCamera.AspectRatio = extent.height > 0
+			? static_cast<float>(extent.width) / static_cast<float>(extent.height)
+			: 1.0f;
+
+		SceneGlobals = {};
+		SceneGlobals.View = ViewportEditorCamera.GetViewMatrix();
+		SceneGlobals.Projection = ViewportEditorCamera.GetProjectionMatrix();
+		SceneGlobals.ViewProjection = ViewportEditorCamera.GetViewProjectionMatrix();
+		SceneGlobals.CameraWorldPos = ViewportEditorCamera.Position;
+
+		// Keep a sane default light when using freecam mode
+		SceneGlobals.LightDirectionWS = glm::normalize(glm::vec3(0.4f, 1.0f, 0.2f));
+		SceneGlobals.LightColor = glm::vec3(1.0f, 0.98f, 0.95f);
+		SceneGlobals.Ambient = 0.18f;
+
+		SceneGlobals.bHasCamera = true;
+		SceneGlobals.bHasDirectionalLight = false;
+	}
+
+	void VulkanRenderer::ExtractSceneGlobalsFromWorldCamera(const Nyx::Engine::Registry& registry)
+	{
+		const vk::Extent2D extent = SceneViewport.GetExtent();
+		const float aspectRatio = extent.height > 0
+			? static_cast<float>(extent.width) / static_cast<float>(extent.height)
+			: 1.0f;
+
+		SceneGlobals = {};
+		SceneGlobals.CameraWorldPos = glm::vec3(0.0f, 0.0f, 3.0f);
+		SceneGlobals.LightDirectionWS = glm::normalize(glm::vec3(0.4f, 1.0f, 0.2f));
+		SceneGlobals.LightColor = glm::vec3(1.0f, 0.98f, 0.95f);
+		SceneGlobals.Ambient = 0.18f;
+
+		registry.Each<Nyx::Engine::CameraComponent>(
+			[this, &registry, aspectRatio](Nyx::Engine::Entity entity, const Nyx::Engine::CameraComponent& cameraComp)
+			{
+				if (SceneGlobals.bHasCamera || !cameraComp.bPrimary)
+				{
+					return;
+				}
+
+				glm::mat4 world = glm::mat4(1.0f);
+				glm::vec3 cameraPos{ 0.0f };
+
+				if (registry.Has<Nyx::Engine::TransformComponent>(entity))
+				{
+					const auto& transform = registry.Get<Nyx::Engine::TransformComponent>(entity);
+					world = transform.ToMatrix();
+					cameraPos = transform.Position;
+				}
+
+				SceneGlobals.View = glm::inverse(world);
+
+				glm::mat4 proj = glm::perspective(
+					cameraComp.FovYRadians,
+					aspectRatio,
+					cameraComp.NearPlane,
+					cameraComp.FarPlane
+				);
+				proj[1][1] *= -1.0f;
+
+				SceneGlobals.Projection = proj;
+				SceneGlobals.ViewProjection = SceneGlobals.Projection * SceneGlobals.View;
+				SceneGlobals.CameraWorldPos = cameraPos;
+				SceneGlobals.bHasCamera = true;
+			}
+		);
+
+		if (!SceneGlobals.bHasCamera)
+		{
+			// Fallback: if no scene camera exists, use the editor camera instead
+			ExtractSceneGlobalsFromEditorCamera();
+			return;
+		}
+
+		registry.Each<Nyx::Engine::DirectionalLightComponent>(
+			[this, &registry](Nyx::Engine::Entity entity, const Nyx::Engine::DirectionalLightComponent& lightComp)
+			{
+				if (SceneGlobals.bHasDirectionalLight || !lightComp.bPrimary)
+				{
+					return;
+				}
+
+				glm::vec3 lightDir = glm::normalize(glm::vec3(0.4f, 1.0f, 0.2f));
+
+				if (registry.Has<Nyx::Engine::TransformComponent>(entity))
+				{
+					const auto& transform = registry.Get<Nyx::Engine::TransformComponent>(entity);
+
+					glm::mat4 world = transform.ToMatrix();
+					glm::vec3 forward = glm::normalize(glm::vec3(world * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f)));
+					lightDir = -forward;
+				}
+
+				SceneGlobals.LightDirectionWS = glm::normalize(lightDir);
+				SceneGlobals.LightColor = lightComp.Color * lightComp.Intensity;
+				SceneGlobals.Ambient = lightComp.Ambient;
+				SceneGlobals.bHasDirectionalLight = true;
+			}
+		);
+	}
+
+	void VulkanRenderer::UpdateViewportSceneGlobals(const Nyx::Engine::Registry& registry)
+	{
+		switch (ViewportCameraMode)
+		{
+		case EViewportCameraMode::EditorFreeCamera:
+			ExtractSceneGlobalsFromEditorCamera();
+			break;
+
+		case EViewportCameraMode::ScenePrimaryCamera:
+			ExtractSceneGlobalsFromWorldCamera(registry);
+			break;
+
+		default:
+			ExtractSceneGlobalsFromEditorCamera();
+			break;
 		}
 	}
 
