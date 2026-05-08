@@ -263,7 +263,7 @@ namespace Nyx
 
 		void CreateMaterials();
 		void CreateRenderObjects();
-		void UpdateRenderObjects(float deltaTime);
+		void UpdateRenderObjects(Nyx::Engine::Registry& registry, float deltaTime);
 		void ExtractRenderObjects(const Nyx::Engine::Registry& registry);
 		void DrawRenderObjects(vk::raii::CommandBuffer& cmd);
 

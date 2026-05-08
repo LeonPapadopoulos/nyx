@@ -421,17 +421,6 @@ namespace Nyx
 				// @todo: Introduce a more proper 'Tick'
 				const float deltaTime = ComputeDeltaTime();
 
-				// @todo: Move animation-like behavior out of the renderer
-				{
-					// @note: temporarily disabled so it doesn't affect the main camera
-					//World.Each<Nyx::Engine::TransformComponent>(
-					//	[this, deltaTime](Nyx::Engine::Entity entity, Nyx::Engine::TransformComponent& transform)
-					//	{
-					//		transform.RotationRadians.y += deltaTime;
-					//	}
-					//);
-				}
-
 				if (ViewportCameraMode == EViewportCameraMode::EditorFreeCamera)
 				{
 					TickEditorCameraFromInput(deltaTime);
@@ -439,29 +428,14 @@ namespace Nyx
 
 				UpdateViewportSceneGlobals(World);
 
+				UpdateRenderObjects(World, deltaTime);
+
 				UpdateSceneUniforms();
-				// @todo: Get rid of functionality relating to the previously hardcoded test meshes
-				//UpdateRenderObjects(deltaTime);
 				UpdateSkyboxUniforms();
 				ExtractRenderObjects(World);
 
 				// 1. Opaque scene objects
 				{
-					//cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *ScenePipeline);
-					//cmd.bindDescriptorSets(
-					//	vk::PipelineBindPoint::eGraphics,
-					//	*ScenePipelineLayout,
-					//	0,
-					//	{ *SceneDescriptorSets.front() },
-					//	{}
-					//);
-
-					//// Draw Cube Mesh
-					//vk::DeviceSize offsets[] = { 0 };
-					//cmd.bindVertexBuffers(0, { CubeMesh.GetVertexBuffer() }, offsets);
-					//cmd.bindIndexBuffer(CubeMesh.GetIndexBuffer(), 0, vk::IndexType::eUint32);
-					//cmd.drawIndexed(CubeMesh.GetIndexCount(), 1, 0, 0, 0);
-					
 					DrawRenderObjects(cmd);
 				}
 
@@ -795,25 +769,30 @@ namespace Nyx
 		}
 	}
 
-	void VulkanRenderer::UpdateRenderObjects(float deltaTime)
+	void VulkanRenderer::UpdateRenderObjects(Nyx::Engine::Registry& registry, float deltaTime)
 	{
 		SceneTime += deltaTime;
 
-		if (RenderObjects.size() >= 3)
-		{
-			RenderObjects[0].WorldTransform =
-				glm::translate(glm::mat4(1.0f), glm::vec3(-2.0f, 0.0f, 0.0f)) *
-				glm::rotate(glm::mat4(1.0f), SceneTime * 0.7f, glm::vec3(0.0f, 1.0f, 0.0f));
+		registry.Each<Nyx::Engine::MeshRendererComponent>(
+			[this, &registry, deltaTime](Nyx::Engine::Entity entity, Nyx::Engine::MeshRendererComponent& meshRenderer)
+			{
+				if (!meshRenderer.bVisible)
+				{
+					return;
+				}
 
-			RenderObjects[1].WorldTransform =
-				glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f)) *
-				glm::rotate(glm::mat4(1.0f), SceneTime * 1.1f, glm::vec3(0.0f, 1.0f, 0.0f)) *
-				glm::rotate(glm::mat4(1.0f), SceneTime * 0.35f, glm::vec3(1.0f, 0.0f, 0.0f));
+				if (!meshRenderer.MeshAsset || !meshRenderer.MaterialAsset)
+				{
+					return;
+				}
 
-			RenderObjects[2].WorldTransform =
-				glm::translate(glm::mat4(1.0f), glm::vec3(2.0f, 0.0f, 0.0f)) *
-				glm::rotate(glm::mat4(1.0f), SceneTime * 0.8f, glm::vec3(0.0f, 0.0f, 1.0f));
-		}
+				if (registry.Has<Nyx::Engine::TransformComponent>(entity))
+				{
+					Nyx::Engine::TransformComponent& transform = registry.Get<Nyx::Engine::TransformComponent>(entity);
+					transform.RotationRadians.y += deltaTime;
+				}
+			}
+		);
 	}
 
 	void VulkanRenderer::ExtractRenderObjects(const Nyx::Engine::Registry& registry)
