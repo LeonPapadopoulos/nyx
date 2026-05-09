@@ -26,6 +26,7 @@
 
 #include <stb_image.h>
 
+//@todo move to utility library
 static glm::mat4 BuildRotationMatrix(const Nyx::Engine::TransformComponent& transform)
 {
 	glm::mat4 r = glm::mat4(1.0f);
@@ -447,7 +448,6 @@ namespace Nyx
 				// 3. Grid
 				{
 					// Draw Grid after opaque geometry, so depth test can occlude it
-
 					cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *GridPipeline);
 					cmd.bindDescriptorSets(
 						vk::PipelineBindPoint::eGraphics,
@@ -799,8 +799,6 @@ namespace Nyx
 	{
 		RenderObjects.clear();
 
-		// Registry::Each<T> iterates one component pool and gives (Entity, Component&).
-		// So we iterate MeshRendererComponent and then query TransformComponent for the same entity.
 		const_cast<Nyx::Engine::Registry&>(registry).Each<Nyx::Engine::MeshRendererComponent>(
 			[this, &registry](Nyx::Engine::Entity entity, Nyx::Engine::MeshRendererComponent& meshRenderer)
 			{
