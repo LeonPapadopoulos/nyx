@@ -169,114 +169,25 @@ namespace Nyx
 		CreateTestTextureData();
 		CreateTestMeshData();
 		CreateTestMeshBuffers();
-
-		// @todo: Move World and population of it out of the renderer!
-		{
-			Nyx::Engine::Entity cameraEntity = World.CreateEntity();
-
-			World.Add<Nyx::Engine::TransformComponent>(
-				cameraEntity,
-				Nyx::Engine::TransformComponent{
-					.Position = glm::vec3(0.0f, 2.0f, 6.0f),
-					.RotationRadians = glm::vec3(0.0f, 0.0f, 0.0f),
-					.Scale = glm::vec3(1.0f)
-				}
-			);
-
-			World.Add<Nyx::Engine::CameraComponent>(
-				cameraEntity,
-				Nyx::Engine::CameraComponent{
-					.FovYRadians = glm::radians(60.0f),
-					.NearPlane = 0.1f,
-					.FarPlane = 1000.0f,
-					.bPrimary = true
-				}
-			);
-
-			Nyx::Engine::Entity lightEntity = World.CreateEntity();
-
-			World.Add<Nyx::Engine::TransformComponent>(
-				lightEntity,
-				Nyx::Engine::TransformComponent{
-					.Position = glm::vec3(0.0f),
-					.RotationRadians = glm::vec3(glm::radians(-45.0f), glm::radians(35.0f), 0.0f),
-					.Scale = glm::vec3(1.0f)
-				}
-			);
-
-			World.Add<Nyx::Engine::DirectionalLightComponent>(
-				lightEntity,
-				Nyx::Engine::DirectionalLightComponent{
-					.Color = glm::vec3(1.0f, 0.98f, 0.95f),
-					.Intensity = 1.0f,
-					.Ambient = 0.18f,
-					.bPrimary = true
-				}
-			);
-
-			auto e0 = World.CreateEntity();
-			World.Add<Nyx::Engine::TransformComponent>(e0,
-				Nyx::Engine::TransformComponent{
-					.Position = glm::vec3(-2.0f, 0.0f, 0.0f)
-				}
-			);
-			World.Add<Nyx::Engine::MeshRendererComponent>(e0,
-				Nyx::Engine::MeshRendererComponent{
-					.MeshAsset = &CubeMesh,
-					.MaterialAsset = &TexturedMaterial
-				}
-			);
-
-			auto e1 = World.CreateEntity();
-			World.Add<Nyx::Engine::TransformComponent>(e1,
-				Nyx::Engine::TransformComponent{
-					.Position = glm::vec3(0.0f, 0.0f, 0.0f)
-				}
-			);
-			World.Add<Nyx::Engine::MeshRendererComponent>(e1,
-				Nyx::Engine::MeshRendererComponent{
-					.MeshAsset = &CubeMesh,
-					.MaterialAsset = &ReflectiveMaterial
-				}
-			);
-
-			auto e2 = World.CreateEntity();
-			World.Add<Nyx::Engine::TransformComponent>(e2,
-				Nyx::Engine::TransformComponent{
-					.Position = glm::vec3(2.0f, 0.0f, 0.0f)
-				}
-			);
-			World.Add<Nyx::Engine::MeshRendererComponent>(e2,
-				Nyx::Engine::MeshRendererComponent{
-					.MeshAsset = &CubeMesh,
-					.MaterialAsset = &UntexturedMaterial
-				}
-			);
-		}
-
-		// Render pass / framebuffer target must exist before pipelines
-		SceneViewport.Initialize(Context, 1280, 720, vk::Format::eR8G8B8A8Unorm);
-		
-		// Global scene resources
-		CreateSceneUniformBuffer();
 	
-		// With Skybox reflections being a thing;
-		// Skybox cubemap needs to be loaded before updating scene descriptor sets
-		CreateSkyboxResources();
-		
-		// Descriptor(Sets) depend on SceneUniformBuffer, TestTexture & SkyboxCubemap
-		CreateSceneDescriptors();
-		UpdateSceneDescriptorSets();
+		// Shared layouts / shared GPU assets
+		CreateSceneDescriptorSetLayout();
+		CreateSkyboxDescriptorSetLayout();
 
-		// Pipelines depend on SceneViewport & DescriptorSetLayouts
+		LoadSkyboxCubemap();
+
+		CreateSceneView();
+		
+		// Shared pipelines
 		CreateScenePipeline();
 		CreateGridPipeline();
+		CreateSkyboxPipeline();
 
-		// Materials depend on ScenePipeline, ScenePipelineLayout & SceneDescriptorSets
+		// Shared materials
 		CreateMaterials();
 
-		// RenderObjects depend on Meshes & Materials
-		CreateRenderObjects();
+		// Demo ECS scene content
+		SpawnTestEntities();
 
 		// @note: Gltf Meshes currently not visible, because the RenderObjects get 
 		// cleared and then populated by the world / entity-registry; So manually pushed
@@ -293,7 +204,23 @@ namespace Nyx
 			Context.GetDevice().waitIdle();
 		}
 
-		SceneViewport.Shutdown(Context);
+		for (SceneViewInstance& view : SceneViews)
+		{
+			view.SceneDescriptorSets = vk::raii::DescriptorSets{ nullptr };
+			view.SkyboxDescriptorSets = vk::raii::DescriptorSets{ nullptr };
+
+			view.SceneDescriptorPool = nullptr;
+			view.SkyboxDescriptorPool = nullptr;
+
+			view.SceneUniformBuffer = nullptr;
+			view.SceneUniformBufferMemory = nullptr;
+
+			view.SkyboxUniformBuffer = nullptr;
+			view.SkyboxUniformBufferMemory = nullptr;
+
+			view.RenderTarget.Shutdown(Context);
+		}
+		SceneViews.clear();
 
 		if (ImGuiBackend)
 		{
@@ -354,7 +281,8 @@ namespace Nyx
 	void VulkanRenderer::DrawFrame(const std::function<void()>& buildUI)
 	{
 		// 1) Wait until previous submitted frame is done
-		vk::Result result = Context.GetDevice().waitForFences({ *InFlightFence }, true, UINT64_MAX);
+		const vk::Result fenceResult = Context.GetDevice().waitForFences({ *InFlightFence }, true, UINT64_MAX);
+		(void)fenceResult;
 
 		// 2) Acquire next swapchain image
 		const vk::ResultValue<uint32_t> acquireResult =
@@ -377,10 +305,12 @@ namespace Nyx
 		// Only reset once we know we will submit work
 		Context.GetDevice().resetFences({ *InFlightFence });
 
+		// Global hot reload
 		PollGridShaderHotReload();
 		if (GridShaderHotReload.bReloadPending)
 		{
 			GridPipeline = nullptr;
+			GridPipelineLayout = nullptr;
 			CreateGridPipeline();
 			GridShaderHotReload.bReloadPending = false;
 		}
@@ -392,76 +322,64 @@ namespace Nyx
 		vk::CommandBufferBeginInfo beginInfo{};
 		cmd.begin(beginInfo);
 
-		// Render Scene
+		// ---------------------------------------------------------------------
+		// Update shared world-side state once per frame
+		// ---------------------------------------------------------------------
+		const float deltaTime = ComputeDeltaTime();
+
+		UpdateRenderObjects(World, deltaTime);
+		ExtractRenderObjects(World);
+
+		TickActiveEditorSceneViewFromInput(deltaTime);
+
+		// ---------------------------------------------------------------------
+		// Render every scene view into its own offscreen target
+		// ---------------------------------------------------------------------
+		for (SceneViewInstance& view : SceneViews)
 		{
-			if (bSceneViewportResizePending)
+			if (view.bResizePending)
 			{
-				SceneViewport.Recreate(Context, PendingSceneViewportWidth, PendingSceneViewportHeight, vk::Format::eR8G8B8A8Unorm);
-				GridPipeline = nullptr;
-				GridPipelineLayout = nullptr;
-				CreateGridPipeline();
-				ScenePipeline = nullptr;
-				ScenePipelineLayout = nullptr;
-				CreateScenePipeline();
-				SkyboxPipeline = nullptr;
-				SkyboxPipelineLayout = nullptr;
-				CreateSkyboxPipeline();
-								
-				bSceneViewportResizePending = false;
-				bSceneViewportRecreatedThisFrame = true;
+				view.RenderTarget.Recreate(
+					Context,
+					std::max(1u, view.PendingWidth),
+					std::max(1u, view.PendingHeight),
+					vk::Format::eR8G8B8A8Unorm
+				);
+
+				view.bResizePending = false;
+				view.bRecreatedThisFrame = true;
 			}
 			else
 			{
-				bSceneViewportRecreatedThisFrame = false;
+				view.bRecreatedThisFrame = false;
 			}
+
+			UpdateViewportSceneGlobals(view, World);
+			UpdateSceneUniforms(view);
+			UpdateSkyboxUniforms(view);
 
 			vk::ClearColorValue clear = vk::ClearColorValue(std::array<float, 4>{ 0.2f, 0.05f, 0.35f, 1.0f });
 
-			SceneViewport.BeginRenderPass(cmd, clear);
+			view.RenderTarget.BeginRenderPass(cmd, clear);
 			{
-				// @todo: Introduce a more proper 'Tick'
-				const float deltaTime = ComputeDeltaTime();
-
-				if (ViewportCameraMode == EViewportCameraMode::EditorFreeCamera)
-				{
-					TickEditorCameraFromInput(deltaTime);
-				}
-
-				UpdateViewportSceneGlobals(World);
-
-				UpdateRenderObjects(World, deltaTime);
-
-				UpdateSceneUniforms();
-				UpdateSkyboxUniforms();
-				ExtractRenderObjects(World);
-
 				// 1. Opaque scene objects
-				{
-					DrawRenderObjects(cmd);
-				}
+				DrawRenderObjects(view, cmd);
 
 				// 2. Skybox
-				{
-					DrawSkybox(cmd);
-				}
+				DrawSkybox(view, cmd);
 
 				// 3. Grid
-				{
-					// Draw Grid after opaque geometry, so depth test can occlude it
-					cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *GridPipeline);
-					cmd.bindDescriptorSets(
-						vk::PipelineBindPoint::eGraphics,
-						*GridPipelineLayout,
-						0,
-						{ *SceneDescriptorSets.front() },
-						{}
-					);
-					cmd.draw(3, 1, 0, 0);
-				}
+				DrawGrid(view, cmd);
+
+				// 4. Later: debug draw
+				// DrawDebugLines(view, cmd);
 			}
-			SceneViewport.EndRenderPass(cmd);
+			view.RenderTarget.EndRenderPass(cmd);
 		}
 
+		// ---------------------------------------------------------------------
+		// Render main swapchain / ImGui
+		// ---------------------------------------------------------------------
 		vk::ClearValue clearValue{};
 		clearValue.color = vk::ClearColorValue(std::array<float, 4>{ 0.1f, 0.1f, 0.1f, 1.0f });
 
@@ -475,7 +393,6 @@ namespace Nyx
 
 		cmd.beginRenderPass(renderPassInfo, vk::SubpassContents::eInline);
 
-		// This is where ImGuiBackend records into the active frame command buffer.
 		{
 			ImGuiBackend->BeginFrame();
 			buildUI();
@@ -487,7 +404,6 @@ namespace Nyx
 
 		// 4) Submit
 		const vk::PipelineStageFlags waitStage = vk::PipelineStageFlagBits::eColorAttachmentOutput;
-
 		vk::raii::Semaphore& renderFinishedSemaphore = RenderFinishedSemaphores[imageIndex];
 
 		vk::SubmitInfo submitInfo{};
@@ -542,53 +458,153 @@ namespace Nyx
 		return Swapchain;
 	}
 
-	ImTextureID VulkanRenderer::GetSceneTextureId() const
+	SceneViewInstance* VulkanRenderer::FindEditorInputTargetView()
 	{
-		return SceneViewport.GetImGuiTextureId();
+		// If mouse-look is currently locked, keep using that same view until RMB is released.
+		if (MouseLookLockedSceneViewId != 0)
+		{
+			if (SceneViewInstance* lockedView = FindSceneView(MouseLookLockedSceneViewId))
+			{
+				return lockedView;
+			}
+
+			MouseLookLockedSceneViewId = 0;
+		}
+
+		// Otherwise prefer a hovered editor-free-camera view.
+		for (SceneViewInstance& view : SceneViews)
+		{
+			if (view.CameraMode == EViewportCameraMode::EditorFreeCamera && view.bHovered)
+			{
+				return &view;
+			}
+		}
+
+		// Fallback: focused editor-free-camera view.
+		for (SceneViewInstance& view : SceneViews)
+		{
+			if (view.CameraMode == EViewportCameraMode::EditorFreeCamera && view.bFocused)
+			{
+				return &view;
+			}
+		}
+
+		return nullptr;
 	}
 
-	Extent2D VulkanRenderer::GetSceneViewportExtent() const
+	void VulkanRenderer::TickActiveEditorSceneViewFromInput(float deltaTime)
 	{
-		const vk::Extent2D extent = SceneViewport.GetExtent();
-		return Extent2D{ extent.width, extent.height };
-	}
-
-	void VulkanRenderer::EnsureSceneViewportSize(uint32_t width, uint32_t height)
-	{
-		SceneViewport.EnsureSize(Context, width, height);
-	}
-
-	void VulkanRenderer::SetSceneViewportSize(uint32_t width, uint32_t height)
-	{
-		width = std::max(1u, width);
-		height = std::max(1u, height);
-
-		if (width == PendingSceneViewportWidth && height == PendingSceneViewportHeight)
+		if (!Window)
 		{
 			return;
 		}
 
-		PendingSceneViewportWidth = width;
-		PendingSceneViewportHeight = height;
-		bSceneViewportResizePending = true;
+		SceneViewInstance* activeView = FindEditorInputTargetView();
+
+		const bool bRightMouseDown = glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
+		const bool bCanControlView = (activeView != nullptr);
+
+		// Start mouse-look and lock to the currently active view
+		if (bRightMouseDown && bCanControlView && !bMouseLookActive)
+		{
+			bMouseLookActive = true;
+			bFirstMouseLookSample = true;
+			MouseLookLockedSceneViewId = activeView->Id;
+
+			glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+
+			if (glfwRawMouseMotionSupported())
+			{
+				glfwSetInputMode(Window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+			}
+		}
+
+		// Stop mouse-look
+		if ((!bRightMouseDown || !bCanControlView) && bMouseLookActive)
+		{
+			bMouseLookActive = false;
+			bFirstMouseLookSample = true;
+			MouseLookLockedSceneViewId = 0;
+
+			glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+
+			if (glfwRawMouseMotionSupported())
+			{
+				glfwSetInputMode(Window, GLFW_RAW_MOUSE_MOTION, GLFW_FALSE);
+			}
+		}
+
+		// While mouse-look is active, always resolve the locked view again
+		if (bMouseLookActive && MouseLookLockedSceneViewId != 0)
+		{
+			activeView = FindSceneView(MouseLookLockedSceneViewId);
+		}
+
+		if (!activeView)
+		{
+			return;
+		}
+
+		EditorCamera& cam = activeView->EditorCam;
+
+		const float moveSpeed = CameraMoveSpeed * deltaTime;
+
+		glm::mat4 rotation =
+			glm::rotate(glm::mat4(1.0f), cam.RotationRadians.y, glm::vec3(0.0f, 1.0f, 0.0f)) *
+			glm::rotate(glm::mat4(1.0f), cam.RotationRadians.x, glm::vec3(1.0f, 0.0f, 0.0f));
+
+		const glm::vec3 forward = glm::normalize(glm::vec3(rotation * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f)));
+		const glm::vec3 right = glm::normalize(glm::vec3(rotation * glm::vec4(1.0f, 0.0f, 0.0f, 0.0f)));
+		const glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
+
+		// Movement: only while this view is hovered/focused, or while locked in mouse-look
+		const bool bAllowKeyboardMove =
+			activeView->bHovered || activeView->bFocused || bMouseLookActive;
+
+		if (bAllowKeyboardMove)
+		{
+			if (glfwGetKey(Window, GLFW_KEY_W) == GLFW_PRESS) cam.Position += forward * moveSpeed;
+			if (glfwGetKey(Window, GLFW_KEY_S) == GLFW_PRESS) cam.Position -= forward * moveSpeed;
+			if (glfwGetKey(Window, GLFW_KEY_D) == GLFW_PRESS) cam.Position += right * moveSpeed;
+			if (glfwGetKey(Window, GLFW_KEY_A) == GLFW_PRESS) cam.Position -= right * moveSpeed;
+			if (glfwGetKey(Window, GLFW_KEY_E) == GLFW_PRESS) cam.Position += up * moveSpeed;
+			if (glfwGetKey(Window, GLFW_KEY_Q) == GLFW_PRESS) cam.Position -= up * moveSpeed;
+		}
+
+		if (!bMouseLookActive)
+		{
+			return;
+		}
+
+		double mouseX = 0.0;
+		double mouseY = 0.0;
+		glfwGetCursorPos(Window, &mouseX, &mouseY);
+
+		if (bFirstMouseLookSample)
+		{
+			LastMouseX = mouseX;
+			LastMouseY = mouseY;
+			bFirstMouseLookSample = false;
+			return;
+		}
+
+		const double deltaX = mouseX - LastMouseX;
+		const double deltaY = mouseY - LastMouseY;
+
+		LastMouseX = mouseX;
+		LastMouseY = mouseY;
+
+		cam.RotationRadians.y -= static_cast<float>(deltaX) * CameraMouseSensitivity;
+		cam.RotationRadians.x -= static_cast<float>(deltaY) * CameraMouseSensitivity;
+
+		cam.RotationRadians.x = glm::clamp(
+			cam.RotationRadians.x,
+			glm::radians(-89.0f),
+			glm::radians(89.0f)
+		);
 	}
 
-	bool VulkanRenderer::WasSceneViewportRecreatedThisFrame() const
-	{
-		return bSceneViewportRecreatedThisFrame;
-	}
-
-	void VulkanRenderer::SetViewportCameraMode(EViewportCameraMode newMode)
-	{
-		ViewportCameraMode = newMode;
-	}
-
-	EViewportCameraMode VulkanRenderer::GetViewportCameraMode() const
-	{
-		return ViewportCameraMode;
-	}
-
-	void VulkanRenderer::TickEditorCameraFromInput(float deltaTime)
+	void VulkanRenderer::TickEditorCameraFromInput(SceneViewInstance& view, float deltaTime)
 	{
 		if (!Window)
 		{
@@ -599,19 +615,19 @@ namespace Nyx
 		const float lookSpeed = 0.0025f;
 
 		glm::mat4 rotation =
-			glm::rotate(glm::mat4(1.0f), ViewportEditorCamera.RotationRadians.y, glm::vec3(0.0f, 1.0f, 0.0f)) *
-			glm::rotate(glm::mat4(1.0f), ViewportEditorCamera.RotationRadians.x, glm::vec3(1.0f, 0.0f, 0.0f));
+			glm::rotate(glm::mat4(1.0f), view.EditorCam.RotationRadians.y, glm::vec3(0.0f, 1.0f, 0.0f)) *
+			glm::rotate(glm::mat4(1.0f), view.EditorCam.RotationRadians.x, glm::vec3(1.0f, 0.0f, 0.0f));
 
 		const glm::vec3 forward = glm::normalize(glm::vec3(rotation * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f)));
 		const glm::vec3 right = glm::normalize(glm::vec3(rotation * glm::vec4(1.0f, 0.0f, 0.0f, 0.0f)));
 		const glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
 
-		if (glfwGetKey(Window, GLFW_KEY_W) == GLFW_PRESS) ViewportEditorCamera.Position += forward * moveSpeed;
-		if (glfwGetKey(Window, GLFW_KEY_S) == GLFW_PRESS) ViewportEditorCamera.Position -= forward * moveSpeed;
-		if (glfwGetKey(Window, GLFW_KEY_D) == GLFW_PRESS) ViewportEditorCamera.Position += right * moveSpeed;
-		if (glfwGetKey(Window, GLFW_KEY_A) == GLFW_PRESS) ViewportEditorCamera.Position -= right * moveSpeed;
-		if (glfwGetKey(Window, GLFW_KEY_E) == GLFW_PRESS) ViewportEditorCamera.Position += up * moveSpeed;
-		if (glfwGetKey(Window, GLFW_KEY_Q) == GLFW_PRESS) ViewportEditorCamera.Position -= up * moveSpeed;
+		if (glfwGetKey(Window, GLFW_KEY_W) == GLFW_PRESS) view.EditorCam.Position += forward * moveSpeed;
+		if (glfwGetKey(Window, GLFW_KEY_S) == GLFW_PRESS) view.EditorCam.Position -= forward * moveSpeed;
+		if (glfwGetKey(Window, GLFW_KEY_D) == GLFW_PRESS) view.EditorCam.Position += right * moveSpeed;
+		if (glfwGetKey(Window, GLFW_KEY_A) == GLFW_PRESS) view.EditorCam.Position -= right * moveSpeed;
+		if (glfwGetKey(Window, GLFW_KEY_E) == GLFW_PRESS) view.EditorCam.Position += up * moveSpeed;
+		if (glfwGetKey(Window, GLFW_KEY_Q) == GLFW_PRESS) view.EditorCam.Position -= up * moveSpeed;
 
 		const bool bRightMouseDown = glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
 
@@ -634,11 +650,11 @@ namespace Nyx
 			LastMouseX = mouseX;
 			LastMouseY = mouseY;
 
-			ViewportEditorCamera.RotationRadians.y -= static_cast<float>(deltaX) * lookSpeed;
-			ViewportEditorCamera.RotationRadians.x -= static_cast<float>(deltaY) * lookSpeed;
+			view.EditorCam.RotationRadians.y -= static_cast<float>(deltaX) * lookSpeed;
+			view.EditorCam.RotationRadians.x -= static_cast<float>(deltaY) * lookSpeed;
 
-			ViewportEditorCamera.RotationRadians.x = glm::clamp(
-				ViewportEditorCamera.RotationRadians.x,
+			view.EditorCam.RotationRadians.x = glm::clamp(
+				view.EditorCam.RotationRadians.x,
 				glm::radians(-89.0f),
 				glm::radians(89.0f)
 			);
@@ -720,53 +736,21 @@ namespace Nyx
 	{
 		TexturedMaterial.Pipeline = &ScenePipeline;
 		TexturedMaterial.PipelineLayout = &ScenePipelineLayout;
-		TexturedMaterial.DescriptorSet = &SceneDescriptorSets.front();
 		TexturedMaterial.Reflectivity = 0.0f;
 		TexturedMaterial.bUseTexture = true;
 		TexturedMaterial.Tint = glm::vec3(1.0f, 1.0f, 1.0f);
 
 		ReflectiveMaterial.Pipeline = &ScenePipeline;
 		ReflectiveMaterial.PipelineLayout = &ScenePipelineLayout;
-		ReflectiveMaterial.DescriptorSet = &SceneDescriptorSets.front();
 		ReflectiveMaterial.Reflectivity = 0.35f;
 		ReflectiveMaterial.bUseTexture = true;
 		ReflectiveMaterial.Tint = glm::vec3(1.0f, 1.0f, 1.0f);
 
 		UntexturedMaterial.Pipeline = &ScenePipeline;
 		UntexturedMaterial.PipelineLayout = &ScenePipelineLayout;
-		UntexturedMaterial.DescriptorSet = &SceneDescriptorSets.front();
 		UntexturedMaterial.Reflectivity = 0.05f;
 		UntexturedMaterial.bUseTexture = false;
 		UntexturedMaterial.Tint = glm::vec3(0.2f, 0.8f, 1.0f);
-	}
-
-	void VulkanRenderer::CreateRenderObjects()
-	{
-		RenderObjects.clear();
-
-		{
-			RenderObject obj{};
-			obj.MeshAsset = &CubeMesh;
-			obj.MaterialAsset = &TexturedMaterial;
-			obj.WorldTransform = glm::translate(glm::mat4(1.0f), glm::vec3(-2.0f, 0.0f, 0.0f));
-			RenderObjects.push_back(obj);
-		}
-
-		{
-			RenderObject obj{};
-			obj.MeshAsset = &CubeMesh;
-			obj.MaterialAsset = &ReflectiveMaterial;
-			obj.WorldTransform = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
-			RenderObjects.push_back(obj);
-		}
-
-		{
-			RenderObject obj{};
-			obj.MeshAsset = &CubeMesh;
-			obj.MaterialAsset = &UntexturedMaterial;
-			obj.WorldTransform = glm::translate(glm::mat4(1.0f), glm::vec3(2.0f, 0.0f, 0.0f));
-			RenderObjects.push_back(obj);
-		}
 	}
 
 	void VulkanRenderer::UpdateRenderObjects(Nyx::Engine::Registry& registry, float deltaTime)
@@ -829,7 +813,7 @@ namespace Nyx
 		);
 	}
 
-	void VulkanRenderer::DrawRenderObjects(vk::raii::CommandBuffer& cmd)
+	void VulkanRenderer::DrawRenderObjects(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
 	{
 		for (const RenderObject& obj : RenderObjects)
 		{
@@ -844,7 +828,7 @@ namespace Nyx
 				vk::PipelineBindPoint::eGraphics,
 				**obj.MaterialAsset->PipelineLayout,
 				0,
-				{ **obj.MaterialAsset->DescriptorSet },
+				{ *view.SceneDescriptorSets.front() },
 				{}
 			);
 
@@ -870,6 +854,45 @@ namespace Nyx
 			cmd.bindIndexBuffer(obj.MeshAsset->GetIndexBuffer(), 0, vk::IndexType::eUint32);
 			cmd.drawIndexed(obj.MeshAsset->GetIndexCount(), 1, 0, 0, 0);
 		}
+	}
+
+	void VulkanRenderer::CreateSceneDescriptorSetLayout()
+	{
+		vk::DescriptorSetLayoutBinding uboBinding{};
+		uboBinding.binding = 0;
+		uboBinding.descriptorType = vk::DescriptorType::eUniformBuffer;
+		uboBinding.descriptorCount = 1;
+		uboBinding.stageFlags =
+			vk::ShaderStageFlagBits::eVertex |
+			vk::ShaderStageFlagBits::eFragment;
+		uboBinding.pImmutableSamplers = nullptr;
+
+		vk::DescriptorSetLayoutBinding textureBinding{};
+		textureBinding.binding = 1;
+		textureBinding.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+		textureBinding.descriptorCount = 1;
+		textureBinding.stageFlags = vk::ShaderStageFlagBits::eFragment;
+		textureBinding.pImmutableSamplers = nullptr;
+
+		vk::DescriptorSetLayoutBinding cubemapBinding{};
+		cubemapBinding.binding = 2;
+		cubemapBinding.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+		cubemapBinding.descriptorCount = 1;
+		cubemapBinding.stageFlags = vk::ShaderStageFlagBits::eFragment;
+		cubemapBinding.pImmutableSamplers = nullptr;
+
+		std::array<vk::DescriptorSetLayoutBinding, 3> bindings =
+		{
+			uboBinding,
+			textureBinding,
+			cubemapBinding
+		};
+
+		vk::DescriptorSetLayoutCreateInfo layoutInfo{};
+		layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+		layoutInfo.pBindings = bindings.data();
+
+		SceneDescriptorSetLayout = vk::raii::DescriptorSetLayout(Context.GetDevice(), layoutInfo);
 	}
 
 	void VulkanRenderer::CreateScenePipeline()
@@ -980,7 +1003,7 @@ namespace Nyx
 		pipelineInfo.pColorBlendState = &colorBlending;
 		pipelineInfo.pDynamicState = &dynamicState;
 		pipelineInfo.layout = *ScenePipelineLayout;
-		pipelineInfo.renderPass = *SceneViewport.GetRenderPass();
+		pipelineInfo.renderPass = GetSceneRenderPass();
 		pipelineInfo.subpass = 0;
 
 		ScenePipeline = std::move(vk::raii::Pipeline(
@@ -1097,10 +1120,16 @@ namespace Nyx
 		pipelineInfo.pColorBlendState = &colorBlending;
 		pipelineInfo.pDynamicState = &dynamicState;
 		pipelineInfo.layout = *GridPipelineLayout;
-		pipelineInfo.renderPass = *SceneViewport.GetRenderPass();
+		pipelineInfo.renderPass = GetSceneRenderPass();
 		pipelineInfo.subpass = 0;
 
 		GridPipeline = std::move(vk::raii::Pipeline(Context.GetDevice(), nullptr, pipelineInfo));
+	}
+
+	vk::RenderPass VulkanRenderer::GetSceneRenderPass() const
+	{
+		ASSERT(!SceneViews.empty() && "No SceneViews exist yet.");
+		return *SceneViews.front().RenderTarget.GetRenderPass();
 	}
 
 	void VulkanRenderer::CreateSkyboxPipeline()
@@ -1212,7 +1241,7 @@ namespace Nyx
 		pipelineInfo.pColorBlendState = &colorBlending;
 		pipelineInfo.pDynamicState = &dynamicState;
 		pipelineInfo.layout = *SkyboxPipelineLayout;
-		pipelineInfo.renderPass = *SceneViewport.GetRenderPass();
+		pipelineInfo.renderPass = GetSceneRenderPass();
 		pipelineInfo.subpass = 0;
 
 		SkyboxPipeline = std::move(vk::raii::Pipeline(
@@ -1222,29 +1251,111 @@ namespace Nyx
 		));
 	}
 
-	void VulkanRenderer::CreateSkyboxResources()
+	void VulkanRenderer::LoadSkyboxCubemap()
+	{
+		SkyboxCubemap.SetContext(Context);
+
+		const bool bLoaded = SkyboxCubemap.Load();
+		ASSERT(bLoaded && "Failed to load skybox cubemap.");
+	}
+
+	void VulkanRenderer::CreateSkyboxSharedResources()
 	{
 		SkyboxCubemap.SetContext(Context);
 
 		const bool bLoaded = SkyboxCubemap.Load();
 		ASSERT(bLoaded && "Failed to load skybox cubemap.");
 
-		CreateSkyboxUniformBuffer();
 		CreateSkyboxDescriptorSetLayout();
-		CreateSkyboxDescriptorPool();
-		AllocateSkyboxDescriptorSets();
-		UpdateSkyboxDescriptorSet();
 		CreateSkyboxPipeline();
 	}
 
-	void VulkanRenderer::CreateSkyboxUniformBuffer()
+	void VulkanRenderer::CreateSkyboxResourcesForView(SceneViewInstance& view)
+	{
+		// ---------------------------------------------------------
+		// Per-view skybox UBO
+		// ---------------------------------------------------------
+		CreateBuffer(
+			sizeof(SkyboxUBO),
+			vk::BufferUsageFlagBits::eUniformBuffer,
+			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+			view.SkyboxUniformBuffer,
+			view.SkyboxUniformBufferMemory
+		);
+
+		// ---------------------------------------------------------
+		// Per-view skybox descriptor pool
+		// binding 0 = SkyboxUBO
+		// binding 1 = SkyboxCubemap
+		// ---------------------------------------------------------
+		std::array<vk::DescriptorPoolSize, 2> poolSizes{};
+
+		poolSizes[0].type = vk::DescriptorType::eUniformBuffer;
+		poolSizes[0].descriptorCount = 1;
+
+		poolSizes[1].type = vk::DescriptorType::eCombinedImageSampler;
+		poolSizes[1].descriptorCount = 1;
+
+		vk::DescriptorPoolCreateInfo poolInfo{};
+		poolInfo.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
+		poolInfo.maxSets = 1;
+		poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+		poolInfo.pPoolSizes = poolSizes.data();
+
+		view.SkyboxDescriptorPool = vk::raii::DescriptorPool(Context.GetDevice(), poolInfo);
+
+		// ---------------------------------------------------------
+		// Per-view skybox descriptor set allocation
+		// ---------------------------------------------------------
+		vk::DescriptorSetLayout layout = *SkyboxDescriptorSetLayout;
+
+		vk::DescriptorSetAllocateInfo allocInfo{};
+		allocInfo.descriptorPool = *view.SkyboxDescriptorPool;
+		allocInfo.descriptorSetCount = 1;
+		allocInfo.pSetLayouts = &layout;
+
+		view.SkyboxDescriptorSets = vk::raii::DescriptorSets(Context.GetDevice(), allocInfo);
+
+		// ---------------------------------------------------------
+		// Per-view skybox descriptor set update
+		// ---------------------------------------------------------
+		vk::DescriptorBufferInfo bufferInfo{};
+		bufferInfo.buffer = *view.SkyboxUniformBuffer;
+		bufferInfo.offset = 0;
+		bufferInfo.range = sizeof(SkyboxUBO);
+
+		vk::DescriptorImageInfo imageInfo{};
+		imageInfo.sampler = SkyboxCubemap.GetSampler();
+		imageInfo.imageView = SkyboxCubemap.GetImageView();
+		imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+
+		std::array<vk::WriteDescriptorSet, 2> writes{};
+
+		writes[0].dstSet = *view.SkyboxDescriptorSets.front();
+		writes[0].dstBinding = 0;
+		writes[0].dstArrayElement = 0;
+		writes[0].descriptorType = vk::DescriptorType::eUniformBuffer;
+		writes[0].descriptorCount = 1;
+		writes[0].pBufferInfo = &bufferInfo;
+
+		writes[1].dstSet = *view.SkyboxDescriptorSets.front();
+		writes[1].dstBinding = 1;
+		writes[1].dstArrayElement = 0;
+		writes[1].descriptorType = vk::DescriptorType::eCombinedImageSampler;
+		writes[1].descriptorCount = 1;
+		writes[1].pImageInfo = &imageInfo;
+
+		Context.GetDevice().updateDescriptorSets(writes, {});
+	}
+
+	void VulkanRenderer::CreateSkyboxUniformBuffer(SceneViewInstance& view)
 	{
 		CreateBuffer(
 			sizeof(SkyboxUBO),
 			vk::BufferUsageFlagBits::eUniformBuffer,
 			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
-			SkyboxUniformBuffer,
-			SkyboxUniformBufferMemory
+			view.SkyboxUniformBuffer,
+			view.SkyboxUniformBufferMemory
 		);
 	}
 
@@ -1275,79 +1386,16 @@ namespace Nyx
 		SkyboxDescriptorSetLayout = vk::raii::DescriptorSetLayout(Context.GetDevice(), layoutInfo);
 	}
 
-	void VulkanRenderer::CreateSkyboxDescriptorPool()
-	{
-		std::array<vk::DescriptorPoolSize, 2> poolSizes{};
-
-		poolSizes[0].type = vk::DescriptorType::eUniformBuffer;
-		poolSizes[0].descriptorCount = 1;
-
-		poolSizes[1].type = vk::DescriptorType::eCombinedImageSampler;
-		poolSizes[1].descriptorCount = 1;
-
-		vk::DescriptorPoolCreateInfo poolInfo{};
-		poolInfo.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
-		poolInfo.maxSets = 1;
-		poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
-		poolInfo.pPoolSizes = poolSizes.data();
-
-		SkyboxDescriptorPool = vk::raii::DescriptorPool(Context.GetDevice(), poolInfo);
-	}
-
-	void VulkanRenderer::AllocateSkyboxDescriptorSets()
-	{
-		vk::DescriptorSetLayout layouts[] = { *SkyboxDescriptorSetLayout };
-
-		vk::DescriptorSetAllocateInfo allocInfo{};
-		allocInfo.descriptorPool = *SkyboxDescriptorPool;
-		allocInfo.descriptorSetCount = 1;
-		allocInfo.pSetLayouts = layouts;
-
-		SkyboxDescriptorSets = vk::raii::DescriptorSets(Context.GetDevice(), allocInfo);
-	}
-
-	void VulkanRenderer::UpdateSkyboxDescriptorSet()
-	{
-		vk::DescriptorBufferInfo bufferInfo{};
-		bufferInfo.buffer = *SkyboxUniformBuffer;
-		bufferInfo.offset = 0;
-		bufferInfo.range = sizeof(SkyboxUBO);
-
-		vk::DescriptorImageInfo imageInfo{};
-		imageInfo.sampler = SkyboxCubemap.GetSampler();
-		imageInfo.imageView = SkyboxCubemap.GetImageView();
-		imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-
-		std::array<vk::WriteDescriptorSet, 2> writes{};
-
-		writes[0].dstSet = *SkyboxDescriptorSets.front();
-		writes[0].dstBinding = 0;
-		writes[0].dstArrayElement = 0;
-		writes[0].descriptorType = vk::DescriptorType::eUniformBuffer;
-		writes[0].descriptorCount = 1;
-		writes[0].pBufferInfo = &bufferInfo;
-
-		writes[1].dstSet = *SkyboxDescriptorSets.front();
-		writes[1].dstBinding = 1;
-		writes[1].dstArrayElement = 0;
-		writes[1].descriptorType = vk::DescriptorType::eCombinedImageSampler;
-		writes[1].descriptorCount = 1;
-		writes[1].pImageInfo = &imageInfo;
-
-		Context.GetDevice().updateDescriptorSets(writes, {});
-	}
-
-	void VulkanRenderer::UpdateSkyboxUniforms()
+	void VulkanRenderer::UpdateSkyboxUniforms(SceneViewInstance& view)
 	{
 		SkyboxUBO ubo{};
 
-		// Remove translation so the skybox stays centered on the active camera.
-		const glm::mat4 skyboxView = glm::mat4(glm::mat3(SceneGlobals.View));
-		ubo.ViewProj = SceneGlobals.Projection * skyboxView;
+		const glm::mat4 skyboxView = glm::mat4(glm::mat3(view.SceneGlobals.View));
+		ubo.ViewProj = view.SceneGlobals.Projection * skyboxView;
 
-		void* mapped = SkyboxUniformBufferMemory.mapMemory(0, sizeof(SkyboxUBO));
+		void* mapped = view.SkyboxUniformBufferMemory.mapMemory(0, sizeof(SkyboxUBO));
 		std::memcpy(mapped, &ubo, sizeof(SkyboxUBO));
-		SkyboxUniformBufferMemory.unmapMemory();
+		view.SkyboxUniformBufferMemory.unmapMemory();
 	}
 
 	vk::raii::ShaderModule VulkanRenderer::CreateShaderModule(const std::vector<uint32_t>& spirv)
@@ -1386,188 +1434,116 @@ namespace Nyx
 		return buffer;
 	}
 
-	void VulkanRenderer::CreateSceneDescriptors()
+	void VulkanRenderer::CreateSceneResourcesForView(SceneViewInstance& view)
 	{
-		vk::DescriptorSetLayoutBinding uboBinding{};
-		uboBinding.binding = 0;
-		uboBinding.descriptorType = vk::DescriptorType::eUniformBuffer;
-		uboBinding.descriptorCount = 1;
-		uboBinding.stageFlags = vk::ShaderStageFlagBits::eVertex | 
-			                          vk::ShaderStageFlagBits::eFragment;
-		uboBinding.pImmutableSamplers = nullptr;
+		// ---------------------------------------------------------
+		// Per-view scene UBO
+		// ---------------------------------------------------------
+		CreateBuffer(
+			sizeof(SceneUBO),
+			vk::BufferUsageFlagBits::eUniformBuffer,
+			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+			view.SceneUniformBuffer,
+			view.SceneUniformBufferMemory
+		);
 
-		vk::DescriptorSetLayoutBinding textureBinding{};
-		textureBinding.binding = 1;
-		textureBinding.descriptorType = vk::DescriptorType::eCombinedImageSampler;
-		textureBinding.descriptorCount = 1;
-		textureBinding.stageFlags = vk::ShaderStageFlagBits::eFragment;
-
-		vk::DescriptorSetLayoutBinding cubemapBinding{};
-		cubemapBinding.binding = 2;
-		cubemapBinding.descriptorType = vk::DescriptorType::eCombinedImageSampler;
-		cubemapBinding.descriptorCount = 1;
-		cubemapBinding.stageFlags = vk::ShaderStageFlagBits::eFragment;
-
-		std::array<vk::DescriptorSetLayoutBinding, 3> bindings =
-		{
-			uboBinding,
-			textureBinding,
-			cubemapBinding
-		};
-
-		vk::DescriptorSetLayoutCreateInfo layoutInfo{};
-		layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
-		layoutInfo.pBindings = bindings.data();
-
-		SceneDescriptorSetLayout = vk::raii::DescriptorSetLayout(Context.GetDevice(), layoutInfo);
-
-		vk::DescriptorPoolSize poolSizes[3]{};
+		// ---------------------------------------------------------
+		// Per-view scene descriptor pool
+		// binding 0 = SceneUBO
+		// binding 1 = TestTexture
+		// binding 2 = SkyboxCubemap
+		// ---------------------------------------------------------
+		std::array<vk::DescriptorPoolSize, 2> poolSizes{};
 
 		poolSizes[0].type = vk::DescriptorType::eUniformBuffer;
-		poolSizes[0].descriptorCount = 1; // @todo: FrameCount;
+		poolSizes[0].descriptorCount = 1;
 
 		poolSizes[1].type = vk::DescriptorType::eCombinedImageSampler;
-		poolSizes[1].descriptorCount = 1; // @todo: FrameCount;
-
-		poolSizes[2].type = vk::DescriptorType::eCombinedImageSampler;
-		poolSizes[2].descriptorCount = 1; // @todo: FrameCount;
+		poolSizes[1].descriptorCount = 2;
 
 		vk::DescriptorPoolCreateInfo poolInfo{};
 		poolInfo.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
-		poolInfo.maxSets = 1; // @todo: FrameCount;
-		poolInfo.poolSizeCount = poolInfo.poolSizeCount = static_cast<uint32_t>(std::size(poolSizes));
-		poolInfo.pPoolSizes = poolSizes;
+		poolInfo.maxSets = 1;
+		poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+		poolInfo.pPoolSizes = poolSizes.data();
 
-		SceneDescriptorPool = vk::raii::DescriptorPool(Context.GetDevice(), poolInfo);
+		view.SceneDescriptorPool = vk::raii::DescriptorPool(Context.GetDevice(), poolInfo);
+
+		// ---------------------------------------------------------
+		// Per-view scene descriptor set allocation
+		// ---------------------------------------------------------
+		vk::DescriptorSetLayout layout = *SceneDescriptorSetLayout;
 
 		vk::DescriptorSetAllocateInfo allocInfo{};
-		allocInfo.descriptorPool = *SceneDescriptorPool;
+		allocInfo.descriptorPool = *view.SceneDescriptorPool;
 		allocInfo.descriptorSetCount = 1;
-		vk::DescriptorSetLayout layout = *SceneDescriptorSetLayout;
 		allocInfo.pSetLayouts = &layout;
 
-		SceneDescriptorSets = vk::raii::DescriptorSets(Context.GetDevice(), allocInfo);
+		view.SceneDescriptorSets = vk::raii::DescriptorSets(Context.GetDevice(), allocInfo);
 
+		// ---------------------------------------------------------
+		// Per-view scene descriptor set update
+		// ---------------------------------------------------------
 		vk::DescriptorBufferInfo bufferInfo{};
-		bufferInfo.buffer = *SceneUniformBuffer;
+		bufferInfo.buffer = *view.SceneUniformBuffer;
 		bufferInfo.offset = 0;
 		bufferInfo.range = sizeof(SceneUBO);
 
-		vk::DescriptorImageInfo imageInfo{};
-		imageInfo.sampler = TestTexture.GetSampler();
-		imageInfo.imageView = TestTexture.GetImageView();
-		imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+		vk::DescriptorImageInfo textureInfo{};
+		textureInfo.sampler = TestTexture.GetSampler();
+		textureInfo.imageView = TestTexture.GetImageView();
+		textureInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
 
-		vk::WriteDescriptorSet writes[2]{};
-
-		writes[0].dstSet = *SceneDescriptorSets[0]; // @todo: i];
-		writes[0].dstBinding = 0;
-		writes[0].dstArrayElement = 0;
-		writes[0].descriptorType = vk::DescriptorType::eUniformBuffer;
-		writes[0].descriptorCount = 1;
-		writes[0].pBufferInfo = &bufferInfo;
-
-		writes[1].dstSet = *SceneDescriptorSets[0]; // @todo: i];
-		writes[1].dstBinding = 1;
-		writes[1].dstArrayElement = 0;
-		writes[1].descriptorType = vk::DescriptorType::eCombinedImageSampler;
-		writes[1].descriptorCount = 1;
-		writes[1].pImageInfo = &imageInfo;
-
-		Context.GetDevice().updateDescriptorSets(writes, {});
-	}
-
-	void VulkanRenderer::UpdateSceneDescriptorSets()
-	{
-		vk::DescriptorBufferInfo bufferInfo{};
-		bufferInfo.buffer = *SceneUniformBuffer;
-		bufferInfo.offset = 0;
-		bufferInfo.range = sizeof(SceneUBO);
-
-		vk::DescriptorImageInfo albedoImageInfo{};
-		albedoImageInfo.sampler = TestTexture.GetSampler();
-		albedoImageInfo.imageView = TestTexture.GetImageView();
-		albedoImageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-
-		vk::DescriptorImageInfo cubemapImageInfo{};
-		cubemapImageInfo.sampler = SkyboxCubemap.GetSampler();
-		cubemapImageInfo.imageView = SkyboxCubemap.GetImageView();
-		cubemapImageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+		vk::DescriptorImageInfo cubemapInfo{};
+		cubemapInfo.sampler = SkyboxCubemap.GetSampler();
+		cubemapInfo.imageView = SkyboxCubemap.GetImageView();
+		cubemapInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
 
 		std::array<vk::WriteDescriptorSet, 3> writes{};
 
-		writes[0].dstSet = *SceneDescriptorSets.front();
+		writes[0].dstSet = *view.SceneDescriptorSets.front();
 		writes[0].dstBinding = 0;
 		writes[0].dstArrayElement = 0;
 		writes[0].descriptorType = vk::DescriptorType::eUniformBuffer;
 		writes[0].descriptorCount = 1;
 		writes[0].pBufferInfo = &bufferInfo;
 
-		writes[1].dstSet = *SceneDescriptorSets.front();
+		writes[1].dstSet = *view.SceneDescriptorSets.front();
 		writes[1].dstBinding = 1;
 		writes[1].dstArrayElement = 0;
 		writes[1].descriptorType = vk::DescriptorType::eCombinedImageSampler;
 		writes[1].descriptorCount = 1;
-		writes[1].pImageInfo = &albedoImageInfo;
+		writes[1].pImageInfo = &textureInfo;
 
-		writes[2].dstSet = *SceneDescriptorSets.front();
+		writes[2].dstSet = *view.SceneDescriptorSets.front();
 		writes[2].dstBinding = 2;
 		writes[2].dstArrayElement = 0;
 		writes[2].descriptorType = vk::DescriptorType::eCombinedImageSampler;
 		writes[2].descriptorCount = 1;
-		writes[2].pImageInfo = &cubemapImageInfo;
+		writes[2].pImageInfo = &cubemapInfo;
 
 		Context.GetDevice().updateDescriptorSets(writes, {});
 	}
 
-	void VulkanRenderer::CreateSceneUniformBuffer()
+	void VulkanRenderer::UpdateSceneUniforms(SceneViewInstance& view)
 	{
-		vk::DeviceSize bufferSize = sizeof(SceneUBO);
-
-		vk::BufferCreateInfo bufferInfo{};
-		bufferInfo.size = bufferSize;
-		bufferInfo.usage = vk::BufferUsageFlagBits::eUniformBuffer;
-		bufferInfo.sharingMode = vk::SharingMode::eExclusive;
-
-		SceneUniformBuffer = vk::raii::Buffer(Context.GetDevice(), bufferInfo);
-
-		vk::MemoryRequirements memRequirements = SceneUniformBuffer.getMemoryRequirements();
-
-		vk::MemoryAllocateInfo allocInfo{};
-		allocInfo.allocationSize = memRequirements.size;
-		allocInfo.memoryTypeIndex = FindMemoryType(
-			*Context.GetPhysicalDevice(),
-			memRequirements.memoryTypeBits,
-			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent
-		);
-
-		SceneUniformBufferMemory = vk::raii::DeviceMemory(Context.GetDevice(), allocInfo);
-		SceneUniformBuffer.bindMemory(*SceneUniformBufferMemory, 0);
-	}
-
-	void VulkanRenderer::UpdateSceneUniforms()
-	{
-		const vk::Extent2D extent = SceneViewport.GetExtent();
+		const vk::Extent2D extent = view.RenderTarget.GetExtent();
 
 		SceneUBO ubo{};
-		ubo.ViewProj = SceneGlobals.ViewProjection;
-		ubo.InvViewProj = glm::inverse(SceneGlobals.ViewProjection);
+		ubo.ViewProj = view.SceneGlobals.ViewProjection;
+		ubo.InvViewProj = glm::inverse(view.SceneGlobals.ViewProjection);
 		ubo.ViewportSize = glm::vec2(
 			static_cast<float>(extent.width),
 			static_cast<float>(extent.height)
 		);
 
-		ubo.CameraWorldPos = glm::vec4(SceneGlobals.CameraWorldPos, 1.0f);
+		ubo.CameraWorldPos = glm::vec4(view.SceneGlobals.CameraWorldPos, 1.0f);
+		ubo.LightDirectionWS = glm::vec4(view.SceneGlobals.LightDirectionWS, 0.0f);
+		ubo.LightColor = glm::vec4(view.SceneGlobals.LightColor, view.SceneGlobals.Ambient);
 
-		// Direction from surface toward the light
-		ubo.LightDirectionWS = glm::vec4(SceneGlobals.LightDirectionWS, 0.0f);
-
-		// rgb = light color, a = ambient strength
-		ubo.LightColor = glm::vec4(SceneGlobals.LightColor, SceneGlobals.Ambient);
-
-		void* mapped = SceneUniformBufferMemory.mapMemory(0, sizeof(SceneUBO));
+		void* mapped = view.SceneUniformBufferMemory.mapMemory(0, sizeof(SceneUBO));
 		std::memcpy(mapped, &ubo, sizeof(SceneUBO));
-		SceneUniformBufferMemory.unmapMemory();
+		view.SceneUniformBufferMemory.unmapMemory();
 	}
 
 	void VulkanRenderer::CreateTestTextureData()
@@ -1841,60 +1817,58 @@ namespace Nyx
 		}
 	}
 
-	void VulkanRenderer::ExtractSceneGlobalsFromEditorCamera()
+	void VulkanRenderer::ExtractSceneGlobalsFromEditorCamera(SceneViewInstance& view)
 	{
-		const vk::Extent2D extent = SceneViewport.GetExtent();
-		ViewportEditorCamera.AspectRatio = extent.height > 0
+		const vk::Extent2D extent = view.RenderTarget.GetExtent();
+		view.EditorCam.AspectRatio = extent.height > 0
 			? static_cast<float>(extent.width) / static_cast<float>(extent.height)
 			: 1.0f;
 
-		SceneGlobals = {};
-		SceneGlobals.View = ViewportEditorCamera.GetViewMatrix();
-		SceneGlobals.Projection = ViewportEditorCamera.GetProjectionMatrix();
-		SceneGlobals.ViewProjection = ViewportEditorCamera.GetViewProjectionMatrix();
-		SceneGlobals.CameraWorldPos = ViewportEditorCamera.Position;
+		view.SceneGlobals = {};
+		view.SceneGlobals.View = view.EditorCam.GetViewMatrix();
+		view.SceneGlobals.Projection = view.EditorCam.GetProjectionMatrix();
+		view.SceneGlobals.ViewProjection = view.EditorCam.GetViewProjectionMatrix();
+		view.SceneGlobals.CameraWorldPos = view.EditorCam.Position;
 
-		// Keep a sane default light when using freecam mode
-		SceneGlobals.LightDirectionWS = glm::normalize(glm::vec3(0.4f, 1.0f, 0.2f));
-		SceneGlobals.LightColor = glm::vec3(1.0f, 0.98f, 0.95f);
-		SceneGlobals.Ambient = 0.18f;
-
-		SceneGlobals.bHasCamera = true;
-		SceneGlobals.bHasDirectionalLight = false;
+		view.SceneGlobals.LightDirectionWS = glm::normalize(glm::vec3(0.4f, 1.0f, 0.2f));
+		view.SceneGlobals.LightColor = glm::vec3(1.0f, 0.98f, 0.95f);
+		view.SceneGlobals.Ambient = 0.18f;
 	}
 
-	void VulkanRenderer::ExtractSceneGlobalsFromWorldCamera(const Nyx::Engine::Registry& registry)
+	void VulkanRenderer::ExtractSceneGlobalsFromWorldCamera(
+		SceneViewInstance& view,
+		const Nyx::Engine::Registry& world)
 	{
-		const vk::Extent2D extent = SceneViewport.GetExtent();
+		const vk::Extent2D extent = view.RenderTarget.GetExtent();
 		const float aspectRatio = extent.height > 0
 			? static_cast<float>(extent.width) / static_cast<float>(extent.height)
 			: 1.0f;
 
-		SceneGlobals = {};
-		SceneGlobals.CameraWorldPos = glm::vec3(0.0f, 0.0f, 3.0f);
-		SceneGlobals.LightDirectionWS = glm::normalize(glm::vec3(0.4f, 1.0f, 0.2f));
-		SceneGlobals.LightColor = glm::vec3(1.0f, 0.98f, 0.95f);
-		SceneGlobals.Ambient = 0.18f;
+		view.SceneGlobals = {};
+		view.SceneGlobals.CameraWorldPos = glm::vec3(0.0f, 0.0f, 3.0f);
+		view.SceneGlobals.LightDirectionWS = glm::normalize(glm::vec3(0.4f, 1.0f, 0.2f));
+		view.SceneGlobals.LightColor = glm::vec3(1.0f, 0.98f, 0.95f);
+		view.SceneGlobals.Ambient = 0.18f;
 
-		registry.Each<Nyx::Engine::CameraComponent>(
-			[this, &registry, aspectRatio](Nyx::Engine::Entity entity, const Nyx::Engine::CameraComponent& cameraComp)
+		world.Each<Nyx::Engine::CameraComponent>(
+			[&](Nyx::Engine::Entity entity, const Nyx::Engine::CameraComponent& cameraComp)
 			{
-				if (SceneGlobals.bHasCamera || !cameraComp.bPrimary)
+				if (view.SceneGlobals.bHasCamera || !cameraComp.bPrimary)
 				{
 					return;
 				}
 
-				glm::mat4 world = glm::mat4(1.0f);
+				glm::mat4 worldMatrix = glm::mat4(1.0f);
 				glm::vec3 cameraPos{ 0.0f };
 
-				if (registry.Has<Nyx::Engine::TransformComponent>(entity))
+				if (world.Has<Nyx::Engine::TransformComponent>(entity))
 				{
-					const auto& transform = registry.Get<Nyx::Engine::TransformComponent>(entity);
-					world = transform.ToMatrix();
+					const auto& transform = world.Get<Nyx::Engine::TransformComponent>(entity);
+					worldMatrix = transform.ToMatrix();
 					cameraPos = transform.Position;
 				}
 
-				SceneGlobals.View = glm::inverse(world);
+				view.SceneGlobals.View = glm::inverse(worldMatrix);
 
 				glm::mat4 proj = glm::perspective(
 					cameraComp.FovYRadians,
@@ -1904,66 +1878,335 @@ namespace Nyx
 				);
 				proj[1][1] *= -1.0f;
 
-				SceneGlobals.Projection = proj;
-				SceneGlobals.ViewProjection = SceneGlobals.Projection * SceneGlobals.View;
-				SceneGlobals.CameraWorldPos = cameraPos;
-				SceneGlobals.bHasCamera = true;
+				view.SceneGlobals.Projection = proj;
+				view.SceneGlobals.ViewProjection = proj * view.SceneGlobals.View;
+				view.SceneGlobals.CameraWorldPos = cameraPos;
+				view.SceneGlobals.bHasCamera = true;
 			}
 		);
 
-		if (!SceneGlobals.bHasCamera)
+		if (!view.SceneGlobals.bHasCamera)
 		{
-			// Fallback: if no scene camera exists, use the editor camera instead
-			ExtractSceneGlobalsFromEditorCamera();
+			ExtractSceneGlobalsFromEditorCamera(view);
 			return;
 		}
 
-		registry.Each<Nyx::Engine::DirectionalLightComponent>(
-			[this, &registry](Nyx::Engine::Entity entity, const Nyx::Engine::DirectionalLightComponent& lightComp)
+		world.Each<Nyx::Engine::DirectionalLightComponent>(
+			[&](Nyx::Engine::Entity entity, const Nyx::Engine::DirectionalLightComponent& lightComp)
 			{
-				if (SceneGlobals.bHasDirectionalLight || !lightComp.bPrimary)
+				if (view.SceneGlobals.bHasDirectionalLight || !lightComp.bPrimary)
 				{
 					return;
 				}
 
 				glm::vec3 lightDir = glm::normalize(glm::vec3(0.4f, 1.0f, 0.2f));
 
-				if (registry.Has<Nyx::Engine::TransformComponent>(entity))
+				if (world.Has<Nyx::Engine::TransformComponent>(entity))
 				{
-					const auto& transform = registry.Get<Nyx::Engine::TransformComponent>(entity);
-
-					glm::mat4 world = transform.ToMatrix();
-					glm::vec3 forward = glm::normalize(glm::vec3(world * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f)));
+					const auto& transform = world.Get<Nyx::Engine::TransformComponent>(entity);
+					glm::mat4 worldMatrix = transform.ToMatrix();
+					glm::vec3 forward = glm::normalize(glm::vec3(worldMatrix * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f)));
 					lightDir = -forward;
 				}
 
-				SceneGlobals.LightDirectionWS = glm::normalize(lightDir);
-				SceneGlobals.LightColor = lightComp.Color * lightComp.Intensity;
-				SceneGlobals.Ambient = lightComp.Ambient;
-				SceneGlobals.bHasDirectionalLight = true;
+				view.SceneGlobals.LightDirectionWS = glm::normalize(lightDir);
+				view.SceneGlobals.LightColor = lightComp.Color * lightComp.Intensity;
+				view.SceneGlobals.Ambient = lightComp.Ambient;
+				view.SceneGlobals.bHasDirectionalLight = true;
 			}
 		);
 	}
 
-	void VulkanRenderer::UpdateViewportSceneGlobals(const Nyx::Engine::Registry& registry)
+	void VulkanRenderer::UpdateViewportSceneGlobals(SceneViewInstance& view, const Nyx::Engine::Registry& registry)
 	{
-		switch (ViewportCameraMode)
+		switch (view.CameraMode)
 		{
 		case EViewportCameraMode::EditorFreeCamera:
-			ExtractSceneGlobalsFromEditorCamera();
+			ExtractSceneGlobalsFromEditorCamera(view);
 			break;
 
 		case EViewportCameraMode::ScenePrimaryCamera:
-			ExtractSceneGlobalsFromWorldCamera(registry);
+			ExtractSceneGlobalsFromWorldCamera(view, registry);
 			break;
 
 		default:
-			ExtractSceneGlobalsFromEditorCamera();
+			ExtractSceneGlobalsFromEditorCamera(view);
 			break;
 		}
 	}
 
-	void VulkanRenderer::DrawSkybox(vk::raii::CommandBuffer& cmd)
+	uint64_t VulkanRenderer::CreateSceneView()
+	{
+		Nyx::SceneViewInstance view{};
+		view.Id = NextSceneViewId++;
+
+		view.RenderTarget.Initialize(Context, 1, 1, vk::Format::eR8G8B8A8Unorm);
+
+		CreateSceneResourcesForView(view);
+		CreateSkyboxResourcesForView(view);
+
+		const uint64_t newId = view.Id;
+		SceneViews.push_back(std::move(view));
+		return newId;
+	}
+
+	void VulkanRenderer::DestroySceneView(uint64_t id)
+	{
+		for (auto it = SceneViews.begin(); it != SceneViews.end(); ++it)
+		{
+			if (it->Id != id)
+			{
+				continue;
+			}
+
+			it->SceneDescriptorSets = vk::raii::DescriptorSets{ nullptr };
+			it->SkyboxDescriptorSets = vk::raii::DescriptorSets{ nullptr };
+
+			it->SceneDescriptorPool = nullptr;
+			it->SkyboxDescriptorPool = nullptr;
+
+			it->SceneUniformBuffer = nullptr;
+			it->SceneUniformBufferMemory = nullptr;
+
+			it->SkyboxUniformBuffer = nullptr;
+			it->SkyboxUniformBufferMemory = nullptr;
+
+			it->RenderTarget.Shutdown(Context);
+
+			SceneViews.erase(it);
+			return;
+		}
+	}
+
+	void VulkanRenderer::SetSceneViewHovered(uint64_t id, bool bHovered)
+	{
+		if (SceneViewInstance* view = FindSceneView(id))
+		{
+			view->bHovered = bHovered;
+		}
+	}
+
+	void VulkanRenderer::SetSceneViewFocused(uint64_t id, bool bFocused)
+	{
+		if (SceneViewInstance* view = FindSceneView(id))
+		{
+			view->bFocused = bFocused;
+		}
+	}
+
+	void VulkanRenderer::SetSceneViewSize(uint64_t id, uint32_t width, uint32_t height)
+	{
+		if (SceneViewInstance* view = FindSceneView(id))
+		{
+			EnsureSceneViewSize(*view, width, height);
+		}
+	}
+
+	ImTextureID VulkanRenderer::GetSceneViewTextureId(uint64_t id) const
+	{
+		if (const SceneViewInstance* view = FindSceneView(id))
+		{
+			return view->RenderTarget.GetImGuiTextureId();
+		}
+
+		return ImTextureID{};
+	}
+
+	Extent2D VulkanRenderer::GetSceneViewExtent(uint64_t id) const
+	{
+		if (const SceneViewInstance* view = FindSceneView(id))
+		{
+			const vk::Extent2D extent = view->RenderTarget.GetExtent();
+			return Extent2D{ extent.width, extent.height };
+		}
+
+		return Extent2D{ 0, 0 };
+	}
+
+	bool VulkanRenderer::WasSceneViewRecreatedThisFrame(uint64_t id) const
+	{
+		if (const SceneViewInstance* view = FindSceneView(id))
+		{
+			return view->bRecreatedThisFrame;
+		}
+
+		return false;
+	}
+
+	SceneViewInstance* VulkanRenderer::FindSceneView(uint64_t id)
+	{
+		for (SceneViewInstance& view : SceneViews)
+		{
+			if (view.Id == id)
+			{
+				return &view;
+			}
+		}
+
+		return nullptr;
+	}
+
+	const SceneViewInstance* VulkanRenderer::FindSceneView(uint64_t id) const
+	{
+		for (const SceneViewInstance& view : SceneViews)
+		{
+			if (view.Id == id)
+			{
+				return &view;
+			}
+		}
+
+		return nullptr;
+	}
+
+	void VulkanRenderer::EnsureSceneViewSize(SceneViewInstance& view, uint32_t width, uint32_t height)
+	{
+		width = std::max(1u, width);
+		height = std::max(1u, height);
+
+		const vk::Extent2D currentExtent = view.RenderTarget.GetExtent();
+
+		if (currentExtent.width == width && currentExtent.height == height)
+		{
+			return;
+		}
+
+		if (view.PendingWidth == width && view.PendingHeight == height && view.bResizePending)
+		{
+			return;
+		}
+
+		view.PendingWidth = width;
+		view.PendingHeight = height;
+		view.bResizePending = true;
+	}
+
+	void VulkanRenderer::UpdateSceneView(SceneViewInstance& view, const Nyx::Engine::Registry& world, float deltaTime)
+	{
+		if (view.CameraMode == EViewportCameraMode::EditorFreeCamera)
+		{
+			if (view.bFocused || view.bHovered)
+			{
+				TickEditorCameraFromInput(view, deltaTime);
+			}
+
+			ExtractSceneGlobalsFromEditorCamera(view);
+		}
+		else
+		{
+			ExtractSceneGlobalsFromWorldCamera(view, world);
+		}
+
+		UpdateSceneUniforms(view);
+		UpdateSkyboxUniforms(view);
+	}
+
+	void VulkanRenderer::RenderSceneView(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
+	{
+		vk::ClearColorValue clear = vk::ClearColorValue(std::array<float, 4>{ 0.1f, 0.05f, 0.15f, 1.0f });
+
+		view.RenderTarget.BeginRenderPass(cmd, clear);
+
+		// draw opaque objects using view.SceneDescriptorSets
+		DrawRenderObjects(view, cmd);
+
+		// draw skybox using view.SkyboxDescriptorSets
+		DrawSkybox(view, cmd);
+
+		// draw grid using view.SceneDescriptorSets
+		DrawGrid(view, cmd);
+
+		// later: debug draw using view.SceneDescriptorSets
+		// DrawDebugLines(view, cmd);
+
+		view.RenderTarget.EndRenderPass(cmd);
+	}
+
+	void VulkanRenderer::SpawnTestEntities()
+	{
+		Nyx::Engine::Entity cameraEntity = World.CreateEntity();
+
+		World.Add<Nyx::Engine::TransformComponent>(
+			cameraEntity,
+			Nyx::Engine::TransformComponent{
+				.Position = glm::vec3(0.0f, 2.0f, 6.0f),
+				.RotationRadians = glm::vec3(0.0f, 0.0f, 0.0f),
+				.Scale = glm::vec3(1.0f)
+			}
+		);
+
+		World.Add<Nyx::Engine::CameraComponent>(
+			cameraEntity,
+			Nyx::Engine::CameraComponent{
+				.FovYRadians = glm::radians(60.0f),
+				.NearPlane = 0.1f,
+				.FarPlane = 1000.0f,
+				.bPrimary = true
+			}
+		);
+
+		Nyx::Engine::Entity lightEntity = World.CreateEntity();
+
+		World.Add<Nyx::Engine::TransformComponent>(
+			lightEntity,
+			Nyx::Engine::TransformComponent{
+				.Position = glm::vec3(0.0f),
+				.RotationRadians = glm::vec3(glm::radians(-45.0f), glm::radians(35.0f), 0.0f),
+				.Scale = glm::vec3(1.0f)
+			}
+		);
+
+		World.Add<Nyx::Engine::DirectionalLightComponent>(
+			lightEntity,
+			Nyx::Engine::DirectionalLightComponent{
+				.Color = glm::vec3(1.0f, 0.98f, 0.95f),
+				.Intensity = 1.0f,
+				.Ambient = 0.18f,
+				.bPrimary = true
+			}
+		);
+
+		auto e0 = World.CreateEntity();
+		World.Add<Nyx::Engine::TransformComponent>(e0,
+			Nyx::Engine::TransformComponent{
+				.Position = glm::vec3(-2.0f, 0.0f, 0.0f)
+			}
+		);
+		World.Add<Nyx::Engine::MeshRendererComponent>(e0,
+			Nyx::Engine::MeshRendererComponent{
+				.MeshAsset = &CubeMesh,
+				.MaterialAsset = &TexturedMaterial
+			}
+		);
+
+		auto e1 = World.CreateEntity();
+		World.Add<Nyx::Engine::TransformComponent>(e1,
+			Nyx::Engine::TransformComponent{
+				.Position = glm::vec3(0.0f, 0.0f, 0.0f)
+			}
+		);
+		World.Add<Nyx::Engine::MeshRendererComponent>(e1,
+			Nyx::Engine::MeshRendererComponent{
+				.MeshAsset = &CubeMesh,
+				.MaterialAsset = &ReflectiveMaterial
+			}
+		);
+
+		auto e2 = World.CreateEntity();
+		World.Add<Nyx::Engine::TransformComponent>(e2,
+			Nyx::Engine::TransformComponent{
+				.Position = glm::vec3(2.0f, 0.0f, 0.0f)
+			}
+		);
+		World.Add<Nyx::Engine::MeshRendererComponent>(e2,
+			Nyx::Engine::MeshRendererComponent{
+				.MeshAsset = &CubeMesh,
+				.MaterialAsset = &UntexturedMaterial
+			}
+		);
+	}
+
+	void VulkanRenderer::DrawSkybox(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
 	{
 		cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *SkyboxPipeline);
 
@@ -1971,7 +2214,7 @@ namespace Nyx
 			vk::PipelineBindPoint::eGraphics,
 			*SkyboxPipelineLayout,
 			0,
-			{ *SkyboxDescriptorSets.front() },
+			{ *view.SkyboxDescriptorSets.front() },
 			{}
 		);
 
@@ -1981,10 +2224,29 @@ namespace Nyx
 		cmd.drawIndexed(CubeMesh.GetIndexCount(), 1, 0, 0, 0);
 	}
 
+	void VulkanRenderer::DrawGrid(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
+	{
+		cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *GridPipeline);
+		cmd.bindDescriptorSets(
+			vk::PipelineBindPoint::eGraphics,
+			*GridPipelineLayout,
+			0,
+			{ *view.SceneDescriptorSets.front() },
+			{}
+		);
+		cmd.draw(3, 1, 0, 0);
+	}
+
 	void VulkanRenderer::OnMouseWheelScrolled(double yOffset)
 	{
-		// Don't change anything if the mouse interacting with UI
-		if (ImGui::GetIO().WantCaptureMouse && !bSceneViewportHovered)
+		SceneViewInstance* activeView = FindEditorInputTargetView();
+
+		if (ImGui::GetIO().WantCaptureMouse && !activeView)
+		{
+			return;
+		}
+
+		if (!activeView || activeView->CameraMode != EViewportCameraMode::EditorFreeCamera)
 		{
 			return;
 		}
@@ -1999,10 +2261,5 @@ namespace Nyx
 		}
 
 		CameraMoveSpeed = glm::clamp(CameraMoveSpeed, CameraSpeedMin, CameraSpeedMax);
-	}
-
-	void VulkanRenderer::SetSceneWindowHovered(bool hovered)
-	{
-		bSceneViewportHovered = hovered;
 	}
 }

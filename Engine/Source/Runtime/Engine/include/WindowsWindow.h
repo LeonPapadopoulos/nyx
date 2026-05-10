@@ -58,5 +58,8 @@ namespace Nyx
 
 		WindowData Data;
 		bool bTitlebarHovered = false;
+
+		uint64_t MainSceneViewId = 0;
+		uint64_t SecondarySceneViewId = 0;
 	};
 }

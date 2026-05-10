@@ -198,6 +198,36 @@ namespace Nyx
 		bool bHasDirectionalLight = false;
 	};
 
+	struct SceneViewInstance
+	{
+		uint64_t Id = 0;
+
+		VulkanViewportTarget RenderTarget;
+
+		EViewportCameraMode CameraMode = EViewportCameraMode::EditorFreeCamera;
+		EditorCamera EditorCam;
+		ExtractedSceneGlobals SceneGlobals;
+
+		vk::raii::Buffer SceneUniformBuffer{ nullptr };
+		vk::raii::DeviceMemory SceneUniformBufferMemory{ nullptr };
+		vk::raii::DescriptorPool SceneDescriptorPool{ nullptr };
+		vk::raii::DescriptorSets SceneDescriptorSets{ nullptr };
+
+		vk::raii::Buffer SkyboxUniformBuffer{ nullptr };
+		vk::raii::DeviceMemory SkyboxUniformBufferMemory{ nullptr };
+		vk::raii::DescriptorPool SkyboxDescriptorPool{ nullptr };
+		vk::raii::DescriptorSets SkyboxDescriptorSets{ nullptr };
+
+		bool bHovered = false;
+		bool bFocused = false;
+
+		bool bResizePending = false;
+		uint32_t PendingWidth = 1;
+		uint32_t PendingHeight = 1;
+
+		bool bRecreatedThisFrame = false;
+	};
+
 	struct ShaderHotReloadState
 	{
 		std::filesystem::path VertSourcePath;
@@ -230,24 +260,18 @@ namespace Nyx
 
 		virtual void DrawFrame(const std::function<void()>& buildUI);
 		virtual void OnMouseWheelScrolled(double yOffset);
-		virtual void SetSceneWindowHovered(bool hovered);
 		
 		virtual void WaitIdle();
 	public:
 		VulkanContext& GetContext();
 		VulkanSwapchain& GetSwapchain();
 
-		virtual ImTextureID GetSceneTextureId() const;
-		virtual Extent2D GetSceneViewportExtent() const;
-		virtual void EnsureSceneViewportSize(uint32_t width, uint32_t height);
+		ImTextureID GetSceneViewTextureId(uint64_t id) const override;
+		Extent2D GetSceneViewExtent(uint64_t id) const;
 
-		virtual void SetSceneViewportSize(uint32_t width, uint32_t height);
-		virtual bool WasSceneViewportRecreatedThisFrame() const;
-
-		void SetViewportCameraMode(EViewportCameraMode newMode);
-		EViewportCameraMode GetViewportCameraMode() const;
-
-		void TickEditorCameraFromInput(float deltaTime);
+		SceneViewInstance* FindEditorInputTargetView();
+		void TickActiveEditorSceneViewFromInput(float deltaTime);
+		void TickEditorCameraFromInput(SceneViewInstance& view, float deltaTime);
 	private:
 		void SetupVulkan(const char* applicationName, GLFWwindow* window);
 		void SetupImGui();
@@ -262,31 +286,33 @@ namespace Nyx
 		void WaitForValidFramebufferSize();
 
 		void CreateMaterials();
-		void CreateRenderObjects();
 		void UpdateRenderObjects(Nyx::Engine::Registry& registry, float deltaTime);
 		void ExtractRenderObjects(const Nyx::Engine::Registry& registry);
-		void DrawRenderObjects(vk::raii::CommandBuffer& cmd);
+		void DrawRenderObjects(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
 
+		void CreateSceneDescriptorSetLayout();
 		void CreateScenePipeline();
 		void CreateGridPipeline();
 
-		void CreateSkyboxResources();
-		void CreateSkyboxUniformBuffer();
+		vk::RenderPass GetSceneRenderPass() const;
+
+		void LoadSkyboxCubemap();
+		void CreateSkyboxSharedResources();
+		void CreateSkyboxResourcesForView(SceneViewInstance& view);
+
+		void CreateSkyboxUniformBuffer(SceneViewInstance& view);
 		void CreateSkyboxDescriptorSetLayout();
-		void CreateSkyboxDescriptorPool();
-		void AllocateSkyboxDescriptorSets();
-		void UpdateSkyboxDescriptorSet();
-		void UpdateSkyboxUniforms();
+		void UpdateSkyboxUniforms(SceneViewInstance& view);
 		void CreateSkyboxPipeline();
-		void DrawSkybox(vk::raii::CommandBuffer& cmd);
+		void DrawSkybox(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
+
+		void DrawGrid(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
 
 		vk::raii::ShaderModule CreateShaderModule(const std::vector<uint32_t>& spirv);
 		std::vector<uint32_t> ReadSpirvFile(const std::string& path);
 
-		void CreateSceneDescriptors();
-		void UpdateSceneDescriptorSets();
-		void CreateSceneUniformBuffer();
-		void UpdateSceneUniforms();
+		void CreateSceneResourcesForView(SceneViewInstance& view);
+		void UpdateSceneUniforms(SceneViewInstance& view);
 
 		void CreateTestTextureData();
 		void CreateTestMeshData();
@@ -308,9 +334,27 @@ namespace Nyx
 
 		void LoadTestGltfScene();
 
-		void ExtractSceneGlobalsFromEditorCamera();
-		void ExtractSceneGlobalsFromWorldCamera(const Nyx::Engine::Registry& registry);
-		void UpdateViewportSceneGlobals(const Nyx::Engine::Registry& registry);
+		void ExtractSceneGlobalsFromEditorCamera(SceneViewInstance& view);
+		void ExtractSceneGlobalsFromWorldCamera(SceneViewInstance& view, const Nyx::Engine::Registry& registry);
+		void UpdateViewportSceneGlobals(SceneViewInstance& view, const Nyx::Engine::Registry& registry);
+
+		uint64_t CreateSceneView();
+		void DestroySceneView(uint64_t id);
+
+		void SetSceneViewHovered(uint64_t id, bool bHovered) override;
+		void SetSceneViewFocused(uint64_t id, bool bFocused) override;
+		void SetSceneViewSize(uint64_t id, uint32_t width, uint32_t height) override;
+
+		bool WasSceneViewRecreatedThisFrame(uint64_t id) const override;
+
+		SceneViewInstance* FindSceneView(uint64_t id);
+		const SceneViewInstance* FindSceneView(uint64_t id) const;
+
+		void EnsureSceneViewSize(SceneViewInstance& view, uint32_t width, uint32_t height);
+		void UpdateSceneView(SceneViewInstance& view, const Nyx::Engine::Registry& world, float deltaTime);
+		void RenderSceneView(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
+
+		void SpawnTestEntities();
 
 	private:
 		GLFWwindow* Window = nullptr;
@@ -319,31 +363,19 @@ namespace Nyx
 		VulkanContext Context;
 		VulkanSwapchain Swapchain;
 
-		SceneCamera Camera;
-		VulkanViewportTarget SceneViewport;
-		uint32_t PendingSceneViewportWidth = 1280;
-		uint32_t PendingSceneViewportHeight = 720;
-		bool bSceneViewportResizePending = false;
-
 		std::vector<std::unique_ptr<Nyx::Mesh>> LoadedMeshes;
 		std::vector<std::unique_ptr<Nyx::Texture>> LoadedTextures;
-
-		// Scene
-		vk::raii::PipelineLayout ScenePipelineLayout{ nullptr };
-		vk::raii::Pipeline ScenePipeline{ nullptr };
+		
+		std::vector<SceneViewInstance> SceneViews;
+		uint64_t NextSceneViewId = 1;
 
 		vk::raii::DescriptorSetLayout SceneDescriptorSetLayout{ nullptr };
-		vk::raii::DescriptorPool SceneDescriptorPool{ nullptr };
-		vk::raii::DescriptorSets SceneDescriptorSets{ nullptr };
-
-		vk::raii::Buffer SceneUniformBuffer{ nullptr };
-		vk::raii::DeviceMemory SceneUniformBufferMemory{ nullptr };
+		vk::raii::PipelineLayout ScenePipelineLayout{ nullptr };
+		vk::raii::Pipeline ScenePipeline{ nullptr };
 
 		Material TexturedMaterial;
 		Material ReflectiveMaterial;
 		Material UntexturedMaterial;
-
-		ExtractedSceneGlobals SceneGlobals;
 
 		// @todo: Move this world out of the renderer, into the game/editor-layer
 		Nyx::Engine::Registry World;
@@ -360,13 +392,8 @@ namespace Nyx
 		// Skybox
 		CubemapTexture SkyboxCubemap{ "Skybox01" };
 
-		vk::raii::Buffer SkyboxUniformBuffer{ nullptr };
-		vk::raii::DeviceMemory SkyboxUniformBufferMemory{ nullptr };
 
 		vk::raii::DescriptorSetLayout SkyboxDescriptorSetLayout{ nullptr };
-		vk::raii::DescriptorPool SkyboxDescriptorPool{ nullptr };
-		vk::raii::DescriptorSets SkyboxDescriptorSets{ nullptr };
-
 		vk::raii::PipelineLayout SkyboxPipelineLayout{ nullptr };
 		vk::raii::Pipeline SkyboxPipeline{ nullptr };
 
@@ -392,8 +419,7 @@ namespace Nyx
 		double LastMouseY = 0.0;
 
 		// Camera
-		EViewportCameraMode ViewportCameraMode = EViewportCameraMode::EditorFreeCamera;
-		EditorCamera ViewportEditorCamera;
+		uint64_t MouseLookLockedSceneViewId = 0;
 
 		float CameraMoveSpeed = 5.0f;
 		float CameraMouseSensitivity = 0.003f; // radians per pixel
@@ -401,7 +427,6 @@ namespace Nyx
 		float CameraSpeedMax = 100.0f;
 		float CameraSpeedStep = 1.2f;
 
-		bool bSceneViewportHovered = false;
 		bool bHaveLastMousePosition = false;
 
 		//vk::PhysicalDeviceFeatures DeviceFeatures;
@@ -414,6 +439,5 @@ namespace Nyx
 		vk::raii::Fence InFlightFence{ nullptr };
 
 		bool bRecreateSwapChain = false;
-		bool bSceneViewportRecreatedThisFrame = false;
 	};
 }

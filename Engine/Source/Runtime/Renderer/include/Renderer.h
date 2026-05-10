@@ -27,15 +27,18 @@ namespace Nyx
 
 		virtual void DrawFrame(const std::function<void()>& buildUI) = 0;
 		virtual void OnMouseWheelScrolled(double yOffset) = 0;
-		virtual void SetSceneWindowHovered(bool hovered) = 0;
 
 		virtual void WaitIdle() = 0;
 
-		virtual ImTextureID GetSceneTextureId() const = 0;
-		virtual Extent2D GetSceneViewportExtent() const = 0;
-		virtual void EnsureSceneViewportSize(uint32_t width, uint32_t height) = 0;
-		virtual void SetSceneViewportSize(uint32_t width, uint32_t height) = 0;
-		virtual bool WasSceneViewportRecreatedThisFrame() const = 0;
+		virtual uint64_t CreateSceneView() = 0;
+		virtual void DestroySceneView(uint64_t id) = 0;
+
+		virtual void SetSceneViewHovered(uint64_t id, bool bHovered) = 0;
+		virtual void SetSceneViewFocused(uint64_t id, bool bFocused) = 0;
+		virtual void SetSceneViewSize(uint64_t id, uint32_t width, uint32_t height) = 0;
+
+		virtual ImTextureID GetSceneViewTextureId(uint64_t id) const = 0;
+		virtual bool WasSceneViewRecreatedThisFrame(uint64_t id) const = 0;
 	};
 
 	NYXENGINE_API std::unique_ptr<IRenderer> CreateRenderer();

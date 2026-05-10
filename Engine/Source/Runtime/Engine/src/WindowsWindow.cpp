@@ -215,24 +215,31 @@ namespace Nyx
         Renderer->DrawFrame(
             [this]()
             {
-                // @todo LP: Draw Game Engine Editor
                 DrawUserInterface();
                 ImGui::ShowDemoWindow();
 
+                // -------------------------------------------------
+                // Scene View A
+                // -------------------------------------------------
                 {
                     ImGui::Begin("Scene");
 
-                    Renderer->SetSceneWindowHovered(ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows));
+                    const bool bHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows);
+                    const bool bFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+
+                    Renderer->SetSceneViewHovered(MainSceneViewId, bHovered);
+                    Renderer->SetSceneViewFocused(MainSceneViewId, bFocused);
 
                     const ImVec2 avail = ImGui::GetContentRegionAvail();
-                    Renderer->SetSceneViewportSize(
+                    Renderer->SetSceneViewSize(
+                        MainSceneViewId,
                         static_cast<uint32_t>(avail.x),
                         static_cast<uint32_t>(avail.y)
                     );
 
-                    if (!Renderer->WasSceneViewportRecreatedThisFrame())
+                    if (!Renderer->WasSceneViewRecreatedThisFrame(MainSceneViewId))
                     {
-                        ImGui::Image(Renderer->GetSceneTextureId(), avail);
+                        ImGui::Image(Renderer->GetSceneViewTextureId(MainSceneViewId), avail);
                     }
                     else
                     {
@@ -241,7 +248,39 @@ namespace Nyx
 
                     ImGui::End();
                 }
-            });
+
+                // -------------------------------------------------
+                // Scene View B
+                // -------------------------------------------------
+                {
+                    ImGui::Begin("Scene 2");
+
+                    const bool bHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows);
+                    const bool bFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+
+                    Renderer->SetSceneViewHovered(SecondarySceneViewId, bHovered);
+                    Renderer->SetSceneViewFocused(SecondarySceneViewId, bFocused);
+
+                    const ImVec2 avail = ImGui::GetContentRegionAvail();
+                    Renderer->SetSceneViewSize(
+                        SecondarySceneViewId,
+                        static_cast<uint32_t>(avail.x),
+                        static_cast<uint32_t>(avail.y)
+                    );
+
+                    if (!Renderer->WasSceneViewRecreatedThisFrame(SecondarySceneViewId))
+                    {
+                        ImGui::Image(Renderer->GetSceneViewTextureId(SecondarySceneViewId), avail);
+                    }
+                    else
+                    {
+                        ImGui::Dummy(avail);
+                    }
+
+                    ImGui::End();
+                }
+            }
+        );
     }
 
     unsigned int WindowsWindow::GetWidth()
@@ -359,6 +398,9 @@ namespace Nyx
         ASSERT(glfwVulkanSupported() && "Currently only Vulkan is supported.");
         Renderer = Nyx::CreateRenderer();
         Renderer->Initialize(Data.Title.c_str(), Window);
+
+        MainSceneViewId = Renderer->CreateSceneView();
+        SecondarySceneViewId = Renderer->CreateSceneView();
     }
 
     void WindowsWindow::Shutdown()
@@ -366,6 +408,18 @@ namespace Nyx
         if (Renderer)
         {
             Renderer->WaitIdle();
+
+            if (MainSceneViewId != 0)
+            {
+                Renderer->DestroySceneView(MainSceneViewId);
+                MainSceneViewId = 0;
+            }
+            if (SecondarySceneViewId != 0)
+            {
+                Renderer->DestroySceneView(SecondarySceneViewId);
+                SecondarySceneViewId = 0;
+            }
+
             Renderer->Shutdown();
             Renderer.reset();
         }

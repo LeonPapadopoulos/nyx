@@ -9,7 +9,6 @@ namespace Nyx
 	{
 		vk::raii::Pipeline* Pipeline = nullptr;
 		vk::raii::PipelineLayout* PipelineLayout = nullptr;
-		vk::raii::DescriptorSet* DescriptorSet = nullptr;
 
 		float Reflectivity = 0.0f;
 		bool bUseTexture = true;

@@ -22,6 +22,7 @@ namespace Nyx
 		vk::Extent2D GetExtent() const { return Extent; }
 		vk::Format GetFormat() const { return Format; }
 		vk::raii::RenderPass& GetRenderPass() { return RenderPass; }
+		const vk::raii::RenderPass& GetRenderPass() const { return RenderPass; };
 
 	private:
 		void CreateImage(VulkanContext& context);
