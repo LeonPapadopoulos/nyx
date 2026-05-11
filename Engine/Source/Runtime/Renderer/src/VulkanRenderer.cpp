@@ -448,6 +448,26 @@ namespace Nyx
 		}
 	}
 
+	void VulkanRenderer::SetSceneViewCameraMode(uint64_t id, EViewportCameraMode mode)
+	{
+		if (SceneViewInstance* view = FindSceneView(id))
+		{
+			view->CameraMode = mode;
+		}
+	}
+
+	void VulkanRenderer::SetSceneViewEditorCameraTransform(uint64_t id, const glm::vec3& pos, const glm::vec3& rot)
+	{
+		SceneViewInstance* view = FindSceneView(id);
+		if (!view)
+		{
+			return;
+		}
+
+		view->EditorCam.Position = pos;
+		view->EditorCam.RotationRadians = rot;
+	}
+
 	VulkanContext& VulkanRenderer::GetContext()
 	{
 		return Context;

@@ -18,6 +18,8 @@
 #include "MeshRendererComponent.h"
 #include "CameraComponent.h"
 #include "DirectionalLightComponent.h"
+#include "EditorCamera.h"
+#include "SceneViewTypes.h"
 
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
@@ -26,49 +28,6 @@
 namespace Nyx
 {
 	class VulkanImGuiBackend;
-
-	enum class EViewportCameraMode : uint8_t
-	{
-		EditorFreeCamera,
-		ScenePrimaryCamera
-	};
-
-	struct EditorCamera
-	{
-		float AspectRatio = 16.0f / 9.0f;
-
-		glm::vec3 Position = glm::vec3(0.0f, 2.0f, 6.0f);
-		glm::vec3 RotationRadians = glm::vec3(0.0f);
-
-		glm::mat4 GetViewMatrix() const
-		{
-			glm::mat4 transform =
-				glm::translate(glm::mat4(1.0f), Position) *
-				glm::rotate(glm::mat4(1.0f), RotationRadians.y, glm::vec3(0.0f, 1.0f, 0.0f)) *
-				glm::rotate(glm::mat4(1.0f), RotationRadians.x, glm::vec3(1.0f, 0.0f, 0.0f)) *
-				glm::rotate(glm::mat4(1.0f), RotationRadians.z, glm::vec3(0.0f, 0.0f, 1.0f));
-
-			return glm::inverse(transform);
-		}
-
-		glm::mat4 GetProjectionMatrix() const
-		{
-			glm::mat4 proj = glm::perspective(
-				glm::radians(60.0f),
-				AspectRatio,
-				0.1f,
-				1000.0f
-			);
-
-			proj[1][1] *= -1.0f;
-			return proj;
-		}
-
-		glm::mat4 GetViewProjectionMatrix() const
-		{
-			return GetProjectionMatrix() * GetViewMatrix();
-		}
-	};
 
 	struct SceneUBO
 	{
@@ -262,6 +221,9 @@ namespace Nyx
 		virtual void OnMouseWheelScrolled(double yOffset);
 		
 		virtual void WaitIdle();
+
+		virtual void SetSceneViewCameraMode(uint64_t id, EViewportCameraMode mode);
+		virtual void SetSceneViewEditorCameraTransform(uint64_t id, const glm::vec3& pos, const glm::vec3& rot);
 	public:
 		VulkanContext& GetContext();
 		VulkanSwapchain& GetSwapchain();
@@ -272,6 +234,7 @@ namespace Nyx
 		SceneViewInstance* FindEditorInputTargetView();
 		void TickActiveEditorSceneViewFromInput(float deltaTime);
 		void TickEditorCameraFromInput(SceneViewInstance& view, float deltaTime);
+
 	private:
 		void SetupVulkan(const char* applicationName, GLFWwindow* window);
 		void SetupImGui();

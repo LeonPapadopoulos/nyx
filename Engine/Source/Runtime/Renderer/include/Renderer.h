@@ -1,6 +1,8 @@
 #pragma once
 #include "NyxEngineAPI.h"
 #include <imgui.h>
+#include "SceneViewTypes.h"
+#include "glm/glm.hpp"
 
 struct GLFWwindow;
 
@@ -29,6 +31,9 @@ namespace Nyx
 		virtual void OnMouseWheelScrolled(double yOffset) = 0;
 
 		virtual void WaitIdle() = 0;
+
+		virtual void SetSceneViewCameraMode(uint64_t id, EViewportCameraMode mode) = 0;
+		virtual void SetSceneViewEditorCameraTransform(uint64_t id, const glm::vec3& pos, const glm::vec3& rot) = 0;
 
 		virtual uint64_t CreateSceneView() = 0;
 		virtual void DestroySceneView(uint64_t id) = 0;

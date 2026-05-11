@@ -4,6 +4,7 @@
 #include "Assertions.h"
 #include "Renderer.h"
 #include "ImGuiTheme.h"
+#include "SceneViewTypes.h"
 
 #include <windows.h>
 #include <dwmapi.h>
@@ -399,8 +400,17 @@ namespace Nyx
         Renderer = Nyx::CreateRenderer();
         Renderer->Initialize(Data.Title.c_str(), Window);
 
+        // @todo: Allow the user to create / remove additional views on demand via editor UI
         MainSceneViewId = Renderer->CreateSceneView();
         SecondarySceneViewId = Renderer->CreateSceneView();
+        {
+            // @todo: Allow the user to switch Camera Modes on demand via editor UI and on per-view basis
+            Renderer->SetSceneViewCameraMode(SecondarySceneViewId, EViewportCameraMode::EditorFreeCamera);
+            // Give the 2nd camera a different starting position & rotation to make it distinctly different
+            glm::vec3 camPosition = glm::vec3(6.0f, 2.0f, 0.0f);
+            glm::vec3 camRotationRadians = glm::vec3(-0.25f, 0.5 * 3.1415 /* PI */, 0.0f);
+            Renderer->SetSceneViewEditorCameraTransform(SecondarySceneViewId, camPosition, camRotationRadians);
+        }
     }
 
     void WindowsWindow::Shutdown()
