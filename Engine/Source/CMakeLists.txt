@@ -45,6 +45,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/Renderer.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/EditorCamera.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/SceneViewTypes.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/SceneView.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanImGuiBackend.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanRenderer.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanContext.cpp
@@ -87,6 +88,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/Renderer.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/EditorCamera.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/SceneViewTypes.h
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/SceneView.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanImGuiBackend.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanRenderer.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanContext.h
