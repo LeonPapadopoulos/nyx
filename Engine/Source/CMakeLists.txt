@@ -56,7 +56,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/GltfImporter.cpp
 
     # Editor
-    # ${NYX_ENGINE_ROOT}/Editor/src/EditorLayer.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/EditorLayer.cpp
 )
 
 set(NYX_ENGINE_HEADERS
@@ -100,7 +100,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/GltfImporter.h
 
     # Editor
-    # ${NYX_ENGINE_ROOT}/Editor/include/EditorLayer.h
+    ${NYX_ENGINE_ROOT}/Editor/include/EditorLayer.h
 )
 
 add_library(NyxEngine SHARED 
