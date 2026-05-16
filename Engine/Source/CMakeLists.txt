@@ -33,7 +33,6 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/ResourceManager.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/TypedHandle.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/WindowsWindow.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/SceneDocument.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/cgltf_impl.cpp
 
     # Runtime/Renderer
@@ -57,6 +56,7 @@ set(NYX_ENGINE_SOURCES
 
     # Editor
     ${NYX_ENGINE_ROOT}/Editor/src/EditorLayer.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/SceneDocument.cpp
 )
 
 set(NYX_ENGINE_HEADERS
@@ -78,7 +78,6 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/TypedHandle.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/Window.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/WindowsWindow.h
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/SceneDocument.h
 
     # Runtime/Renderer
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ImGuiTheme.h
@@ -101,6 +100,7 @@ set(NYX_ENGINE_HEADERS
 
     # Editor
     ${NYX_ENGINE_ROOT}/Editor/include/EditorLayer.h
+    ${NYX_ENGINE_ROOT}/Editor/include/SceneDocument.h
 )
 
 add_library(NyxEngine SHARED 
