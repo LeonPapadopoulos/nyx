@@ -5,6 +5,7 @@
 #include "Renderer.h"
 #include "ImGuiTheme.h"
 #include "SceneViewTypes.h"
+#include "EditorLayer.h"
 
 #include <windows.h>
 #include <dwmapi.h>
@@ -216,70 +217,7 @@ namespace Nyx
         Renderer->DrawFrame(
             [this]()
             {
-                DrawUserInterface();
-                ImGui::ShowDemoWindow();
-
-                // -------------------------------------------------
-                // Scene View A
-                // -------------------------------------------------
-                {
-                    ImGui::Begin("Scene");
-
-                    const bool bHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows);
-                    const bool bFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
-
-                    Renderer->SetSceneViewHovered(MainSceneViewId, bHovered);
-                    Renderer->SetSceneViewFocused(MainSceneViewId, bFocused);
-
-                    const ImVec2 avail = ImGui::GetContentRegionAvail();
-                    Renderer->SetSceneViewSize(
-                        MainSceneViewId,
-                        static_cast<uint32_t>(avail.x),
-                        static_cast<uint32_t>(avail.y)
-                    );
-
-                    if (!Renderer->WasSceneViewRecreatedThisFrame(MainSceneViewId))
-                    {
-                        ImGui::Image(Renderer->GetSceneViewTextureId(MainSceneViewId), avail);
-                    }
-                    else
-                    {
-                        ImGui::Dummy(avail);
-                    }
-
-                    ImGui::End();
-                }
-
-                // -------------------------------------------------
-                // Scene View B
-                // -------------------------------------------------
-                {
-                    ImGui::Begin("Scene 2");
-
-                    const bool bHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows);
-                    const bool bFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
-
-                    Renderer->SetSceneViewHovered(SecondarySceneViewId, bHovered);
-                    Renderer->SetSceneViewFocused(SecondarySceneViewId, bFocused);
-
-                    const ImVec2 avail = ImGui::GetContentRegionAvail();
-                    Renderer->SetSceneViewSize(
-                        SecondarySceneViewId,
-                        static_cast<uint32_t>(avail.x),
-                        static_cast<uint32_t>(avail.y)
-                    );
-
-                    if (!Renderer->WasSceneViewRecreatedThisFrame(SecondarySceneViewId))
-                    {
-                        ImGui::Image(Renderer->GetSceneViewTextureId(SecondarySceneViewId), avail);
-                    }
-                    else
-                    {
-                        ImGui::Dummy(avail);
-                    }
-
-                    ImGui::End();
-                }
+                DrawDockspaceHost();
             }
         );
     }
@@ -316,6 +254,11 @@ namespace Nyx
     bool WindowsWindow::ShouldClose() const
     {
         return glfwWindowShouldClose(Window);
+    }
+
+    void WindowsWindow::SetDrawDockedPanelsCallback(std::function<void()> callback)
+    {
+        DrawDockedPanelsCallback = std::move(callback);
     }
 
     void WindowsWindow::Initialize(const WindowSpecs & specs)
@@ -400,17 +343,19 @@ namespace Nyx
         Renderer = Nyx::CreateRenderer();
         Renderer->Initialize(Data.Title.c_str(), Window);
 
-        // @todo: Allow the user to create / remove additional views on demand via editor UI
-        MainSceneViewId = Renderer->CreateSceneView();
-        SecondarySceneViewId = Renderer->CreateSceneView();
-        {
-            // @todo: Allow the user to switch Camera Modes on demand via editor UI and on per-view basis
-            Renderer->SetSceneViewCameraMode(SecondarySceneViewId, EViewportCameraMode::EditorFreeCamera);
-            // Give the 2nd camera a different starting position & rotation to make it distinctly different
-            glm::vec3 camPosition = glm::vec3(6.0f, 2.0f, 0.0f);
-            glm::vec3 camRotationRadians = glm::vec3(-0.25f, 0.5 * 3.1415 /* PI */, 0.0f);
-            Renderer->SetSceneViewEditorCameraTransform(SecondarySceneViewId, camPosition, camRotationRadians);
-        }
+        MainEditorLayer = std::make_unique<Nyx::Editor::EditorLayer>(*Renderer);
+        MainEditorLayer->Initialize();
+
+        OnFrame = [this]()
+            {
+                // @todo:
+            };
+
+        SetDrawDockedPanelsCallback(
+            [this]()
+            {
+                MainEditorLayer->DrawPanels();
+            });
     }
 
     void WindowsWindow::Shutdown()
@@ -419,16 +364,7 @@ namespace Nyx
         {
             Renderer->WaitIdle();
 
-            if (MainSceneViewId != 0)
-            {
-                Renderer->DestroySceneView(MainSceneViewId);
-                MainSceneViewId = 0;
-            }
-            if (SecondarySceneViewId != 0)
-            {
-                Renderer->DestroySceneView(SecondarySceneViewId);
-                SecondarySceneViewId = 0;
-            }
+            MainEditorLayer->Shutdown();
 
             Renderer->Shutdown();
             Renderer.reset();
@@ -768,5 +704,85 @@ namespace Nyx
         }
 
         windowsWindow->Renderer->OnMouseWheelScrolled(yOffset);
+    }
+
+    void WindowsWindow::DrawDockspaceHost()
+    {
+        // @todo: Expose as parameter
+        const bool bColoredBorderOnFocus = true;
+
+        const bool bAppFocused = glfwGetWindowAttrib(Window, GLFW_FOCUSED) == GLFW_TRUE;
+        const bool bIsMaximized = IsMaximized();
+        ImGuiViewport* viewport = ImGui::GetMainViewport();
+
+        ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoDocking;
+        windowFlags |= ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse;
+        windowFlags |= ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove;
+        windowFlags |= ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
+
+        ImGui::SetNextWindowPos(viewport->Pos);
+        ImGui::SetNextWindowSize(viewport->Size);
+        ImGui::SetNextWindowViewport(viewport->ID);
+
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, bIsMaximized ? 0.0f : 5.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(2.0f, 2.0f));
+        ImGui::PushStyleColor(ImGuiCol_WindowBg, Colors::Theme::background);
+
+        ImGui::Begin("DockSpaceWindow", nullptr, windowFlags);
+
+        ImGui::PopStyleColor();
+        ImGui::PopStyleVar(3);
+
+        const float titlebarHeight = Data.bCustomTitlebar ? 32.0f : 0.0f;
+        if (Data.bCustomTitlebar)
+        {
+            DrawTitlebar(titlebarHeight);
+
+            // @todo LP: Figure out where the padding between titlebar-drag-zone and dockarea comes from
+            const float paddingToRemoveHACK = 8.0f;
+
+            // Reserve space so docked content starts below the custom titlebar
+            ImGui::Dummy(ImVec2(0.0f, titlebarHeight - paddingToRemoveHACK));
+        }
+
+        ImGuiStyle& style = ImGui::GetStyle();
+        const float prevMinWinSizeX = style.WindowMinSize.x;
+        style.WindowMinSize.x = 370.0f;
+        ImGui::DockSpace(ImGui::GetID("MyDockspace"));
+        style.WindowMinSize.x = prevMinWinSizeX;
+
+        // Draw docked editor panels
+        if (DrawDockedPanelsCallback)
+        {
+            DrawDockedPanelsCallback();
+        }
+
+        // Draw the colored border last, so it's on top of everything else
+        if (bColoredBorderOnFocus && bAppFocused)
+        {
+            ImDrawList* drawList = ImGui::GetForegroundDrawList(viewport);
+
+            const ImVec2 winMin = ImGui::GetWindowPos();
+            const ImVec2 winMax(winMin.x + ImGui::GetWindowWidth(), winMin.y + ImGui::GetWindowHeight());
+
+            // rounding to match that of win11 windows
+            const float rounding = bIsMaximized ? 0.0f : 10.0f;
+            // thickness to match the look of a focussed visual studio window
+            const float borderThickness = 3.0f;
+
+            constexpr ImU32 borderColor = Colors::Theme::windowBorderER_1;
+
+            drawList->AddRect(
+                winMin,
+                winMax,
+                borderColor,
+                rounding,
+                0,
+                borderThickness
+            );
+        }
+
+        ImGui::End(); // DockSpaceWindow
     }
 }

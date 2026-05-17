@@ -186,9 +186,6 @@ namespace Nyx
 		// Shared materials
 		CreateMaterials();
 
-		// Demo ECS scene content
-		SpawnTestEntities();
-
 		// @note: Gltf Meshes currently not visible, because the RenderObjects get 
 		// cleared and then populated by the world / entity-registry; So manually pushed
 		// RenderObjects, as is currently the case with this GltfScene setup, won't be
@@ -280,6 +277,8 @@ namespace Nyx
 
 	void VulkanRenderer::DrawFrame(const std::function<void()>& buildUI)
 	{
+		ASSERT(World != nullptr && "VulkanRenderer requires a valid world to render.");
+
 		// 1) Wait until previous submitted frame is done
 		const vk::Result fenceResult = Context.GetDevice().waitForFences({ *InFlightFence }, true, UINT64_MAX);
 		(void)fenceResult;
@@ -327,10 +326,13 @@ namespace Nyx
 		// ---------------------------------------------------------------------
 		const float deltaTime = ComputeDeltaTime();
 
-		UpdateRenderObjects(World, deltaTime);
-		ExtractRenderObjects(World);
-
-		TickActiveEditorSceneViewFromInput(deltaTime);
+		if (World)
+		{
+			// @todo: Remove hardcoded updates for demo-purpose completely
+			//UpdateRenderObjects(*World, deltaTime);
+			ExtractRenderObjects(*World);
+			TickActiveEditorSceneViewFromInput(deltaTime);
+		}
 
 		// ---------------------------------------------------------------------
 		// Render every scene view into its own offscreen target
@@ -354,9 +356,12 @@ namespace Nyx
 				view.bRecreatedThisFrame = false;
 			}
 
-			UpdateViewportSceneGlobals(view, World);
-			UpdateSceneUniforms(view);
-			UpdateSkyboxUniforms(view);
+			if (World)
+			{
+				UpdateViewportSceneGlobals(view, *World);
+				UpdateSceneUniforms(view);
+				UpdateSkyboxUniforms(view);
+			}
 
 			vk::ClearColorValue clear = vk::ClearColorValue(std::array<float, 4>{ 0.2f, 0.05f, 0.35f, 1.0f });
 
@@ -466,6 +471,31 @@ namespace Nyx
 
 		view->EditorCam.Position = pos;
 		view->EditorCam.RotationRadians = rot;
+	}
+
+	void VulkanRenderer::SetWorld(const Nyx::Engine::Registry* world)
+	{
+		World = world;
+	}
+
+	Mesh* VulkanRenderer::GetCubeMesh()
+	{
+		return &CubeMesh;
+	}
+
+	Material* VulkanRenderer::GetTexturedMaterial()
+	{
+		return &TexturedMaterial;
+	}
+
+	Material* VulkanRenderer::GetReflectiveMaterial()
+	{
+		return &ReflectiveMaterial;
+	}
+
+	Material* VulkanRenderer::GetUntexturedMaterial()
+	{
+		return &UntexturedMaterial;
 	}
 
 	VulkanContext& VulkanRenderer::GetContext()
@@ -2140,90 +2170,6 @@ namespace Nyx
 		// DrawDebugLines(view, cmd);
 
 		view.RenderTarget.EndRenderPass(cmd);
-	}
-
-	void VulkanRenderer::SpawnTestEntities()
-	{
-		Nyx::Engine::Entity cameraEntity = World.CreateEntity();
-
-		World.Add<Nyx::Engine::TransformComponent>(
-			cameraEntity,
-			Nyx::Engine::TransformComponent{
-				.Position = glm::vec3(0.0f, 2.0f, 6.0f),
-				.RotationRadians = glm::vec3(0.0f, 0.0f, 0.0f),
-				.Scale = glm::vec3(1.0f)
-			}
-		);
-
-		World.Add<Nyx::Engine::CameraComponent>(
-			cameraEntity,
-			Nyx::Engine::CameraComponent{
-				.FovYRadians = glm::radians(60.0f),
-				.NearPlane = 0.1f,
-				.FarPlane = 1000.0f,
-				.bPrimary = true
-			}
-		);
-
-		Nyx::Engine::Entity lightEntity = World.CreateEntity();
-
-		World.Add<Nyx::Engine::TransformComponent>(
-			lightEntity,
-			Nyx::Engine::TransformComponent{
-				.Position = glm::vec3(0.0f),
-				.RotationRadians = glm::vec3(glm::radians(-45.0f), glm::radians(35.0f), 0.0f),
-				.Scale = glm::vec3(1.0f)
-			}
-		);
-
-		World.Add<Nyx::Engine::DirectionalLightComponent>(
-			lightEntity,
-			Nyx::Engine::DirectionalLightComponent{
-				.Color = glm::vec3(1.0f, 0.98f, 0.95f),
-				.Intensity = 1.0f,
-				.Ambient = 0.18f,
-				.bPrimary = true
-			}
-		);
-
-		auto e0 = World.CreateEntity();
-		World.Add<Nyx::Engine::TransformComponent>(e0,
-			Nyx::Engine::TransformComponent{
-				.Position = glm::vec3(-2.0f, 0.0f, 0.0f)
-			}
-		);
-		World.Add<Nyx::Engine::MeshRendererComponent>(e0,
-			Nyx::Engine::MeshRendererComponent{
-				.MeshAsset = &CubeMesh,
-				.MaterialAsset = &TexturedMaterial
-			}
-		);
-
-		auto e1 = World.CreateEntity();
-		World.Add<Nyx::Engine::TransformComponent>(e1,
-			Nyx::Engine::TransformComponent{
-				.Position = glm::vec3(0.0f, 0.0f, 0.0f)
-			}
-		);
-		World.Add<Nyx::Engine::MeshRendererComponent>(e1,
-			Nyx::Engine::MeshRendererComponent{
-				.MeshAsset = &CubeMesh,
-				.MaterialAsset = &ReflectiveMaterial
-			}
-		);
-
-		auto e2 = World.CreateEntity();
-		World.Add<Nyx::Engine::TransformComponent>(e2,
-			Nyx::Engine::TransformComponent{
-				.Position = glm::vec3(2.0f, 0.0f, 0.0f)
-			}
-		);
-		World.Add<Nyx::Engine::MeshRendererComponent>(e2,
-			Nyx::Engine::MeshRendererComponent{
-				.MeshAsset = &CubeMesh,
-				.MaterialAsset = &UntexturedMaterial
-			}
-		);
 	}
 
 	void VulkanRenderer::DrawSkybox(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)

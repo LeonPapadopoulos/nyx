@@ -8,6 +8,20 @@ struct GLFWwindow;
 
 namespace Nyx
 {
+	class Mesh;
+	class Material;
+}
+
+namespace Nyx
+{
+	namespace Engine
+	{
+		class Registry;
+	}
+}
+
+namespace Nyx
+{
 	struct Extent2D
 	{
 		uint32_t Width = 0;
@@ -35,6 +49,8 @@ namespace Nyx
 		virtual void SetSceneViewCameraMode(uint64_t id, EViewportCameraMode mode) = 0;
 		virtual void SetSceneViewEditorCameraTransform(uint64_t id, const glm::vec3& pos, const glm::vec3& rot) = 0;
 
+		virtual void SetWorld(const Nyx::Engine::Registry* world) = 0;
+
 		virtual uint64_t CreateSceneView() = 0;
 		virtual void DestroySceneView(uint64_t id) = 0;
 
@@ -44,6 +60,12 @@ namespace Nyx
 
 		virtual ImTextureID GetSceneViewTextureId(uint64_t id) const = 0;
 		virtual bool WasSceneViewRecreatedThisFrame(uint64_t id) const = 0;
+	
+		// temporary demo-asset accessors
+		virtual Nyx::Mesh* GetCubeMesh() = 0;
+		virtual Nyx::Material* GetTexturedMaterial() = 0;
+		virtual Nyx::Material* GetReflectiveMaterial() = 0;
+		virtual Nyx::Material* GetUntexturedMaterial() = 0;
 	};
 
 	NYXENGINE_API std::unique_ptr<IRenderer> CreateRenderer();

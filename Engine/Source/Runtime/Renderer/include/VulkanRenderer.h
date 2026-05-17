@@ -180,6 +180,13 @@ namespace Nyx
 
 		virtual void SetSceneViewCameraMode(uint64_t id, EViewportCameraMode mode);
 		virtual void SetSceneViewEditorCameraTransform(uint64_t id, const glm::vec3& pos, const glm::vec3& rot);
+	
+		void SetWorld(const Nyx::Engine::Registry* world) override;
+
+		Nyx::Mesh* GetCubeMesh() override;
+		Nyx::Material* GetTexturedMaterial() override;
+		Nyx::Material* GetReflectiveMaterial() override;
+		Nyx::Material* GetUntexturedMaterial() override;
 	public:
 		VulkanContext& GetContext();
 		VulkanSwapchain& GetSwapchain();
@@ -296,8 +303,8 @@ namespace Nyx
 		Material ReflectiveMaterial;
 		Material UntexturedMaterial;
 
-		// @todo: Move this world out of the renderer, into the game/editor-layer
-		Nyx::Engine::Registry World;
+		// World is owned by the editor / scene document.
+		const Nyx::Engine::Registry* World = nullptr;
 
 		std::vector<RenderObject> RenderObjects;
 		float SceneTime = 0.0f;

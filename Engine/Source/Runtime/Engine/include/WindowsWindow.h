@@ -7,6 +7,11 @@ struct GLFWwindow;
 namespace Nyx
 {
 	class IRenderer;
+
+	namespace Editor
+	{
+		class EditorLayer;
+	}
 }
 
 namespace Nyx
@@ -27,6 +32,8 @@ namespace Nyx
 
 		bool IsTitleBarHovered() const { return bTitlebarHovered; }
 
+		void SetDrawDockedPanelsCallback(std::function<void()> callback);
+
 	private:
 		void Initialize(const WindowSpecs& specs);
 		void Shutdown();
@@ -41,6 +48,8 @@ namespace Nyx
 		bool IsMaximized() const;
 
 		static void GLFW_ScrollCallback(GLFWwindow* window, double xOffset, double yOffset);
+
+		void DrawDockspaceHost();
 
 	private:
 		GLFWwindow* Window = nullptr;
@@ -59,7 +68,9 @@ namespace Nyx
 		WindowData Data;
 		bool bTitlebarHovered = false;
 
-		uint64_t MainSceneViewId = 0;
-		uint64_t SecondarySceneViewId = 0;
+		std::unique_ptr<Nyx::Editor::EditorLayer> MainEditorLayer;
+		std::function<void()> OnFrame;
+
+		std::function<void()> DrawDockedPanelsCallback;
 	};
 }
