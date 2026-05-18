@@ -328,8 +328,8 @@ namespace Nyx
 
 		if (World)
 		{
-			// @todo: Remove hardcoded updates for demo-purpose completely
-			//UpdateRenderObjects(*World, deltaTime);
+			// Used to update Render Objects here (e.g. Transform)
+
 			ExtractRenderObjects(*World);
 			TickActiveEditorSceneViewFromInput(deltaTime);
 		}
@@ -801,32 +801,6 @@ namespace Nyx
 		UntexturedMaterial.Reflectivity = 0.05f;
 		UntexturedMaterial.bUseTexture = false;
 		UntexturedMaterial.Tint = glm::vec3(0.2f, 0.8f, 1.0f);
-	}
-
-	void VulkanRenderer::UpdateRenderObjects(Nyx::Engine::Registry& registry, float deltaTime)
-	{
-		SceneTime += deltaTime;
-
-		registry.Each<Nyx::Engine::MeshRendererComponent>(
-			[this, &registry, deltaTime](Nyx::Engine::Entity entity, Nyx::Engine::MeshRendererComponent& meshRenderer)
-			{
-				if (!meshRenderer.bVisible)
-				{
-					return;
-				}
-
-				if (!meshRenderer.MeshAsset || !meshRenderer.MaterialAsset)
-				{
-					return;
-				}
-
-				if (registry.Has<Nyx::Engine::TransformComponent>(entity))
-				{
-					Nyx::Engine::TransformComponent& transform = registry.Get<Nyx::Engine::TransformComponent>(entity);
-					transform.RotationRadians.y += deltaTime;
-				}
-			}
-		);
 	}
 
 	void VulkanRenderer::ExtractRenderObjects(const Nyx::Engine::Registry& registry)

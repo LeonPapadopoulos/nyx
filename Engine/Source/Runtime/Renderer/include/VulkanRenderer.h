@@ -212,7 +212,6 @@ namespace Nyx
 		void WaitForValidFramebufferSize();
 
 		void CreateMaterials();
-		void UpdateRenderObjects(Nyx::Engine::Registry& registry, float deltaTime);
 		void ExtractRenderObjects(const Nyx::Engine::Registry& registry);
 		void DrawRenderObjects(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
 
@@ -279,8 +278,6 @@ namespace Nyx
 		void EnsureSceneViewSize(SceneViewInstance& view, uint32_t width, uint32_t height);
 		void UpdateSceneView(SceneViewInstance& view, const Nyx::Engine::Registry& world, float deltaTime);
 		void RenderSceneView(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
-
-		void SpawnTestEntities();
 
 	private:
 		GLFWwindow* Window = nullptr;
