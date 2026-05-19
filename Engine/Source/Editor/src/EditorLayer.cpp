@@ -71,21 +71,6 @@ namespace Nyx::Editor
 		ImGui::ShowDemoWindow();
 	}
 
-	void EditorLayer::Draw()
-	{
-		ASSERT(Renderer != nullptr);
-
-		const float deltaTime = ComputeDeltaTime();
-		TickScene(deltaTime);
-
-		Renderer->DrawFrame(
-			[this]()
-			{
-				DrawUserInterface();
-			}
-		);
-	}
-
 	float EditorLayer::ComputeDeltaTime()
 	{
 		const double currentTime = glfwGetTime();
@@ -125,14 +110,6 @@ namespace Nyx::Editor
 				}
 			}
 		);
-	}
-
-	void EditorLayer::DrawUserInterface()
-	{
-		DrawSceneOutliner();
-		DrawSceneViews();
-
-		ImGui::ShowDemoWindow();
 	}
 
 	void EditorLayer::DrawSceneOutliner()

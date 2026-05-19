@@ -14,13 +14,11 @@ namespace Nyx::Editor
 		void Shutdown();
 
 		void DrawPanels();
-		void Draw();
 
 	private:
 		float ComputeDeltaTime();
 		void TickScene(float deltaTime);
 
-		void DrawUserInterface();
 		void DrawSceneOutliner();
 		void DrawSceneViews();
 
