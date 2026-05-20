@@ -57,6 +57,10 @@ set(NYX_ENGINE_SOURCES
     # Editor
     ${NYX_ENGINE_ROOT}/Editor/src/EditorLayer.cpp
     ${NYX_ENGINE_ROOT}/Editor/src/SceneDocument.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/EditorProperty.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/ComponentEditorRegistration.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/ComponentEditors.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/ComponentInspectorRegistry.cpp
 )
 
 set(NYX_ENGINE_HEADERS
@@ -101,6 +105,10 @@ set(NYX_ENGINE_HEADERS
     # Editor
     ${NYX_ENGINE_ROOT}/Editor/include/EditorLayer.h
     ${NYX_ENGINE_ROOT}/Editor/include/SceneDocument.h
+    ${NYX_ENGINE_ROOT}/Editor/include/EditorProperty.h
+    ${NYX_ENGINE_ROOT}/Editor/include/ComponentEditorRegistration.h
+    ${NYX_ENGINE_ROOT}/Editor/include/ComponentEditors.h
+    ${NYX_ENGINE_ROOT}/Editor/include/ComponentInspectorRegistry.h
 )
 
 add_library(NyxEngine SHARED 

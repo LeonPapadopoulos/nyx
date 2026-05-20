@@ -5,6 +5,8 @@
 #include "MeshRendererComponent.h"
 #include "TransformComponent.h"
 
+#include "ComponentInspectorRegistry.h"
+
 // @todo: include once its moved out of SceneDocument.h
 //#include "NameComponent.h"
 #include "SceneDocument.h"
@@ -247,88 +249,11 @@ namespace Nyx::Editor
 		// so we can easily, and reliably avoid Naming collisions among UI elements.
 		// (Currently being dodged by using '##SomeSubInfo')
 
-		// -------------------------------------------------
-		// NameComponent
-		// -------------------------------------------------
-		if (world.Has<Nyx::Engine::NameComponent>(entity))
+		for (const ComponentInspectorEntry& inspector : GetDefaultComponentInspectors())
 		{
-			if (ImGui::CollapsingHeader("Name##Component", ImGuiTreeNodeFlags_DefaultOpen))
+			if (inspector.HasComponent(world, entity))
 			{
-				auto& nameComponent = world.Get<Nyx::Engine::NameComponent>(entity);
-				InputTextString("Name##Value", nameComponent.Name);
-			}
-		}
-
-		// -------------------------------------------------
-		// TransformComponent
-		// -------------------------------------------------
-		if (world.Has<Nyx::Engine::TransformComponent>(entity))
-		{
-			if (ImGui::CollapsingHeader("Transform##Component", ImGuiTreeNodeFlags_DefaultOpen))
-			{
-				auto& transform = world.Get<Nyx::Engine::TransformComponent>(entity);
-
-				float position[3] =
-				{
-					transform.Position.x,
-					transform.Position.y,
-					transform.Position.z
-				};
-
-				float rotation[3] =
-				{
-					transform.RotationRadians.x,
-					transform.RotationRadians.y,
-					transform.RotationRadians.z
-				};
-
-				float scale[3] =
-				{
-					transform.Scale.x,
-					transform.Scale.y,
-					transform.Scale.z
-				};
-
-				if (ImGui::DragFloat3("Position##Transform", position, 0.1f))
-				{
-					transform.Position.x = position[0];
-					transform.Position.y = position[1];
-					transform.Position.z = position[2];
-				}
-
-				if (ImGui::DragFloat3("Rotation (Rad)##Transform", rotation, 0.01f))
-				{
-					transform.RotationRadians.x = rotation[0];
-					transform.RotationRadians.y = rotation[1];
-					transform.RotationRadians.z = rotation[2];
-				}
-
-				if (ImGui::DragFloat3("Scale##Transform", scale, 0.01f))
-				{
-					transform.Scale.x = scale[0];
-					transform.Scale.y = scale[1];
-					transform.Scale.z = scale[2];
-				}
-			}
-		}
-
-		// -------------------------------------------------
-		// MeshRendererComponent
-		// -------------------------------------------------
-		if (world.Has<Nyx::Engine::MeshRendererComponent>(entity))
-		{
-			if (ImGui::CollapsingHeader("Mesh Renderer##Component", ImGuiTreeNodeFlags_DefaultOpen))
-			{
-				auto& meshRenderer = world.Get<Nyx::Engine::MeshRendererComponent>(entity);
-
-				bool bVisible = meshRenderer.bVisible;
-				if (ImGui::Checkbox("Visible", &bVisible))
-				{
-					meshRenderer.bVisible = bVisible;
-				}
-
-				ImGui::Text("Mesh: %p", static_cast<void*>(meshRenderer.MeshAsset));
-				ImGui::Text("Material: %p", static_cast<void*>(meshRenderer.MaterialAsset));
+				inspector.DrawComponent(world, entity);
 			}
 		}
 
