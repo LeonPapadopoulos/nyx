@@ -9,9 +9,31 @@
 //#include "NameComponent.h"
 #include "SceneDocument.h"
 
-#include <GLFW/glfw3.h>
 #include "imgui.h"
+
+#include <cstring>
+#include <string>
+#include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
+
+namespace
+{
+	bool InputTextString(const char* label, std::string& value)
+	{
+		char buffer[256]{};
+		const size_t copyLength = std::min(value.size(), sizeof(buffer) - 1);
+		std::memcpy(buffer, value.data(), copyLength);
+		buffer[copyLength] = '\0';
+
+		if (ImGui::InputText(label, buffer, sizeof(buffer)))
+		{
+			value = buffer;
+			return true;
+		}
+
+		return false;
+	}
+}
 
 namespace Nyx::Editor
 {
@@ -66,6 +88,7 @@ namespace Nyx::Editor
 		TickScene(deltaTime);
 
 		DrawSceneOutliner();
+		DrawDetailsPanel();
 		DrawSceneViews();
 
 		ImGui::ShowDemoWindow();
@@ -173,6 +196,143 @@ namespace Nyx::Editor
 			selection.reset();
 		}
 
+		ImGui::End();
+	}
+
+	void EditorLayer::DrawDetailsPanel()
+	{
+		if (!bShowDetailsPanel)
+		{
+			return;
+		}
+
+		if (!ImGui::Begin("Details", &bShowDetailsPanel))
+		{
+			ImGui::End();
+			return;
+		}
+
+		auto& selection = ActiveScene.GetSelection();
+		auto& world = ActiveScene.GetRegistry();
+
+		if (!selection.has_value())
+		{
+			ImGui::TextUnformatted("No entity selected.");
+			ImGui::End();
+			return;
+		}
+
+		const Nyx::Engine::Entity entity = selection.value();
+
+		if (!world.IsAlive(entity))
+		{
+			ImGui::TextUnformatted("Selected entity is no longer valid.");
+			selection.reset();
+			ImGui::End();
+			return;
+		}
+
+		ImGui::Text("Entity: %u", entity.Index());
+		ImGui::Separator();
+
+		// @todo: Move away from manually hardcoding the visuals of 
+		// specific components (and fields) here; Consider DetailsPanel-, 
+		// and Property-Customizations like Unreal does it. Also, look
+		// into code generation for the needed field meta data
+
+		// Scope all the displayed details to that particular entity via its ID / TypedHandle
+		ImGui::PushID(static_cast<int>(entity.Value));
+
+		// @todo: Find a more robust (and automated) naming approach,
+		// so we can easily, and reliably avoid Naming collisions among UI elements.
+		// (Currently being dodged by using '##SomeSubInfo')
+
+		// -------------------------------------------------
+		// NameComponent
+		// -------------------------------------------------
+		if (world.Has<Nyx::Engine::NameComponent>(entity))
+		{
+			if (ImGui::CollapsingHeader("Name##Component", ImGuiTreeNodeFlags_DefaultOpen))
+			{
+				auto& nameComponent = world.Get<Nyx::Engine::NameComponent>(entity);
+				InputTextString("Name##Value", nameComponent.Name);
+			}
+		}
+
+		// -------------------------------------------------
+		// TransformComponent
+		// -------------------------------------------------
+		if (world.Has<Nyx::Engine::TransformComponent>(entity))
+		{
+			if (ImGui::CollapsingHeader("Transform##Component", ImGuiTreeNodeFlags_DefaultOpen))
+			{
+				auto& transform = world.Get<Nyx::Engine::TransformComponent>(entity);
+
+				float position[3] =
+				{
+					transform.Position.x,
+					transform.Position.y,
+					transform.Position.z
+				};
+
+				float rotation[3] =
+				{
+					transform.RotationRadians.x,
+					transform.RotationRadians.y,
+					transform.RotationRadians.z
+				};
+
+				float scale[3] =
+				{
+					transform.Scale.x,
+					transform.Scale.y,
+					transform.Scale.z
+				};
+
+				if (ImGui::DragFloat3("Position##Transform", position, 0.1f))
+				{
+					transform.Position.x = position[0];
+					transform.Position.y = position[1];
+					transform.Position.z = position[2];
+				}
+
+				if (ImGui::DragFloat3("Rotation (Rad)##Transform", rotation, 0.01f))
+				{
+					transform.RotationRadians.x = rotation[0];
+					transform.RotationRadians.y = rotation[1];
+					transform.RotationRadians.z = rotation[2];
+				}
+
+				if (ImGui::DragFloat3("Scale##Transform", scale, 0.01f))
+				{
+					transform.Scale.x = scale[0];
+					transform.Scale.y = scale[1];
+					transform.Scale.z = scale[2];
+				}
+			}
+		}
+
+		// -------------------------------------------------
+		// MeshRendererComponent
+		// -------------------------------------------------
+		if (world.Has<Nyx::Engine::MeshRendererComponent>(entity))
+		{
+			if (ImGui::CollapsingHeader("Mesh Renderer##Component", ImGuiTreeNodeFlags_DefaultOpen))
+			{
+				auto& meshRenderer = world.Get<Nyx::Engine::MeshRendererComponent>(entity);
+
+				bool bVisible = meshRenderer.bVisible;
+				if (ImGui::Checkbox("Visible", &bVisible))
+				{
+					meshRenderer.bVisible = bVisible;
+				}
+
+				ImGui::Text("Mesh: %p", static_cast<void*>(meshRenderer.MeshAsset));
+				ImGui::Text("Material: %p", static_cast<void*>(meshRenderer.MaterialAsset));
+			}
+		}
+
+		ImGui::PopID();
 		ImGui::End();
 	}
 

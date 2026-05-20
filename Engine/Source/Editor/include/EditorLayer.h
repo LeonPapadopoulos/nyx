@@ -20,6 +20,7 @@ namespace Nyx::Editor
 		void TickScene(float deltaTime);
 
 		void DrawSceneOutliner();
+		void DrawDetailsPanel();
 		void DrawSceneViews();
 
 		void SpawnTestScene();
@@ -35,6 +36,7 @@ namespace Nyx::Editor
 		bool bShowSceneView = true;
 		bool bShowSecondarySceneView = true;
 		bool bShowSceneOutliner = true;
+		bool bShowDetailsPanel = true;
 
 		double LastFrameTimeSeconds = 0.0;
 	};
