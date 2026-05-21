@@ -4,12 +4,8 @@
 #include "Renderer.h"
 #include "MeshRendererComponent.h"
 #include "TransformComponent.h"
-
+#include "NameComponent.h"
 #include "ComponentInspectorRegistry.h"
-
-// @todo: include once its moved out of SceneDocument.h
-//#include "NameComponent.h"
-#include "SceneDocument.h"
 
 #include "imgui.h"
 

@@ -3,10 +3,7 @@
 #include "ComponentEditorRegistration.h"
 #include "MeshRendererComponent.h"
 
-// @todo: include once its moved out of SceneDocument.h
-//#include "NameComponent.h"
-#include "SceneDocument.h"
-
+#include "NameComponent.h"
 #include "TransformComponent.h"
 
 NYX_REGISTER_COMPONENT_EDITOR(

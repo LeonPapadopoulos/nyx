@@ -1,19 +1,10 @@
 #pragma once
 
 #include "Entity.h"
-//#include "NameComponent.h" // @todo
+#include "NameComponent.h"
 
 #include <optional>
 #include <string>
-
-// @todo: Eventually move to own file
-namespace Nyx::Engine
-{
-	struct NameComponent
-	{
-		std::string Name = "Entity";
-	};
-}
 
 namespace Nyx::Engine
 {

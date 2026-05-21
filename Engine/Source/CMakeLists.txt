@@ -30,6 +30,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/MeshRendererComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/CameraComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/DirectionalLightComponent.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/NameComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/ResourceManager.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/TypedHandle.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/WindowsWindow.cpp
@@ -78,6 +79,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/MeshRendererComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/CameraComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/DirectionalLightComponent.h
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/NameComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/ResourceManager.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/TypedHandle.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/Window.h
