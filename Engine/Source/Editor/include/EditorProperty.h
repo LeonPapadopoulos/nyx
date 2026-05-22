@@ -46,10 +46,21 @@ namespace Nyx::Editor
 		return false;
 	}
 
-	inline void DrawProperty(void* objectBase, const EditorPropertyDesc& property)
+	inline void DrawPropertyRow(void* objectBase, const EditorPropertyDesc& property)
 	{
 		uint8_t* base = reinterpret_cast<uint8_t*>(objectBase);
-		const std::string widgetLabel = std::string(property.Name) + "##Field";
+
+		// Left column: visible label
+		ImGui::TableNextRow();
+		ImGui::TableSetColumnIndex(0);
+		ImGui::AlignTextToFramePadding();
+		ImGui::TextUnformatted(property.Name);
+
+		// Right column: actual widget, with hidden label
+		ImGui::TableSetColumnIndex(1);
+		ImGui::SetNextItemWidth(-FLT_MIN);
+
+		const std::string widgetLabel = "##Field";
 
 		switch (property.Kind)
 		{
@@ -95,9 +106,24 @@ namespace Nyx::Editor
 
 	inline void DrawProperties(void* objectBase, const std::vector<EditorPropertyDesc>& properties)
 	{
-		for (const EditorPropertyDesc& property : properties)
+		if (properties.empty())
 		{
-			DrawProperty(objectBase, property);
+			return;
+		}
+
+		if (ImGui::BeginTable("Properties", 2, ImGuiTableFlags_SizingStretchProp))
+		{
+			ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 140.0f);
+			ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+
+			for (const EditorPropertyDesc& property : properties)
+			{
+				ImGui::PushID(property.Name);
+				DrawPropertyRow(objectBase, property);
+				ImGui::PopID();
+			}
+
+			ImGui::EndTable();
 		}
 	}
 }
