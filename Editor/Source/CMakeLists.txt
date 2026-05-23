@@ -36,6 +36,8 @@ set(NYX_SHADER_SOURCES
     ${NYX_SHADER_SOURCE_DIR}/Grid.frag
     ${NYX_SHADER_SOURCE_DIR}/Skybox.vert
     ${NYX_SHADER_SOURCE_DIR}/Skybox.frag
+    ${NYX_SHADER_SOURCE_DIR}/DebugLines.vert
+    ${NYX_SHADER_SOURCE_DIR}/DebugLines.frag
 )
 
 set(NYX_SHADER_OUTPUTS)

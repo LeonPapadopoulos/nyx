@@ -11,9 +11,12 @@
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+
 #include <ranges>
 #include <string>
 #include <fstream>
+#include <limits>
+#include <optional>
 
 #include "backends/imgui_impl_vulkan.h"
 
@@ -25,6 +28,141 @@
 #include <glm/gtx/norm.hpp>
 
 #include <stb_image.h>
+
+namespace
+{
+	struct ProjectedPoint
+	{
+		glm::vec2 PixelPos{ 0.0f };
+		float Depth = 1.0f;
+		bool bValid = false;
+	};
+
+	ProjectedPoint ProjectWorldToViewportPixel(
+		const glm::vec3& worldPos,
+		const glm::mat4& viewProj,
+		const vk::Extent2D& extent)
+	{
+		ProjectedPoint result{};
+
+		const glm::vec4 clip = viewProj * glm::vec4(worldPos, 1.0f);
+
+		if (std::abs(clip.w) < 1e-6f)
+		{
+			return result;
+		}
+
+		const glm::vec3 ndc = glm::vec3(clip) / clip.w;
+
+		// Vulkan-style clip depth
+		if (ndc.z < 0.0f || ndc.z > 1.0f)
+		{
+			return result;
+		}
+
+		result.PixelPos.x = (ndc.x * 0.5f + 0.5f) * static_cast<float>(extent.width);
+		result.PixelPos.y = (1.0f - (ndc.y * 0.5f + 0.5f)) * static_cast<float>(extent.height);
+		result.Depth = ndc.z;
+		result.bValid = true;
+		return result;
+	}
+
+	void ComputeLocalBounds(
+		const std::vector<Nyx::Vertex>& vertices,
+		glm::vec3& outMin,
+		glm::vec3& outMax)
+	{
+		ASSERT(!vertices.empty());
+
+		outMin = glm::vec3(std::numeric_limits<float>::max());
+		outMax = glm::vec3(std::numeric_limits<float>::lowest());
+
+		for (const Nyx::Vertex& vertex : vertices)
+		{
+			outMin = glm::min(outMin, vertex.Position);
+			outMax = glm::max(outMax, vertex.Position);
+		}
+	}
+
+	void TransformAABB(
+		const glm::vec3& localMin,
+		const glm::vec3& localMax,
+		const glm::mat4& worldTransform,
+		glm::vec3& outWorldMin,
+		glm::vec3& outWorldMax)
+	{
+		const glm::vec3 corners[8] =
+		{
+			{ localMin.x, localMin.y, localMin.z },
+			{ localMax.x, localMin.y, localMin.z },
+			{ localMin.x, localMax.y, localMin.z },
+			{ localMax.x, localMax.y, localMin.z },
+			{ localMin.x, localMin.y, localMax.z },
+			{ localMax.x, localMin.y, localMax.z },
+			{ localMin.x, localMax.y, localMax.z },
+			{ localMax.x, localMax.y, localMax.z }
+		};
+
+		outWorldMin = glm::vec3(std::numeric_limits<float>::max());
+		outWorldMax = glm::vec3(std::numeric_limits<float>::lowest());
+
+		for (const glm::vec3& corner : corners)
+		{
+			const glm::vec3 worldCorner = glm::vec3(worldTransform * glm::vec4(corner, 1.0f));
+			outWorldMin = glm::min(outWorldMin, worldCorner);
+			outWorldMax = glm::max(outWorldMax, worldCorner);
+		}
+	}
+
+	bool IntersectRayAABB(
+		const glm::vec3& rayOrigin,
+		const glm::vec3& rayDirection,
+		const glm::vec3& boundsMin,
+		const glm::vec3& boundsMax,
+		float& outT)
+	{
+		float tMin = 0.0f;
+		float tMax = std::numeric_limits<float>::max();
+
+		for (int axis = 0; axis < 3; ++axis)
+		{
+			const float origin = rayOrigin[axis];
+			const float direction = rayDirection[axis];
+			const float minPlane = boundsMin[axis];
+			const float maxPlane = boundsMax[axis];
+
+			if (std::abs(direction) < 1e-6f)
+			{
+				if (origin < minPlane || origin > maxPlane)
+				{
+					return false;
+				}
+
+				continue;
+			}
+
+			const float invDir = 1.0f / direction;
+			float t1 = (minPlane - origin) * invDir;
+			float t2 = (maxPlane - origin) * invDir;
+
+			if (t1 > t2)
+			{
+				std::swap(t1, t2);
+			}
+
+			tMin = std::max(tMin, t1);
+			tMax = std::min(tMax, t2);
+
+			if (tMin > tMax)
+			{
+				return false;
+			}
+		}
+
+		outT = tMin;
+		return true;
+	}
+}
 
 //@todo move to utility library
 static glm::mat4 BuildRotationMatrix(const Nyx::Engine::TransformComponent& transform)
@@ -183,6 +321,10 @@ namespace Nyx
 		CreateGridPipeline();
 		CreateSkyboxPipeline();
 
+		// Debug Drawing
+		CreateDebugLineResources();
+		CreateDebugLinePipeline();
+
 		// Shared materials
 		CreateMaterials();
 
@@ -331,6 +473,26 @@ namespace Nyx
 			// Used to update Render Objects here (e.g. Transform)
 
 			ExtractRenderObjects(*World);
+
+			// Temp Debug Drawing of object bounds
+			{
+				ResetDebugLines();
+
+				for (const RenderObject& obj : RenderObjects)
+				{
+					AddDebugAxes(obj.WorldTransform, 0.75f);
+
+					AddDebugOrientedBox(
+						obj.WorldTransform,
+						obj.LocalBoundsMin,
+						obj.LocalBoundsMax,
+						glm::vec3(1.0f, 1.0f, 0.2f)
+					);
+				}
+
+				UploadDebugLines();
+			}
+
 			TickActiveEditorSceneViewFromInput(deltaTime);
 		}
 
@@ -376,8 +538,8 @@ namespace Nyx
 				// 3. Grid
 				DrawGrid(view, cmd);
 
-				// 4. Later: debug draw
-				// DrawDebugLines(view, cmd);
+				// 4. Debug Visuals
+				DrawDebugLines(view, cmd);
 			}
 			view.RenderTarget.EndRenderPass(cmd);
 		}
@@ -451,6 +613,116 @@ namespace Nyx
 		{
 			Context.GetDevice().waitIdle();
 		}
+	}
+
+	std::optional<Nyx::Engine::Entity> VulkanRenderer::PickSceneViewEntity(
+		uint64_t sceneViewId,
+		float localMouseX,
+		float localMouseY) const
+	{
+		const SceneViewInstance* view = FindSceneView(sceneViewId);
+		if (!view)
+		{
+			return std::nullopt;
+		}
+
+		const vk::Extent2D extent = view->RenderTarget.GetExtent();
+		if (extent.width == 0 || extent.height == 0)
+		{
+			return std::nullopt;
+		}
+
+		const glm::vec2 mouse(localMouseX, localMouseY);
+
+		float bestDepth = std::numeric_limits<float>::max();
+		std::optional<Nyx::Engine::Entity> bestHit;
+
+		// Small padding makes clicking feel less "pixel perfect"
+		const float pickPaddingPx = 3.0f;
+
+		for (const RenderObject& obj : RenderObjects)
+		{
+			if (!obj.MeshAsset || !obj.MaterialAsset)
+			{
+				continue;
+			}
+
+			const glm::vec3 localMin = obj.LocalBoundsMin;
+			const glm::vec3 localMax = obj.LocalBoundsMax;
+
+			const glm::vec3 localCorners[8] =
+			{
+				{ localMin.x, localMin.y, localMin.z },
+				{ localMax.x, localMin.y, localMin.z },
+				{ localMin.x, localMax.y, localMin.z },
+				{ localMax.x, localMax.y, localMin.z },
+				{ localMin.x, localMin.y, localMax.z },
+				{ localMax.x, localMin.y, localMax.z },
+				{ localMin.x, localMax.y, localMax.z },
+				{ localMax.x, localMax.y, localMax.z }
+			};
+
+			bool bAnyValidPoint = false;
+			glm::vec2 rectMin(std::numeric_limits<float>::max());
+			glm::vec2 rectMax(std::numeric_limits<float>::lowest());
+
+			for (const glm::vec3& localCorner : localCorners)
+			{
+				const glm::vec3 worldCorner = glm::vec3(obj.WorldTransform * glm::vec4(localCorner, 1.0f));
+				const ProjectedPoint projected = ProjectWorldToViewportPixel(
+					worldCorner,
+					view->SceneGlobals.ViewProjection,
+					extent
+				);
+
+				if (!projected.bValid)
+				{
+					continue;
+				}
+
+				bAnyValidPoint = true;
+				rectMin = glm::min(rectMin, projected.PixelPos);
+				rectMax = glm::max(rectMax, projected.PixelPos);
+			}
+
+			if (!bAnyValidPoint)
+			{
+				continue;
+			}
+
+			// Depth sort by projected center
+			const glm::vec3 localCenter = (localMin + localMax) * 0.5f;
+			const glm::vec3 worldCenter = glm::vec3(obj.WorldTransform * glm::vec4(localCenter, 1.0f));
+			const ProjectedPoint projectedCenter = ProjectWorldToViewportPixel(
+				worldCenter,
+				view->SceneGlobals.ViewProjection,
+				extent
+			);
+
+			if (!projectedCenter.bValid)
+			{
+				continue;
+			}
+
+			const bool bInside =
+				mouse.x >= rectMin.x - pickPaddingPx &&
+				mouse.x <= rectMax.x + pickPaddingPx &&
+				mouse.y >= rectMin.y - pickPaddingPx &&
+				mouse.y <= rectMax.y + pickPaddingPx;
+
+			if (!bInside)
+			{
+				continue;
+			}
+
+			if (projectedCenter.Depth < bestDepth)
+			{
+				bestDepth = projectedCenter.Depth;
+				bestHit = obj.SourceEntity;
+			}
+		}
+
+		return bestHit;
 	}
 
 	void VulkanRenderer::SetSceneViewCameraMode(uint64_t id, EViewportCameraMode mode)
@@ -828,9 +1100,13 @@ namespace Nyx
 				}
 
 				RenderObject obj{};
+				obj.SourceEntity = entity;
 				obj.MeshAsset = meshRenderer.MeshAsset;
 				obj.MaterialAsset = meshRenderer.MaterialAsset;
 				obj.WorldTransform = worldTransform;
+
+				obj.LocalBoundsMin = meshRenderer.MeshAsset->GetLocalBoundsMin();
+				obj.LocalBoundsMax = meshRenderer.MeshAsset->GetLocalBoundsMax();
 
 				RenderObjects.push_back(obj);
 			}
@@ -1652,6 +1928,14 @@ namespace Nyx
 			cubeData.Vertices = MeshVertices;
 			cubeData.Indices = MeshIndices;
 
+			{
+				glm::vec3 localMin{};
+				glm::vec3 localMax{};
+				ComputeLocalBounds(MeshVertices, localMin, localMax);
+
+				CubeMesh.SetLocalBounds(localMin, localMax);
+			}
+
 			CubeMesh.Upload(Context, cubeData);
 		}
 	}
@@ -2144,6 +2428,284 @@ namespace Nyx
 		// DrawDebugLines(view, cmd);
 
 		view.RenderTarget.EndRenderPass(cmd);
+	}
+
+	void VulkanRenderer::CreateDebugLineResources()
+	{
+		CreateBuffer(
+			sizeof(DebugLineVertex) * MaxDebugLineVertices,
+			vk::BufferUsageFlagBits::eVertexBuffer,
+			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+			DebugLineVertexBuffer,
+			DebugLineVertexBufferMemory
+		);
+	}
+
+	void VulkanRenderer::CreateDebugLinePipeline()
+	{
+		const std::vector<uint32_t> vertCode = ReadSpirvFile("Shaders/DebugLines.vert.spv");
+		const std::vector<uint32_t> fragCode = ReadSpirvFile("Shaders/DebugLines.frag.spv");
+
+		vk::raii::ShaderModule vertShaderModule = CreateShaderModule(vertCode);
+		vk::raii::ShaderModule fragShaderModule = CreateShaderModule(fragCode);
+
+		vk::PipelineShaderStageCreateInfo vertStageInfo{};
+		vertStageInfo.stage = vk::ShaderStageFlagBits::eVertex;
+		vertStageInfo.module = *vertShaderModule;
+		vertStageInfo.pName = "main";
+
+		vk::PipelineShaderStageCreateInfo fragStageInfo{};
+		fragStageInfo.stage = vk::ShaderStageFlagBits::eFragment;
+		fragStageInfo.module = *fragShaderModule;
+		fragStageInfo.pName = "main";
+
+		vk::PipelineShaderStageCreateInfo shaderStages[] = { vertStageInfo, fragStageInfo };
+
+		const auto bindingDescription = DebugLineVertex::GetBindingDescription();
+		const auto attributeDescriptions = DebugLineVertex::GetAttributeDescriptions();
+
+		vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
+		vertexInputInfo.vertexBindingDescriptionCount = 1;
+		vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+		vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
+		vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
+
+		vk::PipelineInputAssemblyStateCreateInfo inputAssembly{};
+		inputAssembly.topology = vk::PrimitiveTopology::eLineList;
+		inputAssembly.primitiveRestartEnable = VK_FALSE;
+
+		vk::PipelineViewportStateCreateInfo viewportState{};
+		viewportState.viewportCount = 1;
+		viewportState.scissorCount = 1;
+
+		vk::PipelineRasterizationStateCreateInfo rasterizer{};
+		rasterizer.depthClampEnable = VK_FALSE;
+		rasterizer.rasterizerDiscardEnable = VK_FALSE;
+		rasterizer.polygonMode = vk::PolygonMode::eFill;
+		rasterizer.lineWidth = 1.0f;
+		rasterizer.cullMode = vk::CullModeFlagBits::eNone;
+		rasterizer.frontFace = vk::FrontFace::eCounterClockwise;
+		rasterizer.depthBiasEnable = VK_FALSE;
+
+		vk::PipelineMultisampleStateCreateInfo multisampling{};
+		multisampling.sampleShadingEnable = VK_FALSE;
+		multisampling.rasterizationSamples = vk::SampleCountFlagBits::e1;
+
+		vk::PipelineColorBlendAttachmentState colorBlendAttachment{};
+		colorBlendAttachment.blendEnable = VK_FALSE;
+		colorBlendAttachment.colorWriteMask =
+			vk::ColorComponentFlagBits::eR |
+			vk::ColorComponentFlagBits::eG |
+			vk::ColorComponentFlagBits::eB |
+			vk::ColorComponentFlagBits::eA;
+
+		vk::PipelineColorBlendStateCreateInfo colorBlending{};
+		colorBlending.logicOpEnable = VK_FALSE;
+		colorBlending.attachmentCount = 1;
+		colorBlending.pAttachments = &colorBlendAttachment;
+
+		std::array<vk::DynamicState, 2> dynamicStates =
+		{
+			vk::DynamicState::eViewport,
+			vk::DynamicState::eScissor
+		};
+
+		vk::PipelineDynamicStateCreateInfo dynamicState{};
+		dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
+		dynamicState.pDynamicStates = dynamicStates.data();
+
+		vk::PipelineDepthStencilStateCreateInfo depthStencil{};
+		depthStencil.depthTestEnable = VK_TRUE;
+		depthStencil.depthWriteEnable = VK_FALSE;
+		depthStencil.depthCompareOp = vk::CompareOp::eLessOrEqual;
+		depthStencil.depthBoundsTestEnable = VK_FALSE;
+		depthStencil.stencilTestEnable = VK_FALSE;
+
+		vk::PipelineLayoutCreateInfo pipelineLayoutInfo{};
+		vk::DescriptorSetLayout setLayouts[] = { *SceneDescriptorSetLayout };
+		pipelineLayoutInfo.setLayoutCount = 1;
+		pipelineLayoutInfo.pSetLayouts = setLayouts;
+
+		DebugLinePipelineLayout = vk::raii::PipelineLayout(Context.GetDevice(), pipelineLayoutInfo);
+
+		vk::GraphicsPipelineCreateInfo pipelineInfo{};
+		pipelineInfo.stageCount = 2;
+		pipelineInfo.pStages = shaderStages;
+		pipelineInfo.pVertexInputState = &vertexInputInfo;
+		pipelineInfo.pInputAssemblyState = &inputAssembly;
+		pipelineInfo.pViewportState = &viewportState;
+		pipelineInfo.pRasterizationState = &rasterizer;
+		pipelineInfo.pMultisampleState = &multisampling;
+		pipelineInfo.pDepthStencilState = &depthStencil;
+		pipelineInfo.pColorBlendState = &colorBlending;
+		pipelineInfo.pDynamicState = &dynamicState;
+		pipelineInfo.layout = *DebugLinePipelineLayout;
+		pipelineInfo.renderPass = GetSceneRenderPass();
+		pipelineInfo.subpass = 0;
+
+		DebugLinePipeline = std::move(vk::raii::Pipeline(Context.GetDevice(), nullptr, pipelineInfo));
+	}
+
+	void VulkanRenderer::ResetDebugLines()
+	{
+		DebugLineVertices.clear();
+	}
+
+	void VulkanRenderer::AddDebugLine(const glm::vec3& a, const glm::vec3& b, const glm::vec3& color)
+	{
+		if (DebugLineVertices.size() + 2 > MaxDebugLineVertices)
+		{
+			return;
+		}
+
+		DebugLineVertices.push_back(DebugLineVertex{ a, color });
+		DebugLineVertices.push_back(DebugLineVertex{ b, color });
+	}
+
+	void VulkanRenderer::AddDebugAxes(const glm::mat4& worldTransform, float axisLength)
+	{
+		const glm::vec3 origin = glm::vec3(worldTransform[3]);
+
+		const glm::vec3 xAxis = glm::normalize(glm::vec3(worldTransform * glm::vec4(1.0f, 0.0f, 0.0f, 0.0f)));
+		const glm::vec3 yAxis = glm::normalize(glm::vec3(worldTransform * glm::vec4(0.0f, 1.0f, 0.0f, 0.0f)));
+		const glm::vec3 zAxis = glm::normalize(glm::vec3(worldTransform * glm::vec4(0.0f, 0.0f, 1.0f, 0.0f)));
+
+		AddDebugLine(origin, origin + xAxis * axisLength, glm::vec3(1.0f, 0.0f, 0.0f));
+		AddDebugLine(origin, origin + yAxis * axisLength, glm::vec3(0.0f, 1.0f, 0.0f));
+		AddDebugLine(origin, origin + zAxis * axisLength, glm::vec3(0.0f, 0.4f, 1.0f));
+	}
+
+	void VulkanRenderer::AddDebugAABB(const glm::vec3& min, const glm::vec3& max, const glm::vec3& color)
+	{
+		const glm::vec3 p000{ min.x, min.y, min.z };
+		const glm::vec3 p100{ max.x, min.y, min.z };
+		const glm::vec3 p010{ min.x, max.y, min.z };
+		const glm::vec3 p110{ max.x, max.y, min.z };
+
+		const glm::vec3 p001{ min.x, min.y, max.z };
+		const glm::vec3 p101{ max.x, min.y, max.z };
+		const glm::vec3 p011{ min.x, max.y, max.z };
+		const glm::vec3 p111{ max.x, max.y, max.z };
+
+		AddDebugLine(p000, p100, color);
+		AddDebugLine(p100, p101, color);
+		AddDebugLine(p101, p001, color);
+		AddDebugLine(p001, p000, color);
+
+		AddDebugLine(p010, p110, color);
+		AddDebugLine(p110, p111, color);
+		AddDebugLine(p111, p011, color);
+		AddDebugLine(p011, p010, color);
+
+		AddDebugLine(p000, p010, color);
+		AddDebugLine(p100, p110, color);
+		AddDebugLine(p101, p111, color);
+		AddDebugLine(p001, p011, color);
+	}
+
+	void VulkanRenderer::AddDebugOrientedBox(
+		const glm::mat4& worldTransform,
+		const glm::vec3& localMin,
+		const glm::vec3& localMax,
+		const glm::vec3& color)
+	{
+		const glm::vec3 localCorners[8] =
+		{
+			{ localMin.x, localMin.y, localMin.z },
+			{ localMax.x, localMin.y, localMin.z },
+			{ localMin.x, localMax.y, localMin.z },
+			{ localMax.x, localMax.y, localMin.z },
+			{ localMin.x, localMin.y, localMax.z },
+			{ localMax.x, localMin.y, localMax.z },
+			{ localMin.x, localMax.y, localMax.z },
+			{ localMax.x, localMax.y, localMax.z }
+		};
+
+		glm::vec3 worldCorners[8];
+		for (int i = 0; i < 8; ++i)
+		{
+			worldCorners[i] = glm::vec3(worldTransform * glm::vec4(localCorners[i], 1.0f));
+		}
+
+		// bottom
+		AddDebugLine(worldCorners[0], worldCorners[1], color);
+		AddDebugLine(worldCorners[1], worldCorners[5], color);
+		AddDebugLine(worldCorners[5], worldCorners[4], color);
+		AddDebugLine(worldCorners[4], worldCorners[0], color);
+
+		// top
+		AddDebugLine(worldCorners[2], worldCorners[3], color);
+		AddDebugLine(worldCorners[3], worldCorners[7], color);
+		AddDebugLine(worldCorners[7], worldCorners[6], color);
+		AddDebugLine(worldCorners[6], worldCorners[2], color);
+
+		// verticals
+		AddDebugLine(worldCorners[0], worldCorners[2], color);
+		AddDebugLine(worldCorners[1], worldCorners[3], color);
+		AddDebugLine(worldCorners[5], worldCorners[7], color);
+		AddDebugLine(worldCorners[4], worldCorners[6], color);
+	}
+
+	void VulkanRenderer::UploadDebugLines()
+	{
+		if (DebugLineVertices.empty())
+		{
+			return;
+		}
+
+		const vk::DeviceSize uploadSize = sizeof(DebugLineVertex) * DebugLineVertices.size();
+		void* mapped = DebugLineVertexBufferMemory.mapMemory(0, uploadSize);
+		std::memcpy(mapped, DebugLineVertices.data(), static_cast<size_t>(uploadSize));
+		DebugLineVertexBufferMemory.unmapMemory();
+	}
+
+	void VulkanRenderer::DrawDebugLines(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
+	{
+		if (DebugLineVertices.empty())
+		{
+			return;
+		}
+
+		cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *DebugLinePipeline);
+
+		cmd.bindDescriptorSets(
+			vk::PipelineBindPoint::eGraphics,
+			*DebugLinePipelineLayout,
+			0,
+			{ *view.SceneDescriptorSets.front() },
+			{}
+		);
+
+		vk::DeviceSize offsets[] = { 0 };
+		cmd.bindVertexBuffers(0, { *DebugLineVertexBuffer }, offsets);
+		cmd.draw(static_cast<uint32_t>(DebugLineVertices.size()), 1, 0, 0);
+	}
+
+	void VulkanRenderer::BuildDebugDrawData()
+	{
+		for (const RenderObject& obj : RenderObjects)
+		{
+			if (!obj.MeshAsset || !obj.MaterialAsset)
+			{
+				continue;
+			}
+
+			// Draw local axes at the object origin
+			AddDebugAxes(obj.WorldTransform, 0.75f);
+
+			// Transform local bounds into a world-space AABB
+			glm::vec3 worldMin{};
+			glm::vec3 worldMax{};
+			TransformAABB(
+				obj.LocalBoundsMin,
+				obj.LocalBoundsMax,
+				obj.WorldTransform,
+				worldMin,
+				worldMax
+			);
+
+			AddDebugAABB(worldMin, worldMax, glm::vec3(1.0f, 1.0f, 0.2f));
+		}
 	}
 
 	void VulkanRenderer::DrawSkybox(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)

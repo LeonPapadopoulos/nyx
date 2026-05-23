@@ -81,13 +81,29 @@ namespace Nyx
 		uint32_t GetVertexCount() const;
 		uint32_t GetIndexCount() const;
 
+		void SetLocalBounds(const glm::vec3& minBounds, const glm::vec3& maxBounds)
+		{
+			LocalBoundsMin = minBounds;
+			LocalBoundsMax = maxBounds;
+		}
+
+		const glm::vec3& GetLocalBoundsMin() const
+		{
+			return LocalBoundsMin;
+		}
+
+		const glm::vec3& GetLocalBoundsMax() const
+		{
+			return LocalBoundsMax;
+		}
+
 	private:
 		bool LoadMeshData(const std::string& filePath, std::vector<Vertex>& vertices, std::vector<uint32_t>& indices);
 		void CreateVertexBuffer(VulkanContext& context, const std::vector<Vertex>& vertices);
 		void CreateIndexBuffer(VulkanContext& context, const std::vector<uint32_t>& indices);
 		vk::Device GetDevice();
 
-		private:
+	private:
 		VulkanContext* BoundContext = nullptr;
 
 		vk::raii::Buffer VertexBuffer{ nullptr };
@@ -99,6 +115,9 @@ namespace Nyx
 		vk::raii::DeviceMemory IndexBufferMemory{ nullptr };
 		vk::DeviceSize IndexBufferOffset = 0;
 		uint32_t IndexCount = 0;
+
+		glm::vec3 LocalBoundsMin{ -0.5f, -0.5f, -0.5f };
+		glm::vec3 LocalBoundsMax{ 0.5f,  0.5f,  0.5f };
 	};
 
 } // Nyx

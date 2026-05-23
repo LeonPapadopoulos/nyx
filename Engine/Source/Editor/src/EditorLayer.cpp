@@ -259,63 +259,76 @@ namespace Nyx::Editor
 
 	void EditorLayer::DrawSceneViews()
 	{
-		if (bShowSceneView && MainSceneViewId != 0)
+		if (bShowSceneView)
 		{
-			if (ImGui::Begin("Scene", &bShowSceneView))
+			DrawSceneViewWindow("Scene", MainSceneViewId, bShowSceneView);
+		}
+
+		if (bShowSecondarySceneView)
+		{
+			DrawSceneViewWindow("Scene 2", SecondarySceneViewId, bShowSecondarySceneView);
+		}
+	}
+
+	void EditorLayer::DrawSceneViewWindow(const char* title, uint64_t sceneViewId, bool& bOpen)
+	{
+		if (sceneViewId == 0)
+		{
+			return;
+		}
+
+		if (!ImGui::Begin(title, &bOpen))
+		{
+			ImGui::End();
+			return;
+		}
+
+		const bool bHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows);
+		const bool bFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+
+		Renderer->SetSceneViewHovered(sceneViewId, bHovered);
+		Renderer->SetSceneViewFocused(sceneViewId, bFocused);
+
+		const ImVec2 avail = ImGui::GetContentRegionAvail();
+		Renderer->SetSceneViewSize(
+			sceneViewId,
+			static_cast<uint32_t>(avail.x),
+			static_cast<uint32_t>(avail.y)
+		);
+
+		if (!Renderer->WasSceneViewRecreatedThisFrame(sceneViewId))
+		{
+			ImGui::Image(Renderer->GetSceneViewTextureId(sceneViewId), avail);
+
+			if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
 			{
-				const bool bHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows);
-				const bool bFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+				const ImVec2 imageMin = ImGui::GetItemRectMin();
+				const ImVec2 mousePos = ImGui::GetMousePos();
 
-				Renderer->SetSceneViewHovered(MainSceneViewId, bHovered);
-				Renderer->SetSceneViewFocused(MainSceneViewId, bFocused);
+				const float localMouseX = mousePos.x - imageMin.x;
+				const float localMouseY = mousePos.y - imageMin.y;
 
-				const ImVec2 avail = ImGui::GetContentRegionAvail();
-				Renderer->SetSceneViewSize(
-					MainSceneViewId,
-					static_cast<uint32_t>(avail.x),
-					static_cast<uint32_t>(avail.y)
-				);
+				const std::optional<Nyx::Engine::Entity> picked =
+					Renderer->PickSceneViewEntity(sceneViewId, localMouseX, localMouseY);
 
-				if (!Renderer->WasSceneViewRecreatedThisFrame(MainSceneViewId))
+				auto& selection = ActiveScene.GetSelection();
+
+				if (picked.has_value())
 				{
-					ImGui::Image(Renderer->GetSceneViewTextureId(MainSceneViewId), avail);
+					selection = picked.value();
 				}
 				else
 				{
-					ImGui::Dummy(avail);
+					selection.reset();
 				}
 			}
-			ImGui::End();
 		}
-
-		if (bShowSecondarySceneView && SecondarySceneViewId != 0)
+		else
 		{
-			if (ImGui::Begin("Scene 2", &bShowSecondarySceneView))
-			{
-				const bool bHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows);
-				const bool bFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
-
-				Renderer->SetSceneViewHovered(SecondarySceneViewId, bHovered);
-				Renderer->SetSceneViewFocused(SecondarySceneViewId, bFocused);
-
-				const ImVec2 avail = ImGui::GetContentRegionAvail();
-				Renderer->SetSceneViewSize(
-					SecondarySceneViewId,
-					static_cast<uint32_t>(avail.x),
-					static_cast<uint32_t>(avail.y)
-				);
-
-				if (!Renderer->WasSceneViewRecreatedThisFrame(SecondarySceneViewId))
-				{
-					ImGui::Image(Renderer->GetSceneViewTextureId(SecondarySceneViewId), avail);
-				}
-				else
-				{
-					ImGui::Dummy(avail);
-				}
-			}
-			ImGui::End();
+			ImGui::Dummy(avail);
 		}
+
+		ImGui::End();
 	}
 
 	void EditorLayer::SpawnTestScene()

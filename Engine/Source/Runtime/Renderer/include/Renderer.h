@@ -1,8 +1,12 @@
 #pragma once
 #include "NyxEngineAPI.h"
-#include <imgui.h>
+#include "Entity.h"
+
 #include "SceneViewTypes.h"
+#include <imgui.h>
 #include "glm/glm.hpp"
+
+#include <optional>
 
 struct GLFWwindow;
 
@@ -43,6 +47,11 @@ namespace Nyx
 
 		virtual void DrawFrame(const std::function<void()>& buildUI) = 0;
 		virtual void OnMouseWheelScrolled(double yOffset) = 0;
+
+		virtual std::optional<Nyx::Engine::Entity> PickSceneViewEntity(
+			uint64_t sceneViewId,
+			float localMouseX,
+			float localMouseY) const = 0;
 
 		virtual void WaitIdle() = 0;
 

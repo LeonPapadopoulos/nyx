@@ -22,6 +22,7 @@ namespace Nyx::Editor
 		void DrawSceneOutliner();
 		void DrawDetailsPanel();
 		void DrawSceneViews();
+		void DrawSceneViewWindow(const char* title, uint64_t sceneViewId, bool& bOpen);
 
 		void SpawnTestScene();
 

@@ -76,9 +76,15 @@ namespace Nyx
 
 	struct RenderObject
 	{
+		Nyx::Engine::Entity SourceEntity{};
+
 		Nyx::Mesh* MeshAsset = nullptr;
 		Material* MaterialAsset = nullptr;
 		glm::mat4 WorldTransform{ 1.0f };
+
+		// Will be filled with mesh-derived bounds
+		glm::vec3 LocalBoundsMin{ -0.5f, -0.5f, -0.5f };
+		glm::vec3 LocalBoundsMax{ 0.5f,  0.5f,  0.5f };
 	};
 
 	struct SkyboxUBO
@@ -155,6 +161,38 @@ namespace Nyx
 
 		bool bReloadPending = false;
 	};
+
+	struct DebugLineVertex
+	{
+		glm::vec3 Position{ 0.0f };
+		glm::vec3 Color{ 1.0f };
+
+		static vk::VertexInputBindingDescription GetBindingDescription()
+		{
+			vk::VertexInputBindingDescription binding{};
+			binding.binding = 0;
+			binding.stride = sizeof(DebugLineVertex);
+			binding.inputRate = vk::VertexInputRate::eVertex;
+			return binding;
+		}
+
+		static std::array<vk::VertexInputAttributeDescription, 2> GetAttributeDescriptions()
+		{
+			std::array<vk::VertexInputAttributeDescription, 2> attributes{};
+
+			attributes[0].binding = 0;
+			attributes[0].location = 0;
+			attributes[0].format = vk::Format::eR32G32B32Sfloat;
+			attributes[0].offset = offsetof(DebugLineVertex, Position);
+
+			attributes[1].binding = 0;
+			attributes[1].location = 1;
+			attributes[1].format = vk::Format::eR32G32B32Sfloat;
+			attributes[1].offset = offsetof(DebugLineVertex, Color);
+
+			return attributes;
+		}
+	};
 }
 
 namespace Nyx
@@ -177,6 +215,11 @@ namespace Nyx
 		virtual void OnMouseWheelScrolled(double yOffset);
 		
 		virtual void WaitIdle();
+
+		std::optional<Nyx::Engine::Entity> PickSceneViewEntity(
+			uint64_t sceneViewId,
+			float localMouseX,
+			float localMouseY) const override;
 
 		virtual void SetSceneViewCameraMode(uint64_t id, EViewportCameraMode mode);
 		virtual void SetSceneViewEditorCameraTransform(uint64_t id, const glm::vec3& pos, const glm::vec3& rot);
@@ -279,6 +322,23 @@ namespace Nyx
 		void UpdateSceneView(SceneViewInstance& view, const Nyx::Engine::Registry& world, float deltaTime);
 		void RenderSceneView(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
 
+		void CreateDebugLineResources();
+		void CreateDebugLinePipeline();
+
+		void ResetDebugLines();
+		void AddDebugLine(const glm::vec3& a, const glm::vec3& b, const glm::vec3& color);
+		void AddDebugAxes(const glm::mat4& worldTransform, float axisLength);
+		void AddDebugAABB(const glm::vec3& min, const glm::vec3& max, const glm::vec3& color);
+		void AddDebugOrientedBox(
+			const glm::mat4& worldTransform,
+			const glm::vec3& localMin,
+			const glm::vec3& localMax,
+			const glm::vec3& color);
+
+		void UploadDebugLines();
+		void DrawDebugLines(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
+		void BuildDebugDrawData();
+
 	private:
 		GLFWwindow* Window = nullptr;
 		std::unique_ptr<VulkanImGuiBackend> ImGuiBackend;
@@ -362,5 +422,16 @@ namespace Nyx
 		vk::raii::Fence InFlightFence{ nullptr };
 
 		bool bRecreateSwapChain = false;
+
+		// Debugging
+		static constexpr uint32_t MaxDebugLineVertices = 65536;
+
+		std::vector<DebugLineVertex> DebugLineVertices;
+
+		vk::raii::Buffer DebugLineVertexBuffer{ nullptr };
+		vk::raii::DeviceMemory DebugLineVertexBufferMemory{ nullptr };
+
+		vk::raii::PipelineLayout DebugLinePipelineLayout{ nullptr };
+		vk::raii::Pipeline DebugLinePipeline{ nullptr };
 	};
 }
