@@ -85,6 +85,8 @@ namespace Nyx::Editor
 		const float deltaTime = ComputeDeltaTime();
 		TickScene(deltaTime);
 
+		ApplyPendingPickResults();
+
 		DrawSceneOutliner();
 		DrawDetailsPanel();
 		DrawSceneViews();
@@ -308,18 +310,23 @@ namespace Nyx::Editor
 				const float localMouseX = mousePos.x - imageMin.x;
 				const float localMouseY = mousePos.y - imageMin.y;
 
-				const std::optional<Nyx::Engine::Entity> picked =
-					Renderer->PickSceneViewEntity(sceneViewId, localMouseX, localMouseY);
+				Renderer->RequestPick(sceneViewId, localMouseX, localMouseY);
 
-				auto& selection = ActiveScene.GetSelection();
+				// @todo: Remove Old Projection-based Pick approach
+				{
+					//const std::optional<Nyx::Engine::Entity> picked =
+					//	Renderer->PickSceneViewEntity(sceneViewId, localMouseX, localMouseY);
 
-				if (picked.has_value())
-				{
-					selection = picked.value();
-				}
-				else
-				{
-					selection.reset();
+					//auto& selection = ActiveScene.GetSelection();
+
+					//if (picked.has_value())
+					//{
+					//	selection = picked.value();
+					//}
+					//else
+					//{
+					//	selection.reset();
+					//}
 				}
 			}
 		}
@@ -400,6 +407,27 @@ namespace Nyx::Editor
 					.bVisible = true
 				}
 			);
+		}
+	}
+
+	void EditorLayer::ApplyPendingPickResults()
+	{
+		auto& selection = ActiveScene.GetSelection();
+
+		for (uint64_t sceneViewId : { MainSceneViewId, SecondarySceneViewId })
+		{
+			if (sceneViewId == 0)
+			{
+				continue;
+			}
+
+			const Nyx::IRenderer::PickResult result = Renderer->ConsumeLastPickResult(sceneViewId);
+			if (!result.bHasNewResult)
+			{
+				continue;
+			}
+
+			selection = result.HitEntity;
 		}
 	}
 }

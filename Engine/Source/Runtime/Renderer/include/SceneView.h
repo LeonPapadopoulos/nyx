@@ -3,6 +3,8 @@
 #include "VulkanViewportTarget.h"
 #include "EditorCamera.h"
 #include "SceneViewTypes.h"
+#include "Entity.h"
+#include <optional>
 
 namespace Nyx
 {
@@ -25,6 +27,32 @@ namespace Nyx
 		vk::raii::DeviceMemory SkyboxUniformBufferMemory{ nullptr };
 		vk::raii::DescriptorPool SkyboxDescriptorPool{ nullptr };
 		vk::raii::DescriptorSets SkyboxDescriptorSets{ nullptr };
+
+		// -------------------------------------------------
+		// Picking
+		// -------------------------------------------------
+		vk::raii::Image PickingImage{ nullptr };
+		vk::raii::DeviceMemory PickingImageMemory{ nullptr };
+		vk::raii::ImageView PickingImageView{ nullptr };
+
+		vk::raii::Image PickingDepthImage{ nullptr };
+		vk::raii::DeviceMemory PickingDepthImageMemory{ nullptr };
+		vk::raii::ImageView PickingDepthImageView{ nullptr };
+
+		vk::raii::RenderPass PickingRenderPass{ nullptr };
+		vk::raii::Framebuffer PickingFramebuffer{ nullptr };
+
+		vk::raii::Buffer PickingReadbackBuffer{ nullptr };
+		vk::raii::DeviceMemory PickingReadbackBufferMemory{ nullptr };
+
+		bool bPickRequestPending = false;
+		bool bPickReadbackPending = false;
+		bool bPickResultReady = false;
+		
+		uint32_t PendingPickX = 0;
+		uint32_t PendingPickY = 0;
+
+		std::optional<Nyx::Engine::Entity> LastPickedEntity;
 
 		bool bHovered = false;
 		bool bFocused = false;

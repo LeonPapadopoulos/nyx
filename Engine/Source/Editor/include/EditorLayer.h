@@ -26,6 +26,8 @@ namespace Nyx::Editor
 
 		void SpawnTestScene();
 
+		void ApplyPendingPickResults();
+
 	private:
 		Nyx::IRenderer* Renderer = nullptr;
 

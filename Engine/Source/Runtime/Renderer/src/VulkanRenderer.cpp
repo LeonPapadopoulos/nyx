@@ -320,6 +320,7 @@ namespace Nyx
 		CreateScenePipeline();
 		CreateGridPipeline();
 		CreateSkyboxPipeline();
+		CreatePickingPipeline();
 
 		// Debug Drawing
 		CreateDebugLineResources();
@@ -425,6 +426,8 @@ namespace Nyx
 		const vk::Result fenceResult = Context.GetDevice().waitForFences({ *InFlightFence }, true, UINT64_MAX);
 		(void)fenceResult;
 
+		ReadBackPickResults();
+
 		// 2) Acquire next swapchain image
 		const vk::ResultValue<uint32_t> acquireResult =
 			Swapchain.GetSwapchain().acquireNextImage(UINT64_MAX, *ImageAvailableSemaphore);
@@ -510,6 +513,8 @@ namespace Nyx
 					vk::Format::eR8G8B8A8Unorm
 				);
 
+				RecreatePickingResourcesForView(view);
+
 				view.bResizePending = false;
 				view.bRecreatedThisFrame = true;
 			}
@@ -523,6 +528,10 @@ namespace Nyx
 				UpdateViewportSceneGlobals(view, *World);
 				UpdateSceneUniforms(view);
 				UpdateSkyboxUniforms(view);
+
+				// Picking first
+				DrawPickingPass(view, cmd);
+				ResolvePickRequest(view, cmd);
 			}
 
 			vk::ClearColorValue clear = vk::ClearColorValue(std::array<float, 4>{ 0.2f, 0.05f, 0.35f, 1.0f });
@@ -1078,6 +1087,7 @@ namespace Nyx
 	void VulkanRenderer::ExtractRenderObjects(const Nyx::Engine::Registry& registry)
 	{
 		RenderObjects.clear();
+		PickingIdToEntity.clear();
 
 		const_cast<Nyx::Engine::Registry&>(registry).Each<Nyx::Engine::MeshRendererComponent>(
 			[this, &registry](Nyx::Engine::Entity entity, Nyx::Engine::MeshRendererComponent& meshRenderer)
@@ -1104,9 +1114,12 @@ namespace Nyx
 				obj.MeshAsset = meshRenderer.MeshAsset;
 				obj.MaterialAsset = meshRenderer.MaterialAsset;
 				obj.WorldTransform = worldTransform;
-
 				obj.LocalBoundsMin = meshRenderer.MeshAsset->GetLocalBoundsMin();
 				obj.LocalBoundsMax = meshRenderer.MeshAsset->GetLocalBoundsMax();
+
+				// Dense picking ID: 1..N, with 0 reserved for "nothing"
+				PickingIdToEntity.push_back(entity);
+				obj.PickingId = static_cast<uint32_t>(PickingIdToEntity.size());
 
 				RenderObjects.push_back(obj);
 			}
@@ -1426,6 +1439,121 @@ namespace Nyx
 		GridPipeline = std::move(vk::raii::Pipeline(Context.GetDevice(), nullptr, pipelineInfo));
 	}
 
+	void VulkanRenderer::CreatePickingPipeline()
+	{
+		const std::vector<uint32_t> vertCode = ReadSpirvFile("Shaders/Picking.vert.spv");
+		const std::vector<uint32_t> fragCode = ReadSpirvFile("Shaders/Picking.frag.spv");
+
+		vk::raii::ShaderModule vertShaderModule = CreateShaderModule(vertCode);
+		vk::raii::ShaderModule fragShaderModule = CreateShaderModule(fragCode);
+
+		vk::PipelineShaderStageCreateInfo vertStageInfo{};
+		vertStageInfo.stage = vk::ShaderStageFlagBits::eVertex;
+		vertStageInfo.module = *vertShaderModule;
+		vertStageInfo.pName = "main";
+
+		vk::PipelineShaderStageCreateInfo fragStageInfo{};
+		fragStageInfo.stage = vk::ShaderStageFlagBits::eFragment;
+		fragStageInfo.module = *fragShaderModule;
+		fragStageInfo.pName = "main";
+
+		vk::PipelineShaderStageCreateInfo shaderStages[] = { vertStageInfo, fragStageInfo };
+
+		const auto bindingDescription = Vertex::GetBindingDescription();
+		const auto attributeDescriptions = Vertex::GetAttributeDescriptions();
+
+		vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
+		vertexInputInfo.vertexBindingDescriptionCount = 1;
+		vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+		vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
+		vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
+
+		vk::PipelineInputAssemblyStateCreateInfo inputAssembly{};
+		inputAssembly.topology = vk::PrimitiveTopology::eTriangleList;
+		inputAssembly.primitiveRestartEnable = VK_FALSE;
+
+		vk::PipelineViewportStateCreateInfo viewportState{};
+		viewportState.viewportCount = 1;
+		viewportState.scissorCount = 1;
+
+		vk::PipelineRasterizationStateCreateInfo rasterizer{};
+		rasterizer.depthClampEnable = VK_FALSE;
+		rasterizer.rasterizerDiscardEnable = VK_FALSE;
+		rasterizer.polygonMode = vk::PolygonMode::eFill;
+		rasterizer.lineWidth = 1.0f;
+		rasterizer.cullMode = vk::CullModeFlagBits::eBack;
+		rasterizer.frontFace = vk::FrontFace::eClockwise;
+		rasterizer.depthBiasEnable = VK_FALSE;
+
+		vk::PipelineMultisampleStateCreateInfo multisampling{};
+		multisampling.rasterizationSamples = vk::SampleCountFlagBits::e1;
+
+		vk::PipelineColorBlendAttachmentState colorBlendAttachment{};
+		colorBlendAttachment.blendEnable = VK_FALSE;
+		colorBlendAttachment.colorWriteMask =
+			vk::ColorComponentFlagBits::eR |
+			vk::ColorComponentFlagBits::eG |
+			vk::ColorComponentFlagBits::eB |
+			vk::ColorComponentFlagBits::eA;
+
+		vk::PipelineColorBlendStateCreateInfo colorBlending{};
+		colorBlending.logicOpEnable = VK_FALSE;
+		colorBlending.attachmentCount = 1;
+		colorBlending.pAttachments = &colorBlendAttachment;
+
+		std::array<vk::DynamicState, 2> dynamicStates =
+		{
+			vk::DynamicState::eViewport,
+			vk::DynamicState::eScissor
+		};
+
+		vk::PipelineDynamicStateCreateInfo dynamicState{};
+		dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
+		dynamicState.pDynamicStates = dynamicStates.data();
+
+		vk::PipelineDepthStencilStateCreateInfo depthStencil{};
+		depthStencil.depthTestEnable = VK_TRUE;
+		depthStencil.depthWriteEnable = VK_TRUE;
+		depthStencil.depthCompareOp = vk::CompareOp::eLess;
+		depthStencil.depthBoundsTestEnable = VK_FALSE;
+		depthStencil.stencilTestEnable = VK_FALSE;
+
+		vk::PushConstantRange pushConstantRange{};
+		pushConstantRange.stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment;
+		pushConstantRange.offset = 0;
+		pushConstantRange.size = sizeof(PickingPushConstants);
+
+		vk::DescriptorSetLayout setLayouts[] = { *SceneDescriptorSetLayout };
+
+		vk::PipelineLayoutCreateInfo pipelineLayoutInfo{};
+		pipelineLayoutInfo.setLayoutCount = 1;
+		pipelineLayoutInfo.pSetLayouts = setLayouts;
+		pipelineLayoutInfo.pushConstantRangeCount = 1;
+		pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
+
+		PickingPipelineLayout = vk::raii::PipelineLayout(Context.GetDevice(), pipelineLayoutInfo);
+
+		ASSERT(!SceneViews.empty());
+		vk::RenderPass pickingRenderPass = *SceneViews.front().PickingRenderPass;
+
+		vk::GraphicsPipelineCreateInfo pipelineInfo{};
+		pipelineInfo.stageCount = 2;
+		pipelineInfo.pStages = shaderStages;
+		pipelineInfo.pVertexInputState = &vertexInputInfo;
+		pipelineInfo.pInputAssemblyState = &inputAssembly;
+		pipelineInfo.pViewportState = &viewportState;
+		pipelineInfo.pRasterizationState = &rasterizer;
+		pipelineInfo.pMultisampleState = &multisampling;
+		pipelineInfo.pDepthStencilState = &depthStencil;
+		pipelineInfo.pColorBlendState = &colorBlending;
+		pipelineInfo.pDynamicState = &dynamicState;
+		pipelineInfo.layout = *PickingPipelineLayout;
+		pipelineInfo.renderPass = pickingRenderPass;
+		pipelineInfo.subpass = 0;
+
+		PickingPipeline = std::move(vk::raii::Pipeline(Context.GetDevice(), nullptr, pipelineInfo));
+	}
+
 	vk::RenderPass VulkanRenderer::GetSceneRenderPass() const
 	{
 		ASSERT(!SceneViews.empty() && "No SceneViews exist yet.");
@@ -1646,6 +1774,145 @@ namespace Nyx
 		writes[1].pImageInfo = &imageInfo;
 
 		Context.GetDevice().updateDescriptorSets(writes, {});
+	}
+
+	void VulkanRenderer::CreatePickingResourcesForView(SceneViewInstance& view)
+	{
+		const vk::Extent2D extent = view.RenderTarget.GetExtent();
+		const uint32_t width = std::max(1u, extent.width);
+		const uint32_t height = std::max(1u, extent.height);
+
+		// ID target: R32_UINT
+		CreateImage(
+			width,
+			height,
+			vk::Format::eR32Uint,
+			vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferSrc,
+			vk::ImageAspectFlagBits::eColor,
+			view.PickingImage,
+			view.PickingImageMemory,
+			view.PickingImageView
+		);
+
+		// Depth target
+		CreateImage(
+			width,
+			height,
+			vk::Format::eD32Sfloat,
+			vk::ImageUsageFlagBits::eDepthStencilAttachment,
+			vk::ImageAspectFlagBits::eDepth,
+			view.PickingDepthImage,
+			view.PickingDepthImageMemory,
+			view.PickingDepthImageView
+		);
+
+		// Readback buffer for one uint32
+		CreateBuffer(
+			sizeof(uint32_t),
+			vk::BufferUsageFlagBits::eTransferDst,
+			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+			view.PickingReadbackBuffer,
+			view.PickingReadbackBufferMemory
+		);
+
+		// Render pass
+		{
+			vk::AttachmentDescription colorAttachment{};
+			colorAttachment.format = vk::Format::eR32Uint;
+			colorAttachment.samples = vk::SampleCountFlagBits::e1;
+			colorAttachment.loadOp = vk::AttachmentLoadOp::eClear;
+			colorAttachment.storeOp = vk::AttachmentStoreOp::eStore;
+			colorAttachment.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;
+			colorAttachment.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
+			colorAttachment.initialLayout = vk::ImageLayout::eUndefined;
+			colorAttachment.finalLayout = vk::ImageLayout::eTransferSrcOptimal;
+
+			vk::AttachmentDescription depthAttachment{};
+			depthAttachment.format = vk::Format::eD32Sfloat;
+			depthAttachment.samples = vk::SampleCountFlagBits::e1;
+			depthAttachment.loadOp = vk::AttachmentLoadOp::eClear;
+			depthAttachment.storeOp = vk::AttachmentStoreOp::eDontCare;
+			depthAttachment.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;
+			depthAttachment.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
+			depthAttachment.initialLayout = vk::ImageLayout::eUndefined;
+			depthAttachment.finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
+
+			vk::AttachmentReference colorRef{};
+			colorRef.attachment = 0;
+			colorRef.layout = vk::ImageLayout::eColorAttachmentOptimal;
+
+			vk::AttachmentReference depthRef{};
+			depthRef.attachment = 1;
+			depthRef.layout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
+
+			vk::SubpassDescription subpass{};
+			subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
+			subpass.colorAttachmentCount = 1;
+			subpass.pColorAttachments = &colorRef;
+			subpass.pDepthStencilAttachment = &depthRef;
+
+			std::array<vk::AttachmentDescription, 2> attachments =
+			{
+				colorAttachment,
+				depthAttachment
+			};
+
+			vk::RenderPassCreateInfo renderPassInfo{};
+			renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+			renderPassInfo.pAttachments = attachments.data();
+			renderPassInfo.subpassCount = 1;
+			renderPassInfo.pSubpasses = &subpass;
+
+			view.PickingRenderPass = vk::raii::RenderPass(Context.GetDevice(), renderPassInfo);
+		}
+
+		// Framebuffer
+		{
+			std::array<vk::ImageView, 2> attachments =
+			{
+				*view.PickingImageView,
+				*view.PickingDepthImageView
+			};
+
+			vk::FramebufferCreateInfo framebufferInfo{};
+			framebufferInfo.renderPass = *view.PickingRenderPass;
+			framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+			framebufferInfo.pAttachments = attachments.data();
+			framebufferInfo.width = width;
+			framebufferInfo.height = height;
+			framebufferInfo.layers = 1;
+
+			view.PickingFramebuffer = vk::raii::Framebuffer(Context.GetDevice(), framebufferInfo);
+		}
+	}
+
+	void VulkanRenderer::DestroyPickingResourcesForView(SceneViewInstance& view)
+	{
+		view.PickingFramebuffer = nullptr;
+		view.PickingRenderPass = nullptr;
+
+		view.PickingImageView = nullptr;
+		view.PickingImage = nullptr;
+		view.PickingImageMemory = nullptr;
+
+		view.PickingDepthImageView = nullptr;
+		view.PickingDepthImage = nullptr;
+		view.PickingDepthImageMemory = nullptr;
+
+		view.PickingReadbackBuffer = nullptr;
+		view.PickingReadbackBufferMemory = nullptr;
+	}
+
+	void VulkanRenderer::RecreatePickingResourcesForView(SceneViewInstance& view)
+	{
+		// Debug
+		{
+			const vk::Extent2D extent = view.RenderTarget.GetExtent();
+			LOG_INFO("Creating picking resources for view {} at {}x{}", view.Id, extent.width, extent.height);
+		}
+
+		DestroyPickingResourcesForView(view);
+		CreatePickingResourcesForView(view);
 	}
 
 	void VulkanRenderer::CreateSkyboxUniformBuffer(SceneViewInstance& view)
@@ -1997,6 +2264,58 @@ namespace Nyx
 		outBuffer.bindMemory(*outMemory, 0);
 	}
 
+	void VulkanRenderer::CreateImage(
+		uint32_t width,
+		uint32_t height,
+		vk::Format format,
+		vk::ImageUsageFlags usage,
+		vk::ImageAspectFlags aspectFlags,
+		vk::raii::Image& outImage,
+		vk::raii::DeviceMemory& outMemory,
+		vk::raii::ImageView& outImageView)
+	{
+		vk::ImageCreateInfo imageInfo{};
+		imageInfo.imageType = vk::ImageType::e2D;
+		imageInfo.extent.width = width;
+		imageInfo.extent.height = height;
+		imageInfo.extent.depth = 1;
+		imageInfo.mipLevels = 1;
+		imageInfo.arrayLayers = 1;
+		imageInfo.format = format;
+		imageInfo.tiling = vk::ImageTiling::eOptimal;
+		imageInfo.initialLayout = vk::ImageLayout::eUndefined;
+		imageInfo.usage = usage;
+		imageInfo.samples = vk::SampleCountFlagBits::e1;
+		imageInfo.sharingMode = vk::SharingMode::eExclusive;
+
+		outImage = vk::raii::Image(Context.GetDevice(), imageInfo);
+
+		const vk::MemoryRequirements memRequirements = outImage.getMemoryRequirements();
+
+		vk::MemoryAllocateInfo allocInfo{};
+		allocInfo.allocationSize = memRequirements.size;
+		allocInfo.memoryTypeIndex = FindMemoryType(
+			*Context.GetPhysicalDevice(),
+			memRequirements.memoryTypeBits,
+			vk::MemoryPropertyFlagBits::eDeviceLocal
+		);
+
+		outMemory = vk::raii::DeviceMemory(Context.GetDevice(), allocInfo);
+		outImage.bindMemory(*outMemory, 0);
+
+		vk::ImageViewCreateInfo viewInfo{};
+		viewInfo.image = *outImage;
+		viewInfo.viewType = vk::ImageViewType::e2D;
+		viewInfo.format = format;
+		viewInfo.subresourceRange.aspectMask = aspectFlags;
+		viewInfo.subresourceRange.baseMipLevel = 0;
+		viewInfo.subresourceRange.levelCount = 1;
+		viewInfo.subresourceRange.baseArrayLayer = 0;
+		viewInfo.subresourceRange.layerCount = 1;
+
+		outImageView = vk::raii::ImageView(Context.GetDevice(), viewInfo);
+	}
+
 	uint32_t VulkanRenderer::FindMemoryType(vk::PhysicalDevice physicalDevice, uint32_t typeFilter, vk::MemoryPropertyFlags properties)
 	{
 		const vk::PhysicalDeviceMemoryProperties memProperties = physicalDevice.getMemoryProperties();
@@ -2252,6 +2571,7 @@ namespace Nyx
 
 		CreateSceneResourcesForView(view);
 		CreateSkyboxResourcesForView(view);
+		CreatePickingResourcesForView(view);
 
 		const uint64_t newId = view.Id;
 		SceneViews.push_back(std::move(view));
@@ -2278,6 +2598,8 @@ namespace Nyx
 
 			it->SkyboxUniformBuffer = nullptr;
 			it->SkyboxUniformBufferMemory = nullptr;
+
+			DestroyPickingResourcesForView(*it);
 
 			it->RenderTarget.Shutdown(Context);
 
@@ -2705,6 +3027,192 @@ namespace Nyx
 			);
 
 			AddDebugAABB(worldMin, worldMax, glm::vec3(1.0f, 1.0f, 0.2f));
+		}
+	}
+
+	void VulkanRenderer::RequestPick(uint64_t sceneViewId, uint32_t pixelX, uint32_t pixelY)
+	{
+		if (SceneViewInstance* view = FindSceneView(sceneViewId))
+		{
+			const vk::Extent2D extent = view->RenderTarget.GetExtent();
+			LOG_INFO(
+				"Pick request view {}: ({}, {}) in extent {}x{}",
+				view->Id,
+				view->PendingPickX,
+				view->PendingPickY,
+				extent.width,
+				extent.height
+			);
+
+			if (extent.width == 0 || extent.height == 0)
+			{
+				return;
+			}
+
+			view->PendingPickX = std::min(pixelX, extent.width - 1);
+			view->PendingPickY = std::min(pixelY, extent.height - 1);
+			view->bPickRequestPending = true;
+		}
+	}
+
+	Nyx::IRenderer::PickResult VulkanRenderer::ConsumeLastPickResult(uint64_t sceneViewId)
+	{
+		PickResult result{};
+
+		if (SceneViewInstance* view = FindSceneView(sceneViewId))
+		{
+			if (!view->bPickResultReady)
+			{
+				return result;
+			}
+
+			result.bHasNewResult = true;
+			result.HitEntity = view->LastPickedEntity;
+
+			view->bPickResultReady = false;
+			view->LastPickedEntity.reset();
+		}
+
+		return result;
+	}
+
+	void VulkanRenderer::DrawPickingPass(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
+	{
+		std::array<vk::ClearValue, 2> clearValues{};
+		clearValues[0].color = vk::ClearColorValue(std::array<uint32_t, 4>{ 0u, 0u, 0u, 0u });
+		clearValues[1].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
+
+		const vk::Extent2D extent = view.RenderTarget.GetExtent();
+
+		vk::RenderPassBeginInfo renderPassInfo{};
+		renderPassInfo.renderPass = *view.PickingRenderPass;
+		renderPassInfo.framebuffer = *view.PickingFramebuffer;
+		renderPassInfo.renderArea.offset = vk::Offset2D{ 0, 0 };
+		renderPassInfo.renderArea.extent = extent;
+		renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+		renderPassInfo.pClearValues = clearValues.data();
+
+		cmd.beginRenderPass(renderPassInfo, vk::SubpassContents::eInline);
+
+		vk::Viewport viewport{};
+		viewport.x = 0.0f;
+		viewport.y = 0.0f;
+		viewport.width = static_cast<float>(extent.width);
+		viewport.height = static_cast<float>(extent.height);
+		viewport.minDepth = 0.0f;
+		viewport.maxDepth = 1.0f;
+
+		vk::Rect2D scissor{};
+		scissor.offset = vk::Offset2D{ 0, 0 };
+		scissor.extent = extent;
+
+		cmd.setViewport(0, viewport);
+		cmd.setScissor(0, scissor);
+
+		cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *PickingPipeline);
+
+		cmd.bindDescriptorSets(
+			vk::PipelineBindPoint::eGraphics,
+			*PickingPipelineLayout,
+			0,
+			{ *view.SceneDescriptorSets.front() },
+			{}
+		);
+
+		for (const RenderObject& obj : RenderObjects)
+		{
+			if (!obj.MeshAsset || !obj.MaterialAsset)
+			{
+				continue;
+			}
+
+			PickingPushConstants push{};
+			push.Model = obj.WorldTransform;
+			push.EncodedEntityId = obj.PickingId;
+
+			cmd.pushConstants<PickingPushConstants>(
+				*PickingPipelineLayout,
+				vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
+				0,
+				{ push }
+			);
+
+			vk::DeviceSize offsets[] = { 0 };
+			cmd.bindVertexBuffers(0, { obj.MeshAsset->GetVertexBuffer() }, offsets);
+			cmd.bindIndexBuffer(obj.MeshAsset->GetIndexBuffer(), 0, vk::IndexType::eUint32);
+			cmd.drawIndexed(obj.MeshAsset->GetIndexCount(), 1, 0, 0, 0);
+		}
+
+		cmd.endRenderPass();
+	}
+
+	void VulkanRenderer::ResolvePickRequest(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
+	{
+		if (!view.bPickRequestPending)
+		{
+			return;
+		}
+
+		vk::BufferImageCopy region{};
+		region.bufferOffset = 0;
+		region.bufferRowLength = 0;
+		region.bufferImageHeight = 0;
+		region.imageSubresource.aspectMask = vk::ImageAspectFlagBits::eColor;
+		region.imageSubresource.mipLevel = 0;
+		region.imageSubresource.baseArrayLayer = 0;
+		region.imageSubresource.layerCount = 1;
+		region.imageOffset = vk::Offset3D{
+			static_cast<int32_t>(view.PendingPickX),
+			static_cast<int32_t>(view.PendingPickY),
+			0
+		};
+		region.imageExtent = vk::Extent3D{ 1, 1, 1 };
+
+		cmd.copyImageToBuffer(
+			*view.PickingImage,
+			vk::ImageLayout::eTransferSrcOptimal,
+			*view.PickingReadbackBuffer,
+			region
+		);
+
+		view.bPickRequestPending = false;
+		view.bPickReadbackPending = true;
+	}
+
+	void VulkanRenderer::ReadBackPickResults()
+	{
+		for (SceneViewInstance& view : SceneViews)
+		{
+			if (!view.bPickReadbackPending)
+			{
+				continue;
+			}
+
+			void* mapped = view.PickingReadbackBufferMemory.mapMemory(0, sizeof(uint32_t));
+
+			uint32_t encoded = 0;
+			std::memcpy(&encoded, mapped, sizeof(uint32_t));
+
+			view.PickingReadbackBufferMemory.unmapMemory();
+
+			view.bPickReadbackPending = false;
+			view.bPickResultReady = true;
+
+			if (encoded == 0)
+			{
+				view.LastPickedEntity.reset();
+				continue;
+			}
+
+			const uint32_t index = encoded - 1u;
+			if (index < PickingIdToEntity.size())
+			{
+				view.LastPickedEntity = PickingIdToEntity[index];
+			}
+			else
+			{
+				view.LastPickedEntity.reset();
+			}
 		}
 	}
 

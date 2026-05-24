@@ -35,6 +35,13 @@ namespace Nyx
 	class NYXENGINE_API IRenderer
 	{
 	public:
+		struct PickResult
+		{
+			bool bHasNewResult = false;
+			std::optional<Nyx::Engine::Entity> HitEntity;
+		};
+
+	public:
 		virtual ~IRenderer() = default;
 
 		virtual void Initialize(const char* applicationName, GLFWwindow* window) = 0;
@@ -52,6 +59,9 @@ namespace Nyx
 			uint64_t sceneViewId,
 			float localMouseX,
 			float localMouseY) const = 0;
+
+		virtual void RequestPick(uint64_t sceneViewId, uint32_t pixelX, uint32_t pixelY) = 0;
+		virtual PickResult ConsumeLastPickResult(uint64_t sceneViewId) = 0;
 
 		virtual void WaitIdle() = 0;
 

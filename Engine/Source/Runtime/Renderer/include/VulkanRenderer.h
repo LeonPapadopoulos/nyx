@@ -85,6 +85,8 @@ namespace Nyx
 		// Will be filled with mesh-derived bounds
 		glm::vec3 LocalBoundsMin{ -0.5f, -0.5f, -0.5f };
 		glm::vec3 LocalBoundsMax{ 0.5f,  0.5f,  0.5f };
+
+		uint32_t PickingId = 0;
 	};
 
 	struct SkyboxUBO
@@ -261,12 +263,17 @@ namespace Nyx
 		void CreateSceneDescriptorSetLayout();
 		void CreateScenePipeline();
 		void CreateGridPipeline();
+		void CreatePickingPipeline();
 
 		vk::RenderPass GetSceneRenderPass() const;
 
 		void LoadSkyboxCubemap();
 		void CreateSkyboxSharedResources();
 		void CreateSkyboxResourcesForView(SceneViewInstance& view);
+
+		void CreatePickingResourcesForView(SceneViewInstance& view);
+		void DestroyPickingResourcesForView(SceneViewInstance& view);
+		void RecreatePickingResourcesForView(SceneViewInstance& view);
 
 		void CreateSkyboxUniformBuffer(SceneViewInstance& view);
 		void CreateSkyboxDescriptorSetLayout();
@@ -292,6 +299,16 @@ namespace Nyx
 			vk::MemoryPropertyFlags properties,
 			vk::raii::Buffer& outBuffer,
 			vk::raii::DeviceMemory& outMemory);
+
+		void CreateImage(
+			uint32_t width,
+			uint32_t height,
+			vk::Format format,
+			vk::ImageUsageFlags usage,
+			vk::ImageAspectFlags aspectFlags,
+			vk::raii::Image& outImage,
+			vk::raii::DeviceMemory& outMemory,
+			vk::raii::ImageView& outImageView);
 
 		uint32_t FindMemoryType(vk::PhysicalDevice physicalDevice, uint32_t typeFilter, vk::MemoryPropertyFlags properties);
 
@@ -339,6 +356,22 @@ namespace Nyx
 		void DrawDebugLines(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
 		void BuildDebugDrawData();
 
+		void RequestPick(uint64_t sceneViewId, uint32_t pixelX, uint32_t pixelY);
+		Nyx::IRenderer::PickResult ConsumeLastPickResult(uint64_t sceneViewId);
+
+		void DrawPickingPass(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
+		void ResolvePickRequest(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
+		void ReadBackPickResults();
+
+	private:
+		struct PickingPushConstants
+		{
+			glm::mat4 Model{ 1.0f };
+			uint32_t EncodedEntityId = 0;
+		};
+
+	private:
+
 	private:
 		GLFWwindow* Window = nullptr;
 		std::unique_ptr<VulkanImGuiBackend> ImGuiBackend;
@@ -365,6 +398,12 @@ namespace Nyx
 
 		std::vector<RenderObject> RenderObjects;
 		float SceneTime = 0.0f;
+
+		// Picking
+		vk::raii::PipelineLayout PickingPipelineLayout{ nullptr };
+		vk::raii::Pipeline PickingPipeline{ nullptr };
+
+		std::vector<Nyx::Engine::Entity> PickingIdToEntity;
 
 		// Grid
 		vk::raii::PipelineLayout GridPipelineLayout{ nullptr };
