@@ -311,23 +311,6 @@ namespace Nyx::Editor
 				const float localMouseY = mousePos.y - imageMin.y;
 
 				Renderer->RequestPick(sceneViewId, localMouseX, localMouseY);
-
-				// @todo: Remove Old Projection-based Pick approach
-				{
-					//const std::optional<Nyx::Engine::Entity> picked =
-					//	Renderer->PickSceneViewEntity(sceneViewId, localMouseX, localMouseY);
-
-					//auto& selection = ActiveScene.GetSelection();
-
-					//if (picked.has_value())
-					//{
-					//	selection = picked.value();
-					//}
-					//else
-					//{
-					//	selection.reset();
-					//}
-				}
 			}
 		}
 		else

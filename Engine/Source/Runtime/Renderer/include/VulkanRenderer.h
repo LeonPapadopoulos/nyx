@@ -218,11 +218,6 @@ namespace Nyx
 		
 		virtual void WaitIdle();
 
-		std::optional<Nyx::Engine::Entity> PickSceneViewEntity(
-			uint64_t sceneViewId,
-			float localMouseX,
-			float localMouseY) const override;
-
 		virtual void SetSceneViewCameraMode(uint64_t id, EViewportCameraMode mode);
 		virtual void SetSceneViewEditorCameraTransform(uint64_t id, const glm::vec3& pos, const glm::vec3& rot);
 	

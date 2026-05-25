@@ -55,11 +55,6 @@ namespace Nyx
 		virtual void DrawFrame(const std::function<void()>& buildUI) = 0;
 		virtual void OnMouseWheelScrolled(double yOffset) = 0;
 
-		virtual std::optional<Nyx::Engine::Entity> PickSceneViewEntity(
-			uint64_t sceneViewId,
-			float localMouseX,
-			float localMouseY) const = 0;
-
 		virtual void RequestPick(uint64_t sceneViewId, uint32_t pixelX, uint32_t pixelY) = 0;
 		virtual PickResult ConsumeLastPickResult(uint64_t sceneViewId) = 0;
 
