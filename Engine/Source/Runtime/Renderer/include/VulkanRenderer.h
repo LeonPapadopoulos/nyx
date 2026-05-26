@@ -216,6 +216,8 @@ namespace Nyx
 		virtual void DrawFrame(const std::function<void()>& buildUI);
 		virtual void OnMouseWheelScrolled(double yOffset);
 		
+		void SetSelectedEntity(std::optional<Nyx::Engine::Entity> entity) override;
+
 		virtual void WaitIdle();
 
 		virtual void SetSceneViewCameraMode(uint64_t id, EViewportCameraMode mode);
@@ -269,6 +271,34 @@ namespace Nyx
 		void CreatePickingResourcesForView(SceneViewInstance& view);
 		void DestroyPickingResourcesForView(SceneViewInstance& view);
 		void RecreatePickingResourcesForView(SceneViewInstance& view);
+
+		void CreateSelectionMaskResourcesForView(SceneViewInstance& view);
+		void DestroySelectionMaskResourcesForView(SceneViewInstance& view);
+		void RecreateSelectionMaskResourcesForView(SceneViewInstance& view);
+
+		void CreateOutlineDescriptorSetLayout();
+		void CreateOutlineDescriptorSetForView(SceneViewInstance& view);
+
+		struct SelectionMaskPushConstants
+		{
+			glm::mat4 Model{ 1.0f };
+			float SelectedValue = 0.0f;
+		};
+
+		void CreateSelectionMaskPipeline();
+		void DrawSelectionMaskPass(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
+
+		struct OutlineCompositePushConstants
+		{
+			glm::vec2 TexelSize{ 0.0f };
+			float Thickness = 1.0f;
+			float Padding = 0.0f;
+			glm::vec4 OutlineColor{ 1.0f, 0.6f, 0.1f, 1.0f };
+		};
+
+		void CreateOutlineCompositePipeline();
+		void DrawSelectionOutline(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
+
 
 		void CreateSkyboxUniformBuffer(SceneViewInstance& view);
 		void CreateSkyboxDescriptorSetLayout();
@@ -399,6 +429,18 @@ namespace Nyx
 		vk::raii::Pipeline PickingPipeline{ nullptr };
 
 		std::vector<Nyx::Engine::Entity> PickingIdToEntity;
+
+		// Selection
+		vk::raii::PipelineLayout SelectionMaskPipelineLayout{ nullptr };
+		vk::raii::Pipeline SelectionMaskPipeline{ nullptr };
+
+		std::optional<Nyx::Engine::Entity> SelectedEntity;
+
+		vk::raii::DescriptorSetLayout OutlineDescriptorSetLayout{ nullptr };
+		vk::raii::Sampler OutlineCompositeSampler{ nullptr };
+
+		vk::raii::PipelineLayout OutlineCompositePipelineLayout{ nullptr };
+		vk::raii::Pipeline OutlineCompositePipeline{ nullptr };
 
 		// Grid
 		vk::raii::PipelineLayout GridPipelineLayout{ nullptr };

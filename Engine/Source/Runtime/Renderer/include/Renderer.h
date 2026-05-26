@@ -58,6 +58,8 @@ namespace Nyx
 		virtual void RequestPick(uint64_t sceneViewId, uint32_t pixelX, uint32_t pixelY) = 0;
 		virtual PickResult ConsumeLastPickResult(uint64_t sceneViewId) = 0;
 
+		virtual void SetSelectedEntity(std::optional<Nyx::Engine::Entity> entity) = 0;
+
 		virtual void WaitIdle() = 0;
 
 		virtual void SetSceneViewCameraMode(uint64_t id, EViewportCameraMode mode) = 0;

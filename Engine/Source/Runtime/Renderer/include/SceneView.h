@@ -54,6 +54,28 @@ namespace Nyx
 
 		std::optional<Nyx::Engine::Entity> LastPickedEntity;
 
+		// -------------------------------------------------
+		// Selection
+		// -------------------------------------------------
+
+		vk::raii::Image SelectionMaskImage{ nullptr };
+		vk::raii::DeviceMemory SelectionMaskImageMemory{ nullptr };
+		vk::raii::ImageView SelectionMaskImageView{ nullptr };
+
+		vk::raii::Image SelectionMaskDepthImage{ nullptr };
+		vk::raii::DeviceMemory SelectionMaskDepthImageMemory{ nullptr };
+		vk::raii::ImageView SelectionMaskDepthImageView{ nullptr };
+
+		vk::raii::RenderPass SelectionMaskRenderPass{ nullptr };
+		vk::raii::Framebuffer SelectionMaskFramebuffer{ nullptr };
+
+		vk::raii::DescriptorPool OutlineDescriptorPool{ nullptr };
+		std::optional<vk::raii::DescriptorSets> OutlineDescriptorSets;
+
+		// -------------------------------------------------
+		// --
+		// -------------------------------------------------
+
 		bool bHovered = false;
 		bool bFocused = false;
 

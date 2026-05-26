@@ -89,6 +89,9 @@ namespace Nyx::Editor
 
 		DrawSceneOutliner();
 		DrawDetailsPanel();
+
+		Renderer->SetSelectedEntity(ActiveScene.GetSelection());
+
 		DrawSceneViews();
 
 		ImGui::ShowDemoWindow();

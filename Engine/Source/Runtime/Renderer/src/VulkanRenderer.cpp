@@ -308,14 +308,20 @@ namespace Nyx
 		CreateTestMeshData();
 		CreateTestMeshBuffers();
 	
-		// Shared layouts / shared GPU assets
+		// Shared layouts / shared GPU assets that per-view creation depends on
 		CreateSceneDescriptorSetLayout();
 		CreateSkyboxDescriptorSetLayout();
+		CreateOutlineDescriptorSetLayout();
 
 		LoadSkyboxCubemap();
 
+		// First scene view: creates per-view resources
 		CreateSceneView();
 		
+		// Pipelines that depend on view-owned render passes / framebuffers
+		CreateSelectionMaskPipeline();
+		CreateOutlineCompositePipeline();
+
 		// Shared pipelines
 		CreateScenePipeline();
 		CreateGridPipeline();
@@ -514,6 +520,7 @@ namespace Nyx
 				);
 
 				RecreatePickingResourcesForView(view);
+				RecreateSelectionMaskResourcesForView(view);
 
 				view.bResizePending = false;
 				view.bRecreatedThisFrame = true;
@@ -532,6 +539,8 @@ namespace Nyx
 				// Picking first
 				DrawPickingPass(view, cmd);
 				ResolvePickRequest(view, cmd);
+
+				DrawSelectionMaskPass(view, cmd);
 			}
 
 			vk::ClearColorValue clear = vk::ClearColorValue(std::array<float, 4>{ 0.2f, 0.05f, 0.35f, 1.0f });
@@ -549,6 +558,8 @@ namespace Nyx
 
 				// 4. Debug Visuals
 				DrawDebugLines(view, cmd);
+
+				DrawSelectionOutline(view, cmd);
 			}
 			view.RenderTarget.EndRenderPass(cmd);
 		}
@@ -614,6 +625,11 @@ namespace Nyx
 		{
 			throw std::runtime_error("Failed to present swapchain image.");
 		}
+	}
+
+	void VulkanRenderer::SetSelectedEntity(std::optional<Nyx::Engine::Entity> entity)
+	{
+		SelectedEntity = entity;
 	}
 
 	void VulkanRenderer::WaitIdle()
@@ -1349,14 +1365,22 @@ namespace Nyx
 
 		vk::PipelineShaderStageCreateInfo shaderStages[] = { vertStageInfo, fragStageInfo };
 
-		const auto bindingDescription = Vertex::GetBindingDescription();
-		const auto attributeDescriptions = Vertex::GetAttributeDescriptions();
+		vk::VertexInputBindingDescription bindingDescription{};
+		bindingDescription.binding = 0;
+		bindingDescription.stride = sizeof(Vertex);
+		bindingDescription.inputRate = vk::VertexInputRate::eVertex;
+
+		vk::VertexInputAttributeDescription positionAttribute{};
+		positionAttribute.binding = 0;
+		positionAttribute.location = 0;
+		positionAttribute.format = vk::Format::eR32G32B32Sfloat;
+		positionAttribute.offset = offsetof(Vertex, Position);
 
 		vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
 		vertexInputInfo.vertexBindingDescriptionCount = 1;
 		vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
-		vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
-		vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
+		vertexInputInfo.vertexAttributeDescriptionCount = 1;
+		vertexInputInfo.pVertexAttributeDescriptions = &positionAttribute;
 
 		vk::PipelineInputAssemblyStateCreateInfo inputAssembly{};
 		inputAssembly.topology = vk::PrimitiveTopology::eTriangleList;
@@ -1803,6 +1827,526 @@ namespace Nyx
 
 		DestroyPickingResourcesForView(view);
 		CreatePickingResourcesForView(view);
+	}
+
+	void VulkanRenderer::CreateSelectionMaskResourcesForView(SceneViewInstance& view)
+	{
+		const vk::Extent2D extent = view.RenderTarget.GetExtent();
+		const uint32_t width = std::max(1u, extent.width);
+		const uint32_t height = std::max(1u, extent.height);
+
+		// R8_UNORM mask
+		CreateImage(
+			width,
+			height,
+			vk::Format::eR8Unorm,
+			vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled,
+			vk::ImageAspectFlagBits::eColor,
+			view.SelectionMaskImage,
+			view.SelectionMaskImageMemory,
+			view.SelectionMaskImageView
+		);
+
+		CreateImage(
+			width,
+			height,
+			vk::Format::eD32Sfloat,
+			vk::ImageUsageFlagBits::eDepthStencilAttachment,
+			vk::ImageAspectFlagBits::eDepth,
+			view.SelectionMaskDepthImage,
+			view.SelectionMaskDepthImageMemory,
+			view.SelectionMaskDepthImageView
+		);
+
+		{
+			vk::AttachmentDescription colorAttachment{};
+			colorAttachment.format = vk::Format::eR8Unorm;
+			colorAttachment.samples = vk::SampleCountFlagBits::e1;
+			colorAttachment.loadOp = vk::AttachmentLoadOp::eClear;
+			colorAttachment.storeOp = vk::AttachmentStoreOp::eStore;
+			colorAttachment.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;
+			colorAttachment.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
+			colorAttachment.initialLayout = vk::ImageLayout::eUndefined;
+			colorAttachment.finalLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+
+			vk::AttachmentDescription depthAttachment{};
+			depthAttachment.format = vk::Format::eD32Sfloat;
+			depthAttachment.samples = vk::SampleCountFlagBits::e1;
+			depthAttachment.loadOp = vk::AttachmentLoadOp::eClear;
+			depthAttachment.storeOp = vk::AttachmentStoreOp::eDontCare;
+			depthAttachment.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;
+			depthAttachment.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
+			depthAttachment.initialLayout = vk::ImageLayout::eUndefined;
+			depthAttachment.finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
+
+			vk::AttachmentReference colorRef{};
+			colorRef.attachment = 0;
+			colorRef.layout = vk::ImageLayout::eColorAttachmentOptimal;
+
+			vk::AttachmentReference depthRef{};
+			depthRef.attachment = 1;
+			depthRef.layout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
+
+			vk::SubpassDescription subpass{};
+			subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
+			subpass.colorAttachmentCount = 1;
+			subpass.pColorAttachments = &colorRef;
+			subpass.pDepthStencilAttachment = &depthRef;
+
+			std::array<vk::AttachmentDescription, 2> attachments =
+			{
+				colorAttachment,
+				depthAttachment
+			};
+
+			vk::RenderPassCreateInfo renderPassInfo{};
+			renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+			renderPassInfo.pAttachments = attachments.data();
+			renderPassInfo.subpassCount = 1;
+			renderPassInfo.pSubpasses = &subpass;
+
+			view.SelectionMaskRenderPass = vk::raii::RenderPass(Context.GetDevice(), renderPassInfo);
+		}
+
+		{
+			std::array<vk::ImageView, 2> attachments =
+			{
+				*view.SelectionMaskImageView,
+				*view.SelectionMaskDepthImageView
+			};
+
+			vk::FramebufferCreateInfo framebufferInfo{};
+			framebufferInfo.renderPass = *view.SelectionMaskRenderPass;
+			framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+			framebufferInfo.pAttachments = attachments.data();
+			framebufferInfo.width = width;
+			framebufferInfo.height = height;
+			framebufferInfo.layers = 1;
+
+			view.SelectionMaskFramebuffer = vk::raii::Framebuffer(Context.GetDevice(), framebufferInfo);
+		}
+	}
+
+	void VulkanRenderer::DestroySelectionMaskResourcesForView(SceneViewInstance& view)
+	{
+		view.OutlineDescriptorSets.reset();
+		view.OutlineDescriptorPool = nullptr;
+
+		view.SelectionMaskFramebuffer = nullptr;
+		view.SelectionMaskRenderPass = nullptr;
+
+		view.SelectionMaskImageView = nullptr;
+		view.SelectionMaskImage = nullptr;
+		view.SelectionMaskImageMemory = nullptr;
+
+		view.SelectionMaskDepthImageView = nullptr;
+		view.SelectionMaskDepthImage = nullptr;
+		view.SelectionMaskDepthImageMemory = nullptr;
+	}
+
+	void VulkanRenderer::RecreateSelectionMaskResourcesForView(SceneViewInstance& view)
+	{
+		DestroySelectionMaskResourcesForView(view);
+		CreateSelectionMaskResourcesForView(view);
+		CreateOutlineDescriptorSetForView(view);
+	}
+
+	void VulkanRenderer::CreateOutlineDescriptorSetLayout()
+	{
+		vk::DescriptorSetLayoutBinding maskBinding{};
+		maskBinding.binding = 0;
+		maskBinding.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+		maskBinding.descriptorCount = 1;
+		maskBinding.stageFlags = vk::ShaderStageFlagBits::eFragment;
+
+		vk::DescriptorSetLayoutCreateInfo layoutInfo{};
+		layoutInfo.bindingCount = 1;
+		layoutInfo.pBindings = &maskBinding;
+
+		OutlineDescriptorSetLayout = vk::raii::DescriptorSetLayout(Context.GetDevice(), layoutInfo);
+
+		vk::SamplerCreateInfo samplerInfo{};
+		samplerInfo.magFilter = vk::Filter::eLinear;
+		samplerInfo.minFilter = vk::Filter::eLinear;
+		samplerInfo.mipmapMode = vk::SamplerMipmapMode::eNearest;
+		samplerInfo.addressModeU = vk::SamplerAddressMode::eClampToEdge;
+		samplerInfo.addressModeV = vk::SamplerAddressMode::eClampToEdge;
+		samplerInfo.addressModeW = vk::SamplerAddressMode::eClampToEdge;
+		samplerInfo.minLod = 0.0f;
+		samplerInfo.maxLod = 0.0f;
+
+		OutlineCompositeSampler = vk::raii::Sampler(Context.GetDevice(), samplerInfo);
+	}
+
+	void VulkanRenderer::CreateOutlineDescriptorSetForView(SceneViewInstance& view)
+	{
+		ASSERT(OutlineDescriptorSetLayout != nullptr && "OutlineDescriptorSetLayout must exist before CreateOutlineDescriptorSetForView.");
+		ASSERT(OutlineCompositeSampler != nullptr && "OutlineCompositeSampler must exist before CreateOutlineDescriptorSetForView.");
+		ASSERT(view.SelectionMaskImageView != nullptr && "SelectionMaskImageView must exist before CreateOutlineDescriptorSetForView.");
+
+		std::array<vk::DescriptorPoolSize, 1> poolSizes{};
+		poolSizes[0].type = vk::DescriptorType::eCombinedImageSampler;
+		poolSizes[0].descriptorCount = 1;
+
+		vk::DescriptorPoolCreateInfo poolInfo{};
+		poolInfo.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
+		poolInfo.maxSets = 1;
+		poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+		poolInfo.pPoolSizes = poolSizes.data();
+
+		view.OutlineDescriptorPool = vk::raii::DescriptorPool(Context.GetDevice(), poolInfo);
+
+		vk::DescriptorSetLayout layout = *OutlineDescriptorSetLayout;
+
+		vk::DescriptorSetAllocateInfo allocInfo{};
+		allocInfo.descriptorPool = *view.OutlineDescriptorPool;
+		allocInfo.descriptorSetCount = 1;
+		allocInfo.pSetLayouts = &layout;
+
+		view.OutlineDescriptorSets.emplace(Context.GetDevice(), allocInfo);
+
+		vk::DescriptorImageInfo imageInfo{};
+		imageInfo.sampler = *OutlineCompositeSampler;
+		imageInfo.imageView = *view.SelectionMaskImageView;
+		imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+
+		vk::WriteDescriptorSet write{};
+		write.dstSet = *view.OutlineDescriptorSets->front();
+		write.dstBinding = 0;
+		write.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+		write.descriptorCount = 1;
+		write.pImageInfo = &imageInfo;
+
+		Context.GetDevice().updateDescriptorSets(write, {});
+	}
+
+	void VulkanRenderer::CreateSelectionMaskPipeline()
+	{
+		const std::vector<uint32_t> vertCode = ReadSpirvFile("Shaders/SelectionMask.vert.spv");
+		const std::vector<uint32_t> fragCode = ReadSpirvFile("Shaders/SelectionMask.frag.spv");
+
+		vk::raii::ShaderModule vertShaderModule = CreateShaderModule(vertCode);
+		vk::raii::ShaderModule fragShaderModule = CreateShaderModule(fragCode);
+
+		vk::PipelineShaderStageCreateInfo vertStageInfo{};
+		vertStageInfo.stage = vk::ShaderStageFlagBits::eVertex;
+		vertStageInfo.module = *vertShaderModule;
+		vertStageInfo.pName = "main";
+
+		vk::PipelineShaderStageCreateInfo fragStageInfo{};
+		fragStageInfo.stage = vk::ShaderStageFlagBits::eFragment;
+		fragStageInfo.module = *fragShaderModule;
+		fragStageInfo.pName = "main";
+
+		vk::PipelineShaderStageCreateInfo shaderStages[] = { vertStageInfo, fragStageInfo };
+
+		vk::VertexInputBindingDescription bindingDescription{};
+		bindingDescription.binding = 0;
+		bindingDescription.stride = sizeof(Vertex);
+		bindingDescription.inputRate = vk::VertexInputRate::eVertex;
+
+		vk::VertexInputAttributeDescription positionAttribute{};
+		positionAttribute.binding = 0;
+		positionAttribute.location = 0;
+		positionAttribute.format = vk::Format::eR32G32B32Sfloat;
+		positionAttribute.offset = offsetof(Vertex, Position);
+
+		vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
+		vertexInputInfo.vertexBindingDescriptionCount = 1;
+		vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+		vertexInputInfo.vertexAttributeDescriptionCount = 1;
+		vertexInputInfo.pVertexAttributeDescriptions = &positionAttribute;
+
+		vk::PipelineInputAssemblyStateCreateInfo inputAssembly{};
+		inputAssembly.topology = vk::PrimitiveTopology::eTriangleList;
+
+		vk::PipelineViewportStateCreateInfo viewportState{};
+		viewportState.viewportCount = 1;
+		viewportState.scissorCount = 1;
+
+		vk::PipelineRasterizationStateCreateInfo rasterizer{};
+		rasterizer.polygonMode = vk::PolygonMode::eFill;
+		rasterizer.lineWidth = 1.0f;
+		rasterizer.cullMode = vk::CullModeFlagBits::eBack;
+		rasterizer.frontFace = vk::FrontFace::eClockwise;
+
+		vk::PipelineMultisampleStateCreateInfo multisampling{};
+		multisampling.rasterizationSamples = vk::SampleCountFlagBits::e1;
+
+		vk::PipelineColorBlendAttachmentState colorBlendAttachment{};
+		colorBlendAttachment.blendEnable = VK_FALSE;
+		colorBlendAttachment.colorWriteMask =
+			vk::ColorComponentFlagBits::eR |
+			vk::ColorComponentFlagBits::eG |
+			vk::ColorComponentFlagBits::eB |
+			vk::ColorComponentFlagBits::eA;
+
+		vk::PipelineColorBlendStateCreateInfo colorBlending{};
+		colorBlending.attachmentCount = 1;
+		colorBlending.pAttachments = &colorBlendAttachment;
+
+		std::array<vk::DynamicState, 2> dynamicStates =
+		{
+			vk::DynamicState::eViewport,
+			vk::DynamicState::eScissor
+		};
+
+		vk::PipelineDynamicStateCreateInfo dynamicState{};
+		dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
+		dynamicState.pDynamicStates = dynamicStates.data();
+
+		vk::PipelineDepthStencilStateCreateInfo depthStencil{};
+		depthStencil.depthTestEnable = VK_TRUE;
+		depthStencil.depthWriteEnable = VK_TRUE;
+		depthStencil.depthCompareOp = vk::CompareOp::eLess;
+
+		vk::PushConstantRange pushConstantRange{};
+		pushConstantRange.stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment;
+		pushConstantRange.offset = 0;
+		pushConstantRange.size = sizeof(SelectionMaskPushConstants);
+
+		vk::DescriptorSetLayout setLayouts[] = { *SceneDescriptorSetLayout };
+
+		vk::PipelineLayoutCreateInfo pipelineLayoutInfo{};
+		pipelineLayoutInfo.setLayoutCount = 1;
+		pipelineLayoutInfo.pSetLayouts = setLayouts;
+		pipelineLayoutInfo.pushConstantRangeCount = 1;
+		pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
+
+		SelectionMaskPipelineLayout = vk::raii::PipelineLayout(Context.GetDevice(), pipelineLayoutInfo);
+
+		ASSERT(!SceneViews.empty());
+		vk::RenderPass renderPass = *SceneViews.front().SelectionMaskRenderPass;
+
+		vk::GraphicsPipelineCreateInfo pipelineInfo{};
+		pipelineInfo.stageCount = 2;
+		pipelineInfo.pStages = shaderStages;
+		pipelineInfo.pVertexInputState = &vertexInputInfo;
+		pipelineInfo.pInputAssemblyState = &inputAssembly;
+		pipelineInfo.pViewportState = &viewportState;
+		pipelineInfo.pRasterizationState = &rasterizer;
+		pipelineInfo.pMultisampleState = &multisampling;
+		pipelineInfo.pDepthStencilState = &depthStencil;
+		pipelineInfo.pColorBlendState = &colorBlending;
+		pipelineInfo.pDynamicState = &dynamicState;
+		pipelineInfo.layout = *SelectionMaskPipelineLayout;
+		pipelineInfo.renderPass = renderPass;
+		pipelineInfo.subpass = 0;
+
+		SelectionMaskPipeline = std::move(vk::raii::Pipeline(Context.GetDevice(), nullptr, pipelineInfo));
+	}
+
+	void VulkanRenderer::DrawSelectionMaskPass(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
+	{
+		std::array<vk::ClearValue, 2> clearValues{};
+		clearValues[0].color = vk::ClearColorValue(std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 0.0f });
+		clearValues[1].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
+
+		const vk::Extent2D extent = view.RenderTarget.GetExtent();
+
+		vk::RenderPassBeginInfo renderPassInfo{};
+		renderPassInfo.renderPass = *view.SelectionMaskRenderPass;
+		renderPassInfo.framebuffer = *view.SelectionMaskFramebuffer;
+		renderPassInfo.renderArea.offset = vk::Offset2D{ 0, 0 };
+		renderPassInfo.renderArea.extent = extent;
+		renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+		renderPassInfo.pClearValues = clearValues.data();
+
+		cmd.beginRenderPass(renderPassInfo, vk::SubpassContents::eInline);
+
+		vk::Viewport viewport{};
+		viewport.x = 0.0f;
+		viewport.y = 0.0f;
+		viewport.width = static_cast<float>(extent.width);
+		viewport.height = static_cast<float>(extent.height);
+		viewport.minDepth = 0.0f;
+		viewport.maxDepth = 1.0f;
+
+		vk::Rect2D scissor{};
+		scissor.offset = vk::Offset2D{ 0, 0 };
+		scissor.extent = extent;
+
+		cmd.setViewport(0, viewport);
+		cmd.setScissor(0, scissor);
+
+		cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *SelectionMaskPipeline);
+
+		cmd.bindDescriptorSets(
+			vk::PipelineBindPoint::eGraphics,
+			*SelectionMaskPipelineLayout,
+			0,
+			{ *view.SceneDescriptorSets.front() },
+			{}
+		);
+
+		for (const RenderObject& obj : RenderObjects)
+		{
+			if (!obj.MeshAsset || !obj.MaterialAsset)
+			{
+				continue;
+			}
+
+			SelectionMaskPushConstants push{};
+			push.Model = obj.WorldTransform;
+			push.SelectedValue =
+				(SelectedEntity.has_value() && SelectedEntity.value() == obj.SourceEntity)
+				? 1.0f
+				: 0.0f;
+
+			cmd.pushConstants<SelectionMaskPushConstants>(
+				*SelectionMaskPipelineLayout,
+				vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
+				0,
+				{ push }
+			);
+
+			vk::DeviceSize offsets[] = { 0 };
+			cmd.bindVertexBuffers(0, { obj.MeshAsset->GetVertexBuffer() }, offsets);
+			cmd.bindIndexBuffer(obj.MeshAsset->GetIndexBuffer(), 0, vk::IndexType::eUint32);
+			cmd.drawIndexed(obj.MeshAsset->GetIndexCount(), 1, 0, 0, 0);
+		}
+
+		cmd.endRenderPass();
+	}
+
+	void VulkanRenderer::CreateOutlineCompositePipeline()
+	{
+		const std::vector<uint32_t> vertCode = ReadSpirvFile("Shaders/OutlineComposite.vert.spv");
+		const std::vector<uint32_t> fragCode = ReadSpirvFile("Shaders/OutlineComposite.frag.spv");
+
+		vk::raii::ShaderModule vertShaderModule = CreateShaderModule(vertCode);
+		vk::raii::ShaderModule fragShaderModule = CreateShaderModule(fragCode);
+
+		vk::PipelineShaderStageCreateInfo vertStageInfo{};
+		vertStageInfo.stage = vk::ShaderStageFlagBits::eVertex;
+		vertStageInfo.module = *vertShaderModule;
+		vertStageInfo.pName = "main";
+
+		vk::PipelineShaderStageCreateInfo fragStageInfo{};
+		fragStageInfo.stage = vk::ShaderStageFlagBits::eFragment;
+		fragStageInfo.module = *fragShaderModule;
+		fragStageInfo.pName = "main";
+
+		vk::PipelineShaderStageCreateInfo shaderStages[] = { vertStageInfo, fragStageInfo };
+
+		vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
+
+		vk::PipelineInputAssemblyStateCreateInfo inputAssembly{};
+		inputAssembly.topology = vk::PrimitiveTopology::eTriangleList;
+
+		vk::PipelineViewportStateCreateInfo viewportState{};
+		viewportState.viewportCount = 1;
+		viewportState.scissorCount = 1;
+
+		vk::PipelineRasterizationStateCreateInfo rasterizer{};
+		rasterizer.polygonMode = vk::PolygonMode::eFill;
+		rasterizer.lineWidth = 1.0f;
+		rasterizer.cullMode = vk::CullModeFlagBits::eNone;
+		rasterizer.frontFace = vk::FrontFace::eCounterClockwise;
+
+		vk::PipelineMultisampleStateCreateInfo multisampling{};
+		multisampling.rasterizationSamples = vk::SampleCountFlagBits::e1;
+
+		vk::PipelineColorBlendAttachmentState colorBlendAttachment{};
+		colorBlendAttachment.blendEnable = VK_TRUE;
+		colorBlendAttachment.srcColorBlendFactor = vk::BlendFactor::eSrcAlpha;
+		colorBlendAttachment.dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
+		colorBlendAttachment.colorBlendOp = vk::BlendOp::eAdd;
+		colorBlendAttachment.srcAlphaBlendFactor = vk::BlendFactor::eOne;
+		colorBlendAttachment.dstAlphaBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
+		colorBlendAttachment.alphaBlendOp = vk::BlendOp::eAdd;
+		colorBlendAttachment.colorWriteMask =
+			vk::ColorComponentFlagBits::eR |
+			vk::ColorComponentFlagBits::eG |
+			vk::ColorComponentFlagBits::eB |
+			vk::ColorComponentFlagBits::eA;
+
+		vk::PipelineColorBlendStateCreateInfo colorBlending{};
+		colorBlending.attachmentCount = 1;
+		colorBlending.pAttachments = &colorBlendAttachment;
+
+		std::array<vk::DynamicState, 2> dynamicStates =
+		{
+			vk::DynamicState::eViewport,
+			vk::DynamicState::eScissor
+		};
+
+		vk::PipelineDynamicStateCreateInfo dynamicState{};
+		dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
+		dynamicState.pDynamicStates = dynamicStates.data();
+
+		vk::PipelineDepthStencilStateCreateInfo depthStencil{};
+		depthStencil.depthTestEnable = VK_FALSE;
+		depthStencil.depthWriteEnable = VK_FALSE;
+
+		vk::PushConstantRange pushConstantRange{};
+		pushConstantRange.stageFlags = vk::ShaderStageFlagBits::eFragment;
+		pushConstantRange.offset = 0;
+		pushConstantRange.size = sizeof(OutlineCompositePushConstants);
+
+		vk::DescriptorSetLayout setLayouts[] = { *OutlineDescriptorSetLayout };
+
+		vk::PipelineLayoutCreateInfo pipelineLayoutInfo{};
+		pipelineLayoutInfo.setLayoutCount = 1;
+		pipelineLayoutInfo.pSetLayouts = setLayouts;
+		pipelineLayoutInfo.pushConstantRangeCount = 1;
+		pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
+
+		OutlineCompositePipelineLayout = vk::raii::PipelineLayout(Context.GetDevice(), pipelineLayoutInfo);
+
+		vk::GraphicsPipelineCreateInfo pipelineInfo{};
+		pipelineInfo.stageCount = 2;
+		pipelineInfo.pStages = shaderStages;
+		pipelineInfo.pVertexInputState = &vertexInputInfo;
+		pipelineInfo.pInputAssemblyState = &inputAssembly;
+		pipelineInfo.pViewportState = &viewportState;
+		pipelineInfo.pRasterizationState = &rasterizer;
+		pipelineInfo.pMultisampleState = &multisampling;
+		pipelineInfo.pDepthStencilState = &depthStencil;
+		pipelineInfo.pColorBlendState = &colorBlending;
+		pipelineInfo.pDynamicState = &dynamicState;
+		pipelineInfo.layout = *OutlineCompositePipelineLayout;
+		pipelineInfo.renderPass = GetSceneRenderPass();
+		pipelineInfo.subpass = 0;
+
+		OutlineCompositePipeline = std::move(vk::raii::Pipeline(Context.GetDevice(), nullptr, pipelineInfo));
+	}
+
+	void VulkanRenderer::DrawSelectionOutline(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
+	{
+		if (!SelectedEntity.has_value())
+		{
+			return;
+		}
+
+		cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *OutlineCompositePipeline);
+
+		cmd.bindDescriptorSets(
+			vk::PipelineBindPoint::eGraphics,
+			*OutlineCompositePipelineLayout,
+			0,
+			{ *view.OutlineDescriptorSets->front() },
+			{}
+		);
+
+		const vk::Extent2D extent = view.RenderTarget.GetExtent();
+
+		OutlineCompositePushConstants push{};
+		push.TexelSize = glm::vec2(
+			1.0f / static_cast<float>(std::max(1u, extent.width)),
+			1.0f / static_cast<float>(std::max(1u, extent.height))
+		);
+		push.Thickness = 2.0f;
+		push.OutlineColor = glm::vec4(1.0f, 0.65f, 0.0f, 1.0f);
+
+		cmd.pushConstants<OutlineCompositePushConstants>(
+			*OutlineCompositePipelineLayout,
+			vk::ShaderStageFlagBits::eFragment,
+			0,
+			{ push }
+		);
+
+		cmd.draw(3, 1, 0, 0);
 	}
 
 	void VulkanRenderer::CreateSkyboxUniformBuffer(SceneViewInstance& view)
@@ -2454,6 +2998,11 @@ namespace Nyx
 
 	uint64_t VulkanRenderer::CreateSceneView()
 	{
+		ASSERT(SceneDescriptorSetLayout != nullptr);
+		ASSERT(SkyboxDescriptorSetLayout != nullptr);
+		ASSERT(OutlineDescriptorSetLayout != nullptr);
+		ASSERT(OutlineCompositeSampler != nullptr);
+
 		Nyx::SceneViewInstance view{};
 		view.Id = NextSceneViewId++;
 
@@ -2462,6 +3011,8 @@ namespace Nyx
 		CreateSceneResourcesForView(view);
 		CreateSkyboxResourcesForView(view);
 		CreatePickingResourcesForView(view);
+		CreateSelectionMaskResourcesForView(view);
+		CreateOutlineDescriptorSetForView(view);
 
 		const uint64_t newId = view.Id;
 		SceneViews.push_back(std::move(view));
@@ -2490,6 +3041,7 @@ namespace Nyx
 			it->SkyboxUniformBufferMemory = nullptr;
 
 			DestroyPickingResourcesForView(*it);
+			DestroySelectionMaskResourcesForView(*it);
 
 			it->RenderTarget.Shutdown(Context);
 

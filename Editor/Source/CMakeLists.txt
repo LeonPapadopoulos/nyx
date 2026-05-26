@@ -40,6 +40,10 @@ set(NYX_SHADER_SOURCES
     ${NYX_SHADER_SOURCE_DIR}/DebugLines.frag
     ${NYX_SHADER_SOURCE_DIR}/Picking.vert
     ${NYX_SHADER_SOURCE_DIR}/Picking.frag
+    ${NYX_SHADER_SOURCE_DIR}/SelectionMask.vert
+    ${NYX_SHADER_SOURCE_DIR}/SelectionMask.frag
+    ${NYX_SHADER_SOURCE_DIR}/OutlineComposite.vert
+    ${NYX_SHADER_SOURCE_DIR}/OutlineComposite.frag
 )
 
 set(NYX_SHADER_OUTPUTS)
