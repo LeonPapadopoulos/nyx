@@ -195,6 +195,12 @@ namespace Nyx
 			return attributes;
 		}
 	};
+
+	enum class ESelectionOutlineMode : uint8_t
+	{
+		VisibleOnly,
+		FullSilhouette
+	};
 }
 
 namespace Nyx
@@ -217,6 +223,8 @@ namespace Nyx
 		virtual void OnMouseWheelScrolled(double yOffset);
 		
 		void SetSelectedEntity(std::optional<Nyx::Engine::Entity> entity) override;
+
+		void SetSelectionOutlineMode(ESelectionOutlineMode mode);
 
 		virtual void WaitIdle();
 
@@ -285,7 +293,7 @@ namespace Nyx
 			float SelectedValue = 0.0f;
 		};
 
-		void CreateSelectionMaskPipeline();
+		void CreateSelectionMaskPipelines();
 		void DrawSelectionMaskPass(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
 
 		struct OutlineCompositePushConstants
@@ -298,7 +306,6 @@ namespace Nyx
 
 		void CreateOutlineCompositePipeline();
 		void DrawSelectionOutline(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
-
 
 		void CreateSkyboxUniformBuffer(SceneViewInstance& view);
 		void CreateSkyboxDescriptorSetLayout();
@@ -431,8 +438,12 @@ namespace Nyx
 		std::vector<Nyx::Engine::Entity> PickingIdToEntity;
 
 		// Selection
+		ESelectionOutlineMode SelectionOutlineMode = ESelectionOutlineMode::VisibleOnly;
+
+		vk::raii::Pipeline SelectionMaskPipelineVisible{ nullptr };
+		vk::raii::Pipeline SelectionMaskPipelineFull{ nullptr };
+
 		vk::raii::PipelineLayout SelectionMaskPipelineLayout{ nullptr };
-		vk::raii::Pipeline SelectionMaskPipeline{ nullptr };
 
 		std::optional<Nyx::Engine::Entity> SelectedEntity;
 

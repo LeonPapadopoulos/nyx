@@ -319,7 +319,7 @@ namespace Nyx
 		CreateSceneView();
 		
 		// Pipelines that depend on view-owned render passes / framebuffers
-		CreateSelectionMaskPipeline();
+		CreateSelectionMaskPipelines();
 		CreateOutlineCompositePipeline();
 
 		// Shared pipelines
@@ -630,6 +630,11 @@ namespace Nyx
 	void VulkanRenderer::SetSelectedEntity(std::optional<Nyx::Engine::Entity> entity)
 	{
 		SelectedEntity = entity;
+	}
+
+	void VulkanRenderer::SetSelectionOutlineMode(ESelectionOutlineMode mode)
+	{
+		SelectionOutlineMode = mode;
 	}
 
 	void VulkanRenderer::WaitIdle()
@@ -2020,7 +2025,7 @@ namespace Nyx
 		Context.GetDevice().updateDescriptorSets(write, {});
 	}
 
-	void VulkanRenderer::CreateSelectionMaskPipeline()
+	void VulkanRenderer::CreateSelectionMaskPipelines()
 	{
 		const std::vector<uint32_t> vertCode = ReadSpirvFile("Shaders/SelectionMask.vert.spv");
 		const std::vector<uint32_t> fragCode = ReadSpirvFile("Shaders/SelectionMask.frag.spv");
@@ -2040,10 +2045,7 @@ namespace Nyx
 
 		vk::PipelineShaderStageCreateInfo shaderStages[] = { vertStageInfo, fragStageInfo };
 
-		vk::VertexInputBindingDescription bindingDescription{};
-		bindingDescription.binding = 0;
-		bindingDescription.stride = sizeof(Vertex);
-		bindingDescription.inputRate = vk::VertexInputRate::eVertex;
+		const auto bindingDescription = Vertex::GetBindingDescription();
 
 		vk::VertexInputAttributeDescription positionAttribute{};
 		positionAttribute.binding = 0;
@@ -2095,11 +2097,6 @@ namespace Nyx
 		dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
 		dynamicState.pDynamicStates = dynamicStates.data();
 
-		vk::PipelineDepthStencilStateCreateInfo depthStencil{};
-		depthStencil.depthTestEnable = VK_TRUE;
-		depthStencil.depthWriteEnable = VK_TRUE;
-		depthStencil.depthCompareOp = vk::CompareOp::eLess;
-
 		vk::PushConstantRange pushConstantRange{};
 		pushConstantRange.stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment;
 		pushConstantRange.offset = 0;
@@ -2118,22 +2115,39 @@ namespace Nyx
 		ASSERT(!SceneViews.empty());
 		vk::RenderPass renderPass = *SceneViews.front().SelectionMaskRenderPass;
 
-		vk::GraphicsPipelineCreateInfo pipelineInfo{};
-		pipelineInfo.stageCount = 2;
-		pipelineInfo.pStages = shaderStages;
-		pipelineInfo.pVertexInputState = &vertexInputInfo;
-		pipelineInfo.pInputAssemblyState = &inputAssembly;
-		pipelineInfo.pViewportState = &viewportState;
-		pipelineInfo.pRasterizationState = &rasterizer;
-		pipelineInfo.pMultisampleState = &multisampling;
-		pipelineInfo.pDepthStencilState = &depthStencil;
-		pipelineInfo.pColorBlendState = &colorBlending;
-		pipelineInfo.pDynamicState = &dynamicState;
-		pipelineInfo.layout = *SelectionMaskPipelineLayout;
-		pipelineInfo.renderPass = renderPass;
-		pipelineInfo.subpass = 0;
+		// Visible-only pipeline
+		vk::PipelineDepthStencilStateCreateInfo depthVisible{};
+		depthVisible.depthTestEnable = VK_TRUE;
+		depthVisible.depthWriteEnable = VK_TRUE;
+		depthVisible.depthCompareOp = vk::CompareOp::eLess;
 
-		SelectionMaskPipeline = std::move(vk::raii::Pipeline(Context.GetDevice(), nullptr, pipelineInfo));
+		vk::GraphicsPipelineCreateInfo visibleInfo{};
+		visibleInfo.stageCount = 2;
+		visibleInfo.pStages = shaderStages;
+		visibleInfo.pVertexInputState = &vertexInputInfo;
+		visibleInfo.pInputAssemblyState = &inputAssembly;
+		visibleInfo.pViewportState = &viewportState;
+		visibleInfo.pRasterizationState = &rasterizer;
+		visibleInfo.pMultisampleState = &multisampling;
+		visibleInfo.pDepthStencilState = &depthVisible;
+		visibleInfo.pColorBlendState = &colorBlending;
+		visibleInfo.pDynamicState = &dynamicState;
+		visibleInfo.layout = *SelectionMaskPipelineLayout;
+		visibleInfo.renderPass = renderPass;
+		visibleInfo.subpass = 0;
+
+		SelectionMaskPipelineVisible = std::move(vk::raii::Pipeline(Context.GetDevice(), nullptr, visibleInfo));
+
+		// Full-silhouette pipeline
+		vk::PipelineDepthStencilStateCreateInfo depthFull{};
+		depthFull.depthTestEnable = VK_FALSE;
+		depthFull.depthWriteEnable = VK_FALSE;
+		depthFull.depthCompareOp = vk::CompareOp::eAlways;
+
+		vk::GraphicsPipelineCreateInfo fullInfo = visibleInfo;
+		fullInfo.pDepthStencilState = &depthFull;
+
+		SelectionMaskPipelineFull = std::move(vk::raii::Pipeline(Context.GetDevice(), nullptr, fullInfo));
 	}
 
 	void VulkanRenderer::DrawSelectionMaskPass(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
@@ -2169,7 +2183,12 @@ namespace Nyx
 		cmd.setViewport(0, viewport);
 		cmd.setScissor(0, scissor);
 
-		cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *SelectionMaskPipeline);
+		const bool bFullSilhouette = (SelectionOutlineMode == ESelectionOutlineMode::FullSilhouette);
+
+		cmd.bindPipeline(
+			vk::PipelineBindPoint::eGraphics,
+			bFullSilhouette ? *SelectionMaskPipelineFull : *SelectionMaskPipelineVisible
+		);
 
 		cmd.bindDescriptorSets(
 			vk::PipelineBindPoint::eGraphics,
@@ -2186,12 +2205,17 @@ namespace Nyx
 				continue;
 			}
 
+			const bool bIsSelected =
+				SelectedEntity.has_value() && SelectedEntity.value() == obj.SourceEntity;
+
+			if (bFullSilhouette && !bIsSelected)
+			{
+				continue;
+			}
+
 			SelectionMaskPushConstants push{};
 			push.Model = obj.WorldTransform;
-			push.SelectedValue =
-				(SelectedEntity.has_value() && SelectedEntity.value() == obj.SourceEntity)
-				? 1.0f
-				: 0.0f;
+			push.SelectedValue = bIsSelected ? 1.0f : 0.0f;
 
 			cmd.pushConstants<SelectionMaskPushConstants>(
 				*SelectionMaskPipelineLayout,
