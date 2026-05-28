@@ -32,6 +32,13 @@ namespace Nyx
 		uint32_t Height = 0;
 	};
 
+	enum class ESelectionOutlineMode : uint8_t
+	{
+		VisibleOnly				= 0,
+		FullSilhouette			= 1,
+		VisibleOccludeHatched	= 2
+	};
+
 	class NYXENGINE_API IRenderer
 	{
 	public:
@@ -59,6 +66,7 @@ namespace Nyx
 		virtual PickResult ConsumeLastPickResult(uint64_t sceneViewId) = 0;
 
 		virtual void SetSelectedEntity(std::optional<Nyx::Engine::Entity> entity) = 0;
+		virtual void SetSelectionOutlineMode(Nyx::ESelectionOutlineMode mode) = 0;
 
 		virtual void WaitIdle() = 0;
 

@@ -540,7 +540,8 @@ namespace Nyx
 				DrawPickingPass(view, cmd);
 				ResolvePickRequest(view, cmd);
 
-				DrawSelectionMaskPass(view, cmd);
+				DrawVisibleSelectionMaskPass(view, cmd);
+				DrawFullSelectionMaskPass(view, cmd);
 			}
 
 			vk::ClearColorValue clear = vk::ClearColorValue(std::array<float, 4>{ 0.2f, 0.05f, 0.35f, 1.0f });
@@ -1840,18 +1841,31 @@ namespace Nyx
 		const uint32_t width = std::max(1u, extent.width);
 		const uint32_t height = std::max(1u, extent.height);
 
-		// R8_UNORM mask
+		// Visible mask
 		CreateImage(
 			width,
 			height,
 			vk::Format::eR8Unorm,
 			vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled,
 			vk::ImageAspectFlagBits::eColor,
-			view.SelectionMaskImage,
-			view.SelectionMaskImageMemory,
-			view.SelectionMaskImageView
+			view.VisibleSelectionMaskImage,
+			view.VisibleSelectionMaskImageMemory,
+			view.VisibleSelectionMaskImageView
 		);
 
+		// Full silhouette mask
+		CreateImage(
+			width,
+			height,
+			vk::Format::eR8Unorm,
+			vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled,
+			vk::ImageAspectFlagBits::eColor,
+			view.FullSelectionMaskImage,
+			view.FullSelectionMaskImageMemory,
+			view.FullSelectionMaskImageView
+		);
+
+		// Shared depth image for both passes
 		CreateImage(
 			width,
 			height,
@@ -1863,6 +1877,7 @@ namespace Nyx
 			view.SelectionMaskDepthImageView
 		);
 
+		// Shared render pass
 		{
 			vk::AttachmentDescription colorAttachment{};
 			colorAttachment.format = vk::Format::eR8Unorm;
@@ -1913,10 +1928,11 @@ namespace Nyx
 			view.SelectionMaskRenderPass = vk::raii::RenderPass(Context.GetDevice(), renderPassInfo);
 		}
 
+		// Visible framebuffer
 		{
 			std::array<vk::ImageView, 2> attachments =
 			{
-				*view.SelectionMaskImageView,
+				*view.VisibleSelectionMaskImageView,
 				*view.SelectionMaskDepthImageView
 			};
 
@@ -1928,7 +1944,26 @@ namespace Nyx
 			framebufferInfo.height = height;
 			framebufferInfo.layers = 1;
 
-			view.SelectionMaskFramebuffer = vk::raii::Framebuffer(Context.GetDevice(), framebufferInfo);
+			view.VisibleSelectionMaskFramebuffer = vk::raii::Framebuffer(Context.GetDevice(), framebufferInfo);
+		}
+
+		// Full framebuffer
+		{
+			std::array<vk::ImageView, 2> attachments =
+			{
+				*view.FullSelectionMaskImageView,
+				*view.SelectionMaskDepthImageView
+			};
+
+			vk::FramebufferCreateInfo framebufferInfo{};
+			framebufferInfo.renderPass = *view.SelectionMaskRenderPass;
+			framebufferInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+			framebufferInfo.pAttachments = attachments.data();
+			framebufferInfo.width = width;
+			framebufferInfo.height = height;
+			framebufferInfo.layers = 1;
+
+			view.FullSelectionMaskFramebuffer = vk::raii::Framebuffer(Context.GetDevice(), framebufferInfo);
 		}
 	}
 
@@ -1937,12 +1972,17 @@ namespace Nyx
 		view.OutlineDescriptorSets.reset();
 		view.OutlineDescriptorPool = nullptr;
 
-		view.SelectionMaskFramebuffer = nullptr;
+		view.VisibleSelectionMaskFramebuffer = nullptr;
+		view.FullSelectionMaskFramebuffer = nullptr;
 		view.SelectionMaskRenderPass = nullptr;
 
-		view.SelectionMaskImageView = nullptr;
-		view.SelectionMaskImage = nullptr;
-		view.SelectionMaskImageMemory = nullptr;
+		view.VisibleSelectionMaskImageView = nullptr;
+		view.VisibleSelectionMaskImage = nullptr;
+		view.VisibleSelectionMaskImageMemory = nullptr;
+
+		view.FullSelectionMaskImageView = nullptr;
+		view.FullSelectionMaskImage = nullptr;
+		view.FullSelectionMaskImageMemory = nullptr;
 
 		view.SelectionMaskDepthImageView = nullptr;
 		view.SelectionMaskDepthImage = nullptr;
@@ -1958,15 +1998,27 @@ namespace Nyx
 
 	void VulkanRenderer::CreateOutlineDescriptorSetLayout()
 	{
-		vk::DescriptorSetLayoutBinding maskBinding{};
-		maskBinding.binding = 0;
-		maskBinding.descriptorType = vk::DescriptorType::eCombinedImageSampler;
-		maskBinding.descriptorCount = 1;
-		maskBinding.stageFlags = vk::ShaderStageFlagBits::eFragment;
+		vk::DescriptorSetLayoutBinding visibleMaskBinding{};
+		visibleMaskBinding.binding = 0;
+		visibleMaskBinding.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+		visibleMaskBinding.descriptorCount = 1;
+		visibleMaskBinding.stageFlags = vk::ShaderStageFlagBits::eFragment;
+
+		vk::DescriptorSetLayoutBinding fullMaskBinding{};
+		fullMaskBinding.binding = 1;
+		fullMaskBinding.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+		fullMaskBinding.descriptorCount = 1;
+		fullMaskBinding.stageFlags = vk::ShaderStageFlagBits::eFragment;
+
+		std::array<vk::DescriptorSetLayoutBinding, 2> bindings =
+		{
+			visibleMaskBinding,
+			fullMaskBinding
+		};
 
 		vk::DescriptorSetLayoutCreateInfo layoutInfo{};
-		layoutInfo.bindingCount = 1;
-		layoutInfo.pBindings = &maskBinding;
+		layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+		layoutInfo.pBindings = bindings.data();
 
 		OutlineDescriptorSetLayout = vk::raii::DescriptorSetLayout(Context.GetDevice(), layoutInfo);
 
@@ -1987,11 +2039,12 @@ namespace Nyx
 	{
 		ASSERT(OutlineDescriptorSetLayout != nullptr && "OutlineDescriptorSetLayout must exist before CreateOutlineDescriptorSetForView.");
 		ASSERT(OutlineCompositeSampler != nullptr && "OutlineCompositeSampler must exist before CreateOutlineDescriptorSetForView.");
-		ASSERT(view.SelectionMaskImageView != nullptr && "SelectionMaskImageView must exist before CreateOutlineDescriptorSetForView.");
+		ASSERT(view.VisibleSelectionMaskImageView != nullptr && "VisibleSelectionMaskImageView must exist.");
+		ASSERT(view.FullSelectionMaskImageView != nullptr && "FullSelectionMaskImageView must exist.");
 
 		std::array<vk::DescriptorPoolSize, 1> poolSizes{};
 		poolSizes[0].type = vk::DescriptorType::eCombinedImageSampler;
-		poolSizes[0].descriptorCount = 1;
+		poolSizes[0].descriptorCount = 2;
 
 		vk::DescriptorPoolCreateInfo poolInfo{};
 		poolInfo.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
@@ -2010,19 +2063,31 @@ namespace Nyx
 
 		view.OutlineDescriptorSets.emplace(Context.GetDevice(), allocInfo);
 
-		vk::DescriptorImageInfo imageInfo{};
-		imageInfo.sampler = *OutlineCompositeSampler;
-		imageInfo.imageView = *view.SelectionMaskImageView;
-		imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+		vk::DescriptorImageInfo visibleInfo{};
+		visibleInfo.sampler = *OutlineCompositeSampler;
+		visibleInfo.imageView = *view.VisibleSelectionMaskImageView;
+		visibleInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
 
-		vk::WriteDescriptorSet write{};
-		write.dstSet = *view.OutlineDescriptorSets->front();
-		write.dstBinding = 0;
-		write.descriptorType = vk::DescriptorType::eCombinedImageSampler;
-		write.descriptorCount = 1;
-		write.pImageInfo = &imageInfo;
+		vk::DescriptorImageInfo fullInfo{};
+		fullInfo.sampler = *OutlineCompositeSampler;
+		fullInfo.imageView = *view.FullSelectionMaskImageView;
+		fullInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
 
-		Context.GetDevice().updateDescriptorSets(write, {});
+		std::array<vk::WriteDescriptorSet, 2> writes{};
+
+		writes[0].dstSet = *view.OutlineDescriptorSets->front();
+		writes[0].dstBinding = 0;
+		writes[0].descriptorType = vk::DescriptorType::eCombinedImageSampler;
+		writes[0].descriptorCount = 1;
+		writes[0].pImageInfo = &visibleInfo;
+
+		writes[1].dstSet = *view.OutlineDescriptorSets->front();
+		writes[1].dstBinding = 1;
+		writes[1].descriptorType = vk::DescriptorType::eCombinedImageSampler;
+		writes[1].descriptorCount = 1;
+		writes[1].pImageInfo = &fullInfo;
+
+		Context.GetDevice().updateDescriptorSets(writes, {});
 	}
 
 	void VulkanRenderer::CreateSelectionMaskPipelines()
@@ -2045,7 +2110,10 @@ namespace Nyx
 
 		vk::PipelineShaderStageCreateInfo shaderStages[] = { vertStageInfo, fragStageInfo };
 
-		const auto bindingDescription = Vertex::GetBindingDescription();
+		vk::VertexInputBindingDescription bindingDescription{};
+		bindingDescription.binding = 0;
+		bindingDescription.stride = sizeof(Vertex);
+		bindingDescription.inputRate = vk::VertexInputRate::eVertex;
 
 		vk::VertexInputAttributeDescription positionAttribute{};
 		positionAttribute.binding = 0;
@@ -2115,7 +2183,7 @@ namespace Nyx
 		ASSERT(!SceneViews.empty());
 		vk::RenderPass renderPass = *SceneViews.front().SelectionMaskRenderPass;
 
-		// Visible-only pipeline
+		// Visible-only
 		vk::PipelineDepthStencilStateCreateInfo depthVisible{};
 		depthVisible.depthTestEnable = VK_TRUE;
 		depthVisible.depthWriteEnable = VK_TRUE;
@@ -2138,7 +2206,7 @@ namespace Nyx
 
 		SelectionMaskPipelineVisible = std::move(vk::raii::Pipeline(Context.GetDevice(), nullptr, visibleInfo));
 
-		// Full-silhouette pipeline
+		// Full silhouette
 		vk::PipelineDepthStencilStateCreateInfo depthFull{};
 		depthFull.depthTestEnable = VK_FALSE;
 		depthFull.depthWriteEnable = VK_FALSE;
@@ -2150,7 +2218,7 @@ namespace Nyx
 		SelectionMaskPipelineFull = std::move(vk::raii::Pipeline(Context.GetDevice(), nullptr, fullInfo));
 	}
 
-	void VulkanRenderer::DrawSelectionMaskPass(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
+	void VulkanRenderer::DrawVisibleSelectionMaskPass(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
 	{
 		std::array<vk::ClearValue, 2> clearValues{};
 		clearValues[0].color = vk::ClearColorValue(std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 0.0f });
@@ -2160,7 +2228,7 @@ namespace Nyx
 
 		vk::RenderPassBeginInfo renderPassInfo{};
 		renderPassInfo.renderPass = *view.SelectionMaskRenderPass;
-		renderPassInfo.framebuffer = *view.SelectionMaskFramebuffer;
+		renderPassInfo.framebuffer = *view.VisibleSelectionMaskFramebuffer;
 		renderPassInfo.renderArea.offset = vk::Offset2D{ 0, 0 };
 		renderPassInfo.renderArea.extent = extent;
 		renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
@@ -2183,12 +2251,7 @@ namespace Nyx
 		cmd.setViewport(0, viewport);
 		cmd.setScissor(0, scissor);
 
-		const bool bFullSilhouette = (SelectionOutlineMode == ESelectionOutlineMode::FullSilhouette);
-
-		cmd.bindPipeline(
-			vk::PipelineBindPoint::eGraphics,
-			bFullSilhouette ? *SelectionMaskPipelineFull : *SelectionMaskPipelineVisible
-		);
+		cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *SelectionMaskPipelineVisible);
 
 		cmd.bindDescriptorSets(
 			vk::PipelineBindPoint::eGraphics,
@@ -2208,14 +2271,90 @@ namespace Nyx
 			const bool bIsSelected =
 				SelectedEntity.has_value() && SelectedEntity.value() == obj.SourceEntity;
 
-			if (bFullSilhouette && !bIsSelected)
+			SelectionMaskPushConstants push{};
+			push.Model = obj.WorldTransform;
+			push.SelectedValue = bIsSelected ? 1.0f : 0.0f;
+
+			cmd.pushConstants<SelectionMaskPushConstants>(
+				*SelectionMaskPipelineLayout,
+				vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
+				0,
+				{ push }
+			);
+
+			vk::DeviceSize offsets[] = { 0 };
+			cmd.bindVertexBuffers(0, { obj.MeshAsset->GetVertexBuffer() }, offsets);
+			cmd.bindIndexBuffer(obj.MeshAsset->GetIndexBuffer(), 0, vk::IndexType::eUint32);
+			cmd.drawIndexed(obj.MeshAsset->GetIndexCount(), 1, 0, 0, 0);
+		}
+
+		cmd.endRenderPass();
+	}
+
+	void VulkanRenderer::DrawFullSelectionMaskPass(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
+	{
+		std::array<vk::ClearValue, 2> clearValues{};
+		clearValues[0].color = vk::ClearColorValue(std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 0.0f });
+		clearValues[1].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
+
+		const vk::Extent2D extent = view.RenderTarget.GetExtent();
+
+		vk::RenderPassBeginInfo renderPassInfo{};
+		renderPassInfo.renderPass = *view.SelectionMaskRenderPass;
+		renderPassInfo.framebuffer = *view.FullSelectionMaskFramebuffer;
+		renderPassInfo.renderArea.offset = vk::Offset2D{ 0, 0 };
+		renderPassInfo.renderArea.extent = extent;
+		renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+		renderPassInfo.pClearValues = clearValues.data();
+
+		cmd.beginRenderPass(renderPassInfo, vk::SubpassContents::eInline);
+
+		vk::Viewport viewport{};
+		viewport.x = 0.0f;
+		viewport.y = 0.0f;
+		viewport.width = static_cast<float>(extent.width);
+		viewport.height = static_cast<float>(extent.height);
+		viewport.minDepth = 0.0f;
+		viewport.maxDepth = 1.0f;
+
+		vk::Rect2D scissor{};
+		scissor.offset = vk::Offset2D{ 0, 0 };
+		scissor.extent = extent;
+
+		cmd.setViewport(0, viewport);
+		cmd.setScissor(0, scissor);
+
+		cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *SelectionMaskPipelineFull);
+
+		cmd.bindDescriptorSets(
+			vk::PipelineBindPoint::eGraphics,
+			*SelectionMaskPipelineLayout,
+			0,
+			{ *view.SceneDescriptorSets.front() },
+			{}
+		);
+
+		if (!SelectedEntity.has_value())
+		{
+			cmd.endRenderPass();
+			return;
+		}
+
+		for (const RenderObject& obj : RenderObjects)
+		{
+			if (!obj.MeshAsset || !obj.MaterialAsset)
+			{
+				continue;
+			}
+
+			if (obj.SourceEntity != SelectedEntity.value())
 			{
 				continue;
 			}
 
 			SelectionMaskPushConstants push{};
 			push.Model = obj.WorldTransform;
-			push.SelectedValue = bIsSelected ? 1.0f : 0.0f;
+			push.SelectedValue = 1.0f;
 
 			cmd.pushConstants<SelectionMaskPushConstants>(
 				*SelectionMaskPipelineLayout,
@@ -2356,12 +2495,22 @@ namespace Nyx
 		const vk::Extent2D extent = view.RenderTarget.GetExtent();
 
 		OutlineCompositePushConstants push{};
-		push.TexelSize = glm::vec2(
+		push.Params0 = glm::vec4(
 			1.0f / static_cast<float>(std::max(1u, extent.width)),
-			1.0f / static_cast<float>(std::max(1u, extent.height))
+			1.0f / static_cast<float>(std::max(1u, extent.height)),
+			2.0f,
+			static_cast<float>(static_cast<uint32_t>(SelectionOutlineMode))
 		);
-		push.Thickness = 2.0f;
-		push.OutlineColor = glm::vec4(1.0f, 0.65f, 0.0f, 1.0f);
+
+		push.VisibleOutlineColor = glm::vec4(1.0f, 0.65f, 0.0f, 1.0f);
+		push.OccludedOutlineColor = glm::vec4(0.15f, 0.85f, 1.0f, 1.0f);
+		push.HatchColor = glm::vec4(0.15f, 0.85f, 1.0f, 0.85f);
+		push.HatchParams = glm::vec4(
+			14.0f, // spacing
+			2.0f,  // thickness
+			8.0f,  // dash length
+			6.0f   // dash gap
+		);
 
 		cmd.pushConstants<OutlineCompositePushConstants>(
 			*OutlineCompositePipelineLayout,

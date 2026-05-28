@@ -58,16 +58,21 @@ namespace Nyx
 		// Selection
 		// -------------------------------------------------
 
-		vk::raii::Image SelectionMaskImage{ nullptr };
-		vk::raii::DeviceMemory SelectionMaskImageMemory{ nullptr };
-		vk::raii::ImageView SelectionMaskImageView{ nullptr };
+		vk::raii::Image VisibleSelectionMaskImage{ nullptr };
+		vk::raii::DeviceMemory VisibleSelectionMaskImageMemory{ nullptr };
+		vk::raii::ImageView VisibleSelectionMaskImageView{ nullptr };
+
+		vk::raii::Image FullSelectionMaskImage{ nullptr };
+		vk::raii::DeviceMemory FullSelectionMaskImageMemory{ nullptr };
+		vk::raii::ImageView FullSelectionMaskImageView{ nullptr };
 
 		vk::raii::Image SelectionMaskDepthImage{ nullptr };
 		vk::raii::DeviceMemory SelectionMaskDepthImageMemory{ nullptr };
 		vk::raii::ImageView SelectionMaskDepthImageView{ nullptr };
 
 		vk::raii::RenderPass SelectionMaskRenderPass{ nullptr };
-		vk::raii::Framebuffer SelectionMaskFramebuffer{ nullptr };
+		vk::raii::Framebuffer VisibleSelectionMaskFramebuffer{ nullptr };
+		vk::raii::Framebuffer FullSelectionMaskFramebuffer{ nullptr };
 
 		vk::raii::DescriptorPool OutlineDescriptorPool{ nullptr };
 		std::optional<vk::raii::DescriptorSets> OutlineDescriptorSets;

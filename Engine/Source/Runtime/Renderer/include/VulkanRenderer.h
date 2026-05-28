@@ -195,12 +195,6 @@ namespace Nyx
 			return attributes;
 		}
 	};
-
-	enum class ESelectionOutlineMode : uint8_t
-	{
-		VisibleOnly,
-		FullSilhouette
-	};
 }
 
 namespace Nyx
@@ -223,8 +217,7 @@ namespace Nyx
 		virtual void OnMouseWheelScrolled(double yOffset);
 		
 		void SetSelectedEntity(std::optional<Nyx::Engine::Entity> entity) override;
-
-		void SetSelectionOutlineMode(ESelectionOutlineMode mode);
+		void SetSelectionOutlineMode(ESelectionOutlineMode mode) override;
 
 		virtual void WaitIdle();
 
@@ -280,33 +273,35 @@ namespace Nyx
 		void DestroyPickingResourcesForView(SceneViewInstance& view);
 		void RecreatePickingResourcesForView(SceneViewInstance& view);
 
-		void CreateSelectionMaskResourcesForView(SceneViewInstance& view);
-		void DestroySelectionMaskResourcesForView(SceneViewInstance& view);
-		void RecreateSelectionMaskResourcesForView(SceneViewInstance& view);
-
-		void CreateOutlineDescriptorSetLayout();
-		void CreateOutlineDescriptorSetForView(SceneViewInstance& view);
-
 		struct SelectionMaskPushConstants
 		{
 			glm::mat4 Model{ 1.0f };
 			float SelectedValue = 0.0f;
 		};
 
-		void CreateSelectionMaskPipelines();
-		void DrawSelectionMaskPass(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
-
 		struct OutlineCompositePushConstants
 		{
-			glm::vec2 TexelSize{ 0.0f };
-			float Thickness = 1.0f;
-			float Padding = 0.0f;
-			glm::vec4 OutlineColor{ 1.0f, 0.6f, 0.1f, 1.0f };
+			glm::vec4 Params0{ 0.0f }; // x=TexelSizeX, y=TexelSizeY, z=Thickness, w=Mode
+			glm::vec4 VisibleOutlineColor{ 1.0f, 0.65f, 0.0f, 1.0f };
+			glm::vec4 OccludedOutlineColor{ 0.2f, 0.8f, 1.0f, 1.0f };
+			glm::vec4 HatchColor{ 0.2f, 0.8f, 1.0f, 0.9f };
+			glm::vec4 HatchParams{ 14.0f, 2.0f, 8.0f, 6.0f }; // spacing, thickness, dashLen, dashGap
 		};
 
+		void CreateOutlineDescriptorSetLayout();
+		void CreateOutlineDescriptorSetForView(SceneViewInstance& view);
+
+		void CreateSelectionMaskResourcesForView(SceneViewInstance& view);
+		void DestroySelectionMaskResourcesForView(SceneViewInstance& view);
+		void RecreateSelectionMaskResourcesForView(SceneViewInstance& view);
+
+		void CreateSelectionMaskPipelines();
+		void DrawVisibleSelectionMaskPass(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
+		void DrawFullSelectionMaskPass(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
+		
 		void CreateOutlineCompositePipeline();
 		void DrawSelectionOutline(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
-
+		
 		void CreateSkyboxUniformBuffer(SceneViewInstance& view);
 		void CreateSkyboxDescriptorSetLayout();
 		void UpdateSkyboxUniforms(SceneViewInstance& view);
@@ -438,17 +433,15 @@ namespace Nyx
 		std::vector<Nyx::Engine::Entity> PickingIdToEntity;
 
 		// Selection
-		ESelectionOutlineMode SelectionOutlineMode = ESelectionOutlineMode::VisibleOnly;
-
-		vk::raii::Pipeline SelectionMaskPipelineVisible{ nullptr };
-		vk::raii::Pipeline SelectionMaskPipelineFull{ nullptr };
-
-		vk::raii::PipelineLayout SelectionMaskPipelineLayout{ nullptr };
-
 		std::optional<Nyx::Engine::Entity> SelectedEntity;
+		ESelectionOutlineMode SelectionOutlineMode = ESelectionOutlineMode::VisibleOccludeHatched;
 
 		vk::raii::DescriptorSetLayout OutlineDescriptorSetLayout{ nullptr };
 		vk::raii::Sampler OutlineCompositeSampler{ nullptr };
+
+		vk::raii::PipelineLayout SelectionMaskPipelineLayout{ nullptr };
+		vk::raii::Pipeline SelectionMaskPipelineVisible{ nullptr };
+		vk::raii::Pipeline SelectionMaskPipelineFull{ nullptr };
 
 		vk::raii::PipelineLayout OutlineCompositePipelineLayout{ nullptr };
 		vk::raii::Pipeline OutlineCompositePipeline{ nullptr };
