@@ -80,21 +80,12 @@ namespace Nyx::Editor
 		}
 	}
 
-	void EditorLayer::DrawPanels()
+	void EditorLayer::Tick(float deltaTime)
 	{
-		const float deltaTime = ComputeDeltaTime();
 		TickScene(deltaTime);
 
-		ApplyPendingPickResults();
-
-		DrawSceneOutliner();
-		DrawDetailsPanel();
-
+		// Keep renderer-facing selection state up to date before rendering
 		Renderer->SetSelectedEntity(ActiveScene.GetSelection());
-
-		DrawSceneViews();
-
-		ImGui::ShowDemoWindow();
 	}
 
 	float EditorLayer::ComputeDeltaTime()
@@ -110,6 +101,42 @@ namespace Nyx::Editor
 		const float deltaTime = static_cast<float>(currentTime - LastFrameTimeSeconds);
 		LastFrameTimeSeconds = currentTime;
 		return deltaTime;
+	}
+
+	void EditorLayer::DrawPanels()
+	{
+		ApplyPendingPickResults();
+
+		DrawSceneOutliner();
+		DrawDetailsPanel();
+		DrawSceneViews();
+
+		ImGui::ShowDemoWindow();
+	}
+
+	void EditorLayer::MapSceneImageMouseToPickPixel(
+		const ImVec2& imageMin,
+		const ImVec2& imageSize,
+		const ImVec2& mousePos,
+		const Nyx::Extent2D& extent,
+		uint32_t& outPickX,
+		uint32_t& outPickY)
+	{
+		const float localMouseX = mousePos.x - imageMin.x;
+		const float localMouseY = mousePos.y - imageMin.y;
+
+		const float normalizedX = std::clamp(localMouseX / imageSize.x, 0.0f, 1.0f);
+		const float normalizedY = std::clamp(localMouseY / imageSize.y, 0.0f, 1.0f);
+
+		outPickX = std::min(
+			static_cast<uint32_t>(normalizedX * static_cast<float>(extent.Width)),
+			extent.Width > 0 ? extent.Width - 1 : 0u
+		);
+
+		outPickY = std::min(
+			static_cast<uint32_t>(normalizedY * static_cast<float>(extent.Height)),
+			extent.Height > 0 ? extent.Height - 1 : 0u
+		);
 	}
 
 	void EditorLayer::TickScene(float deltaTime)
@@ -305,15 +332,45 @@ namespace Nyx::Editor
 		{
 			ImGui::Image(Renderer->GetSceneViewTextureId(sceneViewId), avail);
 
-			if (ImGui::IsItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+			const ImVec2 imageMin = ImGui::GetItemRectMin();
+			const ImVec2 imageSize = ImGui::GetItemRectSize();
+			const bool bImageHovered = ImGui::IsItemHovered();
+
+			const bool bGizmoConsumedInteraction =
+				TranslateGizmo.TickAndDraw(
+					*Renderer,
+					ActiveScene,
+					sceneViewId,
+					imageMin,
+					imageSize,
+					bImageHovered
+				);
+
+			if (!bGizmoConsumedInteraction &&
+				bImageHovered &&
+				ImGui::IsMouseClicked(ImGuiMouseButton_Left))
 			{
-				const ImVec2 imageMin = ImGui::GetItemRectMin();
 				const ImVec2 mousePos = ImGui::GetMousePos();
 
-				const float localMouseX = mousePos.x - imageMin.x;
-				const float localMouseY = mousePos.y - imageMin.y;
+				Nyx::SceneViewCameraData viewData{};
+				if (Renderer->GetSceneViewCameraData(sceneViewId, viewData) &&
+					imageSize.x > 0.0f &&
+					imageSize.y > 0.0f)
+				{
+					uint32_t pickX = 0;
+					uint32_t pickY = 0;
 
-				Renderer->RequestPick(sceneViewId, localMouseX, localMouseY);
+					MapSceneImageMouseToPickPixel(
+						imageMin,
+						imageSize,
+						mousePos,
+						viewData.Extent,
+						pickX,
+						pickY
+					);
+
+					Renderer->RequestPick(sceneViewId, pickX, pickY);
+				}
 			}
 		}
 		else

@@ -21,6 +21,7 @@
 #include "EditorCamera.h"
 #include "SceneViewTypes.h"
 #include "SceneView.h"
+#include "Extent2D.h"
 
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
@@ -224,6 +225,8 @@ namespace Nyx
 		virtual void SetSceneViewCameraMode(uint64_t id, EViewportCameraMode mode);
 		virtual void SetSceneViewEditorCameraTransform(uint64_t id, const glm::vec3& pos, const glm::vec3& rot);
 	
+		bool GetSceneViewCameraData(uint64_t sceneViewId, Nyx::SceneViewCameraData& outData) const override;
+
 		void SetWorld(const Nyx::Engine::Registry* world) override;
 
 		Nyx::Mesh* GetCubeMesh() override;

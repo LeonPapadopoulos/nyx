@@ -2,6 +2,8 @@
 
 #include "Renderer.h"
 #include "SceneDocument.h"
+#include "TransformGizmo.h"
+#include "Extent2D.h"
 
 namespace Nyx::Editor
 {
@@ -13,10 +15,20 @@ namespace Nyx::Editor
 		void Initialize();
 		void Shutdown();
 
+		void Tick(float deltaTime);
+		float ComputeDeltaTime();
+
 		void DrawPanels();
 
 	private:
-		float ComputeDeltaTime();
+		static void MapSceneImageMouseToPickPixel(
+			const ImVec2& imageMin,
+			const ImVec2& imageSize,
+			const ImVec2& mousePos,
+			const Nyx::Extent2D& extent,
+			uint32_t& outPickX,
+			uint32_t& outPickY);
+
 		void TickScene(float deltaTime);
 
 		void DrawSceneOutliner();
@@ -35,6 +47,8 @@ namespace Nyx::Editor
 
 		uint64_t MainSceneViewId = 0;
 		uint64_t SecondarySceneViewId = 0;
+
+		TransformGizmo TranslateGizmo;
 
 		bool bShowSceneView = true;
 		bool bShowSecondarySceneView = true;

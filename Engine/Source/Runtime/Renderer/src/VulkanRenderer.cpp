@@ -666,6 +666,25 @@ namespace Nyx
 		view->EditorCam.RotationRadians = rot;
 	}
 
+	bool VulkanRenderer::GetSceneViewCameraData(uint64_t sceneViewId, Nyx::SceneViewCameraData& outData) const
+	{
+		const SceneViewInstance* view = FindSceneView(sceneViewId);
+		if (!view)
+		{
+			return false;
+		}
+
+		const vk::Extent2D extent = view->RenderTarget.GetExtent();
+
+		outData.View = view->SceneGlobals.View;
+		outData.Projection = view->SceneGlobals.Projection;
+		outData.ViewProjection = view->SceneGlobals.ViewProjection;
+		outData.CameraWorldPos = view->SceneGlobals.CameraWorldPos;
+		outData.Extent = Extent2D{ extent.width, extent.height };
+
+		return true;
+	}
+
 	void VulkanRenderer::SetWorld(const Nyx::Engine::Registry* world)
 	{
 		World = world;

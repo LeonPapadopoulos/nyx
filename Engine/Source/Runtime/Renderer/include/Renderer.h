@@ -3,6 +3,8 @@
 #include "Entity.h"
 
 #include "SceneViewTypes.h"
+#include "SceneViewCameraData.h"
+#include "Extent2D.h"
 #include <imgui.h>
 #include "glm/glm.hpp"
 
@@ -26,12 +28,6 @@ namespace Nyx
 
 namespace Nyx
 {
-	struct Extent2D
-	{
-		uint32_t Width = 0;
-		uint32_t Height = 0;
-	};
-
 	enum class ESelectionOutlineMode : uint8_t
 	{
 		VisibleOnly				= 0,
@@ -72,6 +68,8 @@ namespace Nyx
 
 		virtual void SetSceneViewCameraMode(uint64_t id, EViewportCameraMode mode) = 0;
 		virtual void SetSceneViewEditorCameraTransform(uint64_t id, const glm::vec3& pos, const glm::vec3& rot) = 0;
+
+		virtual bool GetSceneViewCameraData(uint64_t sceneViewId, Nyx::SceneViewCameraData& outData) const = 0;
 
 		virtual void SetWorld(const Nyx::Engine::Registry* world) = 0;
 

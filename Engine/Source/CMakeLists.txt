@@ -47,6 +47,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/EditorCamera.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/SceneViewTypes.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/SceneView.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/SceneViewCameraData.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanImGuiBackend.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanRenderer.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanContext.cpp
@@ -54,6 +55,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/OffscreenRenderTarget.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanViewportTarget.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/GltfImporter.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/Extent2D.cpp
 
     # Editor
     ${NYX_ENGINE_ROOT}/Editor/src/EditorLayer.cpp
@@ -62,6 +64,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Editor/src/ComponentEditorRegistration.cpp
     ${NYX_ENGINE_ROOT}/Editor/src/ComponentEditors.cpp
     ${NYX_ENGINE_ROOT}/Editor/src/ComponentInspectorRegistry.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/TransformGizmo.cpp
 )
 
 set(NYX_ENGINE_HEADERS
@@ -96,6 +99,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/EditorCamera.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/SceneViewTypes.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/SceneView.h
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/SceneViewCameraData.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanImGuiBackend.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanRenderer.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanContext.h
@@ -103,6 +107,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/OffscreenRenderTarget.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanViewportTarget.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/GltfImporter.h
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/Extent2D.h
 
     # Editor
     ${NYX_ENGINE_ROOT}/Editor/include/EditorLayer.h
@@ -111,6 +116,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Editor/include/ComponentEditorRegistration.h
     ${NYX_ENGINE_ROOT}/Editor/include/ComponentEditors.h
     ${NYX_ENGINE_ROOT}/Editor/include/ComponentInspectorRegistry.h
+    ${NYX_ENGINE_ROOT}/Editor/include/TransformGizmo.h
 )
 
 add_library(NyxEngine SHARED 

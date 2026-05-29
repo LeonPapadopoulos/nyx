@@ -214,6 +214,9 @@ namespace Nyx
     {
         glfwPollEvents();
 
+        const float deltaTime = MainEditorLayer->ComputeDeltaTime();
+        MainEditorLayer->Tick(deltaTime);
+
         Renderer->DrawFrame(
             [this]()
             {
