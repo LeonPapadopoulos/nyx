@@ -4,10 +4,16 @@
 #include "TransformComponent.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 namespace Nyx::Editor
 {
+	namespace
+	{
+		constexpr float Pi = 3.14159265359f;
+	}
+
 	bool TransformGizmo::ProjectWorldToSceneImage(
 		const Nyx::SceneViewCameraData& viewData,
 		const glm::vec3& worldPos,
@@ -24,15 +30,12 @@ namespace Nyx::Editor
 
 		const glm::vec3 ndc = glm::vec3(clip) / clip.w;
 
-		// Vulkan-style projection
 		if (ndc.z < 0.0f || ndc.z > 1.0f)
 		{
 			return false;
 		}
 
 		const float x = (ndc.x * 0.5f + 0.5f) * imageSize.x;
-		// camera projection is already vulkan-flipped, so let's not do that here
-		//const float y = (1.0f - (ndc.y * 0.5f + 0.5f)) * imageSize.y;
 		const float y = (ndc.y * 0.5f + 0.5f) * imageSize.y;
 
 		outScreenPos = ImVec2(imageScreenMin.x + x, imageScreenMin.y + y);
@@ -58,6 +61,25 @@ namespace Nyx::Editor
 		const float dx = p.x - closest.x;
 		const float dy = p.y - closest.y;
 		return dx * dx + dy * dy;
+	}
+
+	float TransformGizmo::DistancePointToPolylineSq(
+		const ImVec2& p,
+		const ImVec2* points,
+		int numPoints,
+		bool bClosed)
+	{
+		float bestDistSq = std::numeric_limits<float>::max();
+
+		const int numSegments = bClosed ? numPoints : (numPoints - 1);
+		for (int i = 0; i < numSegments; ++i)
+		{
+			const ImVec2& a = points[i];
+			const ImVec2& b = points[(i + 1) % numPoints];
+			bestDistSq = std::min(bestDistSq, DistancePointToSegmentSq(p, a, b));
+		}
+
+		return bestDistSq;
 	}
 
 	glm::vec3 TransformGizmo::GetAxisDirection(
@@ -100,6 +122,399 @@ namespace Nyx::Editor
 		}
 	}
 
+	void TransformGizmo::BuildRotationRingPoints(
+		const glm::vec3& origin,
+		const glm::vec3& axisNormal,
+		float radius,
+		glm::vec3* outPoints,
+		int numPoints)
+	{
+		glm::vec3 tangent = glm::cross(axisNormal, glm::vec3(0.0f, 1.0f, 0.0f));
+		if (glm::dot(tangent, tangent) < 1e-6f)
+		{
+			tangent = glm::cross(axisNormal, glm::vec3(1.0f, 0.0f, 0.0f));
+		}
+		tangent = glm::normalize(tangent);
+
+		glm::vec3 bitangent = glm::normalize(glm::cross(axisNormal, tangent));
+
+		for (int i = 0; i < numPoints; ++i)
+		{
+			const float t = static_cast<float>(i) / static_cast<float>(numPoints);
+			const float angle = t * Pi * 2.0f;
+
+			outPoints[i] =
+				origin +
+				(std::cos(angle) * tangent + std::sin(angle) * bitangent) * radius;
+		}
+	}
+
+	void TransformGizmo::TickHotkeys()
+	{
+		if (ImGui::IsKeyPressed(ImGuiKey_W, false))
+		{
+			State.Operation = EGizmoOperation::Translate;
+		}
+		else if (ImGui::IsKeyPressed(ImGuiKey_E, false))
+		{
+			State.Operation = EGizmoOperation::Rotate;
+		}
+		else if (ImGui::IsKeyPressed(ImGuiKey_R, false))
+		{
+			State.Operation = EGizmoOperation::Scale;
+		}
+	}
+
+	bool TransformGizmo::TickTranslate(
+		const Nyx::SceneViewCameraData& viewData,
+		const Nyx::Engine::TransformComponent& transform,
+		const glm::vec3& gizmoOrigin,
+		const ImVec2& imageScreenMin,
+		const ImVec2& imageSize,
+		bool bImageHovered,
+		ImDrawList* drawList)
+	{
+		const float distanceToCamera = glm::length(viewData.CameraWorldPos - gizmoOrigin);
+		const float gizmoScale = std::max(0.5f, distanceToCamera * 0.15f);
+
+		AxisScreenSegment segments[3]{};
+
+		segments[0].Axis = ETransformGizmoAxis::X;
+		segments[1].Axis = ETransformGizmoAxis::Y;
+		segments[2].Axis = ETransformGizmoAxis::Z;
+
+		for (AxisScreenSegment& segment : segments)
+		{
+			const glm::vec3 axisDir = GetAxisDirection(segment.Axis, State.Space, transform);
+
+			segment.WorldStart = gizmoOrigin;
+			segment.WorldEnd = gizmoOrigin + axisDir * gizmoScale;
+
+			ImVec2 screenStart{};
+			ImVec2 screenEnd{};
+
+			const bool bStartOk = ProjectWorldToSceneImage(viewData, segment.WorldStart, imageScreenMin, imageSize, screenStart);
+			const bool bEndOk = ProjectWorldToSceneImage(viewData, segment.WorldEnd, imageScreenMin, imageSize, screenEnd);
+
+			segment.bVisible = bStartOk && bEndOk;
+			segment.ScreenStart = screenStart;
+			segment.ScreenEnd = screenEnd;
+		}
+
+		if (!State.bDragging)
+		{
+			State.HoveredAxis = ETransformGizmoAxis::None;
+
+			if (bImageHovered)
+			{
+				const ImVec2 mouse = ImGui::GetMousePos();
+
+				const float hoverThresholdPx = 9.0f;
+				const float hoverThresholdSq = hoverThresholdPx * hoverThresholdPx;
+
+				float bestDistSq = hoverThresholdSq;
+
+				for (const AxisScreenSegment& segment : segments)
+				{
+					if (!segment.bVisible)
+					{
+						continue;
+					}
+
+					const float distSq = DistancePointToSegmentSq(mouse, segment.ScreenStart, segment.ScreenEnd);
+					if (distSq <= bestDistSq)
+					{
+						bestDistSq = distSq;
+						State.HoveredAxis = segment.Axis;
+					}
+				}
+			}
+		}
+
+		bool bConsumed = false;
+
+		if (!State.bDragging &&
+			bImageHovered &&
+			State.HoveredAxis != ETransformGizmoAxis::None &&
+			ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+		{
+			State.bDragging = true;
+			State.ActiveAxis = State.HoveredAxis;
+			bConsumed = true;
+		}
+
+		if (State.bDragging && ImGui::IsMouseReleased(ImGuiMouseButton_Left))
+		{
+			State.bDragging = false;
+			State.ActiveAxis = ETransformGizmoAxis::None;
+			bConsumed = true;
+		}
+
+		for (const AxisScreenSegment& segment : segments)
+		{
+			if (!segment.bVisible)
+			{
+				continue;
+			}
+
+			const bool bHighlighted =
+				(State.HoveredAxis == segment.Axis) ||
+				(State.ActiveAxis == segment.Axis && State.bDragging);
+
+			const float thickness = bHighlighted ? 4.0f : 2.5f;
+			const ImU32 color = GetAxisColor(segment.Axis, bHighlighted);
+
+			drawList->AddLine(segment.ScreenStart, segment.ScreenEnd, color, thickness);
+			drawList->AddCircleFilled(segment.ScreenEnd, bHighlighted ? 6.0f : 4.0f, color);
+		}
+
+		return bConsumed || State.bDragging;
+	}
+
+	bool TransformGizmo::TickRotate(
+		const Nyx::SceneViewCameraData& viewData,
+		const Nyx::Engine::TransformComponent& transform,
+		const glm::vec3& gizmoOrigin,
+		const ImVec2& imageScreenMin,
+		const ImVec2& imageSize,
+		bool bImageHovered,
+		ImDrawList* drawList)
+	{
+		const float distanceToCamera = glm::length(viewData.CameraWorldPos - gizmoOrigin);
+		const float ringRadius = std::max(0.75f, distanceToCamera * 0.2f);
+
+		struct RingData
+		{
+			ETransformGizmoAxis Axis = ETransformGizmoAxis::None;
+			std::array<glm::vec3, 64> WorldPoints{};
+			std::array<ImVec2, 64> ScreenPoints{};
+			bool bVisible = false;
+		};
+
+		RingData rings[3]{};
+		rings[0].Axis = ETransformGizmoAxis::X;
+		rings[1].Axis = ETransformGizmoAxis::Y;
+		rings[2].Axis = ETransformGizmoAxis::Z;
+
+		for (RingData& ring : rings)
+		{
+			const glm::vec3 axisNormal = GetAxisDirection(ring.Axis, State.Space, transform);
+			BuildRotationRingPoints(gizmoOrigin, axisNormal, ringRadius, ring.WorldPoints.data(), static_cast<int>(ring.WorldPoints.size()));
+
+			ring.bVisible = true;
+
+			for (size_t i = 0; i < ring.WorldPoints.size(); ++i)
+			{
+				ImVec2 projected{};
+				if (!ProjectWorldToSceneImage(viewData, ring.WorldPoints[i], imageScreenMin, imageSize, projected))
+				{
+					ring.bVisible = false;
+					break;
+				}
+				ring.ScreenPoints[i] = projected;
+			}
+		}
+
+		if (!State.bDragging)
+		{
+			State.HoveredAxis = ETransformGizmoAxis::None;
+
+			if (bImageHovered)
+			{
+				const ImVec2 mouse = ImGui::GetMousePos();
+
+				const float hoverThresholdPx = 8.0f;
+				const float hoverThresholdSq = hoverThresholdPx * hoverThresholdPx;
+
+				float bestDistSq = hoverThresholdSq;
+
+				for (const RingData& ring : rings)
+				{
+					if (!ring.bVisible)
+					{
+						continue;
+					}
+
+					const float distSq = DistancePointToPolylineSq(mouse, ring.ScreenPoints.data(), static_cast<int>(ring.ScreenPoints.size()), true);
+					if (distSq <= bestDistSq)
+					{
+						bestDistSq = distSq;
+						State.HoveredAxis = ring.Axis;
+					}
+				}
+			}
+		}
+
+		bool bConsumed = false;
+
+		if (!State.bDragging &&
+			bImageHovered &&
+			State.HoveredAxis != ETransformGizmoAxis::None &&
+			ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+		{
+			State.bDragging = true;
+			State.ActiveAxis = State.HoveredAxis;
+			bConsumed = true;
+		}
+
+		if (State.bDragging && ImGui::IsMouseReleased(ImGuiMouseButton_Left))
+		{
+			State.bDragging = false;
+			State.ActiveAxis = ETransformGizmoAxis::None;
+			bConsumed = true;
+		}
+
+		for (const RingData& ring : rings)
+		{
+			if (!ring.bVisible)
+			{
+				continue;
+			}
+
+			const bool bHighlighted =
+				(State.HoveredAxis == ring.Axis) ||
+				(State.ActiveAxis == ring.Axis && State.bDragging);
+
+			const float thickness = bHighlighted ? 4.0f : 2.0f;
+			const ImU32 color = GetAxisColor(ring.Axis, bHighlighted);
+
+			for (size_t i = 0; i < ring.ScreenPoints.size(); ++i)
+			{
+				const ImVec2& a = ring.ScreenPoints[i];
+				const ImVec2& b = ring.ScreenPoints[(i + 1) % ring.ScreenPoints.size()];
+				drawList->AddLine(a, b, color, thickness);
+			}
+		}
+
+		return bConsumed || State.bDragging;
+	}
+
+	bool TransformGizmo::TickScale(
+		const Nyx::SceneViewCameraData& viewData,
+		const Nyx::Engine::TransformComponent& transform,
+		const glm::vec3& gizmoOrigin,
+		const ImVec2& imageScreenMin,
+		const ImVec2& imageSize,
+		bool bImageHovered,
+		ImDrawList* drawList)
+	{
+		const float distanceToCamera = glm::length(viewData.CameraWorldPos - gizmoOrigin);
+		const float gizmoScale = std::max(0.5f, distanceToCamera * 0.15f);
+
+		AxisScreenSegment segments[3]{};
+		AxisScreenHandle handles[3]{};
+
+		segments[0].Axis = ETransformGizmoAxis::X;
+		segments[1].Axis = ETransformGizmoAxis::Y;
+		segments[2].Axis = ETransformGizmoAxis::Z;
+
+		handles[0].Axis = ETransformGizmoAxis::X;
+		handles[1].Axis = ETransformGizmoAxis::Y;
+		handles[2].Axis = ETransformGizmoAxis::Z;
+
+		for (int i = 0; i < 3; ++i)
+		{
+			const glm::vec3 axisDir = GetAxisDirection(segments[i].Axis, State.Space, transform);
+
+			segments[i].WorldStart = gizmoOrigin;
+			segments[i].WorldEnd = gizmoOrigin + axisDir * gizmoScale * 0.85f;
+
+			handles[i].WorldPos = gizmoOrigin + axisDir * gizmoScale;
+
+			ImVec2 screenStart{};
+			ImVec2 screenEnd{};
+			ImVec2 screenHandle{};
+
+			const bool bStartOk = ProjectWorldToSceneImage(viewData, segments[i].WorldStart, imageScreenMin, imageSize, screenStart);
+			const bool bEndOk = ProjectWorldToSceneImage(viewData, segments[i].WorldEnd, imageScreenMin, imageSize, screenEnd);
+			const bool bHandleOk = ProjectWorldToSceneImage(viewData, handles[i].WorldPos, imageScreenMin, imageSize, screenHandle);
+
+			segments[i].bVisible = bStartOk && bEndOk;
+			handles[i].bVisible = bHandleOk;
+
+			segments[i].ScreenStart = screenStart;
+			segments[i].ScreenEnd = screenEnd;
+			handles[i].ScreenPos = screenHandle;
+		}
+
+		if (!State.bDragging)
+		{
+			State.HoveredAxis = ETransformGizmoAxis::None;
+
+			if (bImageHovered)
+			{
+				const ImVec2 mouse = ImGui::GetMousePos();
+
+				const float hoverThresholdPx = 10.0f;
+				const float hoverThresholdSq = hoverThresholdPx * hoverThresholdPx;
+
+				float bestDistSq = hoverThresholdSq;
+
+				for (const AxisScreenHandle& handle : handles)
+				{
+					if (!handle.bVisible)
+					{
+						continue;
+					}
+
+					const float dx = mouse.x - handle.ScreenPos.x;
+					const float dy = mouse.y - handle.ScreenPos.y;
+					const float distSq = dx * dx + dy * dy;
+
+					if (distSq <= bestDistSq)
+					{
+						bestDistSq = distSq;
+						State.HoveredAxis = handle.Axis;
+					}
+				}
+			}
+		}
+
+		bool bConsumed = false;
+
+		if (!State.bDragging &&
+			bImageHovered &&
+			State.HoveredAxis != ETransformGizmoAxis::None &&
+			ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+		{
+			State.bDragging = true;
+			State.ActiveAxis = State.HoveredAxis;
+			bConsumed = true;
+		}
+
+		if (State.bDragging && ImGui::IsMouseReleased(ImGuiMouseButton_Left))
+		{
+			State.bDragging = false;
+			State.ActiveAxis = ETransformGizmoAxis::None;
+			bConsumed = true;
+		}
+
+		for (int i = 0; i < 3; ++i)
+		{
+			if (!segments[i].bVisible || !handles[i].bVisible)
+			{
+				continue;
+			}
+
+			const bool bHighlighted =
+				(State.HoveredAxis == handles[i].Axis) ||
+				(State.ActiveAxis == handles[i].Axis && State.bDragging);
+
+			const ImU32 color = GetAxisColor(handles[i].Axis, bHighlighted);
+			const float thickness = bHighlighted ? 4.0f : 2.0f;
+			const float boxHalfSize = bHighlighted ? 6.0f : 5.0f;
+
+			drawList->AddLine(segments[i].ScreenStart, segments[i].ScreenEnd, color, thickness);
+			drawList->AddRectFilled(
+				ImVec2(handles[i].ScreenPos.x - boxHalfSize, handles[i].ScreenPos.y - boxHalfSize),
+				ImVec2(handles[i].ScreenPos.x + boxHalfSize, handles[i].ScreenPos.y + boxHalfSize),
+				color
+			);
+		}
+
+		return bConsumed || State.bDragging;
+	}
+
 	bool TransformGizmo::TickAndDraw(
 		Nyx::IRenderer& renderer,
 		Nyx::SceneDocument& scene,
@@ -135,114 +550,29 @@ namespace Nyx::Editor
 		const glm::mat4 localToWorld = transform.ToMatrix();
 		const glm::vec3 gizmoOrigin = glm::vec3(localToWorld[3]);
 
-		// Screen-size-ish world scale so the gizmo stays usable at different distances.
-		const float distanceToCamera = glm::length(viewData.CameraWorldPos - gizmoOrigin);
-		const float gizmoScale = std::max(0.5f, distanceToCamera * 0.15f);
-
-		AxisScreenSegment segments[3]{};
-
-		segments[0].Axis = ETransformGizmoAxis::X;
-		segments[1].Axis = ETransformGizmoAxis::Y;
-		segments[2].Axis = ETransformGizmoAxis::Z;
-
-		for (AxisScreenSegment& segment : segments)
-		{
-			const glm::vec3 axisDir = GetAxisDirection(segment.Axis, State.Space, transform);
-
-			segment.WorldStart = gizmoOrigin;
-			segment.WorldEnd = gizmoOrigin + axisDir * gizmoScale;
-
-			ImVec2 screenStart{};
-			ImVec2 screenEnd{};
-
-			const bool bStartOk = ProjectWorldToSceneImage(viewData, segment.WorldStart, imageScreenMin, imageSize, screenStart);
-			const bool bEndOk = ProjectWorldToSceneImage(viewData, segment.WorldEnd, imageScreenMin, imageSize, screenEnd);
-
-			segment.bVisible = bStartOk && bEndOk;
-			segment.ScreenStart = screenStart;
-			segment.ScreenEnd = screenEnd;
-		}
-
-		// Hover test only when not dragging, or when dragging this same view
-		if (!State.bDragging || State.ActiveSceneViewId == sceneViewId)
-		{
-			State.HoveredAxis = ETransformGizmoAxis::None;
-
-			if (bImageHovered && !State.bDragging)
-			{
-				const ImVec2 mouse = ImGui::GetMousePos();
-
-				const float hoverThresholdPx = 9.0f;
-				const float hoverThresholdSq = hoverThresholdPx * hoverThresholdPx;
-
-				float bestDistSq = hoverThresholdSq;
-
-				for (const AxisScreenSegment& segment : segments)
-				{
-					if (!segment.bVisible)
-					{
-						continue;
-					}
-
-					const float distSq = DistancePointToSegmentSq(mouse, segment.ScreenStart, segment.ScreenEnd);
-					if (distSq <= bestDistSq)
-					{
-						bestDistSq = distSq;
-						State.HoveredAxis = segment.Axis;
-					}
-				}
-			}
-		}
-
-		bool bConsumed = false;
-
-		// Begin interaction
-		if (!State.bDragging &&
-			bImageHovered &&
-			State.HoveredAxis != ETransformGizmoAxis::None &&
-			ImGui::IsMouseClicked(ImGuiMouseButton_Left))
-		{
-			State.bDragging = true;
-			State.ActiveAxis = State.HoveredAxis;
-			State.ActiveSceneViewId = sceneViewId;
-
-			bConsumed = true;
-		}
-
-		// End interaction
-		if (State.bDragging &&
-			State.ActiveSceneViewId == sceneViewId &&
-			ImGui::IsMouseReleased(ImGuiMouseButton_Left))
-		{
-			State.bDragging = false;
-			State.ActiveAxis = ETransformGizmoAxis::None;
-			State.ActiveSceneViewId = 0;
-
-			bConsumed = true;
-		}
-
-		// Draw overlay
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		const ImVec2 imageScreenMax{ imageScreenMin.x + imageSize.x, imageScreenMin.y + imageSize.y };
 
 		drawList->PushClipRect(imageScreenMin, imageScreenMax, true);
 
-		for (const AxisScreenSegment& segment : segments)
+		bool bConsumed = false;
+
+		switch (State.Operation)
 		{
-			if (!segment.bVisible)
-			{
-				continue;
-			}
+		case EGizmoOperation::Translate:
+			bConsumed = TickTranslate(viewData, transform, gizmoOrigin, imageScreenMin, imageSize, bImageHovered, drawList);
+			break;
 
-			const bool bHighlighted =
-				(State.HoveredAxis == segment.Axis) ||
-				(State.ActiveAxis == segment.Axis && State.ActiveSceneViewId == sceneViewId);
+		case EGizmoOperation::Rotate:
+			bConsumed = TickRotate(viewData, transform, gizmoOrigin, imageScreenMin, imageSize, bImageHovered, drawList);
+			break;
 
-			const float thickness = bHighlighted ? 4.0f : 2.5f;
-			const ImU32 color = GetAxisColor(segment.Axis, bHighlighted);
+		case EGizmoOperation::Scale:
+			bConsumed = TickScale(viewData, transform, gizmoOrigin, imageScreenMin, imageSize, bImageHovered, drawList);
+			break;
 
-			drawList->AddLine(segment.ScreenStart, segment.ScreenEnd, color, thickness);
-			drawList->AddCircleFilled(segment.ScreenEnd, bHighlighted ? 6.0f : 4.0f, color);
+		default:
+			break;
 		}
 
 		ImVec2 screenOrigin{};
@@ -253,6 +583,6 @@ namespace Nyx::Editor
 
 		drawList->PopClipRect();
 
-		return bConsumed || (State.bDragging && State.ActiveSceneViewId == sceneViewId);
+		return bConsumed;
 	}
 }

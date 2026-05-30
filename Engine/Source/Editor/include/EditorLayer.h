@@ -48,7 +48,7 @@ namespace Nyx::Editor
 		uint64_t MainSceneViewId = 0;
 		uint64_t SecondarySceneViewId = 0;
 
-		TransformGizmo TranslateGizmo;
+		TransformGizmo TransformGizmoInstance;
 
 		bool bShowSceneView = true;
 		bool bShowSecondarySceneView = true;

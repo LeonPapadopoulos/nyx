@@ -105,6 +105,8 @@ namespace Nyx::Editor
 
 	void EditorLayer::DrawPanels()
 	{
+		TransformGizmoInstance.TickHotkeys();
+
 		ApplyPendingPickResults();
 
 		DrawSceneOutliner();
@@ -337,7 +339,7 @@ namespace Nyx::Editor
 			const bool bImageHovered = ImGui::IsItemHovered();
 
 			const bool bGizmoConsumedInteraction =
-				TranslateGizmo.TickAndDraw(
+				TransformGizmoInstance.TickAndDraw(
 					*Renderer,
 					ActiveScene,
 					sceneViewId,

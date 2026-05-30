@@ -25,6 +25,13 @@ namespace Nyx::Editor
 		Local
 	};
 
+	enum class EGizmoOperation : uint8_t
+	{
+		Translate = 0,
+		Rotate,
+		Scale
+	};
+
 	struct TransformGizmoState
 	{
 		ETransformGizmoAxis HoveredAxis = ETransformGizmoAxis::None;
@@ -33,12 +40,15 @@ namespace Nyx::Editor
 		bool bDragging = false;
 		uint64_t ActiveSceneViewId = 0;
 
-		EGizmoSpace Space = EGizmoSpace::Local;
+		EGizmoSpace Space = EGizmoSpace::World;
+		EGizmoOperation Operation = EGizmoOperation::Translate;
 	};
 
 	class TransformGizmo
 	{
 	public:
+		void TickHotkeys();
+
 		// Returns true if the gizmo consumed the left-click / interaction.
 		bool TickAndDraw(
 			Nyx::IRenderer& renderer,
@@ -59,6 +69,14 @@ namespace Nyx::Editor
 			bool bVisible = false;
 		};
 
+		struct AxisScreenHandle
+		{
+			ETransformGizmoAxis Axis = ETransformGizmoAxis::None;
+			glm::vec3 WorldPos{ 0.0f };
+			ImVec2 ScreenPos{ 0.0f, 0.0f };
+			bool bVisible = false;
+		};
+
 	private:
 		static bool ProjectWorldToSceneImage(
 			const Nyx::SceneViewCameraData& viewData,
@@ -75,6 +93,46 @@ namespace Nyx::Editor
 			const Nyx::Engine::TransformComponent& transform);
 
 		static ImU32 GetAxisColor(ETransformGizmoAxis axis, bool bHighlighted);
+
+		static void BuildRotationRingPoints(
+			const glm::vec3& origin,
+			const glm::vec3& axisNormal,
+			float radius,
+			glm::vec3* outPoints,
+			int numPoints);
+
+		static float DistancePointToPolylineSq(
+			const ImVec2& p,
+			const ImVec2* points,
+			int numPoints,
+			bool bClosed);
+
+		bool TickTranslate(
+			const Nyx::SceneViewCameraData& viewData,
+			const Nyx::Engine::TransformComponent& transform,
+			const glm::vec3& gizmoOrigin,
+			const ImVec2& imageScreenMin,
+			const ImVec2& imageSize,
+			bool bImageHovered,
+			ImDrawList* drawList);
+
+		bool TickRotate(
+			const Nyx::SceneViewCameraData& viewData,
+			const Nyx::Engine::TransformComponent& transform,
+			const glm::vec3& gizmoOrigin,
+			const ImVec2& imageScreenMin,
+			const ImVec2& imageSize,
+			bool bImageHovered,
+			ImDrawList* drawList);
+
+		bool TickScale(
+			const Nyx::SceneViewCameraData& viewData,
+			const Nyx::Engine::TransformComponent& transform,
+			const glm::vec3& gizmoOrigin,
+			const ImVec2& imageScreenMin,
+			const ImVec2& imageSize,
+			bool bImageHovered,
+			ImDrawList* drawList);
 
 	private:
 		TransformGizmoState State;
