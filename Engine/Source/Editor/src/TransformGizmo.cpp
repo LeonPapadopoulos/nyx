@@ -261,11 +261,53 @@ namespace Nyx::Editor
 				(State.HoveredAxis == segment.Axis) ||
 				(State.ActiveAxis == segment.Axis && State.bDragging);
 
-			const float thickness = bHighlighted ? 4.0f : 2.5f;
+			const float lineThickness = bHighlighted ? 4.0f : 2.5f;
 			const ImU32 color = GetAxisColor(segment.Axis, bHighlighted);
 
-			drawList->AddLine(segment.ScreenStart, segment.ScreenEnd, color, thickness);
-			drawList->AddCircleFilled(segment.ScreenEnd, bHighlighted ? 6.0f : 4.0f, color);
+			const ImVec2 start = segment.ScreenStart;
+			const ImVec2 end = segment.ScreenEnd;
+
+			const ImVec2 delta{ end.x - start.x, end.y - start.y };
+			const float lenSq = delta.x * delta.x + delta.y * delta.y;
+			if (lenSq <= 1e-6f)
+			{
+				continue;
+			}
+
+			const float len = std::sqrt(lenSq);
+			const ImVec2 dir{ delta.x / len, delta.y / len };
+			const ImVec2 perp{ -dir.y, dir.x };
+
+			const float arrowLength = bHighlighted ? 18.0f : 14.0f;
+			const float baseRadius = bHighlighted ? 5.0f : 4.0f;
+
+			// Arrow geometry:
+			// tip = end
+			// base center sits a bit back along the axis
+			const ImVec2 tip = end;
+			const ImVec2 baseCenter{
+				end.x - dir.x * arrowLength,
+				end.y - dir.y * arrowLength
+			};
+
+			const ImVec2 left{
+				baseCenter.x + perp.x * baseRadius,
+				baseCenter.y + perp.y * baseRadius
+			};
+
+			const ImVec2 right{
+				baseCenter.x - perp.x * baseRadius,
+				baseCenter.y - perp.y * baseRadius
+			};
+
+			// Draw the shaft only up to the base circle
+			drawList->AddLine(start, baseCenter, color, lineThickness);
+
+			// Circle base of the arrowhead
+			drawList->AddCircleFilled(baseCenter, baseRadius, color);
+
+			// Pointed arrow tip
+			drawList->AddTriangleFilled(left, right, tip, color);
 		}
 
 		return bConsumed || State.bDragging;
@@ -296,10 +338,17 @@ namespace Nyx::Editor
 		rings[1].Axis = ETransformGizmoAxis::Y;
 		rings[2].Axis = ETransformGizmoAxis::Z;
 
+		// Build and project rings first
 		for (RingData& ring : rings)
 		{
 			const glm::vec3 axisNormal = GetAxisDirection(ring.Axis, State.Space, transform);
-			BuildRotationRingPoints(gizmoOrigin, axisNormal, ringRadius, ring.WorldPoints.data(), static_cast<int>(ring.WorldPoints.size()));
+			BuildRotationRingPoints(
+				gizmoOrigin,
+				axisNormal,
+				ringRadius,
+				ring.WorldPoints.data(),
+				static_cast<int>(ring.WorldPoints.size())
+			);
 
 			ring.bVisible = true;
 
@@ -311,10 +360,12 @@ namespace Nyx::Editor
 					ring.bVisible = false;
 					break;
 				}
+
 				ring.ScreenPoints[i] = projected;
 			}
 		}
 
+		// Hover test
 		if (!State.bDragging)
 		{
 			State.HoveredAxis = ETransformGizmoAxis::None;
@@ -335,7 +386,13 @@ namespace Nyx::Editor
 						continue;
 					}
 
-					const float distSq = DistancePointToPolylineSq(mouse, ring.ScreenPoints.data(), static_cast<int>(ring.ScreenPoints.size()), true);
+					const float distSq = DistancePointToPolylineSq(
+						mouse,
+						ring.ScreenPoints.data(),
+						static_cast<int>(ring.ScreenPoints.size()),
+						true
+					);
+
 					if (distSq <= bestDistSq)
 					{
 						bestDistSq = distSq;
@@ -347,6 +404,7 @@ namespace Nyx::Editor
 
 		bool bConsumed = false;
 
+		// Begin interaction
 		if (!State.bDragging &&
 			bImageHovered &&
 			State.HoveredAxis != ETransformGizmoAxis::None &&
@@ -357,6 +415,7 @@ namespace Nyx::Editor
 			bConsumed = true;
 		}
 
+		// End interaction
 		if (State.bDragging && ImGui::IsMouseReleased(ImGuiMouseButton_Left))
 		{
 			State.bDragging = false;
@@ -364,6 +423,7 @@ namespace Nyx::Editor
 			bConsumed = true;
 		}
 
+		// Draw rings with front/back fade
 		for (const RingData& ring : rings)
 		{
 			if (!ring.bVisible)
@@ -375,13 +435,56 @@ namespace Nyx::Editor
 				(State.HoveredAxis == ring.Axis) ||
 				(State.ActiveAxis == ring.Axis && State.bDragging);
 
-			const float thickness = bHighlighted ? 4.0f : 2.0f;
-			const ImU32 color = GetAxisColor(ring.Axis, bHighlighted);
+			const ImU32 baseColor = GetAxisColor(ring.Axis, bHighlighted);
+
+			const float frontThickness = bHighlighted ? 4.0f : 2.5f;
+			const float backThickness = bHighlighted ? 2.5f : 1.5f;
+
+			// Make front/back fading depend on how edge-on the ring is to the camera.
+			const glm::vec3 ringNormal = GetAxisDirection(ring.Axis, State.Space, transform);
+			const glm::vec3 viewDirAtOrigin = glm::normalize(viewData.CameraWorldPos - gizmoOrigin);
+
+			// 0 = ring plane faces camera, 1 = ring plane is edge-on
+			const float edgeOnFactor = 1.0f - std::abs(glm::dot(ringNormal, viewDirAtOrigin));
 
 			for (size_t i = 0; i < ring.ScreenPoints.size(); ++i)
 			{
+				const size_t next = (i + 1) % ring.ScreenPoints.size();
+
 				const ImVec2& a = ring.ScreenPoints[i];
-				const ImVec2& b = ring.ScreenPoints[(i + 1) % ring.ScreenPoints.size()];
+				const ImVec2& b = ring.ScreenPoints[next];
+
+				const glm::vec3 worldA = ring.WorldPoints[i];
+				const glm::vec3 worldB = ring.WorldPoints[next];
+				const glm::vec3 midpoint = (worldA + worldB) * 0.5f;
+
+				const glm::vec3 toMid = glm::normalize(midpoint - gizmoOrigin);
+				const glm::vec3 toCamera = glm::normalize(viewData.CameraWorldPos - midpoint);
+
+				// -1 = back side of ring, +1 = front side of ring
+				const float facing = glm::dot(toMid, toCamera);
+
+				// Map to 0..1
+				const float facing01 = glm::clamp(0.5f + 0.5f * facing, 0.0f, 1.0f);
+
+				// When face-on, keep the whole ring nearly opaque.
+				// When edge-on, use stronger front/back distinction.
+				const float alphaMin = bHighlighted ? 0.45f : 0.20f;
+				const float alphaFromFacing = alphaMin + (1.0f - alphaMin) * facing01;
+				const float alpha = 1.0f + (alphaFromFacing - 1.0f) * edgeOnFactor;
+
+				// Same idea for thickness:
+				const float thicknessFromFacing =
+					backThickness + (frontThickness - backThickness) * facing01;
+				const float thickness =
+					frontThickness + (thicknessFromFacing - frontThickness) * edgeOnFactor;
+
+				const float r = static_cast<float>((baseColor >> IM_COL32_R_SHIFT) & 0xFF) / 255.0f;
+				const float g = static_cast<float>((baseColor >> IM_COL32_G_SHIFT) & 0xFF) / 255.0f;
+				const float bl = static_cast<float>((baseColor >> IM_COL32_B_SHIFT) & 0xFF) / 255.0f;
+
+				const ImU32 color = ImGui::GetColorU32(ImVec4(r, g, bl, alpha));
+
 				drawList->AddLine(a, b, color, thickness);
 			}
 		}
