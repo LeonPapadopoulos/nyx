@@ -118,6 +118,7 @@ namespace Nyx::Editor
 		case ETransformGizmoAxis::X: return IM_COL32(255, 80, 80, 255);
 		case ETransformGizmoAxis::Y: return IM_COL32(80, 255, 80, 255);
 		case ETransformGizmoAxis::Z: return IM_COL32(80, 160, 255, 255);
+		case ETransformGizmoAxis::Center: return IM_COL32(240, 240, 240, 255);
 		default: return IM_COL32(255, 255, 255, 255);
 		}
 	}
@@ -201,6 +202,10 @@ namespace Nyx::Editor
 			segment.ScreenEnd = screenEnd;
 		}
 
+		ImVec2 screenOrigin{};
+		const bool bOriginVisible =
+			ProjectWorldToSceneImage(viewData, gizmoOrigin, imageScreenMin, imageSize, screenOrigin);
+
 		if (!State.bDragging)
 		{
 			State.HoveredAxis = ETransformGizmoAxis::None;
@@ -209,23 +214,40 @@ namespace Nyx::Editor
 			{
 				const ImVec2 mouse = ImGui::GetMousePos();
 
-				const float hoverThresholdPx = 9.0f;
-				const float hoverThresholdSq = hoverThresholdPx * hoverThresholdPx;
-
-				float bestDistSq = hoverThresholdSq;
-
-				for (const AxisScreenSegment& segment : segments)
+				// Axis hover
 				{
-					if (!segment.bVisible)
-					{
-						continue;
-					}
+					const float hoverThresholdPx = 9.0f;
+					const float hoverThresholdSq = hoverThresholdPx * hoverThresholdPx;
 
-					const float distSq = DistancePointToSegmentSq(mouse, segment.ScreenStart, segment.ScreenEnd);
-					if (distSq <= bestDistSq)
+					float bestDistSq = hoverThresholdSq;
+
+					for (const AxisScreenSegment& segment : segments)
 					{
-						bestDistSq = distSq;
-						State.HoveredAxis = segment.Axis;
+						if (!segment.bVisible)
+						{
+							continue;
+						}
+
+						const float distSq = DistancePointToSegmentSq(mouse, segment.ScreenStart, segment.ScreenEnd);
+						if (distSq <= bestDistSq)
+						{
+							bestDistSq = distSq;
+							State.HoveredAxis = segment.Axis;
+						}
+					}
+				}
+
+				// Center hover overrides if close enough
+				if (bOriginVisible)
+				{
+					const float centerRadius = 9.0f;
+					const float dx = mouse.x - screenOrigin.x;
+					const float dy = mouse.y - screenOrigin.y;
+					const float distSq = dx * dx + dy * dy;
+
+					if (distSq <= centerRadius * centerRadius)
+					{
+						State.HoveredAxis = ETransformGizmoAxis::Center;
 					}
 				}
 			}
@@ -250,6 +272,7 @@ namespace Nyx::Editor
 			bConsumed = true;
 		}
 
+		// Draw axes
 		for (const AxisScreenSegment& segment : segments)
 		{
 			if (!segment.bVisible)
@@ -281,9 +304,6 @@ namespace Nyx::Editor
 			const float arrowLength = bHighlighted ? 18.0f : 14.0f;
 			const float baseRadius = bHighlighted ? 5.0f : 4.0f;
 
-			// Arrow geometry:
-			// tip = end
-			// base center sits a bit back along the axis
 			const ImVec2 tip = end;
 			const ImVec2 baseCenter{
 				end.x - dir.x * arrowLength,
@@ -300,14 +320,24 @@ namespace Nyx::Editor
 				baseCenter.y - perp.y * baseRadius
 			};
 
-			// Draw the shaft only up to the base circle
 			drawList->AddLine(start, baseCenter, color, lineThickness);
-
-			// Circle base of the arrowhead
 			drawList->AddCircleFilled(baseCenter, baseRadius, color);
-
-			// Pointed arrow tip
 			drawList->AddTriangleFilled(left, right, tip, color);
+		}
+
+		// Draw center free-move handle
+		if (bOriginVisible)
+		{
+			const bool bHighlighted =
+				(State.HoveredAxis == ETransformGizmoAxis::Center) ||
+				(State.ActiveAxis == ETransformGizmoAxis::Center && State.bDragging);
+
+			const float radius = bHighlighted ? 8.0f : 6.0f;
+			const ImU32 color = GetAxisColor(ETransformGizmoAxis::Center, bHighlighted);
+			const ImU32 outlineColor = IM_COL32(0, 0, 0, 220);
+
+			drawList->AddCircleFilled(screenOrigin, radius, color);
+			//drawList->AddCircle(screenOrigin, radius, outlineColor, 0, 1.5f);
 		}
 
 		return bConsumed || State.bDragging;
@@ -540,6 +570,10 @@ namespace Nyx::Editor
 			handles[i].ScreenPos = screenHandle;
 		}
 
+		ImVec2 screenOrigin{};
+		const bool bOriginVisible =
+			ProjectWorldToSceneImage(viewData, gizmoOrigin, imageScreenMin, imageSize, screenOrigin);
+
 		if (!State.bDragging)
 		{
 			State.HoveredAxis = ETransformGizmoAxis::None;
@@ -548,26 +582,43 @@ namespace Nyx::Editor
 			{
 				const ImVec2 mouse = ImGui::GetMousePos();
 
-				const float hoverThresholdPx = 10.0f;
-				const float hoverThresholdSq = hoverThresholdPx * hoverThresholdPx;
-
-				float bestDistSq = hoverThresholdSq;
-
-				for (const AxisScreenHandle& handle : handles)
+				// Axis scale boxes
 				{
-					if (!handle.bVisible)
-					{
-						continue;
-					}
+					const float hoverThresholdPx = 10.0f;
+					const float hoverThresholdSq = hoverThresholdPx * hoverThresholdPx;
 
-					const float dx = mouse.x - handle.ScreenPos.x;
-					const float dy = mouse.y - handle.ScreenPos.y;
+					float bestDistSq = hoverThresholdSq;
+
+					for (const AxisScreenHandle& handle : handles)
+					{
+						if (!handle.bVisible)
+						{
+							continue;
+						}
+
+						const float dx = mouse.x - handle.ScreenPos.x;
+						const float dy = mouse.y - handle.ScreenPos.y;
+						const float distSq = dx * dx + dy * dy;
+
+						if (distSq <= bestDistSq)
+						{
+							bestDistSq = distSq;
+							State.HoveredAxis = handle.Axis;
+						}
+					}
+				}
+
+				// Center = uniform scale
+				if (bOriginVisible)
+				{
+					const float centerRadius = 9.0f;
+					const float dx = mouse.x - screenOrigin.x;
+					const float dy = mouse.y - screenOrigin.y;
 					const float distSq = dx * dx + dy * dy;
 
-					if (distSq <= bestDistSq)
+					if (distSq <= centerRadius * centerRadius)
 					{
-						bestDistSq = distSq;
-						State.HoveredAxis = handle.Axis;
+						State.HoveredAxis = ETransformGizmoAxis::Center;
 					}
 				}
 			}
@@ -613,6 +664,21 @@ namespace Nyx::Editor
 				ImVec2(handles[i].ScreenPos.x + boxHalfSize, handles[i].ScreenPos.y + boxHalfSize),
 				color
 			);
+		}
+
+		// Center = uniform scale handle
+		if (bOriginVisible)
+		{
+			const bool bHighlighted =
+				(State.HoveredAxis == ETransformGizmoAxis::Center) ||
+				(State.ActiveAxis == ETransformGizmoAxis::Center && State.bDragging);
+
+			const float radius = bHighlighted ? 8.0f : 6.0f;
+			const ImU32 color = GetAxisColor(ETransformGizmoAxis::Center, bHighlighted);
+			const ImU32 outlineColor = IM_COL32(0, 0, 0, 220);
+
+			drawList->AddCircleFilled(screenOrigin, radius, color);
+			//drawList->AddCircle(screenOrigin, radius, outlineColor, 0, 1.5f);
 		}
 
 		return bConsumed || State.bDragging;
@@ -676,12 +742,6 @@ namespace Nyx::Editor
 
 		default:
 			break;
-		}
-
-		ImVec2 screenOrigin{};
-		if (ProjectWorldToSceneImage(viewData, gizmoOrigin, imageScreenMin, imageSize, screenOrigin))
-		{
-			drawList->AddCircleFilled(screenOrigin, 5.0f, IM_COL32(230, 230, 230, 255));
 		}
 
 		drawList->PopClipRect();

@@ -16,7 +16,8 @@ namespace Nyx::Editor
 		None = 0,
 		X,
 		Y,
-		Z
+		Z,
+		Center
 	};
 
 	enum class EGizmoSpace : uint8_t
