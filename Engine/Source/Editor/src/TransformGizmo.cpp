@@ -537,9 +537,10 @@ namespace Nyx::Editor
 		handles[1].Axis = ETransformGizmoAxis::Y;
 		handles[2].Axis = ETransformGizmoAxis::Z;
 
+		// Important: first scale implementation is LOCAL-space only.
 		for (int i = 0; i < 3; ++i)
 		{
-			const glm::vec3 axisDir = GetAxisDirection(segments[i].Axis, State.Space, transform);
+			const glm::vec3 axisDir = GetAxisDirection(segments[i].Axis, EGizmoSpace::Local, transform);
 
 			segments[i].WorldStart = gizmoOrigin;
 			segments[i].WorldEnd = gizmoOrigin + axisDir * gizmoScale * 0.85f;
@@ -623,15 +624,7 @@ namespace Nyx::Editor
 			State.HoveredAxis != ETransformGizmoAxis::None &&
 			ImGui::IsMouseClicked(ImGuiMouseButton_Left))
 		{
-			State.bDragging = true;
 			State.ActiveAxis = State.HoveredAxis;
-			bConsumed = true;
-		}
-
-		if (State.bDragging && ImGui::IsMouseReleased(ImGuiMouseButton_Left))
-		{
-			State.bDragging = false;
-			State.ActiveAxis = ETransformGizmoAxis::None;
 			bConsumed = true;
 		}
 
@@ -761,8 +754,37 @@ namespace Nyx::Editor
 			break;
 
 		case EGizmoOperation::Scale:
+		{
 			bConsumed = TickScale(viewData, transform, gizmoOrigin, imageScreenMin, imageSize, bImageHovered, drawList);
+
+			if (!State.bDragging &&
+				bImageHovered &&
+				State.ActiveAxis != ETransformGizmoAxis::None &&
+				ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+			{
+				State.ActiveSceneViewId = sceneViewId;
+				BeginScaleDrag(viewData, entity, transform, gizmoOrigin, imageScreenMin, imageSize);
+				bConsumed = true;
+			}
+
+			if (State.bDragging && State.ActiveSceneViewId == sceneViewId)
+			{
+				UpdateScaleDrag(viewData, transform, imageScreenMin, imageSize);
+
+				if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))
+				{
+					State.bDragging = false;
+					State.ActiveAxis = ETransformGizmoAxis::None;
+					State.ActiveSceneViewId = 0;
+					bConsumed = true;
+				}
+				else
+				{
+					bConsumed = true;
+				}
+			}
 			break;
+		}
 
 		default:
 			break;
@@ -920,6 +942,128 @@ namespace Nyx::Editor
 		{
 			const float axisAmount = glm::dot(rawDelta, State.DragAxisDirectionWS);
 			transform.Position = State.DragStartEntityPosition + State.DragAxisDirectionWS * axisAmount;
+		}
+	}
+
+	void TransformGizmo::BeginScaleDrag(
+		const Nyx::SceneViewCameraData& viewData,
+		Nyx::Engine::Entity entity,
+		const Nyx::Engine::TransformComponent& transform,
+		const glm::vec3& gizmoOrigin,
+		const ImVec2& imageScreenMin,
+		const ImVec2& imageSize)
+	{
+		State.bDragging = true;
+		State.DragEntity = entity;
+		State.DragStartEntityScale = transform.Scale;
+		State.DragStartGizmoOrigin = gizmoOrigin;
+
+		const float distanceToCamera = glm::length(viewData.CameraWorldPos - gizmoOrigin);
+		const float gizmoScale = std::max(0.5f, distanceToCamera * 0.15f);
+
+		if (State.ActiveAxis == ETransformGizmoAxis::Center)
+		{
+			// Uniform scale uses a camera-facing plane.
+			State.DragAxisDirectionWS = glm::vec3(0.0f);
+			State.DragPlaneOriginWS = gizmoOrigin;
+			State.DragPlaneNormalWS = glm::normalize(viewData.CameraWorldPos - gizmoOrigin);
+
+			const ImVec2 mousePos = ImGui::GetMousePos();
+			const Ray ray = BuildMouseRay(viewData, imageScreenMin, imageSize, mousePos);
+
+			glm::vec3 hitPoint{};
+			if (IntersectRayPlane(ray, State.DragPlaneOriginWS, State.DragPlaneNormalWS, hitPoint))
+			{
+				State.DragStartPlaneHitWS = hitPoint;
+				State.DragStartUniformRadius = std::max(glm::length(hitPoint - gizmoOrigin), 0.001f);
+			}
+			else
+			{
+				State.DragStartPlaneHitWS = gizmoOrigin;
+				State.DragStartUniformRadius = gizmoScale;
+			}
+		}
+		else
+		{
+			// Important: first scale implementation is LOCAL-space only.
+			State.DragAxisDirectionWS = GetAxisDirection(ETransformGizmoAxis(State.ActiveAxis), EGizmoSpace::Local, transform);
+			State.DragPlaneOriginWS = gizmoOrigin;
+			State.DragPlaneNormalWS = BuildAxisDragPlaneNormal(
+				State.DragAxisDirectionWS,
+				viewData.CameraWorldPos,
+				gizmoOrigin
+			);
+
+			const ImVec2 mousePos = ImGui::GetMousePos();
+			const Ray ray = BuildMouseRay(viewData, imageScreenMin, imageSize, mousePos);
+
+			glm::vec3 hitPoint{};
+			if (IntersectRayPlane(ray, State.DragPlaneOriginWS, State.DragPlaneNormalWS, hitPoint))
+			{
+				State.DragStartPlaneHitWS = hitPoint;
+
+				const float coord = glm::dot(hitPoint - gizmoOrigin, State.DragAxisDirectionWS);
+				State.DragStartAxisCoordinate = std::max(coord, gizmoScale * 0.5f);
+			}
+			else
+			{
+				State.DragStartPlaneHitWS = gizmoOrigin + State.DragAxisDirectionWS * gizmoScale;
+				State.DragStartAxisCoordinate = gizmoScale;
+			}
+		}
+	}
+
+	void TransformGizmo::UpdateScaleDrag(
+		const Nyx::SceneViewCameraData& viewData,
+		Nyx::Engine::TransformComponent& transform,
+		const ImVec2& imageScreenMin,
+		const ImVec2& imageSize)
+	{
+		const float MinScaleComponent = 0.001f;
+
+		const ImVec2 mousePos = ImGui::GetMousePos();
+		const Ray ray = BuildMouseRay(viewData, imageScreenMin, imageSize, mousePos);
+
+		glm::vec3 hitPoint{};
+		if (!IntersectRayPlane(ray, State.DragPlaneOriginWS, State.DragPlaneNormalWS, hitPoint))
+		{
+			return;
+		}
+
+		if (State.ActiveAxis == ETransformGizmoAxis::Center)
+		{
+			const float currentRadius = std::max(glm::length(hitPoint - State.DragStartGizmoOrigin), 0.001f);
+			const float uniformFactor = std::max(currentRadius / State.DragStartUniformRadius, 0.01f);
+
+			transform.Scale = State.DragStartEntityScale * uniformFactor;
+			transform.Scale.x = std::max(transform.Scale.x, MinScaleComponent);
+			transform.Scale.y = std::max(transform.Scale.y, MinScaleComponent);
+			transform.Scale.z = std::max(transform.Scale.z, MinScaleComponent);
+		}
+		else
+		{
+			const float currentCoord = glm::dot(hitPoint - State.DragStartGizmoOrigin, State.DragAxisDirectionWS);
+			const float factor = std::max(currentCoord / State.DragStartAxisCoordinate, 0.01f);
+
+			transform.Scale = State.DragStartEntityScale;
+
+			switch (State.ActiveAxis)
+			{
+			case ETransformGizmoAxis::X:
+				transform.Scale.x = std::max(State.DragStartEntityScale.x * factor, MinScaleComponent);
+				break;
+
+			case ETransformGizmoAxis::Y:
+				transform.Scale.y = std::max(State.DragStartEntityScale.y * factor, MinScaleComponent);
+				break;
+
+			case ETransformGizmoAxis::Z:
+				transform.Scale.z = std::max(State.DragStartEntityScale.z * factor, MinScaleComponent);
+				break;
+
+			default:
+				break;
+			}
 		}
 	}
 }

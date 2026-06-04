@@ -47,12 +47,16 @@ namespace Nyx::Editor
 		Nyx::Engine::Entity DragEntity{};
 
 		glm::vec3 DragStartEntityPosition{ 0.0f };
+		glm::vec3 DragStartEntityScale{ 1.0f };
 		glm::vec3 DragStartGizmoOrigin{ 0.0f };
 
 		glm::vec3 DragAxisDirectionWS{ 0.0f };
 		glm::vec3 DragPlaneOriginWS{ 0.0f };
 		glm::vec3 DragPlaneNormalWS{ 0.0f };
 		glm::vec3 DragStartPlaneHitWS{ 0.0f };
+
+		float DragStartAxisCoordinate = 1.0f;
+		float DragStartUniformRadius = 1.0f;
 	};
 
 	class TransformGizmo
@@ -178,6 +182,20 @@ namespace Nyx::Editor
 			const ImVec2& imageSize);
 
 		void UpdateTranslateDrag(
+			const Nyx::SceneViewCameraData& viewData,
+			Nyx::Engine::TransformComponent& transform,
+			const ImVec2& imageScreenMin,
+			const ImVec2& imageSize);
+
+		void BeginScaleDrag(
+			const Nyx::SceneViewCameraData& viewData,
+			Nyx::Engine::Entity entity,
+			const Nyx::Engine::TransformComponent& transform,
+			const glm::vec3& gizmoOrigin,
+			const ImVec2& imageScreenMin,
+			const ImVec2& imageSize);
+
+		void UpdateScaleDrag(
 			const Nyx::SceneViewCameraData& viewData,
 			Nyx::Engine::TransformComponent& transform,
 			const ImVec2& imageScreenMin,
