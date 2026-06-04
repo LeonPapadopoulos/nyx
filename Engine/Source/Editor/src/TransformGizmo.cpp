@@ -260,15 +260,7 @@ namespace Nyx::Editor
 			State.HoveredAxis != ETransformGizmoAxis::None &&
 			ImGui::IsMouseClicked(ImGuiMouseButton_Left))
 		{
-			State.bDragging = true;
 			State.ActiveAxis = State.HoveredAxis;
-			bConsumed = true;
-		}
-
-		if (State.bDragging && ImGui::IsMouseReleased(ImGuiMouseButton_Left))
-		{
-			State.bDragging = false;
-			State.ActiveAxis = ETransformGizmoAxis::None;
 			bConsumed = true;
 		}
 
@@ -729,8 +721,40 @@ namespace Nyx::Editor
 		switch (State.Operation)
 		{
 		case EGizmoOperation::Translate:
+		{
+			// hover + visuals
 			bConsumed = TickTranslate(viewData, transform, gizmoOrigin, imageScreenMin, imageSize, bImageHovered, drawList);
+
+			// begin drag after TickTranslate has decided ActiveAxis
+			if (!State.bDragging &&
+				bImageHovered &&
+				State.ActiveAxis != ETransformGizmoAxis::None &&
+				ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+			{
+				State.ActiveSceneViewId = sceneViewId;
+				BeginTranslateDrag(viewData, entity, transform, gizmoOrigin, imageScreenMin, imageSize);
+				bConsumed = true;
+			}
+
+			// update drag only for the active view
+			if (State.bDragging && State.ActiveSceneViewId == sceneViewId)
+			{
+				UpdateTranslateDrag(viewData, transform, imageScreenMin, imageSize);
+
+				if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))
+				{
+					State.bDragging = false;
+					State.ActiveAxis = ETransformGizmoAxis::None;
+					State.ActiveSceneViewId = 0;
+					bConsumed = true;
+				}
+				else
+				{
+					bConsumed = true;
+				}
+			}
 			break;
+		}
 
 		case EGizmoOperation::Rotate:
 			bConsumed = TickRotate(viewData, transform, gizmoOrigin, imageScreenMin, imageSize, bImageHovered, drawList);
@@ -747,5 +771,155 @@ namespace Nyx::Editor
 		drawList->PopClipRect();
 
 		return bConsumed;
+	}
+
+	TransformGizmo::Ray TransformGizmo::BuildMouseRay(
+		const Nyx::SceneViewCameraData& viewData,
+		const ImVec2& imageScreenMin,
+		const ImVec2& imageSize,
+		const ImVec2& mousePos)
+	{
+		const float localX = mousePos.x - imageScreenMin.x;
+		const float localY = mousePos.y - imageScreenMin.y;
+
+		const float ndcX = ((localX / imageSize.x) * 2.0f) - 1.0f;
+		const float ndcY = ((localY / imageSize.y) * 2.0f) - 1.0f;
+
+		const glm::vec4 nearClip(ndcX, ndcY, 0.0f, 1.0f);
+		const glm::vec4 farClip(ndcX, ndcY, 1.0f, 1.0f);
+
+		glm::vec4 nearWorld = viewData.InverseViewProjection * nearClip;
+		glm::vec4 farWorld = viewData.InverseViewProjection * farClip;
+
+		nearWorld /= nearWorld.w;
+		farWorld /= farWorld.w;
+
+		Ray ray{};
+		ray.Origin = glm::vec3(nearWorld);
+		ray.Direction = glm::normalize(glm::vec3(farWorld - nearWorld));
+		return ray;
+	}
+
+	bool TransformGizmo::IntersectRayPlane(
+		const Ray& ray,
+		const glm::vec3& planeOrigin,
+		const glm::vec3& planeNormal,
+		glm::vec3& outHitPoint)
+	{
+		const float denom = glm::dot(ray.Direction, planeNormal);
+		if (std::abs(denom) < 1e-6f)
+		{
+			return false;
+		}
+
+		const float t = glm::dot(planeOrigin - ray.Origin, planeNormal) / denom;
+		if (t < 0.0f)
+		{
+			return false;
+		}
+
+		outHitPoint = ray.Origin + ray.Direction * t;
+		return true;
+	}
+
+	glm::vec3 TransformGizmo::BuildAxisDragPlaneNormal(
+		const glm::vec3& axisDirectionWS,
+		const glm::vec3& cameraWorldPos,
+		const glm::vec3& gizmoOrigin)
+	{
+		const glm::vec3 toCamera = glm::normalize(cameraWorldPos - gizmoOrigin);
+
+		// plane normal should be perpendicular to axis and face the camera as much as possible
+		glm::vec3 planeNormal = toCamera - axisDirectionWS * glm::dot(toCamera, axisDirectionWS);
+
+		if (glm::dot(planeNormal, planeNormal) < 1e-6f)
+		{
+			// fallback if camera is nearly aligned with axis
+			glm::vec3 fallback = glm::cross(axisDirectionWS, glm::vec3(0.0f, 1.0f, 0.0f));
+			if (glm::dot(fallback, fallback) < 1e-6f)
+			{
+				fallback = glm::cross(axisDirectionWS, glm::vec3(1.0f, 0.0f, 0.0f));
+			}
+			planeNormal = glm::normalize(fallback);
+		}
+		else
+		{
+			planeNormal = glm::normalize(planeNormal);
+		}
+
+		return planeNormal;
+	}
+
+	void TransformGizmo::BeginTranslateDrag(
+		const Nyx::SceneViewCameraData& viewData,
+		Nyx::Engine::Entity entity,
+		const Nyx::Engine::TransformComponent& transform,
+		const glm::vec3& gizmoOrigin,
+		const ImVec2& imageScreenMin,
+		const ImVec2& imageSize)
+	{
+		State.bDragging = true;
+		State.DragEntity = entity;
+		State.DragStartEntityPosition = transform.Position;
+		State.DragStartGizmoOrigin = gizmoOrigin;
+
+		if (State.ActiveAxis == ETransformGizmoAxis::Center)
+		{
+			// Free-move plane faces the camera
+			State.DragAxisDirectionWS = glm::vec3(0.0f);
+			State.DragPlaneOriginWS = gizmoOrigin;
+			State.DragPlaneNormalWS = glm::normalize(viewData.CameraWorldPos - gizmoOrigin);
+		}
+		else
+		{
+			State.DragAxisDirectionWS = GetAxisDirection(State.ActiveAxis, State.Space, transform);
+			State.DragPlaneOriginWS = gizmoOrigin;
+			State.DragPlaneNormalWS = BuildAxisDragPlaneNormal(
+				State.DragAxisDirectionWS,
+				viewData.CameraWorldPos,
+				gizmoOrigin
+			);
+		}
+
+		const ImVec2 mousePos = ImGui::GetMousePos();
+		const Ray ray = BuildMouseRay(viewData, imageScreenMin, imageSize, mousePos);
+
+		glm::vec3 hitPoint{};
+		if (IntersectRayPlane(ray, State.DragPlaneOriginWS, State.DragPlaneNormalWS, hitPoint))
+		{
+			State.DragStartPlaneHitWS = hitPoint;
+		}
+		else
+		{
+			State.DragStartPlaneHitWS = gizmoOrigin;
+		}
+	}
+
+	void TransformGizmo::UpdateTranslateDrag(
+		const Nyx::SceneViewCameraData& viewData,
+		Nyx::Engine::TransformComponent& transform,
+		const ImVec2& imageScreenMin,
+		const ImVec2& imageSize)
+	{
+		const ImVec2 mousePos = ImGui::GetMousePos();
+		const Ray ray = BuildMouseRay(viewData, imageScreenMin, imageSize, mousePos);
+
+		glm::vec3 hitPoint{};
+		if (!IntersectRayPlane(ray, State.DragPlaneOriginWS, State.DragPlaneNormalWS, hitPoint))
+		{
+			return;
+		}
+
+		const glm::vec3 rawDelta = hitPoint - State.DragStartPlaneHitWS;
+
+		if (State.ActiveAxis == ETransformGizmoAxis::Center)
+		{
+			transform.Position = State.DragStartEntityPosition + rawDelta;
+		}
+		else
+		{
+			const float axisAmount = glm::dot(rawDelta, State.DragAxisDirectionWS);
+			transform.Position = State.DragStartEntityPosition + State.DragAxisDirectionWS * axisAmount;
+		}
 	}
 }

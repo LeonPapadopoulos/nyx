@@ -43,6 +43,16 @@ namespace Nyx::Editor
 
 		EGizmoSpace Space = EGizmoSpace::World;
 		EGizmoOperation Operation = EGizmoOperation::Translate;
+
+		Nyx::Engine::Entity DragEntity{};
+
+		glm::vec3 DragStartEntityPosition{ 0.0f };
+		glm::vec3 DragStartGizmoOrigin{ 0.0f };
+
+		glm::vec3 DragAxisDirectionWS{ 0.0f };
+		glm::vec3 DragPlaneOriginWS{ 0.0f };
+		glm::vec3 DragPlaneNormalWS{ 0.0f };
+		glm::vec3 DragStartPlaneHitWS{ 0.0f };
 	};
 
 	class TransformGizmo
@@ -134,6 +144,44 @@ namespace Nyx::Editor
 			const ImVec2& imageSize,
 			bool bImageHovered,
 			ImDrawList* drawList);
+
+	private:
+		struct Ray
+		{
+			glm::vec3 Origin{ 0.0f };
+			glm::vec3 Direction{ 0.0f, 0.0f, -1.0f };
+		};
+
+		static Ray BuildMouseRay(
+			const Nyx::SceneViewCameraData& viewData,
+			const ImVec2& imageScreenMin,
+			const ImVec2& imageSize,
+			const ImVec2& mousePos);
+
+		static bool IntersectRayPlane(
+			const Ray& ray,
+			const glm::vec3& planeOrigin,
+			const glm::vec3& planeNormal,
+			glm::vec3& outHitPoint);
+
+		static glm::vec3 BuildAxisDragPlaneNormal(
+			const glm::vec3& axisDirectionWS,
+			const glm::vec3& cameraWorldPos,
+			const glm::vec3& gizmoOrigin);
+
+		void BeginTranslateDrag(
+			const Nyx::SceneViewCameraData& viewData,
+			Nyx::Engine::Entity entity,
+			const Nyx::Engine::TransformComponent& transform,
+			const glm::vec3& gizmoOrigin,
+			const ImVec2& imageScreenMin,
+			const ImVec2& imageSize);
+
+		void UpdateTranslateDrag(
+			const Nyx::SceneViewCameraData& viewData,
+			Nyx::Engine::TransformComponent& transform,
+			const ImVec2& imageScreenMin,
+			const ImVec2& imageSize);
 
 	private:
 		TransformGizmoState State;

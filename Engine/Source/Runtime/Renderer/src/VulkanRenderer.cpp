@@ -679,6 +679,7 @@ namespace Nyx
 		outData.View = view->SceneGlobals.View;
 		outData.Projection = view->SceneGlobals.Projection;
 		outData.ViewProjection = view->SceneGlobals.ViewProjection;
+		outData.InverseViewProjection = glm::inverse(view->SceneGlobals.ViewProjection);
 		outData.CameraWorldPos = view->SceneGlobals.CameraWorldPos;
 		outData.Extent = Extent2D{ extent.width, extent.height };
 
