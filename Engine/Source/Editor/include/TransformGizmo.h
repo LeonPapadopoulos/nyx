@@ -41,14 +41,14 @@ namespace Nyx::Editor
 		bool bDragging = false;
 		uint64_t ActiveSceneViewId = 0;
 
-		EGizmoSpace Space = EGizmoSpace::Local;
+		EGizmoSpace Space = EGizmoSpace::World;
 		EGizmoOperation Operation = EGizmoOperation::Translate;
 
 		Nyx::Engine::Entity DragEntity{};
 
 		glm::vec3 DragStartEntityPosition{ 0.0f };
 		glm::vec3 DragStartEntityScale{ 1.0f };
-		glm::vec3 DragStartEntityRotation{ 0.0f };
+		glm::quat DragStartEntityRotation{ 1.0f, 0.0f, 0.0f, 0.0f };
 		glm::vec3 DragStartGizmoOrigin{ 0.0f };
 
 		glm::vec3 DragAxisDirectionWS{ 0.0f };

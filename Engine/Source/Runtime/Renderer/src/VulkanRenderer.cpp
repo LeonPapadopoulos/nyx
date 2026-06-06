@@ -24,7 +24,6 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/norm.hpp>
 
 #include <stb_image.h>
@@ -164,14 +163,9 @@ namespace
 	}
 }
 
-//@todo move to utility library
 static glm::mat4 BuildRotationMatrix(const Nyx::Engine::TransformComponent& transform)
 {
-	glm::mat4 r = glm::mat4(1.0f);
-	r = glm::rotate(r, transform.RotationRadians.x, glm::vec3(1.0f, 0.0f, 0.0f));
-	r = glm::rotate(r, transform.RotationRadians.y, glm::vec3(0.0f, 1.0f, 0.0f));
-	r = glm::rotate(r, transform.RotationRadians.z, glm::vec3(0.0f, 0.0f, 1.0f));
-	return r;
+	return glm::toMat4(glm::normalize(transform.Rotation));
 }
 
 static glm::vec3 GetForwardVector(const Nyx::Engine::TransformComponent& transform)
@@ -498,6 +492,11 @@ namespace Nyx
 						glm::vec3(1.0f, 1.0f, 0.2f)
 					);
 				}
+
+				// Debug World Axis
+				AddDebugLine(glm::vec3(0, 0, 0), glm::vec3(1, 0, 0), glm::vec3(1, 0, 0)); // X red
+				AddDebugLine(glm::vec3(0, 0, 0), glm::vec3(0, 1, 0), glm::vec3(0, 1, 0)); // Y green
+				AddDebugLine(glm::vec3(0, 0, 0), glm::vec3(0, 0, 1), glm::vec3(0, 0, 1)); // Z blue
 
 				UploadDebugLines();
 			}

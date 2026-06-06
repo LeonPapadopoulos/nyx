@@ -395,7 +395,7 @@ namespace Nyx::Editor
 				e,
 				Nyx::Engine::TransformComponent{
 					.Position = glm::vec3(-2.0f, 0.0f, 0.0f),
-					.RotationRadians = glm::vec3(0.0f),
+					.Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
 					.Scale = glm::vec3(1.0f)
 				}
 			);
@@ -417,7 +417,7 @@ namespace Nyx::Editor
 				e,
 				Nyx::Engine::TransformComponent{
 					.Position = glm::vec3(0.0f, 0.0f, 0.0f),
-					.RotationRadians = glm::vec3(0.0f),
+					.Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
 					.Scale = glm::vec3(1.0f)
 				}
 			);
@@ -439,7 +439,7 @@ namespace Nyx::Editor
 				e,
 				Nyx::Engine::TransformComponent{
 					.Position = glm::vec3(2.0f, 0.0f, 0.0f),
-					.RotationRadians = glm::vec3(0.0f),
+					.Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
 					.Scale = glm::vec3(1.0f)
 				}
 			);

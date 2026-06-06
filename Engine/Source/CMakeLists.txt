@@ -166,6 +166,7 @@ target_compile_definitions(NyxEngine
     PUBLIC $<$<CONFIG:Release>:ENGINE_RELEASE>
 	PUBLIC $<$<CONFIG:Debug>:ASSERTIONS_ENABLED>
     PRIVATE VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS
+    PRIVATE GLM_ENABLE_EXPERIMENTAL # Quaternion Utilities
 )
 
 target_precompile_headers(NyxEngine

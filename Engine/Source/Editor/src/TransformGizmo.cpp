@@ -1063,10 +1063,9 @@ namespace Nyx::Editor
 	{
 		State.bDragging = true;
 		State.DragEntity = entity;
-		State.DragStartEntityRotation = transform.RotationRadians;
+		State.DragStartEntityRotation = transform.Rotation;
 		State.DragStartGizmoOrigin = gizmoOrigin;
 
-		// Rotation uses the selected ring axis as the drag plane normal.
 		State.DragAxisDirectionWS = GetAxisDirection(State.ActiveAxis, State.Space, transform);
 		State.DragPlaneOriginWS = gizmoOrigin;
 		State.DragPlaneNormalWS = glm::normalize(State.DragAxisDirectionWS);
@@ -1129,26 +1128,23 @@ namespace Nyx::Editor
 			State.DragPlaneNormalWS
 		);
 
-		const glm::quat startQ = glm::quat(State.DragStartEntityRotation);
-		const glm::quat deltaQ = glm::angleAxis(angleDelta, glm::normalize(State.DragAxisDirectionWS));
+		const glm::quat deltaQ = glm::angleAxis(
+			angleDelta,
+			glm::normalize(State.DragAxisDirectionWS)
+		);
 
 		glm::quat resultQ{};
 
 		if (State.Space == EGizmoSpace::World)
 		{
-			// world-space rotation
-			resultQ = glm::normalize(deltaQ * startQ);
+			resultQ = glm::normalize(deltaQ * State.DragStartEntityRotation);
 		}
 		else
 		{
-			// local-space rotation
-			resultQ = glm::normalize(startQ * deltaQ);
+			resultQ = glm::normalize(State.DragStartEntityRotation * deltaQ);
 		}
 
-		const glm::vec3 rawEuler = glm::eulerAngles(resultQ);
-
-		// Make Euler output continuous relative to current displayed rotation.
-		transform.RotationRadians = MakeEulerNear(rawEuler, transform.RotationRadians);
+		transform.Rotation = resultQ;
 	}
 
 	void TransformGizmo::BeginScaleDrag(
