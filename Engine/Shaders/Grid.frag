@@ -96,10 +96,10 @@ void main()
     color += vec3(0.28) * major;
 
     // z == 0 line
-    color = mix(color, vec3(0.65, 0.15, 0.15), axisX);
+    color = mix(color, vec3(0.65, 0.15, 0.15), axisX); // Red
 
     // x == 0 line
-    color = mix(color, vec3(0.15, 0.65, 0.15), axisZ);
+    color = mix(color, vec3(0.0, 0.4, 1.0), axisZ); // Blue
 
     color *= fade;
 
