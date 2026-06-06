@@ -41,19 +41,22 @@ namespace Nyx::Editor
 		bool bDragging = false;
 		uint64_t ActiveSceneViewId = 0;
 
-		EGizmoSpace Space = EGizmoSpace::World;
+		EGizmoSpace Space = EGizmoSpace::Local;
 		EGizmoOperation Operation = EGizmoOperation::Translate;
 
 		Nyx::Engine::Entity DragEntity{};
 
 		glm::vec3 DragStartEntityPosition{ 0.0f };
 		glm::vec3 DragStartEntityScale{ 1.0f };
+		glm::vec3 DragStartEntityRotation{ 0.0f };
 		glm::vec3 DragStartGizmoOrigin{ 0.0f };
 
 		glm::vec3 DragAxisDirectionWS{ 0.0f };
 		glm::vec3 DragPlaneOriginWS{ 0.0f };
 		glm::vec3 DragPlaneNormalWS{ 0.0f };
 		glm::vec3 DragStartPlaneHitWS{ 0.0f };
+
+		glm::vec3 DragStartRotateVectorWS{ 0.0f };
 
 		float DragStartAxisCoordinate = 1.0f;
 		float DragStartUniformRadius = 1.0f;
@@ -173,6 +176,11 @@ namespace Nyx::Editor
 			const glm::vec3& cameraWorldPos,
 			const glm::vec3& gizmoOrigin);
 
+		static float SignedAngleAroundAxis(
+			const glm::vec3& from,
+			const glm::vec3& to,
+			const glm::vec3& axis);
+
 		void BeginTranslateDrag(
 			const Nyx::SceneViewCameraData& viewData,
 			Nyx::Engine::Entity entity,
@@ -182,6 +190,20 @@ namespace Nyx::Editor
 			const ImVec2& imageSize);
 
 		void UpdateTranslateDrag(
+			const Nyx::SceneViewCameraData& viewData,
+			Nyx::Engine::TransformComponent& transform,
+			const ImVec2& imageScreenMin,
+			const ImVec2& imageSize);
+
+		void BeginRotateDrag(
+			const Nyx::SceneViewCameraData& viewData,
+			Nyx::Engine::Entity entity,
+			const Nyx::Engine::TransformComponent& transform,
+			const glm::vec3& gizmoOrigin,
+			const ImVec2& imageScreenMin,
+			const ImVec2& imageSize);
+
+		void UpdateRotateDrag(
 			const Nyx::SceneViewCameraData& viewData,
 			Nyx::Engine::TransformComponent& transform,
 			const ImVec2& imageScreenMin,

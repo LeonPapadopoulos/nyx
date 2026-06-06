@@ -3,9 +3,70 @@
 
 #include "TransformComponent.h"
 
+#include <glm/gtc/quaternion.hpp>
+
 #include <algorithm>
 #include <array>
 #include <cmath>
+
+namespace
+{
+	float WrapAnglePi(float angle)
+	{
+		constexpr float TwoPi = 6.28318530718f;
+		constexpr float Pi = 3.14159265359f;
+
+		while (angle > Pi)
+		{
+			angle -= TwoPi;
+		}
+
+		while (angle < -Pi)
+		{
+			angle += TwoPi;
+		}
+
+		return angle;
+	}
+
+	float MakeAngleNear(float angle, float reference)
+	{
+		constexpr float TwoPi = 6.28318530718f;
+
+		angle = WrapAnglePi(angle);
+		reference = WrapAnglePi(reference);
+
+		float best = angle;
+		float bestDist = std::abs(angle - reference);
+
+		const float candidates[2] =
+		{
+			angle + TwoPi,
+			angle - TwoPi
+		};
+
+		for (float candidate : candidates)
+		{
+			const float dist = std::abs(candidate - reference);
+			if (dist < bestDist)
+			{
+				best = candidate;
+				bestDist = dist;
+			}
+		}
+
+		return best;
+	}
+
+	glm::vec3 MakeEulerNear(const glm::vec3& euler, const glm::vec3& reference)
+	{
+		return glm::vec3(
+			MakeAngleNear(euler.x, reference.x),
+			MakeAngleNear(euler.y, reference.y),
+			MakeAngleNear(euler.z, reference.z)
+		);
+	}
+}
 
 namespace Nyx::Editor
 {
@@ -426,22 +487,13 @@ namespace Nyx::Editor
 
 		bool bConsumed = false;
 
-		// Begin interaction
+		// Decide which axis gets activated on click.
 		if (!State.bDragging &&
 			bImageHovered &&
 			State.HoveredAxis != ETransformGizmoAxis::None &&
 			ImGui::IsMouseClicked(ImGuiMouseButton_Left))
 		{
-			State.bDragging = true;
 			State.ActiveAxis = State.HoveredAxis;
-			bConsumed = true;
-		}
-
-		// End interaction
-		if (State.bDragging && ImGui::IsMouseReleased(ImGuiMouseButton_Left))
-		{
-			State.bDragging = false;
-			State.ActiveAxis = ETransformGizmoAxis::None;
 			bConsumed = true;
 		}
 
@@ -750,8 +802,37 @@ namespace Nyx::Editor
 		}
 
 		case EGizmoOperation::Rotate:
+		{
 			bConsumed = TickRotate(viewData, transform, gizmoOrigin, imageScreenMin, imageSize, bImageHovered, drawList);
+
+			if (!State.bDragging &&
+				bImageHovered &&
+				State.ActiveAxis != ETransformGizmoAxis::None &&
+				ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+			{
+				State.ActiveSceneViewId = sceneViewId;
+				BeginRotateDrag(viewData, entity, transform, gizmoOrigin, imageScreenMin, imageSize);
+				bConsumed = true;
+			}
+
+			if (State.bDragging && State.ActiveSceneViewId == sceneViewId)
+			{
+				UpdateRotateDrag(viewData, transform, imageScreenMin, imageSize);
+
+				if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))
+				{
+					State.bDragging = false;
+					State.ActiveAxis = ETransformGizmoAxis::None;
+					State.ActiveSceneViewId = 0;
+					bConsumed = true;
+				}
+				else
+				{
+					bConsumed = true;
+				}
+			}
 			break;
+		}
 
 		case EGizmoOperation::Scale:
 		{
@@ -872,6 +953,33 @@ namespace Nyx::Editor
 		return planeNormal;
 	}
 
+	float TransformGizmo::SignedAngleAroundAxis(
+		const glm::vec3& from,
+		const glm::vec3& to,
+		const glm::vec3& axis)
+	{
+		const glm::vec3 n = glm::normalize(axis);
+
+		glm::vec3 f = from - n * glm::dot(from, n);
+		glm::vec3 t = to - n * glm::dot(to, n);
+
+		const float fLenSq = glm::dot(f, f);
+		const float tLenSq = glm::dot(t, t);
+
+		if (fLenSq < 1e-8f || tLenSq < 1e-8f)
+		{
+			return 0.0f;
+		}
+
+		f = glm::normalize(f);
+		t = glm::normalize(t);
+
+		const float sinAngle = glm::dot(n, glm::cross(f, t));
+		const float cosAngle = glm::dot(f, t);
+
+		return std::atan2(sinAngle, cosAngle);
+	}
+
 	void TransformGizmo::BeginTranslateDrag(
 		const Nyx::SceneViewCameraData& viewData,
 		Nyx::Engine::Entity entity,
@@ -943,6 +1051,104 @@ namespace Nyx::Editor
 			const float axisAmount = glm::dot(rawDelta, State.DragAxisDirectionWS);
 			transform.Position = State.DragStartEntityPosition + State.DragAxisDirectionWS * axisAmount;
 		}
+	}
+
+	void TransformGizmo::BeginRotateDrag(
+		const Nyx::SceneViewCameraData& viewData,
+		Nyx::Engine::Entity entity,
+		const Nyx::Engine::TransformComponent& transform,
+		const glm::vec3& gizmoOrigin,
+		const ImVec2& imageScreenMin,
+		const ImVec2& imageSize)
+	{
+		State.bDragging = true;
+		State.DragEntity = entity;
+		State.DragStartEntityRotation = transform.RotationRadians;
+		State.DragStartGizmoOrigin = gizmoOrigin;
+
+		// Rotation uses the selected ring axis as the drag plane normal.
+		State.DragAxisDirectionWS = GetAxisDirection(State.ActiveAxis, State.Space, transform);
+		State.DragPlaneOriginWS = gizmoOrigin;
+		State.DragPlaneNormalWS = glm::normalize(State.DragAxisDirectionWS);
+
+		const ImVec2 mousePos = ImGui::GetMousePos();
+		const Ray ray = BuildMouseRay(viewData, imageScreenMin, imageSize, mousePos);
+
+		glm::vec3 hitPoint{};
+		if (IntersectRayPlane(ray, State.DragPlaneOriginWS, State.DragPlaneNormalWS, hitPoint))
+		{
+			State.DragStartPlaneHitWS = hitPoint;
+
+			glm::vec3 startVec = hitPoint - gizmoOrigin;
+			startVec = startVec - State.DragPlaneNormalWS * glm::dot(startVec, State.DragPlaneNormalWS);
+
+			if (glm::dot(startVec, startVec) > 1e-8f)
+			{
+				State.DragStartRotateVectorWS = glm::normalize(startVec);
+			}
+			else
+			{
+				State.DragStartRotateVectorWS = glm::vec3(1.0f, 0.0f, 0.0f);
+			}
+		}
+		else
+		{
+			State.DragStartPlaneHitWS = gizmoOrigin;
+			State.DragStartRotateVectorWS = glm::vec3(1.0f, 0.0f, 0.0f);
+		}
+	}
+
+	void TransformGizmo::UpdateRotateDrag(
+		const Nyx::SceneViewCameraData& viewData,
+		Nyx::Engine::TransformComponent& transform,
+		const ImVec2& imageScreenMin,
+		const ImVec2& imageSize)
+	{
+		const ImVec2 mousePos = ImGui::GetMousePos();
+		const Ray ray = BuildMouseRay(viewData, imageScreenMin, imageSize, mousePos);
+
+		glm::vec3 hitPoint{};
+		if (!IntersectRayPlane(ray, State.DragPlaneOriginWS, State.DragPlaneNormalWS, hitPoint))
+		{
+			return;
+		}
+
+		glm::vec3 currentVec = hitPoint - State.DragStartGizmoOrigin;
+		currentVec = currentVec - State.DragPlaneNormalWS * glm::dot(currentVec, State.DragPlaneNormalWS);
+
+		if (glm::dot(currentVec, currentVec) < 1e-8f)
+		{
+			return;
+		}
+
+		currentVec = glm::normalize(currentVec);
+
+		const float angleDelta = SignedAngleAroundAxis(
+			State.DragStartRotateVectorWS,
+			currentVec,
+			State.DragPlaneNormalWS
+		);
+
+		const glm::quat startQ = glm::quat(State.DragStartEntityRotation);
+		const glm::quat deltaQ = glm::angleAxis(angleDelta, glm::normalize(State.DragAxisDirectionWS));
+
+		glm::quat resultQ{};
+
+		if (State.Space == EGizmoSpace::World)
+		{
+			// world-space rotation
+			resultQ = glm::normalize(deltaQ * startQ);
+		}
+		else
+		{
+			// local-space rotation
+			resultQ = glm::normalize(startQ * deltaQ);
+		}
+
+		const glm::vec3 rawEuler = glm::eulerAngles(resultQ);
+
+		// Make Euler output continuous relative to current displayed rotation.
+		transform.RotationRadians = MakeEulerNear(rawEuler, transform.RotationRadians);
 	}
 
 	void TransformGizmo::BeginScaleDrag(

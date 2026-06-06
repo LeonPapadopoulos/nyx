@@ -161,7 +161,7 @@ namespace Nyx::Editor
 				if (world.Has<Nyx::Engine::TransformComponent>(entity))
 				{
 					auto& transform = world.Get<Nyx::Engine::TransformComponent>(entity);
-					transform.RotationRadians.y += deltaTime;
+					//transform.RotationRadians.y += deltaTime;
 				}
 			}
 		);
