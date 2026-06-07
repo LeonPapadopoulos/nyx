@@ -54,7 +54,7 @@ namespace Nyx::Editor
 				// Rotation
 				ImGui::PushID("Rotation");
 				{
-					glm::vec3 rotationEuler = component.GetRotationEulerRadians();
+					glm::vec3 rotationDegrees = glm::degrees(component.GetRotationEulerRadians());
 
 					ImGui::TableNextRow();
 					ImGui::TableSetColumnIndex(0);
@@ -64,9 +64,9 @@ namespace Nyx::Editor
 					ImGui::TableSetColumnIndex(1);
 					ImGui::SetNextItemWidth(-FLT_MIN);
 
-					if (ImGui::DragFloat3("##Field", &rotationEuler.x, 0.01f))
+					if (ImGui::DragFloat3("##Field", &rotationDegrees.x, 1.0f))
 					{
-						component.SetRotationEulerRadians(rotationEuler);
+						component.SetRotationEulerRadians(glm::radians(rotationDegrees));
 					}
 				}
 				ImGui::PopID();
