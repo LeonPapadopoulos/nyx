@@ -41,7 +41,7 @@ namespace Nyx::Editor
 		bool bDragging = false;
 		uint64_t ActiveSceneViewId = 0;
 
-		EGizmoSpace Space = EGizmoSpace::World;
+		EGizmoSpace Space = EGizmoSpace::Local;
 		EGizmoOperation Operation = EGizmoOperation::Translate;
 
 		Nyx::Engine::Entity DragEntity{};
@@ -52,6 +52,8 @@ namespace Nyx::Editor
 		glm::vec3 DragStartGizmoOrigin{ 0.0f };
 
 		glm::vec3 DragAxisDirectionWS{ 0.0f };
+		glm::vec3 DragAxisDirectionLS{ 0.0f };
+
 		glm::vec3 DragPlaneOriginWS{ 0.0f };
 		glm::vec3 DragPlaneNormalWS{ 0.0f };
 		glm::vec3 DragStartPlaneHitWS{ 0.0f };
@@ -109,6 +111,8 @@ namespace Nyx::Editor
 			ETransformGizmoAxis axis,
 			EGizmoSpace space,
 			const Nyx::Engine::TransformComponent& transform);
+
+		static glm::vec3 GetAxisBasisLS(ETransformGizmoAxis axis);
 
 		static ImU32 GetAxisColor(ETransformGizmoAxis axis, bool bHighlighted);
 

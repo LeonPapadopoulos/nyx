@@ -167,6 +167,17 @@ namespace Nyx::Editor
 		return glm::normalize(glm::vec3(localToWorld * glm::vec4(basis, 0.0f)));
 	}
 
+	glm::vec3 TransformGizmo::GetAxisBasisLS(ETransformGizmoAxis axis)
+	{
+		switch (axis)
+		{
+		case ETransformGizmoAxis::X: return glm::vec3(1.0f, 0.0f, 0.0f);
+		case ETransformGizmoAxis::Y: return glm::vec3(0.0f, 1.0f, 0.0f);
+		case ETransformGizmoAxis::Z: return glm::vec3(0.0f, 0.0f, 1.0f);
+		default: return glm::vec3(0.0f);
+		}
+	}
+
 	ImU32 TransformGizmo::GetAxisColor(ETransformGizmoAxis axis, bool bHighlighted)
 	{
 		if (bHighlighted)
@@ -425,6 +436,7 @@ namespace Nyx::Editor
 		for (RingData& ring : rings)
 		{
 			const glm::vec3 axisNormal = GetAxisDirection(ring.Axis, State.Space, transform);
+
 			BuildRotationRingPoints(
 				gizmoOrigin,
 				axisNormal,
@@ -1066,7 +1078,19 @@ namespace Nyx::Editor
 		State.DragStartEntityRotation = transform.Rotation;
 		State.DragStartGizmoOrigin = gizmoOrigin;
 
-		State.DragAxisDirectionWS = GetAxisDirection(State.ActiveAxis, State.Space, transform);
+		// Always keep the local axis basis too.
+		State.DragAxisDirectionLS = GetAxisBasisLS(State.ActiveAxis);
+
+		// Freeze the world-space axis at drag start for the drag plane and ring interaction.
+		if (State.Space == EGizmoSpace::World)
+		{
+			State.DragAxisDirectionWS = GetAxisBasisLS(State.ActiveAxis);
+		}
+		else
+		{
+			State.DragAxisDirectionWS = glm::normalize(transform.Rotation * State.DragAxisDirectionLS);
+		}
+
 		State.DragPlaneOriginWS = gizmoOrigin;
 		State.DragPlaneNormalWS = glm::normalize(State.DragAxisDirectionWS);
 
@@ -1087,13 +1111,25 @@ namespace Nyx::Editor
 			}
 			else
 			{
-				State.DragStartRotateVectorWS = glm::vec3(1.0f, 0.0f, 0.0f);
+				// fallback tangent in plane
+				glm::vec3 fallback = glm::cross(State.DragPlaneNormalWS, glm::vec3(0.0f, 1.0f, 0.0f));
+				if (glm::dot(fallback, fallback) < 1e-8f)
+				{
+					fallback = glm::cross(State.DragPlaneNormalWS, glm::vec3(1.0f, 0.0f, 0.0f));
+				}
+				State.DragStartRotateVectorWS = glm::normalize(fallback);
 			}
 		}
 		else
 		{
 			State.DragStartPlaneHitWS = gizmoOrigin;
-			State.DragStartRotateVectorWS = glm::vec3(1.0f, 0.0f, 0.0f);
+
+			glm::vec3 fallback = glm::cross(State.DragPlaneNormalWS, glm::vec3(0.0f, 1.0f, 0.0f));
+			if (glm::dot(fallback, fallback) < 1e-8f)
+			{
+				fallback = glm::cross(State.DragPlaneNormalWS, glm::vec3(1.0f, 0.0f, 0.0f));
+			}
+			State.DragStartRotateVectorWS = glm::normalize(fallback);
 		}
 	}
 
@@ -1128,23 +1164,20 @@ namespace Nyx::Editor
 			State.DragPlaneNormalWS
 		);
 
-		const glm::quat deltaQ = glm::angleAxis(
-			angleDelta,
-			glm::normalize(State.DragAxisDirectionWS)
-		);
-
-		glm::quat resultQ{};
+		glm::quat deltaQ{};
 
 		if (State.Space == EGizmoSpace::World)
 		{
-			resultQ = glm::normalize(deltaQ * State.DragStartEntityRotation);
+			// Axis is world-space
+			deltaQ = glm::angleAxis(angleDelta, glm::normalize(State.DragAxisDirectionWS));
+			transform.Rotation = glm::normalize(deltaQ * State.DragStartEntityRotation);
 		}
 		else
 		{
-			resultQ = glm::normalize(State.DragStartEntityRotation * deltaQ);
+			// Axis must be local-space for post-multiplication
+			deltaQ = glm::angleAxis(angleDelta, glm::normalize(State.DragAxisDirectionLS));
+			transform.Rotation = glm::normalize(State.DragStartEntityRotation * deltaQ);
 		}
-
-		transform.Rotation = resultQ;
 	}
 
 	void TransformGizmo::BeginScaleDrag(
