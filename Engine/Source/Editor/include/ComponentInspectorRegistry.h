@@ -12,7 +12,7 @@ namespace Nyx::Editor
 	{
 		const char* DisplayName = "";
 		std::function<bool(const Nyx::Engine::Registry&, Nyx::Engine::Entity)> HasComponent;
-		std::function<void(Nyx::Engine::Registry&, Nyx::Engine::Entity)> DrawComponent;
+		std::function<void(Nyx::Engine::Registry&, Nyx::Engine::Entity, Nyx::Editor::InspectorDrawContext&)> DrawComponent;
 	};
 
 	template<typename T>
@@ -30,7 +30,7 @@ namespace Nyx::Editor
 			};
 
 		entry.DrawComponent =
-			[](Nyx::Engine::Registry& world, Nyx::Engine::Entity entity)
+			[](Nyx::Engine::Registry& world, Nyx::Engine::Entity entity, Nyx::Editor::InspectorDrawContext& drawContext)
 			{
 				T& component = world.Get<T>(entity);
 
@@ -39,7 +39,7 @@ namespace Nyx::Editor
 				if (ImGui::CollapsingHeader(ComponentEditorMeta<T>::GetDisplayName(), ImGuiTreeNodeFlags_DefaultOpen))
 				{
 					DrawProperties(&component, ComponentEditorMeta<T>::GetProperties());
-					ComponentEditorMeta<T>::DrawExtra(component);
+					ComponentEditorMeta<T>::DrawExtra(component, drawContext);
 				}
 
 				ImGui::PopID();

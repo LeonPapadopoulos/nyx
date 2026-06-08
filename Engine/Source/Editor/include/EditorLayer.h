@@ -4,6 +4,7 @@
 #include "SceneDocument.h"
 #include "TransformGizmo.h"
 #include "Extent2D.h"
+#include "InspectorDrawContext.h"
 
 namespace Nyx::Editor
 {
@@ -48,6 +49,7 @@ namespace Nyx::Editor
 		uint64_t MainSceneViewId = 0;
 		uint64_t SecondarySceneViewId = 0;
 
+		InspectorDrawContext DetailsPanelContext;
 		TransformGizmo TransformGizmoInstance;
 
 		bool bShowSceneView = true;

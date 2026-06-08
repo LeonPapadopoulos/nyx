@@ -1,6 +1,9 @@
 #pragma once
 
 #include "EditorProperty.h"
+#include "InspectorDrawContext.h"
+
+#include <vector>
 
 namespace Nyx::Editor
 {
@@ -8,6 +11,21 @@ namespace Nyx::Editor
 	struct ComponentEditorMeta
 	{
 		static constexpr bool Enabled = false;
+
+		static const char* GetDisplayName()
+		{
+			return "Unknown";
+		}
+
+		static const std::vector<Nyx::Editor::EditorPropertyDesc>& GetProperties()
+		{
+			static const std::vector<Nyx::Editor::EditorPropertyDesc> EmptyProperties{};
+			return EmptyProperties;
+		}
+
+		static void DrawExtra(T&, Nyx::Editor::InspectorDrawContext&)
+		{
+		}
 	};
 }
 
@@ -34,7 +52,7 @@ namespace Nyx::Editor
 			return Properties;                                                                  \
 		}                                                                                       \
 		                                                                                        \
-		static void DrawExtra(ComponentType&)                                                   \
+		static void DrawExtra(ComponentType&, Nyx::Editor::InspectorDrawContext&)               \
 		{                                                                                       \
 		}                                                                                       \
-	}
+	};

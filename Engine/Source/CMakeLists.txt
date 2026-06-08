@@ -64,6 +64,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Editor/src/ComponentEditorRegistration.cpp
     ${NYX_ENGINE_ROOT}/Editor/src/ComponentEditors.cpp
     ${NYX_ENGINE_ROOT}/Editor/src/ComponentInspectorRegistry.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/InspectorDrawContext.cpp
     ${NYX_ENGINE_ROOT}/Editor/src/TransformGizmo.cpp
 )
 
@@ -116,6 +117,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Editor/include/ComponentEditorRegistration.h
     ${NYX_ENGINE_ROOT}/Editor/include/ComponentEditors.h
     ${NYX_ENGINE_ROOT}/Editor/include/ComponentInspectorRegistry.h
+    ${NYX_ENGINE_ROOT}/Editor/include/InspectorDrawContext.h
     ${NYX_ENGINE_ROOT}/Editor/include/TransformGizmo.h
 )
 

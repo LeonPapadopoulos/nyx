@@ -1,10 +1,14 @@
 #pragma once
 
 #include "ComponentEditorRegistration.h"
+#include "InspectorDrawContext.h"
 #include "MeshRendererComponent.h"
 
+#include "Entity.h"
 #include "NameComponent.h"
 #include "TransformComponent.h"
+
+#include <glm/glm.hpp>
 
 NYX_REGISTER_COMPONENT_EDITOR(
 	Nyx::Engine::NameComponent,
@@ -30,8 +34,36 @@ namespace Nyx::Editor
 			return EmptyProperties;
 		}
 
-		static void DrawExtra(Nyx::Engine::TransformComponent& component)
+		static void DrawExtra(
+			Nyx::Engine::TransformComponent& component,
+			Nyx::Editor::InspectorDrawContext& drawContext)
 		{
+			auto WrapDegrees180 = [](float degrees) -> float
+				{
+					while (degrees > 180.0f)
+					{
+						degrees -= 360.0f;
+					}
+
+					while (degrees < -180.0f)
+					{
+						degrees += 360.0f;
+					}
+
+					return degrees;
+				};
+
+			auto WrapEulerDegrees180 = [&](const glm::vec3& degrees) -> glm::vec3
+				{
+					return glm::vec3(
+						WrapDegrees180(degrees.x),
+						WrapDegrees180(degrees.y),
+						WrapDegrees180(degrees.z)
+					);
+				};
+
+			auto& rotState = drawContext.TransformRotationState;
+
 			if (ImGui::BeginTable("TransformProperties", 2, ImGuiTableFlags_SizingStretchProp))
 			{
 				ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 140.0f);
@@ -51,10 +83,15 @@ namespace Nyx::Editor
 				}
 				ImGui::PopID();
 
-				// Rotation
+				// Rotation (degrees UI, quaternion storage)
 				ImGui::PushID("Rotation");
 				{
-					glm::vec3 rotationDegrees = glm::degrees(component.GetRotationEulerRadians());
+					if (!rotState.bEditing || rotState.TargetId != drawContext.CurrentTargetId)
+					{
+						rotState.TargetId = drawContext.CurrentTargetId;
+						rotState.CachedDegrees =
+							WrapEulerDegrees180(glm::degrees(component.GetRotationEulerRadians()));
+					}
 
 					ImGui::TableNextRow();
 					ImGui::TableSetColumnIndex(0);
@@ -64,9 +101,22 @@ namespace Nyx::Editor
 					ImGui::TableSetColumnIndex(1);
 					ImGui::SetNextItemWidth(-FLT_MIN);
 
-					if (ImGui::DragFloat3("##Field", &rotationDegrees.x, 1.0f))
+					if (ImGui::DragFloat3("##Field", &rotState.CachedDegrees.x, 1.0f))
 					{
-						component.SetRotationEulerRadians(glm::radians(rotationDegrees));
+						component.SetRotationEulerRadians(glm::radians(rotState.CachedDegrees));
+					}
+
+					if (ImGui::IsItemActivated())
+					{
+						rotState.bEditing = true;
+						rotState.TargetId = drawContext.CurrentTargetId;
+					}
+
+					if (ImGui::IsItemDeactivatedAfterEdit())
+					{
+						rotState.bEditing = false;
+						rotState.CachedDegrees =
+							WrapEulerDegrees180(glm::degrees(component.GetRotationEulerRadians()));
 					}
 				}
 				ImGui::PopID();
@@ -113,7 +163,9 @@ namespace Nyx::Editor
 			return Properties;
 		}
 
-		static void DrawExtra(Nyx::Engine::MeshRendererComponent& component)
+		static void DrawExtra(
+			Nyx::Engine::MeshRendererComponent& component,
+			Nyx::Editor::InspectorDrawContext& drawContext)
 		{
 			ImGui::Separator();
 			ImGui::Text("Mesh: %p", static_cast<void*>(component.MeshAsset));

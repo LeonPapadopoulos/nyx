@@ -254,9 +254,9 @@ namespace Nyx::Editor
 			return;
 		}
 
-		const Nyx::Engine::Entity entity = selection.value();
+		const Nyx::Engine::Entity selectedEntity = selection.value();
 
-		if (!world.IsAlive(entity))
+		if (!world.IsAlive(selectedEntity))
 		{
 			ImGui::TextUnformatted("Selected entity is no longer valid.");
 			selection.reset();
@@ -264,7 +264,7 @@ namespace Nyx::Editor
 			return;
 		}
 
-		ImGui::Text("Entity: %u", entity.Index());
+		ImGui::Text("Entity: %u", selectedEntity.Index());
 		ImGui::Separator();
 
 		// @todo: Move away from manually hardcoding the visuals of 
@@ -273,17 +273,18 @@ namespace Nyx::Editor
 		// into code generation for the needed field meta data
 
 		// Scope all the displayed details to that particular entity via its ID / TypedHandle
-		ImGui::PushID(static_cast<int>(entity.Value));
+		ImGui::PushID(static_cast<int>(selectedEntity.Value));
 
 		// @todo: Find a more robust (and automated) naming approach,
 		// so we can easily, and reliably avoid Naming collisions among UI elements.
 		// (Currently being dodged by using '##SomeSubInfo')
 
+		DetailsPanelContext.CurrentTargetId = Nyx::Editor::MakeInspectorTargetId(selectedEntity);
 		for (const ComponentInspectorEntry& inspector : GetDefaultComponentInspectors())
 		{
-			if (inspector.HasComponent(world, entity))
+			if (inspector.HasComponent(world, selectedEntity))
 			{
-				inspector.DrawComponent(world, entity);
+				inspector.DrawComponent(world, selectedEntity, DetailsPanelContext);
 			}
 		}
 
