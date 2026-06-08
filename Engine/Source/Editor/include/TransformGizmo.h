@@ -6,7 +6,7 @@
 #include "TransformComponent.h"
 
 #include "imgui.h"
-
+#include <array>
 #include <glm/glm.hpp>
 
 namespace Nyx::Editor
@@ -17,7 +17,10 @@ namespace Nyx::Editor
 		X,
 		Y,
 		Z,
-		Center
+		Center,
+		PlaneXY,
+		PlaneXZ,
+		PlaneYZ
 	};
 
 	enum class EGizmoSpace : uint8_t
@@ -61,6 +64,7 @@ namespace Nyx::Editor
 		glm::vec3 DragStartRotateVectorWS{ 0.0f };
 
 		float DragStartAxisCoordinate = 1.0f;
+		glm::vec2 DragStartPlaneCoordinates{ 1.0f, 1.0f };
 		float DragStartUniformRadius = 1.0f;
 	};
 
@@ -97,7 +101,34 @@ namespace Nyx::Editor
 			bool bVisible = false;
 		};
 
+		struct PlaneScreenHandle
+		{
+			ETransformGizmoAxis Handle = ETransformGizmoAxis::None;
+			std::array<glm::vec3, 4> WorldCorners{};
+			std::array<ImVec2, 4> ScreenCorners{};
+			bool bVisible = false;
+		};
+
 	private:
+		static bool IsPlaneHandle(ETransformGizmoAxis handle);
+		static void GetPlaneAxes(
+			ETransformGizmoAxis handle,
+			ETransformGizmoAxis& outAxisA,
+			ETransformGizmoAxis& outAxisB);
+
+		static bool PointInTriangle2D(
+			const ImVec2& p,
+			const ImVec2& a,
+			const ImVec2& b,
+			const ImVec2& c);
+
+		static bool PointInQuad2D(
+			const ImVec2& p,
+			const ImVec2& a,
+			const ImVec2& b,
+			const ImVec2& c,
+			const ImVec2& d);
+
 		static bool ProjectWorldToSceneImage(
 			const Nyx::SceneViewCameraData& viewData,
 			const glm::vec3& worldPos,

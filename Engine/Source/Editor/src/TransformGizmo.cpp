@@ -75,6 +75,70 @@ namespace Nyx::Editor
 		constexpr float Pi = 3.14159265359f;
 	}
 
+	bool TransformGizmo::IsPlaneHandle(ETransformGizmoAxis handle)
+	{
+		return handle == ETransformGizmoAxis::PlaneXY ||
+			handle == ETransformGizmoAxis::PlaneXZ ||
+			handle == ETransformGizmoAxis::PlaneYZ;
+	}
+
+	void TransformGizmo::GetPlaneAxes(
+		ETransformGizmoAxis handle,
+		ETransformGizmoAxis& outAxisA,
+		ETransformGizmoAxis& outAxisB)
+	{
+		switch (handle)
+		{
+		case ETransformGizmoAxis::PlaneXY:
+			outAxisA = ETransformGizmoAxis::X;
+			outAxisB = ETransformGizmoAxis::Y;
+			break;
+
+		case ETransformGizmoAxis::PlaneXZ:
+			outAxisA = ETransformGizmoAxis::X;
+			outAxisB = ETransformGizmoAxis::Z;
+			break;
+
+		case ETransformGizmoAxis::PlaneYZ:
+			outAxisA = ETransformGizmoAxis::Y;
+			outAxisB = ETransformGizmoAxis::Z;
+			break;
+
+		default:
+			outAxisA = ETransformGizmoAxis::None;
+			outAxisB = ETransformGizmoAxis::None;
+			break;
+		}
+	}
+
+	bool TransformGizmo::PointInTriangle2D(
+		const ImVec2& p,
+		const ImVec2& a,
+		const ImVec2& b,
+		const ImVec2& c)
+	{
+		auto Sign = [](const ImVec2& p1, const ImVec2& p2, const ImVec2& p3) -> float
+			{
+				return (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y);
+			};
+
+		const bool b1 = Sign(p, a, b) < 0.0f;
+		const bool b2 = Sign(p, b, c) < 0.0f;
+		const bool b3 = Sign(p, c, a) < 0.0f;
+
+		return (b1 == b2) && (b2 == b3);
+	}
+
+	bool TransformGizmo::PointInQuad2D(
+		const ImVec2& p,
+		const ImVec2& a,
+		const ImVec2& b,
+		const ImVec2& c,
+		const ImVec2& d)
+	{
+		return PointInTriangle2D(p, a, b, c) || PointInTriangle2D(p, a, c, d);
+	}
+
 	bool TransformGizmo::ProjectWorldToSceneImage(
 		const Nyx::SceneViewCameraData& viewData,
 		const glm::vec3& worldPos,
@@ -190,6 +254,11 @@ namespace Nyx::Editor
 		case ETransformGizmoAxis::X: return IM_COL32(255, 80, 80, 255);
 		case ETransformGizmoAxis::Y: return IM_COL32(80, 255, 80, 255);
 		case ETransformGizmoAxis::Z: return IM_COL32(80, 160, 255, 255);
+
+		case ETransformGizmoAxis::PlaneXY: return IM_COL32(255, 210, 80, 110);
+		case ETransformGizmoAxis::PlaneXZ: return IM_COL32(220, 100, 255, 110);
+		case ETransformGizmoAxis::PlaneYZ: return IM_COL32(80, 220, 220, 110);
+
 		case ETransformGizmoAxis::Center: return IM_COL32(240, 240, 240, 255);
 		default: return IM_COL32(255, 255, 255, 255);
 		}
@@ -251,10 +320,15 @@ namespace Nyx::Editor
 		const float gizmoScale = std::max(0.5f, distanceToCamera * 0.15f);
 
 		AxisScreenSegment segments[3]{};
+		PlaneScreenHandle planes[3]{};
 
 		segments[0].Axis = ETransformGizmoAxis::X;
 		segments[1].Axis = ETransformGizmoAxis::Y;
 		segments[2].Axis = ETransformGizmoAxis::Z;
+
+		planes[0].Handle = ETransformGizmoAxis::PlaneXY;
+		planes[1].Handle = ETransformGizmoAxis::PlaneXZ;
+		planes[2].Handle = ETransformGizmoAxis::PlaneYZ;
 
 		for (AxisScreenSegment& segment : segments)
 		{
@@ -272,6 +346,39 @@ namespace Nyx::Editor
 			segment.bVisible = bStartOk && bEndOk;
 			segment.ScreenStart = screenStart;
 			segment.ScreenEnd = screenEnd;
+		}
+
+		// Build small plane plates near origin
+		for (PlaneScreenHandle& plane : planes)
+		{
+			ETransformGizmoAxis axisA{};
+			ETransformGizmoAxis axisB{};
+			GetPlaneAxes(plane.Handle, axisA, axisB);
+
+			const glm::vec3 dirA = GetAxisDirection(axisA, State.Space, transform);
+			const glm::vec3 dirB = GetAxisDirection(axisB, State.Space, transform);
+
+			const float inner = gizmoScale * 0.18f;
+			const float outer = gizmoScale * 0.34f;
+
+			plane.WorldCorners[0] = gizmoOrigin + dirA * inner + dirB * inner;
+			plane.WorldCorners[1] = gizmoOrigin + dirA * outer + dirB * inner;
+			plane.WorldCorners[2] = gizmoOrigin + dirA * outer + dirB * outer;
+			plane.WorldCorners[3] = gizmoOrigin + dirA * inner + dirB * outer;
+
+			plane.bVisible = true;
+
+			for (int i = 0; i < 4; ++i)
+			{
+				ImVec2 projected{};
+				if (!ProjectWorldToSceneImage(viewData, plane.WorldCorners[i], imageScreenMin, imageSize, projected))
+				{
+					plane.bVisible = false;
+					break;
+				}
+
+				plane.ScreenCorners[i] = projected;
+			}
 		}
 
 		ImVec2 screenOrigin{};
@@ -309,6 +416,25 @@ namespace Nyx::Editor
 					}
 				}
 
+				// Plane handles override axis if inside quad
+				for (const PlaneScreenHandle& plane : planes)
+				{
+					if (!plane.bVisible)
+					{
+						continue;
+					}
+
+					if (PointInQuad2D(
+						mouse,
+						plane.ScreenCorners[0],
+						plane.ScreenCorners[1],
+						plane.ScreenCorners[2],
+						plane.ScreenCorners[3]))
+					{
+						State.HoveredAxis = plane.Handle;
+					}
+				}
+
 				// Center hover overrides if close enough
 				if (bOriginVisible)
 				{
@@ -336,7 +462,32 @@ namespace Nyx::Editor
 			bConsumed = true;
 		}
 
-		// Draw axes
+		// Draw plane handles first
+		for (const PlaneScreenHandle& plane : planes)
+		{
+			if (!plane.bVisible)
+			{
+				continue;
+			}
+
+			const bool bHighlighted =
+				(State.HoveredAxis == plane.Handle) ||
+				(State.ActiveAxis == plane.Handle && State.bDragging);
+
+			const ImU32 fillColor = GetAxisColor(plane.Handle, bHighlighted);
+			const ImU32 outlineColor = bHighlighted ? IM_COL32(255, 255, 0, 255) : IM_COL32(0, 0, 0, 180);
+
+			drawList->AddConvexPolyFilled(plane.ScreenCorners.data(), 4, fillColor);
+
+			for (int i = 0; i < 4; ++i)
+			{
+				const ImVec2& a = plane.ScreenCorners[i];
+				const ImVec2& b = plane.ScreenCorners[(i + 1) % 4];
+				drawList->AddLine(a, b, outlineColor, bHighlighted ? 2.0f : 1.0f);
+			}
+		}
+
+		// Draw axis handles
 		for (const AxisScreenSegment& segment : segments)
 		{
 			if (!segment.bVisible)
@@ -389,7 +540,7 @@ namespace Nyx::Editor
 			drawList->AddTriangleFilled(left, right, tip, color);
 		}
 
-		// Draw center free-move handle
+		// Draw center handle
 		if (bOriginVisible)
 		{
 			const bool bHighlighted =
@@ -592,6 +743,7 @@ namespace Nyx::Editor
 
 		AxisScreenSegment segments[3]{};
 		AxisScreenHandle handles[3]{};
+		PlaneScreenHandle planes[3]{};
 
 		segments[0].Axis = ETransformGizmoAxis::X;
 		segments[1].Axis = ETransformGizmoAxis::Y;
@@ -601,7 +753,11 @@ namespace Nyx::Editor
 		handles[1].Axis = ETransformGizmoAxis::Y;
 		handles[2].Axis = ETransformGizmoAxis::Z;
 
-		// Important: first scale implementation is LOCAL-space only.
+		planes[0].Handle = ETransformGizmoAxis::PlaneXY;
+		planes[1].Handle = ETransformGizmoAxis::PlaneXZ;
+		planes[2].Handle = ETransformGizmoAxis::PlaneYZ;
+
+		// Scale is LOCAL-space only
 		for (int i = 0; i < 3; ++i)
 		{
 			const glm::vec3 axisDir = GetAxisDirection(segments[i].Axis, EGizmoSpace::Local, transform);
@@ -625,6 +781,39 @@ namespace Nyx::Editor
 			segments[i].ScreenStart = screenStart;
 			segments[i].ScreenEnd = screenEnd;
 			handles[i].ScreenPos = screenHandle;
+		}
+
+		// Build plane handles
+		for (PlaneScreenHandle& plane : planes)
+		{
+			ETransformGizmoAxis axisA{};
+			ETransformGizmoAxis axisB{};
+			GetPlaneAxes(plane.Handle, axisA, axisB);
+
+			const glm::vec3 dirA = GetAxisDirection(axisA, EGizmoSpace::Local, transform);
+			const glm::vec3 dirB = GetAxisDirection(axisB, EGizmoSpace::Local, transform);
+
+			const float inner = gizmoScale * 0.18f;
+			const float outer = gizmoScale * 0.34f;
+
+			plane.WorldCorners[0] = gizmoOrigin + dirA * inner + dirB * inner;
+			plane.WorldCorners[1] = gizmoOrigin + dirA * outer + dirB * inner;
+			plane.WorldCorners[2] = gizmoOrigin + dirA * outer + dirB * outer;
+			plane.WorldCorners[3] = gizmoOrigin + dirA * inner + dirB * outer;
+
+			plane.bVisible = true;
+
+			for (int i = 0; i < 4; ++i)
+			{
+				ImVec2 projected{};
+				if (!ProjectWorldToSceneImage(viewData, plane.WorldCorners[i], imageScreenMin, imageSize, projected))
+				{
+					plane.bVisible = false;
+					break;
+				}
+
+				plane.ScreenCorners[i] = projected;
+			}
 		}
 
 		ImVec2 screenOrigin{};
@@ -665,6 +854,25 @@ namespace Nyx::Editor
 					}
 				}
 
+				// Plane plates override axes
+				for (const PlaneScreenHandle& plane : planes)
+				{
+					if (!plane.bVisible)
+					{
+						continue;
+					}
+
+					if (PointInQuad2D(
+						mouse,
+						plane.ScreenCorners[0],
+						plane.ScreenCorners[1],
+						plane.ScreenCorners[2],
+						plane.ScreenCorners[3]))
+					{
+						State.HoveredAxis = plane.Handle;
+					}
+				}
+
 				// Center = uniform scale
 				if (bOriginVisible)
 				{
@@ -692,6 +900,32 @@ namespace Nyx::Editor
 			bConsumed = true;
 		}
 
+		// Draw plane handles first
+		for (const PlaneScreenHandle& plane : planes)
+		{
+			if (!plane.bVisible)
+			{
+				continue;
+			}
+
+			const bool bHighlighted =
+				(State.HoveredAxis == plane.Handle) ||
+				(State.ActiveAxis == plane.Handle && State.bDragging);
+
+			const ImU32 fillColor = GetAxisColor(plane.Handle, bHighlighted);
+			const ImU32 outlineColor = bHighlighted ? IM_COL32(255, 255, 0, 255) : IM_COL32(0, 0, 0, 180);
+
+			drawList->AddConvexPolyFilled(plane.ScreenCorners.data(), 4, fillColor);
+
+			for (int i = 0; i < 4; ++i)
+			{
+				const ImVec2& a = plane.ScreenCorners[i];
+				const ImVec2& b = plane.ScreenCorners[(i + 1) % 4];
+				drawList->AddLine(a, b, outlineColor, bHighlighted ? 2.0f : 1.0f);
+			}
+		}
+
+		// Draw axis scale handles
 		for (int i = 0; i < 3; ++i)
 		{
 			if (!segments[i].bVisible || !handles[i].bVisible)
@@ -715,7 +949,7 @@ namespace Nyx::Editor
 			);
 		}
 
-		// Center = uniform scale handle
+		// Center = uniform scale
 		if (bOriginVisible)
 		{
 			const bool bHighlighted =
@@ -1007,10 +1241,23 @@ namespace Nyx::Editor
 
 		if (State.ActiveAxis == ETransformGizmoAxis::Center)
 		{
-			// Free-move plane faces the camera
+			// Free-move plane faces camera
 			State.DragAxisDirectionWS = glm::vec3(0.0f);
 			State.DragPlaneOriginWS = gizmoOrigin;
 			State.DragPlaneNormalWS = glm::normalize(viewData.CameraWorldPos - gizmoOrigin);
+		}
+		else if (IsPlaneHandle(State.ActiveAxis))
+		{
+			ETransformGizmoAxis axisA{};
+			ETransformGizmoAxis axisB{};
+			GetPlaneAxes(State.ActiveAxis, axisA, axisB);
+
+			const glm::vec3 dirA = GetAxisDirection(axisA, State.Space, transform);
+			const glm::vec3 dirB = GetAxisDirection(axisB, State.Space, transform);
+
+			State.DragAxisDirectionWS = glm::vec3(0.0f);
+			State.DragPlaneOriginWS = gizmoOrigin;
+			State.DragPlaneNormalWS = glm::normalize(glm::cross(dirA, dirB));
 		}
 		else
 		{
@@ -1057,6 +1304,11 @@ namespace Nyx::Editor
 		if (State.ActiveAxis == ETransformGizmoAxis::Center)
 		{
 			transform.Position = State.DragStartEntityPosition + rawDelta;
+		}
+		else if (IsPlaneHandle(State.ActiveAxis))
+		{
+			glm::vec3 planeDelta = rawDelta - State.DragPlaneNormalWS * glm::dot(rawDelta, State.DragPlaneNormalWS);
+			transform.Position = State.DragStartEntityPosition + planeDelta;
 		}
 		else
 		{
@@ -1198,7 +1450,7 @@ namespace Nyx::Editor
 
 		if (State.ActiveAxis == ETransformGizmoAxis::Center)
 		{
-			// Uniform scale uses a camera-facing plane.
+			// Uniform scale uses a camera-facing plane
 			State.DragAxisDirectionWS = glm::vec3(0.0f);
 			State.DragPlaneOriginWS = gizmoOrigin;
 			State.DragPlaneNormalWS = glm::normalize(viewData.CameraWorldPos - gizmoOrigin);
@@ -1218,9 +1470,44 @@ namespace Nyx::Editor
 				State.DragStartUniformRadius = gizmoScale;
 			}
 		}
+		else if (IsPlaneHandle(State.ActiveAxis))
+		{
+			ETransformGizmoAxis axisA{};
+			ETransformGizmoAxis axisB{};
+			GetPlaneAxes(State.ActiveAxis, axisA, axisB);
+
+			// Scale stays LOCAL-space only
+			const glm::vec3 axisAWS = GetAxisDirection(axisA, EGizmoSpace::Local, transform);
+			const glm::vec3 axisBWS = GetAxisDirection(axisB, EGizmoSpace::Local, transform);
+
+			State.DragPlaneOriginWS = gizmoOrigin;
+			State.DragPlaneNormalWS = glm::normalize(glm::cross(axisAWS, axisBWS));
+
+			const ImVec2 mousePos = ImGui::GetMousePos();
+			const Ray ray = BuildMouseRay(viewData, imageScreenMin, imageSize, mousePos);
+
+			glm::vec3 hitPoint{};
+			if (IntersectRayPlane(ray, State.DragPlaneOriginWS, State.DragPlaneNormalWS, hitPoint))
+			{
+				State.DragStartPlaneHitWS = hitPoint;
+
+				const float coordA = glm::dot(hitPoint - gizmoOrigin, axisAWS);
+				const float coordB = glm::dot(hitPoint - gizmoOrigin, axisBWS);
+
+				State.DragStartPlaneCoordinates = glm::vec2(
+					std::max(coordA, gizmoScale * 0.18f),
+					std::max(coordB, gizmoScale * 0.18f)
+				);
+			}
+			else
+			{
+				State.DragStartPlaneHitWS = gizmoOrigin;
+				State.DragStartPlaneCoordinates = glm::vec2(gizmoScale * 0.25f);
+			}
+		}
 		else
 		{
-			// Important: first scale implementation is LOCAL-space only.
+			// Single-axis scale is LOCAL-space only
 			State.DragAxisDirectionWS = GetAxisDirection(ETransformGizmoAxis(State.ActiveAxis), EGizmoSpace::Local, transform);
 			State.DragPlaneOriginWS = gizmoOrigin;
 			State.DragPlaneNormalWS = BuildAxisDragPlaneNormal(
@@ -1274,6 +1561,44 @@ namespace Nyx::Editor
 			transform.Scale.x = std::max(transform.Scale.x, MinScaleComponent);
 			transform.Scale.y = std::max(transform.Scale.y, MinScaleComponent);
 			transform.Scale.z = std::max(transform.Scale.z, MinScaleComponent);
+		}
+		else if (IsPlaneHandle(State.ActiveAxis))
+		{
+			ETransformGizmoAxis axisA{};
+			ETransformGizmoAxis axisB{};
+			GetPlaneAxes(State.ActiveAxis, axisA, axisB);
+
+			const glm::vec3 axisAWS = GetAxisDirection(axisA, EGizmoSpace::Local, transform);
+			const glm::vec3 axisBWS = GetAxisDirection(axisB, EGizmoSpace::Local, transform);
+
+			const float currentA = glm::dot(hitPoint - State.DragStartGizmoOrigin, axisAWS);
+			const float currentB = glm::dot(hitPoint - State.DragStartGizmoOrigin, axisBWS);
+
+			const float factorA = std::max(currentA / State.DragStartPlaneCoordinates.x, 0.01f);
+			const float factorB = std::max(currentB / State.DragStartPlaneCoordinates.y, 0.01f);
+
+			transform.Scale = State.DragStartEntityScale;
+
+			switch (State.ActiveAxis)
+			{
+			case ETransformGizmoAxis::PlaneXY:
+				transform.Scale.x = std::max(State.DragStartEntityScale.x * factorA, MinScaleComponent);
+				transform.Scale.y = std::max(State.DragStartEntityScale.y * factorB, MinScaleComponent);
+				break;
+
+			case ETransformGizmoAxis::PlaneXZ:
+				transform.Scale.x = std::max(State.DragStartEntityScale.x * factorA, MinScaleComponent);
+				transform.Scale.z = std::max(State.DragStartEntityScale.z * factorB, MinScaleComponent);
+				break;
+
+			case ETransformGizmoAxis::PlaneYZ:
+				transform.Scale.y = std::max(State.DragStartEntityScale.y * factorA, MinScaleComponent);
+				transform.Scale.z = std::max(State.DragStartEntityScale.z * factorB, MinScaleComponent);
+				break;
+
+			default:
+				break;
+			}
 		}
 		else
 		{
