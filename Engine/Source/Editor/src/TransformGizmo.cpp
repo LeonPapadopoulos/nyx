@@ -66,6 +66,14 @@ namespace
 			MakeAngleNear(euler.z, reference.z)
 		);
 	}
+
+	ImU32 ApplyAlphaToImU32(ImU32 color, float alpha)
+	{
+		const float r = static_cast<float>((color >> IM_COL32_R_SHIFT) & 0xFF) / 255.0f;
+		const float g = static_cast<float>((color >> IM_COL32_G_SHIFT) & 0xFF) / 255.0f;
+		const float b = static_cast<float>((color >> IM_COL32_B_SHIFT) & 0xFF) / 255.0f;
+		return ImGui::GetColorU32(ImVec4(r, g, b, alpha));
+	}
 }
 
 namespace Nyx::Editor
@@ -724,6 +732,71 @@ namespace Nyx::Editor
 
 				drawList->AddLine(a, b, color, thickness);
 			}
+
+			// Draw the active swept sector for the current drag.
+			if (State.bDragging &&
+				State.ActiveAxis == ring.Axis &&
+				glm::dot(State.DragStartRotateVectorWS, State.DragStartRotateVectorWS) > 1e-8f)
+			{
+				ImVec2 screenOrigin{};
+				if (ProjectWorldToSceneImage(viewData, gizmoOrigin, imageScreenMin, imageSize, screenOrigin))
+				{
+					constexpr float Pi = 3.14159265359f;
+					constexpr float TwoPi = 6.28318530718f;
+
+					const float visualAngle =
+						std::clamp(State.DragAccumulatedRotationRadians, -TwoPi + 0.001f, TwoPi - 0.001f);
+
+					const int numSteps = std::max(
+						8,
+						static_cast<int>(std::ceil(std::abs(visualAngle) / (Pi / 32.0f)))
+					);
+
+					const float sectorRadius = ringRadius * 0.92f;
+					const ImU32 sectorFillColor = ApplyAlphaToImU32(baseColor, 0.16f);
+					const ImU32 sectorLineColor = ApplyAlphaToImU32(baseColor, 0.65f);
+
+					std::vector<ImVec2> arcPoints;
+					arcPoints.reserve(static_cast<size_t>(numSteps) + 1);
+
+					for (int step = 0; step <= numSteps; ++step)
+					{
+						const float t = static_cast<float>(step) / static_cast<float>(numSteps);
+						const float angle = visualAngle * t;
+
+						const glm::quat rot = glm::angleAxis(angle, glm::normalize(State.DragPlaneNormalWS));
+						const glm::vec3 dirWS = rot * State.DragStartRotateVectorWS;
+						const glm::vec3 worldPoint = gizmoOrigin + dirWS * sectorRadius;
+
+						ImVec2 screenPoint{};
+						if (!ProjectWorldToSceneImage(viewData, worldPoint, imageScreenMin, imageSize, screenPoint))
+						{
+							arcPoints.clear();
+							break;
+						}
+
+						arcPoints.push_back(screenPoint);
+					}
+
+					if (arcPoints.size() >= 2)
+					{
+						// Fill the swept wedge.
+						for (size_t i = 0; i + 1 < arcPoints.size(); ++i)
+						{
+							drawList->AddTriangleFilled(screenOrigin, arcPoints[i], arcPoints[i + 1], sectorFillColor);
+						}
+
+						// Draw the two spokes and the arc.
+						drawList->AddLine(screenOrigin, arcPoints.front(), sectorLineColor, 2.0f);
+						drawList->AddLine(screenOrigin, arcPoints.back(), sectorLineColor, 2.0f);
+
+						for (size_t i = 0; i + 1 < arcPoints.size(); ++i)
+						{
+							drawList->AddLine(arcPoints[i], arcPoints[i + 1], sectorLineColor, 2.5f);
+						}
+					}
+				}
+			}
 		}
 
 		return bConsumed || State.bDragging;
@@ -1359,18 +1432,22 @@ namespace Nyx::Editor
 
 			if (glm::dot(startVec, startVec) > 1e-8f)
 			{
-				State.DragStartRotateVectorWS = glm::normalize(startVec);
+				startVec = glm::normalize(startVec);
 			}
 			else
 			{
-				// fallback tangent in plane
 				glm::vec3 fallback = glm::cross(State.DragPlaneNormalWS, glm::vec3(0.0f, 1.0f, 0.0f));
 				if (glm::dot(fallback, fallback) < 1e-8f)
 				{
 					fallback = glm::cross(State.DragPlaneNormalWS, glm::vec3(1.0f, 0.0f, 0.0f));
 				}
-				State.DragStartRotateVectorWS = glm::normalize(fallback);
+				startVec = glm::normalize(fallback);
 			}
+
+			State.DragStartRotateVectorWS = startVec;
+			State.DragCurrentRotateVectorWS = startVec;
+			State.DragAccumulatedRotationRadians = 0.0f;
+			State.DragPreviousRawRotationRadians = 0.0f;
 		}
 		else
 		{
@@ -1381,7 +1458,12 @@ namespace Nyx::Editor
 			{
 				fallback = glm::cross(State.DragPlaneNormalWS, glm::vec3(1.0f, 0.0f, 0.0f));
 			}
-			State.DragStartRotateVectorWS = glm::normalize(fallback);
+			fallback = glm::normalize(fallback);
+
+			State.DragStartRotateVectorWS = fallback;
+			State.DragCurrentRotateVectorWS = fallback;
+			State.DragAccumulatedRotationRadians = 0.0f;
+			State.DragPreviousRawRotationRadians = 0.0f;
 		}
 	}
 
@@ -1391,6 +1473,9 @@ namespace Nyx::Editor
 		const ImVec2& imageScreenMin,
 		const ImVec2& imageSize)
 	{
+		constexpr float Pi = 3.14159265359f;
+		constexpr float TwoPi = 6.28318530718f;
+
 		const ImVec2 mousePos = ImGui::GetMousePos();
 		const Ray ray = BuildMouseRay(viewData, imageScreenMin, imageSize, mousePos);
 
@@ -1410,24 +1495,41 @@ namespace Nyx::Editor
 
 		currentVec = glm::normalize(currentVec);
 
-		const float angleDelta = SignedAngleAroundAxis(
+		// Raw signed angle from drag start, still bounded to [-Pi, Pi]
+		const float rawAngle = SignedAngleAroundAxis(
 			State.DragStartRotateVectorWS,
 			currentVec,
 			State.DragPlaneNormalWS
 		);
 
+		// Unwrap it into a continuous angle.
+		float deltaRaw = rawAngle - State.DragPreviousRawRotationRadians;
+
+		if (deltaRaw > Pi)
+		{
+			deltaRaw -= TwoPi;
+		}
+		else if (deltaRaw < -Pi)
+		{
+			deltaRaw += TwoPi;
+		}
+
+		State.DragAccumulatedRotationRadians += deltaRaw;
+		State.DragPreviousRawRotationRadians = rawAngle;
+		State.DragCurrentRotateVectorWS = currentVec;
+
+		const float totalAngle = State.DragAccumulatedRotationRadians;
+
 		glm::quat deltaQ{};
 
 		if (State.Space == EGizmoSpace::World)
 		{
-			// Axis is world-space
-			deltaQ = glm::angleAxis(angleDelta, glm::normalize(State.DragAxisDirectionWS));
+			deltaQ = glm::angleAxis(totalAngle, glm::normalize(State.DragAxisDirectionWS));
 			transform.Rotation = glm::normalize(deltaQ * State.DragStartEntityRotation);
 		}
 		else
 		{
-			// Axis must be local-space for post-multiplication
-			deltaQ = glm::angleAxis(angleDelta, glm::normalize(State.DragAxisDirectionLS));
+			deltaQ = glm::angleAxis(totalAngle, glm::normalize(State.DragAxisDirectionLS));
 			transform.Rotation = glm::normalize(State.DragStartEntityRotation * deltaQ);
 		}
 	}

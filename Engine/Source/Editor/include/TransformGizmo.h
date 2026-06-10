@@ -62,6 +62,9 @@ namespace Nyx::Editor
 		glm::vec3 DragStartPlaneHitWS{ 0.0f };
 
 		glm::vec3 DragStartRotateVectorWS{ 0.0f };
+		glm::vec3 DragCurrentRotateVectorWS{ 0.0f };
+		float DragAccumulatedRotationRadians = 0.0f;
+		float DragPreviousRawRotationRadians = 0.0f;
 
 		float DragStartAxisCoordinate = 1.0f;
 		glm::vec2 DragStartPlaneCoordinates{ 1.0f, 1.0f };
