@@ -13,6 +13,7 @@
 #include <string>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
+#include <InspectorTargetIdHelpers.h>
 
 namespace
 {
@@ -112,6 +113,8 @@ namespace Nyx::Editor
 		DrawSceneOutliner();
 		DrawDetailsPanel();
 		DrawSceneViews();
+
+		HandleUndoRedoHotkeys();
 
 		ImGui::ShowDemoWindow();
 	}
@@ -279,7 +282,9 @@ namespace Nyx::Editor
 		// so we can easily, and reliably avoid Naming collisions among UI elements.
 		// (Currently being dodged by using '##SomeSubInfo')
 
+		DetailsPanelContext.History = &History;
 		DetailsPanelContext.CurrentTargetId = Nyx::Editor::MakeInspectorTargetId(selectedEntity);
+
 		for (const ComponentInspectorEntry& inspector : GetDefaultComponentInspectors())
 		{
 			if (inspector.HasComponent(world, selectedEntity))
@@ -343,6 +348,7 @@ namespace Nyx::Editor
 				TransformGizmoInstance.TickAndDraw(
 					*Renderer,
 					ActiveScene,
+					History,
 					sceneViewId,
 					imageMin,
 					imageSize,
@@ -474,6 +480,27 @@ namespace Nyx::Editor
 			}
 
 			selection = result.HitEntity;
+		}
+	}
+
+	void EditorLayer::HandleUndoRedoHotkeys()
+	{
+		TransactionContext.ActiveScene = &ActiveScene;
+
+		const bool bTextInputActive = ImGui::GetIO().WantTextInput;
+		if (bTextInputActive)
+		{
+			return;
+		}
+
+		if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_Z))
+		{
+			History.Undo(TransactionContext);
+		}
+		else if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_Z) ||
+			ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_Y))
+		{
+			History.Redo(TransactionContext);
 		}
 	}
 }

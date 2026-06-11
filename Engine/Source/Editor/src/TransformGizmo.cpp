@@ -2,6 +2,9 @@
 #include "TransformGizmo.h"
 
 #include "TransformComponent.h"
+#include "InspectorTargetId.h"
+#include "InspectorTargetIdHelpers.h"
+#include "EditableObjectRegistrations.h"
 
 #include <glm/gtc/quaternion.hpp>
 
@@ -1043,6 +1046,7 @@ namespace Nyx::Editor
 	bool TransformGizmo::TickAndDraw(
 		Nyx::IRenderer& renderer,
 		Nyx::SceneDocument& scene,
+		Nyx::Editor::TransactionHistory& history,
 		uint64_t sceneViewId,
 		const ImVec2& imageScreenMin,
 		const ImVec2& imageSize,
@@ -1086,27 +1090,34 @@ namespace Nyx::Editor
 		{
 		case EGizmoOperation::Translate:
 		{
-			// hover + visuals
 			bConsumed = TickTranslate(viewData, transform, gizmoOrigin, imageScreenMin, imageSize, bImageHovered, drawList);
 
-			// begin drag after TickTranslate has decided ActiveAxis
 			if (!State.bDragging &&
 				bImageHovered &&
 				State.ActiveAxis != ETransformGizmoAxis::None &&
 				ImGui::IsMouseClicked(ImGuiMouseButton_Left))
 			{
 				State.ActiveSceneViewId = sceneViewId;
+
+				ActiveTransformDiff.emplace();
+				ActiveTransformDiff->TakeSnapshot(Nyx::Editor::MakeInspectorTargetId(entity), transform);
+
 				BeginTranslateDrag(viewData, entity, transform, gizmoOrigin, imageScreenMin, imageSize);
 				bConsumed = true;
 			}
 
-			// update drag only for the active view
 			if (State.bDragging && State.ActiveSceneViewId == sceneViewId)
 			{
 				UpdateTranslateDrag(viewData, transform, imageScreenMin, imageSize);
 
 				if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))
 				{
+					if (ActiveTransformDiff.has_value())
+					{
+						ActiveTransformDiff->CommitChanges("Translate Entity", history);
+						ActiveTransformDiff.reset();
+					}
+
 					State.bDragging = false;
 					State.ActiveAxis = ETransformGizmoAxis::None;
 					State.ActiveSceneViewId = 0;
@@ -1130,6 +1141,10 @@ namespace Nyx::Editor
 				ImGui::IsMouseClicked(ImGuiMouseButton_Left))
 			{
 				State.ActiveSceneViewId = sceneViewId;
+
+				ActiveTransformDiff.emplace();
+				ActiveTransformDiff->TakeSnapshot(Nyx::Editor::MakeInspectorTargetId(entity), transform);
+
 				BeginRotateDrag(viewData, entity, transform, gizmoOrigin, imageScreenMin, imageSize);
 				bConsumed = true;
 			}
@@ -1140,6 +1155,12 @@ namespace Nyx::Editor
 
 				if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))
 				{
+					if (ActiveTransformDiff.has_value())
+					{
+						ActiveTransformDiff->CommitChanges("Rotate Entity", history);
+						ActiveTransformDiff.reset();
+					}
+
 					State.bDragging = false;
 					State.ActiveAxis = ETransformGizmoAxis::None;
 					State.ActiveSceneViewId = 0;
@@ -1163,6 +1184,10 @@ namespace Nyx::Editor
 				ImGui::IsMouseClicked(ImGuiMouseButton_Left))
 			{
 				State.ActiveSceneViewId = sceneViewId;
+
+				ActiveTransformDiff.emplace();
+				ActiveTransformDiff->TakeSnapshot(Nyx::Editor::MakeInspectorTargetId(entity), transform);
+
 				BeginScaleDrag(viewData, entity, transform, gizmoOrigin, imageScreenMin, imageSize);
 				bConsumed = true;
 			}
@@ -1173,6 +1198,12 @@ namespace Nyx::Editor
 
 				if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))
 				{
+					if (ActiveTransformDiff.has_value())
+					{
+						ActiveTransformDiff->CommitChanges("Scale Entity", history);
+						ActiveTransformDiff.reset();
+					}
+
 					State.bDragging = false;
 					State.ActiveAxis = ETransformGizmoAxis::None;
 					State.ActiveSceneViewId = 0;
@@ -1191,7 +1222,6 @@ namespace Nyx::Editor
 		}
 
 		drawList->PopClipRect();
-
 		return bConsumed;
 	}
 

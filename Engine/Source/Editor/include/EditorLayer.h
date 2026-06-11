@@ -41,6 +41,8 @@ namespace Nyx::Editor
 
 		void ApplyPendingPickResults();
 
+		void HandleUndoRedoHotkeys();
+
 	private:
 		Nyx::IRenderer* Renderer = nullptr;
 
@@ -49,8 +51,11 @@ namespace Nyx::Editor
 		uint64_t MainSceneViewId = 0;
 		uint64_t SecondarySceneViewId = 0;
 
-		InspectorDrawContext DetailsPanelContext;
 		TransformGizmo TransformGizmoInstance;
+
+		TransactionHistory History;
+		EditorTransactionContext TransactionContext;
+		InspectorDrawContext DetailsPanelContext;
 
 		bool bShowSceneView = true;
 		bool bShowSecondarySceneView = true;

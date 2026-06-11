@@ -4,6 +4,8 @@
 #include "SceneDocument.h"
 #include "SceneViewCameraData.h"
 #include "TransformComponent.h"
+#include "TransactionHistory.h"
+#include "DiffUtil.h"
 
 #include "imgui.h"
 #include <array>
@@ -80,6 +82,7 @@ namespace Nyx::Editor
 		bool TickAndDraw(
 			Nyx::IRenderer& renderer,
 			Nyx::SceneDocument& scene,
+			Nyx::Editor::TransactionHistory& history,
 			uint64_t sceneViewId,
 			const ImVec2& imageScreenMin,
 			const ImVec2& imageSize,
@@ -263,5 +266,7 @@ namespace Nyx::Editor
 
 	private:
 		TransformGizmoState State;
+
+		std::optional<DiffUtil> ActiveTransformDiff;
 	};
 }

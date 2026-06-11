@@ -66,6 +66,15 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Editor/src/ComponentInspectorRegistry.cpp
     ${NYX_ENGINE_ROOT}/Editor/src/InspectorDrawContext.cpp
     ${NYX_ENGINE_ROOT}/Editor/src/TransformGizmo.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/EditorValue.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/InspectorTargetId.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/InspectorTargetIdHelpers.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/EditableObjectTraits.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/EditorTransactionContext.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/EditableTargetResolver.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/TransactionHistory.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/DiffUtil.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/EditableObjectRegistrations.cpp
 )
 
 set(NYX_ENGINE_HEADERS
@@ -119,6 +128,15 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Editor/include/ComponentInspectorRegistry.h
     ${NYX_ENGINE_ROOT}/Editor/include/InspectorDrawContext.h
     ${NYX_ENGINE_ROOT}/Editor/include/TransformGizmo.h
+    ${NYX_ENGINE_ROOT}/Editor/include/EditorValue.h
+    ${NYX_ENGINE_ROOT}/Editor/include/InspectorTargetId.h
+    ${NYX_ENGINE_ROOT}/Editor/include/InspectorTargetIdHelpers.h
+    ${NYX_ENGINE_ROOT}/Editor/include/EditableObjectTraits.h
+    ${NYX_ENGINE_ROOT}/Editor/include/EditorTransactionContext.h
+    ${NYX_ENGINE_ROOT}/Editor/include/EditableTargetResolver.h
+    ${NYX_ENGINE_ROOT}/Editor/include/TransactionHistory.h
+    ${NYX_ENGINE_ROOT}/Editor/include/DiffUtil.h
+    ${NYX_ENGINE_ROOT}/Editor/include/EditableObjectRegistrations.h
 )
 
 add_library(NyxEngine SHARED 

@@ -3,6 +3,7 @@
 #include "ComponentEditorRegistration.h"
 #include "InspectorDrawContext.h"
 #include "MeshRendererComponent.h"
+#include "EditableObjectRegistrations.h"
 
 #include "Entity.h"
 #include "NameComponent.h"
@@ -62,7 +63,27 @@ namespace Nyx::Editor
 					);
 				};
 
-			auto& rotState = drawContext.TransformRotationState;
+			auto BeginFieldEdit = [&](PropertyEditTransactionState& state)
+				{
+					if (!state.bEditing || state.TargetId != drawContext.CurrentTargetId)
+					{
+						state.bEditing = true;
+						state.TargetId = drawContext.CurrentTargetId;
+						state.PendingDiff.emplace();
+						state.PendingDiff->TakeSnapshot(drawContext.CurrentTargetId, component);
+					}
+				};
+
+			auto CommitFieldEdit = [&](PropertyEditTransactionState& state, const char* label)
+				{
+					if (state.PendingDiff.has_value() && drawContext.History)
+					{
+						state.PendingDiff->CommitChanges(label, *drawContext.History);
+					}
+
+					state.PendingDiff.reset();
+					state.bEditing = false;
+				};
 
 			if (ImGui::BeginTable("TransformProperties", 2, ImGuiTableFlags_SizingStretchProp))
 			{
@@ -79,13 +100,28 @@ namespace Nyx::Editor
 
 					ImGui::TableSetColumnIndex(1);
 					ImGui::SetNextItemWidth(-FLT_MIN);
-					ImGui::DragFloat3("##Field", &component.Position.x, 0.1f);
+
+					if (ImGui::DragFloat3("##Field", &component.Position.x, 0.1f))
+					{
+					}
+
+					if (ImGui::IsItemActivated())
+					{
+						BeginFieldEdit(drawContext.TransformPositionEdit);
+					}
+
+					if (ImGui::IsItemDeactivatedAfterEdit())
+					{
+						CommitFieldEdit(drawContext.TransformPositionEdit, "Edit Transform Position");
+					}
 				}
 				ImGui::PopID();
 
-				// Rotation (degrees UI, quaternion storage)
+				// Rotation
 				ImGui::PushID("Rotation");
 				{
+					auto& rotState = drawContext.TransformRotationEdit;
+
 					if (!rotState.bEditing || rotState.TargetId != drawContext.CurrentTargetId)
 					{
 						rotState.TargetId = drawContext.CurrentTargetId;
@@ -108,13 +144,13 @@ namespace Nyx::Editor
 
 					if (ImGui::IsItemActivated())
 					{
-						rotState.bEditing = true;
+						BeginFieldEdit(rotState);
 						rotState.TargetId = drawContext.CurrentTargetId;
 					}
 
 					if (ImGui::IsItemDeactivatedAfterEdit())
 					{
-						rotState.bEditing = false;
+						CommitFieldEdit(rotState, "Edit Transform Rotation");
 						rotState.CachedDegrees =
 							WrapEulerDegrees180(glm::degrees(component.GetRotationEulerRadians()));
 					}
@@ -131,7 +167,20 @@ namespace Nyx::Editor
 
 					ImGui::TableSetColumnIndex(1);
 					ImGui::SetNextItemWidth(-FLT_MIN);
-					ImGui::DragFloat3("##Field", &component.Scale.x, 0.01f);
+
+					if (ImGui::DragFloat3("##Field", &component.Scale.x, 0.01f))
+					{
+					}
+
+					if (ImGui::IsItemActivated())
+					{
+						BeginFieldEdit(drawContext.TransformScaleEdit);
+					}
+
+					if (ImGui::IsItemDeactivatedAfterEdit())
+					{
+						CommitFieldEdit(drawContext.TransformScaleEdit, "Edit Transform Scale");
+					}
 				}
 				ImGui::PopID();
 
@@ -140,7 +189,6 @@ namespace Nyx::Editor
 		}
 	};
 }
-
 namespace Nyx::Editor
 {
 	template<>
