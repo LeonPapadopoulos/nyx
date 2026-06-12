@@ -26,6 +26,7 @@ add_subdirectory(ThirdParty/imgui)
 add_subdirectory(ThirdParty/stb_image)
 
 # Main Modules
+add_subdirectory(Tools/NyxHeaderTool)
 add_subdirectory(Engine/Source)
 add_subdirectory(Editor/Source)
 

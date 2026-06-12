@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ReflectionMacros.h"
+
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -7,10 +9,16 @@
 
 namespace Nyx::Engine
 {
+	NYX_REFLECT()
 	struct TransformComponent
 	{
+		NYX_PROPERTY(Edit, Undo, Serialize, DragSpeed = 0.1)
 		glm::vec3 Position{ 0.0f };
+
+		NYX_PROPERTY(Edit, Undo, Serialize, UI = Degrees)
 		glm::quat Rotation{ 1.0f, 0.0f, 0.0f, 0.0f };
+		
+		NYX_PROPERTY(Edit, Undo, Serialize, DragSpeed = 0.1)
 		glm::vec3 Scale{ 1.0f };
 
 		glm::mat4 ToMatrix() const
@@ -32,3 +40,5 @@ namespace Nyx::Engine
 		}
 	};
 }
+
+#include "Generated/Runtime/TransformComponent.reflect.h"

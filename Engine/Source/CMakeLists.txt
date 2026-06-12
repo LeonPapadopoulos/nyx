@@ -75,6 +75,9 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Editor/src/TransactionHistory.cpp
     ${NYX_ENGINE_ROOT}/Editor/src/DiffUtil.cpp
     ${NYX_ENGINE_ROOT}/Editor/src/EditableObjectRegistrations.cpp
+
+    # Reflection
+    # ${NYX_ENGINE_ROOT}/Reflection/src/.cpp
 )
 
 set(NYX_ENGINE_HEADERS
@@ -137,6 +140,10 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Editor/include/TransactionHistory.h
     ${NYX_ENGINE_ROOT}/Editor/include/DiffUtil.h
     ${NYX_ENGINE_ROOT}/Editor/include/EditableObjectRegistrations.h
+
+    # Reflection
+    ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionTypes.h
+    ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionMacros.h
 )
 
 add_library(NyxEngine SHARED 
@@ -151,12 +158,50 @@ endif()
 
 target_compile_features(NyxEngine PUBLIC cxx_std_20)
 
+# START Reflection / CodeGen
+set(NYX_GENERATED_ROOT "${CMAKE_BINARY_DIR}/Generated")
+set(NYX_GENERATED_RUNTIME_DIR "${NYX_GENERATED_ROOT}/Runtime")
+
+set(NYX_TRANSFORM_INPUT
+    "${NYX_ENGINE_ROOT}/Runtime/Engine/include/TransformComponent.h"
+)
+set(NYX_TRANSFORM_OUTPUT
+    "${NYX_GENERATED_RUNTIME_DIR}/TransformComponent.reflect.h"
+)
+
+add_custom_command(
+    OUTPUT "${NYX_TRANSFORM_OUTPUT}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${NYX_GENERATED_RUNTIME_DIR}"
+    COMMAND "$<TARGET_FILE:NyxHeaderTool>"
+            "${NYX_TRANSFORM_INPUT}"
+            "${NYX_TRANSFORM_OUTPUT}"
+            "Nyx::Engine::TransformComponent"
+    DEPENDS
+        NyxHeaderTool
+        "${NYX_TRANSFORM_INPUT}"
+    COMMENT "Generating reflection metadata for TransformComponent"
+    VERBATIM
+)
+
+# Attach the generated header directly to NyxEngine so the build graph knows about it.
+target_sources(NyxEngine PRIVATE "${NYX_TRANSFORM_OUTPUT}")
+set_source_files_properties("${NYX_TRANSFORM_OUTPUT}" PROPERTIES GENERATED TRUE HEADER_FILE_ONLY TRUE)
+
+# Make sure the compiler can resolve:
+#   #include "Generated/Runtime/TransformComponent.reflect.h"
+target_include_directories(NyxEngine
+    PRIVATE
+        "${CMAKE_BINARY_DIR}"
+)
+# END Reflection / CodeGen
+
 target_include_directories(NyxEngine
     PUBLIC
         ${NYX_ENGINE_ROOT}/Runtime/Core/include
         ${NYX_ENGINE_ROOT}/Runtime/Engine/include
         ${NYX_ENGINE_ROOT}/Runtime/Renderer/include
         ${NYX_ENGINE_ROOT}/Editor/include
+        ${NYX_ENGINE_ROOT}/Reflection/include
     PRIVATE
         ${NYX_ENGINE_ROOT}/Runtime/Core/src
         ${NYX_ENGINE_ROOT}/Runtime/Engine/src

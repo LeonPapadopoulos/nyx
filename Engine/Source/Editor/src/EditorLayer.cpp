@@ -15,6 +15,23 @@
 #include <glm/glm.hpp>
 #include <InspectorTargetIdHelpers.h>
 
+#include "ReflectionTypes.h"
+#include "Log.h"
+
+void PrintTransformMetadata()
+{
+	const Nyx::Reflection::TypeMetadata& type =
+		Nyx::Reflection::GetTypeMetadata<Nyx::Engine::TransformComponent>();
+
+	CORE_LOG_INFO("Reflected type: {}", type.Name);
+
+	for (size_t i = 0; i < type.PropertyCount; ++i)
+	{
+		const auto& prop = type.Properties[i];
+		CORE_LOG_INFO("  Property {}: {}", static_cast<int>(i), prop.Name);
+	}
+}
+
 namespace
 {
 	bool InputTextString(const char* label, std::string& value)
@@ -61,6 +78,10 @@ namespace Nyx::Editor
 		}
 
 		SpawnTestScene();
+
+		// @todo: Remove
+		// Reflection System Debug
+		PrintTransformMetadata();
 	}
 
 	void EditorLayer::Shutdown()
