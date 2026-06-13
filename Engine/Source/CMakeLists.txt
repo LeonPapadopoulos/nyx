@@ -75,6 +75,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Editor/src/TransactionHistory.cpp
     ${NYX_ENGINE_ROOT}/Editor/src/DiffUtil.cpp
     ${NYX_ENGINE_ROOT}/Editor/src/EditableObjectRegistrations.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/ReflectedPropertyDrawer.cpp
 
     # Reflection
     # ${NYX_ENGINE_ROOT}/Reflection/src/.cpp
@@ -140,6 +141,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Editor/include/TransactionHistory.h
     ${NYX_ENGINE_ROOT}/Editor/include/DiffUtil.h
     ${NYX_ENGINE_ROOT}/Editor/include/EditableObjectRegistrations.h
+    ${NYX_ENGINE_ROOT}/Editor/include/ReflectedPropertyDrawer.h
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionTypes.h
