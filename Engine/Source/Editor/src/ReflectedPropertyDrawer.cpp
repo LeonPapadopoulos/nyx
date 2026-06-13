@@ -57,12 +57,12 @@ namespace Nyx::Editor
 
 		auto BeginEdit = [&](PropertyEditTransactionState& state)
 			{
-				if (!state.bEditing || state.TargetId != drawContext.CurrentTargetId)
+				if (!state.bEditing || state.Target != drawContext.CurrentObjectRef)
 				{
 					state.bEditing = true;
-					state.TargetId = drawContext.CurrentTargetId;
+					state.Target = drawContext.CurrentObjectRef;
 					state.PendingDiff.emplace();
-					state.PendingDiff->TakeSnapshot(drawContext.CurrentTargetId, object, typeMetadata);
+					state.PendingDiff->TakeSnapshot(drawContext.CurrentObjectRef, object, typeMetadata);
 				}
 			};
 
@@ -145,9 +145,9 @@ namespace Nyx::Editor
 				{
 					auto& rotState = drawContext.TransformRotationEdit;
 
-					if (!rotState.bEditing || rotState.TargetId != drawContext.CurrentTargetId)
+					if (!rotState.bEditing || rotState.Target != drawContext.CurrentObjectRef)
 					{
-						rotState.TargetId = drawContext.CurrentTargetId;
+						rotState.Target = drawContext.CurrentObjectRef;
 						rotState.CachedDegrees =
 							WrapEulerDegrees180(glm::degrees(glm::eulerAngles(glm::normalize(value))));
 					}
@@ -161,7 +161,7 @@ namespace Nyx::Editor
 					if (ImGui::IsItemActivated())
 					{
 						BeginEdit(rotState);
-						rotState.TargetId = drawContext.CurrentTargetId;
+						rotState.Target = drawContext.CurrentObjectRef;
 					}
 
 					if (ImGui::IsItemDeactivatedAfterEdit())

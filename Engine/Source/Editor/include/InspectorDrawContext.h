@@ -12,7 +12,7 @@ namespace Nyx::Editor
 	struct PropertyEditTransactionState
 	{
 		bool bEditing = false;
-		InspectorTargetId TargetId{};
+		ObjectRef Target{};
 		std::optional<TransactionDiffUtil> PendingDiff;
 	};
 
@@ -24,7 +24,9 @@ namespace Nyx::Editor
 	struct InspectorDrawContext
 	{
 		TransactionSystem* Transactions = nullptr;
+
 		InspectorTargetId CurrentTargetId{};
+		ObjectRef CurrentObjectRef{};
 
 		PropertyEditTransactionState TransformPositionEdit;
 		TransformRotationEditState TransformRotationEdit;

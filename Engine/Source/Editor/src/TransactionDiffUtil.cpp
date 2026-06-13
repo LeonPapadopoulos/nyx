@@ -1,21 +1,19 @@
 #include "TransactionDiffUtil.h"
-#include "PropertyValueUtils.h"
-#include "ReflectedPropertyAccess.h"
 
 namespace Nyx::Editor
 {
 	void TransactionDiffUtil::TakeSnapshot(
-		InspectorTargetId targetId,
+		const ObjectRef& target,
 		void* object,
 		const Nyx::Reflection::TypeMetadata& typeMetadata)
 	{
-		if (!object || !typeMetadata.Properties || typeMetadata.PropertyCount == 0)
+		if (!target.IsValid() || !object || !typeMetadata.Properties || typeMetadata.PropertyCount == 0)
 		{
 			return;
 		}
 
 		Snapshot snapshot{};
-		snapshot.TargetId = targetId;
+		snapshot.Target = target;
 		snapshot.Object = object;
 		snapshot.TypeMetadata = &typeMetadata;
 
@@ -34,7 +32,7 @@ namespace Nyx::Editor
 		Snapshots.push_back(std::move(snapshot));
 	}
 
-	bool TransactionDiffUtil::CommitChanges(const char* label, TransactionSystem& transactionSystem)
+	bool TransactionDiffUtil::CommitChanges(const char* label, TransactionSystem& transactions)
 	{
 		Transaction transaction{};
 		transaction.Label = label;
@@ -64,7 +62,7 @@ namespace Nyx::Editor
 					Change change{};
 					change.Kind = EChangeKind::SetValue;
 					change.Payload = SetValueChange{
-						.TargetId = snapshot.TargetId,
+						.Target = snapshot.Target,
 						.TypeMetadata = snapshot.TypeMetadata,
 						.PropertyIndex = propertyIndex,
 						.Before = beforeValue,
@@ -80,7 +78,7 @@ namespace Nyx::Editor
 
 		if (!transaction.IsEmpty())
 		{
-			transactionSystem.Push(std::move(transaction));
+			transactions.Push(std::move(transaction));
 			return true;
 		}
 

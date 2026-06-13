@@ -150,6 +150,7 @@ namespace Nyx
 
 		public:
 			Entity CreateEntity();
+			bool RestoreEntity(Entity entity);
 			bool DestroyEntity(Entity entity);
 			bool IsAlive(Entity entity) const;
 			void Clear();
@@ -190,6 +191,7 @@ namespace Nyx
 
 		private:
 			void ValidateEntityAlive(Entity entity) const;
+			bool RemoveFromFreeList(uint32_t index);
 
 			template<typename T>
 			ComponentPool<T>* TryGetPool();

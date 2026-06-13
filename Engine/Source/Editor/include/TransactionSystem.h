@@ -1,35 +1,17 @@
 #pragma once
 
-#include "EditorTransactionContext.h"
-#include "TransactionTypes.h"
+#include "ReflectedPropertyAccess.h"
+#include "TransactionDomain.h"
 
+#include <unordered_map>
 #include <vector>
 
 namespace Nyx::Editor
 {
-	struct ITransactionObjectResolver
-	{
-		virtual ~ITransactionObjectResolver() = default;
-
-		virtual void* ResolveMutable(
-			EditorTransactionContext& context,
-			InspectorTargetId targetId,
-			const Nyx::Reflection::TypeMetadata& typeMetadata) = 0;
-	};
-
-	struct ITransactionSubscriber
-	{
-		virtual ~ITransactionSubscriber() = default;
-		virtual void OnTransactionApplied(const Transaction& transaction, bool bWasUndo) = 0;
-	};
-
 	class TransactionSystem
 	{
 	public:
-		explicit TransactionSystem(ITransactionObjectResolver& resolver)
-			: Resolver(resolver)
-		{
-		}
+		void RegisterDomain(EObjectDomain domain, ITransactionDomain* handler);
 
 		void Push(Transaction&& transaction);
 
@@ -43,10 +25,15 @@ namespace Nyx::Editor
 	private:
 		void ApplyTransaction(EditorTransactionContext& context, const Transaction& transaction, bool bRedo);
 		void ApplyChange(EditorTransactionContext& context, const Change& change, bool bRedo);
+
 		void ApplySetValueChange(EditorTransactionContext& context, const SetValueChange& change, bool bRedo);
+		void ApplyAddObjectChange(EditorTransactionContext& context, const AddObjectChange& change, bool bRedo);
+		void ApplyDeleteObjectChange(EditorTransactionContext& context, const DeleteObjectChange& change, bool bRedo);
+
+		ITransactionDomain* FindDomain(EObjectDomain domain);
 
 	private:
-		ITransactionObjectResolver& Resolver;
+		std::unordered_map<EObjectDomain, ITransactionDomain*> Domains;
 		std::vector<Transaction> UndoStack;
 		std::vector<Transaction> RedoStack;
 		std::vector<ITransactionSubscriber*> Subscribers;

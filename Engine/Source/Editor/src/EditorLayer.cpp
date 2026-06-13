@@ -6,6 +6,8 @@
 #include "TransformComponent.h"
 #include "NameComponent.h"
 #include "ComponentInspectorRegistry.h"
+#include "TransactionObjectRef.h"
+#include "TransactionObjectRefHelpers.h"
 
 #include "imgui.h"
 
@@ -78,6 +80,8 @@ namespace Nyx::Editor
 		}
 
 		SpawnTestScene();
+
+		Transactions.RegisterDomain(Nyx::Editor::EObjectDomain::SceneEntity, &SceneEntityDomain);
 
 		// @todo: Remove once Reflection System debugging finished
 		PrintTransformMetadata();
@@ -211,6 +215,22 @@ namespace Nyx::Editor
 		if (ImGui::Button("Add Entity"))
 		{
 			Nyx::Engine::Entity newEntity = ActiveScene.CreateEntity("New Entity");
+
+			SceneEntitySnapshot snapshot = SceneEntityDomain.CaptureSnapshot(ActiveScene, newEntity);
+
+			Change change{};
+			change.Kind = EChangeKind::AddObject;
+			change.Payload = AddObjectChange{
+				.Target = MakeSceneEntityRef(newEntity),
+				.AfterCreate = snapshot
+			};
+
+			Transaction transaction{};
+			transaction.Label = "Create Entity";
+			transaction.Changes.push_back(std::move(change));
+
+			Transactions.Push(std::move(transaction));
+
 			selection = newEntity;
 		}
 
@@ -224,7 +244,27 @@ namespace Nyx::Editor
 
 		if (ImGui::Button("Delete Selected") && bHasSelection)
 		{
-			ActiveScene.DestroyEntity(selection.value());
+			const Nyx::Engine::Entity entityToDelete = selection.value();
+
+			SceneEntitySnapshot snapshot = SceneEntityDomain.CaptureSnapshot(ActiveScene, entityToDelete);
+
+			if (ActiveScene.DestroyEntity(entityToDelete))
+			{
+				Change change{};
+				change.Kind = EChangeKind::DeleteObject;
+				change.Payload = DeleteObjectChange{
+					.Target = MakeSceneEntityRef(entityToDelete),
+					.BeforeDelete = snapshot
+				};
+
+				Transaction transaction{};
+				transaction.Label = "Delete Entity";
+				transaction.Changes.push_back(std::move(change));
+
+				Transactions.Push(std::move(transaction));
+
+				selection.reset();
+			}
 		}
 
 		if (!bHasSelection)
@@ -306,6 +346,7 @@ namespace Nyx::Editor
 
 		DetailsPanelContext.Transactions = &Transactions;
 		DetailsPanelContext.CurrentTargetId = Nyx::Editor::MakeInspectorTargetId(selectedEntity);
+		DetailsPanelContext.CurrentObjectRef = Nyx::Editor::MakeSceneEntityRef(selectedEntity);
 
 		for (const ComponentInspectorEntry& inspector : GetDefaultComponentInspectors())
 		{

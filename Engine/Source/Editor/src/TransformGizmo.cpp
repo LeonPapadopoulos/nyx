@@ -6,6 +6,8 @@
 #include "InspectorTargetIdHelpers.h"
 #include "EditableObjectRegistrations.h"
 #include "TransactionSystem.h"
+#include "TransactionObjectRef.h"
+#include "TransactionObjectRefHelpers.h"
 
 #include <glm/gtc/quaternion.hpp>
 
@@ -1102,7 +1104,7 @@ namespace Nyx::Editor
 
 				ActiveTransformDiff.emplace();
 				ActiveTransformDiff->TakeSnapshot(
-					Nyx::Editor::MakeInspectorTargetId(entity),
+					Nyx::Editor::MakeSceneEntityRef(entity),
 					&transform,
 					Nyx::Reflection::GetTypeMetadata<Nyx::Engine::TransformComponent>()
 				);
@@ -1149,7 +1151,7 @@ namespace Nyx::Editor
 
 				ActiveTransformDiff.emplace();
 				ActiveTransformDiff->TakeSnapshot(
-					Nyx::Editor::MakeInspectorTargetId(entity),
+					Nyx::Editor::MakeSceneEntityRef(entity),
 					&transform,
 					Nyx::Reflection::GetTypeMetadata<Nyx::Engine::TransformComponent>()
 				);
@@ -1196,7 +1198,7 @@ namespace Nyx::Editor
 
 				ActiveTransformDiff.emplace();
 				ActiveTransformDiff->TakeSnapshot(
-					Nyx::Editor::MakeInspectorTargetId(entity),
+					Nyx::Editor::MakeSceneEntityRef(entity),
 					&transform,
 					Nyx::Reflection::GetTypeMetadata<Nyx::Engine::TransformComponent>()
 				);

@@ -1,8 +1,9 @@
 #pragma once
 
-#include "InspectorTargetId.h"
 #include "PropertyValue.h"
 #include "ReflectionTypes.h"
+#include "SceneEntitySnapshot.h"
+#include "TransactionObjectRef.h"
 
 #include <string>
 #include <variant>
@@ -19,24 +20,23 @@ namespace Nyx::Editor
 
 	struct SetValueChange
 	{
-		InspectorTargetId TargetId{};
+		ObjectRef Target{};
 		const Nyx::Reflection::TypeMetadata* TypeMetadata = nullptr;
 		size_t PropertyIndex = 0;
 		Nyx::Reflection::PropertyValue Before;
 		Nyx::Reflection::PropertyValue After;
 	};
 
-	// Placeholders for the next step.
 	struct AddObjectChange
 	{
-		InspectorTargetId TargetId{};
-		const Nyx::Reflection::TypeMetadata* TypeMetadata = nullptr;
+		ObjectRef Target{};
+		std::variant<std::monostate, SceneEntitySnapshot> AfterCreate;
 	};
 
 	struct DeleteObjectChange
 	{
-		InspectorTargetId TargetId{};
-		const Nyx::Reflection::TypeMetadata* TypeMetadata = nullptr;
+		ObjectRef Target{};
+		std::variant<std::monostate, SceneEntitySnapshot> BeforeDelete;
 	};
 
 	using ChangePayload = std::variant<

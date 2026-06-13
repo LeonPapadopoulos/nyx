@@ -1,8 +1,17 @@
 #include "TransactionSystem.h"
-#include "ReflectedPropertyAccess.h"
 
 namespace Nyx::Editor
 {
+	void TransactionSystem::RegisterDomain(EObjectDomain domain, ITransactionDomain* handler)
+	{
+		if (!handler || domain == EObjectDomain::None)
+		{
+			return;
+		}
+
+		Domains[domain] = handler;
+	}
+
 	void TransactionSystem::Push(Transaction&& transaction)
 	{
 		if (transaction.IsEmpty())
@@ -92,11 +101,11 @@ namespace Nyx::Editor
 			break;
 
 		case EChangeKind::AddObject:
-			// Next step.
+			ApplyAddObjectChange(context, std::get<AddObjectChange>(change.Payload), bRedo);
 			break;
 
 		case EChangeKind::DeleteObject:
-			// Next step.
+			ApplyDeleteObjectChange(context, std::get<DeleteObjectChange>(change.Payload), bRedo);
 			break;
 
 		default:
@@ -106,12 +115,18 @@ namespace Nyx::Editor
 
 	void TransactionSystem::ApplySetValueChange(EditorTransactionContext& context, const SetValueChange& change, bool bRedo)
 	{
-		if (!change.TypeMetadata || !change.TypeMetadata->Properties)
+		if (!change.Target.IsValid() || !change.TypeMetadata || !change.TypeMetadata->Properties)
 		{
 			return;
 		}
 
-		void* object = Resolver.ResolveMutable(context, change.TargetId, *change.TypeMetadata);
+		ITransactionDomain* domain = FindDomain(change.Target.Domain);
+		if (!domain)
+		{
+			return;
+		}
+
+		void* object = domain->ResolveMutable(context, change.Target, *change.TypeMetadata);
 		if (!object)
 		{
 			return;
@@ -124,5 +139,53 @@ namespace Nyx::Editor
 
 		const Nyx::Reflection::PropertyMetadata& property = change.TypeMetadata->Properties[change.PropertyIndex];
 		WriteReflectedPropertyValue(object, property, bRedo ? change.After : change.Before);
+	}
+
+	void TransactionSystem::ApplyAddObjectChange(EditorTransactionContext& context, const AddObjectChange& change, bool bRedo)
+	{
+		ITransactionDomain* domain = FindDomain(change.Target.Domain);
+		if (!domain)
+		{
+			return;
+		}
+
+		if (bRedo)
+		{
+			domain->CreateObject(context, change);
+		}
+		else
+		{
+			DeleteObjectChange deleteChange{};
+			deleteChange.Target = change.Target;
+			deleteChange.BeforeDelete = change.AfterCreate;
+			domain->DeleteObject(context, deleteChange);
+		}
+	}
+
+	void TransactionSystem::ApplyDeleteObjectChange(EditorTransactionContext& context, const DeleteObjectChange& change, bool bRedo)
+	{
+		ITransactionDomain* domain = FindDomain(change.Target.Domain);
+		if (!domain)
+		{
+			return;
+		}
+
+		if (bRedo)
+		{
+			domain->DeleteObject(context, change);
+		}
+		else
+		{
+			AddObjectChange addChange{};
+			addChange.Target = change.Target;
+			addChange.AfterCreate = change.BeforeDelete;
+			domain->CreateObject(context, addChange);
+		}
+	}
+
+	ITransactionDomain* TransactionSystem::FindDomain(EObjectDomain domain)
+	{
+		const auto it = Domains.find(domain);
+		return it != Domains.end() ? it->second : nullptr;
 	}
 }
