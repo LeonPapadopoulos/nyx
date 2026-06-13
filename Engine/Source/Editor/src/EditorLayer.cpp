@@ -79,9 +79,10 @@ namespace Nyx::Editor
 
 		SpawnTestScene();
 
-		// @todo: Remove
-		// Reflection System Debug
+		// @todo: Remove once Reflection System debugging finished
 		PrintTransformMetadata();
+		// @todo: Remove once Undo/Redo Notifications have been tested
+		Transactions.Subscribe(&TransactionSubscriber);
 	}
 
 	void EditorLayer::Shutdown()
@@ -303,7 +304,7 @@ namespace Nyx::Editor
 		// so we can easily, and reliably avoid Naming collisions among UI elements.
 		// (Currently being dodged by using '##SomeSubInfo')
 
-		DetailsPanelContext.History = &History;
+		DetailsPanelContext.Transactions = &Transactions;
 		DetailsPanelContext.CurrentTargetId = Nyx::Editor::MakeInspectorTargetId(selectedEntity);
 
 		for (const ComponentInspectorEntry& inspector : GetDefaultComponentInspectors())
@@ -369,7 +370,7 @@ namespace Nyx::Editor
 				TransformGizmoInstance.TickAndDraw(
 					*Renderer,
 					ActiveScene,
-					History,
+					Transactions,
 					sceneViewId,
 					imageMin,
 					imageSize,
@@ -516,12 +517,12 @@ namespace Nyx::Editor
 
 		if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_Z))
 		{
-			History.Undo(TransactionContext);
+			Transactions.Undo(TransactionContext);
 		}
 		else if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_Z) ||
 			ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_Y))
 		{
-			History.Redo(TransactionContext);
+			Transactions.Redo(TransactionContext);
 		}
 	}
 }

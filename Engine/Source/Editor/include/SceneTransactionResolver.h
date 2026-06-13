@@ -1,12 +1,12 @@
 #pragma once
 
-#include "ReflectedTransactionSystem.h"
 #include "SceneDocument.h"
+#include "TransactionSystem.h"
 #include "TransformComponent.h"
 
 namespace Nyx::Editor
 {
-	class ReflectedSceneResolver final : public IReflectedObjectResolver
+	class SceneTransactionResolver final : public ITransactionObjectResolver
 	{
 	public:
 		void* ResolveMutable(

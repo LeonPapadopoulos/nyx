@@ -68,9 +68,9 @@ namespace Nyx::Editor
 
 		auto CommitEdit = [&](PropertyEditTransactionState& state, const char* label)
 			{
-				if (state.PendingDiff.has_value() && drawContext.History)
+				if (state.PendingDiff.has_value() && drawContext.Transactions)
 				{
-					state.PendingDiff->CommitChanges(label, *drawContext.History);
+					state.PendingDiff->CommitChanges(label, *drawContext.Transactions);
 				}
 
 				state.PendingDiff.reset();

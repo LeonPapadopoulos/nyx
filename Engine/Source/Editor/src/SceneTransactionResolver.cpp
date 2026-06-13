@@ -1,10 +1,10 @@
-#include "ReflectedSceneResolver.h"
+#include "SceneTransactionResolver.h"
 
 #include <string_view>
 
 namespace Nyx::Editor
 {
-	void* ReflectedSceneResolver::ResolveMutable(
+	void* SceneTransactionResolver::ResolveMutable(
 		EditorTransactionContext& context,
 		InspectorTargetId targetId,
 		const Nyx::Reflection::TypeMetadata& typeMetadata)

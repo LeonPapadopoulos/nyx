@@ -5,8 +5,9 @@
 #include "TransformGizmo.h"
 #include "Extent2D.h"
 #include "InspectorDrawContext.h"
-#include "ReflectedSceneResolver.h"
+#include "SceneTransactionResolver.h"
 #include "ReflectedTransactionSystem.h"
+#include "EditorTransactionSubscriber.h"
 
 namespace Nyx::Editor
 {
@@ -55,10 +56,10 @@ namespace Nyx::Editor
 
 		TransformGizmo TransformGizmoInstance;
 
-		ReflectedSceneResolver TransactionResolver;
-		ReflectedTransactionHistory History{ TransactionResolver };
-		EditorTransactionContext TransactionContext;
-		InspectorDrawContext DetailsPanelContext;
+		Nyx::Editor::SceneTransactionResolver TransactionResolver;
+		Nyx::Editor::TransactionSystem Transactions{ TransactionResolver };
+		Nyx::Editor::EditorTransactionContext TransactionContext;
+		Nyx::Editor::InspectorDrawContext DetailsPanelContext;
 
 		bool bShowSceneView = true;
 		bool bShowSecondarySceneView = true;
@@ -66,5 +67,7 @@ namespace Nyx::Editor
 		bool bShowDetailsPanel = true;
 
 		double LastFrameTimeSeconds = 0.0;
+
+		Nyx::Editor::EditorTransactionSubscriber TransactionSubscriber;
 	};
 }

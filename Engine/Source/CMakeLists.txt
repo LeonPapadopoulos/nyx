@@ -78,7 +78,10 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Editor/src/ReflectedPropertyAccess.cpp
     ${NYX_ENGINE_ROOT}/Editor/src/ReflectedTransactionSystem.cpp
     ${NYX_ENGINE_ROOT}/Editor/src/ReflectedDiffUtil.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/ReflectedSceneResolver.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/SceneTransactionResolver.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/TransactionSystem.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/TransactionDiffUtil.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/EditorTransactionSubscriber.cpp
 
     # Reflection
     # ${NYX_ENGINE_ROOT}/Reflection/src/.cpp
@@ -148,7 +151,11 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Editor/include/ReflectedPropertyAccess.h
     ${NYX_ENGINE_ROOT}/Editor/include/ReflectedTransactionSystem.h
     ${NYX_ENGINE_ROOT}/Editor/include/ReflectedDiffUtil.h
-    ${NYX_ENGINE_ROOT}/Editor/include/ReflectedSceneResolver.h
+    ${NYX_ENGINE_ROOT}/Editor/include/SceneTransactionResolver.h
+    ${NYX_ENGINE_ROOT}/Editor/include/TransactionTypes.h
+    ${NYX_ENGINE_ROOT}/Editor/include/TransactionSystem.h
+    ${NYX_ENGINE_ROOT}/Editor/include/TransactionDiffUtil.h
+    ${NYX_ENGINE_ROOT}/Editor/include/EditorTransactionSubscriber.h
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionTypes.h

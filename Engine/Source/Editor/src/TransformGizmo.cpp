@@ -5,6 +5,7 @@
 #include "InspectorTargetId.h"
 #include "InspectorTargetIdHelpers.h"
 #include "EditableObjectRegistrations.h"
+#include "TransactionSystem.h"
 
 #include <glm/gtc/quaternion.hpp>
 
@@ -1046,7 +1047,7 @@ namespace Nyx::Editor
 	bool TransformGizmo::TickAndDraw(
 		Nyx::IRenderer& renderer,
 		Nyx::SceneDocument& scene,
-		Nyx::Editor::ReflectedTransactionHistory& history,
+		Nyx::Editor::TransactionSystem& transactions,
 		uint64_t sceneViewId,
 		const ImVec2& imageScreenMin,
 		const ImVec2& imageSize,
@@ -1118,7 +1119,7 @@ namespace Nyx::Editor
 				{
 					if (ActiveTransformDiff.has_value())
 					{
-						ActiveTransformDiff->CommitChanges("Translate Entity", history);
+						ActiveTransformDiff->CommitChanges("Translate Entity", transactions);
 						ActiveTransformDiff.reset();
 					}
 
@@ -1165,7 +1166,7 @@ namespace Nyx::Editor
 				{
 					if (ActiveTransformDiff.has_value())
 					{
-						ActiveTransformDiff->CommitChanges("Rotate Entity", history);
+						ActiveTransformDiff->CommitChanges("Rotate Entity", transactions);
 						ActiveTransformDiff.reset();
 					}
 
@@ -1212,7 +1213,7 @@ namespace Nyx::Editor
 				{
 					if (ActiveTransformDiff.has_value())
 					{
-						ActiveTransformDiff->CommitChanges("Scale Entity", history);
+						ActiveTransformDiff->CommitChanges("Scale Entity", transactions);
 						ActiveTransformDiff.reset();
 					}
 
