@@ -1,12 +1,12 @@
 #include "ReflectedPropertyDrawer.h"
+#include "ReflectedDiffUtil.h"
+#include "ReflectedPropertyAccess.h"
 
 #include <imgui.h>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/quaternion.hpp>
-
-#include <cstring>
 
 namespace
 {
@@ -55,6 +55,28 @@ namespace Nyx::Editor
 			return false;
 		}
 
+		auto BeginEdit = [&](PropertyEditTransactionState& state)
+			{
+				if (!state.bEditing || state.TargetId != drawContext.CurrentTargetId)
+				{
+					state.bEditing = true;
+					state.TargetId = drawContext.CurrentTargetId;
+					state.PendingDiff.emplace();
+					state.PendingDiff->TakeSnapshot(drawContext.CurrentTargetId, object, typeMetadata);
+				}
+			};
+
+		auto CommitEdit = [&](PropertyEditTransactionState& state, const char* label)
+			{
+				if (state.PendingDiff.has_value() && drawContext.History)
+				{
+					state.PendingDiff->CommitChanges(label, *drawContext.History);
+				}
+
+				state.PendingDiff.reset();
+				state.bEditing = false;
+			};
+
 		if (!ImGui::BeginTable("ReflectedProperties", 2, ImGuiTableFlags_SizingStretchProp))
 		{
 			return false;
@@ -81,22 +103,36 @@ namespace Nyx::Editor
 
 			switch (property.Kind)
 			{
-			case Nyx::Reflection::EPropertyKind::Float:
-			{
-				float& value = AccessByOffset<float>(object, property.Offset);
-				if (ImGui::DragFloat("##Field", &value, property.DragSpeed > 0.0f ? property.DragSpeed : 0.1f))
-				{
-					bAnyChanged = true;
-				}
-				break;
-			}
-
 			case Nyx::Reflection::EPropertyKind::Vec3:
 			{
 				glm::vec3& value = AccessByOffset<glm::vec3>(object, property.Offset);
 				if (ImGui::DragFloat3("##Field", &value.x, property.DragSpeed > 0.0f ? property.DragSpeed : 0.1f))
 				{
 					bAnyChanged = true;
+				}
+
+				if (ImGui::IsItemActivated())
+				{
+					if (std::string_view(property.Name) == "Position")
+					{
+						BeginEdit(drawContext.TransformPositionEdit);
+					}
+					else if (std::string_view(property.Name) == "Scale")
+					{
+						BeginEdit(drawContext.TransformScaleEdit);
+					}
+				}
+
+				if (ImGui::IsItemDeactivatedAfterEdit())
+				{
+					if (std::string_view(property.Name) == "Position")
+					{
+						CommitEdit(drawContext.TransformPositionEdit, "Edit Transform Position");
+					}
+					else if (std::string_view(property.Name) == "Scale")
+					{
+						CommitEdit(drawContext.TransformScaleEdit, "Edit Transform Scale");
+					}
 				}
 				break;
 			}
@@ -124,25 +160,20 @@ namespace Nyx::Editor
 
 					if (ImGui::IsItemActivated())
 					{
-						rotState.bEditing = true;
+						BeginEdit(rotState);
 						rotState.TargetId = drawContext.CurrentTargetId;
 					}
 
 					if (ImGui::IsItemDeactivatedAfterEdit())
 					{
-						rotState.bEditing = false;
+						CommitEdit(rotState, "Edit Transform Rotation");
 						rotState.CachedDegrees =
 							WrapEulerDegrees180(glm::degrees(glm::eulerAngles(glm::normalize(value))));
 					}
 				}
 				else
 				{
-					glm::vec4 quatValue(value.x, value.y, value.z, value.w);
-					if (ImGui::DragFloat4("##Field", &quatValue.x, property.DragSpeed > 0.0f ? property.DragSpeed : 0.01f))
-					{
-						value = glm::normalize(glm::quat(quatValue.w, quatValue.x, quatValue.y, quatValue.z));
-						bAnyChanged = true;
-					}
+					ImGui::TextDisabled("<quat unsupported>");
 				}
 				break;
 			}

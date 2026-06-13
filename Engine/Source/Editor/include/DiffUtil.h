@@ -3,6 +3,8 @@
 #include "EditableObjectTraits.h"
 #include "EditableTargetResolver.h"
 #include "TransactionHistory.h"
+#include "PropertyValue.h"
+#include "PropertyValueUtils.h"
 
 #include <memory>
 #include <type_traits>
@@ -14,8 +16,8 @@ namespace Nyx::Editor
 	struct PropertyDelta
 	{
 		size_t PropertyIndex = 0;
-		EditorValue Before;
-		EditorValue After;
+		Nyx::Reflection::PropertyValue Before;
+		Nyx::Reflection::PropertyValue After;
 	};
 
 	template<typename TObject>
@@ -142,7 +144,7 @@ namespace Nyx::Editor
 
 				for (size_t index = 0; index < properties.size(); ++index)
 				{
-					const EditorValue afterValue = properties[index].GetValue(*LiveObject);
+					const Nyx::Reflection::PropertyValue afterValue = properties[index].GetValue(*LiveObject);
 					if (!AreEditorValuesEqual(BeforeValues[index], afterValue))
 					{
 						deltas.push_back(PropertyDelta<TObject>{
@@ -163,7 +165,7 @@ namespace Nyx::Editor
 
 			InspectorTargetId TargetId{};
 			TObject* LiveObject = nullptr;
-			std::vector<EditorValue> BeforeValues;
+			std::vector<Nyx::Reflection::PropertyValue> BeforeValues;
 		};
 
 	private:

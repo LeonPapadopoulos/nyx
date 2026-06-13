@@ -66,7 +66,6 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Editor/src/ComponentInspectorRegistry.cpp
     ${NYX_ENGINE_ROOT}/Editor/src/InspectorDrawContext.cpp
     ${NYX_ENGINE_ROOT}/Editor/src/TransformGizmo.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/EditorValue.cpp
     ${NYX_ENGINE_ROOT}/Editor/src/InspectorTargetId.cpp
     ${NYX_ENGINE_ROOT}/Editor/src/InspectorTargetIdHelpers.cpp
     ${NYX_ENGINE_ROOT}/Editor/src/EditableObjectTraits.cpp
@@ -76,6 +75,10 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Editor/src/DiffUtil.cpp
     ${NYX_ENGINE_ROOT}/Editor/src/EditableObjectRegistrations.cpp
     ${NYX_ENGINE_ROOT}/Editor/src/ReflectedPropertyDrawer.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/ReflectedPropertyAccess.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/ReflectedTransactionSystem.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/ReflectedDiffUtil.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/ReflectedSceneResolver.cpp
 
     # Reflection
     # ${NYX_ENGINE_ROOT}/Reflection/src/.cpp
@@ -87,6 +90,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/Core.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/Log.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/NyxEngineAPI.h
+    
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/NyxPCH.h
 
     # Runtime/Engine
@@ -132,7 +136,6 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Editor/include/ComponentInspectorRegistry.h
     ${NYX_ENGINE_ROOT}/Editor/include/InspectorDrawContext.h
     ${NYX_ENGINE_ROOT}/Editor/include/TransformGizmo.h
-    ${NYX_ENGINE_ROOT}/Editor/include/EditorValue.h
     ${NYX_ENGINE_ROOT}/Editor/include/InspectorTargetId.h
     ${NYX_ENGINE_ROOT}/Editor/include/InspectorTargetIdHelpers.h
     ${NYX_ENGINE_ROOT}/Editor/include/EditableObjectTraits.h
@@ -142,10 +145,16 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Editor/include/DiffUtil.h
     ${NYX_ENGINE_ROOT}/Editor/include/EditableObjectRegistrations.h
     ${NYX_ENGINE_ROOT}/Editor/include/ReflectedPropertyDrawer.h
+    ${NYX_ENGINE_ROOT}/Editor/include/ReflectedPropertyAccess.h
+    ${NYX_ENGINE_ROOT}/Editor/include/ReflectedTransactionSystem.h
+    ${NYX_ENGINE_ROOT}/Editor/include/ReflectedDiffUtil.h
+    ${NYX_ENGINE_ROOT}/Editor/include/ReflectedSceneResolver.h
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionTypes.h
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionMacros.h
+    ${NYX_ENGINE_ROOT}/Reflection/include/PropertyValue.h
+    ${NYX_ENGINE_ROOT}/Reflection/include/PropertyValueUtils.h
 )
 
 add_library(NyxEngine SHARED 

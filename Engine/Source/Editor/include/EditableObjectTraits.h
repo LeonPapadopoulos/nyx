@@ -1,6 +1,7 @@
 #pragma once
 
-#include "EditorValue.h"
+#include "PropertyValue.h"
+#include "PropertyValueUtils.h"
 
 #include <vector>
 
@@ -10,8 +11,8 @@ namespace Nyx::Editor
 	struct EditablePropertyDesc
 	{
 		const char* Name = "";
-		EditorValue(*GetValue)(const TObject&) = nullptr;
-		void (*SetValue)(TObject&, const EditorValue&) = nullptr;
+		Nyx::Reflection::PropertyValue(*GetValue)(const TObject&) = nullptr;
+		void (*SetValue)(TObject&, const Nyx::Reflection::PropertyValue&) = nullptr;
 	};
 
 	template<typename TObject>
@@ -27,13 +28,13 @@ namespace Nyx::Editor
 	};
 
 	template<typename TObject, typename TValue, TValue TObject::* Member>
-	EditorValue GetMemberEditorValue(const TObject& object)
+	Nyx::Reflection::PropertyValue GetMemberEditorValue(const TObject& object)
 	{
 		return object.*Member;
 	}
 
 	template<typename TObject, typename TValue, TValue TObject::* Member>
-	void SetMemberEditorValue(TObject& object, const EditorValue& value)
+	void SetMemberEditorValue(TObject& object, const Nyx::Reflection::PropertyValue& value)
 	{
 		object.*Member = std::get<TValue>(value);
 	}

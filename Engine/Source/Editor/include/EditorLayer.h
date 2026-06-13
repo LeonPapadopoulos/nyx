@@ -5,6 +5,8 @@
 #include "TransformGizmo.h"
 #include "Extent2D.h"
 #include "InspectorDrawContext.h"
+#include "ReflectedSceneResolver.h"
+#include "ReflectedTransactionSystem.h"
 
 namespace Nyx::Editor
 {
@@ -53,7 +55,8 @@ namespace Nyx::Editor
 
 		TransformGizmo TransformGizmoInstance;
 
-		TransactionHistory History;
+		ReflectedSceneResolver TransactionResolver;
+		ReflectedTransactionHistory History{ TransactionResolver };
 		EditorTransactionContext TransactionContext;
 		InspectorDrawContext DetailsPanelContext;
 

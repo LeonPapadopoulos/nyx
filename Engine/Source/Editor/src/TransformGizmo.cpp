@@ -1046,7 +1046,7 @@ namespace Nyx::Editor
 	bool TransformGizmo::TickAndDraw(
 		Nyx::IRenderer& renderer,
 		Nyx::SceneDocument& scene,
-		Nyx::Editor::TransactionHistory& history,
+		Nyx::Editor::ReflectedTransactionHistory& history,
 		uint64_t sceneViewId,
 		const ImVec2& imageScreenMin,
 		const ImVec2& imageSize,
@@ -1100,7 +1100,11 @@ namespace Nyx::Editor
 				State.ActiveSceneViewId = sceneViewId;
 
 				ActiveTransformDiff.emplace();
-				ActiveTransformDiff->TakeSnapshot(Nyx::Editor::MakeInspectorTargetId(entity), transform);
+				ActiveTransformDiff->TakeSnapshot(
+					Nyx::Editor::MakeInspectorTargetId(entity),
+					&transform,
+					Nyx::Reflection::GetTypeMetadata<Nyx::Engine::TransformComponent>()
+				);
 
 				BeginTranslateDrag(viewData, entity, transform, gizmoOrigin, imageScreenMin, imageSize);
 				bConsumed = true;
@@ -1143,7 +1147,11 @@ namespace Nyx::Editor
 				State.ActiveSceneViewId = sceneViewId;
 
 				ActiveTransformDiff.emplace();
-				ActiveTransformDiff->TakeSnapshot(Nyx::Editor::MakeInspectorTargetId(entity), transform);
+				ActiveTransformDiff->TakeSnapshot(
+					Nyx::Editor::MakeInspectorTargetId(entity),
+					&transform,
+					Nyx::Reflection::GetTypeMetadata<Nyx::Engine::TransformComponent>()
+				);
 
 				BeginRotateDrag(viewData, entity, transform, gizmoOrigin, imageScreenMin, imageSize);
 				bConsumed = true;
@@ -1186,7 +1194,11 @@ namespace Nyx::Editor
 				State.ActiveSceneViewId = sceneViewId;
 
 				ActiveTransformDiff.emplace();
-				ActiveTransformDiff->TakeSnapshot(Nyx::Editor::MakeInspectorTargetId(entity), transform);
+				ActiveTransformDiff->TakeSnapshot(
+					Nyx::Editor::MakeInspectorTargetId(entity),
+					&transform,
+					Nyx::Reflection::GetTypeMetadata<Nyx::Engine::TransformComponent>()
+				);
 
 				BeginScaleDrag(viewData, entity, transform, gizmoOrigin, imageScreenMin, imageSize);
 				bConsumed = true;

@@ -5,17 +5,19 @@
 #include "Entity.h"
 #include "SceneDocument.h"
 #include "TransformComponent.h"
+#include "PropertyValue.h"
+#include "PropertyValueUtils.h"
 
 #include <glm/gtc/quaternion.hpp>
 
 namespace Nyx::Editor
 {
-	inline EditorValue GetTransformRotationValue(const Nyx::Engine::TransformComponent& component)
+	inline Nyx::Reflection::PropertyValue GetTransformRotationValue(const Nyx::Engine::TransformComponent& component)
 	{
 		return glm::normalize(component.Rotation);
 	}
 
-	inline void SetTransformRotationValue(Nyx::Engine::TransformComponent& component, const EditorValue& value)
+	inline void SetTransformRotationValue(Nyx::Engine::TransformComponent& component, const Nyx::Reflection::PropertyValue& value)
 	{
 		component.Rotation = glm::normalize(std::get<glm::quat>(value));
 	}

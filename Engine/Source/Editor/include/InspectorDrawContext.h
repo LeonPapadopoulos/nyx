@@ -1,7 +1,8 @@
 #pragma once
 
-#include "DiffUtil.h"
 #include "InspectorTargetId.h"
+#include "ReflectedDiffUtil.h"
+#include "ReflectedTransactionSystem.h"
 
 #include <glm/glm.hpp>
 #include <optional>
@@ -12,7 +13,7 @@ namespace Nyx::Editor
 	{
 		bool bEditing = false;
 		InspectorTargetId TargetId{};
-		std::optional<DiffUtil> PendingDiff;
+		std::optional<ReflectedDiffUtil> PendingDiff;
 	};
 
 	struct TransformRotationEditState : PropertyEditTransactionState
@@ -22,7 +23,7 @@ namespace Nyx::Editor
 
 	struct InspectorDrawContext
 	{
-		TransactionHistory* History = nullptr;
+		ReflectedTransactionHistory* History = nullptr;
 		InspectorTargetId CurrentTargetId{};
 
 		PropertyEditTransactionState TransformPositionEdit;
