@@ -1,19 +1,14 @@
 #include "SceneEntityTransactionDomain.h"
-
-#include "MeshRendererComponent.h"
-#include "NameComponent.h"
-#include "TransformComponent.h"
-
-#include <string_view>
+#include "ComponentTypeRegistry.h"
 
 namespace Nyx::Editor
 {
 	void* SceneEntityTransactionDomain::ResolveMutable(
 		EditorTransactionContext& context,
-		const ObjectRef& objectRef,
+		const ObjectRef& root,
 		const Nyx::Reflection::TypeMetadata& typeMetadata)
 	{
-		if (!context.ActiveScene || objectRef.Domain != EObjectDomain::SceneEntity)
+		if (!context.ActiveScene || root.Domain != EObjectDomain::SceneEntity)
 		{
 			return nullptr;
 		}
@@ -21,81 +16,27 @@ namespace Nyx::Editor
 		auto& world = context.ActiveScene->GetRegistry();
 
 		Nyx::Engine::Entity entity{};
-		entity.Value = static_cast<decltype(entity.Value)>(objectRef.Id.Value);
+		entity.Value = static_cast<decltype(entity.Value)>(root.Id.Value);
 
 		if (!world.IsAlive(entity))
 		{
 			return nullptr;
 		}
 
-		const std::string_view typeName = typeMetadata.Name ? typeMetadata.Name : "";
-
-		if (typeName == "Nyx::Engine::TransformComponent")
+		const ComponentTypeOps* ops = ComponentTypeRegistry::Get().FindByTypeMetadata(&typeMetadata);
+		if (!ops || !ops->GetMutable)
 		{
-			if (!world.Has<Nyx::Engine::TransformComponent>(entity))
-			{
-				return nullptr;
-			}
-			return &world.Get<Nyx::Engine::TransformComponent>(entity);
+			return nullptr;
 		}
 
-		if (typeName == "Nyx::Engine::NameComponent")
-		{
-			if (!world.Has<Nyx::Engine::NameComponent>(entity))
-			{
-				return nullptr;
-			}
-			return &world.Get<Nyx::Engine::NameComponent>(entity);
-		}
-
-		if (typeName == "Nyx::Engine::MeshRendererComponent")
-		{
-			if (!world.Has<Nyx::Engine::MeshRendererComponent>(entity))
-			{
-				return nullptr;
-			}
-			return &world.Get<Nyx::Engine::MeshRendererComponent>(entity);
-		}
-
-		return nullptr;
+		return ops->GetMutable(world, entity);
 	}
 
-	bool SceneEntityTransactionDomain::CreateObject(
+	bool SceneEntityTransactionDomain::CreateRootObject(
 		EditorTransactionContext& context,
-		const AddObjectChange& change)
+		const ObjectRef& root)
 	{
-		if (!context.ActiveScene || change.Target.Domain != EObjectDomain::SceneEntity)
-		{
-			return false;
-		}
-
-		if (!std::holds_alternative<SceneEntitySnapshot>(change.AfterCreate))
-		{
-			return false;
-		}
-
-		auto& scene = *context.ActiveScene;
-		auto& world = scene.GetRegistry();
-
-		Nyx::Engine::Entity entity{};
-		entity.Value = static_cast<decltype(entity.Value)>(change.Target.Id.Value);
-
-		if (!world.RestoreEntity(entity))
-		{
-			return false;
-		}
-
-		const SceneEntitySnapshot& snapshot = std::get<SceneEntitySnapshot>(change.AfterCreate);
-		RestoreSnapshot(scene, entity, snapshot);
-
-		return true;
-	}
-
-	bool SceneEntityTransactionDomain::DeleteObject(
-		EditorTransactionContext& context,
-		const DeleteObjectChange& change)
-	{
-		if (!context.ActiveScene || change.Target.Domain != EObjectDomain::SceneEntity)
+		if (!context.ActiveScene || root.Domain != EObjectDomain::SceneEntity)
 		{
 			return false;
 		}
@@ -103,7 +44,24 @@ namespace Nyx::Editor
 		auto& world = context.ActiveScene->GetRegistry();
 
 		Nyx::Engine::Entity entity{};
-		entity.Value = static_cast<decltype(entity.Value)>(change.Target.Id.Value);
+		entity.Value = static_cast<decltype(entity.Value)>(root.Id.Value);
+
+		return world.RestoreEntity(entity);
+	}
+
+	bool SceneEntityTransactionDomain::DeleteRootObject(
+		EditorTransactionContext& context,
+		const ObjectRef& root)
+	{
+		if (!context.ActiveScene || root.Domain != EObjectDomain::SceneEntity)
+		{
+			return false;
+		}
+
+		auto& world = context.ActiveScene->GetRegistry();
+
+		Nyx::Engine::Entity entity{};
+		entity.Value = static_cast<decltype(entity.Value)>(root.Id.Value);
 
 		if (!world.IsAlive(entity))
 		{
@@ -113,78 +71,110 @@ namespace Nyx::Editor
 		return world.DestroyEntity(entity);
 	}
 
-	SceneEntitySnapshot SceneEntityTransactionDomain::CaptureSnapshot(
-		Nyx::SceneDocument& scene,
-		Nyx::Engine::Entity entity) const
+	void SceneEntityTransactionDomain::EnumerateSubobjects(
+		EditorTransactionContext& context,
+		const ObjectRef& root,
+		std::vector<ReflectedObjectView>& outSubobjects)
 	{
-		SceneEntitySnapshot snapshot{};
-		auto& world = scene.GetRegistry();
+		outSubobjects.clear();
 
-		snapshot.bAlive = world.IsAlive(entity);
-		if (!snapshot.bAlive)
+		if (!context.ActiveScene || root.Domain != EObjectDomain::SceneEntity)
 		{
-			return snapshot;
+			return;
 		}
 
-		if (world.Has<Nyx::Engine::NameComponent>(entity))
+		auto& world = context.ActiveScene->GetRegistry();
+
+		Nyx::Engine::Entity entity{};
+		entity.Value = static_cast<decltype(entity.Value)>(root.Id.Value);
+
+		if (!world.IsAlive(entity))
 		{
-			snapshot.Name = world.Get<Nyx::Engine::NameComponent>(entity);
+			return;
 		}
 
-		if (world.Has<Nyx::Engine::TransformComponent>(entity))
+		for (const ComponentTypeOps& ops : ComponentTypeRegistry::Get().GetAll())
 		{
-			snapshot.Transform = world.Get<Nyx::Engine::TransformComponent>(entity);
-		}
+			if (!ops.TypeMetadata || !ops.Has || !ops.GetMutable)
+			{
+				continue;
+			}
 
-		if (world.Has<Nyx::Engine::MeshRendererComponent>(entity))
-		{
-			snapshot.MeshRenderer = world.Get<Nyx::Engine::MeshRendererComponent>(entity);
-		}
+			if (!ops.Has(world, entity))
+			{
+				continue;
+			}
 
-		return snapshot;
+			void* object = ops.GetMutable(world, entity);
+			if (!object)
+			{
+				continue;
+			}
+
+			outSubobjects.push_back(ReflectedObjectView{
+				.TypeMetadata = ops.TypeMetadata,
+				.Object = object
+				});
+		}
 	}
 
-	void SceneEntityTransactionDomain::RestoreSnapshot(
-		Nyx::SceneDocument& scene,
-		Nyx::Engine::Entity entity,
-		const SceneEntitySnapshot& snapshot) const
+	bool SceneEntityTransactionDomain::EnsureSubobject(
+		EditorTransactionContext& context,
+		const ObjectRef& root,
+		const Nyx::Reflection::TypeMetadata& typeMetadata)
 	{
-		auto& world = scene.GetRegistry();
-
-		if (snapshot.Name.has_value())
+		if (!context.ActiveScene || root.Domain != EObjectDomain::SceneEntity)
 		{
-			if (world.Has<Nyx::Engine::NameComponent>(entity))
-			{
-				world.Get<Nyx::Engine::NameComponent>(entity) = snapshot.Name.value();
-			}
-			else
-			{
-				world.Add<Nyx::Engine::NameComponent>(entity, snapshot.Name.value());
-			}
+			return false;
 		}
 
-		if (snapshot.Transform.has_value())
+		auto& world = context.ActiveScene->GetRegistry();
+
+		Nyx::Engine::Entity entity{};
+		entity.Value = static_cast<decltype(entity.Value)>(root.Id.Value);
+
+		if (!world.IsAlive(entity))
 		{
-			if (world.Has<Nyx::Engine::TransformComponent>(entity))
-			{
-				world.Get<Nyx::Engine::TransformComponent>(entity) = snapshot.Transform.value();
-			}
-			else
-			{
-				world.Add<Nyx::Engine::TransformComponent>(entity, snapshot.Transform.value());
-			}
+			return false;
 		}
 
-		if (snapshot.MeshRenderer.has_value())
+		const ComponentTypeOps* ops = ComponentTypeRegistry::Get().FindByTypeMetadata(&typeMetadata);
+		if (!ops || !ops->AddDefault)
 		{
-			if (world.Has<Nyx::Engine::MeshRendererComponent>(entity))
-			{
-				world.Get<Nyx::Engine::MeshRendererComponent>(entity) = snapshot.MeshRenderer.value();
-			}
-			else
-			{
-				world.Add<Nyx::Engine::MeshRendererComponent>(entity, snapshot.MeshRenderer.value());
-			}
+			return false;
 		}
+
+		ops->AddDefault(world, entity);
+		return true;
+	}
+
+	bool SceneEntityTransactionDomain::RemoveSubobject(
+		EditorTransactionContext& context,
+		const ObjectRef& root,
+		const Nyx::Reflection::TypeMetadata& typeMetadata)
+	{
+		if (!context.ActiveScene || root.Domain != EObjectDomain::SceneEntity)
+		{
+			return false;
+		}
+
+		auto& world = context.ActiveScene->GetRegistry();
+
+		Nyx::Engine::Entity entity{};
+		entity.Value = static_cast<decltype(entity.Value)>(root.Id.Value);
+
+		if (!world.IsAlive(entity))
+		{
+			return false;
+		}
+
+		const ComponentTypeOps* ops = ComponentTypeRegistry::Get().FindByTypeMetadata(&typeMetadata);
+		if (!ops || !ops->RemoveIfPresent)
+		{
+			return false;
+		}
+
+		ops->RemoveIfPresent(world, entity);
+		return true;
 	}
 }

@@ -8,6 +8,8 @@
 #include "ComponentInspectorRegistry.h"
 #include "TransactionObjectRef.h"
 #include "TransactionObjectRefHelpers.h"
+#include "RootObjectSnapshotUtils.h"
+#include "ComponentTypeRegistration.h"
 
 #include "imgui.h"
 
@@ -81,6 +83,7 @@ namespace Nyx::Editor
 
 		SpawnTestScene();
 
+		Nyx::Editor::RegisterDefaultComponentTypes();
 		Transactions.RegisterDomain(Nyx::Editor::EObjectDomain::SceneEntity, &SceneEntityDomain);
 
 		// @todo: Remove once Reflection System debugging finished
@@ -212,16 +215,21 @@ namespace Nyx::Editor
 		auto& world = ActiveScene.GetRegistry();
 		auto& selection = ActiveScene.GetSelection();
 
+		TransactionContext.ActiveScene = &ActiveScene;
+
 		if (ImGui::Button("Add Entity"))
 		{
 			Nyx::Engine::Entity newEntity = ActiveScene.CreateEntity("New Entity");
+			selection = newEntity;
 
-			SceneEntitySnapshot snapshot = SceneEntityDomain.CaptureSnapshot(ActiveScene, newEntity);
+			const ObjectRef rootRef = MakeSceneEntityRef(newEntity);
+			RootObjectSnapshot snapshot =
+				CaptureRootObjectSnapshot(SceneEntityDomain, TransactionContext, rootRef);
 
 			Change change{};
 			change.Kind = EChangeKind::AddObject;
 			change.Payload = AddObjectChange{
-				.Target = MakeSceneEntityRef(newEntity),
+				.Target = rootRef,
 				.AfterCreate = snapshot
 			};
 
@@ -230,8 +238,6 @@ namespace Nyx::Editor
 			transaction.Changes.push_back(std::move(change));
 
 			Transactions.Push(std::move(transaction));
-
-			selection = newEntity;
 		}
 
 		ImGui::SameLine();
@@ -245,15 +251,17 @@ namespace Nyx::Editor
 		if (ImGui::Button("Delete Selected") && bHasSelection)
 		{
 			const Nyx::Engine::Entity entityToDelete = selection.value();
+			const ObjectRef rootRef = MakeSceneEntityRef(entityToDelete);
 
-			SceneEntitySnapshot snapshot = SceneEntityDomain.CaptureSnapshot(ActiveScene, entityToDelete);
+			RootObjectSnapshot snapshot =
+				CaptureRootObjectSnapshot(SceneEntityDomain, TransactionContext, rootRef);
 
 			if (ActiveScene.DestroyEntity(entityToDelete))
 			{
 				Change change{};
 				change.Kind = EChangeKind::DeleteObject;
 				change.Payload = DeleteObjectChange{
-					.Target = MakeSceneEntityRef(entityToDelete),
+					.Target = rootRef,
 					.BeforeDelete = snapshot
 				};
 
@@ -262,7 +270,6 @@ namespace Nyx::Editor
 				transaction.Changes.push_back(std::move(change));
 
 				Transactions.Push(std::move(transaction));
-
 				selection.reset();
 			}
 		}
@@ -470,14 +477,16 @@ namespace Nyx::Editor
 				}
 			);
 
-			world.Add<Nyx::Engine::MeshRendererComponent>(
+			auto& meshRenderer = world.Add<Nyx::Engine::MeshRendererComponent>(
 				e,
 				Nyx::Engine::MeshRendererComponent{
-					.MeshAsset = Renderer->GetCubeMesh(),
-					.MaterialAsset = Renderer->GetTexturedMaterial(),
+					.MeshId = "Cube",
+					.MaterialId = "Textured",
 					.bVisible = true
 				}
 			);
+
+			ResolveMeshRendererAssets(meshRenderer);
 		}
 
 		{
@@ -492,14 +501,16 @@ namespace Nyx::Editor
 				}
 			);
 
-			world.Add<Nyx::Engine::MeshRendererComponent>(
+			auto& meshRenderer = world.Add<Nyx::Engine::MeshRendererComponent>(
 				e,
 				Nyx::Engine::MeshRendererComponent{
-					.MeshAsset = Renderer->GetCubeMesh(),
-					.MaterialAsset = Renderer->GetReflectiveMaterial(),
+					.MeshId = "Cube",
+					.MaterialId = "Reflective",
 					.bVisible = true
 				}
 			);
+
+			ResolveMeshRendererAssets(meshRenderer);
 		}
 
 		{
@@ -514,14 +525,16 @@ namespace Nyx::Editor
 				}
 			);
 
-			world.Add<Nyx::Engine::MeshRendererComponent>(
+			auto& meshRenderer = world.Add<Nyx::Engine::MeshRendererComponent>(
 				e,
 				Nyx::Engine::MeshRendererComponent{
-					.MeshAsset = Renderer->GetCubeMesh(),
-					.MaterialAsset = Renderer->GetUntexturedMaterial(),
+					.MeshId = "Cube",
+					.MaterialId = "Untextured",
 					.bVisible = true
 				}
 			);
+
+			ResolveMeshRendererAssets(meshRenderer);
 		}
 	}
 
@@ -556,14 +569,55 @@ namespace Nyx::Editor
 			return;
 		}
 
+		auto ResolveAllMeshRendererAssets = [&]()
+			{
+				auto& world = ActiveScene.GetRegistry();
+				world.Each<Nyx::Engine::MeshRendererComponent>(
+					[&](Nyx::Engine::Entity, Nyx::Engine::MeshRendererComponent& meshRenderer)
+					{
+						ResolveMeshRendererAssets(meshRenderer);
+					}
+				);
+			};
+
 		if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_Z))
 		{
-			Transactions.Undo(TransactionContext);
+			if (Transactions.Undo(TransactionContext))
+			{
+				ResolveAllMeshRendererAssets();
+			}
 		}
 		else if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_Z) ||
 			ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_Y))
 		{
-			Transactions.Redo(TransactionContext);
+			if (Transactions.Redo(TransactionContext))
+			{
+				ResolveAllMeshRendererAssets();
+			}
+		}
+	}
+
+	void EditorLayer::ResolveMeshRendererAssets(Nyx::Engine::MeshRendererComponent& component)
+	{
+		component.MeshAsset = nullptr;
+		component.MaterialAsset = nullptr;
+
+		if (component.MeshId == "Cube")
+		{
+			component.MeshAsset = Renderer->GetCubeMesh();
+		}
+
+		if (component.MaterialId == "Textured")
+		{
+			component.MaterialAsset = Renderer->GetTexturedMaterial();
+		}
+		else if (component.MaterialId == "Reflective")
+		{
+			component.MaterialAsset = Renderer->GetReflectiveMaterial();
+		}
+		else if (component.MaterialId == "Untextured")
+		{
+			component.MaterialAsset = Renderer->GetUntexturedMaterial();
 		}
 	}
 }

@@ -82,6 +82,10 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Editor/src/TransactionDiffUtil.cpp
     ${NYX_ENGINE_ROOT}/Editor/src/EditorTransactionSubscriber.cpp
     ${NYX_ENGINE_ROOT}/Editor/src/SceneEntityTransactionDomain.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/ReflectedObjectSerialization.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/RootObjectSnapshotUtils.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/ComponentTypeRegistry.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/ComponentTypeRegistration.cpp
 
     # Reflection
     # ${NYX_ENGINE_ROOT}/Reflection/src/.cpp
@@ -160,6 +164,11 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Editor/include/SceneEntitySnapshot.h
     ${NYX_ENGINE_ROOT}/Editor/include/TransactionDomain.h
     ${NYX_ENGINE_ROOT}/Editor/include/SceneEntityTransactionDomain.h
+    ${NYX_ENGINE_ROOT}/Editor/include/ReflectedObjectSnapshot.h
+    ${NYX_ENGINE_ROOT}/Editor/include/ReflectedObjectSerialization.h
+    ${NYX_ENGINE_ROOT}/Editor/include/RootObjectSnapshotUtils.h
+    ${NYX_ENGINE_ROOT}/Editor/include/ComponentTypeRegistry.h
+    ${NYX_ENGINE_ROOT}/Editor/include/ComponentTypeRegistration.h
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionTypes.h
@@ -184,6 +193,9 @@ target_compile_features(NyxEngine PUBLIC cxx_std_20)
 set(NYX_GENERATED_ROOT "${CMAKE_BINARY_DIR}/Generated")
 set(NYX_GENERATED_RUNTIME_DIR "${NYX_GENERATED_ROOT}/Runtime")
 
+# --------------------------------------------------
+# TransformComponent
+# --------------------------------------------------
 set(NYX_TRANSFORM_INPUT
     "${NYX_ENGINE_ROOT}/Runtime/Engine/include/TransformComponent.h"
 )
@@ -205,12 +217,70 @@ add_custom_command(
     VERBATIM
 )
 
-# Attach the generated header directly to NyxEngine so the build graph knows about it.
-target_sources(NyxEngine PRIVATE "${NYX_TRANSFORM_OUTPUT}")
-set_source_files_properties("${NYX_TRANSFORM_OUTPUT}" PROPERTIES GENERATED TRUE HEADER_FILE_ONLY TRUE)
+# --------------------------------------------------
+# NameComponent
+# --------------------------------------------------
+set(NYX_NAME_INPUT
+    "${NYX_ENGINE_ROOT}/Runtime/Engine/include/NameComponent.h"
+)
+set(NYX_NAME_OUTPUT
+    "${NYX_GENERATED_RUNTIME_DIR}/NameComponent.reflect.h"
+)
+
+add_custom_command(
+    OUTPUT "${NYX_NAME_OUTPUT}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${NYX_GENERATED_RUNTIME_DIR}"
+    COMMAND "$<TARGET_FILE:NyxHeaderTool>"
+            "${NYX_NAME_INPUT}"
+            "${NYX_NAME_OUTPUT}"
+            "Nyx::Engine::NameComponent"
+    DEPENDS
+        NyxHeaderTool
+        "${NYX_NAME_INPUT}"
+    COMMENT "Generating reflection metadata for NameComponent"
+    VERBATIM
+)
+
+# --------------------------------------------------
+# MeshRendererComponent
+# --------------------------------------------------
+set(NYX_MESH_RENDERER_INPUT
+    "${NYX_ENGINE_ROOT}/Runtime/Engine/include/MeshRendererComponent.h"
+)
+set(NYX_MESH_RENDERER_OUTPUT
+    "${NYX_GENERATED_RUNTIME_DIR}/MeshRendererComponent.reflect.h"
+)
+
+add_custom_command(
+    OUTPUT "${NYX_MESH_RENDERER_OUTPUT}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${NYX_GENERATED_RUNTIME_DIR}"
+    COMMAND "$<TARGET_FILE:NyxHeaderTool>"
+            "${NYX_MESH_RENDERER_INPUT}"
+            "${NYX_MESH_RENDERER_OUTPUT}"
+            "Nyx::Engine::MeshRendererComponent"
+    DEPENDS
+        NyxHeaderTool
+        "${NYX_MESH_RENDERER_INPUT}"
+    COMMENT "Generating reflection metadata for MeshRendererComponent"
+    VERBATIM
+)
+
+# Attach generated headers directly to NyxEngine so the build graph knows about them.
+target_sources(NyxEngine PRIVATE
+    "${NYX_TRANSFORM_OUTPUT}"
+    "${NYX_NAME_OUTPUT}"
+    "${NYX_MESH_RENDERER_OUTPUT}"
+)
+
+set_source_files_properties(
+    "${NYX_TRANSFORM_OUTPUT}"
+    "${NYX_NAME_OUTPUT}"
+    "${NYX_MESH_RENDERER_OUTPUT}"
+    PROPERTIES GENERATED TRUE HEADER_FILE_ONLY TRUE
+)
 
 # Make sure the compiler can resolve:
-#   #include "Generated/Runtime/TransformComponent.reflect.h"
+#   #include "Generated/Runtime/<Type>.reflect.h"
 target_include_directories(NyxEngine
     PRIVATE
         "${CMAKE_BINARY_DIR}"

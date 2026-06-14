@@ -11,7 +11,6 @@
 #include <filesystem>
 
 
-class ResourceManager;
 class Mesh;
 class Texture;
 class Shader;
@@ -20,6 +19,8 @@ namespace Nyx
 {
 	namespace Engine
 	{
+		class ResourceManager;
+
 		/////////////////////////////////////////////////////////////////////////////////////////////////
 		//** ResourceHandle
 

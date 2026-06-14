@@ -1,4 +1,5 @@
 #include "TransactionSystem.h"
+#include "RootObjectSnapshotUtils.h"
 
 namespace Nyx::Editor
 {
@@ -151,14 +152,14 @@ namespace Nyx::Editor
 
 		if (bRedo)
 		{
-			domain->CreateObject(context, change);
+			if (domain->CreateRootObject(context, change.Target))
+			{
+				RestoreRootObjectSnapshot(*domain, context, change.Target, change.AfterCreate);
+			}
 		}
 		else
 		{
-			DeleteObjectChange deleteChange{};
-			deleteChange.Target = change.Target;
-			deleteChange.BeforeDelete = change.AfterCreate;
-			domain->DeleteObject(context, deleteChange);
+			domain->DeleteRootObject(context, change.Target);
 		}
 	}
 
@@ -172,14 +173,14 @@ namespace Nyx::Editor
 
 		if (bRedo)
 		{
-			domain->DeleteObject(context, change);
+			domain->DeleteRootObject(context, change.Target);
 		}
 		else
 		{
-			AddObjectChange addChange{};
-			addChange.Target = change.Target;
-			addChange.AfterCreate = change.BeforeDelete;
-			domain->CreateObject(context, addChange);
+			if (domain->CreateRootObject(context, change.Target))
+			{
+				RestoreRootObjectSnapshot(*domain, context, change.Target, change.BeforeDelete);
+			}
 		}
 	}
 

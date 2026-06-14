@@ -382,14 +382,18 @@ static ParsedType ParseHeader(const std::string& text)
 	//	+ terminator
 	//);
 
+	//const std::regex propertyRegex(
+	//	R"(NYX_PROPERTY\s*\((.*?)\)\s*)"
+	//	R"(([A-Za-z_]\w*(?:::[A-Za-z_]\w*)*))"
+	//	R"(\s+)"
+	//	R"(([A-Za-z_]\w*))"
+	//	R"(\s*)"
+	//	R"((?:\{[\s\S]*?\})?)"
+	//	R"(\s*;)"
+	//);
+
 	const std::regex propertyRegex(
-		R"(NYX_PROPERTY\s*\((.*?)\)\s*)"
-		R"(([A-Za-z_]\w*(?:::[A-Za-z_]\w*)*))"
-		R"(\s+)"
-		R"(([A-Za-z_]\w*))"
-		R"(\s*)"
-		R"((?:\{[\s\S]*?\})?)"
-		R"(\s*;)"
+		R"(NYX_PROPERTY\s*\((.*?)\)\s*([A-Za-z_]\w*(?:::[A-Za-z_]\w*)*)\s+([A-Za-z_]\w*)\s*(?:(?:\{[\s\S]*?\})|(?:=\s*[^;]+))?\s*;)"
 	);
 
 	auto begin = std::sregex_iterator(body.begin(), body.end(), propertyRegex);

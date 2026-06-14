@@ -1,7 +1,6 @@
 #pragma once
 
 #include "SceneDocument.h"
-#include "SceneEntitySnapshot.h"
 #include "TransactionDomain.h"
 
 namespace Nyx::Editor
@@ -11,25 +10,30 @@ namespace Nyx::Editor
 	public:
 		void* ResolveMutable(
 			EditorTransactionContext& context,
-			const ObjectRef& objectRef,
+			const ObjectRef& root,
 			const Nyx::Reflection::TypeMetadata& typeMetadata) override;
 
-		bool CreateObject(
+		bool CreateRootObject(
 			EditorTransactionContext& context,
-			const AddObjectChange& change) override;
+			const ObjectRef& root) override;
 
-		bool DeleteObject(
+		bool DeleteRootObject(
 			EditorTransactionContext& context,
-			const DeleteObjectChange& change) override;
+			const ObjectRef& root) override;
 
-		SceneEntitySnapshot CaptureSnapshot(
-			Nyx::SceneDocument& scene,
-			Nyx::Engine::Entity entity) const;
+		void EnumerateSubobjects(
+			EditorTransactionContext& context,
+			const ObjectRef& root,
+			std::vector<ReflectedObjectView>& outSubobjects) override;
 
-	private:
-		void RestoreSnapshot(
-			Nyx::SceneDocument& scene,
-			Nyx::Engine::Entity entity,
-			const SceneEntitySnapshot& snapshot) const;
+		bool EnsureSubobject(
+			EditorTransactionContext& context,
+			const ObjectRef& root,
+			const Nyx::Reflection::TypeMetadata& typeMetadata) override;
+
+		bool RemoveSubobject(
+			EditorTransactionContext& context,
+			const ObjectRef& root,
+			const Nyx::Reflection::TypeMetadata& typeMetadata) override;
 	};
 }

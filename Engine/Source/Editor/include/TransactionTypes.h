@@ -2,7 +2,7 @@
 
 #include "PropertyValue.h"
 #include "ReflectionTypes.h"
-#include "SceneEntitySnapshot.h"
+#include "ReflectedObjectSnapshot.h"
 #include "TransactionObjectRef.h"
 
 #include <string>
@@ -30,13 +30,13 @@ namespace Nyx::Editor
 	struct AddObjectChange
 	{
 		ObjectRef Target{};
-		std::variant<std::monostate, SceneEntitySnapshot> AfterCreate;
+		RootObjectSnapshot AfterCreate;
 	};
 
 	struct DeleteObjectChange
 	{
 		ObjectRef Target{};
-		std::variant<std::monostate, SceneEntitySnapshot> BeforeDelete;
+		RootObjectSnapshot BeforeDelete;
 	};
 
 	using ChangePayload = std::variant<

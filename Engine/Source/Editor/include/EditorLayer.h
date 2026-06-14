@@ -8,6 +8,7 @@
 #include "ReflectedTransactionSystem.h"
 #include "EditorTransactionSubscriber.h"
 #include "SceneEntityTransactionDomain.h"
+#include "MeshRendererComponent.h"
 
 namespace Nyx::Editor
 {
@@ -45,6 +46,8 @@ namespace Nyx::Editor
 		void ApplyPendingPickResults();
 
 		void HandleUndoRedoHotkeys();
+
+		void ResolveMeshRendererAssets(Nyx::Engine::MeshRendererComponent& component);
 
 	private:
 		Nyx::IRenderer* Renderer = nullptr;
