@@ -103,6 +103,51 @@ namespace Nyx::Editor
 
 			switch (property.Kind)
 			{
+			case Nyx::Reflection::EPropertyKind::Bool:
+			{
+				bool& value = AccessByOffset<bool>(object, property.Offset);
+				bool editedValue = value;
+
+				if (ImGui::Checkbox("##Field", &editedValue))
+				{
+					PropertyEditTransactionState immediateEditState{};
+					immediateEditState.Target = drawContext.CurrentObjectRef;
+					immediateEditState.PendingDiff.emplace();
+					immediateEditState.PendingDiff->TakeSnapshot(drawContext.CurrentObjectRef, object, typeMetadata);
+
+					value = editedValue;
+					bAnyChanged = true;
+
+					if (drawContext.Transactions)
+					{
+						immediateEditState.PendingDiff->CommitChanges("Edit Property", *drawContext.Transactions);
+					}
+				}
+
+				break;
+			}
+
+			case Nyx::Reflection::EPropertyKind::Float:
+			{
+				float& value = AccessByOffset<float>(object, property.Offset);
+				if (ImGui::DragFloat("##Field", &value, property.DragSpeed > 0.0f ? property.DragSpeed : 0.1f))
+				{
+					bAnyChanged = true;
+				}
+
+				if (ImGui::IsItemActivated())
+				{
+					BeginEdit(drawContext.GenericPropertyEdit);
+				}
+
+				if (ImGui::IsItemDeactivatedAfterEdit())
+				{
+					CommitEdit(drawContext.GenericPropertyEdit, "Edit Property");
+				}
+
+				break;
+			}
+
 			case Nyx::Reflection::EPropertyKind::Vec3:
 			{
 				glm::vec3& value = AccessByOffset<glm::vec3>(object, property.Offset);
@@ -113,27 +158,14 @@ namespace Nyx::Editor
 
 				if (ImGui::IsItemActivated())
 				{
-					if (std::string_view(property.Name) == "Position")
-					{
-						BeginEdit(drawContext.TransformPositionEdit);
-					}
-					else if (std::string_view(property.Name) == "Scale")
-					{
-						BeginEdit(drawContext.TransformScaleEdit);
-					}
+					BeginEdit(drawContext.GenericPropertyEdit);
 				}
 
 				if (ImGui::IsItemDeactivatedAfterEdit())
 				{
-					if (std::string_view(property.Name) == "Position")
-					{
-						CommitEdit(drawContext.TransformPositionEdit, "Edit Transform Position");
-					}
-					else if (std::string_view(property.Name) == "Scale")
-					{
-						CommitEdit(drawContext.TransformScaleEdit, "Edit Transform Scale");
-					}
+					CommitEdit(drawContext.GenericPropertyEdit, "Edit Property");
 				}
+
 				break;
 			}
 
@@ -166,7 +198,7 @@ namespace Nyx::Editor
 
 					if (ImGui::IsItemDeactivatedAfterEdit())
 					{
-						CommitEdit(rotState, "Edit Transform Rotation");
+						CommitEdit(rotState, "Edit Property");
 						rotState.CachedDegrees =
 							WrapEulerDegrees180(glm::degrees(glm::eulerAngles(glm::normalize(value))));
 					}
@@ -175,6 +207,7 @@ namespace Nyx::Editor
 				{
 					ImGui::TextDisabled("<quat unsupported>");
 				}
+
 				break;
 			}
 

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "InspectorTargetId.h"
 #include "TransactionDiffUtil.h"
+#include "TransactionObjectRef.h"
 #include "TransactionSystem.h"
 
 #include <glm/glm.hpp>
@@ -28,8 +28,10 @@ namespace Nyx::Editor
 		InspectorTargetId CurrentTargetId{};
 		ObjectRef CurrentObjectRef{};
 
-		PropertyEditTransactionState TransformPositionEdit;
+		// Generic reflected property editing state
+		PropertyEditTransactionState GenericPropertyEdit;
+
+		// Special-case only for quaternion-as-degrees UI
 		TransformRotationEditState TransformRotationEdit;
-		PropertyEditTransactionState TransformScaleEdit;
 	};
 }

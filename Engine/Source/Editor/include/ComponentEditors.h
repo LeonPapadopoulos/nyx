@@ -64,21 +64,18 @@ namespace Nyx::Editor
 
 		static const std::vector<EditorPropertyDesc>& GetProperties()
 		{
-			static const std::vector<EditorPropertyDesc> Properties =
-			{
-				NYX_EDITOR_FIELD(Nyx::Engine::MeshRendererComponent, bVisible, Bool, "Visible", 0.0f)
-			};
-
-			return Properties;
+			static const std::vector<EditorPropertyDesc> EmptyProperties{};
+			return EmptyProperties;
 		}
 
 		static void DrawExtra(
 			Nyx::Engine::MeshRendererComponent& component,
 			Nyx::Editor::InspectorDrawContext& drawContext)
 		{
-			ImGui::Separator();
-			ImGui::Text("Mesh: %p", static_cast<void*>(component.MeshAsset));
-			ImGui::Text("Material: %p", static_cast<void*>(component.MaterialAsset));
+			const Nyx::Reflection::TypeMetadata& typeMetadata =
+				Nyx::Reflection::GetTypeMetadata<Nyx::Engine::MeshRendererComponent>();
+
+			DrawReflectedTypeTable(&component, typeMetadata, drawContext);
 		}
 	};
 }
