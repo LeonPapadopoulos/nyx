@@ -192,92 +192,35 @@ target_compile_features(NyxEngine PUBLIC cxx_std_20)
 # START Reflection / CodeGen
 set(NYX_GENERATED_ROOT "${CMAKE_BINARY_DIR}/Generated")
 set(NYX_GENERATED_RUNTIME_DIR "${NYX_GENERATED_ROOT}/Runtime")
+set(NYX_REFLECTION_STAMP "${NYX_GENERATED_RUNTIME_DIR}/Reflection.stamp")
 
-# --------------------------------------------------
-# TransformComponent
-# --------------------------------------------------
-set(NYX_TRANSFORM_INPUT
-    "${NYX_ENGINE_ROOT}/Runtime/Engine/include/TransformComponent.h"
-)
-set(NYX_TRANSFORM_OUTPUT
-    "${NYX_GENERATED_RUNTIME_DIR}/TransformComponent.reflect.h"
+# Roots under which we expect reflection-requiring headers to be
+file(GLOB_RECURSE NYX_REFLECT_HEADER_INPUTS
+    CONFIGURE_DEPENDS
+    "${NYX_ENGINE_ROOT}/Runtime/Engine/include/*.h"
+    "${NYX_ENGINE_ROOT}/Runtime/Renderer/include/*.h"
 )
 
 add_custom_command(
-    OUTPUT "${NYX_TRANSFORM_OUTPUT}"
+    OUTPUT "${NYX_REFLECTION_STAMP}"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${NYX_GENERATED_RUNTIME_DIR}"
     COMMAND "$<TARGET_FILE:NyxHeaderTool>"
-            "${NYX_TRANSFORM_INPUT}"
-            "${NYX_TRANSFORM_OUTPUT}"
-            "Nyx::Engine::TransformComponent"
+            --scan-root "${NYX_ENGINE_ROOT}/Runtime/Engine/include"
+            --scan-root "${NYX_ENGINE_ROOT}/Runtime/Renderer/include"
+            --output-dir "${NYX_GENERATED_RUNTIME_DIR}"
+    COMMAND ${CMAKE_COMMAND} -E touch "${NYX_REFLECTION_STAMP}"
     DEPENDS
         NyxHeaderTool
-        "${NYX_TRANSFORM_INPUT}"
-    COMMENT "Generating reflection metadata for TransformComponent"
+        ${NYX_REFLECT_HEADER_INPUTS}
+    COMMENT "Generating reflection metadata"
     VERBATIM
 )
 
-# --------------------------------------------------
-# NameComponent
-# --------------------------------------------------
-set(NYX_NAME_INPUT
-    "${NYX_ENGINE_ROOT}/Runtime/Engine/include/NameComponent.h"
-)
-set(NYX_NAME_OUTPUT
-    "${NYX_GENERATED_RUNTIME_DIR}/NameComponent.reflect.h"
+add_custom_target(NyxGeneratedReflection
+    DEPENDS "${NYX_REFLECTION_STAMP}"
 )
 
-add_custom_command(
-    OUTPUT "${NYX_NAME_OUTPUT}"
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${NYX_GENERATED_RUNTIME_DIR}"
-    COMMAND "$<TARGET_FILE:NyxHeaderTool>"
-            "${NYX_NAME_INPUT}"
-            "${NYX_NAME_OUTPUT}"
-            "Nyx::Engine::NameComponent"
-    DEPENDS
-        NyxHeaderTool
-        "${NYX_NAME_INPUT}"
-    COMMENT "Generating reflection metadata for NameComponent"
-    VERBATIM
-)
-
-# --------------------------------------------------
-# MeshRendererComponent
-# --------------------------------------------------
-set(NYX_MESH_RENDERER_INPUT
-    "${NYX_ENGINE_ROOT}/Runtime/Engine/include/MeshRendererComponent.h"
-)
-set(NYX_MESH_RENDERER_OUTPUT
-    "${NYX_GENERATED_RUNTIME_DIR}/MeshRendererComponent.reflect.h"
-)
-
-add_custom_command(
-    OUTPUT "${NYX_MESH_RENDERER_OUTPUT}"
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${NYX_GENERATED_RUNTIME_DIR}"
-    COMMAND "$<TARGET_FILE:NyxHeaderTool>"
-            "${NYX_MESH_RENDERER_INPUT}"
-            "${NYX_MESH_RENDERER_OUTPUT}"
-            "Nyx::Engine::MeshRendererComponent"
-    DEPENDS
-        NyxHeaderTool
-        "${NYX_MESH_RENDERER_INPUT}"
-    COMMENT "Generating reflection metadata for MeshRendererComponent"
-    VERBATIM
-)
-
-# Attach generated headers directly to NyxEngine so the build graph knows about them.
-target_sources(NyxEngine PRIVATE
-    "${NYX_TRANSFORM_OUTPUT}"
-    "${NYX_NAME_OUTPUT}"
-    "${NYX_MESH_RENDERER_OUTPUT}"
-)
-
-set_source_files_properties(
-    "${NYX_TRANSFORM_OUTPUT}"
-    "${NYX_NAME_OUTPUT}"
-    "${NYX_MESH_RENDERER_OUTPUT}"
-    PROPERTIES GENERATED TRUE HEADER_FILE_ONLY TRUE
-)
+add_dependencies(NyxEngine NyxGeneratedReflection)
 
 # Make sure the compiler can resolve:
 #   #include "Generated/Runtime/<Type>.reflect.h"
@@ -285,6 +228,8 @@ target_include_directories(NyxEngine
     PRIVATE
         "${CMAKE_BINARY_DIR}"
 )
+
+set_source_files_properties("${NYX_REFLECTION_STAMP}" PROPERTIES GENERATED TRUE)
 # END Reflection / CodeGen
 
 target_include_directories(NyxEngine
