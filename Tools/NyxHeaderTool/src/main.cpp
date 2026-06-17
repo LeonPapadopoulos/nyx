@@ -5,7 +5,9 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
+#include <optional>
 
 namespace fs = std::filesystem;
 
@@ -24,6 +26,11 @@ struct ParsedType
 	std::string Name;
 	std::string QualifiedName;
 	std::vector<ParsedProperty> Properties;
+};
+
+struct ParsedHeader
+{
+	std::vector<ParsedType> Types;
 };
 
 static std::string ReadAllText(const fs::path& path)
@@ -210,6 +217,31 @@ static std::string StripComments(const std::string& input)
 	return output;
 }
 
+static size_t FindMatchingClosingBrace(const std::string& text, size_t bodyStart)
+{
+	int braceDepth = 1;
+
+	for (size_t i = bodyStart; i < text.size(); ++i)
+	{
+		const char c = text[i];
+
+		if (c == '{')
+		{
+			++braceDepth;
+		}
+		else if (c == '}')
+		{
+			--braceDepth;
+			if (braceDepth == 0)
+			{
+				return i;
+			}
+		}
+	}
+
+	return std::string::npos;
+}
+
 static std::string MapTypeToKind(const std::string& typeName)
 {
 	static const std::unordered_map<std::string, std::string> Map =
@@ -232,6 +264,16 @@ static std::string MapTypeToKind(const std::string& typeName)
 	}
 
 	return it->second;
+}
+
+static fs::path MakeGeneratedHeaderPath(
+	const fs::path& headerPath,
+	const fs::path& scanRoot,
+	const fs::path& outputDir)
+{
+	fs::path relativePath = fs::relative(headerPath, scanRoot);
+	relativePath.replace_extension(".reflect.h");
+	return outputDir / relativePath;
 }
 
 static std::string ParseFlags(const std::vector<std::string>& tokens)
@@ -342,64 +384,14 @@ static std::string ParseQualifiedTypeNameFromPrefix(
 	return namespaceName + "::" + typeName;
 }
 
-static ParsedType ParseHeader(const std::string& strippedText)
+static std::vector<ParsedProperty> ParsePropertiesFromBody(const std::string& body)
 {
-	// Match:
-	//   NYX_REFLECT()
-	//   struct TypeName {
-	const std::regex headerRegex(
-		R"(NYX_REFLECT\s*\(\s*\)\s*struct\s+([A-Za-z_]\w*)\s*\{)"
-	);
-
-	std::smatch headerMatch;
-	if (!std::regex_search(strippedText, headerMatch, headerRegex))
-	{
-		throw std::runtime_error("Could not find NYX_REFLECT() struct.");
-	}
-
-	ParsedType parsedType{};
-	parsedType.Name = headerMatch[1].str();
-	parsedType.QualifiedName = ParseQualifiedTypeNameFromPrefix(
-		strippedText,
-		static_cast<size_t>(headerMatch.position(0)),
-		parsedType.Name
-	);
-
-	const size_t bodyStart = static_cast<size_t>(headerMatch.position(0) + headerMatch.length(0));
-	size_t bodyEnd = std::string::npos;
-
-	int braceDepth = 1;
-	for (size_t i = bodyStart; i < strippedText.size(); ++i)
-	{
-		const char c = strippedText[i];
-
-		if (c == '{')
-		{
-			++braceDepth;
-		}
-		else if (c == '}')
-		{
-			--braceDepth;
-			if (braceDepth == 0)
-			{
-				bodyEnd = i;
-				break;
-			}
-		}
-	}
-
-	if (bodyEnd == std::string::npos)
-	{
-		throw std::runtime_error("Could not find end of reflected struct body.");
-	}
-
-	const std::string body = strippedText.substr(bodyStart, bodyEnd - bodyStart);
-
 	// Matches:
 	//   NYX_PROPERTY(...)
 	//   TypeName PropertyName;
 	//   TypeName PropertyName{ ... };
 	//   TypeName PropertyName = ...;
+
 	const std::string qualifiedType = R"(([A-Za-z_]\w*(?:::[A-Za-z_]\w*)*))";
 	const std::string identifier = R"(([A-Za-z_]\w*))";
 	const std::string macroArgs = R"((.*?))";
@@ -417,10 +409,11 @@ static ParsedType ParseHeader(const std::string& strippedText)
 		+ R"(\s*;)"
 	);
 
-	auto begin = std::sregex_iterator(body.begin(), body.end(), propertyRegex);
-	auto end = std::sregex_iterator();
+	std::vector<ParsedProperty> properties;
 
-	for (auto it = begin; it != end; ++it)
+	for (auto it = std::sregex_iterator(body.begin(), body.end(), propertyRegex);
+		it != std::sregex_iterator();
+		++it)
 	{
 		const std::smatch& match = *it;
 
@@ -438,18 +431,66 @@ static ParsedType ParseHeader(const std::string& strippedText)
 		property.DragSpeed = ParseDragSpeed(metaTokens);
 		property.bDisplayAsDegrees = ParseDisplayAsDegrees(metaTokens);
 
-		parsedType.Properties.push_back(std::move(property));
+		properties.push_back(std::move(property));
 	}
 
-	if (parsedType.Properties.empty())
-	{
-		throw std::runtime_error("Reflected type has no NYX_PROPERTY members.");
-	}
-
-	return parsedType;
+	return properties;
 }
 
-static std::string GenerateMetadataHeader(const ParsedType& parsedType)
+static ParsedHeader ParseHeader(const std::string& strippedText)
+{
+	const std::regex headerRegex(
+		R"(NYX_REFLECT\s*\(\s*\)\s*struct\s+([A-Za-z_]\w*)\s*\{)"
+	);
+
+	ParsedHeader parsedHeader{};
+
+	for (auto it = std::sregex_iterator(strippedText.begin(), strippedText.end(), headerRegex);
+		it != std::sregex_iterator();
+		++it)
+	{
+		const std::smatch& headerMatch = *it;
+
+		ParsedType parsedType{};
+		parsedType.Name = headerMatch[1].str();
+		parsedType.QualifiedName = ParseQualifiedTypeNameFromPrefix(
+			strippedText,
+			static_cast<size_t>(headerMatch.position(0)),
+			parsedType.Name
+		);
+
+		const size_t bodyStart = static_cast<size_t>(headerMatch.position(0) + headerMatch.length(0));
+		const size_t bodyEnd = FindMatchingClosingBrace(strippedText, bodyStart);
+
+		if (bodyEnd == std::string::npos)
+		{
+			throw std::runtime_error(
+				"Could not find end of reflected struct body for type: " + parsedType.Name
+			);
+		}
+
+		const std::string body = strippedText.substr(bodyStart, bodyEnd - bodyStart);
+		parsedType.Properties = ParsePropertiesFromBody(body);
+
+		if (parsedType.Properties.empty())
+		{
+			throw std::runtime_error(
+				"Reflected type '" + parsedType.Name + "' has no NYX_PROPERTY members."
+			);
+		}
+
+		parsedHeader.Types.push_back(std::move(parsedType));
+	}
+
+	if (parsedHeader.Types.empty())
+	{
+		throw std::runtime_error("Could not find any NYX_REFLECT() structs.");
+	}
+
+	return parsedHeader;
+}
+
+static std::string GenerateMetadataHeader(const ParsedHeader& parsedHeader)
 {
 	std::ostringstream out;
 
@@ -457,38 +498,49 @@ static std::string GenerateMetadataHeader(const ParsedType& parsedType)
 	out << "#include \"ReflectionTypes.h\"\n\n";
 	out << "namespace Nyx::Reflection::Generated\n";
 	out << "{\n";
-	out << "    inline constexpr PropertyMetadata " << parsedType.Name << "_Properties[] =\n";
-	out << "    {\n";
 
-	for (const ParsedProperty& property : parsedType.Properties)
+	for (const ParsedType& parsedType : parsedHeader.Types)
 	{
-		out << "        {\n";
-		out << "            \"" << property.Name << "\",\n";
-		out << "            \"" << property.Name << "\",\n";
-		out << "            " << property.KindExpr << ",\n";
-		out << "            " << property.FlagsExpr << ",\n";
-		out << "            offsetof(" << parsedType.QualifiedName << ", " << property.Name << "),\n";
-		out << "            " << property.DragSpeed << ",\n";
-		out << "            " << (property.bDisplayAsDegrees ? "true" : "false") << "\n";
-		out << "        },\n";
+		out << "    inline constexpr PropertyMetadata " << parsedType.Name << "_Properties[] =\n";
+		out << "    {\n";
+
+		for (const ParsedProperty& property : parsedType.Properties)
+		{
+			out << "        {\n";
+			out << "            \"" << property.Name << "\",\n";
+			out << "            \"" << property.Name << "\",\n";
+			out << "            " << property.KindExpr << ",\n";
+			out << "            " << property.FlagsExpr << ",\n";
+			out << "            offsetof(" << parsedType.QualifiedName << ", " << property.Name << "),\n";
+			out << "            " << property.DragSpeed << ",\n";
+			out << "            " << (property.bDisplayAsDegrees ? "true" : "false") << "\n";
+			out << "        },\n";
+		}
+
+		out << "    };\n\n";
+
+		out << "    inline constexpr TypeMetadata " << parsedType.Name << "_TypeMetadata\n";
+		out << "    {\n";
+		out << "        \"" << parsedType.QualifiedName << "\",\n";
+		out << "        " << parsedType.Name << "_Properties,\n";
+		out << "        sizeof(" << parsedType.Name << "_Properties) / sizeof(" << parsedType.Name << "_Properties[0])\n";
+		out << "    };\n\n";
 	}
 
-	out << "    };\n\n";
-	out << "    inline constexpr TypeMetadata " << parsedType.Name << "_TypeMetadata\n";
-	out << "    {\n";
-	out << "        \"" << parsedType.QualifiedName << "\",\n";
-	out << "        " << parsedType.Name << "_Properties,\n";
-	out << "        sizeof(" << parsedType.Name << "_Properties) / sizeof(" << parsedType.Name << "_Properties[0])\n";
-	out << "    };\n";
 	out << "}\n\n";
 
 	out << "namespace Nyx::Reflection\n";
 	out << "{\n";
-	out << "    template<>\n";
-	out << "    inline const TypeMetadata& GetTypeMetadata<" << parsedType.QualifiedName << ">()\n";
-	out << "    {\n";
-	out << "        return Generated::" << parsedType.Name << "_TypeMetadata;\n";
-	out << "    }\n";
+
+	for (const ParsedType& parsedType : parsedHeader.Types)
+	{
+		out << "    template<>\n";
+		out << "    inline const TypeMetadata& GetTypeMetadata<" << parsedType.QualifiedName << ">()\n";
+		out << "    {\n";
+		out << "        return Generated::" << parsedType.Name << "_TypeMetadata;\n";
+		out << "    }\n\n";
+	}
+
 	out << "}\n";
 
 	return out.str();
@@ -509,8 +561,8 @@ static void GenerateForSingleHeader(const fs::path& inputHeader, const fs::path&
 {
 	const std::string rawText = ReadAllText(inputHeader);
 	const std::string strippedText = StripComments(rawText);
-	const ParsedType parsedType = ParseHeader(strippedText);
-	const std::string generated = GenerateMetadataHeader(parsedType);
+	const ParsedHeader parsedHeader = ParseHeader(strippedText);
+	const std::string generated = GenerateMetadataHeader(parsedHeader);
 
 	WriteAllText(outputHeader, generated);
 
@@ -522,6 +574,7 @@ static size_t GenerateForScanRoots(
 	const fs::path& outputDir)
 {
 	size_t generatedCount = 0;
+	std::unordered_set<std::string> processedHeaders;
 
 	for (const fs::path& root : scanRoots)
 	{
@@ -543,6 +596,12 @@ static size_t GenerateForScanRoots(
 				continue;
 			}
 
+			const std::string canonicalHeaderPath = fs::weakly_canonical(headerPath).string();
+			if (processedHeaders.contains(canonicalHeaderPath))
+			{
+				continue;
+			}
+
 			const std::string rawText = ReadAllText(headerPath);
 			if (!MightContainReflection(rawText))
 			{
@@ -555,10 +614,10 @@ static size_t GenerateForScanRoots(
 				continue;
 			}
 
-			ParsedType parsedType;
+			ParsedHeader parsedHeader;
 			try
 			{
-				parsedType = ParseHeader(strippedText);
+				parsedHeader = ParseHeader(strippedText);
 			}
 			catch (const std::exception& ex)
 			{
@@ -567,11 +626,13 @@ static size_t GenerateForScanRoots(
 				);
 			}
 
-			const fs::path outputHeader = outputDir / (parsedType.Name + ".reflect.h");
-			const std::string generated = GenerateMetadataHeader(parsedType);
+			const fs::path outputHeader = MakeGeneratedHeaderPath(headerPath, root, outputDir);
+			const std::string generated = GenerateMetadataHeader(parsedHeader);
 
 			WriteAllText(outputHeader, generated);
 			std::cout << "Generated: " << outputHeader.string() << "\n";
+
+			processedHeaders.insert(canonicalHeaderPath);
 			++generatedCount;
 		}
 	}
