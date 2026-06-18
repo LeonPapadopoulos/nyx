@@ -8,7 +8,7 @@
 
 namespace Nyx::Engine
 {
-	NYX_REFLECT()
+	NYX_REFLECT(Component, DisplayName = "Mesh Renderer Component")
 	struct MeshRendererComponent
 	{
 		NYX_PROPERTY(Edit, Undo, Serialize)

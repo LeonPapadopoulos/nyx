@@ -169,6 +169,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Editor/include/RootObjectSnapshotUtils.h
     ${NYX_ENGINE_ROOT}/Editor/include/ComponentTypeRegistry.h
     ${NYX_ENGINE_ROOT}/Editor/include/ComponentTypeRegistration.h
+    ${NYX_ENGINE_ROOT}/Editor/include/ReflectedComponentAutoRegistration.h
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionTypes.h
@@ -193,8 +194,9 @@ target_compile_features(NyxEngine PUBLIC cxx_std_20)
 set(NYX_GENERATED_ROOT "${CMAKE_BINARY_DIR}/Generated")
 set(NYX_GENERATED_RUNTIME_DIR "${NYX_GENERATED_ROOT}/Runtime")
 set(NYX_REFLECTION_STAMP "${NYX_GENERATED_RUNTIME_DIR}/Reflection.stamp")
+set(NYX_RUNTIME_REFLECTION_INIT_H "${NYX_GENERATED_RUNTIME_DIR}/Runtime.reflect.init.h")
+set(NYX_RUNTIME_REFLECTION_INIT_CPP "${NYX_GENERATED_RUNTIME_DIR}/Runtime.reflect.init.cpp")
 
-# Roots under which we expect reflection-requiring headers to be
 file(GLOB_RECURSE NYX_REFLECT_HEADER_INPUTS
     CONFIGURE_DEPENDS
     "${NYX_ENGINE_ROOT}/Runtime/Engine/include/*.h"
@@ -202,12 +204,17 @@ file(GLOB_RECURSE NYX_REFLECT_HEADER_INPUTS
 )
 
 add_custom_command(
-    OUTPUT "${NYX_REFLECTION_STAMP}"
+    OUTPUT
+        "${NYX_REFLECTION_STAMP}"
+        "${NYX_RUNTIME_REFLECTION_INIT_H}"
+        "${NYX_RUNTIME_REFLECTION_INIT_CPP}"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${NYX_GENERATED_RUNTIME_DIR}"
     COMMAND "$<TARGET_FILE:NyxHeaderTool>"
             --scan-root "${NYX_ENGINE_ROOT}/Runtime/Engine/include"
             --scan-root "${NYX_ENGINE_ROOT}/Runtime/Renderer/include"
             --output-dir "${NYX_GENERATED_RUNTIME_DIR}"
+            --module-init-header "${NYX_RUNTIME_REFLECTION_INIT_H}"
+            --module-init-cpp "${NYX_RUNTIME_REFLECTION_INIT_CPP}"
     COMMAND ${CMAKE_COMMAND} -E touch "${NYX_REFLECTION_STAMP}"
     DEPENDS
         NyxHeaderTool
@@ -217,19 +224,29 @@ add_custom_command(
 )
 
 add_custom_target(NyxGeneratedReflection
-    DEPENDS "${NYX_REFLECTION_STAMP}"
+    DEPENDS
+        "${NYX_REFLECTION_STAMP}"
+        "${NYX_RUNTIME_REFLECTION_INIT_H}"
+        "${NYX_RUNTIME_REFLECTION_INIT_CPP}"
 )
 
 add_dependencies(NyxEngine NyxGeneratedReflection)
 
-# Make sure the compiler can resolve:
-#   #include "Generated/Runtime/<Type>.reflect.h"
+target_sources(NyxEngine PRIVATE
+    "${NYX_RUNTIME_REFLECTION_INIT_CPP}"
+)
+
+set_source_files_properties(
+    "${NYX_REFLECTION_STAMP}"
+    "${NYX_RUNTIME_REFLECTION_INIT_H}"
+    "${NYX_RUNTIME_REFLECTION_INIT_CPP}"
+    PROPERTIES GENERATED TRUE
+)
+
 target_include_directories(NyxEngine
     PRIVATE
         "${CMAKE_BINARY_DIR}"
 )
-
-set_source_files_properties("${NYX_REFLECTION_STAMP}" PROPERTIES GENERATED TRUE)
 # END Reflection / CodeGen
 
 target_include_directories(NyxEngine

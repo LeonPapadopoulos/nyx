@@ -22,6 +22,8 @@
 #include "ReflectionTypes.h"
 #include "Log.h"
 
+#include "Generated/Runtime/Runtime.reflect.init.h"
+
 void PrintTransformMetadata()
 {
 	const Nyx::Reflection::TypeMetadata& type =
@@ -83,7 +85,11 @@ namespace Nyx::Editor
 
 		SpawnTestScene();
 
-		Nyx::Editor::RegisterDefaultComponentTypes();
+		// @todo: Get rid of a manual call to generated Code
+		{
+			Nyx::Reflection::Generated::RegisterRuntimeReflectedTypes();
+		}
+
 		Transactions.RegisterDomain(Nyx::Editor::EObjectDomain::SceneEntity, &SceneEntityDomain);
 
 		// @todo: Remove once Reflection System debugging finished
@@ -355,12 +361,28 @@ namespace Nyx::Editor
 		DetailsPanelContext.CurrentTargetId = Nyx::Editor::MakeInspectorTargetId(selectedEntity);
 		DetailsPanelContext.CurrentObjectRef = Nyx::Editor::MakeSceneEntityRef(selectedEntity);
 
-		for (const ComponentInspectorEntry& inspector : GetDefaultComponentInspectors())
+		for (const Nyx::Editor::ComponentInspectorEntry& inspector :
+			Nyx::Editor::ComponentInspectorRegistry::Get().GetAll())
 		{
-			if (inspector.HasComponent(world, selectedEntity))
+			if (!inspector.Has(world, selectedEntity))
 			{
-				inspector.DrawComponent(world, selectedEntity, DetailsPanelContext);
+				continue;
 			}
+
+			void* object = inspector.GetMutable(world, selectedEntity);
+			if (!object)
+			{
+				continue;
+			}
+
+			ImGui::PushID(inspector.DisplayName);
+
+			if (ImGui::CollapsingHeader(inspector.DisplayName, ImGuiTreeNodeFlags_DefaultOpen))
+			{
+				inspector.Draw(object, DetailsPanelContext);
+			}
+
+			ImGui::PopID();
 		}
 
 		ImGui::PopID();

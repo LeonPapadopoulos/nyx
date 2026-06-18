@@ -3,6 +3,7 @@
 #include "ReflectedPropertyAccess.h"
 
 #include <imgui.h>
+#include <misc/cpp/imgui_stdlib.h>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -103,6 +104,28 @@ namespace Nyx::Editor
 
 			switch (property.Kind)
 			{
+			case Nyx::Reflection::EPropertyKind::String:
+			{
+				std::string& value = AccessByOffset<std::string>(object, property.Offset);
+
+				if (ImGui::InputText("##Field", &value))
+				{
+					bAnyChanged = true;
+				}
+
+				if (ImGui::IsItemActivated())
+				{
+					BeginEdit(drawContext.GenericPropertyEdit);
+				}
+
+				if (ImGui::IsItemDeactivatedAfterEdit())
+				{
+					CommitEdit(drawContext.GenericPropertyEdit, "Edit Property");
+				}
+
+				break;
+			}
+
 			case Nyx::Reflection::EPropertyKind::Bool:
 			{
 				bool& value = AccessByOffset<bool>(object, property.Offset);

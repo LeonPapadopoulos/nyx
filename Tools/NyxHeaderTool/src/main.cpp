@@ -25,12 +25,23 @@ struct ParsedType
 {
 	std::string Name;
 	std::string QualifiedName;
+
+	std::string DisplayName;
+	std::string RoleExpr;
+
 	std::vector<ParsedProperty> Properties;
 };
 
 struct ParsedHeader
 {
 	std::vector<ParsedType> Types;
+};
+
+struct ScannedHeader
+{
+	fs::path HeaderPath;
+	fs::path RelativePath;
+	ParsedHeader Parsed;
 };
 
 static std::string ReadAllText(const fs::path& path)
@@ -75,10 +86,40 @@ static std::vector<std::string> SplitCommaSeparated(const std::string& input)
 {
 	std::vector<std::string> result;
 	std::string current;
+
 	int angleDepth = 0;
+	bool bInString = false;
+	bool bEscape = false;
 
 	for (char c : input)
 	{
+		if (bInString)
+		{
+			current.push_back(c);
+
+			if (bEscape)
+			{
+				bEscape = false;
+			}
+			else if (c == '\\')
+			{
+				bEscape = true;
+			}
+			else if (c == '"')
+			{
+				bInString = false;
+			}
+
+			continue;
+		}
+
+		if (c == '"')
+		{
+			bInString = true;
+			current.push_back(c);
+			continue;
+		}
+
 		if (c == '<')
 		{
 			++angleDepth;
@@ -242,6 +283,27 @@ static size_t FindMatchingClosingBrace(const std::string& text, size_t bodyStart
 	return std::string::npos;
 }
 
+static std::string EscapeCString(const std::string& value)
+{
+	std::string out;
+	out.reserve(value.size());
+
+	for (char c : value)
+	{
+		switch (c)
+		{
+		case '\\': out += "\\\\"; break;
+		case '"':  out += "\\\""; break;
+		case '\n': out += "\\n"; break;
+		case '\r': out += "\\r"; break;
+		case '\t': out += "\\t"; break;
+		default:   out += c; break;
+		}
+	}
+
+	return out;
+}
+
 static std::string MapTypeToKind(const std::string& typeName)
 {
 	static const std::unordered_map<std::string, std::string> Map =
@@ -274,6 +336,40 @@ static fs::path MakeGeneratedHeaderPath(
 	fs::path relativePath = fs::relative(headerPath, scanRoot);
 	relativePath.replace_extension(".reflect.h");
 	return outputDir / relativePath;
+}
+
+static void ParseReflectArgs(const std::string& reflectArgs, ParsedType& parsedType)
+{
+	parsedType.DisplayName = parsedType.Name;
+	parsedType.RoleExpr = "EReflectedTypeRole::Plain";
+
+	const std::vector<std::string> tokens = SplitCommaSeparated(reflectArgs);
+
+	for (const std::string& tokenRaw : tokens)
+	{
+		const std::string token = Trim(tokenRaw);
+		if (token.empty())
+		{
+			continue;
+		}
+
+		if (token == "Component")
+		{
+			parsedType.RoleExpr = "EReflectedTypeRole::Component";
+			continue;
+		}
+
+		std::smatch match;
+		if (std::regex_match(token, match, std::regex(R"REGEX(^DisplayName\s*=\s*"([^"]*)"$)REGEX")))
+		{
+			parsedType.DisplayName = match[1].str();
+			continue;
+		}
+
+		throw std::runtime_error(
+			"Unsupported NYX_REFLECT token on type '" + parsedType.Name + "': " + token
+		);
+	}
 }
 
 static std::string ParseFlags(const std::vector<std::string>& tokens)
@@ -440,7 +536,7 @@ static std::vector<ParsedProperty> ParsePropertiesFromBody(const std::string& bo
 static ParsedHeader ParseHeader(const std::string& strippedText)
 {
 	const std::regex headerRegex(
-		R"(NYX_REFLECT\s*\(\s*\)\s*struct\s+([A-Za-z_]\w*)\s*\{)"
+		R"(NYX_REFLECT\s*\((.*?)\)\s*struct\s+([A-Za-z_]\w*)\s*\{)"
 	);
 
 	ParsedHeader parsedHeader{};
@@ -451,13 +547,17 @@ static ParsedHeader ParseHeader(const std::string& strippedText)
 	{
 		const std::smatch& headerMatch = *it;
 
+		const std::string reflectArgs = headerMatch[1].str();
+
 		ParsedType parsedType{};
-		parsedType.Name = headerMatch[1].str();
+		parsedType.Name = headerMatch[2].str();
 		parsedType.QualifiedName = ParseQualifiedTypeNameFromPrefix(
 			strippedText,
 			static_cast<size_t>(headerMatch.position(0)),
 			parsedType.Name
 		);
+
+		ParseReflectArgs(reflectArgs, parsedType);
 
 		const size_t bodyStart = static_cast<size_t>(headerMatch.position(0) + headerMatch.length(0));
 		const size_t bodyEnd = FindMatchingClosingBrace(strippedText, bodyStart);
@@ -488,6 +588,64 @@ static ParsedHeader ParseHeader(const std::string& strippedText)
 	}
 
 	return parsedHeader;
+}
+
+static std::string GenerateModuleInitHeader()
+{
+	std::ostringstream out;
+
+	out << "#pragma once\n\n";
+	out << "namespace Nyx::Reflection::Generated\n";
+	out << "{\n";
+	out << "    void RegisterRuntimeReflectedTypes();\n";
+	out << "}\n";
+
+	return out.str();
+}
+
+static std::string GenerateModuleInitCpp(const std::vector<ScannedHeader>& scannedHeaders)
+{
+	std::ostringstream out;
+
+	out << "#include \"Generated/Runtime/Runtime.reflect.init.h\"\n";
+	out << "#include \"ReflectedComponentAutoRegistration.h\"\n\n";
+
+	for (const ScannedHeader& header : scannedHeaders)
+	{
+		std::string includePath = header.RelativePath.generic_string();
+		out << "#include \"" << includePath << "\"\n";
+	}
+
+	out << "\nnamespace Nyx::Reflection::Generated\n";
+	out << "{\n";
+	out << "    void RegisterRuntimeReflectedTypes()\n";
+	out << "    {\n";
+	out << "        static bool bRegistered = false;\n";
+	out << "        if (bRegistered)\n";
+	out << "        {\n";
+	out << "            return;\n";
+	out << "        }\n";
+	out << "        bRegistered = true;\n\n";
+
+	for (const ScannedHeader& header : scannedHeaders)
+	{
+		for (const ParsedType& parsedType : header.Parsed.Types)
+		{
+			if (parsedType.RoleExpr == "EReflectedTypeRole::Component")
+			{
+				out << "        Nyx::Editor::RegisterReflectedComponentType<"
+					<< parsedType.QualifiedName
+					<< ">(\""
+					<< EscapeCString(parsedType.DisplayName)
+					<< "\");\n";
+			}
+		}
+	}
+
+	out << "    }\n";
+	out << "}\n";
+
+	return out.str();
 }
 
 static std::string GenerateMetadataHeader(const ParsedHeader& parsedHeader)
@@ -522,6 +680,8 @@ static std::string GenerateMetadataHeader(const ParsedHeader& parsedHeader)
 		out << "    inline constexpr TypeMetadata " << parsedType.Name << "_TypeMetadata\n";
 		out << "    {\n";
 		out << "        \"" << parsedType.QualifiedName << "\",\n";
+		out << "        \"" << parsedType.DisplayName << "\",\n";
+		out << "        " << parsedType.RoleExpr << ",\n";
 		out << "        " << parsedType.Name << "_Properties,\n";
 		out << "        sizeof(" << parsedType.Name << "_Properties) / sizeof(" << parsedType.Name << "_Properties[0])\n";
 		out << "    };\n\n";
@@ -571,7 +731,8 @@ static void GenerateForSingleHeader(const fs::path& inputHeader, const fs::path&
 
 static size_t GenerateForScanRoots(
 	const std::vector<fs::path>& scanRoots,
-	const fs::path& outputDir)
+	const fs::path& outputDir,
+	std::vector<ScannedHeader>& outScannedHeaders)
 {
 	size_t generatedCount = 0;
 	std::unordered_set<std::string> processedHeaders;
@@ -626,11 +787,21 @@ static size_t GenerateForScanRoots(
 				);
 			}
 
-			const fs::path outputHeader = MakeGeneratedHeaderPath(headerPath, root, outputDir);
+			const fs::path relativePath = fs::relative(headerPath, root);
+			const fs::path outputHeader = outputDir / relativePath;
+			fs::path finalOutputHeader = outputHeader;
+			finalOutputHeader.replace_extension(".reflect.h");
+
 			const std::string generated = GenerateMetadataHeader(parsedHeader);
 
-			WriteAllText(outputHeader, generated);
-			std::cout << "Generated: " << outputHeader.string() << "\n";
+			WriteAllText(finalOutputHeader, generated);
+			std::cout << "Generated: " << finalOutputHeader.string() << "\n";
+
+			outScannedHeaders.push_back(ScannedHeader{
+				.HeaderPath = headerPath,
+				.RelativePath = relativePath,
+				.Parsed = std::move(parsedHeader)
+				});
 
 			processedHeaders.insert(canonicalHeaderPath);
 			++generatedCount;
@@ -662,6 +833,8 @@ static int RunScanMode(int argc, char** argv)
 {
 	std::vector<fs::path> scanRoots;
 	std::optional<fs::path> outputDir;
+	std::optional<fs::path> moduleInitHeader;
+	std::optional<fs::path> moduleInitCpp;
 
 	for (int i = 1; i < argc; ++i)
 	{
@@ -683,6 +856,22 @@ static int RunScanMode(int argc, char** argv)
 			}
 			outputDir = fs::path(argv[++i]);
 		}
+		else if (arg == "--module-init-header")
+		{
+			if (i + 1 >= argc)
+			{
+				throw std::runtime_error("--module-init-header requires a value");
+			}
+			moduleInitHeader = fs::path(argv[++i]);
+		}
+		else if (arg == "--module-init-cpp")
+		{
+			if (i + 1 >= argc)
+			{
+				throw std::runtime_error("--module-init-cpp requires a value");
+			}
+			moduleInitCpp = fs::path(argv[++i]);
+		}
 		else
 		{
 			throw std::runtime_error("Unknown argument: " + arg);
@@ -699,7 +888,21 @@ static int RunScanMode(int argc, char** argv)
 		throw std::runtime_error("Missing --output-dir argument.");
 	}
 
-	const size_t count = GenerateForScanRoots(scanRoots, outputDir.value());
+	std::vector<ScannedHeader> scannedHeaders;
+	const size_t count = GenerateForScanRoots(scanRoots, outputDir.value(), scannedHeaders);
+
+	if (moduleInitHeader.has_value())
+	{
+		WriteAllText(moduleInitHeader.value(), GenerateModuleInitHeader());
+		std::cout << "Generated: " << moduleInitHeader.value().string() << "\n";
+	}
+
+	if (moduleInitCpp.has_value())
+	{
+		WriteAllText(moduleInitCpp.value(), GenerateModuleInitCpp(scannedHeaders));
+		std::cout << "Generated: " << moduleInitCpp.value().string() << "\n";
+	}
+
 	std::cout << "Reflection generation complete. Generated " << count << " file(s).\n";
 	return 0;
 }

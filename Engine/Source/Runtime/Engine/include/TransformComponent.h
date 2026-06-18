@@ -9,7 +9,7 @@
 
 namespace Nyx::Engine
 {
-	NYX_REFLECT()
+	NYX_REFLECT(Component, DisplayName = "Transform Component")
 	struct TransformComponent
 	{
 		NYX_PROPERTY(Edit, Undo, Serialize, DragSpeed = 0.1)

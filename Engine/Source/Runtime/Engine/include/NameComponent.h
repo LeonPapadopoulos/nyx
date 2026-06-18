@@ -6,11 +6,11 @@
 
 namespace Nyx::Engine
 {
-	NYX_REFLECT()
-		struct NameComponent
+	NYX_REFLECT(Component, DisplayName = "Name Component")
+	struct NameComponent
 	{
 		NYX_PROPERTY(Edit, Undo, Serialize)
-			std::string Name;
+		std::string Name;
 	};
 }
 

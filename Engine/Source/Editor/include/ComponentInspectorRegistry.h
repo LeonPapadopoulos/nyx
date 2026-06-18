@@ -1,62 +1,79 @@
 #pragma once
 
-#include "ComponentEditors.h"
 #include "Entity.h"
+#include "InspectorDrawContext.h"
+#include "ReflectedPropertyDrawer.h"
+#include "ReflectionTypes.h"
 
-#include <functional>
 #include <vector>
+
+namespace Nyx::Engine
+{
+	class Registry;
+}
 
 namespace Nyx::Editor
 {
 	struct ComponentInspectorEntry
 	{
+		const Nyx::Reflection::TypeMetadata* TypeMetadata = nullptr;
 		const char* DisplayName = "";
-		std::function<bool(const Nyx::Engine::Registry&, Nyx::Engine::Entity)> HasComponent;
-		std::function<void(Nyx::Engine::Registry&, Nyx::Engine::Entity, Nyx::Editor::InspectorDrawContext&)> DrawComponent;
+
+		bool (*Has)(const Nyx::Engine::Registry&, Nyx::Engine::Entity) = nullptr;
+		void* (*GetMutable)(Nyx::Engine::Registry&, Nyx::Engine::Entity) = nullptr;
+		void (*Draw)(void* object, Nyx::Editor::InspectorDrawContext& drawContext) = nullptr;
 	};
 
-	template<typename T>
-	ComponentInspectorEntry MakeInspectorEntry()
+	class ComponentInspectorRegistry
 	{
-		static_assert(ComponentEditorMeta<T>::Enabled, "Missing ComponentEditorMeta registration.");
+	public:
+		static ComponentInspectorRegistry& Get();
 
+		void Register(ComponentInspectorEntry entry);
+
+		const std::vector<ComponentInspectorEntry>& GetAll() const
+		{
+			return Entries;
+		}
+
+	private:
+		std::vector<ComponentInspectorEntry> Entries;
+	};
+
+	template<typename TComponent>
+	ComponentInspectorEntry MakeReflectedComponentInspectorEntry(const char* displayName)
+	{
 		ComponentInspectorEntry entry{};
-		entry.DisplayName = ComponentEditorMeta<T>::GetDisplayName();
+		entry.TypeMetadata = &Nyx::Reflection::GetTypeMetadata<TComponent>();
+		entry.DisplayName = displayName;
 
-		entry.HasComponent =
-			[](const Nyx::Engine::Registry& world, Nyx::Engine::Entity entity) -> bool
+		entry.Has =
+			[](const Nyx::Engine::Registry& registry, Nyx::Engine::Entity entity) -> bool
 			{
-				return world.Has<T>(entity);
+				return registry.Has<TComponent>(entity);
 			};
 
-		entry.DrawComponent =
-			[](Nyx::Engine::Registry& world, Nyx::Engine::Entity entity, Nyx::Editor::InspectorDrawContext& drawContext)
+		entry.GetMutable =
+			[](Nyx::Engine::Registry& registry, Nyx::Engine::Entity entity) -> void*
 			{
-				T& component = world.Get<T>(entity);
-
-				ImGui::PushID(ComponentEditorMeta<T>::GetDisplayName());
-
-				if (ImGui::CollapsingHeader(ComponentEditorMeta<T>::GetDisplayName(), ImGuiTreeNodeFlags_DefaultOpen))
+				if (!registry.Has<TComponent>(entity))
 				{
-					DrawProperties(&component, ComponentEditorMeta<T>::GetProperties());
-					ComponentEditorMeta<T>::DrawExtra(component, drawContext);
+					return nullptr;
 				}
 
-				ImGui::PopID();
+				return &registry.Get<TComponent>(entity);
+			};
+
+		entry.Draw =
+			[](void* object, Nyx::Editor::InspectorDrawContext& drawContext)
+			{
+				DrawReflectedTypeTable(
+					object,
+					Nyx::Reflection::GetTypeMetadata<TComponent>(),
+					drawContext
+				);
 			};
 
 		return entry;
-	}
-
-	inline const std::vector<ComponentInspectorEntry>& GetDefaultComponentInspectors()
-	{
-		static const std::vector<ComponentInspectorEntry> Inspectors =
-		{
-			MakeInspectorEntry<Nyx::Engine::NameComponent>(),
-			MakeInspectorEntry<Nyx::Engine::TransformComponent>(),
-			MakeInspectorEntry<Nyx::Engine::MeshRendererComponent>()
-		};
-
-		return Inspectors;
 	}
 }
