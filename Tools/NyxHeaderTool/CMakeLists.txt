@@ -5,6 +5,7 @@ add_executable(NyxHeaderTool
     src/Parser.cpp
     src/ReflectionSemantics.cpp
     src/CodeGenerator.cpp
+    src/SpecifierRegistry.cpp
 
     src/Lexer.h
     src/Token.h
@@ -12,6 +13,7 @@ add_executable(NyxHeaderTool
     src/ReflectionAst.h
     src/ReflectionSemantics.h
     src/CodeGenerator.h
+    src/SpecifierRegistry.h
 )
 
 target_compile_features(NyxHeaderTool PRIVATE cxx_std_20)

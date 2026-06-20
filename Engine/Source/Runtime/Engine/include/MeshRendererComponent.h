@@ -11,13 +11,13 @@ namespace Nyx::Engine
 	NYX_REFLECT(Component, meta = (DisplayName = "Mesh Renderer Component"))
 	struct MeshRendererComponent
 	{
-		NYX_PROPERTY(Edit, Undo, Serialize)
+		NYX_PROPERTY(Edit, Undo, Serialize, ReadOnly, meta(Category = "Rendering", Tooltip = "Debug Info"))
 		std::string MeshId;
 
-		NYX_PROPERTY(Edit, Undo, Serialize)
+		NYX_PROPERTY(Edit, Undo, Serialize, ReadOnly, meta(Category = "Rendering", Tooltip = "Debug Info"))
 		std::string MaterialId;
 
-		NYX_PROPERTY(Edit, Undo, Serialize)
+		NYX_PROPERTY(Edit, Undo, Serialize, meta(Category = "Rendering", Tooltip = "Whether the mesh is rendered"))
 		bool bVisible = true;
 
 		Nyx::Mesh* MeshAsset = nullptr;

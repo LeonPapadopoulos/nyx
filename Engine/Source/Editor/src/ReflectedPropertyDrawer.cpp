@@ -9,6 +9,10 @@
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/quaternion.hpp>
 
+#include <cstdlib>
+#include <map>
+#include <string_view>
+
 namespace
 {
 	template<typename TObject>
@@ -40,6 +44,61 @@ namespace
 			WrapDegrees180(degrees.z)
 		);
 	}
+
+	static float GetPropertyDragSpeed(const Nyx::Reflection::PropertyMetadata& property, float defaultValue = 0.1f)
+	{
+		if (const char* value = Nyx::Reflection::FindMetadataValue(property, "DragSpeed"))
+		{
+			const float parsed = std::strtof(value, nullptr);
+			if (parsed > 0.0f)
+			{
+				return parsed;
+			}
+		}
+
+		return defaultValue;
+	}
+
+	static bool PropertyUsesDegreesUI(const Nyx::Reflection::PropertyMetadata& property)
+	{
+		if (const char* value = Nyx::Reflection::FindMetadataValue(property, "UI"))
+		{
+			return std::string_view(value) == "Degrees";
+		}
+
+		return false;
+	}
+
+	static const char* GetPropertyTooltip(const Nyx::Reflection::PropertyMetadata& property)
+	{
+		return Nyx::Reflection::FindMetadataValue(property, "Tooltip");
+	}
+
+	static const char* GetPropertyCategory(const Nyx::Reflection::PropertyMetadata& property)
+	{
+		return Nyx::Reflection::FindMetadataValue(property, "Category");
+	}
+
+	static bool IsPropertyHidden(const Nyx::Reflection::PropertyMetadata& property)
+	{
+		return Nyx::Reflection::HasFlag(property.Flags, Nyx::Reflection::EPropertyFlags::Hidden);
+	}
+
+	static bool IsPropertyReadOnly(const Nyx::Reflection::PropertyMetadata& property)
+	{
+		return Nyx::Reflection::HasFlag(property.Flags, Nyx::Reflection::EPropertyFlags::ReadOnly);
+	}
+
+	static void DrawPropertyTooltipIfHovered(const Nyx::Reflection::PropertyMetadata& property)
+	{
+		if (ImGui::IsItemHovered())
+		{
+			if (const char* tooltip = GetPropertyTooltip(property))
+			{
+				ImGui::SetTooltip("%s", tooltip);
+			}
+		}
+	}
 }
 
 namespace Nyx::Editor
@@ -50,11 +109,6 @@ namespace Nyx::Editor
 		Nyx::Editor::InspectorDrawContext& drawContext)
 	{
 		bool bAnyChanged = false;
-
-		if (!object || !typeMetadata.Properties || typeMetadata.PropertyCount == 0)
-		{
-			return false;
-		}
 
 		auto BeginEdit = [&](PropertyEditTransactionState& state)
 			{
@@ -78,171 +132,233 @@ namespace Nyx::Editor
 				state.bEditing = false;
 			};
 
-		if (!ImGui::BeginTable("ReflectedProperties", 2, ImGuiTableFlags_SizingStretchProp))
-		{
-			return false;
-		}
-
-		ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, 140.0f);
-		ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
-
-		for (size_t propertyIndex = 0; propertyIndex < typeMetadata.PropertyCount; ++propertyIndex)
-		{
-			const Nyx::Reflection::PropertyMetadata& property = typeMetadata.Properties[propertyIndex];
-
-			ImGui::PushID(static_cast<int>(propertyIndex));
-
-			ImGui::TableNextRow();
-			ImGui::TableSetColumnIndex(0);
-			ImGui::AlignTextToFramePadding();
-			ImGui::TextUnformatted(property.DisplayName && property.DisplayName[0] != '\0'
-				? property.DisplayName
-				: property.Name);
-
-			ImGui::TableSetColumnIndex(1);
-			ImGui::SetNextItemWidth(-FLT_MIN);
-
-			switch (property.Kind)
+		auto DrawOneProperty = [&](const Nyx::Reflection::PropertyMetadata& property)
 			{
-			case Nyx::Reflection::EPropertyKind::String:
-			{
-				std::string& value = AccessByOffset<std::string>(object, property.Offset);
-
-				if (ImGui::InputText("##Field", &value))
+				if (IsPropertyHidden(property))
 				{
-					bAnyChanged = true;
+					return;
 				}
 
-				if (ImGui::IsItemActivated())
+				ImGui::PushID(property.Name);
+
+				ImGui::TableNextRow();
+				ImGui::TableSetColumnIndex(0);
+				ImGui::TextUnformatted(property.DisplayName && property.DisplayName[0] ? property.DisplayName : property.Name);
+
+				ImGui::TableSetColumnIndex(1);
+
+				const bool bReadOnly = IsPropertyReadOnly(property);
+				if (bReadOnly)
 				{
-					BeginEdit(drawContext.GenericPropertyEdit);
+					ImGui::BeginDisabled();
 				}
 
-				if (ImGui::IsItemDeactivatedAfterEdit())
+				switch (property.Kind)
 				{
-					CommitEdit(drawContext.GenericPropertyEdit, "Edit Property");
-				}
-
-				break;
-			}
-
-			case Nyx::Reflection::EPropertyKind::Bool:
-			{
-				bool& value = AccessByOffset<bool>(object, property.Offset);
-				bool editedValue = value;
-
-				if (ImGui::Checkbox("##Field", &editedValue))
+				case Nyx::Reflection::EPropertyKind::Bool:
 				{
-					PropertyEditTransactionState immediateEditState{};
-					immediateEditState.Target = drawContext.CurrentObjectRef;
-					immediateEditState.PendingDiff.emplace();
-					immediateEditState.PendingDiff->TakeSnapshot(drawContext.CurrentObjectRef, object, typeMetadata);
+					bool& value = AccessByOffset<bool>(object, property.Offset);
+					bool editedValue = value;
 
-					value = editedValue;
-					bAnyChanged = true;
-
-					if (drawContext.Transactions)
+					if (ImGui::Checkbox("##Field", &editedValue))
 					{
-						immediateEditState.PendingDiff->CommitChanges("Edit Property", *drawContext.Transactions);
-					}
-				}
+						PropertyEditTransactionState immediateEditState{};
+						immediateEditState.Target = drawContext.CurrentObjectRef;
+						immediateEditState.PendingDiff.emplace();
+						immediateEditState.PendingDiff->TakeSnapshot(drawContext.CurrentObjectRef, object, typeMetadata);
 
-				break;
-			}
+						value = editedValue;
+						bAnyChanged = true;
 
-			case Nyx::Reflection::EPropertyKind::Float:
-			{
-				float& value = AccessByOffset<float>(object, property.Offset);
-				if (ImGui::DragFloat("##Field", &value, property.DragSpeed > 0.0f ? property.DragSpeed : 0.1f))
-				{
-					bAnyChanged = true;
-				}
-
-				if (ImGui::IsItemActivated())
-				{
-					BeginEdit(drawContext.GenericPropertyEdit);
-				}
-
-				if (ImGui::IsItemDeactivatedAfterEdit())
-				{
-					CommitEdit(drawContext.GenericPropertyEdit, "Edit Property");
-				}
-
-				break;
-			}
-
-			case Nyx::Reflection::EPropertyKind::Vec3:
-			{
-				glm::vec3& value = AccessByOffset<glm::vec3>(object, property.Offset);
-				if (ImGui::DragFloat3("##Field", &value.x, property.DragSpeed > 0.0f ? property.DragSpeed : 0.1f))
-				{
-					bAnyChanged = true;
-				}
-
-				if (ImGui::IsItemActivated())
-				{
-					BeginEdit(drawContext.GenericPropertyEdit);
-				}
-
-				if (ImGui::IsItemDeactivatedAfterEdit())
-				{
-					CommitEdit(drawContext.GenericPropertyEdit, "Edit Property");
-				}
-
-				break;
-			}
-
-			case Nyx::Reflection::EPropertyKind::Quat:
-			{
-				glm::quat& value = AccessByOffset<glm::quat>(object, property.Offset);
-
-				if (property.bDisplayAsDegrees)
-				{
-					auto& rotState = drawContext.TransformRotationEdit;
-
-					if (!rotState.bEditing || rotState.Target != drawContext.CurrentObjectRef)
-					{
-						rotState.Target = drawContext.CurrentObjectRef;
-						rotState.CachedDegrees =
-							WrapEulerDegrees180(glm::degrees(glm::eulerAngles(glm::normalize(value))));
+						if (drawContext.Transactions)
+						{
+							immediateEditState.PendingDiff->CommitChanges("Edit Property", *drawContext.Transactions);
+						}
 					}
 
-					if (ImGui::DragFloat3("##Field", &rotState.CachedDegrees.x, 1.0f))
+					DrawPropertyTooltipIfHovered(property);
+					break;
+				}
+
+				case Nyx::Reflection::EPropertyKind::Float:
+				{
+					float& value = AccessByOffset<float>(object, property.Offset);
+					const float dragSpeed = GetPropertyDragSpeed(property);
+
+					if (ImGui::DragFloat("##Field", &value, dragSpeed))
 					{
-						value = glm::normalize(glm::quat(glm::radians(rotState.CachedDegrees)));
 						bAnyChanged = true;
 					}
 
 					if (ImGui::IsItemActivated())
 					{
-						BeginEdit(rotState);
-						rotState.Target = drawContext.CurrentObjectRef;
+						BeginEdit(drawContext.GenericPropertyEdit);
 					}
 
 					if (ImGui::IsItemDeactivatedAfterEdit())
 					{
-						CommitEdit(rotState, "Edit Property");
-						rotState.CachedDegrees =
-							WrapEulerDegrees180(glm::degrees(glm::eulerAngles(glm::normalize(value))));
+						CommitEdit(drawContext.GenericPropertyEdit, "Edit Property");
+					}
+
+					DrawPropertyTooltipIfHovered(property);
+					break;
+				}
+
+				case Nyx::Reflection::EPropertyKind::Vec3:
+				{
+					glm::vec3& value = AccessByOffset<glm::vec3>(object, property.Offset);
+					const float dragSpeed = GetPropertyDragSpeed(property);
+
+					if (ImGui::DragFloat3("##Field", &value.x, dragSpeed))
+					{
+						bAnyChanged = true;
+					}
+
+					if (ImGui::IsItemActivated())
+					{
+						BeginEdit(drawContext.GenericPropertyEdit);
+					}
+
+					if (ImGui::IsItemDeactivatedAfterEdit())
+					{
+						CommitEdit(drawContext.GenericPropertyEdit, "Edit Property");
+					}
+
+					DrawPropertyTooltipIfHovered(property);
+					break;
+				}
+
+				case Nyx::Reflection::EPropertyKind::Quat:
+				{
+					glm::quat& value = AccessByOffset<glm::quat>(object, property.Offset);
+
+					if (PropertyUsesDegreesUI(property))
+					{
+						auto& rotState = drawContext.TransformRotationEdit;
+
+						if (!rotState.bEditing || rotState.Target != drawContext.CurrentObjectRef)
+						{
+							rotState.Target = drawContext.CurrentObjectRef;
+							rotState.CachedDegrees =
+								WrapEulerDegrees180(glm::degrees(glm::eulerAngles(glm::normalize(value))));
+						}
+
+						if (ImGui::DragFloat3("##Field", &rotState.CachedDegrees.x, 1.0f))
+						{
+							value = glm::normalize(glm::quat(glm::radians(rotState.CachedDegrees)));
+							bAnyChanged = true;
+						}
+
+						if (ImGui::IsItemActivated())
+						{
+							BeginEdit(rotState);
+							rotState.Target = drawContext.CurrentObjectRef;
+						}
+
+						if (ImGui::IsItemDeactivatedAfterEdit())
+						{
+							CommitEdit(rotState, "Edit Property");
+							rotState.CachedDegrees =
+								WrapEulerDegrees180(glm::degrees(glm::eulerAngles(glm::normalize(value))));
+						}
+					}
+					else
+					{
+						ImGui::TextDisabled("<quat unsupported>");
+					}
+
+					DrawPropertyTooltipIfHovered(property);
+					break;
+				}
+
+				case Nyx::Reflection::EPropertyKind::String:
+				{
+					std::string& value = AccessByOffset<std::string>(object, property.Offset);
+
+					if (ImGui::InputText("##Field", &value))
+					{
+						bAnyChanged = true;
+					}
+
+					if (ImGui::IsItemActivated())
+					{
+						BeginEdit(drawContext.GenericPropertyEdit);
+					}
+
+					if (ImGui::IsItemDeactivatedAfterEdit())
+					{
+						CommitEdit(drawContext.GenericPropertyEdit, "Edit Property");
+					}
+
+					DrawPropertyTooltipIfHovered(property);
+					break;
+				}
+
+				default:
+					ImGui::TextDisabled("<unsupported>");
+					DrawPropertyTooltipIfHovered(property);
+					break;
+				}
+
+				if (bReadOnly)
+				{
+					ImGui::EndDisabled();
+				}
+
+				ImGui::PopID();
+			};
+
+		if (ImGui::BeginTable("ReflectedProperties", 2, ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp))
+		{
+			ImGui::TableSetupColumn("Property");
+			ImGui::TableSetupColumn("Value");
+
+			std::map<std::string, std::vector<size_t>> propertiesByCategory;
+			std::vector<size_t> uncategorized;
+
+			for (size_t propertyIndex = 0; propertyIndex < typeMetadata.PropertyCount; ++propertyIndex)
+			{
+				const Nyx::Reflection::PropertyMetadata& property = typeMetadata.Properties[propertyIndex];
+
+				if (IsPropertyHidden(property))
+				{
+					continue;
+				}
+
+				if (const char* category = GetPropertyCategory(property))
+				{
+					if (category[0] != '\0')
+					{
+						propertiesByCategory[category].push_back(propertyIndex);
+						continue;
 					}
 				}
-				else
+
+				uncategorized.push_back(propertyIndex);
+			}
+
+			for (size_t propertyIndex : uncategorized)
+			{
+				DrawOneProperty(typeMetadata.Properties[propertyIndex]);
+			}
+
+			for (const auto& [category, indices] : propertiesByCategory)
+			{
+				ImGui::TableNextRow();
+				ImGui::TableSetColumnIndex(0);
+				ImGui::SeparatorText(category.c_str());
+				ImGui::TableSetColumnIndex(1);
+				ImGui::TextUnformatted("");
+
+				for (size_t propertyIndex : indices)
 				{
-					ImGui::TextDisabled("<quat unsupported>");
+					DrawOneProperty(typeMetadata.Properties[propertyIndex]);
 				}
-
-				break;
 			}
 
-			default:
-				ImGui::TextDisabled("<unsupported>");
-				break;
-			}
-
-			ImGui::PopID();
+			ImGui::EndTable();
 		}
 
-		ImGui::EndTable();
 		return bAnyChanged;
 	}
 }

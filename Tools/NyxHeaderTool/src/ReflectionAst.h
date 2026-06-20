@@ -28,9 +28,10 @@ namespace Nyx::HeaderTool
 		ParsedMacroArguments RawArguments;
 
 		std::string FlagsExpr;
-		std::string DragSpeed;
-		bool bDisplayAsDegrees = false;
 		std::string KindExpr;
+
+		// generic metadata that will be emitted into generated code
+		std::vector<ParsedMacroEntry> EmittedMetadata;
 	};
 
 	struct ParsedType
@@ -41,6 +42,8 @@ namespace Nyx::HeaderTool
 		std::string RoleExpr;
 
 		ParsedMacroArguments RawArguments;
+		std::vector<ParsedMacroEntry> EmittedMetadata;
+
 		std::vector<ParsedProperty> Properties;
 	};
 

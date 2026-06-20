@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ReflectionAst.h"
+#include "SpecifierRegistry.h"
 
 namespace Nyx::HeaderTool
 {
@@ -14,5 +15,6 @@ namespace Nyx::HeaderTool
 		static void ApplyPropertySemantics(ParsedProperty& parsedProperty);
 
 		static std::string MapTypeToKind(const std::string& typeName);
+		static void ValidateEntryValue(const ParsedMacroEntry& entry, ESpecifierValueKind valueKind);
 	};
 }
