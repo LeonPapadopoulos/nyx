@@ -3,12 +3,14 @@ add_executable(NyxHeaderTool
     src/main_regex.cpp
     src/Lexer.cpp
     src/Parser.cpp
+    src/ReflectionSemantics.cpp
     src/CodeGenerator.cpp
 
     src/Lexer.h
     src/Token.h
     src/Parser.h
     src/ReflectionAst.h
+    src/ReflectionSemantics.h
     src/CodeGenerator.h
 )
 

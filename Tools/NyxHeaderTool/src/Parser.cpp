@@ -2,7 +2,6 @@
 
 #include <sstream>
 #include <stdexcept>
-#include <unordered_map>
 
 namespace Nyx::HeaderTool
 {
@@ -138,7 +137,7 @@ namespace Nyx::HeaderTool
 			return;
 		}
 
-		const size_t oldNamespaceDepth = NamespaceStack.size();
+		const size_t oldDepth = NamespaceStack.size();
 		for (const std::string& ns : namespaceNames)
 		{
 			NamespaceStack.push_back(ns);
@@ -149,29 +148,27 @@ namespace Nyx::HeaderTool
 			ParseDeclarationInCurrentScope(outHeader);
 		}
 
-		Expect(ETokenKind::RBrace, "Expected '}' to close namespace block.");
-		NamespaceStack.resize(oldNamespaceDepth);
-
+		Expect(ETokenKind::RBrace, "Expected '}' to close namespace.");
 		Match(ETokenKind::Semicolon);
+
+		NamespaceStack.resize(oldDepth);
 	}
 
 	ParsedType Parser::ParseReflectedType()
 	{
-		ExpectIdentifier("Expected NYX_REFLECT");
+		ExpectIdentifier("Expected NYX_REFLECT.");
 		Expect(ETokenKind::LParen, "Expected '(' after NYX_REFLECT.");
 
-		const std::vector<std::vector<Token>> reflectClauses = ParseCommaSeparatedClausesUntil(ETokenKind::RParen);
+		ParsedType parsedType{};
+		parsedType.RawArguments = ParseMacroArguments();
 
 		if (!(MatchIdentifier("struct") || MatchIdentifier("class")))
 		{
 			ErrorHere("Expected 'struct' or 'class' after NYX_REFLECT(...).");
 		}
 
-		ParsedType parsedType{};
 		parsedType.Name = ExpectIdentifier("Expected reflected type name.").Text;
 		parsedType.QualifiedName = BuildQualifiedTypeName(parsedType.Name);
-
-		ApplyReflectArgs(reflectClauses, parsedType);
 
 		while (!IsAtEnd() && !Check(ETokenKind::LBrace))
 		{
@@ -212,21 +209,156 @@ namespace Nyx::HeaderTool
 
 	ParsedProperty Parser::ParseProperty()
 	{
-		ExpectIdentifier("Expected NYX_PROPERTY");
+		ExpectIdentifier("Expected NYX_PROPERTY.");
 		Expect(ETokenKind::LParen, "Expected '(' after NYX_PROPERTY.");
 
-		const std::vector<std::vector<Token>> propertyClauses = ParseCommaSeparatedClausesUntil(ETokenKind::RParen);
-		const std::vector<Token> declarationTokens = CollectDeclarationTokensUntilSemicolon();
+		ParsedProperty property{};
+		property.RawArguments = ParseMacroArguments();
 
+		const std::vector<Token> declarationTokens = CollectDeclarationTokensUntilSemicolon();
 		auto [typeName, propertyName] = ExtractTypeAndNameFromDeclarationTokens(declarationTokens);
 
-		ParsedProperty property{};
 		property.Type = typeName;
 		property.Name = propertyName;
-		property.KindExpr = MapTypeToKind(typeName);
-
-		ApplyPropertyArgs(propertyClauses, property);
 		return property;
+	}
+
+	ParsedMacroArguments Parser::ParseMacroArguments()
+	{
+		const std::vector<std::vector<Token>> clauses = ParseCommaSeparatedClausesUntil(ETokenKind::RParen);
+		return ParseMacroArgumentsFromClauses(clauses);
+	}
+
+	ParsedMacroArguments Parser::ParseMacroArgumentsFromClauses(const std::vector<std::vector<Token>>& clauses)
+	{
+		ParsedMacroArguments args{};
+
+		for (const std::vector<Token>& clause : clauses)
+		{
+			if (clause.empty())
+			{
+				continue;
+			}
+
+			if (clause[0].Kind != ETokenKind::Identifier)
+			{
+				throw std::runtime_error("Expected macro argument clause to begin with an identifier.");
+			}
+
+			const std::string name = clause[0].Text;
+
+			// Bare specifier: Edit / Undo / Serialize / Component
+			if (clause.size() == 1)
+			{
+				args.Specifiers.push_back(ParsedMacroEntry{
+					.Name = name,
+					.Value = std::nullopt
+					});
+				continue;
+			}
+
+			// meta(...)
+			if (name == "meta" && clause.size() >= 3 && clause[1].Kind == ETokenKind::LParen && clause.back().Kind == ETokenKind::RParen)
+			{
+				const std::vector<Token> inner(clause.begin() + 2, clause.end() - 1);
+				const std::vector<std::vector<Token>> metaClauses = SplitTopLevelClauses(inner);
+
+				for (const std::vector<Token>& metaClause : metaClauses)
+				{
+					if (metaClause.empty())
+					{
+						continue;
+					}
+
+					if (metaClause[0].Kind != ETokenKind::Identifier)
+					{
+						throw std::runtime_error("Expected metadata entry to begin with an identifier.");
+					}
+
+					ParsedMacroEntry entry{};
+					entry.Name = metaClause[0].Text;
+
+					if (metaClause.size() == 1)
+					{
+						entry.Value.reset();
+					}
+					else if (metaClause.size() >= 3 && metaClause[1].Kind == ETokenKind::Equals)
+					{
+						std::vector<Token> valueTokens(metaClause.begin() + 2, metaClause.end());
+						entry.Value = FlattenValueTokens(valueTokens);
+					}
+					else
+					{
+						throw std::runtime_error("Unsupported metadata clause syntax.");
+					}
+
+					args.Metadata.push_back(std::move(entry));
+				}
+
+				continue;
+			}
+
+			// meta=(...)
+			if (name == "meta" &&
+				clause.size() >= 4 &&
+				clause[1].Kind == ETokenKind::Equals &&
+				clause[2].Kind == ETokenKind::LParen &&
+				clause.back().Kind == ETokenKind::RParen)
+			{
+				const std::vector<Token> inner(clause.begin() + 3, clause.end() - 1);
+				const std::vector<std::vector<Token>> metaClauses = SplitTopLevelClauses(inner);
+
+				for (const std::vector<Token>& metaClause : metaClauses)
+				{
+					if (metaClause.empty())
+					{
+						continue;
+					}
+
+					if (metaClause[0].Kind != ETokenKind::Identifier)
+					{
+						throw std::runtime_error("Expected metadata entry to begin with an identifier.");
+					}
+
+					ParsedMacroEntry entry{};
+					entry.Name = metaClause[0].Text;
+
+					if (metaClause.size() == 1)
+					{
+						entry.Value.reset();
+					}
+					else if (metaClause.size() >= 3 && metaClause[1].Kind == ETokenKind::Equals)
+					{
+						std::vector<Token> valueTokens(metaClause.begin() + 2, metaClause.end());
+						entry.Value = FlattenValueTokens(valueTokens);
+					}
+					else
+					{
+						throw std::runtime_error("Unsupported metadata clause syntax.");
+					}
+
+					args.Metadata.push_back(std::move(entry));
+				}
+
+				continue;
+			}
+
+			// Generic key=value specifier
+			if (clause.size() >= 3 && clause[1].Kind == ETokenKind::Equals)
+			{
+				std::vector<Token> valueTokens(clause.begin() + 2, clause.end());
+
+				args.Specifiers.push_back(ParsedMacroEntry{
+					.Name = name,
+					.Value = FlattenValueTokens(valueTokens)
+					});
+				continue;
+			}
+
+			throw std::runtime_error("Unsupported macro argument clause syntax.");
+		}
+
+		return args;
 	}
 
 	std::vector<std::vector<Token>> Parser::ParseCommaSeparatedClausesUntil(ETokenKind terminator)
@@ -292,6 +424,56 @@ namespace Nyx::HeaderTool
 		ErrorHere("Unterminated macro argument list.");
 	}
 
+	std::vector<std::vector<Token>> Parser::SplitTopLevelClauses(const std::vector<Token>& tokens)
+	{
+		std::vector<std::vector<Token>> clauses;
+		std::vector<Token> currentClause;
+
+		int parenDepth = 0;
+		int braceDepth = 0;
+		int bracketDepth = 0;
+		int angleDepth = 0;
+
+		for (const Token& token : tokens)
+		{
+			if (token.Kind == ETokenKind::Comma &&
+				parenDepth == 0 &&
+				braceDepth == 0 &&
+				bracketDepth == 0 &&
+				angleDepth == 0)
+			{
+				if (!currentClause.empty())
+				{
+					clauses.push_back(std::move(currentClause));
+					currentClause.clear();
+				}
+				continue;
+			}
+
+			switch (token.Kind)
+			{
+			case ETokenKind::LParen:   ++parenDepth; break;
+			case ETokenKind::RParen:   --parenDepth; break;
+			case ETokenKind::LBrace:   ++braceDepth; break;
+			case ETokenKind::RBrace:   --braceDepth; break;
+			case ETokenKind::LBracket: ++bracketDepth; break;
+			case ETokenKind::RBracket: --bracketDepth; break;
+			case ETokenKind::Less:     ++angleDepth; break;
+			case ETokenKind::Greater:  --angleDepth; break;
+			default: break;
+			}
+
+			currentClause.push_back(token);
+		}
+
+		if (!currentClause.empty())
+		{
+			clauses.push_back(std::move(currentClause));
+		}
+
+		return clauses;
+	}
+
 	std::vector<Token> Parser::CollectDeclarationTokensUntilSemicolon()
 	{
 		std::vector<Token> tokens;
@@ -331,12 +513,12 @@ namespace Nyx::HeaderTool
 			tokens.push_back(token);
 		}
 
-		ErrorHere("Unterminated property declaration.");
+		ErrorHere("Unterminated declaration.");
 	}
 
 	void Parser::SkipBalanced(ETokenKind openKind, ETokenKind closeKind)
 	{
-		Expect(openKind, "Expected opening token for balanced skip.");
+		Expect(openKind, "Expected opening token.");
 
 		int depth = 1;
 		while (!IsAtEnd() && depth > 0)
@@ -384,7 +566,6 @@ namespace Nyx::HeaderTool
 			out << NamespaceStack[i];
 		}
 		out << "::" << localName;
-
 		return out.str();
 	}
 
@@ -392,7 +573,7 @@ namespace Nyx::HeaderTool
 	{
 		if (token.Kind != ETokenKind::StringLiteral || token.Text.size() < 2)
 		{
-			throw std::runtime_error("Expected a string literal token.");
+			throw std::runtime_error("Expected string literal token.");
 		}
 
 		std::string result;
@@ -424,23 +605,24 @@ namespace Nyx::HeaderTool
 		return result;
 	}
 
-	std::string Parser::NormalizeNumberLiteral(std::string_view text)
+	std::string Parser::FlattenValueTokens(const std::vector<Token>& tokens)
 	{
-		std::string value(text);
-
-		if (!value.empty() && (value.back() == 'f' || value.back() == 'F'))
+		if (tokens.empty())
 		{
-			value.back() = 'f';
-			return value;
+			return "";
 		}
 
-		if (value.find('.') != std::string::npos)
+		if (tokens.size() == 1 && tokens[0].Kind == ETokenKind::StringLiteral)
 		{
-			value += 'f';
-			return value;
+			return DecodeStringLiteralToken(tokens[0]);
 		}
 
-		return value + ".0f";
+		std::ostringstream out;
+		for (const Token& token : tokens)
+		{
+			out << token.Text;
+		}
+		return out.str();
 	}
 
 	std::string Parser::JoinTypeTokens(const std::vector<Token>& tokens)
@@ -519,7 +701,7 @@ namespace Nyx::HeaderTool
 	{
 		if (declarationTokens.empty())
 		{
-			throw std::runtime_error("Reflected property declaration is empty.");
+			throw std::runtime_error("Property declaration is empty.");
 		}
 
 		size_t endIndex = declarationTokens.size();
@@ -550,7 +732,7 @@ namespace Nyx::HeaderTool
 
 		if (nameIndex == std::string::npos || nameIndex == 0)
 		{
-			throw std::runtime_error("Could not determine reflected property name/type.");
+			throw std::runtime_error("Could not determine reflected property type/name.");
 		}
 
 		const std::string propertyName = declarationTokens[nameIndex].Text;
@@ -564,164 +746,6 @@ namespace Nyx::HeaderTool
 
 		const std::string propertyType = JoinTypeTokens(typeTokens);
 		return { propertyType, propertyName };
-	}
-
-	std::string Parser::MapTypeToKind(const std::string& typeName)
-	{
-		static const std::unordered_map<std::string, std::string> Map =
-		{
-			{ "bool", "EPropertyKind::Bool" },
-			{ "int32_t", "EPropertyKind::Int32" },
-			{ "uint32_t", "EPropertyKind::UInt32" },
-			{ "float", "EPropertyKind::Float" },
-			{ "glm::vec2", "EPropertyKind::Vec2" },
-			{ "glm::vec3", "EPropertyKind::Vec3" },
-			{ "glm::vec4", "EPropertyKind::Vec4" },
-			{ "glm::quat", "EPropertyKind::Quat" },
-			{ "std::string", "EPropertyKind::String" }
-		};
-
-		const auto it = Map.find(typeName);
-		if (it == Map.end())
-		{
-			throw std::runtime_error("Unsupported reflected property type: " + typeName);
-		}
-
-		return it->second;
-	}
-
-	void Parser::ApplyReflectArgs(const std::vector<std::vector<Token>>& clauses, ParsedType& parsedType)
-	{
-		parsedType.DisplayName = parsedType.Name;
-		parsedType.RoleExpr = "EReflectedTypeRole::Plain";
-
-		for (const std::vector<Token>& clause : clauses)
-		{
-			if (clause.empty())
-			{
-				continue;
-			}
-
-			if (clause.size() == 1 &&
-				clause[0].Kind == ETokenKind::Identifier &&
-				clause[0].Text == "Component")
-			{
-				parsedType.RoleExpr = "EReflectedTypeRole::Component";
-				continue;
-			}
-
-			if (clause.size() == 3 &&
-				clause[0].Kind == ETokenKind::Identifier &&
-				clause[0].Text == "DisplayName" &&
-				clause[1].Kind == ETokenKind::Equals &&
-				clause[2].Kind == ETokenKind::StringLiteral)
-			{
-				parsedType.DisplayName = DecodeStringLiteralToken(clause[2]);
-				continue;
-			}
-
-			std::ostringstream text;
-			for (const Token& token : clause)
-			{
-				text << token.Text;
-			}
-
-			throw std::runtime_error(
-				"Unsupported NYX_REFLECT argument on type '" + parsedType.Name + "': " + text.str()
-			);
-		}
-	}
-
-	void Parser::ApplyPropertyArgs(const std::vector<std::vector<Token>>& clauses, ParsedProperty& parsedProperty)
-	{
-		bool bEdit = false;
-		bool bUndo = false;
-		bool bSerialize = false;
-
-		parsedProperty.DragSpeed = "0.0f";
-		parsedProperty.bDisplayAsDegrees = false;
-
-		for (const std::vector<Token>& clause : clauses)
-		{
-			if (clause.empty())
-			{
-				continue;
-			}
-
-			if (clause.size() == 1 &&
-				clause[0].Kind == ETokenKind::Identifier)
-			{
-				if (clause[0].Text == "Edit")
-				{
-					bEdit = true;
-					continue;
-				}
-				if (clause[0].Text == "Undo")
-				{
-					bUndo = true;
-					continue;
-				}
-				if (clause[0].Text == "Serialize")
-				{
-					bSerialize = true;
-					continue;
-				}
-			}
-
-			if (clause.size() == 3 &&
-				clause[0].Kind == ETokenKind::Identifier &&
-				clause[0].Text == "DragSpeed" &&
-				clause[1].Kind == ETokenKind::Equals &&
-				(clause[2].Kind == ETokenKind::IntegerLiteral || clause[2].Kind == ETokenKind::FloatLiteral))
-			{
-				parsedProperty.DragSpeed = NormalizeNumberLiteral(clause[2].Text);
-				continue;
-			}
-
-			if (clause.size() == 3 &&
-				clause[0].Kind == ETokenKind::Identifier &&
-				clause[0].Text == "UI" &&
-				clause[1].Kind == ETokenKind::Equals &&
-				clause[2].Kind == ETokenKind::Identifier &&
-				clause[2].Text == "Degrees")
-			{
-				parsedProperty.bDisplayAsDegrees = true;
-				continue;
-			}
-
-			std::ostringstream text;
-			for (const Token& token : clause)
-			{
-				text << token.Text;
-			}
-
-			throw std::runtime_error(
-				"Unsupported NYX_PROPERTY argument on property '" + parsedProperty.Name + "': " + text.str()
-			);
-		}
-
-		std::vector<std::string> flags;
-		if (bEdit) flags.push_back("EPropertyFlags::Edit");
-		if (bUndo) flags.push_back("EPropertyFlags::Undo");
-		if (bSerialize) flags.push_back("EPropertyFlags::Serialize");
-
-		if (flags.empty())
-		{
-			parsedProperty.FlagsExpr = "EPropertyFlags::None";
-		}
-		else
-		{
-			std::ostringstream out;
-			for (size_t i = 0; i < flags.size(); ++i)
-			{
-				if (i > 0)
-				{
-					out << " | ";
-				}
-				out << flags[i];
-			}
-			parsedProperty.FlagsExpr = out.str();
-		}
 	}
 
 	[[noreturn]] void Parser::ErrorHere(std::string_view message) const

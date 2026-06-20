@@ -21,8 +21,8 @@ namespace Nyx::HeaderTool
 			for (const ParsedProperty& property : parsedType.Properties)
 			{
 				out << "        {\n";
-				out << "            \"" << property.Name << "\",\n";
-				out << "            \"" << property.Name << "\",\n";
+				out << "            \"" << EscapeCString(property.Name) << "\",\n";
+				out << "            \"" << EscapeCString(property.DisplayName) << "\",\n";
 				out << "            " << property.KindExpr << ",\n";
 				out << "            " << property.FlagsExpr << ",\n";
 				out << "            offsetof(" << parsedType.QualifiedName << ", " << property.Name << "),\n";
@@ -35,7 +35,7 @@ namespace Nyx::HeaderTool
 
 			out << "    inline constexpr TypeMetadata " << parsedType.Name << "_TypeMetadata\n";
 			out << "    {\n";
-			out << "        \"" << parsedType.QualifiedName << "\",\n";
+			out << "        \"" << EscapeCString(parsedType.QualifiedName) << "\",\n";
 			out << "        \"" << EscapeCString(parsedType.DisplayName) << "\",\n";
 			out << "        " << parsedType.RoleExpr << ",\n";
 			out << "        " << parsedType.Name << "_Properties,\n";

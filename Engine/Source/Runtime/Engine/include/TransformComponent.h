@@ -9,16 +9,16 @@
 
 namespace Nyx::Engine
 {
-	NYX_REFLECT(Component, DisplayName = "Transform Component")
+	NYX_REFLECT(Component, meta = (DisplayName = "Transform Component"))
 	struct TransformComponent
 	{
-		NYX_PROPERTY(Edit, Undo, Serialize, DragSpeed = 0.1)
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DragSpeed = 0.1))
 		glm::vec3 Position{ 0.0f };
 
-		NYX_PROPERTY(Edit, Undo, Serialize, UI = Degrees)
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (UI = Degrees))
 		glm::quat Rotation{ 1.0f, 0.0f, 0.0f, 0.0f };
 		
-		NYX_PROPERTY(Edit, Undo, Serialize, DragSpeed = 0.1)
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DragSpeed = 0.1))
 		glm::vec3 Scale{ 1.0f };
 
 		glm::mat4 ToMatrix() const

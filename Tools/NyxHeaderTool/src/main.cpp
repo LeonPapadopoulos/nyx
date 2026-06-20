@@ -1,6 +1,7 @@
 #include "CodeGenerator.h"
 #include "Lexer.h"
 #include "Parser.h"
+#include "ReflectionSemantics.h"
 
 #include <filesystem>
 #include <fstream>
@@ -56,7 +57,10 @@ static ParsedHeader ParseReflectedHeaderText(const std::string& text)
 {
 	Lexer lexer(text);
 	Parser parser(lexer.LexAll());
-	return parser.ParseHeader();
+
+	ParsedHeader parsedHeader = parser.ParseHeader();
+	ReflectionSemantics::Apply(parsedHeader);
+	return parsedHeader;
 }
 
 static void GenerateForSingleHeader(const fs::path& inputHeader, const fs::path& outputHeader)
@@ -149,8 +153,6 @@ static int RunSingleHeaderMode(int argc, char** argv)
 
 	const fs::path inputHeader = argv[1];
 	const fs::path outputHeader = argv[2];
-
-	// kept only for backward compatibility with the old CMake call shape
 	(void)argv[3];
 
 	GenerateForSingleHeader(inputHeader, outputHeader);

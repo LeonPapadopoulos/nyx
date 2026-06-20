@@ -38,7 +38,12 @@ namespace Nyx::HeaderTool
 		std::vector<ParsedProperty> ParseReflectedStructBody();
 		ParsedProperty ParseProperty();
 
+		ParsedMacroArguments ParseMacroArguments();
+		static ParsedMacroArguments ParseMacroArgumentsFromClauses(const std::vector<std::vector<Token>>& clauses);
+
 		std::vector<std::vector<Token>> ParseCommaSeparatedClausesUntil(ETokenKind terminator);
+		static std::vector<std::vector<Token>> SplitTopLevelClauses(const std::vector<Token>& tokens);
+
 		std::vector<Token> CollectDeclarationTokensUntilSemicolon();
 
 		void SkipBalanced(ETokenKind openKind, ETokenKind closeKind);
@@ -47,16 +52,11 @@ namespace Nyx::HeaderTool
 		std::string BuildQualifiedTypeName(std::string_view localName) const;
 
 		static std::string DecodeStringLiteralToken(const Token& token);
-		static std::string NormalizeNumberLiteral(std::string_view text);
+		static std::string FlattenValueTokens(const std::vector<Token>& tokens);
 		static std::string JoinTypeTokens(const std::vector<Token>& tokens);
 
 		static std::pair<std::string, std::string> ExtractTypeAndNameFromDeclarationTokens(
 			const std::vector<Token>& declarationTokens);
-
-		static std::string MapTypeToKind(const std::string& typeName);
-
-		static void ApplyReflectArgs(const std::vector<std::vector<Token>>& clauses, ParsedType& parsedType);
-		static void ApplyPropertyArgs(const std::vector<std::vector<Token>>& clauses, ParsedProperty& parsedProperty);
 
 		[[noreturn]] void ErrorHere(std::string_view message) const;
 

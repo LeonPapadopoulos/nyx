@@ -1,16 +1,32 @@
 #pragma once
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
-// Abstract Syntax Tree
 namespace Nyx::HeaderTool
 {
+	struct ParsedMacroEntry
+	{
+		std::string Name;
+		std::optional<std::string> Value;
+	};
+
+	struct ParsedMacroArguments
+	{
+		std::vector<ParsedMacroEntry> Specifiers;
+		std::vector<ParsedMacroEntry> Metadata;
+	};
+
 	struct ParsedProperty
 	{
 		std::string Type;
 		std::string Name;
+		std::string DisplayName;
+
+		ParsedMacroArguments RawArguments;
+
 		std::string FlagsExpr;
 		std::string DragSpeed;
 		bool bDisplayAsDegrees = false;
@@ -23,6 +39,8 @@ namespace Nyx::HeaderTool
 		std::string QualifiedName;
 		std::string DisplayName;
 		std::string RoleExpr;
+
+		ParsedMacroArguments RawArguments;
 		std::vector<ParsedProperty> Properties;
 	};
 

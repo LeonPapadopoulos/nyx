@@ -6,7 +6,7 @@
 
 namespace Nyx::Engine
 {
-	NYX_REFLECT(Component, DisplayName = "Name Component")
+	NYX_REFLECT(Component, meta = (DisplayName = "Name Component"))
 	struct NameComponent
 	{
 		NYX_PROPERTY(Edit, Undo, Serialize)
