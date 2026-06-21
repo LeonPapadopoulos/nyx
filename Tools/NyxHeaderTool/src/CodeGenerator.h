@@ -21,5 +21,9 @@ namespace Nyx::HeaderTool
 
 	private:
 		static std::string EscapeCString(const std::string& value);
+
+		static const char* ToGeneratedTypeRole(EParsedTypeRole role);
+		static const char* ToGeneratedPropertyKind(EParsedPropertyKind kind);
+		static std::string ToGeneratedPropertyFlags(EParsedPropertyFlags flags);
 	};
 }

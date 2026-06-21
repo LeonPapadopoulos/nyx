@@ -14,7 +14,7 @@ namespace Nyx::HeaderTool
 		static void ApplyTypeSemantics(ParsedType& parsedType);
 		static void ApplyPropertySemantics(ParsedProperty& parsedProperty);
 
-		static std::string MapTypeToKind(const std::string& typeName);
+		static EParsedPropertyKind MapTypeToKind(const std::string& typeName);
 		static void ValidateEntryValue(const ParsedMacroEntry& entry, ESpecifierValueKind valueKind);
 	};
 }

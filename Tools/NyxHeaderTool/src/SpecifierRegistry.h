@@ -38,7 +38,7 @@ namespace Nyx::HeaderTool
 		ParsedType& Type;
 
 		void AddMetadata(std::string key, std::string value);
-		void SetRole(std::string roleExpr);
+		void SetRole(EParsedTypeRole role);
 	};
 
 	struct PropertySemanticContext
@@ -46,7 +46,7 @@ namespace Nyx::HeaderTool
 		ParsedProperty& Property;
 
 		void AddMetadata(std::string key, std::string value);
-		void AddFlag(std::string flagExpr);
+		void AddFlag(EParsedPropertyFlags flag);
 	};
 
 	using ApplyTypeFn = void(*)(TypeSemanticContext&, const ParsedMacroEntry&);

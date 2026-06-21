@@ -1,7 +1,5 @@
 #include "SpecifierRegistry.h"
 
-#include <stdexcept>
-
 namespace Nyx::HeaderTool
 {
 	void TypeSemanticContext::AddMetadata(std::string key, std::string value)
@@ -12,9 +10,9 @@ namespace Nyx::HeaderTool
 			});
 	}
 
-	void TypeSemanticContext::SetRole(std::string roleExpr)
+	void TypeSemanticContext::SetRole(EParsedTypeRole role)
 	{
-		Type.RoleExpr = std::move(roleExpr);
+		Type.Role = role;
 	}
 
 	void PropertySemanticContext::AddMetadata(std::string key, std::string value)
@@ -25,46 +23,39 @@ namespace Nyx::HeaderTool
 			});
 	}
 
-	void PropertySemanticContext::AddFlag(std::string flagExpr)
+	void PropertySemanticContext::AddFlag(EParsedPropertyFlags flag)
 	{
-		if (Property.FlagsExpr == "EPropertyFlags::None" || Property.FlagsExpr.empty())
-		{
-			Property.FlagsExpr = std::move(flagExpr);
-		}
-		else
-		{
-			Property.FlagsExpr += " | " + flagExpr;
-		}
+		Property.Flags |= flag;
 	}
 
 	static void ApplyComponentToType(TypeSemanticContext& ctx, const ParsedMacroEntry&)
 	{
-		ctx.SetRole("EReflectedTypeRole::Component");
+		ctx.SetRole(EParsedTypeRole::Component);
 	}
 
 	static void ApplyEditToProperty(PropertySemanticContext& ctx, const ParsedMacroEntry&)
 	{
-		ctx.AddFlag("EPropertyFlags::Edit");
+		ctx.AddFlag(EParsedPropertyFlags::Edit);
 	}
 
 	static void ApplyUndoToProperty(PropertySemanticContext& ctx, const ParsedMacroEntry&)
 	{
-		ctx.AddFlag("EPropertyFlags::Undo");
+		ctx.AddFlag(EParsedPropertyFlags::Undo);
 	}
 
 	static void ApplySerializeToProperty(PropertySemanticContext& ctx, const ParsedMacroEntry&)
 	{
-		ctx.AddFlag("EPropertyFlags::Serialize");
+		ctx.AddFlag(EParsedPropertyFlags::Serialize);
 	}
 
 	static void ApplyHiddenToProperty(PropertySemanticContext& ctx, const ParsedMacroEntry&)
 	{
-		ctx.AddFlag("EPropertyFlags::Hidden");
+		ctx.AddFlag(EParsedPropertyFlags::Hidden);
 	}
 
 	static void ApplyReadOnlyToProperty(PropertySemanticContext& ctx, const ParsedMacroEntry&)
 	{
-		ctx.AddFlag("EPropertyFlags::ReadOnly");
+		ctx.AddFlag(EParsedPropertyFlags::ReadOnly);
 	}
 
 	static void ApplyDisplayNameToType(TypeSemanticContext& ctx, const ParsedMacroEntry& entry)
@@ -99,20 +90,16 @@ namespace Nyx::HeaderTool
 
 	const SpecifierDefinition SpecifierRegistry::Definitions[] =
 	{
-		// type specifiers
 		{ "Component",  EMacroEntrySource::Specifier, static_cast<uint8_t>(ESpecifierTarget::Type), ESpecifierValueKind::None, ApplyComponentToType, nullptr },
 
-		// property specifiers
 		{ "Edit",       EMacroEntrySource::Specifier, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::None, nullptr, ApplyEditToProperty },
 		{ "Undo",       EMacroEntrySource::Specifier, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::None, nullptr, ApplyUndoToProperty },
 		{ "Serialize",  EMacroEntrySource::Specifier, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::None, nullptr, ApplySerializeToProperty },
 		{ "Hidden",     EMacroEntrySource::Specifier, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::None, nullptr, ApplyHiddenToProperty },
 		{ "ReadOnly",   EMacroEntrySource::Specifier, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::None, nullptr, ApplyReadOnlyToProperty },
 
-		// shared metadata
 		{ "DisplayName", EMacroEntrySource::Metadata, static_cast<uint8_t>(ESpecifierTarget::Type | ESpecifierTarget::Property), ESpecifierValueKind::RequiredString, ApplyDisplayNameToType, ApplyDisplayNameToProperty },
 
-		// property metadata
 		{ "Category",   EMacroEntrySource::Metadata, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::RequiredString, nullptr, ApplyCategoryToProperty },
 		{ "Tooltip",    EMacroEntrySource::Metadata, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::RequiredString, nullptr, ApplyTooltipToProperty },
 		{ "DragSpeed",  EMacroEntrySource::Metadata, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::RequiredNumber, nullptr, ApplyDragSpeedToProperty },
@@ -139,6 +126,7 @@ namespace Nyx::HeaderTool
 				return &def;
 			}
 		}
+
 		return nullptr;
 	}
 }

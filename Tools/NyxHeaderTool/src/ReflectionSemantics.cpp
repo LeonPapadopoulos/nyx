@@ -1,5 +1,4 @@
 #include "ReflectionSemantics.h"
-#include "SpecifierRegistry.h"
 
 #include <stdexcept>
 #include <unordered_map>
@@ -22,7 +21,7 @@ namespace Nyx::HeaderTool
 	void ReflectionSemantics::ApplyTypeSemantics(ParsedType& parsedType)
 	{
 		parsedType.DisplayName = parsedType.Name;
-		parsedType.RoleExpr = "EReflectedTypeRole::Plain";
+		parsedType.Role = EParsedTypeRole::Plain;
 
 		TypeSemanticContext ctx{ parsedType };
 
@@ -70,8 +69,8 @@ namespace Nyx::HeaderTool
 	void ReflectionSemantics::ApplyPropertySemantics(ParsedProperty& parsedProperty)
 	{
 		parsedProperty.DisplayName = parsedProperty.Name;
-		parsedProperty.KindExpr = MapTypeToKind(parsedProperty.Type);
-		parsedProperty.FlagsExpr = "EPropertyFlags::None";
+		parsedProperty.Kind = MapTypeToKind(parsedProperty.Type);
+		parsedProperty.Flags = EParsedPropertyFlags::None;
 
 		PropertySemanticContext ctx{ parsedProperty };
 
@@ -116,19 +115,19 @@ namespace Nyx::HeaderTool
 		}
 	}
 
-	std::string ReflectionSemantics::MapTypeToKind(const std::string& typeName)
+	EParsedPropertyKind ReflectionSemantics::MapTypeToKind(const std::string& typeName)
 	{
-		static const std::unordered_map<std::string, std::string> Map =
+		static const std::unordered_map<std::string, EParsedPropertyKind> Map =
 		{
-			{ "bool", "EPropertyKind::Bool" },
-			{ "int32_t", "EPropertyKind::Int32" },
-			{ "uint32_t", "EPropertyKind::UInt32" },
-			{ "float", "EPropertyKind::Float" },
-			{ "glm::vec2", "EPropertyKind::Vec2" },
-			{ "glm::vec3", "EPropertyKind::Vec3" },
-			{ "glm::vec4", "EPropertyKind::Vec4" },
-			{ "glm::quat", "EPropertyKind::Quat" },
-			{ "std::string", "EPropertyKind::String" }
+			{ "bool", EParsedPropertyKind::Bool },
+			{ "int32_t", EParsedPropertyKind::Int32 },
+			{ "uint32_t", EParsedPropertyKind::UInt32 },
+			{ "float", EParsedPropertyKind::Float },
+			{ "glm::vec2", EParsedPropertyKind::Vec2 },
+			{ "glm::vec3", EParsedPropertyKind::Vec3 },
+			{ "glm::vec4", EParsedPropertyKind::Vec4 },
+			{ "glm::quat", EParsedPropertyKind::Quat },
+			{ "std::string", EParsedPropertyKind::String }
 		};
 
 		const auto it = Map.find(typeName);

@@ -4,6 +4,61 @@
 
 namespace Nyx::HeaderTool
 {
+	const char* CodeGenerator::ToGeneratedTypeRole(EParsedTypeRole role)
+	{
+		switch (role)
+		{
+		case EParsedTypeRole::Plain:     return "EReflectedTypeRole::Plain";
+		case EParsedTypeRole::Component: return "EReflectedTypeRole::Component";
+		default:                         return "EReflectedTypeRole::Plain";
+		}
+	}
+
+	const char* CodeGenerator::ToGeneratedPropertyKind(EParsedPropertyKind kind)
+	{
+		switch (kind)
+		{
+		case EParsedPropertyKind::Bool:   return "EPropertyKind::Bool";
+		case EParsedPropertyKind::Int32:  return "EPropertyKind::Int32";
+		case EParsedPropertyKind::UInt32: return "EPropertyKind::UInt32";
+		case EParsedPropertyKind::Float:  return "EPropertyKind::Float";
+		case EParsedPropertyKind::Vec2:   return "EPropertyKind::Vec2";
+		case EParsedPropertyKind::Vec3:   return "EPropertyKind::Vec3";
+		case EParsedPropertyKind::Vec4:   return "EPropertyKind::Vec4";
+		case EParsedPropertyKind::Quat:   return "EPropertyKind::Quat";
+		case EParsedPropertyKind::String: return "EPropertyKind::String";
+		default:                          return "EPropertyKind::Unknown";
+		}
+	}
+
+	std::string CodeGenerator::ToGeneratedPropertyFlags(EParsedPropertyFlags flags)
+	{
+		if (flags == EParsedPropertyFlags::None)
+		{
+			return "EPropertyFlags::None";
+		}
+
+		std::vector<const char*> parts;
+
+		if (HasFlag(flags, EParsedPropertyFlags::Edit))      parts.push_back("EPropertyFlags::Edit");
+		if (HasFlag(flags, EParsedPropertyFlags::Undo))      parts.push_back("EPropertyFlags::Undo");
+		if (HasFlag(flags, EParsedPropertyFlags::Serialize)) parts.push_back("EPropertyFlags::Serialize");
+		if (HasFlag(flags, EParsedPropertyFlags::Hidden))    parts.push_back("EPropertyFlags::Hidden");
+		if (HasFlag(flags, EParsedPropertyFlags::ReadOnly))  parts.push_back("EPropertyFlags::ReadOnly");
+
+		std::ostringstream out;
+		for (size_t i = 0; i < parts.size(); ++i)
+		{
+			if (i > 0)
+			{
+				out << " | ";
+			}
+			out << parts[i];
+		}
+
+		return out.str();
+	}
+
 	std::string CodeGenerator::GenerateMetadataHeader(const ParsedHeader& parsedHeader)
 	{
 		std::ostringstream out;
@@ -15,23 +70,17 @@ namespace Nyx::HeaderTool
 
 		for (const ParsedType& parsedType : parsedHeader.Types)
 		{
-			// Type metadata entries
 			if (!parsedType.EmittedMetadata.empty())
 			{
 				out << "    inline constexpr MetadataEntry " << parsedType.Name << "_TypeMetadataEntries[] =\n";
 				out << "    {\n";
 				for (const ParsedMacroEntry& entry : parsedType.EmittedMetadata)
 				{
-					out << "        { \""
-						<< EscapeCString(entry.Name)
-						<< "\", \""
-						<< EscapeCString(entry.Value.value_or(""))
-						<< "\" },\n";
+					out << "        { \"" << EscapeCString(entry.Name) << "\", \"" << EscapeCString(entry.Value.value_or("")) << "\" },\n";
 				}
 				out << "    };\n\n";
 			}
 
-			// Property metadata entries
 			for (const ParsedProperty& property : parsedType.Properties)
 			{
 				if (!property.EmittedMetadata.empty())
@@ -41,11 +90,7 @@ namespace Nyx::HeaderTool
 					out << "    {\n";
 					for (const ParsedMacroEntry& entry : property.EmittedMetadata)
 					{
-						out << "        { \""
-							<< EscapeCString(entry.Name)
-							<< "\", \""
-							<< EscapeCString(entry.Value.value_or(""))
-							<< "\" },\n";
+						out << "        { \"" << EscapeCString(entry.Name) << "\", \"" << EscapeCString(entry.Value.value_or("")) << "\" },\n";
 					}
 					out << "    };\n\n";
 				}
@@ -70,8 +115,8 @@ namespace Nyx::HeaderTool
 				out << "        {\n";
 				out << "            \"" << EscapeCString(property.Name) << "\",\n";
 				out << "            \"" << EscapeCString(property.DisplayName) << "\",\n";
-				out << "            " << property.KindExpr << ",\n";
-				out << "            " << property.FlagsExpr << ",\n";
+				out << "            " << ToGeneratedPropertyKind(property.Kind) << ",\n";
+				out << "            " << ToGeneratedPropertyFlags(property.Flags) << ",\n";
 				out << "            offsetof(" << parsedType.QualifiedName << ", " << property.Name << "),\n";
 				out << "            " << propertyMetadataPointer << ",\n";
 				out << "            " << propertyMetadataCount << "\n";
@@ -92,7 +137,7 @@ namespace Nyx::HeaderTool
 			out << "    {\n";
 			out << "        \"" << EscapeCString(parsedType.QualifiedName) << "\",\n";
 			out << "        \"" << EscapeCString(parsedType.DisplayName) << "\",\n";
-			out << "        " << parsedType.RoleExpr << ",\n";
+			out << "        " << ToGeneratedTypeRole(parsedType.Role) << ",\n";
 			out << "        " << typeMetadataPointer << ",\n";
 			out << "        " << typeMetadataCount << ",\n";
 			out << "        " << parsedType.Name << "_Properties,\n";
@@ -157,7 +202,7 @@ namespace Nyx::HeaderTool
 		{
 			for (const ParsedType& parsedType : header.Parsed.Types)
 			{
-				if (parsedType.RoleExpr == "EReflectedTypeRole::Component")
+				if (parsedType.Role == EParsedTypeRole::Component)
 				{
 					out << "        Nyx::Editor::RegisterReflectedComponentType<"
 						<< parsedType.QualifiedName
