@@ -2,7 +2,7 @@
 
 namespace Nyx::HeaderTool
 {
-	void TypeSemanticContext::AddMetadata(std::string key, std::string value)
+	void TypeSemanticContext::AddMetadata(std::string key, ParsedValue value)
 	{
 		Type.EmittedMetadata.push_back(ParsedMacroEntry{
 			.Name = std::move(key),
@@ -10,12 +10,37 @@ namespace Nyx::HeaderTool
 			});
 	}
 
+	void TypeSemanticContext::AddStringMetadata(std::string key, std::string value)
+	{
+		ParsedValue parsed{};
+		parsed.Kind = EMacroValueKind::String;
+		parsed.Text = std::move(value);
+		AddMetadata(std::move(key), std::move(parsed));
+	}
+
+	void TypeSemanticContext::AddIdentifierMetadata(std::string key, std::string value)
+	{
+		ParsedValue parsed{};
+		parsed.Kind = EMacroValueKind::Identifier;
+		parsed.Text = std::move(value);
+		AddMetadata(std::move(key), std::move(parsed));
+	}
+
+	void TypeSemanticContext::AddNumberMetadata(std::string key, double value, std::string text)
+	{
+		ParsedValue parsed{};
+		parsed.Kind = EMacroValueKind::Number;
+		parsed.Number = value;
+		parsed.Text = std::move(text);
+		AddMetadata(std::move(key), std::move(parsed));
+	}
+
 	void TypeSemanticContext::SetRole(EParsedTypeRole role)
 	{
 		Type.Role = role;
 	}
 
-	void PropertySemanticContext::AddMetadata(std::string key, std::string value)
+	void PropertySemanticContext::AddMetadata(std::string key, ParsedValue value)
 	{
 		Property.EmittedMetadata.push_back(ParsedMacroEntry{
 			.Name = std::move(key),
@@ -23,11 +48,35 @@ namespace Nyx::HeaderTool
 			});
 	}
 
+	void PropertySemanticContext::AddStringMetadata(std::string key, std::string value)
+	{
+		ParsedValue parsed{};
+		parsed.Kind = EMacroValueKind::String;
+		parsed.Text = std::move(value);
+		AddMetadata(std::move(key), std::move(parsed));
+	}
+
+	void PropertySemanticContext::AddIdentifierMetadata(std::string key, std::string value)
+	{
+		ParsedValue parsed{};
+		parsed.Kind = EMacroValueKind::Identifier;
+		parsed.Text = std::move(value);
+		AddMetadata(std::move(key), std::move(parsed));
+	}
+
+	void PropertySemanticContext::AddNumberMetadata(std::string key, double value, std::string text)
+	{
+		ParsedValue parsed{};
+		parsed.Kind = EMacroValueKind::Number;
+		parsed.Number = value;
+		parsed.Text = std::move(text);
+		AddMetadata(std::move(key), std::move(parsed));
+	}
+
 	void PropertySemanticContext::AddFlag(EParsedPropertyFlags flag)
 	{
 		Property.Flags |= flag;
 	}
-
 	static void ApplyComponentToType(TypeSemanticContext& ctx, const ParsedMacroEntry&)
 	{
 		ctx.SetRole(EParsedTypeRole::Component);
@@ -60,32 +109,32 @@ namespace Nyx::HeaderTool
 
 	static void ApplyDisplayNameToType(TypeSemanticContext& ctx, const ParsedMacroEntry& entry)
 	{
-		ctx.Type.DisplayName = entry.Value.value();
+		ctx.Type.DisplayName = entry.Value->Text;
 	}
 
 	static void ApplyDisplayNameToProperty(PropertySemanticContext& ctx, const ParsedMacroEntry& entry)
 	{
-		ctx.Property.DisplayName = entry.Value.value();
+		ctx.Property.DisplayName = entry.Value->Text;
 	}
 
 	static void ApplyCategoryToProperty(PropertySemanticContext& ctx, const ParsedMacroEntry& entry)
 	{
-		ctx.AddMetadata("Category", entry.Value.value());
+		ctx.AddStringMetadata("Category", entry.Value->Text);
 	}
 
 	static void ApplyTooltipToProperty(PropertySemanticContext& ctx, const ParsedMacroEntry& entry)
 	{
-		ctx.AddMetadata("Tooltip", entry.Value.value());
+		ctx.AddStringMetadata("Tooltip", entry.Value->Text);
 	}
 
 	static void ApplyDragSpeedToProperty(PropertySemanticContext& ctx, const ParsedMacroEntry& entry)
 	{
-		ctx.AddMetadata("DragSpeed", entry.Value.value());
+		ctx.AddNumberMetadata("DragSpeed", entry.Value->Number, entry.Value->Text);
 	}
 
 	static void ApplyUIToProperty(PropertySemanticContext& ctx, const ParsedMacroEntry& entry)
 	{
-		ctx.AddMetadata("UI", entry.Value.value());
+		ctx.AddIdentifierMetadata("UI", entry.Value->Text);
 	}
 
 	const SpecifierDefinition SpecifierRegistry::Definitions[] =

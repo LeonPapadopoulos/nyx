@@ -285,7 +285,7 @@ namespace Nyx::HeaderTool
 					else if (metaClause.size() >= 3 && metaClause[1].Kind == ETokenKind::Equals)
 					{
 						std::vector<Token> valueTokens(metaClause.begin() + 2, metaClause.end());
-						entry.Value = FlattenValueTokens(valueTokens);
+						entry.Value = ParseValueTokens(valueTokens);
 					}
 					else
 					{
@@ -330,7 +330,7 @@ namespace Nyx::HeaderTool
 					else if (metaClause.size() >= 3 && metaClause[1].Kind == ETokenKind::Equals)
 					{
 						std::vector<Token> valueTokens(metaClause.begin() + 2, metaClause.end());
-						entry.Value = FlattenValueTokens(valueTokens);
+						entry.Value = ParseValueTokens(valueTokens);
 					}
 					else
 					{
@@ -350,7 +350,7 @@ namespace Nyx::HeaderTool
 
 				args.Specifiers.push_back(ParsedMacroEntry{
 					.Name = name,
-					.Value = FlattenValueTokens(valueTokens)
+					.Value = ParseValueTokens(valueTokens)
 					});
 				continue;
 			}
@@ -605,18 +605,57 @@ namespace Nyx::HeaderTool
 		return result;
 	}
 
-	std::string Parser::FlattenValueTokens(const std::vector<Token>& tokens)
+	std::string Parser::NormalizeNumberText(std::string_view text)
+	{
+		std::string value(text);
+
+		if (!value.empty() && (value.back() == 'f' || value.back() == 'F'))
+		{
+			value.pop_back();
+		}
+
+		return value;
+	}
+
+	ParsedValue Parser::ParseValueTokens(const std::vector<Token>& tokens)
 	{
 		if (tokens.empty())
 		{
-			return "";
+			throw std::runtime_error("Expected macro value tokens.");
 		}
 
+		// String literal
 		if (tokens.size() == 1 && tokens[0].Kind == ETokenKind::StringLiteral)
 		{
-			return DecodeStringLiteralToken(tokens[0]);
+			ParsedValue value{};
+			value.Kind = EMacroValueKind::String;
+			value.Text = DecodeStringLiteralToken(tokens[0]);
+			return value;
 		}
 
+		// Pure numeric literal
+		if (tokens.size() == 1 &&
+			(tokens[0].Kind == ETokenKind::IntegerLiteral || tokens[0].Kind == ETokenKind::FloatLiteral))
+		{
+			ParsedValue value{};
+			value.Kind = EMacroValueKind::Number;
+			value.Text = NormalizeNumberText(tokens[0].Text);
+			value.Number = std::stod(value.Text);
+			return value;
+		}
+
+		// Treat all remaining flattened tokens as an identifier-like symbolic value.
+		// This supports things like:
+		//   Degrees
+		//   MyNamespace::Foo
+		ParsedValue value{};
+		value.Kind = EMacroValueKind::Identifier;
+		value.Text = FlattenValueTokens(tokens);
+		return value;
+	}
+
+	std::string Parser::FlattenValueTokens(const std::vector<Token>& tokens)
+	{
 		std::ostringstream out;
 		for (const Token& token : tokens)
 		{

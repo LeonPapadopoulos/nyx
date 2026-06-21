@@ -151,15 +151,31 @@ namespace Nyx::HeaderTool
 			return;
 
 		case ESpecifierValueKind::RequiredString:
-		case ESpecifierValueKind::RequiredIdentifier:
-		case ESpecifierValueKind::RequiredNumber:
-			if (!entry.Value.has_value())
+			if (!entry.Value.has_value() || entry.Value->Kind != EMacroValueKind::String)
 			{
-				throw std::runtime_error("Specifier '" + entry.Name + "' requires a value.");
+				throw std::runtime_error("Specifier '" + entry.Name + "' requires a string value.");
+			}
+			return;
+
+		case ESpecifierValueKind::RequiredIdentifier:
+			if (!entry.Value.has_value() || entry.Value->Kind != EMacroValueKind::Identifier)
+			{
+				throw std::runtime_error("Specifier '" + entry.Name + "' requires an identifier value.");
+			}
+			return;
+
+		case ESpecifierValueKind::RequiredNumber:
+			if (!entry.Value.has_value() || entry.Value->Kind != EMacroValueKind::Number)
+			{
+				throw std::runtime_error("Specifier '" + entry.Name + "' requires a numeric value.");
 			}
 			return;
 
 		case ESpecifierValueKind::OptionalString:
+			if (entry.Value.has_value() && entry.Value->Kind != EMacroValueKind::String)
+			{
+				throw std::runtime_error("Specifier '" + entry.Name + "' requires an optional string value.");
+			}
 			return;
 		}
 	}

@@ -19,6 +19,8 @@ namespace Nyx::HeaderTool
 			const std::filesystem::path& relativeHeaderPath,
 			const std::filesystem::path& outputDir);
 
+		static std::string MetadataValueToString(const ParsedValue& value);
+
 	private:
 		static std::string EscapeCString(const std::string& value);
 

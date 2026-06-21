@@ -37,7 +37,10 @@ namespace Nyx::HeaderTool
 	{
 		ParsedType& Type;
 
-		void AddMetadata(std::string key, std::string value);
+		void AddMetadata(std::string key, ParsedValue value);
+		void AddStringMetadata(std::string key, std::string value);
+		void AddIdentifierMetadata(std::string key, std::string value);
+		void AddNumberMetadata(std::string key, double value, std::string text);
 		void SetRole(EParsedTypeRole role);
 	};
 
@@ -45,7 +48,10 @@ namespace Nyx::HeaderTool
 	{
 		ParsedProperty& Property;
 
-		void AddMetadata(std::string key, std::string value);
+		void AddMetadata(std::string key, ParsedValue value);
+		void AddStringMetadata(std::string key, std::string value);
+		void AddIdentifierMetadata(std::string key, std::string value);
+		void AddNumberMetadata(std::string key, double value, std::string text);
 		void AddFlag(EParsedPropertyFlags flag);
 	};
 

@@ -8,10 +8,29 @@
 
 namespace Nyx::HeaderTool
 {
+	enum class EMacroValueKind : uint8_t
+	{
+		None = 0,
+		String,
+		Identifier,
+		Number
+	};
+
+	struct ParsedValue
+	{
+		EMacroValueKind Kind = EMacroValueKind::None;
+
+		// For String / Identifier / Number textual round-tripping.
+		std::string Text;
+
+		// Only meaningful when Kind == Number.
+		double Number = 0.0;
+	};
+
 	struct ParsedMacroEntry
 	{
 		std::string Name;
-		std::optional<std::string> Value;
+		std::optional<ParsedValue> Value;
 	};
 
 	struct ParsedMacroArguments

@@ -52,6 +52,8 @@ namespace Nyx::HeaderTool
 		std::string BuildQualifiedTypeName(std::string_view localName) const;
 
 		static std::string DecodeStringLiteralToken(const Token& token);
+		static ParsedValue ParseValueTokens(const std::vector<Token>& tokens);
+		static std::string NormalizeNumberText(std::string_view text);
 		static std::string FlattenValueTokens(const std::vector<Token>& tokens);
 		static std::string JoinTypeTokens(const std::vector<Token>& tokens);
 

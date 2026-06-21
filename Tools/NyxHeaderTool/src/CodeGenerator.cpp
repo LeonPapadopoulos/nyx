@@ -76,7 +76,7 @@ namespace Nyx::HeaderTool
 				out << "    {\n";
 				for (const ParsedMacroEntry& entry : parsedType.EmittedMetadata)
 				{
-					out << "        { \"" << EscapeCString(entry.Name) << "\", \"" << EscapeCString(entry.Value.value_or("")) << "\" },\n";
+					out << "        { \"" << EscapeCString(entry.Name) << "\", \"" << EscapeCString((entry.Value.has_value() ? MetadataValueToString(entry.Value.value()) : "")) << "\" },\n";
 				}
 				out << "    };\n\n";
 			}
@@ -90,7 +90,7 @@ namespace Nyx::HeaderTool
 					out << "    {\n";
 					for (const ParsedMacroEntry& entry : property.EmittedMetadata)
 					{
-						out << "        { \"" << EscapeCString(entry.Name) << "\", \"" << EscapeCString(entry.Value.value_or("")) << "\" },\n";
+						out << "        { \"" << EscapeCString(entry.Name) << "\", \"" << EscapeCString((entry.Value.has_value() ? MetadataValueToString(entry.Value.value()) : "")) << "\" },\n";
 					}
 					out << "    };\n\n";
 				}
@@ -226,6 +226,25 @@ namespace Nyx::HeaderTool
 		std::filesystem::path outputPath = outputDir / relativeHeaderPath;
 		outputPath.replace_extension(".reflect.h");
 		return outputPath;
+	}
+
+	std::string CodeGenerator::MetadataValueToString(const ParsedValue& value)
+	{
+		switch (value.Kind)
+		{
+		case EMacroValueKind::String:
+			return value.Text;
+
+		case EMacroValueKind::Identifier:
+			return value.Text;
+
+		case EMacroValueKind::Number:
+			return value.Text;
+
+		case EMacroValueKind::None:
+		default:
+			return "";
+		}
 	}
 
 	std::string CodeGenerator::EscapeCString(const std::string& value)
