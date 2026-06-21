@@ -20,6 +20,7 @@
 #include <glm/glm.hpp>
 #include <InspectorTargetIdHelpers.h>
 
+#include "ReflectedPropertyRef.h"
 #include "ReflectionTypes.h"
 #include "Log.h"
 
@@ -85,6 +86,35 @@ namespace Nyx::Editor
 		}
 
 		SpawnTestScene();
+		
+		// Example Code for accessig reflected Property Data on a given Entity
+		{
+			auto& world = ActiveScene.GetRegistry();
+			Nyx::Engine::Entity entity = ActiveScene.CreateEntity("EditorLayer::Initialize()");
+
+			Nyx::Engine::TransformComponent& transform = world.Add<Nyx::Engine::TransformComponent>(
+				entity,
+				Nyx::Engine::TransformComponent{
+					.Position = glm::vec3(-2.0f, 0.0f, 0.0f),
+					.Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
+					.Scale = glm::vec3(1.0f)
+				}
+			);
+
+			//Nyx::Engine::TransformComponent& transform =
+			//	world.Get<Nyx::Engine::TransformComponent>(entity);
+
+			Nyx::Reflection::ReflectedPropertyRef positionRef =
+				Nyx::Reflection::FindReflectedProperty(transform, "Position");
+
+			if (positionRef.IsValid())
+			{
+				glm::vec3& position = positionRef.Access<glm::vec3>();
+				const char* category = positionRef.FindMetadataValue("Category");
+
+				LOG_INFO("EditorLayer::Initialize() Entity: Position ({0},{1},{2}), Category {3}", position.x, position.y, position.z, category);
+			}
+		}
 
 		{
 			Nyx::Editor::RegisterDefaultPropertyWidgets();

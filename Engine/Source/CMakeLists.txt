@@ -179,6 +179,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Reflection/include/PropertyValue.h
     ${NYX_ENGINE_ROOT}/Reflection/include/PropertyValueUtils.h
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionUtils.h
+    ${NYX_ENGINE_ROOT}/Reflection/include/ReflectedPropertyRef.h
 )
 
 add_library(NyxEngine SHARED 
