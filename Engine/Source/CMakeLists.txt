@@ -86,6 +86,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Editor/src/RootObjectSnapshotUtils.cpp
     ${NYX_ENGINE_ROOT}/Editor/src/ComponentTypeRegistry.cpp
     ${NYX_ENGINE_ROOT}/Editor/src/ComponentTypeRegistration.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/PropertyWidgetRegistry.cpp
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/src/ReflectionUtils.cpp
@@ -170,6 +171,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Editor/include/ComponentTypeRegistry.h
     ${NYX_ENGINE_ROOT}/Editor/include/ComponentTypeRegistration.h
     ${NYX_ENGINE_ROOT}/Editor/include/ReflectedComponentAutoRegistration.h
+    ${NYX_ENGINE_ROOT}/Editor/include/PropertyWidgetRegistry.h
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionTypes.h

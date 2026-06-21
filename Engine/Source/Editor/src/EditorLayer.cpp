@@ -10,6 +10,7 @@
 #include "TransactionObjectRefHelpers.h"
 #include "RootObjectSnapshotUtils.h"
 #include "ComponentTypeRegistration.h"
+#include "PropertyWidgetRegistry.h"
 
 #include "imgui.h"
 
@@ -85,8 +86,8 @@ namespace Nyx::Editor
 
 		SpawnTestScene();
 
-		// @todo: Get rid of a manual call to generated Code
 		{
+			Nyx::Editor::RegisterDefaultPropertyWidgets();
 			Nyx::Reflection::Generated::RegisterRuntimeReflectedTypes();
 		}
 
