@@ -1,6 +1,7 @@
 #include "ReflectedPropertyDrawer.h"
 #include "ReflectedDiffUtil.h"
 #include "ReflectedPropertyAccess.h"
+#include "ReflectionUtils.h"
 
 #include <imgui.h>
 #include <misc/cpp/imgui_stdlib.h>
@@ -15,12 +16,6 @@
 
 namespace
 {
-	template<typename TObject>
-	TObject& AccessByOffset(void* object, size_t offset)
-	{
-		return *reinterpret_cast<TObject*>(static_cast<unsigned char*>(object) + offset);
-	}
-
 	static float WrapDegrees180(float degrees)
 	{
 		while (degrees > 180.0f)
@@ -46,10 +41,8 @@ namespace
 	}
 }
 
-namespace
+namespace Nyx::Editor
 {
-	using namespace Nyx::Editor;
-
 	static float GetPropertyDragSpeed(const Nyx::Reflection::PropertyMetadata& property, float defaultValue = 0.1f)
 	{
 		if (const char* value = Nyx::Reflection::FindMetadataValue(property, "DragSpeed"))
@@ -176,7 +169,7 @@ namespace
 	{
 		bool bAnyChanged = false;
 
-		bool& value = AccessByOffset<bool>(object, property.Offset);
+		bool& value = Nyx::Reflection::AccessByOffset<bool>(object, property.Offset);
 		bool editedValue = value;
 
 		if (ImGui::Checkbox("##Field", &editedValue))
@@ -207,7 +200,7 @@ namespace
 	{
 		bool bAnyChanged = false;
 
-		float& value = AccessByOffset<float>(object, property.Offset);
+		float& value = Nyx::Reflection::AccessByOffset<float>(object, property.Offset);
 		const float dragSpeed = GetPropertyDragSpeed(property);
 
 		if (ImGui::DragFloat("##Field", &value, dragSpeed))
@@ -237,7 +230,7 @@ namespace
 	{
 		bool bAnyChanged = false;
 
-		glm::vec3& value = AccessByOffset<glm::vec3>(object, property.Offset);
+		glm::vec3& value = Nyx::Reflection::AccessByOffset<glm::vec3>(object, property.Offset);
 		const float dragSpeed = GetPropertyDragSpeed(property);
 
 		if (ImGui::DragFloat3("##Field", &value.x, dragSpeed))
@@ -267,7 +260,7 @@ namespace
 	{
 		bool bAnyChanged = false;
 
-		glm::quat& value = AccessByOffset<glm::quat>(object, property.Offset);
+		glm::quat& value = Nyx::Reflection::AccessByOffset<glm::quat>(object, property.Offset);
 
 		if (PropertyUsesDegreesUI(property))
 		{
@@ -316,7 +309,7 @@ namespace
 	{
 		bool bAnyChanged = false;
 
-		std::string& value = AccessByOffset<std::string>(object, property.Offset);
+		std::string& value = Nyx::Reflection::AccessByOffset<std::string>(object, property.Offset);
 
 		if (ImGui::InputText("##Field", &value))
 		{

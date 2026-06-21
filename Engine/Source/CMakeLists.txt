@@ -88,7 +88,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Editor/src/ComponentTypeRegistration.cpp
 
     # Reflection
-    # ${NYX_ENGINE_ROOT}/Reflection/src/.cpp
+    ${NYX_ENGINE_ROOT}/Reflection/src/ReflectionUtils.cpp
 )
 
 set(NYX_ENGINE_HEADERS
@@ -176,6 +176,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionMacros.h
     ${NYX_ENGINE_ROOT}/Reflection/include/PropertyValue.h
     ${NYX_ENGINE_ROOT}/Reflection/include/PropertyValueUtils.h
+    ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionUtils.h
 )
 
 add_library(NyxEngine SHARED 

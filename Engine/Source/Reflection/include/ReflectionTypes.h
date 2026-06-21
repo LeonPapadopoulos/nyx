@@ -82,28 +82,4 @@ namespace Nyx::Reflection
 
 	template<typename T>
 	const TypeMetadata& GetTypeMetadata();
-
-	inline const MetadataEntry* FindMetadata(const MetadataEntry* entries, size_t count, std::string_view key)
-	{
-		for (size_t i = 0; i < count; ++i)
-		{
-			if (entries[i].Key == key)
-			{
-				return &entries[i];
-			}
-		}
-		return nullptr;
-	}
-
-	inline const char* FindMetadataValue(const PropertyMetadata& property, std::string_view key)
-	{
-		const MetadataEntry* entry = FindMetadata(property.Metadata, property.MetadataCount, key);
-		return entry ? entry->Value : nullptr;
-	}
-
-	inline const char* FindMetadataValue(const TypeMetadata& type, std::string_view key)
-	{
-		const MetadataEntry* entry = FindMetadata(type.Metadata, type.MetadataCount, key);
-		return entry ? entry->Value : nullptr;
-	}
 }
