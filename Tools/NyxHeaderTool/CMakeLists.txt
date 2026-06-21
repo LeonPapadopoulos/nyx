@@ -18,3 +18,7 @@ add_executable(NyxHeaderTool
 
 target_compile_features(NyxHeaderTool PRIVATE cxx_std_20)
 target_include_directories(NyxHeaderTool PRIVATE src)
+
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()
