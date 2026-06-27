@@ -2,6 +2,16 @@
 
 #include "ReflectionTypes.h"
 
+namespace Nyx::Reflection
+{
+    template<>
+    const TypeMetadata& GetTypeMetadata<Nyx::Engine::NameComponent>();
+
+    template<>
+    const TypeMetadata& GetTypeMetadata<Nyx::Engine::DummyNameComponent>();
+
+}
+
 namespace Nyx::Reflection::Generated
 {
     inline constexpr PropertyMetadata NameComponent_Properties[] =
@@ -13,7 +23,8 @@ namespace Nyx::Reflection::Generated
             EPropertyFlags::Edit | EPropertyFlags::Undo | EPropertyFlags::Serialize,
             offsetof(Nyx::Engine::NameComponent, Name),
             nullptr,
-            0
+            0,
+            nullptr
         },
     };
 
@@ -37,7 +48,8 @@ namespace Nyx::Reflection::Generated
             EPropertyFlags::Edit | EPropertyFlags::Undo | EPropertyFlags::Serialize,
             offsetof(Nyx::Engine::DummyNameComponent, DummyName),
             nullptr,
-            0
+            0,
+            nullptr
         },
     };
 

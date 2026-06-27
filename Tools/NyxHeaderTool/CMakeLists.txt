@@ -13,6 +13,7 @@ add_executable(NyxHeaderTool
     src/ReflectionSemantics.h
     src/CodeGenerator.h
     src/SpecifierRegistry.h
+    src/ReflectedTypeIndex.h
 )
 
 target_compile_features(NyxHeaderTool PRIVATE cxx_std_20)

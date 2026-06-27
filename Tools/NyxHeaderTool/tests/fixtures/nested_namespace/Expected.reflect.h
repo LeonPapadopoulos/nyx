@@ -2,6 +2,13 @@
 
 #include "ReflectionTypes.h"
 
+namespace Nyx::Reflection
+{
+    template<>
+    const TypeMetadata& GetTypeMetadata<Nyx::Engine::Gameplay::TransformComponent>();
+
+}
+
 namespace Nyx::Reflection::Generated
 {
     inline constexpr MetadataEntry TransformComponent_Position_MetadataEntries[] =
@@ -25,7 +32,8 @@ namespace Nyx::Reflection::Generated
             EPropertyFlags::Edit | EPropertyFlags::Undo | EPropertyFlags::Serialize,
             offsetof(Nyx::Engine::Gameplay::TransformComponent, Position),
             TransformComponent_Position_MetadataEntries,
-            sizeof(TransformComponent_Position_MetadataEntries) / sizeof(TransformComponent_Position_MetadataEntries[0])
+            sizeof(TransformComponent_Position_MetadataEntries) / sizeof(TransformComponent_Position_MetadataEntries[0]),
+            nullptr
         },
         {
             "Rotation",
@@ -34,7 +42,8 @@ namespace Nyx::Reflection::Generated
             EPropertyFlags::Edit | EPropertyFlags::Undo | EPropertyFlags::Serialize,
             offsetof(Nyx::Engine::Gameplay::TransformComponent, Rotation),
             TransformComponent_Rotation_MetadataEntries,
-            sizeof(TransformComponent_Rotation_MetadataEntries) / sizeof(TransformComponent_Rotation_MetadataEntries[0])
+            sizeof(TransformComponent_Rotation_MetadataEntries) / sizeof(TransformComponent_Rotation_MetadataEntries[0]),
+            nullptr
         },
     };
 

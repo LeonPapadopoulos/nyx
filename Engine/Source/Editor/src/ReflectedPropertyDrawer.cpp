@@ -83,6 +83,33 @@ namespace
 	{
 		bool bAnyChanged = false;
 
+		if (const Nyx::Reflection::TypeMetadata* nestedType =
+			Nyx::Reflection::TryGetNestedType(property))
+		{
+			ImGui::PushID(property.Name);
+
+			ImGui::TableNextRow();
+			ImGui::TableSetColumnIndex(0);
+			ImGui::TextUnformatted(
+				(property.DisplayName && property.DisplayName[0]) ? property.DisplayName : property.Name);
+
+			ImGui::TableSetColumnIndex(1);
+
+			void* nestedObject = Nyx::Reflection::GetPropertyAddress(object, property);
+
+			bool bAnyChanged = false;
+			if (ImGui::TreeNodeEx("##Struct", ImGuiTreeNodeFlags_DefaultOpen, "%s",
+				(nestedType->DisplayName && nestedType->DisplayName[0]) ? nestedType->DisplayName : property.Name))
+			{
+				bAnyChanged |= Nyx::Editor::DrawReflectedTypeTable(nestedObject, *nestedType, drawContext);
+				ImGui::TreePop();
+			}
+
+			DrawPropertyTooltipIfHovered(property);
+			ImGui::PopID();
+			return bAnyChanged;
+		}
+
 		ImGui::PushID(property.Name);
 
 		ImGui::TableNextRow();

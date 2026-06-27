@@ -27,6 +27,7 @@ namespace Nyx::HeaderTool
 		case EParsedPropertyKind::Vec4:   return "EPropertyKind::Vec4";
 		case EParsedPropertyKind::Quat:   return "EPropertyKind::Quat";
 		case EParsedPropertyKind::String: return "EPropertyKind::String";
+		case EParsedPropertyKind::Struct: return "EPropertyKind::Struct";
 		default:                          return "EPropertyKind::Unknown";
 		}
 	}
@@ -65,22 +66,52 @@ namespace Nyx::HeaderTool
 
 		out << "#pragma once\n\n";
 		out << "#include \"ReflectionTypes.h\"\n\n";
+
+		out << "namespace Nyx::Reflection\n";
+		out << "{\n";
+
+		for (const ParsedType& parsedType : parsedHeader.Types)
+		{
+			out << "    template<>\n";
+			out << "    const TypeMetadata& GetTypeMetadata<"
+				<< parsedType.QualifiedName
+				<< ">();\n\n";
+		}
+
+		out << "}\n\n";
+
 		out << "namespace Nyx::Reflection::Generated\n";
 		out << "{\n";
 
 		for (const ParsedType& parsedType : parsedHeader.Types)
 		{
+			// --------------------------------------------------
+			// Type-level metadata entries
+			// --------------------------------------------------
 			if (!parsedType.EmittedMetadata.empty())
 			{
-				out << "    inline constexpr MetadataEntry " << parsedType.Name << "_TypeMetadataEntries[] =\n";
+				out << "    inline constexpr MetadataEntry "
+					<< parsedType.Name << "_TypeMetadataEntries[] =\n";
 				out << "    {\n";
+
 				for (const ParsedMacroEntry& entry : parsedType.EmittedMetadata)
 				{
-					out << "        { \"" << EscapeCString(entry.Name) << "\", \"" << EscapeCString((entry.Value.has_value() ? MetadataValueToString(entry.Value.value()) : "")) << "\" },\n";
+					out << "        { \""
+						<< EscapeCString(entry.Name)
+						<< "\", \""
+						<< EscapeCString(
+							entry.Value.has_value()
+							? MetadataValueToString(entry.Value.value())
+							: "")
+						<< "\" },\n";
 				}
+
 				out << "    };\n\n";
 			}
 
+			// --------------------------------------------------
+			// Property-level metadata entries
+			// --------------------------------------------------
 			for (const ParsedProperty& property : parsedType.Properties)
 			{
 				if (!property.EmittedMetadata.empty())
@@ -88,15 +119,45 @@ namespace Nyx::HeaderTool
 					out << "    inline constexpr MetadataEntry "
 						<< parsedType.Name << "_" << property.Name << "_MetadataEntries[] =\n";
 					out << "    {\n";
+
 					for (const ParsedMacroEntry& entry : property.EmittedMetadata)
 					{
-						out << "        { \"" << EscapeCString(entry.Name) << "\", \"" << EscapeCString((entry.Value.has_value() ? MetadataValueToString(entry.Value.value()) : "")) << "\" },\n";
+						out << "        { \""
+							<< EscapeCString(entry.Name)
+							<< "\", \""
+							<< EscapeCString(
+								entry.Value.has_value()
+								? MetadataValueToString(entry.Value.value())
+								: "")
+							<< "\" },\n";
 					}
+
 					out << "    };\n\n";
 				}
 			}
 
-			out << "    inline constexpr PropertyMetadata " << parsedType.Name << "_Properties[] =\n";
+			// --------------------------------------------------
+			// Nested reflected-struct resolvers
+			// --------------------------------------------------
+			for (const ParsedProperty& property : parsedType.Properties)
+			{
+				if (property.Kind == EParsedPropertyKind::Struct)
+				{
+					out << "    inline const TypeMetadata& "
+						<< parsedType.Name << "_" << property.Name << "_NestedTypeResolver()\n";
+					out << "    {\n";
+					out << "        return GetTypeMetadata<"
+						<< property.StructQualifiedTypeName
+						<< ">();\n";
+					out << "    }\n\n";
+				}
+			}
+
+			// --------------------------------------------------
+			// Property array
+			// --------------------------------------------------
+			out << "    inline constexpr PropertyMetadata "
+				<< parsedType.Name << "_Properties[] =\n";
 			out << "    {\n";
 
 			for (const ParsedProperty& property : parsedType.Properties)
@@ -105,12 +166,19 @@ namespace Nyx::HeaderTool
 					parsedType.Name + "_" + property.Name + "_MetadataEntries";
 
 				const std::string propertyMetadataPointer =
-					property.EmittedMetadata.empty() ? "nullptr" : propertyMetadataArrayName;
+					property.EmittedMetadata.empty()
+					? "nullptr"
+					: propertyMetadataArrayName;
 
 				const std::string propertyMetadataCount =
 					property.EmittedMetadata.empty()
 					? "0"
 					: "sizeof(" + propertyMetadataArrayName + ") / sizeof(" + propertyMetadataArrayName + "[0])";
+
+				const std::string nestedTypeResolver =
+					(property.Kind == EParsedPropertyKind::Struct)
+					? "&" + parsedType.Name + "_" + property.Name + "_NestedTypeResolver"
+					: "nullptr";
 
 				out << "        {\n";
 				out << "            \"" << EscapeCString(property.Name) << "\",\n";
@@ -119,21 +187,31 @@ namespace Nyx::HeaderTool
 				out << "            " << ToGeneratedPropertyFlags(property.Flags) << ",\n";
 				out << "            offsetof(" << parsedType.QualifiedName << ", " << property.Name << "),\n";
 				out << "            " << propertyMetadataPointer << ",\n";
-				out << "            " << propertyMetadataCount << "\n";
+				out << "            " << propertyMetadataCount << ",\n";
+				out << "            " << nestedTypeResolver << "\n";
 				out << "        },\n";
 			}
 
 			out << "    };\n\n";
 
-			const std::string typeMetadataArrayName = parsedType.Name + "_TypeMetadataEntries";
+			// --------------------------------------------------
+			// Type metadata object
+			// --------------------------------------------------
+			const std::string typeMetadataArrayName =
+				parsedType.Name + "_TypeMetadataEntries";
+
 			const std::string typeMetadataPointer =
-				parsedType.EmittedMetadata.empty() ? "nullptr" : typeMetadataArrayName;
+				parsedType.EmittedMetadata.empty()
+				? "nullptr"
+				: typeMetadataArrayName;
+
 			const std::string typeMetadataCount =
 				parsedType.EmittedMetadata.empty()
 				? "0"
 				: "sizeof(" + typeMetadataArrayName + ") / sizeof(" + typeMetadataArrayName + "[0])";
 
-			out << "    inline constexpr TypeMetadata " << parsedType.Name << "_TypeMetadata\n";
+			out << "    inline constexpr TypeMetadata "
+				<< parsedType.Name << "_TypeMetadata\n";
 			out << "    {\n";
 			out << "        \"" << EscapeCString(parsedType.QualifiedName) << "\",\n";
 			out << "        \"" << EscapeCString(parsedType.DisplayName) << "\",\n";
@@ -146,19 +224,25 @@ namespace Nyx::HeaderTool
 		}
 
 		out << "}\n\n";
+
 		out << "namespace Nyx::Reflection\n";
 		out << "{\n";
 
 		for (const ParsedType& parsedType : parsedHeader.Types)
 		{
 			out << "    template<>\n";
-			out << "    inline const TypeMetadata& GetTypeMetadata<" << parsedType.QualifiedName << ">()\n";
+			out << "    inline const TypeMetadata& GetTypeMetadata<"
+				<< parsedType.QualifiedName
+				<< ">()\n";
 			out << "    {\n";
-			out << "        return Generated::" << parsedType.Name << "_TypeMetadata;\n";
+			out << "        return Generated::"
+				<< parsedType.Name
+				<< "_TypeMetadata;\n";
 			out << "    }\n\n";
 		}
 
 		out << "}\n";
+
 		return out.str();
 	}
 

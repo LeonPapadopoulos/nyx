@@ -180,6 +180,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Reflection/include/PropertyValueUtils.h
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionUtils.h
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectedPropertyRef.h
+    ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionTraversal.h
 )
 
 add_library(NyxEngine SHARED 

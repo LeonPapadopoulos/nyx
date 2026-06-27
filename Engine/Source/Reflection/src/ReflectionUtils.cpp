@@ -137,4 +137,19 @@ namespace Nyx::Reflection
 
 		return static_cast<const void*>(static_cast<const std::byte*>(object) + property.Offset);
 	}
+
+	const TypeMetadata* TryGetNestedType(const PropertyMetadata& property)
+	{
+		if (!property.NestedTypeResolver)
+		{
+			return nullptr;
+		}
+
+		return &property.NestedTypeResolver();
+	}
+
+	bool IsStructProperty(const PropertyMetadata& property)
+	{
+		return property.Kind == EPropertyKind::Struct && property.NestedTypeResolver != nullptr;
+	}
 }

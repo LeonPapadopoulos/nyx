@@ -2,6 +2,13 @@
 
 #include "ReflectionTypes.h"
 
+namespace Nyx::Reflection
+{
+    template<>
+    const TypeMetadata& GetTypeMetadata<Nyx::Engine::NameComponent>();
+
+}
+
 namespace Nyx::Reflection::Generated
 {
     inline constexpr MetadataEntry NameComponent_Name_MetadataEntries[] =
@@ -19,7 +26,8 @@ namespace Nyx::Reflection::Generated
             EPropertyFlags::Edit | EPropertyFlags::Undo | EPropertyFlags::Serialize,
             offsetof(Nyx::Engine::NameComponent, Name),
             NameComponent_Name_MetadataEntries,
-            sizeof(NameComponent_Name_MetadataEntries) / sizeof(NameComponent_Name_MetadataEntries[0])
+            sizeof(NameComponent_Name_MetadataEntries) / sizeof(NameComponent_Name_MetadataEntries[0]),
+            nullptr
         },
     };
 

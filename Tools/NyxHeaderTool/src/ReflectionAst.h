@@ -56,7 +56,8 @@ namespace Nyx::HeaderTool
 		Vec3,
 		Vec4,
 		Quat,
-		String
+		String,
+		Struct
 	};
 
 	enum class EParsedPropertyFlags : uint32_t
@@ -97,6 +98,8 @@ namespace Nyx::HeaderTool
 
 		EParsedPropertyFlags Flags = EParsedPropertyFlags::None;
 		EParsedPropertyKind Kind = EParsedPropertyKind::Unknown;
+
+		std::string StructQualifiedTypeName;
 
 		std::vector<ParsedMacroEntry> EmittedMetadata;
 	};

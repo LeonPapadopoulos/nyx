@@ -60,6 +60,9 @@ namespace Nyx::Reflection
 		const void* object,
 		const PropertyMetadata& property);
 
+	const TypeMetadata* TryGetNestedType(const PropertyMetadata& property);
+	bool IsStructProperty(const PropertyMetadata& property);
+
 	template<typename T>
 	T& AccessByOffset(void* object, size_t offset)
 	{

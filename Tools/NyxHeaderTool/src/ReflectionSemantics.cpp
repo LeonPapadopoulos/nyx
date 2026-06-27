@@ -5,7 +5,7 @@
 
 namespace Nyx::HeaderTool
 {
-	void ReflectionSemantics::Apply(ParsedHeader& parsedHeader)
+	void ReflectionSemantics::Apply(ParsedHeader& parsedHeader, const ReflectedTypeIndex& typeIndex)
 	{
 		for (ParsedType& parsedType : parsedHeader.Types)
 		{
@@ -13,9 +13,47 @@ namespace Nyx::HeaderTool
 
 			for (ParsedProperty& parsedProperty : parsedType.Properties)
 			{
+				parsedProperty.DisplayName = parsedProperty.Name;
+				parsedProperty.Flags = EParsedPropertyFlags::None;
+
+				ResolvePropertyType(parsedProperty, typeIndex);
 				ApplyPropertySemantics(parsedProperty);
 			}
 		}
+	}
+
+	void ReflectionSemantics::ResolvePropertyType(
+		ParsedProperty& parsedProperty,
+		const ReflectedTypeIndex& typeIndex)
+	{
+		static const std::unordered_map<std::string, EParsedPropertyKind> PrimitiveKinds =
+		{
+			{ "bool", EParsedPropertyKind::Bool },
+			{ "int32_t", EParsedPropertyKind::Int32 },
+			{ "uint32_t", EParsedPropertyKind::UInt32 },
+			{ "float", EParsedPropertyKind::Float },
+			{ "glm::vec2", EParsedPropertyKind::Vec2 },
+			{ "glm::vec3", EParsedPropertyKind::Vec3 },
+			{ "glm::vec4", EParsedPropertyKind::Vec4 },
+			{ "glm::quat", EParsedPropertyKind::Quat },
+			{ "std::string", EParsedPropertyKind::String }
+		};
+
+		if (const auto it = PrimitiveKinds.find(parsedProperty.Type); it != PrimitiveKinds.end())
+		{
+			parsedProperty.Kind = it->second;
+			parsedProperty.StructQualifiedTypeName.clear();
+			return;
+		}
+
+		if (const std::optional<std::string> resolved = typeIndex.Resolve(parsedProperty.Type))
+		{
+			parsedProperty.Kind = EParsedPropertyKind::Struct;
+			parsedProperty.StructQualifiedTypeName = *resolved;
+			return;
+		}
+
+		throw std::runtime_error("Unsupported reflected property type: " + parsedProperty.Type);
 	}
 
 	void ReflectionSemantics::ApplyTypeSemantics(ParsedType& parsedType)
@@ -69,7 +107,6 @@ namespace Nyx::HeaderTool
 	void ReflectionSemantics::ApplyPropertySemantics(ParsedProperty& parsedProperty)
 	{
 		parsedProperty.DisplayName = parsedProperty.Name;
-		parsedProperty.Kind = MapTypeToKind(parsedProperty.Type);
 		parsedProperty.Flags = EParsedPropertyFlags::None;
 
 		PropertySemanticContext ctx{ parsedProperty };
@@ -113,30 +150,6 @@ namespace Nyx::HeaderTool
 				def->ApplyProperty(ctx, entry);
 			}
 		}
-	}
-
-	EParsedPropertyKind ReflectionSemantics::MapTypeToKind(const std::string& typeName)
-	{
-		static const std::unordered_map<std::string, EParsedPropertyKind> Map =
-		{
-			{ "bool", EParsedPropertyKind::Bool },
-			{ "int32_t", EParsedPropertyKind::Int32 },
-			{ "uint32_t", EParsedPropertyKind::UInt32 },
-			{ "float", EParsedPropertyKind::Float },
-			{ "glm::vec2", EParsedPropertyKind::Vec2 },
-			{ "glm::vec3", EParsedPropertyKind::Vec3 },
-			{ "glm::vec4", EParsedPropertyKind::Vec4 },
-			{ "glm::quat", EParsedPropertyKind::Quat },
-			{ "std::string", EParsedPropertyKind::String }
-		};
-
-		const auto it = Map.find(typeName);
-		if (it == Map.end())
-		{
-			throw std::runtime_error("Unsupported reflected property type: " + typeName);
-		}
-
-		return it->second;
 	}
 
 	void ReflectionSemantics::ValidateEntryValue(const ParsedMacroEntry& entry, ESpecifierValueKind valueKind)

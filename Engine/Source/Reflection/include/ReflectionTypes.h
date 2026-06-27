@@ -16,7 +16,8 @@ namespace Nyx::Reflection
 		Vec3,
 		Vec4,
 		Quat,
-		String
+		String,
+		Struct
 	};
 
 	enum class EPropertyFlags : uint32_t
@@ -53,6 +54,10 @@ namespace Nyx::Reflection
 		const char* Value = "";
 	};
 
+	struct TypeMetadata;
+
+	using NestedTypeResolverFn = const TypeMetadata& (*)();
+
 	struct PropertyMetadata
 	{
 		const char* Name = "";
@@ -64,6 +69,8 @@ namespace Nyx::Reflection
 
 		const MetadataEntry* Metadata = nullptr;
 		size_t MetadataCount = 0;
+
+		NestedTypeResolverFn NestedTypeResolver = nullptr;
 	};
 
 	struct TypeMetadata

@@ -53,20 +53,25 @@ static bool MightContainReflection(std::string_view text)
 	return text.find("NYX_REFLECT") != std::string_view::npos;
 }
 
-static ParsedHeader ParseReflectedHeaderText(const std::string& text, const fs::path& sourcePath)
+static ParsedHeader ParseHeaderSyntaxOnly(const std::string& text, const fs::path& sourcePath)
 {
 	Lexer lexer(text);
 	Parser parser(lexer.LexAll(), sourcePath.string());
-
-	ParsedHeader parsedHeader = parser.ParseHeader();
-	ReflectionSemantics::Apply(parsedHeader);
-	return parsedHeader;
+	return parser.ParseHeader();
 }
 
 static void GenerateForSingleHeader(const fs::path& inputHeader, const fs::path& outputHeader)
 {
 	const std::string source = ReadAllText(inputHeader);
-	const ParsedHeader parsedHeader = ParseReflectedHeaderText(source, inputHeader);
+	ParsedHeader parsedHeader = ParseHeaderSyntaxOnly(source, inputHeader);
+
+	Nyx::HeaderTool::ReflectedTypeIndex typeIndex;
+	for (const ParsedType& parsedType : parsedHeader.Types)
+	{
+		typeIndex.Add(parsedType);
+	}
+
+	ReflectionSemantics::Apply(parsedHeader, typeIndex);
 
 	if (parsedHeader.Types.empty())
 	{
@@ -117,27 +122,43 @@ static size_t GenerateForScanRoots(
 				continue;
 			}
 
-			const ParsedHeader parsedHeader = ParseReflectedHeaderText(source, headerPath);
+			ParsedHeader parsedHeader = ParseHeaderSyntaxOnly(source, headerPath);
 			if (parsedHeader.Types.empty())
 			{
 				continue;
 			}
 
 			const fs::path relativePath = fs::relative(headerPath, root);
-			const fs::path outputHeader = CodeGenerator::MakeGeneratedHeaderPath(relativePath, outputDir);
-
-			WriteAllText(outputHeader, CodeGenerator::GenerateMetadataHeader(parsedHeader));
-			std::cout << "Generated: " << outputHeader.string() << "\n";
 
 			outScannedHeaders.push_back(ScannedHeader{
 				.HeaderPath = headerPath,
 				.RelativePath = relativePath,
-				.Parsed = parsedHeader
+				.Parsed = std::move(parsedHeader)
 				});
 
 			processedHeaders.insert(canonicalHeaderPath);
-			++generatedCount;
 		}
+	}
+
+	Nyx::HeaderTool::ReflectedTypeIndex typeIndex;
+	for (const ScannedHeader& header : outScannedHeaders)
+	{
+		for (const ParsedType& parsedType : header.Parsed.Types)
+		{
+			typeIndex.Add(parsedType);
+		}
+	}
+
+	for (ScannedHeader& header : outScannedHeaders)
+	{
+		ReflectionSemantics::Apply(header.Parsed, typeIndex);
+
+		const fs::path outputHeader =
+			CodeGenerator::MakeGeneratedHeaderPath(header.RelativePath, outputDir);
+
+		WriteAllText(outputHeader, CodeGenerator::GenerateMetadataHeader(header.Parsed));
+		std::cout << "Generated: " << outputHeader.string() << "\n";
+		++generatedCount;
 	}
 
 	return generatedCount;
