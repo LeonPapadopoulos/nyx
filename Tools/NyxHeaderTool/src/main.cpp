@@ -53,10 +53,10 @@ static bool MightContainReflection(std::string_view text)
 	return text.find("NYX_REFLECT") != std::string_view::npos;
 }
 
-static ParsedHeader ParseReflectedHeaderText(const std::string& text)
+static ParsedHeader ParseReflectedHeaderText(const std::string& text, const fs::path& sourcePath)
 {
 	Lexer lexer(text);
-	Parser parser(lexer.LexAll());
+	Parser parser(lexer.LexAll(), sourcePath.string());
 
 	ParsedHeader parsedHeader = parser.ParseHeader();
 	ReflectionSemantics::Apply(parsedHeader);
@@ -66,7 +66,7 @@ static ParsedHeader ParseReflectedHeaderText(const std::string& text)
 static void GenerateForSingleHeader(const fs::path& inputHeader, const fs::path& outputHeader)
 {
 	const std::string source = ReadAllText(inputHeader);
-	const ParsedHeader parsedHeader = ParseReflectedHeaderText(source);
+	const ParsedHeader parsedHeader = ParseReflectedHeaderText(source, inputHeader);
 
 	if (parsedHeader.Types.empty())
 	{
@@ -117,7 +117,7 @@ static size_t GenerateForScanRoots(
 				continue;
 			}
 
-			const ParsedHeader parsedHeader = ParseReflectedHeaderText(source);
+			const ParsedHeader parsedHeader = ParseReflectedHeaderText(source, headerPath);
 			if (parsedHeader.Types.empty())
 			{
 				continue;

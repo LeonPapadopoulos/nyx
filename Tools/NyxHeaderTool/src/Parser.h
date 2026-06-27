@@ -12,7 +12,7 @@ namespace Nyx::HeaderTool
 	class Parser
 	{
 	public:
-		explicit Parser(std::vector<Token> tokens);
+		explicit Parser(std::vector<Token> tokens, std::string sourceFilePath);
 
 		ParsedHeader ParseHeader();
 
@@ -39,7 +39,7 @@ namespace Nyx::HeaderTool
 		ParsedProperty ParseProperty();
 
 		ParsedMacroArguments ParseMacroArguments();
-		static ParsedMacroArguments ParseMacroArgumentsFromClauses(const std::vector<std::vector<Token>>& clauses);
+		ParsedMacroArguments ParseMacroArgumentsFromClauses(const std::vector<std::vector<Token>>& clauses);
 
 		std::vector<std::vector<Token>> ParseCommaSeparatedClausesUntil(ETokenKind terminator);
 		static std::vector<std::vector<Token>> SplitTopLevelClauses(const std::vector<Token>& tokens);
@@ -61,10 +61,12 @@ namespace Nyx::HeaderTool
 			const std::vector<Token>& declarationTokens);
 
 		[[noreturn]] void ErrorHere(std::string_view message) const;
+		[[noreturn]] void ErrorAtToken(const Token& token, std::string_view message) const;
 
 	private:
 		std::vector<Token> Tokens;
 		size_t Current = 0;
 		std::vector<std::string> NamespaceStack;
+		std::string SourceFilePath;
 	};
 }

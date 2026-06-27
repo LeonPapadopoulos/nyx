@@ -3,10 +3,25 @@
 #include <sstream>
 #include <stdexcept>
 
+// Local Helper
 namespace Nyx::HeaderTool
 {
-	Parser::Parser(std::vector<Token> tokens)
+	static std::string ClauseToString(const std::vector<Token>& clause)
+	{
+		std::ostringstream out;
+		for (const Token& token : clause)
+		{
+			out << token.Text;
+		}
+		return out.str();
+	}
+}
+
+namespace Nyx::HeaderTool
+{
+	Parser::Parser(std::vector<Token> tokens, std::string sourceFilePath)
 		: Tokens(std::move(tokens))
+		, SourceFilePath(std::move(sourceFilePath))
 	{
 	}
 
@@ -247,54 +262,13 @@ namespace Nyx::HeaderTool
 
 			const std::string name = clause[0].Text;
 
-			// Bare specifier: Edit / Undo / Serialize / Component
+			// Bare specifier: Edit / Undo / Serialize / Component / Hidden / ReadOnly
 			if (clause.size() == 1)
 			{
 				args.Specifiers.push_back(ParsedMacroEntry{
 					.Name = name,
 					.Value = std::nullopt
 					});
-				continue;
-			}
-
-			// meta(...)
-			if (name == "meta" && clause.size() >= 3 && clause[1].Kind == ETokenKind::LParen && clause.back().Kind == ETokenKind::RParen)
-			{
-				const std::vector<Token> inner(clause.begin() + 2, clause.end() - 1);
-				const std::vector<std::vector<Token>> metaClauses = SplitTopLevelClauses(inner);
-
-				for (const std::vector<Token>& metaClause : metaClauses)
-				{
-					if (metaClause.empty())
-					{
-						continue;
-					}
-
-					if (metaClause[0].Kind != ETokenKind::Identifier)
-					{
-						throw std::runtime_error("Expected metadata entry to begin with an identifier.");
-					}
-
-					ParsedMacroEntry entry{};
-					entry.Name = metaClause[0].Text;
-
-					if (metaClause.size() == 1)
-					{
-						entry.Value.reset();
-					}
-					else if (metaClause.size() >= 3 && metaClause[1].Kind == ETokenKind::Equals)
-					{
-						std::vector<Token> valueTokens(metaClause.begin() + 2, metaClause.end());
-						entry.Value = ParseValueTokens(valueTokens);
-					}
-					else
-					{
-						throw std::runtime_error("Unsupported metadata clause syntax.");
-					}
-
-					args.Metadata.push_back(std::move(entry));
-				}
-
 				continue;
 			}
 
@@ -355,7 +329,9 @@ namespace Nyx::HeaderTool
 				continue;
 			}
 
-			throw std::runtime_error("Unsupported macro argument clause syntax.");
+			ErrorAtToken(
+				clause.front(),
+				"Unsupported macro argument clause syntax: " + ClauseToString(clause));
 		}
 
 		return args;
@@ -790,9 +766,48 @@ namespace Nyx::HeaderTool
 	[[noreturn]] void Parser::ErrorHere(std::string_view message) const
 	{
 		const Token& token = Peek();
+
 		std::ostringstream out;
-		out << message << " At " << token.Line << ":" << token.Column
-			<< " near token '" << token.Text << "'.";
+
+		if (!SourceFilePath.empty())
+		{
+			out << SourceFilePath << "(" << token.Line << "," << token.Column << "): ";
+		}
+		else
+		{
+			out << token.Line << ":" << token.Column << ": ";
+		}
+
+		out << message;
+
+		if (!token.Text.empty())
+		{
+			out << " near token '" << token.Text << "'";
+		}
+
+		throw std::runtime_error(out.str());
+	}
+
+	[[noreturn]] void Parser::ErrorAtToken(const Token& token, std::string_view message) const
+	{
+		std::ostringstream out;
+
+		if (!SourceFilePath.empty())
+		{
+			out << SourceFilePath << "(" << token.Line << "," << token.Column << "): ";
+		}
+		else
+		{
+			out << token.Line << ":" << token.Column << ": ";
+		}
+
+		out << message;
+
+		if (!token.Text.empty())
+		{
+			out << " near token '" << token.Text << "'";
+		}
+
 		throw std::runtime_error(out.str());
 	}
 }
