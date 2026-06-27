@@ -1,6 +1,5 @@
 add_executable(NyxHeaderTool
     src/main.cpp
-    src/main_regex.cpp
     src/Lexer.cpp
     src/Parser.cpp
     src/ReflectionSemantics.cpp
