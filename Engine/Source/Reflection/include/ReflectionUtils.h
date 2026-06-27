@@ -4,17 +4,12 @@
 
 #include <cassert>
 #include <cstddef>
-#include <cstring>
 #include <optional>
 #include <string_view>
 #include <type_traits>
 
 namespace Nyx::Reflection
 {
-	// ------------------------------------------------------------
-	// Metadata lookup
-	// ------------------------------------------------------------
-
 	const MetadataEntry* FindMetadataEntry(
 		const MetadataEntry* entries,
 		size_t count,
@@ -48,10 +43,6 @@ namespace Nyx::Reflection
 	bool HasMetadata(
 		const TypeMetadata& type,
 		std::string_view key);
-
-	// ------------------------------------------------------------
-	// Property lookup
-	// ------------------------------------------------------------
 
 	const PropertyMetadata* FindPropertyByName(
 		const TypeMetadata& type,
@@ -61,10 +52,6 @@ namespace Nyx::Reflection
 		const TypeMetadata& type,
 		std::string_view propertyName);
 
-	// ------------------------------------------------------------
-	// Raw address access
-	// ------------------------------------------------------------
-
 	void* GetPropertyAddress(
 		void* object,
 		const PropertyMetadata& property);
@@ -72,10 +59,6 @@ namespace Nyx::Reflection
 	const void* GetPropertyAddress(
 		const void* object,
 		const PropertyMetadata& property);
-
-	// ------------------------------------------------------------
-	// Typed access helpers
-	// ------------------------------------------------------------
 
 	template<typename T>
 	T& AccessByOffset(void* object, size_t offset)
@@ -103,79 +86,9 @@ namespace Nyx::Reflection
 		return AccessByOffset<T>(object, property.Offset);
 	}
 
-	template<typename T>
-	T* GetPropertyPointer(void* object, const PropertyMetadata& property)
-	{
-		assert(object != nullptr);
-		return reinterpret_cast<T*>(static_cast<std::byte*>(object) + property.Offset);
-	}
-
-	template<typename T>
-	const T* GetPropertyPointer(const void* object, const PropertyMetadata& property)
-	{
-		assert(object != nullptr);
-		return reinterpret_cast<const T*>(static_cast<const std::byte*>(object) + property.Offset);
-	}
-
-	// ------------------------------------------------------------
-	// Value-copy helpers for trivially copyable types
-	// ------------------------------------------------------------
-
-	template<typename T>
-	void WritePropertyValue(void* object, const PropertyMetadata& property, const T& value)
-	{
-		static_assert(std::is_trivially_copyable_v<T>,
-			"WritePropertyValue<T> only supports trivially copyable types. "
-			"For non-trivial types, assign through AccessProperty<T>().");
-
-		T& destination = AccessProperty<T>(object, property);
-		destination = value;
-	}
-
-	template<typename T>
-	T ReadPropertyValue(const void* object, const PropertyMetadata& property)
-	{
-		static_assert(std::is_trivially_copyable_v<T>,
-			"ReadPropertyValue<T> only supports trivially copyable types.");
-
-		return AccessProperty<T>(object, property);
-	}
-
-	// ------------------------------------------------------------
-	// Convenience helpers
-	// ------------------------------------------------------------
-
 	template<typename TObject>
 	const PropertyMetadata* FindPropertyByName(std::string_view propertyName)
 	{
 		return FindPropertyByName(GetTypeMetadata<TObject>(), propertyName);
-	}
-
-	template<typename TObject, typename TProperty>
-	TProperty* FindPropertyPointer(
-		TObject& object,
-		std::string_view propertyName)
-	{
-		const PropertyMetadata* property = FindPropertyByName<TObject>(propertyName);
-		if (!property)
-		{
-			return nullptr;
-		}
-
-		return GetPropertyPointer<TProperty>(&object, *property);
-	}
-
-	template<typename TObject, typename TProperty>
-	const TProperty* FindPropertyPointer(
-		const TObject& object,
-		std::string_view propertyName)
-	{
-		const PropertyMetadata* property = FindPropertyByName<TObject>(propertyName);
-		if (!property)
-		{
-			return nullptr;
-		}
-
-		return GetPropertyPointer<TProperty>(&object, *property);
 	}
 }
