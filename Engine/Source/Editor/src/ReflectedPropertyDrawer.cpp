@@ -455,8 +455,8 @@ namespace
 		ScopedDetailsFramePadding rowPadding;
 
 		ImGui::PushStyleColor(ImGuiCol_Header, IM_COL32(0, 0, 0, 0));
-		ImGui::PushStyleColor(ImGuiCol_HeaderHovered, IM_COL32(255, 255, 255, 10));
-		ImGui::PushStyleColor(ImGuiCol_HeaderActive, IM_COL32(255, 255, 255, 16));
+		ImGui::PushStyleColor(ImGuiCol_HeaderHovered, IM_COL32(0, 0, 0, 0));
+		ImGui::PushStyleColor(ImGuiCol_HeaderActive, IM_COL32(0, 0, 0, 0));
 
 		const ImGuiTreeNodeFlags flags =
 			ImGuiTreeNodeFlags_SpanAvailWidth |
