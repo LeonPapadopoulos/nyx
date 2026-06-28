@@ -348,7 +348,11 @@ namespace
 	{
 		bool bAnyChanged = false;
 
+		//ImGui::PushStyleColor(ImGuiCol_TableBorderStrong, IM_COL32(95, 95, 95, 255));
+		ImGui::PushStyleColor(ImGuiCol_TableBorderLight, IM_COL32(70, 70, 70, 70));
+
 		const ImGuiTableFlags tableFlags =
+			//ImGuiTableFlags_Borders |
 			ImGuiTableFlags_BordersInnerV |
 			ImGuiTableFlags_BordersInnerH |
 			ImGuiTableFlags_SizingStretchProp;
@@ -371,6 +375,8 @@ namespace
 			ImGui::EndTable();
 		}
 
+		ImGui::PopStyleColor(1); // 2
+
 		return bAnyChanged;
 	}
 
@@ -382,40 +388,59 @@ namespace
 	{
 		bool bAnyChanged = false;
 
-		const PropertyBuckets buckets = BuildPropertyBuckets(typeMetadata);
+		// Disabled until we settle on a whether we want to show the struct's properties' categories too
+		//{
+		//	const PropertyBuckets buckets = BuildPropertyBuckets(typeMetadata);
 
-		for (size_t propertyIndex : buckets.Uncategorized)
+		//	for (size_t propertyIndex : buckets.Uncategorized)
+		//	{
+		//		bAnyChanged |= DrawPropertyRow(
+		//			object,
+		//			typeMetadata.Properties[propertyIndex],
+		//			drawContext,
+		//			typeMetadata,
+		//			depth);
+		//	}
+
+		//	for (const auto& [category, indices] : buckets.ByCategory)
+		//	{
+		//		// Nested categories stay lightweight for now.
+		//		ImGui::TableNextRow();
+		//		ImGui::TableSetColumnIndex(0);
+
+		//		ImGui::Dummy(ImVec2(PropertyIndentPerDepth * static_cast<float>(depth), 0.0f));
+		//		ImGui::SameLine(0.0f, 0.0f);
+		//		ImGui::TextDisabled("%s", category.c_str());
+
+		//		ImGui::TableSetColumnIndex(1);
+		//		ImGui::TextUnformatted("");
+
+		//		for (size_t propertyIndex : indices)
+		//		{
+		//			bAnyChanged |= DrawPropertyRow(
+		//				object,
+		//				typeMetadata.Properties[propertyIndex],
+		//				drawContext,
+		//				typeMetadata,
+		//				depth + 1);
+		//		}
+		//	}
+		//}
+
+		for (size_t i = 0; i < typeMetadata.PropertyCount; ++i)
 		{
+			const auto& property = typeMetadata.Properties[i];
+			if (IsPropertyHidden(property))
+			{
+				continue;
+			}
+
 			bAnyChanged |= DrawPropertyRow(
 				object,
-				typeMetadata.Properties[propertyIndex],
+				property,
 				drawContext,
 				typeMetadata,
 				depth);
-		}
-
-		for (const auto& [category, indices] : buckets.ByCategory)
-		{
-			// Nested categories stay lightweight for now.
-			ImGui::TableNextRow();
-			ImGui::TableSetColumnIndex(0);
-
-			ImGui::Dummy(ImVec2(PropertyIndentPerDepth * static_cast<float>(depth), 0.0f));
-			ImGui::SameLine(0.0f, 0.0f);
-			ImGui::TextDisabled("%s", category.c_str());
-
-			ImGui::TableSetColumnIndex(1);
-			ImGui::TextUnformatted("");
-
-			for (size_t propertyIndex : indices)
-			{
-				bAnyChanged |= DrawPropertyRow(
-					object,
-					typeMetadata.Properties[propertyIndex],
-					drawContext,
-					typeMetadata,
-					depth + 1);
-			}
 		}
 
 		return bAnyChanged;
@@ -490,18 +515,17 @@ namespace
 	{
 		ImGui::PushID(category.c_str());
 
-		// Persistent open state per category label in the current UI session.
 		ImGuiStorage* storage = ImGui::GetStateStorage();
-		const ImGuiID openId = ImGui::GetID("##CategoryOpen");
+		const ImGuiID openId = ImGui::GetID("##Open");
 		bool bOpen = storage->GetBool(openId, true);
 
 		const float fullWidth = ImGui::GetContentRegionAvail().x;
-		const ImVec2 rowStart = ImGui::GetCursorScreenPos();
 		const ImVec2 rowSize(fullWidth, DetailsRowHeight);
-		const ImVec2 rowEnd(rowStart.x + rowSize.x, rowStart.y + rowSize.y);
 
-		// Full-width interactive row.
 		ImGui::InvisibleButton("##CategoryRow", rowSize);
+
+		const ImVec2 rowMin = ImGui::GetItemRectMin();
+		const ImVec2 rowMax = ImGui::GetItemRectMax();
 		const bool bHovered = ImGui::IsItemHovered();
 		const bool bClicked = ImGui::IsItemClicked();
 
@@ -513,18 +537,13 @@ namespace
 
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-		// Optional subtle hover tint.
 		if (bHovered)
 		{
-			drawList->AddRectFilled(
-				rowStart,
-				rowEnd,
-				IM_COL32(255, 255, 255, 10));
+			drawList->AddRectFilled(rowMin, rowMax, IM_COL32(255, 255, 255, 10));
 		}
 
-		// Draw arrow manually.
-		const float arrowX = rowStart.x + 8.0f;
-		const float arrowCenterY = rowStart.y + DetailsRowHeight * 0.5f;
+		const float arrowX = rowMin.x + 8.0f;
+		const float arrowCenterY = rowMin.y + DetailsRowHeight * 0.5f;
 		const ImGuiDir arrowDir = bOpen ? ImGuiDir_Down : ImGuiDir_Right;
 
 		ImGui::RenderArrow(
@@ -534,10 +553,9 @@ namespace
 			arrowDir,
 			0.80f);
 
-		// Draw category text manually, vertically centered by text height.
 		const ImVec2 textSize = ImGui::CalcTextSize(category.c_str());
-		const float textX = rowStart.x + 22.0f;
-		const float textY = rowStart.y + floorf((DetailsRowHeight - textSize.y) * 0.5f);
+		const float textX = rowMin.x + 22.0f;
+		const float textY = rowMin.y + floorf((DetailsRowHeight - textSize.y) * 0.5f);
 
 		drawList->AddText(
 			ImVec2(textX, textY),
