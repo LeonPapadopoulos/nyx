@@ -14,6 +14,7 @@
 class Mesh;
 class Texture;
 class Shader;
+class Material;
 
 namespace Nyx
 {
@@ -217,6 +218,17 @@ namespace Nyx
 					typeResources.clear();
 				}
 				RefCounts.clear();
+			}
+
+			// @todo: Generalize, once the ResourceManager is properly integrated into Asset Management
+			Mesh* ResolveMesh(const std::string& id)
+			{
+
+			}
+
+			Material* ResolveMaterial(const std::string& id)
+			{
+
 			}
 
 		private:

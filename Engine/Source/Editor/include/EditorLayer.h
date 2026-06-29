@@ -9,10 +9,11 @@
 #include "EditorTransactionSubscriber.h"
 #include "SceneEntityTransactionDomain.h"
 #include "MeshRendererComponent.h"
+#include "IAssetResolver.h"
 
 namespace Nyx::Editor
 {
-	class EditorLayer
+	class EditorLayer : public Nyx::Engine::IAssetResolver
 	{
 	public:
 		explicit EditorLayer(Nyx::IRenderer& inRenderer);
@@ -24,6 +25,13 @@ namespace Nyx::Editor
 		float ComputeDeltaTime();
 
 		void DrawPanels();
+
+	public:
+		Nyx::Mesh* ResolveMesh(const std::string& meshId) override;
+		Nyx::Material* ResolveMaterial(const std::string& materialId) override;
+
+		void ResolveMeshRendererAssets(Nyx::Engine::MeshRendererComponent& component);
+		void ResolveSceneRuntimeAssets();
 
 	private:
 		static void MapSceneImageMouseToPickPixel(
@@ -46,8 +54,6 @@ namespace Nyx::Editor
 		void ApplyPendingPickResults();
 
 		void HandleUndoRedoHotkeys();
-
-		void ResolveMeshRendererAssets(Nyx::Engine::MeshRendererComponent& component);
 
 	private:
 		Nyx::IRenderer* Renderer = nullptr;

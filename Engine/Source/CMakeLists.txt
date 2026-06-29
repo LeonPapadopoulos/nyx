@@ -35,6 +35,10 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/TypedHandle.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/WindowsWindow.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/cgltf_impl.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/BinaryArchive.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/ReflectedArchiveSerializer.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/SceneComponentTypeRegistry.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/SceneComponentRegistration.cpp
 
     # Runtime/Renderer
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ImGuiTheme.cpp
@@ -87,6 +91,8 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Editor/src/ComponentTypeRegistry.cpp
     ${NYX_ENGINE_ROOT}/Editor/src/ComponentTypeRegistration.cpp
     ${NYX_ENGINE_ROOT}/Editor/src/PropertyWidgetRegistry.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/SceneSerializer.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/EditorAssetResolver.cpp
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/src/ReflectionUtils.cpp
@@ -113,6 +119,12 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/TypedHandle.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/Window.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/WindowsWindow.h
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/BinaryArchive.h
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/SceneSerializationTypes.h
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/ReflectedArchiveSerializer.h
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/SceneComponentTypeRegistry.h
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/SceneComponentRegistration.h
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/IAssetResolver.h
 
     # Runtime/Renderer
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ImGuiTheme.h
@@ -172,6 +184,8 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Editor/include/ComponentTypeRegistration.h
     ${NYX_ENGINE_ROOT}/Editor/include/ReflectedComponentAutoRegistration.h
     ${NYX_ENGINE_ROOT}/Editor/include/PropertyWidgetRegistry.h
+    ${NYX_ENGINE_ROOT}/Editor/include/SceneSerializer.h
+    ${NYX_ENGINE_ROOT}/Editor/include/EditorAssetResolver.h
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionTypes.h

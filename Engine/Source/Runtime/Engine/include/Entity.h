@@ -180,6 +180,9 @@ namespace Nyx
 			template<typename T, typename Func>
 			void Each(Func&& func) const;
 
+			template<typename Func>
+			void ForEachEntity(Func&& func) const;
+
 		private:
 			struct EntitySlot
 			{
@@ -300,6 +303,21 @@ namespace Nyx
 			for (size_t i = 0; i < pool->Components.size(); ++i)
 			{
 				func(pool->Entities[i], pool->Components[i]);
+			}
+		}
+
+		template<typename Func>
+		void Registry::ForEachEntity(Func&& func) const
+		{
+			for (uint32_t index = 0; index < static_cast<uint32_t>(EntitySlots.size()); ++index)
+			{
+				const EntitySlot& slot = EntitySlots[index];
+				if (!slot.bAlive)
+				{
+					continue;
+				}
+
+				func(Entity::Make(index, slot.Generation));
 			}
 		}
 

@@ -25,6 +25,7 @@
 #include "Log.h"
 
 #include "Generated/Runtime/Runtime.reflect.init.h"
+#include <SceneComponentRegistration.h>
 
 void PrintTransformMetadata()
 {
@@ -73,6 +74,12 @@ namespace Nyx::Editor
 
 		Renderer->SetWorld(&ActiveScene.GetRegistry());
 
+		{
+			Nyx::Editor::RegisterDefaultPropertyWidgets();
+			Nyx::Reflection::Generated::RegisterRuntimeReflectedTypes();
+			Nyx::Engine::RegisterDefaultSceneComponentTypes();
+		}
+
 		MainSceneViewId = Renderer->CreateSceneView();
 		SecondarySceneViewId = Renderer->CreateSceneView();
 
@@ -86,6 +93,8 @@ namespace Nyx::Editor
 		}
 
 		SpawnTestScene();
+
+		ResolveSceneRuntimeAssets();
 		
 		// Example Code for accessig reflected Property Data on a given Entity
 		{
@@ -112,13 +121,13 @@ namespace Nyx::Editor
 				glm::vec3& position = positionRef.Access<glm::vec3>();
 				const char* category = positionRef.FindMetadataValue("Category");
 
-				LOG_INFO("EditorLayer::Initialize() Entity: Position ({0},{1},{2}), Category {3}", position.x, position.y, position.z, category);
+				LOG_INFO(
+					"EditorLayer::Initialize() Entity: Position ({0},{1},{2}), Category {3}",
+					position.x,
+					position.y,
+					position.z,
+					category);
 			}
-		}
-
-		{
-			Nyx::Editor::RegisterDefaultPropertyWidgets();
-			Nyx::Reflection::Generated::RegisterRuntimeReflectedTypes();
 		}
 
 		Transactions.RegisterDomain(Nyx::Editor::EObjectDomain::SceneEntity, &SceneEntityDomain);
@@ -183,6 +192,60 @@ namespace Nyx::Editor
 		HandleUndoRedoHotkeys();
 
 		ImGui::ShowDemoWindow();
+	}
+
+	Nyx::Mesh* EditorLayer::ResolveMesh(const std::string& meshId)
+	{
+		ASSERT(Renderer != nullptr);
+
+		if (meshId == "Cube")
+		{
+			return Renderer->GetCubeMesh();
+		}
+
+		return nullptr;
+	}
+
+	Nyx::Material* EditorLayer::ResolveMaterial(const std::string& materialId)
+	{
+		ASSERT(Renderer != nullptr);
+
+		if (materialId == "Textured")
+		{
+			return Renderer->GetTexturedMaterial();
+		}
+
+		if (materialId == "Reflective")
+		{
+			return Renderer->GetReflectiveMaterial();
+		}
+
+		if (materialId == "Untextured")
+		{
+			return Renderer->GetUntexturedMaterial();
+		}
+
+		return nullptr;
+	}
+
+	void EditorLayer::ResolveMeshRendererAssets(Nyx::Engine::MeshRendererComponent& component)
+	{
+		component.MeshAsset =
+			component.MeshId.empty() ? nullptr : ResolveMesh(component.MeshId);
+
+		component.MaterialAsset =
+			component.MaterialId.empty() ? nullptr : ResolveMaterial(component.MaterialId);
+	}
+
+	void EditorLayer::ResolveSceneRuntimeAssets()
+	{
+		auto& world = ActiveScene.GetRegistry();
+
+		world.Each<Nyx::Engine::MeshRendererComponent>(
+			[this](Nyx::Engine::Entity /*entity*/, Nyx::Engine::MeshRendererComponent& component)
+			{
+				ResolveMeshRendererAssets(component);
+			});
 	}
 
 	void EditorLayer::MapSceneImageMouseToPickPixel(
@@ -517,7 +580,6 @@ namespace Nyx::Editor
 	{
 		auto& world = ActiveScene.GetRegistry();
 
-		// @todo: Update Asset calls once demo assets are stripped from the Renderer implementation
 		{
 			Nyx::Engine::Entity e = ActiveScene.CreateEntity("Textured Cube");
 
@@ -530,7 +592,7 @@ namespace Nyx::Editor
 				}
 			);
 
-			auto& meshRenderer = world.Add<Nyx::Engine::MeshRendererComponent>(
+			world.Add<Nyx::Engine::MeshRendererComponent>(
 				e,
 				Nyx::Engine::MeshRendererComponent{
 					.MeshId = "Cube",
@@ -538,8 +600,6 @@ namespace Nyx::Editor
 					.bVisible = true
 				}
 			);
-
-			ResolveMeshRendererAssets(meshRenderer);
 		}
 
 		{
@@ -554,7 +614,7 @@ namespace Nyx::Editor
 				}
 			);
 
-			auto& meshRenderer = world.Add<Nyx::Engine::MeshRendererComponent>(
+			world.Add<Nyx::Engine::MeshRendererComponent>(
 				e,
 				Nyx::Engine::MeshRendererComponent{
 					.MeshId = "Cube",
@@ -562,8 +622,6 @@ namespace Nyx::Editor
 					.bVisible = true
 				}
 			);
-
-			ResolveMeshRendererAssets(meshRenderer);
 		}
 
 		{
@@ -578,7 +636,7 @@ namespace Nyx::Editor
 				}
 			);
 
-			auto& meshRenderer = world.Add<Nyx::Engine::MeshRendererComponent>(
+			world.Add<Nyx::Engine::MeshRendererComponent>(
 				e,
 				Nyx::Engine::MeshRendererComponent{
 					.MeshId = "Cube",
@@ -586,8 +644,6 @@ namespace Nyx::Editor
 					.bVisible = true
 				}
 			);
-
-			ResolveMeshRendererAssets(meshRenderer);
 		}
 	}
 
@@ -647,30 +703,6 @@ namespace Nyx::Editor
 			{
 				ResolveAllMeshRendererAssets();
 			}
-		}
-	}
-
-	void EditorLayer::ResolveMeshRendererAssets(Nyx::Engine::MeshRendererComponent& component)
-	{
-		component.MeshAsset = nullptr;
-		component.MaterialAsset = nullptr;
-
-		if (component.MeshId == "Cube")
-		{
-			component.MeshAsset = Renderer->GetCubeMesh();
-		}
-
-		if (component.MaterialId == "Textured")
-		{
-			component.MaterialAsset = Renderer->GetTexturedMaterial();
-		}
-		else if (component.MaterialId == "Reflective")
-		{
-			component.MaterialAsset = Renderer->GetReflectiveMaterial();
-		}
-		else if (component.MaterialId == "Untextured")
-		{
-			component.MaterialAsset = Renderer->GetUntexturedMaterial();
 		}
 	}
 }
