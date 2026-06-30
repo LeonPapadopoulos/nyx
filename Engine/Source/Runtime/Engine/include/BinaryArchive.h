@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -19,11 +20,6 @@ namespace Nyx::Engine
 		void WriteFloat(float value);
 		void WriteBool(bool value);
 		void WriteString(const std::string& value);
-
-		const std::vector<std::byte>& GetBuffer() const
-		{
-			return Buffer;
-		}
 
 	private:
 		std::vector<std::byte> Buffer;

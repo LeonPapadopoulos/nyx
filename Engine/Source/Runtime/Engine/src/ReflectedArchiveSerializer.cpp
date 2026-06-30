@@ -6,6 +6,7 @@
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 #include <glm/vec4.hpp>
+#include <string>
 
 namespace Nyx::Engine
 {
@@ -28,59 +29,69 @@ namespace Nyx::Engine
 			switch (property.Kind)
 			{
 			case EPropertyKind::Bool:
+			{
 				writer.WriteBool(AccessProperty<bool>(object, property));
 				break;
+			}
 
 			case EPropertyKind::Int32:
+			{
 				writer.WriteInt32(AccessProperty<int32_t>(object, property));
 				break;
+			}
 
 			case EPropertyKind::UInt32:
+			{
 				writer.WriteUInt32(AccessProperty<uint32_t>(object, property));
 				break;
+			}
 
 			case EPropertyKind::Float:
+			{
 				writer.WriteFloat(AccessProperty<float>(object, property));
 				break;
+			}
 
 			case EPropertyKind::String:
+			{
 				writer.WriteString(AccessProperty<std::string>(object, property));
 				break;
+			}
 
 			case EPropertyKind::Vec2:
 			{
-				const glm::vec2& v = AccessProperty<glm::vec2>(object, property);
-				writer.WriteFloat(v.x);
-				writer.WriteFloat(v.y);
+				const glm::vec2& value = AccessProperty<glm::vec2>(object, property);
+				writer.WriteFloat(value.x);
+				writer.WriteFloat(value.y);
 				break;
 			}
 
 			case EPropertyKind::Vec3:
 			{
-				const glm::vec3& v = AccessProperty<glm::vec3>(object, property);
-				writer.WriteFloat(v.x);
-				writer.WriteFloat(v.y);
-				writer.WriteFloat(v.z);
+				const glm::vec3& value = AccessProperty<glm::vec3>(object, property);
+				writer.WriteFloat(value.x);
+				writer.WriteFloat(value.y);
+				writer.WriteFloat(value.z);
 				break;
 			}
 
 			case EPropertyKind::Vec4:
 			{
-				const glm::vec4& v = AccessProperty<glm::vec4>(object, property);
-				writer.WriteFloat(v.x);
-				writer.WriteFloat(v.y);
-				writer.WriteFloat(v.z);
-				writer.WriteFloat(v.w);
+				const glm::vec4& value = AccessProperty<glm::vec4>(object, property);
+				writer.WriteFloat(value.x);
+				writer.WriteFloat(value.y);
+				writer.WriteFloat(value.z);
+				writer.WriteFloat(value.w);
 				break;
 			}
 
 			case EPropertyKind::Quat:
 			{
-				const glm::quat& q = AccessProperty<glm::quat>(object, property);
-				writer.WriteFloat(q.w);
-				writer.WriteFloat(q.x);
-				writer.WriteFloat(q.y);
-				writer.WriteFloat(q.z);
+				const glm::quat& value = AccessProperty<glm::quat>(object, property);
+				writer.WriteFloat(value.w);
+				writer.WriteFloat(value.x);
+				writer.WriteFloat(value.y);
+				writer.WriteFloat(value.z);
 				break;
 			}
 
@@ -97,6 +108,7 @@ namespace Nyx::Engine
 				{
 					return false;
 				}
+
 				break;
 			}
 
@@ -129,7 +141,11 @@ namespace Nyx::Engine
 			case EPropertyKind::Bool:
 			{
 				bool value = false;
-				if (!reader.ReadBool(value)) return false;
+				if (!reader.ReadBool(value))
+				{
+					return false;
+				}
+
 				AccessProperty<bool>(object, property) = value;
 				break;
 			}
@@ -137,7 +153,11 @@ namespace Nyx::Engine
 			case EPropertyKind::Int32:
 			{
 				int32_t value = 0;
-				if (!reader.ReadInt32(value)) return false;
+				if (!reader.ReadInt32(value))
+				{
+					return false;
+				}
+
 				AccessProperty<int32_t>(object, property) = value;
 				break;
 			}
@@ -145,7 +165,11 @@ namespace Nyx::Engine
 			case EPropertyKind::UInt32:
 			{
 				uint32_t value = 0;
-				if (!reader.ReadUInt32(value)) return false;
+				if (!reader.ReadUInt32(value))
+				{
+					return false;
+				}
+
 				AccessProperty<uint32_t>(object, property) = value;
 				break;
 			}
@@ -153,7 +177,11 @@ namespace Nyx::Engine
 			case EPropertyKind::Float:
 			{
 				float value = 0.0f;
-				if (!reader.ReadFloat(value)) return false;
+				if (!reader.ReadFloat(value))
+				{
+					return false;
+				}
+
 				AccessProperty<float>(object, property) = value;
 				break;
 			}
@@ -161,7 +189,11 @@ namespace Nyx::Engine
 			case EPropertyKind::String:
 			{
 				std::string value;
-				if (!reader.ReadString(value)) return false;
+				if (!reader.ReadString(value))
+				{
+					return false;
+				}
+
 				AccessProperty<std::string>(object, property) = std::move(value);
 				break;
 			}
@@ -171,6 +203,7 @@ namespace Nyx::Engine
 				glm::vec2 value{};
 				if (!reader.ReadFloat(value.x)) return false;
 				if (!reader.ReadFloat(value.y)) return false;
+
 				AccessProperty<glm::vec2>(object, property) = value;
 				break;
 			}
@@ -181,6 +214,7 @@ namespace Nyx::Engine
 				if (!reader.ReadFloat(value.x)) return false;
 				if (!reader.ReadFloat(value.y)) return false;
 				if (!reader.ReadFloat(value.z)) return false;
+
 				AccessProperty<glm::vec3>(object, property) = value;
 				break;
 			}
@@ -192,6 +226,7 @@ namespace Nyx::Engine
 				if (!reader.ReadFloat(value.y)) return false;
 				if (!reader.ReadFloat(value.z)) return false;
 				if (!reader.ReadFloat(value.w)) return false;
+
 				AccessProperty<glm::vec4>(object, property) = value;
 				break;
 			}
@@ -203,6 +238,7 @@ namespace Nyx::Engine
 				if (!reader.ReadFloat(value.x)) return false;
 				if (!reader.ReadFloat(value.y)) return false;
 				if (!reader.ReadFloat(value.z)) return false;
+
 				AccessProperty<glm::quat>(object, property) = value;
 				break;
 			}
@@ -220,6 +256,7 @@ namespace Nyx::Engine
 				{
 					return false;
 				}
+
 				break;
 			}
 

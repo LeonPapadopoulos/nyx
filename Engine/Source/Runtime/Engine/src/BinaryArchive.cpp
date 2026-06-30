@@ -13,19 +13,39 @@ namespace Nyx::Engine
 			return false;
 		}
 
-		file.write(reinterpret_cast<const char*>(Buffer.data()), static_cast<std::streamsize>(Buffer.size()));
+		if (!Buffer.empty())
+		{
+			file.write(reinterpret_cast<const char*>(Buffer.data()), static_cast<std::streamsize>(Buffer.size()));
+		}
+
 		return true;
 	}
 
 	void BinaryWriter::WriteBytes(const void* data, size_t size)
 	{
+		if (size == 0)
+		{
+			return;
+		}
+
 		const std::byte* bytes = static_cast<const std::byte*>(data);
 		Buffer.insert(Buffer.end(), bytes, bytes + size);
 	}
 
-	void BinaryWriter::WriteUInt32(uint32_t value) { WriteBytes(&value, sizeof(value)); }
-	void BinaryWriter::WriteInt32(int32_t value) { WriteBytes(&value, sizeof(value)); }
-	void BinaryWriter::WriteFloat(float value) { WriteBytes(&value, sizeof(value)); }
+	void BinaryWriter::WriteUInt32(uint32_t value)
+	{
+		WriteBytes(&value, sizeof(value));
+	}
+
+	void BinaryWriter::WriteInt32(int32_t value)
+	{
+		WriteBytes(&value, sizeof(value));
+	}
+
+	void BinaryWriter::WriteFloat(float value)
+	{
+		WriteBytes(&value, sizeof(value));
+	}
 
 	void BinaryWriter::WriteBool(bool value)
 	{
@@ -36,6 +56,7 @@ namespace Nyx::Engine
 	void BinaryWriter::WriteString(const std::string& value)
 	{
 		WriteUInt32(static_cast<uint32_t>(value.size()));
+
 		if (!value.empty())
 		{
 			WriteBytes(value.data(), value.size());
@@ -51,13 +72,23 @@ namespace Nyx::Engine
 		}
 
 		file.seekg(0, std::ios::end);
-		const std::streamsize size = file.tellg();
+		const std::streamsize fileSize = file.tellg();
 		file.seekg(0, std::ios::beg);
 
-		Buffer.resize(static_cast<size_t>(size));
-		if (size > 0)
+		if (fileSize < 0)
 		{
-			file.read(reinterpret_cast<char*>(Buffer.data()), size);
+			return false;
+		}
+
+		Buffer.resize(static_cast<size_t>(fileSize));
+
+		if (fileSize > 0)
+		{
+			file.read(reinterpret_cast<char*>(Buffer.data()), fileSize);
+			if (!file)
+			{
+				return false;
+			}
 		}
 
 		Offset = 0;
@@ -73,24 +104,39 @@ namespace Nyx::Engine
 			return false;
 		}
 
-		std::memcpy(outData, Buffer.data() + Offset, size);
+		if (size > 0)
+		{
+			std::memcpy(outData, Buffer.data() + Offset, size);
+		}
+
 		Offset += size;
 		return true;
 	}
 
-	bool BinaryReader::ReadUInt32(uint32_t& outValue) { return ReadBytes(&outValue, sizeof(outValue)); }
-	bool BinaryReader::ReadInt32(int32_t& outValue) { return ReadBytes(&outValue, sizeof(outValue)); }
-	bool BinaryReader::ReadFloat(float& outValue) { return ReadBytes(&outValue, sizeof(outValue)); }
+	bool BinaryReader::ReadUInt32(uint32_t& outValue)
+	{
+		return ReadBytes(&outValue, sizeof(outValue));
+	}
+
+	bool BinaryReader::ReadInt32(int32_t& outValue)
+	{
+		return ReadBytes(&outValue, sizeof(outValue));
+	}
+
+	bool BinaryReader::ReadFloat(float& outValue)
+	{
+		return ReadBytes(&outValue, sizeof(outValue));
+	}
 
 	bool BinaryReader::ReadBool(bool& outValue)
 	{
-		uint8_t value = 0;
-		if (!ReadBytes(&value, sizeof(value)))
+		uint8_t asByte = 0;
+		if (!ReadBytes(&asByte, sizeof(asByte)))
 		{
 			return false;
 		}
 
-		outValue = (value != 0);
+		outValue = (asByte != 0);
 		return true;
 	}
 
@@ -103,6 +149,7 @@ namespace Nyx::Engine
 		}
 
 		outValue.resize(length);
+
 		if (length > 0)
 		{
 			return ReadBytes(outValue.data(), length);
