@@ -27,6 +27,9 @@ namespace Nyx::Editor
 		void DrawPanels();
 
 	public:
+		bool SaveCurrentScene(const std::filesystem::path& path);
+		bool LoadCurrentScene(const std::filesystem::path& path);
+
 		Nyx::Mesh* ResolveMesh(const std::string& meshId) override;
 		Nyx::Material* ResolveMaterial(const std::string& materialId) override;
 

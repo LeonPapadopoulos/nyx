@@ -11,6 +11,8 @@
 #include "RootObjectSnapshotUtils.h"
 #include "ComponentTypeRegistration.h"
 #include "PropertyWidgetRegistry.h"
+#include "SceneSerializer.h"
+#include "SceneComponentRegistration.h"
 
 #include "imgui.h"
 
@@ -25,7 +27,6 @@
 #include "Log.h"
 
 #include "Generated/Runtime/Runtime.reflect.init.h"
-#include <SceneComponentRegistration.h>
 
 void PrintTransformMetadata()
 {
@@ -93,8 +94,20 @@ namespace Nyx::Editor
 		}
 
 		SpawnTestScene();
-
 		ResolveSceneRuntimeAssets();
+
+		{
+			const std::filesystem::path testScenePath = "TestScene.nyxscene";
+
+			if (SaveCurrentScene(testScenePath))
+			{
+				ActiveScene.GetRegistry().Clear();
+				Renderer->SetWorld(&ActiveScene.GetRegistry());
+
+				const bool bLoaded = LoadCurrentScene(testScenePath);
+				ASSERT(bLoaded && "Scene round-trip load failed.");
+			}
+		}
 		
 		// Example Code for accessig reflected Property Data on a given Entity
 		{
@@ -192,6 +205,39 @@ namespace Nyx::Editor
 		HandleUndoRedoHotkeys();
 
 		ImGui::ShowDemoWindow();
+	}
+
+	bool EditorLayer::SaveCurrentScene(const std::filesystem::path& path)
+	{
+		Nyx::Engine::RegisterDefaultSceneComponentTypes();
+
+		if (!Nyx::Editor::SceneSerializer::SaveToFile(ActiveScene, path))
+		{
+			LOG_ERROR("Failed to save scene to '{0}'", path.string());
+			return false;
+		}
+
+		LOG_INFO("Saved scene to '{0}'", path.string());
+		return true;
+	}
+
+	bool EditorLayer::LoadCurrentScene(const std::filesystem::path& path)
+	{
+		Nyx::Engine::RegisterDefaultSceneComponentTypes();
+
+		Nyx::Engine::ScenePostLoadContext postLoadContext{};
+		postLoadContext.AssetResolver = this;
+
+		if (!Nyx::Editor::SceneSerializer::LoadFromFile(path, ActiveScene, postLoadContext))
+		{
+			LOG_ERROR("Failed to load scene from '{0}'", path.string());
+			return false;
+		}
+
+		Renderer->SetWorld(&ActiveScene.GetRegistry());
+
+		LOG_INFO("Loaded scene from '{0}'", path.string());
+		return true;
 	}
 
 	Nyx::Mesh* EditorLayer::ResolveMesh(const std::string& meshId)
