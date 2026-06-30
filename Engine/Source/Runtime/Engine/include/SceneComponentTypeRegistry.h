@@ -4,9 +4,9 @@
 #include "Entity.h"
 #include "SceneSerializationTypes.h"
 
+#include <functional>
 #include <string_view>
 #include <vector>
-#include <functional>
 
 namespace Nyx::Engine
 {
@@ -28,7 +28,12 @@ namespace Nyx::Engine
 		static SceneComponentTypeRegistry& Get();
 
 		void Register(SceneComponentTypeOps ops);
-		const std::vector<SceneComponentTypeOps>& GetAll() const;
+
+		const std::vector<SceneComponentTypeOps>& GetAll() const
+		{
+			return Types;
+		}
+
 		const SceneComponentTypeOps* FindBySerializedTypeName(std::string_view typeName) const;
 
 	private:

@@ -1,3 +1,5 @@
+#include "SceneComponentRegistration.h"
+
 #include "IAssetResolver.h"
 #include "MeshRendererComponent.h"
 #include "NameComponent.h"

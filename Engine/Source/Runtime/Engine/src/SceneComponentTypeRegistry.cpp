@@ -18,12 +18,7 @@ namespace Nyx::Engine
 			}
 		}
 
-		Types.push_back(ops);
-	}
-
-	const std::vector<SceneComponentTypeOps>& SceneComponentTypeRegistry::GetAll() const
-	{
-		return Types;
+		Types.push_back(std::move(ops));
 	}
 
 	const SceneComponentTypeOps* SceneComponentTypeRegistry::FindBySerializedTypeName(std::string_view typeName) const
