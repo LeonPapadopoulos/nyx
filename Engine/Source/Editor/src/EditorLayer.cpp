@@ -13,6 +13,7 @@
 #include "PropertyWidgetRegistry.h"
 #include "SceneSerializer.h"
 #include "SceneComponentRegistration.h"
+#include "Paths.h"
 
 #include "imgui.h"
 
@@ -74,6 +75,25 @@ namespace Nyx::Editor
 		ASSERT(Renderer != nullptr);
 
 		Renderer->SetWorld(&ActiveScene.GetRegistry());
+
+		{
+			std::filesystem::create_directories(Nyx::Paths::GetAssetsDir());
+			std::filesystem::create_directories(Nyx::Paths::GetScenesDir());
+			std::filesystem::create_directories(Nyx::Paths::GetMeshesDir());
+			std::filesystem::create_directories(Nyx::Paths::GetMaterialsDir());
+			std::filesystem::create_directories(Nyx::Paths::GetTexturesDir());
+
+			AssetDb.SetAssetRoot(Nyx::Paths::GetAssetsDir());
+			AssetDb.Rescan();
+
+			AssetBrowser.SetDatabase(&AssetDb);
+			AssetBrowser.SetCurrentDirectory(std::filesystem::path("Scenes"));
+			AssetBrowser.SetOpenSceneCallback(
+				[this](const std::filesystem::path& absolutePath)
+				{
+					LoadCurrentScene(absolutePath);
+				});
+		}
 
 		{
 			Nyx::Editor::RegisterDefaultPropertyWidgets();
@@ -202,6 +222,11 @@ namespace Nyx::Editor
 		DrawDetailsPanel();
 		DrawSceneViews();
 
+		if (bAssetBrowserVisible)
+		{
+			AssetBrowser.Draw();
+		}
+
 		HandleUndoRedoHotkeys();
 
 		ImGui::ShowDemoWindow();
@@ -235,8 +260,39 @@ namespace Nyx::Editor
 		}
 
 		Renderer->SetWorld(&ActiveScene.GetRegistry());
+		CurrentScenePath = path;
 
 		LOG_INFO("Loaded scene from '{0}'", path.string());
+		return true;
+	}
+
+	bool EditorLayer::SaveScene()
+	{
+		if (CurrentScenePath.empty())
+		{
+			return SaveSceneAs(Nyx::Paths::GetScenesDir() / "UntitledScene.nyxscene");
+		}
+
+		return SaveCurrentScene(CurrentScenePath);
+	}
+
+	bool EditorLayer::SaveSceneAs(const std::filesystem::path& path)
+	{
+		if (SaveCurrentScene(path))
+		{
+			CurrentScenePath = path;
+			AssetDb.Rescan();
+			return true;
+		}
+
+		return false;
+	}
+
+	bool EditorLayer::NewScene()
+	{
+		ActiveScene.GetRegistry().Clear();
+		Renderer->SetWorld(&ActiveScene.GetRegistry());
+		CurrentScenePath.clear();
 		return true;
 	}
 
@@ -244,7 +300,7 @@ namespace Nyx::Editor
 	{
 		ASSERT(Renderer != nullptr);
 
-		if (meshId == "Cube")
+		if (meshId == "Meshes/Cube")
 		{
 			return Renderer->GetCubeMesh();
 		}
@@ -256,17 +312,17 @@ namespace Nyx::Editor
 	{
 		ASSERT(Renderer != nullptr);
 
-		if (materialId == "Textured")
+		if (materialId == "Materials/Textured")
 		{
 			return Renderer->GetTexturedMaterial();
 		}
 
-		if (materialId == "Reflective")
+		if (materialId == "Materials/Reflective")
 		{
 			return Renderer->GetReflectiveMaterial();
 		}
 
-		if (materialId == "Untextured")
+		if (materialId == "Materials/Untextured")
 		{
 			return Renderer->GetUntexturedMaterial();
 		}
@@ -641,8 +697,8 @@ namespace Nyx::Editor
 			world.Add<Nyx::Engine::MeshRendererComponent>(
 				e,
 				Nyx::Engine::MeshRendererComponent{
-					.MeshId = "Cube",
-					.MaterialId = "Textured",
+					.MeshId = "Meshes/Cube",
+					.MaterialId = "Materials/Textured",
 					.bVisible = true
 				}
 			);
@@ -663,8 +719,8 @@ namespace Nyx::Editor
 			world.Add<Nyx::Engine::MeshRendererComponent>(
 				e,
 				Nyx::Engine::MeshRendererComponent{
-					.MeshId = "Cube",
-					.MaterialId = "Reflective",
+					.MeshId = "Meshes/Cube",
+					.MaterialId = "Materials/Reflective",
 					.bVisible = true
 				}
 			);
@@ -685,8 +741,8 @@ namespace Nyx::Editor
 			world.Add<Nyx::Engine::MeshRendererComponent>(
 				e,
 				Nyx::Engine::MeshRendererComponent{
-					.MeshId = "Cube",
-					.MaterialId = "Untextured",
+					.MeshId = "Meshes/Cube",
+					.MaterialId = "Materials/Untextured",
 					.bVisible = true
 				}
 			);

@@ -8,6 +8,7 @@
 #include "GltfImporter.h"
 #include "TransformComponent.h"
 #include "MeshRendererComponent.h"
+#include "Paths.h"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>

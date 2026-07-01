@@ -19,6 +19,13 @@ namespace Nyx
 	class WindowsWindow : public IWindow
 	{
 	public:
+		std::function<void()> OnTitlebarNewScene;
+		std::function<void()> OnTitlebarSaveScene;
+		std::function<void()> OnTitlebarSaveSceneAs;
+		std::function<void()> OnTitlebarLoadScene;
+		std::function<void()> OnTitlebarToggleAssetBrowser;
+
+	public:
 		WindowsWindow(const WindowSpecs& specs);
 		virtual ~WindowsWindow();
 
@@ -43,6 +50,7 @@ namespace Nyx
 		// @todo: Is there a better place to put this?
 		void DrawUserInterface();
 		void DrawTitlebar(float titlebarHeight);
+		void DrawTitlebarMenuBar(float titlebarHeight);
 		void DrawMenubar();
 
 		bool IsMaximized() const;

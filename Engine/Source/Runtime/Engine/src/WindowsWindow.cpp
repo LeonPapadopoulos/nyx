@@ -6,6 +6,7 @@
 #include "ImGuiTheme.h"
 #include "SceneViewTypes.h"
 #include "EditorLayer.h"
+#include "Paths.h"
 
 #include <windows.h>
 #include <dwmapi.h>
@@ -347,6 +348,32 @@ namespace Nyx
         Renderer->Initialize(Data.Title.c_str(), Window);
 
         MainEditorLayer = std::make_unique<Nyx::Editor::EditorLayer>(*Renderer);
+        {
+            OnTitlebarNewScene = [this]()
+                {
+                    MainEditorLayer->NewScene();
+                };
+
+            OnTitlebarSaveScene = [this]()
+                {
+                    MainEditorLayer->SaveScene();
+                };
+
+            OnTitlebarSaveSceneAs = [this]()
+                {
+                    MainEditorLayer->SaveSceneAs(Nyx::Paths::GetScenesDir() / "SavedScene.nyxscene");
+                };
+
+            OnTitlebarLoadScene = [this]()
+                {
+                    MainEditorLayer->LoadCurrentScene(Nyx::Paths::GetScenesDir() / "SavedScene.nyxscene");
+                };
+
+            OnTitlebarToggleAssetBrowser = [this]()
+                {
+                    MainEditorLayer->ToggleAssetBrowser();
+                };
+        }
         MainEditorLayer->Initialize();
 
         OnFrame = [this]()
@@ -488,7 +515,7 @@ namespace Nyx
         const ImVec2 cursorBackup = ImGui::GetCursorPos();
 
         ImGuiViewport* viewport = ImGui::GetMainViewport();
-        ImDrawList* drawList = ImGui::GetForegroundDrawList(viewport);
+        ImDrawList* windowDrawList = ImGui::GetWindowDrawList();
 
         const bool bIsMaximized = IsMaximized();
 
@@ -496,7 +523,7 @@ namespace Nyx
         const ImVec2 titlebarMax = ImVec2(viewport->Pos.x + viewport->Size.x, viewport->Pos.y + titlebarHeight);
 
         // Background
-        drawList->AddRectFilled(titlebarMin, titlebarMax, Colors::Theme::titlebar);
+        windowDrawList->AddRectFilled(titlebarMin, titlebarMax, Colors::Theme::titlebar);
 
         // Debug entire titlebar area
         //drawList->AddRect(titlebarMin, titlebarMax, IM_COL32(255, 255, 0, 255));
@@ -507,7 +534,7 @@ namespace Nyx
             titlebarMin.x + (viewport->Size.x - textSize.x) * 0.5f,
             titlebarMin.y + (titlebarHeight - textSize.y) * 0.5f
         );
-        drawList->AddText(textPos, IM_COL32(255, 255, 255, 255), Data.Title.c_str());
+        windowDrawList->AddText(textPos, IM_COL32(255, 255, 255, 255), Data.Title.c_str());
 
         // Button layout
         const ImVec2 buttonSize(46.0f, titlebarHeight);
@@ -529,7 +556,7 @@ namespace Nyx
 
         // Minimize
         if (Icon::Util::DrawTitlebarButton(
-            drawList,
+            windowDrawList,
             "##TitlebarMinimize",
             Icon::Util::ETitlebarButton::Minimize,
             minPos,
@@ -544,7 +571,7 @@ namespace Nyx
 
         // Maximize / Restore
         if (Icon::Util::DrawTitlebarButton(
-            drawList,
+            windowDrawList,
             "##TitlebarMaxRestore",
             bIsMaximized ? Icon::Util::ETitlebarButton::Restore : Icon::Util::ETitlebarButton::Maximize,
             maxPos,
@@ -562,7 +589,7 @@ namespace Nyx
 
         // Close
         if (Icon::Util::DrawTitlebarButton(
-            drawList,
+            windowDrawList,
             "##TitlebarClose",
             Icon::Util::ETitlebarButton::Close,
             closePos,
@@ -576,7 +603,8 @@ namespace Nyx
         }
 
         // Drag region = full titlebar except button area
-        const ImVec2 dragMin = titlebarMin;
+        const float leftReservedWidth = 170.0f;
+        const ImVec2 dragMin = ImVec2(titlebarMin.x + leftReservedWidth, titlebarMin.y);
         const ImVec2 dragMax = ImVec2(minPos.x, titlebarMax.y);
 
         // Debug titlebar drag-area-only
@@ -589,6 +617,72 @@ namespace Nyx
             bTitlebarHovered = false;
         }
 
+        ImGui::SetCursorPos(cursorBackup);
+    }
+
+    void WindowsWindow::DrawTitlebarMenuBar(float titlebarHeight)
+    {
+        const ImVec2 cursorBackup = ImGui::GetCursorPos();
+
+        const float menuStartX = 8.0f;
+        const float menuStartY = 2.0f;
+        const float buttonHeight = titlebarHeight - 4.0f;
+
+        ImGui::SetCursorPos(ImVec2(menuStartX, menuStartY));
+
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(10.0f, 6.0f));
+
+        if (ImGui::Button("File", ImVec2(56.0f, buttonHeight)))
+        {
+            ImGui::OpenPopup("##TitlebarFileMenu");
+        }
+
+        if (ImGui::BeginPopup("##TitlebarFileMenu"))
+        {
+            if (ImGui::MenuItem("New Scene"))
+            {
+                if (OnTitlebarNewScene) OnTitlebarNewScene();
+            }
+
+            if (ImGui::MenuItem("Save Scene"))
+            {
+                if (OnTitlebarSaveScene) OnTitlebarSaveScene();
+            }
+
+            if (ImGui::MenuItem("Save Scene As"))
+            {
+                if (OnTitlebarSaveSceneAs) OnTitlebarSaveSceneAs();
+            }
+
+            if (ImGui::MenuItem("Load Scene"))
+            {
+                if (OnTitlebarLoadScene) OnTitlebarLoadScene();
+            }
+
+            ImGui::EndPopup();
+        }
+
+        ImGui::SameLine();
+
+        if (ImGui::Button("Window", ImVec2(76.0f, buttonHeight)))
+        {
+            ImGui::OpenPopup("##TitlebarWindowMenu");
+        }
+
+        if (ImGui::BeginPopup("##TitlebarWindowMenu"))
+        {
+            if (ImGui::MenuItem("Asset Browser"))
+            {
+                if (OnTitlebarToggleAssetBrowser) OnTitlebarToggleAssetBrowser();
+            }
+
+            ImGui::EndPopup();
+        }
+
+        ImGui::PopStyleVar(2);
+
+        // Restore layout cursor so this function does not consume extra vertical layout space.
         ImGui::SetCursorPos(cursorBackup);
     }
 
@@ -741,6 +835,7 @@ namespace Nyx
         if (Data.bCustomTitlebar)
         {
             DrawTitlebar(titlebarHeight);
+            DrawTitlebarMenuBar(titlebarHeight);
 
             // @todo LP: Figure out where the padding between titlebar-drag-zone and dockarea comes from
             const float paddingToRemoveHACK = 8.0f;

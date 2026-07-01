@@ -1,6 +1,7 @@
 #include "NyxPCH.h"
 #include "Texture.h"
 #include "Log.h"
+#include "Paths.h"
 
 #include <cstring>
 #include <stdexcept>
@@ -8,65 +9,6 @@
 
 #include <filesystem>
 #include <Windows.h>
-
-// @todo: Move away from the hardcoded location of textures
-namespace Nyx
-{
-	std::filesystem::path Paths::GetExecutablePath()
-	{
-		wchar_t buffer[MAX_PATH];
-		const DWORD length = ::GetModuleFileNameW(nullptr, buffer, MAX_PATH);
-		return std::filesystem::path(std::wstring(buffer, length));
-	}
-
-	std::filesystem::path Paths::GetExecutableDir()
-	{
-		return GetExecutablePath().parent_path();
-	}
-
-	// @todo: Find a more elegant way of actually determining this directory.
-	// Also, only do it once.
-	std::filesystem::path Paths::FindProjectRoot()
-	{
-		std::filesystem::path current = GetExecutableDir();
-
-		while (!current.empty())
-		{
-			const std::filesystem::path assetsDir = current / "Assets";
-
-			if (std::filesystem::exists(assetsDir) && std::filesystem::is_directory(assetsDir))
-			{
-				return current;
-			}
-
-			const std::filesystem::path parent = current.parent_path();
-			if (parent == current)
-			{
-				break;
-			}
-
-			current = parent;
-		}
-
-		throw std::runtime_error("Could not locate project root containing an Assets directory.");
-	}
-
-	std::filesystem::path Paths::GetAssetsDir()
-	{
-		return FindProjectRoot() / "Assets";
-	}
-
-	std::filesystem::path Paths::GetTexturesDir()
-	{
-		return GetAssetsDir() / "Textures";
-	}
-
-	std::filesystem::path Paths::GetShadersDir()
-	{
-		// @todo: Make it clear we're getting the Engine's shaders
-		return FindProjectRoot() / "Engine" / "Shaders";
-	}
-}
 
 namespace
 {

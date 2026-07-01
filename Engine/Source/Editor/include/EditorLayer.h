@@ -9,7 +9,11 @@
 #include "EditorTransactionSubscriber.h"
 #include "SceneEntityTransactionDomain.h"
 #include "MeshRendererComponent.h"
+#include "AssetBrowserPanel.h"
+#include "AssetDatabase.h"
 #include "IAssetResolver.h"
+
+#include <filesystem>
 
 namespace Nyx::Editor
 {
@@ -29,6 +33,14 @@ namespace Nyx::Editor
 	public:
 		bool SaveCurrentScene(const std::filesystem::path& path);
 		bool LoadCurrentScene(const std::filesystem::path& path);
+
+		bool SaveScene();
+		bool SaveSceneAs(const std::filesystem::path& path);
+		bool NewScene();
+		void ToggleAssetBrowser()
+		{
+			bAssetBrowserVisible = !bAssetBrowserVisible;
+		}
 
 		Nyx::Mesh* ResolveMesh(const std::string& meshId) override;
 		Nyx::Material* ResolveMaterial(const std::string& materialId) override;
@@ -59,6 +71,11 @@ namespace Nyx::Editor
 		void HandleUndoRedoHotkeys();
 
 	private:
+		Nyx::Editor::AssetDatabase AssetDb;
+		Nyx::Editor::AssetBrowserPanel AssetBrowser;
+		std::filesystem::path CurrentScenePath;
+
+	private:
 		Nyx::IRenderer* Renderer = nullptr;
 
 		Nyx::SceneDocument ActiveScene;
@@ -77,6 +94,7 @@ namespace Nyx::Editor
 		bool bShowSecondarySceneView = true;
 		bool bShowSceneOutliner = true;
 		bool bShowDetailsPanel = true;
+		bool bAssetBrowserVisible = true;
 
 		double LastFrameTimeSeconds = 0.0;
 

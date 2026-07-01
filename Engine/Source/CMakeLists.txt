@@ -22,6 +22,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/Core.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/Log.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/NyxPCH.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Core/src/Paths.cpp
 
     # Runtime/Engine
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/Application.cpp
@@ -93,6 +94,8 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Editor/src/PropertyWidgetRegistry.cpp
     ${NYX_ENGINE_ROOT}/Editor/src/SceneSerializer.cpp
     ${NYX_ENGINE_ROOT}/Editor/src/EditorAssetResolver.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/AssetDatabase.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/AssetBrowserPanel.cpp
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/src/ReflectionUtils.cpp
@@ -104,6 +107,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/Core.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/Log.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/NyxEngineAPI.h
+    ${NYX_ENGINE_ROOT}/Runtime/Core/include/Paths.h
     
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/NyxPCH.h
 
@@ -186,6 +190,8 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Editor/include/PropertyWidgetRegistry.h
     ${NYX_ENGINE_ROOT}/Editor/include/SceneSerializer.h
     ${NYX_ENGINE_ROOT}/Editor/include/EditorAssetResolver.h
+    ${NYX_ENGINE_ROOT}/Editor/include/AssetDatabase.h
+    ${NYX_ENGINE_ROOT}/Editor/include/AssetBrowserPanel.h
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionTypes.h

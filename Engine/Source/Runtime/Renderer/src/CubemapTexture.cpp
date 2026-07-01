@@ -1,8 +1,6 @@
 #include "NyxPCH.h"
 #include "CubemapTexture.h"
-
-#include "NyxPCH.h"
-#include "CubemapTexture.h"
+#include "Paths.h"
 
 #include <cstring>
 #include <stdexcept>
