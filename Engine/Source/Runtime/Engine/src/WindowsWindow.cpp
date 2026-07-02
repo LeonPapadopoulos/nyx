@@ -630,7 +630,7 @@ namespace Nyx
 
         ImGui::SetCursorPos(ImVec2(menuStartX, menuStartY));
 
-        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(10.0f, 6.0f));
 
         if (ImGui::Button("File", ImVec2(56.0f, buttonHeight)))
