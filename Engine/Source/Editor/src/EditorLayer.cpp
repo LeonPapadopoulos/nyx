@@ -218,14 +218,15 @@ namespace Nyx::Editor
 
 		ApplyPendingPickResults();
 
-		DrawSceneOutliner();
-		DrawDetailsPanel();
-		DrawSceneViews();
-
+		DrawSceneFilePopups();
 		if (bAssetBrowserVisible)
 		{
 			AssetBrowser.Draw();
 		}
+
+		DrawSceneOutliner();
+		DrawDetailsPanel();
+		DrawSceneViews();
 
 		HandleUndoRedoHotkeys();
 
@@ -270,7 +271,16 @@ namespace Nyx::Editor
 	{
 		if (CurrentScenePath.empty())
 		{
-			return SaveSceneAs(Nyx::Paths::GetScenesDir() / "UntitledScene.nyxscene");
+			bOpenSaveSceneAsPopup = true;
+
+			const std::string defaultName = "UntitledScene";
+			std::fill(SaveSceneAsBuffer.begin(), SaveSceneAsBuffer.end(), '\0');
+			std::memcpy(
+				SaveSceneAsBuffer.data(),
+				defaultName.c_str(),
+				(std::min)(defaultName.size(), SaveSceneAsBuffer.size() - 1));
+
+			return false;
 		}
 
 		return SaveCurrentScene(CurrentScenePath);
@@ -294,6 +304,23 @@ namespace Nyx::Editor
 		Renderer->SetWorld(&ActiveScene.GetRegistry());
 		CurrentScenePath.clear();
 		return true;
+	}
+
+	void EditorLayer::RequestLoadScenePopup()
+	{
+		bOpenLoadScenePopup = true;
+	}
+
+	void EditorLayer::RequestSaveSceneAsPopup()
+	{
+		bOpenSaveSceneAsPopup = true;
+
+		const std::string defaultName = "UntitledScene";
+		std::fill(SaveSceneAsBuffer.begin(), SaveSceneAsBuffer.end(), '\0');
+		std::memcpy(
+			SaveSceneAsBuffer.data(),
+			defaultName.c_str(),
+			(std::min)(defaultName.size(), SaveSceneAsBuffer.size() - 1));
 	}
 
 	Nyx::Mesh* EditorLayer::ResolveMesh(const std::string& meshId)
@@ -348,6 +375,16 @@ namespace Nyx::Editor
 			{
 				ResolveMeshRendererAssets(component);
 			});
+	}
+
+	std::string EditorLayer::GetCurrentSceneDisplayName() const
+	{
+		if (CurrentScenePath.empty())
+		{
+			return "Untitled Scene";
+		}
+
+		return CurrentScenePath.filename().string();
 	}
 
 	void EditorLayer::MapSceneImageMouseToPickPixel(
@@ -676,6 +713,89 @@ namespace Nyx::Editor
 		}
 
 		ImGui::End();
+	}
+
+	void EditorLayer::DrawSceneFilePopups()
+	{
+		if (bOpenLoadScenePopup)
+		{
+			ImGui::OpenPopup("Load Scene");
+			bOpenLoadScenePopup = false;
+		}
+
+		if (bOpenSaveSceneAsPopup)
+		{
+			ImGui::OpenPopup("Save Scene As");
+			bOpenSaveSceneAsPopup = false;
+		}
+
+		if (ImGui::BeginPopupModal("Load Scene", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			ImGui::TextUnformatted("Scenes");
+			ImGui::Separator();
+
+			const std::vector<Nyx::Editor::AssetEntry> sceneEntries =
+				AssetDb.GetChildren(std::filesystem::path("Scenes"));
+
+			for (const Nyx::Editor::AssetEntry& entry : sceneEntries)
+			{
+				if (entry.Type != Nyx::Editor::EAssetEntryType::Scene)
+				{
+					continue;
+				}
+
+				if (ImGui::Selectable(entry.Name.c_str()))
+				{
+					LoadCurrentScene(entry.AbsolutePath);
+					ImGui::CloseCurrentPopup();
+				}
+			}
+
+			ImGui::Spacing();
+
+			if (ImGui::Button("Cancel", ImVec2(120.0f, 0.0f)))
+			{
+				ImGui::CloseCurrentPopup();
+			}
+
+			ImGui::EndPopup();
+		}
+
+		if (ImGui::BeginPopupModal("Save Scene As", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			ImGui::TextUnformatted("Save scene into Assets/Scenes");
+			ImGui::Separator();
+
+			ImGui::SetNextItemWidth(320.0f);
+			ImGui::InputText("File Name", SaveSceneAsBuffer.data(), SaveSceneAsBuffer.size());
+
+			ImGui::Spacing();
+
+			if (ImGui::Button("Save", ImVec2(120.0f, 0.0f)))
+			{
+				std::string fileName = SaveSceneAsBuffer.data();
+				if (!fileName.empty())
+				{
+					if (std::filesystem::path(fileName).extension() != ".nyxscene")
+					{
+						fileName += ".nyxscene";
+					}
+
+					const std::filesystem::path savePath = Nyx::Paths::GetScenesDir() / fileName;
+					SaveSceneAs(savePath);
+					ImGui::CloseCurrentPopup();
+				}
+			}
+
+			ImGui::SameLine();
+
+			if (ImGui::Button("Cancel", ImVec2(120.0f, 0.0f)))
+			{
+				ImGui::CloseCurrentPopup();
+			}
+
+			ImGui::EndPopup();
+		}
 	}
 
 	void EditorLayer::SpawnTestScene()

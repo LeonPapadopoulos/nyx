@@ -40,6 +40,7 @@ namespace Nyx
 		bool IsTitleBarHovered() const { return bTitlebarHovered; }
 
 		void SetDrawDockedPanelsCallback(std::function<void()> callback);
+		void SetTitlebarDocumentName(const std::string& documentName);
 
 	private:
 		void Initialize(const WindowSpecs& specs);
@@ -80,5 +81,6 @@ namespace Nyx
 		std::function<void()> OnFrame;
 
 		std::function<void()> DrawDockedPanelsCallback;
+		std::string TitlebarDocumentName;
 	};
 }

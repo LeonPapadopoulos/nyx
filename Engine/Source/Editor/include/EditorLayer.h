@@ -13,6 +13,7 @@
 #include "AssetDatabase.h"
 #include "IAssetResolver.h"
 
+#include <array>
 #include <filesystem>
 
 namespace Nyx::Editor
@@ -41,12 +42,16 @@ namespace Nyx::Editor
 		{
 			bAssetBrowserVisible = !bAssetBrowserVisible;
 		}
+		void RequestLoadScenePopup();
+		void RequestSaveSceneAsPopup();
 
 		Nyx::Mesh* ResolveMesh(const std::string& meshId) override;
 		Nyx::Material* ResolveMaterial(const std::string& materialId) override;
 
 		void ResolveMeshRendererAssets(Nyx::Engine::MeshRendererComponent& component);
 		void ResolveSceneRuntimeAssets();
+
+		std::string GetCurrentSceneDisplayName() const;
 
 	private:
 		static void MapSceneImageMouseToPickPixel(
@@ -63,6 +68,7 @@ namespace Nyx::Editor
 		void DrawDetailsPanel();
 		void DrawSceneViews();
 		void DrawSceneViewWindow(const char* title, uint64_t sceneViewId, bool& bOpen);
+		void DrawSceneFilePopups();
 
 		void SpawnTestScene();
 
@@ -74,6 +80,10 @@ namespace Nyx::Editor
 		Nyx::Editor::AssetDatabase AssetDb;
 		Nyx::Editor::AssetBrowserPanel AssetBrowser;
 		std::filesystem::path CurrentScenePath;
+
+		bool bOpenLoadScenePopup = false;
+		bool bOpenSaveSceneAsPopup = false;
+		std::array<char, 256> SaveSceneAsBuffer{};
 
 	private:
 		Nyx::IRenderer* Renderer = nullptr;

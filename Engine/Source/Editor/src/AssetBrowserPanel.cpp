@@ -122,7 +122,9 @@ namespace Nyx::Editor
 				}
 			}
 
-			if (entry.Type == EAssetEntryType::Scene && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+			if (entry.Type == EAssetEntryType::Scene &&
+				ImGui::IsItemHovered() &&
+				ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
 			{
 				if (OnOpenScene)
 				{

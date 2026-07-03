@@ -218,6 +218,9 @@ namespace Nyx
         const float deltaTime = MainEditorLayer->ComputeDeltaTime();
         MainEditorLayer->Tick(deltaTime);
 
+        // @todo: Can we do this lazily?
+        SetTitlebarDocumentName(MainEditorLayer->GetCurrentSceneDisplayName());
+
         Renderer->DrawFrame(
             [this]()
             {
@@ -263,6 +266,11 @@ namespace Nyx
     void WindowsWindow::SetDrawDockedPanelsCallback(std::function<void()> callback)
     {
         DrawDockedPanelsCallback = std::move(callback);
+    }
+
+    void WindowsWindow::SetTitlebarDocumentName(const std::string& documentName)
+    {
+        TitlebarDocumentName = documentName;
     }
 
     void WindowsWindow::Initialize(const WindowSpecs & specs)
@@ -352,21 +360,23 @@ namespace Nyx
             OnTitlebarNewScene = [this]()
                 {
                     MainEditorLayer->NewScene();
+                    SetTitlebarDocumentName(MainEditorLayer->GetCurrentSceneDisplayName());
                 };
 
             OnTitlebarSaveScene = [this]()
                 {
                     MainEditorLayer->SaveScene();
+                    SetTitlebarDocumentName(MainEditorLayer->GetCurrentSceneDisplayName());
                 };
 
             OnTitlebarSaveSceneAs = [this]()
                 {
-                    MainEditorLayer->SaveSceneAs(Nyx::Paths::GetScenesDir() / "SavedScene.nyxscene");
+                    MainEditorLayer->RequestSaveSceneAsPopup();
                 };
 
             OnTitlebarLoadScene = [this]()
                 {
-                    MainEditorLayer->LoadCurrentScene(Nyx::Paths::GetScenesDir() / "SavedScene.nyxscene");
+                    MainEditorLayer->RequestLoadScenePopup();
                 };
 
             OnTitlebarToggleAssetBrowser = [this]()
@@ -375,6 +385,7 @@ namespace Nyx
                 };
         }
         MainEditorLayer->Initialize();
+        SetTitlebarDocumentName("Untitled Scene");
 
         OnFrame = [this]()
             {
@@ -679,6 +690,17 @@ namespace Nyx
 
             ImGui::EndPopup();
         }
+
+        // Current scene / document label
+        ImGui::SameLine();
+        ImGui::SetCursorPosY(menuStartY + (buttonHeight - ImGui::GetTextLineHeight()) * 0.5f);
+
+        const std::string documentLabel =
+            TitlebarDocumentName.empty()
+            ? "Untitled Scene"
+            : TitlebarDocumentName;
+
+        ImGui::TextDisabled("| %s", documentLabel.c_str());
 
         ImGui::PopStyleVar(2);
 
