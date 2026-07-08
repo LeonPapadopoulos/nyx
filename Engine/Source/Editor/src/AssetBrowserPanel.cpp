@@ -61,7 +61,7 @@ namespace Nyx::Editor
 		std::set<std::filesystem::path> childDirectories;
 		for (const AssetEntry& entry : Database->GetChildren(relativeDirectory))
 		{
-			if (entry.Type == EAssetEntryType::Directory)
+			if (entry.bIsDirectory)
 			{
 				childDirectories.insert(entry.RelativePath);
 			}
@@ -104,31 +104,48 @@ namespace Nyx::Editor
 
 		for (const AssetEntry& entry : children)
 		{
-			const char* prefix = "";
-			switch (entry.Type)
+			std::string prefix;
+
+			if (entry.bIsDirectory)
 			{
-			case EAssetEntryType::Directory:   prefix = "[Dir] "; break;
-			case EAssetEntryType::Scene:       prefix = "[Scene] "; break;
-			case EAssetEntryType::UnknownFile: prefix = "[File] "; break;
+				prefix = "[Dir] ";
+			}
+			else if (const AssetTypeDescriptor* descriptor = AssetTypeRegistry::Get().FindByTypeId(entry.TypeId))
+			{
+				prefix = "[" + descriptor->DisplayName + "] ";
+			}
+			else
+			{
+				prefix = "[File] ";
 			}
 
-			const std::string label = std::string(prefix) + entry.Name;
+			const std::string label = prefix + entry.Name;
 
 			if (ImGui::Selectable(label.c_str(), false))
 			{
-				if (entry.Type == EAssetEntryType::Directory)
+				if (entry.bIsDirectory)
 				{
 					CurrentDirectory = entry.RelativePath;
 				}
 			}
 
-			if (entry.Type == EAssetEntryType::Scene &&
+			if (!entry.bIsDirectory &&
+				ActivationContext &&
 				ImGui::IsItemHovered() &&
 				ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
 			{
-				if (OnOpenScene)
+				if (const AssetTypeDescriptor* descriptor = AssetTypeRegistry::Get().FindByTypeId(entry.TypeId))
 				{
-					OnOpenScene(entry.AbsolutePath);
+					if (descriptor->bOpenOnDoubleClick && descriptor->Activate)
+					{
+						const bool bCanActivate =
+							!descriptor->CanActivate || descriptor->CanActivate(entry, *ActivationContext);
+
+						if (bCanActivate)
+						{
+							descriptor->Activate(entry, *ActivationContext);
+						}
+					}
 				}
 			}
 		}

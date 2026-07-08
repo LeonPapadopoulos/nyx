@@ -86,13 +86,10 @@ namespace Nyx::Editor
 			AssetDb.SetAssetRoot(Nyx::Paths::GetAssetsDir());
 			AssetDb.Rescan();
 
+			AssetActivationContext = std::make_unique<Nyx::Editor::EditorAssetActivationContext>(*this);
+			AssetBrowser.SetActivationContext(AssetActivationContext.get());
 			AssetBrowser.SetDatabase(&AssetDb);
 			AssetBrowser.SetCurrentDirectory(std::filesystem::path("Scenes"));
-			AssetBrowser.SetOpenSceneCallback(
-				[this](const std::filesystem::path& absolutePath)
-				{
-					LoadCurrentScene(absolutePath);
-				});
 		}
 
 		{
@@ -323,11 +320,11 @@ namespace Nyx::Editor
 			(std::min)(defaultName.size(), SaveSceneAsBuffer.size() - 1));
 	}
 
-	Nyx::Mesh* EditorLayer::ResolveMesh(const std::string& meshId)
+	Nyx::Mesh* EditorLayer::ResolveMesh(const std::string& meshPath)
 	{
 		ASSERT(Renderer != nullptr);
 
-		if (meshId == "Meshes/Cube")
+		if (meshPath == "Meshes/Cube.nyxmesh")
 		{
 			return Renderer->GetCubeMesh();
 		}
@@ -335,21 +332,21 @@ namespace Nyx::Editor
 		return nullptr;
 	}
 
-	Nyx::Material* EditorLayer::ResolveMaterial(const std::string& materialId)
+	Nyx::Material* EditorLayer::ResolveMaterial(const std::string& materialPath)
 	{
 		ASSERT(Renderer != nullptr);
 
-		if (materialId == "Materials/Textured")
+		if (materialPath == "Materials/Textured.nyxmat")
 		{
 			return Renderer->GetTexturedMaterial();
 		}
 
-		if (materialId == "Materials/Reflective")
+		if (materialPath == "Materials/Reflective.nyxmat")
 		{
 			return Renderer->GetReflectiveMaterial();
 		}
 
-		if (materialId == "Materials/Untextured")
+		if (materialPath == "Materials/Untextured.nyxmat")
 		{
 			return Renderer->GetUntexturedMaterial();
 		}
@@ -360,10 +357,10 @@ namespace Nyx::Editor
 	void EditorLayer::ResolveMeshRendererAssets(Nyx::Engine::MeshRendererComponent& component)
 	{
 		component.MeshAsset =
-			component.MeshId.empty() ? nullptr : ResolveMesh(component.MeshId);
+			component.Mesh.IsValid() ? ResolveMesh(component.Mesh.Path) : nullptr;
 
 		component.MaterialAsset =
-			component.MaterialId.empty() ? nullptr : ResolveMaterial(component.MaterialId);
+			component.Material.IsValid() ? ResolveMaterial(component.Material.Path) : nullptr;
 	}
 
 	void EditorLayer::ResolveSceneRuntimeAssets()
@@ -739,7 +736,12 @@ namespace Nyx::Editor
 
 			for (const Nyx::Editor::AssetEntry& entry : sceneEntries)
 			{
-				if (entry.Type != Nyx::Editor::EAssetEntryType::Scene)
+				if (entry.bIsDirectory)
+				{
+					continue;
+				}
+
+				if (entry.TypeId != "Scene")
 				{
 					continue;
 				}
@@ -817,8 +819,14 @@ namespace Nyx::Editor
 			world.Add<Nyx::Engine::MeshRendererComponent>(
 				e,
 				Nyx::Engine::MeshRendererComponent{
-					.MeshId = "Meshes/Cube",
-					.MaterialId = "Materials/Textured",
+					.Mesh = Nyx::Engine::AssetReference{
+						.Type = "Mesh",
+						.Path = "Meshes/Cube.nyxmesh"
+					},
+					.Material = Nyx::Engine::AssetReference{
+						.Type = "Material",
+						.Path = "Materials/Textured.nyxmat"
+					},
 					.bVisible = true
 				}
 			);
@@ -839,8 +847,14 @@ namespace Nyx::Editor
 			world.Add<Nyx::Engine::MeshRendererComponent>(
 				e,
 				Nyx::Engine::MeshRendererComponent{
-					.MeshId = "Meshes/Cube",
-					.MaterialId = "Materials/Reflective",
+					.Mesh = Nyx::Engine::AssetReference{
+						.Type = "Mesh",
+						.Path = "Meshes/Cube.nyxmesh"
+					},
+					.Material = Nyx::Engine::AssetReference{
+						.Type = "Material",
+						.Path = "Materials/Reflective.nyxmat"
+					},
 					.bVisible = true
 				}
 			);
@@ -861,8 +875,14 @@ namespace Nyx::Editor
 			world.Add<Nyx::Engine::MeshRendererComponent>(
 				e,
 				Nyx::Engine::MeshRendererComponent{
-					.MeshId = "Meshes/Cube",
-					.MaterialId = "Materials/Untextured",
+					.Mesh = Nyx::Engine::AssetReference{
+						.Type = "Mesh",
+						.Path = "Meshes/Cube.nyxmesh"
+					},
+					.Material = Nyx::Engine::AssetReference{
+						.Type = "Material",
+						.Path = "Materials/Untextured.nyxmat"
+					},
 					.bVisible = true
 				}
 			);

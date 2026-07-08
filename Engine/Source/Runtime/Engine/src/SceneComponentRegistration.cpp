@@ -22,10 +22,10 @@ namespace Nyx::Engine
 			}
 
 			component.MeshAsset =
-				component.MeshId.empty() ? nullptr : context.AssetResolver->ResolveMesh(component.MeshId);
+				component.Mesh.IsValid() ? context.AssetResolver->ResolveMesh(component.Mesh.Path) : nullptr;
 
 			component.MaterialAsset =
-				component.MaterialId.empty() ? nullptr : context.AssetResolver->ResolveMaterial(component.MaterialId);
+				component.Material.IsValid() ? context.AssetResolver->ResolveMaterial(component.Material.Path) : nullptr;
 		}
 	}
 

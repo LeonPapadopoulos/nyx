@@ -1,5 +1,7 @@
 #include "AssetDatabase.h"
 
+#include "AssetTypeRegistry.h"
+
 #include <algorithm>
 
 namespace Nyx::Editor
@@ -11,22 +13,36 @@ namespace Nyx::Editor
 
 	bool AssetDatabase::IsValidAssetRoot() const
 	{
-		return !AssetRoot.empty() && std::filesystem::exists(AssetRoot) && std::filesystem::is_directory(AssetRoot);
+		return !AssetRoot.empty() &&
+			std::filesystem::exists(AssetRoot) &&
+			std::filesystem::is_directory(AssetRoot);
 	}
 
-	EAssetEntryType AssetDatabase::ClassifyPath(const std::filesystem::path& path)
+	AssetEntry AssetDatabase::BuildEntry(const std::filesystem::directory_entry& entry) const
 	{
-		if (std::filesystem::is_directory(path))
+		AssetEntry result{};
+		result.AbsolutePath = entry.path();
+		result.RelativePath = std::filesystem::relative(entry.path(), AssetRoot);
+		result.Name = entry.path().filename().string();
+		result.bIsDirectory = entry.is_directory();
+
+		if (result.bIsDirectory)
 		{
-			return EAssetEntryType::Directory;
+			result.TypeId = "Directory";
+			return result;
 		}
 
-		if (path.extension() == ".nyxscene")
+		const std::string extension = entry.path().extension().string();
+		if (const AssetTypeDescriptor* descriptor = AssetTypeRegistry::Get().FindByExtension(extension))
 		{
-			return EAssetEntryType::Scene;
+			result.TypeId = descriptor->TypeId;
+		}
+		else
+		{
+			result.TypeId.clear();
 		}
 
-		return EAssetEntryType::UnknownFile;
+		return result;
 	}
 
 	void AssetDatabase::Rescan()
@@ -40,27 +56,22 @@ namespace Nyx::Editor
 
 		for (const auto& entry : std::filesystem::recursive_directory_iterator(AssetRoot))
 		{
-			AssetEntry assetEntry{};
-			assetEntry.AbsolutePath = entry.path();
-			assetEntry.RelativePath = std::filesystem::relative(entry.path(), AssetRoot);
-			assetEntry.Name = entry.path().filename().string();
-			assetEntry.Type = ClassifyPath(entry.path());
-
-			Entries.push_back(std::move(assetEntry));
+			Entries.push_back(BuildEntry(entry));
 		}
 
-		std::sort(Entries.begin(), Entries.end(), [](const AssetEntry& a, const AssetEntry& b)
+		std::sort(
+			Entries.begin(),
+			Entries.end(),
+			[](const AssetEntry& a, const AssetEntry& b)
 			{
 				if (a.RelativePath.parent_path() != b.RelativePath.parent_path())
 				{
 					return a.RelativePath.parent_path().string() < b.RelativePath.parent_path().string();
 				}
 
-				if (a.Type != b.Type)
+				if (a.bIsDirectory != b.bIsDirectory)
 				{
-					// Directories first
-					if (a.Type == EAssetEntryType::Directory) return true;
-					if (b.Type == EAssetEntryType::Directory) return false;
+					return a.bIsDirectory;
 				}
 
 				return a.Name < b.Name;
@@ -74,6 +85,21 @@ namespace Nyx::Editor
 		for (const AssetEntry& entry : Entries)
 		{
 			if (entry.RelativePath.parent_path() == relativeDirectory)
+			{
+				result.push_back(entry);
+			}
+		}
+
+		return result;
+	}
+
+	std::vector<AssetEntry> AssetDatabase::GetAllByType(std::string_view typeId) const
+	{
+		std::vector<AssetEntry> result;
+
+		for (const AssetEntry& entry : Entries)
+		{
+			if (!entry.bIsDirectory && entry.TypeId == typeId)
 			{
 				result.push_back(entry);
 			}

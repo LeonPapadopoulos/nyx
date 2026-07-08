@@ -96,6 +96,11 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Editor/src/EditorAssetResolver.cpp
     ${NYX_ENGINE_ROOT}/Editor/src/AssetDatabase.cpp
     ${NYX_ENGINE_ROOT}/Editor/src/AssetBrowserPanel.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/AssetTypeRegistry.cpp
+
+    ${NYX_ENGINE_ROOT}/Editor/src/SceneAssetTypeRegistration.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/MeshAssetTypeRegistration.cpp
+    ${NYX_ENGINE_ROOT}/Editor/src/MaterialAssetTypeRegistration.cpp
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/src/ReflectionUtils.cpp
@@ -129,6 +134,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/SceneComponentTypeRegistry.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/SceneComponentRegistration.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/IAssetResolver.h
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/AssetReference.h
 
     # Runtime/Renderer
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ImGuiTheme.h
@@ -192,6 +198,8 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Editor/include/EditorAssetResolver.h
     ${NYX_ENGINE_ROOT}/Editor/include/AssetDatabase.h
     ${NYX_ENGINE_ROOT}/Editor/include/AssetBrowserPanel.h
+    ${NYX_ENGINE_ROOT}/Editor/include/AssetTypeRegistry.h
+    ${NYX_ENGINE_ROOT}/Editor/include/EditorAssetActivationContext.h
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionTypes.h

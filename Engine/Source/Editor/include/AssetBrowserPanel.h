@@ -1,26 +1,23 @@
 #pragma once
 
 #include "AssetDatabase.h"
+#include "AssetTypeRegistry.h"
 
 #include <filesystem>
-#include <functional>
-#include <string>
 
 namespace Nyx::Editor
 {
 	class AssetBrowserPanel
 	{
 	public:
-		using OpenSceneCallback = std::function<void(const std::filesystem::path&)>;
-
 		void SetDatabase(AssetDatabase* database)
 		{
 			Database = database;
 		}
 
-		void SetOpenSceneCallback(OpenSceneCallback callback)
+		void SetActivationContext(IAssetActivationContext* context)
 		{
-			OnOpenScene = std::move(callback);
+			ActivationContext = context;
 		}
 
 		void Draw();
@@ -41,7 +38,7 @@ namespace Nyx::Editor
 
 	private:
 		AssetDatabase* Database = nullptr;
-		OpenSceneCallback OnOpenScene;
+		IAssetActivationContext* ActivationContext = nullptr;
 		std::filesystem::path CurrentDirectory;
 	};
 }

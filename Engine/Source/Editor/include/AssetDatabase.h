@@ -6,19 +6,18 @@
 
 namespace Nyx::Editor
 {
-	enum class EAssetEntryType
-	{
-		Directory,
-		Scene,
-		UnknownFile
-	};
-
 	struct AssetEntry
 	{
 		std::filesystem::path RelativePath;
 		std::filesystem::path AbsolutePath;
 		std::string Name;
-		EAssetEntryType Type = EAssetEntryType::UnknownFile;
+		std::string TypeId; // "Directory" for folders, otherwise registered asset type
+		bool bIsDirectory = false;
+
+		bool IsValidAsset() const
+		{
+			return !bIsDirectory && !TypeId.empty();
+		}
 	};
 
 	class AssetDatabase
@@ -32,11 +31,13 @@ namespace Nyx::Editor
 			return AssetRoot;
 		}
 
-		std::vector<AssetEntry> GetChildren(const std::filesystem::path& relativeDirectory) const;
 		bool IsValidAssetRoot() const;
 
+		std::vector<AssetEntry> GetChildren(const std::filesystem::path& relativeDirectory) const;
+		std::vector<AssetEntry> GetAllByType(std::string_view typeId) const;
+
 	private:
-		static EAssetEntryType ClassifyPath(const std::filesystem::path& path);
+		AssetEntry BuildEntry(const std::filesystem::directory_entry& entry) const;
 
 	private:
 		std::filesystem::path AssetRoot;

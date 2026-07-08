@@ -3,6 +3,7 @@
 #include "Mesh.h"
 #include "Material.h"
 #include "ReflectionMacros.h"
+#include "AssetReference.h"
 
 #include <string>
 
@@ -12,10 +13,10 @@ namespace Nyx::Engine
 	struct MeshRendererComponent
 	{
 		NYX_PROPERTY(Edit, Undo, Serialize, ReadOnly, meta = (Category = "Rendering", Tooltip = "Debug Info"))
-		std::string MeshId;
+		Nyx::Engine::AssetReference Mesh;
 
 		NYX_PROPERTY(Edit, Undo, Serialize, ReadOnly, meta = (Category = "Rendering", Tooltip = "Debug Info"))
-		std::string MaterialId;
+		Nyx::Engine::AssetReference Material;
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Rendering", Tooltip = "Whether the mesh is rendered"))
 		bool bVisible = true;

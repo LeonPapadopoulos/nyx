@@ -12,6 +12,7 @@
 #include "AssetBrowserPanel.h"
 #include "AssetDatabase.h"
 #include "IAssetResolver.h"
+#include "EditorAssetActivationContext.h"
 
 #include <array>
 #include <filesystem>
@@ -77,6 +78,7 @@ namespace Nyx::Editor
 		void HandleUndoRedoHotkeys();
 
 	private:
+		std::unique_ptr<Nyx::Editor::EditorAssetActivationContext> AssetActivationContext;
 		Nyx::Editor::AssetDatabase AssetDb;
 		Nyx::Editor::AssetBrowserPanel AssetBrowser;
 		std::filesystem::path CurrentScenePath;
