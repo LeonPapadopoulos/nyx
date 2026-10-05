@@ -8,3 +8,8 @@ Build/
 **.vcxproj.filters
 **.vcxproj.user
 **.csproj
+
+# Assets
+Assets/Startup/**
+!Assets/Startup/README.md
+Design/EditorConcepts/**

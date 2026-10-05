@@ -1,5 +1,6 @@
 #include "NyxPCH.h"
 #include "WindowsWindow.h"
+#include "WindowsStartupBanner.h"
 #include "Log.h"
 #include "Assertions.h"
 #include "Renderer.h"
@@ -275,6 +276,8 @@ namespace Nyx
 
     void WindowsWindow::Initialize(const WindowSpecs & specs)
     {
+        auto startup = std::make_unique<WindowsStartupBanner>(Paths::GetAssetsDir() / "Startup");
+        startup->SetStatus(L"Creating the editor window");
         Data.Title = specs.Title;
         Data.Width = specs.Width;
         Data.Height = specs.Height;
@@ -327,7 +330,6 @@ namespace Nyx
             glfwSetWindowSize(Window, w + 1, h);
             glfwSetWindowSize(Window, w, h);
         }
-        glfwShowWindow(Window);
 
         const bool bTransparent = glfwGetWindowAttrib(Window, GLFW_TRANSPARENT_FRAMEBUFFER) == GLFW_TRUE;
         ASSERT(bTransparent && "Transparent framebuffer not supported on this platform/path.");
@@ -353,8 +355,10 @@ namespace Nyx
 
         ASSERT(glfwVulkanSupported() && "Currently only Vulkan is supported.");
         Renderer = Nyx::CreateRenderer();
+        startup->SetStatus(L"Starting Vulkan and preparing rendering resources");
         Renderer->Initialize(Data.Title.c_str(), Window);
 
+        startup->SetStatus(L"Preparing the scene and editor panels");
         MainEditorLayer = std::make_unique<Nyx::Editor::EditorLayer>(*Renderer);
         {
             OnTitlebarNewScene = [this]()
@@ -397,6 +401,9 @@ namespace Nyx
             {
                 MainEditorLayer->DrawPanels();
             });
+
+        startup.reset();
+        glfwShowWindow(Window);
     }
 
     void WindowsWindow::Shutdown()
