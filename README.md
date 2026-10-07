@@ -69,7 +69,7 @@ Tools/
 
 ## Reflection
 
-A component declares which properties are editable, undoable and saved:
+Example of how to expose something to the reflection system and thus others like the editor inspector:
 
 ```cpp
 NYX_REFLECT(Component, meta = (DisplayName = "Transform Component"))
@@ -83,7 +83,7 @@ struct TransformComponent
 #include "Generated/Runtime/TransformComponent.reflect.h"
 ```
 
-During the build, `NyxHeaderTool` reads every header in `Runtime/Engine/include` and `Runtime/Renderer/include` and writes the generated files to `Build\Windows\Generated`. The details panel, undo/redo and scene files then work with the new component without further code.
+During the build, `NyxHeaderTool` reads every header in `Runtime/Engine/include` and `Runtime/Renderer/include` and writes the generated files to `Build\Windows\Generated`.
 
 The tool's tests compare its output against golden files: `Tools\NyxHeaderTool\tests\RunHeaderToolTests.bat`.
 
