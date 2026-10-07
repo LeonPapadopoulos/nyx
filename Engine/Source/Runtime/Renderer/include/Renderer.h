@@ -69,6 +69,10 @@ namespace Nyx
 		virtual void SetSceneViewCameraMode(uint64_t id, EViewportCameraMode mode) = 0;
 		virtual void SetSceneViewEditorCameraTransform(uint64_t id, const glm::vec3& pos, const glm::vec3& rot) = 0;
 
+		// Editor overlays are the grid, debug lines, picking and the selection outline.
+		// They are shown by default; a view showing the game turns them off.
+		virtual void SetSceneViewShowEditorOverlays(uint64_t id, bool bShow) = 0;
+
 		virtual bool GetSceneViewCameraData(uint64_t sceneViewId, Nyx::SceneViewCameraData& outData) const = 0;
 
 		virtual void SetWorld(const Nyx::Engine::Registry* world) = 0;

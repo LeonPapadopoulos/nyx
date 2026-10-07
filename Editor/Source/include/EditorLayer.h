@@ -106,7 +106,7 @@ namespace Nyx::Editor
 
 		bool bShowSceneView = true;
 		bool bShowSecondarySceneView = true;
-		bool bSecondaryViewShowsGameCamera = false;
+		bool bSecondaryViewShowsGameView = false;
 		bool bShowSceneOutliner = true;
 		bool bShowDetailsPanel = true;
 		bool bAssetBrowserVisible = true;

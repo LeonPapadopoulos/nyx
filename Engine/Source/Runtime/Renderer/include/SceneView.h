@@ -18,6 +18,9 @@ namespace Nyx
 		EditorCamera EditorCam;
 		ExtractedSceneGlobals SceneGlobals;
 
+		// Grid, debug lines, picking and the selection outline; see IRenderer::SetSceneViewShowEditorOverlays()
+		bool bShowEditorOverlays = true;
+
 		vk::raii::Buffer SceneUniformBuffer{ nullptr };
 		vk::raii::DeviceMemory SceneUniformBufferMemory{ nullptr };
 		vk::raii::DescriptorPool SceneDescriptorPool{ nullptr };

@@ -420,8 +420,6 @@ namespace Nyx
 
 	void VulkanRenderer::DrawFrame(const std::function<void()>& buildUI)
 	{
-		ASSERT(World != nullptr && "VulkanRenderer requires a valid world to render.");
-
 		// 1) Wait until previous submitted frame is done
 		const vk::Result fenceResult = Context.GetDevice().waitForFences({ *InFlightFence }, true, UINT64_MAX);
 		(void)fenceResult;
@@ -502,6 +500,12 @@ namespace Nyx
 
 			TickActiveEditorSceneViewFromInput(deltaTime);
 		}
+		else
+		{
+			// No world, nothing to draw: forget the objects and debug lines of the previous one.
+			RenderObjects.clear();
+			ResetDebugLines();
+		}
 
 		// ---------------------------------------------------------------------
 		// Render every scene view into its own offscreen target
@@ -533,12 +537,15 @@ namespace Nyx
 				UpdateSceneUniforms(view);
 				UpdateSkyboxUniforms(view);
 
-				// Picking first
-				DrawPickingPass(view, cmd);
-				ResolvePickRequest(view, cmd);
+				// Editor-only passes: picking, and the masks the selection outline is drawn from
+				if (view.bShowEditorOverlays)
+				{
+					DrawPickingPass(view, cmd);
+					ResolvePickRequest(view, cmd);
 
-				DrawVisibleSelectionMaskPass(view, cmd);
-				DrawFullSelectionMaskPass(view, cmd);
+					DrawVisibleSelectionMaskPass(view, cmd);
+					DrawFullSelectionMaskPass(view, cmd);
+				}
 			}
 
 			vk::ClearColorValue clear = vk::ClearColorValue(std::array<float, 4>{ 0.2f, 0.05f, 0.35f, 1.0f });
@@ -551,13 +558,18 @@ namespace Nyx
 				// 2. Skybox
 				DrawSkybox(view, cmd);
 
-				// 3. Grid
-				DrawGrid(view, cmd);
+				// 3. Editor overlays: grid, debug lines and the selection outline
+				if (view.bShowEditorOverlays)
+				{
+					DrawGrid(view, cmd);
+					DrawDebugLines(view, cmd);
 
-				// 4. Debug Visuals
-				DrawDebugLines(view, cmd);
-
-				DrawSelectionOutline(view, cmd);
+					// The outline is drawn from the selection masks, which are only rendered with a world
+					if (World)
+					{
+						DrawSelectionOutline(view, cmd);
+					}
+				}
 			}
 			view.RenderTarget.EndRenderPass(cmd);
 		}
@@ -648,6 +660,14 @@ namespace Nyx
 		if (SceneViewInstance* view = FindSceneView(id))
 		{
 			view->CameraMode = mode;
+		}
+	}
+
+	void VulkanRenderer::SetSceneViewShowEditorOverlays(uint64_t id, bool bShow)
+	{
+		if (SceneViewInstance* view = FindSceneView(id))
+		{
+			view->bShowEditorOverlays = bShow;
 		}
 	}
 
@@ -3612,6 +3632,12 @@ namespace Nyx
 	{
 		if (SceneViewInstance* view = FindSceneView(sceneViewId))
 		{
+			// Picking is an editor overlay: views without them don't render the picking pass
+			if (!view->bShowEditorOverlays)
+			{
+				return;
+			}
+
 			const vk::Extent2D extent = view->RenderTarget.GetExtent();
 			LOG_INFO(
 				"Pick request view {}: ({}, {}) in extent {}x{}",

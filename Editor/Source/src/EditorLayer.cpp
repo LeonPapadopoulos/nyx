@@ -259,13 +259,15 @@ namespace Nyx::Editor
 				ToggleAssetBrowser();
 			}
 
-			// Lets "Scene 2" show the scene through its primary camera, the way the game sees it
-			if (ImGui::MenuItem("Game Camera in Scene 2", nullptr, bSecondaryViewShowsGameCamera))
+			// Shows "Scene 2" the way the game sees the scene: through its primary camera, without editor overlays
+			if (ImGui::MenuItem("Game View in Scene 2", nullptr, bSecondaryViewShowsGameView))
 			{
-				bSecondaryViewShowsGameCamera = !bSecondaryViewShowsGameCamera;
+				bSecondaryViewShowsGameView = !bSecondaryViewShowsGameView;
+
 				Renderer->SetSceneViewCameraMode(
 					SecondarySceneViewId,
-					bSecondaryViewShowsGameCamera ? EViewportCameraMode::ScenePrimaryCamera : EViewportCameraMode::EditorFreeCamera);
+					bSecondaryViewShowsGameView ? EViewportCameraMode::ScenePrimaryCamera : EViewportCameraMode::EditorFreeCamera);
+				Renderer->SetSceneViewShowEditorOverlays(SecondarySceneViewId, !bSecondaryViewShowsGameView);
 			}
 
 			ImGui::EndPopup();

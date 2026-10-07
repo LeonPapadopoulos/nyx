@@ -222,6 +222,7 @@ namespace Nyx
 
 		virtual void SetSceneViewCameraMode(uint64_t id, EViewportCameraMode mode);
 		virtual void SetSceneViewEditorCameraTransform(uint64_t id, const glm::vec3& pos, const glm::vec3& rot);
+		void SetSceneViewShowEditorOverlays(uint64_t id, bool bShow) override;
 
 		bool GetSceneViewCameraData(uint64_t sceneViewId, Nyx::SceneViewCameraData& outData) const override;
 
