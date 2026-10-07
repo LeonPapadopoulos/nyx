@@ -114,62 +114,7 @@ set_target_properties(NyxEditor PROPERTIES
 #######################################################################################
 ## Shader
 
-# Find glslc from the Vulkan SDK / PATH
-find_program(GLSLC glslc REQUIRED)
-
-set(NYX_SHADER_SOURCE_DIR ${CMAKE_SOURCE_DIR}/Engine/Shaders)
-set(NYX_SHADER_BUILD_DIR ${CMAKE_CURRENT_BINARY_DIR}/Shaders)
-
-set(NYX_SHADER_SOURCES
-    ${NYX_SHADER_SOURCE_DIR}/DefaultShader.vert
-    ${NYX_SHADER_SOURCE_DIR}/DefaultShader.frag
-    ${NYX_SHADER_SOURCE_DIR}/Grid.vert
-    ${NYX_SHADER_SOURCE_DIR}/Grid.frag
-    ${NYX_SHADER_SOURCE_DIR}/Skybox.vert
-    ${NYX_SHADER_SOURCE_DIR}/Skybox.frag
-    ${NYX_SHADER_SOURCE_DIR}/DebugLines.vert
-    ${NYX_SHADER_SOURCE_DIR}/DebugLines.frag
-    ${NYX_SHADER_SOURCE_DIR}/Picking.vert
-    ${NYX_SHADER_SOURCE_DIR}/Picking.frag
-    ${NYX_SHADER_SOURCE_DIR}/SelectionMask.vert
-    ${NYX_SHADER_SOURCE_DIR}/SelectionMask.frag
-    ${NYX_SHADER_SOURCE_DIR}/OutlineComposite.vert
-    ${NYX_SHADER_SOURCE_DIR}/OutlineComposite.frag
-)
-
-set(NYX_SHADER_OUTPUTS)
-
-foreach(SHADER ${NYX_SHADER_SOURCES})
-    get_filename_component(SHADER_NAME ${SHADER} NAME)
-    set(SPV ${NYX_SHADER_BUILD_DIR}/${SHADER_NAME}.spv)
-
-    add_custom_command(
-        OUTPUT ${SPV}
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${NYX_SHADER_BUILD_DIR}"
-        COMMAND ${GLSLC} "${SHADER}" -o "${SPV}"
-        DEPENDS ${SHADER}
-        MAIN_DEPENDENCY ${SHADER}
-        COMMENT "Compiling shader ${SHADER_NAME}"
-        VERBATIM
-    )
-
-    list(APPEND NYX_SHADER_OUTPUTS ${SPV})
-endforeach()
-
-# Custom target to catch changes to shader files and have them recompiled automatically on build
-add_custom_target(NyxShadersCompile ALL
-    DEPENDS ${NYX_SHADER_OUTPUTS}
-)
-
-add_custom_target(NyxShadersCopy ALL
-    COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:NyxEditor>/Shaders"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${NYX_SHADER_OUTPUTS}
-        "$<TARGET_FILE_DIR:NyxEditor>/Shaders"
-    COMMAND_EXPAND_LISTS
-    DEPENDS NyxShadersCompile
-)
-
-add_dependencies(NyxEditor NyxShadersCopy)
+# Compiled by Engine/Shaders; the renderer loads them from a "Shaders" folder next to the .exe
+nyx_copy_shaders_next_to(NyxEditor)
 
 #######################################################################################

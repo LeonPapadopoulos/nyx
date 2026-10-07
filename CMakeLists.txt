@@ -32,6 +32,7 @@ include(CTest)
 add_subdirectory(Tools/NyxHeaderTool)
 add_subdirectory(Startup)
 add_subdirectory(Engine/Source)
+add_subdirectory(Engine/Shaders)
 add_subdirectory(Editor/Source)
 
 # Set default startup project
