@@ -1,4 +1,4 @@
-#include "NyxPCH.h"
+#include "EditorPCH.h"
 #include "SceneDocument.h"
 #include "Entity.h"
 

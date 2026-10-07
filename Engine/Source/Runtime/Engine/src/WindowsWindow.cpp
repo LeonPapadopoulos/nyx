@@ -6,7 +6,6 @@
 #include "Renderer.h"
 #include "ImGuiTheme.h"
 #include "SceneViewTypes.h"
-#include "EditorLayer.h"
 #include "Paths.h"
 
 #include <windows.h>
@@ -202,20 +201,17 @@ namespace Nyx
 		Shutdown();
 	}
 
-	void WindowsWindow::OnUpdate()
+	void WindowsWindow::PollEvents()
 	{
 		glfwPollEvents();
+	}
 
-		const float deltaTime = MainEditorLayer->ComputeDeltaTime();
-		MainEditorLayer->Tick(deltaTime);
-
-		// @todo: Can we do this lazily?
-		SetTitlebarDocumentName(MainEditorLayer->GetCurrentSceneDisplayName());
-
+	void WindowsWindow::DrawFrame(const std::function<void()>& drawUI)
+	{
 		Renderer->DrawFrame(
-			[this]()
+			[this, &drawUI]()
 			{
-				DrawDockspaceHost();
+				DrawDockspaceHost(drawUI);
 			});
 	}
 
@@ -253,20 +249,30 @@ namespace Nyx
 		return glfwWindowShouldClose(Window);
 	}
 
-	void WindowsWindow::SetDrawDockedPanelsCallback(std::function<void()> callback)
+	void WindowsWindow::SetTitlebarMenu(std::function<void(float buttonHeight)> drawMenu)
 	{
-		DrawDockedPanelsCallback = std::move(callback);
+		TitlebarMenuCallback = std::move(drawMenu);
 	}
 
-	void WindowsWindow::SetTitlebarDocumentName(const std::string& documentName)
+	void WindowsWindow::SetStartupStatus(const std::string& status)
 	{
-		TitlebarDocumentName = documentName;
+		if (StartupBanner)
+		{
+			// Status texts are plain ASCII, so widening each character is enough.
+			StartupBanner->SetStatus(std::wstring(status.begin(), status.end()));
+		}
+	}
+
+	void WindowsWindow::FinishStartup()
+	{
+		StartupBanner.reset();
+		glfwShowWindow(Window);
 	}
 
 	void WindowsWindow::Initialize(const WindowSpecs& specs)
 	{
-		auto startup = std::make_unique<WindowsStartupBanner>(Paths::GetAssetsDir() / "Startup");
-		startup->SetStatus(L"Creating the editor window");
+		StartupBanner = std::make_unique<WindowsStartupBanner>(Paths::GetAssetsDir() / "Startup");
+		SetStartupStatus("Creating the window");
 		Data.Title = specs.Title;
 		Data.Width = specs.Width;
 		Data.Height = specs.Height;
@@ -344,55 +350,10 @@ namespace Nyx
 
 		ASSERT(glfwVulkanSupported() && "Currently only Vulkan is supported.");
 		Renderer = Nyx::CreateRenderer();
-		startup->SetStatus(L"Starting Vulkan and preparing rendering resources");
+		SetStartupStatus("Starting Vulkan and preparing rendering resources");
 		Renderer->Initialize(Data.Title.c_str(), Window);
 
-		startup->SetStatus(L"Preparing the scene and editor panels");
-		MainEditorLayer = std::make_unique<Nyx::Editor::EditorLayer>(*Renderer);
-		{
-			OnTitlebarNewScene = [this]()
-			{
-				MainEditorLayer->NewScene();
-				SetTitlebarDocumentName(MainEditorLayer->GetCurrentSceneDisplayName());
-			};
-
-			OnTitlebarSaveScene = [this]()
-			{
-				MainEditorLayer->SaveScene();
-				SetTitlebarDocumentName(MainEditorLayer->GetCurrentSceneDisplayName());
-			};
-
-			OnTitlebarSaveSceneAs = [this]()
-			{
-				MainEditorLayer->RequestSaveSceneAsPopup();
-			};
-
-			OnTitlebarLoadScene = [this]()
-			{
-				MainEditorLayer->RequestLoadScenePopup();
-			};
-
-			OnTitlebarToggleAssetBrowser = [this]()
-			{
-				MainEditorLayer->ToggleAssetBrowser();
-			};
-		}
-		MainEditorLayer->Initialize();
-		SetTitlebarDocumentName("Untitled Scene");
-
-		OnFrame = [this]()
-		{
-			// @todo:
-		};
-
-		SetDrawDockedPanelsCallback(
-			[this]()
-			{
-				MainEditorLayer->DrawPanels();
-			});
-
-		startup.reset();
-		glfwShowWindow(Window);
+		// The window stays hidden behind the startup banner until FinishStartup().
 	}
 
 	void WindowsWindow::Shutdown()
@@ -400,9 +361,6 @@ namespace Nyx
 		if (Renderer)
 		{
 			Renderer->WaitIdle();
-
-			MainEditorLayer->Shutdown();
-
 			Renderer->Shutdown();
 			Renderer.reset();
 		}
@@ -637,63 +595,11 @@ namespace Nyx
 		ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
 		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(10.0f, 6.0f));
 
-		if (ImGui::Button("File", ImVec2(56.0f, buttonHeight)))
+		// The menu's contents come from the application (for the editor: File, Window).
+		if (TitlebarMenuCallback)
 		{
-			ImGui::OpenPopup("##TitlebarFileMenu");
+			TitlebarMenuCallback(buttonHeight);
 		}
-
-		if (ImGui::BeginPopup("##TitlebarFileMenu"))
-		{
-			if (ImGui::MenuItem("New Scene"))
-			{
-				if (OnTitlebarNewScene) OnTitlebarNewScene();
-			}
-
-			if (ImGui::MenuItem("Save Scene"))
-			{
-				if (OnTitlebarSaveScene) OnTitlebarSaveScene();
-			}
-
-			if (ImGui::MenuItem("Save Scene As"))
-			{
-				if (OnTitlebarSaveSceneAs) OnTitlebarSaveSceneAs();
-			}
-
-			if (ImGui::MenuItem("Load Scene"))
-			{
-				if (OnTitlebarLoadScene) OnTitlebarLoadScene();
-			}
-
-			ImGui::EndPopup();
-		}
-
-		ImGui::SameLine();
-
-		if (ImGui::Button("Window", ImVec2(76.0f, buttonHeight)))
-		{
-			ImGui::OpenPopup("##TitlebarWindowMenu");
-		}
-
-		if (ImGui::BeginPopup("##TitlebarWindowMenu"))
-		{
-			if (ImGui::MenuItem("Asset Browser"))
-			{
-				if (OnTitlebarToggleAssetBrowser) OnTitlebarToggleAssetBrowser();
-			}
-
-			ImGui::EndPopup();
-		}
-
-		// Current scene / document label
-		ImGui::SameLine();
-		ImGui::SetCursorPosY(menuStartY + (buttonHeight - ImGui::GetTextLineHeight()) * 0.5f);
-
-		const std::string documentLabel =
-			TitlebarDocumentName.empty()
-			? "Untitled Scene"
-			: TitlebarDocumentName;
-
-		ImGui::TextDisabled("| %s", documentLabel.c_str());
 
 		ImGui::PopStyleVar(2);
 
@@ -818,7 +724,7 @@ namespace Nyx
 		windowsWindow->Renderer->OnMouseWheelScrolled(yOffset);
 	}
 
-	void WindowsWindow::DrawDockspaceHost()
+	void WindowsWindow::DrawDockspaceHost(const std::function<void()>& drawUI)
 	{
 		// @todo: Expose as parameter
 		const bool bColoredBorderOnFocus = true;
@@ -865,11 +771,8 @@ namespace Nyx
 		ImGui::DockSpace(ImGui::GetID("MyDockspace"));
 		style.WindowMinSize.x = prevMinWinSizeX;
 
-		// Draw docked editor panels
-		if (DrawDockedPanelsCallback)
-		{
-			DrawDockedPanelsCallback();
-		}
+		// Draw the application's UI (for the editor: its panels), which can dock into the dock space above
+		drawUI();
 
 		// Draw the colored border last, so it's on top of everything else
 		if (bColoredBorderOnFocus && bAppFocused)

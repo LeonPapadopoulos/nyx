@@ -62,46 +62,6 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/GltfImporter.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/Extent2D.cpp
 
-    # Editor
-    ${NYX_ENGINE_ROOT}/Editor/src/EditorLayer.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/SceneDocument.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/EditorProperty.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/ComponentEditorRegistration.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/ComponentEditors.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/ComponentInspectorRegistry.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/InspectorDrawContext.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/TransformGizmo.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/InspectorTargetId.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/InspectorTargetIdHelpers.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/EditableObjectTraits.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/EditorTransactionContext.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/EditableTargetResolver.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/TransactionHistory.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/DiffUtil.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/EditableObjectRegistrations.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/ReflectedPropertyDrawer.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/ReflectedPropertyAccess.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/ReflectedTransactionSystem.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/ReflectedDiffUtil.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/TransactionSystem.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/TransactionDiffUtil.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/EditorTransactionSubscriber.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/SceneEntityTransactionDomain.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/ReflectedObjectSerialization.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/RootObjectSnapshotUtils.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/ComponentTypeRegistry.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/ComponentTypeRegistration.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/PropertyWidgetRegistry.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/SceneSerializer.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/EditorAssetResolver.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/AssetDatabase.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/AssetBrowserPanel.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/AssetTypeRegistry.cpp
-
-    ${NYX_ENGINE_ROOT}/Editor/src/SceneAssetTypeRegistration.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/MeshAssetTypeRegistration.cpp
-    ${NYX_ENGINE_ROOT}/Editor/src/MaterialAssetTypeRegistration.cpp
-
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/src/ReflectionUtils.cpp
 )
@@ -118,6 +78,7 @@ set(NYX_ENGINE_HEADERS
 
     # Runtime/Engine
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/Application.h
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/Layer.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/Entity.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/TransformComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/MeshRendererComponent.h
@@ -157,50 +118,6 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/GltfImporter.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/Extent2D.h
 
-    # Editor
-    ${NYX_ENGINE_ROOT}/Editor/include/EditorLayer.h
-    ${NYX_ENGINE_ROOT}/Editor/include/SceneDocument.h
-    ${NYX_ENGINE_ROOT}/Editor/include/EditorProperty.h
-    ${NYX_ENGINE_ROOT}/Editor/include/ComponentEditorRegistration.h
-    ${NYX_ENGINE_ROOT}/Editor/include/ComponentEditors.h
-    ${NYX_ENGINE_ROOT}/Editor/include/ComponentInspectorRegistry.h
-    ${NYX_ENGINE_ROOT}/Editor/include/InspectorDrawContext.h
-    ${NYX_ENGINE_ROOT}/Editor/include/TransformGizmo.h
-    ${NYX_ENGINE_ROOT}/Editor/include/InspectorTargetId.h
-    ${NYX_ENGINE_ROOT}/Editor/include/InspectorTargetIdHelpers.h
-    ${NYX_ENGINE_ROOT}/Editor/include/EditableObjectTraits.h
-    ${NYX_ENGINE_ROOT}/Editor/include/EditorTransactionContext.h
-    ${NYX_ENGINE_ROOT}/Editor/include/EditableTargetResolver.h
-    ${NYX_ENGINE_ROOT}/Editor/include/TransactionHistory.h
-    ${NYX_ENGINE_ROOT}/Editor/include/DiffUtil.h
-    ${NYX_ENGINE_ROOT}/Editor/include/EditableObjectRegistrations.h
-    ${NYX_ENGINE_ROOT}/Editor/include/ReflectedPropertyDrawer.h
-    ${NYX_ENGINE_ROOT}/Editor/include/ReflectedPropertyAccess.h
-    ${NYX_ENGINE_ROOT}/Editor/include/ReflectedTransactionSystem.h
-    ${NYX_ENGINE_ROOT}/Editor/include/ReflectedDiffUtil.h
-    ${NYX_ENGINE_ROOT}/Editor/include/TransactionTypes.h
-    ${NYX_ENGINE_ROOT}/Editor/include/TransactionSystem.h
-    ${NYX_ENGINE_ROOT}/Editor/include/TransactionDiffUtil.h
-    ${NYX_ENGINE_ROOT}/Editor/include/EditorTransactionSubscriber.h
-    ${NYX_ENGINE_ROOT}/Editor/include/TransactionObjectRef.h
-    ${NYX_ENGINE_ROOT}/Editor/include/TransactionObjectRefHelpers.h
-    ${NYX_ENGINE_ROOT}/Editor/include/SceneEntitySnapshot.h
-    ${NYX_ENGINE_ROOT}/Editor/include/TransactionDomain.h
-    ${NYX_ENGINE_ROOT}/Editor/include/SceneEntityTransactionDomain.h
-    ${NYX_ENGINE_ROOT}/Editor/include/ReflectedObjectSnapshot.h
-    ${NYX_ENGINE_ROOT}/Editor/include/ReflectedObjectSerialization.h
-    ${NYX_ENGINE_ROOT}/Editor/include/RootObjectSnapshotUtils.h
-    ${NYX_ENGINE_ROOT}/Editor/include/ComponentTypeRegistry.h
-    ${NYX_ENGINE_ROOT}/Editor/include/ComponentTypeRegistration.h
-    ${NYX_ENGINE_ROOT}/Editor/include/ReflectedComponentAutoRegistration.h
-    ${NYX_ENGINE_ROOT}/Editor/include/PropertyWidgetRegistry.h
-    ${NYX_ENGINE_ROOT}/Editor/include/SceneSerializer.h
-    ${NYX_ENGINE_ROOT}/Editor/include/EditorAssetResolver.h
-    ${NYX_ENGINE_ROOT}/Editor/include/AssetDatabase.h
-    ${NYX_ENGINE_ROOT}/Editor/include/AssetBrowserPanel.h
-    ${NYX_ENGINE_ROOT}/Editor/include/AssetTypeRegistry.h
-    ${NYX_ENGINE_ROOT}/Editor/include/EditorAssetActivationContext.h
-
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionTypes.h
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionMacros.h
@@ -211,8 +128,10 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionTraversal.h
 )
 
-add_library(NyxEngine SHARED 
-	${NYX_ENGINE_SOURCES} 
+# A static library: every program (the editor, later the game) links its own copy, so
+# third-party state such as the ImGui context or GLFW exists exactly once per process.
+add_library(NyxEngine STATIC
+	${NYX_ENGINE_SOURCES}
 	${NYX_ENGINE_HEADERS}
 )
 
@@ -265,10 +184,6 @@ add_custom_target(NyxGeneratedReflection
 
 add_dependencies(NyxEngine NyxGeneratedReflection)
 
-target_sources(NyxEngine PRIVATE
-    "${NYX_RUNTIME_REFLECTION_INIT_CPP}"
-)
-
 set_source_files_properties(
     "${NYX_REFLECTION_STAMP}"
     "${NYX_RUNTIME_REFLECTION_INIT_H}"
@@ -276,10 +191,14 @@ set_source_files_properties(
     PROPERTIES GENERATED TRUE
 )
 
+# PUBLIC, because the component headers include their generated "Generated/Runtime/*.reflect.h".
 target_include_directories(NyxEngine
-    PRIVATE
+    PUBLIC
         "${CMAKE_BINARY_DIR}"
 )
+# The generated init code registers the runtime components with the editor's registries
+# (component list, inspector), so the editor compiles it: see Editor/Source/CMakeLists.txt.
+set(NYX_RUNTIME_REFLECTION_INIT_CPP "${NYX_RUNTIME_REFLECTION_INIT_CPP}" PARENT_SCOPE)
 # END Reflection / CodeGen
 
 target_include_directories(NyxEngine
@@ -287,13 +206,11 @@ target_include_directories(NyxEngine
         ${NYX_ENGINE_ROOT}/Runtime/Core/include
         ${NYX_ENGINE_ROOT}/Runtime/Engine/include
         ${NYX_ENGINE_ROOT}/Runtime/Renderer/include
-        ${NYX_ENGINE_ROOT}/Editor/include
         ${NYX_ENGINE_ROOT}/Reflection/include
     PRIVATE
         ${NYX_ENGINE_ROOT}/Runtime/Core/src
         ${NYX_ENGINE_ROOT}/Runtime/Engine/src
         ${NYX_ENGINE_ROOT}/Runtime/Renderer/src
-        ${NYX_ENGINE_ROOT}/Editor/src
         ${CMAKE_SOURCE_DIR}/Dependencies/cgltf
 )
 
@@ -303,23 +220,22 @@ target_link_libraries(NyxEngine
         glfw
         imgui::imgui
         glm::glm
+        Vulkan::Vulkan # Public headers such as Mesh.h include vulkan.hpp
     PRIVATE
         dwmapi
-        Vulkan::Vulkan
         stb_image
         NyxStartup # The startup banner, from the Startup module.
 )
 
 
-# define ENGINE_EXPORTS so EngineAPI.h dll macros toggle from export to import
-# PRIVATE, so it doesn't apply for modules linking to Engine
-target_compile_definitions(NyxEngine 
-	PRIVATE NYXENGINE_EXPORTS
+# NYXENGINE_STATIC turns NYXENGINE_API (NyxEngineAPI.h) into nothing: no DLL exports needed.
+target_compile_definitions(NyxEngine
+	PUBLIC NYXENGINE_STATIC
 	PUBLIC $<$<CONFIG:Debug>:ENGINE_DEBUG>
     PUBLIC $<$<CONFIG:Release>:ENGINE_RELEASE>
 	PUBLIC $<$<CONFIG:Debug>:ASSERTIONS_ENABLED>
-    PRIVATE VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS
-    PRIVATE GLM_ENABLE_EXPERIMENTAL # Quaternion Utilities
+    PUBLIC VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS # Same vulkan.hpp behavior wherever it is included
+    PUBLIC GLM_ENABLE_EXPERIMENTAL # Quaternion utilities, used by the public TransformComponent.h
 )
 
 target_precompile_headers(NyxEngine

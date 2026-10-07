@@ -51,13 +51,12 @@ The editor ends up in `Build\Windows\Binaries\Debug\NyxEditor.exe`. To work in V
 Assets/          Scenes, meshes, materials, textures and startup artwork
 Dependencies/    Git submodules: spdlog, GLFW, GLM, cgltf
 Docs/            Images used by this README
-Editor/          NyxEditor.exe, the application entry point
+Editor/          NyxEditor.exe: editor panels, gizmo, transactions and asset database
 Engine/
   Shaders/       GLSL shaders, compiled to SPIR-V during the build
   Source/
     Runtime/     Core (logging, assertions, paths), Engine (entities,
                  components, serialization), Renderer (Vulkan)
-    Editor/      Editor panels, gizmo, transactions and asset database
     Reflection/  Reflection types and the NYX_REFLECT / NYX_PROPERTY macros
 Scripts/         Build and formatting scripts
 Startup/         The startup banner and its intro animations
@@ -66,7 +65,7 @@ Tools/
   NyxHeaderTool/ Reflection code generator and its tests
 ```
 
-`NyxEngine` is built as a DLL and linked by `NyxEditor`; the build copies it next to the executable.
+`NyxEngine` is a static library without any editor code; `NyxEditor` links it and adds the editor as a layer of the application.
 
 ## Reflection
 

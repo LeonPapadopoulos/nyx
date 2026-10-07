@@ -1,5 +1,5 @@
 @echo off
-rem Regenerates the project files and builds the editor (Debug), including NyxEngine.dll.
+rem Regenerates the project files and builds the editor (Debug), including the engine library.
 setlocal
 set ROOT=%~dp0..
 

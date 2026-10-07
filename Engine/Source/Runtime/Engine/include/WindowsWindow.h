@@ -2,16 +2,15 @@
 
 #include "Window.h"
 
+#include <functional>
+#include <memory>
+
 struct GLFWwindow;
 
 namespace Nyx
 {
 	class IRenderer;
-
-	namespace Editor
-	{
-		class EditorLayer;
-	}
+	class WindowsStartupBanner;
 }
 
 namespace Nyx
@@ -19,17 +18,13 @@ namespace Nyx
 	class WindowsWindow : public IWindow
 	{
 	public:
-		std::function<void()> OnTitlebarNewScene;
-		std::function<void()> OnTitlebarSaveScene;
-		std::function<void()> OnTitlebarSaveSceneAs;
-		std::function<void()> OnTitlebarLoadScene;
-		std::function<void()> OnTitlebarToggleAssetBrowser;
-
-	public:
 		WindowsWindow(const WindowSpecs& specs);
 		virtual ~WindowsWindow();
 
-		void OnUpdate() override;
+		void PollEvents() override;
+		void DrawFrame(const std::function<void()>& drawUI) override;
+		IRenderer& GetRenderer() override { return *Renderer; }
+
 		unsigned int GetWidth() override;
 		unsigned int GetHeight() override;
 
@@ -37,10 +32,11 @@ namespace Nyx
 		virtual bool IsVSync() const override;
 		virtual bool ShouldClose() const override;
 
-		bool IsTitleBarHovered() const { return bTitlebarHovered; }
+		void SetTitlebarMenu(std::function<void(float buttonHeight)> drawMenu) override;
+		void SetStartupStatus(const std::string& status) override;
+		void FinishStartup() override;
 
-		void SetDrawDockedPanelsCallback(std::function<void()> callback);
-		void SetTitlebarDocumentName(const std::string& documentName);
+		bool IsTitleBarHovered() const { return bTitlebarHovered; }
 
 	private:
 		void Initialize(const WindowSpecs& specs);
@@ -58,7 +54,7 @@ namespace Nyx
 
 		static void GLFW_ScrollCallback(GLFWwindow* window, double xOffset, double yOffset);
 
-		void DrawDockspaceHost();
+		void DrawDockspaceHost(const std::function<void()>& drawUI);
 
 	private:
 		GLFWwindow* Window = nullptr;
@@ -77,10 +73,9 @@ namespace Nyx
 		WindowData Data;
 		bool bTitlebarHovered = false;
 
-		std::unique_ptr<Nyx::Editor::EditorLayer> MainEditorLayer;
-		std::function<void()> OnFrame;
+		std::function<void(float buttonHeight)> TitlebarMenuCallback;
 
-		std::function<void()> DrawDockedPanelsCallback;
-		std::string TitlebarDocumentName;
+		// Shown while the application starts up; released by FinishStartup().
+		std::unique_ptr<WindowsStartupBanner> StartupBanner;
 	};
 }
