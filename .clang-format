@@ -50,6 +50,7 @@ AlignOperands: DontAlign
 AllowShortFunctionsOnASingleLine: InlineOnly
 AllowShortIfStatementsOnASingleLine: WithoutElse
 AllowShortCaseLabelsOnASingleLine: true
+AllowShortLambdasOnASingleLine: None # Keeps lambda bodies passed as arguments intact
 AlignConsecutiveShortCaseStatements:
   Enabled: true
 
