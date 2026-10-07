@@ -1,0 +1,69 @@
+# Formatting rules for Nyx
+# Needs clang-format 17 or newer (Visual Studio 2022 17.10+ ships one).
+---
+Language: Cpp
+BasedOnStyle: Microsoft
+
+# Tabs for indentation, spaces for alignment
+UseTab: ForContinuationAndIndentation
+TabWidth: 4
+IndentWidth: 4
+ContinuationIndentWidth: 4
+
+# Keep line breaks as written; no hard column limit
+ColumnLimit: 0
+
+# Braces on their own line everywhere, lambdas included
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterCaseLabel: true
+  AfterClass: true
+  AfterControlStatement: Always
+  AfterEnum: true
+  AfterFunction: true
+  AfterNamespace: true
+  AfterStruct: true
+  AfterUnion: true
+  AfterExternBlock: true
+  BeforeCatch: true
+  BeforeElse: true
+  BeforeLambdaBody: true
+  BeforeWhile: true
+  SplitEmptyFunction: true
+  SplitEmptyRecord: false
+  SplitEmptyNamespace: true
+
+# Namespace contents are indented; public/private line up with the class
+NamespaceIndentation: All
+AccessModifierOffset: -4
+FixNamespaceComments: false
+
+# Constructor initializers: one per line, comma first
+BreakConstructorInitializers: BeforeComma
+PackConstructorInitializers: Never
+
+# Wrapped arguments and operands just indent by one level
+AlignAfterOpenBracket: DontAlign
+AlignOperands: DontAlign
+
+# Short forms that are already used
+AllowShortFunctionsOnASingleLine: InlineOnly
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortCaseLabelsOnASingleLine: true
+AlignConsecutiveShortCaseStatements:
+  Enabled: true
+
+# Preprocessor: nested directives are indented, #define bodies lined up
+IndentPPDirectives: BeforeHash
+AlignConsecutiveMacros: AcrossEmptyLinesAndComments
+
+# Spacing
+PointerAlignment: Left
+Cpp11BracedListStyle: false # Type{ value }
+SpaceAfterTemplateKeyword: false # template<typename T>
+SpacesInLineCommentPrefix:
+  Minimum: 0 # Allow commented-out code like //Foo();
+
+# Include order is chosen by hand
+SortIncludes: Never
+...

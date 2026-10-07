@@ -1,0 +1,3 @@
+# Golden files for the header tool tests: must stay byte-for-byte as generated.
+DisableFormat: true
+SortIncludes: Never

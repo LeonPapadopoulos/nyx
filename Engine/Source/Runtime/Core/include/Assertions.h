@@ -33,6 +33,7 @@ NYXENGINE_API void reportAssertionFailure(const char* expr, const char* file, in
 // ------------------------------------------------------------
 
 #ifdef ASSERTIONS_ENABLED
+// clang-format off
 #define ASSERT(expr)                                                     \
         do                                                                   \
         {                                                                    \
@@ -42,6 +43,7 @@ NYXENGINE_API void reportAssertionFailure(const char* expr, const char* file, in
                 debugBreak();                                                \
             }                                                                \
         } while (0)
+// clang-format on
 #else
 #define ASSERT(expr) ((void)0)
 #endif
@@ -49,6 +51,7 @@ NYXENGINE_API void reportAssertionFailure(const char* expr, const char* file, in
 // ------------------------------------------------------------
 // Static assert
 // ------------------------------------------------------------
+// clang-format off
 #ifdef __cplusplus
     #if __cplusplus >= 201103L
         #define STATIC_ASSERT(expr)                                          \
@@ -66,3 +69,4 @@ NYXENGINE_API void reportAssertionFailure(const char* expr, const char* file, in
     #endif
 
 #endif
+// clang-format on

@@ -39,10 +39,12 @@ namespace Nyx::Editor
 		object.*Member = std::get<TValue>(value);
 	}
 
+	// clang-format off
 #define NYX_EDITABLE_MEMBER_PROPERTY(TObject, Member, TValue) \
 	Nyx::Editor::EditablePropertyDesc<TObject>{                \
 		#Member,                                               \
 		&Nyx::Editor::GetMemberEditorValue<TObject, TValue, &TObject::Member>, \
 		&Nyx::Editor::SetMemberEditorValue<TObject, TValue, &TObject::Member>  \
 	}
+	// clang-format on
 }

@@ -41,6 +41,7 @@ For an existing clone: `git submodule update --init --recursive`.
 | `Scripts\GenerateProjectFiles.bat` | Generates the Visual Studio solution in `Build\Windows` |
 | `Scripts\RebuildProjectFiles.bat` | Deletes `Build\Windows` and generates it again |
 | `Scripts\BuildStartupPreview.bat` | Builds and opens the startup banner preview tool |
+| `Scripts\FormatCode.bat` | Formats the code with clang-format (`check` only lists unformatted files) |
 
 The editor ends up in `Build\Windows\Binaries\Debug\NyxEditor.exe`. To work in Visual Studio, open the generated solution in `Build\Windows`; `NyxEditor` is the startup project.
 
@@ -58,7 +59,7 @@ Engine/
                  components, serialization), Renderer (Vulkan)
     Editor/      Editor panels, gizmo, transactions and asset database
     Reflection/  Reflection types and the NYX_REFLECT / NYX_PROPERTY macros
-Scripts/         Build helper scripts
+Scripts/         Build and formatting scripts
 Startup/         The startup banner and its intro animations
 ThirdParty/      Vendored libraries: Dear ImGui, stb_image
 Tools/

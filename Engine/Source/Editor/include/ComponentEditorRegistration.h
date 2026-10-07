@@ -29,6 +29,7 @@ namespace Nyx::Editor
 	};
 }
 
+// clang-format off
 #define NYX_EDITOR_FIELD(ComponentType, Member, KindValue, DisplayNameValue, DragSpeedValue) \
 	Nyx::Editor::EditorPropertyDesc{ DisplayNameValue, Nyx::Editor::EEditorPropertyKind::KindValue, offsetof(ComponentType, Member), DragSpeedValue }
 
@@ -56,3 +57,4 @@ namespace Nyx::Editor
 		{                                                                                       \
 		}                                                                                       \
 	};
+// clang-format on
