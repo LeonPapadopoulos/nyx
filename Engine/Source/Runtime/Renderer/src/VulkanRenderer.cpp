@@ -3076,7 +3076,7 @@ namespace Nyx
 				view.SceneGlobals.View = glm::inverse(worldMatrix);
 
 				glm::mat4 proj = glm::perspective(
-					cameraComp.FovYRadians,
+					glm::radians(cameraComp.FovYDegrees),
 					aspectRatio,
 					cameraComp.NearPlane,
 					cameraComp.FarPlane);

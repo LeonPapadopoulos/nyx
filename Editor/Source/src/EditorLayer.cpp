@@ -3,6 +3,8 @@
 #include "Application.h"
 #include "Assertions.h"
 #include "Renderer.h"
+#include "CameraComponent.h"
+#include "DirectionalLightComponent.h"
 #include "MeshRendererComponent.h"
 #include "TransformComponent.h"
 #include "NameComponent.h"
@@ -255,6 +257,15 @@ namespace Nyx::Editor
 			if (ImGui::MenuItem("Asset Browser"))
 			{
 				ToggleAssetBrowser();
+			}
+
+			// Lets "Scene 2" show the scene through its primary camera, the way the game sees it
+			if (ImGui::MenuItem("Game Camera in Scene 2", nullptr, bSecondaryViewShowsGameCamera))
+			{
+				bSecondaryViewShowsGameCamera = !bSecondaryViewShowsGameCamera;
+				Renderer->SetSceneViewCameraMode(
+					SecondarySceneViewId,
+					bSecondaryViewShowsGameCamera ? EViewportCameraMode::ScenePrimaryCamera : EViewportCameraMode::EditorFreeCamera);
 			}
 
 			ImGui::EndPopup();
@@ -883,6 +894,34 @@ namespace Nyx::Editor
 						.Path = "Meshes/Cube.nyxmesh" },
 					.Material = Nyx::Engine::AssetReference{ .Type = "Material", .Path = "Materials/Untextured.nyxmat" },
 					.bVisible = true });
+		}
+
+		{
+			// In front of the cubes, looking slightly down at them
+			Nyx::Engine::Entity e = ActiveScene.CreateEntity("Main Camera");
+
+			world.Add<Nyx::Engine::TransformComponent>(
+				e,
+				Nyx::Engine::TransformComponent{
+					.Position = glm::vec3(0.0f, 2.0f, 6.0f),
+					.Rotation = glm::quat(glm::radians(glm::vec3(-15.0f, 0.0f, 0.0f))),
+					.Scale = glm::vec3(1.0f) });
+
+			world.Add<Nyx::Engine::CameraComponent>(e, Nyx::Engine::CameraComponent{});
+		}
+
+		{
+			// Shines down from the same direction as the fixed light of the editor views
+			Nyx::Engine::Entity e = ActiveScene.CreateEntity("Sun");
+
+			world.Add<Nyx::Engine::TransformComponent>(
+				e,
+				Nyx::Engine::TransformComponent{
+					.Position = glm::vec3(0.0f, 5.0f, 0.0f),
+					.Rotation = glm::quat(glm::radians(glm::vec3(-65.0f, 65.0f, 0.0f))),
+					.Scale = glm::vec3(1.0f) });
+
+			world.Add<Nyx::Engine::DirectionalLightComponent>(e, Nyx::Engine::DirectionalLightComponent{});
 		}
 	}
 
