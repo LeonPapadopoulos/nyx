@@ -30,6 +30,7 @@ include(CTest)
 
 # Main Modules
 add_subdirectory(Tools/NyxHeaderTool)
+add_subdirectory(Startup)
 add_subdirectory(Engine/Source)
 add_subdirectory(Editor/Source)
 

@@ -307,6 +307,7 @@ target_link_libraries(NyxEngine
         dwmapi
         Vulkan::Vulkan
         stb_image
+        NyxStartup # The startup banner, from the Startup module.
 )
 
 
