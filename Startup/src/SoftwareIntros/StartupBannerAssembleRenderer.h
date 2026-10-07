@@ -76,8 +76,8 @@ namespace Nyx
 		// physical pixels; the path is a quadratic curve through Control.
 		struct Flight
 		{
-			int Source = -1;          // Index into SourceTiles.
-			int Target = -1;          // Index into TargetTiles, or -1 if it drifts away.
+			int Source = -1; // Index into SourceTiles.
+			int Target = -1; // Index into TargetTiles, or -1 if it drifts away.
 			float StartTime = 0.0f;
 			float Duration = 1.0f;
 			float StartX = 0.0f, StartY = 0.0f;
@@ -103,14 +103,14 @@ namespace Nyx
 		Layout Settings;
 		int PixelWidth = 0;
 		int PixelHeight = 0;
-		float Scale = 1.0f;          // Physical pixels per logical pixel.
-		float CanvasWidth = 0.0f;    // Size of the surface in logical pixels.
+		float Scale = 1.0f;       // Physical pixels per logical pixel.
+		float CanvasWidth = 0.0f; // Size of the surface in logical pixels.
 		float CanvasHeight = 0.0f;
 		int TileSize = 1;
 
 		std::vector<uint32_t> Desktop;
-		std::vector<uint32_t> Banner;          // As prepared; used for brightness matching.
-		const uint32_t* LiveBanner = nullptr;  // The current frame, during Render only.
+		std::vector<uint32_t> Banner;         // As prepared; used for brightness matching.
+		const uint32_t* LiveBanner = nullptr; // The current frame, during Render only.
 		int LiveBannerStride = 0;
 		std::vector<uint32_t> Frame;
 		int BannerWidth = 0;
@@ -123,8 +123,8 @@ namespace Nyx
 
 		std::vector<Tile> SourceTiles;
 		std::vector<Tile> TargetTiles;
-		std::vector<int> TargetSource;      // Per banner tile: the desktop tile matched to it.
-		std::vector<Flight> Flights;        // One per desktop tile; drifting ones first.
-		std::vector<float> SourceLiftTime;  // Per desktop tile: when it leaves its place.
+		std::vector<int> TargetSource;     // Per banner tile: the desktop tile matched to it.
+		std::vector<Flight> Flights;       // One per desktop tile; drifting ones first.
+		std::vector<float> SourceLiftTime; // Per desktop tile: when it leaves its place.
 	};
 }

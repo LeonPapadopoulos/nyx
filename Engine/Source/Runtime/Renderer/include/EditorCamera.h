@@ -29,8 +29,7 @@ namespace Nyx
 				glm::radians(60.0f),
 				AspectRatio,
 				0.1f,
-				1000.0f
-			);
+				1000.0f);
 
 			proj[1][1] *= -1.0f;
 			return proj;

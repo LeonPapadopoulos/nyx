@@ -181,7 +181,7 @@ namespace
 		ImGui::SetNextItemWidth(-FLT_MIN);
 
 		if (Nyx::Editor::PropertyWidgetDrawFn drawFn =
-			Nyx::Editor::PropertyWidgetRegistry::Get().Find(property.Kind))
+				Nyx::Editor::PropertyWidgetRegistry::Get().Find(property.Kind))
 		{
 			Nyx::Editor::PropertyWidgetArgs args{};
 			args.Object = object;

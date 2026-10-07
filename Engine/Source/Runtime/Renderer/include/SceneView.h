@@ -48,7 +48,7 @@ namespace Nyx
 		bool bPickRequestPending = false;
 		bool bPickReadbackPending = false;
 		bool bPickResultReady = false;
-		
+
 		uint32_t PendingPickX = 0;
 		uint32_t PendingPickY = 0;
 

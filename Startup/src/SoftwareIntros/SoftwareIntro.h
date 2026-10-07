@@ -50,7 +50,11 @@ namespace Nyx
 		// while it already animates returns true here; it then receives the live
 		// banner frame before every Render call, valid only during that call.
 		virtual bool UsesLiveBanner() const { return false; }
-		virtual void SetLiveBanner(const uint32_t* pixels, int stride) { (void)pixels; (void)stride; }
+		virtual void SetLiveBanner(const uint32_t* pixels, int stride)
+		{
+			(void)pixels;
+			(void)stride;
+		}
 
 		virtual int GetWidth() const = 0;
 		virtual int GetHeight() const = 0;

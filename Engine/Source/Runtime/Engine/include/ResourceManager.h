@@ -10,7 +10,6 @@
 #include <mutex>
 #include <filesystem>
 
-
 class Mesh;
 class Texture;
 class Shader;
@@ -223,12 +222,10 @@ namespace Nyx
 			// @todo: Generalize, once the ResourceManager is properly integrated into Asset Management
 			Mesh* ResolveMesh(const std::string& id)
 			{
-
 			}
 
 			Material* ResolveMaterial(const std::string& id)
 			{
-
 			}
 
 		private:

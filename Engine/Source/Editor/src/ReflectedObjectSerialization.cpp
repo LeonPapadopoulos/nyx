@@ -26,8 +26,7 @@ namespace Nyx::Editor
 
 			snapshot.Properties.push_back(ReflectedPropertySnapshot{
 				.PropertyIndex = propertyIndex,
-				.Value = ReadReflectedPropertyValue(object, property)
-				});
+				.Value = ReadReflectedPropertyValue(object, property) });
 		}
 
 		return snapshot;

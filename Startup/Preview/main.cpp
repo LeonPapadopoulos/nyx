@@ -8,6 +8,24 @@
 #include <string_view>
 #include <thread>
 
+namespace
+{
+	// The mode's name as written in Startup.ini.
+	const char* GetModeName(Nyx::EStartupBannerMode mode)
+	{
+		switch (mode)
+		{
+		case Nyx::EStartupBannerMode::Lightning:  return "lightning";
+		case Nyx::EStartupBannerMode::RealityCut: return "reality-cut";
+		case Nyx::EStartupBannerMode::Chasm:      return "chasm";
+		case Nyx::EStartupBannerMode::Rift:       return "rift";
+		case Nyx::EStartupBannerMode::Assemble:   return "assemble";
+		case Nyx::EStartupBannerMode::AssembleV2: return "assemble_v2";
+		default:                                  return "classic";
+		}
+	}
+}
+
 // Explicit mode flags override Startup.ini for this launch only.
 int main(int argc, char** argv)
 {
@@ -96,12 +114,7 @@ int main(int argc, char** argv)
 		}
 		if (bPrintMode)
 		{
-			std::cout << (mode == Nyx::EStartupBannerMode::Lightning ? "lightning" :
-				(mode == Nyx::EStartupBannerMode::RealityCut ? "reality-cut" :
-				(mode == Nyx::EStartupBannerMode::Chasm ? "chasm" :
-				(mode == Nyx::EStartupBannerMode::Rift ? "rift" :
-				(mode == Nyx::EStartupBannerMode::Assemble ? "assemble" :
-				(mode == Nyx::EStartupBannerMode::AssembleV2 ? "assemble_v2" : "classic")))))) << '\n';
+			std::cout << GetModeName(mode) << '\n';
 			return 0;
 		}
 		if (!exportDirectory.empty())

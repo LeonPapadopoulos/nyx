@@ -48,37 +48,37 @@ namespace Nyx::Editor
 
 		ops.Has =
 			[](const Nyx::Engine::Registry& registry, Nyx::Engine::Entity entity) -> bool
-			{
-				return registry.Has<TComponent>(entity);
-			};
+		{
+			return registry.Has<TComponent>(entity);
+		};
 
 		ops.GetMutable =
 			[](Nyx::Engine::Registry& registry, Nyx::Engine::Entity entity) -> void*
+		{
+			if (!registry.Has<TComponent>(entity))
 			{
-				if (!registry.Has<TComponent>(entity))
-				{
-					return nullptr;
-				}
-				return &registry.Get<TComponent>(entity);
-			};
+				return nullptr;
+			}
+			return &registry.Get<TComponent>(entity);
+		};
 
 		ops.AddDefault =
 			[](Nyx::Engine::Registry& registry, Nyx::Engine::Entity entity)
+		{
+			if (!registry.Has<TComponent>(entity))
 			{
-				if (!registry.Has<TComponent>(entity))
-				{
-					registry.Add<TComponent>(entity, TComponent{});
-				}
-			};
+				registry.Add<TComponent>(entity, TComponent{});
+			}
+		};
 
 		ops.RemoveIfPresent =
 			[](Nyx::Engine::Registry& registry, Nyx::Engine::Entity entity)
+		{
+			if (registry.Has<TComponent>(entity))
 			{
-				if (registry.Has<TComponent>(entity))
-				{
-					registry.Remove<TComponent>(entity);
-				}
-			};
+				registry.Remove<TComponent>(entity);
+			}
+		};
 
 		return ops;
 	}

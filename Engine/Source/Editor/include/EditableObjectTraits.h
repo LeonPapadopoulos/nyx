@@ -11,7 +11,7 @@ namespace Nyx::Editor
 	struct EditablePropertyDesc
 	{
 		const char* Name = "";
-		Nyx::Reflection::PropertyValue(*GetValue)(const TObject&) = nullptr;
+		Nyx::Reflection::PropertyValue (*GetValue)(const TObject&) = nullptr;
 		void (*SetValue)(TObject&, const Nyx::Reflection::PropertyValue&) = nullptr;
 	};
 

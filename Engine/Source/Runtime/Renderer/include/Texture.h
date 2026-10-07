@@ -11,7 +11,6 @@
 #include <vector>
 #include <filesystem>
 
-
 namespace Nyx
 {
 	struct ImageData

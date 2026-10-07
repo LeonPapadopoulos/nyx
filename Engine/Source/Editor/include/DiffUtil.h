@@ -149,17 +149,15 @@ namespace Nyx::Editor
 					{
 						deltas.push_back(PropertyDelta<TObject>{
 							.PropertyIndex = index,
-								.Before = BeforeValues[index],
-								.After = afterValue
-						});
+							.Before = BeforeValues[index],
+							.After = afterValue });
 					}
 				}
 
 				if (!deltas.empty())
 				{
 					transaction.Changes.push_back(
-						std::make_unique<ObjectPropertyChange<TObject>>(TargetId, std::move(deltas))
-					);
+						std::make_unique<ObjectPropertyChange<TObject>>(TargetId, std::move(deltas)));
 				}
 			}
 

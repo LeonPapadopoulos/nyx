@@ -234,8 +234,7 @@ namespace Nyx
 			return false;
 		}
 
-		const std::array<std::string, 3> extensions =
-		{
+		const std::array<std::string, 3> extensions = {
 			".png",
 			".jpg",
 			".jpeg"

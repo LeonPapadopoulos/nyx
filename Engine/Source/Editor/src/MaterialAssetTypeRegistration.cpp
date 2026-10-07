@@ -10,7 +10,6 @@ namespace Nyx::Editor
 				.DisplayName = "Material",
 				.Extensions = { ".nyxmat" },
 				.bBrowsable = true,
-				.bOpenOnDoubleClick = false
-			});
+				.bOpenOnDoubleClick = false });
 	}
 }

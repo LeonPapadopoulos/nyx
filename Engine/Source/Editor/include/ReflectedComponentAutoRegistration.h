@@ -9,11 +9,9 @@ namespace Nyx::Editor
 	void RegisterReflectedComponentType(const char* displayName)
 	{
 		ComponentTypeRegistry::Get().Register(
-			MakeComponentTypeOps<TComponent>()
-		);
+			MakeComponentTypeOps<TComponent>());
 
 		ComponentInspectorRegistry::Get().Register(
-			MakeReflectedComponentInspectorEntry<TComponent>(displayName)
-		);
+			MakeReflectedComponentInspectorEntry<TComponent>(displayName));
 	}
 }

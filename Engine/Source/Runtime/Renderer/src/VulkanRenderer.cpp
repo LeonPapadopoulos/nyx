@@ -91,8 +91,7 @@ namespace
 		glm::vec3& outWorldMin,
 		glm::vec3& outWorldMax)
 	{
-		const glm::vec3 corners[8] =
-		{
+		const glm::vec3 corners[8] = {
 			{ localMin.x, localMin.y, localMin.z },
 			{ localMax.x, localMin.y, localMin.z },
 			{ localMin.x, localMax.y, localMin.z },
@@ -302,7 +301,7 @@ namespace Nyx
 		CreateTestTextureData();
 		CreateTestMeshData();
 		CreateTestMeshBuffers();
-	
+
 		// Shared layouts / shared GPU assets that per-view creation depends on
 		CreateSceneDescriptorSetLayout();
 		CreateSkyboxDescriptorSetLayout();
@@ -312,7 +311,7 @@ namespace Nyx
 
 		// First scene view: creates per-view resources
 		CreateSceneView();
-		
+
 		// Pipelines that depend on view-owned render passes / framebuffers
 		CreateSelectionMaskPipelines();
 		CreateOutlineCompositePipeline();
@@ -330,7 +329,7 @@ namespace Nyx
 		// Shared materials
 		CreateMaterials();
 
-		// @note: Gltf Meshes currently not visible, because the RenderObjects get 
+		// @note: Gltf Meshes currently not visible, because the RenderObjects get
 		// cleared and then populated by the world / entity-registry; So manually pushed
 		// RenderObjects, as is currently the case with this GltfScene setup, won't be
 		// rendered.
@@ -388,7 +387,7 @@ namespace Nyx
 	void VulkanRenderer::BeginFrame()
 	{
 	}
-	
+
 	void VulkanRenderer::EndFrame()
 	{
 	}
@@ -490,8 +489,7 @@ namespace Nyx
 						obj.WorldTransform,
 						obj.LocalBoundsMin,
 						obj.LocalBoundsMax,
-						glm::vec3(1.0f, 1.0f, 0.2f)
-					);
+						glm::vec3(1.0f, 1.0f, 0.2f));
 				}
 
 				// Debug World Axis
@@ -516,8 +514,7 @@ namespace Nyx
 					Context,
 					std::max(1u, view.PendingWidth),
 					std::max(1u, view.PendingHeight),
-					vk::Format::eR8G8B8A8Unorm
-				);
+					vk::Format::eR8G8B8A8Unorm);
 
 				RecreatePickingResourcesForView(view);
 				RecreateSelectionMaskResourcesForView(view);
@@ -863,8 +860,7 @@ namespace Nyx
 		cam.RotationRadians.x = glm::clamp(
 			cam.RotationRadians.x,
 			glm::radians(-89.0f),
-			glm::radians(89.0f)
-		);
+			glm::radians(89.0f));
 	}
 
 	void VulkanRenderer::TickEditorCameraFromInput(SceneViewInstance& view, float deltaTime)
@@ -919,8 +915,7 @@ namespace Nyx
 			view.EditorCam.RotationRadians.x = glm::clamp(
 				view.EditorCam.RotationRadians.x,
 				glm::radians(-89.0f),
-				glm::radians(89.0f)
-			);
+				glm::radians(89.0f));
 		}
 		else
 		{
@@ -1054,8 +1049,7 @@ namespace Nyx
 				obj.PickingId = static_cast<uint32_t>(PickingIdToEntity.size());
 
 				RenderObjects.push_back(obj);
-			}
-		);
+			});
 	}
 
 	void VulkanRenderer::DrawRenderObjects(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
@@ -1074,8 +1068,7 @@ namespace Nyx
 				**obj.MaterialAsset->PipelineLayout,
 				0,
 				{ *view.SceneDescriptorSets.front() },
-				{}
-			);
+				{});
 
 			ObjectPushConstants pushConstants{};
 			pushConstants.Model = obj.WorldTransform;
@@ -1083,16 +1076,14 @@ namespace Nyx
 				obj.MaterialAsset->Reflectivity,
 				obj.MaterialAsset->bUseTexture ? 1.0f : 0.0f,
 				0.0f,
-				0.0f
-			);
+				0.0f);
 			pushConstants.Tint = glm::vec4(obj.MaterialAsset->Tint, 1.0f);
 
 			cmd.pushConstants<ObjectPushConstants>(
 				**obj.MaterialAsset->PipelineLayout,
 				vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
 				0,
-				{ pushConstants }
-			);
+				{ pushConstants });
 
 			vk::DeviceSize offsets[] = { 0 };
 			cmd.bindVertexBuffers(0, { obj.MeshAsset->GetVertexBuffer() }, offsets);
@@ -1126,8 +1117,7 @@ namespace Nyx
 		cubemapBinding.stageFlags = vk::ShaderStageFlagBits::eFragment;
 		cubemapBinding.pImmutableSamplers = nullptr;
 
-		std::array<vk::DescriptorSetLayoutBinding, 3> bindings =
-		{
+		std::array<vk::DescriptorSetLayoutBinding, 3> bindings = {
 			uboBinding,
 			textureBinding,
 			cubemapBinding
@@ -1205,8 +1195,7 @@ namespace Nyx
 		colorBlending.attachmentCount = 1;
 		colorBlending.pAttachments = &colorBlendAttachment;
 
-		std::array<vk::DynamicState, 2> dynamicStates =
-		{
+		std::array<vk::DynamicState, 2> dynamicStates = {
 			vk::DynamicState::eViewport,
 			vk::DynamicState::eScissor
 		};
@@ -1254,8 +1243,7 @@ namespace Nyx
 		ScenePipeline = std::move(vk::raii::Pipeline(
 			Context.GetDevice(),
 			nullptr,
-			pipelineInfo
-		));
+			pipelineInfo));
 	}
 
 	void VulkanRenderer::CreateGridPipeline()
@@ -1319,8 +1307,7 @@ namespace Nyx
 		colorBlending.attachmentCount = 1;
 		colorBlending.pAttachments = &colorBlendAttachment;
 
-		std::array<vk::DynamicState, 2> dynamicStates =
-		{
+		std::array<vk::DynamicState, 2> dynamicStates = {
 			vk::DynamicState::eViewport,
 			vk::DynamicState::eScissor
 		};
@@ -1441,8 +1428,7 @@ namespace Nyx
 		colorBlending.attachmentCount = 1;
 		colorBlending.pAttachments = &colorBlendAttachment;
 
-		std::array<vk::DynamicState, 2> dynamicStates =
-		{
+		std::array<vk::DynamicState, 2> dynamicStates = {
 			vk::DynamicState::eViewport,
 			vk::DynamicState::eScissor
 		};
@@ -1572,8 +1558,7 @@ namespace Nyx
 		colorBlending.attachmentCount = 1;
 		colorBlending.pAttachments = &colorBlendAttachment;
 
-		std::array<vk::DynamicState, 2> dynamicStates =
-		{
+		std::array<vk::DynamicState, 2> dynamicStates = {
 			vk::DynamicState::eViewport,
 			vk::DynamicState::eScissor
 		};
@@ -1615,8 +1600,7 @@ namespace Nyx
 		SkyboxPipeline = std::move(vk::raii::Pipeline(
 			Context.GetDevice(),
 			nullptr,
-			pipelineInfo
-		));
+			pipelineInfo));
 	}
 
 	void VulkanRenderer::LoadSkyboxCubemap()
@@ -1648,8 +1632,7 @@ namespace Nyx
 			vk::BufferUsageFlagBits::eUniformBuffer,
 			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
 			view.SkyboxUniformBuffer,
-			view.SkyboxUniformBufferMemory
-		);
+			view.SkyboxUniformBufferMemory);
 
 		// ---------------------------------------------------------
 		// Per-view skybox descriptor pool
@@ -1731,8 +1714,7 @@ namespace Nyx
 			vk::ImageAspectFlagBits::eColor,
 			view.PickingImage,
 			view.PickingImageMemory,
-			view.PickingImageView
-		);
+			view.PickingImageView);
 
 		// Depth target
 		CreateImage(
@@ -1743,8 +1725,7 @@ namespace Nyx
 			vk::ImageAspectFlagBits::eDepth,
 			view.PickingDepthImage,
 			view.PickingDepthImageMemory,
-			view.PickingDepthImageView
-		);
+			view.PickingDepthImageView);
 
 		// Readback buffer for one uint32
 		CreateBuffer(
@@ -1752,8 +1733,7 @@ namespace Nyx
 			vk::BufferUsageFlagBits::eTransferDst,
 			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
 			view.PickingReadbackBuffer,
-			view.PickingReadbackBufferMemory
-		);
+			view.PickingReadbackBufferMemory);
 
 		// Render pass
 		{
@@ -1791,8 +1771,7 @@ namespace Nyx
 			subpass.pColorAttachments = &colorRef;
 			subpass.pDepthStencilAttachment = &depthRef;
 
-			std::array<vk::AttachmentDescription, 2> attachments =
-			{
+			std::array<vk::AttachmentDescription, 2> attachments = {
 				colorAttachment,
 				depthAttachment
 			};
@@ -1808,8 +1787,7 @@ namespace Nyx
 
 		// Framebuffer
 		{
-			std::array<vk::ImageView, 2> attachments =
-			{
+			std::array<vk::ImageView, 2> attachments = {
 				*view.PickingImageView,
 				*view.PickingDepthImageView
 			};
@@ -1870,8 +1848,7 @@ namespace Nyx
 			vk::ImageAspectFlagBits::eColor,
 			view.VisibleSelectionMaskImage,
 			view.VisibleSelectionMaskImageMemory,
-			view.VisibleSelectionMaskImageView
-		);
+			view.VisibleSelectionMaskImageView);
 
 		// Full silhouette mask
 		CreateImage(
@@ -1882,8 +1859,7 @@ namespace Nyx
 			vk::ImageAspectFlagBits::eColor,
 			view.FullSelectionMaskImage,
 			view.FullSelectionMaskImageMemory,
-			view.FullSelectionMaskImageView
-		);
+			view.FullSelectionMaskImageView);
 
 		// Shared depth image for both passes
 		CreateImage(
@@ -1894,8 +1870,7 @@ namespace Nyx
 			vk::ImageAspectFlagBits::eDepth,
 			view.SelectionMaskDepthImage,
 			view.SelectionMaskDepthImageMemory,
-			view.SelectionMaskDepthImageView
-		);
+			view.SelectionMaskDepthImageView);
 
 		// Shared render pass
 		{
@@ -1933,8 +1908,7 @@ namespace Nyx
 			subpass.pColorAttachments = &colorRef;
 			subpass.pDepthStencilAttachment = &depthRef;
 
-			std::array<vk::AttachmentDescription, 2> attachments =
-			{
+			std::array<vk::AttachmentDescription, 2> attachments = {
 				colorAttachment,
 				depthAttachment
 			};
@@ -1950,8 +1924,7 @@ namespace Nyx
 
 		// Visible framebuffer
 		{
-			std::array<vk::ImageView, 2> attachments =
-			{
+			std::array<vk::ImageView, 2> attachments = {
 				*view.VisibleSelectionMaskImageView,
 				*view.SelectionMaskDepthImageView
 			};
@@ -1969,8 +1942,7 @@ namespace Nyx
 
 		// Full framebuffer
 		{
-			std::array<vk::ImageView, 2> attachments =
-			{
+			std::array<vk::ImageView, 2> attachments = {
 				*view.FullSelectionMaskImageView,
 				*view.SelectionMaskDepthImageView
 			};
@@ -2030,8 +2002,7 @@ namespace Nyx
 		fullMaskBinding.descriptorCount = 1;
 		fullMaskBinding.stageFlags = vk::ShaderStageFlagBits::eFragment;
 
-		std::array<vk::DescriptorSetLayoutBinding, 2> bindings =
-		{
+		std::array<vk::DescriptorSetLayoutBinding, 2> bindings = {
 			visibleMaskBinding,
 			fullMaskBinding
 		};
@@ -2175,8 +2146,7 @@ namespace Nyx
 		colorBlending.attachmentCount = 1;
 		colorBlending.pAttachments = &colorBlendAttachment;
 
-		std::array<vk::DynamicState, 2> dynamicStates =
-		{
+		std::array<vk::DynamicState, 2> dynamicStates = {
 			vk::DynamicState::eViewport,
 			vk::DynamicState::eScissor
 		};
@@ -2278,8 +2248,7 @@ namespace Nyx
 			*SelectionMaskPipelineLayout,
 			0,
 			{ *view.SceneDescriptorSets.front() },
-			{}
-		);
+			{});
 
 		for (const RenderObject& obj : RenderObjects)
 		{
@@ -2299,8 +2268,7 @@ namespace Nyx
 				*SelectionMaskPipelineLayout,
 				vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
 				0,
-				{ push }
-			);
+				{ push });
 
 			vk::DeviceSize offsets[] = { 0 };
 			cmd.bindVertexBuffers(0, { obj.MeshAsset->GetVertexBuffer() }, offsets);
@@ -2351,8 +2319,7 @@ namespace Nyx
 			*SelectionMaskPipelineLayout,
 			0,
 			{ *view.SceneDescriptorSets.front() },
-			{}
-		);
+			{});
 
 		if (!SelectedEntity.has_value())
 		{
@@ -2380,8 +2347,7 @@ namespace Nyx
 				*SelectionMaskPipelineLayout,
 				vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
 				0,
-				{ push }
-			);
+				{ push });
 
 			vk::DeviceSize offsets[] = { 0 };
 			cmd.bindVertexBuffers(0, { obj.MeshAsset->GetVertexBuffer() }, offsets);
@@ -2448,8 +2414,7 @@ namespace Nyx
 		colorBlending.attachmentCount = 1;
 		colorBlending.pAttachments = &colorBlendAttachment;
 
-		std::array<vk::DynamicState, 2> dynamicStates =
-		{
+		std::array<vk::DynamicState, 2> dynamicStates = {
 			vk::DynamicState::eViewport,
 			vk::DynamicState::eScissor
 		};
@@ -2509,8 +2474,7 @@ namespace Nyx
 			*OutlineCompositePipelineLayout,
 			0,
 			{ *view.OutlineDescriptorSets->front() },
-			{}
-		);
+			{});
 
 		const vk::Extent2D extent = view.RenderTarget.GetExtent();
 
@@ -2519,8 +2483,7 @@ namespace Nyx
 			1.0f / static_cast<float>(std::max(1u, extent.width)),
 			1.0f / static_cast<float>(std::max(1u, extent.height)),
 			2.0f,
-			static_cast<float>(static_cast<uint32_t>(SelectionOutlineMode))
-		);
+			static_cast<float>(static_cast<uint32_t>(SelectionOutlineMode)));
 
 		push.VisibleOutlineColor = glm::vec4(1.0f, 0.65f, 0.0f, 1.0f);
 		push.OccludedOutlineColor = glm::vec4(0.15f, 0.85f, 1.0f, 1.0f);
@@ -2536,8 +2499,7 @@ namespace Nyx
 			*OutlineCompositePipelineLayout,
 			vk::ShaderStageFlagBits::eFragment,
 			0,
-			{ push }
-		);
+			{ push });
 
 		cmd.draw(3, 1, 0, 0);
 	}
@@ -2549,8 +2511,7 @@ namespace Nyx
 			vk::BufferUsageFlagBits::eUniformBuffer,
 			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
 			view.SkyboxUniformBuffer,
-			view.SkyboxUniformBufferMemory
-		);
+			view.SkyboxUniformBufferMemory);
 	}
 
 	void VulkanRenderer::CreateSkyboxDescriptorSetLayout()
@@ -2567,8 +2528,7 @@ namespace Nyx
 		cubemapBinding.descriptorCount = 1;
 		cubemapBinding.stageFlags = vk::ShaderStageFlagBits::eFragment;
 
-		std::array<vk::DescriptorSetLayoutBinding, 2> bindings =
-		{
+		std::array<vk::DescriptorSetLayoutBinding, 2> bindings = {
 			uboBinding,
 			cubemapBinding
 		};
@@ -2638,8 +2598,7 @@ namespace Nyx
 			vk::BufferUsageFlagBits::eUniformBuffer,
 			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
 			view.SceneUniformBuffer,
-			view.SceneUniformBufferMemory
-		);
+			view.SceneUniformBufferMemory);
 
 		// ---------------------------------------------------------
 		// Per-view scene descriptor pool
@@ -2728,8 +2687,7 @@ namespace Nyx
 		ubo.InvViewProj = glm::inverse(view.SceneGlobals.ViewProjection);
 		ubo.ViewportSize = glm::vec2(
 			static_cast<float>(extent.width),
-			static_cast<float>(extent.height)
-		);
+			static_cast<float>(extent.height));
 
 		ubo.CameraWorldPos = glm::vec4(view.SceneGlobals.CameraWorldPos, 1.0f);
 		ubo.LightDirectionWS = glm::vec4(view.SceneGlobals.LightDirectionWS, 0.0f);
@@ -2754,64 +2712,62 @@ namespace Nyx
 	{
 		// Cube with individual faces (no shared corner vertices)
 		// {Position}, {Color}, {UV}, {Normal}
-		MeshVertices =
-		{
+		MeshVertices = {
 			// Front (+Z)
-			{ {-0.5f, -0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f}, { 0.0f,  0.0f,  1.0f} },
-			{ { 0.5f, -0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 0.0f}, { 0.0f,  0.0f,  1.0f} },
-			{ { 0.5f,  0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}, { 0.0f,  0.0f,  1.0f} },
-			{ {-0.5f,  0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}, { 0.0f,  0.0f,  1.0f} },
+			{ { -0.5f, -0.5f, 0.5f }, { 1.0f, 1.0f, 1.0f }, { 0.0f, 0.0f }, { 0.0f, 0.0f, 1.0f } },
+			{ { 0.5f, -0.5f, 0.5f }, { 1.0f, 1.0f, 1.0f }, { 1.0f, 0.0f }, { 0.0f, 0.0f, 1.0f } },
+			{ { 0.5f, 0.5f, 0.5f }, { 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f }, { 0.0f, 0.0f, 1.0f } },
+			{ { -0.5f, 0.5f, 0.5f }, { 1.0f, 1.0f, 1.0f }, { 0.0f, 1.0f }, { 0.0f, 0.0f, 1.0f } },
 
 			// Back (-Z)
-			{ { 0.5f, -0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f}, { 0.0f,  0.0f, -1.0f} },
-			{ {-0.5f, -0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 0.0f}, { 0.0f,  0.0f, -1.0f} },
-			{ {-0.5f,  0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}, { 0.0f,  0.0f, -1.0f} },
-			{ { 0.5f,  0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}, { 0.0f,  0.0f, -1.0f} },
+			{ { 0.5f, -0.5f, -0.5f }, { 1.0f, 1.0f, 1.0f }, { 0.0f, 0.0f }, { 0.0f, 0.0f, -1.0f } },
+			{ { -0.5f, -0.5f, -0.5f }, { 1.0f, 1.0f, 1.0f }, { 1.0f, 0.0f }, { 0.0f, 0.0f, -1.0f } },
+			{ { -0.5f, 0.5f, -0.5f }, { 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f }, { 0.0f, 0.0f, -1.0f } },
+			{ { 0.5f, 0.5f, -0.5f }, { 1.0f, 1.0f, 1.0f }, { 0.0f, 1.0f }, { 0.0f, 0.0f, -1.0f } },
 
 			// Left (-X)
-			{ {-0.5f, -0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f}, {-1.0f,  0.0f,  0.0f} },
-			{ {-0.5f, -0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 0.0f}, {-1.0f,  0.0f,  0.0f} },
-			{ {-0.5f,  0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}, {-1.0f,  0.0f,  0.0f} },
-			{ {-0.5f,  0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}, {-1.0f,  0.0f,  0.0f} },
+			{ { -0.5f, -0.5f, -0.5f }, { 1.0f, 1.0f, 1.0f }, { 0.0f, 0.0f }, { -1.0f, 0.0f, 0.0f } },
+			{ { -0.5f, -0.5f, 0.5f }, { 1.0f, 1.0f, 1.0f }, { 1.0f, 0.0f }, { -1.0f, 0.0f, 0.0f } },
+			{ { -0.5f, 0.5f, 0.5f }, { 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f }, { -1.0f, 0.0f, 0.0f } },
+			{ { -0.5f, 0.5f, -0.5f }, { 1.0f, 1.0f, 1.0f }, { 0.0f, 1.0f }, { -1.0f, 0.0f, 0.0f } },
 
 			// Right (+X)
-			{ { 0.5f, -0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f}, { 1.0f,  0.0f,  0.0f} },
-			{ { 0.5f, -0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 0.0f}, { 1.0f,  0.0f,  0.0f} },
-			{ { 0.5f,  0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}, { 1.0f,  0.0f,  0.0f} },
-			{ { 0.5f,  0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}, { 1.0f,  0.0f,  0.0f} },
+			{ { 0.5f, -0.5f, 0.5f }, { 1.0f, 1.0f, 1.0f }, { 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f } },
+			{ { 0.5f, -0.5f, -0.5f }, { 1.0f, 1.0f, 1.0f }, { 1.0f, 0.0f }, { 1.0f, 0.0f, 0.0f } },
+			{ { 0.5f, 0.5f, -0.5f }, { 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f }, { 1.0f, 0.0f, 0.0f } },
+			{ { 0.5f, 0.5f, 0.5f }, { 1.0f, 1.0f, 1.0f }, { 0.0f, 1.0f }, { 1.0f, 0.0f, 0.0f } },
 
 			// Top (+Y)
-			{ {-0.5f,  0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f}, { 0.0f,  1.0f,  0.0f} },
-			{ { 0.5f,  0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 0.0f}, { 0.0f,  1.0f,  0.0f} },
-			{ { 0.5f,  0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}, { 0.0f,  1.0f,  0.0f} },
-			{ {-0.5f,  0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}, { 0.0f,  1.0f,  0.0f} },
+			{ { -0.5f, 0.5f, 0.5f }, { 1.0f, 1.0f, 1.0f }, { 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f } },
+			{ { 0.5f, 0.5f, 0.5f }, { 1.0f, 1.0f, 1.0f }, { 1.0f, 0.0f }, { 0.0f, 1.0f, 0.0f } },
+			{ { 0.5f, 0.5f, -0.5f }, { 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f }, { 0.0f, 1.0f, 0.0f } },
+			{ { -0.5f, 0.5f, -0.5f }, { 1.0f, 1.0f, 1.0f }, { 0.0f, 1.0f }, { 0.0f, 1.0f, 0.0f } },
 
 			// Bottom (-Y)
-			{ {-0.5f, -0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f}, { 0.0f, -1.0f,  0.0f} },
-			{ { 0.5f, -0.5f, -0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 0.0f}, { 0.0f, -1.0f,  0.0f} },
-			{ { 0.5f, -0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}, { 0.0f, -1.0f,  0.0f} },
-			{ {-0.5f, -0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f}, { 0.0f, -1.0f,  0.0f} }
+			{ { -0.5f, -0.5f, -0.5f }, { 1.0f, 1.0f, 1.0f }, { 0.0f, 0.0f }, { 0.0f, -1.0f, 0.0f } },
+			{ { 0.5f, -0.5f, -0.5f }, { 1.0f, 1.0f, 1.0f }, { 1.0f, 0.0f }, { 0.0f, -1.0f, 0.0f } },
+			{ { 0.5f, -0.5f, 0.5f }, { 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f }, { 0.0f, -1.0f, 0.0f } },
+			{ { -0.5f, -0.5f, 0.5f }, { 1.0f, 1.0f, 1.0f }, { 0.0f, 1.0f }, { 0.0f, -1.0f, 0.0f } }
 		};
 
-		MeshIndices =
-		{
+		MeshIndices = {
 			// Front
-			0, 1, 2,  2, 3, 0,
+			0, 1, 2, 2, 3, 0,
 
 			// Back
-			4, 5, 6,  6, 7, 4,
+			4, 5, 6, 6, 7, 4,
 
 			// Left
-			8, 9, 10,  10, 11, 8,
+			8, 9, 10, 10, 11, 8,
 
 			// Right
-			12, 13, 14,  14, 15, 12,
+			12, 13, 14, 14, 15, 12,
 
 			// Top
-			16, 17, 18,  18, 19, 16,
+			16, 17, 18, 18, 19, 16,
 
 			// Bottom
-			20, 21, 22,  22, 23, 20
+			20, 21, 22, 22, 23, 20
 		};
 
 		// @todo: Move Cube Mesh Management to a more generalized place for mesh handling
@@ -2844,16 +2800,14 @@ namespace Nyx
 			vk::BufferUsageFlagBits::eVertexBuffer,
 			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
 			MeshVertexBuffer,
-			MeshVertexBufferMemory
-		);
+			MeshVertexBufferMemory);
 
 		CreateBuffer(
 			indexBufferSize,
 			vk::BufferUsageFlagBits::eIndexBuffer,
 			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
 			MeshIndexBuffer,
-			MeshIndexBufferMemory
-		);
+			MeshIndexBufferMemory);
 
 		{
 			void* mapped = MeshVertexBufferMemory.mapMemory(0, vertexBufferSize);
@@ -2884,8 +2838,7 @@ namespace Nyx
 		allocInfo.memoryTypeIndex = FindMemoryType(
 			*Context.GetPhysicalDevice(),
 			memRequirements.memoryTypeBits,
-			properties
-		);
+			properties);
 
 		outMemory = vk::raii::DeviceMemory(Context.GetDevice(), allocInfo);
 		outBuffer.bindMemory(*outMemory, 0);
@@ -2924,8 +2877,7 @@ namespace Nyx
 		allocInfo.memoryTypeIndex = FindMemoryType(
 			*Context.GetPhysicalDevice(),
 			memRequirements.memoryTypeBits,
-			vk::MemoryPropertyFlagBits::eDeviceLocal
-		);
+			vk::MemoryPropertyFlagBits::eDeviceLocal);
 
 		outMemory = vk::raii::DeviceMemory(Context.GetDevice(), allocInfo);
 		outImage.bindMemory(*outMemory, 0);
@@ -3022,8 +2974,7 @@ namespace Nyx
 		ImportedScene imported{};
 		const bool bLoaded = Nyx::LoadStaticGltfScene(
 			(Nyx::Paths::GetAssetsDir() / "Models" / "Debug" / "teapot.gltf").string(),
-			imported
-		);
+			imported);
 		ASSERT(bLoaded && "Failed to load test glTF scene.");
 
 		// Create mesh resources
@@ -3128,16 +3079,14 @@ namespace Nyx
 					cameraComp.FovYRadians,
 					aspectRatio,
 					cameraComp.NearPlane,
-					cameraComp.FarPlane
-				);
+					cameraComp.FarPlane);
 				proj[1][1] *= -1.0f;
 
 				view.SceneGlobals.Projection = proj;
 				view.SceneGlobals.ViewProjection = proj * view.SceneGlobals.View;
 				view.SceneGlobals.CameraWorldPos = cameraPos;
 				view.SceneGlobals.bHasCamera = true;
-			}
-		);
+			});
 
 		if (!view.SceneGlobals.bHasCamera)
 		{
@@ -3167,8 +3116,7 @@ namespace Nyx
 				view.SceneGlobals.LightColor = lightComp.Color * lightComp.Intensity;
 				view.SceneGlobals.Ambient = lightComp.Ambient;
 				view.SceneGlobals.bHasDirectionalLight = true;
-			}
-		);
+			});
 	}
 
 	void VulkanRenderer::UpdateViewportSceneGlobals(SceneViewInstance& view, const Nyx::Engine::Registry& registry)
@@ -3394,8 +3342,7 @@ namespace Nyx
 			vk::BufferUsageFlagBits::eVertexBuffer,
 			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
 			DebugLineVertexBuffer,
-			DebugLineVertexBufferMemory
-		);
+			DebugLineVertexBufferMemory);
 	}
 
 	void VulkanRenderer::CreateDebugLinePipeline()
@@ -3461,8 +3408,7 @@ namespace Nyx
 		colorBlending.attachmentCount = 1;
 		colorBlending.pAttachments = &colorBlendAttachment;
 
-		std::array<vk::DynamicState, 2> dynamicStates =
-		{
+		std::array<vk::DynamicState, 2> dynamicStates = {
 			vk::DynamicState::eViewport,
 			vk::DynamicState::eScissor
 		};
@@ -3566,8 +3512,7 @@ namespace Nyx
 		const glm::vec3& localMax,
 		const glm::vec3& color)
 	{
-		const glm::vec3 localCorners[8] =
-		{
+		const glm::vec3 localCorners[8] = {
 			{ localMin.x, localMin.y, localMin.z },
 			{ localMax.x, localMin.y, localMin.z },
 			{ localMin.x, localMax.y, localMin.z },
@@ -3630,8 +3575,7 @@ namespace Nyx
 			*DebugLinePipelineLayout,
 			0,
 			{ *view.SceneDescriptorSets.front() },
-			{}
-		);
+			{});
 
 		vk::DeviceSize offsets[] = { 0 };
 		cmd.bindVertexBuffers(0, { *DebugLineVertexBuffer }, offsets);
@@ -3658,8 +3602,7 @@ namespace Nyx
 				obj.LocalBoundsMax,
 				obj.WorldTransform,
 				worldMin,
-				worldMax
-			);
+				worldMax);
 
 			AddDebugAABB(worldMin, worldMax, glm::vec3(1.0f, 1.0f, 0.2f));
 		}
@@ -3676,8 +3619,7 @@ namespace Nyx
 				view->PendingPickX,
 				view->PendingPickY,
 				extent.width,
-				extent.height
-			);
+				extent.height);
 
 			if (extent.width == 0 || extent.height == 0)
 			{
@@ -3751,8 +3693,7 @@ namespace Nyx
 			*PickingPipelineLayout,
 			0,
 			{ *view.SceneDescriptorSets.front() },
-			{}
-		);
+			{});
 
 		for (const RenderObject& obj : RenderObjects)
 		{
@@ -3769,8 +3710,7 @@ namespace Nyx
 				*PickingPipelineLayout,
 				vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
 				0,
-				{ push }
-			);
+				{ push });
 
 			vk::DeviceSize offsets[] = { 0 };
 			cmd.bindVertexBuffers(0, { obj.MeshAsset->GetVertexBuffer() }, offsets);
@@ -3807,8 +3747,7 @@ namespace Nyx
 			*view.PickingImage,
 			vk::ImageLayout::eTransferSrcOptimal,
 			*view.PickingReadbackBuffer,
-			region
-		);
+			region);
 
 		view.bPickRequestPending = false;
 		view.bPickReadbackPending = true;
@@ -3860,8 +3799,7 @@ namespace Nyx
 			*SkyboxPipelineLayout,
 			0,
 			{ *view.SkyboxDescriptorSets.front() },
-			{}
-		);
+			{});
 
 		vk::DeviceSize offsets[] = { 0 };
 		cmd.bindVertexBuffers(0, { CubeMesh.GetVertexBuffer() }, offsets);
@@ -3877,8 +3815,7 @@ namespace Nyx
 			*GridPipelineLayout,
 			0,
 			{ *view.SceneDescriptorSets.front() },
-			{}
-		);
+			{});
 		cmd.draw(3, 1, 0, 0);
 	}
 

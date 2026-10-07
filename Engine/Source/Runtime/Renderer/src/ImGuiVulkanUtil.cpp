@@ -168,7 +168,7 @@ namespace Nyx
 		//ImGuiBackend::End();
 	}
 
-	void VulkanImGuiBackend::DrawFrame(vk::raii::CommandBuffer & commandBuffer)
+	void VulkanImGuiBackend::DrawFrame(vk::raii::CommandBuffer& commandBuffer)
 	{
 		if (!bInitialized)
 		{
@@ -237,8 +237,7 @@ namespace Nyx
 
 	void VulkanImGuiBackend::CreateDescriptorPool()
 	{
-		vk::DescriptorPoolSize poolSizes[] =
-		{
+		vk::DescriptorPoolSize poolSizes[] = {
 			{ vk::DescriptorType::eSampler, 1000 },
 			{ vk::DescriptorType::eCombinedImageSampler, 1000 },
 			{ vk::DescriptorType::eSampledImage, 1000 },

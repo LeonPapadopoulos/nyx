@@ -10,7 +10,6 @@ namespace Nyx::Editor
 				.DisplayName = "Mesh",
 				.Extensions = { ".nyxmesh" },
 				.bBrowsable = true,
-				.bOpenOnDoubleClick = false
-			});
+				.bOpenOnDoubleClick = false });
 	}
 }

@@ -192,8 +192,7 @@ namespace Nyx
 		subpass.pColorAttachments = &colorRef;
 		subpass.pDepthStencilAttachment = &depthRef;
 
-		std::array<vk::AttachmentDescription, 2> attachments =
-		{
+		std::array<vk::AttachmentDescription, 2> attachments = {
 			colorAttachment,
 			depthAttachment
 		};
@@ -233,8 +232,7 @@ namespace Nyx
 
 	void VulkanViewportTarget::CreateFramebuffer(VulkanContext& context)
 	{
-		std::array<vk::ImageView, 2> attachments =
-		{
+		std::array<vk::ImageView, 2> attachments = {
 			*ImageView,
 			*DepthImageView
 		};
@@ -348,11 +346,9 @@ namespace Nyx
 	{
 		return FindSupportedFormat(
 			physicalDevice,
-			{
-				vk::Format::eD32Sfloat,
+			{ vk::Format::eD32Sfloat,
 				vk::Format::eD32SfloatS8Uint,
-				vk::Format::eD24UnormS8Uint
-			},
+				vk::Format::eD24UnormS8Uint },
 			vk::ImageTiling::eOptimal,
 			vk::FormatFeatureFlagBits::eDepthStencilAttachment);
 	}

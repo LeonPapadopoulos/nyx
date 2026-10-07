@@ -1,26 +1,25 @@
 #pragma once
 #include "NyxEngineAPI.h"
 
-// Implementation based on 'Game Engine Architecture, 3rd Edition, 
+// Implementation based on 'Game Engine Architecture, 3rd Edition,
 // page 127 - 130, by Gregory Jason
-
 
 // ------------------------------------------------------------
 // Helper macros
 // ------------------------------------------------------------
 #define ASSERT_GLUE2(a, b) a##b
-#define ASSERT_GLUE(a, b) ASSERT_GLUE2(a, b)
+#define ASSERT_GLUE(a, b)  ASSERT_GLUE2(a, b)
 
 // ------------------------------------------------------------
 // Debug break
 // ------------------------------------------------------------
 #if defined(_MSC_VER)
-#define debugBreak() __debugbreak()
+	#define debugBreak() __debugbreak()
 #elif defined(__clang__) || defined(__GNUC__)
-#define debugBreak() __builtin_trap()
+	#define debugBreak() __builtin_trap()
 #else
-#include <signal.h>
-#define debugBreak() raise(SIGTRAP)
+	#include <signal.h>
+	#define debugBreak() raise(SIGTRAP)
 #endif
 
 // ------------------------------------------------------------
@@ -45,7 +44,7 @@ NYXENGINE_API void reportAssertionFailure(const char* expr, const char* file, in
         } while (0)
 // clang-format on
 #else
-#define ASSERT(expr) ((void)0)
+	#define ASSERT(expr) ((void)0)
 #endif
 
 // ------------------------------------------------------------

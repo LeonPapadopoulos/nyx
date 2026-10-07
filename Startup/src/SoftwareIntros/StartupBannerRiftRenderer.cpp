@@ -7,8 +7,8 @@
 #include <thread>
 
 #if defined(_M_X64) || defined(__SSE2__)
-#define NYX_RIFT_SSE2 1
-#include <emmintrin.h>
+	#define NYX_RIFT_SSE2 1
+	#include <emmintrin.h>
 #endif
 
 namespace
@@ -19,13 +19,13 @@ namespace
 
 	constexpr float Pi = 3.14159265f;
 	constexpr float WebStartSeconds = 0.64f;
-	constexpr float WebSpeed = 1700.0f;          // Logical pixels per second.
+	constexpr float WebSpeed = 1700.0f; // Logical pixels per second.
 	constexpr float CrackSpeed = 2600.0f;
 	constexpr float PulseSpeed = 2300.0f;
 	constexpr float RevealSeconds = 2.62f;
 	constexpr float ShardLifeSeconds = 0.95f;
 	constexpr float FeatherWidth = 90.0f;
-	constexpr float FieldStep = 4.0f;            // Lattice spacing for smooth noise fields.
+	constexpr float FieldStep = 4.0f; // Lattice spacing for smooth noise fields.
 	constexpr Vec2 Focus{ Renderer::FocusX, Renderer::FocusY };
 
 	// The highlights accelerate towards the shatter, like a building charge.
@@ -45,21 +45,23 @@ namespace
 	};
 
 	constexpr Stop SkyStops[] = {
-		{ 0.00f, {   3,   6,  12 } },
-		{ 0.18f, {  11,  19,  34 } },
-		{ 0.38f, {  28,  46,  73 } },
-		{ 0.60f, {  63,  93, 127 } },
+		{ 0.00f, { 3, 6, 12 } },
+		{ 0.18f, { 11, 19, 34 } },
+		{ 0.38f, { 28, 46, 73 } },
+		{ 0.60f, { 63, 93, 127 } },
 		{ 0.80f, { 122, 153, 183 } },
-		{ 1.00f, { 200, 217, 235 } } };
+		{ 1.00f, { 200, 217, 235 } }
+	};
 
 	constexpr Stop FireStops[] = {
-		{ 0.00f, {   4,   1,   1 } },
-		{ 0.22f, {  40,   9,   4 } },
-		{ 0.42f, { 122,  37,   9 } },
-		{ 0.60f, { 208,  94,  26 } },
-		{ 0.76f, { 250, 160,  70 } },
+		{ 0.00f, { 4, 1, 1 } },
+		{ 0.22f, { 40, 9, 4 } },
+		{ 0.42f, { 122, 37, 9 } },
+		{ 0.60f, { 208, 94, 26 } },
+		{ 0.76f, { 250, 160, 70 } },
 		{ 0.89f, { 255, 216, 150 } },
-		{ 1.00f, { 255, 248, 232 } } };
+		{ 1.00f, { 255, 248, 232 } }
+	};
 
 	float Saturate(float value)
 	{
@@ -170,15 +172,15 @@ namespace
 			Rows = static_cast<int>(Renderer::Height / Step) + 2;
 			Values.resize(static_cast<size_t>(Columns) * Rows);
 			forRows(Rows, [&](int firstRow, int endRow)
-			{
-				for (int y = firstRow; y < endRow; ++y)
 				{
-					for (int x = 0; x < Columns; ++x)
+					for (int y = firstRow; y < endRow; ++y)
 					{
-						Values[static_cast<size_t>(y) * Columns + x] = function(x * Step, y * Step);
+						for (int x = 0; x < Columns; ++x)
+						{
+							Values[static_cast<size_t>(y) * Columns + x] = function(x * Step, y * Step);
+						}
 					}
-				}
-			});
+				});
 		}
 
 		float At(float u, float v) const
@@ -245,7 +247,10 @@ namespace
 
 	inline uint32_t Pack(float r, float g, float b, float a)
 	{
-		auto byte = [](float value) { return static_cast<uint32_t>(value <= 0.0f ? 0.0f : (value >= 255.0f ? 255.0f : value + 0.5f)); };
+		auto byte = [](float value)
+		{
+			return static_cast<uint32_t>(value <= 0.0f ? 0.0f : (value >= 255.0f ? 255.0f : value + 0.5f));
+		};
 		return byte(b) | byte(g) << 8 | byte(r) << 16 | byte(a) << 24;
 	}
 
@@ -462,11 +467,12 @@ namespace
 			const __m128 surface = _mm_cvtepi32_ps(_mm_unpacklo_epi16(_mm_unpacklo_epi8(packed, zero), zero));
 			const __m128 a = _mm_loadu_ps(top + x * 4), b = _mm_loadu_ps(bottom + x * 4);
 			const __m128 light = _mm_add_ps(a, _mm_mul_ps(_mm_sub_ps(b, a), weight));
-			const __m128 color = _mm_add_ps(_mm_mul_ps(surface, _mm_set1_ps(feather * exposure)),
-				_mm_add_ps(light, _mm_mul_ps(flashColor, _mm_set1_ps(feather))));
+			const __m128 lit = _mm_add_ps(light, _mm_mul_ps(flashColor, _mm_set1_ps(feather)));
+			const __m128 color = _mm_add_ps(_mm_mul_ps(surface, _mm_set1_ps(feather * exposure)), lit);
+			// Soft shoulder: values above the knee approach knee + room but never reach it.
 			const __m128 over = _mm_max_ps(_mm_sub_ps(color, knee), _mm_setzero_ps());
-			const __m128 toned = _mm_and_ps(_mm_add_ps(_mm_min_ps(color, knee),
-				_mm_div_ps(_mm_mul_ps(room, over), _mm_add_ps(over, room))), colorMask);
+			const __m128 shoulder = _mm_div_ps(_mm_mul_ps(room, over), _mm_add_ps(over, room));
+			const __m128 toned = _mm_and_ps(_mm_add_ps(_mm_min_ps(color, knee), shoulder), colorMask);
 			__m128 peak = _mm_max_ps(toned, _mm_shuffle_ps(toned, toned, _MM_SHUFFLE(2, 1, 0, 3)));
 			peak = _mm_max_ps(peak, _mm_shuffle_ps(peak, peak, _MM_SHUFFLE(1, 0, 3, 2)));
 			peak = _mm_max_ps(peak, _mm_set1_ps(std::min(255.0f, feather * 255.0f)));
@@ -533,7 +539,10 @@ namespace Nyx
 				// Fewer helpers is fine; a failed thread must never take the editor down.
 				try
 				{
-					Threads.emplace_back([this, index] { Loop(index + 1); });
+					Threads.emplace_back([this, index]
+						{
+							Loop(index + 1);
+						});
 				}
 				catch (...)
 				{
@@ -572,7 +581,10 @@ namespace Nyx
 			Wake.notify_all();
 			Slice(0, rows, job);
 			std::unique_lock lock(Mutex);
-			Done.wait(lock, [this] { return Remaining == 0; });
+			Done.wait(lock, [this]
+				{
+					return Remaining == 0;
+				});
 			Job = nullptr;
 		}
 
@@ -596,7 +608,10 @@ namespace Nyx
 				int rows = 0;
 				{
 					std::unique_lock lock(Mutex);
-					Wake.wait(lock, [&] { return bStop || Generation != seen; });
+					Wake.wait(lock, [&]
+						{
+							return bStop || Generation != seen;
+						});
 					if (bStop)
 					{
 						return;
@@ -742,47 +757,52 @@ namespace Nyx
 					Desktop.data() + static_cast<size_t>(y) * PixelWidth);
 			}
 		}
-		const auto runRows = [this](int rows, const std::function<void(int, int)>& job) { ForRows(rows, job); };
+		const auto runRows = [this](int rows, const std::function<void(int, int)>& job)
+		{
+			ForRows(rows, job);
+		};
 		// Broad clouds carry the lighting; the desktop is crushed into a dark, narrow
 		// range beneath them so it reads as structure under a storm, not as a UI.
-		const CoarseField cloudLight([](float u, float v)
+		const auto sampleCloudLight = [](float u, float v)
 		{
 			const float clouds = Fbm(u * 0.0042f, v * 0.0085f, 11u, 5);
 			const float nx = (u - Focus.X) / 560.0f, ny = (v - 300.0f) / 470.0f;
 			const float vignette = 1.0f - 0.55f * std::min(1.0f, nx * nx * 0.8f + ny * ny);
 			return (0.50f + 0.95f * clouds) * vignette;
-		}, runRows);
-		const CoarseField cloudGlow([](float u, float v)
+		};
+		const CoarseField cloudLight(sampleCloudLight, runRows);
+		const auto sampleCloudGlow = [](float u, float v)
 		{
 			const float clouds = Fbm(u * 0.0042f, v * 0.0085f, 11u, 5);
 			const float wisps = Fbm(u * 0.012f + 3.1f, v * 0.021f, 23u, 4);
 			const float skyLight = std::exp(-DistanceToFocus({ u, v }) / 360.0f);
 			return (wisps - 0.5f) * 0.12f + skyLight * 0.26f * clouds;
-		}, runRows);
+		};
+		const CoarseField cloudGlow(sampleCloudGlow, runRows);
 		Sky.resize(pixelCount);
 		uint32_t* sky = Sky.data();
 		const uint32_t* source = bHasDesktop ? Desktop.data() : nullptr;
 		ForRows(PixelHeight, [&](int firstRow, int endRow)
-		{
-		for (int y = firstRow; y < endRow; ++y)
-		{
-			const float v = (y + 0.5f) / Scale;
-			for (int x = 0; x < PixelWidth; ++x)
 			{
-				const float u = (x + 0.5f) / Scale;
-				const size_t index = static_cast<size_t>(y) * PixelWidth + x;
-				float luminance = 0.30f;
-				if (source)
+				for (int y = firstRow; y < endRow; ++y)
 				{
-					const uint32_t pixel = source[index];
-					luminance = (0.2126f * (pixel >> 16 & 255) + 0.7152f * (pixel >> 8 & 255) + 0.0722f * (pixel & 255)) / 255.0f;
+					const float v = (y + 0.5f) / Scale;
+					for (int x = 0; x < PixelWidth; ++x)
+					{
+						const float u = (x + 0.5f) / Scale;
+						const size_t index = static_cast<size_t>(y) * PixelWidth + x;
+						float luminance = 0.30f;
+						if (source)
+						{
+							const uint32_t pixel = source[index];
+							luminance = (0.2126f * (pixel >> 16 & 255) + 0.7152f * (pixel >> 8 & 255) + 0.0722f * (pixel & 255)) / 255.0f;
+						}
+						const float level = (0.08f + luminance * 0.34f) * cloudLight.At(u, v) + cloudGlow.At(u, v);
+						const Color color = Ramp(SkyStops, level);
+						sky[index] = Pack(color.R, color.G, color.B, 255.0f);
+					}
 				}
-				const float level = (0.08f + luminance * 0.34f) * cloudLight.At(u, v) + cloudGlow.At(u, v);
-				const Color color = Ramp(SkyStops, level);
-				sky[index] = Pack(color.R, color.G, color.B, 255.0f);
-			}
-		}
-		});
+			});
 	}
 
 	void StartupBannerRiftRenderer::PrepareWeb()
@@ -818,7 +838,10 @@ namespace Nyx
 					active.push_back(index);
 				}
 			}
-			std::sort(active.begin(), active.end(), [&](int a, int b) { return spokes[a].Angle < spokes[b].Angle; });
+			std::sort(active.begin(), active.end(), [&](int a, int b)
+				{
+					return spokes[a].Angle < spokes[b].Angle;
+				});
 			return active;
 		};
 		for (int ring = 1; ring < ringCount; ++ring)
@@ -877,18 +900,18 @@ namespace Nyx
 				cell.Outline.push_back(spokes[b].Points[band + 1]);
 				// Spokes born on the outer ring between a and b, in descending angle.
 				std::vector<int> born;
+				const float span = AngleBetween(spokes[a].Angle, spokes[b].Angle);
 				for (int other = 0; other < static_cast<int>(spokes.size()); ++other)
 				{
-					if (spokes[other].StartRing == band + 1 && AngleBetween(spokes[a].Angle, spokes[other].Angle) <
-						AngleBetween(spokes[a].Angle, spokes[b].Angle))
+					if (spokes[other].StartRing == band + 1 && AngleBetween(spokes[a].Angle, spokes[other].Angle) < span)
 					{
 						born.push_back(other);
 					}
 				}
 				std::sort(born.begin(), born.end(), [&](int p, int q)
-				{
-					return AngleBetween(spokes[a].Angle, spokes[p].Angle) > AngleBetween(spokes[a].Angle, spokes[q].Angle);
-				});
+					{
+						return AngleBetween(spokes[a].Angle, spokes[p].Angle) > AngleBetween(spokes[a].Angle, spokes[q].Angle);
+					});
 				for (const int spoke : born)
 				{
 					cell.Outline.push_back(spokes[spoke].Points[band + 1]);
@@ -994,11 +1017,11 @@ namespace Nyx
 				scaled.push_back({ point.X * Scale, point.Y * Scale });
 			}
 			FillPolygon(scaled, PixelWidth, PixelHeight, [&](int x, int y)
-			{
-				map[static_cast<size_t>(y) * PixelWidth + x] = static_cast<uint16_t>(index);
-				RowSpans[y * 2] = std::min(RowSpans[y * 2], x);
-				RowSpans[y * 2 + 1] = std::max(RowSpans[y * 2 + 1], x);
-			});
+				{
+					map[static_cast<size_t>(y) * PixelWidth + x] = static_cast<uint16_t>(index);
+					RowSpans[y * 2] = std::min(RowSpans[y * 2], x);
+					RowSpans[y * 2 + 1] = std::max(RowSpans[y * 2 + 1], x);
+				});
 		}
 	}
 
@@ -1008,7 +1031,7 @@ namespace Nyx
 		unsigned int serial = 500;
 		// Long fractures shoot out from the web across the rest of the sky.
 		auto grow = [&](auto&& self, Vec2 start, float heading, float startTime, float maxLength,
-			float width, float intensity, int depth) -> void
+						float width, float intensity, int depth) -> void
 		{
 			Crack crack;
 			crack.StartTime = startTime;
@@ -1019,7 +1042,12 @@ namespace Nyx
 			crack.Lengths.push_back(0.0f);
 			float direction = heading, length = 0.0f;
 			Vec2 p = start;
-			struct Pending { Vec2 At; float Heading; float Time; };
+			struct Pending
+			{
+				Vec2 At;
+				float Heading;
+				float Time;
+			};
 			std::vector<Pending> branches;
 			while (length < maxLength)
 			{
@@ -1086,8 +1114,11 @@ namespace Nyx
 
 	void StartupBannerRiftRenderer::PrepareRift()
 	{
-		const auto runRows = [this](int rows, const std::function<void(int, int)>& job) { ForRows(rows, job); };
-		const CoarseField heatField([](float u, float v)
+		const auto runRows = [this](int rows, const std::function<void(int, int)>& job)
+		{
+			ForRows(rows, job);
+		};
+		const auto sampleHeat = [](float u, float v)
 		{
 			const float dx = u - Focus.X, dy = v - Focus.Y;
 			const float distance = std::sqrt(dx * dx + dy * dy) + 1.0e-3f;
@@ -1097,64 +1128,69 @@ namespace Nyx
 			const float rays = Fbm(dx / distance * 4.0f + 7.0f, dy / distance * 4.0f + 7.0f + distance * 0.0025f, 54u, 3);
 			const float core = std::exp(-distance / 150.0f);
 			return 0.14f + core * 0.90f + (smoke - 0.45f) * 0.62f + (rays - 0.5f) * 0.42f * (1.0f - core);
-		}, runRows);
-		const CoarseField sootField([](float u, float v)
+		};
+		const CoarseField heatField(sampleHeat, runRows);
+		const auto sampleSoot = [](float u, float v)
 		{
 			const float smoke = Fbm(u * 0.0058f + 2.0f, v * 0.0058f - 4.0f, 56u, 4);
 			return 0.40f + 0.60f * SmoothStep((smoke - 0.30f) / 0.40f);
-		}, runRows);
-		const CoarseField crystalField([](float u, float v)
+		};
+		const CoarseField sootField(sampleSoot, runRows);
+		const auto sampleCrystal = [](float u, float v)
 		{
 			return SmoothStep((Fbm(u * 0.011f, v * 0.011f, 55u, 3) - 0.36f) / 0.22f);
-		}, runRows);
+		};
+		const CoarseField crystalField(sampleCrystal, runRows);
 
 		// Crystalline splinters catch the fire. Ridged noise is sampled with the
 		// direction to the focus and the distance from it as separate axes, so the
 		// creases stretch outward like shards bursting from the breach. Using the
 		// direction vector (not an angle) keeps the field free of a wrap-around seam.
-		const CoarseField splinters([](float u, float v)
+		const auto sampleSplinters = [](float u, float v)
 		{
 			const float dx = u - Focus.X, dy = v - Focus.Y;
 			const float distance = std::sqrt(dx * dx + dy * dy) + 1.0e-3f;
 			return RidgedFbm3(dx / distance * 9.0f, dy / distance * 9.0f, distance * 0.011f, 57u, 4);
-		}, runRows, 1.5f);
-		const CoarseField facets([](float u, float v)
+		};
+		const CoarseField splinters(sampleSplinters, runRows, 1.5f);
+		const auto sampleFacets = [](float u, float v)
 		{
 			const float dx = u - Focus.X, dy = v - Focus.Y;
 			const float distance = std::sqrt(dx * dx + dy * dy) + 1.0e-3f;
 			return ValueNoise3(dx / distance * 5.0f + 2.0f, dy / distance * 5.0f, distance * 0.006f, 58u);
-		}, runRows, 3.0f);
+		};
+		const CoarseField facets(sampleFacets, runRows, 3.0f);
 		Rift.resize(static_cast<size_t>(PixelWidth) * PixelHeight);
 		uint32_t* rift = Rift.data();
 		ForRows(PixelHeight, [&](int firstRow, int endRow)
-		{
-		for (int y = firstRow; y < endRow; ++y)
-		{
-			const float v = (y + 0.5f) / Scale;
-			const float canopy = 0.55f + 0.45f * SmoothStep((v - Focus.Y + 190.0f) / 210.0f);
-			for (int x = 0; x < PixelWidth; ++x)
 			{
-				const float u = (x + 0.5f) / Scale;
-				const float heat = heatField.At(u, v);
-				Color color = Ramp(FireStops, heat);
-				// Crystal is densest towards the torn border, as in a broken geode.
-				const float border = SmoothStep((ZoneDistance({ u, v }) - 0.40f) / 0.45f);
-				const float crystals = std::min(1.0f, crystalField.At(u, v) * (0.45f + 0.9f * border));
-				const float ridge = splinters.At(u, v);
-				// Broad facets: gold planes of varying brightness.
-				const float shade = 0.25f + 0.75f * facets.At(u, v);
-				const Color gold = Color{ 250.0f, 186.0f, 106.0f } * (shade * ridge * (0.35f + std::min(1.0f, heat) * 0.9f));
-				color = Mix(color, gold, crystals * 0.6f);
-				// Crease highlights: the sharp ridges glint white-gold.
-				const float crease = ridge * ridge * ridge * ridge;
-				const float glint = crease * crystals * (0.25f + std::min(1.2f, heat) * 1.1f);
-				color = { color.R + 255.0f * glint, color.G + 226.0f * glint, color.B + 172.0f * glint };
-				// Dark rolling smoke between the bright structures gives the breach depth.
-				color = color * (sootField.At(u, v) * canopy);
-				rift[static_cast<size_t>(y) * PixelWidth + x] = Pack(color.R, color.G, color.B, 255.0f);
-			}
-		}
-		});
+				for (int y = firstRow; y < endRow; ++y)
+				{
+					const float v = (y + 0.5f) / Scale;
+					const float canopy = 0.55f + 0.45f * SmoothStep((v - Focus.Y + 190.0f) / 210.0f);
+					for (int x = 0; x < PixelWidth; ++x)
+					{
+						const float u = (x + 0.5f) / Scale;
+						const float heat = heatField.At(u, v);
+						Color color = Ramp(FireStops, heat);
+						// Crystal is densest towards the torn border, as in a broken geode.
+						const float border = SmoothStep((ZoneDistance({ u, v }) - 0.40f) / 0.45f);
+						const float crystals = std::min(1.0f, crystalField.At(u, v) * (0.45f + 0.9f * border));
+						const float ridge = splinters.At(u, v);
+						// Broad facets: gold planes of varying brightness.
+						const float shade = 0.25f + 0.75f * facets.At(u, v);
+						const Color gold = Color{ 250.0f, 186.0f, 106.0f } * (shade * ridge * (0.35f + std::min(1.0f, heat) * 0.9f));
+						color = Mix(color, gold, crystals * 0.6f);
+						// Crease highlights: the sharp ridges glint white-gold.
+						const float crease = ridge * ridge * ridge * ridge;
+						const float glint = crease * crystals * (0.25f + std::min(1.2f, heat) * 1.1f);
+						color = { color.R + 255.0f * glint, color.G + 226.0f * glint, color.B + 172.0f * glint };
+						// Dark rolling smoke between the bright structures gives the breach depth.
+						color = color * (sootField.At(u, v) * canopy);
+						rift[static_cast<size_t>(y) * PixelWidth + x] = Pack(color.R, color.G, color.B, 255.0f);
+					}
+				}
+			});
 	}
 
 	void StartupBannerRiftRenderer::AddLine(Vec2 a, Vec2 b, float width, Color color)
@@ -1170,11 +1206,11 @@ namespace Nyx
 		const int stride = PixelWidth;
 		RasterizeSegment((a.X + ShakeX) * s, (a.Y + ShakeY) * s, (b.X + ShakeX) * s, (b.Y + ShakeY) * s,
 			halfWidth, PixelWidth, PixelHeight, [&](int x, int y, float distance)
-		{
-			const float coverage = Saturate(halfWidth + 0.5f - distance);
-			AddLight(frame[static_cast<size_t>(y) * stride + x], static_cast<int>(color.R * coverage),
-				static_cast<int>(color.G * coverage), static_cast<int>(color.B * coverage));
-		});
+			{
+				const float coverage = Saturate(halfWidth + 0.5f - distance);
+				AddLight(frame[static_cast<size_t>(y) * stride + x], static_cast<int>(color.R * coverage),
+					static_cast<int>(color.G * coverage), static_cast<int>(color.B * coverage));
+			});
 	}
 
 	void StartupBannerRiftRenderer::StrokeCrack(Vec2 a, Vec2 b, float seamWidth, float darkness, float coreWidth, Color core)
@@ -1187,18 +1223,18 @@ namespace Nyx
 		const int stride = PixelWidth;
 		RasterizeSegment((a.X + ShakeX) * s, (a.Y + ShakeY) * s, (b.X + ShakeX) * s, (b.Y + ShakeY) * s,
 			std::max(seamHalf, coreHalf), PixelWidth, PixelHeight, [&](int x, int y, float distance)
-		{
-			uint32_t& pixel = frame[static_cast<size_t>(y) * stride + x];
-			// The physical gap darkens the surface; the glow sits inside it.
-			const int keep = 256 - static_cast<int>(darkness * Saturate(seamHalf + 0.5f - distance) * 256.0f);
-			const uint32_t r = (pixel >> 16 & 255) * keep >> 8, g = (pixel >> 8 & 255) * keep >> 8, bl = (pixel & 255) * keep >> 8;
-			pixel = (pixel & 0xff000000u) | r << 16 | g << 8 | bl;
-			const float coverage = Saturate(coreHalf + 0.5f - distance);
-			if (coverage > 0.0f)
 			{
-				AddLight(pixel, static_cast<int>(core.R * coverage), static_cast<int>(core.G * coverage), static_cast<int>(core.B * coverage));
-			}
-		});
+				uint32_t& pixel = frame[static_cast<size_t>(y) * stride + x];
+				// The physical gap darkens the surface; the glow sits inside it.
+				const int keep = 256 - static_cast<int>(darkness * Saturate(seamHalf + 0.5f - distance) * 256.0f);
+				const uint32_t r = (pixel >> 16 & 255) * keep >> 8, g = (pixel >> 8 & 255) * keep >> 8, bl = (pixel & 255) * keep >> 8;
+				pixel = (pixel & 0xff000000u) | r << 16 | g << 8 | bl;
+				const float coverage = Saturate(coreHalf + 0.5f - distance);
+				if (coverage > 0.0f)
+				{
+					AddLight(pixel, static_cast<int>(core.R * coverage), static_cast<int>(core.G * coverage), static_cast<int>(core.B * coverage));
+				}
+			});
 	}
 
 	void StartupBannerRiftRenderer::EmitLine(Vec2 a, Vec2 b, float width, Color color)
@@ -1210,13 +1246,13 @@ namespace Nyx
 		const int stride = EmissionWidth;
 		RasterizeSegment((a.X + ShakeX) * s, (a.Y + ShakeY) * s, (b.X + ShakeX) * s, (b.Y + ShakeY) * s,
 			halfWidth, EmissionWidth, EmissionHeight, [&](int x, int y, float distance)
-		{
-			const float coverage = Saturate(halfWidth + 0.5f - distance);
-			float* pixel = emission + (static_cast<size_t>(y) * stride + x) * 3;
-			pixel[0] += color.R * coverage;
-			pixel[1] += color.G * coverage;
-			pixel[2] += color.B * coverage;
-		});
+			{
+				const float coverage = Saturate(halfWidth + 0.5f - distance);
+				float* pixel = emission + (static_cast<size_t>(y) * stride + x) * 3;
+				pixel[0] += color.R * coverage;
+				pixel[1] += color.G * coverage;
+				pixel[2] += color.B * coverage;
+			});
 	}
 
 	void StartupBannerRiftRenderer::EmitBlob(Vec2 center, float radius, Color color)
@@ -1268,8 +1304,9 @@ namespace Nyx
 		// here are therefore a plain shifted copy of the pre-graded sky.
 		const float grade = bHasDesktop ? SmoothStep(time / 0.55f) : 1.0f;
 		const float impactAge = time - ImpactSeconds;
-		const float riftGain = impactAge < 0.0f ? 0.0f :
-			(1.0f + 0.25f * std::exp(-impactAge * 2.4f)) * (0.94f + 0.06f * std::sin(time * 11.0f));
+		const float riftGain = impactAge < 0.0f
+			? 0.0f
+			: (1.0f + 0.25f * std::exp(-impactAge * 2.4f)) * (0.94f + 0.06f * std::sin(time * 11.0f));
 		const int shiftX = static_cast<int>(std::lround(ShakeX * Scale));
 		const int shiftY = static_cast<int>(std::lround(ShakeY * Scale));
 		const int driftX = static_cast<int>(std::lround(std::sin(time * 0.9f) * 6.0f * Scale));
@@ -1303,91 +1340,91 @@ namespace Nyx
 		uint32_t* const frame = Frame.data();
 		const int* const spans = RowSpans.data();
 		ForRows(height, [&](int firstRow, int endRow)
-		{
-			const int* const cellGain = gain;
-			const uint16_t* const cellMap = cells;
-			const int offsetX = shiftX, offsetY = shiftY, riftX = driftX;
-			for (int y = firstRow; y < endRow; ++y)
 			{
-				uint32_t* const out = frame + static_cast<size_t>(y) * width;
-				const int sy = std::clamp(y - offsetY, 0, height - 1);
-				const uint32_t* skyRow = sky + static_cast<size_t>(sy) * width;
-				const uint32_t* riftRow = rift + static_cast<size_t>(std::clamp(y + driftY, 0, height - 1)) * width;
-				const bool bBreachRow = bAnyOpen && spans[sy * 2] <= spans[sy * 2 + 1];
-				if (!desktop && !bRipple)
+				const int* const cellGain = gain;
+				const uint16_t* const cellMap = cells;
+				const int offsetX = shiftX, offsetY = shiftY, riftX = driftX;
+				for (int y = firstRow; y < endRow; ++y)
 				{
-					// Fast path: shifted copy, clamped at the edges.
-					const int begin = std::clamp(offsetX, 0, width), end = std::clamp(width + offsetX, 0, width);
-					std::fill(out, out + begin, skyRow[0]);
-					std::copy(skyRow + (begin - offsetX), skyRow + (end - offsetX), out + begin);
-					std::fill(out + end, out + width, skyRow[width - 1]);
-					if (bBreachRow)
+					uint32_t* const out = frame + static_cast<size_t>(y) * width;
+					const int sy = std::clamp(y - offsetY, 0, height - 1);
+					const uint32_t* skyRow = sky + static_cast<size_t>(sy) * width;
+					const uint32_t* riftRow = rift + static_cast<size_t>(std::clamp(y + driftY, 0, height - 1)) * width;
+					const bool bBreachRow = bAnyOpen && spans[sy * 2] <= spans[sy * 2 + 1];
+					if (!desktop && !bRipple)
 					{
-						const uint16_t* const cellRow = cellMap + static_cast<size_t>(sy) * width;
-						const int x0 = std::max(0, spans[sy * 2] + offsetX), x1 = std::min(width - 1, spans[sy * 2 + 1] + offsetX);
-						for (int x = x0; x <= x1; ++x)
+						// Fast path: shifted copy, clamped at the edges.
+						const int begin = std::clamp(offsetX, 0, width), end = std::clamp(width + offsetX, 0, width);
+						std::fill(out, out + begin, skyRow[0]);
+						std::copy(skyRow + (begin - offsetX), skyRow + (end - offsetX), out + begin);
+						std::fill(out + end, out + width, skyRow[width - 1]);
+						if (bBreachRow)
 						{
-							const int open = cellGain[cellRow[x - offsetX]];
-							if (open)
+							const uint16_t* const cellRow = cellMap + static_cast<size_t>(sy) * width;
+							const int x0 = std::max(0, spans[sy * 2] + offsetX), x1 = std::min(width - 1, spans[sy * 2 + 1] + offsetX);
+							for (int x = x0; x <= x1; ++x)
 							{
-								const uint32_t pixel = riftRow[std::clamp(x + riftX, 0, width - 1)];
-								const int r = static_cast<int>(pixel >> 16 & 255) * open >> 8;
-								const int g = static_cast<int>(pixel >> 8 & 255) * open >> 8;
-								const int b = static_cast<int>(pixel & 255) * open >> 8;
-								out[x] = static_cast<uint32_t>(std::min(b, 255)) | static_cast<uint32_t>(std::min(g, 255)) << 8 |
-									static_cast<uint32_t>(std::min(r, 255)) << 16 | 0xff000000u;
+								const int open = cellGain[cellRow[x - offsetX]];
+								if (open)
+								{
+									const uint32_t pixel = riftRow[std::clamp(x + riftX, 0, width - 1)];
+									const int r = static_cast<int>(pixel >> 16 & 255) * open >> 8;
+									const int g = static_cast<int>(pixel >> 8 & 255) * open >> 8;
+									const int b = static_cast<int>(pixel & 255) * open >> 8;
+									out[x] = static_cast<uint32_t>(std::min(b, 255)) | static_cast<uint32_t>(std::min(g, 255)) << 8 |
+										static_cast<uint32_t>(std::min(r, 255)) << 16 | 0xff000000u;
+								}
 							}
 						}
+						continue;
 					}
-					continue;
-				}
-				for (int x = 0; x < width; ++x)
-				{
-					int sx = x - shiftX;
-					int rowSource = sy;
-					if (bRipple)
+					for (int x = 0; x < width; ++x)
 					{
-						const float dx = x - focusX, dy = (y - focusY) * 1.6f;
-						const float distance = std::sqrt(dx * dx + dy * dy) + 1.0e-3f;
-						const float band = (distance - rippleRadius) / rippleWidth;
-						if (band > -3.0f && band < 3.0f)
+						int sx = x - shiftX;
+						int rowSource = sy;
+						if (bRipple)
 						{
-							const float push = rippleAmplitude * std::exp(-band * band) * band;
-							sx -= static_cast<int>(dx / distance * push);
-							rowSource = std::clamp(rowSource - static_cast<int>(dy / distance * push / 1.6f), 0, height - 1);
+							const float dx = x - focusX, dy = (y - focusY) * 1.6f;
+							const float distance = std::sqrt(dx * dx + dy * dy) + 1.0e-3f;
+							const float band = (distance - rippleRadius) / rippleWidth;
+							if (band > -3.0f && band < 3.0f)
+							{
+								const float push = rippleAmplitude * std::exp(-band * band) * band;
+								sx -= static_cast<int>(dx / distance * push);
+								rowSource = std::clamp(rowSource - static_cast<int>(dy / distance * push / 1.6f), 0, height - 1);
+							}
 						}
-					}
-					sx = sx < 0 ? 0 : (sx >= width ? width - 1 : sx);
-					const size_t source = static_cast<size_t>(rowSource) * width + sx;
-					const int open = gain[cells[source]];
-					int r, g, b;
-					if (open)
-					{
-						const uint32_t pixel = riftRow[std::clamp(x + driftX, 0, width - 1)];
-						r = static_cast<int>(pixel >> 16 & 255) * open >> 8;
-						g = static_cast<int>(pixel >> 8 & 255) * open >> 8;
-						b = static_cast<int>(pixel & 255) * open >> 8;
-					}
-					else
-					{
-						const uint32_t color = sky[source];
-						r = static_cast<int>(color >> 16 & 255);
-						g = static_cast<int>(color >> 8 & 255);
-						b = static_cast<int>(color & 255);
-						if (desktop)
+						sx = sx < 0 ? 0 : (sx >= width ? width - 1 : sx);
+						const size_t source = static_cast<size_t>(rowSource) * width + sx;
+						const int open = gain[cells[source]];
+						int r, g, b;
+						if (open)
 						{
-							const uint32_t original = desktop[source];
-							const int ro = static_cast<int>(original >> 16 & 255), go = static_cast<int>(original >> 8 & 255), bo = static_cast<int>(original & 255);
-							r = ro + ((r - ro) * fixedGrade >> 8);
-							g = go + ((g - go) * fixedGrade >> 8);
-							b = bo + ((b - bo) * fixedGrade >> 8);
+							const uint32_t pixel = riftRow[std::clamp(x + driftX, 0, width - 1)];
+							r = static_cast<int>(pixel >> 16 & 255) * open >> 8;
+							g = static_cast<int>(pixel >> 8 & 255) * open >> 8;
+							b = static_cast<int>(pixel & 255) * open >> 8;
 						}
+						else
+						{
+							const uint32_t color = sky[source];
+							r = static_cast<int>(color >> 16 & 255);
+							g = static_cast<int>(color >> 8 & 255);
+							b = static_cast<int>(color & 255);
+							if (desktop)
+							{
+								const uint32_t original = desktop[source];
+								const int ro = static_cast<int>(original >> 16 & 255), go = static_cast<int>(original >> 8 & 255), bo = static_cast<int>(original & 255);
+								r = ro + ((r - ro) * fixedGrade >> 8);
+								g = go + ((g - go) * fixedGrade >> 8);
+								b = bo + ((b - bo) * fixedGrade >> 8);
+							}
+						}
+						out[x] = static_cast<uint32_t>(std::min(b, 255)) | static_cast<uint32_t>(std::min(g, 255)) << 8 |
+							static_cast<uint32_t>(std::min(r, 255)) << 16 | 0xff000000u;
 					}
-					out[x] = static_cast<uint32_t>(std::min(b, 255)) | static_cast<uint32_t>(std::min(g, 255)) << 8 |
-						static_cast<uint32_t>(std::min(r, 255)) << 16 | 0xff000000u;
 				}
-			}
-		});
+			});
 	}
 
 	void StartupBannerRiftRenderer::DrawShards(float time)
@@ -1402,7 +1439,10 @@ namespace Nyx
 			}
 		}
 		// Earlier breaks are closer to the camera by now: draw them last.
-		std::sort(order.begin(), order.end(), [&](int a, int b) { return Cells[a].BreakTime > Cells[b].BreakTime; });
+		std::sort(order.begin(), order.end(), [&](int a, int b)
+			{
+				return Cells[a].BreakTime > Cells[b].BreakTime;
+			});
 
 		const uint16_t* cells = CellMap.data();
 		const uint32_t* sky = Sky.data();
@@ -1525,8 +1565,9 @@ namespace Nyx
 			if (bFirstOpen || bSecondOpen)
 			{
 				// The torn border of the breach burns white-gold, then settles to embers.
-				const float opened = time - std::max(bFirstOpen ? Cells[edge.First].BreakTime : 0.0f,
-					bSecondOpen ? Cells[edge.Second].BreakTime : 0.0f);
+				const float firstBreak = bFirstOpen ? Cells[edge.First].BreakTime : 0.0f;
+				const float secondBreak = bSecondOpen ? Cells[edge.Second].BreakTime : 0.0f;
+				const float opened = time - std::max(firstBreak, secondBreak);
 				const float heat = 0.5f + 1.1f * std::exp(-opened * 4.0f);
 				AddLine(edge.Near, edge.Far, 1.3f, Color{ 255.0f, 196.0f, 120.0f } * heat);
 				EmitLine(edge.Near, edge.Far, 1.4f, Mix(Ember, ImpactWhite, Saturate(std::exp(-opened * 5.0f))) * (0.8f * heat));
@@ -1838,35 +1879,35 @@ namespace Nyx
 		const size_t rowFloats = static_cast<size_t>(PixelWidth) * 4;
 		UpsampledRows.resize(rowFloats * 8);
 		ForRows(PixelHeight, [&](int firstRow, int endRow)
-		{
-			// Each slice owns a pair of cached rows; there are at most four slices.
-			const size_t slot = std::min<size_t>(static_cast<size_t>(firstRow) * 4 / std::max(1, PixelHeight), 3);
-			float* upper = UpsampledRows.data() + rowFloats * 2 * slot;
-			float* lower = upper + rowFloats;
-			int upperRow = -1, lowerRow = -1;
-			for (int y = firstRow; y < endRow; ++y)
 			{
-				const float ey = std::clamp((y + 0.5f) * 0.25f - 0.5f, 0.0f, EmissionHeight - 1.001f);
-				const int row0 = static_cast<int>(ey);
-				const int row1 = std::min(row0 + 1, EmissionHeight - 1);
-				if (row0 != upperRow)
+				// Each slice owns a pair of cached rows; there are at most four slices.
+				const size_t slot = std::min<size_t>(static_cast<size_t>(firstRow) * 4 / std::max(1, PixelHeight), 3);
+				float* upper = UpsampledRows.data() + rowFloats * 2 * slot;
+				float* lower = upper + rowFloats;
+				int upperRow = -1, lowerRow = -1;
+				for (int y = firstRow; y < endRow; ++y)
 				{
-					if (row0 == lowerRow)
+					const float ey = std::clamp((y + 0.5f) * 0.25f - 0.5f, 0.0f, EmissionHeight - 1.001f);
+					const int row0 = static_cast<int>(ey);
+					const int row1 = std::min(row0 + 1, EmissionHeight - 1);
+					if (row0 != upperRow)
 					{
-						std::swap(upper, lower);
+						if (row0 == lowerRow)
+						{
+							std::swap(upper, lower);
+						}
+						else
+						{
+							upsampleRow(row0, upper);
+						}
+						upsampleRow(row1, lower);
+						upperRow = row0;
+						lowerRow = row1;
 					}
-					else
-					{
-						upsampleRow(row0, upper);
-					}
-					upsampleRow(row1, lower);
-					upperRow = row0;
-					lowerRow = row1;
+					CompositeRow(Frame.data() + static_cast<size_t>(y) * PixelWidth, upper, lower, ey - row0,
+						FeatherColumns.data(), FeatherRows[y] * Fade, exposure, flash, ToneCurve.data(), PixelWidth);
 				}
-				CompositeRow(Frame.data() + static_cast<size_t>(y) * PixelWidth, upper, lower, ey - row0,
-					FeatherColumns.data(), FeatherRows[y] * Fade, exposure, flash, ToneCurve.data(), PixelWidth);
-			}
-		});
+			});
 	}
 
 	void StartupBannerRiftRenderer::DrawBanner(float opacity)

@@ -54,13 +54,13 @@ namespace Nyx
 		}
 
 		auto freeData = [&]()
+		{
+			if (data)
 			{
-				if (data)
-				{
-					cgltf_free(data);
-					data = nullptr;
-				}
-			};
+				cgltf_free(data);
+				data = nullptr;
+			}
+		};
 
 		result = cgltf_load_buffers(&options, data, filePath.c_str());
 		if (result != cgltf_result_success)
@@ -90,8 +90,7 @@ namespace Nyx
 					pbr.base_color_factor[0],
 					pbr.base_color_factor[1],
 					pbr.base_color_factor[2],
-					pbr.base_color_factor[3]
-				);
+					pbr.base_color_factor[3]);
 
 				if (pbr.base_color_texture.texture &&
 					pbr.base_color_texture.texture->image)

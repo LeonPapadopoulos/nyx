@@ -41,11 +41,11 @@ namespace Nyx::HeaderTool
 
 		std::vector<const char*> parts;
 
-		if (HasFlag(flags, EParsedPropertyFlags::Edit))      parts.push_back("EPropertyFlags::Edit");
-		if (HasFlag(flags, EParsedPropertyFlags::Undo))      parts.push_back("EPropertyFlags::Undo");
+		if (HasFlag(flags, EParsedPropertyFlags::Edit)) parts.push_back("EPropertyFlags::Edit");
+		if (HasFlag(flags, EParsedPropertyFlags::Undo)) parts.push_back("EPropertyFlags::Undo");
 		if (HasFlag(flags, EParsedPropertyFlags::Serialize)) parts.push_back("EPropertyFlags::Serialize");
-		if (HasFlag(flags, EParsedPropertyFlags::Hidden))    parts.push_back("EPropertyFlags::Hidden");
-		if (HasFlag(flags, EParsedPropertyFlags::ReadOnly))  parts.push_back("EPropertyFlags::ReadOnly");
+		if (HasFlag(flags, EParsedPropertyFlags::Hidden)) parts.push_back("EPropertyFlags::Hidden");
+		if (HasFlag(flags, EParsedPropertyFlags::ReadOnly)) parts.push_back("EPropertyFlags::ReadOnly");
 
 		std::ostringstream out;
 		for (size_t i = 0; i < parts.size(); ++i)
@@ -100,9 +100,9 @@ namespace Nyx::HeaderTool
 						<< EscapeCString(entry.Name)
 						<< "\", \""
 						<< EscapeCString(
-							entry.Value.has_value()
-							? MetadataValueToString(entry.Value.value())
-							: "")
+							   entry.Value.has_value()
+								   ? MetadataValueToString(entry.Value.value())
+								   : "")
 						<< "\" },\n";
 				}
 
@@ -126,9 +126,9 @@ namespace Nyx::HeaderTool
 							<< EscapeCString(entry.Name)
 							<< "\", \""
 							<< EscapeCString(
-								entry.Value.has_value()
-								? MetadataValueToString(entry.Value.value())
-								: "")
+								   entry.Value.has_value()
+									   ? MetadataValueToString(entry.Value.value())
+									   : "")
 							<< "\" },\n";
 					}
 

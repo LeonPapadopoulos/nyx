@@ -2,7 +2,7 @@
 #include "NyxEngineAPI.h"
 #include <string>
 
-namespace Nyx 
+namespace Nyx
 {
 	struct WindowSpecs
 	{
@@ -33,4 +33,3 @@ namespace Nyx
 		static IWindow* Create(const WindowSpecs& specs = WindowSpecs());
 	};
 }
-

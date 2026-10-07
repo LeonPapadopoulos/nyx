@@ -10,10 +10,10 @@ namespace
 	constexpr float BannerLogicalWidth = 640.0f;
 
 	// Timeline, in seconds.
-	constexpr float LiftStart = 0.20f;      // First tiles leave the desktop.
-	constexpr float LiftSpread = 0.90f;     // Departures are staggered over this window.
-	constexpr float FlightSeconds = 1.10f;  // Time each tile spends in the air.
-	constexpr float SettleStart = 2.40f;    // The exact banner fades in over the landed tiles.
+	constexpr float LiftStart = 0.20f;     // First tiles leave the desktop.
+	constexpr float LiftSpread = 0.90f;    // Departures are staggered over this window.
+	constexpr float FlightSeconds = 1.10f; // Time each tile spends in the air.
+	constexpr float SettleStart = 2.40f;   // The exact banner fades in over the landed tiles.
 	constexpr float SettleSeconds = 0.70f;
 	constexpr float BackdropFadeStart = 2.30f; // The dark void gently gives way to the desktop.
 	constexpr float BackdropFadeSeconds = 1.00f;
@@ -160,7 +160,10 @@ namespace Nyx
 			{
 				const unsigned int tile = static_cast<unsigned int>((y / TileSize) * 4096 + x / TileSize);
 				const float light = (0.35f + 0.65f * (1.0f - static_cast<float>(y) / PixelHeight)) * (0.6f + 0.8f * Noise(tile));
-				const auto channel = [&](float base) { return static_cast<uint32_t>(std::min(255.0f, base * light)); };
+				const auto channel = [&](float base)
+				{
+					return static_cast<uint32_t>(std::min(255.0f, base * light));
+				};
 				Desktop[static_cast<size_t>(y) * PixelWidth + x] = channel(70.0f) | channel(42.0f) << 8 | channel(28.0f) << 16 | 0xff000000u;
 			}
 		}
@@ -215,14 +218,23 @@ namespace Nyx
 					order.push_back(index);
 				}
 			}
-			std::stable_sort(order.begin(), order.end(), [&](int a, int b) { return tiles[a].Luminance < tiles[b].Luminance; });
+			std::stable_sort(order.begin(), order.end(), [&](int a, int b)
+				{
+					return tiles[a].Luminance < tiles[b].Luminance;
+				});
 			return order;
 		};
 		// Only full-size desktop tiles may build the banner: a narrower tile from the
 		// desktop's edge would leave a gap in the banner tile it fills. They drift away.
 		const std::vector<int> sources = rankByLuminance(SourceTiles,
-			[this](const Tile& tile) { return tile.Width == TileSize && tile.Height == TileSize; });
-		const std::vector<int> targets = rankByLuminance(TargetTiles, [](const Tile&) { return true; });
+			[this](const Tile& tile)
+			{
+				return tile.Width == TileSize && tile.Height == TileSize;
+			});
+		const std::vector<int> targets = rankByLuminance(TargetTiles, [](const Tile&)
+			{
+				return true;
+			});
 		TargetSource.assign(TargetTiles.size(), -1);
 		if (sources.empty())
 		{
@@ -323,8 +335,10 @@ namespace Nyx
 			const uint32_t interior = ScalePixel(BackdropColor, static_cast<uint32_t>(rowOpacity * 256.0f));
 			for (int x = 0; x < PixelWidth; ++x)
 			{
-				row[x] = FeatherColumns[x] >= 1.0f ? interior :
-					ScalePixel(BackdropColor, static_cast<uint32_t>(rowOpacity * FeatherColumns[x] * 256.0f));
+				const float feather = FeatherColumns[x];
+				row[x] = feather >= 1.0f
+					? interior
+					: ScalePixel(BackdropColor, static_cast<uint32_t>(rowOpacity * feather * 256.0f));
 			}
 		}
 	}
@@ -460,8 +474,11 @@ namespace Nyx
 
 	const uint32_t* StartupBannerAssembleRenderer::BannerRow(int y) const
 	{
-		return LiveBanner ? LiveBanner + static_cast<size_t>(y) * LiveBannerStride :
-			Banner.data() + static_cast<size_t>(y) * BannerWidth;
+		if (LiveBanner)
+		{
+			return LiveBanner + static_cast<size_t>(y) * LiveBannerStride;
+		}
+		return Banner.data() + static_cast<size_t>(y) * BannerWidth;
 	}
 
 	const uint32_t* StartupBannerAssembleRenderer::Render(float time)

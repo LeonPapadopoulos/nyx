@@ -13,7 +13,7 @@ namespace Nyx::Editor
 		Nyx::Editor::InspectorDrawContext* DrawContext = nullptr;
 	};
 
-	using PropertyWidgetDrawFn = bool(*)(const PropertyWidgetArgs& args);
+	using PropertyWidgetDrawFn = bool (*)(const PropertyWidgetArgs& args);
 
 	class PropertyWidgetRegistry
 	{

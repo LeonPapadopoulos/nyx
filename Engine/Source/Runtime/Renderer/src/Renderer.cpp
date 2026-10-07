@@ -10,51 +10,6 @@ namespace Nyx
 	}
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ///// <summary>
 ///// //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///// </summary>
@@ -155,7 +110,7 @@ namespace Nyx
 //        // Reset fence for this frame's completion tracking
 //        // Prepare the fence to signal when this frame's GPU work completes
 //        device.resetFences(1, &*inFlightFence);
-//    
+//
 //        // Acquire next available image from the swapchain
 //        // This operation coordinates with the presentation engine and display system
 //        uint32_t imageIndex;
@@ -185,7 +140,7 @@ namespace Nyx
 //        // Submit work to GPU with fence-based completion tracking
 //        // The fence allows CPU to know when this frame's GPU work has completed
 //        graphicsQueue.submit(1, &submitInfo, *inFlightFence);
-//        
+//
 //        // Present the rendered image to the display
 //        // This operation transfers the completed frame from rendering to display system
 //        vk::PresentInfoKHR presentInfo;

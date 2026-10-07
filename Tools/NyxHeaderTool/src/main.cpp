@@ -133,8 +133,7 @@ static size_t GenerateForScanRoots(
 			outScannedHeaders.push_back(ScannedHeader{
 				.HeaderPath = headerPath,
 				.RelativePath = relativePath,
-				.Parsed = std::move(parsedHeader)
-				});
+				.Parsed = std::move(parsedHeader) });
 
 			processedHeaders.insert(canonicalHeaderPath);
 		}

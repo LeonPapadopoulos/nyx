@@ -31,8 +31,7 @@ namespace
 		return glm::vec3(
 			WrapDegrees180(degrees.x),
 			WrapDegrees180(degrees.y),
-			WrapDegrees180(degrees.z)
-		);
+			WrapDegrees180(degrees.z));
 	}
 }
 

@@ -49,30 +49,29 @@ namespace Nyx::Editor
 
 		entry.Has =
 			[](const Nyx::Engine::Registry& registry, Nyx::Engine::Entity entity) -> bool
-			{
-				return registry.Has<TComponent>(entity);
-			};
+		{
+			return registry.Has<TComponent>(entity);
+		};
 
 		entry.GetMutable =
 			[](Nyx::Engine::Registry& registry, Nyx::Engine::Entity entity) -> void*
+		{
+			if (!registry.Has<TComponent>(entity))
 			{
-				if (!registry.Has<TComponent>(entity))
-				{
-					return nullptr;
-				}
+				return nullptr;
+			}
 
-				return &registry.Get<TComponent>(entity);
-			};
+			return &registry.Get<TComponent>(entity);
+		};
 
 		entry.Draw =
 			[](void* object, Nyx::Editor::InspectorDrawContext& drawContext)
-			{
-				DrawReflectedTypeTable(
-					object,
-					Nyx::Reflection::GetTypeMetadata<TComponent>(),
-					drawContext
-				);
-			};
+		{
+			DrawReflectedTypeTable(
+				object,
+				Nyx::Reflection::GetTypeMetadata<TComponent>(),
+				drawContext);
+		};
 
 		return entry;
 	}

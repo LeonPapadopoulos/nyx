@@ -6,8 +6,7 @@ namespace Nyx::HeaderTool
 	{
 		Type.EmittedMetadata.push_back(ParsedMacroEntry{
 			.Name = std::move(key),
-			.Value = std::move(value)
-			});
+			.Value = std::move(value) });
 	}
 
 	void TypeSemanticContext::AddStringMetadata(std::string key, std::string value)
@@ -44,8 +43,7 @@ namespace Nyx::HeaderTool
 	{
 		Property.EmittedMetadata.push_back(ParsedMacroEntry{
 			.Name = std::move(key),
-			.Value = std::move(value)
-			});
+			.Value = std::move(value) });
 	}
 
 	void PropertySemanticContext::AddStringMetadata(std::string key, std::string value)
@@ -137,22 +135,21 @@ namespace Nyx::HeaderTool
 		ctx.AddIdentifierMetadata("UI", entry.Value->Text);
 	}
 
-	const SpecifierDefinition SpecifierRegistry::Definitions[] =
-	{
-		{ "Component",  EMacroEntrySource::Specifier, static_cast<uint8_t>(ESpecifierTarget::Type), ESpecifierValueKind::None, ApplyComponentToType, nullptr },
+	const SpecifierDefinition SpecifierRegistry::Definitions[] = {
+		{ "Component", EMacroEntrySource::Specifier, static_cast<uint8_t>(ESpecifierTarget::Type), ESpecifierValueKind::None, ApplyComponentToType, nullptr },
 
-		{ "Edit",       EMacroEntrySource::Specifier, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::None, nullptr, ApplyEditToProperty },
-		{ "Undo",       EMacroEntrySource::Specifier, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::None, nullptr, ApplyUndoToProperty },
-		{ "Serialize",  EMacroEntrySource::Specifier, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::None, nullptr, ApplySerializeToProperty },
-		{ "Hidden",     EMacroEntrySource::Specifier, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::None, nullptr, ApplyHiddenToProperty },
-		{ "ReadOnly",   EMacroEntrySource::Specifier, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::None, nullptr, ApplyReadOnlyToProperty },
+		{ "Edit", EMacroEntrySource::Specifier, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::None, nullptr, ApplyEditToProperty },
+		{ "Undo", EMacroEntrySource::Specifier, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::None, nullptr, ApplyUndoToProperty },
+		{ "Serialize", EMacroEntrySource::Specifier, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::None, nullptr, ApplySerializeToProperty },
+		{ "Hidden", EMacroEntrySource::Specifier, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::None, nullptr, ApplyHiddenToProperty },
+		{ "ReadOnly", EMacroEntrySource::Specifier, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::None, nullptr, ApplyReadOnlyToProperty },
 
 		{ "DisplayName", EMacroEntrySource::Metadata, static_cast<uint8_t>(ESpecifierTarget::Type | ESpecifierTarget::Property), ESpecifierValueKind::RequiredString, ApplyDisplayNameToType, ApplyDisplayNameToProperty },
 
-		{ "Category",   EMacroEntrySource::Metadata, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::RequiredString, nullptr, ApplyCategoryToProperty },
-		{ "Tooltip",    EMacroEntrySource::Metadata, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::RequiredString, nullptr, ApplyTooltipToProperty },
-		{ "DragSpeed",  EMacroEntrySource::Metadata, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::RequiredNumber, nullptr, ApplyDragSpeedToProperty },
-		{ "UI",         EMacroEntrySource::Metadata, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::RequiredIdentifier, nullptr, ApplyUIToProperty },
+		{ "Category", EMacroEntrySource::Metadata, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::RequiredString, nullptr, ApplyCategoryToProperty },
+		{ "Tooltip", EMacroEntrySource::Metadata, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::RequiredString, nullptr, ApplyTooltipToProperty },
+		{ "DragSpeed", EMacroEntrySource::Metadata, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::RequiredNumber, nullptr, ApplyDragSpeedToProperty },
+		{ "UI", EMacroEntrySource::Metadata, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::RequiredIdentifier, nullptr, ApplyUIToProperty },
 	};
 
 	const size_t SpecifierRegistry::DefinitionCount = sizeof(Definitions) / sizeof(Definitions[0]);

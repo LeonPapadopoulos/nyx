@@ -26,8 +26,7 @@ namespace Nyx::HeaderTool
 		ParsedProperty& parsedProperty,
 		const ReflectedTypeIndex& typeIndex)
 	{
-		static const std::unordered_map<std::string, EParsedPropertyKind> PrimitiveKinds =
-		{
+		static const std::unordered_map<std::string, EParsedPropertyKind> PrimitiveKinds = {
 			{ "bool", EParsedPropertyKind::Bool },
 			{ "int32_t", EParsedPropertyKind::Int32 },
 			{ "uint32_t", EParsedPropertyKind::UInt32 },
@@ -71,8 +70,7 @@ namespace Nyx::HeaderTool
 			if (!def)
 			{
 				throw std::runtime_error(
-					"Unsupported NYX_REFLECT specifier on type '" + parsedType.Name + "': " + entry.Name
-				);
+					"Unsupported NYX_REFLECT specifier on type '" + parsedType.Name + "': " + entry.Name);
 			}
 
 			ValidateEntryValue(entry, def->ValueKind);
@@ -91,8 +89,7 @@ namespace Nyx::HeaderTool
 			if (!def)
 			{
 				throw std::runtime_error(
-					"Unsupported NYX_REFLECT metadata on type '" + parsedType.Name + "': " + entry.Name
-				);
+					"Unsupported NYX_REFLECT metadata on type '" + parsedType.Name + "': " + entry.Name);
 			}
 
 			ValidateEntryValue(entry, def->ValueKind);
@@ -119,8 +116,7 @@ namespace Nyx::HeaderTool
 			if (!def)
 			{
 				throw std::runtime_error(
-					"Unsupported NYX_PROPERTY specifier on property '" + parsedProperty.Name + "': " + entry.Name
-				);
+					"Unsupported NYX_PROPERTY specifier on property '" + parsedProperty.Name + "': " + entry.Name);
 			}
 
 			ValidateEntryValue(entry, def->ValueKind);
@@ -139,8 +135,7 @@ namespace Nyx::HeaderTool
 			if (!def)
 			{
 				throw std::runtime_error(
-					"Unsupported NYX_PROPERTY metadata on property '" + parsedProperty.Name + "': " + entry.Name
-				);
+					"Unsupported NYX_PROPERTY metadata on property '" + parsedProperty.Name + "': " + entry.Name);
 			}
 
 			ValidateEntryValue(entry, def->ValueKind);

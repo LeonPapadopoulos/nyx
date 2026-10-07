@@ -14,6 +14,7 @@ namespace Nyx
 			virtual ~Application();
 
 			void Run();
+
 		private:
 			std::unique_ptr<IWindow> Window;
 			bool bRunning = true;

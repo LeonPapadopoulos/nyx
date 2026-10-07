@@ -17,7 +17,8 @@ namespace Nyx
 {
 	namespace Engine
 	{
-		struct EntityTag {};
+		struct EntityTag
+		{};
 		using Entity = TypedHandle<EntityTag>;
 
 		class Registry;
@@ -277,7 +278,7 @@ namespace Nyx
 		}
 
 		template<typename T, typename Func>
-		void Registry::Each(Func && func)
+		void Registry::Each(Func&& func)
 		{
 			ComponentPool<T>* pool = TryGetPool<T>();
 			if (!pool)

@@ -1,7 +1,7 @@
 #include "WindowsStartupBanner.h"
 
 #ifndef NOMINMAX
-#define NOMINMAX
+	#define NOMINMAX
 #endif
 #include <windows.h>
 #include <gdiplus.h>
@@ -17,8 +17,8 @@
 #include <thread>
 #include <vector>
 #ifdef NYX_STARTUP_PREVIEW
-#include <iostream>
-#include <fstream>
+	#include <iostream>
+	#include <fstream>
 #endif
 
 namespace
@@ -95,6 +95,20 @@ namespace
 			canvas.FillRectangle(&ink, 320, 238 + index * 42, 180 + (index * 83 % 350), 5);
 		}
 		return image;
+	}
+
+	// Names the benchmarked intro in the preview's console output.
+	const char* GetBenchmarkLabel(Nyx::EStartupBannerMode mode, bool bCinematic)
+	{
+		switch (mode)
+		{
+		case Nyx::EStartupBannerMode::AssembleV2: return "Assemble v2 ";
+		case Nyx::EStartupBannerMode::Assemble:   return "Assemble ";
+		case Nyx::EStartupBannerMode::Rift:       return "Rift ";
+		case Nyx::EStartupBannerMode::Chasm:      return "Chasm ";
+		case Nyx::EStartupBannerMode::RealityCut: return "Reality cut ";
+		default:                                  return bCinematic ? "Lightning " : "Classic ";
+		}
 	}
 #endif
 
@@ -400,8 +414,8 @@ namespace Nyx
 					const float sourceHeight = tileHeight / scale;
 
 					// Decode, crop and downsample only once per display size.
-					graphics.DrawImage(image.get(), Gdiplus::RectF(0, 0,
-						static_cast<float>(tileWidth), static_cast<float>(tileHeight)),
+					const Gdiplus::RectF destination(0, 0, static_cast<float>(tileWidth), static_cast<float>(tileHeight));
+					graphics.DrawImage(image.get(), destination,
 						(imageWidth - sourceWidth) * 0.5f, (imageHeight - sourceHeight) * 0.5f,
 						sourceWidth, sourceHeight, Gdiplus::UnitPixel);
 					Tiles.push_back(std::move(tile));
@@ -557,9 +571,10 @@ namespace Nyx
 				}
 				if (message == WM_NCHITTEST)
 				{
-					// Captured desktop fragments must remain aligned with their source.
-					return surface->IsCinematic() && surface->GetElapsedSeconds() < StartupBannerIntro::DurationSeconds ?
-						HTCLIENT : HTCAPTION;
+					// While an intro plays, the window can't be dragged: captured desktop
+					// fragments must remain aligned with their source.
+					const bool bIntroPlaying = surface->IsCinematic() && surface->GetElapsedSeconds() < StartupBannerIntro::DurationSeconds;
+					return bIntroPlaying ? HTCLIENT : HTCAPTION;
 				}
 			}
 			return DefWindowProcW(window, message, wParam, lParam);
@@ -575,19 +590,32 @@ namespace Nyx
 			GetMonitorInfoW(monitor, &monitorInfo);
 
 			const RECT& workArea = monitorInfo.rcWork;
+			const int workWidth = workArea.right - workArea.left;
+			const int workHeight = workArea.bottom - workArea.top;
 			const float requestedScale = GetDpiForSystem() / 96.0f;
-			const float dpiScale = surface.IsCinematic() ? std::min({ requestedScale,
-				(workArea.right - workArea.left) / StartupBannerIntro::Width,
-				(workArea.bottom - workArea.top) / StartupBannerIntro::Height }) : requestedScale;
+			// A cinematic intro needs its whole canvas on screen, so it shrinks on small monitors.
+			const float dpiScale = surface.IsCinematic()
+				? std::min({ requestedScale, workWidth / StartupBannerIntro::Width, workHeight / StartupBannerIntro::Height })
+				: requestedScale;
 			const int bannerWidth = static_cast<int>(BannerWidth * dpiScale);
 			const int bannerHeight = static_cast<int>(BannerHeight * dpiScale);
 			const Gdiplus::Size canvas = IntroCanvasSize(Mode, bannerWidth, bannerHeight);
-			const int width = Mode == EStartupBannerMode::Chasm ? workArea.right - workArea.left : (surface.IsCinematic() ?
-				canvas.Width : bannerWidth);
-			const int height = Mode == EStartupBannerMode::Chasm ? workArea.bottom - workArea.top : (surface.IsCinematic() ?
-				canvas.Height : bannerHeight);
-			const int x = workArea.left + (workArea.right - workArea.left - width) / 2;
-			const int y = workArea.top + (workArea.bottom - workArea.top - height) / 2;
+
+			// The chasm fills the work area, other intros their canvas, classic just the banner.
+			int width = bannerWidth;
+			int height = bannerHeight;
+			if (Mode == EStartupBannerMode::Chasm)
+			{
+				width = workWidth;
+				height = workHeight;
+			}
+			else if (surface.IsCinematic())
+			{
+				width = canvas.Width;
+				height = canvas.Height;
+			}
+			const int x = workArea.left + (workWidth - width) / 2;
+			const int y = workArea.top + (workHeight - height) / 2;
 			surface.PrepareBuffers(bannerWidth, bannerHeight);
 			if (surface.IsCinematic())
 			{
@@ -824,8 +852,8 @@ namespace Nyx
 				{
 					surface.Render(width, height, elapsedSeconds);
 				}
-				const double frameMilliseconds = std::chrono::duration<double, std::milli>(
-					std::chrono::steady_clock::now() - begin).count();
+				const auto frameTime = std::chrono::steady_clock::now() - begin;
+				const double frameMilliseconds = std::chrono::duration<double, std::milli>(frameTime).count();
 				if (frame >= warmupFrames)
 				{
 					samples.push_back(frameMilliseconds);
@@ -837,12 +865,11 @@ namespace Nyx
 				total += frameMilliseconds;
 			}
 			std::sort(samples.begin(), samples.end());
-			std::cout << (mode == EStartupBannerMode::AssembleV2 ? "Assemble v2 " : mode == EStartupBannerMode::Assemble ? "Assemble " : mode == EStartupBannerMode::Rift ? "Rift " : (mode == EStartupBannerMode::Chasm ? "Chasm " :
-				(mode == EStartupBannerMode::RealityCut ? "Reality cut " : (surface.IsCinematic() ? "Lightning " : "Classic "))))
-				<< width << 'x' << height << ": " << surface.Images.size() << " images, "
-				<< samples.size() << " frames, mean " << total / samples.size()
-				<< " ms, p95 " << samples[static_cast<size_t>(samples.size() * 0.95)]
-				<< " ms (CPU drawing only; excludes window presentation)\n";
+			std::cout << GetBenchmarkLabel(mode, surface.IsCinematic())
+					  << width << 'x' << height << ": " << surface.Images.size() << " images, "
+					  << samples.size() << " frames, mean " << total / samples.size()
+					  << " ms, p95 " << samples[static_cast<size_t>(samples.size() * 0.95)]
+					  << " ms (CPU drawing only; excludes window presentation)\n";
 		}
 		Gdiplus::GdiplusShutdown(token);
 	}
@@ -943,10 +970,12 @@ namespace Nyx
 				{
 					throw std::runtime_error("Could not save intro frame");
 				}
-				// The rift's beats are charge, cracks, pulses, inhale, impact, shatter, breach and reveal.
-				const bool bReviewFrame = mode == EStartupBannerMode::Rift ?
-					(index == 24 || index == 45 || index == 78 || index == 103 || index == 111 || index == 117 || index == 132 || index == 174) :
-					(index == 17 || index == 42 || index == 78 || index == 132 || index == 141 || index == 153 || index == 180 || index == 208);
+				// Frames for the contact sheet. The rift's beats are charge, cracks, pulses,
+				// inhale, impact, shatter, breach and reveal.
+				constexpr int RiftReviewFrames[] = { 24, 45, 78, 103, 111, 117, 132, 174 };
+				constexpr int OtherReviewFrames[] = { 17, 42, 78, 132, 141, 153, 180, 208 };
+				const auto& reviewFrames = mode == EStartupBannerMode::Rift ? RiftReviewFrames : OtherReviewFrames;
+				const bool bReviewFrame = std::find(std::begin(reviewFrames), std::end(reviewFrames), index) != std::end(reviewFrames);
 				if (bReviewFrame)
 				{
 					const int x = reviewIndex % 4 * 520;
@@ -957,8 +986,8 @@ namespace Nyx
 					Gdiplus::SolidBrush ink(Gdiplus::Color(255, 220, 223, 237));
 					Gdiplus::Font font(L"Segoe UI", 13, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
 					const auto label = std::to_wstring(index / static_cast<float>(exportFramesPerSecond)).substr(0, 4) + L" s";
-					sheet.DrawString(label.c_str(), -1, &font, Gdiplus::PointF(static_cast<float>(x + 12),
-						static_cast<float>(y + cellHeight + 2)), &ink);
+					const Gdiplus::PointF labelPosition(static_cast<float>(x + 12), static_cast<float>(y + cellHeight + 2));
+					sheet.DrawString(label.c_str(), -1, &font, labelPosition, &ink);
 					++reviewIndex;
 				}
 			}

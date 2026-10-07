@@ -30,9 +30,9 @@ namespace Nyx
 {
 	enum class ESelectionOutlineMode : uint8_t
 	{
-		VisibleOnly				= 0,
-		FullSilhouette			= 1,
-		VisibleOccludeHatched	= 2
+		VisibleOnly = 0,
+		FullSilhouette = 1,
+		VisibleOccludeHatched = 2
 	};
 
 	class NYXENGINE_API IRenderer
@@ -82,7 +82,7 @@ namespace Nyx
 
 		virtual ImTextureID GetSceneViewTextureId(uint64_t id) const = 0;
 		virtual bool WasSceneViewRecreatedThisFrame(uint64_t id) const = 0;
-	
+
 		// temporary demo-asset accessors
 		virtual Nyx::Mesh* GetCubeMesh() = 0;
 		virtual Nyx::Material* GetTexturedMaterial() = 0;
@@ -92,32 +92,6 @@ namespace Nyx
 
 	NYXENGINE_API std::unique_ptr<IRenderer> CreateRenderer();
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 ///// <summary>
 ///// //////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -881,7 +855,7 @@ namespace Nyx
 //        }
 //
 //        // Resource access interface for retrieving compiled resources
-//        Resource* GetResource(const std::string& name) 
+//        Resource* GetResource(const std::string& name)
 //        {
 //            auto it = resources.find(name);
 //            return (it != resources.end()) ? &it->second : nullptr;

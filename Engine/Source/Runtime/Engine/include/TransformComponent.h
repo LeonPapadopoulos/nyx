@@ -17,7 +17,7 @@ namespace Nyx::Engine
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Transform", UI = Degrees))
 		glm::quat Rotation{ 1.0f, 0.0f, 0.0f, 0.0f };
-		
+
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Transform", DragSpeed = 0.1))
 		glm::vec3 Scale{ 1.0f };
 

@@ -55,8 +55,8 @@ namespace Nyx::HeaderTool
 		void AddFlag(EParsedPropertyFlags flag);
 	};
 
-	using ApplyTypeFn = void(*)(TypeSemanticContext&, const ParsedMacroEntry&);
-	using ApplyPropertyFn = void(*)(PropertySemanticContext&, const ParsedMacroEntry&);
+	using ApplyTypeFn = void (*)(TypeSemanticContext&, const ParsedMacroEntry&);
+	using ApplyPropertyFn = void (*)(PropertySemanticContext&, const ParsedMacroEntry&);
 
 	struct SpecifierDefinition
 	{

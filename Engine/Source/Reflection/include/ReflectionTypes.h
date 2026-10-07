@@ -33,8 +33,7 @@ namespace Nyx::Reflection
 	inline constexpr EPropertyFlags operator|(EPropertyFlags a, EPropertyFlags b)
 	{
 		return static_cast<EPropertyFlags>(
-			static_cast<uint32_t>(a) | static_cast<uint32_t>(b)
-			);
+			static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
 	}
 
 	inline constexpr bool HasFlag(EPropertyFlags value, EPropertyFlags flag)

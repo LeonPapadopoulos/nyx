@@ -20,7 +20,6 @@ namespace Nyx
 		Cleanup();
 	}
 
-
 	void VulkanSwapchain::Recreate(VulkanContext& context, GLFWwindow* window)
 	{
 		Cleanup();
@@ -117,7 +116,6 @@ namespace Nyx
 		SwapchainImages = Swapchain.getImages();
 	}
 
-
 	void VulkanSwapchain::CreateImageViews(VulkanContext& context)
 	{
 		ASSERT(SwapchainImageViews.empty());
@@ -133,7 +131,6 @@ namespace Nyx
 			SwapchainImageViews.emplace_back(context.GetDevice(), imageViewCreateInfo);
 		}
 	}
-
 
 	void VulkanSwapchain::CreateRenderPass(VulkanContext& context)
 	{
@@ -195,7 +192,6 @@ namespace Nyx
 		}
 	}
 
-
 	uint32_t VulkanSwapchain::ChooseSwapMinImageCount(vk::SurfaceCapabilitiesKHR const& surfaceCapabilities)
 	{
 		auto minImageCount = std::max(3u, surfaceCapabilities.minImageCount);
@@ -213,12 +209,12 @@ namespace Nyx
 		// Preferred: UNORM format with standard SRGB nonlinear presentation colorspace.
 		// This avoids the washed-out ImGuiBackend look you can get with SRGB swapchain formats.
 		if (const auto it = std::ranges::find_if(
-			availableFormats,
-			[](const vk::SurfaceFormatKHR& format)
-			{
-				return format.format == vk::Format::eB8G8R8A8Unorm &&
-					format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear;
-			});
+				availableFormats,
+				[](const vk::SurfaceFormatKHR& format)
+				{
+					return format.format == vk::Format::eB8G8R8A8Unorm &&
+						format.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear;
+				});
 			it != availableFormats.end())
 		{
 			return *it;
@@ -229,11 +225,17 @@ namespace Nyx
 
 	vk::PresentModeKHR VulkanSwapchain::ChooseSwapPresentMode(std::vector<vk::PresentModeKHR> const& availablePresentModes)
 	{
-		ASSERT(std::ranges::any_of(availablePresentModes, [](auto presentMode) { return presentMode == vk::PresentModeKHR::eFifo; }));
+		ASSERT(std::ranges::any_of(availablePresentModes, [](auto presentMode)
+			{
+				return presentMode == vk::PresentModeKHR::eFifo;
+			}));
 		return std::ranges::any_of(availablePresentModes,
-			[](const vk::PresentModeKHR value) { return vk::PresentModeKHR::eMailbox == value; }) ?
-			vk::PresentModeKHR::eMailbox :
-			vk::PresentModeKHR::eFifo;
+				   [](const vk::PresentModeKHR value)
+				   {
+					   return vk::PresentModeKHR::eMailbox == value;
+				   })
+			? vk::PresentModeKHR::eMailbox
+			: vk::PresentModeKHR::eFifo;
 	}
 
 	vk::Extent2D VulkanSwapchain::ChooseSwapExtent(GLFWwindow* window, const vk::SurfaceCapabilitiesKHR& capabilities)
@@ -247,6 +249,7 @@ namespace Nyx
 
 		return {
 			std::clamp<uint32_t>(width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width),
-			std::clamp<uint32_t>(height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height) };
+			std::clamp<uint32_t>(height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height)
+		};
 	}
 }

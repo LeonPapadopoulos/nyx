@@ -22,7 +22,7 @@ struct TypedHandle
 	}
 
 	constexpr uint32_t Generation() const
-	{	
+	{
 		// Return bits 32-64 (most significant)
 		return static_cast<uint32_t>(Value >> 32);
 	}

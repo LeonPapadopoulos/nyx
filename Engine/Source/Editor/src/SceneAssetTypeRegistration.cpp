@@ -28,7 +28,6 @@ namespace Nyx::Editor
 				.bBrowsable = true,
 				.bOpenOnDoubleClick = true,
 				.CanActivate = &CanActivateSceneAsset,
-				.Activate = &ActivateSceneAsset
-			});
+				.Activate = &ActivateSceneAsset });
 	}
 }

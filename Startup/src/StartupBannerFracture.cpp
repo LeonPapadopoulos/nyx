@@ -1,5 +1,5 @@
 #ifndef NOMINMAX
-#define NOMINMAX
+	#define NOMINMAX
 #endif
 #include "StartupBannerFracture.h"
 #include "StartupBannerIntro.h"
@@ -166,8 +166,10 @@ namespace Nyx
 			{
 				const auto a = polygon[point];
 				const auto b = polygon[(point + 1) % polygon.size()];
-				left = std::min(left, a.X); top = std::min(top, a.Y);
-				right = std::max(right, a.X); bottom = std::max(bottom, a.Y);
+				left = std::min(left, a.X);
+				top = std::min(top, a.Y);
+				right = std::max(right, a.X);
+				bottom = std::max(bottom, a.Y);
 				// Each shared edge is stored in one direction only. Skip the capture border.
 				if ((a.Y < b.Y || (a.Y == b.Y && a.X < b.X)) &&
 					!(a.X == b.X && (a.X == 0 || a.X == StartupBannerIntro::Width)) &&
@@ -199,9 +201,9 @@ namespace Nyx
 		}
 		// Earlier breaks sink farther away; draw them behind the remaining surface.
 		std::stable_sort(Shards.begin(), Shards.end(), [](const Shard& a, const Shard& b)
-		{
-			return a.BreakTime < b.BreakTime;
-		});
+			{
+				return a.BreakTime < b.BreakTime;
+			});
 	}
 
 	void StartupBannerFracture::DrawShard(Gdiplus::Graphics& canvas, const Shard& shard, float time)

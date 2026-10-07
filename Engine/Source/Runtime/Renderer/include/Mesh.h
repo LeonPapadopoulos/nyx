@@ -9,7 +9,7 @@ namespace Nyx
 {
 	struct Vertex
 	{
-		glm::vec3 Position{ 0.0f, 0.0f ,0.0f };
+		glm::vec3 Position{ 0.0f, 0.0f, 0.0f };
 		glm::vec3 Color{ 1.0f, 1.0f, 1.0f };
 		glm::vec2 UV{ 0.0f, 0.0f };
 		glm::vec3 Normal{ 0.0f, 1.0f, 0.0f };
@@ -117,7 +117,7 @@ namespace Nyx
 		uint32_t IndexCount = 0;
 
 		glm::vec3 LocalBoundsMin{ -0.5f, -0.5f, -0.5f };
-		glm::vec3 LocalBoundsMax{ 0.5f,  0.5f,  0.5f };
+		glm::vec3 LocalBoundsMax{ 0.5f, 0.5f, 0.5f };
 	};
 
 } // Nyx

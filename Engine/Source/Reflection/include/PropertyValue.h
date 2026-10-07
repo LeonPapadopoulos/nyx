@@ -18,6 +18,5 @@ namespace Nyx::Reflection
 		glm::vec3,
 		glm::vec4,
 		glm::quat,
-		std::string
-	>;
+		std::string>;
 }

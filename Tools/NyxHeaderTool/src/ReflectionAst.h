@@ -73,8 +73,7 @@ namespace Nyx::HeaderTool
 	inline constexpr EParsedPropertyFlags operator|(EParsedPropertyFlags a, EParsedPropertyFlags b)
 	{
 		return static_cast<EParsedPropertyFlags>(
-			static_cast<uint32_t>(a) | static_cast<uint32_t>(b)
-			);
+			static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
 	}
 
 	inline constexpr EParsedPropertyFlags& operator|=(EParsedPropertyFlags& a, EParsedPropertyFlags b)

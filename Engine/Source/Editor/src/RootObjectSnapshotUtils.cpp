@@ -27,8 +27,7 @@ namespace Nyx::Editor
 			}
 
 			snapshot.Subobjects.push_back(
-				CaptureReflectedObject(view.Object, *view.TypeMetadata)
-			);
+				CaptureReflectedObject(view.Object, *view.TypeMetadata));
 		}
 
 		return snapshot;

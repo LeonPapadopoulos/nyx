@@ -21,8 +21,8 @@ namespace Nyx::Editor
 
 	struct AssetTypeDescriptor
 	{
-		std::string TypeId;                 // e.g. "Scene", "Mesh", "Material"
-		std::string DisplayName;            // e.g. "Scene"
+		std::string TypeId;                  // e.g. "Scene", "Mesh", "Material"
+		std::string DisplayName;             // e.g. "Scene"
 		std::vector<std::string> Extensions; // e.g. { ".nyxscene" }
 
 		bool bBrowsable = true;

@@ -3,8 +3,8 @@
 #include <stdexcept>
 
 #if defined(_WIN32)
-#define NOMINMAX
-#include <Windows.h>
+	#define NOMINMAX
+	#include <Windows.h>
 #endif
 
 namespace Nyx
@@ -16,7 +16,7 @@ namespace Nyx
 		const DWORD length = ::GetModuleFileNameW(nullptr, buffer, MAX_PATH);
 		return std::filesystem::path(std::wstring(buffer, length));
 #else
-#error Paths::GetExecutablePath() not implemented for this platform yet.
+	#error Paths::GetExecutablePath() not implemented for this platform yet.
 #endif
 	}
 

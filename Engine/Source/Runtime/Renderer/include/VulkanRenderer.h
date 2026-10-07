@@ -39,9 +39,9 @@ namespace Nyx
 		glm::vec2 ViewportSize;
 		glm::vec2 Padding0;
 
-		glm::vec4 CameraWorldPos;    // xyz used
-		glm::vec4 LightDirectionWS;  // xyz used, normalized
-		glm::vec4 LightColor;        // rgb = light color, a = ambient strength
+		glm::vec4 CameraWorldPos;   // xyz used
+		glm::vec4 LightDirectionWS; // xyz used, normalized
+		glm::vec4 LightColor;       // rgb = light color, a = ambient strength
 	};
 
 	struct ObjectPushConstants
@@ -85,7 +85,7 @@ namespace Nyx
 
 		// Will be filled with mesh-derived bounds
 		glm::vec3 LocalBoundsMin{ -0.5f, -0.5f, -0.5f };
-		glm::vec3 LocalBoundsMax{ 0.5f,  0.5f,  0.5f };
+		glm::vec3 LocalBoundsMax{ 0.5f, 0.5f, 0.5f };
 
 		uint32_t PickingId = 0;
 	};
@@ -128,8 +128,7 @@ namespace Nyx
 			return glm::lookAt(
 				Position,
 				Position + GetForwardVector(),
-				glm::vec3(0.0f, 1.0f, 0.0f)
-			);
+				glm::vec3(0.0f, 1.0f, 0.0f));
 		}
 
 		glm::mat4 GetProjectionMatrix() const
@@ -138,8 +137,7 @@ namespace Nyx
 				glm::radians(60.0f),
 				AspectRatio,
 				0.1f,
-				100.0f
-			);
+				100.0f);
 
 			// Vulkan clip-space convention with GLM
 			proj[1][1] *= -1.0f;
@@ -216,7 +214,7 @@ namespace Nyx
 
 		virtual void DrawFrame(const std::function<void()>& buildUI);
 		virtual void OnMouseWheelScrolled(double yOffset);
-		
+
 		void SetSelectedEntity(std::optional<Nyx::Engine::Entity> entity) override;
 		void SetSelectionOutlineMode(ESelectionOutlineMode mode) override;
 
@@ -224,7 +222,7 @@ namespace Nyx
 
 		virtual void SetSceneViewCameraMode(uint64_t id, EViewportCameraMode mode);
 		virtual void SetSceneViewEditorCameraTransform(uint64_t id, const glm::vec3& pos, const glm::vec3& rot);
-	
+
 		bool GetSceneViewCameraData(uint64_t sceneViewId, Nyx::SceneViewCameraData& outData) const override;
 
 		void SetWorld(const Nyx::Engine::Registry* world) override;
@@ -233,6 +231,7 @@ namespace Nyx
 		Nyx::Material* GetTexturedMaterial() override;
 		Nyx::Material* GetReflectiveMaterial() override;
 		Nyx::Material* GetUntexturedMaterial() override;
+
 	public:
 		VulkanContext& GetContext();
 		VulkanSwapchain& GetSwapchain();
@@ -301,10 +300,10 @@ namespace Nyx
 		void CreateSelectionMaskPipelines();
 		void DrawVisibleSelectionMaskPass(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
 		void DrawFullSelectionMaskPass(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
-		
+
 		void CreateOutlineCompositePipeline();
 		void DrawSelectionOutline(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
-		
+
 		void CreateSkyboxUniformBuffer(SceneViewInstance& view);
 		void CreateSkyboxDescriptorSetLayout();
 		void UpdateSkyboxUniforms(SceneViewInstance& view);
@@ -322,7 +321,7 @@ namespace Nyx
 		void CreateTestTextureData();
 		void CreateTestMeshData();
 		void CreateTestMeshBuffers();
-		
+
 		void CreateBuffer(
 			vk::DeviceSize size,
 			vk::BufferUsageFlags usage,
@@ -401,7 +400,6 @@ namespace Nyx
 		};
 
 	private:
-
 	private:
 		GLFWwindow* Window = nullptr;
 		std::unique_ptr<VulkanImGuiBackend> ImGuiBackend;
@@ -411,7 +409,7 @@ namespace Nyx
 
 		std::vector<std::unique_ptr<Nyx::Mesh>> LoadedMeshes;
 		std::vector<std::unique_ptr<Nyx::Texture>> LoadedTextures;
-		
+
 		std::vector<SceneViewInstance> SceneViews;
 		uint64_t NextSceneViewId = 1;
 
@@ -457,7 +455,6 @@ namespace Nyx
 
 		// Skybox
 		CubemapTexture SkyboxCubemap{ "Skybox01" };
-
 
 		vk::raii::DescriptorSetLayout SkyboxDescriptorSetLayout{ nullptr };
 		vk::raii::PipelineLayout SkyboxPipelineLayout{ nullptr };

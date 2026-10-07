@@ -113,8 +113,7 @@ namespace Nyx::Editor
 
 			outSubobjects.push_back(ReflectedObjectView{
 				.TypeMetadata = ops.TypeMetadata,
-				.Object = object
-				});
+				.Object = object });
 		}
 	}
 

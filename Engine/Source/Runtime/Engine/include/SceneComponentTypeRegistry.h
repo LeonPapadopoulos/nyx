@@ -50,26 +50,26 @@ namespace Nyx::Engine
 		ops.SerializedTypeName = serializedTypeName ? serializedTypeName : ops.TypeMetadata->Name;
 
 		ops.Has = [](const Registry& registry, Entity entity) -> bool
-			{
-				return registry.Has<T>(entity);
-			};
+		{
+			return registry.Has<T>(entity);
+		};
 
 		ops.GetConst = [](const Registry& registry, Entity entity) -> const void*
-			{
-				return registry.Has<T>(entity) ? &registry.Get<T>(entity) : nullptr;
-			};
+		{
+			return registry.Has<T>(entity) ? &registry.Get<T>(entity) : nullptr;
+		};
 
 		ops.AddDefault = [](Registry& registry, Entity entity) -> void*
-			{
-				return &registry.Add<T>(entity, T{});
-			};
+		{
+			return &registry.Add<T>(entity, T{});
+		};
 
 		if (postLoadResolve)
 		{
 			ops.PostLoadResolve = [postLoadResolve](void* component, ScenePostLoadContext& context)
-				{
-					postLoadResolve(*static_cast<T*>(component), context);
-				};
+			{
+				postLoadResolve(*static_cast<T*>(component), context);
+			};
 		}
 
 		return ops;

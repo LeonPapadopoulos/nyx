@@ -45,8 +45,7 @@ namespace
 		float best = angle;
 		float bestDist = std::abs(angle - reference);
 
-		const float candidates[2] =
-		{
+		const float candidates[2] = {
 			angle + TwoPi,
 			angle - TwoPi
 		};
@@ -69,8 +68,7 @@ namespace
 		return glm::vec3(
 			MakeAngleNear(euler.x, reference.x),
 			MakeAngleNear(euler.y, reference.y),
-			MakeAngleNear(euler.z, reference.z)
-		);
+			MakeAngleNear(euler.z, reference.z));
 	}
 
 	ImU32 ApplyAlphaToImU32(ImU32 color, float alpha)
@@ -132,9 +130,9 @@ namespace Nyx::Editor
 		const ImVec2& c)
 	{
 		auto Sign = [](const ImVec2& p1, const ImVec2& p2, const ImVec2& p3) -> float
-			{
-				return (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y);
-			};
+		{
+			return (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y);
+		};
 
 		const bool b1 = Sign(p, a, b) < 0.0f;
 		const bool b2 = Sign(p, b, c) < 0.0f;
@@ -233,7 +231,7 @@ namespace Nyx::Editor
 		case ETransformGizmoAxis::X: basis = glm::vec3(1.0f, 0.0f, 0.0f); break;
 		case ETransformGizmoAxis::Y: basis = glm::vec3(0.0f, 1.0f, 0.0f); break;
 		case ETransformGizmoAxis::Z: basis = glm::vec3(0.0f, 0.0f, 1.0f); break;
-		default: return glm::vec3(0.0f);
+		default:                     return glm::vec3(0.0f);
 		}
 
 		if (space == EGizmoSpace::World)
@@ -252,7 +250,7 @@ namespace Nyx::Editor
 		case ETransformGizmoAxis::X: return glm::vec3(1.0f, 0.0f, 0.0f);
 		case ETransformGizmoAxis::Y: return glm::vec3(0.0f, 1.0f, 0.0f);
 		case ETransformGizmoAxis::Z: return glm::vec3(0.0f, 0.0f, 1.0f);
-		default: return glm::vec3(0.0f);
+		default:                     return glm::vec3(0.0f);
 		}
 	}
 
@@ -274,7 +272,7 @@ namespace Nyx::Editor
 		case ETransformGizmoAxis::PlaneYZ: return IM_COL32(80, 220, 220, 110);
 
 		case ETransformGizmoAxis::Center: return IM_COL32(240, 240, 240, 255);
-		default: return IM_COL32(255, 255, 255, 255);
+		default:                          return IM_COL32(255, 255, 255, 255);
 		}
 	}
 
@@ -439,11 +437,11 @@ namespace Nyx::Editor
 					}
 
 					if (PointInQuad2D(
-						mouse,
-						plane.ScreenCorners[0],
-						plane.ScreenCorners[1],
-						plane.ScreenCorners[2],
-						plane.ScreenCorners[3]))
+							mouse,
+							plane.ScreenCorners[0],
+							plane.ScreenCorners[1],
+							plane.ScreenCorners[2],
+							plane.ScreenCorners[3]))
 					{
 						State.HoveredAxis = plane.Handle;
 					}
@@ -607,8 +605,7 @@ namespace Nyx::Editor
 				axisNormal,
 				ringRadius,
 				ring.WorldPoints.data(),
-				static_cast<int>(ring.WorldPoints.size())
-			);
+				static_cast<int>(ring.WorldPoints.size()));
 
 			ring.bVisible = true;
 
@@ -650,8 +647,7 @@ namespace Nyx::Editor
 						mouse,
 						ring.ScreenPoints.data(),
 						static_cast<int>(ring.ScreenPoints.size()),
-						true
-					);
+						true);
 
 					if (distSq <= bestDistSq)
 					{
@@ -755,8 +751,7 @@ namespace Nyx::Editor
 
 					const int numSteps = std::max(
 						8,
-						static_cast<int>(std::ceil(std::abs(visualAngle) / (Pi / 32.0f)))
-					);
+						static_cast<int>(std::ceil(std::abs(visualAngle) / (Pi / 32.0f))));
 
 					const float sectorRadius = ringRadius * 0.92f;
 					const ImU32 sectorFillColor = ApplyAlphaToImU32(baseColor, 0.16f);
@@ -942,11 +937,11 @@ namespace Nyx::Editor
 					}
 
 					if (PointInQuad2D(
-						mouse,
-						plane.ScreenCorners[0],
-						plane.ScreenCorners[1],
-						plane.ScreenCorners[2],
-						plane.ScreenCorners[3]))
+							mouse,
+							plane.ScreenCorners[0],
+							plane.ScreenCorners[1],
+							plane.ScreenCorners[2],
+							plane.ScreenCorners[3]))
 					{
 						State.HoveredAxis = plane.Handle;
 					}
@@ -1024,8 +1019,7 @@ namespace Nyx::Editor
 			drawList->AddRectFilled(
 				ImVec2(handles[i].ScreenPos.x - boxHalfSize, handles[i].ScreenPos.y - boxHalfSize),
 				ImVec2(handles[i].ScreenPos.x + boxHalfSize, handles[i].ScreenPos.y + boxHalfSize),
-				color
-			);
+				color);
 		}
 
 		// Center = uniform scale
@@ -1106,8 +1100,7 @@ namespace Nyx::Editor
 				ActiveTransformDiff->TakeSnapshot(
 					Nyx::Editor::MakeSceneEntityRef(entity),
 					&transform,
-					Nyx::Reflection::GetTypeMetadata<Nyx::Engine::TransformComponent>()
-				);
+					Nyx::Reflection::GetTypeMetadata<Nyx::Engine::TransformComponent>());
 
 				BeginTranslateDrag(viewData, entity, transform, gizmoOrigin, imageScreenMin, imageSize);
 				bConsumed = true;
@@ -1153,8 +1146,7 @@ namespace Nyx::Editor
 				ActiveTransformDiff->TakeSnapshot(
 					Nyx::Editor::MakeSceneEntityRef(entity),
 					&transform,
-					Nyx::Reflection::GetTypeMetadata<Nyx::Engine::TransformComponent>()
-				);
+					Nyx::Reflection::GetTypeMetadata<Nyx::Engine::TransformComponent>());
 
 				BeginRotateDrag(viewData, entity, transform, gizmoOrigin, imageScreenMin, imageSize);
 				bConsumed = true;
@@ -1200,8 +1192,7 @@ namespace Nyx::Editor
 				ActiveTransformDiff->TakeSnapshot(
 					Nyx::Editor::MakeSceneEntityRef(entity),
 					&transform,
-					Nyx::Reflection::GetTypeMetadata<Nyx::Engine::TransformComponent>()
-				);
+					Nyx::Reflection::GetTypeMetadata<Nyx::Engine::TransformComponent>());
 
 				BeginScaleDrag(viewData, entity, transform, gizmoOrigin, imageScreenMin, imageSize);
 				bConsumed = true;
@@ -1384,8 +1375,7 @@ namespace Nyx::Editor
 			State.DragPlaneNormalWS = BuildAxisDragPlaneNormal(
 				State.DragAxisDirectionWS,
 				viewData.CameraWorldPos,
-				gizmoOrigin
-			);
+				gizmoOrigin);
 		}
 
 		const ImVec2 mousePos = ImGui::GetMousePos();
@@ -1544,8 +1534,7 @@ namespace Nyx::Editor
 		const float rawAngle = SignedAngleAroundAxis(
 			State.DragStartRotateVectorWS,
 			currentVec,
-			State.DragPlaneNormalWS
-		);
+			State.DragPlaneNormalWS);
 
 		// Unwrap it into a continuous angle.
 		float deltaRaw = rawAngle - State.DragPreviousRawRotationRadians;
@@ -1643,8 +1632,7 @@ namespace Nyx::Editor
 
 				State.DragStartPlaneCoordinates = glm::vec2(
 					std::max(coordA, gizmoScale * 0.18f),
-					std::max(coordB, gizmoScale * 0.18f)
-				);
+					std::max(coordB, gizmoScale * 0.18f));
 			}
 			else
 			{
@@ -1660,8 +1648,7 @@ namespace Nyx::Editor
 			State.DragPlaneNormalWS = BuildAxisDragPlaneNormal(
 				State.DragAxisDirectionWS,
 				viewData.CameraWorldPos,
-				gizmoOrigin
-			);
+				gizmoOrigin);
 
 			const ImVec2 mousePos = ImGui::GetMousePos();
 			const Ray ray = BuildMouseRay(viewData, imageScreenMin, imageSize, mousePos);

@@ -67,8 +67,7 @@ namespace Nyx::Editor
 						.TypeMetadata = snapshot.TypeMetadata,
 						.PropertyIndex = propertyIndex,
 						.Before = beforeValue,
-						.After = afterValue
-						});
+						.After = afterValue });
 				}
 			}
 		}

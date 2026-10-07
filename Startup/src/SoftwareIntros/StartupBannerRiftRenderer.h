@@ -142,8 +142,8 @@ namespace Nyx
 		std::vector<uint16_t> CellMap;
 		std::vector<float> FeatherColumns;
 		std::vector<float> FeatherRows;
-		std::vector<int> CellGains;           // 8.8 fixed point per cell, 0 while intact.
-		std::vector<int> RowSpans;            // Per row: first and last pixel that can open.
+		std::vector<int> CellGains; // 8.8 fixed point per cell, 0 while intact.
+		std::vector<int> RowSpans;  // Per row: first and last pixel that can open.
 		std::vector<uint8_t> ToneCurve;
 		bool bHasDesktop = false;
 

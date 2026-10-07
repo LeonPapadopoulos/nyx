@@ -17,8 +17,7 @@
 NYX_REGISTER_COMPONENT_EDITOR(
 	Nyx::Engine::NameComponent,
 	"Name",
-	NYX_EDITOR_FIELD(Nyx::Engine::NameComponent, Name, String, "Name", 0.0f)
-);
+	NYX_EDITOR_FIELD(Nyx::Engine::NameComponent, Name, String, "Name", 0.0f));
 
 namespace Nyx::Editor
 {

@@ -29,14 +29,12 @@ namespace Nyx::Editor
 
 		static const std::vector<EditablePropertyDesc<Nyx::Engine::TransformComponent>>& GetProperties()
 		{
-			static const std::vector<EditablePropertyDesc<Nyx::Engine::TransformComponent>> Properties =
-			{
+			static const std::vector<EditablePropertyDesc<Nyx::Engine::TransformComponent>> Properties = {
 				NYX_EDITABLE_MEMBER_PROPERTY(Nyx::Engine::TransformComponent, Position, glm::vec3),
 				EditablePropertyDesc<Nyx::Engine::TransformComponent>{
 					"Rotation",
-					& GetTransformRotationValue,
-					& SetTransformRotationValue
-				},
+					&GetTransformRotationValue,
+					&SetTransformRotationValue },
 				NYX_EDITABLE_MEMBER_PROPERTY(Nyx::Engine::TransformComponent, Scale, glm::vec3)
 			};
 

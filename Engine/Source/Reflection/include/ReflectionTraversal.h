@@ -33,8 +33,7 @@ namespace Nyx::Reflection
 			path.push_back(PropertyPathSegment{
 				.OwnerType = &type,
 				.Property = &property,
-				.OwnerObject = object
-				});
+				.OwnerObject = object });
 
 			ReflectedPropertyRef propertyRef =
 				MakeReflectedPropertyRef(object, type, property);

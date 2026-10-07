@@ -1,5 +1,5 @@
 #ifndef NOMINMAX
-#define NOMINMAX
+	#define NOMINMAX
 #endif
 #include "StartupBannerIntro.h"
 #include "StartupBannerAssembleRenderer.h"
@@ -26,15 +26,15 @@ namespace
 	};
 
 	// The light trails and the polygon cuts share their geometry.
-	const std::array<Cut, 7> Cuts = {{
+	const std::array<Cut, 7> Cuts = { {
 		{ { 42, 594 }, { 997, 118 }, 0.20f },
 		{ { 166, 30 }, { 872, 685 }, 0.25f },
 		{ { 20, 219 }, { 1014, 468 }, 0.30f },
 		{ { 736, 18 }, { 337, 702 }, 0.35f },
 		{ { 76, 681 }, { 753, 54 }, 0.40f },
 		{ { 8, 422 }, { 1020, 316 }, 0.45f },
-		{ { 361, 22 }, { 623, 708 }, 0.50f }
-	}};
+		{ { 361, 22 }, { 623, 708 }, 0.50f },
+	} };
 
 	float Saturate(float value)
 	{
@@ -115,9 +115,8 @@ namespace
 		attributes.SetColorMatrix(&matrix);
 		const int width = image.GetWidth();
 		const int height = image.GetHeight();
-		canvas.DrawImage(&image, Gdiplus::Rect(x, y,
-			static_cast<int>(width * scale), static_cast<int>(height * scale)),
-			0, 0, width, height, Gdiplus::UnitPixel, &attributes);
+		const Gdiplus::Rect destination(x, y, static_cast<int>(width * scale), static_cast<int>(height * scale));
+		canvas.DrawImage(&image, destination, 0, 0, width, height, Gdiplus::UnitPixel, &attributes);
 	}
 }
 
@@ -276,7 +275,7 @@ namespace Nyx
 				Gdiplus::Rect bounds(0, 0, width, height);
 				Gdiplus::BitmapData data{};
 				if (fragment.Image->LockBits(&bounds, Gdiplus::ImageLockModeRead | Gdiplus::ImageLockModeWrite,
-					PixelFormat32bppPARGB, &data) == Gdiplus::Ok)
+						PixelFormat32bppPARGB, &data) == Gdiplus::Ok)
 				{
 					for (int row = 0; row < height; ++row)
 					{
@@ -357,8 +356,11 @@ namespace Nyx
 			const BYTE alphas[] = { 12, 48, 235, 255 };
 			for (int layer = 0; layer < 4; ++layer)
 			{
-				Gdiplus::Pen pen(layer == 3 ? Gdiplus::Color(alphas[layer], 255, 253, 229) :
-					Gdiplus::Color(alphas[layer], 255, 162, 35), bolt.Width * widths[layer]);
+				// The innermost layer is the white-hot core; the others are amber glow.
+				const Gdiplus::Color color = layer == 3
+					? Gdiplus::Color(alphas[layer], 255, 253, 229)
+					: Gdiplus::Color(alphas[layer], 255, 162, 35);
+				Gdiplus::Pen pen(color, bolt.Width * widths[layer]);
 				pen.SetLineJoin(Gdiplus::LineJoinRound);
 				canvas.DrawLines(&pen, bolt.Points.data(), static_cast<int>(bolt.Points.size()));
 			}
@@ -396,8 +398,10 @@ namespace Nyx
 				{ ImpactX + dx * (reach + 95.0f), ImpactY + dy * (reach + 95.0f) }
 			};
 			const BYTE alpha = static_cast<BYTE>(75 + Noise(index * 7 + 215) * 170);
-			Gdiplus::SolidBrush streak(index % 3 == 0 ? Gdiplus::Color(alpha, 90, 172, 255) :
-				Gdiplus::Color(alpha, 237, 247, 255));
+			const Gdiplus::Color color = index % 3 == 0
+				? Gdiplus::Color(alpha, 90, 172, 255)
+				: Gdiplus::Color(alpha, 237, 247, 255);
+			Gdiplus::SolidBrush streak(color);
 			canvas.FillPolygon(&streak, blade, 3);
 		}
 		Gdiplus::SolidBrush core(Gdiplus::Color(245, 250, 254, 255));
@@ -447,8 +451,8 @@ namespace Nyx
 			{
 				// Reach exact alignment before the impact; a short still hold makes the
 				// finishing blow read separately from the initial cuts.
-				const float returnToPlace = 1.0f - SmoothStep((elapsedSeconds - RecombineStartSeconds) /
-					(RealityRecombinedSeconds - RecombineStartSeconds));
+				const float recombineDuration = RealityRecombinedSeconds - RecombineStartSeconds;
+				const float returnToPlace = 1.0f - SmoothStep((elapsedSeconds - RecombineStartSeconds) / recombineDuration);
 				for (const Cut& cut : Cuts)
 				{
 					const float impact = EaseOutCubic((elapsedSeconds - cut.Time) / 0.045f);
@@ -487,9 +491,9 @@ namespace Nyx
 		}
 		// Far shards are drawn first so crossing pieces retain a coherent sense of depth.
 		std::stable_sort(FragmentPoses.begin(), FragmentPoses.end(), [](const FragmentPose& a, const FragmentPose& b)
-		{
-			return a.Depth < b.Depth;
-		});
+			{
+				return a.Depth < b.Depth;
+			});
 		for (const FragmentPose& pose : FragmentPoses)
 		{
 			DrawGlassFragment(canvas, pose);
@@ -578,8 +582,9 @@ namespace Nyx
 	{
 		const float age = elapsedSeconds - StrikeSeconds;
 		const float charge = Saturate(elapsedSeconds / StrikeSeconds);
-		const float energy = age < 0.0f ? 0.10f * charge :
-			std::exp(-age * 3.6f) * (0.80f + 0.20f * std::cos(age * 32.0f));
+		const float energy = age < 0.0f
+			? 0.10f * charge
+			: std::exp(-age * 3.6f) * (0.80f + 0.20f * std::cos(age * 32.0f));
 		DrawGlow(canvas, age < 0.0f ? 100.0f : 240.0f + 160.0f * EaseOutCubic(age),
 			age < 0.0f ? charge * 0.25f : energy * 3.5f);
 		if (age >= 0.0f && energy > 0.005f)
@@ -631,8 +636,11 @@ namespace Nyx
 			for (int layer = 0; layer < 3; ++layer)
 			{
 				const BYTE alpha = static_cast<BYTE>(alphas[layer] * Saturate(flare + afterglow));
-				Gdiplus::Pen pen(layer == 2 ? Gdiplus::Color(alpha, 250, 254, 255) :
-					Gdiplus::Color(alpha, 60, 165, 255), widths[layer] * (0.25f + 0.75f * flare));
+				const Gdiplus::Color color = layer == 2
+					? Gdiplus::Color(alpha, 250, 254, 255)
+					: Gdiplus::Color(alpha, 60, 165, 255);
+				Gdiplus::Pen pen(color, widths[layer] * (0.25f + 0.75f * flare));
+
 				canvas.DrawLine(&pen, cut.Start, end);
 			}
 			// Tapered white blades give each cut a two-to-three-frame impact silhouette.
@@ -673,8 +681,7 @@ namespace Nyx
 			const float x = ImpactX + std::cos(angle) * distance;
 			const float y = ImpactY + std::sin(angle) * distance * 0.7f + age * age * 16.0f;
 			const BYTE alpha = static_cast<BYTE>(200 * fade * fade);
-			const auto color = bRealityCut ? Gdiplus::Color(alpha, 190, 195, 255) :
-				Gdiplus::Color(alpha, 255, 183, 73);
+			const auto color = bRealityCut ? Gdiplus::Color(alpha, 190, 195, 255) : Gdiplus::Color(alpha, 255, 183, 73);
 			Gdiplus::Pen pen(color, index % 4 == 0 ? 1.8f : 0.8f);
 			const float trail = (bRealityCut ? 13.0f : 6.0f) * fade;
 			canvas.DrawLine(&pen, x, y, x - std::cos(angle) * trail, y - std::sin(angle) * trail);

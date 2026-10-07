@@ -5,49 +5,47 @@ struct GLFWwindow;
 
 namespace Nyx
 {
-    class VulkanContext
-    {
-    public:
-        void Initialize(const char* applicationName, GLFWwindow* window);
-        void Shutdown();
+	class VulkanContext
+	{
+	public:
+		void Initialize(const char* applicationName, GLFWwindow* window);
+		void Shutdown();
 
-        vk::raii::Instance& GetInstance();
-        vk::raii::PhysicalDevice& GetPhysicalDevice();
-        vk::raii::Device& GetDevice();
-        vk::raii::SurfaceKHR& GetSurface();
-        vk::raii::Queue& GetGraphicsQueue();
-        uint32_t GetGraphicsQueueFamily() const;
-        vk::raii::CommandPool& GetGraphicsCommandPool();
+		vk::raii::Instance& GetInstance();
+		vk::raii::PhysicalDevice& GetPhysicalDevice();
+		vk::raii::Device& GetDevice();
+		vk::raii::SurfaceKHR& GetSurface();
+		vk::raii::Queue& GetGraphicsQueue();
+		uint32_t GetGraphicsQueueFamily() const;
+		vk::raii::CommandPool& GetGraphicsCommandPool();
 
+	private:
+		void CreateInstance(const char* applicationName);
+		void SetupDebugMessenger();
+		void CreateSurface(GLFWwindow* window);
+		void PickPhysicalDevice();
+		void CreateLogicalDevice();
+		void CreateGraphicsCommandPool();
 
-    private:
-        void CreateInstance(const char* applicationName);
-        void SetupDebugMessenger();
-        void CreateSurface(GLFWwindow* window);
-        void PickPhysicalDevice();
-        void CreateLogicalDevice();
-        void CreateGraphicsCommandPool();
+	private:
+		std::vector<const char*> GetRequiredInstanceExtensions();
+		bool IsDeviceSuitable(const vk::raii::PhysicalDevice& physicalDevice);
 
-    private:
-        std::vector<const char*> GetRequiredInstanceExtensions();
-        bool IsDeviceSuitable(const vk::raii::PhysicalDevice& physicalDevice);
+	private:
+		vk::raii::Context Context;
+		vk::raii::Instance Instance{ nullptr };
+		vk::raii::DebugUtilsMessengerEXT DebugMessenger{ nullptr };
+		vk::raii::SurfaceKHR Surface{ nullptr };
 
-    private:
-        vk::raii::Context Context;
-        vk::raii::Instance Instance{ nullptr };
-        vk::raii::DebugUtilsMessengerEXT DebugMessenger{ nullptr };
-        vk::raii::SurfaceKHR Surface{ nullptr };
+		vk::raii::PhysicalDevice PhysicalDevice{ nullptr };
+		vk::raii::Device Device{ nullptr };
+		vk::raii::Queue GraphicsQueue{ nullptr };
+		vk::raii::CommandPool GraphicsCommandPool{ nullptr };
 
-        vk::raii::PhysicalDevice PhysicalDevice{ nullptr };
-        vk::raii::Device Device{ nullptr };
-        vk::raii::Queue GraphicsQueue{ nullptr };
-        vk::raii::CommandPool GraphicsCommandPool{ nullptr };
+		uint32_t GraphicsQueueFamily = 0;
 
-        uint32_t GraphicsQueueFamily = 0;
-
-        std::vector<const char*> RequiredDeviceExtension
-        {
-            vk::KHRSwapchainExtensionName
-        };
-    };
+		std::vector<const char*> RequiredDeviceExtension{
+			vk::KHRSwapchainExtensionName
+		};
+	};
 }

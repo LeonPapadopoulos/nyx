@@ -90,8 +90,7 @@ static int RunTool(
 	std::wcout << L"Fixture: " << scanRoot << L"\n";
 	std::wcout << L"Output:  " << outputDir << L"\n";
 
-	std::vector<std::wstring> ownedArgs =
-	{
+	std::vector<std::wstring> ownedArgs = {
 		tool,
 		L"--scan-root", scanRoot,
 		L"--output-dir", outputDir,

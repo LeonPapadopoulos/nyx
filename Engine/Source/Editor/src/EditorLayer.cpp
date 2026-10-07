@@ -125,7 +125,7 @@ namespace Nyx::Editor
 				ASSERT(bLoaded && "Scene round-trip load failed.");
 			}
 		}
-		
+
 		// Example Code for accessig reflected Property Data on a given Entity
 		{
 			auto& world = ActiveScene.GetRegistry();
@@ -136,9 +136,7 @@ namespace Nyx::Editor
 				Nyx::Engine::TransformComponent{
 					.Position = glm::vec3(-2.0f, 0.0f, 0.0f),
 					.Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
-					.Scale = glm::vec3(1.0f)
-				}
-			);
+					.Scale = glm::vec3(1.0f) });
 
 			//Nyx::Engine::TransformComponent& transform =
 			//	world.Get<Nyx::Engine::TransformComponent>(entity);
@@ -400,13 +398,11 @@ namespace Nyx::Editor
 
 		outPickX = std::min(
 			static_cast<uint32_t>(normalizedX * static_cast<float>(extent.Width)),
-			extent.Width > 0 ? extent.Width - 1 : 0u
-		);
+			extent.Width > 0 ? extent.Width - 1 : 0u);
 
 		outPickY = std::min(
 			static_cast<uint32_t>(normalizedY * static_cast<float>(extent.Height)),
-			extent.Height > 0 ? extent.Height - 1 : 0u
-		);
+			extent.Height > 0 ? extent.Height - 1 : 0u);
 	}
 
 	void EditorLayer::TickScene(float deltaTime)
@@ -431,8 +427,7 @@ namespace Nyx::Editor
 					auto& transform = world.Get<Nyx::Engine::TransformComponent>(entity);
 					//transform.RotationRadians.y += deltaTime;
 				}
-			}
-		);
+			});
 	}
 
 	void EditorLayer::DrawSceneOutliner()
@@ -528,8 +523,7 @@ namespace Nyx::Editor
 				{
 					selection = entity;
 				}
-			}
-		);
+			});
 
 		if (ImGui::IsMouseDown(0) && ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered())
 		{
@@ -575,8 +569,8 @@ namespace Nyx::Editor
 		ImGui::Text("Entity: %u", selectedEntity.Index());
 		ImGui::Separator();
 
-		// @todo: Move away from manually hardcoding the visuals of 
-		// specific components (and fields) here; Consider DetailsPanel-, 
+		// @todo: Move away from manually hardcoding the visuals of
+		// specific components (and fields) here; Consider DetailsPanel-,
 		// and Property-Customizations like Unreal does it. Also, look
 		// into code generation for the needed field meta data
 
@@ -655,8 +649,7 @@ namespace Nyx::Editor
 		Renderer->SetSceneViewSize(
 			sceneViewId,
 			static_cast<uint32_t>(avail.x),
-			static_cast<uint32_t>(avail.y)
-		);
+			static_cast<uint32_t>(avail.y));
 
 		if (!Renderer->WasSceneViewRecreatedThisFrame(sceneViewId))
 		{
@@ -674,8 +667,7 @@ namespace Nyx::Editor
 					sceneViewId,
 					imageMin,
 					imageSize,
-					bImageHovered
-				);
+					bImageHovered);
 
 			if (!bGizmoConsumedInteraction &&
 				bImageHovered &&
@@ -697,8 +689,7 @@ namespace Nyx::Editor
 						mousePos,
 						viewData.Extent,
 						pickX,
-						pickY
-					);
+						pickY);
 
 					Renderer->RequestPick(sceneViewId, pickX, pickY);
 				}
@@ -812,24 +803,16 @@ namespace Nyx::Editor
 				Nyx::Engine::TransformComponent{
 					.Position = glm::vec3(-2.0f, 0.0f, 0.0f),
 					.Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
-					.Scale = glm::vec3(1.0f)
-				}
-			);
+					.Scale = glm::vec3(1.0f) });
 
 			world.Add<Nyx::Engine::MeshRendererComponent>(
 				e,
 				Nyx::Engine::MeshRendererComponent{
 					.Mesh = Nyx::Engine::AssetReference{
 						.Type = "Mesh",
-						.Path = "Meshes/Cube.nyxmesh"
-					},
-					.Material = Nyx::Engine::AssetReference{
-						.Type = "Material",
-						.Path = "Materials/Textured.nyxmat"
-					},
-					.bVisible = true
-				}
-			);
+						.Path = "Meshes/Cube.nyxmesh" },
+					.Material = Nyx::Engine::AssetReference{ .Type = "Material", .Path = "Materials/Textured.nyxmat" },
+					.bVisible = true });
 		}
 
 		{
@@ -840,24 +823,16 @@ namespace Nyx::Editor
 				Nyx::Engine::TransformComponent{
 					.Position = glm::vec3(0.0f, 0.0f, 0.0f),
 					.Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
-					.Scale = glm::vec3(1.0f)
-				}
-			);
+					.Scale = glm::vec3(1.0f) });
 
 			world.Add<Nyx::Engine::MeshRendererComponent>(
 				e,
 				Nyx::Engine::MeshRendererComponent{
 					.Mesh = Nyx::Engine::AssetReference{
 						.Type = "Mesh",
-						.Path = "Meshes/Cube.nyxmesh"
-					},
-					.Material = Nyx::Engine::AssetReference{
-						.Type = "Material",
-						.Path = "Materials/Reflective.nyxmat"
-					},
-					.bVisible = true
-				}
-			);
+						.Path = "Meshes/Cube.nyxmesh" },
+					.Material = Nyx::Engine::AssetReference{ .Type = "Material", .Path = "Materials/Reflective.nyxmat" },
+					.bVisible = true });
 		}
 
 		{
@@ -868,24 +843,16 @@ namespace Nyx::Editor
 				Nyx::Engine::TransformComponent{
 					.Position = glm::vec3(2.0f, 0.0f, 0.0f),
 					.Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
-					.Scale = glm::vec3(1.0f)
-				}
-			);
+					.Scale = glm::vec3(1.0f) });
 
 			world.Add<Nyx::Engine::MeshRendererComponent>(
 				e,
 				Nyx::Engine::MeshRendererComponent{
 					.Mesh = Nyx::Engine::AssetReference{
 						.Type = "Mesh",
-						.Path = "Meshes/Cube.nyxmesh"
-					},
-					.Material = Nyx::Engine::AssetReference{
-						.Type = "Material",
-						.Path = "Materials/Untextured.nyxmat"
-					},
-					.bVisible = true
-				}
-			);
+						.Path = "Meshes/Cube.nyxmesh" },
+					.Material = Nyx::Engine::AssetReference{ .Type = "Material", .Path = "Materials/Untextured.nyxmat" },
+					.bVisible = true });
 		}
 	}
 
@@ -921,15 +888,14 @@ namespace Nyx::Editor
 		}
 
 		auto ResolveAllMeshRendererAssets = [&]()
-			{
-				auto& world = ActiveScene.GetRegistry();
-				world.Each<Nyx::Engine::MeshRendererComponent>(
-					[&](Nyx::Engine::Entity, Nyx::Engine::MeshRendererComponent& meshRenderer)
-					{
-						ResolveMeshRendererAssets(meshRenderer);
-					}
-				);
-			};
+		{
+			auto& world = ActiveScene.GetRegistry();
+			world.Each<Nyx::Engine::MeshRendererComponent>(
+				[&](Nyx::Engine::Entity, Nyx::Engine::MeshRendererComponent& meshRenderer)
+				{
+					ResolveMeshRendererAssets(meshRenderer);
+				});
+		};
 
 		if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_Z))
 		{

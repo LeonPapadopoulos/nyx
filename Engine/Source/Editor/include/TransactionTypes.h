@@ -42,8 +42,7 @@ namespace Nyx::Editor
 	using ChangePayload = std::variant<
 		SetValueChange,
 		AddObjectChange,
-		DeleteObjectChange
-	>;
+		DeleteObjectChange>;
 
 	struct Change
 	{

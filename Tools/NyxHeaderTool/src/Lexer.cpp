@@ -172,8 +172,7 @@ namespace Nyx::HeaderTool
 			ETokenKind::Identifier,
 			std::string(Source.substr(startIndex, Index - startIndex)),
 			startLine,
-			startColumn
-		);
+			startColumn);
 	}
 
 	Token Lexer::LexNumber()
@@ -213,8 +212,7 @@ namespace Nyx::HeaderTool
 			bSawDot ? ETokenKind::FloatLiteral : ETokenKind::IntegerLiteral,
 			std::string(Source.substr(startIndex, Index - startIndex)),
 			startLine,
-			startColumn
-		);
+			startColumn);
 	}
 
 	Token Lexer::LexStringLiteral()
@@ -252,8 +250,7 @@ namespace Nyx::HeaderTool
 			ETokenKind::StringLiteral,
 			std::string(Source.substr(startIndex, Index - startIndex)),
 			startLine,
-			startColumn
-		);
+			startColumn);
 	}
 
 	Token Lexer::LexPunctuation()

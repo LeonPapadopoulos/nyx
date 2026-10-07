@@ -267,8 +267,7 @@ namespace Nyx::HeaderTool
 			{
 				args.Specifiers.push_back(ParsedMacroEntry{
 					.Name = name,
-					.Value = std::nullopt
-					});
+					.Value = std::nullopt });
 				continue;
 			}
 
@@ -324,8 +323,7 @@ namespace Nyx::HeaderTool
 
 				args.Specifiers.push_back(ParsedMacroEntry{
 					.Name = name,
-					.Value = ParseValueTokens(valueTokens)
-					});
+					.Value = ParseValueTokens(valueTokens) });
 				continue;
 			}
 
@@ -391,7 +389,7 @@ namespace Nyx::HeaderTool
 			case ETokenKind::RBracket: --bracketDepth; break;
 			case ETokenKind::Less:     ++angleDepth; break;
 			case ETokenKind::Greater:  --angleDepth; break;
-			default: break;
+			default:                   break;
 			}
 
 			currentClause.push_back(token);
@@ -436,7 +434,7 @@ namespace Nyx::HeaderTool
 			case ETokenKind::RBracket: --bracketDepth; break;
 			case ETokenKind::Less:     ++angleDepth; break;
 			case ETokenKind::Greater:  --angleDepth; break;
-			default: break;
+			default:                   break;
 			}
 
 			currentClause.push_back(token);
@@ -483,7 +481,7 @@ namespace Nyx::HeaderTool
 			case ETokenKind::RBracket: --bracketDepth; break;
 			case ETokenKind::Less:     ++angleDepth; break;
 			case ETokenKind::Greater:  --angleDepth; break;
-			default: break;
+			default:                   break;
 			}
 
 			tokens.push_back(token);
@@ -645,29 +643,29 @@ namespace Nyx::HeaderTool
 		std::string out;
 
 		auto needsSpaceBefore = [&](const Token& token) -> bool
+		{
+			if (out.empty())
 			{
-				if (out.empty())
-				{
-					return false;
-				}
+				return false;
+			}
 
-				const char prev = out.back();
-				if (prev == ' ' || prev == ':' || prev == '<' || prev == '(' || prev == '[')
-				{
-					return false;
-				}
+			const char prev = out.back();
+			if (prev == ' ' || prev == ':' || prev == '<' || prev == '(' || prev == '[')
+			{
+				return false;
+			}
 
-				if (token.Kind == ETokenKind::Scope ||
-					token.Kind == ETokenKind::Greater ||
-					token.Kind == ETokenKind::Comma ||
-					token.Kind == ETokenKind::RParen ||
-					token.Kind == ETokenKind::RBracket)
-				{
-					return false;
-				}
+			if (token.Kind == ETokenKind::Scope ||
+				token.Kind == ETokenKind::Greater ||
+				token.Kind == ETokenKind::Comma ||
+				token.Kind == ETokenKind::RParen ||
+				token.Kind == ETokenKind::RBracket)
+			{
+				return false;
+			}
 
-				return true;
-			};
+			return true;
+		};
 
 		for (const Token& token : tokens)
 		{
