@@ -29,7 +29,6 @@ set(NYX_EDITOR_SOURCES
     src/ReflectedObjectSerialization.cpp
     src/RootObjectSnapshotUtils.cpp
     src/PropertyWidgetRegistry.cpp
-    src/SceneSerializer.cpp
     src/AssetDatabase.cpp
     src/AssetBrowserPanel.cpp
     src/AssetTypeRegistry.cpp
@@ -72,7 +71,6 @@ set(NYX_EDITOR_HEADERS
     include/ReflectedObjectSerialization.h
     include/RootObjectSnapshotUtils.h
     include/PropertyWidgetRegistry.h
-    include/SceneSerializer.h
     include/AssetDatabase.h
     include/AssetBrowserPanel.h
     include/AssetTypeRegistry.h

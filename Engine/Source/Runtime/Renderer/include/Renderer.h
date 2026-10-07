@@ -15,7 +15,7 @@ struct GLFWwindow;
 namespace Nyx
 {
 	class Mesh;
-	class Material;
+	struct Material;
 }
 
 namespace Nyx

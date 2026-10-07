@@ -1,27 +1,22 @@
 #include "SceneSerializer.h"
 
 #include "ComponentTypeRegistry.h"
+#include "Entity.h"
 #include "ReflectedArchiveSerializer.h"
-#include "SceneDocument.h"
 
-namespace Nyx::Editor
+namespace Nyx::Engine
 {
-	bool SceneSerializer::SaveToFile(
-		const Nyx::SceneDocument& scene,
-		const std::filesystem::path& path)
+	bool SceneSerializer::SaveToFile(const Registry& world, const std::filesystem::path& path)
 	{
-		using namespace Nyx::Engine;
-
 		BinaryWriter writer;
 
 		writer.WriteUInt32(SceneFileMagic);
 		writer.WriteUInt32(SceneFileVersion);
 
-		const Registry& registry = scene.GetRegistry();
 		const auto& componentTypes = ComponentTypeRegistry::Get().GetAll();
 
 		std::vector<Entity> entities;
-		registry.ForEachEntity([&](Entity entity)
+		world.ForEachEntity([&](Entity entity)
 			{
 				entities.push_back(entity);
 			});
@@ -36,7 +31,7 @@ namespace Nyx::Editor
 			uint32_t componentCount = 0;
 			for (const ComponentTypeOps& ops : componentTypes)
 			{
-				if (ops.Has(registry, entity))
+				if (ops.Has(world, entity))
 				{
 					++componentCount;
 				}
@@ -46,14 +41,14 @@ namespace Nyx::Editor
 
 			for (const ComponentTypeOps& ops : componentTypes)
 			{
-				if (!ops.Has(registry, entity))
+				if (!ops.Has(world, entity))
 				{
 					continue;
 				}
 
 				writer.WriteString(ops.TypeMetadata->Name);
 
-				const void* component = ops.GetConst(registry, entity);
+				const void* component = ops.GetConst(world, entity);
 				if (!ReflectedArchiveSerializer::SerializeObject(writer, component, *ops.TypeMetadata))
 				{
 					return false;
@@ -66,11 +61,9 @@ namespace Nyx::Editor
 
 	bool SceneSerializer::LoadFromFile(
 		const std::filesystem::path& path,
-		Nyx::SceneDocument& outScene,
-		Nyx::Engine::ScenePostLoadContext postLoadContext)
+		Registry& outWorld,
+		ScenePostLoadContext postLoadContext)
 	{
-		using namespace Nyx::Engine;
-
 		BinaryReader reader;
 		if (!reader.LoadFromFile(path))
 		{
@@ -90,8 +83,7 @@ namespace Nyx::Editor
 			return false;
 		}
 
-		Registry& registry = outScene.GetRegistry();
-		registry.Clear();
+		outWorld.Clear();
 
 		uint32_t entityCount = 0;
 		if (!reader.ReadUInt32(entityCount))
@@ -107,7 +99,7 @@ namespace Nyx::Editor
 				return false;
 			}
 
-			Entity entity = registry.CreateEntity();
+			Entity entity = outWorld.CreateEntity();
 
 			uint32_t componentCount = 0;
 			if (!reader.ReadUInt32(componentCount))
@@ -129,7 +121,7 @@ namespace Nyx::Editor
 					return false;
 				}
 
-				void* component = ops->Add(registry, entity);
+				void* component = ops->Add(outWorld, entity);
 
 				if (!ReflectedArchiveSerializer::DeserializeObject(reader, component, *ops->TypeMetadata))
 				{

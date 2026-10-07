@@ -67,6 +67,7 @@ namespace Nyx::Editor
 	{
 		Window = &application.GetWindow();
 		Renderer = &Window->GetRenderer();
+		AssetResolver = std::make_unique<Nyx::Engine::BuiltinAssetResolver>(*Renderer);
 
 		Window->SetStartupStatus("Preparing the scene and editor panels");
 		Window->SetTitlebarMenu(
@@ -281,7 +282,7 @@ namespace Nyx::Editor
 
 	bool EditorLayer::SaveCurrentScene(const std::filesystem::path& path)
 	{
-		if (!Nyx::Editor::SceneSerializer::SaveToFile(ActiveScene, path))
+		if (!Nyx::Engine::SceneSerializer::SaveToFile(ActiveScene.GetRegistry(), path))
 		{
 			LOG_ERROR("Failed to save scene to '{0}'", path.string());
 			return false;
@@ -294,9 +295,9 @@ namespace Nyx::Editor
 	bool EditorLayer::LoadCurrentScene(const std::filesystem::path& path)
 	{
 		Nyx::Engine::ScenePostLoadContext postLoadContext{};
-		postLoadContext.AssetResolver = this;
+		postLoadContext.AssetResolver = AssetResolver.get();
 
-		if (!Nyx::Editor::SceneSerializer::LoadFromFile(path, ActiveScene, postLoadContext))
+		if (!Nyx::Engine::SceneSerializer::LoadFromFile(path, ActiveScene.GetRegistry(), postLoadContext))
 		{
 			LOG_ERROR("Failed to load scene from '{0}'", path.string());
 			return false;
@@ -365,47 +366,13 @@ namespace Nyx::Editor
 			(std::min)(defaultName.size(), SaveSceneAsBuffer.size() - 1));
 	}
 
-	Nyx::Mesh* EditorLayer::ResolveMesh(const std::string& meshPath)
-	{
-		ASSERT(Renderer != nullptr);
-
-		if (meshPath == "Meshes/Cube.nyxmesh")
-		{
-			return Renderer->GetCubeMesh();
-		}
-
-		return nullptr;
-	}
-
-	Nyx::Material* EditorLayer::ResolveMaterial(const std::string& materialPath)
-	{
-		ASSERT(Renderer != nullptr);
-
-		if (materialPath == "Materials/Textured.nyxmat")
-		{
-			return Renderer->GetTexturedMaterial();
-		}
-
-		if (materialPath == "Materials/Reflective.nyxmat")
-		{
-			return Renderer->GetReflectiveMaterial();
-		}
-
-		if (materialPath == "Materials/Untextured.nyxmat")
-		{
-			return Renderer->GetUntexturedMaterial();
-		}
-
-		return nullptr;
-	}
-
 	void EditorLayer::ResolveMeshRendererAssets(Nyx::Engine::MeshRendererComponent& component)
 	{
 		component.MeshAsset =
-			component.Mesh.IsValid() ? ResolveMesh(component.Mesh.Path) : nullptr;
+			component.Mesh.IsValid() ? AssetResolver->ResolveMesh(component.Mesh.Path) : nullptr;
 
 		component.MaterialAsset =
-			component.Material.IsValid() ? ResolveMaterial(component.Material.Path) : nullptr;
+			component.Material.IsValid() ? AssetResolver->ResolveMaterial(component.Material.Path) : nullptr;
 	}
 
 	void EditorLayer::ResolveSceneRuntimeAssets()

@@ -11,7 +11,7 @@
 #include "MeshRendererComponent.h"
 #include "AssetBrowserPanel.h"
 #include "AssetDatabase.h"
-#include "IAssetResolver.h"
+#include "BuiltinAssetResolver.h"
 #include "EditorAssetActivationContext.h"
 #include "Layer.h"
 #include "Window.h"
@@ -22,7 +22,7 @@
 namespace Nyx::Editor
 {
 	// The whole editor as one layer of the application: scene, panels and the titlebar menu.
-	class EditorLayer : public Nyx::Engine::ILayer, public Nyx::Engine::IAssetResolver
+	class EditorLayer : public Nyx::Engine::ILayer
 	{
 	public:
 		void OnAttach(Nyx::Engine::Application& application) override;
@@ -43,9 +43,6 @@ namespace Nyx::Editor
 		}
 		void RequestLoadScenePopup();
 		void RequestSaveSceneAsPopup();
-
-		Nyx::Mesh* ResolveMesh(const std::string& meshId) override;
-		Nyx::Material* ResolveMaterial(const std::string& materialId) override;
 
 		void ResolveMeshRendererAssets(Nyx::Engine::MeshRendererComponent& component);
 		void ResolveSceneRuntimeAssets();
@@ -91,6 +88,9 @@ namespace Nyx::Editor
 	private:
 		Nyx::IWindow* Window = nullptr;
 		Nyx::IRenderer* Renderer = nullptr;
+
+		// Turns the asset paths in components into the renderer's assets; created in OnAttach.
+		std::unique_ptr<Nyx::Engine::BuiltinAssetResolver> AssetResolver;
 
 		Nyx::SceneDocument ActiveScene;
 

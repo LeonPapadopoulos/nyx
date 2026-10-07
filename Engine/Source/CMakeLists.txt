@@ -40,6 +40,8 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/ReflectedArchiveSerializer.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/ComponentTypeRegistry.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/ComponentRegistration.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/SceneSerializer.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/BuiltinAssetResolver.cpp
 
     # Runtime/Renderer
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ImGuiTheme.cpp
@@ -94,6 +96,8 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/ReflectedArchiveSerializer.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/ComponentTypeRegistry.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/ComponentRegistration.h
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/SceneSerializer.h
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/BuiltinAssetResolver.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/IAssetResolver.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/AssetReference.h
 
