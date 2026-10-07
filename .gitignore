@@ -12,4 +12,12 @@ Build/
 # Assets
 Assets/Startup/**
 !Assets/Startup/README.md
+!Assets/Startup/Startup.ini
+
+# Designs
 Design/EditorConcepts/**
+Design/StartupConcepts/*
+Design/Checkpoints/*
+
+# Scenes
+**.nyxscene
