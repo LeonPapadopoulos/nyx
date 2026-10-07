@@ -271,7 +271,10 @@ namespace Nyx
 
 	void WindowsWindow::Initialize(const WindowSpecs& specs)
 	{
-		StartupBanner = std::make_unique<WindowsStartupBanner>(Paths::GetAssetsDir() / "Startup");
+		if (specs.bShowStartupBanner)
+		{
+			StartupBanner = std::make_unique<WindowsStartupBanner>(Paths::GetAssetsDir() / "Startup");
+		}
 		SetStartupStatus("Creating the window");
 		Data.Title = specs.Title;
 		Data.Width = specs.Width;

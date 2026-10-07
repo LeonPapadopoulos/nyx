@@ -10,13 +10,13 @@ namespace Nyx
 {
 	namespace Engine
 	{
-		Application::Application()
+		Application::Application(const ApplicationSpecs& specs)
 		{
 			// Saving and loading scenes, and the editor's details panel and undo, look up
 			// component types in the ComponentTypeRegistry: fill it before any layer runs.
 			RegisterComponentTypes();
 
-			Window = std::unique_ptr<IWindow>(IWindow::Create());
+			Window = std::unique_ptr<IWindow>(IWindow::Create(specs.Window));
 		}
 
 		Application::~Application()

@@ -10,13 +10,14 @@ namespace Nyx::Editor
 	{
 	public:
 		EditorApplication()
+			: Application(Nyx::Engine::ApplicationSpecs{ .Window = { .Title = "Nyx Editor" } })
 		{
 			PushLayer(std::make_unique<EditorLayer>());
 		}
 	};
 }
 
-Nyx::Engine::Application* Nyx::Engine::CreateApplication()
+Nyx::Engine::Application* Nyx::Engine::CreateApplication(int /*argc*/, char** /*argv*/)
 {
 	return new Nyx::Editor::EditorApplication();
 }

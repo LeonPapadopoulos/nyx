@@ -14,6 +14,9 @@ namespace Nyx
 		unsigned int Height = 720;
 		bool bUseCustomTitlebar = true;
 		bool bResizable = true;
+
+		// Shows the startup banner (see Assets/Startup) while the application is starting.
+		bool bShowStartupBanner = true;
 	};
 
 	// Platform Abstraction
@@ -43,7 +46,7 @@ namespace Nyx
 		// There is one menu; pass nullptr to remove it. buttonHeight fits the titlebar.
 		virtual void SetTitlebarMenu(std::function<void(float buttonHeight)> drawMenu) = 0;
 
-		// A startup banner is shown from window creation until FinishStartup().
+		// With WindowSpecs::bShowStartupBanner, a banner is shown from window creation until FinishStartup().
 		virtual void SetStartupStatus(const std::string& status) = 0;
 		virtual void FinishStartup() = 0;
 
