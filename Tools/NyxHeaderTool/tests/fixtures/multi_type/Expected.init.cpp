@@ -1,5 +1,5 @@
 #include "Generated/Runtime/Runtime.reflect.init.h"
-#include "ReflectedComponentAutoRegistration.h"
+#include "ComponentTypeRegistry.h"
 
 #include "Input.h"
 
@@ -14,7 +14,7 @@ namespace Nyx::Reflection::Generated
         }
         bRegistered = true;
 
-        Nyx::Editor::RegisterReflectedComponentType<Nyx::Engine::NameComponent>("Name");
-        Nyx::Editor::RegisterReflectedComponentType<Nyx::Engine::DummyNameComponent>("Dummy Name");
+        Nyx::Engine::ComponentTypeRegistry::Get().Register<Nyx::Engine::NameComponent>();
+        Nyx::Engine::ComponentTypeRegistry::Get().Register<Nyx::Engine::DummyNameComponent>();
     }
 }

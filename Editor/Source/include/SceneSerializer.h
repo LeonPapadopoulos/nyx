@@ -11,7 +11,8 @@ namespace Nyx
 
 namespace Nyx::Editor
 {
-
+	// Saves and loads every component type in the ComponentTypeRegistry, which the
+	// Application fills at startup.
 	class SceneSerializer
 	{
 	public:

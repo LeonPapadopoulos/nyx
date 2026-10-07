@@ -1,4 +1,5 @@
 #include "SceneEntityTransactionDomain.h"
+
 #include "ComponentTypeRegistry.h"
 
 namespace Nyx::Editor
@@ -23,13 +24,14 @@ namespace Nyx::Editor
 			return nullptr;
 		}
 
-		const ComponentTypeOps* ops = ComponentTypeRegistry::Get().FindByTypeMetadata(&typeMetadata);
-		if (!ops || !ops->GetMutable)
+		const Nyx::Engine::ComponentTypeOps* ops =
+			Nyx::Engine::ComponentTypeRegistry::Get().FindByTypeMetadata(typeMetadata);
+		if (!ops)
 		{
 			return nullptr;
 		}
 
-		return ops->GetMutable(world, entity);
+		return ops->Get(world, entity);
 	}
 
 	bool SceneEntityTransactionDomain::CreateRootObject(
@@ -93,19 +95,9 @@ namespace Nyx::Editor
 			return;
 		}
 
-		for (const ComponentTypeOps& ops : ComponentTypeRegistry::Get().GetAll())
+		for (const Nyx::Engine::ComponentTypeOps& ops : Nyx::Engine::ComponentTypeRegistry::Get().GetAll())
 		{
-			if (!ops.TypeMetadata || !ops.Has || !ops.GetMutable)
-			{
-				continue;
-			}
-
-			if (!ops.Has(world, entity))
-			{
-				continue;
-			}
-
-			void* object = ops.GetMutable(world, entity);
+			void* object = ops.Get(world, entity);
 			if (!object)
 			{
 				continue;
@@ -137,13 +129,14 @@ namespace Nyx::Editor
 			return false;
 		}
 
-		const ComponentTypeOps* ops = ComponentTypeRegistry::Get().FindByTypeMetadata(&typeMetadata);
-		if (!ops || !ops->AddDefault)
+		const Nyx::Engine::ComponentTypeOps* ops =
+			Nyx::Engine::ComponentTypeRegistry::Get().FindByTypeMetadata(typeMetadata);
+		if (!ops)
 		{
 			return false;
 		}
 
-		ops->AddDefault(world, entity);
+		ops->Add(world, entity);
 		return true;
 	}
 
@@ -167,13 +160,14 @@ namespace Nyx::Editor
 			return false;
 		}
 
-		const ComponentTypeOps* ops = ComponentTypeRegistry::Get().FindByTypeMetadata(&typeMetadata);
-		if (!ops || !ops->RemoveIfPresent)
+		const Nyx::Engine::ComponentTypeOps* ops =
+			Nyx::Engine::ComponentTypeRegistry::Get().FindByTypeMetadata(typeMetadata);
+		if (!ops)
 		{
 			return false;
 		}
 
-		ops->RemoveIfPresent(world, entity);
+		ops->Remove(world, entity);
 		return true;
 	}
 }

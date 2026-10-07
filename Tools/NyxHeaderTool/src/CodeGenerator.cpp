@@ -264,7 +264,7 @@ namespace Nyx::HeaderTool
 		std::ostringstream out;
 
 		out << "#include \"Generated/Runtime/Runtime.reflect.init.h\"\n";
-		out << "#include \"ReflectedComponentAutoRegistration.h\"\n\n";
+		out << "#include \"ComponentTypeRegistry.h\"\n\n";
 
 		for (const ScannedHeader& header : scannedHeaders)
 		{
@@ -286,13 +286,12 @@ namespace Nyx::HeaderTool
 		{
 			for (const ParsedType& parsedType : header.Parsed.Types)
 			{
+				// One Register<T>() call per NYX_REFLECT(Component) type
 				if (parsedType.Role == EParsedTypeRole::Component)
 				{
-					out << "        Nyx::Editor::RegisterReflectedComponentType<"
+					out << "        Nyx::Engine::ComponentTypeRegistry::Get().Register<"
 						<< parsedType.QualifiedName
-						<< ">(\""
-						<< EscapeCString(parsedType.DisplayName)
-						<< "\");\n";
+						<< ">();\n";
 				}
 			}
 		}

@@ -1,5 +1,5 @@
 #include "Generated/Runtime/Runtime.reflect.init.h"
-#include "ReflectedComponentAutoRegistration.h"
+#include "ComponentTypeRegistry.h"
 
 #include "Input.h"
 
@@ -14,6 +14,6 @@ namespace Nyx::Reflection::Generated
         }
         bRegistered = true;
 
-        Nyx::Editor::RegisterReflectedComponentType<Nyx::Engine::MeshRendererComponent>("Mesh Renderer Component");
+        Nyx::Engine::ComponentTypeRegistry::Get().Register<Nyx::Engine::MeshRendererComponent>();
     }
 }

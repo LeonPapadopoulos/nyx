@@ -38,8 +38,8 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/cgltf_impl.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/BinaryArchive.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/ReflectedArchiveSerializer.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/SceneComponentTypeRegistry.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/SceneComponentRegistration.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/ComponentTypeRegistry.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/ComponentRegistration.cpp
 
     # Runtime/Renderer
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ImGuiTheme.cpp
@@ -92,8 +92,8 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/BinaryArchive.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/SceneSerializationTypes.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/ReflectedArchiveSerializer.h
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/SceneComponentTypeRegistry.h
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/SceneComponentRegistration.h
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/ComponentTypeRegistry.h
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/ComponentRegistration.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/IAssetResolver.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/AssetReference.h
 
@@ -184,6 +184,11 @@ add_custom_target(NyxGeneratedReflection
 
 add_dependencies(NyxEngine NyxGeneratedReflection)
 
+# Registers every reflected component type; called through RegisterComponentTypes().
+target_sources(NyxEngine PRIVATE
+    "${NYX_RUNTIME_REFLECTION_INIT_CPP}"
+)
+
 set_source_files_properties(
     "${NYX_REFLECTION_STAMP}"
     "${NYX_RUNTIME_REFLECTION_INIT_H}"
@@ -196,9 +201,6 @@ target_include_directories(NyxEngine
     PUBLIC
         "${CMAKE_BINARY_DIR}"
 )
-# The generated init code registers the runtime components with the editor's registries
-# (component list, inspector), so the editor compiles it: see Editor/Source/CMakeLists.txt.
-set(NYX_RUNTIME_REFLECTION_INIT_CPP "${NYX_RUNTIME_REFLECTION_INIT_CPP}" PARENT_SCOPE)
 # END Reflection / CodeGen
 
 target_include_directories(NyxEngine

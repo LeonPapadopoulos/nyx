@@ -3,6 +3,7 @@
 #include "Parser.h"
 #include "ReflectionSemantics.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -97,6 +98,8 @@ static size_t GenerateForScanRoots(
 			throw std::runtime_error("Scan root does not exist: " + root.string());
 		}
 
+		const size_t firstHeaderOfRoot = outScannedHeaders.size();
+
 		for (const fs::directory_entry& entry : fs::recursive_directory_iterator(root))
 		{
 			if (!entry.is_regular_file())
@@ -137,6 +140,16 @@ static size_t GenerateForScanRoots(
 
 			processedHeaders.insert(canonicalHeaderPath);
 		}
+
+		// The order of directory entries differs between file systems. Sort the headers, so the
+		// generated code, and with it the order of the registered component types, is always the same.
+		std::sort(
+			outScannedHeaders.begin() + firstHeaderOfRoot,
+			outScannedHeaders.end(),
+			[](const ScannedHeader& a, const ScannedHeader& b)
+			{
+				return a.RelativePath < b.RelativePath;
+			});
 	}
 
 	Nyx::HeaderTool::ReflectedTypeIndex typeIndex;

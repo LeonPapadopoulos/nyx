@@ -6,14 +6,13 @@
 #include "MeshRendererComponent.h"
 #include "TransformComponent.h"
 #include "NameComponent.h"
-#include "ComponentInspectorRegistry.h"
+#include "ComponentTypeRegistry.h"
 #include "TransactionObjectRef.h"
 #include "TransactionObjectRefHelpers.h"
 #include "RootObjectSnapshotUtils.h"
-#include "ComponentTypeRegistration.h"
 #include "PropertyWidgetRegistry.h"
+#include "ReflectedPropertyDrawer.h"
 #include "SceneSerializer.h"
-#include "SceneComponentRegistration.h"
 #include "Paths.h"
 
 #include "imgui.h"
@@ -26,8 +25,6 @@
 #include "ReflectedPropertyRef.h"
 #include "ReflectionTypes.h"
 #include "Log.h"
-
-#include "Generated/Runtime/Runtime.reflect.init.h"
 
 void PrintTransformMetadata()
 {
@@ -94,11 +91,7 @@ namespace Nyx::Editor
 			AssetBrowser.SetCurrentDirectory(std::filesystem::path("Scenes"));
 		}
 
-		{
-			Nyx::Editor::RegisterDefaultPropertyWidgets();
-			Nyx::Reflection::Generated::RegisterRuntimeReflectedTypes();
-			Nyx::Engine::RegisterDefaultSceneComponentTypes();
-		}
+		Nyx::Editor::RegisterDefaultPropertyWidgets();
 
 		MainSceneViewId = Renderer->CreateSceneView();
 		SecondarySceneViewId = Renderer->CreateSceneView();
@@ -275,8 +268,6 @@ namespace Nyx::Editor
 
 	bool EditorLayer::SaveCurrentScene(const std::filesystem::path& path)
 	{
-		Nyx::Engine::RegisterDefaultSceneComponentTypes();
-
 		if (!Nyx::Editor::SceneSerializer::SaveToFile(ActiveScene, path))
 		{
 			LOG_ERROR("Failed to save scene to '{0}'", path.string());
@@ -289,8 +280,6 @@ namespace Nyx::Editor
 
 	bool EditorLayer::LoadCurrentScene(const std::filesystem::path& path)
 	{
-		Nyx::Engine::RegisterDefaultSceneComponentTypes();
-
 		Nyx::Engine::ScenePostLoadContext postLoadContext{};
 		postLoadContext.AssetResolver = this;
 
@@ -630,25 +619,21 @@ namespace Nyx::Editor
 		DetailsPanelContext.CurrentTargetId = Nyx::Editor::MakeInspectorTargetId(selectedEntity);
 		DetailsPanelContext.CurrentObjectRef = Nyx::Editor::MakeSceneEntityRef(selectedEntity);
 
-		for (const Nyx::Editor::ComponentInspectorEntry& inspector :
-			Nyx::Editor::ComponentInspectorRegistry::Get().GetAll())
+		// One collapsible section per component of the entity, showing its reflected properties
+		for (const Nyx::Engine::ComponentTypeOps& componentType : Nyx::Engine::ComponentTypeRegistry::Get().GetAll())
 		{
-			if (!inspector.Has(world, selectedEntity))
+			void* component = componentType.Get(world, selectedEntity);
+			if (!component)
 			{
 				continue;
 			}
 
-			void* object = inspector.GetMutable(world, selectedEntity);
-			if (!object)
-			{
-				continue;
-			}
+			const char* displayName = componentType.TypeMetadata->DisplayName;
+			ImGui::PushID(displayName);
 
-			ImGui::PushID(inspector.DisplayName);
-
-			if (ImGui::CollapsingHeader(inspector.DisplayName, ImGuiTreeNodeFlags_DefaultOpen))
+			if (ImGui::CollapsingHeader(displayName, ImGuiTreeNodeFlags_DefaultOpen))
 			{
-				inspector.Draw(object, DetailsPanelContext);
+				Nyx::Editor::DrawReflectedTypeTable(component, *componentType.TypeMetadata, DetailsPanelContext);
 			}
 
 			ImGui::PopID();

@@ -1,5 +1,6 @@
 #include "NyxPCH.h"
 #include "Application.h"
+#include "ComponentRegistration.h"
 #include "Renderer.h"
 #include "Window.h"
 
@@ -11,6 +12,10 @@ namespace Nyx
 	{
 		Application::Application()
 		{
+			// Saving and loading scenes, and the editor's details panel and undo, look up
+			// component types in the ComponentTypeRegistry: fill it before any layer runs.
+			RegisterComponentTypes();
+
 			Window = std::unique_ptr<IWindow>(IWindow::Create());
 		}
 

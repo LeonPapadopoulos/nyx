@@ -1,8 +1,7 @@
 #include "SceneSerializer.h"
 
+#include "ComponentTypeRegistry.h"
 #include "ReflectedArchiveSerializer.h"
-#include "SceneComponentRegistration.h"
-#include "SceneComponentTypeRegistry.h"
 #include "SceneDocument.h"
 
 namespace Nyx::Editor
@@ -13,15 +12,13 @@ namespace Nyx::Editor
 	{
 		using namespace Nyx::Engine;
 
-		RegisterDefaultSceneComponentTypes();
-
 		BinaryWriter writer;
 
 		writer.WriteUInt32(SceneFileMagic);
 		writer.WriteUInt32(SceneFileVersion);
 
 		const Registry& registry = scene.GetRegistry();
-		const auto& componentTypes = SceneComponentTypeRegistry::Get().GetAll();
+		const auto& componentTypes = ComponentTypeRegistry::Get().GetAll();
 
 		std::vector<Entity> entities;
 		registry.ForEachEntity([&](Entity entity)
@@ -37,9 +34,9 @@ namespace Nyx::Editor
 			writer.WriteUInt32(entityId);
 
 			uint32_t componentCount = 0;
-			for (const SceneComponentTypeOps& ops : componentTypes)
+			for (const ComponentTypeOps& ops : componentTypes)
 			{
-				if (ops.Has && ops.Has(registry, entity))
+				if (ops.Has(registry, entity))
 				{
 					++componentCount;
 				}
@@ -47,19 +44,14 @@ namespace Nyx::Editor
 
 			writer.WriteUInt32(componentCount);
 
-			for (const SceneComponentTypeOps& ops : componentTypes)
+			for (const ComponentTypeOps& ops : componentTypes)
 			{
-				if (!ops.Has || !ops.GetConst || !ops.TypeMetadata)
-				{
-					continue;
-				}
-
 				if (!ops.Has(registry, entity))
 				{
 					continue;
 				}
 
-				writer.WriteString(ops.SerializedTypeName);
+				writer.WriteString(ops.TypeMetadata->Name);
 
 				const void* component = ops.GetConst(registry, entity);
 				if (!ReflectedArchiveSerializer::SerializeObject(writer, component, *ops.TypeMetadata))
@@ -78,8 +70,6 @@ namespace Nyx::Editor
 		Nyx::Engine::ScenePostLoadContext postLoadContext)
 	{
 		using namespace Nyx::Engine;
-
-		RegisterDefaultSceneComponentTypes();
 
 		BinaryReader reader;
 		if (!reader.LoadFromFile(path))
@@ -133,24 +123,22 @@ namespace Nyx::Editor
 					return false;
 				}
 
-				const SceneComponentTypeOps* ops =
-					SceneComponentTypeRegistry::Get().FindBySerializedTypeName(componentTypeName);
-
-				if (!ops || !ops->AddDefault || !ops->TypeMetadata)
+				const ComponentTypeOps* ops = ComponentTypeRegistry::Get().FindByName(componentTypeName);
+				if (!ops)
 				{
 					return false;
 				}
 
-				void* component = ops->AddDefault(registry, entity);
+				void* component = ops->Add(registry, entity);
 
 				if (!ReflectedArchiveSerializer::DeserializeObject(reader, component, *ops->TypeMetadata))
 				{
 					return false;
 				}
 
-				if (ops->PostLoadResolve)
+				if (ops->PostLoad)
 				{
-					ops->PostLoadResolve(component, postLoadContext);
+					ops->PostLoad(component, postLoadContext);
 				}
 			}
 		}
