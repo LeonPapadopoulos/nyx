@@ -777,8 +777,9 @@ namespace Nyx
 		// Draw the application's UI (for the editor: its panels), which can dock into the dock space above
 		drawUI();
 
-		// Draw the colored border last, so it's on top of everything else
-		if (bColoredBorderOnFocus && bAppFocused)
+		// Draw the colored border last, so it's on top of everything else. It belongs to the custom
+		// window frame; with the system titlebar, Windows draws the frame.
+		if (Data.bCustomTitlebar && bColoredBorderOnFocus && bAppFocused)
 		{
 			ImDrawList* drawList = ImGui::GetForegroundDrawList(viewport);
 

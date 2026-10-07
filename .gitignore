@@ -18,6 +18,8 @@ Assets/Startup/**
 Design/EditorConcepts/**
 Design/StartupConcepts/*
 Design/Checkpoints/*
+Design/*.md
 
 # Scenes
 **.nyxscene
+!Assets/Scenes/Default.nyxscene

@@ -38,12 +38,13 @@ For an existing clone: `git submodule update --init --recursive`.
 | Script | What it does |
 | --- | --- |
 | `Scripts\BuildEditor.bat` | Generates the project files and builds the editor (Debug) |
+| `Scripts\BuildGame.bat` | Builds the game (Debug) and runs a scene: the file passed as argument, or `Assets\Scenes\Default.nyxscene` |
 | `Scripts\GenerateProjectFiles.bat` | Generates the Visual Studio solution in `Build\Windows` |
 | `Scripts\RebuildProjectFiles.bat` | Deletes `Build\Windows` and generates it again |
 | `Scripts\BuildStartupPreview.bat` | Builds and opens the startup banner preview tool |
 | `Scripts\FormatCode.bat` | Formats the code with clang-format (`check` only lists unformatted files) |
 
-The editor ends up in `Build\Windows\Binaries\Debug\NyxEditor.exe`. To work in Visual Studio, open the generated solution in `Build\Windows`; `NyxEditor` is the startup project.
+The editor ends up in `Build\Windows\Binaries\Debug\NyxEditor.exe`, the game next to it in `NyxGame.exe`. To work in Visual Studio, open the generated solution in `Build\Windows`; `NyxEditor` is the startup project.
 
 ## Project layout
 
@@ -58,6 +59,7 @@ Engine/
     Runtime/     Core (logging, assertions, paths), Engine (entities,
                  components, serialization), Renderer (Vulkan)
     Reflection/  Reflection types and the NYX_REFLECT / NYX_PROPERTY macros
+Game/            NyxGame.exe: runs a scene through its camera, without the editor
 Scripts/         Build and formatting scripts
 Startup/         The startup banner and its intro animations
 ThirdParty/      Vendored libraries: Dear ImGui, stb_image
@@ -65,7 +67,7 @@ Tools/
   NyxHeaderTool/ Reflection code generator and its tests
 ```
 
-`NyxEngine` is a static library without any editor code; `NyxEditor` links it and adds the editor as a layer of the application.
+`NyxEngine` is a static library without any editor code. `NyxEditor` links it and adds the editor as a layer of the application; `NyxGame` links it and adds a layer that runs one scene.
 
 ## Reflection
 
