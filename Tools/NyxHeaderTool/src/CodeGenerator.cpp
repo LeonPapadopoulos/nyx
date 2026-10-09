@@ -325,6 +325,41 @@ namespace Nyx::HeaderTool
 		return out.str();
 	}
 
+	std::string CodeGenerator::GenerateEditorSourcesCpp(const std::vector<ScannedHeader>& scannedHeaders)
+	{
+		std::ostringstream out;
+		out << "// Editor-only declaration locations. Runtime reflection contains no source paths.\n";
+		out << "#include \"ReflectionSourceRegistry.h\"\n";
+		for (const ScannedHeader& header : scannedHeaders)
+		{
+			out << "#include \"" << header.RelativePath.generic_string() << "\"\n";
+		}
+		out << "\nnamespace Nyx::Editor\n{\n";
+		out << "    void RegisterRuntimeReflectedSources()\n    {\n";
+		out << "        static bool registered = false;\n";
+		out << "        if (registered) return;\n";
+		out << "        registered = true;\n\n";
+		out << "        auto& sources = ReflectionSourceRegistry::Get();\n";
+		for (const ScannedHeader& header : scannedHeaders)
+		{
+			for (const ParsedType& type : header.Parsed.Types)
+			{
+				out << "        {\n";
+				out << "            const auto& type = Reflection::GetTypeMetadata<" << type.QualifiedName << ">();\n";
+				out << "            sources.Register(type, { \"" << EscapeCString(header.Parsed.SourceFile)
+					<< "\", " << type.SourceLine << " });\n";
+				for (size_t i = 0; i < type.Properties.size(); ++i)
+				{
+					out << "            sources.Register(type.Properties[" << i << "], { \""
+						<< EscapeCString(header.Parsed.SourceFile) << "\", " << type.Properties[i].SourceLine << " });\n";
+				}
+				out << "        }\n";
+			}
+		}
+		out << "    }\n}\n";
+		return out.str();
+	}
+
 	std::filesystem::path CodeGenerator::MakeGeneratedHeaderPath(
 		const std::filesystem::path& relativeHeaderPath,
 		const std::filesystem::path& outputDir)

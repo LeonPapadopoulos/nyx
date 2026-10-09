@@ -2,6 +2,7 @@
 #include "TransformGizmo.h"
 
 #include "TransformComponent.h"
+#include "ImGuiSource.h"
 #include "InspectorTargetId.h"
 #include "InspectorTargetIdHelpers.h"
 #include "EditableObjectRegistrations.h"
@@ -1240,6 +1241,12 @@ namespace Nyx::Editor
 		}
 
 		drawList->PopClipRect();
+		if (State.HoveredAxis != ETransformGizmoAxis::None)
+		{
+			// Custom drawing has no ImGui item. Register the handle under the pointer.
+			const ImVec2 mouse = ImGui::GetMousePos();
+			UI::RegisterRegion(ImVec2(mouse.x - 12.0f, mouse.y - 12.0f), ImVec2(mouse.x + 12.0f, mouse.y + 12.0f));
+		}
 		return bConsumed;
 	}
 

@@ -28,6 +28,7 @@ namespace Nyx::HeaderTool
 	ParsedHeader Parser::ParseHeader()
 	{
 		ParsedHeader parsedHeader{};
+		parsedHeader.SourceFile = std::filesystem::absolute(SourceFilePath).generic_string();
 
 		while (!IsAtEnd())
 		{
@@ -182,7 +183,9 @@ namespace Nyx::HeaderTool
 			ErrorHere("Expected 'struct' or 'class' after NYX_REFLECT(...).");
 		}
 
-		parsedType.Name = ExpectIdentifier("Expected reflected type name.").Text;
+		const Token& typeName = ExpectIdentifier("Expected reflected type name.");
+		parsedType.Name = typeName.Text;
+		parsedType.SourceLine = typeName.Line;
 		parsedType.QualifiedName = BuildQualifiedTypeName(parsedType.Name);
 
 		while (!IsAtEnd() && !Check(ETokenKind::LBrace))
@@ -229,6 +232,7 @@ namespace Nyx::HeaderTool
 
 		ParsedProperty property{};
 		property.RawArguments = ParseMacroArguments();
+		property.SourceLine = Peek().Line;
 
 		const std::vector<Token> declarationTokens = CollectDeclarationTokensUntilSemicolon();
 		auto [typeName, propertyName] = ExtractTypeAndNameFromDeclarationTokens(declarationTokens);

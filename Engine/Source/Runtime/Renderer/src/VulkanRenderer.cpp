@@ -1,6 +1,7 @@
 #include "NyxPCH.h"
 #include "Assertions.h"
 #include "VulkanRenderer.h"
+#include "ImGuiSource.h"
 #include "VulkanImGuiBackend.h"
 #include "VulkanContext.h"
 #include "VulkanSwapchain.h"
@@ -753,6 +754,14 @@ namespace Nyx
 
 	SceneViewInstance* VulkanRenderer::FindEditorInputTargetView()
 	{
+#if NYX_UI_INSPECTION
+		// Camera navigation reads GLFW directly, outside ImGui's input queue.
+		if (UI::IsInspectingSources())
+		{
+			return nullptr;
+		}
+#endif
+
 		// If mouse-look is currently locked, keep using that same view until RMB is released.
 		if (MouseLookLockedSceneViewId != 0)
 		{
@@ -902,6 +911,9 @@ namespace Nyx
 		{
 			return;
 		}
+#if NYX_UI_INSPECTION
+		if (UI::IsInspectingSources()) return;
+#endif
 
 		const float moveSpeed = 5.0f * deltaTime;
 		const float lookSpeed = 0.0025f;

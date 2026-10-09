@@ -1,0 +1,7 @@
+#pragma once
+
+namespace Nyx::Editor
+{
+	inline constexpr const char* SourceRoot = "@CMAKE_SOURCE_DIR@";
+	inline constexpr const char* SolutionPath = "@CMAKE_BINARY_DIR@/Nyx.sln";
+}

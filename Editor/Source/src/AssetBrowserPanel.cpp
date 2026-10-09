@@ -1,3 +1,4 @@
+#include "ImGuiSource.h"
 #include "AssetBrowserPanel.h"
 
 #include <imgui.h>
@@ -12,20 +13,20 @@ namespace Nyx::Editor
 			return;
 		}
 
-		if (!ImGui::Begin("Asset Browser"))
+		if (!Nyx::UI::Begin("Asset Browser"))
 		{
 			ImGui::End();
 			return;
 		}
 
-		if (ImGui::Button("Rescan"))
+		if (NYX_UI(ImGui::Button("Rescan")))
 		{
 			Database->Rescan();
 		}
 
-		ImGui::Separator();
+		NYX_UI(ImGui::Separator());
 
-		if (ImGui::BeginChild("AssetBrowserLeft", ImVec2(220.0f, 0.0f), true))
+		if (Nyx::UI::BeginChild("AssetBrowserLeft", ImVec2(220.0f, 0.0f), true))
 		{
 			DrawDirectoryTree({});
 		}
@@ -33,7 +34,7 @@ namespace Nyx::Editor
 
 		ImGui::SameLine();
 
-		if (ImGui::BeginChild("AssetBrowserRight", ImVec2(0.0f, 0.0f), true))
+		if (Nyx::UI::BeginChild("AssetBrowserRight", ImVec2(0.0f, 0.0f), true))
 		{
 			DrawDirectoryContents();
 		}
@@ -72,7 +73,7 @@ namespace Nyx::Editor
 			flags |= ImGuiTreeNodeFlags_Leaf;
 		}
 
-		const bool bOpen = ImGui::TreeNodeEx(label.c_str(), flags);
+		const bool bOpen = NYX_UI(ImGui::TreeNodeEx(label.c_str(), flags));
 
 		if (ImGui::IsItemClicked())
 		{
@@ -97,8 +98,8 @@ namespace Nyx::Editor
 			return;
 		}
 
-		ImGui::Text("Directory: %s", CurrentDirectory.empty() ? "Assets" : CurrentDirectory.string().c_str());
-		ImGui::Separator();
+		NYX_UI(ImGui::Text("Directory: %s", CurrentDirectory.empty() ? "Assets" : CurrentDirectory.string().c_str()));
+		NYX_UI(ImGui::Separator());
 
 		const std::vector<AssetEntry> children = Database->GetChildren(CurrentDirectory);
 
@@ -121,7 +122,7 @@ namespace Nyx::Editor
 
 			const std::string label = prefix + entry.Name;
 
-			if (ImGui::Selectable(label.c_str(), false))
+			if (NYX_UI(ImGui::Selectable(label.c_str(), false)))
 			{
 				if (entry.bIsDirectory)
 				{

@@ -16,9 +16,13 @@
 #include "ReflectedPropertyDrawer.h"
 #include "SceneSerializer.h"
 #include "Paths.h"
+#include "SourceNavigation.h"
+#include "ImGuiSource.h"
+#include "ReflectionSourceRegistry.h"
 
 #include "imgui.h"
 
+#include <cfloat>
 #include <cstring>
 #include <string>
 #include <glm/glm.hpp>
@@ -51,7 +55,7 @@ namespace
 		std::memcpy(buffer, value.data(), copyLength);
 		buffer[copyLength] = '\0';
 
-		if (ImGui::InputText(label, buffer, sizeof(buffer)))
+		if (NYX_UI(ImGui::InputText(label, buffer, sizeof(buffer))))
 		{
 			value = buffer;
 			return true;
@@ -68,6 +72,12 @@ namespace Nyx::Editor
 		Window = &application.GetWindow();
 		Renderer = &Window->GetRenderer();
 		AssetResolver = std::make_unique<Nyx::Engine::BuiltinAssetResolver>(*Renderer);
+		if (!Preferences.Load(EditorPreferences::GetUserFile()))
+		{
+			LOG_WARNING("Could not read editor preferences; using defaults.");
+		}
+		RegisterRuntimeReflectedSources();
+		SourceInspector.Attach([this](SourceLocation location) { OpenUISource(location); });
 
 		Window->SetStartupStatus("Preparing the scene and editor panels");
 		Window->SetTitlebarMenu(
@@ -163,6 +173,7 @@ namespace Nyx::Editor
 
 	void EditorLayer::OnDetach()
 	{
+		SourceInspector.Detach();
 		// The menu calls into this layer, so it must not outlive it.
 		Window->SetTitlebarMenu(nullptr);
 
@@ -184,6 +195,7 @@ namespace Nyx::Editor
 
 	void EditorLayer::OnUpdate(float deltaTime)
 	{
+		DebugTools.BeforeFrame();
 		TickScene(deltaTime);
 
 		// Keep renderer-facing selection state up to date before rendering
@@ -192,7 +204,7 @@ namespace Nyx::Editor
 
 	void EditorLayer::OnUI()
 	{
-		TransformGizmoInstance.TickHotkeys();
+		if (!SourceInspector.IsActive()) TransformGizmoInstance.TickHotkeys();
 
 		ApplyPendingPickResults();
 
@@ -206,36 +218,37 @@ namespace Nyx::Editor
 		DrawDetailsPanel();
 		DrawSceneViews();
 
-		HandleUndoRedoHotkeys();
+		if (!SourceInspector.IsActive()) HandleUndoRedoHotkeys();
+		DrawSourceTools();
 
-		ImGui::ShowDemoWindow();
+		DebugTools.DrawWindows();
 	}
 
 	void EditorLayer::DrawTitlebarMenu(float buttonHeight)
 	{
-		if (ImGui::Button("File", ImVec2(56.0f, buttonHeight)))
+		if (NYX_UI(ImGui::Button("File", ImVec2(56.0f, buttonHeight))))
 		{
 			ImGui::OpenPopup("##TitlebarFileMenu");
 		}
 
-		if (ImGui::BeginPopup("##TitlebarFileMenu"))
+		if (Nyx::UI::BeginPopup("##TitlebarFileMenu"))
 		{
-			if (ImGui::MenuItem("New Scene"))
+			if (NYX_UI(ImGui::MenuItem("New Scene")))
 			{
 				NewScene();
 			}
 
-			if (ImGui::MenuItem("Save Scene"))
+			if (NYX_UI(ImGui::MenuItem("Save Scene")))
 			{
 				SaveScene();
 			}
 
-			if (ImGui::MenuItem("Save Scene As"))
+			if (NYX_UI(ImGui::MenuItem("Save Scene As")))
 			{
 				RequestSaveSceneAsPopup();
 			}
 
-			if (ImGui::MenuItem("Load Scene"))
+			if (NYX_UI(ImGui::MenuItem("Load Scene")))
 			{
 				RequestLoadScenePopup();
 			}
@@ -245,20 +258,26 @@ namespace Nyx::Editor
 
 		ImGui::SameLine();
 
-		if (ImGui::Button("Window", ImVec2(76.0f, buttonHeight)))
+		if (NYX_UI(ImGui::Button("Window", ImVec2(76.0f, buttonHeight))))
 		{
 			ImGui::OpenPopup("##TitlebarWindowMenu");
 		}
 
-		if (ImGui::BeginPopup("##TitlebarWindowMenu"))
+		if (Nyx::UI::BeginPopup("##TitlebarWindowMenu"))
 		{
-			if (ImGui::MenuItem("Asset Browser"))
+			if (NYX_UI(ImGui::MenuItem("Inspect UI source", "F8", SourceInspector.IsActive())))
+			{
+				SourceInspector.RequestToggle();
+			}
+			if (NYX_UI(ImGui::MenuItem("Preferences"))) bShowPreferences = true;
+
+			if (NYX_UI(ImGui::MenuItem("Asset Browser")))
 			{
 				ToggleAssetBrowser();
 			}
 
 			// Shows "Scene 2" the way the game sees the scene: through its primary camera, without editor overlays
-			if (ImGui::MenuItem("Game View in Scene 2", nullptr, bSecondaryViewShowsGameView))
+			if (NYX_UI(ImGui::MenuItem("Game View in Scene 2", nullptr, bSecondaryViewShowsGameView)))
 			{
 				bSecondaryViewShowsGameView = !bSecondaryViewShowsGameView;
 
@@ -271,10 +290,75 @@ namespace Nyx::Editor
 			ImGui::EndPopup();
 		}
 
+		ImGui::SameLine();
+		if (NYX_UI(ImGui::Button("Debug", ImVec2(68.0f, buttonHeight))))
+		{
+			ImGui::OpenPopup("##TitlebarDebugMenu");
+		}
+		if (Nyx::UI::BeginPopup("##TitlebarDebugMenu"))
+		{
+			DebugTools.DrawMenu();
+			ImGui::EndPopup();
+		}
+
 		// Name of the current scene, vertically centered next to the buttons
 		ImGui::SameLine();
 		ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (buttonHeight - ImGui::GetTextLineHeight()) * 0.5f);
-		ImGui::TextDisabled("| %s", GetCurrentSceneDisplayName().c_str());
+		NYX_UI(ImGui::TextDisabled("| %s", GetCurrentSceneDisplayName().c_str()));
+		if (SourceInspector.IsActive())
+		{
+			ImGui::SameLine();
+			NYX_UI(ImGui::TextUnformatted("| Inspect UI: click source, Shift-click widget, Esc cancels"));
+		}
+	}
+
+	void EditorLayer::OpenUISource(SourceLocation location)
+	{
+		if (PendingSourceOpen.valid())
+		{
+			SourceNavigationStatus = "A source editor is already opening. Please wait.";
+			return;
+		}
+		SourceNavigationStatus = "Opening source editor...";
+		PendingSourceOpen = std::async(std::launch::async, OpenSourceLocation, location, Preferences.SourceEditor);
+	}
+
+	void EditorLayer::DrawSourceTools()
+	{
+		if (PendingSourceOpen.valid() && PendingSourceOpen.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+		{
+			SourceNavigationStatus = PendingSourceOpen.get();
+			if (!SourceNavigationStatus.empty())
+			{
+				LOG_ERROR("{0}", SourceNavigationStatus);
+				bShowPreferences = true;
+			}
+		}
+		if (!bShowPreferences) return;
+
+		// Keep preferences independently resizable, including when an older layout docked it.
+		ImGui::SetNextWindowSize(ImVec2(640.0f, 300.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSizeConstraints(ImVec2(360.0f, 180.0f), ImVec2(FLT_MAX, FLT_MAX));
+		if (Nyx::UI::Begin("Preferences", &bShowPreferences))
+		{
+			NYX_UI(ImGui::TextUnformatted("Source navigation"));
+			int selectedEditor = static_cast<int>(Preferences.SourceEditor);
+			if (NYX_UI(ImGui::Combo("Source editor", &selectedEditor, "Visual Studio\0Visual Studio Code\0")))
+			{
+				Preferences.SourceEditor = static_cast<ESourceEditor>(selectedEditor);
+				if (!Preferences.Save(EditorPreferences::GetUserFile()))
+					SourceNavigationStatus = "Could not save user preferences.";
+			}
+			ImGui::PushTextWrapPos(0.0f);
+			NYX_UI(ImGui::TextUnformatted("F8: inspect UI. Click: declaration. Shift-click: widget code. Escape: cancel."));
+			NYX_UI(ImGui::TextUnformatted("Open menus before inspecting them. Finish active edits before pressing F8."));
+			NYX_UI(ImGui::TextUnformatted("Source locations match the compiled code; rebuild after changing source lines."));
+			NYX_UI(ImGui::TextDisabled("Preferences: %s", EditorPreferences::GetUserFile().string().c_str()));
+			ImGui::PopTextWrapPos();
+			if (!SourceNavigationStatus.empty()) NYX_UI(ImGui::TextWrapped("%s", SourceNavigationStatus.c_str()));
+			if (!SourceInspector.GetStatus().empty()) NYX_UI(ImGui::TextWrapped("%s", SourceInspector.GetStatus().c_str()));
+		}
+		ImGui::End();
 	}
 
 	bool EditorLayer::SaveCurrentScene(const std::filesystem::path& path)
@@ -466,7 +550,7 @@ namespace Nyx::Editor
 			return;
 		}
 
-		if (!ImGui::Begin("Scene Outliner", &bShowSceneOutliner))
+		if (!Nyx::UI::Begin("Scene Outliner", &bShowSceneOutliner))
 		{
 			ImGui::End();
 			return;
@@ -477,7 +561,7 @@ namespace Nyx::Editor
 
 		TransactionContext.ActiveScene = &ActiveScene;
 
-		if (ImGui::Button("Add Entity"))
+		if (NYX_UI(ImGui::Button("Add Entity")))
 		{
 			Nyx::Engine::Entity newEntity = ActiveScene.CreateEntity("New Entity");
 			selection = newEntity;
@@ -508,7 +592,7 @@ namespace Nyx::Editor
 			ImGui::BeginDisabled();
 		}
 
-		if (ImGui::Button("Delete Selected") && bHasSelection)
+		if (NYX_UI(ImGui::Button("Delete Selected")) && bHasSelection)
 		{
 			const Nyx::Engine::Entity entityToDelete = selection.value();
 			const ObjectRef rootRef = MakeSceneEntityRef(entityToDelete);
@@ -539,7 +623,7 @@ namespace Nyx::Editor
 			ImGui::EndDisabled();
 		}
 
-		ImGui::Separator();
+		NYX_UI(ImGui::Separator());
 
 		world.Each<Nyx::Engine::NameComponent>(
 			[&](Nyx::Engine::Entity entity, const Nyx::Engine::NameComponent& name)
@@ -548,7 +632,7 @@ namespace Nyx::Editor
 
 				std::string label = name.Name + "##" + std::to_string(entity.Index());
 
-				if (ImGui::Selectable(label.c_str(), bSelected))
+				if (NYX_UI(ImGui::Selectable(label.c_str(), bSelected)))
 				{
 					selection = entity;
 				}
@@ -569,7 +653,7 @@ namespace Nyx::Editor
 			return;
 		}
 
-		if (!ImGui::Begin("Details", &bShowDetailsPanel))
+		if (!Nyx::UI::Begin("Details", &bShowDetailsPanel))
 		{
 			ImGui::End();
 			return;
@@ -580,7 +664,7 @@ namespace Nyx::Editor
 
 		if (!selection.has_value())
 		{
-			ImGui::TextUnformatted("No entity selected.");
+			NYX_UI(ImGui::TextUnformatted("No entity selected."));
 			ImGui::End();
 			return;
 		}
@@ -589,14 +673,14 @@ namespace Nyx::Editor
 
 		if (!world.IsAlive(selectedEntity))
 		{
-			ImGui::TextUnformatted("Selected entity is no longer valid.");
+			NYX_UI(ImGui::TextUnformatted("Selected entity is no longer valid."));
 			selection.reset();
 			ImGui::End();
 			return;
 		}
 
-		ImGui::Text("Entity: %u", selectedEntity.Index());
-		ImGui::Separator();
+		NYX_UI(ImGui::Text("Entity: %u", selectedEntity.Index()));
+		NYX_UI(ImGui::Separator());
 
 		// @todo: Move away from manually hardcoding the visuals of
 		// specific components (and fields) here; Consider DetailsPanel-,
@@ -627,8 +711,9 @@ namespace Nyx::Editor
 
 			const char* displayName = componentType.TypeMetadata->DisplayName;
 			ImGui::PushID(displayName);
+			UI::SourceDeclarationScope componentSource(ReflectionSourceRegistry::Get().Find(*componentType.TypeMetadata));
 
-			if (ImGui::CollapsingHeader(displayName, ImGuiTreeNodeFlags_DefaultOpen))
+			if (NYX_UI(ImGui::CollapsingHeader(displayName, ImGuiTreeNodeFlags_DefaultOpen)))
 			{
 				Nyx::Editor::DrawReflectedTypeTable(component, *componentType.TypeMetadata, DetailsPanelContext);
 			}
@@ -661,7 +746,7 @@ namespace Nyx::Editor
 			return;
 		}
 
-		if (!ImGui::Begin(title, &bOpen))
+		if (!Nyx::UI::Begin(title, &bOpen))
 		{
 			ImGui::End();
 			return;
@@ -681,7 +766,7 @@ namespace Nyx::Editor
 
 		if (!Renderer->WasSceneViewRecreatedThisFrame(sceneViewId))
 		{
-			ImGui::Image(Renderer->GetSceneViewTextureId(sceneViewId), avail);
+			NYX_UI(ImGui::Image(Renderer->GetSceneViewTextureId(sceneViewId), avail));
 
 			const ImVec2 imageMin = ImGui::GetItemRectMin();
 			const ImVec2 imageSize = ImGui::GetItemRectSize();
@@ -725,7 +810,7 @@ namespace Nyx::Editor
 		}
 		else
 		{
-			ImGui::Dummy(avail);
+			NYX_UI(ImGui::Dummy(avail));
 		}
 
 		ImGui::End();
@@ -745,10 +830,10 @@ namespace Nyx::Editor
 			bOpenSaveSceneAsPopup = false;
 		}
 
-		if (ImGui::BeginPopupModal("Load Scene", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+		if (Nyx::UI::BeginPopupModal("Load Scene", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
 		{
-			ImGui::TextUnformatted("Scenes");
-			ImGui::Separator();
+			NYX_UI(ImGui::TextUnformatted("Scenes"));
+			NYX_UI(ImGui::Separator());
 
 			const std::vector<Nyx::Editor::AssetEntry> sceneEntries =
 				AssetDb.GetChildren(std::filesystem::path("Scenes"));
@@ -765,7 +850,7 @@ namespace Nyx::Editor
 					continue;
 				}
 
-				if (ImGui::Selectable(entry.Name.c_str()))
+				if (NYX_UI(ImGui::Selectable(entry.Name.c_str())))
 				{
 					LoadCurrentScene(entry.AbsolutePath);
 					ImGui::CloseCurrentPopup();
@@ -774,7 +859,7 @@ namespace Nyx::Editor
 
 			ImGui::Spacing();
 
-			if (ImGui::Button("Cancel", ImVec2(120.0f, 0.0f)))
+			if (NYX_UI(ImGui::Button("Cancel", ImVec2(120.0f, 0.0f))))
 			{
 				ImGui::CloseCurrentPopup();
 			}
@@ -782,17 +867,17 @@ namespace Nyx::Editor
 			ImGui::EndPopup();
 		}
 
-		if (ImGui::BeginPopupModal("Save Scene As", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+		if (Nyx::UI::BeginPopupModal("Save Scene As", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
 		{
-			ImGui::TextUnformatted("Save scene into Assets/Scenes");
-			ImGui::Separator();
+			NYX_UI(ImGui::TextUnformatted("Save scene into Assets/Scenes"));
+			NYX_UI(ImGui::Separator());
 
 			ImGui::SetNextItemWidth(320.0f);
-			ImGui::InputText("File Name", SaveSceneAsBuffer.data(), SaveSceneAsBuffer.size());
+			NYX_UI(ImGui::InputText("File Name", SaveSceneAsBuffer.data(), SaveSceneAsBuffer.size()));
 
 			ImGui::Spacing();
 
-			if (ImGui::Button("Save", ImVec2(120.0f, 0.0f)))
+			if (NYX_UI(ImGui::Button("Save", ImVec2(120.0f, 0.0f))))
 			{
 				std::string fileName = SaveSceneAsBuffer.data();
 				if (!fileName.empty())
@@ -810,7 +895,7 @@ namespace Nyx::Editor
 
 			ImGui::SameLine();
 
-			if (ImGui::Button("Cancel", ImVec2(120.0f, 0.0f)))
+			if (NYX_UI(ImGui::Button("Cancel", ImVec2(120.0f, 0.0f))))
 			{
 				ImGui::CloseCurrentPopup();
 			}

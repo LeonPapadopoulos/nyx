@@ -23,10 +23,17 @@ static std::string ReadAllText(const fs::path& path)
 	return stream.str();
 }
 
-static void RequireFileEquals(const fs::path& actualPath, const fs::path& expectedPath)
+static void RequireFileEquals(const fs::path& actualPath, const fs::path& expectedPath, const fs::path& sourcePath = {})
 {
 	const std::string actual = ReadAllText(actualPath);
-	const std::string expected = ReadAllText(expectedPath);
+	std::string expected = ReadAllText(expectedPath);
+	// Source locations are absolute in a build, but golden files must work in any checkout.
+	const std::string sourceFile = sourcePath.empty() ? "" : fs::absolute(sourcePath).generic_string();
+	const std::string marker = "@SOURCE_FILE@";
+	for (size_t position = expected.find(marker); position != std::string::npos; position = expected.find(marker, position + sourceFile.size()))
+	{
+		expected.replace(position, marker.size(), sourceFile);
+	}
 
 	if (actual != expected)
 	{
@@ -95,7 +102,8 @@ static int RunTool(
 		L"--scan-root", scanRoot,
 		L"--output-dir", outputDir,
 		L"--module-init-header", initHeader,
-		L"--module-init-cpp", initCpp
+		L"--module-init-cpp", initCpp,
+		L"--editor-sources-cpp", ToWide(caseOutputDir / "Runtime.reflect.sources.cpp")
 	};
 
 	std::vector<const wchar_t*> argv;
@@ -163,9 +171,10 @@ static void RunFixture(
 		throw std::runtime_error("Expected generated init cpp missing: " + actualInitCpp.string());
 	}
 
-	RequireFileEquals(actualReflect, expectedReflect);
+	RequireFileEquals(actualReflect, expectedReflect, inputHeader);
 	RequireFileEquals(actualInitHeader, expectedInitHeader);
 	RequireFileEquals(actualInitCpp, expectedInitCpp);
+	RequireFileEquals(caseOutputDir / "Runtime.reflect.sources.cpp", fixtureDir / "Expected.sources.cpp", inputHeader);
 }
 
 // Runs the tool on a fixture it must reject, for example because two property names have the same hash.

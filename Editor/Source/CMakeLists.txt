@@ -4,6 +4,11 @@
 set(NYX_EDITOR_SOURCES
     main.cpp
     src/EditorLayer.cpp
+    src/EditorPreferences.cpp
+    src/ImGuiDebugTools.cpp
+    src/ReflectionSourceRegistry.cpp
+    src/SourceNavigation.cpp
+    src/UISourceInspector.cpp
     src/SceneDocument.cpp
     src/EditorProperty.cpp
     src/ComponentEditorRegistration.cpp
@@ -40,6 +45,11 @@ set(NYX_EDITOR_SOURCES
 set(NYX_EDITOR_HEADERS
     src/EditorPCH.h
     include/EditorLayer.h
+    include/EditorPreferences.h
+    include/ImGuiDebugTools.h
+    include/ReflectionSourceRegistry.h
+    include/SourceNavigation.h
+    include/UISourceInspector.h
     include/SceneDocument.h
     include/EditorProperty.h
     include/ComponentEditorRegistration.h
@@ -82,14 +92,20 @@ add_executable(NyxEditor
 	${NYX_EDITOR_HEADERS}
 )
 
+set(NYX_EDITOR_REFLECTION_SOURCES "${CMAKE_BINARY_DIR}/Generated/Runtime/Runtime.reflect.sources.cpp")
+target_sources(NyxEditor PRIVATE "${NYX_EDITOR_REFLECTION_SOURCES}")
+
+configure_file(src/EditorBuildConfig.h.in ${CMAKE_CURRENT_BINARY_DIR}/EditorBuildConfig.h @ONLY)
+
 target_include_directories(NyxEditor
     PRIVATE
         include
         src
+        ${CMAKE_CURRENT_BINARY_DIR}
 )
 
 target_link_libraries(NyxEditor
-	PRIVATE NyxEngine
+	PRIVATE NyxEditorEngine ole32 oleaut32 shell32 comsuppw
 )
 
 # The editor includes component headers, which include their generated reflection code.
@@ -124,12 +140,23 @@ if(BUILD_TESTING)
     set(NYX_EDITOR_TEST_SOURCES ${NYX_EDITOR_SOURCES})
     list(REMOVE_ITEM NYX_EDITOR_TEST_SOURCES main.cpp)
 
-    add_executable(NyxEditorSceneTests tests/SceneReplacementTests.cpp ${NYX_EDITOR_TEST_SOURCES})
-    target_include_directories(NyxEditorSceneTests PRIVATE include src)
-    target_link_libraries(NyxEditorSceneTests PRIVATE NyxEngine)
+    add_executable(NyxEditorSceneTests tests/SceneReplacementTests.cpp ${NYX_EDITOR_TEST_SOURCES}
+        "${NYX_EDITOR_REFLECTION_SOURCES}")
+    target_include_directories(NyxEditorSceneTests PRIVATE include src ${CMAKE_CURRENT_BINARY_DIR})
+    target_link_libraries(NyxEditorSceneTests PRIVATE NyxEditorEngine ole32 oleaut32 shell32 comsuppw)
     add_dependencies(NyxEditorSceneTests NyxGeneratedReflection)
     target_precompile_headers(NyxEditorSceneTests REUSE_FROM NyxEditor)
     set_property(TARGET NyxEditorSceneTests PROPERTY FOLDER "Tests")
 
     add_test(NAME NyxEditorSceneTests COMMAND NyxEditorSceneTests)
+
+    add_executable(NyxUISourceTests tests/UISourceInspectorTests.cpp
+        src/UISourceInspector.cpp src/EditorPreferences.cpp src/SourceNavigation.cpp src/ImGuiDebugTools.cpp
+        src/ReflectionSourceRegistry.cpp "${NYX_EDITOR_REFLECTION_SOURCES}")
+    target_include_directories(NyxUISourceTests PRIVATE include src ${CMAKE_CURRENT_BINARY_DIR})
+    target_link_libraries(NyxUISourceTests PRIVATE NyxEditorEngine ole32 oleaut32 shell32 comsuppw)
+    target_precompile_headers(NyxUISourceTests REUSE_FROM NyxEditor)
+    add_dependencies(NyxUISourceTests NyxGeneratedReflection)
+    set_property(TARGET NyxUISourceTests PROPERTY FOLDER "Tests")
+    add_test(NAME NyxUISourceTests COMMAND NyxUISourceTests)
 endif()

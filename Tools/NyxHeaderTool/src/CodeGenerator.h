@@ -14,6 +14,7 @@ namespace Nyx::HeaderTool
 		static std::string GenerateMetadataHeader(const ParsedHeader& parsedHeader);
 		static std::string GenerateModuleInitHeader();
 		static std::string GenerateModuleInitCpp(const std::vector<ScannedHeader>& scannedHeaders);
+		static std::string GenerateEditorSourcesCpp(const std::vector<ScannedHeader>& scannedHeaders);
 
 		static std::filesystem::path MakeGeneratedHeaderPath(
 			const std::filesystem::path& relativeHeaderPath,

@@ -2,6 +2,8 @@
 
 #include "PropertyWidgetRegistry.h"
 #include "ReflectionUtils.h"
+#include "ImGuiSource.h"
+#include "ReflectionSourceRegistry.h"
 
 #include <map>
 #include <string_view>
@@ -71,10 +73,10 @@ namespace
 	{
 		const float offset = PropertyLabelPaddingX + PropertyIndentPerDepth * static_cast<float>(depth);
 
-		ImGui::Dummy(ImVec2(offset, 0.0f));
+		NYX_UI(ImGui::Dummy(ImVec2(offset, 0.0f)));
 		ImGui::SameLine(0.0f, 0.0f);
 		ImGui::AlignTextToFramePadding();
-		ImGui::TextUnformatted(label);
+		NYX_UI(ImGui::TextUnformatted(label));
 	}
 
 	struct ScopedCategoryHeaderStyle
@@ -195,7 +197,7 @@ namespace
 		}
 		else
 		{
-			ImGui::TextDisabled("<unsupported>");
+			NYX_UI(ImGui::TextDisabled("<unsupported>"));
 			rowBottomY = (std::max)(rowBottomY, ImGui::GetItemRectMax().y);
 		}
 
@@ -228,12 +230,12 @@ namespace
 		ImGui::TableNextRow();
 		ImGui::TableSetColumnIndex(0);
 
-		ImGui::Dummy(ImVec2(PropertyIndentPerDepth * static_cast<float>(depth), 0.0f));
+		NYX_UI(ImGui::Dummy(ImVec2(PropertyIndentPerDepth * static_cast<float>(depth), 0.0f)));
 		ImGui::SameLine(0.0f, 0.0f);
-		ImGui::SeparatorText(category.c_str());
+		NYX_UI(ImGui::SeparatorText(category.c_str()));
 
 		ImGui::TableSetColumnIndex(1);
-		ImGui::TextUnformatted("");
+		NYX_UI(ImGui::TextUnformatted(""));
 	}
 
 	static bool DrawPropertyRow(
@@ -243,6 +245,7 @@ namespace
 		const Nyx::Reflection::TypeMetadata& ownerType,
 		int depth)
 	{
+		Nyx::UI::SourceDeclarationScope declaration(Nyx::Editor::ReflectionSourceRegistry::Get().Find(property));
 		if (Nyx::Reflection::IsStructProperty(property))
 		{
 			return DrawStructPropertyRow(object, property, drawContext, depth);
@@ -260,10 +263,10 @@ namespace
 			ImGuiTreeNodeFlags_SpanFullWidth |
 			ImGuiTreeNodeFlags_DefaultOpen;
 
-		const bool bOpen = ImGui::TreeNodeEx(category.c_str(), flags, "%s", category.c_str());
+		const bool bOpen = NYX_UI(ImGui::TreeNodeEx(category.c_str(), flags, "%s", category.c_str()));
 
 		ImGui::TableSetColumnIndex(1);
-		ImGui::TextUnformatted("");
+		NYX_UI(ImGui::TextUnformatted(""));
 
 		return bOpen;
 	}
@@ -318,12 +321,12 @@ namespace
 				ImGui::TableNextRow();
 				ImGui::TableSetColumnIndex(0);
 
-				ImGui::Dummy(ImVec2(PropertyIndentPerDepth * static_cast<float>(depth), 0.0f));
+				NYX_UI(ImGui::Dummy(ImVec2(PropertyIndentPerDepth * static_cast<float>(depth), 0.0f)));
 				ImGui::SameLine(0.0f, 0.0f);
-				ImGui::TextDisabled("%s", category.c_str());
+				NYX_UI(ImGui::TextDisabled("%s", category.c_str()));
 
 				ImGui::TableSetColumnIndex(1);
-				ImGui::TextUnformatted("");
+				NYX_UI(ImGui::TextUnformatted(""));
 
 				for (size_t propertyIndex : indices)
 				{
@@ -475,7 +478,7 @@ namespace
 			(property.DisplayName && property.DisplayName[0]) ? property.DisplayName : property.Name;
 
 		const float offset = PropertyLabelPaddingX + PropertyIndentPerDepth * static_cast<float>(depth);
-		ImGui::Dummy(ImVec2(offset, 0.0f));
+		NYX_UI(ImGui::Dummy(ImVec2(offset, 0.0f)));
 		ImGui::SameLine(0.0f, 0.0f);
 
 		ScopedDetailsFramePadding rowPadding;
@@ -488,14 +491,14 @@ namespace
 			ImGuiTreeNodeFlags_SpanAvailWidth |
 			ImGuiTreeNodeFlags_DefaultOpen;
 
-		const bool bOpen = ImGui::TreeNodeEx("##StructNode", flags, "%s", displayName);
+		const bool bOpen = NYX_UI(ImGui::TreeNodeEx("##StructNode", flags, "%s", displayName));
 
 		ImGui::PopStyleColor(3);
 
 		rowBottomY = (std::max)(rowBottomY, ImGui::GetItemRectMax().y);
 
 		ImGui::TableSetColumnIndex(1);
-		ImGui::TextUnformatted("");
+		NYX_UI(ImGui::TextUnformatted(""));
 		rowBottomY = (std::max)(rowBottomY, ImGui::GetItemRectMax().y);
 
 		DrawPropertyTooltipIfHovered(property);
@@ -523,7 +526,7 @@ namespace
 		const float fullWidth = ImGui::GetContentRegionAvail().x;
 		const ImVec2 rowSize(fullWidth, DetailsRowHeight);
 
-		ImGui::InvisibleButton("##CategoryRow", rowSize);
+		NYX_UI(ImGui::InvisibleButton("##CategoryRow", rowSize));
 
 		const ImVec2 rowMin = ImGui::GetItemRectMin();
 		const ImVec2 rowMax = ImGui::GetItemRectMax();

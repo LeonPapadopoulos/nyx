@@ -90,6 +90,7 @@ namespace Nyx::HeaderTool
 
 	struct ParsedProperty
 	{
+		uint32_t SourceLine = 0;
 		std::string Type;
 		std::string Name;
 		std::string DisplayName;
@@ -113,6 +114,7 @@ namespace Nyx::HeaderTool
 
 	struct ParsedType
 	{
+		uint32_t SourceLine = 0;
 		std::string Name;
 		std::string QualifiedName;
 		std::string DisplayName;
@@ -126,6 +128,7 @@ namespace Nyx::HeaderTool
 
 	struct ParsedHeader
 	{
+		std::string SourceFile;
 		std::vector<ParsedType> Types;
 	};
 

@@ -198,6 +198,7 @@ static int RunScanMode(int argc, char** argv)
 	std::optional<fs::path> outputDir;
 	std::optional<fs::path> moduleInitHeader;
 	std::optional<fs::path> moduleInitCpp;
+	std::optional<fs::path> editorSourcesCpp;
 
 	for (int i = 1; i < argc; ++i)
 	{
@@ -235,6 +236,14 @@ static int RunScanMode(int argc, char** argv)
 			}
 			moduleInitCpp = fs::path(argv[++i]);
 		}
+		else if (arg == "--editor-sources-cpp")
+		{
+			if (i + 1 >= argc)
+			{
+				throw std::runtime_error("--editor-sources-cpp requires a value");
+			}
+			editorSourcesCpp = fs::path(argv[++i]);
+		}
 		else
 		{
 			throw std::runtime_error("Unknown argument: " + arg);
@@ -266,6 +275,12 @@ static int RunScanMode(int argc, char** argv)
 		std::cout << "Generated: " << moduleInitCpp.value().string() << "\n";
 	}
 
+	if (editorSourcesCpp.has_value())
+	{
+		WriteAllText(editorSourcesCpp.value(), CodeGenerator::GenerateEditorSourcesCpp(scannedHeaders));
+		std::cout << "Generated: " << editorSourcesCpp.value().string() << "\n";
+	}
+
 	std::cout << "Reflection generation complete. Generated " << count << " header(s).\n";
 	return 0;
 }
@@ -280,6 +295,7 @@ int main(int argc, char** argv)
 			std::cerr << "  NyxHeaderTool <input_header> <output_header> <qualified_type_name>\n";
 			std::cerr << "  NyxHeaderTool --scan-root <dir> [--scan-root <dir> ...] --output-dir <dir>\n";
 			std::cerr << "                [--module-init-header <file>] [--module-init-cpp <file>]\n";
+			std::cerr << "                [--editor-sources-cpp <file>]\n";
 			return 1;
 		}
 

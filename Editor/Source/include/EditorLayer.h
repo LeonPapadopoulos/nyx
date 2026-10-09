@@ -14,10 +14,14 @@
 #include "BuiltinAssetResolver.h"
 #include "EditorAssetActivationContext.h"
 #include "Layer.h"
+#include "EditorPreferences.h"
+#include "ImGuiDebugTools.h"
+#include "UISourceInspector.h"
 #include "Window.h"
 
 #include <array>
 #include <filesystem>
+#include <future>
 
 namespace Nyx::Tests
 {
@@ -67,7 +71,7 @@ namespace Nyx::Editor
 
 		void TickScene(float deltaTime);
 
-		// File and Window menus plus the scene name, shown in the window's titlebar.
+		// File, Window and Debug menus plus the scene name, shown in the window's titlebar.
 		void DrawTitlebarMenu(float buttonHeight);
 
 		void DrawSceneOutliner();
@@ -75,6 +79,8 @@ namespace Nyx::Editor
 		void DrawSceneViews();
 		void DrawSceneViewWindow(const char* title, uint64_t sceneViewId, bool& bOpen);
 		void DrawSceneFilePopups();
+		void DrawSourceTools();
+		void OpenUISource(SourceLocation location);
 
 		void SpawnTestScene();
 
@@ -123,5 +129,12 @@ namespace Nyx::Editor
 		bool bAssetBrowserVisible = true;
 
 		Nyx::Editor::EditorTransactionSubscriber TransactionSubscriber;
+
+		EditorPreferences Preferences;
+		ImGuiDebugTools DebugTools;
+		UISourceInspector SourceInspector;
+		std::future<std::string> PendingSourceOpen;
+		std::string SourceNavigationStatus;
+		bool bShowPreferences = false;
 	};
 }

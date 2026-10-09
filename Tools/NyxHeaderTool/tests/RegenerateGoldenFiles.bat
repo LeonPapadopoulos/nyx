@@ -57,14 +57,21 @@ for /D %%F in ("%FIXTURES_DIR%\*") do (
           --scan-root "!CASE_DIR!" ^
           --output-dir "!OUT_DIR!" ^
           --module-init-header "!OUT_DIR!\Runtime.reflect.init.h" ^
-          --module-init-cpp "!OUT_DIR!\Runtime.reflect.init.cpp"
+          --module-init-cpp "!OUT_DIR!\Runtime.reflect.init.cpp" ^
+          --editor-sources-cpp "!OUT_DIR!\Runtime.reflect.sources.cpp"
 
         if errorlevel 1 (
             echo Failed generating fixture %%~nF
             exit /b 1
         )
 
+        rem Keep source locations independent of this checkout in the golden files.
+        powershell -NoProfile -Command "$p = Join-Path $env:OUT_DIR 'Runtime.reflect.sources.cpp'; $s = [IO.File]::ReadAllText($p); $s = $s.Replace(($env:CASE_DIR.Replace('\','/') + '/Input.h'), '@SOURCE_FILE@'); [IO.File]::WriteAllText($p, $s, [Text.UTF8Encoding]::new($false))"
+        if errorlevel 1 exit /b 1
+
         echo Copying generated files back to fixture...
+        copy /y "!OUT_DIR!\Runtime.reflect.sources.cpp" "%%~fF\Expected.sources.cpp" >nul
+        if errorlevel 1 exit /b 1
         copy /y "!OUT_DIR!\Input.reflect.h" "%%~fF\Expected.reflect.h" >nul
         if errorlevel 1 (
             echo Failed copying Expected.reflect.h for %%~nF

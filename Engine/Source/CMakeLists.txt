@@ -36,7 +36,6 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/GuidComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/ResourceManager.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/TypedHandle.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/WindowsWindow.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/cgltf_impl.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/BinaryArchive.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/ReflectedArchivePrinter.cpp
@@ -59,7 +58,6 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/SceneView.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/SceneViewCameraData.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanImGuiBackend.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanRenderer.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanContext.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanSwapchain.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/OffscreenRenderTarget.cpp
@@ -109,6 +107,7 @@ set(NYX_ENGINE_HEADERS
 
     # Runtime/Renderer
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ImGuiTheme.h
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ImGuiSource.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/Mesh.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/Shader.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/Texture.h
@@ -130,6 +129,7 @@ set(NYX_ENGINE_HEADERS
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionTypes.h
+    ${NYX_ENGINE_ROOT}/Reflection/include/SourceLocation.h
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionMacros.h
     ${NYX_ENGINE_ROOT}/Reflection/include/PropertyValue.h
     ${NYX_ENGINE_ROOT}/Reflection/include/PropertyValueUtils.h
@@ -138,19 +138,30 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionTraversal.h
 )
 
-# A static library: every program (the editor, later the game) links its own copy, so
-# third-party state such as the ImGui context or GLFW exists exactly once per process.
-add_library(NyxEngine STATIC
+# Most engine code is identical for editor and game and only needs compiling once.
+# The two files with inspection hooks are compiled separately for each target.
+add_library(NyxEngineCommon OBJECT
 	${NYX_ENGINE_SOURCES}
 	${NYX_ENGINE_HEADERS}
 )
+set(NYX_ENGINE_UI_SOURCES
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/WindowsWindow.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanRenderer.cpp
+)
+add_library(NyxEngine STATIC ${NYX_ENGINE_UI_SOURCES})
+add_library(NyxEditorEngine STATIC ${NYX_ENGINE_UI_SOURCES}
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ImGuiSource.cpp)
+target_link_libraries(NyxEngine PRIVATE NyxEngineCommon)
+target_link_libraries(NyxEditorEngine PRIVATE NyxEngineCommon)
+
+# Consumers inherit the matching UI API; no executable overrides a shared library's mode.
+target_compile_definitions(NyxEngine PUBLIC NYX_UI_INSPECTION=0)
+target_compile_definitions(NyxEditorEngine PUBLIC NYX_UI_INSPECTION=1)
 
 find_package(Vulkan QUIET)
 if(NOT Vulkan_FOUND)
     message(FATAL_ERROR "Vulkan SDK not found.")
 endif()
-
-target_compile_features(NyxEngine PUBLIC cxx_std_20)
 
 # START Reflection / CodeGen
 set(NYX_GENERATED_ROOT "${CMAKE_BINARY_DIR}/Generated")
@@ -158,6 +169,7 @@ set(NYX_GENERATED_RUNTIME_DIR "${NYX_GENERATED_ROOT}/Runtime")
 set(NYX_REFLECTION_STAMP "${NYX_GENERATED_RUNTIME_DIR}/Reflection.stamp")
 set(NYX_RUNTIME_REFLECTION_INIT_H "${NYX_GENERATED_RUNTIME_DIR}/Runtime.reflect.init.h")
 set(NYX_RUNTIME_REFLECTION_INIT_CPP "${NYX_GENERATED_RUNTIME_DIR}/Runtime.reflect.init.cpp")
+set(NYX_RUNTIME_REFLECTION_SOURCES_CPP "${NYX_GENERATED_RUNTIME_DIR}/Runtime.reflect.sources.cpp")
 
 file(GLOB_RECURSE NYX_REFLECT_HEADER_INPUTS
     CONFIGURE_DEPENDS
@@ -170,6 +182,7 @@ add_custom_command(
         "${NYX_REFLECTION_STAMP}"
         "${NYX_RUNTIME_REFLECTION_INIT_H}"
         "${NYX_RUNTIME_REFLECTION_INIT_CPP}"
+        "${NYX_RUNTIME_REFLECTION_SOURCES_CPP}"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${NYX_GENERATED_RUNTIME_DIR}"
     COMMAND "$<TARGET_FILE:NyxHeaderTool>"
             --scan-root "${NYX_ENGINE_ROOT}/Runtime/Engine/include"
@@ -177,6 +190,7 @@ add_custom_command(
             --output-dir "${NYX_GENERATED_RUNTIME_DIR}"
             --module-init-header "${NYX_RUNTIME_REFLECTION_INIT_H}"
             --module-init-cpp "${NYX_RUNTIME_REFLECTION_INIT_CPP}"
+            --editor-sources-cpp "${NYX_RUNTIME_REFLECTION_SOURCES_CPP}"
     COMMAND ${CMAKE_COMMAND} -E touch "${NYX_REFLECTION_STAMP}"
     DEPENDS
         NyxHeaderTool
@@ -190,12 +204,11 @@ add_custom_target(NyxGeneratedReflection
         "${NYX_REFLECTION_STAMP}"
         "${NYX_RUNTIME_REFLECTION_INIT_H}"
         "${NYX_RUNTIME_REFLECTION_INIT_CPP}"
+        "${NYX_RUNTIME_REFLECTION_SOURCES_CPP}"
 )
 
-add_dependencies(NyxEngine NyxGeneratedReflection)
-
 # Registers every reflected component type; called through RegisterComponentTypes().
-target_sources(NyxEngine PRIVATE
+target_sources(NyxEngineCommon PRIVATE
     "${NYX_RUNTIME_REFLECTION_INIT_CPP}"
 )
 
@@ -203,61 +216,68 @@ set_source_files_properties(
     "${NYX_REFLECTION_STAMP}"
     "${NYX_RUNTIME_REFLECTION_INIT_H}"
     "${NYX_RUNTIME_REFLECTION_INIT_CPP}"
+    "${NYX_RUNTIME_REFLECTION_SOURCES_CPP}"
     PROPERTIES GENERATED TRUE
 )
 
 # PUBLIC, because the component headers include their generated "Generated/Runtime/*.reflect.h".
-target_include_directories(NyxEngine
-    PUBLIC
-        "${CMAKE_BINARY_DIR}"
-)
-# END Reflection / CodeGen
+foreach(NYX_ENGINE_TARGET NyxEngineCommon NyxEngine NyxEditorEngine)
+    add_dependencies(${NYX_ENGINE_TARGET} NyxGeneratedReflection)
+    target_compile_features(${NYX_ENGINE_TARGET} PUBLIC cxx_std_20)
+    target_include_directories(${NYX_ENGINE_TARGET}
+        PUBLIC
+            "${CMAKE_BINARY_DIR}"
+    )
+    # END Reflection / CodeGen
 
-target_include_directories(NyxEngine
-    PUBLIC
-        ${NYX_ENGINE_ROOT}/Runtime/Core/include
-        ${NYX_ENGINE_ROOT}/Runtime/Engine/include
-        ${NYX_ENGINE_ROOT}/Runtime/Renderer/include
-        ${NYX_ENGINE_ROOT}/Reflection/include
-    PRIVATE
-        ${NYX_ENGINE_ROOT}/Runtime/Core/src
-        ${NYX_ENGINE_ROOT}/Runtime/Engine/src
-        ${NYX_ENGINE_ROOT}/Runtime/Renderer/src
-        ${CMAKE_SOURCE_DIR}/Dependencies/cgltf
-)
+    target_include_directories(${NYX_ENGINE_TARGET}
+        PUBLIC
+            ${NYX_ENGINE_ROOT}/Runtime/Core/include
+            ${NYX_ENGINE_ROOT}/Runtime/Engine/include
+            ${NYX_ENGINE_ROOT}/Runtime/Renderer/include
+            ${NYX_ENGINE_ROOT}/Reflection/include
+        PRIVATE
+            ${NYX_ENGINE_ROOT}/Runtime/Core/src
+            ${NYX_ENGINE_ROOT}/Runtime/Engine/src
+            ${NYX_ENGINE_ROOT}/Runtime/Renderer/src
+            ${CMAKE_SOURCE_DIR}/Dependencies/cgltf
+    )
 
-target_link_libraries(NyxEngine
-    PUBLIC
-        spdlog::spdlog
-        glfw
-        imgui::imgui
-        glm::glm
-        Vulkan::Vulkan # Public headers such as Mesh.h include vulkan.hpp
-    PRIVATE
-        dwmapi
-        stb_image
-        NyxStartup # The startup banner, from the Startup module.
-)
+    target_link_libraries(${NYX_ENGINE_TARGET}
+        PUBLIC
+            spdlog::spdlog
+            glfw
+            imgui::imgui
+            glm::glm
+            Vulkan::Vulkan # Public headers such as Mesh.h include vulkan.hpp
+        PRIVATE
+            dwmapi
+            stb_image
+            NyxStartup # The startup banner, from the Startup module.
+    )
 
 
-# NYXENGINE_STATIC turns NYXENGINE_API (NyxEngineAPI.h) into nothing: no DLL exports needed.
-target_compile_definitions(NyxEngine
-	PUBLIC NYXENGINE_STATIC
-	PUBLIC $<$<CONFIG:Debug>:ENGINE_DEBUG>
-    PUBLIC $<$<CONFIG:Release>:ENGINE_RELEASE>
-	PUBLIC $<$<CONFIG:Debug>:ASSERTIONS_ENABLED>
-    PUBLIC VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS # Same vulkan.hpp behavior wherever it is included
-    PUBLIC GLM_ENABLE_EXPERIMENTAL # Quaternion utilities, used by the public TransformComponent.h
-)
+    # NYXENGINE_STATIC turns NYXENGINE_API (NyxEngineAPI.h) into nothing: no DLL exports needed.
+    target_compile_definitions(${NYX_ENGINE_TARGET}
+        PUBLIC NYXENGINE_STATIC
+        PUBLIC $<$<CONFIG:Debug>:ENGINE_DEBUG>
+        PUBLIC $<$<CONFIG:Release>:ENGINE_RELEASE>
+        PUBLIC $<$<CONFIG:Debug>:ASSERTIONS_ENABLED>
+        PUBLIC VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS # Same vulkan.hpp behavior wherever it is included
+        PUBLIC GLM_ENABLE_EXPERIMENTAL # Quaternion utilities, used by the public TransformComponent.h
+    )
 
-target_precompile_headers(NyxEngine
-    PRIVATE ${NYX_ENGINE_ROOT}/Runtime/Core/src/NyxPCH.h
-)
+    target_precompile_headers(${NYX_ENGINE_TARGET}
+        PRIVATE ${NYX_ENGINE_ROOT}/Runtime/Core/src/NyxPCH.h
+    )
+endforeach()
 
 # Tell Visual Studio to mimick actual file hierarchy
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES
 	${NYX_ENGINE_SOURCES}
 	${NYX_ENGINE_HEADERS}
+    ${NYX_ENGINE_UI_SOURCES}
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ImGuiSource.cpp
 )
 
 if(BUILD_TESTING)

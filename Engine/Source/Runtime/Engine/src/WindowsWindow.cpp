@@ -1,3 +1,4 @@
+#include "ImGuiSource.h"
 #include "NyxPCH.h"
 #include "WindowsWindow.h"
 #include "WindowsStartupBanner.h"
@@ -160,7 +161,7 @@ namespace Icon::Util
 		const ImVec2 oldCursorPos = ImGui::GetCursorPos();
 
 		ImGui::SetCursorScreenPos(pos);
-		const bool pressed = ImGui::InvisibleButton(id, size);
+		const bool pressed = NYX_UI(ImGui::InvisibleButton(id, size));
 
 		const bool hovered = ImGui::IsItemHovered();
 		const bool held = ImGui::IsItemActive();
@@ -340,6 +341,9 @@ namespace Nyx
 			{
 				WindowsWindow* windowsWindow = static_cast<WindowsWindow*>(glfwGetWindowUserPointer(window));
 				*hit = windowsWindow->IsTitleBarHovered();
+#if NYX_UI_INSPECTION
+				if (UI::IsInspectingSources()) *hit = false;
+#endif
 			});
 		glfwSetFramebufferSizeCallback(Window, [](GLFWwindow* window, int width, int height)
 			{
@@ -415,7 +419,7 @@ namespace Nyx
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(2.0f, 2.0f));
 		ImGui::PushStyleColor(ImGuiCol_WindowBg, Colors::Theme::background);
 
-		ImGui::Begin("DockSpaceWindow", nullptr, windowFlags);
+		Nyx::UI::Begin("DockSpaceWindow", nullptr, windowFlags);
 
 		ImGui::PopStyleColor();
 		ImGui::PopStyleVar(3);
@@ -428,7 +432,7 @@ namespace Nyx
 			// @todo LP: Figure out where the padding between titlebar-drag-zone and dockarea comes from
 			const float paddingToRemoveHACK = 8.0f;
 			// Reserve space so docked content starts below the custom titlebar
-			ImGui::Dummy(ImVec2(0.0f, titlebarHeight - paddingToRemoveHACK));
+			NYX_UI(ImGui::Dummy(ImVec2(0.0f, titlebarHeight - paddingToRemoveHACK)));
 		}
 
 		ImGuiStyle& style = ImGui::GetStyle();
@@ -520,7 +524,7 @@ namespace Nyx
 		const ImU32 iconColor = IM_COL32(230, 230, 230, 255);
 
 		// Minimize
-		if (Icon::Util::DrawTitlebarButton(
+		if (NYX_UI(Icon::Util::DrawTitlebarButton(
 				windowDrawList,
 				"##TitlebarMinimize",
 				Icon::Util::ETitlebarButton::Minimize,
@@ -529,13 +533,13 @@ namespace Nyx
 				transparent,
 				hoverBg,
 				pressBg,
-				iconColor))
+				iconColor)))
 		{
 			glfwIconifyWindow(Window);
 		}
 
 		// Maximize / Restore
-		if (Icon::Util::DrawTitlebarButton(
+		if (NYX_UI(Icon::Util::DrawTitlebarButton(
 				windowDrawList,
 				"##TitlebarMaxRestore",
 				bIsMaximized ? Icon::Util::ETitlebarButton::Restore : Icon::Util::ETitlebarButton::Maximize,
@@ -544,7 +548,7 @@ namespace Nyx
 				transparent,
 				hoverBg,
 				pressBg,
-				iconColor))
+				iconColor)))
 		{
 			if (bIsMaximized)
 				glfwRestoreWindow(Window);
@@ -553,7 +557,7 @@ namespace Nyx
 		}
 
 		// Close
-		if (Icon::Util::DrawTitlebarButton(
+		if (NYX_UI(Icon::Util::DrawTitlebarButton(
 				windowDrawList,
 				"##TitlebarClose",
 				Icon::Util::ETitlebarButton::Close,
@@ -562,7 +566,7 @@ namespace Nyx
 				transparent,
 				closeHoverBg,
 				closePressBg,
-				iconColor))
+				iconColor)))
 		{
 			glfwSetWindowShouldClose(Window, GLFW_TRUE);
 		}
@@ -750,7 +754,7 @@ namespace Nyx
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(2.0f, 2.0f));
 		ImGui::PushStyleColor(ImGuiCol_WindowBg, Colors::Theme::background);
 
-		ImGui::Begin("DockSpaceWindow", nullptr, windowFlags);
+		Nyx::UI::Begin("DockSpaceWindow", nullptr, windowFlags);
 
 		ImGui::PopStyleColor();
 		ImGui::PopStyleVar(3);
@@ -765,7 +769,7 @@ namespace Nyx
 			const float paddingToRemoveHACK = 8.0f;
 
 			// Reserve space so docked content starts below the custom titlebar
-			ImGui::Dummy(ImVec2(0.0f, titlebarHeight - paddingToRemoveHACK));
+			NYX_UI(ImGui::Dummy(ImVec2(0.0f, titlebarHeight - paddingToRemoveHACK)));
 		}
 
 		ImGuiStyle& style = ImGui::GetStyle();
