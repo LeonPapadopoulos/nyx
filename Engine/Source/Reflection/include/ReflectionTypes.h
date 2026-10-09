@@ -5,20 +5,28 @@
 
 namespace Nyx::Reflection
 {
+	// The numbers are stored in scene files and messages, so they must never change:
+	// add new kinds at the end, and update LastPropertyKind. A new kind also needs:
+	// - the header tool's type table (ReflectionSemantics.cpp) and EParsedPropertyKind
+	// - PropertyValue, GetPropertyKindName (ReflectionUtils.cpp)
+	// - ReflectedArchiveSerializer.cpp (GetPropertyValue, SetPropertyValue, ReadValue, WriteValue)
+	// - ReflectedArchivePrinter::ValueToText and a details panel widget in the editor
 	enum class EPropertyKind : uint8_t
 	{
 		Unknown = 0,
-		Bool,
-		Int32,
-		UInt32,
-		Float,
-		Vec2,
-		Vec3,
-		Vec4,
-		Quat,
-		String,
-		Struct
+		Bool = 1,
+		Int32 = 2,
+		UInt32 = 3,
+		Float = 4,
+		Vec2 = 5,
+		Vec3 = 6,
+		Vec4 = 7,
+		Quat = 8,
+		String = 9,
+		Struct = 10
 	};
+
+	inline constexpr EPropertyKind LastPropertyKind = EPropertyKind::Struct;
 
 	enum class EPropertyFlags : uint32_t
 	{
@@ -60,6 +68,11 @@ namespace Nyx::Reflection
 	struct PropertyMetadata
 	{
 		const char* Name = "";
+
+		// FNV-1a hash of Name, computed by the header tool, which also makes sure it is unique
+		// within the type. Scene files and messages store this hash instead of the name.
+		uint32_t NameHash = 0;
+
 		const char* DisplayName = "";
 		EPropertyKind Kind = EPropertyKind::Unknown;
 		EPropertyFlags Flags = EPropertyFlags::None;

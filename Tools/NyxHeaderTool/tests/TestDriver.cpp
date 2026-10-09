@@ -168,6 +168,33 @@ static void RunFixture(
 	RequireFileEquals(actualInitCpp, expectedInitCpp);
 }
 
+// Runs the tool on a fixture it must reject, for example because two property names have the same hash.
+static void RunFailingFixture(const fs::path& toolPath, const fs::path& fixtureDir, const std::string& inputHeaderName)
+{
+	// Without its header, the tool would fail for the wrong reason and the test would still pass
+	if (!fs::exists(fixtureDir / inputHeaderName))
+	{
+		throw std::runtime_error("Fixture missing " + inputHeaderName + ": " + fixtureDir.string());
+	}
+
+	const fs::path caseOutputDir = fs::temp_directory_path() / "NyxHeaderToolTests" / fixtureDir.filename();
+
+	fs::remove_all(caseOutputDir);
+	fs::create_directories(caseOutputDir);
+
+	const int exitCode = RunTool(
+		toolPath,
+		fixtureDir,
+		caseOutputDir,
+		caseOutputDir / "Runtime.reflect.init.h",
+		caseOutputDir / "Runtime.reflect.init.cpp");
+
+	if (exitCode == 0)
+	{
+		throw std::runtime_error("NyxHeaderTool accepted a fixture it must reject: " + fixtureDir.string());
+	}
+}
+
 int main(int argc, char** argv)
 {
 	try
@@ -194,6 +221,8 @@ int main(int argc, char** argv)
 		RunFixture(toolPath, fixturesRoot / "basic", "Input.reflect.h");
 		RunFixture(toolPath, fixturesRoot / "multi_type", "Input.reflect.h");
 		RunFixture(toolPath, fixturesRoot / "nested_namespace", "Input.reflect.h");
+		RunFixture(toolPath, fixturesRoot / "nested_type", "Input.reflect.h");
+		RunFailingFixture(toolPath, fixturesRoot / "name_hash_collision", "Collision.h");
 
 		std::cout << "All NyxHeaderTool fixtures passed.\n";
 		return 0;

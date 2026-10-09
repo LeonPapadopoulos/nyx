@@ -4,6 +4,9 @@
 #include "SpecifierRegistry.h"
 #include "ReflectedTypeIndex.h"
 
+#include <cstdint>
+#include <string_view>
+
 namespace Nyx::HeaderTool
 {
 	class ReflectionSemantics
@@ -17,5 +20,8 @@ namespace Nyx::HeaderTool
 
 		static void ResolvePropertyType(ParsedProperty& parsedProperty, const ReflectedTypeIndex& typeIndex);
 		static void ValidateEntryValue(const ParsedMacroEntry& entry, ESpecifierValueKind valueKind);
+
+		static void AssignPropertyNameHashes(ParsedType& parsedType);
+		static uint32_t HashPropertyName(std::string_view name);
 	};
 }

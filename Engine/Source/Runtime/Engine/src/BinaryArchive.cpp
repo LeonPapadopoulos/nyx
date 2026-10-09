@@ -2,6 +2,7 @@
 
 #include <cstring>
 #include <fstream>
+#include <utility>
 
 namespace Nyx::Engine
 {
@@ -30,6 +31,16 @@ namespace Nyx::Engine
 
 		const std::byte* bytes = static_cast<const std::byte*>(data);
 		Buffer.insert(Buffer.end(), bytes, bytes + size);
+	}
+
+	void BinaryWriter::WriteUInt8(uint8_t value)
+	{
+		WriteBytes(&value, sizeof(value));
+	}
+
+	void BinaryWriter::WriteUInt16(uint16_t value)
+	{
+		WriteBytes(&value, sizeof(value));
 	}
 
 	void BinaryWriter::WriteUInt32(uint32_t value)
@@ -61,6 +72,12 @@ namespace Nyx::Engine
 		{
 			WriteBytes(value.data(), value.size());
 		}
+	}
+
+	void BinaryWriter::WriteBlock(const BinaryWriter& block)
+	{
+		WriteUInt32(static_cast<uint32_t>(block.Buffer.size()));
+		WriteBytes(block.Buffer.data(), block.Buffer.size());
 	}
 
 	bool BinaryReader::LoadFromFile(const std::filesystem::path& path)
@@ -96,9 +113,16 @@ namespace Nyx::Engine
 		return true;
 	}
 
+	void BinaryReader::LoadFromMemory(std::vector<std::byte> bytes)
+	{
+		Buffer = std::move(bytes);
+		Offset = 0;
+		bValid = true;
+	}
+
 	bool BinaryReader::ReadBytes(void* outData, size_t size)
 	{
-		if (Offset + size > Buffer.size())
+		if (size > Buffer.size() - Offset)
 		{
 			bValid = false;
 			return false;
@@ -111,6 +135,28 @@ namespace Nyx::Engine
 
 		Offset += size;
 		return true;
+	}
+
+	bool BinaryReader::SkipBytes(size_t size)
+	{
+		if (size > Buffer.size() - Offset)
+		{
+			bValid = false;
+			return false;
+		}
+
+		Offset += size;
+		return true;
+	}
+
+	bool BinaryReader::ReadUInt8(uint8_t& outValue)
+	{
+		return ReadBytes(&outValue, sizeof(outValue));
+	}
+
+	bool BinaryReader::ReadUInt16(uint16_t& outValue)
+	{
+		return ReadBytes(&outValue, sizeof(outValue));
 	}
 
 	bool BinaryReader::ReadUInt32(uint32_t& outValue)
@@ -148,6 +194,12 @@ namespace Nyx::Engine
 			return false;
 		}
 
+		if (length > Buffer.size() - Offset)
+		{
+			bValid = false;
+			return false;
+		}
+
 		outValue.resize(length);
 
 		if (length > 0)
@@ -156,5 +208,27 @@ namespace Nyx::Engine
 		}
 
 		return true;
+	}
+
+	bool BinaryReader::ReadBlock(BinaryReader& outBlock)
+	{
+		uint32_t size = 0;
+		if (!ReadUInt32(size) || size > Buffer.size() - Offset)
+		{
+			bValid = false;
+			return false;
+		}
+
+		const auto blockBegin = Buffer.begin() + static_cast<std::ptrdiff_t>(Offset);
+		outBlock.LoadFromMemory(std::vector<std::byte>(blockBegin, blockBegin + size));
+
+		Offset += size;
+		return true;
+	}
+
+	bool BinaryReader::SkipBlock()
+	{
+		uint32_t size = 0;
+		return ReadUInt32(size) && SkipBytes(size);
 	}
 }

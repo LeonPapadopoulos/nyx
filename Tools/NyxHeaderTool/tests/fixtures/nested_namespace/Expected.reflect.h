@@ -27,6 +27,7 @@ namespace Nyx::Reflection::Generated
     {
         {
             "Position",
+            0xE27F342A,
             "Position",
             EPropertyKind::Vec3,
             EPropertyFlags::Edit | EPropertyFlags::Undo | EPropertyFlags::Serialize,
@@ -37,6 +38,7 @@ namespace Nyx::Reflection::Generated
         },
         {
             "Rotation",
+            0x0232777F,
             "Rotation",
             EPropertyKind::Quat,
             EPropertyFlags::Edit | EPropertyFlags::Undo | EPropertyFlags::Serialize,

@@ -1,5 +1,6 @@
 #include "CodeGenerator.h"
 
+#include <iomanip>
 #include <sstream>
 
 namespace Nyx::HeaderTool
@@ -57,6 +58,14 @@ namespace Nyx::HeaderTool
 			out << parts[i];
 		}
 
+		return out.str();
+	}
+
+	std::string CodeGenerator::ToGeneratedHash(uint32_t hash)
+	{
+		// For example 0x0A1B2C3D
+		std::ostringstream out;
+		out << "0x" << std::hex << std::uppercase << std::setw(8) << std::setfill('0') << hash;
 		return out.str();
 	}
 
@@ -182,6 +191,7 @@ namespace Nyx::HeaderTool
 
 				out << "        {\n";
 				out << "            \"" << EscapeCString(property.Name) << "\",\n";
+				out << "            " << ToGeneratedHash(property.NameHash) << ",\n";
 				out << "            \"" << EscapeCString(property.DisplayName) << "\",\n";
 				out << "            " << ToGeneratedPropertyKind(property.Kind) << ",\n";
 				out << "            " << ToGeneratedPropertyFlags(property.Flags) << ",\n";

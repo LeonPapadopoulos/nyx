@@ -37,6 +37,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/WindowsWindow.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/cgltf_impl.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/BinaryArchive.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/ReflectedArchivePrinter.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/ReflectedArchiveSerializer.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/ComponentTypeRegistry.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/ComponentRegistration.cpp
@@ -93,6 +94,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/WindowsWindow.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/BinaryArchive.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/SceneSerializationTypes.h
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/ReflectedArchivePrinter.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/ReflectedArchiveSerializer.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/ComponentTypeRegistry.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/ComponentRegistration.h

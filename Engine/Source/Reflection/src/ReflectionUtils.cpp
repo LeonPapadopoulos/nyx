@@ -1,5 +1,7 @@
 #include "ReflectionUtils.h"
 
+#include <cstdio>
+
 namespace Nyx::Reflection
 {
 	const MetadataEntry* FindMetadataEntry(
@@ -112,6 +114,57 @@ namespace Nyx::Reflection
 		}
 
 		return std::nullopt;
+	}
+
+	const PropertyMetadata* FindPropertyByNameHash(
+		const TypeMetadata& type,
+		uint32_t nameHash)
+	{
+		if (!type.Properties)
+		{
+			return nullptr;
+		}
+
+		for (size_t i = 0; i < type.PropertyCount; ++i)
+		{
+			if (type.Properties[i].NameHash == nameHash)
+			{
+				return &type.Properties[i];
+			}
+		}
+
+		return nullptr;
+	}
+
+	std::string NameHashToText(uint32_t nameHash)
+	{
+		char text[16];
+		std::snprintf(text, sizeof(text), "0x%08X", nameHash);
+		return text;
+	}
+
+	bool IsKnownPropertyKind(EPropertyKind kind)
+	{
+		// The kinds are numbered without gaps, from Bool to LastPropertyKind
+		return kind >= EPropertyKind::Bool && kind <= LastPropertyKind;
+	}
+
+	const char* GetPropertyKindName(EPropertyKind kind)
+	{
+		switch (kind)
+		{
+		case EPropertyKind::Bool:   return "Bool";
+		case EPropertyKind::Int32:  return "Int32";
+		case EPropertyKind::UInt32: return "UInt32";
+		case EPropertyKind::Float:  return "Float";
+		case EPropertyKind::Vec2:   return "Vec2";
+		case EPropertyKind::Vec3:   return "Vec3";
+		case EPropertyKind::Vec4:   return "Vec4";
+		case EPropertyKind::Quat:   return "Quat";
+		case EPropertyKind::String: return "String";
+		case EPropertyKind::Struct: return "Struct";
+		default:                    return "Unknown";
+		}
 	}
 
 	void* GetPropertyAddress(

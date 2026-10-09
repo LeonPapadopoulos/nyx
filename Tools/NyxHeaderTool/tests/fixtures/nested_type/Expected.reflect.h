@@ -26,6 +26,7 @@ namespace Nyx::Reflection::Generated
     {
         {
             "testProperty",
+            0xEB8D56C8,
             "testProperty",
             EPropertyKind::String,
             EPropertyFlags::Edit | EPropertyFlags::Undo | EPropertyFlags::Serialize,
@@ -71,6 +72,7 @@ namespace Nyx::Reflection::Generated
     {
         {
             "bBoolProperty",
+            0x8602B780,
             "bBoolProperty",
             EPropertyKind::Bool,
             EPropertyFlags::Edit | EPropertyFlags::Undo | EPropertyFlags::Serialize,
@@ -81,6 +83,7 @@ namespace Nyx::Reflection::Generated
         },
         {
             "floatProperty",
+            0xB7C16AA8,
             "floatProperty",
             EPropertyKind::Float,
             EPropertyFlags::Edit | EPropertyFlags::Undo | EPropertyFlags::Serialize,
@@ -91,6 +94,7 @@ namespace Nyx::Reflection::Generated
         },
         {
             "InnerType",
+            0x00BFABBF,
             "InnerType",
             EPropertyKind::Struct,
             EPropertyFlags::Edit | EPropertyFlags::Undo | EPropertyFlags::Serialize,
@@ -144,6 +148,7 @@ namespace Nyx::Reflection::Generated
     {
         {
             "MeshId",
+            0x48F6ACF1,
             "MeshId",
             EPropertyKind::String,
             EPropertyFlags::Edit | EPropertyFlags::Undo | EPropertyFlags::Serialize | EPropertyFlags::ReadOnly,
@@ -154,6 +159,7 @@ namespace Nyx::Reflection::Generated
         },
         {
             "MaterialId",
+            0x5C14F29D,
             "MaterialId",
             EPropertyKind::String,
             EPropertyFlags::Edit | EPropertyFlags::Undo | EPropertyFlags::Serialize | EPropertyFlags::ReadOnly,
@@ -164,6 +170,7 @@ namespace Nyx::Reflection::Generated
         },
         {
             "bVisible",
+            0x2E9CC9A1,
             "bVisible",
             EPropertyKind::Bool,
             EPropertyFlags::Edit | EPropertyFlags::Undo | EPropertyFlags::Serialize,
@@ -174,6 +181,7 @@ namespace Nyx::Reflection::Generated
         },
         {
             "Test",
+            0x2FFCBE05,
             "Test",
             EPropertyKind::Struct,
             EPropertyFlags::Edit | EPropertyFlags::Undo | EPropertyFlags::Serialize,

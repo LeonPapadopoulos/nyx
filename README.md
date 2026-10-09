@@ -46,6 +46,8 @@ For an existing clone: `git submodule update --init --recursive`.
 
 The editor ends up in `Build\Windows\Binaries\Debug\NyxEditor.exe`, the game next to it in `NyxGame.exe`. To work in Visual Studio, open the generated solution in `Build\Windows`; `NyxEditor` is the startup project.
 
+To see what a scene file contains, build `NyxDump` and print the file with it, e.g. from the repository folder: `Build\Windows\Binaries\Debug\NyxDump.exe Assets\Scenes\Default.nyxscene`.
+
 ## Project layout
 
 ```
@@ -64,6 +66,7 @@ Scripts/         Build and formatting scripts
 Startup/         The startup banner and its intro animations
 ThirdParty/      Vendored libraries: Dear ImGui, stb_image
 Tools/
+  NyxDump/       Prints scene files as readable text
   NyxHeaderTool/ Reflection code generator and its tests
 ```
 

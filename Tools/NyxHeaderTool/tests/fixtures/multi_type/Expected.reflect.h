@@ -18,6 +18,7 @@ namespace Nyx::Reflection::Generated
     {
         {
             "Name",
+            0x0FE07306,
             "Name",
             EPropertyKind::String,
             EPropertyFlags::Edit | EPropertyFlags::Undo | EPropertyFlags::Serialize,
@@ -43,6 +44,7 @@ namespace Nyx::Reflection::Generated
     {
         {
             "DummyName",
+            0x9D567AC0,
             "Dummy Name",
             EPropertyKind::String,
             EPropertyFlags::Edit | EPropertyFlags::Undo | EPropertyFlags::Serialize,

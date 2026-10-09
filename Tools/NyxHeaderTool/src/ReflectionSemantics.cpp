@@ -19,7 +19,43 @@ namespace Nyx::HeaderTool
 				ResolvePropertyType(parsedProperty, typeIndex);
 				ApplyPropertySemantics(parsedProperty);
 			}
+
+			AssignPropertyNameHashes(parsedType);
 		}
+	}
+
+	void ReflectionSemantics::AssignPropertyNameHashes(ParsedType& parsedType)
+	{
+		// Scene files and messages identify properties by these hashes instead of their names,
+		// so two properties of one type must never share a hash.
+		std::unordered_map<uint32_t, const ParsedProperty*> propertyByHash;
+
+		for (ParsedProperty& parsedProperty : parsedType.Properties)
+		{
+			parsedProperty.NameHash = HashPropertyName(parsedProperty.Name);
+
+			const auto [existing, bInserted] = propertyByHash.emplace(parsedProperty.NameHash, &parsedProperty);
+			if (!bInserted)
+			{
+				throw std::runtime_error(
+					"Properties '" + existing->second->Name + "' and '" + parsedProperty.Name + "' of type '" +
+					parsedType.Name + "' have the same name hash, so saved data couldn't tell them apart. Rename one of them.");
+			}
+		}
+	}
+
+	uint32_t ReflectionSemantics::HashPropertyName(std::string_view name)
+	{
+		// 32-bit FNV-1a
+		uint32_t hash = 2166136261u;
+
+		for (const char c : name)
+		{
+			hash ^= static_cast<uint8_t>(c);
+			hash *= 16777619u;
+		}
+
+		return hash;
 	}
 
 	void ReflectionSemantics::ResolvePropertyType(

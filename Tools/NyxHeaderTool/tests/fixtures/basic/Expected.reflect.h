@@ -21,6 +21,7 @@ namespace Nyx::Reflection::Generated
     {
         {
             "Name",
+            0x0FE07306,
             "Name",
             EPropertyKind::String,
             EPropertyFlags::Edit | EPropertyFlags::Undo | EPropertyFlags::Serialize,

@@ -27,5 +27,6 @@ namespace Nyx::HeaderTool
 		static const char* ToGeneratedTypeRole(EParsedTypeRole role);
 		static const char* ToGeneratedPropertyKind(EParsedPropertyKind kind);
 		static std::string ToGeneratedPropertyFlags(EParsedPropertyFlags flags);
+		static std::string ToGeneratedHash(uint32_t hash);
 	};
 }

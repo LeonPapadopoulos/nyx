@@ -93,6 +93,9 @@ namespace Nyx::HeaderTool
 		std::string Name;
 		std::string DisplayName;
 
+		// FNV-1a hash of Name, set by ReflectionSemantics
+		uint32_t NameHash = 0;
+
 		ParsedMacroArguments RawArguments;
 
 		EParsedPropertyFlags Flags = EParsedPropertyFlags::None;

@@ -4,7 +4,9 @@
 
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <type_traits>
 
@@ -51,6 +53,19 @@ namespace Nyx::Reflection
 	std::optional<size_t> FindPropertyIndexByName(
 		const TypeMetadata& type,
 		std::string_view propertyName);
+
+	const PropertyMetadata* FindPropertyByNameHash(
+		const TypeMetadata& type,
+		uint32_t nameHash);
+
+	// For example 0x0A1B2C3D
+	std::string NameHashToText(uint32_t nameHash);
+
+	// Whether this build knows the kind. Data from a newer build can contain kinds it doesn't.
+	bool IsKnownPropertyKind(EPropertyKind kind);
+
+	// The kind's name, e.g. "Vec3". Kinds this build doesn't know return "Unknown".
+	const char* GetPropertyKindName(EPropertyKind kind);
 
 	void* GetPropertyAddress(
 		void* object,
