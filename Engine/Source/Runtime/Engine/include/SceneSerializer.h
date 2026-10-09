@@ -19,6 +19,8 @@ namespace Nyx::Engine
 	class SceneSerializer
 	{
 	public:
+		// Replaces the destination only after the complete scene has been written successfully.
+		// Serialization or file I/O failures return false without overwriting the previous file.
 		static bool SaveToFile(const Registry& world, const std::filesystem::path& path);
 
 		// Replaces everything in outWorld with the scene from the file. If the file can't be loaded,

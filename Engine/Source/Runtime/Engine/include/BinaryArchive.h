@@ -11,6 +11,8 @@ namespace Nyx::Engine
 	class BinaryWriter
 	{
 	public:
+		// Writes, flushes and closes a temporary file beside the destination before replacing it.
+		// Returns false on an I/O failure, leaving an existing destination unchanged.
 		bool SaveToFile(const std::filesystem::path& path) const;
 
 		void WriteBytes(const void* data, size_t size);

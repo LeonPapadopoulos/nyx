@@ -1,25 +1,136 @@
 #include "BinaryArchive.h"
 
+#include <algorithm>
+#include <atomic>
 #include <cstring>
 #include <fstream>
 #include <utility>
+
+#if defined(_WIN32)
+	#ifndef NOMINMAX
+		#define NOMINMAX
+	#endif
+	#include <Windows.h>
+#else
+	#error BinaryWriter::SaveToFile is not implemented for this platform yet.
+#endif
+
+namespace
+{
+	// Owns only the temporary file. The destination is never opened for writing or deleted.
+	// Unless Commit succeeds, leaving this scope closes the file and attempts to remove it.
+	class PendingArchiveFile
+	{
+	public:
+		explicit PendingArchiveFile(const std::filesystem::path& directory)
+		{
+			static std::atomic<uint64_t> nextFileNumber{ 0 };
+
+			// CREATE_NEW reserves the name, even when another thread or process is saving.
+			for (int attempt = 0; attempt < 64; ++attempt)
+			{
+				const std::wstring name = L".nyx-save-" + std::to_wstring(GetCurrentProcessId()) + L"-" +
+					std::to_wstring(GetTickCount64()) + L"-" + std::to_wstring(nextFileNumber.fetch_add(1)) + L".tmp";
+				std::filesystem::path candidate = directory / name;
+
+				File = CreateFileW(candidate.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+				if (File != INVALID_HANDLE_VALUE)
+				{
+					Path = std::move(candidate);
+					return;
+				}
+
+				const DWORD error = GetLastError();
+				if (error != ERROR_FILE_EXISTS && error != ERROR_ALREADY_EXISTS)
+				{
+					return;
+				}
+			}
+		}
+
+		~PendingArchiveFile()
+		{
+			if (File != INVALID_HANDLE_VALUE)
+			{
+				CloseHandle(File);
+			}
+
+			if (!Path.empty())
+			{
+				DeleteFileW(Path.c_str());
+			}
+		}
+
+		PendingArchiveFile(const PendingArchiveFile&) = delete;
+		PendingArchiveFile& operator=(const PendingArchiveFile&) = delete;
+
+		bool WriteAndClose(const std::vector<std::byte>& bytes)
+		{
+			if (File == INVALID_HANDLE_VALUE)
+			{
+				return false;
+			}
+
+			// Bounded writes also handle archives larger than WriteFile's DWORD size limit.
+			constexpr size_t ChunkSize = 1024 * 1024;
+			size_t offset = 0;
+			while (offset < bytes.size())
+			{
+				const DWORD requested = static_cast<DWORD>(std::min(ChunkSize, bytes.size() - offset));
+				DWORD written = 0;
+				if (!WriteFile(File, bytes.data() + offset, requested, &written, nullptr) || written == 0)
+				{
+					return false;
+				}
+
+				offset += written;
+			}
+
+			if (!FlushFileBuffers(File))
+			{
+				return false;
+			}
+
+			return CloseHandle(std::exchange(File, INVALID_HANDLE_VALUE)) != FALSE;
+		}
+
+		bool Commit(const std::filesystem::path& destination)
+		{
+			// Both paths are in the same directory. Do not fall back to deleting the old file
+			// or copying over it: a failed replacement must leave its contents intact.
+			if (!MoveFileExW(Path.c_str(), destination.c_str(), MOVEFILE_REPLACE_EXISTING))
+			{
+				return false;
+			}
+
+			Path.clear();
+			return true;
+		}
+
+	private:
+		HANDLE File = INVALID_HANDLE_VALUE;
+		std::filesystem::path Path;
+	};
+}
 
 namespace Nyx::Engine
 {
 	bool BinaryWriter::SaveToFile(const std::filesystem::path& path) const
 	{
-		std::ofstream file(path, std::ios::binary | std::ios::trunc);
-		if (!file)
+		if (path.empty() || !path.has_filename())
 		{
 			return false;
 		}
 
-		if (!Buffer.empty())
+		std::error_code error;
+		const std::filesystem::path destination = std::filesystem::absolute(path, error);
+		if (error)
 		{
-			file.write(reinterpret_cast<const char*>(Buffer.data()), static_cast<std::streamsize>(Buffer.size()));
+			return false;
 		}
 
-		return true;
+		PendingArchiveFile file(destination.parent_path());
+		return file.WriteAndClose(Buffer) && file.Commit(destination);
 	}
 
 	void BinaryWriter::WriteBytes(const void* data, size_t size)

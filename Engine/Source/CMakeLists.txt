@@ -259,3 +259,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES
 	${NYX_ENGINE_SOURCES}
 	${NYX_ENGINE_HEADERS}
 )
+
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()
