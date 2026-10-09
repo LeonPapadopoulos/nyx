@@ -297,12 +297,14 @@ namespace Nyx::Editor
 		Nyx::Engine::ScenePostLoadContext postLoadContext{};
 		postLoadContext.AssetResolver = AssetResolver.get();
 
+		// On failure, the open scene stays as it was
 		if (!Nyx::Engine::SceneSerializer::LoadFromFile(path, ActiveScene.GetRegistry(), postLoadContext))
 		{
 			LOG_ERROR("Failed to load scene from '{0}'", path.string());
 			return false;
 		}
 
+		ForgetPreviousScene();
 		Renderer->SetWorld(&ActiveScene.GetRegistry());
 		CurrentScenePath = path;
 
@@ -344,9 +346,18 @@ namespace Nyx::Editor
 	bool EditorLayer::NewScene()
 	{
 		ActiveScene.GetRegistry().Clear();
+		ForgetPreviousScene();
 		Renderer->SetWorld(&ActiveScene.GetRegistry());
 		CurrentScenePath.clear();
 		return true;
+	}
+
+	void EditorLayer::ForgetPreviousScene()
+	{
+		// Undo steps and the selection refer to entities by handle. In the new scene, the same
+		// handles name other entities, so undo would change the wrong ones.
+		ActiveScene.GetSelection().reset();
+		Transactions.Clear();
 	}
 
 	void EditorLayer::RequestLoadScenePopup()

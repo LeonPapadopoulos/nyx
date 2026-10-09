@@ -9,6 +9,7 @@
 
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace
@@ -334,14 +335,15 @@ namespace Nyx::Engine
 			return false;
 		}
 
-		outWorld.Clear();
+		// Read into a separate world, so that outWorld stays as it was if the file is damaged
+		Registry loadedWorld;
 
 		error = "ends early or is damaged";
 		ReadWarnings warnings;
 
 		const bool bRead = (version == 1)
-			? ReadEntitiesVersion1(reader, outWorld, postLoadContext, error)
-			: ReadEntities(reader, outWorld, postLoadContext, warnings);
+			? ReadEntitiesVersion1(reader, loadedWorld, postLoadContext, error)
+			: ReadEntities(reader, loadedWorld, postLoadContext, warnings);
 
 		if (!bRead || !reader.IsValid())
 		{
@@ -350,8 +352,11 @@ namespace Nyx::Engine
 			return false;
 		}
 
-		GiveEveryEntityAUniqueGuid(outWorld, warnings);
+		GiveEveryEntityAUniqueGuid(loadedWorld, warnings);
 		warnings.Log(path.string());
+
+		// Moving keeps outWorld at its address, so pointers to it (such as the renderer's) stay valid
+		outWorld = std::move(loadedWorld);
 
 		if (version < SceneFileVersion)
 		{

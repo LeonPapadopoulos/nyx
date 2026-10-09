@@ -21,8 +21,9 @@ namespace Nyx::Engine
 	public:
 		static bool SaveToFile(const Registry& world, const std::filesystem::path& path);
 
-		// Replaces everything in outWorld with the scene from the file. The context's asset
-		// resolver turns the asset paths stored in components into loaded assets.
+		// Replaces everything in outWorld with the scene from the file. If the file can't be loaded,
+		// outWorld stays as it was. The context's asset resolver turns the asset paths stored in
+		// components into loaded assets.
 		// Reads versions 1 and 2. In version 2 files, component types and properties this build
 		// doesn't know are skipped with a warning. After loading successfully, every entity has a
 		// guid no other entity in the scene has (see GuidComponent): entities without one, or with

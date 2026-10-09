@@ -75,6 +75,9 @@ namespace Nyx::Editor
 
 		void HandleUndoRedoHotkeys();
 
+		// Called when another scene replaces the open one
+		void ForgetPreviousScene();
+
 	private:
 		std::unique_ptr<Nyx::Editor::EditorAssetActivationContext> AssetActivationContext;
 		Nyx::Editor::AssetDatabase AssetDb;
