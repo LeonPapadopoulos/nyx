@@ -274,14 +274,14 @@ namespace Nyx
 		// ------------------------------------------------------------------------------------------------------
 		// Shader hot reload Setup
 		// ------------------------------------------------------------------------------------------------------
-		std::filesystem::create_directories(Nyx::Paths::GetExecutableDir() / "Shaders");
+		std::filesystem::create_directories(Nyx::Paths::GetCompiledShadersDir());
 		{
 			GridShaderHotReload.VertSourcePath = Nyx::Paths::GetShadersDir() / "Grid.vert";
 			GridShaderHotReload.FragSourcePath = Nyx::Paths::GetShadersDir() / "Grid.frag";
 
-			// Compile output goes to the same runtime-relative location CreateGridPipeline() already reads from
-			GridShaderHotReload.VertSpvPath = Nyx::Paths::GetExecutableDir() / "Shaders" / "Grid.vert.spv";
-			GridShaderHotReload.FragSpvPath = Nyx::Paths::GetExecutableDir() / "Shaders" / "Grid.frag.spv";
+			// Compile output goes to the folder CreateGridPipeline() loads the grid shaders from
+			GridShaderHotReload.VertSpvPath = Nyx::Paths::GetCompiledShadersDir() / "Grid.vert.spv";
+			GridShaderHotReload.FragSpvPath = Nyx::Paths::GetCompiledShadersDir() / "Grid.frag.spv";
 
 			LOG_INFO("Grid vert source: {}", GridShaderHotReload.VertSourcePath.string());
 			LOG_INFO("Grid frag source: {}", GridShaderHotReload.FragSourcePath.string());
@@ -1152,10 +1152,8 @@ namespace Nyx
 
 	void VulkanRenderer::CreateScenePipeline()
 	{
-		// File directory relative to the working directory of the .exe
-		// Set up to be that way inside the .exe's CMake
-		const std::vector<uint32_t> vertCode = ReadSpirvFile("Shaders/DefaultShader.vert.spv");
-		const std::vector<uint32_t> fragCode = ReadSpirvFile("Shaders/DefaultShader.frag.spv");
+		const std::vector<uint32_t> vertCode = ReadSpirvFile("DefaultShader.vert.spv");
+		const std::vector<uint32_t> fragCode = ReadSpirvFile("DefaultShader.frag.spv");
 
 		vk::raii::ShaderModule vertShaderModule = CreateShaderModule(vertCode);
 		vk::raii::ShaderModule fragShaderModule = CreateShaderModule(fragCode);
@@ -1268,8 +1266,8 @@ namespace Nyx
 
 	void VulkanRenderer::CreateGridPipeline()
 	{
-		const std::vector<uint32_t> vertCode = ReadSpirvFile("Shaders/Grid.vert.spv");
-		const std::vector<uint32_t> fragCode = ReadSpirvFile("Shaders/Grid.frag.spv");
+		const std::vector<uint32_t> vertCode = ReadSpirvFile("Grid.vert.spv");
+		const std::vector<uint32_t> fragCode = ReadSpirvFile("Grid.frag.spv");
 
 		vk::raii::ShaderModule vertShaderModule = CreateShaderModule(vertCode);
 		vk::raii::ShaderModule fragShaderModule = CreateShaderModule(fragCode);
@@ -1380,8 +1378,8 @@ namespace Nyx
 
 	void VulkanRenderer::CreatePickingPipeline()
 	{
-		const std::vector<uint32_t> vertCode = ReadSpirvFile("Shaders/Picking.vert.spv");
-		const std::vector<uint32_t> fragCode = ReadSpirvFile("Shaders/Picking.frag.spv");
+		const std::vector<uint32_t> vertCode = ReadSpirvFile("Picking.vert.spv");
+		const std::vector<uint32_t> fragCode = ReadSpirvFile("Picking.frag.spv");
 
 		vk::raii::ShaderModule vertShaderModule = CreateShaderModule(vertCode);
 		vk::raii::ShaderModule fragShaderModule = CreateShaderModule(fragCode);
@@ -1508,8 +1506,8 @@ namespace Nyx
 
 	void VulkanRenderer::CreateSkyboxPipeline()
 	{
-		const std::vector<uint32_t> vertCode = ReadSpirvFile("Shaders/Skybox.vert.spv");
-		const std::vector<uint32_t> fragCode = ReadSpirvFile("Shaders/Skybox.frag.spv");
+		const std::vector<uint32_t> vertCode = ReadSpirvFile("Skybox.vert.spv");
+		const std::vector<uint32_t> fragCode = ReadSpirvFile("Skybox.frag.spv");
 
 		vk::raii::ShaderModule vertShaderModule = CreateShaderModule(vertCode);
 		vk::raii::ShaderModule fragShaderModule = CreateShaderModule(fragCode);
@@ -2103,8 +2101,8 @@ namespace Nyx
 
 	void VulkanRenderer::CreateSelectionMaskPipelines()
 	{
-		const std::vector<uint32_t> vertCode = ReadSpirvFile("Shaders/SelectionMask.vert.spv");
-		const std::vector<uint32_t> fragCode = ReadSpirvFile("Shaders/SelectionMask.frag.spv");
+		const std::vector<uint32_t> vertCode = ReadSpirvFile("SelectionMask.vert.spv");
+		const std::vector<uint32_t> fragCode = ReadSpirvFile("SelectionMask.frag.spv");
 
 		vk::raii::ShaderModule vertShaderModule = CreateShaderModule(vertCode);
 		vk::raii::ShaderModule fragShaderModule = CreateShaderModule(fragCode);
@@ -2380,8 +2378,8 @@ namespace Nyx
 
 	void VulkanRenderer::CreateOutlineCompositePipeline()
 	{
-		const std::vector<uint32_t> vertCode = ReadSpirvFile("Shaders/OutlineComposite.vert.spv");
-		const std::vector<uint32_t> fragCode = ReadSpirvFile("Shaders/OutlineComposite.frag.spv");
+		const std::vector<uint32_t> vertCode = ReadSpirvFile("OutlineComposite.vert.spv");
+		const std::vector<uint32_t> fragCode = ReadSpirvFile("OutlineComposite.frag.spv");
 
 		vk::raii::ShaderModule vertShaderModule = CreateShaderModule(vertCode);
 		vk::raii::ShaderModule fragShaderModule = CreateShaderModule(fragCode);
@@ -2581,18 +2579,21 @@ namespace Nyx
 		return vk::raii::ShaderModule(Context.GetDevice(), createInfo);
 	}
 
-	std::vector<uint32_t> VulkanRenderer::ReadSpirvFile(const std::string& path)
+	std::vector<uint32_t> VulkanRenderer::ReadSpirvFile(const std::string& fileName)
 	{
+		// The compiled shaders sit next to the executable, so they're found from any working directory
+		const std::filesystem::path path = Nyx::Paths::GetCompiledShadersDir() / fileName;
+
 		std::ifstream file(path, std::ios::ate | std::ios::binary);
 		if (!file.is_open())
 		{
-			throw std::runtime_error("Failed to open SPIR-V file: " + path);
+			throw std::runtime_error("Failed to open SPIR-V file: " + path.string());
 		}
 
 		const std::streamsize fileSize = file.tellg();
 		if (fileSize <= 0 || (fileSize % sizeof(uint32_t)) != 0)
 		{
-			throw std::runtime_error("Invalid SPIR-V file size: " + path);
+			throw std::runtime_error("Invalid SPIR-V file size: " + path.string());
 		}
 
 		std::vector<uint32_t> buffer(static_cast<size_t>(fileSize) / sizeof(uint32_t));
@@ -2602,7 +2603,7 @@ namespace Nyx
 
 		if (!file)
 		{
-			throw std::runtime_error("Failed to read SPIR-V file: " + path);
+			throw std::runtime_error("Failed to read SPIR-V file: " + path.string());
 		}
 
 		return buffer;
@@ -3367,8 +3368,8 @@ namespace Nyx
 
 	void VulkanRenderer::CreateDebugLinePipeline()
 	{
-		const std::vector<uint32_t> vertCode = ReadSpirvFile("Shaders/DebugLines.vert.spv");
-		const std::vector<uint32_t> fragCode = ReadSpirvFile("Shaders/DebugLines.frag.spv");
+		const std::vector<uint32_t> vertCode = ReadSpirvFile("DebugLines.vert.spv");
+		const std::vector<uint32_t> fragCode = ReadSpirvFile("DebugLines.frag.spv");
 
 		vk::raii::ShaderModule vertShaderModule = CreateShaderModule(vertCode);
 		vk::raii::ShaderModule fragShaderModule = CreateShaderModule(fragCode);

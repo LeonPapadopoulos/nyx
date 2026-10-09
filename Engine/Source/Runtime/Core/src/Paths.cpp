@@ -90,4 +90,9 @@ namespace Nyx
 	{
 		return GetEngineDir() / "Shaders";
 	}
+
+	std::filesystem::path Paths::GetCompiledShadersDir()
+	{
+		return GetExecutableDir() / "Shaders";
+	}
 }

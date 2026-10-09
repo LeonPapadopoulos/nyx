@@ -31,10 +31,5 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES
 	${NYX_GAME_HEADERS}
 )
 
-# The renderer loads the shaders from the "Shaders" folder in the working directory,
-# so run from next to the built .exe
-set_target_properties(NyxGame PROPERTIES
-    VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:NyxGame>"
-)
-
+# Compiled by Engine/Shaders; the renderer loads them from a "Shaders" folder next to the .exe
 nyx_copy_shaders_next_to(NyxGame)

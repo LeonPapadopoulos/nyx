@@ -314,7 +314,9 @@ namespace Nyx
 		void DrawGrid(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
 
 		vk::raii::ShaderModule CreateShaderModule(const std::vector<uint32_t>& spirv);
-		std::vector<uint32_t> ReadSpirvFile(const std::string& path);
+
+		// Loads a compiled shader by file name (e.g. "Grid.vert.spv") from Paths::GetCompiledShadersDir()
+		std::vector<uint32_t> ReadSpirvFile(const std::string& fileName);
 
 		void CreateSceneResourcesForView(SceneViewInstance& view);
 		void UpdateSceneUniforms(SceneViewInstance& view);

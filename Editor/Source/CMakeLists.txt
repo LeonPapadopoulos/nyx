@@ -106,7 +106,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES
 )
 
 # Set working directory to be next to the built .exe
-# Relevant for finding the Shaders subdirectory
+# ImGui saves the editor's window layout (imgui.ini) in the working directory
 set_target_properties(NyxEditor PROPERTIES
     VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:NyxEditor>"
 )
