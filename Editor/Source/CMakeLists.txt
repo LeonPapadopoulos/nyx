@@ -111,6 +111,9 @@ target_link_libraries(NyxEditor
 # The editor includes component headers, which include their generated reflection code.
 add_dependencies(NyxEditor NyxGeneratedReflection)
 
+# Play starts NyxGame from next to the editor, so building the editor builds the game too.
+add_dependencies(NyxEditor NyxGame)
+
 target_precompile_headers(NyxEditor
     PRIVATE src/EditorPCH.h
 )

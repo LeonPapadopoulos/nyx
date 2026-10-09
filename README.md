@@ -46,6 +46,8 @@ For an existing clone: `git submodule update --init --recursive`.
 
 The editor ends up in `Build\Windows\Binaries\Debug\NyxEditor.exe`, the game next to it in `NyxGame.exe`. To work in Visual Studio, open the generated solution in `Build\Windows`; `NyxEditor` is the startup project.
 
+In the editor, **Play** in the titlebar runs the open scene in `NyxGame.exe`, as a separate program and with unsaved changes included; **Stop** ends it. To debug the game, either right-click Play and turn on *Game Waits for Debugger*, then attach Visual Studio to `NyxGame.exe`, or install the Visual Studio extension *Microsoft Child Process Debugging Power Tool 2022+* and turn on child process debugging under *Debug > Other Debug Targets > Child Process Debugging Settings*; Visual Studio then attaches to the game by itself when the editor starts it.
+
 To see what a scene file contains, build `NyxDump` and print the file with it, e.g. from the repository folder: `Build\Windows\Binaries\Debug\NyxDump.exe Assets\Scenes\Default.nyxscene`.
 
 ## Project layout

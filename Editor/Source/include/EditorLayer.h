@@ -14,6 +14,7 @@
 #include "BuiltinAssetResolver.h"
 #include "EditorAssetActivationContext.h"
 #include "Layer.h"
+#include "ChildProcess.h"
 #include "EditorPreferences.h"
 #include "ImGuiDebugTools.h"
 #include "UISourceInspector.h"
@@ -71,7 +72,7 @@ namespace Nyx::Editor
 
 		void TickScene(float deltaTime);
 
-		// File, Window and Debug menus plus the scene name, shown in the window's titlebar.
+		// File, Window and Debug menus, Play/Stop, and the scene name, shown in the window's titlebar.
 		void DrawTitlebarMenu(float buttonHeight);
 
 		void DrawSceneOutliner();
@@ -90,6 +91,11 @@ namespace Nyx::Editor
 
 		// Called before destroying the old registry, once its replacement is ready.
 		void ForgetPreviousScene();
+
+		// Play and Stop: the open scene runs in NyxGame, as a separate program
+		void StartGame();
+		void StopGame();
+		void CheckWhetherGameExited();
 
 	private:
 		std::unique_ptr<Nyx::Editor::EditorAssetActivationContext> AssetActivationContext;
@@ -136,5 +142,14 @@ namespace Nyx::Editor
 		std::future<std::string> PendingSourceOpen;
 		std::string SourceNavigationStatus;
 		bool bShowPreferences = false;
+
+		// The game started with Play
+		Nyx::ChildProcess GameProcess;
+
+		// Whether the game was running at the last check, to notice when it exits by itself
+		bool bGameRunning = false;
+
+		// Set in Play's right-click menu: the game waits at startup until a debugger is attached
+		bool bGameWaitsForDebugger = false;
 	};
 }

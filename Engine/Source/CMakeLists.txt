@@ -23,6 +23,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/Log.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/NyxPCH.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/Paths.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Core/src/ChildProcess.cpp
 
     # Runtime/Engine
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/Application.cpp
@@ -76,6 +77,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/Log.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/NyxEngineAPI.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/Paths.h
+    ${NYX_ENGINE_ROOT}/Runtime/Core/include/ChildProcess.h
     
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/NyxPCH.h
 

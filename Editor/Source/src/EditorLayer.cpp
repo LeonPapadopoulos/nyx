@@ -173,6 +173,9 @@ namespace Nyx::Editor
 
 	void EditorLayer::OnDetach()
 	{
+		// Closing the editor also ends the game it started
+		StopGame();
+
 		SourceInspector.Detach();
 		// The menu calls into this layer, so it must not outlive it.
 		Window->SetTitlebarMenu(nullptr);
@@ -196,6 +199,7 @@ namespace Nyx::Editor
 	void EditorLayer::OnUpdate(float deltaTime)
 	{
 		DebugTools.BeforeFrame();
+		CheckWhetherGameExited();
 		TickScene(deltaTime);
 
 		// Keep renderer-facing selection state up to date before rendering
@@ -298,6 +302,39 @@ namespace Nyx::Editor
 		if (Nyx::UI::BeginPopup("##TitlebarDebugMenu"))
 		{
 			DebugTools.DrawMenu();
+			ImGui::EndPopup();
+		}
+
+		ImGui::SameLine();
+
+		// Play / Stop, green while stopped and red while the game runs
+		const bool bPlaying = GameProcess.IsRunning();
+		const ImVec4 playButtonColor = bPlaying ? ImVec4(0.55f, 0.18f, 0.18f, 1.0f) : ImVec4(0.18f, 0.42f, 0.22f, 1.0f);
+
+		ImGui::PushStyleColor(ImGuiCol_Button, playButtonColor);
+		if (NYX_UI(ImGui::Button(bPlaying ? "Stop" : "Play", ImVec2(64.0f, buttonHeight))))
+		{
+			if (bPlaying)
+			{
+				StopGame();
+			}
+			else
+			{
+				StartGame();
+			}
+		}
+		ImGui::PopStyleColor();
+
+		ImGui::SetItemTooltip("Runs the open scene in NyxGame, unsaved changes included. Right-click for options.");
+
+		if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
+		{
+			ImGui::OpenPopup("##PlayOptions");
+		}
+
+		if (Nyx::UI::BeginPopup("##PlayOptions"))
+		{
+			NYX_UI(ImGui::MenuItem("Game Waits for Debugger", nullptr, &bGameWaitsForDebugger));
 			ImGui::EndPopup();
 		}
 
@@ -446,6 +483,83 @@ namespace Nyx::Editor
 		ActiveScene.GetSelection().reset();
 		Transactions.Clear();
 		++SceneRevision;
+
+		// The game is still running the previous scene
+		StopGame();
+	}
+
+	void EditorLayer::StartGame()
+	{
+		// The game runs a copy of the open scene, saved next to the executables. That includes
+		// unsaved changes and leaves the scene's own file alone.
+		const std::filesystem::path playSessionScene = Nyx::Paths::GetExecutableDir() / "PlaySession.nyxscene";
+		if (!Nyx::Engine::SceneSerializer::SaveToFile(ActiveScene.GetRegistry(), playSessionScene))
+		{
+			LOG_ERROR("Couldn't save the scene for the game to '{0}'", playSessionScene.string());
+			return;
+		}
+
+		// NyxGame is built next to the editor, since building the editor builds it too
+		const std::filesystem::path gameExecutable = Nyx::Paths::GetExecutableDir() / "NyxGame.exe";
+
+		std::vector<std::string> arguments = { playSessionScene.string() };
+		if (bGameWaitsForDebugger)
+		{
+			arguments.push_back("--wait-for-debugger");
+		}
+
+		if (!GameProcess.Start(gameExecutable, arguments))
+		{
+			LOG_ERROR("Couldn't start '{0}'", gameExecutable.string());
+			return;
+		}
+
+		bGameRunning = true;
+
+		if (bGameWaitsForDebugger)
+		{
+			LOG_INFO("Started the game; it waits until a debugger is attached");
+		}
+		else
+		{
+			LOG_INFO("Started the game");
+		}
+	}
+
+	void EditorLayer::StopGame()
+	{
+		if (!GameProcess.IsRunning())
+		{
+			return;
+		}
+
+		// There is no way yet to ask the game to quit, so it is ended at once
+		GameProcess.Terminate();
+		bGameRunning = false;
+
+		LOG_INFO("Stopped the game");
+	}
+
+	void EditorLayer::CheckWhetherGameExited()
+	{
+		if (!bGameRunning || GameProcess.IsRunning())
+		{
+			return;
+		}
+
+		bGameRunning = false;
+
+		// Closing the game's window exits with 0; a crash exits with a code such as 0xC0000005
+		// (access violation), which the editor survives.
+		const uint32_t exitCode = GameProcess.GetExitCode().value_or(0);
+		if (exitCode == 0)
+		{
+			LOG_INFO("The game exited");
+		}
+		else
+		{
+			LOG_WARNING("The game exited with code 0x{0:08X}", exitCode);
+		}
 	}
 
 	void EditorLayer::RequestLoadScenePopup()
