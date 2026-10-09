@@ -114,6 +114,7 @@ namespace Nyx
 		// Only the process handle is needed, not the one of its first thread
 		::CloseHandle(processInfo.hThread);
 		Handle = processInfo.hProcess;
+		ProcessId = processInfo.dwProcessId;
 		return true;
 	}
 

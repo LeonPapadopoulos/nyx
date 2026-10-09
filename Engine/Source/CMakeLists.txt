@@ -24,6 +24,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/NyxPCH.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/Paths.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/ChildProcess.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Core/src/NetConnection.cpp
 
     # Runtime/Engine
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/Application.cpp
@@ -45,6 +46,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/ComponentRegistration.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/SceneSerializer.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/BuiltinAssetResolver.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/EditorLink.cpp
 
     # Runtime/Renderer
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ImGuiTheme.cpp
@@ -78,6 +80,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/NyxEngineAPI.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/Paths.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/ChildProcess.h
+    ${NYX_ENGINE_ROOT}/Runtime/Core/include/NetConnection.h
     
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/NyxPCH.h
 
@@ -106,6 +109,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/BuiltinAssetResolver.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/IAssetResolver.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/AssetReference.h
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/EditorLink.h
 
     # Runtime/Renderer
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ImGuiTheme.h
@@ -254,6 +258,7 @@ foreach(NYX_ENGINE_TARGET NyxEngineCommon NyxEngine NyxEditorEngine)
             Vulkan::Vulkan # Public headers such as Mesh.h include vulkan.hpp
         PRIVATE
             dwmapi
+            ws2_32 # Winsock, for the editor link (NetConnection.cpp)
             stb_image
             NyxStartup # The startup banner, from the Startup module.
     )

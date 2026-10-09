@@ -1,10 +1,12 @@
 # NyxGame.exe: runs a scene without the editor. It links only the engine.
 set(NYX_GAME_SOURCES
     main.cpp
+    src/EditorLinkLayer.cpp
     src/GameLayer.cpp
 )
 
 set(NYX_GAME_HEADERS
+    include/EditorLinkLayer.h
     include/GameLayer.h
 )
 

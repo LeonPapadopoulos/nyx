@@ -31,6 +31,12 @@ namespace Nyx
 		// The program's exit code, once it has exited
 		std::optional<uint32_t> GetExitCode() const;
 
+		// The system's id of the program started last, 0 before the first Start()
+		uint32_t GetProcessId() const
+		{
+			return ProcessId;
+		}
+
 		// Ends the program at once, without letting it clean up, and waits until it is gone.
 		void Terminate();
 
@@ -44,5 +50,7 @@ namespace Nyx
 	private:
 		// The operating system's handle of the program (a Windows HANDLE)
 		void* Handle = nullptr;
+
+		uint32_t ProcessId = 0;
 	};
 }

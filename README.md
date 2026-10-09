@@ -48,6 +48,8 @@ The editor ends up in `Build\Windows\Binaries\Debug\NyxEditor.exe`, the game nex
 
 In the editor, **Play** in the titlebar runs the open scene in `NyxGame.exe`, as a separate program and with unsaved changes included; **Stop** ends it. To debug the game, either right-click Play and turn on *Game Waits for Debugger*, then attach Visual Studio to `NyxGame.exe`, or install the Visual Studio extension *Microsoft Child Process Debugging Power Tool 2022+* and turn on child process debugging under *Debug > Other Debug Targets > Child Process Debugging Settings*; Visual Studio then attaches to the game by itself when the editor starts it.
 
+The game connects back to the editor that started it, over the *editor link*: a TCP connection on `127.0.0.1` with a port the system picks, so only programs on this machine can connect. Both programs log when the link connects and when it ends, and hovering **Stop** shows its state. `NyxEditorLinkTests` tests the link with both ends in one program.
+
 To see what a scene file contains, build `NyxDump` and print the file with it, e.g. from the repository folder: `Build\Windows\Binaries\Debug\NyxDump.exe Assets\Scenes\Default.nyxscene`.
 
 ## Project layout

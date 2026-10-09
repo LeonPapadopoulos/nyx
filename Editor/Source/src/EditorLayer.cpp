@@ -199,6 +199,7 @@ namespace Nyx::Editor
 	void EditorLayer::OnUpdate(float deltaTime)
 	{
 		DebugTools.BeforeFrame();
+		UpdateGameLink();
 		CheckWhetherGameExited();
 		TickScene(deltaTime);
 
@@ -325,7 +326,14 @@ namespace Nyx::Editor
 		}
 		ImGui::PopStyleColor();
 
-		ImGui::SetItemTooltip("Runs the open scene in NyxGame, unsaved changes included. Right-click for options.");
+		if (bPlaying)
+		{
+			ImGui::SetItemTooltip("Ends the game.\nEditor link: %s", GetGameLinkStatus().c_str());
+		}
+		else
+		{
+			ImGui::SetItemTooltip("Runs the open scene in NyxGame, unsaved changes included. Right-click for options.");
+		}
 
 		if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
 		{
@@ -508,6 +516,22 @@ namespace Nyx::Editor
 			arguments.push_back("--wait-for-debugger");
 		}
 
+		// The game connects back to the editor on this port: the editor link. Only programs on
+		// this machine can connect. Without it, the game still runs, just not linked.
+		if (!GameLinkListener.IsListening() && !GameLinkListener.Listen())
+		{
+			LOG_WARNING("The editor can't wait for the game to connect ({0}); the game runs without the editor link",
+				GameLinkListener.GetError());
+		}
+
+		if (GameLinkListener.IsListening())
+		{
+			arguments.push_back("--editor-port");
+			arguments.push_back(std::to_string(GameLinkListener.GetPort()));
+		}
+
+		GameLinkCloseReason.clear();
+
 		if (!GameProcess.Start(gameExecutable, arguments))
 		{
 			LOG_ERROR("Couldn't start '{0}'", gameExecutable.string());
@@ -528,6 +552,13 @@ namespace Nyx::Editor
 
 	void EditorLayer::StopGame()
 	{
+		if (GameLink)
+		{
+			GameLink->Close("the editor stopped the game");
+			GameLink.reset();
+		}
+		GameLinkCandidates.clear();
+
 		if (!GameProcess.IsRunning())
 		{
 			return;
@@ -547,6 +578,12 @@ namespace Nyx::Editor
 			return;
 		}
 
+		// One more pass for the game's last messages, also from a game that connected just before
+		// it exited, and for the link to notice that the game is gone
+		UpdateGameLink();
+		GameLink.reset();
+		GameLinkCandidates.clear();
+
 		bGameRunning = false;
 
 		// Closing the game's window exits with 0; a crash exits with a code such as 0xC0000005
@@ -560,6 +597,102 @@ namespace Nyx::Editor
 		{
 			LOG_WARNING("The game exited with code 0x{0:08X}", exitCode);
 		}
+	}
+
+	void EditorLayer::UpdateGameLink()
+	{
+		// Only the game started with Play may connect: its Hello has to come from the game's process
+		while (std::unique_ptr<Nyx::Net::Connection> connection = GameLinkListener.Accept())
+		{
+			// Without a running game, this is usually a game that was stopped while it connected
+			if (!bGameRunning)
+			{
+				LOG_INFO("Editor link: closed a connection that came in while no game was running");
+				continue;
+			}
+
+			if (GameLink)
+			{
+				LOG_WARNING("Editor link: turned away another program that connected while the game is connected");
+				continue;
+			}
+
+			auto candidate = std::make_unique<Nyx::Engine::EditorLink>(std::move(connection), "NyxEditor");
+			candidate->RequireOtherProcessId(GameProcess.GetProcessId());
+			GameLinkCandidates.push_back(std::move(candidate));
+		}
+
+		for (std::unique_ptr<Nyx::Engine::EditorLink>& candidate : GameLinkCandidates)
+		{
+			candidate->Update();
+
+			// Even if the game exited right after its Hello, its messages are handled below
+			if (!GameLink && candidate->HadHandshake())
+			{
+				GameLink = std::move(candidate);
+			}
+			else if (candidate->GetState() == Nyx::Engine::EEditorLinkState::Closed)
+			{
+				GameLinkCloseReason = candidate->GetCloseReason();
+			}
+		}
+
+		// Failed candidates logged why. Once the game is linked, the others aren't needed.
+		if (GameLink)
+		{
+			GameLinkCandidates.clear();
+		}
+		else
+		{
+			std::erase_if(GameLinkCandidates,
+				[](const std::unique_ptr<Nyx::Engine::EditorLink>& candidate)
+				{
+					return candidate->GetState() == Nyx::Engine::EEditorLinkState::Closed;
+				});
+		}
+
+		if (GameLink)
+		{
+			GameLink->Update();
+			HandleGameLinkMessages();
+
+			// The link logged why it ended
+			if (GameLink->GetState() == Nyx::Engine::EEditorLinkState::Closed)
+			{
+				GameLinkCloseReason = GameLink->GetCloseReason();
+				GameLink.reset();
+			}
+		}
+	}
+
+	void EditorLayer::HandleGameLinkMessages()
+	{
+		// The game sends nothing after its Hello yet
+		while (std::optional<Nyx::Net::Message> message = GameLink->Receive())
+		{
+			LOG_WARNING("Editor link: skipped a message of type {0}, which this editor doesn't know", message->Type);
+		}
+	}
+
+	std::string EditorLayer::GetGameLinkStatus() const
+	{
+		if (GameLink)
+		{
+			const Nyx::Engine::HelloMessage& game = GameLink->GetOtherSide();
+			return "connected to " + game.ProgramName + " (process " + std::to_string(game.ProcessId) + ")";
+		}
+
+		if (!GameLinkCandidates.empty())
+		{
+			return "saying Hello";
+		}
+
+		if (!GameLinkCloseReason.empty())
+		{
+			return "closed: " + GameLinkCloseReason;
+		}
+
+		return GameLinkListener.IsListening() ? "waiting for the game to connect" : "off";
 	}
 
 	void EditorLayer::RequestLoadScenePopup()

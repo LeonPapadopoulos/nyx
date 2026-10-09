@@ -15,6 +15,8 @@
 #include "EditorAssetActivationContext.h"
 #include "Layer.h"
 #include "ChildProcess.h"
+#include "EditorLink.h"
+#include "NetConnection.h"
 #include "EditorPreferences.h"
 #include "ImGuiDebugTools.h"
 #include "UISourceInspector.h"
@@ -97,6 +99,13 @@ namespace Nyx::Editor
 		void StopGame();
 		void CheckWhetherGameExited();
 
+		// The editor link: accepts the game's connection, says Hello and checks the game's
+		void UpdateGameLink();
+		void HandleGameLinkMessages();
+
+		// For the Stop button's tooltip, e.g. "connected to NyxGame (process 1234)"
+		std::string GetGameLinkStatus() const;
+
 	private:
 		std::unique_ptr<Nyx::Editor::EditorAssetActivationContext> AssetActivationContext;
 		Nyx::Editor::AssetDatabase AssetDb;
@@ -151,5 +160,20 @@ namespace Nyx::Editor
 
 		// Set in Play's right-click menu: the game waits at startup until a debugger is attached
 		bool bGameWaitsForDebugger = false;
+
+		// The game connects back to the editor on this port, passed to it as --editor-port.
+		// Listens from the first Play on.
+		Nyx::Net::Listener GameLinkListener;
+
+		// The editor link to the game started with Play, once the game said Hello
+		std::unique_ptr<Nyx::Engine::EditorLink> GameLink;
+
+		// Connections that haven't said Hello yet. The first whose Hello comes from the game's
+		// process becomes GameLink, so a program that connects and stays silent can't keep the
+		// game out.
+		std::vector<std::unique_ptr<Nyx::Engine::EditorLink>> GameLinkCandidates;
+
+		// Why the last link of this play session ended, for the Stop button's tooltip
+		std::string GameLinkCloseReason;
 	};
 }

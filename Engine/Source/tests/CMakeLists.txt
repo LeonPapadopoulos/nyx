@@ -15,6 +15,13 @@ add_dependencies(NyxRuntimeInspectionTests NyxGeneratedReflection)
 set_property(TARGET NyxRuntimeInspectionTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxRuntimeInspectionTests COMMAND NyxRuntimeInspectionTests)
 
+# The editor link over real sockets on 127.0.0.1, with both ends in one program.
+add_executable(NyxEditorLinkTests EditorLinkTests.cpp)
+target_link_libraries(NyxEditorLinkTests PRIVATE NyxEngine)
+add_dependencies(NyxEditorLinkTests NyxGeneratedReflection)
+set_property(TARGET NyxEditorLinkTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxEditorLinkTests COMMAND NyxEditorLinkTests)
+
 if(MSVC)
     add_test(NAME NyxRuntimeInspectionSymbols
         COMMAND ${CMAKE_COMMAND}
