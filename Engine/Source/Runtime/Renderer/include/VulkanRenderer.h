@@ -27,6 +27,11 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+namespace Nyx::Tests
+{
+	struct SceneReplacementTestAccess;
+}
+
 namespace Nyx
 {
 	class VulkanImGuiBackend;
@@ -200,6 +205,8 @@ namespace Nyx
 {
 	class VulkanRenderer : public IRenderer
 	{
+		friend struct Nyx::Tests::SceneReplacementTestAccess;
+
 	public:
 		VulkanRenderer();
 		virtual ~VulkanRenderer() = default;
@@ -426,6 +433,7 @@ namespace Nyx
 
 		// World is owned by the editor / scene document.
 		const Nyx::Engine::Registry* World = nullptr;
+		uint64_t WorldRevision = 0;
 
 		std::vector<RenderObject> RenderObjects;
 		float SceneTime = 0.0f;

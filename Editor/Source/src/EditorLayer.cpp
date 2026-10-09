@@ -116,9 +116,6 @@ namespace Nyx::Editor
 
 			if (SaveCurrentScene(testScenePath))
 			{
-				ActiveScene.GetRegistry().Clear();
-				Renderer->SetWorld(&ActiveScene.GetRegistry());
-
 				const bool bLoaded = LoadCurrentScene(testScenePath);
 				ASSERT(bLoaded && "Scene round-trip load failed.");
 			}
@@ -297,14 +294,16 @@ namespace Nyx::Editor
 		Nyx::Engine::ScenePostLoadContext postLoadContext{};
 		postLoadContext.AssetResolver = AssetResolver.get();
 
-		// On failure, the open scene stays as it was
-		if (!Nyx::Engine::SceneSerializer::LoadFromFile(path, ActiveScene.GetRegistry(), postLoadContext))
+		// Keep the current scene and its pending edits until the replacement is ready.
+		Nyx::Engine::Registry loadedWorld;
+		if (!Nyx::Engine::SceneSerializer::LoadFromFile(path, loadedWorld, postLoadContext))
 		{
 			LOG_ERROR("Failed to load scene from '{0}'", path.string());
 			return false;
 		}
 
 		ForgetPreviousScene();
+		ActiveScene.GetRegistry() = std::move(loadedWorld);
 		Renderer->SetWorld(&ActiveScene.GetRegistry());
 		CurrentScenePath = path;
 
@@ -345,8 +344,8 @@ namespace Nyx::Editor
 
 	bool EditorLayer::NewScene()
 	{
-		ActiveScene.GetRegistry().Clear();
 		ForgetPreviousScene();
+		ActiveScene.GetRegistry().Clear();
 		Renderer->SetWorld(&ActiveScene.GetRegistry());
 		CurrentScenePath.clear();
 		return true;
@@ -354,10 +353,15 @@ namespace Nyx::Editor
 
 	void EditorLayer::ForgetPreviousScene()
 	{
+		// Cancel before destroying the components captured by these unfinished edits.
+		DetailsPanelContext.CancelPendingEdits();
+		TransformGizmoInstance.CancelInteraction();
+
 		// Undo steps and the selection refer to entities by handle. In the new scene, the same
 		// handles name other entities, so undo would change the wrong ones.
 		ActiveScene.GetSelection().reset();
 		Transactions.Clear();
+		++SceneRevision;
 	}
 
 	void EditorLayer::RequestLoadScenePopup()
@@ -599,7 +603,9 @@ namespace Nyx::Editor
 		// and Property-Customizations like Unreal does it. Also, look
 		// into code generation for the needed field meta data
 
-		// Scope all the displayed details to that particular entity via its ID / TypedHandle
+		// A replacement scene can reuse entity handles. Give its widgets fresh IDs so ImGui
+		// cannot carry an active drag or a cached text edit over from the previous scene.
+		ImGui::PushID(std::to_string(SceneRevision).c_str());
 		ImGui::PushID(static_cast<int>(selectedEntity.Value));
 
 		// @todo: Find a more robust (and automated) naming approach,
@@ -630,6 +636,7 @@ namespace Nyx::Editor
 			ImGui::PopID();
 		}
 
+		ImGui::PopID();
 		ImGui::PopID();
 		ImGui::End();
 	}
@@ -922,7 +929,10 @@ namespace Nyx::Editor
 				continue;
 			}
 
-			selection = result.HitEntity;
+			if (!result.HitEntity.has_value() || ActiveScene.GetRegistry().IsAlive(*result.HitEntity))
+			{
+				selection = result.HitEntity;
+			}
 		}
 	}
 

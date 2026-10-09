@@ -541,6 +541,7 @@ namespace Nyx
 				if (view.bShowEditorOverlays)
 				{
 					DrawPickingPass(view, cmd);
+					view.RenderedWorldRevision = WorldRevision;
 					ResolvePickRequest(view, cmd);
 
 					DrawVisibleSelectionMaskPass(view, cmd);
@@ -668,6 +669,10 @@ namespace Nyx
 		if (SceneViewInstance* view = FindSceneView(id))
 		{
 			view->bShowEditorOverlays = bShow;
+			if (!bShow)
+			{
+				view->ResetPicking();
+			}
 		}
 	}
 
@@ -706,6 +711,14 @@ namespace Nyx
 	void VulkanRenderer::SetWorld(const Nyx::Engine::Registry* world)
 	{
 		World = world;
+		++WorldRevision;
+		SelectedEntity.reset();
+		PickingIdToEntity.clear();
+
+		for (SceneViewInstance& view : SceneViews)
+		{
+			view.ResetPicking();
+		}
 	}
 
 	Mesh* VulkanRenderer::GetCubeMesh()
@@ -1824,6 +1837,8 @@ namespace Nyx
 
 	void VulkanRenderer::DestroyPickingResourcesForView(SceneViewInstance& view)
 	{
+		view.ResetPicking();
+
 		view.PickingFramebuffer = nullptr;
 		view.PickingRenderPass = nullptr;
 
@@ -3633,8 +3648,9 @@ namespace Nyx
 	{
 		if (SceneViewInstance* view = FindSceneView(sceneViewId))
 		{
-			// Picking is an editor overlay: views without them don't render the picking pass
-			if (!view->bShowEditorOverlays)
+			// The UI can replace the world after this frame's rendering. Wait for a view
+			// of the new world before accepting another click.
+			if (!view->bShowEditorOverlays || !World || view->RenderedWorldRevision != WorldRevision)
 			{
 				return;
 			}
@@ -3656,6 +3672,7 @@ namespace Nyx
 			view->PendingPickX = std::min(pixelX, extent.width - 1);
 			view->PendingPickY = std::min(pixelY, extent.height - 1);
 			view->bPickRequestPending = true;
+			view->PickWorldRevision = WorldRevision;
 		}
 	}
 
@@ -3667,6 +3684,12 @@ namespace Nyx
 		{
 			if (!view->bPickResultReady)
 			{
+				return result;
+			}
+
+			if (view->PickWorldRevision != WorldRevision)
+			{
+				view->ResetPicking();
 				return result;
 			}
 
@@ -3755,6 +3778,12 @@ namespace Nyx
 			return;
 		}
 
+		if (view.PickWorldRevision != WorldRevision)
+		{
+			view.ResetPicking();
+			return;
+		}
+
 		vk::BufferImageCopy region{};
 		region.bufferOffset = 0;
 		region.bufferRowLength = 0;
@@ -3786,6 +3815,14 @@ namespace Nyx
 		{
 			if (!view.bPickReadbackPending)
 			{
+				continue;
+			}
+
+			// The copy may have been recorded before a scene switch in the UI. Never
+			// decode its ID against the replacement world's entity table.
+			if (view.PickWorldRevision != WorldRevision)
+			{
+				view.ResetPicking();
 				continue;
 			}
 

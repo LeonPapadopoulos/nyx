@@ -1040,6 +1040,18 @@ namespace Nyx::Editor
 		return bConsumed || State.bDragging;
 	}
 
+	void TransformGizmo::CancelInteraction()
+	{
+		// The scene is being discarded, so there is nothing to commit or restore.
+		ActiveTransformDiff.reset();
+
+		const EGizmoSpace space = State.Space;
+		const EGizmoOperation operation = State.Operation;
+		State = {};
+		State.Space = space;
+		State.Operation = operation;
+	}
+
 	bool TransformGizmo::TickAndDraw(
 		Nyx::IRenderer& renderer,
 		Nyx::SceneDocument& scene,

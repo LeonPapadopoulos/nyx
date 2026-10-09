@@ -57,6 +57,21 @@ namespace Nyx
 
 		std::optional<Nyx::Engine::Entity> LastPickedEntity;
 
+		uint64_t RenderedWorldRevision = 0;
+		uint64_t PickWorldRevision = 0;
+
+		void ResetPicking()
+		{
+			bPickRequestPending = false;
+			bPickReadbackPending = false;
+			bPickResultReady = false;
+			PendingPickX = 0;
+			PendingPickY = 0;
+			LastPickedEntity.reset();
+			RenderedWorldRevision = 0;
+			PickWorldRevision = 0;
+		}
+
 		// -------------------------------------------------
 		// Selection
 		// -------------------------------------------------

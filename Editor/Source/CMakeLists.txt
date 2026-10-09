@@ -117,4 +117,19 @@ set_target_properties(NyxEditor PROPERTIES
 # Compiled by Engine/Shaders; the renderer loads them from a "Shaders" folder next to the .exe
 nyx_copy_shaders_next_to(NyxEditor)
 
-#######################################################################################
+#######################################################################################
+
+if(BUILD_TESTING)
+    # Exercise the editor's real Open/New paths without starting a window or GPU device.
+    set(NYX_EDITOR_TEST_SOURCES ${NYX_EDITOR_SOURCES})
+    list(REMOVE_ITEM NYX_EDITOR_TEST_SOURCES main.cpp)
+
+    add_executable(NyxEditorSceneTests tests/SceneReplacementTests.cpp ${NYX_EDITOR_TEST_SOURCES})
+    target_include_directories(NyxEditorSceneTests PRIVATE include src)
+    target_link_libraries(NyxEditorSceneTests PRIVATE NyxEngine)
+    add_dependencies(NyxEditorSceneTests NyxGeneratedReflection)
+    target_precompile_headers(NyxEditorSceneTests REUSE_FROM NyxEditor)
+    set_property(TARGET NyxEditorSceneTests PROPERTY FOLDER "Tests")
+
+    add_test(NAME NyxEditorSceneTests COMMAND NyxEditorSceneTests)
+endif()

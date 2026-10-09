@@ -19,11 +19,18 @@
 #include <array>
 #include <filesystem>
 
+namespace Nyx::Tests
+{
+	struct SceneReplacementTestAccess;
+}
+
 namespace Nyx::Editor
 {
 	// The whole editor as one layer of the application: scene, panels and the titlebar menu.
 	class EditorLayer : public Nyx::Engine::ILayer
 	{
+		friend struct Nyx::Tests::SceneReplacementTestAccess;
+
 	public:
 		void OnAttach(Nyx::Engine::Application& application) override;
 		void OnDetach() override;
@@ -75,7 +82,7 @@ namespace Nyx::Editor
 
 		void HandleUndoRedoHotkeys();
 
-		// Called when another scene replaces the open one
+		// Called before destroying the old registry, once its replacement is ready.
 		void ForgetPreviousScene();
 
 	private:
@@ -96,6 +103,7 @@ namespace Nyx::Editor
 		std::unique_ptr<Nyx::Engine::BuiltinAssetResolver> AssetResolver;
 
 		Nyx::SceneDocument ActiveScene;
+		uint64_t SceneRevision = 0;
 
 		uint64_t MainSceneViewId = 0;
 		uint64_t SecondarySceneViewId = 0;

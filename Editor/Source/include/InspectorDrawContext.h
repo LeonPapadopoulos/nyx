@@ -23,6 +23,9 @@ namespace Nyx::Editor
 
 	struct InspectorDrawContext
 	{
+		// Discard snapshots without reading or restoring the objects they referred to.
+		void CancelPendingEdits();
+
 		TransactionSystem* Transactions = nullptr;
 
 		InspectorTargetId CurrentTargetId{};

@@ -11,6 +11,11 @@
 #include <array>
 #include <glm/glm.hpp>
 
+namespace Nyx::Tests
+{
+	struct SceneReplacementTestAccess;
+}
+
 namespace Nyx::Editor
 {
 	enum class ETransformGizmoAxis : uint8_t
@@ -75,8 +80,11 @@ namespace Nyx::Editor
 
 	class TransformGizmo
 	{
+		friend struct Nyx::Tests::SceneReplacementTestAccess;
+
 	public:
 		void TickHotkeys();
+		void CancelInteraction();
 
 		// Returns true if the gizmo consumed the left-click / interaction.
 		bool TickAndDraw(

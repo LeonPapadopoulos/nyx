@@ -75,6 +75,8 @@ namespace Nyx
 
 		virtual bool GetSceneViewCameraData(uint64_t sceneViewId, Nyx::SceneViewCameraData& outData) const = 0;
 
+		// Starts a new world revision and discards selection and pending picks, even when
+		// the address is unchanged. Call after replacing the contents of a registry too.
 		virtual void SetWorld(const Nyx::Engine::Registry* world) = 0;
 
 		virtual uint64_t CreateSceneView() = 0;
