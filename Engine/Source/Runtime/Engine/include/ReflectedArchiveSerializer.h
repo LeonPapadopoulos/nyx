@@ -30,8 +30,8 @@ namespace Nyx::Engine
 	//
 	//   Property block: byte size (u32, not counting itself) | property count (u16) | properties
 	//   Property:       name hash (u32) | kind (u8) | value
-	//   Value:          Bool = 1 byte; Int32, UInt32 and Float = 4 bytes; Vec2 = 8; Vec3 = 12;
-	//                   Vec4 and Quat (w, x, y, z) = 16; String = length (u32) + bytes;
+	//   Value:          Bool = 1 byte; Int32, UInt32 and Float = 4 bytes; UInt64 and Vec2 = 8;
+	//                   Vec3 = 12; Vec4 and Quat (w, x, y, z) = 16; String = length (u32) + bytes;
 	//                   Struct = a property block
 	//
 	// Every property carries its name hash and kind, and every block its size, so data stays

@@ -2,11 +2,13 @@
 
 #include "ComponentTypeRegistry.h"
 #include "Entity.h"
+#include "GuidComponent.h"
 #include "Log.h"
 #include "ReflectedArchivePrinter.h"
 #include "ReflectedArchiveSerializer.h"
 
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace
@@ -210,6 +212,47 @@ namespace
 		return true;
 	}
 
+	// Every entity of a scene needs a guid that no other entity in it has. Entities from older files
+	// get one, and when two entities have the same guid (e.g. in a file edited or merged by hand),
+	// the second one gets a new guid.
+	void GiveEveryEntityAUniqueGuid(Registry& world, ReadWarnings& warnings)
+	{
+		std::unordered_set<EntityGuid> usedGuids;
+		std::vector<Entity> entitiesNeedingGuid;
+
+		// Each guid stays with the first entity that has it
+		world.ForEachEntity([&](Entity entity)
+			{
+				if (!world.Has<GuidComponent>(entity) || !world.Get<GuidComponent>(entity).Guid.IsValid())
+				{
+					warnings.Add("gave an entity without a guid a new one; saving the scene keeps it");
+					entitiesNeedingGuid.push_back(entity);
+				}
+				else if (!usedGuids.insert(world.Get<GuidComponent>(entity).Guid).second)
+				{
+					warnings.Add("gave an entity a new guid, because another entity in the scene already had " +
+						ReflectedArchivePrinter::ValueToText(world.Get<GuidComponent>(entity).Guid.Value));
+					entitiesNeedingGuid.push_back(entity);
+				}
+			});
+
+		for (Entity entity : entitiesNeedingGuid)
+		{
+			EntityGuid guid = EntityGuid::Generate();
+			while (!usedGuids.insert(guid).second)
+			{
+				guid = EntityGuid::Generate();
+			}
+
+			if (!world.Has<GuidComponent>(entity))
+			{
+				world.Add<GuidComponent>(entity);
+			}
+
+			world.Get<GuidComponent>(entity).Guid = guid;
+		}
+	}
+
 	// Prints what WriteEntities wrote
 	bool PrintEntities(BinaryReader& reader, std::string& outText)
 	{
@@ -300,13 +343,15 @@ namespace Nyx::Engine
 			? ReadEntitiesVersion1(reader, outWorld, postLoadContext, error)
 			: ReadEntities(reader, outWorld, postLoadContext, warnings);
 
-		warnings.Log(path.string());
-
 		if (!bRead || !reader.IsValid())
 		{
+			warnings.Log(path.string());
 			LOG_ERROR("'{0}' {1}", path.string(), error);
 			return false;
 		}
+
+		GiveEveryEntityAUniqueGuid(outWorld, warnings);
+		warnings.Log(path.string());
 
 		if (version < SceneFileVersion)
 		{

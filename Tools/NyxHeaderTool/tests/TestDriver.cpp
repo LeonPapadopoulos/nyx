@@ -222,6 +222,7 @@ int main(int argc, char** argv)
 		RunFixture(toolPath, fixturesRoot / "multi_type", "Input.reflect.h");
 		RunFixture(toolPath, fixturesRoot / "nested_namespace", "Input.reflect.h");
 		RunFixture(toolPath, fixturesRoot / "nested_type", "Input.reflect.h");
+		RunFixture(toolPath, fixturesRoot / "guid_property", "Input.reflect.h");
 		RunFailingFixture(toolPath, fixturesRoot / "name_hash_collision", "Collision.h");
 
 		std::cout << "All NyxHeaderTool fixtures passed.\n";

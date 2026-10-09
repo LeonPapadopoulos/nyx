@@ -48,6 +48,11 @@ namespace Nyx::Engine
 		WriteBytes(&value, sizeof(value));
 	}
 
+	void BinaryWriter::WriteUInt64(uint64_t value)
+	{
+		WriteBytes(&value, sizeof(value));
+	}
+
 	void BinaryWriter::WriteInt32(int32_t value)
 	{
 		WriteBytes(&value, sizeof(value));
@@ -160,6 +165,11 @@ namespace Nyx::Engine
 	}
 
 	bool BinaryReader::ReadUInt32(uint32_t& outValue)
+	{
+		return ReadBytes(&outValue, sizeof(outValue));
+	}
+
+	bool BinaryReader::ReadUInt64(uint64_t& outValue)
 	{
 		return ReadBytes(&outValue, sizeof(outValue));
 	}

@@ -171,6 +171,27 @@ namespace
 		return bChanged;
 	}
 
+	// 64-bit values are IDs, so they are shown and typed in hex instead of dragged
+	static bool DrawUInt64Widget(const PropertyWidgetArgs& args)
+	{
+		uint64_t& value = Nyx::Reflection::AccessProperty<uint64_t>(args.Object, *args.Property);
+
+		const bool bChanged = ImGui::InputScalar(
+			"##Field", ImGuiDataType_U64, &value, nullptr, nullptr, "%016llX", ImGuiInputTextFlags_CharsHexadecimal);
+
+		if (ImGui::IsItemActivated())
+		{
+			BeginPropertyEdit(args.DrawContext->GenericPropertyEdit, *args.DrawContext, args.Object, *args.OwnerType);
+		}
+
+		if (ImGui::IsItemDeactivatedAfterEdit())
+		{
+			CommitPropertyEdit(args.DrawContext->GenericPropertyEdit, *args.DrawContext, "Edit Property");
+		}
+
+		return bChanged;
+	}
+
 	static bool DrawFloatWidget(const PropertyWidgetArgs& args)
 	{
 		float& value = Nyx::Reflection::AccessProperty<float>(args.Object, *args.Property);
@@ -345,6 +366,7 @@ namespace Nyx::Editor
 		registry.Register(Nyx::Reflection::EPropertyKind::Bool, &DrawBoolWidget);
 		registry.Register(Nyx::Reflection::EPropertyKind::Int32, &DrawInt32Widget);
 		registry.Register(Nyx::Reflection::EPropertyKind::UInt32, &DrawUInt32Widget);
+		registry.Register(Nyx::Reflection::EPropertyKind::UInt64, &DrawUInt64Widget);
 		registry.Register(Nyx::Reflection::EPropertyKind::Float, &DrawFloatWidget);
 		registry.Register(Nyx::Reflection::EPropertyKind::Vec2, &DrawVec2Widget);
 		registry.Register(Nyx::Reflection::EPropertyKind::Vec3, &DrawVec3Widget);

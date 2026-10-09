@@ -2,15 +2,23 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
 
 namespace Nyx::Reflection
 {
 	// The numbers are stored in scene files and messages, so they must never change:
 	// add new kinds at the end, and update LastPropertyKind. A new kind also needs:
-	// - the header tool's type table (ReflectionSemantics.cpp) and EParsedPropertyKind
-	// - PropertyValue, GetPropertyKindName (ReflectionUtils.cpp)
-	// - ReflectedArchiveSerializer.cpp (GetPropertyValue, SetPropertyValue, ReadValue, WriteValue)
-	// - ReflectedArchivePrinter::ValueToText and a details panel widget in the editor
+	// - header tool: EParsedPropertyKind, the type table (ReflectionSemantics.cpp),
+	//   CodeGenerator::ToGeneratedPropertyKind, and a test fixture
+	// - PropertyValue (PropertyValue.h), ArePropertyValuesEqual (PropertyValueUtils.h),
+	//   GetPropertyKindName (ReflectionUtils.cpp)
+	// - ReflectedArchiveSerializer: GetPropertyValue, SetPropertyValue, ReadValue, WriteValue, the
+	//   value sizes in its header, whether IsNumberKind includes it, and BinaryWriter/Reader
+	//   functions if the value has a new size
+	// - ReflectedArchivePrinter::ValueToText
+	// - in the editor: ReflectedPropertyAccess.cpp and a widget in PropertyWidgetRegistry.cpp
+	//
+	// UInt64 is meant for IDs, such as EntityGuid: it is shown in hex and never converted.
 	enum class EPropertyKind : uint8_t
 	{
 		Unknown = 0,
@@ -23,10 +31,11 @@ namespace Nyx::Reflection
 		Vec4 = 7,
 		Quat = 8,
 		String = 9,
-		Struct = 10
+		Struct = 10,
+		UInt64 = 11
 	};
 
-	inline constexpr EPropertyKind LastPropertyKind = EPropertyKind::Struct;
+	inline constexpr EPropertyKind LastPropertyKind = EPropertyKind::UInt64;
 
 	enum class EPropertyFlags : uint32_t
 	{

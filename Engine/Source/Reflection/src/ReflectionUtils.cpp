@@ -156,6 +156,7 @@ namespace Nyx::Reflection
 		case EPropertyKind::Bool:   return "Bool";
 		case EPropertyKind::Int32:  return "Int32";
 		case EPropertyKind::UInt32: return "UInt32";
+		case EPropertyKind::UInt64: return "UInt64";
 		case EPropertyKind::Float:  return "Float";
 		case EPropertyKind::Vec2:   return "Vec2";
 		case EPropertyKind::Vec3:   return "Vec3";

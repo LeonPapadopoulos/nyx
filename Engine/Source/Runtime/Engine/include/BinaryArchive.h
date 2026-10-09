@@ -18,6 +18,7 @@ namespace Nyx::Engine
 		void WriteUInt8(uint8_t value);
 		void WriteUInt16(uint16_t value);
 		void WriteUInt32(uint32_t value);
+		void WriteUInt64(uint64_t value);
 		void WriteInt32(int32_t value);
 		void WriteFloat(float value);
 		void WriteBool(bool value);
@@ -48,6 +49,7 @@ namespace Nyx::Engine
 		bool ReadUInt8(uint8_t& outValue);
 		bool ReadUInt16(uint16_t& outValue);
 		bool ReadUInt32(uint32_t& outValue);
+		bool ReadUInt64(uint64_t& outValue);
 		bool ReadInt32(int32_t& outValue);
 		bool ReadFloat(float& outValue);
 		bool ReadBool(bool& outValue);

@@ -34,6 +34,7 @@ namespace Nyx::Editor
 		case EPropertyKind::Bool:   return ReadByOffset<bool>(object, property.Offset);
 		case EPropertyKind::Int32:  return ReadByOffset<int32_t>(object, property.Offset);
 		case EPropertyKind::UInt32: return ReadByOffset<uint32_t>(object, property.Offset);
+		case EPropertyKind::UInt64: return ReadByOffset<uint64_t>(object, property.Offset);
 		case EPropertyKind::Float:  return ReadByOffset<float>(object, property.Offset);
 		case EPropertyKind::Vec2:   return ReadByOffset<glm::vec2>(object, property.Offset);
 		case EPropertyKind::Vec3:   return ReadByOffset<glm::vec3>(object, property.Offset);
@@ -63,6 +64,10 @@ namespace Nyx::Editor
 
 		case EPropertyKind::UInt32:
 			WriteByOffset<uint32_t>(object, property.Offset) = std::get<uint32_t>(value);
+			break;
+
+		case EPropertyKind::UInt64:
+			WriteByOffset<uint64_t>(object, property.Offset) = std::get<uint64_t>(value);
 			break;
 
 		case EPropertyKind::Float:

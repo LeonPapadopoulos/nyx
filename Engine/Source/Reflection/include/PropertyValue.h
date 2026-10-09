@@ -13,6 +13,7 @@ namespace Nyx::Reflection
 		bool,
 		int32_t,
 		uint32_t,
+		uint64_t,
 		float,
 		glm::vec2,
 		glm::vec3,

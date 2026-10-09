@@ -51,6 +51,7 @@ namespace Nyx::Reflection
 		if (std::holds_alternative<bool>(a)) return std::get<bool>(a) == std::get<bool>(b);
 		if (std::holds_alternative<int32_t>(a)) return std::get<int32_t>(a) == std::get<int32_t>(b);
 		if (std::holds_alternative<uint32_t>(a)) return std::get<uint32_t>(a) == std::get<uint32_t>(b);
+		if (std::holds_alternative<uint64_t>(a)) return std::get<uint64_t>(a) == std::get<uint64_t>(b);
 		if (std::holds_alternative<float>(a)) return NearlyEqual(std::get<float>(a), std::get<float>(b));
 		if (std::holds_alternative<glm::vec2>(a)) return NearlyEqual(std::get<glm::vec2>(a), std::get<glm::vec2>(b));
 		if (std::holds_alternative<glm::vec3>(a)) return NearlyEqual(std::get<glm::vec3>(a), std::get<glm::vec3>(b));

@@ -22,6 +22,7 @@ namespace Nyx::HeaderTool
 		case EParsedPropertyKind::Bool:   return "EPropertyKind::Bool";
 		case EParsedPropertyKind::Int32:  return "EPropertyKind::Int32";
 		case EParsedPropertyKind::UInt32: return "EPropertyKind::UInt32";
+		case EParsedPropertyKind::UInt64: return "EPropertyKind::UInt64";
 		case EParsedPropertyKind::Float:  return "EPropertyKind::Float";
 		case EParsedPropertyKind::Vec2:   return "EPropertyKind::Vec2";
 		case EParsedPropertyKind::Vec3:   return "EPropertyKind::Vec3";
@@ -203,6 +204,18 @@ namespace Nyx::HeaderTool
 			}
 
 			out << "    };\n\n";
+
+			// Members of types recognised by name must really have that type
+			for (const ParsedProperty& property : parsedType.Properties)
+			{
+				if (!property.RequiredCppType.empty())
+				{
+					out << "    static_assert(std::is_same_v<decltype(" << parsedType.QualifiedName << "::" << property.Name
+						<< "), " << property.RequiredCppType << ">,\n";
+					out << "        \"" << parsedType.Name << "::" << property.Name << " must be a "
+						<< property.RequiredCppType << "\");\n\n";
+				}
+			}
 
 			// --------------------------------------------------
 			// Type metadata object

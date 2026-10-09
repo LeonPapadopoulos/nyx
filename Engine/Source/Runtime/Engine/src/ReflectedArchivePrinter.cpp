@@ -44,6 +44,14 @@ namespace
 		return text + ")";
 	}
 
+	// 64-bit values are IDs, which are easier to compare in hex, e.g. 0x5F3A9C2D1E4B7A10
+	std::string UInt64ToText(uint64_t value)
+	{
+		char text[24];
+		std::snprintf(text, sizeof(text), "0x%016llX", static_cast<unsigned long long>(value));
+		return text;
+	}
+
 	// The string in quotes, with quotes, backslashes and control characters escaped
 	std::string QuoteString(const std::string& value)
 	{
@@ -200,6 +208,10 @@ namespace Nyx::Engine
 				{
 					return std::to_string(typedValue);
 				}
+				else if constexpr (std::is_same_v<T, uint64_t>)
+				{
+					return UInt64ToText(typedValue);
+				}
 				else if constexpr (std::is_same_v<T, float>)
 				{
 					return FloatToText(typedValue);
@@ -227,6 +239,8 @@ namespace Nyx::Engine
 				}
 				else
 				{
+					// Only "no value" is left; a new PropertyValue type ends up here
+					static_assert(std::is_same_v<T, std::monostate>, "ValueToText doesn't handle this PropertyValue type");
 					return "(no value)";
 				}
 			},

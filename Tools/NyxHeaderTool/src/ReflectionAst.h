@@ -57,7 +57,8 @@ namespace Nyx::HeaderTool
 		Vec4,
 		Quat,
 		String,
-		Struct
+		Struct,
+		UInt64
 	};
 
 	enum class EParsedPropertyFlags : uint32_t
@@ -102,6 +103,10 @@ namespace Nyx::HeaderTool
 		EParsedPropertyKind Kind = EParsedPropertyKind::Unknown;
 
 		std::string StructQualifiedTypeName;
+
+		// For engine types the tool recognises by name (see ReflectionSemantics), the C++ type the
+		// member must really have. The generated code checks it.
+		std::string RequiredCppType;
 
 		std::vector<ParsedMacroEntry> EmittedMetadata;
 	};

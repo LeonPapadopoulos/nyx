@@ -57,7 +57,8 @@ namespace
 
 	static void DrawPropertyTooltipIfHovered(const Nyx::Reflection::PropertyMetadata& property)
 	{
-		if (ImGui::IsItemHovered())
+		// Read-only properties are drawn disabled, and their tooltips should show too
+		if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
 		{
 			if (const char* tooltip = GetPropertyTooltip(property))
 			{

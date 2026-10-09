@@ -33,6 +33,7 @@ namespace
 		case EPropertyKind::Bool:   return AccessProperty<bool>(object, property);
 		case EPropertyKind::Int32:  return AccessProperty<int32_t>(object, property);
 		case EPropertyKind::UInt32: return AccessProperty<uint32_t>(object, property);
+		case EPropertyKind::UInt64: return AccessProperty<uint64_t>(object, property);
 		case EPropertyKind::Float:  return AccessProperty<float>(object, property);
 		case EPropertyKind::Vec2:   return AccessProperty<glm::vec2>(object, property);
 		case EPropertyKind::Vec3:   return AccessProperty<glm::vec3>(object, property);
@@ -51,6 +52,7 @@ namespace
 		case EPropertyKind::Bool:   AccessProperty<bool>(object, property) = std::get<bool>(value); break;
 		case EPropertyKind::Int32:  AccessProperty<int32_t>(object, property) = std::get<int32_t>(value); break;
 		case EPropertyKind::UInt32: AccessProperty<uint32_t>(object, property) = std::get<uint32_t>(value); break;
+		case EPropertyKind::UInt64: AccessProperty<uint64_t>(object, property) = std::get<uint64_t>(value); break;
 		case EPropertyKind::Float:  AccessProperty<float>(object, property) = std::get<float>(value); break;
 		case EPropertyKind::Vec2:   AccessProperty<glm::vec2>(object, property) = std::get<glm::vec2>(value); break;
 		case EPropertyKind::Vec3:   AccessProperty<glm::vec3>(object, property) = std::get<glm::vec3>(value); break;
@@ -82,7 +84,8 @@ namespace
 		return true;
 	}
 
-	// Number kinds can be converted into each other when a property changes its type
+	// Number kinds can be converted into each other when a property changes its type. UInt64 is
+	// left out: its values are IDs, and most of them don't fit any other number kind.
 	bool IsNumberKind(EPropertyKind kind)
 	{
 		return kind == EPropertyKind::Int32 || kind == EPropertyKind::UInt32 || kind == EPropertyKind::Float;
@@ -435,6 +438,10 @@ namespace Nyx::Engine
 				{
 					writer.WriteUInt32(typedValue);
 				}
+				else if constexpr (std::is_same_v<T, uint64_t>)
+				{
+					writer.WriteUInt64(typedValue);
+				}
 				else if constexpr (std::is_same_v<T, float>)
 				{
 					writer.WriteFloat(typedValue);
@@ -459,7 +466,11 @@ namespace Nyx::Engine
 				{
 					writer.WriteString(typedValue);
 				}
-				// std::monostate (no value) writes nothing
+				else
+				{
+					// Only "no value" is left, which writes nothing; a new PropertyValue type ends up here
+					static_assert(std::is_same_v<T, std::monostate>, "WriteValue doesn't handle this PropertyValue type");
+				}
 			},
 			value);
 	}
@@ -496,6 +507,18 @@ namespace Nyx::Engine
 		{
 			uint32_t value = 0;
 			if (!reader.ReadUInt32(value))
+			{
+				return false;
+			}
+
+			outValue = value;
+			return true;
+		}
+
+		case EPropertyKind::UInt64:
+		{
+			uint64_t value = 0;
+			if (!reader.ReadUInt64(value))
 			{
 				return false;
 			}

@@ -66,6 +66,7 @@ namespace Nyx::HeaderTool
 			{ "bool", EParsedPropertyKind::Bool },
 			{ "int32_t", EParsedPropertyKind::Int32 },
 			{ "uint32_t", EParsedPropertyKind::UInt32 },
+			{ "uint64_t", EParsedPropertyKind::UInt64 },
 			{ "float", EParsedPropertyKind::Float },
 			{ "glm::vec2", EParsedPropertyKind::Vec2 },
 			{ "glm::vec3", EParsedPropertyKind::Vec3 },
@@ -74,10 +75,33 @@ namespace Nyx::HeaderTool
 			{ "std::string", EParsedPropertyKind::String }
 		};
 
+		// Engine types that are saved and edited as the single value inside them, while C++ code
+		// keeps a type of its own for them. Since they are recognised by name, the generated code
+		// checks that the member really has the engine type and not another type of the same name.
+		struct WrappedValueType
+		{
+			EParsedPropertyKind Kind;
+			const char* CppType;
+		};
+
+		static const std::unordered_map<std::string, WrappedValueType> WrappedValueTypes = {
+			{ "EntityGuid", { EParsedPropertyKind::UInt64, "Nyx::Engine::EntityGuid" } },
+			{ "Nyx::Engine::EntityGuid", { EParsedPropertyKind::UInt64, "Nyx::Engine::EntityGuid" } }
+		};
+
+		parsedProperty.StructQualifiedTypeName.clear();
+		parsedProperty.RequiredCppType.clear();
+
 		if (const auto it = PrimitiveKinds.find(parsedProperty.Type); it != PrimitiveKinds.end())
 		{
 			parsedProperty.Kind = it->second;
-			parsedProperty.StructQualifiedTypeName.clear();
+			return;
+		}
+
+		if (const auto it = WrappedValueTypes.find(parsedProperty.Type); it != WrappedValueTypes.end())
+		{
+			parsedProperty.Kind = it->second.Kind;
+			parsedProperty.RequiredCppType = it->second.CppType;
 			return;
 		}
 
