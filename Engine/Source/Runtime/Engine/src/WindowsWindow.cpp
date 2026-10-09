@@ -209,6 +209,18 @@ namespace Nyx
 
 	void WindowsWindow::DrawFrame(const std::function<void()>& drawUI)
 	{
+		// A minimized window has no framebuffer to draw into, and drawing would block in the
+		// renderer until the window is restored. Waiting briefly instead keeps the frame loop
+		// running, e.g. so the editor link keeps working.
+		int framebufferWidth = 0;
+		int framebufferHeight = 0;
+		glfwGetFramebufferSize(Window, &framebufferWidth, &framebufferHeight);
+		if (framebufferWidth == 0 || framebufferHeight == 0)
+		{
+			glfwWaitEventsTimeout(0.05);
+			return;
+		}
+
 		Renderer->DrawFrame(
 			[this, &drawUI]()
 			{
@@ -248,6 +260,11 @@ namespace Nyx
 	bool WindowsWindow::ShouldClose() const
 	{
 		return glfwWindowShouldClose(Window);
+	}
+
+	void WindowsWindow::RequestClose()
+	{
+		glfwSetWindowShouldClose(Window, GLFW_TRUE);
 	}
 
 	void WindowsWindow::SetTitlebarMenu(std::function<void(float buttonHeight)> drawMenu)

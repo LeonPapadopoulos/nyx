@@ -1,11 +1,16 @@
 // The editor link over real sockets on 127.0.0.1, with both ends in this one program.
 #include "BinaryArchive.h"
 #include "EditorLink.h"
+#include "EditorLinkLogSink.h"
+#include "EditorLinkRecorder.h"
 #include "Log.h"
 #include "NetConnection.h"
 
 #include <chrono>
 #include <cstdint>
+#include <charconv>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <iostream>
 #include <memory>
@@ -431,6 +436,288 @@ namespace
 		}
 	}
 
+	template <typename TMessage>
+	TMessage ReadAs(const Message& message)
+	{
+		Require(message.Type == static_cast<uint16_t>(TMessage::Type), "Unexpected message type " + std::to_string(message.Type));
+		BinaryReader reader;
+		reader.LoadFromMemory(message.Payload);
+		TMessage read;
+		Require(read.Read(reader), "A message can't be read");
+		return read;
+	}
+
+	struct ObservedMessage
+	{
+		ELinkDirection Direction;
+		uint16_t Type;
+	};
+
+	// The game sends log lines, the editor sends Quit, and the game closes gracefully: its last
+	// line arrives, and the editor reports a normal end. Observers see every message both ways.
+	void TestQuitAndLogLines(Listener& listener)
+	{
+		std::vector<ObservedMessage> seenByGame;
+		std::vector<ObservedMessage> seenByEditor;
+
+		LinkPair links;
+		links.Game = std::make_unique<EditorLink>(Connection::ConnectToLocalPort(listener.GetPort()), "NyxGame",
+			[&](ELinkDirection direction, const Message& message) { seenByGame.push_back({ direction, message.Type }); });
+
+		Require(PumpUntil(
+					[&]
+					{
+						links.Game->Update();
+						if (!links.Editor)
+						{
+							if (std::unique_ptr<Connection> accepted = listener.Accept())
+							{
+								links.Editor = std::make_unique<EditorLink>(std::move(accepted), "NyxEditor",
+									[&](ELinkDirection direction, const Message& message) { seenByEditor.push_back({ direction, message.Type }); });
+							}
+						}
+						if (links.Editor)
+						{
+							links.Editor->Update();
+						}
+					},
+					[&] { return links.Game->IsConnected() && links.Editor && links.Editor->IsConnected(); }),
+			"The handshake didn't finish");
+
+		LogLineMessage line;
+		line.Level = ELogLevel::Warning;
+		line.TimeMs = GetClockTimeMs();
+		line.LoggerName = "APP";
+		line.Text = "Something to look at";
+		links.Game->Send(line);
+
+		std::optional<Message> received;
+		Require(PumpUntil([&] { links.Update(listener, [](EditorLink&) {}); }, [&] { return (received = links.Editor->Receive()).has_value(); }),
+			"The log line didn't arrive");
+		const LogLineMessage readLine = ReadAs<LogLineMessage>(*received);
+		Require(readLine.Level == ELogLevel::Warning && readLine.TimeMs == line.TimeMs && readLine.LoggerName == "APP" &&
+				readLine.Text == "Something to look at",
+			"The log line changed on the way");
+
+		// Quit: the game says its last line and closes gracefully, while the editor has a message
+		// in flight to it that it won't read
+		links.Editor->Send(QuitMessage{});
+		Require(PumpUntil([&] { links.Update(listener, [](EditorLink&) {}); }, [&] { return (received = links.Game->Receive()).has_value(); }),
+			"Quit didn't arrive");
+		ReadAs<QuitMessage>(*received);
+
+		links.Editor->Send(TestMessage{ 5 });
+		LogLineMessage last = line;
+		last.Text = "The last line";
+		links.Game->Send(last);
+
+		// Like the game's EditorLinkLayer: the editor answers the close while the game waits for it
+		std::thread editorFrames([&]
+			{
+				PumpUntil([&] { links.Editor->Update(); }, [&] { return links.Editor->GetState() == EEditorLinkState::Closed; }, 5000);
+			});
+		links.Game->CloseGracefully("the game is closing", std::chrono::milliseconds(3000));
+		editorFrames.join();
+
+		Require(links.Editor->GetState() == EEditorLinkState::Closed, "The editor didn't notice the game closing");
+		Require(links.Editor->GetCloseReason() == "the other side closed the connection",
+			"The game's close wasn't a normal end: " + links.Editor->GetCloseReason());
+
+		received = links.Editor->Receive();
+		Require(received && ReadAs<LogLineMessage>(*received).Text == "The last line", "The game's last line got lost");
+
+		// Hello first in both directions, then everything else, seen by both observers
+		Require(seenByGame.size() >= 4 && seenByGame[0].Direction == ELinkDirection::Sent && seenByGame[0].Type == 1,
+			"The game's observer didn't see its Hello first");
+		Require(!seenByEditor.empty() && seenByEditor[0].Direction == ELinkDirection::Sent && seenByEditor[0].Type == 1,
+			"The editor's observer didn't see its Hello first");
+
+		const auto count = [](const std::vector<ObservedMessage>& seen, ELinkDirection direction, EEditorLinkMessage type)
+		{
+			size_t n = 0;
+			for (const ObservedMessage& message : seen)
+			{
+				n += (message.Direction == direction && message.Type == static_cast<uint16_t>(type)) ? 1 : 0;
+			}
+			return n;
+		};
+		Require(count(seenByEditor, ELinkDirection::Received, EEditorLinkMessage::Hello) == 1 &&
+				count(seenByEditor, ELinkDirection::Received, EEditorLinkMessage::LogLine) == 2 &&
+				count(seenByEditor, ELinkDirection::Sent, EEditorLinkMessage::Quit) == 1,
+			"The editor's observer missed messages");
+		Require(count(seenByGame, ELinkDirection::Received, EEditorLinkMessage::Quit) == 1 &&
+				count(seenByGame, ELinkDirection::Sent, EEditorLinkMessage::LogLine) == 2,
+			"The game's observer missed messages");
+	}
+
+	void TestDescriptions()
+	{
+		const auto describe = [](auto message)
+		{
+			BinaryWriter writer;
+			message.Write(writer);
+			return DescribeEditorLinkMessage(Message{ static_cast<uint16_t>(decltype(message)::Type), writer.GetBytes() });
+		};
+
+		HelloMessage hello;
+		hello.ProgramName = "NyxGame";
+		hello.ProcessId = 1234;
+		const EditorLinkMessageText helloText = describe(hello);
+		Require(helloText.Name == "Hello" && helloText.Summary == "NyxGame, process 1234, protocol " + std::to_string(EditorLinkProtocolVersion) &&
+				Contains(helloText.Details, "ProgramName: \"NyxGame\"") && Contains(helloText.Details, "ProcessId: 1234"),
+			"Hello is described wrongly: " + helloText.Summary + " / " + helloText.Details);
+
+		LogLineMessage line;
+		line.Level = ELogLevel::Error;
+		line.LoggerName = "ENGINE";
+		line.Text = "two\nlines";
+		const EditorLinkMessageText lineText = describe(line);
+		Require(lineText.Name == "LogLine" && lineText.Summary == "[Error] ENGINE: two lines" &&
+				Contains(lineText.Details, "Level: Error") && Contains(lineText.Details, "Text: \"two\nlines\""),
+			"LogLine is described wrongly: " + lineText.Summary + " / " + lineText.Details);
+
+		Require(describe(QuitMessage{}).Name == "Quit", "Quit is described wrongly");
+
+		const EditorLinkMessageText unknown = DescribeEditorLinkMessage(Message{ 999, MakeBytes(3, 1) });
+		Require(unknown.Name == "type 999" && Contains(unknown.Details, "(3 bytes)"), "An unknown type is described wrongly: " + unknown.Details);
+
+		const EditorLinkMessageText broken = DescribeEditorLinkMessage(Message{ static_cast<uint16_t>(EEditorLinkMessage::LogLine), MakeBytes(3, 1) });
+		Require(broken.Name == "LogLine" && Contains(broken.Summary, "can't be read"), "An unreadable LogLine is described wrongly");
+
+		Require(FormatClockTime(GetClockTimeMs()).size() == 12, "The clock time isn't hh:mm:ss.mmm");
+	}
+
+	void TestRecording()
+	{
+		const std::filesystem::path path = std::filesystem::temp_directory_path() /
+			("NyxEditorLinkTests-" + std::to_string(GetClockTimeMs()) + ".nyxlinklog");
+
+		EditorLinkRecorder recorder;
+		Require(recorder.Open(path, "NyxGame"), "The recording can't be created");
+
+		HelloMessage hello;
+		hello.ProgramName = "NyxGame";
+		BinaryWriter writer;
+		hello.Write(writer);
+		recorder.Record(ELinkDirection::Sent, Message{ static_cast<uint16_t>(EEditorLinkMessage::Hello), writer.GetBytes() });
+		recorder.Record(ELinkDirection::Received, Message{ static_cast<uint16_t>(EEditorLinkMessage::Quit), {} });
+		recorder.Close();
+
+		std::string text;
+		Require(EditorLinkRecorder::PrintFile(path, text), "The recording can't be printed: " + text);
+		Require(Contains(text, "Recorded by NyxGame") && Contains(text, "sent      Hello (") && Contains(text, "ProgramName: \"NyxGame\"") &&
+				Contains(text, "received  Quit (0 bytes)") && Contains(text, "2 messages"),
+			"The printed recording is missing something:\n" + text);
+
+		// A recording cut off in the middle of a message, as after a crash, prints up to there
+		const auto fullSize = std::filesystem::file_size(path);
+		std::filesystem::resize_file(path, fullSize - 3);
+		text.clear();
+		Require(EditorLinkRecorder::PrintFile(path, text) && Contains(text, "ends in the middle of a message") &&
+				Contains(text, "Hello ("),
+			"A cut-off recording isn't printed up to the cut:\n" + text);
+
+		// Something else isn't a recording
+		{
+			std::ofstream other(path, std::ios::binary | std::ios::trunc);
+			other << "not a recording";
+		}
+		text.clear();
+		Require(!EditorLinkRecorder::PrintFile(path, text) && Contains(text, "is not an editor link recording"),
+			"Another file was taken for a recording");
+
+		std::error_code ignored;
+		std::filesystem::remove(path, ignored);
+	}
+
+	// Keeps the thousands of test lines out of the console; only the given sink gets them
+	class QuietConsole
+	{
+	public:
+		explicit QuietConsole(const std::shared_ptr<spdlog::sinks::sink>& keep)
+		{
+			Nyx::Core::Logger& logger = Nyx::Core::Logger::Get();
+			for (const std::shared_ptr<spdlog::logger>& target : { logger.GetCoreLogger(), logger.GetClientLogger() })
+			{
+				for (const std::shared_ptr<spdlog::sinks::sink>& sink : target->sinks())
+				{
+					if (sink != keep)
+					{
+						Silenced.push_back({ sink, sink->level() });
+						sink->set_level(spdlog::level::off);
+					}
+				}
+			}
+		}
+
+		~QuietConsole()
+		{
+			for (const auto& [sink, level] : Silenced)
+			{
+				sink->set_level(level);
+			}
+		}
+
+	private:
+		std::vector<std::pair<std::shared_ptr<spdlog::sinks::sink>, spdlog::level::level_enum>> Silenced;
+	};
+
+	void TestLogSink()
+	{
+		const std::shared_ptr<EditorLinkLogSink> sink = EditorLinkLogSink::Install();
+		Require(sink->TakeLines().empty(), "A new sink has lines");
+		QuietConsole quiet(sink);
+
+		// Lines from several threads all arrive, each thread's in order
+		std::vector<std::thread> threads;
+		for (int thread = 0; thread < 4; ++thread)
+		{
+			threads.emplace_back([thread]
+				{
+					for (int i = 0; i < 100; ++i)
+					{
+						LOG_INFO("thread {0} line {1}", thread, i);
+					}
+				});
+		}
+		for (std::thread& thread : threads)
+		{
+			thread.join();
+		}
+
+		std::vector<LogLineMessage> lines = sink->TakeLines();
+		Require(lines.size() == 400, "Not all lines from the threads arrived: " + std::to_string(lines.size()));
+		std::vector<int> nextLine(4, 0);
+		for (const LogLineMessage& line : lines)
+		{
+			// "thread <t> line <i>"
+			int thread = -1;
+			int index = -1;
+			const std::string& text = line.Text;
+			const size_t lineWord = text.find(" line ");
+			const bool bParsed = text.rfind("thread ", 0) == 0 && lineWord != std::string::npos &&
+				std::from_chars(text.data() + 7, text.data() + lineWord, thread).ec == std::errc() &&
+				std::from_chars(text.data() + lineWord + 6, text.data() + text.size(), index).ec == std::errc();
+			Require(bParsed && thread >= 0 && thread < 4, "Unexpected line: " + line.Text);
+			Require(index == nextLine[thread]++, "A thread's lines arrived out of order");
+			Require(line.Level == ELogLevel::Info && line.LoggerName == "APP" && line.TimeMs != 0, "A line lost its level, logger or time");
+		}
+
+		// Nobody takes the lines: the oldest are kept, and the last line says how many were dropped
+		for (size_t i = 0; i < EditorLinkLogSink::MaxKeptLines + 10; ++i)
+		{
+			CORE_LOG_TRACE("filler {0}", i);
+		}
+		lines = sink->TakeLines();
+		Require(lines.size() == EditorLinkLogSink::MaxKeptLines + 1 && Contains(lines.back().Text, "10 log lines were dropped"),
+			"Dropped lines aren't reported");
+		Require(lines.front().LoggerName == "ENGINE" && lines.front().Level == ELogLevel::Trace, "Engine trace lines aren't kept");
+
+		sink->Stop();
+		LOG_INFO("after stopping");
+		Require(sink->TakeLines().empty(), "A stopped sink still collects lines");
+	}
+
 	void TestListenerWithoutWaitingPrograms(Listener& listener)
 	{
 		Require(listener.IsListening() && listener.GetPort() != 0, "The listener isn't listening");
@@ -459,6 +746,10 @@ int main()
 		const uint32_t thisProcessId = TestHandshake(listener);
 		TestRequiredProcessId(listener, thisProcessId);
 		TestBadHellos(listener);
+		TestQuitAndLogLines(listener);
+		TestDescriptions();
+		TestRecording();
+		TestLogSink();
 
 		std::cout << "All editor link tests passed.\n";
 		return 0;

@@ -40,6 +40,9 @@ namespace Nyx
 		// Ends the program at once, without letting it clean up, and waits until it is gone.
 		void Terminate();
 
+		// Waits until the program has exited, for at most timeoutMs. Returns whether it has.
+		bool WaitForExit(uint32_t timeoutMs) const;
+
 		// Called by the started program itself: blocks until a debugger is attached to it, e.g. to
 		// debug the game from its very first line when the editor starts it.
 		static void WaitForDebugger();

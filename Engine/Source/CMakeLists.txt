@@ -47,6 +47,9 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/SceneSerializer.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/BuiltinAssetResolver.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/EditorLink.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/EditorLinkMessages.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/EditorLinkLogSink.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/EditorLinkRecorder.cpp
 
     # Runtime/Renderer
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ImGuiTheme.cpp
@@ -110,6 +113,9 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/IAssetResolver.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/AssetReference.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/EditorLink.h
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/EditorLinkMessages.h
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/EditorLinkLogSink.h
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/EditorLinkRecorder.h
 
     # Runtime/Renderer
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ImGuiTheme.h

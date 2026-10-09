@@ -22,6 +22,7 @@
 
 #include "imgui.h"
 
+#include <algorithm>
 #include <cfloat>
 #include <cstring>
 #include <string>
@@ -174,7 +175,7 @@ namespace Nyx::Editor
 	void EditorLayer::OnDetach()
 	{
 		// Closing the editor also ends the game it started
-		StopGame();
+		StopGameBeforeEditorCloses();
 
 		SourceInspector.Detach();
 		// The menu calls into this layer, so it must not outlive it.
@@ -201,6 +202,12 @@ namespace Nyx::Editor
 		DebugTools.BeforeFrame();
 		UpdateGameLink();
 		CheckWhetherGameExited();
+
+		if (GameQuitDeadline && std::chrono::steady_clock::now() >= *GameQuitDeadline)
+		{
+			LOG_WARNING("The game didn't quit within {0} seconds; ending it", GameQuitTimeLimit.count());
+			EndGameNow();
+		}
 		TickScene(deltaTime);
 
 		// Keep renderer-facing selection state up to date before rendering
@@ -225,6 +232,11 @@ namespace Nyx::Editor
 
 		if (!SourceInspector.IsActive()) HandleUndoRedoHotkeys();
 		DrawSourceTools();
+
+		if (bShowGameLink)
+		{
+			GameLinkWindow.Draw(bShowGameLink);
+		}
 
 		DebugTools.DrawWindows();
 	}
@@ -281,6 +293,12 @@ namespace Nyx::Editor
 				ToggleAssetBrowser();
 			}
 
+			// The game's log and the editor link's messages
+			if (NYX_UI(ImGui::MenuItem("Game Link", nullptr, bShowGameLink)))
+			{
+				bShowGameLink = !bShowGameLink;
+			}
+
 			// Shows "Scene 2" the way the game sees the scene: through its primary camera, without editor overlays
 			if (NYX_UI(ImGui::MenuItem("Game View in Scene 2", nullptr, bSecondaryViewShowsGameView)))
 			{
@@ -308,12 +326,15 @@ namespace Nyx::Editor
 
 		ImGui::SameLine();
 
-		// Play / Stop, green while stopped and red while the game runs
-		const bool bPlaying = GameProcess.IsRunning();
+		// Play / Stop, green while stopped and red while the game runs. While the game was asked to
+		// quit, it says "Stopping", and a click ends the game at once. Play has its own ID, so a
+		// click that starts on Stop or Stopping can't end on Play when the game exits meanwhile.
+		const bool bPlaying = bGameRunning;
 		const ImVec4 playButtonColor = bPlaying ? ImVec4(0.55f, 0.18f, 0.18f, 1.0f) : ImVec4(0.18f, 0.42f, 0.22f, 1.0f);
+		const char* playButtonLabel = !bPlaying ? "Play" : (GameQuitDeadline ? "Stopping###Stop" : "Stop###Stop");
 
 		ImGui::PushStyleColor(ImGuiCol_Button, playButtonColor);
-		if (NYX_UI(ImGui::Button(bPlaying ? "Stop" : "Play", ImVec2(64.0f, buttonHeight))))
+		if (NYX_UI(ImGui::Button(playButtonLabel, ImVec2(64.0f, buttonHeight))))
 		{
 			if (bPlaying)
 			{
@@ -326,9 +347,13 @@ namespace Nyx::Editor
 		}
 		ImGui::PopStyleColor();
 
-		if (bPlaying)
+		if (bPlaying && GameQuitDeadline)
 		{
-			ImGui::SetItemTooltip("Ends the game.\nEditor link: %s", GetGameLinkStatus().c_str());
+			ImGui::SetItemTooltip("The game was asked to quit. Click to end it at once.\nEditor link: %s", GetGameLinkStatus().c_str());
+		}
+		else if (bPlaying)
+		{
+			ImGui::SetItemTooltip("Asks the game to quit, or ends it if it isn't linked.\nEditor link: %s", GetGameLinkStatus().c_str());
 		}
 		else
 		{
@@ -492,8 +517,12 @@ namespace Nyx::Editor
 		Transactions.Clear();
 		++SceneRevision;
 
-		// The game is still running the previous scene
-		StopGame();
+		// The game is still running the previous scene. A game that is quitting already gets the
+		// rest of its time.
+		if (!GameQuitDeadline)
+		{
+			StopGame();
+		}
 	}
 
 	void EditorLayer::StartGame()
@@ -531,6 +560,8 @@ namespace Nyx::Editor
 		}
 
 		GameLinkCloseReason.clear();
+		GameQuitDeadline.reset();
+		GameLinkWindow.OnPlayStarted();
 
 		if (!GameProcess.Start(gameExecutable, arguments))
 		{
@@ -552,23 +583,80 @@ namespace Nyx::Editor
 
 	void EditorLayer::StopGame()
 	{
+		if (!GameProcess.IsRunning())
+		{
+			EndGameNow();
+			return;
+		}
+
+		// Stop pressed again while the game is quitting
+		if (GameQuitDeadline)
+		{
+			EndGameNow();
+			return;
+		}
+
+		// Asked to quit, the game ends like when its window is closed: its last log lines arrive
+		// and its files are closed. OnUpdate ends it if it doesn't within the time limit.
+		if (GameLink && GameLink->IsConnected())
+		{
+			GameLink->Send(Nyx::Engine::QuitMessage{});
+			GameQuitDeadline = std::chrono::steady_clock::now() + GameQuitTimeLimit;
+			LOG_INFO("Asked the game to quit");
+			return;
+		}
+
+		EndGameNow();
+	}
+
+	void EditorLayer::EndGameNow()
+	{
 		if (GameLink)
 		{
-			GameLink->Close("the editor stopped the game");
+			GameLink->Close("the editor ended the game");
 			GameLink.reset();
 		}
 		GameLinkCandidates.clear();
+		GameQuitDeadline.reset();
 
 		if (!GameProcess.IsRunning())
 		{
 			return;
 		}
 
-		// There is no way yet to ask the game to quit, so it is ended at once
 		GameProcess.Terminate();
 		bGameRunning = false;
 
-		LOG_INFO("Stopped the game");
+		LOG_INFO("Ended the game");
+	}
+
+	void EditorLayer::StopGameBeforeEditorCloses()
+	{
+		// The editor can't wait over several frames now. The game gets Quit (unless it has it
+		// already) and the end of the link, and the rest of its time to exit by itself.
+		const auto deadline = GameQuitDeadline.value_or(std::chrono::steady_clock::now() + GameQuitTimeLimit);
+		bool bAskedToQuit = GameQuitDeadline.has_value();
+
+		if (GameProcess.IsRunning() && GameLink && GameLink->IsConnected())
+		{
+			if (!bAskedToQuit)
+			{
+				GameLink->Send(Nyx::Engine::QuitMessage{});
+				bAskedToQuit = true;
+			}
+
+			// Waits until the game has read everything and closed its end, so Quit can't get lost
+			GameLink->CloseGracefully("the editor is closing", std::chrono::milliseconds(1000));
+			GameLink.reset();
+		}
+
+		if (GameProcess.IsRunning() && bAskedToQuit)
+		{
+			const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
+			GameProcess.WaitForExit(static_cast<uint32_t>(std::max<long long>(remaining.count(), 0)));
+		}
+
+		EndGameNow();
 	}
 
 	void EditorLayer::CheckWhetherGameExited()
@@ -583,6 +671,7 @@ namespace Nyx::Editor
 		UpdateGameLink();
 		GameLink.reset();
 		GameLinkCandidates.clear();
+		GameQuitDeadline.reset();
 
 		bGameRunning = false;
 
@@ -617,7 +706,12 @@ namespace Nyx::Editor
 				continue;
 			}
 
-			auto candidate = std::make_unique<Nyx::Engine::EditorLink>(std::move(connection), "NyxEditor");
+			// The Game Link window sees every message, also of programs that turn out not to be the game
+			auto candidate = std::make_unique<Nyx::Engine::EditorLink>(std::move(connection), "NyxEditor",
+				[this](Nyx::Engine::ELinkDirection direction, const Nyx::Net::Message& message)
+				{
+					GameLinkWindow.AddMessage(direction, message);
+				});
 			candidate->RequireOtherProcessId(GameProcess.GetProcessId());
 			GameLinkCandidates.push_back(std::move(candidate));
 		}
@@ -667,9 +761,14 @@ namespace Nyx::Editor
 
 	void EditorLayer::HandleGameLinkMessages()
 	{
-		// The game sends nothing after its Hello yet
 		while (std::optional<Nyx::Net::Message> message = GameLink->Receive())
 		{
+			// The Game Link window shows log lines; it sees every message through the link's observer
+			if (message->Type == static_cast<uint16_t>(Nyx::Engine::EEditorLinkMessage::LogLine))
+			{
+				continue;
+			}
+
 			LOG_WARNING("Editor link: skipped a message of type {0}, which this editor doesn't know", message->Type);
 		}
 	}

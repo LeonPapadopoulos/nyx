@@ -1013,7 +1013,16 @@ namespace Nyx
 
 	void VulkanRenderer::RecreateSwapChain()
 	{
-		WaitForValidFramebufferSize();
+		// A minimized window has no size to create a swapchain for. Instead of waiting here until
+		// it is restored (which would stop the whole frame loop, e.g. the editor link), keep the
+		// request: the window doesn't draw while minimized, and the first frame after restoring
+		// comes back here.
+		if (!HasValidFramebufferSize())
+		{
+			bRecreateSwapChain = true;
+			return;
+		}
+
 		Context.GetDevice().waitIdle();
 		Swapchain.Recreate(Context, Window);
 
@@ -1023,16 +1032,12 @@ namespace Nyx
 		bRecreateSwapChain = false;
 	}
 
-	void VulkanRenderer::WaitForValidFramebufferSize()
+	bool VulkanRenderer::HasValidFramebufferSize() const
 	{
 		int width = 0;
 		int height = 0;
-
-		while (width == 0 || height == 0)
-		{
-			glfwGetFramebufferSize(Window, &width, &height);
-			glfwWaitEvents();
-		}
+		glfwGetFramebufferSize(Window, &width, &height);
+		return width > 0 && height > 0;
 	}
 
 	void VulkanRenderer::CreateMaterials()

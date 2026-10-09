@@ -31,6 +31,7 @@ namespace Nyx
 		virtual void SetVSync(bool enabled) override;
 		virtual bool IsVSync() const override;
 		virtual bool ShouldClose() const override;
+		void RequestClose() override;
 
 		void SetTitlebarMenu(std::function<void(float buttonHeight)> drawMenu) override;
 		void SetStartupStatus(const std::string& status) override;

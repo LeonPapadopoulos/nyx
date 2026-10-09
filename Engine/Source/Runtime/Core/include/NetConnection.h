@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -128,6 +129,11 @@ namespace Nyx::Net
 		// Closes at once. Queued messages that haven't been handed to the system yet are dropped;
 		// messages that have arrived can still be taken with Receive().
 		void Close(const std::string& reason);
+
+		// Sends what is queued, tells the other side that nothing more comes, and waits until it
+		// closes its end too, for at most timeLimit; then closes. Blocks while it waits. Messages
+		// that arrive meanwhile can still be taken with Receive().
+		void CloseGracefully(const std::string& reason, std::chrono::milliseconds timeLimit);
 
 		// Bytes queued that the system hasn't taken yet
 		size_t GetUnsentSize() const

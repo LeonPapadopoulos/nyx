@@ -16,6 +16,7 @@
 #include "Layer.h"
 #include "ChildProcess.h"
 #include "EditorLink.h"
+#include "GameLinkPanel.h"
 #include "NetConnection.h"
 #include "EditorPreferences.h"
 #include "ImGuiDebugTools.h"
@@ -23,8 +24,10 @@
 #include "Window.h"
 
 #include <array>
+#include <chrono>
 #include <filesystem>
 #include <future>
+#include <optional>
 
 namespace Nyx::Tests
 {
@@ -94,9 +97,12 @@ namespace Nyx::Editor
 		// Called before destroying the old registry, once its replacement is ready.
 		void ForgetPreviousScene();
 
-		// Play and Stop: the open scene runs in NyxGame, as a separate program
+		// Play and Stop: the open scene runs in NyxGame, as a separate program. Stop asks the game
+		// to quit, and ends it if it doesn't within GameQuitTimeLimit.
 		void StartGame();
 		void StopGame();
+		void EndGameNow();
+		void StopGameBeforeEditorCloses();
 		void CheckWhetherGameExited();
 
 		// The editor link: accepts the game's connection, says Hello and checks the game's
@@ -175,5 +181,13 @@ namespace Nyx::Editor
 
 		// Why the last link of this play session ended, for the Stop button's tooltip
 		std::string GameLinkCloseReason;
+
+		// Set while the game was asked to quit: when it gets ended instead
+		std::optional<std::chrono::steady_clock::time_point> GameQuitDeadline;
+		static constexpr std::chrono::seconds GameQuitTimeLimit{ 3 };
+
+		// The game's log and every message of the editor link
+		GameLinkPanel GameLinkWindow;
+		bool bShowGameLink = true;
 	};
 }

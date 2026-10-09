@@ -1,5 +1,6 @@
 #include "Engine.h"
 #include "EditorLinkLayer.h"
+#include "EditorLinkLogSink.h"
 #include "GameLayer.h"
 #include "Paths.h"
 #include "ChildProcess.h"
@@ -17,14 +18,15 @@ namespace Nyx::Game
 	class GameApplication : public Nyx::Engine::Application
 	{
 	public:
-		GameApplication(const std::filesystem::path& scenePath, std::optional<uint16_t> editorPort)
+		// editorLink is null when the editor didn't start the game
+		GameApplication(const std::filesystem::path& scenePath, std::unique_ptr<EditorLinkLayer> editorLink)
 			: Application(Nyx::Engine::ApplicationSpecs{ .Window = { .Title = "Nyx Game", .bUseCustomTitlebar = false, .bShowStartupBanner = false } })
 		{
 			PushLayer(std::make_unique<GameLayer>(scenePath));
 
-			if (editorPort)
+			if (editorLink)
 			{
-				PushLayer(std::make_unique<EditorLinkLayer>(*editorPort));
+				PushLayer(std::move(editorLink));
 			}
 		}
 	};
@@ -42,15 +44,18 @@ namespace Nyx::Game
 	}
 }
 
-// Usage: NyxGame.exe [scene file] [--wait-for-debugger] [--editor-port <port>]
+// Usage: NyxGame.exe [scene file] [--wait-for-debugger] [--editor-port <port>] [--link-log <file>]
 // - Without a scene file, the game runs Assets/Scenes/Default.nyxscene.
 // - With --wait-for-debugger, the game waits at startup until a debugger is attached.
-// - With --editor-port, the game connects back to the editor that started it (the editor link).
+// - With --editor-port, the game connects back to the editor that started it (the editor link),
+//   sends its log lines there and quits when the editor asks.
+// - With --link-log, every message of the editor link is recorded to the file (NyxDump prints it).
 Nyx::Engine::Application* Nyx::Engine::CreateApplication(int argc, char** argv)
 {
 	std::filesystem::path scenePath = Nyx::Paths::GetScenesDir() / "Default.nyxscene";
 	bool bWaitForDebugger = false;
 	std::optional<uint16_t> editorPort;
+	std::filesystem::path linkLogPath;
 
 	for (int i = 1; i < argc; ++i)
 	{
@@ -68,10 +73,32 @@ Nyx::Engine::Application* Nyx::Engine::CreateApplication(int argc, char** argv)
 				LOG_WARNING("--editor-port needs a port number from 1 to 65535; the game runs without the editor link");
 			}
 		}
+		else if (argument == "--link-log")
+		{
+			if (i + 1 < argc)
+			{
+				linkLogPath = argv[++i];
+			}
+			else
+			{
+				LOG_WARNING("--link-log needs a file name");
+			}
+		}
 		else
 		{
 			scenePath = argument;
 		}
+	}
+
+	// From here on, log lines are kept for the editor, even before the link is connected
+	std::unique_ptr<Nyx::Game::EditorLinkLayer> editorLink;
+	if (editorPort)
+	{
+		editorLink = std::make_unique<Nyx::Game::EditorLinkLayer>(*editorPort, Nyx::Engine::EditorLinkLogSink::Install(), linkLogPath);
+	}
+	else if (!linkLogPath.empty())
+	{
+		LOG_WARNING("--link-log only records together with --editor-port");
 	}
 
 	if (bWaitForDebugger)
@@ -80,5 +107,5 @@ Nyx::Engine::Application* Nyx::Engine::CreateApplication(int argc, char** argv)
 		Nyx::ChildProcess::WaitForDebugger();
 	}
 
-	return new Nyx::Game::GameApplication(scenePath, editorPort);
+	return new Nyx::Game::GameApplication(scenePath, std::move(editorLink));
 }

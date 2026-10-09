@@ -4,6 +4,7 @@
 set(NYX_EDITOR_SOURCES
     main.cpp
     src/EditorLayer.cpp
+    src/GameLinkPanel.cpp
     src/EditorPreferences.cpp
     src/ImGuiDebugTools.cpp
     src/ReflectionSourceRegistry.cpp
@@ -45,6 +46,7 @@ set(NYX_EDITOR_SOURCES
 set(NYX_EDITOR_HEADERS
     src/EditorPCH.h
     include/EditorLayer.h
+    include/GameLinkPanel.h
     include/EditorPreferences.h
     include/ImGuiDebugTools.h
     include/ReflectionSourceRegistry.h

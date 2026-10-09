@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <thread>
 
 #if defined(_WIN32)
 	// winsock2.h has to come before anything that includes windows.h
@@ -71,6 +72,12 @@ namespace
 		::closesocket(ToNative(socket));
 	}
 
+	// The other side then reads the end of the stream, while this side can still receive
+	void StopSending(SocketHandle socket)
+	{
+		::shutdown(ToNative(socket), SD_SEND);
+	}
+
 	// Winsock has to be started once per program. It is never shut down (WSACleanup): sockets
 	// can live until the program ends, and the system cleans up after it.
 	bool StartSockets()
@@ -137,6 +144,11 @@ namespace
 	void CloseSocket(SocketHandle socket)
 	{
 		::close(ToNative(socket));
+	}
+
+	void StopSending(SocketHandle socket)
+	{
+		::shutdown(ToNative(socket), SHUT_WR);
 	}
 
 	bool StartSockets()
@@ -428,6 +440,52 @@ namespace Nyx::Net
 		{
 			int ignoredError = 0;
 			ReadAvailable(ignoredError);
+		}
+
+		CloseWith(ECloseCause::ThisSide, reason);
+	}
+
+	void Connection::CloseGracefully(const std::string& reason, std::chrono::milliseconds timeLimit)
+	{
+		if (State != EConnectionState::Connected)
+		{
+			Close(reason);
+			return;
+		}
+
+		const auto deadline = std::chrono::steady_clock::now() + timeLimit;
+		const auto waitBriefly = [] { std::this_thread::sleep_for(std::chrono::milliseconds(1)); };
+
+		// Everything queued goes to the system first
+		while (State == EConnectionState::Connected && GetUnsentSize() > 0 && std::chrono::steady_clock::now() < deadline)
+		{
+			SendQueued();
+			if (GetUnsentSize() > 0)
+			{
+				waitBriefly();
+			}
+		}
+
+		if (State != EConnectionState::Connected)
+		{
+			// Sending failed, and the connection is closed already
+			return;
+		}
+
+		// The other side reads the end of the stream after the last message and closes its end.
+		// Waiting for that, instead of closing right away, makes sure the last messages arrive.
+		StopSending(Socket);
+
+		while (std::chrono::steady_clock::now() < deadline)
+		{
+			int error = 0;
+			const EReadEnd end = ReadAvailable(error);
+			if (end != EReadEnd::NothingMore)
+			{
+				break;
+			}
+
+			waitBriefly();
 		}
 
 		CloseWith(ECloseCause::ThisSide, reason);

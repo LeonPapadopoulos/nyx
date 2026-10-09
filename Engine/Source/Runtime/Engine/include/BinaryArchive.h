@@ -67,6 +67,12 @@ namespace Nyx::Engine
 			return bValid;
 		}
 
+		// Bytes not read yet
+		size_t GetRemainingSize() const
+		{
+			return Buffer.size() - Offset;
+		}
+
 	private:
 		std::vector<std::byte> Buffer;
 		size_t Offset = 0;

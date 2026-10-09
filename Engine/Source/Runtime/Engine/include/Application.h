@@ -31,6 +31,9 @@ namespace Nyx
 
 			IWindow& GetWindow() { return *Window; }
 
+			// Ends the frame loop after the current frame, as if the user closed the window
+			void RequestQuit() { Window->RequestClose(); }
+
 		private:
 			std::unique_ptr<IWindow> Window;
 			std::vector<std::unique_ptr<ILayer>> Layers;

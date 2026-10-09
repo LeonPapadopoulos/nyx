@@ -147,6 +147,11 @@ namespace Nyx
 		::WaitForSingleObject(Handle, 5000);
 	}
 
+	bool ChildProcess::WaitForExit(uint32_t timeoutMs) const
+	{
+		return !Handle || ::WaitForSingleObject(Handle, timeoutMs) != WAIT_TIMEOUT;
+	}
+
 	void ChildProcess::WaitForDebugger()
 	{
 		while (!::IsDebuggerPresent())

@@ -262,7 +262,8 @@ namespace Nyx
 
 	private:
 		void RecreateSwapChain();
-		void WaitForValidFramebufferSize();
+		// False while the window is minimized
+		bool HasValidFramebufferSize() const;
 
 		void CreateMaterials();
 		void ExtractRenderObjects(const Nyx::Engine::Registry& registry);

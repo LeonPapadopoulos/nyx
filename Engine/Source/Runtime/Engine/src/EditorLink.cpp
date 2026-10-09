@@ -23,21 +23,10 @@ namespace
 
 namespace Nyx::Engine
 {
-	void HelloMessage::Write(BinaryWriter& writer) const
-	{
-		writer.WriteUInt32(ProtocolVersion);
-		writer.WriteString(ProgramName);
-		writer.WriteUInt32(ProcessId);
-	}
-
-	bool HelloMessage::Read(BinaryReader& reader)
-	{
-		return reader.ReadUInt32(ProtocolVersion) && reader.ReadString(ProgramName) && reader.ReadUInt32(ProcessId);
-	}
-
-	EditorLink::EditorLink(std::unique_ptr<Net::Connection> connection, std::string programName)
+	EditorLink::EditorLink(std::unique_ptr<Net::Connection> connection, std::string programName, EditorLinkObserver observer)
 		: Connection(std::move(connection))
 		, ProgramName(std::move(programName))
+		, Observer(std::move(observer))
 	{
 		// Queued first, so it goes out before anything sent later, even while still connecting
 		SayHello();
@@ -71,6 +60,11 @@ namespace Nyx::Engine
 				break;
 			}
 
+			if (Observer)
+			{
+				Observer(ELinkDirection::Received, *message);
+			}
+
 			if (State != EEditorLinkState::Connected)
 			{
 				HandleHello(*message);
@@ -92,7 +86,8 @@ namespace Nyx::Engine
 
 		State = EEditorLinkState::Closed;
 
-		if (Connection->GetCloseCause() == Net::ECloseCause::OtherSide)
+		// After a Quit, even a reset is the other side doing what it was asked
+		if (Connection->GetCloseCause() == Net::ECloseCause::OtherSide || (bCloseExpected && bHadHandshake))
 		{
 			LOG_INFO("Editor link: {0} closed the connection", GetOtherSideName());
 		}
@@ -129,6 +124,51 @@ namespace Nyx::Engine
 		LinkCloseReason = reason;
 		Connection->Close(reason);
 		State = EEditorLinkState::Closed;
+		TakeArrivedMessages();
+	}
+
+	void EditorLink::CloseGracefully(const std::string& reason, std::chrono::milliseconds timeLimit)
+	{
+		if (State == EEditorLinkState::Closed)
+		{
+			return;
+		}
+
+		LinkCloseReason = reason;
+		Connection->CloseGracefully(reason, timeLimit);
+		State = EEditorLinkState::Closed;
+		TakeArrivedMessages();
+	}
+
+	void EditorLink::TakeArrivedMessages()
+	{
+		while (std::optional<Net::Message> message = Connection->Receive())
+		{
+			if (Observer)
+			{
+				Observer(ELinkDirection::Received, *message);
+			}
+
+			if (bHadHandshake && message->Type != static_cast<uint16_t>(EEditorLinkMessage::Hello))
+			{
+				Received.push_back(std::move(*message));
+			}
+		}
+	}
+
+	void EditorLink::SendPayload(uint16_t type, const std::vector<std::byte>& payload)
+	{
+		if (Connection->GetState() == Net::EConnectionState::Closed)
+		{
+			return;
+		}
+
+		if (Observer)
+		{
+			Observer(ELinkDirection::Sent, Net::Message{ type, payload });
+		}
+
+		Connection->Send(type, payload);
 	}
 
 	void EditorLink::SayHello()
