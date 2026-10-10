@@ -48,6 +48,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/BuiltinAssetResolver.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/EditorLink.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/EditorLinkMessages.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/LiveEdits.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/EditorLinkLogSink.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/EditorLinkRecorder.cpp
 
@@ -73,6 +74,7 @@ set(NYX_ENGINE_SOURCES
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/src/ReflectionUtils.cpp
+    ${NYX_ENGINE_ROOT}/Reflection/src/PropertyValueAccess.cpp
 )
 
 set(NYX_ENGINE_HEADERS
@@ -114,6 +116,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/AssetReference.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/EditorLink.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/EditorLinkMessages.h
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/LiveEdits.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/EditorLinkLogSink.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/EditorLinkRecorder.h
 
@@ -145,6 +148,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionMacros.h
     ${NYX_ENGINE_ROOT}/Reflection/include/PropertyValue.h
     ${NYX_ENGINE_ROOT}/Reflection/include/PropertyValueUtils.h
+    ${NYX_ENGINE_ROOT}/Reflection/include/PropertyValueAccess.h
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionUtils.h
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectedPropertyRef.h
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionTraversal.h

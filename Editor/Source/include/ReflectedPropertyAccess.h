@@ -6,6 +6,8 @@
 
 namespace Nyx::Editor
 {
+	// Nyx::Reflection::GetPropertyValue and SetPropertyValue (PropertyValueAccess.h), with
+	// rotations (Quat) normalized, as the editor compares and records them.
 	Nyx::Reflection::PropertyValue ReadReflectedPropertyValue(
 		const void* object,
 		const Nyx::Reflection::PropertyMetadata& property);

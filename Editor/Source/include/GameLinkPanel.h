@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <map>
 #include <string>
+#include <vector>
 
 namespace Nyx::Editor
 {
@@ -61,7 +62,11 @@ namespace Nyx::Editor
 			Nyx::Engine::ELinkDirection Direction = Nyx::Engine::ELinkDirection::Sent;
 			uint16_t Type = 0;
 			size_t Size = 0;
+
+			// Name and summary. The details are described from the payload when they are shown,
+			// since messages like CreateEntity carry a lot.
 			Nyx::Engine::EditorLinkMessageText Text;
+			std::vector<std::byte> Payload;
 
 			// A row that marks the start of a play session instead of a message
 			bool bSessionStart = false;
@@ -86,6 +91,7 @@ namespace Nyx::Editor
 		bool IsShown(const MessageEntry& entry) const;
 		static std::string ToText(const LogEntry& entry);
 		static std::string ToText(const MessageEntry& entry);
+		static std::string DescribeDetails(const MessageEntry& entry);
 
 	private:
 		std::deque<LogEntry> GameLog;
@@ -103,6 +109,10 @@ namespace Nyx::Editor
 		std::deque<MessageEntry> Messages;
 		uint64_t NextMessageId = 1;
 		uint64_t SelectedMessageId = 0;
+
+		// The selected message's details, described once
+		uint64_t DetailsMessageId = 0;
+		std::string DetailsText;
 		bool bPaused = false;
 
 		// Types seen so far, with their names, and whether the Messages tab shows them

@@ -45,8 +45,6 @@ namespace
 	// Everything after the header: entity count, then the entities with their components
 	bool WriteEntities(const Registry& world, BinaryWriter& writer)
 	{
-		const auto& componentTypes = ComponentTypeRegistry::Get().GetAll();
-
 		std::vector<Entity> entities;
 		world.ForEachEntity([&](Entity entity)
 			{
@@ -57,31 +55,9 @@ namespace
 
 		for (Entity entity : entities)
 		{
-			uint32_t componentCount = 0;
-			for (const ComponentTypeOps& ops : componentTypes)
+			if (!SceneSerializer::WriteEntity(world, entity, writer))
 			{
-				if (ops.Has(world, entity))
-				{
-					++componentCount;
-				}
-			}
-
-			writer.WriteUInt32(componentCount);
-
-			for (const ComponentTypeOps& ops : componentTypes)
-			{
-				if (!ops.Has(world, entity))
-				{
-					continue;
-				}
-
-				writer.WriteString(ops.TypeMetadata->Name);
-
-				const void* component = ops.GetConst(world, entity);
-				if (!ReflectedArchiveSerializer::SerializeObject(writer, component, *ops.TypeMetadata))
-				{
-					return false;
-				}
+				return false;
 			}
 		}
 
@@ -103,47 +79,9 @@ namespace
 
 		for (uint32_t entityIndex = 0; entityIndex < entityCount; ++entityIndex)
 		{
-			const Entity entity = outWorld.CreateEntity();
-
-			uint32_t componentCount = 0;
-			if (!reader.ReadUInt32(componentCount))
+			if (!SceneSerializer::ReadEntity(reader, outWorld, outWorld.CreateEntity(), postLoadContext, warnings))
 			{
 				return false;
-			}
-
-			for (uint32_t componentIndex = 0; componentIndex < componentCount; ++componentIndex)
-			{
-				std::string componentTypeName;
-				if (!reader.ReadString(componentTypeName))
-				{
-					return false;
-				}
-
-				const ComponentTypeOps* ops = ComponentTypeRegistry::Get().FindByName(componentTypeName);
-				if (!ops)
-				{
-					warnings.Add("skipped component type '" + componentTypeName +
-						"', which this build doesn't know; saving the scene drops it");
-
-					if (!ReflectedArchiveSerializer::SkipObject(reader))
-					{
-						return false;
-					}
-
-					continue;
-				}
-
-				void* component = ops->Add(outWorld, entity);
-
-				if (!ReflectedArchiveSerializer::DeserializeObject(reader, component, *ops->TypeMetadata, warnings))
-				{
-					return false;
-				}
-
-				if (ops->PostLoad)
-				{
-					ops->PostLoad(component, postLoadContext);
-				}
 			}
 		}
 
@@ -269,28 +207,9 @@ namespace
 		{
 			outText += "\nEntity " + std::to_string(entityIndex) + "\n";
 
-			uint32_t componentCount = 0;
-			if (!reader.ReadUInt32(componentCount))
+			if (!SceneSerializer::PrintEntity(reader, 1, outText))
 			{
 				return false;
-			}
-
-			for (uint32_t componentIndex = 0; componentIndex < componentCount; ++componentIndex)
-			{
-				std::string componentTypeName;
-				if (!reader.ReadString(componentTypeName))
-				{
-					return false;
-				}
-
-				// Unknown component types are printed too, with name hashes instead of property names
-				const ComponentTypeOps* ops = ComponentTypeRegistry::Get().FindByName(componentTypeName);
-				outText += "  " + componentTypeName + (ops ? "" : " (a component type this build doesn't know)") + "\n";
-
-				if (!ReflectedArchivePrinter::PrintObject(reader, ops ? ops->TypeMetadata : nullptr, 2, outText))
-				{
-					return false;
-				}
 			}
 		}
 
@@ -362,6 +281,122 @@ namespace Nyx::Engine
 		{
 			LOG_INFO("'{0}' is a scene file of version {1}; saving it converts it to version {2}",
 				path.string(), version, SceneFileVersion);
+		}
+
+		return true;
+	}
+
+	bool SceneSerializer::WriteEntity(const Registry& world, Entity entity, BinaryWriter& writer)
+	{
+		const auto& componentTypes = ComponentTypeRegistry::Get().GetAll();
+
+		uint32_t componentCount = 0;
+		for (const ComponentTypeOps& ops : componentTypes)
+		{
+			if (ops.Has(world, entity))
+			{
+				++componentCount;
+			}
+		}
+
+		writer.WriteUInt32(componentCount);
+
+		for (const ComponentTypeOps& ops : componentTypes)
+		{
+			if (!ops.Has(world, entity))
+			{
+				continue;
+			}
+
+			writer.WriteString(ops.TypeMetadata->Name);
+
+			const void* component = ops.GetConst(world, entity);
+			if (!ReflectedArchiveSerializer::SerializeObject(writer, component, *ops.TypeMetadata))
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	bool SceneSerializer::ReadEntity(
+		BinaryReader& reader,
+		Registry& world,
+		Entity entity,
+		ScenePostLoadContext& postLoadContext,
+		ReadWarnings& warnings)
+	{
+		uint32_t componentCount = 0;
+		if (!reader.ReadUInt32(componentCount))
+		{
+			return false;
+		}
+
+		for (uint32_t componentIndex = 0; componentIndex < componentCount; ++componentIndex)
+		{
+			std::string componentTypeName;
+			if (!reader.ReadString(componentTypeName))
+			{
+				return false;
+			}
+
+			const ComponentTypeOps* ops = ComponentTypeRegistry::Get().FindByName(componentTypeName);
+			if (!ops)
+			{
+				warnings.Add("skipped component type '" + componentTypeName +
+					"', which this build doesn't know; saving the scene drops it");
+
+				if (!ReflectedArchiveSerializer::SkipObject(reader))
+				{
+					return false;
+				}
+
+				continue;
+			}
+
+			void* component = ops->Add(world, entity);
+
+			if (!ReflectedArchiveSerializer::DeserializeObject(reader, component, *ops->TypeMetadata, warnings))
+			{
+				return false;
+			}
+
+			if (ops->PostLoad)
+			{
+				ops->PostLoad(component, postLoadContext);
+			}
+		}
+
+		return true;
+	}
+
+	bool SceneSerializer::PrintEntity(BinaryReader& reader, int indentLevel, std::string& outText)
+	{
+		uint32_t componentCount = 0;
+		if (!reader.ReadUInt32(componentCount))
+		{
+			return false;
+		}
+
+		const std::string indent(static_cast<size_t>(indentLevel) * 2, ' ');
+
+		for (uint32_t componentIndex = 0; componentIndex < componentCount; ++componentIndex)
+		{
+			std::string componentTypeName;
+			if (!reader.ReadString(componentTypeName))
+			{
+				return false;
+			}
+
+			// Unknown component types are printed too, with name hashes instead of property names
+			const ComponentTypeOps* ops = ComponentTypeRegistry::Get().FindByName(componentTypeName);
+			outText += indent + componentTypeName + (ops ? "" : " (a component type this build doesn't know)") + "\n";
+
+			if (!ReflectedArchivePrinter::PrintObject(reader, ops ? ops->TypeMetadata : nullptr, indentLevel + 1, outText))
+			{
+				return false;
+			}
 		}
 
 		return true;

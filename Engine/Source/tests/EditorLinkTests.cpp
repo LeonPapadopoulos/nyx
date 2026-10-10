@@ -1,10 +1,16 @@
 // The editor link over real sockets on 127.0.0.1, with both ends in this one program.
 #include "BinaryArchive.h"
+#include "ComponentRegistration.h"
+#include "ComponentTypeRegistry.h"
 #include "EditorLink.h"
 #include "EditorLinkLogSink.h"
 #include "EditorLinkRecorder.h"
+#include "GuidComponent.h"
+#include "LiveEdits.h"
 #include "Log.h"
+#include "NameComponent.h"
 #include "NetConnection.h"
+#include "TransformComponent.h"
 
 #include <chrono>
 #include <cstdint>
@@ -718,6 +724,72 @@ namespace
 		Require(sink->TakeLines().empty(), "A stopped sink still collects lines");
 	}
 
+	// Live edits, sent by the editor's end as typed messages and as messages queued before,
+	// arrive in order and change the game's world
+	void TestLiveEditsOverTheLink(Listener& listener)
+	{
+		Registry editorWorld;
+		const Entity cube = editorWorld.CreateEntity();
+		editorWorld.Add<NameComponent>(cube, NameComponent{ "Cube" });
+		editorWorld.Add<GuidComponent>(cube, GuidComponent{ EntityGuid::Generate() });
+		editorWorld.Add<TransformComponent>(cube, TransformComponent{});
+		const EntityGuid cubeGuid = editorWorld.Get<GuidComponent>(cube).Guid;
+
+		// Kept while the game connects, like the editor's edits during a game's startup
+		std::vector<Message> queued;
+		queued.push_back(MakeNetMessage(*MakeCreateEntityMessage(editorWorld, cube)));
+
+		LinkPair links = StartLinks(listener);
+		Require(PumpUntil([&] { links.Update(listener, [](EditorLink&) {}); },
+					[&] { return links.Game->IsConnected() && links.Editor->IsConnected(); }),
+			"The handshake didn't finish");
+
+		for (const Message& message : queued)
+		{
+			links.Editor->Send(message);
+		}
+
+		editorWorld.Get<TransformComponent>(cube).Position = glm::vec3(4.0f, 5.0f, 6.0f);
+		links.Editor->Send(*MakeSetPropertiesMessage(editorWorld, cube,
+			*ComponentTypeRegistry::Get().FindByTypeMetadata(Nyx::Reflection::GetTypeMetadata<TransformComponent>()), { 0, 1, 2 }));
+
+		Registry gameWorld;
+		size_t applied = 0;
+		Require(PumpUntil(
+					[&]
+					{
+						links.Update(listener, [](EditorLink&) {});
+						while (std::optional<Message> message = links.Game->Receive())
+						{
+							Require(ApplyLiveEdit(*message, gameWorld, {}) == ELiveEditResult::Applied, "A live edit wasn't applied");
+							++applied;
+						}
+					},
+					[&] { return applied == 2; }),
+			"The live edits didn't arrive");
+
+		const std::optional<Entity> gameCube = FindEntityByGuid(gameWorld, cubeGuid);
+		Require(gameCube && gameWorld.Get<NameComponent>(*gameCube).Name == "Cube" &&
+				gameWorld.Get<TransformComponent>(*gameCube).Position == glm::vec3(4.0f, 5.0f, 6.0f),
+			"The game's world doesn't show the live edits");
+
+		links.Editor->Send(DeleteEntityMessage{ cubeGuid });
+		Require(PumpUntil(
+					[&]
+					{
+						links.Update(listener, [](EditorLink&) {});
+						if (std::optional<Message> message = links.Game->Receive())
+						{
+							Require(ApplyLiveEdit(*message, gameWorld, {}) == ELiveEditResult::Applied, "Deleting wasn't applied");
+						}
+					},
+					[&] { return !FindEntityByGuid(gameWorld, cubeGuid); }),
+			"Deleting didn't arrive");
+
+		links.Game->Close("done");
+		links.Editor->Close("done");
+	}
+
 	void TestListenerWithoutWaitingPrograms(Listener& listener)
 	{
 		Require(listener.IsListening() && listener.GetPort() != 0, "The listener isn't listening");
@@ -730,6 +802,7 @@ int main()
 	try
 	{
 		Nyx::Core::Logger::Get().Init();
+		RegisterComponentTypes();
 
 		TestStreamReaderPieces();
 		TestStreamReaderRefusesHugeMessages();
@@ -747,6 +820,7 @@ int main()
 		TestRequiredProcessId(listener, thisProcessId);
 		TestBadHellos(listener);
 		TestQuitAndLogLines(listener);
+		TestLiveEditsOverTheLink(listener);
 		TestDescriptions();
 		TestRecording();
 		TestLogSink();

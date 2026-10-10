@@ -17,6 +17,7 @@
 #include "ChildProcess.h"
 #include "EditorLink.h"
 #include "GameLinkPanel.h"
+#include "GameLinkSubscriber.h"
 #include "NetConnection.h"
 #include "EditorPreferences.h"
 #include "ImGuiDebugTools.h"
@@ -189,5 +190,8 @@ namespace Nyx::Editor
 		// The game's log and every message of the editor link
 		GameLinkPanel GameLinkWindow;
 		bool bShowGameLink = true;
+
+		// Turns edits, undo and redo into messages for the game, from Play on; sent once linked
+		Nyx::Editor::GameLinkSubscriber GameEdits{ ActiveScene };
 	};
 }

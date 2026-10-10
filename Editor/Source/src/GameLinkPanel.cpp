@@ -85,7 +85,8 @@ namespace Nyx::Editor
 		entry.Direction = direction;
 		entry.Type = message.Type;
 		entry.Size = message.Payload.size();
-		entry.Text = DescribeEditorLinkMessage(message);
+		entry.Text = DescribeEditorLinkMessage(message, false);
+		entry.Payload = message.Payload;
 
 		if (TypeNames.emplace(message.Type, entry.Text.Name).second)
 		{
@@ -420,7 +421,7 @@ namespace Nyx::Editor
 			ImGui::TableSetupScrollFreeze(0, 1);
 			ImGui::TableSetupColumn("Time", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("00:00:00.000").x);
 			ImGui::TableSetupColumn("Direction", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("Direction").x);
-			ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("LogLine  ").x);
+			ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("SetProperties  ").x);
 			ImGui::TableSetupColumn("Size", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("000000").x);
 			ImGui::TableSetupColumn("Content", ImGuiTableColumnFlags_WidthStretch);
 			ImGui::TableHeadersRow();
@@ -478,9 +479,15 @@ namespace Nyx::Editor
 
 	void GameLinkPanel::DrawMessageDetails(const MessageEntry& message)
 	{
+		if (DetailsMessageId != message.Id)
+		{
+			DetailsText = DescribeDetails(message);
+			DetailsMessageId = message.Id;
+		}
+
 		// Read-only, but selectable, so fields can be copied
 		std::string text = message.Text.Name + " " + GetDirectionText(message.Direction) + ", " + std::to_string(message.Size) +
-			" bytes, at " + FormatClockTime(message.TimeMs) + "\n" + message.Text.Details;
+			" bytes, at " + FormatClockTime(message.TimeMs) + "\n" + DetailsText;
 		NYX_UI(ImGui::InputTextMultiline("##MessageDetails", text.data(), text.size() + 1, ImVec2(-FLT_MIN, -FLT_MIN),
 			ImGuiInputTextFlags_ReadOnly));
 	}
@@ -533,6 +540,8 @@ namespace Nyx::Editor
 	{
 		Messages.clear();
 		SelectedMessageId = 0;
+		DetailsMessageId = 0;
+		DetailsText.clear();
 	}
 
 	void GameLinkPanel::StartRecording()
@@ -592,12 +601,13 @@ namespace Nyx::Editor
 		text += "\n";
 
 		// Fields indented below, as in NyxDump
+		const std::string details = DescribeDetails(entry);
 		size_t lineStart = 0;
-		while (lineStart <= entry.Text.Details.size())
+		while (lineStart <= details.size())
 		{
-			const size_t lineEnd = entry.Text.Details.find('\n', lineStart);
-			const size_t end = lineEnd == std::string::npos ? entry.Text.Details.size() : lineEnd;
-			text += "    " + entry.Text.Details.substr(lineStart, end - lineStart) + "\n";
+			const size_t lineEnd = details.find('\n', lineStart);
+			const size_t end = lineEnd == std::string::npos ? details.size() : lineEnd;
+			text += "    " + details.substr(lineStart, end - lineStart) + "\n";
 			if (lineEnd == std::string::npos)
 			{
 				break;
@@ -606,5 +616,10 @@ namespace Nyx::Editor
 		}
 
 		return text;
+	}
+
+	std::string GameLinkPanel::DescribeDetails(const MessageEntry& entry)
+	{
+		return DescribeEditorLinkMessage(Nyx::Net::Message{ entry.Type, entry.Payload }).Details;
 	}
 }

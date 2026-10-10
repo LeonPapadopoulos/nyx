@@ -54,6 +54,13 @@ namespace Nyx::Editor
 	struct ITransactionSubscriber
 	{
 		virtual ~ITransactionSubscriber() = default;
+
+		// A new edit was recorded (TransactionSystem::Push). Its changes are already made.
+		virtual void OnTransactionCommitted(const Transaction& /*transaction*/)
+		{
+		}
+
+		// Undo or redo has just changed the objects back or again
 		virtual void OnTransactionApplied(const Transaction& transaction, bool bWasUndo) = 0;
 	};
 }

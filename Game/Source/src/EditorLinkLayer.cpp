@@ -1,6 +1,7 @@
 #include "EditorLinkLayer.h"
 
 #include "Application.h"
+#include "LiveEdits.h"
 #include "Log.h"
 #include "NetConnection.h"
 
@@ -74,7 +75,7 @@ namespace Nyx::Game
 				break;
 
 			default:
-				LOG_WARNING("Editor link: skipped a message of type {0}, which this game doesn't know", message->Type);
+				ApplyMessage(*message);
 				break;
 			}
 		}
@@ -87,6 +88,23 @@ namespace Nyx::Game
 		}
 
 		SendLogLines();
+	}
+
+	void EditorLinkLayer::ApplyMessage(const Nyx::Net::Message& message)
+	{
+		if (!World)
+		{
+			LOG_WARNING("Editor link: skipped a message of type {0}, since the game has no world for it", message.Type);
+			return;
+		}
+
+		// Logs why it ignores an edit
+		const Nyx::Engine::ELiveEditResult result = Nyx::Engine::ApplyLiveEdit(message, *World, PostLoadContext);
+
+		if (result == Nyx::Engine::ELiveEditResult::NotALiveEdit)
+		{
+			LOG_WARNING("Editor link: skipped a message of type {0}, which this game doesn't know", message.Type);
+		}
 	}
 
 	void EditorLinkLayer::SendLogLines()

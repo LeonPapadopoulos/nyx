@@ -11,12 +11,12 @@ namespace Nyx::Reflection
 	// - header tool: EParsedPropertyKind, the type table (ReflectionSemantics.cpp),
 	//   CodeGenerator::ToGeneratedPropertyKind, and a test fixture
 	// - PropertyValue (PropertyValue.h), ArePropertyValuesEqual (PropertyValueUtils.h),
-	//   GetPropertyKindName (ReflectionUtils.cpp)
-	// - ReflectedArchiveSerializer: GetPropertyValue, SetPropertyValue, ReadValue, WriteValue, the
-	//   value sizes in its header, whether IsNumberKind includes it, and BinaryWriter/Reader
-	//   functions if the value has a new size
+	//   GetPropertyKindName (ReflectionUtils.cpp), GetPropertyValue and SetPropertyValue
+	//   (PropertyValueAccess.cpp)
+	// - ReflectedArchiveSerializer: ReadValue, WriteValue, the value sizes in its header, whether
+	//   IsNumberKind includes it, and BinaryWriter/Reader functions if the value has a new size
 	// - ReflectedArchivePrinter::ValueToText
-	// - in the editor: ReflectedPropertyAccess.cpp and a widget in PropertyWidgetRegistry.cpp
+	// - in the editor: a widget in PropertyWidgetRegistry.cpp
 	//
 	// UInt64 is meant for IDs, such as EntityGuid: it is shown in hex and never converted.
 	enum class EPropertyKind : uint8_t

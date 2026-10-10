@@ -22,10 +22,15 @@ namespace Nyx::Game
 		GameApplication(const std::filesystem::path& scenePath, std::unique_ptr<EditorLinkLayer> editorLink)
 			: Application(Nyx::Engine::ApplicationSpecs{ .Window = { .Title = "Nyx Game", .bUseCustomTitlebar = false, .bShowStartupBanner = false } })
 		{
-			PushLayer(std::make_unique<GameLayer>(scenePath));
+			// Attaching loads the scene
+			auto gameLayer = std::make_unique<GameLayer>(scenePath);
+			GameLayer& game = *gameLayer;
+			PushLayer(std::move(gameLayer));
 
 			if (editorLink)
 			{
+				// The editor's live edits go into the world the game runs
+				editorLink->SetWorld(game.GetWorld(), game.GetPostLoadContext());
 				PushLayer(std::move(editorLink));
 			}
 		}

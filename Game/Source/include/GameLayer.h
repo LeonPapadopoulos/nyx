@@ -3,6 +3,7 @@
 #include "BuiltinAssetResolver.h"
 #include "Entity.h"
 #include "Layer.h"
+#include "SceneSerializationTypes.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -25,6 +26,19 @@ namespace Nyx::Game
 		void OnAttach(Nyx::Engine::Application& application) override;
 		void OnDetach() override;
 		void OnUI() override;
+
+		// The world the game runs, e.g. for the editor's live edits. It stays at its address.
+		Nyx::Engine::Registry& GetWorld()
+		{
+			return World;
+		}
+
+		// What components need after they were loaded or changed, e.g. to load the mesh a
+		// MeshRenderer refers to. Valid once the layer is attached.
+		Nyx::Engine::ScenePostLoadContext GetPostLoadContext() const
+		{
+			return Nyx::Engine::ScenePostLoadContext{ AssetResolver.get() };
+		}
 
 	private:
 		std::filesystem::path ScenePath;

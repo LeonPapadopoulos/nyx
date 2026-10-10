@@ -170,6 +170,9 @@ namespace Nyx::Editor
 		PrintTransformMetadata();
 		// @todo: Remove once Undo/Redo Notifications have been tested
 		Transactions.Subscribe(&TransactionSubscriber);
+
+		// Edits show up live in the game started with Play
+		Transactions.Subscribe(&GameEdits);
 	}
 
 	void EditorLayer::OnDetach()
@@ -571,6 +574,13 @@ namespace Nyx::Editor
 
 		bGameRunning = true;
 
+		// The game runs the scene as saved above. Edits from now on are sent once it is linked;
+		// without the link, nothing could take them.
+		if (GameLinkListener.IsListening())
+		{
+			GameEdits.StartSession();
+		}
+
 		if (bGameWaitsForDebugger)
 		{
 			LOG_INFO("Started the game; it waits until a debugger is attached");
@@ -600,6 +610,9 @@ namespace Nyx::Editor
 		// and its files are closed. OnUpdate ends it if it doesn't within the time limit.
 		if (GameLink && GameLink->IsConnected())
 		{
+			// Edits from now on, e.g. to a scene opened meanwhile, aren't for this game
+			GameEdits.EndSession();
+
 			GameLink->Send(Nyx::Engine::QuitMessage{});
 			GameQuitDeadline = std::chrono::steady_clock::now() + GameQuitTimeLimit;
 			LOG_INFO("Asked the game to quit");
@@ -611,6 +624,8 @@ namespace Nyx::Editor
 
 	void EditorLayer::EndGameNow()
 	{
+		GameEdits.EndSession();
+
 		if (GameLink)
 		{
 			GameLink->Close("the editor ended the game");
@@ -672,6 +687,7 @@ namespace Nyx::Editor
 		GameLink.reset();
 		GameLinkCandidates.clear();
 		GameQuitDeadline.reset();
+		GameEdits.EndSession();
 
 		bGameRunning = false;
 
@@ -750,11 +766,23 @@ namespace Nyx::Editor
 			GameLink->Update();
 			HandleGameLinkMessages();
 
-			// The link logged why it ended
+			// Edits made since the last frame, or while the game was starting. A game paused in the
+			// debugger doesn't read; until it does, edits wait in GameEdits, which has a limit.
+			constexpr size_t MaxUnsentBytes = 1024 * 1024;
+			if (GameLink->IsConnected() && GameLink->GetUnsentSize() <= MaxUnsentBytes)
+			{
+				for (const Nyx::Net::Message& edit : GameEdits.TakeMessages())
+				{
+					GameLink->Send(edit);
+				}
+			}
+
+			// The link logged why it ended. The game doesn't connect again, so edits can't reach it anymore.
 			if (GameLink->GetState() == Nyx::Engine::EEditorLinkState::Closed)
 			{
 				GameLinkCloseReason = GameLink->GetCloseReason();
 				GameLink.reset();
+				GameEdits.EndSession();
 			}
 		}
 	}

@@ -88,15 +88,11 @@ namespace Nyx::Engine
 		template <typename TMessage>
 		void Send(const TMessage& message)
 		{
-			if constexpr (TMessage::Type == EEditorLinkMessage::Quit)
-			{
-				bCloseExpected = true;
-			}
-
-			BinaryWriter writer;
-			message.Write(writer);
-			SendPayload(static_cast<uint16_t>(TMessage::Type), writer.GetBytes());
+			Send(MakeNetMessage(message));
 		}
+
+		// Sends a message made with MakeNetMessage(), e.g. one that waited in a queue
+		void Send(const Net::Message& message);
 
 		// The next message after the handshake, in order
 		std::optional<Net::Message> Receive();
@@ -117,7 +113,6 @@ namespace Nyx::Engine
 		void CloseGracefully(const std::string& reason, std::chrono::milliseconds timeLimit);
 
 	private:
-		void SendPayload(uint16_t type, const std::vector<std::byte>& payload);
 		void SayHello();
 		void HandleHello(const Net::Message& message);
 		void CloseWithError(const std::string& reason);

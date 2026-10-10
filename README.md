@@ -50,6 +50,8 @@ In the editor, **Play** in the titlebar runs the open scene in `NyxGame.exe`, as
 
 The game connects back to the editor that started it, over the *editor link*: a TCP connection on `127.0.0.1` with a port the system picks, so only programs on this machine can connect. Both programs log when the link connects and when it ends, and hovering **Stop** shows its state. `NyxEditorLinkTests` tests the link with both ends in one program.
 
+While the game runs, edits in the editor show up in it live: moving an entity, changing a property in the details panel, adding or deleting an entity, and undo and redo of those. The game updates when an edit is recorded, e.g. at the end of a drag. Edits made while the game is still starting are sent once it is linked. Opening or creating a scene stops the game; edits made after Stop aren't sent. `NyxLiveEditTests` and `NyxGameLinkSubscriberTests` test the live edits.
+
 The editor's *Game Link* window (*Window > Game Link*) shows the game's log lines in the *Game Log* tab, and every message of the link, in both directions, in the *Messages* tab: select a message to see all its fields, or pause, filter by type and copy. *Record* there writes each play session's messages to a `.nyxlinklog` file in a `LinkLogs` folder next to the editor; `NyxGame.exe --link-log <file>` records the game's side.
 
 To see what a scene file or a link recording contains, build `NyxDump` and print the file with it, e.g. from the repository folder: `Build\Windows\Binaries\Debug\NyxDump.exe Assets\Scenes\Default.nyxscene`, or a `.nyxlinklog` file the same way.

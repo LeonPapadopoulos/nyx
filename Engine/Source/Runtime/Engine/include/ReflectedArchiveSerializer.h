@@ -8,6 +8,7 @@
 #include <map>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace Nyx::Engine
 {
@@ -25,8 +26,8 @@ namespace Nyx::Engine
 		std::map<std::string, uint32_t> CountByMessage;
 	};
 
-	// Writes and reads reflected objects in Nyx's tagged binary format. Scene files use it,
-	// and so will the messages between the editor and the game. All numbers are little-endian.
+	// Writes and reads reflected objects in Nyx's tagged binary format. Scene files use it, and
+	// so do the messages between the editor and the game. All numbers are little-endian.
 	//
 	//   Property block: byte size (u32, not counting itself) | property count (u16) | properties
 	//   Property:       name hash (u32) | kind (u8) | value
@@ -45,6 +46,17 @@ namespace Nyx::Engine
 			BinaryWriter& writer,
 			const void* object,
 			const Nyx::Reflection::TypeMetadata& typeMetadata);
+
+		// Writes some of the object's properties as one property block, e.g. the ones an edit
+		// changed. propertyIndices index typeMetadata.Properties; each is written once, in
+		// declaration order. Properties without Serialize are left out, as in SerializeObject.
+		// DeserializeObject reads the block; the properties it doesn't contain keep their values.
+		// Returns false if a property has a kind that can't be written.
+		static bool SerializeProperties(
+			BinaryWriter& writer,
+			const void* object,
+			const Nyx::Reflection::TypeMetadata& typeMetadata,
+			std::vector<size_t> propertyIndices);
 
 		// Reads one property block into the object:
 		// - Properties the data doesn't have keep their current value (in a new object: the default).

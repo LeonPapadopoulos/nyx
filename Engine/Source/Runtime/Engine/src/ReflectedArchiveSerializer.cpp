@@ -1,6 +1,7 @@
 #include "ReflectedArchiveSerializer.h"
 
 #include "Log.h"
+#include "PropertyValueAccess.h"
 #include "ReflectionUtils.h"
 
 #include <glm/gtc/quaternion.hpp>
@@ -16,6 +17,7 @@
 #include <type_traits>
 #include <utility>
 #include <variant>
+#include <vector>
 
 namespace
 {
@@ -24,44 +26,6 @@ namespace
 	using Nyx::Engine::BinaryWriter;
 	using Nyx::Engine::ReadWarnings;
 	using Nyx::Engine::ReflectedArchiveSerializer;
-
-	// The current value of a property of any kind except Struct
-	PropertyValue GetPropertyValue(const void* object, const PropertyMetadata& property)
-	{
-		switch (property.Kind)
-		{
-		case EPropertyKind::Bool:   return AccessProperty<bool>(object, property);
-		case EPropertyKind::Int32:  return AccessProperty<int32_t>(object, property);
-		case EPropertyKind::UInt32: return AccessProperty<uint32_t>(object, property);
-		case EPropertyKind::UInt64: return AccessProperty<uint64_t>(object, property);
-		case EPropertyKind::Float:  return AccessProperty<float>(object, property);
-		case EPropertyKind::Vec2:   return AccessProperty<glm::vec2>(object, property);
-		case EPropertyKind::Vec3:   return AccessProperty<glm::vec3>(object, property);
-		case EPropertyKind::Vec4:   return AccessProperty<glm::vec4>(object, property);
-		case EPropertyKind::Quat:   return AccessProperty<glm::quat>(object, property);
-		case EPropertyKind::String: return AccessProperty<std::string>(object, property);
-		default:                    return std::monostate{};
-		}
-	}
-
-	// Sets a property of any kind except Struct. The value must hold the property's kind.
-	void SetPropertyValue(void* object, const PropertyMetadata& property, const PropertyValue& value)
-	{
-		switch (property.Kind)
-		{
-		case EPropertyKind::Bool:   AccessProperty<bool>(object, property) = std::get<bool>(value); break;
-		case EPropertyKind::Int32:  AccessProperty<int32_t>(object, property) = std::get<int32_t>(value); break;
-		case EPropertyKind::UInt32: AccessProperty<uint32_t>(object, property) = std::get<uint32_t>(value); break;
-		case EPropertyKind::UInt64: AccessProperty<uint64_t>(object, property) = std::get<uint64_t>(value); break;
-		case EPropertyKind::Float:  AccessProperty<float>(object, property) = std::get<float>(value); break;
-		case EPropertyKind::Vec2:   AccessProperty<glm::vec2>(object, property) = std::get<glm::vec2>(value); break;
-		case EPropertyKind::Vec3:   AccessProperty<glm::vec3>(object, property) = std::get<glm::vec3>(value); break;
-		case EPropertyKind::Vec4:   AccessProperty<glm::vec4>(object, property) = std::get<glm::vec4>(value); break;
-		case EPropertyKind::Quat:   AccessProperty<glm::quat>(object, property) = std::get<glm::quat>(value); break;
-		case EPropertyKind::String: AccessProperty<std::string>(object, property) = std::get<std::string>(value); break;
-		default:                    break;
-		}
-	}
 
 	void WriteFloats(BinaryWriter& writer, std::initializer_list<float> values)
 	{
@@ -156,6 +120,51 @@ namespace
 		const TypeMetadata& typeMetadata,
 		const std::string& objectPath,
 		ReadWarnings& warnings);
+
+	// Writes the properties at the indices (into typeMetadata.Properties, each Serialize) as one
+	// property block. Returns false if a property has a kind that can't be written.
+	bool WriteProperties(
+		BinaryWriter& writer,
+		const void* object,
+		const TypeMetadata& typeMetadata,
+		const std::vector<size_t>& propertyIndices)
+	{
+		// The block starts with its size, which is only known once all properties are written
+		BinaryWriter block;
+		block.WriteUInt16(static_cast<uint16_t>(propertyIndices.size()));
+
+		for (const size_t propertyIndex : propertyIndices)
+		{
+			const PropertyMetadata& property = typeMetadata.Properties[propertyIndex];
+
+			block.WriteUInt32(property.NameHash);
+			block.WriteUInt8(static_cast<uint8_t>(property.Kind));
+
+			if (property.Kind == EPropertyKind::Struct)
+			{
+				const TypeMetadata* nestedType = TryGetNestedType(property);
+				if (!nestedType || !ReflectedArchiveSerializer::SerializeObject(block, GetPropertyAddress(object, property), *nestedType))
+				{
+					return false;
+				}
+			}
+			else
+			{
+				// No value means a kind this code can't write yet; writing nothing would make
+				// readers take the next property's bytes as this value.
+				const PropertyValue value = GetPropertyValue(object, property);
+				if (std::holds_alternative<std::monostate>(value))
+				{
+					return false;
+				}
+
+				ReflectedArchiveSerializer::WriteValue(block, value);
+			}
+		}
+
+		writer.WriteBlock(block);
+		return true;
+	}
 
 	// Reads a saved value into the property. If the property's kind changed since the value was
 	// saved, the value is converted (between number kinds) or skipped.
@@ -316,55 +325,35 @@ namespace Nyx::Engine
 		const void* object,
 		const TypeMetadata& typeMetadata)
 	{
-		uint16_t propertyCount = 0;
+		std::vector<size_t> propertyIndices;
 		for (size_t i = 0; i < typeMetadata.PropertyCount; ++i)
 		{
 			if (HasFlag(typeMetadata.Properties[i].Flags, EPropertyFlags::Serialize))
 			{
-				++propertyCount;
+				propertyIndices.push_back(i);
 			}
 		}
 
-		// The block starts with its size, which is only known once all properties are written
-		BinaryWriter block;
-		block.WriteUInt16(propertyCount);
+		return WriteProperties(writer, object, typeMetadata, propertyIndices);
+	}
 
-		for (size_t i = 0; i < typeMetadata.PropertyCount; ++i)
-		{
-			const PropertyMetadata& property = typeMetadata.Properties[i];
-
-			if (!HasFlag(property.Flags, EPropertyFlags::Serialize))
+	bool ReflectedArchiveSerializer::SerializeProperties(
+		BinaryWriter& writer,
+		const void* object,
+		const TypeMetadata& typeMetadata,
+		std::vector<size_t> propertyIndices)
+	{
+		// In declaration order, each once, and only what scene files would save too
+		std::sort(propertyIndices.begin(), propertyIndices.end());
+		propertyIndices.erase(std::unique(propertyIndices.begin(), propertyIndices.end()), propertyIndices.end());
+		std::erase_if(propertyIndices,
+			[&typeMetadata](size_t propertyIndex)
 			{
-				continue;
-			}
+				return propertyIndex >= typeMetadata.PropertyCount ||
+					!HasFlag(typeMetadata.Properties[propertyIndex].Flags, EPropertyFlags::Serialize);
+			});
 
-			block.WriteUInt32(property.NameHash);
-			block.WriteUInt8(static_cast<uint8_t>(property.Kind));
-
-			if (property.Kind == EPropertyKind::Struct)
-			{
-				const TypeMetadata* nestedType = TryGetNestedType(property);
-				if (!nestedType || !SerializeObject(block, GetPropertyAddress(object, property), *nestedType))
-				{
-					return false;
-				}
-			}
-			else
-			{
-				// No value means a kind this code can't write yet; writing nothing would make
-				// readers take the next property's bytes as this value.
-				const PropertyValue value = GetPropertyValue(object, property);
-				if (std::holds_alternative<std::monostate>(value))
-				{
-					return false;
-				}
-
-				WriteValue(block, value);
-			}
-		}
-
-		writer.WriteBlock(block);
-		return true;
+		return WriteProperties(writer, object, typeMetadata, propertyIndices);
 	}
 
 	bool ReflectedArchiveSerializer::DeserializeObject(

@@ -156,8 +156,13 @@ namespace Nyx::Engine
 		}
 	}
 
-	void EditorLink::SendPayload(uint16_t type, const std::vector<std::byte>& payload)
+	void EditorLink::Send(const Net::Message& message)
 	{
+		if (message.Type == static_cast<uint16_t>(EEditorLinkMessage::Quit))
+		{
+			bCloseExpected = true;
+		}
+
 		if (Connection->GetState() == Net::EConnectionState::Closed)
 		{
 			return;
@@ -165,10 +170,10 @@ namespace Nyx::Engine
 
 		if (Observer)
 		{
-			Observer(ELinkDirection::Sent, Net::Message{ type, payload });
+			Observer(ELinkDirection::Sent, message);
 		}
 
-		Connection->Send(type, payload);
+		Connection->Send(message.Type, message.Payload);
 	}
 
 	void EditorLink::SayHello()

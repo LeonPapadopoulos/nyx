@@ -22,6 +22,11 @@ namespace Nyx::Editor
 
 		UndoStack.push_back(std::move(transaction));
 		RedoStack.clear();
+
+		for (ITransactionSubscriber* subscriber : Subscribers)
+		{
+			subscriber->OnTransactionCommitted(UndoStack.back());
+		}
 	}
 
 	bool TransactionSystem::Undo(EditorTransactionContext& context)

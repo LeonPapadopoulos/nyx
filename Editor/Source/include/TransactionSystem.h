@@ -13,6 +13,7 @@ namespace Nyx::Editor
 	public:
 		void RegisterDomain(EObjectDomain domain, ITransactionDomain* handler);
 
+		// Records an edit whose changes are already made, for undo, and tells the subscribers
 		void Push(Transaction&& transaction);
 
 		bool Undo(EditorTransactionContext& context);

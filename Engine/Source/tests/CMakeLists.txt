@@ -22,6 +22,13 @@ add_dependencies(NyxEditorLinkTests NyxGeneratedReflection)
 set_property(TARGET NyxEditorLinkTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxEditorLinkTests COMMAND NyxEditorLinkTests)
 
+# Live edits: messages made from one world and applied to another, as the editor and the game do.
+add_executable(NyxLiveEditTests LiveEditTests.cpp)
+target_link_libraries(NyxLiveEditTests PRIVATE NyxEngine)
+add_dependencies(NyxLiveEditTests NyxGeneratedReflection)
+set_property(TARGET NyxLiveEditTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxLiveEditTests COMMAND NyxLiveEditTests)
+
 if(MSVC)
     add_test(NAME NyxRuntimeInspectionSymbols
         COMMAND ${CMAKE_COMMAND}
