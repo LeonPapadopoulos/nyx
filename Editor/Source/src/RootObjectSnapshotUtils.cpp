@@ -1,5 +1,8 @@
 #include "RootObjectSnapshotUtils.h"
-#include "ReflectedObjectSerialization.h"
+
+#include "BinaryArchive.h"
+#include "Log.h"
+#include "ReflectedArchiveSerializer.h"
 
 namespace Nyx::Editor
 {
@@ -26,8 +29,16 @@ namespace Nyx::Editor
 				continue;
 			}
 
-			snapshot.Subobjects.push_back(
-				CaptureReflectedObject(view.Object, *view.TypeMetadata));
+			// As a property block, as scene files store components, so struct properties are kept
+			Nyx::Engine::BinaryWriter writer;
+			if (!Nyx::Engine::ReflectedArchiveSerializer::SerializeObject(writer, view.Object, *view.TypeMetadata))
+			{
+				LOG_WARNING("Undo: a property of {0} can't be kept; undo may not bring it back", view.TypeMetadata->Name);
+			}
+
+			snapshot.Subobjects.push_back(SubobjectSnapshot{
+				.TypeMetadata = view.TypeMetadata,
+				.Properties = writer.GetBytes() });
 		}
 
 		return snapshot;
@@ -44,8 +55,10 @@ namespace Nyx::Editor
 			return false;
 		}
 
-		// Ensure + restore every subobject from the snapshot.
-		for (const ReflectedObjectSnapshot& subobjectSnapshot : snapshot.Subobjects)
+		// Ensure + restore every subobject from the snapshot. Properties that aren't saved (e.g. a
+		// MeshRenderer's loaded mesh) are left alone; ComponentPostLoadSubscriber fills them in.
+		Nyx::Engine::ReadWarnings warnings;
+		for (const SubobjectSnapshot& subobjectSnapshot : snapshot.Subobjects)
 		{
 			if (!subobjectSnapshot.TypeMetadata)
 			{
@@ -63,8 +76,16 @@ namespace Nyx::Editor
 				continue;
 			}
 
-			RestoreReflectedObject(object, subobjectSnapshot);
+			Nyx::Engine::BinaryReader reader;
+			reader.LoadFromMemory(subobjectSnapshot.Properties);
+			if (!Nyx::Engine::ReflectedArchiveSerializer::DeserializeObject(reader, object, *subobjectSnapshot.TypeMetadata, warnings))
+			{
+				LOG_WARNING("Undo: {0} couldn't be brought back completely", subobjectSnapshot.TypeMetadata->Name);
+			}
 		}
+
+		// Snapshots are written and read by the same build, so this only happens if something is broken
+		warnings.Log("Undo");
 
 		// Remove subobjects that exist now but are not present in the snapshot.
 		std::vector<ReflectedObjectView> currentSubobjects;
@@ -78,7 +99,7 @@ namespace Nyx::Editor
 			}
 
 			bool bFoundInSnapshot = false;
-			for (const ReflectedObjectSnapshot& subobjectSnapshot : snapshot.Subobjects)
+			for (const SubobjectSnapshot& subobjectSnapshot : snapshot.Subobjects)
 			{
 				if (subobjectSnapshot.TypeMetadata == current.TypeMetadata)
 				{

@@ -173,6 +173,10 @@ namespace Nyx::Editor
 		// @todo: Remove once Undo/Redo Notifications have been tested
 		Transactions.Subscribe(&TransactionSubscriber);
 
+		// Edits, undo and redo load the assets they need, as loading a scene does
+		AssetLoader.SetPostLoadContext(Nyx::Engine::ScenePostLoadContext{ .AssetResolver = AssetResolver.get() });
+		Transactions.Subscribe(&AssetLoader);
+
 		// Edits show up live in the game started with Play
 		Transactions.Subscribe(&GameEdits);
 	}
@@ -1553,16 +1557,7 @@ namespace Nyx::Editor
 			return;
 		}
 
-		auto ResolveAllMeshRendererAssets = [&]()
-		{
-			auto& world = ActiveScene.GetRegistry();
-			world.Each<Nyx::Engine::MeshRendererComponent>(
-				[&](Nyx::Engine::Entity, Nyx::Engine::MeshRendererComponent& meshRenderer)
-				{
-					ResolveMeshRendererAssets(meshRenderer);
-				});
-		};
-
+		// The assets of what undo and redo changed are loaded by AssetLoader (ComponentPostLoadSubscriber).
 		// Undo and redo can bring an entity back in another slot, so the selection follows its guid
 		auto& selection = ActiveScene.GetSelection();
 		const Nyx::Engine::EntityGuid selectedGuid = selection ? ActiveScene.GetGuid(*selection) : Nyx::Engine::EntityGuid{};
@@ -1578,7 +1573,6 @@ namespace Nyx::Editor
 		{
 			if (Transactions.Undo(TransactionContext))
 			{
-				ResolveAllMeshRendererAssets();
 				KeepSelection();
 			}
 		}
@@ -1587,7 +1581,6 @@ namespace Nyx::Editor
 		{
 			if (Transactions.Redo(TransactionContext))
 			{
-				ResolveAllMeshRendererAssets();
 				KeepSelection();
 			}
 		}

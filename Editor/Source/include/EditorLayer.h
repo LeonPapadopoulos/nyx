@@ -14,6 +14,7 @@
 #include "BuiltinAssetResolver.h"
 #include "EditorAssetActivationContext.h"
 #include "Layer.h"
+#include "ComponentPostLoadSubscriber.h"
 #include "GameInstance.h"
 #include "GameLinkPanel.h"
 #include "GameLinkSubscriber.h"
@@ -185,5 +186,8 @@ namespace Nyx::Editor
 		// Turns edits, undo and redo into messages for the games, from Play on. UpdateGames()
 		// copies them into each game's queue.
 		Nyx::Editor::GameLinkSubscriber GameEdits{ ActiveScene };
+
+		// Loads the assets of entities after edits, undo and redo, e.g. the mesh of a typed mesh path
+		Nyx::Editor::ComponentPostLoadSubscriber AssetLoader{ ActiveScene };
 	};
 }

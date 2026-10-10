@@ -2,7 +2,9 @@
 // that applies them ends up like the editor's after every step.
 #include "AssetReference.h"
 #include "CameraComponent.h"
+#include "ComponentPostLoadSubscriber.h"
 #include "ComponentRegistration.h"
+#include "IAssetResolver.h"
 #include "EditorLinkMessages.h"
 #include "GameLinkSubscriber.h"
 #include "GuidComponent.h"
@@ -55,6 +57,36 @@ namespace
 		return entities;
 	}
 
+	// Hands out a made-up mesh and material per path, and remembers which paths were asked for;
+	// the tests have no renderer to load real ones
+	class TestAssetResolver final : public IAssetResolver
+	{
+	public:
+		Nyx::Mesh* ResolveMesh(const std::string& meshId) override
+		{
+			MeshRequests.push_back(meshId);
+			return reinterpret_cast<Nyx::Mesh*>(Fake(meshId));
+		}
+
+		Nyx::Material* ResolveMaterial(const std::string& materialId) override
+		{
+			MaterialRequests.push_back(materialId);
+			return reinterpret_cast<Nyx::Material*>(Fake(materialId));
+		}
+
+		// A distinct, never dereferenced address per path
+		std::byte* Fake(const std::string& path)
+		{
+			std::vector<std::byte>& storage = Storage[path];
+			storage.resize(1);
+			return storage.data();
+		}
+
+		std::vector<std::string> MeshRequests;
+		std::vector<std::string> MaterialRequests;
+		std::map<std::string, std::vector<std::byte>> Storage;
+	};
+
 	// The editor's transaction system as EditorLayer sets it up, and the game's world
 	struct EditorAndGame
 	{
@@ -63,6 +95,8 @@ namespace
 		TransactionSystem Transactions;
 		EditorTransactionContext Context;
 		GameLinkSubscriber GameEdits{ Scene };
+		TestAssetResolver Assets;
+		ComponentPostLoadSubscriber AssetLoader{ Scene };
 
 		Registry Game;
 		std::vector<EEditorLinkMessage> Sent;
@@ -70,8 +104,10 @@ namespace
 		EditorAndGame()
 		{
 			Transactions.RegisterDomain(EObjectDomain::SceneEntity, &Domain);
+			Transactions.Subscribe(&AssetLoader);
 			Transactions.Subscribe(&GameEdits);
 			Context.ActiveScene = &Scene;
+			AssetLoader.SetPostLoadContext(ScenePostLoadContext{ .AssetResolver = &Assets });
 		}
 
 		// Play: the game runs the scene as it is now, and edits from here on are kept for it
@@ -315,6 +351,81 @@ namespace
 		test.SendEdits("Redo everything");
 	}
 
+	// Delete a cube with a mesh and material, undo, redo, undo: it comes back whole each time,
+	// struct properties (AssetReference) included
+	void TestUndoKeepsWholeComponents()
+	{
+		EditorAndGame test;
+		Registry& world = test.Scene.GetRegistry();
+		const Entity cube = test.Scene.CreateEntity("Cube");
+		world.Add<TransformComponent>(cube, TransformComponent{ .Position = glm::vec3(4.0f, 5.0f, 6.0f) });
+		world.Add<MeshRendererComponent>(cube, MeshRendererComponent{
+			.Mesh = AssetReference{ .Type = "Mesh", .Path = "Meshes/Cube.nyxmesh" },
+			.Material = AssetReference{ .Type = "Material", .Path = "Materials/Textured.nyxmat" },
+			.bVisible = true });
+		const EntityGuid guid = world.Get<GuidComponent>(cube).Guid;
+
+		test.Play();
+		test.SendEdits("Play");
+
+		const auto requireWhole = [&](const std::string& step)
+		{
+			const std::optional<Entity> entity = FindByGuid(world, guid);
+			Require(entity.has_value(), step + ": the cube isn't there");
+			Require(world.Has<MeshRendererComponent>(*entity), step + ": the cube has no MeshRenderer");
+			const MeshRendererComponent& meshRenderer = world.Get<MeshRendererComponent>(*entity);
+			Require(meshRenderer.Mesh.Type == "Mesh" && meshRenderer.Mesh.Path == "Meshes/Cube.nyxmesh", step + ": the mesh was lost");
+			Require(meshRenderer.Material.Type == "Material" && meshRenderer.Material.Path == "Materials/Textured.nyxmat",
+				step + ": the material was lost");
+			Require(meshRenderer.bVisible, step + ": the cube became invisible");
+			Require(world.Get<TransformComponent>(*entity).Position == glm::vec3(4.0f, 5.0f, 6.0f), step + ": the transform was lost");
+		};
+
+		test.DeleteEntity(cube);
+		test.SendEdits("Delete");
+
+		Require(test.Transactions.Undo(test.Context), "Undo of the delete failed");
+		requireWhole("Undo the delete");
+		test.SendEdits("Undo the delete");
+
+		Require(test.Transactions.Redo(test.Context) && !FindByGuid(world, guid), "Redo of the delete failed");
+		test.SendEdits("Redo the delete");
+
+		Require(test.Transactions.Undo(test.Context), "Second undo of the delete failed");
+		requireWhole("Undo the delete again");
+		test.SendEdits("Undo the delete again");
+
+		// The editor shows the cube again: its mesh and material are loaded, not only their paths
+		const MeshRendererComponent& meshRenderer = world.Get<MeshRendererComponent>(*FindByGuid(world, guid));
+		Require(meshRenderer.MeshAsset == reinterpret_cast<Nyx::Mesh*>(test.Assets.Fake("Meshes/Cube.nyxmesh")) &&
+					meshRenderer.MaterialAsset == reinterpret_cast<Nyx::Material*>(test.Assets.Fake("Materials/Textured.nyxmat")),
+			"Undoing the delete didn't load the cube's mesh and material");
+	}
+
+	// Typing a mesh path in the details panel loads that mesh in the editor, as the game does
+	void TestEditsLoadAssets()
+	{
+		EditorAndGame test;
+		Registry& world = test.Scene.GetRegistry();
+		const Entity cube = test.Scene.CreateEntity("Cube");
+		world.Add<MeshRendererComponent>(cube, MeshRendererComponent{ .Mesh = AssetReference{ .Type = "Mesh", .Path = "" } });
+
+		test.Play();
+		test.SendEdits("Play");
+
+		test.Edit(cube, world.Get<MeshRendererComponent>(cube).Mesh, "Edit Property",
+			[](AssetReference& mesh) { mesh.Path = "Meshes/Sphere.nyxmesh"; });
+		test.SendEdits("Type a mesh path");
+
+		Require(world.Get<MeshRendererComponent>(cube).MeshAsset == reinterpret_cast<Nyx::Mesh*>(test.Assets.Fake("Meshes/Sphere.nyxmesh")),
+			"A typed mesh path didn't load the mesh in the editor");
+
+		// Any edit of the entity loads its assets again, e.g. moving it, which is harmless
+		const size_t requestsBefore = test.Assets.MeshRequests.size();
+		test.Edit(cube, world.Get<NameComponent>(cube), "Edit Property", [](NameComponent& name) { name.Name = "Ball"; });
+		Require(test.Assets.MeshRequests.size() == requestsBefore + 1, "An edit should load the entity's assets once");
+	}
+
 	// The editor reads and writes rotations normalized, through the engine's property access
 	void TestReflectedPropertyAccess()
 	{
@@ -390,6 +501,8 @@ int main()
 		TestEditsUndoAndRedo();
 		TestAddingAndDeletingEntities();
 		TestUndoAfterSlotReuse();
+		TestUndoKeepsWholeComponents();
+		TestEditsLoadAssets();
 		TestReflectedPropertyAccess();
 		TestSessions();
 
