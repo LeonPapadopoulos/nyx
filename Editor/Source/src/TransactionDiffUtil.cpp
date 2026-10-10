@@ -5,7 +5,8 @@ namespace Nyx::Editor
 	void TransactionDiffUtil::TakeSnapshot(
 		const ObjectRef& target,
 		void* object,
-		const Nyx::Reflection::TypeMetadata& typeMetadata)
+		const Nyx::Reflection::TypeMetadata& typeMetadata,
+		const SubobjectPath& location)
 	{
 		if (!target.IsValid() || !object || !typeMetadata.Properties || typeMetadata.PropertyCount == 0)
 		{
@@ -16,6 +17,7 @@ namespace Nyx::Editor
 		snapshot.Target = target;
 		snapshot.Object = object;
 		snapshot.TypeMetadata = &typeMetadata;
+		snapshot.Location = location;
 
 		for (size_t i = 0; i < typeMetadata.PropertyCount; ++i)
 		{
@@ -66,7 +68,8 @@ namespace Nyx::Editor
 						.TypeMetadata = snapshot.TypeMetadata,
 						.PropertyIndex = propertyIndex,
 						.Before = beforeValue,
-						.After = afterValue
+						.After = afterValue,
+						.Location = snapshot.Location
 					};
 
 					transaction.Changes.push_back(std::move(change));

@@ -7,6 +7,7 @@ namespace Nyx::Editor
 	{
 		CurrentTargetId = {};
 		CurrentObjectRef = {};
+		CurrentLocation = {};
 		GenericPropertyEdit = {};
 		TransformRotationEdit = {};
 	}

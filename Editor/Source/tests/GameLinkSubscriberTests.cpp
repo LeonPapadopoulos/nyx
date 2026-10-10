@@ -87,6 +87,15 @@ namespace
 		std::map<std::string, std::vector<std::byte>> Storage;
 	};
 
+	// Where a MeshRenderer's mesh (an AssetReference) is, as the details panel records it
+	SubobjectPath MeshLocation()
+	{
+		const Nyx::Reflection::TypeMetadata& meshRendererType = Nyx::Reflection::GetTypeMetadata<MeshRendererComponent>();
+		const std::optional<size_t> meshIndex = Nyx::Reflection::FindPropertyIndexByName(meshRendererType, "Mesh");
+		Require(meshIndex.has_value(), "MeshRenderer has no property Mesh");
+		return SubobjectPath{ .SubobjectType = &meshRendererType, .PropertyIndices = { *meshIndex } };
+	}
+
 	// The editor's transaction system as EditorLayer sets it up, and the game's world
 	struct EditorAndGame
 	{
@@ -140,12 +149,13 @@ namespace
 			return std::exchange(Sent, {});
 		}
 
-		// Like the gizmo and the details panel: snapshot, change, commit
+		// Like the gizmo and the details panel: snapshot, change, commit. For a struct inside a
+		// component, location says where it is, as the details panel records it.
 		template <typename TObject, typename TChange>
-		void Edit(Entity entity, TObject& object, const char* label, TChange change)
+		void Edit(Entity entity, TObject& object, const char* label, TChange change, const SubobjectPath& location = {})
 		{
 			TransactionDiffUtil diff;
-			diff.TakeSnapshot(MakeSceneEntityRef(Scene, entity), &object, Nyx::Reflection::GetTypeMetadata<TObject>());
+			diff.TakeSnapshot(MakeSceneEntityRef(Scene, entity), &object, Nyx::Reflection::GetTypeMetadata<TObject>(), location);
 			change(object);
 			Require(diff.CommitChanges(label, Transactions), std::string(label) + " recorded nothing");
 		}
@@ -220,13 +230,19 @@ namespace
 
 		// A field of a struct inside a component, as the details panel records it
 		test.Edit(cube, world.Get<MeshRendererComponent>(cube).Mesh, "Edit Property",
-			[](AssetReference& mesh) { mesh.Path = "Sphere"; });
+			[](AssetReference& mesh) { mesh.Path = "Sphere"; }, MeshLocation());
 		test.SendEdits("Mesh path");
 		Require(test.TakeSent().back() == EEditorLinkMessage::SetProperties, "A struct field edit wasn't sent");
 
-		// The editor's undo can't change struct fields (yet), but the game still shows what the editor has
-		test.Transactions.Undo(test.Context);
+		// Undo and redo change the struct field back and forth, and the game follows
+		Require(test.Transactions.Undo(test.Context), "Undo of the mesh path failed");
+		Require(world.Get<MeshRendererComponent>(cube).Mesh.Path == "Cube", "Undo didn't change the mesh path back");
 		test.SendEdits("Undo the mesh path");
+		Require(test.Transactions.Redo(test.Context), "Redo of the mesh path failed");
+		Require(world.Get<MeshRendererComponent>(cube).Mesh.Path == "Sphere", "Redo didn't change the mesh path again");
+		test.SendEdits("Redo the mesh path");
+		Require(test.Transactions.Undo(test.Context), "Second undo of the mesh path failed");
+		test.SendEdits("Undo the mesh path again");
 
 		// Several edits while the game is still starting arrive together, in order
 		test.Edit(cube, world.Get<TransformComponent>(cube), "Scale Entity",
@@ -414,7 +430,7 @@ namespace
 		test.SendEdits("Play");
 
 		test.Edit(cube, world.Get<MeshRendererComponent>(cube).Mesh, "Edit Property",
-			[](AssetReference& mesh) { mesh.Path = "Meshes/Sphere.nyxmesh"; });
+			[](AssetReference& mesh) { mesh.Path = "Meshes/Sphere.nyxmesh"; }, MeshLocation());
 		test.SendEdits("Type a mesh path");
 
 		Require(world.Get<MeshRendererComponent>(cube).MeshAsset == reinterpret_cast<Nyx::Mesh*>(test.Assets.Fake("Meshes/Sphere.nyxmesh")),
@@ -424,6 +440,12 @@ namespace
 		const size_t requestsBefore = test.Assets.MeshRequests.size();
 		test.Edit(cube, world.Get<NameComponent>(cube), "Edit Property", [](NameComponent& name) { name.Name = "Ball"; });
 		Require(test.Assets.MeshRequests.size() == requestsBefore + 1, "An edit should load the entity's assets once");
+
+		// Undoing the rename and the typed path: the path is empty again, and so is the loaded mesh
+		Require(test.Transactions.Undo(test.Context) && test.Transactions.Undo(test.Context), "Undo failed");
+		Require(world.Get<MeshRendererComponent>(cube).Mesh.Path.empty(), "Undo didn't clear the typed mesh path");
+		Require(world.Get<MeshRendererComponent>(cube).MeshAsset == nullptr, "Undo kept the mesh of the typed path");
+		test.SendEdits("Undo the typed path");
 	}
 
 	// The editor reads and writes rotations normalized, through the engine's property access

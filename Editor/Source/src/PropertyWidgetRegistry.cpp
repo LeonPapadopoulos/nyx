@@ -86,7 +86,7 @@ namespace
 			state.bEditing = true;
 			state.Target = drawContext.CurrentObjectRef;
 			state.PendingDiff.emplace();
-			state.PendingDiff->TakeSnapshot(drawContext.CurrentObjectRef, object, typeMetadata);
+			state.PendingDiff->TakeSnapshot(drawContext.CurrentObjectRef, object, typeMetadata, drawContext.CurrentLocation);
 		}
 	}
 
@@ -117,7 +117,8 @@ namespace
 			immediateEditState.PendingDiff->TakeSnapshot(
 				args.DrawContext->CurrentObjectRef,
 				args.Object,
-				*args.OwnerType);
+				*args.OwnerType,
+				args.DrawContext->CurrentLocation);
 
 			value = editedValue;
 

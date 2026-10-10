@@ -1241,6 +1241,8 @@ namespace Nyx::Editor
 
 			if (NYX_UI(ImGui::CollapsingHeader(displayName, ImGuiTreeNodeFlags_DefaultOpen)))
 			{
+				// The component's own properties; the drawer extends the location for structs inside it
+				DetailsPanelContext.CurrentLocation = {};
 				Nyx::Editor::DrawReflectedTypeTable(component, *componentType.TypeMetadata, DetailsPanelContext);
 			}
 

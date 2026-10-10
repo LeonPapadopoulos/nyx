@@ -1,5 +1,46 @@
 #include "TransactionSystem.h"
+#include "ReflectionUtils.h"
 #include "RootObjectSnapshotUtils.h"
+
+namespace
+{
+	using namespace Nyx::Editor;
+
+	// The object whose property the change sets: the subobject itself, or the struct inside it
+	// that change.Location leads to. Null if the path no longer fits the types, e.g. after a
+	// property was removed from the code.
+	void* ResolveLocation(ITransactionDomain& domain, EditorTransactionContext& context, const SetValueChange& change)
+	{
+		const SubobjectPath& location = change.Location;
+		if (!location.SubobjectType)
+		{
+			return domain.ResolveMutable(context, change.Target, *change.TypeMetadata);
+		}
+
+		void* object = domain.ResolveMutable(context, change.Target, *location.SubobjectType);
+		const Nyx::Reflection::TypeMetadata* type = location.SubobjectType;
+
+		for (const size_t propertyIndex : location.PropertyIndices)
+		{
+			if (!object || !type->Properties || propertyIndex >= type->PropertyCount)
+			{
+				return nullptr;
+			}
+
+			const Nyx::Reflection::PropertyMetadata& property = type->Properties[propertyIndex];
+			const Nyx::Reflection::TypeMetadata* nestedType = Nyx::Reflection::TryGetNestedType(property);
+			if (!nestedType)
+			{
+				return nullptr;
+			}
+
+			object = Nyx::Reflection::GetPropertyAddress(object, property);
+			type = nestedType;
+		}
+
+		return type == change.TypeMetadata ? object : nullptr;
+	}
+}
 
 namespace Nyx::Editor
 {
@@ -132,7 +173,7 @@ namespace Nyx::Editor
 			return;
 		}
 
-		void* object = domain->ResolveMutable(context, change.Target, *change.TypeMetadata);
+		void* object = ResolveLocation(*domain, context, change);
 		if (!object)
 		{
 			return;

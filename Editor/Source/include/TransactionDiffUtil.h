@@ -12,10 +12,13 @@ namespace Nyx::Editor
 	class TransactionDiffUtil
 	{
 	public:
+		// object is a subobject of target, or a struct inside one; then location says where, so
+		// undo can find it again (see SubobjectPath)
 		void TakeSnapshot(
 			const ObjectRef& target,
 			void* object,
-			const Nyx::Reflection::TypeMetadata& typeMetadata);
+			const Nyx::Reflection::TypeMetadata& typeMetadata,
+			const SubobjectPath& location = {});
 
 		bool CommitChanges(const char* label, TransactionSystem& transactions);
 		void Cancel();
@@ -26,6 +29,7 @@ namespace Nyx::Editor
 			ObjectRef Target{};
 			void* Object = nullptr;
 			const Nyx::Reflection::TypeMetadata* TypeMetadata = nullptr;
+			SubobjectPath Location;
 			std::vector<std::pair<size_t, Nyx::Reflection::PropertyValue>> PropertyValues;
 		};
 

@@ -31,6 +31,10 @@ namespace Nyx::Editor
 		InspectorTargetId CurrentTargetId{};
 		ObjectRef CurrentObjectRef{};
 
+		// Where the object being drawn is inside CurrentObjectRef: empty while drawing a component's
+		// own properties, set while drawing a struct inside one. Edits record it, so undo finds the struct.
+		SubobjectPath CurrentLocation;
+
 		// Generic reflected property editing state
 		PropertyEditTransactionState GenericPropertyEdit;
 

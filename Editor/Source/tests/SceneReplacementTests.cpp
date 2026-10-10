@@ -8,8 +8,19 @@
 #include "VulkanImGuiBackend.h"
 #include "VulkanRenderer.h"
 
+#include "MeshRendererComponent.h"
+#include "PropertyWidgetRegistry.h"
+#include "ReflectedPropertyDrawer.h"
+#include "ReflectionUtils.h"
+
+#include <imgui.h>
+
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
+#include <optional>
+#include <string>
+#include <vector>
 #include <iostream>
 #include <stdexcept>
 
@@ -21,6 +32,76 @@ namespace
 		{
 			throw std::runtime_error(message);
 		}
+	}
+
+	// What the details panel's string widget was drawn with
+	struct DrawnStringField
+	{
+		std::string OwnerType;
+		std::string Property;
+		Nyx::Editor::SubobjectPath Location;
+	};
+
+	std::vector<DrawnStringField> GDrawnStringFields;
+
+	bool RecordStringField(const Nyx::Editor::PropertyWidgetArgs& args)
+	{
+		GDrawnStringFields.push_back(DrawnStringField{ args.OwnerType->Name, args.Property->Name, args.DrawContext->CurrentLocation });
+		return false;
+	}
+
+	// The details panel tells edits of a struct's fields where that struct is (SubobjectPath), so
+	// undo can find it. Draws a MeshRenderer headless and checks what its string fields are given.
+	void TestDetailsPanelLocations()
+	{
+		ImGui::CreateContext();
+		ImGuiIO& io = ImGui::GetIO();
+		io.IniFilename = nullptr;
+		io.DisplaySize = ImVec2(800, 600);
+		io.DeltaTime = 1.0f / 60.0f;
+		unsigned char* pixels = nullptr;
+		int width = 0;
+		int height = 0;
+		io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+
+		Nyx::Editor::RegisterDefaultPropertyWidgets();
+		Nyx::Editor::PropertyWidgetRegistry::Get().Register(Nyx::Reflection::EPropertyKind::String, &RecordStringField);
+
+		Nyx::Engine::MeshRendererComponent meshRenderer{
+			.Mesh = Nyx::Engine::AssetReference{ .Type = "Mesh", .Path = "Meshes/Cube.nyxmesh" },
+			.Material = Nyx::Engine::AssetReference{ .Type = "Material", .Path = "Materials/Textured.nyxmat" } };
+		const Nyx::Reflection::TypeMetadata& meshRendererType = Nyx::Reflection::GetTypeMetadata<Nyx::Engine::MeshRendererComponent>();
+
+		Nyx::Editor::InspectorDrawContext drawContext;
+		drawContext.CurrentObjectRef = Nyx::Editor::MakeSceneEntityRef(Nyx::Engine::EntityGuid{ 42 });
+
+		ImGui::NewFrame();
+		ImGui::SetNextWindowSize(ImVec2(600, 500));
+		ImGui::Begin("Details");
+		Nyx::Editor::DrawReflectedTypeTable(&meshRenderer, meshRendererType, drawContext);
+		ImGui::End();
+		ImGui::Render();
+
+		Nyx::Editor::RegisterDefaultPropertyWidgets();
+		ImGui::DestroyContext();
+
+		const auto expectLocation = [&](const char* structProperty)
+		{
+			const std::optional<size_t> index = Nyx::Reflection::FindPropertyIndexByName(meshRendererType, structProperty);
+			Require(index.has_value(), "MeshRenderer lacks a struct property the test expects");
+			const Nyx::Editor::SubobjectPath expected{ .SubobjectType = &meshRendererType, .PropertyIndices = { *index } };
+
+			const size_t matches = static_cast<size_t>(std::count_if(GDrawnStringFields.begin(), GDrawnStringFields.end(),
+				[&](const DrawnStringField& field)
+				{
+					return field.Property == "Path" && field.Location == expected;
+				}));
+			Require(matches == 1, "A struct field wasn't drawn with the location of its struct");
+		};
+
+		expectLocation("Mesh");
+		expectLocation("Material");
+		Require(drawContext.CurrentLocation == Nyx::Editor::SubobjectPath{}, "The details panel left a struct's location behind");
 	}
 
 	class TestDirectory
@@ -301,6 +382,7 @@ int main()
 		Tests::TestFailedOpen(directory.Path / "missing.nyxscene");
 		Tests::TestFailedOpen(damagedPath);
 		Tests::TestLatePicks();
+		TestDetailsPanelLocations();
 		std::cout << "All editor scene replacement tests passed.\n";
 		return 0;
 	}

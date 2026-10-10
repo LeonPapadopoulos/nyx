@@ -5,7 +5,6 @@
 #include "GuidComponent.h"
 #include "LiveEdits.h"
 #include "Log.h"
-#include "ReflectionUtils.h"
 #include "SceneDocument.h"
 #include "TransactionObjectRefHelpers.h"
 
@@ -54,9 +53,9 @@ namespace
 		// Added, deleted, or brought back by undo or redo
 		bool bAddedOrDeleted = false;
 
-		// By the type they belong to: a component type, or a struct inside components (such as an
-		// AssetReference), which is how the details panel records edits of a struct's fields
-		PropertiesByType<TypeMetadata> ChangedProperties;
+		// By component. An edit of a struct's field counts as an edit of the component's property
+		// that holds the struct, which is sent whole.
+		PropertiesByType<ComponentTypeOps> ChangedProperties;
 	};
 
 	EntityEdit& FindOrAddEdit(std::vector<EntityEdit>& edits, const ObjectRef& target)
@@ -76,74 +75,22 @@ namespace
 		return edit;
 	}
 
-	// Whether the type is the struct type, or has it inside, also nested deeper
-	bool ContainsStruct(const TypeMetadata& type, const TypeMetadata& structType, int depth = 0)
+	// The component a change is in, and its property that changed, or that holds the struct
+	// whose field changed (from the change's Location)
+	std::optional<std::pair<const ComponentTypeOps*, size_t>> FindChangedComponentProperty(const SetValueChange& change)
 	{
-		if (&type == &structType)
+		const SubobjectPath& location = change.Location;
+		const bool bInStruct = location.SubobjectType && !location.PropertyIndices.empty();
+		const TypeMetadata* componentType = bInStruct ? location.SubobjectType : change.TypeMetadata;
+		const size_t propertyIndex = bInStruct ? location.PropertyIndices.front() : change.PropertyIndex;
+
+		const ComponentTypeOps* ops = componentType ? Nyx::Engine::ComponentTypeRegistry::Get().FindByTypeMetadata(*componentType) : nullptr;
+		if (!ops)
 		{
-			return true;
+			return std::nullopt;
 		}
 
-		// Real types nest a few levels at most; this keeps a type that contains itself from recursing forever
-		constexpr int MaxDepth = 16;
-		if (depth >= MaxDepth)
-		{
-			return false;
-		}
-
-		for (size_t i = 0; i < type.PropertyCount; ++i)
-		{
-			const TypeMetadata* nestedType = Nyx::Reflection::TryGetNestedType(type.Properties[i]);
-			if (nestedType && ContainsStruct(*nestedType, structType, depth + 1))
-			{
-				return true;
-			}
-		}
-
-		return false;
-	}
-
-	// The entity's changed properties by component. An edit inside a struct is sent as the whole
-	// struct property of the component; which of several such properties it was isn't recorded,
-	// so each that contains the struct type is sent.
-	PropertiesByType<ComponentTypeOps> GetChangedComponentProperties(const Nyx::Engine::Registry& world, Entity entity, const EntityEdit& edit)
-	{
-		const Nyx::Engine::ComponentTypeRegistry& componentTypes = Nyx::Engine::ComponentTypeRegistry::Get();
-		PropertiesByType<ComponentTypeOps> changed;
-
-		for (const auto& [type, propertyIndices] : edit.ChangedProperties)
-		{
-			if (const ComponentTypeOps* ops = componentTypes.FindByTypeMetadata(*type))
-			{
-				AddProperties(changed, ops, propertyIndices);
-				continue;
-			}
-
-			for (const ComponentTypeOps& ops : componentTypes.GetAll())
-			{
-				if (!ops.Has(world, entity))
-				{
-					continue;
-				}
-
-				std::vector<size_t> structProperties;
-				for (size_t i = 0; i < ops.TypeMetadata->PropertyCount; ++i)
-				{
-					const TypeMetadata* nestedType = Nyx::Reflection::TryGetNestedType(ops.TypeMetadata->Properties[i]);
-					if (nestedType && ContainsStruct(*nestedType, *type))
-					{
-						structProperties.push_back(i);
-					}
-				}
-
-				if (!structProperties.empty())
-				{
-					AddProperties(changed, &ops, structProperties);
-				}
-			}
-		}
-
-		return changed;
+		return std::pair<const ComponentTypeOps*, size_t>{ ops, propertyIndex };
 	}
 }
 
@@ -218,10 +165,10 @@ namespace Nyx::Editor
 		{
 			if (const SetValueChange* setValue = std::get_if<SetValueChange>(&change.Payload))
 			{
-				if (GetSceneEntityGuid(setValue->Target).IsValid() && setValue->TypeMetadata)
+				const auto changed = FindChangedComponentProperty(*setValue);
+				if (GetSceneEntityGuid(setValue->Target).IsValid() && changed)
 				{
-					AddProperties(FindOrAddEdit(edits, setValue->Target).ChangedProperties, setValue->TypeMetadata,
-						{ setValue->PropertyIndex });
+					AddProperties(FindOrAddEdit(edits, setValue->Target).ChangedProperties, changed->first, { changed->second });
 				}
 			}
 			else if (const AddObjectChange* addObject = std::get_if<AddObjectChange>(&change.Payload))
@@ -270,7 +217,7 @@ namespace Nyx::Editor
 				continue;
 			}
 
-			for (const auto& [ops, propertyIndices] : GetChangedComponentProperties(world, *entity, edit))
+			for (const auto& [ops, propertyIndices] : edit.ChangedProperties)
 			{
 				if (std::optional<Nyx::Engine::SetPropertiesMessage> message =
 						Nyx::Engine::MakeSetPropertiesMessage(world, *entity, *ops, propertyIndices))

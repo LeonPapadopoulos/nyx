@@ -223,6 +223,7 @@ namespace
 		void* object,
 		const Nyx::Reflection::PropertyMetadata& property,
 		Nyx::Editor::InspectorDrawContext& drawContext,
+		const Nyx::Reflection::TypeMetadata& ownerType,
 		int depth);
 
 	static void DrawCategoryRow(const std::string& category, int depth)
@@ -248,7 +249,7 @@ namespace
 		Nyx::UI::SourceDeclarationScope declaration(Nyx::Editor::ReflectionSourceRegistry::Get().Find(property));
 		if (Nyx::Reflection::IsStructProperty(property))
 		{
-			return DrawStructPropertyRow(object, property, drawContext, depth);
+			return DrawStructPropertyRow(object, property, drawContext, ownerType, depth);
 		}
 
 		return DrawSingleLeafPropertyRow(object, property, drawContext, ownerType, depth);
@@ -454,6 +455,7 @@ namespace
 		void* object,
 		const Nyx::Reflection::PropertyMetadata& property,
 		Nyx::Editor::InspectorDrawContext& drawContext,
+		const Nyx::Reflection::TypeMetadata& ownerType,
 		int depth)
 	{
 		bool bAnyChanged = false;
@@ -506,8 +508,19 @@ namespace
 
 		if (bOpen)
 		{
+			// Edits of the struct's fields record where it is, so undo can find it: the component
+			// (the owner of the outermost struct), then each struct property on the way
+			const Nyx::Editor::SubobjectPath outerLocation = drawContext.CurrentLocation;
+			if (!drawContext.CurrentLocation.SubobjectType)
+			{
+				drawContext.CurrentLocation.SubobjectType = &ownerType;
+			}
+			drawContext.CurrentLocation.PropertyIndices.push_back(static_cast<size_t>(&property - ownerType.Properties));
+
 			void* nestedObject = Nyx::Reflection::GetPropertyAddress(object, property);
 			bAnyChanged |= DrawNestedStructRows(nestedObject, *nestedType, drawContext, depth + 1);
+
+			drawContext.CurrentLocation = outerLocation;
 			ImGui::TreePop();
 		}
 

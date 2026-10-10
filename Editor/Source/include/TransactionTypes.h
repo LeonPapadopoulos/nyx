@@ -18,13 +18,31 @@ namespace Nyx::Editor
 		DeleteObject
 	};
 
+	// Where an object inside a root object is: in which subobject (component), and through which
+	// struct properties of it, e.g. MeshRenderer, then its property Mesh, for the AssetReference
+	// that holds a mesh path. Without a subobject type, the object is a subobject itself.
+	struct SubobjectPath
+	{
+		const Nyx::Reflection::TypeMetadata* SubobjectType = nullptr;
+
+		// Indices into the Properties of each type on the way, starting with SubobjectType's
+		std::vector<size_t> PropertyIndices;
+
+		bool operator==(const SubobjectPath&) const = default;
+	};
+
 	struct SetValueChange
 	{
 		ObjectRef Target{};
+
+		// The type the property belongs to: a component, or a struct inside one (see Location)
 		const Nyx::Reflection::TypeMetadata* TypeMetadata = nullptr;
 		size_t PropertyIndex = 0;
 		Nyx::Reflection::PropertyValue Before;
 		Nyx::Reflection::PropertyValue After;
+
+		// Set when TypeMetadata is a struct inside a component, so undo can find that struct
+		SubobjectPath Location;
 	};
 
 	struct AddObjectChange
