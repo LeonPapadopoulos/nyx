@@ -77,7 +77,7 @@ namespace Nyx::Tests
 			const Entity entity = editor.ActiveScene.CreateEntity("Old scene");
 			auto& world = editor.ActiveScene.GetRegistry();
 			auto& transform = world.Add<TransformComponent>(entity, TransformComponent{});
-			const ObjectRef target = MakeSceneEntityRef(entity);
+			const ObjectRef target = MakeSceneEntityRef(editor.ActiveScene, entity);
 			const auto& transformType = Reflection::GetTypeMetadata<TransformComponent>();
 
 			// Keep entries in both undo and redo to test their lifetime across Open/New.

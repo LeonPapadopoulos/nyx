@@ -1088,7 +1088,7 @@ namespace Nyx::Editor
 			Nyx::Engine::Entity newEntity = ActiveScene.CreateEntity("New Entity");
 			selection = newEntity;
 
-			const ObjectRef rootRef = MakeSceneEntityRef(newEntity);
+			const ObjectRef rootRef = MakeSceneEntityRef(ActiveScene, newEntity);
 			RootObjectSnapshot snapshot =
 				CaptureRootObjectSnapshot(SceneEntityDomain, TransactionContext, rootRef);
 
@@ -1117,7 +1117,7 @@ namespace Nyx::Editor
 		if (NYX_UI(ImGui::Button("Delete Selected")) && bHasSelection)
 		{
 			const Nyx::Engine::Entity entityToDelete = selection.value();
-			const ObjectRef rootRef = MakeSceneEntityRef(entityToDelete);
+			const ObjectRef rootRef = MakeSceneEntityRef(ActiveScene, entityToDelete);
 
 			RootObjectSnapshot snapshot =
 				CaptureRootObjectSnapshot(SceneEntityDomain, TransactionContext, rootRef);
@@ -1220,7 +1220,7 @@ namespace Nyx::Editor
 
 		DetailsPanelContext.Transactions = &Transactions;
 		DetailsPanelContext.CurrentTargetId = Nyx::Editor::MakeInspectorTargetId(selectedEntity);
-		DetailsPanelContext.CurrentObjectRef = Nyx::Editor::MakeSceneEntityRef(selectedEntity);
+		DetailsPanelContext.CurrentObjectRef = Nyx::Editor::MakeSceneEntityRef(ActiveScene, selectedEntity);
 
 		// One collapsible section per component of the entity, showing its reflected properties
 		for (const Nyx::Engine::ComponentTypeOps& componentType : Nyx::Engine::ComponentTypeRegistry::Get().GetAll())
@@ -1563,11 +1563,23 @@ namespace Nyx::Editor
 				});
 		};
 
+		// Undo and redo can bring an entity back in another slot, so the selection follows its guid
+		auto& selection = ActiveScene.GetSelection();
+		const Nyx::Engine::EntityGuid selectedGuid = selection ? ActiveScene.GetGuid(*selection) : Nyx::Engine::EntityGuid{};
+		const auto KeepSelection = [&]()
+		{
+			if (selectedGuid.IsValid())
+			{
+				selection = ActiveScene.FindEntity(selectedGuid);
+			}
+		};
+
 		if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_Z))
 		{
 			if (Transactions.Undo(TransactionContext))
 			{
 				ResolveAllMeshRendererAssets();
+				KeepSelection();
 			}
 		}
 		else if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_Z) ||
@@ -1576,6 +1588,7 @@ namespace Nyx::Editor
 			if (Transactions.Redo(TransactionContext))
 			{
 				ResolveAllMeshRendererAssets();
+				KeepSelection();
 			}
 		}
 	}

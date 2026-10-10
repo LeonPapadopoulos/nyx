@@ -7,6 +7,7 @@
 #include "Log.h"
 #include "ReflectionUtils.h"
 #include "SceneDocument.h"
+#include "TransactionObjectRefHelpers.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -47,13 +48,11 @@ namespace
 	// What one transaction did to one entity
 	struct EntityEdit
 	{
-		Entity Handle{};
+		// As the undo step names it; the entity may be gone afterwards, or in another slot
+		EntityGuid Guid;
 
 		// Added, deleted, or brought back by undo or redo
 		bool bAddedOrDeleted = false;
-
-		// From the snapshot of an added or deleted entity, for when it is gone afterwards
-		EntityGuid Guid;
 
 		// By the type they belong to: a component type, or a struct inside components (such as an
 		// AssetReference), which is how the details panel records edits of a struct's fields
@@ -62,46 +61,19 @@ namespace
 
 	EntityEdit& FindOrAddEdit(std::vector<EntityEdit>& edits, const ObjectRef& target)
 	{
-		Entity entity{};
-		entity.Value = static_cast<decltype(entity.Value)>(target.Id.Value);
+		const EntityGuid guid = GetSceneEntityGuid(target);
 
 		for (EntityEdit& edit : edits)
 		{
-			if (edit.Handle == entity)
+			if (edit.Guid == guid)
 			{
 				return edit;
 			}
 		}
 
 		EntityEdit& edit = edits.emplace_back();
-		edit.Handle = entity;
+		edit.Guid = guid;
 		return edit;
-	}
-
-	// The guid in a snapshot of an entity
-	EntityGuid FindGuid(const RootObjectSnapshot& snapshot)
-	{
-		const TypeMetadata& guidType = Nyx::Reflection::GetTypeMetadata<Nyx::Engine::GuidComponent>();
-
-		for (const ReflectedObjectSnapshot& subobject : snapshot.Subobjects)
-		{
-			if (subobject.TypeMetadata != &guidType)
-			{
-				continue;
-			}
-
-			for (const ReflectedPropertySnapshot& property : subobject.Properties)
-			{
-				const uint64_t* value = std::get_if<uint64_t>(&property.Value);
-				if (value && property.PropertyIndex < guidType.PropertyCount &&
-					std::string_view(guidType.Properties[property.PropertyIndex].Name) == "Guid")
-				{
-					return EntityGuid{ *value };
-				}
-			}
-		}
-
-		return {};
 	}
 
 	// Whether the type is the struct type, or has it inside, also nested deeper
@@ -134,7 +106,7 @@ namespace
 	// The entity's changed properties by component. An edit inside a struct is sent as the whole
 	// struct property of the component; which of several such properties it was isn't recorded,
 	// so each that contains the struct type is sent.
-	PropertiesByType<ComponentTypeOps> GetChangedComponentProperties(const Nyx::Engine::Registry& world, const EntityEdit& edit)
+	PropertiesByType<ComponentTypeOps> GetChangedComponentProperties(const Nyx::Engine::Registry& world, Entity entity, const EntityEdit& edit)
 	{
 		const Nyx::Engine::ComponentTypeRegistry& componentTypes = Nyx::Engine::ComponentTypeRegistry::Get();
 		PropertiesByType<ComponentTypeOps> changed;
@@ -149,7 +121,7 @@ namespace
 
 			for (const ComponentTypeOps& ops : componentTypes.GetAll())
 			{
-				if (!ops.Has(world, edit.Handle))
+				if (!ops.Has(world, entity))
 				{
 					continue;
 				}
@@ -246,7 +218,7 @@ namespace Nyx::Editor
 		{
 			if (const SetValueChange* setValue = std::get_if<SetValueChange>(&change.Payload))
 			{
-				if (setValue->Target.Domain == EObjectDomain::SceneEntity && setValue->TypeMetadata)
+				if (GetSceneEntityGuid(setValue->Target).IsValid() && setValue->TypeMetadata)
 				{
 					AddProperties(FindOrAddEdit(edits, setValue->Target).ChangedProperties, setValue->TypeMetadata,
 						{ setValue->PropertyIndex });
@@ -254,20 +226,16 @@ namespace Nyx::Editor
 			}
 			else if (const AddObjectChange* addObject = std::get_if<AddObjectChange>(&change.Payload))
 			{
-				if (addObject->Target.Domain == EObjectDomain::SceneEntity)
+				if (GetSceneEntityGuid(addObject->Target).IsValid())
 				{
-					EntityEdit& edit = FindOrAddEdit(edits, addObject->Target);
-					edit.bAddedOrDeleted = true;
-					edit.Guid = edit.Guid.IsValid() ? edit.Guid : FindGuid(addObject->AfterCreate);
+					FindOrAddEdit(edits, addObject->Target).bAddedOrDeleted = true;
 				}
 			}
 			else if (const DeleteObjectChange* deleteObject = std::get_if<DeleteObjectChange>(&change.Payload))
 			{
-				if (deleteObject->Target.Domain == EObjectDomain::SceneEntity)
+				if (GetSceneEntityGuid(deleteObject->Target).IsValid())
 				{
-					EntityEdit& edit = FindOrAddEdit(edits, deleteObject->Target);
-					edit.bAddedOrDeleted = true;
-					edit.Guid = edit.Guid.IsValid() ? edit.Guid : FindGuid(deleteObject->BeforeDelete);
+					FindOrAddEdit(edits, deleteObject->Target).bAddedOrDeleted = true;
 				}
 			}
 		}
@@ -276,25 +244,20 @@ namespace Nyx::Editor
 
 		for (const EntityEdit& edit : edits)
 		{
-			const bool bAlive = world.IsAlive(edit.Handle);
-
-			if (bAlive && !world.Has<Nyx::Engine::GuidComponent>(edit.Handle))
-			{
-				LOG_WARNING("Game link: the game can't be sent '{0}', since the entity has no guid", transaction.Label);
-				continue;
-			}
+			// Where the entity is now, if it is there at all
+			const std::optional<Entity> entity = Scene.FindEntity(edit.Guid);
 
 			// Added, deleted or brought back: the whole entity as it is now, or that it is gone
 			if (edit.bAddedOrDeleted)
 			{
-				if (bAlive)
+				if (entity)
 				{
-					if (std::optional<Nyx::Engine::CreateEntityMessage> message = Nyx::Engine::MakeCreateEntityMessage(world, edit.Handle))
+					if (std::optional<Nyx::Engine::CreateEntityMessage> message = Nyx::Engine::MakeCreateEntityMessage(world, *entity))
 					{
 						Keep(Nyx::Engine::MakeNetMessage(*message));
 					}
 				}
-				else if (edit.Guid.IsValid())
+				else
 				{
 					Keep(Nyx::Engine::MakeNetMessage(Nyx::Engine::DeleteEntityMessage{ edit.Guid }));
 				}
@@ -302,15 +265,15 @@ namespace Nyx::Editor
 				continue;
 			}
 
-			if (!bAlive)
+			if (!entity)
 			{
 				continue;
 			}
 
-			for (const auto& [ops, propertyIndices] : GetChangedComponentProperties(world, edit))
+			for (const auto& [ops, propertyIndices] : GetChangedComponentProperties(world, *entity, edit))
 			{
 				if (std::optional<Nyx::Engine::SetPropertiesMessage> message =
-						Nyx::Engine::MakeSetPropertiesMessage(world, edit.Handle, *ops, propertyIndices))
+						Nyx::Engine::MakeSetPropertiesMessage(world, *entity, *ops, propertyIndices))
 				{
 					Keep(Nyx::Engine::MakeNetMessage(*message));
 				}

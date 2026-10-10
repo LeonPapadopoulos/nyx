@@ -109,7 +109,7 @@ namespace
 		void Edit(Entity entity, TObject& object, const char* label, TChange change)
 		{
 			TransactionDiffUtil diff;
-			diff.TakeSnapshot(MakeSceneEntityRef(entity), &object, Nyx::Reflection::GetTypeMetadata<TObject>());
+			diff.TakeSnapshot(MakeSceneEntityRef(Scene, entity), &object, Nyx::Reflection::GetTypeMetadata<TObject>());
 			change(object);
 			Require(diff.CommitChanges(label, Transactions), std::string(label) + " recorded nothing");
 		}
@@ -118,7 +118,7 @@ namespace
 		Entity AddEntity()
 		{
 			const Entity entity = Scene.CreateEntity("New Entity");
-			const ObjectRef target = MakeSceneEntityRef(entity);
+			const ObjectRef target = MakeSceneEntityRef(Scene, entity);
 
 			Transaction transaction;
 			transaction.Label = "Create Entity";
@@ -131,7 +131,7 @@ namespace
 		// Like the outliner's Delete Selected button
 		void DeleteEntity(Entity entity)
 		{
-			const ObjectRef target = MakeSceneEntityRef(entity);
+			const ObjectRef target = MakeSceneEntityRef(Scene, entity);
 			RootObjectSnapshot snapshot = CaptureRootObjectSnapshot(Domain, Context, target);
 			Require(Scene.DestroyEntity(entity), "Deleting failed");
 
@@ -246,6 +246,75 @@ namespace
 		test.SendEdits("Delete and undo in one frame");
 	}
 
+	// The entity alive with this guid, if any
+	std::optional<Entity> FindByGuid(const Registry& world, EntityGuid guid)
+	{
+		std::optional<Entity> found;
+		world.ForEachEntity([&](Entity entity)
+			{
+				if (world.Has<GuidComponent>(entity) && world.Get<GuidComponent>(entity).Guid == guid)
+				{
+					Require(!found, "Two entities have the same guid");
+					found = entity;
+				}
+			});
+		return found;
+	}
+
+	// Delete A, add B into A's slot, undo twice: A has to come back, although its handle now
+	// belongs to B. Undo steps name entities by guid for this.
+	void TestUndoAfterSlotReuse()
+	{
+		EditorAndGame test;
+		Registry& world = test.Scene.GetRegistry();
+		const Entity a = test.Scene.CreateEntity("A");
+		world.Add<TransformComponent>(a, TransformComponent{ .Position = glm::vec3(1.0f, 2.0f, 3.0f) });
+		const EntityGuid guidA = world.Get<GuidComponent>(a).Guid;
+
+		test.Play();
+		test.SendEdits("Play");
+
+		test.DeleteEntity(a);
+		test.SendEdits("Delete A");
+
+		const Entity b = test.AddEntity();
+		Require(b.Index() == a.Index(), "B should take A's slot, or this test doesn't test slot reuse");
+		const EntityGuid guidB = world.Get<GuidComponent>(b).Guid;
+		test.SendEdits("Add B");
+
+		Require(test.Transactions.Undo(test.Context), "Undo of the add failed");
+		test.SendEdits("Undo the add of B");
+		Require(!FindByGuid(world, guidB), "B is still there after undoing its add");
+
+		Require(test.Transactions.Undo(test.Context), "Undo of the delete failed");
+		const std::optional<Entity> restoredA = FindByGuid(world, guidA);
+		Require(restoredA.has_value(), "A didn't come back after undoing its delete");
+		Require(world.Get<NameComponent>(*restoredA).Name == "A", "A came back without its name");
+		Require(world.Has<TransformComponent>(*restoredA) && world.Get<TransformComponent>(*restoredA).Position == glm::vec3(1.0f, 2.0f, 3.0f),
+			"A came back without its transform");
+		test.SendEdits("Undo the delete of A");
+
+		// Redo both: A is gone and B is back, with its own guid
+		Require(test.Transactions.Redo(test.Context) && test.Transactions.Redo(test.Context), "Redo failed");
+		Require(!FindByGuid(world, guidA) && FindByGuid(world, guidB), "Redo didn't delete A and add B again");
+		test.SendEdits("Redo the delete and the add");
+
+		// An edit of B recorded now still finds B after it moves through undo and redo again
+		test.Edit(*FindByGuid(world, guidB), world.Get<NameComponent>(*FindByGuid(world, guidB)), "Edit Property",
+			[](NameComponent& name) { name.Name = "B"; });
+		Require(test.Transactions.Undo(test.Context) && test.Transactions.Undo(test.Context) && test.Transactions.Undo(test.Context),
+			"Undoing rename, add and delete failed");
+		Require(FindByGuid(world, guidA) && !FindByGuid(world, guidB), "Undoing everything should leave only A");
+		test.SendEdits("Undo everything");
+
+		Require(test.Transactions.Redo(test.Context) && test.Transactions.Redo(test.Context) && test.Transactions.Redo(test.Context),
+			"Redoing everything failed");
+		const std::optional<Entity> finalB = FindByGuid(world, guidB);
+		Require(finalB && world.Get<NameComponent>(*finalB).Name == "B" && !FindByGuid(world, guidA),
+			"Redoing everything should leave only B, renamed");
+		test.SendEdits("Redo everything");
+	}
+
 	// The editor reads and writes rotations normalized, through the engine's property access
 	void TestReflectedPropertyAccess()
 	{
@@ -320,6 +389,7 @@ int main()
 
 		TestEditsUndoAndRedo();
 		TestAddingAndDeletingEntities();
+		TestUndoAfterSlotReuse();
 		TestReflectedPropertyAccess();
 		TestSessions();
 

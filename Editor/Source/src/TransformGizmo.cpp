@@ -1111,7 +1111,7 @@ namespace Nyx::Editor
 
 				ActiveTransformDiff.emplace();
 				ActiveTransformDiff->TakeSnapshot(
-					Nyx::Editor::MakeSceneEntityRef(entity),
+					Nyx::Editor::MakeSceneEntityRef(scene, entity),
 					&transform,
 					Nyx::Reflection::GetTypeMetadata<Nyx::Engine::TransformComponent>());
 
@@ -1157,7 +1157,7 @@ namespace Nyx::Editor
 
 				ActiveTransformDiff.emplace();
 				ActiveTransformDiff->TakeSnapshot(
-					Nyx::Editor::MakeSceneEntityRef(entity),
+					Nyx::Editor::MakeSceneEntityRef(scene, entity),
 					&transform,
 					Nyx::Reflection::GetTypeMetadata<Nyx::Engine::TransformComponent>());
 
@@ -1203,7 +1203,7 @@ namespace Nyx::Editor
 
 				ActiveTransformDiff.emplace();
 				ActiveTransformDiff->TakeSnapshot(
-					Nyx::Editor::MakeSceneEntityRef(entity),
+					Nyx::Editor::MakeSceneEntityRef(scene, entity),
 					&transform,
 					Nyx::Reflection::GetTypeMetadata<Nyx::Engine::TransformComponent>());
 

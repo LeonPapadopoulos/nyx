@@ -1,6 +1,22 @@
 #include "SceneEntityTransactionDomain.h"
 
 #include "ComponentTypeRegistry.h"
+#include "GuidComponent.h"
+#include "TransactionObjectRefHelpers.h"
+
+namespace
+{
+	// The live entity an undo step names, by its guid
+	std::optional<Nyx::Engine::Entity> FindEntity(Nyx::Editor::EditorTransactionContext& context, const Nyx::Editor::ObjectRef& root)
+	{
+		if (!context.ActiveScene || root.Domain != Nyx::Editor::EObjectDomain::SceneEntity)
+		{
+			return std::nullopt;
+		}
+
+		return context.ActiveScene->FindEntity(Nyx::Editor::GetSceneEntityGuid(root));
+	}
+}
 
 namespace Nyx::Editor
 {
@@ -9,17 +25,8 @@ namespace Nyx::Editor
 		const ObjectRef& root,
 		const Nyx::Reflection::TypeMetadata& typeMetadata)
 	{
-		if (!context.ActiveScene || root.Domain != EObjectDomain::SceneEntity)
-		{
-			return nullptr;
-		}
-
-		auto& world = context.ActiveScene->GetRegistry();
-
-		Nyx::Engine::Entity entity{};
-		entity.Value = static_cast<decltype(entity.Value)>(root.Id.Value);
-
-		if (!world.IsAlive(entity))
+		const std::optional<Nyx::Engine::Entity> entity = FindEntity(context, root);
+		if (!entity)
 		{
 			return nullptr;
 		}
@@ -31,46 +38,46 @@ namespace Nyx::Editor
 			return nullptr;
 		}
 
-		return ops->Get(world, entity);
+		return ops->Get(context.ActiveScene->GetRegistry(), *entity);
 	}
 
 	bool SceneEntityTransactionDomain::CreateRootObject(
 		EditorTransactionContext& context,
 		const ObjectRef& root)
 	{
-		if (!context.ActiveScene || root.Domain != EObjectDomain::SceneEntity)
+		const Nyx::Engine::EntityGuid guid = GetSceneEntityGuid(root);
+		if (!context.ActiveScene || !guid.IsValid())
 		{
 			return false;
 		}
 
+		// Already there: undo and redo got out of step with the scene, and a second entity with
+		// the same guid would break everything that finds entities by guid
+		if (context.ActiveScene->FindEntity(guid))
+		{
+			return false;
+		}
+
+		// Any free slot will do; the old one may belong to another entity by now. The snapshot
+		// restored next brings the other components back.
 		auto& world = context.ActiveScene->GetRegistry();
-
-		Nyx::Engine::Entity entity{};
-		entity.Value = static_cast<decltype(entity.Value)>(root.Id.Value);
-
-		return world.RestoreEntity(entity);
+		const Nyx::Engine::Entity entity = world.CreateEntity();
+		world.Add<Nyx::Engine::GuidComponent>(entity, Nyx::Engine::GuidComponent{ guid });
+		return true;
 	}
 
 	bool SceneEntityTransactionDomain::DeleteRootObject(
 		EditorTransactionContext& context,
 		const ObjectRef& root)
 	{
-		if (!context.ActiveScene || root.Domain != EObjectDomain::SceneEntity)
+		const std::optional<Nyx::Engine::Entity> entity = FindEntity(context, root);
+		if (!entity)
 		{
 			return false;
 		}
 
-		auto& world = context.ActiveScene->GetRegistry();
-
-		Nyx::Engine::Entity entity{};
-		entity.Value = static_cast<decltype(entity.Value)>(root.Id.Value);
-
-		if (!world.IsAlive(entity))
-		{
-			return false;
-		}
-
-		return world.DestroyEntity(entity);
+		// Through the scene, so the selection doesn't keep the deleted entity
+		return context.ActiveScene->DestroyEntity(*entity);
 	}
 
 	void SceneEntityTransactionDomain::EnumerateSubobjects(
@@ -80,24 +87,16 @@ namespace Nyx::Editor
 	{
 		outSubobjects.clear();
 
-		if (!context.ActiveScene || root.Domain != EObjectDomain::SceneEntity)
+		const std::optional<Nyx::Engine::Entity> entity = FindEntity(context, root);
+		if (!entity)
 		{
 			return;
 		}
 
 		auto& world = context.ActiveScene->GetRegistry();
-
-		Nyx::Engine::Entity entity{};
-		entity.Value = static_cast<decltype(entity.Value)>(root.Id.Value);
-
-		if (!world.IsAlive(entity))
-		{
-			return;
-		}
-
 		for (const Nyx::Engine::ComponentTypeOps& ops : Nyx::Engine::ComponentTypeRegistry::Get().GetAll())
 		{
-			void* object = ops.Get(world, entity);
+			void* object = ops.Get(world, *entity);
 			if (!object)
 			{
 				continue;
@@ -114,17 +113,8 @@ namespace Nyx::Editor
 		const ObjectRef& root,
 		const Nyx::Reflection::TypeMetadata& typeMetadata)
 	{
-		if (!context.ActiveScene || root.Domain != EObjectDomain::SceneEntity)
-		{
-			return false;
-		}
-
-		auto& world = context.ActiveScene->GetRegistry();
-
-		Nyx::Engine::Entity entity{};
-		entity.Value = static_cast<decltype(entity.Value)>(root.Id.Value);
-
-		if (!world.IsAlive(entity))
+		const std::optional<Nyx::Engine::Entity> entity = FindEntity(context, root);
+		if (!entity)
 		{
 			return false;
 		}
@@ -136,7 +126,7 @@ namespace Nyx::Editor
 			return false;
 		}
 
-		ops->Add(world, entity);
+		ops->Add(context.ActiveScene->GetRegistry(), *entity);
 		return true;
 	}
 
@@ -145,17 +135,8 @@ namespace Nyx::Editor
 		const ObjectRef& root,
 		const Nyx::Reflection::TypeMetadata& typeMetadata)
 	{
-		if (!context.ActiveScene || root.Domain != EObjectDomain::SceneEntity)
-		{
-			return false;
-		}
-
-		auto& world = context.ActiveScene->GetRegistry();
-
-		Nyx::Engine::Entity entity{};
-		entity.Value = static_cast<decltype(entity.Value)>(root.Id.Value);
-
-		if (!world.IsAlive(entity))
+		const std::optional<Nyx::Engine::Entity> entity = FindEntity(context, root);
+		if (!entity)
 		{
 			return false;
 		}
@@ -167,7 +148,7 @@ namespace Nyx::Editor
 			return false;
 		}
 
-		ops->Remove(world, entity);
+		ops->Remove(context.ActiveScene->GetRegistry(), *entity);
 		return true;
 	}
 }
