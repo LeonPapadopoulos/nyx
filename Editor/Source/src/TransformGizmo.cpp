@@ -1053,6 +1053,14 @@ namespace Nyx::Editor
 		State.Operation = operation;
 	}
 
+	void TransformGizmo::PreviewActiveEdit(Nyx::Editor::TransactionSystem& transactions)
+	{
+		if (State.bDragging && ActiveTransformDiff.has_value())
+		{
+			ActiveTransformDiff->PreviewChanges("Drag Entity", transactions);
+		}
+	}
+
 	bool TransformGizmo::TickAndDraw(
 		Nyx::IRenderer& renderer,
 		Nyx::SceneDocument& scene,

@@ -177,7 +177,7 @@ if(BUILD_TESTING)
     add_executable(NyxGameLinkSubscriberTests tests/GameLinkSubscriberTests.cpp
         src/GameLinkSubscriber.cpp src/ComponentPostLoadSubscriber.cpp src/TransactionSystem.cpp src/TransactionDiffUtil.cpp src/SceneEntityTransactionDomain.cpp
         src/RootObjectSnapshotUtils.cpp src/ReflectedObjectSerialization.cpp src/ReflectedPropertyAccess.cpp
-        src/SceneDocument.cpp src/InspectorTargetId.cpp)
+        src/SceneDocument.cpp src/InspectorTargetId.cpp src/InspectorDrawContext.cpp)
     target_include_directories(NyxGameLinkSubscriberTests PRIVATE include src ${CMAKE_CURRENT_BINARY_DIR})
     target_link_libraries(NyxGameLinkSubscriberTests PRIVATE NyxEditorEngine)
     target_precompile_headers(NyxGameLinkSubscriberTests REUSE_FROM NyxEditor)

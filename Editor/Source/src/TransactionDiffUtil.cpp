@@ -2,6 +2,27 @@
 
 namespace Nyx::Editor
 {
+	namespace
+	{
+		SetValueChange MakeSetValueChange(
+			const ObjectRef& target,
+			const Nyx::Reflection::TypeMetadata* typeMetadata,
+			size_t propertyIndex,
+			const Nyx::Reflection::PropertyValue& before,
+			const Nyx::Reflection::PropertyValue& after,
+			const SubobjectPath& location)
+		{
+			return SetValueChange{
+				.Target = target,
+				.TypeMetadata = typeMetadata,
+				.PropertyIndex = propertyIndex,
+				.Before = before,
+				.After = after,
+				.Location = location
+			};
+		}
+	}
+
 	void TransactionDiffUtil::TakeSnapshot(
 		const ObjectRef& target,
 		void* object,
@@ -29,9 +50,58 @@ namespace Nyx::Editor
 			}
 
 			snapshot.PropertyValues.emplace_back(i, ReadReflectedPropertyValue(object, property));
+			snapshot.PreviewedValues.push_back(snapshot.PropertyValues.back().second);
 		}
 
 		Snapshots.push_back(std::move(snapshot));
+	}
+
+	bool TransactionDiffUtil::PreviewChanges(const char* label, TransactionSystem& transactions)
+	{
+		Transaction transaction{};
+		transaction.Label = label;
+
+		for (Snapshot& snapshot : Snapshots)
+		{
+			if (!snapshot.Object || !snapshot.TypeMetadata || !snapshot.TypeMetadata->Properties)
+			{
+				continue;
+			}
+
+			for (size_t i = 0; i < snapshot.PropertyValues.size(); ++i)
+			{
+				const size_t propertyIndex = snapshot.PropertyValues[i].first;
+				if (propertyIndex >= snapshot.TypeMetadata->PropertyCount)
+				{
+					continue;
+				}
+
+				const Nyx::Reflection::PropertyMetadata& property = snapshot.TypeMetadata->Properties[propertyIndex];
+				Nyx::Reflection::PropertyValue currentValue = ReadReflectedPropertyValue(snapshot.Object, property);
+
+				if (Nyx::Reflection::ArePropertyValuesEqual(snapshot.PreviewedValues[i], currentValue))
+				{
+					continue;
+				}
+
+				Change change{};
+				change.Kind = EChangeKind::SetValue;
+				change.Payload = MakeSetValueChange(snapshot.Target, snapshot.TypeMetadata, propertyIndex, snapshot.PreviewedValues[i],
+					currentValue, snapshot.Location);
+				transaction.Changes.push_back(std::move(change));
+
+				snapshot.PreviewedValues[i] = std::move(currentValue);
+			}
+		}
+
+		if (transaction.IsEmpty())
+		{
+			return false;
+		}
+
+		bPreviewed = true;
+		transactions.Preview(transaction);
+		return true;
 	}
 
 	bool TransactionDiffUtil::CommitChanges(const char* label, TransactionSystem& transactions)
@@ -63,21 +133,22 @@ namespace Nyx::Editor
 				{
 					Change change{};
 					change.Kind = EChangeKind::SetValue;
-					change.Payload = SetValueChange{
-						.Target = snapshot.Target,
-						.TypeMetadata = snapshot.TypeMetadata,
-						.PropertyIndex = propertyIndex,
-						.Before = beforeValue,
-						.After = afterValue,
-						.Location = snapshot.Location
-					};
+					change.Payload = MakeSetValueChange(snapshot.Target, snapshot.TypeMetadata, propertyIndex, beforeValue, afterValue,
+						snapshot.Location);
 
 					transaction.Changes.push_back(std::move(change));
 				}
 			}
 		}
 
+		// Dragged away and back: nothing to record, but the last preview showed another value
+		if (transaction.IsEmpty() && bPreviewed)
+		{
+			PreviewChanges(label, transactions);
+		}
+
 		Snapshots.clear();
+		bPreviewed = false;
 
 		if (!transaction.IsEmpty())
 		{
@@ -91,5 +162,6 @@ namespace Nyx::Editor
 	void TransactionDiffUtil::Cancel()
 	{
 		Snapshots.clear();
+		bPreviewed = false;
 	}
 }

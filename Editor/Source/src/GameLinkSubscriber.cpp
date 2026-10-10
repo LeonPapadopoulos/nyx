@@ -112,6 +112,12 @@ namespace Nyx::Editor
 		AddMessagesFor(transaction);
 	}
 
+	void GameLinkSubscriber::OnTransactionPreviewed(const Transaction& transaction)
+	{
+		// The values as they are now, like after an edit; the drag's end sends them once more
+		AddMessagesFor(transaction);
+	}
+
 	void GameLinkSubscriber::StartSession()
 	{
 		Pending.clear();

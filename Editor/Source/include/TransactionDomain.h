@@ -62,5 +62,11 @@ namespace Nyx::Editor
 
 		// Undo or redo has just changed the objects back or again
 		virtual void OnTransactionApplied(const Transaction& transaction, bool bWasUndo) = 0;
+
+		// Changes made but not recorded yet, e.g. during a drag (TransactionSystem::Preview). Each
+		// change's Before is the value from the last preview, not from before the drag.
+		virtual void OnTransactionPreviewed(const Transaction& /*transaction*/)
+		{
+		}
 	};
 }

@@ -70,6 +70,19 @@ namespace Nyx::Editor
 		}
 	}
 
+	void TransactionSystem::Preview(const Transaction& transaction)
+	{
+		if (transaction.IsEmpty())
+		{
+			return;
+		}
+
+		for (ITransactionSubscriber* subscriber : Subscribers)
+		{
+			subscriber->OnTransactionPreviewed(transaction);
+		}
+	}
+
 	bool TransactionSystem::Undo(EditorTransactionContext& context)
 	{
 		if (UndoStack.empty())

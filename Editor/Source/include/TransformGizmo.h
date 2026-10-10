@@ -86,6 +86,10 @@ namespace Nyx::Editor
 		void TickHotkeys();
 		void CancelInteraction();
 
+		// Previews the transform being dragged, if any, so a running game shows it during the drag
+		// (TransactionDiffUtil::PreviewChanges). Once per frame, after the scene views are drawn.
+		void PreviewActiveEdit(Nyx::Editor::TransactionSystem& transactions);
+
 		// Returns true if the gizmo consumed the left-click / interaction.
 		bool TickAndDraw(
 			Nyx::IRenderer& renderer,

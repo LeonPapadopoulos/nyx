@@ -232,6 +232,10 @@ namespace Nyx::Editor
 		DrawDetailsPanel();
 		DrawSceneViews();
 
+		// Values being dragged or typed reach a running game every frame, not only when the edit ends
+		DetailsPanelContext.PreviewPendingEdits();
+		TransformGizmoInstance.PreviewActiveEdit(Transactions);
+
 		if (!SourceInspector.IsActive()) HandleUndoRedoHotkeys();
 		DrawSourceTools();
 

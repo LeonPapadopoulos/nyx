@@ -16,6 +16,10 @@ namespace Nyx::Editor
 		// Records an edit whose changes are already made, for undo, and tells the subscribers
 		void Push(Transaction&& transaction);
 
+		// Tells the subscribers about changes that are made but not recorded yet, e.g. while a
+		// value is being dragged; the drag's end records them with Push(). Nothing goes to undo.
+		void Preview(const Transaction& transaction);
+
 		bool Undo(EditorTransactionContext& context);
 		bool Redo(EditorTransactionContext& context);
 

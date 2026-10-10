@@ -21,6 +21,7 @@ namespace Nyx::Editor
 	// - CreateEntity with the whole entity, for one that was added or brought back by undo,
 	// - DeleteEntity for one that is gone.
 	// Tools don't need to do anything for this: whatever they record in the TransactionSystem is sent.
+	// Values being dragged are sent too, every frame they change, through TransactionSystem::Preview.
 	//
 	// Messages are kept per play session, from Play on, so edits made while the game is still
 	// starting are sent once it is linked.
@@ -31,6 +32,9 @@ namespace Nyx::Editor
 
 		void OnTransactionCommitted(const Transaction& transaction) override;
 		void OnTransactionApplied(const Transaction& transaction, bool bWasUndo) override;
+
+		// A value while it is being dragged: sent like an edit, so the game shows it right away
+		void OnTransactionPreviewed(const Transaction& transaction) override;
 
 		// From now on, edits are kept as messages until TakeMessages()
 		void StartSession();

@@ -5,6 +5,7 @@
 #include "ComponentPostLoadSubscriber.h"
 #include "ComponentRegistration.h"
 #include "IAssetResolver.h"
+#include "InspectorDrawContext.h"
 #include "EditorLinkMessages.h"
 #include "GameLinkSubscriber.h"
 #include "GuidComponent.h"
@@ -448,6 +449,80 @@ namespace
 		test.SendEdits("Undo the typed path");
 	}
 
+	// While a value is dragged, the game gets it every frame it changes; the drag's end records one
+	// undo step. Dragged away and back, nothing is recorded, but the game ends up like the editor.
+	void TestValuesWhileDragging()
+	{
+		EditorAndGame test;
+		Registry& world = test.Scene.GetRegistry();
+		const Entity cube = test.Scene.CreateEntity("Cube");
+		world.Add<TransformComponent>(cube, TransformComponent{});
+		TransformComponent& transform = world.Get<TransformComponent>(cube);
+		const auto& transformType = Nyx::Reflection::GetTypeMetadata<TransformComponent>();
+
+		test.Play();
+		test.SendEdits("Play");
+		test.TakeSent();
+
+		// As the gizmo does: snapshot at the start of the drag, a preview each frame, commit at the end
+		TransactionDiffUtil drag;
+		drag.TakeSnapshot(MakeSceneEntityRef(test.Scene, cube), &transform, transformType);
+
+		transform.Position.x = 1.0f;
+		Require(drag.PreviewChanges("Drag Entity", test.Transactions), "A changed value wasn't previewed");
+		test.SendEdits("First frame of the drag");
+		Require(test.TakeSent() == std::vector{ EEditorLinkMessage::SetProperties }, "A preview isn't one SetProperties");
+
+		// A frame without movement sends nothing
+		Require(!drag.PreviewChanges("Drag Entity", test.Transactions), "An unchanged value was previewed");
+		test.SendEdits("Frame without movement");
+		Require(test.TakeSent().empty(), "A frame without movement sent something");
+
+		transform.Position.x = 2.0f;
+		drag.PreviewChanges("Drag Entity", test.Transactions);
+		test.SendEdits("Second frame of the drag");
+
+		// Previews aren't undo steps; the end of the drag is one
+		Require(!test.Transactions.Undo(test.Context), "A preview became an undo step");
+		Require(drag.CommitChanges("Translate Entity", test.Transactions), "The end of the drag recorded nothing");
+		test.SendEdits("End of the drag");
+
+		Require(test.Transactions.Undo(test.Context) && transform.Position.x == 0.0f, "Undo didn't move the cube back to before the drag");
+		test.SendEdits("Undo the drag");
+
+		// Away and back: nothing to undo, and the game shows where the cube is, not where it was dragged
+		TransactionDiffUtil roundTrip;
+		roundTrip.TakeSnapshot(MakeSceneEntityRef(test.Scene, cube), &transform, transformType);
+		transform.Position.y = 5.0f;
+		roundTrip.PreviewChanges("Drag Entity", test.Transactions);
+		test.SendEdits("Drag away");
+		transform.Position.y = 0.0f;
+		Require(!roundTrip.CommitChanges("Translate Entity", test.Transactions), "Dragging away and back recorded a step");
+		test.SendEdits("Drag back");
+		Require(test.Transactions.Redo(test.Context), "Dragging away and back lost the redo of the earlier drag");
+		test.SendEdits("Redo the earlier drag");
+
+		// The details panel: a value being dragged there is previewed once per frame too
+		const Entity camera = test.Scene.CreateEntity("Camera");
+		world.Add<CameraComponent>(camera, CameraComponent{});
+		test.Play();
+		test.SendEdits("Play again");
+		test.TakeSent();
+
+		InspectorDrawContext details;
+		details.Transactions = &test.Transactions;
+		details.GenericPropertyEdit.bEditing = true;
+		details.GenericPropertyEdit.Target = MakeSceneEntityRef(test.Scene, camera);
+		details.GenericPropertyEdit.PendingDiff.emplace();
+		details.GenericPropertyEdit.PendingDiff->TakeSnapshot(details.GenericPropertyEdit.Target, &world.Get<CameraComponent>(camera),
+			Nyx::Reflection::GetTypeMetadata<CameraComponent>());
+
+		world.Get<CameraComponent>(camera).FovYDegrees = 75.0f;
+		details.PreviewPendingEdits();
+		test.SendEdits("Field of view while dragging");
+		Require(test.TakeSent() == std::vector{ EEditorLinkMessage::SetProperties }, "The details panel's drag wasn't previewed");
+	}
+
 	// The editor reads and writes rotations normalized, through the engine's property access
 	void TestReflectedPropertyAccess()
 	{
@@ -525,6 +600,7 @@ int main()
 		TestUndoAfterSlotReuse();
 		TestUndoKeepsWholeComponents();
 		TestEditsLoadAssets();
+		TestValuesWhileDragging();
 		TestReflectedPropertyAccess();
 		TestSessions();
 

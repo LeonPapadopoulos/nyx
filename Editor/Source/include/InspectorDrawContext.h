@@ -26,6 +26,10 @@ namespace Nyx::Editor
 		// Discard snapshots without reading or restoring the objects they referred to.
 		void CancelPendingEdits();
 
+		// Previews the value being dragged or typed, if any, so a running game shows it before the
+		// edit ends (TransactionDiffUtil::PreviewChanges). Once per frame, after drawing.
+		void PreviewPendingEdits();
+
 		TransactionSystem* Transactions = nullptr;
 
 		InspectorTargetId CurrentTargetId{};
