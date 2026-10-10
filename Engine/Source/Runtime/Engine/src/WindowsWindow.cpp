@@ -347,6 +347,16 @@ namespace Nyx
 			glfwSetWindowSize(Window, w, h);
 		}
 
+		// Placed while still hidden, so it doesn't jump. GLFW positions the client area; the frame
+		// around it (titlebar and borders) goes left of and above that.
+		if (specs.Position)
+		{
+			int frameLeft = 0;
+			int frameTop = 0;
+			glfwGetWindowFrameSize(Window, &frameLeft, &frameTop, nullptr, nullptr);
+			glfwSetWindowPos(Window, specs.Position->X + frameLeft, specs.Position->Y + frameTop);
+		}
+
 		const bool bTransparent = glfwGetWindowAttrib(Window, GLFW_TRANSPARENT_FRAMEBUFFER) == GLFW_TRUE;
 		ASSERT(bTransparent && "Transparent framebuffer not supported on this platform/path.");
 

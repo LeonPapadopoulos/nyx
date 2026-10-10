@@ -1,17 +1,31 @@
 #pragma once
 #include "NyxEngineAPI.h"
 #include <functional>
+#include <optional>
 #include <string>
 
 namespace Nyx
 {
 	class IRenderer;
 
+	// A point on the screen, in screen coordinates
+	struct WindowPosition
+	{
+		int X = 0;
+		int Y = 0;
+	};
+
 	struct WindowSpecs
 	{
 		std::string Title = "Nyx Engine";
+
+		// The client area, without titlebar and borders
 		unsigned int Width = 1280;
 		unsigned int Height = 720;
+
+		// Where the window's outer top-left corner goes. Unset: the system chooses.
+		std::optional<WindowPosition> Position;
+
 		bool bUseCustomTitlebar = true;
 		bool bResizable = true;
 

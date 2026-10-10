@@ -51,6 +51,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/LiveEdits.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/EditorLinkLogSink.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/EditorLinkRecorder.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/GameLaunchOptions.cpp
 
     # Runtime/Renderer
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ImGuiTheme.cpp
@@ -119,6 +120,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/LiveEdits.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/EditorLinkLogSink.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/EditorLinkRecorder.h
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/GameLaunchOptions.h
 
     # Runtime/Renderer
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ImGuiTheme.h

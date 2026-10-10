@@ -54,6 +54,8 @@ While the game runs, edits in the editor show up in it live: moving an entity, c
 
 The editor's *Game Link* window (*Window > Game Link*) shows the game's log lines in the *Game Log* tab, and every message of the link, in both directions, in the *Messages* tab: select a message to see all its fields, or pause, filter by type and copy. *Record* there writes each play session's messages to a `.nyxlinklog` file in a `LinkLogs` folder next to the editor; `NyxGame.exe --link-log <file>` records the game's side.
 
+`NyxGame.exe` also runs on its own: `NyxGame.exe [scene file] [--window-size <width>x<height>] [--window-pos <x>,<y>] [--window-title <text>]`. The size is that of the picture, without titlebar and borders; the position is where the window's outer top-left corner goes, and may be negative on a monitor left of or above the main one. `NyxGameLaunchOptionsTests` tests the game's command line.
+
 To see what a scene file or a link recording contains, build `NyxDump` and print the file with it, e.g. from the repository folder: `Build\Windows\Binaries\Debug\NyxDump.exe Assets\Scenes\Default.nyxscene`, or a `.nyxlinklog` file the same way.
 
 ## Project layout

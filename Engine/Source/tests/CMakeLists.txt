@@ -29,6 +29,13 @@ add_dependencies(NyxLiveEditTests NyxGeneratedReflection)
 set_property(TARGET NyxLiveEditTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxLiveEditTests COMMAND NyxLiveEditTests)
 
+# The game's command line, as the editor writes it and the game reads it.
+add_executable(NyxGameLaunchOptionsTests GameLaunchOptionsTests.cpp)
+target_link_libraries(NyxGameLaunchOptionsTests PRIVATE NyxEngine)
+add_dependencies(NyxGameLaunchOptionsTests NyxGeneratedReflection)
+set_property(TARGET NyxGameLaunchOptionsTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxGameLaunchOptionsTests COMMAND NyxGameLaunchOptionsTests)
+
 if(MSVC)
     add_test(NAME NyxRuntimeInspectionSymbols
         COMMAND ${CMAKE_COMMAND}

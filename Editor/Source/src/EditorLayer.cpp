@@ -9,6 +9,7 @@
 #include "TransformComponent.h"
 #include "NameComponent.h"
 #include "ComponentTypeRegistry.h"
+#include "GameLaunchOptions.h"
 #include "TransactionObjectRef.h"
 #include "TransactionObjectRefHelpers.h"
 #include "RootObjectSnapshotUtils.h"
@@ -542,11 +543,9 @@ namespace Nyx::Editor
 		// NyxGame is built next to the editor, since building the editor builds it too
 		const std::filesystem::path gameExecutable = Nyx::Paths::GetExecutableDir() / "NyxGame.exe";
 
-		std::vector<std::string> arguments = { playSessionScene.string() };
-		if (bGameWaitsForDebugger)
-		{
-			arguments.push_back("--wait-for-debugger");
-		}
+		Nyx::Engine::GameLaunchOptions launchOptions;
+		launchOptions.ScenePath = playSessionScene;
+		launchOptions.bWaitForDebugger = bGameWaitsForDebugger;
 
 		// The game connects back to the editor on this port: the editor link. Only programs on
 		// this machine can connect. Without it, the game still runs, just not linked.
@@ -558,9 +557,10 @@ namespace Nyx::Editor
 
 		if (GameLinkListener.IsListening())
 		{
-			arguments.push_back("--editor-port");
-			arguments.push_back(std::to_string(GameLinkListener.GetPort()));
+			launchOptions.EditorPort = GameLinkListener.GetPort();
 		}
+
+		const std::vector<std::string> arguments = Nyx::Engine::MakeGameArguments(launchOptions);
 
 		GameLinkCloseReason.clear();
 		GameQuitDeadline.reset();
