@@ -4,6 +4,7 @@
 set(NYX_EDITOR_SOURCES
     main.cpp
     src/EditorLayer.cpp
+    src/GameInstance.cpp
     src/GameLinkPanel.cpp
     src/GameLinkSubscriber.cpp
     src/EditorPreferences.cpp
@@ -47,6 +48,7 @@ set(NYX_EDITOR_SOURCES
 set(NYX_EDITOR_HEADERS
     src/EditorPCH.h
     include/EditorLayer.h
+    include/GameInstance.h
     include/GameLinkPanel.h
     include/GameLinkSubscriber.h
     include/EditorPreferences.h
@@ -178,4 +180,13 @@ if(BUILD_TESTING)
     add_dependencies(NyxGameLinkSubscriberTests NyxGeneratedReflection)
     set_property(TARGET NyxGameLinkSubscriberTests PROPERTY FOLDER "Tests")
     add_test(NAME NyxGameLinkSubscriberTests COMMAND NyxGameLinkSubscriberTests)
-endif()
+
+    # Several games at once, as Play starts them: this program starts copies of itself as stand-in games
+    add_executable(NyxGameInstanceTests tests/GameInstanceTests.cpp src/GameInstance.cpp)
+    target_include_directories(NyxGameInstanceTests PRIVATE include src ${CMAKE_CURRENT_BINARY_DIR})
+    target_link_libraries(NyxGameInstanceTests PRIVATE NyxEditorEngine)
+    target_precompile_headers(NyxGameInstanceTests REUSE_FROM NyxEditor)
+    add_dependencies(NyxGameInstanceTests NyxGeneratedReflection)
+    set_property(TARGET NyxGameInstanceTests PROPERTY FOLDER "Tests")
+    add_test(NAME NyxGameInstanceTests COMMAND NyxGameInstanceTests)
+endif()

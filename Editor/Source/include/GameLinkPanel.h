@@ -9,6 +9,7 @@
 #include <deque>
 #include <filesystem>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -19,11 +20,12 @@ namespace Nyx::Editor
 	class GameLinkPanel
 	{
 	public:
-		// Every message of the editor link, both ways. The game's log lines also go to the Game Log tab.
-		void AddMessage(Nyx::Engine::ELinkDirection direction, const Nyx::Net::Message& message);
+		// Every message of a game's editor link, both ways. gameName tells the games of Play All
+		// apart, e.g. "Game 2". The games' log lines also go to the Game Log tab.
+		void AddMessage(const std::string& gameName, Nyx::Engine::ELinkDirection direction, const Nyx::Net::Message& message);
 
 		// A new play session: clears both tabs ("Clear on Play"), or marks where the session
-		// starts, and starts a new recording file if recording is on.
+		// starts, and starts new recording files if recording is on (one per game).
 		void OnPlayStarted();
 
 		void Draw(bool& bOpen);
@@ -41,11 +43,12 @@ namespace Nyx::Editor
 			uint64_t Sequence = 0;
 
 			uint64_t TimeMs = 0;
+			std::string GameName;
 			Nyx::Engine::ELogLevel Level = Nyx::Engine::ELogLevel::Info;
 			std::string LoggerName;
 			std::string Text;
 
-			// Logger and text in lower case, what the filter searches
+			// Game, logger and text in lower case, what the filter searches
 			std::string SearchText;
 
 			// A line that marks the start of a play session instead of a log line
@@ -59,6 +62,7 @@ namespace Nyx::Editor
 			// When the editor sent or received it
 			uint64_t TimeMs = 0;
 
+			std::string GameName;
 			Nyx::Engine::ELinkDirection Direction = Nyx::Engine::ELinkDirection::Sent;
 			uint16_t Type = 0;
 			size_t Size = 0;
@@ -87,6 +91,9 @@ namespace Nyx::Editor
 
 		void StartRecording();
 		void StopRecording();
+
+		// The game's file of this recording, opened with its first message
+		Nyx::Engine::EditorLinkRecorder* GetRecorder(const std::string& gameName);
 
 		bool IsShown(const MessageEntry& entry) const;
 		static std::string ToText(const LogEntry& entry);
@@ -121,8 +128,11 @@ namespace Nyx::Editor
 
 		bool bClearOnPlay = true;
 
+		// While recording, each game's messages go to a file of their own, named after the
+		// recording's start and the game: GameLink_<start>_<game>.nyxlinklog
 		bool bRecording = false;
-		Nyx::Engine::EditorLinkRecorder Recorder;
+		std::string RecordingStamp;
+		std::map<std::string, std::unique_ptr<Nyx::Engine::EditorLinkRecorder>> Recorders;
 		std::string RecordingStatus;
 	};
 }

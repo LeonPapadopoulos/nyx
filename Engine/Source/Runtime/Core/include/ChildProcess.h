@@ -22,9 +22,10 @@ namespace Nyx
 		ChildProcess(const ChildProcess&) = delete;
 		ChildProcess& operator=(const ChildProcess&) = delete;
 
-		// Starts the program with the arguments (UTF-8). It gets its own console window and runs
-		// in this program's working directory. Fails if this ChildProcess is still running another one.
-		bool Start(const std::filesystem::path& executable, const std::vector<std::string>& arguments);
+		// Starts the program with the arguments (UTF-8), in this program's working directory. With
+		// bConsoleWindow, it gets a console window of its own; without, its console output goes
+		// nowhere. Fails if this ChildProcess is still running another one.
+		bool Start(const std::filesystem::path& executable, const std::vector<std::string>& arguments, bool bConsoleWindow = true);
 
 		bool IsRunning() const;
 

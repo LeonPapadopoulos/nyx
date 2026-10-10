@@ -178,8 +178,8 @@ namespace Nyx::Editor
 
 	void EditorLayer::OnDetach()
 	{
-		// Closing the editor also ends the game it started
-		StopGameBeforeEditorCloses();
+		// Closing the editor also ends the games it started
+		StopGamesBeforeEditorCloses();
 
 		SourceInspector.Detach();
 		// The menu calls into this layer, so it must not outlive it.
@@ -204,14 +204,7 @@ namespace Nyx::Editor
 	void EditorLayer::OnUpdate(float deltaTime)
 	{
 		DebugTools.BeforeFrame();
-		UpdateGameLink();
-		CheckWhetherGameExited();
-
-		if (GameQuitDeadline && std::chrono::steady_clock::now() >= *GameQuitDeadline)
-		{
-			LOG_WARNING("The game didn't quit within {0} seconds; ending it", GameQuitTimeLimit.count());
-			EndGameNow();
-		}
+		UpdateGames();
 		TickScene(deltaTime);
 
 		// Keep renderer-facing selection state up to date before rendering
@@ -330,34 +323,43 @@ namespace Nyx::Editor
 
 		ImGui::SameLine();
 
-		// Play / Stop, green while stopped and red while the game runs. While the game was asked to
-		// quit, it says "Stopping", and a click ends the game at once. Play has its own ID, so a
-		// click that starts on Stop or Stopping can't end on Play when the game exits meanwhile.
-		const bool bPlaying = bGameRunning;
+		// Play / Stop, green while stopped and red while any game runs. While games were asked to
+		// quit, it says "Stopping", and a click ends them at once. Play has its own ID, so a click
+		// that starts on Stop or Stopping can't end on Play when the games exit meanwhile.
+		const bool bPlaying = AreGamesRunning();
+		const bool bQuitting = std::any_of(Games.begin(), Games.end(),
+			[](const std::unique_ptr<GameInstance>& game)
+			{
+				return game->IsQuitting();
+			});
 		const ImVec4 playButtonColor = bPlaying ? ImVec4(0.55f, 0.18f, 0.18f, 1.0f) : ImVec4(0.18f, 0.42f, 0.22f, 1.0f);
-		const char* playButtonLabel = !bPlaying ? "Play" : (GameQuitDeadline ? "Stopping###Stop" : "Stop###Stop");
+		const char* playButtonLabel = !bPlaying ? "Play" : (bQuitting ? "Stopping###Stop" : "Stop###Stop");
 
 		ImGui::PushStyleColor(ImGuiCol_Button, playButtonColor);
 		if (NYX_UI(ImGui::Button(playButtonLabel, ImVec2(64.0f, buttonHeight))))
 		{
 			if (bPlaying)
 			{
-				StopGame();
+				StopGames();
 			}
 			else
 			{
-				StartGame();
+				StartGames();
 			}
 		}
 		ImGui::PopStyleColor();
 
-		if (bPlaying && GameQuitDeadline)
+		if (bPlaying && bQuitting)
 		{
-			ImGui::SetItemTooltip("The game was asked to quit. Click to end it at once.\nEditor link: %s", GetGameLinkStatus().c_str());
+			ImGui::SetItemTooltip("The games were asked to quit. Click to end them at once.\nEditor link:%s", GetGameLinkStatus().c_str());
 		}
 		else if (bPlaying)
 		{
-			ImGui::SetItemTooltip("Asks the game to quit, or ends it if it isn't linked.\nEditor link: %s", GetGameLinkStatus().c_str());
+			ImGui::SetItemTooltip("Asks the games to quit, or ends those that aren't linked.\nEditor link:%s", GetGameLinkStatus().c_str());
+		}
+		else if (GameCount > 1)
+		{
+			ImGui::SetItemTooltip("Runs the open scene in %d NyxGames, unsaved changes included. Right-click for options.", GameCount);
 		}
 		else
 		{
@@ -372,6 +374,14 @@ namespace Nyx::Editor
 		if (Nyx::UI::BeginPopup("##PlayOptions"))
 		{
 			NYX_UI(ImGui::MenuItem("Game Waits for Debugger", nullptr, &bGameWaitsForDebugger));
+
+			// Each game gets every edit; the next Play uses the new count
+			ImGui::SetNextItemWidth(120.0f);
+			if (NYX_UI(ImGui::SliderInt("Games", &GameCount, 1, MaxGameCount)))
+			{
+				GameCount = std::clamp(GameCount, 1, MaxGameCount);
+			}
+			ImGui::SetItemTooltip("How many games Play starts, side by side");
 			ImGui::EndPopup();
 		}
 
@@ -521,18 +531,22 @@ namespace Nyx::Editor
 		Transactions.Clear();
 		++SceneRevision;
 
-		// The game is still running the previous scene. A game that is quitting already gets the
+		// The games are still running the previous scene. A game that is quitting already gets the
 		// rest of its time.
-		if (!GameQuitDeadline)
+		for (const std::unique_ptr<GameInstance>& game : Games)
 		{
-			StopGame();
+			if (!game->IsQuitting())
+			{
+				game->Stop();
+			}
 		}
+		GameEdits.EndSession();
 	}
 
-	void EditorLayer::StartGame()
+	void EditorLayer::StartGames()
 	{
-		// The game runs a copy of the open scene, saved next to the executables. That includes
-		// unsaved changes and leaves the scene's own file alone.
+		// The games run a copy of the open scene, saved next to the executables. That includes
+		// unsaved changes and leaves the scene's own file alone. Each game reads it as it starts.
 		const std::filesystem::path playSessionScene = Nyx::Paths::GetExecutableDir() / "PlaySession.nyxscene";
 		if (!Nyx::Engine::SceneSerializer::SaveToFile(ActiveScene.GetRegistry(), playSessionScene))
 		{
@@ -543,283 +557,143 @@ namespace Nyx::Editor
 		// NyxGame is built next to the editor, since building the editor builds it too
 		const std::filesystem::path gameExecutable = Nyx::Paths::GetExecutableDir() / "NyxGame.exe";
 
-		Nyx::Engine::GameLaunchOptions launchOptions;
-		launchOptions.ScenePath = playSessionScene;
-		launchOptions.bWaitForDebugger = bGameWaitsForDebugger;
-
-		// The game connects back to the editor on this port: the editor link. Only programs on
-		// this machine can connect. Without it, the game still runs, just not linked.
-		if (!GameLinkListener.IsListening() && !GameLinkListener.Listen())
-		{
-			LOG_WARNING("The editor can't wait for the game to connect ({0}); the game runs without the editor link",
-				GameLinkListener.GetError());
-		}
-
-		if (GameLinkListener.IsListening())
-		{
-			launchOptions.EditorPort = GameLinkListener.GetPort();
-		}
-
-		const std::vector<std::string> arguments = Nyx::Engine::MakeGameArguments(launchOptions);
-
-		GameLinkCloseReason.clear();
-		GameQuitDeadline.reset();
 		GameLinkWindow.OnPlayStarted();
 
-		if (!GameProcess.Start(gameExecutable, arguments))
+		const int count = std::clamp(GameCount, 1, MaxGameCount);
+		for (int i = 0; i < count; ++i)
 		{
-			LOG_ERROR("Couldn't start '{0}'", gameExecutable.string());
-			return;
+			const std::string name = "Game " + std::to_string(i + 1);
+
+			Nyx::Engine::GameLaunchOptions launchOptions;
+			launchOptions.ScenePath = playSessionScene;
+			launchOptions.bWaitForDebugger = bGameWaitsForDebugger;
+
+			// With several games, the titles tell their windows apart
+			if (count > 1)
+			{
+				launchOptions.WindowTitle = "Nyx Game - " + name;
+			}
+
+			auto game = std::make_unique<GameInstance>(name,
+				[this](const std::string& gameName, Nyx::Engine::ELinkDirection direction, const Nyx::Net::Message& message)
+				{
+					GameLinkWindow.AddMessage(gameName, direction, message);
+				});
+
+			if (game->Start(gameExecutable, launchOptions))
+			{
+				Games.push_back(std::move(game));
+			}
 		}
 
-		bGameRunning = true;
+		// Edits from now on are kept for the games that can take them, and sent once each is linked
+		const bool bAnyTakesEdits = std::any_of(Games.begin(), Games.end(),
+			[](const std::unique_ptr<GameInstance>& game)
+			{
+				return game->TakesEdits();
+			});
 
-		// The game runs the scene as saved above. Edits from now on are sent once it is linked;
-		// without the link, nothing could take them.
-		if (GameLinkListener.IsListening())
+		if (bAnyTakesEdits)
 		{
 			GameEdits.StartSession();
 		}
-
-		if (bGameWaitsForDebugger)
-		{
-			LOG_INFO("Started the game; it waits until a debugger is attached");
-		}
-		else
-		{
-			LOG_INFO("Started the game");
-		}
 	}
 
-	void EditorLayer::StopGame()
+	void EditorLayer::StopGames()
 	{
-		if (!GameProcess.IsRunning())
+		// Stop pressed again while games are quitting: ends them all at once
+		const bool bAnyQuitting = std::any_of(Games.begin(), Games.end(),
+			[](const std::unique_ptr<GameInstance>& game)
+			{
+				return game->IsQuitting();
+			});
+
+		if (bAnyQuitting)
 		{
-			EndGameNow();
+			EndGamesNow();
 			return;
 		}
 
-		// Stop pressed again while the game is quitting
-		if (GameQuitDeadline)
+		for (const std::unique_ptr<GameInstance>& game : Games)
 		{
-			EndGameNow();
-			return;
+			game->Stop();
 		}
 
-		// Asked to quit, the game ends like when its window is closed: its last log lines arrive
-		// and its files are closed. OnUpdate ends it if it doesn't within the time limit.
-		if (GameLink && GameLink->IsConnected())
+		// Edits from now on, e.g. to a scene opened meanwhile, aren't for these games
+		GameEdits.EndSession();
+	}
+
+	void EditorLayer::EndGamesNow()
+	{
+		GameEdits.EndSession();
+
+		for (const std::unique_ptr<GameInstance>& game : Games)
 		{
-			// Edits from now on, e.g. to a scene opened meanwhile, aren't for this game
+			game->EndNow();
+		}
+
+		Games.clear();
+	}
+
+	void EditorLayer::StopGamesBeforeEditorCloses()
+	{
+		// All games are asked first, so they quit at the same time, and share one deadline
+		const auto deadline = std::chrono::steady_clock::now() + GameInstance::QuitTimeLimit;
+
+		for (const std::unique_ptr<GameInstance>& game : Games)
+		{
+			game->AskToQuitBeforeEditorCloses();
+		}
+
+		for (const std::unique_ptr<GameInstance>& game : Games)
+		{
+			game->FinishBeforeEditorCloses(deadline);
+		}
+
+		EndGamesNow();
+	}
+
+	void EditorLayer::UpdateGames()
+	{
+		// Each game gets every edit, in its own queue: one that sits in the debugger or crashed
+		// only stops itself from getting edits
+		const std::vector<Nyx::Net::Message> edits = GameEdits.TakeMessages();
+
+		for (const std::unique_ptr<GameInstance>& game : Games)
+		{
+			game->QueueEdits(edits);
+			game->Update();
+		}
+
+		// A game that exited, or was ended, logged it; it doesn't come back
+		std::erase_if(Games,
+			[](const std::unique_ptr<GameInstance>& game)
+			{
+				return !game->IsRunning();
+			});
+
+		const bool bAnyTakesEdits = std::any_of(Games.begin(), Games.end(),
+			[](const std::unique_ptr<GameInstance>& game)
+			{
+				return game->TakesEdits();
+			});
+
+		if (!bAnyTakesEdits && GameEdits.IsSessionActive())
+		{
 			GameEdits.EndSession();
-
-			GameLink->Send(Nyx::Engine::QuitMessage{});
-			GameQuitDeadline = std::chrono::steady_clock::now() + GameQuitTimeLimit;
-			LOG_INFO("Asked the game to quit");
-			return;
-		}
-
-		EndGameNow();
-	}
-
-	void EditorLayer::EndGameNow()
-	{
-		GameEdits.EndSession();
-
-		if (GameLink)
-		{
-			GameLink->Close("the editor ended the game");
-			GameLink.reset();
-		}
-		GameLinkCandidates.clear();
-		GameQuitDeadline.reset();
-
-		if (!GameProcess.IsRunning())
-		{
-			return;
-		}
-
-		GameProcess.Terminate();
-		bGameRunning = false;
-
-		LOG_INFO("Ended the game");
-	}
-
-	void EditorLayer::StopGameBeforeEditorCloses()
-	{
-		// The editor can't wait over several frames now. The game gets Quit (unless it has it
-		// already) and the end of the link, and the rest of its time to exit by itself.
-		const auto deadline = GameQuitDeadline.value_or(std::chrono::steady_clock::now() + GameQuitTimeLimit);
-		bool bAskedToQuit = GameQuitDeadline.has_value();
-
-		if (GameProcess.IsRunning() && GameLink && GameLink->IsConnected())
-		{
-			if (!bAskedToQuit)
-			{
-				GameLink->Send(Nyx::Engine::QuitMessage{});
-				bAskedToQuit = true;
-			}
-
-			// Waits until the game has read everything and closed its end, so Quit can't get lost
-			GameLink->CloseGracefully("the editor is closing", std::chrono::milliseconds(1000));
-			GameLink.reset();
-		}
-
-		if (GameProcess.IsRunning() && bAskedToQuit)
-		{
-			const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
-			GameProcess.WaitForExit(static_cast<uint32_t>(std::max<long long>(remaining.count(), 0)));
-		}
-
-		EndGameNow();
-	}
-
-	void EditorLayer::CheckWhetherGameExited()
-	{
-		if (!bGameRunning || GameProcess.IsRunning())
-		{
-			return;
-		}
-
-		// One more pass for the game's last messages, also from a game that connected just before
-		// it exited, and for the link to notice that the game is gone
-		UpdateGameLink();
-		GameLink.reset();
-		GameLinkCandidates.clear();
-		GameQuitDeadline.reset();
-		GameEdits.EndSession();
-
-		bGameRunning = false;
-
-		// Closing the game's window exits with 0; a crash exits with a code such as 0xC0000005
-		// (access violation), which the editor survives.
-		const uint32_t exitCode = GameProcess.GetExitCode().value_or(0);
-		if (exitCode == 0)
-		{
-			LOG_INFO("The game exited");
-		}
-		else
-		{
-			LOG_WARNING("The game exited with code 0x{0:08X}", exitCode);
-		}
-	}
-
-	void EditorLayer::UpdateGameLink()
-	{
-		// Only the game started with Play may connect: its Hello has to come from the game's process
-		while (std::unique_ptr<Nyx::Net::Connection> connection = GameLinkListener.Accept())
-		{
-			// Without a running game, this is usually a game that was stopped while it connected
-			if (!bGameRunning)
-			{
-				LOG_INFO("Editor link: closed a connection that came in while no game was running");
-				continue;
-			}
-
-			if (GameLink)
-			{
-				LOG_WARNING("Editor link: turned away another program that connected while the game is connected");
-				continue;
-			}
-
-			// The Game Link window sees every message, also of programs that turn out not to be the game
-			auto candidate = std::make_unique<Nyx::Engine::EditorLink>(std::move(connection), "NyxEditor",
-				[this](Nyx::Engine::ELinkDirection direction, const Nyx::Net::Message& message)
-				{
-					GameLinkWindow.AddMessage(direction, message);
-				});
-			candidate->RequireOtherProcessId(GameProcess.GetProcessId());
-			GameLinkCandidates.push_back(std::move(candidate));
-		}
-
-		for (std::unique_ptr<Nyx::Engine::EditorLink>& candidate : GameLinkCandidates)
-		{
-			candidate->Update();
-
-			// Even if the game exited right after its Hello, its messages are handled below
-			if (!GameLink && candidate->HadHandshake())
-			{
-				GameLink = std::move(candidate);
-			}
-			else if (candidate->GetState() == Nyx::Engine::EEditorLinkState::Closed)
-			{
-				GameLinkCloseReason = candidate->GetCloseReason();
-			}
-		}
-
-		// Failed candidates logged why. Once the game is linked, the others aren't needed.
-		if (GameLink)
-		{
-			GameLinkCandidates.clear();
-		}
-		else
-		{
-			std::erase_if(GameLinkCandidates,
-				[](const std::unique_ptr<Nyx::Engine::EditorLink>& candidate)
-				{
-					return candidate->GetState() == Nyx::Engine::EEditorLinkState::Closed;
-				});
-		}
-
-		if (GameLink)
-		{
-			GameLink->Update();
-			HandleGameLinkMessages();
-
-			// Edits made since the last frame, or while the game was starting. A game paused in the
-			// debugger doesn't read; until it does, edits wait in GameEdits, which has a limit.
-			constexpr size_t MaxUnsentBytes = 1024 * 1024;
-			if (GameLink->IsConnected() && GameLink->GetUnsentSize() <= MaxUnsentBytes)
-			{
-				for (const Nyx::Net::Message& edit : GameEdits.TakeMessages())
-				{
-					GameLink->Send(edit);
-				}
-			}
-
-			// The link logged why it ended. The game doesn't connect again, so edits can't reach it anymore.
-			if (GameLink->GetState() == Nyx::Engine::EEditorLinkState::Closed)
-			{
-				GameLinkCloseReason = GameLink->GetCloseReason();
-				GameLink.reset();
-				GameEdits.EndSession();
-			}
-		}
-	}
-
-	void EditorLayer::HandleGameLinkMessages()
-	{
-		while (std::optional<Nyx::Net::Message> message = GameLink->Receive())
-		{
-			// The Game Link window shows log lines; it sees every message through the link's observer
-			if (message->Type == static_cast<uint16_t>(Nyx::Engine::EEditorLinkMessage::LogLine))
-			{
-				continue;
-			}
-
-			LOG_WARNING("Editor link: skipped a message of type {0}, which this editor doesn't know", message->Type);
 		}
 	}
 
 	std::string EditorLayer::GetGameLinkStatus() const
 	{
-		if (GameLink)
+		std::string status;
+
+		for (const std::unique_ptr<GameInstance>& game : Games)
 		{
-			const Nyx::Engine::HelloMessage& game = GameLink->GetOtherSide();
-			return "connected to " + game.ProgramName + " (process " + std::to_string(game.ProcessId) + ")";
+			status += "\n" + game->GetName() + ": " + game->GetLinkStatus();
 		}
 
-		if (!GameLinkCandidates.empty())
-		{
-			return "saying Hello";
-		}
-
-		if (!GameLinkCloseReason.empty())
-		{
-			return "closed: " + GameLinkCloseReason;
-		}
-
-		return GameLinkListener.IsListening() ? "waiting for the game to connect" : "off";
+		return status;
 	}
 
 	void EditorLayer::RequestLoadScenePopup()

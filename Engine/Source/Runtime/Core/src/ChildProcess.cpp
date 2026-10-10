@@ -72,7 +72,7 @@ namespace Nyx
 		ReleaseHandle();
 	}
 
-	bool ChildProcess::Start(const std::filesystem::path& executable, const std::vector<std::string>& arguments)
+	bool ChildProcess::Start(const std::filesystem::path& executable, const std::vector<std::string>& arguments, bool bConsoleWindow)
 	{
 		if (IsRunning())
 		{
@@ -100,7 +100,7 @@ namespace Nyx
 			nullptr,
 			nullptr,
 			FALSE,
-			CREATE_NEW_CONSOLE,
+			bConsoleWindow ? CREATE_NEW_CONSOLE : CREATE_NO_WINDOW,
 			nullptr,
 			nullptr,
 			&startupInfo,

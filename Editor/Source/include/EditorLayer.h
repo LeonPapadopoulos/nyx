@@ -14,11 +14,9 @@
 #include "BuiltinAssetResolver.h"
 #include "EditorAssetActivationContext.h"
 #include "Layer.h"
-#include "ChildProcess.h"
-#include "EditorLink.h"
+#include "GameInstance.h"
 #include "GameLinkPanel.h"
 #include "GameLinkSubscriber.h"
-#include "NetConnection.h"
 #include "EditorPreferences.h"
 #include "ImGuiDebugTools.h"
 #include "UISourceInspector.h"
@@ -98,19 +96,23 @@ namespace Nyx::Editor
 		// Called before destroying the old registry, once its replacement is ready.
 		void ForgetPreviousScene();
 
-		// Play and Stop: the open scene runs in NyxGame, as a separate program. Stop asks the game
-		// to quit, and ends it if it doesn't within GameQuitTimeLimit.
-		void StartGame();
-		void StopGame();
-		void EndGameNow();
-		void StopGameBeforeEditorCloses();
-		void CheckWhetherGameExited();
+		// Play and Stop: the open scene runs in NyxGame, as separate programs, GameCount of them.
+		// Stop asks each game to quit, and ends those that don't within GameInstance::QuitTimeLimit.
+		void StartGames();
+		void StopGames();
+		void EndGamesNow();
+		void StopGamesBeforeEditorCloses();
 
-		// The editor link: accepts the game's connection, says Hello and checks the game's
-		void UpdateGameLink();
-		void HandleGameLinkMessages();
+		// Each frame: hands the edits since the last frame to every game, updates the games and
+		// forgets those that exited
+		void UpdateGames();
 
-		// For the Stop button's tooltip, e.g. "connected to NyxGame (process 1234)"
+		bool AreGamesRunning() const
+		{
+			return !Games.empty();
+		}
+
+		// For the Stop button's tooltip: one line per game, e.g. "Game 1: connected to NyxGame (process 1234)"
 		std::string GetGameLinkStatus() const;
 
 	private:
@@ -159,39 +161,21 @@ namespace Nyx::Editor
 		std::string SourceNavigationStatus;
 		bool bShowPreferences = false;
 
-		// The game started with Play
-		Nyx::ChildProcess GameProcess;
+		// The games started with Play that haven't exited yet, each with its own editor link
+		std::vector<std::unique_ptr<GameInstance>> Games;
 
-		// Whether the game was running at the last check, to notice when it exits by itself
-		bool bGameRunning = false;
-
-		// Set in Play's right-click menu: the game waits at startup until a debugger is attached
+		// Set in Play's right-click menu: how many games Play starts, and whether they wait at
+		// startup until a debugger is attached
+		int GameCount = 1;
+		static constexpr int MaxGameCount = 8;
 		bool bGameWaitsForDebugger = false;
 
-		// The game connects back to the editor on this port, passed to it as --editor-port.
-		// Listens from the first Play on.
-		Nyx::Net::Listener GameLinkListener;
-
-		// The editor link to the game started with Play, once the game said Hello
-		std::unique_ptr<Nyx::Engine::EditorLink> GameLink;
-
-		// Connections that haven't said Hello yet. The first whose Hello comes from the game's
-		// process becomes GameLink, so a program that connects and stays silent can't keep the
-		// game out.
-		std::vector<std::unique_ptr<Nyx::Engine::EditorLink>> GameLinkCandidates;
-
-		// Why the last link of this play session ended, for the Stop button's tooltip
-		std::string GameLinkCloseReason;
-
-		// Set while the game was asked to quit: when it gets ended instead
-		std::optional<std::chrono::steady_clock::time_point> GameQuitDeadline;
-		static constexpr std::chrono::seconds GameQuitTimeLimit{ 3 };
-
-		// The game's log and every message of the editor link
+		// The games' logs and every message of their editor links
 		GameLinkPanel GameLinkWindow;
 		bool bShowGameLink = true;
 
-		// Turns edits, undo and redo into messages for the game, from Play on; sent once linked
+		// Turns edits, undo and redo into messages for the games, from Play on. UpdateGames()
+		// copies them into each game's queue.
 		Nyx::Editor::GameLinkSubscriber GameEdits{ ActiveScene };
 	};
 }

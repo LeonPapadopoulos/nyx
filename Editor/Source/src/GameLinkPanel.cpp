@@ -53,10 +53,13 @@ namespace
 
 namespace Nyx::Editor
 {
-	void GameLinkPanel::AddMessage(ELinkDirection direction, const Nyx::Net::Message& message)
+	void GameLinkPanel::AddMessage(const std::string& gameName, ELinkDirection direction, const Nyx::Net::Message& message)
 	{
 		// Recording goes on while the tab is paused
-		Recorder.Record(direction, message);
+		if (EditorLinkRecorder* recorder = GetRecorder(gameName))
+		{
+			recorder->Record(direction, message);
+		}
 
 		if (direction == ELinkDirection::Received && message.Type == static_cast<uint16_t>(EEditorLinkMessage::LogLine))
 		{
@@ -67,6 +70,7 @@ namespace Nyx::Editor
 			{
 				LogEntry entry;
 				entry.TimeMs = line.TimeMs;
+				entry.GameName = gameName;
 				entry.Level = line.Level;
 				entry.LoggerName = std::move(line.LoggerName);
 				entry.Text = std::move(line.Text);
@@ -82,6 +86,7 @@ namespace Nyx::Editor
 		MessageEntry entry;
 		entry.Id = NextMessageId++;
 		entry.TimeMs = GetClockTimeMs();
+		entry.GameName = gameName;
 		entry.Direction = direction;
 		entry.Type = message.Type;
 		entry.Size = message.Payload.size();
@@ -103,7 +108,7 @@ namespace Nyx::Editor
 	void GameLinkPanel::AddGameLogEntry(LogEntry entry)
 	{
 		entry.Sequence = NextLogSequence++;
-		entry.SearchText = ToLowerCase(entry.LoggerName + " " + entry.Text);
+		entry.SearchText = ToLowerCase(entry.GameName + " " + entry.LoggerName + " " + entry.Text);
 		WarningCount += !entry.bSessionStart && entry.Level == ELogLevel::Warning ? 1 : 0;
 		ErrorCount += !entry.bSessionStart && entry.Level >= ELogLevel::Error ? 1 : 0;
 
@@ -153,7 +158,7 @@ namespace Nyx::Editor
 			Messages.push_back(std::move(marker));
 		}
 
-		// One file per play session
+		// One file per game and play session
 		if (bRecording)
 		{
 			StartRecording();
@@ -243,13 +248,14 @@ namespace Nyx::Editor
 
 		const ImGuiTableFlags flags = ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV |
 			ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingFixedFit;
-		if (!ImGui::BeginTable("##GameLog", 4, flags))
+		if (!ImGui::BeginTable("##GameLog", 5, flags))
 		{
 			return;
 		}
 
 		ImGui::TableSetupScrollFreeze(0, 1);
 		ImGui::TableSetupColumn("Time", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("00:00:00.000").x);
+		ImGui::TableSetupColumn("Game", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("Game 8").x);
 		ImGui::TableSetupColumn("Level", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("Critical").x);
 		ImGui::TableSetupColumn("Logger", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("ENGINE").x);
 		ImGui::TableSetupColumn("Text", ImGuiTableColumnFlags_WidthStretch);
@@ -269,10 +275,13 @@ namespace Nyx::Editor
 
 				if (entry.bSessionStart)
 				{
-					ImGui::TableSetColumnIndex(3);
+					ImGui::TableSetColumnIndex(4);
 					ImGui::TextDisabled("--- Play session started ---");
 					continue;
 				}
+
+				ImGui::TableNextColumn();
+				ImGui::TextUnformatted(entry.GameName.c_str());
 
 				ImGui::TableNextColumn();
 				ImGui::TextColored(GetLevelColor(entry.Level), "%s", GetLogLevelName(entry.Level));
@@ -375,7 +384,7 @@ namespace Nyx::Editor
 				StopRecording();
 			}
 		}
-		ImGui::SetItemTooltip("Records every message to a .nyxlinklog file in\n%s\nA new file per play session. NyxDump prints them.",
+		ImGui::SetItemTooltip("Records every message to a .nyxlinklog file in\n%s\nA new file per game and play session. NyxDump prints them.",
 			GetRecordingFolder().string().c_str());
 
 		if (!RecordingStatus.empty())
@@ -416,10 +425,11 @@ namespace Nyx::Editor
 
 		const ImGuiTableFlags flags = ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV |
 			ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingFixedFit;
-		if (ImGui::BeginTable("##Messages", 5, flags, ImVec2(0.0f, tableHeight)))
+		if (ImGui::BeginTable("##Messages", 6, flags, ImVec2(0.0f, tableHeight)))
 		{
 			ImGui::TableSetupScrollFreeze(0, 1);
 			ImGui::TableSetupColumn("Time", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("00:00:00.000").x);
+			ImGui::TableSetupColumn("Game", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("Game 8").x);
 			ImGui::TableSetupColumn("Direction", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("Direction").x);
 			ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("SetProperties  ").x);
 			ImGui::TableSetupColumn("Size", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("000000").x);
@@ -441,7 +451,7 @@ namespace Nyx::Editor
 					if (entry.bSessionStart)
 					{
 						ImGui::TextUnformatted(time.c_str());
-						ImGui::TableSetColumnIndex(4);
+						ImGui::TableSetColumnIndex(5);
 						ImGui::TextDisabled("--- Play session started ---");
 						ImGui::PopID();
 						continue;
@@ -451,6 +461,9 @@ namespace Nyx::Editor
 					{
 						SelectedMessageId = entry.Id == SelectedMessageId ? 0 : entry.Id;
 					}
+
+					ImGui::TableNextColumn();
+					ImGui::TextUnformatted(entry.GameName.c_str());
 
 					ImGui::TableNextColumn();
 					ImGui::TextUnformatted(GetDirectionText(entry.Direction));
@@ -486,7 +499,7 @@ namespace Nyx::Editor
 		}
 
 		// Read-only, but selectable, so fields can be copied
-		std::string text = message.Text.Name + " " + GetDirectionText(message.Direction) + ", " + std::to_string(message.Size) +
+		std::string text = message.Text.Name + " " + GetDirectionText(message.Direction) + " (" + message.GameName + "), " + std::to_string(message.Size) +
 			" bytes, at " + FormatClockTime(message.TimeMs) + "\n" + DetailsText;
 		NYX_UI(ImGui::InputTextMultiline("##MessageDetails", text.data(), text.size() + 1, ImVec2(-FLT_MIN, -FLT_MIN),
 			ImGuiInputTextFlags_ReadOnly));
@@ -546,22 +559,53 @@ namespace Nyx::Editor
 
 	void GameLinkPanel::StartRecording()
 	{
-		// e.g. GameLink_2026-10-09_22-15-03-123.nyxlinklog
+		// e.g. 2026-10-09_22-15-03-123
 		std::string stamp = FormatClockTime(GetClockTimeMs(), true);
 		std::replace(stamp.begin(), stamp.end(), ' ', '_');
 		std::replace(stamp.begin(), stamp.end(), ':', '-');
 		std::replace(stamp.begin(), stamp.end(), '.', '-');
 
-		const std::filesystem::path path = GetRecordingFolder() / ("GameLink_" + stamp + ".nyxlinklog");
-		bRecording = Recorder.Open(path, "NyxEditor");
-		RecordingStatus = bRecording ? "to " + path.filename().string() : "can't write to " + path.string();
+		// The files are opened with each game's first message, since the games aren't known yet
+		Recorders.clear();
+		RecordingStamp = stamp;
+		bRecording = true;
+		RecordingStatus = "to GameLink_" + RecordingStamp + "_<game>.nyxlinklog";
 	}
 
 	void GameLinkPanel::StopRecording()
 	{
-		Recorder.Close();
+		Recorders.clear();
 		bRecording = false;
 		RecordingStatus.clear();
+	}
+
+	EditorLinkRecorder* GameLinkPanel::GetRecorder(const std::string& gameName)
+	{
+		if (!bRecording)
+		{
+			return nullptr;
+		}
+
+		std::unique_ptr<EditorLinkRecorder>& recorder = Recorders[gameName];
+		if (!recorder)
+		{
+			// e.g. GameLink_2026-10-09_22-15-03-123_Game_2.nyxlinklog
+			std::string fileGameName = gameName;
+			for (char& c : fileGameName)
+			{
+				const bool bAllowed = std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_';
+				c = bAllowed ? c : '_';
+			}
+
+			const std::filesystem::path path = GetRecordingFolder() / ("GameLink_" + RecordingStamp + "_" + fileGameName + ".nyxlinklog");
+			recorder = std::make_unique<EditorLinkRecorder>();
+			if (!recorder->Open(path, "NyxEditor"))
+			{
+				RecordingStatus = "can't write to " + path.string();
+			}
+		}
+
+		return recorder->IsOpen() ? recorder.get() : nullptr;
 	}
 
 	bool GameLinkPanel::IsShown(const MessageEntry& entry) const
@@ -582,7 +626,7 @@ namespace Nyx::Editor
 			return FormatClockTime(entry.TimeMs) + " --- Play session started ---";
 		}
 
-		return FormatClockTime(entry.TimeMs) + " [" + GetLogLevelName(entry.Level) + "] " + entry.LoggerName + ": " + entry.Text;
+		return FormatClockTime(entry.TimeMs) + " " + entry.GameName + " [" + GetLogLevelName(entry.Level) + "] " + entry.LoggerName + ": " + entry.Text;
 	}
 
 	std::string GameLinkPanel::ToText(const MessageEntry& entry)
@@ -592,7 +636,8 @@ namespace Nyx::Editor
 			return FormatClockTime(entry.TimeMs) + "  --- Play session started ---\n";
 		}
 
-		std::string text = FormatClockTime(entry.TimeMs) + "  " + GetDirectionText(entry.Direction) + "  " + entry.Text.Name + " (" +
+		std::string text = FormatClockTime(entry.TimeMs) + "  " + entry.GameName + "  " + GetDirectionText(entry.Direction) + "  " +
+			entry.Text.Name + " (" +
 			std::to_string(entry.Size) + " bytes)";
 		if (!entry.Text.Summary.empty())
 		{
