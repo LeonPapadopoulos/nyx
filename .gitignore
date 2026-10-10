@@ -20,6 +20,12 @@ Design/StartupConcepts/*
 Design/Checkpoints/*
 Design/*.md
 
+# Editor
+Editor/*.md
+
 # Scenes
 **.nyxscene
 !Assets/Scenes/Default.nyxscene
+
+# Editor link recordings
+**.nyxlinklog
