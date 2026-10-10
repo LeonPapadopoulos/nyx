@@ -96,9 +96,10 @@ namespace Nyx::Editor
 		// Called before destroying the old registry, once its replacement is ready.
 		void ForgetPreviousScene();
 
-		// Play and Stop: the open scene runs in NyxGame, as separate programs, GameCount of them.
-		// Stop asks each game to quit, and ends those that don't within GameInstance::QuitTimeLimit.
-		void StartGames();
+		// Play and Stop: the open scene runs in NyxGame, as separate programs. Play starts one game
+		// with the first play setup; Play All one per setup marked for it, tiled on the editor's
+		// monitor. Stop asks each game to quit, and ends those that don't within GameInstance::QuitTimeLimit.
+		void StartGames(bool bPlayAll);
 		void StopGames();
 		void EndGamesNow();
 		void StopGamesBeforeEditorCloses();
@@ -112,8 +113,15 @@ namespace Nyx::Editor
 			return !Games.empty();
 		}
 
-		// For the Stop button's tooltip: one line per game, e.g. "Game 1: connected to NyxGame (process 1234)"
+		// For the Stop button's tooltip: one line per game, e.g. "Steam Deck: connected to NyxGame (process 1234)"
 		std::string GetGameLinkStatus() const;
+
+		// Play's right-click menu, and the Play Setups window that edits the setups
+		void DrawPlayOptionsMenu();
+		void DrawPlaySetupsWindow();
+
+		// Saves the preferences, logging if that fails
+		void SavePreferences();
 
 	private:
 		std::unique_ptr<Nyx::Editor::EditorAssetActivationContext> AssetActivationContext;
@@ -164,11 +172,11 @@ namespace Nyx::Editor
 		// The games started with Play that haven't exited yet, each with its own editor link
 		std::vector<std::unique_ptr<GameInstance>> Games;
 
-		// Set in Play's right-click menu: how many games Play starts, and whether they wait at
-		// startup until a debugger is attached
-		int GameCount = 1;
-		static constexpr int MaxGameCount = 8;
+		// Set in Play's right-click menu: the games wait at startup until a debugger is attached
 		bool bGameWaitsForDebugger = false;
+
+		// The play setups themselves are in Preferences
+		bool bShowPlaySetups = false;
 
 		// The games' logs and every message of their editor links
 		GameLinkPanel GameLinkWindow;

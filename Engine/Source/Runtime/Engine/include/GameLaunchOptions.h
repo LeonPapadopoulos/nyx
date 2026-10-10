@@ -57,7 +57,7 @@ namespace Nyx::Engine
 	// { "Scene.nyxscene", "--window-size", "1280x800", "--window-pos", "0,0" }
 	std::vector<std::string> MakeGameArguments(const GameLaunchOptions& options);
 
-	// Reads the arguments (without the program name) as MakeGameArguments() writes them. An
+	// Reads the arguments (UTF-8, without the program name) as MakeGameArguments() writes them. An
 	// option with a missing or malformed value is left unset, and outWarnings says why, so the
 	// game can still run with its default.
 	GameLaunchOptions ParseGameArguments(const std::vector<std::string_view>& arguments, std::vector<std::string>& outWarnings);

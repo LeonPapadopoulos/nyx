@@ -12,8 +12,45 @@
 #include <string_view>
 #include <vector>
 
+#if defined(_WIN32)
+	#ifndef NOMINMAX
+		#define NOMINMAX
+	#endif
+	#include <Windows.h>
+	#include <shellapi.h>
+#endif
+
 namespace Nyx::Game
 {
+	// The arguments without the program name, in UTF-8
+	std::vector<std::string> GetArguments(int argc, char** argv)
+	{
+#if defined(_WIN32)
+		// main() gets them in the system's code page, which can't hold every character of a path or
+		// of a play setup's name. The wide command line has them all.
+		int count = 0;
+		if (LPWSTR* wideArguments = ::CommandLineToArgvW(::GetCommandLineW(), &count))
+		{
+			std::vector<std::string> arguments;
+			for (int i = 1; i < count; ++i)
+			{
+				const int length = ::WideCharToMultiByte(CP_UTF8, 0, wideArguments[i], -1, nullptr, 0, nullptr, nullptr);
+				std::string argument(static_cast<size_t>(length > 0 ? length - 1 : 0), '\0');
+				if (length > 1)
+				{
+					::WideCharToMultiByte(CP_UTF8, 0, wideArguments[i], -1, argument.data(), length, nullptr, nullptr);
+				}
+				arguments.push_back(std::move(argument));
+			}
+
+			::LocalFree(wideArguments);
+			return arguments;
+		}
+#endif
+
+		return std::vector<std::string>(argv + (argc > 0 ? 1 : 0), argv + argc);
+	}
+
 	Nyx::Engine::ApplicationSpecs MakeApplicationSpecs(const Nyx::Engine::GameLaunchOptions& options)
 	{
 		Nyx::Engine::ApplicationSpecs specs{ .Window = { .Title = "Nyx Game", .bUseCustomTitlebar = false, .bShowStartupBanner = false } };
@@ -73,7 +110,8 @@ namespace Nyx::Game
 // GameLaunchOptions.h reads these, and the editor writes them with the same code.
 Nyx::Engine::Application* Nyx::Engine::CreateApplication(int argc, char** argv)
 {
-	const std::vector<std::string_view> arguments(argv + (argc > 0 ? 1 : 0), argv + argc);
+	const std::vector<std::string> utf8Arguments = Nyx::Game::GetArguments(argc, argv);
+	const std::vector<std::string_view> arguments(utf8Arguments.begin(), utf8Arguments.end());
 	std::vector<std::string> warnings;
 	const Nyx::Engine::GameLaunchOptions options = Nyx::Engine::ParseGameArguments(arguments, warnings);
 

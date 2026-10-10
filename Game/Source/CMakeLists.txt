@@ -22,6 +22,7 @@ target_include_directories(NyxGame
 
 target_link_libraries(NyxGame
 	PRIVATE NyxEngine
+	shell32 # CommandLineToArgvW, for the command line in UTF-8
 )
 
 # The game includes component headers, which include their generated reflection code.

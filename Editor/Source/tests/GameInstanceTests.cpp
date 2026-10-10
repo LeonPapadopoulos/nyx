@@ -187,9 +187,11 @@ namespace
 		UpdateUntil(games,
 			[&]()
 			{
-				return IsLinked(first) && IsLinked(second) && !crashing.IsRunning();
+				// Linked, and their first log line arrived, which comes right after the link
+				return IsLinked(first) && IsLinked(second) && !crashing.IsRunning() && lines.Has("Game 1", "started as Game 1") &&
+					lines.Has("Game 2", "started as Game 2");
 			},
-			"games 1 and 2 are linked and game 3 crashed");
+			"games 1 and 2 are linked and said so, and game 3 crashed");
 
 		Require(lines.Has("Game 1", "started as Game 1") && !lines.Has("Game 2", "started as Game 1"),
 			"Each game's log lines should arrive under its own name");

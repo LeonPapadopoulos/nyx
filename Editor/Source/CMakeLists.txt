@@ -5,6 +5,7 @@ set(NYX_EDITOR_SOURCES
     main.cpp
     src/EditorLayer.cpp
     src/GameInstance.cpp
+    src/PlayWall.cpp
     src/GameLinkPanel.cpp
     src/GameLinkSubscriber.cpp
     src/EditorPreferences.cpp
@@ -49,6 +50,7 @@ set(NYX_EDITOR_HEADERS
     src/EditorPCH.h
     include/EditorLayer.h
     include/GameInstance.h
+    include/PlayWall.h
     include/GameLinkPanel.h
     include/GameLinkSubscriber.h
     include/EditorPreferences.h
@@ -189,4 +191,13 @@ if(BUILD_TESTING)
     add_dependencies(NyxGameInstanceTests NyxGeneratedReflection)
     set_property(TARGET NyxGameInstanceTests PROPERTY FOLDER "Tests")
     add_test(NAME NyxGameInstanceTests COMMAND NyxGameInstanceTests)
+
+    # Play setups and Play All: saving setups, tiling the windows, choosing the games
+    add_executable(NyxPlayWallTests tests/PlayWallTests.cpp src/PlayWall.cpp src/EditorPreferences.cpp)
+    target_include_directories(NyxPlayWallTests PRIVATE include src ${CMAKE_CURRENT_BINARY_DIR})
+    target_link_libraries(NyxPlayWallTests PRIVATE NyxEditorEngine ole32 shell32)
+    target_precompile_headers(NyxPlayWallTests REUSE_FROM NyxEditor)
+    add_dependencies(NyxPlayWallTests NyxGeneratedReflection)
+    set_property(TARGET NyxPlayWallTests PROPERTY FOLDER "Tests")
+    add_test(NAME NyxPlayWallTests COMMAND NyxPlayWallTests)
 endif()

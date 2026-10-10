@@ -90,6 +90,11 @@ namespace
 		const std::u8string text = path.u8string();
 		return std::string(text.begin(), text.end());
 	}
+
+	std::filesystem::path FromUtf8(std::string_view text)
+	{
+		return std::filesystem::path(std::u8string(text.begin(), text.end()));
+	}
 }
 
 namespace Nyx::Engine
@@ -177,7 +182,7 @@ namespace Nyx::Engine
 			{
 				if (const std::optional<std::string_view> value = takeValue())
 				{
-					options.LinkLogPath = std::string(*value);
+					options.LinkLogPath = FromUtf8(*value);
 				}
 				else
 				{
@@ -220,8 +225,7 @@ namespace Nyx::Engine
 			}
 			else
 			{
-				// Like the arguments the game gets from main(): in the system's code page
-				options.ScenePath = std::string(argument);
+				options.ScenePath = FromUtf8(argument);
 			}
 		}
 

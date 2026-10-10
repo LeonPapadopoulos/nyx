@@ -73,6 +73,20 @@ namespace
 		Require(read.WindowTitle == written.WindowTitle, "Window title differs after a round trip");
 	}
 
+	// Paths and titles beyond ASCII, e.g. a play setup named in German: everything is UTF-8
+	void TestNonAsciiRoundTrip()
+	{
+		GameLaunchOptions written;
+		written.ScenePath = std::filesystem::path(u8"C:/Spiele/Übung ü/Größe.nyxscene");
+		written.WindowTitle = reinterpret_cast<const char*>(u8"Nyx Game - Größe ✓");
+
+		std::vector<std::string> warnings;
+		const GameLaunchOptions read = Parse(MakeGameArguments(written), warnings);
+		Require(warnings.empty(), "A non-ASCII round trip shouldn't warn");
+		Require(read.ScenePath == written.ScenePath, "A non-ASCII scene path differs after a round trip");
+		Require(read.WindowTitle == written.WindowTitle, "A non-ASCII title differs after a round trip");
+	}
+
 	void TestWindowValues()
 	{
 		std::vector<std::string> warnings;
@@ -130,6 +144,7 @@ int main()
 	{
 		TestDefaultsMakeNoArguments();
 		TestRoundTrip();
+		TestNonAsciiRoundTrip();
 		TestWindowValues();
 		TestMissingAndBadValues();
 		TestUnknownOption();
