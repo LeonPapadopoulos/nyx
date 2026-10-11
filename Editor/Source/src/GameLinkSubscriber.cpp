@@ -50,7 +50,8 @@ namespace
 		// As the undo step names it; the entity may be gone afterwards, or in another slot
 		EntityGuid Guid;
 
-		// Added, deleted, or brought back by undo or redo
+		// Added, deleted, brought back by undo or redo, or given or rid of a component: sent whole
+		// (CreateEntity), or as gone (DeleteEntity)
 		bool bAddedOrDeleted = false;
 
 		// By component. An edit of a struct's field counts as an edit of the component's property
@@ -189,6 +190,22 @@ namespace Nyx::Editor
 				if (GetSceneEntityGuid(deleteObject->Target).IsValid())
 				{
 					FindOrAddEdit(edits, deleteObject->Target).bAddedOrDeleted = true;
+				}
+			}
+			else
+			{
+				// A component added or removed: the game gets the whole entity, which replaces its
+				// copy, since SetProperties can't add or remove components
+				const ObjectRef target = std::visit(
+					[](const auto& payload)
+					{
+						return payload.Target;
+					},
+					change.Payload);
+
+				if (GetSceneEntityGuid(target).IsValid())
+				{
+					FindOrAddEdit(edits, target).bAddedOrDeleted = true;
 				}
 			}
 		}

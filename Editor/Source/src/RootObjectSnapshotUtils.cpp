@@ -6,6 +6,53 @@
 
 namespace Nyx::Editor
 {
+	SubobjectSnapshot CaptureSubobjectSnapshot(const void* object, const Nyx::Reflection::TypeMetadata& typeMetadata)
+	{
+		// As a property block, as scene files store components, so struct properties are kept
+		Nyx::Engine::BinaryWriter writer;
+		if (!Nyx::Engine::ReflectedArchiveSerializer::SerializeObject(writer, object, typeMetadata))
+		{
+			LOG_WARNING("Undo: a property of {0} can't be kept; undo may not bring it back", typeMetadata.Name);
+		}
+
+		return SubobjectSnapshot{
+			.TypeMetadata = &typeMetadata,
+			.Properties = writer.GetBytes() };
+	}
+
+	bool RestoreSubobjectSnapshot(
+		ITransactionDomain& domain,
+		EditorTransactionContext& context,
+		const ObjectRef& root,
+		const SubobjectSnapshot& snapshot)
+	{
+		if (!root.IsValid() || !snapshot.TypeMetadata || !domain.EnsureSubobject(context, root, *snapshot.TypeMetadata))
+		{
+			return false;
+		}
+
+		void* object = domain.ResolveMutable(context, root, *snapshot.TypeMetadata);
+		if (!object)
+		{
+			return false;
+		}
+
+		// Properties that aren't saved (e.g. a MeshRenderer's loaded mesh) are left alone;
+		// ComponentPostLoadSubscriber fills them in
+		Nyx::Engine::ReadWarnings warnings;
+		Nyx::Engine::BinaryReader reader;
+		reader.LoadFromMemory(snapshot.Properties);
+		const bool bRead = Nyx::Engine::ReflectedArchiveSerializer::DeserializeObject(reader, object, *snapshot.TypeMetadata, warnings);
+		if (!bRead)
+		{
+			LOG_WARNING("Undo: {0} couldn't be brought back completely", snapshot.TypeMetadata->Name);
+		}
+
+		// Snapshots are written and read by the same build, so this only happens if something is broken
+		warnings.Log("Undo");
+		return bRead;
+	}
+
 	RootObjectSnapshot CaptureRootObjectSnapshot(
 		ITransactionDomain& domain,
 		EditorTransactionContext& context,
@@ -29,16 +76,7 @@ namespace Nyx::Editor
 				continue;
 			}
 
-			// As a property block, as scene files store components, so struct properties are kept
-			Nyx::Engine::BinaryWriter writer;
-			if (!Nyx::Engine::ReflectedArchiveSerializer::SerializeObject(writer, view.Object, *view.TypeMetadata))
-			{
-				LOG_WARNING("Undo: a property of {0} can't be kept; undo may not bring it back", view.TypeMetadata->Name);
-			}
-
-			snapshot.Subobjects.push_back(SubobjectSnapshot{
-				.TypeMetadata = view.TypeMetadata,
-				.Properties = writer.GetBytes() });
+			snapshot.Subobjects.push_back(CaptureSubobjectSnapshot(view.Object, *view.TypeMetadata));
 		}
 
 		return snapshot;
@@ -55,37 +93,11 @@ namespace Nyx::Editor
 			return false;
 		}
 
-		// Ensure + restore every subobject from the snapshot. Properties that aren't saved (e.g. a
-		// MeshRenderer's loaded mesh) are left alone; ComponentPostLoadSubscriber fills them in.
-		Nyx::Engine::ReadWarnings warnings;
+		// Ensure + restore every subobject from the snapshot
 		for (const SubobjectSnapshot& subobjectSnapshot : snapshot.Subobjects)
 		{
-			if (!subobjectSnapshot.TypeMetadata)
-			{
-				continue;
-			}
-
-			if (!domain.EnsureSubobject(context, root, *subobjectSnapshot.TypeMetadata))
-			{
-				continue;
-			}
-
-			void* object = domain.ResolveMutable(context, root, *subobjectSnapshot.TypeMetadata);
-			if (!object)
-			{
-				continue;
-			}
-
-			Nyx::Engine::BinaryReader reader;
-			reader.LoadFromMemory(subobjectSnapshot.Properties);
-			if (!Nyx::Engine::ReflectedArchiveSerializer::DeserializeObject(reader, object, *subobjectSnapshot.TypeMetadata, warnings))
-			{
-				LOG_WARNING("Undo: {0} couldn't be brought back completely", subobjectSnapshot.TypeMetadata->Name);
-			}
+			RestoreSubobjectSnapshot(domain, context, root, subobjectSnapshot);
 		}
-
-		// Snapshots are written and read by the same build, so this only happens if something is broken
-		warnings.Log("Undo");
 
 		// Remove subobjects that exist now but are not present in the snapshot.
 		std::vector<ReflectedObjectView> currentSubobjects;

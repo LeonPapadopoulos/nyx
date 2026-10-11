@@ -2,8 +2,10 @@
 // that applies them ends up like the editor's after every step.
 #include "AssetReference.h"
 #include "CameraComponent.h"
+#include "ComponentEdits.h"
 #include "ComponentPostLoadSubscriber.h"
 #include "ComponentRegistration.h"
+#include "ComponentTypeRegistry.h"
 #include "IAssetResolver.h"
 #include "InspectorDrawContext.h"
 #include "EditorLinkMessages.h"
@@ -523,6 +525,80 @@ namespace
 		Require(test.TakeSent() == std::vector{ EEditorLinkMessage::SetProperties }, "The details panel's drag wasn't previewed");
 	}
 
+	const ComponentTypeOps& GetComponentOps(const Nyx::Reflection::TypeMetadata& type)
+	{
+		const ComponentTypeOps* ops = ComponentTypeRegistry::Get().FindByTypeMetadata(type);
+		Require(ops != nullptr, std::string("Component type isn't registered: ") + type.Name);
+		return *ops;
+	}
+
+	// Add Component and Remove Component in the details panel: undoable, and the game gets the
+	// whole entity each time, since SetProperties can't add or remove components
+	void TestAddingAndRemovingComponents()
+	{
+		EditorAndGame test;
+		Registry& world = test.Scene.GetRegistry();
+		const Entity lamp = test.Scene.CreateEntity("Lamp");
+		world.Add<TransformComponent>(lamp, TransformComponent{});
+		const ComponentTypeOps& meshRendererOps = GetComponentOps(Nyx::Reflection::GetTypeMetadata<MeshRendererComponent>());
+
+		test.Play();
+		test.SendEdits("Play");
+		test.TakeSent();
+
+		// Add: a default MeshRenderer, sent as the whole entity
+		Require(AddComponent(test.Scene, test.Transactions, lamp, meshRendererOps), "Adding a MeshRenderer failed");
+		Require(world.Has<MeshRendererComponent>(lamp), "The MeshRenderer wasn't added");
+		Require(!AddComponent(test.Scene, test.Transactions, lamp, meshRendererOps), "A second MeshRenderer was added");
+		test.SendEdits("Add MeshRenderer");
+		Require(test.TakeSent() == std::vector{ EEditorLinkMessage::CreateEntity }, "Adding a component isn't sent as CreateEntity");
+
+		// Give it a mesh, then remove it: undo has to bring the mesh back
+		test.Edit(lamp, world.Get<MeshRendererComponent>(lamp).Mesh, "Edit Property",
+			[](AssetReference& mesh)
+			{
+				mesh.Type = "Mesh";
+				mesh.Path = "Meshes/Cube.nyxmesh";
+			},
+			MeshLocation());
+		test.SendEdits("Mesh path");
+		test.TakeSent();
+
+		Require(RemoveComponent(test.Scene, test.Transactions, lamp, meshRendererOps), "Removing the MeshRenderer failed");
+		Require(!world.Has<MeshRendererComponent>(lamp), "The MeshRenderer wasn't removed");
+		Require(!RemoveComponent(test.Scene, test.Transactions, lamp, meshRendererOps), "A missing MeshRenderer was removed");
+		test.SendEdits("Remove MeshRenderer");
+		Require(test.TakeSent() == std::vector{ EEditorLinkMessage::CreateEntity }, "Removing a component isn't sent as CreateEntity");
+
+		Require(test.Transactions.Undo(test.Context), "Undo of the remove failed");
+		Require(world.Has<MeshRendererComponent>(lamp) && world.Get<MeshRendererComponent>(lamp).Mesh.Path == "Meshes/Cube.nyxmesh",
+			"Undoing the remove didn't bring the MeshRenderer back with its mesh");
+		Require(world.Get<MeshRendererComponent>(lamp).MeshAsset == reinterpret_cast<Nyx::Mesh*>(test.Assets.Fake("Meshes/Cube.nyxmesh")),
+			"Undoing the remove didn't load the mesh");
+		test.SendEdits("Undo the remove");
+
+		// Undo the mesh path and the add, then redo all three
+		Require(test.Transactions.Undo(test.Context) && test.Transactions.Undo(test.Context), "Undo of the path and the add failed");
+		Require(!world.Has<MeshRendererComponent>(lamp), "Undoing the add didn't remove the MeshRenderer");
+		test.SendEdits("Undo the path and the add");
+
+		Require(test.Transactions.Redo(test.Context) && world.Has<MeshRendererComponent>(lamp), "Redo of the add failed");
+		Require(test.Transactions.Redo(test.Context) && world.Get<MeshRendererComponent>(lamp).Mesh.Path == "Meshes/Cube.nyxmesh",
+			"Redo of the mesh path failed");
+		Require(test.Transactions.Redo(test.Context) && !world.Has<MeshRendererComponent>(lamp), "Redo of the remove failed");
+		test.SendEdits("Redo all three");
+
+		// The guid and the name stay: undo, files and the game find entities by guid
+		for (const Nyx::Reflection::TypeMetadata* type :
+			{ &Nyx::Reflection::GetTypeMetadata<GuidComponent>(), &Nyx::Reflection::GetTypeMetadata<NameComponent>() })
+		{
+			const ComponentTypeOps& ops = GetComponentOps(*type);
+			Require(!CanAddOrRemoveComponent(ops), std::string(type->Name) + " should be neither addable nor removable");
+			Require(!RemoveComponent(test.Scene, test.Transactions, lamp, ops) && ops.Has(world, lamp),
+				std::string(type->Name) + " was removed");
+		}
+	}
+
 	// The editor reads and writes rotations normalized, through the engine's property access
 	void TestReflectedPropertyAccess()
 	{
@@ -601,6 +677,7 @@ int main()
 		TestUndoKeepsWholeComponents();
 		TestEditsLoadAssets();
 		TestValuesWhileDragging();
+		TestAddingAndRemovingComponents();
 		TestReflectedPropertyAccess();
 		TestSessions();
 

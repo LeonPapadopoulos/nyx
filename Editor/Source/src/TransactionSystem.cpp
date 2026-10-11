@@ -168,8 +168,43 @@ namespace Nyx::Editor
 			ApplyDeleteObjectChange(context, std::get<DeleteObjectChange>(change.Payload), bRedo);
 			break;
 
+		case EChangeKind::AddSubobject:
+		{
+			// Redo adds it again, undo removes it
+			const AddSubobjectChange& add = std::get<AddSubobjectChange>(change.Payload);
+			ApplySubobjectChange(context, add.Target, add.AfterAdd, bRedo);
+			break;
+		}
+
+		case EChangeKind::RemoveSubobject:
+		{
+			// Redo removes it again, undo brings it back
+			const RemoveSubobjectChange& remove = std::get<RemoveSubobjectChange>(change.Payload);
+			ApplySubobjectChange(context, remove.Target, remove.BeforeRemove, !bRedo);
+			break;
+		}
+
 		default:
 			break;
+		}
+	}
+
+	void TransactionSystem::ApplySubobjectChange(
+		EditorTransactionContext& context, const ObjectRef& target, const SubobjectSnapshot& subobject, bool bAdd)
+	{
+		ITransactionDomain* domain = FindDomain(target.Domain);
+		if (!domain || !subobject.TypeMetadata)
+		{
+			return;
+		}
+
+		if (bAdd)
+		{
+			RestoreSubobjectSnapshot(*domain, context, target, subobject);
+		}
+		else
+		{
+			domain->RemoveSubobject(context, target, *subobject.TypeMetadata);
 		}
 	}
 

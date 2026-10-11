@@ -9,6 +9,7 @@ set(NYX_EDITOR_SOURCES
     src/GameLinkPanel.cpp
     src/GameLinkSubscriber.cpp
     src/ComponentPostLoadSubscriber.cpp
+    src/ComponentEdits.cpp
     src/EditorPreferences.cpp
     src/ImGuiDebugTools.cpp
     src/ReflectionSourceRegistry.cpp
@@ -55,6 +56,7 @@ set(NYX_EDITOR_HEADERS
     include/GameLinkPanel.h
     include/GameLinkSubscriber.h
     include/ComponentPostLoadSubscriber.h
+    include/ComponentEdits.h
     include/EditorPreferences.h
     include/ImGuiDebugTools.h
     include/ReflectionSourceRegistry.h
@@ -175,7 +177,7 @@ if(BUILD_TESTING)
 
     # Edits, undo and redo turned into live edit messages, and applied to a second world as the game does
     add_executable(NyxGameLinkSubscriberTests tests/GameLinkSubscriberTests.cpp
-        src/GameLinkSubscriber.cpp src/ComponentPostLoadSubscriber.cpp src/TransactionSystem.cpp src/TransactionDiffUtil.cpp src/SceneEntityTransactionDomain.cpp
+        src/GameLinkSubscriber.cpp src/ComponentPostLoadSubscriber.cpp src/ComponentEdits.cpp src/TransactionSystem.cpp src/TransactionDiffUtil.cpp src/SceneEntityTransactionDomain.cpp
         src/RootObjectSnapshotUtils.cpp src/ReflectedObjectSerialization.cpp src/ReflectedPropertyAccess.cpp
         src/SceneDocument.cpp src/InspectorTargetId.cpp src/InspectorDrawContext.cpp)
     target_include_directories(NyxGameLinkSubscriberTests PRIVATE include src ${CMAKE_CURRENT_BINARY_DIR})

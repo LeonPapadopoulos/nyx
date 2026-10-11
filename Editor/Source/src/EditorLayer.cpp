@@ -8,6 +8,7 @@
 #include "MeshRendererComponent.h"
 #include "TransformComponent.h"
 #include "NameComponent.h"
+#include "ComponentEdits.h"
 #include "ComponentTypeRegistry.h"
 #include "GameLaunchOptions.h"
 #include "PlayWall.h"
@@ -1230,6 +1231,9 @@ namespace Nyx::Editor
 		DetailsPanelContext.CurrentTargetId = Nyx::Editor::MakeInspectorTargetId(selectedEntity);
 		DetailsPanelContext.CurrentObjectRef = Nyx::Editor::MakeSceneEntityRef(ActiveScene, selectedEntity);
 
+		// Removed after the loop, so it isn't drawn after it is gone
+		const Nyx::Engine::ComponentTypeOps* componentToRemove = nullptr;
+
 		// One collapsible section per component of the entity, showing its reflected properties
 		for (const Nyx::Engine::ComponentTypeOps& componentType : Nyx::Engine::ComponentTypeRegistry::Get().GetAll())
 		{
@@ -1243,7 +1247,28 @@ namespace Nyx::Editor
 			ImGui::PushID(displayName);
 			UI::SourceDeclarationScope componentSource(ReflectionSourceRegistry::Get().Find(*componentType.TypeMetadata));
 
-			if (NYX_UI(ImGui::CollapsingHeader(displayName, ImGuiTreeNodeFlags_DefaultOpen)))
+			const bool bOpen = NYX_UI(ImGui::CollapsingHeader(displayName, ImGuiTreeNodeFlags_DefaultOpen));
+
+			// Right-click on the header: Remove, except for the guid and name every entity keeps
+			if (Nyx::Editor::CanAddOrRemoveComponent(componentType))
+			{
+				ImGui::SetItemTooltip("Right-click to remove");
+				if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
+				{
+					ImGui::OpenPopup("##ComponentMenu");
+				}
+
+				if (Nyx::UI::BeginPopup("##ComponentMenu"))
+				{
+					if (NYX_UI(ImGui::MenuItem("Remove Component")))
+					{
+						componentToRemove = &componentType;
+					}
+					ImGui::EndPopup();
+				}
+			}
+
+			if (bOpen)
 			{
 				// The component's own properties; the drawer extends the location for structs inside it
 				DetailsPanelContext.CurrentLocation = {};
@@ -1251,6 +1276,56 @@ namespace Nyx::Editor
 			}
 
 			ImGui::PopID();
+		}
+
+		// The component types the entity doesn't have yet
+		NYX_UI(ImGui::Spacing());
+		if (NYX_UI(ImGui::Button("Add Component", ImVec2(-FLT_MIN, 0.0f))))
+		{
+			ImGui::OpenPopup("##AddComponent");
+		}
+
+		const Nyx::Engine::ComponentTypeOps* componentToAdd = nullptr;
+		if (Nyx::UI::BeginPopup("##AddComponent"))
+		{
+			bool bAnyMissing = false;
+			for (const Nyx::Engine::ComponentTypeOps& componentType : Nyx::Engine::ComponentTypeRegistry::Get().GetAll())
+			{
+				if (!Nyx::Editor::CanAddOrRemoveComponent(componentType) || componentType.Has(world, selectedEntity))
+				{
+					continue;
+				}
+
+				bAnyMissing = true;
+				if (NYX_UI(ImGui::MenuItem(componentType.TypeMetadata->DisplayName)))
+				{
+					componentToAdd = &componentType;
+				}
+			}
+
+			if (!bAnyMissing)
+			{
+				NYX_UI(ImGui::TextDisabled("The entity has every component"));
+			}
+			ImGui::EndPopup();
+		}
+
+		// Adding or removing can move other components of that type in memory, so edits in progress,
+		// which point at components, are dropped first. A click on a menu has ended them already.
+		if (componentToAdd || componentToRemove)
+		{
+			DetailsPanelContext.CancelPendingEdits();
+			TransformGizmoInstance.CancelInteraction();
+		}
+
+		if (componentToAdd)
+		{
+			Nyx::Editor::AddComponent(ActiveScene, Transactions, selectedEntity, *componentToAdd);
+		}
+
+		if (componentToRemove)
+		{
+			Nyx::Editor::RemoveComponent(ActiveScene, Transactions, selectedEntity, *componentToRemove);
 		}
 
 		ImGui::PopID();

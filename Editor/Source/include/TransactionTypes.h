@@ -15,7 +15,9 @@ namespace Nyx::Editor
 	{
 		SetValue = 0,
 		AddObject,
-		DeleteObject
+		DeleteObject,
+		AddSubobject,
+		RemoveSubobject
 	};
 
 	// Where an object inside a root object is: in which subobject (component), and through which
@@ -57,10 +59,27 @@ namespace Nyx::Editor
 		RootObjectSnapshot BeforeDelete;
 	};
 
+	// A subobject (component) added to a root object (entity); redo adds it again as it was
+	// right after being added
+	struct AddSubobjectChange
+	{
+		ObjectRef Target{};
+		SubobjectSnapshot AfterAdd;
+	};
+
+	// A subobject removed from a root object; undo brings it back as it was
+	struct RemoveSubobjectChange
+	{
+		ObjectRef Target{};
+		SubobjectSnapshot BeforeRemove;
+	};
+
 	using ChangePayload = std::variant<
 		SetValueChange,
 		AddObjectChange,
-		DeleteObjectChange>;
+		DeleteObjectChange,
+		AddSubobjectChange,
+		RemoveSubobjectChange>;
 
 	struct Change
 	{

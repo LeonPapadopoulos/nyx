@@ -35,6 +35,9 @@ namespace Nyx::Editor
 		void ApplyAddObjectChange(EditorTransactionContext& context, const AddObjectChange& change, bool bRedo);
 		void ApplyDeleteObjectChange(EditorTransactionContext& context, const DeleteObjectChange& change, bool bRedo);
 
+		// Adds the subobject with the snapshot's values, or removes it
+		void ApplySubobjectChange(EditorTransactionContext& context, const ObjectRef& target, const SubobjectSnapshot& subobject, bool bAdd);
+
 		ITransactionDomain* FindDomain(EObjectDomain domain);
 
 	private:
