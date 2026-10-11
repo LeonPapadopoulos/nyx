@@ -30,6 +30,9 @@ namespace Nyx::Editor
 
 		void Draw(bool& bOpen);
 
+		// The game's last log lines, oldest first, one per line, as the Game Log tab copies them
+		std::string GetLastLogLines(const std::string& gameName, size_t count) const;
+
 		// Where recordings go: a "LinkLogs" folder next to the editor
 		static std::filesystem::path GetRecordingFolder();
 

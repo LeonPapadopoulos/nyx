@@ -1,6 +1,7 @@
 #pragma once
 
 #include "BinaryArchive.h"
+#include "CrashHandler.h"
 #include "EntityGuid.h"
 #include "NetConnection.h"
 
@@ -33,6 +34,7 @@ namespace Nyx::Engine
 		SetProperties = 4,
 		CreateEntity = 5,
 		DeleteEntity = 6,
+		Crash = 7,
 	};
 
 	// The first message in both directions. Its layout never changes, so any two versions can
@@ -140,6 +142,18 @@ namespace Nyx::Engine
 		static constexpr EEditorLinkMessage Type = EEditorLinkMessage::DeleteEntity;
 
 		EntityGuid Entity;
+
+		void Write(BinaryWriter& writer) const;
+		bool Read(BinaryReader& reader);
+	};
+
+	// Game to editor, from the crash handler: the game is about to end because of an exception
+	// nothing caught. The editor shows it on a crash card, with a Restart button.
+	struct CrashMessage
+	{
+		static constexpr EEditorLinkMessage Type = EEditorLinkMessage::Crash;
+
+		Nyx::CrashReport Report;
 
 		void Write(BinaryWriter& writer) const;
 		bool Read(BinaryReader& reader);

@@ -58,6 +58,8 @@ The editor's *Game Link* window (*Window > Game Link*) shows the games' log line
 
 `NyxGame.exe` also runs on its own: `NyxGame.exe [scene file] [--window-size <width>x<height>] [--window-pos <x>,<y>] [--window-title <text>]`. The size is that of the picture, without titlebar and borders; the position is where the window's outer top-left corner goes, and may be negative on a monitor left of or above the main one. `NyxGameLaunchOptionsTests` tests the game's command line.
 
+When a game crashes, it sends its call stack to the editor before it ends, and the editor's *Game Crashed* window shows a card for it: what happened, the call stack with files and lines, the game's last log lines, and **Restart** (the same game again, with the scene as it is now), **Copy** and **Dismiss**. A game that crashes before it is linked still gets a card, with its exit code. In Debug builds, Ctrl+Alt+Shift+C in a game window crashes it on purpose, to try this. `NyxGameInstanceTests` crashes a stand-in game for real and checks the report.
+
 To see what a scene file or a link recording contains, build `NyxDump` and print the file with it, e.g. from the repository folder: `Build\Windows\Binaries\Debug\NyxDump.exe Assets\Scenes\Default.nyxscene`, or a `.nyxlinklog` file the same way.
 
 ## Project layout

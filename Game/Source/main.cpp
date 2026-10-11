@@ -5,7 +5,9 @@
 #include "GameLayer.h"
 #include "Paths.h"
 #include "ChildProcess.h"
+#include "CrashHandler.h"
 
+#include <cstdio>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -110,6 +112,17 @@ namespace Nyx::Game
 // GameLaunchOptions.h reads these, and the editor writes them with the same code.
 Nyx::Engine::Application* Nyx::Engine::CreateApplication(int argc, char** argv)
 {
+	// A crash shows in the game's console, and on a crash card in the editor that started it.
+	// Written straight to the console rather than logged: the logger may be what crashed.
+	Nyx::InstallCrashHandler(
+		[](const Nyx::CrashReport& report)
+		{
+			const std::string text = "The game crashed: " + Nyx::FormatCrashReport(report) + "\n";
+			std::fputs(text.c_str(), stderr);
+			std::fflush(stderr);
+			Nyx::Game::EditorLinkLayer::SendCrashReport(report);
+		});
+
 	const std::vector<std::string> utf8Arguments = Nyx::Game::GetArguments(argc, argv);
 	const std::vector<std::string_view> arguments(utf8Arguments.begin(), utf8Arguments.end());
 	std::vector<std::string> warnings;

@@ -396,6 +396,50 @@ namespace Nyx::Engine
 		return reader.ReadUInt64(Entity.Value);
 	}
 
+	// A crash report has at most this many frames (the crash handler sends at most 64), so
+	// damaged data can't make the reader allocate a lot
+	constexpr uint32_t MaxCrashStackFrames = 256;
+
+	void CrashMessage::Write(BinaryWriter& writer) const
+	{
+		writer.WriteUInt32(Report.ExceptionCode);
+		writer.WriteString(Report.Description);
+
+		const uint32_t frameCount = static_cast<uint32_t>((std::min)(Report.Frames.size(), static_cast<size_t>(MaxCrashStackFrames)));
+		writer.WriteUInt32(frameCount);
+		for (uint32_t i = 0; i < frameCount; ++i)
+		{
+			const CrashStackFrame& frame = Report.Frames[i];
+			writer.WriteUInt64(frame.Address);
+			writer.WriteString(frame.Module);
+			writer.WriteString(frame.Function);
+			writer.WriteString(frame.File);
+			writer.WriteUInt32(frame.Line);
+		}
+	}
+
+	bool CrashMessage::Read(BinaryReader& reader)
+	{
+		uint32_t frameCount = 0;
+		if (!reader.ReadUInt32(Report.ExceptionCode) || !reader.ReadString(Report.Description) || !reader.ReadUInt32(frameCount) ||
+			frameCount > MaxCrashStackFrames)
+		{
+			return false;
+		}
+
+		Report.Frames.resize(frameCount);
+		for (CrashStackFrame& frame : Report.Frames)
+		{
+			if (!reader.ReadUInt64(frame.Address) || !reader.ReadString(frame.Module) || !reader.ReadString(frame.Function) ||
+				!reader.ReadString(frame.File) || !reader.ReadUInt32(frame.Line))
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
 	EditorLinkMessageText DescribeEditorLinkMessage(const Net::Message& message, bool bWithDetails)
 	{
 		EditorLinkMessageText text;
@@ -487,6 +531,21 @@ namespace Nyx::Engine
 			text.Name = "DeleteEntity";
 			text.Summary = GuidToText(deleteEntity.Entity);
 			text.Details = "Entity: " + GuidToText(deleteEntity.Entity);
+			break;
+		}
+
+		case EEditorLinkMessage::Crash:
+		{
+			CrashMessage crash;
+			if (!ReadNetMessage(message, crash))
+			{
+				describeUnreadable("Crash");
+				break;
+			}
+
+			text.Name = "Crash";
+			text.Summary = crash.Report.Description + ", " + std::to_string(crash.Report.Frames.size()) + " frames";
+			text.Details = FormatCrashReport(crash.Report);
 			break;
 		}
 

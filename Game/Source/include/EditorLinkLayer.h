@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CrashHandler.h"
 #include "EditorLink.h"
 #include "EditorLinkLogSink.h"
 #include "EditorLinkRecorder.h"
@@ -40,6 +41,10 @@ namespace Nyx::Game
 		void OnAttach(Nyx::Engine::Application& application) override;
 		void OnDetach() override;
 		void OnUpdate(float deltaTime) override;
+
+		// From the crash handler, on the crashing thread: sends the last log lines and the report
+		// to the editor, and waits briefly until they arrive. Does nothing without a connected link.
+		static void SendCrashReport(const Nyx::CrashReport& report);
 
 	private:
 		// A live edit, or a message this game doesn't know

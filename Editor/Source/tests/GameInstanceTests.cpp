@@ -50,6 +50,13 @@ namespace
 		link.Send(line);
 	}
 
+	// Writes through a null pointer. A function of its own, so the crash report has a frame to find.
+	__declspec(noinline) void CrashOnPurpose()
+	{
+		volatile int* nowhere = nullptr;
+		*nowhere = 1;
+	}
+
 	// The stand-in for NyxGame, in the started process
 	int RunStandInGame(const std::vector<std::string_view>& arguments)
 	{
@@ -84,6 +91,19 @@ namespace
 
 				SendLine(link, "started as " + options.WindowTitle);
 				bSaidStarted = true;
+
+				// Crashes for real, with the crash handler NyxGame installs: it sends the report
+				// over the link before the process ends
+				if (options.WindowTitle.find("AccessViolation") != std::string::npos)
+				{
+					Nyx::InstallCrashHandler(
+						[&link](const Nyx::CrashReport& report)
+						{
+							link.Send(CrashMessage{ report });
+							link.CloseGracefully("the game crashed", std::chrono::milliseconds(1000));
+						});
+					CrashOnPurpose();
+				}
 			}
 
 			while (std::optional<Nyx::Net::Message> message = link.Receive())
@@ -246,6 +266,80 @@ namespace
 		Require(!game.TakesEdits(), "Queuing shouldn't make a game take edits");
 	}
 
+	// A game that crashes sends a report with its call stack; the editor keeps it for the crash
+	// card, with what it takes to start the game again. A game that quits normally leaves none.
+	void TestCrashReports()
+	{
+		const std::filesystem::path executable = Nyx::Paths::GetExecutableDir() / "NyxGameInstanceTests.exe";
+		LogLines lines;
+
+		std::vector<std::unique_ptr<GameInstance>> games;
+		for (const char* name : { "Game AccessViolation", "Game 3 Crash", "Game Fine" })
+		{
+			GameLaunchOptions options;
+			options.ScenePath = "PlaySession.nyxscene";
+			options.WindowTitle = name;
+			options.WindowSize = GameWindowSize{ 640, 400 };
+			games.push_back(std::make_unique<GameInstance>(name, lines.MakeObserver()));
+			Require(games.back()->Start(executable, options, false), std::string("Couldn't start ") + name);
+		}
+
+		GameInstance& crashing = *games[0];
+		GameInstance& exitCode = *games[1];
+		GameInstance& fine = *games[2];
+
+		UpdateUntil(games,
+			[&]()
+			{
+				return !crashing.IsRunning() && !exitCode.IsRunning() && IsLinked(fine);
+			},
+			"two games crashed and one is linked");
+
+		// The real crash: exit code, description and call stack, with symbols
+		std::optional<GameCrash> crash = crashing.TakeCrash();
+		Require(crash.has_value(), "A crashed game left no crash");
+		Require(!crashing.TakeCrash().has_value(), "A crash should be taken once");
+		Require(crash->GameName == "Game AccessViolation", "The crash has the wrong game name");
+		Require(crash->ExitCode == 0xC0000005, "The crashed game's exit code isn't the access violation's: " + std::to_string(crash->ExitCode));
+		Require(crash->Report.has_value(), "The crashed game's report didn't arrive");
+		Require(crash->Report->ExceptionCode == 0xC0000005, "The report has the wrong exception code");
+		Require(crash->Report->Description.find("access violation writing address 0x0000000000000000") != std::string::npos,
+			"The report doesn't describe the access violation: " + crash->Report->Description);
+
+		const bool bFoundFrame = std::any_of(crash->Report->Frames.begin(), crash->Report->Frames.end(),
+			[](const Nyx::CrashStackFrame& frame)
+			{
+				return frame.Function.find("CrashOnPurpose") != std::string::npos && frame.File.ends_with("GameInstanceTests.cpp") &&
+					frame.Line > 0;
+			});
+		Require(bFoundFrame, "The call stack lacks the crashing function with its file and line:\n" + Nyx::FormatCrashReport(*crash->Report));
+		const Nyx::CrashReport report = *crash->Report;
+
+		// Enough to start it again as it was
+		Require(crash->LaunchOptions.WindowTitle == "Game AccessViolation" && crash->LaunchOptions.WindowSize == GameWindowSize{ 640, 400 } &&
+					!crash->bConsoleWindow,
+			"The crash doesn't keep how the game was started");
+
+		// An exit code without a report, e.g. a crash before the game was linked
+		crash = exitCode.TakeCrash();
+		Require(crash && crash->ExitCode == 3 && !crash->Report.has_value(), "An exit code other than 0 should give a crash without report");
+
+		// Quitting normally is no crash
+		fine.Stop();
+		UpdateUntil(games,
+			[&]()
+			{
+				return !fine.IsRunning();
+			},
+			"the fine game quit");
+		Require(!fine.TakeCrash().has_value(), "A game that quit normally left a crash");
+
+		// The message describes itself, for the Messages tab and NyxDump
+		const EditorLinkMessageText text = DescribeEditorLinkMessage(MakeNetMessage(CrashMessage{ report }), true);
+		Require(text.Name == "Crash" && text.Details.find("CrashOnPurpose") != std::string::npos,
+			"A Crash message doesn't describe its call stack");
+	}
+
 	void TestStoppingBeforeEditorCloses()
 	{
 		const std::filesystem::path executable = Nyx::Paths::GetExecutableDir() / "NyxGameInstanceTests.exe";
@@ -299,6 +393,7 @@ int main(int argc, char** argv)
 	{
 		TestUnstartedGame();
 		TestSeveralGames();
+		TestCrashReports();
 		TestStoppingBeforeEditorCloses();
 
 		std::cout << "All game instance tests passed.\n";

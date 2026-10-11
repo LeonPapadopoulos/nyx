@@ -65,6 +65,17 @@ namespace Nyx::Game
 
 	void GameLayer::OnUI()
 	{
+#if defined(ENGINE_DEBUG)
+		// Ctrl+Alt+Shift+C crashes the game on purpose (Debug builds only), to try the editor's
+		// crash card. Through a volatile pointer, so the compiler keeps the write.
+		if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiMod_Alt | ImGuiMod_Shift | ImGuiKey_C))
+		{
+			LOG_WARNING("Crashing on purpose (Ctrl+Alt+Shift+C)");
+			volatile int* nowhere = nullptr;
+			*nowhere = 1;
+		}
+#endif
+
 		// One window without any decoration that covers the whole application window
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(viewport->WorkPos);

@@ -33,6 +33,10 @@ namespace Nyx::Editor
 
 		CloseReason.clear();
 		QuitDeadline.reset();
+		CrashReport.reset();
+		Crash.reset();
+		LaunchOptions = options;
+		this->bConsoleWindow = bConsoleWindow;
 
 		if (!Process.Start(gameExecutable, Nyx::Engine::MakeGameArguments(options), bConsoleWindow))
 		{
@@ -281,6 +285,22 @@ namespace Nyx::Editor
 				continue;
 			}
 
+			// The game is about to end; the report goes on its crash card once it has
+			if (message->Type == static_cast<uint16_t>(Nyx::Engine::EEditorLinkMessage::Crash))
+			{
+				Nyx::Engine::CrashMessage crash;
+				if (Nyx::Engine::ReadNetMessage(*message, crash))
+				{
+					LOG_ERROR("{0} crashed: {1}", Name, crash.Report.Description);
+					CrashReport = std::move(crash.Report);
+				}
+				else
+				{
+					LOG_WARNING("{0}: editor link: a crash report can't be read", Name);
+				}
+				continue;
+			}
+
 			LOG_WARNING("{0}: editor link: skipped a message of type {1}, which this editor doesn't know", Name, message->Type);
 		}
 	}
@@ -332,6 +352,15 @@ namespace Nyx::Editor
 		else
 		{
 			LOG_WARNING("{0} exited with code 0x{1:08X}", Name, exitCode);
+
+			// Also without a report, e.g. a crash before the game was linked: it gets a card
+			Crash = GameCrash{
+				.GameName = Name,
+				.ExitCode = exitCode,
+				.Report = std::move(CrashReport),
+				.LaunchOptions = LaunchOptions,
+				.bConsoleWindow = bConsoleWindow };
+			CrashReport.reset();
 		}
 	}
 

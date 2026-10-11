@@ -24,6 +24,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/NyxPCH.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/Paths.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/ChildProcess.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Core/src/CrashHandler.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/NetConnection.cpp
 
     # Runtime/Engine
@@ -86,6 +87,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/NyxEngineAPI.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/Paths.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/ChildProcess.h
+    ${NYX_ENGINE_ROOT}/Runtime/Core/include/CrashHandler.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/NetConnection.h
     
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/NyxPCH.h
@@ -271,6 +273,7 @@ foreach(NYX_ENGINE_TARGET NyxEngineCommon NyxEngine NyxEditorEngine)
         PRIVATE
             dwmapi
             ws2_32 # Winsock, for the editor link (NetConnection.cpp)
+            dbghelp # Call stacks with symbols, for crash reports (CrashHandler.cpp)
             stb_image
             NyxStartup # The startup banner, from the Startup module.
     )

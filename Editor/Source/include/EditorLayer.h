@@ -117,6 +117,18 @@ namespace Nyx::Editor
 		// For the Stop button's tooltip: one line per game, e.g. "Steam Deck: connected to NyxGame (process 1234)"
 		std::string GetGameLinkStatus() const;
 
+		// Saves the open scene for games to run; without a path if that failed (logged)
+		std::optional<std::filesystem::path> SavePlaySessionScene();
+
+		// Starts one game and adds it to Games. Returns whether it started.
+		bool LaunchGame(const std::string& name, const Nyx::Engine::GameLaunchOptions& launchOptions, bool bConsoleWindow);
+
+		// Restart on a crash card: the game again, as it was started, with the scene as it is now
+		void RestartGame(const GameCrash& crash);
+
+		// The "Game Crashed" window: a card per game that crashed, until dismissed or restarted
+		void DrawCrashCards();
+
 		// Play's right-click menu, and the Play Setups window that edits the setups
 		void DrawPlayOptionsMenu();
 		void DrawPlaySetupsWindow();
@@ -178,6 +190,19 @@ namespace Nyx::Editor
 
 		// The play setups themselves are in Preferences
 		bool bShowPlaySetups = false;
+
+		// A game that crashed: why, and its last log lines, kept until dismissed or restarted
+		struct CrashCard
+		{
+			uint64_t Id = 0;
+			GameCrash Crash;
+			std::string LastLogLines;
+		};
+
+		std::vector<CrashCard> CrashCards;
+		uint64_t NextCrashCardId = 1;
+		bool bFocusCrashCards = false;
+		static constexpr size_t CrashCardLogLineCount = 30;
 
 		// The games' logs and every message of their editor links
 		GameLinkPanel GameLinkWindow;

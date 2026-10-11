@@ -7,8 +7,28 @@
 
 #include <chrono>
 
+namespace
+{
+	// The layer whose link a crash report goes over; there is one per game
+	Nyx::Game::EditorLinkLayer* GCrashReportLink = nullptr;
+}
+
 namespace Nyx::Game
 {
+	void EditorLinkLayer::SendCrashReport(const Nyx::CrashReport& report)
+	{
+		EditorLinkLayer* layer = GCrashReportLink;
+		if (!layer || !layer->Link || !layer->Link->IsConnected())
+		{
+			return;
+		}
+
+		// The log lines first: a failed ASSERT says which in the log
+		layer->SendLogLines();
+		layer->Link->Send(Nyx::Engine::CrashMessage{ report });
+		layer->Link->CloseGracefully("the game crashed", std::chrono::milliseconds(1000));
+	}
+
 	EditorLinkLayer::EditorLinkLayer(uint16_t editorPort, std::shared_ptr<Nyx::Engine::EditorLinkLogSink> logSink,
 		std::filesystem::path recordingPath)
 		: EditorPort(editorPort)
@@ -32,6 +52,8 @@ namespace Nyx::Game
 				LOG_WARNING("Editor link: can't record to '{0}'", RecordingPath.string());
 			}
 		}
+
+		GCrashReportLink = this;
 
 		LOG_INFO("Editor link: connecting to the editor on port {0}", EditorPort);
 		Link = std::make_unique<Nyx::Engine::EditorLink>(Nyx::Net::Connection::ConnectToLocalPort(EditorPort), "NyxGame",
@@ -125,6 +147,11 @@ namespace Nyx::Game
 
 	void EditorLinkLayer::EndLink()
 	{
+		if (GCrashReportLink == this)
+		{
+			GCrashReportLink = nullptr;
+		}
+
 		Link.reset();
 
 		// Nobody takes the lines anymore

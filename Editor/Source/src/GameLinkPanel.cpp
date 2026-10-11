@@ -165,6 +165,26 @@ namespace Nyx::Editor
 		}
 	}
 
+	std::string GameLinkPanel::GetLastLogLines(const std::string& gameName, size_t count) const
+	{
+		std::vector<const LogEntry*> lines;
+		for (auto it = GameLog.rbegin(); it != GameLog.rend() && lines.size() < count; ++it)
+		{
+			if (!it->bSessionStart && it->GameName == gameName)
+			{
+				lines.push_back(&*it);
+			}
+		}
+
+		std::string text;
+		for (auto it = lines.rbegin(); it != lines.rend(); ++it)
+		{
+			text += ToText(**it) + "\n";
+		}
+
+		return text;
+	}
+
 	std::filesystem::path GameLinkPanel::GetRecordingFolder()
 	{
 		return Nyx::Paths::GetExecutableDir() / "LinkLogs";

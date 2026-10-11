@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ChildProcess.h"
+#include "CrashHandler.h"
 #include "EditorLink.h"
 #include "GameLaunchOptions.h"
 #include "NetConnection.h"
@@ -12,10 +13,26 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace Nyx::Editor
 {
+	// A game that ended by itself with an exit code other than 0, for the editor's crash card
+	struct GameCrash
+	{
+		std::string GameName;
+		uint32_t ExitCode = 0;
+
+		// What the game's crash handler sent before the game ended. None if it couldn't, e.g.
+		// because it wasn't linked yet, was ended from outside, or exited with an error code.
+		std::optional<Nyx::CrashReport> Report;
+
+		// To start it again as it was started (Restart)
+		Nyx::Engine::GameLaunchOptions LaunchOptions;
+		bool bConsoleWindow = true;
+	};
+
 	// One game the editor started with Play: its process, and the editor link to it. Play starts
 	// one, Play All several; each has its own listener port, link and queue of edits, so one game
 	// that crashes, is closed or sits in the debugger doesn't hold up the others.
@@ -91,6 +108,12 @@ namespace Nyx::Editor
 		// For the Stop button's tooltip, e.g. "connected to NyxGame (process 1234)"
 		std::string GetLinkStatus() const;
 
+		// Once the game has ended by itself with an exit code other than 0: why, once
+		std::optional<GameCrash> TakeCrash()
+		{
+			return std::exchange(Crash, std::nullopt);
+		}
+
 		static constexpr std::chrono::seconds QuitTimeLimit{ 3 };
 
 		// A game paused in the debugger doesn't read. Edits wait for it up to this much, then it
@@ -128,6 +151,14 @@ namespace Nyx::Editor
 
 		// Set while the game was asked to quit: when it gets ended instead
 		std::optional<std::chrono::steady_clock::time_point> QuitDeadline;
+
+		// As passed to Start(), for a restart after a crash
+		Nyx::Engine::GameLaunchOptions LaunchOptions;
+		bool bConsoleWindow = true;
+
+		// From the game's Crash message, until it has exited
+		std::optional<Nyx::CrashReport> CrashReport;
+		std::optional<GameCrash> Crash;
 
 		bool bTakesEdits = false;
 		std::vector<Nyx::Net::Message> QueuedEdits;
