@@ -43,6 +43,13 @@ add_dependencies(NyxResourceManagerTests NyxGeneratedReflection)
 set_property(TARGET NyxResourceManagerTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxResourceManagerTests COMMAND NyxResourceManagerTests)
 
+# The painter's recording side: draw commands, groups, clip and transform stacks. No GPU needed.
+add_executable(NyxPainterTests PainterTests.cpp)
+target_link_libraries(NyxPainterTests PRIVATE NyxEngine)
+add_dependencies(NyxPainterTests NyxGeneratedReflection)
+set_property(TARGET NyxPainterTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxPainterTests COMMAND NyxPainterTests)
+
 if(MSVC)
     add_test(NAME NyxRuntimeInspectionSymbols
         COMMAND ${CMAKE_COMMAND}
