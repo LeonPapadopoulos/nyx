@@ -9,6 +9,7 @@
 #include "TransformComponent.h"
 #include "NameComponent.h"
 #include "ComponentEdits.h"
+#include "EntityCopies.h"
 #include "ComponentTypeRegistry.h"
 #include "GameLaunchOptions.h"
 #include "PlayWall.h"
@@ -238,6 +239,7 @@ namespace Nyx::Editor
 		TransformGizmoInstance.PreviewActiveEdit(Transactions);
 
 		if (!SourceInspector.IsActive()) HandleUndoRedoHotkeys();
+		if (!SourceInspector.IsActive()) HandleEntityCopyHotkeys();
 		DrawSourceTools();
 
 		if (bShowGameLink)
@@ -1331,6 +1333,13 @@ namespace Nyx::Editor
 			}
 		}
 
+		ImGui::SameLine();
+		if (NYX_UI(ImGui::Button("Duplicate")) && bHasSelection)
+		{
+			DuplicateSelectedEntity();
+		}
+		ImGui::SetItemTooltip("Ctrl+D. Ctrl+C and Ctrl+V copy and paste; right-click an entity for these too.");
+
 		if (!bHasSelection)
 		{
 			ImGui::EndDisabled();
@@ -1349,7 +1358,32 @@ namespace Nyx::Editor
 				{
 					selection = entity;
 				}
+
+				// Right-click: selects the entity and offers what the hotkeys do
+				if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
+				{
+					selection = entity;
+					ImGui::OpenPopup("##EntityMenu");
+				}
 			});
+
+		// After the list, so a new entity doesn't appear while the list is being drawn
+		if (Nyx::UI::BeginPopup("##EntityMenu"))
+		{
+			if (NYX_UI(ImGui::MenuItem("Duplicate", "Ctrl+D")))
+			{
+				DuplicateSelectedEntity();
+			}
+			if (NYX_UI(ImGui::MenuItem("Copy", "Ctrl+C")))
+			{
+				CopySelectedEntity();
+			}
+			if (NYX_UI(ImGui::MenuItem("Paste", "Ctrl+V", false, !EntityClipboard.empty())))
+			{
+				PasteEntity();
+			}
+			ImGui::EndPopup();
+		}
 
 		if (ImGui::IsMouseDown(0) && ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered())
 		{
@@ -1807,6 +1841,84 @@ namespace Nyx::Editor
 			{
 				selection = result.HitEntity;
 			}
+		}
+	}
+
+	void EditorLayer::HandleEntityCopyHotkeys()
+	{
+		// Text fields use these keys for their text
+		if (ImGui::GetIO().WantTextInput)
+		{
+			return;
+		}
+
+		if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_D))
+		{
+			DuplicateSelectedEntity();
+		}
+		else if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_C))
+		{
+			CopySelectedEntity();
+		}
+		else if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_V))
+		{
+			PasteEntity();
+		}
+	}
+
+	void EditorLayer::CopySelectedEntity()
+	{
+		const std::optional<Nyx::Engine::Entity>& selection = ActiveScene.GetSelection();
+		if (!selection)
+		{
+			return;
+		}
+
+		std::vector<std::byte> copied = Nyx::Editor::CopyEntity(ActiveScene, *selection);
+		if (!copied.empty())
+		{
+			EntityClipboard = std::move(copied);
+		}
+	}
+
+	void EditorLayer::DuplicateSelectedEntity()
+	{
+		const std::optional<Nyx::Engine::Entity>& selection = ActiveScene.GetSelection();
+		if (!selection)
+		{
+			return;
+		}
+
+		// Like copy and paste, but the clipboard keeps what it had
+		const std::vector<std::byte> copied = Nyx::Editor::CopyEntity(ActiveScene, *selection);
+
+		// A new entity can move components in memory; edits in progress point at components
+		DetailsPanelContext.CancelPendingEdits();
+		TransformGizmoInstance.CancelInteraction();
+		TransactionContext.ActiveScene = &ActiveScene;
+
+		if (const std::optional<Nyx::Engine::Entity> duplicate =
+				Nyx::Editor::PasteEntity(ActiveScene, Transactions, SceneEntityDomain, TransactionContext, copied, "Duplicate Entity"))
+		{
+			ActiveScene.GetSelection() = *duplicate;
+		}
+	}
+
+	void EditorLayer::PasteEntity()
+	{
+		if (EntityClipboard.empty())
+		{
+			return;
+		}
+
+		DetailsPanelContext.CancelPendingEdits();
+		TransformGizmoInstance.CancelInteraction();
+		TransactionContext.ActiveScene = &ActiveScene;
+
+		if (const std::optional<Nyx::Engine::Entity> pasted =
+				Nyx::Editor::PasteEntity(ActiveScene, Transactions, SceneEntityDomain, TransactionContext, EntityClipboard, "Paste Entity"))
+		{
+			ActiveScene.GetSelection() = *pasted;
 		}
 	}
 

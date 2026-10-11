@@ -94,6 +94,13 @@ namespace Nyx::Editor
 
 		void HandleUndoRedoHotkeys();
 
+		// Duplicate (Ctrl+D), Copy (Ctrl+C) and Paste (Ctrl+V) of the selected entity. A pasted or
+		// duplicated entity gets a new guid and becomes the selection.
+		void HandleEntityCopyHotkeys();
+		void DuplicateSelectedEntity();
+		void CopySelectedEntity();
+		void PasteEntity();
+
 		// Called before destroying the old registry, once its replacement is ready.
 		void ForgetPreviousScene();
 
@@ -190,6 +197,10 @@ namespace Nyx::Editor
 
 		// The play setups themselves are in Preferences
 		bool bShowPlaySetups = false;
+
+		// The copied entity, as scene files store it (EntityCopies.h); the editor's own clipboard,
+		// so it survives deleting the entity and opening another scene
+		std::vector<std::byte> EntityClipboard;
 
 		// A game that crashed: why, and its last log lines, kept until dismissed or restarted
 		struct CrashCard

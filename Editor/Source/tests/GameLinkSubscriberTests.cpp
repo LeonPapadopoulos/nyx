@@ -9,6 +9,7 @@
 #include "IAssetResolver.h"
 #include "InspectorDrawContext.h"
 #include "EditorLinkMessages.h"
+#include "EntityCopies.h"
 #include "GameLinkSubscriber.h"
 #include "GuidComponent.h"
 #include "LiveEdits.h"
@@ -599,6 +600,94 @@ namespace
 		}
 	}
 
+	// Duplicate, copy and paste: each copy is a whole entity with a new guid and a name of its own,
+	// undoable like Add Entity, and sent to the game as CreateEntity
+	void TestDuplicateAndPaste()
+	{
+		EditorAndGame test;
+		Registry& world = test.Scene.GetRegistry();
+		const Entity cube = test.Scene.CreateEntity("Cube");
+		world.Add<TransformComponent>(cube, TransformComponent{ .Position = glm::vec3(1.0f, 2.0f, 3.0f) });
+		world.Add<MeshRendererComponent>(cube, MeshRendererComponent{
+			.Mesh = AssetReference{ .Type = "Mesh", .Path = "Meshes/Cube.nyxmesh" },
+			.Material = AssetReference{ .Type = "Material", .Path = "Materials/Textured.nyxmat" },
+			.bVisible = true });
+		const EntityGuid cubeGuid = world.Get<GuidComponent>(cube).Guid;
+
+		test.Play();
+		test.SendEdits("Play");
+		test.TakeSent();
+
+		// Duplicate: copy and paste in one
+		const std::optional<Entity> duplicate =
+			PasteEntity(test.Scene, test.Transactions, test.Domain, test.Context, CopyEntity(test.Scene, cube), "Duplicate Entity");
+		Require(duplicate.has_value(), "Duplicating failed");
+		const EntityGuid duplicateGuid = world.Get<GuidComponent>(*duplicate).Guid;
+		Require(duplicateGuid.IsValid() && duplicateGuid != cubeGuid, "A duplicate should get a new guid");
+		Require(world.Get<NameComponent>(*duplicate).Name == "Cube (2)", "A duplicate should be named Cube (2)");
+		Require(world.Get<TransformComponent>(*duplicate).Position == glm::vec3(1.0f, 2.0f, 3.0f), "A duplicate lost its transform");
+		Require(world.Get<MeshRendererComponent>(*duplicate).Mesh.Path == "Meshes/Cube.nyxmesh", "A duplicate lost its mesh");
+		Require(world.Get<MeshRendererComponent>(*duplicate).MeshAsset == reinterpret_cast<Nyx::Mesh*>(test.Assets.Fake("Meshes/Cube.nyxmesh")),
+			"A duplicate's mesh wasn't loaded");
+		test.SendEdits("Duplicate");
+		Require(test.TakeSent() == std::vector{ EEditorLinkMessage::CreateEntity }, "A duplicate isn't sent as CreateEntity");
+
+		// Undo and redo, like Add Entity; redo brings back the same copy
+		Require(test.Transactions.Undo(test.Context) && !FindByGuid(world, duplicateGuid), "Undo didn't remove the duplicate");
+		test.SendEdits("Undo the duplicate");
+		Require(test.Transactions.Redo(test.Context) && FindByGuid(world, duplicateGuid), "Redo didn't bring the same duplicate back");
+		test.SendEdits("Redo the duplicate");
+
+		// Copy, delete the original, paste twice: each paste is a new entity, never the original's guid
+		const std::vector<std::byte> copied = CopyEntity(test.Scene, cube);
+		test.DeleteEntity(cube);
+		test.SendEdits("Delete the original");
+
+		const std::optional<Entity> first = PasteEntity(test.Scene, test.Transactions, test.Domain, test.Context, copied, "Paste Entity");
+		const std::optional<Entity> second = PasteEntity(test.Scene, test.Transactions, test.Domain, test.Context, copied, "Paste Entity");
+		Require(first && second, "Pasting failed");
+		const EntityGuid firstGuid = world.Get<GuidComponent>(*first).Guid;
+		const EntityGuid secondGuid = world.Get<GuidComponent>(*second).Guid;
+		Require(firstGuid != cubeGuid && secondGuid != cubeGuid && firstGuid != secondGuid, "Pasted entities should get guids of their own");
+		Require(world.Get<NameComponent>(*first).Name == "Cube (3)" && world.Get<NameComponent>(*second).Name == "Cube (4)",
+			"Pasted entities should be numbered after the existing copies");
+		test.SendEdits("Paste twice");
+
+		// Undoing the delete brings the original back next to its copies; guids stay unique
+		Require(test.Transactions.Undo(test.Context) && test.Transactions.Undo(test.Context) && test.Transactions.Undo(test.Context),
+			"Undoing both pastes and the delete failed");
+		Require(FindByGuid(world, cubeGuid) && !FindByGuid(world, firstGuid) && !FindByGuid(world, secondGuid),
+			"Undo should leave the original and remove the pastes");
+		test.SendEdits("Undo the pastes and the delete");
+
+		// Damaged or empty copies paste nothing
+		Require(!PasteEntity(test.Scene, test.Transactions, test.Domain, test.Context, {}, "Paste Entity"), "Pasting nothing made an entity");
+		std::vector<std::byte> damaged = copied;
+		damaged.resize(damaged.size() / 2);
+		const size_t entityCount = [&]()
+		{
+			size_t count = 0;
+			world.ForEachEntity([&](Entity) { ++count; });
+			return count;
+		}();
+		Require(!PasteEntity(test.Scene, test.Transactions, test.Domain, test.Context, damaged, "Paste Entity"), "A damaged copy was pasted");
+		size_t countAfter = 0;
+		world.ForEachEntity([&](Entity) { ++countAfter; });
+		Require(countAfter == entityCount, "A damaged paste left an entity behind");
+	}
+
+	void TestCopyNames()
+	{
+		Nyx::SceneDocument scene;
+		scene.CreateEntity("Lamp");
+		Require(MakeCopyName(scene, "Lamp") == "Lamp (2)", "The first copy should be (2)");
+		scene.CreateEntity("Lamp (2)");
+		Require(MakeCopyName(scene, "Lamp") == "Lamp (3)" && MakeCopyName(scene, "Lamp (2)") == "Lamp (3)",
+			"A copy of a copy should get the next free number");
+		Require(MakeCopyName(scene, "Lamp (x)") == "Lamp (x) (2)" && MakeCopyName(scene, "(2)") == "(2) (2)",
+			"Only a number in brackets counts as a copy number");
+	}
+
 	// The editor reads and writes rotations normalized, through the engine's property access
 	void TestReflectedPropertyAccess()
 	{
@@ -678,6 +767,8 @@ int main()
 		TestEditsLoadAssets();
 		TestValuesWhileDragging();
 		TestAddingAndRemovingComponents();
+		TestDuplicateAndPaste();
+		TestCopyNames();
 		TestReflectedPropertyAccess();
 		TestSessions();
 
