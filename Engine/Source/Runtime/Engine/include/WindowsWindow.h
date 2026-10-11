@@ -45,11 +45,8 @@ namespace Nyx
 
 		static void ApplyRoundedCorners(GLFWwindow* window);
 
-		// @todo: Is there a better place to put this?
-		void DrawUserInterface();
 		void DrawTitlebar(float titlebarHeight);
 		void DrawTitlebarMenuBar(float titlebarHeight);
-		void DrawMenubar();
 
 		bool IsMaximized() const;
 

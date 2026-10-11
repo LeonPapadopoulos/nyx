@@ -5,8 +5,6 @@
 #include "TransformGizmo.h"
 #include "Extent2D.h"
 #include "InspectorDrawContext.h"
-#include "ReflectedTransactionSystem.h"
-#include "EditorTransactionSubscriber.h"
 #include "SceneEntityTransactionDomain.h"
 #include "MeshRendererComponent.h"
 #include "AssetBrowserPanel.h"
@@ -74,8 +72,6 @@ namespace Nyx::Editor
 			const Nyx::Extent2D& extent,
 			uint32_t& outPickX,
 			uint32_t& outPickY);
-
-		void TickScene(float deltaTime);
 
 		// File, Window and Debug menus, Play/Stop, and the scene name, shown in the window's titlebar.
 		void DrawTitlebarMenu(float buttonHeight);
@@ -180,7 +176,6 @@ namespace Nyx::Editor
 		bool bShowDetailsPanel = true;
 		bool bAssetBrowserVisible = true;
 
-		Nyx::Editor::EditorTransactionSubscriber TransactionSubscriber;
 
 		EditorPreferences Preferences;
 		ImGuiDebugTools DebugTools;

@@ -1,6 +1,5 @@
 #include "EditorLayer.h"
 #include "ComponentRegistration.h"
-#include "InspectorTargetIdHelpers.h"
 #include "Log.h"
 #include "NameComponent.h"
 #include "SceneSerializer.h"
@@ -174,7 +173,6 @@ namespace Nyx::Tests
 			auto& details = editor.DetailsPanelContext;
 			details.Transactions = &editor.Transactions;
 			details.CurrentObjectRef = target;
-			details.CurrentTargetId = MakeInspectorTargetId(entity);
 			details.GenericPropertyEdit.bEditing = true;
 			details.GenericPropertyEdit.Target = target;
 			details.GenericPropertyEdit.PendingDiff.emplace();
@@ -223,8 +221,7 @@ namespace Nyx::Tests
 			Require(editor.SceneRevision == 1, "Inspector widgets did not receive a new scene revision");
 
 			const auto& details = editor.DetailsPanelContext;
-			Require(!details.CurrentObjectRef.IsValid() && details.CurrentTargetId.Value == 0,
-				"Inspector kept the old target");
+			Require(!details.CurrentObjectRef.IsValid(), "Inspector kept the old target");
 			Require(!details.GenericPropertyEdit.bEditing && !details.GenericPropertyEdit.PendingDiff,
 				"Inspector kept an unfinished edit");
 			Require(!details.TransformRotationEdit.bEditing && !details.TransformRotationEdit.PendingDiff,

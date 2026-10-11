@@ -31,44 +31,9 @@
 #include <cstring>
 #include <string>
 #include <glm/glm.hpp>
-#include <InspectorTargetIdHelpers.h>
 
-#include "ReflectedPropertyRef.h"
 #include "ReflectionTypes.h"
 #include "Log.h"
-
-void PrintTransformMetadata()
-{
-	const Nyx::Reflection::TypeMetadata& type =
-		Nyx::Reflection::GetTypeMetadata<Nyx::Engine::TransformComponent>();
-
-	CORE_LOG_INFO("Reflected type: {}", type.Name);
-
-	for (size_t i = 0; i < type.PropertyCount; ++i)
-	{
-		const auto& prop = type.Properties[i];
-		CORE_LOG_INFO("  Property {}: {}", static_cast<int>(i), prop.Name);
-	}
-}
-
-namespace
-{
-	bool InputTextString(const char* label, std::string& value)
-	{
-		char buffer[256]{};
-		const size_t copyLength = std::min(value.size(), sizeof(buffer) - 1);
-		std::memcpy(buffer, value.data(), copyLength);
-		buffer[copyLength] = '\0';
-
-		if (NYX_UI(ImGui::InputText(label, buffer, sizeof(buffer))))
-		{
-			value = buffer;
-			return true;
-		}
-
-		return false;
-	}
-}
 
 namespace Nyx::Editor
 {
@@ -136,44 +101,7 @@ namespace Nyx::Editor
 			}
 		}
 
-		// Example Code for accessig reflected Property Data on a given Entity
-		{
-			auto& world = ActiveScene.GetRegistry();
-			Nyx::Engine::Entity entity = ActiveScene.CreateEntity("EditorLayer::OnAttach()");
-
-			Nyx::Engine::TransformComponent& transform = world.Add<Nyx::Engine::TransformComponent>(
-				entity,
-				Nyx::Engine::TransformComponent{
-					.Position = glm::vec3(-2.0f, 0.0f, 0.0f),
-					.Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
-					.Scale = glm::vec3(1.0f) });
-
-			//Nyx::Engine::TransformComponent& transform =
-			//	world.Get<Nyx::Engine::TransformComponent>(entity);
-
-			Nyx::Reflection::ReflectedPropertyRef positionRef =
-				Nyx::Reflection::FindReflectedProperty(transform, "Position");
-
-			if (positionRef.IsValid())
-			{
-				glm::vec3& position = positionRef.Access<glm::vec3>();
-				const char* category = positionRef.FindMetadataValue("Category");
-
-				LOG_INFO(
-					"EditorLayer::OnAttach() Entity: Position ({0},{1},{2}), Category {3}",
-					position.x,
-					position.y,
-					position.z,
-					category);
-			}
-		}
-
 		Transactions.RegisterDomain(Nyx::Editor::EObjectDomain::SceneEntity, &SceneEntityDomain);
-
-		// @todo: Remove once Reflection System debugging finished
-		PrintTransformMetadata();
-		// @todo: Remove once Undo/Redo Notifications have been tested
-		Transactions.Subscribe(&TransactionSubscriber);
 
 		// Edits, undo and redo load the assets they need, as loading a scene does
 		AssetLoader.SetPostLoadContext(Nyx::Engine::ScenePostLoadContext{ .AssetResolver = AssetResolver.get() });
@@ -208,11 +136,10 @@ namespace Nyx::Editor
 		}
 	}
 
-	void EditorLayer::OnUpdate(float deltaTime)
+	void EditorLayer::OnUpdate(float /*deltaTime*/)
 	{
 		DebugTools.BeforeFrame();
 		UpdateGames();
-		TickScene(deltaTime);
 
 		// Keep renderer-facing selection state up to date before rendering
 		Renderer->SetSelectedEntity(ActiveScene.GetSelection());
@@ -1233,30 +1160,6 @@ namespace Nyx::Editor
 			extent.Height > 0 ? extent.Height - 1 : 0u);
 	}
 
-	void EditorLayer::TickScene(float deltaTime)
-	{
-		auto& world = ActiveScene.GetRegistry();
-
-		world.Each<Nyx::Engine::MeshRendererComponent>(
-			[&](Nyx::Engine::Entity entity, Nyx::Engine::MeshRendererComponent& meshRenderer)
-			{
-				if (!meshRenderer.bVisible)
-				{
-					return;
-				}
-
-				if (!meshRenderer.MeshAsset || !meshRenderer.MaterialAsset)
-				{
-					return;
-				}
-
-				if (world.Has<Nyx::Engine::TransformComponent>(entity))
-				{
-					auto& transform = world.Get<Nyx::Engine::TransformComponent>(entity);
-					//transform.RotationRadians.y += deltaTime;
-				}
-			});
-	}
 
 	void EditorLayer::DrawSceneOutliner()
 	{
@@ -1444,7 +1347,6 @@ namespace Nyx::Editor
 		// (Currently being dodged by using '##SomeSubInfo')
 
 		DetailsPanelContext.Transactions = &Transactions;
-		DetailsPanelContext.CurrentTargetId = Nyx::Editor::MakeInspectorTargetId(selectedEntity);
 		DetailsPanelContext.CurrentObjectRef = Nyx::Editor::MakeSceneEntityRef(ActiveScene, selectedEntity);
 
 		// Removed after the loop, so it isn't drawn after it is gone

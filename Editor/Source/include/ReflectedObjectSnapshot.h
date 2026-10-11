@@ -1,6 +1,5 @@
 #pragma once
 
-#include "PropertyValue.h"
 #include "ReflectionTypes.h"
 
 #include <cstddef>
@@ -8,22 +7,9 @@
 
 namespace Nyx::Editor
 {
-	struct ReflectedPropertySnapshot
-	{
-		size_t PropertyIndex = 0;
-		Nyx::Reflection::PropertyValue Value;
-	};
-
-	struct ReflectedObjectSnapshot
-	{
-		const Nyx::Reflection::TypeMetadata* TypeMetadata = nullptr;
-		std::vector<ReflectedPropertySnapshot> Properties;
-	};
-
 	// One subobject (component) of a root object, whole: its Serialize properties as one property
-	// block of the tagged format scene files use (ReflectedArchiveSerializer). Unlike a
-	// ReflectedObjectSnapshot's PropertyValues, that keeps struct properties too, such as a
-	// MeshRenderer's mesh and material (AssetReference).
+	// block of the tagged format scene files use (ReflectedArchiveSerializer). That keeps struct
+	// properties too, such as a MeshRenderer's mesh and material (AssetReference).
 	struct SubobjectSnapshot
 	{
 		const Nyx::Reflection::TypeMetadata* TypeMetadata = nullptr;

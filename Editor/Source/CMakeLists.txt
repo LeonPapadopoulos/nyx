@@ -17,28 +17,15 @@ set(NYX_EDITOR_SOURCES
     src/SourceNavigation.cpp
     src/UISourceInspector.cpp
     src/SceneDocument.cpp
-    src/EditorProperty.cpp
-    src/ComponentEditorRegistration.cpp
-    src/ComponentEditors.cpp
     src/InspectorDrawContext.cpp
     src/TransformGizmo.cpp
     src/InspectorTargetId.cpp
-    src/InspectorTargetIdHelpers.cpp
-    src/EditableObjectTraits.cpp
     src/EditorTransactionContext.cpp
-    src/EditableTargetResolver.cpp
-    src/TransactionHistory.cpp
-    src/DiffUtil.cpp
-    src/EditableObjectRegistrations.cpp
     src/ReflectedPropertyDrawer.cpp
     src/ReflectedPropertyAccess.cpp
-    src/ReflectedTransactionSystem.cpp
-    src/ReflectedDiffUtil.cpp
     src/TransactionSystem.cpp
     src/TransactionDiffUtil.cpp
-    src/EditorTransactionSubscriber.cpp
     src/SceneEntityTransactionDomain.cpp
-    src/ReflectedObjectSerialization.cpp
     src/RootObjectSnapshotUtils.cpp
     src/PropertyWidgetRegistry.cpp
     src/AssetDatabase.cpp
@@ -65,34 +52,20 @@ set(NYX_EDITOR_HEADERS
     include/SourceNavigation.h
     include/UISourceInspector.h
     include/SceneDocument.h
-    include/EditorProperty.h
-    include/ComponentEditorRegistration.h
-    include/ComponentEditors.h
     include/InspectorDrawContext.h
     include/TransformGizmo.h
     include/InspectorTargetId.h
-    include/InspectorTargetIdHelpers.h
-    include/EditableObjectTraits.h
     include/EditorTransactionContext.h
-    include/EditableTargetResolver.h
-    include/TransactionHistory.h
-    include/DiffUtil.h
-    include/EditableObjectRegistrations.h
     include/ReflectedPropertyDrawer.h
     include/ReflectedPropertyAccess.h
-    include/ReflectedTransactionSystem.h
-    include/ReflectedDiffUtil.h
     include/TransactionTypes.h
     include/TransactionSystem.h
     include/TransactionDiffUtil.h
-    include/EditorTransactionSubscriber.h
     include/TransactionObjectRef.h
     include/TransactionObjectRefHelpers.h
-    include/SceneEntitySnapshot.h
     include/TransactionDomain.h
     include/SceneEntityTransactionDomain.h
     include/ReflectedObjectSnapshot.h
-    include/ReflectedObjectSerialization.h
     include/RootObjectSnapshotUtils.h
     include/PropertyWidgetRegistry.h
     include/AssetDatabase.h
@@ -180,7 +153,7 @@ if(BUILD_TESTING)
     # Edits, undo and redo turned into live edit messages, and applied to a second world as the game does
     add_executable(NyxGameLinkSubscriberTests tests/GameLinkSubscriberTests.cpp
         src/GameLinkSubscriber.cpp src/ComponentPostLoadSubscriber.cpp src/ComponentEdits.cpp src/EntityCopies.cpp src/TransactionSystem.cpp src/TransactionDiffUtil.cpp src/SceneEntityTransactionDomain.cpp
-        src/RootObjectSnapshotUtils.cpp src/ReflectedObjectSerialization.cpp src/ReflectedPropertyAccess.cpp
+        src/RootObjectSnapshotUtils.cpp src/ReflectedPropertyAccess.cpp
         src/SceneDocument.cpp src/InspectorTargetId.cpp src/InspectorDrawContext.cpp)
     target_include_directories(NyxGameLinkSubscriberTests PRIVATE include src ${CMAKE_CURRENT_BINARY_DIR})
     target_link_libraries(NyxGameLinkSubscriberTests PRIVATE NyxEditorEngine)

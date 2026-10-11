@@ -32,7 +32,6 @@ namespace Nyx::Editor
 
 		TransactionSystem* Transactions = nullptr;
 
-		InspectorTargetId CurrentTargetId{};
 		ObjectRef CurrentObjectRef{};
 
 		// Where the object being drawn is inside CurrentObjectRef: empty while drawing a component's

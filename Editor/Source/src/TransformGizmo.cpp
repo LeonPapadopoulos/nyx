@@ -3,9 +3,6 @@
 
 #include "TransformComponent.h"
 #include "ImGuiSource.h"
-#include "InspectorTargetId.h"
-#include "InspectorTargetIdHelpers.h"
-#include "EditableObjectRegistrations.h"
 #include "TransactionSystem.h"
 #include "TransactionObjectRef.h"
 #include "TransactionObjectRefHelpers.h"
