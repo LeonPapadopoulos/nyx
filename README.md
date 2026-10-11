@@ -84,7 +84,7 @@ Tools/
   NyxHeaderTool/ Reflection code generator and its tests
 ```
 
-`NyxEngine` is a static library without any editor code. `NyxEditor` links it and adds the editor as a layer of the application; `NyxGame` links it and adds a layer that runs one scene.
+`NyxEngine` is a static library without any editor code. `NyxEditor` links it and adds the editor as a layer of the application (`EditorLayer`), which holds the scene being edited with its undo history (`SceneEditor`), one class per panel, and Play (`PlaySession`); `NyxGame` links it and adds a layer that runs one scene.
 
 ## Reflection
 

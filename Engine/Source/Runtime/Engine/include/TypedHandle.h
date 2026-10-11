@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 // Typed Handle meant to prevent type mismatches at compile time
 template<typename Tag>
 struct TypedHandle

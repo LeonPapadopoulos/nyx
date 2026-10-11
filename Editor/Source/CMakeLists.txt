@@ -4,6 +4,16 @@
 set(NYX_EDITOR_SOURCES
     main.cpp
     src/EditorLayer.cpp
+    src/SceneEditor.cpp
+    src/SceneOutlinerPanel.cpp
+    src/DetailsPanel.cpp
+    src/SceneViewPanel.cpp
+    src/SceneFilePopups.cpp
+    src/PreferencesWindow.cpp
+    src/PlaySession.cpp
+    src/PlayControls.cpp
+    src/CrashCardsPanel.cpp
+    src/DefaultScene.cpp
     src/GameInstance.cpp
     src/PlayWall.cpp
     src/GameLinkPanel.cpp
@@ -39,6 +49,16 @@ set(NYX_EDITOR_SOURCES
 set(NYX_EDITOR_HEADERS
     src/EditorPCH.h
     include/EditorLayer.h
+    include/SceneEditor.h
+    include/SceneOutlinerPanel.h
+    include/DetailsPanel.h
+    include/SceneViewPanel.h
+    include/SceneFilePopups.h
+    include/PreferencesWindow.h
+    include/PlaySession.h
+    include/PlayControls.h
+    include/CrashCardsPanel.h
+    include/DefaultScene.h
     include/GameInstance.h
     include/PlayWall.h
     include/GameLinkPanel.h
@@ -139,6 +159,16 @@ if(BUILD_TESTING)
     set_property(TARGET NyxEditorSceneTests PROPERTY FOLDER "Tests")
 
     add_test(NAME NyxEditorSceneTests COMMAND NyxEditorSceneTests)
+
+    # The pieces EditorLayer is built from: SceneEditor's commands and hotkeys, and the panels drawn headless
+    add_executable(NyxEditorPanelTests tests/EditorPanelTests.cpp ${NYX_EDITOR_TEST_SOURCES}
+        "${NYX_EDITOR_REFLECTION_SOURCES}")
+    target_include_directories(NyxEditorPanelTests PRIVATE include src ${CMAKE_CURRENT_BINARY_DIR})
+    target_link_libraries(NyxEditorPanelTests PRIVATE NyxEditorEngine ole32 oleaut32 shell32 comsuppw)
+    add_dependencies(NyxEditorPanelTests NyxGeneratedReflection)
+    target_precompile_headers(NyxEditorPanelTests REUSE_FROM NyxEditor)
+    set_property(TARGET NyxEditorPanelTests PROPERTY FOLDER "Tests")
+    add_test(NAME NyxEditorPanelTests COMMAND NyxEditorPanelTests)
 
     add_executable(NyxUISourceTests tests/UISourceInspectorTests.cpp
         src/UISourceInspector.cpp src/EditorPreferences.cpp src/SourceNavigation.cpp src/ImGuiDebugTools.cpp

@@ -36,6 +36,13 @@ add_dependencies(NyxGameLaunchOptionsTests NyxGeneratedReflection)
 set_property(TARGET NyxGameLaunchOptionsTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxGameLaunchOptionsTests COMMAND NyxGameLaunchOptionsTests)
 
+# ResourceManager and AsyncResourceManager with stand-in resources.
+add_executable(NyxResourceManagerTests ResourceManagerTests.cpp)
+target_link_libraries(NyxResourceManagerTests PRIVATE NyxEngine)
+add_dependencies(NyxResourceManagerTests NyxGeneratedReflection)
+set_property(TARGET NyxResourceManagerTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxResourceManagerTests COMMAND NyxResourceManagerTests)
+
 if(MSVC)
     add_test(NAME NyxRuntimeInspectionSymbols
         COMMAND ${CMAKE_COMMAND}

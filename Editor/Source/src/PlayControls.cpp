@@ -1,0 +1,345 @@
+#include "PlayControls.h"
+
+#include "EditorPreferences.h"
+#include "ImGuiSource.h"
+#include "Log.h"
+#include "PlaySession.h"
+#include "PlayWall.h"
+
+#include "imgui.h"
+
+#include <algorithm>
+#include <array>
+#include <cfloat>
+#include <cstring>
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace Nyx::Editor
+{
+	namespace
+	{
+		// Saves the preferences, logging if that fails
+		void SavePreferences(const EditorPreferences& preferences)
+		{
+			if (!preferences.Save(EditorPreferences::GetUserFile()))
+			{
+				LOG_WARNING("Couldn't save the editor preferences to '{0}'", EditorPreferences::GetUserFile().string());
+			}
+		}
+
+		// The monitor the editor is on, which Play All tiles the games on
+		PlayWallScreen GetEditorScreen()
+		{
+			return GetPlayWallScreen(ImGui::GetMainViewport()->PlatformHandleRaw);
+		}
+	}
+
+	void PlayControls::DrawButtons(PlaySession& session, EditorPreferences& preferences, float buttonHeight)
+	{
+		// Play / Stop, green while stopped and red while any game runs. While games were asked to
+		// quit, it says "Stopping", and a click ends them at once. Play has its own ID, so a click
+		// that starts on Stop or Stopping can't end on Play when the games exit meanwhile.
+		const bool bPlaying = session.IsRunning();
+		const bool bQuitting = session.IsQuitting();
+		const ImVec4 playButtonColor = bPlaying ? ImVec4(0.55f, 0.18f, 0.18f, 1.0f) : ImVec4(0.18f, 0.42f, 0.22f, 1.0f);
+		const char* playButtonLabel = !bPlaying ? "Play" : (bQuitting ? "Stopping###Stop" : "Stop###Stop");
+
+		ImGui::PushStyleColor(ImGuiCol_Button, playButtonColor);
+		if (NYX_UI(ImGui::Button(playButtonLabel, ImVec2(64.0f, buttonHeight))))
+		{
+			if (bPlaying)
+			{
+				session.Stop();
+			}
+			else
+			{
+				session.Start(preferences, false, GetEditorScreen());
+			}
+		}
+		ImGui::PopStyleColor();
+
+		const PlaySetup& firstSetup = preferences.PlaySetups.front();
+		if (bPlaying && bQuitting)
+		{
+			ImGui::SetItemTooltip("The games were asked to quit. Click to end them at once.\nEditor link:%s", session.GetLinkStatus().c_str());
+		}
+		else if (bPlaying)
+		{
+			ImGui::SetItemTooltip("Asks the games to quit, or ends those that aren't linked.\nEditor link:%s", session.GetLinkStatus().c_str());
+		}
+		else
+		{
+			ImGui::SetItemTooltip("Runs the open scene in NyxGame, unsaved changes included, as %s (%ux%u).\nRight-click for options.",
+				firstSetup.Name.c_str(), firstSetup.Width, firstSetup.Height);
+		}
+
+		if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
+		{
+			ImGui::OpenPopup("##PlayOptions");
+		}
+
+		// Play All, next to Play. Disabled while games run rather than hidden, so the buttons stay in place.
+		ImGui::SameLine();
+		const size_t playAllCount = static_cast<size_t>(std::count_if(preferences.PlaySetups.begin(), preferences.PlaySetups.end(),
+			[](const PlaySetup& setup)
+			{
+				return setup.bInPlayAll;
+			}));
+
+		ImGui::BeginDisabled(bPlaying);
+		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.42f, 0.22f, 1.0f));
+		if (NYX_UI(ImGui::Button("Play All", ImVec2(72.0f, buttonHeight))))
+		{
+			session.Start(preferences, true, GetEditorScreen());
+		}
+		ImGui::PopStyleColor();
+		ImGui::EndDisabled();
+
+		ImGui::SetItemTooltip("Runs the open scene in %zu games side by side, one per play setup marked for Play All.\n"
+							  "Every edit reaches all of them. Right-click for options.",
+			playAllCount);
+
+		if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
+		{
+			ImGui::OpenPopup("##PlayOptions");
+		}
+
+		DrawOptionsMenu(session, preferences);
+	}
+
+	void PlayControls::DrawOptionsMenu(PlaySession& session, EditorPreferences& preferences)
+	{
+		if (!Nyx::UI::BeginPopup("##PlayOptions"))
+		{
+			return;
+		}
+
+		if (NYX_UI(ImGui::MenuItem("Play All", nullptr, false, !session.IsRunning())))
+		{
+			session.Start(preferences, true, GetEditorScreen());
+		}
+
+		// Checkboxes rather than menu items, so the menu stays open while choosing several
+		bool bChanged = false;
+		NYX_UI(ImGui::SeparatorText("In Play All"));
+		for (size_t i = 0; i < preferences.PlaySetups.size(); ++i)
+		{
+			PlaySetup& setup = preferences.PlaySetups[i];
+			ImGui::PushID(static_cast<int>(i));
+			const std::string label = setup.Name + " (" + std::to_string(setup.Width) + "x" + std::to_string(setup.Height) + ")";
+			bChanged |= NYX_UI(ImGui::Checkbox(label.c_str(), &setup.bInPlayAll));
+			if (i == 0)
+			{
+				ImGui::SameLine();
+				ImGui::TextDisabled("Play");
+			}
+			ImGui::PopID();
+		}
+
+		if (NYX_UI(ImGui::MenuItem("Play Setups...")))
+		{
+			bShowSetups = true;
+		}
+
+		NYX_UI(ImGui::Separator());
+		bChanged |= NYX_UI(ImGui::Checkbox("Console Windows in Play All", &preferences.bConsoleWindowsInPlayAll));
+		ImGui::SetItemTooltip("Play always shows the game's console. Their log reaches the Game Link window either way.");
+		NYX_UI(ImGui::MenuItem("Game Waits for Debugger", nullptr, &session.bGameWaitsForDebugger));
+
+		if (bChanged)
+		{
+			SavePreferences(preferences);
+		}
+
+		ImGui::EndPopup();
+	}
+
+	void PlayControls::DrawSetupsWindow(EditorPreferences& preferences)
+	{
+		if (!bShowSetups)
+		{
+			return;
+		}
+
+		ImGui::SetNextWindowSize(ImVec2(560.0f, 420.0f), ImGuiCond_FirstUseEver);
+		if (!Nyx::UI::Begin("Play Setups", &bShowSetups))
+		{
+			ImGui::End();
+			return;
+		}
+
+		ImGui::PushTextWrapPos(0.0f);
+		NYX_UI(ImGui::TextUnformatted("Play uses the first setup. Play All starts a game for each setup marked in the first column, "
+									  "side by side on the monitor the editor is on. Sizes are the game's picture, without titlebar and borders."));
+		ImGui::PopTextWrapPos();
+
+		std::vector<PlaySetup>& setups = preferences.PlaySetups;
+		bool bChanged = false;
+
+		// Applied after the table, so the rows don't change while it is drawn
+		std::optional<size_t> moveUp;
+		std::optional<size_t> remove;
+
+		const ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingFixedFit;
+		if (ImGui::BeginTable("##PlaySetups", 5, flags))
+		{
+			ImGui::TableSetupColumn("Play All", ImGuiTableColumnFlags_WidthFixed);
+			ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch);
+			ImGui::TableSetupColumn("Width", ImGuiTableColumnFlags_WidthFixed, 90.0f);
+			ImGui::TableSetupColumn("Height", ImGuiTableColumnFlags_WidthFixed, 90.0f);
+			ImGui::TableSetupColumn("##Actions", ImGuiTableColumnFlags_WidthFixed);
+			ImGui::TableHeadersRow();
+
+			for (size_t i = 0; i < setups.size(); ++i)
+			{
+				PlaySetup& setup = setups[i];
+				ImGui::PushID(static_cast<int>(i));
+				ImGui::TableNextRow();
+
+				ImGui::TableNextColumn();
+				bChanged |= NYX_UI(ImGui::Checkbox("##InPlayAll", &setup.bInPlayAll));
+
+				// Saved when the field is left, not with every key
+				ImGui::TableNextColumn();
+				std::array<char, 128> name{};
+				std::memcpy(name.data(), setup.Name.data(), (std::min)(setup.Name.size(), name.size() - 1));
+				ImGui::SetNextItemWidth(-FLT_MIN);
+				if (NYX_UI(ImGui::InputText("##Name", name.data(), name.size())))
+				{
+					setup.Name = name.data();
+				}
+				bChanged |= ImGui::IsItemDeactivatedAfterEdit();
+
+				for (uint32_t* side : { &setup.Width, &setup.Height })
+				{
+					ImGui::TableNextColumn();
+					ImGui::PushID(side == &setup.Width ? "Width" : "Height");
+					int value = static_cast<int>(*side);
+					ImGui::SetNextItemWidth(-FLT_MIN);
+					if (NYX_UI(ImGui::InputInt("##Side", &value, 0, 0)))
+					{
+						*side = static_cast<uint32_t>(std::clamp(value, 1, 16384));
+					}
+					bChanged |= ImGui::IsItemDeactivatedAfterEdit();
+					ImGui::PopID();
+				}
+
+				ImGui::TableNextColumn();
+				ImGui::BeginDisabled(i == 0);
+				if (NYX_UI(ImGui::SmallButton("Up")))
+				{
+					moveUp = i;
+				}
+				ImGui::EndDisabled();
+				ImGui::SameLine();
+				ImGui::BeginDisabled(setups.size() == 1);
+				if (NYX_UI(ImGui::SmallButton("Delete")))
+				{
+					remove = i;
+				}
+				ImGui::EndDisabled();
+
+				ImGui::PopID();
+			}
+
+			ImGui::EndTable();
+		}
+
+		if (moveUp)
+		{
+			std::swap(setups[*moveUp], setups[*moveUp - 1]);
+			bChanged = true;
+		}
+
+		// Play needs a setup, so the last one stays
+		if (remove && setups.size() > 1)
+		{
+			setups.erase(setups.begin() + static_cast<std::ptrdiff_t>(*remove));
+			bChanged = true;
+		}
+
+		if (NYX_UI(ImGui::Button("Add Setup")))
+		{
+			PlaySetup setup = setups.back();
+			setup.Name = "New Setup";
+			setups.push_back(setup);
+			bChanged = true;
+		}
+
+		ImGui::SameLine();
+		if (NYX_UI(ImGui::Button("Reset to Defaults")))
+		{
+			setups = GetDefaultPlaySetups();
+			bChanged = true;
+		}
+
+		if (bChanged)
+		{
+			SavePreferences(preferences);
+		}
+
+		// What Play All would do now: the monitor's work area, and the games' windows on it
+		NYX_UI(ImGui::SeparatorText("Play All on this monitor"));
+		const PlayWallScreen screen = GetEditorScreen();
+		const GamePlan plan = PlanGames(preferences, true, screen);
+
+		if (plan.Games.empty())
+		{
+			NYX_UI(ImGui::TextDisabled("No setup is marked for Play All."));
+		}
+		else if (!plan.bFits)
+		{
+			NYX_UI(ImGui::TextColored(ImVec4(0.95f, 0.78f, 0.30f, 1.0f), "%zu games don't fit, even at %d%%.", plan.Games.size(),
+				static_cast<int>(MinPlayWallScale * 100.0f)));
+		}
+		else if (plan.Scale < 1.0f)
+		{
+			NYX_UI(ImGui::Text("%zu games, shown at %d%% of their sizes to fit.", plan.Games.size(), static_cast<int>(plan.Scale * 100.0f)));
+		}
+		else
+		{
+			NYX_UI(ImGui::Text("%zu games, at their full sizes.", plan.Games.size()));
+		}
+
+		const ScreenRect& area = screen.WorkArea;
+		const ImVec2 available = ImGui::GetContentRegionAvail();
+		if (area.Width > 0 && area.Height > 0 && available.x > 0.0f && available.y > 20.0f)
+		{
+			const float scale = (std::min)(available.x / static_cast<float>(area.Width), available.y / static_cast<float>(area.Height));
+			const ImVec2 origin = ImGui::GetCursorScreenPos();
+			const auto toPreview = [&](int x, int y)
+			{
+				return ImVec2(origin.x + static_cast<float>(x - area.X) * scale, origin.y + static_cast<float>(y - area.Y) * scale);
+			};
+
+			ImDrawList* drawList = ImGui::GetWindowDrawList();
+			drawList->AddRectFilled(toPreview(area.X, area.Y), toPreview(area.X + area.Width, area.Y + area.Height),
+				ImGui::GetColorU32(ImGuiCol_FrameBg));
+
+			// The visible windows, as they will sit on the screen
+			for (const PlannedGame& game : plan.Games)
+			{
+				const Nyx::Engine::GameWindowPosition position = *game.Options.WindowPosition;
+				const Nyx::Engine::GameWindowSize size = *game.Options.WindowSize;
+				const int visibleX = position.X + screen.Frame.InvisibleLeft;
+				const int visibleY = position.Y + screen.Frame.InvisibleTop;
+				const int visibleWidth = static_cast<int>(size.Width) + screen.Frame.Left + screen.Frame.Right;
+				const int visibleHeight = static_cast<int>(size.Height) + screen.Frame.Top + screen.Frame.Bottom;
+
+				const ImVec2 min = toPreview(visibleX, visibleY);
+				const ImVec2 max = toPreview(visibleX + visibleWidth, visibleY + visibleHeight);
+				drawList->AddRectFilled(min, max, ImGui::GetColorU32(ImGuiCol_Button));
+				drawList->AddRect(min, max, ImGui::GetColorU32(ImGuiCol_Border));
+				drawList->PushClipRect(min, max, true);
+				drawList->AddText(ImVec2(min.x + 4.0f, min.y + 2.0f), ImGui::GetColorU32(ImGuiCol_Text), game.Name.c_str());
+				drawList->PopClipRect();
+			}
+
+			ImGui::Dummy(ImVec2(static_cast<float>(area.Width) * scale, static_cast<float>(area.Height) * scale));
+		}
+
+		ImGui::End();
+	}
+}

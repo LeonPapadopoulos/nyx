@@ -1,19 +1,25 @@
 #pragma once
 #include "Assertions.h"
 
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <filesystem>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <queue>
+#include <string>
+#include <thread>
+#include <type_traits>
 #include <typeindex>
 #include <unordered_map>
-#include <string>
-#include <memory>
-#include <thread>
-#include <queue>
-#include <mutex>
-#include <filesystem>
 
-class Mesh;
-class Texture;
-class Shader;
-class Material;
+namespace Nyx
+{
+	class Mesh;
+	class Texture;
+}
 
 namespace Nyx
 {
@@ -28,25 +34,22 @@ namespace Nyx
 		class ResourceHandle
 		{
 		public:
-			ResourceHandle()
-				: ResourceManager(nullptr)
-			{
-			}
+			ResourceHandle() = default;
 
 			ResourceHandle(const std::string& id, ResourceManager* manager)
 				: ResourceId(id)
-				, ResourceManager(manager)
+				, Manager(manager)
 			{
 			}
 
 			T* Get() const
 			{
-				return ResourceManager ? ResourceManager->template GetResource<T>(ResourceId) : nullptr;
+				return Manager ? Manager->template GetResource<T>(ResourceId) : nullptr;
 			}
 
 			bool IsValid() const
 			{
-				return ResourceManager && ResourceManager->template HasResource<T>(ResourceId);
+				return Manager && Manager->template HasResource<T>(ResourceId);
 			}
 
 			const std::string& GetId() const
@@ -71,7 +74,7 @@ namespace Nyx
 
 		private:
 			std::string ResourceId;
-			ResourceManager* ResourceManager;
+			ResourceManager* Manager = nullptr;
 		};
 
 		/////////////////////////////////////////////////////////////////////////////////////////////////
@@ -121,6 +124,8 @@ namespace Nyx
 		/////////////////////////////////////////////////////////////////////////////////////////////////
 		//** ResourceManager
 
+		// Keeps one loaded resource per type and id, counted by Load() and Release(). The maps are
+		// guarded by a mutex, so AsyncResourceManager can load on its thread while others read.
 		class ResourceManager
 		{
 		public:
@@ -129,23 +134,34 @@ namespace Nyx
 			{
 				static_assert(std::is_base_of<Resource, T>::value, "T must derive from Resource");
 
-				auto& typeResources = Resources[std::type_index(typeid(T))];
-				auto it = typeResources.find(resourceId);
-
-				if (it != typeResources.end())
 				{
-					RefCounts[std::type_index(typeid(T))][resourceId]++;
-					return ResourceHandle<T>(resourceId, this);
+					std::lock_guard<std::mutex> lock(Mutex);
+					if (ResourceEntry* entry = FindEntry<T>(resourceId))
+					{
+						++entry->RefCount;
+						return ResourceHandle<T>(resourceId, this);
+					}
 				}
 
+				// Loading can take long, so it happens without the lock.
 				auto resource = std::make_shared<T>(resourceId);
 				if (!resource->Load())
 				{
 					return ResourceHandle<T>();
 				}
 
-				typeResources[resourceId] = resource;
-				RefCounts[std::type_index(typeid(T))][resourceId] = 1;
+				std::lock_guard<std::mutex> lock(Mutex);
+				ResourceEntry& entry = Resources[std::type_index(typeid(T))][resourceId];
+				if (entry.Resource)
+				{
+					// Another thread loaded the same resource meanwhile, so this copy isn't needed.
+					resource->Unload();
+				}
+				else
+				{
+					entry.Resource = resource;
+				}
+				++entry.RefCount;
 
 				return ResourceHandle<T>(resourceId, this);
 			}
@@ -153,99 +169,91 @@ namespace Nyx
 			template<typename T>
 			T* GetResource(const std::string& resourceId)
 			{
-				auto& typeResources = Resources[std::type_index(typeid(T))];
-				auto it = typeResources.find(resourceId);
-
-				if (it != typeResources.end())
-				{
-					return static_cast<T*>(it->second.get());
-				}
-
-				return nullptr;
+				std::lock_guard<std::mutex> lock(Mutex);
+				ResourceEntry* entry = FindEntry<T>(resourceId);
+				return entry ? static_cast<T*>(entry->Resource.get()) : nullptr;
 			}
 
 			template<typename T>
 			bool HasResource(const std::string& resourceId)
 			{
-				auto resourceIt = Resources.find(std::type_index(typeid(T)));
-				return resourceIt != Resources.end();
+				std::lock_guard<std::mutex> lock(Mutex);
+				return FindEntry<T>(resourceId) != nullptr;
 			}
 
+			// Unloads the resource when its last Load() is released.
 			template<typename T>
 			void Release(const std::string& resourceId)
 			{
-				auto resourceTypeIt = Resources.find(std::type_index(typeid(T)));
-				if (resourceTypeIt == Resources.end())
+				std::shared_ptr<Resource> unloaded;
 				{
-					return;
-				}
-
-				auto& refCounts = resourceId->second;
-				auto it = refCounts.find(resourceId);
-				if (it != refCounts.end())
-				{
-					it->second--;
-
-					// check if resource has no remaining references
-					if (it->second <= 0)
+					std::lock_guard<std::mutex> lock(Mutex);
+					auto typeIt = Resources.find(std::type_index(typeid(T)));
+					if (typeIt == Resources.end())
 					{
-						for (auto& [type, typeResources] : Resources)
-						{
-							auto resourceIt = typeResources.find(resourceId);
-							if (resourceIt != typeResources.end())
-							{
-								resourceIt->second->Unload();
-								typeResources.erase(resourceIt);
-								break;
-							}
-						}
-
-						// Clean up reference counting entry
-						refCounts.erase(it);
+						return;
 					}
+
+					auto it = typeIt->second.find(resourceId);
+					if (it == typeIt->second.end() || --it->second.RefCount > 0)
+					{
+						return;
+					}
+
+					unloaded = std::move(it->second.Resource);
+					typeIt->second.erase(it);
 				}
+				unloaded->Unload();
 			}
 
 			void UnloadAll()
 			{
+				std::lock_guard<std::mutex> lock(Mutex);
 				for (auto& [type, typeResources] : Resources)
 				{
-					for (auto& [id, resource] : typeResources)
+					for (auto& [id, entry] : typeResources)
 					{
-						resource->Unload();
+						entry.Resource->Unload();
 					}
-					typeResources.clear();
 				}
-				RefCounts.clear();
-			}
-
-			// @todo: Generalize, once the ResourceManager is properly integrated into Asset Management
-			Mesh* ResolveMesh(const std::string& id)
-			{
-			}
-
-			Material* ResolveMaterial(const std::string& id)
-			{
+				Resources.clear();
 			}
 
 		private:
-			std::unordered_map<std::type_index, std::unordered_map<std::string, std::shared_ptr<Resource>>> Resources;
-
-			struct ResourceData
+			struct ResourceEntry
 			{
-				std::shared_ptr<Resource> Resources;
-				int RefCount;
+				std::shared_ptr<Resource> Resource;
+				int RefCount = 0;
 			};
-			std::unordered_map<std::type_index, std::unordered_map<std::string, ResourceData>> RefCounts;
+
+			// Call with the mutex held.
+			template<typename T>
+			ResourceEntry* FindEntry(const std::string& resourceId)
+			{
+				auto typeIt = Resources.find(std::type_index(typeid(T)));
+				if (typeIt == Resources.end())
+				{
+					return nullptr;
+				}
+
+				auto it = typeIt->second.find(resourceId);
+				return it != typeIt->second.end() ? &it->second : nullptr;
+			}
+
+			std::mutex Mutex;
+			std::unordered_map<std::type_index, std::unordered_map<std::string, ResourceEntry>> Resources;
 		};
 
 		/////////////////////////////////////////////////////////////////////////////////////////////////
 		//** AsyncResourceManager
 
+		// Loads resources into a ResourceManager on its own thread. Stopping finishes the loads
+		// already queued, so every callback runs.
 		class AsyncResourceManager
 		{
 		public:
-			AsyncResourceManager()
+			explicit AsyncResourceManager(ResourceManager& manager)
+				: Manager(manager)
 			{
 				Start();
 			}
@@ -255,8 +263,16 @@ namespace Nyx
 				Stop();
 			}
 
+			AsyncResourceManager(const AsyncResourceManager&) = delete;
+			AsyncResourceManager& operator=(const AsyncResourceManager&) = delete;
+
 			void Start()
 			{
+				if (WorkerThread.joinable())
+				{
+					return;
+				}
+
 				bRunning = true;
 				WorkerThread = std::thread([this]()
 					{
@@ -280,21 +296,23 @@ namespace Nyx
 			template<typename T>
 			void LoadAsync(const std::string& resourceId, std::function<void(ResourceHandle<T>)> callback)
 			{
-				std::lock_guard<std::mutex> lock(QueueMutex);
-				TaskQueue.push([this, resourceId, callback]()
-					{
-						auto handle = ResourceManager->Load<T>(resourceId);
-						callback(handle);
-					});
+				{
+					std::lock_guard<std::mutex> lock(QueueMutex);
+					TaskQueue.push([this, resourceId, callback]()
+						{
+							ResourceHandle<T> handle = Manager.Load<T>(resourceId);
+							callback(handle);
+						});
+				}
 				Condition.notify_one();
 			}
 
 		private:
 			void DoWork()
 			{
-				while (bRunning)
+				while (true)
 				{
-					std::function<void()> Task;
+					std::function<void()> task;
 					{
 						std::unique_lock<std::mutex> lock(QueueMutex);
 						Condition.wait(lock, [this]()
@@ -302,31 +320,34 @@ namespace Nyx
 								return !TaskQueue.empty() || !bRunning;
 							});
 
-						if (!bRunning && TaskQueue.empty())
+						if (TaskQueue.empty())
 						{
 							return;
 						}
 
-						Task = std::move(TaskQueue.front());
+						task = std::move(TaskQueue.front());
 						TaskQueue.pop();
 					}
 
-					Task();
+					task();
 				}
 			}
 
 		private:
-			ResourceManager* ResourceManager;
+			ResourceManager& Manager;
 			std::thread WorkerThread;
 			std::queue<std::function<void()>> TaskQueue;
 			std::mutex QueueMutex;
 			std::condition_variable Condition;
+
+			// Guarded by QueueMutex.
 			bool bRunning = false;
 		};
 
 		/////////////////////////////////////////////////////////////////////////////////////////////////
 		//** HotReloadResourceManager
 
+		// Work in progress: file paths and reloading aren't written yet, and both assert.
 		class HotReloadResourceManager : public ResourceManager
 		{
 		public:
@@ -342,6 +363,11 @@ namespace Nyx
 
 			void StartWatcher()
 			{
+				if (WatcherThread.joinable())
+				{
+					return;
+				}
+
 				bRunning = true;
 				WatcherThread = std::thread([this]()
 					{
@@ -365,13 +391,12 @@ namespace Nyx
 
 				// Store file timestamp
 				std::string filePath = GetFilePath<T>(resourceId);
-				try
+				std::error_code error;
+				const auto timestamp = std::filesystem::last_write_time(filePath, error);
+				if (!error)
 				{
-					FileTimestamps[filePath] = std::filesystem::last_write_time(filePath);
-				}
-				catch (const std::filesystem::filesystem_error& error)
-				{
-					// File doesn't exist or can't be accessed
+					std::lock_guard<std::mutex> lock(TimestampMutex);
+					FileTimestamps[filePath] = timestamp;
 				}
 
 				return handle;
@@ -383,18 +408,13 @@ namespace Nyx
 			{
 				ASSERT(false && "This is still WIP! Directories and Types not fixed yet!");
 
-				if constexpr (std::is_same_v<T, Texture>)
+				if constexpr (std::is_same_v<T, Nyx::Texture>)
 				{
 					return "textures/" + resourceId + ".ktx";
 				}
-				else if constexpr (std::is_same_v<T, Mesh>)
+				else if constexpr (std::is_same_v<T, Nyx::Mesh>)
 				{
 					return "models/" + resourceId + ".gltf";
-				}
-				else if constexpr (std::is_same_v<T, Shader>)
-				{
-					// Simplified for example
-					return "shaders/" + resourceId + ".spv";
 				}
 				else
 				{
@@ -407,20 +427,17 @@ namespace Nyx
 				while (bRunning)
 				{
 					// check for file changes
-					for (auto& [filePath, timestamp] : FileTimestamps)
 					{
-						try
+						std::lock_guard<std::mutex> lock(TimestampMutex);
+						for (auto& [filePath, timestamp] : FileTimestamps)
 						{
-							auto currentTimestamp = std::filesystem::last_write_time(filePath);
-							if (currentTimestamp != timestamp)
+							std::error_code error;
+							const auto currentTimestamp = std::filesystem::last_write_time(filePath, error);
+							if (!error && currentTimestamp != timestamp)
 							{
 								ReloadResource(filePath);
 								timestamp = currentTimestamp;
 							}
-						}
-						catch (const std::filesystem::filesystem_error& error)
-						{
-							// file doesn't exist or can't be accessed
 						}
 					}
 
@@ -438,9 +455,10 @@ namespace Nyx
 			}
 
 		private:
+			std::mutex TimestampMutex;
 			std::unordered_map<std::string, std::filesystem::file_time_type> FileTimestamps;
 			std::thread WatcherThread;
-			bool bRunning = false;
+			std::atomic<bool> bRunning = false;
 		};
 	}
 

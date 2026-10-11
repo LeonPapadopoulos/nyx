@@ -1,0 +1,172 @@
+#include "DetailsPanel.h"
+
+#include "ComponentEdits.h"
+#include "ComponentTypeRegistry.h"
+#include "ImGuiSource.h"
+#include "ReflectedPropertyDrawer.h"
+#include "ReflectionSourceRegistry.h"
+#include "SceneEditor.h"
+#include "TransactionObjectRefHelpers.h"
+
+#include "imgui.h"
+
+#include <cfloat>
+#include <string>
+
+namespace Nyx::Editor
+{
+	void DetailsPanel::Draw(SceneEditor& editing)
+	{
+		if (!bOpen)
+		{
+			return;
+		}
+
+		if (!Nyx::UI::Begin("Details", &bOpen))
+		{
+			ImGui::End();
+			return;
+		}
+
+		auto& selection = editing.Scene.GetSelection();
+		auto& world = editing.Scene.GetRegistry();
+
+		if (!selection.has_value())
+		{
+			NYX_UI(ImGui::TextUnformatted("No entity selected."));
+			ImGui::End();
+			return;
+		}
+
+		const Nyx::Engine::Entity selectedEntity = selection.value();
+
+		if (!world.IsAlive(selectedEntity))
+		{
+			NYX_UI(ImGui::TextUnformatted("Selected entity is no longer valid."));
+			selection.reset();
+			ImGui::End();
+			return;
+		}
+
+		NYX_UI(ImGui::Text("Entity: %u", selectedEntity.Index()));
+		NYX_UI(ImGui::Separator());
+
+		// @todo: Move away from manually hardcoding the visuals of
+		// specific components (and fields) here; Consider DetailsPanel-,
+		// and Property-Customizations like Unreal does it. Also, look
+		// into code generation for the needed field meta data
+
+		// A replacement scene can reuse entity handles. Give its widgets fresh IDs so ImGui
+		// cannot carry an active drag or a cached text edit over from the previous scene.
+		ImGui::PushID(std::to_string(editing.SceneRevision).c_str());
+		ImGui::PushID(static_cast<int>(selectedEntity.Value));
+
+		// @todo: Find a more robust (and automated) naming approach,
+		// so we can easily, and reliably avoid Naming collisions among UI elements.
+		// (Currently being dodged by using '##SomeSubInfo')
+
+		InspectorDrawContext& drawContext = editing.DetailsContext;
+		drawContext.Transactions = &editing.Transactions;
+		drawContext.CurrentObjectRef = MakeSceneEntityRef(editing.Scene, selectedEntity);
+
+		// Removed after the loop, so it isn't drawn after it is gone
+		const Nyx::Engine::ComponentTypeOps* componentToRemove = nullptr;
+
+		// One collapsible section per component of the entity, showing its reflected properties
+		for (const Nyx::Engine::ComponentTypeOps& componentType : Nyx::Engine::ComponentTypeRegistry::Get().GetAll())
+		{
+			void* component = componentType.Get(world, selectedEntity);
+			if (!component)
+			{
+				continue;
+			}
+
+			const char* displayName = componentType.TypeMetadata->DisplayName;
+			ImGui::PushID(displayName);
+			UI::SourceDeclarationScope componentSource(ReflectionSourceRegistry::Get().Find(*componentType.TypeMetadata));
+
+			const bool bComponentOpen = NYX_UI(ImGui::CollapsingHeader(displayName, ImGuiTreeNodeFlags_DefaultOpen));
+
+			// Right-click on the header: Remove, except for the guid and name every entity keeps
+			if (CanAddOrRemoveComponent(componentType))
+			{
+				ImGui::SetItemTooltip("Right-click to remove");
+				if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
+				{
+					ImGui::OpenPopup("##ComponentMenu");
+				}
+
+				if (Nyx::UI::BeginPopup("##ComponentMenu"))
+				{
+					if (NYX_UI(ImGui::MenuItem("Remove Component")))
+					{
+						componentToRemove = &componentType;
+					}
+					ImGui::EndPopup();
+				}
+			}
+
+			if (bComponentOpen)
+			{
+				// The component's own properties; the drawer extends the location for structs inside it
+				drawContext.CurrentLocation = {};
+				DrawReflectedTypeTable(component, *componentType.TypeMetadata, drawContext);
+			}
+
+			ImGui::PopID();
+		}
+
+		// The component types the entity doesn't have yet
+		NYX_UI(ImGui::Spacing());
+		if (NYX_UI(ImGui::Button("Add Component", ImVec2(-FLT_MIN, 0.0f))))
+		{
+			ImGui::OpenPopup("##AddComponent");
+		}
+
+		const Nyx::Engine::ComponentTypeOps* componentToAdd = nullptr;
+		if (Nyx::UI::BeginPopup("##AddComponent"))
+		{
+			bool bAnyMissing = false;
+			for (const Nyx::Engine::ComponentTypeOps& componentType : Nyx::Engine::ComponentTypeRegistry::Get().GetAll())
+			{
+				if (!CanAddOrRemoveComponent(componentType) || componentType.Has(world, selectedEntity))
+				{
+					continue;
+				}
+
+				bAnyMissing = true;
+				if (NYX_UI(ImGui::MenuItem(componentType.TypeMetadata->DisplayName)))
+				{
+					componentToAdd = &componentType;
+				}
+			}
+
+			if (!bAnyMissing)
+			{
+				NYX_UI(ImGui::TextDisabled("The entity has every component"));
+			}
+			ImGui::EndPopup();
+		}
+
+		// Adding or removing can move other components of that type in memory, so edits in progress,
+		// which point at components, are dropped first. A click on a menu has ended them already.
+		if (componentToAdd || componentToRemove)
+		{
+			editing.CancelPendingEdits();
+		}
+
+		if (componentToAdd)
+		{
+			AddComponent(editing.Scene, editing.Transactions, selectedEntity, *componentToAdd);
+		}
+
+		if (componentToRemove)
+		{
+			RemoveComponent(editing.Scene, editing.Transactions, selectedEntity, *componentToRemove);
+		}
+
+		ImGui::PopID();
+		ImGui::PopID();
+		ImGui::End();
+	}
+}
