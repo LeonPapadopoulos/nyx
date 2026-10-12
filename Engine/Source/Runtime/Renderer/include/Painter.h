@@ -3,9 +3,11 @@
 #include "PainterCommands.h"
 
 #include <glm/glm.hpp>
+#include <imgui.h>
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace Nyx::Engine
@@ -137,6 +139,21 @@ namespace Nyx::Engine
 		void AddLine(glm::vec2 from, glm::vec2 to, float width, EPainterLineCap cap, const PainterStyle& style);
 		void AddTriangle(glm::vec2 a, glm::vec2 b, glm::vec2 c, const PainterStyle& style);
 
+		// Text in one of ImGui's fonts, UTF-8, with lines broken at '\n'. `position` is the top
+		// left of the first line, and each line is `size` high. The glyphs come from ImGui's font
+		// atlas, baked at exactly the size they are drawn at (the transform's scale included), so
+		// the text looks like ImGui's own and stays crisp when a canvas zooms. Text casts no
+		// shadow or glow. Needs an ImGui context whose font atlas is built (after the first
+		// ImGui::NewFrame()).
+		void AddText(ImFont* font, float size, glm::vec2 position, const glm::vec4& color, std::string_view text);
+
+		// A texture, or the part of it given by `uvs` (texture coordinates from 0 to 1), stretched
+		// over `rect`. `texture` is what ImGui::Image() takes. The style's colour tints the image
+		// (white leaves it as it is) and its effects give it a shadow or glow around the rect;
+		// its outline width is ignored. A frame uses at most PainterMaxTextures textures, the
+		// font atlas included; an image with one more is dropped and reported.
+		void AddImage(ImTextureRef texture, const PainterRect& rect, const PainterStyle& style, const PainterRect& uvs = PainterRect{ { 0.0f, 0.0f }, { 1.0f, 1.0f } });
+
 		// Clip rects. A pushed rect is in the current transform's units and is cut by the clip
 		// rect already pushed, so nested clips only ever shrink. The first clip rect is the
 		// whole target.
@@ -158,6 +175,11 @@ namespace Nyx::Engine
 		const std::vector<PainterCommand>& GetCommands() const { return Commands; }
 		const std::vector<PainterGroup>& GetGroups() const { return Groups; }
 
+		// The textures glyphs and images use; PainterCommand::Texture indexes into this. They are
+		// ImGui texture references, resolved to the GPU texture only when the frame is drawn,
+		// since ImGui may still update its font atlas until then.
+		const std::vector<ImTextureRef>& GetTextures() const { return Textures; }
+
 		// Misuse found while recording this frame, one line per kind, e.g. "PopClipRect() without
 		// a PushClipRect()"
 		const std::vector<std::string>& GetProblems() const { return Problems; }
@@ -171,12 +193,17 @@ namespace Nyx::Engine
 
 	private:
 		// Adds a command: the header from the style and the current state, then the payload,
-		// which the Add...() functions have already moved into target pixels.
+		// which the Add...() functions have already moved into target pixels. `texture` is an
+		// index into Textures, for glyphs and images.
 		template<typename TPayload>
-		void AddShape(EPainterCommandType type, EPainterCommandFlags flags, const PainterStyle& style, const TPayload& payload);
+		void AddShape(EPainterCommandType type, EPainterCommandFlags flags, const PainterStyle& style, const TPayload& payload, uint32_t texture = 0);
 
 		// A new group from effects in the current transform's units; returns its index
 		uint32_t AddGroup(const PainterEffects& effects);
+
+		// The texture's index in Textures, adding it if it is new; false if the frame has no
+		// room left for another texture
+		bool FindOrAddTexture(const ImTextureRef& texture, uint32_t& outIndex);
 
 		void ReportProblem(const std::string& problem);
 
@@ -185,6 +212,7 @@ namespace Nyx::Engine
 
 		std::vector<PainterCommand> Commands;
 		std::vector<PainterGroup> Groups;
+		std::vector<ImTextureRef> Textures;
 		std::vector<std::string> Problems;
 
 		// Never empty: the bottom entries are the whole target and no transform.

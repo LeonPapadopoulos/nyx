@@ -20,6 +20,8 @@ const uint CommandCircle = 1u;
 const uint CommandCircleSector = 2u;
 const uint CommandLine = 3u;
 const uint CommandTriangle = 4u;
+const uint CommandGlyph = 5u;
+const uint CommandImage = 6u;
 
 // EPainterCommandFlags
 const uint FlagRoundCaps = 1u;
@@ -77,6 +79,17 @@ layout(std430, set = 0, binding = 3) readonly buffer EntryBuffer
 {
 	uint Entries[];
 };
+
+// The frame's textures (PainterMaxTextures = 7), one per descriptor set, laid out like ImGui's
+// texture sets, so that ImGui's font atlas and ImGui::Image() textures bind here as they are.
+// Slots the frame doesn't use hold a transparent 1x1 texture.
+layout(set = 1, binding = 0) uniform sampler2D Texture0;
+layout(set = 2, binding = 0) uniform sampler2D Texture1;
+layout(set = 3, binding = 0) uniform sampler2D Texture2;
+layout(set = 4, binding = 0) uniform sampler2D Texture3;
+layout(set = 5, binding = 0) uniform sampler2D Texture4;
+layout(set = 6, binding = 0) uniform sampler2D Texture5;
+layout(set = 7, binding = 0) uniform sampler2D Texture6;
 
 // VulkanPainter.cpp, PainterPushConstants
 layout(push_constant) uniform PainterPushConstants
@@ -222,6 +235,15 @@ float TriangleDistance(vec2 p, PainterCommand command)
 	return -sqrt(d.x) * sign(d.y);
 }
 
+// PainterTexturedRectPayload: Payload0 = min x, min y, max x, max y; Payload1 = the texture
+// coordinates at min and at max. The texture gives the shape's inside (see TextureColor()).
+float TexturedRectDistance(vec2 p, PainterCommand command)
+{
+	vec2 center = (command.Payload0.xy + command.Payload0.zw) * 0.5;
+	vec2 halfSize = (command.Payload0.zw - command.Payload0.xy) * 0.5;
+	return BoxDistance(p - center, halfSize);
+}
+
 // The command's distance, its outline included
 float ShapeDistance(vec2 p, PainterCommand command)
 {
@@ -243,8 +265,11 @@ float ShapeDistance(vec2 p, PainterCommand command)
 	case CommandTriangle:
 		result = TriangleDistance(p, command);
 		break;
+	case CommandGlyph:
+	case CommandImage:
+		result = TexturedRectDistance(p, command);
+		break;
 	default:
-		// Glyphs and images arrive in change 4.
 		return Far;
 	}
 
@@ -278,6 +303,44 @@ vec4 Over(vec4 destination, vec4 source)
 	return source + destination * (1.0 - source.a);
 }
 
+// One texel of the frame's texture `index`. The texture's mip level 0 is read explicitly: the
+// command loop is not uniform control flow, where implicit mip selection is undefined.
+vec4 SampleTexture(uint index, vec2 uv)
+{
+	switch (index)
+	{
+	case 0u:
+		return textureLod(Texture0, uv, 0.0);
+	case 1u:
+		return textureLod(Texture1, uv, 0.0);
+	case 2u:
+		return textureLod(Texture2, uv, 0.0);
+	case 3u:
+		return textureLod(Texture3, uv, 0.0);
+	case 4u:
+		return textureLod(Texture4, uv, 0.0);
+	case 5u:
+		return textureLod(Texture5, uv, 0.0);
+	case 6u:
+		return textureLod(Texture6, uv, 0.0);
+	}
+	return vec4(0.0);
+}
+
+// A glyph's or an image's colour at p, premultiplied: the texel where p falls in the rect, tinted
+// by the command's colour. Textures hold straight alpha, like ImGui's.
+vec4 TextureColor(vec2 p, PainterCommand command)
+{
+	vec2 rectMin = command.Payload0.xy;
+	vec2 rectMax = command.Payload0.zw;
+	vec2 alongRect = (p - rectMin) / max(rectMax - rectMin, vec2(1.0e-6));
+	// Clamped to the rect, for the half-covered pixels on its edge: a glyph or image that is only
+	// part of a texture (an atlas) would otherwise bring in texels of its neighbours.
+	vec2 uv = mix(command.Payload1.xy, command.Payload1.zw, clamp(alongRect, 0.0, 1.0));
+	vec4 texel = SampleTexture(command.Texture, uv);
+	return unpackUnorm4x8(command.Color) * vec4(texel.rgb * texel.a, texel.a);
+}
+
 // A group's shadow and glow, drawn under its shapes. The group's shapes follow each other in the
 // tile's list from `firstEntry` on: the painter records a group in one go, and binning puts every
 // shape of a group into every tile the group reaches.
@@ -295,7 +358,8 @@ vec4 DrawGroupEffects(vec4 color, vec2 pixel, uint groupIndex, uint firstEntry, 
 		{
 			break;
 		}
-		if (!IsInsideClipRect(pixel, command.ClipRect))
+		// A glyph's shape is in the atlas, not in its rect: as a rect it would cast a box.
+		if (command.Type == CommandGlyph || !IsInsideClipRect(pixel, command.ClipRect))
 		{
 			continue;
 		}
@@ -369,7 +433,13 @@ void main()
 			continue;
 		}
 		float coverage = Coverage(ShapeDistance(pixel, command));
-		color = Over(color, unpackUnorm4x8(command.Color) * coverage);
+		if (coverage <= 0.0)
+		{
+			continue;
+		}
+		bool bTextured = command.Type == CommandGlyph || command.Type == CommandImage;
+		vec4 commandColor = bTextured ? TextureColor(pixel, command) : unpackUnorm4x8(command.Color);
+		color = Over(color, commandColor * coverage);
 	}
 
 	if (DebugView == DebugViewHeatmap)

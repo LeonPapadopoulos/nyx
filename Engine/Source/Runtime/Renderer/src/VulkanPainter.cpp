@@ -104,17 +104,27 @@ namespace Nyx::Engine
 	void VulkanPainter::Initialize(Nyx::VulkanContext& context)
 	{
 		Context = &context;
+		CheckDeviceLimits();
 		CreateRenderPass();
-		CreateDescriptorSetLayout();
+		CreateDescriptorSetLayouts();
 		CreateDescriptorPool();
 		CreatePipeline();
+		CreateEmptyTexture();
 	}
 
 	void VulkanPainter::Shutdown()
 	{
+		EmptyTextureSet = nullptr;
+		EmptySampler = nullptr;
+		EmptyImageView = nullptr;
+		EmptyImage = nullptr;
+		EmptyImageMemory = nullptr;
+		bEmptyTextureReady = false;
+
 		Pipeline = nullptr;
 		PipelineLayout = nullptr;
 		DescriptorPool = nullptr;
+		TextureSetLayout = nullptr;
 		DescriptorSetLayout = nullptr;
 		RenderPass = nullptr;
 		Context = nullptr;
@@ -131,6 +141,7 @@ namespace Nyx::Engine
 		}
 
 		PrepareImage(target, extent);
+		PrepareEmptyTexture(commandBuffer);
 		Upload(target, painter);
 
 		// The clear colour is straight, like every colour given to the painter; the image holds
@@ -152,6 +163,7 @@ namespace Nyx::Engine
 
 		commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *Pipeline);
 		commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *PipelineLayout, 0, { *target.DescriptorSet }, {});
+		BindTextures(commandBuffer, painter);
 
 		PainterPushConstants push;
 		push.TilesX = target.Tiles.TilesX;
@@ -212,7 +224,19 @@ namespace Nyx::Engine
 		RenderPass = vk::raii::RenderPass(Context->GetDevice(), renderPassInfo);
 	}
 
-	void VulkanPainter::CreateDescriptorSetLayout()
+	void VulkanPainter::CheckDeviceLimits()
+	{
+		// The commands' set plus one set per texture (PainterCommands.h, PainterMaxTextures)
+		const uint32_t setsNeeded = 1 + PainterMaxTextures;
+		const uint32_t setsAvailable = Context->GetPhysicalDevice().getProperties().limits.maxBoundDescriptorSets;
+		if (setsAvailable < setsNeeded)
+		{
+			throw std::runtime_error("Painter: the GPU binds " + std::to_string(setsAvailable) + " descriptor sets at once, the painter needs " +
+				std::to_string(setsNeeded) + "; lower PainterMaxTextures");
+		}
+	}
+
+	void VulkanPainter::CreateDescriptorSetLayouts()
 	{
 		std::array<vk::DescriptorSetLayoutBinding, BindingCount> bindings{};
 		for (uint32_t binding = 0; binding < BindingCount; ++binding)
@@ -227,19 +251,143 @@ namespace Nyx::Engine
 		layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
 		layoutInfo.pBindings = bindings.data();
 		DescriptorSetLayout = vk::raii::DescriptorSetLayout(Context->GetDevice(), layoutInfo);
+
+		// Exactly as ImGui defines its texture sets, so that its sets are compatible with this one.
+		vk::DescriptorSetLayoutBinding textureBinding{};
+		textureBinding.binding = 0;
+		textureBinding.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+		textureBinding.descriptorCount = 1;
+		textureBinding.stageFlags = vk::ShaderStageFlagBits::eFragment;
+
+		vk::DescriptorSetLayoutCreateInfo textureLayoutInfo{};
+		textureLayoutInfo.bindingCount = 1;
+		textureLayoutInfo.pBindings = &textureBinding;
+		TextureSetLayout = vk::raii::DescriptorSetLayout(Context->GetDevice(), textureLayoutInfo);
 	}
 
 	void VulkanPainter::CreateDescriptorPool()
 	{
-		const vk::DescriptorPoolSize poolSize{ vk::DescriptorType::eStorageBuffer, MaxTargets * BindingCount };
+		// One set per target, plus the empty texture's set. All other textures come with sets of
+		// their own, made by ImGui.
+		constexpr uint32_t TextureSets = 1;
+		const std::array<vk::DescriptorPoolSize, 2> poolSizes = { {
+			{ vk::DescriptorType::eStorageBuffer, MaxTargets * BindingCount },
+			{ vk::DescriptorType::eCombinedImageSampler, TextureSets },
+		} };
 
 		vk::DescriptorPoolCreateInfo poolInfo{};
 		// Targets free their set when they are released.
 		poolInfo.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
-		poolInfo.maxSets = MaxTargets;
-		poolInfo.poolSizeCount = 1;
-		poolInfo.pPoolSizes = &poolSize;
+		poolInfo.maxSets = MaxTargets + TextureSets;
+		poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+		poolInfo.pPoolSizes = poolSizes.data();
 		DescriptorPool = vk::raii::DescriptorPool(Context->GetDevice(), poolInfo);
+	}
+
+	void VulkanPainter::CreateEmptyTexture()
+	{
+		vk::raii::Device& device = Context->GetDevice();
+
+		vk::ImageCreateInfo imageInfo{};
+		imageInfo.imageType = vk::ImageType::e2D;
+		imageInfo.extent = vk::Extent3D(1, 1, 1);
+		imageInfo.mipLevels = 1;
+		imageInfo.arrayLayers = 1;
+		imageInfo.format = TargetFormat;
+		imageInfo.tiling = vk::ImageTiling::eOptimal;
+		imageInfo.initialLayout = vk::ImageLayout::eUndefined;
+		imageInfo.usage = vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst;
+		imageInfo.samples = vk::SampleCountFlagBits::e1;
+		EmptyImage = vk::raii::Image(device, imageInfo);
+
+		const vk::MemoryRequirements requirements = EmptyImage.getMemoryRequirements();
+		vk::MemoryAllocateInfo allocInfo{};
+		allocInfo.allocationSize = requirements.size;
+		allocInfo.memoryTypeIndex = FindMemoryType(*Context->GetPhysicalDevice(), requirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal);
+		EmptyImageMemory = vk::raii::DeviceMemory(device, allocInfo);
+		EmptyImage.bindMemory(*EmptyImageMemory, 0);
+
+		vk::ImageViewCreateInfo viewInfo{};
+		viewInfo.image = *EmptyImage;
+		viewInfo.viewType = vk::ImageViewType::e2D;
+		viewInfo.format = TargetFormat;
+		viewInfo.subresourceRange = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
+		EmptyImageView = vk::raii::ImageView(device, viewInfo);
+
+		vk::SamplerCreateInfo samplerInfo{};
+		samplerInfo.magFilter = vk::Filter::eNearest;
+		samplerInfo.minFilter = vk::Filter::eNearest;
+		samplerInfo.addressModeU = vk::SamplerAddressMode::eClampToEdge;
+		samplerInfo.addressModeV = vk::SamplerAddressMode::eClampToEdge;
+		samplerInfo.addressModeW = vk::SamplerAddressMode::eClampToEdge;
+		EmptySampler = vk::raii::Sampler(device, samplerInfo);
+
+		vk::DescriptorSetAllocateInfo setInfo{};
+		setInfo.descriptorPool = *DescriptorPool;
+		setInfo.descriptorSetCount = 1;
+		setInfo.pSetLayouts = &*TextureSetLayout;
+		EmptyTextureSet = std::move(vk::raii::DescriptorSets(device, setInfo).front());
+
+		vk::DescriptorImageInfo imageDescriptor{ *EmptySampler, *EmptyImageView, vk::ImageLayout::eShaderReadOnlyOptimal };
+		vk::WriteDescriptorSet write{};
+		write.dstSet = *EmptyTextureSet;
+		write.dstBinding = 0;
+		write.descriptorCount = 1;
+		write.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+		write.pImageInfo = &imageDescriptor;
+		device.updateDescriptorSets(write, {});
+	}
+
+	void VulkanPainter::PrepareEmptyTexture(vk::raii::CommandBuffer& commandBuffer)
+	{
+		if (bEmptyTextureReady)
+		{
+			return;
+		}
+
+		const vk::ImageSubresourceRange wholeImage(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
+
+		vk::ImageMemoryBarrier toClear{};
+		toClear.srcAccessMask = {};
+		toClear.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
+		toClear.oldLayout = vk::ImageLayout::eUndefined;
+		toClear.newLayout = vk::ImageLayout::eTransferDstOptimal;
+		toClear.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		toClear.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		toClear.image = *EmptyImage;
+		toClear.subresourceRange = wholeImage;
+		commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, toClear);
+
+		commandBuffer.clearColorImage(*EmptyImage, vk::ImageLayout::eTransferDstOptimal, vk::ClearColorValue(std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 0.0f }), wholeImage);
+
+		vk::ImageMemoryBarrier toRead = toClear;
+		toRead.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
+		toRead.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+		toRead.oldLayout = vk::ImageLayout::eTransferDstOptimal;
+		toRead.newLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+		commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, toRead);
+
+		bEmptyTextureReady = true;
+	}
+
+	void VulkanPainter::BindTextures(vk::raii::CommandBuffer& commandBuffer, const Painter& painter)
+	{
+		std::array<vk::DescriptorSet, PainterMaxTextures> textureSets;
+		textureSets.fill(*EmptyTextureSet);
+
+		const std::vector<ImTextureRef>& textures = painter.GetTextures();
+		for (size_t slot = 0; slot < textures.size() && slot < textureSets.size(); ++slot)
+		{
+			// With ImGui's Vulkan backend, a texture's ImTextureID is its descriptor set. The font
+			// atlas has none until ImGui first uploads it; its glyphs then stay invisible.
+			const ImTextureID textureId = textures[slot].GetTexID();
+			if (textureId != ImTextureID_Invalid)
+			{
+				textureSets[slot] = vk::DescriptorSet(reinterpret_cast<VkDescriptorSet>(textureId));
+			}
+		}
+
+		commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *PipelineLayout, 1, textureSets, {});
 	}
 
 	void VulkanPainter::CreatePipeline()
@@ -309,9 +457,14 @@ namespace Nyx::Engine
 		pushConstantRange.offset = 0;
 		pushConstantRange.size = sizeof(PainterPushConstants);
 
+		// Set 0 holds the commands; sets 1 to PainterMaxTextures one texture each.
+		std::array<vk::DescriptorSetLayout, 1 + PainterMaxTextures> setLayouts;
+		setLayouts.fill(*TextureSetLayout);
+		setLayouts[0] = *DescriptorSetLayout;
+
 		vk::PipelineLayoutCreateInfo layoutInfo{};
-		layoutInfo.setLayoutCount = 1;
-		layoutInfo.pSetLayouts = &*DescriptorSetLayout;
+		layoutInfo.setLayoutCount = static_cast<uint32_t>(setLayouts.size());
+		layoutInfo.pSetLayouts = setLayouts.data();
 		layoutInfo.pushConstantRangeCount = 1;
 		layoutInfo.pPushConstantRanges = &pushConstantRange;
 		PipelineLayout = vk::raii::PipelineLayout(Context->GetDevice(), layoutInfo);

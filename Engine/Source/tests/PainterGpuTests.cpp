@@ -6,9 +6,12 @@
 
 #include <GLFW/glfw3.h>
 
+#include <imgui.h>
+
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <deque>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -102,11 +105,22 @@ namespace
 			}
 			Context.Initialize("NyxPainterGpuTests", Window);
 			PainterPass.Initialize(Context);
+
+			// Texture sets for the tests' own textures, as ImGui's backend makes them for its own
+			const vk::DescriptorPoolSize poolSize{ vk::DescriptorType::eCombinedImageSampler, 16 };
+			vk::DescriptorPoolCreateInfo poolInfo{};
+			poolInfo.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
+			poolInfo.maxSets = 16;
+			poolInfo.poolSizeCount = 1;
+			poolInfo.pPoolSizes = &poolSize;
+			TexturePool = vk::raii::DescriptorPool(Context.GetDevice(), poolInfo);
 		}
 
 		~GpuPainter()
 		{
 			Context.GetDevice().waitIdle();
+			Textures.clear();
+			TexturePool = nullptr;
 			Target.Release();
 			PainterPass.Shutdown();
 			Context.Shutdown();
@@ -181,7 +195,144 @@ namespace
 
 		const VulkanPainterTarget& GetTarget() const { return Target; }
 
+		// A texture made from RGBA8 pixels, row by row, with a descriptor set like ImGui's; returns
+		// what AddImage() and ImGui::Image() take. Nearest filtering, so tests can tell texels apart.
+		ImTextureID CreateTexture(uint32_t width, uint32_t height, const std::vector<uint8_t>& rgba)
+		{
+			vk::raii::Device& device = Context.GetDevice();
+			TestTexture& texture = Textures.emplace_back();
+
+			vk::ImageCreateInfo imageInfo{};
+			imageInfo.imageType = vk::ImageType::e2D;
+			imageInfo.extent = vk::Extent3D(width, height, 1);
+			imageInfo.mipLevels = 1;
+			imageInfo.arrayLayers = 1;
+			imageInfo.format = vk::Format::eR8G8B8A8Unorm;
+			imageInfo.tiling = vk::ImageTiling::eOptimal;
+			imageInfo.initialLayout = vk::ImageLayout::eUndefined;
+			imageInfo.usage = vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst;
+			imageInfo.samples = vk::SampleCountFlagBits::e1;
+			texture.Image = vk::raii::Image(device, imageInfo);
+			const vk::MemoryRequirements imageRequirements = texture.Image.getMemoryRequirements();
+			texture.Memory = vk::raii::DeviceMemory(device, vk::MemoryAllocateInfo(imageRequirements.size, FindMemoryType(*Context.GetPhysicalDevice(), imageRequirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal)));
+			texture.Image.bindMemory(*texture.Memory, 0);
+
+			vk::ImageViewCreateInfo viewInfo{};
+			viewInfo.image = *texture.Image;
+			viewInfo.viewType = vk::ImageViewType::e2D;
+			viewInfo.format = vk::Format::eR8G8B8A8Unorm;
+			viewInfo.subresourceRange = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
+			texture.View = vk::raii::ImageView(device, viewInfo);
+
+			vk::SamplerCreateInfo samplerInfo{};
+			samplerInfo.magFilter = vk::Filter::eNearest;
+			samplerInfo.minFilter = vk::Filter::eNearest;
+			samplerInfo.addressModeU = vk::SamplerAddressMode::eClampToEdge;
+			samplerInfo.addressModeV = vk::SamplerAddressMode::eClampToEdge;
+			samplerInfo.addressModeW = vk::SamplerAddressMode::eClampToEdge;
+			texture.Sampler = vk::raii::Sampler(device, samplerInfo);
+
+			// The pixels go through a host-visible buffer.
+			vk::BufferCreateInfo bufferInfo{};
+			bufferInfo.size = rgba.size();
+			bufferInfo.usage = vk::BufferUsageFlagBits::eTransferSrc;
+			vk::raii::Buffer staging(device, bufferInfo);
+			const vk::MemoryRequirements bufferRequirements = staging.getMemoryRequirements();
+			vk::raii::DeviceMemory stagingMemory(device, vk::MemoryAllocateInfo(bufferRequirements.size, FindMemoryType(*Context.GetPhysicalDevice(), bufferRequirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent)));
+			staging.bindMemory(*stagingMemory, 0);
+			std::memcpy(stagingMemory.mapMemory(0, rgba.size()), rgba.data(), rgba.size());
+			stagingMemory.unmapMemory();
+
+			RunOnce([&](vk::raii::CommandBuffer& commandBuffer)
+				{
+					const vk::ImageSubresourceRange wholeImage(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
+					vk::ImageMemoryBarrier toCopy{};
+					toCopy.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
+					toCopy.oldLayout = vk::ImageLayout::eUndefined;
+					toCopy.newLayout = vk::ImageLayout::eTransferDstOptimal;
+					toCopy.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+					toCopy.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+					toCopy.image = *texture.Image;
+					toCopy.subresourceRange = wholeImage;
+					commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, toCopy);
+
+					vk::BufferImageCopy copy{};
+					copy.imageSubresource = vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1);
+					copy.imageExtent = vk::Extent3D(width, height, 1);
+					commandBuffer.copyBufferToImage(*staging, *texture.Image, vk::ImageLayout::eTransferDstOptimal, copy);
+
+					vk::ImageMemoryBarrier toRead = toCopy;
+					toRead.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
+					toRead.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+					toRead.oldLayout = vk::ImageLayout::eTransferDstOptimal;
+					toRead.newLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+					commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, toRead);
+				});
+
+			vk::DescriptorSetAllocateInfo setInfo{};
+			setInfo.descriptorPool = *TexturePool;
+			setInfo.descriptorSetCount = 1;
+			setInfo.pSetLayouts = &*PainterPass.GetTextureSetLayout();
+			texture.Set = std::move(vk::raii::DescriptorSets(device, setInfo).front());
+
+			vk::DescriptorImageInfo imageDescriptor{ *texture.Sampler, *texture.View, vk::ImageLayout::eShaderReadOnlyOptimal };
+			vk::WriteDescriptorSet write{};
+			write.dstSet = *texture.Set;
+			write.dstBinding = 0;
+			write.descriptorCount = 1;
+			write.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+			write.pImageInfo = &imageDescriptor;
+			device.updateDescriptorSets(write, {});
+
+			// What ImGui's Vulkan backend uses as a texture's ImTextureID: its descriptor set
+			return static_cast<ImTextureID>(reinterpret_cast<uintptr_t>(static_cast<VkDescriptorSet>(*texture.Set)));
+		}
+
+		// Does what ImGui's backend does each frame: uploads the font atlas with the glyphs baked
+		// so far, and gives it its ImTextureID.
+		void UploadFontAtlas(ImFontAtlas& atlas)
+		{
+			ImTextureData& atlasTexture = *atlas.TexData;
+			Require(atlasTexture.Format == ImTextureFormat_RGBA32, "The tests expect an RGBA font atlas");
+			const uint8_t* pixels = static_cast<const uint8_t*>(atlasTexture.GetPixels());
+			const std::vector<uint8_t> rgba(pixels, pixels + atlasTexture.GetSizeInBytes());
+			atlasTexture.SetTexID(CreateTexture(static_cast<uint32_t>(atlasTexture.Width), static_cast<uint32_t>(atlasTexture.Height), rgba));
+			atlasTexture.SetStatus(ImTextureStatus_OK);
+		}
+
 	private:
+		struct TestTexture
+		{
+			vk::raii::Image Image{ nullptr };
+			vk::raii::DeviceMemory Memory{ nullptr };
+			vk::raii::ImageView View{ nullptr };
+			vk::raii::Sampler Sampler{ nullptr };
+			vk::raii::DescriptorSet Set{ nullptr };
+		};
+
+		// Records commands into a command buffer, submits it and waits for the GPU
+		template<typename TRecord>
+		void RunOnce(TRecord&& record)
+		{
+			vk::CommandBufferAllocateInfo allocInfo{};
+			allocInfo.commandPool = *Context.GetGraphicsCommandPool();
+			allocInfo.level = vk::CommandBufferLevel::ePrimary;
+			allocInfo.commandBufferCount = 1;
+			vk::raii::CommandBuffer commandBuffer = std::move(vk::raii::CommandBuffers(Context.GetDevice(), allocInfo).front());
+			commandBuffer.begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
+			record(commandBuffer);
+			commandBuffer.end();
+
+			vk::SubmitInfo submitInfo{};
+			submitInfo.commandBufferCount = 1;
+			submitInfo.pCommandBuffers = &*commandBuffer;
+			Context.GetGraphicsQueue().submit(submitInfo);
+			Context.GetGraphicsQueue().waitIdle();
+		}
+
+		vk::raii::DescriptorPool TexturePool{ nullptr };
+		std::deque<TestTexture> Textures;
+
 		GLFWwindow* Window = nullptr;
 		Nyx::VulkanContext Context;
 		VulkanPainter PainterPass;
@@ -369,6 +520,131 @@ namespace
 		heat.RequirePixel(40, 40, Transparent, "The heatmap leaves tiles without commands alone");
 	}
 
+	// Text and images
+
+	// An ImGui context whose font atlas bakes glyphs on demand, as the editor's does. The font
+	// snaps glyphs to whole pixels without oversampling, so one atlas texel is one pixel and the
+	// painted text can be compared with the atlas texel by texel.
+	class ImGuiFonts
+	{
+	public:
+		ImGuiFonts()
+		{
+			Context = ImGui::CreateContext();
+			ImGuiIO& io = ImGui::GetIO();
+			io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
+			io.DisplaySize = ImVec2(64.0f, 64.0f);
+			io.DeltaTime = 1.0f / 60.0f;
+			// No imgui.ini next to wherever the tests run
+			io.IniFilename = nullptr;
+			ImFontConfig config;
+			config.PixelSnapH = true;
+			config.OversampleH = 1;
+			config.OversampleV = 1;
+			Font = io.Fonts->AddFontDefault(&config);
+			ImGui::NewFrame();
+		}
+
+		~ImGuiFonts()
+		{
+			ImGui::EndFrame();
+			ImGui::DestroyContext(Context);
+		}
+
+		ImGuiFonts(const ImGuiFonts&) = delete;
+		ImGuiFonts& operator=(const ImGuiFonts&) = delete;
+
+		ImFont* Font = nullptr;
+
+	private:
+		ImGuiContext* Context = nullptr;
+	};
+
+	void TestTextMatchesTheFontAtlas(GpuPainter& gpu, const ImGuiFonts& fonts)
+	{
+		Painter painter = StartFrame();
+		painter.AddText(fonts.Font, 13.0f, { 10.0f, 10.0f }, White, "H");
+		gpu.UploadFontAtlas(*fonts.Font->OwnerAtlas);
+		const PaintedImage image = gpu.Paint(painter);
+
+		const auto glyph = GetPayload<PainterTexturedRectPayload>(painter.GetCommands()[0]);
+		const glm::vec2 rectMin = glyph.Rect.Min;
+		Require(rectMin == glm::floor(rectMin) && glyph.Rect.Max == glm::floor(glyph.Rect.Max), "The glyph should cover whole pixels");
+
+		// Every pixel of the glyph is exactly its texel in the atlas: white, with the texel's alpha.
+		ImTextureData& atlas = *fonts.Font->OwnerAtlas->TexData;
+		const int texelX0 = static_cast<int>(std::lround(glyph.UVs.Min.x * atlas.Width));
+		const int texelY0 = static_cast<int>(std::lround(glyph.UVs.Min.y * atlas.Height));
+		float strongest = 0.0f;
+		for (uint32_t y = static_cast<uint32_t>(rectMin.y); y < static_cast<uint32_t>(glyph.Rect.Max.y); ++y)
+		{
+			for (uint32_t x = static_cast<uint32_t>(rectMin.x); x < static_cast<uint32_t>(glyph.Rect.Max.x); ++x)
+			{
+				const int texelX = texelX0 + static_cast<int>(x - static_cast<uint32_t>(rectMin.x));
+				const int texelY = texelY0 + static_cast<int>(y - static_cast<uint32_t>(rectMin.y));
+				const float texelAlpha = static_cast<const uint8_t*>(atlas.GetPixelsAt(texelX, texelY))[3] / 255.0f;
+				image.RequirePixel(x, y, glm::vec4(texelAlpha), "A glyph pixel should be its atlas texel");
+				strongest = std::max(strongest, texelAlpha);
+			}
+		}
+		Require(strongest > 0.9f, "The glyph 'H' should have solid pixels");
+		image.RequirePixel(40, 40, Transparent, "Away from the text");
+	}
+
+	void TestTextCastsNoBoxShadow(GpuPainter& gpu, const ImGuiFonts& fonts)
+	{
+		// A rect and a line of text in one group with a shadow far below: only the rect's shadow
+		// shows; the glyphs' rects cast none.
+		PainterEffects shadow;
+		shadow.Shadow.Color = Black;
+		shadow.Shadow.Offset = glm::vec2(0.0f, 30.0f);
+		Painter painter = StartFrame();
+		painter.BeginGroup(shadow);
+		painter.AddRect(PainterRect{ { 2, 2 }, { 10, 10 } }, PainterStyle::Filled(White));
+		painter.AddText(fonts.Font, 13.0f, { 30.0f, 2.0f }, White, "HH");
+		painter.EndGroup();
+		gpu.UploadFontAtlas(*fonts.Font->OwnerAtlas);
+		const PaintedImage image = gpu.Paint(painter);
+
+		image.RequirePixel(6, 36, Black, "The rect's shadow");
+		const auto glyph = GetPayload<PainterTexturedRectPayload>(painter.GetCommands()[1]);
+		const glm::vec2 glyphCentre = (glyph.Rect.Min + glyph.Rect.Max) * 0.5f;
+		image.RequirePixel(static_cast<uint32_t>(glyphCentre.x), static_cast<uint32_t>(glyphCentre.y + 30.0f), Transparent, "Below a glyph, where a box shadow would be");
+	}
+
+	void TestImages(GpuPainter& gpu)
+	{
+		// 2x2 texels: red, green / blue, white
+		const ImTextureID quarters = gpu.CreateTexture(2, 2, { 255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255 });
+
+		Painter painter = StartFrame();
+		painter.AddImage(quarters, PainterRect{ { 8, 8 }, { 24, 24 } }, PainterStyle::Filled(White));
+		painter.AddImage(quarters, PainterRect{ { 32, 8 }, { 48, 24 } }, PainterStyle::Filled(glm::vec4(1.0f, 1.0f, 1.0f, 0.5f)));
+		painter.AddImage(quarters, PainterRect{ { 8, 32 }, { 24, 48 } }, PainterStyle::Filled(White), PainterRect{ { 0.5f, 0.0f }, { 1.0f, 0.5f } });
+		const PaintedImage image = gpu.Paint(painter);
+
+		image.RequirePixel(10, 10, Red, "The top left texel");
+		image.RequirePixel(20, 10, glm::vec4(0.0f, 1.0f, 0.0f, 1.0f), "The top right texel");
+		image.RequirePixel(10, 20, glm::vec4(0.0f, 0.0f, 1.0f, 1.0f), "The bottom left texel");
+		image.RequirePixel(20, 20, White, "The bottom right texel");
+		image.RequirePixel(34, 10, Red * 0.5f, "An image tinted half transparent, premultiplied");
+		image.RequirePixel(10, 34, glm::vec4(0.0f, 1.0f, 0.0f, 1.0f), "Part of a texture: its top right texel, stretched");
+		image.RequirePixel(22, 46, glm::vec4(0.0f, 1.0f, 0.0f, 1.0f), "Part of a texture, at its far corner");
+		image.RequirePixel(28, 28, Transparent, "Between the images");
+	}
+
+	void TestTextureNotUploadedYetIsInvisible(GpuPainter& gpu)
+	{
+		// The font atlas has no ImTextureID before ImGui first uploads it; nothing should show or break.
+		Painter painter = StartFrame();
+		painter.AddImage(ImTextureRef(ImTextureID_Invalid), PainterRect{ { 8, 8 }, { 24, 24 } }, PainterStyle::Filled(White));
+		painter.AddRect(PainterRect{ { 40, 40 }, { 50, 50 } }, PainterStyle::Filled(White));
+		const PaintedImage image = gpu.Paint(painter);
+
+		image.RequirePixel(16, 16, Transparent, "An image without a texture yet");
+		image.RequirePixel(45, 45, White, "A shape in the same frame");
+	}
+
 	void TestTargetFollowsThePainterSize(GpuPainter& gpu)
 	{
 		Painter painter = StartFrame(32, 16);
@@ -396,6 +672,14 @@ int main()
 		TestShadowsAndGlow(gpu);
 		TestClearColorAndHeatmap(gpu);
 		TestTargetFollowsThePainterSize(gpu);
+
+		TestImages(gpu);
+		TestTextureNotUploadedYetIsInvisible(gpu);
+		{
+			const ImGuiFonts fonts;
+			TestTextMatchesTheFontAtlas(gpu, fonts);
+			TestTextCastsNoBoxShadow(gpu, fonts);
+		}
 	}
 	catch (const std::exception& error)
 	{

@@ -616,6 +616,159 @@ namespace
 		Require(CommandsInTile(tiles, 0, 0) == std::vector<uint32_t>{ 0 } && CommandsInTile(tiles, 1, 0).empty(),
 			"The previous frame's entries shouldn't carry over");
 	}
+
+	// Text and images
+
+	// An ImGui context whose font atlas can bake glyphs at any size, as the editor's can once its
+	// first frame has started
+	class ImGuiFonts
+	{
+	public:
+		ImGuiFonts()
+		{
+			Context = ImGui::CreateContext();
+			ImGuiIO& io = ImGui::GetIO();
+			io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
+			io.DisplaySize = ImVec2(64.0f, 64.0f);
+			io.DeltaTime = 1.0f / 60.0f;
+			// No imgui.ini next to wherever the tests run
+			io.IniFilename = nullptr;
+			Font = io.Fonts->AddFontDefault();
+			ImGui::NewFrame();
+		}
+
+		~ImGuiFonts()
+		{
+			ImGui::EndFrame();
+			ImGui::DestroyContext(Context);
+		}
+
+		ImGuiFonts(const ImGuiFonts&) = delete;
+		ImGuiFonts& operator=(const ImGuiFonts&) = delete;
+
+		ImFont* Font = nullptr;
+
+	private:
+		ImGuiContext* Context = nullptr;
+	};
+
+	PainterTexturedRectPayload TexturedRectOf(const PainterCommand& command)
+	{
+		return GetPayload<PainterTexturedRectPayload>(command);
+	}
+
+	void TestTextMakesOneGlyphPerVisibleCharacter(const ImGuiFonts& fonts)
+	{
+		Painter painter;
+		painter.BeginFrame(200, 100);
+		painter.AddText(fonts.Font, 13.0f, { 10.6f, 20.3f }, Black, "Hi yo");
+
+		const auto& commands = painter.GetCommands();
+		Require(commands.size() == 4, "\"Hi yo\" should make 4 glyphs, the space none; got " + std::to_string(commands.size()));
+		for (const PainterCommand& command : commands)
+		{
+			Require(TypeOf(command) == EPainterCommandType::Glyph && command.Texture == 0, "Text should make glyphs of the first texture");
+			Require(command.Color == PackPremultipliedColor(Black), "Glyphs should have the text's colour");
+		}
+		Require(painter.GetTextures().size() == 1 && painter.GetTextures()[0]._TexData == fonts.Font->OwnerAtlas->TexRef._TexData,
+			"The text's texture should be the font atlas");
+
+		// The text starts on a whole pixel, as ImGui's does, so glyph texels land on pixels.
+		const ImFontGlyph* h = fonts.Font->GetFontBaked(13.0f)->FindGlyph('H');
+		const PainterTexturedRectPayload first = TexturedRectOf(commands[0]);
+		Require(Near(first.Rect.Min, glm::vec2(10.0f + h->X0, 20.0f + h->Y0)) && Near(first.Rect.Max, glm::vec2(10.0f + h->X1, 20.0f + h->Y1)),
+			"The first glyph should sit at the whole pixel the text starts on");
+		Require(Near(first.UVs.Min, glm::vec2(h->U0, h->V0)) && Near(first.UVs.Max, glm::vec2(h->U1, h->V1)), "The glyph should use the atlas' texture coordinates");
+
+		for (size_t index = 1; index < commands.size(); ++index)
+		{
+			Require(TexturedRectOf(commands[index]).Rect.Min.x > TexturedRectOf(commands[index - 1]).Rect.Min.x, "Glyphs should run left to right");
+		}
+		Require(painter.GetProblems().empty(), "Text shouldn't report problems");
+	}
+
+	void TestTextBreaksLines(const ImGuiFonts& fonts)
+	{
+		Painter painter;
+		painter.BeginFrame(200, 100);
+		painter.AddText(fonts.Font, 13.0f, { 10.0f, 10.0f }, Black, "H\r\nH");
+
+		const auto& commands = painter.GetCommands();
+		Require(commands.size() == 2, "Line breaks shouldn't make glyphs");
+		const PainterRect firstLine = TexturedRectOf(commands[0]).Rect;
+		const PainterRect secondLine = TexturedRectOf(commands[1]).Rect;
+		Require(Near(secondLine.Min, firstLine.Min + glm::vec2(0.0f, 13.0f)), "The second line should start one line height below the first, at the same x");
+	}
+
+	void TestZoomedTextIsBakedAtItsSize(const ImGuiFonts& fonts)
+	{
+		Painter painter;
+		painter.BeginFrame(200, 100);
+		painter.PushTransform(2.0f, { 0, 0 });
+		painter.AddText(fonts.Font, 13.0f, { 5.0f, 5.0f }, Black, "H");
+		painter.PopTransform();
+
+		// Drawn twice as large, so baked at 26 pixels: its own glyph, not a stretched 13 pixel one
+		const ImFontGlyph* h = fonts.Font->GetFontBaked(26.0f)->FindGlyph('H');
+		const PainterTexturedRectPayload glyph = TexturedRectOf(painter.GetCommands()[0]);
+		Require(Near(glyph.Rect.Min, glm::vec2(10.0f + h->X0, 10.0f + h->Y0)) && Near(glyph.Rect.Max, glm::vec2(10.0f + h->X1, 10.0f + h->Y1)),
+			"Zoomed text should use the glyph baked at the zoomed size");
+		Require(Near(glyph.UVs.Min, glm::vec2(h->U0, h->V0)), "Zoomed text should sample the glyph baked at the zoomed size");
+	}
+
+	void TestTextWithoutAFontIsReported()
+	{
+		Painter painter;
+		painter.BeginFrame(200, 100);
+		painter.AddText(nullptr, 13.0f, { 0, 0 }, Black, "Hi");
+		Require(painter.GetCommands().empty() && HasProblemContaining(painter, "without a font"), "Text without a font should be reported and dropped");
+	}
+
+	ImTextureRef FakeTexture(uint64_t id)
+	{
+		return ImTextureRef(static_cast<ImTextureID>(id));
+	}
+
+	void TestImages()
+	{
+		Painter painter;
+		painter.BeginFrame(200, 100);
+		painter.PushTransform(2.0f, { 10, 0 });
+		painter.AddImage(FakeTexture(100), PainterRect{ { 0, 0 }, { 16, 8 } }, PainterStyle::Outlined(Orange, 3.0f));
+		painter.PopTransform();
+		painter.AddImage(FakeTexture(200), PainterRect{ { 0, 0 }, { 4, 4 } }, WithShadow(glm::vec4(1.0f)), PainterRect{ { 0.5f, 0.0f }, { 1.0f, 0.5f } });
+		painter.AddImage(FakeTexture(100), PainterRect{ { 0, 0 }, { 4, 4 } }, PainterStyle::Filled(glm::vec4(1.0f)));
+
+		const auto& commands = painter.GetCommands();
+		Require(commands.size() == 3 && TypeOf(commands[0]) == EPainterCommandType::Image, "Each image should make one image command");
+
+		const PainterTexturedRectPayload first = TexturedRectOf(commands[0]);
+		Require(Near(first.Rect, PainterRect{ { 10, 0 }, { 42, 16 } }), "An image's rect should be transformed");
+		Require(Near(first.UVs, PainterRect{ { 0, 0 }, { 1, 1 } }), "By default an image should show its whole texture");
+		Require(commands[0].Color == PackPremultipliedColor(Orange) && commands[0].OutlineWidth == 0.0f, "The style's colour should tint the image, without an outline");
+
+		Require(commands[0].Texture == 0 && commands[1].Texture == 1 && commands[2].Texture == 0, "The same texture should get the same index");
+		Require(painter.GetTextures().size() == 2, "Two different textures were used");
+		Require(Near(TexturedRectOf(commands[1]).UVs, PainterRect{ { 0.5f, 0.0f }, { 1.0f, 0.5f } }), "An image should keep the part of the texture it was given");
+		Require(commands[1].Group != PainterNoGroup, "An image with a shadow should get a group");
+		Require(Near(GetShapeBounds(commands[0]), first.Rect), "An image's bounds should be its rect");
+	}
+
+	void TestTooManyTexturesAreDropped()
+	{
+		Painter painter;
+		painter.BeginFrame(200, 100);
+		for (uint64_t id = 1; id <= PainterMaxTextures + 2; ++id)
+		{
+			painter.AddImage(FakeTexture(id), PainterRect{ { 0, 0 }, { 4, 4 } }, PainterStyle::Filled(glm::vec4(1.0f)));
+		}
+		// A texture the frame already has still fits.
+		painter.AddImage(FakeTexture(1), PainterRect{ { 0, 0 }, { 4, 4 } }, PainterStyle::Filled(glm::vec4(1.0f)));
+
+		Require(painter.GetTextures().size() == PainterMaxTextures, "A frame should hold at most PainterMaxTextures textures");
+		Require(painter.GetCommands().size() == PainterMaxTextures + 1, "Images with textures past the limit should be dropped, the others kept");
+		Require(painter.GetProblems().size() == 1 && HasProblemContaining(painter, "textures in one frame"), "Running out of textures should be reported once");
+	}
 }
 
 int main()
@@ -644,6 +797,16 @@ int main()
 		TestGroupsCoverTheirWholeReach();
 		TestBudgetDropsTheRestOfTheFrame();
 		TestBinningReusesItsResult();
+
+		TestTextWithoutAFontIsReported();
+		TestImages();
+		TestTooManyTexturesAreDropped();
+		{
+			const ImGuiFonts fonts;
+			TestTextMakesOneGlyphPerVisibleCharacter(fonts);
+			TestTextBreaksLines(fonts);
+			TestZoomedTextIsBakedAtItsSize(fonts);
+		}
 	}
 	catch (const std::exception& error)
 	{

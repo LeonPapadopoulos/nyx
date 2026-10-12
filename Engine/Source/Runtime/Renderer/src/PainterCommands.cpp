@@ -95,8 +95,7 @@ namespace Nyx::Engine
 		}
 		case EPainterCommandType::Glyph:
 		case EPainterCommandType::Image:
-			// Nothing records these before change 4 of the plan.
-			break;
+			return GetPayload<PainterTexturedRectPayload>(command).Rect;
 		}
 		return PainterRect{};
 	}

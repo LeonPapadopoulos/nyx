@@ -27,10 +27,17 @@ namespace Nyx::Engine
 		Line = 3,         // PainterLinePayload
 		Triangle = 4,     // PainterTrianglePayload
 
-		// Reserved for change 4 of the plan (text and images); nothing records them yet.
+		// Textured rects, PainterTexturedRectPayload; PainterCommand::Texture says which texture.
+		// A glyph is one character of text, cut out of ImGui's font atlas. It casts no shadow
+		// or glow, since its shape is in the texture, not in a distance function.
 		Glyph = 5,
 		Image = 6,
 	};
+
+	// The most textures one frame can use: the font atlas and the images' textures. The shader
+	// binds each in a descriptor set of its own, after the set with the commands, and 8 sets is
+	// the most every desktop GPU can bind at once.
+	constexpr uint32_t PainterMaxTextures = 7;
 
 	// Bits of PainterCommand::Flags
 	enum class EPainterCommandFlags : uint32_t
@@ -113,7 +120,7 @@ namespace Nyx::Engine
 		// 0: filled. Otherwise only an outline this wide is drawn, centred on the shape's edge.
 		float OutlineWidth = 0.0f;
 		uint32_t FillMode = 0; // EPainterFillMode
-		uint32_t Texture = 0;  // Glyphs and images (change 4); unused by shapes
+		uint32_t Texture = 0;  // Glyphs and images: index into the frame's textures; unused by shapes
 		uint32_t Unused = 0;
 
 		// The shape itself; read and written with GetPayload() and SetPayload()
@@ -166,6 +173,14 @@ namespace Nyx::Engine
 		glm::vec2 A{ 0.0f };
 		glm::vec2 B{ 0.0f };
 		glm::vec2 C{ 0.0f };
+	};
+
+	// Glyphs and images: where the rect goes, and which part of the texture fills it, in texture
+	// coordinates from 0 to 1
+	struct PainterTexturedRectPayload
+	{
+		PainterRect Rect;
+		PainterRect UVs;
 	};
 
 	template<typename TPayload>

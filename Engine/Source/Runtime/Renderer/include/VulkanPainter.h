@@ -105,11 +105,25 @@ namespace Nyx::Engine
 		// size. Outside a render pass; the target's image ends in ShaderReadOnlyOptimal layout.
 		void Draw(vk::raii::CommandBuffer& commandBuffer, const Painter& painter, VulkanPainterTarget& target, const PainterDrawOptions& options);
 
+		// The descriptor set layout of one texture: a combined image sampler at binding 0, for the
+		// fragment shader. It is defined exactly like ImGui's (imgui_impl_vulkan.cpp), so that the
+		// sets ImGui makes for its textures bind as the painter's textures.
+		const vk::raii::DescriptorSetLayout& GetTextureSetLayout() const { return TextureSetLayout; }
+
 	private:
+		void CheckDeviceLimits();
 		void CreateRenderPass();
-		void CreateDescriptorSetLayout();
+		void CreateDescriptorSetLayouts();
 		void CreateDescriptorPool();
 		void CreatePipeline();
+		void CreateEmptyTexture();
+
+		// Clears the empty texture to transparent and makes it readable, once
+		void PrepareEmptyTexture(vk::raii::CommandBuffer& commandBuffer);
+
+		// Binds the frame's textures to sets 1 to PainterMaxTextures; unused slots, and textures
+		// ImGui hasn't uploaded yet, get the empty texture.
+		void BindTextures(vk::raii::CommandBuffer& commandBuffer, const Painter& painter);
 
 		// Gives the target an image and framebuffer of this size, if it has none of that size yet
 		void PrepareImage(VulkanPainterTarget& target, vk::Extent2D extent);
@@ -121,9 +135,21 @@ namespace Nyx::Engine
 		Nyx::VulkanContext* Context = nullptr;
 
 		vk::raii::RenderPass RenderPass{ nullptr };
+		// Set 0: the frame's commands, groups, tiles and entries
 		vk::raii::DescriptorSetLayout DescriptorSetLayout{ nullptr };
+		// Sets 1 to PainterMaxTextures: one texture each
+		vk::raii::DescriptorSetLayout TextureSetLayout{ nullptr };
 		vk::raii::DescriptorPool DescriptorPool{ nullptr };
 		vk::raii::PipelineLayout PipelineLayout{ nullptr };
 		vk::raii::Pipeline Pipeline{ nullptr };
+
+		// A transparent 1x1 texture for the texture slots a frame doesn't use: the shader reads
+		// every slot, so every slot needs a texture.
+		vk::raii::Image EmptyImage{ nullptr };
+		vk::raii::DeviceMemory EmptyImageMemory{ nullptr };
+		vk::raii::ImageView EmptyImageView{ nullptr };
+		vk::raii::Sampler EmptySampler{ nullptr };
+		vk::raii::DescriptorSet EmptyTextureSet{ nullptr };
+		bool bEmptyTextureReady = false;
 	};
 }

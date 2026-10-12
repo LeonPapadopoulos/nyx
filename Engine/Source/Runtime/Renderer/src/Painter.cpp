@@ -1,6 +1,10 @@
 #include "Painter.h"
 
+#include <imgui_internal.h> // ImTextCharFromUtf8()
+
 #include <algorithm>
+#include <cmath>
+#include <string>
 #include <utility>
 
 namespace Nyx::Engine
@@ -12,6 +16,11 @@ namespace Nyx::Engine
 		{
 			return PainterRect{ glm::min(rect.Min, rect.Max), glm::max(rect.Min, rect.Max) };
 		}
+
+		bool IsSameTexture(const ImTextureRef& a, const ImTextureRef& b)
+		{
+			return a._TexData == b._TexData && a._TexID == b._TexID;
+		}
 	}
 
 	void Painter::BeginFrame(uint32_t targetWidth, uint32_t targetHeight)
@@ -21,6 +30,7 @@ namespace Nyx::Engine
 
 		Commands.clear();
 		Groups.clear();
+		Textures.clear();
 		Problems.clear();
 
 		ClipStack.assign(1, PainterRect{ glm::vec2(0.0f), glm::vec2(static_cast<float>(targetWidth), static_cast<float>(targetHeight)) });
@@ -150,6 +160,92 @@ namespace Nyx::Engine
 		AddShape(EPainterCommandType::Triangle, EPainterCommandFlags::None, style, payload);
 	}
 
+	void Painter::AddText(ImFont* font, float size, glm::vec2 position, const glm::vec4& color, std::string_view text)
+	{
+		if (font == nullptr)
+		{
+			ReportProblem("AddText() without a font");
+			return;
+		}
+		if (size <= 0.0f || text.empty())
+		{
+			return;
+		}
+
+		// Baked at the size the text ends up on the target, so zoomed text is as sharp as any.
+		const PainterTransform& transform = GetTransform();
+		const float sizeOnTarget = size * transform.Scale;
+		ImFontBaked* baked = font->GetFontBaked(sizeOnTarget);
+		uint32_t texture = 0;
+		if (baked == nullptr || !FindOrAddTexture(font->OwnerAtlas->TexRef, texture))
+		{
+			return;
+		}
+
+		// ImGui bakes at a rounded size; the glyphs are scaled from it to the size asked for.
+		const float glyphScale = sizeOnTarget / baked->Size;
+
+		// Whole pixels, as ImGui does, so that the glyphs' texels land on pixels one to one.
+		const glm::vec2 lineStart = glm::floor(transform.Apply(position));
+		glm::vec2 pen = lineStart;
+
+		const PainterStyle glyphStyle = PainterStyle::Filled(color);
+		const char* cursor = text.data();
+		const char* const end = text.data() + text.size();
+		while (cursor < end)
+		{
+			unsigned int codepoint = 0;
+			cursor += ImTextCharFromUtf8(&codepoint, cursor, end);
+
+			if (codepoint == '\n')
+			{
+				pen = glm::vec2(lineStart.x, pen.y + sizeOnTarget);
+				continue;
+			}
+			if (codepoint == '\r')
+			{
+				continue;
+			}
+
+			// FindGlyph() bakes a glyph that isn't in the atlas yet, and gives a replacement
+			// glyph for a character the font doesn't have.
+			const ImFontGlyph* glyph = baked->FindGlyph(static_cast<ImWchar>(codepoint));
+			if (glyph == nullptr)
+			{
+				continue;
+			}
+
+			// Spaces and the like move the pen without drawing.
+			if (glyph->Visible)
+			{
+				PainterTexturedRectPayload payload;
+				payload.Rect = PainterRect{ pen + glm::vec2(glyph->X0, glyph->Y0) * glyphScale, pen + glm::vec2(glyph->X1, glyph->Y1) * glyphScale };
+				payload.UVs = PainterRect{ { glyph->U0, glyph->V0 }, { glyph->U1, glyph->V1 } };
+				AddShape(EPainterCommandType::Glyph, EPainterCommandFlags::None, glyphStyle, payload, texture);
+			}
+			pen.x += glyph->AdvanceX * glyphScale;
+		}
+	}
+
+	void Painter::AddImage(ImTextureRef texture, const PainterRect& rect, const PainterStyle& style, const PainterRect& uvs)
+	{
+		uint32_t textureIndex = 0;
+		if (!FindOrAddTexture(texture, textureIndex))
+		{
+			return;
+		}
+
+		PainterTexturedRectPayload payload;
+		payload.Rect = GetTransform().Apply(Normalized(rect));
+		payload.UVs = uvs;
+
+		// An image fills its rect; an outline would mean nothing.
+		PainterStyle imageStyle = style;
+		imageStyle.OutlineWidth = 0.0f;
+
+		AddShape(EPainterCommandType::Image, EPainterCommandFlags::None, imageStyle, payload, textureIndex);
+	}
+
 	void Painter::PushClipRect(const PainterRect& rect)
 	{
 		const PainterRect inTarget = GetTransform().Apply(Normalized(rect));
@@ -220,7 +316,7 @@ namespace Nyx::Engine
 	}
 
 	template<typename TPayload>
-	void Painter::AddShape(EPainterCommandType type, EPainterCommandFlags flags, const PainterStyle& style, const TPayload& payload)
+	void Painter::AddShape(EPainterCommandType type, EPainterCommandFlags flags, const PainterStyle& style, const TPayload& payload, uint32_t texture)
 	{
 		PainterCommand command;
 		command.Type = static_cast<uint32_t>(type);
@@ -229,6 +325,7 @@ namespace Nyx::Engine
 		command.ClipRect = GetClipRect();
 		command.OutlineWidth = std::max(style.OutlineWidth, 0.0f) * GetTransform().Scale;
 		command.FillMode = static_cast<uint32_t>(EPainterFillMode::Solid);
+		command.Texture = texture;
 
 		if (GroupDepth > 0)
 		{
@@ -270,6 +367,28 @@ namespace Nyx::Engine
 
 		Groups.push_back(group);
 		return static_cast<uint32_t>(Groups.size() - 1);
+	}
+
+	bool Painter::FindOrAddTexture(const ImTextureRef& texture, uint32_t& outIndex)
+	{
+		for (uint32_t index = 0; index < Textures.size(); ++index)
+		{
+			if (IsSameTexture(Textures[index], texture))
+			{
+				outIndex = index;
+				return true;
+			}
+		}
+
+		if (Textures.size() >= PainterMaxTextures)
+		{
+			ReportProblem("More than " + std::to_string(PainterMaxTextures) + " textures in one frame; text and images with further textures are dropped");
+			return false;
+		}
+
+		Textures.push_back(texture);
+		outIndex = static_cast<uint32_t>(Textures.size() - 1);
+		return true;
 	}
 
 	void Painter::ReportProblem(const std::string& problem)
