@@ -78,6 +78,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/PainterTiles.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanPainter.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/PainterTestSheet.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/WindowPainter.cpp
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/src/ReflectionUtils.cpp
@@ -156,6 +157,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanPainter.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/PainterDrawOptions.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/PainterTestSheet.h
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/WindowPainter.h
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionTypes.h

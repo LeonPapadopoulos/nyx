@@ -1,14 +1,16 @@
 // The painter's CPU side: the commands and groups it records, its clip and transform stacks, the
-// problems it reports, and tile binning. No GPU is involved.
+// problems it reports, tile binning, and segments in ImGui windows. No GPU is involved.
 #include "Painter.h"
 #include "PainterTestSheet.h"
 #include "PainterTiles.h"
+#include "WindowPainter.h"
 
 #include <algorithm>
 #include <utility>
 #include <vector>
 
 #include <cmath>
+#include <cstring>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -803,6 +805,249 @@ namespace
 		Require(painter.GetCommands().size() == PainterMaxTextures + 1, "Images with textures past the limit should be dropped, the others kept");
 		Require(painter.GetProblems().size() == 1 && HasProblemContaining(painter, "textures in one frame"), "Running out of textures should be reported once");
 	}
+
+	// Segments
+
+	void TestSegmentGridCoversOnlyItsCommands()
+	{
+		Painter painter;
+		painter.BeginFrame(200, 100);
+		painter.AddRect(PainterRect{ { 0, 0 }, { 200, 100 } }, PainterStyle::Filled(Black));
+		// With anti-aliasing, the rect covers pixels 19 to 31 both ways, the circle 55 to 65
+		// across and 19 to 29 down.
+		painter.AddRect(PainterRect{ { 20, 20 }, { 30, 30 } }, PainterStyle::Filled(Orange));
+		painter.AddCircle({ 60, 24 }, 4.0f, PainterStyle::Filled(Orange));
+
+		PainterTiles tiles;
+		BinPainterSegment(painter, PainterSegment{ 1, 2 }, PainterBudget{}, tiles);
+
+		// From pixel (16, 16), 7 tiles reach past pixel 65 across and 2 past pixel 31 down.
+		Require(tiles.OriginX == 16 && tiles.OriginY == 16 && tiles.TilesX == 7 && tiles.TilesY == 2,
+			"The grid should cover only the segment's commands, in whole tiles");
+		Require(tiles.Stats.Commands == 2 && tiles.Problems.empty(), "Only the segment's commands should be binned");
+
+		// Entries count from the segment's first command, and tiles from the grid's origin.
+		Require(TilesOfCommand(tiles, 0) == std::vector<TileCoordinates>{ { 0, 0 }, { 1, 0 }, { 0, 1 }, { 1, 1 } },
+			"The segment's first command should be entry 0, in grid tiles 0 to 1");
+		Require(TilesOfCommand(tiles, 1) == std::vector<TileCoordinates>{ { 4, 0 }, { 5, 0 }, { 6, 0 }, { 4, 1 }, { 5, 1 }, { 6, 1 } },
+			"The circle should land in grid tiles 4 to 6");
+	}
+
+	void TestSegmentGroupReachIsItsOwn()
+	{
+		Painter painter;
+		painter.BeginFrame(200, 100);
+
+		// One group's shapes, split over two segments
+		PainterEffects shadow;
+		shadow.Shadow.Color = glm::vec4(0.0f, 0.0f, 0.0f, 0.5f);
+		shadow.Shadow.Offset = glm::vec2(0.0f, 40.0f);
+		shadow.Shadow.Blur = 4.0f;
+		painter.BeginGroup(shadow);
+		painter.AddRect(PainterRect{ { 0, 0 }, { 16, 16 } }, PainterStyle::Filled(Orange));
+		painter.AddRect(PainterRect{ { 100, 0 }, { 116, 16 } }, PainterStyle::Filled(Orange));
+		painter.EndGroup();
+
+		PainterTiles tiles;
+		BinPainterSegment(painter, PainterSegment{ 1, 1 }, PainterBudget{}, tiles);
+
+		// The second rect with its shadow and anti-aliasing covers pixels 95 to 121 across, so the
+		// grid starts at 88: the first rect, in the other segment, doesn't widen it.
+		Require(tiles.OriginX == 88 && tiles.OriginY == 0 && tiles.TilesX == 5, "A group's reach in a segment should only count the segment's shapes");
+	}
+
+	void TestSegmentClippedAwayHasNoTiles()
+	{
+		Painter painter;
+		painter.BeginFrame(200, 100);
+		painter.PushClipRect(PainterRect{ { 150, 0 }, { 160, 10 } });
+		painter.AddRect(PainterRect{ { 0, 0 }, { 10, 10 } }, PainterStyle::Filled(Orange));
+		painter.PopClipRect();
+
+		PainterTiles tiles;
+		BinPainterSegment(painter, PainterSegment{ 0, 1 }, PainterBudget{}, tiles);
+		Require(tiles.TilesX == 0 && tiles.TilesY == 0 && tiles.Tiles.empty() && tiles.Entries.empty(), "A segment wholly clipped away should have no tiles");
+		Require(tiles.Stats.CulledCommands == 1 && tiles.Problems.empty(), "Its command should be culled, without a problem");
+	}
+
+	void TestSegmentPastTheCommandsIsCut()
+	{
+		Painter painter;
+		painter.BeginFrame(200, 100);
+		painter.AddRect(PainterRect{ { 0, 0 }, { 10, 10 } }, PainterStyle::Filled(Orange));
+		painter.AddRect(PainterRect{ { 20, 0 }, { 30, 10 } }, PainterStyle::Filled(Orange));
+
+		PainterTiles tiles;
+		BinPainterSegment(painter, PainterSegment{ 1, 5 }, PainterBudget{}, tiles);
+		// The second rect covers pixels 19 to 31 across and 0 to 11 down: 2 by 2 tiles.
+		Require(tiles.Stats.Commands == 1 && TilesOfCommand(tiles, 0).size() == 4, "A segment past the painter's commands should keep those it has");
+		Require(tiles.Problems.size() == 1 && tiles.Problems[0].find("reaches past") != std::string::npos, "A segment past the painter's commands should be reported");
+	}
+
+	// The segment callbacks a window painter put into a draw list, in order
+	struct SegmentCallback
+	{
+		const Nyx::UI::WindowPainter* Painter = nullptr;
+		uint32_t Segment = 0;
+		// The indices ImGui had drawn into the draw list before the callback
+		uint32_t IndicesBefore = 0;
+		// Whether ImGui's render state is reset right after it
+		bool bResetsRenderState = false;
+	};
+
+	std::vector<SegmentCallback> FindSegmentCallbacks(const ImDrawList& drawList)
+	{
+		std::vector<SegmentCallback> callbacks;
+		uint32_t indices = 0;
+		for (int index = 0; index < drawList.CmdBuffer.Size; ++index)
+		{
+			const ImDrawCmd& command = drawList.CmdBuffer[index];
+			if (command.UserCallback == &Nyx::UI::WindowPainter::DrawSegmentCallback)
+			{
+				// Until ImGui renders the draw list, the data sits in its buffer at this offset.
+				Nyx::UI::WindowPainter::SegmentCallbackData data;
+				std::memcpy(&data, drawList._CallbacksDataBuf.Data + command.UserCallbackDataOffset, sizeof(data));
+				const bool bResets = index + 1 < drawList.CmdBuffer.Size && drawList.CmdBuffer[index + 1].UserCallback == ImDrawCallback_ResetRenderState;
+				callbacks.push_back(SegmentCallback{ data.Painter, data.Segment, indices, bResets });
+			}
+			indices += command.ElemCount;
+		}
+		return callbacks;
+	}
+
+	// An ImGui window at the top left of the main viewport, to paint into
+	void BeginTestWindow(const char* name)
+	{
+		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+		ImGui::SetNextWindowSize(ImVec2(64.0f, 64.0f));
+		ImGui::Begin(name);
+	}
+
+	PainterRect ToPainterRect(ImVec2 min, ImVec2 max)
+	{
+		return PainterRect{ { min.x, min.y }, { max.x, max.y } };
+	}
+
+	void TestWindowPainterSplitsWhereImGuiDraws(const ImGuiFonts& fonts)
+	{
+		BeginTestWindow("Segments");
+		ImDrawList& drawList = *ImGui::GetWindowDrawList();
+		const PainterRect windowClip = ToPainterRect(drawList.GetClipRectMin(), drawList.GetClipRectMax());
+
+		Nyx::UI::WindowPainter windowPainter;
+		windowPainter.Begin(drawList, *ImGui::GetMainViewport());
+
+		// Segment 0: two shapes
+		windowPainter.AddRect(PainterRect{ { 10, 30 }, { 50, 40 } }, PainterStyle::Filled(Orange));
+		windowPainter.AddCircle({ 20, 35 }, 3.0f, PainterStyle::Filled(Black));
+		ImGui::TextUnformatted("H");
+		// Segment 1: a shape and two glyphs, after ImGui's text
+		windowPainter.AddRect(PainterRect{ { 10, 40 }, { 50, 50 } }, PainterStyle::Filled(Orange));
+		windowPainter.AddText(fonts.Font, 13.0f, { 10, 40 }, Black, "Hi");
+		// Segment 2: a shape under another clip rect, with nothing drawn in between
+		ImGui::PushClipRect(ImVec2(10.0f, 30.0f), ImVec2(30.0f, 50.0f), true);
+		const PainterRect pushedClip = ToPainterRect(drawList.GetClipRectMin(), drawList.GetClipRectMax());
+		windowPainter.AddCircle({ 20, 40 }, 3.0f, PainterStyle::Filled(Black));
+		ImGui::PopClipRect();
+
+		windowPainter.End();
+		ImGui::End();
+
+		const std::vector<PainterSegment> expected{ { 0, 2 }, { 2, 3 }, { 5, 1 } };
+		Require(windowPainter.GetSegments() == expected, "The shapes should be cut into segments where ImGui drew and where the clip rect changed");
+		Require(windowPainter.GetProblems().empty(), "Painting between ImGui's drawing shouldn't report problems");
+
+		const std::vector<SegmentCallback> callbacks = FindSegmentCallbacks(drawList);
+		Require(callbacks.size() == 3, "Each segment should have one callback in the draw list, got " + std::to_string(callbacks.size()));
+		for (uint32_t index = 0; index < callbacks.size(); ++index)
+		{
+			Require(callbacks[index].Painter == &windowPainter && callbacks[index].Segment == index, "The callbacks should name their window painter and segment, in order");
+			Require(callbacks[index].bResetsRenderState, "ImGui's render state should be reset after each segment");
+		}
+		Require(callbacks[1].IndicesBefore > callbacks[0].IndicesBefore, "ImGui's text should be drawn between the first two segments");
+		Require(callbacks[2].IndicesBefore == callbacks[1].IndicesBefore, "Nothing should be drawn between the last two segments");
+
+		const auto& commands = windowPainter.GetPainter().GetCommands();
+		Require(Near(commands[0].ClipRect, windowClip) && Near(commands[4].ClipRect, windowClip), "Shapes should get the window's clip rect");
+		Require(Near(commands[5].ClipRect, pushedClip), "A shape should get the clip rect pushed with ImGui");
+	}
+
+	void TestWindowPainterPaintsInViewportPixels()
+	{
+		BeginTestWindow("Viewport pixels");
+
+		// An OS window at (100, 50) on the desktop, at twice the density
+		ImGuiViewport viewport;
+		viewport.ID = 7;
+		viewport.Pos = ImVec2(100.0f, 50.0f);
+		viewport.Size = ImVec2(200.0f, 100.0f);
+		viewport.FramebufferScale = ImVec2(2.0f, 2.0f);
+
+		ImGui::PushClipRect(ImVec2(100.0f, 50.0f), ImVec2(300.0f, 150.0f), false);
+		Nyx::UI::WindowPainter windowPainter;
+		windowPainter.Begin(*ImGui::GetWindowDrawList(), viewport);
+		windowPainter.AddRect(PainterRect{ { 110, 60 }, { 120, 70 } }, PainterStyle::Filled(Orange));
+		windowPainter.AddCircle({ 150, 100 }, 5.0f, PainterStyle::Filled(Orange));
+		windowPainter.End();
+		ImGui::PopClipRect();
+		ImGui::End();
+
+		const Painter& painter = windowPainter.GetPainter();
+		Require(painter.GetTargetWidth() == 400 && painter.GetTargetHeight() == 200, "The target should be the viewport's framebuffer");
+		Require(windowPainter.GetViewportId() == 7, "The window painter should know its viewport");
+
+		const auto& commands = painter.GetCommands();
+		Require(Near(GetPayload<PainterRectPayload>(commands[0]).Rect, PainterRect{ { 20, 20 }, { 40, 40 } }), "Positions should become framebuffer pixels");
+		const auto circle = GetPayload<PainterCirclePayload>(commands[1]);
+		Require(Near(circle.Center, glm::vec2(100.0f, 100.0f)) && Near(circle.Radius, 10.0f), "Sizes should be scaled to framebuffer pixels");
+		Require(Near(commands[0].ClipRect, PainterRect{ { 0, 0 }, { 400, 200 } }), "ImGui's clip rect should become framebuffer pixels too");
+		Require(windowPainter.GetProblems().empty(), "Painting into another viewport shouldn't report problems");
+	}
+
+	void TestImGuiDrawingInsideAGroupIsReported()
+	{
+		BeginTestWindow("Split group");
+		Nyx::UI::WindowPainter windowPainter;
+		windowPainter.Begin(*ImGui::GetWindowDrawList(), *ImGui::GetMainViewport());
+
+		// ImGui drawing before a group's first shape doesn't split it.
+		windowPainter.BeginGroup(MakeShadow());
+		ImGui::TextUnformatted("H");
+		windowPainter.AddRect(PainterRect{ { 10, 30 }, { 50, 40 } }, PainterStyle::Filled(Orange));
+		windowPainter.EndGroup();
+		Require(windowPainter.GetProblems().empty(), "ImGui drawing before a group's first shape is fine");
+
+		windowPainter.BeginGroup(MakeShadow());
+		windowPainter.AddRect(PainterRect{ { 10, 30 }, { 50, 40 } }, PainterStyle::Filled(Orange));
+		ImGui::TextUnformatted("H");
+		windowPainter.AddRect(PainterRect{ { 10, 40 }, { 50, 50 } }, PainterStyle::Filled(Orange));
+		windowPainter.EndGroup();
+
+		windowPainter.End();
+		ImGui::End();
+
+		Require(windowPainter.GetProblems().size() == 1 && windowPainter.GetProblems()[0].find("between the shapes of one group") != std::string::npos,
+			"ImGui drawing between a group's shapes should be reported");
+	}
+
+	void TestWindowPainterMisuseIsReported()
+	{
+		Nyx::UI::WindowPainter windowPainter;
+		windowPainter.AddRect(PainterRect{ { 0, 0 }, { 10, 10 } }, PainterStyle::Filled(Orange));
+		windowPainter.End();
+		Require(windowPainter.GetPainter().GetCommands().empty(), "A shape outside Begin()/End() should be dropped");
+		Require(windowPainter.GetProblems().size() == 2, "A shape outside Begin()/End() and an End() without a Begin() should be reported");
+
+		BeginTestWindow("Misuse");
+		windowPainter.Begin(*ImGui::GetWindowDrawList(), *ImGui::GetMainViewport());
+		windowPainter.BeginGroup(PainterEffects{});
+		windowPainter.AddRect(PainterRect{ { 10, 30 }, { 50, 40 } }, PainterStyle::Filled(Orange));
+		windowPainter.End();
+		ImGui::End();
+
+		Require(windowPainter.GetProblems().size() == 1 && windowPainter.GetProblems()[0].find("BeginGroup() without an EndGroup()") != std::string::npos,
+			"Begin() should drop the previous problems, and End() should add the painter's");
+	}
 }
 
 int main()
@@ -841,7 +1086,17 @@ int main()
 			TestTextBreaksLines(fonts);
 			TestZoomedTextIsBakedAtItsSize(fonts);
 			TestTestSheetDrawsCleanly(fonts);
+
+			TestWindowPainterSplitsWhereImGuiDraws(fonts);
+			TestWindowPainterPaintsInViewportPixels();
+			TestImGuiDrawingInsideAGroupIsReported();
+			TestWindowPainterMisuseIsReported();
 		}
+
+		TestSegmentGridCoversOnlyItsCommands();
+		TestSegmentGroupReachIsItsOwn();
+		TestSegmentClippedAwayHasNoTiles();
+		TestSegmentPastTheCommandsIsCut();
 	}
 	catch (const std::exception& error)
 	{

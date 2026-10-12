@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <span>
 #include <string>
 
 namespace Nyx::Engine
@@ -151,7 +152,7 @@ namespace Nyx::Engine
 
 		// How far each group can reach: all of its shapes, plus its shadow and glow. Empty for a
 		// group without shapes.
-		std::vector<PainterRect> MeasureGroupReach(const std::vector<PainterCommand>& commands, const std::vector<PainterGroup>& groups)
+		std::vector<PainterRect> MeasureGroupReach(std::span<const PainterCommand> commands, const std::vector<PainterGroup>& groups)
 		{
 			std::vector<PainterRect> shapes(groups.size());
 			std::vector<bool> bHasShapes(groups.size(), false);
@@ -208,97 +209,154 @@ namespace Nyx::Engine
 			}
 			return coverage;
 		}
+
+		// The same coverage in the pixels of a grid that starts at `origin` of the target
+		CommandCoverage MoveIntoGrid(CommandCoverage coverage, glm::vec2 origin)
+		{
+			coverage.Rect = Move(coverage.Rect, -origin);
+			coverage.LineFrom -= origin;
+			coverage.LineTo -= origin;
+			return coverage;
+		}
+
+		// Bins `commands`, a whole frame's or one segment's, into `tiles`. The grid covers the
+		// whole target, or with bFitGrid only the tiles the commands can touch.
+		void BinCommands(std::span<const PainterCommand> commands, const std::vector<PainterGroup>& groups, const PainterRect& target, bool bFitGrid, const PainterBudget& budget, PainterTiles& tiles)
+		{
+			const auto startTime = std::chrono::steady_clock::now();
+
+			tiles.Entries.clear();
+			tiles.Stats = PainterBinningStats{};
+			tiles.Stats.Commands = static_cast<uint32_t>(commands.size());
+			tiles.Problems.clear();
+
+			// Each command's coverage, as far as the budget's number of commands goes
+			const std::vector<PainterRect> groupReach = MeasureGroupReach(commands, groups);
+			std::vector<CommandCoverage> coverages;
+			coverages.reserve(std::min<size_t>(commands.size(), budget.MaxCommands));
+			for (const PainterCommand& command : commands)
+			{
+				if (coverages.size() >= budget.MaxCommands)
+				{
+					break;
+				}
+				coverages.push_back(MeasureCoverage(command, groupReach, target));
+			}
+
+			// The grid: whole tiles over the target, or over every pixel the commands can touch
+			PainterRect area = target;
+			if (bFitGrid)
+			{
+				area = PainterRect{};
+				for (const CommandCoverage& coverage : coverages)
+				{
+					if (!coverage.Rect.IsEmpty())
+					{
+						area = area.IsEmpty() ? coverage.Rect : Union(area, coverage.Rect);
+					}
+				}
+			}
+			const glm::vec2 origin = area.IsEmpty() ? glm::vec2(0.0f) : glm::floor(area.Min / TileSize) * TileSize;
+			tiles.OriginX = static_cast<uint32_t>(origin.x);
+			tiles.OriginY = static_cast<uint32_t>(origin.y);
+			tiles.TilesX = area.IsEmpty() ? 0 : static_cast<uint32_t>(std::ceil((area.Max.x - origin.x) / TileSize));
+			tiles.TilesY = area.IsEmpty() ? 0 : static_cast<uint32_t>(std::ceil((area.Max.y - origin.y) / TileSize));
+			tiles.Tiles.assign(static_cast<size_t>(tiles.TilesX) * tiles.TilesY, PainterTile{});
+			for (CommandCoverage& coverage : coverages)
+			{
+				coverage = MoveIntoGrid(coverage, origin);
+			}
+
+			// Pass 1: count the commands of each tile. The budget is checked before a command is
+			// counted, so a command is either binned completely or, with all commands after it,
+			// not at all.
+			uint64_t entryCount = 0;
+			size_t binnedCount = 0;
+			for (; binnedCount < coverages.size(); ++binnedCount)
+			{
+				const CommandCoverage& coverage = coverages[binnedCount];
+				const uint32_t tileCount = CountTiles(coverage, tiles.TilesX, tiles.TilesY);
+				if (entryCount + tileCount > budget.MaxTileEntries)
+				{
+					break;
+				}
+
+				if (tileCount == 0)
+				{
+					++tiles.Stats.CulledCommands;
+				}
+				ForEachTile(coverage, tiles.TilesX, tiles.TilesY, [&](uint32_t tileIndex)
+					{
+						++tiles.Tiles[tileIndex].Count;
+					});
+				entryCount += tileCount;
+			}
+			coverages.resize(binnedCount);
+
+			tiles.Stats.DroppedCommands = static_cast<uint32_t>(commands.size() - coverages.size());
+			if (tiles.Stats.DroppedCommands > 0)
+			{
+				tiles.Problems.push_back("The painter's budget ran out: " + std::to_string(tiles.Stats.DroppedCommands) + " of " +
+					std::to_string(commands.size()) + " commands were dropped (at most " + std::to_string(budget.MaxCommands) +
+					" commands and " + std::to_string(budget.MaxTileEntries) + " tile entries per frame or segment)");
+			}
+
+			// Each tile's commands start where the previous tile's end.
+			uint32_t nextEntry = 0;
+			for (PainterTile& tile : tiles.Tiles)
+			{
+				tile.FirstEntry = nextEntry;
+				nextEntry += tile.Count;
+				if (tile.Count > 0)
+				{
+					++tiles.Stats.TilesInUse;
+					tiles.Stats.MaxCommandsPerTile = std::max(tiles.Stats.MaxCommandsPerTile, tile.Count);
+				}
+			}
+			tiles.Stats.TileEntries = nextEntry;
+
+			// Pass 2: write each command's index into its tiles. Commands are walked in order, so
+			// each tile lists its commands in drawing order.
+			tiles.Entries.resize(nextEntry);
+			std::vector<uint32_t> written(tiles.Tiles.size(), 0);
+			for (uint32_t commandIndex = 0; commandIndex < coverages.size(); ++commandIndex)
+			{
+				ForEachTile(coverages[commandIndex], tiles.TilesX, tiles.TilesY, [&](uint32_t tileIndex)
+					{
+						const PainterTile& tile = tiles.Tiles[tileIndex];
+						tiles.Entries[tile.FirstEntry + written[tileIndex]] = commandIndex;
+						++written[tileIndex];
+					});
+			}
+
+			const std::chrono::duration<float, std::milli> binningTime = std::chrono::steady_clock::now() - startTime;
+			tiles.Stats.BinningMilliseconds = binningTime.count();
+		}
+
+		PainterRect GetTargetRect(const Painter& painter)
+		{
+			return PainterRect{ glm::vec2(0.0f), glm::vec2(static_cast<float>(painter.GetTargetWidth()), static_cast<float>(painter.GetTargetHeight())) };
+		}
 	}
 
 	void BinPainterCommands(const Painter& painter, const PainterBudget& budget, PainterTiles& inOutTiles)
 	{
-		const auto startTime = std::chrono::steady_clock::now();
+		BinCommands(painter.GetCommands(), painter.GetGroups(), GetTargetRect(painter), false, budget, inOutTiles);
+	}
 
-		const std::vector<PainterCommand>& commands = painter.GetCommands();
-		const uint32_t targetWidth = painter.GetTargetWidth();
-		const uint32_t targetHeight = painter.GetTargetHeight();
+	void BinPainterSegment(const Painter& painter, const PainterSegment& segment, const PainterBudget& budget, PainterTiles& inOutTiles)
+	{
+		// A segment reaching past the painter's commands is cut to those it has.
+		const std::span<const PainterCommand> commands = painter.GetCommands();
+		const size_t first = std::min<size_t>(segment.FirstCommand, commands.size());
+		const size_t count = std::min<size_t>(segment.CommandCount, commands.size() - first);
 
-		PainterTiles& tiles = inOutTiles;
-		tiles.TilesX = (targetWidth + PainterTileSize - 1) / PainterTileSize;
-		tiles.TilesY = (targetHeight + PainterTileSize - 1) / PainterTileSize;
-		tiles.Tiles.assign(static_cast<size_t>(tiles.TilesX) * tiles.TilesY, PainterTile{});
-		tiles.Entries.clear();
-		tiles.Stats = PainterBinningStats{};
-		tiles.Stats.Commands = static_cast<uint32_t>(commands.size());
-		tiles.Problems.clear();
+		BinCommands(commands.subspan(first, count), painter.GetGroups(), GetTargetRect(painter), true, budget, inOutTiles);
 
-		const PainterRect target{ glm::vec2(0.0f), glm::vec2(static_cast<float>(targetWidth), static_cast<float>(targetHeight)) };
-		const std::vector<PainterRect> groupReach = MeasureGroupReach(commands, painter.GetGroups());
-
-		// Pass 1: work out each command's coverage and count the commands of each tile. The
-		// budget is checked before a command is counted, so a command is either binned
-		// completely or, with all commands after it, not at all.
-		std::vector<CommandCoverage> coverages;
-		coverages.reserve(std::min<size_t>(commands.size(), budget.MaxCommands));
-		uint64_t entryCount = 0;
-		for (const PainterCommand& command : commands)
+		if (count != segment.CommandCount)
 		{
-			if (coverages.size() >= budget.MaxCommands)
-			{
-				break;
-			}
-
-			const CommandCoverage coverage = MeasureCoverage(command, groupReach, target);
-			const uint32_t tileCount = CountTiles(coverage, tiles.TilesX, tiles.TilesY);
-			if (entryCount + tileCount > budget.MaxTileEntries)
-			{
-				break;
-			}
-
-			if (tileCount == 0)
-			{
-				++tiles.Stats.CulledCommands;
-			}
-			ForEachTile(coverage, tiles.TilesX, tiles.TilesY, [&](uint32_t tileIndex)
-				{
-					++tiles.Tiles[tileIndex].Count;
-				});
-			entryCount += tileCount;
-			coverages.push_back(coverage);
+			inOutTiles.Problems.push_back("A segment of " + std::to_string(segment.CommandCount) + " commands from command " + std::to_string(segment.FirstCommand) +
+				" reaches past the painter's " + std::to_string(commands.size()) + " commands; only those it has were binned");
 		}
-
-		tiles.Stats.DroppedCommands = static_cast<uint32_t>(commands.size() - coverages.size());
-		if (tiles.Stats.DroppedCommands > 0)
-		{
-			tiles.Problems.push_back("The painter's budget ran out: " + std::to_string(tiles.Stats.DroppedCommands) + " of " +
-				std::to_string(commands.size()) + " commands were dropped (at most " + std::to_string(budget.MaxCommands) +
-				" commands and " + std::to_string(budget.MaxTileEntries) + " tile entries per frame)");
-		}
-
-		// Each tile's commands start where the previous tile's end.
-		uint32_t nextEntry = 0;
-		for (PainterTile& tile : tiles.Tiles)
-		{
-			tile.FirstEntry = nextEntry;
-			nextEntry += tile.Count;
-			if (tile.Count > 0)
-			{
-				++tiles.Stats.TilesInUse;
-				tiles.Stats.MaxCommandsPerTile = std::max(tiles.Stats.MaxCommandsPerTile, tile.Count);
-			}
-		}
-		tiles.Stats.TileEntries = nextEntry;
-
-		// Pass 2: write each command's index into its tiles. Commands are walked in order, so each
-		// tile lists its commands in drawing order.
-		tiles.Entries.resize(nextEntry);
-		std::vector<uint32_t> written(tiles.Tiles.size(), 0);
-		for (uint32_t commandIndex = 0; commandIndex < coverages.size(); ++commandIndex)
-		{
-			ForEachTile(coverages[commandIndex], tiles.TilesX, tiles.TilesY, [&](uint32_t tileIndex)
-				{
-					const PainterTile& tile = tiles.Tiles[tileIndex];
-					tiles.Entries[tile.FirstEntry + written[tileIndex]] = commandIndex;
-					++written[tileIndex];
-				});
-		}
-
-		const std::chrono::duration<float, std::milli> binningTime = std::chrono::steady_clock::now() - startTime;
-		tiles.Stats.BinningMilliseconds = binningTime.count();
 	}
 }

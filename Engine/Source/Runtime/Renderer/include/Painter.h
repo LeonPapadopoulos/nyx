@@ -225,4 +225,16 @@ namespace Nyx::Engine
 		// are reported and their EndGroup() calls are matched without closing it.
 		uint32_t GroupDepth = 0;
 	};
+
+	// A run of a painter's commands that is binned and drawn on its own, in order with whatever
+	// else draws into the same target. Inside an ImGui window, the shapes painted between two
+	// pieces of ImGui's own drawing are one segment (Nyx::UI::WindowPainter). Its commands still
+	// index the painter's groups and textures.
+	struct PainterSegment
+	{
+		uint32_t FirstCommand = 0;
+		uint32_t CommandCount = 0;
+
+		bool operator==(const PainterSegment&) const = default;
+	};
 }

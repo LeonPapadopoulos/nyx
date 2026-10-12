@@ -8,11 +8,12 @@
 
 // Tile binning: which of a frame's draw commands can touch each 8x8 pixel tile of the target.
 // The painter shader then only evaluates a pixel's own tile's commands, instead of all of them.
-// The plan is in Design/ui-painter.md, change 2.
+// The plan is in Design/ui-painter.md: stage 1, change 2, and for segments stage 2, change 2.
 
 namespace Nyx::Engine
 {
 	class Painter;
+	struct PainterSegment;
 
 	// Tiles are 8x8 pixels: a GPU runs pixel shaders in waves of 32 or 64 threads, scheduled in
 	// 8x8 blocks, so all pixels of a wave walk the same command list.
@@ -65,16 +66,23 @@ namespace Nyx::Engine
 		}
 	};
 
-	// A frame's commands, sorted into tiles, as the GPU reads them
+	// A frame's commands, or a segment's, sorted into tiles, as the GPU reads them
 	struct PainterTiles
 	{
-		// The grid covers the whole target; tiles at the right and bottom edges may stick out.
+		// The grid covers the whole target (BinPainterCommands()), or only the tiles a segment's
+		// commands can touch (BinPainterSegment()). Tiles at its right and bottom edges may stick
+		// out of the target.
 		uint32_t TilesX = 0;
 		uint32_t TilesY = 0;
 
+		// The target pixel where the grid's top left tile starts, a multiple of PainterTileSize.
+		// 0, 0 for a grid over the whole target.
+		uint32_t OriginX = 0;
+		uint32_t OriginY = 0;
+
 		// TilesX * TilesY tiles, row by row from the top left
 		std::vector<PainterTile> Tiles;
-		// Command indices, grouped by tile
+		// Command indices, grouped by tile. For a segment they count from its first command.
 		std::vector<uint32_t> Entries;
 
 		PainterBinningStats Stats;
@@ -98,4 +106,10 @@ namespace Nyx::Engine
 	//
 	// Reuses the memory of `inOutTiles` from the previous frame.
 	void BinPainterCommands(const Painter& painter, const PainterBudget& budget, PainterTiles& inOutTiles);
+
+	// Sorts one segment's commands into tiles, like BinPainterCommands(), over a grid that only
+	// covers the tiles those commands can touch: a small painted button costs a few tiles, not
+	// the whole target's. A group's reach counts only its shapes in this segment. The budget
+	// applies to this segment alone.
+	void BinPainterSegment(const Painter& painter, const PainterSegment& segment, const PainterBudget& budget, PainterTiles& inOutTiles);
 }
