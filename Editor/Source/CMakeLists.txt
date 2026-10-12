@@ -96,6 +96,13 @@ set(NYX_EDITOR_HEADERS
     include/EditorAssetActivationContext.h
 )
 
+# The editor and its test targets keep debug information in the object files (/Z7), not in a
+# compiler PDB (/Zi). The test targets reuse the editor's precompiled header, and with /Zi each
+# of them compiles into its own copy of the editor's NyxEditor.pdb. Parallel builds then write
+# these same-named copies at once, which corrupts them (linker warnings LNK4020 and LNK4204).
+# With /Z7 there is no compiler PDB to copy: the header's types are in cmake_pch.obj.
+set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>")
+
 add_executable(NyxEditor
 	${NYX_EDITOR_SOURCES}
 	${NYX_EDITOR_HEADERS}

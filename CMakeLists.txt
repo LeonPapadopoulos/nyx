@@ -1,5 +1,12 @@
 # Default Start for CMAKE
 cmake_minimum_required(VERSION 3.23)
+
+# Lets a target choose how MSVC stores debug information (MSVC_DEBUG_INFORMATION_FORMAT).
+# It must be set before project(); the editor uses it, see Editor/Source/CMakeLists.txt.
+if(POLICY CMP0141)
+    cmake_policy(SET CMP0141 NEW)
+endif()
+
 # Solution Name
 project(Nyx)
 
