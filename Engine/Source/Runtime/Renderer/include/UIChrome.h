@@ -16,6 +16,10 @@ namespace Nyx::UI
 	//   stronger shadow. A window that fills an OS window of its own gets a plain one, as the OS
 	//   window has no room around it for a shadow or round corners.
 	// - A window begun with ImGuiWindowFlags_NoBackground gets no card.
+	// - Tab bars, docked and in windows (stage 3, change 4): ImGui keeps the tabs' behaviour,
+	//   labels and close buttons; their shapes are painted behind the labels instead: a pill
+	//   behind the selected tab and a hovered one, and an accent underline under the selected tab
+	//   that slides to the next one selected.
 	//
 	// The colours, rounding, gap and shadows are the theme's (UITheme.h).
 
@@ -31,7 +35,7 @@ namespace Nyx::UI
 	// chrome is off.
 	void PaintBackdrop();
 
-	// Paints the cards of all windows of this frame. Call it once the frame has ended
+	// Paints the cards and tab bars of all windows of this frame. Call it once the frame has ended
 	// (ImGui::EndFrame(), so ImGui's own windows are there too) and before the window painters
 	// are gathered (EndWindowPainters()). The renderer does. Nothing while the chrome is off.
 	void PaintWindowCards();

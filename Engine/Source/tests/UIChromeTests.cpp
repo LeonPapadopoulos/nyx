@@ -49,7 +49,8 @@ namespace
 	}
 
 	// An 800x600 display with a dock space filling it: "Left" and "Right" docked side by side,
-	// "Floating" over them, and "Overlay", which asks for no background.
+	// with "Left 2" as a second tab beside "Left"; "Floating" over them, with a tab bar of "One"
+	// and "Two"; and "Overlay", which asks for no background.
 	class DockedEditor
 	{
 	public:
@@ -94,13 +95,14 @@ namespace
 				ImGui::DockBuilderSetNodeSize(dockSpace, ImVec2(780.0f, 580.0f));
 				ImGui::DockBuilderSplitNode(dockSpace, ImGuiDir_Left, 0.5f, &LeftNode, &RightNode);
 				ImGui::DockBuilderDockWindow("Left", LeftNode);
+				ImGui::DockBuilderDockWindow("Left 2", LeftNode);
 				ImGui::DockBuilderDockWindow("Right", RightNode);
 				ImGui::DockBuilderFinish(dockSpace);
 			}
 			ImGui::DockSpace(dockSpace);
 			ImGui::End();
 
-			for (const char* name : { "Left", "Right" })
+			for (const char* name : { "Left", "Left 2", "Right" })
 			{
 				ImGui::Begin(name);
 				ImGui::TextUnformatted(name);
@@ -110,7 +112,20 @@ namespace
 			ImGui::SetNextWindowPos(ImVec2(300.0f, 200.0f));
 			ImGui::SetNextWindowSize(ImVec2(200.0f, 120.0f));
 			ImGui::Begin("Floating", nullptr, ImGuiWindowFlags_NoDocking);
-			ImGui::TextUnformatted("Floating");
+			if (ImGui::BeginTabBar("Tabs"))
+			{
+				for (const char* name : { "One", "Two" })
+				{
+					const bool bSelect = SelectTab != nullptr && std::strcmp(SelectTab, name) == 0;
+					if (ImGui::BeginTabItem(name, nullptr, bSelect ? ImGuiTabItemFlags_SetSelected : 0))
+					{
+						ImGui::TextUnformatted(name);
+						ImGui::EndTabItem();
+					}
+				}
+				ImGui::EndTabBar();
+			}
+			SelectTab = nullptr;
 			ImGui::End();
 
 			ImGui::SetNextWindowPos(ImVec2(40.0f, 400.0f));
@@ -134,6 +149,9 @@ namespace
 
 		ImGuiDockNode& GetLeft() const { return *ImGui::DockBuilderGetNode(LeftNode); }
 		ImGuiDockNode& GetRight() const { return *ImGui::DockBuilderGetNode(RightNode); }
+
+		// The floating window's tab to select in the next frame built, by name
+		const char* SelectTab = nullptr;
 
 	private:
 		ImGuiContext* Context = nullptr;
@@ -171,6 +189,63 @@ namespace
 		return result;
 	}
 
+	// The upright lines a painter recorded: splitters between cards side by side
+	std::vector<PainterLinePayload> UprightLines(const WindowPainter& painter)
+	{
+		std::vector<PainterLinePayload> result;
+		for (const PainterCommand& command : CommandsOfType(painter, EPainterCommandType::Line))
+		{
+			const auto line = GetPayload<PainterLinePayload>(command);
+			if (Near(line.From.x, line.To.x))
+			{
+				result.push_back(line);
+			}
+		}
+		return result;
+	}
+
+	// The level lines a painter recorded: tab underlines, with their colours
+	std::vector<PainterCommand> LevelLines(const WindowPainter& painter)
+	{
+		std::vector<PainterCommand> result;
+		for (const PainterCommand& command : CommandsOfType(painter, EPainterCommandType::Line))
+		{
+			const auto line = GetPayload<PainterLinePayload>(command);
+			if (Near(line.From.y, line.To.y))
+			{
+				result.push_back(command);
+			}
+		}
+		return result;
+	}
+
+	// Where ImGui put a tab, worked out as TabItemEx() does for tabs in the bar's scrolling part
+	PainterRect TabRect(const ImGuiTabBar& tabBar, const ImGuiTabItem& tab)
+	{
+		const float x = tabBar.BarRect.Min.x + ImTrunc(tab.Offset - tabBar.ScrollingAnim);
+		return PainterRect{ { x, tabBar.BarRect.Min.y }, { x + tab.Width, tabBar.BarRect.Max.y } };
+	}
+
+	// The pill the chrome paints behind a tab
+	PainterRect PillOf(const PainterRect& tab)
+	{
+		const float inset = Nyx::UI::GetTheme().TabPillInset;
+		return PainterRect{ { tab.Min.x, tab.Min.y + inset }, { tab.Max.x, tab.Max.y - inset } };
+	}
+
+	bool HasRect(const WindowPainter& painter, const PainterRect& rect)
+	{
+		const std::vector<PainterCommand> rects = CommandsOfType(painter, EPainterCommandType::Rect);
+		return std::any_of(rects.begin(), rects.end(), [&](const PainterCommand& command) { return Near(GetPayload<PainterRectPayload>(command).Rect, rect); });
+	}
+
+	const ImGuiTabItem& FindTab(const ImGuiTabBar& tabBar, ImGuiID id)
+	{
+		const auto found = std::find_if(tabBar.Tabs.begin(), tabBar.Tabs.end(), [&](const ImGuiTabItem& tab) { return tab.ID == id; });
+		Require(found != tabBar.Tabs.end(), "No tab with that ID");
+		return *found;
+	}
+
 	// Where a window painter's first segment callback is in a draw list, and how many indices
 	// ImGui drew before it; -1 if it has none there
 	int FindFirstCallback(const ImDrawList& drawList, const WindowPainter& painter, unsigned int& outIndicesBefore)
@@ -201,6 +276,8 @@ namespace
 		Require(Nyx::UI::IsPaintedChromeEnabled(), "The chrome should be on");
 		Require(style.Colors[ImGuiCol_WindowBg].w == 0.0f && style.Colors[ImGuiCol_PopupBg].w == 0.0f && style.Colors[ImGuiCol_TitleBgActive].w == 0.0f,
 			"ImGui's window, popup and title bar backgrounds should be transparent while the chrome paints them");
+		Require(style.Colors[ImGuiCol_Tab].w == 0.0f && style.Colors[ImGuiCol_TabSelected].w == 0.0f && style.Colors[ImGuiCol_TabHovered].w == 0.0f,
+			"ImGui's tab shapes should be transparent while the chrome paints them");
 		Require(style.WindowBorderSize == 0.0f && style.PopupBorderSize == 0.0f, "Windows and popups should have no borders");
 		Require(style.DockingSeparatorSize == Nyx::UI::GetTheme().CardGap, "ImGui should leave the theme's card gap between dock nodes");
 
@@ -291,7 +368,7 @@ namespace
 		ImGuiDockNode& left = editor.GetLeft();
 		std::vector<WindowPainter*> painters = editor.PaintCards();
 		const WindowPainter* cards = FindPainter(painters, left.HostWindow->DrawList, EWindowPainterPlacement::InOrder);
-		Require(cards != nullptr && CommandsOfType(*cards, EPainterCommandType::Line).empty(), "A splitter nobody hovers should not show");
+		Require(cards != nullptr && UprightLines(*cards).empty(), "A splitter nobody hovers should not show");
 
 		// The mouse in the gap, below the floating window, for a few frames: past ImGui's hover
 		// delay, and the line fades in
@@ -305,12 +382,165 @@ namespace
 		}
 
 		cards = FindPainter(painters, left.HostWindow->DrawList, EWindowPainterPlacement::InOrder);
-		const std::vector<PainterCommand> lines = cards != nullptr ? CommandsOfType(*cards, EPainterCommandType::Line) : std::vector<PainterCommand>{};
+		const std::vector<PainterLinePayload> lines = cards != nullptr ? UprightLines(*cards) : std::vector<PainterLinePayload>{};
 		Require(lines.size() == 1, "A hovered splitter should show as one line; ImGui may have changed how it makes the splitter's ID");
-		const auto line = GetPayload<PainterLinePayload>(lines[0]);
+		const PainterLinePayload& line = lines[0];
 		Require(Near(line.From.x, gapX) && Near(line.To.x, gapX) && line.From.y < middleY && line.To.y > middleY, "The line should run upright along the middle of the gap");
 
 		ImGui::GetIO().AddMousePosEvent(-FLT_MAX, -FLT_MAX);
+	}
+
+	// Frames enough for every eased value to arrive
+	void Settle(DockedEditor& editor)
+	{
+		for (int frame = 0; frame < 60; ++frame)
+		{
+			editor.BuildFrame();
+			editor.PaintCards();
+		}
+	}
+
+	const ImGuiTabBar& FindTabBarIn(const ImGuiWindow& window)
+	{
+		ImGuiContext& g = *GImGui;
+		for (int index = 0; index < g.TabBars.GetMapSize(); ++index)
+		{
+			if (const ImGuiTabBar* tabBar = g.TabBars.TryGetMapData(index); tabBar != nullptr && tabBar->Window == &window)
+			{
+				return *tabBar;
+			}
+		}
+		throw std::runtime_error(std::string("No tab bar in ") + window.Name);
+	}
+
+	// The level line under a tab: its ends and colour
+	struct Underline
+	{
+		float Left = 0.0f;
+		float Right = 0.0f;
+		float Y = 0.0f;
+		uint32_t Color = 0;
+	};
+
+	// The underline under `tabBar`; a painter may paint several tab bars
+	Underline FindUnderline(const WindowPainter& painter, const ImGuiTabBar& tabBar)
+	{
+		std::vector<PainterCommand> lines = LevelLines(painter);
+		const ImRect& bar = tabBar.BarRect;
+		std::erase_if(lines, [&](const PainterCommand& command)
+			{
+				const auto line = GetPayload<PainterLinePayload>(command);
+				return line.From.y < bar.Min.y || line.From.y > bar.Max.y || line.From.x < bar.Min.x || line.To.x > bar.Max.x;
+			});
+		Require(lines.size() == 1, "A tab bar should have one underline, got " + std::to_string(lines.size()));
+		const auto line = GetPayload<PainterLinePayload>(lines[0]);
+		return Underline{ line.From.x, line.To.x, line.From.y, lines[0].Color };
+	}
+
+	void TestDockedTabBarsArePainted(DockedEditor& editor)
+	{
+		const Nyx::UI::Theme& theme = Nyx::UI::GetTheme();
+		Settle(editor);
+		editor.BuildFrame();
+		const ImGuiDockNode& left = editor.GetLeft();
+		const std::vector<WindowPainter*> painters = editor.PaintCards();
+		Require(left.TabBar != nullptr && left.TabBar->Tabs.Size == 2, "Left and Left 2 should share a tab bar");
+		const ImGuiTabBar& tabBar = *left.TabBar;
+		const WindowPainter* cards = FindPainter(painters, left.HostWindow->DrawList, EWindowPainterPlacement::InOrder);
+		Require(cards != nullptr, "The dock host should get a painter");
+
+		const ImGuiTabItem& shown = FindTab(tabBar, tabBar.VisibleTabId);
+		const ImGuiTabItem& other = tabBar.Tabs[0].ID == shown.ID ? tabBar.Tabs[1] : tabBar.Tabs[0];
+		const PainterRect shownRect = TabRect(tabBar, shown);
+		Require(HasRect(*cards, PillOf(shownRect)), "The tab that shows should have a pill behind it");
+		Require(!HasRect(*cards, PillOf(TabRect(tabBar, other))), "A tab nobody hovers or selected should have none");
+
+		const Underline underline = FindUnderline(*cards, tabBar);
+		Require(Near(underline.Left, shownRect.Min.x + tabBar.FramePadding.x) && Near(underline.Right, shownRect.Max.x - tabBar.FramePadding.x) &&
+			Near(underline.Y, tabBar.BarRect.Max.y - 0.5f * theme.TabUnderlineWidth),
+			"The underline should run under the tab that shows, inside its padding, at the bar's bottom");
+		const bool bFocused = (tabBar.Flags & ImGuiTabBarFlags_IsFocused) != 0;
+		Require(underline.Color == PackPremultipliedColor(bFocused ? theme.TabUnderline : theme.TabUnderlineDimmed),
+			"The underline should be the accent where the tab bar has focus, and dimmed where it hasn't");
+		Require(HasRect(*cards, PainterRect{ { tabBar.SeparatorMinX, tabBar.BarRect.Max.y - 1.0f }, { tabBar.SeparatorMaxX, tabBar.BarRect.Max.y } }),
+			"A line should run under the whole tab bar");
+
+		// Hovered for a few frames, the other tab gets a pill too.
+		const PainterRect otherRect = TabRect(tabBar, other);
+		ImGui::GetIO().AddMousePosEvent(0.5f * (otherRect.Min.x + otherRect.Max.x), 0.5f * (otherRect.Min.y + otherRect.Max.y));
+		std::vector<WindowPainter*> hovered;
+		for (int frame = 0; frame < 6; ++frame)
+		{
+			editor.BuildFrame();
+			hovered = editor.PaintCards();
+		}
+		const WindowPainter* hoveredCards = FindPainter(hovered, left.HostWindow->DrawList, EWindowPainterPlacement::InOrder);
+		Require(hoveredCards != nullptr && HasRect(*hoveredCards, PillOf(otherRect)), "A hovered tab should get a pill");
+		ImGui::GetIO().AddMousePosEvent(-FLT_MAX, -FLT_MAX);
+	}
+
+	void TestTabBarsInWindowsArePaintedBehindThem(DockedEditor& editor)
+	{
+		Settle(editor);
+		editor.BuildFrame();
+		const std::vector<WindowPainter*> painters = editor.PaintCards();
+		ImGuiWindow& floating = FindWindow("Floating");
+		const ImGuiTabBar& tabBar = FindTabBarIn(floating);
+		const WindowPainter* behind = FindPainter(painters, floating.DrawList, EWindowPainterPlacement::Behind);
+		Require(behind != nullptr, "The floating window should get a painter behind it");
+
+		// The card first, then the tab bar on it, both before anything ImGui drew in the window
+		const std::vector<PainterCommand>& commands = behind->GetPainter().GetCommands();
+		const PainterRect pill = PillOf(TabRect(tabBar, FindTab(tabBar, tabBar.VisibleTabId)));
+		const auto indexOf = [&](const PainterRect& rect)
+		{
+			for (size_t index = 0; index < commands.size(); ++index)
+			{
+				if (commands[index].Type == static_cast<uint32_t>(EPainterCommandType::Rect) && Near(GetPayload<PainterRectPayload>(commands[index]).Rect, rect))
+				{
+					return static_cast<int>(index);
+				}
+			}
+			return -1;
+		};
+		const int cardIndex = indexOf(RectAt(floating.Pos, floating.Size));
+		const int pillIndex = indexOf(pill);
+		Require(cardIndex >= 0 && pillIndex > cardIndex, "A tab bar in a floating window should be painted on its card");
+		Require(FindUnderline(*behind, tabBar).Color == PackPremultipliedColor(Nyx::UI::GetTheme().TabUnderline), "A tab bar in a window counts as focused, as ImGui has it");
+	}
+
+	void TestTheUnderlineSlidesToTheSelectedTab(DockedEditor& editor)
+	{
+		Settle(editor);
+		ImGuiWindow& floating = FindWindow("Floating");
+		const ImGuiTabBar& tabBar = FindTabBarIn(floating);
+		Require(tabBar.Tabs.Size == 2 && tabBar.VisibleTabId == tabBar.Tabs[0].ID, "The floating window's first tab should show first");
+		const ImGuiID secondTab = tabBar.Tabs[1].ID;
+		const float from = TabRect(tabBar, tabBar.Tabs[0]).Min.x + tabBar.FramePadding.x;
+		const float to = TabRect(tabBar, tabBar.Tabs[1]).Min.x + tabBar.FramePadding.x;
+
+		// ImGui switches tabs a frame after it is asked to; the frame it does, the underline has
+		// moved part of the way.
+		editor.SelectTab = "Two";
+		bool bSwitched = false;
+		for (int frame = 0; frame < 4 && !bSwitched; ++frame)
+		{
+			editor.BuildFrame();
+			const std::vector<WindowPainter*> painters = editor.PaintCards();
+			if (tabBar.VisibleTabId == secondTab)
+			{
+				bSwitched = true;
+				const float left = FindUnderline(*FindPainter(painters, floating.DrawList, EWindowPainterPlacement::Behind), tabBar).Left;
+				Require(left > from + 0.5f && left < to - 0.5f, "The underline should slide towards the newly selected tab, not jump");
+			}
+		}
+		Require(bSwitched, "Selecting the second tab should show it");
+
+		Settle(editor);
+		editor.BuildFrame();
+		const std::vector<WindowPainter*> painters = editor.PaintCards();
+		Require(Near(FindUnderline(*FindPainter(painters, floating.DrawList, EWindowPainterPlacement::Behind), tabBar).Left, to),
+			"In the end the underline should be under the selected tab");
 	}
 }
 
@@ -325,6 +555,9 @@ int main()
 		Nyx::UI::SetPaintedChrome(true);
 		TestDockedWindowsAreCardsWithAGapBetween(editor);
 		TestFloatingWindowsGetACardBehindThem(editor);
+		TestDockedTabBarsArePainted(editor);
+		TestTabBarsInWindowsArePaintedBehindThem(editor);
+		TestTheUnderlineSlidesToTheSelectedTab(editor);
 		TestASplitterShowsWhileHovered(editor);
 	}
 	catch (const std::exception& error)

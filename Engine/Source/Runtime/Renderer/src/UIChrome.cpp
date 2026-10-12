@@ -31,6 +31,14 @@ namespace Nyx::UI
 			ImGuiCol_ResizeGrip,
 			ImGuiCol_ResizeGripHovered,
 			ImGuiCol_ResizeGripActive,
+			// Tabs: their shapes, overlines and the line under a tab bar, which takes the selected colour
+			ImGuiCol_Tab,
+			ImGuiCol_TabHovered,
+			ImGuiCol_TabSelected,
+			ImGuiCol_TabSelectedOverline,
+			ImGuiCol_TabDimmed,
+			ImGuiCol_TabDimmedSelected,
+			ImGuiCol_TabDimmedSelectedOverline,
 		};
 
 		// What the chrome changes in ImGui's style, as it was before, to put back when it goes off
@@ -142,6 +150,78 @@ namespace Nyx::UI
 			painter.AddLine(from, to, theme.SplitterWidth, Engine::EPainterLineCap::Round, PainterStyle::Filled(color));
 		}
 
+		// Where ImGui puts a tab (TabItemEx()): along the bar by its offset, scrolled with the bar
+		// unless it sits in the bar's leading or trailing section
+		PainterRect GetTabRect(const ImGuiTabBar& tabBar, const ImGuiTabItem& tab)
+		{
+			const bool bScrolls = (tab.Flags & ImGuiTabItemFlags_SectionMask_) == 0;
+			const float x = tabBar.BarRect.Min.x + (bScrolls ? ImTrunc(tab.Offset - tabBar.ScrollingAnim) : tab.Offset);
+			return PainterRect{ { x, tabBar.BarRect.Min.y }, { x + tab.Width, tabBar.BarRect.Max.y } };
+		}
+
+		// A pill `shown` of the way faded in
+		void PaintPill(WindowPainter& painter, const PainterRect& pill, const glm::vec4& color, float shown)
+		{
+			if (shown <= 0.0f || color.a <= 0.0f)
+			{
+				return;
+			}
+			glm::vec4 faded = color;
+			faded.a *= shown;
+			painter.AddRoundedRect(pill, 0.5f * pill.GetHeight(), PainterStyle::Filled(faded));
+		}
+
+		// A tab bar's look, painted behind ImGui's tab labels: a line under the bar, a pill behind
+		// the selected tab and behind a hovered one, and an underline under the selected tab, which
+		// slides when another one is selected. `key` names the tab bar for its animations.
+		void PaintTabBar(WindowPainter& painter, ImDrawList& drawList, const ImGuiTabBar& tabBar, ImGuiID key)
+		{
+			const ImGuiContext& g = *GImGui;
+			const Theme& theme = GetTheme();
+			const ImRect& bar = tabBar.BarRect;
+
+			// Where ImGui would draw its line under the bar
+			painter.AddRect(PainterRect{ { tabBar.SeparatorMinX, bar.Max.y - 1.0f }, { tabBar.SeparatorMaxX, bar.Max.y } }, PainterStyle::Filled(theme.Separator));
+
+			// Tabs scrolled out of the bar are cut off where ImGui cuts them.
+			drawList.PushClipRect(ImVec2(tabBar.ScrollingRectMinX, bar.Min.y), ImVec2(tabBar.ScrollingRectMaxX, bar.Max.y), true);
+			const ImGuiTabItem* shownTab = nullptr;
+			for (const ImGuiTabItem& tab : tabBar.Tabs)
+			{
+				// Tab buttons (ImGui::TabItemButton()) take ImGui's button colours.
+				if (tab.LastFrameVisible != g.FrameCount || (tab.Flags & ImGuiTabItemFlags_Button) != 0)
+				{
+					continue;
+				}
+				const PainterRect rect = GetTabRect(tabBar, tab);
+				const PainterRect pill{ { rect.Min.x, rect.Min.y + theme.TabPillInset }, { rect.Max.x, rect.Max.y - theme.TabPillInset } };
+
+				// The tab whose contents show, as ImGui decides it; usually the selected one
+				const bool bShown = tab.ID == tabBar.VisibleTabId;
+				const bool bHovered = g.HoveredId == tab.ID || g.ActiveId == tab.ID;
+				PaintPill(painter, pill, theme.TabSelected, Animate(ImHashStr("TabSelected", 0, tab.ID), bShown ? 1.0f : 0.0f, theme.AnimationSpeed));
+				PaintPill(painter, pill, theme.TabHovered, Animate(ImHashStr("TabHovered", 0, tab.ID), bHovered ? 1.0f : 0.0f, theme.AnimationSpeed));
+				if (bShown)
+				{
+					shownTab = &tab;
+				}
+			}
+
+			if (shownTab != nullptr)
+			{
+				// The ends are eased relative to the bar, so the underline doesn't trail behind
+				// when the window moves; it only slides along the bar.
+				const PainterRect rect = GetTabRect(tabBar, *shownTab);
+				const float left = Animate(ImHashStr("UnderlineLeft", 0, key), rect.Min.x + tabBar.FramePadding.x - bar.Min.x, theme.AnimationSpeed);
+				const float right = Animate(ImHashStr("UnderlineRight", 0, key), rect.Max.x - tabBar.FramePadding.x - bar.Min.x, theme.AnimationSpeed);
+				const float y = bar.Max.y - 0.5f * theme.TabUnderlineWidth;
+				const bool bFocused = (tabBar.Flags & ImGuiTabBarFlags_IsFocused) != 0;
+				painter.AddLine({ bar.Min.x + left, y }, { bar.Min.x + right, y }, theme.TabUnderlineWidth, Engine::EPainterLineCap::Round,
+					PainterStyle::Filled(bFocused ? theme.TabUnderline : theme.TabUnderlineDimmed));
+			}
+			drawList.PopClipRect();
+		}
+
 		// A dock host window and the dock nodes it shows this frame
 		struct DockHost
 		{
@@ -236,6 +316,15 @@ namespace Nyx::UI
 			{
 				PaintSplitter(painter, *node);
 			}
+			// The tab bars on the cards, behind the labels ImGui draws into the next channel. A
+			// docked tab bar has no ID of its own; its node's names it.
+			for (const ImGuiDockNode* node : host.Cards)
+			{
+				if (node->TabBar != nullptr && node->TabBar->CurrFrameVisible == GImGui->FrameCount && !node->IsHiddenTabBar() && !node->IsNoTabBar())
+				{
+					PaintTabBar(painter, drawList, *node->TabBar, node->ID);
+				}
+			}
 
 			drawList.PopClipRect();
 			if (bTwoChannels)
@@ -275,6 +364,28 @@ namespace Nyx::UI
 				PaintCardBorder(painter, card, theme.CardRounding);
 			}
 			drawList.PopClipRect();
+		}
+
+		// Tab bars in windows (ImGui::BeginTabBar()), painted behind everything their window
+		// draws: after its card, if it has one, and before ImGui's tab labels. A tab bar in a child
+		// window that draws a background of its own would be covered by it.
+		void PaintWindowTabBars()
+		{
+			ImGuiContext& g = *GImGui;
+			for (int index = 0; index < g.TabBars.GetMapSize(); ++index)
+			{
+				const ImGuiTabBar* tabBar = g.TabBars.TryGetMapData(index);
+				if (tabBar == nullptr || tabBar->CurrFrameVisible != g.FrameCount || tabBar->Window == nullptr || !tabBar->Window->Active ||
+					tabBar->Window->Hidden || tabBar->Window->Viewport == nullptr)
+				{
+					continue;
+				}
+				ImGuiWindow& window = *tabBar->Window;
+				ImDrawList& drawList = *window.DrawList;
+				drawList.PushClipRect(window.InnerClipRect.Min, window.InnerClipRect.Max, false);
+				PaintTabBar(GetPainterFor(drawList, *window.Viewport, window.Name, EWindowPainterPlacement::Behind), drawList, *tabBar, tabBar->ID);
+				drawList.PopClipRect();
+			}
 		}
 	}
 
@@ -356,5 +467,7 @@ namespace Nyx::UI
 				PaintFloatingCard(*window);
 			}
 		}
+		// After the floating cards, so a tab bar in a floating window lies on its card
+		PaintWindowTabBars();
 	}
 }

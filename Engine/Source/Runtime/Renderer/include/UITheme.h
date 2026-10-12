@@ -91,6 +91,18 @@ namespace Nyx::UI
 		glm::vec4 Splitter{ 1.0f, 0.55f, 0.15f, 0.9f };
 		float SplitterWidth = 2.0f;
 
+		// Tab bars, docked and in windows (UIChrome.h): ImGui draws only the labels and close
+		// buttons. Behind them, a pill behind the selected tab and behind a hovered one, TabPillInset
+		// pixels from the bar's top and bottom; an underline under the selected tab, which slides
+		// to another tab when it is selected; and a line (Separator) under the whole bar.
+		glm::vec4 TabSelected{ 1.0f, 1.0f, 1.0f, 0.08f };
+		glm::vec4 TabHovered{ 1.0f, 1.0f, 1.0f, 0.05f };
+		float TabPillInset = 3.0f;
+		glm::vec4 TabUnderline{ 1.0f, 0.55f, 0.15f, 1.0f };
+		// The underline of a tab bar whose window doesn't have focus
+		glm::vec4 TabUnderlineDimmed{ 0.55f, 0.58f, 0.66f, 0.7f };
+		float TabUnderlineWidth = 2.0f;
+
 		// What disabled widgets keep of their colours' alpha
 		float DisabledAlpha = 0.45f;
 		// How fast hover, press and knobs ease, per second: after 1 / AnimationSpeed seconds, about
