@@ -1,5 +1,6 @@
 // The painter's CPU side: the commands and groups it records, its clip and transform stacks, the
 // problems it reports, tile binning, and segments in ImGui windows. No GPU is involved.
+#include "ImageFile.h"
 #include "Painter.h"
 #include "PainterTestSheet.h"
 #include "PainterTiles.h"
@@ -11,6 +12,7 @@
 
 #include <cmath>
 #include <cstring>
+#include <filesystem>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -1096,6 +1098,41 @@ namespace
 		Require(Nyx::UI::EndWindowPainters().empty(), "A new frame should start without window painters");
 	}
 
+	void TestForegroundPainterPaintsOverEverything()
+	{
+		Nyx::UI::WindowPainter& foreground = Nyx::UI::GetForegroundPainter();
+		Require(&Nyx::UI::GetForegroundPainter() == &foreground, "The foreground painter should be the same each time in a frame");
+		Require(foreground.GetDrawList() == ImGui::GetForegroundDrawList(ImGui::GetMainViewport()) && foreground.GetViewportId() == ImGui::GetMainViewport()->ID,
+			"The foreground painter should paint into the main viewport's foreground draw list");
+		foreground.AddRect(PainterRect{ { 0, 0 }, { 10, 10 } }, PainterStyle::Filled(Orange));
+
+		const std::span<Nyx::UI::WindowPainter* const> painters = Nyx::UI::EndWindowPainters();
+		Require(std::find(painters.begin(), painters.end(), &foreground) != painters.end(), "The foreground painter should be gathered with the windows' ones");
+	}
+
+	void TestPngsSaveAndLoad()
+	{
+		// 2x2: red, green / blue, half transparent white
+		RgbaImage image;
+		image.Width = 2;
+		image.Height = 2;
+		image.Pixels = { 255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 128 };
+
+		const std::filesystem::path folder = std::filesystem::temp_directory_path() / "NyxPainterTests";
+		const std::filesystem::path path = folder / "Sub folder" / "Image.png";
+		std::filesystem::remove_all(folder);
+		std::string error;
+		Require(SavePng(path, image, error), "Saving a PNG should work, and make its folder: " + error);
+
+		RgbaImage loaded;
+		Require(LoadRgbaImage(path, loaded, error), "Loading the PNG back should work: " + error);
+		Require(loaded.Width == 2 && loaded.Height == 2 && loaded.Pixels == image.Pixels, "A PNG should load back as it was saved");
+
+		Require(!LoadRgbaImage(folder / "Missing.png", loaded, error) && !error.empty(), "Loading a missing file should fail with a reason");
+		Require(!SavePng(folder / "Empty.png", RgbaImage{}, error) && !error.empty(), "Saving an image without pixels should fail with a reason");
+		std::filesystem::remove_all(folder);
+	}
+
 	void TestWindowPainterMisuseIsReported()
 	{
 		Nyx::UI::WindowPainter windowPainter;
@@ -1158,14 +1195,16 @@ int main()
 			TestImGuiDrawingInsideAGroupIsReported();
 			TestWindowPainterMisuseIsReported();
 			TestWindowPainterClipRectsAndTransforms();
-			// Last: it starts a new ImGui frame.
+			// It counts the frame's window painters, then starts a new frame.
 			TestGetWindowPainterIsOnePerWindow();
+			TestForegroundPainterPaintsOverEverything();
 		}
 
 		TestSegmentGridCoversOnlyItsCommands();
 		TestSegmentGroupReachIsItsOwn();
 		TestSegmentClippedAwayHasNoTiles();
 		TestSegmentPastTheCommandsIsCut();
+		TestPngsSaveAndLoad();
 	}
 	catch (const std::exception& error)
 	{

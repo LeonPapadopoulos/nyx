@@ -9,6 +9,8 @@ set(NYX_EDITOR_SOURCES
     src/DetailsPanel.cpp
     src/SceneViewPanel.cpp
     src/PainterTestWindow.cpp
+    src/MockupOverlay.cpp
+    src/FileDialogs.cpp
     src/SceneFilePopups.cpp
     src/PreferencesWindow.cpp
     src/PlaySession.cpp
@@ -55,6 +57,8 @@ set(NYX_EDITOR_HEADERS
     include/DetailsPanel.h
     include/SceneViewPanel.h
     include/PainterTestWindow.h
+    include/MockupOverlay.h
+    include/FileDialogs.h
     include/SceneFilePopups.h
     include/PreferencesWindow.h
     include/PlaySession.h

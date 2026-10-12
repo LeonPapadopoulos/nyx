@@ -106,6 +106,12 @@ namespace Nyx
 		swapchainCreateInfo.imageExtent = Extent;
 		swapchainCreateInfo.imageArrayLayers = 1;
 		swapchainCreateInfo.imageUsage = vk::ImageUsageFlagBits::eColorAttachment;
+		// Copied out for screenshots (VulkanRenderer::SaveScreenshot()), where the GPU allows it
+		bCanCopyImages = static_cast<bool>(surfaceCapabilities.supportedUsageFlags & vk::ImageUsageFlagBits::eTransferSrc);
+		if (bCanCopyImages)
+		{
+			swapchainCreateInfo.imageUsage |= vk::ImageUsageFlagBits::eTransferSrc;
+		}
 		swapchainCreateInfo.imageSharingMode = vk::SharingMode::eExclusive;
 		swapchainCreateInfo.preTransform = surfaceCapabilities.currentTransform;
 		swapchainCreateInfo.compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque;

@@ -107,6 +107,7 @@ namespace Nyx::Editor
 		MainSceneView.DestroyView();
 		SecondarySceneView.DestroyView();
 		PainterTest.Release();
+		Mockup.Release();
 	}
 
 	void EditorLayer::OnUpdate(float /*deltaTime*/)
@@ -173,6 +174,7 @@ namespace Nyx::Editor
 
 		DebugTools.DrawWindows();
 		PainterTest.Draw(*Renderer);
+		Mockup.Draw(*Renderer);
 	}
 
 	void EditorLayer::DrawTitlebarMenu(float buttonHeight)
@@ -260,6 +262,7 @@ namespace Nyx::Editor
 			ImGui::Separator();
 			NYX_UI(ImGui::TextDisabled("Nyx"));
 			NYX_UI(ImGui::MenuItem("Painter Test", nullptr, &PainterTest.bOpen));
+			NYX_UI(ImGui::MenuItem("Mockup Overlay", nullptr, &Mockup.bOpen));
 			ImGui::EndPopup();
 		}
 

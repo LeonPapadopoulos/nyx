@@ -3,12 +3,14 @@
 #include "ImGuiSource.h"
 #include "PainterDrawOptions.h"
 #include "PainterTestSheet.h"
+#include "Paths.h"
 #include "Renderer.h"
 #include "UIWidgets.h"
 #include "WindowPainter.h"
 
 #include <algorithm>
 #include <cmath>
+#include <ctime>
 #include <string>
 
 namespace Nyx::Editor
@@ -134,7 +136,7 @@ namespace Nyx::Editor
 			}
 			if (NYX_UI(ImGui::BeginTabItem("Widgets")))
 			{
-				DrawWidgetsTab();
+				DrawWidgetsTab(renderer);
 				ImGui::EndTabItem();
 			}
 			ImGui::EndTabBar();
@@ -245,12 +247,24 @@ namespace Nyx::Editor
 		ImGui::EndChild();
 	}
 
-	void PainterTestWindow::DrawWidgetsTab()
+	void PainterTestWindow::DrawWidgetsTab(Nyx::IRenderer& renderer)
 	{
-		NYX_UI(ImGui::TextDisabled("Each painted widget in every state, forced; then live, and ImGui's own beside it"));
+		// Saves the gallery as it shows, to compare a widget before and after a change
+		if (NYX_UI(Nyx::UI::Button("Save PNG")))
+		{
+			SaveGalleryPng(renderer);
+		}
+		ImGui::SameLine();
+		const std::string& message = GalleryMessage.empty() ? renderer.GetScreenshotMessage() : GalleryMessage;
+		NYX_UI(ImGui::TextDisabled("%s", message.empty() ? "Each painted widget in every state, forced; then live, and ImGui's own beside it" : message.c_str()));
 
 		if (Nyx::UI::BeginChild("##WidgetGallery", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar))
 		{
+			// Where the gallery shows, for Save PNG next frame
+			GalleryMin = ImGui::GetWindowPos();
+			GalleryMax = ImVec2(GalleryMin.x + ImGui::GetWindowWidth(), GalleryMin.y + ImGui::GetWindowHeight());
+			bGalleryInMainWindow = ImGui::GetWindowViewport() == ImGui::GetMainViewport();
+
 			// The font scale of a 100% and a 150% screen
 			for (const float scale : { 1.0f, 1.5f })
 			{
@@ -264,6 +278,26 @@ namespace Nyx::Editor
 			}
 		}
 		ImGui::EndChild();
+	}
+
+	void PainterTestWindow::SaveGalleryPng(Nyx::IRenderer& renderer)
+	{
+		// The renderer reads back the main window only; ImGui makes its other OS windows' images
+		// without the right to copy from them.
+		if (!bGalleryInMainWindow)
+		{
+			GalleryMessage = "Only the main window can be saved: dock or move the Painter Test window into it";
+			return;
+		}
+		GalleryMessage.clear();
+
+		// Saved/Gallery/Gallery 2026-10-12 14-03-27.png, by local time
+		const std::time_t now = std::time(nullptr);
+		std::tm local{};
+		localtime_s(&local, &now);
+		char fileName[64];
+		std::strftime(fileName, sizeof(fileName), "Gallery %Y-%m-%d %H-%M-%S.png", &local);
+		renderer.SaveScreenshot(Nyx::Paths::GetProjectRoot() / "Saved" / "Gallery" / fileName, GalleryMin, GalleryMax);
 	}
 
 	void PainterTestWindow::DrawWidgetGalleryTable()

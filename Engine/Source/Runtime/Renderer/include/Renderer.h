@@ -6,10 +6,13 @@
 #include "SceneViewCameraData.h"
 #include "Extent2D.h"
 #include "PainterDrawOptions.h"
+#include "ImageFile.h"
 #include <imgui.h>
 #include "glm/glm.hpp"
 
+#include <filesystem>
 #include <optional>
+#include <string>
 
 struct GLFWwindow;
 
@@ -112,6 +115,23 @@ namespace Nyx
 		// Painting inside ImGui windows (Nyx::UI::GetWindowPainter()) in the last drawn frame:
 		// while the UI is built, that is the previous one.
 		virtual const Nyx::Engine::PainterWindowStats& GetWindowPainterStats() const = 0;
+
+		// Images for the UI (ImGui::Image(), WindowPainter::AddImage()), made from RGBA pixels: 8
+		// bits per channel, straight alpha, in the same sRGB-encoded values as ImGui's colours.
+		// Returns 0 if the image can't be made. Destroying one takes effect after the GPU is done
+		// with the frame, so it can be destroyed while the UI is built.
+		virtual uint64_t CreateUIImage(const Nyx::Engine::RgbaImage& image) = 0;
+		virtual void DestroyUIImage(uint64_t id) = 0;
+		// What ImGui::Image() and AddImage() take; ImTextureID_Invalid for an unknown id
+		virtual ImTextureID GetUIImageTextureId(uint64_t id) const = 0;
+
+		// Saves a rect of the main window as a PNG file, as this frame shows it once rendered. The
+		// rect is in ImGui's screen coordinates (e.g. a window's position and size); only the main
+		// window can be read back, not ImGui's other OS windows. The file is written after the GPU
+		// is done with the frame, and GetScreenshotMessage() says how it went.
+		virtual void SaveScreenshot(const std::filesystem::path& path, ImVec2 min, ImVec2 max) = 0;
+		// "Saving ...", "Saved <path>" or why it couldn't; empty before the first screenshot
+		virtual const std::string& GetScreenshotMessage() const = 0;
 
 		// temporary demo-asset accessors
 		virtual Nyx::Mesh* GetCubeMesh() = 0;

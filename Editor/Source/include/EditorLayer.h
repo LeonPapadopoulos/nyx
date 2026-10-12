@@ -11,6 +11,7 @@
 #include "ImGuiDebugTools.h"
 #include "Layer.h"
 #include "PainterTestWindow.h"
+#include "MockupOverlay.h"
 #include "PlayControls.h"
 #include "PlaySession.h"
 #include "PreferencesWindow.h"
@@ -82,6 +83,7 @@ namespace Nyx::Editor
 		EditorPreferences Preferences;
 		ImGuiDebugTools DebugTools;
 		PainterTestWindow PainterTest;
+		MockupOverlay Mockup;
 		UISourceInspector SourceInspector;
 
 		// Panels and windows

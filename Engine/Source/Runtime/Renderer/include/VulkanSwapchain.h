@@ -28,6 +28,9 @@ namespace Nyx
 		uint32_t GetMinImageCount() const;
 		uint32_t GetImageCount() const;
 
+		// Whether the images can be copied out (a transfer source), for screenshots
+		bool CanCopyImages() const { return bCanCopyImages; }
+
 	private:
 		void CreateSwapchain(VulkanContext& context, GLFWwindow* window);
 		void CreateImageViews(VulkanContext& context);
@@ -47,6 +50,7 @@ namespace Nyx
 		vk::SurfaceFormatKHR SurfaceFormat{};
 		vk::Extent2D Extent{};
 		uint32_t MinImageCount = 0;
+		bool bCanCopyImages = false;
 
 		vk::raii::RenderPass RenderPass{ nullptr };
 		std::vector<vk::raii::Framebuffer> Framebuffers;

@@ -374,6 +374,19 @@ namespace Nyx
 			ReleasePainterCanvas(*canvas);
 		}
 		PainterCanvases.clear();
+
+		// UI images too give back their ImGui textures; a screenshot still pending is written.
+		FinishScreenshot();
+		Screenshot.reset();
+		for (std::vector<std::unique_ptr<UIImage>>* images : { &UIImages, &UIImagesToRelease })
+		{
+			for (const std::unique_ptr<UIImage>& image : *images)
+			{
+				ReleaseUIImage(*image);
+			}
+			images->clear();
+		}
+
 		Nyx::UI::WindowPainter::SetSegmentDrawer(nullptr, nullptr);
 		WindowSegments.Release();
 		WindowSegmentStarts.clear();
@@ -440,6 +453,15 @@ namespace Nyx
 		// 1) Wait until previous submitted frame is done
 		const vk::Result fenceResult = Context.GetDevice().waitForFences({ *InFlightFence }, true, UINT64_MAX);
 		(void)fenceResult;
+
+		// The previous frame is done: its screenshot can be written, and the UI images destroyed
+		// during it are no longer shown.
+		FinishScreenshot();
+		for (const std::unique_ptr<UIImage>& image : UIImagesToRelease)
+		{
+			ReleaseUIImage(*image);
+		}
+		UIImagesToRelease.clear();
 
 		ReadBackPickResults();
 
@@ -617,6 +639,7 @@ namespace Nyx
 		cmd.beginRenderPass(renderPassInfo, vk::SubpassContents::eInline);
 		ImGuiBackend->DrawFrame(cmd);
 		cmd.endRenderPass();
+		RecordScreenshot(cmd, imageIndex);
 		cmd.end();
 
 		// 4) Submit
@@ -3551,6 +3574,268 @@ namespace Nyx
 		}
 
 		PainterPass.DrawSegment(renderState->CommandBuffer, WindowSegments, start->second + segment, format, extent);
+	}
+
+	uint64_t VulkanRenderer::CreateUIImage(const Nyx::Engine::RgbaImage& source)
+	{
+		if (source.Width == 0 || source.Height == 0 || source.Pixels.size() != static_cast<size_t>(source.Width) * source.Height * 4)
+		{
+			LOG_ERROR("CreateUIImage(): the image has no pixels, or not as many as its size needs");
+			return 0;
+		}
+
+		vk::raii::Device& device = Context.GetDevice();
+		auto image = std::make_unique<UIImage>();
+		image->Id = NextUIImageId++;
+
+		// Not sRGB: ImGui blends the sRGB-encoded values as they are, and so do the painter and this image.
+		constexpr vk::Format Format = vk::Format::eR8G8B8A8Unorm;
+		vk::ImageCreateInfo imageInfo{};
+		imageInfo.imageType = vk::ImageType::e2D;
+		imageInfo.extent = vk::Extent3D(source.Width, source.Height, 1);
+		imageInfo.mipLevels = 1;
+		imageInfo.arrayLayers = 1;
+		imageInfo.format = Format;
+		imageInfo.tiling = vk::ImageTiling::eOptimal;
+		imageInfo.initialLayout = vk::ImageLayout::eUndefined;
+		imageInfo.usage = vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst;
+		imageInfo.samples = vk::SampleCountFlagBits::e1;
+		image->Image = vk::raii::Image(device, imageInfo);
+		const vk::MemoryRequirements imageRequirements = image->Image.getMemoryRequirements();
+		image->Memory = vk::raii::DeviceMemory(device, vk::MemoryAllocateInfo(imageRequirements.size,
+			FindMemoryType(*Context.GetPhysicalDevice(), imageRequirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal)));
+		image->Image.bindMemory(*image->Memory, 0);
+
+		vk::ImageViewCreateInfo viewInfo{};
+		viewInfo.image = *image->Image;
+		viewInfo.viewType = vk::ImageViewType::e2D;
+		viewInfo.format = Format;
+		viewInfo.subresourceRange = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
+		image->View = vk::raii::ImageView(device, viewInfo);
+
+		// Smooth when shown scaled
+		vk::SamplerCreateInfo samplerInfo{};
+		samplerInfo.magFilter = vk::Filter::eLinear;
+		samplerInfo.minFilter = vk::Filter::eLinear;
+		samplerInfo.addressModeU = vk::SamplerAddressMode::eClampToEdge;
+		samplerInfo.addressModeV = vk::SamplerAddressMode::eClampToEdge;
+		samplerInfo.addressModeW = vk::SamplerAddressMode::eClampToEdge;
+		image->Sampler = vk::raii::Sampler(device, samplerInfo);
+
+		// The pixels go through a host-visible buffer, in a short submission of its own. Images are
+		// made rarely (a file opened), so waiting for it is fine.
+		vk::BufferCreateInfo bufferInfo{};
+		bufferInfo.size = source.Pixels.size();
+		bufferInfo.usage = vk::BufferUsageFlagBits::eTransferSrc;
+		vk::raii::Buffer staging(device, bufferInfo);
+		const vk::MemoryRequirements bufferRequirements = staging.getMemoryRequirements();
+		vk::raii::DeviceMemory stagingMemory(device, vk::MemoryAllocateInfo(bufferRequirements.size,
+			FindMemoryType(*Context.GetPhysicalDevice(), bufferRequirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent)));
+		staging.bindMemory(*stagingMemory, 0);
+		std::memcpy(stagingMemory.mapMemory(0, source.Pixels.size()), source.Pixels.data(), source.Pixels.size());
+		stagingMemory.unmapMemory();
+
+		vk::CommandBufferAllocateInfo commandBufferInfo{};
+		commandBufferInfo.commandPool = *Context.GetGraphicsCommandPool();
+		commandBufferInfo.level = vk::CommandBufferLevel::ePrimary;
+		commandBufferInfo.commandBufferCount = 1;
+		vk::raii::CommandBuffer upload = std::move(vk::raii::CommandBuffers(device, commandBufferInfo).front());
+		upload.begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
+
+		vk::ImageMemoryBarrier toCopy{};
+		toCopy.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
+		toCopy.oldLayout = vk::ImageLayout::eUndefined;
+		toCopy.newLayout = vk::ImageLayout::eTransferDstOptimal;
+		toCopy.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		toCopy.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		toCopy.image = *image->Image;
+		toCopy.subresourceRange = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
+		upload.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, toCopy);
+
+		vk::BufferImageCopy copy{};
+		copy.imageSubresource = vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1);
+		copy.imageExtent = imageInfo.extent;
+		upload.copyBufferToImage(*staging, *image->Image, vk::ImageLayout::eTransferDstOptimal, copy);
+
+		vk::ImageMemoryBarrier toRead = toCopy;
+		toRead.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
+		toRead.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+		toRead.oldLayout = vk::ImageLayout::eTransferDstOptimal;
+		toRead.newLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+		upload.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, toRead);
+		upload.end();
+
+		vk::SubmitInfo submitInfo{};
+		submitInfo.commandBufferCount = 1;
+		submitInfo.pCommandBuffers = &*upload;
+		Context.GetGraphicsQueue().submit(submitInfo);
+		Context.GetGraphicsQueue().waitIdle();
+
+		image->ImGuiTexture = ImGui_ImplVulkan_AddTexture(*image->Sampler, *image->View, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		const uint64_t id = image->Id;
+		UIImages.push_back(std::move(image));
+		return id;
+	}
+
+	void VulkanRenderer::DestroyUIImage(uint64_t id)
+	{
+		const auto found = std::find_if(UIImages.begin(), UIImages.end(), [&](const std::unique_ptr<UIImage>& image)
+			{
+				return image->Id == id;
+			});
+		if (found != UIImages.end())
+		{
+			UIImagesToRelease.push_back(std::move(*found));
+			UIImages.erase(found);
+		}
+	}
+
+	ImTextureID VulkanRenderer::GetUIImageTextureId(uint64_t id) const
+	{
+		for (const std::unique_ptr<UIImage>& image : UIImages)
+		{
+			if (image->Id == id && image->ImGuiTexture != VK_NULL_HANDLE)
+			{
+				return reinterpret_cast<ImTextureID>(image->ImGuiTexture);
+			}
+		}
+		return ImTextureID_Invalid;
+	}
+
+	void VulkanRenderer::ReleaseUIImage(UIImage& image)
+	{
+		if (image.ImGuiTexture != VK_NULL_HANDLE)
+		{
+			ImGui_ImplVulkan_RemoveTexture(image.ImGuiTexture);
+			image.ImGuiTexture = VK_NULL_HANDLE;
+		}
+		image.Sampler = nullptr;
+		image.View = nullptr;
+		image.Image = nullptr;
+		image.Memory = nullptr;
+	}
+
+	void VulkanRenderer::SaveScreenshot(const std::filesystem::path& path, ImVec2 min, ImVec2 max)
+	{
+		if (Screenshot)
+		{
+			ScreenshotMessage = "A screenshot is being saved already";
+			return;
+		}
+		if (!Swapchain.CanCopyImages())
+		{
+			ScreenshotMessage = "Couldn't save: this GPU can't copy out of the window's images";
+			return;
+		}
+		const vk::Format format = Swapchain.GetSurfaceFormat().format;
+		const bool bBlueFirst = format == vk::Format::eB8G8R8A8Unorm || format == vk::Format::eB8G8R8A8Srgb;
+		const bool bRedFirst = format == vk::Format::eR8G8B8A8Unorm || format == vk::Format::eR8G8B8A8Srgb;
+		if (!bBlueFirst && !bRedFirst)
+		{
+			ScreenshotMessage = "Couldn't save: the window's images aren't 8 bits per channel";
+			return;
+		}
+
+		// ImGui's screen coordinates to the main window's pixels, whole ones, inside the window
+		const ImGuiViewport& viewport = *ImGui::GetMainViewport();
+		const float scale = viewport.FramebufferScale.x > 0.0f ? viewport.FramebufferScale.x : 1.0f;
+		const vk::Extent2D extent = Swapchain.GetExtent();
+		const auto toPixels = [&](float position, float origin, uint32_t size, float (*round)(float))
+			{
+				return static_cast<int32_t>(std::clamp(round((position - origin) * scale), 0.0f, static_cast<float>(size)));
+			};
+		const int32_t left = toPixels(min.x, viewport.Pos.x, extent.width, std::floor);
+		const int32_t top = toPixels(min.y, viewport.Pos.y, extent.height, std::floor);
+		const int32_t right = toPixels(max.x, viewport.Pos.x, extent.width, std::ceil);
+		const int32_t bottom = toPixels(max.y, viewport.Pos.y, extent.height, std::ceil);
+		if (right <= left || bottom <= top)
+		{
+			ScreenshotMessage = "Couldn't save: the rect isn't inside the main window";
+			return;
+		}
+
+		Screenshot.emplace();
+		Screenshot->Path = path;
+		Screenshot->Region = vk::Rect2D({ left, top }, { static_cast<uint32_t>(right - left), static_cast<uint32_t>(bottom - top) });
+		Screenshot->bBlueFirst = bBlueFirst;
+		ScreenshotMessage = "Saving " + path.string() + " ...";
+	}
+
+	void VulkanRenderer::RecordScreenshot(vk::raii::CommandBuffer& cmd, uint32_t imageIndex)
+	{
+		if (!Screenshot || Screenshot->bRecorded)
+		{
+			return;
+		}
+		ScreenshotRequest& request = *Screenshot;
+		vk::raii::Device& device = Context.GetDevice();
+
+		const vk::DeviceSize byteCount = static_cast<vk::DeviceSize>(request.Region.extent.width) * request.Region.extent.height * 4;
+		vk::BufferCreateInfo bufferInfo{};
+		bufferInfo.size = byteCount;
+		bufferInfo.usage = vk::BufferUsageFlagBits::eTransferDst;
+		request.Buffer = vk::raii::Buffer(device, bufferInfo);
+		const vk::MemoryRequirements requirements = request.Buffer.getMemoryRequirements();
+		request.Memory = vk::raii::DeviceMemory(device, vk::MemoryAllocateInfo(requirements.size,
+			FindMemoryType(*Context.GetPhysicalDevice(), requirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent)));
+		request.Buffer.bindMemory(*request.Memory, 0);
+
+		// The render pass left the image ready to present; it is copied from, then made ready again.
+		vk::ImageMemoryBarrier toCopy{};
+		toCopy.srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
+		toCopy.dstAccessMask = vk::AccessFlagBits::eTransferRead;
+		toCopy.oldLayout = vk::ImageLayout::ePresentSrcKHR;
+		toCopy.newLayout = vk::ImageLayout::eTransferSrcOptimal;
+		toCopy.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		toCopy.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		toCopy.image = Swapchain.GetImages()[imageIndex];
+		toCopy.subresourceRange = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
+		cmd.pipelineBarrier(vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, toCopy);
+
+		vk::BufferImageCopy copy{};
+		copy.imageSubresource = vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1);
+		copy.imageOffset = vk::Offset3D(request.Region.offset.x, request.Region.offset.y, 0);
+		copy.imageExtent = vk::Extent3D(request.Region.extent.width, request.Region.extent.height, 1);
+		cmd.copyImageToBuffer(toCopy.image, vk::ImageLayout::eTransferSrcOptimal, *request.Buffer, copy);
+
+		vk::ImageMemoryBarrier toPresent = toCopy;
+		toPresent.srcAccessMask = vk::AccessFlagBits::eTransferRead;
+		toPresent.dstAccessMask = {};
+		toPresent.oldLayout = vk::ImageLayout::eTransferSrcOptimal;
+		toPresent.newLayout = vk::ImageLayout::ePresentSrcKHR;
+		cmd.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eBottomOfPipe, {}, {}, {}, toPresent);
+
+		request.bRecorded = true;
+	}
+
+	void VulkanRenderer::FinishScreenshot()
+	{
+		if (!Screenshot || !Screenshot->bRecorded)
+		{
+			return;
+		}
+		const ScreenshotRequest& request = *Screenshot;
+
+		Nyx::Engine::RgbaImage image;
+		image.Width = request.Region.extent.width;
+		image.Height = request.Region.extent.height;
+		image.Pixels.resize(static_cast<size_t>(image.Width) * image.Height * 4);
+		std::memcpy(image.Pixels.data(), request.Memory.mapMemory(0, image.Pixels.size()), image.Pixels.size());
+		request.Memory.unmapMemory();
+
+		// RGBA, and opaque: the window's alpha is whatever blending left there, not meant to be seen.
+		for (size_t offset = 0; offset < image.Pixels.size(); offset += 4)
+		{
+			if (request.bBlueFirst)
+			{
+				std::swap(image.Pixels[offset], image.Pixels[offset + 2]);
+			}
+			image.Pixels[offset + 3] = 255;
+		}
+
+		std::string error;
+		ScreenshotMessage = Nyx::Engine::SavePng(request.Path, image, error) ? "Saved " + request.Path.string() : "Couldn't save: " + error;
+		Screenshot.reset();
 	}
 
 	SceneViewInstance* VulkanRenderer::FindSceneView(uint64_t id)

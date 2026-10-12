@@ -7,6 +7,7 @@
 #include <imgui.h>
 
 #include <cstdint>
+#include <string>
 
 namespace Nyx
 {
@@ -40,8 +41,10 @@ namespace Nyx::Editor
 	private:
 		void DrawCanvasTab(Nyx::IRenderer& renderer);
 		void DrawInWindowTab(Nyx::IRenderer& renderer);
-		void DrawWidgetsTab();
+		void DrawWidgetsTab(Nyx::IRenderer& renderer);
 		void DrawWidgetGalleryTable();
+		// Saves the gallery as a PNG file in Saved/Gallery, named by the time
+		void SaveGalleryPng(Nyx::IRenderer& renderer);
 
 		// Takes up `size` at ImGui's cursor and returns where, for painting a forced state there
 		static Nyx::Engine::PainterRect ReserveCell(glm::vec2 size);
@@ -68,6 +71,12 @@ namespace Nyx::Editor
 		// The gallery's live widgets' values, shared with their ImGui counterparts
 		bool bGalleryToggle = true;
 		float GallerySlider = 0.6f;
+
+		// Where the gallery showed last frame, for Save PNG, and why it couldn't be saved
+		ImVec2 GalleryMin;
+		ImVec2 GalleryMax;
+		bool bGalleryInMainWindow = false;
+		std::string GalleryMessage;
 	};
 
 	// Draws a painter's recorded frame with ImGui's ImDrawList instead, for comparison: shapes

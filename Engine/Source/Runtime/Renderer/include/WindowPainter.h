@@ -164,6 +164,12 @@ namespace Nyx::UI
 	// renders the windows.
 	WindowPainter& GetWindowPainter();
 
+	// A window painter over everything ImGui draws in `viewport` (the main one if null): it paints
+	// into the viewport's foreground draw list, which ImGui renders after all windows. For
+	// overlays; it takes no input. Started on the first call in a frame and gathered like the
+	// windows' ones.
+	WindowPainter& GetForegroundPainter(ImGuiViewport* viewport = nullptr);
+
 	// Ends every window painter started this frame and returns them, for the renderer to draw.
 	// Call it after the UI is built and before ImGui::Render(). They stay valid until the next
 	// frame's first GetWindowPainter().

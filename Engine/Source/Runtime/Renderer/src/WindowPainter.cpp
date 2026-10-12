@@ -327,29 +327,43 @@ namespace Nyx::UI
 		}
 	}
 
+	namespace
+	{
+		// The pool's window painter for the draw list, started this frame if it isn't yet: one
+		// per draw list, so one per window (child windows too) and one per viewport's foreground
+		WindowPainter& GetPainterFor(ImDrawList& drawList, const ImGuiViewport& viewport, std::string_view name)
+		{
+			WindowPainterPool& pool = GetWindowPainterPool();
+			StartFrameIfNew(pool);
+
+			for (WindowPainter* painter : pool.Used)
+			{
+				if (painter->GetDrawList() == &drawList)
+				{
+					return *painter;
+				}
+			}
+
+			if (pool.Used.size() == pool.Painters.size())
+			{
+				pool.Painters.push_back(std::make_unique<WindowPainter>());
+			}
+			WindowPainter& painter = *pool.Painters[pool.Used.size()];
+			pool.Used.push_back(&painter);
+			painter.Begin(drawList, viewport, name);
+			return painter;
+		}
+	}
+
 	WindowPainter& GetWindowPainter()
 	{
-		WindowPainterPool& pool = GetWindowPainterPool();
-		StartFrameIfNew(pool);
+		return GetPainterFor(*ImGui::GetWindowDrawList(), *ImGui::GetWindowViewport(), ImGui::GetCurrentWindowRead()->Name);
+	}
 
-		// One per window: each window, child windows too, has its own draw list.
-		ImDrawList* drawList = ImGui::GetWindowDrawList();
-		for (WindowPainter* painter : pool.Used)
-		{
-			if (painter->GetDrawList() == drawList)
-			{
-				return *painter;
-			}
-		}
-
-		if (pool.Used.size() == pool.Painters.size())
-		{
-			pool.Painters.push_back(std::make_unique<WindowPainter>());
-		}
-		WindowPainter& painter = *pool.Painters[pool.Used.size()];
-		pool.Used.push_back(&painter);
-		painter.Begin(*drawList, *ImGui::GetWindowViewport(), ImGui::GetCurrentWindowRead()->Name);
-		return painter;
+	WindowPainter& GetForegroundPainter(ImGuiViewport* viewport)
+	{
+		ImGuiViewport* target = viewport != nullptr ? viewport : ImGui::GetMainViewport();
+		return GetPainterFor(*ImGui::GetForegroundDrawList(target), *target, "Foreground");
 	}
 
 	std::span<WindowPainter* const> EndWindowPainters()

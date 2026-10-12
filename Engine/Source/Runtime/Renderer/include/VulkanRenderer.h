@@ -257,6 +257,13 @@ namespace Nyx
 		const Nyx::Engine::PainterTiles* GetPainterCanvasTiles(uint64_t id) const override;
 		const Nyx::Engine::PainterWindowStats& GetWindowPainterStats() const override { return WindowPainterStats; }
 
+		uint64_t CreateUIImage(const Nyx::Engine::RgbaImage& image) override;
+		void DestroyUIImage(uint64_t id) override;
+		ImTextureID GetUIImageTextureId(uint64_t id) const override;
+
+		void SaveScreenshot(const std::filesystem::path& path, ImVec2 min, ImVec2 max) override;
+		const std::string& GetScreenshotMessage() const override { return ScreenshotMessage; }
+
 		ImTextureID GetSceneViewTextureId(uint64_t id) const override;
 		Extent2D GetSceneViewExtent(uint64_t id) const;
 
@@ -473,6 +480,41 @@ namespace Nyx
 		// Where each window painter's segments start in WindowSegments
 		std::vector<std::pair<const Nyx::UI::WindowPainter*, uint32_t>> WindowSegmentStarts;
 		Nyx::Engine::PainterWindowStats WindowPainterStats;
+
+		// An image for the UI (CreateUIImage()), shown through a descriptor set made by ImGui's backend
+		struct UIImage
+		{
+			uint64_t Id = 0;
+			vk::raii::Image Image{ nullptr };
+			vk::raii::DeviceMemory Memory{ nullptr };
+			vk::raii::ImageView View{ nullptr };
+			vk::raii::Sampler Sampler{ nullptr };
+			VkDescriptorSet ImGuiTexture = VK_NULL_HANDLE;
+		};
+		std::vector<std::unique_ptr<UIImage>> UIImages;
+		// Destroyed ones, released once the GPU is done with the frame that may still show them
+		std::vector<std::unique_ptr<UIImage>> UIImagesToRelease;
+		uint64_t NextUIImageId = 1;
+		void ReleaseUIImage(UIImage& image);
+
+		// A screenshot asked for this frame (SaveScreenshot()): the rect is copied out of the
+		// swapchain image after ImGui has rendered into it, and written to the file once the
+		// frame's fence is signalled.
+		struct ScreenshotRequest
+		{
+			std::filesystem::path Path;
+			// In the swapchain image's pixels
+			vk::Rect2D Region;
+			vk::raii::Buffer Buffer{ nullptr };
+			vk::raii::DeviceMemory Memory{ nullptr };
+			// The swapchain's format holds blue first (B8G8R8A8)
+			bool bBlueFirst = false;
+			bool bRecorded = false;
+		};
+		std::optional<ScreenshotRequest> Screenshot;
+		std::string ScreenshotMessage;
+		void RecordScreenshot(vk::raii::CommandBuffer& cmd, uint32_t imageIndex);
+		void FinishScreenshot();
 
 		std::vector<std::unique_ptr<Nyx::Mesh>> LoadedMeshes;
 		std::vector<std::unique_ptr<Nyx::Texture>> LoadedTextures;

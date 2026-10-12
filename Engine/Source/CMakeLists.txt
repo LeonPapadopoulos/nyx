@@ -82,6 +82,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/UIAnimation.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/UITheme.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/UIWidgets.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ImageFile.cpp
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/src/ReflectionUtils.cpp
@@ -164,6 +165,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/UIAnimation.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/UITheme.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/UIWidgets.h
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ImageFile.h
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionTypes.h
@@ -280,6 +282,7 @@ foreach(NYX_ENGINE_TARGET NyxEngineCommon NyxEngine NyxEditorEngine)
             ${NYX_ENGINE_ROOT}/Runtime/Engine/src
             ${NYX_ENGINE_ROOT}/Runtime/Renderer/src
             ${CMAKE_SOURCE_DIR}/Dependencies/cgltf
+            ${CMAKE_SOURCE_DIR}/Dependencies/glfw/deps # stb_image_write.h, for ImageFile.cpp
     )
 
     target_link_libraries(${NYX_ENGINE_TARGET}
