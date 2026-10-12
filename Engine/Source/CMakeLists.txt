@@ -75,6 +75,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/Extent2D.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/Painter.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/PainterCommands.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/PainterTiles.cpp
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/src/ReflectionUtils.cpp
@@ -149,6 +150,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/Extent2D.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/Painter.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/PainterCommands.h
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/PainterTiles.h
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionTypes.h

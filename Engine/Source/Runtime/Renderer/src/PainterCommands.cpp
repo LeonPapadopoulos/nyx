@@ -15,6 +15,16 @@ namespace Nyx::Engine
 		return PainterRect{ glm::min(a.Min, b.Min), glm::max(a.Max, b.Max) };
 	}
 
+	PainterRect Grow(const PainterRect& rect, float amount)
+	{
+		return PainterRect{ rect.Min - glm::vec2(amount), rect.Max + glm::vec2(amount) };
+	}
+
+	PainterRect Move(const PainterRect& rect, glm::vec2 offset)
+	{
+		return PainterRect{ rect.Min + offset, rect.Max + offset };
+	}
+
 	namespace
 	{
 		uint32_t ToByte(float channel)
@@ -30,11 +40,6 @@ namespace Nyx::Engine
 		PainterRect AroundPoint(glm::vec2 center, float reach)
 		{
 			return PainterRect{ center - glm::vec2(reach), center + glm::vec2(reach) };
-		}
-
-		PainterRect Grow(const PainterRect& rect, float amount)
-		{
-			return PainterRect{ rect.Min - glm::vec2(amount), rect.Max + glm::vec2(amount) };
 		}
 	}
 

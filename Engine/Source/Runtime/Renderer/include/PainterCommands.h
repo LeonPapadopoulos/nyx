@@ -72,6 +72,12 @@ namespace Nyx::Engine
 	// The smallest rect that holds both
 	PainterRect Union(const PainterRect& a, const PainterRect& b);
 
+	// The rect with every side moved outwards by `amount` pixels
+	PainterRect Grow(const PainterRect& rect, float amount);
+
+	// The rect moved by `offset`, keeping its size
+	PainterRect Move(const PainterRect& rect, glm::vec2 offset);
+
 	// The radius of each corner of a rect, in pixels; 0 is a sharp corner
 	struct PainterCornerRadii
 	{
@@ -190,7 +196,8 @@ namespace Nyx::Engine
 		uint32_t GlowColor = 0;
 		glm::vec2 ShadowOffset{ 0.0f };
 
-		// How far the shadow fades out, in pixels; 0 is a hard edge
+		// How far past the edge of the moved shapes the shadow fades out, in pixels; 0 is a hard
+		// edge. Tile binning counts on the shadow reaching no further.
 		float ShadowBlur = 0.0f;
 		// How far the glow reaches outside the shapes, in pixels
 		float GlowDistance = 0.0f;

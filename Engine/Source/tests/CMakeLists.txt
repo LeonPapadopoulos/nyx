@@ -43,7 +43,7 @@ add_dependencies(NyxResourceManagerTests NyxGeneratedReflection)
 set_property(TARGET NyxResourceManagerTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxResourceManagerTests COMMAND NyxResourceManagerTests)
 
-# The painter's recording side: draw commands, groups, clip and transform stacks. No GPU needed.
+# The painter's CPU side: draw commands, groups, clip and transform stacks, tile binning. No GPU needed.
 add_executable(NyxPainterTests PainterTests.cpp)
 target_link_libraries(NyxPainterTests PRIVATE NyxEngine)
 add_dependencies(NyxPainterTests NyxGeneratedReflection)
