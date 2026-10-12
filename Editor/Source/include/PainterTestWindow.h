@@ -23,6 +23,9 @@ namespace Nyx::Editor
 	//  - In a window: the same sheet painted straight into a scrolling child window, row by row,
 	//    with an ImGui button over each row and a painted badge over each button, to show the
 	//    order; with the statistics of all painting inside windows (stage 2, change 4).
+	//  - Widgets, the UI gallery: each painted widget (UIWidgets.h) in every state, forced, then
+	//    the live widget and ImGui's counterpart beside it, at 100% and 150% font size. It is
+	//    where widgets are designed (stage 2, change 5).
 	class PainterTestWindow
 	{
 	public:
@@ -37,6 +40,11 @@ namespace Nyx::Editor
 	private:
 		void DrawCanvasTab(Nyx::IRenderer& renderer);
 		void DrawInWindowTab(Nyx::IRenderer& renderer);
+		void DrawWidgetsTab();
+		void DrawWidgetGalleryTable();
+
+		// Takes up `size` at ImGui's cursor and returns where, for painting a forced state there
+		static Nyx::Engine::PainterRect ReserveCell(glm::vec2 size);
 
 		void DrawToolbar();
 		void DrawStatistics() const;
@@ -56,6 +64,10 @@ namespace Nyx::Editor
 
 		bool bHeatmap = false;
 		bool bCompareWithImDrawList = false;
+
+		// The gallery's live widgets' values, shared with their ImGui counterparts
+		bool bGalleryToggle = true;
+		float GallerySlider = 0.6f;
 	};
 
 	// Draws a painter's recorded frame with ImGui's ImDrawList instead, for comparison: shapes

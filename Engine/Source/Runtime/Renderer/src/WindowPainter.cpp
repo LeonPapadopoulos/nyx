@@ -38,9 +38,31 @@ namespace Nyx::UI
 			return pool;
 		}
 
-		// On the first call in a new frame (or with another ImGui context), forgets the last
-		// frame's window painters. Those nobody ended had no renderer to draw them; their frame
-		// is ended now, quietly.
+		// Forgets the frame's window painters. Those nobody ended had no renderer to draw them;
+		// their frame is ended now, quietly.
+		void ForgetFrame(WindowPainterPool& pool)
+		{
+			for (WindowPainter* painter : pool.Used)
+			{
+				if (painter->IsRecording())
+				{
+					painter->End();
+				}
+			}
+			pool.Used.clear();
+		}
+
+		// When the ImGui context shuts down, its draw lists go; so do the window painters' ties to them.
+		void OnContextShutdown(ImGuiContext*, ImGuiContextHook*)
+		{
+			WindowPainterPool& pool = GetWindowPainterPool();
+			ForgetFrame(pool);
+			pool.Context = nullptr;
+			pool.Frame = -1;
+		}
+
+		// On the first call in a new frame, or with another ImGui context, forgets the last frame's
+		// window painters.
 		void StartFrameIfNew(WindowPainterPool& pool)
 		{
 			ImGuiContext* context = ImGui::GetCurrentContext();
@@ -50,14 +72,15 @@ namespace Nyx::UI
 				return;
 			}
 
-			for (WindowPainter* painter : pool.Used)
+			ForgetFrame(pool);
+			if (pool.Context != context)
 			{
-				if (painter->IsRecording())
-				{
-					painter->End();
-				}
+				// A later context may get this one's address; forgetting at shutdown keeps them apart.
+				ImGuiContextHook hook;
+				hook.Type = ImGuiContextHookType_Shutdown;
+				hook.Callback = &OnContextShutdown;
+				ImGui::AddContextHook(context, &hook);
 			}
-			pool.Used.clear();
 			pool.Context = context;
 			pool.Frame = frame;
 		}
@@ -355,7 +378,10 @@ namespace Nyx::UI
 		const ImVec2 clipMin = DrawList->GetClipRectMin();
 		const ImVec2 clipMax = DrawList->GetClipRectMax();
 		const ImVec4 clipRect(clipMin.x, clipMin.y, clipMax.x, clipMax.y);
-		const bool bImGuiHasDrawn = DrawList->CmdBuffer.Size != DrawListCommandsAtSegmentStart || DrawList->IdxBuffer.Size != DrawListIndicesAtSegmentStart;
+		// Tables draw each column into a channel of its own (ImDrawListSplitter), swapped into
+		// the draw list's buffers; another channel needs a segment of its own too.
+		const bool bImGuiHasDrawn = DrawList->CmdBuffer.Size != DrawListCommandsAtSegmentStart || DrawList->IdxBuffer.Size != DrawListIndicesAtSegmentStart ||
+			DrawList->_Splitter._Current != DrawListChannelAtSegmentStart;
 		if (!bSegmentOpen || bImGuiHasDrawn || !IsSameClipRect(clipRect, SegmentClipRect))
 		{
 			StartSegment(clipRect);
@@ -397,6 +423,7 @@ namespace Nyx::UI
 		bSegmentOpen = true;
 		DrawListCommandsAtSegmentStart = DrawList->CmdBuffer.Size;
 		DrawListIndicesAtSegmentStart = DrawList->IdxBuffer.Size;
+		DrawListChannelAtSegmentStart = DrawList->_Splitter._Current;
 		SegmentClipRect = clipRect;
 	}
 

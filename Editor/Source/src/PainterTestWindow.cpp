@@ -4,6 +4,7 @@
 #include "PainterDrawOptions.h"
 #include "PainterTestSheet.h"
 #include "Renderer.h"
+#include "UIWidgets.h"
 #include "WindowPainter.h"
 
 #include <algorithm>
@@ -131,6 +132,11 @@ namespace Nyx::Editor
 				DrawInWindowTab(renderer);
 				ImGui::EndTabItem();
 			}
+			if (NYX_UI(ImGui::BeginTabItem("Widgets")))
+			{
+				DrawWidgetsTab();
+				ImGui::EndTabItem();
+			}
 			ImGui::EndTabBar();
 		}
 
@@ -237,6 +243,141 @@ namespace Nyx::Editor
 			}
 		}
 		ImGui::EndChild();
+	}
+
+	void PainterTestWindow::DrawWidgetsTab()
+	{
+		NYX_UI(ImGui::TextDisabled("Each painted widget in every state, forced; then live, and ImGui's own beside it"));
+
+		if (Nyx::UI::BeginChild("##WidgetGallery", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar))
+		{
+			// The font scale of a 100% and a 150% screen
+			for (const float scale : { 1.0f, 1.5f })
+			{
+				ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * scale);
+				ImGui::PushID(scale == 1.0f ? "100" : "150");
+				NYX_UI(Nyx::UI::SectionHeader(scale == 1.0f ? "At 100%" : "At 150%"));
+				DrawWidgetGalleryTable();
+				ImGui::PopID();
+				ImGui::PopFont();
+				ImGui::Spacing();
+			}
+		}
+		ImGui::EndChild();
+	}
+
+	void PainterTestWindow::DrawWidgetGalleryTable()
+	{
+		using Nyx::UI::WidgetLook;
+
+		// The states a widget can show; the gallery paints them without the mouse.
+		const char* const stateNames[] = { "Normal", "Hovered", "Pressed", "Focused", "Disabled" };
+		const WidgetLook states[] = {
+			WidgetLook{},
+			WidgetLook{ 1.0f, 0.0f, 0.0f, false },
+			WidgetLook{ 1.0f, 1.0f, 0.0f, false },
+			WidgetLook{ 0.0f, 0.0f, 1.0f, false },
+			WidgetLook{ 0.0f, 0.0f, 0.0f, true },
+		};
+		constexpr int StateCount = static_cast<int>(std::size(stateNames));
+
+		// Room around each cell, so that shadows and focus glows aren't cut off at its edges
+		ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(12.0f, 10.0f));
+		if (!ImGui::BeginTable("##Gallery", StateCount + 3, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV))
+		{
+			ImGui::PopStyleVar();
+			return;
+		}
+		ImGui::TableSetupColumn("Widget");
+		for (const char* stateName : stateNames)
+		{
+			ImGui::TableSetupColumn(stateName);
+		}
+		ImGui::TableSetupColumn("Live");
+		ImGui::TableSetupColumn("ImGui");
+		ImGui::TableHeadersRow();
+
+		Nyx::UI::WindowPainter& painter = Nyx::UI::GetWindowPainter();
+
+		// Sliders get their width each: a table sets the item width per column.
+		const float sliderWidth = ImGui::GetFontSize() * 10.0f;
+
+		// One row: the widget's name, `paint` once per state, the live painted widget, and ImGui's
+		const auto row = [&](const char* name, const auto& paint, const auto& live, const auto& imgui)
+		{
+			ImGui::TableNextRow();
+			ImGui::TableNextColumn();
+			NYX_UI(ImGui::AlignTextToFramePadding());
+			NYX_UI(ImGui::TextUnformatted(name));
+			for (const WidgetLook& look : states)
+			{
+				ImGui::TableNextColumn();
+				paint(look);
+			}
+			ImGui::TableNextColumn();
+			live();
+			ImGui::TableNextColumn();
+			imgui();
+		};
+
+		row("Button",
+			[&](const WidgetLook& look) { Nyx::UI::PaintButton(painter, ReserveCell(Nyx::UI::CalcButtonSize("Apply")), "Apply", look); },
+			[&]() { NYX_UI(Nyx::UI::Button("Apply##Live")); },
+			[&]() { NYX_UI(ImGui::Button("Apply##ImGui")); });
+
+		row("Toggle, off",
+			[&](const WidgetLook& look) { Nyx::UI::PaintToggle(painter, ReserveCell(Nyx::UI::CalcToggleSize("Snap")), "Snap", 0.0f, look); },
+			[&]() { NYX_UI(Nyx::UI::Toggle("Snap##Live", &bGalleryToggle)); },
+			[&]() { NYX_UI(ImGui::Checkbox("Snap##ImGui", &bGalleryToggle)); });
+
+		row("Toggle, on",
+			[&](const WidgetLook& look) { Nyx::UI::PaintToggle(painter, ReserveCell(Nyx::UI::CalcToggleSize("Snap")), "Snap", 1.0f, look); },
+			[&]() {},
+			[&]() {});
+
+		const float valueWidth = Nyx::UI::CalcSliderValueWidth(0.0f, 1.0f, "%.3f");
+		row("Slider",
+			[&](const WidgetLook& look)
+			{
+				// The frame, and room for the label right of it
+				ImGui::SetNextItemWidth(sliderWidth);
+				const glm::vec2 frameSize = Nyx::UI::CalcSliderFrameSize();
+				const float labelWidth = ImGui::CalcTextSize("Gain").x + ImGui::GetStyle().ItemInnerSpacing.x;
+				const PainterRect cell = ReserveCell(frameSize + glm::vec2(labelWidth, 0.0f));
+				Nyx::UI::PaintSlider(painter, PainterRect{ cell.Min, cell.Min + frameSize }, "Gain", 0.6f, "0.600", valueWidth, look);
+			},
+			[&]()
+			{
+				ImGui::SetNextItemWidth(sliderWidth);
+				NYX_UI(Nyx::UI::SliderFloat("Gain##Live", &GallerySlider, 0.0f, 1.0f));
+			},
+			[&]()
+			{
+				ImGui::SetNextItemWidth(sliderWidth);
+				NYX_UI(ImGui::SliderFloat("Gain##ImGui", &GallerySlider, 0.0f, 1.0f));
+			});
+
+		// A section header has no states; it shows once, in the Normal column.
+		ImGui::TableNextRow();
+		ImGui::TableNextColumn();
+		NYX_UI(ImGui::AlignTextToFramePadding());
+		NYX_UI(ImGui::TextUnformatted("Section header"));
+		ImGui::TableNextColumn();
+		Nyx::UI::PaintSectionHeader(painter, ReserveCell(glm::vec2(ImGui::GetFontSize() * 9.0f, ImGui::GetFrameHeight())), "Lighting");
+		ImGui::TableSetColumnIndex(StateCount + 1);
+		NYX_UI(Nyx::UI::SectionHeader("Lighting##Live"));
+		ImGui::TableNextColumn();
+		NYX_UI(ImGui::SeparatorText("Lighting##ImGui"));
+
+		ImGui::EndTable();
+		ImGui::PopStyleVar();
+	}
+
+	PainterRect PainterTestWindow::ReserveCell(glm::vec2 size)
+	{
+		const ImVec2 min = ImGui::GetCursorScreenPos();
+		ImGui::Dummy(ImVec2(size.x, size.y));
+		return PainterRect{ { min.x, min.y }, { min.x + size.x, min.y + size.y } };
 	}
 
 	void PainterTestWindow::DrawWindowPainterStatistics(const PainterWindowStats& stats) const

@@ -144,11 +144,12 @@ namespace Nyx::UI
 		// Clip rects pushed onto ImGui's stack with PushClipRect() and not popped yet
 		uint32_t ClipRectDepth = 0;
 
-		// The draw list's size right after the current segment's callbacks: if it has changed,
-		// ImGui has drawn since.
+		// The draw list's size and channel right after the current segment's callbacks: if one
+		// has changed, ImGui has drawn since, or moved on to another table column.
 		bool bSegmentOpen = false;
 		int DrawListCommandsAtSegmentStart = 0;
 		int DrawListIndicesAtSegmentStart = 0;
+		int DrawListChannelAtSegmentStart = 0;
 		// ImGui's clip rect of the current segment, in ImGui's screen coordinates
 		ImVec4 SegmentClipRect;
 

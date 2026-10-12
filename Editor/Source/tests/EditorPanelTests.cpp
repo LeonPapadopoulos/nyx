@@ -15,6 +15,8 @@
 #include "SceneFilePopups.h"
 #include "SceneOutlinerPanel.h"
 #include "TransformComponent.h"
+#include "UIAnimation.h"
+#include "UIWidgets.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -305,6 +307,137 @@ namespace
 		Require(!session.IsRunning() && !session.IsQuitting() && session.TakeCrashes().empty(), "An idle session should stay idle");
 	}
 
+	// The painted widgets (UIWidgets.h) behave as ImGui's own: mouse, keyboard, disabled, and the
+	// last-item queries.
+	void TestPaintedWidgetsBehaveLikeImGuis()
+	{
+		HeadlessUI ui;
+		ImGuiIO& io = ImGui::GetIO();
+		io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+
+		int clicks = 0;
+		bool bToggle = false;
+		float gain = 0.25f;
+		bool bButtonHovered = false;
+		bool bButtonActive = false;
+		bool bFocusButton = false;
+		bool bDisabled = false;
+		ImRect button;
+		ImRect toggle;
+		ImRect slider;
+		const auto draw = [&]()
+			{
+				ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+				ImGui::SetNextWindowSize(ImVec2(400.0f, 300.0f));
+				ImGui::Begin("Painted widgets");
+				if (bFocusButton)
+				{
+					// As Tab or an arrow key would: focus, and show the keyboard's cursor, without
+					// which ImGui doesn't activate by keyboard
+					ImGui::SetKeyboardFocusHere();
+					ImGui::SetNavCursorVisible(true);
+				}
+				ImGui::BeginDisabled(bDisabled);
+				if (Nyx::UI::Button("Apply"))
+				{
+					++clicks;
+				}
+				ImGui::EndDisabled();
+				bButtonHovered = ImGui::IsItemHovered();
+				bButtonActive = ImGui::IsItemActive();
+				button = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+
+				Nyx::UI::Toggle("Snap", &bToggle);
+				toggle = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+
+				ImGui::SetNextItemWidth(200.0f);
+				Nyx::UI::SliderFloat("Gain", &gain, 0.0f, 1.0f);
+				// The slider's frame: the item without its label
+				slider = ImRect(ImGui::GetItemRectMin(), ImVec2(ImGui::GetItemRectMin().x + 200.0f, ImGui::GetItemRectMax().y));
+				ImGui::End();
+			};
+		const auto click = [&](ImVec2 at)
+			{
+				io.AddMousePosEvent(at.x, at.y);
+				ui.Frame(draw);
+				io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+				ui.Frame(draw);
+				io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+				ui.Frame(draw);
+			};
+
+		// Lay out once, then hover the button, press and release it
+		ui.Frame(draw);
+		io.AddMousePosEvent(button.GetCenter().x, button.GetCenter().y);
+		ui.Frame(draw);
+		Require(bButtonHovered && !bButtonActive, "IsItemHovered() should be true over a painted button");
+		io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+		ui.Frame(draw);
+		Require(bButtonActive && clicks == 0, "A held painted button should be active, and not clicked before it is released");
+		io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+		ui.Frame(draw);
+		Require(clicks == 1, "Releasing over a painted button should click it");
+
+		click(toggle.GetCenter());
+		Require(bToggle, "Clicking a toggle should switch it on");
+
+		// The slider's left end is its minimum; its right end, past the track, its maximum.
+		click(ImVec2(slider.Min.x + 1.0f, slider.GetCenter().y));
+		Require(gain == 0.0f, "Clicking a slider's left end should set its minimum, got " + std::to_string(gain));
+		click(ImVec2(slider.Max.x - 1.0f, slider.GetCenter().y));
+		Require(gain == 1.0f, "Clicking a slider's right end should set its maximum, got " + std::to_string(gain));
+
+		// The keyboard: focus the button, then Space clicks it.
+		io.AddMousePosEvent(-100.0f, -100.0f);
+		bFocusButton = true;
+		ui.Frame(draw);
+		bFocusButton = false;
+		ui.Frame(draw);
+		io.AddKeyEvent(ImGuiKey_Space, true);
+		ui.Frame(draw);
+		io.AddKeyEvent(ImGuiKey_Space, false);
+		ui.Frame(draw);
+		Require(clicks == 2, "Space should click a painted button with keyboard focus, clicks " + std::to_string(clicks));
+
+		// Disabled, it ignores the mouse.
+		bDisabled = true;
+		click(button.GetCenter());
+		Require(clicks == 2, "A disabled painted button shouldn't click");
+	}
+
+	void TestAnimationsEaseAndAreForgotten()
+	{
+		HeadlessUI ui;
+		const ImGuiID id = 0x1234;
+		constexpr float Speed = 18.0f;
+		float value = -1.0f;
+
+		ui.Frame([&]() { value = Nyx::UI::Animate(id, 0.0f, Speed); });
+		Require(value == 0.0f, "An animation should start at its target");
+
+		// One frame of 1/60 s towards 1: 1 - e^(-18 / 60)
+		ui.Frame([&]()
+			{
+				value = Nyx::UI::Animate(id, 1.0f, Speed);
+				Require(Nyx::UI::Animate(id, 1.0f, Speed) == value, "An animation should move once per frame, however often it is asked");
+			});
+		const float expected = 1.0f - std::exp(-Speed / 60.0f);
+		Require(std::abs(value - expected) < 1e-4f, "One frame should ease " + std::to_string(expected) + " of the way, got " + std::to_string(value));
+
+		for (int frame = 0; frame < 60; ++frame)
+		{
+			ui.Frame([&]() { value = Nyx::UI::Animate(id, 1.0f, Speed); });
+		}
+		Require(value == 1.0f, "An animation should arrive at its target");
+
+		const size_t kept = Nyx::UI::GetAnimationCount();
+		for (int frame = 0; frame <= Nyx::UI::AnimationForgetFrames + 1; ++frame)
+		{
+			ui.Frame([]() {});
+		}
+		Require(kept == 1 && Nyx::UI::GetAnimationCount() == 0, "An animation not asked for in a while should be forgotten");
+	}
+
 	// Zooming the Painter Test window bakes glyphs at new sizes, which can make ImGui's font atlas
 	// grow into a new texture in the middle of a frame. The ImDrawList comparison then still held
 	// glyphs on the old texture, and handing that to a draw list asserted.
@@ -377,6 +510,8 @@ int main()
 		TestCrashCards();
 		TestScenePopupsAndIdleSession();
 		TestPainterComparisonSurvivesAtlasGrowth();
+		TestPaintedWidgetsBehaveLikeImGuis();
+		TestAnimationsEaseAndAreForgotten();
 	}
 	catch (const std::exception& error)
 	{
