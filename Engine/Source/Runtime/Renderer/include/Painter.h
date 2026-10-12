@@ -160,6 +160,11 @@ namespace Nyx::Engine
 		void PushClipRect(const PainterRect& rect);
 		void PopClipRect();
 
+		// A clip rect already in target pixels, whatever transform is pushed: for clip rects from
+		// outside the painter's own units, like ImGui's (Nyx::UI::WindowPainter). Cut by the clip
+		// rect already pushed, and popped with PopClipRect().
+		void PushTargetClipRect(const PainterRect& rect);
+
 		// Transforms, e.g. for a canvas that zooms and pans. Everything added while it is pushed
 		// is scaled and moved: positions, sizes, widths, outlines, shadows, glows and clip rects.
 		// A pushed transform applies inside the one already pushed.

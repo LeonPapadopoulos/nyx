@@ -7,6 +7,7 @@
 #include "VulkanViewportTarget.h"
 #include "VulkanPainter.h"
 #include "Painter.h"
+#include "WindowPainter.h"
 #include "Mesh.h"
 #include "Texture.h"
 #include "CubemapTexture.h"
@@ -254,6 +255,7 @@ namespace Nyx
 		void SubmitPainterCanvas(uint64_t id, const Nyx::Engine::Painter& painter, const Nyx::Engine::PainterDrawOptions& options) override;
 		ImTextureID GetPainterCanvasTextureId(uint64_t id) const override;
 		const Nyx::Engine::PainterTiles* GetPainterCanvasTiles(uint64_t id) const override;
+		const Nyx::Engine::PainterWindowStats& GetWindowPainterStats() const override { return WindowPainterStats; }
 
 		ImTextureID GetSceneViewTextureId(uint64_t id) const override;
 		Extent2D GetSceneViewExtent(uint64_t id) const;
@@ -458,6 +460,19 @@ namespace Nyx
 		// Pointers, so a canvas stays in place while others are added or removed
 		std::vector<std::unique_ptr<PainterCanvas>> PainterCanvases;
 		uint64_t NextPainterCanvasId = 1;
+
+		// Painting inside ImGui windows (Nyx::UI::GetWindowPainter()): after the UI is built,
+		// gathers the window painters' segments, bins and uploads them. ImGui then calls back
+		// where each segment goes, and DrawWindowSegment() draws it there.
+		void PrepareWindowPainters();
+		static void DrawWindowSegment(const Nyx::UI::WindowPainter& painter, uint32_t segment, const ImDrawCmd& command, void* renderer);
+		void DrawWindowSegment(const Nyx::UI::WindowPainter& painter, uint32_t segment);
+
+		// This frame's segments of all windows
+		Nyx::Engine::VulkanPainterSegments WindowSegments;
+		// Where each window painter's segments start in WindowSegments
+		std::vector<std::pair<const Nyx::UI::WindowPainter*, uint32_t>> WindowSegmentStarts;
+		Nyx::Engine::PainterWindowStats WindowPainterStats;
 
 		std::vector<std::unique_ptr<Nyx::Mesh>> LoadedMeshes;
 		std::vector<std::unique_ptr<Nyx::Texture>> LoadedTextures;

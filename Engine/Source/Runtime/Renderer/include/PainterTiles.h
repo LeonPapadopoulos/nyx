@@ -66,6 +66,25 @@ namespace Nyx::Engine
 		}
 	};
 
+	// One frame of painting inside ImGui windows (Nyx::UI::WindowPainter), summed over all
+	// windows and their segments, e.g. for the Painter Test window
+	struct PainterWindowStats
+	{
+		// Windows that painted
+		uint32_t Windows = 0;
+		uint32_t Segments = 0;
+		uint32_t Commands = 0;
+		// Tiles with at least one command, and command entries in them
+		uint32_t TilesInUse = 0;
+		uint32_t TileEntries = 0;
+		// Binning all segments, on the CPU
+		float BinningMilliseconds = 0.0f;
+
+		// What went wrong: the window painters' problems, each after its window's name, and
+		// binning's
+		std::vector<std::string> Problems;
+	};
+
 	// A frame's commands, or a segment's, sorted into tiles, as the GPU reads them
 	struct PainterTiles
 	{

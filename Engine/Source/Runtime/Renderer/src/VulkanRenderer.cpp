@@ -327,8 +327,9 @@ namespace Nyx
 		CreateDebugLineResources();
 		CreateDebugLinePipeline();
 
-		// 2D shapes, drawn into their own targets
+		// 2D shapes, drawn into their own targets and inside ImGui's windows
 		PainterPass.Initialize(Context);
+		Nyx::UI::WindowPainter::SetSegmentDrawer(&VulkanRenderer::DrawWindowSegment, this);
 
 		// Shared materials
 		CreateMaterials();
@@ -373,6 +374,9 @@ namespace Nyx
 			ReleasePainterCanvas(*canvas);
 		}
 		PainterCanvases.clear();
+		Nyx::UI::WindowPainter::SetSegmentDrawer(nullptr, nullptr);
+		WindowSegments.Release();
+		WindowSegmentStarts.clear();
 		PainterPass.Shutdown();
 
 		if (ImGuiBackend)
@@ -604,9 +608,11 @@ namespace Nyx
 
 		// The UI is built before the render pass starts: painter canvases submitted while building
 		// it are drawn in between, outside any render pass, so ImGui shows them in this frame.
+		// What was painted inside windows is uploaded now and drawn as ImGui renders them.
 		ImGuiBackend->BeginFrame();
 		buildUI();
 		DrawPainterCanvases(cmd);
+		PrepareWindowPainters();
 
 		cmd.beginRenderPass(renderPassInfo, vk::SubpassContents::eInline);
 		ImGuiBackend->DrawFrame(cmd);
@@ -3454,6 +3460,97 @@ namespace Nyx
 	const VulkanRenderer::PainterCanvas* VulkanRenderer::FindPainterCanvas(uint64_t id) const
 	{
 		return const_cast<VulkanRenderer*>(this)->FindPainterCanvas(id);
+	}
+
+	void VulkanRenderer::PrepareWindowPainters()
+	{
+		WindowSegments.Clear();
+		WindowSegmentStarts.clear();
+		WindowPainterStats = Nyx::Engine::PainterWindowStats{};
+
+		const Nyx::Engine::PainterBudget budget;
+		for (const Nyx::UI::WindowPainter* painter : Nyx::UI::EndWindowPainters())
+		{
+			for (const std::string& problem : painter->GetProblems())
+			{
+				WindowPainterStats.Problems.push_back(painter->GetWindowName() + ": " + problem);
+			}
+			if (painter->GetSegments().empty())
+			{
+				continue;
+			}
+
+			++WindowPainterStats.Windows;
+			WindowSegmentStarts.emplace_back(painter, WindowSegments.GetSegmentCount());
+			for (const Nyx::Engine::PainterSegment& segment : painter->GetSegments())
+			{
+				const Nyx::Engine::PainterBinningStats& stats = WindowSegments.GetStats(WindowSegments.Add(painter->GetPainter(), segment, budget));
+				++WindowPainterStats.Segments;
+				WindowPainterStats.Commands += stats.Commands;
+				WindowPainterStats.TilesInUse += stats.TilesInUse;
+				WindowPainterStats.TileEntries += stats.TileEntries;
+				WindowPainterStats.BinningMilliseconds += stats.BinningMilliseconds;
+			}
+		}
+		WindowPainterStats.Problems.insert(WindowPainterStats.Problems.end(), WindowSegments.GetProblems().begin(), WindowSegments.GetProblems().end());
+
+		if (WindowSegments.GetSegmentCount() > 0)
+		{
+			PainterPass.Upload(WindowSegments);
+		}
+	}
+
+	void VulkanRenderer::DrawWindowSegment(const Nyx::UI::WindowPainter& painter, uint32_t segment, const ImDrawCmd&, void* renderer)
+	{
+		static_cast<VulkanRenderer*>(renderer)->DrawWindowSegment(painter, segment);
+	}
+
+	void VulkanRenderer::DrawWindowSegment(const Nyx::UI::WindowPainter& painter, uint32_t segment)
+	{
+		// ImGui's Vulkan backend hands over the command buffer it renders the viewport with, in
+		// its render pass.
+		const auto* renderState = static_cast<const ImGui_ImplVulkan_RenderState*>(ImGui::GetPlatformIO().Renderer_RenderState);
+		if (renderState == nullptr)
+		{
+			return;
+		}
+
+		// Only the window painters gathered this frame have their segments uploaded.
+		const auto start = std::find_if(WindowSegmentStarts.begin(), WindowSegmentStarts.end(), [&](const auto& entry)
+			{
+				return entry.first == &painter;
+			});
+		if (start == WindowSegmentStarts.end() || segment >= painter.GetSegments().size())
+		{
+			return;
+		}
+
+		ImGuiViewport* viewport = ImGui::FindViewportByID(painter.GetViewportId());
+		if (viewport == nullptr || viewport->DrawData == nullptr)
+		{
+			return;
+		}
+
+		// The framebuffer's size, worked out as ImGui's backend does
+		const ImDrawData& drawData = *viewport->DrawData;
+		const vk::Extent2D extent{
+			static_cast<uint32_t>(drawData.DisplaySize.x * drawData.FramebufferScale.x),
+			static_cast<uint32_t>(drawData.DisplaySize.y * drawData.FramebufferScale.y) };
+
+		// The main window renders into the swapchain; an OS window into its own, in the format
+		// ImGui's backend chose for it.
+		vk::Format format = Swapchain.GetSurfaceFormat().format;
+		if (viewport != ImGui::GetMainViewport())
+		{
+			const ImGui_ImplVulkanH_Window* window = ImGui_ImplVulkanH_GetWindowDataFromViewport(viewport);
+			if (window == nullptr)
+			{
+				return;
+			}
+			format = static_cast<vk::Format>(window->SurfaceFormat.format);
+		}
+
+		PainterPass.DrawSegment(renderState->CommandBuffer, WindowSegments, start->second + segment, format, extent);
 	}
 
 	SceneViewInstance* VulkanRenderer::FindSceneView(uint64_t id)

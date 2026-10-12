@@ -1,22 +1,69 @@
 #include "WindowPainter.h"
 
+#include <imgui_internal.h> // ImGui::GetCurrentWindowRead(), for the window's name
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <memory>
 
 namespace Nyx::UI
 {
 	namespace
 	{
 		WindowPainter::SegmentDrawer CurrentSegmentDrawer = nullptr;
+		void* CurrentSegmentDrawerData = nullptr;
 
 		bool IsSameClipRect(const ImVec4& a, const ImVec4& b)
 		{
 			return a.x == b.x && a.y == b.y && a.z == b.z && a.w == b.w;
 		}
+
+		// The window painters GetWindowPainter() hands out. They are reused from frame to frame,
+		// and never move: the draw lists point at them until ImGui renders.
+		struct WindowPainterPool
+		{
+			std::vector<std::unique_ptr<WindowPainter>> Painters;
+			// This frame's, in the order the windows first painted
+			std::vector<WindowPainter*> Used;
+
+			// The frame Used belongs to
+			ImGuiContext* Context = nullptr;
+			int Frame = -1;
+		};
+
+		WindowPainterPool& GetWindowPainterPool()
+		{
+			static WindowPainterPool pool;
+			return pool;
+		}
+
+		// On the first call in a new frame (or with another ImGui context), forgets the last
+		// frame's window painters. Those nobody ended had no renderer to draw them; their frame
+		// is ended now, quietly.
+		void StartFrameIfNew(WindowPainterPool& pool)
+		{
+			ImGuiContext* context = ImGui::GetCurrentContext();
+			const int frame = ImGui::GetFrameCount();
+			if (pool.Context == context && pool.Frame == frame)
+			{
+				return;
+			}
+
+			for (WindowPainter* painter : pool.Used)
+			{
+				if (painter->IsRecording())
+				{
+					painter->End();
+				}
+			}
+			pool.Used.clear();
+			pool.Context = context;
+			pool.Frame = frame;
+		}
 	}
 
-	void WindowPainter::Begin(ImDrawList& drawList, const ImGuiViewport& viewport)
+	void WindowPainter::Begin(ImDrawList& drawList, const ImGuiViewport& viewport, std::string_view windowName)
 	{
 		Problems.clear();
 		if (bRecording)
@@ -26,8 +73,11 @@ namespace Nyx::UI
 
 		DrawList = &drawList;
 		ViewportId = viewport.ID;
+		WindowName = windowName;
 		Segments.clear();
 		bSegmentOpen = false;
+		Transforms.assign(1, Engine::PainterTransform{});
+		ClipRectDepth = 0;
 		GroupDepth = 0;
 		bGroupHasShapes = false;
 		bRecording = true;
@@ -39,7 +89,8 @@ namespace Nyx::UI
 		Recording.BeginFrame(targetWidth, targetHeight);
 
 		// (position - viewport position) * scale = position * scale - viewport position * scale
-		Recording.PushTransform(scale, glm::vec2(-viewport.Pos.x, -viewport.Pos.y) * scale);
+		ViewportTransform = Engine::PainterTransform{ scale, glm::vec2(-viewport.Pos.x, -viewport.Pos.y) * scale };
+		Recording.PushTransform(ViewportTransform.Scale, ViewportTransform.Offset);
 	}
 
 	void WindowPainter::End()
@@ -51,6 +102,20 @@ namespace Nyx::UI
 		}
 
 		CloseSegment();
+		if (ClipRectDepth > 0)
+		{
+			// ImGui's stack is left as it is: popping now could pop what the window pushed since.
+			ReportProblem("PushClipRect() without a PopClipRect() by the end of the frame");
+		}
+		if (Transforms.size() > 1)
+		{
+			ReportProblem("PushTransform() without a PopTransform() by the end of the frame");
+			for (size_t index = 1; index < Transforms.size(); ++index)
+			{
+				Recording.PopTransform();
+			}
+			Transforms.resize(1);
+		}
 		if (!Segments.empty())
 		{
 			Recording.PopClipRect();
@@ -147,6 +212,57 @@ namespace Nyx::UI
 		}
 	}
 
+	void WindowPainter::PushClipRect(const Engine::PainterRect& rect)
+	{
+		if (!bRecording)
+		{
+			ReportProblem("PushClipRect() outside Begin()/End(); it is ignored");
+			return;
+		}
+		const Engine::PainterRect onScreen = Transforms.back().Apply(rect);
+		const glm::vec2 min = glm::min(onScreen.Min, onScreen.Max);
+		const glm::vec2 max = glm::max(onScreen.Min, onScreen.Max);
+		DrawList->PushClipRect(ImVec2(min.x, min.y), ImVec2(max.x, max.y), true);
+		++ClipRectDepth;
+	}
+
+	void WindowPainter::PopClipRect()
+	{
+		if (!bRecording || ClipRectDepth == 0)
+		{
+			ReportProblem("PopClipRect() without a PushClipRect()");
+			return;
+		}
+		DrawList->PopClipRect();
+		--ClipRectDepth;
+	}
+
+	void WindowPainter::PushTransform(float scale, glm::vec2 offset)
+	{
+		if (!bRecording)
+		{
+			ReportProblem("PushTransform() outside Begin()/End(); it is ignored");
+			return;
+		}
+
+		// Painter reports a scale of 0 or less and pushes the outer transform again; so does this.
+		const Engine::PainterTransform& outer = Transforms.back();
+		Transforms.push_back(scale > 0.0f ? Engine::PainterTransform{ outer.Scale * scale, outer.Apply(offset) } : outer);
+		Recording.PushTransform(scale, offset);
+	}
+
+	void WindowPainter::PopTransform()
+	{
+		// The painter's bottom transform is the viewport's, which only End() pops.
+		if (!bRecording || Transforms.size() <= 1)
+		{
+			ReportProblem("PopTransform() without a PushTransform()");
+			return;
+		}
+		Transforms.pop_back();
+		Recording.PopTransform();
+	}
+
 	void WindowPainter::BeginGroup(const Engine::PainterEffects& effects)
 	{
 		if (GroupDepth == 0)
@@ -166,9 +282,10 @@ namespace Nyx::UI
 		Recording.EndGroup();
 	}
 
-	void WindowPainter::SetSegmentDrawer(SegmentDrawer drawer)
+	void WindowPainter::SetSegmentDrawer(SegmentDrawer drawer, void* userData)
 	{
 		CurrentSegmentDrawer = drawer;
+		CurrentSegmentDrawerData = userData;
 	}
 
 	void WindowPainter::DrawSegmentCallback(const ImDrawList*, const ImDrawCmd* command)
@@ -183,8 +300,48 @@ namespace Nyx::UI
 		std::memcpy(&data, command->UserCallbackData, sizeof(data));
 		if (data.Painter != nullptr)
 		{
-			CurrentSegmentDrawer(*data.Painter, data.Segment, *command);
+			CurrentSegmentDrawer(*data.Painter, data.Segment, *command, CurrentSegmentDrawerData);
 		}
+	}
+
+	WindowPainter& GetWindowPainter()
+	{
+		WindowPainterPool& pool = GetWindowPainterPool();
+		StartFrameIfNew(pool);
+
+		// One per window: each window, child windows too, has its own draw list.
+		ImDrawList* drawList = ImGui::GetWindowDrawList();
+		for (WindowPainter* painter : pool.Used)
+		{
+			if (painter->GetDrawList() == drawList)
+			{
+				return *painter;
+			}
+		}
+
+		if (pool.Used.size() == pool.Painters.size())
+		{
+			pool.Painters.push_back(std::make_unique<WindowPainter>());
+		}
+		WindowPainter& painter = *pool.Painters[pool.Used.size()];
+		pool.Used.push_back(&painter);
+		painter.Begin(*drawList, *ImGui::GetWindowViewport(), ImGui::GetCurrentWindowRead()->Name);
+		return painter;
+	}
+
+	std::span<WindowPainter* const> EndWindowPainters()
+	{
+		WindowPainterPool& pool = GetWindowPainterPool();
+		StartFrameIfNew(pool);
+
+		for (WindowPainter* painter : pool.Used)
+		{
+			if (painter->IsRecording())
+			{
+				painter->End();
+			}
+		}
+		return pool.Used;
 	}
 
 	bool WindowPainter::PrepareSegment()
@@ -220,13 +377,13 @@ namespace Nyx::UI
 			ReportProblem("ImGui drew between the shapes of one group (BeginGroup()/EndGroup()); each part casts its own shadow and glow");
 		}
 
-		// Shapes from here on get ImGui's clip rect, cut by the viewport. It goes through the
-		// painter's transform like the shapes do, into framebuffer pixels.
+		// Shapes from here on get ImGui's clip rect, cut by the viewport, in framebuffer pixels.
+		// Transforms pushed with PushTransform() don't apply: ImGui's clip rect is on the screen.
 		if (!Segments.empty())
 		{
 			Recording.PopClipRect();
 		}
-		Recording.PushClipRect(Engine::PainterRect{ { clipRect.x, clipRect.y }, { clipRect.z, clipRect.w } });
+		Recording.PushTargetClipRect(ViewportTransform.Apply(Engine::PainterRect{ { clipRect.x, clipRect.y }, { clipRect.z, clipRect.w } }));
 
 		const uint32_t segmentIndex = static_cast<uint32_t>(Segments.size());
 		Segments.push_back(Engine::PainterSegment{ static_cast<uint32_t>(Recording.GetCommands().size()), 0 });

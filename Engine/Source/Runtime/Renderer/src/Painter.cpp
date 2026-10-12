@@ -252,6 +252,11 @@ namespace Nyx::Engine
 		ClipStack.push_back(Intersect(inTarget, GetClipRect()));
 	}
 
+	void Painter::PushTargetClipRect(const PainterRect& rect)
+	{
+		ClipStack.push_back(Intersect(Normalized(rect), GetClipRect()));
+	}
+
 	void Painter::PopClipRect()
 	{
 		if (ClipStack.size() <= 1)

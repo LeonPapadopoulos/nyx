@@ -109,6 +109,10 @@ namespace Nyx
 		// The last drawn frame's tiles, with its statistics and problems; null before the first draw
 		virtual const Nyx::Engine::PainterTiles* GetPainterCanvasTiles(uint64_t id) const = 0;
 
+		// Painting inside ImGui windows (Nyx::UI::GetWindowPainter()) in the last drawn frame:
+		// while the UI is built, that is the previous one.
+		virtual const Nyx::Engine::PainterWindowStats& GetWindowPainterStats() const = 0;
+
 		// temporary demo-asset accessors
 		virtual Nyx::Mesh* GetCubeMesh() = 0;
 		virtual Nyx::Material* GetTexturedMaterial() = 0;

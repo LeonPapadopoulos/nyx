@@ -6,6 +6,7 @@
 #include <imgui.h>
 
 #include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -16,13 +17,13 @@ namespace Nyx::UI
 	// an ImGui widget lands in front of it, and the next widget in front of the shape. The plan is
 	// in Design/ui-painter.md, stage 2.
 	//
-	// It records like a Painter, but in ImGui's screen coordinates, as ImDrawList does:
+	// Inside a window, ask for the window's own with GetWindowPainter(). It records like a
+	// Painter, but in ImGui's screen coordinates, as ImDrawList does:
 	//
-	//     windowPainter.Begin(*ImGui::GetWindowDrawList(), *ImGui::GetWindowViewport());
-	//     windowPainter.AddRoundedRect(card, 6.0f, PainterStyle::Filled(cardColor)); // behind the text
+	//     Nyx::UI::WindowPainter& painter = Nyx::UI::GetWindowPainter();
+	//     painter.AddRoundedRect(card, 6.0f, PainterStyle::Filled(cardColor)); // behind the text
 	//     ImGui::TextUnformatted("Hello");
-	//     windowPainter.AddCircle(badgeCenter, 4.0f, PainterStyle::Filled(accent)); // in front of it
-	//     windowPainter.End();
+	//     painter.AddCircle(badgeCenter, 4.0f, PainterStyle::Filled(accent));  // in front of it
 	//
 	// How it keeps the order: the shapes are cut into segments (PainterSegment) wherever ImGui has
 	// drawn in between, and each segment starts with a callback in the window's draw list. ImGui
@@ -30,8 +31,9 @@ namespace Nyx::UI
 	// after everything ImGui drew before the shapes and before everything it draws after them.
 	//
 	// Painting is clipped like ImGui's drawing: each shape gets ImGui's current clip rect, so
-	// ImGui::PushClipRect(), child windows, tables and scrolling regions clip it too. A new clip
-	// rect starts a new segment, so all shapes of a segment share one clip rect.
+	// child windows, tables and scrolling regions clip it too. PushClipRect() pushes onto ImGui's
+	// own clip rect stack. A new clip rect starts a new segment, so all shapes of a segment share
+	// one clip rect.
 	//
 	// Shapes are recorded in the viewport's framebuffer pixels: ImGui positions minus the
 	// viewport's position, times its framebuffer scale. Those are the pixels the segments are
@@ -44,11 +46,14 @@ namespace Nyx::UI
 	{
 	public:
 		// Starts a frame of painting into `drawList`, a window's, which ImGui renders into `viewport`.
-		// Drops the previous frame's shapes, segments and problems.
-		void Begin(ImDrawList& drawList, const ImGuiViewport& viewport);
+		// Drops the previous frame's shapes, segments and problems. `windowName` names the window
+		// in problems and statistics.
+		void Begin(ImDrawList& drawList, const ImGuiViewport& viewport, std::string_view windowName = {});
 
 		// Ends the frame: closes what was left open and adds the painter's problems to this one's
 		void End();
+
+		bool IsRecording() const { return bRecording; }
 
 		// Shapes, as Painter's, in ImGui's screen coordinates. Each one starts a new segment if
 		// ImGui has drawn, or changed its clip rect, since the current segment started.
@@ -64,6 +69,17 @@ namespace Nyx::UI
 		void AddText(ImFont* font, float size, glm::vec2 position, const glm::vec4& color, std::string_view text);
 		void AddImage(ImTextureRef texture, const Engine::PainterRect& rect, const Engine::PainterStyle& style, const Engine::PainterRect& uvs = Engine::PainterRect{ { 0.0f, 0.0f }, { 1.0f, 1.0f } });
 
+		// Clip rects, as Painter's, but on ImGui's clip rect stack (ImDrawList::PushClipRect(), cut
+		// by the current one), so whatever ImGui draws until PopClipRect() is clipped too. The rect
+		// is in the current transform's units. Pop each before the window ends.
+		void PushClipRect(const Engine::PainterRect& rect);
+		void PopClipRect();
+
+		// Transforms, as Painter's: scale, then move, applied to everything painted until
+		// PopTransform(), and to clip rects pushed meanwhile. ImGui's own drawing isn't affected.
+		void PushTransform(float scale, glm::vec2 offset);
+		void PopTransform();
+
 		// Primitive groups, as Painter's. Keep ImGui from drawing between a group's shapes: the
 		// group would be split over two segments, and each part would cast its own shadow and
 		// glow. That is reported as a problem.
@@ -76,6 +92,8 @@ namespace Nyx::UI
 		const std::vector<Engine::PainterSegment>& GetSegments() const { return Segments; }
 		// The viewport the segments are drawn into
 		ImGuiID GetViewportId() const { return ViewportId; }
+		const ImDrawList* GetDrawList() const { return DrawList; }
+		const std::string& GetWindowName() const { return WindowName; }
 
 		// Misuse found while recording this frame, one line per kind. After End(), the painter's
 		// own problems are included.
@@ -90,9 +108,9 @@ namespace Nyx::UI
 		};
 
 		// Draws one segment where ImGui calls its callback, in the command buffer ImGui renders
-		// the viewport with. Set by the renderer.
-		using SegmentDrawer = void(*)(const WindowPainter& painter, uint32_t segment, const ImDrawCmd& command);
-		static void SetSegmentDrawer(SegmentDrawer drawer);
+		// the viewport with. Set by the renderer, with `userData` handed back on each call.
+		using SegmentDrawer = void(*)(const WindowPainter& painter, uint32_t segment, const ImDrawCmd& command, void* userData);
+		static void SetSegmentDrawer(SegmentDrawer drawer, void* userData);
 
 		// The callback each segment starts with in the draw list. It hands the segment to the
 		// segment drawer; without one, nothing is drawn.
@@ -115,7 +133,16 @@ namespace Nyx::UI
 
 		ImDrawList* DrawList = nullptr;
 		ImGuiID ViewportId = 0;
+		std::string WindowName;
 		bool bRecording = false;
+
+		// From ImGui's screen coordinates to the viewport's framebuffer pixels
+		Engine::PainterTransform ViewportTransform;
+		// The transforms pushed with PushTransform(), in screen coordinates; never empty, the
+		// bottom one changes nothing
+		std::vector<Engine::PainterTransform> Transforms{ Engine::PainterTransform{} };
+		// Clip rects pushed onto ImGui's stack with PushClipRect() and not popped yet
+		uint32_t ClipRectDepth = 0;
 
 		// The draw list's size right after the current segment's callbacks: if it has changed,
 		// ImGui has drawn since.
@@ -129,4 +156,15 @@ namespace Nyx::UI
 		uint32_t GroupDepth = 0;
 		bool bGroupHasShapes = false;
 	};
+
+	// The window painter of the ImGui window being built (between ImGui::Begin() and End(), or
+	// BeginChild() and EndChild()), started on the first call in a frame. The renderer collects
+	// them after the UI is built (EndWindowPainters()) and draws their segments where ImGui
+	// renders the windows.
+	WindowPainter& GetWindowPainter();
+
+	// Ends every window painter started this frame and returns them, for the renderer to draw.
+	// Call it after the UI is built and before ImGui::Render(). They stay valid until the next
+	// frame's first GetWindowPainter().
+	std::span<WindowPainter* const> EndWindowPainters();
 }

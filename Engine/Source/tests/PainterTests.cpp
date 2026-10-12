@@ -1030,6 +1030,72 @@ namespace
 			"ImGui drawing between a group's shapes should be reported");
 	}
 
+	void TestWindowPainterClipRectsAndTransforms()
+	{
+		BeginTestWindow("Clip rects and transforms");
+		ImDrawList& drawList = *ImGui::GetWindowDrawList();
+		const PainterRect windowClip = ToPainterRect(drawList.GetClipRectMin(), drawList.GetClipRectMax());
+
+		Nyx::UI::WindowPainter windowPainter;
+		windowPainter.Begin(drawList, *ImGui::GetMainViewport(), "Clip rects and transforms");
+
+		// Twice the size, 10 pixels in
+		windowPainter.PushTransform(2.0f, { 10.0f, 10.0f });
+		windowPainter.AddRect(PainterRect{ { 0, 0 }, { 5, 5 } }, PainterStyle::Filled(Orange));
+
+		// A clip rect goes onto ImGui's stack, through the transform: (10, 10) to (30, 30) on the screen
+		windowPainter.PushClipRect(PainterRect{ { 0, 0 }, { 10, 10 } });
+		const PainterRect pushedClip = ToPainterRect(drawList.GetClipRectMin(), drawList.GetClipRectMax());
+		windowPainter.AddRect(PainterRect{ { 0, 0 }, { 5, 5 } }, PainterStyle::Filled(Orange));
+		windowPainter.PopClipRect();
+		const PainterRect clipAfterPop = ToPainterRect(drawList.GetClipRectMin(), drawList.GetClipRectMax());
+		windowPainter.PopTransform();
+
+		// The viewport's transform stays until End().
+		windowPainter.PopTransform();
+		windowPainter.End();
+		ImGui::End();
+
+		Require(Near(pushedClip, Intersect(PainterRect{ { 10, 10 }, { 30, 30 } }, windowClip)), "PushClipRect() should push the transformed rect onto ImGui's stack, cut by the current one");
+		Require(Near(clipAfterPop, windowClip), "PopClipRect() should pop ImGui's stack");
+
+		const auto& commands = windowPainter.GetPainter().GetCommands();
+		Require(commands.size() == 2 && Near(GetPayload<PainterRectPayload>(commands[0]).Rect, PainterRect{ { 10, 10 }, { 20, 20 } }), "A pushed transform should apply to shapes");
+		Require(Near(commands[1].ClipRect, pushedClip), "A shape should get the clip rect pushed with PushClipRect(), not transformed again");
+		const std::vector<PainterSegment> expected{ { 0, 1 }, { 1, 1 } };
+		Require(windowPainter.GetSegments() == expected, "A clip rect pushed with PushClipRect() should start a segment");
+		Require(windowPainter.GetProblems().size() == 1 && windowPainter.GetProblems()[0].find("PopTransform() without") != std::string::npos,
+			"Popping the viewport's transform should be refused and reported");
+	}
+
+	void TestGetWindowPainterIsOnePerWindow()
+	{
+		BeginTestWindow("One per window");
+		Nyx::UI::WindowPainter& window = Nyx::UI::GetWindowPainter();
+		Require(&Nyx::UI::GetWindowPainter() == &window, "A window should get the same window painter each time in a frame");
+		Require(window.IsRecording() && window.GetDrawList() == ImGui::GetWindowDrawList() && window.GetWindowName() == "One per window",
+			"A window painter should be started for its window");
+		window.AddRect(PainterRect{ { 10, 30 }, { 20, 40 } }, PainterStyle::Filled(Orange));
+
+		ImGui::BeginChild("Child", ImVec2(30.0f, 20.0f));
+		Nyx::UI::WindowPainter& child = Nyx::UI::GetWindowPainter();
+		Require(&child != &window && child.GetDrawList() == ImGui::GetWindowDrawList(), "A child window should get one of its own");
+		child.AddRect(PainterRect{ { 10, 30 }, { 20, 40 } }, PainterStyle::Filled(Orange));
+		ImGui::EndChild();
+
+		Require(&Nyx::UI::GetWindowPainter() == &window, "Back in the parent, the parent's window painter");
+		ImGui::End();
+
+		const std::span<Nyx::UI::WindowPainter* const> painters = Nyx::UI::EndWindowPainters();
+		Require(painters.size() == 2 && painters[0] == &window && painters[1] == &child, "EndWindowPainters() should return this frame's, in the order they started");
+		Require(!window.IsRecording() && !child.IsRecording() && window.GetSegments().size() == 1, "EndWindowPainters() should end them");
+
+		// A frame without painting has none.
+		ImGui::EndFrame();
+		ImGui::NewFrame();
+		Require(Nyx::UI::EndWindowPainters().empty(), "A new frame should start without window painters");
+	}
+
 	void TestWindowPainterMisuseIsReported()
 	{
 		Nyx::UI::WindowPainter windowPainter;
@@ -1091,6 +1157,9 @@ int main()
 			TestWindowPainterPaintsInViewportPixels();
 			TestImGuiDrawingInsideAGroupIsReported();
 			TestWindowPainterMisuseIsReported();
+			TestWindowPainterClipRectsAndTransforms();
+			// Last: it starts a new ImGui frame.
+			TestGetWindowPainterIsOnePerWindow();
 		}
 
 		TestSegmentGridCoversOnlyItsCommands();

@@ -1,6 +1,7 @@
 #include "PainterTestSheet.h"
 
 #include "Painter.h"
+#include "WindowPainter.h"
 
 #include <cmath>
 #include <string>
@@ -21,7 +22,8 @@ namespace Nyx::Engine
 		// Where the samples of a row start, right of its label
 		constexpr float SamplesX = 150.0f;
 
-		void DrawRowLabel(Painter& painter, ImFont* font, float rowY, const char* label)
+		template<typename TPainter>
+		void DrawRowLabel(TPainter& painter, ImFont* font, float rowY, const char* label)
 		{
 			painter.AddText(font, 13.0f, { 16.0f, rowY + 4.0f }, Muted, label);
 		}
@@ -31,7 +33,8 @@ namespace Nyx::Engine
 			return PainterRect{ { x, y }, { x + width, y + height } };
 		}
 
-		void DrawRects(Painter& painter, float y)
+		template<typename TPainter>
+		void DrawRects(TPainter& painter, float y)
 		{
 			painter.AddRect(RectAt(SamplesX, y + 8, 60, 50), PainterStyle::Filled(Accent));
 			painter.AddRoundedRect(RectAt(225, y + 8, 60, 50), 10.0f, PainterStyle::Filled(Blue));
@@ -48,7 +51,8 @@ namespace Nyx::Engine
 			painter.AddRect(RectAt(640, y + 24, 60, 36), PainterStyle::Filled(glm::vec4(Blue.r, Blue.g, Blue.b, 0.6f)));
 		}
 
-		void DrawCirclesAndSectors(Painter& painter, float y)
+		template<typename TPainter>
+		void DrawCirclesAndSectors(TPainter& painter, float y)
 		{
 			const float centreY = y + 33.0f;
 			painter.AddCircle({ 180, centreY }, 25.0f, PainterStyle::Filled(Accent));
@@ -67,7 +71,8 @@ namespace Nyx::Engine
 			painter.AddCircleSector({ 640, centreY + 10 }, 10.0f, 25.0f, -0.9f * Pi, -0.1f * Pi, PainterStyle::Outlined(Light, 1.5f));
 		}
 
-		void DrawLines(Painter& painter, float y)
+		template<typename TPainter>
+		void DrawLines(TPainter& painter, float y)
 		{
 			// A fan: every angle from flat to upright, one pixel wide
 			const glm::vec2 fanCentre{ SamplesX + 10.0f, y + 64.0f };
@@ -100,7 +105,8 @@ namespace Nyx::Engine
 			}
 		}
 
-		void DrawTriangles(Painter& painter, float y)
+		template<typename TPainter>
+		void DrawTriangles(TPainter& painter, float y)
 		{
 			painter.AddTriangle({ SamplesX, y + 60 }, { 200, y + 8 }, { 250, y + 60 }, PainterStyle::Filled(Blue));
 			painter.AddTriangle({ 270, y + 60 }, { 320, y + 8 }, { 370, y + 60 }, PainterStyle::Outlined(Light, 2.0f));
@@ -117,7 +123,8 @@ namespace Nyx::Engine
 			painter.AddTriangle({ 625, y + 34 }, { 635, y + 34 }, { 630, y + 28 }, PainterStyle::Filled(Light));
 		}
 
-		void DrawShadowsAndGlows(Painter& painter, ImFont* font, float y)
+		template<typename TPainter>
+		void DrawShadowsAndGlows(TPainter& painter, ImFont* font, float y)
 		{
 			PainterStyle card = PainterStyle::Filled(Light);
 			card.Effects.Shadow.Color = glm::vec4(0.0f, 0.0f, 0.0f, 0.6f);
@@ -155,7 +162,8 @@ namespace Nyx::Engine
 			painter.AddText(font, 13.0f, { 580.0f, y + 30.0f }, Light, "Focused");
 		}
 
-		void DrawTextAndImages(Painter& painter, ImFont* font, ImTextureRef image, float y)
+		template<typename TPainter>
+		void DrawTextAndImages(TPainter& painter, ImFont* font, ImTextureRef image, float y)
 		{
 			const float sizes[] = { 10.0f, 13.0f, 16.0f, 24.0f };
 			float lineY = y + 4.0f;
@@ -198,18 +206,47 @@ namespace Nyx::Engine
 
 	void DrawPainterTestSheet(Painter& painter, ImFont* font, ImTextureRef image)
 	{
-		const char* const labels[] = { "Rects", "Circles, sectors", "Lines", "Triangles", "Shadows, glows", "Text, images" };
-		constexpr float RowHeight = 80.0f;
-		for (int row = 0; row < 6; ++row)
+		for (int row = 0; row < PainterTestSheetRowCount; ++row)
 		{
-			DrawRowLabel(painter, font, 16.0f + RowHeight * static_cast<float>(row), labels[row]);
+			DrawPainterTestSheetRow(painter, row, font, image);
+		}
+	}
+
+	template<typename TPainter>
+	void DrawPainterTestSheetRow(TPainter& painter, int row, ImFont* font, ImTextureRef image)
+	{
+		const char* const labels[PainterTestSheetRowCount] = { "Rects", "Circles, sectors", "Lines", "Triangles", "Shadows, glows", "Text, images" };
+		if (row < 0 || row >= PainterTestSheetRowCount)
+		{
+			return;
 		}
 
-		DrawRects(painter, 16.0f);
-		DrawCirclesAndSectors(painter, 16.0f + RowHeight);
-		DrawLines(painter, 16.0f + RowHeight * 2.0f);
-		DrawTriangles(painter, 16.0f + RowHeight * 3.0f);
-		DrawShadowsAndGlows(painter, font, 16.0f + RowHeight * 4.0f);
-		DrawTextAndImages(painter, font, image, 16.0f + RowHeight * 5.0f);
+		const float y = GetPainterTestSheetRowTop(row);
+		DrawRowLabel(painter, font, y, labels[row]);
+		switch (row)
+		{
+		case 0:
+			DrawRects(painter, y);
+			break;
+		case 1:
+			DrawCirclesAndSectors(painter, y);
+			break;
+		case 2:
+			DrawLines(painter, y);
+			break;
+		case 3:
+			DrawTriangles(painter, y);
+			break;
+		case 4:
+			DrawShadowsAndGlows(painter, font, y);
+			break;
+		case 5:
+			DrawTextAndImages(painter, font, image, y);
+			break;
+		}
 	}
+
+	// The painters the sheet is drawn with
+	template void DrawPainterTestSheetRow<Painter>(Painter& painter, int row, ImFont* font, ImTextureRef image);
+	template void DrawPainterTestSheetRow<Nyx::UI::WindowPainter>(Nyx::UI::WindowPainter& painter, int row, ImFont* font, ImTextureRef image);
 }

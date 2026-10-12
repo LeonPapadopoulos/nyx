@@ -4,6 +4,7 @@
 #include "PainterDrawOptions.h"
 #include "PainterTestSheet.h"
 #include "Renderer.h"
+#include "WindowPainter.h"
 
 #include <algorithm>
 #include <cmath>
@@ -118,6 +119,26 @@ namespace Nyx::Editor
 			return;
 		}
 
+		if (ImGui::BeginTabBar("##PainterTestTabs"))
+		{
+			if (NYX_UI(ImGui::BeginTabItem("Canvas")))
+			{
+				DrawCanvasTab(renderer);
+				ImGui::EndTabItem();
+			}
+			if (NYX_UI(ImGui::BeginTabItem("In a window")))
+			{
+				DrawInWindowTab(renderer);
+				ImGui::EndTabItem();
+			}
+			ImGui::EndTabBar();
+		}
+
+		ImGui::End();
+	}
+
+	void PainterTestWindow::DrawCanvasTab(Nyx::IRenderer& renderer)
+	{
 		if (CanvasId == 0)
 		{
 			CanvasId = renderer.CreatePainterCanvas();
@@ -177,8 +198,58 @@ namespace Nyx::Editor
 			drawList.PopClipRect();
 			ImGui::Dummy(canvasSize);
 		}
+	}
 
-		ImGui::End();
+	void PainterTestWindow::DrawInWindowTab(Nyx::IRenderer& renderer)
+	{
+		DrawWindowPainterStatistics(renderer.GetWindowPainterStats());
+
+		// The sheet painted straight into a child window that scrolls, so its segments are
+		// clipped by the child like ImGui's own drawing.
+		if (Nyx::UI::BeginChild("##PainterInWindow", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar))
+		{
+			Nyx::UI::WindowPainter& painter = Nyx::UI::GetWindowPainter();
+			ImFont* font = ImGui::GetFont();
+			const ImTextureRef fontAtlas = ImGui::GetIO().Fonts->TexRef;
+
+			for (int row = 0; row < PainterTestSheetRowCount; ++row)
+			{
+				// The sheet's row, moved to where ImGui's cursor is
+				const ImVec2 rowMin = ImGui::GetCursorScreenPos();
+				painter.PushTransform(1.0f, { rowMin.x, rowMin.y - GetPainterTestSheetRowTop(row) });
+				DrawPainterTestSheetRow(painter, row, font, fontAtlas);
+				painter.PopTransform();
+
+				// An ImGui button over the row's right end, then a painted badge on the button: on
+				// the screen, each covers what came before it in the code.
+				ImGui::SetCursorScreenPos(ImVec2(rowMin.x + 590.0f, rowMin.y + 28.0f));
+				ImGui::PushID(row);
+				NYX_UI(ImGui::Button("ImGui over the row"));
+				ImGui::PopID();
+				const glm::vec2 badge(ImGui::GetItemRectMax().x - 3.0f, ImGui::GetItemRectMin().y + 3.0f);
+				painter.AddCircle(badge, 6.0f, PainterStyle::Filled(glm::vec4(1.0f, 0.55f, 0.15f, 1.0f)));
+
+				// The last row (text and images) is taller than the others.
+				const bool bLastRow = row == PainterTestSheetRowCount - 1;
+				const float rowHeight = bLastRow ? PainterTestSheetSize.y - GetPainterTestSheetRowTop(row) : PainterTestSheetRowHeight;
+				ImGui::SetCursorScreenPos(rowMin);
+				ImGui::Dummy(ImVec2(PainterTestSheetSize.x, rowHeight));
+			}
+		}
+		ImGui::EndChild();
+	}
+
+	void PainterTestWindow::DrawWindowPainterStatistics(const PainterWindowStats& stats) const
+	{
+		// The last drawn frame: the previous one
+		NYX_UI(ImGui::Text("Windows %u   Segments %u   Commands %u   Tiles in use %u (%u entries)   Binning %.3f ms",
+			stats.Windows, stats.Segments, stats.Commands, stats.TilesInUse, stats.TileEntries, stats.BinningMilliseconds));
+
+		const ImVec4 problemColor(1.0f, 0.4f, 0.35f, 1.0f);
+		for (const std::string& problem : stats.Problems)
+		{
+			NYX_UI(ImGui::TextColored(problemColor, "%s", problem.c_str()));
+		}
 	}
 
 	void PainterTestWindow::Release()

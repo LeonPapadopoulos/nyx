@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Painter.h"
+#include "PainterTiles.h"
 
 #include <glm/glm.hpp>
 #include <imgui.h>
@@ -14,11 +15,14 @@ namespace Nyx
 
 namespace Nyx::Editor
 {
-	// The "Painter Test" window (Debug > Painter Test): the painter's test sheet, painted on the
-	// GPU and shown pixel for pixel. The wheel zooms around the mouse and dragging pans, so edges
-	// can be checked at any scale. It shows the tile heatmap, the painter's statistics and
-	// problems, and on request the same frame drawn by ImGui's ImDrawList beside it, for
-	// comparison (Design/ui-painter.md, change 5).
+	// The "Painter Test" window (Debug > Painter Test), with two tabs (Design/ui-painter.md):
+	//  - Canvas: the painter's test sheet, painted on the GPU into an image and shown pixel for
+	//    pixel. The wheel zooms around the mouse and dragging pans, so edges can be checked at any
+	//    scale. It shows the tile heatmap, the painter's statistics and problems, and on request
+	//    the same frame drawn by ImGui's ImDrawList beside it, for comparison (stage 1, change 5).
+	//  - In a window: the same sheet painted straight into a scrolling child window, row by row,
+	//    with an ImGui button over each row and a painted badge over each button, to show the
+	//    order; with the statistics of all painting inside windows (stage 2, change 4).
 	class PainterTestWindow
 	{
 	public:
@@ -31,8 +35,12 @@ namespace Nyx::Editor
 		bool bOpen = false;
 
 	private:
+		void DrawCanvasTab(Nyx::IRenderer& renderer);
+		void DrawInWindowTab(Nyx::IRenderer& renderer);
+
 		void DrawToolbar();
 		void DrawStatistics() const;
+		void DrawWindowPainterStatistics(const Nyx::Engine::PainterWindowStats& stats) const;
 
 		// The wheel zooms around the mouse; dragging with any button pans. Works on the item
 		// drawn last, an invisible button over the canvas.
