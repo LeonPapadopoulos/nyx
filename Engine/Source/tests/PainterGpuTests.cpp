@@ -119,10 +119,10 @@ namespace
 			BlurPass.Initialize(Context);
 
 			// Texture sets for the tests' own textures, as ImGui's backend makes them for its own
-			const vk::DescriptorPoolSize poolSize{ vk::DescriptorType::eCombinedImageSampler, 16 };
+			const vk::DescriptorPoolSize poolSize{ vk::DescriptorType::eCombinedImageSampler, 32 };
 			vk::DescriptorPoolCreateInfo poolInfo{};
 			poolInfo.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
-			poolInfo.maxSets = 16;
+			poolInfo.maxSets = 32;
 			poolInfo.poolSizeCount = 1;
 			poolInfo.pPoolSizes = &poolSize;
 			TexturePool = vk::raii::DescriptorPool(Context.GetDevice(), poolInfo);
@@ -405,6 +405,11 @@ namespace
 
 			// What ImGui's Vulkan backend uses as a texture's ImTextureID: its descriptor set
 			return static_cast<ImTextureID>(reinterpret_cast<uintptr_t>(static_cast<VkDescriptorSet>(*texture.Set)));
+		}
+
+		ImTextureID CreateTexture(const RgbaImage& image)
+		{
+			return CreateTexture(image.Width, image.Height, image.Pixels);
 		}
 
 		// Does what ImGui's backend does each frame: uploads the font atlas with the glyphs baked
@@ -836,11 +841,47 @@ namespace
 		std::cout << "Saved " << path.string() << "\n";
 	}
 
+	void TestImageGlow(GpuPainter& gpu)
+	{
+		// 2x2 texels: red, green / blue, white
+		const ImTextureID quarters = gpu.CreateTexture(2, 2, { 255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255 });
+		const glm::vec4 green{ 0.0f, 1.0f, 0.0f, 1.0f };
+		const glm::vec4 blue{ 0.0f, 0.0f, 1.0f, 1.0f };
+
+		// A rect from 20 to 44 both ways, glowing 18 pixels out: a pixel whose centre is 4.5 pixels
+		// out gets 1 - 4.5 / 18 = 0.75 of the colour at the nearest point of the edge, at 13.5
+		// pixels 0.25.
+		Painter painter = StartFrame();
+		painter.AddImageGlow(quarters, PainterRect{ { 20, 20 }, { 44, 44 } }, 18.0f, 1.0f);
+		const PaintedImage glow = gpu.Paint(painter);
+		SaveForLooking(glow, "ImageGlow.png");
+
+		glow.RequirePixel(25, 25, Red, "Inside the rect, the image itself");
+		glow.RequirePixel(15, 26, Red * 0.75f, "Left of the upper half: the top left texel");
+		glow.RequirePixel(15, 38, blue * 0.75f, "Left of the lower half: the bottom left texel");
+		glow.RequirePixel(48, 26, green * 0.75f, "Right of the upper half: the top right texel");
+		glow.RequirePixel(38, 48, White * 0.75f, "Below the right half: the bottom right texel");
+		glow.RequirePixel(6, 26, Red * 0.25f, "Further out, fainter");
+		glow.RequirePixel(1, 26, Transparent, "Past the reach");
+		const float offCorner = 1.0f - std::sqrt(2.0f * 4.5f * 4.5f) / 18.0f;
+		glow.RequirePixel(15, 15, Red * offCorner, "Off a corner: the corner's texel, faded by the distance to the corner");
+
+		// The top left texel only, at half strength. The glow right of it is still red: the edge
+		// of the part reads its own texel, never the green one next to it.
+		painter = StartFrame();
+		painter.AddImageGlow(quarters, PainterRect{ { 20, 20 }, { 44, 44 } }, 18.0f, 0.5f, PainterRect{ { 0.0f, 0.0f }, { 0.5f, 0.5f } });
+		const PaintedImage part = gpu.Paint(painter);
+		part.RequirePixel(30, 30, Red * 0.5f, "Inside, at half strength");
+		part.RequirePixel(48, 38, Red * 0.375f, "Right of a part of a texture: the part's own edge texel");
+		part.RequirePixel(38, 48, Red * 0.375f, "Below a part of a texture: the part's own edge texel");
+	}
+
 	void TestTestSheetPaints(GpuPainter& gpu, const ImGuiFonts& fonts)
 	{
 		// The whole test sheet, as the Painter Test window shows it at 100%, on an opaque background
+		const ImTextureID gradient = gpu.CreateTexture(MakePainterTestGradient());
 		Painter painter = StartFrame(static_cast<uint32_t>(PainterTestSheetSize.x), static_cast<uint32_t>(PainterTestSheetSize.y));
-		DrawPainterTestSheet(painter, fonts.Font, fonts.Font->OwnerAtlas->TexRef);
+		DrawPainterTestSheet(painter, fonts.Font, fonts.Font->OwnerAtlas->TexRef, gradient);
 		painter.EndFrame();
 		gpu.UploadFontAtlas(*fonts.Font->OwnerAtlas);
 
@@ -868,7 +909,7 @@ namespace
 		// The same sheet at 400%, its top left, to look at edges up close
 		painter = StartFrame(static_cast<uint32_t>(PainterTestSheetSize.x), static_cast<uint32_t>(PainterTestSheetSize.y));
 		painter.PushTransform(4.0f, { -560.0f, -40.0f });
-		DrawPainterTestSheet(painter, fonts.Font, fonts.Font->OwnerAtlas->TexRef);
+		DrawPainterTestSheet(painter, fonts.Font, fonts.Font->OwnerAtlas->TexRef, gradient);
 		painter.PopTransform();
 		gpu.UploadFontAtlas(*fonts.Font->OwnerAtlas);
 		SaveForLooking(gpu.Paint(painter, options), "PainterTestSheet400.png");
@@ -954,7 +995,7 @@ namespace
 		const uint32_t height = static_cast<uint32_t>(PainterTestSheetSize.y);
 
 		Painter sheet = StartFrame(width, height);
-		DrawPainterTestSheet(sheet, fonts.Font, fonts.Font->OwnerAtlas->TexRef);
+		DrawPainterTestSheet(sheet, fonts.Font, fonts.Font->OwnerAtlas->TexRef, gpu.CreateTexture(MakePainterTestGradient()));
 		sheet.EndFrame();
 		gpu.UploadFontAtlas(*fonts.Font->OwnerAtlas);
 
@@ -1122,6 +1163,7 @@ int main()
 		TestTargetFollowsThePainterSize(gpu);
 
 		TestImages(gpu);
+		TestImageGlow(gpu);
 		TestTextureNotUploadedYetIsInvisible(gpu);
 		{
 			const ImGuiFonts fonts;

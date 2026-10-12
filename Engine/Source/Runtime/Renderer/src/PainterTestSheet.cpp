@@ -18,6 +18,7 @@ namespace Nyx::Engine
 		const glm::vec4 Blue{ 0.3f, 0.55f, 1.0f, 1.0f };
 		const glm::vec4 Red{ 0.95f, 0.3f, 0.32f, 1.0f };
 		const glm::vec4 Green{ 0.3f, 0.85f, 0.45f, 1.0f };
+		const glm::vec4 Yellow{ 1.0f, 0.85f, 0.25f, 1.0f };
 
 		// Where the samples of a row start, right of its label
 		constexpr float SamplesX = 150.0f;
@@ -163,6 +164,34 @@ namespace Nyx::Engine
 		}
 
 		template<typename TPainter>
+		void DrawImageGlows(TPainter& painter, ImTextureRef gradient, float y)
+		{
+			const PainterStyle asItIs = PainterStyle::Filled(glm::vec4(1.0f));
+
+			// The image with its glow: each side glows in the colours along its edge, each corner
+			// in its corner's colour.
+			const PainterRect image = RectAt(SamplesX + 14, y + 18, 80, 40);
+			painter.AddImageGlow(gradient, image, 14.0f, 1.0f);
+			painter.AddImage(gradient, image, asItIs);
+
+			// Ambilight: the glow behind a rounded card, as a scene view's will be
+			const PainterRect card = RectAt(290, y + 18, 80, 40);
+			painter.AddImageGlow(gradient, card, 14.0f, 0.7f);
+			painter.AddRoundedRect(card, 8.0f, PainterStyle::Filled(glm::vec4(0.2f, 0.21f, 0.25f, 1.0f)));
+
+			// The image's left half: the glow takes the colours of that part's edges only.
+			const PainterRect leftHalf{ { 0.0f, 0.0f }, { 0.5f, 1.0f } };
+			const PainterRect part = RectAt(415, y + 18, 50, 40);
+			painter.AddImageGlow(gradient, part, 14.0f, 1.0f, leftHalf);
+			painter.AddImage(gradient, part, asItIs, leftHalf);
+
+			// Faint light reaching far from a thin strip
+			const PainterRect strip = RectAt(510, y + 32, 60, 12);
+			painter.AddImageGlow(gradient, strip, 26.0f, 0.5f);
+			painter.AddImage(gradient, strip, asItIs);
+		}
+
+		template<typename TPainter>
 		void DrawTextAndImages(TPainter& painter, ImFont* font, ImTextureRef image, float y)
 		{
 			const float sizes[] = { 10.0f, 13.0f, 16.0f, 24.0f };
@@ -204,18 +233,18 @@ namespace Nyx::Engine
 		}
 	}
 
-	void DrawPainterTestSheet(Painter& painter, ImFont* font, ImTextureRef image)
+	void DrawPainterTestSheet(Painter& painter, ImFont* font, ImTextureRef image, ImTextureRef gradient)
 	{
 		for (int row = 0; row < PainterTestSheetRowCount; ++row)
 		{
-			DrawPainterTestSheetRow(painter, row, font, image);
+			DrawPainterTestSheetRow(painter, row, font, image, gradient);
 		}
 	}
 
 	template<typename TPainter>
-	void DrawPainterTestSheetRow(TPainter& painter, int row, ImFont* font, ImTextureRef image)
+	void DrawPainterTestSheetRow(TPainter& painter, int row, ImFont* font, ImTextureRef image, ImTextureRef gradient)
 	{
-		const char* const labels[PainterTestSheetRowCount] = { "Rects", "Circles, sectors", "Lines", "Triangles", "Shadows, glows", "Text, images" };
+		const char* const labels[PainterTestSheetRowCount] = { "Rects", "Circles, sectors", "Lines", "Triangles", "Shadows, glows", "Image glows", "Text, images" };
 		if (row < 0 || row >= PainterTestSheetRowCount)
 		{
 			return;
@@ -241,12 +270,38 @@ namespace Nyx::Engine
 			DrawShadowsAndGlows(painter, font, y);
 			break;
 		case 5:
+			DrawImageGlows(painter, gradient, y);
+			break;
+		case 6:
 			DrawTextAndImages(painter, font, image, y);
 			break;
 		}
 	}
 
 	// The painters the sheet is drawn with
-	template void DrawPainterTestSheetRow<Painter>(Painter& painter, int row, ImFont* font, ImTextureRef image);
-	template void DrawPainterTestSheetRow<Nyx::UI::WindowPainter>(Nyx::UI::WindowPainter& painter, int row, ImFont* font, ImTextureRef image);
+	template void DrawPainterTestSheetRow<Painter>(Painter& painter, int row, ImFont* font, ImTextureRef image, ImTextureRef gradient);
+	template void DrawPainterTestSheetRow<Nyx::UI::WindowPainter>(Nyx::UI::WindowPainter& painter, int row, ImFont* font, ImTextureRef image, ImTextureRef gradient);
+
+	RgbaImage MakePainterTestGradient()
+	{
+		RgbaImage image;
+		image.Width = 32;
+		image.Height = 16;
+		image.Pixels.reserve(static_cast<size_t>(image.Width) * image.Height * 4);
+		for (uint32_t y = 0; y < image.Height; ++y)
+		{
+			for (uint32_t x = 0; x < image.Width; ++x)
+			{
+				// Each texel's centre, from 0 to 1 across and down
+				const float across = (static_cast<float>(x) + 0.5f) / static_cast<float>(image.Width);
+				const float down = (static_cast<float>(y) + 0.5f) / static_cast<float>(image.Height);
+				const glm::vec4 color = glm::mix(glm::mix(Red, Yellow, across), glm::mix(Blue, Green, across), down);
+				for (int channel = 0; channel < 4; ++channel)
+				{
+					image.Pixels.push_back(static_cast<uint8_t>(std::lround(color[channel] * 255.0f)));
+				}
+			}
+		}
+		return image;
+	}
 }

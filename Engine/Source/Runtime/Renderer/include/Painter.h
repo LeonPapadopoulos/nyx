@@ -154,6 +154,14 @@ namespace Nyx::Engine
 		// font atlas included; an image with one more is dropped and reported.
 		void AddImage(ImTextureRef texture, const PainterRect& rect, const PainterStyle& style, const PainterRect& uvs = PainterRect{ { 0.0f, 0.0f }, { 1.0f, 1.0f } });
 
+		// Light around a rect, coloured by an image, e.g. a scene view's blurred picture glowing
+		// onto the UI around it (ambilight). A pixel outside the rect takes the texture's colour at
+		// the nearest point of the rect's edge, at `strength` (0 to 1) there, fading out over
+		// `reach` pixels. Inside the rect it is the image itself, at `strength`, so a rounded card
+		// drawn over it leaves no gap at its corners. `texture` and `uvs` as in AddImage(), and
+		// counted the same way. It casts no shadow, even in a group.
+		void AddImageGlow(ImTextureRef texture, const PainterRect& rect, float reach, float strength, const PainterRect& uvs = PainterRect{ { 0.0f, 0.0f }, { 1.0f, 1.0f } });
+
 		// Clip rects. A pushed rect is in the current transform's units and is cut by the clip
 		// rect already pushed, so nested clips only ever shrink. The first clip rect is the
 		// whole target.
@@ -199,9 +207,10 @@ namespace Nyx::Engine
 	private:
 		// Adds a command: the header from the style and the current state, then the payload,
 		// which the Add...() functions have already moved into target pixels. `texture` is an
-		// index into Textures, for glyphs and images.
+		// index into Textures, for glyphs and images. Returns the command, for fields only some
+		// types have.
 		template<typename TPayload>
-		void AddShape(EPainterCommandType type, EPainterCommandFlags flags, const PainterStyle& style, const TPayload& payload, uint32_t texture = 0);
+		PainterCommand& AddShape(EPainterCommandType type, EPainterCommandFlags flags, const PainterStyle& style, const TPayload& payload, uint32_t texture = 0);
 
 		// A new group from effects in the current transform's units; returns its index
 		uint32_t AddGroup(const PainterEffects& effects);

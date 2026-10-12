@@ -68,6 +68,7 @@ namespace Nyx::UI
 		void AddTriangle(glm::vec2 a, glm::vec2 b, glm::vec2 c, const Engine::PainterStyle& style);
 		void AddText(ImFont* font, float size, glm::vec2 position, const glm::vec4& color, std::string_view text);
 		void AddImage(ImTextureRef texture, const Engine::PainterRect& rect, const Engine::PainterStyle& style, const Engine::PainterRect& uvs = Engine::PainterRect{ { 0.0f, 0.0f }, { 1.0f, 1.0f } });
+		void AddImageGlow(ImTextureRef texture, const Engine::PainterRect& rect, float reach, float strength, const Engine::PainterRect& uvs = Engine::PainterRect{ { 0.0f, 0.0f }, { 1.0f, 1.0f } });
 
 		// Clip rects, as Painter's, but on ImGui's clip rect stack (ImDrawList::PushClipRect(), cut
 		// by the current one), so whatever ImGui draws until PopClipRect() is clipped too. The rect

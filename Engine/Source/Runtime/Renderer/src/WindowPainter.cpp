@@ -235,6 +235,14 @@ namespace Nyx::UI
 		}
 	}
 
+	void WindowPainter::AddImageGlow(ImTextureRef texture, const Engine::PainterRect& rect, float reach, float strength, const Engine::PainterRect& uvs)
+	{
+		if (PrepareSegment())
+		{
+			Recording.AddImageGlow(texture, rect, reach, strength, uvs);
+		}
+	}
+
 	void WindowPainter::PushClipRect(const Engine::PainterRect& rect)
 	{
 		if (!bRecording)

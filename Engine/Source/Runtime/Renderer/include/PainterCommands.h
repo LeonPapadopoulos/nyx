@@ -32,6 +32,10 @@ namespace Nyx::Engine
 		// or glow, since its shape is in the texture, not in a distance function.
 		Glyph = 5,
 		Image = 6,
+
+		// Light around a rect, coloured by an image: PainterTexturedRectPayload, with the reach in
+		// PainterCommand::Reach. Not part of a group's shape, like a glyph.
+		ImageGlow = 7,
 	};
 
 	// The most textures one frame can use: the font atlas and the images' textures. The shader
@@ -100,7 +104,7 @@ namespace Nyx::Engine
 	//
 	//   bytes  0-15  Type, Flags, Color, Group                  (uints)
 	//   bytes 16-31  ClipRect: min x, min y, max x, max y        (floats)
-	//   bytes 32-47  OutlineWidth (float), FillMode, Texture, Unused (uints)
+	//   bytes 32-47  OutlineWidth (float), FillMode, Texture (uints), Reach (float)
 	//   bytes 48-79  Payload: 32 bytes, laid out by the payload struct of Type
 	//
 	// Every command has the same size so that the shader can find command i at i * 80 bytes, and
@@ -120,8 +124,10 @@ namespace Nyx::Engine
 		// 0: filled. Otherwise only an outline this wide is drawn, centred on the shape's edge.
 		float OutlineWidth = 0.0f;
 		uint32_t FillMode = 0; // EPainterFillMode
-		uint32_t Texture = 0;  // Glyphs and images: index into the frame's textures; unused by shapes
-		uint32_t Unused = 0;
+		uint32_t Texture = 0;  // Glyphs, images and image glows: index into the frame's textures
+		// Image glows: how far the glow reaches past the rect, in pixels. Here rather than in the
+		// payload, which the rect and its texture coordinates fill. 0 for every other type.
+		float Reach = 0.0f;
 
 		// The shape itself; read and written with GetPayload() and SetPayload()
 		std::byte Payload[32]{};
@@ -132,6 +138,7 @@ namespace Nyx::Engine
 	static_assert(sizeof(PainterCommand) == 80, "The shader reads commands of exactly 80 bytes");
 	static_assert(offsetof(PainterCommand, ClipRect) == 16);
 	static_assert(offsetof(PainterCommand, OutlineWidth) == 32);
+	static_assert(offsetof(PainterCommand, Reach) == 44);
 	static_assert(offsetof(PainterCommand, Payload) == 48);
 
 	// Payloads, one per command type. Each is copied into PainterCommand::Payload as it is, so
@@ -175,8 +182,8 @@ namespace Nyx::Engine
 		glm::vec2 C{ 0.0f };
 	};
 
-	// Glyphs and images: where the rect goes, and which part of the texture fills it, in texture
-	// coordinates from 0 to 1
+	// Glyphs, images and image glows: where the rect goes, and which part of the texture fills it,
+	// in texture coordinates from 0 to 1
 	struct PainterTexturedRectPayload
 	{
 		PainterRect Rect;

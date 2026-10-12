@@ -759,18 +759,56 @@ namespace
 		Require(Near(GetShapeBounds(commands[0]), first.Rect), "An image's bounds should be its rect");
 	}
 
+	void TestImageGlows()
+	{
+		Painter painter;
+		painter.BeginFrame(200, 100);
+		painter.PushTransform(2.0f, { 10, 0 });
+		painter.AddImageGlow(FakeTexture(100), PainterRect{ { 20, 10 }, { 4, 2 } }, 6.0f, 0.5f, PainterRect{ { 0.5f, 0.0f }, { 1.0f, 0.5f } });
+		painter.PopTransform();
+		painter.AddImageGlow(FakeTexture(100), PainterRect{ { 0, 0 }, { 4, 4 } }, -3.0f, 2.0f);
+		painter.BeginGroup(MakeShadow());
+		painter.AddImageGlow(FakeTexture(200), PainterRect{ { 0, 0 }, { 4, 4 } }, 8.0f, 1.0f);
+		painter.EndGroup();
+
+		const auto& commands = painter.GetCommands();
+		Require(commands.size() == 3 && TypeOf(commands[0]) == EPainterCommandType::ImageGlow, "Each image glow should make one image glow command");
+
+		const PainterTexturedRectPayload first = TexturedRectOf(commands[0]);
+		Require(Near(first.Rect, PainterRect{ { 18, 4 }, { 50, 20 } }), "An image glow's rect should be put the right way round and transformed");
+		Require(Near(first.UVs, PainterRect{ { 0.5f, 0.0f }, { 1.0f, 0.5f } }), "An image glow should keep the part of the texture it was given");
+		Require(Near(commands[0].Reach, 12.0f), "The reach should be scaled by the transform");
+		Require(commands[0].Color == PackPremultipliedColor(glm::vec4(1.0f, 1.0f, 1.0f, 0.5f)), "The strength should be the alpha of a white tint");
+		Require(Near(GetShapeBounds(commands[0]), PainterRect{ { 6, -8 }, { 62, 32 } }), "An image glow's bounds should be its rect grown by the reach");
+		Require(commands[0].Group == PainterNoGroup, "An image glow on its own belongs to no group");
+
+		Require(commands[1].Reach == 0.0f && commands[1].Color == PackPremultipliedColor(glm::vec4(1.0f)), "A negative reach should become 0, and the strength at most 1");
+		Require(commands[0].Texture == 0 && commands[1].Texture == 0 && commands[2].Texture == 1, "Image glows should share textures as images do");
+		Require(commands[2].Group != PainterNoGroup && painter.GetProblems().empty(), "An image glow inside a group should belong to it");
+
+		// Binning finds the glow out to its reach: a rect from 28 to 36 reaching 12 pixels covers
+		// pixels 15 to 49 with anti-aliasing, tiles 1 to 6.
+		painter.BeginFrame(64, 64);
+		painter.AddImageGlow(FakeTexture(100), PainterRect{ { 28, 28 }, { 36, 36 } }, 12.0f, 1.0f);
+		const PainterTiles tiles = Bin(painter);
+		Require(TileHasCommand(tiles, 1, 4, 0) && TileHasCommand(tiles, 6, 4, 0) && !TileHasCommand(tiles, 0, 4, 0) && !TileHasCommand(tiles, 7, 4, 0),
+			"An image glow should be binned out to its reach");
+	}
+
 	void TestTestSheetDrawsCleanly(const ImGuiFonts& fonts)
 	{
 		Painter painter;
 		painter.BeginFrame(static_cast<uint32_t>(PainterTestSheetSize.x), static_cast<uint32_t>(PainterTestSheetSize.y));
-		DrawPainterTestSheet(painter, fonts.Font, fonts.Font->OwnerAtlas->TexRef);
+		DrawPainterTestSheet(painter, fonts.Font, fonts.Font->OwnerAtlas->TexRef, FakeTexture(100));
 		painter.EndFrame();
 
 		Require(painter.GetProblems().empty(), "The test sheet shouldn't report problems: " + (painter.GetProblems().empty() ? std::string() : painter.GetProblems()[0]));
 		Require(painter.GetCommands().size() > 100, "The test sheet should draw plenty of commands");
-		Require(painter.GetTextures().size() == 1, "The test sheet's text and images use the font atlas only");
+		Require(painter.GetTextures().size() == 2, "The test sheet's text and images use the font atlas and the gradient only");
 
-		bool bHasType[7] = {};
+		// Every type up to the last one, ImageGlow
+		constexpr int TypeCount = static_cast<int>(EPainterCommandType::ImageGlow) + 1;
+		bool bHasType[TypeCount] = {};
 		const PainterRect sheet{ { 0.0f, 0.0f }, PainterTestSheetSize };
 		for (const PainterCommand& command : painter.GetCommands())
 		{
@@ -779,7 +817,7 @@ namespace
 			Require(bounds.Min.x >= sheet.Min.x && bounds.Min.y >= sheet.Min.y && bounds.Max.x <= sheet.Max.x && bounds.Max.y <= sheet.Max.y,
 				"Every shape of the test sheet should lie inside PainterTestSheetSize");
 		}
-		for (int type = 0; type < 7; ++type)
+		for (int type = 0; type < TypeCount; ++type)
 		{
 			Require(bHasType[type], "The test sheet should show every command type, missing type " + std::to_string(type));
 		}
@@ -1182,6 +1220,7 @@ int main()
 
 		TestTextWithoutAFontIsReported();
 		TestImages();
+		TestImageGlows();
 		TestTooManyTexturesAreDropped();
 		{
 			const ImGuiFonts fonts;

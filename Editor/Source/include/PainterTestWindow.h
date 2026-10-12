@@ -34,8 +34,8 @@ namespace Nyx::Editor
 	public:
 		void Draw(Nyx::IRenderer& renderer);
 
-		// Gives the canvas back to the renderer. Done when the window closes; call it before the
-		// renderer shuts down too.
+		// Gives the canvas and the gradient image back to the renderer. Done when the window
+		// closes; call it before the renderer shuts down too.
 		void Release();
 
 		bool bOpen = false;
@@ -53,6 +53,9 @@ namespace Nyx::Editor
 		// Takes up `size` at ImGui's cursor and returns where, for painting a forced state there
 		static Nyx::Engine::PainterRect ReserveCell(glm::vec2 size);
 
+		// The test sheet's gradient image (MakePainterTestGradient()), made the first time it's asked for
+		ImTextureRef GetGradientTexture(Nyx::IRenderer& renderer);
+
 		void DrawToolbar();
 		void DrawStatistics() const;
 		void DrawWindowPainterStatistics(const Nyx::Engine::PainterWindowStats& stats) const;
@@ -63,6 +66,7 @@ namespace Nyx::Editor
 
 		Nyx::IRenderer* Renderer = nullptr;
 		uint64_t CanvasId = 0;
+		uint64_t GradientImageId = 0;
 		Nyx::Engine::Painter Painter;
 
 		float Zoom = 1.0f;
@@ -91,7 +95,8 @@ namespace Nyx::Editor
 	// Draws a painter's recorded frame with ImGui's ImDrawList instead, for comparison: shapes
 	// become ImGui's triangles, glyphs and images ImGui's textured quads. `origin` is where the
 	// frame's top left goes on the screen. ImDrawList has no shadows, glows or per-corner radii;
-	// shadows and glows are left out, and a rect gets its largest corner radius. Glyphs and images
-	// on a texture ImGui replaced this frame (its font atlas grew) are left out for that frame.
+	// shadows, glows and image glows are left out, and a rect gets its largest corner radius.
+	// Glyphs and images on a texture ImGui replaced this frame (its font atlas grew) are left out
+	// for that frame.
 	void DrawPainterFrameWithImDrawList(const Nyx::Engine::Painter& painter, ImDrawList& drawList, ImVec2 origin);
 }

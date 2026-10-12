@@ -173,7 +173,7 @@ namespace Nyx::Editor
 		// painter writes premultiplied colour, which only match where the image is opaque.
 		Painter.BeginFrame(static_cast<uint32_t>(canvasSize.x), static_cast<uint32_t>(canvasSize.y));
 		Painter.PushTransform(Zoom, Pan);
-		DrawPainterTestSheet(Painter, ImGui::GetFont(), ImGui::GetIO().Fonts->TexRef);
+		DrawPainterTestSheet(Painter, ImGui::GetFont(), ImGui::GetIO().Fonts->TexRef, GetGradientTexture(renderer));
 		Painter.PopTransform();
 		Painter.EndFrame();
 
@@ -224,13 +224,14 @@ namespace Nyx::Editor
 			Nyx::UI::WindowPainter& painter = Nyx::UI::GetWindowPainter();
 			ImFont* font = ImGui::GetFont();
 			const ImTextureRef fontAtlas = ImGui::GetIO().Fonts->TexRef;
+			const ImTextureRef gradient = GetGradientTexture(renderer);
 
 			for (int row = 0; row < PainterTestSheetRowCount; ++row)
 			{
 				// The sheet's row, moved to where ImGui's cursor is
 				const ImVec2 rowMin = ImGui::GetCursorScreenPos();
 				painter.PushTransform(1.0f, { rowMin.x, rowMin.y - GetPainterTestSheetRowTop(row) });
-				DrawPainterTestSheetRow(painter, row, font, fontAtlas);
+				DrawPainterTestSheetRow(painter, row, font, fontAtlas, gradient);
 				painter.PopTransform();
 
 				// An ImGui button over the row's right end, then a painted badge on the button: on
@@ -506,6 +507,15 @@ namespace Nyx::Editor
 		return PainterRect{ { min.x, min.y }, { min.x + size.x, min.y + size.y } };
 	}
 
+	ImTextureRef PainterTestWindow::GetGradientTexture(Nyx::IRenderer& renderer)
+	{
+		if (GradientImageId == 0)
+		{
+			GradientImageId = renderer.CreateUIImage(MakePainterTestGradient());
+		}
+		return ImTextureRef(renderer.GetUIImageTextureId(GradientImageId));
+	}
+
 	void PainterTestWindow::DrawWindowPainterStatistics(const PainterWindowStats& stats) const
 	{
 		// The last drawn frame: the previous one
@@ -525,7 +535,12 @@ namespace Nyx::Editor
 		{
 			Renderer->DestroyPainterCanvas(CanvasId);
 		}
+		if (Renderer && GradientImageId != 0)
+		{
+			Renderer->DestroyUIImage(GradientImageId);
+		}
 		CanvasId = 0;
+		GradientImageId = 0;
 	}
 
 	void PainterTestWindow::DrawToolbar()
@@ -663,6 +678,9 @@ namespace Nyx::Editor
 				}
 				break;
 			}
+			case EPainterCommandType::ImageGlow:
+				// ImDrawList has no glows; left out like the groups' shadows and glows.
+				break;
 			}
 
 			drawList.PopClipRect();

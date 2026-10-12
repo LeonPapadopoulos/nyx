@@ -246,6 +246,26 @@ namespace Nyx::Engine
 		AddShape(EPainterCommandType::Image, EPainterCommandFlags::None, imageStyle, payload, textureIndex);
 	}
 
+	void Painter::AddImageGlow(ImTextureRef texture, const PainterRect& rect, float reach, float strength, const PainterRect& uvs)
+	{
+		uint32_t textureIndex = 0;
+		if (!FindOrAddTexture(texture, textureIndex))
+		{
+			return;
+		}
+
+		const PainterTransform& transform = GetTransform();
+		PainterTexturedRectPayload payload;
+		payload.Rect = transform.Apply(Normalized(rect));
+		payload.UVs = uvs;
+
+		// The colour tints the texture as an image's does: white keeps the texture's colours, and
+		// its alpha is the strength.
+		const PainterStyle glowStyle = PainterStyle::Filled(glm::vec4(1.0f, 1.0f, 1.0f, std::clamp(strength, 0.0f, 1.0f)));
+		PainterCommand& command = AddShape(EPainterCommandType::ImageGlow, EPainterCommandFlags::None, glowStyle, payload, textureIndex);
+		command.Reach = std::max(reach, 0.0f) * transform.Scale;
+	}
+
 	void Painter::PushClipRect(const PainterRect& rect)
 	{
 		const PainterRect inTarget = GetTransform().Apply(Normalized(rect));
@@ -321,7 +341,7 @@ namespace Nyx::Engine
 	}
 
 	template<typename TPayload>
-	void Painter::AddShape(EPainterCommandType type, EPainterCommandFlags flags, const PainterStyle& style, const TPayload& payload, uint32_t texture)
+	PainterCommand& Painter::AddShape(EPainterCommandType type, EPainterCommandFlags flags, const PainterStyle& style, const TPayload& payload, uint32_t texture)
 	{
 		PainterCommand command;
 		command.Type = static_cast<uint32_t>(type);
@@ -348,7 +368,7 @@ namespace Nyx::Engine
 		}
 
 		SetPayload(command, payload);
-		Commands.push_back(command);
+		return Commands.emplace_back(command);
 	}
 
 	uint32_t Painter::AddGroup(const PainterEffects& effects)

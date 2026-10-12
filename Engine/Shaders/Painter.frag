@@ -12,7 +12,8 @@
 // grid lies on the target.
 //
 // How to add a primitive: the checklist is in PainterCommands.h. Here, it needs a constant
-// below, a ...Distance() function, and a case in ShapeDistance().
+// below, a ...Distance() function, and a case in ShapeDistance(). Image glows are the one
+// exception: they are light, not a shape, and main() blends them with ImageGlowColor().
 
 // ---------------------------------------------------------------------------------------------
 // Data, laid out exactly as PainterCommands.h and PainterTiles.h describe it
@@ -26,6 +27,7 @@ const uint CommandLine = 3u;
 const uint CommandTriangle = 4u;
 const uint CommandGlyph = 5u;
 const uint CommandImage = 6u;
+const uint CommandImageGlow = 7u;
 
 // EPainterCommandFlags
 const uint FlagRoundCaps = 1u;
@@ -46,7 +48,7 @@ struct PainterCommand
 	float OutlineWidth;
 	uint FillMode;
 	uint Texture;
-	uint Unused;
+	float Reach; // image glows only
 	vec4 Payload0;
 	vec4 Payload1;
 };
@@ -349,6 +351,29 @@ vec4 SampleTexture(uint index, vec2 uv)
 	return vec4(0.0);
 }
 
+// The size in texels of the frame's texture `index`
+vec2 TextureSize(uint index)
+{
+	switch (index)
+	{
+	case 0u:
+		return vec2(textureSize(Texture0, 0));
+	case 1u:
+		return vec2(textureSize(Texture1, 0));
+	case 2u:
+		return vec2(textureSize(Texture2, 0));
+	case 3u:
+		return vec2(textureSize(Texture3, 0));
+	case 4u:
+		return vec2(textureSize(Texture4, 0));
+	case 5u:
+		return vec2(textureSize(Texture5, 0));
+	case 6u:
+		return vec2(textureSize(Texture6, 0));
+	}
+	return vec2(1.0);
+}
+
 // A glyph's or an image's colour at p, premultiplied: the texel where p falls in the rect, tinted
 // by the command's colour. Textures hold straight alpha, like ImGui's.
 vec4 TextureColor(vec2 p, PainterCommand command)
@@ -361,6 +386,40 @@ vec4 TextureColor(vec2 p, PainterCommand command)
 	vec2 uv = mix(command.Payload1.xy, command.Payload1.zw, clamp(alongRect, 0.0, 1.0));
 	vec4 texel = SampleTexture(command.Texture, uv);
 	return unpackUnorm4x8(command.Color) * vec4(texel.rgb * texel.a, texel.a);
+}
+
+// An image glow's colour at p, premultiplied. PainterTexturedRectPayload as for images, and the
+// reach in command.Reach. The colour is the texture's at the nearest point of the rect, tinted
+// by the command's colour (whose alpha is the strength), and fades out from the rect's edge to
+// the reach. Inside the rect the nearest point is p itself: there the glow is the image.
+vec4 ImageGlowColor(vec2 p, PainterCommand command)
+{
+	vec2 rectMin = command.Payload0.xy;
+	vec2 rectMax = command.Payload0.zw;
+
+	// Full at the edge, nothing at the reach; without a reach, an image's anti-aliased edge
+	float distance = TexturedRectDistance(p, command);
+	float amount = command.Reach > 0.0 ? 1.0 - clamp(distance / command.Reach, 0.0, 1.0) : Coverage(distance);
+	if (amount <= 0.0)
+	{
+		return vec4(0.0);
+	}
+
+	// The nearest point of a box is p clamped into it.
+	vec2 nearest = clamp(p, rectMin, rectMax);
+	vec2 alongRect = (nearest - rectMin) / max(rectMax - rectMin, vec2(1.0e-6));
+	vec2 uv = mix(command.Payload1.xy, command.Payload1.zw, alongRect);
+
+	// Kept half a texel inside the texture coordinates given, so the edge shows its own texels:
+	// filtering would otherwise mix in the neighbours of an atlas, or the far side of a texture
+	// that repeats.
+	vec2 halfTexel = 0.5 / TextureSize(command.Texture);
+	vec2 uvLow = min(command.Payload1.xy, command.Payload1.zw) + halfTexel;
+	vec2 uvHigh = max(uvLow, max(command.Payload1.xy, command.Payload1.zw) - halfTexel);
+	uv = clamp(uv, uvLow, uvHigh);
+
+	vec4 texel = SampleTexture(command.Texture, uv);
+	return unpackUnorm4x8(command.Color) * vec4(texel.rgb * texel.a, texel.a) * amount;
 }
 
 // A group's shadow and glow, drawn under its shapes. The group's shapes follow each other in the
@@ -380,8 +439,9 @@ vec4 DrawGroupEffects(vec4 color, vec2 pixel, uint groupIndex, uint firstEntry, 
 		{
 			break;
 		}
-		// A glyph's shape is in the atlas, not in its rect: as a rect it would cast a box.
-		if (command.Type == CommandGlyph || !IsInsideClipRect(pixel, command.ClipRect))
+		// A glyph's shape is in the atlas, not in its rect: as a rect it would cast a box. An image
+		// glow is light, which casts no shadow.
+		if (command.Type == CommandGlyph || command.Type == CommandImageGlow || !IsInsideClipRect(pixel, command.ClipRect))
 		{
 			continue;
 		}
@@ -458,6 +518,11 @@ void main()
 
 		if (!IsInsideClipRect(pixel, command.ClipRect))
 		{
+			continue;
+		}
+		if (command.Type == CommandImageGlow)
+		{
+			color = Over(color, ImageGlowColor(pixel, command));
 			continue;
 		}
 		float coverage = Coverage(ShapeDistance(pixel, command));
