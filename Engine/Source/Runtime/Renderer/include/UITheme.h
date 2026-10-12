@@ -23,7 +23,7 @@ namespace Nyx::UI
 		glm::vec4 Text{ 0.90f, 0.91f, 0.94f, 1.0f };
 		glm::vec4 TextMuted{ 0.55f, 0.58f, 0.66f, 1.0f };
 
-		// A control's background: buttons, sliders
+		// A control's background: buttons, sliders (fields have their own, below)
 		glm::vec4 Frame{ 0.22f, 0.23f, 0.27f, 1.0f };
 		glm::vec4 FrameHovered{ 0.28f, 0.29f, 0.34f, 1.0f };
 		glm::vec4 FramePressed{ 0.17f, 0.18f, 0.21f, 1.0f };
@@ -120,6 +120,35 @@ namespace Nyx::UI
 		glm::vec4 IndentGuide{ 1.0f, 1.0f, 1.0f, 0.08f };
 		glm::vec4 FolderIcon{ 0.95f, 0.72f, 0.32f, 1.0f };
 		glm::vec4 EntityIcon{ 0.45f, 0.65f, 0.95f, 1.0f };
+
+		// Fields: text, number and search fields (InputText(), DragScalar(), SearchField()). ImGui
+		// edits and draws their text; the frame behind it is painted, darker than the card, so it
+		// reads as a place to type. While a field is edited, its border turns to the accent and it
+		// glows faintly. ImGui draws the text selection and the cursor in these colours.
+		glm::vec4 Field{ 0.065f, 0.067f, 0.078f, 1.0f };
+		glm::vec4 FieldHovered{ 0.1f, 0.103f, 0.118f, 1.0f };
+		glm::vec4 FieldBorder{ 1.0f, 1.0f, 1.0f, 0.07f };
+		Engine::PainterGlow FieldEditGlow{ { 1.0f, 0.55f, 0.15f, 0.5f }, 5.0f, 0.4f };
+		glm::vec4 TextSelection{ 1.0f, 0.55f, 0.15f, 0.35f };
+		glm::vec4 TextCursor{ 1.0f, 0.64f, 0.30f, 1.0f };
+		// A search field's magnifier, as a fraction of the frame height
+		float SearchIconSize = 0.55f;
+
+		// The letters before each component of a vector field (DragVector()): X, Y, Z and W
+		glm::vec4 AxisX{ 0.94f, 0.38f, 0.38f, 1.0f };
+		glm::vec4 AxisY{ 0.50f, 0.80f, 0.36f, 1.0f };
+		glm::vec4 AxisZ{ 0.38f, 0.60f, 0.98f, 1.0f };
+		glm::vec4 AxisW{ 0.55f, 0.58f, 0.66f, 1.0f };
+
+		// Property rows (BeginPropertyRow()): the label column takes PropertyLabelWidth of the row,
+		// the value the rest. A hovered row shows the tree rows' hover pill.
+		glm::vec4 PropertyLabel{ 0.70f, 0.72f, 0.78f, 1.0f };
+		float PropertyLabelWidth = 0.4f;
+
+		// Collapsing headers (CollapsingHeader()), e.g. a component in the details panel: a pill
+		// across the window
+		glm::vec4 Header{ 1.0f, 1.0f, 1.0f, 0.045f };
+		glm::vec4 HeaderHovered{ 1.0f, 1.0f, 1.0f, 0.08f };
 
 		// What disabled widgets keep of their colours' alpha
 		float DisabledAlpha = 0.45f;

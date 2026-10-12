@@ -2,13 +2,13 @@
 #include "PropertyWidgetRegistry.h"
 
 #include "ReflectionUtils.h"
+#include "UIWidgets.h"
 
 #include <cstdlib>
 #include <string_view>
 #include <unordered_map>
 
 #include <imgui.h>
-#include <misc/cpp/imgui_stdlib.h>
 
 namespace
 {
@@ -138,7 +138,7 @@ namespace
 		int32_t& value = Nyx::Reflection::AccessProperty<int32_t>(args.Object, *args.Property);
 		const float speed = GetPropertyDragSpeed(*args.Property, 1.0f);
 
-		const bool bChanged = NYX_UI(ImGui::DragScalar("##Field", ImGuiDataType_S32, &value, speed));
+		const bool bChanged = NYX_UI(Nyx::UI::DragScalar("##Field", ImGuiDataType_S32, &value, speed));
 
 		if (ImGui::IsItemActivated())
 		{
@@ -158,7 +158,7 @@ namespace
 		uint32_t& value = Nyx::Reflection::AccessProperty<uint32_t>(args.Object, *args.Property);
 		const float speed = GetPropertyDragSpeed(*args.Property, 1.0f);
 
-		const bool bChanged = NYX_UI(ImGui::DragScalar("##Field", ImGuiDataType_U32, &value, speed));
+		const bool bChanged = NYX_UI(Nyx::UI::DragScalar("##Field", ImGuiDataType_U32, &value, speed));
 
 		if (ImGui::IsItemActivated())
 		{
@@ -178,8 +178,8 @@ namespace
 	{
 		uint64_t& value = Nyx::Reflection::AccessProperty<uint64_t>(args.Object, *args.Property);
 
-		const bool bChanged = NYX_UI(ImGui::InputScalar(
-			"##Field", ImGuiDataType_U64, &value, nullptr, nullptr, "%016llX", ImGuiInputTextFlags_CharsHexadecimal));
+		const bool bChanged = NYX_UI(Nyx::UI::InputScalar(
+			"##Field", ImGuiDataType_U64, &value, "%016llX", ImGuiInputTextFlags_CharsHexadecimal));
 
 		if (ImGui::IsItemActivated())
 		{
@@ -199,7 +199,7 @@ namespace
 		float& value = Nyx::Reflection::AccessProperty<float>(args.Object, *args.Property);
 		const float speed = GetPropertyDragSpeed(*args.Property);
 
-		const bool bChanged = NYX_UI(ImGui::DragFloat("##Field", &value, speed));
+		const bool bChanged = NYX_UI(Nyx::UI::DragFloat("##Field", &value, speed));
 
 		if (ImGui::IsItemActivated())
 		{
@@ -219,7 +219,7 @@ namespace
 		glm::vec2& value = Nyx::Reflection::AccessProperty<glm::vec2>(args.Object, *args.Property);
 		const float speed = GetPropertyDragSpeed(*args.Property);
 
-		const bool bChanged = NYX_UI(ImGui::DragFloat2("##Field", &value.x, speed));
+		const bool bChanged = NYX_UI(Nyx::UI::DragVector("##Field", &value.x, 2, speed));
 
 		if (ImGui::IsItemActivated())
 		{
@@ -239,7 +239,7 @@ namespace
 		glm::vec3& value = Nyx::Reflection::AccessProperty<glm::vec3>(args.Object, *args.Property);
 		const float speed = GetPropertyDragSpeed(*args.Property);
 
-		const bool bChanged = NYX_UI(ImGui::DragFloat3("##Field", &value.x, speed));
+		const bool bChanged = NYX_UI(Nyx::UI::DragVector("##Field", &value.x, 3, speed));
 
 		if (ImGui::IsItemActivated())
 		{
@@ -259,7 +259,7 @@ namespace
 		glm::vec4& value = Nyx::Reflection::AccessProperty<glm::vec4>(args.Object, *args.Property);
 		const float speed = GetPropertyDragSpeed(*args.Property);
 
-		const bool bChanged = NYX_UI(ImGui::DragFloat4("##Field", &value.x, speed));
+		const bool bChanged = NYX_UI(Nyx::UI::DragVector("##Field", &value.x, 4, speed));
 
 		if (ImGui::IsItemActivated())
 		{
@@ -293,7 +293,7 @@ namespace
 				WrapEulerDegrees180(glm::degrees(glm::eulerAngles(glm::normalize(value))));
 		}
 
-		const bool bChanged = NYX_UI(ImGui::DragFloat3("##Field", &rotState.CachedDegrees.x, 1.0f));
+		const bool bChanged = NYX_UI(Nyx::UI::DragVector("##Field", &rotState.CachedDegrees.x, 3, 1.0f));
 		if (bChanged)
 		{
 			value = glm::normalize(glm::quat(glm::radians(rotState.CachedDegrees)));
@@ -319,7 +319,7 @@ namespace
 	{
 		std::string& value = Nyx::Reflection::AccessProperty<std::string>(args.Object, *args.Property);
 
-		const bool bChanged = NYX_UI(ImGui::InputText("##Field", &value));
+		const bool bChanged = NYX_UI(Nyx::UI::InputText("##Field", &value));
 
 		if (ImGui::IsItemActivated())
 		{

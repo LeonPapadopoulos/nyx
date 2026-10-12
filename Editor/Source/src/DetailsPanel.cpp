@@ -7,6 +7,7 @@
 #include "ReflectionSourceRegistry.h"
 #include "SceneEditor.h"
 #include "TransactionObjectRefHelpers.h"
+#include "UIWidgets.h"
 
 #include "imgui.h"
 
@@ -85,7 +86,7 @@ namespace Nyx::Editor
 			ImGui::PushID(displayName);
 			UI::SourceDeclarationScope componentSource(ReflectionSourceRegistry::Get().Find(*componentType.TypeMetadata));
 
-			const bool bComponentOpen = NYX_UI(ImGui::CollapsingHeader(displayName, ImGuiTreeNodeFlags_DefaultOpen));
+			const bool bComponentOpen = NYX_UI(Nyx::UI::CollapsingHeader(displayName));
 
 			// Right-click on the header: Remove, except for the guid and name every entity keeps
 			if (CanAddOrRemoveComponent(componentType))
@@ -118,7 +119,7 @@ namespace Nyx::Editor
 
 		// The component types the entity doesn't have yet
 		NYX_UI(ImGui::Spacing());
-		if (NYX_UI(ImGui::Button("Add Component", ImVec2(-FLT_MIN, 0.0f))))
+		if (NYX_UI(Nyx::UI::Button("Add Component", glm::vec2(-FLT_MIN, 0.0f))))
 		{
 			ImGui::OpenPopup("##AddComponent");
 		}

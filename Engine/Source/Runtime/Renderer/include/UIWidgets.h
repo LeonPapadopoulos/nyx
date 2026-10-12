@@ -5,11 +5,12 @@
 #include <glm/glm.hpp>
 #include <imgui.h>
 
+#include <string>
 #include <string_view>
 
 // Painted widgets: drawn with the window's painter (Nyx::UI::GetWindowPainter()) instead of
 // ImDrawList, so their edges, shadows and glows are crisp at any size. The plan is in
-// Design/ui-painter.md, stage 2, change 5.
+// Design/ui-painter.md, stage 2, change 5, and stage 3, change 7.
 //
 // They behave exactly like ImGui's own: they are built on ImGui's behaviour functions
 // (ItemSize(), ItemAdd(), ButtonBehavior(), SliderBehavior()), so IDs, mouse and keyboard
@@ -25,6 +26,9 @@
 // keyboard, and a Paint...() function that paints any WidgetLook. The UI gallery (the Painter
 // Test window's Widgets tab) calls the Paint...() functions directly, to show every state
 // without the mouse.
+//
+// Fields are hybrids instead: ImGui's own text and number fields, which keep their editing and
+// their text, over a painted frame (InputText() and below).
 //
 // Looks come from Nyx::UI::GetTheme(); layout from ImGui's style, so painted widgets line up
 // with ImGui's. Labels work as ImGui's: the text after "##" is part of the ID only.
@@ -73,6 +77,10 @@ namespace Nyx::UI
 		bool bLeaf = false;
 		// Open the first time the row shows
 		bool bDefaultOpen = false;
+		// A click anywhere on the row, or activating it by keyboard, opens and closes it, as for
+		// a heading in a list (the details panel's categories and structs). It never reports
+		// bClicked then.
+		bool bToggleOnClick = false;
 		ETreeRowIcon Icon = ETreeRowIcon::None;
 	};
 
@@ -97,6 +105,52 @@ namespace Nyx::UI
 
 	// Ends the children of a row that was open, as ImGui::TreePop() does
 	void TreeRowEnd();
+
+	// A heading that opens and closes what follows it, e.g. a component in the details panel:
+	// a pill across the window, an arrow that turns as it opens, and the label. Behaves like
+	// ImGui::CollapsingHeader(), and keeps its open state where that does, so a header keeps
+	// its state when moved from one to the other. Indents nothing. True while open.
+	bool CollapsingHeader(const char* label, bool bDefaultOpen = true);
+
+	// Fields (stage 3, change 7b): ImGui's own text and number fields over a painted frame.
+	// ImGui keeps the editing, the dragging and the text; its frame colours are made transparent
+	// while it draws them, so only the painted frame shows. Each returns what its ImGui
+	// counterpart does, and IsItemActivated(), IsItemDeactivatedAfterEdit() and the like work
+	// after it.
+	//
+	// The frame is painted before ImGui's widget runs, so that the text lies on top of it. ImGui
+	// knows whether a field is hovered only once the widget has run, so the frame shows the
+	// hover of the frame before; eased over frames, the delay doesn't show.
+
+	bool InputText(const char* label, std::string* value, ImGuiInputTextFlags flags = 0);
+
+	// A text field with round ends and a magnifier, showing `placeholder` while it is empty
+	bool SearchField(const char* label, std::string* value, const char* placeholder = "Search");
+
+	// A number dragged with the mouse, or typed after a double click or Ctrl+click. `format`:
+	// printf's, or null for the type's own.
+	bool DragScalar(const char* label, ImGuiDataType type, void* value, float speed, const char* format = nullptr);
+	bool DragFloat(const char* label, float* value, float speed, const char* format = "%.3f");
+
+	// A number that is only typed, never dragged, e.g. an ID in hex
+	// (ImGuiInputTextFlags_CharsHexadecimal)
+	bool InputScalar(const char* label, ImGuiDataType type, void* value, const char* format = nullptr, ImGuiInputTextFlags flags = 0);
+
+	// `count` floats (1 to 4) side by side, sharing the item width: each a DragFloat() behind its
+	// axis letter, X, Y, Z and W in the theme's colours. Like ImGui::DragFloat3(), they are one
+	// group, so IsItemActivated() and IsItemDeactivatedAfterEdit() after it cover all of them.
+	bool DragVector(const char* label, float* values, int count, float speed, const char* format = "%.3f");
+
+	// A property row, as the details panel shows each property: the label in a column on the
+	// left, and the value, which the caller draws between BeginPropertyRow() and
+	// EndPropertyRow(), on the right. The value's item width is set to the rest of the row.
+	//
+	// The row spans the window's width, with the tree rows' hover pill and guides; inside an
+	// open tree row its label is indented, and lines up with the tree rows' labels. The value
+	// column starts at the same place at any indentation. After BeginPropertyRow(),
+	// IsItemHovered() tells whether the label is hovered, e.g. for a tooltip.
+	void BeginPropertyRow(const char* label);
+	void EndPropertyRow();
 
 	// The painting, for any look. Rects are in ImGui's screen coordinates, as the widgets lay
 	// themselves out: the widget's whole rect, label included, except the slider's, which is its
@@ -127,6 +181,27 @@ namespace Nyx::UI
 	};
 	// `rect`: the whole row, the window's width
 	void PaintTreeRow(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view label, const TreeRowLook& row, const WidgetLook& look);
+	// `open`: the arrow's turn, from closed (0) to open (1)
+	void PaintCollapsingHeader(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view label, float open, const WidgetLook& look);
+
+	// The fields' frames, without their text, which ImGui draws. `editing`: how much the field
+	// is being typed in or dragged, from 0 to 1.
+	void PaintField(WindowPainter& painter, const Engine::PainterRect& frame, float editing, const WidgetLook& look);
+	void PaintSearchField(WindowPainter& painter, const Engine::PainterRect& frame, float editing, const WidgetLook& look);
+	// One component of a vector field: its frame, with the letter of `axis` (0 for X to 3 for W)
+	// at the left
+	void PaintVectorComponent(WindowPainter& painter, const Engine::PainterRect& frame, int axis, float editing, const WidgetLook& look);
+
+	// How a property row looks besides its WidgetLook, as for a tree row
+	struct PropertyRowLook
+	{
+		// Where the row's indentation ends
+		float ContentX = 0.0f;
+		// How many tree rows it is inside: one guide each
+		int Depth = 0;
+	};
+	// `rect`: the whole row, the window's width. Paints the hover pill, the guides and the label.
+	void PaintPropertyRow(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view label, const PropertyRowLook& row, const WidgetLook& look);
 
 	// The sizes the widgets take, at the current font, for the gallery's forced states
 	glm::vec2 CalcButtonSize(const char* label);
@@ -136,4 +211,10 @@ namespace Nyx::UI
 	float CalcSliderValueWidth(float min, float max, const char* format);
 	glm::vec2 CalcSectionHeaderSize();
 	float CalcTreeRowHeight();
+	// The room a vector field's axis letter takes at the left of each component
+	float CalcAxisTagWidth();
+	// Where a property row's value column starts, for a row from `rowMinX` to `rowMaxX`
+	float CalcPropertyValueX(float rowMinX, float rowMaxX);
+	// Where a search field's text starts, from its frame's left
+	float CalcSearchTextOffset();
 }

@@ -4,39 +4,20 @@
 #include "ReflectionUtils.h"
 #include "ImGuiSource.h"
 #include "ReflectionSourceRegistry.h"
+#include "UIWidgets.h"
 
 #include <map>
+#include <string>
 #include <string_view>
 
 #include <imgui.h>
-#include <imgui_internal.h>
+
+// The rows are painted (Nyx::UI, UIWidgets.h): a property row per property, with its label in a
+// column on the left and its value's widget on the right, and a tree row for each category and
+// each struct, which opens and closes the rows inside it.
 
 namespace
 {
-	static constexpr float DetailsRowHeight = 24.0f;
-	static constexpr float PropertyIndentPerDepth = 16.0f;
-	static constexpr float PropertyLabelPaddingX = 8.0f;
-
-	static float GetDetailsFramePaddingY()
-	{
-		return ImMax(3.0f, floorf((DetailsRowHeight - ImGui::GetFontSize()) * 0.5f));
-	}
-
-	struct ScopedDetailsFramePadding
-	{
-		ScopedDetailsFramePadding()
-		{
-			ImGui::PushStyleVar(
-				ImGuiStyleVar_FramePadding,
-				ImVec2(6.0f, GetDetailsFramePaddingY()));
-		}
-
-		~ScopedDetailsFramePadding()
-		{
-			ImGui::PopStyleVar();
-		}
-	};
-
 	static const char* GetPropertyTooltip(const Nyx::Reflection::PropertyMetadata& property)
 	{
 		return Nyx::Reflection::FindMetadataValue(property, "Tooltip");
@@ -57,6 +38,11 @@ namespace
 		return Nyx::Reflection::HasFlag(property.Flags, Nyx::Reflection::EPropertyFlags::ReadOnly);
 	}
 
+	static const char* GetPropertyDisplayName(const Nyx::Reflection::PropertyMetadata& property)
+	{
+		return (property.DisplayName && property.DisplayName[0]) ? property.DisplayName : property.Name;
+	}
+
 	static void DrawPropertyTooltipIfHovered(const Nyx::Reflection::PropertyMetadata& property)
 	{
 		// Read-only properties are drawn disabled, and their tooltips should show too
@@ -69,50 +55,14 @@ namespace
 		}
 	}
 
-	static void DrawIndentedLabel(const char* label, int depth)
+	// A tree row that a click anywhere opens and closes, for a category or a struct; open the
+	// first time it shows
+	static bool BeginPropertyGroupRow(const char* label)
 	{
-		const float offset = PropertyLabelPaddingX + PropertyIndentPerDepth * static_cast<float>(depth);
-
-		NYX_UI(ImGui::Dummy(ImVec2(offset, 0.0f)));
-		ImGui::SameLine(0.0f, 0.0f);
-		ImGui::AlignTextToFramePadding();
-		NYX_UI(ImGui::TextUnformatted(label));
-	}
-
-	struct ScopedCategoryHeaderStyle
-	{
-		ScopedCategoryHeaderStyle()
-		{
-			ImGui::PushStyleColor(ImGuiCol_Header, IM_COL32(55, 55, 55, 180));
-			ImGui::PushStyleColor(ImGuiCol_HeaderHovered, IM_COL32(72, 72, 72, 220));
-			ImGui::PushStyleColor(ImGuiCol_HeaderActive, IM_COL32(82, 82, 82, 220));
-			ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6.0f, 4.0f));
-		}
-
-		~ScopedCategoryHeaderStyle()
-		{
-			ImGui::PopStyleVar();
-			ImGui::PopStyleColor(3);
-		}
-	};
-
-	static void ApplyHoveredRowHighlight(float rowTopY, float rowBottomY)
-	{
-		ImGuiTable* table = ImGui::GetCurrentTable();
-		if (!table)
-		{
-			return;
-		}
-
-		const ImVec2 rowMin(table->OuterRect.Min.x, rowTopY);
-		const ImVec2 rowMax(table->OuterRect.Max.x, rowBottomY);
-
-		if (ImGui::IsMouseHoveringRect(rowMin, rowMax, false))
-		{
-			ImGui::TableSetBgColor(
-				ImGuiTableBgTarget_RowBg0,
-				IM_COL32(255, 255, 255, 18));
-		}
+		Nyx::UI::TreeRowOptions options;
+		options.bDefaultOpen = true;
+		options.bToggleOnClick = true;
+		return NYX_UI(Nyx::UI::TreeRow(label, options)).bOpen;
 	}
 
 	struct PropertyBuckets
@@ -153,35 +103,22 @@ namespace
 		void* object,
 		const Nyx::Reflection::PropertyMetadata& property,
 		Nyx::Editor::InspectorDrawContext& drawContext,
-		const Nyx::Reflection::TypeMetadata& ownerType,
-		int depth)
+		const Nyx::Reflection::TypeMetadata& ownerType)
 	{
 		bool bAnyChanged = false;
 
 		ImGui::PushID(property.Name);
 
-		ImGui::TableNextRow(0, DetailsRowHeight);
-		const float rowTopY = ImGui::GetCursorScreenPos().y;
-		float rowBottomY = rowTopY + DetailsRowHeight;
-
-		ImGui::TableSetColumnIndex(0);
-
-		const char* displayName =
-			(property.DisplayName && property.DisplayName[0]) ? property.DisplayName : property.Name;
-
-		DrawIndentedLabel(displayName, depth);
-
-		rowBottomY = (std::max)(rowBottomY, ImGui::GetItemRectMax().y);
-
-		ImGui::TableSetColumnIndex(1);
+		// The row's own ID is "##Row", so the value's widgets keep the IDs they had
+		const std::string rowLabel = std::string(GetPropertyDisplayName(property)) + "##Row";
+		Nyx::UI::BeginPropertyRow(rowLabel.c_str());
+		DrawPropertyTooltipIfHovered(property);
 
 		const bool bReadOnly = IsPropertyReadOnly(property);
 		if (bReadOnly)
 		{
 			ImGui::BeginDisabled();
 		}
-
-		ImGui::SetNextItemWidth(-FLT_MIN);
 
 		if (Nyx::Editor::PropertyWidgetDrawFn drawFn =
 				Nyx::Editor::PropertyWidgetRegistry::Get().Find(property.Kind))
@@ -193,12 +130,11 @@ namespace
 			args.DrawContext = &drawContext;
 
 			bAnyChanged = drawFn(args);
-			rowBottomY = (std::max)(rowBottomY, ImGui::GetItemRectMax().y);
 		}
 		else
 		{
+			ImGui::AlignTextToFramePadding();
 			NYX_UI(ImGui::TextDisabled("<unsupported>"));
-			rowBottomY = (std::max)(rowBottomY, ImGui::GetItemRectMax().y);
 		}
 
 		if (bReadOnly)
@@ -207,189 +143,37 @@ namespace
 		}
 
 		DrawPropertyTooltipIfHovered(property);
-		ApplyHoveredRowHighlight(rowTopY, rowBottomY);
+		Nyx::UI::EndPropertyRow();
 
 		ImGui::PopID();
 		return bAnyChanged;
 	}
 
-	static bool DrawReflectedTypeRows(
-		void* object,
-		const Nyx::Reflection::TypeMetadata& typeMetadata,
-		Nyx::Editor::InspectorDrawContext& drawContext,
-		int depth);
-
 	static bool DrawStructPropertyRow(
 		void* object,
 		const Nyx::Reflection::PropertyMetadata& property,
 		Nyx::Editor::InspectorDrawContext& drawContext,
-		const Nyx::Reflection::TypeMetadata& ownerType,
-		int depth);
-
-	static void DrawCategoryRow(const std::string& category, int depth)
-	{
-		ImGui::TableNextRow();
-		ImGui::TableSetColumnIndex(0);
-
-		NYX_UI(ImGui::Dummy(ImVec2(PropertyIndentPerDepth * static_cast<float>(depth), 0.0f)));
-		ImGui::SameLine(0.0f, 0.0f);
-		NYX_UI(ImGui::SeparatorText(category.c_str()));
-
-		ImGui::TableSetColumnIndex(1);
-		NYX_UI(ImGui::TextUnformatted(""));
-	}
+		const Nyx::Reflection::TypeMetadata& ownerType);
 
 	static bool DrawPropertyRow(
 		void* object,
 		const Nyx::Reflection::PropertyMetadata& property,
 		Nyx::Editor::InspectorDrawContext& drawContext,
-		const Nyx::Reflection::TypeMetadata& ownerType,
-		int depth)
+		const Nyx::Reflection::TypeMetadata& ownerType)
 	{
 		Nyx::UI::SourceDeclarationScope declaration(Nyx::Editor::ReflectionSourceRegistry::Get().Find(property));
 		if (Nyx::Reflection::IsStructProperty(property))
 		{
-			return DrawStructPropertyRow(object, property, drawContext, ownerType, depth);
+			return DrawStructPropertyRow(object, property, drawContext, ownerType);
 		}
 
-		return DrawSingleLeafPropertyRow(object, property, drawContext, ownerType, depth);
-	}
-
-	static bool DrawCategoryHeader(const std::string& category)
-	{
-		ImGui::TableNextRow();
-		ImGui::TableSetColumnIndex(0);
-
-		const ImGuiTreeNodeFlags flags =
-			ImGuiTreeNodeFlags_SpanFullWidth |
-			ImGuiTreeNodeFlags_DefaultOpen;
-
-		const bool bOpen = NYX_UI(ImGui::TreeNodeEx(category.c_str(), flags, "%s", category.c_str()));
-
-		ImGui::TableSetColumnIndex(1);
-		NYX_UI(ImGui::TextUnformatted(""));
-
-		return bOpen;
-	}
-
-	static bool DrawReflectedTypeRows(
-		void* object,
-		const Nyx::Reflection::TypeMetadata& typeMetadata,
-		Nyx::Editor::InspectorDrawContext& drawContext,
-		int depth)
-	{
-		bool bAnyChanged = false;
-
-		const PropertyBuckets buckets = BuildPropertyBuckets(typeMetadata);
-
-		// Uncategorized properties first
-		for (size_t propertyIndex : buckets.Uncategorized)
-		{
-			bAnyChanged |= DrawPropertyRow(
-				object,
-				typeMetadata.Properties[propertyIndex],
-				drawContext,
-				typeMetadata,
-				depth);
-		}
-
-		// Only top-level categories become collapsible blocks.
-		if (depth == 0)
-		{
-			for (const auto& [category, indices] : buckets.ByCategory)
-			{
-				if (DrawCategoryHeader(category))
-				{
-					for (size_t propertyIndex : indices)
-					{
-						bAnyChanged |= DrawPropertyRow(
-							object,
-							typeMetadata.Properties[propertyIndex],
-							drawContext,
-							typeMetadata,
-							depth + 1);
-					}
-
-					ImGui::TreePop();
-				}
-			}
-		}
-		else
-		{
-			// Nested structs' category grouping is kept flat
-			for (const auto& [category, indices] : buckets.ByCategory)
-			{
-				ImGui::TableNextRow();
-				ImGui::TableSetColumnIndex(0);
-
-				NYX_UI(ImGui::Dummy(ImVec2(PropertyIndentPerDepth * static_cast<float>(depth), 0.0f)));
-				ImGui::SameLine(0.0f, 0.0f);
-				NYX_UI(ImGui::TextDisabled("%s", category.c_str()));
-
-				ImGui::TableSetColumnIndex(1);
-				NYX_UI(ImGui::TextUnformatted(""));
-
-				for (size_t propertyIndex : indices)
-				{
-					bAnyChanged |= DrawPropertyRow(
-						object,
-						typeMetadata.Properties[propertyIndex],
-						drawContext,
-						typeMetadata,
-						depth + 1);
-				}
-			}
-		}
-
-		return bAnyChanged;
-	}
-
-	static bool DrawPropertyTableForIndices(
-		void* object,
-		const Nyx::Reflection::TypeMetadata& typeMetadata,
-		Nyx::Editor::InspectorDrawContext& drawContext,
-		const std::vector<size_t>& propertyIndices,
-		int depth)
-	{
-		bool bAnyChanged = false;
-
-		//ImGui::PushStyleColor(ImGuiCol_TableBorderStrong, IM_COL32(95, 95, 95, 255));
-		ImGui::PushStyleColor(ImGuiCol_TableBorderLight, IM_COL32(70, 70, 70, 70));
-
-		const ImGuiTableFlags tableFlags =
-			//ImGuiTableFlags_Borders |
-			ImGuiTableFlags_BordersInnerV |
-			ImGuiTableFlags_BordersInnerH |
-			ImGuiTableFlags_SizingStretchProp;
-
-		if (ImGui::BeginTable("##Properties", 2, tableFlags))
-		{
-			ImGui::TableSetupColumn("Property", ImGuiTableColumnFlags_WidthStretch, 0.45f);
-			ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch, 0.55f);
-
-			for (size_t propertyIndex : propertyIndices)
-			{
-				bAnyChanged |= DrawPropertyRow(
-					object,
-					typeMetadata.Properties[propertyIndex],
-					drawContext,
-					typeMetadata,
-					depth);
-			}
-
-			ImGui::EndTable();
-		}
-
-		ImGui::PopStyleColor(1); // 2
-
-		return bAnyChanged;
+		return DrawSingleLeafPropertyRow(object, property, drawContext, ownerType);
 	}
 
 	static bool DrawNestedStructRows(
 		void* object,
 		const Nyx::Reflection::TypeMetadata& typeMetadata,
-		Nyx::Editor::InspectorDrawContext& drawContext,
-		int depth)
+		Nyx::Editor::InspectorDrawContext& drawContext)
 	{
 		bool bAnyChanged = false;
 
@@ -403,22 +187,13 @@ namespace
 		//			object,
 		//			typeMetadata.Properties[propertyIndex],
 		//			drawContext,
-		//			typeMetadata,
-		//			depth);
+		//			typeMetadata);
 		//	}
 
 		//	for (const auto& [category, indices] : buckets.ByCategory)
 		//	{
 		//		// Nested categories stay lightweight for now.
-		//		ImGui::TableNextRow();
-		//		ImGui::TableSetColumnIndex(0);
-
-		//		ImGui::Dummy(ImVec2(PropertyIndentPerDepth * static_cast<float>(depth), 0.0f));
-		//		ImGui::SameLine(0.0f, 0.0f);
 		//		ImGui::TextDisabled("%s", category.c_str());
-
-		//		ImGui::TableSetColumnIndex(1);
-		//		ImGui::TextUnformatted("");
 
 		//		for (size_t propertyIndex : indices)
 		//		{
@@ -426,8 +201,7 @@ namespace
 		//				object,
 		//				typeMetadata.Properties[propertyIndex],
 		//				drawContext,
-		//				typeMetadata,
-		//				depth + 1);
+		//				typeMetadata);
 		//		}
 		//	}
 		//}
@@ -444,8 +218,7 @@ namespace
 				object,
 				property,
 				drawContext,
-				typeMetadata,
-				depth);
+				typeMetadata);
 		}
 
 		return bAnyChanged;
@@ -455,8 +228,7 @@ namespace
 		void* object,
 		const Nyx::Reflection::PropertyMetadata& property,
 		Nyx::Editor::InspectorDrawContext& drawContext,
-		const Nyx::Reflection::TypeMetadata& ownerType,
-		int depth)
+		const Nyx::Reflection::TypeMetadata& ownerType)
 	{
 		bool bAnyChanged = false;
 
@@ -470,41 +242,9 @@ namespace
 
 		ImGui::PushID(property.Name);
 
-		ImGui::TableNextRow(0, DetailsRowHeight);
-		const float rowTopY = ImGui::GetCursorScreenPos().y;
-		float rowBottomY = rowTopY + DetailsRowHeight;
-
-		ImGui::TableSetColumnIndex(0);
-
-		const char* displayName =
-			(property.DisplayName && property.DisplayName[0]) ? property.DisplayName : property.Name;
-
-		const float offset = PropertyLabelPaddingX + PropertyIndentPerDepth * static_cast<float>(depth);
-		NYX_UI(ImGui::Dummy(ImVec2(offset, 0.0f)));
-		ImGui::SameLine(0.0f, 0.0f);
-
-		ScopedDetailsFramePadding rowPadding;
-
-		ImGui::PushStyleColor(ImGuiCol_Header, IM_COL32(0, 0, 0, 0));
-		ImGui::PushStyleColor(ImGuiCol_HeaderHovered, IM_COL32(0, 0, 0, 0));
-		ImGui::PushStyleColor(ImGuiCol_HeaderActive, IM_COL32(0, 0, 0, 0));
-
-		const ImGuiTreeNodeFlags flags =
-			ImGuiTreeNodeFlags_SpanAvailWidth |
-			ImGuiTreeNodeFlags_DefaultOpen;
-
-		const bool bOpen = NYX_UI(ImGui::TreeNodeEx("##StructNode", flags, "%s", displayName));
-
-		ImGui::PopStyleColor(3);
-
-		rowBottomY = (std::max)(rowBottomY, ImGui::GetItemRectMax().y);
-
-		ImGui::TableSetColumnIndex(1);
-		NYX_UI(ImGui::TextUnformatted(""));
-		rowBottomY = (std::max)(rowBottomY, ImGui::GetItemRectMax().y);
-
+		const std::string rowLabel = std::string(GetPropertyDisplayName(property)) + "##StructNode";
+		const bool bOpen = BeginPropertyGroupRow(rowLabel.c_str());
 		DrawPropertyTooltipIfHovered(property);
-		ApplyHoveredRowHighlight(rowTopY, rowBottomY);
 
 		if (bOpen)
 		{
@@ -518,69 +258,14 @@ namespace
 			drawContext.CurrentLocation.PropertyIndices.push_back(static_cast<size_t>(&property - ownerType.Properties));
 
 			void* nestedObject = Nyx::Reflection::GetPropertyAddress(object, property);
-			bAnyChanged |= DrawNestedStructRows(nestedObject, *nestedType, drawContext, depth + 1);
+			bAnyChanged |= DrawNestedStructRows(nestedObject, *nestedType, drawContext);
 
 			drawContext.CurrentLocation = outerLocation;
-			ImGui::TreePop();
+			Nyx::UI::TreeRowEnd();
 		}
 
 		ImGui::PopID();
 		return bAnyChanged;
-	}
-
-	static bool DrawCategorySectionHeader(const std::string& category)
-	{
-		ImGui::PushID(category.c_str());
-
-		ImGuiStorage* storage = ImGui::GetStateStorage();
-		const ImGuiID openId = ImGui::GetID("##Open");
-		bool bOpen = storage->GetBool(openId, true);
-
-		const float fullWidth = ImGui::GetContentRegionAvail().x;
-		const ImVec2 rowSize(fullWidth, DetailsRowHeight);
-
-		NYX_UI(ImGui::InvisibleButton("##CategoryRow", rowSize));
-
-		const ImVec2 rowMin = ImGui::GetItemRectMin();
-		const ImVec2 rowMax = ImGui::GetItemRectMax();
-		const bool bHovered = ImGui::IsItemHovered();
-		const bool bClicked = ImGui::IsItemClicked();
-
-		if (bClicked)
-		{
-			bOpen = !bOpen;
-			storage->SetBool(openId, bOpen);
-		}
-
-		ImDrawList* drawList = ImGui::GetWindowDrawList();
-
-		if (bHovered)
-		{
-			drawList->AddRectFilled(rowMin, rowMax, IM_COL32(255, 255, 255, 10));
-		}
-
-		const float arrowX = rowMin.x + 8.0f;
-		const float arrowCenterY = rowMin.y + DetailsRowHeight * 0.5f;
-		const ImGuiDir arrowDir = bOpen ? ImGuiDir_Down : ImGuiDir_Right;
-
-		ImGui::RenderArrow(
-			drawList,
-			ImVec2(arrowX, arrowCenterY - 4.0f),
-			IM_COL32(220, 220, 220, 255),
-			arrowDir,
-			0.80f);
-
-		const ImVec2 textSize = ImGui::CalcTextSize(category.c_str());
-		const float textX = rowMin.x + 22.0f;
-		const float textY = rowMin.y + floorf((DetailsRowHeight - textSize.y) * 0.5f);
-
-		drawList->AddText(
-			ImVec2(textX, textY),
-			IM_COL32(220, 220, 220, 255),
-			category.c_str());
-
-		ImGui::PopID();
-		return bOpen;
 	}
 }
 
@@ -593,31 +278,22 @@ bool Nyx::Editor::DrawReflectedTypeTable(
 
 	const PropertyBuckets buckets = BuildPropertyBuckets(typeMetadata);
 
-	if (!buckets.Uncategorized.empty())
+	for (size_t propertyIndex : buckets.Uncategorized)
 	{
-		bAnyChanged |= DrawPropertyTableForIndices(
-			object,
-			typeMetadata,
-			drawContext,
-			buckets.Uncategorized,
-			0);
+		bAnyChanged |= DrawPropertyRow(object, typeMetadata.Properties[propertyIndex], drawContext, typeMetadata);
 	}
 
+	// A category is a tree row, with its properties inside it
 	for (const auto& [category, indices] : buckets.ByCategory)
 	{
-		if (DrawCategorySectionHeader(category))
+		if (BeginPropertyGroupRow(category.c_str()))
 		{
-			const ImVec2 oldItemSpacing = ImGui::GetStyle().ItemSpacing;
-			ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(oldItemSpacing.x, 0.0f));
+			for (size_t propertyIndex : indices)
+			{
+				bAnyChanged |= DrawPropertyRow(object, typeMetadata.Properties[propertyIndex], drawContext, typeMetadata);
+			}
 
-			bAnyChanged |= DrawPropertyTableForIndices(
-				object,
-				typeMetadata,
-				drawContext,
-				indices,
-				0);
-
-			ImGui::PopStyleVar();
+			Nyx::UI::TreeRowEnd();
 		}
 	}
 

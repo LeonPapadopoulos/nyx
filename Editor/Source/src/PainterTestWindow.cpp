@@ -5,8 +5,11 @@
 #include "PainterTestSheet.h"
 #include "Paths.h"
 #include "Renderer.h"
+#include "UITheme.h"
 #include "UIWidgets.h"
 #include "WindowPainter.h"
+
+#include <misc/cpp/imgui_stdlib.h>
 
 #include <algorithm>
 #include <cmath>
@@ -531,6 +534,151 @@ namespace Nyx::Editor
 			[&](const WidgetLook& look) { paintTreeRow(look, true); },
 			[&]() {},
 			[&]() {});
+
+		// Fields: ImGui draws their text, so the forced states paint a sample text over the frame.
+		// Their Pressed column shows them edited.
+		const Nyx::UI::Theme& theme = Nyx::UI::GetTheme();
+		const float fieldWidth = ImGui::GetFontSize() * 8.0f;
+		const glm::vec2 fieldSize(fieldWidth, ImGui::GetFrameHeight());
+		const float textY = ImGui::GetStyle().FramePadding.y;
+		const auto sampleText = [&](const WidgetLook& look, glm::vec2 position, std::string_view text, const glm::vec4& color)
+		{
+			painter.AddText(ImGui::GetFont(), ImGui::GetFontSize(), position, look.bDisabled ? glm::vec4(color.r, color.g, color.b, color.a * theme.DisabledAlpha) : color, text);
+		};
+
+		row("Text field",
+			[&](const WidgetLook& look)
+			{
+				const PainterRect frame = ReserveCell(fieldSize);
+				Nyx::UI::PaintField(painter, frame, look.Pressed, look);
+				sampleText(look, frame.Min + glm::vec2(ImGui::GetStyle().FramePadding.x, textY), "Cube", theme.Text);
+			},
+			[&]()
+			{
+				ImGui::SetNextItemWidth(fieldWidth);
+				NYX_UI(Nyx::UI::InputText("##LiveText", &GalleryText));
+			},
+			[&]()
+			{
+				ImGui::SetNextItemWidth(fieldWidth);
+				NYX_UI(ImGui::InputText("##ImGuiText", &GalleryText));
+			});
+
+		row("Search field",
+			[&](const WidgetLook& look)
+			{
+				const PainterRect frame = ReserveCell(fieldSize);
+				Nyx::UI::PaintSearchField(painter, frame, look.Pressed, look);
+				sampleText(look, frame.Min + glm::vec2(Nyx::UI::CalcSearchTextOffset(), textY), "Search", theme.TextMuted);
+			},
+			[&]()
+			{
+				ImGui::SetNextItemWidth(fieldWidth);
+				NYX_UI(Nyx::UI::SearchField("##LiveSearch", &GallerySearch));
+			},
+			[&]()
+			{
+				ImGui::SetNextItemWidth(fieldWidth);
+				NYX_UI(ImGui::InputTextWithHint("##ImGuiSearch", "Search", &GallerySearch));
+			});
+
+		row("Number field",
+			[&](const WidgetLook& look)
+			{
+				const PainterRect frame = ReserveCell(fieldSize);
+				Nyx::UI::PaintField(painter, frame, look.Pressed, look);
+				const float textWidth = ImGui::CalcTextSize("1.250").x;
+				sampleText(look, glm::vec2(std::floor((frame.Min.x + frame.Max.x - textWidth) * 0.5f), frame.Min.y + textY), "1.250", theme.Text);
+			},
+			[&]()
+			{
+				ImGui::SetNextItemWidth(fieldWidth);
+				NYX_UI(Nyx::UI::DragFloat("##LiveNumber", &GalleryNumber, 0.01f));
+			},
+			[&]()
+			{
+				ImGui::SetNextItemWidth(fieldWidth);
+				NYX_UI(ImGui::DragFloat("##ImGuiNumber", &GalleryNumber, 0.01f));
+			});
+
+		// A vector field as wide as two fields, its components spaced as DragVector() spaces them
+		const float vectorWidth = fieldWidth * 1.5f;
+		row("Vector field",
+			[&](const WidgetLook& look)
+			{
+				const PainterRect cell = ReserveCell(glm::vec2(vectorWidth, ImGui::GetFrameHeight()));
+				const float spacing = ImGui::GetStyle().ItemInnerSpacing.x;
+				const float componentWidth = std::floor((vectorWidth - spacing * 2.0f) / 3.0f);
+				const float tagWidth = Nyx::UI::CalcAxisTagWidth();
+				const char* const values[] = { "1.0", "2.0", "3.0" };
+				for (int axis = 0; axis < 3; ++axis)
+				{
+					const float left = cell.Min.x + (componentWidth + spacing) * static_cast<float>(axis);
+					const PainterRect frame{ { left, cell.Min.y }, { left + componentWidth, cell.Max.y } };
+					// Only the first component shows the state, as only one is hovered or edited at a time
+					const WidgetLook componentLook = axis == 0 ? look : WidgetLook{ 0.0f, 0.0f, 0.0f, look.bDisabled };
+					Nyx::UI::PaintVectorComponent(painter, frame, axis, componentLook.Pressed, componentLook);
+					const float textWidth = ImGui::CalcTextSize(values[axis]).x;
+					sampleText(look, glm::vec2(std::floor(left + tagWidth + (componentWidth - tagWidth - textWidth) * 0.5f), cell.Min.y + textY), values[axis], theme.Text);
+				}
+			},
+			[&]()
+			{
+				ImGui::SetNextItemWidth(vectorWidth);
+				NYX_UI(Nyx::UI::DragVector("##LiveVector", &GalleryVector.x, 3, 0.1f, "%.1f"));
+			},
+			[&]()
+			{
+				ImGui::SetNextItemWidth(vectorWidth);
+				NYX_UI(ImGui::DragFloat3("##ImGuiVector", &GalleryVector.x, 0.1f, 0.0f, 0.0f, "%.1f"));
+			});
+
+		// A property row: the label column, and a number field in the value column. Hover is the
+		// only state it has; the field shows its own.
+		const float propertyRowWidth = fieldWidth * 2.0f;
+		row("Property row",
+			[&](const WidgetLook& look)
+			{
+				const PainterRect rect = ReserveCell(glm::vec2(propertyRowWidth, Nyx::UI::CalcTreeRowHeight()));
+				Nyx::UI::PropertyRowLook property;
+				property.ContentX = rect.Min.x;
+				Nyx::UI::PaintPropertyRow(painter, rect, "Intensity", property, look);
+				const float valueX = Nyx::UI::CalcPropertyValueX(rect.Min.x, rect.Max.x);
+				const PainterRect frame{ { valueX, rect.Min.y }, { rect.Max.x - theme.RowPillMargin * 2.0f, rect.Max.y } };
+				Nyx::UI::PaintField(painter, frame, 0.0f, WidgetLook{ 0.0f, 0.0f, 0.0f, look.bDisabled });
+				const float textWidth = ImGui::CalcTextSize("1.250").x;
+				sampleText(look, glm::vec2(std::floor((frame.Min.x + frame.Max.x - textWidth) * 0.5f), frame.Min.y + textY), "1.250", theme.Text);
+			},
+			[&]()
+			{
+				// A property row spans its window, so it gets a window of its own: in the table's
+				// column, which fits its contents, it would take the column's width and the column
+				// its own.
+				ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+				if (ImGui::BeginChild("##LivePropertyRow", ImVec2(propertyRowWidth, Nyx::UI::CalcTreeRowHeight()), ImGuiChildFlags_None,
+						ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
+				{
+					Nyx::UI::BeginPropertyRow("Intensity##Live");
+					NYX_UI(Nyx::UI::DragFloat("##LiveValue", &GalleryNumber, 0.01f));
+					Nyx::UI::EndPropertyRow();
+				}
+				ImGui::EndChild();
+				ImGui::PopStyleVar();
+			},
+			[&]()
+			{
+				ImGui::SetNextItemWidth(fieldWidth);
+				NYX_UI(ImGui::DragFloat("Intensity##ImGui", &GalleryNumber, 0.01f));
+			});
+
+		row("Collapsing header",
+			[&](const WidgetLook& look)
+			{
+				const PainterRect rect = ReserveCell(glm::vec2(propertyRowWidth, ImGui::GetFrameHeight()));
+				Nyx::UI::PaintCollapsingHeader(painter, rect, "Transform", 1.0f, look);
+			},
+			[&]() { NYX_UI(Nyx::UI::CollapsingHeader("Transform##Live")); },
+			[&]() { NYX_UI(ImGui::CollapsingHeader("Transform##ImGui", ImGuiTreeNodeFlags_DefaultOpen)); });
 
 		// A section header has no states; it shows once, in the Normal column.
 		ImGui::TableNextRow();

@@ -2,6 +2,7 @@
 
 #include "ImGuiSource.h"
 #include "Paths.h"
+#include "UIWidgets.h"
 
 #include <imgui.h>
 
@@ -264,7 +265,7 @@ namespace Nyx::Editor
 
 		ImGui::SameLine();
 		ImGui::SetNextItemWidth(220.0f);
-		NYX_UI(ImGui::InputTextWithHint("##GameLogFilter", "Filter", GameLogFilter.data(), GameLogFilter.size()));
+		NYX_UI(Nyx::UI::SearchField("##GameLogFilter", &GameLogFilter, "Filter"));
 
 		const ImGuiTableFlags flags = ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV |
 			ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingFixedFit;

@@ -16,7 +16,9 @@
 #include "SceneOutlinerPanel.h"
 #include "TransformComponent.h"
 #include "UIAnimation.h"
+#include "UITheme.h"
 #include "UIWidgets.h"
+#include "WindowPainter.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -504,6 +506,186 @@ namespace
 		Require(bOpen, "Right should open a closed row with keyboard focus");
 	}
 
+	// Fields are ImGui's own over a painted frame: ImGui keeps dragging and typing, and the frame
+	// is painted exactly where ImGui's goes. Property rows lay out a label column and a value
+	// column, which starts at the same place at any indentation. Collapsing headers keep their
+	// open state where ImGui's do.
+	void TestFieldsAndPropertyRows()
+	{
+		HeadlessUI ui;
+		ImGuiIO& io = ImGui::GetIO();
+		ImGuiContext& g = *GImGui;
+
+		float number = 1.0f;
+		float vector[3] = { 0.0f, 0.0f, 0.0f };
+		std::string text = "Cube";
+		bool bNumberActivated = false;
+		bool bNumberCommitted = false;
+		bool bVectorCommitted = false;
+		bool bLabelHovered = false;
+		bool bFramePainted = false;
+		bool bStyleRestored = false;
+		bool bImGuiHeader = false;
+		bool bHeaderOpen = false;
+		ImRect header;
+		ImRect label;
+		ImRect numberField;
+		ImRect vectorField;
+		ImRect textField;
+		float workMinX = 0.0f;
+		float workMaxX = 0.0f;
+		float firstRowTop = 0.0f;
+		float secondRowTop = 0.0f;
+		float nestedValueX = 0.0f;
+		const auto draw = [&]()
+			{
+				ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+				ImGui::SetNextWindowSize(ImVec2(400.0f, 300.0f));
+				ImGui::Begin("Fields");
+				workMinX = ImGui::GetCurrentWindow()->WorkRect.Min.x;
+				workMaxX = ImGui::GetCurrentWindow()->WorkRect.Max.x;
+
+				bHeaderOpen = bImGuiHeader ? ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen) : Nyx::UI::CollapsingHeader("Transform");
+				header = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+
+				firstRowTop = ImGui::GetCursorScreenPos().y;
+				Nyx::UI::BeginPropertyRow("Intensity");
+				bLabelHovered = ImGui::IsItemHovered();
+				label = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+				const int colors = g.ColorStack.Size;
+				const int styleVars = g.StyleVarStack.Size;
+				Nyx::UI::DragFloat("##Number", &number, 0.5f);
+				bNumberActivated |= ImGui::IsItemActivated();
+				bNumberCommitted |= ImGui::IsItemDeactivatedAfterEdit();
+				numberField = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+				bStyleRestored = g.ColorStack.Size == colors && g.StyleVarStack.Size == styleVars;
+				Nyx::UI::EndPropertyRow();
+
+				secondRowTop = ImGui::GetCursorScreenPos().y;
+				Nyx::UI::BeginPropertyRow("Position");
+				Nyx::UI::DragVector("##Vector", vector, 3, 1.0f);
+				bVectorCommitted |= ImGui::IsItemDeactivatedAfterEdit();
+				vectorField = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+				Nyx::UI::EndPropertyRow();
+
+				Nyx::UI::BeginPropertyRow("Name");
+				Nyx::UI::InputText("##Text", &text);
+				textField = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+				Nyx::UI::EndPropertyRow();
+
+				Nyx::UI::TreeRowOptions group;
+				group.bDefaultOpen = true;
+				group.bToggleOnClick = true;
+				if (Nyx::UI::TreeRow("Lighting", group).bOpen)
+				{
+					Nyx::UI::BeginPropertyRow("Shadows");
+					nestedValueX = ImGui::GetCursorScreenPos().x;
+					ImGui::TextUnformatted("On");
+					Nyx::UI::EndPropertyRow();
+					Nyx::UI::TreeRowEnd();
+				}
+
+				// The number field's painted frame: a filled rect where ImGui's frame is
+				bFramePainted = false;
+				for (const PainterCommand& command : Nyx::UI::GetWindowPainter().GetPainter().GetCommands())
+				{
+					const PainterRect rect = GetPayload<PainterRectPayload>(command).Rect;
+					bFramePainted |= command.Type == static_cast<uint32_t>(EPainterCommandType::Rect) && command.OutlineWidth == 0.0f &&
+						rect.Min == glm::vec2(numberField.Min.x, numberField.Min.y) && rect.Max == glm::vec2(numberField.Max.x, numberField.Max.y);
+				}
+				ImGui::End();
+			};
+		const auto moveTo = [&](ImVec2 at)
+			{
+				io.AddMousePosEvent(at.x, at.y);
+				ui.Frame(draw);
+			};
+		const auto press = [&](ImVec2 at)
+			{
+				moveTo(at);
+				io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+				ui.Frame(draw);
+				io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+				ui.Frame(draw);
+			};
+		const auto pressKey = [&](ImGuiKey key)
+			{
+				io.AddKeyEvent(key, true);
+				ui.Frame(draw);
+				io.AddKeyEvent(key, false);
+				ui.Frame(draw);
+			};
+
+		ui.Frame(draw);
+		ui.Frame(draw);
+		const float valueX = Nyx::UI::CalcPropertyValueX(workMinX, workMaxX);
+		const float valueRight = workMaxX - Nyx::UI::GetTheme().RowPillMargin * 2.0f;
+		Require(numberField.Min.x == valueX && numberField.Max.x == valueRight && numberField.Min.y == firstRowTop,
+			"A property row's value should fill its value column, from the row's top");
+		Require(secondRowTop == firstRowTop + ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y, "Property rows should be a frame high");
+		Require(vectorField.Min.x == valueX && vectorField.Max.x == valueRight, "A vector field's components should share the value column");
+		Require(nestedValueX == valueX, "A property row inside a tree row should keep the value column where it is");
+		Require(bFramePainted, "A number field's frame should be painted exactly where ImGui's frame goes");
+		Require(bStyleRestored, "A field should give ImGui's style back as it found it");
+
+		moveTo(label.GetCenter());
+		Require(bLabelHovered, "IsItemHovered() after BeginPropertyRow() should be true over the label");
+
+		// Dragging the number to the right raises it, and records one edit when let go.
+		moveTo(numberField.GetCenter());
+		io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+		ui.Frame(draw);
+		Require(bNumberActivated, "Pressing a number field should activate it");
+		for (int step = 1; step <= 4; ++step)
+		{
+			moveTo(ImVec2(numberField.GetCenter().x + 5.0f * static_cast<float>(step), numberField.GetCenter().y));
+		}
+		io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+		ui.Frame(draw);
+		Require(number > 1.0f && bNumberCommitted, "Dragging a number field should raise it and commit the edit, got " + std::to_string(number));
+
+		// A double click types into it instead.
+		press(numberField.GetCenter());
+		press(numberField.GetCenter());
+		io.AddKeyEvent(ImGuiMod_Ctrl, true);
+		pressKey(ImGuiKey_A);
+		io.AddKeyEvent(ImGuiMod_Ctrl, false);
+		io.AddInputCharactersUTF8("42");
+		ui.Frame(draw);
+		pressKey(ImGuiKey_Enter);
+		Require(number == 42.0f, "Typing into a number field after a double click should set it, got " + std::to_string(number));
+
+		// Dragging the vector's middle component changes only Y.
+		const ImVec2 y = vectorField.GetCenter();
+		moveTo(y);
+		io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+		ui.Frame(draw);
+		for (int step = 1; step <= 4; ++step)
+		{
+			moveTo(ImVec2(y.x + 5.0f * static_cast<float>(step), y.y));
+		}
+		io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+		ui.Frame(draw);
+		Require(vector[0] == 0.0f && vector[1] > 0.0f && vector[2] == 0.0f, "Dragging a vector's Y should change only Y");
+		Require(bVectorCommitted, "IsItemDeactivatedAfterEdit() after a vector field should cover its components");
+
+		// Typing at the end of the text field
+		press(ImVec2(textField.Max.x - 4.0f, textField.GetCenter().y));
+		io.AddInputCharactersUTF8("s");
+		ui.Frame(draw);
+		pressKey(ImGuiKey_Enter);
+		Require(text == "Cubes", "Typing into a text field should change its text, got " + text);
+
+		// The header: open at first, closed by a click, and ImGui's own header under the same
+		// label finds it closed.
+		Require(bHeaderOpen, "A collapsing header should be open at first");
+		press(header.GetCenter());
+		Require(!bHeaderOpen, "Clicking a collapsing header should close it");
+		bImGuiHeader = true;
+		ui.Frame(draw);
+		Require(!bHeaderOpen, "ImGui's collapsing header under the same label should find it closed");
+	}
+
 	void TestAnimationsEaseAndAreForgotten()
 	{
 		HeadlessUI ui;
@@ -611,6 +793,7 @@ int main()
 		TestPainterComparisonSurvivesAtlasGrowth();
 		TestPaintedWidgetsBehaveLikeImGuis();
 		TestTreeRowsBehaveLikeTreeNodes();
+		TestFieldsAndPropertyRows();
 		TestAnimationsEaseAndAreForgotten();
 	}
 	catch (const std::exception& error)

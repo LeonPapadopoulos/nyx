@@ -80,6 +80,10 @@ namespace Nyx::Editor
 		bool bGalleryToggle = true;
 		float GallerySlider = 0.6f;
 		bool bGalleryRowSelected = false;
+		std::string GalleryText = "Cube";
+		std::string GallerySearch;
+		float GalleryNumber = 1.25f;
+		glm::vec3 GalleryVector{ 1.0f, 2.0f, 3.0f };
 
 		// Where the gallery showed last frame, for Save PNG, and why it couldn't be saved
 		ImVec2 GalleryMin;

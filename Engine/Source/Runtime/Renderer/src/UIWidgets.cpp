@@ -7,6 +7,7 @@
 // ImGui's behaviour functions and item state: only the widget files use imgui_internal.h, whose
 // API changes between ImGui versions more than the public one.
 #include <imgui_internal.h>
+#include <misc/cpp/imgui_stdlib.h>
 
 #include <algorithm>
 #include <cmath>
@@ -142,6 +143,176 @@ namespace Nyx::UI
 				break;
 			case ETreeRowIcon::None:
 				break;
+			}
+		}
+
+		// A small triangle pointing right, turned down as `open` goes from 0 to 1, in a column
+		// `width` wide centred on `centre`
+		void PaintArrow(WindowPainter& painter, glm::vec2 centre, float width, float open, const glm::vec4& color)
+		{
+			const float size = width * 0.22f;
+			const float angle = open * 1.5707963f;
+			const auto turned = [&](glm::vec2 point)
+			{
+				return centre + glm::vec2(point.x * std::cos(angle) - point.y * std::sin(angle), point.x * std::sin(angle) + point.y * std::cos(angle));
+			};
+			painter.AddTriangle(turned({ size, 0.0f }), turned({ -size * 0.6f, -size }), turned({ -size * 0.6f, size }), PainterStyle::Filled(color));
+		}
+
+		// A guide down each of the `depth` tree levels a row is inside, under the arrows of the
+		// rows above it. Each row's piece reaches half the item spacing past its top and bottom,
+		// so the pieces of rows one under the other meet.
+		void PaintIndentGuides(WindowPainter& painter, const PainterRect& rect, float contentX, int depth, const Theme& theme)
+		{
+			const ImGuiStyle& style = ImGui::GetStyle();
+			const float arrowWidth = TreeRowArrowWidth();
+			const float halfSpacing = style.ItemSpacing.y * 0.5f;
+			for (int level = 0; level < depth; ++level)
+			{
+				const float x = std::floor(contentX - static_cast<float>(depth - level) * style.IndentSpacing + arrowWidth * 0.5f) + 0.5f;
+				painter.AddLine({ x, rect.Min.y - halfSpacing }, { x, rect.Max.y + halfSpacing }, 1.0f, EPainterLineCap::Flat, PainterStyle::Filled(theme.IndentGuide));
+			}
+		}
+
+		// The pill behind a row: RowPillMargin in from its ends, RowPillInset from its top and bottom
+		PainterRect RowPill(const PainterRect& rect, const Theme& theme)
+		{
+			return PainterRect{ { rect.Min.x + theme.RowPillMargin, rect.Min.y + theme.RowPillInset }, { rect.Max.x - theme.RowPillMargin, rect.Max.y - theme.RowPillInset } };
+		}
+
+		// `text` cut to fit `width`, ending in "..." where it was cut. `storage` holds a cut text.
+		std::string_view FitText(std::string_view text, float width, std::string& storage)
+		{
+			if (CalcTextSize(text).x <= width)
+			{
+				return text;
+			}
+
+			constexpr std::string_view Ellipsis = "...";
+			const float room = width - CalcTextSize(Ellipsis).x;
+			if (room <= 0.0f)
+			{
+				return {};
+			}
+			// Where the text passes `room`, at a whole character
+			const char* end = text.data();
+			ImGui::GetFont()->CalcTextSizeA(ImGui::GetFontSize(), room, 0.0f, text.data(), text.data() + text.size(), &end);
+			storage.assign(text.data(), end);
+			storage += Ellipsis;
+			return storage;
+		}
+
+		ImVec4 ToImVec4(const glm::vec4& color)
+		{
+			return ImVec4(color.r, color.g, color.b, color.a);
+		}
+
+		// A field's look before ImGui's widget for it runs: hovered as ImGui knew it the frame
+		// before, and edited (typed in or dragged) as it is now
+		struct FieldState
+		{
+			WidgetLook Look;
+			float Editing = 0.0f;
+		};
+
+		FieldState AnimateFieldState(ImGuiID id, const Theme& theme)
+		{
+			const ImGuiContext& g = *GImGui;
+			const bool bEditing = g.ActiveId == id;
+			const bool bFocused = g.NavId == id && g.NavCursorVisible && !bEditing;
+
+			FieldState state;
+			state.Look.bDisabled = (g.CurrentItemFlags & ImGuiItemFlags_Disabled) != 0;
+			state.Look.Hovered = Animate(ImHashStr("Hovered", 0, id), g.HoveredIdPreviousFrame == id ? 1.0f : 0.0f, theme.AnimationSpeed);
+			state.Look.Focused = Animate(ImHashStr("Focused", 0, id), bFocused ? 1.0f : 0.0f, theme.AnimationSpeed);
+			state.Editing = Animate(ImHashStr("Editing", 0, id), bEditing ? 1.0f : 0.0f, theme.AnimationSpeed);
+			return state;
+		}
+
+		// While ImGui draws a field over its painted frame: no frame, border or keyboard cursor
+		// of its own, and the theme's colours for the text selection and the text cursor
+		class ScopedFieldStyle
+		{
+		public:
+			explicit ScopedFieldStyle(const Theme& theme)
+			{
+				const ImVec4 clear(0.0f, 0.0f, 0.0f, 0.0f);
+				ImGui::PushStyleColor(ImGuiCol_FrameBg, clear);
+				ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, clear);
+				ImGui::PushStyleColor(ImGuiCol_FrameBgActive, clear);
+				ImGui::PushStyleColor(ImGuiCol_NavCursor, clear);
+				ImGui::PushStyleColor(ImGuiCol_TextSelectedBg, ToImVec4(theme.TextSelection));
+				ImGui::PushStyleColor(ImGuiCol_InputTextCursor, ToImVec4(theme.TextCursor));
+				ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+			}
+
+			~ScopedFieldStyle()
+			{
+				ImGui::PopStyleVar();
+				ImGui::PopStyleColor(6);
+			}
+
+			ScopedFieldStyle(const ScopedFieldStyle&) = delete;
+			ScopedFieldStyle& operator=(const ScopedFieldStyle&) = delete;
+		};
+
+		// A field's frame: darker than the card, lighter when hovered; while edited, an accent
+		// border and a faint glow, and the focus glow while it has keyboard focus
+		void PaintFieldFrame(WindowPainter& painter, const PainterRect& frame, float radius, float editing, const WidgetLook& look, const Theme& theme)
+		{
+			PainterEffects effects;
+			if (editing >= look.Focused)
+			{
+				effects.Glow = theme.FieldEditGlow;
+				effects.Glow.Strength *= editing;
+			}
+			else
+			{
+				effects.Glow = theme.FocusGlow;
+				effects.Glow.Strength *= look.Focused;
+			}
+			const glm::vec4 fill = glm::mix(theme.Field, theme.FieldHovered, std::max(look.Hovered, editing));
+			painter.AddRoundedRect(frame, radius, Filled(Shade(fill, look, theme), effects));
+			const glm::vec4 border = glm::mix(theme.FieldBorder, theme.Accent, editing);
+			painter.AddRoundedRect(frame, radius, PainterStyle::Outlined(Shade(border, look, theme), theme.FrameBorderWidth));
+		}
+
+		// A search field's magnifier: SearchIconLeft() in from the frame's left, as big as the
+		// theme says
+		float SearchIconLeft(float frameHeight)
+		{
+			return std::floor(frameHeight * 0.4f);
+		}
+
+		float SearchIconSize(float frameHeight, const Theme& theme)
+		{
+			return std::floor(frameHeight * theme.SearchIconSize);
+		}
+
+		enum class EFieldFrame
+		{
+			Plain,
+			Search,
+		};
+
+		// Paints the frame of ImGui's field `label` where it goes next, before ImGui's widget
+		// runs: at the cursor, the item width wide and a frame high, as ImGui's fields lay
+		// themselves out
+		void PaintNextFieldFrame(ImGuiWindow& window, const char* label, EFieldFrame kind, const Theme& theme)
+		{
+			const ImRect frame = RectAtCursor(window, glm::vec2(ImGui::CalcItemWidth(), ImGui::GetFrameHeight()));
+			if (!ImGui::IsRectVisible(frame.Min, frame.Max))
+			{
+				return;
+			}
+			const FieldState state = AnimateFieldState(window.GetID(label), theme);
+			if (kind == EFieldFrame::Search)
+			{
+				PaintSearchField(GetWindowPainter(), ToPainterRect(frame), state.Editing, state.Look);
+			}
+			else
+			{
+				PaintField(GetWindowPainter(), ToPainterRect(frame), state.Editing, state.Look);
 			}
 		}
 
@@ -337,7 +508,7 @@ namespace Nyx::UI
 		bool bToggle = false;
 		if (bPressed)
 		{
-			if (!options.bLeaf && !bByKeyboard && bOnArrow)
+			if (!options.bLeaf && (options.bToggleOnClick || (!bByKeyboard && bOnArrow)))
 			{
 				bToggle = true;
 			}
@@ -346,8 +517,8 @@ namespace Nyx::UI
 				result.bClicked = true;
 			}
 		}
-		// A double click on the label; on the arrow, each click already toggles.
-		if (!options.bLeaf && bHovered && !bOnArrow && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+		// A double click on the label; on the arrow, or with bToggleOnClick, each click already toggles.
+		if (!options.bLeaf && !options.bToggleOnClick && bHovered && !bOnArrow && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
 		{
 			bToggle = true;
 		}
@@ -384,6 +555,232 @@ namespace Nyx::UI
 	void TreeRowEnd()
 	{
 		ImGui::TreePop();
+	}
+
+	bool CollapsingHeader(const char* label, bool bDefaultOpen)
+	{
+		ImGuiWindow* window = ImGui::GetCurrentWindow();
+		if (window->SkipItems)
+		{
+			return false;
+		}
+		ImGuiContext& g = *GImGui;
+		const Theme& theme = GetTheme();
+
+		// As ImGui::CollapsingHeader(): the open state in the window's storage, under the label's ID
+		const ImGuiID id = window->GetID(label);
+		ImGuiStorage& storage = *window->DC.StateStorage;
+		bool bOpen = storage.GetBool(id, bDefaultOpen);
+
+		// Across the window, as wide as what it shows for the layout, as tree rows are
+		const float top = window->DC.CursorPos.y;
+		const ImRect rect(ImVec2(window->WorkRect.Min.x, top), ImVec2(window->WorkRect.Max.x, top + ImGui::GetFrameHeight()));
+		const float shownWidth = theme.RowPillMargin + g.Style.FramePadding.x + TreeRowArrowWidth() + CalcTextSize(VisibleLabel(label)).x;
+		ImGui::ItemSize(ImVec2(shownWidth, rect.GetHeight()), g.Style.FramePadding.y);
+		if (!ImGui::ItemAdd(rect, id))
+		{
+			return bOpen;
+		}
+
+		bool bHovered = false;
+		bool bHeld = false;
+		bool bToggle = ImGui::ButtonBehavior(rect, id, &bHovered, &bHeld);
+		// As ImGui's tree nodes: Left closes it, Right opens it, instead of moving.
+		if (g.NavId == id && ((g.NavMoveDir == ImGuiDir_Left && bOpen) || (g.NavMoveDir == ImGuiDir_Right && !bOpen)))
+		{
+			bToggle = true;
+			ImGui::NavMoveRequestCancel();
+		}
+		if (bToggle)
+		{
+			bOpen = !bOpen;
+			storage.SetBool(id, bOpen);
+		}
+
+		const float open = Animate(ImHashStr("Open", 0, id), bOpen ? 1.0f : 0.0f, theme.AnimationSpeed);
+		const WidgetLook look = AnimateLook(id, bHovered, bHeld && bHovered, theme);
+		PaintCollapsingHeader(GetWindowPainter(), ToPainterRect(rect), VisibleLabel(label), open, look);
+		return bOpen;
+	}
+
+	bool InputText(const char* label, std::string* value, ImGuiInputTextFlags flags)
+	{
+		ImGuiWindow* window = ImGui::GetCurrentWindow();
+		if (window->SkipItems)
+		{
+			return false;
+		}
+		const Theme& theme = GetTheme();
+
+		PaintNextFieldFrame(*window, label, EFieldFrame::Plain, theme);
+		const ScopedFieldStyle style(theme);
+		return ImGui::InputText(label, value, flags);
+	}
+
+	bool SearchField(const char* label, std::string* value, const char* placeholder)
+	{
+		ImGuiWindow* window = ImGui::GetCurrentWindow();
+		if (window->SkipItems)
+		{
+			return false;
+		}
+		const Theme& theme = GetTheme();
+
+		PaintNextFieldFrame(*window, label, EFieldFrame::Search, theme);
+		const ScopedFieldStyle style(theme);
+		// ImGui's text, and the placeholder, start after the magnifier.
+		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(CalcSearchTextOffset(), ImGui::GetStyle().FramePadding.y));
+		const bool bChanged = ImGui::InputTextWithHint(label, placeholder, value);
+		ImGui::PopStyleVar();
+		return bChanged;
+	}
+
+	bool DragScalar(const char* label, ImGuiDataType type, void* value, float speed, const char* format)
+	{
+		ImGuiWindow* window = ImGui::GetCurrentWindow();
+		if (window->SkipItems)
+		{
+			return false;
+		}
+		const Theme& theme = GetTheme();
+
+		PaintNextFieldFrame(*window, label, EFieldFrame::Plain, theme);
+		const ScopedFieldStyle style(theme);
+		return ImGui::DragScalar(label, type, value, speed, nullptr, nullptr, format);
+	}
+
+	bool DragFloat(const char* label, float* value, float speed, const char* format)
+	{
+		return DragScalar(label, ImGuiDataType_Float, value, speed, format);
+	}
+
+	bool InputScalar(const char* label, ImGuiDataType type, void* value, const char* format, ImGuiInputTextFlags flags)
+	{
+		ImGuiWindow* window = ImGui::GetCurrentWindow();
+		if (window->SkipItems)
+		{
+			return false;
+		}
+		const Theme& theme = GetTheme();
+
+		// Without step buttons, ImGui::InputScalar() is an InputText() under the same label.
+		PaintNextFieldFrame(*window, label, EFieldFrame::Plain, theme);
+		const ScopedFieldStyle style(theme);
+		return ImGui::InputScalar(label, type, value, nullptr, nullptr, format, flags);
+	}
+
+	bool DragVector(const char* label, float* values, int count, float speed, const char* format)
+	{
+		ImGuiWindow* window = ImGui::GetCurrentWindow();
+		if (window->SkipItems)
+		{
+			return false;
+		}
+		const ImGuiStyle& style = ImGui::GetStyle();
+		const Theme& theme = GetTheme();
+		count = std::clamp(count, 1, 4);
+
+		// As ImGui::DragScalarN(): one group, so the last-item queries after it cover every
+		// component, and the components share the item width.
+		bool bChanged = false;
+		const float width = ImGui::CalcItemWidth();
+		const float spacing = style.ItemInnerSpacing.x;
+		const float componentWidth = std::max(1.0f, std::floor((width - spacing * static_cast<float>(count - 1)) / static_cast<float>(count)));
+		const float tagWidth = CalcAxisTagWidth();
+		ImGui::BeginGroup();
+		ImGui::PushID(label);
+		for (int component = 0; component < count; ++component)
+		{
+			ImGui::PushID(component);
+			if (component > 0)
+			{
+				ImGui::SameLine(0.0f, spacing);
+			}
+
+			// The last component takes what rounding left over.
+			const float frameWidth = component < count - 1 ? componentWidth : std::max(1.0f, width - (componentWidth + spacing) * static_cast<float>(count - 1));
+			const ImRect frame = RectAtCursor(*window, glm::vec2(frameWidth, ImGui::GetFrameHeight()));
+			if (ImGui::IsRectVisible(frame.Min, frame.Max))
+			{
+				const FieldState state = AnimateFieldState(window->GetID("##Value"), theme);
+				PaintVectorComponent(GetWindowPainter(), ToPainterRect(frame), component, state.Editing, state.Look);
+			}
+
+			// ImGui's field after the axis letter, so its centred value never covers the letter
+			window->DC.CursorPos.x += tagWidth;
+			ImGui::SetNextItemWidth(std::max(1.0f, frameWidth - tagWidth));
+			{
+				const ScopedFieldStyle fieldStyle(theme);
+				bChanged |= ImGui::DragFloat("##Value", &values[component], speed, 0.0f, 0.0f, format);
+			}
+			ImGui::PopID();
+		}
+		ImGui::PopID();
+
+		const std::string_view shownLabel = VisibleLabel(label);
+		if (!shownLabel.empty())
+		{
+			ImGui::SameLine(0.0f, spacing);
+			ImGui::TextEx(shownLabel.data(), shownLabel.data() + shownLabel.size());
+		}
+		ImGui::EndGroup();
+		return bChanged;
+	}
+
+	void BeginPropertyRow(const char* label)
+	{
+		ImGuiWindow* window = ImGui::GetCurrentWindow();
+		if (window->SkipItems)
+		{
+			return;
+		}
+		ImGuiContext& g = *GImGui;
+		const Theme& theme = GetTheme();
+
+		const ImGuiID id = window->GetID(label);
+		const float contentX = window->DC.CursorPos.x;
+		const float top = window->DC.CursorPos.y;
+		const ImRect rect(ImVec2(window->WorkRect.Min.x, top), ImVec2(window->WorkRect.Max.x, top + CalcTreeRowHeight()));
+		const float valueX = CalcPropertyValueX(rect.Min.x, rect.Max.x);
+
+		// The label's column is the row's item, for the layout and for IsItemHovered(). Not
+		// reached by keyboard navigation: the value's fields are.
+		const ImRect labelRect(ImVec2(contentX, top), ImVec2(std::max(valueX, contentX), rect.Max.y));
+		ImGui::ItemSize(labelRect.GetSize(), g.Style.FramePadding.y);
+		if (ImGui::ItemAdd(labelRect, id, nullptr, ImGuiItemFlags_NoNav))
+		{
+			// Hovered anywhere along the row, also while one of its fields is dragged
+			const bool bHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) && ImGui::IsMouseHoveringRect(rect.Min, rect.Max);
+			WidgetLook look;
+			look.bDisabled = (g.CurrentItemFlags & ImGuiItemFlags_Disabled) != 0;
+			look.Hovered = Animate(ImHashStr("Hovered", 0, id), bHovered ? 1.0f : 0.0f, theme.AnimationSpeed);
+
+			PropertyRowLook row;
+			row.ContentX = contentX;
+			row.Depth = window->DC.TreeDepth;
+			PaintPropertyRow(GetWindowPainter(), ToPainterRect(rect), VisibleLabel(label), row, look);
+		}
+
+		// The value on the same line, from the value column to inside the hover pill's end
+		ImGui::SameLine(0.0f, 0.0f);
+		window->DC.CursorPos.x = valueX;
+		ImGui::PushItemWidth(std::max(1.0f, rect.Max.x - theme.RowPillMargin * 2.0f - valueX));
+	}
+
+	void EndPropertyRow()
+	{
+		ImGuiWindow* window = ImGui::GetCurrentWindow();
+		if (window->SkipItems)
+		{
+			return;
+		}
+
+		ImGui::PopItemWidth();
+		// Without a value, the cursor is still on the row's line.
+		if (window->DC.IsSameLine)
+		{
+			ImGui::NewLine();
+		}
 	}
 
 	void PaintButton(WindowPainter& painter, const PainterRect& rect, std::string_view label, const WidgetLook& look)
@@ -501,7 +898,7 @@ namespace Nyx::UI
 
 		// The pills: the selection's, then a hovered row's over it, and an outline while it has
 		// keyboard focus
-		const PainterRect pill{ { rect.Min.x + theme.RowPillMargin, rect.Min.y + theme.RowPillInset }, { rect.Max.x - theme.RowPillMargin, rect.Max.y - theme.RowPillInset } };
+		const PainterRect pill = RowPill(rect, theme);
 		if (row.Selected > 0.0f)
 		{
 			painter.AddRoundedRect(pill, theme.FrameRounding, PainterStyle::Filled(Shade(Fade(theme.RowSelected, row.Selected), look, theme)));
@@ -516,30 +913,15 @@ namespace Nyx::UI
 			painter.AddRoundedRect(pill, theme.FrameRounding, PainterStyle::Outlined(Fade(theme.Accent, look.Focused), 1.0f));
 		}
 
-		// A guide down each level the row is inside, under the arrows of the rows above it. Each
-		// row's piece reaches half the item spacing past its top and bottom, so the pieces of
-		// rows one under the other meet.
-		const float arrowWidth = TreeRowArrowWidth();
-		const float halfSpacing = style.ItemSpacing.y * 0.5f;
-		for (int level = 0; level < row.Depth; ++level)
-		{
-			const float x = std::floor(row.ContentX - static_cast<float>(row.Depth - level) * style.IndentSpacing + arrowWidth * 0.5f) + 0.5f;
-			painter.AddLine({ x, rect.Min.y - halfSpacing }, { x, rect.Max.y + halfSpacing }, 1.0f, EPainterLineCap::Flat, PainterStyle::Filled(theme.IndentGuide));
-		}
+		PaintIndentGuides(painter, rect, row.ContentX, row.Depth, theme);
 
-		// The arrow: a small triangle pointing right, turned down as the row opens. Leaves keep
-		// its room, so their labels line up with their siblings'.
+		// The arrow, turned down as the row opens. Leaves keep its room, so their labels line up
+		// with their siblings'.
+		const float arrowWidth = TreeRowArrowWidth();
 		float x = row.ContentX;
 		if (!row.bLeaf)
 		{
-			const glm::vec2 centre{ x + arrowWidth * 0.5f, centreY };
-			const float size = arrowWidth * 0.22f;
-			const float angle = row.Open * 1.5707963f;
-			const auto turned = [&](glm::vec2 point)
-			{
-				return centre + glm::vec2(point.x * std::cos(angle) - point.y * std::sin(angle), point.x * std::sin(angle) + point.y * std::cos(angle));
-			};
-			painter.AddTriangle(turned({ size, 0.0f }), turned({ -size * 0.6f, -size }), turned({ -size * 0.6f, size }), PainterStyle::Filled(Shade(theme.TextMuted, look, theme)));
+			PaintArrow(painter, { x + arrowWidth * 0.5f, centreY }, arrowWidth, row.Open, Shade(theme.TextMuted, look, theme));
 		}
 		x += arrowWidth;
 
@@ -552,6 +934,82 @@ namespace Nyx::UI
 		}
 
 		PaintText(painter, { x, rect.Min.y + style.FramePadding.y }, Shade(theme.Text, look, theme), label);
+	}
+
+	void PaintCollapsingHeader(WindowPainter& painter, const PainterRect& rect, std::string_view label, float open, const WidgetLook& look)
+	{
+		const Theme& theme = GetTheme();
+		const ImGuiStyle& style = ImGui::GetStyle();
+
+		// The pill, lighter when hovered, with an outline while it has keyboard focus
+		const PainterRect pill{ { rect.Min.x + theme.RowPillMargin, rect.Min.y }, { rect.Max.x - theme.RowPillMargin, rect.Max.y } };
+		const glm::vec4 fill = glm::mix(theme.Header, theme.HeaderHovered, std::max(look.Hovered, look.Pressed));
+		painter.AddRoundedRect(pill, theme.FrameRounding, PainterStyle::Filled(Shade(fill, look, theme)));
+		if (look.Focused > 0.0f)
+		{
+			painter.AddRoundedRect(pill, theme.FrameRounding, PainterStyle::Outlined(Fade(theme.Accent, look.Focused), 1.0f));
+		}
+
+		const float arrowWidth = TreeRowArrowWidth();
+		const float x = pill.Min.x + style.FramePadding.x;
+		PaintArrow(painter, { x + arrowWidth * 0.5f, (rect.Min.y + rect.Max.y) * 0.5f }, arrowWidth, open, Shade(theme.TextMuted, look, theme));
+		PaintText(painter, { x + arrowWidth, rect.Min.y + style.FramePadding.y }, Shade(theme.Text, look, theme), label);
+	}
+
+	void PaintField(WindowPainter& painter, const PainterRect& frame, float editing, const WidgetLook& look)
+	{
+		const Theme& theme = GetTheme();
+		PaintFieldFrame(painter, frame, theme.FrameRounding, editing, look, theme);
+	}
+
+	void PaintSearchField(WindowPainter& painter, const PainterRect& frame, float editing, const WidgetLook& look)
+	{
+		const Theme& theme = GetTheme();
+		const float frameHeight = frame.GetHeight();
+		PaintFieldFrame(painter, frame, frameHeight * 0.5f, editing, look, theme);
+
+		// The magnifier: a ring, and a handle down to the right; brighter while edited
+		const float size = SearchIconSize(frameHeight, theme);
+		const glm::vec2 centre{ frame.Min.x + SearchIconLeft(frameHeight) + size * 0.42f, (frame.Min.y + frame.Max.y) * 0.5f - size * 0.08f };
+		const float radius = size * 0.34f;
+		const float stroke = std::max(1.25f, size * 0.12f);
+		const glm::vec4 color = Shade(glm::mix(theme.TextMuted, theme.Text, editing), look, theme);
+		painter.AddCircle(centre, radius, PainterStyle::Outlined(color, stroke));
+		const glm::vec2 direction(0.7071f, 0.7071f);
+		painter.AddLine(centre + direction * (radius + stroke * 0.5f), centre + direction * (radius + size * 0.36f), stroke, EPainterLineCap::Round, PainterStyle::Filled(color));
+	}
+
+	void PaintVectorComponent(WindowPainter& painter, const PainterRect& frame, int axis, float editing, const WidgetLook& look)
+	{
+		const Theme& theme = GetTheme();
+		PaintFieldFrame(painter, frame, theme.FrameRounding, editing, look, theme);
+
+		// The axis letter, centred in its room at the frame's left
+		constexpr std::string_view Letters[] = { "X", "Y", "Z", "W" };
+		const glm::vec4 colors[] = { theme.AxisX, theme.AxisY, theme.AxisZ, theme.AxisW };
+		const int index = std::clamp(axis, 0, 3);
+		const std::string_view letter = Letters[index];
+		const float x = std::floor(frame.Min.x + (CalcAxisTagWidth() - CalcTextSize(letter).x) * 0.5f);
+		PaintText(painter, { x, frame.Min.y + ImGui::GetStyle().FramePadding.y }, Shade(colors[index], look, theme), letter);
+	}
+
+	void PaintPropertyRow(WindowPainter& painter, const PainterRect& rect, std::string_view label, const PropertyRowLook& row, const WidgetLook& look)
+	{
+		const Theme& theme = GetTheme();
+		const ImGuiStyle& style = ImGui::GetStyle();
+
+		if (look.Hovered > 0.0f)
+		{
+			painter.AddRoundedRect(RowPill(rect, theme), theme.FrameRounding, PainterStyle::Filled(Shade(Fade(theme.RowHovered, look.Hovered), look, theme)));
+		}
+		PaintIndentGuides(painter, rect, row.ContentX, row.Depth, theme);
+
+		// The label after a tree row's arrow's room, so it lines up with the tree rows' labels,
+		// and cut to fit its column
+		const float x = row.ContentX + TreeRowArrowWidth();
+		const float right = CalcPropertyValueX(rect.Min.x, rect.Max.x) - style.ItemInnerSpacing.x;
+		std::string cut;
+		PaintText(painter, { x, rect.Min.y + style.FramePadding.y }, Shade(theme.PropertyLabel, look, theme), FitText(label, right - x, cut));
 	}
 
 	glm::vec2 CalcButtonSize(const char* label)
@@ -591,5 +1049,21 @@ namespace Nyx::UI
 	float CalcTreeRowHeight()
 	{
 		return ImGui::GetFrameHeight();
+	}
+
+	float CalcAxisTagWidth()
+	{
+		return std::floor(CalcTextSize("W").x + ImGui::GetStyle().FramePadding.x * 2.0f);
+	}
+
+	float CalcPropertyValueX(float rowMinX, float rowMaxX)
+	{
+		return std::floor(rowMinX + (rowMaxX - rowMinX) * GetTheme().PropertyLabelWidth);
+	}
+
+	float CalcSearchTextOffset()
+	{
+		const float frameHeight = ImGui::GetFrameHeight();
+		return SearchIconLeft(frameHeight) + SearchIconSize(frameHeight, GetTheme()) + ImGui::GetStyle().ItemInnerSpacing.x;
 	}
 }

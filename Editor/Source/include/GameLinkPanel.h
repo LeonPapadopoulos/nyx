@@ -3,7 +3,6 @@
 #include "EditorLink.h"
 #include "EditorLinkRecorder.h"
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -109,7 +108,7 @@ namespace Nyx::Editor
 		size_t WarningCount = 0;
 		size_t ErrorCount = 0;
 		bool bGameLogAutoScroll = true;
-		std::array<char, 128> GameLogFilter{};
+		std::string GameLogFilter;
 
 		// With a filter, the lines it lets through. Kept up to date as lines come and go, and only
 		// rebuilt when the filter changes, instead of searching every line every frame.
