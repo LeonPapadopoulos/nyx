@@ -31,8 +31,9 @@ include(CTest)
 # Main Modules
 add_subdirectory(Tools/NyxHeaderTool)
 add_subdirectory(Startup)
-add_subdirectory(Engine/Source)
+# Shaders first: they define nyx_copy_shaders_next_to(), which the engine's GPU tests call.
 add_subdirectory(Engine/Shaders)
+add_subdirectory(Engine/Source)
 add_subdirectory(Editor/Source)
 add_subdirectory(Game/Source)
 add_subdirectory(Tools/NyxDump)

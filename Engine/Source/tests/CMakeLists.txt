@@ -50,6 +50,15 @@ add_dependencies(NyxPainterTests NyxGeneratedReflection)
 set_property(TARGET NyxPainterTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxPainterTests COMMAND NyxPainterTests)
 
+# The painter shader on a real GPU: paints small frames and checks pixels read back. Needs a
+# Vulkan device; its window stays hidden.
+add_executable(NyxPainterGpuTests PainterGpuTests.cpp)
+target_link_libraries(NyxPainterGpuTests PRIVATE NyxEngine)
+add_dependencies(NyxPainterGpuTests NyxGeneratedReflection)
+set_property(TARGET NyxPainterGpuTests PROPERTY FOLDER "Tests")
+nyx_copy_shaders_next_to(NyxPainterGpuTests)
+add_test(NAME NyxPainterGpuTests COMMAND NyxPainterGpuTests)
+
 if(MSVC)
     add_test(NAME NyxRuntimeInspectionSymbols
         COMMAND ${CMAKE_COMMAND}

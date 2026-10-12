@@ -20,6 +20,8 @@ set(NYX_SHADER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/SelectionMask.frag
     ${CMAKE_CURRENT_SOURCE_DIR}/OutlineComposite.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/OutlineComposite.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/Painter.vert
+    ${CMAKE_CURRENT_SOURCE_DIR}/Painter.frag
 )
 
 set(NYX_SHADER_BUILD_DIR ${CMAKE_CURRENT_BINARY_DIR}/Compiled)

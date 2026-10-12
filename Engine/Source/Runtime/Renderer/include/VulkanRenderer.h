@@ -5,6 +5,7 @@
 #include "VulkanSwapchain.h"
 #include "OffscreenRenderTarget.h"
 #include "VulkanViewportTarget.h"
+#include "VulkanPainter.h"
 #include "Mesh.h"
 #include "Texture.h"
 #include "CubemapTexture.h"
@@ -244,6 +245,9 @@ namespace Nyx
 		VulkanContext& GetContext();
 		VulkanSwapchain& GetSwapchain();
 
+		// Draws 2D shapes recorded with a Painter into a VulkanPainterTarget (Design/ui-painter.md)
+		Nyx::Engine::VulkanPainter& GetPainterPass() { return PainterPass; }
+
 		ImTextureID GetSceneViewTextureId(uint64_t id) const override;
 		Extent2D GetSceneViewExtent(uint64_t id) const;
 
@@ -417,6 +421,8 @@ namespace Nyx
 
 		VulkanContext Context;
 		VulkanSwapchain Swapchain;
+
+		Nyx::Engine::VulkanPainter PainterPass;
 
 		std::vector<std::unique_ptr<Nyx::Mesh>> LoadedMeshes;
 		std::vector<std::unique_ptr<Nyx::Texture>> LoadedTextures;

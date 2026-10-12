@@ -327,6 +327,9 @@ namespace Nyx
 		CreateDebugLineResources();
 		CreateDebugLinePipeline();
 
+		// 2D shapes, drawn into their own targets
+		PainterPass.Initialize(Context);
+
 		// Shared materials
 		CreateMaterials();
 
@@ -362,6 +365,9 @@ namespace Nyx
 			view.RenderTarget.Shutdown(Context);
 		}
 		SceneViews.clear();
+
+		// Painter targets belong to their users, who release them before the renderer shuts down.
+		PainterPass.Shutdown();
 
 		if (ImGuiBackend)
 		{
