@@ -1,0 +1,2 @@
+# NyxHeaderTool golden files are compared byte-for-byte against LF output
+Tools/NyxHeaderTool/tests/fixtures/** text eol=lf
