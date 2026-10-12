@@ -138,6 +138,18 @@ namespace
 			ImGui::Begin("Overlay", nullptr, ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoBackground);
 			ImGui::End();
 
+			if (bScrolling)
+			{
+				ImGui::SetNextWindowPos(ImVec2(560.0f, 40.0f));
+				ImGui::SetNextWindowSize(ImVec2(200.0f, 150.0f));
+				ImGui::Begin("Scrolling", nullptr, ImGuiWindowFlags_NoDocking);
+				for (int line = 0; line < 40; ++line)
+				{
+					ImGui::Text("Line %d", line);
+				}
+				ImGui::End();
+			}
+
 			ImGui::EndFrame();
 		}
 
@@ -157,6 +169,10 @@ namespace
 
 		// The floating window's tab to select in the next frame built, by name
 		const char* SelectTab = nullptr;
+
+		// Whether "Scrolling" is there: a floating window with more lines than it shows, so it
+		// has a vertical scrollbar
+		bool bScrolling = false;
 
 		// Whether the windows glow (AddWindowGlow()), each from its whole rect, with GlowTexture
 		bool bGlow = false;
@@ -313,6 +329,8 @@ namespace
 			"ImGui's window, popup and title bar backgrounds should be transparent while the chrome paints them");
 		Require(style.Colors[ImGuiCol_Tab].w == 0.0f && style.Colors[ImGuiCol_TabSelected].w == 0.0f && style.Colors[ImGuiCol_TabHovered].w == 0.0f,
 			"ImGui's tab shapes should be transparent while the chrome paints them");
+		Require(style.Colors[ImGuiCol_ScrollbarBg].w == 0.0f && style.Colors[ImGuiCol_ScrollbarGrab].w == 0.0f && style.Colors[ImGuiCol_ScrollbarGrabActive].w == 0.0f,
+			"ImGui's scrollbars should be transparent while the chrome paints them");
 		Require(style.WindowBorderSize == 0.0f && style.PopupBorderSize == 0.0f, "Windows and popups should have no borders");
 		Require(style.DockingSeparatorSize == Nyx::UI::GetTheme().CardGap, "ImGui should leave the theme's card gap between dock nodes");
 
@@ -662,6 +680,60 @@ namespace
 		Require(Near(FindUnderline(*FindPainter(painters, floating.DrawList, EWindowPainterPlacement::Behind), tabBar).Left, to),
 			"In the end the underline should be under the selected tab");
 	}
+
+	// The thumb painted over a window's vertical scrollbar: the rect painted inside the scrollbar
+	PainterRect FindScrollbarThumb(const std::vector<WindowPainter*>& painters, ImGuiWindow& window)
+	{
+		const ImRect frame = ImGui::GetWindowScrollbarRect(&window, ImGuiAxis_Y);
+		const WindowPainter* painter = FindPainter(painters, window.DrawList, EWindowPainterPlacement::InOrder);
+		Require(painter != nullptr, "A window with a scrollbar should have a painter for it");
+		for (const PainterCommand& command : CommandsOfType(*painter, EPainterCommandType::Rect))
+		{
+			const PainterRect rect = GetPayload<PainterRectPayload>(command).Rect;
+			if (rect.Min.x >= frame.Min.x && rect.Max.x <= frame.Max.x && rect.Min.y >= frame.Min.y && rect.Max.y <= frame.Max.y)
+			{
+				return rect;
+			}
+		}
+		throw std::runtime_error("No thumb was painted in the scrollbar");
+	}
+
+	// ImGui keeps the scrollbars' behaviour and draws them transparent; a thin pill is painted
+	// where ImGui's grab is, wider while the scrollbar is hovered.
+	void TestScrollbarsAreThinPills(DockedEditor& editor)
+	{
+		const Nyx::UI::Theme& theme = Nyx::UI::GetTheme();
+		const float padding = ImGui::GetStyle().ScrollbarPadding;
+		editor.bScrolling = true;
+		Settle(editor);
+		ImGuiWindow& window = FindWindow("Scrolling");
+		Require(window.ScrollbarY, "40 lines in a small window should need a scrollbar");
+		const ImRect frame = ImGui::GetWindowScrollbarRect(&window, ImGuiAxis_Y);
+
+		editor.BuildFrame();
+		PainterRect thumb = FindScrollbarThumb(editor.PaintCards(), window);
+		Require(Near(thumb.GetWidth(), theme.ScrollbarThumbWidth) && Near((thumb.Min.x + thumb.Max.x) * 0.5f, (frame.Min.x + frame.Max.x) * 0.5f),
+			"The thumb should be a thin pill in the middle of the scrollbar");
+		Require(Near(thumb.Min.y, frame.Min.y + padding) && thumb.GetHeight() < frame.GetHeight() * 0.5f,
+			"Scrolled to the top, the thumb should start at the top and be as long as the share shown");
+
+		// Scrolled to the end, it ends at the bottom.
+		window.Scroll.y = window.ScrollMax.y;
+		editor.BuildFrame();
+		thumb = FindScrollbarThumb(editor.PaintCards(), window);
+		Require(Near(thumb.Max.y, frame.Max.y - padding), "Scrolled to the end, the thumb should end at the bottom");
+
+		// Hovered, it grows.
+		ImGui::GetIO().AddMousePosEvent((frame.Min.x + frame.Max.x) * 0.5f, (frame.Min.y + frame.Max.y) * 0.5f);
+		Settle(editor);
+		editor.BuildFrame();
+		thumb = FindScrollbarThumb(editor.PaintCards(), window);
+		Require(Near(thumb.GetWidth(), std::min(theme.ScrollbarThumbHoveredWidth, frame.GetWidth() - padding * 2.0f)), "A hovered scrollbar's thumb should be wider");
+
+		ImGui::GetIO().AddMousePosEvent(-100.0f, -100.0f);
+		editor.bScrolling = false;
+		Settle(editor);
+	}
 }
 
 int main()
@@ -681,6 +753,7 @@ int main()
 		TestWindowsGlowBehindTheirCards(editor);
 		TestFloatingWindowsAreGlass(editor);
 		TestASplitterShowsWhileHovered(editor);
+		TestScrollbarsAreThinPills(editor);
 	}
 	catch (const std::exception& error)
 	{

@@ -84,6 +84,8 @@ namespace Nyx::Editor
 		std::string GallerySearch;
 		float GalleryNumber = 1.25f;
 		glm::vec3 GalleryVector{ 1.0f, 2.0f, 3.0f };
+		int GalleryComboIndex = 0;
+		glm::vec3 GalleryColor{ 0.35f, 0.65f, 0.95f };
 
 		// Where the gallery showed last frame, for Save PNG, and why it couldn't be saved
 		ImVec2 GalleryMin;

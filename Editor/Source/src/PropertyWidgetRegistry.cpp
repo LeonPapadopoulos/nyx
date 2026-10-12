@@ -65,11 +65,12 @@ namespace
 		return defaultValue;
 	}
 
-	static bool PropertyUsesDegreesUI(const Nyx::Reflection::PropertyMetadata& property)
+	// Whether the property's "UI" metadata asks for `ui`, e.g. UI = Degrees for rotations, UI = Color for colours
+	static bool PropertyUsesUI(const Nyx::Reflection::PropertyMetadata& property, std::string_view ui)
 	{
 		if (const char* value = Nyx::Reflection::FindMetadataValue(property, "UI"))
 		{
-			return std::string_view(value) == "Degrees";
+			return std::string_view(value) == ui;
 		}
 
 		return false;
@@ -109,7 +110,7 @@ namespace
 		bool& value = Nyx::Reflection::AccessProperty<bool>(args.Object, *args.Property);
 		bool editedValue = value;
 
-		if (NYX_UI(ImGui::Checkbox("##Field", &editedValue)))
+		if (NYX_UI(Nyx::UI::Checkbox("##Field", &editedValue)))
 		{
 			PropertyEditTransactionState immediateEditState{};
 			immediateEditState.Target = args.DrawContext->CurrentObjectRef;
@@ -237,8 +238,23 @@ namespace
 	static bool DrawVec3Widget(const PropertyWidgetArgs& args)
 	{
 		glm::vec3& value = Nyx::Reflection::AccessProperty<glm::vec3>(args.Object, *args.Property);
-		const float speed = GetPropertyDragSpeed(*args.Property);
 
+		// A colour: a swatch with a picker, in which each drag is one edit
+		if (PropertyUsesUI(*args.Property, "Color"))
+		{
+			const Nyx::UI::ColorSwatchResult swatch = NYX_UI(Nyx::UI::ColorSwatch("##Field", &value.x));
+			if (swatch.bEditStarted)
+			{
+				BeginPropertyEdit(args.DrawContext->GenericPropertyEdit, *args.DrawContext, args.Object, *args.OwnerType);
+			}
+			if (swatch.bEditEnded)
+			{
+				CommitPropertyEdit(args.DrawContext->GenericPropertyEdit, *args.DrawContext, "Edit Property");
+			}
+			return swatch.bChanged;
+		}
+
+		const float speed = GetPropertyDragSpeed(*args.Property);
 		const bool bChanged = NYX_UI(Nyx::UI::DragVector("##Field", &value.x, 3, speed));
 
 		if (ImGui::IsItemActivated())
@@ -278,7 +294,7 @@ namespace
 	{
 		glm::quat& value = Nyx::Reflection::AccessProperty<glm::quat>(args.Object, *args.Property);
 
-		if (!PropertyUsesDegreesUI(*args.Property))
+		if (!PropertyUsesUI(*args.Property, "Degrees"))
 		{
 			NYX_UI(ImGui::TextDisabled("<quat unsupported>"));
 			return false;

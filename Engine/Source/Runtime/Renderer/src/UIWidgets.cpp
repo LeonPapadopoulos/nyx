@@ -289,6 +289,51 @@ namespace Nyx::UI
 			return std::floor(frameHeight * theme.SearchIconSize);
 		}
 
+		// While ImGui draws a menu item or selectable that is painted after it: no highlight, text
+		// or keyboard cursor of its own
+		class ScopedInvisibleItem
+		{
+		public:
+			ScopedInvisibleItem()
+			{
+				const ImVec4 clear(0.0f, 0.0f, 0.0f, 0.0f);
+				for (const ImGuiCol color : { ImGuiCol_Header, ImGuiCol_HeaderHovered, ImGuiCol_HeaderActive, ImGuiCol_NavCursor, ImGuiCol_Text, ImGuiCol_TextDisabled })
+				{
+					ImGui::PushStyleColor(color, clear);
+				}
+			}
+
+			~ScopedInvisibleItem()
+			{
+				ImGui::PopStyleColor(6);
+			}
+
+			ScopedInvisibleItem(const ScopedInvisibleItem&) = delete;
+			ScopedInvisibleItem& operator=(const ScopedInvisibleItem&) = delete;
+		};
+
+		// The look of the item ImGui added last, from its state after it ran. In menus, the item
+		// the keyboard is on shows as hovered, as ImGui's menus show it.
+		WidgetLook AnimateLastItemLook(const Theme& theme, bool bKeyboardAsHover)
+		{
+			const ImGuiContext& g = *GImGui;
+			const ImGuiID id = g.LastItemData.ID;
+			const bool bKeyboard = g.NavId == id && g.NavCursorVisible;
+			const bool bHovered = ImGui::IsItemHovered() || (bKeyboardAsHover && bKeyboard);
+			WidgetLook look = AnimateLook(id, bHovered, bHovered && ImGui::IsItemActive(), theme);
+			if (bKeyboardAsHover)
+			{
+				look.Focused = 0.0f;
+			}
+			return look;
+		}
+
+		// `point`, relative to `centre`, turned by `angle` (radians) around it
+		glm::vec2 Turned(glm::vec2 centre, glm::vec2 point, float angle)
+		{
+			return centre + glm::vec2(point.x * std::cos(angle) - point.y * std::sin(angle), point.x * std::sin(angle) + point.y * std::cos(angle));
+		}
+
 		enum class EFieldFrame
 		{
 			Plain,
@@ -783,6 +828,292 @@ namespace Nyx::UI
 		}
 	}
 
+	bool Checkbox(const char* label, bool* value)
+	{
+		ImGuiWindow* window = ImGui::GetCurrentWindow();
+		if (window->SkipItems)
+		{
+			return false;
+		}
+
+		// As ImGui::Checkbox(): the box and its label are one item.
+		const ImGuiID id = window->GetID(label);
+		const glm::vec2 size = CalcCheckboxSize(label);
+		const ImRect rect = RectAtCursor(*window, size);
+		ImGui::ItemSize(ImVec2(size.x, size.y), ImGui::GetStyle().FramePadding.y);
+		if (!ImGui::ItemAdd(rect, id))
+		{
+			return false;
+		}
+
+		bool bHovered = false;
+		bool bHeld = false;
+		const bool bClicked = ImGui::ButtonBehavior(rect, id, &bHovered, &bHeld);
+		if (bClicked)
+		{
+			*value = !*value;
+			ImGui::MarkItemEdited(id);
+		}
+
+		const Theme& theme = GetTheme();
+		const WidgetLook look = AnimateLook(id, bHovered, bHeld && bHovered, theme);
+		const float on = Animate(ImHashStr("On", 0, id), *value ? 1.0f : 0.0f, theme.AnimationSpeed);
+		PaintCheckbox(GetWindowPainter(), ToPainterRect(rect), VisibleLabel(label), on, look);
+		return bClicked;
+	}
+
+	bool MenuItem(const char* label, const char* shortcut, bool bSelected, bool bEnabled)
+	{
+		ImGuiWindow* window = ImGui::GetCurrentWindow();
+		if (window->SkipItems)
+		{
+			return false;
+		}
+		// Menu bars lay their items out in a row, which ImGui's own does.
+		if (window->DC.LayoutType == ImGuiLayoutType_Horizontal)
+		{
+			return ImGui::MenuItem(label, shortcut, bSelected, bEnabled);
+		}
+		const ImGuiContext& g = *GImGui;
+		const Theme& theme = GetTheme();
+
+		// As ImGui::MenuItemEx() in a menu: the columns' widths go to the menu's layout, so it is
+		// wide enough for every item, and an invisible Selectable() across the menu is the
+		// behaviour, under the same ID as ImGui's menu items.
+		const std::string_view shownLabel = VisibleLabel(label);
+		const std::string_view shownShortcut = shortcut != nullptr ? std::string_view(shortcut) : std::string_view();
+		const float checkWidth = std::floor(g.FontSize * 1.2f);
+		const float minWidth = window->DC.MenuColumns.DeclColumns(0.0f, CalcTextSize(shownLabel).x, shownShortcut.empty() ? 0.0f : CalcTextSize(shownShortcut).x, checkWidth);
+
+		ImGui::PushID(label);
+		ImGui::BeginDisabled(!bEnabled);
+		bool bPressed = false;
+		{
+			const ScopedInvisibleItem invisible;
+			const ImGuiSelectableFlags flags = ImGuiSelectableFlags_SelectOnRelease | ImGuiSelectableFlags_NoSetKeyOwner | ImGuiSelectableFlags_SetNavIdOnHover | ImGuiSelectableFlags_SpanAvailWidth;
+			bPressed = ImGui::Selectable("", false, flags, ImVec2(minWidth, g.FontSize));
+		}
+		if (g.LastItemData.StatusFlags & ImGuiItemStatusFlags_Visible)
+		{
+			const WidgetLook look = AnimateLastItemLook(theme, true);
+			PaintMenuItem(GetWindowPainter(), ToPainterRect(g.LastItemData.Rect), shownLabel, shownShortcut, bSelected, look);
+		}
+		ImGui::EndDisabled();
+		ImGui::PopID();
+		return bPressed;
+	}
+
+	bool MenuItem(const char* label, const char* shortcut, bool* selected, bool bEnabled)
+	{
+		if (MenuItem(label, shortcut, selected != nullptr && *selected, bEnabled))
+		{
+			if (selected != nullptr)
+			{
+				*selected = !*selected;
+			}
+			return true;
+		}
+		return false;
+	}
+
+	bool Selectable(const char* label, bool bSelected, ImGuiSelectableFlags flags, const glm::vec2& size)
+	{
+		ImGuiWindow* window = ImGui::GetCurrentWindow();
+		if (window->SkipItems)
+		{
+			return false;
+		}
+		const ImGuiContext& g = *GImGui;
+		const Theme& theme = GetTheme();
+
+		// Where ImGui puts the label: at the cursor, on the line's text baseline
+		const glm::vec2 labelPosition(window->DC.CursorPos.x, window->DC.CursorPos.y + window->DC.CurrLineTextBaseOffset);
+		const ImGuiID id = window->GetID(label);
+		bool bPressed = false;
+		{
+			const ScopedInvisibleItem invisible;
+			bPressed = ImGui::Selectable(label, bSelected, flags, ImVec2(size.x, size.y));
+		}
+		if (g.LastItemData.ID == id && (g.LastItemData.StatusFlags & ImGuiItemStatusFlags_Visible))
+		{
+			const WidgetLook look = AnimateLastItemLook(theme, false);
+			const float selected = Animate(ImHashStr("Selected", 0, id), bSelected ? 1.0f : 0.0f, theme.AnimationSpeed);
+			PaintSelectable(GetWindowPainter(), ToPainterRect(g.LastItemData.Rect), labelPosition, VisibleLabel(label), selected, look);
+		}
+		return bPressed;
+	}
+
+	void Separator()
+	{
+		ImGuiWindow* window = ImGui::GetCurrentWindow();
+		if (window->SkipItems)
+		{
+			return;
+		}
+		// Menu bars' upright separators, and the old Columns(), keep ImGui's own.
+		if (window->DC.LayoutType == ImGuiLayoutType_Horizontal || window->DC.CurrentColumns != nullptr)
+		{
+			ImGui::Separator();
+			return;
+		}
+
+		// As ImGui's: from the cursor to the work rect's end, its thickness high, and not reached by
+		// the keyboard. Its width isn't given to the layout, so a window that fits its contents
+		// doesn't grow from it.
+		const float thickness = ImGui::GetStyle().SeparatorSize;
+		const ImRect rect(window->DC.CursorPos, ImVec2(window->WorkRect.Max.x, window->DC.CursorPos.y + thickness));
+		ImGui::ItemSize(ImVec2(0.0f, thickness));
+		if (ImGui::ItemAdd(rect, 0))
+		{
+			const float y = (rect.Min.y + rect.Max.y) * 0.5f;
+			GetWindowPainter().AddLine({ rect.Min.x, y }, { rect.Max.x, y }, thickness, EPainterLineCap::Flat, PainterStyle::Filled(GetTheme().Separator));
+		}
+	}
+
+	bool BeginCombo(const char* label, const char* preview)
+	{
+		ImGuiContext& g = *GImGui;
+		ImGuiWindow* window = ImGui::GetCurrentWindow();
+
+		// As ImGui::BeginCombo(): the next window's settings are for the combo's popup.
+		const ImGuiNextWindowDataFlags nextWindowFlags = g.NextWindowData.HasFlags;
+		g.NextWindowData.ClearFlags();
+		if (window->SkipItems)
+		{
+			return false;
+		}
+		const ImGuiStyle& style = g.Style;
+		const Theme& theme = GetTheme();
+
+		const ImGuiID id = window->GetID(label);
+		const std::string_view shownLabel = VisibleLabel(label);
+		const float labelWidth = CalcTextSize(shownLabel).x;
+		const ImRect frame = RectAtCursor(*window, glm::vec2(ImGui::CalcItemWidth(), ImGui::GetFrameHeight()));
+		const ImRect total(frame.Min, ImVec2(frame.Max.x + (labelWidth > 0.0f ? style.ItemInnerSpacing.x + labelWidth : 0.0f), frame.Max.y));
+		ImGui::ItemSize(total, style.FramePadding.y);
+		if (!ImGui::ItemAdd(total, id, &frame))
+		{
+			return false;
+		}
+
+		bool bHovered = false;
+		bool bHeld = false;
+		const bool bPressed = ImGui::ButtonBehavior(frame, id, &bHovered, &bHeld);
+		const ImGuiID popupId = ImHashStr("##ComboPopup", 0, id);
+		bool bPopupOpen = ImGui::IsPopupOpen(popupId, ImGuiPopupFlags_None);
+		if (bPressed && !bPopupOpen)
+		{
+			ImGui::OpenPopupEx(popupId, ImGuiPopupFlags_None);
+			bPopupOpen = true;
+		}
+
+		const WidgetLook look = AnimateLook(id, bHovered, bHeld && bHovered, theme);
+		const float open = Animate(ImHashStr("Open", 0, id), bPopupOpen ? 1.0f : 0.0f, theme.AnimationSpeed);
+		WindowPainter& painter = GetWindowPainter();
+		PaintCombo(painter, ToPainterRect(frame), preview != nullptr ? std::string_view(preview) : std::string_view(), open, look);
+		if (labelWidth > 0.0f)
+		{
+			PaintText(painter, { frame.Max.x + style.ItemInnerSpacing.x, frame.Min.y + style.FramePadding.y }, Shade(theme.Text, look, theme), shownLabel);
+		}
+
+		if (!bPopupOpen)
+		{
+			return false;
+		}
+		// ImGui's popup for it, placed and sized as ImGui's combos' are
+		g.NextWindowData.HasFlags = nextWindowFlags;
+		return ImGui::BeginComboPopup(popupId, frame, ImGuiComboFlags_None);
+	}
+
+	void EndCombo()
+	{
+		ImGui::EndCombo();
+	}
+
+	bool Combo(const char* label, int* current, std::span<const char* const> items)
+	{
+		const bool bInRange = *current >= 0 && *current < static_cast<int>(items.size());
+		if (!BeginCombo(label, bInRange ? items[static_cast<size_t>(*current)] : ""))
+		{
+			return false;
+		}
+
+		bool bChanged = false;
+		for (int index = 0; index < static_cast<int>(items.size()); ++index)
+		{
+			ImGui::PushID(index);
+			const bool bSelected = index == *current;
+			if (Selectable(items[static_cast<size_t>(index)], bSelected) && !bSelected)
+			{
+				*current = index;
+				bChanged = true;
+			}
+			if (bSelected)
+			{
+				ImGui::SetItemDefaultFocus();
+			}
+			ImGui::PopID();
+		}
+		EndCombo();
+		if (bChanged)
+		{
+			ImGui::MarkItemEdited(GImGui->LastItemData.ID);
+		}
+		return bChanged;
+	}
+
+	ColorSwatchResult ColorSwatch(const char* label, float* rgb)
+	{
+		ColorSwatchResult result;
+		ImGuiWindow* window = ImGui::GetCurrentWindow();
+		if (window->SkipItems)
+		{
+			return result;
+		}
+		const ImGuiStyle& style = ImGui::GetStyle();
+		const Theme& theme = GetTheme();
+
+		const ImGuiID id = window->GetID(label);
+		const std::string_view shownLabel = VisibleLabel(label);
+		const float labelWidth = CalcTextSize(shownLabel).x;
+		const ImRect frame = RectAtCursor(*window, glm::vec2(ImGui::CalcItemWidth(), ImGui::GetFrameHeight()));
+		const ImRect total(frame.Min, ImVec2(frame.Max.x + (labelWidth > 0.0f ? style.ItemInnerSpacing.x + labelWidth : 0.0f), frame.Max.y));
+		ImGui::ItemSize(total, style.FramePadding.y);
+		// The picker stays open while the swatch is scrolled out of view.
+		const bool bVisible = ImGui::ItemAdd(total, id, &frame);
+
+		bool bHovered = false;
+		bool bHeld = false;
+		const ImGuiID popupId = ImHashStr("##ColorPopup", 0, id);
+		if (bVisible && ImGui::ButtonBehavior(frame, id, &bHovered, &bHeld))
+		{
+			// Under the swatch, as ImGui's colour edits open their pickers
+			ImGui::OpenPopupEx(popupId, ImGuiPopupFlags_None);
+			ImGui::SetNextWindowPos(ImVec2(frame.Min.x, frame.Max.y + style.ItemSpacing.y));
+		}
+
+		if (bVisible)
+		{
+			const WidgetLook look = AnimateLook(id, bHovered, bHeld && bHovered, theme);
+			WindowPainter& painter = GetWindowPainter();
+			PaintColorSwatch(painter, ToPainterRect(frame), glm::vec3(rgb[0], rgb[1], rgb[2]), look);
+			if (labelWidth > 0.0f)
+			{
+				PaintText(painter, { frame.Max.x + style.ItemInnerSpacing.x, frame.Min.y + style.FramePadding.y }, Shade(theme.Text, look, theme), shownLabel);
+			}
+		}
+
+		if (ImGui::BeginPopupEx(popupId, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings))
+		{
+			// The picker is one group, so these cover all its parts.
+			result.bChanged = ImGui::ColorPicker3("##Picker", rgb, ImGuiColorEditFlags_NoSidePreview | ImGuiColorEditFlags_NoSmallPreview);
+			result.bEditStarted = ImGui::IsItemActivated();
+			result.bEditEnded = ImGui::IsItemDeactivatedAfterEdit();
+			ImGui::EndPopup();
+		}
+		return result;
+	}
+
 	void PaintButton(WindowPainter& painter, const PainterRect& rect, std::string_view label, const WidgetLook& look)
 	{
 		const Theme& theme = GetTheme();
@@ -1012,6 +1343,157 @@ namespace Nyx::UI
 		PaintText(painter, { x, rect.Min.y + style.FramePadding.y }, Shade(theme.PropertyLabel, look, theme), FitText(label, right - x, cut));
 	}
 
+	void PaintCheckmark(WindowPainter& painter, const PainterRect& box, float amount, const glm::vec4& color)
+	{
+		if (amount <= 0.0f)
+		{
+			return;
+		}
+
+		// Two strokes, the short one down to the corner, then the long one up; drawn in that order
+		// as `amount` grows
+		const float size = box.GetWidth();
+		const float width = std::max(1.25f, size * GetTheme().CheckmarkWidth);
+		const glm::vec2 start = box.Min + glm::vec2(0.24f, 0.53f) * size;
+		const glm::vec2 corner = box.Min + glm::vec2(0.43f, 0.71f) * size;
+		const glm::vec2 end = box.Min + glm::vec2(0.77f, 0.31f) * size;
+		constexpr float ShortPart = 0.4f;
+		const PainterStyle style = PainterStyle::Filled(color);
+		painter.AddLine(start, glm::mix(start, corner, std::min(amount / ShortPart, 1.0f)), width, EPainterLineCap::Round, style);
+		if (amount > ShortPart)
+		{
+			painter.AddLine(corner, glm::mix(corner, end, std::min((amount - ShortPart) / (1.0f - ShortPart), 1.0f)), width, EPainterLineCap::Round, style);
+		}
+	}
+
+	void PaintCheckbox(WindowPainter& painter, const PainterRect& rect, std::string_view label, float on, const WidgetLook& look)
+	{
+		const Theme& theme = GetTheme();
+		const ImGuiStyle& style = ImGui::GetStyle();
+
+		// The box, centred on the frame's height, a little smaller while pressed
+		const float boxSize = std::floor(rect.GetHeight() * theme.CheckboxSize);
+		const float top = rect.Min.y + std::floor((rect.GetHeight() - boxSize) * 0.5f);
+		const PainterRect box{ { rect.Min.x, top }, { rect.Min.x + boxSize, top + boxSize } };
+		const glm::vec2 centre = (box.Min + box.Max) * 0.5f;
+		const float scale = glm::mix(1.0f, theme.KnobPressedScale, look.Pressed);
+		const PainterRect pressed{ centre + (box.Min - centre) * scale, centre + (box.Max - centre) * scale };
+
+		// A field when off, the accent when on
+		const glm::vec4 off = glm::mix(theme.Field, theme.FieldHovered, look.Hovered);
+		const glm::vec4 onColor = glm::mix(theme.Accent, theme.AccentHovered, look.Hovered);
+		painter.AddRoundedRect(pressed, theme.CheckboxRounding, Filled(Shade(glm::mix(off, onColor, on), look, theme), ControlEffects(look, theme, false)));
+		painter.AddRoundedRect(pressed, theme.CheckboxRounding, PainterStyle::Outlined(Shade(Fade(theme.FieldBorder, 1.0f - on), look, theme), theme.FrameBorderWidth));
+		PaintCheckmark(painter, pressed, on, Shade(theme.Knob, look, theme));
+
+		if (!label.empty())
+		{
+			PaintText(painter, { box.Max.x + style.ItemInnerSpacing.x, rect.Min.y + style.FramePadding.y }, Shade(theme.Text, look, theme), label);
+		}
+	}
+
+	void PaintMenuItem(WindowPainter& painter, const PainterRect& rect, std::string_view label, std::string_view shortcut, bool bChecked, const WidgetLook& look)
+	{
+		const Theme& theme = GetTheme();
+		const ImGuiStyle& style = ImGui::GetStyle();
+		const float fontSize = ImGui::GetFontSize();
+
+		// The hover pill across the item; items lie side by side with no gap, so it keeps
+		// RowPillInset from its neighbours'.
+		const float hovered = std::max(look.Hovered, look.Pressed);
+		if (hovered > 0.0f)
+		{
+			const PainterRect pill{ { rect.Min.x, rect.Min.y + theme.RowPillInset }, { rect.Max.x, rect.Max.y - theme.RowPillInset } };
+			painter.AddRoundedRect(pill, theme.FrameRounding, PainterStyle::Filled(Shade(Fade(theme.MenuItemHovered, hovered), look, theme)));
+		}
+
+		// The text where ImGui's would be: half the item spacing in from the item's corner. The
+		// tick's column is at the right end, and the shortcut right-aligned before it.
+		const float left = rect.Min.x + std::floor(style.ItemSpacing.x * 0.5f);
+		const float right = rect.Max.x - (style.ItemSpacing.x - std::floor(style.ItemSpacing.x * 0.5f));
+		const float textY = rect.Min.y + std::floor(style.ItemSpacing.y * 0.5f);
+		const float checkWidth = std::floor(fontSize * 1.2f);
+		PaintText(painter, { left, textY }, Shade(theme.Text, look, theme), label);
+		if (!shortcut.empty())
+		{
+			const float shortcutX = right - checkWidth - style.ItemSpacing.x - CalcTextSize(shortcut).x;
+			PaintText(painter, { shortcutX, textY }, Shade(theme.TextMuted, look, theme), shortcut);
+		}
+		if (bChecked)
+		{
+			const float boxSize = std::floor(fontSize * 0.9f);
+			const float boxLeft = right - checkWidth + std::floor((checkWidth - boxSize) * 0.5f);
+			const float boxTop = textY + std::floor((fontSize - boxSize) * 0.5f);
+			PaintCheckmark(painter, PainterRect{ { boxLeft, boxTop }, { boxLeft + boxSize, boxTop + boxSize } }, 1.0f, Shade(theme.Accent, look, theme));
+		}
+	}
+
+	void PaintSelectable(WindowPainter& painter, const PainterRect& rect, glm::vec2 labelPosition, std::string_view label, float selected, const WidgetLook& look)
+	{
+		const Theme& theme = GetTheme();
+		const ImGuiStyle& style = ImGui::GetStyle();
+
+		// The pills, as a tree row's: the selection's, the hover's over it, and an outline while it
+		// has keyboard focus. Selectables lie side by side with no gap, so they keep RowPillInset
+		// from each other.
+		const PainterRect pill{ { rect.Min.x, rect.Min.y + theme.RowPillInset }, { rect.Max.x, rect.Max.y - theme.RowPillInset } };
+		if (selected > 0.0f)
+		{
+			painter.AddRoundedRect(pill, theme.FrameRounding, PainterStyle::Filled(Shade(Fade(theme.RowSelected, selected), look, theme)));
+		}
+		const float hovered = std::max(look.Hovered, look.Pressed);
+		if (hovered > 0.0f)
+		{
+			painter.AddRoundedRect(pill, theme.FrameRounding, PainterStyle::Filled(Shade(Fade(theme.MenuItemHovered, hovered), look, theme)));
+		}
+		if (look.Focused > 0.0f)
+		{
+			painter.AddRoundedRect(pill, theme.FrameRounding, PainterStyle::Outlined(Fade(theme.Accent, look.Focused), 1.0f));
+		}
+
+		// The label, cut where ImGui would clip it
+		const float right = rect.Max.x - (style.ItemSpacing.x - std::floor(style.ItemSpacing.x * 0.5f));
+		std::string cut;
+		PaintText(painter, labelPosition, Shade(theme.Text, look, theme), FitText(label, right - labelPosition.x, cut));
+	}
+
+	void PaintCombo(WindowPainter& painter, const PainterRect& frame, std::string_view preview, float open, const WidgetLook& look)
+	{
+		const Theme& theme = GetTheme();
+		const ImGuiStyle& style = ImGui::GetStyle();
+		const float frameHeight = frame.GetHeight();
+
+		// A frame as a button's, which stays lit while the list is open
+		const float lit = std::max(look.Hovered, open);
+		const glm::vec4 fill = glm::mix(glm::mix(theme.Frame, theme.FrameHovered, lit), theme.FramePressed, look.Pressed);
+		painter.AddRoundedRect(frame, theme.FrameRounding, Filled(Shade(fill, look, theme), ControlEffects(look, theme, true)));
+		painter.AddRoundedRect(frame, theme.FrameRounding, PainterStyle::Outlined(Shade(theme.FrameBorder, look, theme), theme.FrameBorderWidth));
+
+		// The chosen item's text, up to the chevron's room at the right end
+		const float chevronLeft = frame.Max.x - frameHeight;
+		std::string cut;
+		PaintText(painter, frame.Min + glm::vec2(style.FramePadding.x, style.FramePadding.y), Shade(theme.Text, look, theme),
+			FitText(preview, chevronLeft - frame.Min.x - style.FramePadding.x, cut));
+
+		// The chevron, pointing down, turned to point up while the list is open
+		const glm::vec2 centre{ chevronLeft + frameHeight * 0.5f, (frame.Min.y + frame.Max.y) * 0.5f };
+		const float size = frameHeight * 0.16f;
+		const float angle = open * 3.1415927f;
+		const glm::vec4 color = Shade(glm::mix(theme.TextMuted, theme.Text, lit), look, theme);
+		const glm::vec2 tip = Turned(centre, { 0.0f, size * 0.5f }, angle);
+		const float width = std::max(1.25f, frameHeight * 0.07f);
+		painter.AddLine(Turned(centre, { -size, -size * 0.5f }, angle), tip, width, EPainterLineCap::Round, PainterStyle::Filled(color));
+		painter.AddLine(tip, Turned(centre, { size, -size * 0.5f }, angle), width, EPainterLineCap::Round, PainterStyle::Filled(color));
+	}
+
+	void PaintColorSwatch(WindowPainter& painter, const PainterRect& frame, const glm::vec3& color, const WidgetLook& look)
+	{
+		const Theme& theme = GetTheme();
+		painter.AddRoundedRect(frame, theme.FrameRounding, Filled(Shade(glm::vec4(color, 1.0f), look, theme), ControlEffects(look, theme, false)));
+		const glm::vec4 border = glm::mix(theme.SwatchBorder, theme.SwatchBorderHovered, std::max(look.Hovered, look.Pressed));
+		painter.AddRoundedRect(frame, theme.FrameRounding, PainterStyle::Outlined(Shade(border, look, theme), theme.FrameBorderWidth));
+	}
+
 	glm::vec2 CalcButtonSize(const char* label)
 	{
 		const ImGuiStyle& style = ImGui::GetStyle();
@@ -1065,5 +1547,13 @@ namespace Nyx::UI
 	{
 		const float frameHeight = ImGui::GetFrameHeight();
 		return SearchIconLeft(frameHeight) + SearchIconSize(frameHeight, GetTheme()) + ImGui::GetStyle().ItemInnerSpacing.x;
+	}
+
+	glm::vec2 CalcCheckboxSize(const char* label)
+	{
+		const float labelWidth = CalcTextSize(VisibleLabel(label)).x;
+		const float frameHeight = ImGui::GetFrameHeight();
+		const float boxSize = std::floor(frameHeight * GetTheme().CheckboxSize);
+		return glm::vec2(boxSize + (labelWidth > 0.0f ? ImGui::GetStyle().ItemInnerSpacing.x + labelWidth : 0.0f), frameHeight);
 	}
 }

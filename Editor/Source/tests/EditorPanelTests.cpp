@@ -686,6 +686,159 @@ namespace
 		Require(!bHeaderOpen, "ImGui's collapsing header under the same label should find it closed");
 	}
 
+	// Checkboxes flip on a click. Menu items, selectables and combos keep ImGui's behaviour (a click
+	// closes the popup, a combo opens its list and takes the item chosen), while ImGui draws nothing
+	// of them. A colour swatch opens a picker, and a drag in it is one edit.
+	void TestChecksMenusCombosAndSwatches()
+	{
+		HeadlessUI ui;
+		ImGuiIO& io = ImGui::GetIO();
+		ImGuiContext& g = *GImGui;
+
+		bool bChecked = false;
+		bool bCheckClicked = false;
+		bool bOpenMenu = false;
+		bool bMenuOpen = false;
+		bool bTicked = false;
+		int copies = 0;
+		int pastes = 0;
+		bool bImGuiDrewNothing = true;
+		int comboIndex = 0;
+		bool bComboChanged = false;
+		bool bComboOpen = false;
+		glm::vec3 color(0.5f);
+		Nyx::UI::ColorSwatchResult swatch;
+		bool bEditStarted = false;
+		bool bEditEnded = false;
+		ImRect checkbox;
+		ImRect copy;
+		ImRect paste;
+		ImRect tick;
+		ImRect combo;
+		ImVec2 secondItemAt;
+		ImRect swatchRect;
+		bool bPickerOpen = false;
+		ImVec2 pickerTopLeft;
+		const char* const items[] = { "First", "Second", "Third" };
+		const auto draw = [&]()
+			{
+				ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+				ImGui::SetNextWindowSize(ImVec2(400.0f, 400.0f));
+				ImGui::Begin("Widgets");
+				bCheckClicked |= Nyx::UI::Checkbox("Snap", &bChecked);
+				checkbox = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+
+				ImGui::SetNextItemWidth(200.0f);
+				bComboChanged |= Nyx::UI::Combo("Editor", &comboIndex, items);
+				combo = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+				bComboOpen = ImGui::IsPopupOpen(ImHashStr("##ComboPopup", 0, ImGui::GetItemID()), ImGuiPopupFlags_None);
+				if (bComboOpen && g.OpenPopupStack.back().Window != nullptr)
+				{
+					// The middle of the list's second item: items are a line high, the item
+					// spacing apart
+					const ImGuiWindow& list = *g.OpenPopupStack.back().Window;
+					const float line = ImGui::GetFontSize() + ImGui::GetStyle().ItemSpacing.y;
+					secondItemAt = ImVec2(list.DC.CursorStartPos.x + 20.0f, list.DC.CursorStartPos.y + line + ImGui::GetFontSize() * 0.5f);
+				}
+
+				ImGui::SetNextItemWidth(200.0f);
+				swatch = Nyx::UI::ColorSwatch("Colour", &color.x);
+				bEditStarted |= swatch.bEditStarted;
+				bEditEnded |= swatch.bEditEnded;
+				swatchRect = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+				bPickerOpen = ImGui::IsPopupOpen(ImHashStr("##ColorPopup", 0, ImGui::GetItemID()), ImGuiPopupFlags_None);
+				if (bPickerOpen && g.OpenPopupStack.back().Window != nullptr)
+				{
+					pickerTopLeft = g.OpenPopupStack.back().Window->DC.CursorStartPos;
+				}
+
+				if (bOpenMenu)
+				{
+					ImGui::OpenPopup("Menu");
+					bOpenMenu = false;
+				}
+				bMenuOpen = ImGui::BeginPopup("Menu");
+				if (bMenuOpen)
+				{
+					ImDrawList& drawList = *ImGui::GetWindowDrawList();
+					const int vertices = drawList.VtxBuffer.Size;
+					copies += Nyx::UI::MenuItem("Copy", "Ctrl+C") ? 1 : 0;
+					copy = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+					pastes += Nyx::UI::MenuItem("Paste", "Ctrl+V", false, false) ? 1 : 0;
+					paste = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+					Nyx::UI::Separator();
+					Nyx::UI::MenuItem("Snap to grid", nullptr, &bTicked);
+					tick = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+					bImGuiDrewNothing &= drawList.VtxBuffer.Size == vertices;
+					ImGui::EndPopup();
+				}
+				ImGui::End();
+			};
+		const auto moveTo = [&](ImVec2 at)
+			{
+				io.AddMousePosEvent(at.x, at.y);
+				ui.Frame(draw);
+			};
+		const auto press = [&](ImVec2 at)
+			{
+				moveTo(at);
+				io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+				ui.Frame(draw);
+				io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+				ui.Frame(draw);
+			};
+		const auto openMenu = [&]()
+			{
+				bOpenMenu = true;
+				ui.Frame(draw);
+				ui.Frame(draw);
+			};
+
+		ui.Frame(draw);
+		press(checkbox.GetCenter());
+		Require(bChecked && bCheckClicked, "Clicking a checkbox should tick it");
+
+		// A menu: a click on an item runs it and closes the menu; a disabled one does nothing.
+		openMenu();
+		Require(bMenuOpen, "The menu should open");
+		Require(bImGuiDrewNothing, "ImGui should draw nothing of painted menu items and separators");
+		press(paste.GetCenter());
+		Require(pastes == 0 && bMenuOpen, "A disabled menu item shouldn't run, nor close the menu");
+		press(copy.GetCenter());
+		// The menu was open when the frame began; it is closed the next.
+		ui.Frame(draw);
+		Require(copies == 1 && !bMenuOpen, "Clicking a menu item should run it and close the menu");
+		openMenu();
+		press(tick.GetCenter());
+		Require(bTicked, "A menu item with a bool should flip it");
+
+		// A combo: a click opens its list; a click on an item chooses it and closes the list.
+		press(combo.GetCenter());
+		Require(bComboOpen, "Clicking a combo should open its list");
+		// A popup is placed in the frames after it opens.
+		ui.Frame(draw);
+		ui.Frame(draw);
+		press(secondItemAt);
+		Require(comboIndex == 1 && bComboChanged && !bComboOpen, "Clicking an item of the list should choose it and close the list");
+
+		// A colour swatch: a click opens the picker; a drag in its square changes the colour and
+		// is one edit.
+		press(swatchRect.GetCenter());
+		Require(bPickerOpen && !bEditStarted, "Clicking a swatch should open its picker, without starting an edit");
+		ui.Frame(draw);
+		ui.Frame(draw);
+		const ImVec2 square(pickerTopLeft.x + 20.0f, pickerTopLeft.y + 20.0f);
+		moveTo(square);
+		io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+		ui.Frame(draw);
+		moveTo(ImVec2(square.x + 30.0f, square.y + 10.0f));
+		io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+		ui.Frame(draw);
+		ui.Frame(draw);
+		Require(color != glm::vec3(0.5f), "Dragging in the picker should change the colour");
+		Require(bEditStarted && bEditEnded, "A drag in the picker should start and end an edit");
+	}
+
 	void TestAnimationsEaseAndAreForgotten()
 	{
 		HeadlessUI ui;
@@ -794,6 +947,7 @@ int main()
 		TestPaintedWidgetsBehaveLikeImGuis();
 		TestTreeRowsBehaveLikeTreeNodes();
 		TestFieldsAndPropertyRows();
+		TestChecksMenusCombosAndSwatches();
 		TestAnimationsEaseAndAreForgotten();
 	}
 	catch (const std::exception& error)

@@ -5,6 +5,7 @@
 #include <glm/glm.hpp>
 #include <imgui.h>
 
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -28,7 +29,8 @@
 // without the mouse.
 //
 // Fields are hybrids instead: ImGui's own text and number fields, which keep their editing and
-// their text, over a painted frame (InputText() and below).
+// their text, over a painted frame (InputText() and below). So are menu items and selectables:
+// ImGui's own, drawn invisible, and painted after them (MenuItem() and below).
 //
 // Looks come from Nyx::UI::GetTheme(); layout from ImGui's style, so painted widgets line up
 // with ImGui's. Labels work as ImGui's: the text after "##" is part of the ID only.
@@ -152,6 +154,51 @@ namespace Nyx::UI
 	void BeginPropertyRow(const char* label);
 	void EndPropertyRow();
 
+	// A box, ticked when `value` is true, with its label to the right; it flips `value` when
+	// clicked. True when it flipped, like ImGui::Checkbox().
+	bool Checkbox(const char* label, bool* value);
+
+	// Menus and lists (stage 3, change 7c). Menu items and selectables are ImGui's own, which keep
+	// what makes them work in menus and popups (closing the popup on a click, keyboard
+	// navigation, hovering to move the keyboard's place), but drawn invisible: their highlight
+	// and text are transparent while ImGui draws them. They are painted after ImGui's widget has
+	// run, with the state ImGui has then, at the rect it laid out.
+
+	// An item of a menu: the label on the left, the shortcut's text right-aligned, and a tick on
+	// the right when selected. True when clicked; that closes the menu. In a menu bar, ImGui's own.
+	bool MenuItem(const char* label, const char* shortcut = nullptr, bool bSelected = false, bool bEnabled = true);
+	// As above, flipping `selected` when clicked
+	bool MenuItem(const char* label, const char* shortcut, bool* selected, bool bEnabled = true);
+
+	// A line of a list that can be selected, as ImGui::Selectable(): the selection pill behind it
+	// when `bSelected`, the hover pill when hovered. In a popup, a click closes it.
+	bool Selectable(const char* label, bool bSelected = false, ImGuiSelectableFlags flags = 0, const glm::vec2& size = glm::vec2(0.0f));
+
+	// A thin line across the window, as ImGui::Separator(); in a menu bar, ImGui's own
+	void Separator();
+
+	// A combo box: a frame with the chosen item's text and a chevron, which turns as the combo
+	// opens. Its list is ImGui's popup, a floating card with the chrome on; fill it with
+	// Selectable()s and end it with EndCombo() when BeginCombo() returned true, as with ImGui's.
+	bool BeginCombo(const char* label, const char* preview);
+	void EndCombo();
+	// A combo of `items`, choosing `current`. True when another item was chosen.
+	bool Combo(const char* label, int* current, std::span<const char* const> items);
+
+	struct ColorSwatchResult
+	{
+		// The colour changed this frame
+		bool bChanged = false;
+		// An edit in the picker started or ended this frame, e.g. a drag in it: for undo, as
+		// IsItemActivated() and IsItemDeactivatedAfterEdit() are for other fields
+		bool bEditStarted = false;
+		bool bEditEnded = false;
+	};
+
+	// A colour as a swatch, the item width wide, with its label to the right. A click opens
+	// ImGui's colour picker in a popup under it, which changes `rgb` (3 floats, 0 to 1).
+	ColorSwatchResult ColorSwatch(const char* label, float* rgb);
+
 	// The painting, for any look. Rects are in ImGui's screen coordinates, as the widgets lay
 	// themselves out: the widget's whole rect, label included, except the slider's, which is its
 	// frame. Labels are what is shown, without "##".
@@ -203,6 +250,18 @@ namespace Nyx::UI
 	// `rect`: the whole row, the window's width. Paints the hover pill, the guides and the label.
 	void PaintPropertyRow(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view label, const PropertyRowLook& row, const WidgetLook& look);
 
+	// `on`: the tick's way in, from off (0) to on (1)
+	void PaintCheckbox(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view label, float on, const WidgetLook& look);
+	// `rect`: the item as ImGui lays it out, across the menu, half the item spacing larger than its text all round
+	void PaintMenuItem(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view label, std::string_view shortcut, bool bChecked, const WidgetLook& look);
+	// `rect`: as for a menu item. `selected`: the selection pill, faded in from 0 to 1.
+	void PaintSelectable(WindowPainter& painter, const Engine::PainterRect& rect, glm::vec2 labelPosition, std::string_view label, float selected, const WidgetLook& look);
+	// `open`: the chevron's turn, from closed (0, pointing down) to open (1, pointing up)
+	void PaintCombo(WindowPainter& painter, const Engine::PainterRect& frame, std::string_view preview, float open, const WidgetLook& look);
+	void PaintColorSwatch(WindowPainter& painter, const Engine::PainterRect& frame, const glm::vec3& color, const WidgetLook& look);
+	// A tick in `box`, `amount` of the way drawn (0 to 1)
+	void PaintCheckmark(WindowPainter& painter, const Engine::PainterRect& box, float amount, const glm::vec4& color);
+
 	// The sizes the widgets take, at the current font, for the gallery's forced states
 	glm::vec2 CalcButtonSize(const char* label);
 	glm::vec2 CalcToggleSize(const char* label);
@@ -217,4 +276,5 @@ namespace Nyx::UI
 	float CalcPropertyValueX(float rowMinX, float rowMaxX);
 	// Where a search field's text starts, from its frame's left
 	float CalcSearchTextOffset();
+	glm::vec2 CalcCheckboxSize(const char* label);
 }

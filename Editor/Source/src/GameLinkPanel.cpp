@@ -258,10 +258,10 @@ namespace Nyx::Editor
 		ImGui::SetItemTooltip("Copies the lines shown, as text");
 
 		ImGui::SameLine();
-		NYX_UI(ImGui::Checkbox("Auto-scroll", &bGameLogAutoScroll));
+		NYX_UI(Nyx::UI::Checkbox("Auto-scroll", &bGameLogAutoScroll));
 
 		ImGui::SameLine();
-		NYX_UI(ImGui::Checkbox("Clear on Play", &bClearOnPlay));
+		NYX_UI(Nyx::UI::Checkbox("Clear on Play", &bClearOnPlay));
 
 		ImGui::SameLine();
 		ImGui::SetNextItemWidth(220.0f);
@@ -384,17 +384,17 @@ namespace Nyx::Editor
 			for (const auto& typeAndName : TypeNames)
 			{
 				bool& bShow = bShowType[typeAndName.first];
-				NYX_UI(ImGui::Checkbox(typeAndName.second.c_str(), &bShow));
+				NYX_UI(Nyx::UI::Checkbox(typeAndName.second.c_str(), &bShow));
 			}
 			ImGui::EndPopup();
 		}
 
 		ImGui::SameLine();
-		NYX_UI(ImGui::Checkbox("Clear on Play##Messages", &bClearOnPlay));
+		NYX_UI(Nyx::UI::Checkbox("Clear on Play##Messages", &bClearOnPlay));
 
 		ImGui::SameLine();
 		bool bRecord = bRecording;
-		if (NYX_UI(ImGui::Checkbox("Record", &bRecord)))
+		if (NYX_UI(Nyx::UI::Checkbox("Record", &bRecord)))
 		{
 			if (bRecord)
 			{

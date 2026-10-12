@@ -4,6 +4,7 @@
 #include "Log.h"
 #include "SourceNavigation.h"
 #include "UISourceInspector.h"
+#include "UIWidgets.h"
 
 #include "imgui.h"
 
@@ -43,7 +44,8 @@ namespace Nyx::Editor
 		{
 			NYX_UI(ImGui::TextUnformatted("Source navigation"));
 			int selectedEditor = static_cast<int>(preferences.SourceEditor);
-			if (NYX_UI(ImGui::Combo("Source editor", &selectedEditor, "Visual Studio\0Visual Studio Code\0")))
+			constexpr const char* SourceEditors[] = { "Visual Studio", "Visual Studio Code" };
+			if (NYX_UI(Nyx::UI::Combo("Source editor", &selectedEditor, SourceEditors)))
 			{
 				preferences.SourceEditor = static_cast<ESourceEditor>(selectedEditor);
 				if (!preferences.Save(EditorPreferences::GetUserFile()))
@@ -70,11 +72,11 @@ namespace Nyx::Editor
 		NYX_UI(ImGui::TextDisabled("The scene views' pictures glow onto the editor around them."));
 
 		// The toggle saves at once; a slider when it is let go, not on every frame of a drag.
-		bool bSave = NYX_UI(ImGui::Checkbox("Ambilight", &preferences.bAmbilight));
+		bool bSave = NYX_UI(Nyx::UI::Checkbox("Ambilight", &preferences.bAmbilight));
 		ImGui::BeginDisabled(!preferences.bAmbilight);
-		NYX_UI(ImGui::SliderFloat("Strength", &preferences.AmbilightStrength, 0.0f, 1.0f, "%.2f"));
+		NYX_UI(Nyx::UI::SliderFloat("Strength", &preferences.AmbilightStrength, 0.0f, 1.0f, "%.2f"));
 		bSave |= ImGui::IsItemDeactivatedAfterEdit();
-		NYX_UI(ImGui::SliderFloat("Reach", &preferences.AmbilightReach, 0.0f, EditorPreferences::MaxAmbilightReach, "%.0f px"));
+		NYX_UI(Nyx::UI::SliderFloat("Reach", &preferences.AmbilightReach, 0.0f, EditorPreferences::MaxAmbilightReach, "%.0f px"));
 		bSave |= ImGui::IsItemDeactivatedAfterEdit();
 		ImGui::EndDisabled();
 

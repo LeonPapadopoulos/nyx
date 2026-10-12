@@ -12,6 +12,7 @@
 #include "Renderer.h"
 #include "SceneSerializer.h"
 #include "UIChrome.h"
+#include "UIWidgets.h"
 
 #include "imgui.h"
 
@@ -189,22 +190,22 @@ namespace Nyx::Editor
 
 		if (Nyx::UI::BeginPopup("##TitlebarFileMenu"))
 		{
-			if (NYX_UI(ImGui::MenuItem("New Scene")))
+			if (NYX_UI(Nyx::UI::MenuItem("New Scene")))
 			{
 				NewScene();
 			}
 
-			if (NYX_UI(ImGui::MenuItem("Save Scene")))
+			if (NYX_UI(Nyx::UI::MenuItem("Save Scene")))
 			{
 				SaveScene();
 			}
 
-			if (NYX_UI(ImGui::MenuItem("Save Scene As")))
+			if (NYX_UI(Nyx::UI::MenuItem("Save Scene As")))
 			{
 				SceneFiles.RequestSaveAs();
 			}
 
-			if (NYX_UI(ImGui::MenuItem("Load Scene")))
+			if (NYX_UI(Nyx::UI::MenuItem("Load Scene")))
 			{
 				SceneFiles.RequestLoad();
 			}
@@ -221,31 +222,31 @@ namespace Nyx::Editor
 
 		if (Nyx::UI::BeginPopup("##TitlebarWindowMenu"))
 		{
-			if (NYX_UI(ImGui::MenuItem("Inspect UI source", "F8", SourceInspector.IsActive())))
+			if (NYX_UI(Nyx::UI::MenuItem("Inspect UI source", "F8", SourceInspector.IsActive())))
 			{
 				SourceInspector.RequestToggle();
 			}
-			if (NYX_UI(ImGui::MenuItem("Preferences"))) PreferencesPanel.bOpen = true;
+			if (NYX_UI(Nyx::UI::MenuItem("Preferences"))) PreferencesPanel.bOpen = true;
 
-			if (NYX_UI(ImGui::MenuItem("Asset Browser")))
+			if (NYX_UI(Nyx::UI::MenuItem("Asset Browser")))
 			{
 				bAssetBrowserVisible = !bAssetBrowserVisible;
 			}
 
 			// The game's log and the editor link's messages
-			if (NYX_UI(ImGui::MenuItem("Game Link", nullptr, bShowGameLink)))
+			if (NYX_UI(Nyx::UI::MenuItem("Game Link", nullptr, bShowGameLink)))
 			{
 				bShowGameLink = !bShowGameLink;
 			}
 
 			// Window shapes for Play and Play All
-			if (NYX_UI(ImGui::MenuItem("Play Setups", nullptr, Play.bShowSetups)))
+			if (NYX_UI(Nyx::UI::MenuItem("Play Setups", nullptr, Play.bShowSetups)))
 			{
 				Play.bShowSetups = !Play.bShowSetups;
 			}
 
 			// Shows "Scene 2" the way the game sees the scene: through its primary camera, without editor overlays
-			if (NYX_UI(ImGui::MenuItem("Game View in Scene 2", nullptr, bSecondaryViewShowsGameView)))
+			if (NYX_UI(Nyx::UI::MenuItem("Game View in Scene 2", nullptr, bSecondaryViewShowsGameView)))
 			{
 				bSecondaryViewShowsGameView = !bSecondaryViewShowsGameView;
 				SecondarySceneView.SetShowsGameView(bSecondaryViewShowsGameView);
@@ -262,12 +263,12 @@ namespace Nyx::Editor
 		if (Nyx::UI::BeginPopup("##TitlebarDebugMenu"))
 		{
 			DebugTools.DrawMenu();
-			ImGui::Separator();
+			Nyx::UI::Separator();
 			NYX_UI(ImGui::TextDisabled("Nyx"));
-			NYX_UI(ImGui::MenuItem("Painter Test", nullptr, &PainterTest.bOpen));
-			NYX_UI(ImGui::MenuItem("Mockup Overlay", nullptr, &Mockup.bOpen));
+			NYX_UI(Nyx::UI::MenuItem("Painter Test", nullptr, &PainterTest.bOpen));
+			NYX_UI(Nyx::UI::MenuItem("Mockup Overlay", nullptr, &Mockup.bOpen));
 			bool bPaintedChrome = Nyx::UI::IsPaintedChromeEnabled();
-			if (NYX_UI(ImGui::MenuItem("Painted Chrome", nullptr, &bPaintedChrome)))
+			if (NYX_UI(Nyx::UI::MenuItem("Painted Chrome", nullptr, &bPaintedChrome)))
 			{
 				Nyx::UI::SetPaintedChrome(bPaintedChrome);
 			}

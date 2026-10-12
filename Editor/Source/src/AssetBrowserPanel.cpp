@@ -20,12 +20,12 @@ namespace Nyx::Editor
 			return;
 		}
 
-		if (NYX_UI(ImGui::Button("Rescan")))
+		if (NYX_UI(Nyx::UI::Button("Rescan")))
 		{
 			Database->Rescan();
 		}
 
-		NYX_UI(ImGui::Separator());
+		NYX_UI(Nyx::UI::Separator());
 
 		if (Nyx::UI::BeginChild("AssetBrowserLeft", ImVec2(220.0f, 0.0f), true))
 		{
@@ -95,7 +95,7 @@ namespace Nyx::Editor
 		}
 
 		NYX_UI(ImGui::Text("Directory: %s", CurrentDirectory.empty() ? "Assets" : CurrentDirectory.string().c_str()));
-		NYX_UI(ImGui::Separator());
+		NYX_UI(Nyx::UI::Separator());
 
 		const std::vector<AssetEntry> children = Database->GetChildren(CurrentDirectory);
 
@@ -118,7 +118,7 @@ namespace Nyx::Editor
 
 			const std::string label = prefix + entry.Name;
 
-			if (NYX_UI(ImGui::Selectable(label.c_str(), false)))
+			if (NYX_UI(Nyx::UI::Selectable(label.c_str(), false)))
 			{
 				if (entry.bIsDirectory)
 				{

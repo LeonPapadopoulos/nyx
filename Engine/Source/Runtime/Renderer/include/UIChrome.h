@@ -32,6 +32,8 @@ namespace Nyx::UI
 	// - Window glows, for ambilight (stage 3, change 5): a window can glow with a picture onto
 	//   the backdrop around it (AddWindowGlow()). The glows are painted behind every card, and
 	//   docked cards are slightly translucent, so a glow shows faintly through its neighbours.
+	// - Scrollbars (stage 3, change 7c): ImGui keeps their behaviour and layout and draws them
+	//   transparent; a thin pill is painted where ImGui's grab is, wider while hovered.
 	//
 	// The colours, rounding, gap and shadows are the theme's (UITheme.h).
 
@@ -66,7 +68,7 @@ namespace Nyx::UI
 	// glass shows. Empty when there is no glass; valid after PaintWindowCards() until the next.
 	std::span<const ImDrawList* const> GetGlassDrawLists();
 
-	// Paints the cards and tab bars of all windows of this frame. Call it once the frame has ended
+	// Paints the cards, tab bars and scrollbars of all windows of this frame. Call it once the frame has ended
 	// (ImGui::EndFrame(), so ImGui's own windows are there too) and before the window painters
 	// are gathered (EndWindowPainters()). The renderer does. Nothing while the chrome is off.
 	void PaintWindowCards();

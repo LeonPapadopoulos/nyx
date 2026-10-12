@@ -50,7 +50,7 @@ namespace Nyx::Editor
 		}
 
 		NYX_UI(ImGui::Text("Entity: %u", selectedEntity.Index()));
-		NYX_UI(ImGui::Separator());
+		NYX_UI(Nyx::UI::Separator());
 
 		// @todo: Move away from manually hardcoding the visuals of
 		// specific components (and fields) here; Consider DetailsPanel-,
@@ -99,7 +99,7 @@ namespace Nyx::Editor
 
 				if (Nyx::UI::BeginPopup("##ComponentMenu"))
 				{
-					if (NYX_UI(ImGui::MenuItem("Remove Component")))
+					if (NYX_UI(Nyx::UI::MenuItem("Remove Component")))
 					{
 						componentToRemove = &componentType;
 					}
@@ -136,7 +136,7 @@ namespace Nyx::Editor
 				}
 
 				bAnyMissing = true;
-				if (NYX_UI(ImGui::MenuItem(componentType.TypeMetadata->DisplayName)))
+				if (NYX_UI(Nyx::UI::MenuItem(componentType.TypeMetadata->DisplayName)))
 				{
 					componentToAdd = &componentType;
 				}

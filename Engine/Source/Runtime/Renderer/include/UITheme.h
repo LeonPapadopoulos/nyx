@@ -150,6 +150,29 @@ namespace Nyx::UI
 		glm::vec4 Header{ 1.0f, 1.0f, 1.0f, 0.045f };
 		glm::vec4 HeaderHovered{ 1.0f, 1.0f, 1.0f, 0.08f };
 
+		// Checkboxes (Checkbox()): a rounded box CheckboxSize of the frame height, a field when
+		// off, filled with the accent and ticked when on. The tick is CheckmarkWidth of the box
+		// thick, in the knobs' colour; menu items tick in the accent.
+		float CheckboxSize = 0.72f;
+		float CheckboxRounding = 4.0f;
+		float CheckmarkWidth = 0.13f;
+
+		// Menu items and selectables (MenuItem(), Selectable()): the pill behind a hovered one, and
+		// the selection's (RowSelected). Shortcuts are muted.
+		glm::vec4 MenuItemHovered{ 1.0f, 1.0f, 1.0f, 0.09f };
+
+		// Colour swatches (ColorSwatch()): a hairline around the colour, lighter when hovered
+		glm::vec4 SwatchBorder{ 1.0f, 1.0f, 1.0f, 0.15f };
+		glm::vec4 SwatchBorderHovered{ 1.0f, 1.0f, 1.0f, 0.45f };
+
+		// Scrollbars (UIChrome.h): a thin pill in the middle of ImGui's scrollbar, wider while the
+		// scrollbar is hovered, in the accent while it is dragged
+		glm::vec4 ScrollbarThumb{ 1.0f, 1.0f, 1.0f, 0.16f };
+		glm::vec4 ScrollbarThumbHovered{ 1.0f, 1.0f, 1.0f, 0.32f };
+		glm::vec4 ScrollbarThumbHeld{ 1.0f, 0.55f, 0.15f, 0.85f };
+		float ScrollbarThumbWidth = 4.0f;
+		float ScrollbarThumbHoveredWidth = 8.0f;
+
 		// What disabled widgets keep of their colours' alpha
 		float DisabledAlpha = 0.45f;
 		// How fast hover, press and knobs ease, per second: after 1 / AnimationSpeed seconds, about

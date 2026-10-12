@@ -1,8 +1,8 @@
 #pragma once
 
-#include <array>
 #include <filesystem>
 #include <optional>
+#include <string>
 
 namespace Nyx::Editor
 {
@@ -30,6 +30,6 @@ namespace Nyx::Editor
 	private:
 		bool bOpenLoadPopup = false;
 		bool bOpenSaveAsPopup = false;
-		std::array<char, 256> SaveAsBuffer{};
+		std::string SaveAsName;
 	};
 }

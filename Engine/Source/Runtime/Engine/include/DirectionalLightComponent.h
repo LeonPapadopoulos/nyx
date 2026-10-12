@@ -11,7 +11,7 @@ namespace Nyx::Engine
 	NYX_REFLECT(Component, meta = (DisplayName = "Directional Light Component"))
 	struct DirectionalLightComponent
 	{
-		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Light", DragSpeed = 0.01))
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Light", UI = Color))
 		glm::vec3 Color{ 1.0f, 1.0f, 1.0f };
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Light", DragSpeed = 0.01))

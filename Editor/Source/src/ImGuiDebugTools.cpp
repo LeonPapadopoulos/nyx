@@ -1,5 +1,6 @@
 #include "ImGuiDebugTools.h"
 #include "ImGuiSource.h"
+#include "UIWidgets.h"
 
 #include <imgui_internal.h>
 #include <Windows.h>
@@ -31,12 +32,12 @@ namespace Nyx::Editor
 	{
 		NYX_UI(ImGui::TextDisabled("Dear ImGui"));
 #ifndef IMGUI_DISABLE_DEBUG_TOOLS
-		NYX_UI(ImGui::MenuItem("Metrics / Debugger", nullptr, &bShowMetrics));
-		NYX_UI(ImGui::MenuItem("Debug Log", nullptr, &bShowDebugLog));
-		NYX_UI(ImGui::MenuItem("ID Stack Tool", nullptr, &bShowIDStack));
+		NYX_UI(Nyx::UI::MenuItem("Metrics / Debugger", nullptr, &bShowMetrics));
+		NYX_UI(Nyx::UI::MenuItem("Debug Log", nullptr, &bShowDebugLog));
+		NYX_UI(Nyx::UI::MenuItem("ID Stack Tool", nullptr, &bShowIDStack));
 
 		const bool bCanPick = ImGui::GetIO().ConfigDebugIsDebuggerPresent && !UI::IsInspectingSources();
-		if (NYX_UI(ImGui::MenuItem("Item Picker (break in debugger)", nullptr, false, bCanPick)))
+		if (NYX_UI(Nyx::UI::MenuItem("Item Picker (break in debugger)", nullptr, false, bCanPick)))
 		{
 			ImGui::DebugStartItemPicker();
 		}
@@ -55,13 +56,13 @@ namespace Nyx::Editor
 			ImGui::TextUnformatted(hint);
 			ImGui::EndTooltip();
 		}
-		NYX_UI(ImGui::MenuItem("Highlight ID conflicts", nullptr, &ImGui::GetIO().ConfigDebugHighlightIdConflicts));
+		NYX_UI(Nyx::UI::MenuItem("Highlight ID conflicts", nullptr, &ImGui::GetIO().ConfigDebugHighlightIdConflicts));
 #else
 		NYX_UI(ImGui::TextDisabled("ImGui debug tools are disabled in this build."));
 #endif
-		NYX_UI(ImGui::Separator());
-		NYX_UI(ImGui::MenuItem("Style Editor", nullptr, &bShowStyleEditor));
-		NYX_UI(ImGui::MenuItem("Demo", nullptr, &bShowDemo));
+		NYX_UI(Nyx::UI::Separator());
+		NYX_UI(Nyx::UI::MenuItem("Style Editor", nullptr, &bShowStyleEditor));
+		NYX_UI(Nyx::UI::MenuItem("Demo", nullptr, &bShowDemo));
 	}
 
 	void ImGuiDebugTools::DrawWindows()

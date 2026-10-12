@@ -39,6 +39,11 @@ namespace Nyx::UI
 			ImGuiCol_TabDimmed,
 			ImGuiCol_TabDimmedSelected,
 			ImGuiCol_TabDimmedSelectedOverline,
+			// Scrollbars: their track and grab
+			ImGuiCol_ScrollbarBg,
+			ImGuiCol_ScrollbarGrab,
+			ImGuiCol_ScrollbarGrabHovered,
+			ImGuiCol_ScrollbarGrabActive,
 		};
 
 		// What the chrome changes in ImGui's style, as it was before, to put back when it goes off
@@ -489,6 +494,88 @@ namespace Nyx::UI
 				drawList.PopClipRect();
 			}
 		}
+
+		// A window's scrollbar along `axis` as a thin pill where ImGui's grab is. ImGui keeps the
+		// scrollbar's behaviour and draws it transparent; the grab is laid out as ImGui::ScrollbarEx()
+		// lays it out: along the scrollbar less its padding, as long as the share of the contents
+		// shown, at the scroll position. Painted over the window's drawing, which ImGui keeps
+		// clear of its scrollbars.
+		void PaintScrollbar(ImGuiWindow& window, ImGuiAxis axis)
+		{
+			const ImGuiContext& g = *GImGui;
+			const ImGuiStyle& style = g.Style;
+			const Theme& theme = GetTheme();
+
+			const ImRect frame = ImGui::GetWindowScrollbarRect(&window, axis);
+			const float frameWidth = frame.GetWidth();
+			const float frameHeight = frame.GetHeight();
+			if (frameWidth <= 0.0f || frameHeight <= 0.0f)
+			{
+				return;
+			}
+			// As ImGui's: a vertical scrollbar shorter than twice its width fades out.
+			const float alpha = axis == ImGuiAxis_Y && frameHeight < frameWidth ? ImSaturate(frameHeight / std::max(frameWidth * 2.0f, 1.0f)) : 1.0f;
+			if (alpha <= 0.0f)
+			{
+				return;
+			}
+			ImRect track = frame;
+			track.Expand(-IM_TRUNC(std::min(style.ScrollbarPadding, std::min(frameWidth, frameHeight) * 0.5f)));
+			const float length = track.GetSize()[axis];
+			if (length < 1.0f)
+			{
+				return;
+			}
+
+			// ImGui works in whole pixels here.
+			const float visible = static_cast<float>(static_cast<ImS64>(window.InnerRect.Max[axis] - window.InnerRect.Min[axis]));
+			const float contents = static_cast<float>(static_cast<ImS64>(window.ContentSize[axis] + window.WindowPadding[axis] * 2.0f));
+			const float total = std::max(std::max(contents, visible), 1.0f);
+			const float grabLength = ImClamp(length * (visible / total), std::min(length, style.GrabMinSize), length);
+			const float scrollMax = std::max(1.0f, contents - visible);
+			const float ratio = ImSaturate(static_cast<float>(static_cast<ImS64>(window.Scroll[axis])) / scrollMax);
+			const float grabStart = track.Min[axis] + ratio * (length - grabLength);
+
+			// Thin, wider while hovered, in the accent while dragged
+			const ImGuiID id = ImGui::GetWindowScrollbarID(&window, axis);
+			const bool bHeld = g.ActiveId == id;
+			const float hovered = Animate(ImHashStr("Hovered", 0, id), g.HoveredId == id || bHeld ? 1.0f : 0.0f, theme.AnimationSpeed);
+			const float held = Animate(ImHashStr("Held", 0, id), bHeld ? 1.0f : 0.0f, theme.AnimationSpeed);
+			const ImGuiAxis across = axis == ImGuiAxis_X ? ImGuiAxis_Y : ImGuiAxis_X;
+			const float thickness = std::min(glm::mix(theme.ScrollbarThumbWidth, theme.ScrollbarThumbHoveredWidth, hovered), track.GetSize()[across]);
+			const float middle = (track.Min[across] + track.Max[across]) * 0.5f;
+			ImRect thumb;
+			thumb.Min[axis] = grabStart;
+			thumb.Max[axis] = grabStart + grabLength;
+			thumb.Min[across] = middle - thickness * 0.5f;
+			thumb.Max[across] = middle + thickness * 0.5f;
+			glm::vec4 color = glm::mix(glm::mix(theme.ScrollbarThumb, theme.ScrollbarThumbHovered, hovered), theme.ScrollbarThumbHeld, held);
+			color.a *= alpha;
+
+			ImDrawList& drawList = *window.DrawList;
+			drawList.PushClipRect(frame.Min, frame.Max, false);
+			GetPainterFor(drawList, *window.Viewport, window.Name).AddRoundedRect(RectAt(thumb.Min, thumb.GetSize()), thickness * 0.5f, PainterStyle::Filled(color));
+			drawList.PopClipRect();
+		}
+
+		void PaintScrollbars()
+		{
+			for (ImGuiWindow* window : GImGui->Windows)
+			{
+				if (!window->Active || window->Hidden || window->Collapsed || window->Viewport == nullptr)
+				{
+					continue;
+				}
+				if (window->ScrollbarY)
+				{
+					PaintScrollbar(*window, ImGuiAxis_Y);
+				}
+				if (window->ScrollbarX)
+				{
+					PaintScrollbar(*window, ImGuiAxis_X);
+				}
+			}
+		}
 	}
 
 	void SetPaintedChrome(bool bEnabled)
@@ -592,5 +679,6 @@ namespace Nyx::UI
 		}
 		// After the floating cards, so a tab bar in a floating window lies on its card
 		PaintWindowTabBars();
+		PaintScrollbars();
 	}
 }

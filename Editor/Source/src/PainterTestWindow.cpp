@@ -320,17 +320,17 @@ namespace Nyx::Editor
 		const uint64_t view = views[BlurViewIndex];
 
 		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16.0f);
-		if (NYX_UI(ImGui::BeginCombo("##BlurView", viewName(BlurViewIndex).c_str())))
+		if (NYX_UI(Nyx::UI::BeginCombo("##BlurView", viewName(BlurViewIndex).c_str())))
 		{
 			for (size_t index = 0; index < views.size(); ++index)
 			{
-				if (NYX_UI(ImGui::Selectable(viewName(index).c_str(), index == BlurViewIndex)))
+				if (NYX_UI(Nyx::UI::Selectable(viewName(index).c_str(), index == BlurViewIndex)))
 				{
 					BlurViewIndex = index;
 					bBlurViewChosen = true;
 				}
 			}
-			ImGui::EndCombo();
+			Nyx::UI::EndCombo();
 		}
 
 		// The time is the GPU's, for every scene view's blur together, a frame or two ago.
@@ -680,6 +680,93 @@ namespace Nyx::Editor
 			[&]() { NYX_UI(Nyx::UI::CollapsingHeader("Transform##Live")); },
 			[&]() { NYX_UI(ImGui::CollapsingHeader("Transform##ImGui", ImGuiTreeNodeFlags_DefaultOpen)); });
 
+		row("Checkbox, off",
+			[&](const WidgetLook& look) { Nyx::UI::PaintCheckbox(painter, ReserveCell(Nyx::UI::CalcCheckboxSize("Snap")), "Snap", 0.0f, look); },
+			[&]() { NYX_UI(Nyx::UI::Checkbox("Snap##LiveCheckbox", &bGalleryToggle)); },
+			[&]() { NYX_UI(ImGui::Checkbox("Snap##ImGuiCheckbox", &bGalleryToggle)); });
+
+		row("Checkbox, on",
+			[&](const WidgetLook& look) { Nyx::UI::PaintCheckbox(painter, ReserveCell(Nyx::UI::CalcCheckboxSize("Snap")), "Snap", 1.0f, look); },
+			[&]() {},
+			[&]() {});
+
+		// Menu items and selectables: as wide as a small menu, a line high with the item spacing
+		// around it, as ImGui lays them out. The live ones work outside a menu too.
+		const ImGuiStyle& style = ImGui::GetStyle();
+		const glm::vec2 itemSize(ImGui::GetFontSize() * 11.0f, ImGui::GetFontSize() + style.ItemSpacing.y);
+		const auto paintMenuItem = [&](const WidgetLook& look, bool bChecked)
+		{
+			const PainterRect cell = ReserveCell(itemSize);
+			Nyx::UI::PaintMenuItem(painter, cell, bChecked ? "Painted Chrome" : "Duplicate", bChecked ? "" : "Ctrl+D", bChecked, look);
+		};
+		row("Menu item",
+			[&](const WidgetLook& look) { paintMenuItem(look, false); },
+			[&]() { NYX_UI(Nyx::UI::MenuItem("Duplicate##Live", "Ctrl+D")); },
+			[&]() { NYX_UI(ImGui::MenuItem("Duplicate##ImGui", "Ctrl+D")); });
+
+		row("Menu item, ticked",
+			[&](const WidgetLook& look) { paintMenuItem(look, true); },
+			[&]() { NYX_UI(Nyx::UI::MenuItem("Painted Chrome##Live", nullptr, &bGalleryToggle)); },
+			[&]() { NYX_UI(ImGui::MenuItem("Painted Chrome##ImGui", nullptr, &bGalleryToggle)); });
+
+		row("Selectable, selected",
+			[&](const WidgetLook& look)
+			{
+				const PainterRect cell = ReserveCell(itemSize);
+				const glm::vec2 label = cell.Min + glm::vec2(std::floor(style.ItemSpacing.x * 0.5f), std::floor(style.ItemSpacing.y * 0.5f));
+				Nyx::UI::PaintSelectable(painter, cell, label, "Textured Cube", 1.0f, look);
+			},
+			[&]()
+			{
+				if (NYX_UI(Nyx::UI::Selectable("Textured Cube##Live", bGalleryRowSelected)))
+				{
+					bGalleryRowSelected = !bGalleryRowSelected;
+				}
+			},
+			[&]()
+			{
+				if (NYX_UI(ImGui::Selectable("Textured Cube##ImGui", bGalleryRowSelected)))
+				{
+					bGalleryRowSelected = !bGalleryRowSelected;
+				}
+			});
+
+		constexpr const char* ComboItems[] = { "Visual Studio", "Visual Studio Code", "Rider" };
+		const auto paintCombo = [&](const WidgetLook& look, float open)
+		{
+			Nyx::UI::PaintCombo(painter, ReserveCell(fieldSize), "Visual Studio", open, look);
+		};
+		row("Combo",
+			[&](const WidgetLook& look) { paintCombo(look, 0.0f); },
+			[&]()
+			{
+				ImGui::SetNextItemWidth(fieldWidth);
+				NYX_UI(Nyx::UI::Combo("##LiveCombo", &GalleryComboIndex, ComboItems));
+			},
+			[&]()
+			{
+				ImGui::SetNextItemWidth(fieldWidth);
+				NYX_UI(ImGui::Combo("##ImGuiCombo", &GalleryComboIndex, ComboItems, static_cast<int>(std::size(ComboItems))));
+			});
+
+		row("Combo, open",
+			[&](const WidgetLook& look) { paintCombo(look, 1.0f); },
+			[&]() {},
+			[&]() {});
+
+		row("Colour swatch",
+			[&](const WidgetLook& look) { Nyx::UI::PaintColorSwatch(painter, ReserveCell(fieldSize), GalleryColor, look); },
+			[&]()
+			{
+				ImGui::SetNextItemWidth(fieldWidth);
+				NYX_UI(Nyx::UI::ColorSwatch("##LiveColor", &GalleryColor.x));
+			},
+			[&]()
+			{
+				ImGui::SetNextItemWidth(fieldWidth);
+				NYX_UI(ImGui::ColorEdit3("##ImGuiColor", &GalleryColor.x, ImGuiColorEditFlags_NoInputs));
+			});
+
 		// A section header has no states; it shows once, in the Normal column.
 		ImGui::TableNextRow();
 		ImGui::TableNextColumn();
@@ -756,9 +843,9 @@ namespace Nyx::Editor
 		}
 
 		ImGui::SameLine();
-		NYX_UI(ImGui::Checkbox("Tile heatmap", &bHeatmap));
+		NYX_UI(Nyx::UI::Checkbox("Tile heatmap", &bHeatmap));
 		ImGui::SameLine();
-		NYX_UI(ImGui::Checkbox("Compare with ImDrawList", &bCompareWithImDrawList));
+		NYX_UI(Nyx::UI::Checkbox("Compare with ImDrawList", &bCompareWithImDrawList));
 		ImGui::SameLine();
 		NYX_UI(ImGui::TextDisabled("Wheel zooms, drag pans"));
 	}

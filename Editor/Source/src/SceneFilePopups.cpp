@@ -3,11 +3,10 @@
 #include "AssetDatabase.h"
 #include "ImGuiSource.h"
 #include "Paths.h"
+#include "UIWidgets.h"
 
 #include "imgui.h"
 
-#include <algorithm>
-#include <cstring>
 #include <string>
 #include <vector>
 
@@ -21,13 +20,7 @@ namespace Nyx::Editor
 	void SceneFilePopups::RequestSaveAs()
 	{
 		bOpenSaveAsPopup = true;
-
-		const std::string defaultName = "UntitledScene";
-		std::fill(SaveAsBuffer.begin(), SaveAsBuffer.end(), '\0');
-		std::memcpy(
-			SaveAsBuffer.data(),
-			defaultName.c_str(),
-			(std::min)(defaultName.size(), SaveAsBuffer.size() - 1));
+		SaveAsName = "UntitledScene";
 	}
 
 	SceneFileRequest SceneFilePopups::Draw(const AssetDatabase& assets)
@@ -49,7 +42,7 @@ namespace Nyx::Editor
 		if (Nyx::UI::BeginPopupModal("Load Scene", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
 		{
 			NYX_UI(ImGui::TextUnformatted("Scenes"));
-			NYX_UI(ImGui::Separator());
+			NYX_UI(Nyx::UI::Separator());
 
 			const std::vector<AssetEntry> sceneEntries = assets.GetChildren(std::filesystem::path("Scenes"));
 
@@ -65,7 +58,7 @@ namespace Nyx::Editor
 					continue;
 				}
 
-				if (NYX_UI(ImGui::Selectable(entry.Name.c_str())))
+				if (NYX_UI(Nyx::UI::Selectable(entry.Name.c_str())))
 				{
 					request.Load = entry.AbsolutePath;
 					ImGui::CloseCurrentPopup();
@@ -74,7 +67,7 @@ namespace Nyx::Editor
 
 			ImGui::Spacing();
 
-			if (NYX_UI(ImGui::Button("Cancel", ImVec2(120.0f, 0.0f))))
+			if (NYX_UI(Nyx::UI::Button("Cancel", glm::vec2(120.0f, 0.0f))))
 			{
 				ImGui::CloseCurrentPopup();
 			}
@@ -85,16 +78,16 @@ namespace Nyx::Editor
 		if (Nyx::UI::BeginPopupModal("Save Scene As", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
 		{
 			NYX_UI(ImGui::TextUnformatted("Save scene into Assets/Scenes"));
-			NYX_UI(ImGui::Separator());
+			NYX_UI(Nyx::UI::Separator());
 
 			ImGui::SetNextItemWidth(320.0f);
-			NYX_UI(ImGui::InputText("File Name", SaveAsBuffer.data(), SaveAsBuffer.size()));
+			NYX_UI(Nyx::UI::InputText("File Name", &SaveAsName));
 
 			ImGui::Spacing();
 
-			if (NYX_UI(ImGui::Button("Save", ImVec2(120.0f, 0.0f))))
+			if (NYX_UI(Nyx::UI::Button("Save", glm::vec2(120.0f, 0.0f))))
 			{
-				std::string fileName = SaveAsBuffer.data();
+				std::string fileName = SaveAsName;
 				if (!fileName.empty())
 				{
 					if (std::filesystem::path(fileName).extension() != ".nyxscene")
@@ -109,7 +102,7 @@ namespace Nyx::Editor
 
 			ImGui::SameLine();
 
-			if (NYX_UI(ImGui::Button("Cancel", ImVec2(120.0f, 0.0f))))
+			if (NYX_UI(Nyx::UI::Button("Cancel",glm::vec2(120.0f, 0.0f))))
 			{
 				ImGui::CloseCurrentPopup();
 			}

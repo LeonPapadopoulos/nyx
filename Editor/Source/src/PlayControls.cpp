@@ -5,13 +5,12 @@
 #include "Log.h"
 #include "PlaySession.h"
 #include "PlayWall.h"
+#include "UIWidgets.h"
 
 #include "imgui.h"
 
 #include <algorithm>
-#include <array>
 #include <cfloat>
-#include <cstring>
 #include <optional>
 #include <string>
 #include <vector>
@@ -116,7 +115,7 @@ namespace Nyx::Editor
 			return;
 		}
 
-		if (NYX_UI(ImGui::MenuItem("Play All", nullptr, false, !session.IsRunning())))
+		if (NYX_UI(Nyx::UI::MenuItem("Play All", nullptr, false, !session.IsRunning())))
 		{
 			session.Start(preferences, true, GetEditorScreen());
 		}
@@ -129,7 +128,7 @@ namespace Nyx::Editor
 			PlaySetup& setup = preferences.PlaySetups[i];
 			ImGui::PushID(static_cast<int>(i));
 			const std::string label = setup.Name + " (" + std::to_string(setup.Width) + "x" + std::to_string(setup.Height) + ")";
-			bChanged |= NYX_UI(ImGui::Checkbox(label.c_str(), &setup.bInPlayAll));
+			bChanged |= NYX_UI(Nyx::UI::Checkbox(label.c_str(), &setup.bInPlayAll));
 			if (i == 0)
 			{
 				ImGui::SameLine();
@@ -138,15 +137,15 @@ namespace Nyx::Editor
 			ImGui::PopID();
 		}
 
-		if (NYX_UI(ImGui::MenuItem("Play Setups...")))
+		if (NYX_UI(Nyx::UI::MenuItem("Play Setups...")))
 		{
 			bShowSetups = true;
 		}
 
-		NYX_UI(ImGui::Separator());
-		bChanged |= NYX_UI(ImGui::Checkbox("Console Windows in Play All", &preferences.bConsoleWindowsInPlayAll));
+		NYX_UI(Nyx::UI::Separator());
+		bChanged |= NYX_UI(Nyx::UI::Checkbox("Console Windows in Play All", &preferences.bConsoleWindowsInPlayAll));
 		ImGui::SetItemTooltip("Play always shows the game's console. Their log reaches the Game Link window either way.");
-		NYX_UI(ImGui::MenuItem("Game Waits for Debugger", nullptr, &session.bGameWaitsForDebugger));
+		NYX_UI(Nyx::UI::MenuItem("Game Waits for Debugger", nullptr, &session.bGameWaitsForDebugger));
 
 		if (bChanged)
 		{
@@ -199,17 +198,12 @@ namespace Nyx::Editor
 				ImGui::TableNextRow();
 
 				ImGui::TableNextColumn();
-				bChanged |= NYX_UI(ImGui::Checkbox("##InPlayAll", &setup.bInPlayAll));
+				bChanged |= NYX_UI(Nyx::UI::Checkbox("##InPlayAll", &setup.bInPlayAll));
 
 				// Saved when the field is left, not with every key
 				ImGui::TableNextColumn();
-				std::array<char, 128> name{};
-				std::memcpy(name.data(), setup.Name.data(), (std::min)(setup.Name.size(), name.size() - 1));
 				ImGui::SetNextItemWidth(-FLT_MIN);
-				if (NYX_UI(ImGui::InputText("##Name", name.data(), name.size())))
-				{
-					setup.Name = name.data();
-				}
+				NYX_UI(Nyx::UI::InputText("##Name", &setup.Name));
 				bChanged |= ImGui::IsItemDeactivatedAfterEdit();
 
 				for (uint32_t* side : { &setup.Width, &setup.Height })
@@ -218,7 +212,7 @@ namespace Nyx::Editor
 					ImGui::PushID(side == &setup.Width ? "Width" : "Height");
 					int value = static_cast<int>(*side);
 					ImGui::SetNextItemWidth(-FLT_MIN);
-					if (NYX_UI(ImGui::InputInt("##Side", &value, 0, 0)))
+					if (NYX_UI(Nyx::UI::InputScalar("##Side", ImGuiDataType_S32, &value, "%d")))
 					{
 						*side = static_cast<uint32_t>(std::clamp(value, 1, 16384));
 					}

@@ -1,6 +1,7 @@
 #include "CrashCardsPanel.h"
 
 #include "ImGuiSource.h"
+#include "UIWidgets.h"
 
 #include "imgui.h"
 
@@ -115,7 +116,7 @@ namespace Nyx::Editor
 				ImGui::TreePop();
 			}
 
-			NYX_UI(ImGui::Separator());
+			NYX_UI(Nyx::UI::Separator());
 			ImGui::PopID();
 		}
 

@@ -57,7 +57,7 @@ namespace Nyx::Editor
 			ImGui::EndDisabled();
 		}
 
-		NYX_UI(ImGui::Separator());
+		NYX_UI(Nyx::UI::Separator());
 
 		world.Each<Nyx::Engine::NameComponent>(
 			[&](Nyx::Engine::Entity entity, const Nyx::Engine::NameComponent& name)
@@ -86,15 +86,15 @@ namespace Nyx::Editor
 		// After the list, so a new entity doesn't appear while the list is being drawn
 		if (Nyx::UI::BeginPopup("##EntityMenu"))
 		{
-			if (NYX_UI(ImGui::MenuItem("Duplicate", "Ctrl+D")))
+			if (NYX_UI(Nyx::UI::MenuItem("Duplicate", "Ctrl+D")))
 			{
 				editing.DuplicateSelectedEntity();
 			}
-			if (NYX_UI(ImGui::MenuItem("Copy", "Ctrl+C")))
+			if (NYX_UI(Nyx::UI::MenuItem("Copy", "Ctrl+C")))
 			{
 				editing.CopySelectedEntity();
 			}
-			if (NYX_UI(ImGui::MenuItem("Paste", "Ctrl+V", false, editing.CanPaste())))
+			if (NYX_UI(Nyx::UI::MenuItem("Paste", "Ctrl+V", false, editing.CanPaste())))
 			{
 				editing.PasteEntity();
 			}
