@@ -79,6 +79,7 @@ namespace Nyx::Editor
 		// The gallery's live widgets' values, shared with their ImGui counterparts
 		bool bGalleryToggle = true;
 		float GallerySlider = 0.6f;
+		bool bGalleryRowSelected = false;
 
 		// Where the gallery showed last frame, for Save PNG, and why it couldn't be saved
 		ImVec2 GalleryMin;

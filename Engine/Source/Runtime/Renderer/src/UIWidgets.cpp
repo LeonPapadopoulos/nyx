@@ -103,6 +103,48 @@ namespace Nyx::UI
 			return ImRect(ImVec2(frame.Min.x, frame.Min.y), ImVec2(std::max(right, frame.Min.x), frame.Max.y));
 		}
 
+		// A tree row's arrow column and icon, as wide as the font is high
+		float TreeRowArrowWidth()
+		{
+			return ImGui::GetFontSize();
+		}
+
+		float TreeRowIconSize()
+		{
+			return std::floor(ImGui::GetFontSize() * 0.9f);
+		}
+
+		// `color` with its alpha times `amount`
+		glm::vec4 Fade(glm::vec4 color, float amount)
+		{
+			color.a *= amount;
+			return color;
+		}
+
+		// A tree row's icon, drawn into `box`, a square
+		void PaintTreeRowIcon(WindowPainter& painter, ETreeRowIcon icon, const PainterRect& box, const WidgetLook& look, const Theme& theme)
+		{
+			const float size = box.GetWidth();
+			switch (icon)
+			{
+			case ETreeRowIcon::Folder:
+			{
+				// A tab at the top left, and the folder's body below it
+				const glm::vec4 color = Shade(theme.FolderIcon, look, theme);
+				painter.AddRoundedRect(PainterRect{ { box.Min.x, box.Min.y + size * 0.12f }, { box.Min.x + size * 0.45f, box.Min.y + size * 0.4f } }, size * 0.08f, PainterStyle::Filled(color));
+				painter.AddRoundedRect(PainterRect{ { box.Min.x, box.Min.y + size * 0.25f }, { box.Max.x, box.Max.y - size * 0.1f } }, size * 0.12f, PainterStyle::Filled(color));
+				break;
+			}
+			case ETreeRowIcon::Entity:
+				// A rounded square, like a small box
+				painter.AddRoundedRect(PainterRect{ { box.Min.x + size * 0.15f, box.Min.y + size * 0.15f }, { box.Max.x - size * 0.15f, box.Max.y - size * 0.15f } }, size * 0.15f,
+					PainterStyle::Filled(Shade(theme.EntityIcon, look, theme)));
+				break;
+			case ETreeRowIcon::None:
+				break;
+			}
+		}
+
 		// Where the knob's centre is at `fraction` along the track, as ImGui's SliderBehavior()
 		// lays out its grab: 2 pixels in from each end, and a grab of style.GrabMinSize.
 		float GetSliderKnobX(const ImRect& track, float fraction)
@@ -251,6 +293,99 @@ namespace Nyx::UI
 		PaintSectionHeader(GetWindowPainter(), ToPainterRect(rect), VisibleLabel(label));
 	}
 
+	TreeRowResult TreeRow(const char* label, const TreeRowOptions& options)
+	{
+		ImGuiWindow* window = ImGui::GetCurrentWindow();
+		if (window->SkipItems)
+		{
+			return TreeRowResult{};
+		}
+		ImGuiContext& g = *GImGui;
+		const Theme& theme = GetTheme();
+
+		// As ImGui::TreeNodeEx(): the open state is kept in the window's storage, per ID.
+		const ImGuiID id = window->GetID(label);
+		ImGuiStorage& storage = *window->DC.StateStorage;
+		bool bOpen = !options.bLeaf && storage.GetBool(id, options.bDefaultOpen);
+
+		// The row takes the whole width, whatever the indentation, so the pill spans it. For the
+		// layout it is only as wide as what it shows, as ImGui's SpanAvailWidth tree nodes are, so
+		// a column or window sized to its contents doesn't grow from it.
+		const float contentX = window->DC.CursorPos.x;
+		const float top = window->DC.CursorPos.y;
+		const ImRect rect(ImVec2(window->WorkRect.Min.x, top), ImVec2(window->WorkRect.Max.x, top + CalcTreeRowHeight()));
+		const float iconWidth = options.Icon != ETreeRowIcon::None ? TreeRowIconSize() + g.Style.ItemInnerSpacing.x : 0.0f;
+		const float shownWidth = TreeRowArrowWidth() + iconWidth + CalcTextSize(VisibleLabel(label)).x;
+		ImGui::ItemSize(ImVec2(shownWidth, rect.GetHeight()), 0.0f);
+		if (!ImGui::ItemAdd(rect, id))
+		{
+			// Scrolled out of view, but its children still follow when it is open.
+			if (bOpen)
+			{
+				ImGui::TreePushOverrideID(id);
+			}
+			return TreeRowResult{ false, bOpen };
+		}
+
+		bool bHovered = false;
+		bool bHeld = false;
+		const bool bPressed = ImGui::ButtonBehavior(rect, id, &bHovered, &bHeld, ImGuiButtonFlags_PressedOnClick);
+		const bool bByKeyboard = g.NavActivateId == id;
+		const bool bOnArrow = g.IO.MousePos.x >= contentX && g.IO.MousePos.x < contentX + TreeRowArrowWidth();
+
+		TreeRowResult result;
+		bool bToggle = false;
+		if (bPressed)
+		{
+			if (!options.bLeaf && !bByKeyboard && bOnArrow)
+			{
+				bToggle = true;
+			}
+			else
+			{
+				result.bClicked = true;
+			}
+		}
+		// A double click on the label; on the arrow, each click already toggles.
+		if (!options.bLeaf && bHovered && !bOnArrow && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+		{
+			bToggle = true;
+		}
+		// As ImGui's tree nodes: Left closes an open row, Right opens a closed one, instead of moving.
+		if (!options.bLeaf && g.NavId == id && ((g.NavMoveDir == ImGuiDir_Left && bOpen) || (g.NavMoveDir == ImGuiDir_Right && !bOpen)))
+		{
+			bToggle = true;
+			ImGui::NavMoveRequestCancel();
+		}
+		if (bToggle)
+		{
+			bOpen = !bOpen;
+			storage.SetBool(id, bOpen);
+		}
+
+		TreeRowLook row;
+		row.ContentX = contentX;
+		row.Depth = window->DC.TreeDepth;
+		row.bLeaf = options.bLeaf;
+		row.Open = Animate(ImHashStr("Open", 0, id), bOpen ? 1.0f : 0.0f, theme.AnimationSpeed);
+		row.Selected = Animate(ImHashStr("Selected", 0, id), options.bSelected ? 1.0f : 0.0f, theme.AnimationSpeed);
+		row.Icon = options.Icon;
+		const WidgetLook look = AnimateLook(id, bHovered, bHeld && bHovered, theme);
+		PaintTreeRow(GetWindowPainter(), ToPainterRect(rect), VisibleLabel(label), row, look);
+
+		if (bOpen)
+		{
+			ImGui::TreePushOverrideID(id);
+		}
+		result.bOpen = bOpen;
+		return result;
+	}
+
+	void TreeRowEnd()
+	{
+		ImGui::TreePop();
+	}
+
 	void PaintButton(WindowPainter& painter, const PainterRect& rect, std::string_view label, const WidgetLook& look)
 	{
 		const Theme& theme = GetTheme();
@@ -358,6 +493,67 @@ namespace Nyx::UI
 		}
 	}
 
+	void PaintTreeRow(WindowPainter& painter, const PainterRect& rect, std::string_view label, const TreeRowLook& row, const WidgetLook& look)
+	{
+		const Theme& theme = GetTheme();
+		const ImGuiStyle& style = ImGui::GetStyle();
+		const float centreY = (rect.Min.y + rect.Max.y) * 0.5f;
+
+		// The pills: the selection's, then a hovered row's over it, and an outline while it has
+		// keyboard focus
+		const PainterRect pill{ { rect.Min.x + theme.RowPillMargin, rect.Min.y + theme.RowPillInset }, { rect.Max.x - theme.RowPillMargin, rect.Max.y - theme.RowPillInset } };
+		if (row.Selected > 0.0f)
+		{
+			painter.AddRoundedRect(pill, theme.FrameRounding, PainterStyle::Filled(Shade(Fade(theme.RowSelected, row.Selected), look, theme)));
+		}
+		const float hovered = std::max(look.Hovered, look.Pressed);
+		if (hovered > 0.0f)
+		{
+			painter.AddRoundedRect(pill, theme.FrameRounding, PainterStyle::Filled(Shade(Fade(theme.RowHovered, hovered), look, theme)));
+		}
+		if (look.Focused > 0.0f)
+		{
+			painter.AddRoundedRect(pill, theme.FrameRounding, PainterStyle::Outlined(Fade(theme.Accent, look.Focused), 1.0f));
+		}
+
+		// A guide down each level the row is inside, under the arrows of the rows above it. Each
+		// row's piece reaches half the item spacing past its top and bottom, so the pieces of
+		// rows one under the other meet.
+		const float arrowWidth = TreeRowArrowWidth();
+		const float halfSpacing = style.ItemSpacing.y * 0.5f;
+		for (int level = 0; level < row.Depth; ++level)
+		{
+			const float x = std::floor(row.ContentX - static_cast<float>(row.Depth - level) * style.IndentSpacing + arrowWidth * 0.5f) + 0.5f;
+			painter.AddLine({ x, rect.Min.y - halfSpacing }, { x, rect.Max.y + halfSpacing }, 1.0f, EPainterLineCap::Flat, PainterStyle::Filled(theme.IndentGuide));
+		}
+
+		// The arrow: a small triangle pointing right, turned down as the row opens. Leaves keep
+		// its room, so their labels line up with their siblings'.
+		float x = row.ContentX;
+		if (!row.bLeaf)
+		{
+			const glm::vec2 centre{ x + arrowWidth * 0.5f, centreY };
+			const float size = arrowWidth * 0.22f;
+			const float angle = row.Open * 1.5707963f;
+			const auto turned = [&](glm::vec2 point)
+			{
+				return centre + glm::vec2(point.x * std::cos(angle) - point.y * std::sin(angle), point.x * std::sin(angle) + point.y * std::cos(angle));
+			};
+			painter.AddTriangle(turned({ size, 0.0f }), turned({ -size * 0.6f, -size }), turned({ -size * 0.6f, size }), PainterStyle::Filled(Shade(theme.TextMuted, look, theme)));
+		}
+		x += arrowWidth;
+
+		if (row.Icon != ETreeRowIcon::None)
+		{
+			const float iconSize = TreeRowIconSize();
+			const float iconTop = std::floor(centreY - iconSize * 0.5f);
+			PaintTreeRowIcon(painter, row.Icon, PainterRect{ { x, iconTop }, { x + iconSize, iconTop + iconSize } }, look, theme);
+			x += iconSize + style.ItemInnerSpacing.x;
+		}
+
+		PaintText(painter, { x, rect.Min.y + style.FramePadding.y }, Shade(theme.Text, look, theme), label);
+	}
+
 	glm::vec2 CalcButtonSize(const char* label)
 	{
 		const ImGuiStyle& style = ImGui::GetStyle();
@@ -390,5 +586,10 @@ namespace Nyx::UI
 	glm::vec2 CalcSectionHeaderSize()
 	{
 		return glm::vec2(std::max(ImGui::GetContentRegionAvail().x, 1.0f), ImGui::GetFrameHeight());
+	}
+
+	float CalcTreeRowHeight()
+	{
+		return ImGui::GetFrameHeight();
 	}
 }

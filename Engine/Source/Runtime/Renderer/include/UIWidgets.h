@@ -58,6 +58,46 @@ namespace Nyx::UI
 	// A heading over a section: an accent bar, the label, and a line to the window's edge
 	void SectionHeader(const char* label);
 
+	// What a tree row shows left of its label
+	enum class ETreeRowIcon
+	{
+		None,
+		Folder,
+		Entity,
+	};
+
+	struct TreeRowOptions
+	{
+		bool bSelected = false;
+		// Without children: no arrow, never open, and nothing to end
+		bool bLeaf = false;
+		// Open the first time the row shows
+		bool bDefaultOpen = false;
+		ETreeRowIcon Icon = ETreeRowIcon::None;
+	};
+
+	struct TreeRowResult
+	{
+		// The row was clicked, or activated by keyboard, to select it; not when its arrow was
+		bool bClicked = false;
+		// Its children follow, indented, until TreeRowEnd()
+		bool bOpen = false;
+	};
+
+	// One row of a tree or a list, as the outliner's entities and the asset browser's folders
+	// show them (stage 3, change 7a): a pill behind it when selected or hovered, guides down
+	// each indentation level, an arrow that turns as it opens, an icon and the label. The row
+	// and its pill span the window's width at any indentation.
+	//
+	// Behaves like ImGui::TreeNodeEx() with OpenOnArrow: the arrow, a double click, or the Left
+	// and Right keys open and close it, and the rest of the row selects it. The open state is
+	// kept by ImGui, per ID. IsItemHovered(), IsItemClicked(ImGuiMouseButton_Right) and the like
+	// work after it.
+	TreeRowResult TreeRow(const char* label, const TreeRowOptions& options = TreeRowOptions{});
+
+	// Ends the children of a row that was open, as ImGui::TreePop() does
+	void TreeRowEnd();
+
 	// The painting, for any look. Rects are in ImGui's screen coordinates, as the widgets lay
 	// themselves out: the widget's whole rect, label included, except the slider's, which is its
 	// frame. Labels are what is shown, without "##".
@@ -71,6 +111,23 @@ namespace Nyx::UI
 	void PaintSlider(WindowPainter& painter, const Engine::PainterRect& frame, std::string_view label, float fraction, std::string_view valueText, float valueWidth, const WidgetLook& look);
 	void PaintSectionHeader(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view label);
 
+	// How a tree row looks besides its WidgetLook
+	struct TreeRowLook
+	{
+		// Where the row's indentation ends and its arrow starts
+		float ContentX = 0.0f;
+		// How many rows it is inside: one guide each
+		int Depth = 0;
+		bool bLeaf = false;
+		// The arrow's turn, from closed (0, pointing right) to open (1, pointing down)
+		float Open = 0.0f;
+		// The selection pill, faded in from 0 to 1
+		float Selected = 0.0f;
+		ETreeRowIcon Icon = ETreeRowIcon::None;
+	};
+	// `rect`: the whole row, the window's width
+	void PaintTreeRow(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view label, const TreeRowLook& row, const WidgetLook& look);
+
 	// The sizes the widgets take, at the current font, for the gallery's forced states
 	glm::vec2 CalcButtonSize(const char* label);
 	glm::vec2 CalcToggleSize(const char* label);
@@ -78,4 +135,5 @@ namespace Nyx::UI
 	glm::vec2 CalcSliderFrameSize();
 	float CalcSliderValueWidth(float min, float max, const char* format);
 	glm::vec2 CalcSectionHeaderSize();
+	float CalcTreeRowHeight();
 }

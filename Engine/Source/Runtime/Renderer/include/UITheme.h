@@ -110,6 +110,17 @@ namespace Nyx::UI
 		glm::vec4 TabUnderlineDimmed{ 0.55f, 0.58f, 0.66f, 0.7f };
 		float TabUnderlineWidth = 2.0f;
 
+		// Tree rows (TreeRow()): the pill behind the selected row and a hovered one, RowPillMargin
+		// in from the row's ends and RowPillInset from its top and bottom; the guides down each
+		// indentation level; and the icons
+		glm::vec4 RowSelected{ 1.0f, 0.55f, 0.15f, 0.22f };
+		glm::vec4 RowHovered{ 1.0f, 1.0f, 1.0f, 0.06f };
+		float RowPillMargin = 4.0f;
+		float RowPillInset = 1.0f;
+		glm::vec4 IndentGuide{ 1.0f, 1.0f, 1.0f, 0.08f };
+		glm::vec4 FolderIcon{ 0.95f, 0.72f, 0.32f, 1.0f };
+		glm::vec4 EntityIcon{ 0.45f, 0.65f, 0.95f, 1.0f };
+
 		// What disabled widgets keep of their colours' alpha
 		float DisabledAlpha = 0.45f;
 		// How fast hover, press and knobs ease, per second: after 1 / AnimationSpeed seconds, about

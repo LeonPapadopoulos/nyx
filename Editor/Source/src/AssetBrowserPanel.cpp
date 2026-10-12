@@ -1,5 +1,6 @@
 #include "ImGuiSource.h"
 #include "AssetBrowserPanel.h"
+#include "UIWidgets.h"
 
 #include <imgui.h>
 #include <set>
@@ -52,12 +53,11 @@ namespace Nyx::Editor
 
 		const std::string label = relativeDirectory.empty() ? "Assets" : relativeDirectory.filename().string();
 
-		const bool bSelected = (CurrentDirectory == relativeDirectory);
-		ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
-		if (bSelected)
-		{
-			flags |= ImGuiTreeNodeFlags_Selected;
-		}
+		Nyx::UI::TreeRowOptions row;
+		row.bSelected = (CurrentDirectory == relativeDirectory);
+		row.Icon = Nyx::UI::ETreeRowIcon::Folder;
+		// The root, the only folder at the top, shows its folders from the start.
+		row.bDefaultOpen = relativeDirectory.empty();
 
 		std::set<std::filesystem::path> childDirectories;
 		for (const AssetEntry& entry : Database->GetChildren(relativeDirectory))
@@ -68,26 +68,22 @@ namespace Nyx::Editor
 			}
 		}
 
-		if (childDirectories.empty())
-		{
-			flags |= ImGuiTreeNodeFlags_Leaf;
-		}
+		row.bLeaf = childDirectories.empty();
 
-		const bool bOpen = NYX_UI(ImGui::TreeNodeEx(label.c_str(), flags));
-
-		if (ImGui::IsItemClicked())
+		const Nyx::UI::TreeRowResult result = NYX_UI(Nyx::UI::TreeRow(label.c_str(), row));
+		if (result.bClicked)
 		{
 			CurrentDirectory = relativeDirectory;
 		}
 
-		if (bOpen)
+		if (result.bOpen)
 		{
 			for (const auto& childDir : childDirectories)
 			{
 				DrawDirectoryTree(childDir);
 			}
 
-			ImGui::TreePop();
+			Nyx::UI::TreeRowEnd();
 		}
 	}
 

@@ -405,6 +405,105 @@ namespace
 		Require(clicks == 2, "A disabled painted button shouldn't click");
 	}
 
+	// Nyx::UI::TreeRow() behaves as ImGui's tree nodes do: the row selects, the arrow, a double
+	// click and the Left and Right keys open and close, and children are indented.
+	void TestTreeRowsBehaveLikeTreeNodes()
+	{
+		HeadlessUI ui;
+		ImGuiIO& io = ImGui::GetIO();
+		io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+
+		int clicks = 0;
+		bool bOpen = false;
+		bool bHovered = false;
+		bool bFocus = false;
+		ImRect row;
+		float rowContentX = 0.0f;
+		float childContentX = 0.0f;
+		float workMinX = 0.0f;
+		float workMaxX = 0.0f;
+		const auto draw = [&]()
+			{
+				ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+				ImGui::SetNextWindowSize(ImVec2(300.0f, 200.0f));
+				ImGui::Begin("Tree rows");
+				workMinX = ImGui::GetCurrentWindow()->WorkRect.Min.x;
+				workMaxX = ImGui::GetCurrentWindow()->WorkRect.Max.x;
+				if (bFocus)
+				{
+					ImGui::SetKeyboardFocusHere();
+					ImGui::SetNavCursorVisible(true);
+				}
+				Nyx::UI::TreeRowOptions options;
+				options.Icon = Nyx::UI::ETreeRowIcon::Folder;
+				rowContentX = ImGui::GetCursorScreenPos().x;
+				const Nyx::UI::TreeRowResult result = Nyx::UI::TreeRow("Assets", options);
+				clicks += result.bClicked ? 1 : 0;
+				bOpen = result.bOpen;
+				bHovered = ImGui::IsItemHovered();
+				row = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+				if (result.bOpen)
+				{
+					childContentX = ImGui::GetCursorScreenPos().x;
+					Nyx::UI::TreeRowOptions leaf;
+					leaf.bLeaf = true;
+					Nyx::UI::TreeRow("Meshes", leaf);
+					Nyx::UI::TreeRowEnd();
+				}
+				ImGui::End();
+			};
+		const auto press = [&](ImVec2 at)
+			{
+				io.AddMousePosEvent(at.x, at.y);
+				ui.Frame(draw);
+				io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+				ui.Frame(draw);
+				io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+				ui.Frame(draw);
+			};
+		const auto pressKey = [&](ImGuiKey key)
+			{
+				io.AddKeyEvent(key, true);
+				ui.Frame(draw);
+				io.AddKeyEvent(key, false);
+				ui.Frame(draw);
+			};
+
+		ui.Frame(draw);
+		Require(row.Min.x == workMinX && row.Max.x == workMaxX, "A tree row should span the window's width");
+
+		const ImVec2 label(rowContentX + ImGui::GetFontSize() * 4.0f, row.GetCenter().y);
+		const ImVec2 arrow(rowContentX + ImGui::GetFontSize() * 0.5f, row.GetCenter().y);
+		io.AddMousePosEvent(label.x, label.y);
+		ui.Frame(draw);
+		Require(bHovered, "IsItemHovered() should be true over a tree row");
+
+		press(label);
+		Require(clicks == 1 && !bOpen, "Clicking a row's label should select it, and not open it");
+
+		press(arrow);
+		Require(clicks == 1 && bOpen, "Clicking a row's arrow should open it, and not select it");
+		Require(childContentX == rowContentX + ImGui::GetStyle().IndentSpacing, "An open row's children should be indented");
+		press(arrow);
+		Require(!bOpen, "Clicking the arrow again should close the row");
+
+		// Two clicks in a row on the label: a double click
+		press(label);
+		press(label);
+		Require(bOpen && clicks == 3, "A double click on the label should open the row, and select it");
+
+		// The keyboard: Left closes the row with focus, Right opens it.
+		io.AddMousePosEvent(-100.0f, -100.0f);
+		bFocus = true;
+		ui.Frame(draw);
+		bFocus = false;
+		ui.Frame(draw);
+		pressKey(ImGuiKey_LeftArrow);
+		Require(!bOpen, "Left should close an open row with keyboard focus");
+		pressKey(ImGuiKey_RightArrow);
+		Require(bOpen, "Right should open a closed row with keyboard focus");
+	}
+
 	void TestAnimationsEaseAndAreForgotten()
 	{
 		HeadlessUI ui;
@@ -511,6 +610,7 @@ int main()
 		TestScenePopupsAndIdleSession();
 		TestPainterComparisonSurvivesAtlasGrowth();
 		TestPaintedWidgetsBehaveLikeImGuis();
+		TestTreeRowsBehaveLikeTreeNodes();
 		TestAnimationsEaseAndAreForgotten();
 	}
 	catch (const std::exception& error)

@@ -484,6 +484,54 @@ namespace Nyx::Editor
 				NYX_UI(ImGui::SliderFloat("Gain##ImGui", &GallerySlider, 0.0f, 1.0f));
 			});
 
+		// Tree rows: a folder one level in, closed, then open and selected
+		const glm::vec2 rowSize(ImGui::GetFontSize() * 9.0f, Nyx::UI::CalcTreeRowHeight());
+		const auto paintTreeRow = [&](const WidgetLook& look, bool bOpenAndSelected)
+		{
+			const PainterRect cell = ReserveCell(rowSize);
+			Nyx::UI::TreeRowLook tree;
+			tree.ContentX = cell.Min.x + ImGui::GetStyle().IndentSpacing;
+			tree.Depth = 1;
+			tree.Open = bOpenAndSelected ? 1.0f : 0.0f;
+			tree.Selected = bOpenAndSelected ? 1.0f : 0.0f;
+			tree.Icon = Nyx::UI::ETreeRowIcon::Folder;
+			Nyx::UI::PaintTreeRow(painter, cell, "Meshes", tree, look);
+		};
+		row("Tree row",
+			[&](const WidgetLook& look) { paintTreeRow(look, false); },
+			[&]()
+			{
+				// A small tree: a folder with one in it, selected by clicking
+				Nyx::UI::TreeRowOptions options;
+				options.bSelected = bGalleryRowSelected;
+				options.Icon = Nyx::UI::ETreeRowIcon::Folder;
+				const Nyx::UI::TreeRowResult tree = NYX_UI(Nyx::UI::TreeRow("Assets##Live", options));
+				bGalleryRowSelected = tree.bClicked ? !bGalleryRowSelected : bGalleryRowSelected;
+				if (tree.bOpen)
+				{
+					Nyx::UI::TreeRowOptions child;
+					child.bLeaf = true;
+					child.Icon = Nyx::UI::ETreeRowIcon::Folder;
+					NYX_UI(Nyx::UI::TreeRow("Meshes##Live", child));
+					Nyx::UI::TreeRowEnd();
+				}
+			},
+			[&]()
+			{
+				ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
+				flags |= bGalleryRowSelected ? ImGuiTreeNodeFlags_Selected : 0;
+				if (NYX_UI(ImGui::TreeNodeEx("Assets##ImGui", flags)))
+				{
+					NYX_UI(ImGui::TreeNodeEx("Meshes##ImGui", ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen | ImGuiTreeNodeFlags_SpanAvailWidth));
+					ImGui::TreePop();
+				}
+			});
+
+		row("Tree row, open, selected",
+			[&](const WidgetLook& look) { paintTreeRow(look, true); },
+			[&]() {},
+			[&]() {});
+
 		// A section header has no states; it shows once, in the Normal column.
 		ImGui::TableNextRow();
 		ImGui::TableNextColumn();

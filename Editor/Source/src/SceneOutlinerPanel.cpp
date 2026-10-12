@@ -3,6 +3,7 @@
 #include "ImGuiSource.h"
 #include "NameComponent.h"
 #include "SceneEditor.h"
+#include "UIWidgets.h"
 
 #include "imgui.h"
 
@@ -61,11 +62,15 @@ namespace Nyx::Editor
 		world.Each<Nyx::Engine::NameComponent>(
 			[&](Nyx::Engine::Entity entity, const Nyx::Engine::NameComponent& name)
 			{
-				const bool bSelected = selection.has_value() && selection.value() == entity;
+				Nyx::UI::TreeRowOptions row;
+				row.bSelected = selection.has_value() && selection.value() == entity;
+				// No hierarchy yet: every entity is a leaf
+				row.bLeaf = true;
+				row.Icon = Nyx::UI::ETreeRowIcon::Entity;
 
 				std::string label = name.Name + "##" + std::to_string(entity.Index());
 
-				if (NYX_UI(ImGui::Selectable(label.c_str(), bSelected)))
+				if (NYX_UI(Nyx::UI::TreeRow(label.c_str(), row)).bClicked)
 				{
 					selection = entity;
 				}
