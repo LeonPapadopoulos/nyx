@@ -1148,6 +1148,36 @@ namespace
 		Require(std::find(painters.begin(), painters.end(), &foreground) != painters.end(), "The foreground painter should be gathered with the windows' ones");
 	}
 
+	void TestPainterBehindGoesInFrontOfTheDrawList()
+	{
+		BeginTestWindow("Behind");
+		ImDrawList& drawList = *ImGui::GetWindowDrawList();
+		ImGui::TextUnformatted("H");
+		Nyx::UI::WindowPainter& inOrder = Nyx::UI::GetPainterFor(drawList, *ImGui::GetMainViewport(), "Behind");
+		inOrder.AddRect(PainterRect{ { 10, 30 }, { 20, 40 } }, PainterStyle::Filled(Orange));
+
+		// Painted after ImGui's text and the shape above, yet in front of the draw list: drawn first
+		Nyx::UI::WindowPainter& behind = Nyx::UI::GetPainterFor(drawList, *ImGui::GetMainViewport(), "Behind", Nyx::UI::EWindowPainterPlacement::Behind);
+		Require(&behind != &inOrder && behind.GetPlacement() == Nyx::UI::EWindowPainterPlacement::Behind, "A draw list should have a painter of its own for each placement");
+		behind.AddRect(PainterRect{ { 0, 0 }, { 64, 64 } }, PainterStyle::Filled(Black));
+		// Another clip rect: a second segment, after the first one and still in front of ImGui's text
+		ImGui::PushClipRect(ImVec2(0.0f, 0.0f), ImVec2(32.0f, 32.0f), true);
+		behind.AddRect(PainterRect{ { 0, 0 }, { 32, 32 } }, PainterStyle::Filled(Orange));
+		ImGui::PopClipRect();
+		ImGui::End();
+		Nyx::UI::EndWindowPainters();
+
+		const std::vector<SegmentCallback> callbacks = FindSegmentCallbacks(drawList);
+		Require(callbacks.size() == 3, "Two segments behind and one in order should make three callbacks, got " + std::to_string(callbacks.size()));
+		Require(callbacks[0].Painter == &behind && callbacks[0].Segment == 0 && callbacks[1].Painter == &behind && callbacks[1].Segment == 1,
+			"The segments behind should come first, in the order they were painted");
+		Require(callbacks[0].IndicesBefore == 0 && callbacks[1].IndicesBefore == 0, "Nothing ImGui drew should come before the segments behind");
+		Require(callbacks[0].bResetsRenderState && callbacks[1].bResetsRenderState, "ImGui's render state should be reset after each segment behind");
+		Require(drawList.CmdBuffer[0].UserCallback == &Nyx::UI::WindowPainter::DrawSegmentCallback, "The first segment behind should be the draw list's first command");
+		Require(callbacks[2].Painter == &inOrder && callbacks[2].IndicesBefore > 0, "The painter in order should stay after ImGui's text");
+		Require(behind.GetSegments().size() == 2 && behind.GetProblems().empty(), "Painting behind should keep its segments without problems");
+	}
+
 	void TestPngsSaveAndLoad()
 	{
 		// 2x2: red, green / blue, half transparent white
@@ -1237,6 +1267,7 @@ int main()
 			// It counts the frame's window painters, then starts a new frame.
 			TestGetWindowPainterIsOnePerWindow();
 			TestForegroundPainterPaintsOverEverything();
+			TestPainterBehindGoesInFrontOfTheDrawList();
 		}
 
 		TestSegmentGridCoversOnlyItsCommands();

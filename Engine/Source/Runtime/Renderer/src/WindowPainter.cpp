@@ -86,7 +86,7 @@ namespace Nyx::UI
 		}
 	}
 
-	void WindowPainter::Begin(ImDrawList& drawList, const ImGuiViewport& viewport, std::string_view windowName)
+	void WindowPainter::Begin(ImDrawList& drawList, const ImGuiViewport& viewport, std::string_view windowName, EWindowPainterPlacement placement)
 	{
 		Problems.clear();
 		if (bRecording)
@@ -97,6 +97,7 @@ namespace Nyx::UI
 		DrawList = &drawList;
 		ViewportId = viewport.ID;
 		WindowName = windowName;
+		Placement = placement;
 		Segments.clear();
 		bSegmentOpen = false;
 		Transforms.assign(1, Engine::PainterTransform{});
@@ -335,32 +336,30 @@ namespace Nyx::UI
 		}
 	}
 
-	namespace
+	// The pool's window painter for the draw list and placement, started this frame if it isn't
+	// yet: so one per window (child windows too), one per viewport's foreground, and one behind
+	// each window that has a card
+	WindowPainter& GetPainterFor(ImDrawList& drawList, const ImGuiViewport& viewport, std::string_view name, EWindowPainterPlacement placement)
 	{
-		// The pool's window painter for the draw list, started this frame if it isn't yet: one
-		// per draw list, so one per window (child windows too) and one per viewport's foreground
-		WindowPainter& GetPainterFor(ImDrawList& drawList, const ImGuiViewport& viewport, std::string_view name)
+		WindowPainterPool& pool = GetWindowPainterPool();
+		StartFrameIfNew(pool);
+
+		for (WindowPainter* painter : pool.Used)
 		{
-			WindowPainterPool& pool = GetWindowPainterPool();
-			StartFrameIfNew(pool);
-
-			for (WindowPainter* painter : pool.Used)
+			if (painter->GetDrawList() == &drawList && painter->GetPlacement() == placement)
 			{
-				if (painter->GetDrawList() == &drawList)
-				{
-					return *painter;
-				}
+				return *painter;
 			}
-
-			if (pool.Used.size() == pool.Painters.size())
-			{
-				pool.Painters.push_back(std::make_unique<WindowPainter>());
-			}
-			WindowPainter& painter = *pool.Painters[pool.Used.size()];
-			pool.Used.push_back(&painter);
-			painter.Begin(drawList, viewport, name);
-			return painter;
 		}
+
+		if (pool.Used.size() == pool.Painters.size())
+		{
+			pool.Painters.push_back(std::make_unique<WindowPainter>());
+		}
+		WindowPainter& painter = *pool.Painters[pool.Used.size()];
+		pool.Used.push_back(&painter);
+		painter.Begin(drawList, viewport, name, placement);
+		return painter;
 	}
 
 	WindowPainter& GetWindowPainter()
@@ -401,9 +400,11 @@ namespace Nyx::UI
 		const ImVec2 clipMax = DrawList->GetClipRectMax();
 		const ImVec4 clipRect(clipMin.x, clipMin.y, clipMax.x, clipMax.y);
 		// Tables draw each column into a channel of its own (ImDrawListSplitter), swapped into
-		// the draw list's buffers; another channel needs a segment of its own too.
-		const bool bImGuiHasDrawn = DrawList->CmdBuffer.Size != DrawListCommandsAtSegmentStart || DrawList->IdxBuffer.Size != DrawListIndicesAtSegmentStart ||
-			DrawList->_Splitter._Current != DrawListChannelAtSegmentStart;
+		// the draw list's buffers; another channel needs a segment of its own too. Behind
+		// everything, nothing ImGui draws comes between.
+		const bool bImGuiHasDrawn = Placement == EWindowPainterPlacement::InOrder &&
+			(DrawList->CmdBuffer.Size != DrawListCommandsAtSegmentStart || DrawList->IdxBuffer.Size != DrawListIndicesAtSegmentStart ||
+				DrawList->_Splitter._Current != DrawListChannelAtSegmentStart);
 		if (!bSegmentOpen || bImGuiHasDrawn || !IsSameClipRect(clipRect, SegmentClipRect))
 		{
 			StartSegment(clipRect);
@@ -439,14 +440,51 @@ namespace Nyx::UI
 		// The segment is drawn here, then ImGui sets up its own render state again for what it
 		// draws next.
 		SegmentCallbackData data{ this, segmentIndex };
-		DrawList->AddCallback(&WindowPainter::DrawSegmentCallback, &data, sizeof(data));
-		DrawList->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+		if (Placement == EWindowPainterPlacement::Behind)
+		{
+			InsertSegmentCallbacksInFront(data, clipRect);
+		}
+		else
+		{
+			DrawList->AddCallback(&WindowPainter::DrawSegmentCallback, &data, sizeof(data));
+			DrawList->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+		}
 
 		bSegmentOpen = true;
 		DrawListCommandsAtSegmentStart = DrawList->CmdBuffer.Size;
 		DrawListIndicesAtSegmentStart = DrawList->IdxBuffer.Size;
 		DrawListChannelAtSegmentStart = DrawList->_Splitter._Current;
 		SegmentClipRect = clipRect;
+	}
+
+	void WindowPainter::InsertSegmentCallbacksInFront(const SegmentCallbackData& data, const ImVec4& clipRect)
+	{
+		// What ImDrawList::AddCallback() makes, put in by hand: the draw list only appends. The
+		// data goes into the draw list's callback data, which ImGui hands to the callback when it
+		// renders. Both commands draw no triangles, so their offsets only keep the list tidy.
+		ImDrawCmd segment;
+		segment.ClipRect = clipRect;
+		segment.TexRef = DrawList->_CmdHeader.TexRef;
+		segment.UserCallback = &WindowPainter::DrawSegmentCallback;
+		segment.UserCallbackDataSize = static_cast<int>(sizeof(data));
+		segment.UserCallbackDataOffset = DrawList->_CallbacksDataBuf.Size;
+		DrawList->_CallbacksDataBuf.resize(DrawList->_CallbacksDataBuf.Size + static_cast<int>(sizeof(data)));
+		std::memcpy(DrawList->_CallbacksDataBuf.Data + segment.UserCallbackDataOffset, &data, sizeof(data));
+
+		ImDrawCmd reset = segment;
+		reset.UserCallback = ImDrawCallback_ResetRenderState;
+		reset.UserCallbackDataSize = 0;
+		reset.UserCallbackDataOffset = -1;
+
+		// After the Behind segments already in front, two commands each
+		const int index = std::min(static_cast<int>(data.Segment) * 2, DrawList->CmdBuffer.Size);
+		if (index < DrawList->CmdBuffer.Size)
+		{
+			segment.VtxOffset = reset.VtxOffset = DrawList->CmdBuffer[index].VtxOffset;
+			segment.IdxOffset = reset.IdxOffset = DrawList->CmdBuffer[index].IdxOffset;
+		}
+		DrawList->CmdBuffer.insert(DrawList->CmdBuffer.Data + index, reset);
+		DrawList->CmdBuffer.insert(DrawList->CmdBuffer.Data + index, segment);
 	}
 
 	void WindowPainter::CloseSegment()

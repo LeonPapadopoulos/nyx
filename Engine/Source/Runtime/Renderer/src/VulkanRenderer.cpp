@@ -2,6 +2,7 @@
 #include "Assertions.h"
 #include "VulkanRenderer.h"
 #include "ImGuiSource.h"
+#include "UIChrome.h"
 #include "VulkanImGuiBackend.h"
 #include "VulkanContext.h"
 #include "VulkanSwapchain.h"
@@ -644,6 +645,10 @@ namespace Nyx
 		// What was painted inside windows is uploaded now and drawn as ImGui renders them.
 		ImGuiBackend->BeginFrame();
 		buildUI();
+		// The frame ends here rather than in ImGui::Render(), so that the windows ImGui begins
+		// itself while ending it (drag and drop tooltips) are there when the cards are painted.
+		ImGui::EndFrame();
+		Nyx::UI::PaintWindowCards();
 		DrawPainterCanvases(cmd);
 		PrepareWindowPainters();
 

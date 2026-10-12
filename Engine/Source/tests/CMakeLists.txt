@@ -50,6 +50,13 @@ add_dependencies(NyxPainterTests NyxGeneratedReflection)
 set_property(TARGET NyxPainterTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxPainterTests COMMAND NyxPainterTests)
 
+# The painted window chrome: cards and splitters in a headless ImGui context with a dock space.
+add_executable(NyxUIChromeTests UIChromeTests.cpp)
+target_link_libraries(NyxUIChromeTests PRIVATE NyxEngine)
+add_dependencies(NyxUIChromeTests NyxGeneratedReflection)
+set_property(TARGET NyxUIChromeTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxUIChromeTests COMMAND NyxUIChromeTests)
+
 # The painter shader on a real GPU: paints small frames and checks pixels read back. Needs a
 # Vulkan device; its window stays hidden.
 add_executable(NyxPainterGpuTests PainterGpuTests.cpp)

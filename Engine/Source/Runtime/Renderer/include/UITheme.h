@@ -6,9 +6,9 @@
 
 namespace Nyx::UI
 {
-	// How the painted widgets (UIWidgets.h) look. Every colour, radius, size and effect they use
-	// comes from here, never from a literal in a widget, so that the whole look can change in one
-	// place (Design/editor-ui-architecture.md, 3.10.3). Overhaul change 9 fills it from a theme
+	// How the painted widgets (UIWidgets.h) and the window chrome (UIChrome.h) look. Every
+	// colour, radius, size and effect they use comes from here, never from a literal in a widget,
+	// so that the whole look can change in one place (Design/editor-ui-architecture.md, 3.10.3). Overhaul change 9 fills it from a theme
 	// file and a theme editor; for now it holds the editor's dark look.
 	//
 	// Layout (frame padding, item spacing, item width) follows ImGui's style instead, so painted
@@ -72,6 +72,24 @@ namespace Nyx::UI
 		float SectionBarGap = 8.0f;
 		Engine::PainterGlow SectionBarGlow{ { 1.0f, 0.55f, 0.15f, 0.8f }, 6.0f, 0.5f };
 		float SectionLineWidth = 1.0f;
+
+		// The window chrome (UIChrome.h): the backdrop behind the dock space, and the card every
+		// window is painted as
+		glm::vec4 Backdrop{ 0.045f, 0.047f, 0.055f, 1.0f };
+		glm::vec4 Card{ 0.098f, 0.1f, 0.112f, 1.0f };
+		// A hairline just inside each card's edge, so cards stand apart from the backdrop
+		glm::vec4 CardBorder{ 1.0f, 1.0f, 1.0f, 0.05f };
+		float CardRounding = 8.0f;
+		// The gap between docked cards, which is also where the splitter between them is
+		float CardGap = 6.0f;
+		Engine::PainterShadow CardShadow{ { 0.0f, 0.0f, 0.0f, 0.45f }, { 0.0f, 2.0f }, 10.0f };
+		// Floating windows, popups, menus and tooltips lie higher: lighter, with a stronger shadow
+		glm::vec4 FloatingCard{ 0.135f, 0.138f, 0.155f, 1.0f };
+		Engine::PainterShadow FloatingCardShadow{ { 0.0f, 0.0f, 0.0f, 0.6f }, { 0.0f, 8.0f }, 24.0f };
+		// A splitter between docked cards shows only while hovered or dragged: a line this wide,
+		// as long as the cards beside it less their rounding
+		glm::vec4 Splitter{ 1.0f, 0.55f, 0.15f, 0.9f };
+		float SplitterWidth = 2.0f;
 
 		// What disabled widgets keep of their colours' alpha
 		float DisabledAlpha = 0.45f;

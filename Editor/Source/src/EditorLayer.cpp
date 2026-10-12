@@ -11,6 +11,7 @@
 #include "ReflectionSourceRegistry.h"
 #include "Renderer.h"
 #include "SceneSerializer.h"
+#include "UIChrome.h"
 
 #include "imgui.h"
 
@@ -35,6 +36,8 @@ namespace Nyx::Editor
 			});
 
 		Window->SetStartupStatus("Preparing the scene and editor panels");
+		// The editor's windows are painted as cards on a backdrop (Debug > Painted Chrome)
+		Nyx::UI::SetPaintedChrome(true);
 		Window->SetTitlebarMenu(
 			[this](float buttonHeight)
 			{
@@ -263,6 +266,11 @@ namespace Nyx::Editor
 			NYX_UI(ImGui::TextDisabled("Nyx"));
 			NYX_UI(ImGui::MenuItem("Painter Test", nullptr, &PainterTest.bOpen));
 			NYX_UI(ImGui::MenuItem("Mockup Overlay", nullptr, &Mockup.bOpen));
+			bool bPaintedChrome = Nyx::UI::IsPaintedChromeEnabled();
+			if (NYX_UI(ImGui::MenuItem("Painted Chrome", nullptr, &bPaintedChrome)))
+			{
+				Nyx::UI::SetPaintedChrome(bPaintedChrome);
+			}
 			ImGui::EndPopup();
 		}
 

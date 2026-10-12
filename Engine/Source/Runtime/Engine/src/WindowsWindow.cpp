@@ -7,6 +7,8 @@
 #include "Renderer.h"
 #include "ImGuiTheme.h"
 #include "SceneViewTypes.h"
+#include "UIChrome.h"
+#include "UITheme.h"
 #include "Paths.h"
 
 #include <windows.h>
@@ -587,16 +589,26 @@ namespace Nyx
 		windowFlags |= ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove;
 		windowFlags |= ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
 
+		// With the painted chrome, the backdrop is painted instead of the window's background,
+		// and the cards keep their gap from the window's edges too.
+		const bool bPaintedChrome = Nyx::UI::IsPaintedChromeEnabled();
+		if (bPaintedChrome)
+		{
+			windowFlags |= ImGuiWindowFlags_NoBackground;
+		}
+		const float padding = bPaintedChrome ? Nyx::UI::GetTheme().CardGap : 2.0f;
+
 		ImGui::SetNextWindowPos(viewport->Pos);
 		ImGui::SetNextWindowSize(viewport->Size);
 		ImGui::SetNextWindowViewport(viewport->ID);
 
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, bIsMaximized ? 0.0f : 5.0f);
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(2.0f, 2.0f));
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(padding, padding));
 		ImGui::PushStyleColor(ImGuiCol_WindowBg, Colors::Theme::background);
 
 		Nyx::UI::Begin("DockSpaceWindow", nullptr, windowFlags);
+		Nyx::UI::PaintBackdrop();
 
 		ImGui::PopStyleColor();
 		ImGui::PopStyleVar(3);

@@ -42,13 +42,28 @@ namespace Nyx::UI
 	// The draw list keeps a pointer to this window painter until ImGui renders it, so it must not
 	// move or be destroyed before then. Like Painter, it never logs or asserts; misuse is collected
 	// in GetProblems().
+	//
+	// A window painter can also paint behind everything already in its draw list (Behind), for a
+	// window's card painted after the window is built (UIChrome.h).
+
+	// Where a window painter's segments go in its draw list
+	enum class EWindowPainterPlacement
+	{
+		// After what ImGui has drawn so far, in order with ImGui's drawing: the usual
+		InOrder,
+		// In front of everything in the draw list, behind all of ImGui's drawing there. Segments
+		// follow each other in the order they were painted.
+		Behind,
+	};
+
 	class WindowPainter
 	{
 	public:
 		// Starts a frame of painting into `drawList`, a window's, which ImGui renders into `viewport`.
 		// Drops the previous frame's shapes, segments and problems. `windowName` names the window
 		// in problems and statistics.
-		void Begin(ImDrawList& drawList, const ImGuiViewport& viewport, std::string_view windowName = {});
+		void Begin(ImDrawList& drawList, const ImGuiViewport& viewport, std::string_view windowName = {},
+			EWindowPainterPlacement placement = EWindowPainterPlacement::InOrder);
 
 		// Ends the frame: closes what was left open and adds the painter's problems to this one's
 		void End();
@@ -95,6 +110,7 @@ namespace Nyx::UI
 		ImGuiID GetViewportId() const { return ViewportId; }
 		const ImDrawList* GetDrawList() const { return DrawList; }
 		const std::string& GetWindowName() const { return WindowName; }
+		EWindowPainterPlacement GetPlacement() const { return Placement; }
 
 		// Misuse found while recording this frame, one line per kind. After End(), the painter's
 		// own problems are included.
@@ -123,6 +139,8 @@ namespace Nyx::UI
 		// Begin()/End().
 		bool PrepareSegment();
 		void StartSegment(const ImVec4& clipRect);
+		// Puts a segment's callbacks in front of the draw list, after the Behind segments before it
+		void InsertSegmentCallbacksInFront(const SegmentCallbackData& data, const ImVec4& clipRect);
 		// Sets the current segment's command count from the commands recorded since it started
 		void CloseSegment();
 
@@ -135,6 +153,7 @@ namespace Nyx::UI
 		ImDrawList* DrawList = nullptr;
 		ImGuiID ViewportId = 0;
 		std::string WindowName;
+		EWindowPainterPlacement Placement = EWindowPainterPlacement::InOrder;
 		bool bRecording = false;
 
 		// From ImGui's screen coordinates to the viewport's framebuffer pixels
@@ -170,6 +189,13 @@ namespace Nyx::UI
 	// overlays; it takes no input. Started on the first call in a frame and gathered like the
 	// windows' ones.
 	WindowPainter& GetForegroundPainter(ImGuiViewport* viewport = nullptr);
+
+	// The window painter of any draw list, e.g. a window's found by a pass over all windows once
+	// the UI is built, outside its Begin()/End() (UIChrome.h). `placement` says where its shapes
+	// go; there is one painter per draw list and placement. Started on the first call in a frame
+	// and gathered like the windows' ones.
+	WindowPainter& GetPainterFor(ImDrawList& drawList, const ImGuiViewport& viewport, std::string_view name,
+		EWindowPainterPlacement placement = EWindowPainterPlacement::InOrder);
 
 	// Ends every window painter started this frame and returns them, for the renderer to draw.
 	// Call it after the UI is built and before ImGui::Render(). They stay valid until the next
