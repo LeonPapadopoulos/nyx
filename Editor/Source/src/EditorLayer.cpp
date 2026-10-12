@@ -390,4 +390,4 @@ namespace Nyx::Editor
 		MainSceneView.ApplyPickResult(Editing);
 		SecondarySceneView.ApplyPickResult(Editing);
 	}
-}
+}

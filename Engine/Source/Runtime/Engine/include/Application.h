@@ -43,4 +43,4 @@ namespace Nyx
 		Application* CreateApplication(int argc, char** argv);
 	}
 
-} // Engine
+} // Engine

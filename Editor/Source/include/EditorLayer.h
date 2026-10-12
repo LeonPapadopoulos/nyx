@@ -106,4 +106,4 @@ namespace Nyx::Editor
 		// The games started with Play; edits reach them from Play on
 		PlaySession Games{ Editing.Scene, GameLinkWindow };
 	};
-}
+}

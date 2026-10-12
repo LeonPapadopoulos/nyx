@@ -1,2 +1,14 @@
+# Store and check out text files with LF, regardless of core.autocrlf
+* text=auto eol=lf
+
+# cmd.exe mis-parses labels/goto in LF batch files
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+*.png binary
+*.jpg binary
+*.spv binary
+*.nyxscene binary
+
 # NyxHeaderTool golden files are compared byte-for-byte against LF output
 Tools/NyxHeaderTool/tests/fixtures/** text eol=lf
