@@ -3,6 +3,7 @@
 #include "VulkanRenderer.h"
 #include "ImGuiSource.h"
 #include "UIChrome.h"
+#include "UIDiagnostics.h"
 #include "VulkanImGuiBackend.h"
 #include "VulkanContext.h"
 #include "VulkanSwapchain.h"
@@ -22,6 +23,7 @@
 #include <optional>
 
 #include "backends/imgui_impl_vulkan.h"
+#include <imgui_internal.h> // An OS window's ImGui window, for its name
 
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
@@ -404,7 +406,9 @@ namespace Nyx
 
 		Nyx::UI::WindowPainter::SetSegmentDrawer(nullptr, nullptr);
 		WindowSegments.Release();
-		WindowSegmentStarts.clear();
+		WindowSegmentDraws.clear();
+		WindowPainters = {};
+		RunPainters.clear();
 		PainterPass.Shutdown();
 
 		if (ImGuiBackend)
@@ -657,13 +661,17 @@ namespace Nyx
 		ImGui::EndFrame();
 		Nyx::UI::SetGlassBackdrop(GlassImGuiTexture != VK_NULL_HANDLE ? reinterpret_cast<ImTextureID>(GlassImGuiTexture) : ImTextureID_Invalid);
 		Nyx::UI::PaintWindowCards();
+		// After the chrome, which takes over some of ImGui's shapes
+		Nyx::UI::MarkImGuiShapes();
 		DrawPainterCanvases(cmd);
-		PrepareWindowPainters();
+		GatherWindowPainters();
 
 		// With glass in the main window, what lies behind it is drawn and blurred first, so the
 		// glass shows this frame's. ImGui::Render() makes the draw data for both; the backend's
-		// DrawFrame() finds it made.
+		// DrawFrame() finds it made. The window segments are drawn in runs, which only the draw
+		// data shows.
 		ImGui::Render();
+		UploadWindowSegments();
 		DrawGlassBackdrop(cmd);
 
 		cmd.beginRenderPass(renderPassInfo, vk::SubpassContents::eInline);
@@ -3688,34 +3696,109 @@ namespace Nyx
 		return const_cast<VulkanRenderer*>(this)->FindPainterCanvas(id);
 	}
 
-	void VulkanRenderer::PrepareWindowPainters()
+	void VulkanRenderer::GatherWindowPainters()
 	{
-		WindowSegments.Clear();
-		WindowSegmentStarts.clear();
 		WindowPainterStats = Nyx::Engine::PainterWindowStats{};
-
-		const Nyx::Engine::PainterBudget budget;
-		for (const Nyx::UI::WindowPainter* painter : Nyx::UI::EndWindowPainters())
+		WindowPainters = Nyx::UI::EndWindowPainters();
+		for (const Nyx::UI::WindowPainter* painter : WindowPainters)
 		{
 			for (const std::string& problem : painter->GetProblems())
 			{
 				WindowPainterStats.Problems.push_back(painter->GetWindowName() + ": " + problem);
 			}
-			if (painter->GetSegments().empty())
+			WindowPainterStats.Windows += painter->GetSegments().empty() ? 0 : 1;
+		}
+	}
+
+	void VulkanRenderer::UploadWindowSegments()
+	{
+		WindowSegments.Clear();
+		WindowSegmentDraws.clear();
+
+		const Nyx::Engine::PainterBudget budget;
+		size_t runPainterCount = 0;
+		// A segment's commands, if it is one of this frame's painters'
+		const auto findSegment = [&](const Nyx::UI::WindowSegmentRef& ref) -> const Nyx::Engine::PainterSegment*
+		{
+			const bool bThisFrame = std::find(WindowPainters.begin(), WindowPainters.end(), ref.Painter) != WindowPainters.end();
+			return bThisFrame && ref.Segment < ref.Painter->GetSegments().size() ? &ref.Painter->GetSegments()[ref.Segment] : nullptr;
+		};
+
+		for (ImGuiViewport* viewport : ImGui::GetPlatformIO().Viewports)
+		{
+			if (viewport->DrawData == nullptr)
 			{
 				continue;
 			}
+			Nyx::Engine::PainterWindowStats::OsWindow osWindow;
+			const ImGuiWindow* window = static_cast<ImGuiViewportP*>(viewport)->Window;
+			osWindow.Name = viewport == ImGui::GetMainViewport() ? "Main window" : window != nullptr ? window->Name : "OS window";
 
-			++WindowPainterStats.Windows;
-			WindowSegmentStarts.emplace_back(painter, WindowSegments.GetSegmentCount());
-			for (const Nyx::Engine::PainterSegment& segment : painter->GetSegments())
+			// Runs don't reach across where glass cuts the main window's draw data.
+			for (const Nyx::UI::WindowSegmentRun& run : Nyx::UI::FindWindowSegmentRuns(*viewport->DrawData, Nyx::UI::GetGlassDrawLists()))
 			{
-				const Nyx::Engine::PainterBinningStats& stats = WindowSegments.GetStats(WindowSegments.Add(painter->GetPainter(), segment, budget));
-				++WindowPainterStats.Segments;
-				WindowPainterStats.Commands += stats.Commands;
-				WindowPainterStats.TilesInUse += stats.TilesInUse;
-				WindowPainterStats.TileEntries += stats.TileEntries;
-				WindowPainterStats.BinningMilliseconds += stats.BinningMilliseconds;
+				std::vector<Nyx::UI::WindowSegmentRef> refs;
+				for (const Nyx::UI::WindowSegmentRef& ref : run.Segments)
+				{
+					if (findSegment(ref) != nullptr)
+					{
+						refs.push_back(ref);
+					}
+				}
+
+				// As many segments as one painter has room for the textures of go into one draw;
+				// a segment alone is added as it is.
+				for (size_t first = 0; first < refs.size();)
+				{
+					const Nyx::Engine::Painter& firstPainter = refs[first].Painter->GetPainter();
+					size_t count = 1;
+					uint32_t draw = 0;
+					if (first + 1 < refs.size())
+					{
+						if (runPainterCount == RunPainters.size())
+						{
+							RunPainters.push_back(std::make_unique<Nyx::Engine::Painter>());
+						}
+						Nyx::Engine::Painter& runPainter = *RunPainters[runPainterCount];
+						runPainter.BeginFrame(firstPainter.GetTargetWidth(), firstPainter.GetTargetHeight());
+						runPainter.AppendSegment(firstPainter, *findSegment(refs[first]));
+						while (first + count < refs.size() && runPainter.AppendSegment(refs[first + count].Painter->GetPainter(), *findSegment(refs[first + count])))
+						{
+							++count;
+						}
+						if (count > 1)
+						{
+							++runPainterCount;
+							draw = WindowSegments.Add(runPainter, Nyx::Engine::PainterSegment{ 0, static_cast<uint32_t>(runPainter.GetCommands().size()) }, budget);
+						}
+					}
+					if (count == 1)
+					{
+						draw = WindowSegments.Add(firstPainter, *findSegment(refs[first]), budget);
+					}
+
+					WindowSegmentDraws[{ refs[first].Painter, refs[first].Segment }] = draw;
+					for (size_t other = first + 1; other < first + count; ++other)
+					{
+						WindowSegmentDraws[{ refs[other].Painter, refs[other].Segment }] = NoWindowDraw;
+					}
+
+					const Nyx::Engine::PainterBinningStats& stats = WindowSegments.GetStats(draw);
+					++osWindow.Draws;
+					osWindow.Segments += static_cast<uint32_t>(count);
+					WindowPainterStats.Commands += stats.Commands;
+					WindowPainterStats.TilesInUse += stats.TilesInUse;
+					WindowPainterStats.TileEntries += stats.TileEntries;
+					WindowPainterStats.BinningMilliseconds += stats.BinningMilliseconds;
+					first += count;
+				}
+			}
+
+			WindowPainterStats.Segments += osWindow.Segments;
+			WindowPainterStats.Draws += osWindow.Draws;
+			if (osWindow.Segments > 0)
+			{
+				WindowPainterStats.OsWindows.push_back(std::move(osWindow));
 			}
 		}
 		WindowPainterStats.Problems.insert(WindowPainterStats.Problems.end(), WindowSegments.GetProblems().begin(), WindowSegments.GetProblems().end());
@@ -3741,12 +3824,9 @@ namespace Nyx
 			return;
 		}
 
-		// Only the window painters gathered this frame have their segments uploaded.
-		const auto start = std::find_if(WindowSegmentStarts.begin(), WindowSegmentStarts.end(), [&](const auto& entry)
-			{
-				return entry.first == &painter;
-			});
-		if (start == WindowSegmentStarts.end() || segment >= painter.GetSegments().size())
+		// Only this frame's segments are uploaded, each run at its first segment.
+		const auto found = WindowSegmentDraws.find({ &painter, segment });
+		if (found == WindowSegmentDraws.end() || found->second == NoWindowDraw)
 		{
 			return;
 		}
@@ -3776,7 +3856,7 @@ namespace Nyx
 			format = static_cast<vk::Format>(window->SurfaceFormat.format);
 		}
 
-		PainterPass.DrawSegment(renderState->CommandBuffer, WindowSegments, start->second + segment, format, extent);
+		PainterPass.DrawSegment(renderState->CommandBuffer, WindowSegments, found->second, format, extent);
 	}
 
 	uint64_t VulkanRenderer::CreateUIImage(const Nyx::Engine::RgbaImage& source)

@@ -21,6 +21,13 @@ namespace Nyx::Engine
 		{
 			return a._TexData == b._TexData && a._TexID == b._TexID;
 		}
+
+		// The command types whose PainterCommand::Texture indexes the frame's textures
+		bool UsesTexture(EPainterCommandType type)
+		{
+			return type == EPainterCommandType::Glyph || type == EPainterCommandType::Image || type == EPainterCommandType::ImageGlow ||
+				type == EPainterCommandType::Glass;
+		}
 	}
 
 	void Painter::BeginFrame(uint32_t targetWidth, uint32_t targetHeight)
@@ -362,6 +369,64 @@ namespace Nyx::Engine
 		{
 			OpenGroup = PainterNoGroup;
 		}
+	}
+
+	bool Painter::AppendSegment(const Painter& source, const PainterSegment& segment)
+	{
+		const std::vector<PainterCommand>& sourceCommands = source.GetCommands();
+		const size_t first = std::min<size_t>(segment.FirstCommand, sourceCommands.size());
+		const size_t end = std::min<size_t>(first + segment.CommandCount, sourceCommands.size());
+
+		// Which of the source's textures go where in this frame's: worked out before anything is
+		// copied, so that a run without room changes nothing
+		std::vector<uint32_t> textureIndices(source.GetTextures().size(), PainterMaxTextures);
+		std::vector<ImTextureRef> textures = Textures;
+		for (size_t index = first; index < end; ++index)
+		{
+			const PainterCommand& command = sourceCommands[index];
+			if (!UsesTexture(static_cast<EPainterCommandType>(command.Type)) || command.Texture >= textureIndices.size() ||
+				textureIndices[command.Texture] != PainterMaxTextures)
+			{
+				continue;
+			}
+			const ImTextureRef& texture = source.GetTextures()[command.Texture];
+			const auto found = std::find_if(textures.begin(), textures.end(), [&](const ImTextureRef& other)
+				{
+					return IsSameTexture(other, texture);
+				});
+			if (found == textures.end() && textures.size() >= PainterMaxTextures)
+			{
+				return false;
+			}
+			textureIndices[command.Texture] = static_cast<uint32_t>(found != textures.end() ? found - textures.begin() : textures.size());
+			if (found == textures.end())
+			{
+				textures.push_back(texture);
+			}
+		}
+		Textures = std::move(textures);
+
+		// Each group the run uses comes along once, in the order it is first used.
+		std::vector<uint32_t> groupIndices(source.GetGroups().size(), PainterNoGroup);
+		for (size_t index = first; index < end; ++index)
+		{
+			PainterCommand command = sourceCommands[index];
+			if (command.Group != PainterNoGroup && command.Group < groupIndices.size())
+			{
+				if (groupIndices[command.Group] == PainterNoGroup)
+				{
+					groupIndices[command.Group] = static_cast<uint32_t>(Groups.size());
+					Groups.push_back(source.GetGroups()[command.Group]);
+				}
+				command.Group = groupIndices[command.Group];
+			}
+			if (UsesTexture(static_cast<EPainterCommandType>(command.Type)) && command.Texture < textureIndices.size())
+			{
+				command.Texture = textureIndices[command.Texture];
+			}
+			Commands.push_back(command);
+		}
+		return true;
 	}
 
 	template<typename TPayload>

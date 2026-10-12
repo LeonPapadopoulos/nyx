@@ -5,6 +5,7 @@
 #include "PainterTestSheet.h"
 #include "Paths.h"
 #include "Renderer.h"
+#include "UIDiagnostics.h"
 #include "UITheme.h"
 #include "UIWidgets.h"
 #include "WindowPainter.h"
@@ -880,8 +881,18 @@ namespace Nyx::Editor
 	void PainterTestWindow::DrawWindowPainterStatistics(const PainterWindowStats& stats) const
 	{
 		// The last drawn frame: the previous one
-		NYX_UI(ImGui::Text("Windows %u   Segments %u   Commands %u   Tiles in use %u (%u entries)   Binning %.3f ms",
-			stats.Windows, stats.Segments, stats.Commands, stats.TilesInUse, stats.TileEntries, stats.BinningMilliseconds));
+		NYX_UI(ImGui::Text("Windows %u   Segments %u   Draws %u   Commands %u   Tiles in use %u (%u entries)   Binning %.3f ms",
+			stats.Windows, stats.Segments, stats.Draws, stats.Commands, stats.TilesInUse, stats.TileEntries, stats.BinningMilliseconds));
+
+		// Segments with nothing ImGui draws between them are one draw: per OS window
+		for (const PainterWindowStats::OsWindow& osWindow : stats.OsWindows)
+		{
+			NYX_UI(ImGui::Text("  %s: %u segments in %u draws", osWindow.Name.c_str(), osWindow.Segments, osWindow.Draws));
+		}
+		if (Nyx::UI::IsMarkingImGuiShapes())
+		{
+			NYX_UI(ImGui::Text("ImGui draws %u shapes itself, in %u windows (Debug > Mark ImGui Shapes)", Nyx::UI::GetImGuiShapeCount(), Nyx::UI::GetImGuiShapeWindowCount()));
+		}
 
 		const ImVec4 problemColor(1.0f, 0.4f, 0.35f, 1.0f);
 		for (const std::string& problem : stats.Problems)

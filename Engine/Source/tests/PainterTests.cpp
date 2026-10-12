@@ -4,7 +4,10 @@
 #include "Painter.h"
 #include "PainterTestSheet.h"
 #include "PainterTiles.h"
+#include "UIDiagnostics.h"
 #include "WindowPainter.h"
+
+#include <imgui_internal.h> // ImRect
 
 #include <algorithm>
 #include <utility>
@@ -1205,6 +1208,150 @@ namespace
 		Require(behind.GetSegments().size() == 2 && behind.GetProblems().empty(), "Painting behind should keep its segments without problems");
 	}
 
+	// Runs of segments (stage 3, change 8): a run's segments are copied into one painter, with
+	// their groups and textures renumbered for it
+	void TestAppendSegmentRenumbersGroupsAndTextures()
+	{
+		const PainterRect rect{ { 10, 10 }, { 20, 20 } };
+		Painter first;
+		first.BeginFrame(200, 100);
+		first.AddImage(FakeTexture(1), rect, PainterStyle::Filled(glm::vec4(1.0f)));
+		first.AddRect(rect, WithShadow(Orange));
+		Painter second;
+		second.BeginFrame(200, 100);
+		second.AddRect(rect, WithShadow(Black));
+		second.AddImage(FakeTexture(2), rect, PainterStyle::Filled(glm::vec4(1.0f)));
+		second.AddImage(FakeTexture(1), rect, PainterStyle::Filled(glm::vec4(1.0f)));
+
+		Painter run;
+		run.BeginFrame(200, 100);
+		Require(run.AppendSegment(first, PainterSegment{ 0, 2 }) && run.AppendSegment(second, PainterSegment{ 0, 3 }), "Two painters' segments should fit into one");
+		const auto& commands = run.GetCommands();
+		Require(commands.size() == 5 && run.GetGroups().size() == 2, "The run should have both segments' commands and groups");
+		Require(commands[1].Group == 0 && commands[2].Group == 1, "Each segment's group should get its own index in the run");
+		Require(run.GetTextures().size() == 2 && run.GetTextures()[0].GetTexID() == 1 && run.GetTextures()[1].GetTexID() == 2,
+			"A texture both segments use should be in the run once");
+		Require(commands[0].Texture == 0 && commands[3].Texture == 1 && commands[4].Texture == 0, "Textured commands should point at their texture in the run");
+		Require(Near(TexturedRectOf(commands[4]).Rect, rect) && commands[2].Color == second.GetCommands()[0].Color, "Commands should be copied as they are");
+
+		// Part of a segment brings only what it uses.
+		Painter part;
+		part.BeginFrame(200, 100);
+		part.AppendSegment(second, PainterSegment{ 1, 1 });
+		Require(part.GetCommands().size() == 1 && part.GetGroups().empty() && part.GetTextures().size() == 1 && part.GetCommands()[0].Texture == 0,
+			"A part of a segment should bring only its own textures and groups");
+
+		// A run without room for another texture takes nothing of the segment.
+		Painter full;
+		full.BeginFrame(200, 100);
+		for (uint64_t texture = 10; texture < 10 + PainterMaxTextures; ++texture)
+		{
+			full.AddImage(FakeTexture(texture), rect, PainterStyle::Filled(glm::vec4(1.0f)));
+		}
+		Painter crowded;
+		crowded.BeginFrame(200, 100);
+		Require(crowded.AppendSegment(full, PainterSegment{ 0, PainterMaxTextures }), "A segment with the most textures should fit an empty run");
+		Require(!crowded.AppendSegment(second, PainterSegment{ 0, 3 }), "A segment with further textures shouldn't fit a full run");
+		Require(crowded.GetCommands().size() == PainterMaxTextures && crowded.GetTextures().size() == PainterMaxTextures && crowded.GetGroups().empty(),
+			"A segment that doesn't fit should leave the run as it was");
+	}
+
+	// A frame of its own, with bare windows: no title bar, background or border, so that ImGui
+	// draws nothing in them but what a test asks for
+	void BeginBareWindow(const char* name)
+	{
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+		ImGui::SetNextWindowSize(ImVec2(64.0f, 64.0f));
+		ImGui::Begin(name, nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar |
+			ImGuiWindowFlags_NoSavedSettings);
+		ImGui::PopStyleVar();
+	}
+
+	// Segments that follow each other in render order, with nothing ImGui draws between them, are
+	// one run, also across windows; a run ends where ImGui draws, and before a draw list asked for.
+	void TestSegmentRunsFollowRenderOrder()
+	{
+		ImGui::EndFrame();
+		ImGui::NewFrame();
+		const PainterRect rect{ { 10, 10 }, { 20, 20 } };
+
+		BeginBareWindow("Runs A");
+		Nyx::UI::WindowPainter& first = Nyx::UI::GetWindowPainter();
+		first.AddRect(rect, PainterStyle::Filled(Orange));
+		first.AddRect(rect, PainterStyle::Filled(Black));
+		ImGui::TextUnformatted("H");
+		first.AddRect(rect, PainterStyle::Filled(Orange));
+		// Another clip rect: another segment, with nothing drawn in between
+		ImGui::PushClipRect(ImVec2(0.0f, 0.0f), ImVec2(30.0f, 30.0f), true);
+		first.AddRect(rect, PainterStyle::Filled(Black));
+		ImGui::PopClipRect();
+		ImGui::End();
+
+		BeginBareWindow("Runs B");
+		Nyx::UI::WindowPainter& second = Nyx::UI::GetWindowPainter();
+		second.AddRect(rect, PainterStyle::Filled(Orange));
+		const ImDrawList* secondList = ImGui::GetWindowDrawList();
+		ImGui::End();
+
+		Nyx::UI::EndWindowPainters();
+		ImGui::Render();
+		const ImDrawData& drawData = *ImGui::GetDrawData();
+		using Nyx::UI::WindowSegmentRef;
+		const auto segmentsOf = [](const std::vector<Nyx::UI::WindowSegmentRun>& runs)
+		{
+			std::vector<std::vector<WindowSegmentRef>> result;
+			for (const Nyx::UI::WindowSegmentRun& run : runs)
+			{
+				result.push_back(run.Segments);
+			}
+			return result;
+		};
+
+		const std::vector<std::vector<WindowSegmentRef>> expected{ { { &first, 0 } }, { { &first, 1 }, { &first, 2 }, { &second, 0 } } };
+		Require(first.GetSegments().size() == 3 && second.GetSegments().size() == 1, "The windows should have three segments and one");
+		Require(segmentsOf(Nyx::UI::FindWindowSegmentRuns(drawData)) == expected,
+			"Segments should run on across a clip rect and into the next window, and stop where ImGui's text is");
+
+		const ImDrawList* const breakBefore[] = { secondList };
+		const std::vector<std::vector<WindowSegmentRef>> broken{ { { &first, 0 } }, { { &first, 1 }, { &first, 2 } }, { { &second, 0 } } };
+		Require(segmentsOf(Nyx::UI::FindWindowSegmentRuns(drawData, breakBefore)) == broken, "A run should end before a draw list asked to break before");
+
+		ImGui::NewFrame();
+	}
+
+	// Debug > Mark ImGui Shapes: what ImGui draws with its white pixel is outlined, its text not
+	void TestImGuiShapesAreMarked()
+	{
+		ImGui::EndFrame();
+		ImGui::NewFrame();
+		Nyx::UI::SetMarkImGuiShapes(true);
+
+		BeginBareWindow("Marks");
+		ImGui::Button("Apply");
+		const ImRect button(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+		ImGui::TextUnformatted("Text isn't marked");
+		ImGui::End();
+		// As the renderer does: once the frame has ended, when ImGui has hidden its implicit
+		// "Debug" window, which nothing used
+		ImGui::EndFrame();
+		Nyx::UI::MarkImGuiShapes();
+
+		Require(Nyx::UI::GetImGuiShapeCount() == 1 && Nyx::UI::GetImGuiShapeWindowCount() == 1, "The button's frame should be the one shape ImGui drew, got " +
+			std::to_string(Nyx::UI::GetImGuiShapeCount()));
+		const auto& marks = Nyx::UI::GetForegroundPainter().GetPainter().GetCommands();
+		Require(!marks.empty(), "A shape should be marked over everything");
+		const PainterRect mark = GetPayload<PainterRectPayload>(marks[0]).Rect;
+		Require(mark.Min.x <= button.Min.x && mark.Min.x > button.Min.x - 1.0f && mark.Max.y >= button.Max.y && mark.Max.y < button.Max.y + 1.0f,
+			"The mark should be the button's frame, with ImGui's anti-aliased edge");
+
+		Nyx::UI::SetMarkImGuiShapes(false);
+		Nyx::UI::MarkImGuiShapes();
+		Require(Nyx::UI::GetImGuiShapeCount() == 0, "Nothing should be marked while marking is off");
+		Nyx::UI::EndWindowPainters();
+		ImGui::NewFrame();
+	}
+
 	void TestPngsSaveAndLoad()
 	{
 		// 2x2: red, green / blue, half transparent white
@@ -1296,7 +1443,10 @@ int main()
 			TestGetWindowPainterIsOnePerWindow();
 			TestForegroundPainterPaintsOverEverything();
 			TestPainterBehindGoesInFrontOfTheDrawList();
+			TestSegmentRunsFollowRenderOrder();
+			TestImGuiShapesAreMarked();
 		}
+		TestAppendSegmentRenumbersGroupsAndTextures();
 
 		TestSegmentGridCoversOnlyItsCommands();
 		TestSegmentGroupReachIsItsOwn();

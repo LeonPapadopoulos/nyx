@@ -16,7 +16,9 @@
 #include "Material.h"
 #include "GltfImporter.h"
 #include <imgui.h>
+#include <map>
 #include <memory>
+#include <span>
 
 #include "Entity.h"
 #include "TransformComponent.h"
@@ -501,17 +503,30 @@ namespace Nyx
 		std::vector<std::unique_ptr<PainterCanvas>> PainterCanvases;
 		uint64_t NextPainterCanvasId = 1;
 
-		// Painting inside ImGui windows (Nyx::UI::GetWindowPainter()): after the UI is built,
-		// gathers the window painters' segments, bins and uploads them. ImGui then calls back
-		// where each segment goes, and DrawWindowSegment() draws it there.
-		void PrepareWindowPainters();
+		// Painting inside ImGui windows (Nyx::UI::GetWindowPainter()), in two steps around
+		// ImGui::Render():
+		//  - GatherWindowPainters(), once the UI is built: ends the window painters;
+		//  - UploadWindowSegments(), once ImGui has made the draw data: finds the runs of
+		//    segments with nothing ImGui draws between them (Nyx::UI::FindWindowSegmentRuns()),
+		//    copies each run into one painter (Painter::AppendSegment()), bins and uploads it as
+		//    one draw (stage 3, change 8).
+		// ImGui then calls back where each segment goes: DrawWindowSegment() draws a run at its
+		// first segment, and nothing at the others.
+		void GatherWindowPainters();
+		void UploadWindowSegments();
 		static void DrawWindowSegment(const Nyx::UI::WindowPainter& painter, uint32_t segment, const ImDrawCmd& command, void* renderer);
 		void DrawWindowSegment(const Nyx::UI::WindowPainter& painter, uint32_t segment);
 
-		// This frame's segments of all windows
+		// This frame's window painters, and their draws
+		std::span<Nyx::UI::WindowPainter* const> WindowPainters;
 		Nyx::Engine::VulkanPainterSegments WindowSegments;
-		// Where each window painter's segments start in WindowSegments
-		std::vector<std::pair<const Nyx::UI::WindowPainter*, uint32_t>> WindowSegmentStarts;
+		// What each segment's callback draws: the index of its run's draw in WindowSegments at the
+		// run's first segment, NoWindowDraw at the others
+		static constexpr uint32_t NoWindowDraw = UINT32_MAX;
+		std::map<std::pair<const Nyx::UI::WindowPainter*, uint32_t>, uint32_t> WindowSegmentDraws;
+		// The painters runs are copied into, one per draw of several segments. Kept apart, so
+		// that no two have the same address in a frame: WindowSegments tells painters apart by it.
+		std::vector<std::unique_ptr<Nyx::Engine::Painter>> RunPainters;
 		Nyx::Engine::PainterWindowStats WindowPainterStats;
 
 		// An image for the UI (CreateUIImage()), shown through a descriptor set made by ImGui's backend

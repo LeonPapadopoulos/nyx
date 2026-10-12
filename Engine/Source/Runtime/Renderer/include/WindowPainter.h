@@ -204,4 +204,28 @@ namespace Nyx::UI
 	// Call it after the UI is built and before ImGui::Render(). They stay valid until the next
 	// frame's first GetWindowPainter().
 	std::span<WindowPainter* const> EndWindowPainters();
+
+	// One segment of a window painter
+	struct WindowSegmentRef
+	{
+		const WindowPainter* Painter = nullptr;
+		uint32_t Segment = 0;
+
+		bool operator==(const WindowSegmentRef&) const = default;
+	};
+
+	// Segments that follow each other in a viewport's render order with nothing ImGui draws
+	// between them, so they can be drawn as one (stage 3, change 8)
+	struct WindowSegmentRun
+	{
+		std::vector<WindowSegmentRef> Segments;
+	};
+
+	// The runs of segments in a viewport's draw data, made by ImGui::Render(), in render order:
+	// its draw lists one after the other, command by command. A run ends where ImGui draws: a
+	// command with elements, or a callback other than a segment's or ImGui's render state reset.
+	// Commands without elements and ImGui's resets come between segments without ending a run.
+	// A run also ends before each draw list in `breakBefore`, e.g. where glass cuts the draw
+	// data for its backdrop (UIChrome.h), so that no run is drawn on both sides of the cut.
+	std::vector<WindowSegmentRun> FindWindowSegmentRuns(const ImDrawData& drawData, std::span<const ImDrawList* const> breakBefore = {});
 }

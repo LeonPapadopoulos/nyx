@@ -104,6 +104,8 @@ namespace Nyx::Engine
 		PainterRect Apply(const PainterRect& rect) const { return PainterRect{ Apply(rect.Min), Apply(rect.Max) }; }
 	};
 
+	struct PainterSegment;
+
 	// Records 2D shapes as draw commands for the painter shader, which draws each one as a signed
 	// distance field: edges stay exactly anti-aliased at any size, and shadows and glows are
 	// cheap. One painter records one frame for one target (an offscreen image now; an ImGui
@@ -204,6 +206,14 @@ namespace Nyx::Engine
 		// they were one shape. Groups don't nest.
 		void BeginGroup(const PainterEffects& effects);
 		void EndGroup();
+
+		// Copies a run of another painter's recorded commands to the end of this frame, as they
+		// are: in target pixels, with their clip rects. Their groups and textures come along,
+		// renumbered for this frame. For drawing segments of several painters that follow each
+		// other as one (stage 3, change 8); both painters should have the same target.
+		// All or nothing: false, with nothing copied, when this frame has no room for the
+		// textures the run uses (PainterMaxTextures).
+		bool AppendSegment(const Painter& source, const PainterSegment& segment);
 
 		// The recorded frame, as the GPU reads it
 		const std::vector<PainterCommand>& GetCommands() const { return Commands; }

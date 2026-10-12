@@ -70,9 +70,21 @@ namespace Nyx::Engine
 	// windows and their segments, e.g. for the Painter Test window
 	struct PainterWindowStats
 	{
+		// One OS window's painting: its segments, and the draws they are drawn in. Segments that
+		// follow each other with nothing ImGui draws between them are one draw.
+		struct OsWindow
+		{
+			std::string Name;
+			uint32_t Segments = 0;
+			uint32_t Draws = 0;
+		};
+
 		// Windows that painted
 		uint32_t Windows = 0;
 		uint32_t Segments = 0;
+		// Draws of all OS windows, and each one's
+		uint32_t Draws = 0;
+		std::vector<OsWindow> OsWindows;
 		uint32_t Commands = 0;
 		// Tiles with at least one command, and command entries in them
 		uint32_t TilesInUse = 0;

@@ -396,6 +396,42 @@ namespace Nyx::UI
 		return pool.Used;
 	}
 
+	std::vector<WindowSegmentRun> FindWindowSegmentRuns(const ImDrawData& drawData, std::span<const ImDrawList* const> breakBefore)
+	{
+		std::vector<WindowSegmentRun> runs;
+		bool bRunOpen = false;
+		for (const ImDrawList* drawList : drawData.CmdLists)
+		{
+			if (std::find(breakBefore.begin(), breakBefore.end(), drawList) != breakBefore.end())
+			{
+				bRunOpen = false;
+			}
+			for (const ImDrawCmd& command : drawList->CmdBuffer)
+			{
+				if (command.UserCallback == &WindowPainter::DrawSegmentCallback && command.UserCallbackData != nullptr)
+				{
+					WindowPainter::SegmentCallbackData data;
+					std::memcpy(&data, command.UserCallbackData, sizeof(data));
+					if (!bRunOpen)
+					{
+						runs.emplace_back();
+						bRunOpen = true;
+					}
+					runs.back().Segments.push_back(WindowSegmentRef{ data.Painter, data.Segment });
+				}
+				else if (command.UserCallback == ImDrawCallback_ResetRenderState || (command.UserCallback == nullptr && command.ElemCount == 0))
+				{
+					// Draws nothing
+				}
+				else
+				{
+					bRunOpen = false;
+				}
+			}
+		}
+		return runs;
+	}
+
 	bool WindowPainter::PrepareSegment()
 	{
 		if (!bRecording)

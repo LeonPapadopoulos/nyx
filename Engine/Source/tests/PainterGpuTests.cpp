@@ -1106,6 +1106,80 @@ namespace
 		Require(segments.GetProblems().empty(), "The test sheet's segments should bin without problems");
 	}
 
+	// Segments drawn as one run (stage 3, change 8): another painter's segment and the test sheet
+	// in two halves, copied into one painter with Painter::AppendSegment() and drawn once, paint
+	// what the three segments paint drawn one after the other.
+	void TestRunOfSegmentsMatchesItsSegments(GpuPainter& gpu, const ImGuiFonts& fonts)
+	{
+		const glm::vec4 background{ 0.1f, 0.1f, 0.12f, 1.0f };
+		const uint32_t width = static_cast<uint32_t>(PainterTestSheetSize.x);
+		const uint32_t height = static_cast<uint32_t>(PainterTestSheetSize.y);
+
+		Painter sheet = StartFrame(width, height);
+		DrawPainterTestSheet(sheet, fonts.Font, fonts.Font->OwnerAtlas->TexRef, gpu.CreateTexture(MakePainterTestGradient()));
+		sheet.EndFrame();
+		gpu.UploadFontAtlas(*fonts.Font->OwnerAtlas);
+
+		// A group before the sheet's, so that the run renumbers groups
+		Painter before = StartFrame(width, height);
+		PainterStyle glowing = PainterStyle::Filled(White);
+		glowing.Effects.Glow.Color = Orange;
+		glowing.Effects.Glow.Distance = 4.0f;
+		before.AddCircle({ 12, 12 }, 6.0f, glowing);
+
+		const std::vector<PainterCommand>& commands = sheet.GetCommands();
+		uint32_t split = static_cast<uint32_t>(commands.size() / 2);
+		while (split < commands.size() && commands[split].Group != PainterNoGroup && commands[split].Group == commands[split - 1].Group)
+		{
+			++split;
+		}
+		const PainterSegment firstHalf{ 0, split };
+		const PainterSegment secondHalf{ split, static_cast<uint32_t>(commands.size()) - split };
+
+		Painter run = StartFrame(width, height);
+		Require(run.AppendSegment(before, PainterSegment{ 0, 1 }) && run.AppendSegment(sheet, firstHalf) && run.AppendSegment(sheet, secondHalf),
+			"The three segments should fit into one painter");
+
+		VulkanPainterSegments segments;
+		const PainterBudget budget;
+		const uint32_t beforeSegment = segments.Add(before, PainterSegment{ 0, 1 }, budget);
+		const uint32_t firstSegment = segments.Add(sheet, firstHalf, budget);
+		const uint32_t secondSegment = segments.Add(sheet, secondHalf, budget);
+		const uint32_t runSegment = segments.Add(run, PainterSegment{ 0, static_cast<uint32_t>(run.GetCommands().size()) }, budget);
+		VulkanPainter& painterPass = gpu.GetPainterPass();
+		painterPass.Upload(segments);
+
+		const vk::Format format = vk::Format::eR8G8B8A8Unorm;
+		const vk::Extent2D extent{ width, height };
+		const PaintedImage separately = gpu.RenderInto(format, extent, background, [&](vk::CommandBuffer commandBuffer)
+			{
+				painterPass.DrawSegment(commandBuffer, segments, beforeSegment, format, extent);
+				painterPass.DrawSegment(commandBuffer, segments, firstSegment, format, extent);
+				painterPass.DrawSegment(commandBuffer, segments, secondSegment, format, extent);
+			});
+		const PaintedImage asRun = gpu.RenderInto(format, extent, background, [&](vk::CommandBuffer commandBuffer)
+			{
+				painterPass.DrawSegment(commandBuffer, segments, runSegment, format, extent);
+			});
+		SaveForLooking(asRun, "SegmentRun.png");
+
+		// The segments drawn one after the other round in between, so allow the tolerance.
+		size_t differentPixels = 0;
+		for (uint32_t y = 0; y < height; ++y)
+		{
+			for (uint32_t x = 0; x < width; ++x)
+			{
+				const glm::vec4 difference = glm::abs(separately.At(x, y) - asRun.At(x, y));
+				if (std::max({ difference.r, difference.g, difference.b, difference.a }) > Tolerance)
+				{
+					++differentPixels;
+				}
+			}
+		}
+		Require(differentPixels == 0, "A run should paint what its segments paint, " + std::to_string(differentPixels) + " pixels differ");
+		Require(segments.GetProblems().empty(), "The run should bin without problems");
+	}
+
 	// The blur chain (VulkanBlur)
 
 	// An RGBA image `width` x `height` with `color(x, y)`, 0 to 255 per channel
@@ -1226,6 +1300,7 @@ int main()
 			TestTextCastsNoBoxShadow(gpu, fonts);
 			TestTestSheetPaints(gpu, fonts);
 			TestTestSheetAsSegmentsMatchesTheCanvas(gpu, fonts);
+			TestRunOfSegmentsMatchesItsSegments(gpu, fonts);
 		}
 		TestSegmentsDrawInOrderWithOtherDrawing(gpu);
 

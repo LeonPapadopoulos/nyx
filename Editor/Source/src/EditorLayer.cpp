@@ -12,6 +12,7 @@
 #include "Renderer.h"
 #include "SceneSerializer.h"
 #include "UIChrome.h"
+#include "UIDiagnostics.h"
 #include "UIWidgets.h"
 
 #include "imgui.h"
@@ -271,6 +272,12 @@ namespace Nyx::Editor
 			if (NYX_UI(Nyx::UI::MenuItem("Painted Chrome", nullptr, &bPaintedChrome)))
 			{
 				Nyx::UI::SetPaintedChrome(bPaintedChrome);
+			}
+			// Outlines the shapes ImGui still draws itself, to find what isn't painted yet
+			bool bMarkImGuiShapes = Nyx::UI::IsMarkingImGuiShapes();
+			if (NYX_UI(Nyx::UI::MenuItem("Mark ImGui Shapes", nullptr, &bMarkImGuiShapes)))
+			{
+				Nyx::UI::SetMarkImGuiShapes(bMarkImGuiShapes);
 			}
 			ImGui::EndPopup();
 		}
