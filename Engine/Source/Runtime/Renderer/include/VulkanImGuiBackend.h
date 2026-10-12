@@ -28,7 +28,12 @@ namespace Nyx
 
 		// Frame-by-frame rendering operations
 		void BeginFrame();
+		// Records the main window's UI into the frame's command buffer
 		void DrawFrame(vk::raii::CommandBuffer& commandBuffer);
+		// Renders ImGui windows dragged out of the main window, each in its own OS window. ImGui
+		// submits their command buffers right away, so call this after the frame's command buffer
+		// is submitted: they show images the frame paints (scene views, painter canvases).
+		void RenderPlatformWindows();
 
 		// Input event handling for interactive UI elements
 		void HandleKey(int key, int scancode, int action, int mods);

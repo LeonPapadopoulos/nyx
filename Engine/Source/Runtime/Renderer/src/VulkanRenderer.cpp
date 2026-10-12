@@ -628,6 +628,11 @@ namespace Nyx
 
 		Context.GetGraphicsQueue().submit(submitInfo, *InFlightFence);
 
+		// ImGui windows outside the main window render in command buffers ImGui submits itself.
+		// After this frame's submission, the images they show (scene views, painter canvases) are
+		// painted first, in queue order; before it, they would show last frame's or none at all.
+		ImGuiBackend->RenderPlatformWindows();
+
 		// 5) Present
 		vk::PresentInfoKHR presentInfo{};
 		presentInfo.waitSemaphoreCount = 1;

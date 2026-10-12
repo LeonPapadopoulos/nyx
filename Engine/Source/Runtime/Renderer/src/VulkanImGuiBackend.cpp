@@ -175,9 +175,16 @@ namespace Nyx
 
 		ImGui::Render();
 		ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), *commandBuffer);
+	}
+
+	void VulkanImGuiBackend::RenderPlatformWindows()
+	{
+		if (!bInitialized)
+		{
+			return;
+		}
 
 		ImGuiIO& io = ImGui::GetIO();
-		// Update and Render additional Platform Windows
 		if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
 		{
 			ImGui::UpdatePlatformWindows();
