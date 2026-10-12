@@ -5,6 +5,8 @@
 #include "DetailsPanel.h"
 #include "Log.h"
 #include "NameComponent.h"
+#include "Painter.h"
+#include "PainterTestWindow.h"
 #include "PlaySession.h"
 #include "AssetDatabase.h"
 #include "GameLinkPanel.h"
@@ -302,6 +304,61 @@ namespace
 		session.Update();
 		Require(!session.IsRunning() && !session.IsQuitting() && session.TakeCrashes().empty(), "An idle session should stay idle");
 	}
+
+	// Zooming the Painter Test window bakes glyphs at new sizes, which can make ImGui's font atlas
+	// grow into a new texture in the middle of a frame. The ImDrawList comparison then still held
+	// glyphs on the old texture, and handing that to a draw list asserted.
+	void TestPainterComparisonSurvivesAtlasGrowth()
+	{
+		// A font atlas that grows as glyphs are baked, as the editor's does
+		ImGuiContext* context = ImGui::CreateContext();
+		ImGuiIO& io = ImGui::GetIO();
+		io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
+		io.IniFilename = nullptr;
+		io.DisplaySize = ImVec2(1280, 800);
+		io.DeltaTime = 1.0f / 60.0f;
+		ImFont* font = io.Fonts->AddFontDefault();
+		ImGui::NewFrame();
+
+		Painter painter;
+		painter.BeginFrame(400, 200);
+		painter.AddText(font, 13.0f, { 10.0f, 10.0f }, glm::vec4(1.0f), "Before");
+		const ImTextureData* oldTexture = io.Fonts->TexData;
+
+		// Large glyphs until the atlas moves to a bigger texture
+		for (float size = 100.0f; size < 400.0f && io.Fonts->TexData == oldTexture; size += 20.0f)
+		{
+			for (ImWchar character = 'A'; character <= 'Z'; ++character)
+			{
+				font->GetFontBaked(size)->FindGlyph(character);
+			}
+		}
+		Require(io.Fonts->TexData != oldTexture, "The font atlas should have grown");
+
+		painter.AddText(font, 13.0f, { 10.0f, 40.0f }, glm::vec4(1.0f), "After");
+		painter.EndFrame();
+		Require(painter.GetTextures().size() == 2, "Text before and after the growth should use the old and the new texture");
+
+		ImGui::Begin("Comparison");
+		ImDrawList& drawList = *ImGui::GetWindowDrawList();
+		// The window's own title is drawn on the new texture too; only what comes after counts.
+		const unsigned int indicesBefore = static_cast<unsigned int>(drawList.IdxBuffer.Size);
+		DrawPainterFrameWithImDrawList(painter, drawList, ImGui::GetCursorScreenPos());
+		ImGui::End();
+
+		bool bUsesOldTexture = false;
+		bool bUsesNewTexture = false;
+		for (const ImDrawCmd& command : drawList.CmdBuffer)
+		{
+			bUsesOldTexture |= command.TexRef._TexData == oldTexture;
+			bUsesNewTexture |= command.TexRef._TexData == io.Fonts->TexData && command.ElemCount > 0 && command.IdxOffset >= indicesBefore;
+		}
+		Require(!bUsesOldTexture, "The comparison should leave out glyphs on the replaced texture");
+		Require(bUsesNewTexture, "The comparison should draw glyphs on the new texture");
+
+		ImGui::EndFrame();
+		ImGui::DestroyContext(context);
+	}
 }
 
 int main()
@@ -319,6 +376,7 @@ int main()
 		TestPanelsDrawHeadless();
 		TestCrashCards();
 		TestScenePopupsAndIdleSession();
+		TestPainterComparisonSurvivesAtlasGrowth();
 	}
 	catch (const std::exception& error)
 	{

@@ -53,6 +53,7 @@ namespace Nyx::Editor
 	// Draws a painter's recorded frame with ImGui's ImDrawList instead, for comparison: shapes
 	// become ImGui's triangles, glyphs and images ImGui's textured quads. `origin` is where the
 	// frame's top left goes on the screen. ImDrawList has no shadows, glows or per-corner radii;
-	// shadows and glows are left out, and a rect gets its largest corner radius.
+	// shadows and glows are left out, and a rect gets its largest corner radius. Glyphs and images
+	// on a texture ImGui replaced this frame (its font atlas grew) are left out for that frame.
 	void DrawPainterFrameWithImDrawList(const Nyx::Engine::Painter& painter, ImDrawList& drawList, ImVec2 origin);
 }

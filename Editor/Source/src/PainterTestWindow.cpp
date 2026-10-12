@@ -32,6 +32,15 @@ namespace Nyx::Editor
 			return ImGui::GetColorU32(ImVec4(straight.r, straight.g, straight.b, color.a));
 		}
 
+		// Whether ImGui replaced the texture during this frame: when its font atlas grows, ImGui
+		// moves to a bigger texture and destroys the old one next frame. Glyphs recorded before
+		// the growth still use the old texture, and the painter draws them from it this frame, but
+		// ImGui asserts if a draw list is given it now (ImDrawList::PushTexture()).
+		bool IsReplacedThisFrame(const ImTextureRef& texture)
+		{
+			return texture._TexData != nullptr && texture._TexData->WantDestroyNextFrame;
+		}
+
 		// ImDrawList rounds all chosen corners by one radius: the largest of the rect's.
 		void DrawRectWithImDrawList(ImDrawList& drawList, const PainterCommand& command, ImVec2 origin, ImU32 color)
 		{
@@ -309,7 +318,7 @@ namespace Nyx::Editor
 			{
 				// ImGui draws its own text this way too: a textured quad per glyph.
 				const auto textured = GetPayload<PainterTexturedRectPayload>(command);
-				if (command.Texture < textures.size())
+				if (command.Texture < textures.size() && !IsReplacedThisFrame(textures[command.Texture]))
 				{
 					drawList.AddImage(textures[command.Texture], ToImVec2(textured.Rect.Min, origin), ToImVec2(textured.Rect.Max, origin),
 						ImVec2(textured.UVs.Min.x, textured.UVs.Min.y), ImVec2(textured.UVs.Max.x, textured.UVs.Max.y), color);
