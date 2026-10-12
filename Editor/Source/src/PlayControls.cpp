@@ -182,20 +182,20 @@ namespace Nyx::Editor
 		std::optional<size_t> remove;
 
 		const ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingFixedFit;
-		if (ImGui::BeginTable("##PlaySetups", 5, flags))
+		if (Nyx::UI::BeginTable("##PlaySetups", 5, flags))
 		{
 			ImGui::TableSetupColumn("Play All", ImGuiTableColumnFlags_WidthFixed);
 			ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch);
 			ImGui::TableSetupColumn("Width", ImGuiTableColumnFlags_WidthFixed, 90.0f);
 			ImGui::TableSetupColumn("Height", ImGuiTableColumnFlags_WidthFixed, 90.0f);
 			ImGui::TableSetupColumn("##Actions", ImGuiTableColumnFlags_WidthFixed);
-			ImGui::TableHeadersRow();
+			Nyx::UI::TableHeadersRow();
 
 			for (size_t i = 0; i < setups.size(); ++i)
 			{
 				PlaySetup& setup = setups[i];
 				ImGui::PushID(static_cast<int>(i));
-				ImGui::TableNextRow();
+				Nyx::UI::TableNextRow();
 
 				ImGui::TableNextColumn();
 				bChanged |= NYX_UI(Nyx::UI::Checkbox("##InPlayAll", &setup.bInPlayAll));
@@ -222,14 +222,14 @@ namespace Nyx::Editor
 
 				ImGui::TableNextColumn();
 				ImGui::BeginDisabled(i == 0);
-				if (NYX_UI(ImGui::SmallButton("Up")))
+				if (NYX_UI(Nyx::UI::Button("Up")))
 				{
 					moveUp = i;
 				}
 				ImGui::EndDisabled();
 				ImGui::SameLine();
 				ImGui::BeginDisabled(setups.size() == 1);
-				if (NYX_UI(ImGui::SmallButton("Delete")))
+				if (NYX_UI(Nyx::UI::Button("Delete")))
 				{
 					remove = i;
 				}
@@ -238,7 +238,7 @@ namespace Nyx::Editor
 				ImGui::PopID();
 			}
 
-			ImGui::EndTable();
+			Nyx::UI::EndTable();
 		}
 
 		if (moveUp)

@@ -3,7 +3,10 @@
 #include "UIWidgets.h"
 
 #include <imgui.h>
+
+#include <algorithm>
 #include <set>
+#include <string_view>
 
 namespace Nyx::Editor
 {
@@ -99,50 +102,51 @@ namespace Nyx::Editor
 
 		const std::vector<AssetEntry> children = Database->GetChildren(CurrentDirectory);
 
+		// A grid of cards, as many side by side as fit
+		const float cardWidth = Nyx::UI::CalcAssetCardSize().x;
+		const float spacing = ImGui::GetStyle().ItemSpacing.x;
+		const int columns = (std::max)(1, static_cast<int>((ImGui::GetContentRegionAvail().x + spacing) / (cardWidth + spacing)));
+		int index = 0;
+
 		for (const AssetEntry& entry : children)
 		{
-			std::string prefix;
+			if (index++ % columns != 0)
+			{
+				ImGui::SameLine();
+			}
+
+			const AssetTypeDescriptor* descriptor = entry.bIsDirectory ? nullptr : AssetTypeRegistry::Get().FindByTypeId(entry.TypeId);
+			Nyx::UI::AssetCardOptions card;
+			card.bSelected = SelectedAsset == entry.RelativePath;
+			card.Icon = entry.bIsDirectory ? Nyx::UI::EAssetCardIcon::Folder : Nyx::UI::EAssetCardIcon::File;
+			card.TypeLabel = entry.bIsDirectory ? std::string_view() : descriptor ? std::string_view(descriptor->DisplayName) : std::string_view("File");
+
+			// A file's name without its extension, which its type shows; the whole name is the ID.
+			const std::string label = (entry.bIsDirectory ? entry.Name : std::filesystem::path(entry.Name).stem().string()) + "##" + entry.Name;
+			const Nyx::UI::AssetCardResult result = NYX_UI(Nyx::UI::AssetCard(label.c_str(), card));
+			// The name in full, which the card may cut
+			ImGui::SetItemTooltip("%s", entry.Name.c_str());
+			if (result.bClicked)
+			{
+				SelectedAsset = entry.RelativePath;
+			}
+			if (!result.bOpened)
+			{
+				continue;
+			}
 
 			if (entry.bIsDirectory)
 			{
-				prefix = "[Dir] ";
+				CurrentDirectory = entry.RelativePath;
 			}
-			else if (const AssetTypeDescriptor* descriptor = AssetTypeRegistry::Get().FindByTypeId(entry.TypeId))
+			else if (ActivationContext && descriptor && descriptor->bOpenOnDoubleClick && descriptor->Activate)
 			{
-				prefix = "[" + descriptor->DisplayName + "] ";
-			}
-			else
-			{
-				prefix = "[File] ";
-			}
+				const bool bCanActivate =
+					!descriptor->CanActivate || descriptor->CanActivate(entry, *ActivationContext);
 
-			const std::string label = prefix + entry.Name;
-
-			if (NYX_UI(Nyx::UI::Selectable(label.c_str(), false)))
-			{
-				if (entry.bIsDirectory)
+				if (bCanActivate)
 				{
-					CurrentDirectory = entry.RelativePath;
-				}
-			}
-
-			if (!entry.bIsDirectory &&
-				ActivationContext &&
-				ImGui::IsItemHovered() &&
-				ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
-			{
-				if (const AssetTypeDescriptor* descriptor = AssetTypeRegistry::Get().FindByTypeId(entry.TypeId))
-				{
-					if (descriptor->bOpenOnDoubleClick && descriptor->Activate)
-					{
-						const bool bCanActivate =
-							!descriptor->CanActivate || descriptor->CanActivate(entry, *ActivationContext);
-
-						if (bCanActivate)
-						{
-							descriptor->Activate(entry, *ActivationContext);
-						}
-					}
+					descriptor->Activate(entry, *ActivationContext);
 				}
 			}
 		}

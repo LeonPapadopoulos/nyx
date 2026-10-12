@@ -40,5 +40,7 @@ namespace Nyx::Editor
 		AssetDatabase* Database = nullptr;
 		IAssetActivationContext* ActivationContext = nullptr;
 		std::filesystem::path CurrentDirectory;
+		// The asset or folder clicked last, shown selected
+		std::filesystem::path SelectedAsset;
 	};
 }

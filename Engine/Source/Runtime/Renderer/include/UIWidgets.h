@@ -199,6 +199,54 @@ namespace Nyx::UI
 	// ImGui's colour picker in a popup under it, which changes `rgb` (3 floats, 0 to 1).
 	ColorSwatchResult ColorSwatch(const char* label, float* rgb);
 
+	// Tables (stage 3, change 7d): ImGui's tables, which keep their layout, column sizing,
+	// scrolling, clipping and headers' behaviour, with their backgrounds and borders made
+	// transparent. Painted instead: a strip behind the header row with separators between its
+	// cells, rounded stripes on every other row (ImGuiTableFlags_RowBg), and an accent line on a
+	// column border being hovered or dragged. Each row is painted when it ends, into the table's
+	// background channel, so it lies behind the cells.
+	//
+	// Use these in place of ImGui's; the rest of ImGui's table API (TableSetupColumn(),
+	// TableNextColumn(), TableSetupScrollFreeze()) is used as usual. With an ImGuiListClipper,
+	// step it with TableClipperStep(): the clipper ends rows itself, and a row must be painted
+	// before that. A Selectable() with ImGuiSelectableFlags_SpanAllColumns paints its pills across
+	// the row.
+	bool BeginTable(const char* id, int columns, ImGuiTableFlags flags = 0, const glm::vec2& outerSize = glm::vec2(0.0f), float innerWidth = 0.0f);
+	void TableNextRow(ImGuiTableRowFlags flags = 0, float minHeight = 0.0f);
+	void TableHeadersRow();
+	bool TableClipperStep(ImGuiListClipper& clipper);
+	void EndTable();
+
+	// What an asset card shows when it has no thumbnail
+	enum class EAssetCardIcon
+	{
+		Folder,
+		File,
+	};
+
+	struct AssetCardOptions
+	{
+		bool bSelected = false;
+		EAssetCardIcon Icon = EAssetCardIcon::File;
+		// Shown under a file's icon, e.g. the asset's type
+		std::string_view TypeLabel;
+		// The asset's picture, shown instead of the icon when set
+		ImTextureRef Thumbnail;
+	};
+
+	struct AssetCardResult
+	{
+		// Clicked, to select it
+		bool bClicked = false;
+		// Double-clicked, or activated by keyboard, to open it
+		bool bOpened = false;
+	};
+
+	// One asset in a grid of them, as the asset browser shows them: a picture (the thumbnail, or
+	// a painted folder or page with the type under it), and the name under it, cut to fit. Lay
+	// cards out side by side with SameLine() while they fit, CalcAssetCardSize() each.
+	AssetCardResult AssetCard(const char* label, const AssetCardOptions& options = AssetCardOptions{});
+
 	// The painting, for any look. Rects are in ImGui's screen coordinates, as the widgets lay
 	// themselves out: the widget's whole rect, label included, except the slider's, which is its
 	// frame. Labels are what is shown, without "##".
@@ -262,6 +310,17 @@ namespace Nyx::UI
 	// A tick in `box`, `amount` of the way drawn (0 to 1)
 	void PaintCheckmark(WindowPainter& painter, const Engine::PainterRect& box, float amount, const glm::vec4& color);
 
+	// How an asset card looks besides its WidgetLook
+	struct AssetCardLook
+	{
+		EAssetCardIcon Icon = EAssetCardIcon::File;
+		std::string_view TypeLabel;
+		ImTextureRef Thumbnail;
+		// The selection, faded in from 0 to 1
+		float Selected = 0.0f;
+	};
+	void PaintAssetCard(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view label, const AssetCardLook& card, const WidgetLook& look);
+
 	// The sizes the widgets take, at the current font, for the gallery's forced states
 	glm::vec2 CalcButtonSize(const char* label);
 	glm::vec2 CalcToggleSize(const char* label);
@@ -277,4 +336,5 @@ namespace Nyx::UI
 	// Where a search field's text starts, from its frame's left
 	float CalcSearchTextOffset();
 	glm::vec2 CalcCheckboxSize(const char* label);
+	glm::vec2 CalcAssetCardSize();
 }

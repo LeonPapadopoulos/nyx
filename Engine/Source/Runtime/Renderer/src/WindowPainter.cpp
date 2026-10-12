@@ -408,11 +408,13 @@ namespace Nyx::UI
 		const ImVec2 clipMax = DrawList->GetClipRectMax();
 		const ImVec4 clipRect(clipMin.x, clipMin.y, clipMax.x, clipMax.y);
 		// Tables draw each column into a channel of its own (ImDrawListSplitter), swapped into
-		// the draw list's buffers; another channel needs a segment of its own too. Behind
-		// everything, nothing ImGui draws comes between.
+		// the draw list's buffers; another channel needs a segment of its own too. Tables switch
+		// channels with a splitter of their own, not the draw list's, so a switch shows as other
+		// buffers: the command buffer's memory changes. Behind everything, nothing ImGui draws
+		// comes between.
 		const bool bImGuiHasDrawn = Placement == EWindowPainterPlacement::InOrder &&
 			(DrawList->CmdBuffer.Size != DrawListCommandsAtSegmentStart || DrawList->IdxBuffer.Size != DrawListIndicesAtSegmentStart ||
-				DrawList->_Splitter._Current != DrawListChannelAtSegmentStart);
+				DrawList->CmdBuffer.Data != DrawListCommandDataAtSegmentStart || DrawList->_Splitter._Current != DrawListChannelAtSegmentStart);
 		if (!bSegmentOpen || bImGuiHasDrawn || !IsSameClipRect(clipRect, SegmentClipRect))
 		{
 			StartSegment(clipRect);
@@ -461,6 +463,7 @@ namespace Nyx::UI
 		bSegmentOpen = true;
 		DrawListCommandsAtSegmentStart = DrawList->CmdBuffer.Size;
 		DrawListIndicesAtSegmentStart = DrawList->IdxBuffer.Size;
+		DrawListCommandDataAtSegmentStart = DrawList->CmdBuffer.Data;
 		DrawListChannelAtSegmentStart = DrawList->_Splitter._Current;
 		SegmentClipRect = clipRect;
 	}

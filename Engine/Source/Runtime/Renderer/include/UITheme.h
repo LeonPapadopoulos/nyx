@@ -165,6 +165,21 @@ namespace Nyx::UI
 		glm::vec4 SwatchBorder{ 1.0f, 1.0f, 1.0f, 0.15f };
 		glm::vec4 SwatchBorderHovered{ 1.0f, 1.0f, 1.0f, 0.45f };
 
+		// Tables (BeginTable()): a strip behind the header row, with separators (Separator) between
+		// its cells; stripes on every other row; and an accent line (Splitter) on a column border
+		// being hovered or dragged
+		glm::vec4 TableHeader{ 1.0f, 1.0f, 1.0f, 0.05f };
+		glm::vec4 TableRowStripe{ 1.0f, 1.0f, 1.0f, 0.025f };
+
+		// Asset cards (AssetCard()): AssetCardWidth wide, a square picture over the name,
+		// AssetCardPadding inside; lit while hovered, and in the selection's colour (RowSelected)
+		// with an accent outline while selected. Files without a thumbnail show a page in FileIcon.
+		float AssetCardWidth = 92.0f;
+		float AssetCardPadding = 6.0f;
+		glm::vec4 AssetCard{ 1.0f, 1.0f, 1.0f, 0.03f };
+		glm::vec4 AssetCardHovered{ 1.0f, 1.0f, 1.0f, 0.07f };
+		glm::vec4 FileIcon{ 0.62f, 0.67f, 0.78f, 1.0f };
+
 		// Scrollbars (UIChrome.h): a thin pill in the middle of ImGui's scrollbar, wider while the
 		// scrollbar is hovered, in the accent while it is dragged
 		glm::vec4 ScrollbarThumb{ 1.0f, 1.0f, 1.0f, 0.16f };

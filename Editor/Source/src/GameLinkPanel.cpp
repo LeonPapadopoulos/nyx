@@ -269,7 +269,7 @@ namespace Nyx::Editor
 
 		const ImGuiTableFlags flags = ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV |
 			ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingFixedFit;
-		if (!ImGui::BeginTable("##GameLog", 5, flags))
+		if (!Nyx::UI::BeginTable("##GameLog", 5, flags))
 		{
 			return;
 		}
@@ -280,16 +280,16 @@ namespace Nyx::Editor
 		ImGui::TableSetupColumn("Level", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("Critical").x);
 		ImGui::TableSetupColumn("Logger", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("ENGINE").x);
 		ImGui::TableSetupColumn("Text", ImGuiTableColumnFlags_WidthStretch);
-		ImGui::TableHeadersRow();
+		Nyx::UI::TableHeadersRow();
 
 		ImGuiListClipper clipper;
 		clipper.Begin(static_cast<int>(shownCount));
-		while (clipper.Step())
+		while (Nyx::UI::TableClipperStep(clipper))
 		{
 			for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
 			{
 				const LogEntry& entry = getShown(static_cast<size_t>(row));
-				ImGui::TableNextRow();
+				Nyx::UI::TableNextRow();
 
 				ImGui::TableNextColumn();
 				ImGui::TextUnformatted(FormatClockTime(entry.TimeMs).c_str());
@@ -335,7 +335,7 @@ namespace Nyx::Editor
 			ImGui::SetScrollHereY(1.0f);
 		}
 
-		ImGui::EndTable();
+		Nyx::UI::EndTable();
 	}
 
 	void GameLinkPanel::DrawMessagesTab()
@@ -446,7 +446,7 @@ namespace Nyx::Editor
 
 		const ImGuiTableFlags flags = ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV |
 			ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingFixedFit;
-		if (ImGui::BeginTable("##Messages", 6, flags, ImVec2(0.0f, tableHeight)))
+		if (Nyx::UI::BeginTable("##Messages", 6, flags, glm::vec2(0.0f, tableHeight)))
 		{
 			ImGui::TableSetupScrollFreeze(0, 1);
 			ImGui::TableSetupColumn("Time", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("00:00:00.000").x);
@@ -455,16 +455,16 @@ namespace Nyx::Editor
 			ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("SetProperties  ").x);
 			ImGui::TableSetupColumn("Size", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("000000").x);
 			ImGui::TableSetupColumn("Content", ImGuiTableColumnFlags_WidthStretch);
-			ImGui::TableHeadersRow();
+			Nyx::UI::TableHeadersRow();
 
 			ImGuiListClipper clipper;
 			clipper.Begin(static_cast<int>(shownCount));
-			while (clipper.Step())
+			while (Nyx::UI::TableClipperStep(clipper))
 			{
 				for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
 				{
 					const MessageEntry& entry = bAllTypesShown ? Messages[static_cast<size_t>(row)] : *shown[static_cast<size_t>(row)];
-					ImGui::TableNextRow();
+					Nyx::UI::TableNextRow();
 					ImGui::PushID(static_cast<int>(entry.Id));
 
 					ImGui::TableNextColumn();
@@ -478,7 +478,7 @@ namespace Nyx::Editor
 						continue;
 					}
 
-					if (NYX_UI(ImGui::Selectable(time.c_str(), entry.Id == SelectedMessageId, ImGuiSelectableFlags_SpanAllColumns)))
+					if (NYX_UI(Nyx::UI::Selectable(time.c_str(), entry.Id == SelectedMessageId, ImGuiSelectableFlags_SpanAllColumns)))
 					{
 						SelectedMessageId = entry.Id == SelectedMessageId ? 0 : entry.Id;
 					}
@@ -502,7 +502,7 @@ namespace Nyx::Editor
 				}
 			}
 
-			ImGui::EndTable();
+			Nyx::UI::EndTable();
 		}
 
 		if (selected)

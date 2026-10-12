@@ -413,7 +413,7 @@ namespace Nyx::Editor
 
 		// Room around each cell, so that shadows and focus glows aren't cut off at its edges
 		ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(12.0f, 10.0f));
-		if (!ImGui::BeginTable("##Gallery", StateCount + 3, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV))
+		if (!Nyx::UI::BeginTable("##Gallery", StateCount + 3, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_RowBg))
 		{
 			ImGui::PopStyleVar();
 			return;
@@ -425,7 +425,7 @@ namespace Nyx::Editor
 		}
 		ImGui::TableSetupColumn("Live");
 		ImGui::TableSetupColumn("ImGui");
-		ImGui::TableHeadersRow();
+		Nyx::UI::TableHeadersRow();
 
 		Nyx::UI::WindowPainter& painter = Nyx::UI::GetWindowPainter();
 
@@ -435,7 +435,7 @@ namespace Nyx::Editor
 		// One row: the widget's name, `paint` once per state, the live painted widget, and ImGui's
 		const auto row = [&](const char* name, const auto& paint, const auto& live, const auto& imgui)
 		{
-			ImGui::TableNextRow();
+			Nyx::UI::TableNextRow();
 			ImGui::TableNextColumn();
 			NYX_UI(ImGui::AlignTextToFramePadding());
 			NYX_UI(ImGui::TextUnformatted(name));
@@ -767,8 +767,43 @@ namespace Nyx::Editor
 				NYX_UI(ImGui::ColorEdit3("##ImGuiColor", &GalleryColor.x, ImGuiColorEditFlags_NoInputs));
 			});
 
+		// Asset cards: a mesh, and a folder selected. ImGui has no cards; its column shows the
+		// asset browser's list from before them.
+		const auto paintAssetCard = [&](const WidgetLook& look, bool bFolder)
+		{
+			Nyx::UI::AssetCardLook card;
+			card.Icon = bFolder ? Nyx::UI::EAssetCardIcon::Folder : Nyx::UI::EAssetCardIcon::File;
+			card.TypeLabel = bFolder ? "" : "Mesh";
+			card.Selected = bFolder ? 1.0f : 0.0f;
+			Nyx::UI::PaintAssetCard(painter, ReserveCell(Nyx::UI::CalcAssetCardSize()), bFolder ? "Materials" : "Cube.nyxmesh", card, look);
+		};
+		row("Asset card",
+			[&](const WidgetLook& look) { paintAssetCard(look, false); },
+			[&]()
+			{
+				Nyx::UI::AssetCardOptions card;
+				card.bSelected = bGalleryRowSelected;
+				card.TypeLabel = "Mesh";
+				if (NYX_UI(Nyx::UI::AssetCard("Cube.nyxmesh##Live", card)).bClicked)
+				{
+					bGalleryRowSelected = !bGalleryRowSelected;
+				}
+			},
+			[&]()
+			{
+				if (NYX_UI(ImGui::Selectable("[Mesh] Cube.nyxmesh##ImGui", bGalleryRowSelected)))
+				{
+					bGalleryRowSelected = !bGalleryRowSelected;
+				}
+			});
+
+		row("Asset card, folder, selected",
+			[&](const WidgetLook& look) { paintAssetCard(look, true); },
+			[&]() {},
+			[&]() {});
+
 		// A section header has no states; it shows once, in the Normal column.
-		ImGui::TableNextRow();
+		Nyx::UI::TableNextRow();
 		ImGui::TableNextColumn();
 		NYX_UI(ImGui::AlignTextToFramePadding());
 		NYX_UI(ImGui::TextUnformatted("Section header"));
@@ -779,7 +814,50 @@ namespace Nyx::Editor
 		ImGui::TableNextColumn();
 		NYX_UI(ImGui::SeparatorText("Lighting##ImGui"));
 
-		ImGui::EndTable();
+		// A table has no states either: a small one, live, with a header, stripes and a selectable
+		// row, and ImGui's beside it
+		Nyx::UI::TableNextRow();
+		ImGui::TableNextColumn();
+		NYX_UI(ImGui::AlignTextToFramePadding());
+		NYX_UI(ImGui::TextUnformatted("Table"));
+		const auto smallTable = [&](bool bPainted)
+		{
+			const ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable | ImGuiTableFlags_SizingFixedFit;
+			const glm::vec2 size(ImGui::GetFontSize() * 14.0f, 0.0f);
+			if (!(bPainted ? Nyx::UI::BeginTable("##LiveTable", 3, flags, size) : ImGui::BeginTable("##ImGuiTable", 3, flags, ImVec2(size.x, size.y))))
+			{
+				return;
+			}
+			ImGui::TableSetupColumn("Time");
+			ImGui::TableSetupColumn("Game");
+			ImGui::TableSetupColumn("Text", ImGuiTableColumnFlags_WidthStretch);
+			bPainted ? Nyx::UI::TableHeadersRow() : ImGui::TableHeadersRow();
+			const char* const rows[][3] = { { "12:00:01", "Game 1", "Linked" }, { "12:00:02", "Game 2", "Linked" }, { "12:00:05", "Game 1", "Saved" }, { "12:00:09", "Game 2", "Quit" } };
+			for (int index = 0; index < static_cast<int>(std::size(rows)); ++index)
+			{
+				bPainted ? Nyx::UI::TableNextRow() : ImGui::TableNextRow();
+				ImGui::PushID(index);
+				ImGui::TableNextColumn();
+				const bool bSelected = index == GalleryTableRow;
+				if (bPainted ? NYX_UI(Nyx::UI::Selectable(rows[index][0], bSelected, ImGuiSelectableFlags_SpanAllColumns))
+							 : NYX_UI(ImGui::Selectable(rows[index][0], bSelected, ImGuiSelectableFlags_SpanAllColumns)))
+				{
+					GalleryTableRow = index;
+				}
+				ImGui::TableNextColumn();
+				NYX_UI(ImGui::TextUnformatted(rows[index][1]));
+				ImGui::TableNextColumn();
+				NYX_UI(ImGui::TextUnformatted(rows[index][2]));
+				ImGui::PopID();
+			}
+			bPainted ? Nyx::UI::EndTable() : ImGui::EndTable();
+		};
+		ImGui::TableSetColumnIndex(StateCount + 1);
+		smallTable(true);
+		ImGui::TableNextColumn();
+		smallTable(false);
+
+		Nyx::UI::EndTable();
 		ImGui::PopStyleVar();
 	}
 

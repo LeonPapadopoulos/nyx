@@ -11,6 +11,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
+#include <vector>
 
 namespace Nyx::UI
 {
@@ -332,6 +334,145 @@ namespace Nyx::UI
 		glm::vec2 Turned(glm::vec2 centre, glm::vec2 point, float angle)
 		{
 			return centre + glm::vec2(point.x * std::cos(angle) - point.y * std::sin(angle), point.x * std::sin(angle) + point.y * std::cos(angle));
+		}
+
+		// While painting behind a table's cells: the table's background channel for the rows being
+		// laid out, with the clip rect ImGui gives row backgrounds there, as
+		// ImGui::TablePushBackgroundChannel() sets them; given back after.
+		class ScopedTableBackground
+		{
+		public:
+			explicit ScopedTableBackground(ImGuiTable& table)
+				: Table(table)
+				, Window(*table.InnerWindow)
+				, ClipRectBefore(Window.ClipRect)
+				, ChannelBefore(table.DrawSplitter->_Current)
+			{
+				ImGui::SetWindowClipRectBeforeSetChannel(&Window, table.Bg2ClipRectForDrawCmd);
+				table.DrawSplitter->SetCurrentChannel(Window.DrawList, table.Bg2DrawChannelCurrent);
+			}
+
+			~ScopedTableBackground()
+			{
+				ImGui::SetWindowClipRectBeforeSetChannel(&Window, ClipRectBefore);
+				Table.DrawSplitter->SetCurrentChannel(Window.DrawList, ChannelBefore);
+			}
+
+			ScopedTableBackground(const ScopedTableBackground&) = delete;
+			ScopedTableBackground& operator=(const ScopedTableBackground&) = delete;
+
+		private:
+			ImGuiTable& Table;
+			ImGuiWindow& Window;
+			ImRect ClipRectBefore;
+			int ChannelBefore = 0;
+		};
+
+		// ImGui's colours of a table's backgrounds and borders, transparent while a painted table
+		// is built. ImGui reads its border colours in BeginTable(), the backgrounds' as rows end,
+		// and draws a hovered or dragged column border in the separator's in EndTable(). All are
+		// pushed before BeginTable(): a scrolling table is a child window, which must end with the
+		// style stack it began with.
+		constexpr ImGuiCol TableColors[] = { ImGuiCol_TableHeaderBg, ImGuiCol_TableBorderStrong, ImGuiCol_TableBorderLight, ImGuiCol_TableRowBg,
+			ImGuiCol_TableRowBgAlt, ImGuiCol_SeparatorHovered, ImGuiCol_SeparatorActive };
+
+		// The painted tables being built (BeginTable()), innermost last, and the row of each
+		// painted last
+		struct PaintedTable
+		{
+			ImGuiTable* Table = nullptr;
+			int PaintedRow = -1;
+		};
+
+		std::vector<PaintedTable>& GetPaintedTables()
+		{
+			static std::vector<PaintedTable> tables;
+			return tables;
+		}
+
+		PaintedTable* FindPaintedTable()
+		{
+			std::vector<PaintedTable>& tables = GetPaintedTables();
+			return !tables.empty() && tables.back().Table == GImGui->CurrentTable ? &tables.back() : nullptr;
+		}
+
+		// Paints the table's open row: its header strip, or its stripe. Its cells are all there,
+		// so its bottom is where ImGui will end it: the lowest cell, as TableEndCell() measures it,
+		// the open cell included. A row ImGui has ended already isn't painted; its bottom may
+		// have moved since (the clipper moves it).
+		void PaintOpenTableRow(PaintedTable& painted)
+		{
+			ImGuiTable& table = *painted.Table;
+			if (!table.IsInsideRow || table.HostSkipItems || painted.PaintedRow == table.CurrentRow)
+			{
+				return;
+			}
+			painted.PaintedRow = table.CurrentRow;
+
+			float bottom = table.RowPosY2;
+			if (table.CurrentColumn >= 0 && table.Columns[table.CurrentColumn].IsEnabled)
+			{
+				bottom = std::max(bottom, table.InnerWindow->DC.CursorMaxPos.y + table.RowCellPaddingY);
+			}
+			const float top = table.RowPosY1;
+			const bool bHeader = (table.RowFlags & ImGuiTableRowFlags_Headers) != 0;
+			const bool bStripe = !bHeader && (table.Flags & ImGuiTableFlags_RowBg) != 0 && (table.RowBgColorCounter & 1) != 0;
+			if ((!bHeader && !bStripe) || bottom <= top || bottom < table.InnerClipRect.Min.y || top > table.InnerClipRect.Max.y)
+			{
+				return;
+			}
+
+			const Theme& theme = GetTheme();
+			const ScopedTableBackground background(table);
+			WindowPainter& painter = GetWindowPainter();
+			const PainterRect row{ { table.WorkRect.Min.x, top }, { table.WorkRect.Max.x, bottom } };
+			painter.AddRoundedRect(row, theme.FrameRounding, PainterStyle::Filled(bHeader ? theme.TableHeader : theme.TableRowStripe));
+			if (!bHeader)
+			{
+				return;
+			}
+			// Separators between the header's cells, where ImGui's column borders are
+			const float inset = std::floor((bottom - top) * 0.25f);
+			for (int column = 0; column < table.ColumnsCount; ++column)
+			{
+				const ImGuiTableColumn& data = table.Columns[column];
+				if (!data.IsEnabled || column == table.RightMostEnabledColumn)
+				{
+					continue;
+				}
+				const float x = std::floor(data.MaxX) + 0.5f;
+				painter.AddLine({ x, top + inset }, { x, bottom - inset }, 1.0f, EPainterLineCap::Flat, PainterStyle::Filled(theme.Separator));
+			}
+		}
+
+		// A selectable's pills: the selection's, the hover's over it, and an outline while it has
+		// keyboard focus. Selectables lie side by side with no gap, so they keep RowPillInset from
+		// each other.
+		void PaintSelectablePills(WindowPainter& painter, const PainterRect& rect, float selected, const WidgetLook& look, const Theme& theme)
+		{
+			const PainterRect pill{ { rect.Min.x, rect.Min.y + theme.RowPillInset }, { rect.Max.x, rect.Max.y - theme.RowPillInset } };
+			if (selected > 0.0f)
+			{
+				painter.AddRoundedRect(pill, theme.FrameRounding, PainterStyle::Filled(Shade(Fade(theme.RowSelected, selected), look, theme)));
+			}
+			const float hovered = std::max(look.Hovered, look.Pressed);
+			if (hovered > 0.0f)
+			{
+				painter.AddRoundedRect(pill, theme.FrameRounding, PainterStyle::Filled(Shade(Fade(theme.MenuItemHovered, hovered), look, theme)));
+			}
+			if (look.Focused > 0.0f)
+			{
+				painter.AddRoundedRect(pill, theme.FrameRounding, PainterStyle::Outlined(Fade(theme.Accent, look.Focused), 1.0f));
+			}
+		}
+
+		// A selectable's label, cut where ImGui would clip it
+		void PaintSelectableLabel(WindowPainter& painter, const PainterRect& rect, glm::vec2 labelPosition, std::string_view label, const WidgetLook& look, const Theme& theme)
+		{
+			const ImGuiStyle& style = ImGui::GetStyle();
+			const float right = rect.Max.x - (style.ItemSpacing.x - std::floor(style.ItemSpacing.x * 0.5f));
+			std::string cut;
+			PaintText(painter, labelPosition, Shade(theme.Text, look, theme), FitText(label, right - labelPosition.x, cut));
 		}
 
 		enum class EFieldFrame
@@ -938,7 +1079,22 @@ namespace Nyx::UI
 		{
 			const WidgetLook look = AnimateLastItemLook(theme, false);
 			const float selected = Animate(ImHashStr("Selected", 0, id), bSelected ? 1.0f : 0.0f, theme.AnimationSpeed);
-			PaintSelectable(GetWindowPainter(), ToPainterRect(g.LastItemData.Rect), labelPosition, VisibleLabel(label), selected, look);
+			const PainterRect rect = ToPainterRect(g.LastItemData.Rect);
+			WindowPainter& painter = GetWindowPainter();
+			if ((flags & ImGuiSelectableFlags_SpanAllColumns) != 0 && g.CurrentTable != nullptr)
+			{
+				// Across the row, behind all its cells, as ImGui draws its highlight there; the
+				// label stays in its cell.
+				{
+					const ScopedTableBackground background(*g.CurrentTable);
+					PaintSelectablePills(painter, rect, selected, look, theme);
+				}
+				PaintSelectableLabel(painter, rect, labelPosition, VisibleLabel(label), look, theme);
+			}
+			else
+			{
+				PaintSelectable(painter, rect, labelPosition, VisibleLabel(label), selected, look);
+			}
 		}
 		return bPressed;
 	}
@@ -1111,6 +1267,144 @@ namespace Nyx::UI
 			result.bEditEnded = ImGui::IsItemDeactivatedAfterEdit();
 			ImGui::EndPopup();
 		}
+		return result;
+	}
+
+	bool BeginTable(const char* id, int columns, ImGuiTableFlags flags, const glm::vec2& outerSize, float innerWidth)
+	{
+		for (const ImGuiCol color : TableColors)
+		{
+			ImGui::PushStyleColor(color, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+		}
+		if (!ImGui::BeginTable(id, columns, flags, ImVec2(outerSize.x, outerSize.y), innerWidth))
+		{
+			ImGui::PopStyleColor(static_cast<int>(std::size(TableColors)));
+			return false;
+		}
+		GetPaintedTables().push_back(PaintedTable{ GImGui->CurrentTable, -1 });
+		return true;
+	}
+
+	void TableNextRow(ImGuiTableRowFlags flags, float minHeight)
+	{
+		if (PaintedTable* painted = FindPaintedTable())
+		{
+			PaintOpenTableRow(*painted);
+		}
+		ImGui::TableNextRow(flags, minHeight);
+	}
+
+	void TableHeadersRow()
+	{
+		PaintedTable* painted = FindPaintedTable();
+		if (painted != nullptr)
+		{
+			PaintOpenTableRow(*painted);
+		}
+
+		// ImGui's headers keep their behaviour and labels; a hovered or clicked header cell's
+		// highlight is transparent.
+		for (const ImGuiCol color : { ImGuiCol_Header, ImGuiCol_HeaderHovered, ImGuiCol_HeaderActive })
+		{
+			ImGui::PushStyleColor(color, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+		}
+		ImGui::TableHeadersRow();
+		ImGui::PopStyleColor(3);
+
+		// Painted now, while it is still open: with frozen rows, ending the header row moves the
+		// row's place and the background channel to the scrolling rows'.
+		if (painted != nullptr)
+		{
+			PaintOpenTableRow(*painted);
+		}
+	}
+
+	bool TableClipperStep(ImGuiListClipper& clipper)
+	{
+		if (PaintedTable* painted = FindPaintedTable())
+		{
+			PaintOpenTableRow(*painted);
+		}
+		return clipper.Step();
+	}
+
+	void EndTable()
+	{
+		std::vector<PaintedTable>& tables = GetPaintedTables();
+		ImGuiTable* table = GImGui->CurrentTable;
+		if (PaintedTable* painted = FindPaintedTable())
+		{
+			PaintOpenTableRow(*painted);
+		}
+
+		ImGui::EndTable();
+		ImGui::PopStyleColor(static_cast<int>(std::size(TableColors)));
+		if (!tables.empty() && tables.back().Table == table)
+		{
+			tables.pop_back();
+		}
+
+		// The border being dragged, or hovered long enough to show it can be, as an accent line
+		// down the table, over it
+		if (table == nullptr || table->HostSkipItems)
+		{
+			return;
+		}
+		const int border = table->ResizedColumn != -1 ? table->ResizedColumn : table->HoveredColumnBorder;
+		if (border < 0 || border >= table->ColumnsCount || !table->Columns[border].IsEnabled)
+		{
+			return;
+		}
+		const Theme& theme = GetTheme();
+		const float x = table->Columns[border].MaxX;
+		WindowPainter& painter = GetWindowPainter();
+		ImGui::PushClipRect(table->OuterRect.Min, table->OuterRect.Max, true);
+		painter.AddLine({ x, table->OuterRect.Min.y }, { x, table->OuterRect.Max.y }, theme.SplitterWidth, EPainterLineCap::Round, PainterStyle::Filled(theme.Splitter));
+		ImGui::PopClipRect();
+	}
+
+	AssetCardResult AssetCard(const char* label, const AssetCardOptions& options)
+	{
+		AssetCardResult result;
+		ImGuiWindow* window = ImGui::GetCurrentWindow();
+		if (window->SkipItems)
+		{
+			return result;
+		}
+		const ImGuiContext& g = *GImGui;
+		const Theme& theme = GetTheme();
+
+		const ImGuiID id = window->GetID(label);
+		const glm::vec2 size = CalcAssetCardSize();
+		const ImRect rect = RectAtCursor(*window, size);
+		ImGui::ItemSize(ImVec2(size.x, size.y), 0.0f);
+		if (!ImGui::ItemAdd(rect, id))
+		{
+			return result;
+		}
+
+		// A click selects at once; the second click of a double click opens too. By keyboard,
+		// it selects and opens.
+		bool bHovered = false;
+		bool bHeld = false;
+		const bool bByKeyboard = g.NavActivateId == id;
+		if (ImGui::ButtonBehavior(rect, id, &bHovered, &bHeld, ImGuiButtonFlags_PressedOnClick))
+		{
+			result.bClicked = true;
+			result.bOpened = bByKeyboard;
+		}
+		if (bHovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+		{
+			result.bOpened = true;
+		}
+
+		AssetCardLook card;
+		card.Icon = options.Icon;
+		card.TypeLabel = options.TypeLabel;
+		card.Thumbnail = options.Thumbnail;
+		card.Selected = Animate(ImHashStr("Selected", 0, id), options.bSelected ? 1.0f : 0.0f, theme.AnimationSpeed);
+		const WidgetLook look = AnimateLook(id, bHovered, bHeld && bHovered, theme);
+		PaintAssetCard(GetWindowPainter(), ToPainterRect(rect), VisibleLabel(label), card, look);
 		return result;
 	}
 
@@ -1431,30 +1725,8 @@ namespace Nyx::UI
 	void PaintSelectable(WindowPainter& painter, const PainterRect& rect, glm::vec2 labelPosition, std::string_view label, float selected, const WidgetLook& look)
 	{
 		const Theme& theme = GetTheme();
-		const ImGuiStyle& style = ImGui::GetStyle();
-
-		// The pills, as a tree row's: the selection's, the hover's over it, and an outline while it
-		// has keyboard focus. Selectables lie side by side with no gap, so they keep RowPillInset
-		// from each other.
-		const PainterRect pill{ { rect.Min.x, rect.Min.y + theme.RowPillInset }, { rect.Max.x, rect.Max.y - theme.RowPillInset } };
-		if (selected > 0.0f)
-		{
-			painter.AddRoundedRect(pill, theme.FrameRounding, PainterStyle::Filled(Shade(Fade(theme.RowSelected, selected), look, theme)));
-		}
-		const float hovered = std::max(look.Hovered, look.Pressed);
-		if (hovered > 0.0f)
-		{
-			painter.AddRoundedRect(pill, theme.FrameRounding, PainterStyle::Filled(Shade(Fade(theme.MenuItemHovered, hovered), look, theme)));
-		}
-		if (look.Focused > 0.0f)
-		{
-			painter.AddRoundedRect(pill, theme.FrameRounding, PainterStyle::Outlined(Fade(theme.Accent, look.Focused), 1.0f));
-		}
-
-		// The label, cut where ImGui would clip it
-		const float right = rect.Max.x - (style.ItemSpacing.x - std::floor(style.ItemSpacing.x * 0.5f));
-		std::string cut;
-		PaintText(painter, labelPosition, Shade(theme.Text, look, theme), FitText(label, right - labelPosition.x, cut));
+		PaintSelectablePills(painter, rect, selected, look, theme);
+		PaintSelectableLabel(painter, rect, labelPosition, label, look, theme);
 	}
 
 	void PaintCombo(WindowPainter& painter, const PainterRect& frame, std::string_view preview, float open, const WidgetLook& look)
@@ -1484,6 +1756,65 @@ namespace Nyx::UI
 		const float width = std::max(1.25f, frameHeight * 0.07f);
 		painter.AddLine(Turned(centre, { -size, -size * 0.5f }, angle), tip, width, EPainterLineCap::Round, PainterStyle::Filled(color));
 		painter.AddLine(tip, Turned(centre, { size, -size * 0.5f }, angle), width, EPainterLineCap::Round, PainterStyle::Filled(color));
+	}
+
+	void PaintAssetCard(WindowPainter& painter, const PainterRect& rect, std::string_view label, const AssetCardLook& card, const WidgetLook& look)
+	{
+		const Theme& theme = GetTheme();
+		const float fontSize = ImGui::GetFontSize();
+		const float padding = theme.AssetCardPadding;
+
+		// The card: lit while hovered, in the selection's colour with an accent outline while
+		// selected, and outlined while it has keyboard focus
+		const glm::vec4 fill = glm::mix(theme.AssetCard, theme.AssetCardHovered, std::max(look.Hovered, look.Pressed));
+		painter.AddRoundedRect(rect, theme.CardRounding, PainterStyle::Filled(Shade(fill, look, theme)));
+		if (card.Selected > 0.0f)
+		{
+			painter.AddRoundedRect(rect, theme.CardRounding, PainterStyle::Filled(Shade(Fade(theme.RowSelected, card.Selected), look, theme)));
+		}
+		const float outline = std::max(card.Selected * 0.8f, look.Focused);
+		if (outline > 0.0f)
+		{
+			painter.AddRoundedRect(rect, theme.CardRounding, PainterStyle::Outlined(Shade(Fade(theme.Accent, outline), look, theme), 1.0f));
+		}
+
+		// The picture: a square at the top
+		const float pictureSize = rect.GetWidth() - padding * 2.0f;
+		const PainterRect picture{ rect.Min + glm::vec2(padding), rect.Min + glm::vec2(padding + pictureSize) };
+		const glm::vec2 centre = (picture.Min + picture.Max) * 0.5f;
+		if (card.Thumbnail._TexData != nullptr || card.Thumbnail._TexID != ImTextureID_Invalid)
+		{
+			painter.AddImage(card.Thumbnail, picture, PainterStyle::Filled(Shade(glm::vec4(1.0f), look, theme)));
+		}
+		else if (card.Icon == EAssetCardIcon::Folder)
+		{
+			const float iconSize = std::floor(pictureSize * 0.62f);
+			const glm::vec2 iconMin = glm::floor(centre - glm::vec2(iconSize * 0.5f));
+			PaintTreeRowIcon(painter, ETreeRowIcon::Folder, PainterRect{ iconMin, iconMin + glm::vec2(iconSize) }, look, theme);
+		}
+		else
+		{
+			// A page with its top right corner folded, over the type's name
+			const float lift = card.TypeLabel.empty() ? 0.0f : fontSize * 0.6f;
+			const glm::vec2 pageSize = glm::floor(glm::vec2(pictureSize * 0.46f, pictureSize * 0.58f));
+			const glm::vec2 pageMin = glm::floor(centre - pageSize * 0.5f - glm::vec2(0.0f, lift));
+			const PainterRect page{ pageMin, pageMin + pageSize };
+			const float fold = std::floor(pageSize.x * 0.32f);
+			painter.AddRoundedRect(page, pageSize.x * 0.1f, PainterStyle::Filled(Shade(theme.FileIcon, look, theme)));
+			const glm::vec4 folded{ theme.FileIcon.r * 0.65f, theme.FileIcon.g * 0.65f, theme.FileIcon.b * 0.65f, theme.FileIcon.a };
+			painter.AddTriangle({ page.Max.x - fold, page.Min.y }, { page.Max.x, page.Min.y + fold }, { page.Max.x - fold, page.Min.y + fold }, PainterStyle::Filled(Shade(folded, look, theme)));
+			if (!card.TypeLabel.empty())
+			{
+				std::string cut;
+				const std::string_view type = FitText(card.TypeLabel, pictureSize, cut);
+				PaintText(painter, { std::floor(centre.x - CalcTextSize(type).x * 0.5f), page.Max.y + fontSize * 0.3f }, Shade(theme.TextMuted, look, theme), type);
+			}
+		}
+
+		// The name, centred under the picture, cut to fit
+		std::string cut;
+		const std::string_view name = FitText(label, pictureSize, cut);
+		PaintText(painter, { std::floor(centre.x - CalcTextSize(name).x * 0.5f), picture.Max.y + std::floor(padding * 0.5f) }, Shade(theme.Text, look, theme), name);
 	}
 
 	void PaintColorSwatch(WindowPainter& painter, const PainterRect& frame, const glm::vec3& color, const WidgetLook& look)
@@ -1547,6 +1878,14 @@ namespace Nyx::UI
 	{
 		const float frameHeight = ImGui::GetFrameHeight();
 		return SearchIconLeft(frameHeight) + SearchIconSize(frameHeight, GetTheme()) + ImGui::GetStyle().ItemInnerSpacing.x;
+	}
+
+	glm::vec2 CalcAssetCardSize()
+	{
+		// The picture is square; under it half the padding, the name, and the padding
+		const Theme& theme = GetTheme();
+		const float pictureSize = theme.AssetCardWidth - theme.AssetCardPadding * 2.0f;
+		return glm::vec2(theme.AssetCardWidth, std::floor(theme.AssetCardPadding * 1.5f + pictureSize + ImGui::GetFontSize() + theme.AssetCardPadding));
 	}
 
 	glm::vec2 CalcCheckboxSize(const char* label)

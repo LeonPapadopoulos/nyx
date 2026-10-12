@@ -839,6 +839,172 @@ namespace
 		Require(bEditStarted && bEditEnded, "A drag in the picker should start and end an edit");
 	}
 
+	// The rects a window painter recorded that span `left` to `right`: a table's header strip,
+	// stripes and row-wide selection pills
+	std::vector<PainterRect> RowWideRects(const Nyx::UI::WindowPainter& painter, float left, float right)
+	{
+		std::vector<PainterRect> rects;
+		for (const PainterCommand& command : painter.GetPainter().GetCommands())
+		{
+			const PainterRect rect = GetPayload<PainterRectPayload>(command).Rect;
+			if (command.Type == static_cast<uint32_t>(EPainterCommandType::Rect) && command.OutlineWidth == 0.0f && rect.Min.x == left && rect.Max.x == right)
+			{
+				rects.push_back(rect);
+			}
+		}
+		return rects;
+	}
+
+	// Asset cards select on a click and open on a double click. Painted tables paint a header
+	// strip with separators, a stripe on every other row (also rows a clipper ends), a selected
+	// row across all its columns, and an accent line on a column border being hovered.
+	void TestAssetCardsAndTables()
+	{
+		HeadlessUI ui;
+		ImGuiIO& io = ImGui::GetIO();
+
+		int clicks = 0;
+		int opens = 0;
+		ImRect card;
+		bool bClipped = false;
+		int selectedRow = -1;
+		float workMinX = 0.0f;
+		float workMaxX = 0.0f;
+		float headerHeight = 0.0f;
+		float firstColumnRight = 0.0f;
+		ImRect tableRect;
+		std::vector<PainterRect> rowRects;
+		int separators = 0;
+		bool bBorderLine = false;
+		const auto draw = [&]()
+			{
+				ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+				ImGui::SetNextWindowSize(ImVec2(500.0f, 500.0f));
+				ImGui::Begin("Cards and tables");
+				Nyx::UI::AssetCardOptions options;
+				const Nyx::UI::AssetCardResult result = Nyx::UI::AssetCard("Cube.nyxmesh", options);
+				clicks += result.bClicked ? 1 : 0;
+				opens += result.bOpened ? 1 : 0;
+				card = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+
+				// Four rows under a header, or a hundred in a scrolling table with a clipper
+				const ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV |
+					(bClipped ? ImGuiTableFlags_ScrollY : ImGuiTableFlags_None);
+				if (Nyx::UI::BeginTable("Table", 3, flags, glm::vec2(400.0f, bClipped ? 200.0f : 0.0f)))
+				{
+					const ImGuiTable& table = *ImGui::GetCurrentTable();
+					workMinX = table.WorkRect.Min.x;
+					workMaxX = table.WorkRect.Max.x;
+					ImGui::TableSetupScrollFreeze(0, 1);
+					ImGui::TableSetupColumn("Time");
+					ImGui::TableSetupColumn("Game");
+					ImGui::TableSetupColumn("Text");
+					headerHeight = ImGui::TableGetHeaderRowHeight();
+					Nyx::UI::TableHeadersRow();
+					ImGuiListClipper clipper;
+					clipper.Begin(bClipped ? 100 : 4);
+					while (Nyx::UI::TableClipperStep(clipper))
+					{
+						for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
+						{
+							Nyx::UI::TableNextRow();
+							ImGui::PushID(row);
+							ImGui::TableNextColumn();
+							if (Nyx::UI::Selectable("12:00", row == selectedRow, ImGuiSelectableFlags_SpanAllColumns))
+							{
+								selectedRow = row;
+							}
+							ImGui::TableNextColumn();
+							ImGui::TextUnformatted("Game 1");
+							ImGui::TableNextColumn();
+							ImGui::TextUnformatted("Linked");
+							ImGui::PopID();
+						}
+					}
+					firstColumnRight = table.Columns[0].MaxX;
+					tableRect = table.OuterRect;
+					const Nyx::UI::WindowPainter& painter = Nyx::UI::GetWindowPainter();
+					rowRects = RowWideRects(painter, workMinX, workMaxX);
+					separators = 0;
+					for (const PainterCommand& command : painter.GetPainter().GetCommands())
+					{
+						separators += command.Type == static_cast<uint32_t>(EPainterCommandType::Line) ? 1 : 0;
+					}
+					Nyx::UI::EndTable();
+				}
+
+				// The border line, painted after the table into the window
+				bBorderLine = false;
+				for (const PainterCommand& command : Nyx::UI::GetWindowPainter().GetPainter().GetCommands())
+				{
+					const auto line = GetPayload<PainterLinePayload>(command);
+					bBorderLine |= command.Type == static_cast<uint32_t>(EPainterCommandType::Line) && line.From.x == firstColumnRight &&
+						line.To.x == firstColumnRight && line.Width == Nyx::UI::GetTheme().SplitterWidth;
+				}
+				ImGui::End();
+			};
+		const auto press = [&](ImVec2 at)
+			{
+				io.AddMousePosEvent(at.x, at.y);
+				ui.Frame(draw);
+				io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+				ui.Frame(draw);
+				io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+				ui.Frame(draw);
+			};
+
+		ui.Frame(draw);
+		ui.Frame(draw);
+		press(card.GetCenter());
+		Require(clicks == 1 && opens == 0, "A click on an asset card should select it, not open it");
+		press(card.GetCenter());
+		Require(opens == 1, "A double click on an asset card should open it");
+
+		// The header strip, then a stripe on the second and fourth rows, each the table's width
+		io.AddMousePosEvent(-100.0f, -100.0f);
+		ui.Frame(draw);
+		Require(rowRects.size() == 3, "A table should paint its header and every other row, got " + std::to_string(rowRects.size()));
+		Require(std::abs(rowRects[0].GetHeight() - headerHeight) < 0.5f, "The header strip should be the header row's height");
+		const float rowHeight = rowRects[1].GetHeight();
+		Require(rowHeight > 0.0f && std::abs(rowRects[2].Min.y - rowRects[1].Max.y - rowHeight) < 0.5f && rowRects[2].GetHeight() == rowHeight,
+			"Stripes should be on every other row, a row high");
+		Require(separators == 2, "Three header cells should have two separators between them, got " + std::to_string(separators));
+
+		// A row selected by its selectable gets a pill across all columns.
+		press(ImVec2(workMinX + 10.0f, rowRects[1].Min.y - rowHeight * 0.5f));
+		io.AddMousePosEvent(-100.0f, -100.0f);
+		for (int frame = 0; frame < 30; ++frame)
+		{
+			ui.Frame(draw);
+		}
+		Require(selectedRow == 0 && rowRects.size() == 4, "A selected row should be painted across the table");
+
+		// A hovered column border shows as a line, after ImGui's short delay.
+		io.AddMousePosEvent(firstColumnRight, (rowRects[1].Min.y + rowRects[1].Max.y) * 0.5f);
+		for (int frame = 0; frame < 10; ++frame)
+		{
+			ui.Frame(draw);
+		}
+		Require(bBorderLine, "A hovered column border should show as an accent line");
+
+		// With a clipper in a scrolling table: every other shown row striped, all a row high and
+		// one row apart, the rows the clipper ends included
+		io.AddMousePosEvent(-100.0f, -100.0f);
+		selectedRow = -1;
+		bClipped = true;
+		// Until the selection's pill has faded
+		for (int frame = 0; frame < 30; ++frame)
+		{
+			ui.Frame(draw);
+		}
+		Require(rowRects.size() > 4, "A scrolling table should stripe the rows it shows");
+		for (size_t index = 2; index < rowRects.size(); ++index)
+		{
+			Require(std::abs(rowRects[index].GetHeight() - rowHeight) < 0.5f && std::abs(rowRects[index].Min.y - rowRects[index - 1].Min.y - rowHeight * 2.0f) < 0.5f,
+				"Stripes in a clipped table should be a row high and two rows apart, row " + std::to_string(index));
+		}
+	}
+
 	void TestAnimationsEaseAndAreForgotten()
 	{
 		HeadlessUI ui;
@@ -948,6 +1114,7 @@ int main()
 		TestTreeRowsBehaveLikeTreeNodes();
 		TestFieldsAndPropertyRows();
 		TestChecksMenusCombosAndSwatches();
+		TestAssetCardsAndTables();
 		TestAnimationsEaseAndAreForgotten();
 	}
 	catch (const std::exception& error)
