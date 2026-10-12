@@ -14,8 +14,10 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <ctime>
 #include <iterator>
+#include <span>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -29,6 +31,12 @@ namespace Nyx::Editor
 		constexpr float MinZoom = 0.25f;
 		constexpr float MaxZoom = 8.0f;
 		const glm::vec2 HomePan{ 16.0f, 16.0f };
+
+		// The Statistics tab's graph lines: a debugging aid, not part of the look, so not the theme's
+		const glm::vec4 GraphBuildUIColor{ 0.45f, 0.65f, 0.95f, 1.0f };
+		const glm::vec4 GraphPainterCpuColor{ 1.0f, 0.55f, 0.15f, 1.0f };
+		const glm::vec4 GraphPainterGpuColor{ 0.50f, 0.80f, 0.36f, 1.0f };
+		const glm::vec4 GraphMainWindowGpuColor{ 0.80f, 0.50f, 0.90f, 1.0f };
 
 		ImVec2 ToImVec2(glm::vec2 point, ImVec2 origin)
 		{
@@ -120,6 +128,7 @@ namespace Nyx::Editor
 			return;
 		}
 		Renderer = &renderer;
+		RecordFrameSample(renderer);
 
 		ImGui::SetNextWindowSize(ImVec2(900.0f, 680.0f), ImGuiCond_FirstUseEver);
 		// The wheel zooms the canvas instead of scrolling the window.
@@ -149,6 +158,11 @@ namespace Nyx::Editor
 			if (NYX_UI(ImGui::BeginTabItem("Blur")))
 			{
 				DrawBlurTab(renderer);
+				ImGui::EndTabItem();
+			}
+			if (NYX_UI(ImGui::BeginTabItem("Statistics")))
+			{
+				DrawStatisticsTab(renderer);
 				ImGui::EndTabItem();
 			}
 			ImGui::EndTabBar();
@@ -378,6 +392,275 @@ namespace Nyx::Editor
 			{
 				Nyx::UI::GetWindowPainter().AddImage(ImTextureRef(blurred), ReserveCell(size), PainterStyle::Filled(glm::vec4(1.0f)));
 			});
+	}
+
+	void PainterTestWindow::RecordFrameSample(const Nyx::IRenderer& renderer)
+	{
+		const PainterWindowStats& stats = renderer.GetWindowPainterStats();
+		const PainterWindowStats::Times& times = stats.FrameTimes;
+		FrameSample sample;
+		sample.BuildUI = times.BuildUI;
+		sample.Chrome = times.Chrome;
+		sample.Gather = times.Gather;
+		sample.ImGuiRender = times.ImGuiRender;
+		sample.Segments = times.Segments;
+		sample.Binning = stats.BinningMilliseconds;
+		sample.PainterCpu = times.GetPainterCpu();
+		sample.GpuPainter = times.GpuPainter;
+		sample.GpuMainWindowUI = times.GpuMainWindowUI;
+		sample.GpuGlassBackdrop = times.GpuGlassBackdrop;
+		// Negative while the blur isn't timed
+		sample.GpuBlur = std::max(renderer.GetBlurMilliseconds(), 0.0f);
+		sample.Draws = static_cast<float>(stats.Draws);
+		sample.Commands = static_cast<float>(stats.Commands);
+
+		if (FrameSamples.size() < StatisticsFrames)
+		{
+			FrameSamples.push_back(sample);
+		}
+		else
+		{
+			FrameSamples[NextFrameSample] = sample;
+		}
+		NextFrameSample = (NextFrameSample + 1) % StatisticsFrames;
+	}
+
+	std::vector<PainterTestWindow::FrameSample> PainterTestWindow::GetFrameSamples() const
+	{
+		if (FrameSamples.size() < StatisticsFrames)
+		{
+			return FrameSamples;
+		}
+		std::vector<FrameSample> ordered(FrameSamples.begin() + static_cast<std::ptrdiff_t>(NextFrameSample), FrameSamples.end());
+		ordered.insert(ordered.end(), FrameSamples.begin(), FrameSamples.begin() + static_cast<std::ptrdiff_t>(NextFrameSample));
+		return ordered;
+	}
+
+	void PainterTestWindow::DrawStatisticsTab(Nyx::IRenderer& renderer)
+	{
+		const PainterWindowStats& stats = renderer.GetWindowPainterStats();
+		const std::vector<FrameSample> samples = GetFrameSamples();
+		if (samples.empty())
+		{
+			return;
+		}
+
+		if (Nyx::UI::BeginChild("##Statistics", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None, ImGuiWindowFlags_None))
+		{
+			ImGui::PushTextWrapPos(0.0f);
+			NYX_UI(ImGui::TextDisabled("The last frame, and the average and peak of the last %zu frames while this window is open. GPU times come from "
+									   "timestamps. A Debug build's CPU times are several times a Release build's.",
+				samples.size()));
+			ImGui::PopTextWrapPos();
+
+			// A table of the frame: each line's last value, average and peak over the samples
+			struct Line
+			{
+				const char* Name = "";
+				float FrameSample::* Field = nullptr;
+				const char* Format = "%.3f";
+			};
+			const auto drawLines = [&](const char* id, const char* unit, std::span<const Line> lines)
+			{
+				if (!Nyx::UI::BeginTable(id, 4, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg))
+				{
+					return;
+				}
+				ImGui::TableSetupColumn(unit, ImGuiTableColumnFlags_WidthFixed, ImGui::GetFontSize() * 18.0f);
+				for (const char* column : { "Last", "Average", "Peak" })
+				{
+					ImGui::TableSetupColumn(column, ImGuiTableColumnFlags_WidthFixed, ImGui::GetFontSize() * 6.0f);
+				}
+				Nyx::UI::TableHeadersRow();
+				for (const Line& line : lines)
+				{
+					float sum = 0.0f;
+					float peak = 0.0f;
+					for (const FrameSample& sample : samples)
+					{
+						sum += sample.*line.Field;
+						peak = std::max(peak, sample.*line.Field);
+					}
+					Nyx::UI::TableNextRow();
+					ImGui::TableNextColumn();
+					NYX_UI(ImGui::TextUnformatted(line.Name));
+					for (const float value : { samples.back().*line.Field, sum / static_cast<float>(samples.size()), peak })
+					{
+						ImGui::TableNextColumn();
+						NYX_UI(ImGui::Text(line.Format, value));
+					}
+				}
+				Nyx::UI::EndTable();
+			};
+
+			NYX_UI(Nyx::UI::SectionHeader("CPU"));
+			const Line cpu[] = {
+				{ "Building the UI", &FrameSample::BuildUI },
+				{ "Painting the chrome", &FrameSample::Chrome },
+				{ "Gathering the painters", &FrameSample::Gather },
+				{ "ImGui::Render()", &FrameSample::ImGuiRender },
+				{ "Segments: runs, binning, upload", &FrameSample::Segments },
+				{ "    of which binning", &FrameSample::Binning },
+				{ "The painter after the UI", &FrameSample::PainterCpu },
+			};
+			drawLines("##Cpu", "Milliseconds", cpu);
+
+			NYX_UI(Nyx::UI::SectionHeader("GPU"));
+			if (!stats.FrameTimes.bGpu)
+			{
+				NYX_UI(ImGui::TextDisabled("Not timed: the graphics queue can't write timestamps."));
+			}
+			else
+			{
+				const Line gpu[] = {
+					{ "The painter's draws", &FrameSample::GpuPainter },
+					{ "The main window's UI pass", &FrameSample::GpuMainWindowUI },
+					{ "The glass backdrop", &FrameSample::GpuGlassBackdrop },
+					{ "The scene views' blurs", &FrameSample::GpuBlur },
+				};
+				drawLines("##Gpu", "Milliseconds", gpu);
+			}
+
+			NYX_UI(Nyx::UI::SectionHeader("Painting"));
+			const Line counts[] = {
+				{ "Draws", &FrameSample::Draws, "%.0f" },
+				{ "Commands", &FrameSample::Commands, "%.0f" },
+			};
+			drawLines("##Counts", "Count", counts);
+			NYX_UI(ImGui::Text("Windows painting %u   Segments %u   Tiles in use %u (%u entries)   Uploaded %.1f KB", stats.Windows, stats.Segments,
+				stats.TilesInUse, stats.TileEntries, static_cast<float>(stats.UploadBytes) / 1024.0f));
+
+			NYX_UI(Nyx::UI::SectionHeader("Per OS window"));
+			DrawOsWindowStatistics(stats);
+
+			NYX_UI(Nyx::UI::SectionHeader("The last frames"));
+			DrawFrameGraph(samples);
+
+			const ImVec4 problemColor(1.0f, 0.4f, 0.35f, 1.0f);
+			for (const std::string& problem : stats.Problems)
+			{
+				NYX_UI(ImGui::TextColored(problemColor, "%s", problem.c_str()));
+			}
+		}
+		ImGui::EndChild();
+	}
+
+	void PainterTestWindow::DrawOsWindowStatistics(const PainterWindowStats& stats) const
+	{
+		constexpr const char* Columns[] = { "OS window", "Segments", "Draws", "Commands", "Tiles", "Binning ms", "GPU ms", "ImGui draws", "ImGui vertices" };
+		if (!Nyx::UI::BeginTable("##OsWindows", static_cast<int>(std::size(Columns)), ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg))
+		{
+			return;
+		}
+		for (const char* column : Columns)
+		{
+			ImGui::TableSetupColumn(column);
+		}
+		Nyx::UI::TableHeadersRow();
+		for (const PainterWindowStats::OsWindow& osWindow : stats.OsWindows)
+		{
+			Nyx::UI::TableNextRow();
+			ImGui::TableNextColumn();
+			NYX_UI(ImGui::TextUnformatted(osWindow.Name.c_str()));
+			for (const uint32_t count : { osWindow.Segments, osWindow.Draws, osWindow.Commands, osWindow.TilesInUse })
+			{
+				ImGui::TableNextColumn();
+				NYX_UI(ImGui::Text("%u", count));
+			}
+			ImGui::TableNextColumn();
+			NYX_UI(ImGui::Text("%.3f", osWindow.BinningMilliseconds));
+			ImGui::TableNextColumn();
+			NYX_UI(ImGui::Text("%.3f", osWindow.GpuMilliseconds));
+			ImGui::TableNextColumn();
+			NYX_UI(ImGui::Text("%u", osWindow.ImGuiDrawCommands));
+			ImGui::TableNextColumn();
+			NYX_UI(ImGui::Text("%u", osWindow.ImGuiVertices));
+		}
+		Nyx::UI::EndTable();
+	}
+
+	void PainterTestWindow::DrawFrameGraph(std::span<const FrameSample> samples) const
+	{
+		struct Series
+		{
+			const char* Name = "";
+			float FrameSample::* Field = nullptr;
+			glm::vec4 Color{ 1.0f };
+		};
+		const Series series[] = {
+			{ "Building the UI (CPU)", &FrameSample::BuildUI, GraphBuildUIColor },
+			{ "The painter after the UI (CPU)", &FrameSample::PainterCpu, GraphPainterCpuColor },
+			{ "The painter's draws (GPU)", &FrameSample::GpuPainter, GraphPainterGpuColor },
+			{ "The main window's UI pass (GPU)", &FrameSample::GpuMainWindowUI, GraphMainWindowGpuColor },
+		};
+		const Nyx::UI::Theme& theme = Nyx::UI::GetTheme();
+		Nyx::UI::WindowPainter& painter = Nyx::UI::GetWindowPainter();
+
+		// The legend: a swatch and a name per line
+		const float swatch = std::floor(ImGui::GetFontSize() * 0.7f);
+		for (const Series& line : series)
+		{
+			if (&line != &series[0])
+			{
+				ImGui::SameLine(0.0f, ImGui::GetFontSize());
+			}
+			const ImVec2 at = ImGui::GetCursorScreenPos();
+			const float top = at.y + std::floor((ImGui::GetTextLineHeight() - swatch) * 0.5f);
+			painter.AddRoundedRect(PainterRect{ { at.x, top }, { at.x + swatch, top + swatch } }, swatch * 0.25f, PainterStyle::Filled(line.Color));
+			ImGui::SetCursorScreenPos(ImVec2(at.x + swatch + ImGui::GetStyle().ItemInnerSpacing.x, at.y));
+			NYX_UI(ImGui::TextUnformatted(line.Name));
+		}
+
+		// The scale: the highest time shown, rounded up to 1, 2 or 5 times a power of 10, at least half a millisecond
+		float highest = 0.0f;
+		for (const FrameSample& sample : samples)
+		{
+			for (const Series& line : series)
+			{
+				highest = std::max(highest, sample.*line.Field);
+			}
+		}
+		float scale = 0.5f;
+		for (float decade = 1.0f; scale < highest; decade *= 10.0f)
+		{
+			for (const float factor : { 1.0f, 2.0f, 5.0f })
+			{
+				if (scale < highest)
+				{
+					scale = factor * decade;
+				}
+			}
+		}
+
+		const glm::vec2 size(std::max(ImGui::GetContentRegionAvail().x, 1.0f), ImGui::GetFontSize() * 9.0f);
+		const PainterRect area = ReserveCell(size);
+		painter.AddRoundedRect(area, theme.FrameRounding, PainterStyle::Filled(theme.Field));
+		const float middle = std::floor((area.Min.y + area.Max.y) * 0.5f) + 0.5f;
+		painter.AddLine({ area.Min.x, middle }, { area.Max.x, middle }, 1.0f, EPainterLineCap::Flat, PainterStyle::Filled(theme.Separator));
+		ImDrawList* drawList = ImGui::GetWindowDrawList();
+		const ImU32 labelColor = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+		char label[32];
+		std::snprintf(label, sizeof(label), "%g ms", scale);
+		drawList->AddText(ImVec2(area.Min.x + 6.0f, area.Min.y + 4.0f), labelColor, label);
+		std::snprintf(label, sizeof(label), "%g ms", scale * 0.5f);
+		drawList->AddText(ImVec2(area.Min.x + 6.0f, middle + 2.0f), labelColor, label);
+
+		// The newest frame at the right, one step per frame
+		const float step = area.GetWidth() / static_cast<float>(StatisticsFrames - 1);
+		const auto pointOf = [&](size_t index, float value)
+		{
+			const float x = area.Max.x - static_cast<float>(samples.size() - 1 - index) * step;
+			const float y = area.Max.y - std::clamp(value / scale, 0.0f, 1.0f) * (area.GetHeight() - 2.0f) - 1.0f;
+			return glm::vec2(x, y);
+		};
+		for (const Series& line : series)
+		{
+			for (size_t index = 1; index < samples.size(); ++index)
+			{
+				painter.AddLine(pointOf(index - 1, samples[index - 1].*line.Field), pointOf(index, samples[index].*line.Field), 1.5f, EPainterLineCap::Round,
+					PainterStyle::Filled(line.Color));
+			}
+		}
 	}
 
 	void PainterTestWindow::SaveGalleryPng(Nyx::IRenderer& renderer)
@@ -991,6 +1274,9 @@ namespace Nyx::Editor
 		}
 		CanvasId = 0;
 		GradientImageId = 0;
+		// Opened again, the statistics start over.
+		FrameSamples.clear();
+		NextFrameSample = 0;
 	}
 
 	void PainterTestWindow::DrawToolbar()

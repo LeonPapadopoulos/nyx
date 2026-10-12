@@ -1040,6 +1040,19 @@ namespace
 
 		Require(segments.GetSegmentCount() == 4 && segments.GetStats(clippedAway).CulledCommands == 1, "A segment wholly clipped away should be culled");
 		Require(segments.GetProblems().empty(), "The segments should bin without problems");
+
+		// What the statistics count as uploaded (stage 3, change 10): both painters' commands and
+		// every tile entry at least, and nothing once cleared
+		uint32_t entries = 0;
+		for (const uint32_t segment : { redRect, greenRectAndImage, clippedAway, cyanImage })
+		{
+			entries += segments.GetStats(segment).TileEntries;
+		}
+		const size_t commands = first.GetCommands().size() + second.GetCommands().size();
+		Require(entries > 0 && segments.GetUploadBytes() >= commands * sizeof(PainterCommand) + entries * sizeof(uint32_t),
+			"The upload should hold the painters' commands and the segments' tile entries");
+		segments.Clear();
+		Require(segments.GetUploadBytes() == 0, "Cleared segments should upload nothing");
 	}
 
 	void TestTestSheetAsSegmentsMatchesTheCanvas(GpuPainter& gpu, const ImGuiFonts& fonts)

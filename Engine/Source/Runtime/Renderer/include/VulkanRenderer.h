@@ -532,7 +532,37 @@ namespace Nyx
 		// The painters runs are copied into, one per draw of several segments. Kept apart, so
 		// that no two have the same address in a frame: WindowSegments tells painters apart by it.
 		std::vector<std::unique_ptr<Nyx::Engine::Painter>> RunPainters;
+		// The OS window of each draw in WindowSegments, as an index into WindowPainterStats.OsWindows
+		std::vector<uint32_t> WindowSegmentDrawOsWindows;
+		// The last frame's statistics (stage 3, change 10): its CPU times as the frame is built,
+		// its GPU times once its fence has passed
 		Nyx::Engine::PainterWindowStats WindowPainterStats;
+		// This frame's CPU times taken before GatherWindowPainters() starts its statistics
+		Nyx::Engine::PainterWindowStats::Times PendingFrameTimes;
+
+		// GPU timestamps around the UI's drawing, in pairs: the main window's UI pass, the glass
+		// backdrop, and each window segment draw, in any OS window. Reset and written in a frame,
+		// read once its fence has passed. Null where the graphics queue can't write timestamps.
+		static constexpr uint32_t MaxTimedSegmentDraws = 254;
+		static constexpr uint32_t UITimestampCount = 2 * (2 + MaxTimedSegmentDraws);
+		static constexpr uint32_t MainWindowUIPair = 0;
+		static constexpr uint32_t GlassBackdropPair = 1;
+		struct TimedPair
+		{
+			uint32_t Pair = 0;
+			// The OS window of a segment draw, an index into WindowPainterStats.OsWindows
+			uint32_t OsWindow = 0;
+		};
+		vk::raii::QueryPool UITimestamps{ nullptr };
+		// The pairs written this frame, and the next free one for a segment draw
+		std::vector<TimedPair> UITimedPairs;
+		uint32_t NextSegmentPair = 2;
+		void CreateUITimestamps();
+		// Writes a pair's start before what it times, or its end after it, which keeps the pair to
+		// read, with its OS window for a segment draw. Nothing without UITimestamps.
+		void WriteUITimestamp(vk::CommandBuffer commandBuffer, uint32_t pair, bool bEnd, uint32_t osWindow = UINT32_MAX);
+		// Adds the last frame's GPU times to WindowPainterStats
+		void ReadUITimestamps();
 
 		// An image for the UI (CreateUIImage()), shown through a descriptor set made by ImGui's backend
 		struct UIImage

@@ -7,7 +7,9 @@
 #include <imgui.h>
 
 #include <cstdint>
+#include <span>
 #include <string>
+#include <vector>
 
 namespace Nyx
 {
@@ -16,7 +18,7 @@ namespace Nyx
 
 namespace Nyx::Editor
 {
-	// The "Painter Test" window (Debug > Painter Test), with two tabs (Design/ui-painter.md):
+	// The "Painter Test" window (Debug > Painter Test), with these tabs (Design/ui-painter.md):
 	//  - Canvas: the painter's test sheet, painted on the GPU into an image and shown pixel for
 	//    pixel. The wheel zooms around the mouse and dragging pans, so edges can be checked at any
 	//    scale. It shows the tile heatmap, the painter's statistics and problems, and on request
@@ -29,6 +31,9 @@ namespace Nyx::Editor
 	//    where widgets are designed (stage 2, change 5).
 	//  - Blur: a scene view's picture beside its blur (VulkanBlur), as ImGui shows it and painted,
 	//    with the time all blurs take on the GPU (stage 3, change 1).
+	//  - Statistics: what painting the whole editor costs, on the CPU and the GPU, the last frame,
+	//    on average and at its peak over the last frames, per OS window, and as a painted graph
+	//    (stage 3, change 10). Kept while the window is open, whichever tab shows.
 	class PainterTestWindow
 	{
 	public:
@@ -46,6 +51,7 @@ namespace Nyx::Editor
 		void DrawWidgetsTab(Nyx::IRenderer& renderer);
 		// A scene view's picture beside its blur, shown by ImGui and painted, with the blur's GPU time
 		void DrawBlurTab(Nyx::IRenderer& renderer);
+		void DrawStatisticsTab(Nyx::IRenderer& renderer);
 		void DrawWidgetGalleryTable();
 		// Saves the gallery as a PNG file in Saved/Gallery, named by the time
 		void SaveGalleryPng(Nyx::IRenderer& renderer);
@@ -99,6 +105,34 @@ namespace Nyx::Editor
 		// until one is chosen
 		size_t BlurViewIndex = 0;
 		bool bBlurViewChosen = false;
+
+		// The Statistics tab's last frames, oldest first once full: each frame's times in
+		// milliseconds, and its draws and commands
+		struct FrameSample
+		{
+			float BuildUI = 0.0f;
+			float Chrome = 0.0f;
+			float Gather = 0.0f;
+			float ImGuiRender = 0.0f;
+			float Segments = 0.0f;
+			float Binning = 0.0f;
+			float PainterCpu = 0.0f;
+			float GpuPainter = 0.0f;
+			float GpuMainWindowUI = 0.0f;
+			float GpuGlassBackdrop = 0.0f;
+			float GpuBlur = 0.0f;
+			float Draws = 0.0f;
+			float Commands = 0.0f;
+		};
+		static constexpr size_t StatisticsFrames = 240;
+		std::vector<FrameSample> FrameSamples;
+		size_t NextFrameSample = 0;
+		void RecordFrameSample(const Nyx::IRenderer& renderer);
+		// The frames kept, oldest first
+		std::vector<FrameSample> GetFrameSamples() const;
+		void DrawOsWindowStatistics(const Nyx::Engine::PainterWindowStats& stats) const;
+		// The times of the frames kept as lines over a field, painted, the newest at the right
+		void DrawFrameGraph(std::span<const FrameSample> samples) const;
 	};
 
 	// Draws a painter's recorded frame with ImGui's ImDrawList instead, for comparison: shapes

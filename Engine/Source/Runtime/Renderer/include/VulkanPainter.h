@@ -107,6 +107,12 @@ namespace Nyx::Engine
 		// What went wrong while binning this frame's segments, one line per problem
 		const std::vector<std::string>& GetProblems() const { return Problems; }
 
+		// What Upload() copies to the GPU this frame: commands, groups, tiles and entries
+		size_t GetUploadBytes() const
+		{
+			return Commands.size() * sizeof(PainterCommand) + Groups.size() * sizeof(PainterGroup) + Tiles.size() * sizeof(PainterTile) + Entries.size() * sizeof(uint32_t);
+		}
+
 		void Release();
 
 	private:

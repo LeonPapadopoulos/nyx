@@ -67,7 +67,8 @@ namespace Nyx::Engine
 	};
 
 	// One frame of painting inside ImGui windows (Nyx::UI::WindowPainter), summed over all
-	// windows and their segments, e.g. for the Painter Test window
+	// windows and their segments, and what the frame's UI cost, e.g. for the Painter Test window
+	// (Design/ui-painter.md, stage 3, change 10)
 	struct PainterWindowStats
 	{
 		// One OS window's painting: its segments, and the draws they are drawn in. Segments that
@@ -77,6 +78,38 @@ namespace Nyx::Engine
 			std::string Name;
 			uint32_t Segments = 0;
 			uint32_t Draws = 0;
+			uint32_t Commands = 0;
+			uint32_t TilesInUse = 0;
+			uint32_t TileEntries = 0;
+			float BinningMilliseconds = 0.0f;
+			// The painter's draws in this OS window, on the GPU; 0 where the GPU can't time them
+			float GpuMilliseconds = 0.0f;
+			// What ImGui still draws itself here: its draw commands with triangles, and their vertices
+			uint32_t ImGuiDrawCommands = 0;
+			uint32_t ImGuiVertices = 0;
+		};
+
+		// Where the frame's UI time went, in milliseconds
+		struct Times
+		{
+			// CPU: building the UI (the editor's panels, ImGui's layout and the painting recorded
+			// in them), painting the window chrome, gathering the window painters,
+			// ImGui::Render(), and the segments (finding runs, binning and uploading them)
+			float BuildUI = 0.0f;
+			float Chrome = 0.0f;
+			float Gather = 0.0f;
+			float ImGuiRender = 0.0f;
+			float Segments = 0.0f;
+
+			// GPU, from timestamps: the painter's draws in all OS windows, the main window's whole
+			// UI pass (ImGui's drawing and the painter's), and the glass backdrop. Only while bGpu.
+			bool bGpu = false;
+			float GpuPainter = 0.0f;
+			float GpuMainWindowUI = 0.0f;
+			float GpuGlassBackdrop = 0.0f;
+
+			// What the painter adds on the CPU after the UI is built
+			float GetPainterCpu() const { return Chrome + Gather + Segments; }
 		};
 
 		// Windows that painted
@@ -91,6 +124,9 @@ namespace Nyx::Engine
 		uint32_t TileEntries = 0;
 		// Binning all segments, on the CPU
 		float BinningMilliseconds = 0.0f;
+		// The segments' commands, groups, tiles and entries, uploaded for the GPU
+		size_t UploadBytes = 0;
+		Times FrameTimes;
 
 		// What went wrong: the window painters' problems, each after its window's name, and
 		// binning's

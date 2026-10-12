@@ -17,6 +17,7 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
+#include <chrono>
 #include <ranges>
 #include <string>
 #include <fstream>
@@ -338,6 +339,7 @@ namespace Nyx
 		// The scene views' pictures, blurred small, for glows and glass
 		BlurPass.Initialize(Context);
 		CreateBlurTimestamps();
+		CreateUITimestamps();
 
 		// Shared materials
 		CreateMaterials();
@@ -383,6 +385,7 @@ namespace Nyx
 		GlassImGuiTextureView = vk::ImageView{};
 		GlassBackdrop.Release();
 		BlurTimestamps = nullptr;
+		UITimestamps = nullptr;
 		BlurPass.Shutdown();
 
 		// Canvases need the ImGui backend to give back their ImGui textures. Other painter targets
@@ -478,6 +481,7 @@ namespace Nyx
 		// during it are no longer shown.
 		FinishScreenshot();
 		ReadBlurTimestamps();
+		ReadUITimestamps();
 		for (const std::unique_ptr<UIImage>& image : UIImagesToRelease)
 		{
 			ReleaseUIImage(*image);
@@ -523,6 +527,12 @@ namespace Nyx
 
 		vk::CommandBufferBeginInfo beginInfo{};
 		cmd.begin(beginInfo);
+		// Before any of this frame's UI timestamps, also those the OS windows' command buffers
+		// write: they are submitted after this one.
+		if (*UITimestamps)
+		{
+			cmd.resetQueryPool(*UITimestamps, 0, UITimestampCount);
+		}
 
 		// ---------------------------------------------------------------------
 		// Update shared world-side state once per frame
@@ -655,30 +665,50 @@ namespace Nyx
 		// The UI is built before the render pass starts: painter canvases submitted while building
 		// it are drawn in between, outside any render pass, so ImGui shows them in this frame.
 		// What was painted inside windows is uploaded now and drawn as ImGui renders them.
+		// Each step's time, for the painter's statistics (stage 3, change 10)
+		using Clock = std::chrono::steady_clock;
+		Clock::time_point stepStart = Clock::now();
+		const auto takeStepTime = [&stepStart]()
+		{
+			const Clock::time_point now = Clock::now();
+			const float milliseconds = std::chrono::duration<float, std::milli>(now - stepStart).count();
+			stepStart = now;
+			return milliseconds;
+		};
+
 		ImGuiBackend->BeginFrame();
 		buildUI();
 		// The frame ends here rather than in ImGui::Render(), so that the windows ImGui begins
 		// itself while ending it (drag and drop tooltips) are there when the cards are painted.
 		ImGui::EndFrame();
+		PendingFrameTimes = Nyx::Engine::PainterWindowStats::Times{};
+		PendingFrameTimes.BuildUI = takeStepTime();
 		Nyx::UI::SetGlassBackdrop(GlassImGuiTexture != VK_NULL_HANDLE ? reinterpret_cast<ImTextureID>(GlassImGuiTexture) : ImTextureID_Invalid);
 		Nyx::UI::SetPlainGlassBackdrop(GetPlainGlassBackdrop());
 		Nyx::UI::PaintWindowCards();
+		PendingFrameTimes.Chrome = takeStepTime();
 		// After the chrome, which takes over some of ImGui's shapes
 		Nyx::UI::MarkImGuiShapes();
 		DrawPainterCanvases(cmd);
+		takeStepTime();
 		GatherWindowPainters();
+		WindowPainterStats.FrameTimes.Gather = takeStepTime();
 
 		// With glass in the main window, what lies behind it is drawn and blurred first, so the
 		// glass shows this frame's. ImGui::Render() makes the draw data for both; the backend's
 		// DrawFrame() finds it made. The window segments are drawn in runs, which only the draw
 		// data shows.
 		ImGui::Render();
+		WindowPainterStats.FrameTimes.ImGuiRender = takeStepTime();
 		UploadWindowSegments();
+		WindowPainterStats.FrameTimes.Segments = takeStepTime();
 		DrawGlassBackdrop(cmd);
 
+		WriteUITimestamp(*cmd, MainWindowUIPair, false);
 		cmd.beginRenderPass(renderPassInfo, vk::SubpassContents::eInline);
 		ImGuiBackend->DrawFrame(cmd);
 		cmd.endRenderPass();
+		WriteUITimestamp(*cmd, MainWindowUIPair, true);
 		RecordScreenshot(cmd, imageIndex);
 		cmd.end();
 
@@ -3519,10 +3549,12 @@ namespace Nyx
 		const vk::Extent2D extent{
 			static_cast<uint32_t>(drawData->DisplaySize.x * drawData->FramebufferScale.x),
 			static_cast<uint32_t>(drawData->DisplaySize.y * drawData->FramebufferScale.y) };
+		WriteUITimestamp(*cmd, GlassBackdropPair, false);
 		GlassBackdrop.Record(cmd, Context, BlurPass, Swapchain.GetSurfaceFormat().format, extent, [&](vk::CommandBuffer commandBuffer)
 			{
 				ImGui_ImplVulkan_RenderDrawData(&behind, commandBuffer);
 			});
+		WriteUITimestamp(*cmd, GlassBackdropPair, true);
 		PointImGuiTexture(GlassImGuiTexture, GlassImGuiTextureView, GlassBackdrop.GetBlurredView());
 	}
 
@@ -3569,6 +3601,71 @@ namespace Nyx
 		const double nanosecondsPerTick = Context.GetPhysicalDevice().getProperties().limits.timestampPeriod;
 		BlurMilliseconds = static_cast<float>(static_cast<double>(ticks[1] - ticks[0]) * nanosecondsPerTick / 1.0e6);
 		bBlurTimestampsWritten = false;
+	}
+
+	void VulkanRenderer::CreateUITimestamps()
+	{
+		// As the blur's: without timestamps, the UI's GPU times are just not there.
+		const std::vector<vk::QueueFamilyProperties> families = Context.GetPhysicalDevice().getQueueFamilyProperties();
+		const uint32_t family = Context.GetGraphicsQueueFamily();
+		if (family >= families.size() || families[family].timestampValidBits == 0)
+		{
+			return;
+		}
+
+		vk::QueryPoolCreateInfo queryInfo{};
+		queryInfo.queryType = vk::QueryType::eTimestamp;
+		queryInfo.queryCount = UITimestampCount;
+		UITimestamps = vk::raii::QueryPool(Context.GetDevice(), queryInfo);
+	}
+
+	void VulkanRenderer::WriteUITimestamp(vk::CommandBuffer commandBuffer, uint32_t pair, bool bEnd, uint32_t osWindow)
+	{
+		if (!*UITimestamps)
+		{
+			return;
+		}
+		commandBuffer.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, *UITimestamps, pair * 2 + (bEnd ? 1 : 0));
+		if (bEnd)
+		{
+			UITimedPairs.push_back(TimedPair{ pair, osWindow });
+		}
+	}
+
+	void VulkanRenderer::ReadUITimestamps()
+	{
+		// The frame that wrote them is done, so they are there. Only the pairs written are read:
+		// the others were reset but never written.
+		const double nanosecondsPerTick = Context.GetPhysicalDevice().getProperties().limits.timestampPeriod;
+		Nyx::Engine::PainterWindowStats::Times& times = WindowPainterStats.FrameTimes;
+		for (const TimedPair& timed : UITimedPairs)
+		{
+			const auto [result, ticks] = UITimestamps.getResults<uint64_t>(timed.Pair * 2, 2, 2 * sizeof(uint64_t), sizeof(uint64_t), vk::QueryResultFlagBits::e64);
+			if (result != vk::Result::eSuccess || ticks.size() != 2)
+			{
+				continue;
+			}
+			const float milliseconds = static_cast<float>(static_cast<double>(ticks[1] - ticks[0]) * nanosecondsPerTick / 1.0e6);
+			times.bGpu = true;
+			if (timed.Pair == MainWindowUIPair)
+			{
+				times.GpuMainWindowUI = milliseconds;
+			}
+			else if (timed.Pair == GlassBackdropPair)
+			{
+				times.GpuGlassBackdrop = milliseconds;
+			}
+			else
+			{
+				times.GpuPainter += milliseconds;
+				if (timed.OsWindow < WindowPainterStats.OsWindows.size())
+				{
+					WindowPainterStats.OsWindows[timed.OsWindow].GpuMilliseconds += milliseconds;
+				}
+			}
+		}
+		UITimedPairs.clear();
+		NextSegmentPair = 2;
 	}
 
 	bool VulkanRenderer::WasSceneViewRecreatedThisFrame(uint64_t id) const
@@ -3718,6 +3815,7 @@ namespace Nyx
 	void VulkanRenderer::GatherWindowPainters()
 	{
 		WindowPainterStats = Nyx::Engine::PainterWindowStats{};
+		WindowPainterStats.FrameTimes = PendingFrameTimes;
 		WindowPainters = Nyx::UI::EndWindowPainters();
 		for (const Nyx::UI::WindowPainter* painter : WindowPainters)
 		{
@@ -3733,6 +3831,7 @@ namespace Nyx
 	{
 		WindowSegments.Clear();
 		WindowSegmentDraws.clear();
+		WindowSegmentDrawOsWindows.clear();
 
 		const Nyx::Engine::PainterBudget budget;
 		size_t runPainterCount = 0;
@@ -3752,6 +3851,18 @@ namespace Nyx
 			Nyx::Engine::PainterWindowStats::OsWindow osWindow;
 			const ImGuiWindow* window = static_cast<ImGuiViewportP*>(viewport)->Window;
 			osWindow.Name = viewport == ImGui::GetMainViewport() ? "Main window" : window != nullptr ? window->Name : "OS window";
+			// Where it goes in the statistics, if it paints
+			const uint32_t osWindowIndex = static_cast<uint32_t>(WindowPainterStats.OsWindows.size());
+
+			// What ImGui still draws itself here; the painter's segments are callbacks.
+			for (const ImDrawList* drawList : viewport->DrawData->CmdLists)
+			{
+				for (const ImDrawCmd& command : drawList->CmdBuffer)
+				{
+					osWindow.ImGuiDrawCommands += command.UserCallback == nullptr && command.ElemCount > 0 ? 1 : 0;
+				}
+				osWindow.ImGuiVertices += static_cast<uint32_t>(drawList->VtxBuffer.Size);
+			}
 
 			// Runs don't reach across where glass cuts the main window's draw data.
 			for (const Nyx::UI::WindowSegmentRun& run : Nyx::UI::FindWindowSegmentRuns(*viewport->DrawData, Nyx::UI::GetGlassDrawLists()))
@@ -3802,9 +3913,16 @@ namespace Nyx
 						WindowSegmentDraws[{ refs[other].Painter, refs[other].Segment }] = NoWindowDraw;
 					}
 
+					// Draws are added one after the other: a draw's index is its place here.
+					WindowSegmentDrawOsWindows.push_back(osWindowIndex);
+
 					const Nyx::Engine::PainterBinningStats& stats = WindowSegments.GetStats(draw);
 					++osWindow.Draws;
 					osWindow.Segments += static_cast<uint32_t>(count);
+					osWindow.Commands += stats.Commands;
+					osWindow.TilesInUse += stats.TilesInUse;
+					osWindow.TileEntries += stats.TileEntries;
+					osWindow.BinningMilliseconds += stats.BinningMilliseconds;
 					WindowPainterStats.Commands += stats.Commands;
 					WindowPainterStats.TilesInUse += stats.TilesInUse;
 					WindowPainterStats.TileEntries += stats.TileEntries;
@@ -3821,6 +3939,7 @@ namespace Nyx
 			}
 		}
 		WindowPainterStats.Problems.insert(WindowPainterStats.Problems.end(), WindowSegments.GetProblems().begin(), WindowSegments.GetProblems().end());
+		WindowPainterStats.UploadBytes = WindowSegments.GetUploadBytes();
 
 		if (WindowSegments.GetSegmentCount() > 0)
 		{
@@ -3875,7 +3994,18 @@ namespace Nyx
 			format = static_cast<vk::Format>(window->SurfaceFormat.format);
 		}
 
+		// Timed while pairs are left
+		const bool bTimed = *UITimestamps && NextSegmentPair < 2 + MaxTimedSegmentDraws && found->second < WindowSegmentDrawOsWindows.size();
+		const uint32_t pair = bTimed ? NextSegmentPair++ : 0;
+		if (bTimed)
+		{
+			WriteUITimestamp(renderState->CommandBuffer, pair, false);
+		}
 		PainterPass.DrawSegment(renderState->CommandBuffer, WindowSegments, found->second, format, extent);
+		if (bTimed)
+		{
+			WriteUITimestamp(renderState->CommandBuffer, pair, true, WindowSegmentDrawOsWindows[found->second]);
+		}
 	}
 
 	uint64_t VulkanRenderer::CreateUIImage(const Nyx::Engine::RgbaImage& source)
