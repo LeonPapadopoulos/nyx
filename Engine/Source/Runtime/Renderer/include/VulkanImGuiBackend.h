@@ -5,6 +5,9 @@
 #include <imgui.h>
 #include <glm/glm.hpp>
 
+#include <map>
+#include <utility>
+
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
@@ -42,6 +45,9 @@ namespace Nyx
 
 	private:
 		void CreateDescriptorPool();
+		// Asks Windows to round the corners of the OS windows ImGui made for windows dragged out
+		// of the main window, as the painted chrome's cards are rounded, or not while it is off
+		void RoundOsWindowCorners();
 
 	private:
 		GLFWwindow* Window = nullptr;
@@ -51,6 +57,10 @@ namespace Nyx
 		vk::raii::DescriptorPool DescriptorPool{ nullptr };
 
 		ImGuiStyle VulkanStyle;
+
+		// Each OS window's handle, by its viewport, and whether it was asked to round its
+		// corners: asked again only for a new OS window, or when the chrome is switched
+		std::map<ImGuiID, std::pair<void*, bool>> RoundedOsWindows;
 
 		bool bInitialized = false;
 	};

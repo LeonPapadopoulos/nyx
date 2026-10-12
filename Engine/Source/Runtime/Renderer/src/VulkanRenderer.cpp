@@ -4,6 +4,7 @@
 #include "ImGuiSource.h"
 #include "UIChrome.h"
 #include "UIDiagnostics.h"
+#include "UITheme.h"
 #include "VulkanImGuiBackend.h"
 #include "VulkanContext.h"
 #include "VulkanSwapchain.h"
@@ -660,6 +661,7 @@ namespace Nyx
 		// itself while ending it (drag and drop tooltips) are there when the cards are painted.
 		ImGui::EndFrame();
 		Nyx::UI::SetGlassBackdrop(GlassImGuiTexture != VK_NULL_HANDLE ? reinterpret_cast<ImTextureID>(GlassImGuiTexture) : ImTextureID_Invalid);
+		Nyx::UI::SetPlainGlassBackdrop(GetPlainGlassBackdrop());
 		Nyx::UI::PaintWindowCards();
 		// After the chrome, which takes over some of ImGui's shapes
 		Nyx::UI::MarkImGuiShapes();
@@ -3464,6 +3466,23 @@ namespace Nyx
 			Context.GetDevice().updateDescriptorSets(write, {});
 		}
 		shownView = view;
+	}
+
+	ImTextureID VulkanRenderer::GetPlainGlassBackdrop()
+	{
+		if (PlainGlassImageId == 0)
+		{
+			const glm::vec4 color = Nyx::UI::GetTheme().Backdrop;
+			Nyx::Engine::RgbaImage pixel;
+			pixel.Width = 1;
+			pixel.Height = 1;
+			for (const float channel : { color.r, color.g, color.b, 1.0f })
+			{
+				pixel.Pixels.push_back(static_cast<uint8_t>(std::lround(std::clamp(channel, 0.0f, 1.0f) * 255.0f)));
+			}
+			PlainGlassImageId = CreateUIImage(pixel);
+		}
+		return GetUIImageTextureId(PlainGlassImageId);
 	}
 
 	void VulkanRenderer::DrawGlassBackdrop(vk::raii::CommandBuffer& cmd)

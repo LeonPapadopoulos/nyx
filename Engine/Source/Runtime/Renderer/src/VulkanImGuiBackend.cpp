@@ -3,6 +3,10 @@
 #include "VulkanRenderer.h"
 #include "Log.h"
 #include "ImGuiTheme.h"
+#include "UIChrome.h"
+
+#include <windows.h>
+#include <dwmapi.h> // Rounded corners for the OS windows ImGui makes
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -188,7 +192,30 @@ namespace Nyx
 		if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
 		{
 			ImGui::UpdatePlatformWindows();
+			RoundOsWindowCorners();
 			ImGui::RenderPlatformWindowsDefault();
+		}
+	}
+
+	void VulkanImGuiBackend::RoundOsWindowCorners()
+	{
+		// Windows 11 rounds a window's corners on request, by as much as the cards' rounding at
+		// 100%; Windows 10 ignores it.
+		const bool bRound = Nyx::UI::IsPaintedChromeEnabled();
+		for (ImGuiViewport* viewport : ImGui::GetPlatformIO().Viewports)
+		{
+			if (viewport == ImGui::GetMainViewport() || viewport->PlatformHandleRaw == nullptr)
+			{
+				continue;
+			}
+			std::pair<void*, bool>& asked = RoundedOsWindows[viewport->ID];
+			if (asked.first == viewport->PlatformHandleRaw && asked.second == bRound)
+			{
+				continue;
+			}
+			asked = { viewport->PlatformHandleRaw, bRound };
+			const DWM_WINDOW_CORNER_PREFERENCE preference = bRound ? DWMWCP_ROUND : DWMWCP_DEFAULT;
+			DwmSetWindowAttribute(static_cast<HWND>(viewport->PlatformHandleRaw), DWMWA_WINDOW_CORNER_PREFERENCE, &preference, sizeof(preference));
 		}
 	}
 

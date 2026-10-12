@@ -77,6 +77,8 @@ namespace Nyx::UI
 
 			// What glass shows, from the renderer, and the draw lists of this frame's glass windows
 			ImTextureID GlassBackdrop = ImTextureID_Invalid;
+			// What glass shows in OS windows of their own: one colour (SetPlainGlassBackdrop())
+			ImTextureID PlainGlassBackdrop = ImTextureID_Invalid;
 			std::vector<const ImDrawList*> GlassDrawLists;
 		};
 
@@ -278,10 +280,15 @@ namespace Nyx::UI
 			return window.Viewport == ImGui::GetMainViewport() && !OwnsOsWindow(window);
 		}
 
-		// A floating card's surface: glass where the window is glass and the renderer has a
-		// backdrop, opaque otherwise. A glass window's draw list is noted either way: the renderer
-		// draws the backdrop for it this frame, before the glass is drawn. The very first time,
-		// there is no backdrop yet when the cards are painted, so glass starts a frame later.
+		// A floating card's surface: glass where the renderer has a backdrop for it, opaque
+		// otherwise.
+		//  - In the main window, glass shows what lies behind it there. Its draw list is noted
+		//    either way: the renderer draws the backdrop for it this frame, before the glass is
+		//    drawn. The very first time, there is no backdrop yet when the cards are painted, so
+		//    glass starts a frame later.
+		//  - In an OS window of its own, nothing of the desktop can show (the window is opaque to
+		//    the OS), so glass shows the plain backdrop, one colour: the same glass, tinted and lit
+		//    along its edge, over an empty backdrop.
 		void PaintFloatingSurface(WindowPainter& painter, const ImGuiWindow& window, const PainterRect& card)
 		{
 			ChromeState& state = GetState();
@@ -291,13 +298,39 @@ namespace Nyx::UI
 			{
 				state.GlassDrawLists.push_back(window.DrawList);
 			}
-			if (bGlass && state.GlassBackdrop != ImTextureID_Invalid)
+			const ImTextureID backdrop = bGlass ? state.GlassBackdrop : state.PlainGlassBackdrop;
+			if (backdrop != ImTextureID_Invalid)
 			{
-				painter.AddGlass(ImTextureRef(state.GlassBackdrop), card, theme.CardRounding, PainterStyle::Filled(theme.GlassTint), theme.Glass);
+				painter.AddGlass(ImTextureRef(backdrop), card, theme.CardRounding, PainterStyle::Filled(theme.GlassTint), theme.Glass);
 			}
 			else
 			{
 				painter.AddRoundedRect(card, theme.CardRounding, PainterStyle::Filled(theme.FloatingCard));
+			}
+		}
+
+		// ImGui draws the background and title bar of a window that fills an OS window of its own
+		// opaque, whatever their colours' alpha: the OS window can't show what lies behind it. So
+		// they would cover the card and tab bars painted behind them. They are the first things
+		// ImGui draws into the window's draw list; their alpha is taken back to 0 here, as the
+		// chrome makes their colours transparent everywhere else. The vertices are found by colour,
+		// from the start of the draw list until one has another colour.
+		void ClearOsWindowBackground(ImGuiWindow& window)
+		{
+			const ImGuiStyle& style = ImGui::GetStyle();
+			std::vector<ImU32> colors;
+			for (const ImGuiCol color : { ImGuiCol_WindowBg, ImGuiCol_ChildBg, ImGuiCol_PopupBg, ImGuiCol_TitleBg, ImGuiCol_TitleBgActive, ImGuiCol_TitleBgCollapsed })
+			{
+				colors.push_back(ImGui::ColorConvertFloat4ToU32(style.Colors[color]) & ~IM_COL32_A_MASK);
+			}
+			for (ImDrawVert& vertex : window.DrawList->VtxBuffer)
+			{
+				const ImU32 color = vertex.col & ~IM_COL32_A_MASK;
+				if (std::find(colors.begin(), colors.end(), color) == colors.end())
+				{
+					break;
+				}
+				vertex.col = color;
 			}
 		}
 
@@ -372,9 +405,10 @@ namespace Nyx::UI
 			drawList.PushClipRect(ToImVec2(reach.Min), ToImVec2(reach.Max), false);
 
 			// A host of floating docked windows in an OS window of its own has nothing behind it
-			// but the OS window: the backdrop goes there first.
+			// but the OS window: the backdrop goes there first, under ImGui's background.
 			if (OwnsOsWindow(window))
 			{
+				ClearOsWindowBackground(window);
 				WindowPainter& behind = GetPainterFor(drawList, viewport, window.Name, EWindowPainterPlacement::Behind);
 				behind.AddRect(viewportRect, PainterStyle::Filled(theme.Backdrop));
 			}
@@ -456,8 +490,13 @@ namespace Nyx::UI
 			WindowPainter& painter = GetPainterFor(drawList, viewport, window.Name, EWindowPainterPlacement::Behind);
 			if (OwnsOsWindow(window))
 			{
-				// It fills its OS window, which leaves no room for round corners or a shadow.
-				painter.AddRect(card, PainterStyle::Filled(theme.FloatingCard));
+				// It fills its OS window, which leaves no room for a shadow. Windows rounds the OS
+				// window's corners as the card's (VulkanImGuiBackend); the backdrop fills them where
+				// it doesn't. ImGui's opaque background, drawn over all of it, is taken back.
+				ClearOsWindowBackground(window);
+				painter.AddRect(card, PainterStyle::Filled(theme.Backdrop));
+				PaintFloatingSurface(painter, window, card);
+				PaintCardBorder(painter, card, theme.CardRounding);
 			}
 			else
 			{
@@ -650,6 +689,11 @@ namespace Nyx::UI
 	void SetGlassBackdrop(ImTextureID backdrop)
 	{
 		GetState().GlassBackdrop = backdrop;
+	}
+
+	void SetPlainGlassBackdrop(ImTextureID backdrop)
+	{
+		GetState().PlainGlassBackdrop = backdrop;
 	}
 
 	std::span<const ImDrawList* const> GetGlassDrawLists()

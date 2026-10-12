@@ -17,8 +17,8 @@ namespace Nyx::UI
 	//   CardGap between dock nodes (its DockingSeparatorSize), so cards stand apart and the
 	//   splitter between them is the gap. A splitter shows as a thin line while hovered or dragged.
 	// - Floating windows, popups, menus and tooltips: a card behind each, lighter and with a
-	//   stronger shadow. A window that fills an OS window of its own gets a plain one, as the OS
-	//   window has no room around it for a shadow or round corners.
+	//   stronger shadow. A window that fills an OS window of its own gets one without a shadow,
+	//   as the OS window has no room around it; Windows rounds the OS window's corners instead.
 	// - A window begun with ImGuiWindowFlags_NoBackground gets no card.
 	// - Tab bars, docked and in windows (stage 3, change 4): ImGui keeps the tabs' behaviour,
 	//   labels and close buttons; their shapes are painted behind the labels instead: a pill
@@ -28,7 +28,9 @@ namespace Nyx::UI
 	//   lies behind them, blurred. The renderer draws that picture each frame there is glass: all
 	//   ImGui draws in the main window before the first glass window (GetGlassDrawLists()),
 	//   blurred, handed over with SetGlassBackdrop(). Until it is there, the cards are opaque.
-	//   Windows in OS windows of their own can't see what lies behind them and stay opaque.
+	//   Windows in OS windows of their own can't see what lies behind them: their glass shows a
+	//   plain backdrop instead (SetPlainGlassBackdrop()). ImGui draws such a window's background
+	//   opaque whatever its colour; the chrome takes that back, so the card shows.
 	// - Window glows, for ambilight (stage 3, change 5): a window can glow with a picture onto
 	//   the backdrop around it (AddWindowGlow()). The glows are painted behind every card, and
 	//   docked cards are slightly translucent, so a glow shows faintly through its neighbours.
@@ -62,6 +64,13 @@ namespace Nyx::UI
 	// as large as the main window. The renderer sets it before PaintWindowCards(), or
 	// ImTextureID_Invalid when it has none yet.
 	void SetGlassBackdrop(ImTextureID backdrop);
+
+	// The picture glass shows in OS windows of their own: one colour, the theme's backdrop (one
+	// pixel is enough; glass reads it at each pixel's place). Those windows are opaque to the OS,
+	// so nothing of the desktop can show through; over this, their cards are the same glass as
+	// in the main window, tinted and lit along the edge, over an empty backdrop. Until it is set
+	// (ImTextureID_Invalid), their cards are opaque.
+	void SetPlainGlassBackdrop(ImTextureID backdrop);
 
 	// The draw lists of the windows that are glass this frame, or would be with a backdrop: all
 	// in the main viewport. Everything ImGui renders there before the first of them is what the

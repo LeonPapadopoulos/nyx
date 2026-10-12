@@ -467,6 +467,11 @@ namespace Nyx
 		vk::ImageView GlassImGuiTextureView;
 		void DrawGlassBackdrop(vk::raii::CommandBuffer& cmd);
 
+		// What glass shows in OS windows of their own (Nyx::UI::SetPlainGlassBackdrop()): one
+		// pixel in the theme's backdrop colour, a UI image made the first time it is asked for
+		ImTextureID GetPlainGlassBackdrop();
+		uint64_t PlainGlassImageId = 0;
+
 		// GPU timestamps around the blurs: written in a frame, read once its fence is signalled.
 		// Null where the graphics queue can't write timestamps.
 		vk::raii::QueryPool BlurTimestamps{ nullptr };

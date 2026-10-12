@@ -734,26 +734,110 @@ namespace
 		editor.bScrolling = false;
 		Settle(editor);
 	}
+
+	// A window dragged out of the editor fills an OS window of its own. ImGui draws its
+	// background and title bar opaque there, whatever their colours; the chrome takes that back,
+	// so its card, painted behind, shows: glass over the plain backdrop, with the window's tab
+	// bar on it. With multiple viewports and stand-in platform functions, ImGui gives a window
+	// outside the main viewport a viewport of its own, without making an OS window.
+	void TestOsWindowsAreGlassCardsToo()
+	{
+		ImGuiContext* context = ImGui::CreateContext();
+		ImGuiIO& io = ImGui::GetIO();
+		io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+		io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures | ImGuiBackendFlags_PlatformHasViewports | ImGuiBackendFlags_RendererHasViewports;
+		io.DisplaySize = ImVec2(800.0f, 600.0f);
+		io.DeltaTime = 1.0f / 60.0f;
+		io.IniFilename = nullptr;
+		io.Fonts->AddFontDefault();
+		ImGuiPlatformIO& platform = ImGui::GetPlatformIO();
+		platform.Platform_CreateWindow = [](ImGuiViewport*) {};
+		platform.Platform_DestroyWindow = [](ImGuiViewport*) {};
+		platform.Platform_ShowWindow = [](ImGuiViewport*) {};
+		platform.Platform_SetWindowPos = [](ImGuiViewport*, ImVec2) {};
+		platform.Platform_GetWindowPos = [](ImGuiViewport* viewport) { return viewport->Pos; };
+		platform.Platform_SetWindowSize = [](ImGuiViewport*, ImVec2) {};
+		platform.Platform_GetWindowSize = [](ImGuiViewport* viewport) { return viewport->Size; };
+		platform.Platform_SetWindowTitle = [](ImGuiViewport*, const char*) {};
+		ImGuiPlatformMonitor monitor;
+		monitor.MainSize = monitor.WorkSize = ImVec2(2000.0f, 1000.0f);
+		platform.Monitors.push_back(monitor);
+		// Any handle: the main viewport only has to have one.
+		static int mainWindow = 0;
+		ImGui::GetMainViewport()->PlatformHandle = &mainWindow;
+		Nyx::UI::SetPaintedChrome(true);
+
+		const ImTextureID plainBackdrop = static_cast<ImTextureID>(9);
+		const ImVec2 position(1200.0f, 100.0f);
+		const ImVec2 size(240.0f, 160.0f);
+		std::vector<WindowPainter*> painters;
+		for (int frame = 0; frame < 4; ++frame)
+		{
+			ImGui::NewFrame();
+			ImGui::SetNextWindowPos(position);
+			ImGui::SetNextWindowSize(size);
+			ImGui::Begin("Outside");
+			if (ImGui::BeginTabBar("Tabs"))
+			{
+				if (ImGui::BeginTabItem("One"))
+				{
+					ImGui::EndTabItem();
+				}
+				ImGui::EndTabBar();
+			}
+			ImGui::End();
+			ImGui::EndFrame();
+			Nyx::UI::SetPlainGlassBackdrop(plainBackdrop);
+			Nyx::UI::PaintWindowCards();
+			const std::span<WindowPainter* const> ended = Nyx::UI::EndWindowPainters();
+			painters.assign(ended.begin(), ended.end());
+			ImGui::Render();
+			ImGui::UpdatePlatformWindows();
+		}
+
+		ImGuiWindow& window = FindWindow("Outside");
+		Require(window.ViewportOwned && window.Viewport != ImGui::GetMainViewport(), "A window outside the main viewport should fill a viewport of its own");
+		Require(!window.DrawList->VtxBuffer.empty() && (window.DrawList->VtxBuffer[0].col & IM_COL32_A_MASK) == 0,
+			"ImGui's opaque background of a window in an OS window of its own should be taken back to transparent");
+
+		const WindowPainter* behind = FindPainter(painters, window.DrawList, EWindowPainterPlacement::Behind);
+		Require(behind != nullptr, "The window's card should be painted behind it");
+		const std::vector<PainterCommand> glass = CommandsOfType(*behind, EPainterCommandType::Glass);
+		Require(glass.size() == 1 && behind->GetPainter().GetTextures()[glass[0].Texture].GetTexID() == plainBackdrop,
+			"The card of a window in an OS window of its own should be glass over the plain backdrop");
+		const PainterRect card = RectAt(ImVec2(0.0f, 0.0f), size);
+		Require(Near(GetPayload<PainterGlassPayload>(glass[0]).Rect, card), "The glass should fill the OS window, got its own pixels from its top left");
+		const std::vector<PainterCommand> lines = LevelLines(*behind);
+		Require(!lines.empty(), "The window's tab bar should be painted on its card, with its underline");
+
+		Nyx::UI::SetPaintedChrome(false);
+		Nyx::UI::SetPlainGlassBackdrop(ImTextureID_Invalid);
+		ImGui::DestroyPlatformWindows();
+		ImGui::DestroyContext(context);
+	}
 }
 
 int main()
 {
 	try
 	{
-		DockedEditor editor;
-		TestTheStyleIsTakenOverAndGivenBack();
-		TestNothingIsPaintedWhileTheChromeIsOff(editor);
+		{
+			DockedEditor editor;
+			TestTheStyleIsTakenOverAndGivenBack();
+			TestNothingIsPaintedWhileTheChromeIsOff(editor);
 
-		Nyx::UI::SetPaintedChrome(true);
-		TestDockedWindowsAreCardsWithAGapBetween(editor);
-		TestFloatingWindowsGetACardBehindThem(editor);
-		TestDockedTabBarsArePainted(editor);
-		TestTabBarsInWindowsArePaintedBehindThem(editor);
-		TestTheUnderlineSlidesToTheSelectedTab(editor);
-		TestWindowsGlowBehindTheirCards(editor);
-		TestFloatingWindowsAreGlass(editor);
-		TestASplitterShowsWhileHovered(editor);
-		TestScrollbarsAreThinPills(editor);
+			Nyx::UI::SetPaintedChrome(true);
+			TestDockedWindowsAreCardsWithAGapBetween(editor);
+			TestFloatingWindowsGetACardBehindThem(editor);
+			TestDockedTabBarsArePainted(editor);
+			TestTabBarsInWindowsArePaintedBehindThem(editor);
+			TestTheUnderlineSlidesToTheSelectedTab(editor);
+			TestWindowsGlowBehindTheirCards(editor);
+			TestFloatingWindowsAreGlass(editor);
+			TestASplitterShowsWhileHovered(editor);
+			TestScrollbarsAreThinPills(editor);
+		}
+		TestOsWindowsAreGlassCardsToo();
 	}
 	catch (const std::exception& error)
 	{
