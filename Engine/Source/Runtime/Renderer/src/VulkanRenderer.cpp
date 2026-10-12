@@ -626,12 +626,18 @@ namespace Nyx
 		submitInfo.signalSemaphoreCount = 1;
 		submitInfo.pSignalSemaphores = &*renderFinishedSemaphore;
 
-		Context.GetGraphicsQueue().submit(submitInfo, *InFlightFence);
+		Context.GetGraphicsQueue().submit(submitInfo);
 
 		// ImGui windows outside the main window render in command buffers ImGui submits itself.
 		// After this frame's submission, the images they show (scene views, painter canvases) are
 		// painted first, in queue order; before it, they would show last frame's or none at all.
 		ImGuiBackend->RenderPlatformWindows();
+
+		// The frame's fence goes in last, with an empty submission: a fence signalled by a queue
+		// submission waits for everything submitted before it on the queue. So it covers this
+		// frame's command buffer and the OS windows' ones, which also read painter canvases and
+		// scene views. The next frame waits for it before it rewrites any of them.
+		Context.GetGraphicsQueue().submit(vk::ArrayProxy<const vk::SubmitInfo>{}, *InFlightFence);
 
 		// 5) Present
 		vk::PresentInfoKHR presentInfo{};
@@ -3418,8 +3424,8 @@ namespace Nyx
 			}
 			else
 			{
-				// The previous frame has finished (InFlightFence), and ImGui records this frame's
-				// use of the set only after this, so the set can change now.
+				// The previous frame has finished (InFlightFence, OS windows included), and ImGui
+				// records this frame's use of the set only after this, so the set can change now.
 				vk::DescriptorImageInfo imageInfo{ *canvas.Sampler, imageView, vk::ImageLayout::eShaderReadOnlyOptimal };
 				vk::WriteDescriptorSet write{};
 				write.dstSet = canvas.ImGuiTexture;

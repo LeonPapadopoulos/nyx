@@ -552,6 +552,7 @@ namespace Nyx
 
 		vk::raii::Semaphore ImageAvailableSemaphore{ nullptr };
 		std::vector<vk::raii::Semaphore> RenderFinishedSemaphores;
+		// Signalled when all of a frame's GPU work is done, including ImGui's OS windows.
 		vk::raii::Fence InFlightFence{ nullptr };
 
 		bool bRecreateSwapChain = false;
