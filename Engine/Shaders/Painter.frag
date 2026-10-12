@@ -1,11 +1,15 @@
 #version 450
 
-// The painter's pixel shader (Design/ui-painter.md, change 3).
+// The painter's pixel shader (Design/ui-painter.md, stage 1, change 3).
 //
 // Every pixel finds its 8x8 tile, walks the tile's draw commands in order, and blends each one
 // in, in registers: a command's shape is a signed distance field (negative inside, positive
 // outside, in pixels), and one pixel of fade around its edge is the anti-aliasing. The result is
 // written once, premultiplied, and blended over the target with (One, OneMinusSrcAlpha).
+//
+// The buffers can hold more than what is drawn: all segments of a frame share them (stage 2,
+// change 3). The push constants say where the drawn part starts in each, and where its tile
+// grid lies on the target.
 //
 // How to add a primitive: the checklist is in PainterCommands.h. Here, it needs a constant
 // below, a ...Distance() function, and a case in ShapeDistance().
@@ -91,11 +95,23 @@ layout(set = 5, binding = 0) uniform sampler2D Texture4;
 layout(set = 6, binding = 0) uniform sampler2D Texture5;
 layout(set = 7, binding = 0) uniform sampler2D Texture6;
 
-// VulkanPainter.cpp, PainterPushConstants
+// VulkanPainter.cpp, PainterPushConstants; the same block as in Painter.vert
 layout(push_constant) uniform PainterPushConstants
 {
+	// Where the drawn part starts in each buffer. Command indices in the tile entries and group
+	// indices in the commands count from these.
+	uint CommandBase;
+	uint GroupBase;
+	uint TileBase;
+	uint EntryBase;
+	// The tile grid: the target pixel its top left tile starts at, and its size in tiles
+	uint OriginX;
+	uint OriginY;
 	uint TilesX;
 	uint TilesY;
+	// The target's size in pixels; only Painter.vert needs it
+	float TargetWidth;
+	float TargetHeight;
 	uint DebugView; // EPainterDebugView
 	uint PushUnused;
 };
@@ -297,6 +313,12 @@ bool IsInsideClipRect(vec2 p, vec4 clipRect)
 	return p.x >= clipRect.x && p.y >= clipRect.y && p.x < clipRect.z && p.y < clipRect.w;
 }
 
+// The command a tile entry names. `entry` is an index into Entries, EntryBase already added.
+PainterCommand CommandAt(uint entry)
+{
+	return Commands[CommandBase + Entries[entry]];
+}
+
 // Premultiplied `source` over `destination`
 vec4 Over(vec4 destination, vec4 source)
 {
@@ -346,14 +368,14 @@ vec4 TextureColor(vec2 p, PainterCommand command)
 // shape of a group into every tile the group reaches.
 vec4 DrawGroupEffects(vec4 color, vec2 pixel, uint groupIndex, uint firstEntry, uint endEntry)
 {
-	PainterGroup group = Groups[groupIndex];
+	PainterGroup group = Groups[GroupBase + groupIndex];
 
 	// The group as one shape: the union of its shapes is the nearest of their distances.
 	float shapes = Far;
 	float movedShapes = Far;
 	for (uint entry = firstEntry; entry < endEntry; ++entry)
 	{
-		PainterCommand command = Commands[Entries[entry]];
+		PainterCommand command = CommandAt(entry);
 		if (command.Group != groupIndex)
 		{
 			break;
@@ -401,14 +423,20 @@ void main()
 	// The pixel's centre, e.g. (0.5, 0.5) for the top-left pixel
 	vec2 pixel = gl_FragCoord.xy;
 
-	uvec2 tileCoordinates = uvec2(pixel) / TileSize;
+	// The quad covers only the grid; this guards against rounding at its edges.
+	ivec2 inGrid = ivec2(pixel) - ivec2(OriginX, OriginY);
+	if (inGrid.x < 0 || inGrid.y < 0)
+	{
+		discard;
+	}
+	uvec2 tileCoordinates = uvec2(inGrid) / TileSize;
 	if (tileCoordinates.x >= TilesX || tileCoordinates.y >= TilesY)
 	{
 		discard;
 	}
-	uvec2 tile = Tiles[tileCoordinates.y * TilesX + tileCoordinates.x];
-	uint firstEntry = tile.x;
-	uint endEntry = tile.x + tile.y;
+	uvec2 tile = Tiles[TileBase + tileCoordinates.y * TilesX + tileCoordinates.x];
+	uint firstEntry = EntryBase + tile.x;
+	uint endEntry = firstEntry + tile.y;
 
 	// Most of a window is not painted; those pixels keep what's beneath.
 	if (tile.y == 0u)
@@ -420,7 +448,7 @@ void main()
 	uint groupWithEffectsDrawn = NoGroup;
 	for (uint entry = firstEntry; entry < endEntry; ++entry)
 	{
-		PainterCommand command = Commands[Entries[entry]];
+		PainterCommand command = CommandAt(entry);
 
 		if (command.Group != NoGroup && command.Group != groupWithEffectsDrawn)
 		{

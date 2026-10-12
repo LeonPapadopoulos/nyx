@@ -13,6 +13,8 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -22,6 +24,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace
@@ -152,23 +155,6 @@ namespace
 
 			PainterPass.Draw(commandBuffer, painter, Target, options);
 
-			PaintedImage image;
-			image.Width = Target.GetExtent().width;
-			image.Height = Target.GetExtent().height;
-			const vk::DeviceSize byteCount = static_cast<vk::DeviceSize>(image.Width) * image.Height * 4;
-
-			vk::BufferCreateInfo bufferInfo{};
-			bufferInfo.size = byteCount;
-			bufferInfo.usage = vk::BufferUsageFlagBits::eTransferDst;
-			vk::raii::Buffer readback(device, bufferInfo);
-			const vk::MemoryRequirements requirements = readback.getMemoryRequirements();
-			vk::MemoryAllocateInfo memoryInfo{};
-			memoryInfo.allocationSize = requirements.size;
-			memoryInfo.memoryTypeIndex = FindMemoryType(*Context.GetPhysicalDevice(), requirements.memoryTypeBits,
-				vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
-			vk::raii::DeviceMemory readbackMemory(device, memoryInfo);
-			readback.bindMemory(*readbackMemory, 0);
-
 			// The painter leaves the image ready to be sampled; copying needs it as a transfer source.
 			vk::ImageMemoryBarrier toTransfer{};
 			toTransfer.srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
@@ -181,26 +167,119 @@ namespace
 			toTransfer.subresourceRange = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
 			commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, toTransfer);
 
-			vk::BufferImageCopy copy{};
-			copy.imageSubresource = vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1);
-			copy.imageExtent = vk::Extent3D(image.Width, image.Height, 1);
-			commandBuffer.copyImageToBuffer(Target.GetImage(), vk::ImageLayout::eTransferSrcOptimal, *readback, copy);
+			return SubmitAndReadBack(commandBuffer, Target.GetImage(), Target.GetExtent(), false);
+		}
 
-			commandBuffer.end();
-			vk::SubmitInfo submitInfo{};
-			submitInfo.commandBufferCount = 1;
-			submitInfo.pCommandBuffers = &*commandBuffer;
-			Context.GetGraphicsQueue().submit(submitInfo);
-			Context.GetGraphicsQueue().waitIdle();
+		// Renders into a fresh image of `format` that starts out as `background`, the way ImGui
+		// renders into a window: `record(commandBuffer)` records inside its render pass. Returns the
+		// image as RGBA, whatever the format's channel order.
+		template<typename TRecord>
+		PaintedImage RenderInto(vk::Format format, vk::Extent2D extent, const glm::vec4& background, TRecord&& record)
+		{
+			vk::raii::Device& device = Context.GetDevice();
 
-			image.Bytes.resize(static_cast<size_t>(byteCount));
-			void* mapped = readbackMemory.mapMemory(0, byteCount);
-			std::memcpy(image.Bytes.data(), mapped, image.Bytes.size());
-			readbackMemory.unmapMemory();
-			return image;
+			vk::ImageCreateInfo imageInfo{};
+			imageInfo.imageType = vk::ImageType::e2D;
+			imageInfo.extent = vk::Extent3D(extent.width, extent.height, 1);
+			imageInfo.mipLevels = 1;
+			imageInfo.arrayLayers = 1;
+			imageInfo.format = format;
+			imageInfo.tiling = vk::ImageTiling::eOptimal;
+			imageInfo.initialLayout = vk::ImageLayout::eUndefined;
+			imageInfo.usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransferSrc;
+			imageInfo.samples = vk::SampleCountFlagBits::e1;
+			vk::raii::Image image(device, imageInfo);
+			const vk::MemoryRequirements requirements = image.getMemoryRequirements();
+			vk::raii::DeviceMemory memory(device, vk::MemoryAllocateInfo(requirements.size, FindMemoryType(*Context.GetPhysicalDevice(), requirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal)));
+			image.bindMemory(*memory, 0);
+
+			vk::ImageViewCreateInfo viewInfo{};
+			viewInfo.image = *image;
+			viewInfo.viewType = vk::ImageViewType::e2D;
+			viewInfo.format = format;
+			viewInfo.subresourceRange = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
+			vk::raii::ImageView view(device, viewInfo);
+
+			// Like an ImGui window's render pass (the swapchain's, or an OS window's): one colour
+			// attachment, cleared, no depth, and their one subpass dependency. Segments need
+			// exactly that (VulkanPainter::DrawSegment()).
+			vk::AttachmentDescription colorAttachment{};
+			colorAttachment.format = format;
+			colorAttachment.samples = vk::SampleCountFlagBits::e1;
+			colorAttachment.loadOp = vk::AttachmentLoadOp::eClear;
+			colorAttachment.storeOp = vk::AttachmentStoreOp::eStore;
+			colorAttachment.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;
+			colorAttachment.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
+			colorAttachment.initialLayout = vk::ImageLayout::eUndefined;
+			colorAttachment.finalLayout = vk::ImageLayout::eColorAttachmentOptimal;
+			vk::AttachmentReference colorReference{ 0, vk::ImageLayout::eColorAttachmentOptimal };
+			vk::SubpassDescription subpass{};
+			subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
+			subpass.colorAttachmentCount = 1;
+			subpass.pColorAttachments = &colorReference;
+			vk::SubpassDependency dependency{};
+			dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+			dependency.dstSubpass = 0;
+			dependency.srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+			dependency.dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+			dependency.srcAccessMask = {};
+			dependency.dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
+			vk::RenderPassCreateInfo renderPassInfo{};
+			renderPassInfo.attachmentCount = 1;
+			renderPassInfo.pAttachments = &colorAttachment;
+			renderPassInfo.subpassCount = 1;
+			renderPassInfo.pSubpasses = &subpass;
+			renderPassInfo.dependencyCount = 1;
+			renderPassInfo.pDependencies = &dependency;
+			vk::raii::RenderPass renderPass(device, renderPassInfo);
+
+			vk::FramebufferCreateInfo framebufferInfo{};
+			framebufferInfo.renderPass = *renderPass;
+			framebufferInfo.attachmentCount = 1;
+			framebufferInfo.pAttachments = &*view;
+			framebufferInfo.width = extent.width;
+			framebufferInfo.height = extent.height;
+			framebufferInfo.layers = 1;
+			vk::raii::Framebuffer framebuffer(device, framebufferInfo);
+
+			vk::CommandBufferAllocateInfo allocInfo{};
+			allocInfo.commandPool = *Context.GetGraphicsCommandPool();
+			allocInfo.level = vk::CommandBufferLevel::ePrimary;
+			allocInfo.commandBufferCount = 1;
+			vk::raii::CommandBuffer commandBuffer = std::move(vk::raii::CommandBuffers(device, allocInfo).front());
+			commandBuffer.begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
+
+			// The background is opaque or straight; the image holds premultiplied colour.
+			vk::ClearValue clearValue{};
+			clearValue.color = vk::ClearColorValue(std::array<float, 4>{ background.r * background.a, background.g * background.a, background.b * background.a, background.a });
+			vk::RenderPassBeginInfo beginInfo{};
+			beginInfo.renderPass = *renderPass;
+			beginInfo.framebuffer = *framebuffer;
+			beginInfo.renderArea = vk::Rect2D({ 0, 0 }, extent);
+			beginInfo.clearValueCount = 1;
+			beginInfo.pClearValues = &clearValue;
+			commandBuffer.beginRenderPass(beginInfo, vk::SubpassContents::eInline);
+			record(*commandBuffer);
+			commandBuffer.endRenderPass();
+
+			// Instead of being presented, the image is copied out.
+			vk::ImageMemoryBarrier toTransfer{};
+			toTransfer.srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
+			toTransfer.dstAccessMask = vk::AccessFlagBits::eTransferRead;
+			toTransfer.oldLayout = vk::ImageLayout::eColorAttachmentOptimal;
+			toTransfer.newLayout = vk::ImageLayout::eTransferSrcOptimal;
+			toTransfer.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			toTransfer.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			toTransfer.image = *image;
+			toTransfer.subresourceRange = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
+			commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, toTransfer);
+
+			const bool bRedBlueSwapped = format == vk::Format::eB8G8R8A8Unorm;
+			return SubmitAndReadBack(commandBuffer, *image, extent, bRedBlueSwapped);
 		}
 
 		const VulkanPainterTarget& GetTarget() const { return Target; }
+		VulkanPainter& GetPainterPass() { return PainterPass; }
 
 		// A texture made from RGBA8 pixels, row by row, with a descriptor set like ImGui's; returns
 		// what AddImage() and ImGui::Image() take. Nearest filtering, so tests can tell texels apart.
@@ -316,6 +395,56 @@ namespace
 			vk::raii::Sampler Sampler{ nullptr };
 			vk::raii::DescriptorSet Set{ nullptr };
 		};
+
+		// Ends `commandBuffer` with copying `image` (8 bits per channel, in TransferSrcOptimal
+		// layout) into a buffer, submits it, waits for the GPU and returns the pixels as RGBA
+		PaintedImage SubmitAndReadBack(vk::raii::CommandBuffer& commandBuffer, vk::Image image, vk::Extent2D extent, bool bRedBlueSwapped)
+		{
+			vk::raii::Device& device = Context.GetDevice();
+
+			PaintedImage painted;
+			painted.Width = extent.width;
+			painted.Height = extent.height;
+			const vk::DeviceSize byteCount = static_cast<vk::DeviceSize>(painted.Width) * painted.Height * 4;
+
+			vk::BufferCreateInfo bufferInfo{};
+			bufferInfo.size = byteCount;
+			bufferInfo.usage = vk::BufferUsageFlagBits::eTransferDst;
+			vk::raii::Buffer readback(device, bufferInfo);
+			const vk::MemoryRequirements requirements = readback.getMemoryRequirements();
+			vk::MemoryAllocateInfo memoryInfo{};
+			memoryInfo.allocationSize = requirements.size;
+			memoryInfo.memoryTypeIndex = FindMemoryType(*Context.GetPhysicalDevice(), requirements.memoryTypeBits,
+				vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+			vk::raii::DeviceMemory readbackMemory(device, memoryInfo);
+			readback.bindMemory(*readbackMemory, 0);
+
+			vk::BufferImageCopy copy{};
+			copy.imageSubresource = vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1);
+			copy.imageExtent = vk::Extent3D(extent.width, extent.height, 1);
+			commandBuffer.copyImageToBuffer(image, vk::ImageLayout::eTransferSrcOptimal, *readback, copy);
+
+			commandBuffer.end();
+			vk::SubmitInfo submitInfo{};
+			submitInfo.commandBufferCount = 1;
+			submitInfo.pCommandBuffers = &*commandBuffer;
+			Context.GetGraphicsQueue().submit(submitInfo);
+			Context.GetGraphicsQueue().waitIdle();
+
+			painted.Bytes.resize(static_cast<size_t>(byteCount));
+			void* mapped = readbackMemory.mapMemory(0, byteCount);
+			std::memcpy(painted.Bytes.data(), mapped, painted.Bytes.size());
+			readbackMemory.unmapMemory();
+
+			if (bRedBlueSwapped)
+			{
+				for (size_t offset = 0; offset < painted.Bytes.size(); offset += 4)
+				{
+					std::swap(painted.Bytes[offset], painted.Bytes[offset + 2]);
+				}
+			}
+			return painted;
+		}
 
 		// Records commands into a command buffer, submits it and waits for the GPU
 		template<typename TRecord>
@@ -711,6 +840,143 @@ namespace
 		SaveForLooking(gpu.Paint(painter, options), "PainterTestSheet400.png");
 	}
 
+	// Segments: drawn into a render pass that already holds other drawing, as ImGui's will
+
+	void TestSegmentsDrawInOrderWithOtherDrawing(GpuPainter& gpu)
+	{
+		const glm::vec4 gray{ 0.2f, 0.2f, 0.2f, 1.0f };
+		const glm::vec4 blue{ 0.0f, 0.0f, 1.0f, 1.0f };
+		const glm::vec4 green{ 0.0f, 1.0f, 0.0f, 1.0f };
+		const glm::vec4 inShadow{ 0.1f, 0.1f, 0.1f, 1.0f }; // half black over gray
+		const ImTextureID magenta = gpu.CreateTexture(1, 1, { 255, 0, 255, 255 });
+		const ImTextureID cyan = gpu.CreateTexture(1, 1, { 0, 255, 255, 255 });
+
+		// Two painters, as two windows have, each with a shadow of its own: a segment of the second
+		// must find the second's group and texture, not the first's.
+		PainterStyle redWithShadow = PainterStyle::Filled(Red);
+		redWithShadow.Effects.Shadow.Color = glm::vec4(0.0f, 0.0f, 0.0f, 0.5f);
+		redWithShadow.Effects.Shadow.Offset = glm::vec2(0.0f, 32.0f);
+		Painter first = StartFrame();
+		first.AddRect(PainterRect{ { 4, 4 }, { 28, 28 } }, redWithShadow);
+		first.PushClipRect(PainterRect{ { 24, 24 }, { 48, 48 } });
+		first.AddRect(PainterRect{ { 24, 24 }, { 56, 56 } }, PainterStyle::Filled(green));
+		first.PopClipRect();
+		first.AddImage(magenta, PainterRect{ { 30, 4 }, { 40, 12 } }, PainterStyle::Filled(White));
+		first.PushClipRect(PainterRect{});
+		first.AddRect(PainterRect{ { 0, 0 }, { 64, 64 } }, PainterStyle::Filled(White));
+		first.PopClipRect();
+
+		PainterStyle withShadow = PainterStyle::Filled(White);
+		withShadow.Effects.Shadow.Color = glm::vec4(0.0f, 0.0f, 0.0f, 0.5f);
+		withShadow.Effects.Shadow.Offset = glm::vec2(0.0f, 24.0f);
+		Painter second = StartFrame();
+		second.AddImage(cyan, PainterRect{ { 44, 4 }, { 60, 20 } }, withShadow);
+
+		VulkanPainterSegments segments;
+		const PainterBudget budget;
+		const uint32_t redRect = segments.Add(first, PainterSegment{ 0, 1 }, budget);
+		const uint32_t greenRectAndImage = segments.Add(first, PainterSegment{ 1, 2 }, budget);
+		const uint32_t clippedAway = segments.Add(first, PainterSegment{ 3, 1 }, budget);
+		const uint32_t cyanImage = segments.Add(second, PainterSegment{ 0, 1 }, budget);
+		VulkanPainter& painterPass = gpu.GetPainterPass();
+		painterPass.Upload(segments);
+
+		// The swapchain's usual format, not the canvases': a second pipeline
+		const vk::Format format = vk::Format::eB8G8R8A8Unorm;
+		const vk::Extent2D extent{ 64, 64 };
+		const PaintedImage image = gpu.RenderInto(format, extent, gray, [&](vk::CommandBuffer commandBuffer)
+			{
+				painterPass.DrawSegment(commandBuffer, segments, redRect, format, extent);
+
+				// Something else drawing between two segments, as ImGui does: a blue square
+				const vk::ClearAttachment clearBlue(vk::ImageAspectFlagBits::eColor, 0, vk::ClearColorValue(std::array<float, 4>{ 0.0f, 0.0f, 1.0f, 1.0f }));
+				const vk::ClearRect square(vk::Rect2D({ 16, 16 }, { 24, 24 }), 0, 1);
+				commandBuffer.clearAttachments(clearBlue, square);
+
+				painterPass.DrawSegment(commandBuffer, segments, greenRectAndImage, format, extent);
+				painterPass.DrawSegment(commandBuffer, segments, clippedAway, format, extent);
+				painterPass.DrawSegment(commandBuffer, segments, cyanImage, format, extent);
+			});
+		SaveForLooking(image, "PainterSegments.png");
+
+		image.RequirePixel(8, 8, Red, "The first segment");
+		image.RequirePixel(20, 20, blue, "Drawing after a segment covers it");
+		image.RequirePixel(36, 36, green, "A segment after other drawing covers it");
+		image.RequirePixel(52, 52, gray, "Past a segment's clip rect, what was beneath stays");
+		image.RequirePixel(34, 8, glm::vec4(1.0f, 0.0f, 1.0f, 1.0f), "An image in a segment with its painter's texture");
+		image.RequirePixel(8, 44, inShadow, "The first painter's shadow, 32 pixels below");
+		image.RequirePixel(52, 12, glm::vec4(0.0f, 1.0f, 1.0f, 1.0f), "The second painter's image, with its own texture");
+		image.RequirePixel(52, 30, inShadow, "The second painter's shadow, 24 pixels below: its own group");
+		image.RequirePixel(2, 62, gray, "Outside every segment's tiles");
+
+		Require(segments.GetSegmentCount() == 4 && segments.GetStats(clippedAway).CulledCommands == 1, "A segment wholly clipped away should be culled");
+		Require(segments.GetProblems().empty(), "The segments should bin without problems");
+	}
+
+	void TestTestSheetAsSegmentsMatchesTheCanvas(GpuPainter& gpu, const ImGuiFonts& fonts)
+	{
+		const glm::vec4 background{ 0.1f, 0.1f, 0.12f, 1.0f };
+		const uint32_t width = static_cast<uint32_t>(PainterTestSheetSize.x);
+		const uint32_t height = static_cast<uint32_t>(PainterTestSheetSize.y);
+
+		Painter sheet = StartFrame(width, height);
+		DrawPainterTestSheet(sheet, fonts.Font, fonts.Font->OwnerAtlas->TexRef);
+		sheet.EndFrame();
+		gpu.UploadFontAtlas(*fonts.Font->OwnerAtlas);
+
+		PainterDrawOptions options;
+		options.ClearColor = background;
+		const PaintedImage canvas = gpu.Paint(sheet, options);
+
+		// The sheet in two segments, split where no group goes across, after another painter's
+		// commands and group, so that every offset is in use
+		const std::vector<PainterCommand>& commands = sheet.GetCommands();
+		uint32_t split = static_cast<uint32_t>(commands.size() / 2);
+		while (split < commands.size() && commands[split].Group != PainterNoGroup && commands[split].Group == commands[split - 1].Group)
+		{
+			++split;
+		}
+		Painter before = StartFrame(width, height);
+		before.AddRect(PainterRect{ { 0, 0 }, { 4, 4 } }, PainterStyle::Filled(White));
+		PainterStyle glowing = PainterStyle::Filled(White);
+		glowing.Effects.Glow.Color = Orange;
+		glowing.Effects.Glow.Distance = 4.0f;
+		before.AddCircle({ 2, 2 }, 1.0f, glowing);
+
+		VulkanPainterSegments segments;
+		const PainterBudget budget;
+		segments.Add(before, PainterSegment{ 0, 2 }, budget);
+		const uint32_t firstHalf = segments.Add(sheet, PainterSegment{ 0, split }, budget);
+		const uint32_t secondHalf = segments.Add(sheet, PainterSegment{ split, static_cast<uint32_t>(commands.size()) - split }, budget);
+		VulkanPainter& painterPass = gpu.GetPainterPass();
+		painterPass.Upload(segments);
+
+		const vk::Format format = vk::Format::eR8G8B8A8Unorm;
+		const vk::Extent2D extent{ width, height };
+		const PaintedImage segmented = gpu.RenderInto(format, extent, background, [&](vk::CommandBuffer commandBuffer)
+			{
+				painterPass.DrawSegment(commandBuffer, segments, firstHalf, format, extent);
+				painterPass.DrawSegment(commandBuffer, segments, secondHalf, format, extent);
+			});
+		SaveForLooking(segmented, "PainterTestSheetSegments.png");
+
+		// Blending the halves one after the other rounds in between, so allow the tolerance.
+		size_t differentPixels = 0;
+		for (uint32_t y = 0; y < height; ++y)
+		{
+			for (uint32_t x = 0; x < width; ++x)
+			{
+				const glm::vec4 difference = glm::abs(canvas.At(x, y) - segmented.At(x, y));
+				if (std::max({ difference.r, difference.g, difference.b, difference.a }) > Tolerance)
+				{
+					++differentPixels;
+				}
+			}
+		}
+		Require(differentPixels == 0, "The test sheet drawn as two segments should match the canvas, " + std::to_string(differentPixels) + " pixels differ");
+		Require(segments.GetProblems().empty(), "The test sheet's segments should bin without problems");
+	}
+
 	void TestTargetFollowsThePainterSize(GpuPainter& gpu)
 	{
 		Painter painter = StartFrame(32, 16);
@@ -746,7 +1012,9 @@ int main()
 			TestTextMatchesTheFontAtlas(gpu, fonts);
 			TestTextCastsNoBoxShadow(gpu, fonts);
 			TestTestSheetPaints(gpu, fonts);
+			TestTestSheetAsSegmentsMatchesTheCanvas(gpu, fonts);
 		}
+		TestSegmentsDrawInOrderWithOtherDrawing(gpu);
 	}
 	catch (const std::exception& error)
 	{

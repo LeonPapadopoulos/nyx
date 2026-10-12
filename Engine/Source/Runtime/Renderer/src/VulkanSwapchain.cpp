@@ -153,6 +153,10 @@ namespace Nyx
 		subpass.colorAttachmentCount = 1;
 		subpass.pColorAttachments = &colorRef;
 
+		// The same single dependency as ImGui's backend gives its OS windows' render passes. Keep
+		// it so: painter segments run in both with one pipeline per format, and a render pass is
+		// only compatible with a pipeline's when the dependencies match too
+		// (VulkanPainter::GetSegmentPipeline()).
 		vk::SubpassDependency dependency{};
 		dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
 		dependency.dstSubpass = 0;
