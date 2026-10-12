@@ -21,6 +21,8 @@ namespace Nyx
 		ImTextureID GetImGuiTextureId() const { return ImGuiTextureId; }
 		vk::Extent2D GetExtent() const { return Extent; }
 		vk::Format GetFormat() const { return Format; }
+		// The rendered picture, in ShaderReadOnlyOptimal layout after the render pass, e.g. to blur
+		vk::ImageView GetImageView() const { return *ImageView; }
 		vk::raii::RenderPass& GetRenderPass() { return RenderPass; }
 		const vk::raii::RenderPass& GetRenderPass() const { return RenderPass; };
 

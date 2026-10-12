@@ -1,6 +1,7 @@
 #pragma once
 
 #include "VulkanViewportTarget.h"
+#include "VulkanBlur.h"
 #include "EditorCamera.h"
 #include "SceneViewTypes.h"
 #include "Entity.h"
@@ -94,6 +95,16 @@ namespace Nyx
 
 		vk::raii::DescriptorPool OutlineDescriptorPool{ nullptr };
 		std::optional<vk::raii::DescriptorSets> OutlineDescriptorSets;
+
+		// -------------------------------------------------
+		// Blur: the picture blurred small, for glows and glass (VulkanBlur)
+		// -------------------------------------------------
+
+		Nyx::Engine::VulkanBlurTarget Blur;
+		// How ImGui shows it: a descriptor set made by ImGui's backend, pointed at the new image
+		// when the blur's images are made anew, so its ImTextureID never changes
+		VkDescriptorSet BlurImGuiTexture = VK_NULL_HANDLE;
+		vk::ImageView BlurImGuiTextureView;
 
 		// -------------------------------------------------
 		// --

@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <vector>
 
 struct GLFWwindow;
 
@@ -92,7 +93,19 @@ namespace Nyx
 		virtual void SetSceneViewSize(uint64_t id, uint32_t width, uint32_t height) = 0;
 
 		virtual ImTextureID GetSceneViewTextureId(uint64_t id) const = 0;
+		virtual Extent2D GetSceneViewExtent(uint64_t id) const = 0;
 		virtual bool WasSceneViewRecreatedThisFrame(uint64_t id) const = 0;
+
+		// The scene view's picture blurred small, about 1/16 of its size (VulkanBlur), for glows
+		// and glass (Design/ui-painter.md, stage 3). What ImGui::Image() and AddImage() take: it
+		// stays the same when the view changes size, and is invalid before the view's first frame.
+		virtual ImTextureID GetSceneViewBlurTextureId(uint64_t id) const = 0;
+		virtual Extent2D GetSceneViewBlurExtent(uint64_t id) const = 0;
+		// How long blurring all scene views took on the GPU, in milliseconds, as of the last frame
+		// whose times are back; negative where the GPU can't time it
+		virtual float GetBlurMilliseconds() const = 0;
+		// The scene views there are, oldest first, e.g. for debug windows to choose from
+		virtual std::vector<uint64_t> GetSceneViewIds() const = 0;
 
 		// Painter canvases: images that 2D shapes recorded with a Painter are drawn into, to be
 		// shown with ImGui::Image() (Design/ui-painter.md).

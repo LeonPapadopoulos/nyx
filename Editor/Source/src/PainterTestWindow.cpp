@@ -139,6 +139,11 @@ namespace Nyx::Editor
 				DrawWidgetsTab(renderer);
 				ImGui::EndTabItem();
 			}
+			if (NYX_UI(ImGui::BeginTabItem("Blur")))
+			{
+				DrawBlurTab(renderer);
+				ImGui::EndTabItem();
+			}
 			ImGui::EndTabBar();
 		}
 
@@ -278,6 +283,93 @@ namespace Nyx::Editor
 			}
 		}
 		ImGui::EndChild();
+	}
+
+	void PainterTestWindow::DrawBlurTab(Nyx::IRenderer& renderer)
+	{
+		const std::vector<uint64_t> views = renderer.GetSceneViewIds();
+		if (views.empty())
+		{
+			NYX_UI(ImGui::TextDisabled("No scene view to blur"));
+			return;
+		}
+		// Each view by its number and size; until one is chosen, the largest, which is the one on show
+		const auto viewName = [&](size_t index)
+		{
+			const Nyx::Extent2D size = renderer.GetSceneViewExtent(views[index]);
+			return "Scene view " + std::to_string(index + 1) + ", " + std::to_string(size.Width) + " x " + std::to_string(size.Height);
+		};
+		if (!bBlurViewChosen)
+		{
+			const auto area = [&](size_t index)
+			{
+				const Nyx::Extent2D size = renderer.GetSceneViewExtent(views[index]);
+				return static_cast<uint64_t>(size.Width) * size.Height;
+			};
+			BlurViewIndex = 0;
+			for (size_t index = 1; index < views.size(); ++index)
+			{
+				BlurViewIndex = area(index) > area(BlurViewIndex) ? index : BlurViewIndex;
+			}
+		}
+		BlurViewIndex = std::min(BlurViewIndex, views.size() - 1);
+		const uint64_t view = views[BlurViewIndex];
+
+		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16.0f);
+		if (NYX_UI(ImGui::BeginCombo("##BlurView", viewName(BlurViewIndex).c_str())))
+		{
+			for (size_t index = 0; index < views.size(); ++index)
+			{
+				if (NYX_UI(ImGui::Selectable(viewName(index).c_str(), index == BlurViewIndex)))
+				{
+					BlurViewIndex = index;
+					bBlurViewChosen = true;
+				}
+			}
+			ImGui::EndCombo();
+		}
+
+		// The time is the GPU's, for every scene view's blur together, a frame or two ago.
+		ImGui::SameLine();
+		const Nyx::Extent2D blurSize = renderer.GetSceneViewBlurExtent(view);
+		const float milliseconds = renderer.GetBlurMilliseconds();
+		if (milliseconds >= 0.0f)
+		{
+			NYX_UI(ImGui::Text("Blurred to %u x %u   All scene views' blurs: %.3f ms on the GPU", blurSize.Width, blurSize.Height, milliseconds));
+		}
+		else
+		{
+			NYX_UI(ImGui::Text("Blurred to %u x %u   (this GPU can't time it)", blurSize.Width, blurSize.Height));
+		}
+
+		const ImTextureID picture = renderer.GetSceneViewTextureId(view);
+		const ImTextureID blurred = renderer.GetSceneViewBlurTextureId(view);
+		if (picture == ImTextureID{} || picture == ImTextureID_Invalid || blurred == ImTextureID_Invalid || blurSize.Width == 0)
+		{
+			NYX_UI(ImGui::TextDisabled("The scene view hasn't been drawn yet"));
+			return;
+		}
+
+		// The picture, its blur as ImGui shows it, and the blur painted, as glows and glass will
+		// sample it: three side by side, as wide as fits
+		const float spacing = ImGui::GetStyle().ItemSpacing.x;
+		const float width = std::floor((ImGui::GetContentRegionAvail().x - spacing * 2.0f) / 3.0f);
+		const glm::vec2 size(width, std::floor(width * static_cast<float>(blurSize.Height) / static_cast<float>(blurSize.Width)));
+		const auto column = [&](const char* caption, const auto& draw)
+		{
+			ImGui::BeginGroup();
+			NYX_UI(ImGui::TextDisabled("%s", caption));
+			draw();
+			ImGui::EndGroup();
+		};
+		column("Scene view", [&]() { NYX_UI(ImGui::Image(picture, ImVec2(size.x, size.y))); });
+		ImGui::SameLine();
+		column("Blurred, by ImGui", [&]() { NYX_UI(ImGui::Image(blurred, ImVec2(size.x, size.y))); });
+		ImGui::SameLine();
+		column("Blurred, painted", [&]()
+			{
+				Nyx::UI::GetWindowPainter().AddImage(ImTextureRef(blurred), ReserveCell(size), PainterStyle::Filled(glm::vec4(1.0f)));
+			});
 	}
 
 	void PainterTestWindow::SaveGalleryPng(Nyx::IRenderer& renderer)

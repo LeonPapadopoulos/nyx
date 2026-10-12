@@ -2,6 +2,7 @@
 // checks them. Needs a Vulkan device; the window it creates for that stays hidden.
 #include "Painter.h"
 #include "PainterTestSheet.h"
+#include "VulkanBlur.h"
 #include "VulkanContext.h"
 #include "VulkanPainter.h"
 
@@ -115,6 +116,7 @@ namespace
 			}
 			Context.Initialize("NyxPainterGpuTests", Window);
 			PainterPass.Initialize(Context);
+			BlurPass.Initialize(Context);
 
 			// Texture sets for the tests' own textures, as ImGui's backend makes them for its own
 			const vk::DescriptorPoolSize poolSize{ vk::DescriptorType::eCombinedImageSampler, 16 };
@@ -132,6 +134,7 @@ namespace
 			Textures.clear();
 			TexturePool = nullptr;
 			Target.Release();
+			BlurPass.Shutdown();
 			PainterPass.Shutdown();
 			Context.Shutdown();
 			glfwDestroyWindow(Window);
@@ -280,6 +283,36 @@ namespace
 
 		const VulkanPainterTarget& GetTarget() const { return Target; }
 		VulkanPainter& GetPainterPass() { return PainterPass; }
+
+		// The view of the texture CreateTexture() made last, e.g. to blur it
+		vk::ImageView GetLastTextureView() const { return *Textures.back().View; }
+
+		// Blurs `source` into `target`, waits for the GPU, and reads the blurred image back
+		PaintedImage Blur(vk::ImageView source, vk::Extent2D sourceExtent, VulkanBlurTarget& target, const BlurOptions& options = BlurOptions{})
+		{
+			vk::CommandBufferAllocateInfo allocInfo{};
+			allocInfo.commandPool = *Context.GetGraphicsCommandPool();
+			allocInfo.level = vk::CommandBufferLevel::ePrimary;
+			allocInfo.commandBufferCount = 1;
+			vk::raii::CommandBuffer commandBuffer = std::move(vk::raii::CommandBuffers(Context.GetDevice(), allocInfo).front());
+			commandBuffer.begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
+
+			BlurPass.Blur(commandBuffer, source, sourceExtent, target, options);
+
+			// The blur leaves its image ready to be sampled; copying needs it as a transfer source.
+			vk::ImageMemoryBarrier toTransfer{};
+			toTransfer.srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
+			toTransfer.dstAccessMask = vk::AccessFlagBits::eTransferRead;
+			toTransfer.oldLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+			toTransfer.newLayout = vk::ImageLayout::eTransferSrcOptimal;
+			toTransfer.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			toTransfer.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			toTransfer.image = target.GetImage();
+			toTransfer.subresourceRange = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
+			commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, toTransfer);
+
+			return SubmitAndReadBack(commandBuffer, target.GetImage(), target.GetExtent(), false);
+		}
 
 		// A texture made from RGBA8 pixels, row by row, with a descriptor set like ImGui's; returns
 		// what AddImage() and ImGui::Image() take. Nearest filtering, so tests can tell texels apart.
@@ -472,6 +505,7 @@ namespace
 		GLFWwindow* Window = nullptr;
 		Nyx::VulkanContext Context;
 		VulkanPainter PainterPass;
+		VulkanBlur BlurPass;
 		VulkanPainterTarget Target;
 	};
 
@@ -977,6 +1011,88 @@ namespace
 		Require(segments.GetProblems().empty(), "The test sheet's segments should bin without problems");
 	}
 
+	// The blur chain (VulkanBlur)
+
+	// An RGBA image `width` x `height` with `color(x, y)`, 0 to 255 per channel
+	template<typename TColor>
+	std::vector<uint8_t> MakePixels(uint32_t width, uint32_t height, TColor&& color)
+	{
+		std::vector<uint8_t> pixels;
+		for (uint32_t y = 0; y < height; ++y)
+		{
+			for (uint32_t x = 0; x < width; ++x)
+			{
+				const glm::vec4 value = color(x, y);
+				for (int channel = 0; channel < 4; ++channel)
+				{
+					pixels.push_back(static_cast<uint8_t>(std::lround(value[channel] * 255.0f)));
+				}
+			}
+		}
+		return pixels;
+	}
+
+	void TestBlurKeepsAFlatImageFlat(GpuPainter& gpu)
+	{
+		const glm::vec4 gray{ 0.4f, 0.5f, 0.6f, 1.0f };
+		gpu.CreateTexture(64, 64, MakePixels(64, 64, [&](uint32_t, uint32_t) { return gray; }));
+		VulkanBlurTarget target;
+		const PaintedImage blurred = gpu.Blur(gpu.GetLastTextureView(), vk::Extent2D{ 64, 64 }, target);
+
+		Require(blurred.Width == 4 && blurred.Height == 4, "Four halvings should make 64 pixels 4");
+		for (uint32_t y = 0; y < blurred.Height; ++y)
+		{
+			for (uint32_t x = 0; x < blurred.Width; ++x)
+			{
+				blurred.RequirePixel(x, y, gray, "A flat image should stay flat when blurred");
+			}
+		}
+		target.Release();
+	}
+
+	void TestBlurSmoothsAnEdge(GpuPainter& gpu)
+	{
+		// White on the left half, black on the right
+		gpu.CreateTexture(64, 64, MakePixels(64, 64, [](uint32_t x, uint32_t) { return x < 32 ? White : Black; }));
+		VulkanBlurTarget target;
+		const PaintedImage blurred = gpu.Blur(gpu.GetLastTextureView(), vk::Extent2D{ 64, 64 }, target);
+		SaveForLooking(blurred, "Blur.png");
+
+		float sum = 0.0f;
+		for (uint32_t y = 0; y < blurred.Height; ++y)
+		{
+			for (uint32_t x = 0; x < blurred.Width; ++x)
+			{
+				const float value = blurred.At(x, y).r;
+				sum += value;
+				Require(std::abs(value - blurred.At(x, 0).r) <= Tolerance, "An edge along y should blur the same in every row");
+				if (x > 0)
+				{
+					Require(value < blurred.At(x - 1, y).r, "Across the edge, each pixel should be darker than the one left of it");
+				}
+			}
+		}
+		Require(blurred.At(0, 0).r > 0.6f && blurred.At(3, 0).r < 0.4f, "The edge should be smoothed, not flattened");
+		const float mean = sum / static_cast<float>(blurred.Width * blurred.Height);
+		Require(std::abs(mean - 0.5f) <= Tolerance, "Blurring shouldn't brighten or darken the image, the mean is " + std::to_string(mean));
+		target.Release();
+	}
+
+	void TestBlurFollowsTheSourceAndOptions(GpuPainter& gpu)
+	{
+		gpu.CreateTexture(32, 16, MakePixels(32, 16, [](uint32_t, uint32_t) { return White; }));
+		VulkanBlurTarget target;
+		const PaintedImage sixteenth = gpu.Blur(gpu.GetLastTextureView(), vk::Extent2D{ 32, 16 }, target);
+		Require(sixteenth.Width == 2 && sixteenth.Height == 1, "A 32x16 source should blur to 2x1");
+
+		BlurOptions twoHalvings;
+		twoHalvings.Downsamples = 2;
+		const PaintedImage quarter = gpu.Blur(gpu.GetLastTextureView(), vk::Extent2D{ 32, 16 }, target, twoHalvings);
+		Require(quarter.Width == 8 && quarter.Height == 4, "Two halvings should make the same source 8x4");
+		quarter.RequirePixel(7, 3, White, "A white image should stay white");
+		target.Release();
+	}
+
 	void TestTargetFollowsThePainterSize(GpuPainter& gpu)
 	{
 		Painter painter = StartFrame(32, 16);
@@ -1015,6 +1131,10 @@ int main()
 			TestTestSheetAsSegmentsMatchesTheCanvas(gpu, fonts);
 		}
 		TestSegmentsDrawInOrderWithOtherDrawing(gpu);
+
+		TestBlurKeepsAFlatImageFlat(gpu);
+		TestBlurSmoothsAnEdge(gpu);
+		TestBlurFollowsTheSourceAndOptions(gpu);
 	}
 	catch (const std::exception& error)
 	{

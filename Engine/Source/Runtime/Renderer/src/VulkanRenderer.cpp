@@ -331,6 +331,10 @@ namespace Nyx
 		PainterPass.Initialize(Context);
 		Nyx::UI::WindowPainter::SetSegmentDrawer(&VulkanRenderer::DrawWindowSegment, this);
 
+		// The scene views' pictures, blurred small, for glows and glass
+		BlurPass.Initialize(Context);
+		CreateBlurTimestamps();
+
 		// Shared materials
 		CreateMaterials();
 
@@ -363,9 +367,12 @@ namespace Nyx
 			view.SkyboxUniformBuffer = nullptr;
 			view.SkyboxUniformBufferMemory = nullptr;
 
+			ReleaseSceneViewBlur(view);
 			view.RenderTarget.Shutdown(Context);
 		}
 		SceneViews.clear();
+		BlurTimestamps = nullptr;
+		BlurPass.Shutdown();
 
 		// Canvases need the ImGui backend to give back their ImGui textures. Other painter targets
 		// belong to their users, who release them before the renderer shuts down.
@@ -457,6 +464,7 @@ namespace Nyx
 		// The previous frame is done: its screenshot can be written, and the UI images destroyed
 		// during it are no longer shown.
 		FinishScreenshot();
+		ReadBlurTimestamps();
 		for (const std::unique_ptr<UIImage>& image : UIImagesToRelease)
 		{
 			ReleaseUIImage(*image);
@@ -613,6 +621,9 @@ namespace Nyx
 			}
 			view.RenderTarget.EndRenderPass(cmd);
 		}
+
+		// Each picture blurred small, before the UI is built, so that the UI shows this frame's
+		BlurSceneViews(cmd);
 
 		// ---------------------------------------------------------------------
 		// Render main swapchain / ImGui
@@ -3289,7 +3300,9 @@ namespace Nyx
 			DestroyPickingResourcesForView(*it);
 			DestroySelectionMaskResourcesForView(*it);
 
+			// Shutdown() waits for the GPU, so the blur's images are free after it.
 			it->RenderTarget.Shutdown(Context);
+			ReleaseSceneViewBlur(*it);
 
 			SceneViews.erase(it);
 			return;
@@ -3339,6 +3352,133 @@ namespace Nyx
 		}
 
 		return Extent2D{ 0, 0 };
+	}
+
+	ImTextureID VulkanRenderer::GetSceneViewBlurTextureId(uint64_t id) const
+	{
+		const SceneViewInstance* view = FindSceneView(id);
+		if (view == nullptr || view->BlurImGuiTexture == VK_NULL_HANDLE)
+		{
+			return ImTextureID_Invalid;
+		}
+		return reinterpret_cast<ImTextureID>(view->BlurImGuiTexture);
+	}
+
+	Extent2D VulkanRenderer::GetSceneViewBlurExtent(uint64_t id) const
+	{
+		if (const SceneViewInstance* view = FindSceneView(id))
+		{
+			const vk::Extent2D extent = view->Blur.GetExtent();
+			return Extent2D{ extent.width, extent.height };
+		}
+		return Extent2D{ 0, 0 };
+	}
+
+	std::vector<uint64_t> VulkanRenderer::GetSceneViewIds() const
+	{
+		std::vector<uint64_t> ids;
+		for (const SceneViewInstance& view : SceneViews)
+		{
+			ids.push_back(view.Id);
+		}
+		return ids;
+	}
+
+	void VulkanRenderer::BlurSceneViews(vk::raii::CommandBuffer& cmd)
+	{
+		// Timed from when the scene views are done to when the blurs are
+		if (*BlurTimestamps)
+		{
+			cmd.resetQueryPool(*BlurTimestamps, 0, 2);
+			cmd.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, *BlurTimestamps, 0);
+		}
+
+		for (SceneViewInstance& view : SceneViews)
+		{
+			const vk::ImageView picture = view.RenderTarget.GetImageView();
+			if (!picture)
+			{
+				continue;
+			}
+			BlurPass.Blur(cmd, picture, view.RenderTarget.GetExtent(), view.Blur, Nyx::Engine::BlurOptions{});
+
+			// ImGui's texture for the blur points at its image: a new texture the first time, and
+			// the same texture pointed at the new image when the view's size changed.
+			const vk::ImageView blurred = view.Blur.GetImageView();
+			if (!blurred || blurred == view.BlurImGuiTextureView)
+			{
+				continue;
+			}
+			if (view.BlurImGuiTexture == VK_NULL_HANDLE)
+			{
+				view.BlurImGuiTexture = ImGui_ImplVulkan_AddTexture(*BlurPass.GetSampler(), blurred, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			}
+			else
+			{
+				// The previous frame has finished (InFlightFence), and ImGui records this frame's
+				// use of the set only after this, so the set can change now.
+				vk::DescriptorImageInfo imageInfo{ *BlurPass.GetSampler(), blurred, vk::ImageLayout::eShaderReadOnlyOptimal };
+				vk::WriteDescriptorSet write{};
+				write.dstSet = view.BlurImGuiTexture;
+				write.dstBinding = 0;
+				write.descriptorCount = 1;
+				write.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+				write.pImageInfo = &imageInfo;
+				Context.GetDevice().updateDescriptorSets(write, {});
+			}
+			view.BlurImGuiTextureView = blurred;
+		}
+
+		if (*BlurTimestamps)
+		{
+			cmd.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, *BlurTimestamps, 1);
+			bBlurTimestampsWritten = true;
+		}
+	}
+
+	void VulkanRenderer::ReleaseSceneViewBlur(SceneViewInstance& view)
+	{
+		if (view.BlurImGuiTexture != VK_NULL_HANDLE)
+		{
+			ImGui_ImplVulkan_RemoveTexture(view.BlurImGuiTexture);
+			view.BlurImGuiTexture = VK_NULL_HANDLE;
+		}
+		view.BlurImGuiTextureView = vk::ImageView{};
+		view.Blur.Release();
+	}
+
+	void VulkanRenderer::CreateBlurTimestamps()
+	{
+		// Not every queue can write timestamps; without them, the blur just isn't timed.
+		const std::vector<vk::QueueFamilyProperties> families = Context.GetPhysicalDevice().getQueueFamilyProperties();
+		const uint32_t family = Context.GetGraphicsQueueFamily();
+		if (family >= families.size() || families[family].timestampValidBits == 0)
+		{
+			return;
+		}
+
+		vk::QueryPoolCreateInfo queryInfo{};
+		queryInfo.queryType = vk::QueryType::eTimestamp;
+		queryInfo.queryCount = 2;
+		BlurTimestamps = vk::raii::QueryPool(Context.GetDevice(), queryInfo);
+	}
+
+	void VulkanRenderer::ReadBlurTimestamps()
+	{
+		if (!*BlurTimestamps || !bBlurTimestampsWritten)
+		{
+			return;
+		}
+
+		// The frame that wrote them is done, so they are there.
+		const auto [result, ticks] = BlurTimestamps.getResults<uint64_t>(0, 2, 2 * sizeof(uint64_t), sizeof(uint64_t), vk::QueryResultFlagBits::e64);
+		if (result != vk::Result::eSuccess || ticks.size() != 2)
+		{
+			return;
+		}
+		const double nanosecondsPerTick = Context.GetPhysicalDevice().getProperties().limits.timestampPeriod;
+		BlurMilliseconds = static_cast<float>(static_cast<double>(ticks[1] - ticks[0]) * nanosecondsPerTick / 1.0e6);
+		bBlurTimestampsWritten = false;
 	}
 
 	bool VulkanRenderer::WasSceneViewRecreatedThisFrame(uint64_t id) const

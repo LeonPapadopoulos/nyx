@@ -83,6 +83,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/UITheme.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/UIWidgets.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ImageFile.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanBlur.cpp
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/src/ReflectionUtils.cpp
@@ -166,6 +167,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/UITheme.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/UIWidgets.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ImageFile.h
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanBlur.h
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionTypes.h

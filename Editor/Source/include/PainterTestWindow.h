@@ -27,6 +27,8 @@ namespace Nyx::Editor
 	//  - Widgets, the UI gallery: each painted widget (UIWidgets.h) in every state, forced, then
 	//    the live widget and ImGui's counterpart beside it, at 100% and 150% font size. It is
 	//    where widgets are designed (stage 2, change 5).
+	//  - Blur: a scene view's picture beside its blur (VulkanBlur), as ImGui shows it and painted,
+	//    with the time all blurs take on the GPU (stage 3, change 1).
 	class PainterTestWindow
 	{
 	public:
@@ -42,6 +44,8 @@ namespace Nyx::Editor
 		void DrawCanvasTab(Nyx::IRenderer& renderer);
 		void DrawInWindowTab(Nyx::IRenderer& renderer);
 		void DrawWidgetsTab(Nyx::IRenderer& renderer);
+		// A scene view's picture beside its blur, shown by ImGui and painted, with the blur's GPU time
+		void DrawBlurTab(Nyx::IRenderer& renderer);
 		void DrawWidgetGalleryTable();
 		// Saves the gallery as a PNG file in Saved/Gallery, named by the time
 		void SaveGalleryPng(Nyx::IRenderer& renderer);
@@ -77,6 +81,11 @@ namespace Nyx::Editor
 		ImVec2 GalleryMax;
 		bool bGalleryInMainWindow = false;
 		std::string GalleryMessage;
+
+		// The scene view the Blur tab shows, an index into the renderer's scene views; the largest
+		// until one is chosen
+		size_t BlurViewIndex = 0;
+		bool bBlurViewChosen = false;
 	};
 
 	// Draws a painter's recorded frame with ImGui's ImDrawList instead, for comparison: shapes

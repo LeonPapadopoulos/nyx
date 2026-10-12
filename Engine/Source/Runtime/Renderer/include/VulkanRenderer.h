@@ -6,6 +6,7 @@
 #include "OffscreenRenderTarget.h"
 #include "VulkanViewportTarget.h"
 #include "VulkanPainter.h"
+#include "VulkanBlur.h"
 #include "Painter.h"
 #include "WindowPainter.h"
 #include "Mesh.h"
@@ -265,7 +266,7 @@ namespace Nyx
 		const std::string& GetScreenshotMessage() const override { return ScreenshotMessage; }
 
 		ImTextureID GetSceneViewTextureId(uint64_t id) const override;
-		Extent2D GetSceneViewExtent(uint64_t id) const;
+		Extent2D GetSceneViewExtent(uint64_t id) const override;
 
 		SceneViewInstance* FindEditorInputTargetView();
 		void TickActiveEditorSceneViewFromInput(float deltaTime);
@@ -392,6 +393,11 @@ namespace Nyx
 
 		bool WasSceneViewRecreatedThisFrame(uint64_t id) const override;
 
+		ImTextureID GetSceneViewBlurTextureId(uint64_t id) const override;
+		Extent2D GetSceneViewBlurExtent(uint64_t id) const override;
+		float GetBlurMilliseconds() const override { return BlurMilliseconds; }
+		std::vector<uint64_t> GetSceneViewIds() const override;
+
 		SceneViewInstance* FindSceneView(uint64_t id);
 		const SceneViewInstance* FindSceneView(uint64_t id) const;
 
@@ -439,6 +445,19 @@ namespace Nyx
 		VulkanSwapchain Swapchain;
 
 		Nyx::Engine::VulkanPainter PainterPass;
+
+		// Blurs every scene view's picture after it renders (Design/ui-painter.md, stage 3, change 1)
+		Nyx::Engine::VulkanBlur BlurPass;
+		void BlurSceneViews(vk::raii::CommandBuffer& cmd);
+		void ReleaseSceneViewBlur(SceneViewInstance& view);
+
+		// GPU timestamps around the blurs: written in a frame, read once its fence is signalled.
+		// Null where the graphics queue can't write timestamps.
+		vk::raii::QueryPool BlurTimestamps{ nullptr };
+		bool bBlurTimestampsWritten = false;
+		float BlurMilliseconds = -1.0f;
+		void CreateBlurTimestamps();
+		void ReadBlurTimestamps();
 
 		// An image for 2D shapes, shown with ImGui::Image() (CreatePainterCanvas())
 		struct PainterCanvas
