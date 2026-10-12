@@ -379,9 +379,10 @@ namespace Nyx::Engine
 		for (size_t slot = 0; slot < textures.size() && slot < textureSets.size(); ++slot)
 		{
 			// With ImGui's Vulkan backend, a texture's ImTextureID is its descriptor set. The font
-			// atlas has none until ImGui first uploads it; its glyphs then stay invisible.
+			// atlas has none until ImGui first uploads it (ImTextureID_Invalid, -1 since ImGui
+			// 1.92.7), and 0 would be a null set; either way the glyphs or image stay invisible.
 			const ImTextureID textureId = textures[slot].GetTexID();
-			if (textureId != ImTextureID_Invalid)
+			if (textureId != ImTextureID_Invalid && textureId != 0)
 			{
 				textureSets[slot] = vk::DescriptorSet(reinterpret_cast<VkDescriptorSet>(textureId));
 			}

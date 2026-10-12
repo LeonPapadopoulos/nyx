@@ -55,6 +55,9 @@ namespace Nyx::Engine
 		uint32_t TileEntries = 0;
 		uint32_t MaxCommandsPerTile = 0;
 
+		// How long BinPainterCommands() took, on the CPU
+		float BinningMilliseconds = 0.0f;
+
 		// For the statistics in the Painter Test window: 0 when no tile is in use
 		float GetAverageCommandsPerTileInUse() const
 		{

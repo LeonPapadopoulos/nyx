@@ -5,6 +5,7 @@
 #include "SceneViewTypes.h"
 #include "SceneViewCameraData.h"
 #include "Extent2D.h"
+#include "PainterDrawOptions.h"
 #include <imgui.h>
 #include "glm/glm.hpp"
 
@@ -23,6 +24,7 @@ namespace Nyx
 	namespace Engine
 	{
 		class Registry;
+		class Painter;
 	}
 }
 
@@ -88,6 +90,24 @@ namespace Nyx
 
 		virtual ImTextureID GetSceneViewTextureId(uint64_t id) const = 0;
 		virtual bool WasSceneViewRecreatedThisFrame(uint64_t id) const = 0;
+
+		// Painter canvases: images that 2D shapes recorded with a Painter are drawn into, to be
+		// shown with ImGui::Image() (Design/ui-painter.md).
+		virtual uint64_t CreatePainterCanvas() = 0;
+		virtual void DestroyPainterCanvas(uint64_t id) = 0;
+
+		// Hands over the canvas' shapes for this frame; the canvas takes the painter's size. Call
+		// it while building the UI: the renderer draws canvases after the UI is built and before
+		// ImGui renders, so an ImGui::Image() of the canvas shows this frame's shapes. A canvas
+		// without a submission keeps its last image.
+		virtual void SubmitPainterCanvas(uint64_t id, const Nyx::Engine::Painter& painter, const Nyx::Engine::PainterDrawOptions& options) = 0;
+
+		// What ImGui::Image() takes to show the canvas. It stays the same when the canvas changes
+		// size, and is invalid until the canvas is first drawn.
+		virtual ImTextureID GetPainterCanvasTextureId(uint64_t id) const = 0;
+
+		// The last drawn frame's tiles, with its statistics and problems; null before the first draw
+		virtual const Nyx::Engine::PainterTiles* GetPainterCanvasTiles(uint64_t id) const = 0;
 
 		// temporary demo-asset accessors
 		virtual Nyx::Mesh* GetCubeMesh() = 0;

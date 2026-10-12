@@ -8,6 +8,7 @@ set(NYX_EDITOR_SOURCES
     src/SceneOutlinerPanel.cpp
     src/DetailsPanel.cpp
     src/SceneViewPanel.cpp
+    src/PainterTestWindow.cpp
     src/SceneFilePopups.cpp
     src/PreferencesWindow.cpp
     src/PlaySession.cpp
@@ -53,6 +54,7 @@ set(NYX_EDITOR_HEADERS
     include/SceneOutlinerPanel.h
     include/DetailsPanel.h
     include/SceneViewPanel.h
+    include/PainterTestWindow.h
     include/SceneFilePopups.h
     include/PreferencesWindow.h
     include/PlaySession.h

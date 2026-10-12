@@ -6,6 +6,7 @@
 #include "OffscreenRenderTarget.h"
 #include "VulkanViewportTarget.h"
 #include "VulkanPainter.h"
+#include "Painter.h"
 #include "Mesh.h"
 #include "Texture.h"
 #include "CubemapTexture.h"
@@ -248,6 +249,12 @@ namespace Nyx
 		// Draws 2D shapes recorded with a Painter into a VulkanPainterTarget (Design/ui-painter.md)
 		Nyx::Engine::VulkanPainter& GetPainterPass() { return PainterPass; }
 
+		uint64_t CreatePainterCanvas() override;
+		void DestroyPainterCanvas(uint64_t id) override;
+		void SubmitPainterCanvas(uint64_t id, const Nyx::Engine::Painter& painter, const Nyx::Engine::PainterDrawOptions& options) override;
+		ImTextureID GetPainterCanvasTextureId(uint64_t id) const override;
+		const Nyx::Engine::PainterTiles* GetPainterCanvasTiles(uint64_t id) const override;
+
 		ImTextureID GetSceneViewTextureId(uint64_t id) const override;
 		Extent2D GetSceneViewExtent(uint64_t id) const;
 
@@ -423,6 +430,34 @@ namespace Nyx
 		VulkanSwapchain Swapchain;
 
 		Nyx::Engine::VulkanPainter PainterPass;
+
+		// An image for 2D shapes, shown with ImGui::Image() (CreatePainterCanvas())
+		struct PainterCanvas
+		{
+			uint64_t Id = 0;
+			Nyx::Engine::VulkanPainterTarget Target;
+
+			// This frame's shapes, copied from SubmitPainterCanvas(); drawn once, then cleared
+			Nyx::Engine::Painter Frame;
+			Nyx::Engine::PainterDrawOptions Options;
+			bool bSubmitted = false;
+
+			// How ImGui shows the canvas: a descriptor set made by ImGui's backend. It is pointed
+			// at the new image when the target is recreated, so its ImTextureID never changes.
+			vk::raii::Sampler Sampler{ nullptr };
+			VkDescriptorSet ImGuiTexture = VK_NULL_HANDLE;
+			vk::ImageView ImGuiTextureView;
+		};
+
+		// Draws the canvases submitted this frame, before ImGui renders
+		void DrawPainterCanvases(vk::raii::CommandBuffer& cmd);
+		void ReleasePainterCanvas(PainterCanvas& canvas);
+		PainterCanvas* FindPainterCanvas(uint64_t id);
+		const PainterCanvas* FindPainterCanvas(uint64_t id) const;
+
+		// Pointers, so a canvas stays in place while others are added or removed
+		std::vector<std::unique_ptr<PainterCanvas>> PainterCanvases;
+		uint64_t NextPainterCanvasId = 1;
 
 		std::vector<std::unique_ptr<Nyx::Mesh>> LoadedMeshes;
 		std::vector<std::unique_ptr<Nyx::Texture>> LoadedTextures;

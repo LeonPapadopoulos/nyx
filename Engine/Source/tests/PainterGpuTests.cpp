@@ -1,6 +1,7 @@
 // The painter on a real GPU: paints small frames with VulkanPainter, reads the pixels back and
 // checks them. Needs a Vulkan device; the window it creates for that stays hidden.
 #include "Painter.h"
+#include "PainterTestSheet.h"
 #include "VulkanContext.h"
 #include "VulkanPainter.h"
 
@@ -8,10 +9,16 @@
 
 #include <imgui.h>
 
+// The PNG writer GLFW ships for its own tests, only to save images for looking at
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <stb_image_write.h>
+
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <filesystem>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -638,11 +645,70 @@ namespace
 		// The font atlas has no ImTextureID before ImGui first uploads it; nothing should show or break.
 		Painter painter = StartFrame();
 		painter.AddImage(ImTextureRef(ImTextureID_Invalid), PainterRect{ { 8, 8 }, { 24, 24 } }, PainterStyle::Filled(White));
+		// A null descriptor set, as an ImTextureID of 0 would be with ImGui's Vulkan backend
+		painter.AddImage(ImTextureRef(static_cast<ImTextureID>(0)), PainterRect{ { 8, 40 }, { 24, 56 } }, PainterStyle::Filled(White));
 		painter.AddRect(PainterRect{ { 40, 40 }, { 50, 50 } }, PainterStyle::Filled(White));
 		const PaintedImage image = gpu.Paint(painter);
 
 		image.RequirePixel(16, 16, Transparent, "An image without a texture yet");
+		image.RequirePixel(16, 48, Transparent, "An image with a null texture");
 		image.RequirePixel(45, 45, White, "A shape in the same frame");
+	}
+
+	// With the environment variable NYX_PAINTER_TEST_OUTPUT set to a folder, painted images are
+	// saved there as PNG files, to look at what the GPU painted.
+	void SaveForLooking(const PaintedImage& image, const std::string& fileName)
+	{
+		const char* folder = std::getenv("NYX_PAINTER_TEST_OUTPUT");
+		if (folder == nullptr || *folder == '\0')
+		{
+			return;
+		}
+		const std::filesystem::path path = std::filesystem::path(folder) / fileName;
+		const int stride = static_cast<int>(image.Width) * 4;
+		if (stbi_write_png(path.string().c_str(), static_cast<int>(image.Width), static_cast<int>(image.Height), 4, image.Bytes.data(), stride) == 0)
+		{
+			throw std::runtime_error("Couldn't write " + path.string());
+		}
+		std::cout << "Saved " << path.string() << "\n";
+	}
+
+	void TestTestSheetPaints(GpuPainter& gpu, const ImGuiFonts& fonts)
+	{
+		// The whole test sheet, as the Painter Test window shows it at 100%, on an opaque background
+		Painter painter = StartFrame(static_cast<uint32_t>(PainterTestSheetSize.x), static_cast<uint32_t>(PainterTestSheetSize.y));
+		DrawPainterTestSheet(painter, fonts.Font, fonts.Font->OwnerAtlas->TexRef);
+		painter.EndFrame();
+		gpu.UploadFontAtlas(*fonts.Font->OwnerAtlas);
+
+		PainterDrawOptions options;
+		options.ClearColor = glm::vec4(0.1f, 0.1f, 0.12f, 1.0f);
+		const PaintedImage image = gpu.Paint(painter, options);
+
+		Require(gpu.GetTarget().GetTiles().Problems.empty(), "The test sheet should paint without problems");
+		size_t paintedPixels = 0;
+		for (uint32_t y = 0; y < image.Height; ++y)
+		{
+			for (uint32_t x = 0; x < image.Width; ++x)
+			{
+				const glm::vec4 pixel = image.At(x, y);
+				Require(pixel.a > 1.0f - Tolerance, "An opaque background should stay opaque everywhere");
+				if (glm::length(glm::vec3(pixel) - glm::vec3(0.1f, 0.1f, 0.12f)) > 0.05f)
+				{
+					++paintedPixels;
+				}
+			}
+		}
+		Require(paintedPixels > image.Width * image.Height / 20, "The test sheet should cover a good part of its area, got " + std::to_string(paintedPixels) + " pixels");
+		SaveForLooking(image, "PainterTestSheet.png");
+
+		// The same sheet at 400%, its top left, to look at edges up close
+		painter = StartFrame(static_cast<uint32_t>(PainterTestSheetSize.x), static_cast<uint32_t>(PainterTestSheetSize.y));
+		painter.PushTransform(4.0f, { -560.0f, -40.0f });
+		DrawPainterTestSheet(painter, fonts.Font, fonts.Font->OwnerAtlas->TexRef);
+		painter.PopTransform();
+		gpu.UploadFontAtlas(*fonts.Font->OwnerAtlas);
+		SaveForLooking(gpu.Paint(painter, options), "PainterTestSheet400.png");
 	}
 
 	void TestTargetFollowsThePainterSize(GpuPainter& gpu)
@@ -679,6 +745,7 @@ int main()
 			const ImGuiFonts fonts;
 			TestTextMatchesTheFontAtlas(gpu, fonts);
 			TestTextCastsNoBoxShadow(gpu, fonts);
+			TestTestSheetPaints(gpu, fonts);
 		}
 	}
 	catch (const std::exception& error)

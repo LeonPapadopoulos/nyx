@@ -366,7 +366,13 @@ namespace Nyx
 		}
 		SceneViews.clear();
 
-		// Painter targets belong to their users, who release them before the renderer shuts down.
+		// Canvases need the ImGui backend to give back their ImGui textures. Other painter targets
+		// belong to their users, who release them before the renderer shuts down.
+		for (const std::unique_ptr<PainterCanvas>& canvas : PainterCanvases)
+		{
+			ReleasePainterCanvas(*canvas);
+		}
+		PainterCanvases.clear();
 		PainterPass.Shutdown();
 
 		if (ImGuiBackend)
@@ -596,14 +602,14 @@ namespace Nyx
 		renderPassInfo.clearValueCount = 1;
 		renderPassInfo.pClearValues = &clearValue;
 
+		// The UI is built before the render pass starts: painter canvases submitted while building
+		// it are drawn in between, outside any render pass, so ImGui shows them in this frame.
+		ImGuiBackend->BeginFrame();
+		buildUI();
+		DrawPainterCanvases(cmd);
+
 		cmd.beginRenderPass(renderPassInfo, vk::SubpassContents::eInline);
-
-		{
-			ImGuiBackend->BeginFrame();
-			buildUI();
-			ImGuiBackend->DrawFrame(cmd);
-		}
-
+		ImGuiBackend->DrawFrame(cmd);
 		cmd.endRenderPass();
 		cmd.end();
 
@@ -3303,6 +3309,140 @@ namespace Nyx
 		}
 
 		return false;
+	}
+
+	uint64_t VulkanRenderer::CreatePainterCanvas()
+	{
+		auto canvas = std::make_unique<PainterCanvas>();
+		canvas->Id = NextPainterCanvasId++;
+
+		// Nearest filtering: a canvas is shown at its own size, pixel for pixel, and should stay
+		// exactly as crisp as it was painted.
+		vk::SamplerCreateInfo samplerInfo{};
+		samplerInfo.magFilter = vk::Filter::eNearest;
+		samplerInfo.minFilter = vk::Filter::eNearest;
+		samplerInfo.addressModeU = vk::SamplerAddressMode::eClampToEdge;
+		samplerInfo.addressModeV = vk::SamplerAddressMode::eClampToEdge;
+		samplerInfo.addressModeW = vk::SamplerAddressMode::eClampToEdge;
+		canvas->Sampler = vk::raii::Sampler(Context.GetDevice(), samplerInfo);
+
+		const uint64_t id = canvas->Id;
+		PainterCanvases.push_back(std::move(canvas));
+		return id;
+	}
+
+	void VulkanRenderer::DestroyPainterCanvas(uint64_t id)
+	{
+		const auto found = std::find_if(PainterCanvases.begin(), PainterCanvases.end(), [id](const std::unique_ptr<PainterCanvas>& canvas)
+			{
+				return canvas->Id == id;
+			});
+		if (found == PainterCanvases.end())
+		{
+			return;
+		}
+
+		// The last frame may still be painting the canvas or showing it.
+		Context.GetDevice().waitIdle();
+		ReleasePainterCanvas(**found);
+		PainterCanvases.erase(found);
+	}
+
+	void VulkanRenderer::ReleasePainterCanvas(PainterCanvas& canvas)
+	{
+		if (canvas.ImGuiTexture != VK_NULL_HANDLE)
+		{
+			ImGui_ImplVulkan_RemoveTexture(canvas.ImGuiTexture);
+			canvas.ImGuiTexture = VK_NULL_HANDLE;
+			canvas.ImGuiTextureView = vk::ImageView{};
+		}
+		canvas.Target.Release();
+		canvas.Sampler = nullptr;
+	}
+
+	void VulkanRenderer::SubmitPainterCanvas(uint64_t id, const Nyx::Engine::Painter& painter, const Nyx::Engine::PainterDrawOptions& options)
+	{
+		if (PainterCanvas* canvas = FindPainterCanvas(id))
+		{
+			canvas->Frame = painter;
+			canvas->Options = options;
+			canvas->bSubmitted = true;
+		}
+	}
+
+	ImTextureID VulkanRenderer::GetPainterCanvasTextureId(uint64_t id) const
+	{
+		// ImGui's "no texture" is ImTextureID_Invalid, which is -1 since ImGui 1.92.7, not 0.
+		const PainterCanvas* canvas = FindPainterCanvas(id);
+		if (canvas == nullptr || canvas->ImGuiTexture == VK_NULL_HANDLE)
+		{
+			return ImTextureID_Invalid;
+		}
+		return reinterpret_cast<ImTextureID>(canvas->ImGuiTexture);
+	}
+
+	const Nyx::Engine::PainterTiles* VulkanRenderer::GetPainterCanvasTiles(uint64_t id) const
+	{
+		const PainterCanvas* canvas = FindPainterCanvas(id);
+		return canvas && canvas->Target.GetImage() ? &canvas->Target.GetTiles() : nullptr;
+	}
+
+	void VulkanRenderer::DrawPainterCanvases(vk::raii::CommandBuffer& cmd)
+	{
+		for (const std::unique_ptr<PainterCanvas>& canvasPointer : PainterCanvases)
+		{
+			PainterCanvas& canvas = *canvasPointer;
+			if (!canvas.bSubmitted)
+			{
+				continue;
+			}
+			canvas.bSubmitted = false;
+
+			PainterPass.Draw(cmd, canvas.Frame, canvas.Target, canvas.Options);
+
+			// ImGui's texture for the canvas points at the target's image: a new texture on the
+			// first draw, and the same texture pointed at the new image after a resize.
+			const vk::ImageView imageView = canvas.Target.GetImageView();
+			if (!imageView || imageView == canvas.ImGuiTextureView)
+			{
+				continue;
+			}
+			if (canvas.ImGuiTexture == VK_NULL_HANDLE)
+			{
+				canvas.ImGuiTexture = ImGui_ImplVulkan_AddTexture(*canvas.Sampler, imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			}
+			else
+			{
+				// The previous frame has finished (InFlightFence), and ImGui records this frame's
+				// use of the set only after this, so the set can change now.
+				vk::DescriptorImageInfo imageInfo{ *canvas.Sampler, imageView, vk::ImageLayout::eShaderReadOnlyOptimal };
+				vk::WriteDescriptorSet write{};
+				write.dstSet = canvas.ImGuiTexture;
+				write.dstBinding = 0;
+				write.descriptorCount = 1;
+				write.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+				write.pImageInfo = &imageInfo;
+				Context.GetDevice().updateDescriptorSets(write, {});
+			}
+			canvas.ImGuiTextureView = imageView;
+		}
+	}
+
+	VulkanRenderer::PainterCanvas* VulkanRenderer::FindPainterCanvas(uint64_t id)
+	{
+		for (const std::unique_ptr<PainterCanvas>& canvas : PainterCanvases)
+		{
+			if (canvas->Id == id)
+			{
+				return canvas.get();
+			}
+		}
+		return nullptr;
+	}
+
+	const VulkanRenderer::PainterCanvas* VulkanRenderer::FindPainterCanvas(uint64_t id) const
+	{
+		return const_cast<VulkanRenderer*>(this)->FindPainterCanvas(id);
 	}
 
 	SceneViewInstance* VulkanRenderer::FindSceneView(uint64_t id)

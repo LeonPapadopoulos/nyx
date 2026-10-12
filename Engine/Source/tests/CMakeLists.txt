@@ -54,6 +54,8 @@ add_test(NAME NyxPainterTests COMMAND NyxPainterTests)
 # Vulkan device; its window stays hidden.
 add_executable(NyxPainterGpuTests PainterGpuTests.cpp)
 target_link_libraries(NyxPainterGpuTests PRIVATE NyxEngine)
+# stb_image_write.h, which GLFW ships, saves painted images when NYX_PAINTER_TEST_OUTPUT is set.
+target_include_directories(NyxPainterGpuTests PRIVATE "${CMAKE_SOURCE_DIR}/Dependencies/glfw/deps")
 add_dependencies(NyxPainterGpuTests NyxGeneratedReflection)
 set_property(TARGET NyxPainterGpuTests PROPERTY FOLDER "Tests")
 nyx_copy_shaders_next_to(NyxPainterGpuTests)

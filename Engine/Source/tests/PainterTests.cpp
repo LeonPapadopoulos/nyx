@@ -1,6 +1,7 @@
 // The painter's CPU side: the commands and groups it records, its clip and transform stacks, the
 // problems it reports, and tile binning. No GPU is involved.
 #include "Painter.h"
+#include "PainterTestSheet.h"
 #include "PainterTiles.h"
 
 #include <algorithm>
@@ -754,6 +755,39 @@ namespace
 		Require(Near(GetShapeBounds(commands[0]), first.Rect), "An image's bounds should be its rect");
 	}
 
+	void TestTestSheetDrawsCleanly(const ImGuiFonts& fonts)
+	{
+		Painter painter;
+		painter.BeginFrame(static_cast<uint32_t>(PainterTestSheetSize.x), static_cast<uint32_t>(PainterTestSheetSize.y));
+		DrawPainterTestSheet(painter, fonts.Font, fonts.Font->OwnerAtlas->TexRef);
+		painter.EndFrame();
+
+		Require(painter.GetProblems().empty(), "The test sheet shouldn't report problems: " + (painter.GetProblems().empty() ? std::string() : painter.GetProblems()[0]));
+		Require(painter.GetCommands().size() > 100, "The test sheet should draw plenty of commands");
+		Require(painter.GetTextures().size() == 1, "The test sheet's text and images use the font atlas only");
+
+		bool bHasType[7] = {};
+		const PainterRect sheet{ { 0.0f, 0.0f }, PainterTestSheetSize };
+		for (const PainterCommand& command : painter.GetCommands())
+		{
+			bHasType[command.Type] = true;
+			const PainterRect bounds = GetShapeBounds(command);
+			Require(bounds.Min.x >= sheet.Min.x && bounds.Min.y >= sheet.Min.y && bounds.Max.x <= sheet.Max.x && bounds.Max.y <= sheet.Max.y,
+				"Every shape of the test sheet should lie inside PainterTestSheetSize");
+		}
+		for (int type = 0; type < 7; ++type)
+		{
+			Require(bHasType[type], "The test sheet should show every command type, missing type " + std::to_string(type));
+		}
+
+		PainterTiles tiles;
+		BinPainterCommands(painter, PainterBudget{}, tiles);
+		// Only the clipped text sample has glyphs that are culled: those wholly outside its clip rect.
+		Require(tiles.Problems.empty() && tiles.Stats.DroppedCommands == 0, "Every shape of the test sheet should be binned");
+		Require(tiles.Stats.CulledCommands > 0 && tiles.Stats.CulledCommands < 30, "Only the glyphs past the clip rect should be culled, got " + std::to_string(tiles.Stats.CulledCommands));
+		Require(tiles.Stats.BinningMilliseconds >= 0.0f, "Binning should time itself");
+	}
+
 	void TestTooManyTexturesAreDropped()
 	{
 		Painter painter;
@@ -806,6 +840,7 @@ int main()
 			TestTextMakesOneGlyphPerVisibleCharacter(fonts);
 			TestTextBreaksLines(fonts);
 			TestZoomedTextIsBakedAtItsSize(fonts);
+			TestTestSheetDrawsCleanly(fonts);
 		}
 	}
 	catch (const std::exception& error)

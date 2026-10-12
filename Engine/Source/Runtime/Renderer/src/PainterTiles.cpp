@@ -3,6 +3,7 @@
 #include "Painter.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <string>
 
@@ -211,6 +212,8 @@ namespace Nyx::Engine
 
 	void BinPainterCommands(const Painter& painter, const PainterBudget& budget, PainterTiles& inOutTiles)
 	{
+		const auto startTime = std::chrono::steady_clock::now();
+
 		const std::vector<PainterCommand>& commands = painter.GetCommands();
 		const uint32_t targetWidth = painter.GetTargetWidth();
 		const uint32_t targetHeight = painter.GetTargetHeight();
@@ -294,5 +297,8 @@ namespace Nyx::Engine
 					++written[tileIndex];
 				});
 		}
+
+		const std::chrono::duration<float, std::milli> binningTime = std::chrono::steady_clock::now() - startTime;
+		tiles.Stats.BinningMilliseconds = binningTime.count();
 	}
 }

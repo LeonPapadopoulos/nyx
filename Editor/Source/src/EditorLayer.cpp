@@ -106,6 +106,7 @@ namespace Nyx::Editor
 
 		MainSceneView.DestroyView();
 		SecondarySceneView.DestroyView();
+		PainterTest.Release();
 	}
 
 	void EditorLayer::OnUpdate(float /*deltaTime*/)
@@ -171,6 +172,7 @@ namespace Nyx::Editor
 		}
 
 		DebugTools.DrawWindows();
+		PainterTest.Draw(*Renderer);
 	}
 
 	void EditorLayer::DrawTitlebarMenu(float buttonHeight)
@@ -255,6 +257,9 @@ namespace Nyx::Editor
 		if (Nyx::UI::BeginPopup("##TitlebarDebugMenu"))
 		{
 			DebugTools.DrawMenu();
+			ImGui::Separator();
+			NYX_UI(ImGui::TextDisabled("Nyx"));
+			NYX_UI(ImGui::MenuItem("Painter Test", nullptr, &PainterTest.bOpen));
 			ImGui::EndPopup();
 		}
 
