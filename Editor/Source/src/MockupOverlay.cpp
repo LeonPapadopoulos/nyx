@@ -9,7 +9,6 @@
 
 #include <imgui.h>
 
-#include <cstring>
 
 namespace Nyx::Editor
 {
@@ -26,11 +25,11 @@ namespace Nyx::Editor
 		{
 			// The image: a path typed in, or chosen with Windows' Open dialog
 			ImGui::SetNextItemWidth(-ImGui::CalcTextSize("Load  Choose...").x - ImGui::GetStyle().ItemSpacing.x * 2.0f - ImGui::GetStyle().FramePadding.x * 4.0f);
-			const bool bEntered = NYX_UI(ImGui::InputTextWithHint("##MockupPath", "Path of a PNG or JPEG", PathInput, sizeof(PathInput), ImGuiInputTextFlags_EnterReturnsTrue));
+			const bool bEntered = NYX_UI(Nyx::UI::InputText("##MockupPath", &PathInput, ImGuiInputTextFlags_EnterReturnsTrue, "Path of a PNG or JPEG"));
 			ImGui::SameLine();
 			if (NYX_UI(Nyx::UI::Button("Load")) || bEntered)
 			{
-				Load(std::filesystem::path(std::u8string(reinterpret_cast<const char8_t*>(PathInput))));
+				Load(std::filesystem::path(std::u8string(reinterpret_cast<const char8_t*>(PathInput.c_str()))));
 			}
 			ImGui::SameLine();
 			if (NYX_UI(Nyx::UI::Button("Choose...")))
@@ -39,7 +38,7 @@ namespace Nyx::Editor
 				{
 					// ImGui's text is UTF-8.
 					const std::u8string utf8 = chosen->u8string();
-					std::strncpy(PathInput, reinterpret_cast<const char*>(utf8.c_str()), sizeof(PathInput) - 1);
+					PathInput.assign(reinterpret_cast<const char*>(utf8.c_str()));
 					Load(*chosen);
 				}
 			}
@@ -53,7 +52,10 @@ namespace Nyx::Editor
 				NYX_UI(Nyx::UI::SectionHeader("Placement"));
 				NYX_UI(Nyx::UI::Toggle("Show", &bShow));
 				NYX_UI(Nyx::UI::SliderFloat("Opacity", &Opacity, 0.0f, 1.0f, "%.2f"));
-				NYX_UI(ImGui::DragFloat2("Offset", &Offset.x, 1.0f, -8000.0f, 8000.0f, "%.0f px"));
+				if (NYX_UI(Nyx::UI::DragVector("Offset", &Offset.x, 2, 1.0f, "%.0f px")))
+				{
+					Offset = glm::clamp(Offset, glm::vec2(-8000.0f), glm::vec2(8000.0f));
+				}
 				NYX_UI(Nyx::UI::SliderFloat("Scale", &Scale, 0.1f, 4.0f, "%.2f"));
 
 				// Mockups are often drawn at 200%; these show them at the editor's size or their own.

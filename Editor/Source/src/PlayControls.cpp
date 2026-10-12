@@ -5,7 +5,9 @@
 #include "Log.h"
 #include "PlaySession.h"
 #include "PlayWall.h"
+#include "UITheme.h"
 #include "UIWidgets.h"
+#include "WindowPainter.h"
 
 #include "imgui.h"
 
@@ -42,11 +44,10 @@ namespace Nyx::Editor
 		// that starts on Stop or Stopping can't end on Play when the games exit meanwhile.
 		const bool bPlaying = session.IsRunning();
 		const bool bQuitting = session.IsQuitting();
-		const ImVec4 playButtonColor = bPlaying ? ImVec4(0.55f, 0.18f, 0.18f, 1.0f) : ImVec4(0.18f, 0.42f, 0.22f, 1.0f);
+		const Nyx::UI::EButtonTone playButtonTone = bPlaying ? Nyx::UI::EButtonTone::Stop : Nyx::UI::EButtonTone::Go;
 		const char* playButtonLabel = !bPlaying ? "Play" : (bQuitting ? "Stopping###Stop" : "Stop###Stop");
 
-		ImGui::PushStyleColor(ImGuiCol_Button, playButtonColor);
-		if (NYX_UI(ImGui::Button(playButtonLabel, ImVec2(64.0f, buttonHeight))))
+		if (NYX_UI(Nyx::UI::Button(playButtonLabel, glm::vec2(64.0f, buttonHeight), playButtonTone)))
 		{
 			if (bPlaying)
 			{
@@ -57,7 +58,6 @@ namespace Nyx::Editor
 				session.Start(preferences, false, GetEditorScreen());
 			}
 		}
-		ImGui::PopStyleColor();
 
 		const PlaySetup& firstSetup = preferences.PlaySetups.front();
 		if (bPlaying && bQuitting)
@@ -88,12 +88,10 @@ namespace Nyx::Editor
 			}));
 
 		ImGui::BeginDisabled(bPlaying);
-		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.42f, 0.22f, 1.0f));
-		if (NYX_UI(ImGui::Button("Play All", ImVec2(72.0f, buttonHeight))))
+		if (NYX_UI(Nyx::UI::Button("Play All", glm::vec2(72.0f, buttonHeight), Nyx::UI::EButtonTone::Go)))
 		{
 			session.Start(preferences, true, GetEditorScreen());
 		}
-		ImGui::PopStyleColor();
 		ImGui::EndDisabled();
 
 		ImGui::SetItemTooltip("Runs the open scene in %zu games side by side, one per play setup marked for Play All.\n"
@@ -122,7 +120,8 @@ namespace Nyx::Editor
 
 		// Checkboxes rather than menu items, so the menu stays open while choosing several
 		bool bChanged = false;
-		NYX_UI(ImGui::SeparatorText("In Play All"));
+		NYX_UI(Nyx::UI::Separator());
+		NYX_UI(ImGui::TextDisabled("In Play All"));
 		for (size_t i = 0; i < preferences.PlaySetups.size(); ++i)
 		{
 			PlaySetup& setup = preferences.PlaySetups[i];
@@ -254,7 +253,7 @@ namespace Nyx::Editor
 			bChanged = true;
 		}
 
-		if (NYX_UI(ImGui::Button("Add Setup")))
+		if (NYX_UI(Nyx::UI::Button("Add Setup")))
 		{
 			PlaySetup setup = setups.back();
 			setup.Name = "New Setup";
@@ -263,7 +262,7 @@ namespace Nyx::Editor
 		}
 
 		ImGui::SameLine();
-		if (NYX_UI(ImGui::Button("Reset to Defaults")))
+		if (NYX_UI(Nyx::UI::Button("Reset to Defaults")))
 		{
 			setups = GetDefaultPlaySetups();
 			bChanged = true;
@@ -275,7 +274,7 @@ namespace Nyx::Editor
 		}
 
 		// What Play All would do now: the monitor's work area, and the games' windows on it
-		NYX_UI(ImGui::SeparatorText("Play All on this monitor"));
+		NYX_UI(Nyx::UI::SectionHeader("Play All on this monitor"));
 		const PlayWallScreen screen = GetEditorScreen();
 		const GamePlan plan = PlanGames(preferences, true, screen);
 
@@ -308,9 +307,17 @@ namespace Nyx::Editor
 				return ImVec2(origin.x + static_cast<float>(x - area.X) * scale, origin.y + static_cast<float>(y - area.Y) * scale);
 			};
 
+			// The work area as a field, and the windows as buttons on it. Their names are ImGui's
+			// text, drawn after the painting, so over it.
+			const Nyx::UI::Theme& theme = Nyx::UI::GetTheme();
+			Nyx::UI::WindowPainter& painter = Nyx::UI::GetWindowPainter();
+			const auto toPainterRect = [](const ImVec2& min, const ImVec2& max)
+			{
+				return Nyx::Engine::PainterRect{ { min.x, min.y }, { max.x, max.y } };
+			};
 			ImDrawList* drawList = ImGui::GetWindowDrawList();
-			drawList->AddRectFilled(toPreview(area.X, area.Y), toPreview(area.X + area.Width, area.Y + area.Height),
-				ImGui::GetColorU32(ImGuiCol_FrameBg));
+			painter.AddRoundedRect(toPainterRect(toPreview(area.X, area.Y), toPreview(area.X + area.Width, area.Y + area.Height)), theme.FrameRounding,
+				Nyx::Engine::PainterStyle::Filled(theme.Field));
 
 			// The visible windows, as they will sit on the screen
 			for (const PlannedGame& game : plan.Games)
@@ -324,8 +331,9 @@ namespace Nyx::Editor
 
 				const ImVec2 min = toPreview(visibleX, visibleY);
 				const ImVec2 max = toPreview(visibleX + visibleWidth, visibleY + visibleHeight);
-				drawList->AddRectFilled(min, max, ImGui::GetColorU32(ImGuiCol_Button));
-				drawList->AddRect(min, max, ImGui::GetColorU32(ImGuiCol_Border));
+				const Nyx::Engine::PainterRect window = toPainterRect(min, max);
+				painter.AddRoundedRect(window, theme.FrameRounding * 0.5f, Nyx::Engine::PainterStyle::Filled(theme.Frame));
+				painter.AddRoundedRect(window, theme.FrameRounding * 0.5f, Nyx::Engine::PainterStyle::Outlined(theme.FrameBorder, theme.FrameBorderWidth));
 				drawList->PushClipRect(min, max, true);
 				drawList->AddText(ImVec2(min.x + 4.0f, min.y + 2.0f), ImGui::GetColorU32(ImGuiCol_Text), game.Name.c_str());
 				drawList->PopClipRect();

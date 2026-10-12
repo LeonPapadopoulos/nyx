@@ -31,6 +31,14 @@ namespace Nyx::UI
 		float FrameRounding = 6.0f;
 		float FrameBorderWidth = 1.0f;
 
+		// Buttons that start or end something (Button() with EButtonTone): Play is Go, Stop is Stop
+		glm::vec4 ButtonGo{ 0.18f, 0.44f, 0.24f, 1.0f };
+		glm::vec4 ButtonGoHovered{ 0.22f, 0.52f, 0.29f, 1.0f };
+		glm::vec4 ButtonGoPressed{ 0.14f, 0.35f, 0.19f, 1.0f };
+		glm::vec4 ButtonStop{ 0.56f, 0.19f, 0.19f, 1.0f };
+		glm::vec4 ButtonStopHovered{ 0.66f, 0.24f, 0.23f, 1.0f };
+		glm::vec4 ButtonStopPressed{ 0.45f, 0.15f, 0.15f, 1.0f };
+
 		// The accent: a toggle that is on, a slider's filled part, section headers
 		glm::vec4 Accent{ 1.0f, 0.55f, 0.15f, 1.0f };
 		glm::vec4 AccentHovered{ 1.0f, 0.64f, 0.30f, 1.0f };
@@ -160,6 +168,23 @@ namespace Nyx::UI
 		// Menu items and selectables (MenuItem(), Selectable()): the pill behind a hovered one, and
 		// the selection's (RowSelected). Shortcuts are muted.
 		glm::vec4 MenuItemHovered{ 1.0f, 1.0f, 1.0f, 0.09f };
+		// Menu bar buttons (MenuBarButton()), e.g. File in the titlebar, are flat: the menu items'
+		// hover pill, and the selection's (RowSelected) while their menu is open.
+
+		// The titlebar (WindowsWindow): with the chrome, it lies on the backdrop. Its window
+		// controls (WindowControlButton()) are flat, filled while hovered or pressed, close in red.
+		// Their icons fit a square WindowControlIconSize wide, in lines WindowControlIconWidth thick.
+		glm::vec4 WindowControlHovered{ 1.0f, 1.0f, 1.0f, 0.08f };
+		glm::vec4 WindowControlPressed{ 1.0f, 1.0f, 1.0f, 0.14f };
+		glm::vec4 WindowCloseHovered{ 0.77f, 0.17f, 0.11f, 1.0f };
+		glm::vec4 WindowClosePressed{ 0.63f, 0.14f, 0.09f, 1.0f };
+		float WindowControlIconSize = 10.0f;
+		float WindowControlIconWidth = 1.0f;
+		// The border around the editor's window while it has focus, WindowFocusBorderWidth wide and
+		// rounded as Windows 11 rounds the window (none while maximised)
+		glm::vec4 WindowFocusBorder{ 0.77f, 0.64f, 0.40f, 1.0f };
+		float WindowFocusBorderWidth = 3.0f;
+		float WindowRounding = 10.0f;
 
 		// Colour swatches (ColorSwatch()): a hairline around the colour, lighter when hovered
 		glm::vec4 SwatchBorder{ 1.0f, 1.0f, 1.0f, 0.15f };

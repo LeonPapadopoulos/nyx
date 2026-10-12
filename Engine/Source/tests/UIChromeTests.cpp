@@ -327,6 +327,7 @@ namespace
 		Require(Nyx::UI::IsPaintedChromeEnabled(), "The chrome should be on");
 		Require(style.Colors[ImGuiCol_WindowBg].w == 0.0f && style.Colors[ImGuiCol_PopupBg].w == 0.0f && style.Colors[ImGuiCol_TitleBgActive].w == 0.0f,
 			"ImGui's window, popup and title bar backgrounds should be transparent while the chrome paints them");
+		Require(style.Colors[ImGuiCol_ChildBg].w == 0.0f, "Child windows, e.g. scrolling tables, should lie on their window's card");
 		Require(style.Colors[ImGuiCol_Tab].w == 0.0f && style.Colors[ImGuiCol_TabSelected].w == 0.0f && style.Colors[ImGuiCol_TabHovered].w == 0.0f,
 			"ImGui's tab shapes should be transparent while the chrome paints them");
 		Require(style.Colors[ImGuiCol_ScrollbarBg].w == 0.0f && style.Colors[ImGuiCol_ScrollbarGrab].w == 0.0f && style.Colors[ImGuiCol_ScrollbarGrabActive].w == 0.0f,

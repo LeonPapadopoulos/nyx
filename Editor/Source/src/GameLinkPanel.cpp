@@ -230,7 +230,7 @@ namespace Nyx::Editor
 
 	void GameLinkPanel::DrawGameLogTab()
 	{
-		if (NYX_UI(ImGui::Button("Clear")))
+		if (NYX_UI(Nyx::UI::Button("Clear")))
 		{
 			ClearGameLog();
 		}
@@ -246,7 +246,7 @@ namespace Nyx::Editor
 			return bFiltered ? GetGameLogEntry(FilteredGameLog[index]) : GameLog[index];
 		};
 
-		if (NYX_UI(ImGui::Button("Copy")))
+		if (NYX_UI(Nyx::UI::Button("Copy")))
 		{
 			std::string text;
 			for (size_t i = 0; i < shownCount; ++i)
@@ -340,20 +340,20 @@ namespace Nyx::Editor
 
 	void GameLinkPanel::DrawMessagesTab()
 	{
-		if (NYX_UI(ImGui::Button(bPaused ? "Resume" : "Pause")))
+		if (NYX_UI(Nyx::UI::Button(bPaused ? "Resume###Pause" : "Pause###Pause")))
 		{
 			bPaused = !bPaused;
 		}
 		ImGui::SetItemTooltip("While paused, new messages aren't shown; recording and the Game Log go on");
 
 		ImGui::SameLine();
-		if (NYX_UI(ImGui::Button("Clear")))
+		if (NYX_UI(Nyx::UI::Button("Clear")))
 		{
 			ClearMessages();
 		}
 
 		ImGui::SameLine();
-		if (NYX_UI(ImGui::Button("Copy")))
+		if (NYX_UI(Nyx::UI::Button("Copy")))
 		{
 			std::string text;
 			for (const MessageEntry& entry : Messages)
@@ -368,7 +368,7 @@ namespace Nyx::Editor
 		ImGui::SetItemTooltip("Copies the messages shown, with all their fields, as text");
 
 		ImGui::SameLine();
-		if (NYX_UI(ImGui::Button("Types")))
+		if (NYX_UI(Nyx::UI::Button("Types")))
 		{
 			ImGui::OpenPopup("##MessageTypes");
 		}
@@ -522,8 +522,7 @@ namespace Nyx::Editor
 		// Read-only, but selectable, so fields can be copied
 		std::string text = message.Text.Name + " " + GetDirectionText(message.Direction) + " (" + message.GameName + "), " + std::to_string(message.Size) +
 			" bytes, at " + FormatClockTime(message.TimeMs) + "\n" + DetailsText;
-		NYX_UI(ImGui::InputTextMultiline("##MessageDetails", text.data(), text.size() + 1, ImVec2(-FLT_MIN, -FLT_MIN),
-			ImGuiInputTextFlags_ReadOnly));
+		NYX_UI(Nyx::UI::InputTextMultiline("##MessageDetails", &text, glm::vec2(-FLT_MIN, -FLT_MIN), ImGuiInputTextFlags_ReadOnly));
 	}
 
 	void GameLinkPanel::ClearGameLog()

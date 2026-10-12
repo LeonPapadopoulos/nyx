@@ -54,7 +54,7 @@ namespace Nyx::Editor
 		std::optional<uint64_t> dismissed;
 		std::optional<uint64_t> restarted;
 
-		if (Cards.size() > 1 && NYX_UI(ImGui::Button("Dismiss All")))
+		if (Cards.size() > 1 && NYX_UI(Nyx::UI::Button("Dismiss All")))
 		{
 			Cards.clear();
 			ImGui::End();
@@ -76,7 +76,7 @@ namespace Nyx::Editor
 			NYX_UI(ImGui::Text("Exit code %s: %s", exitCode, description.c_str()));
 			ImGui::PopTextWrapPos();
 
-			if (NYX_UI(ImGui::Button("Restart")))
+			if (NYX_UI(Nyx::UI::Button("Restart")))
 			{
 				restarted = card.Id;
 			}
@@ -85,35 +85,30 @@ namespace Nyx::Editor
 			ImGui::SameLine();
 			const std::string report = crash.GameName + " crashed, exit code " + exitCode + "\n" +
 				(crash.Report ? Nyx::FormatCrashReport(*crash.Report) : description) + "\n\nLast log lines:\n" + card.LastLogLines;
-			if (NYX_UI(ImGui::Button("Copy")))
+			if (NYX_UI(Nyx::UI::Button("Copy")))
 			{
 				ImGui::SetClipboardText(report.c_str());
 			}
 			ImGui::SetItemTooltip("Copies the report, call stack and last log lines as text");
 
 			ImGui::SameLine();
-			if (NYX_UI(ImGui::Button("Dismiss")))
+			if (NYX_UI(Nyx::UI::Button("Dismiss")))
 			{
 				dismissed = card.Id;
 			}
 
-			if (crash.Report && !crash.Report->Frames.empty() &&
-				NYX_UI(ImGui::TreeNodeEx("Call stack", ImGuiTreeNodeFlags_DefaultOpen)))
+			if (crash.Report && !crash.Report->Frames.empty() && NYX_UI(Nyx::UI::CollapsingHeader("Call stack", true)))
 			{
 				// Read-only, but selectable, so a frame can be copied
 				std::string callStack = Nyx::FormatCrashReport(*crash.Report);
 				const float height = (std::min)(ImGui::GetTextLineHeightWithSpacing() * static_cast<float>(crash.Report->Frames.size() + 2), 260.0f);
-				NYX_UI(ImGui::InputTextMultiline("##CallStack", callStack.data(), callStack.size() + 1, ImVec2(-FLT_MIN, height),
-					ImGuiInputTextFlags_ReadOnly));
-				ImGui::TreePop();
+				NYX_UI(Nyx::UI::InputTextMultiline("##CallStack", &callStack, glm::vec2(-FLT_MIN, height), ImGuiInputTextFlags_ReadOnly));
 			}
 
-			if (!card.LastLogLines.empty() && NYX_UI(ImGui::TreeNode("Last log lines")))
+			if (!card.LastLogLines.empty() && NYX_UI(Nyx::UI::CollapsingHeader("Last log lines", false)))
 			{
 				std::string logLines = card.LastLogLines;
-				NYX_UI(ImGui::InputTextMultiline("##LogLines", logLines.data(), logLines.size() + 1, ImVec2(-FLT_MIN, 160.0f),
-					ImGuiInputTextFlags_ReadOnly));
-				ImGui::TreePop();
+				NYX_UI(Nyx::UI::InputTextMultiline("##LogLines", &logLines, glm::vec2(-FLT_MIN, 160.0f), ImGuiInputTextFlags_ReadOnly));
 			}
 
 			NYX_UI(Nyx::UI::Separator());

@@ -104,7 +104,10 @@ namespace Nyx::UI
 					const ImDrawVert& a = drawList.VtxBuffer[vertices[0]];
 					const ImDrawVert& b = drawList.VtxBuffer[vertices[1]];
 					const ImDrawVert& c = drawList.VtxBuffer[vertices[2]];
-					const bool bShape = texels.Contains(a.uv) && texels.Contains(b.uv) && texels.Contains(c.uv);
+					// Triangles ImGui draws fully transparent don't show, e.g. the background the
+					// chrome takes back in an OS window of its own (UIChrome.h).
+					const bool bVisible = ((a.col | b.col | c.col) & IM_COL32_A_MASK) != 0;
+					const bool bShape = bVisible && texels.Contains(a.uv) && texels.Contains(b.uv) && texels.Contains(c.uv);
 					const unsigned int firstVertex = std::min({ vertices[0], vertices[1], vertices[2] });
 					if (bShapeOpen && (!bShape || firstVertex > shapeLastVertex))
 					{
@@ -170,6 +173,22 @@ namespace Nyx::UI
 			const uint32_t marked = MarkShapesOf(*window->DrawList, *window->Viewport, atlas, texels, MaxMarks - std::min(state.ShapeCount, MaxMarks));
 			state.ShapeCount += marked;
 			state.WindowCount += marked > 0 ? 1 : 0;
+		}
+
+		// Each viewport's background and foreground draw lists, behind and over its windows, when
+		// used this frame: e.g. the main window's focus border. They count as a window each.
+		for (ImGuiViewportP* viewport : g.Viewports)
+		{
+			for (int list = 0; list < 2; ++list)
+			{
+				if (viewport->BgFgDrawLists[list] == nullptr || viewport->BgFgDrawListsLastFrame[list] != g.FrameCount)
+				{
+					continue;
+				}
+				const uint32_t marked = MarkShapesOf(*viewport->BgFgDrawLists[list], *viewport, atlas, texels, MaxMarks - std::min(state.ShapeCount, MaxMarks));
+				state.ShapeCount += marked;
+				state.WindowCount += marked > 0 ? 1 : 0;
+			}
 		}
 	}
 

@@ -184,7 +184,7 @@ namespace Nyx::Editor
 
 	void EditorLayer::DrawTitlebarMenu(float buttonHeight)
 	{
-		if (NYX_UI(ImGui::Button("File", ImVec2(56.0f, buttonHeight))))
+		if (NYX_UI(Nyx::UI::MenuBarButton("File", glm::vec2(56.0f, buttonHeight), ImGui::IsPopupOpen("##TitlebarFileMenu"))))
 		{
 			ImGui::OpenPopup("##TitlebarFileMenu");
 		}
@@ -216,7 +216,7 @@ namespace Nyx::Editor
 
 		ImGui::SameLine();
 
-		if (NYX_UI(ImGui::Button("Window", ImVec2(76.0f, buttonHeight))))
+		if (NYX_UI(Nyx::UI::MenuBarButton("Window", glm::vec2(76.0f, buttonHeight), ImGui::IsPopupOpen("##TitlebarWindowMenu"))))
 		{
 			ImGui::OpenPopup("##TitlebarWindowMenu");
 		}
@@ -257,7 +257,7 @@ namespace Nyx::Editor
 		}
 
 		ImGui::SameLine();
-		if (NYX_UI(ImGui::Button("Debug", ImVec2(68.0f, buttonHeight))))
+		if (NYX_UI(Nyx::UI::MenuBarButton("Debug", glm::vec2(68.0f, buttonHeight), ImGui::IsPopupOpen("##TitlebarDebugMenu"))))
 		{
 			ImGui::OpenPopup("##TitlebarDebugMenu");
 		}

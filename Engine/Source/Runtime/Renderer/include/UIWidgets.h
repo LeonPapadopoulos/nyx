@@ -51,15 +51,43 @@ namespace Nyx::UI
 
 	// The widgets. Each returns what its ImGui counterpart returns.
 
+	// What a button does, in its colour: most are Neutral; Go starts something (Play) and Stop
+	// ends it
+	enum class EButtonTone
+	{
+		Neutral,
+		Go,
+		Stop,
+	};
+
 	// A button with a label; a size of 0 on an axis fits the label. True when clicked.
-	bool Button(const char* label, const glm::vec2& size = glm::vec2(0.0f));
+	bool Button(const char* label, const glm::vec2& size = glm::vec2(0.0f), EButtonTone tone = EButtonTone::Neutral);
+
+	// A flat button for a menu bar, e.g. File in the titlebar: only its label until hovered, and
+	// the selection's pill while `bOpen`, i.e. while its menu is open. True when clicked, to open
+	// the menu, as with a Button().
+	bool MenuBarButton(const char* label, const glm::vec2& size, bool bOpen);
+
+	// The buttons of a window's titlebar that Windows would draw
+	enum class EWindowControl
+	{
+		Minimize,
+		Maximize,
+		Restore,
+		Close,
+	};
+
+	// A window control `size` large, with its icon: flat until hovered, Close in red then. `id`
+	// as a label after "##". True when clicked.
+	bool WindowControlButton(const char* id, EWindowControl control, const glm::vec2& size);
 
 	// A switch, with its label to the right; it flips `value` when clicked. True when it flipped.
 	bool Toggle(const char* label, bool* value);
 
 	// A slider from `min` to `max`, with its value as text by `format` (printf) beside the track,
-	// and its label to the right. True when the value changed.
-	bool SliderFloat(const char* label, float* value, float min, float max, const char* format = "%.3f");
+	// and its label to the right. True when the value changed. ImGuiSliderFlags_Logarithmic
+	// spreads a range above 0 by ratio, as ImGui's does.
+	bool SliderFloat(const char* label, float* value, float min, float max, const char* format = "%.3f", ImGuiSliderFlags flags = 0);
 
 	// A heading over a section: an accent bar, the label, and a line to the window's edge
 	void SectionHeader(const char* label);
@@ -124,7 +152,12 @@ namespace Nyx::UI
 	// knows whether a field is hovered only once the widget has run, so the frame shows the
 	// hover of the frame before; eased over frames, the delay doesn't show.
 
-	bool InputText(const char* label, std::string* value, ImGuiInputTextFlags flags = 0);
+	// `hint`: shown, muted, while the field is empty
+	bool InputText(const char* label, std::string* value, ImGuiInputTextFlags flags = 0, const char* hint = nullptr);
+
+	// A field of several lines, `size` large (0 on an axis: the item width, or 8 lines), which
+	// scrolls; ImGuiInputTextFlags_ReadOnly for text to select and copy
+	bool InputTextMultiline(const char* label, std::string* value, const glm::vec2& size = glm::vec2(0.0f), ImGuiInputTextFlags flags = 0);
 
 	// A text field with round ends and a magnifier, showing `placeholder` while it is empty
 	bool SearchField(const char* label, std::string* value, const char* placeholder = "Search");
@@ -251,7 +284,10 @@ namespace Nyx::UI
 	// themselves out: the widget's whole rect, label included, except the slider's, which is its
 	// frame. Labels are what is shown, without "##".
 
-	void PaintButton(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view label, const WidgetLook& look);
+	void PaintButton(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view label, const WidgetLook& look, EButtonTone tone = EButtonTone::Neutral);
+	// `open`: the open menu's pill, faded in from 0 to 1
+	void PaintMenuBarButton(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view label, float open, const WidgetLook& look);
+	void PaintWindowControl(WindowPainter& painter, const Engine::PainterRect& rect, EWindowControl control, const WidgetLook& look);
 	// `on`: the knob's way from off (0) to on (1)
 	void PaintToggle(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view label, float on, const WidgetLook& look);
 	// `fraction`: the value's way from min (0) to max (1). `valueWidth`: room for the value's

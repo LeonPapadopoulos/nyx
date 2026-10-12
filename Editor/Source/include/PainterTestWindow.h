@@ -81,6 +81,7 @@ namespace Nyx::Editor
 		float GallerySlider = 0.6f;
 		bool bGalleryRowSelected = false;
 		std::string GalleryText = "Cube";
+		std::string GalleryLines = "#0 Main()\n#1 Run()";
 		std::string GallerySearch;
 		float GalleryNumber = 1.25f;
 		glm::vec3 GalleryVector{ 1.0f, 2.0f, 3.0f };

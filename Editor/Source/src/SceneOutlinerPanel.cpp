@@ -27,7 +27,7 @@ namespace Nyx::Editor
 		auto& world = editing.Scene.GetRegistry();
 		auto& selection = editing.Scene.GetSelection();
 
-		if (NYX_UI(ImGui::Button("Add Entity")))
+		if (NYX_UI(Nyx::UI::Button("Add Entity")))
 		{
 			editing.CreateEntity();
 		}
@@ -40,13 +40,13 @@ namespace Nyx::Editor
 			ImGui::BeginDisabled();
 		}
 
-		if (NYX_UI(ImGui::Button("Delete Selected")) && bHasSelection)
+		if (NYX_UI(Nyx::UI::Button("Delete Selected")) && bHasSelection)
 		{
 			editing.DeleteSelectedEntity();
 		}
 
 		ImGui::SameLine();
-		if (NYX_UI(ImGui::Button("Duplicate")) && bHasSelection)
+		if (NYX_UI(Nyx::UI::Button("Duplicate")) && bHasSelection)
 		{
 			editing.DuplicateSelectedEntity();
 		}

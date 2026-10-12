@@ -9,6 +9,8 @@
 #include "SceneViewTypes.h"
 #include "UIChrome.h"
 #include "UITheme.h"
+#include "UIWidgets.h"
+#include "WindowPainter.h"
 #include "Paths.h"
 
 #include <windows.h>
@@ -23,167 +25,6 @@
 #include "backends/imgui_impl_vulkan.h"
 #include <imgui_internal.h>
 #include <imgui.h>
-
-namespace Icon::Util
-{
-	enum class ETitlebarButton
-	{
-		Minimize,
-		Maximize,
-		Restore,
-		Close
-	};
-
-	static float s_CenteredSquareRectPadding = 8.0f;
-	static float s_IconThickness = 1.5f;
-
-	static ImRect MakeCenteredSquareRect(const ImVec2& min, const ImVec2& max, float padding = 0.0f)
-	{
-		const float width = max.x - min.x;
-		const float height = max.y - min.y;
-		const float side = ImMax(1.0f, ImMin(width, height) - padding * 2.0f);
-
-		const ImVec2 center(
-			(min.x + max.x) * 0.5f,
-			(min.y + max.y) * 0.5f);
-
-		const ImVec2 half(side * 0.5f, side * 0.5f);
-
-		return ImRect(
-			ImVec2(center.x - half.x, center.y - half.y),
-			ImVec2(center.x + half.x, center.y + half.y));
-	}
-
-	static void DrawMinimizeIcon(ImDrawList* drawList, const ImVec2& min, const ImVec2& max, ImU32 color)
-	{
-		const ImRect r = MakeCenteredSquareRect(min, max, s_CenteredSquareRectPadding);
-
-		const float y = std::floor((r.Min.y + r.Max.y) * 0.5f) + 0.5f;
-		const float padX = (r.Max.x - r.Min.x) * 0.15f;
-
-		drawList->AddLine(
-			ImVec2(r.Min.x + padX, y),
-			ImVec2(r.Max.x - padX, y),
-			color,
-			s_IconThickness);
-	}
-
-	static void DrawMaximizeIcon(ImDrawList* drawList, const ImVec2& min, const ImVec2& max, ImU32 color)
-	{
-		// HACK: An equally sized square will always 'look' bigger than the 'close' icon,
-		// so we make it inherently smaller
-		const float iconSize = ImMax(0.0f, s_CenteredSquareRectPadding + 2.0f);
-		const ImRect r = MakeCenteredSquareRect(min, max, iconSize);
-
-		drawList->AddRect(
-			ImVec2(std::floor(r.Min.x) + 0.5f, std::floor(r.Min.y) + 0.5f),
-			ImVec2(std::floor(r.Max.x) - 0.5f, std::floor(r.Max.y) - 0.5f),
-			color,
-			0.0f,
-			0,
-			s_IconThickness);
-	}
-
-	static void DrawRestoreIcon(ImDrawList* drawList, const ImVec2& min, const ImVec2& max, ImU32 color)
-	{
-		const ImRect r = MakeCenteredSquareRect(min, max, s_CenteredSquareRectPadding);
-
-		const float side = r.GetWidth();
-		const float offset = side * 0.18f;
-
-		const ImVec2 backMin(
-			std::floor(r.Min.x + offset) + 0.5f,
-			std::floor(r.Min.y) + 0.5f);
-		const ImVec2 backMax(
-			std::floor(r.Max.x) - 0.5f,
-			std::floor(r.Max.y - offset) - 0.5f);
-
-		const ImVec2 frontMin(
-			std::floor(r.Min.x) + 0.5f,
-			std::floor(r.Min.y + offset) + 0.5f);
-		const ImVec2 frontMax(
-			std::floor(r.Max.x - offset) - 0.5f,
-			std::floor(r.Max.y) - 0.5f);
-
-		drawList->AddRect(backMin, backMax, color, 0.0f, 0, s_IconThickness);
-		drawList->AddRect(frontMin, frontMax, color, 0.0f, 0, s_IconThickness);
-	}
-
-	static void DrawCloseIcon(ImDrawList* drawList, const ImVec2& min, const ImVec2& max, ImU32 color)
-	{
-		const ImRect r = MakeCenteredSquareRect(min, max, s_CenteredSquareRectPadding);
-
-		const float pad = r.GetWidth() * 0.18f;
-
-		drawList->AddLine(
-			ImVec2(r.Min.x + pad, r.Min.y + pad),
-			ImVec2(r.Max.x - pad, r.Max.y - pad),
-			color,
-			s_IconThickness);
-
-		drawList->AddLine(
-			ImVec2(r.Max.x - pad, r.Min.y + pad),
-			ImVec2(r.Min.x + pad, r.Max.y - pad),
-			color,
-			s_IconThickness);
-	}
-
-	static void DrawTitlebarButtonIcon(ETitlebarButton type, ImDrawList* drawList, const ImVec2& min, const ImVec2& max, ImU32 color)
-	{
-		switch (type)
-		{
-		case ETitlebarButton::Minimize:
-			DrawMinimizeIcon(drawList, min, max, color);
-			break;
-		case ETitlebarButton::Maximize:
-			DrawMaximizeIcon(drawList, min, max, color);
-			break;
-		case ETitlebarButton::Restore:
-			DrawRestoreIcon(drawList, min, max, color);
-			break;
-		case ETitlebarButton::Close:
-			DrawCloseIcon(drawList, min, max, color);
-			break;
-		default:
-			break;
-		}
-	}
-
-	static bool DrawTitlebarButton(
-		ImDrawList* drawList,
-		const char* id,
-		ETitlebarButton type,
-		const ImVec2& pos,
-		const ImVec2& size,
-		ImU32 normalBg,
-		ImU32 hoveredBg,
-		ImU32 pressedBg,
-		ImU32 iconColor)
-	{
-		const ImVec2 oldCursorPos = ImGui::GetCursorPos();
-
-		ImGui::SetCursorScreenPos(pos);
-		const bool pressed = NYX_UI(ImGui::InvisibleButton(id, size));
-
-		const bool hovered = ImGui::IsItemHovered();
-		const bool held = ImGui::IsItemActive();
-
-		const ImVec2 min = ImGui::GetItemRectMin();
-		const ImVec2 max = ImGui::GetItemRectMax();
-
-		ImU32 bgColor = normalBg;
-		if (held)
-			bgColor = pressedBg;
-		else if (hovered)
-			bgColor = hoveredBg;
-
-		drawList->AddRectFilled(min, max, bgColor);
-		DrawTitlebarButtonIcon(type, drawList, min, max, iconColor);
-
-		ImGui::SetCursorPos(oldCursorPos);
-		return pressed;
-	}
-}
 
 namespace Nyx
 {
@@ -437,8 +278,11 @@ namespace Nyx
 		const ImVec2 titlebarMin = ImVec2(viewport->Pos.x, viewport->Pos.y);
 		const ImVec2 titlebarMax = ImVec2(viewport->Pos.x + viewport->Size.x, viewport->Pos.y + titlebarHeight);
 
-		// Background
-		windowDrawList->AddRectFilled(titlebarMin, titlebarMax, Colors::Theme::titlebar);
+		// Background: with the painted chrome, the titlebar lies on the backdrop.
+		if (!Nyx::UI::IsPaintedChromeEnabled())
+		{
+			windowDrawList->AddRectFilled(titlebarMin, titlebarMax, Colors::Theme::titlebar);
+		}
 
 		// Debug entire titlebar area
 		//drawList->AddRect(titlebarMin, titlebarMax, IM_COL32(255, 255, 0, 255));
@@ -457,43 +301,16 @@ namespace Nyx
 		const ImVec2 closePos(rightEdge - buttonSize.x, titlebarMin.y);
 		const ImVec2 maxPos(rightEdge - buttonSize.x * 2.0f, titlebarMin.y);
 		const ImVec2 minPos(rightEdge - buttonSize.x * 3.0f, titlebarMin.y);
+		const glm::vec2 controlSize(buttonSize.x, buttonSize.y);
 
-		// Button colors
-		const ImU32 transparent = IM_COL32(0, 0, 0, 0);
-		const ImU32 hoverBg = IM_COL32(255, 255, 255, 20);
-		const ImU32 pressBg = IM_COL32(255, 255, 255, 35);
-
-		const ImU32 closeHoverBg = IM_COL32(196, 43, 28, 255);
-		const ImU32 closePressBg = IM_COL32(160, 35, 24, 255);
-
-		const ImU32 iconColor = IM_COL32(230, 230, 230, 255);
-
-		// Minimize
-		if (NYX_UI(Icon::Util::DrawTitlebarButton(
-				windowDrawList,
-				"##TitlebarMinimize",
-				Icon::Util::ETitlebarButton::Minimize,
-				minPos,
-				buttonSize,
-				transparent,
-				hoverBg,
-				pressBg,
-				iconColor)))
+		ImGui::SetCursorScreenPos(minPos);
+		if (NYX_UI(Nyx::UI::WindowControlButton("##TitlebarMinimize", Nyx::UI::EWindowControl::Minimize, controlSize)))
 		{
 			glfwIconifyWindow(Window);
 		}
 
-		// Maximize / Restore
-		if (NYX_UI(Icon::Util::DrawTitlebarButton(
-				windowDrawList,
-				"##TitlebarMaxRestore",
-				bIsMaximized ? Icon::Util::ETitlebarButton::Restore : Icon::Util::ETitlebarButton::Maximize,
-				maxPos,
-				buttonSize,
-				transparent,
-				hoverBg,
-				pressBg,
-				iconColor)))
+		ImGui::SetCursorScreenPos(maxPos);
+		if (NYX_UI(Nyx::UI::WindowControlButton("##TitlebarMaxRestore", bIsMaximized ? Nyx::UI::EWindowControl::Restore : Nyx::UI::EWindowControl::Maximize, controlSize)))
 		{
 			if (bIsMaximized)
 				glfwRestoreWindow(Window);
@@ -501,17 +318,8 @@ namespace Nyx
 				glfwMaximizeWindow(Window);
 		}
 
-		// Close
-		if (NYX_UI(Icon::Util::DrawTitlebarButton(
-				windowDrawList,
-				"##TitlebarClose",
-				Icon::Util::ETitlebarButton::Close,
-				closePos,
-				buttonSize,
-				transparent,
-				closeHoverBg,
-				closePressBg,
-				iconColor)))
+		ImGui::SetCursorScreenPos(closePos);
+		if (NYX_UI(Nyx::UI::WindowControlButton("##TitlebarClose", Nyx::UI::EWindowControl::Close, controlSize)))
 		{
 			glfwSetWindowShouldClose(Window, GLFW_TRUE);
 		}
@@ -648,25 +456,35 @@ namespace Nyx
 		// window frame; with the system titlebar, Windows draws the frame.
 		if (Data.bCustomTitlebar && bColoredBorderOnFocus && bAppFocused)
 		{
-			ImDrawList* drawList = ImGui::GetForegroundDrawList(viewport);
-
 			const ImVec2 winMin = ImGui::GetWindowPos();
 			const ImVec2 winMax(winMin.x + ImGui::GetWindowWidth(), winMin.y + ImGui::GetWindowHeight());
 
-			// rounding to match that of win11 windows
-			const float rounding = bIsMaximized ? 0.0f : 10.0f;
-			// thickness to match the look of a focussed visual studio window
-			const float borderThickness = 3.0f;
+			if (bPaintedChrome)
+			{
+				const Nyx::UI::Theme& theme = Nyx::UI::GetTheme();
+				const Engine::PainterRect border{ { winMin.x, winMin.y }, { winMax.x, winMax.y } };
+				Nyx::UI::GetForegroundPainter(viewport).AddRoundedRect(border, bIsMaximized ? 0.0f : theme.WindowRounding,
+					Engine::PainterStyle::Outlined(theme.WindowFocusBorder, theme.WindowFocusBorderWidth));
+			}
+			else
+			{
+				ImDrawList* drawList = ImGui::GetForegroundDrawList(viewport);
 
-			constexpr ImU32 borderColor = Colors::Theme::windowBorderER_1;
+				// rounding to match that of win11 windows
+				const float rounding = bIsMaximized ? 0.0f : 10.0f;
+				// thickness to match the look of a focussed visual studio window
+				const float borderThickness = 3.0f;
 
-			drawList->AddRect(
-				winMin,
-				winMax,
-				borderColor,
-				rounding,
-				0,
-				borderThickness);
+				constexpr ImU32 borderColor = Colors::Theme::windowBorderER_1;
+
+				drawList->AddRect(
+					winMin,
+					winMax,
+					borderColor,
+					rounding,
+					0,
+					borderThickness);
+			}
 		}
 
 		ImGui::End(); // DockSpaceWindow

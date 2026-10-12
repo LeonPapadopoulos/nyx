@@ -38,7 +38,7 @@ namespace Nyx::Editor
 		// The image shown (a UI image of the renderer), and the path typed or chosen
 		uint64_t ImageId = 0;
 		glm::vec2 ImageSize{ 0.0f };
-		char PathInput[1024] = {};
+		std::string PathInput;
 		// What the last load did, e.g. why it failed
 		std::string Message;
 

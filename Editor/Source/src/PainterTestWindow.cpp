@@ -15,7 +15,10 @@
 #include <algorithm>
 #include <cmath>
 #include <ctime>
+#include <iterator>
 #include <string>
+#include <tuple>
+#include <utility>
 
 namespace Nyx::Editor
 {
@@ -456,6 +459,68 @@ namespace Nyx::Editor
 			[&]() { NYX_UI(Nyx::UI::Button("Apply##Live")); },
 			[&]() { NYX_UI(ImGui::Button("Apply##ImGui")); });
 
+		// Buttons in a tone of their own, as Play and Stop in the titlebar
+		for (const auto& [name, label, tone] : { std::tuple{ "Button, Go", "Play", Nyx::UI::EButtonTone::Go }, std::tuple{ "Button, Stop", "Stop", Nyx::UI::EButtonTone::Stop } })
+		{
+			ImGui::PushID(name);
+			row(name,
+				[&](const WidgetLook& look) { Nyx::UI::PaintButton(painter, ReserveCell(Nyx::UI::CalcButtonSize(label)), label, look, tone); },
+				[&]() { NYX_UI(Nyx::UI::Button(label, glm::vec2(0.0f), tone)); },
+				[&]() {});
+			ImGui::PopID();
+		}
+
+		// Menu bar buttons, as File in the titlebar: closed, then with their menu open
+		for (const auto& [name, open] : { std::pair{ "Menu bar button", 0.0f }, std::pair{ "Menu bar button, open", 1.0f } })
+		{
+			ImGui::PushID(name);
+			row(name,
+				[&](const WidgetLook& look) { Nyx::UI::PaintMenuBarButton(painter, ReserveCell(Nyx::UI::CalcButtonSize("File")), "File", open, look); },
+				[&]()
+				{
+					if (NYX_UI(Nyx::UI::MenuBarButton("File", Nyx::UI::CalcButtonSize("File"), ImGui::IsPopupOpen("##GalleryMenu"))))
+					{
+						ImGui::OpenPopup("##GalleryMenu");
+					}
+					if (Nyx::UI::BeginPopup("##GalleryMenu"))
+					{
+						NYX_UI(Nyx::UI::MenuItem("New Scene"));
+						ImGui::EndPopup();
+					}
+				},
+				[&]() {});
+			ImGui::PopID();
+		}
+
+		// The titlebar's window controls, side by side as there
+		const glm::vec2 controlSize(ImGui::GetFrameHeight() * 1.6f, ImGui::GetFrameHeight() * 1.2f);
+		constexpr Nyx::UI::EWindowControl controls[] = { Nyx::UI::EWindowControl::Minimize, Nyx::UI::EWindowControl::Maximize, Nyx::UI::EWindowControl::Restore,
+			Nyx::UI::EWindowControl::Close };
+		row("Window controls",
+			[&](const WidgetLook& look)
+			{
+				const PainterRect cell = ReserveCell(glm::vec2(controlSize.x * static_cast<float>(std::size(controls)), controlSize.y));
+				for (size_t index = 0; index < std::size(controls); ++index)
+				{
+					const glm::vec2 min = cell.Min + glm::vec2(controlSize.x * static_cast<float>(index), 0.0f);
+					Nyx::UI::PaintWindowControl(painter, PainterRect{ min, min + controlSize }, controls[index], look);
+				}
+			},
+			[&]()
+			{
+				for (size_t index = 0; index < std::size(controls); ++index)
+				{
+					ImGui::PushID(static_cast<int>(index));
+					if (index > 0)
+					{
+						ImGui::SameLine(0.0f, 0.0f);
+					}
+					NYX_UI(Nyx::UI::WindowControlButton("##Control", controls[index], controlSize));
+					ImGui::PopID();
+				}
+			},
+			[&]() {});
+
 		row("Toggle, off",
 			[&](const WidgetLook& look) { Nyx::UI::PaintToggle(painter, ReserveCell(Nyx::UI::CalcToggleSize("Snap")), "Snap", 0.0f, look); },
 			[&]() { NYX_UI(Nyx::UI::Toggle("Snap##Live", &bGalleryToggle)); },
@@ -564,6 +629,19 @@ namespace Nyx::Editor
 				ImGui::SetNextItemWidth(fieldWidth);
 				NYX_UI(ImGui::InputText("##ImGuiText", &GalleryText));
 			});
+
+		const glm::vec2 linesSize(fieldWidth, ImGui::GetTextLineHeight() * 3.0f + ImGui::GetStyle().FramePadding.y * 2.0f);
+		row("Multi-line field",
+			[&](const WidgetLook& look)
+			{
+				const PainterRect frame = ReserveCell(linesSize);
+				Nyx::UI::PaintField(painter, frame, look.Pressed, look);
+				const glm::vec2 text = frame.Min + glm::vec2(ImGui::GetStyle().FramePadding.x, textY);
+				sampleText(look, text, "#0 Main()", theme.Text);
+				sampleText(look, text + glm::vec2(0.0f, ImGui::GetTextLineHeight()), "#1 Run()", theme.Text);
+			},
+			[&]() { NYX_UI(Nyx::UI::InputTextMultiline("##LiveLines", &GalleryLines, linesSize)); },
+			[&]() { NYX_UI(ImGui::InputTextMultiline("##ImGuiLines", &GalleryLines, ImVec2(linesSize.x, linesSize.y))); });
 
 		row("Search field",
 			[&](const WidgetLook& look)
@@ -919,13 +997,13 @@ namespace Nyx::Editor
 	{
 		float zoomPercent = Zoom * 100.0f;
 		ImGui::SetNextItemWidth(180.0f);
-		if (NYX_UI(ImGui::SliderFloat("Zoom", &zoomPercent, MinZoom * 100.0f, MaxZoom * 100.0f, "%.0f%%", ImGuiSliderFlags_Logarithmic)))
+		if (NYX_UI(Nyx::UI::SliderFloat("Zoom", &zoomPercent, MinZoom * 100.0f, MaxZoom * 100.0f, "%.0f%%", ImGuiSliderFlags_Logarithmic)))
 		{
 			Zoom = std::clamp(zoomPercent / 100.0f, MinZoom, MaxZoom);
 		}
 
 		ImGui::SameLine();
-		if (NYX_UI(ImGui::Button("100%")))
+		if (NYX_UI(Nyx::UI::Button("100%")))
 		{
 			Zoom = 1.0f;
 			Pan = HomePan;

@@ -20,6 +20,8 @@ namespace Nyx::UI
 		// ImGui's colours the chrome paints instead; their alpha is 0 while it is on
 		constexpr ImGuiCol PaintedColors[] = {
 			ImGuiCol_WindowBg,
+			// Child windows, e.g. a scrolling table's, lie on their window's card
+			ImGuiCol_ChildBg,
 			ImGuiCol_PopupBg,
 			ImGuiCol_Border,
 			ImGuiCol_TitleBg,

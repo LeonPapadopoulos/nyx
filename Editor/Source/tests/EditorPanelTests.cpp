@@ -3,10 +3,12 @@
 #include "ComponentRegistration.h"
 #include "CrashCardsPanel.h"
 #include "DetailsPanel.h"
+#include "EditorPreferences.h"
 #include "Log.h"
 #include "NameComponent.h"
 #include "Painter.h"
 #include "PainterTestWindow.h"
+#include "PlayControls.h"
 #include "PlaySession.h"
 #include "AssetDatabase.h"
 #include "GameLinkPanel.h"
@@ -16,6 +18,8 @@
 #include "SceneOutlinerPanel.h"
 #include "TransformComponent.h"
 #include "UIAnimation.h"
+#include "UIChrome.h"
+#include "UIDiagnostics.h"
 #include "UITheme.h"
 #include "UIWidgets.h"
 #include "WindowPainter.h"
@@ -23,10 +27,14 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
+#include <algorithm>
+#include <cfloat>
 #include <functional>
 #include <iostream>
+#include <span>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace
 {
@@ -1005,6 +1013,180 @@ namespace
 		}
 	}
 
+	// The titlebar's widgets (stage 3, change 9a): a button in a tone of its own, a menu bar button
+	// with its open menu's pill, window controls, a multi-line field over a painted frame, and a
+	// logarithmic slider whose knob sits where ImGui's grab is.
+	void TestTitlebarWidgetsAndMultilineFields()
+	{
+		HeadlessUI ui;
+		ImGuiIO& io = ImGui::GetIO();
+		const Nyx::UI::Theme& theme = Nyx::UI::GetTheme();
+
+		bool bMenuOpen = false;
+		int closeClicks = 0;
+		float zoom = 100.0f;
+		std::string log = "first line\nsecond line";
+		ImRect play;
+		ImRect menu;
+		ImRect close;
+		ImRect details;
+		ImRect slider;
+		std::vector<PainterCommand> commands;
+		const auto draw = [&]()
+			{
+				ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+				ImGui::SetNextWindowSize(ImVec2(500.0f, 400.0f));
+				ImGui::Begin("Titlebar");
+				Nyx::UI::Button("Play", glm::vec2(64.0f, 28.0f), Nyx::UI::EButtonTone::Go);
+				play = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+				Nyx::UI::MenuBarButton("File", glm::vec2(56.0f, 28.0f), bMenuOpen);
+				menu = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+				closeClicks += Nyx::UI::WindowControlButton("##Close", Nyx::UI::EWindowControl::Close, glm::vec2(46.0f, 32.0f)) ? 1 : 0;
+				close = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+				Nyx::UI::InputTextMultiline("##Log", &log, glm::vec2(-FLT_MIN, 80.0f), ImGuiInputTextFlags_ReadOnly);
+				details = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+				ImGui::SetNextItemWidth(200.0f);
+				Nyx::UI::SliderFloat("Zoom", &zoom, 10.0f, 1000.0f, "%.0f%%", ImGuiSliderFlags_Logarithmic);
+				slider = ImRect(ImGui::GetItemRectMin(), ImVec2(ImGui::GetItemRectMin().x + 200.0f, ImGui::GetItemRectMax().y));
+				const std::span<const PainterCommand> painted = Nyx::UI::GetWindowPainter().GetPainter().GetCommands();
+				commands.assign(painted.begin(), painted.end());
+				ImGui::End();
+			};
+		const auto settle = [&]()
+			{
+				for (int frame = 0; frame < 40; ++frame)
+				{
+					ui.Frame(draw);
+				}
+			};
+		const auto findFill = [&](const ImRect& rect, const glm::vec4& color)
+			{
+				const uint32_t packed = PackPremultipliedColor(color);
+				return std::any_of(commands.begin(), commands.end(), [&](const PainterCommand& command)
+					{
+						const PainterRect painted = GetPayload<PainterRectPayload>(command).Rect;
+						return command.Type == static_cast<uint32_t>(EPainterCommandType::Rect) && command.OutlineWidth == 0.0f && command.Color == packed &&
+							painted.Min.x >= rect.Min.x && painted.Max.x <= rect.Max.x && painted.Min.y >= rect.Min.y && painted.Max.y <= rect.Max.y;
+					});
+			};
+
+		io.AddMousePosEvent(-100.0f, -100.0f);
+		settle();
+		Require(findFill(play, theme.ButtonGo), "A Go button should be filled in the theme's Go colour");
+		Require(!findFill(menu, Nyx::UI::GetTheme().RowSelected), "A menu bar button whose menu is closed should be flat");
+		Require(!findFill(close, theme.WindowCloseHovered), "A window control should be flat until hovered");
+		Require(findFill(details, theme.Field), "A multi-line field's frame should be painted where ImGui lays it out");
+
+		bMenuOpen = true;
+		settle();
+		Require(findFill(menu, theme.RowSelected), "A menu bar button whose menu is open should show the selection's pill");
+
+		io.AddMousePosEvent(close.GetCenter().x, close.GetCenter().y);
+		settle();
+		Require(findFill(close, theme.WindowCloseHovered), "A hovered close button should fill in the theme's red");
+		io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+		ui.Frame(draw);
+		io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+		ui.Frame(draw);
+		Require(closeClicks == 1, "Clicking a window control should click it");
+
+		// A read-only field keeps its text whatever is typed.
+		io.AddMousePosEvent(details.GetCenter().x, details.GetCenter().y);
+		io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+		ui.Frame(draw);
+		io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+		ui.Frame(draw);
+		io.AddInputCharactersUTF8("x");
+		ui.Frame(draw);
+		Require(log == "first line\nsecond line", "A read-only multi-line field should keep its text, got " + log);
+
+		// The logarithmic slider: the middle of the track is the range's geometric middle, and
+		// the painted knob sits there.
+		io.AddMousePosEvent(-100.0f, -100.0f);
+		ui.Frame(draw);
+		zoom = 100.0f;
+		settle();
+		const auto knob = std::find_if(commands.begin(), commands.end(), [&](const PainterCommand& command)
+			{
+				const glm::vec2 centre = GetPayload<PainterCirclePayload>(command).Center;
+				return command.Type == static_cast<uint32_t>(EPainterCommandType::Circle) && centre.y > slider.Min.y && centre.y < slider.Max.y;
+			});
+		Require(knob != commands.end(), "A slider should paint its knob");
+		const float knobX = GetPayload<PainterCirclePayload>(*knob).Center.x;
+		io.AddMousePosEvent(knobX, slider.GetCenter().y);
+		ui.Frame(draw);
+		io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+		ui.Frame(draw);
+		io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+		ui.Frame(draw);
+		Require(std::abs(zoom - 100.0f) < 5.0f, "Clicking a logarithmic slider's knob should keep its value, as ImGui's grab is there, got " + std::to_string(zoom));
+	}
+
+	// With the chrome on, the editor's panels leave no shapes to ImGui (stage 3, change 9a): what
+	// Debug > Mark ImGui Shapes finds in them is nothing. ImGui's text stays, and so, until change
+	// 9b, do its close and collapse buttons, which it draws in the text colour; the text is made
+	// transparent here, which hides them from the marks.
+	void TestPanelsLeaveNoShapesToImGui()
+	{
+		HeadlessUI ui;
+		RegisterDefaultPropertyWidgets();
+		Nyx::UI::SetPaintedChrome(true);
+		ImGuiStyle& style = ImGui::GetStyle();
+		const ImVec4 text = style.Colors[ImGuiCol_Text];
+		style.Colors[ImGuiCol_Text].w = 0.0f;
+
+		SceneEditor editing;
+		const Entity cube = editing.Scene.CreateEntity("Cube");
+		editing.Scene.GetRegistry().Add<TransformComponent>(cube, TransformComponent{});
+		editing.Scene.GetSelection() = cube;
+
+		SceneOutlinerPanel outliner;
+		DetailsPanel details;
+		CrashCardsPanel crashCards;
+		GameCrash crash;
+		crash.GameName = "Game 1";
+		crash.ExitCode = 0xC0000005;
+		crash.Report = Nyx::CrashReport{ 0xC0000005, "access violation", std::vector<Nyx::CrashStackFrame>(3) };
+		crashCards.Add(crash, "last line");
+		Nyx::SceneDocument scene;
+		GameLinkPanel gameLink;
+		PlaySession session(scene, gameLink);
+		EditorPreferences preferences;
+		PlayControls play;
+		play.bShowSetups = true;
+		bool bGameLinkOpen = true;
+
+		// Side by side, so each shows
+		const auto place = [](float x)
+			{
+				ImGui::SetNextWindowPos(ImVec2(x, 0.0f));
+				ImGui::SetNextWindowSize(ImVec2(240.0f, 700.0f));
+			};
+		Nyx::UI::SetMarkImGuiShapes(true);
+		for (int frame = 0; frame < 3; ++frame)
+		{
+			ImGui::NewFrame();
+			place(0.0f);
+			outliner.Draw(editing);
+			place(250.0f);
+			details.Draw(editing);
+			place(500.0f);
+			crashCards.Draw();
+			place(750.0f);
+			gameLink.Draw(bGameLinkOpen);
+			place(1000.0f);
+			play.DrawSetupsWindow(preferences);
+			ImGui::EndFrame();
+			Nyx::UI::MarkImGuiShapes();
+			ImGui::Render();
+		}
+		const uint32_t shapes = Nyx::UI::GetImGuiShapeCount();
+		Nyx::UI::SetMarkImGuiShapes(false);
+		style.Colors[ImGuiCol_Text] = text;
+		Nyx::UI::SetPaintedChrome(false);
+		Require(shapes == 0, "The editor's panels should leave no shapes to ImGui, found " + std::to_string(shapes));
+	}
+
 	void TestAnimationsEaseAndAreForgotten()
 	{
 		HeadlessUI ui;
@@ -1115,6 +1297,8 @@ int main()
 		TestFieldsAndPropertyRows();
 		TestChecksMenusCombosAndSwatches();
 		TestAssetCardsAndTables();
+		TestTitlebarWidgetsAndMultilineFields();
+		TestPanelsLeaveNoShapesToImGui();
 		TestAnimationsEaseAndAreForgotten();
 	}
 	catch (const std::exception& error)

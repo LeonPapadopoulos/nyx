@@ -5,8 +5,10 @@
 namespace Nyx::UI
 {
 	// Finds what ImGui still draws itself, to see what isn't painted yet (Design/ui-painter.md,
-	// stage 3, change 8). With marking on, each shape ImGui draws (its rects, lines, circles and
-	// triangles, in any window) is outlined in red, over everything in its OS window.
+	// stage 3, changes 8 and 9). With marking on, each shape ImGui draws (its rects, lines,
+	// circles and triangles, in any window or in a viewport's background or foreground draw list)
+	// is outlined in red, over everything in its OS window. Shapes ImGui draws fully transparent
+	// don't show, and aren't marked.
 	//
 	// ImGui draws shapes and text from the same texture, its font atlas: shapes read the atlas's
 	// white pixel or its baked lines, glyphs the rest. So a triangle all of whose corners read
@@ -22,8 +24,8 @@ namespace Nyx::UI
 	// are gathered; the renderer does. Nothing while marking is off.
 	void MarkImGuiShapes();
 
-	// How many shapes ImGui drew in the frame marked last, and in how many windows; 0 while
-	// marking is off
+	// How many shapes ImGui drew in the frame marked last, and in how many windows (a viewport's
+	// background or foreground draw list counts as one); 0 while marking is off
 	uint32_t GetImGuiShapeCount();
 	uint32_t GetImGuiShapeWindowCount();
 }

@@ -1320,7 +1320,8 @@ namespace
 		ImGui::NewFrame();
 	}
 
-	// Debug > Mark ImGui Shapes: what ImGui draws with its white pixel is outlined, its text not
+	// Debug > Mark ImGui Shapes: what ImGui draws with its white pixel is outlined, its text not,
+	// nor what it draws fully transparent. A viewport's foreground draw list is looked at too.
 	void TestImGuiShapesAreMarked()
 	{
 		ImGui::EndFrame();
@@ -1331,6 +1332,7 @@ namespace
 		ImGui::Button("Apply");
 		const ImRect button(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
 		ImGui::TextUnformatted("Text isn't marked");
+		ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(2.0f, 40.0f), ImVec2(30.0f, 60.0f), IM_COL32(255, 255, 255, 0));
 		ImGui::End();
 		// As the renderer does: once the frame has ended, when ImGui has hidden its implicit
 		// "Debug" window, which nothing used
@@ -1344,6 +1346,15 @@ namespace
 		const PainterRect mark = GetPayload<PainterRectPayload>(marks[0]).Rect;
 		Require(mark.Min.x <= button.Min.x && mark.Min.x > button.Min.x - 1.0f && mark.Max.y >= button.Max.y && mark.Max.y < button.Max.y + 1.0f,
 			"The mark should be the button's frame, with ImGui's anti-aliased edge");
+		Nyx::UI::EndWindowPainters();
+
+		// A shape over all windows, e.g. the editor's focus border
+		ImGui::NewFrame();
+		ImGui::GetForegroundDrawList()->AddRect(ImVec2(1.0f, 1.0f), ImVec2(50.0f, 50.0f), IM_COL32(255, 200, 100, 255), 4.0f, 0, 3.0f);
+		ImGui::EndFrame();
+		Nyx::UI::MarkImGuiShapes();
+		Require(Nyx::UI::GetImGuiShapeCount() == 1 && Nyx::UI::GetImGuiShapeWindowCount() == 1,
+			"A shape in the foreground draw list should be marked, got " + std::to_string(Nyx::UI::GetImGuiShapeCount()));
 
 		Nyx::UI::SetMarkImGuiShapes(false);
 		Nyx::UI::MarkImGuiShapes();

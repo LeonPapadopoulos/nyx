@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iterator>
+#include <optional>
 #include <vector>
 
 namespace Nyx::UI
@@ -483,10 +484,10 @@ namespace Nyx::UI
 
 		// Paints the frame of ImGui's field `label` where it goes next, before ImGui's widget
 		// runs: at the cursor, the item width wide and a frame high, as ImGui's fields lay
-		// themselves out
-		void PaintNextFieldFrame(ImGuiWindow& window, const char* label, EFieldFrame kind, const Theme& theme)
+		// themselves out, or `size` large
+		void PaintNextFieldFrame(ImGuiWindow& window, const char* label, EFieldFrame kind, const Theme& theme, std::optional<glm::vec2> size = std::nullopt)
 		{
-			const ImRect frame = RectAtCursor(window, glm::vec2(ImGui::CalcItemWidth(), ImGui::GetFrameHeight()));
+			const ImRect frame = RectAtCursor(window, size.value_or(glm::vec2(ImGui::CalcItemWidth(), ImGui::GetFrameHeight())));
 			if (!ImGui::IsRectVisible(frame.Min, frame.Max))
 			{
 				return;
@@ -513,7 +514,40 @@ namespace Nyx::UI
 		}
 	}
 
-	bool Button(const char* label, const glm::vec2& sizeArgument)
+	namespace
+	{
+		struct ButtonState
+		{
+			ImRect Rect;
+			ImGuiID Id = 0;
+			bool bClicked = false;
+			WidgetLook Look;
+		};
+
+		// A button's layout and behaviour, as ImGui::ButtonEx(); no ID when it is clipped away
+		ButtonState AddButton(ImGuiWindow& window, const char* label, const glm::vec2& sizeArgument)
+		{
+			ButtonState button;
+			const glm::vec2 fitted = CalcButtonSize(label);
+			const ImVec2 size = ImGui::CalcItemSize(ImVec2(sizeArgument.x, sizeArgument.y), fitted.x, fitted.y);
+			button.Rect = RectAtCursor(window, glm::vec2(size.x, size.y));
+			ImGui::ItemSize(size, ImGui::GetStyle().FramePadding.y);
+			const ImGuiID id = window.GetID(label);
+			if (!ImGui::ItemAdd(button.Rect, id))
+			{
+				return button;
+			}
+
+			bool bHovered = false;
+			bool bHeld = false;
+			button.Id = id;
+			button.bClicked = ImGui::ButtonBehavior(button.Rect, id, &bHovered, &bHeld);
+			button.Look = AnimateLook(id, bHovered, bHeld && bHovered, GetTheme());
+			return button;
+		}
+	}
+
+	bool Button(const char* label, const glm::vec2& size, EButtonTone tone)
 	{
 		ImGuiWindow* window = ImGui::GetCurrentWindow();
 		if (window->SkipItems)
@@ -521,24 +555,45 @@ namespace Nyx::UI
 			return false;
 		}
 
-		// As ImGui::ButtonEx()
-		const ImGuiID id = window->GetID(label);
-		const glm::vec2 fitted = CalcButtonSize(label);
-		const ImVec2 size = ImGui::CalcItemSize(ImVec2(sizeArgument.x, sizeArgument.y), fitted.x, fitted.y);
-		const ImRect rect = RectAtCursor(*window, glm::vec2(size.x, size.y));
-		ImGui::ItemSize(size, ImGui::GetStyle().FramePadding.y);
-		if (!ImGui::ItemAdd(rect, id))
+		const ButtonState button = AddButton(*window, label, size);
+		if (button.Id != 0)
+		{
+			PaintButton(GetWindowPainter(), ToPainterRect(button.Rect), VisibleLabel(label), button.Look, tone);
+		}
+		return button.bClicked;
+	}
+
+	bool MenuBarButton(const char* label, const glm::vec2& size, bool bOpen)
+	{
+		ImGuiWindow* window = ImGui::GetCurrentWindow();
+		if (window->SkipItems)
 		{
 			return false;
 		}
 
-		bool bHovered = false;
-		bool bHeld = false;
-		const bool bClicked = ImGui::ButtonBehavior(rect, id, &bHovered, &bHeld);
+		const ButtonState button = AddButton(*window, label, size);
+		if (button.Id != 0)
+		{
+			const float open = Animate(ImHashStr("Open", 0, button.Id), bOpen ? 1.0f : 0.0f, GetTheme().AnimationSpeed);
+			PaintMenuBarButton(GetWindowPainter(), ToPainterRect(button.Rect), VisibleLabel(label), open, button.Look);
+		}
+		return button.bClicked;
+	}
 
-		const WidgetLook look = AnimateLook(id, bHovered, bHeld && bHovered, GetTheme());
-		PaintButton(GetWindowPainter(), ToPainterRect(rect), VisibleLabel(label), look);
-		return bClicked;
+	bool WindowControlButton(const char* id, EWindowControl control, const glm::vec2& size)
+	{
+		ImGuiWindow* window = ImGui::GetCurrentWindow();
+		if (window->SkipItems)
+		{
+			return false;
+		}
+
+		const ButtonState button = AddButton(*window, id, size);
+		if (button.Id != 0)
+		{
+			PaintWindowControl(GetWindowPainter(), ToPainterRect(button.Rect), control, button.Look);
+		}
+		return button.bClicked;
 	}
 
 	bool Toggle(const char* label, bool* value)
@@ -575,7 +630,7 @@ namespace Nyx::UI
 		return bClicked;
 	}
 
-	bool SliderFloat(const char* label, float* value, float min, float max, const char* format)
+	bool SliderFloat(const char* label, float* value, float min, float max, const char* format, ImGuiSliderFlags flags)
 	{
 		ImGuiWindow* window = ImGui::GetCurrentWindow();
 		if (window->SkipItems)
@@ -615,7 +670,7 @@ namespace Nyx::UI
 		const float valueWidth = CalcSliderValueWidth(min, max, format);
 		const ImRect track = GetSliderTrack(ToPainterRect(frame), valueWidth, theme);
 		ImRect grab;
-		const bool bChanged = ImGui::SliderBehavior(track, id, ImGuiDataType_Float, value, &min, &max, format, ImGuiSliderFlags_None, &grab);
+		const bool bChanged = ImGui::SliderBehavior(track, id, ImGuiDataType_Float, value, &min, &max, format, flags, &grab);
 		if (bChanged)
 		{
 			ImGui::MarkItemEdited(id);
@@ -623,7 +678,11 @@ namespace Nyx::UI
 
 		char valueText[64];
 		ImFormatString(valueText, sizeof(valueText), format, *value);
-		const float fraction = max > min ? std::clamp((*value - min) / (max - min), 0.0f, 1.0f) : 0.0f;
+		// Where ImGui's grab is: by ratio on a logarithmic slider over a range above 0
+		const bool bLogarithmic = (flags & ImGuiSliderFlags_Logarithmic) != 0 && min > 0.0f && max > min;
+		const float fraction = bLogarithmic ? std::clamp(std::log(std::max(*value, min) / min) / std::log(max / min), 0.0f, 1.0f)
+			: max > min						 ? std::clamp((*value - min) / (max - min), 0.0f, 1.0f)
+											 : 0.0f;
 		const WidgetLook look = AnimateLook(id, bHovered, g.ActiveId == id, theme);
 		PaintSlider(GetWindowPainter(), ToPainterRect(frame), shownLabel, fraction, valueText, valueWidth, look);
 		return bChanged;
@@ -789,7 +848,7 @@ namespace Nyx::UI
 		return bOpen;
 	}
 
-	bool InputText(const char* label, std::string* value, ImGuiInputTextFlags flags)
+	bool InputText(const char* label, std::string* value, ImGuiInputTextFlags flags, const char* hint)
 	{
 		ImGuiWindow* window = ImGui::GetCurrentWindow();
 		if (window->SkipItems)
@@ -800,7 +859,24 @@ namespace Nyx::UI
 
 		PaintNextFieldFrame(*window, label, EFieldFrame::Plain, theme);
 		const ScopedFieldStyle style(theme);
-		return ImGui::InputText(label, value, flags);
+		return hint != nullptr ? ImGui::InputTextWithHint(label, hint, value, flags) : ImGui::InputText(label, value, flags);
+	}
+
+	bool InputTextMultiline(const char* label, std::string* value, const glm::vec2& size, ImGuiInputTextFlags flags)
+	{
+		ImGuiWindow* window = ImGui::GetCurrentWindow();
+		if (window->SkipItems)
+		{
+			return false;
+		}
+		const Theme& theme = GetTheme();
+
+		// As ImGui::InputTextEx() sizes a multi-line field. Its text is in a child window, drawn
+		// after this one's painting, so over the frame.
+		const ImVec2 frameSize = ImGui::CalcItemSize(ImVec2(size.x, size.y), ImGui::CalcItemWidth(), ImGui::GetFontSize() * 8.0f + ImGui::GetStyle().FramePadding.y * 2.0f);
+		PaintNextFieldFrame(*window, label, EFieldFrame::Plain, theme, glm::vec2(frameSize.x, frameSize.y));
+		const ScopedFieldStyle style(theme);
+		return ImGui::InputTextMultiline(label, value, frameSize, flags);
 	}
 
 	bool SearchField(const char* label, std::string* value, const char* placeholder)
@@ -1408,11 +1484,20 @@ namespace Nyx::UI
 		return result;
 	}
 
-	void PaintButton(WindowPainter& painter, const PainterRect& rect, std::string_view label, const WidgetLook& look)
+	void PaintButton(WindowPainter& painter, const PainterRect& rect, std::string_view label, const WidgetLook& look, EButtonTone tone)
 	{
 		const Theme& theme = GetTheme();
 
-		const glm::vec4 fill = glm::mix(glm::mix(theme.Frame, theme.FrameHovered, look.Hovered), theme.FramePressed, look.Pressed);
+		struct ToneColors
+		{
+			const glm::vec4& Rest;
+			const glm::vec4& Hovered;
+			const glm::vec4& Pressed;
+		};
+		const ToneColors colors = tone == EButtonTone::Go ? ToneColors{ theme.ButtonGo, theme.ButtonGoHovered, theme.ButtonGoPressed }
+			: tone == EButtonTone::Stop						  ? ToneColors{ theme.ButtonStop, theme.ButtonStopHovered, theme.ButtonStopPressed }
+															  : ToneColors{ theme.Frame, theme.FrameHovered, theme.FramePressed };
+		const glm::vec4 fill = glm::mix(glm::mix(colors.Rest, colors.Hovered, look.Hovered), colors.Pressed, look.Pressed);
 		painter.AddRoundedRect(rect, theme.FrameRounding, Filled(Shade(fill, look, theme), ControlEffects(look, theme, true)));
 		painter.AddRoundedRect(rect, theme.FrameRounding, PainterStyle::Outlined(Shade(theme.FrameBorder, look, theme), theme.FrameBorderWidth));
 
@@ -1421,6 +1506,84 @@ namespace Nyx::UI
 		const glm::vec2 centre = (rect.Min + rect.Max) * 0.5f;
 		const glm::vec2 textPosition = centre - textSize * 0.5f + glm::vec2(0.0f, theme.PressedTextOffset * look.Pressed);
 		PaintText(painter, textPosition, Shade(theme.Text, look, theme), label);
+	}
+
+	void PaintMenuBarButton(WindowPainter& painter, const PainterRect& rect, std::string_view label, float open, const WidgetLook& look)
+	{
+		const Theme& theme = GetTheme();
+
+		// The open menu's pill, and the hover's over it, in a little from the bar's top and bottom
+		const PainterRect pill{ { rect.Min.x, rect.Min.y + theme.TabPillInset }, { rect.Max.x, rect.Max.y - theme.TabPillInset } };
+		if (open > 0.0f)
+		{
+			painter.AddRoundedRect(pill, theme.FrameRounding, PainterStyle::Filled(Shade(Fade(theme.RowSelected, open), look, theme)));
+		}
+		const float hovered = std::max(look.Hovered, look.Pressed);
+		if (hovered > 0.0f)
+		{
+			painter.AddRoundedRect(pill, theme.FrameRounding, PainterStyle::Filled(Shade(Fade(theme.MenuItemHovered, hovered), look, theme)));
+		}
+		if (look.Focused > 0.0f)
+		{
+			painter.AddRoundedRect(pill, theme.FrameRounding, PainterStyle::Outlined(Fade(theme.Accent, look.Focused), 1.0f));
+		}
+
+		const glm::vec2 textSize = CalcTextSize(label);
+		const glm::vec2 centre = (rect.Min + rect.Max) * 0.5f;
+		PaintText(painter, glm::floor(centre - textSize * 0.5f), Shade(theme.Text, look, theme), label);
+	}
+
+	void PaintWindowControl(WindowPainter& painter, const PainterRect& rect, EWindowControl control, const WidgetLook& look)
+	{
+		const Theme& theme = GetTheme();
+
+		// Filled edge to edge while hovered or pressed, as Windows' own
+		const bool bClose = control == EWindowControl::Close;
+		const glm::vec4& hoveredFill = bClose ? theme.WindowCloseHovered : theme.WindowControlHovered;
+		const glm::vec4& pressedFill = bClose ? theme.WindowClosePressed : theme.WindowControlPressed;
+		const float hovered = std::max(look.Hovered, look.Pressed);
+		if (hovered > 0.0f)
+		{
+			const glm::vec4 fill = glm::mix(hoveredFill, pressedFill, look.Pressed);
+			painter.AddRect(rect, PainterStyle::Filled(Shade(Fade(fill, hovered), look, theme)));
+		}
+
+		// The icon in a square in the middle, on whole pixels so its thin lines stay sharp
+		const float size = theme.WindowControlIconSize;
+		const float width = theme.WindowControlIconWidth;
+		const glm::vec2 min = glm::floor((rect.Min + rect.Max - glm::vec2(size)) * 0.5f);
+		const glm::vec2 max = min + glm::vec2(size);
+		const PainterStyle line = PainterStyle::Filled(Shade(theme.Text, look, theme));
+		const PainterStyle outline = PainterStyle::Outlined(Shade(theme.Text, look, theme), width);
+		// Lines and outlines are centred on their edges: half their width in from the square's
+		const float half = width * 0.5f;
+		switch (control)
+		{
+		case EWindowControl::Minimize:
+		{
+			const float y = std::floor((min.y + max.y) * 0.5f) + half;
+			painter.AddLine({ min.x, y }, { max.x, y }, width, EPainterLineCap::Flat, line);
+			break;
+		}
+		case EWindowControl::Maximize:
+			painter.AddRect(PainterRect{ min + half, max - half }, outline);
+			break;
+		case EWindowControl::Restore:
+		{
+			// Two windows, the front one lower left, the back one showing above and right of it
+			const float offset = std::floor(size * 0.2f);
+			painter.AddRect(PainterRect{ glm::vec2(min.x, min.y + offset) + half, glm::vec2(max.x - offset, max.y) - half }, outline);
+			painter.AddLine({ min.x + offset + half, min.y + offset }, { min.x + offset + half, min.y + half }, width, EPainterLineCap::Flat, line);
+			painter.AddLine({ min.x + offset, min.y + half }, { max.x - half, min.y + half }, width, EPainterLineCap::Flat, line);
+			painter.AddLine({ max.x - half, min.y }, { max.x - half, max.y - offset }, width, EPainterLineCap::Flat, line);
+			painter.AddLine({ max.x - half, max.y - offset - half }, { max.x - offset, max.y - offset - half }, width, EPainterLineCap::Flat, line);
+			break;
+		}
+		case EWindowControl::Close:
+			painter.AddLine(min, max, width, EPainterLineCap::Round, line);
+			painter.AddLine({ max.x, min.y }, { min.x, max.y }, width, EPainterLineCap::Round, line);
+			break;
+		}
 	}
 
 	void PaintToggle(WindowPainter& painter, const PainterRect& rect, std::string_view label, float on, const WidgetLook& look)
