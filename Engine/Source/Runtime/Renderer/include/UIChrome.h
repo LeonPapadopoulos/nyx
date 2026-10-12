@@ -1,5 +1,7 @@
 #pragma once
 
+#include "PainterCommands.h"
+
 #include <imgui.h>
 
 namespace Nyx::UI
@@ -20,6 +22,9 @@ namespace Nyx::UI
 	//   labels and close buttons; their shapes are painted behind the labels instead: a pill
 	//   behind the selected tab and a hovered one, and an accent underline under the selected tab
 	//   that slides to the next one selected.
+	// - Window glows, for ambilight (stage 3, change 5): a window can glow with a picture onto
+	//   the backdrop around it (AddWindowGlow()). The glows are painted behind every card, and
+	//   docked cards are slightly translucent, so a glow shows faintly through its neighbours.
 	//
 	// The colours, rounding, gap and shadows are the theme's (UITheme.h).
 
@@ -34,6 +39,15 @@ namespace Nyx::UI
 	// call right after the window's Begin(), e.g. the dock space's host window. Nothing while the
 	// chrome is off.
 	void PaintBackdrop();
+
+	// Light from a picture onto the editor around the window being built (ambilight): an image
+	// glow of `texture` around `rect`, in ImGui's screen coordinates, e.g. where the window shows
+	// the picture. It reaches `reach` pixels out and starts at `strength`, from 0 to 1
+	// (Painter::AddImageGlow()); a blurred picture glows softly. The chrome paints it with the
+	// window's card, behind all cards. Call it between the window's own Begin() and End(), not
+	// in a child window, each frame it should glow. Nothing while the chrome is off, nor for a window that fills an OS
+	// window of its own, which has no room around it.
+	void AddWindowGlow(ImTextureRef texture, const Engine::PainterRect& rect, float reach, float strength);
 
 	// Paints the cards and tab bars of all windows of this frame. Call it once the frame has ended
 	// (ImGui::EndFrame(), so ImGui's own windows are there too) and before the window painters

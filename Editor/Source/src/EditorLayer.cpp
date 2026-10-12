@@ -153,8 +153,8 @@ namespace Nyx::Editor
 
 		Outliner.Draw(Editing);
 		Details.Draw(Editing);
-		MainSceneView.Draw(Editing);
-		SecondarySceneView.Draw(Editing);
+		MainSceneView.Draw(Editing, Preferences);
+		SecondarySceneView.Draw(Editing, Preferences);
 
 		// Values being dragged or typed reach a running game every frame, not only when the edit ends
 		Editing.DetailsContext.PreviewPendingEdits();

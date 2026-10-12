@@ -37,6 +37,9 @@ namespace
 		EditorPreferences written;
 		written.SourceEditor = ESourceEditor::VisualStudioCode;
 		written.bConsoleWindowsInPlayAll = true;
+		written.bAmbilight = false;
+		written.AmbilightStrength = 0.35f;
+		written.AmbilightReach = 123.5f;
 		written.PlaySetups = {
 			PlaySetup{ .Name = "Phone, portrait", .Width = 390, .Height = 844, .bInPlayAll = false },
 			PlaySetup{ .Name = "Ultrawide", .Width = 2560, .Height = 1080, .bInPlayAll = true },
@@ -46,6 +49,7 @@ namespace
 		read.FromText(written.ToText());
 		Require(read.SourceEditor == ESourceEditor::VisualStudioCode, "The source editor was lost");
 		Require(read.bConsoleWindowsInPlayAll, "Console windows in Play All was lost");
+		Require(!read.bAmbilight && read.AmbilightStrength == 0.35f && read.AmbilightReach == 123.5f, "The ambilight settings differ after a round trip");
 		Require(read.PlaySetups == written.PlaySetups, "The play setups differ after a round trip (a comma in a name?)");
 
 		// Through a file too, as the editor saves them
@@ -63,6 +67,16 @@ namespace
 		old.FromText("# Nyx editor user preferences\r\nSourceEditor=VisualStudio\r\n");
 		Require(old.PlaySetups == GetDefaultPlaySetups(), "Without saved setups, the defaults should be used");
 		Require(!old.bConsoleWindowsInPlayAll, "Console windows in Play All should be off by default");
+		const EditorPreferences defaults;
+		Require(old.bAmbilight && old.AmbilightStrength == defaults.AmbilightStrength && old.AmbilightReach == defaults.AmbilightReach,
+			"Without saved ambilight settings, ambilight should be on with the defaults");
+
+		// Ambilight settings out of range are clamped; unreadable ones keep the defaults.
+		EditorPreferences ambilight;
+		ambilight.FromText("AmbilightStrength=5\nAmbilightReach=-20\n");
+		Require(ambilight.AmbilightStrength == 1.0f && ambilight.AmbilightReach == 0.0f, "Ambilight settings out of range should be clamped");
+		ambilight.FromText("AmbilightStrength=bright\nAmbilightReach=nan\nAmbilight=2\n");
+		Require(ambilight.AmbilightStrength == 1.0f && ambilight.AmbilightReach == 0.0f && ambilight.bAmbilight, "Unreadable ambilight settings should be skipped");
 
 		// A damaged line loses only its setup
 		EditorPreferences damaged;

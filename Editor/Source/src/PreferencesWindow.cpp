@@ -37,7 +37,7 @@ namespace Nyx::Editor
 		if (!bOpen) return;
 
 		// Keep preferences independently resizable, including when an older layout docked it.
-		ImGui::SetNextWindowSize(ImVec2(640.0f, 300.0f), ImGuiCond_FirstUseEver);
+		ImGui::SetNextWindowSize(ImVec2(640.0f, 400.0f), ImGuiCond_FirstUseEver);
 		ImGui::SetNextWindowSizeConstraints(ImVec2(360.0f, 180.0f), ImVec2(FLT_MAX, FLT_MAX));
 		if (Nyx::UI::Begin("Preferences", &bOpen))
 		{
@@ -57,7 +57,30 @@ namespace Nyx::Editor
 			ImGui::PopTextWrapPos();
 			if (!SourceNavigationStatus.empty()) NYX_UI(ImGui::TextWrapped("%s", SourceNavigationStatus.c_str()));
 			if (!sourceInspector.GetStatus().empty()) NYX_UI(ImGui::TextWrapped("%s", sourceInspector.GetStatus().c_str()));
+
+			ImGui::Spacing();
+			DrawAmbilight(preferences);
 		}
 		ImGui::End();
+	}
+
+	void PreferencesWindow::DrawAmbilight(EditorPreferences& preferences)
+	{
+		NYX_UI(ImGui::TextUnformatted("Ambilight"));
+		NYX_UI(ImGui::TextDisabled("The scene views' pictures glow onto the editor around them."));
+
+		// The toggle saves at once; a slider when it is let go, not on every frame of a drag.
+		bool bSave = NYX_UI(ImGui::Checkbox("Ambilight", &preferences.bAmbilight));
+		ImGui::BeginDisabled(!preferences.bAmbilight);
+		NYX_UI(ImGui::SliderFloat("Strength", &preferences.AmbilightStrength, 0.0f, 1.0f, "%.2f"));
+		bSave |= ImGui::IsItemDeactivatedAfterEdit();
+		NYX_UI(ImGui::SliderFloat("Reach", &preferences.AmbilightReach, 0.0f, EditorPreferences::MaxAmbilightReach, "%.0f px"));
+		bSave |= ImGui::IsItemDeactivatedAfterEdit();
+		ImGui::EndDisabled();
+
+		if (bSave && !preferences.Save(EditorPreferences::GetUserFile()))
+		{
+			SourceNavigationStatus = "Could not save user preferences.";
+		}
 	}
 }

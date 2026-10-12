@@ -1,8 +1,10 @@
 #include "SceneViewPanel.h"
 
+#include "EditorPreferences.h"
 #include "ImGuiSource.h"
 #include "Renderer.h"
 #include "SceneEditor.h"
+#include "UIChrome.h"
 
 #include <algorithm>
 
@@ -60,7 +62,7 @@ namespace Nyx::Editor
 		}
 	}
 
-	void SceneViewPanel::Draw(SceneEditor& editing)
+	void SceneViewPanel::Draw(SceneEditor& editing, const EditorPreferences& preferences)
 	{
 		if (!bOpen || !Renderer || SceneViewId == 0)
 		{
@@ -92,6 +94,15 @@ namespace Nyx::Editor
 			const ImVec2 imageMin = ImGui::GetItemRectMin();
 			const ImVec2 imageSize = ImGui::GetItemRectSize();
 			const bool bImageHovered = ImGui::IsItemHovered();
+
+			// Ambilight: the view's picture, blurred by the renderer each frame, glows from the
+			// picture's edges onto the editor around it.
+			const ImTextureID blurred = Renderer->GetSceneViewBlurTextureId(SceneViewId);
+			if (preferences.bAmbilight && blurred != ImTextureID_Invalid)
+			{
+				const Nyx::Engine::PainterRect picture{ { imageMin.x, imageMin.y }, { imageMin.x + imageSize.x, imageMin.y + imageSize.y } };
+				Nyx::UI::AddWindowGlow(ImTextureRef(blurred), picture, preferences.AmbilightReach, preferences.AmbilightStrength);
+			}
 
 			const bool bGizmoConsumedInteraction =
 				editing.Gizmo.TickAndDraw(

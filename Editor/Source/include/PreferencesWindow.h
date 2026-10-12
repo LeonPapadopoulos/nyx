@@ -23,6 +23,9 @@ namespace Nyx::Editor
 		bool bOpen = false;
 
 	private:
+		// Ambilight on or off, its strength and its reach
+		void DrawAmbilight(EditorPreferences& preferences);
+
 		std::future<std::string> PendingSourceOpen;
 		std::string SourceNavigationStatus;
 	};

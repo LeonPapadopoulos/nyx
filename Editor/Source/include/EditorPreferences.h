@@ -43,6 +43,14 @@ namespace Nyx::Editor
 		// anyway, and a wall of games with a console each is crowded. Play always shows the console.
 		bool bConsoleWindowsInPlayAll = false;
 
+		// Ambilight: the scene views' pictures glow onto the editor around them. Strength is the
+		// glow's opacity at the picture's edge, from 0 to 1; reach is how far it goes, in pixels,
+		// up to MaxAmbilightReach.
+		bool bAmbilight = true;
+		float AmbilightStrength = 0.8f;
+		float AmbilightReach = 60.0f;
+		static constexpr float MaxAmbilightReach = 400.0f;
+
 		static std::filesystem::path GetUserFile();
 
 		// Missing settings keep their defaults; lines this editor doesn't know are skipped

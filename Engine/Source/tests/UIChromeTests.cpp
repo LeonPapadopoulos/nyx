@@ -104,7 +104,11 @@ namespace
 
 			for (const char* name : { "Left", "Left 2", "Right" })
 			{
-				ImGui::Begin(name);
+				// Begin() is true for the tab that shows
+				if (ImGui::Begin(name))
+				{
+					GlowIfAsked();
+				}
 				ImGui::TextUnformatted(name);
 				ImGui::End();
 			}
@@ -112,6 +116,7 @@ namespace
 			ImGui::SetNextWindowPos(ImVec2(300.0f, 200.0f));
 			ImGui::SetNextWindowSize(ImVec2(200.0f, 120.0f));
 			ImGui::Begin("Floating", nullptr, ImGuiWindowFlags_NoDocking);
+			GlowIfAsked();
 			if (ImGui::BeginTabBar("Tabs"))
 			{
 				for (const char* name : { "One", "Two" })
@@ -152,6 +157,21 @@ namespace
 
 		// The floating window's tab to select in the next frame built, by name
 		const char* SelectTab = nullptr;
+
+		// Whether the windows glow (AddWindowGlow()), each from its whole rect, with GlowTexture
+		bool bGlow = false;
+		static constexpr float GlowReach = 40.0f;
+		static constexpr float GlowStrength = 0.5f;
+		const ImTextureRef GlowTexture{ static_cast<ImTextureID>(7) };
+
+	private:
+		void GlowIfAsked()
+		{
+			if (bGlow)
+			{
+				Nyx::UI::AddWindowGlow(GlowTexture, RectAt(ImGui::GetWindowPos(), ImGui::GetWindowSize()), GlowReach, GlowStrength);
+			}
+		}
 
 	private:
 		ImGuiContext* Context = nullptr;
@@ -509,6 +529,66 @@ namespace
 		Require(FindUnderline(*behind, tabBar).Color == PackPremultipliedColor(Nyx::UI::GetTheme().TabUnderline), "A tab bar in a window counts as focused, as ImGui has it");
 	}
 
+	// The indices of a painter's commands of a type, in recording order
+	std::vector<size_t> IndicesOfType(const WindowPainter& painter, EPainterCommandType type)
+	{
+		std::vector<size_t> result;
+		const std::vector<PainterCommand>& commands = painter.GetPainter().GetCommands();
+		for (size_t index = 0; index < commands.size(); ++index)
+		{
+			if (commands[index].Type == static_cast<uint32_t>(type))
+			{
+				result.push_back(index);
+			}
+		}
+		return result;
+	}
+
+	void TestWindowsGlowBehindTheirCards(DockedEditor& editor)
+	{
+		editor.bGlow = true;
+		editor.BuildFrame();
+		const ImGuiDockNode& left = editor.GetLeft();
+		std::vector<WindowPainter*> painters = editor.PaintCards();
+		const uint32_t glowColor = PackPremultipliedColor(glm::vec4(1.0f, 1.0f, 1.0f, DockedEditor::GlowStrength));
+
+		// Docked: the two windows that show (one of the left node's tabs, and Right), before every
+		// card, in the cards' group, so they lie over its shadow
+		const WindowPainter* cards = FindPainter(painters, left.HostWindow->DrawList, EWindowPainterPlacement::InOrder);
+		Require(cards != nullptr, "The dock host should get a painter");
+		const std::vector<PainterCommand>& commands = cards->GetPainter().GetCommands();
+		const std::vector<size_t> glows = IndicesOfType(*cards, EPainterCommandType::ImageGlow);
+		const std::vector<size_t> rects = IndicesOfType(*cards, EPainterCommandType::Rect);
+		Require(glows.size() == 2, "Each docked window that shows should glow once, got " + std::to_string(glows.size()));
+		Require(glows.back() < rects.front(), "The glows should be painted before every card");
+		const PainterCommand& leftGlow = commands[glows[0]];
+		Require(leftGlow.Group != PainterNoGroup && leftGlow.Group == commands[rects.front()].Group, "The glows should be in the cards' group, over its shadow");
+		Require(leftGlow.Color == glowColor && Near(leftGlow.Reach, DockedEditor::GlowReach), "A glow should have the strength and reach asked for");
+		const auto isGlowOf = [&](size_t index, const ImGuiWindow& window)
+		{
+			return Near(GetPayload<PainterTexturedRectPayload>(commands[index]).Rect, RectAt(window.Pos, window.Size));
+		};
+		Require(isGlowOf(glows[0], *left.VisibleWindow) || isGlowOf(glows[1], *left.VisibleWindow), "The left node's glow should be the rect its window asked for");
+
+		// Floating: in front of its card, in the card's group
+		ImGuiWindow& floating = FindWindow("Floating");
+		const WindowPainter* behind = FindPainter(painters, floating.DrawList, EWindowPainterPlacement::Behind);
+		Require(behind != nullptr, "The floating window should get a painter behind it");
+		const std::vector<size_t> floatingGlows = IndicesOfType(*behind, EPainterCommandType::ImageGlow);
+		const std::vector<size_t> floatingRects = IndicesOfType(*behind, EPainterCommandType::Rect);
+		const std::vector<PainterCommand>& behindCommands = behind->GetPainter().GetCommands();
+		Require(floatingGlows.size() == 1 && floatingGlows[0] < floatingRects.front() &&
+			behindCommands[floatingGlows[0]].Group == behindCommands[floatingRects.front()].Group,
+			"A floating window's glow should come before its card, in the card's group");
+
+		// A glow holds for the frame it was asked for only.
+		editor.bGlow = false;
+		editor.BuildFrame();
+		painters = editor.PaintCards();
+		cards = FindPainter(painters, left.HostWindow->DrawList, EWindowPainterPlacement::InOrder);
+		Require(cards != nullptr && IndicesOfType(*cards, EPainterCommandType::ImageGlow).empty(), "Without being asked again, a window shouldn't glow");
+	}
+
 	void TestTheUnderlineSlidesToTheSelectedTab(DockedEditor& editor)
 	{
 		Settle(editor);
@@ -558,6 +638,7 @@ int main()
 		TestDockedTabBarsArePainted(editor);
 		TestTabBarsInWindowsArePaintedBehindThem(editor);
 		TestTheUnderlineSlidesToTheSelectedTab(editor);
+		TestWindowsGlowBehindTheirCards(editor);
 		TestASplitterShowsWhileHovered(editor);
 	}
 	catch (const std::exception& error)

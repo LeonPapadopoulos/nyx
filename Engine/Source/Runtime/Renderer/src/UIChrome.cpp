@@ -50,16 +50,56 @@ namespace Nyx::UI
 			float DockingSeparatorSize = 0.0f;
 		};
 
+		// A glow a window asked for this frame (AddWindowGlow())
+		struct WindowGlow
+		{
+			const ImGuiWindow* Window = nullptr;
+			ImTextureRef Texture;
+			PainterRect Rect;
+			float Reach = 0.0f;
+			float Strength = 0.0f;
+		};
+
 		struct ChromeState
 		{
 			bool bEnabled = false;
 			StyleBeforeChrome StyleBefore;
+
+			// This frame's window glows, and the frame and context they belong to
+			std::vector<WindowGlow> Glows;
+			const ImGuiContext* GlowsContext = nullptr;
+			int GlowsFrame = -1;
 		};
 
 		ChromeState& GetState()
 		{
 			static ChromeState state;
 			return state;
+		}
+
+		// The window glows asked for this frame; those of an earlier frame are forgotten.
+		std::vector<WindowGlow>& GetGlows()
+		{
+			ChromeState& state = GetState();
+			if (state.GlowsContext != ImGui::GetCurrentContext() || state.GlowsFrame != ImGui::GetFrameCount())
+			{
+				state.Glows.clear();
+				state.GlowsContext = ImGui::GetCurrentContext();
+				state.GlowsFrame = ImGui::GetFrameCount();
+			}
+			return state.Glows;
+		}
+
+		// The glows `window` asked for this frame, painted before its card
+		void PaintGlowsOf(WindowPainter& painter, const ImGuiWindow& window)
+		{
+			for (const WindowGlow& glow : GetGlows())
+			{
+				if (glow.Window == &window)
+				{
+					painter.AddImageGlow(glow.Texture, glow.Rect, glow.Reach, glow.Strength);
+				}
+			}
 		}
 
 		// ImGui waits this long before it shows a hovered splitter (WINDOWS_RESIZE_FROM_EDGES_FEEDBACK_TIMER
@@ -303,6 +343,17 @@ namespace Nyx::UI
 			// One group: the cards cast one shadow together, under all of them, so no card's
 			// shadow falls on its neighbour.
 			painter.BeginGroup(shadow);
+			// The glows of the windows the nodes show come first. In the group, they lie over its
+			// shadow, which the shader draws before the group's first shape: light isn't darkened
+			// by a shadow. Under every card, they show through the translucent ones. A glow casts
+			// no shadow itself.
+			for (const ImGuiDockNode* node : host.Cards)
+			{
+				if (node->VisibleWindow != nullptr)
+				{
+					PaintGlowsOf(painter, *node->VisibleWindow);
+				}
+			}
 			for (const ImGuiDockNode* node : host.Cards)
 			{
 				painter.AddRoundedRect(RectAt(node->Pos, node->Size), theme.CardRounding, PainterStyle::Filled(cardColor));
@@ -358,9 +409,13 @@ namespace Nyx::UI
 			}
 			else
 			{
-				PainterStyle style = PainterStyle::Filled(theme.FloatingCard);
-				style.Effects.Shadow = theme.FloatingCardShadow;
-				painter.AddRoundedRect(card, theme.CardRounding, style);
+				// The card's shadow, then the window's glows over it, as for docked cards, then the card
+				Engine::PainterEffects shadow;
+				shadow.Shadow = theme.FloatingCardShadow;
+				painter.BeginGroup(shadow);
+				PaintGlowsOf(painter, window);
+				painter.AddRoundedRect(card, theme.CardRounding, PainterStyle::Filled(theme.FloatingCard));
+				painter.EndGroup();
 				PaintCardBorder(painter, card, theme.CardRounding);
 			}
 			drawList.PopClipRect();
@@ -447,6 +502,15 @@ namespace Nyx::UI
 		ImGui::PushClipRect(ToImVec2(rect.Min), ToImVec2(rect.Max), false);
 		GetWindowPainter().AddRoundedRect(rect, window.WindowRounding, PainterStyle::Filled(GetTheme().Backdrop));
 		ImGui::PopClipRect();
+	}
+
+	void AddWindowGlow(ImTextureRef texture, const PainterRect& rect, float reach, float strength)
+	{
+		if (!GetState().bEnabled || ImGui::GetCurrentContext() == nullptr || reach <= 0.0f || strength <= 0.0f)
+		{
+			return;
+		}
+		GetGlows().push_back(WindowGlow{ ImGui::GetCurrentWindowRead(), texture, rect, reach, strength });
 	}
 
 	void PaintWindowCards()

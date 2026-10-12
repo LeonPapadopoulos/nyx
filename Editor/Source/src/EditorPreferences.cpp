@@ -3,7 +3,9 @@
 
 #include <Windows.h>
 #include <ShlObj.h>
+#include <algorithm>
 #include <charconv>
+#include <cmath>
 #include <fstream>
 #include <optional>
 #include <sstream>
@@ -25,6 +27,26 @@ namespace
 		}
 
 		return number;
+	}
+
+	std::optional<float> ParseFloat(std::string_view text)
+	{
+		float number = 0.0f;
+		const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), number);
+		if (text.empty() || error != std::errc() || end != text.data() + text.size() || !std::isfinite(number))
+		{
+			return std::nullopt;
+		}
+
+		return number;
+	}
+
+	// The shortest text that reads back as the same float
+	std::string FormatFloat(float number)
+	{
+		char buffer[32];
+		const auto [end, error] = std::to_chars(buffer, buffer + sizeof(buffer), number);
+		return error == std::errc() ? std::string(buffer, end) : std::string("0");
 	}
 
 	// "<in Play All: 0 or 1>,<width>x<height>,<name>", e.g. "1,1280x800,Steam Deck". The name comes
@@ -121,6 +143,9 @@ namespace Nyx::Editor
 			(SourceEditor == ESourceEditor::VisualStudioCode ? "VisualStudioCode\n" : "VisualStudio\n");
 
 		text += std::string("ConsoleWindowsInPlayAll=") + (bConsoleWindowsInPlayAll ? "1\n" : "0\n");
+		text += std::string("Ambilight=") + (bAmbilight ? "1\n" : "0\n");
+		text += "AmbilightStrength=" + FormatFloat(AmbilightStrength) + "\n";
+		text += "AmbilightReach=" + FormatFloat(AmbilightReach) + "\n";
 
 		// In order; Play uses the first
 		text += "# PlaySetup=<in Play All: 0 or 1>,<width>x<height>,<name>\n";
@@ -155,6 +180,22 @@ namespace Nyx::Editor
 			else if (setting == "SourceEditor=VisualStudio") SourceEditor = ESourceEditor::VisualStudio;
 			else if (setting == "ConsoleWindowsInPlayAll=1") bConsoleWindowsInPlayAll = true;
 			else if (setting == "ConsoleWindowsInPlayAll=0") bConsoleWindowsInPlayAll = false;
+			else if (setting == "Ambilight=1") bAmbilight = true;
+			else if (setting == "Ambilight=0") bAmbilight = false;
+			else if (setting.starts_with("AmbilightStrength="))
+			{
+				if (const std::optional<float> strength = ParseFloat(setting.substr(std::string_view("AmbilightStrength=").size())))
+				{
+					AmbilightStrength = std::clamp(*strength, 0.0f, 1.0f);
+				}
+			}
+			else if (setting.starts_with("AmbilightReach="))
+			{
+				if (const std::optional<float> reach = ParseFloat(setting.substr(std::string_view("AmbilightReach=").size())))
+				{
+					AmbilightReach = std::clamp(*reach, 0.0f, MaxAmbilightReach);
+				}
+			}
 			else if (setting.starts_with("PlaySetup="))
 			{
 				// A damaged line loses only its setup

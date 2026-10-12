@@ -76,7 +76,9 @@ namespace Nyx::UI
 		// The window chrome (UIChrome.h): the backdrop behind the dock space, and the card every
 		// window is painted as
 		glm::vec4 Backdrop{ 0.045f, 0.047f, 0.055f, 1.0f };
-		glm::vec4 Card{ 0.098f, 0.1f, 0.112f, 1.0f };
+		// Docked cards are slightly translucent, so a window's glow (ambilight) shows faintly
+		// through its neighbours. Floating cards stay opaque.
+		glm::vec4 Card{ 0.098f, 0.1f, 0.112f, 0.85f };
 		// A hairline just inside each card's edge, so cards stand apart from the backdrop
 		glm::vec4 CardBorder{ 1.0f, 1.0f, 1.0f, 0.05f };
 		float CardRounding = 8.0f;

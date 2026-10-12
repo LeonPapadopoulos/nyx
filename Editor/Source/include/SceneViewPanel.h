@@ -16,9 +16,11 @@ namespace Nyx
 namespace Nyx::Editor
 {
 	class SceneEditor;
+	struct EditorPreferences;
 
 	// A window that shows one of the renderer's scene views ("Scene", "Scene 2"), with the
-	// transform gizmo, and selects what is clicked in it.
+	// transform gizmo, and selects what is clicked in it. With ambilight on, the view's blurred
+	// picture glows onto the editor around it.
 	class SceneViewPanel
 	{
 	public:
@@ -37,7 +39,7 @@ namespace Nyx::Editor
 			return SceneViewId;
 		}
 
-		void Draw(SceneEditor& editing);
+		void Draw(SceneEditor& editing, const EditorPreferences& preferences);
 
 		// Selects the entity of a click the renderer has finished picking. Before drawing, so the
 		// panels see the new selection in the same frame.
