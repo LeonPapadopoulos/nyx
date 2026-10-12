@@ -88,6 +88,11 @@ namespace Nyx::UI
 		// Floating windows, popups, menus and tooltips lie higher: lighter, with a stronger shadow
 		glm::vec4 FloatingCard{ 0.135f, 0.138f, 0.155f, 1.0f };
 		Engine::PainterShadow FloatingCardShadow{ { 0.0f, 0.0f, 0.0f, 0.6f }, { 0.0f, 8.0f }, 24.0f };
+		// Glass (UIChrome.h): floating windows, popups, menus and tooltips in the main window show
+		// what lies behind them, blurred, with this tint laid over it at its alpha, bent and lit
+		// near their edge
+		glm::vec4 GlassTint{ 0.09f, 0.095f, 0.11f, 0.6f };
+		Engine::PainterGlass Glass{ 6.0f, 12.0f, 0.15f };
 		// A splitter between docked cards shows only while hovered or dragged: a line this wide,
 		// as long as the cards beside it less their rounding
 		glm::vec4 Splitter{ 1.0f, 0.55f, 0.15f, 0.9f };

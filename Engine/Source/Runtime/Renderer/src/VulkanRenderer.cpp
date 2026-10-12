@@ -372,6 +372,13 @@ namespace Nyx
 			view.RenderTarget.Shutdown(Context);
 		}
 		SceneViews.clear();
+		if (GlassImGuiTexture != VK_NULL_HANDLE)
+		{
+			ImGui_ImplVulkan_RemoveTexture(GlassImGuiTexture);
+			GlassImGuiTexture = VK_NULL_HANDLE;
+		}
+		GlassImGuiTextureView = vk::ImageView{};
+		GlassBackdrop.Release();
 		BlurTimestamps = nullptr;
 		BlurPass.Shutdown();
 
@@ -648,9 +655,16 @@ namespace Nyx
 		// The frame ends here rather than in ImGui::Render(), so that the windows ImGui begins
 		// itself while ending it (drag and drop tooltips) are there when the cards are painted.
 		ImGui::EndFrame();
+		Nyx::UI::SetGlassBackdrop(GlassImGuiTexture != VK_NULL_HANDLE ? reinterpret_cast<ImTextureID>(GlassImGuiTexture) : ImTextureID_Invalid);
 		Nyx::UI::PaintWindowCards();
 		DrawPainterCanvases(cmd);
 		PrepareWindowPainters();
+
+		// With glass in the main window, what lies behind it is drawn and blurred first, so the
+		// glass shows this frame's. ImGui::Render() makes the draw data for both; the backend's
+		// DrawFrame() finds it made.
+		ImGui::Render();
+		DrawGlassBackdrop(cmd);
 
 		cmd.beginRenderPass(renderPassInfo, vk::SubpassContents::eInline);
 		ImGuiBackend->DrawFrame(cmd);
@@ -3407,31 +3421,8 @@ namespace Nyx
 			}
 			BlurPass.Blur(cmd, picture, view.RenderTarget.GetExtent(), view.Blur, Nyx::Engine::BlurOptions{});
 
-			// ImGui's texture for the blur points at its image: a new texture the first time, and
-			// the same texture pointed at the new image when the view's size changed.
-			const vk::ImageView blurred = view.Blur.GetImageView();
-			if (!blurred || blurred == view.BlurImGuiTextureView)
-			{
-				continue;
-			}
-			if (view.BlurImGuiTexture == VK_NULL_HANDLE)
-			{
-				view.BlurImGuiTexture = ImGui_ImplVulkan_AddTexture(*BlurPass.GetSampler(), blurred, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-			}
-			else
-			{
-				// The previous frame has finished (InFlightFence), and ImGui records this frame's
-				// use of the set only after this, so the set can change now.
-				vk::DescriptorImageInfo imageInfo{ *BlurPass.GetSampler(), blurred, vk::ImageLayout::eShaderReadOnlyOptimal };
-				vk::WriteDescriptorSet write{};
-				write.dstSet = view.BlurImGuiTexture;
-				write.dstBinding = 0;
-				write.descriptorCount = 1;
-				write.descriptorType = vk::DescriptorType::eCombinedImageSampler;
-				write.pImageInfo = &imageInfo;
-				Context.GetDevice().updateDescriptorSets(write, {});
-			}
-			view.BlurImGuiTextureView = blurred;
+			// ImGui's texture for the blur points at its image, which changes with the view's size.
+			PointImGuiTexture(view.BlurImGuiTexture, view.BlurImGuiTextureView, view.Blur.GetImageView());
 		}
 
 		if (*BlurTimestamps)
@@ -3439,6 +3430,73 @@ namespace Nyx
 			cmd.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, *BlurTimestamps, 1);
 			bBlurTimestampsWritten = true;
 		}
+	}
+
+	void VulkanRenderer::PointImGuiTexture(VkDescriptorSet& texture, vk::ImageView& shownView, vk::ImageView view)
+	{
+		if (!view || view == shownView)
+		{
+			return;
+		}
+		if (texture == VK_NULL_HANDLE)
+		{
+			texture = ImGui_ImplVulkan_AddTexture(*BlurPass.GetSampler(), view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		}
+		else
+		{
+			// The previous frame has finished (InFlightFence), and ImGui records this frame's use
+			// of the set only after this, so the set can change now.
+			vk::DescriptorImageInfo imageInfo{ *BlurPass.GetSampler(), view, vk::ImageLayout::eShaderReadOnlyOptimal };
+			vk::WriteDescriptorSet write{};
+			write.dstSet = texture;
+			write.dstBinding = 0;
+			write.descriptorCount = 1;
+			write.descriptorType = vk::DescriptorType::eCombinedImageSampler;
+			write.pImageInfo = &imageInfo;
+			Context.GetDevice().updateDescriptorSets(write, {});
+		}
+		shownView = view;
+	}
+
+	void VulkanRenderer::DrawGlassBackdrop(vk::raii::CommandBuffer& cmd)
+	{
+		const std::span<const ImDrawList* const> glass = Nyx::UI::GetGlassDrawLists();
+		ImDrawData* drawData = ImGui::GetMainViewport()->DrawData;
+		if (glass.empty() || drawData == nullptr || !drawData->Valid)
+		{
+			return;
+		}
+
+		// What lies behind the glass: the main window's draw lists before the first glass
+		// window's. ImGui keeps them in display order, the dock space at the back.
+		ImDrawData behind = *drawData;
+		const auto firstGlass = std::find_if(drawData->CmdLists.begin(), drawData->CmdLists.end(), [&](const ImDrawList* drawList)
+			{
+				return std::find(glass.begin(), glass.end(), drawList) != glass.end();
+			});
+		behind.CmdLists.resize(static_cast<int>(firstGlass - drawData->CmdLists.begin()));
+		behind.CmdListsCount = behind.CmdLists.Size;
+		behind.TotalVtxCount = 0;
+		behind.TotalIdxCount = 0;
+		for (const ImDrawList* drawList : behind.CmdLists)
+		{
+			behind.TotalVtxCount += drawList->VtxBuffer.Size;
+			behind.TotalIdxCount += drawList->IdxBuffer.Size;
+		}
+		// ImGui::Render() has resolved the callbacks' data. The textures (the font atlas) are
+		// created and updated by the first draw that has them in its list, which is this one;
+		// the main window's draw finds them done.
+
+		// ImGui's backend takes new vertex buffers for each draw, from as many as the swapchain
+		// has images; two draws a frame are fine, as each frame waits for the last.
+		const vk::Extent2D extent{
+			static_cast<uint32_t>(drawData->DisplaySize.x * drawData->FramebufferScale.x),
+			static_cast<uint32_t>(drawData->DisplaySize.y * drawData->FramebufferScale.y) };
+		GlassBackdrop.Record(cmd, Context, BlurPass, Swapchain.GetSurfaceFormat().format, extent, [&](vk::CommandBuffer commandBuffer)
+			{
+				ImGui_ImplVulkan_RenderDrawData(&behind, commandBuffer);
+			});
+		PointImGuiTexture(GlassImGuiTexture, GlassImGuiTextureView, GlassBackdrop.GetBlurredView());
 	}
 
 	void VulkanRenderer::ReleaseSceneViewBlur(SceneViewInstance& view)

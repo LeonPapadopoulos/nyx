@@ -209,6 +209,21 @@ namespace
 		return result;
 	}
 
+	// The indices of a painter's commands of a type, in recording order
+	std::vector<size_t> IndicesOfType(const WindowPainter& painter, EPainterCommandType type)
+	{
+		std::vector<size_t> result;
+		const std::vector<PainterCommand>& commands = painter.GetPainter().GetCommands();
+		for (size_t index = 0; index < commands.size(); ++index)
+		{
+			if (commands[index].Type == static_cast<uint32_t>(type))
+			{
+				result.push_back(index);
+			}
+		}
+		return result;
+	}
+
 	// The upright lines a painter recorded: splitters between cards side by side
 	std::vector<PainterLinePayload> UprightLines(const WindowPainter& painter)
 	{
@@ -381,6 +396,46 @@ namespace
 			"The dock space's host window, without a background, should get no card");
 	}
 
+	void TestFloatingWindowsAreGlass(DockedEditor& editor)
+	{
+		const Nyx::UI::Theme& theme = Nyx::UI::GetTheme();
+		ImGuiWindow& floating = FindWindow("Floating");
+
+		// Without a backdrop from the renderer yet, the card is opaque, but the window is noted as
+		// glass, so the renderer draws one.
+		Nyx::UI::SetGlassBackdrop(ImTextureID_Invalid);
+		editor.BuildFrame();
+		std::vector<WindowPainter*> painters = editor.PaintCards();
+		std::span<const ImDrawList* const> glass = Nyx::UI::GetGlassDrawLists();
+		Require(glass.size() == 1 && glass[0] == floating.DrawList, "The floating window should be the frame's one glass window");
+		const WindowPainter* behind = FindPainter(painters, floating.DrawList, EWindowPainterPlacement::Behind);
+		Require(behind != nullptr && IndicesOfType(*behind, EPainterCommandType::Glass).empty(), "Without a backdrop, the card should be opaque");
+
+		// With one: glass, as large as the window, tinted, showing the backdrop
+		const ImTextureID backdrop = static_cast<ImTextureID>(11);
+		Nyx::UI::SetGlassBackdrop(backdrop);
+		editor.BuildFrame();
+		painters = editor.PaintCards();
+		behind = FindPainter(painters, floating.DrawList, EWindowPainterPlacement::Behind);
+		Require(behind != nullptr, "The floating window should get a painter behind it");
+		const std::vector<size_t> glassCommands = IndicesOfType(*behind, EPainterCommandType::Glass);
+		Require(glassCommands.size() == 1, "The floating card should be glass");
+		const PainterCommand& card = behind->GetPainter().GetCommands()[glassCommands[0]];
+		const auto payload = GetPayload<PainterGlassPayload>(card);
+		Require(Near(payload.Rect, RectAt(floating.Pos, floating.Size)) && payload.Radius == theme.CardRounding, "The glass should be the card: the window's rect, rounded");
+		Require(card.Color == PackPremultipliedColor(theme.GlassTint) && Near(payload.Refraction, theme.Glass.Refraction), "The glass should have the theme's tint and bend");
+		Require(behind->GetPainter().GetTextures()[card.Texture]._TexID == backdrop, "The glass should show the renderer's backdrop");
+		Require(card.Group != PainterNoGroup && behind->GetPainter().GetGroups()[card.Group].ShadowColor != 0, "Glass cards keep the floating shadow");
+
+		// Off, no window is glass.
+		Nyx::UI::SetPaintedChrome(false);
+		editor.BuildFrame();
+		editor.PaintCards();
+		Require(Nyx::UI::GetGlassDrawLists().empty(), "With the chrome off, nothing should be glass");
+		Nyx::UI::SetPaintedChrome(true);
+		Nyx::UI::SetGlassBackdrop(ImTextureID_Invalid);
+	}
+
 	void TestASplitterShowsWhileHovered(DockedEditor& editor)
 	{
 		// Not hovered: no line
@@ -529,21 +584,6 @@ namespace
 		Require(FindUnderline(*behind, tabBar).Color == PackPremultipliedColor(Nyx::UI::GetTheme().TabUnderline), "A tab bar in a window counts as focused, as ImGui has it");
 	}
 
-	// The indices of a painter's commands of a type, in recording order
-	std::vector<size_t> IndicesOfType(const WindowPainter& painter, EPainterCommandType type)
-	{
-		std::vector<size_t> result;
-		const std::vector<PainterCommand>& commands = painter.GetPainter().GetCommands();
-		for (size_t index = 0; index < commands.size(); ++index)
-		{
-			if (commands[index].Type == static_cast<uint32_t>(type))
-			{
-				result.push_back(index);
-			}
-		}
-		return result;
-	}
-
 	void TestWindowsGlowBehindTheirCards(DockedEditor& editor)
 	{
 		editor.bGlow = true;
@@ -639,6 +679,7 @@ int main()
 		TestTabBarsInWindowsArePaintedBehindThem(editor);
 		TestTheUnderlineSlidesToTheSelectedTab(editor);
 		TestWindowsGlowBehindTheirCards(editor);
+		TestFloatingWindowsAreGlass(editor);
 		TestASplitterShowsWhileHovered(editor);
 	}
 	catch (const std::exception& error)

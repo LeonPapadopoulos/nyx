@@ -28,6 +28,7 @@ const uint CommandTriangle = 4u;
 const uint CommandGlyph = 5u;
 const uint CommandImage = 6u;
 const uint CommandImageGlow = 7u;
+const uint CommandGlass = 8u;
 
 // EPainterCommandFlags
 const uint FlagRoundCaps = 1u;
@@ -111,7 +112,8 @@ layout(push_constant) uniform PainterPushConstants
 	uint OriginY;
 	uint TilesX;
 	uint TilesY;
-	// The target's size in pixels; only Painter.vert needs it
+	// The target's size in pixels: Painter.vert places the grid with it, and glass maps pixels
+	// to its backdrop with it
 	float TargetWidth;
 	float TargetHeight;
 	uint DebugView; // EPainterDebugView
@@ -262,6 +264,16 @@ float TexturedRectDistance(vec2 p, PainterCommand command)
 	return BoxDistance(p - center, halfSize);
 }
 
+// PainterGlassPayload: Payload0 = min x, min y, max x, max y; Payload1 = corner radius,
+// refraction, edge width, rim strength. A rounded rect with one radius.
+float GlassDistance(vec2 p, PainterCommand command)
+{
+	vec2 center = (command.Payload0.xy + command.Payload0.zw) * 0.5;
+	vec2 halfSize = (command.Payload0.zw - command.Payload0.xy) * 0.5;
+	float radius = command.Payload1.x;
+	return BoxDistance(p - center, halfSize - radius) - radius;
+}
+
 // The command's distance, its outline included
 float ShapeDistance(vec2 p, PainterCommand command)
 {
@@ -286,6 +298,9 @@ float ShapeDistance(vec2 p, PainterCommand command)
 	case CommandGlyph:
 	case CommandImage:
 		result = TexturedRectDistance(p, command);
+		break;
+	case CommandGlass:
+		result = GlassDistance(p, command);
 		break;
 	default:
 		return Far;
@@ -422,6 +437,36 @@ vec4 ImageGlowColor(vec2 p, PainterCommand command)
 	return unpackUnorm4x8(command.Color) * vec4(texel.rgb * texel.a, texel.a) * amount;
 }
 
+// What glass shows at p, premultiplied (PainterGlassPayload): its backdrop, a picture as large
+// as the target, at p's own place; near the edge, pulled in from outside along the edge's
+// outward direction. The tint (the command's colour) is laid over it, and a rim of light runs
+// along the edge, strongest where the edge faces up and to the left.
+vec4 GlassColor(vec2 p, PainterCommand command)
+{
+	float refraction = command.Payload1.y;
+	float edgeWidth = max(command.Payload1.z, 1.0e-3);
+	float rimStrength = command.Payload1.w;
+
+	// The edge's outward direction is the distance's gradient, here by central differences.
+	float distance = GlassDistance(p, command);
+	vec2 gradient = vec2(GlassDistance(p + vec2(0.5, 0.0), command) - GlassDistance(p - vec2(0.5, 0.0), command),
+		GlassDistance(p + vec2(0.0, 0.5), command) - GlassDistance(p - vec2(0.0, 0.5), command));
+	vec2 outward = dot(gradient, gradient) > 1.0e-10 ? normalize(gradient) : vec2(0.0);
+
+	// 1 at the edge, falling to 0 EdgeWidth pixels in, eased so the bend starts gently
+	float nearEdge = clamp(1.0 + distance / edgeWidth, 0.0, 1.0);
+	nearEdge *= nearEdge;
+
+	vec2 seen = p + outward * refraction * nearEdge;
+	vec4 backdrop = SampleTexture(command.Texture, seen / vec2(TargetWidth, TargetHeight));
+	vec4 color = Over(vec4(backdrop.rgb * backdrop.a, backdrop.a), unpackUnorm4x8(command.Color));
+
+	float facesLight = 0.35 + 0.65 * max(dot(outward, normalize(vec2(-1.0, -1.0))), 0.0);
+	float rim = rimStrength * nearEdge * facesLight;
+	color.rgb = min(color.rgb + vec3(rim * color.a), vec3(color.a));
+	return color;
+}
+
 // A group's shadow and glow, drawn under its shapes. The group's shapes follow each other in the
 // tile's list from `firstEntry` on: the painter records a group in one go, and binning puts every
 // shape of a group into every tile the group reaches.
@@ -532,6 +577,10 @@ void main()
 		}
 		bool bTextured = command.Type == CommandGlyph || command.Type == CommandImage;
 		vec4 commandColor = bTextured ? TextureColor(pixel, command) : unpackUnorm4x8(command.Color);
+		if (command.Type == CommandGlass)
+		{
+			commandColor = GlassColor(pixel, command);
+		}
 		color = Over(color, commandColor * coverage);
 	}
 

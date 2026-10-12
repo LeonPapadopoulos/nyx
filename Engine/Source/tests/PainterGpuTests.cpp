@@ -876,6 +876,60 @@ namespace
 		part.RequirePixel(38, 48, Red * 0.375f, "Below a part of a texture: the part's own edge texel");
 	}
 
+	void TestGlass(GpuPainter& gpu)
+	{
+		// The backdrop: 2x2 texels stretched over the 64x64 target, so each quarter of the
+		// target is one colour: red, green / blue, white
+		const ImTextureID quarters = gpu.CreateTexture(2, 2, { 255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255 });
+		const glm::vec4 green{ 0.0f, 1.0f, 0.0f, 1.0f };
+		const glm::vec4 blue{ 0.0f, 0.0f, 1.0f, 1.0f };
+
+		// Clear glass over the whole target, without bend or rim: every pixel shows the backdrop
+		// at its own place.
+		PainterGlass plain;
+		plain.Refraction = 0.0f;
+		plain.RimStrength = 0.0f;
+		Painter painter = StartFrame();
+		painter.AddGlass(quarters, PainterRect{ { 0, 0 }, { 64, 64 } }, 0.0f, PainterStyle::Filled(Transparent), plain);
+		const PaintedImage clear = gpu.Paint(painter);
+		clear.RequirePixel(10, 10, Red, "Clear glass shows the backdrop's top left at the top left");
+		clear.RequirePixel(50, 10, green, "Clear glass shows the backdrop's top right at the top right");
+		clear.RequirePixel(10, 50, blue, "Clear glass shows the backdrop's bottom left at the bottom left");
+		clear.RequirePixel(50, 50, White, "Clear glass shows the backdrop's bottom right at the bottom right");
+
+		// Glass ending just left of where green starts (x = 32), bending 8 pixels over an 8
+		// pixel edge, tinted half blue. Deep inside it shows its own place; at its right edge, the
+		// green from beyond it.
+		PainterGlass bent;
+		bent.Refraction = 8.0f;
+		bent.EdgeWidth = 8.0f;
+		bent.RimStrength = 0.0f;
+		painter = StartFrame();
+		painter.AddGlass(quarters, PainterRect{ { 8, 8 }, { 30, 56 } }, 0.0f, PainterStyle::Filled(glm::vec4(0.0f, 0.0f, 1.0f, 0.5f)), bent);
+		const PaintedImage tinted = gpu.Paint(painter);
+		SaveForLooking(tinted, "Glass.png");
+		tinted.RequirePixel(18, 20, glm::vec4(0.5f, 0.0f, 0.5f, 1.0f), "Inside, the backdrop at its own place with the tint laid over it at half");
+		tinted.RequirePixel(29, 20, glm::vec4(0.0f, 0.5f, 0.5f, 1.0f), "At the right edge, the backdrop from beyond the glass");
+		tinted.RequirePixel(40, 20, Transparent, "Outside the glass, nothing");
+
+		// A rim of light over a black backdrop: brighter where the edge faces up and left. A
+		// pixel half a pixel in from the edge is (1 - 0.5 / 8)^2 of the way to the edge's full light.
+		const ImTextureID black = gpu.CreateTexture(1, 1, { 0, 0, 0, 255 });
+		PainterGlass rimmed;
+		rimmed.Refraction = 0.0f;
+		rimmed.EdgeWidth = 8.0f;
+		rimmed.RimStrength = 0.5f;
+		painter = StartFrame();
+		painter.AddGlass(black, PainterRect{ { 8, 8 }, { 56, 56 } }, 0.0f, PainterStyle::Filled(Transparent), rimmed);
+		const PaintedImage rim = gpu.Paint(painter);
+		const float nearEdge = std::pow(1.0f - 0.5f / 8.0f, 2.0f);
+		const float facingUp = 0.35f + 0.65f * std::sqrt(0.5f);
+		const float facingDown = 0.35f;
+		rim.RequirePixel(32, 8, glm::vec4(glm::vec3(0.5f * nearEdge * facingUp), 1.0f), "The top edge faces the light");
+		rim.RequirePixel(32, 55, glm::vec4(glm::vec3(0.5f * nearEdge * facingDown), 1.0f), "The bottom edge faces away from it, and is dimmer");
+		rim.RequirePixel(32, 32, Black, "No rim away from the edge");
+	}
+
 	void TestTestSheetPaints(GpuPainter& gpu, const ImGuiFonts& fonts)
 	{
 		// The whole test sheet, as the Painter Test window shows it at 100%, on an opaque background
@@ -1164,6 +1218,7 @@ int main()
 
 		TestImages(gpu);
 		TestImageGlow(gpu);
+		TestGlass(gpu);
 		TestTextureNotUploadedYetIsInvisible(gpu);
 		{
 			const ImGuiFonts fonts;

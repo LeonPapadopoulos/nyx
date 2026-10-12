@@ -69,6 +69,10 @@ namespace Nyx::UI
 			std::vector<WindowGlow> Glows;
 			const ImGuiContext* GlowsContext = nullptr;
 			int GlowsFrame = -1;
+
+			// What glass shows, from the renderer, and the draw lists of this frame's glass windows
+			ImTextureID GlassBackdrop = ImTextureID_Invalid;
+			std::vector<const ImDrawList*> GlassDrawLists;
 		};
 
 		ChromeState& GetState()
@@ -262,6 +266,36 @@ namespace Nyx::UI
 			drawList.PopClipRect();
 		}
 
+		// Whether a window or dock host is glass: in the main window, which the backdrop is a
+		// picture of, and not filling an OS window of its own
+		bool IsGlass(const ImGuiWindow& window)
+		{
+			return window.Viewport == ImGui::GetMainViewport() && !OwnsOsWindow(window);
+		}
+
+		// A floating card's surface: glass where the window is glass and the renderer has a
+		// backdrop, opaque otherwise. A glass window's draw list is noted either way: the renderer
+		// draws the backdrop for it this frame, before the glass is drawn. The very first time,
+		// there is no backdrop yet when the cards are painted, so glass starts a frame later.
+		void PaintFloatingSurface(WindowPainter& painter, const ImGuiWindow& window, const PainterRect& card)
+		{
+			ChromeState& state = GetState();
+			const Theme& theme = GetTheme();
+			const bool bGlass = IsGlass(window);
+			if (bGlass && std::find(state.GlassDrawLists.begin(), state.GlassDrawLists.end(), window.DrawList) == state.GlassDrawLists.end())
+			{
+				state.GlassDrawLists.push_back(window.DrawList);
+			}
+			if (bGlass && state.GlassBackdrop != ImTextureID_Invalid)
+			{
+				painter.AddGlass(ImTextureRef(state.GlassBackdrop), card, theme.CardRounding, PainterStyle::Filled(theme.GlassTint), theme.Glass);
+			}
+			else
+			{
+				painter.AddRoundedRect(card, theme.CardRounding, PainterStyle::Filled(theme.FloatingCard));
+			}
+		}
+
 		// A dock host window and the dock nodes it shows this frame
 		struct DockHost
 		{
@@ -320,9 +354,17 @@ namespace Nyx::UI
 			{
 				drawList.ChannelsSetCurrent(DockHostBackgroundChannel);
 			}
-			// Shadows reach past the dock space's edge, up to the viewport's
+			// Docked into the dock space, or floating together
+			ImGuiDockNode* someNode = host.Cards.empty() ? host.Splits.front() : host.Cards.front();
+			const bool bInDockSpace = ImGui::DockNodeGetRootNode(someNode)->IsDockSpace();
+
+			// Shadows and glows reach past the cards. In the dock space, as far as its margin of
+			// CardGap and no further: the window around the dock space draws before it, e.g. the
+			// editor's titlebar, and they would cover it. Floating cards' shadows reach up to the
+			// viewport's edge.
 			const PainterRect viewportRect = RectAt(viewport.Pos, viewport.Size);
-			drawList.PushClipRect(ToImVec2(viewportRect.Min), ToImVec2(viewportRect.Max), false);
+			const PainterRect reach = bInDockSpace ? Engine::Intersect(Engine::Grow(RectAt(window.Pos, window.Size), theme.CardGap), viewportRect) : viewportRect;
+			drawList.PushClipRect(ToImVec2(reach.Min), ToImVec2(reach.Max), false);
 
 			// A host of floating docked windows in an OS window of its own has nothing behind it
 			// but the OS window: the backdrop goes there first.
@@ -332,10 +374,6 @@ namespace Nyx::UI
 				behind.AddRect(viewportRect, PainterStyle::Filled(theme.Backdrop));
 			}
 
-			// Docked into the dock space, or floating together
-			ImGuiDockNode* someNode = host.Cards.empty() ? host.Splits.front() : host.Cards.front();
-			const bool bInDockSpace = ImGui::DockNodeGetRootNode(someNode)->IsDockSpace();
-			const glm::vec4& cardColor = bInDockSpace ? theme.Card : theme.FloatingCard;
 			Engine::PainterEffects shadow;
 			shadow.Shadow = bInDockSpace ? theme.CardShadow : theme.FloatingCardShadow;
 
@@ -356,7 +394,16 @@ namespace Nyx::UI
 			}
 			for (const ImGuiDockNode* node : host.Cards)
 			{
-				painter.AddRoundedRect(RectAt(node->Pos, node->Size), theme.CardRounding, PainterStyle::Filled(cardColor));
+				// Windows docked together outside the dock space float, so their cards are like
+				// floating windows': glass where they can be.
+				if (bInDockSpace)
+				{
+					painter.AddRoundedRect(RectAt(node->Pos, node->Size), theme.CardRounding, PainterStyle::Filled(theme.Card));
+				}
+				else
+				{
+					PaintFloatingSurface(painter, window, RectAt(node->Pos, node->Size));
+				}
 			}
 			painter.EndGroup();
 			for (const ImGuiDockNode* node : host.Cards)
@@ -414,7 +461,7 @@ namespace Nyx::UI
 				shadow.Shadow = theme.FloatingCardShadow;
 				painter.BeginGroup(shadow);
 				PaintGlowsOf(painter, window);
-				painter.AddRoundedRect(card, theme.CardRounding, PainterStyle::Filled(theme.FloatingCard));
+				PaintFloatingSurface(painter, window, card);
 				painter.EndGroup();
 				PaintCardBorder(painter, card, theme.CardRounding);
 			}
@@ -513,8 +560,20 @@ namespace Nyx::UI
 		GetGlows().push_back(WindowGlow{ ImGui::GetCurrentWindowRead(), texture, rect, reach, strength });
 	}
 
+	void SetGlassBackdrop(ImTextureID backdrop)
+	{
+		GetState().GlassBackdrop = backdrop;
+	}
+
+	std::span<const ImDrawList* const> GetGlassDrawLists()
+	{
+		return GetState().GlassDrawLists;
+	}
+
 	void PaintWindowCards()
 	{
+		// Last frame's glass windows are gone, whether or not there are cards this frame.
+		GetState().GlassDrawLists.clear();
 		if (!GetState().bEnabled || ImGui::GetCurrentContext() == nullptr)
 		{
 			return;

@@ -96,6 +96,8 @@ namespace Nyx::Engine
 		case EPainterCommandType::Glyph:
 		case EPainterCommandType::Image:
 			return GetPayload<PainterTexturedRectPayload>(command).Rect;
+		case EPainterCommandType::Glass:
+			return GetPayload<PainterGlassPayload>(command).Rect;
 		case EPainterCommandType::ImageGlow:
 			// The light is the shape: it reaches this far past the rect.
 			return Grow(GetPayload<PainterTexturedRectPayload>(command).Rect, command.Reach);

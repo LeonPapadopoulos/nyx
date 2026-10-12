@@ -191,6 +191,28 @@ namespace Nyx::Engine
 			painter.AddImage(gradient, strip, asItIs);
 		}
 
+		// Glass shows a picture as large as the target at each pixel's own place. Here the
+		// gradient, stretched over the whole target, stands in for what lies behind.
+		template<typename TPainter>
+		void DrawGlass(TPainter& painter, ImTextureRef gradient, float y)
+		{
+			// Lightly tinted, with the default bend and rim
+			painter.AddGlass(gradient, RectAt(SamplesX, y + 8, 120, 56), 10.0f, PainterStyle::Filled(glm::vec4(1.0f, 1.0f, 1.0f, 0.12f)));
+
+			// Dark, bent strongly near its edge
+			PainterGlass bent;
+			bent.Refraction = 14.0f;
+			bent.EdgeWidth = 20.0f;
+			painter.AddGlass(gradient, RectAt(300, y + 8, 120, 56), 10.0f, PainterStyle::Filled(glm::vec4(0.08f, 0.08f, 0.1f, 0.5f)), bent);
+
+			// A floating panel: a pill with a shadow and a bright rim, and text on it
+			PainterStyle floating = PainterStyle::Filled(glm::vec4(0.1f, 0.1f, 0.12f, 0.35f));
+			floating.Effects.Shadow = PainterShadow{ glm::vec4(0.0f, 0.0f, 0.0f, 0.5f), glm::vec2(0.0f, 6.0f), 16.0f };
+			PainterGlass rimmed;
+			rimmed.RimStrength = 0.5f;
+			painter.AddGlass(gradient, RectAt(450, y + 16, 200, 40), 20.0f, floating, rimmed);
+		}
+
 		template<typename TPainter>
 		void DrawTextAndImages(TPainter& painter, ImFont* font, ImTextureRef image, float y)
 		{
@@ -244,7 +266,7 @@ namespace Nyx::Engine
 	template<typename TPainter>
 	void DrawPainterTestSheetRow(TPainter& painter, int row, ImFont* font, ImTextureRef image, ImTextureRef gradient)
 	{
-		const char* const labels[PainterTestSheetRowCount] = { "Rects", "Circles, sectors", "Lines", "Triangles", "Shadows, glows", "Image glows", "Text, images" };
+		const char* const labels[PainterTestSheetRowCount] = { "Rects", "Circles, sectors", "Lines", "Triangles", "Shadows, glows", "Image glows", "Glass", "Text, images" };
 		if (row < 0 || row >= PainterTestSheetRowCount)
 		{
 			return;
@@ -273,6 +295,9 @@ namespace Nyx::Engine
 			DrawImageGlows(painter, gradient, y);
 			break;
 		case 6:
+			DrawGlass(painter, gradient, y);
+			break;
+		case 7:
 			DrawTextAndImages(painter, font, image, y);
 			break;
 		}

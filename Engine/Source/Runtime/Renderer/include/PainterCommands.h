@@ -36,6 +36,11 @@ namespace Nyx::Engine
 		// Light around a rect, coloured by an image: PainterTexturedRectPayload, with the reach in
 		// PainterCommand::Reach. Not part of a group's shape, like a glyph.
 		ImageGlow = 7,
+
+		// Frosted glass: a rounded rect showing a picture of what lies behind it, at each pixel's
+		// own place, bent and lit near its edge. PainterGlassPayload; PainterCommand::Texture is
+		// the picture, as large as the target.
+		Glass = 8,
 	};
 
 	// The most textures one frame can use: the font atlas and the images' textures. The shader
@@ -188,6 +193,20 @@ namespace Nyx::Engine
 	{
 		PainterRect Rect;
 		PainterRect UVs;
+	};
+
+	// Glass: a rect with one corner radius, and how the picture behind it is bent and lit near
+	// its edge, in pixels. The command's colour is the tint laid over the picture.
+	struct PainterGlassPayload
+	{
+		PainterRect Rect;
+		float Radius = 0.0f;
+		// How far the picture is pulled in from outside the glass at its edge
+		float Refraction = 0.0f;
+		// How far in from the edge the refraction and the rim light reach
+		float EdgeWidth = 0.0f;
+		// The rim light's brightness at the edge, from 0 to 1
+		float RimStrength = 0.0f;
 	};
 
 	template<typename TPayload>

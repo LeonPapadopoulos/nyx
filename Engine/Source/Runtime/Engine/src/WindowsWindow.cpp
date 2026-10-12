@@ -619,11 +619,20 @@ namespace Nyx
 			DrawTitlebar(titlebarHeight);
 			DrawTitlebarMenuBar(titlebarHeight);
 
-			// @todo LP: Figure out where the padding between titlebar-drag-zone and dockarea comes from
-			const float paddingToRemoveHACK = 8.0f;
+			if (bPaintedChrome)
+			{
+				// Exactly the cards' gap below the titlebar: the cards' margin, where their shadows
+				// and glows may reach, then ends at the titlebar.
+				ImGui::SetCursorPosY(titlebarHeight + padding);
+			}
+			else
+			{
+				// @todo LP: Figure out where the padding between titlebar-drag-zone and dockarea comes from
+				const float paddingToRemoveHACK = 8.0f;
 
-			// Reserve space so docked content starts below the custom titlebar
-			NYX_UI(ImGui::Dummy(ImVec2(0.0f, titlebarHeight - paddingToRemoveHACK)));
+				// Reserve space so docked content starts below the custom titlebar
+				NYX_UI(ImGui::Dummy(ImVec2(0.0f, titlebarHeight - paddingToRemoveHACK)));
+			}
 		}
 
 		ImGuiStyle& style = ImGui::GetStyle();

@@ -7,6 +7,7 @@
 #include "VulkanViewportTarget.h"
 #include "VulkanPainter.h"
 #include "VulkanBlur.h"
+#include "VulkanGlass.h"
 #include "Painter.h"
 #include "WindowPainter.h"
 #include "Mesh.h"
@@ -450,6 +451,19 @@ namespace Nyx
 		Nyx::Engine::VulkanBlur BlurPass;
 		void BlurSceneViews(vk::raii::CommandBuffer& cmd);
 		void ReleaseSceneViewBlur(SceneViewInstance& view);
+
+		// Points an ImGui texture at an image: a new texture the first time, the same texture
+		// pointed at the new image when it changed (e.g. a blur target resized). `shownView` is the
+		// image the texture shows now.
+		void PointImGuiTexture(VkDescriptorSet& texture, vk::ImageView& shownView, vk::ImageView view);
+
+		// What glass shows (Design/ui-painter.md, stage 3, change 6): ImGui's main window drawn up
+		// to the first glass window, blurred, each frame there is glass, before the main window
+		// itself is drawn. Its ImGui texture keeps its ID.
+		Nyx::Engine::VulkanGlassBackdrop GlassBackdrop;
+		VkDescriptorSet GlassImGuiTexture = VK_NULL_HANDLE;
+		vk::ImageView GlassImGuiTextureView;
+		void DrawGlassBackdrop(vk::raii::CommandBuffer& cmd);
 
 		// GPU timestamps around the blurs: written in a frame, read once its fence is signalled.
 		// Null where the graphics queue can't write timestamps.

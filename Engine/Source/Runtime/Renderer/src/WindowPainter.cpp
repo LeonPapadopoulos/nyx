@@ -244,6 +244,14 @@ namespace Nyx::UI
 		}
 	}
 
+	void WindowPainter::AddGlass(ImTextureRef backdrop, const Engine::PainterRect& rect, float radius, const Engine::PainterStyle& style, const Engine::PainterGlass& glass)
+	{
+		if (PrepareSegment())
+		{
+			Recording.AddGlass(backdrop, rect, radius, style, glass);
+		}
+	}
+
 	void WindowPainter::PushClipRect(const Engine::PainterRect& rect)
 	{
 		if (!bRecording)

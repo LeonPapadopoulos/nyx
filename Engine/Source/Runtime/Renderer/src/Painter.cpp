@@ -266,6 +266,30 @@ namespace Nyx::Engine
 		command.Reach = std::max(reach, 0.0f) * transform.Scale;
 	}
 
+	void Painter::AddGlass(ImTextureRef backdrop, const PainterRect& rect, float radius, const PainterStyle& style, const PainterGlass& glass)
+	{
+		uint32_t textureIndex = 0;
+		if (!FindOrAddTexture(backdrop, textureIndex))
+		{
+			return;
+		}
+
+		const PainterTransform& transform = GetTransform();
+		PainterGlassPayload payload;
+		payload.Rect = transform.Apply(Normalized(rect));
+		// As for rounded rects: no larger than half the shorter side
+		payload.Radius = std::clamp(radius * transform.Scale, 0.0f, 0.5f * std::min(payload.Rect.GetWidth(), payload.Rect.GetHeight()));
+		payload.Refraction = std::max(glass.Refraction, 0.0f) * transform.Scale;
+		payload.EdgeWidth = std::max(glass.EdgeWidth, 0.0f) * transform.Scale;
+		payload.RimStrength = std::clamp(glass.RimStrength, 0.0f, 1.0f);
+
+		// Glass fills its shape; an outline would mean nothing.
+		PainterStyle glassStyle = style;
+		glassStyle.OutlineWidth = 0.0f;
+
+		AddShape(EPainterCommandType::Glass, EPainterCommandFlags::None, glassStyle, payload, textureIndex);
+	}
+
 	void Painter::PushClipRect(const PainterRect& rect)
 	{
 		const PainterRect inTarget = GetTransform().Apply(Normalized(rect));

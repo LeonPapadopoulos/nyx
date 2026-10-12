@@ -681,6 +681,13 @@ namespace Nyx::Editor
 			case EPainterCommandType::ImageGlow:
 				// ImDrawList has no glows; left out like the groups' shadows and glows.
 				break;
+			case EPainterCommandType::Glass:
+			{
+				// ImDrawList can't show what lies behind; only the glass' tint, as a rounded rect
+				const auto glass = GetPayload<PainterGlassPayload>(command);
+				drawList.AddRectFilled(ToImVec2(glass.Rect.Min, origin), ToImVec2(glass.Rect.Max, origin), color, glass.Radius);
+				break;
+			}
 			}
 
 			drawList.PopClipRect();

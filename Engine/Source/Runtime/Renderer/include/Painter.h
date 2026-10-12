@@ -44,6 +44,19 @@ namespace Nyx::Engine
 		bool HasAny() const { return HasShadow() || HasGlow(); }
 	};
 
+	// How glass (Painter::AddGlass()) bends and lights the picture behind it near its edge, in
+	// pixels
+	struct PainterGlass
+	{
+		// How far the picture is pulled in from outside the glass at its edge
+		float Refraction = 6.0f;
+		// How far in from the edge the refraction and the rim light reach
+		float EdgeWidth = 12.0f;
+		// The rim light's brightness at the edge, from 0 to 1, strongest where the edge faces up
+		// and to the left
+		float RimStrength = 0.2f;
+	};
+
 	// How a shape is drawn
 	struct PainterStyle
 	{
@@ -161,6 +174,14 @@ namespace Nyx::Engine
 		// drawn over it leaves no gap at its corners. `texture` and `uvs` as in AddImage(), and
 		// counted the same way. It casts no shadow, even in a group.
 		void AddImageGlow(ImTextureRef texture, const PainterRect& rect, float reach, float strength, const PainterRect& uvs = PainterRect{ { 0.0f, 0.0f }, { 1.0f, 1.0f } });
+
+		// Frosted glass: a rounded rect showing `backdrop`, a picture of what lies behind it as
+		// large as the target (e.g. the target's contents, blurred), each pixel the picture at its
+		// own place. The style's colour is laid over the picture at its alpha, as a tint, and its
+		// effects give the glass a shadow or glow; its outline width is ignored. Near the edge the
+		// picture is pulled in from outside and lit, as `glass` says. The backdrop counts as a
+		// texture like an image's.
+		void AddGlass(ImTextureRef backdrop, const PainterRect& rect, float radius, const PainterStyle& style, const PainterGlass& glass = PainterGlass{});
 
 		// Clip rects. A pushed rect is in the current transform's units and is cut by the clip
 		// rect already pushed, so nested clips only ever shrink. The first clip rect is the

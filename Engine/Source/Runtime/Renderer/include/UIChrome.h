@@ -4,6 +4,8 @@
 
 #include <imgui.h>
 
+#include <span>
+
 namespace Nyx::UI
 {
 	// The painted window chrome (Design/ui-painter.md, stage 3, change 3): a backdrop behind the
@@ -22,6 +24,11 @@ namespace Nyx::UI
 	//   labels and close buttons; their shapes are painted behind the labels instead: a pill
 	//   behind the selected tab and a hovered one, and an accent underline under the selected tab
 	//   that slides to the next one selected.
+	// - Glass (stage 3, change 6): floating cards in the main window are glass, showing what
+	//   lies behind them, blurred. The renderer draws that picture each frame there is glass: all
+	//   ImGui draws in the main window before the first glass window (GetGlassDrawLists()),
+	//   blurred, handed over with SetGlassBackdrop(). Until it is there, the cards are opaque.
+	//   Windows in OS windows of their own can't see what lies behind them and stay opaque.
 	// - Window glows, for ambilight (stage 3, change 5): a window can glow with a picture onto
 	//   the backdrop around it (AddWindowGlow()). The glows are painted behind every card, and
 	//   docked cards are slightly translucent, so a glow shows faintly through its neighbours.
@@ -48,6 +55,16 @@ namespace Nyx::UI
 	// in a child window, each frame it should glow. Nothing while the chrome is off, nor for a window that fills an OS
 	// window of its own, which has no room around it.
 	void AddWindowGlow(ImTextureRef texture, const Engine::PainterRect& rect, float reach, float strength);
+
+	// The picture glass shows: what lies behind the glass windows in the main window, blurred,
+	// as large as the main window. The renderer sets it before PaintWindowCards(), or
+	// ImTextureID_Invalid when it has none yet.
+	void SetGlassBackdrop(ImTextureID backdrop);
+
+	// The draw lists of the windows that are glass this frame, or would be with a backdrop: all
+	// in the main viewport. Everything ImGui renders there before the first of them is what the
+	// glass shows. Empty when there is no glass; valid after PaintWindowCards() until the next.
+	std::span<const ImDrawList* const> GetGlassDrawLists();
 
 	// Paints the cards and tab bars of all windows of this frame. Call it once the frame has ended
 	// (ImGui::EndFrame(), so ImGui's own windows are there too) and before the window painters

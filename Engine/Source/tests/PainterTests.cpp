@@ -795,6 +795,33 @@ namespace
 			"An image glow should be binned out to its reach");
 	}
 
+	void TestGlass()
+	{
+		Painter painter;
+		painter.BeginFrame(200, 100);
+		PainterGlass glass;
+		glass.Refraction = 4.0f;
+		glass.EdgeWidth = 8.0f;
+		glass.RimStrength = 2.0f;
+		PainterStyle tint = PainterStyle::Outlined(glm::vec4(0.1f, 0.1f, 0.1f, 0.5f), 3.0f);
+		tint.Effects = MakeShadow();
+		painter.PushTransform(2.0f, { 10, 0 });
+		painter.AddGlass(FakeTexture(100), PainterRect{ { 40, 30 }, { 0, 0 } }, 50.0f, tint, glass);
+		painter.PopTransform();
+
+		const auto& commands = painter.GetCommands();
+		Require(commands.size() == 1 && TypeOf(commands[0]) == EPainterCommandType::Glass, "Glass should make one glass command");
+		const auto payload = GetPayload<PainterGlassPayload>(commands[0]);
+		Require(Near(payload.Rect, PainterRect{ { 10, 0 }, { 90, 60 } }), "Glass' rect should be put the right way round and transformed");
+		Require(Near(payload.Radius, 30.0f), "Glass' radius should be scaled, and no larger than half the shorter side");
+		Require(Near(payload.Refraction, 8.0f) && Near(payload.EdgeWidth, 16.0f), "The refraction and edge width should be scaled by the transform");
+		Require(Near(payload.RimStrength, 1.0f), "The rim strength should be at most 1");
+		Require(commands[0].Color == PackPremultipliedColor(tint.Color) && commands[0].OutlineWidth == 0.0f, "The style's colour should be the tint, without an outline");
+		Require(commands[0].Texture == 0 && painter.GetTextures().size() == 1, "The backdrop should be the frame's texture");
+		Require(commands[0].Group != PainterNoGroup, "Glass with a shadow should get a group");
+		Require(Near(GetShapeBounds(commands[0]), payload.Rect), "Glass' bounds should be its rect");
+	}
+
 	void TestTestSheetDrawsCleanly(const ImGuiFonts& fonts)
 	{
 		Painter painter;
@@ -806,8 +833,8 @@ namespace
 		Require(painter.GetCommands().size() > 100, "The test sheet should draw plenty of commands");
 		Require(painter.GetTextures().size() == 2, "The test sheet's text and images use the font atlas and the gradient only");
 
-		// Every type up to the last one, ImageGlow
-		constexpr int TypeCount = static_cast<int>(EPainterCommandType::ImageGlow) + 1;
+		// Every type up to the last one, Glass
+		constexpr int TypeCount = static_cast<int>(EPainterCommandType::Glass) + 1;
 		bool bHasType[TypeCount] = {};
 		const PainterRect sheet{ { 0.0f, 0.0f }, PainterTestSheetSize };
 		for (const PainterCommand& command : painter.GetCommands())
@@ -1251,6 +1278,7 @@ int main()
 		TestTextWithoutAFontIsReported();
 		TestImages();
 		TestImageGlows();
+		TestGlass();
 		TestTooManyTexturesAreDropped();
 		{
 			const ImGuiFonts fonts;
