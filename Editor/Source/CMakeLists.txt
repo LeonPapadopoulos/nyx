@@ -8,6 +8,7 @@ set(NYX_EDITOR_SOURCES
     src/SceneOutlinerPanel.cpp
     src/DetailsPanel.cpp
     src/SceneViewPanel.cpp
+    src/EditorCameraController.cpp
     src/PainterTestWindow.cpp
     src/MockupOverlay.cpp
     src/FileDialogs.cpp
@@ -56,6 +57,7 @@ set(NYX_EDITOR_HEADERS
     include/SceneOutlinerPanel.h
     include/DetailsPanel.h
     include/SceneViewPanel.h
+    include/EditorCameraController.h
     include/PainterTestWindow.h
     include/MockupOverlay.h
     include/FileDialogs.h
@@ -213,6 +215,15 @@ if(BUILD_TESTING)
     add_dependencies(NyxGameInstanceTests NyxGeneratedReflection)
     set_property(TARGET NyxGameInstanceTests PROPERTY FOLDER "Tests")
     add_test(NAME NyxGameInstanceTests COMMAND NyxGameInstanceTests)
+
+    # The fly camera of the scene views, with virtual keyboard and mouse and stand-in views
+    add_executable(NyxEditorCameraTests tests/EditorCameraTests.cpp src/EditorCameraController.cpp)
+    target_include_directories(NyxEditorCameraTests PRIVATE include src ${CMAKE_CURRENT_BINARY_DIR})
+    target_link_libraries(NyxEditorCameraTests PRIVATE NyxEditorEngine)
+    target_precompile_headers(NyxEditorCameraTests REUSE_FROM NyxEditor)
+    add_dependencies(NyxEditorCameraTests NyxGeneratedReflection)
+    set_property(TARGET NyxEditorCameraTests PROPERTY FOLDER "Tests")
+    add_test(NAME NyxEditorCameraTests COMMAND NyxEditorCameraTests)
 
     # Play setups and Play All: saving setups, tiling the windows, choosing the games
     add_executable(NyxPlayWallTests tests/PlayWallTests.cpp src/PlayWall.cpp src/EditorPreferences.cpp)

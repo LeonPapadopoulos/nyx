@@ -14,6 +14,11 @@ namespace Nyx
 	class WindowsStartupBanner;
 }
 
+namespace Nyx::Input
+{
+	class GlfwInputBackend;
+}
+
 namespace Nyx
 {
 	class WindowsWindow : public IWindow
@@ -26,6 +31,7 @@ namespace Nyx
 		void PollEvents() override;
 		void DrawFrame(const std::function<void()>& drawUI) override;
 		IRenderer& GetRenderer() override { return *Renderer; }
+		Input::IInputBackend* GetInputBackend() override;
 
 		unsigned int GetWidth() override;
 		unsigned int GetHeight() override;
@@ -54,8 +60,6 @@ namespace Nyx
 
 		bool IsMaximized() const;
 
-		static void GLFW_ScrollCallback(GLFWwindow* window, double xOffset, double yOffset);
-
 		void DrawDockspaceHost(const std::function<void()>& drawUI);
 
 	private:
@@ -80,5 +84,8 @@ namespace Nyx
 
 		// Shown while the application starts up; released by FinishStartup().
 		std::unique_ptr<WindowsStartupBanner> StartupBanner;
+
+		// Keyboard and mouse. Destroyed after the GLFW window, whose callbacks it is.
+		std::unique_ptr<Input::GlfwInputBackend> InputBackend;
 	};
 }

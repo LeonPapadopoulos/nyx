@@ -75,7 +75,8 @@ Engine/
   Shaders/       GLSL shaders, compiled to SPIR-V during the build
   Source/
     Runtime/     Core (logging, assertions, paths), Engine (entities,
-                 components, serialization), Renderer (Vulkan)
+                 components, serialization), Input (keyboard and mouse),
+                 Renderer (Vulkan)
     Reflection/  Reflection types and the NYX_REFLECT / NYX_PROPERTY macros
 Game/            NyxGame.exe: runs a scene through its camera, without the editor
 Scripts/         Build and formatting scripts

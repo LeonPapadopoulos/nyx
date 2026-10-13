@@ -55,6 +55,13 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/EditorLinkRecorder.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/GameLaunchOptions.cpp
 
+    # Runtime/Input
+    ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputTypes.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputFrame.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputSystem.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Input/src/VirtualInputBackend.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Input/src/GlfwInputBackend.cpp
+
     # Runtime/Renderer
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ImGuiTheme.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/Mesh.cpp
@@ -139,6 +146,14 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/EditorLinkLogSink.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/EditorLinkRecorder.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/GameLaunchOptions.h
+
+    # Runtime/Input
+    ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputTypes.h
+    ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputBackend.h
+    ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputFrame.h
+    ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputSystem.h
+    ${NYX_ENGINE_ROOT}/Runtime/Input/include/VirtualInputBackend.h
+    ${NYX_ENGINE_ROOT}/Runtime/Input/include/GlfwInputBackend.h
 
     # Runtime/Renderer
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ImGuiTheme.h
@@ -285,6 +300,7 @@ foreach(NYX_ENGINE_TARGET NyxEngineCommon NyxEngine NyxEditorEngine)
         PUBLIC
             ${NYX_ENGINE_ROOT}/Runtime/Core/include
             ${NYX_ENGINE_ROOT}/Runtime/Engine/include
+            ${NYX_ENGINE_ROOT}/Runtime/Input/include
             ${NYX_ENGINE_ROOT}/Runtime/Renderer/include
             ${NYX_ENGINE_ROOT}/Reflection/include
         PRIVATE

@@ -1,6 +1,7 @@
 #pragma once
 #include "NyxEngineAPI.h"
 #include "Layer.h"
+#include "InputSystem.h"
 #include "Window.h"
 #include <memory>
 #include <vector>
@@ -31,11 +32,15 @@ namespace Nyx
 
 			IWindow& GetWindow() { return *Window; }
 
+			// Keyboard and mouse, gathered once per frame before the layers' OnUpdate
+			Nyx::Input::InputSystem& GetInput() { return Input; }
+
 			// Ends the frame loop after the current frame, as if the user closed the window
 			void RequestQuit() { Window->RequestClose(); }
 
 		private:
 			std::unique_ptr<IWindow> Window;
+			Nyx::Input::InputSystem Input;
 			std::vector<std::unique_ptr<ILayer>> Layers;
 		};
 

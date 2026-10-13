@@ -17,6 +17,10 @@ namespace Nyx
 			RegisterComponentTypes();
 
 			Window = std::unique_ptr<IWindow>(IWindow::Create(specs.Window));
+			if (Nyx::Input::IInputBackend* windowInput = Window->GetInputBackend())
+			{
+				Input.AddBackend(*windowInput);
+			}
 		}
 
 		Application::~Application()
@@ -49,6 +53,7 @@ namespace Nyx
 			{
 				Window->WaitForNextFrame();
 				Window->PollEvents();
+				Input.BeginFrame(Nyx::Input::NowUs());
 
 				const auto frameTime = std::chrono::steady_clock::now();
 				const float deltaTime = std::chrono::duration<float>(frameTime - previousFrameTime).count();
@@ -67,6 +72,9 @@ namespace Nyx
 							layer->OnUI();
 						}
 					});
+
+				// The cursor as the frame's layers asked for it
+				Input.EndFrame();
 			}
 		}
 	}

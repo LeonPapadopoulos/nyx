@@ -597,7 +597,6 @@ namespace Nyx
 		// Update shared world-side state once per frame
 		// ---------------------------------------------------------------------
 		const std::chrono::steady_clock::time_point sceneStart = std::chrono::steady_clock::now();
-		const float deltaTime = ComputeDeltaTime();
 
 		if (World)
 		{
@@ -627,8 +626,6 @@ namespace Nyx
 
 				UploadDebugLines();
 			}
-
-			TickActiveEditorSceneViewFromInput(deltaTime);
 		}
 		else
 		{
@@ -912,6 +909,19 @@ namespace Nyx
 		view->EditorCam.RotationRadians = rot;
 	}
 
+	bool VulkanRenderer::GetSceneViewEditorCameraTransform(uint64_t id, glm::vec3& outPos, glm::vec3& outRot) const
+	{
+		const SceneViewInstance* view = FindSceneView(id);
+		if (!view)
+		{
+			return false;
+		}
+
+		outPos = view->EditorCam.Position;
+		outRot = view->EditorCam.RotationRadians;
+		return true;
+	}
+
 	bool VulkanRenderer::GetSceneViewCameraData(uint64_t sceneViewId, Nyx::SceneViewCameraData& outData) const
 	{
 		const SceneViewInstance* view = FindSceneView(sceneViewId);
@@ -973,222 +983,6 @@ namespace Nyx
 	VulkanSwapchain& VulkanRenderer::GetSwapchain()
 	{
 		return Swapchain;
-	}
-
-	SceneViewInstance* VulkanRenderer::FindEditorInputTargetView()
-	{
-#if NYX_UI_INSPECTION
-		// Camera navigation reads GLFW directly, outside ImGui's input queue.
-		if (UI::IsInspectingSources())
-		{
-			return nullptr;
-		}
-#endif
-
-		// If mouse-look is currently locked, keep using that same view until RMB is released.
-		if (MouseLookLockedSceneViewId != 0)
-		{
-			if (SceneViewInstance* lockedView = FindSceneView(MouseLookLockedSceneViewId))
-			{
-				return lockedView;
-			}
-
-			MouseLookLockedSceneViewId = 0;
-		}
-
-		// Otherwise prefer a hovered editor-free-camera view.
-		for (SceneViewInstance& view : SceneViews)
-		{
-			if (view.CameraMode == EViewportCameraMode::EditorFreeCamera && view.bHovered)
-			{
-				return &view;
-			}
-		}
-
-		// Fallback: focused editor-free-camera view.
-		for (SceneViewInstance& view : SceneViews)
-		{
-			if (view.CameraMode == EViewportCameraMode::EditorFreeCamera && view.bFocused)
-			{
-				return &view;
-			}
-		}
-
-		return nullptr;
-	}
-
-	void VulkanRenderer::TickActiveEditorSceneViewFromInput(float deltaTime)
-	{
-		if (!Window)
-		{
-			return;
-		}
-
-		SceneViewInstance* activeView = FindEditorInputTargetView();
-
-		const bool bRightMouseDown = glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
-		const bool bCanControlView = (activeView != nullptr);
-
-		// Start mouse-look and lock to the currently active view
-		if (bRightMouseDown && bCanControlView && !bMouseLookActive)
-		{
-			bMouseLookActive = true;
-			bFirstMouseLookSample = true;
-			MouseLookLockedSceneViewId = activeView->Id;
-
-			glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-
-			if (glfwRawMouseMotionSupported())
-			{
-				glfwSetInputMode(Window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
-			}
-		}
-
-		// Stop mouse-look
-		if ((!bRightMouseDown || !bCanControlView) && bMouseLookActive)
-		{
-			bMouseLookActive = false;
-			bFirstMouseLookSample = true;
-			MouseLookLockedSceneViewId = 0;
-
-			glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-
-			if (glfwRawMouseMotionSupported())
-			{
-				glfwSetInputMode(Window, GLFW_RAW_MOUSE_MOTION, GLFW_FALSE);
-			}
-		}
-
-		// While mouse-look is active, always resolve the locked view again
-		if (bMouseLookActive && MouseLookLockedSceneViewId != 0)
-		{
-			activeView = FindSceneView(MouseLookLockedSceneViewId);
-		}
-
-		if (!activeView)
-		{
-			return;
-		}
-
-		EditorCamera& cam = activeView->EditorCam;
-
-		const float moveSpeed = CameraMoveSpeed * deltaTime;
-
-		glm::mat4 rotation =
-			glm::rotate(glm::mat4(1.0f), cam.RotationRadians.y, glm::vec3(0.0f, 1.0f, 0.0f)) *
-			glm::rotate(glm::mat4(1.0f), cam.RotationRadians.x, glm::vec3(1.0f, 0.0f, 0.0f));
-
-		const glm::vec3 forward = glm::normalize(glm::vec3(rotation * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f)));
-		const glm::vec3 right = glm::normalize(glm::vec3(rotation * glm::vec4(1.0f, 0.0f, 0.0f, 0.0f)));
-		const glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
-
-		// Movement: only while this view is hovered/focused, or while locked in mouse-look
-		const bool bAllowKeyboardMove =
-			activeView->bHovered || activeView->bFocused || bMouseLookActive;
-
-		if (bAllowKeyboardMove)
-		{
-			if (glfwGetKey(Window, GLFW_KEY_W) == GLFW_PRESS) cam.Position += forward * moveSpeed;
-			if (glfwGetKey(Window, GLFW_KEY_S) == GLFW_PRESS) cam.Position -= forward * moveSpeed;
-			if (glfwGetKey(Window, GLFW_KEY_D) == GLFW_PRESS) cam.Position += right * moveSpeed;
-			if (glfwGetKey(Window, GLFW_KEY_A) == GLFW_PRESS) cam.Position -= right * moveSpeed;
-			if (glfwGetKey(Window, GLFW_KEY_E) == GLFW_PRESS) cam.Position += up * moveSpeed;
-			if (glfwGetKey(Window, GLFW_KEY_Q) == GLFW_PRESS) cam.Position -= up * moveSpeed;
-		}
-
-		if (!bMouseLookActive)
-		{
-			return;
-		}
-
-		double mouseX = 0.0;
-		double mouseY = 0.0;
-		glfwGetCursorPos(Window, &mouseX, &mouseY);
-
-		if (bFirstMouseLookSample)
-		{
-			LastMouseX = mouseX;
-			LastMouseY = mouseY;
-			bFirstMouseLookSample = false;
-			return;
-		}
-
-		const double deltaX = mouseX - LastMouseX;
-		const double deltaY = mouseY - LastMouseY;
-
-		LastMouseX = mouseX;
-		LastMouseY = mouseY;
-
-		cam.RotationRadians.y -= static_cast<float>(deltaX) * CameraMouseSensitivity;
-		cam.RotationRadians.x -= static_cast<float>(deltaY) * CameraMouseSensitivity;
-
-		cam.RotationRadians.x = glm::clamp(
-			cam.RotationRadians.x,
-			glm::radians(-89.0f),
-			glm::radians(89.0f));
-	}
-
-	void VulkanRenderer::TickEditorCameraFromInput(SceneViewInstance& view, float deltaTime)
-	{
-		if (!Window)
-		{
-			return;
-		}
-#if NYX_UI_INSPECTION
-		if (UI::IsInspectingSources()) return;
-#endif
-
-		const float moveSpeed = 5.0f * deltaTime;
-		const float lookSpeed = 0.0025f;
-
-		glm::mat4 rotation =
-			glm::rotate(glm::mat4(1.0f), view.EditorCam.RotationRadians.y, glm::vec3(0.0f, 1.0f, 0.0f)) *
-			glm::rotate(glm::mat4(1.0f), view.EditorCam.RotationRadians.x, glm::vec3(1.0f, 0.0f, 0.0f));
-
-		const glm::vec3 forward = glm::normalize(glm::vec3(rotation * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f)));
-		const glm::vec3 right = glm::normalize(glm::vec3(rotation * glm::vec4(1.0f, 0.0f, 0.0f, 0.0f)));
-		const glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
-
-		if (glfwGetKey(Window, GLFW_KEY_W) == GLFW_PRESS) view.EditorCam.Position += forward * moveSpeed;
-		if (glfwGetKey(Window, GLFW_KEY_S) == GLFW_PRESS) view.EditorCam.Position -= forward * moveSpeed;
-		if (glfwGetKey(Window, GLFW_KEY_D) == GLFW_PRESS) view.EditorCam.Position += right * moveSpeed;
-		if (glfwGetKey(Window, GLFW_KEY_A) == GLFW_PRESS) view.EditorCam.Position -= right * moveSpeed;
-		if (glfwGetKey(Window, GLFW_KEY_E) == GLFW_PRESS) view.EditorCam.Position += up * moveSpeed;
-		if (glfwGetKey(Window, GLFW_KEY_Q) == GLFW_PRESS) view.EditorCam.Position -= up * moveSpeed;
-
-		const bool bRightMouseDown = glfwGetMouseButton(Window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
-
-		if (bRightMouseDown)
-		{
-			double mouseX = 0.0;
-			double mouseY = 0.0;
-			glfwGetCursorPos(Window, &mouseX, &mouseY);
-
-			if (!bHaveLastMousePosition)
-			{
-				LastMouseX = mouseX;
-				LastMouseY = mouseY;
-				bHaveLastMousePosition = true;
-			}
-
-			const double deltaX = mouseX - LastMouseX;
-			const double deltaY = mouseY - LastMouseY;
-
-			LastMouseX = mouseX;
-			LastMouseY = mouseY;
-
-			view.EditorCam.RotationRadians.y -= static_cast<float>(deltaX) * lookSpeed;
-			view.EditorCam.RotationRadians.x -= static_cast<float>(deltaY) * lookSpeed;
-
-			view.EditorCam.RotationRadians.x = glm::clamp(
-				view.EditorCam.RotationRadians.x,
-				glm::radians(-89.0f),
-				glm::radians(89.0f));
-		}
-		else
-		{
-			bHaveLastMousePosition = false;
-		}
 	}
 
 	void VulkanRenderer::CreateGraphicsPipeline()
@@ -3235,15 +3029,6 @@ namespace Nyx
 		throw std::runtime_error("Failed to find suitable memory type.");
 	}
 
-	float VulkanRenderer::ComputeDeltaTime()
-	{
-		static double lastTime = glfwGetTime();
-		const double currentTime = glfwGetTime();
-		const float deltaTime = static_cast<float>(currentTime - lastTime);
-		lastTime = currentTime;
-		return deltaTime;
-	}
-
 	bool VulkanRenderer::RecompileGridShaders()
 	{
 		const std::string vertCmd =
@@ -3514,22 +3299,6 @@ namespace Nyx
 
 			SceneViews.erase(it);
 			return;
-		}
-	}
-
-	void VulkanRenderer::SetSceneViewHovered(uint64_t id, bool bHovered)
-	{
-		if (SceneViewInstance* view = FindSceneView(id))
-		{
-			view->bHovered = bHovered;
-		}
-	}
-
-	void VulkanRenderer::SetSceneViewFocused(uint64_t id, bool bFocused)
-	{
-		if (SceneViewInstance* view = FindSceneView(id))
-		{
-			view->bFocused = bFocused;
 		}
 	}
 
@@ -4529,26 +4298,6 @@ namespace Nyx
 		view.bResizePending = true;
 	}
 
-	void VulkanRenderer::UpdateSceneView(SceneViewInstance& view, const Nyx::Engine::Registry& world, float deltaTime)
-	{
-		if (view.CameraMode == EViewportCameraMode::EditorFreeCamera)
-		{
-			if (view.bFocused || view.bHovered)
-			{
-				TickEditorCameraFromInput(view, deltaTime);
-			}
-
-			ExtractSceneGlobalsFromEditorCamera(view);
-		}
-		else
-		{
-			ExtractSceneGlobalsFromWorldCamera(view, world);
-		}
-
-		UpdateSceneUniforms(view);
-		UpdateSkyboxUniforms(view);
-	}
-
 	void VulkanRenderer::RenderSceneView(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
 	{
 		vk::ClearColorValue clear = vk::ClearColorValue(std::array<float, 4>{ 0.1f, 0.05f, 0.15f, 1.0f });
@@ -5082,29 +4831,4 @@ namespace Nyx
 		cmd.draw(3, 1, 0, 0);
 	}
 
-	void VulkanRenderer::OnMouseWheelScrolled(double yOffset)
-	{
-		SceneViewInstance* activeView = FindEditorInputTargetView();
-
-		if (ImGui::GetIO().WantCaptureMouse && !activeView)
-		{
-			return;
-		}
-
-		if (!activeView || activeView->CameraMode != EViewportCameraMode::EditorFreeCamera)
-		{
-			return;
-		}
-
-		if (yOffset > 0.0)
-		{
-			CameraMoveSpeed *= CameraSpeedStep;
-		}
-		else if (yOffset < 0.0)
-		{
-			CameraMoveSpeed /= CameraSpeedStep;
-		}
-
-		CameraMoveSpeed = glm::clamp(CameraMoveSpeed, CameraSpeedMin, CameraSpeedMax);
-	}
 }

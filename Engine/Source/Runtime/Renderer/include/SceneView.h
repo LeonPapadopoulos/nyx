@@ -116,9 +116,6 @@ namespace Nyx
 		// --
 		// -------------------------------------------------
 
-		bool bHovered = false;
-		bool bFocused = false;
-
 		bool bResizePending = false;
 		uint32_t PendingWidth = 1;
 		uint32_t PendingHeight = 1;

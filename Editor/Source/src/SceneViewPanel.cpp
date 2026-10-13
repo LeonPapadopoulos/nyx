@@ -1,5 +1,6 @@
 #include "SceneViewPanel.h"
 
+#include "EditorCameraController.h"
 #include "EditorPreferences.h"
 #include "ImGuiSource.h"
 #include "Renderer.h"
@@ -32,6 +33,7 @@ namespace Nyx::Editor
 
 	void SceneViewPanel::SetShowsGameView(bool bShowsGameView)
 	{
+		bShowingGameView = bShowsGameView;
 		if (!Renderer || SceneViewId == 0)
 		{
 			return;
@@ -62,7 +64,7 @@ namespace Nyx::Editor
 		}
 	}
 
-	void SceneViewPanel::Draw(SceneEditor& editing, const EditorPreferences& preferences)
+	void SceneViewPanel::Draw(SceneEditor& editing, const EditorPreferences& preferences, EditorCameraController& cameraController)
 	{
 		if (!bOpen || !Renderer || SceneViewId == 0)
 		{
@@ -75,11 +77,13 @@ namespace Nyx::Editor
 			return;
 		}
 
-		const bool bHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows);
-		const bool bFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
-
-		Renderer->SetSceneViewHovered(SceneViewId, bHovered);
-		Renderer->SetSceneViewFocused(SceneViewId, bFocused);
+		EditorCameraController::ViewState viewState;
+		viewState.SceneViewId = SceneViewId;
+		viewState.bHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows);
+		viewState.bFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+		viewState.bFreeCamera = !bShowingGameView;
+		viewState.Window = ImGui::GetWindowViewport()->PlatformHandle;
+		cameraController.ReportView(viewState);
 
 		const ImVec2 avail = ImGui::GetContentRegionAvail();
 		Renderer->SetSceneViewSize(

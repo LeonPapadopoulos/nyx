@@ -23,10 +23,37 @@
 
 namespace Nyx::Editor
 {
+	namespace
+	{
+		// The scene views' free cameras, which the renderer holds
+		class RendererEditorCameras final : public IEditorCameras
+		{
+		public:
+			explicit RendererEditorCameras(Nyx::IRenderer& renderer)
+				: Renderer(renderer)
+			{
+			}
+
+			bool GetCamera(uint64_t sceneViewId, glm::vec3& outPosition, glm::vec3& outRotationRadians) const override
+			{
+				return Renderer.GetSceneViewEditorCameraTransform(sceneViewId, outPosition, outRotationRadians);
+			}
+
+			void SetCamera(uint64_t sceneViewId, const glm::vec3& position, const glm::vec3& rotationRadians) override
+			{
+				Renderer.SetSceneViewEditorCameraTransform(sceneViewId, position, rotationRadians);
+			}
+
+		private:
+			Nyx::IRenderer& Renderer;
+		};
+	}
+
 	void EditorLayer::OnAttach(Nyx::Engine::Application& application)
 	{
 		Window = &application.GetWindow();
 		Renderer = &Window->GetRenderer();
+		Input = &application.GetInput();
 		AssetResolver = std::make_unique<Nyx::Engine::BuiltinAssetResolver>(*Renderer);
 		if (!Preferences.Load(EditorPreferences::GetUserFile()))
 		{
@@ -118,9 +145,16 @@ namespace Nyx::Editor
 		Mockup.Release();
 	}
 
-	void EditorLayer::OnUpdate(float /*deltaTime*/)
+	void EditorLayer::OnUpdate(float deltaTime)
 	{
 		DebugTools.BeforeFrame();
+
+		RendererEditorCameras cameras(*Renderer);
+		const EditorCameraController::Blockers cameraBlockers{
+			.bInspectingSources = SourceInspector.IsActive(),
+			.bTypingText = ImGui::GetIO().WantTextInput,
+		};
+		CameraController.Update(*Input, deltaTime, cameraBlockers, cameras);
 
 		Games.Update();
 
@@ -158,8 +192,8 @@ namespace Nyx::Editor
 
 		Outliner.Draw(Editing);
 		Details.Draw(Editing);
-		MainSceneView.Draw(Editing, Preferences);
-		SecondarySceneView.Draw(Editing, Preferences);
+		MainSceneView.Draw(Editing, Preferences, CameraController);
+		SecondarySceneView.Draw(Editing, Preferences, CameraController);
 
 		// Values being dragged or typed reach a running game every frame, not only when the edit ends
 		Editing.DetailsContext.PreviewPendingEdits();

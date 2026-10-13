@@ -1,6 +1,7 @@
 #include "ImGuiSource.h"
 #include "NyxPCH.h"
 #include "WindowsWindow.h"
+#include "GlfwInputBackend.h"
 #include "WindowsStartupBanner.h"
 #include "Log.h"
 #include "Assertions.h"
@@ -43,6 +44,11 @@ namespace Nyx
 	WindowsWindow::~WindowsWindow()
 	{
 		Shutdown();
+	}
+
+	Input::IInputBackend* WindowsWindow::GetInputBackend()
+	{
+		return InputBackend.get();
 	}
 
 	void WindowsWindow::WaitForNextFrame()
@@ -239,7 +245,9 @@ namespace Nyx
 				self->Renderer->OnFramebufferResized();
 			});
 
-		glfwSetScrollCallback(Window, &WindowsWindow::GLFW_ScrollCallback);
+		// Before the renderer sets up ImGui's GLFW backend, which then calls the input backend's
+		// callbacks after its own
+		InputBackend = std::make_unique<Input::GlfwInputBackend>(Window);
 
 		SetVSync(true);
 
@@ -248,6 +256,9 @@ namespace Nyx
 		Renderer->SetVSync(Data.bVSync);
 		SetStartupStatus("Starting Vulkan and preparing rendering resources");
 		Renderer->Initialize(Data.Title.c_str(), Window);
+
+		// Keys and the mouse in scene views dragged out of the window, too
+		InputBackend->HookImGuiWindows();
 
 		// The window stays hidden behind the startup banner until FinishStartup().
 	}
@@ -389,17 +400,6 @@ namespace Nyx
 	bool WindowsWindow::IsMaximized() const
 	{
 		return static_cast<bool>(glfwGetWindowAttrib(Window, GLFW_MAXIMIZED));
-	}
-
-	void WindowsWindow::GLFW_ScrollCallback(GLFWwindow* window, double xOffset, double yOffset)
-	{
-		WindowsWindow* windowsWindow = static_cast<WindowsWindow*>(glfwGetWindowUserPointer(window));
-		if (!windowsWindow)
-		{
-			return;
-		}
-
-		windowsWindow->Renderer->OnMouseWheelScrolled(yOffset);
 	}
 
 	void WindowsWindow::DrawDockspaceHost(const std::function<void()>& drawUI)

@@ -50,6 +50,14 @@ add_dependencies(NyxResourceManagerTests NyxGeneratedReflection)
 set_property(TARGET NyxResourceManagerTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxResourceManagerTests COMMAND NyxResourceManagerTests)
 
+# The input system with virtual devices: frames, taps shorter than a frame, devices coming and
+# going, focus, the cursor. No window needed.
+add_executable(NyxInputTests InputTests.cpp)
+target_link_libraries(NyxInputTests PRIVATE NyxEngine)
+add_dependencies(NyxInputTests NyxGeneratedReflection)
+set_property(TARGET NyxInputTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxInputTests COMMAND NyxInputTests)
+
 # The painter's CPU side: draw commands, groups, clip and transform stacks, tile binning. No GPU needed.
 add_executable(NyxPainterTests PainterTests.cpp)
 target_link_libraries(NyxPainterTests PRIVATE NyxEngine)

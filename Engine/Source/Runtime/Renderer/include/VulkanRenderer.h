@@ -230,7 +230,6 @@ namespace Nyx
 		bool IsVSync() const override;
 
 		virtual void DrawFrame(const std::function<void()>& buildUI);
-		virtual void OnMouseWheelScrolled(double yOffset);
 
 		void SetSelectedEntity(std::optional<Nyx::Engine::Entity> entity) override;
 		void SetSelectionOutlineMode(ESelectionOutlineMode mode) override;
@@ -240,6 +239,7 @@ namespace Nyx
 
 		virtual void SetSceneViewCameraMode(uint64_t id, EViewportCameraMode mode);
 		virtual void SetSceneViewEditorCameraTransform(uint64_t id, const glm::vec3& pos, const glm::vec3& rot);
+		bool GetSceneViewEditorCameraTransform(uint64_t id, glm::vec3& outPos, glm::vec3& outRot) const override;
 		void SetSceneViewShowEditorOverlays(uint64_t id, bool bShow) override;
 
 		bool GetSceneViewCameraData(uint64_t sceneViewId, Nyx::SceneViewCameraData& outData) const override;
@@ -275,9 +275,6 @@ namespace Nyx
 		ImTextureID GetSceneViewTextureId(uint64_t id) const override;
 		Extent2D GetSceneViewExtent(uint64_t id) const override;
 
-		SceneViewInstance* FindEditorInputTargetView();
-		void TickActiveEditorSceneViewFromInput(float deltaTime);
-		void TickEditorCameraFromInput(SceneViewInstance& view, float deltaTime);
 
 	private:
 		void SetupVulkan(const char* applicationName, GLFWwindow* window);
@@ -384,8 +381,6 @@ namespace Nyx
 
 		uint32_t FindMemoryType(vk::PhysicalDevice physicalDevice, uint32_t typeFilter, vk::MemoryPropertyFlags properties);
 
-		float ComputeDeltaTime();
-
 		bool RecompileGridShaders();
 		void PollGridShaderHotReload();
 
@@ -398,8 +393,6 @@ namespace Nyx
 		uint64_t CreateSceneView();
 		void DestroySceneView(uint64_t id);
 
-		void SetSceneViewHovered(uint64_t id, bool bHovered) override;
-		void SetSceneViewFocused(uint64_t id, bool bFocused) override;
 		void SetSceneViewSize(uint64_t id, uint32_t width, uint32_t height) override;
 
 		bool WasSceneViewRecreatedThisFrame(uint64_t id) const override;
@@ -413,7 +406,6 @@ namespace Nyx
 		const SceneViewInstance* FindSceneView(uint64_t id) const;
 
 		void EnsureSceneViewSize(SceneViewInstance& view, uint32_t width, uint32_t height);
-		void UpdateSceneView(SceneViewInstance& view, const Nyx::Engine::Registry& world, float deltaTime);
 		void RenderSceneView(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
 
 		void CreateDebugLineResources();
@@ -690,23 +682,6 @@ namespace Nyx
 
 		// Texture
 		Texture TestTexture{ "checker" };
-
-		// Input
-		bool bMouseLookActive = false;
-		bool bFirstMouseLookSample = true;
-		double LastMouseX = 0.0;
-		double LastMouseY = 0.0;
-
-		// Camera
-		uint64_t MouseLookLockedSceneViewId = 0;
-
-		float CameraMoveSpeed = 5.0f;
-		float CameraMouseSensitivity = 0.003f; // radians per pixel
-		float CameraSpeedMin = 0.25f;
-		float CameraSpeedMax = 100.0f;
-		float CameraSpeedStep = 1.2f;
-
-		bool bHaveLastMousePosition = false;
 
 		//vk::PhysicalDeviceFeatures DeviceFeatures;
 

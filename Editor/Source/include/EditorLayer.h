@@ -5,6 +5,7 @@
 #include "BuiltinAssetResolver.h"
 #include "CrashCardsPanel.h"
 #include "DetailsPanel.h"
+#include "EditorCameraController.h"
 #include "EditorAssetActivationContext.h"
 #include "EditorPreferences.h"
 #include "GameLinkPanel.h"
@@ -73,6 +74,7 @@ namespace Nyx::Editor
 	private:
 		Nyx::IWindow* Window = nullptr;
 		Nyx::IRenderer* Renderer = nullptr;
+		Nyx::Input::InputSystem* Input = nullptr;
 
 		// Turns the asset paths in components into the renderer's assets; created in OnAttach.
 		std::unique_ptr<Nyx::Engine::BuiltinAssetResolver> AssetResolver;
@@ -96,6 +98,8 @@ namespace Nyx::Editor
 		DetailsPanel Details;
 		SceneViewPanel MainSceneView{ "Scene" };
 		SceneViewPanel SecondarySceneView{ "Scene 2" };
+		// Flies the scene views' free cameras
+		EditorCameraController CameraController;
 		bool bSecondaryViewShowsGameView = false;
 		SceneFilePopups SceneFiles;
 		PreferencesWindow PreferencesPanel;

@@ -5,6 +5,11 @@
 #include <optional>
 #include <string>
 
+namespace Nyx::Input
+{
+	class IInputBackend;
+}
+
 namespace Nyx
 {
 	class IRenderer;
@@ -55,6 +60,9 @@ namespace Nyx
 		virtual void DrawFrame(const std::function<void()>& drawUI) = 0;
 
 		virtual IRenderer& GetRenderer() = 0;
+
+		// Where the window's keyboard and mouse input comes from; it lives as long as the window
+		virtual Input::IInputBackend* GetInputBackend() = 0;
 
 		virtual unsigned int GetWidth() = 0;
 		virtual unsigned int GetHeight() = 0;

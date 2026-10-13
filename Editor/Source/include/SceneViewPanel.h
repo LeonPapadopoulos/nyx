@@ -15,6 +15,7 @@ namespace Nyx
 
 namespace Nyx::Editor
 {
+	class EditorCameraController;
 	class SceneEditor;
 	struct EditorPreferences;
 
@@ -39,7 +40,8 @@ namespace Nyx::Editor
 			return SceneViewId;
 		}
 
-		void Draw(SceneEditor& editing, const EditorPreferences& preferences);
+		// Also tells the camera controller whether the view is hovered or focused, and where it is
+		void Draw(SceneEditor& editing, const EditorPreferences& preferences, EditorCameraController& cameraController);
 
 		// Selects the entity of a click the renderer has finished picking. Before drawing, so the
 		// panels see the new selection in the same frame.
@@ -63,5 +65,6 @@ namespace Nyx::Editor
 		std::string Title;
 		Nyx::IRenderer* Renderer = nullptr;
 		uint64_t SceneViewId = 0;
+		bool bShowingGameView = false;
 	};
 }

@@ -68,7 +68,6 @@ namespace Nyx
 		virtual bool IsVSync() const = 0;
 
 		virtual void DrawFrame(const std::function<void()>& buildUI) = 0;
-		virtual void OnMouseWheelScrolled(double yOffset) = 0;
 
 		virtual void RequestPick(uint64_t sceneViewId, uint32_t pixelX, uint32_t pixelY) = 0;
 		virtual PickResult ConsumeLastPickResult(uint64_t sceneViewId) = 0;
@@ -83,7 +82,10 @@ namespace Nyx
 		virtual bool IsDeviceLost() const = 0;
 
 		virtual void SetSceneViewCameraMode(uint64_t id, EViewportCameraMode mode) = 0;
+		// The free camera of a view in EditorFreeCamera mode. The renderer only holds it; the editor
+		// moves it (EditorCameraController). Get returns false for an unknown view.
 		virtual void SetSceneViewEditorCameraTransform(uint64_t id, const glm::vec3& pos, const glm::vec3& rot) = 0;
+		virtual bool GetSceneViewEditorCameraTransform(uint64_t id, glm::vec3& outPos, glm::vec3& outRot) const = 0;
 
 		// Editor overlays are the grid, debug lines, picking and the selection outline.
 		// They are shown by default; a view showing the game turns them off.
@@ -98,8 +100,6 @@ namespace Nyx
 		virtual uint64_t CreateSceneView() = 0;
 		virtual void DestroySceneView(uint64_t id) = 0;
 
-		virtual void SetSceneViewHovered(uint64_t id, bool bHovered) = 0;
-		virtual void SetSceneViewFocused(uint64_t id, bool bFocused) = 0;
 		virtual void SetSceneViewSize(uint64_t id, uint32_t width, uint32_t height) = 0;
 
 		virtual ImTextureID GetSceneViewTextureId(uint64_t id) const = 0;
