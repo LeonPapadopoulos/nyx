@@ -129,6 +129,18 @@ namespace Nyx::Editor
 			float GpuMainWindowUI = 0.0f;
 			float GpuGlassBackdrop = 0.0f;
 			float GpuBlur = 0.0f;
+			// The rest of the frame (PainterWindowStats::Times), and what no line accounts for
+			float Outside = 0.0f;
+			float WaitForGpu = 0.0f;
+			float Acquire = 0.0f;
+			float Scene = 0.0f;
+			float Canvases = 0.0f;
+			float RecordUI = 0.0f;
+			float Present = 0.0f;
+			float Rest = 0.0f;
+			float GpuEditorPasses = 0.0f;
+			float GpuSceneViews = 0.0f;
+			float GpuFrame = 0.0f;
 			float Draws = 0.0f;
 			float Commands = 0.0f;
 			// The tile entries before the per-tile reduction, those it keeps, and those it would

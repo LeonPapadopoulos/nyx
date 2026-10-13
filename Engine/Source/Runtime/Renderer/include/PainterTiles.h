@@ -159,7 +159,8 @@ namespace Nyx::Engine
 		// Where the frame's UI time went, in milliseconds
 		struct Times
 		{
-			// The editor's whole frame: from the start of the frame before to this one's
+			// The editor's whole frame: from the end of the frame before to this one's, so that
+			// the steps below add up to it
 			float Frame = 0.0f;
 
 			// CPU: building the UI (the editor's panels, ImGui's layout and the painting recorded
@@ -171,14 +172,31 @@ namespace Nyx::Engine
 			float ImGuiRender = 0.0f;
 			float Segments = 0.0f;
 
+			// CPU, the rest of the frame: outside the renderer (events, the layers' updates, the
+			// frame rate cap), waiting for the last frame's GPU work, acquiring the next swapchain
+			// image, the world and the scene views, the painter canvases with the marks and the
+			// heatmap, recording and submitting the UI after the segments, and presenting
+			float Outside = 0.0f;
+			float WaitForGpu = 0.0f;
+			float Acquire = 0.0f;
+			float Scene = 0.0f;
+			float Canvases = 0.0f;
+			float RecordUI = 0.0f;
+			float Present = 0.0f;
+
 			// GPU, from timestamps: binning the segments, the painter's draws in all OS windows,
 			// the main window's whole UI pass (ImGui's drawing and the painter's), and the glass
-			// backdrop. Only while bGpu.
+			// backdrop; the scene views' editor passes (picking and the selection masks), the scene
+			// views themselves, and the frame's whole command buffer (all but the OS windows').
+			// Only while bGpu.
 			bool bGpu = false;
 			float GpuBinning = 0.0f;
 			float GpuPainter = 0.0f;
 			float GpuMainWindowUI = 0.0f;
 			float GpuGlassBackdrop = 0.0f;
+			float GpuEditorPasses = 0.0f;
+			float GpuSceneViews = 0.0f;
+			float GpuFrame = 0.0f;
 
 			// What the painter adds on the CPU after the UI is built
 			float GetPainterCpu() const { return Chrome + Gather + Segments; }

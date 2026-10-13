@@ -420,6 +420,20 @@ namespace Nyx::Editor
 		sample.GpuGlassBackdrop = times.GpuGlassBackdrop;
 		// Negative while the blur isn't timed
 		sample.GpuBlur = std::max(renderer.GetBlurMilliseconds(), 0.0f);
+		sample.Outside = times.Outside;
+		sample.WaitForGpu = times.WaitForGpu;
+		sample.Acquire = times.Acquire;
+		sample.Scene = times.Scene;
+		sample.Canvases = times.Canvases;
+		sample.RecordUI = times.RecordUI;
+		sample.Present = times.Present;
+		// The frame is timed from start to start, the lines within it: what they leave, at least 0
+		const float lines = times.Outside + times.WaitForGpu + times.Acquire + times.Scene + times.BuildUI + times.Chrome + times.Canvases +
+			times.Gather + times.ImGuiRender + times.Segments + times.RecordUI + times.Present;
+		sample.Rest = std::max(times.Frame - lines, 0.0f);
+		sample.GpuEditorPasses = times.GpuEditorPasses;
+		sample.GpuSceneViews = times.GpuSceneViews;
+		sample.GpuFrame = times.GpuFrame;
 		sample.Draws = static_cast<float>(stats.Draws);
 		sample.Commands = static_cast<float>(stats.Commands);
 		sample.EntriesBefore = static_cast<float>(stats.Reduction.EntriesBefore);
@@ -538,16 +552,29 @@ namespace Nyx::Editor
 			ImGui::PopTextWrapPos();
 
 			NYX_UI(Nyx::UI::SectionHeader("CPU"));
+			// The frame's steps in order, then the painter's share of them
 			const Line cpu[] = {
+				{ "Outside: events, updates, the cap", &FrameSample::Outside },
+				{ "Waiting for the last frame's GPU", &FrameSample::WaitForGpu },
+				{ "Acquiring the next image", &FrameSample::Acquire },
+				{ "The world and the scene views", &FrameSample::Scene },
 				{ "Building the UI", &FrameSample::BuildUI },
 				{ "Painting the chrome", &FrameSample::Chrome },
+				{ "Canvases, marks, heatmap", &FrameSample::Canvases },
 				{ "Gathering the painters", &FrameSample::Gather },
 				{ "ImGui::Render()", &FrameSample::ImGuiRender },
 				{ "Segments: runs, measuring, upload", &FrameSample::Segments },
 				{ "    of which measuring", &FrameSample::Binning },
+				{ "Recording and submitting the UI", &FrameSample::RecordUI },
+				{ "Presenting", &FrameSample::Present },
+				{ "The rest of the frame", &FrameSample::Rest },
 				{ "The painter after the UI", &FrameSample::PainterCpu },
 			};
 			drawLines("##Cpu", "Milliseconds", cpu);
+			ImGui::PushTextWrapPos(0.0f);
+			NYX_UI(ImGui::TextDisabled("The frame stands still while it waits: for the last frame's GPU work, which with vsync also waits "
+									   "for the monitor to free an image, and for the frame rate cap (outside)."));
+			ImGui::PopTextWrapPos();
 
 			NYX_UI(Nyx::UI::SectionHeader("GPU"));
 			if (!stats.FrameTimes.bGpu)
@@ -557,13 +584,21 @@ namespace Nyx::Editor
 			else
 			{
 				const Line gpu[] = {
-					{ "Binning", &FrameSample::GpuBinning },
-					{ "The painter's draws", &FrameSample::GpuPainter },
-					{ "The main window's UI pass", &FrameSample::GpuMainWindowUI },
-					{ "The glass backdrop", &FrameSample::GpuGlassBackdrop },
+					{ "The frame's command buffer", &FrameSample::GpuFrame },
+					{ "Picking, selection masks", &FrameSample::GpuEditorPasses },
+					{ "The scene views", &FrameSample::GpuSceneViews },
 					{ "The scene views' blurs", &FrameSample::GpuBlur },
+					{ "Binning", &FrameSample::GpuBinning },
+					{ "The glass backdrop", &FrameSample::GpuGlassBackdrop },
+					{ "The main window's UI pass", &FrameSample::GpuMainWindowUI },
+					{ "The painter's draws", &FrameSample::GpuPainter },
 				};
 				drawLines("##Gpu", "Milliseconds", gpu);
+				ImGui::PushTextWrapPos(0.0f);
+				NYX_UI(ImGui::TextDisabled("The command buffer holds all but OS windows' drawing. The painter's draws are within the UI pass "
+										   "and the glass backdrop, and in OS windows. Picking only runs for a click, the selection masks "
+										   "only when what they show changed."));
+				ImGui::PopTextWrapPos();
 			}
 
 			NYX_UI(Nyx::UI::SectionHeader("Painting"));

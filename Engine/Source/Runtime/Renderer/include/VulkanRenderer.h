@@ -337,6 +337,10 @@ namespace Nyx
 		void CreateSelectionMaskPipelines();
 		void DrawVisibleSelectionMaskPass(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
 		void DrawFullSelectionMaskPass(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
+		// What the view's selection masks are drawn from, as one number: the selection, the
+		// world, the camera, the size, and every object's mesh and transform. Unset while nothing
+		// is selected, when there is nothing to draw them for.
+		std::optional<uint64_t> GetSelectionMaskFingerprint(const SceneViewInstance& view) const;
 
 		void CreateOutlineCompositePipeline();
 		void DrawSelectionOutline(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
@@ -547,19 +551,24 @@ namespace Nyx
 		// The last frame's statistics (stage 3, change 10): its CPU times as the frame is built,
 		// its GPU times once its fence has passed
 		Nyx::Engine::PainterWindowStats WindowPainterStats;
-		// This frame's CPU times taken before GatherWindowPainters() starts its statistics, and
-		// when the last frame started
+		// This frame's CPU times taken before GatherWindowPainters() starts its statistics
 		Nyx::Engine::PainterWindowStats::Times PendingFrameTimes;
-		std::chrono::steady_clock::time_point LastFrameStart;
+		// When the last frame's DrawFrame() ended, for the time spent outside it
+		std::chrono::steady_clock::time_point LastFrameEnd;
 
-		// GPU timestamps around the UI's drawing, in pairs: the main window's UI pass, the glass
-		// backdrop, and each window segment draw, in any OS window. Reset and written in a frame,
-		// read once its fence has passed. Null where the graphics queue can't write timestamps.
+		// GPU timestamps around the frame's drawing, in pairs: the main window's UI pass, the
+		// glass backdrop, the binning, the scene views' editor passes, the scene views, the whole
+		// command buffer, and each window segment draw, in any OS window. Reset and written in a
+		// frame, read once its fence has passed. Null where the graphics queue can't write
+		// timestamps.
 		static constexpr uint32_t MainWindowUIPair = 0;
 		static constexpr uint32_t GlassBackdropPair = 1;
 		static constexpr uint32_t BinningPair = 2;
-		static constexpr uint32_t FirstSegmentPair = 3;
-		static constexpr uint32_t MaxTimedSegmentDraws = 253;
+		static constexpr uint32_t EditorPassesPair = 3;
+		static constexpr uint32_t SceneViewsPair = 4;
+		static constexpr uint32_t FramePair = 5;
+		static constexpr uint32_t FirstSegmentPair = 6;
+		static constexpr uint32_t MaxTimedSegmentDraws = 250;
 		static constexpr uint32_t UITimestampCount = 2 * (FirstSegmentPair + MaxTimedSegmentDraws);
 		struct TimedPair
 		{

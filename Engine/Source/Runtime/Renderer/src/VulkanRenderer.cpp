@@ -507,19 +507,26 @@ namespace Nyx
 			bDeviceLost = true;
 			LOG_ERROR("The GPU device was lost while drawing a frame ({}). Nothing more can be drawn; the window closes.", error.what());
 		}
+		LastFrameEnd = std::chrono::steady_clock::now();
 	}
 
 	void VulkanRenderer::DrawFrameOnDevice(const std::function<void()>& buildUI)
 	{
-		// The editor's frame, from the frame before's start, for the painter's statistics
+		// The frame's steps are timed for the painter's statistics, the frame itself at its end.
 		const std::chrono::steady_clock::time_point frameStart = std::chrono::steady_clock::now();
-		const float frameMilliseconds = LastFrameStart == std::chrono::steady_clock::time_point{} ? 0.0f
-			: std::chrono::duration<float, std::milli>(frameStart - LastFrameStart).count();
-		LastFrameStart = frameStart;
+		// Since the last frame's DrawFrame() ended: the events, the layers' updates and the frame
+		// rate cap
+		const float outsideMilliseconds = LastFrameEnd == std::chrono::steady_clock::time_point{} ? 0.0f
+			: std::chrono::duration<float, std::milli>(frameStart - LastFrameEnd).count();
+		const auto millisecondsSince = [](std::chrono::steady_clock::time_point start)
+		{
+			return std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - start).count();
+		};
 
 		// 1) Wait until previous submitted frame is done
 		const vk::Result fenceResult = Context.GetDevice().waitForFences({ *InFlightFence }, true, UINT64_MAX);
 		(void)fenceResult;
+		const float waitForGpuMilliseconds = millisecondsSince(frameStart);
 
 		// The previous frame is done: its screenshot can be written, and the UI images destroyed
 		// during it are no longer shown.
@@ -540,8 +547,10 @@ namespace Nyx
 		ReadBackPickResults();
 
 		// 2) Acquire next swapchain image
+		const std::chrono::steady_clock::time_point acquireStart = std::chrono::steady_clock::now();
 		const vk::ResultValue<uint32_t> acquireResult =
 			Swapchain.GetSwapchain().acquireNextImage(UINT64_MAX, *ImageAvailableSemaphore);
+		const float acquireMilliseconds = millisecondsSince(acquireStart);
 
 		if (acquireResult.result == vk::Result::eErrorOutOfDateKHR)
 		{
@@ -582,10 +591,12 @@ namespace Nyx
 		{
 			cmd.resetQueryPool(*UITimestamps, 0, UITimestampCount);
 		}
+		WriteUITimestamp(*cmd, FramePair, false);
 
 		// ---------------------------------------------------------------------
 		// Update shared world-side state once per frame
 		// ---------------------------------------------------------------------
+		const std::chrono::steady_clock::time_point sceneStart = std::chrono::steady_clock::now();
 		const float deltaTime = ComputeDeltaTime();
 
 		if (World)
@@ -627,8 +638,10 @@ namespace Nyx
 		}
 
 		// ---------------------------------------------------------------------
-		// Render every scene view into its own offscreen target
+		// Render every scene view into its own offscreen target: first the editor's own passes
+		// of all views, then the views, so that each is timed in one go
 		// ---------------------------------------------------------------------
+		WriteUITimestamp(*cmd, EditorPassesPair, false);
 		for (SceneViewInstance& view : SceneViews)
 		{
 			if (view.bResizePending)
@@ -659,15 +672,35 @@ namespace Nyx
 				// Editor-only passes: picking, and the masks the selection outline is drawn from
 				if (view.bShowEditorOverlays)
 				{
-					DrawPickingPass(view, cmd);
+					// Picking only for a click: the frame after it, as when it ran every frame
+					if (view.bPickRequestPending)
+					{
+						if (view.PickWorldRevision == WorldRevision)
+						{
+							DrawPickingPass(view, cmd);
+						}
+						ResolvePickRequest(view, cmd);
+					}
+					// This view shows the current world: clicks on it are taken from now on.
 					view.RenderedWorldRevision = WorldRevision;
-					ResolvePickRequest(view, cmd);
 
-					DrawVisibleSelectionMaskPass(view, cmd);
-					DrawFullSelectionMaskPass(view, cmd);
+					// The masks only while something is selected, and only when what they show
+					// changed; between those, they keep what they last held.
+					const std::optional<uint64_t> fingerprint = GetSelectionMaskFingerprint(view);
+					if (fingerprint.has_value() && fingerprint != view.SelectionMaskFingerprint)
+					{
+						DrawVisibleSelectionMaskPass(view, cmd);
+						DrawFullSelectionMaskPass(view, cmd);
+					}
+					view.SelectionMaskFingerprint = fingerprint;
 				}
 			}
+		}
+		WriteUITimestamp(*cmd, EditorPassesPair, true);
 
+		WriteUITimestamp(*cmd, SceneViewsPair, false);
+		for (SceneViewInstance& view : SceneViews)
+		{
 			vk::ClearColorValue clear = vk::ClearColorValue(std::array<float, 4>{ 0.2f, 0.05f, 0.35f, 1.0f });
 
 			view.RenderTarget.BeginRenderPass(cmd, clear);
@@ -693,9 +726,11 @@ namespace Nyx
 			}
 			view.RenderTarget.EndRenderPass(cmd);
 		}
+		WriteUITimestamp(*cmd, SceneViewsPair, true);
 
 		// Each picture blurred small, before the UI is built, so that the UI shows this frame's
 		BlurSceneViews(cmd);
+		const float sceneMilliseconds = millisecondsSince(sceneStart);
 
 		// ---------------------------------------------------------------------
 		// Render main swapchain / ImGui
@@ -731,7 +766,10 @@ namespace Nyx
 		// itself while ending it (drag and drop tooltips) are there when the cards are painted.
 		ImGui::EndFrame();
 		PendingFrameTimes = Nyx::Engine::PainterWindowStats::Times{};
-		PendingFrameTimes.Frame = frameMilliseconds;
+		PendingFrameTimes.Outside = outsideMilliseconds;
+		PendingFrameTimes.WaitForGpu = waitForGpuMilliseconds;
+		PendingFrameTimes.Acquire = acquireMilliseconds;
+		PendingFrameTimes.Scene = sceneMilliseconds;
 		PendingFrameTimes.BuildUI = takeStepTime();
 		Nyx::UI::SetGlassBackdrop(GlassImGuiTexture != VK_NULL_HANDLE ? reinterpret_cast<ImTextureID>(GlassImGuiTexture) : ImTextureID_Invalid);
 		Nyx::UI::SetPlainGlassBackdrop(GetPlainGlassBackdrop());
@@ -743,7 +781,7 @@ namespace Nyx
 		// mark its rects
 		Nyx::UI::ShowPainterHeatmap(WindowPainterStats);
 		DrawPainterCanvases(cmd);
-		takeStepTime();
+		PendingFrameTimes.Canvases = takeStepTime();
 		GatherWindowPainters();
 		WindowPainterStats.FrameTimes.Gather = takeStepTime();
 
@@ -763,6 +801,7 @@ namespace Nyx
 		cmd.endRenderPass();
 		WriteUITimestamp(*cmd, MainWindowUIPair, true);
 		RecordScreenshot(cmd, imageIndex);
+		WriteUITimestamp(*cmd, FramePair, true);
 		cmd.end();
 
 		// 4) Submit
@@ -799,7 +838,14 @@ namespace Nyx
 		presentInfo.pSwapchains = &*Swapchain.GetSwapchain();
 		presentInfo.pImageIndices = &imageIndex;
 
+		// From the segments to here: the glass backdrop and the UI pass recorded, the frame
+		// submitted, and ImGui's OS windows rendered
+		WindowPainterStats.FrameTimes.RecordUI = takeStepTime();
 		const vk::Result presentResult = Context.GetGraphicsQueue().presentKHR(presentInfo);
+		WindowPainterStats.FrameTimes.Present = takeStepTime();
+		// The frame as its steps are timed: from the last frame's end to this one's, so that the
+		// steps add up to it
+		WindowPainterStats.FrameTimes.Frame = outsideMilliseconds + millisecondsSince(frameStart);
 		if (presentResult == vk::Result::eErrorOutOfDateKHR ||
 			presentResult == vk::Result::eSuboptimalKHR ||
 			bRecreateSwapChain)
@@ -2060,8 +2106,56 @@ namespace Nyx
 		CreatePickingResourcesForView(view);
 	}
 
+	std::optional<uint64_t> VulkanRenderer::GetSelectionMaskFingerprint(const SceneViewInstance& view) const
+	{
+		if (!SelectedEntity.has_value())
+		{
+			return std::nullopt;
+		}
+
+		// FNV-1a over everything the mask passes draw from. The visible mask has every object's
+		// depth in it, so every object counts, not only the selected one.
+		uint64_t hash = 14695981039346656037ull;
+		const auto add = [&hash](const void* data, size_t size)
+		{
+			const auto* bytes = static_cast<const unsigned char*>(data);
+			for (size_t index = 0; index < size; ++index)
+			{
+				hash = (hash ^ bytes[index]) * 1099511628211ull;
+			}
+		};
+		const auto addValue = [&add](const auto& value)
+		{
+			add(&value, sizeof(value));
+		};
+
+		addValue(SelectedEntity.value());
+		addValue(WorldRevision);
+		addValue(view.SceneGlobals.ViewProjection);
+		const vk::Extent2D extent = view.RenderTarget.GetExtent();
+		addValue(extent.width);
+		addValue(extent.height);
+		for (const RenderObject& obj : RenderObjects)
+		{
+			if (!obj.MeshAsset || !obj.MaterialAsset)
+			{
+				continue;
+			}
+			addValue(obj.SourceEntity);
+			addValue(obj.WorldTransform);
+			const VkBuffer vertexBuffer = obj.MeshAsset->GetVertexBuffer();
+			const VkBuffer indexBuffer = obj.MeshAsset->GetIndexBuffer();
+			addValue(vertexBuffer);
+			addValue(indexBuffer);
+			addValue(obj.MeshAsset->GetIndexCount());
+		}
+		return hash;
+	}
+
 	void VulkanRenderer::CreateSelectionMaskResourcesForView(SceneViewInstance& view)
 	{
+		// New images hold nothing yet: the next frame draws them.
+		view.SelectionMaskFingerprint.reset();
 		const vk::Extent2D extent = view.RenderTarget.GetExtent();
 		const uint32_t width = std::max(1u, extent.width);
 		const uint32_t height = std::max(1u, extent.height);
@@ -3713,6 +3807,18 @@ namespace Nyx
 			else if (timed.Pair == BinningPair)
 			{
 				times.GpuBinning = milliseconds;
+			}
+			else if (timed.Pair == EditorPassesPair)
+			{
+				times.GpuEditorPasses = milliseconds;
+			}
+			else if (timed.Pair == SceneViewsPair)
+			{
+				times.GpuSceneViews = milliseconds;
+			}
+			else if (timed.Pair == FramePair)
+			{
+				times.GpuFrame = milliseconds;
 			}
 			else
 			{

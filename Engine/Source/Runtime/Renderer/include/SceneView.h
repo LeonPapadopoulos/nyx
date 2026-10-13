@@ -96,6 +96,11 @@ namespace Nyx
 		vk::raii::DescriptorPool OutlineDescriptorPool{ nullptr };
 		std::optional<vk::raii::DescriptorSets> OutlineDescriptorSets;
 
+		// What the masks were last drawn from (VulkanRenderer::GetSelectionMaskFingerprint()):
+		// they are drawn again only when it changes. Unset while nothing is selected, and when the
+		// masks are made anew, so that they are drawn before the outline reads them.
+		std::optional<uint64_t> SelectionMaskFingerprint;
+
 		// -------------------------------------------------
 		// Blur: the picture blurred small, for glows and glass (VulkanBlur)
 		// -------------------------------------------------
