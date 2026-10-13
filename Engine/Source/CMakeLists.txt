@@ -25,6 +25,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/Paths.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/ChildProcess.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/CrashHandler.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Core/src/FrameRateLimiter.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/NetConnection.cpp
 
     # Runtime/Engine
@@ -102,6 +103,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/Paths.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/ChildProcess.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/CrashHandler.h
+    ${NYX_ENGINE_ROOT}/Runtime/Core/include/FrameRateLimiter.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/NetConnection.h
     
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/NyxPCH.h

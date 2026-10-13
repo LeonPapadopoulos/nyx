@@ -450,6 +450,26 @@ namespace Nyx
 		bRecreateSwapChain = true;
 	}
 
+	void VulkanRenderer::SetVSync(bool bVSync)
+	{
+		if (bVSync == Swapchain.IsVSync())
+		{
+			return;
+		}
+		// The present mode is the swapchain's: one made from now on has it, and one that exists
+		// already is made again after this frame.
+		Swapchain.SetVSync(bVSync);
+		if (*Swapchain.GetSwapchain())
+		{
+			bRecreateSwapChain = true;
+		}
+	}
+
+	bool VulkanRenderer::IsVSync() const
+	{
+		return Swapchain.IsVSync();
+	}
+
 	void VulkanRenderer::SetupVulkan(const char* applicationName, GLFWwindow* window)
 	{
 		Context.Initialize(applicationName, window);

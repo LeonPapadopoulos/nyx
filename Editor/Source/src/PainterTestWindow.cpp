@@ -120,6 +120,12 @@ namespace Nyx::Editor
 		}
 	}
 
+	void PainterTestWindow::SetFrameRateLimits(bool bVSyncOn, uint32_t frameRateCap)
+	{
+		bVSync = bVSyncOn;
+		FrameRateCap = frameRateCap;
+	}
+
 	void PainterTestWindow::Draw(Nyx::IRenderer& renderer)
 	{
 		if (!bOpen)
@@ -525,6 +531,7 @@ namespace Nyx::Editor
 			NYX_UI(ImGui::Text("The editor: %.0f fps on average, %.0f at its slowest frame", perSecond(averageFrame), perSecond(slowestFrame)));
 			NYX_UI(ImGui::Text("The painter alone: %.0f fps, %.0f%% of the frame", perSecond(averagePainter),
 				averageFrame > 0.0f ? averagePainter / averageFrame * 100.0f : 0.0f));
+			DrawFrameRateLimitInfo();
 			ImGui::PushTextWrapPos(0.0f);
 			NYX_UI(ImGui::TextDisabled("The editor runs one frame at a time: each frame waits for the last one's GPU work, so the painter's CPU and GPU "
 									   "times add up."));
@@ -685,11 +692,46 @@ namespace Nyx::Editor
 			row("The editor, fps", [&](const PainterScenario& scenario) { return perSecond(scenario.Frame); }, "%.0f");
 			Nyx::UI::EndTable();
 		}
+		DrawFrameRateLimitInfo();
 
 		ImGui::PushTextWrapPos(0.0f);
 		NYX_UI(ImGui::TextDisabled("Opaque docked cards are an estimate: the GPU counts what the reduction would keep, and the painter's draws are taken "
 								   "to go down with the entries their pixels walk. Ambilight would then no longer show through the cards."));
 		ImGui::PopTextWrapPos();
+	}
+
+	void PainterTestWindow::DrawFrameRateLimitInfo() const
+	{
+		if (!bVSync && FrameRateCap == 0)
+		{
+			return;
+		}
+
+		// The frame includes the wait for the monitor or the cap; the painter's and the other
+		// times are the work alone.
+		std::string limit;
+		if (bVSync && FrameRateCap > 0)
+		{
+			limit = "Vsync is on and the frame rate is capped at " + std::to_string(FrameRateCap) +
+				" fps: the editor's frame rate is held to the lower of the monitor's refresh rate and the cap.";
+		}
+		else if (bVSync)
+		{
+			limit = "Vsync is on: the editor's frame rate is held to the monitor's refresh rate.";
+		}
+		else
+		{
+			limit = "The frame rate is capped at " + std::to_string(FrameRateCap) + " fps: the editor's frame rate is held to it.";
+		}
+		limit += " Its frame includes the wait; the painter's frame rate and the CPU and GPU times are the work alone, though "
+				 "a GPU that waits often clocks down and takes longer for it (Window > Preferences, Frame rate).";
+
+		const glm::vec4& info = Nyx::UI::GetTheme().TextInfo;
+		ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(info.r, info.g, info.b, info.a));
+		ImGui::PushTextWrapPos(0.0f);
+		NYX_UI(ImGui::TextUnformatted(("Info: " + limit).c_str()));
+		ImGui::PopTextWrapPos();
+		ImGui::PopStyleColor();
 	}
 
 	void PainterTestWindow::DrawFrameGraph(std::span<const FrameSample> samples) const

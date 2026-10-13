@@ -47,6 +47,7 @@ namespace Nyx
 			auto previousFrameTime = std::chrono::steady_clock::now();
 			while (!Window->ShouldClose())
 			{
+				Window->WaitForNextFrame();
 				Window->PollEvents();
 
 				const auto frameTime = std::chrono::steady_clock::now();

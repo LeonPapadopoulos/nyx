@@ -146,6 +146,8 @@ namespace Nyx::Editor
 		text += std::string("Ambilight=") + (bAmbilight ? "1\n" : "0\n");
 		text += "AmbilightStrength=" + FormatFloat(AmbilightStrength) + "\n";
 		text += "AmbilightReach=" + FormatFloat(AmbilightReach) + "\n";
+		text += std::string("VSync=") + (bVSync ? "1\n" : "0\n");
+		text += "FrameRateCap=" + std::to_string(FrameRateCap) + "\n";
 
 		// In order; Play uses the first
 		text += "# PlaySetup=<in Play All: 0 or 1>,<width>x<height>,<name>\n";
@@ -194,6 +196,20 @@ namespace Nyx::Editor
 				if (const std::optional<float> reach = ParseFloat(setting.substr(std::string_view("AmbilightReach=").size())))
 				{
 					AmbilightReach = std::clamp(*reach, 0.0f, MaxAmbilightReach);
+				}
+			}
+			else if (setting == "VSync=1") bVSync = true;
+			else if (setting == "VSync=0") bVSync = false;
+			else if (setting.starts_with("FrameRateCap="))
+			{
+				// None, or one of the caps offered; anything else keeps the cap there was
+				const std::string_view value = setting.substr(std::string_view("FrameRateCap=").size());
+				uint32_t cap = 0;
+				const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), cap);
+				if (error == std::errc() && end == value.data() + value.size() &&
+					(cap == 0 || std::ranges::find(FrameRateCaps, cap) != std::end(FrameRateCaps)))
+				{
+					FrameRateCap = cap;
 				}
 			}
 			else if (setting.starts_with("PlaySetup="))

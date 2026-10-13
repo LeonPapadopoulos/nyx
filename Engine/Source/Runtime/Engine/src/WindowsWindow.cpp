@@ -45,6 +45,11 @@ namespace Nyx
 		Shutdown();
 	}
 
+	void WindowsWindow::WaitForNextFrame()
+	{
+		FrameLimiter.WaitForNextFrame();
+	}
+
 	void WindowsWindow::PollEvents()
 	{
 		glfwPollEvents();
@@ -83,21 +88,27 @@ namespace Nyx
 
 	void WindowsWindow::SetVSync(bool enabled)
 	{
-		// @todo:
-		if (enabled)
-		{
-			glfwSwapInterval(1);
-		}
-		else
-		{
-			glfwSwapInterval(0);
-		}
+		// The renderer presents its frames; before it exists, it takes this when created.
 		Data.bVSync = enabled;
+		if (Renderer)
+		{
+			Renderer->SetVSync(enabled);
+		}
 	}
 
 	bool WindowsWindow::IsVSync() const
 	{
 		return Data.bVSync;
+	}
+
+	void WindowsWindow::SetFrameRateCap(uint32_t framesPerSecond)
+	{
+		FrameLimiter.SetFramesPerSecond(framesPerSecond);
+	}
+
+	uint32_t WindowsWindow::GetFrameRateCap() const
+	{
+		return FrameLimiter.GetFramesPerSecond();
 	}
 
 	bool WindowsWindow::ShouldClose() const
@@ -227,6 +238,7 @@ namespace Nyx
 
 		ASSERT(glfwVulkanSupported() && "Currently only Vulkan is supported.");
 		Renderer = Nyx::CreateRenderer();
+		Renderer->SetVSync(Data.bVSync);
 		SetStartupStatus("Starting Vulkan and preparing rendering resources");
 		Renderer->Initialize(Data.Title.c_str(), Window);
 

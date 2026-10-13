@@ -40,6 +40,8 @@ namespace
 		written.bAmbilight = false;
 		written.AmbilightStrength = 0.35f;
 		written.AmbilightReach = 123.5f;
+		written.bVSync = false;
+		written.FrameRateCap = 144;
 		written.PlaySetups = {
 			PlaySetup{ .Name = "Phone, portrait", .Width = 390, .Height = 844, .bInPlayAll = false },
 			PlaySetup{ .Name = "Ultrawide", .Width = 2560, .Height = 1080, .bInPlayAll = true },
@@ -50,6 +52,7 @@ namespace
 		Require(read.SourceEditor == ESourceEditor::VisualStudioCode, "The source editor was lost");
 		Require(read.bConsoleWindowsInPlayAll, "Console windows in Play All was lost");
 		Require(!read.bAmbilight && read.AmbilightStrength == 0.35f && read.AmbilightReach == 123.5f, "The ambilight settings differ after a round trip");
+		Require(!read.bVSync && read.FrameRateCap == 144, "The frame rate settings differ after a round trip");
 		Require(read.PlaySetups == written.PlaySetups, "The play setups differ after a round trip (a comma in a name?)");
 
 		// Through a file too, as the editor saves them
@@ -70,6 +73,17 @@ namespace
 		const EditorPreferences defaults;
 		Require(old.bAmbilight && old.AmbilightStrength == defaults.AmbilightStrength && old.AmbilightReach == defaults.AmbilightReach,
 			"Without saved ambilight settings, ambilight should be on with the defaults");
+
+		Require(old.bVSync && old.FrameRateCap == 0, "Without saved frame rate settings, vsync should be on and the frame rate uncapped");
+
+		// A frame rate cap other than those offered, or unreadable, keeps the cap there was.
+		EditorPreferences frameRate;
+		frameRate.FromText("FrameRateCap=60\n");
+		Require(frameRate.FrameRateCap == 60, "A cap offered should be read");
+		frameRate.FromText("FrameRateCap=75\nFrameRateCap=fast\nFrameRateCap=-60\nFrameRateCap=60x\nVSync=2\n");
+		Require(frameRate.FrameRateCap == 60 && frameRate.bVSync, "Caps not offered, unreadable caps and vsync values should be skipped");
+		frameRate.FromText("FrameRateCap=0\n");
+		Require(frameRate.FrameRateCap == 0, "No cap should be read");
 
 		// Ambilight settings out of range are clamped; unreadable ones keep the defaults.
 		EditorPreferences ambilight;

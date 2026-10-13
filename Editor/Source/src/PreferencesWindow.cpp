@@ -10,6 +10,8 @@
 
 #include <cfloat>
 #include <chrono>
+#include <string>
+#include <vector>
 
 namespace Nyx::Editor
 {
@@ -62,6 +64,8 @@ namespace Nyx::Editor
 
 			ImGui::Spacing();
 			DrawAmbilight(preferences);
+			ImGui::Spacing();
+			DrawFrameRate(preferences);
 		}
 		ImGui::End();
 	}
@@ -79,6 +83,43 @@ namespace Nyx::Editor
 		NYX_UI(Nyx::UI::SliderFloat("Reach", &preferences.AmbilightReach, 0.0f, EditorPreferences::MaxAmbilightReach, "%.0f px"));
 		bSave |= ImGui::IsItemDeactivatedAfterEdit();
 		ImGui::EndDisabled();
+
+		if (bSave && !preferences.Save(EditorPreferences::GetUserFile()))
+		{
+			SourceNavigationStatus = "Could not save user preferences.";
+		}
+	}
+
+	void PreferencesWindow::DrawFrameRate(EditorPreferences& preferences)
+	{
+		NYX_UI(ImGui::TextUnformatted("Frame rate"));
+		ImGui::PushTextWrapPos(0.0f);
+		NYX_UI(ImGui::TextDisabled("Vsync draws no more frames than the monitor shows. A cap holds the editor to fewer, with or without vsync."));
+		ImGui::PopTextWrapPos();
+
+		bool bSave = NYX_UI(Nyx::UI::Checkbox("Vsync", &preferences.bVSync));
+
+		// "None", then each cap offered; the cap saved is always one of them (FromText())
+		std::vector<std::string> names{ "None" };
+		int selected = 0;
+		for (const uint32_t cap : EditorPreferences::FrameRateCaps)
+		{
+			if (cap == preferences.FrameRateCap)
+			{
+				selected = static_cast<int>(names.size());
+			}
+			names.push_back(std::to_string(cap) + " fps");
+		}
+		std::vector<const char*> items;
+		for (const std::string& name : names)
+		{
+			items.push_back(name.c_str());
+		}
+		if (NYX_UI(Nyx::UI::Combo("Frame rate cap", &selected, items)))
+		{
+			preferences.FrameRateCap = selected == 0 ? 0 : EditorPreferences::FrameRateCaps[selected - 1];
+			bSave = true;
+		}
 
 		if (bSave && !preferences.Save(EditorPreferences::GetUserFile()))
 		{

@@ -1,5 +1,6 @@
 #pragma once
 #include "NyxEngineAPI.h"
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
@@ -41,6 +42,10 @@ namespace Nyx
 		{
 		}
 
+		// Returns once the next frame may start under the frame rate cap; at once without one.
+		// Called before the frame's events are polled, so the frame works with the newest input.
+		virtual void WaitForNextFrame() = 0;
+
 		virtual void PollEvents() = 0;
 
 		// Renders one frame. drawUI is called inside the window's UI frame, so the
@@ -54,8 +59,17 @@ namespace Nyx
 		virtual unsigned int GetWidth() = 0;
 		virtual unsigned int GetHeight() = 0;
 
+		// With vsync (the default), each frame is shown at the monitor's next refresh, and the
+		// frame loop waits for it: the frame rate is at most the monitor's. Without, frames are
+		// drawn as fast as they can be, and each refresh shows the newest one.
 		virtual void SetVSync(bool enabled) = 0;
 		virtual bool IsVSync() const = 0;
+
+		// At most this many frames per second, 0 for no cap. Under vsync too, e.g. 30 on a 60 Hz
+		// monitor.
+		virtual void SetFrameRateCap(uint32_t framesPerSecond) = 0;
+		virtual uint32_t GetFrameRateCap() const = 0;
+
 		virtual bool ShouldClose() const = 0;
 
 		// Makes ShouldClose() true, as if the user closed the window

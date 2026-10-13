@@ -96,7 +96,7 @@ namespace Nyx
 		SurfaceFormat = ChooseSwapSurfaceFormat(availableFormats);
 
 		std::vector<vk::PresentModeKHR> availablePresentModes = context.GetPhysicalDevice().getSurfacePresentModesKHR(Surface);
-		vk::PresentModeKHR presentMode = ChooseSwapPresentMode(availablePresentModes);
+		vk::PresentModeKHR presentMode = ChooseSwapPresentMode(availablePresentModes, bVSyncWanted);
 
 		vk::SwapchainCreateInfoKHR swapchainCreateInfo{};
 		swapchainCreateInfo.surface = *context.GetSurface();
@@ -233,12 +233,17 @@ namespace Nyx
 		return availableFormats[0];
 	}
 
-	vk::PresentModeKHR VulkanSwapchain::ChooseSwapPresentMode(std::vector<vk::PresentModeKHR> const& availablePresentModes)
+	vk::PresentModeKHR VulkanSwapchain::ChooseSwapPresentMode(std::vector<vk::PresentModeKHR> const& availablePresentModes, bool bVSync)
 	{
+		// FIFO is vsync, and every GPU has it.
 		ASSERT(std::ranges::any_of(availablePresentModes, [](auto presentMode)
 			{
 				return presentMode == vk::PresentModeKHR::eFifo;
 			}));
+		if (bVSync)
+		{
+			return vk::PresentModeKHR::eFifo;
+		}
 		return std::ranges::any_of(availablePresentModes,
 				   [](const vk::PresentModeKHR value)
 				   {

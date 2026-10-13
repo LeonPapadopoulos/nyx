@@ -36,6 +36,13 @@ add_dependencies(NyxGameLaunchOptionsTests NyxGeneratedReflection)
 set_property(TARGET NyxGameLaunchOptionsTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxGameLaunchOptionsTests COMMAND NyxGameLaunchOptionsTests)
 
+# The frame rate cap's pace, and its waiting on the real clock.
+add_executable(NyxFrameRateLimiterTests FrameRateLimiterTests.cpp)
+target_link_libraries(NyxFrameRateLimiterTests PRIVATE NyxEngine)
+add_dependencies(NyxFrameRateLimiterTests NyxGeneratedReflection)
+set_property(TARGET NyxFrameRateLimiterTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxFrameRateLimiterTests COMMAND NyxFrameRateLimiterTests)
+
 # ResourceManager and AsyncResourceManager with stand-in resources.
 add_executable(NyxResourceManagerTests ResourceManagerTests.cpp)
 target_link_libraries(NyxResourceManagerTests PRIVATE NyxEngine)

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "FrameRateLimiter.h"
 #include "Window.h"
 
 #include <functional>
@@ -21,6 +22,7 @@ namespace Nyx
 		WindowsWindow(const WindowSpecs& specs);
 		virtual ~WindowsWindow();
 
+		void WaitForNextFrame() override;
 		void PollEvents() override;
 		void DrawFrame(const std::function<void()>& drawUI) override;
 		IRenderer& GetRenderer() override { return *Renderer; }
@@ -30,6 +32,8 @@ namespace Nyx
 
 		virtual void SetVSync(bool enabled) override;
 		virtual bool IsVSync() const override;
+		void SetFrameRateCap(uint32_t framesPerSecond) override;
+		uint32_t GetFrameRateCap() const override;
 		virtual bool ShouldClose() const override;
 		void RequestClose() override;
 
@@ -69,6 +73,7 @@ namespace Nyx
 		};
 
 		WindowData Data;
+		FrameRateLimiter FrameLimiter;
 		bool bTitlebarHovered = false;
 
 		std::function<void(float buttonHeight)> TitlebarMenuCallback;

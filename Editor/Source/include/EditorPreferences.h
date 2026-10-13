@@ -51,6 +51,13 @@ namespace Nyx::Editor
 		float AmbilightReach = 60.0f;
 		static constexpr float MaxAmbilightReach = 400.0f;
 
+		// The editor's frame rate. Vsync shows each frame at the monitor's next refresh, so the
+		// editor draws no more frames than the monitor shows. The cap is at most that many frames
+		// per second, 0 for none; FrameRateCaps lists the ones to choose from.
+		bool bVSync = true;
+		uint32_t FrameRateCap = 0;
+		static constexpr uint32_t FrameRateCaps[] = { 30, 60, 90, 120, 144, 240 };
+
 		static std::filesystem::path GetUserFile();
 
 		// Missing settings keep their defaults; lines this editor doesn't know are skipped

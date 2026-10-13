@@ -226,6 +226,8 @@ namespace Nyx
 		virtual void EndFrame();
 
 		virtual void OnFramebufferResized();
+		void SetVSync(bool bVSync) override;
+		bool IsVSync() const override;
 
 		virtual void DrawFrame(const std::function<void()>& buildUI);
 		virtual void OnMouseWheelScrolled(double yOffset);

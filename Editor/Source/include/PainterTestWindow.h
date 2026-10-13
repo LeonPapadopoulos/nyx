@@ -39,6 +39,10 @@ namespace Nyx::Editor
 	public:
 		void Draw(Nyx::IRenderer& renderer);
 
+		// Vsync and the frame rate cap the editor runs with (0 for none). While either holds the
+		// editor's frame rate back, the Statistics tab says so beside its frame rates.
+		void SetFrameRateLimits(bool bVSyncOn, uint32_t frameRateCap);
+
 		// Gives the canvas and the gradient image back to the renderer. Done when the window
 		// closes; call it before the renderer shuts down too.
 		void Release();
@@ -145,6 +149,12 @@ namespace Nyx::Editor
 		// What the per-tile reduction drops, and the frame now and with the docked cards opaque
 		// (PredictOpaqueDockedCards()), from the frames kept
 		void DrawReduction(std::span<const FrameSample> samples) const;
+		// The note that vsync or the frame rate cap holds the editor's frame rate back, if one does
+		void DrawFrameRateLimitInfo() const;
+
+		// From SetFrameRateLimits()
+		bool bVSync = false;
+		uint32_t FrameRateCap = 0;
 	};
 
 	// What the painter costs a frame on average, measured (the Statistics tab), for predicting

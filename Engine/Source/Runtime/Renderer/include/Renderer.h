@@ -61,6 +61,12 @@ namespace Nyx
 
 		virtual void OnFramebufferResized() = 0;
 
+		// Vsync presents each frame at the monitor's next refresh (FIFO); without it, the newest
+		// frame is shown at each refresh (mailbox, where the GPU has it). Set before Initialize(),
+		// or later, which recreates the swapchain after the frame.
+		virtual void SetVSync(bool bVSync) = 0;
+		virtual bool IsVSync() const = 0;
+
 		virtual void DrawFrame(const std::function<void()>& buildUI) = 0;
 		virtual void OnMouseWheelScrolled(double yOffset) = 0;
 

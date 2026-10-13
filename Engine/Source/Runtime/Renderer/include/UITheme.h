@@ -22,6 +22,8 @@ namespace Nyx::UI
 		// Text
 		glm::vec4 Text{ 0.90f, 0.91f, 0.94f, 1.0f };
 		glm::vec4 TextMuted{ 0.55f, 0.58f, 0.66f, 1.0f };
+		// Notes that say how to read what is shown, e.g. that vsync holds a frame rate back
+		glm::vec4 TextInfo{ 0.45f, 0.65f, 0.95f, 1.0f };
 
 		// A control's background: buttons, sliders (fields have their own, below)
 		glm::vec4 Frame{ 0.22f, 0.23f, 0.27f, 1.0f };

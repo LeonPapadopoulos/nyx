@@ -32,6 +32,7 @@ namespace Nyx::Editor
 		{
 			LOG_WARNING("Could not read editor preferences; using defaults.");
 		}
+		ApplyFrameRate();
 		RegisterRuntimeReflectedSources();
 		SourceInspector.Attach(
 			[this](SourceLocation location)
@@ -166,6 +167,7 @@ namespace Nyx::Editor
 
 		if (!SourceInspector.IsActive()) Editing.HandleHotkeys();
 		PreferencesPanel.Draw(Preferences, SourceInspector);
+		ApplyFrameRate();
 
 		if (bShowGameLink)
 		{
@@ -180,8 +182,16 @@ namespace Nyx::Editor
 		}
 
 		DebugTools.DrawWindows();
+		PainterTest.SetFrameRateLimits(Window->IsVSync(), Window->GetFrameRateCap());
 		PainterTest.Draw(*Renderer);
 		Mockup.Draw(*Renderer);
+	}
+
+	void EditorLayer::ApplyFrameRate()
+	{
+		// The window acts only on a change: a new swapchain for vsync, a new pace for the cap.
+		Window->SetVSync(Preferences.bVSync);
+		Window->SetFrameRateCap(Preferences.FrameRateCap);
 	}
 
 	void EditorLayer::DrawTitlebarMenu(float buttonHeight)

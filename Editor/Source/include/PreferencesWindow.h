@@ -25,6 +25,8 @@ namespace Nyx::Editor
 	private:
 		// Ambilight on or off, its strength and its reach
 		void DrawAmbilight(EditorPreferences& preferences);
+		// Vsync on or off, and the frame rate cap
+		void DrawFrameRate(EditorPreferences& preferences);
 
 		std::future<std::string> PendingSourceOpen;
 		std::string SourceNavigationStatus;

@@ -62,6 +62,9 @@ namespace Nyx::Editor
 		// File, Window and Debug menus, Play/Stop, and the scene name, shown in the window's titlebar.
 		void DrawTitlebarMenu(float buttonHeight);
 
+		// Vsync and the frame rate cap, from the preferences, to the window
+		void ApplyFrameRate();
+
 		void ApplyPendingPickResults();
 
 		// Called before destroying the old registry, once its replacement is ready.
