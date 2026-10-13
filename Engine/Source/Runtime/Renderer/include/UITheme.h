@@ -8,10 +8,12 @@ namespace Nyx::UI
 {
 	// How the painted widgets (UIWidgets.h) and the window chrome (UIChrome.h) look. Every
 	// colour, radius, size and effect they use comes from here, never from a literal in a widget,
-	// so that the whole look can change in one place (Design/editor-ui-architecture.md, 3.10.3). Overhaul change 9 fills it from a theme
-	// file and a theme editor; for now it holds the editor's dark look: the reference mockup's blue
-	// slate with a blue accent (Design/editor-mockup-styling.md). ImGui's own colours follow it
-	// (SetNyxTheme()), for the text and widgets ImGui still draws.
+	// so that the whole look can change in one place (Design/editor-ui-architecture.md, 3.10.3). The
+	// editor fills it from a theme file (UIThemeFile.h, Editor/Themes) and edits it live in its
+	// theme window. The values here are the default theme's, "Shrine Night": blue-black panels
+	// with a violet accent (Design/editor-mockup-styling.md); Editor/Themes/Shrine Night.nyxtheme
+	// holds the same. ImGui's own colours follow the theme (ApplyThemeToImGui()), for the text and
+	// widgets ImGui still draws.
 	//
 	// Layout (frame padding, item spacing, item width) follows ImGui's style instead, so painted
 	// widgets line up with ImGui's in the same window.
@@ -22,15 +24,15 @@ namespace Nyx::UI
 	struct Theme
 	{
 		// Text
-		glm::vec4 Text{ 0.88f, 0.91f, 0.95f, 1.0f };
-		glm::vec4 TextMuted{ 0.6f, 0.65f, 0.71f, 1.0f };
+		glm::vec4 Text{ 0.91f, 0.918f, 0.949f, 1.0f };
+		glm::vec4 TextMuted{ 0.616f, 0.639f, 0.675f, 1.0f };
 		// Notes that say how to read what is shown, e.g. that vsync holds a frame rate back
-		glm::vec4 TextInfo{ 0.45f, 0.65f, 0.95f, 1.0f };
+		glm::vec4 TextInfo{ 0.655f, 0.612f, 0.961f, 1.0f };
 
 		// A control's background: buttons, sliders (fields have their own, below)
-		glm::vec4 Frame{ 0.165f, 0.212f, 0.275f, 1.0f };
-		glm::vec4 FrameHovered{ 0.2f, 0.255f, 0.325f, 1.0f };
-		glm::vec4 FramePressed{ 0.13f, 0.17f, 0.22f, 1.0f };
+		glm::vec4 Frame{ 0.227f, 0.255f, 0.294f, 1.0f };
+		glm::vec4 FrameHovered{ 0.267f, 0.298f, 0.341f, 1.0f };
+		glm::vec4 FramePressed{ 0.188f, 0.212f, 0.247f, 1.0f };
 		glm::vec4 FrameBorder{ 1.0f, 1.0f, 1.0f, 0.07f };
 		float FrameRounding = 6.0f;
 		float FrameBorderWidth = 1.0f;
@@ -44,12 +46,12 @@ namespace Nyx::UI
 		glm::vec4 ButtonStopPressed{ 0.45f, 0.15f, 0.15f, 1.0f };
 
 		// The accent: a toggle that is on, a slider's filled part, section headers
-		glm::vec4 Accent{ 0.141f, 0.447f, 0.984f, 1.0f };
-		glm::vec4 AccentHovered{ 0.3f, 0.56f, 1.0f, 1.0f };
+		glm::vec4 Accent{ 0.561f, 0.518f, 0.941f, 1.0f };
+		glm::vec4 AccentHovered{ 0.663f, 0.624f, 0.973f, 1.0f };
 
 		// A toggle's or slider's track when off or empty, and their knobs
-		glm::vec4 Track{ 0.2f, 0.25f, 0.31f, 1.0f };
-		glm::vec4 TrackHovered{ 0.24f, 0.3f, 0.37f, 1.0f };
+		glm::vec4 Track{ 0.208f, 0.235f, 0.271f, 1.0f };
+		glm::vec4 TrackHovered{ 0.247f, 0.275f, 0.314f, 1.0f };
 		glm::vec4 Knob{ 0.96f, 0.96f, 0.98f, 1.0f };
 
 		// Thin lines, e.g. after a section header's label
@@ -62,7 +64,7 @@ namespace Nyx::UI
 		float PressedTextOffset = 1.0f;
 
 		// The glow around a control with keyboard focus
-		Engine::PainterGlow FocusGlow{ { 0.141f, 0.447f, 0.984f, 0.9f }, 6.0f, 0.6f };
+		Engine::PainterGlow FocusGlow{ { 0.561f, 0.518f, 0.941f, 0.8f }, 6.0f, 0.5f };
 
 		// Toggle: the track's width and height, and the knob's radius, as fractions of the frame
 		// height. The knob shrinks to KnobPressedScale of itself while pressed.
@@ -82,16 +84,16 @@ namespace Nyx::UI
 		// Section header: an accent bar left of the label, and a line after it
 		float SectionBarWidth = 3.0f;
 		float SectionBarGap = 8.0f;
-		Engine::PainterGlow SectionBarGlow{ { 0.141f, 0.447f, 0.984f, 0.8f }, 6.0f, 0.5f };
+		Engine::PainterGlow SectionBarGlow{ { 0.561f, 0.518f, 0.941f, 0.6f }, 6.0f, 0.4f };
 		float SectionLineWidth = 1.0f;
 
 		// The window chrome (UIChrome.h): the backdrop behind the dock space, and the card every
 		// window is painted as
-		glm::vec4 Backdrop{ 0.055f, 0.078f, 0.098f, 1.0f };
+		glm::vec4 Backdrop{ 0.071f, 0.082f, 0.098f, 1.0f };
 		// Docked cards are slightly translucent, so a window's glow (ambilight) shows faintly
 		// through its neighbours; over the backdrop they show the mockup's panel colour. Floating
 		// cards stay opaque.
-		glm::vec4 Card{ 0.106f, 0.138f, 0.172f, 0.85f };
+		glm::vec4 Card{ 0.141f, 0.165f, 0.184f, 0.851f };
 		// A hairline just inside each card's edge, so cards stand apart from the backdrop
 		glm::vec4 CardBorder{ 1.0f, 1.0f, 1.0f, 0.05f };
 		float CardRounding = 8.0f;
@@ -99,16 +101,16 @@ namespace Nyx::UI
 		float CardGap = 6.0f;
 		Engine::PainterShadow CardShadow{ { 0.0f, 0.0f, 0.0f, 0.45f }, { 0.0f, 2.0f }, 10.0f };
 		// Floating windows, popups, menus and tooltips lie higher: lighter, with a stronger shadow
-		glm::vec4 FloatingCard{ 0.12f, 0.157f, 0.196f, 1.0f };
+		glm::vec4 FloatingCard{ 0.157f, 0.18f, 0.204f, 1.0f };
 		Engine::PainterShadow FloatingCardShadow{ { 0.0f, 0.0f, 0.0f, 0.6f }, { 0.0f, 8.0f }, 24.0f };
 		// Glass (UIChrome.h): floating windows, popups, menus and tooltips in the main window show
 		// what lies behind them, blurred, with this tint laid over it at its alpha, bent and lit
 		// near their edge
-		glm::vec4 GlassTint{ 0.085f, 0.115f, 0.145f, 0.6f };
+		glm::vec4 GlassTint{ 0.118f, 0.137f, 0.161f, 0.651f };
 		Engine::PainterGlass Glass{ 6.0f, 12.0f, 0.15f };
 		// A splitter between docked cards shows only while hovered or dragged: a line this wide,
 		// as long as the cards beside it less their rounding
-		glm::vec4 Splitter{ 0.141f, 0.447f, 0.984f, 0.9f };
+		glm::vec4 Splitter{ 0.561f, 0.518f, 0.941f, 0.902f };
 		float SplitterWidth = 2.0f;
 
 		// Tab bars, docked and in windows (UIChrome.h): ImGui draws only the labels and close
@@ -118,32 +120,32 @@ namespace Nyx::UI
 		glm::vec4 TabSelected{ 1.0f, 1.0f, 1.0f, 0.08f };
 		glm::vec4 TabHovered{ 1.0f, 1.0f, 1.0f, 0.05f };
 		float TabPillInset = 3.0f;
-		glm::vec4 TabUnderline{ 0.141f, 0.447f, 0.984f, 1.0f };
+		glm::vec4 TabUnderline{ 0.718f, 0.659f, 0.984f, 1.0f };
 		// The underline of a tab bar whose window doesn't have focus
-		glm::vec4 TabUnderlineDimmed{ 0.6f, 0.65f, 0.71f, 0.7f };
+		glm::vec4 TabUnderlineDimmed{ 0.616f, 0.639f, 0.675f, 0.702f };
 		float TabUnderlineWidth = 2.0f;
 
-		// Tree rows (TreeRow()): the pill behind the selected row (a solid blue, as the mockup's) and a hovered one, RowPillMargin
+		// Tree rows (TreeRow()): the pill behind the selected row and a hovered one, RowPillMargin
 		// in from the row's ends and RowPillInset from its top and bottom; the guides down each
 		// indentation level; and the icons
-		glm::vec4 RowSelected{ 0.004f, 0.31f, 0.74f, 0.9f };
+		glm::vec4 RowSelected{ 0.624f, 0.616f, 0.984f, 1.0f };
 		glm::vec4 RowHovered{ 1.0f, 1.0f, 1.0f, 0.06f };
 		float RowPillMargin = 4.0f;
 		float RowPillInset = 1.0f;
 		glm::vec4 IndentGuide{ 1.0f, 1.0f, 1.0f, 0.08f };
-		glm::vec4 FolderIcon{ 0.78f, 0.83f, 0.9f, 1.0f };
-		glm::vec4 EntityIcon{ 0.78f, 0.83f, 0.9f, 1.0f };
+		glm::vec4 FolderIcon{ 0.788f, 0.804f, 0.839f, 1.0f };
+		glm::vec4 EntityIcon{ 0.788f, 0.804f, 0.839f, 1.0f };
 
 		// Fields: text, number and search fields (InputText(), DragScalar(), SearchField()). ImGui
 		// edits and draws their text; the frame behind it is painted, darker than the card, so it
 		// reads as a place to type. While a field is edited, its border turns to the accent and it
 		// glows faintly. ImGui draws the text selection and the cursor in these colours.
-		glm::vec4 Field{ 0.078f, 0.11f, 0.137f, 1.0f };
-		glm::vec4 FieldHovered{ 0.1f, 0.135f, 0.168f, 1.0f };
-		glm::vec4 FieldBorder{ 1.0f, 1.0f, 1.0f, 0.09f };
-		Engine::PainterGlow FieldEditGlow{ { 0.141f, 0.447f, 0.984f, 0.5f }, 5.0f, 0.4f };
-		glm::vec4 TextSelection{ 0.141f, 0.447f, 0.984f, 0.4f };
-		glm::vec4 TextCursor{ 0.3f, 0.56f, 1.0f, 1.0f };
+		glm::vec4 Field{ 0.098f, 0.114f, 0.129f, 1.0f };
+		glm::vec4 FieldHovered{ 0.122f, 0.141f, 0.161f, 1.0f };
+		glm::vec4 FieldBorder{ 1.0f, 1.0f, 1.0f, 0.078f };
+		Engine::PainterGlow FieldEditGlow{ { 0.561f, 0.518f, 0.941f, 0.4f }, 5.0f, 0.4f };
+		glm::vec4 TextSelection{ 0.561f, 0.518f, 0.941f, 0.302f };
+		glm::vec4 TextCursor{ 0.718f, 0.659f, 0.984f, 1.0f };
 		// A search field's magnifier, as a fraction of the frame height
 		float SearchIconSize = 0.55f;
 
@@ -151,11 +153,11 @@ namespace Nyx::UI
 		glm::vec4 AxisX{ 0.94f, 0.38f, 0.38f, 1.0f };
 		glm::vec4 AxisY{ 0.50f, 0.80f, 0.36f, 1.0f };
 		glm::vec4 AxisZ{ 0.38f, 0.60f, 0.98f, 1.0f };
-		glm::vec4 AxisW{ 0.6f, 0.65f, 0.71f, 1.0f };
+		glm::vec4 AxisW{ 0.616f, 0.639f, 0.675f, 1.0f };
 
 		// Property rows (BeginPropertyRow()): the label column takes PropertyLabelWidth of the row,
 		// the value the rest. A hovered row shows the tree rows' hover pill.
-		glm::vec4 PropertyLabel{ 0.72f, 0.76f, 0.82f, 1.0f };
+		glm::vec4 PropertyLabel{ 0.753f, 0.773f, 0.804f, 1.0f };
 		float PropertyLabelWidth = 0.4f;
 
 		// Collapsing headers (CollapsingHeader()), e.g. a component in the details panel: a pill
@@ -183,9 +185,9 @@ namespace Nyx::UI
 		float TitlebarHeight = 40.0f;
 		float ToolbarHeight = 38.0f;
 		float StatusBarHeight = 33.0f;
-		glm::vec4 Titlebar{ 0.075f, 0.106f, 0.133f, 1.0f };
-		glm::vec4 Toolbar{ 0.098f, 0.129f, 0.165f, 1.0f };
-		glm::vec4 StatusBar{ 0.086f, 0.118f, 0.141f, 1.0f };
+		glm::vec4 Titlebar{ 0.094f, 0.114f, 0.133f, 1.0f };
+		glm::vec4 Toolbar{ 0.133f, 0.157f, 0.173f, 1.0f };
+		glm::vec4 StatusBar{ 0.098f, 0.122f, 0.141f, 1.0f };
 		glm::vec4 BarBorder{ 1.0f, 1.0f, 1.0f, 0.04f };
 		// An upright line between groups in a bar (BarDivider()), BarDividerHeight of the bar's
 		// content height
@@ -194,19 +196,19 @@ namespace Nyx::UI
 		// Tabs in a bar (BarTab(), DocumentTab()): a raised tab, rounded at the top, behind the
 		// selected one and every document; the hover pill (MenuItemHovered) behind the others.
 		// A selected bar tab is underlined (TabUnderline).
-		glm::vec4 BarTab{ 0.122f, 0.165f, 0.21f, 1.0f };
+		glm::vec4 BarTab{ 0.173f, 0.196f, 0.22f, 1.0f };
 		glm::vec4 BarTabBorder{ 1.0f, 1.0f, 1.0f, 0.07f };
 		float BarTabRounding = 6.0f;
 		// The logo's place at the titlebar's left, a circle until there is a logo (TitlebarLogo())
-		glm::vec4 Logo{ 0.85f, 0.88f, 0.93f, 1.0f };
+		glm::vec4 Logo{ 0.882f, 0.894f, 0.925f, 1.0f };
 		// Icons on buttons (IconButton()), IconSize of the button's height
 		float IconSize = 0.45f;
 		// A button that does the main thing of its bar, e.g. Build (EButtonTone::Primary): a
 		// dark fill with an accent outline
-		glm::vec4 ButtonPrimary{ 0.122f, 0.169f, 0.216f, 1.0f };
-		glm::vec4 ButtonPrimaryHovered{ 0.15f, 0.2f, 0.255f, 1.0f };
-		glm::vec4 ButtonPrimaryPressed{ 0.1f, 0.14f, 0.18f, 1.0f };
-		glm::vec4 ButtonPrimaryBorder{ 0.141f, 0.447f, 0.984f, 0.45f };
+		glm::vec4 ButtonPrimary{ 0.157f, 0.176f, 0.212f, 1.0f };
+		glm::vec4 ButtonPrimaryHovered{ 0.184f, 0.208f, 0.247f, 1.0f };
+		glm::vec4 ButtonPrimaryPressed{ 0.137f, 0.153f, 0.184f, 1.0f };
+		glm::vec4 ButtonPrimaryBorder{ 0.561f, 0.518f, 0.941f, 0.451f };
 		// The status bar's icons (StatusItem()): all is well, a warning, an error
 		glm::vec4 StatusOk{ 0.42f, 0.82f, 0.36f, 1.0f };
 		glm::vec4 StatusWarning{ 0.95f, 0.72f, 0.25f, 1.0f };
@@ -225,7 +227,7 @@ namespace Nyx::UI
 		float WindowControlIconWidth = 1.0f;
 		// The border around the editor's window while it has focus, WindowFocusBorderWidth wide and
 		// rounded as Windows 11 rounds the window (none while maximised)
-		glm::vec4 WindowFocusBorder{ 0.18f, 0.38f, 0.72f, 1.0f };
+		glm::vec4 WindowFocusBorder{ 0.431f, 0.392f, 0.769f, 1.0f };
 		float WindowFocusBorderWidth = 3.0f;
 		float WindowRounding = 10.0f;
 
@@ -252,7 +254,7 @@ namespace Nyx::UI
 		// scrollbar is hovered, in the accent while it is dragged
 		glm::vec4 ScrollbarThumb{ 1.0f, 1.0f, 1.0f, 0.16f };
 		glm::vec4 ScrollbarThumbHovered{ 1.0f, 1.0f, 1.0f, 0.32f };
-		glm::vec4 ScrollbarThumbHeld{ 0.141f, 0.447f, 0.984f, 0.85f };
+		glm::vec4 ScrollbarThumbHeld{ 0.561f, 0.518f, 0.941f, 0.851f };
 		float ScrollbarThumbWidth = 4.0f;
 		float ScrollbarThumbHoveredWidth = 8.0f;
 

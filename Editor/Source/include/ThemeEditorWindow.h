@@ -55,7 +55,8 @@ namespace Nyx::Editor
 		// Editor/Themes in the project
 		static std::filesystem::path GetProjectThemesFolder();
 
-		// The default theme in a themes folder, Dark.nyxtheme
+		// The default theme in a themes folder, "Shrine Night.nyxtheme": what the defaults in
+		// UITheme.h hold too
 		static std::filesystem::path GetDefaultThemeFile(const std::filesystem::path& themesFolder);
 
 		// The file a theme preference names (EditorPreferences::Theme): a file in the themes

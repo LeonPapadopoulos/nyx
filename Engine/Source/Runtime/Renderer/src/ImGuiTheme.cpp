@@ -1,6 +1,7 @@
 #include "NyxPCH.h"
 #include "ImGuiTheme.h"
 
+#include "UIChrome.h"
 #include "UITheme.h"
 
 namespace Nyx
@@ -107,6 +108,9 @@ namespace Nyx
 		// is a light grey that washes it out)
 		colors[ImGuiCol_ModalWindowDimBg] = ImVec4(theme.Backdrop.r, theme.Backdrop.g, theme.Backdrop.b, 0.6f);
 		colors[ImGuiCol_NavWindowingDimBg] = ImVec4(theme.Backdrop.r, theme.Backdrop.g, theme.Backdrop.b, 0.6f);
+
+		// While the chrome paints windows, tabs and scrollbars, ImGui's colours for them stay clear
+		Nyx::UI::ReapplyPaintedChrome();
 	}
 
 	void SetNyxTheme()

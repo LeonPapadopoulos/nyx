@@ -121,7 +121,7 @@ namespace Nyx::Editor
 
 	std::filesystem::path ThemeEditorWindow::GetDefaultThemeFile(const std::filesystem::path& themesFolder)
 	{
-		return themesFolder / "Dark.nyxtheme";
+		return themesFolder / "Shrine Night.nyxtheme";
 	}
 
 	std::filesystem::path ThemeEditorWindow::ResolveThemeFile(const std::string& preference, const std::filesystem::path& themesFolder)

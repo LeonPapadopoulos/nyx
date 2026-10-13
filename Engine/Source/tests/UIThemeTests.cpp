@@ -1,12 +1,15 @@
 // The theme's values by name and the theme file (UIThemeFile.h): every member of Theme is listed,
 // the file's text reads back as it was written, colours parse in their forms, and lines that are
 // wrong are reported with their line numbers while the others are read.
+#include "Paths.h"
 #include "UIThemeFile.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <iostream>
 #include <span>
 #include <stdexcept>
@@ -183,6 +186,50 @@ namespace
 		std::filesystem::remove_all(path.parent_path(), ignored);
 	}
 
+	// The themes in Editor/Themes read without problems and set every value, so none of them
+	// leans on the defaults by mistake
+	void TestShippedThemes()
+	{
+		const std::filesystem::path folder = Nyx::Paths::GetProjectRoot() / "Editor" / "Themes";
+		size_t count = 0;
+		for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(folder))
+		{
+			if (entry.path().extension() != ".nyxtheme")
+			{
+				continue;
+			}
+			++count;
+			Theme theme;
+			const std::optional<std::vector<std::string>> problems = LoadThemeFile(entry.path(), theme);
+			Require(problems.has_value(), "Couldn't read " + entry.path().filename().string());
+			Require(problems->empty(), entry.path().filename().string() + ": " + (problems->empty() ? std::string() : problems->front()));
+
+			// Every value is written in the file, by name
+			std::ifstream file(entry.path());
+			const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+			for (const ThemeValue& value : GetThemeValues())
+			{
+				Require(text.find("\n" + std::string(value.Name) + " ") != std::string::npos, entry.path().filename().string() + " leaves out " + value.Name);
+			}
+		}
+		Require(count >= 1, "Editor/Themes should hold at least the default theme");
+	}
+
+	// The defaults in UITheme.h are the default theme, Shrine Night: its file holds the same values
+	void TestDefaultsAreTheDefaultTheme()
+	{
+		Theme fromFile;
+		const std::optional<std::vector<std::string>> problems = LoadThemeFile(Nyx::Paths::GetProjectRoot() / "Editor" / "Themes" / "Shrine Night.nyxtheme", fromFile);
+		Require(problems && problems->empty(), "The default theme's file should read");
+		const Theme defaults;
+		for (const ThemeValue& value : GetThemeValues())
+		{
+			Theme one = defaults;
+			std::memcpy(reinterpret_cast<std::byte*>(&one) + value.Offset, reinterpret_cast<const std::byte*>(&fromFile) + value.Offset, GetThemeValueSize(value.Kind));
+			Require(WriteThemeText(one) == WriteThemeText(defaults), std::string("UITheme.h's ") + value.Name + " differs from the default theme's file");
+		}
+	}
+
 	void TestEquality()
 	{
 		Theme a;
@@ -205,6 +252,8 @@ int main()
 		TestGroupsStayTogether();
 		TestFile();
 		TestEquality();
+		TestShippedThemes();
+		TestDefaultsAreTheDefaultTheme();
 	}
 	catch (const std::exception& error)
 	{

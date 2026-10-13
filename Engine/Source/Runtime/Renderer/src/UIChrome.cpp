@@ -619,6 +619,23 @@ namespace Nyx::UI
 		}
 	}
 
+	namespace
+	{
+		// The colours the chrome paints, kept and made transparent, and the gap between dock
+		// nodes from the theme
+		void TakeOverStyleColors(ImGuiStyle& style, StyleBeforeChrome& before)
+		{
+			for (size_t index = 0; index < std::size(PaintedColors); ++index)
+			{
+				before.ColorAlphas[index] = style.Colors[PaintedColors[index]].w;
+				style.Colors[PaintedColors[index]].w = 0.0f;
+			}
+			// Docked cards lie CardGap apart: ImGui leaves that much room between dock nodes,
+			// where its splitter is.
+			style.DockingSeparatorSize = GetTheme().CardGap;
+		}
+	}
+
 	void SetPaintedChrome(bool bEnabled)
 	{
 		ChromeState& state = GetState();
@@ -631,21 +648,14 @@ namespace Nyx::UI
 		StyleBeforeChrome& before = state.StyleBefore;
 		if (bEnabled)
 		{
-			for (size_t index = 0; index < std::size(PaintedColors); ++index)
-			{
-				before.ColorAlphas[index] = style.Colors[PaintedColors[index]].w;
-				style.Colors[PaintedColors[index]].w = 0.0f;
-			}
 			before.WindowBorderSize = style.WindowBorderSize;
 			before.PopupBorderSize = style.PopupBorderSize;
 			before.DockingSeparatorSize = style.DockingSeparatorSize;
+			TakeOverStyleColors(style, before);
 
 			// Cards have no borders, only their hairline.
 			style.WindowBorderSize = 0.0f;
 			style.PopupBorderSize = 0.0f;
-			// Docked cards lie CardGap apart: ImGui leaves that much room between dock nodes,
-			// where its splitter is.
-			style.DockingSeparatorSize = GetTheme().CardGap;
 		}
 		else
 		{
@@ -663,6 +673,16 @@ namespace Nyx::UI
 	bool IsPaintedChromeEnabled()
 	{
 		return GetState().bEnabled;
+	}
+
+	void ReapplyPaintedChrome()
+	{
+		ChromeState& state = GetState();
+		if (!state.bEnabled || ImGui::GetCurrentContext() == nullptr)
+		{
+			return;
+		}
+		TakeOverStyleColors(ImGui::GetStyle(), state.StyleBefore);
 	}
 
 	void PaintBackdrop()

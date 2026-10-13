@@ -46,6 +46,13 @@ namespace Nyx::UI
 	void SetPaintedChrome(bool bEnabled);
 	bool IsPaintedChromeEnabled();
 
+	// After ImGui's style colours were set again while the chrome is on, e.g. for another theme
+	// (ApplyThemeToImGui()): keeps them as the colours to put back when the chrome goes off, makes
+	// those the chrome paints transparent again, and takes the gap between docked cards from the
+	// theme. Without it, ImGui would fill the windows and the gaps between them again. Nothing
+	// while the chrome is off.
+	void ReapplyPaintedChrome();
+
 	// Paints the backdrop over the whole window being built, behind everything it draws next:
 	// call right after the window's Begin(), e.g. the dock space's host window. Nothing while the
 	// chrome is off.

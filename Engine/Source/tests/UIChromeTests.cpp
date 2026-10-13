@@ -1,6 +1,7 @@
 // The painted window chrome (UIChrome.h) in a headless ImGui context with a real dock space:
 // the style it takes over, the cards of docked and floating windows, where their segments go in
 // the draw lists, and the splitter between docked cards. No GPU is involved.
+#include "ImGuiTheme.h"
 #include "PainterCommands.h"
 #include "UIChrome.h"
 #include "UITheme.h"
@@ -340,6 +341,34 @@ namespace
 		Require(std::memcmp(style.Colors, before.Colors, sizeof(style.Colors)) == 0 && style.WindowBorderSize == before.WindowBorderSize &&
 			style.PopupBorderSize == before.PopupBorderSize && style.DockingSeparatorSize == before.DockingSeparatorSize,
 			"Turning the chrome off should give ImGui's style back as it was");
+	}
+
+	// A theme applied while the chrome is on (ApplyThemeToImGui(), e.g. another theme chosen in
+	// the editor) sets ImGui's colours again. The chrome takes them over again, so windows and the
+	// gaps between docked cards stay clear (they were filled opaque once), and the gap follows the
+	// theme's. Turning the chrome off then gives the theme's colours back.
+	void TestAThemeChangeKeepsTheStyleTakenOver()
+	{
+		Nyx::UI::Theme& theme = Nyx::UI::GetTheme();
+		const Nyx::UI::Theme saved = theme;
+		Nyx::UI::SetPaintedChrome(true);
+		theme.CardGap = 11.0f;
+		theme.Card = glm::vec4(0.2f, 0.3f, 0.4f, 0.85f);
+		Nyx::ApplyThemeToImGui();
+
+		const ImGuiStyle& style = ImGui::GetStyle();
+		Require(style.Colors[ImGuiCol_WindowBg].w == 0.0f && style.Colors[ImGuiCol_DockingEmptyBg].w == 0.0f && style.Colors[ImGuiCol_ChildBg].w == 0.0f &&
+					style.Colors[ImGuiCol_TabSelected].w == 0.0f && style.Colors[ImGuiCol_ScrollbarGrab].w == 0.0f,
+			"A theme applied while the chrome is on should leave the colours the chrome paints transparent");
+		Require(style.DockingSeparatorSize == 11.0f, "The gap between dock nodes should follow the theme's card gap");
+
+		Nyx::UI::SetPaintedChrome(false);
+		const ImVec4 windowBg = style.Colors[ImGuiCol_WindowBg];
+		Require(windowBg.x == 0.2f && windowBg.y == 0.3f && windowBg.z == 0.4f && windowBg.w == 1.0f,
+			"Turning the chrome off should give back the colours of the theme applied meanwhile");
+
+		theme = saved;
+		Nyx::ApplyThemeToImGui();
 	}
 
 	void TestNothingIsPaintedWhileTheChromeIsOff(DockedEditor& editor)
@@ -825,6 +854,7 @@ int main()
 		{
 			DockedEditor editor;
 			TestTheStyleIsTakenOverAndGivenBack();
+			TestAThemeChangeKeepsTheStyleTakenOver();
 			TestNothingIsPaintedWhileTheChromeIsOff(editor);
 
 			Nyx::UI::SetPaintedChrome(true);

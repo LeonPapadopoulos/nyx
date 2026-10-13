@@ -1165,7 +1165,8 @@ namespace
 		std::filesystem::remove_all(folder, ignored);
 		Nyx::UI::Theme orange;
 		orange.Accent = *Nyx::UI::ParseThemeColor("#FF8800");
-		Require(!Nyx::UI::SaveThemeFile(folder / "Dark.nyxtheme", Nyx::UI::Theme{}) && !Nyx::UI::SaveThemeFile(folder / "Orange.nyxtheme", orange),
+		const std::filesystem::path defaultFile = ThemeEditorWindow::GetDefaultThemeFile(folder);
+		Require(!Nyx::UI::SaveThemeFile(defaultFile, Nyx::UI::Theme{}) && !Nyx::UI::SaveThemeFile(folder / "Orange.nyxtheme", orange),
 			"Writing the test's themes failed");
 		const glm::vec4 green(0.0f, 1.0f, 0.0f, 1.0f);
 
@@ -1193,7 +1194,7 @@ namespace
 					return window.IsAskingToDiscard() && popup != nullptr && popup->Active;
 				};
 			ui.Frame(draw);
-			Require(window.GetActiveFile() == folder / "Dark.nyxtheme" && preferences.Theme.empty(), "Without a preference, the default theme should load");
+			Require(window.GetActiveFile() == defaultFile && preferences.Theme.empty(), "Without a preference, the default theme should load");
 
 			window.ChooseTheme(folder / "Orange.nyxtheme");
 			ui.Frame(draw);
@@ -1201,7 +1202,7 @@ namespace
 				"Without unsaved changes, a theme chosen should load at once and be remembered by name");
 
 			Nyx::UI::GetTheme().Accent = green;
-			window.ChooseTheme(folder / "Dark.nyxtheme");
+			window.ChooseTheme(defaultFile);
 			ui.Frame(draw);
 			ui.Frame(draw);
 			Require(isAsking() && Nyx::UI::GetTheme().Accent == green && window.GetActiveFile() == folder / "Orange.nyxtheme",
@@ -1210,14 +1211,14 @@ namespace
 			Require(!window.IsAskingToDiscard() && Nyx::UI::GetTheme().Accent == green && preferences.Theme == "Orange.nyxtheme",
 				"Escape should keep the unsaved changes and the theme loaded");
 
-			window.ChooseTheme(folder / "Dark.nyxtheme");
+			window.ChooseTheme(defaultFile);
 			ui.Frame(draw);
 			ui.Frame(draw);
 			Require(isAsking(), "Choosing again should ask again");
 			pressKey(ImGuiKey_Enter);
 			Require(!window.IsAskingToDiscard() && Nyx::UI::FormatThemeColor(Nyx::UI::GetTheme().Accent) == Nyx::UI::FormatThemeColor(Nyx::UI::Theme{}.Accent),
 				"Enter should load the theme chosen, dropping the unsaved changes");
-			Require(window.GetActiveFile() == folder / "Dark.nyxtheme" && preferences.Theme.empty(), "The default theme should need no preference again");
+			Require(window.GetActiveFile() == defaultFile && preferences.Theme.empty(), "The default theme should need no preference again");
 		}
 
 		// The other tests expect the default theme
