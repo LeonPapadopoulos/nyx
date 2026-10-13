@@ -148,6 +148,11 @@ namespace Nyx::Editor
 		text += "AmbilightReach=" + FormatFloat(AmbilightReach) + "\n";
 		text += std::string("VSync=") + (bVSync ? "1\n" : "0\n");
 		text += "FrameRateCap=" + std::to_string(FrameRateCap) + "\n";
+		// A line break would end the setting; such a theme isn't saved
+		if (!Theme.empty() && Theme.find_first_of("\r\n") == std::string::npos)
+		{
+			text += "Theme=" + Theme + "\n";
+		}
 
 		// In order; Play uses the first
 		text += "# PlaySetup=<in Play All: 0 or 1>,<width>x<height>,<name>\n";
@@ -211,6 +216,10 @@ namespace Nyx::Editor
 				{
 					FrameRateCap = cap;
 				}
+			}
+			else if (setting.starts_with("Theme="))
+			{
+				Theme = std::string(setting.substr(std::string_view("Theme=").size()));
 			}
 			else if (setting.starts_with("PlaySetup="))
 			{

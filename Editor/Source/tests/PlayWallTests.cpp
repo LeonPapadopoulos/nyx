@@ -42,6 +42,7 @@ namespace
 		written.AmbilightReach = 123.5f;
 		written.bVSync = false;
 		written.FrameRateCap = 144;
+		written.Theme = "Ashen Garden.nyxtheme";
 		written.PlaySetups = {
 			PlaySetup{ .Name = "Phone, portrait", .Width = 390, .Height = 844, .bInPlayAll = false },
 			PlaySetup{ .Name = "Ultrawide", .Width = 2560, .Height = 1080, .bInPlayAll = true },
@@ -53,6 +54,7 @@ namespace
 		Require(read.bConsoleWindowsInPlayAll, "Console windows in Play All was lost");
 		Require(!read.bAmbilight && read.AmbilightStrength == 0.35f && read.AmbilightReach == 123.5f, "The ambilight settings differ after a round trip");
 		Require(!read.bVSync && read.FrameRateCap == 144, "The frame rate settings differ after a round trip");
+		Require(read.Theme == "Ashen Garden.nyxtheme", "The theme differs after a round trip");
 		Require(read.PlaySetups == written.PlaySetups, "The play setups differ after a round trip (a comma in a name?)");
 
 		// Through a file too, as the editor saves them
@@ -75,6 +77,7 @@ namespace
 			"Without saved ambilight settings, ambilight should be on with the defaults");
 
 		Require(old.bVSync && old.FrameRateCap == 0, "Without saved frame rate settings, vsync should be on and the frame rate uncapped");
+		Require(old.Theme.empty(), "Without a saved theme, the default theme should be loaded");
 
 		// A frame rate cap other than those offered, or unreadable, keeps the cap there was.
 		EditorPreferences frameRate;

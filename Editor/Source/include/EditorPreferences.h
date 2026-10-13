@@ -58,6 +58,10 @@ namespace Nyx::Editor
 		uint32_t FrameRateCap = 0;
 		static constexpr uint32_t FrameRateCaps[] = { 30, 60, 90, 120, 144, 240 };
 
+		// The theme file the editor loads (ThemeEditorWindow): a file name in Editor/Themes, e.g.
+		// "Dark.nyxtheme", or a whole path to one elsewhere. Empty for the default theme.
+		std::string Theme;
+
 		static std::filesystem::path GetUserFile();
 
 		// Missing settings keep their defaults; lines this editor doesn't know are skipped

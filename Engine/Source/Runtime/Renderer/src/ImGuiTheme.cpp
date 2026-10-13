@@ -102,6 +102,11 @@ namespace Nyx
 		// Keyboard navigation and drag and drop
 		colors[ImGuiCol_NavCursor] = color(theme.Accent);
 		colors[ImGuiCol_DragDropTarget] = color(theme.Accent);
+
+		// Behind a modal popup: the backdrop's colour over the editor, darkening it (ImGui's own
+		// is a light grey that washes it out)
+		colors[ImGuiCol_ModalWindowDimBg] = ImVec4(theme.Backdrop.r, theme.Backdrop.g, theme.Backdrop.b, 0.6f);
+		colors[ImGuiCol_NavWindowingDimBg] = ImVec4(theme.Backdrop.r, theme.Backdrop.g, theme.Backdrop.b, 0.6f);
 	}
 
 	void SetNyxTheme()

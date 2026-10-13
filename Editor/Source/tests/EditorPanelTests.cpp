@@ -16,11 +16,13 @@
 #include "SceneEditor.h"
 #include "SceneFilePopups.h"
 #include "SceneOutlinerPanel.h"
+#include "ThemeEditorWindow.h"
 #include "TransformComponent.h"
 #include "UIAnimation.h"
 #include "UIChrome.h"
 #include "UIDiagnostics.h"
 #include "UITheme.h"
+#include "UIThemeFile.h"
 #include "UIWidgets.h"
 #include "WindowPainter.h"
 
@@ -29,6 +31,7 @@
 
 #include <algorithm>
 #include <cfloat>
+#include <filesystem>
 #include <functional>
 #include <iostream>
 #include <span>
@@ -1120,6 +1123,108 @@ namespace
 		Require(buildClicks == 1, "A disabled icon button should take no click");
 	}
 
+	// Which theme file a preference names, and the preference a file gets: the default theme is
+	// no preference, a theme in Editor/Themes its name, one elsewhere its path. The themes folder
+	// holds the default theme.
+	void TestThemePreferences()
+	{
+		using Nyx::Editor::ThemeEditorWindow;
+		const std::filesystem::path folder = ThemeEditorWindow::GetProjectThemesFolder();
+		const std::filesystem::path defaultFile = ThemeEditorWindow::GetDefaultThemeFile(folder);
+
+		Require(ThemeEditorWindow::ResolveThemeFile("", folder) == defaultFile, "No theme preference should be the default theme");
+		Require(ThemeEditorWindow::ResolveThemeFile("Light.nyxtheme", folder) == folder / "Light.nyxtheme", "A theme's name should be a file in the themes folder");
+		const std::filesystem::path elsewhere = std::filesystem::temp_directory_path() / "Elsewhere.nyxtheme";
+		Require(ThemeEditorWindow::ResolveThemeFile(elsewhere.string(), folder) == elsewhere, "A whole path should stay as it is");
+
+		Require(ThemeEditorWindow::GetThemePreference(defaultFile, folder).empty(), "The default theme should need no preference");
+		Require(ThemeEditorWindow::GetThemePreference(folder / "Light.nyxtheme", folder) == "Light.nyxtheme", "A theme in the themes folder should be remembered by name");
+		Require(ThemeEditorWindow::GetThemePreference(elsewhere, folder) == elsewhere.string(), "A theme elsewhere should be remembered by its path");
+		for (const std::filesystem::path& file : { defaultFile, folder / "Light.nyxtheme", elsewhere })
+		{
+			Require(ThemeEditorWindow::ResolveThemeFile(ThemeEditorWindow::GetThemePreference(file, folder), folder) == file,
+				"A theme's preference should name it again: " + file.string());
+		}
+
+		const std::vector<std::filesystem::path> files = ThemeEditorWindow::FindThemeFiles(folder);
+		Require(std::any_of(files.begin(), files.end(), [&](const std::filesystem::path& file) { return file.filename() == defaultFile.filename(); }),
+			"The themes folder should list the default theme");
+		Require(std::is_sorted(files.begin(), files.end(), [](const std::filesystem::path& a, const std::filesystem::path& b) { return a.filename().string() < b.filename().string(); }),
+			"The themes should be listed by name");
+	}
+
+	// Choosing a theme in the theme window, in a themes folder of the test's own: without unsaved
+	// changes it loads in the next frame and the preferences name it; with unsaved changes the
+	// window asks first and keeps them, Escape cancels and Enter loads. The question is the
+	// window's own modal popup (it once opened in the combo's ID scope, where nothing drew it).
+	void TestThemeChoice()
+	{
+		using Nyx::Editor::ThemeEditorWindow;
+		const std::filesystem::path folder = std::filesystem::temp_directory_path() / "NyxThemeChoiceTest";
+		std::error_code ignored;
+		std::filesystem::remove_all(folder, ignored);
+		Nyx::UI::Theme orange;
+		orange.Accent = *Nyx::UI::ParseThemeColor("#FF8800");
+		Require(!Nyx::UI::SaveThemeFile(folder / "Dark.nyxtheme", Nyx::UI::Theme{}) && !Nyx::UI::SaveThemeFile(folder / "Orange.nyxtheme", orange),
+			"Writing the test's themes failed");
+		const glm::vec4 green(0.0f, 1.0f, 0.0f, 1.0f);
+
+		{
+			HeadlessUI ui;
+			ImGuiIO& io = ImGui::GetIO();
+			ThemeEditorWindow window(folder);
+			Nyx::Editor::EditorPreferences preferences;
+			window.LoadAtStartup(preferences);
+			window.bOpen = true;
+			const auto draw = [&]()
+				{
+					window.Draw(preferences);
+				};
+			const auto pressKey = [&](ImGuiKey key)
+				{
+					io.AddKeyEvent(key, true);
+					ui.Frame(draw);
+					io.AddKeyEvent(key, false);
+					ui.Frame(draw);
+				};
+			const auto isAsking = [&]()
+				{
+					const ImGuiWindow* popup = ImGui::FindWindowByName("Discard Theme Changes?");
+					return window.IsAskingToDiscard() && popup != nullptr && popup->Active;
+				};
+			ui.Frame(draw);
+			Require(window.GetActiveFile() == folder / "Dark.nyxtheme" && preferences.Theme.empty(), "Without a preference, the default theme should load");
+
+			window.ChooseTheme(folder / "Orange.nyxtheme");
+			ui.Frame(draw);
+			Require(!window.IsAskingToDiscard() && Nyx::UI::GetTheme().Accent == orange.Accent && preferences.Theme == "Orange.nyxtheme",
+				"Without unsaved changes, a theme chosen should load at once and be remembered by name");
+
+			Nyx::UI::GetTheme().Accent = green;
+			window.ChooseTheme(folder / "Dark.nyxtheme");
+			ui.Frame(draw);
+			ui.Frame(draw);
+			Require(isAsking() && Nyx::UI::GetTheme().Accent == green && window.GetActiveFile() == folder / "Orange.nyxtheme",
+				"With unsaved changes, the window should ask before loading, and keep them meanwhile");
+			pressKey(ImGuiKey_Escape);
+			Require(!window.IsAskingToDiscard() && Nyx::UI::GetTheme().Accent == green && preferences.Theme == "Orange.nyxtheme",
+				"Escape should keep the unsaved changes and the theme loaded");
+
+			window.ChooseTheme(folder / "Dark.nyxtheme");
+			ui.Frame(draw);
+			ui.Frame(draw);
+			Require(isAsking(), "Choosing again should ask again");
+			pressKey(ImGuiKey_Enter);
+			Require(!window.IsAskingToDiscard() && Nyx::UI::FormatThemeColor(Nyx::UI::GetTheme().Accent) == Nyx::UI::FormatThemeColor(Nyx::UI::Theme{}.Accent),
+				"Enter should load the theme chosen, dropping the unsaved changes");
+			Require(window.GetActiveFile() == folder / "Dark.nyxtheme" && preferences.Theme.empty(), "The default theme should need no preference again");
+		}
+
+		// The other tests expect the default theme
+		Nyx::UI::GetTheme() = Nyx::UI::Theme{};
+		std::filesystem::remove_all(folder, ignored);
+	}
+
 	// The titlebar's widgets (stage 3, change 9a): a button in a tone of its own, a menu bar button
 	// with its open menu's pill, window controls, a multi-line field over a painted frame, and a
 	// logarithmic slider whose knob sits where ImGui's grab is.
@@ -1429,6 +1534,8 @@ int main()
 		TestAssetCardsAndTables();
 		TestTitlebarWidgetsAndMultilineFields();
 		TestBarWidgets();
+		TestThemePreferences();
+		TestThemeChoice();
 		TestPanelsLeaveNoShapesToImGui();
 		TestPainterPredictionsFollowTheModel();
 		TestAnimationsEaseAndAreForgotten();

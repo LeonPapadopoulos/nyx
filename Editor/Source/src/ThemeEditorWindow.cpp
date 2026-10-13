@@ -1,5 +1,7 @@
 #include "ThemeEditorWindow.h"
 
+#include "EditorPreferences.h"
+#include "FileDialogs.h"
 #include "ImGuiSource.h"
 #include "ImGuiTheme.h"
 #include "Log.h"
@@ -98,41 +100,105 @@ namespace Nyx::Editor
 			}
 			return bChanged;
 		}
-	}
 
-	std::filesystem::path ThemeEditorWindow::GetThemeFile()
-	{
-		return Nyx::Paths::GetProjectRoot() / "Editor" / "Themes" / "Dark.nyxtheme";
-	}
-
-	void ThemeEditorWindow::LoadAtStartup()
-	{
-		const std::filesystem::path path = GetThemeFile();
-		std::error_code error;
-		if (!std::filesystem::exists(path, error))
+		bool IsSameFile(const std::filesystem::path& a, const std::filesystem::path& b)
 		{
-			if (const std::optional<std::string> saveError = Nyx::UI::SaveThemeFile(path, Nyx::UI::Theme{}))
+			std::error_code error;
+			const bool bSame = std::filesystem::equivalent(a, b, error);
+			return !error ? bSame : a.lexically_normal() == b.lexically_normal();
+		}
+	}
+
+	ThemeEditorWindow::ThemeEditorWindow(std::filesystem::path themesFolder)
+		: ThemesFolder(std::move(themesFolder))
+	{
+	}
+
+	std::filesystem::path ThemeEditorWindow::GetProjectThemesFolder()
+	{
+		return Nyx::Paths::GetProjectRoot() / "Editor" / "Themes";
+	}
+
+	std::filesystem::path ThemeEditorWindow::GetDefaultThemeFile(const std::filesystem::path& themesFolder)
+	{
+		return themesFolder / "Dark.nyxtheme";
+	}
+
+	std::filesystem::path ThemeEditorWindow::ResolveThemeFile(const std::string& preference, const std::filesystem::path& themesFolder)
+	{
+		if (preference.empty())
+		{
+			return GetDefaultThemeFile(themesFolder);
+		}
+		const std::filesystem::path path(preference);
+		return path.is_absolute() ? path : themesFolder / path;
+	}
+
+	std::string ThemeEditorWindow::GetThemePreference(const std::filesystem::path& file, const std::filesystem::path& themesFolder)
+	{
+		if (IsSameFile(file, GetDefaultThemeFile(themesFolder)))
+		{
+			return {};
+		}
+		if (IsSameFile(file.parent_path(), themesFolder))
+		{
+			return file.filename().string();
+		}
+		return file.string();
+	}
+
+	std::vector<std::filesystem::path> ThemeEditorWindow::FindThemeFiles(const std::filesystem::path& themesFolder)
+	{
+		std::vector<std::filesystem::path> files;
+		std::error_code error;
+		for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(themesFolder, error))
+		{
+			if (entry.is_regular_file(error) && entry.path().extension() == ".nyxtheme")
+			{
+				files.push_back(entry.path());
+			}
+		}
+		std::sort(files.begin(), files.end(), [](const std::filesystem::path& a, const std::filesystem::path& b)
+			{
+				return a.filename().string() < b.filename().string();
+			});
+		return files;
+	}
+
+	void ThemeEditorWindow::LoadAtStartup(const EditorPreferences& preferences)
+	{
+		const std::filesystem::path defaultFile = GetDefaultThemeFile(ThemesFolder);
+		ActiveFile = ResolveThemeFile(preferences.Theme, ThemesFolder);
+		std::error_code error;
+		if (!std::filesystem::exists(ActiveFile, error) && !IsSameFile(ActiveFile, defaultFile))
+		{
+			// The preference stays, in case the file comes back (a drive that isn't there today)
+			LOG_WARNING("The theme '{0}' isn't there; loading the default theme", ActiveFile.string());
+			ActiveFile = defaultFile;
+		}
+		if (!std::filesystem::exists(ActiveFile, error))
+		{
+			if (const std::optional<std::string> saveError = Nyx::UI::SaveThemeFile(ActiveFile, Nyx::UI::Theme{}))
 			{
 				LOG_WARNING("Couldn't write the default theme: {0}", *saveError);
 				Saved = Nyx::UI::GetTheme();
 				return;
 			}
-			LOG_INFO("Wrote the default theme to '{0}'", path.string());
+			LOG_INFO("Wrote the default theme to '{0}'", ActiveFile.string());
 		}
 		ReadFile("at startup");
 	}
 
 	void ThemeEditorWindow::ReadFile(const char* why)
 	{
-		const std::filesystem::path path = GetThemeFile();
 		Nyx::UI::Theme theme;
-		const std::optional<std::vector<std::string>> problems = Nyx::UI::LoadThemeFile(path, theme);
+		const std::optional<std::vector<std::string>> problems = Nyx::UI::LoadThemeFile(ActiveFile, theme);
 		std::error_code error;
-		FileTime = std::filesystem::last_write_time(path, error);
+		FileTime = std::filesystem::last_write_time(ActiveFile, error);
 		if (!problems)
 		{
-			Status = std::format("Couldn't read {}", path.filename().string());
-			LOG_WARNING("Couldn't read the theme file '{0}'", path.string());
+			Status = std::format("Couldn't read {}", ActiveFile.filename().string());
+			LOG_WARNING("Couldn't read the theme file '{0}'", ActiveFile.string());
 			return;
 		}
 
@@ -142,14 +208,28 @@ namespace Nyx::Editor
 		Problems = *problems;
 		for (const std::string& problem : Problems)
 		{
-			LOG_WARNING("Theme file '{0}': {1}", path.filename().string(), problem);
+			LOG_WARNING("Theme file '{0}': {1}", ActiveFile.filename().string(), problem);
 		}
-		Status = std::format("Read {} {}", path.filename().string(), why);
+		Status = std::format("Read {} {}", ActiveFile.filename().string(), why);
+	}
+
+	void ThemeEditorWindow::Load(const std::filesystem::path& file, EditorPreferences& preferences)
+	{
+		ActiveFile = file;
+		ReadFile("");
+		Status = std::format("Loaded {}", file.filename().string());
+		preferences.Theme = GetThemePreference(file, ThemesFolder);
+	}
+
+	void ThemeEditorWindow::ChooseTheme(const std::filesystem::path& file)
+	{
+		PendingLoad = file;
+		bAskToDiscard = !Nyx::UI::AreThemesEqual(Nyx::UI::GetTheme(), Saved);
 	}
 
 	void ThemeEditorWindow::Save()
 	{
-		if (const std::optional<std::string> error = Nyx::UI::SaveThemeFile(GetThemeFile(), Nyx::UI::GetTheme()))
+		if (const std::optional<std::string> error = Nyx::UI::SaveThemeFile(ActiveFile, Nyx::UI::GetTheme()))
 		{
 			Status = *error;
 			LOG_ERROR("{0}", *error);
@@ -157,7 +237,24 @@ namespace Nyx::Editor
 		}
 		// Read back, so the theme is what the file says (colours in 8 bits a channel)
 		ReadFile("after saving");
-		Status = std::format("Saved {}", GetThemeFile().filename().string());
+		Status = std::format("Saved {}", ActiveFile.filename().string());
+	}
+
+	void ThemeEditorWindow::SaveAs(EditorPreferences& preferences)
+	{
+		const std::optional<std::filesystem::path> file = ChooseThemeFileToSave(ThemesFolder, ActiveFile.stem().wstring() + L" Copy");
+		if (!file)
+		{
+			return;
+		}
+		if (const std::optional<std::string> error = Nyx::UI::SaveThemeFile(*file, Nyx::UI::GetTheme()))
+		{
+			Status = *error;
+			LOG_ERROR("{0}", *error);
+			return;
+		}
+		Load(*file, preferences);
+		Status = std::format("Saved as {}", file->filename().string());
 	}
 
 	void ThemeEditorWindow::ReloadWhenChanged()
@@ -170,11 +267,92 @@ namespace Nyx::Editor
 		NextFileCheck = now + FileCheckInterval;
 
 		std::error_code error;
-		const std::filesystem::file_time_type time = std::filesystem::last_write_time(GetThemeFile(), error);
+		const std::filesystem::file_time_type time = std::filesystem::last_write_time(ActiveFile, error);
 		if (!error && time != FileTime)
 		{
 			ReadFile("again: it changed on disk");
 		}
+	}
+
+	void ThemeEditorWindow::DrawThemeChoice(EditorPreferences& preferences)
+	{
+		ImGui::AlignTextToFramePadding();
+		NYX_UI(ImGui::TextUnformatted("Theme"));
+		ImGui::SameLine();
+
+		// The themes in the themes folder, and the one loaded if it lies elsewhere
+		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 14.0f);
+		if (Nyx::UI::BeginCombo("##Theme", ActiveFile.stem().string().c_str()))
+		{
+			std::vector<std::filesystem::path> files = FindThemeFiles(ThemesFolder);
+			if (std::none_of(files.begin(), files.end(), [&](const std::filesystem::path& file) { return IsSameFile(file, ActiveFile); }))
+			{
+				files.insert(files.begin(), ActiveFile);
+			}
+			for (const std::filesystem::path& file : files)
+			{
+				const bool bActive = IsSameFile(file, ActiveFile);
+				if (NYX_UI(Nyx::UI::Selectable(file.stem().string().c_str(), bActive)) && !bActive)
+				{
+					ChooseTheme(file);
+				}
+				ImGui::SetItemTooltip("%s", file.string().c_str());
+			}
+			Nyx::UI::EndCombo();
+		}
+		ImGui::SetItemTooltip("%s", ActiveFile.string().c_str());
+
+		ImGui::SameLine();
+		if (NYX_UI(Nyx::UI::Button("Open...")))
+		{
+			if (const std::optional<std::filesystem::path> file = ChooseThemeFileToOpen(ThemesFolder))
+			{
+				ChooseTheme(*file);
+			}
+		}
+		ImGui::SetItemTooltip("Loads a theme file from anywhere");
+		ImGui::SameLine();
+		if (NYX_UI(Nyx::UI::Button("Save As...")))
+		{
+			SaveAs(preferences);
+		}
+		ImGui::SetItemTooltip("Saves the theme to a new file and loads that; in Editor/Themes, it shows in the list");
+	}
+
+	void ThemeEditorWindow::DrawDiscardPopup(EditorPreferences& preferences)
+	{
+		// A theme chosen without unsaved changes loads at once
+		if (!PendingLoad.empty() && !bAskToDiscard && !ImGui::IsPopupOpen("Discard Theme Changes?"))
+		{
+			Load(PendingLoad, preferences);
+			PendingLoad.clear();
+		}
+		if (bAskToDiscard)
+		{
+			ImGui::OpenPopup("Discard Theme Changes?");
+			bAskToDiscard = false;
+		}
+		if (!Nyx::UI::BeginPopupModal("Discard Theme Changes?", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			return;
+		}
+		NYX_UI(ImGui::Text("%s has unsaved changes.", ActiveFile.filename().string().c_str()));
+		NYX_UI(ImGui::Text("Load %s and lose them?", PendingLoad.filename().string().c_str()));
+		ImGui::Spacing();
+		// Enter loads, Escape cancels
+		if (NYX_UI(Nyx::UI::Button("Load")) || ImGui::IsKeyPressed(ImGuiKey_Enter, false))
+		{
+			Load(PendingLoad, preferences);
+			PendingLoad.clear();
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::SameLine();
+		if (NYX_UI(Nyx::UI::Button("Cancel")) || ImGui::IsKeyPressed(ImGuiKey_Escape, false))
+		{
+			PendingLoad.clear();
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndPopup();
 	}
 
 	bool ThemeEditorWindow::DrawValue(const ThemeValue& value)
@@ -247,7 +425,7 @@ namespace Nyx::Editor
 		return bChanged;
 	}
 
-	void ThemeEditorWindow::Draw()
+	void ThemeEditorWindow::Draw(EditorPreferences& preferences)
 	{
 		ReloadWhenChanged();
 		if (!bOpen)
@@ -266,11 +444,13 @@ namespace Nyx::Editor
 		const bool bUnsaved = !Nyx::UI::AreThemesEqual(theme, Saved);
 		bool bChanged = false;
 
+		DrawThemeChoice(preferences);
+
 		if (NYX_UI(Nyx::UI::Button("Save")))
 		{
 			Save();
 		}
-		ImGui::SetItemTooltip("Writes the theme to %s", GetThemeFile().string().c_str());
+		ImGui::SetItemTooltip("Writes the theme to %s", ActiveFile.string().c_str());
 		ImGui::SameLine();
 		ImGui::BeginDisabled(!bUnsaved);
 		if (NYX_UI(Nyx::UI::Button("Revert")))
@@ -349,6 +529,8 @@ namespace Nyx::Editor
 			}
 		}
 		ImGui::EndChild();
+
+		DrawDiscardPopup(preferences);
 
 		// ImGui's own colours follow the theme too
 		if (bChanged)

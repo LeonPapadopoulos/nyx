@@ -134,7 +134,7 @@ namespace Nyx::Editor
 			});
 
 		// The editor's theme from its file, before anything is drawn
-		ThemeEditor.LoadAtStartup();
+		ThemeEditor.LoadAtStartup(Preferences);
 
 		Window->SetStartupStatus("Preparing the scene and editor panels");
 		// The editor's windows are painted as cards on a backdrop (Debug > Painted Chrome)
@@ -270,7 +270,13 @@ namespace Nyx::Editor
 
 		if (!SourceInspector.IsActive()) Editing.HandleHotkeys();
 		PreferencesPanel.Draw(Preferences, SourceInspector);
-		ThemeEditor.Draw();
+		// The theme window remembers the theme loaded in the preferences
+		const std::string theme = Preferences.Theme;
+		ThemeEditor.Draw(Preferences);
+		if (Preferences.Theme != theme && !Preferences.Save(EditorPreferences::GetUserFile()))
+		{
+			LOG_WARNING("Couldn't save the editor preferences to '{0}'", EditorPreferences::GetUserFile().string());
+		}
 		ApplyFrameRate();
 
 		if (bShowGameLink)
