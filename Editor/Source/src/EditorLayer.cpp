@@ -19,6 +19,8 @@
 
 #include <glm/glm.hpp>
 
+#include <utility>
+
 namespace Nyx::Editor
 {
 	void EditorLayer::OnAttach(Nyx::Engine::Application& application)
@@ -278,6 +280,16 @@ namespace Nyx::Editor
 			if (NYX_UI(Nyx::UI::MenuItem("Mark ImGui Shapes", nullptr, &bMarkImGuiShapes)))
 			{
 				Nyx::UI::SetMarkImGuiShapes(bMarkImGuiShapes);
+			}
+			// Where the painter's work lies: one of the two views, or neither
+			const Nyx::UI::EPainterHeatmap heatmap = Nyx::UI::GetPainterHeatmap();
+			for (const auto& [label, view] : { std::pair{ "Painter Heatmap: Commands", Nyx::UI::EPainterHeatmap::Commands },
+					 std::pair{ "Painter Heatmap: Draws", Nyx::UI::EPainterHeatmap::Draws } })
+			{
+				if (NYX_UI(Nyx::UI::MenuItem(label, nullptr, heatmap == view)))
+				{
+					Nyx::UI::SetPainterHeatmap(heatmap == view ? Nyx::UI::EPainterHeatmap::Off : view);
+				}
 			}
 			ImGui::EndPopup();
 		}

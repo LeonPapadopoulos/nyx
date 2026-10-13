@@ -159,6 +159,25 @@ namespace Nyx::Engine
 		return static_cast<uint32_t>(Segments.size() - 1);
 	}
 
+	void VulkanPainterSegments::AddHeat(uint32_t segment, PainterHeatGrid& grid) const
+	{
+		if (segment >= Segments.size())
+		{
+			return;
+		}
+		// The segment's grid starts at a whole tile of the target.
+		const SegmentPart& part = Segments[segment];
+		const uint32_t firstX = part.OriginX / PainterTileSize;
+		const uint32_t firstY = part.OriginY / PainterTileSize;
+		for (uint32_t tileY = 0; tileY < part.TilesY; ++tileY)
+		{
+			for (uint32_t tileX = 0; tileX < part.TilesX; ++tileX)
+			{
+				grid.Add(firstX + tileX, firstY + tileY, Tiles[part.TileBase + tileY * part.TilesX + tileX].Count);
+			}
+		}
+	}
+
 	uint32_t VulkanPainterSegments::FindOrAddPainter(const Painter& painter)
 	{
 		for (uint32_t index = 0; index < Painters.size(); ++index)

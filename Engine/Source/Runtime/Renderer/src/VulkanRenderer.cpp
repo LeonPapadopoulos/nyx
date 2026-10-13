@@ -689,6 +689,9 @@ namespace Nyx
 		PendingFrameTimes.Chrome = takeStepTime();
 		// After the chrome, which takes over some of ImGui's shapes
 		Nyx::UI::MarkImGuiShapes();
+		// The last frame's heat, which the statistics still hold; after the marks, which would
+		// mark its rects
+		Nyx::UI::ShowPainterHeatmap(WindowPainterStats);
 		DrawPainterCanvases(cmd);
 		takeStepTime();
 		GatherWindowPainters();
@@ -3853,6 +3856,15 @@ namespace Nyx
 			osWindow.Name = viewport == ImGui::GetMainViewport() ? "Main window" : window != nullptr ? window->Name : "OS window";
 			// Where it goes in the statistics, if it paints
 			const uint32_t osWindowIndex = static_cast<uint32_t>(WindowPainterStats.OsWindows.size());
+			osWindow.ViewportId = viewport->ID;
+			osWindow.PixelsPerPoint = viewport->DrawData->FramebufferScale.x;
+			// The heatmap's tiles cover the whole target, as the segments' grids are placed on it.
+			const bool bHeat = Nyx::UI::GetPainterHeatmap() != Nyx::UI::EPainterHeatmap::Off;
+			if (bHeat)
+			{
+				osWindow.Heat.Reset(static_cast<uint32_t>(viewport->DrawData->DisplaySize.x * osWindow.PixelsPerPoint),
+					static_cast<uint32_t>(viewport->DrawData->DisplaySize.y * viewport->DrawData->FramebufferScale.y));
+			}
 
 			// What ImGui still draws itself here; the painter's segments are callbacks.
 			for (const ImDrawList* drawList : viewport->DrawData->CmdLists)
@@ -3915,6 +3927,10 @@ namespace Nyx
 
 					// Draws are added one after the other: a draw's index is its place here.
 					WindowSegmentDrawOsWindows.push_back(osWindowIndex);
+					if (bHeat)
+					{
+						WindowSegments.AddHeat(draw, osWindow.Heat);
+					}
 
 					const Nyx::Engine::PainterBinningStats& stats = WindowSegments.GetStats(draw);
 					++osWindow.Draws;

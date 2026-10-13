@@ -66,6 +66,39 @@ namespace Nyx::Engine
 		}
 	};
 
+	// How much painting lies on each tile of an OS window, summed over all its draws: the
+	// commands the tile's pixels walk on the GPU, and the draws they run in. Draws overlap, so one
+	// draw's own counts don't show it (Design/ui-painter.md, stage 3, change 11).
+	struct PainterHeatGrid
+	{
+		// The grid covers the OS window's target from its top left, TilesX by TilesY tiles
+		uint32_t TilesX = 0;
+		uint32_t TilesY = 0;
+		std::vector<uint32_t> Commands;
+		std::vector<uint32_t> Draws;
+
+		// Empties the grid and sizes it for a target of `width` by `height` pixels
+		void Reset(uint32_t width, uint32_t height)
+		{
+			TilesX = (width + PainterTileSize - 1) / PainterTileSize;
+			TilesY = (height + PainterTileSize - 1) / PainterTileSize;
+			Commands.assign(static_cast<size_t>(TilesX) * TilesY, 0);
+			Draws.assign(static_cast<size_t>(TilesX) * TilesY, 0);
+		}
+
+		// One draw's tile at grid tile `tileX`, `tileY`, with `count` commands; nothing outside the grid
+		void Add(uint32_t tileX, uint32_t tileY, uint32_t count)
+		{
+			if (count == 0 || tileX >= TilesX || tileY >= TilesY)
+			{
+				return;
+			}
+			const size_t index = static_cast<size_t>(tileY) * TilesX + tileX;
+			Commands[index] += count;
+			++Draws[index];
+		}
+	};
+
 	// One frame of painting inside ImGui windows (Nyx::UI::WindowPainter), summed over all
 	// windows and their segments, and what the frame's UI cost, e.g. for the Painter Test window
 	// (Design/ui-painter.md, stage 3, change 10)
@@ -87,6 +120,12 @@ namespace Nyx::Engine
 			// What ImGui still draws itself here: its draw commands with triangles, and their vertices
 			uint32_t ImGuiDrawCommands = 0;
 			uint32_t ImGuiVertices = 0;
+
+			// The OS window's ImGui viewport and its target pixels per ImGui unit; while the heatmap
+			// is on, the heat of its tiles
+			uint32_t ViewportId = 0;
+			float PixelsPerPoint = 1.0f;
+			PainterHeatGrid Heat;
 		};
 
 		// Where the frame's UI time went, in milliseconds

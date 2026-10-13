@@ -1363,6 +1363,46 @@ namespace
 		ImGui::NewFrame();
 	}
 
+	// The painter heatmap over the editor (stage 3, change 11): nothing while off; while on, a rect
+	// per run of tiles with the same heat along a row, in the OS window's foreground draw list
+	void TestPainterHeatmapIsShownInRuns()
+	{
+		ImGui::EndFrame();
+		ImGui::NewFrame();
+		PainterWindowStats stats;
+		PainterWindowStats::OsWindow& osWindow = stats.OsWindows.emplace_back();
+		osWindow.ViewportId = ImGui::GetMainViewport()->ID;
+		// Two rows of four tiles: 3, 3, 0, 5, then nothing
+		osWindow.Heat.Reset(4 * PainterTileSize, 2 * PainterTileSize);
+		osWindow.Heat.Add(0, 0, 3);
+		osWindow.Heat.Add(1, 0, 3);
+		osWindow.Heat.Add(3, 0, 5);
+		const ImDrawList& foreground = *ImGui::GetForegroundDrawList();
+		const auto hasVertexAt = [&](float x, float y)
+		{
+			const ImVec2 origin = ImGui::GetMainViewport()->Pos;
+			return std::any_of(foreground.VtxBuffer.begin(), foreground.VtxBuffer.end(), [&](const ImDrawVert& vertex)
+				{
+					return vertex.pos.x == origin.x + x && vertex.pos.y == origin.y + y;
+				});
+		};
+
+		Nyx::UI::SetPainterHeatmap(Nyx::UI::EPainterHeatmap::Off);
+		Nyx::UI::ShowPainterHeatmap(stats);
+		Require(foreground.VtxBuffer.empty(), "Nothing should be shown while the heatmap is off");
+
+		Nyx::UI::SetPainterHeatmap(Nyx::UI::EPainterHeatmap::Commands);
+		Nyx::UI::ShowPainterHeatmap(stats);
+		const float tile = static_cast<float>(PainterTileSize);
+		Require(hasVertexAt(0.0f, 0.0f) && hasVertexAt(2.0f * tile, tile), "The two tiles with 3 commands should be one rect");
+		Require(!hasVertexAt(tile, 0.0f), "Tiles of the same heat side by side shouldn't be rects of their own");
+		Require(hasVertexAt(3.0f * tile, 0.0f) && hasVertexAt(4.0f * tile, tile), "The tile with 5 commands should be a rect of its own");
+		Require(!hasVertexAt(2.0f * tile, 2.0f * tile), "Tiles without painting should show nothing");
+		Nyx::UI::SetPainterHeatmap(Nyx::UI::EPainterHeatmap::Off);
+		ImGui::EndFrame();
+		ImGui::NewFrame();
+	}
+
 	void TestPngsSaveAndLoad()
 	{
 		// 2x2: red, green / blue, half transparent white
@@ -1456,6 +1496,7 @@ int main()
 			TestPainterBehindGoesInFrontOfTheDrawList();
 			TestSegmentRunsFollowRenderOrder();
 			TestImGuiShapesAreMarked();
+			TestPainterHeatmapIsShownInRuns();
 		}
 		TestAppendSegmentRenumbersGroupsAndTextures();
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "PainterTiles.h"
+
 #include <cstdint>
 
 namespace Nyx::UI
@@ -28,4 +30,30 @@ namespace Nyx::UI
 	// background or foreground draw list counts as one); 0 while marking is off
 	uint32_t GetImGuiShapeCount();
 	uint32_t GetImGuiShapeWindowCount();
+
+	// The painter heatmap (Design/ui-painter.md, stage 3, change 11): over each OS window, where
+	// the painter's work lies, from the heat the renderer sums per tile over all draws
+	// (Engine::PainterHeatGrid). It is drawn with ImGui's draw list, not the painter, so that it
+	// doesn't add to the painting it measures.
+	enum class EPainterHeatmap
+	{
+		Off,
+		// The commands each tile's pixels walk, summed over the draws covering it: blue for a few,
+		// through green, to red for PainterHeatmapCommandsRed or more, as the canvas's heatmap
+		Commands,
+		// How many draws cover each tile: blue for one, through green, to red for
+		// PainterHeatmapDrawsRed or more
+		Draws,
+	};
+	constexpr uint32_t PainterHeatmapCommandsRed = 16;
+	constexpr uint32_t PainterHeatmapDrawsRed = 8;
+
+	void SetPainterHeatmap(EPainterHeatmap heatmap);
+	EPainterHeatmap GetPainterHeatmap();
+
+	// Shows the heat of `stats`' OS windows (the frame before, as the renderer sums it once ImGui
+	// has made the draw data) over them, in their foreground draw lists, with a legend in each
+	// one's top right corner and the tile's counts beside the mouse. Call once the frame has ended
+	// and the shapes are marked; the renderer does. Nothing while the heatmap is off.
+	void ShowPainterHeatmap(const Engine::PainterWindowStats& stats);
 }

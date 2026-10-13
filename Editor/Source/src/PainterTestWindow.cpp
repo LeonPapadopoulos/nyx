@@ -532,6 +532,14 @@ namespace Nyx::Editor
 
 			NYX_UI(Nyx::UI::SectionHeader("Per OS window"));
 			DrawOsWindowStatistics(stats);
+			// Where on the screen the painter's work lies (also Debug > Painter Heatmap)
+			constexpr const char* HeatmapViews[] = { "Off", "Commands per tile", "Draws per tile" };
+			int heatmap = static_cast<int>(Nyx::UI::GetPainterHeatmap());
+			ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0f);
+			if (NYX_UI(Nyx::UI::Combo("Heatmap over the editor", &heatmap, HeatmapViews)))
+			{
+				Nyx::UI::SetPainterHeatmap(static_cast<Nyx::UI::EPainterHeatmap>(heatmap));
+			}
 
 			NYX_UI(Nyx::UI::SectionHeader("The last frames"));
 			DrawFrameGraph(samples);

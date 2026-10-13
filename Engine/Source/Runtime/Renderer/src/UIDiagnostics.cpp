@@ -6,6 +6,8 @@
 
 #include <algorithm>
 #include <cfloat>
+#include <cstdio>
+#include <vector>
 
 namespace Nyx::UI
 {
@@ -25,7 +27,39 @@ namespace Nyx::UI
 			bool bMarkImGuiShapes = false;
 			uint32_t ShapeCount = 0;
 			uint32_t WindowCount = 0;
+			EPainterHeatmap Heatmap = EPainterHeatmap::Off;
 		};
+
+		// The heatmap over the editor is see-through, so what lies under it still shows
+		constexpr float HeatAlpha = 0.55f;
+
+		// The canvas heatmap's colours (Heatmap() in Painter.frag): blue at 0, through green, to
+		// red at 1
+		ImU32 HeatColor(float amount, float alpha)
+		{
+			const glm::vec3 few{ 0.1f, 0.3f, 1.0f };
+			const glm::vec3 some{ 0.1f, 0.9f, 0.2f };
+			const glm::vec3 many{ 1.0f, 0.15f, 0.1f };
+			const float t = std::clamp(amount, 0.0f, 1.0f);
+			const glm::vec3 rgb = t < 0.5f ? glm::mix(few, some, t * 2.0f) : glm::mix(some, many, t * 2.0f - 1.0f);
+			return ImGui::ColorConvertFloat4ToU32(ImVec4(rgb.r, rgb.g, rgb.b, alpha));
+		}
+
+		// Where a tile's value lies between blue and red: a few commands are nearly blue, one draw is blue
+		float HeatAmount(EPainterHeatmap heatmap, uint32_t value)
+		{
+			return heatmap == EPainterHeatmap::Commands ? static_cast<float>(value) / static_cast<float>(PainterHeatmapCommandsRed)
+														 : static_cast<float>(value - 1) / static_cast<float>(PainterHeatmapDrawsRed - 1);
+		}
+
+		// Text on a dark box, over everything in the draw list
+		void AddLabel(ImDrawList& drawList, ImVec2 position, const char* text)
+		{
+			const ImVec2 size = ImGui::CalcTextSize(text);
+			const ImVec2 padding(5.0f, 3.0f);
+			drawList.AddRectFilled(position, ImVec2(position.x + size.x + padding.x * 2.0f, position.y + size.y + padding.y * 2.0f), IM_COL32(0, 0, 0, 200), 4.0f);
+			drawList.AddText(ImVec2(position.x + padding.x, position.y + padding.y), IM_COL32(255, 255, 255, 255), text);
+		}
 
 		DiagnosticsState& GetState()
 		{
@@ -200,5 +234,88 @@ namespace Nyx::UI
 	uint32_t GetImGuiShapeWindowCount()
 	{
 		return GetState().WindowCount;
+	}
+
+	void SetPainterHeatmap(EPainterHeatmap heatmap)
+	{
+		GetState().Heatmap = heatmap;
+	}
+
+	EPainterHeatmap GetPainterHeatmap()
+	{
+		return GetState().Heatmap;
+	}
+
+	void ShowPainterHeatmap(const Engine::PainterWindowStats& stats)
+	{
+		const EPainterHeatmap heatmap = GetState().Heatmap;
+		if (heatmap == EPainterHeatmap::Off || ImGui::GetCurrentContext() == nullptr)
+		{
+			return;
+		}
+
+		const ImVec2 mouse = ImGui::GetIO().MousePos;
+		for (const Engine::PainterWindowStats::OsWindow& osWindow : stats.OsWindows)
+		{
+			const Engine::PainterHeatGrid& heat = osWindow.Heat;
+			ImGuiViewport* viewport = ImGui::FindViewportByID(osWindow.ViewportId);
+			if (viewport == nullptr || heat.TilesX == 0 || heat.TilesY == 0)
+			{
+				continue;
+			}
+			ImDrawList& drawList = *ImGui::GetForegroundDrawList(viewport);
+			const std::vector<uint32_t>& values = heatmap == EPainterHeatmap::Commands ? heat.Commands : heat.Draws;
+			const float tile = static_cast<float>(Engine::PainterTileSize) / osWindow.PixelsPerPoint;
+			const ImVec2 origin = viewport->Pos;
+
+			// Tiles side by side with the same value are one rect: few rects for the large areas
+			// cards and the backdrop cover.
+			for (uint32_t tileY = 0; tileY < heat.TilesY; ++tileY)
+			{
+				const uint32_t* row = values.data() + static_cast<size_t>(tileY) * heat.TilesX;
+				for (uint32_t first = 0; first < heat.TilesX;)
+				{
+					uint32_t end = first + 1;
+					while (end < heat.TilesX && row[end] == row[first])
+					{
+						++end;
+					}
+					if (row[first] > 0)
+					{
+						drawList.AddRectFilled(ImVec2(origin.x + static_cast<float>(first) * tile, origin.y + static_cast<float>(tileY) * tile),
+							ImVec2(origin.x + static_cast<float>(end) * tile, origin.y + static_cast<float>(tileY + 1) * tile), HeatColor(HeatAmount(heatmap, row[first]), HeatAlpha));
+					}
+					first = end;
+				}
+			}
+
+			// The legend, in the top right corner below the titlebar: the scale's colours from one to red
+			const bool bCommands = heatmap == EPainterHeatmap::Commands;
+			const uint32_t red = bCommands ? PainterHeatmapCommandsRed : PainterHeatmapDrawsRed;
+			char legend[64];
+			std::snprintf(legend, sizeof(legend), "Painter heatmap: %s per tile, 1 to %u+", bCommands ? "commands" : "draws", red);
+			const ImVec2 legendSize = ImGui::CalcTextSize(legend);
+			const ImVec2 legendAt(origin.x + viewport->Size.x - legendSize.x - 24.0f, origin.y + 40.0f);
+			AddLabel(drawList, legendAt, legend);
+			const float swatchWidth = (legendSize.x + 10.0f) / 8.0f;
+			const float swatchTop = legendAt.y + legendSize.y + 8.0f;
+			for (int swatch = 0; swatch < 8; ++swatch)
+			{
+				const float left = legendAt.x + static_cast<float>(swatch) * swatchWidth;
+				drawList.AddRectFilled(ImVec2(left, swatchTop), ImVec2(left + swatchWidth, swatchTop + 8.0f), HeatColor(static_cast<float>(swatch) / 7.0f, 1.0f));
+			}
+
+			// The tile under the mouse, if it is over this OS window
+			const float mouseX = (mouse.x - origin.x) / tile;
+			const float mouseY = (mouse.y - origin.y) / tile;
+			if (mouseX >= 0.0f && mouseY >= 0.0f && mouseX < static_cast<float>(heat.TilesX) && mouseY < static_cast<float>(heat.TilesY) &&
+				GImGui->MouseViewport == viewport)
+			{
+				const size_t index = static_cast<size_t>(mouseY) * heat.TilesX + static_cast<size_t>(mouseX);
+				char counts[64];
+				std::snprintf(counts, sizeof(counts), "%u commands in %u draws", heat.Commands[index], heat.Draws[index]);
+				AddLabel(drawList, ImVec2(mouse.x + 18.0f, mouse.y + 18.0f), counts);
+			}
+		}
 	}
 }

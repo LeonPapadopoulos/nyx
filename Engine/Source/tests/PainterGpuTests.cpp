@@ -1051,6 +1051,29 @@ namespace
 		const size_t commands = first.GetCommands().size() + second.GetCommands().size();
 		Require(entries > 0 && segments.GetUploadBytes() >= commands * sizeof(PainterCommand) + entries * sizeof(uint32_t),
 			"The upload should hold the painters' commands and the segments' tile entries");
+
+		// The heat over the whole target (stage 3, change 11): every segment's tiles land where
+		// its grid lies, so the heat holds all their entries and tiles, and overlapping segments add up.
+		PainterHeatGrid heat;
+		heat.Reset(extent.width, extent.height);
+		uint32_t tilesInUse = 0;
+		for (const uint32_t segment : { redRect, greenRectAndImage, clippedAway, cyanImage })
+		{
+			segments.AddHeat(segment, heat);
+			tilesInUse += segments.GetStats(segment).TilesInUse;
+		}
+		uint32_t heatCommands = 0;
+		uint32_t heatDraws = 0;
+		for (size_t index = 0; index < heat.Commands.size(); ++index)
+		{
+			heatCommands += heat.Commands[index];
+			heatDraws += heat.Draws[index];
+		}
+		Require(heat.TilesX == 8 && heat.TilesY == 8 && heatCommands == entries && heatDraws == tilesInUse,
+			"The heat should hold every segment's tile entries and tiles in use");
+		// Pixel (8, 8) is under the red rect and its shadow; (60, 2) only under the cyan image's segment.
+		Require(heat.Draws[1 * 8 + 1] >= 1 && heat.Commands[1 * 8 + 1] >= 1, "A tile under the first segment should have its heat");
+		Require(heat.Draws[0 * 8 + 7] == 1, "A tile under only the second painter's segment should be covered by one draw");
 		segments.Clear();
 		Require(segments.GetUploadBytes() == 0, "Cleared segments should upload nothing");
 	}

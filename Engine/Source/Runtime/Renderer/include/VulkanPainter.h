@@ -107,6 +107,10 @@ namespace Nyx::Engine
 		// What went wrong while binning this frame's segments, one line per problem
 		const std::vector<std::string>& GetProblems() const { return Problems; }
 
+		// Adds the segment's tiles, each with its commands, to `grid`, a heat grid over the whole
+		// target the segment is drawn into
+		void AddHeat(uint32_t segment, PainterHeatGrid& grid) const;
+
 		// What Upload() copies to the GPU this frame: commands, groups, tiles and entries
 		size_t GetUploadBytes() const
 		{
