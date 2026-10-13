@@ -28,7 +28,7 @@ namespace Nyx
 
 	void VulkanViewportTarget::Shutdown(VulkanContext& context)
 	{
-		context.GetDevice().waitIdle();
+		context.WaitIdle();
 
 		DestroyImGuiTexture();
 

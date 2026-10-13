@@ -78,6 +78,10 @@ namespace Nyx
 
 		virtual void WaitIdle() = 0;
 
+		// Whether the GPU device was lost, e.g. the driver reset the GPU after a fault. Nothing is
+		// drawn after that: the renderer can't make a new device, so the window should close.
+		virtual bool IsDeviceLost() const = 0;
+
 		virtual void SetSceneViewCameraMode(uint64_t id, EViewportCameraMode mode) = 0;
 		virtual void SetSceneViewEditorCameraTransform(uint64_t id, const glm::vec3& pos, const glm::vec3& rot) = 0;
 

@@ -74,6 +74,13 @@ namespace Nyx
 			{
 				DrawDockspaceHost(drawUI);
 			});
+
+		// Without its device the renderer draws nothing more: close as if the user had, so the
+		// application shuts down the usual way.
+		if (Renderer->IsDeviceLost())
+		{
+			RequestClose();
+		}
 	}
 
 	unsigned int WindowsWindow::GetWidth()

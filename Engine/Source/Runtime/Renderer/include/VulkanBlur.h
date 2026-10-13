@@ -37,6 +37,10 @@ namespace Nyx::Engine
 		vk::ImageView GetImageView() const;
 		vk::Extent2D GetExtent() const;
 
+		// Changes each time the blurred image is made anew. Tell a new image by this, not by its
+		// view: Vulkan may give the new view the handle of the old one, destroyed just before.
+		uint64_t GetGeneration() const { return Generation; }
+
 		void Release();
 
 	private:
@@ -61,9 +65,11 @@ namespace Nyx::Engine
 
 		// Samples the source, for the first halving
 		vk::raii::DescriptorSet SourceSet{ nullptr };
-		vk::ImageView SourceView;
 		vk::Extent2D SourceExtent{ 0, 0 };
 		BlurOptions Options;
+
+		// Counts the images made, across Release() (GetGeneration())
+		uint64_t Generation = 0;
 	};
 
 	// Blurs images on the GPU (Blur.vert and Blur.frag): the image is halved a few times, each
@@ -105,6 +111,7 @@ namespace Nyx::Engine
 		void PrepareTarget(VulkanBlurTarget& target, vk::ImageView source, vk::Extent2D sourceExtent, const BlurOptions& options);
 		void CreateLevel(VulkanBlurTarget::Level& level, vk::Extent2D extent);
 		vk::raii::DescriptorSet MakeSampleSet(vk::ImageView view);
+		void PointSampleSet(const vk::raii::DescriptorSet& set, vk::ImageView view);
 
 		// One pass: draws `input` into `output` with the shader in this mode
 		void DrawPass(vk::raii::CommandBuffer& commandBuffer, const vk::raii::DescriptorSet& input, vk::Extent2D inputExtent, const VulkanBlurTarget::Level& output, uint32_t mode, float directionX, float directionY);

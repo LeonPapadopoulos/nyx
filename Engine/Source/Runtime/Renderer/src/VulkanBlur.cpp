@@ -100,7 +100,6 @@ namespace Nyx::Engine
 		Levels.clear();
 		GaussianTemporary = Level{};
 		SourceSet = nullptr;
-		SourceView = vk::ImageView{};
 		SourceExtent = vk::Extent2D{ 0, 0 };
 	}
 
@@ -204,13 +203,19 @@ namespace Nyx::Engine
 				CreateLevel(level, extent);
 			}
 			CreateLevel(target.GaussianTemporary, extent);
+			++target.Generation;
 		}
 
-		// The source's view changes when its image is made anew, e.g. a scene view resized.
-		if (target.SourceView != source)
+		// Pointed at the source on every blur, not only when its view seems to change: a source
+		// made anew (e.g. a scene view resized) may have been given the handle of the view it
+		// replaced, and a set still showing the destroyed view makes the GPU read freed memory.
+		if (!*target.SourceSet)
 		{
 			target.SourceSet = MakeSampleSet(source);
-			target.SourceView = source;
+		}
+		else
+		{
+			PointSampleSet(target.SourceSet, source);
 		}
 	}
 
@@ -265,7 +270,12 @@ namespace Nyx::Engine
 		allocInfo.descriptorSetCount = 1;
 		allocInfo.pSetLayouts = &*SetLayout;
 		vk::raii::DescriptorSet set = std::move(vk::raii::DescriptorSets(device, allocInfo).front());
+		PointSampleSet(set, view);
+		return set;
+	}
 
+	void VulkanBlur::PointSampleSet(const vk::raii::DescriptorSet& set, vk::ImageView view)
+	{
 		vk::DescriptorImageInfo imageInfo{ *Sampler, view, vk::ImageLayout::eShaderReadOnlyOptimal };
 		vk::WriteDescriptorSet write{};
 		write.dstSet = *set;
@@ -273,8 +283,7 @@ namespace Nyx::Engine
 		write.descriptorCount = 1;
 		write.descriptorType = vk::DescriptorType::eCombinedImageSampler;
 		write.pImageInfo = &imageInfo;
-		device.updateDescriptorSets(write, {});
-		return set;
+		Context->GetDevice().updateDescriptorSets(write, {});
 	}
 
 	void VulkanBlur::CreateRenderPass()

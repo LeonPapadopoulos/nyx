@@ -19,6 +19,10 @@ namespace Nyx
 		uint32_t GetGraphicsQueueFamily() const;
 		vk::raii::CommandPool& GetGraphicsCommandPool();
 
+		// Waits until the device has finished all its work. A lost device has none left: this
+		// returns without throwing then, so that everything made on it can still be released.
+		void WaitIdle();
+
 	private:
 		void CreateInstance(const char* applicationName);
 		void SetupDebugMessenger();

@@ -354,10 +354,7 @@ namespace Nyx
 
 	void VulkanRenderer::Shutdown()
 	{
-		if (*Context.GetDevice())
-		{
-			Context.GetDevice().waitIdle();
-		}
+		Context.WaitIdle();
 
 		for (SceneViewInstance& view : SceneViews)
 		{
@@ -382,7 +379,7 @@ namespace Nyx
 			ImGui_ImplVulkan_RemoveTexture(GlassImGuiTexture);
 			GlassImGuiTexture = VK_NULL_HANDLE;
 		}
-		GlassImGuiTextureView = vk::ImageView{};
+		GlassImGuiTextureGeneration = 0;
 		GlassBackdrop.Release();
 		BlurTimestamps = nullptr;
 		UITimestamps = nullptr;
@@ -492,6 +489,27 @@ namespace Nyx
 	}
 
 	void VulkanRenderer::DrawFrame(const std::function<void()>& buildUI)
+	{
+		if (bDeviceLost)
+		{
+			return;
+		}
+
+		try
+		{
+			DrawFrameOnDevice(buildUI);
+		}
+		catch (const vk::DeviceLostError& error)
+		{
+			// The driver reset the GPU, e.g. after a fault (Windows logs nvlddmkm event 153 and a
+			// TDR). The device and everything made on it are gone, and the renderer can't make
+			// them anew, so it draws nothing more and the window closes (IsDeviceLost()).
+			bDeviceLost = true;
+			LOG_ERROR("The GPU device was lost while drawing a frame ({}). Nothing more can be drawn; the window closes.", error.what());
+		}
+	}
+
+	void VulkanRenderer::DrawFrameOnDevice(const std::function<void()>& buildUI)
 	{
 		// The editor's frame, from the frame before's start, for the painter's statistics
 		const std::chrono::steady_clock::time_point frameStart = std::chrono::steady_clock::now();
@@ -808,10 +826,12 @@ namespace Nyx
 
 	void VulkanRenderer::WaitIdle()
 	{
-		if (*Context.GetDevice())
-		{
-			Context.GetDevice().waitIdle();
-		}
+		Context.WaitIdle();
+	}
+
+	bool VulkanRenderer::IsDeviceLost() const
+	{
+		return bDeviceLost;
 	}
 
 	void VulkanRenderer::SetSceneViewCameraMode(uint64_t id, EViewportCameraMode mode)
@@ -3497,7 +3517,7 @@ namespace Nyx
 			BlurPass.Blur(cmd, picture, view.RenderTarget.GetExtent(), view.Blur, Nyx::Engine::BlurOptions{});
 
 			// ImGui's texture for the blur points at its image, which changes with the view's size.
-			PointImGuiTexture(view.BlurImGuiTexture, view.BlurImGuiTextureView, view.Blur.GetImageView());
+			PointImGuiTexture(view.BlurImGuiTexture, view.BlurImGuiTextureGeneration, view.Blur.GetImageView(), view.Blur.GetGeneration());
 		}
 
 		if (*BlurTimestamps)
@@ -3507,9 +3527,9 @@ namespace Nyx
 		}
 	}
 
-	void VulkanRenderer::PointImGuiTexture(VkDescriptorSet& texture, vk::ImageView& shownView, vk::ImageView view)
+	void VulkanRenderer::PointImGuiTexture(VkDescriptorSet& texture, uint64_t& shownGeneration, vk::ImageView view, uint64_t generation)
 	{
-		if (!view || view == shownView)
+		if (!view || generation == shownGeneration)
 		{
 			return;
 		}
@@ -3530,7 +3550,7 @@ namespace Nyx
 			write.pImageInfo = &imageInfo;
 			Context.GetDevice().updateDescriptorSets(write, {});
 		}
-		shownView = view;
+		shownGeneration = generation;
 	}
 
 	ImTextureID VulkanRenderer::GetPlainGlassBackdrop()
@@ -3590,7 +3610,7 @@ namespace Nyx
 				ImGui_ImplVulkan_RenderDrawData(&behind, commandBuffer);
 			});
 		WriteUITimestamp(*cmd, GlassBackdropPair, true);
-		PointImGuiTexture(GlassImGuiTexture, GlassImGuiTextureView, GlassBackdrop.GetBlurredView());
+		PointImGuiTexture(GlassImGuiTexture, GlassImGuiTextureGeneration, GlassBackdrop.GetBlurredView(), GlassBackdrop.GetBlurredGeneration());
 	}
 
 	void VulkanRenderer::ReleaseSceneViewBlur(SceneViewInstance& view)
@@ -3600,7 +3620,7 @@ namespace Nyx
 			ImGui_ImplVulkan_RemoveTexture(view.BlurImGuiTexture);
 			view.BlurImGuiTexture = VK_NULL_HANDLE;
 		}
-		view.BlurImGuiTextureView = vk::ImageView{};
+		view.BlurImGuiTextureGeneration = 0;
 		view.Blur.Release();
 	}
 
@@ -3749,7 +3769,7 @@ namespace Nyx
 		}
 
 		// The last frame may still be painting the canvas or showing it.
-		Context.GetDevice().waitIdle();
+		Context.WaitIdle();
 		ReleasePainterCanvas(**found);
 		PainterCanvases.erase(found);
 	}
@@ -3760,7 +3780,7 @@ namespace Nyx
 		{
 			ImGui_ImplVulkan_RemoveTexture(canvas.ImGuiTexture);
 			canvas.ImGuiTexture = VK_NULL_HANDLE;
-			canvas.ImGuiTextureView = vk::ImageView{};
+			canvas.ImGuiTextureGeneration = 0;
 		}
 		canvas.Target.Release();
 		canvas.Sampler = nullptr;
@@ -3811,9 +3831,11 @@ namespace Nyx
 			PainterPass.Draw(cmd, canvas.Frame, canvas.Target, canvas.Options);
 
 			// ImGui's texture for the canvas points at the target's image: a new texture on the
-			// first draw, and the same texture pointed at the new image after a resize.
+			// first draw, and the same texture pointed at the new image after a resize. The
+			// target's generation tells a new image; its view's handle may be the old one's.
 			const vk::ImageView imageView = canvas.Target.GetImageView();
-			if (!imageView || imageView == canvas.ImGuiTextureView)
+			const uint64_t generation = canvas.Target.GetGeneration();
+			if (!imageView || generation == canvas.ImGuiTextureGeneration)
 			{
 				continue;
 			}
@@ -3834,7 +3856,7 @@ namespace Nyx
 				write.pImageInfo = &imageInfo;
 				Context.GetDevice().updateDescriptorSets(write, {});
 			}
-			canvas.ImGuiTextureView = imageView;
+			canvas.ImGuiTextureGeneration = generation;
 		}
 	}
 

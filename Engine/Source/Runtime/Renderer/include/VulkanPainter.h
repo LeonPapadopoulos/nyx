@@ -208,6 +208,10 @@ namespace Nyx::Engine
 		vk::ImageView GetImageView() const { return *ImageView; }
 		vk::Extent2D GetExtent() const { return Extent; }
 
+		// Changes each time the image is made anew. Tell a new image by this, not by its view:
+		// Vulkan may give the new view the handle of the old one, destroyed just before.
+		uint64_t GetGeneration() const { return Generation; }
+
 		// Whether drawing also reads back the tiles and entries, for GetTiles()
 		void SetReadBackTiles(bool bReadBack) { Segments.SetReadBackTiles(bReadBack); }
 
@@ -228,6 +232,9 @@ namespace Nyx::Engine
 		vk::raii::DeviceMemory ImageMemory{ nullptr };
 		vk::raii::ImageView ImageView{ nullptr };
 		vk::raii::Framebuffer Framebuffer{ nullptr };
+
+		// Counts the images made, across Release() (GetGeneration())
+		uint64_t Generation = 0;
 
 		VulkanPainterSegments Segments;
 	};

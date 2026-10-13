@@ -102,9 +102,10 @@ namespace Nyx
 
 		Nyx::Engine::VulkanBlurTarget Blur;
 		// How ImGui shows it: a descriptor set made by ImGui's backend, pointed at the new image
-		// when the blur's images are made anew, so its ImTextureID never changes
+		// when the blur's images are made anew (its generation changes), so its ImTextureID
+		// never changes
 		VkDescriptorSet BlurImGuiTexture = VK_NULL_HANDLE;
-		vk::ImageView BlurImGuiTextureView;
+		uint64_t BlurImGuiTextureGeneration = 0;
 
 		// -------------------------------------------------
 		// --

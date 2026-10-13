@@ -236,6 +236,7 @@ namespace Nyx
 		void SetSelectionOutlineMode(ESelectionOutlineMode mode) override;
 
 		virtual void WaitIdle();
+		bool IsDeviceLost() const override;
 
 		virtual void SetSceneViewCameraMode(uint64_t id, EViewportCameraMode mode);
 		virtual void SetSceneViewEditorCameraTransform(uint64_t id, const glm::vec3& pos, const glm::vec3& rot);
@@ -458,16 +459,18 @@ namespace Nyx
 		void ReleaseSceneViewBlur(SceneViewInstance& view);
 
 		// Points an ImGui texture at an image: a new texture the first time, the same texture
-		// pointed at the new image when it changed (e.g. a blur target resized). `shownView` is the
-		// image the texture shows now.
-		void PointImGuiTexture(VkDescriptorSet& texture, vk::ImageView& shownView, vk::ImageView view);
+		// pointed at the new image when it changed (e.g. a blur target resized). An image is told
+		// by its target's generation, not by its view: a new view may get the handle of the old
+		// one, and the texture would go on showing the destroyed image. `shownGeneration` is the
+		// generation the texture shows now.
+		void PointImGuiTexture(VkDescriptorSet& texture, uint64_t& shownGeneration, vk::ImageView view, uint64_t generation);
 
 		// What glass shows (Design/ui-painter.md, stage 3, change 6): ImGui's main window drawn up
 		// to the first glass window, blurred, each frame there is glass, before the main window
 		// itself is drawn. Its ImGui texture keeps its ID.
 		Nyx::Engine::VulkanGlassBackdrop GlassBackdrop;
 		VkDescriptorSet GlassImGuiTexture = VK_NULL_HANDLE;
-		vk::ImageView GlassImGuiTextureView;
+		uint64_t GlassImGuiTextureGeneration = 0;
 		void DrawGlassBackdrop(vk::raii::CommandBuffer& cmd);
 
 		// What glass shows in OS windows of their own (Nyx::UI::SetPlainGlassBackdrop()): one
@@ -495,10 +498,11 @@ namespace Nyx
 			bool bSubmitted = false;
 
 			// How ImGui shows the canvas: a descriptor set made by ImGui's backend. It is pointed
-			// at the new image when the target is recreated, so its ImTextureID never changes.
+			// at the new image when the target is recreated (the target's generation changes),
+			// so its ImTextureID never changes.
 			vk::raii::Sampler Sampler{ nullptr };
 			VkDescriptorSet ImGuiTexture = VK_NULL_HANDLE;
-			vk::ImageView ImGuiTextureView;
+			uint64_t ImGuiTextureGeneration = 0;
 		};
 
 		// Draws the canvases submitted this frame, before ImGui renders
@@ -706,6 +710,11 @@ namespace Nyx
 		vk::raii::Fence InFlightFence{ nullptr };
 
 		bool bRecreateSwapChain = false;
+
+		// DrawFrame() without its handling of a lost device
+		void DrawFrameOnDevice(const std::function<void()>& buildUI);
+		// Set when the device is lost; nothing is drawn after that (IsDeviceLost())
+		bool bDeviceLost = false;
 
 		// Debugging
 		static constexpr uint32_t MaxDebugLineVertices = 65536;

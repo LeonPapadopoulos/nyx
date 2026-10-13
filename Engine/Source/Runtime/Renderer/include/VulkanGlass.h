@@ -31,6 +31,8 @@ namespace Nyx::Engine
 		// The blurred picture, in ShaderReadOnlyOptimal layout after Record(); null before. It
 		// changes when the size does, so read it after each Record().
 		vk::ImageView GetBlurredView() const { return Blurred.GetImageView(); }
+		// Changes when the blurred picture is made anew (VulkanBlurTarget::GetGeneration())
+		uint64_t GetBlurredGeneration() const { return Blurred.GetGeneration(); }
 
 		// Gives the images back. Wait for the GPU to be done with them first.
 		void Release();

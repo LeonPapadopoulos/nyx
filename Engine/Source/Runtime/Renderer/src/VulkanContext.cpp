@@ -57,6 +57,24 @@ namespace Nyx
 		return Device;
 	}
 
+	void VulkanContext::WaitIdle()
+	{
+		if (!*Device)
+		{
+			return;
+		}
+
+		try
+		{
+			Device.waitIdle();
+		}
+		catch (const vk::DeviceLostError&)
+		{
+			// Reported where the renderer finds it (VulkanRenderer::DrawFrame()). The device's
+			// objects can still be destroyed.
+		}
+	}
+
 	vk::raii::SurfaceKHR& VulkanContext::GetSurface()
 	{
 		return Surface;

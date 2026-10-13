@@ -111,7 +111,7 @@ namespace Nyx
 		if (Vulkan)
 		{
 			// 'waitIdle' only considered acceptable inside destructors
-			Vulkan->GetContext().GetDevice().waitIdle();
+			Vulkan->GetContext().WaitIdle();
 		}
 
 		// vk resources are automatically cleaned up by their destructors

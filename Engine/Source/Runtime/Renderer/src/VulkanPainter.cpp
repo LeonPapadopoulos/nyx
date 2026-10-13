@@ -1022,6 +1022,7 @@ namespace Nyx::Engine
 		framebufferInfo.height = extent.height;
 		framebufferInfo.layers = 1;
 		target.Framebuffer = vk::raii::Framebuffer(device, framebufferInfo);
+		++target.Generation;
 	}
 
 	bool VulkanPainter::PrepareBuffer(VulkanPainterBuffers::GpuBuffer& buffer, vk::DeviceSize size, vk::BufferUsageFlags usage, bool bHostVisible)
