@@ -994,7 +994,7 @@ namespace Nyx::Editor
 			},
 			[&]() {});
 
-		// The toolbar's icon buttons, side by side as there: Play, Play All, Stop, Pause and Step
+		// The titlebar's icon buttons, side by side: Play, Play All, Stop, Pause and Step
 		const glm::vec2 iconButtonSize = Nyx::UI::CalcIconButtonSize("##Play", Nyx::UI::EIcon::Play, false);
 		constexpr std::pair<Nyx::UI::EIcon, Nyx::UI::EButtonTone> iconButtons[] = { { Nyx::UI::EIcon::Play, Nyx::UI::EButtonTone::Neutral },
 			{ Nyx::UI::EIcon::PlayAll, Nyx::UI::EButtonTone::Neutral }, { Nyx::UI::EIcon::Stop, Nyx::UI::EButtonTone::Stop },
@@ -1023,7 +1023,7 @@ namespace Nyx::Editor
 			[&]() { NYX_UI(Nyx::UI::IconButton("Build##Live", Nyx::UI::EIcon::Build, glm::vec2(0.0f), Nyx::UI::EButtonTone::Primary, true)); },
 			[&]() {});
 
-		// Bar tabs, as the workspaces in the titlebar: not selected, then selected
+		// Bar tabs, as for workspaces: not selected, then selected
 		const float barTabHeight = ImGui::GetFrameHeight() + 6.0f;
 		for (const auto& [name, selected] : { std::pair{ "Bar tab", 0.0f }, std::pair{ "Bar tab, selected", 1.0f } })
 		{
@@ -1041,7 +1041,7 @@ namespace Nyx::Editor
 			ImGui::PopID();
 		}
 
-		// A document tab, as the scene's in the titlebar: the close button in each state (it
+		// A document tab, as for a scene: the close button in each state (it
 		// shows only its own hover), with the tab plain, then the tab in each state
 		row("Document tab, close",
 			[&](const WidgetLook& look)

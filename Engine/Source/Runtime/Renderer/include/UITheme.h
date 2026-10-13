@@ -182,7 +182,7 @@ namespace Nyx::UI
 		// the bottom, each the window's width, filled in its colour. A hairline (BarBorder) runs
 		// where each meets the dock space's side. The toolbar and status bar are there only when
 		// the application draws into them (IWindow::SetFrameContent()).
-		float TitlebarHeight = 40.0f;
+		float TitlebarHeight = 32.0f;
 		float ToolbarHeight = 38.0f;
 		float StatusBarHeight = 33.0f;
 		glm::vec4 Titlebar{ 0.094f, 0.114f, 0.133f, 1.0f };

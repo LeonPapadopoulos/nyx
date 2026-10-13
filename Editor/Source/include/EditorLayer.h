@@ -37,7 +37,7 @@ namespace Nyx::Editor
 {
 	// The whole editor as one layer of the application. It owns the scene being edited
 	// (SceneEditor), the panels that show it, and Play (PlaySession); it draws the window's
-	// titlebar, toolbar and status bar, and opens, saves and replaces scenes.
+	// titlebar and status bar, and opens, saves and replaces scenes.
 	class EditorLayer : public Nyx::Engine::ILayer
 	{
 		friend struct Nyx::Tests::SceneReplacementTestAccess;
@@ -61,13 +61,14 @@ namespace Nyx::Editor
 		std::string GetCurrentSceneDisplayName() const;
 
 	private:
-		// The window's frame (IWindow::SetFrameContent()). The titlebar: the logo, the project, the
-		// scene's tab and the workspaces. The toolbar: the menus, the command search, Play and
-		// Build. The status bar: the last scene saved or opened, errors logged, the graphics API
-		// and the frame rate. What Nyx doesn't do yet is there, disabled.
+		// The window's frame (IWindow::SetFrameContent()). The titlebar, one row: the logo, the
+		// menus, the open scene and Play. The status bar: the last scene saved or opened, errors
+		// logged, the graphics API and the frame rate.
 		void DrawTitlebar(const Nyx::WindowFrameArea& area);
-		void DrawToolbar(const Nyx::WindowFrameArea& area);
 		void DrawStatusBar(const Nyx::WindowFrameArea& area);
+
+		// New, Save, Save As and Load, in the File menu and the scene's own
+		void DrawSceneMenuItems();
 
 		// What the status bar says about the last scene saved, opened or made
 		void SetSceneFileStatus(std::string text, bool bFailed);
@@ -97,9 +98,6 @@ namespace Nyx::Editor
 		// The last scene saved, opened or made, for the status bar, and whether that failed
 		std::string SceneFileStatus;
 		bool bSceneFileStatusFailed = false;
-
-		// The command search's text; the field stays disabled until there are commands
-		std::string CommandSearchText;
 
 		EditorPreferences Preferences;
 		ImGuiDebugTools DebugTools;

@@ -102,7 +102,7 @@ namespace Nyx::UI
 	// opens a menu. True when clicked.
 	bool IconButton(const char* label, EIcon icon, const glm::vec2& size = glm::vec2(0.0f), EButtonTone tone = EButtonTone::Neutral, bool bDropdown = false);
 
-	// A tab of a bar, e.g. a workspace in the titlebar: its label only, with the hover pill while
+	// A tab of a bar, e.g. a workspace: its label only, with the hover pill while
 	// hovered; while selected, a raised tab with the underline at its bottom. True when clicked.
 	bool BarTab(const char* label, bool bSelected, const glm::vec2& size);
 
@@ -112,7 +112,7 @@ namespace Nyx::UI
 		bool bCloseClicked = false;
 	};
 
-	// An open document's tab in a bar, e.g. the scene in the titlebar: a raised tab with the
+	// An open document's tab in a bar, e.g. a scene's: a raised tab with the
 	// document's icon, its name, and a close button at its right, disabled without bCanClose.
 	// The size's height is the tab's; a width of 0 fits the name.
 	DocumentTabResult DocumentTab(const char* label, bool bCanClose, const glm::vec2& size);

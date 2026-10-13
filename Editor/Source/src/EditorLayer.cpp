@@ -52,31 +52,15 @@ namespace Nyx::Editor
 			Nyx::IRenderer& Renderer;
 		};
 
-		// The frame's layout, after the reference mockup: the room at the bars' ends, and the
-		// sizes of what is in them
+		// The frame's layout: the room at the bars' ends, and the sizes of what is in them
 		constexpr float BarMargin = 16.0f;
 		constexpr float BarGap = 16.0f;
-		constexpr float ProjectComboWidth = 122.0f;
-		constexpr float ControlHeight = 28.0f;
-		constexpr float DocumentTabMinWidth = 180.0f;
-		constexpr float MenuButtonHeight = 30.0f;
-		constexpr float MenuButtonPadding = 11.0f;
-		constexpr float CommandSearchWidth = 290.0f;
-		constexpr glm::vec2 PlayButtonSize{ 46.0f, 29.0f };
-		constexpr float PlayButtonSpacing = 4.0f;
-		// Tabs stand this far below the titlebar's top
-		constexpr float TabTop = 4.0f;
+		constexpr float MenuButtonHeight = 24.0f;
+		constexpr float MenuButtonPadding = 8.0f;
+		constexpr glm::vec2 PlayButtonSize{ 34.0f, 24.0f };
+		constexpr float PlayButtonSpacing = 2.0f;
 		// The status bar's items, and the room on each side of the dividers between them
 		constexpr float StatusGap = 20.0f;
-
-		// A tooltip for a control that waits for what Nyx doesn't do yet; shown while it is disabled
-		void NotYetTooltip(const char* what)
-		{
-			if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | ImGuiHoveredFlags_AllowWhenDisabled))
-			{
-				ImGui::SetTooltip("%s: not in Nyx yet", what);
-			}
-		}
 
 		// A menu bar button's size: its label (without what follows "##"), with room on both sides
 		glm::vec2 MenuButtonSize(const char* label)
@@ -95,12 +79,6 @@ namespace Nyx::Editor
 		{
 			ImGui::SameLine(0.0f, gap);
 			ImGui::SetCursorScreenPos(ImVec2(ImGui::GetCursorScreenPos().x, top));
-		}
-
-		// The frame padding that makes ImGui's frames `height` tall at the current font
-		ImVec2 FramePaddingFor(float height)
-		{
-			return ImVec2(ImGui::GetStyle().FramePadding.x, std::max(0.0f, (height - ImGui::GetFontSize()) * 0.5f));
 		}
 
 		// The time of day, as "21:58"
@@ -141,7 +119,6 @@ namespace Nyx::Editor
 		Nyx::UI::SetPaintedChrome(true);
 		Window->SetFrameContent(Nyx::WindowFrameContent{
 			.DrawTitlebar = [this](const Nyx::WindowFrameArea& area) { DrawTitlebar(area); },
-			.DrawToolbar = [this](const Nyx::WindowFrameArea& area) { DrawToolbar(area); },
 			.DrawStatusBar = [this](const Nyx::WindowFrameArea& area) { DrawStatusBar(area); },
 		});
 
@@ -306,61 +283,16 @@ namespace Nyx::Editor
 
 	void EditorLayer::DrawTitlebar(const Nyx::WindowFrameArea& area)
 	{
-		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, FramePaddingFor(ControlHeight - 1.0f));
-		const float controlTop = std::floor(area.Y + (area.Height - ImGui::GetFrameHeight()) * 0.5f);
+		// One row, with only what Nyx does: the logo, the menus, the open scene, and Play in the
+		// middle. Each item is placed at its own top: after SameLine(), ImGui would put it at the
+		// line's, the logo's.
+		const float menuTop = std::floor(area.Y + (area.Height - MenuButtonHeight) * 0.5f);
 
 		ImGui::SetCursorScreenPos(ImVec2(area.X + BarMargin, area.Y));
-		NYX_UI(Nyx::UI::TitlebarLogo("Nyx", area.Height));
-		NextOnLine(BarGap * 0.75f, area.Y);
-		NYX_UI(Nyx::UI::BarDivider(area.Height));
+		NYX_UI(Nyx::UI::TitlebarLogo("", area.Height));
 
-		// The project, for when Nyx has projects
-		NextOnLine(BarGap, controlTop);
-		ImGui::BeginDisabled();
-		ImGui::SetNextItemWidth(ProjectComboWidth);
-		if (Nyx::UI::BeginCombo("##Project", "Project"))
-		{
-			Nyx::UI::EndCombo();
-		}
-		NotYetTooltip("Projects");
-		ImGui::EndDisabled();
-
-		// The open scene's tab. There is one scene at a time, so it doesn't close.
-		const std::string sceneName = CurrentScenePath.empty() ? std::string("Untitled Scene") : CurrentScenePath.stem().string();
-		const float tabHeight = area.Height - TabTop;
-		const float tabWidth = std::max(Nyx::UI::CalcDocumentTabSize(sceneName.c_str(), tabHeight).x, DocumentTabMinWidth);
-		NextOnLine(BarGap, area.Y + TabTop);
-		NYX_UI(Nyx::UI::DocumentTab((sceneName + "##SceneTab").c_str(), false, glm::vec2(tabWidth, tabHeight)));
-		ImGui::SetItemTooltip("%s", CurrentScenePath.empty() ? "Not saved yet" : CurrentScenePath.string().c_str());
-
-		NextOnLine(BarGap, area.Y);
-		NYX_UI(Nyx::UI::BarDivider(area.Height));
-
-		// The workspaces: Scene, the only one so far, and the others to come. Their IDs differ from
-		// the menus' of the same names (Scene, Debug), which lie in the same window.
-		const char* const workspaces[] = { "Scene##Workspace", "Materials##Workspace", "Animation##Workspace", "UI##Workspace", "Logic##Workspace",
-			"Debug##Workspace" };
-		for (size_t index = 0; index < std::size(workspaces); ++index)
-		{
-			NextOnLine(index == 0 ? BarGap : 0.0f, area.Y + TabTop - 1.0f);
-			ImGui::BeginDisabled(index > 0);
-			NYX_UI(Nyx::UI::BarTab(workspaces[index], index == 0, glm::vec2(0.0f, area.Height - TabTop * 2.0f + 1.0f)));
-			if (index > 0)
-			{
-				NotYetTooltip("Workspaces");
-			}
-			ImGui::EndDisabled();
-		}
-
-		ImGui::PopStyleVar();
-	}
-
-	void EditorLayer::DrawToolbar(const Nyx::WindowFrameArea& area)
-	{
-		const float menuTop = std::floor(area.Y + (area.Height - MenuButtonHeight) * 0.5f);
-		ImGui::SetCursorScreenPos(ImVec2(area.X + BarMargin - MenuButtonPadding, menuTop));
-
-		// The menus' IDs end in "##Menu", apart from the workspaces' of the same names in the titlebar
+		// The menus' IDs end in "##Menu", apart from the scene's, which may have any name
+		NextOnLine(0.0f, menuTop);
 		if (NYX_UI(Nyx::UI::MenuBarButton("File##Menu", MenuButtonSize("File##Menu"), ImGui::IsPopupOpen("##TitlebarFileMenu"))))
 		{
 			ImGui::OpenPopup("##TitlebarFileMenu");
@@ -368,41 +300,45 @@ namespace Nyx::Editor
 		PlaceMenuUnderLastItem();
 		if (Nyx::UI::BeginPopup("##TitlebarFileMenu"))
 		{
-			if (NYX_UI(Nyx::UI::MenuItem("New Scene")))
-			{
-				NewScene();
-			}
-
-			if (NYX_UI(Nyx::UI::MenuItem("Save Scene")))
-			{
-				SaveScene();
-			}
-
-			if (NYX_UI(Nyx::UI::MenuItem("Save Scene As")))
-			{
-				SceneFiles.RequestSaveAs();
-			}
-
-			if (NYX_UI(Nyx::UI::MenuItem("Load Scene")))
-			{
-				SceneFiles.RequestLoad();
-			}
-
+			DrawSceneMenuItems();
 			ImGui::EndPopup();
 		}
 
-		// Menus for what Nyx doesn't have yet
-		ImGui::BeginDisabled();
-		for (const auto& [menu, tooltip] : { std::pair{ "Edit##Menu", "The Edit menu (undo, redo, copy and paste have their shortcuts)" },
-				 std::pair{ "Scene##Menu", "The Scene menu" }, std::pair{ "Tools##Menu", "The Tools menu" } })
+		NextOnLine(0.0f, menuTop);
+		if (NYX_UI(Nyx::UI::MenuBarButton("Edit##Menu", MenuButtonSize("Edit##Menu"), ImGui::IsPopupOpen("##TitlebarEditMenu"))))
 		{
-			ImGui::SameLine(0.0f, 0.0f);
-			NYX_UI(Nyx::UI::MenuBarButton(menu, MenuButtonSize(menu), false));
-			NotYetTooltip(tooltip);
+			ImGui::OpenPopup("##TitlebarEditMenu");
 		}
-		ImGui::EndDisabled();
+		PlaceMenuUnderLastItem();
+		if (Nyx::UI::BeginPopup("##TitlebarEditMenu"))
+		{
+			// What the shortcuts do (SceneEditor::HandleHotkeys())
+			if (NYX_UI(Nyx::UI::MenuItem("Undo", "Ctrl+Z")))
+			{
+				Editing.Undo();
+			}
+			if (NYX_UI(Nyx::UI::MenuItem("Redo", "Ctrl+Y")))
+			{
+				Editing.Redo();
+			}
+			Nyx::UI::Separator();
+			const bool bHasSelection = Editing.Scene.GetSelection().has_value();
+			if (NYX_UI(Nyx::UI::MenuItem("Copy", "Ctrl+C", false, bHasSelection)))
+			{
+				Editing.CopySelectedEntity();
+			}
+			if (NYX_UI(Nyx::UI::MenuItem("Paste", "Ctrl+V", false, Editing.CanPaste())))
+			{
+				Editing.PasteEntity();
+			}
+			if (NYX_UI(Nyx::UI::MenuItem("Duplicate", "Ctrl+D", false, bHasSelection)))
+			{
+				Editing.DuplicateSelectedEntity();
+			}
+			ImGui::EndPopup();
+		}
 
-		ImGui::SameLine(0.0f, 0.0f);
+		NextOnLine(0.0f, menuTop);
 		if (NYX_UI(Nyx::UI::MenuBarButton("Window##Menu", MenuButtonSize("Window##Menu"), ImGui::IsPopupOpen("##TitlebarWindowMenu"))))
 		{
 			ImGui::OpenPopup("##TitlebarWindowMenu");
@@ -445,7 +381,7 @@ namespace Nyx::Editor
 			ImGui::EndPopup();
 		}
 
-		ImGui::SameLine(0.0f, 0.0f);
+		NextOnLine(0.0f, menuTop);
 		if (NYX_UI(Nyx::UI::MenuBarButton("Debug##Menu", MenuButtonSize("Debug##Menu"), ImGui::IsPopupOpen("##TitlebarDebugMenu"))))
 		{
 			ImGui::OpenPopup("##TitlebarDebugMenu");
@@ -482,41 +418,54 @@ namespace Nyx::Editor
 			ImGui::EndPopup();
 		}
 
-		ImGui::SameLine(0.0f, 0.0f);
-		ImGui::BeginDisabled();
-		NYX_UI(Nyx::UI::MenuBarButton("Help##Menu", MenuButtonSize("Help##Menu"), false));
-		NotYetTooltip("Help");
-		ImGui::EndDisabled();
-
 		NextOnLine(BarGap * 0.5f, area.Y);
 		NYX_UI(Nyx::UI::BarDivider(area.Height));
 
-		// The command search, for when there are commands to search
-		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, FramePaddingFor(ControlHeight));
-		NextOnLine(BarGap * 0.75f, std::floor(area.Y + (area.Height - ImGui::GetFrameHeight()) * 0.5f));
-		ImGui::BeginDisabled();
-		ImGui::SetNextItemWidth(CommandSearchWidth);
-		NYX_UI(Nyx::UI::SearchField("##CommandSearch", &CommandSearchText, "Search commands..."));
-		NotYetTooltip("Command search");
-		ImGui::EndDisabled();
-		ImGui::PopStyleVar();
-		const float searchRight = ImGui::GetItemRectMax().x;
+		// The open scene, whose menu makes, saves and loads scenes
+		const std::string sceneName = CurrentScenePath.empty() ? std::string("Untitled Scene") : CurrentScenePath.stem().string();
+		const std::string sceneLabel = sceneName + "##SceneMenu";
+		NextOnLine(BarGap * 0.5f - MenuButtonPadding, menuTop);
+		if (NYX_UI(Nyx::UI::MenuBarButton(sceneLabel.c_str(), MenuButtonSize(sceneLabel.c_str()), ImGui::IsPopupOpen("##TitlebarSceneMenu"))))
+		{
+			ImGui::OpenPopup("##TitlebarSceneMenu");
+		}
+		ImGui::SetItemTooltip("%s", CurrentScenePath.empty() ? "Not saved yet" : CurrentScenePath.string().c_str());
+		const float sceneRight = ImGui::GetItemRectMax().x;
+		PlaceMenuUnderLastItem();
+		if (Nyx::UI::BeginPopup("##TitlebarSceneMenu"))
+		{
+			DrawSceneMenuItems();
+			ImGui::EndPopup();
+		}
 
-		// Play and the buttons beside it in the middle of the window, unless the menus reach there
+		// Play and the buttons beside it in the middle of the titlebar, unless the scene's name reaches there
 		const float playButtonsWidth = PlayControls::GetButtonsWidth(PlayButtonSize, PlayButtonSpacing);
-		const float playLeft = std::max(std::floor(area.X + (area.Width - playButtonsWidth) * 0.5f), searchRight + BarGap);
-		const float buttonTop = std::floor(area.Y + (area.Height - PlayButtonSize.y) * 0.5f);
-		ImGui::SetCursorScreenPos(ImVec2(playLeft, buttonTop));
+		const float playLeft = std::max(std::floor(area.X + (area.Width - playButtonsWidth) * 0.5f), sceneRight + BarGap);
+		ImGui::SetCursorScreenPos(ImVec2(playLeft, std::floor(area.Y + (area.Height - PlayButtonSize.y) * 0.5f)));
 		Play.DrawButtons(Games, Preferences, PlayButtonSize, PlayButtonSpacing);
+	}
 
-		// Build at the right end, for when Nyx builds games
-		const glm::vec2 buildSize = Nyx::UI::CalcIconButtonSize("Build", Nyx::UI::EIcon::Build, true, PlayButtonSize.y);
-		const float buildLeft = std::max(area.X + area.Width - BarMargin - buildSize.x, playLeft + playButtonsWidth + BarGap);
-		ImGui::SetCursorScreenPos(ImVec2(buildLeft, buttonTop));
-		ImGui::BeginDisabled();
-		NYX_UI(Nyx::UI::IconButton("Build", Nyx::UI::EIcon::Build, buildSize, Nyx::UI::EButtonTone::Primary, true));
-		NotYetTooltip("Building games");
-		ImGui::EndDisabled();
+	void EditorLayer::DrawSceneMenuItems()
+	{
+		if (NYX_UI(Nyx::UI::MenuItem("New Scene")))
+		{
+			NewScene();
+		}
+
+		if (NYX_UI(Nyx::UI::MenuItem("Save Scene")))
+		{
+			SaveScene();
+		}
+
+		if (NYX_UI(Nyx::UI::MenuItem("Save Scene As")))
+		{
+			SceneFiles.RequestSaveAs();
+		}
+
+		if (NYX_UI(Nyx::UI::MenuItem("Load Scene")))
+		{
+			SceneFiles.RequestLoad();
+		}
 	}
 
 	void EditorLayer::DrawStatusBar(const Nyx::WindowFrameArea& area)

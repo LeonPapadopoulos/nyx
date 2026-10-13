@@ -118,7 +118,7 @@ CheckmarkWidth             = 0.13
 MenuItemHovered            = #FFFFFF17
 
 [Bars]
-TitlebarHeight             = 40
+TitlebarHeight             = 32
 ToolbarHeight              = 38
 StatusBarHeight            = 33
 Titlebar                   = #131B22
