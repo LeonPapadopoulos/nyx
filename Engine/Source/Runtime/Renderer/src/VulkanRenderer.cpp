@@ -473,6 +473,12 @@ namespace Nyx
 
 	void VulkanRenderer::DrawFrame(const std::function<void()>& buildUI)
 	{
+		// The editor's frame, from the frame before's start, for the painter's statistics
+		const std::chrono::steady_clock::time_point frameStart = std::chrono::steady_clock::now();
+		const float frameMilliseconds = LastFrameStart == std::chrono::steady_clock::time_point{} ? 0.0f
+			: std::chrono::duration<float, std::milli>(frameStart - LastFrameStart).count();
+		LastFrameStart = frameStart;
+
 		// 1) Wait until previous submitted frame is done
 		const vk::Result fenceResult = Context.GetDevice().waitForFences({ *InFlightFence }, true, UINT64_MAX);
 		(void)fenceResult;
@@ -682,6 +688,7 @@ namespace Nyx
 		// itself while ending it (drag and drop tooltips) are there when the cards are painted.
 		ImGui::EndFrame();
 		PendingFrameTimes = Nyx::Engine::PainterWindowStats::Times{};
+		PendingFrameTimes.Frame = frameMilliseconds;
 		PendingFrameTimes.BuildUI = takeStepTime();
 		Nyx::UI::SetGlassBackdrop(GlassImGuiTexture != VK_NULL_HANDLE ? reinterpret_cast<ImTextureID>(GlassImGuiTexture) : ImTextureID_Invalid);
 		Nyx::UI::SetPlainGlassBackdrop(GetPlainGlassBackdrop());
@@ -705,6 +712,14 @@ namespace Nyx
 		WindowPainterStats.FrameTimes.ImGuiRender = takeStepTime();
 		UploadWindowSegments();
 		WindowPainterStats.FrameTimes.Segments = takeStepTime();
+		// Outside the times above, which it would add to: it walks every tile entry.
+		if (Nyx::UI::ArePainterEstimatesRequested())
+		{
+			// The docked cards are painted in the theme's card colour (UIChrome.cpp).
+			const uint32_t cardColor = Nyx::Engine::PackPremultipliedColor(Nyx::UI::GetTheme().Card);
+			WindowPainterStats.Occlusion = WindowSegments.EstimateOcclusion(std::span<const uint32_t>(&cardColor, 1));
+			WindowPainterStats.bOcclusionEstimated = true;
+		}
 		DrawGlassBackdrop(cmd);
 
 		WriteUITimestamp(*cmd, MainWindowUIPair, false);
@@ -3956,6 +3971,7 @@ namespace Nyx
 		}
 		WindowPainterStats.Problems.insert(WindowPainterStats.Problems.end(), WindowSegments.GetProblems().begin(), WindowSegments.GetProblems().end());
 		WindowPainterStats.UploadBytes = WindowSegments.GetUploadBytes();
+		WindowPainterStats.CommandUploadBytes = WindowSegments.GetCommandUploadBytes();
 
 		if (WindowSegments.GetSegmentCount() > 0)
 		{

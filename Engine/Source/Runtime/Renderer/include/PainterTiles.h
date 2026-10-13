@@ -99,6 +99,18 @@ namespace Nyx::Engine
 		}
 	};
 
+	// What dropping the tile entries hidden under opaque shapes would leave (Design/ui-painter.md,
+	// stage 3, change 12): in each tile, every entry before the last command that covers the whole
+	// tile opaquely could go, since nothing drawn before it shows there
+	struct PainterOcclusionEstimate
+	{
+		uint32_t Entries = 0;
+		// Kept with the look as it is
+		uint32_t Kept = 0;
+		// Kept if commands of the colours asked for were opaque too, e.g. the docked cards
+		uint32_t KeptAlsoOpaque = 0;
+	};
+
 	// One frame of painting inside ImGui windows (Nyx::UI::WindowPainter), summed over all
 	// windows and their segments, and what the frame's UI cost, e.g. for the Painter Test window
 	// (Design/ui-painter.md, stage 3, change 10)
@@ -131,6 +143,9 @@ namespace Nyx::Engine
 		// Where the frame's UI time went, in milliseconds
 		struct Times
 		{
+			// The editor's whole frame: from the start of the frame before to this one's
+			float Frame = 0.0f;
+
 			// CPU: building the UI (the editor's panels, ImGui's layout and the painting recorded
 			// in them), painting the window chrome, gathering the window painters,
 			// ImGui::Render(), and the segments (finding runs, binning and uploading them)
@@ -163,9 +178,15 @@ namespace Nyx::Engine
 		uint32_t TileEntries = 0;
 		// Binning all segments, on the CPU
 		float BinningMilliseconds = 0.0f;
-		// The segments' commands, groups, tiles and entries, uploaded for the GPU
+		// The segments' commands, groups, tiles and entries, uploaded for the GPU, and the
+		// commands' and groups' part of it
 		size_t UploadBytes = 0;
+		size_t CommandUploadBytes = 0;
 		Times FrameTimes;
+		// What the per-tile reduction would keep, the docked cards as they are and opaque; only
+		// while asked for (Nyx::UI::RequestPainterEstimates())
+		bool bOcclusionEstimated = false;
+		PainterOcclusionEstimate Occlusion;
 
 		// What went wrong: the window painters' problems, each after its window's name, and
 		// binning's

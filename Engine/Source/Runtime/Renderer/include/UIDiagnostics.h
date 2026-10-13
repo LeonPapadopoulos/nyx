@@ -51,6 +51,12 @@ namespace Nyx::UI
 	void SetPainterHeatmap(EPainterHeatmap heatmap);
 	EPainterHeatmap GetPainterHeatmap();
 
+	// Asks the renderer to estimate, this frame, what the per-tile reduction would keep of the
+	// painter's tile entries (Engine::PainterWindowStats::Occlusion, stage 3, change 12): call each
+	// frame the estimate is shown. It walks every entry, so it is only made while asked for.
+	void RequestPainterEstimates();
+	bool ArePainterEstimatesRequested();
+
 	// Shows the heat of `stats`' OS windows (the frame before, as the renderer sums it once ImGui
 	// has made the draw data) over them, in their foreground draw lists, with a legend in each
 	// one's top right corner and the tile's counts beside the mouse. Call once the frame has ended

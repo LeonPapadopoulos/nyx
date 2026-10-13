@@ -16,6 +16,7 @@
 #include "Material.h"
 #include "GltfImporter.h"
 #include <imgui.h>
+#include <chrono>
 #include <map>
 #include <memory>
 #include <span>
@@ -537,8 +538,10 @@ namespace Nyx
 		// The last frame's statistics (stage 3, change 10): its CPU times as the frame is built,
 		// its GPU times once its fence has passed
 		Nyx::Engine::PainterWindowStats WindowPainterStats;
-		// This frame's CPU times taken before GatherWindowPainters() starts its statistics
+		// This frame's CPU times taken before GatherWindowPainters() starts its statistics, and
+		// when the last frame started
 		Nyx::Engine::PainterWindowStats::Times PendingFrameTimes;
+		std::chrono::steady_clock::time_point LastFrameStart;
 
 		// GPU timestamps around the UI's drawing, in pairs: the main window's UI pass, the glass
 		// backdrop, and each window segment draw, in any OS window. Reset and written in a frame,

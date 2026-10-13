@@ -111,11 +111,18 @@ namespace Nyx::Engine
 		// target the segment is drawn into
 		void AddHeat(uint32_t segment, PainterHeatGrid& grid) const;
 
+		// What the per-tile reduction would keep of this frame's entries: per tile, those from the
+		// last command that covers the whole tile opaquely, a solid rect inside its rounding and
+		// clip rect. `alsoOpaque`: packed colours (PackPremultipliedColor()) to count as opaque too.
+		PainterOcclusionEstimate EstimateOcclusion(std::span<const uint32_t> alsoOpaque) const;
+
 		// What Upload() copies to the GPU this frame: commands, groups, tiles and entries
 		size_t GetUploadBytes() const
 		{
-			return Commands.size() * sizeof(PainterCommand) + Groups.size() * sizeof(PainterGroup) + Tiles.size() * sizeof(PainterTile) + Entries.size() * sizeof(uint32_t);
+			return GetCommandUploadBytes() + Tiles.size() * sizeof(PainterTile) + Entries.size() * sizeof(uint32_t);
 		}
+		// The commands' and groups' part of it, which binning on the GPU would still upload
+		size_t GetCommandUploadBytes() const { return Commands.size() * sizeof(PainterCommand) + Groups.size() * sizeof(PainterGroup); }
 
 		void Release();
 

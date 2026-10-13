@@ -110,6 +110,9 @@ namespace Nyx::Editor
 		// milliseconds, and its draws and commands
 		struct FrameSample
 		{
+			float Frame = 0.0f;
+			// The painter's CPU time after the UI and its GPU time, one after the other
+			float PainterTotal = 0.0f;
 			float BuildUI = 0.0f;
 			float Chrome = 0.0f;
 			float Gather = 0.0f;
@@ -123,6 +126,13 @@ namespace Nyx::Editor
 			float GpuBlur = 0.0f;
 			float Draws = 0.0f;
 			float Commands = 0.0f;
+			float UploadBytes = 0.0f;
+			float CommandUploadBytes = 0.0f;
+			// Tile entries, and what the per-tile reduction would keep: only while estimated
+			float Entries = 0.0f;
+			float Kept = 0.0f;
+			float KeptCardsOpaque = 0.0f;
+			bool bEstimated = false;
 		};
 		static constexpr size_t StatisticsFrames = 240;
 		std::vector<FrameSample> FrameSamples;
@@ -133,7 +143,60 @@ namespace Nyx::Editor
 		void DrawOsWindowStatistics(const Nyx::Engine::PainterWindowStats& stats) const;
 		// The times of the frames kept as lines over a field, painted, the newest at the right
 		void DrawFrameGraph(std::span<const FrameSample> samples) const;
+		// The frame now and after each proposed change (PredictPainterScenarios()), from the
+		// frames kept that have the reduction's estimate
+		void DrawPredictions(std::span<const FrameSample> samples) const;
 	};
+
+	// What the painter costs a frame on average, measured (the Statistics tab), for predicting
+	// what proposed changes would bring (Design/ui-painter.md, stage 3, change 12)
+	struct PainterCosts
+	{
+		// Milliseconds: the editor's frame, the painter's CPU time after the UI is built, the
+		// binning in it, and the painter's draws on the GPU
+		float Frame = 0.0f;
+		float PainterCpu = 0.0f;
+		float Binning = 0.0f;
+		float PainterGpu = 0.0f;
+		// Tile entries, and what the per-tile reduction would keep of them, with the docked cards
+		// as they are and opaque (PainterOcclusionEstimate)
+		float Entries = 0.0f;
+		float Kept = 0.0f;
+		float KeptCardsOpaque = 0.0f;
+		// Uploaded per frame, and the commands' and groups' part of it
+		float UploadBytes = 0.0f;
+		float CommandUploadBytes = 0.0f;
+	};
+
+	// One change's predicted frame
+	struct PainterScenario
+	{
+		const char* Name = "";
+		float PainterCpu = 0.0f;
+		float PainterGpu = 0.0f;
+		float UploadBytes = 0.0f;
+		float Frame = 0.0f;
+	};
+
+	// What binning on the GPU would cost there, assumed until it is built: nanoseconds per tile
+	// entry (counting and writing it), and milliseconds for its dispatches. For a GPU like the
+	// RTX 3070 Ti; an integrated GPU, several times as much.
+	constexpr float AssumedGpuBinningNanosecondsPerEntry = 0.2f;
+	constexpr float AssumedGpuBinningDispatchMilliseconds = 0.05f;
+
+	// Predicts the frame now and after each proposed change, from measured costs. The model:
+	//  - The per-tile reduction drops the entries under opaque shapes. The painter's GPU time
+	//    goes down with the entries its pixels walk (as if dropped and kept commands cost the
+	//    same; shadows, glows and image glows cost more, so it is cautious there), and the upload
+	//    with the entries. Binning on the CPU stays: it still walks every command's tiles.
+	//  - With the docked cards opaque as well, which ambilight through them would need another way.
+	//  - Binning on the GPU: the CPU's binning goes, and the tiles and entries are no longer
+	//    uploaded; the GPU bins all entries, at the assumed cost above.
+	//  - Both: the reduction (cards opaque) with binning on the GPU, which bins all entries
+	//    before dropping any.
+	// The editor's frame changes by what the painter's CPU and GPU times change: it runs one frame
+	// at a time, so they add up.
+	std::vector<PainterScenario> PredictPainterScenarios(const PainterCosts& now);
 
 	// Draws a painter's recorded frame with ImGui's ImDrawList instead, for comparison: shapes
 	// become ImGui's triangles, glyphs and images ImGui's textured quads. `origin` is where the

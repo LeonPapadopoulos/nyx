@@ -1076,6 +1076,23 @@ namespace
 		Require(heat.Draws[0 * 8 + 7] == 1, "A tile under only the second painter's segment should be covered by one draw");
 		segments.Clear();
 		Require(segments.GetUploadBytes() == 0, "Cleared segments should upload nothing");
+
+		// The per-tile reduction's estimate (stage 3, change 12): an opaque backdrop over the 8x8
+		// tiles of 64x64, and a translucent card rounded by 4 from 10 to 54, on 36 tiles with its
+		// anti-aliasing. Nothing lies under an opaque shape: all 100 entries stay. With the card's
+		// colour counted as opaque, the 16 tiles inside its rounding (14 to 50) lose the backdrop.
+		const glm::vec4 card{ 0.1f, 0.1f, 0.12f, 0.85f };
+		Painter layers = StartFrame();
+		layers.AddRect(PainterRect{ { 0, 0 }, { 64, 64 } }, PainterStyle::Filled(gray));
+		layers.AddRoundedRect(PainterRect{ { 10, 10 }, { 54, 54 } }, 4.0f, PainterStyle::Filled(card));
+		segments.Add(layers, PainterSegment{ 0, 2 }, budget);
+		const uint32_t cardColor = PackPremultipliedColor(card);
+		const PainterOcclusionEstimate estimate = segments.EstimateOcclusion(std::span<const uint32_t>(&cardColor, 1));
+		Require(estimate.Entries == 100 && estimate.Kept == 100, "Nothing lies under an opaque shape: all entries should stay, kept " +
+			std::to_string(estimate.Kept) + " of " + std::to_string(estimate.Entries));
+		Require(estimate.KeptAlsoOpaque == 84, "With the card opaque, the 16 tiles inside its rounding should drop the backdrop, kept " +
+			std::to_string(estimate.KeptAlsoOpaque));
+		segments.Clear();
 	}
 
 	void TestTestSheetAsSegmentsMatchesTheCanvas(GpuPainter& gpu, const ImGuiFonts& fonts)

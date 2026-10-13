@@ -28,6 +28,8 @@ namespace Nyx::UI
 			uint32_t ShapeCount = 0;
 			uint32_t WindowCount = 0;
 			EPainterHeatmap Heatmap = EPainterHeatmap::Off;
+			// The ImGui frame the painter's estimates were last asked for in
+			int EstimatesFrame = -1;
 		};
 
 		// The heatmap over the editor is see-through, so what lies under it still shows
@@ -244,6 +246,16 @@ namespace Nyx::UI
 	EPainterHeatmap GetPainterHeatmap()
 	{
 		return GetState().Heatmap;
+	}
+
+	void RequestPainterEstimates()
+	{
+		GetState().EstimatesFrame = ImGui::GetFrameCount();
+	}
+
+	bool ArePainterEstimatesRequested()
+	{
+		return ImGui::GetCurrentContext() != nullptr && GetState().EstimatesFrame == ImGui::GetFrameCount();
 	}
 
 	void ShowPainterHeatmap(const Engine::PainterWindowStats& stats)

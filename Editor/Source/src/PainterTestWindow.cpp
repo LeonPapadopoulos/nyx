@@ -399,6 +399,8 @@ namespace Nyx::Editor
 		const PainterWindowStats& stats = renderer.GetWindowPainterStats();
 		const PainterWindowStats::Times& times = stats.FrameTimes;
 		FrameSample sample;
+		sample.Frame = times.Frame;
+		sample.PainterTotal = times.GetPainterCpu() + times.GpuPainter;
 		sample.BuildUI = times.BuildUI;
 		sample.Chrome = times.Chrome;
 		sample.Gather = times.Gather;
@@ -413,6 +415,12 @@ namespace Nyx::Editor
 		sample.GpuBlur = std::max(renderer.GetBlurMilliseconds(), 0.0f);
 		sample.Draws = static_cast<float>(stats.Draws);
 		sample.Commands = static_cast<float>(stats.Commands);
+		sample.UploadBytes = static_cast<float>(stats.UploadBytes);
+		sample.CommandUploadBytes = static_cast<float>(stats.CommandUploadBytes);
+		sample.bEstimated = stats.bOcclusionEstimated;
+		sample.Entries = static_cast<float>(stats.TileEntries);
+		sample.Kept = stats.bOcclusionEstimated ? static_cast<float>(stats.Occlusion.Kept) : sample.Entries;
+		sample.KeptCardsOpaque = stats.bOcclusionEstimated ? static_cast<float>(stats.Occlusion.KeptAlsoOpaque) : sample.Entries;
 
 		if (FrameSamples.size() < StatisticsFrames)
 		{
@@ -440,6 +448,13 @@ namespace Nyx::Editor
 	{
 		const PainterWindowStats& stats = renderer.GetWindowPainterStats();
 		const std::vector<FrameSample> samples = GetFrameSamples();
+		// For the predictions: the renderer estimates the per-tile reduction while this tab shows,
+		// every tenth frame, as the estimate takes time of its own, which the other frames' times
+		// don't have.
+		if (ImGui::GetFrameCount() % 10 == 0)
+		{
+			Nyx::UI::RequestPainterEstimates();
+		}
 		if (samples.empty())
 		{
 			return;
@@ -493,6 +508,37 @@ namespace Nyx::Editor
 				Nyx::UI::EndTable();
 			};
 
+			NYX_UI(Nyx::UI::SectionHeader("Frame"));
+			const Line frame[] = {
+				{ "The editor's frame", &FrameSample::Frame },
+				{ "The painter, CPU and GPU", &FrameSample::PainterTotal },
+			};
+			drawLines("##Frame", "Milliseconds", frame);
+			// Frame rates from the average times, and the slowest frame's; the painter alone as if
+			// it were all the editor did
+			float frameSum = 0.0f;
+			float slowestFrame = 0.0f;
+			float painterSum = 0.0f;
+			for (const FrameSample& sample : samples)
+			{
+				frameSum += sample.Frame;
+				slowestFrame = std::max(slowestFrame, sample.Frame);
+				painterSum += sample.PainterTotal;
+			}
+			const float averageFrame = frameSum / static_cast<float>(samples.size());
+			const float averagePainter = painterSum / static_cast<float>(samples.size());
+			const auto perSecond = [](float milliseconds)
+			{
+				return milliseconds > 0.0f ? 1000.0f / milliseconds : 0.0f;
+			};
+			NYX_UI(ImGui::Text("The editor: %.0f fps on average, %.0f at its slowest frame", perSecond(averageFrame), perSecond(slowestFrame)));
+			NYX_UI(ImGui::Text("The painter alone: %.0f fps, %.0f%% of the frame", perSecond(averagePainter),
+				averageFrame > 0.0f ? averagePainter / averageFrame * 100.0f : 0.0f));
+			ImGui::PushTextWrapPos(0.0f);
+			NYX_UI(ImGui::TextDisabled("The editor runs one frame at a time: each frame waits for the last one's GPU work, so the painter's CPU and GPU "
+									   "times add up."));
+			ImGui::PopTextWrapPos();
+
 			NYX_UI(Nyx::UI::SectionHeader("CPU"));
 			const Line cpu[] = {
 				{ "Building the UI", &FrameSample::BuildUI },
@@ -541,6 +587,9 @@ namespace Nyx::Editor
 				Nyx::UI::SetPainterHeatmap(static_cast<Nyx::UI::EPainterHeatmap>(heatmap));
 			}
 
+			NYX_UI(Nyx::UI::SectionHeader("What the proposed changes might bring"));
+			DrawPredictions(samples);
+
 			NYX_UI(Nyx::UI::SectionHeader("The last frames"));
 			DrawFrameGraph(samples);
 
@@ -585,6 +634,95 @@ namespace Nyx::Editor
 			NYX_UI(ImGui::Text("%u", osWindow.ImGuiVertices));
 		}
 		Nyx::UI::EndTable();
+	}
+
+	void PainterTestWindow::DrawPredictions(std::span<const FrameSample> samples) const
+	{
+		// The averages: the times over the frames without the reduction's estimate, which takes
+		// time of its own; the entries over those with it
+		PainterCosts now;
+		float timed = 0.0f;
+		float estimated = 0.0f;
+		for (const FrameSample& sample : samples)
+		{
+			if (sample.bEstimated)
+			{
+				now.Entries += sample.Entries;
+				now.Kept += sample.Kept;
+				now.KeptCardsOpaque += sample.KeptCardsOpaque;
+				now.UploadBytes += sample.UploadBytes;
+				now.CommandUploadBytes += sample.CommandUploadBytes;
+				++estimated;
+			}
+			else
+			{
+				now.Frame += sample.Frame;
+				now.PainterCpu += sample.PainterCpu;
+				now.Binning += sample.Binning;
+				now.PainterGpu += sample.GpuPainter;
+				++timed;
+			}
+		}
+		if (estimated == 0.0f || timed == 0.0f)
+		{
+			NYX_UI(ImGui::TextDisabled("Estimating..."));
+			return;
+		}
+		for (float* value : { &now.Entries, &now.Kept, &now.KeptCardsOpaque, &now.UploadBytes, &now.CommandUploadBytes })
+		{
+			*value /= estimated;
+		}
+		for (float* value : { &now.Frame, &now.PainterCpu, &now.Binning, &now.PainterGpu })
+		{
+			*value /= timed;
+		}
+
+		const auto share = [&](float kept)
+		{
+			return now.Entries > 0.0f ? kept / now.Entries * 100.0f : 100.0f;
+		};
+		NYX_UI(ImGui::Text("Tile entries %.0f: the per-tile reduction would keep %.0f (%.0f%%), %.0f (%.0f%%) with the docked cards opaque", now.Entries,
+			now.Kept, share(now.Kept), now.KeptCardsOpaque, share(now.KeptCardsOpaque)));
+
+		const std::vector<PainterScenario> scenarios = PredictPainterScenarios(now);
+		if (Nyx::UI::BeginTable("##Predictions", static_cast<int>(scenarios.size()) + 1, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg))
+		{
+			ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, ImGui::GetFontSize() * 12.0f);
+			for (const PainterScenario& scenario : scenarios)
+			{
+				ImGui::TableSetupColumn(scenario.Name);
+			}
+			Nyx::UI::TableHeadersRow();
+			const auto row = [&](const char* name, const auto& value, const char* format)
+			{
+				Nyx::UI::TableNextRow();
+				ImGui::TableNextColumn();
+				NYX_UI(ImGui::TextUnformatted(name));
+				for (const PainterScenario& scenario : scenarios)
+				{
+					ImGui::TableNextColumn();
+					NYX_UI(ImGui::Text(format, value(scenario)));
+				}
+			};
+			const auto perSecond = [](float milliseconds)
+			{
+				return milliseconds > 0.0f ? 1000.0f / milliseconds : 0.0f;
+			};
+			row("Painter CPU, ms", [](const PainterScenario& scenario) { return scenario.PainterCpu; }, "%.3f");
+			row("Painter GPU, ms", [](const PainterScenario& scenario) { return scenario.PainterGpu; }, "%.3f");
+			row("Uploaded, KB", [](const PainterScenario& scenario) { return scenario.UploadBytes / 1024.0f; }, "%.0f");
+			row("The painter alone, fps", [&](const PainterScenario& scenario) { return perSecond(scenario.PainterCpu + scenario.PainterGpu); }, "%.0f");
+			row("The editor, fps", [&](const PainterScenario& scenario) { return perSecond(scenario.Frame); }, "%.0f");
+			Nyx::UI::EndTable();
+		}
+
+		ImGui::PushTextWrapPos(0.0f);
+		NYX_UI(ImGui::TextDisabled("Estimates. The reduction drops the entries under opaque shapes, counted on this frame's tiles: the GPU time goes down "
+								   "with the entries its pixels walk, the upload with the entries; binning on the CPU stays. Binning on the GPU is "
+								   "assumed to cost %.1f ns per entry and %.2f ms for its dispatches. The editor's frame changes by what the painter's "
+								   "times change.",
+			AssumedGpuBinningNanosecondsPerEntry, AssumedGpuBinningDispatchMilliseconds));
+		ImGui::PopTextWrapPos();
 	}
 
 	void PainterTestWindow::DrawFrameGraph(std::span<const FrameSample> samples) const
@@ -1356,6 +1494,37 @@ namespace Nyx::Editor
 			Pan = mouse - (mouse - Pan) * (newZoom / Zoom);
 			Zoom = newZoom;
 		}
+	}
+
+	std::vector<PainterScenario> PredictPainterScenarios(const PainterCosts& now)
+	{
+		const float entryBytes = static_cast<float>(sizeof(uint32_t));
+		const auto withChange = [&](const char* name, float painterCpu, float painterGpu, float uploadBytes)
+		{
+			PainterScenario scenario;
+			scenario.Name = name;
+			scenario.PainterCpu = painterCpu;
+			scenario.PainterGpu = painterGpu;
+			scenario.UploadBytes = uploadBytes;
+			scenario.Frame = std::max(now.Frame + (painterCpu - now.PainterCpu) + (painterGpu - now.PainterGpu), 0.0f);
+			return scenario;
+		};
+		// What a pixel walks after the reduction, of what it walks now
+		const auto keptShare = [&](float kept)
+		{
+			return now.Entries > 0.0f ? kept / now.Entries : 1.0f;
+		};
+		const float gpuBinning = now.Entries * AssumedGpuBinningNanosecondsPerEntry * 1.0e-6f + AssumedGpuBinningDispatchMilliseconds;
+
+		std::vector<PainterScenario> scenarios;
+		scenarios.push_back(withChange("Now", now.PainterCpu, now.PainterGpu, now.UploadBytes));
+		scenarios.push_back(withChange("Per-tile reduction", now.PainterCpu, now.PainterGpu * keptShare(now.Kept),
+			now.UploadBytes - (now.Entries - now.Kept) * entryBytes));
+		scenarios.push_back(withChange("Reduction, opaque docked cards", now.PainterCpu, now.PainterGpu * keptShare(now.KeptCardsOpaque),
+			now.UploadBytes - (now.Entries - now.KeptCardsOpaque) * entryBytes));
+		scenarios.push_back(withChange("Binning on the GPU", now.PainterCpu - now.Binning, now.PainterGpu + gpuBinning, now.CommandUploadBytes));
+		scenarios.push_back(withChange("Both", now.PainterCpu - now.Binning, now.PainterGpu * keptShare(now.KeptCardsOpaque) + gpuBinning, now.CommandUploadBytes));
+		return scenarios;
 	}
 
 	void DrawPainterFrameWithImDrawList(const Painter& painter, ImDrawList& drawList, ImVec2 origin)

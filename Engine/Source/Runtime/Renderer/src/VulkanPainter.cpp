@@ -25,6 +25,32 @@ namespace Nyx::Engine
 		// How many targets and segment sets can exist at once; each takes one descriptor set.
 		constexpr uint32_t MaxTargets = 32;
 
+		// Whether `command` covers all of `tile` opaquely, so that nothing drawn before it shows
+		// there: a solid rect, opaque or of a colour in `alsoOpaque`, with the tile inside its clip
+		// rect and inside the rect less its largest rounding. Conservative: a rounded rect's
+		// corners keep the tiles near them.
+		bool CoversTileOpaquely(const PainterCommand& command, const PainterRect& tile, std::span<const uint32_t> alsoOpaque)
+		{
+			if (command.Type != static_cast<uint32_t>(EPainterCommandType::Rect) || command.OutlineWidth > 0.0f ||
+				command.FillMode != static_cast<uint32_t>(EPainterFillMode::Solid))
+			{
+				return false;
+			}
+			const bool bOpaque = (command.Color >> 24) == 0xFFu || std::find(alsoOpaque.begin(), alsoOpaque.end(), command.Color) != alsoOpaque.end();
+			if (!bOpaque)
+			{
+				return false;
+			}
+			const auto contains = [&](const PainterRect& outer)
+			{
+				return outer.Min.x <= tile.Min.x && outer.Min.y <= tile.Min.y && outer.Max.x >= tile.Max.x && outer.Max.y >= tile.Max.y;
+			};
+			const PainterRectPayload payload = GetPayload<PainterRectPayload>(command);
+			const float rounding = std::max({ payload.Radii.TopLeft, payload.Radii.TopRight, payload.Radii.BottomRight, payload.Radii.BottomLeft });
+			const PainterRect inside{ payload.Rect.Min + glm::vec2(rounding), payload.Rect.Max - glm::vec2(rounding) };
+			return contains(command.ClipRect) && contains(inside);
+		}
+
 		// The binding of each buffer in Painter.frag
 		constexpr uint32_t CommandsBinding = 0;
 		constexpr uint32_t GroupsBinding = 1;
@@ -176,6 +202,47 @@ namespace Nyx::Engine
 				grid.Add(firstX + tileX, firstY + tileY, Tiles[part.TileBase + tileY * part.TilesX + tileX].Count);
 			}
 		}
+	}
+
+	PainterOcclusionEstimate VulkanPainterSegments::EstimateOcclusion(std::span<const uint32_t> alsoOpaque) const
+	{
+		PainterOcclusionEstimate estimate;
+		for (const SegmentPart& part : Segments)
+		{
+			for (uint32_t tileY = 0; tileY < part.TilesY; ++tileY)
+			{
+				for (uint32_t tileX = 0; tileX < part.TilesX; ++tileX)
+				{
+					const PainterTile& tile = Tiles[part.TileBase + tileY * part.TilesX + tileX];
+					const glm::vec2 min(static_cast<float>(part.OriginX + tileX * PainterTileSize), static_cast<float>(part.OriginY + tileY * PainterTileSize));
+					const PainterRect tileRect{ min, min + glm::vec2(static_cast<float>(PainterTileSize)) };
+
+					// From the last entry back to the first command that hides what lies under it
+					uint32_t kept = tile.Count;
+					uint32_t keptAlsoOpaque = tile.Count;
+					bool bFound = false;
+					for (uint32_t index = tile.Count; index-- > 0;)
+					{
+						const PainterCommand& command = Commands[part.CommandBase + Entries[part.EntryBase + tile.FirstEntry + index]];
+						if (keptAlsoOpaque == tile.Count && CoversTileOpaquely(command, tileRect, alsoOpaque))
+						{
+							keptAlsoOpaque = tile.Count - index;
+						}
+						if (CoversTileOpaquely(command, tileRect, {}))
+						{
+							kept = tile.Count - index;
+							bFound = true;
+							break;
+						}
+					}
+					// The colours counted as opaque too may hide more, never less.
+					estimate.Entries += tile.Count;
+					estimate.Kept += kept;
+					estimate.KeptAlsoOpaque += bFound ? std::min(kept, keptAlsoOpaque) : keptAlsoOpaque;
+				}
+			}
+		}
+		return estimate;
 	}
 
 	uint32_t VulkanPainterSegments::FindOrAddPainter(const Painter& painter)
