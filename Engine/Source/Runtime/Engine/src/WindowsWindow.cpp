@@ -457,7 +457,8 @@ namespace Nyx
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, bIsMaximized ? 0.0f : 5.0f);
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(padding, padding));
-		ImGui::PushStyleColor(ImGuiCol_WindowBg, Colors::Theme::background);
+		const glm::vec4& backdrop = Nyx::UI::GetTheme().Backdrop;
+		ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(backdrop.r, backdrop.g, backdrop.b, backdrop.a));
 
 		Nyx::UI::Begin("DockSpaceWindow", nullptr, windowFlags);
 		Nyx::UI::PaintBackdrop();
@@ -515,7 +516,8 @@ namespace Nyx
 				// thickness to match the look of a focussed visual studio window
 				const float borderThickness = 3.0f;
 
-				constexpr ImU32 borderColor = Colors::Theme::windowBorderER_1;
+				const glm::vec4& focusBorder = Nyx::UI::GetTheme().WindowFocusBorder;
+				const ImU32 borderColor = ImGui::ColorConvertFloat4ToU32(ImVec4(focusBorder.r, focusBorder.g, focusBorder.b, focusBorder.a));
 
 				drawList->AddRect(
 					winMin,

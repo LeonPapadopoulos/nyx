@@ -2154,7 +2154,7 @@ namespace Nyx::UI
 	{
 		const Theme& theme = GetTheme();
 		const float frameHeight = frame.GetHeight();
-		PaintFieldFrame(painter, frame, frameHeight * 0.5f, editing, look, theme);
+		PaintFieldFrame(painter, frame, theme.FrameRounding, editing, look, theme);
 
 		// The magnifier: a ring, and a handle down to the right; brighter while edited
 		const float size = SearchIconSize(frameHeight, theme);

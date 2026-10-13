@@ -216,7 +216,7 @@ namespace Nyx::UI
 	// scrolls; ImGuiInputTextFlags_ReadOnly for text to select and copy
 	bool InputTextMultiline(const char* label, std::string* value, const glm::vec2& size = glm::vec2(0.0f), ImGuiInputTextFlags flags = 0);
 
-	// A text field with round ends and a magnifier, showing `placeholder` while it is empty
+	// A text field with a magnifier, showing `placeholder` while it is empty
 	bool SearchField(const char* label, std::string* value, const char* placeholder = "Search");
 
 	// A number dragged with the mouse, or typed after a double click or Ctrl+click. `format`:
