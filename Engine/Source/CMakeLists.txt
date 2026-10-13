@@ -89,6 +89,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/WindowPainter.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/UIAnimation.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/UITheme.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/UIThemeFile.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/UIWidgets.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/UIChrome.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/UIDiagnostics.cpp
@@ -185,6 +186,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/WindowPainter.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/UIAnimation.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/UITheme.h
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/UIThemeFile.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/UIWidgets.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/UIChrome.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/UIDiagnostics.h

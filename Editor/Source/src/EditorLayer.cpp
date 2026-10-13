@@ -133,6 +133,9 @@ namespace Nyx::Editor
 				PreferencesPanel.OpenSource(location, Preferences.SourceEditor);
 			});
 
+		// The editor's theme from its file, before anything is drawn
+		ThemeEditor.LoadAtStartup();
+
 		Window->SetStartupStatus("Preparing the scene and editor panels");
 		// The editor's windows are painted as cards on a backdrop (Debug > Painted Chrome)
 		Nyx::UI::SetPaintedChrome(true);
@@ -267,6 +270,7 @@ namespace Nyx::Editor
 
 		if (!SourceInspector.IsActive()) Editing.HandleHotkeys();
 		PreferencesPanel.Draw(Preferences, SourceInspector);
+		ThemeEditor.Draw();
 		ApplyFrameRate();
 
 		if (bShowGameLink)
@@ -405,6 +409,8 @@ namespace Nyx::Editor
 				SourceInspector.RequestToggle();
 			}
 			if (NYX_UI(Nyx::UI::MenuItem("Preferences"))) PreferencesPanel.bOpen = true;
+			// The painted widgets' colours and sizes, edited live and saved to the theme file
+			NYX_UI(Nyx::UI::MenuItem("Theme", nullptr, &ThemeEditor.bOpen));
 
 			if (NYX_UI(Nyx::UI::MenuItem("Asset Browser")))
 			{

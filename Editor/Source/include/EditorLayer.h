@@ -20,6 +20,7 @@
 #include "SceneFilePopups.h"
 #include "SceneOutlinerPanel.h"
 #include "SceneViewPanel.h"
+#include "ThemeEditorWindow.h"
 #include "UISourceInspector.h"
 #include "Window.h"
 
@@ -118,6 +119,7 @@ namespace Nyx::Editor
 		bool bSecondaryViewShowsGameView = false;
 		SceneFilePopups SceneFiles;
 		PreferencesWindow PreferencesPanel;
+		ThemeEditorWindow ThemeEditor;
 		PlayControls Play;
 		CrashCardsPanel CrashCards;
 

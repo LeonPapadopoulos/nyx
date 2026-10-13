@@ -51,5 +51,11 @@ namespace Nyx
 		}
 	}
 
+	// ImGui's colours and style for Nyx: the colours from the painted widgets' theme
+	// (ApplyThemeToImGui()), and the rounding and spacing
 	void SetNyxTheme();
+
+	// ImGui's colours from Nyx::UI::GetTheme(), so the text and widgets ImGui draws itself match
+	// the painted ones. Called again whenever the theme changes, e.g. by the theme editor.
+	void ApplyThemeToImGui();
 }

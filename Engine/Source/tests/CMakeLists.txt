@@ -72,6 +72,13 @@ add_dependencies(NyxUIChromeTests NyxGeneratedReflection)
 set_property(TARGET NyxUIChromeTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxUIChromeTests COMMAND NyxUIChromeTests)
 
+# The theme's values by name and the theme file: every member listed, reading back what was written.
+add_executable(NyxUIThemeTests UIThemeTests.cpp)
+target_link_libraries(NyxUIThemeTests PRIVATE NyxEngine)
+add_dependencies(NyxUIThemeTests NyxGeneratedReflection)
+set_property(TARGET NyxUIThemeTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxUIThemeTests COMMAND NyxUIThemeTests)
+
 # The painter shader on a real GPU: paints small frames and checks pixels read back. Needs a
 # Vulkan device; its window stays hidden.
 add_executable(NyxPainterGpuTests PainterGpuTests.cpp)

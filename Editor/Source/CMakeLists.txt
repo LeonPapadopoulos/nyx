@@ -14,6 +14,7 @@ set(NYX_EDITOR_SOURCES
     src/FileDialogs.cpp
     src/SceneFilePopups.cpp
     src/PreferencesWindow.cpp
+    src/ThemeEditorWindow.cpp
     src/PlaySession.cpp
     src/PlayControls.cpp
     src/CrashCardsPanel.cpp
@@ -53,6 +54,7 @@ set(NYX_EDITOR_SOURCES
 set(NYX_EDITOR_HEADERS
     src/EditorPCH.h
     include/EditorLayer.h
+    include/ThemeEditorWindow.h
     include/SceneEditor.h
     include/SceneOutlinerPanel.h
     include/DetailsPanel.h

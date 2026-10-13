@@ -5,9 +5,8 @@
 
 namespace Nyx
 {
-	void SetNyxTheme()
+	void ApplyThemeToImGui()
 	{
-		auto& style = ImGui::GetStyle();
 		auto& colors = ImGui::GetStyle().Colors;
 
 		//========================================================
@@ -103,6 +102,13 @@ namespace Nyx
 		// Keyboard navigation and drag and drop
 		colors[ImGuiCol_NavCursor] = color(theme.Accent);
 		colors[ImGuiCol_DragDropTarget] = color(theme.Accent);
+	}
+
+	void SetNyxTheme()
+	{
+		ApplyThemeToImGui();
+
+		auto& style = ImGui::GetStyle();
 
 		//========================================================
 		/// Style

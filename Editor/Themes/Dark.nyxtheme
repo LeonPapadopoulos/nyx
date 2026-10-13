@@ -1,0 +1,179 @@
+# Nyx editor theme: one value per line, "Name = value". Colours are #RRGGBB or #RRGGBBAA;
+# shadows a colour, offset x and y, and blur; glows a colour, distance and strength; glass
+# refraction, edge width and rim strength. Values left out keep their defaults.
+
+[Text]
+Text                       = #E0E8F2
+TextMuted                  = #99A6B5
+TextInfo                   = #73A6F2
+
+[Controls]
+Frame                      = #2A3646
+FrameHovered               = #334153
+FramePressed               = #212B38
+FrameBorder                = #FFFFFF12
+FrameRounding              = 6
+FrameBorderWidth           = 1
+
+[Buttons]
+ButtonGo                   = #2E703D
+ButtonGoHovered            = #38854A
+ButtonGoPressed            = #245930
+ButtonStop                 = #8F3030
+ButtonStopHovered          = #A83D3B
+ButtonStopPressed          = #732626
+
+[Accent]
+Accent                     = #2472FB
+AccentHovered              = #4D8FFF
+
+[Toggles and sliders]
+Track                      = #33404F
+TrackHovered               = #3D4D5E
+Knob                       = #F5F5FA
+ToggleWidth                = 1.7
+ToggleHeight               = 0.8
+ToggleKnobRadius           = 0.32
+KnobPressedScale           = 0.88
+SliderKnobRadius           = 0.3
+SliderTrackHeight          = 0.14
+KnobHoverGrowth            = 0.12
+ValueGap                   = 8
+
+[Lines]
+Separator                  = #FFFFFF1A
+
+[Effects]
+ControlShadow              = #00000059 0 1.5 3
+PressedShadow              = 0.4
+PressedTextOffset          = 1
+FocusGlow                  = #2472FBE6 6 0.6
+
+[Section headers]
+SectionBarWidth            = 3
+SectionBarGap              = 8
+SectionBarGlow             = #2472FBCC 6 0.5
+SectionLineWidth           = 1
+
+[Cards]
+Backdrop                   = #0E1419
+Card                       = #1B232CD9
+CardBorder                 = #FFFFFF0D
+CardRounding               = 8
+CardGap                    = 6
+CardShadow                 = #00000073 0 2 10
+FloatingCard               = #1F2832
+FloatingCardShadow         = #00000099 0 8 24
+GlassTint                  = #161D2599
+Glass                      = 6 12 0.15
+Splitter                   = #2472FBE6
+SplitterWidth              = 2
+
+[Tabs]
+TabSelected                = #FFFFFF14
+TabHovered                 = #FFFFFF0D
+TabPillInset               = 3
+TabUnderline               = #2472FB
+TabUnderlineDimmed         = #99A6B5B3
+TabUnderlineWidth          = 2
+
+[Tree rows]
+RowSelected                = #014FBDE6
+RowHovered                 = #FFFFFF0F
+RowPillMargin              = 4
+RowPillInset               = 1
+IndentGuide                = #FFFFFF14
+FolderIcon                 = #C7D4E6
+EntityIcon                 = #C7D4E6
+
+[Fields]
+Field                      = #141C23
+FieldHovered               = #1A222B
+FieldBorder                = #FFFFFF17
+FieldEditGlow              = #2472FB80 5 0.4
+TextSelection              = #2472FB66
+TextCursor                 = #4D8FFF
+SearchIconSize             = 0.55
+
+[Axes]
+AxisX                      = #F06161
+AxisY                      = #80CC5C
+AxisZ                      = #6199FA
+AxisW                      = #99A6B5
+
+[Property rows]
+PropertyLabel              = #B8C2D1
+PropertyLabelWidth         = 0.4
+
+[Collapsing headers]
+Header                     = #FFFFFF0B
+HeaderHovered              = #FFFFFF14
+
+[Checkboxes]
+CheckboxSize               = 0.72
+CheckboxRounding           = 4
+CheckmarkWidth             = 0.13
+
+[Menus]
+MenuItemHovered            = #FFFFFF17
+
+[Bars]
+TitlebarHeight             = 40
+ToolbarHeight              = 38
+StatusBarHeight            = 33
+Titlebar                   = #131B22
+Toolbar                    = #19212A
+StatusBar                  = #161E24
+BarBorder                  = #FFFFFF0A
+BarDivider                 = #FFFFFF47
+BarDividerHeight           = 0.5
+BarTab                     = #1F2A36
+BarTabBorder               = #FFFFFF12
+BarTabRounding             = 6
+Logo                       = #D9E0ED
+IconSize                   = 0.45
+ButtonPrimary              = #1F2B37
+ButtonPrimaryHovered       = #263341
+ButtonPrimaryPressed       = #1A242E
+ButtonPrimaryBorder        = #2472FB73
+StatusOk                   = #6BD15C
+StatusWarning              = #F2B840
+StatusError                = #EB544D
+StatusIconMark             = #0A120F
+
+[Window]
+WindowControlHovered       = #FFFFFF14
+WindowControlPressed       = #FFFFFF24
+WindowCloseHovered         = #C42B1C
+WindowClosePressed         = #A12417
+WindowControlIconSize      = 10
+WindowControlIconWidth     = 1
+WindowFocusBorder          = #2E61B8
+WindowFocusBorderWidth     = 3
+WindowRounding             = 10
+
+[Colour swatches]
+SwatchBorder               = #FFFFFF26
+SwatchBorderHovered        = #FFFFFF73
+
+[Tables]
+TableHeader                = #FFFFFF0D
+TableRowStripe             = #FFFFFF06
+
+[Asset cards]
+AssetCardWidth             = 92
+AssetCardPadding           = 6
+AssetCard                  = #FFFFFF08
+AssetCardHovered           = #FFFFFF12
+FileIcon                   = #9EABC7
+
+[Scrollbars]
+ScrollbarThumb             = #FFFFFF29
+ScrollbarThumbHovered      = #FFFFFF52
+ScrollbarThumbHeld         = #2472FBD9
+ScrollbarThumbWidth        = 4
+ScrollbarThumbHoveredWidth = 8
+
+[General]
+DisabledAlpha              = 0.45
+AnimationSpeed             = 18
