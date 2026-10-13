@@ -19,6 +19,10 @@
 
 #include <glm/glm.hpp>
 
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <ctime>
 #include <utility>
 
 namespace Nyx::Editor
@@ -47,6 +51,68 @@ namespace Nyx::Editor
 		private:
 			Nyx::IRenderer& Renderer;
 		};
+
+		// The frame's layout, after the reference mockup: the room at the bars' ends, and the
+		// sizes of what is in them
+		constexpr float BarMargin = 16.0f;
+		constexpr float BarGap = 16.0f;
+		constexpr float ProjectComboWidth = 122.0f;
+		constexpr float ControlHeight = 28.0f;
+		constexpr float DocumentTabMinWidth = 180.0f;
+		constexpr float MenuButtonHeight = 30.0f;
+		constexpr float MenuButtonPadding = 11.0f;
+		constexpr float CommandSearchWidth = 290.0f;
+		constexpr glm::vec2 PlayButtonSize{ 46.0f, 29.0f };
+		constexpr float PlayButtonSpacing = 4.0f;
+		// Tabs stand this far below the titlebar's top
+		constexpr float TabTop = 4.0f;
+		// The status bar's items, and the room on each side of the dividers between them
+		constexpr float StatusGap = 20.0f;
+
+		// A tooltip for a control that waits for what Nyx doesn't do yet; shown while it is disabled
+		void NotYetTooltip(const char* what)
+		{
+			if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | ImGuiHoveredFlags_AllowWhenDisabled))
+			{
+				ImGui::SetTooltip("%s: not in Nyx yet", what);
+			}
+		}
+
+		// A menu bar button's size: its label (without what follows "##"), with room on both sides
+		glm::vec2 MenuButtonSize(const char* label)
+		{
+			return glm::vec2(std::floor(ImGui::CalcTextSize(label, nullptr, true).x + MenuButtonPadding * 2.0f), MenuButtonHeight);
+		}
+
+		// Opens the next menu under the menu bar button drawn last, as menus open
+		void PlaceMenuUnderLastItem()
+		{
+			ImGui::SetNextWindowPos(ImVec2(ImGui::GetItemRectMin().x, ImGui::GetItemRectMax().y), ImGuiCond_Appearing);
+		}
+
+		// Moves on to the next item on the line, `gap` after the last, its top at `top`
+		void NextOnLine(float gap, float top)
+		{
+			ImGui::SameLine(0.0f, gap);
+			ImGui::SetCursorScreenPos(ImVec2(ImGui::GetCursorScreenPos().x, top));
+		}
+
+		// The frame padding that makes ImGui's frames `height` tall at the current font
+		ImVec2 FramePaddingFor(float height)
+		{
+			return ImVec2(ImGui::GetStyle().FramePadding.x, std::max(0.0f, (height - ImGui::GetFontSize()) * 0.5f));
+		}
+
+		// The time of day, as "21:58"
+		std::string TimeOfDay()
+		{
+			const std::time_t now = std::time(nullptr);
+			std::tm local{};
+			localtime_s(&local, &now);
+			char text[16];
+			std::strftime(text, sizeof(text), "%H:%M", &local);
+			return text;
+		}
 	}
 
 	void EditorLayer::OnAttach(Nyx::Engine::Application& application)
@@ -70,11 +136,11 @@ namespace Nyx::Editor
 		Window->SetStartupStatus("Preparing the scene and editor panels");
 		// The editor's windows are painted as cards on a backdrop (Debug > Painted Chrome)
 		Nyx::UI::SetPaintedChrome(true);
-		Window->SetTitlebarMenu(
-			[this](float buttonHeight)
-			{
-				DrawTitlebarMenu(buttonHeight);
-			});
+		Window->SetFrameContent(Nyx::WindowFrameContent{
+			.DrawTitlebar = [this](const Nyx::WindowFrameArea& area) { DrawTitlebar(area); },
+			.DrawToolbar = [this](const Nyx::WindowFrameArea& area) { DrawToolbar(area); },
+			.DrawStatusBar = [this](const Nyx::WindowFrameArea& area) { DrawStatusBar(area); },
+		});
 
 		Renderer->SetWorld(&Editing.Scene.GetRegistry());
 
@@ -136,8 +202,8 @@ namespace Nyx::Editor
 		Games.StopBeforeEditorCloses();
 
 		SourceInspector.Detach();
-		// The menu calls into this layer, so it must not outlive it.
-		Window->SetTitlebarMenu(nullptr);
+		// The frame's content calls into this layer, so it must not outlive it.
+		Window->SetFrameContent(Nyx::WindowFrameContent{});
 
 		MainSceneView.DestroyView();
 		SecondarySceneView.DestroyView();
@@ -228,13 +294,68 @@ namespace Nyx::Editor
 		Window->SetFrameRateCap(Preferences.FrameRateCap);
 	}
 
-	void EditorLayer::DrawTitlebarMenu(float buttonHeight)
+	void EditorLayer::DrawTitlebar(const Nyx::WindowFrameArea& area)
 	{
-		if (NYX_UI(Nyx::UI::MenuBarButton("File", glm::vec2(56.0f, buttonHeight), ImGui::IsPopupOpen("##TitlebarFileMenu"))))
+		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, FramePaddingFor(ControlHeight - 1.0f));
+		const float controlTop = std::floor(area.Y + (area.Height - ImGui::GetFrameHeight()) * 0.5f);
+
+		ImGui::SetCursorScreenPos(ImVec2(area.X + BarMargin, area.Y));
+		NYX_UI(Nyx::UI::TitlebarLogo("Nyx", area.Height));
+		NextOnLine(BarGap * 0.75f, area.Y);
+		NYX_UI(Nyx::UI::BarDivider(area.Height));
+
+		// The project, for when Nyx has projects
+		NextOnLine(BarGap, controlTop);
+		ImGui::BeginDisabled();
+		ImGui::SetNextItemWidth(ProjectComboWidth);
+		if (Nyx::UI::BeginCombo("##Project", "Project"))
+		{
+			Nyx::UI::EndCombo();
+		}
+		NotYetTooltip("Projects");
+		ImGui::EndDisabled();
+
+		// The open scene's tab. There is one scene at a time, so it doesn't close.
+		const std::string sceneName = CurrentScenePath.empty() ? std::string("Untitled Scene") : CurrentScenePath.stem().string();
+		const float tabHeight = area.Height - TabTop;
+		const float tabWidth = std::max(Nyx::UI::CalcDocumentTabSize(sceneName.c_str(), tabHeight).x, DocumentTabMinWidth);
+		NextOnLine(BarGap, area.Y + TabTop);
+		NYX_UI(Nyx::UI::DocumentTab((sceneName + "##SceneTab").c_str(), false, glm::vec2(tabWidth, tabHeight)));
+		ImGui::SetItemTooltip("%s", CurrentScenePath.empty() ? "Not saved yet" : CurrentScenePath.string().c_str());
+
+		NextOnLine(BarGap, area.Y);
+		NYX_UI(Nyx::UI::BarDivider(area.Height));
+
+		// The workspaces: Scene, the only one so far, and the others to come. Their IDs differ from
+		// the menus' of the same names (Scene, Debug), which lie in the same window.
+		const char* const workspaces[] = { "Scene##Workspace", "Materials##Workspace", "Animation##Workspace", "UI##Workspace", "Logic##Workspace",
+			"Debug##Workspace" };
+		for (size_t index = 0; index < std::size(workspaces); ++index)
+		{
+			NextOnLine(index == 0 ? BarGap : 0.0f, area.Y + TabTop - 1.0f);
+			ImGui::BeginDisabled(index > 0);
+			NYX_UI(Nyx::UI::BarTab(workspaces[index], index == 0, glm::vec2(0.0f, area.Height - TabTop * 2.0f + 1.0f)));
+			if (index > 0)
+			{
+				NotYetTooltip("Workspaces");
+			}
+			ImGui::EndDisabled();
+		}
+
+		ImGui::PopStyleVar();
+	}
+
+	void EditorLayer::DrawToolbar(const Nyx::WindowFrameArea& area)
+	{
+		const float menuTop = std::floor(area.Y + (area.Height - MenuButtonHeight) * 0.5f);
+		ImGui::SetCursorScreenPos(ImVec2(area.X + BarMargin - MenuButtonPadding, menuTop));
+
+		// The menus' IDs end in "##Menu", apart from the workspaces' of the same names in the titlebar
+		if (NYX_UI(Nyx::UI::MenuBarButton("File##Menu", MenuButtonSize("File##Menu"), ImGui::IsPopupOpen("##TitlebarFileMenu"))))
 		{
 			ImGui::OpenPopup("##TitlebarFileMenu");
 		}
-
+		PlaceMenuUnderLastItem();
 		if (Nyx::UI::BeginPopup("##TitlebarFileMenu"))
 		{
 			if (NYX_UI(Nyx::UI::MenuItem("New Scene")))
@@ -260,13 +381,23 @@ namespace Nyx::Editor
 			ImGui::EndPopup();
 		}
 
-		ImGui::SameLine();
+		// Menus for what Nyx doesn't have yet
+		ImGui::BeginDisabled();
+		for (const auto& [menu, tooltip] : { std::pair{ "Edit##Menu", "The Edit menu (undo, redo, copy and paste have their shortcuts)" },
+				 std::pair{ "Scene##Menu", "The Scene menu" }, std::pair{ "Tools##Menu", "The Tools menu" } })
+		{
+			ImGui::SameLine(0.0f, 0.0f);
+			NYX_UI(Nyx::UI::MenuBarButton(menu, MenuButtonSize(menu), false));
+			NotYetTooltip(tooltip);
+		}
+		ImGui::EndDisabled();
 
-		if (NYX_UI(Nyx::UI::MenuBarButton("Window", glm::vec2(76.0f, buttonHeight), ImGui::IsPopupOpen("##TitlebarWindowMenu"))))
+		ImGui::SameLine(0.0f, 0.0f);
+		if (NYX_UI(Nyx::UI::MenuBarButton("Window##Menu", MenuButtonSize("Window##Menu"), ImGui::IsPopupOpen("##TitlebarWindowMenu"))))
 		{
 			ImGui::OpenPopup("##TitlebarWindowMenu");
 		}
-
+		PlaceMenuUnderLastItem();
 		if (Nyx::UI::BeginPopup("##TitlebarWindowMenu"))
 		{
 			if (NYX_UI(Nyx::UI::MenuItem("Inspect UI source", "F8", SourceInspector.IsActive())))
@@ -302,11 +433,12 @@ namespace Nyx::Editor
 			ImGui::EndPopup();
 		}
 
-		ImGui::SameLine();
-		if (NYX_UI(Nyx::UI::MenuBarButton("Debug", glm::vec2(68.0f, buttonHeight), ImGui::IsPopupOpen("##TitlebarDebugMenu"))))
+		ImGui::SameLine(0.0f, 0.0f);
+		if (NYX_UI(Nyx::UI::MenuBarButton("Debug##Menu", MenuButtonSize("Debug##Menu"), ImGui::IsPopupOpen("##TitlebarDebugMenu"))))
 		{
 			ImGui::OpenPopup("##TitlebarDebugMenu");
 		}
+		PlaceMenuUnderLastItem();
 		if (Nyx::UI::BeginPopup("##TitlebarDebugMenu"))
 		{
 			DebugTools.DrawMenu();
@@ -338,18 +470,106 @@ namespace Nyx::Editor
 			ImGui::EndPopup();
 		}
 
-		ImGui::SameLine();
-		Play.DrawButtons(Games, Preferences, buttonHeight);
+		ImGui::SameLine(0.0f, 0.0f);
+		ImGui::BeginDisabled();
+		NYX_UI(Nyx::UI::MenuBarButton("Help##Menu", MenuButtonSize("Help##Menu"), false));
+		NotYetTooltip("Help");
+		ImGui::EndDisabled();
 
-		// Name of the current scene, vertically centered next to the buttons
-		ImGui::SameLine();
-		ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (buttonHeight - ImGui::GetTextLineHeight()) * 0.5f);
-		NYX_UI(ImGui::TextDisabled("| %s", GetCurrentSceneDisplayName().c_str()));
+		NextOnLine(BarGap * 0.5f, area.Y);
+		NYX_UI(Nyx::UI::BarDivider(area.Height));
+
+		// The command search, for when there are commands to search
+		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, FramePaddingFor(ControlHeight));
+		NextOnLine(BarGap * 0.75f, std::floor(area.Y + (area.Height - ImGui::GetFrameHeight()) * 0.5f));
+		ImGui::BeginDisabled();
+		ImGui::SetNextItemWidth(CommandSearchWidth);
+		NYX_UI(Nyx::UI::SearchField("##CommandSearch", &CommandSearchText, "Search commands..."));
+		NotYetTooltip("Command search");
+		ImGui::EndDisabled();
+		ImGui::PopStyleVar();
+		const float searchRight = ImGui::GetItemRectMax().x;
+
+		// Play and the buttons beside it in the middle of the window, unless the menus reach there
+		const float playButtonsWidth = PlayControls::GetButtonsWidth(PlayButtonSize, PlayButtonSpacing);
+		const float playLeft = std::max(std::floor(area.X + (area.Width - playButtonsWidth) * 0.5f), searchRight + BarGap);
+		const float buttonTop = std::floor(area.Y + (area.Height - PlayButtonSize.y) * 0.5f);
+		ImGui::SetCursorScreenPos(ImVec2(playLeft, buttonTop));
+		Play.DrawButtons(Games, Preferences, PlayButtonSize, PlayButtonSpacing);
+
+		// Build at the right end, for when Nyx builds games
+		const glm::vec2 buildSize = Nyx::UI::CalcIconButtonSize("Build", Nyx::UI::EIcon::Build, true, PlayButtonSize.y);
+		const float buildLeft = std::max(area.X + area.Width - BarMargin - buildSize.x, playLeft + playButtonsWidth + BarGap);
+		ImGui::SetCursorScreenPos(ImVec2(buildLeft, buttonTop));
+		ImGui::BeginDisabled();
+		NYX_UI(Nyx::UI::IconButton("Build", Nyx::UI::EIcon::Build, buildSize, Nyx::UI::EButtonTone::Primary, true));
+		NotYetTooltip("Building games");
+		ImGui::EndDisabled();
+	}
+
+	void EditorLayer::DrawStatusBar(const Nyx::WindowFrameArea& area)
+	{
+		// At the left: what F8 does while it inspects, or else the last scene saved or opened
+		ImGui::SetCursorScreenPos(ImVec2(area.X + BarMargin, area.Y));
 		if (SourceInspector.IsActive())
 		{
-			ImGui::SameLine();
-			NYX_UI(ImGui::TextUnformatted("| Inspect UI: click source, Shift-click widget, Esc cancels"));
+			NYX_UI(Nyx::UI::StatusItem("Inspect UI: click source, Shift-click widget, Esc cancels", Nyx::UI::EStatusIcon::None, area.Height));
 		}
+		else if (!SceneFileStatus.empty())
+		{
+			NYX_UI(Nyx::UI::StatusItem(SceneFileStatus.c_str(), bSceneFileStatusFailed ? Nyx::UI::EStatusIcon::Error : Nyx::UI::EStatusIcon::Ok, area.Height));
+		}
+
+		// At the right: the errors logged, the graphics API, and the frame rate and time
+		const Nyx::Core::LogCounts counts = Nyx::Core::Logger::Get().GetCounts();
+		char errors[32];
+		std::snprintf(errors, sizeof(errors), "%llu %s", static_cast<unsigned long long>(counts.Errors), counts.Errors == 1 ? "error" : "errors");
+		const float framesPerSecond = ImGui::GetIO().Framerate;
+		char frameRate[32];
+		std::snprintf(frameRate, sizeof(frameRate), "%.0f FPS", framesPerSecond);
+		char frameTime[32];
+		std::snprintf(frameTime, sizeof(frameTime), "%.1f ms", framesPerSecond > 0.0f ? 1000.0f / framesPerSecond : 0.0f);
+
+		struct Item
+		{
+			const char* Text;
+			Nyx::UI::EStatusIcon Icon;
+		};
+		const Item items[] = {
+			{ errors, counts.Errors == 0 ? Nyx::UI::EStatusIcon::Ok : Nyx::UI::EStatusIcon::Error },
+			{ Renderer->GetApiName(), Nyx::UI::EStatusIcon::None },
+			{ frameRate, Nyx::UI::EStatusIcon::None },
+			{ frameTime, Nyx::UI::EStatusIcon::None },
+		};
+		float width = 0.0f;
+		for (const Item& item : items)
+		{
+			width += Nyx::UI::CalcStatusItemSize(item.Text, item.Icon, area.Height).x;
+		}
+		width += (std::size(items) - 1) * (1.0f + StatusGap * 2.0f);
+
+		ImGui::SetCursorScreenPos(ImVec2(std::floor(area.X + area.Width - BarMargin - width), area.Y));
+		for (size_t index = 0; index < std::size(items); ++index)
+		{
+			if (index > 0)
+			{
+				NextOnLine(StatusGap, area.Y);
+				NYX_UI(Nyx::UI::BarDivider(area.Height));
+				NextOnLine(StatusGap, area.Y);
+			}
+			NYX_UI(Nyx::UI::StatusItem(items[index].Text, items[index].Icon, area.Height));
+			if (index == 0)
+			{
+				ImGui::SetItemTooltip("Errors the editor has logged since it started, and %llu warnings. Its console shows them.",
+					static_cast<unsigned long long>(counts.Warnings));
+			}
+		}
+	}
+
+	void EditorLayer::SetSceneFileStatus(std::string text, bool bFailed)
+	{
+		SceneFileStatus = std::move(text);
+		bSceneFileStatusFailed = bFailed;
 	}
 
 	bool EditorLayer::SaveCurrentScene(const std::filesystem::path& path)
@@ -357,10 +577,12 @@ namespace Nyx::Editor
 		if (!Nyx::Engine::SceneSerializer::SaveToFile(Editing.Scene.GetRegistry(), path))
 		{
 			LOG_ERROR("Failed to save scene to '{0}'", path.string());
+			SetSceneFileStatus("Couldn't save " + path.filename().string(), true);
 			return false;
 		}
 
 		LOG_INFO("Saved scene to '{0}'", path.string());
+		SetSceneFileStatus("Saved " + path.filename().string() + " at " + TimeOfDay(), false);
 		return true;
 	}
 
@@ -374,6 +596,7 @@ namespace Nyx::Editor
 		if (!Nyx::Engine::SceneSerializer::LoadFromFile(path, loadedWorld, postLoadContext))
 		{
 			LOG_ERROR("Failed to load scene from '{0}'", path.string());
+			SetSceneFileStatus("Couldn't open " + path.filename().string(), true);
 			return false;
 		}
 
@@ -383,6 +606,7 @@ namespace Nyx::Editor
 		CurrentScenePath = path;
 
 		LOG_INFO("Loaded scene from '{0}'", path.string());
+		SetSceneFileStatus("Opened " + path.filename().string() + " at " + TimeOfDay(), false);
 		return true;
 	}
 
@@ -415,6 +639,7 @@ namespace Nyx::Editor
 		Editing.Scene.GetRegistry().Clear();
 		Renderer->SetWorld(&Editing.Scene.GetRegistry());
 		CurrentScenePath.clear();
+		SetSceneFileStatus("New scene, not saved yet", false);
 		return true;
 	}
 

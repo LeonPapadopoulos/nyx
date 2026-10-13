@@ -658,15 +658,32 @@ namespace
 
 		~QuietConsole()
 		{
-			for (const auto& [sink, level] : Silenced)
+			// Last silenced first: a sink both loggers share (the logger's counts) was silenced
+			// twice, and its first saved level is its own.
+			for (auto silenced = Silenced.rbegin(); silenced != Silenced.rend(); ++silenced)
 			{
-				sink->set_level(level);
+				silenced->first->set_level(silenced->second);
 			}
 		}
 
 	private:
 		std::vector<std::pair<std::shared_ptr<spdlog::sinks::sink>, spdlog::level::level_enum>> Silenced;
 	};
+
+	// The logger counts warnings, and errors with critical ones, but not other lines
+	void TestLogCounts()
+	{
+		const Nyx::Core::LogCounts before = Nyx::Core::Logger::Get().GetCounts();
+		LOG_INFO("An info line, which isn't counted (expected by the test)");
+		LOG_WARNING("A warning (expected by the test)");
+		CORE_LOG_ERROR("An error (expected by the test)");
+		LOG_CRITICAL("A critical error (expected by the test)");
+		const Nyx::Core::LogCounts after = Nyx::Core::Logger::Get().GetCounts();
+		Require(after.Warnings == before.Warnings + 1,
+			"The logger should count one more warning, counted " + std::to_string(after.Warnings - before.Warnings));
+		Require(after.Errors == before.Errors + 2,
+			"The logger should count errors and critical errors, counted " + std::to_string(after.Errors - before.Errors));
+	}
 
 	void TestLogSink()
 	{
@@ -824,6 +841,7 @@ int main()
 		TestDescriptions();
 		TestRecording();
 		TestLogSink();
+		TestLogCounts();
 
 		std::cout << "All editor link tests passed.\n";
 		return 0;

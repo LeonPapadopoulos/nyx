@@ -43,7 +43,7 @@ namespace Nyx
 		virtual bool ShouldClose() const override;
 		void RequestClose() override;
 
-		void SetTitlebarMenu(std::function<void(float buttonHeight)> drawMenu) override;
+		void SetFrameContent(WindowFrameContent content) override;
 		void SetStartupStatus(const std::string& status) override;
 		void FinishStartup() override;
 
@@ -55,8 +55,11 @@ namespace Nyx
 
 		static void ApplyRoundedCorners(GLFWwindow* window);
 
-		void DrawTitlebar(float titlebarHeight);
-		void DrawTitlebarMenuBar(float titlebarHeight);
+		// The strips of the frame, filled, and what goes into them; heights of 0 for strips that
+		// aren't there. Also works out whether the mouse is where it drags the window.
+		void DrawFrameStrips(float titlebarHeight, float toolbarHeight, float statusBarHeight);
+		// The window controls and what goes left of them; returns the controls' width
+		float DrawTitlebar(const WindowFrameArea& area);
 
 		bool IsMaximized() const;
 
@@ -80,7 +83,7 @@ namespace Nyx
 		FrameRateLimiter FrameLimiter;
 		bool bTitlebarHovered = false;
 
-		std::function<void(float buttonHeight)> TitlebarMenuCallback;
+		WindowFrameContent FrameContent;
 
 		// Shown while the application starts up; released by FinishStartup().
 		std::unique_ptr<WindowsStartupBanner> StartupBanner;

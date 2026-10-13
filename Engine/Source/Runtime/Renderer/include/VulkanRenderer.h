@@ -228,6 +228,7 @@ namespace Nyx
 		virtual void OnFramebufferResized();
 		void SetVSync(bool bVSync) override;
 		bool IsVSync() const override;
+		const char* GetApiName() const override { return "Vulkan"; }
 
 		virtual void DrawFrame(const std::function<void()>& buildUI);
 

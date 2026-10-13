@@ -15,6 +15,7 @@
 #include <cfloat>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <vector>
 
 namespace Nyx::Editor
@@ -37,17 +38,21 @@ namespace Nyx::Editor
 		}
 	}
 
-	void PlayControls::DrawButtons(PlaySession& session, EditorPreferences& preferences, float buttonHeight)
+	float PlayControls::GetButtonsWidth(glm::vec2 buttonSize, float spacing)
 	{
-		// Play / Stop, green while stopped and red while any game runs. While games were asked to
-		// quit, it says "Stopping", and a click ends them at once. Play has its own ID, so a click
-		// that starts on Stop or Stopping can't end on Play when the games exit meanwhile.
+		return buttonSize.x * 4.0f + spacing * 3.0f;
+	}
+
+	void PlayControls::DrawButtons(PlaySession& session, EditorPreferences& preferences, glm::vec2 buttonSize, float spacing)
+	{
+		// Play / Stop: Play while stopped, and a red Stop while any game runs. While games were
+		// asked to quit, its tooltip says so, and a click ends them at once. Play has its own ID,
+		// so a click that starts on Stop can't end on Play when the games exit meanwhile.
 		const bool bPlaying = session.IsRunning();
 		const bool bQuitting = session.IsQuitting();
-		const Nyx::UI::EButtonTone playButtonTone = bPlaying ? Nyx::UI::EButtonTone::Stop : Nyx::UI::EButtonTone::Go;
-		const char* playButtonLabel = !bPlaying ? "Play" : (bQuitting ? "Stopping###Stop" : "Stop###Stop");
-
-		if (NYX_UI(Nyx::UI::Button(playButtonLabel, glm::vec2(64.0f, buttonHeight), playButtonTone)))
+		const bool bPlayClicked = bPlaying ? NYX_UI(Nyx::UI::IconButton("##Stop", Nyx::UI::EIcon::Stop, buttonSize, Nyx::UI::EButtonTone::Stop))
+										   : NYX_UI(Nyx::UI::IconButton("##Play", Nyx::UI::EIcon::Play, buttonSize));
+		if (bPlayClicked)
 		{
 			if (bPlaying)
 			{
@@ -62,15 +67,15 @@ namespace Nyx::Editor
 		const PlaySetup& firstSetup = preferences.PlaySetups.front();
 		if (bPlaying && bQuitting)
 		{
-			ImGui::SetItemTooltip("The games were asked to quit. Click to end them at once.\nEditor link:%s", session.GetLinkStatus().c_str());
+			ImGui::SetItemTooltip("Stopping: the games were asked to quit. Click to end them at once.\nEditor link:%s", session.GetLinkStatus().c_str());
 		}
 		else if (bPlaying)
 		{
-			ImGui::SetItemTooltip("Asks the games to quit, or ends those that aren't linked.\nEditor link:%s", session.GetLinkStatus().c_str());
+			ImGui::SetItemTooltip("Stop: asks the games to quit, or ends those that aren't linked.\nEditor link:%s", session.GetLinkStatus().c_str());
 		}
 		else
 		{
-			ImGui::SetItemTooltip("Runs the open scene in NyxGame, unsaved changes included, as %s (%ux%u).\nRight-click for options.",
+			ImGui::SetItemTooltip("Play: runs the open scene in NyxGame, unsaved changes included, as %s (%ux%u).\nRight-click for options.",
 				firstSetup.Name.c_str(), firstSetup.Width, firstSetup.Height);
 		}
 
@@ -80,7 +85,7 @@ namespace Nyx::Editor
 		}
 
 		// Play All, next to Play. Disabled while games run rather than hidden, so the buttons stay in place.
-		ImGui::SameLine();
+		ImGui::SameLine(0.0f, spacing);
 		const size_t playAllCount = static_cast<size_t>(std::count_if(preferences.PlaySetups.begin(), preferences.PlaySetups.end(),
 			[](const PlaySetup& setup)
 			{
@@ -88,20 +93,37 @@ namespace Nyx::Editor
 			}));
 
 		ImGui::BeginDisabled(bPlaying);
-		if (NYX_UI(Nyx::UI::Button("Play All", glm::vec2(72.0f, buttonHeight), Nyx::UI::EButtonTone::Go)))
+		if (NYX_UI(Nyx::UI::IconButton("##PlayAll", Nyx::UI::EIcon::PlayAll, buttonSize)))
 		{
 			session.Start(preferences, true, GetEditorScreen());
 		}
 		ImGui::EndDisabled();
 
-		ImGui::SetItemTooltip("Runs the open scene in %zu games side by side, one per play setup marked for Play All.\n"
+		if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | ImGuiHoveredFlags_AllowWhenDisabled))
+		{
+			ImGui::SetTooltip("Play All: runs the open scene in %zu games side by side, one per play setup marked for Play All.\n"
 							  "Every edit reaches all of them. Right-click for options.",
-			playAllCount);
+				playAllCount);
+		}
 
 		if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
 		{
 			ImGui::OpenPopup("##PlayOptions");
 		}
+
+		// Pause and Step, disabled until games can pause
+		ImGui::BeginDisabled();
+		for (const auto& [id, icon, tooltip] : { std::tuple{ "##Pause", Nyx::UI::EIcon::Pause, "Pause: not in Nyx yet" },
+				 std::tuple{ "##Step", Nyx::UI::EIcon::Step, "Step one frame: not in Nyx yet" } })
+		{
+			ImGui::SameLine(0.0f, spacing);
+			NYX_UI(Nyx::UI::IconButton(id, icon, buttonSize));
+			if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | ImGuiHoveredFlags_AllowWhenDisabled))
+			{
+				ImGui::SetTooltip("%s", tooltip);
+			}
+		}
+		ImGui::EndDisabled();
 
 		DrawOptionsMenu(session, preferences);
 	}

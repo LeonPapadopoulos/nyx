@@ -52,12 +52,13 @@ namespace Nyx::UI
 	// The widgets. Each returns what its ImGui counterpart returns.
 
 	// What a button does, in its colour: most are Neutral; Go starts something (Play) and Stop
-	// ends it
+	// ends it; Primary does the main thing of its bar (Build), outlined in the accent
 	enum class EButtonTone
 	{
 		Neutral,
 		Go,
 		Stop,
+		Primary,
 	};
 
 	// A button with a label; a size of 0 on an axis fits the label. True when clicked.
@@ -80,6 +81,62 @@ namespace Nyx::UI
 	// A window control `size` large, with its icon: flat until hovered, Close in red then. `id`
 	// as a label after "##". True when clicked.
 	bool WindowControlButton(const char* id, EWindowControl control, const glm::vec2& size);
+
+	// Icons painted from shapes. Play, Stop, Pause and Step are their usual shapes; the others
+	// are placeholders until there is an icon font (overhaul change 9).
+	enum class EIcon
+	{
+		None,
+		Play,
+		// Play in several games: two Play triangles
+		PlayAll,
+		Stop,
+		Pause,
+		Step,
+		Build,
+		Document,
+	};
+
+	// A button with an icon, alone (a label of "##Play") or before its label; a size of 0 on an
+	// axis fits them. With bDropdown, a chevron at its right end, behind a thin line, says it
+	// opens a menu. True when clicked.
+	bool IconButton(const char* label, EIcon icon, const glm::vec2& size = glm::vec2(0.0f), EButtonTone tone = EButtonTone::Neutral, bool bDropdown = false);
+
+	// A tab of a bar, e.g. a workspace in the titlebar: its label only, with the hover pill while
+	// hovered; while selected, a raised tab with the underline at its bottom. True when clicked.
+	bool BarTab(const char* label, bool bSelected, const glm::vec2& size);
+
+	struct DocumentTabResult
+	{
+		bool bClicked = false;
+		bool bCloseClicked = false;
+	};
+
+	// An open document's tab in a bar, e.g. the scene in the titlebar: a raised tab with the
+	// document's icon, its name, and a close button at its right, disabled without bCanClose.
+	// The size's height is the tab's; a width of 0 fits the name.
+	DocumentTabResult DocumentTab(const char* label, bool bCanClose, const glm::vec2& size);
+
+	// A thin upright line between groups of a bar, BarDividerHeight of `height` tall and centred
+	// on it, with ImGui's item spacing on both sides
+	void BarDivider(float height);
+
+	// What a status bar item's icon says
+	enum class EStatusIcon
+	{
+		None,
+		Ok,
+		Warning,
+		Error,
+	};
+
+	// An item of a status bar: a round icon, if any, and the text after it, as tall as `height`
+	// and centred on it. IsItemHovered() works after it, e.g. for a tooltip.
+	void StatusItem(const char* text, EStatusIcon icon, float height);
+
+	// The application's mark and name, as at the titlebar's left: a circle in place of a logo,
+	// `height` tall, and the name after it
+	void TitlebarLogo(const char* name, float height);
 
 	// A switch, with its label to the right; it flips `value` when clicked. True when it flipped.
 	bool Toggle(const char* label, bool* value);
@@ -288,6 +345,16 @@ namespace Nyx::UI
 	// `open`: the open menu's pill, faded in from 0 to 1
 	void PaintMenuBarButton(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view label, float open, const WidgetLook& look);
 	void PaintWindowControl(WindowPainter& painter, const Engine::PainterRect& rect, EWindowControl control, const WidgetLook& look);
+	void PaintIconButton(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view label, EIcon icon, const WidgetLook& look, EButtonTone tone = EButtonTone::Neutral, bool bDropdown = false);
+	// An icon filling `box`, a square
+	void PaintIcon(WindowPainter& painter, const Engine::PainterRect& box, EIcon icon, const glm::vec4& color);
+	// `selected`: the raised tab and underline, faded in from 0 to 1
+	void PaintBarTab(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view label, float selected, const WidgetLook& look);
+	// `closeLook`: the close button's own look; disabled without a way to close
+	void PaintDocumentTab(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view label, const WidgetLook& look, const WidgetLook& closeLook);
+	// `rect`: the item, icon and text, as tall as the bar's content
+	void PaintStatusItem(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view text, EStatusIcon icon);
+	void PaintTitlebarLogo(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view name);
 	// `on`: the knob's way from off (0) to on (1)
 	void PaintToggle(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view label, float on, const WidgetLook& look);
 	// `fraction`: the value's way from min (0) to max (1). `valueWidth`: room for the value's
@@ -359,6 +426,12 @@ namespace Nyx::UI
 
 	// The sizes the widgets take, at the current font, for the gallery's forced states
 	glm::vec2 CalcButtonSize(const char* label);
+	// At the frame height, unless `height` is given
+	glm::vec2 CalcIconButtonSize(const char* label, EIcon icon, bool bDropdown, float height = 0.0f);
+	glm::vec2 CalcBarTabSize(const char* label, float height);
+	glm::vec2 CalcDocumentTabSize(const char* label, float height);
+	glm::vec2 CalcStatusItemSize(const char* text, EStatusIcon icon, float height);
+	glm::vec2 CalcTitlebarLogoSize(const char* name, float height);
 	glm::vec2 CalcToggleSize(const char* label);
 	// The slider's frame, ImGui's item width wide
 	glm::vec2 CalcSliderFrameSize();

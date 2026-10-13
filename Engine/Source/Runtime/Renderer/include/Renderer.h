@@ -67,6 +67,9 @@ namespace Nyx
 		virtual void SetVSync(bool bVSync) = 0;
 		virtual bool IsVSync() const = 0;
 
+		// The graphics API it draws with, as shown to the user, e.g. "Vulkan"
+		virtual const char* GetApiName() const = 0;
+
 		virtual void DrawFrame(const std::function<void()>& buildUI) = 0;
 
 		virtual void RequestPick(uint64_t sceneViewId, uint32_t pixelX, uint32_t pixelY) = 0;

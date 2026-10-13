@@ -35,8 +35,8 @@ namespace Nyx::Tests
 namespace Nyx::Editor
 {
 	// The whole editor as one layer of the application. It owns the scene being edited
-	// (SceneEditor), the panels that show it, and Play (PlaySession); it draws the titlebar menu
-	// and opens, saves and replaces scenes.
+	// (SceneEditor), the panels that show it, and Play (PlaySession); it draws the window's
+	// titlebar, toolbar and status bar, and opens, saves and replaces scenes.
 	class EditorLayer : public Nyx::Engine::ILayer
 	{
 		friend struct Nyx::Tests::SceneReplacementTestAccess;
@@ -60,8 +60,16 @@ namespace Nyx::Editor
 		std::string GetCurrentSceneDisplayName() const;
 
 	private:
-		// File, Window and Debug menus, Play/Stop, and the scene name, shown in the window's titlebar.
-		void DrawTitlebarMenu(float buttonHeight);
+		// The window's frame (IWindow::SetFrameContent()). The titlebar: the logo, the project, the
+		// scene's tab and the workspaces. The toolbar: the menus, the command search, Play and
+		// Build. The status bar: the last scene saved or opened, errors logged, the graphics API
+		// and the frame rate. What Nyx doesn't do yet is there, disabled.
+		void DrawTitlebar(const Nyx::WindowFrameArea& area);
+		void DrawToolbar(const Nyx::WindowFrameArea& area);
+		void DrawStatusBar(const Nyx::WindowFrameArea& area);
+
+		// What the status bar says about the last scene saved, opened or made
+		void SetSceneFileStatus(std::string text, bool bFailed);
 
 		// Vsync and the frame rate cap, from the preferences, to the window
 		void ApplyFrameRate();
@@ -84,6 +92,13 @@ namespace Nyx::Editor
 		std::filesystem::path CurrentScenePath;
 
 		SceneEditor Editing;
+
+		// The last scene saved, opened or made, for the status bar, and whether that failed
+		std::string SceneFileStatus;
+		bool bSceneFileStatusFailed = false;
+
+		// The command search's text; the field stays disabled until there are commands
+		std::string CommandSearchText;
 
 		EditorPreferences Preferences;
 		ImGuiDebugTools DebugTools;

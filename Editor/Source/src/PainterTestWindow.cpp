@@ -994,6 +994,75 @@ namespace Nyx::Editor
 			},
 			[&]() {});
 
+		// The toolbar's icon buttons, side by side as there: Play, Play All, Stop, Pause and Step
+		const glm::vec2 iconButtonSize = Nyx::UI::CalcIconButtonSize("##Play", Nyx::UI::EIcon::Play, false);
+		constexpr std::pair<Nyx::UI::EIcon, Nyx::UI::EButtonTone> iconButtons[] = { { Nyx::UI::EIcon::Play, Nyx::UI::EButtonTone::Neutral },
+			{ Nyx::UI::EIcon::PlayAll, Nyx::UI::EButtonTone::Neutral }, { Nyx::UI::EIcon::Stop, Nyx::UI::EButtonTone::Stop },
+			{ Nyx::UI::EIcon::Pause, Nyx::UI::EButtonTone::Neutral }, { Nyx::UI::EIcon::Step, Nyx::UI::EButtonTone::Neutral } };
+		const float iconButtonGap = ImGui::GetStyle().ItemInnerSpacing.x;
+		row("Icon buttons",
+			[&](const WidgetLook& look)
+			{
+				const PainterRect cell = ReserveCell(glm::vec2((iconButtonSize.x + iconButtonGap) * static_cast<float>(std::size(iconButtons)) - iconButtonGap, iconButtonSize.y));
+				for (size_t index = 0; index < std::size(iconButtons); ++index)
+				{
+					const glm::vec2 min = cell.Min + glm::vec2((iconButtonSize.x + iconButtonGap) * static_cast<float>(index), 0.0f);
+					Nyx::UI::PaintIconButton(painter, PainterRect{ min, min + iconButtonSize }, "", iconButtons[index].first, look, iconButtons[index].second);
+				}
+			},
+			[&]() { NYX_UI(Nyx::UI::IconButton("##PlayLive", Nyx::UI::EIcon::Play)); },
+			[&]() {});
+
+		// An icon button with a label and a dropdown, in the Primary tone, as Build
+		row("Icon button, dropdown",
+			[&](const WidgetLook& look)
+			{
+				const glm::vec2 size = Nyx::UI::CalcIconButtonSize("Build", Nyx::UI::EIcon::Build, true);
+				Nyx::UI::PaintIconButton(painter, ReserveCell(size), "Build", Nyx::UI::EIcon::Build, look, Nyx::UI::EButtonTone::Primary, true);
+			},
+			[&]() { NYX_UI(Nyx::UI::IconButton("Build##Live", Nyx::UI::EIcon::Build, glm::vec2(0.0f), Nyx::UI::EButtonTone::Primary, true)); },
+			[&]() {});
+
+		// Bar tabs, as the workspaces in the titlebar: not selected, then selected
+		const float barTabHeight = ImGui::GetFrameHeight() + 6.0f;
+		for (const auto& [name, selected] : { std::pair{ "Bar tab", 0.0f }, std::pair{ "Bar tab, selected", 1.0f } })
+		{
+			ImGui::PushID(name);
+			row(name,
+				[&](const WidgetLook& look) { Nyx::UI::PaintBarTab(painter, ReserveCell(Nyx::UI::CalcBarTabSize("Scene", barTabHeight)), "Scene", selected, look); },
+				[&]()
+				{
+					if (NYX_UI(Nyx::UI::BarTab("Scene##Live", bGalleryBarTab, glm::vec2(0.0f, barTabHeight))))
+					{
+						bGalleryBarTab = !bGalleryBarTab;
+					}
+				},
+				[&]() {});
+			ImGui::PopID();
+		}
+
+		// A document tab, as the scene's in the titlebar: the close button in each state (it
+		// shows only its own hover), with the tab plain, then the tab in each state
+		row("Document tab, close",
+			[&](const WidgetLook& look)
+			{
+				const glm::vec2 size = Nyx::UI::CalcDocumentTabSize("TestScene", barTabHeight);
+				Nyx::UI::PaintDocumentTab(painter, ReserveCell(size), "TestScene", WidgetLook{}, look);
+			},
+			[&]()
+			{
+				NYX_UI(Nyx::UI::DocumentTab("TestScene##Live", true, glm::vec2(0.0f, barTabHeight)));
+			},
+			[&]() {});
+		row("Document tab",
+			[&](const WidgetLook& look)
+			{
+				const glm::vec2 size = Nyx::UI::CalcDocumentTabSize("TestScene", barTabHeight);
+				Nyx::UI::PaintDocumentTab(painter, ReserveCell(size), "TestScene", look, WidgetLook{ 0.0f, 0.0f, 0.0f, true });
+			},
+			[&]() {},
+			[&]() {});
+
 		row("Toggle, off",
 			[&](const WidgetLook& look) { Nyx::UI::PaintToggle(painter, ReserveCell(Nyx::UI::CalcToggleSize("Snap")), "Snap", 0.0f, look); },
 			[&]() { NYX_UI(Nyx::UI::Toggle("Snap##Live", &bGalleryToggle)); },
@@ -1353,6 +1422,38 @@ namespace Nyx::Editor
 			[&](const WidgetLook& look) { paintAssetCard(look, true); },
 			[&]() {},
 			[&]() {});
+
+		// Status bar items and the titlebar's logo have no states either: they show once, in the
+		// Normal column, with a bar divider between the items, as in the status bar.
+		Nyx::UI::TableNextRow();
+		ImGui::TableNextColumn();
+		NYX_UI(ImGui::AlignTextToFramePadding());
+		NYX_UI(ImGui::TextUnformatted("Status items"));
+		ImGui::TableNextColumn();
+		{
+			const float statusHeight = ImGui::GetFrameHeight() + 4.0f;
+			const auto statusItems = { std::pair{ "0 errors", Nyx::UI::EStatusIcon::Ok }, std::pair{ "2 warnings", Nyx::UI::EStatusIcon::Warning },
+				std::pair{ "1 error", Nyx::UI::EStatusIcon::Error }, std::pair{ "Vulkan", Nyx::UI::EStatusIcon::None } };
+			bool bFirst = true;
+			for (const auto& [text, icon] : statusItems)
+			{
+				if (!bFirst)
+				{
+					ImGui::SameLine();
+					NYX_UI(Nyx::UI::BarDivider(statusHeight));
+					ImGui::SameLine();
+				}
+				bFirst = false;
+				NYX_UI(Nyx::UI::StatusItem(text, icon, statusHeight));
+			}
+		}
+
+		Nyx::UI::TableNextRow();
+		ImGui::TableNextColumn();
+		NYX_UI(ImGui::AlignTextToFramePadding());
+		NYX_UI(ImGui::TextUnformatted("Titlebar logo"));
+		ImGui::TableNextColumn();
+		NYX_UI(Nyx::UI::TitlebarLogo("Nyx", ImGui::GetFrameHeight() + 6.0f));
 
 		// A section header has no states; it shows once, in the Normal column.
 		Nyx::UI::TableNextRow();

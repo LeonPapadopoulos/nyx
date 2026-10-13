@@ -173,9 +173,47 @@ namespace Nyx::UI
 		// Menu bar buttons (MenuBarButton()), e.g. File in the titlebar, are flat: the menu items'
 		// hover pill, and the selection's (RowSelected) while their menu is open.
 
-		// The titlebar (WindowsWindow): with the chrome, it lies on the backdrop. Its window
-		// controls (WindowControlButton()) are flat, filled while hovered or pressed, close in red.
-		// Their icons fit a square WindowControlIconSize wide, in lines WindowControlIconWidth thick.
+		// The window's frame (WindowsWindow): the titlebar, a toolbar under it and a status bar at
+		// the bottom, each the window's width, filled in its colour. A hairline (BarBorder) runs
+		// where each meets the dock space's side. The toolbar and status bar are there only when
+		// the application draws into them (IWindow::SetFrameContent()).
+		float TitlebarHeight = 40.0f;
+		float ToolbarHeight = 38.0f;
+		float StatusBarHeight = 33.0f;
+		glm::vec4 Titlebar{ 0.075f, 0.106f, 0.133f, 1.0f };
+		glm::vec4 Toolbar{ 0.098f, 0.129f, 0.165f, 1.0f };
+		glm::vec4 StatusBar{ 0.086f, 0.118f, 0.141f, 1.0f };
+		glm::vec4 BarBorder{ 1.0f, 1.0f, 1.0f, 0.04f };
+		// An upright line between groups in a bar (BarDivider()), BarDividerHeight of the bar's
+		// content height
+		glm::vec4 BarDivider{ 1.0f, 1.0f, 1.0f, 0.28f };
+		float BarDividerHeight = 0.5f;
+		// Tabs in a bar (BarTab(), DocumentTab()): a raised tab, rounded at the top, behind the
+		// selected one and every document; the hover pill (MenuItemHovered) behind the others.
+		// A selected bar tab is underlined (TabUnderline).
+		glm::vec4 BarTab{ 0.122f, 0.165f, 0.21f, 1.0f };
+		glm::vec4 BarTabBorder{ 1.0f, 1.0f, 1.0f, 0.07f };
+		float BarTabRounding = 6.0f;
+		// The logo's place at the titlebar's left, a circle until there is a logo (TitlebarLogo())
+		glm::vec4 Logo{ 0.85f, 0.88f, 0.93f, 1.0f };
+		// Icons on buttons (IconButton()), IconSize of the button's height
+		float IconSize = 0.45f;
+		// A button that does the main thing of its bar, e.g. Build (EButtonTone::Primary): a
+		// dark fill with an accent outline
+		glm::vec4 ButtonPrimary{ 0.122f, 0.169f, 0.216f, 1.0f };
+		glm::vec4 ButtonPrimaryHovered{ 0.15f, 0.2f, 0.255f, 1.0f };
+		glm::vec4 ButtonPrimaryPressed{ 0.1f, 0.14f, 0.18f, 1.0f };
+		glm::vec4 ButtonPrimaryBorder{ 1.0f, 0.55f, 0.15f, 0.45f };
+		// The status bar's icons (StatusItem()): all is well, a warning, an error
+		glm::vec4 StatusOk{ 0.42f, 0.82f, 0.36f, 1.0f };
+		glm::vec4 StatusWarning{ 0.95f, 0.72f, 0.25f, 1.0f };
+		glm::vec4 StatusError{ 0.92f, 0.33f, 0.3f, 1.0f };
+		// The mark inside a status icon, on its colour
+		glm::vec4 StatusIconMark{ 0.04f, 0.07f, 0.06f, 1.0f };
+
+		// The titlebar's window controls (WindowControlButton()) are flat, filled while hovered
+		// or pressed, close in red. Their icons fit a square WindowControlIconSize wide, in lines
+		// WindowControlIconWidth thick.
 		glm::vec4 WindowControlHovered{ 1.0f, 1.0f, 1.0f, 0.08f };
 		glm::vec4 WindowControlPressed{ 1.0f, 1.0f, 1.0f, 0.14f };
 		glm::vec4 WindowCloseHovered{ 0.77f, 0.17f, 0.11f, 1.0f };

@@ -39,6 +39,31 @@ namespace Nyx
 		bool bShowStartupBanner = true;
 	};
 
+	// A strip of the window's frame, in ImGui's screen coordinates
+	struct WindowFrameArea
+	{
+		float X = 0.0f;
+		float Y = 0.0f;
+		float Width = 0.0f;
+		float Height = 0.0f;
+	};
+
+	// What the application draws into the window's frame. Each function is called inside the
+	// window's UI frame with ImGui's cursor at its area's top left, and is drawn on the strip's
+	// own fill. The strips' heights and colours come from the UI theme (Nyx::UI::Theme).
+	struct WindowFrameContent
+	{
+		// The titlebar, left of the window controls; with the custom titlebar only. Without it,
+		// the titlebar shows the window's title. Where nothing is hovered, the titlebar drags the
+		// window and a double click maximises it, as Windows' own.
+		std::function<void(const WindowFrameArea& area)> DrawTitlebar;
+		// A strip under the titlebar across the window, e.g. menus and a toolbar; the empty parts
+		// drag the window too. None when unset.
+		std::function<void(const WindowFrameArea& area)> DrawToolbar;
+		// A strip across the window's bottom, under the dock space. None when unset.
+		std::function<void(const WindowFrameArea& area)> DrawStatusBar;
+	};
+
 	// Platform Abstraction
 	class NYXENGINE_API IWindow
 	{
@@ -83,9 +108,9 @@ namespace Nyx
 		// Makes ShouldClose() true, as if the user closed the window
 		virtual void RequestClose() = 0;
 
-		// Sets the function that draws the menu at the left of the titlebar (e.g. File, Window).
-		// There is one menu; pass nullptr to remove it. buttonHeight fits the titlebar.
-		virtual void SetTitlebarMenu(std::function<void(float buttonHeight)> drawMenu) = 0;
+		// Sets what the application draws into the titlebar, a toolbar and a status bar. Pass an
+		// empty WindowFrameContent to remove it, e.g. before what it calls into goes away.
+		virtual void SetFrameContent(WindowFrameContent content) = 0;
 
 		// With WindowSpecs::bShowStartupBanner, a banner is shown from window creation until FinishStartup().
 		virtual void SetStartupStatus(const std::string& status) = 0;

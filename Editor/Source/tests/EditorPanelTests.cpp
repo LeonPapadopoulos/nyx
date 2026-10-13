@@ -1013,6 +1013,113 @@ namespace
 		}
 	}
 
+	// The window frame's bar widgets: a document tab's close button takes a click from the tab
+	// around it and is disabled without a way to close; a selected bar tab is raised and
+	// underlined, another isn't; a Primary icon button fills in its tone and clicks unless
+	// disabled; a status item's icon is in its status's colour.
+	void TestBarWidgets()
+	{
+		HeadlessUI ui;
+		ImGuiIO& io = ImGui::GetIO();
+		const Nyx::UI::Theme& theme = Nyx::UI::GetTheme();
+
+		bool bCanClose = true;
+		bool bBuildDisabled = false;
+		int tabClicks = 0;
+		int closeClicks = 0;
+		int buildClicks = 0;
+		ImRect tab;
+		ImRect selectedTab;
+		ImRect otherTab;
+		ImRect build;
+		ImRect status;
+		std::vector<PainterCommand> commands;
+		const auto draw = [&]()
+			{
+				ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+				ImGui::SetNextWindowSize(ImVec2(600.0f, 400.0f));
+				ImGui::Begin("Bars");
+				const Nyx::UI::DocumentTabResult result = Nyx::UI::DocumentTab("TestScene", bCanClose, glm::vec2(0.0f, 34.0f));
+				tab = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+				tabClicks += result.bClicked ? 1 : 0;
+				closeClicks += result.bCloseClicked ? 1 : 0;
+				Nyx::UI::BarTab("Scene", true, glm::vec2(0.0f, 32.0f));
+				selectedTab = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+				ImGui::SameLine();
+				Nyx::UI::BarTab("Materials", false, glm::vec2(0.0f, 32.0f));
+				otherTab = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+				ImGui::BeginDisabled(bBuildDisabled);
+				buildClicks += Nyx::UI::IconButton("Build", Nyx::UI::EIcon::Build, glm::vec2(0.0f, 29.0f), Nyx::UI::EButtonTone::Primary, true) ? 1 : 0;
+				ImGui::EndDisabled();
+				build = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+				Nyx::UI::StatusItem("1 error", Nyx::UI::EStatusIcon::Error, 33.0f);
+				status = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+				const std::span<const PainterCommand> painted = Nyx::UI::GetWindowPainter().GetPainter().GetCommands();
+				commands.assign(painted.begin(), painted.end());
+				ImGui::End();
+			};
+		const auto settle = [&]()
+			{
+				for (int frame = 0; frame < 40; ++frame)
+				{
+					ui.Frame(draw);
+				}
+			};
+		const auto click = [&](ImVec2 position)
+			{
+				io.AddMousePosEvent(position.x, position.y);
+				ui.Frame(draw);
+				io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+				ui.Frame(draw);
+				io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+				ui.Frame(draw);
+			};
+		// A filled rect, sharp or rounded, inside `rect` in `color`
+		const auto findFill = [&](const ImRect& rect, const glm::vec4& color)
+			{
+				const uint32_t packed = PackPremultipliedColor(color);
+				return std::any_of(commands.begin(), commands.end(), [&](const PainterCommand& command)
+					{
+						if (command.Type != static_cast<uint32_t>(EPainterCommandType::Rect) || command.OutlineWidth != 0.0f || command.Color != packed)
+						{
+							return false;
+						}
+						const PainterRect painted = GetPayload<PainterRectPayload>(command).Rect;
+						return painted.Min.x >= rect.Min.x && painted.Max.x <= rect.Max.x && painted.Min.y >= rect.Min.y && painted.Max.y <= rect.Max.y;
+					});
+			};
+
+		io.AddMousePosEvent(-100.0f, -100.0f);
+		settle();
+		Require(findFill(selectedTab, theme.BarTab) && findFill(selectedTab, theme.TabUnderline), "A selected bar tab should be raised and underlined");
+		Require(!findFill(otherTab, theme.BarTab) && !findFill(otherTab, theme.TabUnderline), "A bar tab that isn't selected should be flat");
+		Require(findFill(tab, theme.BarTab), "A document tab should be raised");
+		Require(findFill(build, theme.ButtonPrimary), "A Primary button should be filled in the theme's Primary colour");
+		const uint32_t errorColor = PackPremultipliedColor(theme.StatusError);
+		Require(std::any_of(commands.begin(), commands.end(), [&](const PainterCommand& command)
+					{
+						const auto circle = GetPayload<PainterCirclePayload>(command);
+						return command.Type == static_cast<uint32_t>(EPainterCommandType::Circle) && command.Color == errorColor && status.Contains(ImVec2(circle.Center.x, circle.Center.y));
+					}),
+			"An error's status item should show a disc in the theme's error colour");
+
+		// The close button, at the tab's right end, takes the click; the rest of the tab gets its own
+		const ImVec2 closeCentre(tab.Max.x - 16.0f, tab.GetCenter().y);
+		click(closeCentre);
+		Require(closeClicks == 1 && tabClicks == 0, "Clicking a document tab's close button should close it, and not click the tab");
+		click(ImVec2(tab.Min.x + 10.0f, tab.GetCenter().y));
+		Require(closeClicks == 1 && tabClicks == 1, "Clicking a document tab left of its close button should click the tab");
+		bCanClose = false;
+		click(closeCentre);
+		Require(closeClicks == 1 && tabClicks == 1, "A disabled close button should take no click, nor pass it to the tab");
+
+		click(build.GetCenter());
+		Require(buildClicks == 1, "Clicking an icon button should click it");
+		bBuildDisabled = true;
+		click(build.GetCenter());
+		Require(buildClicks == 1, "A disabled icon button should take no click");
+	}
+
 	// The titlebar's widgets (stage 3, change 9a): a button in a tone of its own, a menu bar button
 	// with its open menu's pill, window controls, a multi-line field over a painted frame, and a
 	// logarithmic slider whose knob sits where ImGui's grab is.
@@ -1321,6 +1428,7 @@ int main()
 		TestChecksMenusCombosAndSwatches();
 		TestAssetCardsAndTables();
 		TestTitlebarWidgetsAndMultilineFields();
+		TestBarWidgets();
 		TestPanelsLeaveNoShapesToImGui();
 		TestPainterPredictionsFollowTheModel();
 		TestAnimationsEaseAndAreForgotten();

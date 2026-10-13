@@ -134,9 +134,9 @@ namespace Nyx
 		glfwSetWindowShouldClose(Window, GLFW_TRUE);
 	}
 
-	void WindowsWindow::SetTitlebarMenu(std::function<void(float buttonHeight)> drawMenu)
+	void WindowsWindow::SetFrameContent(WindowFrameContent content)
 	{
-		TitlebarMenuCallback = std::move(drawMenu);
+		FrameContent = std::move(content);
 	}
 
 	void WindowsWindow::SetStartupStatus(const std::string& status)
@@ -296,50 +296,97 @@ namespace Nyx
 		// optional: log hr if failed
 	}
 
-	void WindowsWindow::DrawTitlebar(float titlebarHeight)
+	void WindowsWindow::DrawFrameStrips(float titlebarHeight, float toolbarHeight, float statusBarHeight)
 	{
 		const ImVec2 cursorBackup = ImGui::GetCursorPos();
+		const ImGuiViewport* viewport = ImGui::GetMainViewport();
+		const Nyx::UI::Theme& theme = Nyx::UI::GetTheme();
+		const float left = viewport->Pos.x;
+		const float top = viewport->Pos.y;
+		const float width = viewport->Size.x;
+		const float bottom = viewport->Pos.y + viewport->Size.y;
 
-		ImGuiViewport* viewport = ImGui::GetMainViewport();
-		ImDrawList* windowDrawList = ImGui::GetWindowDrawList();
+		const WindowFrameArea titlebar{ left, top, width, titlebarHeight };
+		const WindowFrameArea toolbar{ left, top + titlebarHeight, width, toolbarHeight };
+		const WindowFrameArea statusBar{ left, bottom - statusBarHeight, width, statusBarHeight };
 
-		const bool bIsMaximized = IsMaximized();
+		// The whole window, its padding included, which the window's own clip rect leaves out
+		ImGui::PushClipRect(viewport->Pos, ImVec2(left + width, bottom), false);
 
-		const ImVec2 titlebarMin = ImVec2(viewport->Pos.x, viewport->Pos.y);
-		const ImVec2 titlebarMax = ImVec2(viewport->Pos.x + viewport->Size.x, viewport->Pos.y + titlebarHeight);
-
-		// Background: with the painted chrome, the titlebar lies on the backdrop.
-		if (!Nyx::UI::IsPaintedChromeEnabled())
+		// Each strip's fill, and a hairline where it meets the dock space's side
+		const bool bPaintedChrome = Nyx::UI::IsPaintedChromeEnabled();
+		const auto fill = [&](float minY, float maxY, const glm::vec4& color)
 		{
-			windowDrawList->AddRectFilled(titlebarMin, titlebarMax, Colors::Theme::titlebar);
+			if (maxY <= minY)
+			{
+				return;
+			}
+			if (bPaintedChrome)
+			{
+				Nyx::UI::GetWindowPainter().AddRect(Engine::PainterRect{ { left, minY }, { left + width, maxY } }, Engine::PainterStyle::Filled(color));
+			}
+			else
+			{
+				ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(left, minY), ImVec2(left + width, maxY), ImGui::ColorConvertFloat4ToU32(ImVec4(color.r, color.g, color.b, color.a)));
+			}
+		};
+		fill(titlebar.Y, titlebar.Y + titlebarHeight, theme.Titlebar);
+		fill(toolbar.Y, toolbar.Y + toolbarHeight, theme.Toolbar);
+		fill(statusBar.Y, bottom, theme.StatusBar);
+		const float topEdge = top + titlebarHeight + toolbarHeight;
+		if (topEdge > top)
+		{
+			fill(topEdge - 1.0f, topEdge, theme.BarBorder);
+		}
+		if (titlebarHeight > 0.0f && toolbarHeight > 0.0f)
+		{
+			fill(toolbar.Y - 1.0f, toolbar.Y, theme.BarBorder);
+		}
+		if (statusBarHeight > 0.0f)
+		{
+			fill(statusBar.Y, statusBar.Y + 1.0f, theme.BarBorder);
 		}
 
-		// Debug entire titlebar area
-		//drawList->AddRect(titlebarMin, titlebarMax, IM_COL32(255, 255, 0, 255));
+		const float windowControlsWidth = titlebarHeight > 0.0f ? DrawTitlebar(titlebar) : 0.0f;
+		if (toolbarHeight > 0.0f)
+		{
+			ImGui::SetCursorScreenPos(ImVec2(toolbar.X, toolbar.Y));
+			FrameContent.DrawToolbar(toolbar);
+		}
+		if (statusBarHeight > 0.0f)
+		{
+			ImGui::SetCursorScreenPos(ImVec2(statusBar.X, statusBar.Y));
+			FrameContent.DrawStatusBar(statusBar);
+		}
 
-		// Title
-		const ImVec2 textSize = ImGui::CalcTextSize(Data.Title.c_str());
-		const ImVec2 textPos(
-			titlebarMin.x + (viewport->Size.x - textSize.x) * 0.5f,
-			titlebarMin.y + (titlebarHeight - textSize.y) * 0.5f);
-		windowDrawList->AddText(textPos, IM_COL32(255, 255, 255, 255), Data.Title.c_str());
+		ImGui::PopClipRect();
 
-		// Button layout
-		const ImVec2 buttonSize(46.0f, titlebarHeight);
-		const float rightEdge = titlebarMax.x;
+		// The window is dragged by the titlebar, left of its window controls, and by the toolbar:
+		// where neither a widget nor a popup or menu over them is hovered
+		const ImVec2 mouse = ImGui::GetMousePos();
+		const bool bOverTitlebar = mouse.x >= left && mouse.x < left + width - windowControlsWidth && mouse.y >= top && mouse.y < top + titlebarHeight;
+		const bool bOverToolbar = mouse.x >= left && mouse.x < left + width && mouse.y >= toolbar.Y && mouse.y < toolbar.Y + toolbarHeight;
+		bTitlebarHovered = (bOverTitlebar || bOverToolbar) && ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered() && !ImGui::IsAnyItemActive();
 
-		const ImVec2 closePos(rightEdge - buttonSize.x, titlebarMin.y);
-		const ImVec2 maxPos(rightEdge - buttonSize.x * 2.0f, titlebarMin.y);
-		const ImVec2 minPos(rightEdge - buttonSize.x * 3.0f, titlebarMin.y);
-		const glm::vec2 controlSize(buttonSize.x, buttonSize.y);
+		ImGui::SetCursorPos(cursorBackup);
+	}
 
-		ImGui::SetCursorScreenPos(minPos);
+	float WindowsWindow::DrawTitlebar(const WindowFrameArea& area)
+	{
+		const bool bIsMaximized = IsMaximized();
+
+		// The window controls at the right end, as tall as the titlebar
+		const glm::vec2 controlSize(46.0f, area.Height);
+		const float controlsWidth = controlSize.x * 3.0f;
+		const float controlsLeft = area.X + area.Width - controlsWidth;
+
+		ImGui::SetCursorScreenPos(ImVec2(controlsLeft, area.Y));
 		if (NYX_UI(Nyx::UI::WindowControlButton("##TitlebarMinimize", Nyx::UI::EWindowControl::Minimize, controlSize)))
 		{
 			glfwIconifyWindow(Window);
 		}
 
-		ImGui::SetCursorScreenPos(maxPos);
+		ImGui::SetCursorScreenPos(ImVec2(controlsLeft + controlSize.x, area.Y));
 		if (NYX_UI(Nyx::UI::WindowControlButton("##TitlebarMaxRestore", bIsMaximized ? Nyx::UI::EWindowControl::Restore : Nyx::UI::EWindowControl::Maximize, controlSize)))
 		{
 			if (bIsMaximized)
@@ -348,53 +395,29 @@ namespace Nyx
 				glfwMaximizeWindow(Window);
 		}
 
-		ImGui::SetCursorScreenPos(closePos);
+		ImGui::SetCursorScreenPos(ImVec2(controlsLeft + controlSize.x * 2.0f, area.Y));
 		if (NYX_UI(Nyx::UI::WindowControlButton("##TitlebarClose", Nyx::UI::EWindowControl::Close, controlSize)))
 		{
 			glfwSetWindowShouldClose(Window, GLFW_TRUE);
 		}
 
-		// Drag region = full titlebar except button area
-		const float leftReservedWidth = 170.0f;
-		const ImVec2 dragMin = ImVec2(titlebarMin.x + leftReservedWidth, titlebarMin.y);
-		const ImVec2 dragMax = ImVec2(minPos.x, titlebarMax.y);
-
-		// Debug titlebar drag-area-only
-		// drawList->AddRect(dragMin, dragMax, IM_COL32(0, 255, 0, 255));
-
-		bTitlebarHovered = ImGui::IsMouseHoveringRect(dragMin, dragMax, false);
-
-		if (ImGui::IsAnyItemHovered() || ImGui::IsAnyItemActive())
+		// The application's content left of them, cut off there in a narrow window, or else the
+		// window's title in the middle
+		if (FrameContent.DrawTitlebar)
 		{
-			bTitlebarHovered = false;
+			ImGui::PushClipRect(ImVec2(area.X, area.Y), ImVec2(controlsLeft, area.Y + area.Height), true);
+			ImGui::SetCursorScreenPos(ImVec2(area.X, area.Y));
+			FrameContent.DrawTitlebar(WindowFrameArea{ area.X, area.Y, area.Width - controlsWidth, area.Height });
+			ImGui::PopClipRect();
+		}
+		else
+		{
+			const ImVec2 textSize = ImGui::CalcTextSize(Data.Title.c_str());
+			const ImVec2 textPos(area.X + (area.Width - textSize.x) * 0.5f, area.Y + (area.Height - textSize.y) * 0.5f);
+			ImGui::GetWindowDrawList()->AddText(textPos, IM_COL32(255, 255, 255, 255), Data.Title.c_str());
 		}
 
-		ImGui::SetCursorPos(cursorBackup);
-	}
-
-	void WindowsWindow::DrawTitlebarMenuBar(float titlebarHeight)
-	{
-		const ImVec2 cursorBackup = ImGui::GetCursorPos();
-
-		const float menuStartX = 8.0f;
-		const float menuStartY = 2.0f;
-		const float buttonHeight = titlebarHeight - 4.0f;
-
-		ImGui::SetCursorPos(ImVec2(menuStartX, menuStartY));
-
-		ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 0.0f);
-		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(10.0f, 6.0f));
-
-		// The menu's contents come from the application (for the editor: File, Window).
-		if (TitlebarMenuCallback)
-		{
-			TitlebarMenuCallback(buttonHeight);
-		}
-
-		ImGui::PopStyleVar(2);
-
-		// Restore layout cursor so this function does not consume extra vertical layout space.
-		ImGui::SetCursorPos(cursorBackup);
+		return controlsWidth;
 	}
 
 	bool WindowsWindow::IsMaximized() const
@@ -415,6 +438,8 @@ namespace Nyx
 		windowFlags |= ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse;
 		windowFlags |= ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove;
 		windowFlags |= ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
+		// The dock space fills it exactly; it never scrolls
+		windowFlags |= ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
 
 		// With the painted chrome, the backdrop is painted instead of the window's background,
 		// and the cards keep their gap from the window's edges too.
@@ -440,32 +465,28 @@ namespace Nyx
 		ImGui::PopStyleColor();
 		ImGui::PopStyleVar(3);
 
-		const float titlebarHeight = Data.bCustomTitlebar ? 32.0f : 0.0f;
-		if (Data.bCustomTitlebar)
-		{
-			DrawTitlebar(titlebarHeight);
-			DrawTitlebarMenuBar(titlebarHeight);
+		// The frame's strips: the titlebar (custom only), and the toolbar and status bar when the
+		// application draws into them
+		const Nyx::UI::Theme& theme = Nyx::UI::GetTheme();
+		const float titlebarHeight = Data.bCustomTitlebar ? theme.TitlebarHeight : 0.0f;
+		const float toolbarHeight = FrameContent.DrawToolbar ? theme.ToolbarHeight : 0.0f;
+		const float statusBarHeight = FrameContent.DrawStatusBar ? theme.StatusBarHeight : 0.0f;
+		// The strips lie in the window's padding and beyond the dock space, so what they hold
+		// doesn't count as the window's content: the status bar's would make it scroll.
+		ImGuiWindow* hostWindow = ImGui::GetCurrentWindow();
+		const ImVec2 contentMax = hostWindow->DC.CursorMaxPos;
+		DrawFrameStrips(titlebarHeight, toolbarHeight, statusBarHeight);
+		hostWindow->DC.CursorMaxPos = contentMax;
 
-			if (bPaintedChrome)
-			{
-				// Exactly the cards' gap below the titlebar: the cards' margin, where their shadows
-				// and glows may reach, then ends at the titlebar.
-				ImGui::SetCursorPosY(titlebarHeight + padding);
-			}
-			else
-			{
-				// @todo LP: Figure out where the padding between titlebar-drag-zone and dockarea comes from
-				const float paddingToRemoveHACK = 8.0f;
-
-				// Reserve space so docked content starts below the custom titlebar
-				NYX_UI(ImGui::Dummy(ImVec2(0.0f, titlebarHeight - paddingToRemoveHACK)));
-			}
-		}
+		// The dock space lies the window's padding (with the chrome, the cards' gap) from the strips
+		// above and below it: the cards' margin, where their shadows and glows may reach, then ends
+		// at the strips.
+		ImGui::SetCursorPosY(titlebarHeight + toolbarHeight + padding);
 
 		ImGuiStyle& style = ImGui::GetStyle();
 		const float prevMinWinSizeX = style.WindowMinSize.x;
 		style.WindowMinSize.x = 370.0f;
-		ImGui::DockSpace(ImGui::GetID("MyDockspace"));
+		ImGui::DockSpace(ImGui::GetID("MyDockspace"), ImVec2(0.0f, -statusBarHeight));
 		style.WindowMinSize.x = prevMinWinSizeX;
 
 		// Draw the application's UI (for the editor: its panels), which can dock into the dock space above

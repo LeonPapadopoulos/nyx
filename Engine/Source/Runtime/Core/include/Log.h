@@ -2,12 +2,23 @@
 #include "NyxEngineAPI.h"
 #include "spdlog/spdlog.h"
 
+#include <cstdint>
 #include <memory>
 
 namespace Nyx
 {
 	namespace Core
 	{
+		class LogCountSink;
+
+		// How many warnings and errors were logged, e.g. for a status bar
+		struct LogCounts
+		{
+			uint64_t Warnings = 0;
+			// Errors and critical errors
+			uint64_t Errors = 0;
+		};
+
 		class NYXENGINE_API Logger
 		{
 		public:
@@ -26,9 +37,13 @@ namespace Nyx
 			std::shared_ptr<spdlog::logger>& GetCoreLogger();
 			std::shared_ptr<spdlog::logger>& GetClientLogger();
 
+			// Warnings and errors both loggers logged since Init(), from any thread
+			LogCounts GetCounts() const;
+
 		private:
 			std::shared_ptr<spdlog::logger> CoreLogger;
 			std::shared_ptr<spdlog::logger> ClientLogger;
+			std::shared_ptr<LogCountSink> Counts;
 		};
 	}
 }

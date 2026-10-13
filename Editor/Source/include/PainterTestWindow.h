@@ -90,6 +90,7 @@ namespace Nyx::Editor
 		bool bGalleryToggle = true;
 		float GallerySlider = 0.6f;
 		bool bGalleryRowSelected = false;
+		bool bGalleryBarTab = true;
 		std::string GalleryText = "Cube";
 		std::string GalleryLines = "#0 Main()\n#1 Run()";
 		std::string GallerySearch;

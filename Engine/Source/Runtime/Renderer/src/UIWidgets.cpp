@@ -524,11 +524,11 @@ namespace Nyx::UI
 			WidgetLook Look;
 		};
 
-		// A button's layout and behaviour, as ImGui::ButtonEx(); no ID when it is clipped away
-		ButtonState AddButton(ImGuiWindow& window, const char* label, const glm::vec2& sizeArgument)
+		// A button's layout and behaviour, as ImGui::ButtonEx(); no ID when it is clipped away.
+		// `fitted`: its size where `sizeArgument` is 0.
+		ButtonState AddButton(ImGuiWindow& window, const char* label, const glm::vec2& sizeArgument, const glm::vec2& fitted)
 		{
 			ButtonState button;
-			const glm::vec2 fitted = CalcButtonSize(label);
 			const ImVec2 size = ImGui::CalcItemSize(ImVec2(sizeArgument.x, sizeArgument.y), fitted.x, fitted.y);
 			button.Rect = RectAtCursor(window, glm::vec2(size.x, size.y));
 			ImGui::ItemSize(size, ImGui::GetStyle().FramePadding.y);
@@ -544,6 +544,29 @@ namespace Nyx::UI
 			button.bClicked = ImGui::ButtonBehavior(button.Rect, id, &bHovered, &bHeld);
 			button.Look = AnimateLook(id, bHovered, bHeld && bHovered, GetTheme());
 			return button;
+		}
+
+		ButtonState AddButton(ImGuiWindow& window, const char* label, const glm::vec2& sizeArgument)
+		{
+			return AddButton(window, label, sizeArgument, CalcButtonSize(label));
+		}
+
+		// Where a document tab's close button is: a square at its right end
+		ImRect GetDocumentTabCloseRect(const PainterRect& rect)
+		{
+			const float height = rect.GetHeight();
+			const float size = std::floor(height * 0.6f);
+			const float right = rect.Max.x - std::floor(height * 0.2f);
+			const float top = std::floor((rect.Min.y + rect.Max.y - size) * 0.5f);
+			return ImRect(ImVec2(right - size, top), ImVec2(right, top + size));
+		}
+
+		// Adds an item that takes no input, `size` large at the cursor; false when it is clipped away
+		bool AddPlainItem(ImGuiWindow& window, glm::vec2 size, ImRect& outRect)
+		{
+			outRect = RectAtCursor(window, size);
+			ImGui::ItemSize(ImVec2(size.x, size.y));
+			return ImGui::ItemAdd(outRect, 0);
 		}
 	}
 
@@ -594,6 +617,130 @@ namespace Nyx::UI
 			PaintWindowControl(GetWindowPainter(), ToPainterRect(button.Rect), control, button.Look);
 		}
 		return button.bClicked;
+	}
+
+	bool IconButton(const char* label, EIcon icon, const glm::vec2& size, EButtonTone tone, bool bDropdown)
+	{
+		ImGuiWindow* window = ImGui::GetCurrentWindow();
+		if (window->SkipItems)
+		{
+			return false;
+		}
+
+		const ButtonState button = AddButton(*window, label, size, CalcIconButtonSize(label, icon, bDropdown, size.y));
+		if (button.Id != 0)
+		{
+			PaintIconButton(GetWindowPainter(), ToPainterRect(button.Rect), VisibleLabel(label), icon, button.Look, tone, bDropdown);
+		}
+		return button.bClicked;
+	}
+
+	bool BarTab(const char* label, bool bSelected, const glm::vec2& size)
+	{
+		ImGuiWindow* window = ImGui::GetCurrentWindow();
+		if (window->SkipItems)
+		{
+			return false;
+		}
+
+		const ButtonState button = AddButton(*window, label, size, CalcBarTabSize(label, size.y));
+		if (button.Id != 0)
+		{
+			const float selected = Animate(ImHashStr("Selected", 0, button.Id), bSelected ? 1.0f : 0.0f, GetTheme().AnimationSpeed);
+			PaintBarTab(GetWindowPainter(), ToPainterRect(button.Rect), VisibleLabel(label), selected, button.Look);
+		}
+		return button.bClicked;
+	}
+
+	DocumentTabResult DocumentTab(const char* label, bool bCanClose, const glm::vec2& size)
+	{
+		ImGuiWindow* window = ImGui::GetCurrentWindow();
+		DocumentTabResult result;
+		if (window->SkipItems)
+		{
+			return result;
+		}
+		const Theme& theme = GetTheme();
+
+		const glm::vec2 fitted = CalcDocumentTabSize(label, size.y);
+		const ImVec2 tabSize = ImGui::CalcItemSize(ImVec2(size.x, size.y), fitted.x, fitted.y);
+		const ImRect rect = RectAtCursor(*window, glm::vec2(tabSize.x, tabSize.y));
+		const ImGuiID id = window->GetID(label);
+
+		// The close button first, so that it takes the mouse from the tab around it
+		const ImRect closeRect = GetDocumentTabCloseRect(ToPainterRect(rect));
+		const ImGuiID closeId = ImHashStr("##Close", 0, id);
+		WidgetLook closeLook{ 0.0f, 0.0f, 0.0f, !bCanClose };
+		ImGui::BeginDisabled(!bCanClose);
+		if (ImGui::ItemAdd(closeRect, closeId))
+		{
+			bool bHovered = false;
+			bool bHeld = false;
+			result.bCloseClicked = ImGui::ButtonBehavior(closeRect, closeId, &bHovered, &bHeld);
+			closeLook = AnimateLook(closeId, bHovered, bHeld && bHovered, theme);
+		}
+		ImGui::EndDisabled();
+
+		// The tab, which IsItemHovered() and the like then ask about
+		ImGui::ItemSize(tabSize, ImGui::GetStyle().FramePadding.y);
+		if (!ImGui::ItemAdd(rect, id))
+		{
+			return result;
+		}
+		bool bHovered = false;
+		bool bHeld = false;
+		result.bClicked = ImGui::ButtonBehavior(rect, id, &bHovered, &bHeld);
+		const WidgetLook look = AnimateLook(id, bHovered, bHeld && bHovered, theme);
+		PaintDocumentTab(GetWindowPainter(), ToPainterRect(rect), VisibleLabel(label), look, closeLook);
+		return result;
+	}
+
+	void BarDivider(float height)
+	{
+		ImGuiWindow* window = ImGui::GetCurrentWindow();
+		if (window->SkipItems)
+		{
+			return;
+		}
+
+		ImRect rect;
+		if (AddPlainItem(*window, glm::vec2(1.0f, height), rect))
+		{
+			const Theme& theme = GetTheme();
+			const float lineHeight = std::floor(height * theme.BarDividerHeight);
+			const float top = std::floor(rect.Min.y + (height - lineHeight) * 0.5f);
+			GetWindowPainter().AddRect(PainterRect{ { rect.Min.x, top }, { rect.Min.x + 1.0f, top + lineHeight } }, PainterStyle::Filled(theme.BarDivider));
+		}
+	}
+
+	void StatusItem(const char* text, EStatusIcon icon, float height)
+	{
+		ImGuiWindow* window = ImGui::GetCurrentWindow();
+		if (window->SkipItems)
+		{
+			return;
+		}
+
+		ImRect rect;
+		if (AddPlainItem(*window, CalcStatusItemSize(text, icon, height), rect))
+		{
+			PaintStatusItem(GetWindowPainter(), ToPainterRect(rect), text, icon);
+		}
+	}
+
+	void TitlebarLogo(const char* name, float height)
+	{
+		ImGuiWindow* window = ImGui::GetCurrentWindow();
+		if (window->SkipItems)
+		{
+			return;
+		}
+
+		ImRect rect;
+		if (AddPlainItem(*window, CalcTitlebarLogoSize(name, height), rect))
+		{
+			PaintTitlebarLogo(GetWindowPainter(), ToPainterRect(rect), name);
+		}
 	}
 
 	bool Toggle(const char* label, bool* value)
@@ -1484,22 +1631,69 @@ namespace Nyx::UI
 		return result;
 	}
 
+	namespace
+	{
+		// A button's frame in its tone: the fill, with its shadow and focus glow, and the outline
+		void PaintButtonFrame(WindowPainter& painter, const PainterRect& rect, const WidgetLook& look, EButtonTone tone, const Theme& theme)
+		{
+			struct ToneColors
+			{
+				const glm::vec4& Rest;
+				const glm::vec4& Hovered;
+				const glm::vec4& Pressed;
+				const glm::vec4& Border;
+			};
+			const ToneColors colors = tone == EButtonTone::Go ? ToneColors{ theme.ButtonGo, theme.ButtonGoHovered, theme.ButtonGoPressed, theme.FrameBorder }
+				: tone == EButtonTone::Stop	   ? ToneColors{ theme.ButtonStop, theme.ButtonStopHovered, theme.ButtonStopPressed, theme.FrameBorder }
+				: tone == EButtonTone::Primary ? ToneColors{ theme.ButtonPrimary, theme.ButtonPrimaryHovered, theme.ButtonPrimaryPressed, theme.ButtonPrimaryBorder }
+											   : ToneColors{ theme.Frame, theme.FrameHovered, theme.FramePressed, theme.FrameBorder };
+			const glm::vec4 fill = glm::mix(glm::mix(colors.Rest, colors.Hovered, look.Hovered), colors.Pressed, look.Pressed);
+			painter.AddRoundedRect(rect, theme.FrameRounding, Filled(Shade(fill, look, theme), ControlEffects(look, theme, true)));
+			painter.AddRoundedRect(rect, theme.FrameRounding, PainterStyle::Outlined(Shade(colors.Border, look, theme), theme.FrameBorderWidth));
+		}
+
+		// A chevron pointing down, `size` wide, centred on `centre`
+		void PaintChevron(WindowPainter& painter, glm::vec2 centre, float size, float width, const glm::vec4& color)
+		{
+			const glm::vec2 tip = centre + glm::vec2(0.0f, size * 0.25f);
+			painter.AddLine(centre + glm::vec2(-size * 0.5f, -size * 0.25f), tip, width, EPainterLineCap::Round, PainterStyle::Filled(color));
+			painter.AddLine(tip, centre + glm::vec2(size * 0.5f, -size * 0.25f), width, EPainterLineCap::Round, PainterStyle::Filled(color));
+		}
+
+		// The room an icon button keeps for the chevron of a dropdown, at its right end
+		float DropdownWidth(float height)
+		{
+			return std::floor(height * 0.8f);
+		}
+
+		// The pieces of a document tab, from its left: room, the icon, a gap, the name; and the
+		// room the close button takes at its right end (GetDocumentTabCloseRect())
+		struct DocumentTabLayout
+		{
+			float Padding = 0.0f;
+			float IconSize = 0.0f;
+			float Gap = 0.0f;
+			float CloseWidth = 0.0f;
+		};
+
+		DocumentTabLayout GetDocumentTabLayout(float height, const Theme& theme)
+		{
+			return DocumentTabLayout{ std::floor(height * 0.4f), std::floor(height * theme.IconSize), std::floor(height * 0.35f),
+				std::floor(height * 0.8f) + std::floor(height * 0.35f) };
+		}
+
+		// A status item's round icon, this much of the item's height, and the gap after it
+		constexpr float StatusIconFraction = 0.6f;
+		constexpr float StatusIconGap = 0.3f;
+		// The logo's circle, this much of the titlebar's height, and the gap after it
+		constexpr float LogoFraction = 0.65f;
+		constexpr float LogoGap = 0.3f;
+	}
+
 	void PaintButton(WindowPainter& painter, const PainterRect& rect, std::string_view label, const WidgetLook& look, EButtonTone tone)
 	{
 		const Theme& theme = GetTheme();
-
-		struct ToneColors
-		{
-			const glm::vec4& Rest;
-			const glm::vec4& Hovered;
-			const glm::vec4& Pressed;
-		};
-		const ToneColors colors = tone == EButtonTone::Go ? ToneColors{ theme.ButtonGo, theme.ButtonGoHovered, theme.ButtonGoPressed }
-			: tone == EButtonTone::Stop						  ? ToneColors{ theme.ButtonStop, theme.ButtonStopHovered, theme.ButtonStopPressed }
-															  : ToneColors{ theme.Frame, theme.FrameHovered, theme.FramePressed };
-		const glm::vec4 fill = glm::mix(glm::mix(colors.Rest, colors.Hovered, look.Hovered), colors.Pressed, look.Pressed);
-		painter.AddRoundedRect(rect, theme.FrameRounding, Filled(Shade(fill, look, theme), ControlEffects(look, theme, true)));
-		painter.AddRoundedRect(rect, theme.FrameRounding, PainterStyle::Outlined(Shade(theme.FrameBorder, look, theme), theme.FrameBorderWidth));
+		PaintButtonFrame(painter, rect, look, tone, theme);
 
 		// The label centred, pushed down a little while pressed
 		const glm::vec2 textSize = CalcTextSize(label);
@@ -1584,6 +1778,212 @@ namespace Nyx::UI
 			painter.AddLine({ max.x, min.y }, { min.x, max.y }, width, EPainterLineCap::Round, line);
 			break;
 		}
+	}
+
+	void PaintIconButton(WindowPainter& painter, const PainterRect& rect, std::string_view label, EIcon icon, const WidgetLook& look, EButtonTone tone, bool bDropdown)
+	{
+		const Theme& theme = GetTheme();
+		PaintButtonFrame(painter, rect, look, tone, theme);
+
+		// The icon and the label after it, centred in the room left of the dropdown's, pushed
+		// down a little while pressed
+		const float height = rect.GetHeight();
+		const float dropdownWidth = bDropdown ? DropdownWidth(height) : 0.0f;
+		const float iconSize = icon != EIcon::None ? std::floor(height * theme.IconSize) : 0.0f;
+		const float labelWidth = label.empty() ? 0.0f : CalcTextSize(label).x;
+		const float gap = iconSize > 0.0f && labelWidth > 0.0f ? ImGui::GetStyle().ItemInnerSpacing.x : 0.0f;
+		const float contentWidth = iconSize + gap + labelWidth;
+		const float left = std::floor(rect.Min.x + (rect.GetWidth() - dropdownWidth - contentWidth) * 0.5f);
+		const float middle = (rect.Min.y + rect.Max.y) * 0.5f + theme.PressedTextOffset * look.Pressed;
+		const glm::vec4 color = Shade(theme.Text, look, theme);
+		if (iconSize > 0.0f)
+		{
+			const glm::vec2 iconMin{ left, std::floor(middle - iconSize * 0.5f) };
+			PaintIcon(painter, PainterRect{ iconMin, iconMin + glm::vec2(iconSize) }, icon, color);
+		}
+		if (labelWidth > 0.0f)
+		{
+			PaintText(painter, glm::floor(glm::vec2(left + iconSize + gap, middle - ImGui::GetFontSize() * 0.5f)), color, label);
+		}
+
+		// The dropdown's chevron, behind a thin line
+		if (bDropdown)
+		{
+			const float lineX = std::floor(rect.Max.x - dropdownWidth);
+			const float lineInset = std::floor(height * 0.25f);
+			painter.AddRect(PainterRect{ { lineX, rect.Min.y + lineInset }, { lineX + 1.0f, rect.Max.y - lineInset } }, PainterStyle::Filled(Shade(theme.Separator, look, theme)));
+			PaintChevron(painter, { lineX + dropdownWidth * 0.5f, middle }, std::floor(height * 0.3f), std::max(1.25f, height * 0.05f), Shade(theme.TextMuted, look, theme));
+		}
+	}
+
+	void PaintIcon(WindowPainter& painter, const PainterRect& box, EIcon icon, const glm::vec4& color)
+	{
+		const float size = box.GetWidth();
+		const PainterStyle fill = PainterStyle::Filled(color);
+		// A point of the box, from (0, 0) at its top left to (1, 1) at its bottom right, and a rect between two
+		const auto at = [&](float x, float y)
+		{
+			return box.Min + glm::vec2(x, y) * size;
+		};
+		const auto rect = [&](float left, float top, float right, float bottom)
+		{
+			return PainterRect{ at(left, top), at(right, bottom) };
+		};
+		switch (icon)
+		{
+		case EIcon::None:
+			break;
+		case EIcon::Play:
+			painter.AddTriangle(at(0.2f, 0.08f), at(0.2f, 0.92f), at(0.92f, 0.5f), fill);
+			break;
+		case EIcon::PlayAll:
+			painter.AddTriangle(at(0.0f, 0.14f), at(0.0f, 0.86f), at(0.56f, 0.5f), fill);
+			painter.AddTriangle(at(0.44f, 0.14f), at(0.44f, 0.86f), at(1.0f, 0.5f), fill);
+			break;
+		case EIcon::Stop:
+			painter.AddRoundedRect(rect(0.12f, 0.12f, 0.88f, 0.88f), size * 0.12f, fill);
+			break;
+		case EIcon::Pause:
+			painter.AddRoundedRect(rect(0.18f, 0.08f, 0.4f, 0.92f), size * 0.05f, fill);
+			painter.AddRoundedRect(rect(0.6f, 0.08f, 0.82f, 0.92f), size * 0.05f, fill);
+			break;
+		case EIcon::Step:
+			painter.AddTriangle(at(0.12f, 0.1f), at(0.12f, 0.9f), at(0.7f, 0.5f), fill);
+			painter.AddRoundedRect(rect(0.74f, 0.1f, 0.9f, 0.9f), size * 0.04f, fill);
+			break;
+		case EIcon::Build:
+			// A hammer: the head across the top, the handle down from its middle
+			painter.AddRoundedRect(rect(0.1f, 0.1f, 0.9f, 0.38f), size * 0.06f, fill);
+			painter.AddRoundedRect(rect(0.41f, 0.38f, 0.59f, 0.94f), size * 0.06f, fill);
+			break;
+		case EIcon::Document:
+		{
+			// A page with two lines of text
+			const float width = std::max(1.0f, std::floor(size * 0.09f));
+			painter.AddRoundedRect(rect(0.16f, 0.04f, 0.84f, 0.96f), size * 0.12f, PainterStyle::Outlined(color, width));
+			painter.AddLine(at(0.34f, 0.42f), at(0.66f, 0.42f), width, EPainterLineCap::Round, fill);
+			painter.AddLine(at(0.34f, 0.62f), at(0.66f, 0.62f), width, EPainterLineCap::Round, fill);
+			break;
+		}
+		}
+	}
+
+	void PaintBarTab(WindowPainter& painter, const PainterRect& rect, std::string_view label, float selected, const WidgetLook& look)
+	{
+		const Theme& theme = GetTheme();
+
+		// The hover pill behind a tab that isn't selected
+		const float hovered = std::max(look.Hovered, look.Pressed) * (1.0f - selected);
+		if (hovered > 0.0f)
+		{
+			const PainterRect pill{ { rect.Min.x, rect.Min.y + theme.TabPillInset }, { rect.Max.x, rect.Max.y - theme.TabPillInset } };
+			painter.AddRoundedRect(pill, theme.FrameRounding, PainterStyle::Filled(Shade(Fade(theme.MenuItemHovered, hovered), look, theme)));
+		}
+
+		// The selected tab raised, with the underline along its bottom between its rounded corners
+		if (selected > 0.0f)
+		{
+			painter.AddRoundedRect(rect, theme.BarTabRounding, PainterStyle::Filled(Shade(Fade(theme.BarTab, selected), look, theme)));
+			painter.AddRoundedRect(rect, theme.BarTabRounding, PainterStyle::Outlined(Shade(Fade(theme.BarTabBorder, selected), look, theme), theme.FrameBorderWidth));
+			const float inset = std::floor(theme.BarTabRounding * 0.5f);
+			painter.AddRect(PainterRect{ { rect.Min.x + inset, rect.Max.y - theme.TabUnderlineWidth - 1.0f }, { rect.Max.x - inset, rect.Max.y - 1.0f } },
+				PainterStyle::Filled(Shade(Fade(theme.TabUnderline, selected), look, theme)));
+		}
+		if (look.Focused > 0.0f)
+		{
+			painter.AddRoundedRect(rect, theme.BarTabRounding, PainterStyle::Outlined(Fade(theme.Accent, look.Focused), 1.0f));
+		}
+
+		const glm::vec2 textSize = CalcTextSize(label);
+		PaintText(painter, glm::floor((rect.Min + rect.Max - textSize) * 0.5f), Shade(theme.Text, look, theme), label);
+	}
+
+	void PaintDocumentTab(WindowPainter& painter, const PainterRect& rect, std::string_view label, const WidgetLook& look, const WidgetLook& closeLook)
+	{
+		const Theme& theme = GetTheme();
+		const float height = rect.GetHeight();
+		const DocumentTabLayout layout = GetDocumentTabLayout(height, theme);
+
+		// A raised tab, rounded at the top, standing on the bar's bottom; lit a little while hovered
+		const Engine::PainterCornerRadii radii{ theme.BarTabRounding, theme.BarTabRounding, 0.0f, 0.0f };
+		painter.AddRoundedRect(rect, radii, Filled(Shade(theme.BarTab, look, theme), ControlEffects(look, theme, false)));
+		const float hovered = std::max(look.Hovered, look.Pressed);
+		if (hovered > 0.0f)
+		{
+			painter.AddRoundedRect(rect, radii, PainterStyle::Filled(Shade(Fade(theme.TabHovered, hovered), look, theme)));
+		}
+		painter.AddRoundedRect(rect, radii, PainterStyle::Outlined(Shade(theme.BarTabBorder, look, theme), theme.FrameBorderWidth));
+
+		// The icon and the name, cut to fit before the close button
+		const float middle = (rect.Min.y + rect.Max.y) * 0.5f;
+		const glm::vec2 iconMin{ rect.Min.x + layout.Padding, std::floor(middle - layout.IconSize * 0.5f) };
+		PaintIcon(painter, PainterRect{ iconMin, iconMin + glm::vec2(layout.IconSize) }, EIcon::Document, Shade(theme.TextMuted, look, theme));
+		const float textLeft = iconMin.x + layout.IconSize + layout.Gap;
+		std::string cut;
+		PaintText(painter, glm::floor(glm::vec2(textLeft, middle - ImGui::GetFontSize() * 0.5f)), Shade(theme.Text, look, theme),
+			FitText(label, rect.Max.x - layout.CloseWidth - textLeft, cut));
+
+		// The close button: a cross, on the hover pill while hovered
+		const PainterRect close = ToPainterRect(GetDocumentTabCloseRect(rect));
+		const float closeHovered = std::max(closeLook.Hovered, closeLook.Pressed);
+		if (closeHovered > 0.0f)
+		{
+			painter.AddRoundedRect(close, theme.FrameRounding, PainterStyle::Filled(Shade(Fade(theme.MenuItemHovered, closeHovered), closeLook, theme)));
+		}
+		const glm::vec2 centre = glm::floor((close.Min + close.Max) * 0.5f) + 0.5f;
+		const float arm = std::floor(close.GetWidth() * 0.22f);
+		const float width = theme.WindowControlIconWidth * 1.25f;
+		const PainterStyle cross = PainterStyle::Filled(Shade(glm::mix(theme.TextMuted, theme.Text, closeHovered), closeLook, theme));
+		painter.AddLine(centre - glm::vec2(arm), centre + glm::vec2(arm), width, EPainterLineCap::Round, cross);
+		painter.AddLine(centre + glm::vec2(arm, -arm), centre + glm::vec2(-arm, arm), width, EPainterLineCap::Round, cross);
+	}
+
+	void PaintStatusItem(WindowPainter& painter, const PainterRect& rect, std::string_view text, EStatusIcon icon)
+	{
+		const Theme& theme = GetTheme();
+		const float height = rect.GetHeight();
+		const float middle = (rect.Min.y + rect.Max.y) * 0.5f;
+		float textLeft = rect.Min.x;
+		if (icon != EStatusIcon::None)
+		{
+			// A disc in the status's colour, with a mark on it: a tick, "!" or a cross
+			const float size = std::floor(height * StatusIconFraction);
+			const float top = std::floor(middle - size * 0.5f);
+			const PainterRect box{ { rect.Min.x, top }, { rect.Min.x + size, top + size } };
+			const glm::vec2 centre = (box.Min + box.Max) * 0.5f;
+			const glm::vec4& color = icon == EStatusIcon::Ok ? theme.StatusOk : icon == EStatusIcon::Warning ? theme.StatusWarning : theme.StatusError;
+			painter.AddCircle(centre, size * 0.5f, PainterStyle::Filled(color));
+			const float width = std::max(1.5f, size * 0.12f);
+			const PainterStyle mark = PainterStyle::Filled(theme.StatusIconMark);
+			switch (icon)
+			{
+			case EStatusIcon::Ok:
+				PaintCheckmark(painter, box, 1.0f, theme.StatusIconMark);
+				break;
+			case EStatusIcon::Warning:
+				painter.AddLine(centre - glm::vec2(0.0f, size * 0.24f), centre + glm::vec2(0.0f, size * 0.06f), width, EPainterLineCap::Round, mark);
+				painter.AddCircle(centre + glm::vec2(0.0f, size * 0.24f), width * 0.6f, mark);
+				break;
+			case EStatusIcon::Error:
+				painter.AddLine(centre - glm::vec2(size * 0.18f), centre + glm::vec2(size * 0.18f), width, EPainterLineCap::Round, mark);
+				painter.AddLine(centre + glm::vec2(size * 0.18f, -size * 0.18f), centre + glm::vec2(-size * 0.18f, size * 0.18f), width, EPainterLineCap::Round, mark);
+				break;
+			case EStatusIcon::None:
+				break;
+			}
+			textLeft += size + std::floor(height * StatusIconGap);
+		}
+		PaintText(painter, glm::floor(glm::vec2(textLeft, middle - ImGui::GetFontSize() * 0.5f)), theme.Text, text);
+	}
+
+	void PaintTitlebarLogo(WindowPainter& painter, const PainterRect& rect, std::string_view name)
+	{
+		const Theme& theme = GetTheme();
+		const float height = rect.GetHeight();
+		const float size = std::floor(height * LogoFraction);
+		const float middle = (rect.Min.y + rect.Max.y) * 0.5f;
+		painter.AddCircle({ rect.Min.x + size * 0.5f, middle }, size * 0.5f, PainterStyle::Filled(theme.Logo));
+		PaintText(painter, glm::floor(glm::vec2(rect.Min.x + size + std::floor(height * LogoGap), middle - ImGui::GetFontSize() * 0.5f)), theme.Text, name);
 	}
 
 	void PaintToggle(WindowPainter& painter, const PainterRect& rect, std::string_view label, float on, const WidgetLook& look)
@@ -1993,6 +2393,46 @@ namespace Nyx::UI
 		const ImGuiStyle& style = ImGui::GetStyle();
 		const glm::vec2 labelSize = CalcTextSize(VisibleLabel(label));
 		return glm::vec2(labelSize.x + style.FramePadding.x * 2.0f, ImGui::GetFrameHeight());
+	}
+
+	glm::vec2 CalcIconButtonSize(const char* label, EIcon icon, bool bDropdown, float height)
+	{
+		const ImGuiStyle& style = ImGui::GetStyle();
+		const float buttonHeight = height > 0.0f ? height : ImGui::GetFrameHeight();
+		const float labelWidth = CalcTextSize(VisibleLabel(label)).x;
+		const float iconSize = icon != EIcon::None ? std::floor(buttonHeight * GetTheme().IconSize) : 0.0f;
+		const float dropdownWidth = bDropdown ? DropdownWidth(buttonHeight) : 0.0f;
+		// An icon alone gets a button somewhat wider than high
+		if (labelWidth <= 0.0f)
+		{
+			return glm::vec2(std::floor(buttonHeight * 1.6f) + dropdownWidth, buttonHeight);
+		}
+		const float gap = iconSize > 0.0f ? style.ItemInnerSpacing.x : 0.0f;
+		return glm::vec2(std::floor(style.FramePadding.x * 2.0f + iconSize + gap + labelWidth + dropdownWidth), buttonHeight);
+	}
+
+	glm::vec2 CalcBarTabSize(const char* label, float height)
+	{
+		const float tabHeight = height > 0.0f ? height : ImGui::GetFrameHeight();
+		return glm::vec2(std::floor(CalcTextSize(VisibleLabel(label)).x + tabHeight * 1.4f), tabHeight);
+	}
+
+	glm::vec2 CalcDocumentTabSize(const char* label, float height)
+	{
+		const float tabHeight = height > 0.0f ? height : ImGui::GetFrameHeight();
+		const DocumentTabLayout layout = GetDocumentTabLayout(tabHeight, GetTheme());
+		return glm::vec2(std::floor(layout.Padding + layout.IconSize + layout.Gap + CalcTextSize(VisibleLabel(label)).x + layout.CloseWidth), tabHeight);
+	}
+
+	glm::vec2 CalcStatusItemSize(const char* text, EStatusIcon icon, float height)
+	{
+		const float iconWidth = icon != EStatusIcon::None ? std::floor(height * StatusIconFraction) + std::floor(height * StatusIconGap) : 0.0f;
+		return glm::vec2(std::floor(iconWidth + CalcTextSize(text).x), height);
+	}
+
+	glm::vec2 CalcTitlebarLogoSize(const char* name, float height)
+	{
+		return glm::vec2(std::floor(height * LogoFraction) + std::floor(height * LogoGap) + std::floor(CalcTextSize(name).x), height);
 	}
 
 	glm::vec2 CalcToggleSize(const char* label)
