@@ -2,13 +2,22 @@
 
 #include "PainterCommands.h"
 
+#include <glm/glm.hpp>
+
 #include <cstdint>
+#include <span>
 #include <string>
 #include <vector>
 
 // Tile binning: which of a frame's draw commands can touch each 8x8 pixel tile of the target.
 // The painter shader then only evaluates a pixel's own tile's commands, instead of all of them.
-// The plan is in Design/ui-painter.md: stage 1, change 2, and for segments stage 2, change 2.
+// The plan is in Design/ui-painter.md: stage 1, change 2, for segments stage 2, change 2, and on
+// the GPU stage 3, change 13.
+//
+// The CPU measures each command once (MeasurePainterSegment()): what it can touch, and what it
+// hides. The GPU then bins every tile (PainterBin.comp, VulkanPainter::Bin()): it walks the
+// tile's commands in drawing order, keeps those that touch it, and drops whatever lies under a
+// command that covers the whole tile opaquely, the per-tile reduction.
 
 namespace Nyx::Engine
 {
@@ -33,8 +42,9 @@ namespace Nyx::Engine
 
 	static_assert(sizeof(PainterTile) == 8, "The shader reads tiles of exactly 8 bytes");
 
-	// Limits per frame. Past them, the frame's remaining commands are dropped and a problem is
-	// reported; binning never allocates without bound, whatever is recorded.
+	// Limits per frame, so that binning never allocates without bound, whatever is recorded. Past
+	// MaxCommands, a segment's remaining commands are dropped; tiles whose entries don't fit in
+	// MaxTileEntries are drawn empty. Either is reported.
 	struct PainterBudget
 	{
 		uint32_t MaxCommands = 64 * 1024;
@@ -44,20 +54,26 @@ namespace Nyx::Engine
 
 	struct PainterBinningStats
 	{
-		// Commands recorded this frame
+		// Measured on the CPU (MeasurePainterSegment()):
+		// commands recorded this frame
 		uint32_t Commands = 0;
 		// Commands that can't touch any pixel: off the target, or clipped away. Not a problem.
 		uint32_t CulledCommands = 0;
 		// Commands dropped because the budget ran out
 		uint32_t DroppedCommands = 0;
+		// How long measuring took
+		float BinningMilliseconds = 0.0f;
 
-		// Tiles with at least one command
+		// Binned on the GPU, read back once it is done (VulkanPainterSegments::ReadBack()):
+		// tiles with at least one command, their entries, and the most in one tile
 		uint32_t TilesInUse = 0;
 		uint32_t TileEntries = 0;
 		uint32_t MaxCommandsPerTile = 0;
-
-		// How long BinPainterCommands() took, on the CPU
-		float BinningMilliseconds = 0.0f;
+		// The entries before the per-tile reduction dropped what lies under opaque shapes, and
+		// what it would keep if the colours asked for were opaque too
+		// (VulkanPainterSegments::SetAlsoOpaqueColors())
+		uint32_t EntriesBeforeReduction = 0;
+		uint32_t EntriesIfAlsoOpaque = 0;
 
 		// For the statistics in the Painter Test window: 0 when no tile is in use
 		float GetAverageCommandsPerTileInUse() const
@@ -99,16 +115,16 @@ namespace Nyx::Engine
 		}
 	};
 
-	// What dropping the tile entries hidden under opaque shapes would leave (Design/ui-painter.md,
-	// stage 3, change 12): in each tile, every entry before the last command that covers the whole
-	// tile opaquely could go, since nothing drawn before it shows there
-	struct PainterOcclusionEstimate
+	// What the per-tile reduction does (Design/ui-painter.md, stage 3, change 13): in each tile,
+	// every entry before the last command that covers the whole tile opaquely goes, since nothing
+	// drawn before it shows there
+	struct PainterReduction
 	{
-		uint32_t Entries = 0;
-		// Kept with the look as it is
+		// The tiles' entries before the reduction, and those it keeps
+		uint32_t EntriesBefore = 0;
 		uint32_t Kept = 0;
-		// Kept if commands of the colours asked for were opaque too, e.g. the docked cards
-		uint32_t KeptAlsoOpaque = 0;
+		// What it would keep if commands of the colours asked for were opaque too, e.g. the docked cards
+		uint32_t KeptIfAlsoOpaque = 0;
 	};
 
 	// One frame of painting inside ImGui windows (Nyx::UI::WindowPainter), summed over all
@@ -155,9 +171,11 @@ namespace Nyx::Engine
 			float ImGuiRender = 0.0f;
 			float Segments = 0.0f;
 
-			// GPU, from timestamps: the painter's draws in all OS windows, the main window's whole
-			// UI pass (ImGui's drawing and the painter's), and the glass backdrop. Only while bGpu.
+			// GPU, from timestamps: binning the segments, the painter's draws in all OS windows,
+			// the main window's whole UI pass (ImGui's drawing and the painter's), and the glass
+			// backdrop. Only while bGpu.
 			bool bGpu = false;
+			float GpuBinning = 0.0f;
 			float GpuPainter = 0.0f;
 			float GpuMainWindowUI = 0.0f;
 			float GpuGlassBackdrop = 0.0f;
@@ -173,32 +191,29 @@ namespace Nyx::Engine
 		uint32_t Draws = 0;
 		std::vector<OsWindow> OsWindows;
 		uint32_t Commands = 0;
-		// Tiles with at least one command, and command entries in them
+		// Tiles with at least one command, and command entries in them, as the GPU binned them
 		uint32_t TilesInUse = 0;
 		uint32_t TileEntries = 0;
-		// Binning all segments, on the CPU
+		// Measuring all segments' commands for binning, on the CPU
 		float BinningMilliseconds = 0.0f;
-		// The segments' commands, groups, tiles and entries, uploaded for the GPU, and the
-		// commands' and groups' part of it
+		// What goes to the GPU each frame for the segments: commands, groups, and the measured
+		// commands and segments the GPU bins from
 		size_t UploadBytes = 0;
-		size_t CommandUploadBytes = 0;
 		Times FrameTimes;
-		// What the per-tile reduction would keep, the docked cards as they are and opaque; only
-		// while asked for (Nyx::UI::RequestPainterEstimates())
-		bool bOcclusionEstimated = false;
-		PainterOcclusionEstimate Occlusion;
+		// The per-tile reduction, over all segments, with the docked cards as they are and if opaque
+		PainterReduction Reduction;
 
 		// What went wrong: the window painters' problems, each after its window's name, and
 		// binning's
 		std::vector<std::string> Problems;
 	};
 
-	// A frame's commands, or a segment's, sorted into tiles, as the GPU reads them
+	// A segment's commands sorted into tiles, as the GPU binned them and the shader reads them,
+	// read back (VulkanPainterSegments::GetBinned()), e.g. for the tests
 	struct PainterTiles
 	{
-		// The grid covers the whole target (BinPainterCommands()), or only the tiles a segment's
-		// commands can touch (BinPainterSegment()). Tiles at its right and bottom edges may stick
-		// out of the target.
+		// The grid covers the whole target (a canvas), or only the tiles a segment's commands can
+		// touch. Tiles at its right and bottom edges may stick out of the target.
 		uint32_t TilesX = 0;
 		uint32_t TilesY = 0;
 
@@ -207,9 +222,9 @@ namespace Nyx::Engine
 		uint32_t OriginX = 0;
 		uint32_t OriginY = 0;
 
-		// TilesX * TilesY tiles, row by row from the top left
+		// TilesX * TilesY tiles, row by row from the top left, each with its entries from FirstEntry
 		std::vector<PainterTile> Tiles;
-		// Command indices, grouped by tile. For a segment they count from its first command.
+		// Command indices, grouped by tile, counting from the segment's first command
 		std::vector<uint32_t> Entries;
 
 		PainterBinningStats Stats;
@@ -220,23 +235,92 @@ namespace Nyx::Engine
 		const PainterTile& GetTile(uint32_t tileX, uint32_t tileY) const { return Tiles[tileY * TilesX + tileX]; }
 	};
 
-	// Sorts the painter's commands into tiles. A command goes into every tile its coverage can
-	// touch:
-	//  - its shape (GetShapeBounds()), grown by the anti-aliasing reach;
-	//  - for a command in a group, the whole group's reach instead: all of the group's shapes,
-	//    with their shadow and glow. The shader needs every shape of a group to draw its shadow
-	//    and glow, even in a tile that only the shadow of one of them reaches.
-	//  - lines on their own walk their tiles row by row, so a diagonal line touches a thin band
-	//    of tiles, not its whole bounding box;
-	//  - cut by the command's clip rect and the target.
-	// Commands keep their order within each tile, since the shader blends in that order.
-	//
-	// Reuses the memory of `inOutTiles` from the previous frame.
-	void BinPainterCommands(const Painter& painter, const PainterBudget& budget, PainterTiles& inOutTiles);
+	// One command as the GPU binner reads it (PainterBin.comp): 80 bytes, five vec4s (std430).
+	// Rects are in target pixels; an empty rect (Min not below Max) is none.
+	struct PainterBinCommand
+	{
+		// What the command can touch: its shape (GetShapeBounds()), or for a command in a group the
+		// group's whole reach (all its shapes in the segment, with their shadow and glow: the shader
+		// needs every shape of a group for its shadow and glow, even in a tile only one shadow
+		// reaches), grown by the anti-aliasing reach, cut by its clip rect and the target
+		PainterRect Reach;
+		// Tiles wholly inside it are covered opaquely by the command, which hides what comes before
+		// it there: a solid, opaque rect without outline, less its largest rounding, cut by its clip
+		// rect. Empty for every other command.
+		PainterRect Hides;
+		// The same, with the colours asked for counted as opaque too; only counted, for the statistics
+		PainterRect HidesIfAlsoOpaque;
+		// A line on its own touches only the tiles of its band, row by row, not its whole Reach:
+		// its ends, and how far its pixels reach from it (half its width and the anti-aliasing).
+		// LineReach 0: not a line on its own.
+		glm::vec2 LineFrom{ 0.0f };
+		glm::vec2 LineTo{ 0.0f };
+		float LineReach = 0.0f;
+		float Unused[3] = {};
+	};
 
-	// Sorts one segment's commands into tiles, like BinPainterCommands(), over a grid that only
-	// covers the tiles those commands can touch: a small painted button costs a few tiles, not
-	// the whole target's. A group's reach counts only its shapes in this segment. The budget
-	// applies to this segment alone.
-	void BinPainterSegment(const Painter& painter, const PainterSegment& segment, const PainterBudget& budget, PainterTiles& inOutTiles);
+	static_assert(sizeof(PainterBinCommand) == 80, "PainterBin.comp reads commands of exactly 80 bytes");
+
+	// The GPU binner's workgroup: a segment's tiles start at a multiple of it, so that one workgroup
+	// bins only one segment's tiles (PainterBin.comp's local_size_x)
+	constexpr uint32_t PainterBinWorkgroupSize = 64;
+
+	// One segment as the GPU binner reads it: 32 bytes, std430
+	struct PainterBinSegment
+	{
+		// Its measured commands, and its tiles in the tile buffer
+		uint32_t FirstCommand = 0;
+		uint32_t CommandCount = 0;
+		uint32_t FirstTile = 0;
+		uint32_t TilesX = 0;
+		uint32_t TilesY = 0;
+		uint32_t OriginX = 0;
+		uint32_t OriginY = 0;
+		uint32_t Unused = 0;
+	};
+
+	static_assert(sizeof(PainterBinSegment) == 32, "PainterBin.comp reads segments of exactly 32 bytes");
+
+	// What the GPU binner sums for one segment: 32 bytes, std430, written by the GPU and read back
+	struct PainterBinSums
+	{
+		uint32_t EntriesBefore = 0;
+		uint32_t Entries = 0;
+		uint32_t EntriesIfAlsoOpaque = 0;
+		uint32_t TilesInUse = 0;
+		uint32_t MaxPerTile = 0;
+		// Not 0 if some of its tiles' entries didn't fit, and were drawn empty
+		uint32_t Overflowed = 0;
+		uint32_t Unused[2] = {};
+	};
+
+	static_assert(sizeof(PainterBinSums) == 32, "PainterBin.comp writes sums of exactly 32 bytes");
+
+	// One segment measured for binning on the GPU
+	struct PainterMeasuredSegment
+	{
+		// The grid, as in PainterTiles
+		uint32_t OriginX = 0;
+		uint32_t OriginY = 0;
+		uint32_t TilesX = 0;
+		uint32_t TilesY = 0;
+		// One per command binned, in drawing order; commands past the budget aren't
+		std::vector<PainterBinCommand> Commands;
+		// The most entries its tiles can have: each command's tiles, before the reduction. Lines
+		// count their whole Reach, so it may be more.
+		uint64_t MaxEntries = 0;
+		PainterBinningStats Stats;
+		std::vector<std::string> Problems;
+	};
+
+	// Measures one segment's commands for binning on the GPU, once per command: what each can
+	// touch and what it hides (PainterBinCommand), the grid, and the most entries. The grid covers
+	// the whole target with bWholeTarget (a canvas), or else only the tiles the commands can
+	// touch: a small painted button costs a few tiles, not the whole target's. A group's reach
+	// counts only its shapes in this segment. `alsoOpaque`: packed colours
+	// (PackPremultipliedColor()) whose solid rects count as opaque in HidesIfAlsoOpaque.
+	//
+	// Reuses the memory of `inOutSegment` from the previous frame.
+	void MeasurePainterSegment(const Painter& painter, const PainterSegment& segment, bool bWholeTarget, const PainterBudget& budget,
+		std::span<const uint32_t> alsoOpaque, PainterMeasuredSegment& inOutSegment);
 }

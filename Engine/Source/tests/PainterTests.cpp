@@ -359,76 +359,45 @@ namespace
 		Require(Near(GetShapeBounds(commands[4]), PainterRect{ { 0, 0 }, { 20, 10 } }), "A triangle's bounds are wrong");
 	}
 
-	// Tile binning
+	// Measuring for binning on the GPU (MeasurePainterSegment()); the binning itself, tile by
+	// tile, is tested in NyxPainterGpuTests
 
-	using TileCoordinates = std::pair<uint32_t, uint32_t>;
-
-	PainterTiles Bin(const Painter& painter, const PainterBudget& budget = PainterBudget{})
+	PainterMeasuredSegment Measure(const Painter& painter, const PainterBudget& budget = PainterBudget{}, std::span<const uint32_t> alsoOpaque = {})
 	{
-		PainterTiles tiles;
-		BinPainterCommands(painter, budget, tiles);
-		return tiles;
+		PainterMeasuredSegment measured;
+		MeasurePainterSegment(painter, PainterSegment{ 0, static_cast<uint32_t>(painter.GetCommands().size()) }, true, budget, alsoOpaque, measured);
+		return measured;
 	}
 
-	std::vector<uint32_t> CommandsInTile(const PainterTiles& tiles, uint32_t tileX, uint32_t tileY)
+	PainterMeasuredSegment MeasureSegment(const Painter& painter, const PainterSegment& segment)
 	{
-		const PainterTile& tile = tiles.GetTile(tileX, tileY);
-		return std::vector<uint32_t>(tiles.Entries.begin() + tile.FirstEntry, tiles.Entries.begin() + tile.FirstEntry + tile.Count);
-	}
-
-	bool TileHasCommand(const PainterTiles& tiles, uint32_t tileX, uint32_t tileY, uint32_t commandIndex)
-	{
-		const std::vector<uint32_t> commands = CommandsInTile(tiles, tileX, tileY);
-		return std::find(commands.begin(), commands.end(), commandIndex) != commands.end();
-	}
-
-	// Every tile that holds the command, row by row
-	std::vector<TileCoordinates> TilesOfCommand(const PainterTiles& tiles, uint32_t commandIndex)
-	{
-		std::vector<TileCoordinates> result;
-		for (uint32_t tileY = 0; tileY < tiles.TilesY; ++tileY)
-		{
-			for (uint32_t tileX = 0; tileX < tiles.TilesX; ++tileX)
-			{
-				if (TileHasCommand(tiles, tileX, tileY, commandIndex))
-				{
-					result.emplace_back(tileX, tileY);
-				}
-			}
-		}
-		return result;
-	}
-
-	// The tile a pixel position lies in
-	TileCoordinates TileAt(glm::vec2 position)
-	{
-		return TileCoordinates{ static_cast<uint32_t>(position.x) / PainterTileSize, static_cast<uint32_t>(position.y) / PainterTileSize };
+		PainterMeasuredSegment measured;
+		MeasurePainterSegment(painter, segment, false, PainterBudget{}, {}, measured);
+		return measured;
 	}
 
 	void TestGridCoversTheTarget()
 	{
 		Painter painter;
 		painter.BeginFrame(100, 50);
-		const PainterTiles tiles = Bin(painter);
-		Require(tiles.TilesX == 13 && tiles.TilesY == 7, "A 100x50 target should have 13x7 tiles, the last ones sticking out");
-		Require(tiles.Tiles.size() == 13 * 7, "There should be one tile per grid cell");
-		Require(tiles.Entries.empty() && tiles.Stats.TilesInUse == 0, "An empty frame should have no entries");
+		const PainterMeasuredSegment measured = Measure(painter);
+		Require(measured.TilesX == 13 && measured.TilesY == 7, "A 100x50 target should have 13x7 tiles, the last ones sticking out");
+		Require(measured.Commands.empty() && measured.MaxEntries == 0 && measured.Problems.empty(), "An empty frame should have no commands or entries");
 	}
 
-	void TestShapesLandInTheirTiles()
+	void TestReachIsTheShapeWithItsAntiAliasing()
 	{
 		Painter painter;
 		painter.BeginFrame(100, 100);
-		// With one pixel of anti-aliasing, this rect covers pixels 8 to 24 across and 8 to 16 down.
 		painter.AddRect(PainterRect{ { 9, 9 }, { 23, 15 } }, PainterStyle::Filled(Orange));
-		// Covers pixels 35 to 45 both ways: tiles 4 and 5.
 		painter.AddCircle({ 40, 40 }, 4.0f, PainterStyle::Filled(Orange));
-		const PainterTiles tiles = Bin(painter);
+		const PainterMeasuredSegment measured = Measure(painter);
 
-		Require(TilesOfCommand(tiles, 0) == std::vector<TileCoordinates>{ { 1, 1 }, { 2, 1 } }, "The rect should land in exactly tiles (1,1) and (2,1)");
-		Require(TilesOfCommand(tiles, 1) == std::vector<TileCoordinates>{ { 4, 4 }, { 5, 4 }, { 4, 5 }, { 5, 5 } },
-			"The circle should land in exactly tiles (4..5, 4..5)");
-		Require(tiles.Stats.CulledCommands == 0 && tiles.Stats.DroppedCommands == 0 && tiles.Problems.empty(), "Nothing should be culled or dropped");
+		Require(Near(measured.Commands[0].Reach, PainterRect{ { 8, 8 }, { 24, 16 } }) && Near(measured.Commands[1].Reach, PainterRect{ { 35, 35 }, { 45, 45 } }),
+			"A shape should reach its bounds and one pixel of anti-aliasing");
+		// The rect touches tiles 1 to 2 across, row 1; the circle tiles 4 to 5 both ways.
+		Require(measured.MaxEntries == 2 + 4, "The most entries should be each command's tiles, got " + std::to_string(measured.MaxEntries));
+		Require(measured.Stats.Commands == 2 && measured.Stats.CulledCommands == 0 && measured.Stats.DroppedCommands == 0, "Nothing should be culled or dropped");
 	}
 
 	void TestCommandsThatTouchNothingAreCulled()
@@ -440,100 +409,32 @@ namespace
 		painter.AddCircle({ 80, 80 }, 5.0f, PainterStyle::Filled(Orange));
 		painter.PopClipRect();
 		painter.AddCircle({ 50, 50 }, 5.0f, PainterStyle::Filled(Orange));
-		const PainterTiles tiles = Bin(painter);
+		const PainterMeasuredSegment measured = Measure(painter);
 
-		Require(tiles.Stats.CulledCommands == 2, "Off-target and clipped-away commands should be culled, got " + std::to_string(tiles.Stats.CulledCommands));
-		Require(TilesOfCommand(tiles, 0).empty() && TilesOfCommand(tiles, 1).empty(), "Culled commands should be in no tile");
-		Require(!TilesOfCommand(tiles, 2).empty(), "A visible command after culled ones should still be binned");
-		Require(tiles.Problems.empty(), "Culling is not a problem");
+		Require(measured.Stats.CulledCommands == 2, "Off-target and clipped-away commands should be culled, got " + std::to_string(measured.Stats.CulledCommands));
+		Require(measured.Commands[0].Reach.IsEmpty() && measured.Commands[1].Reach.IsEmpty() && measured.Commands[0].Hides.IsEmpty(),
+			"Culled commands should reach and hide nothing");
+		Require(!measured.Commands[2].Reach.IsEmpty() && measured.Problems.empty(), "A visible command after culled ones should still reach, and culling is not a problem");
 
 		// A target without pixels has no tiles at all.
 		painter.BeginFrame(0, 0);
 		painter.AddCircle({ 0, 0 }, 5.0f, PainterStyle::Filled(Orange));
-		const PainterTiles empty = Bin(painter);
-		Require(empty.Tiles.empty() && empty.Entries.empty() && empty.Stats.CulledCommands == 1, "A 0x0 target should cull everything");
+		const PainterMeasuredSegment empty = Measure(painter);
+		Require(empty.TilesX == 0 && empty.TilesY == 0 && empty.Stats.CulledCommands == 1, "A 0x0 target should cull everything");
 	}
 
-	void TestClipRectCutsCoverage()
+	void TestClipRectCutsTheReach()
 	{
 		Painter painter;
 		painter.BeginFrame(100, 100);
 		painter.PushClipRect(PainterRect{ { 16, 16 }, { 32, 32 } });
 		painter.AddRect(PainterRect{ { 0, 0 }, { 100, 100 } }, WithShadow(Orange));
 		painter.PopClipRect();
-		const PainterTiles tiles = Bin(painter);
-
-		Require(TilesOfCommand(tiles, 0) == std::vector<TileCoordinates>{ { 2, 2 }, { 3, 2 }, { 2, 3 }, { 3, 3 } },
-			"A command should only cover its clip rect's tiles, shadow included");
+		const PainterMeasuredSegment measured = Measure(painter);
+		Require(Near(measured.Commands[0].Reach, PainterRect{ { 16, 16 }, { 32, 32 } }), "A command should only reach its clip rect, shadow included");
 	}
 
-	void TestTilesKeepDrawingOrder()
-	{
-		Painter painter;
-		painter.BeginFrame(64, 64);
-		painter.AddRect(PainterRect{ { 0, 0 }, { 16, 16 } }, PainterStyle::Filled(Orange));
-		painter.AddCircle({ 4, 4 }, 2.0f, PainterStyle::Filled(Black));
-		painter.AddRect(PainterRect{ { 1, 1 }, { 6, 6 } }, PainterStyle::Filled(Orange));
-		const PainterTiles tiles = Bin(painter);
-
-		Require(CommandsInTile(tiles, 0, 0) == std::vector<uint32_t>{ 0, 1, 2 }, "A tile should list its commands in drawing order");
-
-		// The first rect covers pixels -1 to 17 each way: tiles 0 to 2, nine of them. The two
-		// small shapes only add to tile (0,0).
-		Require(tiles.Stats.TilesInUse == 9 && tiles.Stats.TileEntries == 11 && tiles.Stats.MaxCommandsPerTile == 3,
-			"The statistics are wrong");
-		Require(Near(tiles.Stats.GetAverageCommandsPerTileInUse(), 11.0f / 9.0f), "The average per tile in use is wrong");
-	}
-
-	// Checks that every tile the line's pixels can be in holds the line, by walking along it
-	// and across it in small steps.
-	void RequireLineCovered(const PainterTiles& tiles, uint32_t commandIndex, glm::vec2 from, glm::vec2 to, float width, const std::string& name)
-	{
-		const glm::vec2 along = to - from;
-		const glm::vec2 across = glm::normalize(glm::vec2(-along.y, along.x));
-		for (float t = 0.0f; t <= 1.0f; t += 0.0005f)
-		{
-			for (float side = -0.5f; side <= 0.5f; side += 0.25f)
-			{
-				const glm::vec2 point = from + along * t + across * (side * width);
-				if (point.x < 0.0f || point.y < 0.0f || point.x >= tiles.TilesX * 8.0f || point.y >= tiles.TilesY * 8.0f)
-				{
-					continue;
-				}
-				const TileCoordinates tile = TileAt(point);
-				Require(TileHasCommand(tiles, tile.first, tile.second, commandIndex),
-					name + " is missing from tile (" + std::to_string(tile.first) + "," + std::to_string(tile.second) + ")");
-			}
-		}
-	}
-
-	void TestLinesWalkTheirTiles()
-	{
-		Painter painter;
-		painter.BeginFrame(800, 800);
-		painter.AddLine({ 0, 0 }, { 800, 800 }, 2.0f, EPainterLineCap::Flat, PainterStyle::Filled(Black));
-		painter.AddLine({ 13, 700 }, { 790, 610 }, 5.0f, EPainterLineCap::Round, PainterStyle::Filled(Black));
-		painter.AddLine({ 400, 3 }, { 430, 797 }, 1.0f, EPainterLineCap::Flat, PainterStyle::Filled(Black));
-		const PainterTiles tiles = Bin(painter);
-
-		// Its bounding box would be all 100x100 tiles; along the diagonal it needs about three per row.
-		const size_t diagonalTiles = TilesOfCommand(tiles, 0).size();
-		Require(diagonalTiles < 400, "A diagonal line should touch a thin band of tiles, got " + std::to_string(diagonalTiles));
-
-		RequireLineCovered(tiles, 0, { 0, 0 }, { 800, 800 }, 2.0f, "The diagonal line");
-		RequireLineCovered(tiles, 1, { 13, 700 }, { 790, 610 }, 5.0f, "The shallow line");
-		RequireLineCovered(tiles, 2, { 400, 3 }, { 430, 797 }, 1.0f, "The steep line");
-
-		// A horizontal line, 2 wide at y = 4: pixels 3 to 5, plus anti-aliasing 2 to 6. One row of tiles.
-		painter.BeginFrame(100, 100);
-		painter.AddLine({ 10, 4 }, { 70, 4 }, 2.0f, EPainterLineCap::Flat, PainterStyle::Filled(Black));
-		const PainterTiles horizontal = Bin(painter);
-		const std::vector<TileCoordinates> horizontalTiles = TilesOfCommand(horizontal, 0);
-		Require(horizontalTiles.size() == 8 && horizontalTiles.front() == TileCoordinates{ 1, 0 } && horizontalTiles.back() == TileCoordinates{ 8, 0 },
-			"A horizontal line should cover tiles 1 to 8 of row 0");
-	}
-
-	void TestGroupsCoverTheirWholeReach()
+	void TestGroupsReachTheirWholeGroup()
 	{
 		Painter painter;
 		painter.BeginFrame(400, 400);
@@ -548,35 +449,48 @@ namespace
 		painter.AddCircle({ 100, 8 }, 4.0f, PainterStyle::Filled(Orange));
 		painter.EndGroup();
 
-		// A circle with a glow of its own, reaching 10 pixels past its edge
-		PainterStyle glowing = PainterStyle::Filled(Orange);
-		glowing.Effects.Glow.Color = Orange;
-		glowing.Effects.Glow.Distance = 10.0f;
-		painter.AddCircle({ 200, 200 }, 4.0f, glowing);
-
-		// A line in a group without effects covers the group's bounds, not just its own band.
+		// A line in a group covers the group's reach; a line on its own walks its band.
 		painter.BeginGroup(PainterEffects{});
 		painter.AddLine({ 0, 300 }, { 80, 380 }, 1.0f, EPainterLineCap::Flat, PainterStyle::Filled(Black));
 		painter.EndGroup();
+		painter.AddLine({ 0, 100 }, { 80, 180 }, 2.0f, EPainterLineCap::Flat, PainterStyle::Filled(Black));
+		const PainterMeasuredSegment measured = Measure(painter);
 
-		const PainterTiles tiles = Bin(painter);
-
-		// The tile of pixel (12, 50) only lies in the rect's shadow, but the shader needs both
-		// shapes of the group there.
-		const TileCoordinates inShadow = TileAt({ 12, 50 });
-		Require(TileHasCommand(tiles, inShadow.first, inShadow.second, 0) && TileHasCommand(tiles, inShadow.first, inShadow.second, 1),
-			"A tile in a group's shadow should hold every shape of the group");
-		const TileCoordinates belowShadow = TileAt({ 12, 90 });
-		Require(CommandsInTile(tiles, belowShadow.first, belowShadow.second).empty(), "A tile past the shadow should hold nothing");
-
-		const TileCoordinates inGlow = TileAt({ 212, 200 });
-		Require(TileHasCommand(tiles, inGlow.first, inGlow.second, 2), "A tile in a shape's glow should hold the shape");
-
-		const TileCoordinates cornerOfLine = TileAt({ 76, 302 });
-		Require(TileHasCommand(tiles, cornerOfLine.first, cornerOfLine.second, 3), "A line in a group should cover the group's whole bounds");
+		// Both shapes reach the whole group: both shapes and the shadow under them, 40 + 4 lower.
+		const PainterRect& rect = measured.Commands[0].Reach;
+		Require(Near(rect, measured.Commands[1].Reach) && rect.Max.x >= 104.0f && rect.Max.y >= 16.0f + 40.0f + 4.0f,
+			"Each shape of a group should reach the whole group with its shadow");
+		Require(measured.Commands[2].LineReach == 0.0f, "A line in a group should cover the group's reach, not walk its band");
+		Require(measured.Commands[3].LineReach == 2.0f && measured.Commands[3].LineFrom == glm::vec2(0, 100) && measured.Commands[3].LineTo == glm::vec2(80, 180),
+			"A line on its own should walk its band: half its width and the anti-aliasing from it");
 	}
 
-	void TestBudgetDropsTheRestOfTheFrame()
+	// What a command hides for the per-tile reduction: a solid, opaque rect, less its largest
+	// rounding, cut by its clip rect; nothing else. The colours asked for count as opaque in
+	// HidesIfAlsoOpaque.
+	void TestOpaqueRectsHide()
+	{
+		const glm::vec4 translucent{ 0.2f, 0.4f, 0.8f, 0.5f };
+		Painter painter;
+		painter.BeginFrame(100, 100);
+		painter.AddRoundedRect(PainterRect{ { 8, 8 }, { 56, 56 } }, 8.0f, PainterStyle::Filled(Orange));
+		painter.AddRect(PainterRect{ { 8, 8 }, { 56, 56 } }, PainterStyle::Filled(translucent));
+		painter.AddRect(PainterRect{ { 8, 8 }, { 56, 56 } }, PainterStyle::Outlined(Orange, 2.0f));
+		painter.AddCircle({ 50, 50 }, 20.0f, PainterStyle::Filled(Orange));
+		painter.PushClipRect(PainterRect{ { 0, 0 }, { 30, 30 } });
+		painter.AddRect(PainterRect{ { 0, 0 }, { 100, 100 } }, PainterStyle::Filled(Orange));
+		painter.PopClipRect();
+		const uint32_t translucentColor = PackPremultipliedColor(translucent);
+		const PainterMeasuredSegment measured = Measure(painter, PainterBudget{}, std::span<const uint32_t>(&translucentColor, 1));
+
+		Require(Near(measured.Commands[0].Hides, PainterRect{ { 16, 16 }, { 48, 48 } }), "An opaque rounded rect should hide its inside less its rounding");
+		Require(measured.Commands[1].Hides.IsEmpty() && Near(measured.Commands[1].HidesIfAlsoOpaque, PainterRect{ { 8, 8 }, { 56, 56 } }),
+			"A translucent rect should hide nothing, but count as hiding if its colour is asked for");
+		Require(measured.Commands[2].Hides.IsEmpty() && measured.Commands[3].Hides.IsEmpty(), "Outlines and other shapes should hide nothing");
+		Require(Near(measured.Commands[4].Hides, PainterRect{ { 0, 0 }, { 30, 30 } }), "An opaque rect should hide only inside its clip rect");
+	}
+
+	void TestCommandBudgetDropsTheRest()
 	{
 		Painter painter;
 		painter.BeginFrame(64, 64);
@@ -586,43 +500,28 @@ namespace
 
 		PainterBudget fewCommands;
 		fewCommands.MaxCommands = 2;
-		const PainterTiles tiles = Bin(painter, fewCommands);
-		Require(tiles.Stats.DroppedCommands == 1, "One command over the command budget should be dropped");
-		Require(!TilesOfCommand(tiles, 1).empty() && TilesOfCommand(tiles, 2).empty(), "The commands within the budget should be binned, the rest not");
-		Require(tiles.Problems.size() == 1 && tiles.Problems[0].find("budget ran out") != std::string::npos, "Running out of budget should be reported");
-
-		// Each full-target rect needs all 64 tiles. Only the first fits in 100 entries; the small
-		// circle after the second would fit, but the rest of the frame is dropped together.
-		painter.BeginFrame(64, 64);
-		painter.AddRect(PainterRect{ { 0, 0 }, { 64, 64 } }, PainterStyle::Filled(Orange));
-		painter.AddRect(PainterRect{ { 0, 0 }, { 64, 64 } }, PainterStyle::Filled(Orange));
-		painter.AddCircle({ 4, 4 }, 2.0f, PainterStyle::Filled(Orange));
-
-		PainterBudget fewEntries;
-		fewEntries.MaxTileEntries = 100;
-		const PainterTiles full = Bin(painter, fewEntries);
-		Require(full.Stats.DroppedCommands == 2 && full.Stats.TileEntries == 64, "Commands past the entry budget should be dropped together");
+		const PainterMeasuredSegment measured = Measure(painter, fewCommands);
+		Require(measured.Stats.DroppedCommands == 1 && measured.Commands.size() == 2, "One command over the command budget should be dropped");
+		Require(measured.Problems.size() == 1 && measured.Problems[0].find("budget ran out") != std::string::npos, "Running out of budget should be reported");
 	}
 
-	void TestBinningReusesItsResult()
+	void TestMeasuringReusesItsResult()
 	{
 		Painter painter;
-		PainterTiles tiles;
+		PainterMeasuredSegment measured;
 
 		painter.BeginFrame(64, 64);
 		painter.AddRect(PainterRect{ { 0, 0 }, { 64, 64 } }, PainterStyle::Filled(Orange));
 		PainterBudget tight;
 		tight.MaxCommands = 0;
-		BinPainterCommands(painter, tight, tiles);
-		Require(!tiles.Problems.empty(), "The first frame should report its dropped command");
+		MeasurePainterSegment(painter, PainterSegment{ 0, 1 }, true, tight, {}, measured);
+		Require(!measured.Problems.empty(), "The first frame should report its dropped command");
 
 		painter.BeginFrame(16, 8);
 		painter.AddCircle({ 4, 4 }, 2.0f, PainterStyle::Filled(Orange));
-		BinPainterCommands(painter, PainterBudget{}, tiles);
-		Require(tiles.TilesX == 2 && tiles.TilesY == 1 && tiles.Tiles.size() == 2, "The grid should follow the new target");
-		Require(tiles.Problems.empty() && tiles.Stats.DroppedCommands == 0 && tiles.Stats.Commands == 1, "Problems and statistics shouldn't carry over");
-		Require(CommandsInTile(tiles, 0, 0) == std::vector<uint32_t>{ 0 } && CommandsInTile(tiles, 1, 0).empty(),
-			"The previous frame's entries shouldn't carry over");
+		MeasurePainterSegment(painter, PainterSegment{ 0, 1 }, true, PainterBudget{}, {}, measured);
+		Require(measured.TilesX == 2 && measured.TilesY == 1 && measured.Commands.size() == 1, "The grid should follow the new target");
+		Require(measured.Problems.empty() && measured.Stats.DroppedCommands == 0 && measured.Stats.Commands == 1, "Problems and statistics shouldn't carry over");
 	}
 
 	// Text and images
@@ -793,9 +692,8 @@ namespace
 		// pixels 15 to 49 with anti-aliasing, tiles 1 to 6.
 		painter.BeginFrame(64, 64);
 		painter.AddImageGlow(FakeTexture(100), PainterRect{ { 28, 28 }, { 36, 36 } }, 12.0f, 1.0f);
-		const PainterTiles tiles = Bin(painter);
-		Require(TileHasCommand(tiles, 1, 4, 0) && TileHasCommand(tiles, 6, 4, 0) && !TileHasCommand(tiles, 0, 4, 0) && !TileHasCommand(tiles, 7, 4, 0),
-			"An image glow should be binned out to its reach");
+		const PainterMeasuredSegment measured = Measure(painter);
+		Require(Near(measured.Commands[0].Reach, PainterRect{ { 15, 15 }, { 49, 49 } }) && measured.MaxEntries == 6 * 6, "An image glow should reach out to its reach");
 	}
 
 	void TestGlass()
@@ -852,12 +750,12 @@ namespace
 			Require(bHasType[type], "The test sheet should show every command type, missing type " + std::to_string(type));
 		}
 
-		PainterTiles tiles;
-		BinPainterCommands(painter, PainterBudget{}, tiles);
+		const PainterMeasuredSegment measured = Measure(painter);
 		// Only the clipped text sample has glyphs that are culled: those wholly outside its clip rect.
-		Require(tiles.Problems.empty() && tiles.Stats.DroppedCommands == 0, "Every shape of the test sheet should be binned");
-		Require(tiles.Stats.CulledCommands > 0 && tiles.Stats.CulledCommands < 30, "Only the glyphs past the clip rect should be culled, got " + std::to_string(tiles.Stats.CulledCommands));
-		Require(tiles.Stats.BinningMilliseconds >= 0.0f, "Binning should time itself");
+		Require(measured.Problems.empty() && measured.Stats.DroppedCommands == 0, "Every shape of the test sheet should be binned");
+		Require(measured.Stats.CulledCommands > 0 && measured.Stats.CulledCommands < 30, "Only the glyphs past the clip rect should be culled, got " +
+			std::to_string(measured.Stats.CulledCommands));
+		Require(measured.Stats.BinningMilliseconds >= 0.0f, "Measuring should time itself");
 	}
 
 	void TestTooManyTexturesAreDropped()
@@ -888,19 +786,14 @@ namespace
 		painter.AddRect(PainterRect{ { 20, 20 }, { 30, 30 } }, PainterStyle::Filled(Orange));
 		painter.AddCircle({ 60, 24 }, 4.0f, PainterStyle::Filled(Orange));
 
-		PainterTiles tiles;
-		BinPainterSegment(painter, PainterSegment{ 1, 2 }, PainterBudget{}, tiles);
+		const PainterMeasuredSegment measured = MeasureSegment(painter, PainterSegment{ 1, 2 });
 
 		// From pixel (16, 16), 7 tiles reach past pixel 65 across and 2 past pixel 31 down.
-		Require(tiles.OriginX == 16 && tiles.OriginY == 16 && tiles.TilesX == 7 && tiles.TilesY == 2,
+		Require(measured.OriginX == 16 && measured.OriginY == 16 && measured.TilesX == 7 && measured.TilesY == 2,
 			"The grid should cover only the segment's commands, in whole tiles");
-		Require(tiles.Stats.Commands == 2 && tiles.Problems.empty(), "Only the segment's commands should be binned");
-
-		// Entries count from the segment's first command, and tiles from the grid's origin.
-		Require(TilesOfCommand(tiles, 0) == std::vector<TileCoordinates>{ { 0, 0 }, { 1, 0 }, { 0, 1 }, { 1, 1 } },
-			"The segment's first command should be entry 0, in grid tiles 0 to 1");
-		Require(TilesOfCommand(tiles, 1) == std::vector<TileCoordinates>{ { 4, 0 }, { 5, 0 }, { 6, 0 }, { 4, 1 }, { 5, 1 }, { 6, 1 } },
-			"The circle should land in grid tiles 4 to 6");
+		Require(measured.Stats.Commands == 2 && measured.Commands.size() == 2 && measured.Problems.empty(), "Only the segment's commands should be measured");
+		// The rect touches grid tiles 0 to 1 both ways, the circle 4 to 6 across and 0 to 1 down.
+		Require(measured.MaxEntries == 4 + 6, "The most entries should count from the grid's origin, got " + std::to_string(measured.MaxEntries));
 	}
 
 	void TestSegmentGroupReachIsItsOwn()
@@ -918,12 +811,11 @@ namespace
 		painter.AddRect(PainterRect{ { 100, 0 }, { 116, 16 } }, PainterStyle::Filled(Orange));
 		painter.EndGroup();
 
-		PainterTiles tiles;
-		BinPainterSegment(painter, PainterSegment{ 1, 1 }, PainterBudget{}, tiles);
+		const PainterMeasuredSegment measured = MeasureSegment(painter, PainterSegment{ 1, 1 });
 
 		// The second rect with its shadow and anti-aliasing covers pixels 95 to 121 across, so the
 		// grid starts at 88: the first rect, in the other segment, doesn't widen it.
-		Require(tiles.OriginX == 88 && tiles.OriginY == 0 && tiles.TilesX == 5, "A group's reach in a segment should only count the segment's shapes");
+		Require(measured.OriginX == 88 && measured.OriginY == 0 && measured.TilesX == 5, "A group's reach in a segment should only count the segment's shapes");
 	}
 
 	void TestSegmentClippedAwayHasNoTiles()
@@ -934,10 +826,9 @@ namespace
 		painter.AddRect(PainterRect{ { 0, 0 }, { 10, 10 } }, PainterStyle::Filled(Orange));
 		painter.PopClipRect();
 
-		PainterTiles tiles;
-		BinPainterSegment(painter, PainterSegment{ 0, 1 }, PainterBudget{}, tiles);
-		Require(tiles.TilesX == 0 && tiles.TilesY == 0 && tiles.Tiles.empty() && tiles.Entries.empty(), "A segment wholly clipped away should have no tiles");
-		Require(tiles.Stats.CulledCommands == 1 && tiles.Problems.empty(), "Its command should be culled, without a problem");
+		const PainterMeasuredSegment measured = MeasureSegment(painter, PainterSegment{ 0, 1 });
+		Require(measured.TilesX == 0 && measured.TilesY == 0 && measured.MaxEntries == 0, "A segment wholly clipped away should have no tiles");
+		Require(measured.Stats.CulledCommands == 1 && measured.Problems.empty(), "Its command should be culled, without a problem");
 	}
 
 	void TestSegmentPastTheCommandsIsCut()
@@ -947,11 +838,10 @@ namespace
 		painter.AddRect(PainterRect{ { 0, 0 }, { 10, 10 } }, PainterStyle::Filled(Orange));
 		painter.AddRect(PainterRect{ { 20, 0 }, { 30, 10 } }, PainterStyle::Filled(Orange));
 
-		PainterTiles tiles;
-		BinPainterSegment(painter, PainterSegment{ 1, 5 }, PainterBudget{}, tiles);
+		const PainterMeasuredSegment measured = MeasureSegment(painter, PainterSegment{ 1, 5 });
 		// The second rect covers pixels 19 to 31 across and 0 to 11 down: 2 by 2 tiles.
-		Require(tiles.Stats.Commands == 1 && TilesOfCommand(tiles, 0).size() == 4, "A segment past the painter's commands should keep those it has");
-		Require(tiles.Problems.size() == 1 && tiles.Problems[0].find("reaches past") != std::string::npos, "A segment past the painter's commands should be reported");
+		Require(measured.Stats.Commands == 1 && measured.MaxEntries == 4, "A segment past the painter's commands should keep those it has");
+		Require(measured.Problems.size() == 1 && measured.Problems[0].find("reaches past") != std::string::npos, "A segment past the painter's commands should be reported");
 	}
 
 	// The segment callbacks a window painter put into a draw list, in order
@@ -1464,14 +1354,13 @@ int main()
 		TestShapeBounds();
 
 		TestGridCoversTheTarget();
-		TestShapesLandInTheirTiles();
+		TestReachIsTheShapeWithItsAntiAliasing();
 		TestCommandsThatTouchNothingAreCulled();
-		TestClipRectCutsCoverage();
-		TestTilesKeepDrawingOrder();
-		TestLinesWalkTheirTiles();
-		TestGroupsCoverTheirWholeReach();
-		TestBudgetDropsTheRestOfTheFrame();
-		TestBinningReusesItsResult();
+		TestClipRectCutsTheReach();
+		TestGroupsReachTheirWholeGroup();
+		TestOpaqueRectsHide();
+		TestCommandBudgetDropsTheRest();
+		TestMeasuringReusesItsResult();
 
 		TestTextWithoutAFontIsReported();
 		TestImages();

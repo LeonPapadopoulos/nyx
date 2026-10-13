@@ -22,107 +22,116 @@ namespace Nyx::Engine
 {
 	class VulkanPainter;
 
-	// The four storage buffers the painter shader reads (set 0: commands, groups, tiles, tile
-	// entries), written by the CPU every frame, and the descriptor set that points at them. The
-	// buffers only ever grow.
+	// The buffers one set of segments (or a canvas) needs on the GPU, and the descriptor sets that
+	// point at them. They only ever grow.
+	//  - Written by the CPU each frame (host-visible), then copied into the GPU's own: the
+	//    commands and groups the painter shader reads, and the measured commands and segments the
+	//    binner reads.
+	//  - The GPU's own (device-local): those copies, and what the binner writes, the tiles and
+	//    their entries, each tile's first kept command between its passes, and its sums.
+	//  - Read back (host-visible): the sums each frame, the tiles and entries while asked for.
 	struct VulkanPainterBuffers
 	{
-		struct UploadBuffer
+		struct GpuBuffer
 		{
 			vk::raii::Buffer Buffer{ nullptr };
 			vk::raii::DeviceMemory Memory{ nullptr };
+			// Host-visible buffers stay mapped
 			void* Mapped = nullptr;
 			vk::DeviceSize Size = 0;
 		};
 
-		UploadBuffer Commands;
-		UploadBuffer Groups;
-		UploadBuffer Tiles;
-		UploadBuffer Entries;
-		vk::raii::DescriptorSet DescriptorSet{ nullptr };
+		GpuBuffer CommandsUpload;
+		GpuBuffer GroupsUpload;
+		GpuBuffer BinCommandsUpload;
+		GpuBuffer BinSegmentsUpload;
+
+		GpuBuffer Commands;
+		GpuBuffer Groups;
+		GpuBuffer BinCommands;
+		GpuBuffer BinSegments;
+		GpuBuffer Tiles;
+		GpuBuffer Entries;
+		GpuBuffer FirstKept;
+		GpuBuffer Sums;
+
+		GpuBuffer SumsReadBack;
+		GpuBuffer TilesReadBack;
+		GpuBuffer EntriesReadBack;
+
+		// Set 0 of the painter shader (commands, groups, tiles, entries), and of the binner
+		vk::raii::DescriptorSet DrawSet{ nullptr };
+		vk::raii::DescriptorSet BinSet{ nullptr };
 
 		void Release();
 	};
 
-	// An image the painter draws into, with everything one painted frame needs on the GPU: the
-	// commands, groups, tiles and tile entries, uploaded each frame.
+	// The segments of one frame (PainterSegment), from any number of painters, binned on the GPU
+	// and drawn into render passes that already hold other drawing, e.g. ImGui's. Everything they
+	// need on the GPU goes into one set of buffers: each painter's commands and groups, and each
+	// segment's measured commands and tiles, one after the other. Drawing a segment only tells the
+	// shader where its part starts.
 	//
-	// Empty until VulkanPainter::Draw() first draws into it, which also gives it the painter's
-	// size. Release it (or let it go) before the Vulkan device is destroyed.
-	class VulkanPainterTarget
-	{
-	public:
-		// The painted image, in ShaderReadOnlyOptimal layout once drawn; null before the first
-		// draw. It changes when the size changes, so read it after each draw.
-		vk::Image GetImage() const { return *Image; }
-		vk::ImageView GetImageView() const { return *ImageView; }
-		vk::Extent2D GetExtent() const { return Extent; }
-
-		// The last drawn frame's tiles and their statistics, e.g. for the Painter Test window
-		const PainterTiles& GetTiles() const { return Tiles; }
-
-		void Release();
-
-	private:
-		friend class VulkanPainter;
-
-		vk::Extent2D Extent{ 0, 0 };
-		vk::raii::Image Image{ nullptr };
-		vk::raii::DeviceMemory ImageMemory{ nullptr };
-		vk::raii::ImageView ImageView{ nullptr };
-		vk::raii::Framebuffer Framebuffer{ nullptr };
-
-		VulkanPainterBuffers Buffers;
-		PainterTiles Tiles;
-	};
-
-	// The segments of one frame (PainterSegment), from any number of painters, drawn into render
-	// passes that already hold other drawing, e.g. ImGui's. Everything they need on the GPU goes
-	// into one set of buffers: each painter's commands and groups, and each segment's tiles and
-	// entries, one after the other. Drawing a segment only tells the shader where its part starts.
-	//
-	//     segments.Clear();                                                // each frame
-	//     const uint32_t index = segments.Add(painter, segment, budget);   // for each segment
-	//     vulkanPainter.Upload(segments);                                  // once, before any draw
+	//     segments.Clear(budget);                                          // each frame
+	//     const uint32_t index = segments.Add(painter, segment);           // for each segment
+	//     vulkanPainter.Bin(commandBuffer, segments);                      // once, outside a render pass
 	//     vulkanPainter.DrawSegment(commandBuffer, segments, index, format, extent); // in a render pass
+	//     ...
+	//     segments.ReadBack();                                             // once the GPU is done
 	//
-	// Add() copies what it needs, so the painters may change or go afterwards. The textures are
-	// kept as ImGui texture references and resolved when the segment is drawn. Release it (or let
-	// it go) before the Vulkan device is destroyed.
+	// Add() measures the segment's commands on the CPU (MeasurePainterSegment()) and copies what it
+	// needs, so the painters may change or go afterwards. The textures are kept as ImGui texture
+	// references and resolved when the segment is drawn. Release it (or let it go) before the
+	// Vulkan device is destroyed.
 	class VulkanPainterSegments
 	{
 	public:
-		// Starts a new frame: drops all painters and segments, keeps the buffers
-		void Clear();
+		// Starts a new frame, with this frame's budget: drops all painters and segments, keeps the
+		// buffers. What the last binning read back stays until the next ReadBack().
+		void Clear(const PainterBudget& budget = PainterBudget{});
 
-		// Bins the segment and adds it, with its painter's commands, groups and textures if this
-		// frame doesn't have them yet. Returns the segment's index, for DrawSegment().
-		uint32_t Add(const Painter& painter, const PainterSegment& segment, const PainterBudget& budget);
+		// Packed colours (PackPremultipliedColor()) whose solid rects the statistics count as if
+		// opaque (PainterBinningStats::EntriesIfAlsoOpaque), e.g. the docked cards'. They stay.
+		void SetAlsoOpaqueColors(std::span<const uint32_t> colors);
+
+		// Measures the segment and adds it, with its painter's commands, groups and textures if
+		// this frame doesn't have them yet. Its grid covers the whole target with bWholeTarget (a
+		// canvas), else only the tiles its commands touch. Returns the segment's index, for
+		// DrawSegment().
+		uint32_t Add(const Painter& painter, const PainterSegment& segment, bool bWholeTarget = false);
 
 		uint32_t GetSegmentCount() const { return static_cast<uint32_t>(Segments.size()); }
 
-		// One segment's binning statistics, e.g. for the Painter Test window
+		// One segment's binning statistics: the measuring's this frame, the GPU's since ReadBack()
 		const PainterBinningStats& GetStats(uint32_t segment) const { return Segments[segment].Stats; }
 
-		// What went wrong while binning this frame's segments, one line per problem
+		// What went wrong while measuring this frame's segments, and what the GPU found while
+		// binning them (since ReadBack()), one line per problem
 		const std::vector<std::string>& GetProblems() const { return Problems; }
+		const std::vector<std::string>& GetReadBackProblems() const { return ReadBackProblems; }
+
+		// Whether Bin() also reads back the tiles and entries, for GetBinned() and AddHeat(), e.g.
+		// for the heatmap and the tests. Off by default: it copies all of them each frame.
+		void SetReadBackTiles(bool bReadBack) { bReadBackTiles = bReadBack; }
+
+		// Once the GPU has finished the frame Bin() was recorded in: takes what it read back into
+		// the segments' statistics and problems, and with SetReadBackTiles(true) the tiles and
+		// entries. Nothing if nothing was binned since the last call.
+		void ReadBack();
+
+		// A segment's tiles and entries as the GPU binned them, read back; empty without
+		// SetReadBackTiles(true)
+		PainterTiles GetBinned(uint32_t segment) const;
 
 		// Adds the segment's tiles, each with its commands, to `grid`, a heat grid over the whole
-		// target the segment is drawn into
+		// target the segment is drawn into; from the tiles read back
 		void AddHeat(uint32_t segment, PainterHeatGrid& grid) const;
 
-		// What the per-tile reduction would keep of this frame's entries: per tile, those from the
-		// last command that covers the whole tile opaquely, a solid rect inside its rounding and
-		// clip rect. `alsoOpaque`: packed colours (PackPremultipliedColor()) to count as opaque too.
-		PainterOcclusionEstimate EstimateOcclusion(std::span<const uint32_t> alsoOpaque) const;
+		// The per-tile reduction over all segments, read back
+		PainterReduction GetReduction() const;
 
-		// What Upload() copies to the GPU this frame: commands, groups, tiles and entries
-		size_t GetUploadBytes() const
-		{
-			return GetCommandUploadBytes() + Tiles.size() * sizeof(PainterTile) + Entries.size() * sizeof(uint32_t);
-		}
-		// The commands' and groups' part of it, which binning on the GPU would still upload
-		size_t GetCommandUploadBytes() const { return Commands.size() * sizeof(PainterCommand) + Groups.size() * sizeof(PainterGroup); }
+		// What Bin() copies to the GPU this frame: commands, groups, measured commands and segments
+		size_t GetUploadBytes() const;
 
 		void Release();
 
@@ -143,8 +152,7 @@ namespace Nyx::Engine
 		{
 			uint32_t Painter = 0;
 			uint32_t CommandBase = 0;
-			uint32_t TileBase = 0;
-			uint32_t EntryBase = 0;
+			uint32_t FirstTile = 0;
 			uint32_t OriginX = 0;
 			uint32_t OriginY = 0;
 			uint32_t TilesX = 0;
@@ -155,23 +163,77 @@ namespace Nyx::Engine
 		// The painter's part, added if this frame doesn't have it yet
 		uint32_t FindOrAddPainter(const Painter& painter);
 
+		PainterBudget Budget;
+		std::vector<uint32_t> AlsoOpaque;
+
 		std::vector<PainterCommand> Commands;
 		std::vector<PainterGroup> Groups;
-		std::vector<PainterTile> Tiles;
-		std::vector<uint32_t> Entries;
+		std::vector<PainterBinCommand> BinCommands;
+		std::vector<PainterBinSegment> BinSegments;
+		// All segments' tiles, with the padding that starts each at a whole workgroup, and the
+		// most entries they can need (within the budget)
+		uint32_t TileCount = 0;
+		uint64_t MaxEntries = 0;
 
 		std::vector<PainterPart> Painters;
 		std::vector<SegmentPart> Segments;
 		std::vector<std::string> Problems;
+		std::vector<std::string> ReadBackProblems;
 
-		// Reused for binning each segment
-		PainterTiles Binned;
+		// Bin() recorded copies to read back; the tiles and entries too
+		bool bReadBackTiles = false;
+		bool bReadBackPending = false;
+		bool bTilesReadBackPending = false;
+		uint32_t EntryCapacity = 0;
+		std::vector<PainterTile> ReadTiles;
+		std::vector<uint32_t> ReadEntries;
+
+		// Reused for measuring each segment
+		PainterMeasuredSegment Measured;
 
 		VulkanPainterBuffers Buffers;
 	};
 
-	// Draws a Painter's frame with the painter shader (Painter.vert and Painter.frag): bins the
-	// commands into tiles, uploads them, and draws one quad over the tiles.
+	// An image the painter draws into (a canvas): one segment over the whole target, binned and
+	// drawn each frame.
+	//
+	// Empty until VulkanPainter::Draw() first draws into it, which also gives it the painter's
+	// size. Release it (or let it go) before the Vulkan device is destroyed.
+	class VulkanPainterTarget
+	{
+	public:
+		// The painted image, in ShaderReadOnlyOptimal layout once drawn; null before the first
+		// draw. It changes when the size changes, so read it after each draw.
+		vk::Image GetImage() const { return *Image; }
+		vk::ImageView GetImageView() const { return *ImageView; }
+		vk::Extent2D GetExtent() const { return Extent; }
+
+		// Whether drawing also reads back the tiles and entries, for GetTiles()
+		void SetReadBackTiles(bool bReadBack) { Segments.SetReadBackTiles(bReadBack); }
+
+		// Once the GPU has finished the last draw: takes what it read back (VulkanPainterSegments::ReadBack())
+		void ReadBack() { Segments.ReadBack(); }
+
+		// The last drawn frame's grid and statistics, and with SetReadBackTiles(true) its tiles and
+		// entries, as read back, e.g. for the Painter Test window
+		PainterTiles GetTiles() const { return Segments.GetSegmentCount() > 0 ? Segments.GetBinned(0) : PainterTiles{}; }
+
+		void Release();
+
+	private:
+		friend class VulkanPainter;
+
+		vk::Extent2D Extent{ 0, 0 };
+		vk::raii::Image Image{ nullptr };
+		vk::raii::DeviceMemory ImageMemory{ nullptr };
+		vk::raii::ImageView ImageView{ nullptr };
+		vk::raii::Framebuffer Framebuffer{ nullptr };
+
+		VulkanPainterSegments Segments;
+	};
+
+	// Draws painted frames with the painter shader (Painter.vert and Painter.frag), after binning
+	// them into tiles on the GPU (PainterBin.comp).
 	//
 	//     VulkanPainter vulkanPainter;
 	//     vulkanPainter.Initialize(context);
@@ -179,29 +241,31 @@ namespace Nyx::Engine
 	//     vulkanPainter.Draw(commandBuffer, painter, target, options);
 	//
 	// It draws either a whole frame into an image of its own (Draw(), a canvas), or segments
-	// into someone else's render pass (DrawSegment(), e.g. ImGui's).
+	// into someone else's render pass (Bin() and DrawSegment(), e.g. ImGui's).
 	//
 	// The renderer owns one. It waits for the previous frame's GPU work before recording the next,
-	// so every target and segment set has one set of upload buffers, rewritten each frame. A
-	// target is drawn at most once per frame.
+	// so every target and segment set has one set of buffers, rewritten each frame. A target is
+	// drawn at most once per frame.
 	class VulkanPainter
 	{
 	public:
-		// Creates the canvases' render pass and pipeline and the descriptor pool, and prepares the
-		// empty texture (one short submission). The compiled shaders are loaded from the Shaders folder next to
-		// the executable.
+		// Creates the canvases' render pass, the pipelines and the descriptor pool, and prepares
+		// the empty texture (one short submission). The compiled shaders are loaded from the
+		// Shaders folder next to the executable.
 		void Initialize(Nyx::VulkanContext& context);
 		void Shutdown();
 
 		bool IsInitialized() const { return Context != nullptr; }
 
-		// Records painting `painter`'s frame into `target`, which takes the painter's target
-		// size. Outside a render pass; the target's image ends in ShaderReadOnlyOptimal layout.
+		// Records binning and painting `painter`'s frame into `target`, which takes the painter's
+		// target size. Outside a render pass; the target's image ends in ShaderReadOnlyOptimal layout.
 		void Draw(vk::raii::CommandBuffer& commandBuffer, const Painter& painter, VulkanPainterTarget& target, const PainterDrawOptions& options);
 
-		// Copies the frame's segments into their buffers. Once per frame, after the last Add()
-		// and before the first DrawSegment().
-		void Upload(VulkanPainterSegments& segments);
+		// Records copying the frame's segments to the GPU and binning them, and reading back what
+		// is read back. Once per frame, after the last Add() and before the first DrawSegment(),
+		// outside a render pass. Drawing in later command buffers on the same queue finds them
+		// binned.
+		void Bin(vk::CommandBuffer commandBuffer, VulkanPainterSegments& segments);
 
 		// Records drawing one segment, blended over what the render pass holds, inside a render
 		// pass that is going on. It must be made like an ImGui window's: one colour attachment of
@@ -231,6 +295,7 @@ namespace Nyx::Engine
 		void CreateDescriptorSetLayouts();
 		void CreateDescriptorPool();
 		void CreatePipelineLayout();
+		void CreateBinPipeline();
 		void CreateEmptyTexture();
 
 		// The painter's pipeline, for render passes compatible with `renderPass`
@@ -250,10 +315,11 @@ namespace Nyx::Engine
 		// Gives the target an image and framebuffer of this size, if it has none of that size yet
 		void PrepareImage(VulkanPainterTarget& target, vk::Extent2D extent);
 
-		// Copies the data into the buffers, growing them and updating their descriptor set when
-		// needed
-		void Upload(VulkanPainterBuffers& buffers, std::span<const PainterCommand> commands, std::span<const PainterGroup> groups,
-			std::span<const PainterTile> tiles, std::span<const uint32_t> entries);
+		// Gives the segments' buffers room for this frame, and their descriptor sets
+		void PrepareBuffers(VulkanPainterSegments& segments);
+
+		// Gives `buffer` at least `size` bytes, growing by doubling; true if it was made anew
+		bool PrepareBuffer(VulkanPainterBuffers::GpuBuffer& buffer, vk::DeviceSize size, vk::BufferUsageFlags usage, bool bHostVisible);
 
 		Nyx::VulkanContext* Context = nullptr;
 
@@ -267,6 +333,12 @@ namespace Nyx::Engine
 		vk::raii::PipelineLayout PipelineLayout{ nullptr };
 		vk::raii::Pipeline CanvasPipeline{ nullptr };
 		std::vector<SegmentPipeline> SegmentPipelines;
+
+		// The binner (PainterBin.comp): its set (segments, measured commands, tiles, entries,
+		// first kept commands, sums), layout and pipeline
+		vk::raii::DescriptorSetLayout BinSetLayout{ nullptr };
+		vk::raii::PipelineLayout BinPipelineLayout{ nullptr };
+		vk::raii::Pipeline BinPipeline{ nullptr };
 
 		// A transparent 1x1 texture for the texture slots a frame doesn't use: the shader reads
 		// every slot, so every slot needs a texture.

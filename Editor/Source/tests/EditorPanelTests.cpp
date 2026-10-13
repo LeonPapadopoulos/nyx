@@ -1187,38 +1187,27 @@ namespace
 		Require(shapes == 0, "The editor's panels should leave no shapes to ImGui, found " + std::to_string(shapes));
 	}
 
-	// The Statistics tab's predictions (stage 3, change 12), with round numbers: a 10 ms frame, the
-	// painter 3 ms on the CPU (2 of them binning) and 4 on the GPU, 1000 entries
+	// The Statistics tab's prediction for opaque docked cards (stage 3, change 13), with round
+	// numbers: a 10 ms frame, the painter 1 ms on the CPU and 4 on the GPU, 1000 entries kept, 600
+	// with the cards opaque
 	void TestPainterPredictionsFollowTheModel()
 	{
 		PainterCosts now;
 		now.Frame = 10.0f;
-		now.PainterCpu = 3.0f;
-		now.Binning = 2.0f;
+		now.PainterCpu = 1.0f;
 		now.PainterGpu = 4.0f;
-		now.Entries = 1000.0f;
-		now.Kept = 750.0f;
-		now.KeptCardsOpaque = 500.0f;
-		now.UploadBytes = 20000.0f;
-		now.CommandUploadBytes = 8000.0f;
-		const std::vector<PainterScenario> scenarios = PredictPainterScenarios(now);
-		Require(scenarios.size() == 5, "There should be the frame now and four changes");
+		now.Kept = 1000.0f;
+		now.KeptCardsOpaque = 600.0f;
+		const std::vector<PainterScenario> scenarios = PredictOpaqueDockedCards(now);
+		Require(scenarios.size() == 2, "There should be the frame now and with opaque cards");
 		const auto near = [](float a, float b)
 		{
 			return std::abs(a - b) < 1.0e-4f;
 		};
 
-		Require(near(scenarios[0].Frame, 10.0f) && near(scenarios[0].PainterGpu, 4.0f), "Now should be as measured");
-		Require(near(scenarios[1].PainterGpu, 3.0f) && near(scenarios[1].PainterCpu, 3.0f) && near(scenarios[1].Frame, 9.0f) &&
-					near(scenarios[1].UploadBytes, 20000.0f - 250.0f * 4.0f),
-			"The reduction keeping 75% should cut the GPU time to 75% and the upload by the dropped entries, the CPU staying");
-		Require(near(scenarios[2].PainterGpu, 2.0f) && near(scenarios[2].Frame, 8.0f), "With the cards opaque, half the entries and GPU time");
-		const float gpuBinning = 1000.0f * AssumedGpuBinningNanosecondsPerEntry * 1.0e-6f + AssumedGpuBinningDispatchMilliseconds;
-		Require(near(scenarios[3].PainterCpu, 1.0f) && near(scenarios[3].PainterGpu, 4.0f + gpuBinning) && near(scenarios[3].UploadBytes, 8000.0f) &&
-					near(scenarios[3].Frame, 8.0f + gpuBinning),
-			"Binning on the GPU should take the binning off the CPU and the tiles off the upload, and add its own GPU time");
-		Require(near(scenarios[4].PainterCpu, 1.0f) && near(scenarios[4].PainterGpu, 2.0f + gpuBinning) && near(scenarios[4].Frame, 6.0f + gpuBinning),
-			"Both should add up");
+		Require(near(scenarios[0].Frame, 10.0f) && near(scenarios[0].PainterGpu, 4.0f) && near(scenarios[0].PainterCpu, 1.0f), "Now should be as measured");
+		Require(near(scenarios[1].PainterGpu, 2.4f) && near(scenarios[1].PainterCpu, 1.0f) && near(scenarios[1].Frame, 8.4f),
+			"Keeping 60% of the entries should cut the GPU time to 60% and the frame by what it saves, the CPU staying");
 	}
 
 	void TestAnimationsEaseAndAreForgotten()

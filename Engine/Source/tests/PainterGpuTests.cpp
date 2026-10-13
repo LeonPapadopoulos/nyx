@@ -170,7 +170,33 @@ namespace
 			toTransfer.subresourceRange = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
 			commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, toTransfer);
 
-			return SubmitAndReadBack(commandBuffer, Target.GetImage(), Target.GetExtent(), false);
+			PaintedImage painted = SubmitAndReadBack(commandBuffer, Target.GetImage(), Target.GetExtent(), false);
+			// The GPU is done: what the binning read back can be taken (GetTarget().GetTiles()).
+			Target.ReadBack();
+			return painted;
+		}
+
+		// Whether painting reads back the target's tiles and entries too
+		void SetReadBackTiles(bool bReadBack) { Target.SetReadBackTiles(bReadBack); }
+
+		// Bins the segments on the GPU in a submission of their own, waits, and takes what was
+		// read back; afterwards they can be drawn (RenderInto() and DrawSegment())
+		void Bin(VulkanPainterSegments& segments)
+		{
+			vk::CommandBufferAllocateInfo allocInfo{};
+			allocInfo.commandPool = *Context.GetGraphicsCommandPool();
+			allocInfo.level = vk::CommandBufferLevel::ePrimary;
+			allocInfo.commandBufferCount = 1;
+			vk::raii::CommandBuffer commandBuffer = std::move(vk::raii::CommandBuffers(Context.GetDevice(), allocInfo).front());
+			commandBuffer.begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
+			PainterPass.Bin(*commandBuffer, segments);
+			commandBuffer.end();
+			vk::SubmitInfo submitInfo{};
+			submitInfo.commandBufferCount = 1;
+			submitInfo.pCommandBuffers = &*commandBuffer;
+			Context.GetGraphicsQueue().submit(submitInfo);
+			Context.GetGraphicsQueue().waitIdle();
+			segments.ReadBack();
 		}
 
 		// Renders into a fresh image of `format` that starts out as `background`, the way ImGui
@@ -1002,13 +1028,13 @@ namespace
 		second.AddImage(cyan, PainterRect{ { 44, 4 }, { 60, 20 } }, withShadow);
 
 		VulkanPainterSegments segments;
-		const PainterBudget budget;
-		const uint32_t redRect = segments.Add(first, PainterSegment{ 0, 1 }, budget);
-		const uint32_t greenRectAndImage = segments.Add(first, PainterSegment{ 1, 2 }, budget);
-		const uint32_t clippedAway = segments.Add(first, PainterSegment{ 3, 1 }, budget);
-		const uint32_t cyanImage = segments.Add(second, PainterSegment{ 0, 1 }, budget);
+		segments.SetReadBackTiles(true);
+		const uint32_t redRect = segments.Add(first, PainterSegment{ 0, 1 });
+		const uint32_t greenRectAndImage = segments.Add(first, PainterSegment{ 1, 2 });
+		const uint32_t clippedAway = segments.Add(first, PainterSegment{ 3, 1 });
+		const uint32_t cyanImage = segments.Add(second, PainterSegment{ 0, 1 });
 		VulkanPainter& painterPass = gpu.GetPainterPass();
-		painterPass.Upload(segments);
+		gpu.Bin(segments);
 
 		// The swapchain's usual format, not the canvases': a second pipeline
 		const vk::Format format = vk::Format::eB8G8R8A8Unorm;
@@ -1039,18 +1065,18 @@ namespace
 		image.RequirePixel(2, 62, gray, "Outside every segment's tiles");
 
 		Require(segments.GetSegmentCount() == 4 && segments.GetStats(clippedAway).CulledCommands == 1, "A segment wholly clipped away should be culled");
-		Require(segments.GetProblems().empty(), "The segments should bin without problems");
+		Require(segments.GetProblems().empty() && segments.GetReadBackProblems().empty(), "The segments should bin without problems");
 
-		// What the statistics count as uploaded (stage 3, change 10): both painters' commands and
-		// every tile entry at least, and nothing once cleared
+		// What the statistics count as uploaded: both painters' commands, and one measured command
+		// each; and nothing once cleared
 		uint32_t entries = 0;
 		for (const uint32_t segment : { redRect, greenRectAndImage, clippedAway, cyanImage })
 		{
 			entries += segments.GetStats(segment).TileEntries;
 		}
 		const size_t commands = first.GetCommands().size() + second.GetCommands().size();
-		Require(entries > 0 && segments.GetUploadBytes() >= commands * sizeof(PainterCommand) + entries * sizeof(uint32_t),
-			"The upload should hold the painters' commands and the segments' tile entries");
+		Require(entries > 0 && segments.GetUploadBytes() >= commands * (sizeof(PainterCommand) + sizeof(PainterBinCommand)),
+			"The upload should hold the painters' commands and the measured commands");
 
 		// The heat over the whole target (stage 3, change 11): every segment's tiles land where
 		// its grid lies, so the heat holds all their entries and tiles, and overlapping segments add up.
@@ -1077,22 +1103,25 @@ namespace
 		segments.Clear();
 		Require(segments.GetUploadBytes() == 0, "Cleared segments should upload nothing");
 
-		// The per-tile reduction's estimate (stage 3, change 12): an opaque backdrop over the 8x8
-		// tiles of 64x64, and a translucent card rounded by 4 from 10 to 54, on 36 tiles with its
-		// anti-aliasing. Nothing lies under an opaque shape: all 100 entries stay. With the card's
-		// colour counted as opaque, the 16 tiles inside its rounding (14 to 50) lose the backdrop.
+		// The per-tile reduction's count of what opaque cards would keep (stage 3, change 13): an
+		// opaque backdrop over the 8x8 tiles of 64x64, and a translucent card rounded by 4 from 10
+		// to 54, on 36 tiles with its anti-aliasing. Nothing lies under an opaque shape: all 100
+		// entries stay. With the card's colour counted as opaque, the 16 tiles inside its rounding
+		// (14 to 50) would lose the backdrop.
 		const glm::vec4 card{ 0.1f, 0.1f, 0.12f, 0.85f };
 		Painter layers = StartFrame();
 		layers.AddRect(PainterRect{ { 0, 0 }, { 64, 64 } }, PainterStyle::Filled(gray));
 		layers.AddRoundedRect(PainterRect{ { 10, 10 }, { 54, 54 } }, 4.0f, PainterStyle::Filled(card));
-		segments.Add(layers, PainterSegment{ 0, 2 }, budget);
 		const uint32_t cardColor = PackPremultipliedColor(card);
-		const PainterOcclusionEstimate estimate = segments.EstimateOcclusion(std::span<const uint32_t>(&cardColor, 1));
-		Require(estimate.Entries == 100 && estimate.Kept == 100, "Nothing lies under an opaque shape: all entries should stay, kept " +
-			std::to_string(estimate.Kept) + " of " + std::to_string(estimate.Entries));
-		Require(estimate.KeptAlsoOpaque == 84, "With the card opaque, the 16 tiles inside its rounding should drop the backdrop, kept " +
-			std::to_string(estimate.KeptAlsoOpaque));
-		segments.Clear();
+		segments.SetAlsoOpaqueColors(std::span<const uint32_t>(&cardColor, 1));
+		segments.Add(layers, PainterSegment{ 0, 2 });
+		gpu.Bin(segments);
+		const PainterReduction reduction = segments.GetReduction();
+		Require(reduction.EntriesBefore == 100 && reduction.Kept == 100, "Nothing lies under an opaque shape: all entries should stay, kept " +
+			std::to_string(reduction.Kept) + " of " + std::to_string(reduction.EntriesBefore));
+		Require(reduction.KeptIfAlsoOpaque == 84, "With the card opaque, the 16 tiles inside its rounding should drop the backdrop, kept " +
+			std::to_string(reduction.KeptIfAlsoOpaque));
+		segments.Release();
 	}
 
 	void TestTestSheetAsSegmentsMatchesTheCanvas(GpuPainter& gpu, const ImGuiFonts& fonts)
@@ -1126,12 +1155,11 @@ namespace
 		before.AddCircle({ 2, 2 }, 1.0f, glowing);
 
 		VulkanPainterSegments segments;
-		const PainterBudget budget;
-		segments.Add(before, PainterSegment{ 0, 2 }, budget);
-		const uint32_t firstHalf = segments.Add(sheet, PainterSegment{ 0, split }, budget);
-		const uint32_t secondHalf = segments.Add(sheet, PainterSegment{ split, static_cast<uint32_t>(commands.size()) - split }, budget);
+		segments.Add(before, PainterSegment{ 0, 2 });
+		const uint32_t firstHalf = segments.Add(sheet, PainterSegment{ 0, split });
+		const uint32_t secondHalf = segments.Add(sheet, PainterSegment{ split, static_cast<uint32_t>(commands.size()) - split });
 		VulkanPainter& painterPass = gpu.GetPainterPass();
-		painterPass.Upload(segments);
+		gpu.Bin(segments);
 
 		const vk::Format format = vk::Format::eR8G8B8A8Unorm;
 		const vk::Extent2D extent{ width, height };
@@ -1156,7 +1184,7 @@ namespace
 			}
 		}
 		Require(differentPixels == 0, "The test sheet drawn as two segments should match the canvas, " + std::to_string(differentPixels) + " pixels differ");
-		Require(segments.GetProblems().empty(), "The test sheet's segments should bin without problems");
+		Require(segments.GetProblems().empty() && segments.GetReadBackProblems().empty(), "The test sheet's segments should bin without problems");
 	}
 
 	// Segments drawn as one run (stage 3, change 8): another painter's segment and the test sheet
@@ -1194,13 +1222,12 @@ namespace
 			"The three segments should fit into one painter");
 
 		VulkanPainterSegments segments;
-		const PainterBudget budget;
-		const uint32_t beforeSegment = segments.Add(before, PainterSegment{ 0, 1 }, budget);
-		const uint32_t firstSegment = segments.Add(sheet, firstHalf, budget);
-		const uint32_t secondSegment = segments.Add(sheet, secondHalf, budget);
-		const uint32_t runSegment = segments.Add(run, PainterSegment{ 0, static_cast<uint32_t>(run.GetCommands().size()) }, budget);
+		const uint32_t beforeSegment = segments.Add(before, PainterSegment{ 0, 1 });
+		const uint32_t firstSegment = segments.Add(sheet, firstHalf);
+		const uint32_t secondSegment = segments.Add(sheet, secondHalf);
+		const uint32_t runSegment = segments.Add(run, PainterSegment{ 0, static_cast<uint32_t>(run.GetCommands().size()) });
 		VulkanPainter& painterPass = gpu.GetPainterPass();
-		painterPass.Upload(segments);
+		gpu.Bin(segments);
 
 		const vk::Format format = vk::Format::eR8G8B8A8Unorm;
 		const vk::Extent2D extent{ width, height };
@@ -1230,7 +1257,7 @@ namespace
 			}
 		}
 		Require(differentPixels == 0, "A run should paint what its segments paint, " + std::to_string(differentPixels) + " pixels differ");
-		Require(segments.GetProblems().empty(), "The run should bin without problems");
+		Require(segments.GetProblems().empty() && segments.GetReadBackProblems().empty(), "The run should bin without problems");
 	}
 
 	// The blur chain (VulkanBlur)
@@ -1325,6 +1352,263 @@ namespace
 		image.RequirePixel(31, 15, White, "The last pixel of a resized target");
 		Require(gpu.GetTarget().GetTiles().TilesX == 4 && gpu.GetTarget().GetTiles().TilesY == 2, "The target should keep the frame's tiles");
 	}
+
+	// Binning on the GPU (PainterBin.comp, stage 3, change 13), read back: which commands each
+	// tile holds, in order, without what lies under a command covering the whole tile opaquely
+
+	using TileCoordinates = std::pair<uint32_t, uint32_t>;
+
+	// The painter's whole frame binned on the GPU, as one segment over the whole target, read back
+	PainterTiles BinOnGpu(GpuPainter& gpu, const Painter& painter, const PainterBudget& budget = PainterBudget{})
+	{
+		VulkanPainterSegments segments;
+		segments.Clear(budget);
+		segments.SetReadBackTiles(true);
+		segments.Add(painter, PainterSegment{ 0, static_cast<uint32_t>(painter.GetCommands().size()) }, true);
+		gpu.Bin(segments);
+		PainterTiles tiles = segments.GetBinned(0);
+		segments.Release();
+		return tiles;
+	}
+
+	std::vector<uint32_t> CommandsInTile(const PainterTiles& tiles, uint32_t tileX, uint32_t tileY)
+	{
+		const PainterTile& tile = tiles.GetTile(tileX, tileY);
+		return std::vector<uint32_t>(tiles.Entries.begin() + tile.FirstEntry, tiles.Entries.begin() + tile.FirstEntry + tile.Count);
+	}
+
+	bool TileHasCommand(const PainterTiles& tiles, uint32_t tileX, uint32_t tileY, uint32_t commandIndex)
+	{
+		const std::vector<uint32_t> commands = CommandsInTile(tiles, tileX, tileY);
+		return std::find(commands.begin(), commands.end(), commandIndex) != commands.end();
+	}
+
+	// Every tile that holds the command, row by row
+	std::vector<TileCoordinates> TilesOfCommand(const PainterTiles& tiles, uint32_t commandIndex)
+	{
+		std::vector<TileCoordinates> result;
+		for (uint32_t tileY = 0; tileY < tiles.TilesY; ++tileY)
+		{
+			for (uint32_t tileX = 0; tileX < tiles.TilesX; ++tileX)
+			{
+				if (TileHasCommand(tiles, tileX, tileY, commandIndex))
+				{
+					result.emplace_back(tileX, tileY);
+				}
+			}
+		}
+		return result;
+	}
+
+	// The tile a pixel position lies in
+	TileCoordinates TileAt(glm::vec2 position)
+	{
+		return TileCoordinates{ static_cast<uint32_t>(position.x) / PainterTileSize, static_cast<uint32_t>(position.y) / PainterTileSize };
+	}
+
+	void TestBinnedShapesLandInTheirTiles(GpuPainter& gpu)
+	{
+		Painter painter = StartFrame(100, 100);
+		// With one pixel of anti-aliasing, this rect covers pixels 8 to 24 across and 8 to 16 down.
+		painter.AddRect(PainterRect{ { 9, 9 }, { 23, 15 } }, PainterStyle::Filled(Orange));
+		// Covers pixels 35 to 45 both ways: tiles 4 and 5.
+		painter.AddCircle({ 40, 40 }, 4.0f, PainterStyle::Filled(Orange));
+		const PainterTiles tiles = BinOnGpu(gpu, painter);
+
+		Require(TilesOfCommand(tiles, 0) == std::vector<TileCoordinates>{ { 1, 1 }, { 2, 1 } }, "The rect should land in exactly tiles (1,1) and (2,1)");
+		Require(TilesOfCommand(tiles, 1) == std::vector<TileCoordinates>{ { 4, 4 }, { 5, 4 }, { 4, 5 }, { 5, 5 } },
+			"The circle should land in exactly tiles (4..5, 4..5)");
+		Require(tiles.Stats.CulledCommands == 0 && tiles.Stats.DroppedCommands == 0 && tiles.Problems.empty(), "Nothing should be culled or dropped");
+	}
+
+	void TestBinnedTilesKeepDrawingOrder(GpuPainter& gpu)
+	{
+		Painter painter = StartFrame(64, 64);
+		painter.AddRect(PainterRect{ { 0, 0 }, { 16, 16 } }, PainterStyle::Filled(Orange));
+		painter.AddCircle({ 4, 4 }, 2.0f, PainterStyle::Filled(Black));
+		painter.AddRect(PainterRect{ { 1, 1 }, { 6, 6 } }, PainterStyle::Filled(Orange));
+		const PainterTiles tiles = BinOnGpu(gpu, painter);
+
+		Require(CommandsInTile(tiles, 0, 0) == std::vector<uint32_t>{ 0, 1, 2 }, "A tile should list its commands in drawing order");
+
+		// The first rect covers pixels -1 to 17 each way: tiles 0 to 2, nine of them. The two
+		// small shapes only add to tile (0,0).
+		Require(tiles.Stats.TilesInUse == 9 && tiles.Stats.TileEntries == 11 && tiles.Stats.MaxCommandsPerTile == 3,
+			"The statistics are wrong: " + std::to_string(tiles.Stats.TilesInUse) + " tiles, " + std::to_string(tiles.Stats.TileEntries) + " entries, " +
+				std::to_string(tiles.Stats.MaxCommandsPerTile) + " at most");
+	}
+
+	// Checks that every tile the line's pixels can be in holds the line, by walking along it
+	// and across it in small steps.
+	void RequireLineCovered(const PainterTiles& tiles, uint32_t commandIndex, glm::vec2 from, glm::vec2 to, float width, const std::string& name)
+	{
+		const glm::vec2 along = to - from;
+		const glm::vec2 across = glm::normalize(glm::vec2(-along.y, along.x));
+		for (float t = 0.0f; t <= 1.0f; t += 0.0005f)
+		{
+			for (float side = -0.5f; side <= 0.5f; side += 0.25f)
+			{
+				const glm::vec2 point = from + along * t + across * (side * width);
+				if (point.x < 0.0f || point.y < 0.0f || point.x >= tiles.TilesX * 8.0f || point.y >= tiles.TilesY * 8.0f)
+				{
+					continue;
+				}
+				const TileCoordinates tile = TileAt(point);
+				Require(TileHasCommand(tiles, tile.first, tile.second, commandIndex),
+					name + " is missing from tile (" + std::to_string(tile.first) + "," + std::to_string(tile.second) + ")");
+			}
+		}
+	}
+
+	void TestBinnedLinesWalkTheirTiles(GpuPainter& gpu)
+	{
+		Painter painter = StartFrame(800, 800);
+		painter.AddLine({ 0, 0 }, { 800, 800 }, 2.0f, EPainterLineCap::Flat, PainterStyle::Filled(Black));
+		painter.AddLine({ 13, 700 }, { 790, 610 }, 5.0f, EPainterLineCap::Round, PainterStyle::Filled(Black));
+		painter.AddLine({ 400, 3 }, { 430, 797 }, 1.0f, EPainterLineCap::Flat, PainterStyle::Filled(Black));
+		const PainterTiles tiles = BinOnGpu(gpu, painter);
+
+		// Its bounding box would be all 100x100 tiles; along the diagonal it needs about three per row.
+		const size_t diagonalTiles = TilesOfCommand(tiles, 0).size();
+		Require(diagonalTiles < 400, "A diagonal line should touch a thin band of tiles, got " + std::to_string(diagonalTiles));
+
+		RequireLineCovered(tiles, 0, { 0, 0 }, { 800, 800 }, 2.0f, "The diagonal line");
+		RequireLineCovered(tiles, 1, { 13, 700 }, { 790, 610 }, 5.0f, "The shallow line");
+		RequireLineCovered(tiles, 2, { 400, 3 }, { 430, 797 }, 1.0f, "The steep line");
+
+		// A horizontal line, 2 wide at y = 4: pixels 3 to 5, plus anti-aliasing 2 to 6. One row of tiles.
+		Painter horizontal = StartFrame(100, 100);
+		horizontal.AddLine({ 10, 4 }, { 70, 4 }, 2.0f, EPainterLineCap::Flat, PainterStyle::Filled(Black));
+		const std::vector<TileCoordinates> horizontalTiles = TilesOfCommand(BinOnGpu(gpu, horizontal), 0);
+		Require(horizontalTiles.size() == 8 && horizontalTiles.front() == TileCoordinates{ 1, 0 } && horizontalTiles.back() == TileCoordinates{ 8, 0 },
+			"A horizontal line should cover tiles 1 to 8 of row 0");
+	}
+
+	void TestBinnedGroupsCoverTheirWholeReach(GpuPainter& gpu)
+	{
+		Painter painter = StartFrame(400, 400);
+
+		// Two shapes far apart with one shadow, 40 pixels below them
+		PainterEffects shadow;
+		shadow.Shadow.Color = glm::vec4(0.0f, 0.0f, 0.0f, 0.5f);
+		shadow.Shadow.Offset = glm::vec2(0.0f, 40.0f);
+		shadow.Shadow.Blur = 4.0f;
+		painter.BeginGroup(shadow);
+		painter.AddRect(PainterRect{ { 0, 0 }, { 16, 16 } }, PainterStyle::Filled(Orange));
+		painter.AddCircle({ 100, 8 }, 4.0f, PainterStyle::Filled(Orange));
+		painter.EndGroup();
+
+		// A circle with a glow of its own, reaching 10 pixels past its edge
+		PainterStyle glowing = PainterStyle::Filled(Orange);
+		glowing.Effects.Glow.Color = Orange;
+		glowing.Effects.Glow.Distance = 10.0f;
+		painter.AddCircle({ 200, 200 }, 4.0f, glowing);
+
+		// A line in a group without effects covers the group's bounds, not just its own band.
+		painter.BeginGroup(PainterEffects{});
+		painter.AddLine({ 0, 300 }, { 80, 380 }, 1.0f, EPainterLineCap::Flat, PainterStyle::Filled(Black));
+		painter.EndGroup();
+
+		const PainterTiles tiles = BinOnGpu(gpu, painter);
+
+		// The tile of pixel (12, 50) only lies in the rect's shadow, but the shader needs both
+		// shapes of the group there.
+		const TileCoordinates inShadow = TileAt({ 12, 50 });
+		Require(TileHasCommand(tiles, inShadow.first, inShadow.second, 0) && TileHasCommand(tiles, inShadow.first, inShadow.second, 1),
+			"A tile in a group's shadow should hold every shape of the group");
+		const TileCoordinates belowShadow = TileAt({ 12, 90 });
+		Require(CommandsInTile(tiles, belowShadow.first, belowShadow.second).empty(), "A tile past the shadow should hold nothing");
+
+		const TileCoordinates inGlow = TileAt({ 212, 200 });
+		Require(TileHasCommand(tiles, inGlow.first, inGlow.second, 2), "A tile in a shape's glow should hold the shape");
+
+		const TileCoordinates cornerOfLine = TileAt({ 76, 302 });
+		Require(TileHasCommand(tiles, cornerOfLine.first, cornerOfLine.second, 3), "A line in a group should cover the group's whole bounds");
+	}
+
+	// The per-tile reduction: in a tile wholly inside a solid, opaque rect (less its rounding, cut
+	// by its clip rect), what comes before the rect is dropped; anything else hides nothing.
+	void TestBinningDropsWhatOpaqueRectsHide(GpuPainter& gpu)
+	{
+		const glm::vec4 translucent{ 0.2f, 0.4f, 0.8f, 0.5f };
+		Painter painter = StartFrame(64, 64);
+		painter.AddRect(PainterRect{ { 0, 0 }, { 64, 64 } }, PainterStyle::Filled(translucent));                     // 0: under everything
+		painter.AddRoundedRect(PainterRect{ { 8, 8 }, { 56, 56 } }, 8.0f, PainterStyle::Filled(Orange));             // 1: hides 16 to 48
+		painter.AddRect(PainterRect{ { 8, 8 }, { 56, 56 } }, PainterStyle::Outlined(Black, 2.0f));                  // 2: an outline hides nothing
+		painter.AddRect(PainterRect{ { 0, 0 }, { 64, 64 } }, PainterStyle::Filled(translucent));                     // 3: translucent hides nothing
+		painter.AddCircle({ 32, 32 }, 3.0f, PainterStyle::Filled(White));                                           // 4: on top
+		const PainterTiles tiles = BinOnGpu(gpu, painter);
+
+		// Tile (3,3), pixels 24 to 32, lies inside the rounded rect less its rounding: the
+		// translucent rect under it goes; the rect and all after it stay, in order.
+		Require(CommandsInTile(tiles, 3, 3) == std::vector<uint32_t>{ 1, 2, 3, 4 }, "A tile inside an opaque rect should drop what lies under it");
+		// Tile (1,1), pixels 8 to 16, is in the rounded corner: everything stays.
+		Require(CommandsInTile(tiles, 1, 1) == std::vector<uint32_t>{ 0, 1, 2, 3 }, "A tile at an opaque rect's rounded corner should keep what lies under it");
+		// Tile (0,0) only touches the rect's anti-aliased edge.
+		Require(CommandsInTile(tiles, 0, 0) == std::vector<uint32_t>{ 0, 1, 2, 3 }, "A tile at the opaque rect's edge should keep everything");
+		Require(tiles.Stats.EntriesBeforeReduction > tiles.Stats.TileEntries, "The reduction should have dropped entries");
+
+		// A clip rect cuts what the rect hides: clipped to 0 to 32, it hides tile (2,2) but not (4,4).
+		Painter clipped = StartFrame(64, 64);
+		clipped.AddRect(PainterRect{ { 0, 0 }, { 64, 64 } }, PainterStyle::Filled(translucent));
+		clipped.PushClipRect(PainterRect{ { 0, 0 }, { 32, 32 } });
+		clipped.AddRect(PainterRect{ { 0, 0 }, { 64, 64 } }, PainterStyle::Filled(Orange));
+		clipped.PopClipRect();
+		const PainterTiles clippedTiles = BinOnGpu(gpu, clipped);
+		Require(CommandsInTile(clippedTiles, 2, 2) == std::vector<uint32_t>{ 1 } && CommandsInTile(clippedTiles, 4, 4) == std::vector<uint32_t>{ 0 },
+			"An opaque rect should hide only inside its clip rect");
+	}
+
+	// The entry budget, on the GPU: tiles whose entries don't fit are drawn empty, and it is reported.
+	// The command budget, on the CPU, drops the commands past it.
+	void TestBinningBudget(GpuPainter& gpu)
+	{
+		Painter painter = StartFrame(64, 64);
+		painter.AddCircle({ 4, 4 }, 2.0f, PainterStyle::Filled(Orange));
+		painter.AddCircle({ 20, 20 }, 2.0f, PainterStyle::Filled(Orange));
+		painter.AddCircle({ 40, 40 }, 2.0f, PainterStyle::Filled(Orange));
+		PainterBudget fewCommands;
+		fewCommands.MaxCommands = 2;
+		const PainterTiles tiles = BinOnGpu(gpu, painter, fewCommands);
+		Require(tiles.Stats.DroppedCommands == 1, "One command over the command budget should be dropped");
+		Require(!TilesOfCommand(tiles, 1).empty() && TilesOfCommand(tiles, 2).empty(), "The commands within the budget should be binned, the rest not");
+		Require(!tiles.Problems.empty() && tiles.Problems[0].find("budget ran out") != std::string::npos, "Running out of budget should be reported");
+
+		// Two translucent rects over all 64 tiles and a circle: 129 entries, more than 100.
+		const glm::vec4 translucent{ 0.2f, 0.4f, 0.8f, 0.5f };
+		Painter full = StartFrame(64, 64);
+		full.AddRect(PainterRect{ { 0, 0 }, { 64, 64 } }, PainterStyle::Filled(translucent));
+		full.AddRect(PainterRect{ { 0, 0 }, { 64, 64 } }, PainterStyle::Filled(translucent));
+		full.AddCircle({ 4, 4 }, 2.0f, PainterStyle::Filled(Orange));
+		PainterBudget fewEntries;
+		fewEntries.MaxTileEntries = 100;
+		const PainterTiles fullTiles = BinOnGpu(gpu, full, fewEntries);
+		Require(fullTiles.Stats.TileEntries <= 100 && fullTiles.Stats.TilesInUse < 64, "Tiles past the entry budget should be empty, got " +
+			std::to_string(fullTiles.Stats.TileEntries) + " entries in " + std::to_string(fullTiles.Stats.TilesInUse) + " tiles");
+		Require(std::any_of(fullTiles.Problems.begin(), fullTiles.Problems.end(), [](const std::string& problem) { return problem.find("drawn empty") != std::string::npos; }),
+			"Tiles left empty should be reported");
+	}
+
+	// Segments one after the other: each one's tiles start at a whole workgroup of the binner, and
+	// each gets its own sums.
+	void TestBinnedSegmentsKeepTheirOwnSums(GpuPainter& gpu)
+	{
+		Painter painter = StartFrame(64, 64);
+		painter.AddCircle({ 4, 4 }, 2.0f, PainterStyle::Filled(Orange));
+		painter.AddRect(PainterRect{ { 17, 17 }, { 31, 31 } }, PainterStyle::Filled(Orange));
+		VulkanPainterSegments segments;
+		segments.SetReadBackTiles(true);
+		const uint32_t first = segments.Add(painter, PainterSegment{ 0, 1 });
+		const uint32_t second = segments.Add(painter, PainterSegment{ 1, 1 });
+		gpu.Bin(segments);
+
+		Require(segments.GetStats(first).TilesInUse == 1 && segments.GetStats(first).TileEntries == 1, "The circle's segment should sum its one tile");
+		Require(segments.GetStats(second).TilesInUse == 4 && segments.GetStats(second).TileEntries == 4, "The rect's segment should sum its four tiles");
+		const PainterTiles secondTiles = segments.GetBinned(second);
+		Require(secondTiles.TilesX == 2 && secondTiles.TilesY == 2 && CommandsInTile(secondTiles, 1, 1) == std::vector<uint32_t>{ 0 },
+			"A segment's entries should count from its first command");
+		segments.Release();
+	}
 }
 
 int main()
@@ -1342,6 +1626,13 @@ int main()
 		TestShadowsAndGlow(gpu);
 		TestClearColorAndHeatmap(gpu);
 		TestTargetFollowsThePainterSize(gpu);
+		TestBinnedShapesLandInTheirTiles(gpu);
+		TestBinnedTilesKeepDrawingOrder(gpu);
+		TestBinnedLinesWalkTheirTiles(gpu);
+		TestBinnedGroupsCoverTheirWholeReach(gpu);
+		TestBinningDropsWhatOpaqueRectsHide(gpu);
+		TestBinningBudget(gpu);
+		TestBinnedSegmentsKeepTheirOwnSums(gpu);
 
 		TestImages(gpu);
 		TestImageGlow(gpu);

@@ -122,8 +122,9 @@ namespace Nyx
 		// size, and is invalid until the canvas is first drawn.
 		virtual ImTextureID GetPainterCanvasTextureId(uint64_t id) const = 0;
 
-		// The last drawn frame's tiles, with its statistics and problems; null before the first draw
-		virtual const Nyx::Engine::PainterTiles* GetPainterCanvasTiles(uint64_t id) const = 0;
+		// The last drawn frame's grid, statistics and problems, as the GPU binned it and read it
+		// back; none before the first draw
+		virtual std::optional<Nyx::Engine::PainterTiles> GetPainterCanvasTiles(uint64_t id) const = 0;
 
 		// Painting inside ImGui windows (Nyx::UI::GetWindowPainter()) in the last drawn frame:
 		// while the UI is built, that is the previous one.

@@ -22,34 +22,8 @@ namespace Nyx::Engine
 		// values ImGui does, so the two match side by side.
 		constexpr vk::Format TargetFormat = vk::Format::eR8G8B8A8Unorm;
 
-		// How many targets and segment sets can exist at once; each takes one descriptor set.
+		// How many targets and segment sets can exist at once; each takes two descriptor sets.
 		constexpr uint32_t MaxTargets = 32;
-
-		// Whether `command` covers all of `tile` opaquely, so that nothing drawn before it shows
-		// there: a solid rect, opaque or of a colour in `alsoOpaque`, with the tile inside its clip
-		// rect and inside the rect less its largest rounding. Conservative: a rounded rect's
-		// corners keep the tiles near them.
-		bool CoversTileOpaquely(const PainterCommand& command, const PainterRect& tile, std::span<const uint32_t> alsoOpaque)
-		{
-			if (command.Type != static_cast<uint32_t>(EPainterCommandType::Rect) || command.OutlineWidth > 0.0f ||
-				command.FillMode != static_cast<uint32_t>(EPainterFillMode::Solid))
-			{
-				return false;
-			}
-			const bool bOpaque = (command.Color >> 24) == 0xFFu || std::find(alsoOpaque.begin(), alsoOpaque.end(), command.Color) != alsoOpaque.end();
-			if (!bOpaque)
-			{
-				return false;
-			}
-			const auto contains = [&](const PainterRect& outer)
-			{
-				return outer.Min.x <= tile.Min.x && outer.Min.y <= tile.Min.y && outer.Max.x >= tile.Max.x && outer.Max.y >= tile.Max.y;
-			};
-			const PainterRectPayload payload = GetPayload<PainterRectPayload>(command);
-			const float rounding = std::max({ payload.Radii.TopLeft, payload.Radii.TopRight, payload.Radii.BottomRight, payload.Radii.BottomLeft });
-			const PainterRect inside{ payload.Rect.Min + glm::vec2(rounding), payload.Rect.Max - glm::vec2(rounding) };
-			return contains(command.ClipRect) && contains(inside);
-		}
 
 		// The binding of each buffer in Painter.frag
 		constexpr uint32_t CommandsBinding = 0;
@@ -57,6 +31,28 @@ namespace Nyx::Engine
 		constexpr uint32_t TilesBinding = 2;
 		constexpr uint32_t EntriesBinding = 3;
 		constexpr uint32_t BindingCount = 4;
+
+		// The binding of each buffer in PainterBin.comp
+		constexpr uint32_t BinSegmentsBinding = 0;
+		constexpr uint32_t BinCommandsBinding = 1;
+		constexpr uint32_t BinTilesBinding = 2;
+		constexpr uint32_t BinEntriesBinding = 3;
+		constexpr uint32_t BinFirstKeptBinding = 4;
+		constexpr uint32_t BinSumsBinding = 5;
+		constexpr uint32_t BinBindingCount = 6;
+
+		// PainterBinPushConstants in PainterBin.comp
+		struct PainterBinPushConstants
+		{
+			uint32_t TileCount = 0;
+			uint32_t SegmentCount = 0;
+			uint32_t EntryCapacity = 0;
+			uint32_t Pass = 0;
+		};
+
+		// The sums buffer starts with the next free entry, padded to one PainterBinSums, then
+		// holds one PainterBinSums per segment.
+		constexpr vk::DeviceSize SumsHeaderSize = sizeof(PainterBinSums);
 
 		// PainterPushConstants in Painter.vert and Painter.frag
 		struct PainterPushConstants
@@ -129,19 +125,21 @@ namespace Nyx::Engine
 
 	void VulkanPainterBuffers::Release()
 	{
-		DescriptorSet = nullptr;
-		for (UploadBuffer* buffer : { &Commands, &Groups, &Tiles, &Entries })
+		DrawSet = nullptr;
+		BinSet = nullptr;
+		for (GpuBuffer* buffer : { &CommandsUpload, &GroupsUpload, &BinCommandsUpload, &BinSegmentsUpload, &Commands, &Groups, &BinCommands, &BinSegments, &Tiles,
+				 &Entries, &FirstKept, &Sums, &SumsReadBack, &TilesReadBack, &EntriesReadBack })
 		{
+			buffer->Mapped = nullptr;
 			buffer->Buffer = nullptr;
 			buffer->Memory = nullptr;
-			buffer->Mapped = nullptr;
 			buffer->Size = 0;
 		}
 	}
 
 	void VulkanPainterTarget::Release()
 	{
-		Buffers.Release();
+		Segments.Release();
 		Framebuffer = nullptr;
 		ImageView = nullptr;
 		Image = nullptr;
@@ -149,40 +147,136 @@ namespace Nyx::Engine
 		Extent = vk::Extent2D{ 0, 0 };
 	}
 
-	void VulkanPainterSegments::Clear()
+	void VulkanPainterSegments::Clear(const PainterBudget& budget)
 	{
+		Budget = budget;
 		Commands.clear();
 		Groups.clear();
-		Tiles.clear();
-		Entries.clear();
+		BinCommands.clear();
+		BinSegments.clear();
+		TileCount = 0;
+		MaxEntries = 0;
 		Painters.clear();
 		Segments.clear();
 		Problems.clear();
+		// What was read back belonged to the segments that just went.
+		ReadBackProblems.clear();
+		ReadTiles.clear();
+		ReadEntries.clear();
 	}
 
-	uint32_t VulkanPainterSegments::Add(const Painter& painter, const PainterSegment& segment, const PainterBudget& budget)
+	void VulkanPainterSegments::SetAlsoOpaqueColors(std::span<const uint32_t> colors)
+	{
+		AlsoOpaque.assign(colors.begin(), colors.end());
+	}
+
+	uint32_t VulkanPainterSegments::Add(const Painter& painter, const PainterSegment& segment, bool bWholeTarget)
 	{
 		const uint32_t painterIndex = FindOrAddPainter(painter);
-		BinPainterSegment(painter, segment, budget, Binned);
+		MeasurePainterSegment(painter, segment, bWholeTarget, Budget, AlsoOpaque, Measured);
 
 		SegmentPart part;
 		part.Painter = painterIndex;
 		// Tile entries count from the segment's first command.
 		part.CommandBase = Painters[painterIndex].CommandBase + segment.FirstCommand;
-		part.TileBase = static_cast<uint32_t>(Tiles.size());
-		part.EntryBase = static_cast<uint32_t>(Entries.size());
-		part.OriginX = Binned.OriginX;
-		part.OriginY = Binned.OriginY;
-		part.TilesX = Binned.TilesX;
-		part.TilesY = Binned.TilesY;
-		part.Stats = Binned.Stats;
+		// Each segment's tiles start at a whole workgroup of the binner, so that a workgroup sums
+		// one segment's tiles.
+		part.FirstTile = (TileCount + PainterBinWorkgroupSize - 1) / PainterBinWorkgroupSize * PainterBinWorkgroupSize;
+		part.OriginX = Measured.OriginX;
+		part.OriginY = Measured.OriginY;
+		part.TilesX = Measured.TilesX;
+		part.TilesY = Measured.TilesY;
+		part.Stats = Measured.Stats;
+		TileCount = part.FirstTile + part.TilesX * part.TilesY;
+		MaxEntries += Measured.MaxEntries;
 
-		Tiles.insert(Tiles.end(), Binned.Tiles.begin(), Binned.Tiles.end());
-		Entries.insert(Entries.end(), Binned.Entries.begin(), Binned.Entries.end());
-		Problems.insert(Problems.end(), Binned.Problems.begin(), Binned.Problems.end());
+		PainterBinSegment binSegment;
+		binSegment.FirstCommand = static_cast<uint32_t>(BinCommands.size());
+		binSegment.CommandCount = static_cast<uint32_t>(Measured.Commands.size());
+		binSegment.FirstTile = part.FirstTile;
+		binSegment.TilesX = part.TilesX;
+		binSegment.TilesY = part.TilesY;
+		binSegment.OriginX = part.OriginX;
+		binSegment.OriginY = part.OriginY;
+		BinCommands.insert(BinCommands.end(), Measured.Commands.begin(), Measured.Commands.end());
+		BinSegments.push_back(binSegment);
+		Problems.insert(Problems.end(), Measured.Problems.begin(), Measured.Problems.end());
 
 		Segments.push_back(part);
 		return static_cast<uint32_t>(Segments.size() - 1);
+	}
+
+	void VulkanPainterSegments::ReadBack()
+	{
+		if (!bReadBackPending)
+		{
+			return;
+		}
+		bReadBackPending = false;
+
+		// The next free entry, then one sum per segment; entries past the capacity weren't written.
+		const auto* header = static_cast<const uint32_t*>(Buffers.SumsReadBack.Mapped);
+		const auto* sums = static_cast<const PainterBinSums*>(Buffers.SumsReadBack.Mapped) + 1;
+		uint32_t overflowed = 0;
+		for (size_t index = 0; index < Segments.size(); ++index)
+		{
+			PainterBinningStats& stats = Segments[index].Stats;
+			stats.TilesInUse = sums[index].TilesInUse;
+			stats.TileEntries = sums[index].Entries;
+			stats.MaxCommandsPerTile = sums[index].MaxPerTile;
+			stats.EntriesBeforeReduction = sums[index].EntriesBefore;
+			stats.EntriesIfAlsoOpaque = sums[index].EntriesIfAlsoOpaque;
+			overflowed += sums[index].Overflowed != 0 ? 1 : 0;
+		}
+		if (overflowed > 0)
+		{
+			ReadBackProblems.push_back("The painter's budget ran out: " + std::to_string(overflowed) + " segments had tiles whose entries didn't fit and were drawn empty (at most " +
+				std::to_string(Budget.MaxTileEntries) + " tile entries per frame)");
+		}
+
+		if (bTilesReadBackPending)
+		{
+			const auto* tiles = static_cast<const PainterTile*>(Buffers.TilesReadBack.Mapped);
+			const auto* entries = static_cast<const uint32_t*>(Buffers.EntriesReadBack.Mapped);
+			ReadTiles.assign(tiles, tiles + TileCount);
+			ReadEntries.assign(entries, entries + std::min(header[0], EntryCapacity));
+			bTilesReadBackPending = false;
+		}
+	}
+
+	PainterTiles VulkanPainterSegments::GetBinned(uint32_t segment) const
+	{
+		PainterTiles binned;
+		if (segment >= Segments.size())
+		{
+			return binned;
+		}
+		const SegmentPart& part = Segments[segment];
+		binned.OriginX = part.OriginX;
+		binned.OriginY = part.OriginY;
+		binned.TilesX = part.TilesX;
+		binned.TilesY = part.TilesY;
+		binned.Stats = part.Stats;
+		binned.Problems = Problems;
+		binned.Problems.insert(binned.Problems.end(), ReadBackProblems.begin(), ReadBackProblems.end());
+
+		const size_t tileCount = static_cast<size_t>(part.TilesX) * part.TilesY;
+		if (ReadTiles.size() < part.FirstTile + tileCount)
+		{
+			return binned;
+		}
+		// Each tile's entries, now counted from the segment's own first entry
+		binned.Tiles.assign(ReadTiles.begin() + part.FirstTile, ReadTiles.begin() + part.FirstTile + tileCount);
+		for (PainterTile& tile : binned.Tiles)
+		{
+			const uint32_t first = static_cast<uint32_t>(binned.Entries.size());
+			if (tile.FirstEntry + tile.Count <= ReadEntries.size())
+			{
+				binned.Entries.insert(binned.Entries.end(), ReadEntries.begin() + tile.FirstEntry, ReadEntries.begin() + tile.FirstEntry + tile.Count);
+			}
+			tile.FirstEntry = first;
+		}
+		return binned;
 	}
 
 	void VulkanPainterSegments::AddHeat(uint32_t segment, PainterHeatGrid& grid) const
@@ -193,56 +287,37 @@ namespace Nyx::Engine
 		}
 		// The segment's grid starts at a whole tile of the target.
 		const SegmentPart& part = Segments[segment];
+		if (ReadTiles.size() < part.FirstTile + static_cast<size_t>(part.TilesX) * part.TilesY)
+		{
+			return;
+		}
 		const uint32_t firstX = part.OriginX / PainterTileSize;
 		const uint32_t firstY = part.OriginY / PainterTileSize;
 		for (uint32_t tileY = 0; tileY < part.TilesY; ++tileY)
 		{
 			for (uint32_t tileX = 0; tileX < part.TilesX; ++tileX)
 			{
-				grid.Add(firstX + tileX, firstY + tileY, Tiles[part.TileBase + tileY * part.TilesX + tileX].Count);
+				grid.Add(firstX + tileX, firstY + tileY, ReadTiles[part.FirstTile + tileY * part.TilesX + tileX].Count);
 			}
 		}
 	}
 
-	PainterOcclusionEstimate VulkanPainterSegments::EstimateOcclusion(std::span<const uint32_t> alsoOpaque) const
+	PainterReduction VulkanPainterSegments::GetReduction() const
 	{
-		PainterOcclusionEstimate estimate;
+		PainterReduction reduction;
 		for (const SegmentPart& part : Segments)
 		{
-			for (uint32_t tileY = 0; tileY < part.TilesY; ++tileY)
-			{
-				for (uint32_t tileX = 0; tileX < part.TilesX; ++tileX)
-				{
-					const PainterTile& tile = Tiles[part.TileBase + tileY * part.TilesX + tileX];
-					const glm::vec2 min(static_cast<float>(part.OriginX + tileX * PainterTileSize), static_cast<float>(part.OriginY + tileY * PainterTileSize));
-					const PainterRect tileRect{ min, min + glm::vec2(static_cast<float>(PainterTileSize)) };
-
-					// From the last entry back to the first command that hides what lies under it
-					uint32_t kept = tile.Count;
-					uint32_t keptAlsoOpaque = tile.Count;
-					bool bFound = false;
-					for (uint32_t index = tile.Count; index-- > 0;)
-					{
-						const PainterCommand& command = Commands[part.CommandBase + Entries[part.EntryBase + tile.FirstEntry + index]];
-						if (keptAlsoOpaque == tile.Count && CoversTileOpaquely(command, tileRect, alsoOpaque))
-						{
-							keptAlsoOpaque = tile.Count - index;
-						}
-						if (CoversTileOpaquely(command, tileRect, {}))
-						{
-							kept = tile.Count - index;
-							bFound = true;
-							break;
-						}
-					}
-					// The colours counted as opaque too may hide more, never less.
-					estimate.Entries += tile.Count;
-					estimate.Kept += kept;
-					estimate.KeptAlsoOpaque += bFound ? std::min(kept, keptAlsoOpaque) : keptAlsoOpaque;
-				}
-			}
+			reduction.EntriesBefore += part.Stats.EntriesBeforeReduction;
+			reduction.Kept += part.Stats.TileEntries;
+			reduction.KeptIfAlsoOpaque += part.Stats.EntriesIfAlsoOpaque;
 		}
-		return estimate;
+		return reduction;
+	}
+
+	size_t VulkanPainterSegments::GetUploadBytes() const
+	{
+		return Commands.size() * sizeof(PainterCommand) + Groups.size() * sizeof(PainterGroup) + BinCommands.size() * sizeof(PainterBinCommand) +
+			BinSegments.size() * sizeof(PainterBinSegment);
 	}
 
 	uint32_t VulkanPainterSegments::FindOrAddPainter(const Painter& painter)
@@ -283,6 +358,7 @@ namespace Nyx::Engine
 		CreateDescriptorSetLayouts();
 		CreateDescriptorPool();
 		CreatePipelineLayout();
+		CreateBinPipeline();
 		CreateEmptyTexture();
 		CanvasPipeline = CreatePipeline(*RenderPass);
 	}
@@ -297,6 +373,9 @@ namespace Nyx::Engine
 
 		SegmentPipelines.clear();
 		CanvasPipeline = nullptr;
+		BinPipeline = nullptr;
+		BinPipelineLayout = nullptr;
+		BinSetLayout = nullptr;
 		PipelineLayout = nullptr;
 		DescriptorPool = nullptr;
 		TextureSetLayout = nullptr;
@@ -307,7 +386,12 @@ namespace Nyx::Engine
 
 	void VulkanPainter::Draw(vk::raii::CommandBuffer& commandBuffer, const Painter& painter, VulkanPainterTarget& target, const PainterDrawOptions& options)
 	{
-		BinPainterCommands(painter, options.Budget, target.Tiles);
+		// The last draw is done by now (the renderer waits for the frame before; the tests wait for
+		// each draw): what it read back is taken before this frame starts over.
+		VulkanPainterSegments& segments = target.Segments;
+		segments.ReadBack();
+		segments.Clear(options.Budget);
+		const uint32_t segment = segments.Add(painter, PainterSegment{ 0, static_cast<uint32_t>(painter.GetCommands().size()) }, true);
 
 		const vk::Extent2D extent{ painter.GetTargetWidth(), painter.GetTargetHeight() };
 		if (extent.width == 0 || extent.height == 0)
@@ -316,11 +400,8 @@ namespace Nyx::Engine
 		}
 
 		PrepareImage(target, extent);
-
-		// Commands dropped by the budget are always the last ones; nothing points at them.
-		const PainterTiles& tiles = target.Tiles;
-		const std::span<const PainterCommand> commands(painter.GetCommands().data(), painter.GetCommands().size() - tiles.Stats.DroppedCommands);
-		Upload(target.Buffers, commands, painter.GetGroups(), tiles.Tiles, tiles.Entries);
+		Bin(*commandBuffer, segments);
+		const VulkanPainterSegments::SegmentPart& part = segments.Segments[segment];
 
 		// The clear colour is straight, like every colour given to the painter; the image holds
 		// premultiplied colour, like everything the shader writes.
@@ -340,13 +421,14 @@ namespace Nyx::Engine
 		commandBuffer.setScissor(0, vk::Rect2D({ 0, 0 }, extent));
 
 		commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *CanvasPipeline);
-		commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *PipelineLayout, 0, { *target.Buffers.DescriptorSet }, {});
+		commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *PipelineLayout, 0, { *segments.Buffers.DrawSet }, {});
 		BindTextures(*commandBuffer, painter.GetTextures());
 
 		// The grid covers the whole target, and the buffers hold only this frame.
 		PainterPushConstants push;
-		push.TilesX = tiles.TilesX;
-		push.TilesY = tiles.TilesY;
+		push.TileBase = part.FirstTile;
+		push.TilesX = part.TilesX;
+		push.TilesY = part.TilesY;
 		push.TargetWidth = static_cast<float>(extent.width);
 		push.TargetHeight = static_cast<float>(extent.height);
 		push.DebugView = static_cast<uint32_t>(options.DebugView);
@@ -357,14 +439,82 @@ namespace Nyx::Engine
 		commandBuffer.endRenderPass();
 	}
 
-	void VulkanPainter::Upload(VulkanPainterSegments& segments)
+	void VulkanPainter::Bin(vk::CommandBuffer commandBuffer, VulkanPainterSegments& segments)
 	{
-		Upload(segments.Buffers, segments.Commands, segments.Groups, segments.Tiles, segments.Entries);
+		if (segments.Segments.empty())
+		{
+			segments.bReadBackPending = false;
+			return;
+		}
+		PrepareBuffers(segments);
+		VulkanPainterBuffers& buffers = segments.Buffers;
+
+		// What the CPU wrote, into the GPU's own buffers; the sums start at 0.
+		const auto copy = [&](const VulkanPainterBuffers::GpuBuffer& from, const VulkanPainterBuffers::GpuBuffer& to, vk::DeviceSize size)
+		{
+			if (size > 0)
+			{
+				commandBuffer.copyBuffer(*from.Buffer, *to.Buffer, vk::BufferCopy(0, 0, size));
+			}
+		};
+		copy(buffers.CommandsUpload, buffers.Commands, segments.Commands.size() * sizeof(PainterCommand));
+		copy(buffers.GroupsUpload, buffers.Groups, segments.Groups.size() * sizeof(PainterGroup));
+		copy(buffers.BinCommandsUpload, buffers.BinCommands, segments.BinCommands.size() * sizeof(PainterBinCommand));
+		copy(buffers.BinSegmentsUpload, buffers.BinSegments, segments.BinSegments.size() * sizeof(PainterBinSegment));
+		const vk::DeviceSize sumsSize = SumsHeaderSize + segments.Segments.size() * sizeof(PainterBinSums);
+		commandBuffer.fillBuffer(*buffers.Sums.Buffer, 0, sumsSize, 0);
+
+		// The copies before the binner and the painter shader read them, and the last drawing's
+		// reads of the tiles and entries before the binner writes them again
+		const auto barrier = [&](vk::PipelineStageFlags fromStages, vk::AccessFlags fromAccess, vk::PipelineStageFlags toStages, vk::AccessFlags toAccess)
+		{
+			const vk::MemoryBarrier memoryBarrier(fromAccess, toAccess);
+			commandBuffer.pipelineBarrier(fromStages, toStages, {}, memoryBarrier, {}, {});
+		};
+		barrier(vk::PipelineStageFlagBits::eTransfer | vk::PipelineStageFlagBits::eFragmentShader, vk::AccessFlagBits::eTransferWrite,
+			vk::PipelineStageFlagBits::eComputeShader | vk::PipelineStageFlagBits::eFragmentShader, vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite);
+
+		PainterBinPushConstants push;
+		push.TileCount = segments.TileCount;
+		push.SegmentCount = static_cast<uint32_t>(segments.Segments.size());
+		push.EntryCapacity = segments.EntryCapacity;
+		const uint32_t workgroups = (segments.TileCount + PainterBinWorkgroupSize - 1) / PainterBinWorkgroupSize;
+		if (workgroups > 0)
+		{
+			commandBuffer.bindPipeline(vk::PipelineBindPoint::eCompute, *BinPipeline);
+			commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *BinPipelineLayout, 0, { *buffers.BinSet }, {});
+
+			// Pass 0 counts and places each tile's entries; pass 1 writes them.
+			push.Pass = 0;
+			commandBuffer.pushConstants<PainterBinPushConstants>(*BinPipelineLayout, vk::ShaderStageFlagBits::eCompute, 0, push);
+			commandBuffer.dispatch(workgroups, 1, 1);
+			barrier(vk::PipelineStageFlagBits::eComputeShader, vk::AccessFlagBits::eShaderWrite, vk::PipelineStageFlagBits::eComputeShader,
+				vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite);
+			push.Pass = 1;
+			commandBuffer.pushConstants<PainterBinPushConstants>(*BinPipelineLayout, vk::ShaderStageFlagBits::eCompute, 0, push);
+			commandBuffer.dispatch(workgroups, 1, 1);
+		}
+
+		// The tiles and entries before the painter shader reads them, here or in a later command
+		// buffer on the queue, and before they are copied back
+		barrier(vk::PipelineStageFlagBits::eComputeShader, vk::AccessFlagBits::eShaderWrite, vk::PipelineStageFlagBits::eFragmentShader | vk::PipelineStageFlagBits::eTransfer,
+			vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eTransferRead);
+
+		// Read back once the GPU is done: the sums, and while asked for the tiles and entries
+		copy(buffers.Sums, buffers.SumsReadBack, sumsSize);
+		if (segments.bReadBackTiles)
+		{
+			copy(buffers.Tiles, buffers.TilesReadBack, static_cast<vk::DeviceSize>(segments.TileCount) * sizeof(PainterTile));
+			copy(buffers.Entries, buffers.EntriesReadBack, static_cast<vk::DeviceSize>(segments.EntryCapacity) * sizeof(uint32_t));
+		}
+		barrier(vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferWrite, vk::PipelineStageFlagBits::eHost, vk::AccessFlagBits::eHostRead);
+		segments.bReadBackPending = true;
+		segments.bTilesReadBackPending = segments.bReadBackTiles;
 	}
 
 	void VulkanPainter::DrawSegment(vk::CommandBuffer commandBuffer, const VulkanPainterSegments& segments, uint32_t segment, vk::Format colorFormat, vk::Extent2D framebufferExtent)
 	{
-		if (segment >= segments.Segments.size() || !*segments.Buffers.DescriptorSet)
+		if (segment >= segments.Segments.size() || !*segments.Buffers.DrawSet)
 		{
 			return;
 		}
@@ -386,14 +536,15 @@ namespace Nyx::Engine
 		commandBuffer.setScissor(0, scissor);
 
 		commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, *GetSegmentPipeline(colorFormat));
-		commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *PipelineLayout, 0, { *segments.Buffers.DescriptorSet }, {});
+		commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *PipelineLayout, 0, { *segments.Buffers.DrawSet }, {});
 		BindTextures(commandBuffer, painter.Textures);
 
+		// The tiles' first entries count from the start of the entry buffer.
 		PainterPushConstants push;
 		push.CommandBase = part.CommandBase;
 		push.GroupBase = painter.GroupBase;
-		push.TileBase = part.TileBase;
-		push.EntryBase = part.EntryBase;
+		push.TileBase = part.FirstTile;
+		push.EntryBase = 0;
 		push.OriginX = part.OriginX;
 		push.OriginY = part.OriginY;
 		push.TilesX = part.TilesX;
@@ -480,6 +631,20 @@ namespace Nyx::Engine
 		layoutInfo.pBindings = bindings.data();
 		DescriptorSetLayout = vk::raii::DescriptorSetLayout(Context->GetDevice(), layoutInfo);
 
+		// The binner's: six storage buffers for the compute shader
+		std::array<vk::DescriptorSetLayoutBinding, BinBindingCount> binBindings{};
+		for (uint32_t binding = 0; binding < BinBindingCount; ++binding)
+		{
+			binBindings[binding].binding = binding;
+			binBindings[binding].descriptorType = vk::DescriptorType::eStorageBuffer;
+			binBindings[binding].descriptorCount = 1;
+			binBindings[binding].stageFlags = vk::ShaderStageFlagBits::eCompute;
+		}
+		vk::DescriptorSetLayoutCreateInfo binLayoutInfo{};
+		binLayoutInfo.bindingCount = static_cast<uint32_t>(binBindings.size());
+		binLayoutInfo.pBindings = binBindings.data();
+		BinSetLayout = vk::raii::DescriptorSetLayout(Context->GetDevice(), binLayoutInfo);
+
 		// Exactly as ImGui defines its texture sets, so that its sets are compatible with this one.
 		vk::DescriptorSetLayoutBinding textureBinding{};
 		textureBinding.binding = 0;
@@ -495,18 +660,18 @@ namespace Nyx::Engine
 
 	void VulkanPainter::CreateDescriptorPool()
 	{
-		// One set per target and segment set, plus the empty texture's set. All other textures
-		// come with sets of their own, made by ImGui.
+		// Two sets per target and segment set (drawing and binning), plus the empty texture's set.
+		// All other textures come with sets of their own, made by ImGui.
 		constexpr uint32_t TextureSets = 1;
 		const std::array<vk::DescriptorPoolSize, 2> poolSizes = { {
-			{ vk::DescriptorType::eStorageBuffer, MaxTargets * BindingCount },
+			{ vk::DescriptorType::eStorageBuffer, MaxTargets * (BindingCount + BinBindingCount) },
 			{ vk::DescriptorType::eCombinedImageSampler, TextureSets },
 		} };
 
 		vk::DescriptorPoolCreateInfo poolInfo{};
-		// Targets and segment sets free their set when they are released.
+		// Targets and segment sets free their sets when they are released.
 		poolInfo.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
-		poolInfo.maxSets = MaxTargets + TextureSets;
+		poolInfo.maxSets = MaxTargets * 2 + TextureSets;
 		poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
 		poolInfo.pPoolSizes = poolSizes.data();
 		DescriptorPool = vk::raii::DescriptorPool(Context->GetDevice(), poolInfo);
@@ -643,6 +808,34 @@ namespace Nyx::Engine
 		layoutInfo.pushConstantRangeCount = 1;
 		layoutInfo.pPushConstantRanges = &pushConstantRange;
 		PipelineLayout = vk::raii::PipelineLayout(Context->GetDevice(), layoutInfo);
+	}
+
+	void VulkanPainter::CreateBinPipeline()
+	{
+		vk::PushConstantRange pushConstantRange{};
+		pushConstantRange.stageFlags = vk::ShaderStageFlagBits::eCompute;
+		pushConstantRange.offset = 0;
+		pushConstantRange.size = sizeof(PainterBinPushConstants);
+
+		vk::PipelineLayoutCreateInfo layoutInfo{};
+		layoutInfo.setLayoutCount = 1;
+		layoutInfo.pSetLayouts = &*BinSetLayout;
+		layoutInfo.pushConstantRangeCount = 1;
+		layoutInfo.pPushConstantRanges = &pushConstantRange;
+		BinPipelineLayout = vk::raii::PipelineLayout(Context->GetDevice(), layoutInfo);
+
+		const std::vector<uint32_t> code = ReadSpirvFile("PainterBin.comp.spv");
+		vk::ShaderModuleCreateInfo moduleInfo{};
+		moduleInfo.codeSize = code.size() * sizeof(uint32_t);
+		moduleInfo.pCode = code.data();
+		const vk::raii::ShaderModule module(Context->GetDevice(), moduleInfo);
+
+		vk::ComputePipelineCreateInfo pipelineInfo{};
+		pipelineInfo.stage.stage = vk::ShaderStageFlagBits::eCompute;
+		pipelineInfo.stage.module = *module;
+		pipelineInfo.stage.pName = "main";
+		pipelineInfo.layout = *BinPipelineLayout;
+		BinPipeline = vk::raii::Pipeline(Context->GetDevice(), nullptr, pipelineInfo);
 	}
 
 	const vk::raii::Pipeline& VulkanPainter::GetSegmentPipeline(vk::Format colorFormat)
@@ -831,84 +1024,147 @@ namespace Nyx::Engine
 		target.Framebuffer = vk::raii::Framebuffer(device, framebufferInfo);
 	}
 
-	void VulkanPainter::Upload(VulkanPainterBuffers& buffers, std::span<const PainterCommand> commands, std::span<const PainterGroup> groups,
-		std::span<const PainterTile> tiles, std::span<const uint32_t> entries)
+	bool VulkanPainter::PrepareBuffer(VulkanPainterBuffers::GpuBuffer& buffer, vk::DeviceSize size, vk::BufferUsageFlags usage, bool bHostVisible)
+	{
+		if (*buffer.Buffer && buffer.Size >= size)
+		{
+			return false;
+		}
+
+		// Grow by doubling, so a frame that grows a little each time doesn't reallocate every
+		// frame. The renderer waits for the frame before, so the old buffer is no longer in use.
+		vk::DeviceSize newSize = std::max(buffer.Size, MinBufferSize);
+		while (newSize < size)
+		{
+			newSize *= 2;
+		}
+		buffer.Mapped = nullptr;
+		buffer.Buffer = nullptr;
+		buffer.Memory = nullptr;
+
+		vk::raii::Device& device = Context->GetDevice();
+		vk::BufferCreateInfo bufferInfo{};
+		bufferInfo.size = newSize;
+		bufferInfo.usage = usage;
+		bufferInfo.sharingMode = vk::SharingMode::eExclusive;
+		buffer.Buffer = vk::raii::Buffer(device, bufferInfo);
+
+		// Host-visible and coherent for what the CPU writes or reads back, so it needs no flushing;
+		// the GPU's own memory for the rest.
+		const vk::MemoryRequirements requirements = buffer.Buffer.getMemoryRequirements();
+		vk::MemoryAllocateInfo allocInfo{};
+		allocInfo.allocationSize = requirements.size;
+		allocInfo.memoryTypeIndex = FindMemoryType(*Context->GetPhysicalDevice(), requirements.memoryTypeBits,
+			bHostVisible ? vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent : vk::MemoryPropertyFlagBits::eDeviceLocal);
+		buffer.Memory = vk::raii::DeviceMemory(device, allocInfo);
+		buffer.Buffer.bindMemory(*buffer.Memory, 0);
+		buffer.Mapped = bHostVisible ? buffer.Memory.mapMemory(0, newSize) : nullptr;
+		buffer.Size = newSize;
+		return true;
+	}
+
+	void VulkanPainter::PrepareBuffers(VulkanPainterSegments& segments)
 	{
 		vk::raii::Device& device = Context->GetDevice();
+		VulkanPainterBuffers& buffers = segments.Buffers;
 
-		struct Source
-		{
-			VulkanPainterBuffers::UploadBuffer& Buffer;
-			const void* Data;
-			vk::DeviceSize Size;
-			uint32_t Binding;
-		};
-		const std::array<Source, BindingCount> sources = { {
-			{ buffers.Commands, commands.data(), commands.size_bytes(), CommandsBinding },
-			{ buffers.Groups, groups.data(), groups.size_bytes(), GroupsBinding },
-			{ buffers.Tiles, tiles.data(), tiles.size_bytes(), TilesBinding },
-			{ buffers.Entries, entries.data(), entries.size_bytes(), EntriesBinding },
-		} };
+		// The entries: as many as the tiles can need before the reduction, within the budget
+		segments.EntryCapacity = static_cast<uint32_t>(std::clamp<uint64_t>(segments.MaxEntries, 1, std::max(segments.Budget.MaxTileEntries, 1u)));
+		const vk::DeviceSize commandsSize = segments.Commands.size() * sizeof(PainterCommand);
+		const vk::DeviceSize groupsSize = segments.Groups.size() * sizeof(PainterGroup);
+		const vk::DeviceSize binCommandsSize = segments.BinCommands.size() * sizeof(PainterBinCommand);
+		const vk::DeviceSize binSegmentsSize = segments.BinSegments.size() * sizeof(PainterBinSegment);
+		const vk::DeviceSize tilesSize = std::max<vk::DeviceSize>(segments.TileCount, 1) * sizeof(PainterTile);
+		const vk::DeviceSize entriesSize = static_cast<vk::DeviceSize>(segments.EntryCapacity) * sizeof(uint32_t);
+		const vk::DeviceSize firstKeptSize = std::max<vk::DeviceSize>(segments.TileCount, 1) * sizeof(uint32_t);
+		const vk::DeviceSize sumsSize = SumsHeaderSize + segments.Segments.size() * sizeof(PainterBinSums);
 
-		if (!*buffers.DescriptorSet)
+		using Usage = vk::BufferUsageFlagBits;
+		PrepareBuffer(buffers.CommandsUpload, commandsSize, Usage::eTransferSrc, true);
+		PrepareBuffer(buffers.GroupsUpload, groupsSize, Usage::eTransferSrc, true);
+		PrepareBuffer(buffers.BinCommandsUpload, binCommandsSize, Usage::eTransferSrc, true);
+		PrepareBuffer(buffers.BinSegmentsUpload, binSegmentsSize, Usage::eTransferSrc, true);
+		PrepareBuffer(buffers.SumsReadBack, sumsSize, Usage::eTransferDst, true);
+		if (segments.bReadBackTiles)
 		{
+			PrepareBuffer(buffers.TilesReadBack, tilesSize, Usage::eTransferDst, true);
+			PrepareBuffer(buffers.EntriesReadBack, entriesSize, Usage::eTransferDst, true);
+		}
+
+		// The descriptor sets point at the GPU's own buffers, so they follow new ones.
+		bool bNewBuffers = false;
+		bNewBuffers |= PrepareBuffer(buffers.Commands, commandsSize, Usage::eStorageBuffer | Usage::eTransferDst, false);
+		bNewBuffers |= PrepareBuffer(buffers.Groups, groupsSize, Usage::eStorageBuffer | Usage::eTransferDst, false);
+		bNewBuffers |= PrepareBuffer(buffers.BinCommands, binCommandsSize, Usage::eStorageBuffer | Usage::eTransferDst, false);
+		bNewBuffers |= PrepareBuffer(buffers.BinSegments, binSegmentsSize, Usage::eStorageBuffer | Usage::eTransferDst, false);
+		bNewBuffers |= PrepareBuffer(buffers.Tiles, tilesSize, Usage::eStorageBuffer | Usage::eTransferSrc, false);
+		bNewBuffers |= PrepareBuffer(buffers.Entries, entriesSize, Usage::eStorageBuffer | Usage::eTransferSrc, false);
+		bNewBuffers |= PrepareBuffer(buffers.FirstKept, firstKeptSize, Usage::eStorageBuffer, false);
+		bNewBuffers |= PrepareBuffer(buffers.Sums, sumsSize, Usage::eStorageBuffer | Usage::eTransferDst | Usage::eTransferSrc, false);
+
+		const auto allocate = [&](vk::raii::DescriptorSet& set, const vk::raii::DescriptorSetLayout& layout)
+		{
+			if (*set)
+			{
+				return false;
+			}
 			vk::DescriptorSetAllocateInfo allocInfo{};
 			allocInfo.descriptorPool = *DescriptorPool;
 			allocInfo.descriptorSetCount = 1;
-			allocInfo.pSetLayouts = &*DescriptorSetLayout;
-			buffers.DescriptorSet = std::move(vk::raii::DescriptorSets(device, allocInfo).front());
-		}
-
-		for (const Source& source : sources)
+			allocInfo.pSetLayouts = &*layout;
+			set = std::move(vk::raii::DescriptorSets(device, allocInfo).front());
+			return true;
+		};
+		bNewBuffers |= allocate(buffers.DrawSet, DescriptorSetLayout);
+		bNewBuffers |= allocate(buffers.BinSet, BinSetLayout);
+		if (bNewBuffers)
 		{
-			VulkanPainterBuffers::UploadBuffer& buffer = source.Buffer;
-			if (!*buffer.Buffer || buffer.Size < source.Size)
+			struct Binding
 			{
-				// Grow by doubling, so a frame that grows a little each time doesn't reallocate
-				// every frame.
-				vk::DeviceSize newSize = std::max(buffer.Size, MinBufferSize);
-				while (newSize < source.Size)
-				{
-					newSize *= 2;
-				}
-
-				buffer.Mapped = nullptr;
-				buffer.Buffer = nullptr;
-				buffer.Memory = nullptr;
-
-				vk::BufferCreateInfo bufferInfo{};
-				bufferInfo.size = newSize;
-				bufferInfo.usage = vk::BufferUsageFlagBits::eStorageBuffer;
-				bufferInfo.sharingMode = vk::SharingMode::eExclusive;
-				buffer.Buffer = vk::raii::Buffer(device, bufferInfo);
-
-				// Host-visible and coherent: written by the CPU every frame, and visible to the GPU
-				// when the frame's commands are submitted.
-				const vk::MemoryRequirements requirements = buffer.Buffer.getMemoryRequirements();
-				vk::MemoryAllocateInfo allocInfo{};
-				allocInfo.allocationSize = requirements.size;
-				allocInfo.memoryTypeIndex = FindMemoryType(*Context->GetPhysicalDevice(), requirements.memoryTypeBits,
-					vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
-				buffer.Memory = vk::raii::DeviceMemory(device, allocInfo);
-				buffer.Buffer.bindMemory(*buffer.Memory, 0);
-				buffer.Mapped = buffer.Memory.mapMemory(0, newSize);
-				buffer.Size = newSize;
-
-				// The descriptor set points at the buffer, so it follows the new one.
-				vk::DescriptorBufferInfo bufferDescriptor{ *buffer.Buffer, 0, VK_WHOLE_SIZE };
+				vk::DescriptorSet Set;
+				uint32_t Index;
+				const VulkanPainterBuffers::GpuBuffer& Buffer;
+			};
+			const Binding bindings[] = {
+				{ *buffers.DrawSet, CommandsBinding, buffers.Commands },
+				{ *buffers.DrawSet, GroupsBinding, buffers.Groups },
+				{ *buffers.DrawSet, TilesBinding, buffers.Tiles },
+				{ *buffers.DrawSet, EntriesBinding, buffers.Entries },
+				{ *buffers.BinSet, BinSegmentsBinding, buffers.BinSegments },
+				{ *buffers.BinSet, BinCommandsBinding, buffers.BinCommands },
+				{ *buffers.BinSet, BinTilesBinding, buffers.Tiles },
+				{ *buffers.BinSet, BinEntriesBinding, buffers.Entries },
+				{ *buffers.BinSet, BinFirstKeptBinding, buffers.FirstKept },
+				{ *buffers.BinSet, BinSumsBinding, buffers.Sums },
+			};
+			std::vector<vk::DescriptorBufferInfo> infos;
+			infos.reserve(std::size(bindings));
+			std::vector<vk::WriteDescriptorSet> writes;
+			for (const Binding& binding : bindings)
+			{
+				infos.emplace_back(*binding.Buffer.Buffer, 0, VK_WHOLE_SIZE);
 				vk::WriteDescriptorSet write{};
-				write.dstSet = *buffers.DescriptorSet;
-				write.dstBinding = source.Binding;
+				write.dstSet = binding.Set;
+				write.dstBinding = binding.Index;
 				write.descriptorCount = 1;
 				write.descriptorType = vk::DescriptorType::eStorageBuffer;
-				write.pBufferInfo = &bufferDescriptor;
-				device.updateDescriptorSets(write, {});
+				write.pBufferInfo = &infos.back();
+				writes.push_back(write);
 			}
-
-			if (source.Size > 0)
-			{
-				std::memcpy(buffer.Mapped, source.Data, static_cast<size_t>(source.Size));
-			}
+			device.updateDescriptorSets(writes, {});
 		}
+
+		// What the CPU wrote this frame, copied to the GPU's own buffers by Bin()
+		const auto write = [](VulkanPainterBuffers::GpuBuffer& buffer, const void* data, vk::DeviceSize size)
+		{
+			if (size > 0)
+			{
+				std::memcpy(buffer.Mapped, data, static_cast<size_t>(size));
+			}
+		};
+		write(buffers.CommandsUpload, segments.Commands.data(), commandsSize);
+		write(buffers.GroupsUpload, segments.Groups.data(), groupsSize);
+		write(buffers.BinCommandsUpload, segments.BinCommands.data(), binCommandsSize);
+		write(buffers.BinSegmentsUpload, segments.BinSegments.data(), binSegmentsSize);
 	}
 }

@@ -487,7 +487,12 @@ namespace Nyx
 		// during it are no longer shown.
 		FinishScreenshot();
 		ReadBlurTimestamps();
+		ReadWindowSegments();
 		ReadUITimestamps();
+		for (const std::unique_ptr<PainterCanvas>& canvas : PainterCanvases)
+		{
+			canvas->Target.ReadBack();
+		}
 		for (const std::unique_ptr<UIImage>& image : UIImagesToRelease)
 		{
 			ReleaseUIImage(*image);
@@ -710,16 +715,8 @@ namespace Nyx
 		// data shows.
 		ImGui::Render();
 		WindowPainterStats.FrameTimes.ImGuiRender = takeStepTime();
-		UploadWindowSegments();
+		UploadWindowSegments(*cmd);
 		WindowPainterStats.FrameTimes.Segments = takeStepTime();
-		// Outside the times above, which it would add to: it walks every tile entry.
-		if (Nyx::UI::ArePainterEstimatesRequested())
-		{
-			// The docked cards are painted in the theme's card colour (UIChrome.cpp).
-			const uint32_t cardColor = Nyx::Engine::PackPremultipliedColor(Nyx::UI::GetTheme().Card);
-			WindowPainterStats.Occlusion = WindowSegments.EstimateOcclusion(std::span<const uint32_t>(&cardColor, 1));
-			WindowPainterStats.bOcclusionEstimated = true;
-		}
 		DrawGlassBackdrop(cmd);
 
 		WriteUITimestamp(*cmd, MainWindowUIPair, false);
@@ -3673,6 +3670,10 @@ namespace Nyx
 			{
 				times.GpuGlassBackdrop = milliseconds;
 			}
+			else if (timed.Pair == BinningPair)
+			{
+				times.GpuBinning = milliseconds;
+			}
 			else
 			{
 				times.GpuPainter += milliseconds;
@@ -3683,7 +3684,7 @@ namespace Nyx
 			}
 		}
 		UITimedPairs.clear();
-		NextSegmentPair = 2;
+		NextSegmentPair = FirstSegmentPair;
 	}
 
 	bool VulkanRenderer::WasSceneViewRecreatedThisFrame(uint64_t id) const
@@ -3766,10 +3767,14 @@ namespace Nyx
 		return reinterpret_cast<ImTextureID>(canvas->ImGuiTexture);
 	}
 
-	const Nyx::Engine::PainterTiles* VulkanRenderer::GetPainterCanvasTiles(uint64_t id) const
+	std::optional<Nyx::Engine::PainterTiles> VulkanRenderer::GetPainterCanvasTiles(uint64_t id) const
 	{
 		const PainterCanvas* canvas = FindPainterCanvas(id);
-		return canvas && canvas->Target.GetImage() ? &canvas->Target.GetTiles() : nullptr;
+		if (canvas == nullptr || !canvas->Target.GetImage())
+		{
+			return std::nullopt;
+		}
+		return canvas->Target.GetTiles();
 	}
 
 	void VulkanRenderer::DrawPainterCanvases(vk::raii::CommandBuffer& cmd)
@@ -3845,13 +3850,46 @@ namespace Nyx
 		}
 	}
 
-	void VulkanRenderer::UploadWindowSegments()
+	void VulkanRenderer::ReadWindowSegments()
+	{
+		// The last frame's binning, which the GPU has finished: its numbers go into the last
+		// frame's statistics, which the UI built next shows.
+		WindowSegments.ReadBack();
+		for (uint32_t draw = 0; draw < WindowSegments.GetSegmentCount() && draw < WindowSegmentDrawOsWindows.size(); ++draw)
+		{
+			const uint32_t osWindowIndex = WindowSegmentDrawOsWindows[draw];
+			if (osWindowIndex >= WindowPainterStats.OsWindows.size())
+			{
+				continue;
+			}
+			Nyx::Engine::PainterWindowStats::OsWindow& osWindow = WindowPainterStats.OsWindows[osWindowIndex];
+			const Nyx::Engine::PainterBinningStats& stats = WindowSegments.GetStats(draw);
+			osWindow.TilesInUse += stats.TilesInUse;
+			osWindow.TileEntries += stats.TileEntries;
+			WindowPainterStats.TilesInUse += stats.TilesInUse;
+			WindowPainterStats.TileEntries += stats.TileEntries;
+			// The heat of the tiles read back, while the heatmap is on
+			if (osWindow.Heat.TilesX > 0)
+			{
+				WindowSegments.AddHeat(draw, osWindow.Heat);
+			}
+		}
+		WindowPainterStats.Reduction = WindowSegments.GetReduction();
+		WindowPainterStats.Problems.insert(WindowPainterStats.Problems.end(), WindowSegments.GetReadBackProblems().begin(), WindowSegments.GetReadBackProblems().end());
+	}
+
+	void VulkanRenderer::UploadWindowSegments(vk::CommandBuffer commandBuffer)
 	{
 		WindowSegments.Clear();
 		WindowSegmentDraws.clear();
 		WindowSegmentDrawOsWindows.clear();
+		// The statistics count the docked cards as if opaque too, painted in the theme's card
+		// colour (UIChrome.cpp); the heatmap needs the tiles read back.
+		const uint32_t cardColor = Nyx::Engine::PackPremultipliedColor(Nyx::UI::GetTheme().Card);
+		WindowSegments.SetAlsoOpaqueColors(std::span<const uint32_t>(&cardColor, 1));
+		const bool bHeat = Nyx::UI::GetPainterHeatmap() != Nyx::UI::EPainterHeatmap::Off;
+		WindowSegments.SetReadBackTiles(bHeat);
 
-		const Nyx::Engine::PainterBudget budget;
 		size_t runPainterCount = 0;
 		// A segment's commands, if it is one of this frame's painters'
 		const auto findSegment = [&](const Nyx::UI::WindowSegmentRef& ref) -> const Nyx::Engine::PainterSegment*
@@ -3873,8 +3911,8 @@ namespace Nyx
 			const uint32_t osWindowIndex = static_cast<uint32_t>(WindowPainterStats.OsWindows.size());
 			osWindow.ViewportId = viewport->ID;
 			osWindow.PixelsPerPoint = viewport->DrawData->FramebufferScale.x;
-			// The heatmap's tiles cover the whole target, as the segments' grids are placed on it.
-			const bool bHeat = Nyx::UI::GetPainterHeatmap() != Nyx::UI::EPainterHeatmap::Off;
+			// The heatmap's tiles cover the whole target, as the segments' grids are placed on it;
+			// filled once the GPU has binned them (ReadWindowSegments()).
 			if (bHeat)
 			{
 				osWindow.Heat.Reset(static_cast<uint32_t>(viewport->DrawData->DisplaySize.x * osWindow.PixelsPerPoint),
@@ -3926,12 +3964,12 @@ namespace Nyx
 						if (count > 1)
 						{
 							++runPainterCount;
-							draw = WindowSegments.Add(runPainter, Nyx::Engine::PainterSegment{ 0, static_cast<uint32_t>(runPainter.GetCommands().size()) }, budget);
+							draw = WindowSegments.Add(runPainter, Nyx::Engine::PainterSegment{ 0, static_cast<uint32_t>(runPainter.GetCommands().size()) });
 						}
 					}
 					if (count == 1)
 					{
-						draw = WindowSegments.Add(firstPainter, *findSegment(refs[first]), budget);
+						draw = WindowSegments.Add(firstPainter, *findSegment(refs[first]));
 					}
 
 					WindowSegmentDraws[{ refs[first].Painter, refs[first].Segment }] = draw;
@@ -3942,21 +3980,14 @@ namespace Nyx
 
 					// Draws are added one after the other: a draw's index is its place here.
 					WindowSegmentDrawOsWindows.push_back(osWindowIndex);
-					if (bHeat)
-					{
-						WindowSegments.AddHeat(draw, osWindow.Heat);
-					}
 
+					// The measuring's numbers now; the GPU's once it has binned (ReadWindowSegments())
 					const Nyx::Engine::PainterBinningStats& stats = WindowSegments.GetStats(draw);
 					++osWindow.Draws;
 					osWindow.Segments += static_cast<uint32_t>(count);
 					osWindow.Commands += stats.Commands;
-					osWindow.TilesInUse += stats.TilesInUse;
-					osWindow.TileEntries += stats.TileEntries;
 					osWindow.BinningMilliseconds += stats.BinningMilliseconds;
 					WindowPainterStats.Commands += stats.Commands;
-					WindowPainterStats.TilesInUse += stats.TilesInUse;
-					WindowPainterStats.TileEntries += stats.TileEntries;
 					WindowPainterStats.BinningMilliseconds += stats.BinningMilliseconds;
 					first += count;
 				}
@@ -3971,12 +4002,12 @@ namespace Nyx
 		}
 		WindowPainterStats.Problems.insert(WindowPainterStats.Problems.end(), WindowSegments.GetProblems().begin(), WindowSegments.GetProblems().end());
 		WindowPainterStats.UploadBytes = WindowSegments.GetUploadBytes();
-		WindowPainterStats.CommandUploadBytes = WindowSegments.GetCommandUploadBytes();
 
-		if (WindowSegments.GetSegmentCount() > 0)
-		{
-			PainterPass.Upload(WindowSegments);
-		}
+		// Binned on the GPU before anything draws them, in this command buffer or the OS windows'
+		// later ones
+		WriteUITimestamp(commandBuffer, BinningPair, false);
+		PainterPass.Bin(commandBuffer, WindowSegments);
+		WriteUITimestamp(commandBuffer, BinningPair, true);
 	}
 
 	void VulkanRenderer::DrawWindowSegment(const Nyx::UI::WindowPainter& painter, uint32_t segment, const ImDrawCmd&, void* renderer)
@@ -4027,7 +4058,7 @@ namespace Nyx
 		}
 
 		// Timed while pairs are left
-		const bool bTimed = *UITimestamps && NextSegmentPair < 2 + MaxTimedSegmentDraws && found->second < WindowSegmentDrawOsWindows.size();
+		const bool bTimed = *UITimestamps && NextSegmentPair < FirstSegmentPair + MaxTimedSegmentDraws && found->second < WindowSegmentDrawOsWindows.size();
 		const uint32_t pair = bTimed ? NextSegmentPair++ : 0;
 		if (bTimed)
 		{

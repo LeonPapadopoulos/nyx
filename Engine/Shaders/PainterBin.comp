@@ -1,0 +1,314 @@
+#version 450
+
+// The painter's tile binning, on the GPU (Design/ui-painter.md, stage 3, change 13). For every
+// 8x8 tile of every segment, the commands that can touch it, in drawing order, without those that
+// lie under a command covering the whole tile opaquely (the per-tile reduction): what the
+// painter shader (Painter.frag) walks for each pixel of the tile.
+//
+// The CPU has measured each command (PainterTiles.h, PainterBinCommand). Two passes, one
+// invocation per tile, over the tiles of all segments one after the other:
+//  - Pass 0 counts each tile's commands, reserves its entries and writes the tile; a workgroup
+//    reserves its tiles' entries with one atomic, so a tile's entries lie together. It also sums
+//    each segment's numbers for the statistics.
+//  - Pass 1 writes each tile's commands' indices, from the first one kept.
+// A segment's tiles start at a multiple of the workgroup's size, so a workgroup only ever bins
+// one segment's tiles, and its sums go to that segment.
+
+// PainterBinWorkgroupSize in PainterTiles.h
+layout(local_size_x = 64) in;
+
+const uint TileSize = 8u;
+
+// PainterBinCommand in PainterTiles.h. Rects are min x, min y, max x, max y; empty when min isn't
+// below max.
+struct BinCommand
+{
+	vec4 Reach;
+	vec4 Hides;
+	vec4 HidesIfAlsoOpaque;
+	// From x, y, to x, y
+	vec4 Line;
+	// x: how far a line's pixels reach from it; 0 for anything but a line on its own
+	vec4 LineReach;
+};
+
+// PainterBinSegment in PainterTiles.h
+struct BinSegment
+{
+	uint FirstCommand;
+	uint CommandCount;
+	uint FirstTile;
+	uint TilesX;
+	uint TilesY;
+	uint OriginX;
+	uint OriginY;
+	uint Unused;
+};
+
+// PainterBinSums in PainterTiles.h
+struct BinSums
+{
+	uint EntriesBefore;
+	uint Entries;
+	uint EntriesIfAlsoOpaque;
+	uint TilesInUse;
+	uint MaxPerTile;
+	uint Overflowed;
+	uint Unused0;
+	uint Unused1;
+};
+
+layout(std430, set = 0, binding = 0) readonly buffer SegmentBuffer
+{
+	BinSegment Segments[];
+};
+
+layout(std430, set = 0, binding = 1) readonly buffer CommandBuffer
+{
+	BinCommand Commands[];
+};
+
+// Each tile's first entry and count, as Painter.frag reads them
+layout(std430, set = 0, binding = 2) buffer TileBuffer
+{
+	uvec2 Tiles[];
+};
+
+layout(std430, set = 0, binding = 3) writeonly buffer EntryBuffer
+{
+	uint Entries[];
+};
+
+// Pass 0 leaves each tile's first kept command here for pass 1
+layout(std430, set = 0, binding = 4) buffer FirstKeptBuffer
+{
+	uint FirstKept[];
+};
+
+// The next free entry, then each segment's sums. Zeroed before pass 0.
+layout(std430, set = 0, binding = 5) buffer SumBuffer
+{
+	uint NextEntry;
+	uint SumUnused[7];
+	BinSums Sums[];
+};
+
+// VulkanPainter.cpp, PainterBinPushConstants
+layout(push_constant) uniform PainterBinPushConstants
+{
+	// All segments' tiles, with the padding between them
+	uint TileCount;
+	uint SegmentCount;
+	// How many entries the entry buffer holds; a tile whose entries don't fit is left empty
+	uint EntryCapacity;
+	uint Pass;
+};
+
+shared uint SharedCounts[64];
+shared uint SharedBase;
+shared uint SharedEntriesBefore;
+shared uint SharedEntries;
+shared uint SharedEntriesIfAlsoOpaque;
+shared uint SharedTilesInUse;
+shared uint SharedMaxPerTile;
+shared uint SharedOverflowed;
+
+bool IsEmpty(vec4 rect)
+{
+	return rect.x >= rect.z || rect.y >= rect.w;
+}
+
+// The tile from tileMin to tileMax lies wholly inside `rect`
+bool IsInside(vec2 tileMin, vec2 tileMax, vec4 rect)
+{
+	return !IsEmpty(rect) && rect.x <= tileMin.x && rect.y <= tileMin.y && rect.z >= tileMax.x && rect.w >= tileMax.y;
+}
+
+// Whether the command can touch the tile: its reach overlaps the tile, and for a line on its own,
+// its band does in the tile's row: the part of the line between the row's top and bottom, each
+// moved out by the line's reach, widened by its reach. The same tiles the CPU binner walked.
+bool Touches(BinCommand command, vec2 tileMin, vec2 tileMax)
+{
+	vec4 reach = command.Reach;
+	if (IsEmpty(reach) || reach.x >= tileMax.x || reach.z <= tileMin.x || reach.y >= tileMax.y || reach.w <= tileMin.y)
+	{
+		return false;
+	}
+
+	float lineReach = command.LineReach.x;
+	if (lineReach <= 0.0)
+	{
+		return true;
+	}
+	vec2 from = command.Line.xy;
+	vec2 to = command.Line.zw;
+	float rowTop = tileMin.y - lineReach;
+	float rowBottom = tileMax.y + lineReach;
+	float lineMinX;
+	float lineMaxX;
+	if (from.y == to.y)
+	{
+		// A horizontal line touches the whole row or none of it.
+		if (from.y < rowTop || from.y > rowBottom)
+		{
+			return false;
+		}
+		lineMinX = min(from.x, to.x);
+		lineMaxX = max(from.x, to.x);
+	}
+	else
+	{
+		// Where along the line (0 at `from`, 1 at `to`) it crosses the row's top and bottom
+		float atTop = (rowTop - from.y) / (to.y - from.y);
+		float atBottom = (rowBottom - from.y) / (to.y - from.y);
+		float enter = max(min(atTop, atBottom), 0.0);
+		float leave = min(max(atTop, atBottom), 1.0);
+		if (enter > leave)
+		{
+			return false;
+		}
+		float enterX = from.x + (to.x - from.x) * enter;
+		float leaveX = from.x + (to.x - from.x) * leave;
+		lineMinX = min(enterX, leaveX);
+		lineMaxX = max(enterX, leaveX);
+	}
+	return lineMinX - lineReach < tileMax.x && lineMaxX + lineReach > tileMin.x;
+}
+
+// The segment a tile belongs to: the last one starting at or before it
+uint FindSegment(uint tile)
+{
+	uint low = 0u;
+	uint high = SegmentCount;
+	while (high - low > 1u)
+	{
+		uint middle = (low + high) / 2u;
+		if (Segments[middle].FirstTile <= tile)
+		{
+			low = middle;
+		}
+		else
+		{
+			high = middle;
+		}
+	}
+	return low;
+}
+
+void main()
+{
+	uint tile = gl_GlobalInvocationID.x;
+	uint local = gl_LocalInvocationID.x;
+	uint segmentIndex = FindSegment(tile);
+	BinSegment segment = Segments[segmentIndex];
+
+	// Past the last segment's tiles, or in the padding after a segment's: no tile
+	uint inSegment = tile - segment.FirstTile;
+	bool bTile = tile < TileCount && segment.TilesX > 0u && inSegment < segment.TilesX * segment.TilesY;
+	uint tileX = bTile ? inSegment % segment.TilesX : 0u;
+	uint tileY = bTile ? inSegment / segment.TilesX : 0u;
+	vec2 tileMin = vec2(float(segment.OriginX + tileX * TileSize), float(segment.OriginY + tileY * TileSize));
+	vec2 tileMax = tileMin + vec2(float(TileSize));
+
+	if (Pass == 1u)
+	{
+		if (!bTile)
+		{
+			return;
+		}
+		uvec2 entries = Tiles[tile];
+		uint written = 0u;
+		for (uint index = FirstKept[tile]; index < segment.CommandCount && written < entries.y; ++index)
+		{
+			if (Touches(Commands[segment.FirstCommand + index], tileMin, tileMax))
+			{
+				Entries[entries.x + written] = index;
+				++written;
+			}
+		}
+		return;
+	}
+
+	// Pass 0: count. A command covering the whole tile opaquely starts the count over.
+	uint before = 0u;
+	uint count = 0u;
+	uint firstKept = 0u;
+	uint ifAlsoOpaque = 0u;
+	if (bTile)
+	{
+		for (uint index = 0u; index < segment.CommandCount; ++index)
+		{
+			BinCommand command = Commands[segment.FirstCommand + index];
+			if (!Touches(command, tileMin, tileMax))
+			{
+				continue;
+			}
+			++before;
+			if (IsInside(tileMin, tileMax, command.Hides))
+			{
+				count = 0u;
+				firstKept = index;
+			}
+			++count;
+			if (IsInside(tileMin, tileMax, command.HidesIfAlsoOpaque))
+			{
+				ifAlsoOpaque = 0u;
+			}
+			++ifAlsoOpaque;
+		}
+	}
+
+	// The workgroup's entries: each tile's start within them, and their start in the buffer
+	SharedCounts[local] = count;
+	if (local == 0u)
+	{
+		SharedEntriesBefore = 0u;
+		SharedEntries = 0u;
+		SharedEntriesIfAlsoOpaque = 0u;
+		SharedTilesInUse = 0u;
+		SharedMaxPerTile = 0u;
+		SharedOverflowed = 0u;
+	}
+	barrier();
+	if (local == 0u)
+	{
+		uint total = 0u;
+		for (uint other = 0u; other < gl_WorkGroupSize.x; ++other)
+		{
+			uint otherCount = SharedCounts[other];
+			SharedCounts[other] = total;
+			total += otherCount;
+		}
+		SharedBase = atomicAdd(NextEntry, total);
+	}
+	barrier();
+
+	uint firstEntry = SharedBase + SharedCounts[local];
+	if (count > 0u && firstEntry + count > EntryCapacity)
+	{
+		count = 0u;
+		atomicOr(SharedOverflowed, 1u);
+	}
+	if (bTile)
+	{
+		Tiles[tile] = uvec2(firstEntry, count);
+		FirstKept[tile] = firstKept;
+	}
+
+	// The segment's sums: the workgroup's first, then once into the buffer
+	atomicAdd(SharedEntriesBefore, before);
+	atomicAdd(SharedEntries, count);
+	atomicAdd(SharedEntriesIfAlsoOpaque, ifAlsoOpaque);
+	atomicAdd(SharedTilesInUse, count > 0u ? 1u : 0u);
+	atomicMax(SharedMaxPerTile, count);
+	barrier();
+	if (local == 0u && segmentIndex < SegmentCount)
+	{
+		atomicAdd(Sums[segmentIndex].EntriesBefore, SharedEntriesBefore);
+		atomicAdd(Sums[segmentIndex].Entries, SharedEntries);
+		atomicAdd(Sums[segmentIndex].EntriesIfAlsoOpaque, SharedEntriesIfAlsoOpaque);
+		atomicAdd(Sums[segmentIndex].TilesInUse, SharedTilesInUse);
+		atomicMax(Sums[segmentIndex].MaxPerTile, SharedMaxPerTile);
+		atomicOr(Sums[segmentIndex].Overflowed, SharedOverflowed);
+	}
+}

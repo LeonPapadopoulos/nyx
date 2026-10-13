@@ -259,7 +259,7 @@ namespace Nyx
 		void DestroyPainterCanvas(uint64_t id) override;
 		void SubmitPainterCanvas(uint64_t id, const Nyx::Engine::Painter& painter, const Nyx::Engine::PainterDrawOptions& options) override;
 		ImTextureID GetPainterCanvasTextureId(uint64_t id) const override;
-		const Nyx::Engine::PainterTiles* GetPainterCanvasTiles(uint64_t id) const override;
+		std::optional<Nyx::Engine::PainterTiles> GetPainterCanvasTiles(uint64_t id) const override;
 		const Nyx::Engine::PainterWindowStats& GetWindowPainterStats() const override { return WindowPainterStats; }
 
 		uint64_t CreateUIImage(const Nyx::Engine::RgbaImage& image) override;
@@ -514,12 +514,15 @@ namespace Nyx
 		//  - GatherWindowPainters(), once the UI is built: ends the window painters;
 		//  - UploadWindowSegments(), once ImGui has made the draw data: finds the runs of
 		//    segments with nothing ImGui draws between them (Nyx::UI::FindWindowSegmentRuns()),
-		//    copies each run into one painter (Painter::AppendSegment()), bins and uploads it as
-		//    one draw (stage 3, change 8).
+		//    copies each run into one painter (Painter::AppendSegment()) and adds it as one draw
+		//    (stage 3, change 8), then records binning them all on the GPU (change 13).
 		// ImGui then calls back where each segment goes: DrawWindowSegment() draws a run at its
 		// first segment, and nothing at the others.
 		void GatherWindowPainters();
-		void UploadWindowSegments();
+		void UploadWindowSegments(vk::CommandBuffer commandBuffer);
+		// At the start of a frame, once the last one's GPU work is done: the GPU's binning
+		// numbers, and the heatmap's heat, into the last frame's statistics
+		void ReadWindowSegments();
 		static void DrawWindowSegment(const Nyx::UI::WindowPainter& painter, uint32_t segment, const ImDrawCmd& command, void* renderer);
 		void DrawWindowSegment(const Nyx::UI::WindowPainter& painter, uint32_t segment);
 
@@ -546,10 +549,12 @@ namespace Nyx
 		// GPU timestamps around the UI's drawing, in pairs: the main window's UI pass, the glass
 		// backdrop, and each window segment draw, in any OS window. Reset and written in a frame,
 		// read once its fence has passed. Null where the graphics queue can't write timestamps.
-		static constexpr uint32_t MaxTimedSegmentDraws = 254;
-		static constexpr uint32_t UITimestampCount = 2 * (2 + MaxTimedSegmentDraws);
 		static constexpr uint32_t MainWindowUIPair = 0;
 		static constexpr uint32_t GlassBackdropPair = 1;
+		static constexpr uint32_t BinningPair = 2;
+		static constexpr uint32_t FirstSegmentPair = 3;
+		static constexpr uint32_t MaxTimedSegmentDraws = 253;
+		static constexpr uint32_t UITimestampCount = 2 * (FirstSegmentPair + MaxTimedSegmentDraws);
 		struct TimedPair
 		{
 			uint32_t Pair = 0;
@@ -559,7 +564,7 @@ namespace Nyx
 		vk::raii::QueryPool UITimestamps{ nullptr };
 		// The pairs written this frame, and the next free one for a segment draw
 		std::vector<TimedPair> UITimedPairs;
-		uint32_t NextSegmentPair = 2;
+		uint32_t NextSegmentPair = FirstSegmentPair;
 		void CreateUITimestamps();
 		// Writes a pair's start before what it times, or its end after it, which keeps the pair to
 		// read, with its OS window for a segment draw. Nothing without UITimestamps.

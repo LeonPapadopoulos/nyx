@@ -22,6 +22,7 @@ set(NYX_SHADER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/OutlineComposite.frag
     ${CMAKE_CURRENT_SOURCE_DIR}/Painter.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/Painter.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/PainterBin.comp
     ${CMAKE_CURRENT_SOURCE_DIR}/Blur.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/Blur.frag
 )
