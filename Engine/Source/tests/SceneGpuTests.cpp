@@ -8,6 +8,8 @@
 // material sets finds the material's value again, and saved broken keeps its last look. The
 // scene is drawn in HDR and tonemapped: light brighter than white survives until then, and the
 // view's exposure scales it. Materials find the sky's light (nyx.environment) as it was made.
+// The Standard material lights a dielectric and a metal as the same formulas do on the CPU; a
+// normal map tilts the normal up the image; a masked material below its cutoff isn't drawn.
 //
 // NYX_SCENE_TEST_OUTPUT=<folder> saves what was rendered there, e.g. to make a new reference
 // after a change that is meant to change the picture.
@@ -369,11 +371,11 @@ namespace
 		return now;
 	}
 
-	// A surface material that only glows; its struct is named like its file
+	// A surface material that only glows, unlit; its struct is named like its file
 	std::string GlowShader(const std::string& fields, const std::string& emission, const std::string& name = "NyxSceneGpuTestsGlow")
 	{
 		return "import nyx.surface;\nstruct " + name + " : ISurface\n{\n" + fields +
-			"    SurfaceOutput shade(SurfaceInput input)\n    {\n        SurfaceOutput o = SurfaceOutput::defaults(input);\n        o.BaseColor = float3(0.0);\n        o.Emission = " + emission +
+			"    SurfaceOutput shade(SurfaceInput input)\n    {\n        SurfaceOutput o = SurfaceOutput::defaults(input);\n        o.Unlit = true;\n        o.BaseColor = float3(0.0);\n        o.Emission = " + emission +
 			";\n        return o;\n    }\n}\n";
 	}
 
@@ -464,7 +466,7 @@ namespace
 		LiveMaterialFile shader("Shaders/NyxSceneGpuTestsEnvironment.slang");
 		shader.Write("import nyx.surface;\nimport nyx.environment;\n"
 					 "struct NyxSceneGpuTestsEnvironment : ISurface\n{\n    int Part = 0;\n"
-					 "    SurfaceOutput shade(SurfaceInput input)\n    {\n        SurfaceOutput o = SurfaceOutput::defaults(input);\n        o.BaseColor = float3(0.0);\n"
+					 "    SurfaceOutput shade(SurfaceInput input)\n    {\n        SurfaceOutput o = SurfaceOutput::defaults(input);\n        o.Unlit = true;\n        o.BaseColor = float3(0.0);\n"
 					 "        if (Part == 0)\n            o.Emission = nyx::environmentDiffuse(float3(0.0, 0.0, 1.0));\n"
 					 "        else if (Part == 1)\n            o.Emission = nyx::environmentSpecular(float3(0.0, 0.0, 1.0), 1.0);\n"
 					 "        else\n            o.Emission = float3(nyx::environmentBrdf(64.5 / 128.0, 64.5 / 128.0), 0.0);\n"
@@ -515,6 +517,196 @@ namespace
 			const std::array<uint8_t, 3> pixel = MiddlePixel(gpu, view);
 			Require(Near(pixel, Tonemapped(expected[part])), std::string("The material's ") + names[part] + " is " + Text(pixel) + ", expected " + Text(Tonemapped(expected[part])));
 		}
+
+		renderer.DestroySceneView(view);
+		renderer.SetWorld(nullptr);
+		gpu.DrawFrames(1);
+	}
+
+	// What VulkanEnvironment made, sampled as nyx.environment samples it at a cube's +Z middle
+	struct EnvironmentSamples
+	{
+		std::array<glm::vec3, 9> Irradiance{};
+		std::vector<std::vector<glm::vec4>> Specular;
+		std::vector<glm::vec2> Lookup;
+
+		explicit EnvironmentSamples(Nyx::Engine::VulkanEnvironment& environment)
+		{
+			Irradiance = environment.GetIrradiance();
+			for (uint32_t level = 0; level < Nyx::Engine::VulkanEnvironment::SpecularLevels; ++level)
+			{
+				Specular.push_back(environment.ReadSpecularLevel(level));
+			}
+			Lookup = environment.ReadLookup();
+		}
+
+		// environmentDiffuse((0, 0, 1))
+		glm::vec3 DiffuseFacingZ() const
+		{
+			return Irradiance[0] * 0.282095f + Irradiance[2] * 0.488603f + Irradiance[6] * 0.315392f * 2.0f;
+		}
+
+		// environmentSpecular((0, 0, 1), roughness): between two mips, each sampled at the middle
+		// of its +Z face, between four texels
+		glm::vec3 SpecularFacingZ(float roughness) const
+		{
+			const float level = roughness * static_cast<float>(Nyx::Engine::VulkanEnvironment::SpecularLevels - 1);
+			const uint32_t lower = static_cast<uint32_t>(std::floor(level));
+			const uint32_t upper = std::min(lower + 1, Nyx::Engine::VulkanEnvironment::SpecularLevels - 1);
+			return glm::mix(MiddleOfZ(lower), MiddleOfZ(upper), level - static_cast<float>(lower));
+		}
+
+		// environmentBrdf(1, roughness): the table's last column, between two rows
+		glm::vec2 BrdfHeadOn(float roughness) const
+		{
+			constexpr uint32_t Size = Nyx::Engine::VulkanEnvironment::LookupSize;
+			const float row = roughness * Size - 0.5f;
+			const uint32_t lower = static_cast<uint32_t>(std::floor(row));
+			return glm::mix(Lookup[lower * Size + Size - 1], Lookup[(lower + 1) * Size + Size - 1], row - static_cast<float>(lower));
+		}
+
+	private:
+		glm::vec3 MiddleOfZ(uint32_t level) const
+		{
+			const uint32_t size = Nyx::Engine::VulkanEnvironment::SpecularSize >> level;
+			glm::vec3 sum(0.0f);
+			for (const uint32_t y : { size / 2 - 1, size / 2 })
+			{
+				for (const uint32_t x : { size / 2 - 1, size / 2 })
+				{
+					sum += glm::vec3(Specular[level][(static_cast<size_t>(4) * size + y) * size + x]) * 0.25f;
+				}
+			}
+			return sum;
+		}
+	};
+
+	// nyx::lightSurface() for n = v = (0, 0, 1), under the view's default sun (no light in the world)
+	glm::vec3 LightFacingZ(const EnvironmentSamples& environment, glm::vec3 baseColor, float metallic, float roughness)
+	{
+		constexpr float Pi = 3.14159265358979f;
+		const glm::vec3 n(0.0f, 0.0f, 1.0f);
+		const glm::vec3 v = n;
+		const glm::vec3 l = glm::normalize(glm::vec3(0.4f, 1.0f, 0.2f));
+		const glm::vec3 sunColor(1.0f, 0.98f, 0.95f);
+
+		const float perceptual = std::clamp(roughness, 0.045f, 1.0f);
+		const float alpha = perceptual * perceptual;
+		const glm::vec3 f0 = glm::mix(glm::vec3(0.04f), baseColor, metallic);
+		const glm::vec3 diffuseColor = baseColor * (1.0f - metallic);
+
+		const glm::vec3 h = glm::normalize(v + l);
+		const float nDotV = 1.0f;
+		const float nDotL = std::clamp(glm::dot(n, l), 0.0f, 1.0f);
+		const float nDotH = std::clamp(glm::dot(n, h), 0.0f, 1.0f);
+		const float lDotH = std::clamp(glm::dot(l, h), 0.0f, 1.0f);
+		const float a2 = alpha * alpha;
+		const float d = nDotH * nDotH * (a2 - 1.0f) + 1.0f;
+		const float distribution = a2 / (Pi * d * d);
+		const float lambdaV = nDotL * std::sqrt(nDotV * nDotV * (1.0f - a2) + a2);
+		const float lambdaL = nDotV * std::sqrt(nDotL * nDotL * (1.0f - a2) + a2);
+		const float visibility = 0.5f / (lambdaV + lambdaL);
+		const glm::vec3 fresnel = f0 + (1.0f - f0) * std::pow(1.0f - lDotH, 5.0f);
+		const glm::vec3 sun = (diffuseColor + Pi * distribution * visibility * fresnel) * sunColor * nDotL;
+
+		const glm::vec2 brdf = environment.BrdfHeadOn(perceptual);
+		const glm::vec3 specularShare = f0 * brdf.x + brdf.y;
+		const glm::vec3 skySpecular = environment.SpecularFacingZ(perceptual) * specularShare;
+		const glm::vec3 skyDiffuse = diffuseColor * environment.DiffuseFacingZ() * (1.0f - specularShare);
+		return sun + skySpecular + skyDiffuse;
+	}
+
+	// A cube facing the camera with a Standard material, a dielectric and then a metal: its middle
+	// against the same light computed on the CPU
+	void TestStandardMatchesTheCpu(SceneRenderer& gpu)
+	{
+		Nyx::IRenderer& renderer = gpu.Renderer;
+		LiveMaterialFile dielectric("Materials/NyxSceneGpuTests-Dielectric.nyxmat");
+		dielectric.Write("Shader = Shaders/Standard.slang\nBaseColor = 0.5 0.5 0.5\nRoughness = 0.5\n");
+		LiveMaterialFile metal("Materials/NyxSceneGpuTests-Metal.nyxmat");
+		metal.Write("Shader = Shaders/Standard.slang\nBaseColor = 0.9 0.6 0.3\nMetallic = 1\nRoughness = 0.3\n");
+
+		DefaultScene scene;
+		const Entity cube = AddCube(scene.World, gpu.Renderer, 0.0f, renderer.GetMaterial(dielectric.Path));
+		const Entity camera = scene.World.CreateEntity();
+		scene.World.Add<TransformComponent>(camera, TransformComponent{ .Position = glm::vec3(0.0f, 0.0f, 1.2f), .Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f), .Scale = glm::vec3(1.0f) });
+		scene.World.Add<CameraComponent>(camera, CameraComponent{});
+		renderer.SetWorld(&scene.World);
+		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
+		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
+
+		const EnvironmentSamples environment(gpu.Renderer.GetEnvironment());
+		const std::array<std::pair<const LiveMaterialFile*, glm::vec3>, 2> cases = {
+			std::pair{ &dielectric, LightFacingZ(environment, glm::vec3(0.5f), 0.0f, 0.5f) },
+			std::pair{ &metal, LightFacingZ(environment, glm::vec3(0.9f, 0.6f, 0.3f), 1.0f, 0.3f) },
+		};
+		for (const auto& [material, light] : cases)
+		{
+			scene.World.Get<MeshRendererComponent>(cube).MaterialAsset = renderer.GetMaterial(material->Path);
+			gpu.DrawUntilShadersCompiled();
+			const std::array<uint8_t, 3> pixel = MiddlePixel(gpu, view);
+			Require(Near(pixel, Tonemapped(light), 3), material->Path + " lights as " + Text(pixel) + ", the CPU as " + Text(Tonemapped(light)));
+		}
+
+		renderer.DestroySceneView(view);
+		renderer.SetWorld(nullptr);
+		gpu.DrawFrames(1);
+	}
+
+	// A cube facing the camera: its normal as a normal map tilts it, shown as colour; then masked
+	// below its cutoff, where the sky behind it shows instead
+	void TestNormalMapsAndMasks(SceneRenderer& gpu)
+	{
+		Nyx::IRenderer& renderer = gpu.Renderer;
+
+		// One texel: in the map's own space (0, 0.6, 0.8), up the image
+		const std::filesystem::path normalFile = Nyx::Paths::GetAssetsDir() / "Textures/NyxSceneGpuTests-Normal.png";
+		struct RemoveAfterwards
+		{
+			std::filesystem::path File;
+			~RemoveAfterwards()
+			{
+				std::error_code error;
+				std::filesystem::remove(File, error);
+			}
+		} removeNormal{ normalFile };
+		std::string error;
+		Require(SavePng(normalFile, RgbaImage{ 1, 1, { 128, 204, 230, 255 } }, error), "The normal map can't be saved: " + error);
+
+		LiveMaterialFile shader("Shaders/NyxSceneGpuTestsNormals.slang");
+		shader.Write("import nyx.surface;\nstruct NyxSceneGpuTestsNormals : ISurface\n{\n    [Linear] nyx::Texture Normals;\n"
+					 "    SurfaceOutput shade(SurfaceInput input)\n    {\n        SurfaceOutput o = SurfaceOutput::defaults(input);\n        o.Unlit = true;\n        o.BaseColor = float3(0.0);\n"
+					 "        o.Emission = nyx::normalFromMap(Normals.Sample(nyx::PointClamp, input.UV), input) * 0.5 + 0.5;\n        return o;\n    }\n}\n");
+		LiveMaterialFile normals("Materials/NyxSceneGpuTests-Normals.nyxmat");
+		normals.Write("Shader = Shaders/NyxSceneGpuTestsNormals.slang\nNormals = Textures/NyxSceneGpuTests-Normal.png\n");
+		LiveMaterialFile masked("Materials/NyxSceneGpuTests-Masked.nyxmat");
+		masked.Write("Shader = Shaders/Standard.slang\nOpacity = 0.3\nMasked = true\n");
+
+		DefaultScene scene;
+		const Entity cube = AddCube(scene.World, gpu.Renderer, 0.0f, renderer.GetMaterial(normals.Path));
+		const Entity camera = scene.World.CreateEntity();
+		scene.World.Add<TransformComponent>(camera, TransformComponent{ .Position = glm::vec3(0.0f, 0.0f, 1.2f), .Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f), .Scale = glm::vec3(1.0f) });
+		scene.World.Add<CameraComponent>(camera, CameraComponent{});
+		renderer.SetWorld(&scene.World);
+		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
+		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
+		gpu.DrawUntilShadersCompiled();
+
+		// The cube's front face has v rising upwards, so up its image is down: (0, -0.6, 0.8)
+		const glm::vec3 local = glm::vec3(128.0f, 204.0f, 230.0f) / 255.0f * 2.0f - 1.0f;
+		const glm::vec3 expected = glm::normalize(glm::vec3(local.x, -local.y, local.z)) * 0.5f + 0.5f;
+		const std::array<uint8_t, 3> tilted = MiddlePixel(gpu, view);
+		Require(Near(tilted, Tonemapped(expected), 3), "The normal map's normal is " + Text(tilted) + ", expected " + Text(Tonemapped(expected)));
+
+		// Masked below its cutoff: the same as no cube at all
+		scene.World.Get<MeshRendererComponent>(cube).MaterialAsset = renderer.GetMaterial(masked.Path);
+		gpu.DrawUntilShadersCompiled();
+		const std::array<uint8_t, 3> cutOut = MiddlePixel(gpu, view);
+		scene.World.Get<MeshRendererComponent>(cube).bVisible = false;
+		const std::array<uint8_t, 3> nothing = MiddlePixel(gpu, view);
+		Require(Near(cutOut, nothing, 1), "A masked cube below its cutoff is drawn: " + Text(cutOut) + " where the sky is " + Text(nothing));
 
 		renderer.DestroySceneView(view);
 		renderer.SetWorld(nullptr);
@@ -572,6 +764,8 @@ int main()
 		TestSavedMaterialShadersRecompile(gpu);
 		TestHdrAndExposure(gpu);
 		TestMaterialsFindTheEnvironment(gpu);
+		TestStandardMatchesTheCpu(gpu);
+		TestNormalMapsAndMasks(gpu);
 	}
 	catch (const std::exception& error)
 	{

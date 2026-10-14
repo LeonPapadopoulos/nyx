@@ -128,7 +128,7 @@ namespace Nyx::Engine
 		class ValueWriter
 		{
 		public:
-			ValueWriter(const MaterialAsset& asset, std::span<std::byte> bytes, const std::function<std::optional<uint32_t>(const std::string&)>& textureSlot)
+			ValueWriter(const MaterialAsset& asset, std::span<std::byte> bytes, const std::function<std::optional<uint32_t>(const std::string&, bool)>& textureSlot)
 				: Bytes(bytes)
 				, TextureSlot(textureSlot)
 			{
@@ -198,7 +198,7 @@ namespace Nyx::Engine
 			{
 				if (value && !value->empty())
 				{
-					const std::optional<uint32_t> slot = TextureSlot ? TextureSlot(*value) : std::nullopt;
+					const std::optional<uint32_t> slot = TextureSlot ? TextureSlot(*value, field.FindAttribute("Linear") != nullptr) : std::nullopt;
 					if (!slot)
 					{
 						Problems.push_back({ name, "the texture " + *value + " can't be loaded; the field shows the missing texture" });
@@ -242,7 +242,7 @@ namespace Nyx::Engine
 			}
 
 			std::span<std::byte> Bytes;
-			const std::function<std::optional<uint32_t>(const std::string&)>& TextureSlot;
+			const std::function<std::optional<uint32_t>(const std::string&, bool)>& TextureSlot;
 			std::map<std::string, std::string> Values;
 			std::set<std::string> Used;
 		};
@@ -394,7 +394,7 @@ namespace Nyx::Engine
 	}
 
 	std::vector<MaterialValueProblem> WriteMaterialValues(const ShaderLayout& layout, const MaterialAsset& asset, std::span<std::byte> bytes,
-		const std::function<std::optional<uint32_t>(const std::string& path)>& textureSlot)
+		const std::function<std::optional<uint32_t>(const std::string& path, bool bLinear)>& textureSlot)
 	{
 		ValueWriter writer(asset, bytes, textureSlot);
 		writer.WriteFields(layout.Fields, "", 0);

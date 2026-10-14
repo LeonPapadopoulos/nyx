@@ -163,8 +163,10 @@ namespace Nyx
 		// "Saving ...", "Saved <path>" or why it couldn't; empty before the first screenshot
 		virtual const std::string& GetScreenshotMessage() const = 0;
 
-		// temporary demo-asset accessor, until meshes are assets
+		// temporary demo-asset accessors, until meshes are assets
 		virtual Nyx::Mesh* GetCubeMesh() = 0;
+		// Of radius 0.5, like the cube's half size
+		virtual Nyx::Mesh* GetSphereMesh() = 0;
 
 		// The material in a .nyxmat file, by its path in the assets folder
 		// ("Materials/Stone.nyxmat"), loaded at the first ask. Never null: one that can't be drawn

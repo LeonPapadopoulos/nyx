@@ -1,3 +1,4 @@
-# The checker, lit by the sun
-Shader = Shaders/Classic.slang
-Albedo = Textures/checker.jpg
+# The checker, matte
+Shader = Shaders/Standard.slang
+BaseColorTexture = Textures/checker.jpg
+Roughness = 0.7

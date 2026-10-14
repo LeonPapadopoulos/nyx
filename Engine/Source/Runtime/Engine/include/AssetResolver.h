@@ -10,7 +10,7 @@ namespace Nyx
 namespace Nyx::Engine
 {
 	// Resolves asset paths to what the renderer draws: materials from their .nyxmat files in the
-	// assets folder, and the built-in cube mesh until meshes are assets of their own.
+	// assets folder, and the built-in cube and sphere meshes until meshes are assets of their own.
 	class AssetResolver final : public IAssetResolver
 	{
 	public:

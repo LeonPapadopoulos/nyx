@@ -69,9 +69,10 @@ namespace Nyx::Engine
 	// Writes `asset`'s values into `bytes`, which hold the shader's defaults (layout.Size of them),
 	// at the layout's offsets. A texture's value is an asset path, which `textureSlot` turns into
 	// a slot of the texture array (nullopt when it can't be loaded: the field shows the missing
-	// texture); a texture the file doesn't set takes the slot its Default(...) attribute names.
+	// texture), told whether the field is [Linear] (data, not colour); a texture the file doesn't
+	// set takes the slot its Default(...) attribute names.
 	// Values the layout has no field for, or that don't fit their field, are left out and listed;
 	// the file keeps them, so a shader that gets the field back finds them again.
 	std::vector<MaterialValueProblem> WriteMaterialValues(const ShaderLayout& layout, const MaterialAsset& asset, std::span<std::byte> bytes,
-		const std::function<std::optional<uint32_t>(const std::string& path)>& textureSlot);
+		const std::function<std::optional<uint32_t>(const std::string& path, bool bLinear)>& textureSlot);
 }

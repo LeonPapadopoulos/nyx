@@ -901,6 +901,11 @@ namespace Nyx
 		return &CubeMesh;
 	}
 
+	Mesh* VulkanRenderer::GetSphereMesh()
+	{
+		return &SphereMesh;
+	}
+
 	Material* VulkanRenderer::GetMaterial(const std::string& path)
 	{
 		return Materials.Get(path);
@@ -2497,6 +2502,8 @@ namespace Nyx
 			Nyx::MeshData cubeData;
 			cubeData.Vertices = MeshVertices;
 			cubeData.Indices = MeshIndices;
+			Nyx::ComputeTangents(cubeData);
+			MeshVertices = cubeData.Vertices;
 
 			{
 				glm::vec3 localMin{};
@@ -2508,6 +2515,10 @@ namespace Nyx
 
 			CubeMesh.Upload(Context, cubeData);
 		}
+
+		SphereMesh.Release();
+		SphereMesh.SetLocalBounds(glm::vec3(-0.5f), glm::vec3(0.5f));
+		SphereMesh.Upload(Context, Nyx::MakeSphere(0.5f, 32, 64));
 	}
 
 	void VulkanRenderer::CreateTestMeshBuffers()

@@ -31,6 +31,7 @@ set(NYX_SHADER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/bindless.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/color.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/environment.slang
+    ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/lighting.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/view.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/surface.slang
 )

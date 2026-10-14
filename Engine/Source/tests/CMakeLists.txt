@@ -177,6 +177,13 @@ set_property(TARGET NyxShaderCompileServiceTests PROPERTY FOLDER "Tests")
 nyx_copy_shader_compiler_next_to(NyxShaderCompileServiceTests)
 add_test(NAME NyxShaderCompileServiceTests COMMAND NyxShaderCompileServiceTests)
 
+# The built-in meshes' tangents, without a GPU.
+add_executable(NyxMeshTests MeshTests.cpp)
+target_link_libraries(NyxMeshTests PRIVATE NyxEngine)
+add_dependencies(NyxMeshTests NyxGeneratedReflection)
+set_property(TARGET NyxMeshTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxMeshTests COMMAND NyxMeshTests)
+
 # Material files and their values without a GPU: reading and writing, offsets, layouts that change.
 add_executable(NyxMaterialTests MaterialTests.cpp)
 target_link_libraries(NyxMaterialTests PRIVATE NyxEngine)

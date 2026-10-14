@@ -48,6 +48,45 @@ namespace Nyx::Engine
 			throw std::runtime_error("Materials: no suitable memory type");
 		}
 
+		// The input locations a vertex shader reads: its Input variables' Location decorations.
+		// Slang leaves out inputs nothing uses, and attributes it doesn't read only slow the GPU.
+		std::vector<uint32_t> InputLocations(const std::vector<uint32_t>& spirv)
+		{
+			constexpr uint32_t OpVariable = 59;
+			constexpr uint32_t OpDecorate = 71;
+			constexpr uint32_t DecorationLocation = 30;
+			constexpr uint32_t StorageClassInput = 1;
+			std::map<uint32_t, uint32_t> locations;
+			std::vector<uint32_t> inputs;
+			for (size_t index = 5; index < spirv.size();)
+			{
+				const uint32_t wordCount = spirv[index] >> 16;
+				const uint32_t opcode = spirv[index] & 0xFFFF;
+				if (wordCount == 0)
+				{
+					break;
+				}
+				if (opcode == OpDecorate && wordCount >= 4 && spirv[index + 2] == DecorationLocation)
+				{
+					locations[spirv[index + 1]] = spirv[index + 3];
+				}
+				else if (opcode == OpVariable && wordCount >= 4 && spirv[index + 3] == StorageClassInput)
+				{
+					inputs.push_back(spirv[index + 2]);
+				}
+				index += wordCount;
+			}
+			std::vector<uint32_t> result;
+			for (const uint32_t input : inputs)
+			{
+				if (const auto found = locations.find(input); found != locations.end())
+				{
+					result.push_back(found->second);
+				}
+			}
+			return result;
+		}
+
 		const CompiledEntryPoint* FindEntryPoint(const ShaderCompileResult& result, const std::string& name)
 		{
 			for (const CompiledEntryPoint& entryPoint : result.EntryPoints)
@@ -236,9 +275,9 @@ namespace Nyx::Engine
 
 		std::vector<std::byte> bytes = shader.Defaults;
 		bytes.resize(shader.Layout.Size);
-		for (const MaterialValueProblem& problem : WriteMaterialValues(shader.Layout, entry.Asset, bytes, [this](const std::string& path)
+		for (const MaterialValueProblem& problem : WriteMaterialValues(shader.Layout, entry.Asset, bytes, [this](const std::string& path, bool bLinear)
 				 {
-					 return TextureSlot(path);
+					 return TextureSlot(path, bLinear);
 				 }))
 		{
 			LOG_WARNING("Material {}, {}: {}", entry.Path, problem.Name, problem.Message);
@@ -266,9 +305,9 @@ namespace Nyx::Engine
 		handle.MaterialOffset = *entry.Offset;
 	}
 
-	std::optional<uint32_t> VulkanMaterials::TextureSlot(const std::string& path)
+	std::optional<uint32_t> VulkanMaterials::TextureSlot(const std::string& path, bool bLinear)
 	{
-		const std::string key = PathKey(path);
+		const std::string key = PathKey(path) + (bLinear ? "|linear" : "");
 		const auto found = Textures.find(key);
 		if (found != Textures.end())
 		{
@@ -280,9 +319,9 @@ namespace Nyx::Engine
 		std::optional<uint32_t> slot;
 		if (LoadRgbaImage((AssetsFolder / path).make_preferred(), image, error))
 		{
-			// Colour textures for now, as the checker always was; linear ones (normal maps) come
-			// with the Standard material
-			slot = Bindless->CreateTexture(image.Width, image.Height, image.Pixels, vk::Format::eR8G8B8A8Srgb);
+			// Colours are stored sRGB-encoded and decoded when sampled; data ([Linear]: normals,
+			// roughness, occlusion) is read as stored. With mips, so that far away they don't shimmer.
+			slot = Bindless->CreateTexture(image.Width, image.Height, image.Pixels, bLinear ? vk::Format::eR8G8B8A8Unorm : vk::Format::eR8G8B8A8Srgb, true);
 		}
 		else
 		{
@@ -369,12 +408,14 @@ namespace Nyx::Engine
 			vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eFragment, *fragmentModule, fragment.Name.c_str()),
 		};
 
-		// The mesh's vertices, but their colour: SurfaceInput has none, so no surface shader reads it
+		// The mesh's vertices, those parts the vertex shader reads (the colour, for one: SurfaceInput
+		// has none)
 		const auto bindingDescription = Nyx::Vertex::GetBindingDescription();
+		const std::vector<uint32_t> read = InputLocations(vertex.Spirv);
 		std::vector<vk::VertexInputAttributeDescription> attributeDescriptions;
 		for (const vk::VertexInputAttributeDescription& attribute : Nyx::Vertex::GetAttributeDescriptions())
 		{
-			if (attribute.offset != offsetof(Nyx::Vertex, Color))
+			if (std::find(read.begin(), read.end(), attribute.location) != read.end())
 			{
 				attributeDescriptions.push_back(attribute);
 			}

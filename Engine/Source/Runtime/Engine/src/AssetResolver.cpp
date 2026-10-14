@@ -15,6 +15,10 @@ namespace Nyx::Engine
 		{
 			return Renderer.GetCubeMesh();
 		}
+		if (meshPath == "Meshes/Sphere.nyxmesh")
+		{
+			return Renderer.GetSphereMesh();
+		}
 
 		return nullptr;
 	}

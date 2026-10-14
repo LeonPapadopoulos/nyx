@@ -95,7 +95,7 @@ namespace Nyx::Engine
 		// Makes the shader's pipeline and defaults once both its compiles are in; false before
 		bool Prepare(Shader& shader);
 		void WriteBytes(Entry& entry);
-		std::optional<uint32_t> TextureSlot(const std::string& path);
+		std::optional<uint32_t> TextureSlot(const std::string& path, bool bLinear);
 		vk::raii::Pipeline MakePipeline(const CompiledEntryPoint& vertex, const CompiledEntryPoint& fragment);
 		std::vector<std::byte> RunDefaultsWriter(const CompiledEntryPoint& writer, uint32_t size);
 
@@ -109,7 +109,7 @@ namespace Nyx::Engine
 		vk::raii::Pipeline MissingPipeline{ nullptr };
 		std::map<std::string, std::unique_ptr<Shader>> Shaders;
 		std::map<std::string, std::unique_ptr<Entry>> Materials;
-		// Slots of the textures loaded, by path; nullopt for one that can't be
+		// Slots of the textures loaded, by path and whether linear; nullopt for one that can't be
 		std::map<std::string, std::optional<uint32_t>> Textures;
 
 		FileWatcher Watcher;

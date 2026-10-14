@@ -50,8 +50,9 @@ namespace Nyx::Engine
 		// returns its index. Throws when every slot is taken.
 		uint32_t AddTexture(vk::ImageView view);
 		// A 2D texture of its own, made from RGBA pixels (8 bits per channel) in `format`, in a
-		// free slot; it lives until its slot is removed. Throws when every slot is taken.
-		uint32_t CreateTexture(uint32_t width, uint32_t height, const std::vector<uint8_t>& pixels, vk::Format format);
+		// free slot; it lives until its slot is removed. With `bMips`, every mip down to one texel,
+		// each the one before filtered down. Throws when every slot is taken.
+		uint32_t CreateTexture(uint32_t width, uint32_t height, const std::vector<uint8_t>& pixels, vk::Format format, bool bMips = false);
 		// The same for a cube: `pixels` holds the six faces (+X, -X, +Y, -Y, +Z, -Z) one after the other
 		uint32_t CreateCubeTexture(uint32_t size, const std::vector<uint8_t>& pixels, vk::Format format);
 		// Frees the slot once the frames that could still read it are done (EndFrame()), and the
@@ -85,7 +86,7 @@ namespace Nyx::Engine
 			vk::raii::ImageView View{ nullptr };
 		};
 		// A 2D texture, or a cube with `layers` 6
-		OwnTexture MakeTexture(uint32_t width, uint32_t height, const std::vector<uint8_t>& pixels, vk::Format format, uint32_t layers = 1);
+		OwnTexture MakeTexture(uint32_t width, uint32_t height, const std::vector<uint8_t>& pixels, vk::Format format, uint32_t layers = 1, bool bMips = false);
 
 		VulkanContext* Context = nullptr;
 

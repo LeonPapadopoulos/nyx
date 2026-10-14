@@ -259,6 +259,7 @@ namespace Nyx
 		void SetWorld(const Nyx::Engine::Registry* world) override;
 
 		Nyx::Mesh* GetCubeMesh() override;
+		Nyx::Mesh* GetSphereMesh() override;
 		Nyx::Material* GetMaterial(const std::string& path) override;
 		bool IsCompilingShaders() const override;
 
@@ -689,6 +690,7 @@ namespace Nyx
 
 		// Mesh
 		Mesh CubeMesh = Mesh("Cube");
+		Mesh SphereMesh = Mesh("Sphere");
 
 		std::vector<Vertex> MeshVertices;
 		std::vector<uint32_t> MeshIndices;

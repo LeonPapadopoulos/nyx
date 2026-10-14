@@ -13,6 +13,10 @@ namespace Nyx
 		glm::vec3 Color{ 1.0f, 1.0f, 1.0f };
 		glm::vec2 UV{ 0.0f, 0.0f };
 		glm::vec3 Normal{ 0.0f, 1.0f, 0.0f };
+		// Along the texture's u in xyz; w is +1 or -1: the bitangent, cross(normal, tangent) * w,
+		// points up the image (towards falling v), where a normal map's green points. For normal
+		// maps (ComputeTangents()).
+		glm::vec4 Tangent{ 1.0f, 0.0f, 0.0f, 1.0f };
 
 		static vk::VertexInputBindingDescription GetBindingDescription()
 		{
@@ -23,9 +27,9 @@ namespace Nyx
 			return binding;
 		}
 
-		static std::array<vk::VertexInputAttributeDescription, 4> GetAttributeDescriptions()
+		static std::array<vk::VertexInputAttributeDescription, 5> GetAttributeDescriptions()
 		{
-			std::array<vk::VertexInputAttributeDescription, 4> attributes{};
+			std::array<vk::VertexInputAttributeDescription, 5> attributes{};
 
 			attributes[0].binding = 0;
 			attributes[0].location = 0;
@@ -47,6 +51,11 @@ namespace Nyx
 			attributes[3].format = vk::Format::eR32G32B32Sfloat;
 			attributes[3].offset = offsetof(Vertex, Normal);
 
+			attributes[4].binding = 0;
+			attributes[4].location = 4;
+			attributes[4].format = vk::Format::eR32G32B32A32Sfloat;
+			attributes[4].offset = offsetof(Vertex, Tangent);
+
 			return attributes;
 		}
 	};
@@ -56,6 +65,16 @@ namespace Nyx
 		std::vector<Vertex> Vertices;
 		std::vector<uint32_t> Indices;
 	};
+
+	// Each vertex's tangent from the triangles around it: their direction of rising u, made
+	// perpendicular to the normal, and the side of falling v (Lengyel). Exact on flat faces; on
+	// curved ones the mean of the faces, as close as needed for the built-in meshes. Imported meshes
+	// will take their file's tangents, or MikkTSpace's.
+	void ComputeTangents(MeshData& mesh);
+
+	// A sphere of `radius` around the origin: `rings` from pole to pole, `segments` around, u
+	// around it and v from top to bottom, with tangents
+	MeshData MakeSphere(float radius, uint32_t rings, uint32_t segments);
 
 	class Mesh : public Nyx::Engine::Resource
 	{

@@ -2,7 +2,8 @@
 // values the shader doesn't know included; its values land at the offsets reflection gives,
 // over the shader's defaults; after the shader's fields change, values are found again by name,
 // and those that no longer fit are left out and listed; textures take their slot, their
-// Default(...) slot when unset, and the missing texture's when they can't be loaded.
+// Default(...) slot when unset, and the missing texture's when they can't be loaded; a [Linear]
+// texture is asked for as linear.
 #include "BindlessTextures.h"
 #include "MaterialAsset.h"
 #include "Paths.h"
@@ -176,7 +177,7 @@ namespace
 										   "Shinyness = 3\n");
 		std::vector<std::byte> bytes(layout.Size, Untouched);
 		std::vector<std::string> asked;
-		const std::vector<MaterialValueProblem> problems = WriteMaterialValues(layout, asset, bytes, [&asked](const std::string& path) -> std::optional<uint32_t>
+		const std::vector<MaterialValueProblem> problems = WriteMaterialValues(layout, asset, bytes, [&asked](const std::string& path, bool) -> std::optional<uint32_t>
 			{
 				asked.push_back(path);
 				return 42u;
@@ -243,14 +244,17 @@ namespace
 																		"    [Default(\"FlatNormal\")] nyx::Texture Normal;\n"
 																		"    [Default(\"Black\")] nyx::Texture Glow;\n"
 																		"    nyx::Texture Plain;\n"
-																		"    nyx::Texture Broken;\n"
+																		"    [Linear] nyx::Texture Broken;\n"
 																		"    SurfaceOutput shade(SurfaceInput input) { return SurfaceOutput::defaults(input); }\n}\n"));
 		const MaterialAsset asset = Parsed("Shader = Shaders/Maps.slang\nBroken = Textures/Nowhere.png\n");
 		std::vector<std::byte> bytes(layout.Size, Untouched);
-		const std::vector<MaterialValueProblem> problems = WriteMaterialValues(layout, asset, bytes, [](const std::string&) -> std::optional<uint32_t>
+		std::vector<std::pair<std::string, bool>> asked;
+		const std::vector<MaterialValueProblem> problems = WriteMaterialValues(layout, asset, bytes, [&asked](const std::string& path, bool bLinear) -> std::optional<uint32_t>
 			{
+				asked.emplace_back(path, bLinear);
 				return std::nullopt;
 			});
+		Require(asked == std::vector<std::pair<std::string, bool>>{ { "Textures/Nowhere.png", true } }, "the [Linear] texture isn't asked for as linear");
 		Require(WordAt(bytes, OffsetOf(layout, "Normal")) == static_cast<uint32_t>(EBindlessTexture::FlatNormal), "an unset normal map isn't flat");
 		Require(WordAt(bytes, OffsetOf(layout, "Glow")) == static_cast<uint32_t>(EBindlessTexture::Black), "Default(\"Black\") isn't black");
 		Require(WordAt(bytes, OffsetOf(layout, "Plain")) == UntouchedWord, "a texture without a Default(...) lost the shader's default");

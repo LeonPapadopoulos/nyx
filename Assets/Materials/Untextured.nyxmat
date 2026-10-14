@@ -1,4 +1,4 @@
-# Named for a look it never had: the engine always drew this cube with the checker too
-Shader = Shaders/Classic.slang
-Albedo = Textures/checker.jpg
-Reflectivity = 0.05
+# Light blue plastic, a little glossy
+Shader = Shaders/Standard.slang
+BaseColor = 0.2 0.8 1
+Roughness = 0.35

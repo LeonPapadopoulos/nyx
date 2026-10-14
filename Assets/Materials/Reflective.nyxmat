@@ -1,4 +1,5 @@
-# The checker, with the sky mirrored in it
-Shader = Shaders/Classic.slang
-Albedo = Textures/checker.jpg
-Reflectivity = 0.35
+# Polished metal: the sky mirrored in it
+Shader = Shaders/Standard.slang
+BaseColor = 0.95 0.93 0.88
+Metallic = 1
+Roughness = 0.15

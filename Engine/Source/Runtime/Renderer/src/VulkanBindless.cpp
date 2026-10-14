@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstring>
 #include <stdexcept>
 
@@ -209,9 +210,9 @@ namespace Nyx::Engine
 		}
 	}
 
-	uint32_t VulkanBindless::CreateTexture(uint32_t width, uint32_t height, const std::vector<uint8_t>& pixels, vk::Format format)
+	uint32_t VulkanBindless::CreateTexture(uint32_t width, uint32_t height, const std::vector<uint8_t>& pixels, vk::Format format, bool bMips)
 	{
-		OwnTexture texture = MakeTexture(width, height, pixels, format);
+		OwnTexture texture = MakeTexture(width, height, pixels, format, 1, bMips);
 		const uint32_t slot = AddTexture(*texture.View);
 		CreatedTextures[slot] = std::move(texture);
 		return slot;
@@ -225,21 +226,26 @@ namespace Nyx::Engine
 		return slot;
 	}
 
-	VulkanBindless::OwnTexture VulkanBindless::MakeTexture(uint32_t width, uint32_t height, const std::vector<uint8_t>& pixels, vk::Format format, uint32_t layers)
+	VulkanBindless::OwnTexture VulkanBindless::MakeTexture(uint32_t width, uint32_t height, const std::vector<uint8_t>& pixels, vk::Format format, uint32_t layers, bool bMips)
 	{
 		vk::raii::Device& device = Context->GetDevice();
+
+		// Mips are filtered down with blits, which the format must allow
+		const vk::FormatFeatureFlags blitting = vk::FormatFeatureFlagBits::eBlitSrc | vk::FormatFeatureFlagBits::eBlitDst | vk::FormatFeatureFlagBits::eSampledImageFilterLinear;
+		const bool bCanBlit = (Context->GetPhysicalDevice().getFormatProperties(format).optimalTilingFeatures & blitting) == blitting;
+		const uint32_t levels = bMips && bCanBlit ? static_cast<uint32_t>(std::floor(std::log2(static_cast<float>(std::max(width, height))))) + 1 : 1;
 
 		OwnTexture texture;
 		vk::ImageCreateInfo imageInfo{};
 		imageInfo.imageType = vk::ImageType::e2D;
 		imageInfo.extent = vk::Extent3D(width, height, 1);
-		imageInfo.mipLevels = 1;
+		imageInfo.mipLevels = levels;
 		imageInfo.arrayLayers = layers;
 		imageInfo.flags = layers == 6 ? vk::ImageCreateFlagBits::eCubeCompatible : vk::ImageCreateFlags{};
 		imageInfo.format = format;
 		imageInfo.tiling = vk::ImageTiling::eOptimal;
 		imageInfo.initialLayout = vk::ImageLayout::eUndefined;
-		imageInfo.usage = vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst;
+		imageInfo.usage = vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc;
 		imageInfo.samples = vk::SampleCountFlagBits::e1;
 		texture.Image = vk::raii::Image(device, imageInfo);
 		const vk::MemoryRequirements imageRequirements = texture.Image.getMemoryRequirements();
@@ -250,7 +256,7 @@ namespace Nyx::Engine
 		viewInfo.image = *texture.Image;
 		viewInfo.viewType = layers == 6 ? vk::ImageViewType::eCube : vk::ImageViewType::e2D;
 		viewInfo.format = format;
-		viewInfo.subresourceRange = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, layers);
+		viewInfo.subresourceRange = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, levels, 0, layers);
 		texture.View = vk::raii::ImageView(device, viewInfo);
 
 		vk::BufferCreateInfo bufferInfo{};
@@ -285,11 +291,44 @@ namespace Nyx::Engine
 		copy.imageExtent = imageInfo.extent;
 		upload.copyBufferToImage(*staging, *texture.Image, vk::ImageLayout::eTransferDstOptimal, copy);
 
+		// Each mip from the one before, which is then done
 		vk::ImageMemoryBarrier toRead = toCopy;
 		toRead.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
 		toRead.dstAccessMask = vk::AccessFlagBits::eShaderRead;
 		toRead.oldLayout = vk::ImageLayout::eTransferDstOptimal;
 		toRead.newLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+		int32_t levelWidth = static_cast<int32_t>(width);
+		int32_t levelHeight = static_cast<int32_t>(height);
+		for (uint32_t level = 1; level < levels; ++level)
+		{
+			vk::ImageMemoryBarrier toSource = toCopy;
+			toSource.subresourceRange = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, level - 1, 1, 0, layers);
+			toSource.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
+			toSource.dstAccessMask = vk::AccessFlagBits::eTransferRead;
+			toSource.oldLayout = vk::ImageLayout::eTransferDstOptimal;
+			toSource.newLayout = vk::ImageLayout::eTransferSrcOptimal;
+			upload.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, toSource);
+
+			const int32_t nextWidth = std::max(levelWidth / 2, 1);
+			const int32_t nextHeight = std::max(levelHeight / 2, 1);
+			vk::ImageBlit blit{};
+			blit.srcSubresource = vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, level - 1, 0, layers);
+			blit.srcOffsets[1] = vk::Offset3D(levelWidth, levelHeight, 1);
+			blit.dstSubresource = vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, level, 0, layers);
+			blit.dstOffsets[1] = vk::Offset3D(nextWidth, nextHeight, 1);
+			upload.blitImage(*texture.Image, vk::ImageLayout::eTransferSrcOptimal, *texture.Image, vk::ImageLayout::eTransferDstOptimal, blit, vk::Filter::eLinear);
+
+			vk::ImageMemoryBarrier done = toSource;
+			done.srcAccessMask = vk::AccessFlagBits::eTransferRead;
+			done.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+			done.oldLayout = vk::ImageLayout::eTransferSrcOptimal;
+			done.newLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+			upload.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eVertexShader | vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, done);
+
+			levelWidth = nextWidth;
+			levelHeight = nextHeight;
+		}
+		toRead.subresourceRange = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, levels - 1, 1, 0, layers);
 		upload.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eVertexShader | vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, toRead);
 		upload.end();
 
