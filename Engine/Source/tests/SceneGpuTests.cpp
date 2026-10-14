@@ -1,8 +1,11 @@
-// The renderer drawing the editor's default scene on a real GPU: three cubes (textured,
-// reflective, untextured) under the sun, the skybox, the grid, debug lines and the outline of the
+// The renderer drawing the editor's default scene on a real GPU: three cubes with the materials of
+// Assets/Materials under the sun, the skybox, the grid, debug lines and the outline of the
 // selected cube, seen through the scene's camera. The picture is compared with a reference image,
 // so changes to how the scene is drawn that should look the same are seen to look the same; and a
-// click on the middle cube picks it.
+// click on the middle cube picks it. A material file that doesn't exist draws as the magenta
+// checker; one saved while drawing shows its new values within a few frames, and one saved
+// broken keeps its last values. A material's shader saved with a new field before the one the
+// material sets finds the material's value again, and saved broken keeps its last look.
 //
 // NYX_SCENE_TEST_OUTPUT=<folder> saves what was rendered there, e.g. to make a new reference
 // after a change that is meant to change the picture.
@@ -12,20 +15,26 @@
 #include "ImageFile.h"
 #include "Log.h"
 #include "MeshRendererComponent.h"
+#include "Paths.h"
 #include "TransformComponent.h"
 #include "VulkanImGuiBackend.h" // VulkanRenderer's destructor needs it
 #include "VulkanRenderer.h"
 
 #include <GLFW/glfw3.h>
+#include <imgui.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 
 #include <algorithm>
+#include <array>
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 
 namespace
 {
@@ -60,6 +69,8 @@ namespace
 				throw std::runtime_error("No window for the Vulkan device");
 			}
 			Renderer.Initialize("NyxSceneGpuTests", Window);
+			// No imgui.ini wherever the test runs
+			ImGui::GetIO().IniFilename = nullptr;
 		}
 
 		~SceneRenderer()
@@ -76,6 +87,19 @@ namespace
 				Renderer.DrawFrame([]
 					{
 					});
+			}
+		}
+
+		// Until the materials' shaders compiled (the first time, or after they changed), for at
+		// most a minute
+		void DrawUntilShadersCompiled()
+		{
+			const auto deadline = std::chrono::steady_clock::now() + std::chrono::minutes(1);
+			while (Renderer.IsCompilingShaders())
+			{
+				Require(std::chrono::steady_clock::now() < deadline, "The shaders didn't compile within a minute");
+				DrawFrames(1);
+				std::this_thread::sleep_for(std::chrono::milliseconds(10));
 			}
 		}
 
@@ -105,9 +129,9 @@ namespace
 	// As the editor's SpawnDefaultScene() makes it
 	void MakeDefaultScene(DefaultScene& scene, Nyx::VulkanRenderer& renderer)
 	{
-		scene.TexturedCube = AddCube(scene.World, renderer, -2.0f, renderer.GetTexturedMaterial());
-		scene.ReflectiveCube = AddCube(scene.World, renderer, 0.0f, renderer.GetReflectiveMaterial());
-		scene.UntexturedCube = AddCube(scene.World, renderer, 2.0f, renderer.GetUntexturedMaterial());
+		scene.TexturedCube = AddCube(scene.World, renderer, -2.0f, renderer.GetMaterial("Materials/Textured.nyxmat"));
+		scene.ReflectiveCube = AddCube(scene.World, renderer, 0.0f, renderer.GetMaterial("Materials/Reflective.nyxmat"));
+		scene.UntexturedCube = AddCube(scene.World, renderer, 2.0f, renderer.GetMaterial("Materials/Untextured.nyxmat"));
 
 		const Entity camera = scene.World.CreateEntity();
 		scene.World.Add<TransformComponent>(camera, TransformComponent{ .Position = glm::vec3(0.0f, 2.0f, 6.0f), .Rotation = glm::quat(glm::radians(glm::vec3(-15.0f, 0.0f, 0.0f))), .Scale = glm::vec3(1.0f) });
@@ -176,6 +200,7 @@ namespace
 		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
 		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
 		renderer.SetSelectedEntity(scene.ReflectiveCube);
+		gpu.DrawUntilShadersCompiled();
 		gpu.DrawFrames(3);
 
 		RgbaImage image;
@@ -200,6 +225,189 @@ namespace
 		renderer.SetWorld(nullptr);
 		gpu.DrawFrames(1);
 	}
+
+	// The pixel in the middle of the view, after drawing a frame
+	std::array<uint8_t, 3> MiddlePixel(SceneRenderer& gpu, uint64_t view)
+	{
+		gpu.DrawFrames(1);
+		RgbaImage image;
+		Require(gpu.Renderer.ReadSceneViewPixels(view, image), "The scene view can't be read back");
+		const size_t offset = (static_cast<size_t>(image.Height / 2) * image.Width + image.Width / 2) * 4;
+		return { image.Pixels[offset], image.Pixels[offset + 1], image.Pixels[offset + 2] };
+	}
+
+	// A file of the test's own in the assets folder, removed afterwards
+	struct LiveMaterialFile
+	{
+		std::string Path = "Materials/NyxSceneGpuTests-Live.nyxmat";
+		std::filesystem::path File = Nyx::Paths::GetAssetsDir() / Path;
+
+		LiveMaterialFile() = default;
+		explicit LiveMaterialFile(std::string path)
+			: Path(std::move(path))
+			, File(Nyx::Paths::GetAssetsDir() / Path)
+		{
+		}
+
+		void Write(const std::string& text) const
+		{
+			std::ofstream stream(File, std::ios::binary | std::ios::trunc);
+			stream << text;
+		}
+
+		~LiveMaterialFile()
+		{
+			std::error_code error;
+			std::filesystem::remove(File, error);
+		}
+	};
+
+	// A cube filling the view, its material file saved while drawing
+	void TestSavedMaterialFilesReload(SceneRenderer& gpu)
+	{
+		Nyx::IRenderer& renderer = gpu.Renderer;
+		LiveMaterialFile file;
+		file.Write("Shader = Shaders/Classic.slang\nAlbedo = Textures/checker.jpg\nReflectivity = 0\n");
+
+		DefaultScene scene;
+		AddCube(scene.World, gpu.Renderer, 0.0f, renderer.GetMaterial(file.Path));
+		const Entity camera = scene.World.CreateEntity();
+		scene.World.Add<TransformComponent>(camera, TransformComponent{ .Position = glm::vec3(0.0f, 0.0f, 1.2f), .Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f), .Scale = glm::vec3(1.0f) });
+		scene.World.Add<CameraComponent>(camera, CameraComponent{});
+		renderer.SetWorld(&scene.World);
+		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
+		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
+		gpu.DrawUntilShadersCompiled();
+		const std::array<uint8_t, 3> textured = MiddlePixel(gpu, view);
+
+		// A mirror now: the sky instead of the checker, a few frames after the save
+		file.Write("Shader = Shaders/Classic.slang\nAlbedo = Textures/checker.jpg\nReflectivity = 1\n");
+		std::array<uint8_t, 3> mirrored = textured;
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+		while (mirrored == textured && std::chrono::steady_clock::now() < deadline)
+		{
+			std::this_thread::sleep_for(std::chrono::milliseconds(20));
+			mirrored = MiddlePixel(gpu, view);
+		}
+		Require(mirrored != textured, "The saved material file didn't change the picture within five seconds");
+
+		// Saved broken: the last values stay
+		file.Write("Shader = Shaders/Classic.slang\nReflectivity 0\n");
+		// Drawn for half a second, so that the save settles and is read
+		const auto drawnUntil = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+		while (std::chrono::steady_clock::now() < drawnUntil)
+		{
+			std::this_thread::sleep_for(std::chrono::milliseconds(20));
+			gpu.DrawFrames(1);
+		}
+		Require(MiddlePixel(gpu, view) == mirrored, "A material file saved broken changed the picture");
+
+		renderer.DestroySceneView(view);
+		renderer.SetWorld(nullptr);
+		gpu.DrawFrames(1);
+	}
+
+	// Draws until the middle pixel isn't `before` any more and the shaders are compiled, for at most
+	// a minute; returns it
+	std::array<uint8_t, 3> DrawUntilMiddleChanges(SceneRenderer& gpu, uint64_t view, const std::array<uint8_t, 3>& before)
+	{
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::minutes(1);
+		std::array<uint8_t, 3> now = before;
+		while ((now == before || gpu.Renderer.IsCompilingShaders()) && std::chrono::steady_clock::now() < deadline)
+		{
+			std::this_thread::sleep_for(std::chrono::milliseconds(20));
+			now = MiddlePixel(gpu, view);
+		}
+		return now;
+	}
+
+	std::string GlowShader(const std::string& fields, const std::string& emission)
+	{
+		return "import nyx.surface;\nstruct NyxSceneGpuTestsGlow : ISurface\n{\n" + fields +
+			"    SurfaceOutput shade(SurfaceInput input)\n    {\n        SurfaceOutput o = SurfaceOutput::defaults(input);\n        o.BaseColor = float3(0.0);\n        o.Emission = " + emission +
+			";\n        return o;\n    }\n}\n";
+	}
+
+	// A cube filling the view, its material's shader saved while drawing
+	void TestSavedMaterialShadersRecompile(SceneRenderer& gpu)
+	{
+		Nyx::IRenderer& renderer = gpu.Renderer;
+		LiveMaterialFile shader("Shaders/NyxSceneGpuTestsGlow.slang");
+		shader.Write(GlowShader("    [Color] float3 Glow = float3(1.0, 0.0, 0.0);\n", "Glow"));
+		LiveMaterialFile material("Materials/NyxSceneGpuTests-Glow.nyxmat");
+		material.Write("Shader = Shaders/NyxSceneGpuTestsGlow.slang\nGlow = 0 0 1\n");
+
+		DefaultScene scene;
+		AddCube(scene.World, gpu.Renderer, 0.0f, renderer.GetMaterial(material.Path));
+		const Entity camera = scene.World.CreateEntity();
+		scene.World.Add<TransformComponent>(camera, TransformComponent{ .Position = glm::vec3(0.0f, 0.0f, 1.2f), .Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f), .Scale = glm::vec3(1.0f) });
+		scene.World.Add<CameraComponent>(camera, CameraComponent{});
+		renderer.SetWorld(&scene.World);
+		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
+		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
+
+		// Magenta until the shader's first compile, then the file's blue
+		const std::array<uint8_t, 3> blue = DrawUntilMiddleChanges(gpu, view, { 255, 0, 255 });
+		Require(blue == std::array<uint8_t, 3>{ 0, 0, 255 }, "The material doesn't glow in its file's blue: " + std::to_string(blue[0]) + " " + std::to_string(blue[1]) + " " + std::to_string(blue[2]));
+
+		// A field before Glow: Glow moves, the file's blue is found there, the new field's default
+		// comes from the shader
+		shader.Write(GlowShader("    float Strength = 0.5;\n    [Color] float3 Glow = float3(1.0, 0.0, 0.0);\n", "Glow * Strength"));
+		const std::array<uint8_t, 3> dimmed = DrawUntilMiddleChanges(gpu, view, blue);
+		Require(dimmed[0] == 0 && dimmed[1] == 0 && dimmed[2] > 100 && dimmed[2] < 160, "After a field came before it, the file's blue isn't found at half strength: " + std::to_string(dimmed[0]) + " " + std::to_string(dimmed[1]) + " " + std::to_string(dimmed[2]));
+
+		// Broken: the last look stays
+		shader.Write(GlowShader("    float Strength = 0.5;\n", "Glow * Strength"));
+		const auto drawnUntil = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+		while (std::chrono::steady_clock::now() < drawnUntil || renderer.IsCompilingShaders())
+		{
+			std::this_thread::sleep_for(std::chrono::milliseconds(20));
+			gpu.DrawFrames(1);
+		}
+		Require(MiddlePixel(gpu, view) == dimmed, "A material shader saved broken changed the picture");
+
+		renderer.DestroySceneView(view);
+		renderer.SetWorld(nullptr);
+		gpu.DrawFrames(1);
+	}
+
+	// A cube whose material file doesn't exist, alone in front of the camera: magenta, unlit
+	void TestMissingMaterial(SceneRenderer& gpu)
+	{
+		Nyx::IRenderer& renderer = gpu.Renderer;
+		Nyx::Material* material = renderer.GetMaterial("Materials/DoesNotExist.nyxmat");
+		Require(material != nullptr && material->Pipeline != nullptr, "A missing material file gives no material to draw with");
+
+		DefaultScene scene;
+		AddCube(scene.World, gpu.Renderer, 0.0f, material);
+		const Entity camera = scene.World.CreateEntity();
+		scene.World.Add<TransformComponent>(camera, TransformComponent{ .Position = glm::vec3(0.0f, 0.0f, 2.0f), .Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f), .Scale = glm::vec3(1.0f) });
+		scene.World.Add<CameraComponent>(camera, CameraComponent{});
+		renderer.SetWorld(&scene.World);
+
+		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
+		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
+		gpu.DrawFrames(3);
+
+		RgbaImage image;
+		Require(gpu.Renderer.ReadSceneViewPixels(view, image), "The scene view can't be read back");
+		SaveIfAsked(image, "MissingMaterial");
+		size_t magenta = 0;
+		for (size_t pixel = 0; pixel < static_cast<size_t>(image.Width) * image.Height; ++pixel)
+		{
+			const uint8_t* rgb = &image.Pixels[pixel * 4];
+			magenta += rgb[0] == 255 && rgb[1] == 0 && rgb[2] == 255 ? 1 : 0;
+		}
+		// The cube's face fills the middle of the picture, half of it magenta
+		Require(magenta > static_cast<size_t>(image.Width) * image.Height / 20, "A cube with a missing material isn't magenta: " + std::to_string(magenta) + " magenta pixels");
+
+		renderer.DestroySceneView(view);
+		renderer.SetWorld(nullptr);
+		gpu.DrawFrames(1);
+	}
 }
 
 int main()
@@ -209,6 +417,9 @@ int main()
 		Nyx::Core::Logger::Get().Init();
 		SceneRenderer gpu;
 		TestDefaultScene(gpu);
+		TestMissingMaterial(gpu);
+		TestSavedMaterialFilesReload(gpu);
+		TestSavedMaterialShadersRecompile(gpu);
 	}
 	catch (const std::exception& error)
 	{

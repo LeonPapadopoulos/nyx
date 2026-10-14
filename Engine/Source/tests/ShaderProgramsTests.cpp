@@ -2,8 +2,9 @@
 // matches their files, the build's or live reload's, and one that changed while nothing ran is
 // compiled at once; a saved source is compiled once it settled; a broken one keeps its last good code and says where
 // it broke; an include's change compiles the programs using it; other files change nothing; a
-// save during a compile is compiled after it; and a program with several entry points gives each
-// by name, and keeps them all when a compile drops one.
+// save during a compile is compiled after it; a program with several entry points gives each
+// by name, and keeps them all when a compile drops one; and a material shader, which no cache
+// holds yet, is compiled at the first update and again when saved.
 #include "Paths.h"
 #include "ShaderCache.h"
 #include "ShaderCompiler.h"
@@ -343,6 +344,81 @@ namespace
 		Require(programs.GetSpirv("Pair.slang", "pairFragment") != builtFragment, "the changed fragment entry point's code didn't change");
 	}
 
+	std::string TintSource(const char* color)
+	{
+		return std::string("import nyx.surface;\nstruct Tint : ISurface\n{\n    float3 Color = ") + color +
+			";\n    SurfaceOutput shade(SurfaceInput input)\n    {\n        SurfaceOutput o = SurfaceOutput::defaults(input);\n        o.BaseColor = Color;\n        return o;\n    }\n}\n";
+	}
+
+	// A material shader and its defaults writer, as VulkanMaterials asks for them
+	void TestMaterialShadersCompileWithoutTheBuild()
+	{
+		TestFolders folders;
+		WriteFile(folders.Sources / "Tint.slang", TintSource("float3(1.0, 0.5, 0.0)"));
+		ShaderCompileRequest material;
+		material.Kind = EShaderCompileKind::Material;
+		material.File = folders.Sources / "Tint.slang";
+		material.Domain = ShaderDomain::Surface();
+		ShaderCompileRequest defaults;
+		defaults.Kind = EShaderCompileKind::DefaultsWriter;
+		defaults.File = folders.Sources / "Tint.slang";
+
+		ShaderPrograms programs(folders.Compiled, folders.Sources, folders.Saved);
+		Require(programs.GetResult(material) == nullptr && programs.GetResult(defaults) == nullptr, "a material nobody compiled has a result");
+		Require(programs.IsPending(material) && programs.IsPending(defaults), "a material without a result doesn't wait to be compiled");
+		Require(programs.EnableLiveReload(std::make_unique<TestService>()), "live reload doesn't start: " + programs.GetProblem());
+
+		// Both compile at the first updates, without waiting for anything to settle
+		std::vector<ShaderProgramUpdate> arrived;
+		const Clock::time_point deadline = Clock::now() + std::chrono::seconds(10);
+		while (programs.IsBusy() && Clock::now() < deadline)
+		{
+			for (ShaderProgramUpdate& update : programs.Update())
+			{
+				arrived.push_back(std::move(update));
+			}
+		}
+		Require(arrived.size() == 2 && arrived[0].bChanged && arrived[1].bChanged, "the material and its defaults writer didn't both compile");
+		Require(std::any_of(arrived.begin(), arrived.end(), [&material](const ShaderProgramUpdate& update)
+					{
+						return update.Request.Kind == EShaderCompileKind::Material && update.Name == ShaderPrograms::GetResultKey(material);
+					}),
+			"the material's update doesn't say whose it is");
+		const ShaderCompileResult* compiled = programs.GetResult(material);
+		Require(compiled && compiled->MaterialLayout && compiled->MaterialLayout->FindField("Color"), "the material's result has no layout");
+		Require(compiled->FindEntryPoint("surfaceVertex") && compiled->FindEntryPoint("surfaceFragment"), "the material lacks its domain's entry points");
+		Require(programs.GetResult(defaults) && programs.GetResult(defaults)->FindEntryPoint("writeDefaults"), "the defaults writer has no entry point");
+		const std::vector<uint32_t> first = compiled->FindEntryPoint("surfaceFragment")->Spirv;
+
+		// Broken: the last good result stays
+		WriteFile(folders.Sources / "Tint.slang", TintSource("flaot3(1.0)"));
+		std::vector<ShaderProgramUpdate> updates = WaitForUpdates(programs);
+		Require(!updates.empty() && !updates[0].bChanged, "the broken material compiled");
+		while (programs.IsBusy())
+		{
+			programs.Update();
+		}
+		Require(programs.GetResult(material) && programs.GetResult(material)->FindEntryPoint("surfaceFragment")->Spirv == first, "the broken material lost its last good result");
+
+		// Fixed: the next start finds it in live reload's cache
+		WriteFile(folders.Sources / "Tint.slang", TintSource("float3(0.0, 0.5, 1.0)"));
+		updates = WaitForUpdates(programs);
+		while (programs.IsBusy())
+		{
+			for (ShaderProgramUpdate& update : programs.Update())
+			{
+				updates.push_back(std::move(update));
+			}
+		}
+		Require(std::any_of(updates.begin(), updates.end(), [](const ShaderProgramUpdate& update)
+					{
+						return update.Request.Kind == EShaderCompileKind::Material && update.bChanged;
+					}),
+			"the fixed material isn't compiled");
+		ShaderPrograms again(folders.Compiled, folders.Sources, folders.Saved);
+		Require(again.GetResult(material) && !again.IsPending(material), "the next start doesn't find the material in live reload's cache");
+	}
+
 	void TestASaveDuringACompileIsCompiledAfterIt()
 	{
 		TestFolders folders;
@@ -395,6 +471,7 @@ int main()
 		TestBrokenProgramsKeepTheirLastGoodCode();
 		TestASaveDuringACompileIsCompiledAfterIt();
 		TestProgramsWithSeveralEntryPoints();
+		TestMaterialShadersCompileWithoutTheBuild();
 	}
 	catch (const std::exception& error)
 	{

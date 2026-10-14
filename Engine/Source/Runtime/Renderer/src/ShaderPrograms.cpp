@@ -52,50 +52,94 @@ namespace Nyx::Engine
 		return request;
 	}
 
+	std::string ShaderPrograms::GetResultKey(const ShaderCompileRequest& request)
+	{
+		const char* kind = request.Kind == EShaderCompileKind::Material ? "material" : request.Kind == EShaderCompileKind::DefaultsWriter ? "defaults"
+																																		  : "program";
+		return PathKey(request.File) + "|" + kind + "|" + request.Domain.Module;
+	}
+
+	std::optional<ShaderPrograms::Program> ShaderPrograms::FromCaches(const ShaderCompileRequest& request) const
+	{
+		// The newest code that matches the files: live reload's, then the build's. Failing that,
+		// code that doesn't match any more, live reload's first.
+		std::optional<ShaderCache::Entry> saved = Saved ? Saved->Find(request) : std::nullopt;
+		std::optional<ShaderCache::Entry> built = Built.Find(request);
+		std::optional<ShaderCache::Entry>* chosen = saved && saved->bUpToDate ? &saved : built && built->bUpToDate ? &built
+			: saved                                                                                                ? &saved
+																												   : &built;
+		if (!*chosen || (*chosen)->Result.EntryPoints.empty())
+		{
+			return std::nullopt;
+		}
+
+		Program program;
+		program.Request = request;
+		program.Code = std::move((*chosen)->Result);
+		program.Dependencies = program.Code.Dependencies;
+		program.Dependencies.push_back(request.File);
+		program.bStartedOutOfDate = !(*chosen)->bUpToDate;
+		// Compiled at the first update, without waiting for anything to settle
+		program.bDirty = program.bStartedOutOfDate;
+		return program;
+	}
+
 	ShaderPrograms::Program& ShaderPrograms::Load(const std::string& name)
 	{
 		auto found = Programs.find(name);
 		if (found == Programs.end())
 		{
-			// The newest code that matches the files: live reload's, then the build's. Failing
-			// that, code that doesn't match any more, live reload's first.
-			const ShaderCompileRequest request = RequestFor(name);
-			std::optional<ShaderCache::Entry> saved = Saved ? Saved->Find(request) : std::nullopt;
-			std::optional<ShaderCache::Entry> built = Built.Find(request);
-			std::optional<ShaderCache::Entry>* chosen = saved && saved->bUpToDate ? &saved : built && built->bUpToDate ? &built
-				: saved                                                                                                ? &saved
-																													   : &built;
-			if (!*chosen || (*chosen)->Result.EntryPoints.empty())
+			std::optional<Program> program = FromCaches(RequestFor(name));
+			if (!program)
 			{
 				throw std::runtime_error("No compiled code for shader " + name + " in " + Built.GetFolder().string() + ": build the shaders (NyxShaders)");
 			}
-
-			Program program;
-			program.EntryPoints = (*chosen)->Result.EntryPoints;
-			program.Dependencies = (*chosen)->Result.Dependencies;
-			program.Dependencies.push_back(request.File);
-			program.bStartedOutOfDate = !(*chosen)->bUpToDate;
-			// Compiled at the first update, without waiting for anything to settle
-			program.bDirty = program.bStartedOutOfDate;
-			found = Programs.emplace(name, std::move(program)).first;
+			found = Programs.emplace(name, std::move(*program)).first;
 		}
 		return found->second;
+	}
+
+	const ShaderCompileResult* ShaderPrograms::GetResult(const ShaderCompileRequest& request)
+	{
+		const std::string key = GetResultKey(request);
+		auto found = Programs.find(key);
+		if (found == Programs.end())
+		{
+			std::optional<Program> program = FromCaches(request);
+			if (!program)
+			{
+				// Nothing compiled yet: at the first update
+				program.emplace();
+				program->Request = request;
+				program->Dependencies.push_back(request.File);
+				program->bStartedOutOfDate = true;
+				program->bDirty = true;
+			}
+			found = Programs.emplace(key, std::move(*program)).first;
+		}
+		return found->second.Code.bSucceeded ? &found->second.Code : nullptr;
+	}
+
+	bool ShaderPrograms::IsPending(const ShaderCompileRequest& request) const
+	{
+		const auto found = Programs.find(GetResultKey(request));
+		return found != Programs.end() && (found->second.bDirty || found->second.RequestId != 0);
 	}
 
 	const std::vector<uint32_t>& ShaderPrograms::GetSpirv(const std::string& name)
 	{
 		Program& program = Load(name);
-		if (program.EntryPoints.size() != 1)
+		if (program.Code.EntryPoints.size() != 1)
 		{
-			throw std::runtime_error("Shader " + name + " has " + std::to_string(program.EntryPoints.size()) + " entry points: name the one to use");
+			throw std::runtime_error("Shader " + name + " has " + std::to_string(program.Code.EntryPoints.size()) + " entry points: name the one to use");
 		}
-		return program.EntryPoints[0].Spirv;
+		return program.Code.EntryPoints[0].Spirv;
 	}
 
 	const std::vector<uint32_t>& ShaderPrograms::GetSpirv(const std::string& name, const std::string& entryPoint)
 	{
 		Program& program = Load(name);
-		for (const CompiledEntryPoint& compiled : program.EntryPoints)
+		for (const CompiledEntryPoint& compiled : program.Code.EntryPoints)
 		{
 			if (compiled.Name == entryPoint)
 			{
@@ -178,10 +222,8 @@ namespace Nyx::Engine
 			{
 				if (program.bDirty && program.RequestId == 0)
 				{
-					ShaderCompileRequest request;
+					ShaderCompileRequest request = program.Request;
 					request.Id = NextRequestId++;
-					request.Kind = EShaderCompileKind::Program;
-					request.File = SourceFolder / name;
 					program.bDirty = false;
 					program.RequestId = request.Id;
 					Service->Submit(request);
@@ -220,7 +262,7 @@ namespace Nyx::Engine
 			// doesn't replace them
 			if (response.Result.bSucceeded)
 			{
-				for (const CompiledEntryPoint& known : program.EntryPoints)
+				for (const CompiledEntryPoint& known : program.Code.EntryPoints)
 				{
 					const bool bStill = std::any_of(response.Result.EntryPoints.begin(), response.Result.EntryPoints.end(), [&known](const CompiledEntryPoint& compiled)
 						{
@@ -236,9 +278,10 @@ namespace Nyx::Engine
 
 			ShaderProgramUpdate update;
 			update.Name = found->first;
+			update.Request = program.Request;
 			if (response.Result.bSucceeded)
 			{
-				program.EntryPoints = response.Result.EntryPoints;
+				program.Code = response.Result;
 				update.bChanged = true;
 				// The next start begins from it
 				if (Saved)

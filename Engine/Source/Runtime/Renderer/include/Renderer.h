@@ -160,11 +160,15 @@ namespace Nyx
 		// "Saving ...", "Saved <path>" or why it couldn't; empty before the first screenshot
 		virtual const std::string& GetScreenshotMessage() const = 0;
 
-		// temporary demo-asset accessors
+		// temporary demo-asset accessor, until meshes are assets
 		virtual Nyx::Mesh* GetCubeMesh() = 0;
-		virtual Nyx::Material* GetTexturedMaterial() = 0;
-		virtual Nyx::Material* GetReflectiveMaterial() = 0;
-		virtual Nyx::Material* GetUntexturedMaterial() = 0;
+
+		// The material in a .nyxmat file, by its path in the assets folder
+		// ("Materials/Stone.nyxmat"), loaded at the first ask. Never null: one that can't be drawn
+		// (yet) shows a magenta checker.
+		virtual Nyx::Material* GetMaterial(const std::string& path) = 0;
+		// Whether shaders are compiling, e.g. for a material's first look; tests wait for it
+		virtual bool IsCompilingShaders() const = 0;
 	};
 
 	NYXENGINE_API std::unique_ptr<IRenderer> CreateRenderer();

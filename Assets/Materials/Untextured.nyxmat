@@ -1,0 +1,4 @@
+# Named for a look it never had: the engine always drew this cube with the checker too
+Shader = Shaders/Classic.slang
+Albedo = Textures/checker.jpg
+Reflectivity = 0.05

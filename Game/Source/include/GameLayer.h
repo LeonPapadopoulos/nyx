@@ -1,6 +1,6 @@
 #pragma once
 
-#include "BuiltinAssetResolver.h"
+#include "AssetResolver.h"
 #include "Entity.h"
 #include "Layer.h"
 #include "SceneSerializationTypes.h"
@@ -44,7 +44,7 @@ namespace Nyx::Game
 		std::filesystem::path ScenePath;
 
 		Nyx::IRenderer* Renderer = nullptr;
-		std::unique_ptr<Nyx::Engine::BuiltinAssetResolver> AssetResolver;
+		std::unique_ptr<Nyx::Engine::AssetResolver> AssetResolver;
 
 		// All entities of the loaded scene
 		Nyx::Engine::Registry World;

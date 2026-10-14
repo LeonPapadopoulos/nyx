@@ -461,7 +461,7 @@ namespace
 			}
 			++compared;
 		}
-		// The scene and the sky are Slang programs since change 5; the rest is GLSL
+		// The sky and the missing material are Slang programs; the rest is GLSL
 		Require(compared >= 15, "only " + std::to_string(compared) + " engine shaders were compared");
 	}
 
@@ -475,7 +475,7 @@ namespace
 			std::vector<std::pair<std::string, EShaderStage>> EntryPoints;
 		};
 		const Program programs[] = {
-			{ "Scene.slang", { { "sceneVertex", EShaderStage::Vertex }, { "sceneFragment", EShaderStage::Fragment } } },
+			{ "MissingMaterial.slang", { { "missingVertex", EShaderStage::Vertex }, { "missingFragment", EShaderStage::Fragment } } },
 			{ "Skybox.slang", { { "skyboxVertex", EShaderStage::Vertex }, { "skyboxFragment", EShaderStage::Fragment } } },
 		};
 		const std::vector<std::string> planned{ "0.0", "0.1", "0.2", "1.0" };

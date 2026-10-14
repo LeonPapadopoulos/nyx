@@ -263,7 +263,6 @@ namespace Nyx
 		// The global set: every texture, the fixed samplers, the material buffer
 		Bindless.Initialize(Context);
 
-		CreateTestTextureData();
 		CreateTestMeshData();
 		CreateTestMeshBuffers();
 
@@ -282,7 +281,6 @@ namespace Nyx
 		CreateOutlineCompositePipeline();
 
 		// Shared pipelines
-		CreateScenePipeline();
 		CreateGridPipeline();
 		CreateSkyboxPipeline();
 		CreatePickingPipeline();
@@ -300,8 +298,11 @@ namespace Nyx
 		CreateBlurTimestamps();
 		CreateUITimestamps();
 
-		// Shared materials
-		CreateMaterials();
+		// The meshes' materials, loaded from their files when first asked for
+		Materials.Initialize(Context, Bindless, Programs, Nyx::Paths::GetAssetsDir(), *ScenePipelineLayout, [this]
+			{
+				return GetSceneRenderPass();
+			});
 
 		// @note: Gltf Meshes currently not visible, because the RenderObjects get
 		// cleared and then populated by the world / entity-registry; So manually pushed
@@ -384,6 +385,7 @@ namespace Nyx
 		MeshVertexBuffer = nullptr;
 		MeshVertexBufferMemory = nullptr;
 
+		Materials.Shutdown();
 		Bindless.Shutdown();
 		Context.Shutdown();
 	}
@@ -907,19 +909,14 @@ namespace Nyx
 		return &CubeMesh;
 	}
 
-	Material* VulkanRenderer::GetTexturedMaterial()
+	Material* VulkanRenderer::GetMaterial(const std::string& path)
 	{
-		return &TexturedMaterial;
+		return Materials.Get(path);
 	}
 
-	Material* VulkanRenderer::GetReflectiveMaterial()
+	bool VulkanRenderer::IsCompilingShaders() const
 	{
-		return &ReflectiveMaterial;
-	}
-
-	Material* VulkanRenderer::GetUntexturedMaterial()
-	{
-		return &UntexturedMaterial;
+		return Programs.IsBusy() || Materials.IsWaiting();
 	}
 
 	VulkanContext& VulkanRenderer::GetContext()
@@ -1002,37 +999,6 @@ namespace Nyx
 		int height = 0;
 		glfwGetFramebufferSize(Window, &width, &height);
 		return width > 0 && height > 0;
-	}
-
-	void VulkanRenderer::CreateMaterials()
-	{
-		// SceneMaterial in Scene.slang, in scalar layout
-		struct SceneMaterialValues
-		{
-			float Reflectivity = 0.0f;
-			float UseTexture = 1.0f;
-			glm::vec3 Tint{ 1.0f };
-			uint32_t AlbedoTexture = 0;
-		};
-		static_assert(sizeof(SceneMaterialValues) == 24, "SceneMaterialValues must match SceneMaterial in Scene.slang");
-
-		const auto make = [this](Material& material, float reflectivity, bool bUseTexture, glm::vec3 tint)
-		{
-			material.Pipeline = &ScenePipeline;
-			material.PipelineLayout = &ScenePipelineLayout;
-			material.Reflectivity = reflectivity;
-			material.bUseTexture = bUseTexture;
-			material.Tint = tint;
-
-			const SceneMaterialValues values{ reflectivity, bUseTexture ? 1.0f : 0.0f, tint, TestTextureIndex };
-			const std::optional<uint32_t> offset = Bindless.AllocateMaterial(sizeof(values));
-			ASSERT(offset.has_value() && "The material buffer is full");
-			material.MaterialOffset = *offset;
-			Bindless.WriteMaterial(material.MaterialOffset, std::as_bytes(std::span(&values, 1)));
-		};
-		make(TexturedMaterial, 0.0f, true, glm::vec3(1.0f, 1.0f, 1.0f));
-		make(ReflectiveMaterial, 0.35f, true, glm::vec3(1.0f, 1.0f, 1.0f));
-		make(UntexturedMaterial, 0.05f, false, glm::vec3(0.2f, 0.8f, 1.0f));
 	}
 
 	void VulkanRenderer::ExtractRenderObjects(const Nyx::Engine::Registry& registry)
@@ -1136,106 +1102,6 @@ namespace Nyx
 	void VulkanRenderer::BindSceneSets(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
 	{
 		cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *ScenePipelineLayout, 0, { Bindless.GetSet(), *view.SceneDescriptorSets.front() }, {});
-	}
-
-	void VulkanRenderer::CreateScenePipeline()
-	{
-		const std::vector<uint32_t>& vertCode = Programs.GetSpirv("Scene.slang", "sceneVertex");
-		const std::vector<uint32_t>& fragCode = Programs.GetSpirv("Scene.slang", "sceneFragment");
-
-		vk::raii::ShaderModule vertShaderModule = CreateShaderModule(vertCode);
-		vk::raii::ShaderModule fragShaderModule = CreateShaderModule(fragCode);
-
-		vk::PipelineShaderStageCreateInfo vertStageInfo{};
-		vertStageInfo.stage = vk::ShaderStageFlagBits::eVertex;
-		vertStageInfo.module = *vertShaderModule;
-		vertStageInfo.pName = "sceneVertex";
-
-		vk::PipelineShaderStageCreateInfo fragStageInfo{};
-		fragStageInfo.stage = vk::ShaderStageFlagBits::eFragment;
-		fragStageInfo.module = *fragShaderModule;
-		fragStageInfo.pName = "sceneFragment";
-
-		vk::PipelineShaderStageCreateInfo shaderStages[] = { vertStageInfo, fragStageInfo };
-
-		const auto bindingDescription = Vertex::GetBindingDescription();
-		const auto attributeDescriptions = Vertex::GetAttributeDescriptions();
-
-		vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
-		vertexInputInfo.vertexBindingDescriptionCount = 1;
-		vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
-		vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
-		vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
-
-		vk::PipelineInputAssemblyStateCreateInfo inputAssembly{};
-		inputAssembly.topology = vk::PrimitiveTopology::eTriangleList;
-		inputAssembly.primitiveRestartEnable = VK_FALSE;
-
-		vk::PipelineViewportStateCreateInfo viewportState{};
-		viewportState.viewportCount = 1;
-		viewportState.scissorCount = 1;
-
-		vk::PipelineRasterizationStateCreateInfo rasterizer{};
-		rasterizer.depthClampEnable = VK_FALSE;
-		rasterizer.rasterizerDiscardEnable = VK_FALSE;
-		rasterizer.polygonMode = vk::PolygonMode::eFill;
-		rasterizer.lineWidth = 1.0f;
-		rasterizer.cullMode = vk::CullModeFlagBits::eNone; // @todo: Re-enable Backface Culling vk::CullModeFlagBits::eBack;
-		rasterizer.frontFace = vk::FrontFace::eClockwise;
-		rasterizer.depthBiasEnable = VK_FALSE;
-
-		vk::PipelineMultisampleStateCreateInfo multisampling{};
-		multisampling.sampleShadingEnable = VK_FALSE;
-		multisampling.rasterizationSamples = vk::SampleCountFlagBits::e1;
-
-		vk::PipelineColorBlendAttachmentState colorBlendAttachment{};
-		colorBlendAttachment.blendEnable = VK_FALSE;
-		colorBlendAttachment.colorWriteMask =
-			vk::ColorComponentFlagBits::eR |
-			vk::ColorComponentFlagBits::eG |
-			vk::ColorComponentFlagBits::eB |
-			vk::ColorComponentFlagBits::eA;
-
-		vk::PipelineColorBlendStateCreateInfo colorBlending{};
-		colorBlending.logicOpEnable = VK_FALSE;
-		colorBlending.attachmentCount = 1;
-		colorBlending.pAttachments = &colorBlendAttachment;
-
-		std::array<vk::DynamicState, 2> dynamicStates = {
-			vk::DynamicState::eViewport,
-			vk::DynamicState::eScissor
-		};
-
-		vk::PipelineDynamicStateCreateInfo dynamicState{};
-		dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
-		dynamicState.pDynamicStates = dynamicStates.data();
-
-		vk::PipelineDepthStencilStateCreateInfo depthStencil{};
-		depthStencil.depthTestEnable = VK_TRUE;
-		depthStencil.depthWriteEnable = VK_TRUE;
-		depthStencil.depthCompareOp = vk::CompareOp::eLess;
-		depthStencil.depthBoundsTestEnable = VK_FALSE;
-		depthStencil.stencilTestEnable = VK_FALSE;
-
-		vk::GraphicsPipelineCreateInfo pipelineInfo{};
-		pipelineInfo.stageCount = 2;
-		pipelineInfo.pStages = shaderStages;
-		pipelineInfo.pVertexInputState = &vertexInputInfo;
-		pipelineInfo.pInputAssemblyState = &inputAssembly;
-		pipelineInfo.pViewportState = &viewportState;
-		pipelineInfo.pRasterizationState = &rasterizer;
-		pipelineInfo.pMultisampleState = &multisampling;
-		pipelineInfo.pDepthStencilState = &depthStencil;
-		pipelineInfo.pColorBlendState = &colorBlending;
-		pipelineInfo.pDynamicState = &dynamicState;
-		pipelineInfo.layout = *ScenePipelineLayout;
-		pipelineInfo.renderPass = GetSceneRenderPass();
-		pipelineInfo.subpass = 0;
-
-		ScenePipeline = std::move(vk::raii::Pipeline(
-			Context.GetDevice(),
-			Context.GetPipelineCache(),
-			pipelineInfo));
 	}
 
 	void VulkanRenderer::CreateGridPipeline()
@@ -2490,17 +2356,6 @@ namespace Nyx
 		view.SceneUniformBufferMemory.unmapMemory();
 	}
 
-	void VulkanRenderer::CreateTestTextureData()
-	{
-		TestTexture.SetContext(Context);
-		const bool bLoaded = TestTexture.Load();
-		ASSERT(bLoaded);
-		TestTextureIndex = Bindless.AddTexture(TestTexture.GetImageView());
-
-		LOG_INFO("Texture image view valid: {}", static_cast<bool>(static_cast<VkImageView>(TestTexture.GetImageView())));
-		LOG_INFO("Texture sampler valid: {}", static_cast<bool>(static_cast<VkSampler>(TestTexture.GetSampler())));
-	}
-
 	void VulkanRenderer::CreateTestMeshData()
 	{
 		// Cube with individual faces (no shared corner vertices)
@@ -2718,7 +2573,8 @@ namespace Nyx
 			return;
 		}
 		auto service = std::make_unique<Nyx::Engine::RemoteShaderCompileService>(compiler, std::vector<std::filesystem::path>{ Nyx::Paths::GetShaderLibraryDir() });
-		if (!Programs.EnableLiveReload(std::move(service), { Nyx::Paths::GetShaderLibraryDir() }))
+		// The assets folder for material shaders
+		if (!Programs.EnableLiveReload(std::move(service), { Nyx::Paths::GetShaderLibraryDir(), Nyx::Paths::GetAssetsDir() }))
 		{
 			LOG_WARNING("Live shader reload is off: {}", Programs.GetProblem());
 			return;
@@ -2729,6 +2585,8 @@ namespace Nyx
 	void VulkanRenderer::ApplyShaderUpdates()
 	{
 		const std::vector<Nyx::Engine::ShaderProgramUpdate> updates = Programs.Update();
+		// Every frame: saved material files too
+		Materials.Update(updates);
 		if (updates.empty())
 		{
 			return;
@@ -2737,14 +2595,18 @@ namespace Nyx
 		std::set<std::string> changed;
 		for (const Nyx::Engine::ShaderProgramUpdate& update : updates)
 		{
+			// A material shader's two compiles by its file's name
+			const std::string name = update.Request.Kind == Nyx::Engine::EShaderCompileKind::Material ? update.Request.File.filename().string()
+				: update.Request.Kind == Nyx::Engine::EShaderCompileKind::DefaultsWriter              ? update.Request.File.filename().string() + " (defaults)"
+																									  : update.Name;
 			if (update.bChanged)
 			{
-				LOG_INFO("Shader {} compiled in {:.0f} ms", update.Name, update.Result.Milliseconds);
+				LOG_INFO("Shader {} compiled in {:.0f} ms", name, update.Result.Milliseconds);
 				changed.insert(update.Name);
 			}
 			else
 			{
-				LOG_ERROR("Shader {} doesn't compile; it keeps its last good code", update.Name);
+				LOG_ERROR("Shader {} doesn't compile; it keeps its last good code", name);
 			}
 			// With the whole path, so the line can be opened from the log
 			for (const Nyx::Engine::ShaderDiagnostic& diagnostic : update.Result.Diagnostics)
@@ -2780,9 +2642,9 @@ namespace Nyx
 		{
 			return changed.contains(std::string(shader) + ".vert") || changed.contains(std::string(shader) + ".frag");
 		};
-		if (changed.contains("Scene.slang"))
+		if (changed.contains("MissingMaterial.slang"))
 		{
-			CreateScenePipeline();
+			Materials.RebuildMissingPipeline();
 		}
 		if (uses("Grid"))
 		{
@@ -2860,11 +2722,11 @@ namespace Nyx
 				importedPrim.MaterialIndex < static_cast<int>(imported.Materials.size()) &&
 				!imported.Materials[importedPrim.MaterialIndex].BaseColorTexturePath.empty())
 			{
-				obj.MaterialAsset = &TexturedMaterial;
+				obj.MaterialAsset = Materials.Get("Materials/Textured.nyxmat");
 			}
 			else
 			{
-				obj.MaterialAsset = &UntexturedMaterial;
+				obj.MaterialAsset = Materials.Get("Materials/Untextured.nyxmat");
 			}
 
 			RenderObjects.push_back(obj);

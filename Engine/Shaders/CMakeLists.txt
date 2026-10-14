@@ -9,7 +9,7 @@ find_package(Vulkan REQUIRED)
 # Listed so the IDE shows them; the compiler takes every .slang, .vert, .frag and .comp in this
 # folder (not in Library, which they import)
 set(NYX_SHADER_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/Scene.slang
+    ${CMAKE_CURRENT_SOURCE_DIR}/MissingMaterial.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Skybox.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Grid.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/Grid.frag

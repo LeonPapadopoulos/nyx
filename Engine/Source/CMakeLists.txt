@@ -48,7 +48,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/ComponentTypeRegistry.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/ComponentRegistration.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/SceneSerializer.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/BuiltinAssetResolver.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/AssetResolver.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/EditorLink.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/EditorLinkMessages.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/LiveEdits.cpp
@@ -102,6 +102,8 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ShaderPrograms.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ShaderCache.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanBindless.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/MaterialAsset.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanMaterials.cpp
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/src/ReflectionUtils.cpp
@@ -145,7 +147,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/ComponentTypeRegistry.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/ComponentRegistration.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/SceneSerializer.h
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/BuiltinAssetResolver.h
+    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/AssetResolver.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/IAssetResolver.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/AssetReference.h
     ${NYX_ENGINE_ROOT}/Runtime/Engine/include/EditorLink.h
@@ -206,6 +208,9 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ShaderPrograms.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ShaderCache.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanBindless.h
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/BindlessTextures.h
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/MaterialAsset.h
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanMaterials.h
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionTypes.h

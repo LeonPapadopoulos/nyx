@@ -2,7 +2,7 @@
 
 #include "AssetBrowserPanel.h"
 #include "AssetDatabase.h"
-#include "BuiltinAssetResolver.h"
+#include "AssetResolver.h"
 #include "CrashCardsPanel.h"
 #include "DetailsPanel.h"
 #include "EditorCameraController.h"
@@ -87,7 +87,7 @@ namespace Nyx::Editor
 		Nyx::Input::InputSystem* Input = nullptr;
 
 		// Turns the asset paths in components into the renderer's assets; created in OnAttach.
-		std::unique_ptr<Nyx::Engine::BuiltinAssetResolver> AssetResolver;
+		std::unique_ptr<Nyx::Engine::AssetResolver> AssetResolver;
 
 		std::unique_ptr<EditorAssetActivationContext> AssetActivationContext;
 		AssetDatabase AssetDb;

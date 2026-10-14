@@ -84,8 +84,9 @@ public struct VertexOutput
     public float3 PositionWS : POSITION_WS;
 }
 
-[shader("vertex")]
-public VertexOutput surfaceVertex(VertexInput input)
+// What surfaceVertex does, for other entry points that place meshes the same way. (Called from
+// another entry point, an entry point crashes Slang 2026.1 when compiled through its API.)
+public VertexOutput transformSurfaceVertex(VertexInput input)
 {
     float4 positionWS = mul(Object.Model, float4(input.Position, 1.0));
     VertexOutput output;
@@ -94,6 +95,12 @@ public VertexOutput surfaceVertex(VertexInput input)
     output.NormalWS = mul((float3x3)Object.Model, input.Normal);
     output.PositionWS = positionWS.xyz;
     return output;
+}
+
+[shader("vertex")]
+public VertexOutput surfaceVertex(VertexInput input)
+{
+    return transformSurfaceVertex(input);
 }
 
 // The material is loaded from the material buffer at the draw's offset, then shades the pixel

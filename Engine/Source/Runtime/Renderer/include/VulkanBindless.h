@@ -1,9 +1,12 @@
 #pragma once
 
+#include "BindlessTextures.h"
+
 #include <vulkan/vulkan_raii.hpp>
 
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <span>
 #include <vector>
@@ -15,17 +18,6 @@ namespace Nyx
 
 namespace Nyx::Engine
 {
-	// Texture slots every program can count on, made by VulkanBindless
-	enum class EBindlessTexture : uint32_t
-	{
-		White = 0,
-		Black = 1,
-		// (0.5, 0.5, 1): a normal map that changes nothing
-		FlatNormal = 2,
-		// A magenta checker, for a texture that is missing
-		Missing = 3,
-	};
-
 	// FixedSamplers in nyx/bindless.slang, in its order
 	enum class EFixedSampler : uint32_t
 	{
@@ -57,15 +49,22 @@ namespace Nyx::Engine
 		// Puts an image view (ShaderReadOnlyOptimal, 2D or cube) into a free slot of the array and
 		// returns its index. Throws when every slot is taken.
 		uint32_t AddTexture(vk::ImageView view);
-		// Frees the slot once the frames that could still read it are done (EndFrame())
+		// A 2D texture of its own, made from RGBA pixels (8 bits per channel) in `format`, in a
+		// free slot; it lives until its slot is removed. Throws when every slot is taken.
+		uint32_t CreateTexture(uint32_t width, uint32_t height, const std::vector<uint8_t>& pixels, vk::Format format);
+		// Frees the slot once the frames that could still read it are done (EndFrame()), and the
+		// texture with it if it was made here
 		void RemoveTexture(uint32_t index);
 
 		// Room for a material's values in the material buffer: its offset, or nothing when the
-		// buffer is full. Materials aren't freed yet; they are few and made once.
+		// buffer is full
 		std::optional<uint32_t> AllocateMaterial(uint32_t size);
+		// Gives room back, for the next material to take. Only while no frame in flight reads it.
+		void FreeMaterial(uint32_t offset, uint32_t size);
 		// Writes a material's values at its offset. Written in place: a frame the GPU is still
 		// drawing may read them half written, so they are only written while no frame is in
-		// flight (at start for now; steering materials while drawing comes later).
+		// flight (the renderer writes them after waiting for the last frame; steering materials
+		// while drawing comes later).
 		void WriteMaterial(uint32_t offset, std::span<const std::byte> bytes);
 
 		// Once per frame, after it was submitted: slots removed long enough ago are free again
@@ -83,8 +82,7 @@ namespace Nyx::Engine
 			vk::raii::DeviceMemory Memory{ nullptr };
 			vk::raii::ImageView View{ nullptr };
 		};
-		// A small 2D texture of its own, RGBA, 8 bits per channel, not sRGB
-		OwnTexture CreateTexture(uint32_t width, uint32_t height, const std::vector<uint8_t>& pixels);
+		OwnTexture MakeTexture(uint32_t width, uint32_t height, const std::vector<uint8_t>& pixels, vk::Format format);
 
 		VulkanContext* Context = nullptr;
 
@@ -94,11 +92,15 @@ namespace Nyx::Engine
 
 		std::vector<vk::raii::Sampler> Samplers;
 		std::vector<OwnTexture> DefaultTextures;
+		// CreateTexture()'s, by slot
+		std::map<uint32_t, OwnTexture> CreatedTextures;
 
 		vk::raii::Buffer MaterialBuffer{ nullptr };
 		vk::raii::DeviceMemory MaterialMemory{ nullptr };
 		std::byte* MaterialBytes = nullptr;
 		uint32_t MaterialEnd = 0;
+		// Room given back: offset and size, by offset
+		std::map<uint32_t, uint32_t> FreeMaterialRanges;
 
 		// Slots not handed out: the lowest first
 		std::vector<uint32_t> FreeSlots;

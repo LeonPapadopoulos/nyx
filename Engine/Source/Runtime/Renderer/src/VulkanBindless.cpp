@@ -59,6 +59,8 @@ namespace Nyx::Engine
 		SetLayout = nullptr;
 		Samplers.clear();
 		DefaultTextures.clear();
+		CreatedTextures.clear();
+		FreeMaterialRanges.clear();
 		if (MaterialBytes != nullptr)
 		{
 			MaterialMemory.unmapMemory();
@@ -196,20 +198,28 @@ namespace Nyx::Engine
 		}
 
 		// In EBindlessTexture's order, which makes them slots 0 to 3
-		DefaultTextures.push_back(CreateTexture(1, 1, Filled(1, 1, { 255, 255, 255, 255 })));
-		DefaultTextures.push_back(CreateTexture(1, 1, Filled(1, 1, { 0, 0, 0, 255 })));
-		DefaultTextures.push_back(CreateTexture(1, 1, Filled(1, 1, { 128, 128, 255, 255 })));
-		DefaultTextures.push_back(CreateTexture(8, 8, checker));
+		constexpr vk::Format Unorm = vk::Format::eR8G8B8A8Unorm;
+		DefaultTextures.push_back(MakeTexture(1, 1, Filled(1, 1, { 255, 255, 255, 255 }), Unorm));
+		DefaultTextures.push_back(MakeTexture(1, 1, Filled(1, 1, { 0, 0, 0, 255 }), Unorm));
+		DefaultTextures.push_back(MakeTexture(1, 1, Filled(1, 1, { 128, 128, 255, 255 }), Unorm));
+		DefaultTextures.push_back(MakeTexture(8, 8, checker, Unorm));
 		for (const OwnTexture& texture : DefaultTextures)
 		{
 			AddTexture(*texture.View);
 		}
 	}
 
-	VulkanBindless::OwnTexture VulkanBindless::CreateTexture(uint32_t width, uint32_t height, const std::vector<uint8_t>& pixels)
+	uint32_t VulkanBindless::CreateTexture(uint32_t width, uint32_t height, const std::vector<uint8_t>& pixels, vk::Format format)
+	{
+		OwnTexture texture = MakeTexture(width, height, pixels, format);
+		const uint32_t slot = AddTexture(*texture.View);
+		CreatedTextures[slot] = std::move(texture);
+		return slot;
+	}
+
+	VulkanBindless::OwnTexture VulkanBindless::MakeTexture(uint32_t width, uint32_t height, const std::vector<uint8_t>& pixels, vk::Format format)
 	{
 		vk::raii::Device& device = Context->GetDevice();
-		constexpr vk::Format Format = vk::Format::eR8G8B8A8Unorm;
 
 		OwnTexture texture;
 		vk::ImageCreateInfo imageInfo{};
@@ -217,7 +227,7 @@ namespace Nyx::Engine
 		imageInfo.extent = vk::Extent3D(width, height, 1);
 		imageInfo.mipLevels = 1;
 		imageInfo.arrayLayers = 1;
-		imageInfo.format = Format;
+		imageInfo.format = format;
 		imageInfo.tiling = vk::ImageTiling::eOptimal;
 		imageInfo.initialLayout = vk::ImageLayout::eUndefined;
 		imageInfo.usage = vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferDst;
@@ -230,7 +240,7 @@ namespace Nyx::Engine
 		vk::ImageViewCreateInfo viewInfo{};
 		viewInfo.image = *texture.Image;
 		viewInfo.viewType = vk::ImageViewType::e2D;
-		viewInfo.format = Format;
+		viewInfo.format = format;
 		viewInfo.subresourceRange = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
 		texture.View = vk::raii::ImageView(device, viewInfo);
 
@@ -326,6 +336,7 @@ namespace Nyx::Engine
 			// A material still pointing at the slot shows the missing texture, not a freed image
 			const vk::DescriptorImageInfo imageInfo(nullptr, *DefaultTextures[static_cast<size_t>(EBindlessTexture::Missing)].View, vk::ImageLayout::eShaderReadOnlyOptimal);
 			Context->GetDevice().updateDescriptorSets(vk::WriteDescriptorSet(*Set, TextureBinding, it->Index, 1, vk::DescriptorType::eSampledImage, &imageInfo), {});
+			CreatedTextures.erase(it->Index);
 			FreeSlots.push_back(it->Index);
 			it = PendingSlots.erase(it);
 		}
@@ -333,13 +344,59 @@ namespace Nyx::Engine
 
 	std::optional<uint32_t> VulkanBindless::AllocateMaterial(uint32_t size)
 	{
+		const uint32_t rounded = (size + MaterialAlignment - 1) / MaterialAlignment * MaterialAlignment;
+		// Room given back first: the first range it fits in
+		for (auto it = FreeMaterialRanges.begin(); size > 0 && it != FreeMaterialRanges.end(); ++it)
+		{
+			if (it->second >= rounded)
+			{
+				const uint32_t found = it->first;
+				const uint32_t left = it->second - rounded;
+				FreeMaterialRanges.erase(it);
+				if (left > 0)
+				{
+					FreeMaterialRanges[found + rounded] = left;
+				}
+				return found;
+			}
+		}
+
 		const uint32_t offset = (MaterialEnd + MaterialAlignment - 1) / MaterialAlignment * MaterialAlignment;
 		if (size == 0 || offset + static_cast<vk::DeviceSize>(size) > MaterialBufferSize)
 		{
 			return std::nullopt;
 		}
-		MaterialEnd = offset + size;
+		MaterialEnd = offset + rounded;
 		return offset;
+	}
+
+	void VulkanBindless::FreeMaterial(uint32_t offset, uint32_t size)
+	{
+		const uint32_t rounded = (size + MaterialAlignment - 1) / MaterialAlignment * MaterialAlignment;
+		if (rounded == 0)
+		{
+			return;
+		}
+		auto [it, bInserted] = FreeMaterialRanges.emplace(offset, rounded);
+		if (!bInserted)
+		{
+			return; // Freed twice
+		}
+		// Joined with its neighbours
+		if (const auto next = std::next(it); next != FreeMaterialRanges.end() && it->first + it->second == next->first)
+		{
+			it->second += next->second;
+			FreeMaterialRanges.erase(next);
+		}
+		if (it != FreeMaterialRanges.begin())
+		{
+			const auto previous = std::prev(it);
+			if (previous->first + previous->second == it->first)
+			{
+				previous->second += it->second;
+				FreeMaterialRanges.erase(it);
+			}
+		}
 	}
 
 	void VulkanBindless::WriteMaterial(uint32_t offset, std::span<const std::byte> bytes)

@@ -1,0 +1,4 @@
+# The checker, with the sky mirrored in it
+Shader = Shaders/Classic.slang
+Albedo = Textures/checker.jpg
+Reflectivity = 0.35

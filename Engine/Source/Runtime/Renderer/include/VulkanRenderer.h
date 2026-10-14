@@ -10,6 +10,7 @@
 #include "ShaderPrograms.h"
 #include "VulkanBlur.h"
 #include "VulkanBindless.h"
+#include "VulkanMaterials.h"
 #include "VulkanGlass.h"
 #include "Painter.h"
 #include "WindowPainter.h"
@@ -244,9 +245,8 @@ namespace Nyx
 		void SetWorld(const Nyx::Engine::Registry* world) override;
 
 		Nyx::Mesh* GetCubeMesh() override;
-		Nyx::Material* GetTexturedMaterial() override;
-		Nyx::Material* GetReflectiveMaterial() override;
-		Nyx::Material* GetUntexturedMaterial() override;
+		Nyx::Material* GetMaterial(const std::string& path) override;
+		bool IsCompilingShaders() const override;
 
 	public:
 		VulkanContext& GetContext();
@@ -289,7 +289,6 @@ namespace Nyx
 		// False while the window is minimized
 		bool HasValidFramebufferSize() const;
 
-		void CreateMaterials();
 		void ExtractRenderObjects(const Nyx::Engine::Registry& registry);
 		void DrawRenderObjects(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
 
@@ -300,7 +299,6 @@ namespace Nyx
 		void CreateScenePipelineLayout();
 		// Binds both sets for the scene pipelines' draws into the view
 		void BindSceneSets(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
-		void CreateScenePipeline();
 		void CreateGridPipeline();
 		void CreatePickingPipeline();
 
@@ -353,7 +351,6 @@ namespace Nyx
 		void CreateSceneResourcesForView(SceneViewInstance& view);
 		void UpdateSceneUniforms(SceneViewInstance& view);
 
-		void CreateTestTextureData();
 		void CreateTestMeshData();
 		void CreateTestMeshBuffers();
 
@@ -622,11 +619,9 @@ namespace Nyx
 		vk::raii::DescriptorSetLayout SceneDescriptorSetLayout{ nullptr };
 		// Shared by the scene, sky, grid, debug line, picking and selection mask pipelines
 		vk::raii::PipelineLayout ScenePipelineLayout{ nullptr };
-		vk::raii::Pipeline ScenePipeline{ nullptr };
 
-		Material TexturedMaterial;
-		Material ReflectiveMaterial;
-		Material UntexturedMaterial;
+		// The meshes' materials, from their .nyxmat files
+		Nyx::Engine::VulkanMaterials Materials;
 
 		// World is owned by the editor / scene document.
 		const Nyx::Engine::Registry* World = nullptr;
@@ -676,8 +671,6 @@ namespace Nyx
 		vk::raii::DeviceMemory MeshIndexBufferMemory{ nullptr };
 
 		// Texture
-		Texture TestTexture{ "checker" };
-		uint32_t TestTextureIndex = 0;
 
 		//vk::PhysicalDeviceFeatures DeviceFeatures;
 

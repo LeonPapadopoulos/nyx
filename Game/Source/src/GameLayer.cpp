@@ -23,7 +23,7 @@ namespace Nyx::Game
 		// both programs run from the same folder.
 		ImGui::GetIO().IniFilename = nullptr;
 
-		AssetResolver = std::make_unique<Nyx::Engine::BuiltinAssetResolver>(*Renderer);
+		AssetResolver = std::make_unique<Nyx::Engine::AssetResolver>(*Renderer);
 
 		Nyx::Engine::ScenePostLoadContext postLoadContext{};
 		postLoadContext.AssetResolver = AssetResolver.get();

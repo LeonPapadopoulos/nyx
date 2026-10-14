@@ -177,6 +177,15 @@ set_property(TARGET NyxShaderCompileServiceTests PROPERTY FOLDER "Tests")
 nyx_copy_shader_compiler_next_to(NyxShaderCompileServiceTests)
 add_test(NAME NyxShaderCompileServiceTests COMMAND NyxShaderCompileServiceTests)
 
+# Material files and their values without a GPU: reading and writing, offsets, layouts that change.
+add_executable(NyxMaterialTests MaterialTests.cpp)
+target_link_libraries(NyxMaterialTests PRIVATE NyxEngine)
+target_compile_definitions(NyxMaterialTests PRIVATE NYX_TEST_SHADERS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/Shaders")
+add_dependencies(NyxMaterialTests NyxGeneratedReflection)
+set_property(TARGET NyxMaterialTests PROPERTY FOLDER "Tests")
+nyx_copy_shader_compiler_next_to(NyxMaterialTests)
+add_test(NAME NyxMaterialTests COMMAND NyxMaterialTests)
+
 # The renderer drawing the editor's default scene on a real GPU, compared with a reference image,
 # and picking in it. Needs a Vulkan device; its window stays hidden.
 add_executable(NyxSceneGpuTests SceneGpuTests.cpp)

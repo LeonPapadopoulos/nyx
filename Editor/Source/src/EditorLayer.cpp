@@ -98,7 +98,7 @@ namespace Nyx::Editor
 		Window = &application.GetWindow();
 		Renderer = &Window->GetRenderer();
 		Input = &application.GetInput();
-		AssetResolver = std::make_unique<Nyx::Engine::BuiltinAssetResolver>(*Renderer);
+		AssetResolver = std::make_unique<Nyx::Engine::AssetResolver>(*Renderer);
 		if (!Preferences.Load(EditorPreferences::GetUserFile()))
 		{
 			LOG_WARNING("Could not read editor preferences; using defaults.");

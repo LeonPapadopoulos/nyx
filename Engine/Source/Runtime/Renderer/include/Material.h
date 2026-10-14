@@ -1,20 +1,17 @@
 #pragma once
 
 #include <vulkan/vulkan_raii.hpp>
-#include <glm/glm.hpp>
+
+#include <cstdint>
 
 namespace Nyx
 {
+	// What a mesh is drawn with: a handle VulkanMaterials keeps up to date (Design/shader-materials.md,
+	// stage 1, change 6). The pipeline is its shader's, or the missing material's.
 	struct Material
 	{
 		vk::raii::Pipeline* Pipeline = nullptr;
-		vk::raii::PipelineLayout* PipelineLayout = nullptr;
-
-		// Where its values are in the material buffer (VulkanBindless), written from the values below
+		// Where its values are in the material buffer (VulkanBindless)
 		uint32_t MaterialOffset = 0;
-
-		float Reflectivity = 0.0f;
-		bool bUseTexture = true;
-		glm::vec3 Tint{ 1.0f, 1.0f, 1.0f };
 	};
 }
