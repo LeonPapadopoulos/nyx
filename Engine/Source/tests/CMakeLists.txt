@@ -203,6 +203,18 @@ nyx_copy_shaders_next_to(NyxEnvironmentGpuTests)
 nyx_copy_shader_compiler_next_to(NyxEnvironmentGpuTests)
 add_test(NAME NyxEnvironmentGpuTests COMMAND NyxEnvironmentGpuTests)
 
+# The material test scene on a real GPU: the sphere grid against its reference, spheres against the
+# CPU, the furnace test. Needs a Vulkan device; its window stays hidden. --write-scene writes the
+# scene and its materials.
+add_executable(NyxMaterialGpuTests MaterialGpuTests.cpp)
+target_link_libraries(NyxMaterialGpuTests PRIVATE NyxEngine)
+target_compile_definitions(NyxMaterialGpuTests PRIVATE NYX_TEST_REFERENCES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/References")
+add_dependencies(NyxMaterialGpuTests NyxGeneratedReflection)
+set_property(TARGET NyxMaterialGpuTests PROPERTY FOLDER "Tests")
+nyx_copy_shaders_next_to(NyxMaterialGpuTests)
+nyx_copy_shader_compiler_next_to(NyxMaterialGpuTests)
+add_test(NAME NyxMaterialGpuTests COMMAND NyxMaterialGpuTests)
+
 # The renderer drawing the editor's default scene on a real GPU, compared with a reference image,
 # and picking in it. Needs a Vulkan device; its window stays hidden.
 add_executable(NyxSceneGpuTests SceneGpuTests.cpp)

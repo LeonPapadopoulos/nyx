@@ -1,0 +1,5 @@
+# The material test scene's sphere of metallic 0.25, roughness 1.00 (NyxMaterialGpuTests --write-scene)
+Shader = Shaders/Standard.slang
+BaseColor = 1.00 0.77 0.34
+Metallic = 0.25
+Roughness = 1.00

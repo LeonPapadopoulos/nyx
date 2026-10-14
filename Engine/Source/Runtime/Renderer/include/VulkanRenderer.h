@@ -269,6 +269,11 @@ namespace Nyx
 
 		// The light of the sky, for tests
 		Nyx::Engine::VulkanEnvironment& GetEnvironment() { return Environment; }
+		Nyx::Engine::VulkanBindless& GetBindless() { return Bindless; }
+		// The sky drawn behind the scene and lighting it: a cube of the bindless array, e.g. a
+		// test's uniform one; its light is made again (waits for the GPU)
+		void SetSky(uint32_t cubeSlot);
+		uint32_t GetSky() const { return SkyboxTextureIndex; }
 
 		// Draws 2D shapes recorded with a Painter into a VulkanPainterTarget (Design/ui-painter.md)
 		Nyx::Engine::VulkanPainter& GetPainterPass() { return PainterPass; }

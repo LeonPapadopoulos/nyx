@@ -906,6 +906,12 @@ namespace Nyx
 		return &SphereMesh;
 	}
 
+	void VulkanRenderer::SetSky(uint32_t cubeSlot)
+	{
+		SkyboxTextureIndex = cubeSlot;
+		Environment.Build(cubeSlot);
+	}
+
 	Material* VulkanRenderer::GetMaterial(const std::string& path)
 	{
 		return Materials.Get(path);
