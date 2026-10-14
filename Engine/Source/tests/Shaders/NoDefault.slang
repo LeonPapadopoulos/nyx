@@ -1,5 +1,5 @@
-// A material with a field that has no default value, for check 6: what is reported when the
-// engine asks for its defaults.
+// A material with a field that has no default value: it starts at 0 (the compiler's sessions
+// zero-initialise). NyxShaderCompilerGpuTests checks it.
 import nyx.surface;
 
 struct NoDefault : ISurface

@@ -96,6 +96,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanGlass.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ImageFile.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanBlur.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ShaderCompiler.cpp
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/src/ReflectionUtils.cpp
@@ -193,6 +194,8 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanGlass.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ImageFile.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanBlur.h
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ShaderLayout.h
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ShaderCompiler.h
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionTypes.h
@@ -230,6 +233,11 @@ find_package(Vulkan QUIET)
 if(NOT Vulkan_FOUND)
     message(FATAL_ERROR "Vulkan SDK not found.")
 endif()
+
+# Slang, the shader compiler (ShaderCompiler.cpp), from the Vulkan SDK. Its headers come with
+# Vulkan::Vulkan's include folder.
+get_filename_component(NYX_VULKAN_LIB_DIR "${Vulkan_LIBRARY}" DIRECTORY)
+find_library(NYX_SLANG_LIBRARY slang HINTS "${NYX_VULKAN_LIB_DIR}" REQUIRED)
 
 # START Reflection / CodeGen
 set(NYX_GENERATED_ROOT "${CMAKE_BINARY_DIR}/Generated")
@@ -323,6 +331,8 @@ foreach(NYX_ENGINE_TARGET NyxEngineCommon NyxEngine NyxEditorEngine)
         PRIVATE
             dwmapi
             ws2_32 # Winsock, for the editor link (NetConnection.cpp)
+            "${NYX_SLANG_LIBRARY}"
+            delayimp # slang.dll is delay-loaded, see below
             dbghelp # Call stacks with symbols, for crash reports (CrashHandler.cpp)
             stb_image
             NyxStartup # The startup banner, from the Startup module.
@@ -338,6 +348,12 @@ foreach(NYX_ENGINE_TARGET NyxEngineCommon NyxEngine NyxEditorEngine)
         PUBLIC VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS # Same vulkan.hpp behavior wherever it is included
         PUBLIC GLM_ENABLE_EXPERIMENTAL # Quaternion utilities, used by the public TransformComponent.h
     )
+
+    # Only programs that compile shaders need slang.dll next to them (nyx_copy_shader_compiler_next_to());
+    # the others never load it. ShaderCompiler loads it up front and reports when it is missing.
+    # Programs that don't use ShaderCompiler at all import nothing from slang.dll: /IGNORE:4199
+    # silences the linker's note that the delay-load has nothing to do there.
+    target_link_options(${NYX_ENGINE_TARGET} INTERFACE "/DELAYLOAD:slang.dll" "/IGNORE:4199")
 
     target_precompile_headers(${NYX_ENGINE_TARGET}
         PRIVATE ${NYX_ENGINE_ROOT}/Runtime/Core/src/NyxPCH.h

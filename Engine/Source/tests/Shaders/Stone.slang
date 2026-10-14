@@ -1,4 +1,5 @@
 // A material as a user writes it: fields are its parameters, shade() is its look.
+// NyxShaderCompilerTests and NyxShaderCompilerGpuTests check its fields, offsets and defaults.
 import nyx.surface;
 
 struct Stone : ISurface
@@ -10,6 +11,7 @@ struct Stone : ISurface
     [Category("Textures"), Default("White")] nyx::Texture Albedo;
 
     [Category("UV"), DragSpeed(0.01)] float2 Tiling = float2(1, 1);
+    [Category("Debug"), Hidden] int Mode = 2;
 
     SurfaceOutput shade(SurfaceInput input)
     {
@@ -18,6 +20,8 @@ struct Stone : ISurface
         float3 albedo = Albedo.Sample(nyx::LinearWrap, uv).rgb * BaseColor;
         o.BaseColor = lerp(albedo, albedo * 0.45, Wetness);
         o.Roughness = lerp(Roughness, 0.08, Wetness);
+        if (Mode == 1)
+            o.BaseColor = input.NormalWS * 0.5 + 0.5;
         return o;
     }
 }

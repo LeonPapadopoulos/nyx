@@ -38,13 +38,13 @@ include(CTest)
 # Main Modules
 add_subdirectory(Tools/NyxHeaderTool)
 add_subdirectory(Startup)
-# Shaders first: they define nyx_copy_shaders_next_to(), which the engine's GPU tests call.
+# Shaders first: they define nyx_copy_shaders_next_to() and nyx_copy_shader_compiler_next_to(),
+# which the engine's tests call.
 add_subdirectory(Engine/Shaders)
 add_subdirectory(Engine/Source)
 add_subdirectory(Editor/Source)
 add_subdirectory(Game/Source)
 add_subdirectory(Tools/NyxDump)
-add_subdirectory(Tools/NyxSlangSpike)
 
 # Set default startup project
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT NyxEditor)

@@ -1,5 +1,5 @@
-// Stone with a typo on line 13, for the diagnostics check. Keep the line and column of
-// 'Tilling' in step with NyxSlangSpike's main.cpp.
+// Stone with a typo on line 13, for the diagnostics test. Keep the line and column of
+// 'Tilling' in step with ShaderCompilerTests.cpp.
 import nyx.surface;
 
 struct Broken : ISurface

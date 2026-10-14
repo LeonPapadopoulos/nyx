@@ -1,33 +1,8 @@
-// A material whose fields sit at awkward offsets on purpose: under scalar layout no vector and no
-// texture lands on a multiple of its own size. Compute shaders load it from the material buffer
-// the way surfaceFragment does, and write every scalar out in field order (probeLayout), or store
-// it back whole (probeStore). NyxSlangSpike fills the buffer at the offsets reflection reports and
-// compares.
+// Compute shaders that read LayoutProbe like surfaceFragment does: probeLayout writes every scalar
+// out in field order, probeStore stores the whole struct back. probeRawHandle shows why
+// nyx::Texture holds a plain index rather than Slang's DescriptorHandle.
 import nyx.surface;
-
-struct Pair
-{
-    float A;
-    float3 B;
-}
-
-struct LayoutProbe : ISurface
-{
-    float F;              // scalar  0, std430  0
-    float3 V3;            // scalar  4, std430 16
-    float G;
-    float2 V2;            // scalar 20: not a multiple of 8
-    int I;
-    bool Flag;
-    float4 V4;            // scalar 36: not a multiple of 16
-    nyx::Texture Texture; // scalar 52
-    float3 Tail;
-    float Last;
-    Pair Nested;
-    float Array[3];       // stride 4 under std430 and scalar, 16 under std140
-
-    SurfaceOutput shade(SurfaceInput input) { return SurfaceOutput::defaults(input); }
-}
+import LayoutProbe;
 
 [vk::binding(3, 0)] RWByteAddressBuffer ProbeOut;
 
@@ -49,7 +24,6 @@ void probeLayout()
     ProbeOut.Store((i++) * 4, asuint(p.Last));
     ProbeOut.Store((i++) * 4, asuint(p.Nested.A));
     ProbeOut.Store((i++) * 4, asuint(p.Nested.B.x)); ProbeOut.Store((i++) * 4, asuint(p.Nested.B.y)); ProbeOut.Store((i++) * 4, asuint(p.Nested.B.z));
-    ProbeOut.Store((i++) * 4, asuint(p.Array[0])); ProbeOut.Store((i++) * 4, asuint(p.Array[1])); ProbeOut.Store((i++) * 4, asuint(p.Array[2]));
 
     // The model matrix from the push constants, as surfaceVertex uses it: must match glm's
     // model * vec4(1, 2, 3, 1)
@@ -65,8 +39,7 @@ void probeStore()
     ProbeOut.Store<LayoutProbe>(0, MaterialBuffer.Load<LayoutProbe>(Object.MaterialOffset));
 }
 
-// Slang's own handle type at an offset that isn't a multiple of 8: shows why nyx::Texture holds a
-// plain index instead (check 5)
+// Slang's own handle type at an offset that isn't a multiple of 8
 struct RawHandleProbe
 {
     float A;

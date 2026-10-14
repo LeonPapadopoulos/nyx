@@ -71,3 +71,21 @@ function(nyx_copy_shaders_next_to target)
     add_dependencies(${target}Shaders NyxShaders)
     add_dependencies(${target} ${target}Shaders)
 endfunction()
+
+# Copies Slang's DLLs next to the executable of <target>, for programs that compile shaders
+# (ShaderCompiler). slang.dll loads slang-compiler.dll, which compiles GLSL too; the SDK's other
+# Slang DLLs aren't needed (shader-materials.md, as built, changes 1 and 2).
+get_filename_component(NYX_VULKAN_SDK_BIN "${GLSLC}" DIRECTORY)
+set(NYX_SHADER_COMPILER_DLLS
+    "${NYX_VULKAN_SDK_BIN}/slang.dll"
+    "${NYX_VULKAN_SDK_BIN}/slang-compiler.dll"
+)
+set_property(GLOBAL PROPERTY NYX_SHADER_COMPILER_DLLS "${NYX_SHADER_COMPILER_DLLS}")
+
+function(nyx_copy_shader_compiler_next_to target)
+    get_property(dlls GLOBAL PROPERTY NYX_SHADER_COMPILER_DLLS)
+    add_custom_command(TARGET ${target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${dlls} "$<TARGET_FILE_DIR:${target}>"
+        COMMAND_EXPAND_LISTS
+    )
+endfunction()

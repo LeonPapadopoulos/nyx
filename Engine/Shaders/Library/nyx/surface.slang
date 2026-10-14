@@ -1,21 +1,34 @@
-// The surface domain, as far as the Slang spike needs it (Design/shader-materials.md, stage 1,
-// change 1). A material implements ISurface; the engine's entry points are generic over it.
+// The surface domain (Design/shader-materials.md): a material for meshes implements ISurface,
+// and the engine's entry points below are generic over it. ShaderCompiler::CompileMaterial()
+// specialises them with the material's struct.
+//
+// Bindings follow the bindless plan: set 0 is global, set 1 belongs to the view, push constants
+// to the draw. The lighting is a stand-in until nyx.lighting exists.
 
-// Attributes a material's fields can carry. The editor reads them through reflection.
+// -------------------------------------------------------------------------
+// Attributes a material's fields can carry. The editor reads them through reflection
+// (ShaderLayout); the names follow NYX_PROPERTY's meta where they mean the same.
+// -------------------------------------------------------------------------
+
 [__AttributeUsage(_AttributeTargets.Var)] public struct CategoryAttribute { public string Name; };
+[__AttributeUsage(_AttributeTargets.Var)] public struct TooltipAttribute { public string Text; };
+[__AttributeUsage(_AttributeTargets.Var)] public struct DisplayNameAttribute { public string Name; };
+[__AttributeUsage(_AttributeTargets.Var)] public struct DragSpeedAttribute { public float Speed; };
 [__AttributeUsage(_AttributeTargets.Var)] public struct RangeAttribute { public float Min; public float Max; };
 [__AttributeUsage(_AttributeTargets.Var)] public struct ColorAttribute {};
-[__AttributeUsage(_AttributeTargets.Var)] public struct DragSpeedAttribute { public float Speed; };
+[__AttributeUsage(_AttributeTargets.Var)] public struct HDRAttribute {};
+[__AttributeUsage(_AttributeTargets.Var)] public struct HiddenAttribute {};
+// For textures: the texture an unset field shows, e.g. "White" or "FlatNormal"
 [__AttributeUsage(_AttributeTargets.Var)] public struct DefaultAttribute { public string Texture; };
 
 // -------------------------------------------------------------------------
-// Bindings. Set 0 is global, set 1 belongs to the view, push constants to the draw.
+// Bindings
 // -------------------------------------------------------------------------
 
-// Every sampled image, 2D or cube, in one array. A handle is an index into it.
+// Every sampled image, 2D or cube, in one array; a texture is an index into it
 [vk::binding(0, 0)] __DynamicResource<__DynamicResourceKind.General> TextureHeap[];
 [vk::binding(1, 0)] SamplerState FixedSamplers[4];
-// Every material's values, each at its own offset
+// Every material's values, each at its own offset, in scalar layout
 [vk::binding(2, 0)] public ByteAddressBuffer MaterialBuffer;
 
 public struct ObjectConstants
@@ -37,7 +50,7 @@ public struct ViewConstants
 }
 [vk::binding(0, 1)] public ConstantBuffer<ViewConstants> View;
 
-// Handles find their descriptor in TextureHeap, instead of the heap Slang would declare itself.
+// Slang's own DescriptorHandles, wherever they are used, find their descriptor in TextureHeap too
 export T getDescriptorFromHandle<T>(DescriptorHandle<T> handle) where T : IOpaqueDescriptor
 {
     __target_switch
@@ -52,9 +65,9 @@ export T getDescriptorFromHandle<T>(DescriptorHandle<T> handle) where T : IOpaqu
 namespace nyx
 {
     // A texture field of a material: an index into TextureHeap, unset slot 0. A plain uint rather
-    // than Slang's DescriptorHandle<Texture2D>, which has no default (a material must be
-    // constructible with its defaults, check 6) and is loaded from the wrong offset when it
-    // isn't on a multiple of 8 bytes (check 5).
+    // than Slang's DescriptorHandle<Texture2D>: a handle has no default, and a material must be
+    // constructible with its defaults; and inside a struct, at an offset that isn't a multiple of
+    // 8 bytes, a handle is loaded from the wrong offset (shader-materials.md, as built, change 1).
     public struct Texture
     {
         public uint Index = 0;
@@ -141,8 +154,7 @@ public VertexOutput surfaceVertex(VertexInput input)
     return output;
 }
 
-// The material is loaded from the material buffer at the draw's offset, then shades the pixel.
-// Lighting is a stand-in until nyx.lighting exists.
+// The material is loaded from the material buffer at the draw's offset, then shades the pixel
 [shader("fragment")]
 public float4 surfaceFragment<S : ISurface>(VertexOutput vertex) : SV_Target
 {

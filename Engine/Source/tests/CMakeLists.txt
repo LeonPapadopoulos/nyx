@@ -90,6 +90,36 @@ set_property(TARGET NyxPainterGpuTests PROPERTY FOLDER "Tests")
 nyx_copy_shaders_next_to(NyxPainterGpuTests)
 add_test(NAME NyxPainterGpuTests COMMAND NyxPainterGpuTests)
 
+# SPIRV-Tools' validator, for the shader compiler tests. Its release and debug builds both come with the SDK.
+find_library(NYX_SPIRV_TOOLS_LIBRARY SPIRV-Tools HINTS "${NYX_VULKAN_LIB_DIR}" REQUIRED)
+find_library(NYX_SPIRV_TOOLS_DEBUG_LIBRARY SPIRV-Toolsd HINTS "${NYX_VULKAN_LIB_DIR}" REQUIRED)
+
+# ShaderCompiler without a GPU: materials, layouts, diagnostics, dependencies, and the engine's GLSL
+# compiled by Slang with the same layouts as glslc's (from NyxShaders, until change 4 retires glslc).
+add_executable(NyxShaderCompilerTests ShaderCompilerTests.cpp)
+target_link_libraries(NyxShaderCompilerTests PRIVATE NyxEngine optimized "${NYX_SPIRV_TOOLS_LIBRARY}" debug "${NYX_SPIRV_TOOLS_DEBUG_LIBRARY}")
+# The SDK ships SPIRV-Toolsd.lib without its PDB
+target_link_options(NyxShaderCompilerTests PRIVATE "/IGNORE:4099")
+target_compile_definitions(NyxShaderCompilerTests PRIVATE
+    NYX_TEST_SHADERS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/Shaders"
+    NYX_ENGINE_SHADERS_DIR="${CMAKE_SOURCE_DIR}/Engine/Shaders"
+    NYX_GLSLC_SHADERS_DIR="${CMAKE_BINARY_DIR}/Engine/Shaders/Compiled"
+)
+add_dependencies(NyxShaderCompilerTests NyxGeneratedReflection NyxShaders)
+set_property(TARGET NyxShaderCompilerTests PROPERTY FOLDER "Tests")
+nyx_copy_shader_compiler_next_to(NyxShaderCompilerTests)
+add_test(NAME NyxShaderCompilerTests COMMAND NyxShaderCompilerTests)
+
+# ShaderCompiler on a real GPU: material layouts as the GPU loads and stores them, the model matrix,
+# and defaults from the generated writer. Needs a Vulkan device; its window stays hidden.
+add_executable(NyxShaderCompilerGpuTests ShaderCompilerGpuTests.cpp)
+target_link_libraries(NyxShaderCompilerGpuTests PRIVATE NyxEngine)
+target_compile_definitions(NyxShaderCompilerGpuTests PRIVATE NYX_TEST_SHADERS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/Shaders")
+add_dependencies(NyxShaderCompilerGpuTests NyxGeneratedReflection)
+set_property(TARGET NyxShaderCompilerGpuTests PROPERTY FOLDER "Tests")
+nyx_copy_shader_compiler_next_to(NyxShaderCompilerGpuTests)
+add_test(NAME NyxShaderCompilerGpuTests COMMAND NyxShaderCompilerGpuTests)
+
 if(MSVC)
     add_test(NAME NyxRuntimeInspectionSymbols
         COMMAND ${CMAKE_COMMAND}
