@@ -44,6 +44,7 @@ add_subdirectory(Engine/Source)
 add_subdirectory(Editor/Source)
 add_subdirectory(Game/Source)
 add_subdirectory(Tools/NyxDump)
+add_subdirectory(Tools/NyxSlangSpike)
 
 # Set default startup project
 set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT NyxEditor)
