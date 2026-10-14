@@ -184,7 +184,7 @@ namespace Nyx::UI
 		// the application draws into them (IWindow::SetFrameContent()).
 		float TitlebarHeight = 32.0f;
 		float ToolbarHeight = 38.0f;
-		float StatusBarHeight = 33.0f;
+		float StatusBarHeight = 24.0f;
 		glm::vec4 Titlebar{ 0.094f, 0.114f, 0.133f, 1.0f };
 		glm::vec4 Toolbar{ 0.133f, 0.157f, 0.173f, 1.0f };
 		glm::vec4 StatusBar{ 0.098f, 0.122f, 0.141f, 1.0f };

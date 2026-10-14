@@ -120,7 +120,7 @@ MenuItemHovered            = #2D6CDF1A
 [Bars]
 TitlebarHeight             = 32
 ToolbarHeight              = 38
-StatusBarHeight            = 33
+StatusBarHeight            = 24
 Titlebar                   = #EDEBE6
 Toolbar                    = #EDEBE6
 StatusBar                  = #EAE9E5
