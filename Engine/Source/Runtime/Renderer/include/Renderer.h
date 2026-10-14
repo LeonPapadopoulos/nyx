@@ -99,9 +99,18 @@ namespace Nyx
 
 		virtual bool GetSceneViewCameraData(uint64_t sceneViewId, Nyx::SceneViewCameraData& outData) const = 0;
 
-		// Starts a new world revision and discards selection and pending picks, even when
-		// the address is unchanged. Call after replacing the contents of a registry too.
+		// The renderer's world, which every scene view shows unless it has one of its own
+		// (SetSceneViewWorld()); the selection (SetSelectedEntity()) is in it. Starts a new
+		// revision of the world and discards the selection and the pending picks of the views
+		// showing it, even when the address is unchanged. Call after replacing the contents of a
+		// registry too. The registry must outlive being set: it is read while frames are drawn.
 		virtual void SetWorld(const Nyx::Engine::Registry* world) = 0;
+
+		// A world of the view's own, e.g. a material preview's: the view draws its objects, through
+		// its camera and under its sun, and picks from it. Starts a new revision of the world as
+		// SetWorld() does, so views showing it drop their pending picks. Views of another world
+		// than the renderer's draw no selection outline. Null shows the renderer's world again.
+		virtual void SetSceneViewWorld(uint64_t id, const Nyx::Engine::Registry* world) = 0;
 
 		virtual uint64_t CreateSceneView() = 0;
 		virtual void DestroySceneView(uint64_t id) = 0;

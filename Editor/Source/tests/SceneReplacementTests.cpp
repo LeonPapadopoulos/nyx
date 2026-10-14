@@ -200,8 +200,8 @@ namespace Nyx::Tests
 			editor.CurrentScenePath = "old.nyxscene";
 			for (auto& view : renderer.SceneViews)
 			{
-				view.RenderedWorldRevision = renderer.WorldRevision;
-				view.PickWorldRevision = renderer.WorldRevision;
+				view.RenderedWorldRevision = renderer.GetShownWorldRevision(view);
+				view.PickWorldRevision = renderer.GetShownWorldRevision(view);
 				view.bPickRequestPending = true;
 				view.bPickReadbackPending = true;
 				view.bPickResultReady = true;
@@ -234,7 +234,7 @@ namespace Nyx::Tests
 			Require(gizmo.State.Operation == EGizmoOperation::Rotate && gizmo.State.Space == EGizmoSpace::World,
 				"Cancelling the drag changed the user's tool preferences");
 
-			Require(renderer.World == &editor.Editing.Scene.GetRegistry() && renderer.WorldRevision == 2,
+			Require(renderer.World == &editor.Editing.Scene.GetRegistry() && renderer.GetShownWorldRevision(renderer.SceneViews[0]) == 2,
 				"Replacing the registry at the same address did not advance the renderer revision");
 			for (const auto& view : renderer.SceneViews)
 			{
@@ -274,7 +274,7 @@ namespace Nyx::Tests
 
 			// A completed pick from the current revision must still select normally.
 			auto& view = renderer.SceneViews[0];
-			view.PickWorldRevision = renderer.WorldRevision;
+			view.PickWorldRevision = renderer.GetShownWorldRevision(renderer.SceneViews[0]);
 			view.bPickResultReady = true;
 			view.LastPickedEntity = oldEntity;
 			editor.ApplyPendingPickResults();
@@ -295,7 +295,7 @@ namespace Nyx::Tests
 				"Failed Open changed the path or widget revision");
 			Require(editor.Editing.Scene.GetSelection() == entity && renderer.SelectedEntity == entity,
 				"Failed Open cleared the selection");
-			Require(renderer.WorldRevision == 1, "Failed Open invalidated the renderer revision");
+			Require(renderer.GetShownWorldRevision(renderer.SceneViews[0]) == 1, "Failed Open invalidated the renderer revision");
 			for (const auto& view : renderer.SceneViews)
 			{
 				Require(view.bPickRequestPending && view.bPickReadbackPending && view.bPickResultReady,
@@ -320,7 +320,7 @@ namespace Nyx::Tests
 			VulkanRenderer renderer;
 			EditorLayer editor;
 			const Entity oldEntity = Prepare(editor, renderer);
-			const uint64_t oldRevision = renderer.WorldRevision;
+			const uint64_t oldRevision = renderer.GetShownWorldRevision(renderer.SceneViews[0]);
 			Require(editor.NewScene(), "New failed");
 			const Entity replacement = editor.Editing.Scene.CreateEntity("Reused handle");
 			Require(replacement == oldEntity, "Test must reuse the old entity handle");

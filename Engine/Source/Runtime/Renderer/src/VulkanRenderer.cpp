@@ -17,11 +17,13 @@
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <ranges>
 #include <set>
 #include <string>
+#include <utility>
 #include <fstream>
 #include <limits>
 #include <optional>
@@ -549,45 +551,11 @@ namespace Nyx
 		WriteUITimestamp(*cmd, FramePair, false);
 
 		// ---------------------------------------------------------------------
-		// Update shared world-side state once per frame
+		// Update each shown world's state once per frame, for all views that show it
 		// ---------------------------------------------------------------------
 		const std::chrono::steady_clock::time_point sceneStart = std::chrono::steady_clock::now();
 
-		if (World)
-		{
-			// Used to update Render Objects here (e.g. Transform)
-
-			ExtractRenderObjects(*World);
-
-			// Temp Debug Drawing of object bounds
-			{
-				ResetDebugLines();
-
-				for (const RenderObject& obj : RenderObjects)
-				{
-					AddDebugAxes(obj.WorldTransform, 0.75f);
-
-					AddDebugOrientedBox(
-						obj.WorldTransform,
-						obj.LocalBoundsMin,
-						obj.LocalBoundsMax,
-						glm::vec3(1.0f, 1.0f, 0.2f));
-				}
-
-				// Debug World Axis
-				AddDebugLine(glm::vec3(0, 0, 0), glm::vec3(1, 0, 0), glm::vec3(1, 0, 0)); // X red
-				AddDebugLine(glm::vec3(0, 0, 0), glm::vec3(0, 1, 0), glm::vec3(0, 1, 0)); // Y green
-				AddDebugLine(glm::vec3(0, 0, 0), glm::vec3(0, 0, 1), glm::vec3(0, 0, 1)); // Z blue
-
-				UploadDebugLines();
-			}
-		}
-		else
-		{
-			// No world, nothing to draw: forget the objects and debug lines of the previous one.
-			RenderObjects.clear();
-			ResetDebugLines();
-		}
+		ExtractRenderWorlds();
 
 		// ---------------------------------------------------------------------
 		// Render every scene view into its own offscreen target: first the editor's own passes
@@ -616,9 +584,9 @@ namespace Nyx
 				view.bRecreatedThisFrame = false;
 			}
 
-			if (World)
+			if (const RenderWorld* world = FindShownWorld(view))
 			{
-				UpdateViewportSceneGlobals(view, *World);
+				UpdateViewportSceneGlobals(view, *world->Registry);
 				UpdateSceneUniforms(view);
 
 				// Editor-only passes: picking, and the masks the selection outline is drawn from
@@ -627,22 +595,22 @@ namespace Nyx
 					// Picking only for a click: the frame after it, as when it ran every frame
 					if (view.bPickRequestPending)
 					{
-						if (view.PickWorldRevision == WorldRevision)
+						if (view.PickWorldRevision == world->Revision)
 						{
-							DrawPickingPass(view, cmd);
+							DrawPickingPass(view, *world, cmd);
 						}
 						ResolvePickRequest(view, cmd);
 					}
-					// This view shows the current world: clicks on it are taken from now on.
-					view.RenderedWorldRevision = WorldRevision;
+					// This view shows its world's current revision: clicks on it are taken from now on.
+					view.RenderedWorldRevision = world->Revision;
 
 					// The masks only while something is selected, and only when what they show
 					// changed; between those, they keep what they last held.
-					const std::optional<uint64_t> fingerprint = GetSelectionMaskFingerprint(view);
+					const std::optional<uint64_t> fingerprint = GetSelectionMaskFingerprint(view, *world);
 					if (fingerprint.has_value() && fingerprint != view.SelectionMaskFingerprint)
 					{
-						DrawVisibleSelectionMaskPass(view, cmd);
-						DrawFullSelectionMaskPass(view, cmd);
+						DrawVisibleSelectionMaskPass(view, *world, cmd);
+						DrawFullSelectionMaskPass(view, *world, cmd);
 					}
 					view.SelectionMaskFingerprint = fingerprint;
 				}
@@ -886,14 +854,84 @@ namespace Nyx
 	void VulkanRenderer::SetWorld(const Nyx::Engine::Registry* world)
 	{
 		World = world;
-		++WorldRevision;
+		BeginWorldRevision(world);
 		SelectedEntity.reset();
-		PickingIdToEntity.clear();
 
+		// The views of the world before and of this one; those of worlds of their own are left be
 		for (SceneViewInstance& view : SceneViews)
 		{
-			view.ResetPicking();
+			if (!view.OwnWorld || view.OwnWorld == world)
+			{
+				view.ResetPicking();
+			}
 		}
+	}
+
+	void VulkanRenderer::SetSceneViewWorld(uint64_t id, const Nyx::Engine::Registry* world)
+	{
+		if (SceneViewInstance* view = FindSceneView(id))
+		{
+			view->OwnWorld = world;
+			BeginWorldRevision(world);
+			view->ResetPicking();
+		}
+	}
+
+	void VulkanRenderer::BeginWorldRevision(const Nyx::Engine::Registry* registry)
+	{
+		if (!registry)
+		{
+			return;
+		}
+
+		RenderWorld* world = FindRenderWorld(registry);
+		if (!world)
+		{
+			world = RenderWorlds.emplace_back(std::make_unique<RenderWorld>()).get();
+			world->Registry = registry;
+		}
+		world->Revision = ++LastWorldRevision;
+		// Its contents may be new: nothing of the old ones is drawn or picked from
+		world->Objects.clear();
+		world->PickingIdToEntity.clear();
+		world->DebugLineVertexCount = 0;
+	}
+
+	RenderWorld* VulkanRenderer::FindRenderWorld(const Nyx::Engine::Registry* registry)
+	{
+		return const_cast<RenderWorld*>(std::as_const(*this).FindRenderWorld(registry));
+	}
+
+	const RenderWorld* VulkanRenderer::FindRenderWorld(const Nyx::Engine::Registry* registry) const
+	{
+		if (!registry)
+		{
+			return nullptr;
+		}
+		for (const std::unique_ptr<RenderWorld>& world : RenderWorlds)
+		{
+			if (world->Registry == registry)
+			{
+				return world.get();
+			}
+		}
+		return nullptr;
+	}
+
+	const RenderWorld* VulkanRenderer::FindShownWorld(const SceneViewInstance& view) const
+	{
+		return FindRenderWorld(view.OwnWorld ? view.OwnWorld : World);
+	}
+
+	uint64_t VulkanRenderer::GetShownWorldRevision(const SceneViewInstance& view) const
+	{
+		const RenderWorld* world = FindShownWorld(view);
+		return world ? world->Revision : 0;
+	}
+
+	bool VulkanRenderer::ShowsSelection(const SceneViewInstance& view) const
+	{
+		return SelectedEntity.has_value() && World && (!view.OwnWorld || view.OwnWorld == World);
 	}
 
 	Mesh* VulkanRenderer::GetCubeMesh()
@@ -1004,13 +1042,57 @@ namespace Nyx
 		return width > 0 && height > 0;
 	}
 
-	void VulkanRenderer::ExtractRenderObjects(const Nyx::Engine::Registry& registry)
+	void VulkanRenderer::ExtractRenderWorlds()
 	{
-		RenderObjects.clear();
-		PickingIdToEntity.clear();
+		// Before reading any: the registry of a world no view shows may be gone
+		std::erase_if(RenderWorlds, [this](const std::unique_ptr<RenderWorld>& world)
+			{
+				if (world->Registry == World)
+				{
+					return false;
+				}
+				return std::none_of(SceneViews.begin(), SceneViews.end(), [&world](const SceneViewInstance& view)
+					{
+						return view.OwnWorld == world->Registry;
+					});
+			});
 
+		ResetDebugLines();
+		for (const std::unique_ptr<RenderWorld>& world : RenderWorlds)
+		{
+			// Used to update Render Objects here (e.g. Transform)
+			ExtractRenderObjects(*world);
+
+			// Temp Debug Drawing of object bounds
+			world->FirstDebugLineVertex = static_cast<uint32_t>(DebugLineVertices.size());
+			for (const RenderObject& obj : world->Objects)
+			{
+				AddDebugAxes(obj.WorldTransform, 0.75f);
+
+				AddDebugOrientedBox(
+					obj.WorldTransform,
+					obj.LocalBoundsMin,
+					obj.LocalBoundsMax,
+					glm::vec3(1.0f, 1.0f, 0.2f));
+			}
+
+			// Debug World Axis
+			AddDebugLine(glm::vec3(0, 0, 0), glm::vec3(1, 0, 0), glm::vec3(1, 0, 0)); // X red
+			AddDebugLine(glm::vec3(0, 0, 0), glm::vec3(0, 1, 0), glm::vec3(0, 1, 0)); // Y green
+			AddDebugLine(glm::vec3(0, 0, 0), glm::vec3(0, 0, 1), glm::vec3(0, 0, 1)); // Z blue
+			world->DebugLineVertexCount = static_cast<uint32_t>(DebugLineVertices.size()) - world->FirstDebugLineVertex;
+		}
+		UploadDebugLines();
+	}
+
+	void VulkanRenderer::ExtractRenderObjects(RenderWorld& world)
+	{
+		world.Objects.clear();
+		world.PickingIdToEntity.clear();
+
+		const Nyx::Engine::Registry& registry = *world.Registry;
 		const_cast<Nyx::Engine::Registry&>(registry).Each<Nyx::Engine::MeshRendererComponent>(
-			[this, &registry](Nyx::Engine::Entity entity, Nyx::Engine::MeshRendererComponent& meshRenderer)
+			[&world, &registry](Nyx::Engine::Entity entity, Nyx::Engine::MeshRendererComponent& meshRenderer)
 			{
 				if (!meshRenderer.bVisible)
 				{
@@ -1038,17 +1120,17 @@ namespace Nyx
 				obj.LocalBoundsMax = meshRenderer.MeshAsset->GetLocalBoundsMax();
 
 				// Dense picking ID: 1..N, with 0 reserved for "nothing"
-				PickingIdToEntity.push_back(entity);
-				obj.PickingId = static_cast<uint32_t>(PickingIdToEntity.size());
+				world.PickingIdToEntity.push_back(entity);
+				obj.PickingId = static_cast<uint32_t>(world.PickingIdToEntity.size());
 
-				RenderObjects.push_back(obj);
+				world.Objects.push_back(obj);
 			});
 	}
 
-	void VulkanRenderer::DrawRenderObjects(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
+	void VulkanRenderer::DrawRenderObjects(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd)
 	{
 		BindSceneSets(view, cmd);
-		for (const RenderObject& obj : RenderObjects)
+		for (const RenderObject& obj : world.Objects)
 		{
 			if (!obj.MeshAsset || !obj.MaterialAsset)
 			{
@@ -1650,9 +1732,9 @@ namespace Nyx
 		CreatePickingResourcesForView(view);
 	}
 
-	std::optional<uint64_t> VulkanRenderer::GetSelectionMaskFingerprint(const SceneViewInstance& view) const
+	std::optional<uint64_t> VulkanRenderer::GetSelectionMaskFingerprint(const SceneViewInstance& view, const RenderWorld& world) const
 	{
-		if (!SelectedEntity.has_value())
+		if (!ShowsSelection(view))
 		{
 			return std::nullopt;
 		}
@@ -1674,12 +1756,12 @@ namespace Nyx
 		};
 
 		addValue(SelectedEntity.value());
-		addValue(WorldRevision);
+		addValue(world.Revision);
 		addValue(view.SceneGlobals.ViewProjection);
 		const vk::Extent2D extent = view.RenderTarget.GetExtent();
 		addValue(extent.width);
 		addValue(extent.height);
-		for (const RenderObject& obj : RenderObjects)
+		for (const RenderObject& obj : world.Objects)
 		{
 			if (!obj.MeshAsset || !obj.MaterialAsset)
 			{
@@ -2058,7 +2140,7 @@ namespace Nyx
 		SelectionMaskPipelineFull = std::move(vk::raii::Pipeline(Context.GetDevice(), Context.GetPipelineCache(), fullInfo));
 	}
 
-	void VulkanRenderer::DrawVisibleSelectionMaskPass(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
+	void VulkanRenderer::DrawVisibleSelectionMaskPass(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd)
 	{
 		std::array<vk::ClearValue, 2> clearValues{};
 		clearValues[0].color = vk::ClearColorValue(std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 0.0f });
@@ -2095,7 +2177,7 @@ namespace Nyx
 
 		BindSceneSets(view, cmd);
 
-		for (const RenderObject& obj : RenderObjects)
+		for (const RenderObject& obj : world.Objects)
 		{
 			if (!obj.MeshAsset || !obj.MaterialAsset)
 			{
@@ -2119,7 +2201,7 @@ namespace Nyx
 		cmd.endRenderPass();
 	}
 
-	void VulkanRenderer::DrawFullSelectionMaskPass(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
+	void VulkanRenderer::DrawFullSelectionMaskPass(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd)
 	{
 		std::array<vk::ClearValue, 2> clearValues{};
 		clearValues[0].color = vk::ClearColorValue(std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 0.0f });
@@ -2162,7 +2244,7 @@ namespace Nyx
 			return;
 		}
 
-		for (const RenderObject& obj : RenderObjects)
+		for (const RenderObject& obj : world.Objects)
 		{
 			if (!obj.MeshAsset || !obj.MaterialAsset)
 			{
@@ -2292,7 +2374,7 @@ namespace Nyx
 
 	void VulkanRenderer::DrawSelectionOutline(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
 	{
-		if (!SelectedEntity.has_value())
+		if (!ShowsSelection(view))
 		{
 			return;
 		}
@@ -2777,7 +2859,7 @@ namespace Nyx
 		}
 	}
 
-	void VulkanRenderer::LoadTestGltfScene()
+	void VulkanRenderer::LoadTestGltfScene(std::vector<RenderObject>& outObjects)
 	{
 		ImportedScene imported{};
 		const bool bLoaded = Nyx::LoadStaticGltfScene(
@@ -2826,7 +2908,7 @@ namespace Nyx
 				obj.MaterialAsset = Materials.Get("Materials/Untextured.nyxmat");
 			}
 
-			RenderObjects.push_back(obj);
+			outObjects.push_back(obj);
 		}
 	}
 
@@ -4065,8 +4147,12 @@ namespace Nyx
 	{
 		// 1. The scene in HDR: opaque objects, then the sky
 		const vk::ClearColorValue clear = vk::ClearColorValue(std::array<float, 4>{ 0.2f, 0.05f, 0.35f, 1.0f });
+		const RenderWorld* world = FindShownWorld(view);
 		view.RenderTarget.BeginScenePass(cmd, clear);
-		DrawRenderObjects(view, cmd);
+		if (world)
+		{
+			DrawRenderObjects(view, *world, cmd);
+		}
 		DrawSkybox(view, cmd);
 		view.RenderTarget.EndRenderPass(cmd);
 
@@ -4077,11 +4163,11 @@ namespace Nyx
 		if (view.bShowEditorOverlays)
 		{
 			DrawGrid(view, cmd);
-			DrawDebugLines(view, cmd);
 
 			// The outline is drawn from the selection masks, which are only rendered with a world
-			if (World)
+			if (world)
 			{
+				DrawDebugLines(view, *world, cmd);
 				DrawSelectionOutline(view, cmd);
 			}
 		}
@@ -4307,9 +4393,9 @@ namespace Nyx
 		DebugLineVertexBufferMemory.unmapMemory();
 	}
 
-	void VulkanRenderer::DrawDebugLines(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
+	void VulkanRenderer::DrawDebugLines(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd)
 	{
-		if (DebugLineVertices.empty())
+		if (world.DebugLineVertexCount == 0)
 		{
 			return;
 		}
@@ -4320,33 +4406,7 @@ namespace Nyx
 
 		vk::DeviceSize offsets[] = { 0 };
 		cmd.bindVertexBuffers(0, { *DebugLineVertexBuffer }, offsets);
-		cmd.draw(static_cast<uint32_t>(DebugLineVertices.size()), 1, 0, 0);
-	}
-
-	void VulkanRenderer::BuildDebugDrawData()
-	{
-		for (const RenderObject& obj : RenderObjects)
-		{
-			if (!obj.MeshAsset || !obj.MaterialAsset)
-			{
-				continue;
-			}
-
-			// Draw local axes at the object origin
-			AddDebugAxes(obj.WorldTransform, 0.75f);
-
-			// Transform local bounds into a world-space AABB
-			glm::vec3 worldMin{};
-			glm::vec3 worldMax{};
-			TransformAABB(
-				obj.LocalBoundsMin,
-				obj.LocalBoundsMax,
-				obj.WorldTransform,
-				worldMin,
-				worldMax);
-
-			AddDebugAABB(worldMin, worldMax, glm::vec3(1.0f, 1.0f, 0.2f));
-		}
+		cmd.draw(world.DebugLineVertexCount, 1, world.FirstDebugLineVertex, 0);
 	}
 
 	void VulkanRenderer::RequestPick(uint64_t sceneViewId, uint32_t pixelX, uint32_t pixelY)
@@ -4355,7 +4415,8 @@ namespace Nyx
 		{
 			// The UI can replace the world after this frame's rendering. Wait for a view
 			// of the new world before accepting another click.
-			if (!view->bShowEditorOverlays || !World || view->RenderedWorldRevision != WorldRevision)
+			const uint64_t revision = GetShownWorldRevision(*view);
+			if (!view->bShowEditorOverlays || revision == 0 || view->RenderedWorldRevision != revision)
 			{
 				return;
 			}
@@ -4377,7 +4438,7 @@ namespace Nyx
 			view->PendingPickX = std::min(pixelX, extent.width - 1);
 			view->PendingPickY = std::min(pixelY, extent.height - 1);
 			view->bPickRequestPending = true;
-			view->PickWorldRevision = WorldRevision;
+			view->PickWorldRevision = revision;
 		}
 	}
 
@@ -4392,7 +4453,7 @@ namespace Nyx
 				return result;
 			}
 
-			if (view->PickWorldRevision != WorldRevision)
+			if (view->PickWorldRevision != GetShownWorldRevision(*view))
 			{
 				view->ResetPicking();
 				return result;
@@ -4408,7 +4469,7 @@ namespace Nyx
 		return result;
 	}
 
-	void VulkanRenderer::DrawPickingPass(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
+	void VulkanRenderer::DrawPickingPass(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd)
 	{
 		std::array<vk::ClearValue, 2> clearValues{};
 		clearValues[0].color = vk::ClearColorValue(std::array<uint32_t, 4>{ 0u, 0u, 0u, 0u });
@@ -4445,7 +4506,7 @@ namespace Nyx
 
 		BindSceneSets(view, cmd);
 
-		for (const RenderObject& obj : RenderObjects)
+		for (const RenderObject& obj : world.Objects)
 		{
 			if (!obj.MeshAsset || !obj.MaterialAsset)
 			{
@@ -4474,7 +4535,7 @@ namespace Nyx
 			return;
 		}
 
-		if (view.PickWorldRevision != WorldRevision)
+		if (view.PickWorldRevision != GetShownWorldRevision(view))
 		{
 			view.ResetPicking();
 			return;
@@ -4516,7 +4577,8 @@ namespace Nyx
 
 			// The copy may have been recorded before a scene switch in the UI. Never
 			// decode its ID against the replacement world's entity table.
-			if (view.PickWorldRevision != WorldRevision)
+			const RenderWorld* world = FindShownWorld(view);
+			if (!world || view.PickWorldRevision != world->Revision)
 			{
 				view.ResetPicking();
 				continue;
@@ -4539,9 +4601,9 @@ namespace Nyx
 			}
 
 			const uint32_t index = encoded - 1u;
-			if (index < PickingIdToEntity.size())
+			if (index < world->PickingIdToEntity.size())
 			{
-				view.LastPickedEntity = PickingIdToEntity[index];
+				view.LastPickedEntity = world->PickingIdToEntity[index];
 			}
 			else
 			{

@@ -131,6 +131,23 @@ namespace Nyx
 		uint32_t PickingId = 0;
 	};
 
+	// A world that scene views show (IRenderer::SetWorld(), SetSceneViewWorld()), as this frame
+	// draws it
+	struct RenderWorld
+	{
+		const Nyx::Engine::Registry* Registry = nullptr;
+		// New each time the world is set, also at the same address, and never the same for two
+		// worlds; picks of another revision are dropped. 0 is none.
+		uint64_t Revision = 0;
+
+		std::vector<RenderObject> Objects;
+		// Dense picking IDs: ID i is the entity at i - 1, 0 is nothing
+		std::vector<Nyx::Engine::Entity> PickingIdToEntity;
+		// Its debug lines, in DebugLineVertices
+		uint32_t FirstDebugLineVertex = 0;
+		uint32_t DebugLineVertexCount = 0;
+	};
+
 	struct SceneCamera
 	{
 		float AspectRatio = 16.0f / 9.0f;
@@ -257,6 +274,7 @@ namespace Nyx
 		bool GetSceneViewCameraData(uint64_t sceneViewId, Nyx::SceneViewCameraData& outData) const override;
 
 		void SetWorld(const Nyx::Engine::Registry* world) override;
+		void SetSceneViewWorld(uint64_t id, const Nyx::Engine::Registry* world) override;
 
 		Nyx::Mesh* GetCubeMesh() override;
 		Nyx::Mesh* GetSphereMesh() override;
@@ -312,8 +330,20 @@ namespace Nyx
 		// False while the window is minimized
 		bool HasValidFramebufferSize() const;
 
-		void ExtractRenderObjects(const Nyx::Engine::Registry& registry);
-		void DrawRenderObjects(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
+		// The world's state, once per frame: a new revision when it is set
+		void BeginWorldRevision(const Nyx::Engine::Registry* registry);
+		RenderWorld* FindRenderWorld(const Nyx::Engine::Registry* registry);
+		const RenderWorld* FindRenderWorld(const Nyx::Engine::Registry* registry) const;
+		// The world the view shows; null without one
+		const RenderWorld* FindShownWorld(const SceneViewInstance& view) const;
+		// The revision of the world the view shows; 0 without one
+		uint64_t GetShownWorldRevision(const SceneViewInstance& view) const;
+		// Whether the view shows the renderer's world, and something is selected in it
+		bool ShowsSelection(const SceneViewInstance& view) const;
+		// Every shown world's objects and debug lines; forgets worlds no view shows any more
+		void ExtractRenderWorlds();
+		void ExtractRenderObjects(RenderWorld& world);
+		void DrawRenderObjects(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd);
 
 		// Set 1, the view's: its SceneUBO
 		void CreateSceneDescriptorSetLayout();
@@ -357,12 +387,12 @@ namespace Nyx
 		void RecreateSelectionMaskResourcesForView(SceneViewInstance& view);
 
 		void CreateSelectionMaskPipelines();
-		void DrawVisibleSelectionMaskPass(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
-		void DrawFullSelectionMaskPass(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
+		void DrawVisibleSelectionMaskPass(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd);
+		void DrawFullSelectionMaskPass(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd);
 		// What the view's selection masks are drawn from, as one number: the selection, the
-		// world, the camera, the size, and every object's mesh and transform. Unset while nothing
-		// is selected, when there is nothing to draw them for.
-		std::optional<uint64_t> GetSelectionMaskFingerprint(const SceneViewInstance& view) const;
+		// world, the camera, the size, and every object's mesh and transform. Unset while the
+		// view shows no selection (ShowsSelection()), when there is nothing to draw them for.
+		std::optional<uint64_t> GetSelectionMaskFingerprint(const SceneViewInstance& view, const RenderWorld& world) const;
 
 		void CreateOutlineCompositePipeline();
 		void DrawSelectionOutline(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
@@ -410,7 +440,7 @@ namespace Nyx
 		// shaders again
 		void ApplyShaderUpdates();
 
-		void LoadTestGltfScene();
+		void LoadTestGltfScene(std::vector<RenderObject>& outObjects);
 
 		void ExtractSceneGlobalsFromEditorCamera(SceneViewInstance& view);
 		void ExtractSceneGlobalsFromWorldCamera(SceneViewInstance& view, const Nyx::Engine::Registry& registry);
@@ -448,13 +478,12 @@ namespace Nyx
 			const glm::vec3& color);
 
 		void UploadDebugLines();
-		void DrawDebugLines(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
-		void BuildDebugDrawData();
+		void DrawDebugLines(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd);
 
 		void RequestPick(uint64_t sceneViewId, uint32_t pixelX, uint32_t pixelY);
 		Nyx::IRenderer::PickResult ConsumeLastPickResult(uint64_t sceneViewId);
 
-		void DrawPickingPass(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
+		void DrawPickingPass(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd);
 		void ResolvePickRequest(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
 		void ReadBackPickResults();
 
@@ -655,17 +684,17 @@ namespace Nyx
 		// The sky's light, for physically based materials
 		Nyx::Engine::VulkanEnvironment Environment;
 
-		// World is owned by the editor / scene document.
+		// The renderer's world (SetWorld()), owned by the editor / scene document
 		const Nyx::Engine::Registry* World = nullptr;
-		uint64_t WorldRevision = 0;
+		// Every world a scene view shows, the renderer's world among them; owned here so that
+		// their addresses stay while worlds come and go
+		std::vector<std::unique_ptr<RenderWorld>> RenderWorlds;
+		uint64_t LastWorldRevision = 0;
 
-		std::vector<RenderObject> RenderObjects;
 		float SceneTime = 0.0f;
 
 		// Picking
 		vk::raii::Pipeline PickingPipeline{ nullptr };
-
-		std::vector<Nyx::Engine::Entity> PickingIdToEntity;
 
 		// Selection
 		std::optional<Nyx::Engine::Entity> SelectedEntity;

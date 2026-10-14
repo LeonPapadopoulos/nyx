@@ -10,6 +10,8 @@
 // view's exposure scales it. Materials find the sky's light (nyx.environment) as it was made.
 // The Standard material lights a dielectric and a metal as the same formulas do on the CPU; a
 // normal map tilts the normal up the image; a masked material below its cutoff isn't drawn.
+// A view can show a world of its own beside the scene: it draws and picks that world's objects,
+// shows no outline of the scene's selection, and keeps its pending pick when the scene is set anew.
 //
 // NYX_SCENE_TEST_OUTPUT=<folder> saves what was rendered there, e.g. to make a new reference
 // after a change that is meant to change the picture.
@@ -515,6 +517,111 @@ namespace
 		renderer.SetWorld(nullptr);
 		gpu.DrawFrames(1);
 	}
+	// Clicks the middle of the view: whether a pick came back, and what it hit
+	Nyx::IRenderer::PickResult PickMiddle(SceneRenderer& gpu, uint64_t view)
+	{
+		Nyx::IRenderer& renderer = gpu.Renderer;
+		renderer.RequestPick(view, ViewWidth / 2, ViewHeight / 2);
+		gpu.DrawFrames(3);
+		return renderer.ConsumeLastPickResult(view);
+	}
+
+	bool Picks(SceneRenderer& gpu, uint64_t view, Entity entity)
+	{
+		const Nyx::IRenderer::PickResult pick = PickMiddle(gpu, view);
+		return pick.bHasNewResult && pick.HitEntity == entity;
+	}
+
+	RgbaImage ReadView(SceneRenderer& gpu, uint64_t view)
+	{
+		RgbaImage image;
+		Require(gpu.Renderer.ReadSceneViewPixels(view, image), "The scene view can't be read back");
+		return image;
+	}
+
+	// The default scene in one view, a world of a sphere of its own in another, as a material's
+	// preview will show one
+	void TestViewsWithWorldsOfTheirOwn(SceneRenderer& gpu)
+	{
+		Nyx::IRenderer& renderer = gpu.Renderer;
+		DefaultScene scene;
+		MakeDefaultScene(scene, gpu.Renderer);
+		renderer.SetWorld(&scene.World);
+
+		// The sphere has the reflective cube's handle, in another registry
+		Registry preview;
+		const Entity camera = preview.CreateEntity();
+		preview.Add<TransformComponent>(camera, TransformComponent{ .Position = glm::vec3(0.0f, 0.0f, 2.0f), .Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f), .Scale = glm::vec3(1.0f) });
+		preview.Add<CameraComponent>(camera, CameraComponent{});
+		const Entity sphere = preview.CreateEntity();
+		preview.Add<TransformComponent>(sphere, TransformComponent{ .Position = glm::vec3(0.0f), .Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f), .Scale = glm::vec3(1.0f) });
+		MeshRendererComponent meshRenderer;
+		meshRenderer.MeshAsset = renderer.GetSphereMesh();
+		meshRenderer.MaterialAsset = renderer.GetMaterial("Materials/Untextured.nyxmat");
+		preview.Add<MeshRendererComponent>(sphere, meshRenderer);
+		Require(sphere == scene.ReflectiveCube, "The test needs the sphere to have the reflective cube's handle");
+
+		const uint64_t sceneView = renderer.CreateSceneView();
+		const uint64_t previewView = renderer.CreateSceneView();
+		for (const uint64_t view : { sceneView, previewView })
+		{
+			renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
+			renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
+		}
+		renderer.SetSceneViewWorld(previewView, &preview);
+		renderer.SetSelectedEntity(scene.ReflectiveCube);
+		gpu.DrawUntilShadersCompiled();
+		gpu.DrawFrames(3);
+
+		// The scene's view as if it were the only one; each view picks from its own world
+		const RgbaImage sceneImage = ReadView(gpu, sceneView);
+		SaveIfAsked(sceneImage, "TwoWorlds-Scene");
+		RequireLooksLike(sceneImage, std::filesystem::path(NYX_TEST_REFERENCES_DIR) / "DefaultScene.png");
+		SaveIfAsked(ReadView(gpu, previewView), "TwoWorlds-Preview");
+		Require(Picks(gpu, sceneView, scene.ReflectiveCube), "A click on the scene's view doesn't pick the middle cube");
+		Require(Picks(gpu, previewView, sphere), "A click on the preview doesn't pick its sphere");
+
+		// The outline is the scene's: the preview looks the same without the selection
+		const RgbaImage previewSelected = ReadView(gpu, previewView);
+		renderer.SetSelectedEntity(std::nullopt);
+		gpu.DrawFrames(2);
+		Require(ReadView(gpu, previewView).Pixels == previewSelected.Pixels, "The preview outlines the sphere, which has the selected cube's handle");
+		Require(ReadView(gpu, sceneView).Pixels != sceneImage.Pixels, "The scene's view looks the same without the selection: the test can't see outlines");
+
+		// Setting a world anew drops the pending picks of its views only
+		renderer.RequestPick(sceneView, ViewWidth / 2, ViewHeight / 2);
+		renderer.RequestPick(previewView, ViewWidth / 2, ViewHeight / 2);
+		renderer.SetWorld(&scene.World);
+		gpu.DrawFrames(3);
+		Require(!renderer.ConsumeLastPickResult(sceneView).bHasNewResult, "The scene's view kept its pick of the world set anew");
+		Nyx::IRenderer::PickResult pick = renderer.ConsumeLastPickResult(previewView);
+		Require(pick.bHasNewResult && pick.HitEntity == sphere, "Setting the scene dropped the preview's pick");
+
+		renderer.RequestPick(sceneView, ViewWidth / 2, ViewHeight / 2);
+		renderer.RequestPick(previewView, ViewWidth / 2, ViewHeight / 2);
+		renderer.SetSceneViewWorld(previewView, &preview);
+		gpu.DrawFrames(3);
+		Require(!renderer.ConsumeLastPickResult(previewView).bHasNewResult, "The preview kept its pick of the world set anew");
+		pick = renderer.ConsumeLastPickResult(sceneView);
+		Require(pick.bHasNewResult && pick.HitEntity == scene.ReflectiveCube, "Setting the preview's world dropped the scene's pick");
+
+		// Without a world of its own, the view shows the scene again
+		renderer.SetSceneViewWorld(previewView, nullptr);
+		gpu.DrawFrames(2);
+		Require(ReadView(gpu, previewView).Pixels == ReadView(gpu, sceneView).Pixels, "A view back on the renderer's world doesn't show the scene");
+		Require(Picks(gpu, previewView, scene.ReflectiveCube), "A view back on the renderer's world doesn't pick from it");
+
+		// Without the scene, the preview goes on
+		renderer.SetSceneViewWorld(previewView, &preview);
+		renderer.SetWorld(nullptr);
+		gpu.DrawFrames(2);
+		Require(!PickMiddle(gpu, sceneView).bHasNewResult, "A view without a world took a click");
+		Require(Picks(gpu, previewView, sphere), "The preview stopped picking without the scene");
+
+		renderer.DestroySceneView(sceneView);
+		renderer.DestroySceneView(previewView);
+		gpu.DrawFrames(1);
+	}
 }
 
 int main()
@@ -531,6 +638,7 @@ int main()
 		TestMaterialsFindTheEnvironment(gpu);
 		TestStandardMatchesTheCpu(gpu);
 		TestNormalMapsAndMasks(gpu);
+		TestViewsWithWorldsOfTheirOwn(gpu);
 	}
 	catch (const std::exception& error)
 	{

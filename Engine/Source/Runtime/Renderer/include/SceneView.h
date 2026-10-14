@@ -7,6 +7,11 @@
 #include "Entity.h"
 #include <optional>
 
+namespace Nyx::Engine
+{
+	class Registry;
+}
+
 namespace Nyx
 {
 	struct SceneViewInstance
@@ -14,6 +19,9 @@ namespace Nyx
 		uint64_t Id = 0;
 
 		VulkanViewportTarget RenderTarget;
+
+		// The world it shows, when not the renderer's (IRenderer::SetSceneViewWorld())
+		const Nyx::Engine::Registry* OwnWorld = nullptr;
 
 		EViewportCameraMode CameraMode = EViewportCameraMode::EditorFreeCamera;
 		EditorCamera EditorCam;
