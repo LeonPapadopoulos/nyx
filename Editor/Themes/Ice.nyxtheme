@@ -1,4 +1,3 @@
-# Nyx editor theme "Ruins Day", after the light blue mockup (Temple Valley).
 # Nyx editor theme: one value per line, "Name = value". Colours are #RRGGBB or #RRGGBBAA;
 # shadows a colour, offset x and y, and blur; glows a colour, distance and strength; glass
 # refraction, edge width and rim strength. Values left out keep their defaults.
