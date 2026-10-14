@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <stdexcept>
+#include <vector>
 
 namespace Nyx
 {
@@ -17,6 +18,7 @@ namespace Nyx
 
 		CreateImage(context);
 		CreateImageView(context);
+		CreateHdrImage(context);
 		CreateSampler(context);
 
 		CreateDepthResources(context);
@@ -34,6 +36,11 @@ namespace Nyx
 
 		Framebuffer = nullptr;
 		RenderPass = nullptr;
+		SceneFramebuffer = nullptr;
+		SceneRenderPass = nullptr;
+		HdrImageView = nullptr;
+		HdrMemory = nullptr;
+		HdrImage = nullptr;
 		Sampler = nullptr;
 		ImageView = nullptr;
 		Memory = nullptr;
@@ -62,15 +69,24 @@ namespace Nyx
 		Initialize(context, width, height, format);
 	}
 
-	void VulkanViewportTarget::BeginRenderPass(vk::raii::CommandBuffer& commandBuffer, const vk::ClearColorValue& clearValue, float clearDepth)
+	void VulkanViewportTarget::BeginScenePass(vk::raii::CommandBuffer& commandBuffer, const vk::ClearColorValue& clearValue, float clearDepth)
 	{
-		std::array<vk::ClearValue, 2> clearValues;
+		std::vector<vk::ClearValue> clearValues(2);
 		clearValues[0].color = clearValue;
 		clearValues[1].depthStencil = vk::ClearDepthStencilValue(clearDepth, 0);
+		BeginPass(commandBuffer, *SceneRenderPass, *SceneFramebuffer, clearValues);
+	}
 
+	void VulkanViewportTarget::BeginPicturePass(vk::raii::CommandBuffer& commandBuffer)
+	{
+		BeginPass(commandBuffer, *RenderPass, *Framebuffer, {});
+	}
+
+	void VulkanViewportTarget::BeginPass(vk::raii::CommandBuffer& commandBuffer, vk::RenderPass renderPass, vk::Framebuffer framebuffer, const std::vector<vk::ClearValue>& clearValues)
+	{
 		vk::RenderPassBeginInfo beginInfo{};
-		beginInfo.renderPass = *RenderPass;
-		beginInfo.framebuffer = *Framebuffer;
+		beginInfo.renderPass = renderPass;
+		beginInfo.framebuffer = framebuffer;
 		beginInfo.renderArea.offset = vk::Offset2D{ 0, 0 };
 		beginInfo.renderArea.extent = Extent;
 		beginInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
@@ -141,6 +157,33 @@ namespace Nyx
 		ImageView = vk::raii::ImageView(context.GetDevice(), viewInfo);
 	}
 
+	void VulkanViewportTarget::CreateHdrImage(VulkanContext& context)
+	{
+		vk::ImageCreateInfo imageInfo{};
+		imageInfo.imageType = vk::ImageType::e2D;
+		imageInfo.extent = vk::Extent3D(Extent.width, Extent.height, 1);
+		imageInfo.mipLevels = 1;
+		imageInfo.arrayLayers = 1;
+		imageInfo.format = HdrFormat;
+		imageInfo.tiling = vk::ImageTiling::eOptimal;
+		imageInfo.initialLayout = vk::ImageLayout::eUndefined;
+		imageInfo.usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled;
+		imageInfo.samples = vk::SampleCountFlagBits::e1;
+		HdrImage = vk::raii::Image(context.GetDevice(), imageInfo);
+
+		const vk::MemoryRequirements memRequirements = HdrImage.getMemoryRequirements();
+		HdrMemory = vk::raii::DeviceMemory(context.GetDevice(), vk::MemoryAllocateInfo(memRequirements.size,
+			FindMemoryType(*context.GetPhysicalDevice(), memRequirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal)));
+		HdrImage.bindMemory(*HdrMemory, 0);
+
+		vk::ImageViewCreateInfo viewInfo{};
+		viewInfo.image = *HdrImage;
+		viewInfo.viewType = vk::ImageViewType::e2D;
+		viewInfo.format = HdrFormat;
+		viewInfo.subresourceRange = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
+		HdrImageView = vk::raii::ImageView(context.GetDevice(), viewInfo);
+	}
+
 	void VulkanViewportTarget::CreateSampler(VulkanContext& context)
 	{
 		vk::SamplerCreateInfo samplerInfo{};
@@ -158,76 +201,87 @@ namespace Nyx
 
 	void VulkanViewportTarget::CreateRenderPass(VulkanContext& context)
 	{
-		vk::AttachmentDescription colorAttachment{};
-		colorAttachment.format = Format;
-		colorAttachment.samples = vk::SampleCountFlagBits::e1;
-		colorAttachment.loadOp = vk::AttachmentLoadOp::eClear;
-		colorAttachment.storeOp = vk::AttachmentStoreOp::eStore;
-		colorAttachment.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;
-		colorAttachment.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
-		colorAttachment.initialLayout = vk::ImageLayout::eUndefined;
-		colorAttachment.finalLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-
-		vk::AttachmentDescription depthAttachment{};
-		depthAttachment.format = DepthFormat;
-		depthAttachment.samples = vk::SampleCountFlagBits::e1;
-		depthAttachment.loadOp = vk::AttachmentLoadOp::eClear;
-		depthAttachment.storeOp = vk::AttachmentStoreOp::eDontCare;
-		depthAttachment.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;
-		depthAttachment.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
-		depthAttachment.initialLayout = vk::ImageLayout::eUndefined;
-		depthAttachment.finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
-
-		vk::AttachmentReference colorRef{};
-		colorRef.attachment = 0;
-		colorRef.layout = vk::ImageLayout::eColorAttachmentOptimal;
-
-		vk::AttachmentReference depthRef{};
-		depthRef.attachment = 1;
-		depthRef.layout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
-
+		const vk::AttachmentReference colorRef(0, vk::ImageLayout::eColorAttachmentOptimal);
+		const vk::AttachmentReference depthRef(1, vk::ImageLayout::eDepthStencilAttachmentOptimal);
 		vk::SubpassDescription subpass{};
 		subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
 		subpass.colorAttachmentCount = 1;
 		subpass.pColorAttachments = &colorRef;
 		subpass.pDepthStencilAttachment = &depthRef;
 
-		std::array<vk::AttachmentDescription, 2> attachments = {
-			colorAttachment,
-			depthAttachment
-		};
+		// The scene: HDR colour and depth, cleared, both kept for the picture pass
+		{
+			vk::AttachmentDescription color{};
+			color.format = HdrFormat;
+			color.samples = vk::SampleCountFlagBits::e1;
+			color.loadOp = vk::AttachmentLoadOp::eClear;
+			color.storeOp = vk::AttachmentStoreOp::eStore;
+			color.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;
+			color.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
+			color.initialLayout = vk::ImageLayout::eUndefined;
+			color.finalLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
 
-		vk::SubpassDependency deps[2]{};
+			vk::AttachmentDescription depth = color;
+			depth.format = DepthFormat;
+			depth.finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
 
-		// External -> subpass
-		deps[0].srcSubpass = VK_SUBPASS_EXTERNAL;
-		deps[0].dstSubpass = 0;
-		deps[0].srcStageMask = vk::PipelineStageFlagBits::eTopOfPipe;
-		deps[0].dstStageMask =
-			vk::PipelineStageFlagBits::eColorAttachmentOutput |
-			vk::PipelineStageFlagBits::eEarlyFragmentTests;
-		deps[0].srcAccessMask = {};
-		deps[0].dstAccessMask =
-			vk::AccessFlagBits::eColorAttachmentWrite |
-			vk::AccessFlagBits::eDepthStencilAttachmentWrite;
+			std::array<vk::SubpassDependency, 2> dependencies{};
+			dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+			dependencies[0].dstSubpass = 0;
+			dependencies[0].srcStageMask = vk::PipelineStageFlagBits::eTopOfPipe;
+			dependencies[0].dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eEarlyFragmentTests;
+			dependencies[0].dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite | vk::AccessFlagBits::eDepthStencilAttachmentWrite;
 
-		// Subpass -> external
-		deps[1].srcSubpass = 0;
-		deps[1].dstSubpass = VK_SUBPASS_EXTERNAL;
-		deps[1].srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
-		deps[1].dstStageMask = vk::PipelineStageFlagBits::eFragmentShader;
-		deps[1].srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
-		deps[1].dstAccessMask = vk::AccessFlagBits::eShaderRead;
+			// The picture pass samples the colour and tests against the depth
+			dependencies[1].srcSubpass = 0;
+			dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+			dependencies[1].srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eLateFragmentTests;
+			dependencies[1].dstStageMask = vk::PipelineStageFlagBits::eFragmentShader | vk::PipelineStageFlagBits::eEarlyFragmentTests | vk::PipelineStageFlagBits::eLateFragmentTests;
+			dependencies[1].srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite | vk::AccessFlagBits::eDepthStencilAttachmentWrite;
+			dependencies[1].dstAccessMask = vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eDepthStencilAttachmentRead | vk::AccessFlagBits::eDepthStencilAttachmentWrite;
 
-		vk::RenderPassCreateInfo renderPassInfo{};
-		renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
-		renderPassInfo.pAttachments = attachments.data();
-		renderPassInfo.subpassCount = 1;
-		renderPassInfo.pSubpasses = &subpass;
-		renderPassInfo.dependencyCount = 2;
-		renderPassInfo.pDependencies = deps;
+			const std::array<vk::AttachmentDescription, 2> attachments = { color, depth };
+			SceneRenderPass = vk::raii::RenderPass(context.GetDevice(), vk::RenderPassCreateInfo({}, attachments, subpass, dependencies));
+		}
 
-		RenderPass = vk::raii::RenderPass(context.GetDevice(), renderPassInfo);
+		// The picture: written whole by the tonemap, so not loaded; the scene's depth loaded
+		{
+			vk::AttachmentDescription color{};
+			color.format = Format;
+			color.samples = vk::SampleCountFlagBits::e1;
+			color.loadOp = vk::AttachmentLoadOp::eDontCare;
+			color.storeOp = vk::AttachmentStoreOp::eStore;
+			color.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;
+			color.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
+			color.initialLayout = vk::ImageLayout::eUndefined;
+			color.finalLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+
+			vk::AttachmentDescription depth = color;
+			depth.format = DepthFormat;
+			depth.loadOp = vk::AttachmentLoadOp::eLoad;
+			depth.storeOp = vk::AttachmentStoreOp::eDontCare;
+			depth.initialLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
+			depth.finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
+
+			std::array<vk::SubpassDependency, 2> dependencies{};
+			dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+			dependencies[0].dstSubpass = 0;
+			dependencies[0].srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eLateFragmentTests;
+			dependencies[0].dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eEarlyFragmentTests | vk::PipelineStageFlagBits::eFragmentShader;
+			dependencies[0].srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite | vk::AccessFlagBits::eDepthStencilAttachmentWrite;
+			dependencies[0].dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite | vk::AccessFlagBits::eDepthStencilAttachmentRead | vk::AccessFlagBits::eShaderRead;
+
+			// The picture is shown and blurred afterwards
+			dependencies[1].srcSubpass = 0;
+			dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+			dependencies[1].srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput;
+			dependencies[1].dstStageMask = vk::PipelineStageFlagBits::eFragmentShader;
+			dependencies[1].srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
+			dependencies[1].dstAccessMask = vk::AccessFlagBits::eShaderRead;
+
+			const std::array<vk::AttachmentDescription, 2> attachments = { color, depth };
+			RenderPass = vk::raii::RenderPass(context.GetDevice(), vk::RenderPassCreateInfo({}, attachments, subpass, dependencies));
+		}
 	}
 
 	void VulkanViewportTarget::CreateFramebuffer(VulkanContext& context)
@@ -246,6 +300,11 @@ namespace Nyx
 		fbInfo.layers = 1;
 
 		Framebuffer = vk::raii::Framebuffer(context.GetDevice(), fbInfo);
+
+		const std::array<vk::ImageView, 2> sceneAttachments = { *HdrImageView, *DepthImageView };
+		fbInfo.renderPass = *SceneRenderPass;
+		fbInfo.pAttachments = sceneAttachments.data();
+		SceneFramebuffer = vk::raii::Framebuffer(context.GetDevice(), fbInfo);
 	}
 
 	void VulkanViewportTarget::RegisterImGuiTexture()

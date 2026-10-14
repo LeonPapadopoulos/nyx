@@ -19,8 +19,10 @@ public struct ViewConstants
     public float4x4 SkyboxViewProjection;
     // The sky's cube map
     public nyx::Cubemap Environment;
+    // The view's scene in HDR, for the tonemap
+    public nyx::Texture Scene;
+    // What the scene's light is multiplied by before tonemapping: 2 to the exposure in stops
+    public float ExposureScale;
     public uint _Padding1;
-    public uint _Padding2;
-    public uint _Padding3;
 }
 [vk::binding(0, 1)] public ConstantBuffer<ViewConstants> View;

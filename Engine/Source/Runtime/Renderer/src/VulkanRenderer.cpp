@@ -18,6 +18,7 @@
 #include <GLFW/glfw3.h>
 
 #include <chrono>
+#include <cmath>
 #include <ranges>
 #include <set>
 #include <string>
@@ -284,6 +285,7 @@ namespace Nyx
 		CreateGridPipeline();
 		CreateSkyboxPipeline();
 		CreatePickingPipeline();
+		CreateTonemapPipeline();
 
 		// Debug Drawing
 		CreateDebugLineResources();
@@ -599,6 +601,7 @@ namespace Nyx
 					vk::Format::eR8G8B8A8Unorm);
 
 				RecreatePickingResourcesForView(view);
+				RegisterHdrPicture(view);
 				RecreateSelectionMaskResourcesForView(view);
 
 				view.bResizePending = false;
@@ -646,30 +649,7 @@ namespace Nyx
 		WriteUITimestamp(*cmd, SceneViewsPair, false);
 		for (SceneViewInstance& view : SceneViews)
 		{
-			vk::ClearColorValue clear = vk::ClearColorValue(std::array<float, 4>{ 0.2f, 0.05f, 0.35f, 1.0f });
-
-			view.RenderTarget.BeginRenderPass(cmd, clear);
-			{
-				// 1. Opaque scene objects
-				DrawRenderObjects(view, cmd);
-
-				// 2. Skybox
-				DrawSkybox(view, cmd);
-
-				// 3. Editor overlays: grid, debug lines and the selection outline
-				if (view.bShowEditorOverlays)
-				{
-					DrawGrid(view, cmd);
-					DrawDebugLines(view, cmd);
-
-					// The outline is drawn from the selection masks, which are only rendered with a world
-					if (World)
-					{
-						DrawSelectionOutline(view, cmd);
-					}
-				}
-			}
-			view.RenderTarget.EndRenderPass(cmd);
+			RenderSceneView(view, cmd);
 		}
 		WriteUITimestamp(*cmd, SceneViewsPair, true);
 
@@ -843,6 +823,14 @@ namespace Nyx
 			{
 				view->ResetPicking();
 			}
+		}
+	}
+
+	void VulkanRenderer::SetSceneViewExposure(uint64_t id, float stops)
+	{
+		if (SceneViewInstance* view = FindSceneView(id))
+		{
+			view->ExposureStops = stops;
 		}
 	}
 
@@ -1202,7 +1190,7 @@ namespace Nyx
 		pipelineInfo.pColorBlendState = &colorBlending;
 		pipelineInfo.pDynamicState = &dynamicState;
 		pipelineInfo.layout = *ScenePipelineLayout;
-		pipelineInfo.renderPass = GetSceneRenderPass();
+		pipelineInfo.renderPass = GetPictureRenderPass();
 		pipelineInfo.subpass = 0;
 
 		GridPipeline = std::move(vk::raii::Pipeline(Context.GetDevice(), Context.GetPipelineCache(), pipelineInfo));
@@ -1318,7 +1306,78 @@ namespace Nyx
 	vk::RenderPass VulkanRenderer::GetSceneRenderPass() const
 	{
 		ASSERT(!SceneViews.empty() && "No SceneViews exist yet.");
+		return *SceneViews.front().RenderTarget.GetSceneRenderPass();
+	}
+
+	vk::RenderPass VulkanRenderer::GetPictureRenderPass() const
+	{
+		ASSERT(!SceneViews.empty() && "No SceneViews exist yet.");
 		return *SceneViews.front().RenderTarget.GetRenderPass();
+	}
+
+	void VulkanRenderer::RegisterHdrPicture(SceneViewInstance& view)
+	{
+		Bindless.RemoveTexture(view.HdrTextureSlot);
+		view.HdrTextureSlot = Bindless.AddTexture(view.RenderTarget.GetHdrImageView());
+	}
+
+	void VulkanRenderer::CreateTonemapPipeline()
+	{
+		const std::string vertexName = "tonemapVertex";
+		const std::string fragmentName = "tonemapFragment";
+		const std::vector<uint32_t>& vertCode = Programs.GetSpirv("Tonemap.slang", vertexName);
+		const std::vector<uint32_t>& fragCode = Programs.GetSpirv("Tonemap.slang", fragmentName);
+		vk::raii::ShaderModule vertShaderModule = CreateShaderModule(vertCode);
+		vk::raii::ShaderModule fragShaderModule = CreateShaderModule(fragCode);
+		const std::array<vk::PipelineShaderStageCreateInfo, 2> shaderStages = {
+			vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eVertex, *vertShaderModule, vertexName.c_str()),
+			vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eFragment, *fragShaderModule, fragmentName.c_str()),
+		};
+
+		// One triangle over the view, no vertices, no depth
+		vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
+		vk::PipelineInputAssemblyStateCreateInfo inputAssembly({}, vk::PrimitiveTopology::eTriangleList);
+		vk::PipelineViewportStateCreateInfo viewportState{};
+		viewportState.viewportCount = 1;
+		viewportState.scissorCount = 1;
+		vk::PipelineRasterizationStateCreateInfo rasterizer{};
+		rasterizer.polygonMode = vk::PolygonMode::eFill;
+		rasterizer.lineWidth = 1.0f;
+		rasterizer.cullMode = vk::CullModeFlagBits::eNone;
+		vk::PipelineMultisampleStateCreateInfo multisampling{};
+		multisampling.rasterizationSamples = vk::SampleCountFlagBits::e1;
+		vk::PipelineDepthStencilStateCreateInfo depthStencil{};
+		vk::PipelineColorBlendAttachmentState colorBlendAttachment{};
+		colorBlendAttachment.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
+		vk::PipelineColorBlendStateCreateInfo colorBlending{};
+		colorBlending.attachmentCount = 1;
+		colorBlending.pAttachments = &colorBlendAttachment;
+		const std::array<vk::DynamicState, 2> dynamicStates = { vk::DynamicState::eViewport, vk::DynamicState::eScissor };
+		vk::PipelineDynamicStateCreateInfo dynamicState({}, dynamicStates);
+
+		vk::GraphicsPipelineCreateInfo pipelineInfo{};
+		pipelineInfo.stageCount = static_cast<uint32_t>(shaderStages.size());
+		pipelineInfo.pStages = shaderStages.data();
+		pipelineInfo.pVertexInputState = &vertexInputInfo;
+		pipelineInfo.pInputAssemblyState = &inputAssembly;
+		pipelineInfo.pViewportState = &viewportState;
+		pipelineInfo.pRasterizationState = &rasterizer;
+		pipelineInfo.pMultisampleState = &multisampling;
+		pipelineInfo.pDepthStencilState = &depthStencil;
+		pipelineInfo.pColorBlendState = &colorBlending;
+		pipelineInfo.pDynamicState = &dynamicState;
+		pipelineInfo.layout = *ScenePipelineLayout;
+		pipelineInfo.renderPass = GetPictureRenderPass();
+		pipelineInfo.subpass = 0;
+
+		TonemapPipeline = vk::raii::Pipeline(Context.GetDevice(), Context.GetPipelineCache(), pipelineInfo);
+	}
+
+	void VulkanRenderer::DrawTonemap(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
+	{
+		cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *TonemapPipeline);
+		BindSceneSets(view, cmd);
+		cmd.draw(3, 1, 0, 0);
 	}
 
 	void VulkanRenderer::CreateSkyboxPipeline()
@@ -2210,7 +2269,7 @@ namespace Nyx
 		pipelineInfo.pColorBlendState = &colorBlending;
 		pipelineInfo.pDynamicState = &dynamicState;
 		pipelineInfo.layout = *OutlineCompositePipelineLayout;
-		pipelineInfo.renderPass = GetSceneRenderPass();
+		pipelineInfo.renderPass = GetPictureRenderPass();
 		pipelineInfo.subpass = 0;
 
 		OutlineCompositePipeline = std::move(vk::raii::Pipeline(Context.GetDevice(), Context.GetPipelineCache(), pipelineInfo));
@@ -2350,6 +2409,8 @@ namespace Nyx
 		const glm::mat4 skyboxView = glm::mat4(glm::mat3(view.SceneGlobals.View));
 		ubo.SkyboxViewProj = view.SceneGlobals.Projection * skyboxView;
 		ubo.EnvironmentTexture = SkyboxTextureIndex;
+		ubo.SceneTexture = view.HdrTextureSlot;
+		ubo.ExposureScale = std::exp2(view.ExposureStops);
 
 		void* mapped = view.SceneUniformBufferMemory.mapMemory(0, sizeof(SceneUBO));
 		std::memcpy(mapped, &ubo, sizeof(SceneUBO));
@@ -2654,6 +2715,10 @@ namespace Nyx
 		{
 			CreateSkyboxPipeline();
 		}
+		if (changed.contains("Tonemap.slang"))
+		{
+			CreateTonemapPipeline();
+		}
 		if (uses("Picking"))
 		{
 			CreatePickingPipeline();
@@ -2858,6 +2923,7 @@ namespace Nyx
 		view.Id = NextSceneViewId++;
 
 		view.RenderTarget.Initialize(Context, 1, 1, vk::Format::eR8G8B8A8Unorm);
+		view.HdrTextureSlot = Bindless.AddTexture(view.RenderTarget.GetHdrImageView());
 
 		CreateSceneResourcesForView(view);
 		CreatePickingResourcesForView(view);
@@ -2889,6 +2955,7 @@ namespace Nyx
 			DestroyPickingResourcesForView(*it);
 			DestroySelectionMaskResourcesForView(*it);
 
+			Bindless.RemoveTexture(it->HdrTextureSlot);
 			it->RenderTarget.Shutdown(Context);
 			ReleaseSceneViewBlur(*it);
 
@@ -3964,22 +4031,28 @@ namespace Nyx
 
 	void VulkanRenderer::RenderSceneView(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
 	{
-		vk::ClearColorValue clear = vk::ClearColorValue(std::array<float, 4>{ 0.1f, 0.05f, 0.15f, 1.0f });
-
-		view.RenderTarget.BeginRenderPass(cmd, clear);
-
-		// draw opaque objects using view.SceneDescriptorSets
+		// 1. The scene in HDR: opaque objects, then the sky
+		const vk::ClearColorValue clear = vk::ClearColorValue(std::array<float, 4>{ 0.2f, 0.05f, 0.35f, 1.0f });
+		view.RenderTarget.BeginScenePass(cmd, clear);
 		DrawRenderObjects(view, cmd);
-
-		// draw skybox using view.SceneDescriptorSets
 		DrawSkybox(view, cmd);
+		view.RenderTarget.EndRenderPass(cmd);
 
-		// draw grid using view.SceneDescriptorSets
-		DrawGrid(view, cmd);
+		// 2. The picture: the scene tonemapped, then the editor's overlays over it (grid, debug
+		// lines, the selection outline), which look as they always did
+		view.RenderTarget.BeginPicturePass(cmd);
+		DrawTonemap(view, cmd);
+		if (view.bShowEditorOverlays)
+		{
+			DrawGrid(view, cmd);
+			DrawDebugLines(view, cmd);
 
-		// later: debug draw using view.SceneDescriptorSets
-		// DrawDebugLines(view, cmd);
-
+			// The outline is drawn from the selection masks, which are only rendered with a world
+			if (World)
+			{
+				DrawSelectionOutline(view, cmd);
+			}
+		}
 		view.RenderTarget.EndRenderPass(cmd);
 	}
 
@@ -4084,7 +4157,7 @@ namespace Nyx
 		pipelineInfo.pColorBlendState = &colorBlending;
 		pipelineInfo.pDynamicState = &dynamicState;
 		pipelineInfo.layout = *ScenePipelineLayout;
-		pipelineInfo.renderPass = GetSceneRenderPass();
+		pipelineInfo.renderPass = GetPictureRenderPass();
 		pipelineInfo.subpass = 0;
 
 		DebugLinePipeline = std::move(vk::raii::Pipeline(Context.GetDevice(), Context.GetPipelineCache(), pipelineInfo));

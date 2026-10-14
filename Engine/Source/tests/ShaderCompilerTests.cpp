@@ -461,7 +461,7 @@ namespace
 			}
 			++compared;
 		}
-		// The sky and the missing material are Slang programs; the rest is GLSL
+		// The sky, the tonemap and the missing material are Slang programs; the rest is GLSL
 		Require(compared >= 15, "only " + std::to_string(compared) + " engine shaders were compared");
 	}
 
@@ -477,6 +477,7 @@ namespace
 		const Program programs[] = {
 			{ "MissingMaterial.slang", { { "missingVertex", EShaderStage::Vertex }, { "missingFragment", EShaderStage::Fragment } } },
 			{ "Skybox.slang", { { "skyboxVertex", EShaderStage::Vertex }, { "skyboxFragment", EShaderStage::Fragment } } },
+			{ "Tonemap.slang", { { "tonemapVertex", EShaderStage::Vertex }, { "tonemapFragment", EShaderStage::Fragment } } },
 		};
 		const std::vector<std::string> planned{ "0.0", "0.1", "0.2", "1.0" };
 		for (const Program& program : programs)
@@ -498,6 +499,12 @@ namespace
 				{
 					Require(std::find(planned.begin(), planned.end(), binding) != planned.end(), name + " reads binding " + binding + ", which isn't the plan's");
 				}
+
+				// SV_VertexID needs DrawParameters, which the device doesn't turn on;
+				// SV_VulkanVertexID doesn't
+				constexpr uint32_t DrawParameters = 4427;
+				const std::vector<uint32_t> capabilities = Capabilities(found->Spirv);
+				Require(std::find(capabilities.begin(), capabilities.end(), DrawParameters) == capabilities.end(), name + " needs the DrawParameters capability, which the device doesn't turn on");
 			}
 		}
 	}

@@ -94,6 +94,9 @@ namespace Nyx
 		// They are shown by default; a view showing the game turns them off.
 		virtual void SetSceneViewShowEditorOverlays(uint64_t id, bool bShow) = 0;
 
+		// How bright the view shows its scene, in stops: +1 twice as bright, -1 half. 0 by default.
+		virtual void SetSceneViewExposure(uint64_t id, float stops) = 0;
+
 		virtual bool GetSceneViewCameraData(uint64_t sceneViewId, Nyx::SceneViewCameraData& outData) const = 0;
 
 		// Starts a new world revision and discards selection and pending picks, even when

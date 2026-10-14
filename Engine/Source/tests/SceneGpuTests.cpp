@@ -5,7 +5,9 @@
 // click on the middle cube picks it. A material file that doesn't exist draws as the magenta
 // checker; one saved while drawing shows its new values within a few frames, and one saved
 // broken keeps its last values. A material's shader saved with a new field before the one the
-// material sets finds the material's value again, and saved broken keeps its last look.
+// material sets finds the material's value again, and saved broken keeps its last look. The
+// scene is drawn in HDR and tonemapped: light brighter than white survives until then, and the
+// view's exposure scales it.
 //
 // NYX_SCENE_TEST_OUTPUT=<folder> saves what was rendered there, e.g. to make a new reference
 // after a change that is meant to change the picture.
@@ -28,6 +30,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -236,6 +239,50 @@ namespace
 		return { image.Pixels[offset], image.Pixels[offset + 1], image.Pixels[offset + 2] };
 	}
 
+	// What the tonemap (Tonemap.slang) makes of linear light: Khronos PBR Neutral, then sRGB
+	std::array<uint8_t, 3> Tonemapped(glm::vec3 color)
+	{
+		const float startCompression = 0.8f - 0.04f;
+		const float desaturation = 0.15f;
+		const float x = std::min(color.r, std::min(color.g, color.b));
+		const float offset = x < 0.08f ? x - 6.25f * x * x : 0.04f;
+		color -= offset;
+		const float peak = std::max(color.r, std::max(color.g, color.b));
+		if (peak >= startCompression)
+		{
+			const float d = 1.0f - startCompression;
+			const float newPeak = 1.0f - d * d / (peak + d - startCompression);
+			color *= newPeak / peak;
+			const float g = 1.0f - 1.0f / (desaturation * (peak - newPeak) + 1.0f);
+			color = glm::mix(color, glm::vec3(newPeak), g);
+		}
+		std::array<uint8_t, 3> encoded{};
+		for (int channel = 0; channel < 3; ++channel)
+		{
+			const float c = std::clamp(color[channel], 0.0f, 1.0f);
+			const float srgb = c <= 0.0031308f ? c * 12.92f : 1.055f * std::pow(c, 1.0f / 2.4f) - 0.055f;
+			encoded[channel] = static_cast<uint8_t>(std::lround(srgb * 255.0f));
+		}
+		return encoded;
+	}
+
+	bool Near(const std::array<uint8_t, 3>& actual, const std::array<uint8_t, 3>& expected, int tolerance = 2)
+	{
+		for (int channel = 0; channel < 3; ++channel)
+		{
+			if (std::abs(int(actual[channel]) - int(expected[channel])) > tolerance)
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	std::string Text(const std::array<uint8_t, 3>& rgb)
+	{
+		return std::to_string(rgb[0]) + " " + std::to_string(rgb[1]) + " " + std::to_string(rgb[2]);
+	}
+
 	// A file of the test's own in the assets folder, removed afterwards
 	struct LiveMaterialFile
 	{
@@ -322,9 +369,10 @@ namespace
 		return now;
 	}
 
-	std::string GlowShader(const std::string& fields, const std::string& emission)
+	// A surface material that only glows; its struct is named like its file
+	std::string GlowShader(const std::string& fields, const std::string& emission, const std::string& name = "NyxSceneGpuTestsGlow")
 	{
-		return "import nyx.surface;\nstruct NyxSceneGpuTestsGlow : ISurface\n{\n" + fields +
+		return "import nyx.surface;\nstruct " + name + " : ISurface\n{\n" + fields +
 			"    SurfaceOutput shade(SurfaceInput input)\n    {\n        SurfaceOutput o = SurfaceOutput::defaults(input);\n        o.BaseColor = float3(0.0);\n        o.Emission = " + emission +
 			";\n        return o;\n    }\n}\n";
 	}
@@ -348,15 +396,15 @@ namespace
 		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
 		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
 
-		// Magenta until the shader's first compile, then the file's blue
-		const std::array<uint8_t, 3> blue = DrawUntilMiddleChanges(gpu, view, { 255, 0, 255 });
-		Require(blue == std::array<uint8_t, 3>{ 0, 0, 255 }, "The material doesn't glow in its file's blue: " + std::to_string(blue[0]) + " " + std::to_string(blue[1]) + " " + std::to_string(blue[2]));
+		// The missing material until the shader's first compile, then the file's blue
+		const std::array<uint8_t, 3> blue = DrawUntilMiddleChanges(gpu, view, Tonemapped(glm::vec3(1.0f, 0.0f, 1.0f)));
+		Require(Near(blue, Tonemapped(glm::vec3(0.0f, 0.0f, 1.0f))), "The material doesn't glow in its file's blue: " + Text(blue));
 
 		// A field before Glow: Glow moves, the file's blue is found there, the new field's default
 		// comes from the shader
 		shader.Write(GlowShader("    float Strength = 0.5;\n    [Color] float3 Glow = float3(1.0, 0.0, 0.0);\n", "Glow * Strength"));
 		const std::array<uint8_t, 3> dimmed = DrawUntilMiddleChanges(gpu, view, blue);
-		Require(dimmed[0] == 0 && dimmed[1] == 0 && dimmed[2] > 100 && dimmed[2] < 160, "After a field came before it, the file's blue isn't found at half strength: " + std::to_string(dimmed[0]) + " " + std::to_string(dimmed[1]) + " " + std::to_string(dimmed[2]));
+		Require(Near(dimmed, Tonemapped(glm::vec3(0.0f, 0.0f, 0.5f))), "After a field came before it, the file's blue isn't found at half strength: " + Text(dimmed));
 
 		// Broken: the last look stays
 		shader.Write(GlowShader("    float Strength = 0.5;\n", "Glow * Strength"));
@@ -367,6 +415,41 @@ namespace
 			gpu.DrawFrames(1);
 		}
 		Require(MiddlePixel(gpu, view) == dimmed, "A material shader saved broken changed the picture");
+
+		renderer.DestroySceneView(view);
+		renderer.SetWorld(nullptr);
+		gpu.DrawFrames(1);
+	}
+
+	// A cube glowing brighter than white in blue, filling the view, at three exposures: what reaches
+	// the tonemap is the HDR value times two to the exposure
+	void TestHdrAndExposure(SceneRenderer& gpu)
+	{
+		Nyx::IRenderer& renderer = gpu.Renderer;
+		LiveMaterialFile shader("Shaders/NyxSceneGpuTestsHdr.slang");
+		shader.Write(GlowShader("    [Color, HDR] float3 Glow = float3(1.0, 0.0, 0.0);\n", "Glow", "NyxSceneGpuTestsHdr"));
+		LiveMaterialFile material("Materials/NyxSceneGpuTests-Hdr.nyxmat");
+		const glm::vec3 glow(0.5f, 0.75f, 3.0f);
+		material.Write("Shader = Shaders/NyxSceneGpuTestsHdr.slang\nGlow = 0.5 0.75 3\n");
+
+		DefaultScene scene;
+		AddCube(scene.World, gpu.Renderer, 0.0f, renderer.GetMaterial(material.Path));
+		const Entity camera = scene.World.CreateEntity();
+		scene.World.Add<TransformComponent>(camera, TransformComponent{ .Position = glm::vec3(0.0f, 0.0f, 1.2f), .Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f), .Scale = glm::vec3(1.0f) });
+		scene.World.Add<CameraComponent>(camera, CameraComponent{});
+		renderer.SetWorld(&scene.World);
+		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
+		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
+		gpu.DrawUntilShadersCompiled();
+
+		for (const float stops : { 0.0f, -1.0f, 1.0f, -3.0f })
+		{
+			renderer.SetSceneViewExposure(view, stops);
+			const std::array<uint8_t, 3> pixel = MiddlePixel(gpu, view);
+			const std::array<uint8_t, 3> expected = Tonemapped(glow * std::exp2(stops));
+			Require(Near(pixel, expected), "At " + std::to_string(stops) + " stops, the glow is " + Text(pixel) + ", expected " + Text(expected));
+		}
 
 		renderer.DestroySceneView(view);
 		renderer.SetWorld(nullptr);
@@ -395,11 +478,13 @@ namespace
 		RgbaImage image;
 		Require(gpu.Renderer.ReadSceneViewPixels(view, image), "The scene view can't be read back");
 		SaveIfAsked(image, "MissingMaterial");
+		// Unlit magenta, tonemapped
+		const std::array<uint8_t, 3> expected = Tonemapped(glm::vec3(1.0f, 0.0f, 1.0f));
 		size_t magenta = 0;
 		for (size_t pixel = 0; pixel < static_cast<size_t>(image.Width) * image.Height; ++pixel)
 		{
 			const uint8_t* rgb = &image.Pixels[pixel * 4];
-			magenta += rgb[0] == 255 && rgb[1] == 0 && rgb[2] == 255 ? 1 : 0;
+			magenta += Near({ rgb[0], rgb[1], rgb[2] }, expected) ? 1 : 0;
 		}
 		// The cube's face fills the middle of the picture, half of it magenta
 		Require(magenta > static_cast<size_t>(image.Width) * image.Height / 20, "A cube with a missing material isn't magenta: " + std::to_string(magenta) + " magenta pixels");
@@ -420,6 +505,7 @@ int main()
 		TestMissingMaterial(gpu);
 		TestSavedMaterialFilesReload(gpu);
 		TestSavedMaterialShadersRecompile(gpu);
+		TestHdrAndExposure(gpu);
 	}
 	catch (const std::exception& error)
 	{

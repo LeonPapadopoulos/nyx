@@ -22,6 +22,11 @@ namespace Nyx
 		// Grid, debug lines, picking and the selection outline; see IRenderer::SetSceneViewShowEditorOverlays()
 		bool bShowEditorOverlays = true;
 
+		// See IRenderer::SetSceneViewExposure()
+		float ExposureStops = 0.0f;
+		// The HDR picture's slot in the bindless texture array, for the tonemap
+		uint32_t HdrTextureSlot = 0;
+
 		// The view's set (set 1): its SceneUBO
 		vk::raii::Buffer SceneUniformBuffer{ nullptr };
 		vk::raii::DeviceMemory SceneUniformBufferMemory{ nullptr };

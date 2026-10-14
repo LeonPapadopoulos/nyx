@@ -11,6 +11,7 @@ find_package(Vulkan REQUIRED)
 set(NYX_SHADER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/MissingMaterial.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Skybox.slang
+    ${CMAKE_CURRENT_SOURCE_DIR}/Tonemap.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Grid.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/Grid.frag
     ${CMAKE_CURRENT_SOURCE_DIR}/DebugLines.vert
@@ -27,6 +28,7 @@ set(NYX_SHADER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/Blur.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/Blur.frag
     ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/bindless.slang
+    ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/color.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/view.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/surface.slang
 )

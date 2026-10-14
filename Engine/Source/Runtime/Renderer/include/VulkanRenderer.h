@@ -64,7 +64,11 @@ namespace Nyx
 		glm::mat4 SkyboxViewProj{ 1.0f };
 		// The sky's cube map in the bindless texture array
 		uint32_t EnvironmentTexture = 0;
-		uint32_t Padding1[3] = {};
+		// The view's scene in HDR, in the bindless texture array, for the tonemap
+		uint32_t SceneTexture = 0;
+		// What the scene's light is multiplied by before tonemapping
+		float ExposureScale = 1.0f;
+		uint32_t Padding1 = 0;
 	};
 
 	// The view's set (set 1) as nyx/view.slang reads it: std140 and scalar layout agree on it
@@ -239,6 +243,7 @@ namespace Nyx
 		virtual void SetSceneViewEditorCameraTransform(uint64_t id, const glm::vec3& pos, const glm::vec3& rot);
 		bool GetSceneViewEditorCameraTransform(uint64_t id, glm::vec3& outPos, glm::vec3& outRot) const override;
 		void SetSceneViewShowEditorOverlays(uint64_t id, bool bShow) override;
+		void SetSceneViewExposure(uint64_t id, float stops) override;
 
 		bool GetSceneViewCameraData(uint64_t sceneViewId, Nyx::SceneViewCameraData& outData) const override;
 
@@ -302,7 +307,14 @@ namespace Nyx
 		void CreateGridPipeline();
 		void CreatePickingPipeline();
 
+		// The scene views' scene pass (HDR), for what draws the scene: materials, the sky
 		vk::RenderPass GetSceneRenderPass() const;
+		// Their picture pass (8-bit, after the tonemap), for what draws over the picture
+		vk::RenderPass GetPictureRenderPass() const;
+		// The view's HDR picture into its bindless slot, after the view's targets were made
+		void RegisterHdrPicture(SceneViewInstance& view);
+		void CreateTonemapPipeline();
+		void DrawTonemap(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
 
 		void LoadSkyboxCubemap();
 
@@ -651,6 +663,9 @@ namespace Nyx
 		// Grid
 		vk::raii::Pipeline GridPipeline{ nullptr };
 
+
+		// HDR to the picture
+		vk::raii::Pipeline TonemapPipeline{ nullptr };
 
 		// Skybox
 		CubemapTexture SkyboxCubemap{ "Skybox01" };
