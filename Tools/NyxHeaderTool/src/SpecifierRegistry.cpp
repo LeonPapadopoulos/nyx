@@ -135,6 +135,12 @@ namespace Nyx::HeaderTool
 		ctx.AddIdentifierMetadata("UI", entry.Value->Text);
 	}
 
+	// The asset type an AssetReference property names, e.g. AssetType = Material: its picker lists those
+	static void ApplyAssetTypeToProperty(PropertySemanticContext& ctx, const ParsedMacroEntry& entry)
+	{
+		ctx.AddIdentifierMetadata("AssetType", entry.Value->Text);
+	}
+
 	const SpecifierDefinition SpecifierRegistry::Definitions[] = {
 		{ "Component", EMacroEntrySource::Specifier, static_cast<uint8_t>(ESpecifierTarget::Type), ESpecifierValueKind::None, ApplyComponentToType, nullptr },
 
@@ -150,6 +156,7 @@ namespace Nyx::HeaderTool
 		{ "Tooltip", EMacroEntrySource::Metadata, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::RequiredString, nullptr, ApplyTooltipToProperty },
 		{ "DragSpeed", EMacroEntrySource::Metadata, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::RequiredNumber, nullptr, ApplyDragSpeedToProperty },
 		{ "UI", EMacroEntrySource::Metadata, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::RequiredIdentifier, nullptr, ApplyUIToProperty },
+		{ "AssetType", EMacroEntrySource::Metadata, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::RequiredIdentifier, nullptr, ApplyAssetTypeToProperty },
 	};
 
 	const size_t SpecifierRegistry::DefinitionCount = sizeof(Definitions) / sizeof(Definitions[0]);

@@ -1,5 +1,7 @@
 #include "SceneViewPanel.h"
 
+#include "AssetDragDrop.h"
+#include "ComponentEdits.h"
 #include "EditorCameraController.h"
 #include "EditorPreferences.h"
 #include "ImGuiSource.h"
@@ -10,6 +12,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
+#include <utility>
 
 namespace Nyx::Editor
 {
@@ -60,6 +64,13 @@ namespace Nyx::Editor
 			return;
 		}
 
+		// A material dropped here goes to the entity under it, which is selected too
+		const std::string dropped = std::exchange(DroppedMaterial, std::string());
+		if (!dropped.empty() && result.HitEntity && editing.Scene.GetRegistry().IsAlive(*result.HitEntity))
+		{
+			AssignMaterial(editing.Scene, editing.Transactions, *result.HitEntity, dropped);
+		}
+
 		if (!result.HitEntity.has_value() || editing.Scene.GetRegistry().IsAlive(*result.HitEntity))
 		{
 			editing.Scene.GetSelection() = result.HitEntity;
@@ -106,6 +117,25 @@ namespace Nyx::Editor
 			const ImVec2 imageMin = ImGui::GetItemRectMin();
 			const ImVec2 imageSize = ImGui::GetItemRectSize();
 			const bool bImageHovered = ImGui::IsItemHovered();
+
+			// A material dropped on the picture: the entity under the mouse gets it once the pick
+			// is back (ApplyPickResult())
+			if (!bShowingGameView && ImGui::BeginDragDropTarget())
+			{
+				if (std::optional<std::string> material = AcceptAssetDrop("Material"))
+				{
+					Nyx::SceneViewCameraData viewData{};
+					if (Renderer->GetSceneViewCameraData(SceneViewId, viewData) && imageSize.x > 0.0f && imageSize.y > 0.0f)
+					{
+						uint32_t pickX = 0;
+						uint32_t pickY = 0;
+						MapImageMouseToPickPixel(imageMin, imageSize, ImGui::GetMousePos(), viewData.Extent, pickX, pickY);
+						Renderer->RequestPick(SceneViewId, pickX, pickY);
+						DroppedMaterial = std::move(*material);
+					}
+				}
+				ImGui::EndDragDropTarget();
+			}
 
 			// Ambilight: the view's picture, blurred by the renderer each frame, glows from the
 			// picture's edges onto the editor around it.

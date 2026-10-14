@@ -153,6 +153,10 @@ namespace Nyx::Editor
 		{
 			text += "Theme=" + Theme + "\n";
 		}
+		if (!Workspace.empty() && Workspace.find_first_of("\r\n") == std::string::npos)
+		{
+			text += "Workspace=" + Workspace + "\n";
+		}
 
 		// In order; Play uses the first
 		text += "# PlaySetup=<in Play All: 0 or 1>,<width>x<height>,<name>\n";
@@ -220,6 +224,10 @@ namespace Nyx::Editor
 			else if (setting.starts_with("Theme="))
 			{
 				Theme = std::string(setting.substr(std::string_view("Theme=").size()));
+			}
+			else if (setting.starts_with("Workspace="))
+			{
+				Workspace = std::string(setting.substr(std::string_view("Workspace=").size()));
 			}
 			else if (setting.starts_with("PlaySetup="))
 			{

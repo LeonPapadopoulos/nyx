@@ -53,6 +53,10 @@ set(NYX_EDITOR_SOURCES
     src/MaterialParametersPanel.cpp
     src/MaterialPreviewPanel.cpp
     src/ShaderLogPanel.cpp
+    src/AssetDragDrop.cpp
+    src/NewMaterial.cpp
+    src/Workspaces.cpp
+    src/ShaderAssetTypeRegistration.cpp
 )
 
 set(NYX_EDITOR_HEADERS
@@ -63,6 +67,9 @@ set(NYX_EDITOR_HEADERS
     include/MaterialParametersPanel.h
     include/MaterialPreviewPanel.h
     include/ShaderLogPanel.h
+    include/AssetDragDrop.h
+    include/NewMaterial.h
+    include/Workspaces.h
     include/SceneEditor.h
     include/SceneOutlinerPanel.h
     include/DetailsPanel.h
@@ -198,7 +205,8 @@ if(BUILD_TESTING)
     add_test(NAME NyxEditorPanelTests COMMAND NyxEditorPanelTests)
 
     # The material document and the Parameters window, headless, over a stand-in for the renderer
-    add_executable(NyxMaterialEditorTests tests/MaterialEditorTests.cpp src/MaterialDocument.cpp src/MaterialParametersPanel.cpp src/MaterialPreviewPanel.cpp src/ShaderLogPanel.cpp)
+    add_executable(NyxMaterialEditorTests tests/MaterialEditorTests.cpp src/MaterialDocument.cpp src/MaterialParametersPanel.cpp src/MaterialPreviewPanel.cpp src/ShaderLogPanel.cpp
+        src/NewMaterial.cpp src/Workspaces.cpp src/AssetDragDrop.cpp src/AssetTypeRegistry.cpp src/AssetDatabase.cpp)
     target_include_directories(NyxMaterialEditorTests PRIVATE include src ${CMAKE_CURRENT_BINARY_DIR})
     target_link_libraries(NyxMaterialEditorTests PRIVATE NyxEditorEngine)
     add_dependencies(NyxMaterialEditorTests NyxGeneratedReflection)

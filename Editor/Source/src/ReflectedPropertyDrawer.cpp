@@ -1,4 +1,9 @@
 #include "ReflectedPropertyDrawer.h"
+#include "AssetDatabase.h"
+#include "AssetDragDrop.h"
+#include "AssetReference.h"
+#include "ReflectedPropertyAccess.h"
+#include "TransactionDiffUtil.h"
 
 #include "PropertyWidgetRegistry.h"
 #include "ReflectionUtils.h"
@@ -7,6 +12,7 @@
 #include "UIWidgets.h"
 
 #include <map>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -155,6 +161,85 @@ namespace
 		Nyx::Editor::InspectorDrawContext& drawContext,
 		const Nyx::Reflection::TypeMetadata& ownerType);
 
+	// An asset reference as one row: a combo of the assets of its type (the property's AssetType,
+	// else the reference's own), which also takes an asset of that type dragged from the asset
+	// browser. Each choice is one undo step.
+	static bool DrawAssetReferenceRow(
+		void* object,
+		const Nyx::Reflection::PropertyMetadata& property,
+		Nyx::Editor::InspectorDrawContext& drawContext,
+		const Nyx::Reflection::TypeMetadata& ownerType)
+	{
+		Nyx::Engine::AssetReference& reference = Nyx::Reflection::AccessProperty<Nyx::Engine::AssetReference>(object, property);
+		const char* assetType = Nyx::Reflection::FindMetadataValue(property, "AssetType");
+		const std::string typeId = assetType ? std::string(assetType) : reference.Type;
+
+		ImGui::PushID(property.Name);
+		const std::string rowLabel = std::string(GetPropertyDisplayName(property)) + "##Row";
+		Nyx::UI::BeginPropertyRow(rowLabel.c_str());
+		DrawPropertyTooltipIfHovered(property);
+
+		const bool bReadOnly = IsPropertyReadOnly(property);
+		std::optional<std::string> chosen;
+		ImGui::BeginDisabled(bReadOnly);
+		const std::string preview = reference.Path.empty() ? std::string("None") : reference.Path;
+		if (Nyx::UI::BeginCombo("##Asset", preview.c_str()))
+		{
+			if (NYX_UI(Nyx::UI::Selectable("None", reference.Path.empty())))
+			{
+				chosen = std::string();
+			}
+			if (drawContext.Assets)
+			{
+				for (const Nyx::Editor::AssetEntry& entry : drawContext.Assets->GetAllByType(typeId))
+				{
+					const std::string path = entry.RelativePath.generic_string();
+					if (NYX_UI(Nyx::UI::Selectable(path.c_str(), path == reference.Path)))
+					{
+						chosen = path;
+					}
+				}
+			}
+			Nyx::UI::EndCombo();
+		}
+		ImGui::EndDisabled();
+		if (!bReadOnly && ImGui::BeginDragDropTarget())
+		{
+			if (std::optional<std::string> dropped = Nyx::Editor::AcceptAssetDrop(typeId))
+			{
+				chosen = std::move(dropped);
+			}
+			ImGui::EndDragDropTarget();
+		}
+
+		bool bChanged = false;
+		if (chosen && *chosen != reference.Path)
+		{
+			// The reference is a struct inside the component, or inside a struct of it: where it
+			// is, so undo finds it
+			Nyx::Editor::SubobjectPath location = drawContext.CurrentLocation;
+			if (!location.SubobjectType)
+			{
+				location.SubobjectType = &ownerType;
+			}
+			location.PropertyIndices.push_back(static_cast<size_t>(&property - ownerType.Properties));
+			Nyx::Editor::TransactionDiffUtil diff;
+			diff.TakeSnapshot(drawContext.CurrentObjectRef, &reference, Nyx::Reflection::GetTypeMetadata<Nyx::Engine::AssetReference>(), location);
+			reference.Type = chosen->empty() ? std::string() : typeId;
+			reference.Path = *chosen;
+			if (drawContext.Transactions)
+			{
+				const std::string label = "Assign " + std::string(GetPropertyDisplayName(property));
+				diff.CommitChanges(label.c_str(), *drawContext.Transactions);
+			}
+			bChanged = true;
+		}
+
+		Nyx::UI::EndPropertyRow();
+		ImGui::PopID();
+		return bChanged;
+	}
+
 	static bool DrawPropertyRow(
 		void* object,
 		const Nyx::Reflection::PropertyMetadata& property,
@@ -162,6 +247,11 @@ namespace
 		const Nyx::Reflection::TypeMetadata& ownerType)
 	{
 		Nyx::UI::SourceDeclarationScope declaration(Nyx::Editor::ReflectionSourceRegistry::Get().Find(property));
+		if (Nyx::Reflection::IsStructProperty(property) &&
+			Nyx::Reflection::TryGetNestedType(property) == &Nyx::Reflection::GetTypeMetadata<Nyx::Engine::AssetReference>())
+		{
+			return DrawAssetReferenceRow(object, property, drawContext, ownerType);
+		}
 		if (Nyx::Reflection::IsStructProperty(property))
 		{
 			return DrawStructPropertyRow(object, property, drawContext, ownerType);

@@ -2,6 +2,8 @@
 
 #include "Entity.h"
 
+#include <string>
+
 namespace Nyx
 {
 	class SceneDocument;
@@ -30,4 +32,9 @@ namespace Nyx::Editor
 	// and changes nothing, if the entity has none or the type can't be removed.
 	bool RemoveComponent(Nyx::SceneDocument& scene, TransactionSystem& transactions, Nyx::Engine::Entity entity,
 		const Nyx::Engine::ComponentTypeOps& componentType);
+
+	// Gives the entity's MeshRenderer the material at `path` ("Materials/Stone.nyxmat"), and
+	// records that for undo; running games get it as any edit. Returns false, and changes
+	// nothing, if the entity has no MeshRenderer or that material already.
+	bool AssignMaterial(Nyx::SceneDocument& scene, TransactionSystem& transactions, Nyx::Engine::Entity entity, const std::string& path);
 }

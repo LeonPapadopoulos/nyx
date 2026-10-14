@@ -1,6 +1,9 @@
 #include "ComponentEdits.h"
 
+#include "AssetReference.h"
 #include "ComponentTypeRegistry.h"
+#include "MeshRendererComponent.h"
+#include "TransactionDiffUtil.h"
 #include "GuidComponent.h"
 #include "NameComponent.h"
 #include "RootObjectSnapshotUtils.h"
@@ -57,5 +60,36 @@ namespace Nyx::Editor
 			Change{ EChangeKind::RemoveSubobject, RemoveSubobjectChange{ .Target = target, .BeforeRemove = std::move(beforeRemove) } });
 		transactions.Push(std::move(transaction));
 		return true;
+	}
+
+	bool AssignMaterial(Nyx::SceneDocument& scene, TransactionSystem& transactions, Nyx::Engine::Entity entity, const std::string& path)
+	{
+		Nyx::Engine::Registry& world = scene.GetRegistry();
+		if (!world.IsAlive(entity) || !world.Has<Nyx::Engine::MeshRendererComponent>(entity))
+		{
+			return false;
+		}
+		Nyx::Engine::MeshRendererComponent& meshRenderer = world.Get<Nyx::Engine::MeshRendererComponent>(entity);
+		if (meshRenderer.Material.Type == "Material" && meshRenderer.Material.Path == path)
+		{
+			return false;
+		}
+
+		// The reference is a struct inside the component: where it is, so undo finds it
+		const Nyx::Reflection::TypeMetadata& componentType = Nyx::Reflection::GetTypeMetadata<Nyx::Engine::MeshRendererComponent>();
+		SubobjectPath location;
+		location.SubobjectType = &componentType;
+		for (size_t index = 0; index < componentType.PropertyCount; ++index)
+		{
+			if (std::string_view(componentType.Properties[index].Name) == "Material")
+			{
+				location.PropertyIndices.push_back(index);
+			}
+		}
+		TransactionDiffUtil diff;
+		diff.TakeSnapshot(MakeSceneEntityRef(scene, entity), &meshRenderer.Material, Nyx::Reflection::GetTypeMetadata<Nyx::Engine::AssetReference>(), location);
+		meshRenderer.Material.Type = "Material";
+		meshRenderer.Material.Path = path;
+		return diff.CommitChanges("Assign Material", transactions);
 	}
 }

@@ -62,6 +62,9 @@ namespace Nyx::Editor
 		// "Dark.nyxtheme", or a whole path to one elsewhere. Empty for the default theme.
 		std::string Theme;
 
+		// The workspace the editor was in last ("Scene", "Materials"), whose layout imgui.ini holds
+		std::string Workspace;
+
 		static std::filesystem::path GetUserFile();
 
 		// Missing settings keep their defaults; lines this editor doesn't know are skipped

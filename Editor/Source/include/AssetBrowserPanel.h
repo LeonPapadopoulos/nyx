@@ -4,6 +4,8 @@
 #include "AssetTypeRegistry.h"
 
 #include <filesystem>
+#include <functional>
+#include <string>
 
 namespace Nyx::Editor
 {
@@ -31,6 +33,11 @@ namespace Nyx::Editor
 		{
 			CurrentDirectory = relativeDirectory;
 		}
+
+		// What the right-click menus do: New Material in the folder's menu, New Material for
+		// Shader in a shader's
+		std::function<void()> NewMaterial;
+		std::function<void(const std::string& shaderPath)> NewMaterialForShader;
 
 	private:
 		void DrawDirectoryTree(const std::filesystem::path& relativeDirectory);

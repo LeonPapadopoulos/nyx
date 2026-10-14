@@ -194,8 +194,53 @@ namespace Nyx::Editor
 		}
 		NYX_UI(Nyx::UI::Separator());
 
+		DrawMaterial();
 		DrawParameters(view);
 		ImGui::End();
+	}
+
+	void MaterialParametersPanel::DrawMaterial()
+	{
+		if (!NYX_UI(Nyx::UI::CollapsingHeader("Material")))
+		{
+			return;
+		}
+		const std::string shader = Document.GetAsset().GetShader();
+		Nyx::UI::BeginPropertyRow("Shader");
+		if (Nyx::UI::BeginCombo("##Shader", shader.empty() ? "None" : shader.c_str()))
+		{
+			for (const std::string& choice : ShaderChoices)
+			{
+				if (NYX_UI(Nyx::UI::Selectable(choice.c_str(), choice == shader)) && choice != shader)
+				{
+					// Values the new shader doesn't know stay in the file, under Not in the Shader
+					Document.SetValue("Shader", choice, "Change Shader");
+				}
+			}
+			Nyx::UI::EndCombo();
+		}
+		Nyx::UI::EndPropertyRow();
+		Nyx::UI::BeginPropertyRow("Domain");
+		ImGui::AlignTextToFramePadding();
+		NYX_UI(ImGui::TextUnformatted("Surface"));
+		Nyx::UI::EndPropertyRow();
+		Nyx::UI::BeginPropertyRow("Used By");
+		if (Users.empty())
+		{
+			ImGui::AlignTextToFramePadding();
+			NYX_UI(ImGui::TextDisabled("No entity in the scene"));
+		}
+		for (size_t index = 0; index < Users.size(); ++index)
+		{
+			ImGui::PushID(static_cast<int>(index));
+			if (NYX_UI(Nyx::UI::Selectable(Users[index].Name.c_str())) && Users[index].Select)
+			{
+				Users[index].Select();
+			}
+			ImGui::SetItemTooltip("Selects it in the scene");
+			ImGui::PopID();
+		}
+		Nyx::UI::EndPropertyRow();
 	}
 
 	bool MaterialParametersPanel::HandleHotkeys()

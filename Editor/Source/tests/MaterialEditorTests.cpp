@@ -5,16 +5,23 @@
 // undo, redo and save keys while it has focus, the file followed while nothing is unsaved, and
 // the question before another material opens over unsaved values. The preview's camera and sun
 // orbit the shape, looking at it. A shader diagnostic, clicked, opens its file at its line; the
-// Shader Log window draws its entries.
+// Shader Log window draws its entries. New Material makes a shader from the template and a
+// material on it; workspaces keep a layout each; a material dragged onto a target of its type is
+// taken, onto another not.
+#include "AssetDragDrop.h"
+#include "AssetTypeRegistry.h"
 #include "MaterialDocument.h"
 #include "MaterialParametersPanel.h"
 #include "MaterialPreviewPanel.h"
 #include "ShaderLog.h"
 #include "ShaderLogPanel.h"
+#include "NewMaterial.h"
+#include "Workspaces.h"
 #include "Renderer.h"
 #include "ShaderLayout.h"
 
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <chrono>
 #include <cstring>
@@ -476,6 +483,158 @@ namespace
 	}
 }
 
+namespace
+{
+	std::string ReadText(const std::filesystem::path& file)
+	{
+		std::ifstream stream(file, std::ios::binary);
+		std::stringstream text;
+		text << stream.rdbuf();
+		return text.str();
+	}
+
+	void TestNewMaterial()
+	{
+		TempAssets assets;
+		Require(MakeMaterialName("My Stone!") == "MyStone" && MakeMaterialName("3d_Rock") == "_3d_Rock" && MakeMaterialName("!?").empty(), "Names aren't made into struct names");
+
+		std::string error;
+		const std::optional<NewMaterialFiles> files = CreateSurfaceMaterial(assets.Path, GetSurfaceTemplateFile(), "Wet Stone", error);
+		Require(files.has_value(), "New Material made nothing: " + error);
+		Require(files->ShaderPath == "Shaders/WetStone.slang" && files->MaterialPath == "Materials/WetStone.nyxmat", "New Material's files are " + files->ShaderPath + " and " + files->MaterialPath);
+		const std::string shader = ReadText(assets.Path / files->ShaderPath);
+		Require(shader.find("struct WetStone : ISurface") != std::string::npos && shader.find("NyxTemplateMaterial") == std::string::npos, "The shader's struct isn't named after the material");
+		Require(ReadText(assets.Path / files->MaterialPath) == "Shader = Shaders/WetStone.slang\n", "The material isn't on its shader");
+		// The line to fill in comes after the one that makes shade()'s output
+		std::stringstream lines(shader);
+		std::string line;
+		for (uint32_t number = 1; number < files->ShadeLine && std::getline(lines, line); ++number)
+		{
+		}
+		Require(line.find("SurfaceOutput::defaults") != std::string::npos, "The shader doesn't open after the line that makes the output: " + line);
+
+		Require(!CreateSurfaceMaterial(assets.Path, GetSurfaceTemplateFile(), "WetStone", error) && error.find("exists") != std::string::npos, "New Material wrote over a shader there was");
+		Require(!CreateSurfaceMaterial(assets.Path, GetSurfaceTemplateFile(), "!?", error), "New Material made a nameless material");
+
+		// A material for a shader that is there: named after it, numbered when taken
+		const std::optional<NewMaterialFiles> another = CreateMaterialForShader(assets.Path, "Shaders/WetStone.slang", error);
+		Require(another && another->MaterialPath == "Materials/WetStone2.nyxmat" && another->ShaderPath.empty(), "The second material on the shader isn't WetStone2");
+		Require(ReadText(assets.Path / another->MaterialPath) == "Shader = Shaders/WetStone.slang\n", "The material for the shader isn't on it");
+	}
+
+	// Two workspaces in a headless dock space: switching keeps each one's layout in its file, and
+	// a workspace without one gets its default
+	void TestWorkspaces()
+	{
+		TempAssets folder;
+		HeadlessUI ui;
+		ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+		Workspaces layouts(folder.Path / "Layouts");
+		layouts.Start(EWorkspace::Scene);
+		const auto draw = [&]()
+		{
+			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+			ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
+			ImGui::Begin("DockSpaceWindow", nullptr, ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar);
+			const ImGuiID dockSpace = ImGui::GetID("MyDockspace");
+			ImGui::DockSpace(dockSpace);
+			layouts.BuildDefaultLayout(dockSpace);
+			for (const char* name : { "Preview", "Parameters", "Scene Outliner" })
+			{
+				ImGui::Begin(name);
+				ImGui::End();
+			}
+			ImGui::End();
+		};
+		ui.Frame(draw);
+		Require(!layouts.ApplyPending(), "Nothing asked for switched the workspace");
+
+		layouts.Request(EWorkspace::Materials);
+		Require(layouts.ApplyPending() && layouts.GetCurrent() == EWorkspace::Materials, "The workspace didn't switch");
+		Require(std::filesystem::exists(layouts.GetLayoutFile(EWorkspace::Scene)), "The Scene workspace's layout wasn't saved");
+		ui.Frame(draw);
+		ui.Frame(draw);
+		ImGuiWindow* preview = ImGui::FindWindowByName("Preview");
+		ImGuiWindow* parameters = ImGui::FindWindowByName("Parameters");
+		Require(preview && parameters && preview->DockId != 0 && parameters->DockId != 0 && preview->DockId != parameters->DockId,
+			"The Materials workspace's default layout doesn't dock the preview and the parameters apart");
+
+		layouts.Request(EWorkspace::Scene);
+		Require(layouts.ApplyPending() && layouts.GetCurrent() == EWorkspace::Scene, "The workspace didn't switch back");
+		Require(std::filesystem::exists(layouts.GetLayoutFile(EWorkspace::Materials)), "The Materials workspace's layout wasn't saved");
+		ui.Frame(draw);
+		Require(ImGui::FindWindowByName("Preview")->DockId == 0, "The Scene workspace's layout has the preview docked, as Materials' does");
+	}
+
+	// A material dragged from a source: a target for materials takes it, a target for meshes not
+	void TestMaterialDrops()
+	{
+		AssetTypeRegistry::Get().Register(AssetTypeDescriptor{ .TypeId = "Material", .DisplayName = "Material", .Extensions = { ".nyxmat" } });
+		HeadlessUI ui;
+		std::optional<std::string> asMaterial;
+		std::optional<std::string> asMesh;
+		ImVec2 source;
+		ImVec2 materialTarget;
+		ImVec2 meshTarget;
+		const auto draw = [&]()
+		{
+			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+			ImGui::SetNextWindowSize(ImVec2(400.0f, 400.0f));
+			ImGui::Begin("Drops");
+			source = ImGui::GetCursorScreenPos();
+			ImGui::Button("Stone", ImVec2(100.0f, 30.0f));
+			if (ImGui::BeginDragDropSource())
+			{
+				SetAssetDragPayload("Materials/Stone.nyxmat");
+				ImGui::EndDragDropSource();
+			}
+			materialTarget = ImGui::GetCursorScreenPos();
+			ImGui::Button("Material field", ImVec2(100.0f, 30.0f));
+			if (ImGui::BeginDragDropTarget())
+			{
+				if (std::optional<std::string> dropped = AcceptAssetDrop("Material"))
+				{
+					asMaterial = dropped;
+				}
+				ImGui::EndDragDropTarget();
+			}
+			meshTarget = ImGui::GetCursorScreenPos();
+			ImGui::Button("Mesh field", ImVec2(100.0f, 30.0f));
+			if (ImGui::BeginDragDropTarget())
+			{
+				if (std::optional<std::string> dropped = AcceptAssetDrop("Mesh"))
+				{
+					asMesh = dropped;
+				}
+				ImGui::EndDragDropTarget();
+			}
+			ImGui::End();
+		};
+		ImGuiIO& io = ImGui::GetIO();
+		const auto dragTo = [&](const ImVec2& target)
+		{
+			io.AddMousePosEvent(source.x + 10.0f, source.y + 10.0f);
+			ui.Frame(draw);
+			io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+			ui.Frame(draw);
+			for (int step = 1; step <= 4; ++step)
+			{
+				io.AddMousePosEvent(source.x + 10.0f + (target.x - source.x) * step / 4.0f, source.y + 10.0f + (target.y - source.y) * step / 4.0f);
+				ui.Frame(draw);
+			}
+			Require(GetDraggedAssetType() == "Material", "The drag doesn't carry a material");
+			io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+			ui.Frame(draw);
+			ui.Frame(draw);
+		};
+		ui.Frame(draw);
+		dragTo(meshTarget);
+		Require(!asMesh && !asMaterial, "A target for meshes took a material");
+		dragTo(materialTarget);
+		Require(asMaterial == std::optional<std::string>("Materials/Stone.nyxmat"), "A target for materials didn't take the material");
+	}
+}
+
 int main()
 {
 	try
@@ -485,6 +644,9 @@ int main()
 		TestParametersWindow();
 		TestOrbit();
 		TestDiagnosticsOpenTheirLine();
+		TestNewMaterial();
+		TestWorkspaces();
+		TestMaterialDrops();
 	}
 	catch (const std::exception& error)
 	{

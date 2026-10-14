@@ -25,6 +25,7 @@
 #include "SceneOutlinerPanel.h"
 #include "SceneViewPanel.h"
 #include "ThemeEditorWindow.h"
+#include "Workspaces.h"
 #include "UISourceInspector.h"
 #include "Window.h"
 
@@ -65,8 +66,10 @@ namespace Nyx::Editor
 
 		std::string GetCurrentSceneDisplayName() const;
 
-		// Opens a material ("Materials/Stone.nyxmat") in the Parameters window
+		// Opens a material ("Materials/Stone.nyxmat") in the Materials workspace
 		void OpenMaterial(const std::string& path);
+		// Opens a shader file in the source editor of the preferences
+		void OpenShader(const std::filesystem::path& file);
 
 	private:
 		// The window's frame (IWindow::SetFrameContent()). The titlebar, one row: the logo, the
@@ -85,6 +88,15 @@ namespace Nyx::Editor
 		void ApplyFrameRate();
 
 		void ApplyPendingPickResults();
+
+		// Opens the workspace's panels and closes the other's, e.g. after switching
+		void ApplyWorkspacePanels();
+		// The titlebar's workspace tabs
+		void DrawWorkspaceTabs(const Nyx::WindowFrameArea& area);
+		// "New Material": asks for a name, then makes a shader and a material and opens them
+		void DrawNewMaterialPopup();
+		bool CreateNewMaterial();
+		void CreateMaterialForShader(const std::string& shaderPath);
 
 		// Called before destroying the old registry, once its replacement is ready.
 		void ForgetPreviousScene();
@@ -127,6 +139,15 @@ namespace Nyx::Editor
 		// Paths of files opened from shader diagnostics: the source editor opens them on a worker,
 		// which reads the path after the diagnostic may be gone
 		std::set<std::string> OpenedShaderFiles;
+		OpenFileAtLine OpenAtLine;
+
+		// The Scene and Materials workspaces' layouts
+		Workspaces Layouts{ Nyx::Paths::GetSavedDir() / "Layouts" };
+
+		// New Material's question
+		bool bAskNewMaterialName = false;
+		std::string NewMaterialName;
+		std::string NewMaterialError;
 		SceneViewPanel MainSceneView{ "Scene" };
 		SceneViewPanel SecondarySceneView{ "Scene 2" };
 		// Flies the scene views' free cameras

@@ -31,6 +31,8 @@ namespace Nyx::Editor
 		void PreviewPendingEdits();
 
 		TransactionSystem* Transactions = nullptr;
+		// The assets an asset reference can name (its picker lists them); none without
+		const class AssetDatabase* Assets = nullptr;
 
 		ObjectRef CurrentObjectRef{};
 

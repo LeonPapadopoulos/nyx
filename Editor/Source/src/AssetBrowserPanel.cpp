@@ -1,5 +1,6 @@
 #include "ImGuiSource.h"
 #include "AssetBrowserPanel.h"
+#include "AssetDragDrop.h"
 #include "UIWidgets.h"
 
 #include <imgui.h>
@@ -102,6 +103,21 @@ namespace Nyx::Editor
 
 		const std::vector<AssetEntry> children = Database->GetChildren(CurrentDirectory);
 
+		// Right-click where there is no card: what can be made here
+		if (NewMaterial && ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+		{
+			ImGui::OpenPopup("##FolderMenu");
+		}
+		if (Nyx::UI::BeginPopup("##FolderMenu"))
+		{
+			if (NYX_UI(Nyx::UI::MenuItem("New Material...")))
+			{
+				NewMaterial();
+			}
+			ImGui::SetItemTooltip("A surface shader and a material on it, opened in the Materials workspace");
+			ImGui::EndPopup();
+		}
+
 		// A grid of cards, as many side by side as fit
 		const float cardWidth = Nyx::UI::CalcAssetCardSize().x;
 		const float spacing = ImGui::GetStyle().ItemSpacing.x;
@@ -129,6 +145,28 @@ namespace Nyx::Editor
 			if (result.bClicked)
 			{
 				SelectedAsset = entry.RelativePath;
+			}
+			// A file can be dragged, e.g. a material onto an entity or a material field
+			if (!entry.bIsDirectory && ImGui::BeginDragDropSource())
+			{
+				SetAssetDragPayload(entry.RelativePath.generic_string());
+				ImGui::EndDragDropSource();
+			}
+			if (entry.TypeId == "Shader" && NewMaterialForShader)
+			{
+				const std::string menu = "##ShaderMenu" + entry.Name;
+				if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
+				{
+					ImGui::OpenPopup(menu.c_str());
+				}
+				if (Nyx::UI::BeginPopup(menu.c_str()))
+				{
+					if (NYX_UI(Nyx::UI::MenuItem("New Material for Shader")))
+					{
+						NewMaterialForShader(entry.RelativePath.generic_string());
+					}
+					ImGui::EndPopup();
+				}
 			}
 			if (!result.bOpened)
 			{

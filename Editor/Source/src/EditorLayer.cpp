@@ -6,6 +6,8 @@
 #include "ImGuiSource.h"
 #include "Log.h"
 #include "MeshRendererComponent.h"
+#include "NameComponent.h"
+#include "NewMaterial.h"
 #include "Paths.h"
 #include "PropertyWidgetRegistry.h"
 #include "ReflectionSourceRegistry.h"
@@ -13,6 +15,7 @@
 #include "SceneSerializer.h"
 #include "UIChrome.h"
 #include "UIDiagnostics.h"
+#include "UITheme.h"
 #include "UIWidgets.h"
 
 #include "imgui.h"
@@ -143,13 +146,29 @@ namespace Nyx::Editor
 		RegisterDefaultPropertyWidgets();
 
 		// Shader diagnostics open their file at the line in the source editor the preferences name
-		const OpenFileAtLine openAtLine = [this](const std::filesystem::path& file, uint32_t line)
+		OpenAtLine = [this](const std::filesystem::path& file, uint32_t line)
 		{
 			const std::string& path = *OpenedShaderFiles.insert(file.string()).first;
 			PreferencesPanel.OpenSource(Nyx::SourceLocation(path.c_str(), std::max(line, 1u)), Preferences.SourceEditor);
 		};
-		ShaderLogWindow.SetOpenFileAtLine(openAtLine);
-		MaterialPreview.SetOpenFileAtLine(openAtLine);
+		ShaderLogWindow.SetOpenFileAtLine(OpenAtLine);
+		MaterialPreview.SetOpenFileAtLine(OpenAtLine);
+
+		// The workspace of the last session, whose layout ImGui read from imgui.ini
+		Layouts.Start(FindWorkspace(Preferences.Workspace).value_or(EWorkspace::Scene));
+		ApplyWorkspacePanels();
+		AssetBrowser.NewMaterial = [this]()
+		{
+			bAskNewMaterialName = true;
+			NewMaterialName = "NewMaterial";
+			NewMaterialError.clear();
+		};
+		AssetBrowser.NewMaterialForShader = [this](const std::string& shaderPath)
+		{
+			CreateMaterialForShader(shaderPath);
+		};
+		// Material fields pick from the assets
+		Editing.DetailsContext.Assets = &AssetDb;
 
 		MainSceneView.CreateView(*Renderer);
 		SecondarySceneView.CreateView(*Renderer);
@@ -197,6 +216,8 @@ namespace Nyx::Editor
 		MainSceneView.DestroyView();
 		SecondarySceneView.DestroyView();
 		MaterialPreview.ReleaseView();
+		// imgui.ini gets the current workspace's layout too, as ImGui saves it
+		Layouts.SaveCurrent();
 		PainterTest.Release();
 		Mockup.Release();
 	}
@@ -204,6 +225,17 @@ namespace Nyx::Editor
 	void EditorLayer::OnUpdate(float deltaTime)
 	{
 		DebugTools.BeforeFrame();
+
+		// A workspace chosen last frame: its layout, which ImGui loads between frames
+		if (Layouts.ApplyPending())
+		{
+			ApplyWorkspacePanels();
+			Preferences.Workspace = GetWorkspaceName(Layouts.GetCurrent());
+			if (!Preferences.Save(EditorPreferences::GetUserFile()))
+			{
+				LOG_WARNING("Couldn't save the editor preferences to '{0}'", EditorPreferences::GetUserFile().string());
+			}
+		}
 
 		RendererEditorCameras cameras(*Renderer);
 		const EditorCameraController::Blockers cameraBlockers{
@@ -227,6 +259,10 @@ namespace Nyx::Editor
 
 	void EditorLayer::OnUI()
 	{
+		// Inside the window of the dock space, before the panels: a workspace's first layout
+		Layouts.BuildDefaultLayout(ImGui::GetID("MyDockspace"));
+		DrawNewMaterialPopup();
+
 		if (!SourceInspector.IsActive()) Editing.Gizmo.TickHotkeys();
 
 		ApplyPendingPickResults();
@@ -248,6 +284,29 @@ namespace Nyx::Editor
 
 		Outliner.Draw(Editing);
 		Details.Draw(Editing);
+		{
+			// What the Parameters window offers: the shaders, and the entities using the material
+			MaterialParameters.ShaderChoices.clear();
+			for (const AssetEntry& shader : AssetDb.GetAllByType("Shader"))
+			{
+				MaterialParameters.ShaderChoices.push_back(shader.RelativePath.generic_string());
+			}
+			MaterialParameters.Users.clear();
+			const std::string& openMaterial = MaterialParameters.GetDocument().GetPath();
+			Nyx::Engine::Registry& world = Editing.Scene.GetRegistry();
+			world.Each<Nyx::Engine::MeshRendererComponent>([&](Nyx::Engine::Entity entity, const Nyx::Engine::MeshRendererComponent& meshRenderer)
+				{
+					if (openMaterial.empty() || meshRenderer.Material.Path != openMaterial)
+					{
+						return;
+					}
+					const std::string name = world.Has<Nyx::Engine::NameComponent>(entity) ? world.Get<Nyx::Engine::NameComponent>(entity).Name : std::string("Entity");
+					MaterialParameters.Users.push_back({ name, [this, entity]()
+						{
+							Editing.Scene.GetSelection() = entity;
+						} });
+				});
+		}
 		MaterialParameters.Draw(*Renderer);
 		{
 			// The selected entity's mesh, for the preview's Selected Mesh
@@ -455,6 +514,12 @@ namespace Nyx::Editor
 			}
 			ImGui::EndPopup();
 		}
+
+		// The workspaces, between dividers
+		NextOnLine(BarGap * 0.5f, area.Y);
+		NYX_UI(Nyx::UI::BarDivider(area.Height));
+		NextOnLine(BarGap * 0.5f, area.Y);
+		DrawWorkspaceTabs(area);
 
 		NextOnLine(BarGap * 0.5f, area.Y);
 		NYX_UI(Nyx::UI::BarDivider(area.Height));
@@ -667,6 +732,111 @@ namespace Nyx::Editor
 	{
 		MaterialParameters.OpenMaterial(path);
 		MaterialPreview.bOpen = true;
+		Layouts.Request(EWorkspace::Materials);
+	}
+
+	void EditorLayer::OpenShader(const std::filesystem::path& file)
+	{
+		OpenAtLine(file, 1);
+	}
+
+	void EditorLayer::ApplyWorkspacePanels()
+	{
+		const bool bMaterials = Layouts.GetCurrent() == EWorkspace::Materials;
+		Outliner.bOpen = !bMaterials;
+		Details.bOpen = !bMaterials;
+		MainSceneView.bOpen = !bMaterials;
+		SecondarySceneView.bOpen = !bMaterials;
+		MaterialParameters.bOpen = bMaterials;
+		MaterialPreview.bOpen = bMaterials;
+		ShaderLogWindow.bOpen = bMaterials;
+		bAssetBrowserVisible = true;
+	}
+
+	void EditorLayer::DrawWorkspaceTabs(const Nyx::WindowFrameArea& area)
+	{
+		for (const EWorkspace workspace : { EWorkspace::Scene, EWorkspace::Materials })
+		{
+			NextOnLine(0.0f, area.Y);
+			const std::string label = std::string(GetWorkspaceName(workspace)) + "##Workspace";
+			if (NYX_UI(Nyx::UI::BarTab(label.c_str(), Layouts.GetCurrent() == workspace, glm::vec2(0.0f, area.Height))))
+			{
+				Layouts.Request(workspace);
+			}
+			ImGui::SetItemTooltip(workspace == EWorkspace::Scene ? "The scene: outliner, scene views, details" : "Materials: preview, parameters, Shader Log");
+		}
+	}
+
+	void EditorLayer::DrawNewMaterialPopup()
+	{
+		if (bAskNewMaterialName)
+		{
+			ImGui::OpenPopup("New Material");
+			bAskNewMaterialName = false;
+		}
+		if (!Nyx::UI::BeginPopupModal("New Material", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			return;
+		}
+		NYX_UI(ImGui::TextUnformatted("A surface shader and a material on it, named"));
+		if (ImGui::IsWindowAppearing())
+		{
+			ImGui::SetKeyboardFocusHere();
+		}
+		ImGui::SetNextItemWidth(280.0f);
+		const bool bEntered = NYX_UI(Nyx::UI::InputText("##Name", &NewMaterialName, ImGuiInputTextFlags_EnterReturnsTrue));
+		const std::string name = MakeMaterialName(NewMaterialName);
+		if (!name.empty())
+		{
+			NYX_UI(ImGui::TextDisabled("Shaders/%s.slang and Materials/%s.nyxmat", name.c_str(), name.c_str()));
+		}
+		if (!NewMaterialError.empty())
+		{
+			const glm::vec4& error = Nyx::UI::GetTheme().StatusError;
+			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(error.r, error.g, error.b, error.a));
+			NYX_UI(ImGui::TextUnformatted(NewMaterialError.c_str()));
+			ImGui::PopStyleColor();
+		}
+		ImGui::Spacing();
+		if ((NYX_UI(Nyx::UI::Button("Create")) || bEntered) && CreateNewMaterial())
+		{
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::SameLine();
+		if (NYX_UI(Nyx::UI::Button("Cancel")) || ImGui::IsKeyPressed(ImGuiKey_Escape, false))
+		{
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndPopup();
+	}
+
+	bool EditorLayer::CreateNewMaterial()
+	{
+		const std::optional<NewMaterialFiles> files = CreateSurfaceMaterial(Nyx::Paths::GetAssetsDir(), GetSurfaceTemplateFile(), NewMaterialName, NewMaterialError);
+		if (!files)
+		{
+			return false;
+		}
+		AssetDb.Rescan();
+		OpenMaterial(files->MaterialPath);
+		// The shader at the line to fill in
+		OpenAtLine((Nyx::Paths::GetAssetsDir() / files->ShaderPath).make_preferred(), files->ShadeLine);
+		LOG_INFO("Made {} and {}", files->ShaderPath, files->MaterialPath);
+		return true;
+	}
+
+	void EditorLayer::CreateMaterialForShader(const std::string& shaderPath)
+	{
+		std::string error;
+		const std::optional<NewMaterialFiles> files = Nyx::Editor::CreateMaterialForShader(Nyx::Paths::GetAssetsDir(), shaderPath, error);
+		if (!files)
+		{
+			LOG_ERROR("Couldn't make a material for {}: {}", shaderPath, error);
+			return;
+		}
+		AssetDb.Rescan();
+		OpenMaterial(files->MaterialPath);
+		LOG_INFO("Made {}", files->MaterialPath);
 	}
 
 	std::string EditorLayer::GetCurrentSceneDisplayName() const

@@ -4,7 +4,8 @@
 // and those that no longer fit are left out and listed; textures take their slot, their
 // Default(...) slot when unset, and the missing texture's when they can't be loaded; a [Linear]
 // texture is asked for as linear. Values read from bytes come back as a file writes them, so
-// the editor can show a shader's defaults beside the file's values.
+// the editor can show a shader's defaults beside the file's values. New Material's template
+// compiles as a material, with its parameters.
 #include "BindlessTextures.h"
 #include "MaterialAsset.h"
 #include "Paths.h"
@@ -16,6 +17,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -312,6 +314,26 @@ namespace
 	}
 }
 
+namespace
+{
+	// New Material's template (Engine/Shaders/Templates/Surface.slang), as the editor copies it:
+	// to a file of the material's name, the struct named like it
+	void TestTheTemplateCompiles()
+	{
+		std::ifstream stream(Nyx::Paths::GetShadersDir() / "Templates" / "Surface.slang", std::ios::binary);
+		std::string text((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+		const size_t name = text.find("NyxTemplateMaterial");
+		Require(name != std::string::npos, "The template's struct isn't NyxTemplateMaterial, which the editor renames");
+		text.replace(name, std::string("NyxTemplateMaterial").size(), "Granite");
+		TempFolder folder;
+		const ShaderLayout layout = LayoutOf(folder.Write("Granite.slang", text));
+		for (const char* name : { "BaseColor", "Metallic", "Roughness" })
+		{
+			Require(layout.FindField(name) != nullptr, std::string("The template has no parameter ") + name);
+		}
+	}
+}
+
 int main()
 {
 	try
@@ -323,6 +345,7 @@ int main()
 		TestValuesFollowTheirNamesAcrossLayouts();
 		TestTextureSlots();
 		TestValuesReadBackAsWritten();
+		TestTheTemplateCompiles();
 	}
 	catch (const std::exception& error)
 	{

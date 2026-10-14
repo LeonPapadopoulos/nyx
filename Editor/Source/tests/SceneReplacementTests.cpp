@@ -7,7 +7,9 @@
 #include "VulkanImGuiBackend.h"
 #include "VulkanRenderer.h"
 
+#include "ComponentEdits.h"
 #include "MeshRendererComponent.h"
+#include "SceneEditor.h"
 #include "PropertyWidgetRegistry.h"
 #include "ReflectedPropertyDrawer.h"
 #include "ReflectionUtils.h"
@@ -49,8 +51,9 @@ namespace
 		return false;
 	}
 
-	// The details panel tells edits of a struct's fields where that struct is (SubobjectPath), so
-	// undo can find it. Draws a MeshRenderer headless and checks what its string fields are given.
+	// A MeshRenderer's asset references are one row each, an asset picker, not their Type and
+	// Path; assigning a material records where the reference is inside the component
+	// (SubobjectPath), so undo finds it. Draws a MeshRenderer headless, then assigns a material.
 	void TestDetailsPanelLocations()
 	{
 		ImGui::CreateContext();
@@ -84,23 +87,25 @@ namespace
 		Nyx::Editor::RegisterDefaultPropertyWidgets();
 		ImGui::DestroyContext();
 
-		const auto expectLocation = [&](const char* structProperty)
-		{
-			const std::optional<size_t> index = Nyx::Reflection::FindPropertyIndexByName(meshRendererType, structProperty);
-			Require(index.has_value(), "MeshRenderer lacks a struct property the test expects");
-			const Nyx::Editor::SubobjectPath expected{ .SubobjectType = &meshRendererType, .PropertyIndices = { *index } };
-
-			const size_t matches = static_cast<size_t>(std::count_if(GDrawnStringFields.begin(), GDrawnStringFields.end(),
-				[&](const DrawnStringField& field)
-				{
-					return field.Property == "Path" && field.Location == expected;
-				}));
-			Require(matches == 1, "A struct field wasn't drawn with the location of its struct");
-		};
-
-		expectLocation("Mesh");
-		expectLocation("Material");
+		Require(std::none_of(GDrawnStringFields.begin(), GDrawnStringFields.end(), [](const DrawnStringField& field)
+					{
+						return field.Property == "Path" || field.Property == "Type";
+					}),
+			"An asset reference was drawn as its fields, not as a picker");
 		Require(drawContext.CurrentLocation == Nyx::Editor::SubobjectPath{}, "The details panel left a struct's location behind");
+
+		// Assigning a material: one undo step at the reference's place, which undo finds again
+		Nyx::Editor::SceneEditor editing;
+		const Nyx::Engine::Entity entity = editing.Scene.CreateEntity("Cube");
+		editing.Scene.GetRegistry().Add<Nyx::Engine::MeshRendererComponent>(entity, meshRenderer);
+		Require(Nyx::Editor::AssignMaterial(editing.Scene, editing.Transactions, entity, "Materials/Stone.nyxmat"), "The material wasn't assigned");
+		Require(!Nyx::Editor::AssignMaterial(editing.Scene, editing.Transactions, entity, "Materials/Stone.nyxmat"), "Assigning the material it has was a change");
+		const Nyx::Engine::AssetReference& material = editing.Scene.GetRegistry().Get<Nyx::Engine::MeshRendererComponent>(entity).Material;
+		Require(material.Type == "Material" && material.Path == "Materials/Stone.nyxmat", "The MeshRenderer doesn't name the assigned material");
+		editing.Undo();
+		Require(editing.Scene.GetRegistry().Get<Nyx::Engine::MeshRendererComponent>(entity).Material.Path == "Materials/Textured.nyxmat", "Undo didn't bring the material back");
+		editing.Redo();
+		Require(editing.Scene.GetRegistry().Get<Nyx::Engine::MeshRendererComponent>(entity).Material.Path == "Materials/Stone.nyxmat", "Redo didn't assign the material again");
 	}
 
 	class TestDirectory

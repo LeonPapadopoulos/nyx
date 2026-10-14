@@ -66,5 +66,7 @@ namespace Nyx::Editor
 		Nyx::IRenderer* Renderer = nullptr;
 		uint64_t SceneViewId = 0;
 		bool bShowingGameView = false;
+		// A material dropped on the view, given to the entity the pick finds there
+		std::string DroppedMaterial;
 	};
 }

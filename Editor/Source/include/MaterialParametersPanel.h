@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <string>
 #include <vector>
@@ -31,7 +32,9 @@ namespace Nyx::Editor
 	// Ctrl+S saves it.
 	//
 	// The file is followed when it is read again, e.g. saved in a text editor, while nothing here
-	// is unsaved. Opening another material asks first while there are unsaved values.
+	// is unsaved. Opening another material asks first while there are unsaved values. Above the
+	// parameters, the material's shader (another can be chosen, as an edit), its domain, and the
+	// entities of the scene that use it.
 	class MaterialParametersPanel
 	{
 	public:
@@ -50,6 +53,17 @@ namespace Nyx::Editor
 		bool HandleHotkeys();
 
 		MaterialDocument& GetDocument() { return Document; }
+
+		// An entity that draws with the open material, which a click selects
+		struct MaterialUser
+		{
+			std::string Name;
+			std::function<void()> Select;
+		};
+		// Set before Draw(): the shaders a material can be on ("Shaders/Stone.slang"), and the
+		// entities of the scene that use the open material
+		std::vector<std::string> ShaderChoices;
+		std::vector<MaterialUser> Users;
 		// "Saved ...", "Opened ...", or what went wrong last
 		const std::string& GetStatus() const { return Status; }
 
@@ -61,6 +75,8 @@ namespace Nyx::Editor
 		void Open(const std::string& path, Nyx::IMaterialSource& materials);
 		void Save();
 		void DrawDiscardPopup(Nyx::IMaterialSource& materials);
+		// The shader, the domain, the entities that use it
+		void DrawMaterial();
 		void DrawParameters(const Nyx::MaterialView& view);
 		void DrawFields(const std::vector<Nyx::Engine::ShaderField>& fields, const std::string& prefix, uint32_t base, const Nyx::MaterialView& view, const std::string* category);
 		void DrawField(const Nyx::Engine::ShaderField& field, const std::string& name, uint32_t offset, const Nyx::MaterialView& view);
