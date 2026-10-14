@@ -228,11 +228,13 @@ namespace Nyx
 		vk::PhysicalDeviceFeatures2 physicalDeviceFeatures2{};
 		vk::PhysicalDeviceVulkan13Features physicalDeviceVulkan13Features{};
 		physicalDeviceVulkan13Features.dynamicRendering = true;
+		// discard in shaders Slang compiles (ShaderCompiler) becomes OpDemoteToHelperInvocation
+		physicalDeviceVulkan13Features.shaderDemoteToHelperInvocation = true;
 		vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT physicalDeviceExtendedDynamicStateFeaturesEXT{};
 		physicalDeviceExtendedDynamicStateFeaturesEXT.extendedDynamicState = true;
 		vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT> featureChain = {
 			physicalDeviceFeatures2,                      // vk::PhysicalDeviceFeatures2 (empty for now)
-			physicalDeviceVulkan13Features,               // Enable dynamic rendering from Vulkan 1.3
+			physicalDeviceVulkan13Features,               // Enable dynamic rendering and demote from Vulkan 1.3
 			physicalDeviceExtendedDynamicStateFeaturesEXT // Enable extended dynamic state from the extension
 		};
 
@@ -303,11 +305,12 @@ namespace Nyx
 						});
 				});
 
-		// Check if the physicalDevice supports the required features (dynamic rendering and extended dynamic state)
+		// Check if the physicalDevice supports the required features (dynamic rendering, demote and extended dynamic state)
 		auto features =
 			physicalDevice
 				.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
 		bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
+			features.template get<vk::PhysicalDeviceVulkan13Features>().shaderDemoteToHelperInvocation &&
 			features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
 
 		// Return true if the physicalDevice meets all the criteria

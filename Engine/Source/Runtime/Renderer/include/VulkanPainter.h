@@ -3,6 +3,7 @@
 #include "Painter.h"
 #include "PainterDrawOptions.h"
 #include "PainterTiles.h"
+#include "ShaderPrograms.h"
 
 #include <glm/glm.hpp>
 #include <imgui.h>
@@ -243,7 +244,7 @@ namespace Nyx::Engine
 	// them into tiles on the GPU (PainterBin.comp).
 	//
 	//     VulkanPainter vulkanPainter;
-	//     vulkanPainter.Initialize(context);
+	//     vulkanPainter.Initialize(context, programs);
 	//     ...
 	//     vulkanPainter.Draw(commandBuffer, painter, target, options);
 	//
@@ -257,9 +258,13 @@ namespace Nyx::Engine
 	{
 	public:
 		// Creates the canvases' render pass, the pipelines and the descriptor pool, and prepares
-		// the empty texture (one short submission). The compiled shaders are loaded from the
-		// Shaders folder next to the executable.
-		void Initialize(Nyx::VulkanContext& context);
+		// the empty texture (one short submission). The shaders, Painter.vert, Painter.frag and
+		// PainterBin.comp, come from `programs`, which must outlive the painter.
+		void Initialize(Nyx::VulkanContext& context, ShaderPrograms& programs);
+
+		// Makes every pipeline again from the programs' current code, after they changed. The GPU
+		// must be done with the old ones.
+		void RebuildPipelines();
 		void Shutdown();
 
 		bool IsInitialized() const { return Context != nullptr; }
@@ -329,6 +334,7 @@ namespace Nyx::Engine
 		bool PrepareBuffer(VulkanPainterBuffers::GpuBuffer& buffer, vk::DeviceSize size, vk::BufferUsageFlags usage, bool bHostVisible);
 
 		Nyx::VulkanContext* Context = nullptr;
+		ShaderPrograms* Programs = nullptr;
 
 		// The canvases' render pass: clears the image, and leaves it ready to be shown
 		vk::raii::RenderPass RenderPass{ nullptr };

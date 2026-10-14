@@ -19,6 +19,7 @@
 
 #include <chrono>
 #include <ranges>
+#include <set>
 #include <string>
 #include <fstream>
 #include <limits>
@@ -236,31 +237,6 @@ namespace
 	}
 }
 
-std::filesystem::file_time_type TryGetLastWriteTime(
-	const std::filesystem::path& path,
-	bool& bSuccess)
-{
-	std::error_code ec;
-	const auto time = std::filesystem::last_write_time(path, ec);
-	bSuccess = !ec;
-	return time;
-}
-
-bool TryGetFileWriteTime(
-	const std::filesystem::path& path,
-	std::filesystem::file_time_type& outTime)
-{
-	std::error_code ec;
-	const auto time = std::filesystem::last_write_time(path, ec);
-	if (ec)
-	{
-		return false;
-	}
-
-	outTime = time;
-	return true;
-}
-
 namespace Nyx
 {
 	VulkanRenderer::VulkanRenderer()
@@ -277,29 +253,7 @@ namespace Nyx
 		ASSERT(Swapchain.GetImageCount() >= Swapchain.GetMinImageCount() && "Failed to fulfill VulkanImGuiBackend requirements.");
 		SetupImGui();
 
-		// ------------------------------------------------------------------------------------------------------
-		// Shader hot reload Setup
-		// ------------------------------------------------------------------------------------------------------
-		std::filesystem::create_directories(Nyx::Paths::GetCompiledShadersDir());
-		{
-			GridShaderHotReload.VertSourcePath = Nyx::Paths::GetShadersDir() / "Grid.vert";
-			GridShaderHotReload.FragSourcePath = Nyx::Paths::GetShadersDir() / "Grid.frag";
-
-			// Compile output goes to the folder CreateGridPipeline() loads the grid shaders from
-			GridShaderHotReload.VertSpvPath = Nyx::Paths::GetCompiledShadersDir() / "Grid.vert.spv";
-			GridShaderHotReload.FragSpvPath = Nyx::Paths::GetCompiledShadersDir() / "Grid.frag.spv";
-
-			LOG_INFO("Grid vert source: {}", GridShaderHotReload.VertSourcePath.string());
-			LOG_INFO("Grid frag source: {}", GridShaderHotReload.FragSourcePath.string());
-			LOG_INFO("Grid vert spv: {}", GridShaderHotReload.VertSpvPath.string());
-			LOG_INFO("Grid frag spv: {}", GridShaderHotReload.FragSpvPath.string());
-
-			bool bVertOk = TryGetFileWriteTime(GridShaderHotReload.VertSourcePath, GridShaderHotReload.LastVertWriteTime);
-			bool bFragOk = TryGetFileWriteTime(GridShaderHotReload.FragSourcePath, GridShaderHotReload.LastFragWriteTime);
-
-			ASSERT(bVertOk && "Failed to stat Grid.vert");
-			ASSERT(bFragOk && "Failed to stat Grid.frag");
-		}
+		StartLiveShaderReload();
 
 		// ------------------------------------------------------------------------------------------------------
 		// CPU / GPU resources needed by rendering
@@ -333,11 +287,11 @@ namespace Nyx
 		CreateDebugLinePipeline();
 
 		// 2D shapes, drawn into their own targets and inside ImGui's windows
-		PainterPass.Initialize(Context);
+		PainterPass.Initialize(Context, Programs);
 		Nyx::UI::WindowPainter::SetSegmentDrawer(&VulkanRenderer::DrawWindowSegment, this);
 
 		// The scene views' pictures, blurred small, for glows and glass
-		BlurPass.Initialize(Context);
+		BlurPass.Initialize(Context, Programs);
 		CreateBlurTimestamps();
 		CreateUITimestamps();
 
@@ -569,15 +523,8 @@ namespace Nyx
 		// Only reset once we know we will submit work
 		Context.GetDevice().resetFences({ *InFlightFence });
 
-		// Global hot reload
-		PollGridShaderHotReload();
-		if (GridShaderHotReload.bReloadPending)
-		{
-			GridPipeline = nullptr;
-			GridPipelineLayout = nullptr;
-			CreateGridPipeline();
-			GridShaderHotReload.bReloadPending = false;
-		}
+		// Shaders saved since the last frame, compiled again; their pipelines are made again
+		ApplyShaderUpdates();
 
 		// 3) Record command buffer for this image
 		vk::raii::CommandBuffer& cmd = CommandBuffers[imageIndex];
@@ -2678,32 +2625,9 @@ namespace Nyx
 
 	std::vector<uint32_t> VulkanRenderer::ReadSpirvFile(const std::string& fileName)
 	{
-		// The compiled shaders sit next to the executable, so they're found from any working directory
-		const std::filesystem::path path = Nyx::Paths::GetCompiledShadersDir() / fileName;
-
-		std::ifstream file(path, std::ios::ate | std::ios::binary);
-		if (!file.is_open())
-		{
-			throw std::runtime_error("Failed to open SPIR-V file: " + path.string());
-		}
-
-		const std::streamsize fileSize = file.tellg();
-		if (fileSize <= 0 || (fileSize % sizeof(uint32_t)) != 0)
-		{
-			throw std::runtime_error("Invalid SPIR-V file size: " + path.string());
-		}
-
-		std::vector<uint32_t> buffer(static_cast<size_t>(fileSize) / sizeof(uint32_t));
-
-		file.seekg(0);
-		file.read(reinterpret_cast<char*>(buffer.data()), fileSize);
-
-		if (!file)
-		{
-			throw std::runtime_error("Failed to read SPIR-V file: " + path.string());
-		}
-
-		return buffer;
+		const std::string suffix = ".spv";
+		const std::string name = fileName.ends_with(suffix) ? fileName.substr(0, fileName.size() - suffix.size()) : fileName;
+		return Programs.GetSpirv(name);
 	}
 
 	void VulkanRenderer::CreateSceneResourcesForView(SceneViewInstance& view)
@@ -3029,52 +2953,117 @@ namespace Nyx
 		throw std::runtime_error("Failed to find suitable memory type.");
 	}
 
-	bool VulkanRenderer::RecompileGridShaders()
+	void VulkanRenderer::StartLiveShaderReload()
 	{
-		const std::string vertCmd =
-			"glslc \"" + GridShaderHotReload.VertSourcePath.string() +
-			"\" -o \"" + GridShaderHotReload.VertSpvPath.string() + "\"";
-
-		const std::string fragCmd =
-			"glslc \"" + GridShaderHotReload.FragSourcePath.string() +
-			"\" -o \"" + GridShaderHotReload.FragSpvPath.string() + "\"";
-
-		const int vertResult = std::system(vertCmd.c_str());
-		const int fragResult = std::system(fragCmd.c_str());
-
-		return vertResult == 0 && fragResult == 0;
+		const std::filesystem::path compiler = Nyx::Paths::GetExecutableDir() / "NyxShaderCompiler.exe";
+		if (!std::filesystem::is_directory(Nyx::Paths::GetShadersDir()))
+		{
+			LOG_INFO("Live shader reload is off: no shader sources at {}", Nyx::Paths::GetShadersDir().string());
+			return;
+		}
+		if (!std::filesystem::exists(compiler))
+		{
+			LOG_INFO("Live shader reload is off: {} is missing", compiler.string());
+			return;
+		}
+		auto service = std::make_unique<Nyx::Engine::RemoteShaderCompileService>(compiler, std::vector<std::filesystem::path>{ Nyx::Paths::GetShaderLibraryDir() });
+		if (!Programs.EnableLiveReload(std::move(service), { Nyx::Paths::GetShaderLibraryDir() }))
+		{
+			LOG_WARNING("Live shader reload is off: {}", Programs.GetProblem());
+			return;
+		}
+		LOG_INFO("Live shader reload: saving a shader in {} compiles it again", Nyx::Paths::GetShadersDir().string());
 	}
 
-	void VulkanRenderer::PollGridShaderHotReload()
+	void VulkanRenderer::ApplyShaderUpdates()
 	{
-		std::filesystem::file_time_type newVertTime{};
-		std::filesystem::file_time_type newFragTime{};
-
-		const bool bVertOk = TryGetFileWriteTime(GridShaderHotReload.VertSourcePath, newVertTime);
-		const bool bFragOk = TryGetFileWriteTime(GridShaderHotReload.FragSourcePath, newFragTime);
-
-		// During save, files can be temporarily missing/locked. Just try again next frame.
-		if (!bVertOk || !bFragOk)
+		const std::vector<Nyx::Engine::ShaderProgramUpdate> updates = Programs.Update();
+		if (updates.empty())
 		{
 			return;
 		}
 
-		const bool bChanged =
-			newVertTime != GridShaderHotReload.LastVertWriteTime ||
-			newFragTime != GridShaderHotReload.LastFragWriteTime;
-
-		if (!bChanged)
+		std::set<std::string> changed;
+		for (const Nyx::Engine::ShaderProgramUpdate& update : updates)
+		{
+			if (update.bChanged)
+			{
+				LOG_INFO("Shader {} compiled in {:.0f} ms", update.Name, update.Result.Milliseconds);
+				changed.insert(update.Name);
+			}
+			else
+			{
+				LOG_ERROR("Shader {} doesn't compile; it keeps its last good code", update.Name);
+			}
+			// With the whole path, so the line can be opened from the log
+			for (const Nyx::Engine::ShaderDiagnostic& diagnostic : update.Result.Diagnostics)
+			{
+				std::string text = diagnostic.File.empty() ? std::string() : diagnostic.File.string();
+				if (diagnostic.Line > 0)
+				{
+					text += "(" + std::to_string(diagnostic.Line) + (diagnostic.Column > 0 ? "," + std::to_string(diagnostic.Column) : "") + ")";
+				}
+				text += (text.empty() ? "" : ": ") + diagnostic.Message;
+				switch (diagnostic.Severity)
+				{
+				case Nyx::Engine::EShaderDiagnosticSeverity::Error:
+					LOG_ERROR("{}", text);
+					break;
+				case Nyx::Engine::EShaderDiagnosticSeverity::Warning:
+					LOG_WARNING("{}", text);
+					break;
+				default:
+					LOG_INFO("{}", text);
+					break;
+				}
+			}
+		}
+		if (changed.empty())
 		{
 			return;
 		}
 
-		GridShaderHotReload.LastVertWriteTime = newVertTime;
-		GridShaderHotReload.LastFragWriteTime = newFragTime;
-
-		const bool bCompileOk = RecompileGridShaders();
-		if (bCompileOk)
+		// The pipelines are made again from the new code; the GPU must be done with the old ones
+		Context.GetDevice().waitIdle();
+		const auto uses = [&changed](const char* shader)
 		{
-			GridShaderHotReload.bReloadPending = true;
+			return changed.contains(std::string(shader) + ".vert") || changed.contains(std::string(shader) + ".frag");
+		};
+		if (uses("DefaultShader"))
+		{
+			CreateScenePipeline();
+		}
+		if (uses("Grid"))
+		{
+			CreateGridPipeline();
+		}
+		if (uses("Skybox"))
+		{
+			CreateSkyboxPipeline();
+		}
+		if (uses("Picking"))
+		{
+			CreatePickingPipeline();
+		}
+		if (uses("SelectionMask"))
+		{
+			CreateSelectionMaskPipelines();
+		}
+		if (uses("OutlineComposite"))
+		{
+			CreateOutlineCompositePipeline();
+		}
+		if (uses("DebugLines"))
+		{
+			CreateDebugLinePipeline();
+		}
+		if (uses("Painter") || changed.contains("PainterBin.comp"))
+		{
+			PainterPass.RebuildPipelines();
+		}
+		if (uses("Blur"))
+		{
+			BlurPass.RebuildPipeline();
 		}
 	}
 

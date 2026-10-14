@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ShaderPrograms.h"
+
 #include <vulkan/vulkan_raii.hpp>
 
 #include <cstdint>
@@ -78,7 +80,7 @@ namespace Nyx::Engine
 	// The plan is in Design/ui-painter.md, stage 3, change 1.
 	//
 	//     VulkanBlur blur;
-	//     blur.Initialize(context);
+	//     blur.Initialize(context, programs);
 	//     ...
 	//     blur.Blur(commandBuffer, sceneView.GetImageView(), sceneView.GetExtent(), target, BlurOptions{});
 	//
@@ -89,9 +91,13 @@ namespace Nyx::Engine
 	class VulkanBlur
 	{
 	public:
-		// Creates the render pass, pipeline, sampler and descriptor pool. The compiled shaders are
-		// loaded from the Shaders folder next to the executable.
-		void Initialize(Nyx::VulkanContext& context);
+		// Creates the render pass, pipeline, sampler and descriptor pool. The shaders, Blur.vert and
+		// Blur.frag, come from `programs`, which must outlive the blur.
+		void Initialize(Nyx::VulkanContext& context, ShaderPrograms& programs);
+
+		// Makes the pipeline again from the programs' current code, after they changed. The GPU
+		// must be done with the old one.
+		void RebuildPipeline();
 		void Shutdown();
 
 		// Records blurring `source` into `target`, outside a render pass. The target's image ends
@@ -117,6 +123,7 @@ namespace Nyx::Engine
 		void DrawPass(vk::raii::CommandBuffer& commandBuffer, const vk::raii::DescriptorSet& input, vk::Extent2D inputExtent, const VulkanBlurTarget::Level& output, uint32_t mode, float directionX, float directionY);
 
 		Nyx::VulkanContext* Context = nullptr;
+		ShaderPrograms* Programs = nullptr;
 
 		vk::raii::RenderPass RenderPass{ nullptr };
 		vk::raii::DescriptorSetLayout SetLayout{ nullptr };

@@ -84,31 +84,6 @@ namespace Nyx::Engine
 		// no empty ones), and grow by doubling.
 		constexpr vk::DeviceSize MinBufferSize = 4096;
 
-		std::vector<uint32_t> ReadSpirvFile(const std::string& fileName)
-		{
-			const std::filesystem::path path = Nyx::Paths::GetCompiledShadersDir() / fileName;
-			std::ifstream file(path, std::ios::ate | std::ios::binary);
-			if (!file.is_open())
-			{
-				throw std::runtime_error("Failed to open SPIR-V file: " + path.string());
-			}
-
-			const std::streamsize fileSize = file.tellg();
-			if (fileSize <= 0 || (fileSize % sizeof(uint32_t)) != 0)
-			{
-				throw std::runtime_error("Invalid SPIR-V file size: " + path.string());
-			}
-
-			std::vector<uint32_t> spirv(static_cast<size_t>(fileSize) / sizeof(uint32_t));
-			file.seekg(0);
-			file.read(reinterpret_cast<char*>(spirv.data()), fileSize);
-			if (!file)
-			{
-				throw std::runtime_error("Failed to read SPIR-V file: " + path.string());
-			}
-			return spirv;
-		}
-
 		uint32_t FindMemoryType(vk::PhysicalDevice physicalDevice, uint32_t typeFilter, vk::MemoryPropertyFlags properties)
 		{
 			const vk::PhysicalDeviceMemoryProperties memoryProperties = physicalDevice.getMemoryProperties();
@@ -350,9 +325,10 @@ namespace Nyx::Engine
 		Buffers.Release();
 	}
 
-	void VulkanPainter::Initialize(Nyx::VulkanContext& context)
+	void VulkanPainter::Initialize(Nyx::VulkanContext& context, ShaderPrograms& programs)
 	{
 		Context = &context;
+		Programs = &programs;
 		CheckDeviceLimits();
 		CreateRenderPass();
 		CreateDescriptorSetLayouts();
@@ -361,6 +337,16 @@ namespace Nyx::Engine
 		CreateBinPipeline();
 		CreateEmptyTexture();
 		CanvasPipeline = CreatePipeline(*RenderPass);
+	}
+
+	void VulkanPainter::RebuildPipelines()
+	{
+		CreateBinPipeline();
+		CanvasPipeline = CreatePipeline(*RenderPass);
+		for (SegmentPipeline& segmentPipeline : SegmentPipelines)
+		{
+			segmentPipeline.Pipeline = CreatePipeline(*segmentPipeline.RenderPass);
+		}
 	}
 
 	void VulkanPainter::Shutdown()
@@ -824,7 +810,7 @@ namespace Nyx::Engine
 		layoutInfo.pPushConstantRanges = &pushConstantRange;
 		BinPipelineLayout = vk::raii::PipelineLayout(Context->GetDevice(), layoutInfo);
 
-		const std::vector<uint32_t> code = ReadSpirvFile("PainterBin.comp.spv");
+		const std::vector<uint32_t>& code = Programs->GetSpirv("PainterBin.comp");
 		vk::ShaderModuleCreateInfo moduleInfo{};
 		moduleInfo.codeSize = code.size() * sizeof(uint32_t);
 		moduleInfo.pCode = code.data();
@@ -893,8 +879,8 @@ namespace Nyx::Engine
 
 	vk::raii::Pipeline VulkanPainter::CreatePipeline(vk::RenderPass renderPass)
 	{
-		const std::vector<uint32_t> vertexCode = ReadSpirvFile("Painter.vert.spv");
-		const std::vector<uint32_t> fragmentCode = ReadSpirvFile("Painter.frag.spv");
+		const std::vector<uint32_t>& vertexCode = Programs->GetSpirv("Painter.vert");
+		const std::vector<uint32_t>& fragmentCode = Programs->GetSpirv("Painter.frag");
 
 		vk::ShaderModuleCreateInfo vertexModuleInfo{};
 		vertexModuleInfo.codeSize = vertexCode.size() * sizeof(uint32_t);

@@ -2,6 +2,8 @@
 // checks them. Needs a Vulkan device; the window it creates for that stays hidden.
 #include "Painter.h"
 #include "PainterTestSheet.h"
+#include "Paths.h"
+#include "ShaderPrograms.h"
 #include "VulkanBlur.h"
 #include "VulkanContext.h"
 #include "VulkanPainter.h"
@@ -16,15 +18,19 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <deque>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <iterator>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -115,8 +121,8 @@ namespace
 				throw std::runtime_error("No window for the Vulkan device");
 			}
 			Context.Initialize("NyxPainterGpuTests", Window);
-			PainterPass.Initialize(Context);
-			BlurPass.Initialize(Context);
+			PainterPass.Initialize(Context, Programs);
+			BlurPass.Initialize(Context, Programs);
 
 			// Texture sets for the tests' own textures, as ImGui's backend makes them for its own
 			const vk::DescriptorPoolSize poolSize{ vk::DescriptorType::eCombinedImageSampler, 32 };
@@ -147,6 +153,12 @@ namespace
 		// Paints the frame, waits for the GPU, and reads the target back
 		PaintedImage Paint(const Painter& painter, const PainterDrawOptions& options = PainterDrawOptions{})
 		{
+			return PaintWith(PainterPass, Target, painter, options);
+		}
+
+		// The same with a painter pass and target of the caller's, e.g. one with shaders of its own
+		PaintedImage PaintWith(VulkanPainter& pass, VulkanPainterTarget& target, const Painter& painter, const PainterDrawOptions& options = PainterDrawOptions{})
+		{
 			vk::raii::Device& device = Context.GetDevice();
 
 			vk::CommandBufferAllocateInfo allocInfo{};
@@ -156,7 +168,7 @@ namespace
 			vk::raii::CommandBuffer commandBuffer = std::move(vk::raii::CommandBuffers(device, allocInfo).front());
 			commandBuffer.begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
 
-			PainterPass.Draw(commandBuffer, painter, Target, options);
+			pass.Draw(commandBuffer, painter, target, options);
 
 			// The painter leaves the image ready to be sampled; copying needs it as a transfer source.
 			vk::ImageMemoryBarrier toTransfer{};
@@ -166,13 +178,13 @@ namespace
 			toTransfer.newLayout = vk::ImageLayout::eTransferSrcOptimal;
 			toTransfer.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 			toTransfer.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			toTransfer.image = Target.GetImage();
+			toTransfer.image = target.GetImage();
 			toTransfer.subresourceRange = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
 			commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, toTransfer);
 
-			PaintedImage painted = SubmitAndReadBack(commandBuffer, Target.GetImage(), Target.GetExtent(), false);
+			PaintedImage painted = SubmitAndReadBack(commandBuffer, target.GetImage(), target.GetExtent(), false);
 			// The GPU is done: what the binning read back can be taken (GetTarget().GetTiles()).
-			Target.ReadBack();
+			target.ReadBack();
 			return painted;
 		}
 
@@ -197,6 +209,11 @@ namespace
 			Context.GetGraphicsQueue().submit(submitInfo);
 			Context.GetGraphicsQueue().waitIdle();
 			segments.ReadBack();
+		}
+
+		Nyx::VulkanContext& GetContext()
+		{
+			return Context;
 		}
 
 		// Renders into a fresh image of `format` that starts out as `background`, the way ImGui
@@ -535,6 +552,8 @@ namespace
 
 		GLFWwindow* Window = nullptr;
 		Nyx::VulkanContext Context;
+		// The shaders the build compiled; no live reload here
+		ShaderPrograms Programs{ Nyx::Paths::GetCompiledShadersDir(), Nyx::Paths::GetShadersDir() };
 		VulkanPainter PainterPass;
 		VulkanBlur BlurPass;
 		VulkanPainterTarget Target;
@@ -545,6 +564,75 @@ namespace
 		Painter painter;
 		painter.BeginFrame(width, height);
 		return painter;
+	}
+
+	// Live reload (Design/shader-materials.md, stage 1, change 3): Painter.frag changed and compiled
+	// again reaches the pipelines once the painter rebuilds them; PainterBin.comp, compiled by Slang
+	// too, still bins right. On copies of the shaders.
+	void TestPipelinesFollowChangedShaders(GpuPainter& gpu)
+	{
+		const std::filesystem::path folder = std::filesystem::temp_directory_path() / ("NyxPainterGpuTests-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+		std::filesystem::create_directories(folder);
+		for (const char* name : { "Painter.vert", "Painter.frag", "PainterBin.comp" })
+		{
+			std::filesystem::copy_file(Nyx::Paths::GetShadersDir() / name, folder / name);
+		}
+
+		ShaderPrograms programs(Nyx::Paths::GetCompiledShadersDir(), folder);
+		Require(programs.EnableLiveReload(std::make_unique<LocalShaderCompileService>(std::vector<std::filesystem::path>{ Nyx::Paths::GetShaderLibraryDir() })),
+			"live reload doesn't start: " + programs.GetProblem());
+		VulkanPainter pass;
+		pass.Initialize(gpu.GetContext(), programs);
+		VulkanPainterTarget target;
+
+		Painter painter = StartFrame();
+		painter.AddRect(PainterRect{ { 10.5f, 10.5f }, { 30.5f, 30.5f } }, PainterStyle::Filled(Orange));
+		painter.EndFrame();
+		gpu.PaintWith(pass, target, painter).RequirePixel(20, 20, Orange, "Before the change");
+
+		// Every painted pixel magenta, premultiplied like the rest
+		std::string source;
+		{
+			std::ifstream file(folder / "Painter.frag", std::ios::binary);
+			source.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+		}
+		const std::string last = "\toutColor = color;\n}";
+		Require(source.rfind(last) != std::string::npos, "Painter.frag no longer ends with outColor = color;");
+		source.replace(source.rfind(last), last.size(), "\toutColor = vec4(1.0, 0.0, 1.0, 1.0) * color.a;\n}");
+		{
+			std::ofstream file(folder / "Painter.frag", std::ios::binary | std::ios::trunc);
+			file << source;
+		}
+		// The binner unchanged but saved, so Slang compiles it too
+		{
+			std::ofstream file(folder / "PainterBin.comp", std::ios::binary | std::ios::app);
+			file << "\n// Saved again by NyxPainterGpuTests\n";
+		}
+
+		// The watcher sees the saves; the compiles follow once they settled
+		std::vector<std::string> compiled;
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+		while (compiled.size() < 2 && std::chrono::steady_clock::now() < deadline)
+		{
+			for (const ShaderProgramUpdate& update : programs.Update())
+			{
+				Require(update.bChanged, update.Name + " doesn't compile");
+				compiled.push_back(update.Name);
+			}
+			std::this_thread::sleep_for(std::chrono::milliseconds(10));
+		}
+		Require(compiled.size() == 2, "Painter.frag and PainterBin.comp weren't both compiled within 10 seconds");
+
+		gpu.GetContext().GetDevice().waitIdle();
+		pass.RebuildPipelines();
+		const PaintedImage changed = gpu.PaintWith(pass, target, painter);
+		changed.RequirePixel(20, 20, glm::vec4(1.0f, 0.0f, 1.0f, 1.0f), "After the change");
+		changed.RequirePixel(5, 5, Transparent, "Outside the rect, after the change");
+
+		gpu.GetContext().GetDevice().waitIdle();
+		target.Release();
+		pass.Shutdown();
+		std::filesystem::remove_all(folder);
 	}
 
 	void TestFilledRectAndAntiAliasing(GpuPainter& gpu)
@@ -1651,6 +1739,8 @@ int main()
 		TestBlurKeepsAFlatImageFlat(gpu);
 		TestBlurSmoothsAnEdge(gpu);
 		TestBlurFollowsTheSourceAndOptions(gpu);
+
+		TestPipelinesFollowChangedShaders(gpu);
 	}
 	catch (const std::exception& error)
 	{

@@ -6,6 +6,8 @@
 #include "OffscreenRenderTarget.h"
 #include "VulkanViewportTarget.h"
 #include "VulkanPainter.h"
+#include "Paths.h"
+#include "ShaderPrograms.h"
 #include "VulkanBlur.h"
 #include "VulkanGlass.h"
 #include "Painter.h"
@@ -161,19 +163,6 @@ namespace Nyx
 		{
 			return GetProjectionMatrix() * GetViewMatrix();
 		}
-	};
-
-	struct ShaderHotReloadState
-	{
-		std::filesystem::path VertSourcePath;
-		std::filesystem::path FragSourcePath;
-		std::filesystem::path VertSpvPath;
-		std::filesystem::path FragSpvPath;
-
-		std::filesystem::file_time_type LastVertWriteTime{};
-		std::filesystem::file_time_type LastFragWriteTime{};
-
-		bool bReloadPending = false;
 	};
 
 	struct DebugLineVertex
@@ -353,7 +342,8 @@ namespace Nyx
 
 		vk::raii::ShaderModule CreateShaderModule(const std::vector<uint32_t>& spirv);
 
-		// Loads a compiled shader by file name (e.g. "Grid.vert.spv") from Paths::GetCompiledShadersDir()
+		// A shader's SPIR-V by file name (e.g. "Grid.vert.spv"), from Programs: the last good
+		// compile, at first the build's
 		std::vector<uint32_t> ReadSpirvFile(const std::string& fileName);
 
 		void CreateSceneResourcesForView(SceneViewInstance& view);
@@ -382,8 +372,12 @@ namespace Nyx
 
 		uint32_t FindMemoryType(vk::PhysicalDevice physicalDevice, uint32_t typeFilter, vk::MemoryPropertyFlags properties);
 
-		bool RecompileGridShaders();
-		void PollGridShaderHotReload();
+		// Live reload of the engine's shaders (Design/shader-materials.md, stage 1, change 3):
+		// turned on where the shader sources and NyxShaderCompiler.exe are found
+		void StartLiveShaderReload();
+		// Once per frame, before recording: logs what compiled, and makes the pipelines of changed
+		// shaders again
+		void ApplyShaderUpdates();
 
 		void LoadTestGltfScene();
 
@@ -447,6 +441,9 @@ namespace Nyx
 
 		VulkanContext Context;
 		VulkanSwapchain Swapchain;
+
+		// The engine's shaders by name; every pipeline is made from them
+		Nyx::Engine::ShaderPrograms Programs{ Nyx::Paths::GetCompiledShadersDir(), Nyx::Paths::GetShadersDir() };
 
 		Nyx::Engine::VulkanPainter PainterPass;
 
@@ -660,7 +657,6 @@ namespace Nyx
 		vk::raii::PipelineLayout GridPipelineLayout{ nullptr };
 		vk::raii::Pipeline GridPipeline{ nullptr };
 
-		ShaderHotReloadState GridShaderHotReload;
 
 		// Skybox
 		CubemapTexture SkyboxCubemap{ "Skybox01" };

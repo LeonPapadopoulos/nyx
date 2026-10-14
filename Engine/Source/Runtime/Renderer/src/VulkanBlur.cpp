@@ -41,25 +41,6 @@ namespace Nyx::Engine
 
 		static_assert(sizeof(BlurPushConstants) == 32, "Blur.frag reads exactly 32 bytes of push constants");
 
-		std::vector<uint32_t> ReadSpirvFile(const std::string& fileName)
-		{
-			const std::filesystem::path path = Nyx::Paths::GetCompiledShadersDir() / fileName;
-			std::ifstream file(path, std::ios::ate | std::ios::binary);
-			if (!file.is_open())
-			{
-				throw std::runtime_error("Failed to open SPIR-V file: " + path.string());
-			}
-			const std::streamsize fileSize = file.tellg();
-			if (fileSize <= 0 || (fileSize % sizeof(uint32_t)) != 0)
-			{
-				throw std::runtime_error("Invalid SPIR-V file size: " + path.string());
-			}
-			std::vector<uint32_t> spirv(static_cast<size_t>(fileSize) / sizeof(uint32_t));
-			file.seekg(0);
-			file.read(reinterpret_cast<char*>(spirv.data()), fileSize);
-			return spirv;
-		}
-
 		uint32_t FindMemoryType(vk::PhysicalDevice physicalDevice, uint32_t typeFilter, vk::MemoryPropertyFlags properties)
 		{
 			const vk::PhysicalDeviceMemoryProperties memoryProperties = physicalDevice.getMemoryProperties();
@@ -103,9 +84,10 @@ namespace Nyx::Engine
 		SourceExtent = vk::Extent2D{ 0, 0 };
 	}
 
-	void VulkanBlur::Initialize(Nyx::VulkanContext& context)
+	void VulkanBlur::Initialize(Nyx::VulkanContext& context, ShaderPrograms& programs)
 	{
 		Context = &context;
+		Programs = &programs;
 		CreateRenderPass();
 		CreateDescriptors();
 		CreatePipeline();
@@ -117,6 +99,11 @@ namespace Nyx::Engine
 		samplerInfo.addressModeV = vk::SamplerAddressMode::eClampToEdge;
 		samplerInfo.addressModeW = vk::SamplerAddressMode::eClampToEdge;
 		Sampler = vk::raii::Sampler(Context->GetDevice(), samplerInfo);
+	}
+
+	void VulkanBlur::RebuildPipeline()
+	{
+		CreatePipeline();
 	}
 
 	void VulkanBlur::Shutdown()
@@ -356,8 +343,8 @@ namespace Nyx::Engine
 
 	void VulkanBlur::CreatePipeline()
 	{
-		const std::vector<uint32_t> vertexCode = ReadSpirvFile("Blur.vert.spv");
-		const std::vector<uint32_t> fragmentCode = ReadSpirvFile("Blur.frag.spv");
+		const std::vector<uint32_t>& vertexCode = Programs->GetSpirv("Blur.vert");
+		const std::vector<uint32_t>& fragmentCode = Programs->GetSpirv("Blur.frag");
 		const vk::raii::ShaderModule vertexModule(Context->GetDevice(), vk::ShaderModuleCreateInfo({}, vertexCode.size() * sizeof(uint32_t), vertexCode.data()));
 		const vk::raii::ShaderModule fragmentModule(Context->GetDevice(), vk::ShaderModuleCreateInfo({}, fragmentCode.size() * sizeof(uint32_t), fragmentCode.data()));
 

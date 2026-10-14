@@ -36,3 +36,5 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES
 
 # Compiled by Engine/Shaders; the renderer loads them from a "Shaders" folder next to the .exe
 nyx_copy_shaders_next_to(NyxGame)
+# Live shader reload compiles in NyxShaderCompiler.exe, which sits next to the game
+add_dependencies(NyxGame NyxShaderCompiler)

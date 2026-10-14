@@ -90,7 +90,8 @@ namespace
 
 	// The decorations that decide how a shader reads its inputs and buffers: offsets, matrix
 	// strides and majorness, bindings, sets and locations. Ids differ between compilers, so each is
-	// described without its target, and the whole set is sorted. Built-ins are left out: glslc
+	// described without its target; the result is sorted, each once. Once, because Slang sometimes
+	// declares a second view of a buffer with the same layout. Built-ins are left out: glslc
 	// declares gl_Position in a gl_PerVertex block, Slang as a variable of its own; both are valid.
 	std::vector<std::string> InterfaceDecorations(const std::vector<uint32_t>& words)
 	{
@@ -132,7 +133,29 @@ namespace
 			index += wordCount;
 		}
 		std::sort(decorations.begin(), decorations.end());
+		decorations.erase(std::unique(decorations.begin(), decorations.end()), decorations.end());
 		return decorations;
+	}
+
+	// The capabilities a module declares (OpCapability), e.g. 1 for Shader
+	std::vector<uint32_t> Capabilities(const std::vector<uint32_t>& words)
+	{
+		constexpr uint32_t OpCapability = 17;
+		std::vector<uint32_t> capabilities;
+		for (size_t index = 5; index < words.size();)
+		{
+			const uint32_t wordCount = words[index] >> 16;
+			if (wordCount == 0)
+			{
+				break;
+			}
+			if ((words[index] & 0xFFFF) == OpCapability && wordCount == 2)
+			{
+				capabilities.push_back(words[index + 1]);
+			}
+			index += wordCount;
+		}
+		return capabilities;
 	}
 
 	// "set.binding" of every decorated variable
@@ -356,7 +379,7 @@ namespace
 		for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(EngineShaders))
 		{
 			const std::string extension = entry.path().extension().string();
-			if (extension != ".vert" && extension != ".frag")
+			if (extension != ".vert" && extension != ".frag" && extension != ".comp")
 			{
 				continue;
 			}
@@ -364,7 +387,8 @@ namespace
 			const ShaderCompileResult result = Compiler().CompileProgram(entry.path());
 			RequireSucceeded(result, name);
 			Require(result.EntryPoints.size() == 1 && result.EntryPoints[0].Name == "main", name + " has no entry point main");
-			Require(result.EntryPoints[0].Stage == (extension == ".vert" ? EShaderStage::Vertex : EShaderStage::Fragment), name + " has the wrong stage");
+			const EShaderStage stage = extension == ".vert" ? EShaderStage::Vertex : extension == ".frag" ? EShaderStage::Fragment : EShaderStage::Compute;
+			Require(result.EntryPoints[0].Stage == stage, name + " has the wrong stage");
 
 			const std::string problem = ValidateSpirv(result.EntryPoints[0].Spirv, false);
 			Require(problem.empty(), name + " isn't valid SPIR-V: " + problem);
@@ -377,24 +401,34 @@ namespace
 				std::string difference;
 				for (const std::string& decoration : ours)
 				{
-					if (std::count(ours.begin(), ours.end(), decoration) != std::count(theirs.begin(), theirs.end(), decoration))
+					if (!std::binary_search(theirs.begin(), theirs.end(), decoration))
 					{
-						difference += "\n  Slang " + std::to_string(std::count(ours.begin(), ours.end(), decoration)) + "x, glslc " +
-							std::to_string(std::count(theirs.begin(), theirs.end(), decoration)) + "x: " + decoration;
+						difference += "\n  only Slang: " + decoration;
 					}
 				}
 				for (const std::string& decoration : theirs)
 				{
-					if (std::count(ours.begin(), ours.end(), decoration) == 0)
+					if (!std::binary_search(ours.begin(), ours.end(), decoration))
 					{
-						difference += "\n  Slang 0x, glslc: " + decoration;
+						difference += "\n  only glslc: " + decoration;
 					}
 				}
 				Require(false, name + ": Slang's offsets, matrices, bindings or locations differ from glslc's:" + difference);
 			}
+
+			// Nothing the device doesn't turn on: what glslc's code needs, and DemoteToHelperInvocation
+			// (discard, in SPIR-V 1.6), which VulkanContext enables
+			constexpr uint32_t DemoteToHelperInvocation = 5379;
+			const std::vector<uint32_t> glslcCapabilities = Capabilities(glslc);
+			for (uint32_t capability : Capabilities(result.EntryPoints[0].Spirv))
+			{
+				const bool bAllowed = capability == DemoteToHelperInvocation ||
+					std::find(glslcCapabilities.begin(), glslcCapabilities.end(), capability) != glslcCapabilities.end();
+				Require(bAllowed, name + ": Slang's code needs SPIR-V capability " + std::to_string(capability) + ", which glslc's doesn't and the device may not turn on");
+			}
 			++compared;
 		}
-		Require(compared >= 18, "only " + std::to_string(compared) + " engine shaders were compared");
+		Require(compared >= 19, "only " + std::to_string(compared) + " engine shaders were compared");
 	}
 
 	void TestDefaultsWriterCompiles()

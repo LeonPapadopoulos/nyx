@@ -88,6 +88,7 @@ target_include_directories(NyxPainterGpuTests PRIVATE "${CMAKE_SOURCE_DIR}/Depen
 add_dependencies(NyxPainterGpuTests NyxGeneratedReflection)
 set_property(TARGET NyxPainterGpuTests PROPERTY FOLDER "Tests")
 nyx_copy_shaders_next_to(NyxPainterGpuTests)
+nyx_copy_shader_compiler_next_to(NyxPainterGpuTests)
 add_test(NAME NyxPainterGpuTests COMMAND NyxPainterGpuTests)
 
 # SPIRV-Tools' validator, for the shader compiler tests. Its release and debug builds both come with the SDK.
@@ -119,6 +120,30 @@ add_dependencies(NyxShaderCompilerGpuTests NyxGeneratedReflection)
 set_property(TARGET NyxShaderCompilerGpuTests PROPERTY FOLDER "Tests")
 nyx_copy_shader_compiler_next_to(NyxShaderCompilerGpuTests)
 add_test(NAME NyxShaderCompilerGpuTests COMMAND NyxShaderCompilerGpuTests)
+
+# FileWatcher on a real folder in the temp folder.
+add_executable(NyxFileWatcherTests FileWatcherTests.cpp)
+target_link_libraries(NyxFileWatcherTests PRIVATE NyxEngine)
+add_dependencies(NyxFileWatcherTests NyxGeneratedReflection)
+set_property(TARGET NyxFileWatcherTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxFileWatcherTests COMMAND NyxFileWatcherTests)
+
+# ShaderPrograms on real files, compiling in this process: settling, last good code, includes.
+add_executable(NyxShaderProgramsTests ShaderProgramsTests.cpp)
+target_link_libraries(NyxShaderProgramsTests PRIVATE NyxEngine)
+add_dependencies(NyxShaderProgramsTests NyxGeneratedReflection)
+set_property(TARGET NyxShaderProgramsTests PROPERTY FOLDER "Tests")
+nyx_copy_shader_compiler_next_to(NyxShaderProgramsTests)
+add_test(NAME NyxShaderProgramsTests COMMAND NyxShaderProgramsTests)
+
+# Compiling in NyxShaderCompiler.exe, crashes of it included.
+add_executable(NyxShaderCompileServiceTests ShaderCompileServiceTests.cpp)
+target_link_libraries(NyxShaderCompileServiceTests PRIVATE NyxEngine)
+target_compile_definitions(NyxShaderCompileServiceTests PRIVATE NYX_TEST_SHADERS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/Shaders")
+add_dependencies(NyxShaderCompileServiceTests NyxGeneratedReflection NyxShaderCompiler)
+set_property(TARGET NyxShaderCompileServiceTests PROPERTY FOLDER "Tests")
+nyx_copy_shader_compiler_next_to(NyxShaderCompileServiceTests)
+add_test(NAME NyxShaderCompileServiceTests COMMAND NyxShaderCompileServiceTests)
 
 if(MSVC)
     add_test(NAME NyxRuntimeInspectionSymbols

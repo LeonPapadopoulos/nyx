@@ -159,6 +159,8 @@ set_target_properties(NyxEditor PROPERTIES
 
 # Compiled by Engine/Shaders; the renderer loads them from a "Shaders" folder next to the .exe
 nyx_copy_shaders_next_to(NyxEditor)
+# Live shader reload compiles in NyxShaderCompiler.exe, which sits next to the editor
+add_dependencies(NyxEditor NyxShaderCompiler)
 
 #######################################################################################
 

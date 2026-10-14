@@ -27,6 +27,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/CrashHandler.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/FrameRateLimiter.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/NetConnection.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Core/src/FileWatcher.cpp
 
     # Runtime/Engine
     ${NYX_ENGINE_ROOT}/Runtime/Engine/src/Application.cpp
@@ -97,6 +98,8 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ImageFile.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanBlur.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ShaderCompiler.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ShaderCompileService.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ShaderPrograms.cpp
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/src/ReflectionUtils.cpp
@@ -114,6 +117,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/CrashHandler.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/FrameRateLimiter.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/NetConnection.h
+    ${NYX_ENGINE_ROOT}/Runtime/Core/include/FileWatcher.h
     
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/NyxPCH.h
 
@@ -196,6 +200,8 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanBlur.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ShaderLayout.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ShaderCompiler.h
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ShaderCompileService.h
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ShaderPrograms.h
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionTypes.h
