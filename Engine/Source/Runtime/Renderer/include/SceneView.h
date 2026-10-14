@@ -32,6 +32,10 @@ namespace Nyx
 
 		// See IRenderer::SetSceneViewExposure()
 		float ExposureStops = 0.0f;
+		// See IRenderer::SetSceneViewSky() and SetSceneViewDebug()
+		ESceneViewSky Sky = ESceneViewSky::Scene;
+		float SkyRotation = 0.0f;
+		ESceneViewDebug Debug = ESceneViewDebug::Lit;
 		// The HDR picture's slot in the bindless texture array, for the tonemap
 		uint32_t HdrTextureSlot = 0;
 

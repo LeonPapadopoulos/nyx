@@ -131,6 +131,14 @@ namespace Nyx
 		// How bright the view shows its scene, in stops: +1 twice as bright, -1 half. 0 by default.
 		virtual void SetSceneViewExposure(uint64_t id, float stops) = 0;
 
+		// The sky the view shows and is lit by, turned about the up axis by `rotationRadians`; the
+		// scene's sky, unturned, by default. The studio's and black's light is made at their first
+		// use (a few milliseconds).
+		virtual void SetSceneViewSky(uint64_t id, ESceneViewSky sky, float rotationRadians) = 0;
+
+		// What the view shows: the lit scene by default, or a debug view of its materials
+		virtual void SetSceneViewDebug(uint64_t id, ESceneViewDebug view) = 0;
+
 		virtual bool GetSceneViewCameraData(uint64_t sceneViewId, Nyx::SceneViewCameraData& outData) const = 0;
 
 		// The renderer's world, which every scene view shows unless it has one of its own
@@ -210,6 +218,8 @@ namespace Nyx
 		virtual Nyx::Mesh* GetCubeMesh() = 0;
 		// Of radius 0.5, like the cube's half size
 		virtual Nyx::Mesh* GetSphereMesh() = 0;
+		// A square of side 1 on the ground (y = 0), facing up
+		virtual Nyx::Mesh* GetPlaneMesh() = 0;
 
 		// The material in a .nyxmat file, by its path in the assets folder
 		// ("Materials/Stone.nyxmat"), loaded at the first ask. Never null: one that can't be drawn

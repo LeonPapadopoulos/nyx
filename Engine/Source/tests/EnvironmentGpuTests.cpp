@@ -162,10 +162,11 @@ namespace
 	void TestUniformSky(Gpu& gpu)
 	{
 		const glm::vec3 color = glm::vec3(64.0f, 128.0f, 255.0f) / 255.0f;
-		gpu.Environment.Build(gpu.MakeSky({ color, color, color, color, color, color }));
+		const uint32_t sky = gpu.MakeSky({ color, color, color, color, color, color });
+		gpu.Environment.Build(sky);
 
 		// Diffuse: the sky's colour from every side, and nothing that depends on the side
-		const std::array<glm::vec3, 9>& c = gpu.Environment.GetIrradiance();
+		const std::array<glm::vec3, 9>& c = gpu.Environment.GetIrradiance(sky);
 		for (const glm::vec3& n : { glm::vec3(1, 0, 0), glm::vec3(-1, 0, 0), glm::vec3(0, 1, 0), glm::vec3(0, -1, 0), glm::vec3(0, 0, 1), glm::normalize(glm::vec3(1, -2, 3)) })
 		{
 			const glm::vec3 diffuse = Diffuse(c, n);
@@ -179,7 +180,7 @@ namespace
 		// Specular: the sky's colour at every roughness
 		for (uint32_t level = 0; level < VulkanEnvironment::SpecularLevels; ++level)
 		{
-			const std::vector<glm::vec4> texels = gpu.Environment.ReadSpecularLevel(level);
+			const std::vector<glm::vec4> texels = gpu.Environment.ReadSpecularLevel(sky, level);
 			for (size_t texel = 0; texel < texels.size(); texel += 7)
 			{
 				Require(Near(glm::vec3(texels[texel]), color, 0.01f), "A uniform sky's specular mip " + std::to_string(level) + " is " + Text(glm::vec3(texels[texel])) + " at texel " + std::to_string(texel));
@@ -190,9 +191,10 @@ namespace
 	void TestSkyLitFromAbove(Gpu& gpu)
 	{
 		const std::array<glm::vec3, 6> faces = { glm::vec3(0.0f), glm::vec3(0.0f), glm::vec3(1.0f), glm::vec3(0.0f), glm::vec3(0.0f), glm::vec3(0.0f) };
-		gpu.Environment.Build(gpu.MakeSky(faces));
+		const uint32_t sky = gpu.MakeSky(faces);
+		gpu.Environment.Build(sky);
 
-		const std::array<glm::vec3, 9>& c = gpu.Environment.GetIrradiance();
+		const std::array<glm::vec3, 9>& c = gpu.Environment.GetIrradiance(sky);
 		const std::array<glm::vec3, 9> expected = Project(faces);
 		for (uint32_t term = 0; term < 9; ++term)
 		{
@@ -204,13 +206,13 @@ namespace
 		Require(up.x > side.x && side.x > down.x && up.x > 0.3f, "The light from above doesn't come from above: up " + Text(up) + ", side " + Text(side) + ", down " + Text(down));
 
 		// Mirror-like, the top is white and the bottom black; rough, the light spreads
-		const std::vector<glm::vec4> sharp = gpu.Environment.ReadSpecularLevel(0);
+		const std::vector<glm::vec4> sharp = gpu.Environment.ReadSpecularLevel(sky, 0);
 		const uint32_t sharpSize = VulkanEnvironment::SpecularSize;
 		Require(Near(FaceMiddle(sharp, 2, sharpSize), glm::vec3(1.0f), 0.01f) && Near(FaceMiddle(sharp, 3, sharpSize), glm::vec3(0.0f), 0.01f), "Mip 0 isn't the sky");
 		Require(FaceMiddle(sharp, 0, sharpSize).x < 0.01f, "Mip 0 shows light at the side's middle");
 
 		const uint32_t roughLevel = VulkanEnvironment::SpecularLevels - 1;
-		const std::vector<glm::vec4> rough = gpu.Environment.ReadSpecularLevel(roughLevel);
+		const std::vector<glm::vec4> rough = gpu.Environment.ReadSpecularLevel(sky, roughLevel);
 		const uint32_t roughSize = VulkanEnvironment::SpecularSize >> roughLevel;
 		const float top = FaceMiddle(rough, 2, roughSize).x;
 		const float sideMiddle = FaceMiddle(rough, 0, roughSize).x;

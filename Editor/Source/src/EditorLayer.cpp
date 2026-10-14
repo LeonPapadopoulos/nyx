@@ -187,6 +187,7 @@ namespace Nyx::Editor
 
 		MainSceneView.DestroyView();
 		SecondarySceneView.DestroyView();
+		MaterialPreview.ReleaseView();
 		PainterTest.Release();
 		Mockup.Release();
 	}
@@ -239,6 +240,17 @@ namespace Nyx::Editor
 		Outliner.Draw(Editing);
 		Details.Draw(Editing);
 		MaterialParameters.Draw(*Renderer);
+		{
+			// The selected entity's mesh, for the preview's Selected Mesh
+			Nyx::Mesh* selectedMesh = nullptr;
+			const auto& selection = Editing.Scene.GetSelection();
+			const auto& world = Editing.Scene.GetRegistry();
+			if (selection && world.IsAlive(*selection) && world.Has<Nyx::Engine::MeshRendererComponent>(*selection))
+			{
+				selectedMesh = world.Get<Nyx::Engine::MeshRendererComponent>(*selection).MeshAsset;
+			}
+			MaterialPreview.Draw(*Renderer, MaterialParameters.GetDocument().GetPath(), selectedMesh);
+		}
 		MainSceneView.Draw(Editing, Preferences, CameraController);
 		SecondarySceneView.Draw(Editing, Preferences, CameraController);
 
@@ -357,6 +369,8 @@ namespace Nyx::Editor
 			NYX_UI(Nyx::UI::MenuItem("Theme", nullptr, &ThemeEditor.bOpen));
 			// The material open for editing; a material opens here when double-clicked in the asset browser
 			NYX_UI(Nyx::UI::MenuItem("Parameters", nullptr, &MaterialParameters.bOpen));
+			// The material open, on a shape, lit or in its debug views
+			NYX_UI(Nyx::UI::MenuItem("Preview", nullptr, &MaterialPreview.bOpen));
 
 			if (NYX_UI(Nyx::UI::MenuItem("Asset Browser")))
 			{
@@ -632,6 +646,7 @@ namespace Nyx::Editor
 	void EditorLayer::OpenMaterial(const std::string& path)
 	{
 		MaterialParameters.OpenMaterial(path);
+		MaterialPreview.bOpen = true;
 	}
 
 	std::string EditorLayer::GetCurrentSceneDisplayName() const

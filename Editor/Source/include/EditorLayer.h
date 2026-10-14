@@ -12,6 +12,7 @@
 #include "ImGuiDebugTools.h"
 #include "Layer.h"
 #include "MaterialParametersPanel.h"
+#include "MaterialPreviewPanel.h"
 #include "Paths.h"
 #include "PainterTestWindow.h"
 #include "MockupOverlay.h"
@@ -117,6 +118,8 @@ namespace Nyx::Editor
 		DetailsPanel Details;
 		// The material open for editing
 		MaterialParametersPanel MaterialParameters{ Nyx::Paths::GetAssetsDir() };
+		// The material open, on a shape in a world of its own
+		MaterialPreviewPanel MaterialPreview;
 		SceneViewPanel MainSceneView{ "Scene" };
 		SceneViewPanel SecondarySceneView{ "Scene 2" };
 		// Flies the scene views' free cameras

@@ -9,8 +9,9 @@ namespace nyx
 {
     // The diffuse light reaching a surface facing `n` (normalised), over pi: what a white
     // Lambertian surface shows
-    public float3 environmentDiffuse(float3 n)
+    public float3 environmentDiffuse(float3 worldNormal)
     {
+        const float3 n = skyDirection(worldNormal);
         const float4 c[9] = View.Irradiance;
         return max(c[0].rgb * 0.282095
                 + c[1].rgb * 0.488603 * n.y
@@ -28,7 +29,7 @@ namespace nyx
     public float3 environmentSpecular(float3 r, float roughness)
     {
         const float level = saturate(roughness) * float(View.SpecularLevels - 1);
-        return View.Specular.SampleLevel(LinearClamp, r, level).rgb;
+        return View.Specular.SampleLevel(LinearClamp, skyDirection(r), level).rgb;
     }
 
     // The split-sum's scale (x) and bias (y) of F0, for n·v and roughness

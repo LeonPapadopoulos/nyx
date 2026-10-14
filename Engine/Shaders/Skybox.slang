@@ -23,5 +23,12 @@ VertexOutput skyboxVertex(float3 position : POSITION)
 [shader("fragment")]
 float4 skyboxFragment(VertexOutput input) : SV_Target
 {
-    return View.Environment.Sample(nyx::LinearClamp, normalize(input.Direction));
+    // Behind a material's debug view, a dark grey that keeps the shape apart: the same on screen
+    // whether the view encodes colours (base colour, emission) or shows data as it is
+    if (nyx::isMaterialDebugView())
+    {
+        const bool bColor = View.DebugView == nyx::DebugBaseColor || View.DebugView == nyx::DebugEmission;
+        return float4((bColor ? 0.003 : 0.04).xxx, 1.0);
+    }
+    return View.Environment.Sample(nyx::LinearClamp, nyx::skyDirection(normalize(input.Direction)));
 }

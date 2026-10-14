@@ -141,6 +141,24 @@ namespace Nyx
 		return mesh;
 	}
 
+	MeshData MakePlane(float size)
+	{
+		const float half = size * 0.5f;
+		MeshData mesh;
+		for (const glm::vec2 corner : { glm::vec2(0.0f, 0.0f), glm::vec2(1.0f, 0.0f), glm::vec2(1.0f, 1.0f), glm::vec2(0.0f, 1.0f) })
+		{
+			Vertex vertex;
+			vertex.Position = glm::vec3(corner.x * size - half, 0.0f, corner.y * size - half);
+			vertex.Normal = glm::vec3(0.0f, 1.0f, 0.0f);
+			vertex.UV = corner;
+			mesh.Vertices.push_back(vertex);
+		}
+		// Counter-clockwise seen from above
+		mesh.Indices = { 0, 3, 2, 0, 2, 1 };
+		ComputeTangents(mesh);
+		return mesh;
+	}
+
 	Mesh::~Mesh()
 	{
 		Release();

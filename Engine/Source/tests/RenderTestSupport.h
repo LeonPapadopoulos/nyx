@@ -178,12 +178,13 @@ namespace Nyx::RenderTests
 		std::vector<std::vector<glm::vec4>> Specular;
 		std::vector<glm::vec2> Lookup;
 
-		explicit EnvironmentSamples(Nyx::Engine::VulkanEnvironment& environment)
+		// The light of the sky in `skySlot`, e.g. the renderer's (VulkanRenderer::GetSky())
+		EnvironmentSamples(Nyx::Engine::VulkanEnvironment& environment, uint32_t skySlot)
 		{
-			Irradiance = environment.GetIrradiance();
+			Irradiance = environment.GetIrradiance(skySlot);
 			for (uint32_t level = 0; level < Nyx::Engine::VulkanEnvironment::SpecularLevels; ++level)
 			{
-				Specular.push_back(environment.ReadSpecularLevel(level));
+				Specular.push_back(environment.ReadSpecularLevel(skySlot, level));
 			}
 			Lookup = environment.ReadLookup();
 		}

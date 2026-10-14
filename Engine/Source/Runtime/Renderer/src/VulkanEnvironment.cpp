@@ -110,22 +110,35 @@ namespace Nyx::Engine
 			return;
 		}
 		Context->WaitIdle();
-		Release(Source);
-		Release(Specular);
+		for (auto& [sky, light] : Lights)
+		{
+			Release(light.Specular);
+		}
+		Lights.clear();
 		Release(Lookup);
 		Pipelines.clear();
 		Pool = nullptr;
 		PipelineLayout = nullptr;
 		SetLayout = nullptr;
-		bHasSky = false;
 		Context = nullptr;
 	}
 
 	void VulkanEnvironment::Build(uint32_t skySlot)
 	{
-		SkySlot = skySlot;
-		bHasSky = true;
-		BuildLight();
+		BuildLight(skySlot, Lights[skySlot]);
+	}
+
+	void VulkanEnvironment::Forget(uint32_t skySlot)
+	{
+		const auto found = Lights.find(skySlot);
+		if (found == Lights.end())
+		{
+			return;
+		}
+		// Frames in flight may still read it
+		Context->WaitIdle();
+		Release(found->second.Specular);
+		Lights.erase(found);
 	}
 
 	void VulkanEnvironment::Rebuild()
@@ -133,10 +146,23 @@ namespace Nyx::Engine
 		Context->WaitIdle();
 		CreatePipelines();
 		BuildLookup();
-		if (bHasSky)
+		for (auto& [sky, light] : Lights)
 		{
-			BuildLight();
+			BuildLight(sky, light);
 		}
+	}
+
+	uint32_t VulkanEnvironment::GetSpecularSlot(uint32_t skySlot) const
+	{
+		const auto found = Lights.find(skySlot);
+		return found != Lights.end() ? found->second.Specular.Slot : 0;
+	}
+
+	const std::array<glm::vec3, 9>& VulkanEnvironment::GetIrradiance(uint32_t skySlot) const
+	{
+		static const std::array<glm::vec3, 9> None{};
+		const auto found = Lights.find(skySlot);
+		return found != Lights.end() ? found->second.Irradiance : None;
 	}
 
 	void VulkanEnvironment::CreatePipelines()
@@ -173,47 +199,47 @@ namespace Nyx::Engine
 		Lookup.bHasSlot = true;
 	}
 
-	void VulkanEnvironment::BuildLight()
+	void VulkanEnvironment::BuildLight(uint32_t skySlot, Light& light)
 	{
 		const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
 		Context->WaitIdle();
-		Release(Source);
-		Release(Specular);
-		Source = MakeImage(SourceSize, 10, 6);
-		Specular = MakeImage(SpecularSize, SpecularLevels, 6);
+		Release(light.Specular);
+		Image source = MakeImage(SourceSize, 10, 6);
+		Image& specular = light.Specular;
+		specular = MakeImage(SpecularSize, SpecularLevels, 6);
 		Pool.reset();
 
 		// The source's mips are made before the other dispatches read them through the array
-		Source.Slot = Bindless->AddTexture(*Source.Sampled);
-		Source.bHasSlot = true;
+		source.Slot = Bindless->AddTexture(*source.Sampled);
+		source.bHasSlot = true;
 
 		HostBuffer partials(*Context, PartialThreads * 9 * sizeof(glm::vec4), vk::BufferUsageFlagBits::eStorageBuffer);
 		RunCommands([&](vk::raii::CommandBuffer& commands)
 			{
-				Transition(commands, Source, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
-				Transition(commands, Specular, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
+				Transition(commands, source, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
+				Transition(commands, specular, vk::ImageLayout::eUndefined, vk::ImageLayout::eGeneral);
 
 				// The sky in HDR, with every mip
 				EnvironmentConstants constants;
-				constants.Source = SkySlot;
+				constants.Source = skySlot;
 				constants.Size = SourceSize;
 				Bindings bindings;
-				bindings.Target = *Source.Levels[0];
+				bindings.Target = *source.Levels[0];
 				Dispatch(commands, "environmentCopy", &constants, bindings, Groups(SourceSize), Groups(SourceSize), 6);
-				for (uint32_t level = 1; level < Source.LevelCount; ++level)
+				for (uint32_t level = 1; level < source.LevelCount; ++level)
 				{
 					constants.Size = SourceSize >> level;
-					bindings.Target = *Source.Levels[level];
-					bindings.Previous = *Source.Levels[level - 1];
+					bindings.Target = *source.Levels[level];
+					bindings.Previous = *source.Levels[level - 1];
 					Dispatch(commands, "environmentDownsample", &constants, bindings, Groups(constants.Size), Groups(constants.Size), 6);
 				}
-				Transition(commands, Source, vk::ImageLayout::eGeneral, vk::ImageLayout::eShaderReadOnlyOptimal);
+				Transition(commands, source, vk::ImageLayout::eGeneral, vk::ImageLayout::eShaderReadOnlyOptimal);
 
 				// The specular cube, rougher with each mip
 				for (uint32_t level = 0; level < SpecularLevels; ++level)
 				{
 					EnvironmentConstants prefilter;
-					prefilter.Source = Source.Slot;
+					prefilter.Source = source.Slot;
 					prefilter.Size = SpecularSize >> level;
 					prefilter.SourceSize = SourceSize;
 					prefilter.Roughness = static_cast<float>(level) / static_cast<float>(SpecularLevels - 1);
@@ -221,14 +247,14 @@ namespace Nyx::Engine
 					// Mip 0 is a mirror: the source's mip of its size
 					prefilter.SourceLevel = std::log2(static_cast<float>(SourceSize) / static_cast<float>(SpecularSize));
 					Bindings target;
-					target.Target = *Specular.Levels[level];
+					target.Target = *specular.Levels[level];
 					Dispatch(commands, "environmentPrefilter", &prefilter, target, Groups(prefilter.Size), Groups(prefilter.Size), 6);
 				}
-				Transition(commands, Specular, vk::ImageLayout::eGeneral, vk::ImageLayout::eShaderReadOnlyOptimal);
+				Transition(commands, specular, vk::ImageLayout::eGeneral, vk::ImageLayout::eShaderReadOnlyOptimal);
 
 				// The irradiance, summed in parts
 				EnvironmentConstants irradiance;
-				irradiance.Source = Source.Slot;
+				irradiance.Source = source.Slot;
 				irradiance.Size = SourceSize >> IrradianceLevel;
 				irradiance.SourceLevel = static_cast<float>(IrradianceLevel);
 				Bindings sums;
@@ -237,8 +263,10 @@ namespace Nyx::Engine
 				const vk::MemoryBarrier toHost(vk::AccessFlagBits::eShaderWrite, vk::AccessFlagBits::eHostRead);
 				commands.pipelineBarrier(vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eHost, {}, toHost, {}, {});
 			});
-		Specular.Slot = Bindless->AddTexture(*Specular.Sampled);
-		Specular.bHasSlot = true;
+		specular.Slot = Bindless->AddTexture(*specular.Sampled);
+		specular.bHasSlot = true;
+		// Read by the dispatches above only, which are done
+		Release(source);
 
 		// The parts added up, then convolved with the cosine and divided by pi: A0 = pi,
 		// A1 = 2 pi / 3, A2 = pi / 4 (Ramamoorthi and Hanrahan)
@@ -253,7 +281,7 @@ namespace Nyx::Engine
 			{
 				sum += glm::vec3(parts[thread * 9 + term]);
 			}
-			Irradiance[term] = sum * Convolution[term];
+			light.Irradiance[term] = sum * Convolution[term];
 		}
 		LOG_INFO("The sky's light made in {:.0f} ms", std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
 	}
@@ -419,9 +447,9 @@ namespace Nyx::Engine
 		return values;
 	}
 
-	std::vector<glm::vec4> VulkanEnvironment::ReadSpecularLevel(uint32_t level)
+	std::vector<glm::vec4> VulkanEnvironment::ReadSpecularLevel(uint32_t skySlot, uint32_t level)
 	{
-		return ReadImage(Specular, level);
+		return ReadImage(Lights.at(skySlot).Specular, level);
 	}
 
 	std::vector<glm::vec2> VulkanEnvironment::ReadLookup()

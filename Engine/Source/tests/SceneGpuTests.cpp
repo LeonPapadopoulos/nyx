@@ -13,7 +13,9 @@
 // A view can show a world of its own beside the scene: it draws and picks that world's objects,
 // shows no outline of the scene's selection, and keeps its pending pick when the scene is set anew.
 // Material values set in memory, as the material editor sets them, show in the next frame and
-// leave the file as it is, until the file is saved and read again.
+// leave the file as it is, until the file is saved and read again. A view has a sky of its own
+// (black, a studio, the scene's turned) and debug views of its materials' outputs and of light
+// that is NaN or out of range.
 //
 // NYX_SCENE_TEST_OUTPUT=<folder> saves what was rendered there, e.g. to make a new reference
 // after a change that is meant to change the picture.
@@ -32,6 +34,7 @@
 #include <GLFW/glfw3.h>
 #include <imgui.h>
 #include <glm/glm.hpp>
+#include <glm/gtc/constants.hpp>
 #include <glm/gtc/quaternion.hpp>
 
 #include <algorithm>
@@ -352,13 +355,13 @@ namespace
 		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
 
 		Nyx::Engine::VulkanEnvironment& environment = gpu.Renderer.GetEnvironment();
-		const std::array<glm::vec3, 9>& c = environment.GetIrradiance();
+		const std::array<glm::vec3, 9>& c = environment.GetIrradiance(gpu.Renderer.GetSky());
 		const glm::vec3 diffuse = c[0] * 0.282095f + c[2] * 0.488603f + c[6] * 0.315392f * 2.0f;
 
 		// The roughest mip's +Z face, sampled at its middle: the mean of the four middle texels
 		const uint32_t level = Nyx::Engine::VulkanEnvironment::SpecularLevels - 1;
 		const uint32_t size = Nyx::Engine::VulkanEnvironment::SpecularSize >> level;
-		const std::vector<glm::vec4> rough = environment.ReadSpecularLevel(level);
+		const std::vector<glm::vec4> rough = environment.ReadSpecularLevel(gpu.Renderer.GetSky(), level);
 		glm::vec3 specular(0.0f);
 		for (const uint32_t y : { size / 2 - 1, size / 2 })
 		{
@@ -406,7 +409,7 @@ namespace
 		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
 		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
 
-		const EnvironmentSamples environment(gpu.Renderer.GetEnvironment());
+		const EnvironmentSamples environment(gpu.Renderer.GetEnvironment(), gpu.Renderer.GetSky());
 		const std::array<std::pair<const LiveMaterialFile*, glm::vec3>, 2> cases = {
 			std::pair{ &dielectric, LightFacingZ(environment, glm::vec3(0.5f), 0.0f, 0.5f) },
 			std::pair{ &metal, LightFacingZ(environment, glm::vec3(0.9f, 0.6f, 0.3f), 1.0f, 0.3f) },
@@ -520,6 +523,121 @@ namespace
 		renderer.SetWorld(nullptr);
 		gpu.DrawFrames(1);
 	}
+	// What the material preview shows: a view's own sky (black, the studio, the scene's turned
+	// about the up axis) and its debug views: one output of the material as it is, and where the
+	// light before tonemapping is NaN or out of range
+	void TestSkiesAndDebugViews(SceneRenderer& gpu)
+	{
+		Nyx::IRenderer& renderer = gpu.Renderer;
+		LiveMaterialFile red("Materials/NyxSceneGpuTests-Preview.nyxmat");
+		red.Write("Shader = Shaders/Standard.slang\nBaseColor = 0.8 0.2 0.1\nRoughness = 0.4\n");
+		LiveMaterialFile glowing("Materials/NyxSceneGpuTests-Bright.nyxmat");
+		glowing.Write("Shader = Shaders/Standard.slang\nEmission = 4 4 4\n");
+		LiveMaterialFile nanShader("Shaders/NyxSceneGpuTestsNan.slang");
+		nanShader.Write(GlowShader("    float Amount = -1.0;\n", "float3(sqrt(Amount))", "NyxSceneGpuTestsNan"));
+		LiveMaterialFile nan("Materials/NyxSceneGpuTests-Nan.nyxmat");
+		nan.Write("Shader = Shaders/NyxSceneGpuTestsNan.slang\n");
+
+		// A sphere filling the middle of the view, the sky around it
+		Registry world;
+		const Entity sphere = world.CreateEntity();
+		world.Add<TransformComponent>(sphere, TransformComponent{});
+		MeshRendererComponent meshRenderer;
+		meshRenderer.MeshAsset = renderer.GetSphereMesh();
+		meshRenderer.MaterialAsset = renderer.GetMaterial(red.Path);
+		world.Add<MeshRendererComponent>(sphere, meshRenderer);
+		const Entity camera = world.CreateEntity();
+		world.Add<TransformComponent>(camera, TransformComponent{ .Position = glm::vec3(0.0f, 0.0f, 2.0f), .Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f), .Scale = glm::vec3(1.0f) });
+		world.Add<CameraComponent>(camera, CameraComponent{});
+		const Entity sun = world.CreateEntity();
+		world.Add<TransformComponent>(sun, TransformComponent{ .Position = glm::vec3(0.0f), .Rotation = glm::quat(glm::radians(glm::vec3(-45.0f, 30.0f, 0.0f))), .Scale = glm::vec3(1.0f) });
+		world.Add<DirectionalLightComponent>(sun, DirectionalLightComponent{});
+		renderer.GetMaterial(glowing.Path);
+		renderer.GetMaterial(nan.Path);
+
+		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewWorld(view, &world);
+		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
+		renderer.SetSceneViewShowEditorOverlays(view, false);
+		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
+		gpu.DrawUntilShadersCompiled();
+
+		const auto show = [&](Nyx::ESceneViewSky sky, float rotation, Nyx::ESceneViewDebug debugView)
+		{
+			renderer.SetSceneViewSky(view, sky, rotation);
+			renderer.SetSceneViewDebug(view, debugView);
+			gpu.DrawFrames(2);
+			RgbaImage image;
+			Require(gpu.Renderer.ReadSceneViewPixels(view, image), "The scene view can't be read back");
+			return image;
+		};
+		const auto at = [](const RgbaImage& image, uint32_t x, uint32_t y)
+		{
+			const uint8_t* rgb = &image.Pixels[(static_cast<size_t>(y) * image.Width + x) * 4];
+			return std::array<uint8_t, 3>{ rgb[0], rgb[1], rgb[2] };
+		};
+		const auto corner = [&](const RgbaImage& image)
+		{
+			return at(image, 4, 4);
+		};
+		const auto middle = [&](const RgbaImage& image)
+		{
+			return at(image, ViewWidth / 2, ViewHeight / 2);
+		};
+		const auto isGrey = [](const std::array<uint8_t, 3>& rgb)
+		{
+			return std::abs(rgb[0] - rgb[1]) <= 2 && std::abs(rgb[1] - rgb[2]) <= 2;
+		};
+		using Sky = Nyx::ESceneViewSky;
+		using Debug = Nyx::ESceneViewDebug;
+
+		// The skies: black, a grey studio lighting the sphere more, the scene's sky turned
+		const RgbaImage black = show(Sky::Black, 0.0f, Debug::Lit);
+		Require(corner(black) == std::array<uint8_t, 3>{ 0, 0, 0 }, "The black sky isn't black: " + Text(corner(black)));
+		const RgbaImage studio = show(Sky::Studio, 0.0f, Debug::Lit);
+		SaveIfAsked(studio, "Studio");
+		Require(isGrey(corner(studio)) && corner(studio)[0] > 5, "The studio's sky isn't grey: " + Text(corner(studio)));
+		Require(middle(studio)[0] > middle(black)[0] + 5, "The studio's light doesn't reach the sphere: " + Text(middle(studio)) + " against " + Text(middle(black)) + " under the black sky");
+		const std::array<uint8_t, 3> unturned = corner(show(Sky::Scene, 0.0f, Debug::Lit));
+		const std::array<uint8_t, 3> halfTurned = corner(show(Sky::Scene, glm::pi<float>(), Debug::Lit));
+		const std::array<uint8_t, 3> turnedRound = corner(show(Sky::Scene, glm::two_pi<float>(), Debug::Lit));
+		Require(unturned != halfTurned, "Turning the scene's sky half round doesn't change it: " + Text(unturned));
+		Require(Near(turnedRound, unturned, 1), "The scene's sky turned once round isn't as it was: " + Text(turnedRound) + " against " + Text(unturned));
+
+		// The material's outputs, as they are
+		const auto encoded = [](float linear)
+		{
+			const float srgb = linear <= 0.0031308f ? linear * 12.92f : 1.055f * std::pow(linear, 1.0f / 2.4f) - 0.055f;
+			return static_cast<uint8_t>(std::lround(srgb * 255.0f));
+		};
+		const RgbaImage baseColor = show(Sky::Studio, 0.0f, Debug::BaseColor);
+		Require(Near(middle(baseColor), { encoded(0.8f), encoded(0.2f), encoded(0.1f) }), "The base colour view shows " + Text(middle(baseColor)));
+		Require(Near(corner(baseColor), { 10, 10, 10 }), "Behind a debug view, the sky isn't dark grey: " + Text(corner(baseColor)));
+		const std::array<uint8_t, 3> normal = middle(show(Sky::Studio, 0.0f, Debug::Normal));
+		Require(Near(normal, { 128, 128, 255 }, 3), "The normal facing the camera shows as " + Text(normal));
+		const std::array<uint8_t, 3> roughness = middle(show(Sky::Studio, 0.0f, Debug::Roughness));
+		Require(Near(roughness, { 102, 102, 102 }), "Roughness 0.4 shows as " + Text(roughness));
+		Require(middle(show(Sky::Studio, 0.0f, Debug::Metallic)) == std::array<uint8_t, 3>{ 0, 0, 0 }, "A dielectric shows as metal");
+		Require(middle(show(Sky::Studio, 0.0f, Debug::Occlusion)) == std::array<uint8_t, 3>{ 255, 255, 255 }, "Occlusion without a texture isn't 1");
+		Require(middle(show(Sky::Studio, 0.0f, Debug::Opacity)) == std::array<uint8_t, 3>{ 255, 255, 255 }, "Opacity isn't 1");
+		Require(middle(show(Sky::Studio, 0.0f, Debug::Emission)) == std::array<uint8_t, 3>{ 0, 0, 0 }, "Emission shows where there is none");
+		Require(!isGrey(middle(show(Sky::Studio, 0.0f, Debug::UvChecker))), "The UV checker isn't coloured by the UV");
+
+		// Light that is wrong: brighter than white before tonemapping, and not a number
+		world.Get<MeshRendererComponent>(sphere).MaterialAsset = renderer.GetMaterial(glowing.Path);
+		const RgbaImage bright = show(Sky::Studio, 0.0f, Debug::OutOfRange);
+		Require(Near(middle(bright), { 255, 38, 26 }, 2), "Light above 1 isn't marked red: " + Text(middle(bright)));
+		Require(isGrey(corner(bright)), "The studio's sky, within range, isn't grey: " + Text(corner(bright)));
+		world.Get<MeshRendererComponent>(sphere).MaterialAsset = renderer.GetMaterial(nan.Path);
+		const RgbaImage notANumber = show(Sky::Studio, 0.0f, Debug::NanInf);
+		SaveIfAsked(notANumber, "NanInf");
+		Require(middle(notANumber) == std::array<uint8_t, 3>{ 255, 0, 255 }, "Light that isn't a number isn't marked magenta: " + Text(middle(notANumber)));
+		Require(isGrey(corner(notANumber)), "Light that is fine isn't grey: " + Text(corner(notANumber)));
+
+		renderer.DestroySceneView(view);
+		gpu.DrawFrames(1);
+	}
+
 	// What the material editor does: it reads a material's values, its shader's parameters and
 	// their defaults; values it sets show in the next frame while the file stays as it is; the
 	// file saved and read again brings its own values back
@@ -701,6 +819,7 @@ int main()
 		TestNormalMapsAndMasks(gpu);
 		TestViewsWithWorldsOfTheirOwn(gpu);
 		TestMaterialValuesSetInMemory(gpu);
+		TestSkiesAndDebugViews(gpu);
 	}
 	catch (const std::exception& error)
 	{

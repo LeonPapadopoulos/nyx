@@ -55,7 +55,8 @@ namespace Nyx
 		glm::mat4 InvViewProj;
 
 		glm::vec2 ViewportSize;
-		glm::vec2 Padding0;
+		// The sky's turn about the up axis: its cosine and sine
+		glm::vec2 SkyRotation{ 1.0f, 0.0f };
 
 		glm::vec4 CameraWorldPos;   // xyz used
 		glm::vec4 LightDirectionWS; // xyz used, normalized
@@ -69,7 +70,8 @@ namespace Nyx
 		uint32_t SceneTexture = 0;
 		// What the scene's light is multiplied by before tonemapping
 		float ExposureScale = 1.0f;
-		uint32_t Padding1 = 0;
+		// ESceneViewDebug
+		uint32_t DebugView = 0;
 
 		// The environment's light (VulkanEnvironment): the specular cube and its mips, the BRDF
 		// table, the irradiance's nine coefficients
@@ -270,6 +272,8 @@ namespace Nyx
 		bool GetSceneViewEditorCameraTransform(uint64_t id, glm::vec3& outPos, glm::vec3& outRot) const override;
 		void SetSceneViewShowEditorOverlays(uint64_t id, bool bShow) override;
 		void SetSceneViewExposure(uint64_t id, float stops) override;
+		void SetSceneViewSky(uint64_t id, ESceneViewSky sky, float rotationRadians) override;
+		void SetSceneViewDebug(uint64_t id, ESceneViewDebug view) override;
 
 		bool GetSceneViewCameraData(uint64_t sceneViewId, Nyx::SceneViewCameraData& outData) const override;
 
@@ -278,6 +282,7 @@ namespace Nyx
 
 		Nyx::Mesh* GetCubeMesh() override;
 		Nyx::Mesh* GetSphereMesh() override;
+		Nyx::Mesh* GetPlaneMesh() override;
 		Nyx::Material* GetMaterial(const std::string& path) override;
 		bool IsCompilingShaders() const override;
 		MaterialView ViewMaterial(const std::string& path) override;
@@ -443,6 +448,9 @@ namespace Nyx
 		void ApplyShaderUpdates();
 
 		void LoadTestGltfScene(std::vector<RenderObject>& outObjects);
+
+		// The cube of a view's sky, with its light, made at the first ask
+		uint32_t GetSkySlot(ESceneViewSky sky);
 
 		void ExtractSceneGlobalsFromEditorCamera(SceneViewInstance& view);
 		void ExtractSceneGlobalsFromWorldCamera(SceneViewInstance& view, const Nyx::Engine::Registry& registry);
@@ -724,12 +732,16 @@ namespace Nyx
 		// Skybox
 		CubemapTexture SkyboxCubemap{ "Skybox01" };
 		uint32_t SkyboxTextureIndex = 0;
+		// The studio's and black's skies, for views that show them (SetSceneViewSky()); 0 until then
+		uint32_t StudioSkySlot = 0;
+		uint32_t BlackSkySlot = 0;
 
 		vk::raii::Pipeline SkyboxPipeline{ nullptr };
 
 		// Mesh
 		Mesh CubeMesh = Mesh("Cube");
 		Mesh SphereMesh = Mesh("Sphere");
+		Mesh PlaneMesh = Mesh("Plane");
 
 		std::vector<Vertex> MeshVertices;
 		std::vector<uint32_t> MeshIndices;

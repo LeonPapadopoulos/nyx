@@ -34,6 +34,7 @@
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/packing.hpp>
 
 #include <glm/gtx/norm.hpp>
 
@@ -813,6 +814,24 @@ namespace Nyx
 		}
 	}
 
+	void VulkanRenderer::SetSceneViewSky(uint64_t id, ESceneViewSky sky, float rotationRadians)
+	{
+		if (SceneViewInstance* view = FindSceneView(id))
+		{
+			GetSkySlot(sky);
+			view->Sky = sky;
+			view->SkyRotation = rotationRadians;
+		}
+	}
+
+	void VulkanRenderer::SetSceneViewDebug(uint64_t id, ESceneViewDebug debugView)
+	{
+		if (SceneViewInstance* view = FindSceneView(id))
+		{
+			view->Debug = debugView;
+		}
+	}
+
 	void VulkanRenderer::SetSceneViewEditorCameraTransform(uint64_t id, const glm::vec3& pos, const glm::vec3& rot)
 	{
 		SceneViewInstance* view = FindSceneView(id);
@@ -951,10 +970,85 @@ namespace Nyx
 		return &SphereMesh;
 	}
 
+	Mesh* VulkanRenderer::GetPlaneMesh()
+	{
+		return &PlaneMesh;
+	}
+
 	void VulkanRenderer::SetSky(uint32_t cubeSlot)
 	{
+		if (SkyboxTextureIndex != cubeSlot && SkyboxTextureIndex != StudioSkySlot && SkyboxTextureIndex != BlackSkySlot)
+		{
+			Environment.Forget(SkyboxTextureIndex);
+		}
 		SkyboxTextureIndex = cubeSlot;
 		Environment.Build(cubeSlot);
+	}
+
+	uint32_t VulkanRenderer::GetSkySlot(ESceneViewSky sky)
+	{
+		// A cube of half-float colours, each texel's from its direction (Vulkan's cube faces: +X,
+		// -X, +Y, -Y, +Z, -Z)
+		const auto makeSky = [this](uint32_t size, const std::function<glm::vec3(glm::vec3)>& light)
+		{
+			std::vector<uint8_t> pixels(static_cast<size_t>(size) * size * 6 * 4 * sizeof(uint16_t));
+			uint16_t* texels = reinterpret_cast<uint16_t*>(pixels.data());
+			for (uint32_t face = 0; face < 6; ++face)
+			{
+				for (uint32_t y = 0; y < size; ++y)
+				{
+					for (uint32_t x = 0; x < size; ++x)
+					{
+						const float u = (static_cast<float>(x) + 0.5f) / static_cast<float>(size) * 2.0f - 1.0f;
+						const float v = (static_cast<float>(y) + 0.5f) / static_cast<float>(size) * 2.0f - 1.0f;
+						const std::array<glm::vec3, 6> directions = { glm::vec3(1.0f, -v, -u), glm::vec3(-1.0f, -v, u), glm::vec3(u, 1.0f, v),
+							glm::vec3(u, -1.0f, -v), glm::vec3(u, -v, 1.0f), glm::vec3(-u, -v, -1.0f) };
+						const glm::vec3 color = light(glm::normalize(directions[face]));
+						uint16_t* texel = texels + ((static_cast<size_t>(face) * size + y) * size + x) * 4;
+						for (int channel = 0; channel < 4; ++channel)
+						{
+							texel[channel] = glm::packHalf1x16(channel < 3 ? color[channel] : 1.0f);
+						}
+					}
+				}
+			}
+			const uint32_t slot = Bindless.CreateCubeTexture(size, pixels, vk::Format::eR16G16B16A16Sfloat);
+			Environment.Build(slot);
+			return slot;
+		};
+
+		switch (sky)
+		{
+		case ESceneViewSky::Studio:
+			if (StudioSkySlot == 0)
+			{
+				// A grey room, lighter above than below, with a large soft key light above to the
+				// front right, a fill light from the left and a rim light from high behind, out of
+				// the way of what the camera usually sees behind the shape
+				StudioSkySlot = makeSky(64, [](glm::vec3 d)
+					{
+						const auto softbox = [&d](glm::vec3 towards, float spread, float strength)
+						{
+							return std::pow(std::max(glm::dot(d, glm::normalize(towards)), 0.0f), spread) * strength;
+						};
+						const float room = glm::mix(0.08f, 0.45f, glm::smoothstep(-0.6f, 0.8f, d.y));
+						const float lights = softbox(glm::vec3(0.6f, 0.7f, 0.5f), 24.0f, 6.0f) + softbox(glm::vec3(-0.9f, 0.3f, 0.4f), 12.0f, 1.2f) + softbox(glm::vec3(-0.4f, 1.0f, -0.5f), 32.0f, 2.0f);
+						return glm::vec3(room + lights);
+					});
+			}
+			return StudioSkySlot;
+		case ESceneViewSky::Black:
+			if (BlackSkySlot == 0)
+			{
+				BlackSkySlot = makeSky(4, [](glm::vec3)
+					{
+						return glm::vec3(0.0f);
+					});
+			}
+			return BlackSkySlot;
+		default:
+			return SkyboxTextureIndex;
+		}
 	}
 
 	Material* VulkanRenderer::GetMaterial(const std::string& path)
@@ -2516,6 +2610,8 @@ namespace Nyx
 		ubo.ViewportSize = glm::vec2(
 			static_cast<float>(extent.width),
 			static_cast<float>(extent.height));
+		ubo.SkyRotation = glm::vec2(std::cos(view.SkyRotation), std::sin(view.SkyRotation));
+		ubo.DebugView = static_cast<uint32_t>(view.Debug);
 
 		ubo.CameraWorldPos = glm::vec4(view.SceneGlobals.CameraWorldPos, 1.0f);
 		ubo.LightDirectionWS = glm::vec4(view.SceneGlobals.LightDirectionWS, 0.0f);
@@ -2523,15 +2619,16 @@ namespace Nyx
 
 		const glm::mat4 skyboxView = glm::mat4(glm::mat3(view.SceneGlobals.View));
 		ubo.SkyboxViewProj = view.SceneGlobals.Projection * skyboxView;
-		ubo.EnvironmentTexture = SkyboxTextureIndex;
+		const uint32_t sky = GetSkySlot(view.Sky);
+		ubo.EnvironmentTexture = sky;
 		ubo.SceneTexture = view.HdrTextureSlot;
 		ubo.ExposureScale = std::exp2(view.ExposureStops);
-		ubo.SpecularTexture = Environment.GetSpecularSlot();
+		ubo.SpecularTexture = Environment.GetSpecularSlot(sky);
 		ubo.SpecularLevels = Environment.GetSpecularLevels();
 		ubo.BrdfLookup = Environment.GetLookupSlot();
 		for (size_t term = 0; term < 9; ++term)
 		{
-			ubo.Irradiance[term] = glm::vec4(Environment.GetIrradiance()[term], 0.0f);
+			ubo.Irradiance[term] = glm::vec4(Environment.GetIrradiance(sky)[term], 0.0f);
 		}
 
 		void* mapped = view.SceneUniformBufferMemory.mapMemory(0, sizeof(SceneUBO));
@@ -2625,6 +2722,10 @@ namespace Nyx
 		SphereMesh.Release();
 		SphereMesh.SetLocalBounds(glm::vec3(-0.5f), glm::vec3(0.5f));
 		SphereMesh.Upload(Context, Nyx::MakeSphere(0.5f, 32, 64));
+
+		PlaneMesh.Release();
+		PlaneMesh.SetLocalBounds(glm::vec3(-0.5f, 0.0f, -0.5f), glm::vec3(0.5f, 0.0f, 0.5f));
+		PlaneMesh.Upload(Context, Nyx::MakePlane(1.0f));
 	}
 
 	void VulkanRenderer::CreateTestMeshBuffers()

@@ -3,9 +3,11 @@
 // kept, and following the file when it is saved elsewhere. The Parameters window drawn headless
 // over a stand-in for the renderer: every kind of parameter drawn, edits sent to the renderer,
 // undo, redo and save keys while it has focus, the file followed while nothing is unsaved, and
-// the question before another material opens over unsaved values.
+// the question before another material opens over unsaved values. The preview's camera and sun
+// orbit the shape, looking at it.
 #include "MaterialDocument.h"
 #include "MaterialParametersPanel.h"
+#include "MaterialPreviewPanel.h"
 #include "Renderer.h"
 #include "ShaderLayout.h"
 
@@ -398,6 +400,31 @@ namespace
 	}
 }
 
+namespace
+{
+	// The preview's camera: at its distance from the target, in the direction of its turns, its
+	// -Z towards the target and its up still up
+	void TestOrbit()
+	{
+		const glm::vec3 target(1.0f, 2.0f, 3.0f);
+		for (const float yaw : { 0.0f, 0.7f, 2.5f, -1.9f })
+		{
+			for (const float pitch : { -1.2f, 0.0f, 0.4f, 1.4f })
+			{
+				const Orbit orbit = OrbitAround(target, 3.0f, yaw, pitch);
+				const std::string at = " at yaw " + std::to_string(yaw) + ", pitch " + std::to_string(pitch);
+				Require(std::abs(glm::length(orbit.Position - target) - 3.0f) < 1e-4f, "The orbit isn't at its distance" + at);
+				Require(std::abs((orbit.Position - target).y - 3.0f * std::sin(pitch)) < 1e-4f, "The orbit's height isn't its pitch's" + at);
+				const glm::vec3 forward = orbit.Rotation * glm::vec3(0.0f, 0.0f, -1.0f);
+				Require(glm::dot(forward, glm::normalize(target - orbit.Position)) > 0.9999f, "The orbit doesn't look at its target" + at);
+				Require((orbit.Rotation * glm::vec3(0.0f, 1.0f, 0.0f)).y > 0.0f, "The orbit turned over" + at);
+			}
+		}
+		// Yaw 0 is from +Z, as the scene's camera looks at it
+		Require(glm::length(OrbitAround(glm::vec3(0.0f), 2.0f, 0.0f, 0.0f).Position - glm::vec3(0.0f, 0.0f, 2.0f)) < 1e-5f, "Yaw 0 isn't in front, along +Z");
+	}
+}
+
 int main()
 {
 	try
@@ -405,6 +432,7 @@ int main()
 		TestEditsUndoAndSave();
 		TestFollowingTheFile();
 		TestParametersWindow();
+		TestOrbit();
 	}
 	catch (const std::exception& error)
 	{

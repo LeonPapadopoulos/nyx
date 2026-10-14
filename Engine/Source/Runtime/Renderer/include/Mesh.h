@@ -76,6 +76,10 @@ namespace Nyx
 	// around it and v from top to bottom, with tangents
 	MeshData MakeSphere(float radius, uint32_t rings, uint32_t segments);
 
+	// A square of side `size` on the ground (y = 0) around the origin, facing up, with u along x
+	// and v along z, with tangents
+	MeshData MakePlane(float size);
+
 	class Mesh : public Nyx::Engine::Resource
 	{
 	public:

@@ -180,7 +180,7 @@ namespace
 		renderer.SetWorld(&world);
 		const uint64_t view = MakeView(renderer, 480, 270);
 
-		const EnvironmentSamples environment(gpu.Renderer.GetEnvironment());
+		const EnvironmentSamples environment(gpu.Renderer.GetEnvironment(), gpu.Renderer.GetSky());
 		for (const auto& [metallic, roughness] : { std::pair{ 0, 2 }, std::pair{ 4, 1 }, std::pair{ 2, 3 }, std::pair{ 0, 0 }, std::pair{ 4, 4 } })
 		{
 			world.Get<MeshRendererComponent>(sphere).MaterialAsset = renderer.GetMaterial(MaterialPath(metallic, roughness));
