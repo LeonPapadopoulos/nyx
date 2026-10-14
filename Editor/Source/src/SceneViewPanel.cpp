@@ -6,8 +6,10 @@
 #include "Renderer.h"
 #include "SceneEditor.h"
 #include "UIChrome.h"
+#include "UITheme.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace Nyx::Editor
 {
@@ -71,7 +73,13 @@ namespace Nyx::Editor
 			return;
 		}
 
-		if (!Nyx::UI::Begin(Title.c_str(), &bOpen))
+		// The picture fills the card, in from its edges only as far as the card's rounded corners
+		// reach in along the diagonal, r(1 - 1/sqrt(2)), so that its square corners stay inside them
+		const float padding = std::ceil(Nyx::UI::GetTheme().CardRounding * (1.0f - 0.70710678f));
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(padding, padding));
+		const bool bVisible = Nyx::UI::Begin(Title.c_str(), &bOpen);
+		ImGui::PopStyleVar();
+		if (!bVisible)
 		{
 			ImGui::End();
 			return;

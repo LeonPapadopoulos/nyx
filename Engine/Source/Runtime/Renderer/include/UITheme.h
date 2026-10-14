@@ -10,10 +10,10 @@ namespace Nyx::UI
 	// colour, radius, size and effect they use comes from here, never from a literal in a widget,
 	// so that the whole look can change in one place (Design/editor-ui-architecture.md, 3.10.3). The
 	// editor fills it from a theme file (UIThemeFile.h, Editor/Themes) and edits it live in its
-	// theme window. The values here are the default theme's, "Shrine Night": blue-black panels
-	// with a violet accent (Design/editor-mockup-styling.md); Editor/Themes/Shrine Night.nyxtheme
-	// holds the same. ImGui's own colours follow the theme (ApplyThemeToImGui()), for the text and
-	// widgets ImGui still draws.
+	// theme window. The values here are the default theme's, Editor/Themes/Default.nyxtheme,
+	// which holds the same: blue-black panels with a violet accent, as Night
+	// (Design/editor-mockup-styling.md). ImGui's own colours follow the theme
+	// (ApplyThemeToImGui()), for the text and widgets ImGui still draws.
 	//
 	// Layout (frame padding, item spacing, item width) follows ImGui's style instead, so painted
 	// widgets line up with ImGui's in the same window.

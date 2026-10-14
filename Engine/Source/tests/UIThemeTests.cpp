@@ -215,11 +215,11 @@ namespace
 		Require(count >= 1, "Editor/Themes should hold at least the default theme");
 	}
 
-	// The defaults in UITheme.h are the default theme, Shrine Night: its file holds the same values
+	// The defaults in UITheme.h are the default theme, Default.nyxtheme: its file holds the same values
 	void TestDefaultsAreTheDefaultTheme()
 	{
 		Theme fromFile;
-		const std::optional<std::vector<std::string>> problems = LoadThemeFile(Nyx::Paths::GetProjectRoot() / "Editor" / "Themes" / "Shrine Night.nyxtheme", fromFile);
+		const std::optional<std::vector<std::string>> problems = LoadThemeFile(Nyx::Paths::GetProjectRoot() / "Editor" / "Themes" / "Default.nyxtheme", fromFile);
 		Require(problems && problems->empty(), "The default theme's file should read");
 		const Theme defaults;
 		for (const ThemeValue& value : GetThemeValues())
