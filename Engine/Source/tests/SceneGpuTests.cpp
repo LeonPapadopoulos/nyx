@@ -7,7 +7,7 @@
 // broken keeps its last values. A material's shader saved with a new field before the one the
 // material sets finds the material's value again, and saved broken keeps its last look. The
 // scene is drawn in HDR and tonemapped: light brighter than white survives until then, and the
-// view's exposure scales it.
+// view's exposure scales it. Materials find the sky's light (nyx.environment) as it was made.
 //
 // NYX_SCENE_TEST_OUTPUT=<folder> saves what was rendered there, e.g. to make a new reference
 // after a change that is meant to change the picture.
@@ -456,6 +456,71 @@ namespace
 		gpu.DrawFrames(1);
 	}
 
+	// A cube that glows with the sky's light as nyx.environment gives it, for each of its three
+	// parts in turn, against what VulkanEnvironment made
+	void TestMaterialsFindTheEnvironment(SceneRenderer& gpu)
+	{
+		Nyx::IRenderer& renderer = gpu.Renderer;
+		LiveMaterialFile shader("Shaders/NyxSceneGpuTestsEnvironment.slang");
+		shader.Write("import nyx.surface;\nimport nyx.environment;\n"
+					 "struct NyxSceneGpuTestsEnvironment : ISurface\n{\n    int Part = 0;\n"
+					 "    SurfaceOutput shade(SurfaceInput input)\n    {\n        SurfaceOutput o = SurfaceOutput::defaults(input);\n        o.BaseColor = float3(0.0);\n"
+					 "        if (Part == 0)\n            o.Emission = nyx::environmentDiffuse(float3(0.0, 0.0, 1.0));\n"
+					 "        else if (Part == 1)\n            o.Emission = nyx::environmentSpecular(float3(0.0, 0.0, 1.0), 1.0);\n"
+					 "        else\n            o.Emission = float3(nyx::environmentBrdf(64.5 / 128.0, 64.5 / 128.0), 0.0);\n"
+					 "        return o;\n    }\n}\n");
+		std::array<LiveMaterialFile, 3> materials = { LiveMaterialFile("Materials/NyxSceneGpuTests-Diffuse.nyxmat"), LiveMaterialFile("Materials/NyxSceneGpuTests-Specular.nyxmat"),
+			LiveMaterialFile("Materials/NyxSceneGpuTests-Brdf.nyxmat") };
+		for (size_t part = 0; part < materials.size(); ++part)
+		{
+			materials[part].Write("Shader = Shaders/NyxSceneGpuTestsEnvironment.slang\nPart = " + std::to_string(part) + "\n");
+		}
+
+		DefaultScene scene;
+		const Entity cube = AddCube(scene.World, gpu.Renderer, 0.0f, renderer.GetMaterial(materials[0].Path));
+		const Entity camera = scene.World.CreateEntity();
+		scene.World.Add<TransformComponent>(camera, TransformComponent{ .Position = glm::vec3(0.0f, 0.0f, 1.2f), .Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f), .Scale = glm::vec3(1.0f) });
+		scene.World.Add<CameraComponent>(camera, CameraComponent{});
+		renderer.SetWorld(&scene.World);
+		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
+		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
+
+		Nyx::Engine::VulkanEnvironment& environment = gpu.Renderer.GetEnvironment();
+		const std::array<glm::vec3, 9>& c = environment.GetIrradiance();
+		const glm::vec3 diffuse = c[0] * 0.282095f + c[2] * 0.488603f + c[6] * 0.315392f * 2.0f;
+
+		// The roughest mip's +Z face, sampled at its middle: the mean of the four middle texels
+		const uint32_t level = Nyx::Engine::VulkanEnvironment::SpecularLevels - 1;
+		const uint32_t size = Nyx::Engine::VulkanEnvironment::SpecularSize >> level;
+		const std::vector<glm::vec4> rough = environment.ReadSpecularLevel(level);
+		glm::vec3 specular(0.0f);
+		for (const uint32_t y : { size / 2 - 1, size / 2 })
+		{
+			for (const uint32_t x : { size / 2 - 1, size / 2 })
+			{
+				specular += glm::vec3(rough[(static_cast<size_t>(4) * size + y) * size + x]) * 0.25f;
+			}
+		}
+
+		const std::vector<glm::vec2> lookup = environment.ReadLookup();
+		const glm::vec2 brdf = lookup[64 * Nyx::Engine::VulkanEnvironment::LookupSize + 64];
+
+		const std::array<glm::vec3, 3> expected = { diffuse, specular, glm::vec3(brdf, 0.0f) };
+		const std::array<const char*, 3> names = { "diffuse light", "specular light", "BRDF table" };
+		for (size_t part = 0; part < materials.size(); ++part)
+		{
+			scene.World.Get<MeshRendererComponent>(cube).MaterialAsset = renderer.GetMaterial(materials[part].Path);
+			gpu.DrawUntilShadersCompiled();
+			const std::array<uint8_t, 3> pixel = MiddlePixel(gpu, view);
+			Require(Near(pixel, Tonemapped(expected[part])), std::string("The material's ") + names[part] + " is " + Text(pixel) + ", expected " + Text(Tonemapped(expected[part])));
+		}
+
+		renderer.DestroySceneView(view);
+		renderer.SetWorld(nullptr);
+		gpu.DrawFrames(1);
+	}
+
 	// A cube whose material file doesn't exist, alone in front of the camera: magenta, unlit
 	void TestMissingMaterial(SceneRenderer& gpu)
 	{
@@ -506,6 +571,7 @@ int main()
 		TestSavedMaterialFilesReload(gpu);
 		TestSavedMaterialShadersRecompile(gpu);
 		TestHdrAndExposure(gpu);
+		TestMaterialsFindTheEnvironment(gpu);
 	}
 	catch (const std::exception& error)
 	{

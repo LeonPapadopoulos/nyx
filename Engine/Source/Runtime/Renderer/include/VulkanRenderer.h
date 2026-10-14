@@ -11,6 +11,7 @@
 #include "VulkanBlur.h"
 #include "VulkanBindless.h"
 #include "VulkanMaterials.h"
+#include "VulkanEnvironment.h"
 #include "VulkanGlass.h"
 #include "Painter.h"
 #include "WindowPainter.h"
@@ -69,10 +70,18 @@ namespace Nyx
 		// What the scene's light is multiplied by before tonemapping
 		float ExposureScale = 1.0f;
 		uint32_t Padding1 = 0;
+
+		// The environment's light (VulkanEnvironment): the specular cube and its mips, the BRDF
+		// table, the irradiance's nine coefficients
+		uint32_t SpecularTexture = 0;
+		uint32_t SpecularLevels = 0;
+		uint32_t BrdfLookup = 0;
+		uint32_t Padding2 = 0;
+		glm::vec4 Irradiance[9] = {};
 	};
 
 	// The view's set (set 1) as nyx/view.slang reads it: std140 and scalar layout agree on it
-	static_assert(sizeof(SceneUBO) == 272, "SceneUBO must match ViewConstants in nyx/view.slang");
+	static_assert(sizeof(SceneUBO) == 432, "SceneUBO must match ViewConstants in nyx/view.slang");
 
 	// One draw's push constants, the same for every scene pipeline: ObjectConstants in
 	// nyx/bindless.slang
@@ -256,6 +265,9 @@ namespace Nyx
 	public:
 		VulkanContext& GetContext();
 		VulkanSwapchain& GetSwapchain();
+
+		// The light of the sky, for tests
+		Nyx::Engine::VulkanEnvironment& GetEnvironment() { return Environment; }
 
 		// Draws 2D shapes recorded with a Painter into a VulkanPainterTarget (Design/ui-painter.md)
 		Nyx::Engine::VulkanPainter& GetPainterPass() { return PainterPass; }
@@ -634,6 +646,8 @@ namespace Nyx
 
 		// The meshes' materials, from their .nyxmat files
 		Nyx::Engine::VulkanMaterials Materials;
+		// The sky's light, for physically based materials
+		Nyx::Engine::VulkanEnvironment Environment;
 
 		// World is owned by the editor / scene document.
 		const Nyx::Engine::Registry* World = nullptr;

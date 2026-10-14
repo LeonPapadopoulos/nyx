@@ -52,6 +52,8 @@ namespace Nyx::Engine
 		// A 2D texture of its own, made from RGBA pixels (8 bits per channel) in `format`, in a
 		// free slot; it lives until its slot is removed. Throws when every slot is taken.
 		uint32_t CreateTexture(uint32_t width, uint32_t height, const std::vector<uint8_t>& pixels, vk::Format format);
+		// The same for a cube: `pixels` holds the six faces (+X, -X, +Y, -Y, +Z, -Z) one after the other
+		uint32_t CreateCubeTexture(uint32_t size, const std::vector<uint8_t>& pixels, vk::Format format);
 		// Frees the slot once the frames that could still read it are done (EndFrame()), and the
 		// texture with it if it was made here
 		void RemoveTexture(uint32_t index);
@@ -82,7 +84,8 @@ namespace Nyx::Engine
 			vk::raii::DeviceMemory Memory{ nullptr };
 			vk::raii::ImageView View{ nullptr };
 		};
-		OwnTexture MakeTexture(uint32_t width, uint32_t height, const std::vector<uint8_t>& pixels, vk::Format format);
+		// A 2D texture, or a cube with `layers` 6
+		OwnTexture MakeTexture(uint32_t width, uint32_t height, const std::vector<uint8_t>& pixels, vk::Format format, uint32_t layers = 1);
 
 		VulkanContext* Context = nullptr;
 

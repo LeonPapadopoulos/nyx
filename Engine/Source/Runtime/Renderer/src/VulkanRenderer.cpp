@@ -273,6 +273,9 @@ namespace Nyx
 		CreateOutlineDescriptorSetLayout();
 
 		LoadSkyboxCubemap();
+		// Its light: the specular cube, the irradiance, the BRDF table
+		Environment.Initialize(Context, Bindless, Programs);
+		Environment.Build(SkyboxTextureIndex);
 
 		// First scene view: creates per-view resources
 		CreateSceneView();
@@ -388,6 +391,7 @@ namespace Nyx
 		MeshVertexBufferMemory = nullptr;
 
 		Materials.Shutdown();
+		Environment.Shutdown();
 		Bindless.Shutdown();
 		Context.Shutdown();
 	}
@@ -2411,6 +2415,13 @@ namespace Nyx
 		ubo.EnvironmentTexture = SkyboxTextureIndex;
 		ubo.SceneTexture = view.HdrTextureSlot;
 		ubo.ExposureScale = std::exp2(view.ExposureStops);
+		ubo.SpecularTexture = Environment.GetSpecularSlot();
+		ubo.SpecularLevels = Environment.GetSpecularLevels();
+		ubo.BrdfLookup = Environment.GetLookupSlot();
+		for (size_t term = 0; term < 9; ++term)
+		{
+			ubo.Irradiance[term] = glm::vec4(Environment.GetIrradiance()[term], 0.0f);
+		}
 
 		void* mapped = view.SceneUniformBufferMemory.mapMemory(0, sizeof(SceneUBO));
 		std::memcpy(mapped, &ubo, sizeof(SceneUBO));
@@ -2718,6 +2729,10 @@ namespace Nyx
 		if (changed.contains("Tonemap.slang"))
 		{
 			CreateTonemapPipeline();
+		}
+		if (changed.contains("Environment.slang"))
+		{
+			Environment.Rebuild();
 		}
 		if (uses("Picking"))
 		{

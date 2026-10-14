@@ -24,5 +24,12 @@ public struct ViewConstants
     // What the scene's light is multiplied by before tonemapping: 2 to the exposure in stops
     public float ExposureScale;
     public uint _Padding1;
+    // The environment's light (VulkanEnvironment; nyx.environment reads it): the specular cube,
+    // its mips (roughness 0 to 1), the BRDF table, the irradiance's nine coefficients
+    public nyx::Cubemap Specular;
+    public uint SpecularLevels;
+    public nyx::Texture BrdfLookup;
+    public uint _Padding2;
+    public float4 Irradiance[9];
 }
 [vk::binding(0, 1)] public ConstantBuffer<ViewConstants> View;

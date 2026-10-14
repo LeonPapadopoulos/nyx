@@ -104,6 +104,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanBindless.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/MaterialAsset.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanMaterials.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanEnvironment.cpp
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/src/ReflectionUtils.cpp
@@ -211,6 +212,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/BindlessTextures.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/MaterialAsset.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanMaterials.h
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanEnvironment.h
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionTypes.h

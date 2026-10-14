@@ -186,6 +186,16 @@ set_property(TARGET NyxMaterialTests PROPERTY FOLDER "Tests")
 nyx_copy_shader_compiler_next_to(NyxMaterialTests)
 add_test(NAME NyxMaterialTests COMMAND NyxMaterialTests)
 
+# The environment's light on a real GPU, from skies whose light is known. Needs a Vulkan device;
+# its window stays hidden.
+add_executable(NyxEnvironmentGpuTests EnvironmentGpuTests.cpp)
+target_link_libraries(NyxEnvironmentGpuTests PRIVATE NyxEngine)
+add_dependencies(NyxEnvironmentGpuTests NyxGeneratedReflection)
+set_property(TARGET NyxEnvironmentGpuTests PROPERTY FOLDER "Tests")
+nyx_copy_shaders_next_to(NyxEnvironmentGpuTests)
+nyx_copy_shader_compiler_next_to(NyxEnvironmentGpuTests)
+add_test(NAME NyxEnvironmentGpuTests COMMAND NyxEnvironmentGpuTests)
+
 # The renderer drawing the editor's default scene on a real GPU, compared with a reference image,
 # and picking in it. Needs a Vulkan device; its window stays hidden.
 add_executable(NyxSceneGpuTests SceneGpuTests.cpp)

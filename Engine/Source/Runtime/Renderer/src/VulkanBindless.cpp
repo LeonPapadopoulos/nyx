@@ -217,7 +217,15 @@ namespace Nyx::Engine
 		return slot;
 	}
 
-	VulkanBindless::OwnTexture VulkanBindless::MakeTexture(uint32_t width, uint32_t height, const std::vector<uint8_t>& pixels, vk::Format format)
+	uint32_t VulkanBindless::CreateCubeTexture(uint32_t size, const std::vector<uint8_t>& pixels, vk::Format format)
+	{
+		OwnTexture texture = MakeTexture(size, size, pixels, format, 6);
+		const uint32_t slot = AddTexture(*texture.View);
+		CreatedTextures[slot] = std::move(texture);
+		return slot;
+	}
+
+	VulkanBindless::OwnTexture VulkanBindless::MakeTexture(uint32_t width, uint32_t height, const std::vector<uint8_t>& pixels, vk::Format format, uint32_t layers)
 	{
 		vk::raii::Device& device = Context->GetDevice();
 
@@ -226,7 +234,8 @@ namespace Nyx::Engine
 		imageInfo.imageType = vk::ImageType::e2D;
 		imageInfo.extent = vk::Extent3D(width, height, 1);
 		imageInfo.mipLevels = 1;
-		imageInfo.arrayLayers = 1;
+		imageInfo.arrayLayers = layers;
+		imageInfo.flags = layers == 6 ? vk::ImageCreateFlagBits::eCubeCompatible : vk::ImageCreateFlags{};
 		imageInfo.format = format;
 		imageInfo.tiling = vk::ImageTiling::eOptimal;
 		imageInfo.initialLayout = vk::ImageLayout::eUndefined;
@@ -239,9 +248,9 @@ namespace Nyx::Engine
 
 		vk::ImageViewCreateInfo viewInfo{};
 		viewInfo.image = *texture.Image;
-		viewInfo.viewType = vk::ImageViewType::e2D;
+		viewInfo.viewType = layers == 6 ? vk::ImageViewType::eCube : vk::ImageViewType::e2D;
 		viewInfo.format = format;
-		viewInfo.subresourceRange = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
+		viewInfo.subresourceRange = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, layers);
 		texture.View = vk::raii::ImageView(device, viewInfo);
 
 		vk::BufferCreateInfo bufferInfo{};
@@ -272,7 +281,7 @@ namespace Nyx::Engine
 		upload.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, toCopy);
 
 		vk::BufferImageCopy copy{};
-		copy.imageSubresource = vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1);
+		copy.imageSubresource = vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, layers);
 		copy.imageExtent = imageInfo.extent;
 		upload.copyBufferToImage(*staging, *texture.Image, vk::ImageLayout::eTransferDstOptimal, copy);
 
