@@ -4,10 +4,13 @@
 // over a stand-in for the renderer: every kind of parameter drawn, edits sent to the renderer,
 // undo, redo and save keys while it has focus, the file followed while nothing is unsaved, and
 // the question before another material opens over unsaved values. The preview's camera and sun
-// orbit the shape, looking at it.
+// orbit the shape, looking at it. A shader diagnostic, clicked, opens its file at its line; the
+// Shader Log window draws its entries.
 #include "MaterialDocument.h"
 #include "MaterialParametersPanel.h"
 #include "MaterialPreviewPanel.h"
+#include "ShaderLog.h"
+#include "ShaderLogPanel.h"
 #include "Renderer.h"
 #include "ShaderLayout.h"
 
@@ -425,6 +428,54 @@ namespace
 	}
 }
 
+namespace
+{
+	void TestDiagnosticsOpenTheirLine()
+	{
+		HeadlessUI ui;
+		Nyx::Engine::ShaderDiagnostic diagnostic{ .File = "C:/Assets/Shaders/Stone.slang", .Line = 23, .Column = 14, .Severity = Nyx::Engine::EShaderDiagnosticSeverity::Error, .Message = "undefined identifier 'uvv'." };
+		std::filesystem::path opened;
+		uint32_t openedLine = 0;
+		const OpenFileAtLine open = [&](const std::filesystem::path& file, uint32_t line)
+		{
+			opened = file;
+			openedLine = line;
+		};
+		ImVec2 at;
+		const auto draw = [&]()
+		{
+			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+			ImGui::SetNextWindowSize(ImVec2(600.0f, 200.0f));
+			ImGui::Begin("Diagnostics");
+			at = ImGui::GetCursorScreenPos();
+			DiagnosticLine(diagnostic, open);
+			ImGui::End();
+		};
+		ui.Frame(draw);
+		ImGuiIO& io = ImGui::GetIO();
+		io.AddMousePosEvent(at.x + 20.0f, at.y + 4.0f);
+		ui.Frame(draw);
+		io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+		ui.Frame(draw);
+		io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+		ui.Frame(draw);
+		Require(opened == diagnostic.File && openedLine == 23, "Clicking the diagnostic didn't open its file at its line");
+
+		// The window with a compile that worked and one that didn't, all and failing only
+		Nyx::Engine::ShaderLog log;
+		log.Add(Nyx::Engine::ShaderLogEntry{ .Name = "Grid.frag", .File = "C:/Engine/Shaders/Grid.frag", .bSucceeded = true, .Milliseconds = 41.0, .EntryPoints = 1, .SpirvBytes = 1240 });
+		log.Add(Nyx::Engine::ShaderLogEntry{ .Name = "Shaders/Stone.slang", .File = diagnostic.File, .bSucceeded = false, .Diagnostics = { diagnostic } });
+		ShaderLogPanel panel;
+		panel.bOpen = true;
+		panel.SetOpenFileAtLine(open);
+		ui.Frame([&]() { panel.Draw(log); });
+		panel.bFailingOnly = true;
+		ui.Frame([&]() { panel.Draw(log); });
+		// Nothing compiled yet
+		ui.Frame([&]() { panel.Draw(Nyx::Engine::ShaderLog{}); });
+	}
+}
+
 int main()
 {
 	try
@@ -433,6 +484,7 @@ int main()
 		TestFollowingTheFile();
 		TestParametersWindow();
 		TestOrbit();
+		TestDiagnosticsOpenTheirLine();
 	}
 	catch (const std::exception& error)
 	{

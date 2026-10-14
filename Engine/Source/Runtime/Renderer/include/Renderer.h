@@ -8,6 +8,7 @@
 #include "PainterDrawOptions.h"
 #include "ImageFile.h"
 #include "MaterialAsset.h"
+#include "ShaderLog.h"
 #include <imgui.h>
 #include "glm/glm.hpp"
 
@@ -227,6 +228,10 @@ namespace Nyx
 		virtual Nyx::Material* GetMaterial(const std::string& path) = 0;
 		// Whether shaders are compiling, e.g. for a material's first look; tests wait for it
 		virtual bool IsCompilingShaders() const = 0;
+
+		// The last compile of every shader that compiled since the start, the engine's and the
+		// materials', with what the compiler said: for the Shader Log
+		virtual const Nyx::Engine::ShaderLog& GetShaderLog() const = 0;
 	};
 
 	NYXENGINE_API std::unique_ptr<IRenderer> CreateRenderer();

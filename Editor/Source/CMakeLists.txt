@@ -52,6 +52,7 @@ set(NYX_EDITOR_SOURCES
     src/MaterialDocument.cpp
     src/MaterialParametersPanel.cpp
     src/MaterialPreviewPanel.cpp
+    src/ShaderLogPanel.cpp
 )
 
 set(NYX_EDITOR_HEADERS
@@ -61,6 +62,7 @@ set(NYX_EDITOR_HEADERS
     include/MaterialDocument.h
     include/MaterialParametersPanel.h
     include/MaterialPreviewPanel.h
+    include/ShaderLogPanel.h
     include/SceneEditor.h
     include/SceneOutlinerPanel.h
     include/DetailsPanel.h
@@ -196,7 +198,7 @@ if(BUILD_TESTING)
     add_test(NAME NyxEditorPanelTests COMMAND NyxEditorPanelTests)
 
     # The material document and the Parameters window, headless, over a stand-in for the renderer
-    add_executable(NyxMaterialEditorTests tests/MaterialEditorTests.cpp src/MaterialDocument.cpp src/MaterialParametersPanel.cpp src/MaterialPreviewPanel.cpp)
+    add_executable(NyxMaterialEditorTests tests/MaterialEditorTests.cpp src/MaterialDocument.cpp src/MaterialParametersPanel.cpp src/MaterialPreviewPanel.cpp src/ShaderLogPanel.cpp)
     target_include_directories(NyxMaterialEditorTests PRIVATE include src ${CMAKE_CURRENT_BINARY_DIR})
     target_link_libraries(NyxMaterialEditorTests PRIVATE NyxEditorEngine)
     add_dependencies(NyxMaterialEditorTests NyxGeneratedReflection)

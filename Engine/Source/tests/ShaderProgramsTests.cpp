@@ -4,10 +4,12 @@
 // it broke; an include's change compiles the programs using it; other files change nothing; a
 // save during a compile is compiled after it; a program with several entry points gives each
 // by name, and keeps them all when a compile drops one; and a material shader, which no cache
-// holds yet, is compiled at the first update and again when saved.
+// holds yet, is compiled at the first update and again when saved. The Shader Log keeps each
+// shader's last compile, the newest last.
 #include "Paths.h"
 #include "ShaderCache.h"
 #include "ShaderCompiler.h"
+#include "ShaderLog.h"
 #include "ShaderPrograms.h"
 
 #include <algorithm>
@@ -461,6 +463,38 @@ namespace
 	}
 }
 
+namespace
+{
+	// A shader's compile replaces its entry and moves it last; entries are found by file
+	void TestShaderLogKeepsEachShadersLastCompile()
+	{
+		ShaderLog log;
+		const auto entry = [](std::string name, bool bSucceeded)
+		{
+			ShaderLogEntry compile;
+			compile.File = std::filesystem::path("C:/Assets") / name;
+			compile.Name = std::move(name);
+			compile.bSucceeded = bSucceeded;
+			if (!bSucceeded)
+			{
+				compile.Diagnostics.push_back(ShaderDiagnostic{ .File = compile.File, .Line = 3, .Severity = EShaderDiagnosticSeverity::Warning, .Message = "first" });
+				compile.Diagnostics.push_back(ShaderDiagnostic{ .File = compile.File, .Line = 7, .Severity = EShaderDiagnosticSeverity::Error, .Message = "second" });
+			}
+			return compile;
+		};
+		log.Add(entry("A.slang", true));
+		log.Add(entry("B.slang", false));
+		const uint64_t revision = log.GetRevision();
+		log.Add(entry("A.slang", false));
+		Require(log.GetEntries().size() == 2 && log.GetEntries().back().Name == "A.slang" && log.GetRevision() > revision, "A's new compile didn't replace its entry and move last");
+		Require(log.CountFailures() == 2, "Two failing shaders aren't counted");
+		const ShaderLogEntry* b = log.FindByFile(std::filesystem::path("C:/Assets") / "B.slang");
+		Require(b && b->Name == "B.slang" && b->FindFirstError() && b->FindFirstError()->Line == 7, "B isn't found by its file, with its first error");
+		log.Remove("B.slang");
+		Require(log.GetEntries().size() == 1 && !log.FindByFile(std::filesystem::path("C:/Assets") / "B.slang"), "B's entry wasn't taken out");
+	}
+}
+
 int main()
 {
 	try
@@ -472,6 +506,7 @@ int main()
 		TestASaveDuringACompileIsCompiledAfterIt();
 		TestProgramsWithSeveralEntryPoints();
 		TestMaterialShadersCompileWithoutTheBuild();
+		TestShaderLogKeepsEachShadersLastCompile();
 	}
 	catch (const std::exception& error)
 	{

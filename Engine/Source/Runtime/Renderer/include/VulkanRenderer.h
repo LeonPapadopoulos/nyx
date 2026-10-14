@@ -285,6 +285,7 @@ namespace Nyx
 		Nyx::Mesh* GetPlaneMesh() override;
 		Nyx::Material* GetMaterial(const std::string& path) override;
 		bool IsCompilingShaders() const override;
+		const Nyx::Engine::ShaderLog& GetShaderLog() const override { return ShaderCompiles; }
 		MaterialView ViewMaterial(const std::string& path) override;
 		void SetMaterialValues(const std::string& path, const Nyx::Engine::MaterialAsset& asset) override;
 
@@ -446,6 +447,8 @@ namespace Nyx
 		// Once per frame, before recording: logs what compiled, and makes the pipelines of changed
 		// shaders again
 		void ApplyShaderUpdates();
+		// One compile into the Shader Log (ShaderCompiles)
+		void RecordCompile(const Nyx::Engine::ShaderProgramUpdate& update);
 
 		void LoadTestGltfScene(std::vector<RenderObject>& outObjects);
 
@@ -691,6 +694,8 @@ namespace Nyx
 
 		// The meshes' materials, from their .nyxmat files
 		Nyx::Engine::VulkanMaterials Materials;
+		// Every shader's last compile (GetShaderLog())
+		Nyx::Engine::ShaderLog ShaderCompiles;
 		// Values set for materials (SetMaterialValues()), written once the UI is built: the frame's
 		// draws are recorded by then, but run after
 		std::map<std::string, Nyx::Engine::MaterialAsset> PendingMaterialValues;

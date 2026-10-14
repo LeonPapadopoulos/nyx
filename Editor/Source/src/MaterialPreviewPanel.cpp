@@ -6,6 +6,7 @@
 #include "Mesh.h"
 #include "MeshRendererComponent.h"
 #include "Renderer.h"
+#include "ShaderLog.h"
 #include "TransformComponent.h"
 #include "UITheme.h"
 #include "UIWidgets.h"
@@ -67,7 +68,7 @@ namespace Nyx::Editor
 		ViewId = 0;
 	}
 
-	void MaterialPreviewPanel::Draw(Nyx::IRenderer& renderer, const std::string& materialPath, Nyx::Mesh* selectedMesh)
+	void MaterialPreviewPanel::Draw(Nyx::IRenderer& renderer, const std::string& materialPath, Nyx::Mesh* selectedMesh, const Nyx::Engine::ShaderLogEntry* failedCompile)
 	{
 		// The view costs a scene's drawing each frame: only while the window is open
 		if (!bOpen)
@@ -103,7 +104,13 @@ namespace Nyx::Editor
 			return;
 		}
 
-		const ImVec2 avail = ImGui::GetContentRegionAvail();
+		// The shader's first error under the picture, while it doesn't compile
+		const Nyx::Engine::ShaderDiagnostic* error = failedCompile ? failedCompile->FindFirstError() : nullptr;
+		ImVec2 avail = ImGui::GetContentRegionAvail();
+		if (error)
+		{
+			avail.y -= ImGui::GetTextLineHeightWithSpacing();
+		}
 		renderer.SetSceneViewSize(ViewId, static_cast<uint32_t>(std::max(avail.x, 1.0f)), static_cast<uint32_t>(std::max(avail.y, 1.0f)));
 		if (!renderer.WasSceneViewRecreatedThisFrame(ViewId))
 		{
@@ -114,6 +121,10 @@ namespace Nyx::Editor
 			ImGui::InvisibleButton("##PreviewDrag", ImVec2(std::max(avail.x, 1.0f), std::max(avail.y, 1.0f)));
 			ImGui::SetItemTooltip("Drag: turn the camera. Shift: the sun. Ctrl: the sky. Wheel: closer");
 			HandleInput(ImGui::IsItemHovered(), ImGui::IsItemActive());
+		}
+		if (error)
+		{
+			DiagnosticLine(*error, OpenAtLine);
 		}
 		ImGui::End();
 	}

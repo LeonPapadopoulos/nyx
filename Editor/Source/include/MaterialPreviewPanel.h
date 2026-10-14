@@ -2,6 +2,7 @@
 
 #include "Entity.h"
 #include "SceneViewTypes.h"
+#include "ShaderLogPanel.h"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -13,6 +14,11 @@ namespace Nyx
 {
 	class IRenderer;
 	class Mesh;
+}
+
+namespace Nyx::Engine
+{
+	struct ShaderLogEntry;
 }
 
 namespace Nyx::Editor
@@ -36,7 +42,8 @@ namespace Nyx::Editor
 	//
 	// Dragging in the picture turns the camera around the shape, the wheel brings it closer;
 	// with Shift the drag turns the sun, with Ctrl the sky. Its scene view exists while the window
-	// is open.
+	// is open. While the material's shader doesn't compile, the picture keeps the last good look
+	// over a red line with the first error, which opens the file at the line when clicked.
 	class MaterialPreviewPanel
 	{
 	public:
@@ -52,8 +59,11 @@ namespace Nyx::Editor
 		MaterialPreviewPanel();
 
 		// Every frame: the window while open, showing `materialPath` (empty: no material open).
-		// `selectedMesh`: the selected entity's mesh, null without one.
-		void Draw(Nyx::IRenderer& renderer, const std::string& materialPath, Nyx::Mesh* selectedMesh);
+		// `selectedMesh`: the selected entity's mesh, null without one. `failedCompile`: the last
+		// compile of the material's shader when it failed, null otherwise.
+		void Draw(Nyx::IRenderer& renderer, const std::string& materialPath, Nyx::Mesh* selectedMesh, const Nyx::Engine::ShaderLogEntry* failedCompile = nullptr);
+
+		void SetOpenFileAtLine(OpenFileAtLine open) { OpenAtLine = std::move(open); }
 
 		// Lets the scene view go, e.g. before the renderer does
 		void ReleaseView();
@@ -87,5 +97,6 @@ namespace Nyx::Editor
 
 		Nyx::IRenderer* Renderer = nullptr;
 		uint64_t ViewId = 0;
+		OpenFileAtLine OpenAtLine;
 	};
 }

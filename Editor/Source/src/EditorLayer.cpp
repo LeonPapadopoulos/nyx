@@ -142,6 +142,15 @@ namespace Nyx::Editor
 
 		RegisterDefaultPropertyWidgets();
 
+		// Shader diagnostics open their file at the line in the source editor the preferences name
+		const OpenFileAtLine openAtLine = [this](const std::filesystem::path& file, uint32_t line)
+		{
+			const std::string& path = *OpenedShaderFiles.insert(file.string()).first;
+			PreferencesPanel.OpenSource(Nyx::SourceLocation(path.c_str(), std::max(line, 1u)), Preferences.SourceEditor);
+		};
+		ShaderLogWindow.SetOpenFileAtLine(openAtLine);
+		MaterialPreview.SetOpenFileAtLine(openAtLine);
+
 		MainSceneView.CreateView(*Renderer);
 		SecondarySceneView.CreateView(*Renderer);
 
@@ -249,8 +258,17 @@ namespace Nyx::Editor
 			{
 				selectedMesh = world.Get<Nyx::Engine::MeshRendererComponent>(*selection).MeshAsset;
 			}
-			MaterialPreview.Draw(*Renderer, MaterialParameters.GetDocument().GetPath(), selectedMesh);
+			// The material's shader's last compile, when it failed
+			const Nyx::Engine::ShaderLogEntry* failedCompile = nullptr;
+			if (MaterialParameters.GetDocument().IsOpen())
+			{
+				const std::string shader = MaterialParameters.GetDocument().GetAsset().GetShader();
+				const Nyx::Engine::ShaderLogEntry* compile = shader.empty() ? nullptr : Renderer->GetShaderLog().FindByFile((Nyx::Paths::GetAssetsDir() / shader).make_preferred());
+				failedCompile = compile && !compile->bSucceeded ? compile : nullptr;
+			}
+			MaterialPreview.Draw(*Renderer, MaterialParameters.GetDocument().GetPath(), selectedMesh, failedCompile);
 		}
+		ShaderLogWindow.Draw(Renderer->GetShaderLog());
 		MainSceneView.Draw(Editing, Preferences, CameraController);
 		SecondarySceneView.Draw(Editing, Preferences, CameraController);
 
@@ -371,6 +389,8 @@ namespace Nyx::Editor
 			NYX_UI(Nyx::UI::MenuItem("Parameters", nullptr, &MaterialParameters.bOpen));
 			// The material open, on a shape, lit or in its debug views
 			NYX_UI(Nyx::UI::MenuItem("Preview", nullptr, &MaterialPreview.bOpen));
+			// What the shader compiler said last, for every shader
+			NYX_UI(Nyx::UI::MenuItem("Shader Log", nullptr, &ShaderLogWindow.bOpen));
 
 			if (NYX_UI(Nyx::UI::MenuItem("Asset Browser")))
 			{

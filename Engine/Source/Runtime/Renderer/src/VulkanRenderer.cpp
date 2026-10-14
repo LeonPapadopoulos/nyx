@@ -2872,6 +2872,44 @@ namespace Nyx
 		LOG_INFO("Live shader reload: saving a shader in {} compiles it again", Nyx::Paths::GetShadersDir().string());
 	}
 
+	void VulkanRenderer::RecordCompile(const Nyx::Engine::ShaderProgramUpdate& update)
+	{
+		using Nyx::Engine::EShaderCompileKind;
+		const bool bMaterial = update.Request.Kind == EShaderCompileKind::Material || update.Request.Kind == EShaderCompileKind::DefaultsWriter;
+		std::string name = update.Name;
+		if (bMaterial)
+		{
+			// By its path in the assets folder, as materials name it
+			std::error_code error;
+			const std::filesystem::path relative = std::filesystem::relative(update.Request.File, Nyx::Paths::GetAssetsDir(), error);
+			name = !error && !relative.empty() && *relative.begin() != ".." ? relative.generic_string() : update.Request.File.filename().string();
+		}
+		if (update.Request.Kind == EShaderCompileKind::DefaultsWriter)
+		{
+			// The defaults writer is the material's own business: shown only while it fails
+			name += " (defaults)";
+			if (update.Result.bSucceeded)
+			{
+				ShaderCompiles.Remove(name);
+				return;
+			}
+		}
+
+		Nyx::Engine::ShaderLogEntry entry;
+		entry.Name = std::move(name);
+		entry.File = update.Request.File;
+		entry.bSucceeded = update.Result.bSucceeded;
+		entry.Milliseconds = update.Result.Milliseconds;
+		entry.EntryPoints = static_cast<uint32_t>(update.Result.EntryPoints.size());
+		for (const Nyx::Engine::CompiledEntryPoint& entryPoint : update.Result.EntryPoints)
+		{
+			entry.SpirvBytes += entryPoint.Spirv.size() * sizeof(uint32_t);
+		}
+		entry.When = std::chrono::system_clock::now();
+		entry.Diagnostics = update.Result.Diagnostics;
+		ShaderCompiles.Add(std::move(entry));
+	}
+
 	void VulkanRenderer::ApplyShaderUpdates()
 	{
 		const std::vector<Nyx::Engine::ShaderProgramUpdate> updates = Programs.Update();
@@ -2889,6 +2927,7 @@ namespace Nyx
 			const std::string name = update.Request.Kind == Nyx::Engine::EShaderCompileKind::Material ? update.Request.File.filename().string()
 				: update.Request.Kind == Nyx::Engine::EShaderCompileKind::DefaultsWriter              ? update.Request.File.filename().string() + " (defaults)"
 																									  : update.Name;
+			RecordCompile(update);
 			if (update.bChanged)
 			{
 				LOG_INFO("Shader {} compiled in {:.0f} ms", name, update.Result.Milliseconds);

@@ -267,6 +267,9 @@ namespace
 		// The missing material until the shader's first compile, then the file's blue
 		const std::array<uint8_t, 3> blue = DrawUntilMiddleChanges(gpu, view, Tonemapped(glm::vec3(1.0f, 0.0f, 1.0f)));
 		Require(Near(blue, Tonemapped(glm::vec3(0.0f, 0.0f, 1.0f))), "The material doesn't glow in its file's blue: " + Text(blue));
+		const Nyx::Engine::ShaderLogEntry* compiled = renderer.GetShaderLog().FindByFile(shader.File);
+		Require(compiled && compiled->bSucceeded && compiled->Name == "Shaders/NyxSceneGpuTestsGlow.slang" && compiled->EntryPoints > 0 && compiled->SpirvBytes > 0,
+			"The Shader Log doesn't have the shader's compile, by its path in the assets folder");
 
 		// A field before Glow: Glow moves, the file's blue is found there, the new field's default
 		// comes from the shader
@@ -283,6 +286,11 @@ namespace
 			gpu.DrawFrames(1);
 		}
 		Require(MiddlePixel(gpu, view) == dimmed, "A material shader saved broken changed the picture");
+		// The Shader Log says where it broke: Glow, line 10
+		const Nyx::Engine::ShaderLogEntry* broken = renderer.GetShaderLog().FindByFile(shader.File);
+		Require(broken && !broken->bSucceeded && broken->FindFirstError(), "The Shader Log doesn't have the broken compile");
+		Require(broken->FindFirstError()->Line == 10 && broken->FindFirstError()->Message.find("Glow") != std::string::npos,
+			"The Shader Log's error isn't at the line with Glow: " + broken->FindFirstError()->ToString());
 
 		renderer.DestroySceneView(view);
 		renderer.SetWorld(nullptr);

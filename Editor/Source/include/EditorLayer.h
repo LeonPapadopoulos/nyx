@@ -13,6 +13,7 @@
 #include "Layer.h"
 #include "MaterialParametersPanel.h"
 #include "MaterialPreviewPanel.h"
+#include "ShaderLogPanel.h"
 #include "Paths.h"
 #include "PainterTestWindow.h"
 #include "MockupOverlay.h"
@@ -29,6 +30,7 @@
 
 #include <filesystem>
 #include <memory>
+#include <set>
 #include <string>
 
 namespace Nyx::Tests
@@ -120,6 +122,11 @@ namespace Nyx::Editor
 		MaterialParametersPanel MaterialParameters{ Nyx::Paths::GetAssetsDir() };
 		// The material open, on a shape in a world of its own
 		MaterialPreviewPanel MaterialPreview;
+		// Every shader's last compile, and what the compiler said
+		ShaderLogPanel ShaderLogWindow;
+		// Paths of files opened from shader diagnostics: the source editor opens them on a worker,
+		// which reads the path after the diagnostic may be gone
+		std::set<std::string> OpenedShaderFiles;
 		SceneViewPanel MainSceneView{ "Scene" };
 		SceneViewPanel SecondarySceneView{ "Scene 2" };
 		// Flies the scene views' free cameras
