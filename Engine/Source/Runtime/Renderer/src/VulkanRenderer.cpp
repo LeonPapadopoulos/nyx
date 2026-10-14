@@ -493,6 +493,22 @@ namespace Nyx
 		(void)fenceResult;
 		const float waitForGpuMilliseconds = millisecondsSince(frameStart);
 
+		// Views let go of during the last frame, which the GPU is done with now
+		for (const uint64_t id : std::exchange(SceneViewsToDestroy, {}))
+		{
+			DestroySceneViewNow(id);
+		}
+		// From here to the end, the frame's commands are recorded
+		bRecordingFrame = true;
+		struct RecordingEnds
+		{
+			bool& bRecording;
+			~RecordingEnds()
+			{
+				bRecording = false;
+			}
+		} recordingEnds{ bRecordingFrame };
+
 		// The previous frame is done: its screenshot can be written, and the UI images destroyed
 		// during it are no longer shown.
 		FinishScreenshot();
@@ -3202,12 +3218,28 @@ namespace Nyx
 		CreateSelectionMaskResourcesForView(view);
 		CreateOutlineDescriptorSetForView(view);
 
+		// Made while the frame is recorded: not drawn in it, so not shown in it
+		view.bRecreatedThisFrame = bRecordingFrame;
+
 		const uint64_t newId = view.Id;
 		SceneViews.push_back(std::move(view));
 		return newId;
 	}
 
 	void VulkanRenderer::DestroySceneView(uint64_t id)
+	{
+		if (bRecordingFrame)
+		{
+			if (std::find(SceneViewsToDestroy.begin(), SceneViewsToDestroy.end(), id) == SceneViewsToDestroy.end())
+			{
+				SceneViewsToDestroy.push_back(id);
+			}
+			return;
+		}
+		DestroySceneViewNow(id);
+	}
+
+	void VulkanRenderer::DestroySceneViewNow(uint64_t id)
 	{
 		for (auto it = SceneViews.begin(); it != SceneViews.end(); ++it)
 		{

@@ -704,6 +704,45 @@ namespace
 		gpu.DrawFrames(1);
 	}
 
+	// As the editor's windows do: a view made while the UI is built, after the frame's views were
+	// recorded, and one let go of there (the Preview window opened and closed). The frame goes on;
+	// the view goes once the GPU is done with it.
+	void TestViewsMadeAndLetGoWhileTheUIIsBuilt(SceneRenderer& gpu)
+	{
+		Nyx::IRenderer& renderer = gpu.Renderer;
+		DefaultScene scene;
+		MakeDefaultScene(scene, gpu.Renderer);
+		renderer.SetWorld(&scene.World);
+		const uint64_t kept = renderer.CreateSceneView();
+		renderer.SetSceneViewSize(kept, ViewWidth, ViewHeight);
+		gpu.DrawFrames(2);
+
+		uint64_t made = 0;
+		gpu.Renderer.DrawFrame([&]()
+			{
+				made = renderer.CreateSceneView();
+				renderer.SetSceneViewSize(made, ViewWidth, ViewHeight);
+				Require(renderer.WasSceneViewRecreatedThisFrame(made), "A view made while the UI is built shows before it was drawn");
+			});
+		gpu.DrawFrames(2);
+		Require(!renderer.WasSceneViewRecreatedThisFrame(made), "The view made while the UI was built doesn't show after it was drawn");
+
+		gpu.Renderer.DrawFrame([&]()
+			{
+				renderer.DestroySceneView(made);
+			});
+		gpu.DrawFrames(2);
+		const std::vector<uint64_t> views = renderer.GetSceneViewIds();
+		Require(std::find(views.begin(), views.end(), made) == views.end(), "The view let go of while the UI was built is still there");
+		Require(std::find(views.begin(), views.end(), kept) != views.end(), "Letting a view go took another one");
+		RgbaImage image;
+		Require(gpu.Renderer.ReadSceneViewPixels(kept, image), "The view kept can't be read back");
+
+		renderer.DestroySceneView(kept);
+		renderer.SetWorld(nullptr);
+		gpu.DrawFrames(1);
+	}
+
 	// Clicks the middle of the view: whether a pick came back, and what it hit
 	Nyx::IRenderer::PickResult PickMiddle(SceneRenderer& gpu, uint64_t view)
 	{
@@ -828,6 +867,7 @@ int main()
 		TestViewsWithWorldsOfTheirOwn(gpu);
 		TestMaterialValuesSetInMemory(gpu);
 		TestSkiesAndDebugViews(gpu);
+		TestViewsMadeAndLetGoWhileTheUIIsBuilt(gpu);
 	}
 	catch (const std::exception& error)
 	{

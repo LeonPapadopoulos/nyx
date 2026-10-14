@@ -459,8 +459,13 @@ namespace Nyx
 		void ExtractSceneGlobalsFromWorldCamera(SceneViewInstance& view, const Nyx::Engine::Registry& registry);
 		void UpdateViewportSceneGlobals(SceneViewInstance& view, const Nyx::Engine::Registry& registry);
 
+		// While a frame is recorded (e.g. as the UI is built), a view made shows from its first
+		// drawn frame on (WasSceneViewRecreatedThisFrame() says so), and a view let go of is
+		// destroyed at the next frame's start: the frame's commands may draw it already, and
+		// destroying what they use while they are recorded would break them.
 		uint64_t CreateSceneView();
 		void DestroySceneView(uint64_t id);
+		void DestroySceneViewNow(uint64_t id);
 
 		void SetSceneViewSize(uint64_t id, uint32_t width, uint32_t height) override;
 
@@ -683,6 +688,10 @@ namespace Nyx
 		std::vector<std::unique_ptr<Nyx::Texture>> LoadedTextures;
 
 		std::vector<SceneViewInstance> SceneViews;
+		// Views let go of while a frame was recorded, destroyed at the next frame's start
+		std::vector<uint64_t> SceneViewsToDestroy;
+		// Between waiting for the last frame and the end of DrawFrame(): the frame's commands are recorded
+		bool bRecordingFrame = false;
 		uint64_t NextSceneViewId = 1;
 
 		// Set 0 of every scene pipeline: every texture, the fixed samplers, the material buffer
