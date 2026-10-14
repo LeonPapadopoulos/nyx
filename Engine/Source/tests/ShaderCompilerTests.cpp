@@ -1,6 +1,7 @@
 // ShaderCompiler without a GPU: materials compiled into their domain, the layout reflection
-// reports, diagnostics with file, line and column, dependencies, and the engine's GLSL compiled
-// by Slang with the same layouts as glslc's. SPIR-V is checked with SPIRV-Tools' validator.
+// reports, diagnostics with file, line and column, dependencies, the engine's GLSL compiled by
+// Slang with the same layouts as glslc's, and the engine's Slang programs on the planned bindings.
+// SPIR-V is checked with SPIRV-Tools' validator.
 #include "Paths.h"
 #include "ShaderCompiler.h"
 
@@ -23,7 +24,7 @@ namespace
 
 	const std::filesystem::path TestShaders = NYX_TEST_SHADERS_DIR;
 	const std::filesystem::path EngineShaders = NYX_ENGINE_SHADERS_DIR;
-	// What glslc made of the engine's shaders, while the build still runs it (until change 4)
+	// What glslc made of the engine's GLSL shaders (NyxGlslcReference), to compare Slang's with
 	const std::filesystem::path GlslcShaders = NYX_GLSLC_SHADERS_DIR;
 
 	void Require(bool condition, const std::string& message)
@@ -460,7 +461,45 @@ namespace
 			}
 			++compared;
 		}
-		Require(compared >= 19, "only " + std::to_string(compared) + " engine shaders were compared");
+		// The scene and the sky are Slang programs since change 5; the rest is GLSL
+		Require(compared >= 15, "only " + std::to_string(compared) + " engine shaders were compared");
+	}
+
+	// The engine's Slang programs: each entry point compiles into valid SPIR-V that reads only
+	// the planned bindings (the global set, the view's set)
+	void TestEngineSlangPrograms()
+	{
+		struct Program
+		{
+			const char* File;
+			std::vector<std::pair<std::string, EShaderStage>> EntryPoints;
+		};
+		const Program programs[] = {
+			{ "Scene.slang", { { "sceneVertex", EShaderStage::Vertex }, { "sceneFragment", EShaderStage::Fragment } } },
+			{ "Skybox.slang", { { "skyboxVertex", EShaderStage::Vertex }, { "skyboxFragment", EShaderStage::Fragment } } },
+		};
+		const std::vector<std::string> planned{ "0.0", "0.1", "0.2", "1.0" };
+		for (const Program& program : programs)
+		{
+			const ShaderCompileResult result = Compiler().CompileProgram(EngineShaders / program.File);
+			RequireSucceeded(result, program.File);
+			Require(result.EntryPoints.size() == program.EntryPoints.size(), std::string(program.File) + " has " + std::to_string(result.EntryPoints.size()) + " entry points");
+			for (const auto& [name, stage] : program.EntryPoints)
+			{
+				const auto found = std::find_if(result.EntryPoints.begin(), result.EntryPoints.end(), [&name](const CompiledEntryPoint& entryPoint)
+					{
+						return entryPoint.Name == name;
+					});
+				Require(found != result.EntryPoints.end() && found->Stage == stage, std::string(program.File) + " lacks " + name + ", or has it in another stage");
+
+				const std::string problem = ValidateSpirv(found->Spirv, true);
+				Require(problem.empty(), name + " isn't valid SPIR-V: " + problem);
+				for (const std::string& binding : DescriptorBindings(found->Spirv))
+				{
+					Require(std::find(planned.begin(), planned.end(), binding) != planned.end(), name + " reads binding " + binding + ", which isn't the plan's");
+				}
+			}
+		}
 	}
 
 	void TestDefaultsWriterCompiles()
@@ -504,6 +543,7 @@ int main()
 		TestMaterialMistakesAreNamed();
 		TestDependencies();
 		TestEngineShadersMatchGlslc();
+		TestEngineSlangPrograms();
 		TestDefaultsWriterCompiles();
 		TestDiagnosticsParsing();
 	}

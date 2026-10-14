@@ -101,6 +101,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ShaderCompileService.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ShaderPrograms.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ShaderCache.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanBindless.cpp
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/src/ReflectionUtils.cpp
@@ -204,6 +205,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ShaderCompileService.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ShaderPrograms.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ShaderCache.h
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanBindless.h
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionTypes.h

@@ -2,8 +2,12 @@
 // and the engine's entry points below are generic over it. ShaderCompiler::CompileMaterial()
 // specialises them with the material's struct.
 //
-// Bindings follow the bindless plan: set 0 is global, set 1 belongs to the view, push constants
-// to the draw. The lighting is a stand-in until nyx.lighting exists.
+// Bindings follow the bindless plan: set 0 is global and push constants belong to the draw
+// (nyx.bindless), set 1 belongs to the view (nyx.view); a material sees both. The lighting is a
+// stand-in until nyx.lighting exists.
+
+__exported import nyx.bindless;
+__exported import nyx.view;
 
 // -------------------------------------------------------------------------
 // Attributes a material's fields can carry. The editor reads them through reflection
@@ -20,68 +24,6 @@
 [__AttributeUsage(_AttributeTargets.Var)] public struct HiddenAttribute {};
 // For textures: the texture an unset field shows, e.g. "White" or "FlatNormal"
 [__AttributeUsage(_AttributeTargets.Var)] public struct DefaultAttribute { public string Texture; };
-
-// -------------------------------------------------------------------------
-// Bindings
-// -------------------------------------------------------------------------
-
-// Every sampled image, 2D or cube, in one array; a texture is an index into it
-[vk::binding(0, 0)] __DynamicResource<__DynamicResourceKind.General> TextureHeap[];
-[vk::binding(1, 0)] SamplerState FixedSamplers[4];
-// Every material's values, each at its own offset, in scalar layout
-[vk::binding(2, 0)] public ByteAddressBuffer MaterialBuffer;
-
-public struct ObjectConstants
-{
-    public float4x4 Model;
-    public uint MaterialOffset;
-    public uint EntityId;
-    public uint2 _Padding;
-    public float4 CustomData;
-}
-[vk::push_constant] public ConstantBuffer<ObjectConstants> Object;
-
-public struct ViewConstants
-{
-    public float4x4 ViewProjection;
-    public float4 CameraPosition;
-    public float4 LightDirection;
-    public float4 LightColor;
-}
-[vk::binding(0, 1)] public ConstantBuffer<ViewConstants> View;
-
-// Slang's own DescriptorHandles, wherever they are used, find their descriptor in TextureHeap too
-export T getDescriptorFromHandle<T>(DescriptorHandle<T> handle) where T : IOpaqueDescriptor
-{
-    __target_switch
-    {
-    case spirv:
-        return TextureHeap[((uint2)handle).x].asOpaqueDescriptor<T>();
-    default:
-        return defaultGetDescriptorFromHandle(handle);
-    }
-}
-
-namespace nyx
-{
-    // A texture field of a material: an index into TextureHeap, unset slot 0. A plain uint rather
-    // than Slang's DescriptorHandle<Texture2D>: a handle has no default, and a material must be
-    // constructible with its defaults; and inside a struct, at an offset that isn't a multiple of
-    // 8 bytes, a handle is loaded from the wrong offset (shader-materials.md, as built, change 1).
-    public struct Texture
-    {
-        public uint Index = 0;
-
-        public Texture2D get() { return TextureHeap[Index].asOpaqueDescriptor<Texture2D>(); }
-        public float4 Sample(SamplerState sampler, float2 uv) { return get().Sample(sampler, uv); }
-        public float4 SampleLevel(SamplerState sampler, float2 uv, float level) { return get().SampleLevel(sampler, uv, level); }
-    }
-
-    public property SamplerState LinearWrap { get { return FixedSamplers[0]; } }
-    public property SamplerState LinearClamp { get { return FixedSamplers[1]; } }
-    public property SamplerState PointClamp { get { return FixedSamplers[2]; } }
-    public property SamplerState Anisotropic { get { return FixedSamplers[3]; } }
-}
 
 // -------------------------------------------------------------------------
 // What a material reads and writes

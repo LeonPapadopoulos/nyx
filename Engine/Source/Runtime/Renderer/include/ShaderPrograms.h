@@ -25,7 +25,7 @@ namespace Nyx::Engine
 		bool bChanged = false;
 	};
 
-	// The SPIR-V of the engine's shaders, by name ("Grid.frag"), with live reload
+	// The SPIR-V of the engine's shaders, by name ("Grid.frag", "Scene.slang"), with live reload
 	// (Design/shader-materials.md, stage 1, changes 3 and 4). A program starts from the newest
 	// compiled code that matches its files: what live reload compiled last (the saved cache), or
 	// what the build compiled. Code that no longer matches is used all the same, and with live
@@ -46,8 +46,12 @@ namespace Nyx::Engine
 		// (empty: nowhere)
 		ShaderPrograms(std::filesystem::path builtFolder, std::filesystem::path sourceFolder, std::filesystem::path savedFolder = {});
 
-		// The program's last good SPIR-V. Throws when neither cache has any for it.
+		// The program's last good SPIR-V. Throws when neither cache has any for it, or when the
+		// program has more than one entry point.
 		const std::vector<uint32_t>& GetSpirv(const std::string& name);
+		// One entry point's of a program with several (a .slang file). Throws when there is none
+		// by that name.
+		const std::vector<uint32_t>& GetSpirv(const std::string& name, const std::string& entryPoint);
 
 		// Whether the program started from code that no longer matches its files, e.g. a shader
 		// changed while nothing was running. With live reload on, it is compiled at once.
@@ -79,7 +83,9 @@ namespace Nyx::Engine
 	private:
 		struct Program
 		{
-			std::vector<uint32_t> Spirv;
+			// Each entry point's code, in the file's order. A compile that drops one of them
+			// doesn't replace them: pipelines are made from them by name.
+			std::vector<CompiledEntryPoint> EntryPoints;
 			// Files whose change compiles it again: its source, and what the last compile used
 			std::vector<std::filesystem::path> Dependencies;
 			bool bDirty = false;
@@ -88,6 +94,7 @@ namespace Nyx::Engine
 		};
 
 		ShaderCompileRequest RequestFor(const std::string& name) const;
+		Program& Load(const std::string& name);
 
 		std::filesystem::path SourceFolder;
 		ShaderCache Built;

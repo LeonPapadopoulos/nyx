@@ -260,13 +260,16 @@ namespace Nyx
 		// ------------------------------------------------------------------------------------------------------
 		// CPU / GPU resources needed by rendering
 		// ------------------------------------------------------------------------------------------------------
+		// The global set: every texture, the fixed samplers, the material buffer
+		Bindless.Initialize(Context);
+
 		CreateTestTextureData();
 		CreateTestMeshData();
 		CreateTestMeshBuffers();
 
 		// Shared layouts / shared GPU assets that per-view creation depends on
 		CreateSceneDescriptorSetLayout();
-		CreateSkyboxDescriptorSetLayout();
+		CreateScenePipelineLayout();
 		CreateOutlineDescriptorSetLayout();
 
 		LoadSkyboxCubemap();
@@ -316,16 +319,9 @@ namespace Nyx
 		for (SceneViewInstance& view : SceneViews)
 		{
 			view.SceneDescriptorSets = vk::raii::DescriptorSets{ nullptr };
-			view.SkyboxDescriptorSets = vk::raii::DescriptorSets{ nullptr };
-
 			view.SceneDescriptorPool = nullptr;
-			view.SkyboxDescriptorPool = nullptr;
-
 			view.SceneUniformBuffer = nullptr;
 			view.SceneUniformBufferMemory = nullptr;
-
-			view.SkyboxUniformBuffer = nullptr;
-			view.SkyboxUniformBufferMemory = nullptr;
 
 			ReleaseSceneViewBlur(view);
 			view.RenderTarget.Shutdown(Context);
@@ -388,6 +384,7 @@ namespace Nyx
 		MeshVertexBuffer = nullptr;
 		MeshVertexBufferMemory = nullptr;
 
+		Bindless.Shutdown();
 		Context.Shutdown();
 	}
 
@@ -614,7 +611,6 @@ namespace Nyx
 			{
 				UpdateViewportSceneGlobals(view, *World);
 				UpdateSceneUniforms(view);
-				UpdateSkyboxUniforms(view);
 
 				// Editor-only passes: picking, and the masks the selection outline is drawn from
 				if (view.bShowEditorOverlays)
@@ -776,6 +772,7 @@ namespace Nyx
 		// frame's command buffer and the OS windows' ones, which also read painter canvases and
 		// scene views. The next frame waits for it before it rewrites any of them.
 		Context.GetGraphicsQueue().submit(vk::ArrayProxy<const vk::SubmitInfo>{}, *InFlightFence);
+		Bindless.EndFrame();
 
 		// 5) Present
 		vk::PresentInfoKHR presentInfo{};
@@ -1009,23 +1006,33 @@ namespace Nyx
 
 	void VulkanRenderer::CreateMaterials()
 	{
-		TexturedMaterial.Pipeline = &ScenePipeline;
-		TexturedMaterial.PipelineLayout = &ScenePipelineLayout;
-		TexturedMaterial.Reflectivity = 0.0f;
-		TexturedMaterial.bUseTexture = true;
-		TexturedMaterial.Tint = glm::vec3(1.0f, 1.0f, 1.0f);
+		// SceneMaterial in Scene.slang, in scalar layout
+		struct SceneMaterialValues
+		{
+			float Reflectivity = 0.0f;
+			float UseTexture = 1.0f;
+			glm::vec3 Tint{ 1.0f };
+			uint32_t AlbedoTexture = 0;
+		};
+		static_assert(sizeof(SceneMaterialValues) == 24, "SceneMaterialValues must match SceneMaterial in Scene.slang");
 
-		ReflectiveMaterial.Pipeline = &ScenePipeline;
-		ReflectiveMaterial.PipelineLayout = &ScenePipelineLayout;
-		ReflectiveMaterial.Reflectivity = 0.35f;
-		ReflectiveMaterial.bUseTexture = true;
-		ReflectiveMaterial.Tint = glm::vec3(1.0f, 1.0f, 1.0f);
+		const auto make = [this](Material& material, float reflectivity, bool bUseTexture, glm::vec3 tint)
+		{
+			material.Pipeline = &ScenePipeline;
+			material.PipelineLayout = &ScenePipelineLayout;
+			material.Reflectivity = reflectivity;
+			material.bUseTexture = bUseTexture;
+			material.Tint = tint;
 
-		UntexturedMaterial.Pipeline = &ScenePipeline;
-		UntexturedMaterial.PipelineLayout = &ScenePipelineLayout;
-		UntexturedMaterial.Reflectivity = 0.05f;
-		UntexturedMaterial.bUseTexture = false;
-		UntexturedMaterial.Tint = glm::vec3(0.2f, 0.8f, 1.0f);
+			const SceneMaterialValues values{ reflectivity, bUseTexture ? 1.0f : 0.0f, tint, TestTextureIndex };
+			const std::optional<uint32_t> offset = Bindless.AllocateMaterial(sizeof(values));
+			ASSERT(offset.has_value() && "The material buffer is full");
+			material.MaterialOffset = *offset;
+			Bindless.WriteMaterial(material.MaterialOffset, std::as_bytes(std::span(&values, 1)));
+		};
+		make(TexturedMaterial, 0.0f, true, glm::vec3(1.0f, 1.0f, 1.0f));
+		make(ReflectiveMaterial, 0.35f, true, glm::vec3(1.0f, 1.0f, 1.0f));
+		make(UntexturedMaterial, 0.05f, false, glm::vec3(0.2f, 0.8f, 1.0f));
 	}
 
 	void VulkanRenderer::ExtractRenderObjects(const Nyx::Engine::Registry& registry)
@@ -1071,6 +1078,7 @@ namespace Nyx
 
 	void VulkanRenderer::DrawRenderObjects(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
 	{
+		BindSceneSets(view, cmd);
 		for (const RenderObject& obj : RenderObjects)
 		{
 			if (!obj.MeshAsset || !obj.MaterialAsset)
@@ -1080,27 +1088,11 @@ namespace Nyx
 
 			cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, **obj.MaterialAsset->Pipeline);
 
-			cmd.bindDescriptorSets(
-				vk::PipelineBindPoint::eGraphics,
-				**obj.MaterialAsset->PipelineLayout,
-				0,
-				{ *view.SceneDescriptorSets.front() },
-				{});
-
-			ObjectPushConstants pushConstants{};
-			pushConstants.Model = obj.WorldTransform;
-			pushConstants.Params = glm::vec4(
-				obj.MaterialAsset->Reflectivity,
-				obj.MaterialAsset->bUseTexture ? 1.0f : 0.0f,
-				0.0f,
-				0.0f);
-			pushConstants.Tint = glm::vec4(obj.MaterialAsset->Tint, 1.0f);
-
-			cmd.pushConstants<ObjectPushConstants>(
-				**obj.MaterialAsset->PipelineLayout,
-				vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
-				0,
-				{ pushConstants });
+			ObjectConstants object{};
+			object.Model = obj.WorldTransform;
+			object.MaterialOffset = obj.MaterialAsset->MaterialOffset;
+			object.EntityId = obj.PickingId;
+			cmd.pushConstants<ObjectConstants>(*ScenePipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, { object });
 
 			vk::DeviceSize offsets[] = { 0 };
 			cmd.bindVertexBuffers(0, { obj.MeshAsset->GetVertexBuffer() }, offsets);
@@ -1115,42 +1107,41 @@ namespace Nyx
 		uboBinding.binding = 0;
 		uboBinding.descriptorType = vk::DescriptorType::eUniformBuffer;
 		uboBinding.descriptorCount = 1;
-		uboBinding.stageFlags =
-			vk::ShaderStageFlagBits::eVertex |
-			vk::ShaderStageFlagBits::eFragment;
-		uboBinding.pImmutableSamplers = nullptr;
-
-		vk::DescriptorSetLayoutBinding textureBinding{};
-		textureBinding.binding = 1;
-		textureBinding.descriptorType = vk::DescriptorType::eCombinedImageSampler;
-		textureBinding.descriptorCount = 1;
-		textureBinding.stageFlags = vk::ShaderStageFlagBits::eFragment;
-		textureBinding.pImmutableSamplers = nullptr;
-
-		vk::DescriptorSetLayoutBinding cubemapBinding{};
-		cubemapBinding.binding = 2;
-		cubemapBinding.descriptorType = vk::DescriptorType::eCombinedImageSampler;
-		cubemapBinding.descriptorCount = 1;
-		cubemapBinding.stageFlags = vk::ShaderStageFlagBits::eFragment;
-		cubemapBinding.pImmutableSamplers = nullptr;
-
-		std::array<vk::DescriptorSetLayoutBinding, 3> bindings = {
-			uboBinding,
-			textureBinding,
-			cubemapBinding
-		};
+		uboBinding.stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment;
 
 		vk::DescriptorSetLayoutCreateInfo layoutInfo{};
-		layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
-		layoutInfo.pBindings = bindings.data();
+		layoutInfo.bindingCount = 1;
+		layoutInfo.pBindings = &uboBinding;
 
 		SceneDescriptorSetLayout = vk::raii::DescriptorSetLayout(Context.GetDevice(), layoutInfo);
 	}
 
+	void VulkanRenderer::CreateScenePipelineLayout()
+	{
+		vk::PushConstantRange pushConstantRange{};
+		pushConstantRange.stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment;
+		pushConstantRange.offset = 0;
+		pushConstantRange.size = sizeof(ObjectConstants);
+
+		const std::array<vk::DescriptorSetLayout, 2> setLayouts = { *Bindless.GetSetLayout(), *SceneDescriptorSetLayout };
+		vk::PipelineLayoutCreateInfo pipelineLayoutInfo{};
+		pipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(setLayouts.size());
+		pipelineLayoutInfo.pSetLayouts = setLayouts.data();
+		pipelineLayoutInfo.pushConstantRangeCount = 1;
+		pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
+
+		ScenePipelineLayout = vk::raii::PipelineLayout(Context.GetDevice(), pipelineLayoutInfo);
+	}
+
+	void VulkanRenderer::BindSceneSets(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
+	{
+		cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, *ScenePipelineLayout, 0, { Bindless.GetSet(), *view.SceneDescriptorSets.front() }, {});
+	}
+
 	void VulkanRenderer::CreateScenePipeline()
 	{
-		const std::vector<uint32_t> vertCode = ReadSpirvFile("DefaultShader.vert.spv");
-		const std::vector<uint32_t> fragCode = ReadSpirvFile("DefaultShader.frag.spv");
+		const std::vector<uint32_t>& vertCode = Programs.GetSpirv("Scene.slang", "sceneVertex");
+		const std::vector<uint32_t>& fragCode = Programs.GetSpirv("Scene.slang", "sceneFragment");
 
 		vk::raii::ShaderModule vertShaderModule = CreateShaderModule(vertCode);
 		vk::raii::ShaderModule fragShaderModule = CreateShaderModule(fragCode);
@@ -1158,12 +1149,12 @@ namespace Nyx
 		vk::PipelineShaderStageCreateInfo vertStageInfo{};
 		vertStageInfo.stage = vk::ShaderStageFlagBits::eVertex;
 		vertStageInfo.module = *vertShaderModule;
-		vertStageInfo.pName = "main";
+		vertStageInfo.pName = "sceneVertex";
 
 		vk::PipelineShaderStageCreateInfo fragStageInfo{};
 		fragStageInfo.stage = vk::ShaderStageFlagBits::eFragment;
 		fragStageInfo.module = *fragShaderModule;
-		fragStageInfo.pName = "main";
+		fragStageInfo.pName = "sceneFragment";
 
 		vk::PipelineShaderStageCreateInfo shaderStages[] = { vertStageInfo, fragStageInfo };
 
@@ -1225,20 +1216,6 @@ namespace Nyx
 		depthStencil.depthCompareOp = vk::CompareOp::eLess;
 		depthStencil.depthBoundsTestEnable = VK_FALSE;
 		depthStencil.stencilTestEnable = VK_FALSE;
-
-		vk::PushConstantRange pushConstantRange{};
-		pushConstantRange.stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment;
-		pushConstantRange.offset = 0;
-		pushConstantRange.size = sizeof(ObjectPushConstants);
-
-		vk::PipelineLayoutCreateInfo pipelineLayoutInfo{};
-		vk::DescriptorSetLayout setLayouts[] = { *SceneDescriptorSetLayout };
-		pipelineLayoutInfo.setLayoutCount = 1;
-		pipelineLayoutInfo.pSetLayouts = setLayouts;
-		pipelineLayoutInfo.pushConstantRangeCount = 1;
-		pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
-
-		ScenePipelineLayout = vk::raii::PipelineLayout(Context.GetDevice(), pipelineLayoutInfo);
 
 		vk::GraphicsPipelineCreateInfo pipelineInfo{};
 		pipelineInfo.stageCount = 2;
@@ -1331,8 +1308,6 @@ namespace Nyx
 		dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
 		dynamicState.pDynamicStates = dynamicStates.data();
 
-		vk::DescriptorSetLayout setLayouts[] = { *SceneDescriptorSetLayout };
-
 		// @todo: Is the depthStencil something we want for the grid?
 		// Disabled it for now because it was hiding the rendered Quad
 		//vk::PipelineDepthStencilStateCreateInfo depthStencil{};
@@ -1349,12 +1324,6 @@ namespace Nyx
 		depthStencil.depthBoundsTestEnable = VK_FALSE;
 		depthStencil.stencilTestEnable = VK_FALSE;
 
-		vk::PipelineLayoutCreateInfo pipelineLayoutInfo{};
-		pipelineLayoutInfo.setLayoutCount = 1;
-		pipelineLayoutInfo.pSetLayouts = setLayouts;
-
-		GridPipelineLayout = vk::raii::PipelineLayout(Context.GetDevice(), pipelineLayoutInfo);
-
 		vk::GraphicsPipelineCreateInfo pipelineInfo{};
 		pipelineInfo.stageCount = 2;
 		pipelineInfo.pStages = shaderStages;
@@ -1366,7 +1335,7 @@ namespace Nyx
 		pipelineInfo.pDepthStencilState = &depthStencil;
 		pipelineInfo.pColorBlendState = &colorBlending;
 		pipelineInfo.pDynamicState = &dynamicState;
-		pipelineInfo.layout = *GridPipelineLayout;
+		pipelineInfo.layout = *ScenePipelineLayout;
 		pipelineInfo.renderPass = GetSceneRenderPass();
 		pipelineInfo.subpass = 0;
 
@@ -1459,21 +1428,6 @@ namespace Nyx
 		depthStencil.depthBoundsTestEnable = VK_FALSE;
 		depthStencil.stencilTestEnable = VK_FALSE;
 
-		vk::PushConstantRange pushConstantRange{};
-		pushConstantRange.stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment;
-		pushConstantRange.offset = 0;
-		pushConstantRange.size = sizeof(PickingPushConstants);
-
-		vk::DescriptorSetLayout setLayouts[] = { *SceneDescriptorSetLayout };
-
-		vk::PipelineLayoutCreateInfo pipelineLayoutInfo{};
-		pipelineLayoutInfo.setLayoutCount = 1;
-		pipelineLayoutInfo.pSetLayouts = setLayouts;
-		pipelineLayoutInfo.pushConstantRangeCount = 1;
-		pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
-
-		PickingPipelineLayout = vk::raii::PipelineLayout(Context.GetDevice(), pipelineLayoutInfo);
-
 		ASSERT(!SceneViews.empty());
 		vk::RenderPass pickingRenderPass = *SceneViews.front().PickingRenderPass;
 
@@ -1488,7 +1442,7 @@ namespace Nyx
 		pipelineInfo.pDepthStencilState = &depthStencil;
 		pipelineInfo.pColorBlendState = &colorBlending;
 		pipelineInfo.pDynamicState = &dynamicState;
-		pipelineInfo.layout = *PickingPipelineLayout;
+		pipelineInfo.layout = *ScenePipelineLayout;
 		pipelineInfo.renderPass = pickingRenderPass;
 		pipelineInfo.subpass = 0;
 
@@ -1503,8 +1457,8 @@ namespace Nyx
 
 	void VulkanRenderer::CreateSkyboxPipeline()
 	{
-		const std::vector<uint32_t> vertCode = ReadSpirvFile("Skybox.vert.spv");
-		const std::vector<uint32_t> fragCode = ReadSpirvFile("Skybox.frag.spv");
+		const std::vector<uint32_t>& vertCode = Programs.GetSpirv("Skybox.slang", "skyboxVertex");
+		const std::vector<uint32_t>& fragCode = Programs.GetSpirv("Skybox.slang", "skyboxFragment");
 
 		vk::raii::ShaderModule vertShaderModule = CreateShaderModule(vertCode);
 		vk::raii::ShaderModule fragShaderModule = CreateShaderModule(fragCode);
@@ -1512,12 +1466,12 @@ namespace Nyx
 		vk::PipelineShaderStageCreateInfo vertStageInfo{};
 		vertStageInfo.stage = vk::ShaderStageFlagBits::eVertex;
 		vertStageInfo.module = *vertShaderModule;
-		vertStageInfo.pName = "main";
+		vertStageInfo.pName = "skyboxVertex";
 
 		vk::PipelineShaderStageCreateInfo fragStageInfo{};
 		fragStageInfo.stage = vk::ShaderStageFlagBits::eFragment;
 		fragStageInfo.module = *fragShaderModule;
-		fragStageInfo.pName = "main";
+		fragStageInfo.pName = "skyboxFragment";
 
 		vk::PipelineShaderStageCreateInfo shaderStages[] = { vertStageInfo, fragStageInfo };
 
@@ -1590,13 +1544,6 @@ namespace Nyx
 		depthStencil.depthBoundsTestEnable = VK_FALSE;
 		depthStencil.stencilTestEnable = VK_FALSE;
 
-		vk::PipelineLayoutCreateInfo pipelineLayoutInfo{};
-		vk::DescriptorSetLayout setLayouts[] = { *SkyboxDescriptorSetLayout };
-		pipelineLayoutInfo.setLayoutCount = 1;
-		pipelineLayoutInfo.pSetLayouts = setLayouts;
-
-		SkyboxPipelineLayout = vk::raii::PipelineLayout(Context.GetDevice(), pipelineLayoutInfo);
-
 		vk::GraphicsPipelineCreateInfo pipelineInfo{};
 		pipelineInfo.stageCount = 2;
 		pipelineInfo.pStages = shaderStages;
@@ -1608,7 +1555,7 @@ namespace Nyx
 		pipelineInfo.pDepthStencilState = &depthStencil;
 		pipelineInfo.pColorBlendState = &colorBlending;
 		pipelineInfo.pDynamicState = &dynamicState;
-		pipelineInfo.layout = *SkyboxPipelineLayout;
+		pipelineInfo.layout = *ScenePipelineLayout;
 		pipelineInfo.renderPass = GetSceneRenderPass();
 		pipelineInfo.subpass = 0;
 
@@ -1624,94 +1571,7 @@ namespace Nyx
 
 		const bool bLoaded = SkyboxCubemap.Load();
 		ASSERT(bLoaded && "Failed to load skybox cubemap.");
-	}
-
-	void VulkanRenderer::CreateSkyboxSharedResources()
-	{
-		SkyboxCubemap.SetContext(Context);
-
-		const bool bLoaded = SkyboxCubemap.Load();
-		ASSERT(bLoaded && "Failed to load skybox cubemap.");
-
-		CreateSkyboxDescriptorSetLayout();
-		CreateSkyboxPipeline();
-	}
-
-	void VulkanRenderer::CreateSkyboxResourcesForView(SceneViewInstance& view)
-	{
-		// ---------------------------------------------------------
-		// Per-view skybox UBO
-		// ---------------------------------------------------------
-		CreateBuffer(
-			sizeof(SkyboxUBO),
-			vk::BufferUsageFlagBits::eUniformBuffer,
-			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
-			view.SkyboxUniformBuffer,
-			view.SkyboxUniformBufferMemory);
-
-		// ---------------------------------------------------------
-		// Per-view skybox descriptor pool
-		// binding 0 = SkyboxUBO
-		// binding 1 = SkyboxCubemap
-		// ---------------------------------------------------------
-		std::array<vk::DescriptorPoolSize, 2> poolSizes{};
-
-		poolSizes[0].type = vk::DescriptorType::eUniformBuffer;
-		poolSizes[0].descriptorCount = 1;
-
-		poolSizes[1].type = vk::DescriptorType::eCombinedImageSampler;
-		poolSizes[1].descriptorCount = 1;
-
-		vk::DescriptorPoolCreateInfo poolInfo{};
-		poolInfo.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
-		poolInfo.maxSets = 1;
-		poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
-		poolInfo.pPoolSizes = poolSizes.data();
-
-		view.SkyboxDescriptorPool = vk::raii::DescriptorPool(Context.GetDevice(), poolInfo);
-
-		// ---------------------------------------------------------
-		// Per-view skybox descriptor set allocation
-		// ---------------------------------------------------------
-		vk::DescriptorSetLayout layout = *SkyboxDescriptorSetLayout;
-
-		vk::DescriptorSetAllocateInfo allocInfo{};
-		allocInfo.descriptorPool = *view.SkyboxDescriptorPool;
-		allocInfo.descriptorSetCount = 1;
-		allocInfo.pSetLayouts = &layout;
-
-		view.SkyboxDescriptorSets = vk::raii::DescriptorSets(Context.GetDevice(), allocInfo);
-
-		// ---------------------------------------------------------
-		// Per-view skybox descriptor set update
-		// ---------------------------------------------------------
-		vk::DescriptorBufferInfo bufferInfo{};
-		bufferInfo.buffer = *view.SkyboxUniformBuffer;
-		bufferInfo.offset = 0;
-		bufferInfo.range = sizeof(SkyboxUBO);
-
-		vk::DescriptorImageInfo imageInfo{};
-		imageInfo.sampler = SkyboxCubemap.GetSampler();
-		imageInfo.imageView = SkyboxCubemap.GetImageView();
-		imageInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-
-		std::array<vk::WriteDescriptorSet, 2> writes{};
-
-		writes[0].dstSet = *view.SkyboxDescriptorSets.front();
-		writes[0].dstBinding = 0;
-		writes[0].dstArrayElement = 0;
-		writes[0].descriptorType = vk::DescriptorType::eUniformBuffer;
-		writes[0].descriptorCount = 1;
-		writes[0].pBufferInfo = &bufferInfo;
-
-		writes[1].dstSet = *view.SkyboxDescriptorSets.front();
-		writes[1].dstBinding = 1;
-		writes[1].dstArrayElement = 0;
-		writes[1].descriptorType = vk::DescriptorType::eCombinedImageSampler;
-		writes[1].descriptorCount = 1;
-		writes[1].pImageInfo = &imageInfo;
-
-		Context.GetDevice().updateDescriptorSets(writes, {});
+		SkyboxTextureIndex = Bindless.AddTexture(SkyboxCubemap.GetImageView());
 	}
 
 	void VulkanRenderer::CreatePickingResourcesForView(SceneViewInstance& view)
@@ -2220,21 +2080,6 @@ namespace Nyx
 		dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
 		dynamicState.pDynamicStates = dynamicStates.data();
 
-		vk::PushConstantRange pushConstantRange{};
-		pushConstantRange.stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment;
-		pushConstantRange.offset = 0;
-		pushConstantRange.size = sizeof(SelectionMaskPushConstants);
-
-		vk::DescriptorSetLayout setLayouts[] = { *SceneDescriptorSetLayout };
-
-		vk::PipelineLayoutCreateInfo pipelineLayoutInfo{};
-		pipelineLayoutInfo.setLayoutCount = 1;
-		pipelineLayoutInfo.pSetLayouts = setLayouts;
-		pipelineLayoutInfo.pushConstantRangeCount = 1;
-		pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
-
-		SelectionMaskPipelineLayout = vk::raii::PipelineLayout(Context.GetDevice(), pipelineLayoutInfo);
-
 		ASSERT(!SceneViews.empty());
 		vk::RenderPass renderPass = *SceneViews.front().SelectionMaskRenderPass;
 
@@ -2255,7 +2100,7 @@ namespace Nyx
 		visibleInfo.pDepthStencilState = &depthVisible;
 		visibleInfo.pColorBlendState = &colorBlending;
 		visibleInfo.pDynamicState = &dynamicState;
-		visibleInfo.layout = *SelectionMaskPipelineLayout;
+		visibleInfo.layout = *ScenePipelineLayout;
 		visibleInfo.renderPass = renderPass;
 		visibleInfo.subpass = 0;
 
@@ -2308,12 +2153,7 @@ namespace Nyx
 
 		cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *SelectionMaskPipelineVisible);
 
-		cmd.bindDescriptorSets(
-			vk::PipelineBindPoint::eGraphics,
-			*SelectionMaskPipelineLayout,
-			0,
-			{ *view.SceneDescriptorSets.front() },
-			{});
+		BindSceneSets(view, cmd);
 
 		for (const RenderObject& obj : RenderObjects)
 		{
@@ -2325,15 +2165,10 @@ namespace Nyx
 			const bool bIsSelected =
 				SelectedEntity.has_value() && SelectedEntity.value() == obj.SourceEntity;
 
-			SelectionMaskPushConstants push{};
-			push.Model = obj.WorldTransform;
-			push.SelectedValue = bIsSelected ? 1.0f : 0.0f;
-
-			cmd.pushConstants<SelectionMaskPushConstants>(
-				*SelectionMaskPipelineLayout,
-				vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
-				0,
-				{ push });
+			ObjectConstants object{};
+			object.Model = obj.WorldTransform;
+			object.CustomData.x = bIsSelected ? 1.0f : 0.0f;
+			cmd.pushConstants<ObjectConstants>(*ScenePipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, { object });
 
 			vk::DeviceSize offsets[] = { 0 };
 			cmd.bindVertexBuffers(0, { obj.MeshAsset->GetVertexBuffer() }, offsets);
@@ -2379,12 +2214,7 @@ namespace Nyx
 
 		cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *SelectionMaskPipelineFull);
 
-		cmd.bindDescriptorSets(
-			vk::PipelineBindPoint::eGraphics,
-			*SelectionMaskPipelineLayout,
-			0,
-			{ *view.SceneDescriptorSets.front() },
-			{});
+		BindSceneSets(view, cmd);
 
 		if (!SelectedEntity.has_value())
 		{
@@ -2404,15 +2234,10 @@ namespace Nyx
 				continue;
 			}
 
-			SelectionMaskPushConstants push{};
-			push.Model = obj.WorldTransform;
-			push.SelectedValue = 1.0f;
-
-			cmd.pushConstants<SelectionMaskPushConstants>(
-				*SelectionMaskPipelineLayout,
-				vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
-				0,
-				{ push });
+			ObjectConstants object{};
+			object.Model = obj.WorldTransform;
+			object.CustomData.x = 1.0f;
+			cmd.pushConstants<ObjectConstants>(*ScenePipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, { object });
 
 			vk::DeviceSize offsets[] = { 0 };
 			cmd.bindVertexBuffers(0, { obj.MeshAsset->GetVertexBuffer() }, offsets);
@@ -2569,54 +2394,6 @@ namespace Nyx
 		cmd.draw(3, 1, 0, 0);
 	}
 
-	void VulkanRenderer::CreateSkyboxUniformBuffer(SceneViewInstance& view)
-	{
-		CreateBuffer(
-			sizeof(SkyboxUBO),
-			vk::BufferUsageFlagBits::eUniformBuffer,
-			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
-			view.SkyboxUniformBuffer,
-			view.SkyboxUniformBufferMemory);
-	}
-
-	void VulkanRenderer::CreateSkyboxDescriptorSetLayout()
-	{
-		vk::DescriptorSetLayoutBinding uboBinding{};
-		uboBinding.binding = 0;
-		uboBinding.descriptorType = vk::DescriptorType::eUniformBuffer;
-		uboBinding.descriptorCount = 1;
-		uboBinding.stageFlags = vk::ShaderStageFlagBits::eVertex;
-
-		vk::DescriptorSetLayoutBinding cubemapBinding{};
-		cubemapBinding.binding = 1;
-		cubemapBinding.descriptorType = vk::DescriptorType::eCombinedImageSampler;
-		cubemapBinding.descriptorCount = 1;
-		cubemapBinding.stageFlags = vk::ShaderStageFlagBits::eFragment;
-
-		std::array<vk::DescriptorSetLayoutBinding, 2> bindings = {
-			uboBinding,
-			cubemapBinding
-		};
-
-		vk::DescriptorSetLayoutCreateInfo layoutInfo{};
-		layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
-		layoutInfo.pBindings = bindings.data();
-
-		SkyboxDescriptorSetLayout = vk::raii::DescriptorSetLayout(Context.GetDevice(), layoutInfo);
-	}
-
-	void VulkanRenderer::UpdateSkyboxUniforms(SceneViewInstance& view)
-	{
-		SkyboxUBO ubo{};
-
-		const glm::mat4 skyboxView = glm::mat4(glm::mat3(view.SceneGlobals.View));
-		ubo.ViewProj = view.SceneGlobals.Projection * skyboxView;
-
-		void* mapped = view.SkyboxUniformBufferMemory.mapMemory(0, sizeof(SkyboxUBO));
-		std::memcpy(mapped, &ubo, sizeof(SkyboxUBO));
-		view.SkyboxUniformBufferMemory.unmapMemory();
-	}
-
 	vk::raii::ShaderModule VulkanRenderer::CreateShaderModule(const std::vector<uint32_t>& spirv)
 	{
 		vk::ShaderModuleCreateInfo createInfo{};
@@ -2646,24 +2423,15 @@ namespace Nyx
 			view.SceneUniformBufferMemory);
 
 		// ---------------------------------------------------------
-		// Per-view scene descriptor pool
-		// binding 0 = SceneUBO
-		// binding 1 = TestTexture
-		// binding 2 = SkyboxCubemap
+		// Per-view scene descriptor pool: binding 0 = SceneUBO
 		// ---------------------------------------------------------
-		std::array<vk::DescriptorPoolSize, 2> poolSizes{};
-
-		poolSizes[0].type = vk::DescriptorType::eUniformBuffer;
-		poolSizes[0].descriptorCount = 1;
-
-		poolSizes[1].type = vk::DescriptorType::eCombinedImageSampler;
-		poolSizes[1].descriptorCount = 2;
+		const vk::DescriptorPoolSize poolSize(vk::DescriptorType::eUniformBuffer, 1);
 
 		vk::DescriptorPoolCreateInfo poolInfo{};
 		poolInfo.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
 		poolInfo.maxSets = 1;
-		poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
-		poolInfo.pPoolSizes = poolSizes.data();
+		poolInfo.poolSizeCount = 1;
+		poolInfo.pPoolSizes = &poolSize;
 
 		view.SceneDescriptorPool = vk::raii::DescriptorPool(Context.GetDevice(), poolInfo);
 
@@ -2687,40 +2455,15 @@ namespace Nyx
 		bufferInfo.offset = 0;
 		bufferInfo.range = sizeof(SceneUBO);
 
-		vk::DescriptorImageInfo textureInfo{};
-		textureInfo.sampler = TestTexture.GetSampler();
-		textureInfo.imageView = TestTexture.GetImageView();
-		textureInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+		vk::WriteDescriptorSet write{};
+		write.dstSet = *view.SceneDescriptorSets.front();
+		write.dstBinding = 0;
+		write.dstArrayElement = 0;
+		write.descriptorType = vk::DescriptorType::eUniformBuffer;
+		write.descriptorCount = 1;
+		write.pBufferInfo = &bufferInfo;
 
-		vk::DescriptorImageInfo cubemapInfo{};
-		cubemapInfo.sampler = SkyboxCubemap.GetSampler();
-		cubemapInfo.imageView = SkyboxCubemap.GetImageView();
-		cubemapInfo.imageLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-
-		std::array<vk::WriteDescriptorSet, 3> writes{};
-
-		writes[0].dstSet = *view.SceneDescriptorSets.front();
-		writes[0].dstBinding = 0;
-		writes[0].dstArrayElement = 0;
-		writes[0].descriptorType = vk::DescriptorType::eUniformBuffer;
-		writes[0].descriptorCount = 1;
-		writes[0].pBufferInfo = &bufferInfo;
-
-		writes[1].dstSet = *view.SceneDescriptorSets.front();
-		writes[1].dstBinding = 1;
-		writes[1].dstArrayElement = 0;
-		writes[1].descriptorType = vk::DescriptorType::eCombinedImageSampler;
-		writes[1].descriptorCount = 1;
-		writes[1].pImageInfo = &textureInfo;
-
-		writes[2].dstSet = *view.SceneDescriptorSets.front();
-		writes[2].dstBinding = 2;
-		writes[2].dstArrayElement = 0;
-		writes[2].descriptorType = vk::DescriptorType::eCombinedImageSampler;
-		writes[2].descriptorCount = 1;
-		writes[2].pImageInfo = &cubemapInfo;
-
-		Context.GetDevice().updateDescriptorSets(writes, {});
+		Context.GetDevice().updateDescriptorSets(write, {});
 	}
 
 	void VulkanRenderer::UpdateSceneUniforms(SceneViewInstance& view)
@@ -2738,6 +2481,10 @@ namespace Nyx
 		ubo.LightDirectionWS = glm::vec4(view.SceneGlobals.LightDirectionWS, 0.0f);
 		ubo.LightColor = glm::vec4(view.SceneGlobals.LightColor, view.SceneGlobals.Ambient);
 
+		const glm::mat4 skyboxView = glm::mat4(glm::mat3(view.SceneGlobals.View));
+		ubo.SkyboxViewProj = view.SceneGlobals.Projection * skyboxView;
+		ubo.EnvironmentTexture = SkyboxTextureIndex;
+
 		void* mapped = view.SceneUniformBufferMemory.mapMemory(0, sizeof(SceneUBO));
 		std::memcpy(mapped, &ubo, sizeof(SceneUBO));
 		view.SceneUniformBufferMemory.unmapMemory();
@@ -2748,6 +2495,7 @@ namespace Nyx
 		TestTexture.SetContext(Context);
 		const bool bLoaded = TestTexture.Load();
 		ASSERT(bLoaded);
+		TestTextureIndex = Bindless.AddTexture(TestTexture.GetImageView());
 
 		LOG_INFO("Texture image view valid: {}", static_cast<bool>(static_cast<VkImageView>(TestTexture.GetImageView())));
 		LOG_INFO("Texture sampler valid: {}", static_cast<bool>(static_cast<VkSampler>(TestTexture.GetSampler())));
@@ -3032,7 +2780,7 @@ namespace Nyx
 		{
 			return changed.contains(std::string(shader) + ".vert") || changed.contains(std::string(shader) + ".frag");
 		};
-		if (uses("DefaultShader"))
+		if (changed.contains("Scene.slang"))
 		{
 			CreateScenePipeline();
 		}
@@ -3040,7 +2788,7 @@ namespace Nyx
 		{
 			CreateGridPipeline();
 		}
-		if (uses("Skybox"))
+		if (changed.contains("Skybox.slang"))
 		{
 			CreateSkyboxPipeline();
 		}
@@ -3241,7 +2989,6 @@ namespace Nyx
 	uint64_t VulkanRenderer::CreateSceneView()
 	{
 		ASSERT(SceneDescriptorSetLayout != nullptr);
-		ASSERT(SkyboxDescriptorSetLayout != nullptr);
 		ASSERT(OutlineDescriptorSetLayout != nullptr);
 		ASSERT(OutlineCompositeSampler != nullptr);
 
@@ -3251,7 +2998,6 @@ namespace Nyx
 		view.RenderTarget.Initialize(Context, 1, 1, vk::Format::eR8G8B8A8Unorm);
 
 		CreateSceneResourcesForView(view);
-		CreateSkyboxResourcesForView(view);
 		CreatePickingResourcesForView(view);
 		CreateSelectionMaskResourcesForView(view);
 		CreateOutlineDescriptorSetForView(view);
@@ -3270,22 +3016,17 @@ namespace Nyx
 				continue;
 			}
 
+			// The last frames may still use the view's sets, buffers and images
+			Context.WaitIdle();
+
 			it->SceneDescriptorSets = vk::raii::DescriptorSets{ nullptr };
-			it->SkyboxDescriptorSets = vk::raii::DescriptorSets{ nullptr };
-
 			it->SceneDescriptorPool = nullptr;
-			it->SkyboxDescriptorPool = nullptr;
-
 			it->SceneUniformBuffer = nullptr;
 			it->SceneUniformBufferMemory = nullptr;
-
-			it->SkyboxUniformBuffer = nullptr;
-			it->SkyboxUniformBufferMemory = nullptr;
 
 			DestroyPickingResourcesForView(*it);
 			DestroySelectionMaskResourcesForView(*it);
 
-			// Shutdown() waits for the GPU, so the blur's images are free after it.
 			it->RenderTarget.Shutdown(Context);
 			ReleaseSceneViewBlur(*it);
 
@@ -4119,6 +3860,75 @@ namespace Nyx
 		image.Memory = nullptr;
 	}
 
+	bool VulkanRenderer::ReadSceneViewPixels(uint64_t id, Nyx::Engine::RgbaImage& outImage)
+	{
+		SceneViewInstance* view = FindSceneView(id);
+		if (view == nullptr)
+		{
+			return false;
+		}
+
+		vk::raii::Device& device = Context.GetDevice();
+		device.waitIdle();
+
+		const vk::Extent2D extent = view->RenderTarget.GetExtent();
+		const vk::DeviceSize byteCount = static_cast<vk::DeviceSize>(extent.width) * extent.height * 4;
+		vk::BufferCreateInfo bufferInfo{};
+		bufferInfo.size = byteCount;
+		bufferInfo.usage = vk::BufferUsageFlagBits::eTransferDst;
+		vk::raii::Buffer readback(device, bufferInfo);
+		const vk::MemoryRequirements requirements = readback.getMemoryRequirements();
+		vk::raii::DeviceMemory readbackMemory(device, vk::MemoryAllocateInfo(requirements.size,
+			FindMemoryType(*Context.GetPhysicalDevice(), requirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent)));
+		readback.bindMemory(*readbackMemory, 0);
+
+		vk::CommandBufferAllocateInfo commandBufferInfo{};
+		commandBufferInfo.commandPool = *Context.GetGraphicsCommandPool();
+		commandBufferInfo.level = vk::CommandBufferLevel::ePrimary;
+		commandBufferInfo.commandBufferCount = 1;
+		vk::raii::CommandBuffer copyCommands = std::move(vk::raii::CommandBuffers(device, commandBufferInfo).front());
+		copyCommands.begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
+
+		// The picture is left ShaderReadOnlyOptimal by its render pass, and goes back to that
+		vk::ImageMemoryBarrier toCopy{};
+		toCopy.srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
+		toCopy.dstAccessMask = vk::AccessFlagBits::eTransferRead;
+		toCopy.oldLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+		toCopy.newLayout = vk::ImageLayout::eTransferSrcOptimal;
+		toCopy.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		toCopy.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		toCopy.image = view->RenderTarget.GetImage();
+		toCopy.subresourceRange = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
+		copyCommands.pipelineBarrier(vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, toCopy);
+
+		vk::BufferImageCopy copy{};
+		copy.imageSubresource = vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1);
+		copy.imageExtent = vk::Extent3D(extent.width, extent.height, 1);
+		copyCommands.copyImageToBuffer(view->RenderTarget.GetImage(), vk::ImageLayout::eTransferSrcOptimal, *readback, copy);
+
+		vk::ImageMemoryBarrier toRead = toCopy;
+		toRead.srcAccessMask = vk::AccessFlagBits::eTransferRead;
+		toRead.dstAccessMask = vk::AccessFlagBits::eShaderRead;
+		toRead.oldLayout = vk::ImageLayout::eTransferSrcOptimal;
+		toRead.newLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+		copyCommands.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, toRead);
+		copyCommands.end();
+
+		vk::SubmitInfo submitInfo{};
+		submitInfo.commandBufferCount = 1;
+		submitInfo.pCommandBuffers = &*copyCommands;
+		Context.GetGraphicsQueue().submit(submitInfo);
+		Context.GetGraphicsQueue().waitIdle();
+
+		// The target is R8G8B8A8, so the bytes are RGBA already
+		outImage.Width = extent.width;
+		outImage.Height = extent.height;
+		outImage.Pixels.resize(static_cast<size_t>(byteCount));
+		std::memcpy(outImage.Pixels.data(), readbackMemory.mapMemory(0, byteCount), outImage.Pixels.size());
+		readbackMemory.unmapMemory();
+		return true;
+	}
+
 	void VulkanRenderer::SaveScreenshot(const std::filesystem::path& path, ImVec2 min, ImVec2 max)
 	{
 		if (Screenshot)
@@ -4299,7 +4109,7 @@ namespace Nyx
 		// draw opaque objects using view.SceneDescriptorSets
 		DrawRenderObjects(view, cmd);
 
-		// draw skybox using view.SkyboxDescriptorSets
+		// draw skybox using view.SceneDescriptorSets
 		DrawSkybox(view, cmd);
 
 		// draw grid using view.SceneDescriptorSets
@@ -4400,13 +4210,6 @@ namespace Nyx
 		depthStencil.depthBoundsTestEnable = VK_FALSE;
 		depthStencil.stencilTestEnable = VK_FALSE;
 
-		vk::PipelineLayoutCreateInfo pipelineLayoutInfo{};
-		vk::DescriptorSetLayout setLayouts[] = { *SceneDescriptorSetLayout };
-		pipelineLayoutInfo.setLayoutCount = 1;
-		pipelineLayoutInfo.pSetLayouts = setLayouts;
-
-		DebugLinePipelineLayout = vk::raii::PipelineLayout(Context.GetDevice(), pipelineLayoutInfo);
-
 		vk::GraphicsPipelineCreateInfo pipelineInfo{};
 		pipelineInfo.stageCount = 2;
 		pipelineInfo.pStages = shaderStages;
@@ -4418,7 +4221,7 @@ namespace Nyx
 		pipelineInfo.pDepthStencilState = &depthStencil;
 		pipelineInfo.pColorBlendState = &colorBlending;
 		pipelineInfo.pDynamicState = &dynamicState;
-		pipelineInfo.layout = *DebugLinePipelineLayout;
+		pipelineInfo.layout = *ScenePipelineLayout;
 		pipelineInfo.renderPass = GetSceneRenderPass();
 		pipelineInfo.subpass = 0;
 
@@ -4546,12 +4349,7 @@ namespace Nyx
 
 		cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *DebugLinePipeline);
 
-		cmd.bindDescriptorSets(
-			vk::PipelineBindPoint::eGraphics,
-			*DebugLinePipelineLayout,
-			0,
-			{ *view.SceneDescriptorSets.front() },
-			{});
+		BindSceneSets(view, cmd);
 
 		vk::DeviceSize offsets[] = { 0 };
 		cmd.bindVertexBuffers(0, { *DebugLineVertexBuffer }, offsets);
@@ -4678,12 +4476,7 @@ namespace Nyx
 
 		cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *PickingPipeline);
 
-		cmd.bindDescriptorSets(
-			vk::PipelineBindPoint::eGraphics,
-			*PickingPipelineLayout,
-			0,
-			{ *view.SceneDescriptorSets.front() },
-			{});
+		BindSceneSets(view, cmd);
 
 		for (const RenderObject& obj : RenderObjects)
 		{
@@ -4692,15 +4485,11 @@ namespace Nyx
 				continue;
 			}
 
-			PickingPushConstants push{};
-			push.Model = obj.WorldTransform;
-			push.EncodedEntityId = obj.PickingId;
-
-			cmd.pushConstants<PickingPushConstants>(
-				*PickingPipelineLayout,
-				vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,
-				0,
-				{ push });
+			ObjectConstants object{};
+			object.Model = obj.WorldTransform;
+			object.MaterialOffset = obj.MaterialAsset->MaterialOffset;
+			object.EntityId = obj.PickingId;
+			cmd.pushConstants<ObjectConstants>(*ScenePipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, { object });
 
 			vk::DeviceSize offsets[] = { 0 };
 			cmd.bindVertexBuffers(0, { obj.MeshAsset->GetVertexBuffer() }, offsets);
@@ -4798,12 +4587,7 @@ namespace Nyx
 	{
 		cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *SkyboxPipeline);
 
-		cmd.bindDescriptorSets(
-			vk::PipelineBindPoint::eGraphics,
-			*SkyboxPipelineLayout,
-			0,
-			{ *view.SkyboxDescriptorSets.front() },
-			{});
+		BindSceneSets(view, cmd);
 
 		vk::DeviceSize offsets[] = { 0 };
 		cmd.bindVertexBuffers(0, { CubeMesh.GetVertexBuffer() }, offsets);
@@ -4814,12 +4598,7 @@ namespace Nyx
 	void VulkanRenderer::DrawGrid(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
 	{
 		cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *GridPipeline);
-		cmd.bindDescriptorSets(
-			vk::PipelineBindPoint::eGraphics,
-			*GridPipelineLayout,
-			0,
-			{ *view.SceneDescriptorSets.front() },
-			{});
+		BindSceneSets(view, cmd);
 		cmd.draw(3, 1, 0, 0);
 	}
 

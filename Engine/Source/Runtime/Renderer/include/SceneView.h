@@ -22,15 +22,11 @@ namespace Nyx
 		// Grid, debug lines, picking and the selection outline; see IRenderer::SetSceneViewShowEditorOverlays()
 		bool bShowEditorOverlays = true;
 
+		// The view's set (set 1): its SceneUBO
 		vk::raii::Buffer SceneUniformBuffer{ nullptr };
 		vk::raii::DeviceMemory SceneUniformBufferMemory{ nullptr };
 		vk::raii::DescriptorPool SceneDescriptorPool{ nullptr };
 		vk::raii::DescriptorSets SceneDescriptorSets{ nullptr };
-
-		vk::raii::Buffer SkyboxUniformBuffer{ nullptr };
-		vk::raii::DeviceMemory SkyboxUniformBufferMemory{ nullptr };
-		vk::raii::DescriptorPool SkyboxDescriptorPool{ nullptr };
-		vk::raii::DescriptorSets SkyboxDescriptorSets{ nullptr };
 
 		// -------------------------------------------------
 		// Picking

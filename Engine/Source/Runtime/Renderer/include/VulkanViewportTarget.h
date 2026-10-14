@@ -23,6 +23,8 @@ namespace Nyx
 		vk::Format GetFormat() const { return Format; }
 		// The rendered picture, in ShaderReadOnlyOptimal layout after the render pass, e.g. to blur
 		vk::ImageView GetImageView() const { return *ImageView; }
+		// The same picture as an image, e.g. to copy it out for a test
+		vk::Image GetImage() const { return *Image; }
 		vk::raii::RenderPass& GetRenderPass() { return RenderPass; }
 		const vk::raii::RenderPass& GetRenderPass() const { return RenderPass; };
 

@@ -52,7 +52,7 @@ namespace Nyx::Engine
 		return request;
 	}
 
-	const std::vector<uint32_t>& ShaderPrograms::GetSpirv(const std::string& name)
+	ShaderPrograms::Program& ShaderPrograms::Load(const std::string& name)
 	{
 		auto found = Programs.find(name);
 		if (found == Programs.end())
@@ -65,13 +65,13 @@ namespace Nyx::Engine
 			std::optional<ShaderCache::Entry>* chosen = saved && saved->bUpToDate ? &saved : built && built->bUpToDate ? &built
 				: saved                                                                                                ? &saved
 																													   : &built;
-			if (!*chosen || (*chosen)->Result.EntryPoints.size() != 1)
+			if (!*chosen || (*chosen)->Result.EntryPoints.empty())
 			{
 				throw std::runtime_error("No compiled code for shader " + name + " in " + Built.GetFolder().string() + ": build the shaders (NyxShaders)");
 			}
 
 			Program program;
-			program.Spirv = (*chosen)->Result.EntryPoints[0].Spirv;
+			program.EntryPoints = (*chosen)->Result.EntryPoints;
 			program.Dependencies = (*chosen)->Result.Dependencies;
 			program.Dependencies.push_back(request.File);
 			program.bStartedOutOfDate = !(*chosen)->bUpToDate;
@@ -79,7 +79,30 @@ namespace Nyx::Engine
 			program.bDirty = program.bStartedOutOfDate;
 			found = Programs.emplace(name, std::move(program)).first;
 		}
-		return found->second.Spirv;
+		return found->second;
+	}
+
+	const std::vector<uint32_t>& ShaderPrograms::GetSpirv(const std::string& name)
+	{
+		Program& program = Load(name);
+		if (program.EntryPoints.size() != 1)
+		{
+			throw std::runtime_error("Shader " + name + " has " + std::to_string(program.EntryPoints.size()) + " entry points: name the one to use");
+		}
+		return program.EntryPoints[0].Spirv;
+	}
+
+	const std::vector<uint32_t>& ShaderPrograms::GetSpirv(const std::string& name, const std::string& entryPoint)
+	{
+		Program& program = Load(name);
+		for (const CompiledEntryPoint& compiled : program.EntryPoints)
+		{
+			if (compiled.Name == entryPoint)
+			{
+				return compiled.Spirv;
+			}
+		}
+		throw std::runtime_error("Shader " + name + " has no entry point " + entryPoint);
 	}
 
 	bool ShaderPrograms::StartedOutOfDate(const std::string& name) const
@@ -193,11 +216,29 @@ namespace Nyx::Engine
 				}
 			}
 
+			// Pipelines are made from the entry points by name: a compile without one of them
+			// doesn't replace them
+			if (response.Result.bSucceeded)
+			{
+				for (const CompiledEntryPoint& known : program.EntryPoints)
+				{
+					const bool bStill = std::any_of(response.Result.EntryPoints.begin(), response.Result.EntryPoints.end(), [&known](const CompiledEntryPoint& compiled)
+						{
+							return compiled.Name == known.Name;
+						});
+					if (!bStill)
+					{
+						response.Result.bSucceeded = false;
+						response.Result.Diagnostics.push_back(ShaderDiagnostic{ .File = response.Request.File, .Message = "the entry point " + known.Name + " is gone; the engine draws with it" });
+					}
+				}
+			}
+
 			ShaderProgramUpdate update;
 			update.Name = found->first;
-			if (response.Result.bSucceeded && response.Result.EntryPoints.size() == 1)
+			if (response.Result.bSucceeded)
 			{
-				program.Spirv = response.Result.EntryPoints[0].Spirv;
+				program.EntryPoints = response.Result.EntryPoints;
 				update.bChanged = true;
 				// The next start begins from it
 				if (Saved)

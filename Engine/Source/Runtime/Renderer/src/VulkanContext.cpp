@@ -228,14 +228,26 @@ namespace Nyx
 
 		// Create a chain of feature structures
 		vk::PhysicalDeviceFeatures2 physicalDeviceFeatures2{};
+		// For the anisotropic one of the fixed samplers (VulkanBindless)
+		physicalDeviceFeatures2.features.samplerAnisotropy = true;
+		// Bindless (VulkanBindless): one array of every texture, indexed by what a draw reads, and
+		// materials loaded from a buffer in scalar layout (Design/shader-materials.md)
+		vk::PhysicalDeviceVulkan12Features physicalDeviceVulkan12Features{};
+		physicalDeviceVulkan12Features.descriptorIndexing = true;
+		physicalDeviceVulkan12Features.runtimeDescriptorArray = true;
+		physicalDeviceVulkan12Features.descriptorBindingPartiallyBound = true;
+		physicalDeviceVulkan12Features.descriptorBindingSampledImageUpdateAfterBind = true;
+		physicalDeviceVulkan12Features.shaderSampledImageArrayNonUniformIndexing = true;
+		physicalDeviceVulkan12Features.scalarBlockLayout = true;
 		vk::PhysicalDeviceVulkan13Features physicalDeviceVulkan13Features{};
 		physicalDeviceVulkan13Features.dynamicRendering = true;
 		// discard in shaders Slang compiles (ShaderCompiler) becomes OpDemoteToHelperInvocation
 		physicalDeviceVulkan13Features.shaderDemoteToHelperInvocation = true;
 		vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT physicalDeviceExtendedDynamicStateFeaturesEXT{};
 		physicalDeviceExtendedDynamicStateFeaturesEXT.extendedDynamicState = true;
-		vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT> featureChain = {
-			physicalDeviceFeatures2,                      // vk::PhysicalDeviceFeatures2 (empty for now)
+		vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan12Features, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT> featureChain = {
+			physicalDeviceFeatures2,                      // Anisotropic filtering
+			physicalDeviceVulkan12Features,               // Descriptor indexing and scalar layout from Vulkan 1.2
 			physicalDeviceVulkan13Features,               // Enable dynamic rendering and demote from Vulkan 1.3
 			physicalDeviceExtendedDynamicStateFeaturesEXT // Enable extended dynamic state from the extension
 		};
@@ -373,11 +385,15 @@ namespace Nyx
 						});
 				});
 
-		// Check if the physicalDevice supports the required features (dynamic rendering, demote and extended dynamic state)
+		// Check if the physicalDevice supports the required features (bindless, dynamic rendering, demote and extended dynamic state)
 		auto features =
 			physicalDevice
-				.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
-		bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
+				.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan12Features, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
+		const vk::PhysicalDeviceVulkan12Features& vulkan12 = features.template get<vk::PhysicalDeviceVulkan12Features>();
+		const bool supportsBindless = vulkan12.descriptorIndexing && vulkan12.runtimeDescriptorArray && vulkan12.descriptorBindingPartiallyBound &&
+			vulkan12.descriptorBindingSampledImageUpdateAfterBind && vulkan12.shaderSampledImageArrayNonUniformIndexing && vulkan12.scalarBlockLayout;
+		bool supportsRequiredFeatures = supportsBindless && features.template get<vk::PhysicalDeviceFeatures2>().features.samplerAnisotropy &&
+			features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering &&
 			features.template get<vk::PhysicalDeviceVulkan13Features>().shaderDemoteToHelperInvocation &&
 			features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
 

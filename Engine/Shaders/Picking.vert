@@ -1,6 +1,7 @@
 #version 450
 
-layout(binding = 0) uniform SceneUBO
+// The view's set (nyx/view.slang); only the fields used here
+layout(set = 1, binding = 0) uniform SceneUBO
 {
     mat4 uViewProj;
     mat4 uInvViewProj;
@@ -11,10 +12,14 @@ layout(binding = 0) uniform SceneUBO
     vec4 uLightColor;
 };
 
-layout(push_constant) uniform PickingPushConstants
+// ObjectConstants in nyx/bindless.slang and VulkanRenderer.h
+layout(push_constant) uniform ObjectConstants
 {
     mat4 uModel;
-    uint uEncodedEntityId;
+    uint uMaterialOffset;
+    uint uEntityId;
+    uvec2 _Padding;
+    vec4 uCustomData;
 };
 
 layout(location = 0) in vec3 aPosition;

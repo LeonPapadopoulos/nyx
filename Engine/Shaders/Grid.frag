@@ -1,6 +1,7 @@
 #version 450
 
-layout(binding = 0) uniform SceneUBO
+// The view's set (nyx/view.slang); only the fields used here
+layout(set = 1, binding = 0) uniform SceneUBO
 {
     mat4 uViewProj;
     mat4 uInvViewProj;

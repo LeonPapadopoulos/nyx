@@ -177,6 +177,17 @@ set_property(TARGET NyxShaderCompileServiceTests PROPERTY FOLDER "Tests")
 nyx_copy_shader_compiler_next_to(NyxShaderCompileServiceTests)
 add_test(NAME NyxShaderCompileServiceTests COMMAND NyxShaderCompileServiceTests)
 
+# The renderer drawing the editor's default scene on a real GPU, compared with a reference image,
+# and picking in it. Needs a Vulkan device; its window stays hidden.
+add_executable(NyxSceneGpuTests SceneGpuTests.cpp)
+target_link_libraries(NyxSceneGpuTests PRIVATE NyxEngine)
+target_compile_definitions(NyxSceneGpuTests PRIVATE NYX_TEST_REFERENCES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/References")
+add_dependencies(NyxSceneGpuTests NyxGeneratedReflection)
+set_property(TARGET NyxSceneGpuTests PROPERTY FOLDER "Tests")
+nyx_copy_shaders_next_to(NyxSceneGpuTests)
+nyx_copy_shader_compiler_next_to(NyxSceneGpuTests)
+add_test(NAME NyxSceneGpuTests COMMAND NyxSceneGpuTests)
+
 if(MSVC)
     add_test(NAME NyxRuntimeInspectionSymbols
         COMMAND ${CMAKE_COMMAND}

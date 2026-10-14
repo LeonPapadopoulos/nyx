@@ -6,7 +6,7 @@
 //     exits once the connection is gone.
 //
 //   NyxShaderCompiler build --source <folder> --output <folder> [--search-path <folder>]...
-//     For the build: compiles the engine's shaders in the source folder (.vert, .frag, .comp) into
+//     For the build: compiles the engine's shaders in the source folder (.slang, .vert, .frag, .comp) into
 //     a shader cache in the output folder (ShaderCache), each only when it or a file it read
 //     changed. Errors are printed the way Visual Studio lists them; the exit code is 1 when any
 //     shader doesn't compile.
@@ -143,7 +143,7 @@ namespace
 		for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator(arguments.Source, error))
 		{
 			const std::string extension = entry.path().extension().string();
-			if (entry.is_regular_file() && (extension == ".vert" || extension == ".frag" || extension == ".comp"))
+			if (entry.is_regular_file() && (extension == ".slang" || extension == ".vert" || extension == ".frag" || extension == ".comp"))
 			{
 				files.push_back(entry.path());
 			}

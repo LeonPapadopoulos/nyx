@@ -1,8 +1,9 @@
 // ShaderPrograms on real files, compiling in this process: programs start from the newest code that
 // matches their files, the build's or live reload's, and one that changed while nothing ran is
 // compiled at once; a saved source is compiled once it settled; a broken one keeps its last good code and says where
-// it broke; an include's change compiles the programs using it; other files change nothing; and a
-// save during a compile is compiled after it.
+// it broke; an include's change compiles the programs using it; other files change nothing; a
+// save during a compile is compiled after it; and a program with several entry points gives each
+// by name, and keeps them all when a compile drops one.
 #include "Paths.h"
 #include "ShaderCache.h"
 #include "ShaderCompiler.h"
@@ -12,6 +13,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -272,6 +274,75 @@ namespace
 		RequireQuiet(programs, "a change to another file compiled something");
 	}
 
+	std::string PairSource(const char* color, bool bWithFragment)
+	{
+		std::string source = "[shader(\"vertex\")]\nfloat4 pairVertex(uint id : SV_VertexID) : SV_Position\n{\n    return float4(float(id), 0.0, 0.0, 1.0);\n}\n";
+		if (bWithFragment)
+		{
+			source += std::string("[shader(\"fragment\")]\nfloat4 pairFragment() : SV_Target\n{\n    return ") + color + ";\n}\n";
+		}
+		return source;
+	}
+
+	bool Throws(const std::function<void()>& call)
+	{
+		try
+		{
+			call();
+		}
+		catch (const std::exception&)
+		{
+			return true;
+		}
+		return false;
+	}
+
+	// A .slang program with a vertex and a fragment entry point, as Scene.slang
+	void TestProgramsWithSeveralEntryPoints()
+	{
+		TestFolders folders;
+		WriteFile(folders.Sources / "Pair.slang", PairSource("float4(1.0, 0.5, 0.0, 1.0)", true));
+		ShaderCompiler compiler({ Nyx::Paths::GetShaderLibraryDir() });
+		const ShaderCompileResult built = compiler.CompileProgram(folders.Sources / "Pair.slang");
+		Require(built.bSucceeded && built.EntryPoints.size() == 2, "Pair.slang doesn't compile into two entry points");
+		ShaderCompileRequest request;
+		request.File = folders.Sources / "Pair.slang";
+		Require(ShaderCache(folders.Compiled, folders.Sources).Store(request, built), "the build's cache entry can't be written");
+
+		ShaderPrograms programs(folders.Compiled, folders.Sources);
+		const std::vector<uint32_t> builtFragment = programs.GetSpirv("Pair.slang", "pairFragment");
+		Require(programs.GetSpirv("Pair.slang", "pairVertex") != builtFragment, "both entry points give the same code");
+		Require(Throws([&]
+					{
+						programs.GetSpirv("Pair.slang");
+					}),
+			"a program with two entry points gives one without being told which");
+		Require(Throws([&]
+					{
+						programs.GetSpirv("Pair.slang", "main");
+					}),
+			"an entry point the program lacks doesn't throw");
+		Require(programs.EnableLiveReload(std::make_unique<TestService>()), "live reload doesn't start: " + programs.GetProblem());
+
+		// The fragment entry point goes: the compile succeeds, but the program keeps both
+		WriteFile(folders.Sources / "Pair.slang", PairSource("", false));
+		std::vector<ShaderProgramUpdate> updates = WaitForUpdates(programs);
+		Require(updates.size() == 1 && !updates[0].bChanged && !updates[0].Result.bSucceeded, "a compile without an entry point in use replaced the program");
+		const auto& diagnostics = updates[0].Result.Diagnostics;
+		Require(std::any_of(diagnostics.begin(), diagnostics.end(), [](const ShaderDiagnostic& diagnostic)
+					{
+						return diagnostic.Message.find("pairFragment") != std::string::npos;
+					}),
+			"the missing entry point isn't named");
+		Require(programs.GetSpirv("Pair.slang", "pairFragment") == builtFragment, "the entry point in use lost its code");
+
+		// Back, changed: both are replaced
+		WriteFile(folders.Sources / "Pair.slang", PairSource("float4(0.0, 0.5, 1.0, 1.0)", true));
+		updates = WaitForUpdates(programs);
+		Require(updates.size() == 1 && updates[0].bChanged, "the program with both entry points again isn't compiled");
+		Require(programs.GetSpirv("Pair.slang", "pairFragment") != builtFragment, "the changed fragment entry point's code didn't change");
+	}
+
 	void TestASaveDuringACompileIsCompiledAfterIt()
 	{
 		TestFolders folders;
@@ -323,6 +394,7 @@ int main()
 		TestSavedProgramsCompileAfterTheySettled();
 		TestBrokenProgramsKeepTheirLastGoodCode();
 		TestASaveDuringACompileIsCompiledAfterIt();
+		TestProgramsWithSeveralEntryPoints();
 	}
 	catch (const std::exception& error)
 	{

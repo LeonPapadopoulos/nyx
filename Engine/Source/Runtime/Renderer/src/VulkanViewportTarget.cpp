@@ -107,7 +107,7 @@ namespace Nyx
 		imageInfo.format = Format;
 		imageInfo.tiling = vk::ImageTiling::eOptimal;
 		imageInfo.initialLayout = vk::ImageLayout::eUndefined;
-		imageInfo.usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled;
+		imageInfo.usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferSrc;
 		imageInfo.samples = vk::SampleCountFlagBits::e1;
 		imageInfo.sharingMode = vk::SharingMode::eExclusive;
 

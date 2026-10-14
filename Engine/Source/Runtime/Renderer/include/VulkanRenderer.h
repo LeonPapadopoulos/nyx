@@ -9,6 +9,7 @@
 #include "Paths.h"
 #include "ShaderPrograms.h"
 #include "VulkanBlur.h"
+#include "VulkanBindless.h"
 #include "VulkanGlass.h"
 #include "Painter.h"
 #include "WindowPainter.h"
@@ -57,21 +58,32 @@ namespace Nyx
 		glm::vec4 CameraWorldPos;   // xyz used
 		glm::vec4 LightDirectionWS; // xyz used, normalized
 		glm::vec4 LightColor;       // rgb = light color, a = ambient strength
+
+		// The view's rotation without its position, for the sky
+		glm::mat4 SkyboxViewProj{ 1.0f };
+		// The sky's cube map in the bindless texture array
+		uint32_t EnvironmentTexture = 0;
+		uint32_t Padding1[3] = {};
 	};
 
-	struct ObjectPushConstants
+	// The view's set (set 1) as nyx/view.slang reads it: std140 and scalar layout agree on it
+	static_assert(sizeof(SceneUBO) == 272, "SceneUBO must match ViewConstants in nyx/view.slang");
+
+	// One draw's push constants, the same for every scene pipeline: ObjectConstants in
+	// nyx/bindless.slang
+	struct ObjectConstants
 	{
 		glm::mat4 Model{ 1.0f };
-
-		// x = base reflectivity
-		// y = use texture? (1.0 = yes, 0.0 = no)
-		// z,w = reserved
-		glm::vec4 Params{ 0.0f, 1.0f, 0.0f, 0.0f };
-
-		// rgb = per-object tint
-		// a   = unused for now
-		glm::vec4 Tint{ 1.0f, 1.0f, 1.0f, 1.0f };
+		// Where the material's values start in the material buffer
+		uint32_t MaterialOffset = 0;
+		// The picking pass writes it
+		uint32_t EntityId = 0;
+		uint32_t Padding[2] = {};
+		// Set per object by code; the selection mask passes keep the mask's value in x
+		glm::vec4 CustomData{ 0.0f };
 	};
+
+	static_assert(sizeof(ObjectConstants) == 96, "ObjectConstants must match nyx/bindless.slang");
 
 	struct Transform
 	{
@@ -103,11 +115,6 @@ namespace Nyx
 		glm::vec3 LocalBoundsMax{ 0.5f, 0.5f, 0.5f };
 
 		uint32_t PickingId = 0;
-	};
-
-	struct SkyboxUBO
-	{
-		glm::mat4 ViewProj = glm::mat4(1.0f);
 	};
 
 	struct SceneCamera
@@ -263,6 +270,8 @@ namespace Nyx
 		const std::string& GetScreenshotMessage() const override { return ScreenshotMessage; }
 
 		ImTextureID GetSceneViewTextureId(uint64_t id) const override;
+		// What a scene view rendered last, as RGBA; waits for the GPU. False for an unknown view. For tests.
+		bool ReadSceneViewPixels(uint64_t id, Nyx::Engine::RgbaImage& outImage);
 		Extent2D GetSceneViewExtent(uint64_t id) const override;
 
 
@@ -284,7 +293,13 @@ namespace Nyx
 		void ExtractRenderObjects(const Nyx::Engine::Registry& registry);
 		void DrawRenderObjects(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
 
+		// Set 1, the view's: its SceneUBO
 		void CreateSceneDescriptorSetLayout();
+		// The layout of every scene pipeline: the global set (Bindless), the view's set, and
+		// ObjectConstants
+		void CreateScenePipelineLayout();
+		// Binds both sets for the scene pipelines' draws into the view
+		void BindSceneSets(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
 		void CreateScenePipeline();
 		void CreateGridPipeline();
 		void CreatePickingPipeline();
@@ -292,18 +307,10 @@ namespace Nyx
 		vk::RenderPass GetSceneRenderPass() const;
 
 		void LoadSkyboxCubemap();
-		void CreateSkyboxSharedResources();
-		void CreateSkyboxResourcesForView(SceneViewInstance& view);
 
 		void CreatePickingResourcesForView(SceneViewInstance& view);
 		void DestroyPickingResourcesForView(SceneViewInstance& view);
 		void RecreatePickingResourcesForView(SceneViewInstance& view);
-
-		struct SelectionMaskPushConstants
-		{
-			glm::mat4 Model{ 1.0f };
-			float SelectedValue = 0.0f;
-		};
 
 		struct OutlineCompositePushConstants
 		{
@@ -332,9 +339,6 @@ namespace Nyx
 		void CreateOutlineCompositePipeline();
 		void DrawSelectionOutline(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
 
-		void CreateSkyboxUniformBuffer(SceneViewInstance& view);
-		void CreateSkyboxDescriptorSetLayout();
-		void UpdateSkyboxUniforms(SceneViewInstance& view);
 		void CreateSkyboxPipeline();
 		void DrawSkybox(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
 
@@ -426,13 +430,6 @@ namespace Nyx
 		void DrawPickingPass(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
 		void ResolvePickRequest(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
 		void ReadBackPickResults();
-
-	private:
-		struct PickingPushConstants
-		{
-			glm::mat4 Model{ 1.0f };
-			uint32_t EncodedEntityId = 0;
-		};
 
 	private:
 	private:
@@ -619,7 +616,11 @@ namespace Nyx
 		std::vector<SceneViewInstance> SceneViews;
 		uint64_t NextSceneViewId = 1;
 
+		// Set 0 of every scene pipeline: every texture, the fixed samplers, the material buffer
+		Nyx::Engine::VulkanBindless Bindless;
+
 		vk::raii::DescriptorSetLayout SceneDescriptorSetLayout{ nullptr };
+		// Shared by the scene, sky, grid, debug line, picking and selection mask pipelines
 		vk::raii::PipelineLayout ScenePipelineLayout{ nullptr };
 		vk::raii::Pipeline ScenePipeline{ nullptr };
 
@@ -635,7 +636,6 @@ namespace Nyx
 		float SceneTime = 0.0f;
 
 		// Picking
-		vk::raii::PipelineLayout PickingPipelineLayout{ nullptr };
 		vk::raii::Pipeline PickingPipeline{ nullptr };
 
 		std::vector<Nyx::Engine::Entity> PickingIdToEntity;
@@ -647,7 +647,6 @@ namespace Nyx
 		vk::raii::DescriptorSetLayout OutlineDescriptorSetLayout{ nullptr };
 		vk::raii::Sampler OutlineCompositeSampler{ nullptr };
 
-		vk::raii::PipelineLayout SelectionMaskPipelineLayout{ nullptr };
 		vk::raii::Pipeline SelectionMaskPipelineVisible{ nullptr };
 		vk::raii::Pipeline SelectionMaskPipelineFull{ nullptr };
 
@@ -655,15 +654,13 @@ namespace Nyx
 		vk::raii::Pipeline OutlineCompositePipeline{ nullptr };
 
 		// Grid
-		vk::raii::PipelineLayout GridPipelineLayout{ nullptr };
 		vk::raii::Pipeline GridPipeline{ nullptr };
 
 
 		// Skybox
 		CubemapTexture SkyboxCubemap{ "Skybox01" };
+		uint32_t SkyboxTextureIndex = 0;
 
-		vk::raii::DescriptorSetLayout SkyboxDescriptorSetLayout{ nullptr };
-		vk::raii::PipelineLayout SkyboxPipelineLayout{ nullptr };
 		vk::raii::Pipeline SkyboxPipeline{ nullptr };
 
 		// Mesh
@@ -680,6 +677,7 @@ namespace Nyx
 
 		// Texture
 		Texture TestTexture{ "checker" };
+		uint32_t TestTextureIndex = 0;
 
 		//vk::PhysicalDeviceFeatures DeviceFeatures;
 
@@ -706,7 +704,6 @@ namespace Nyx
 		vk::raii::Buffer DebugLineVertexBuffer{ nullptr };
 		vk::raii::DeviceMemory DebugLineVertexBufferMemory{ nullptr };
 
-		vk::raii::PipelineLayout DebugLinePipelineLayout{ nullptr };
 		vk::raii::Pipeline DebugLinePipeline{ nullptr };
 	};
 }

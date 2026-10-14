@@ -6,14 +6,13 @@
 
 find_package(Vulkan REQUIRED)
 
-# Listed so the IDE shows them; the compiler takes every .vert, .frag and .comp in this folder
+# Listed so the IDE shows them; the compiler takes every .slang, .vert, .frag and .comp in this
+# folder (not in Library, which they import)
 set(NYX_SHADER_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/DefaultShader.vert
-    ${CMAKE_CURRENT_SOURCE_DIR}/DefaultShader.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/Scene.slang
+    ${CMAKE_CURRENT_SOURCE_DIR}/Skybox.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Grid.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/Grid.frag
-    ${CMAKE_CURRENT_SOURCE_DIR}/Skybox.vert
-    ${CMAKE_CURRENT_SOURCE_DIR}/Skybox.frag
     ${CMAKE_CURRENT_SOURCE_DIR}/DebugLines.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/DebugLines.frag
     ${CMAKE_CURRENT_SOURCE_DIR}/Picking.vert
@@ -27,6 +26,8 @@ set(NYX_SHADER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/PainterBin.comp
     ${CMAKE_CURRENT_SOURCE_DIR}/Blur.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/Blur.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/bindless.slang
+    ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/view.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/surface.slang
 )
 
