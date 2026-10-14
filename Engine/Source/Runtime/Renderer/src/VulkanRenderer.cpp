@@ -253,6 +253,8 @@ namespace Nyx
 		ASSERT(Swapchain.GetImageCount() >= Swapchain.GetMinImageCount() && "Failed to fulfill VulkanImGuiBackend requirements.");
 		SetupImGui();
 
+		// Before any pipeline is made
+		Context.LoadPipelineCache(Nyx::Paths::GetShaderCacheDir() / "Pipelines.bin");
 		StartLiveShaderReload();
 
 		// ------------------------------------------------------------------------------------------------------
@@ -309,6 +311,7 @@ namespace Nyx
 	void VulkanRenderer::Shutdown()
 	{
 		Context.WaitIdle();
+		Context.SavePipelineCache(Nyx::Paths::GetShaderCacheDir() / "Pipelines.bin");
 
 		for (SceneViewInstance& view : SceneViews)
 		{
@@ -1254,7 +1257,7 @@ namespace Nyx
 
 		ScenePipeline = std::move(vk::raii::Pipeline(
 			Context.GetDevice(),
-			nullptr,
+			Context.GetPipelineCache(),
 			pipelineInfo));
 	}
 
@@ -1367,7 +1370,7 @@ namespace Nyx
 		pipelineInfo.renderPass = GetSceneRenderPass();
 		pipelineInfo.subpass = 0;
 
-		GridPipeline = std::move(vk::raii::Pipeline(Context.GetDevice(), nullptr, pipelineInfo));
+		GridPipeline = std::move(vk::raii::Pipeline(Context.GetDevice(), Context.GetPipelineCache(), pipelineInfo));
 	}
 
 	void VulkanRenderer::CreatePickingPipeline()
@@ -1489,7 +1492,7 @@ namespace Nyx
 		pipelineInfo.renderPass = pickingRenderPass;
 		pipelineInfo.subpass = 0;
 
-		PickingPipeline = std::move(vk::raii::Pipeline(Context.GetDevice(), nullptr, pipelineInfo));
+		PickingPipeline = std::move(vk::raii::Pipeline(Context.GetDevice(), Context.GetPipelineCache(), pipelineInfo));
 	}
 
 	vk::RenderPass VulkanRenderer::GetSceneRenderPass() const
@@ -1611,7 +1614,7 @@ namespace Nyx
 
 		SkyboxPipeline = std::move(vk::raii::Pipeline(
 			Context.GetDevice(),
-			nullptr,
+			Context.GetPipelineCache(),
 			pipelineInfo));
 	}
 
@@ -2256,7 +2259,7 @@ namespace Nyx
 		visibleInfo.renderPass = renderPass;
 		visibleInfo.subpass = 0;
 
-		SelectionMaskPipelineVisible = std::move(vk::raii::Pipeline(Context.GetDevice(), nullptr, visibleInfo));
+		SelectionMaskPipelineVisible = std::move(vk::raii::Pipeline(Context.GetDevice(), Context.GetPipelineCache(), visibleInfo));
 
 		// Full silhouette
 		vk::PipelineDepthStencilStateCreateInfo depthFull{};
@@ -2267,7 +2270,7 @@ namespace Nyx
 		vk::GraphicsPipelineCreateInfo fullInfo = visibleInfo;
 		fullInfo.pDepthStencilState = &depthFull;
 
-		SelectionMaskPipelineFull = std::move(vk::raii::Pipeline(Context.GetDevice(), nullptr, fullInfo));
+		SelectionMaskPipelineFull = std::move(vk::raii::Pipeline(Context.GetDevice(), Context.GetPipelineCache(), fullInfo));
 	}
 
 	void VulkanRenderer::DrawVisibleSelectionMaskPass(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
@@ -2519,7 +2522,7 @@ namespace Nyx
 		pipelineInfo.renderPass = GetSceneRenderPass();
 		pipelineInfo.subpass = 0;
 
-		OutlineCompositePipeline = std::move(vk::raii::Pipeline(Context.GetDevice(), nullptr, pipelineInfo));
+		OutlineCompositePipeline = std::move(vk::raii::Pipeline(Context.GetDevice(), Context.GetPipelineCache(), pipelineInfo));
 	}
 
 	void VulkanRenderer::DrawSelectionOutline(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
@@ -4419,7 +4422,7 @@ namespace Nyx
 		pipelineInfo.renderPass = GetSceneRenderPass();
 		pipelineInfo.subpass = 0;
 
-		DebugLinePipeline = std::move(vk::raii::Pipeline(Context.GetDevice(), nullptr, pipelineInfo));
+		DebugLinePipeline = std::move(vk::raii::Pipeline(Context.GetDevice(), Context.GetPipelineCache(), pipelineInfo));
 	}
 
 	void VulkanRenderer::ResetDebugLines()

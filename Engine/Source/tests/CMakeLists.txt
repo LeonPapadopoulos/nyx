@@ -95,8 +95,32 @@ add_test(NAME NyxPainterGpuTests COMMAND NyxPainterGpuTests)
 find_library(NYX_SPIRV_TOOLS_LIBRARY SPIRV-Tools HINTS "${NYX_VULKAN_LIB_DIR}" REQUIRED)
 find_library(NYX_SPIRV_TOOLS_DEBUG_LIBRARY SPIRV-Toolsd HINTS "${NYX_VULKAN_LIB_DIR}" REQUIRED)
 
+# glslc's SPIR-V of the engine's shaders, for comparing with Slang's in NyxShaderCompilerTests: the
+# build compiles with Slang, and this is the only use of glslc left.
+find_program(NYX_GLSLC glslc HINTS "${NYX_VULKAN_LIB_DIR}/../Bin" REQUIRED)
+set(NYX_GLSLC_REFERENCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/GlslcReference")
+file(GLOB NYX_ENGINE_GLSL CONFIGURE_DEPENDS
+    "${CMAKE_SOURCE_DIR}/Engine/Shaders/*.vert"
+    "${CMAKE_SOURCE_DIR}/Engine/Shaders/*.frag"
+    "${CMAKE_SOURCE_DIR}/Engine/Shaders/*.comp"
+)
+set(NYX_GLSLC_REFERENCES)
+foreach(NYX_SHADER ${NYX_ENGINE_GLSL})
+    get_filename_component(NYX_SHADER_NAME "${NYX_SHADER}" NAME)
+    add_custom_command(
+        OUTPUT "${NYX_GLSLC_REFERENCE_DIR}/${NYX_SHADER_NAME}.spv"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${NYX_GLSLC_REFERENCE_DIR}"
+        COMMAND "${NYX_GLSLC}" "${NYX_SHADER}" -o "${NYX_GLSLC_REFERENCE_DIR}/${NYX_SHADER_NAME}.spv"
+        DEPENDS "${NYX_SHADER}"
+        VERBATIM
+    )
+    list(APPEND NYX_GLSLC_REFERENCES "${NYX_GLSLC_REFERENCE_DIR}/${NYX_SHADER_NAME}.spv")
+endforeach()
+add_custom_target(NyxGlslcReference DEPENDS ${NYX_GLSLC_REFERENCES})
+set_property(TARGET NyxGlslcReference PROPERTY FOLDER "Tests")
+
 # ShaderCompiler without a GPU: materials, layouts, diagnostics, dependencies, and the engine's GLSL
-# compiled by Slang with the same layouts as glslc's (from NyxShaders, until change 4 retires glslc).
+# compiled by Slang with the same layouts as glslc's.
 add_executable(NyxShaderCompilerTests ShaderCompilerTests.cpp)
 target_link_libraries(NyxShaderCompilerTests PRIVATE NyxEngine optimized "${NYX_SPIRV_TOOLS_LIBRARY}" debug "${NYX_SPIRV_TOOLS_DEBUG_LIBRARY}")
 # The SDK ships SPIRV-Toolsd.lib without its PDB
@@ -104,9 +128,9 @@ target_link_options(NyxShaderCompilerTests PRIVATE "/IGNORE:4099")
 target_compile_definitions(NyxShaderCompilerTests PRIVATE
     NYX_TEST_SHADERS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/Shaders"
     NYX_ENGINE_SHADERS_DIR="${CMAKE_SOURCE_DIR}/Engine/Shaders"
-    NYX_GLSLC_SHADERS_DIR="${CMAKE_BINARY_DIR}/Engine/Shaders/Compiled"
+    NYX_GLSLC_SHADERS_DIR="${NYX_GLSLC_REFERENCE_DIR}"
 )
-add_dependencies(NyxShaderCompilerTests NyxGeneratedReflection NyxShaders)
+add_dependencies(NyxShaderCompilerTests NyxGeneratedReflection NyxGlslcReference)
 set_property(TARGET NyxShaderCompilerTests PROPERTY FOLDER "Tests")
 nyx_copy_shader_compiler_next_to(NyxShaderCompilerTests)
 add_test(NAME NyxShaderCompilerTests COMMAND NyxShaderCompilerTests)
@@ -127,6 +151,14 @@ target_link_libraries(NyxFileWatcherTests PRIVATE NyxEngine)
 add_dependencies(NyxFileWatcherTests NyxGeneratedReflection)
 set_property(TARGET NyxFileWatcherTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxFileWatcherTests COMMAND NyxFileWatcherTests)
+
+# ShaderCache on real files, and NyxShaderCompiler's build mode filling one.
+add_executable(NyxShaderCacheTests ShaderCacheTests.cpp)
+target_link_libraries(NyxShaderCacheTests PRIVATE NyxEngine)
+add_dependencies(NyxShaderCacheTests NyxGeneratedReflection NyxShaderCompiler)
+set_property(TARGET NyxShaderCacheTests PROPERTY FOLDER "Tests")
+nyx_copy_shader_compiler_next_to(NyxShaderCacheTests)
+add_test(NAME NyxShaderCacheTests COMMAND NyxShaderCacheTests)
 
 # ShaderPrograms on real files, compiling in this process: settling, last good code, includes.
 add_executable(NyxShaderProgramsTests ShaderProgramsTests.cpp)

@@ -91,6 +91,16 @@ namespace Nyx
 		return GetEngineDir() / "Shaders";
 	}
 
+	std::filesystem::path Paths::GetSavedDir()
+	{
+		return GetProjectRoot() / "Saved";
+	}
+
+	std::filesystem::path Paths::GetShaderCacheDir()
+	{
+		return GetSavedDir() / "ShaderCache";
+	}
+
 	std::filesystem::path Paths::GetShaderLibraryDir()
 	{
 		return GetShadersDir() / "Library";

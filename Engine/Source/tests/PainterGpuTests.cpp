@@ -625,10 +625,47 @@ namespace
 
 		gpu.GetContext().GetDevice().waitIdle();
 		pass.RebuildPipelines();
-		const PaintedImage changed = gpu.PaintWith(pass, target, painter);
+		// A new target: the first one's tiles from the build's binner would hide a binner that bins nothing
+		VulkanPainterTarget changedTarget;
+		const PaintedImage changed = gpu.PaintWith(pass, changedTarget, painter);
 		changed.RequirePixel(20, 20, glm::vec4(1.0f, 0.0f, 1.0f, 1.0f), "After the change");
 		changed.RequirePixel(5, 5, Transparent, "Outside the rect, after the change");
 
+		gpu.GetContext().GetDevice().waitIdle();
+		target.Release();
+		changedTarget.Release();
+		pass.Shutdown();
+		std::filesystem::remove_all(folder);
+	}
+
+	// The device's pipeline cache: saved, loaded back, and a file another GPU or driver could have
+	// written is ignored. Pipelines are made with it either way.
+	void TestPipelineCacheSavesAndLoads(GpuPainter& gpu)
+	{
+		Nyx::VulkanContext& context = gpu.GetContext();
+		const std::filesystem::path folder = std::filesystem::temp_directory_path() / ("NyxPainterGpuTests-cache-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+		const std::filesystem::path file = folder / "Pipelines.bin";
+		Require(context.SavePipelineCache(file), "the pipeline cache isn't saved");
+		Require(std::filesystem::file_size(file) > 32, "the saved pipeline cache has no header");
+
+		context.LoadPipelineCache(file);
+		{
+			std::ofstream stream(folder / "Other.bin", std::ios::binary);
+			stream << std::string(64, '\x7f');
+		}
+		context.LoadPipelineCache(folder / "Other.bin");
+		context.LoadPipelineCache(folder / "Missing.bin");
+
+		// Pipelines are made with whatever cache there is
+		gpu.GetContext().GetDevice().waitIdle();
+		Painter painter = StartFrame();
+		painter.AddRect(PainterRect{ { 10.5f, 10.5f }, { 30.5f, 30.5f } }, PainterStyle::Filled(Orange));
+		painter.EndFrame();
+		VulkanPainter pass;
+		ShaderPrograms programs(Nyx::Paths::GetCompiledShadersDir(), Nyx::Paths::GetShadersDir());
+		pass.Initialize(context, programs);
+		VulkanPainterTarget target;
+		gpu.PaintWith(pass, target, painter).RequirePixel(20, 20, Orange, "With a loaded pipeline cache");
 		gpu.GetContext().GetDevice().waitIdle();
 		target.Release();
 		pass.Shutdown();
@@ -1741,6 +1778,7 @@ int main()
 		TestBlurFollowsTheSourceAndOptions(gpu);
 
 		TestPipelinesFollowChangedShaders(gpu);
+		TestPipelineCacheSavesAndLoads(gpu);
 	}
 	catch (const std::exception& error)
 	{

@@ -821,7 +821,7 @@ namespace Nyx::Engine
 		pipelineInfo.stage.module = *module;
 		pipelineInfo.stage.pName = "main";
 		pipelineInfo.layout = *BinPipelineLayout;
-		BinPipeline = vk::raii::Pipeline(Context->GetDevice(), nullptr, pipelineInfo);
+		BinPipeline = vk::raii::Pipeline(Context->GetDevice(), Context->GetPipelineCache(), pipelineInfo);
 	}
 
 	const vk::raii::Pipeline& VulkanPainter::GetSegmentPipeline(vk::Format colorFormat)
@@ -952,7 +952,7 @@ namespace Nyx::Engine
 		pipelineInfo.layout = *PipelineLayout;
 		pipelineInfo.renderPass = renderPass;
 		pipelineInfo.subpass = 0;
-		return vk::raii::Pipeline(Context->GetDevice(), nullptr, pipelineInfo);
+		return vk::raii::Pipeline(Context->GetDevice(), Context->GetPipelineCache(), pipelineInfo);
 	}
 
 	void VulkanPainter::PrepareImage(VulkanPainterTarget& target, vk::Extent2D extent)

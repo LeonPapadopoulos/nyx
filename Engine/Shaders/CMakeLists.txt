@@ -1,10 +1,12 @@
-# Compiles the engine's shaders to SPIR-V once. Every program that renders calls
-# nyx_copy_shaders_next_to(<target>), because the renderer loads the compiled shaders
-# from a "Shaders" folder next to the executable.
+# Compiles the engine's shaders with NyxShaderCompiler (its build mode) into a shader cache, on
+# every build and each only when it or a file it reads changed. The renderer loads the cache from a
+# "Shaders" folder next to the executable; every program is built into Binaries/<config>, so the
+# cache is made right there, once for all of them. A program that renders calls
+# nyx_copy_shaders_next_to(<target>), so that it is built after the shaders.
 
-# Find glslc from the Vulkan SDK / PATH
-find_program(GLSLC glslc REQUIRED)
+find_package(Vulkan REQUIRED)
 
+# Listed so the IDE shows them; the compiler takes every .vert, .frag and .comp in this folder
 set(NYX_SHADER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/DefaultShader.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/DefaultShader.frag
@@ -25,57 +27,35 @@ set(NYX_SHADER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/PainterBin.comp
     ${CMAKE_CURRENT_SOURCE_DIR}/Blur.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/Blur.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/surface.slang
 )
 
-set(NYX_SHADER_BUILD_DIR ${CMAKE_CURRENT_BINARY_DIR}/Compiled)
-set(NYX_SHADER_OUTPUTS)
+set(NYX_SHADER_BUILD_DIR "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/Shaders")
 
-foreach(SHADER ${NYX_SHADER_SOURCES})
-    get_filename_component(SHADER_NAME ${SHADER} NAME)
-    set(SPV ${NYX_SHADER_BUILD_DIR}/${SHADER_NAME}.spv)
-
-    add_custom_command(
-        OUTPUT ${SPV}
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${NYX_SHADER_BUILD_DIR}"
-        COMMAND ${GLSLC} "${SHADER}" -o "${SPV}"
-        DEPENDS ${SHADER}
-        MAIN_DEPENDENCY ${SHADER}
-        COMMENT "Compiling shader ${SHADER_NAME}"
-        VERBATIM
-    )
-
-    list(APPEND NYX_SHADER_OUTPUTS ${SPV})
-endforeach()
-
-# Recompiles changed shaders on every build
+# Runs on every build; what is up to date is skipped in a moment
 add_custom_target(NyxShaders ALL
-    DEPENDS ${NYX_SHADER_OUTPUTS}
+    COMMAND "$<TARGET_FILE:NyxShaderCompiler>" build
+        --source "${CMAKE_CURRENT_SOURCE_DIR}"
+        --output "${NYX_SHADER_BUILD_DIR}"
+        --search-path "${CMAKE_CURRENT_SOURCE_DIR}/Library"
+    COMMENT "Compiling shaders"
+    SOURCES ${NYX_SHADER_SOURCES}
+    VERBATIM
 )
+add_dependencies(NyxShaders NyxShaderCompiler)
+source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${NYX_SHADER_SOURCES})
 
-# Kept globally, because nyx_copy_shaders_next_to() is called from other directories
-set_property(GLOBAL PROPERTY NYX_SHADER_OUTPUTS "${NYX_SHADER_OUTPUTS}")
-
-# Copies the compiled shaders into a "Shaders" folder next to the executable of <target>,
-# on every build of <target>.
+# Builds the shaders before <target>, whose "Shaders" folder they are compiled into. (Copying them
+# for each program, as glslc's .spv files were, would have every program write the same folder at
+# once in a parallel build.)
 function(nyx_copy_shaders_next_to target)
-    get_property(shaderFiles GLOBAL PROPERTY NYX_SHADER_OUTPUTS)
-
-    add_custom_target(${target}Shaders ALL
-        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:${target}>/Shaders"
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            ${shaderFiles}
-            "$<TARGET_FILE_DIR:${target}>/Shaders"
-        COMMAND_EXPAND_LISTS
-    )
-
-    add_dependencies(${target}Shaders NyxShaders)
-    add_dependencies(${target} ${target}Shaders)
+    add_dependencies(${target} NyxShaders)
 endfunction()
 
 # Copies Slang's DLLs next to the executable of <target>, for programs that compile shaders
 # (ShaderCompiler). slang.dll loads slang-compiler.dll, which compiles GLSL too; the SDK's other
-# Slang DLLs aren't needed (shader-materials.md, as built, changes 1 and 2).
-get_filename_component(NYX_VULKAN_SDK_BIN "${GLSLC}" DIRECTORY)
+# Slang DLLs aren't needed.
+get_filename_component(NYX_VULKAN_SDK_BIN "${Vulkan_LIBRARY}/../../Bin" ABSOLUTE)
 set(NYX_SHADER_COMPILER_DLLS
     "${NYX_VULKAN_SDK_BIN}/slang.dll"
     "${NYX_VULKAN_SDK_BIN}/slang-compiler.dll"

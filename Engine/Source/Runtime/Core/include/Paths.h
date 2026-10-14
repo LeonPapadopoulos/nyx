@@ -23,11 +23,18 @@ namespace Nyx
 		// Shader sources (.vert, .frag): Engine/Shaders
 		static std::filesystem::path GetShadersDir();
 
+		// What programs keep between runs, e.g. the UI gallery's PNGs: Saved, in the project
+		static std::filesystem::path GetSavedDir();
+
+		// What live reload compiled, and the pipeline cache: Saved/ShaderCache
+		static std::filesystem::path GetShaderCacheDir();
+
 		// The shader library (nyx/surface.slang, ...): Engine/Shaders/Library. Materials import from it.
 		static std::filesystem::path GetShaderLibraryDir();
 
-		// Compiled shaders (.spv): the "Shaders" folder next to the executable. The build copies them
-		// there for every program that uses them, so they don't depend on the working directory.
+		// Compiled shaders, as a shader cache (ShaderCache): the "Shaders" folder next to the
+		// executable. The build copies them there for every program that uses them, so they don't
+		// depend on the working directory.
 		static std::filesystem::path GetCompiledShadersDir();
 
 	private:

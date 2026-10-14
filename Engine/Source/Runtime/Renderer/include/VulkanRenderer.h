@@ -442,8 +442,9 @@ namespace Nyx
 		VulkanContext Context;
 		VulkanSwapchain Swapchain;
 
-		// The engine's shaders by name; every pipeline is made from them
-		Nyx::Engine::ShaderPrograms Programs{ Nyx::Paths::GetCompiledShadersDir(), Nyx::Paths::GetShadersDir() };
+		// The engine's shaders by name; every pipeline is made from them. What live reload compiles
+		// is kept in Saved/ShaderCache/Engine, so the next start begins from it.
+		Nyx::Engine::ShaderPrograms Programs{ Nyx::Paths::GetCompiledShadersDir(), Nyx::Paths::GetShadersDir(), Nyx::Paths::GetShaderCacheDir() / "Engine" };
 
 		Nyx::Engine::VulkanPainter PainterPass;
 

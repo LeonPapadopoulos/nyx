@@ -1,6 +1,8 @@
 #pragma once
 #include <vulkan/vulkan_raii.hpp>
 
+#include <filesystem>
+
 struct GLFWwindow;
 
 namespace Nyx
@@ -18,6 +20,13 @@ namespace Nyx
 		vk::raii::Queue& GetGraphicsQueue();
 		uint32_t GetGraphicsQueueFamily() const;
 		vk::raii::CommandPool& GetGraphicsCommandPool();
+
+		// The device's pipeline cache: pipelines made with it are made faster the next time.
+		// LoadPipelineCache() fills it from a file this GPU and driver wrote, before pipelines are
+		// made; a file from another GPU or driver is ignored. SavePipelineCache() writes it back.
+		vk::raii::PipelineCache& GetPipelineCache();
+		void LoadPipelineCache(const std::filesystem::path& file);
+		bool SavePipelineCache(const std::filesystem::path& file) const;
 
 		// Waits until the device has finished all its work. A lost device has none left: this
 		// returns without throwing then, so that everything made on it can still be released.
@@ -45,6 +54,7 @@ namespace Nyx
 		vk::raii::Device Device{ nullptr };
 		vk::raii::Queue GraphicsQueue{ nullptr };
 		vk::raii::CommandPool GraphicsCommandPool{ nullptr };
+		vk::raii::PipelineCache PipelineCache{ nullptr };
 
 		uint32_t GraphicsQueueFamily = 0;
 

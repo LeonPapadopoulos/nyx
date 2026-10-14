@@ -137,6 +137,33 @@ namespace
 		return decorations;
 	}
 
+	// The execution modes of the entry point, e.g. "17 64 1 1" for LocalSize 64 1 1
+	std::vector<std::string> ExecutionModes(const std::vector<uint32_t>& words)
+	{
+		constexpr uint32_t OpExecutionMode = 16;
+		std::vector<std::string> modes;
+		for (size_t index = 5; index < words.size();)
+		{
+			const uint32_t wordCount = words[index] >> 16;
+			if (wordCount == 0)
+			{
+				break;
+			}
+			if ((words[index] & 0xFFFF) == OpExecutionMode && wordCount >= 3)
+			{
+				std::string text = std::to_string(words[index + 2]);
+				for (uint32_t operand = 3; operand < wordCount; ++operand)
+				{
+					text += " " + std::to_string(words[index + operand]);
+				}
+				modes.push_back(text);
+			}
+			index += wordCount;
+		}
+		std::sort(modes.begin(), modes.end());
+		return modes;
+	}
+
 	// The capabilities a module declares (OpCapability), e.g. 1 for Shader
 	std::vector<uint32_t> Capabilities(const std::vector<uint32_t>& words)
 	{
@@ -387,7 +414,8 @@ namespace
 			const ShaderCompileResult result = Compiler().CompileProgram(entry.path());
 			RequireSucceeded(result, name);
 			Require(result.EntryPoints.size() == 1 && result.EntryPoints[0].Name == "main", name + " has no entry point main");
-			const EShaderStage stage = extension == ".vert" ? EShaderStage::Vertex : extension == ".frag" ? EShaderStage::Fragment : EShaderStage::Compute;
+			const EShaderStage stage = extension == ".vert" ? EShaderStage::Vertex : extension == ".frag" ? EShaderStage::Fragment
+																										  : EShaderStage::Compute;
 			Require(result.EntryPoints[0].Stage == stage, name + " has the wrong stage");
 
 			const std::string problem = ValidateSpirv(result.EntryPoints[0].Spirv, false);
@@ -415,6 +443,10 @@ namespace
 				}
 				Require(false, name + ": Slang's offsets, matrices, bindings or locations differ from glslc's:" + difference);
 			}
+
+			// The same execution modes: a compute shader's workgroup size, a fragment shader's origin.
+			// Slang once dropped a compute shader's local_size_x; this catches that.
+			Require(ExecutionModes(result.EntryPoints[0].Spirv) == ExecutionModes(glslc), name + ": Slang's execution modes (workgroup size, origin) differ from glslc's");
 
 			// Nothing the device doesn't turn on: what glslc's code needs, and DemoteToHelperInvocation
 			// (discard, in SPIR-V 1.6), which VulkanContext enables

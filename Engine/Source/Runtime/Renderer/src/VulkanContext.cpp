@@ -1,6 +1,8 @@
 #include "NyxPCH.h"
 #include "VulkanContext.h"
 #include <ranges>
+#include <cstring>
+#include <fstream>
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -255,6 +257,72 @@ namespace Nyx
 		Device = vk::raii::Device(PhysicalDevice, deviceCreateInfo);
 		GraphicsQueue = vk::raii::Queue(Device, graphicsQueueFamilyIndex, 0 /*queueInThatFamily*/);
 		GraphicsQueueFamily = graphicsQueueFamilyIndex;
+		PipelineCache = vk::raii::PipelineCache(Device, vk::PipelineCacheCreateInfo{});
+	}
+
+	vk::raii::PipelineCache& VulkanContext::GetPipelineCache()
+	{
+		return PipelineCache;
+	}
+
+	void VulkanContext::LoadPipelineCache(const std::filesystem::path& file)
+	{
+		std::ifstream stream(file, std::ios::binary);
+		if (!stream)
+		{
+			return;
+		}
+		const std::vector<char> data((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+
+		// The header says which GPU and driver wrote it (VkPipelineCacheHeaderVersionOne). Drivers
+		// should ignore data of others themselves; not every one does.
+		const vk::PhysicalDeviceProperties properties = PhysicalDevice.getProperties();
+		struct Header
+		{
+			uint32_t Size;
+			uint32_t Version;
+			uint32_t VendorId;
+			uint32_t DeviceId;
+			uint8_t Uuid[VK_UUID_SIZE];
+		};
+		Header header{};
+		if (data.size() < sizeof(Header))
+		{
+			return;
+		}
+		std::memcpy(&header, data.data(), sizeof(Header));
+		if (header.Size < sizeof(Header) || header.Version != static_cast<uint32_t>(vk::PipelineCacheHeaderVersion::eOne) ||
+			header.VendorId != properties.vendorID || header.DeviceId != properties.deviceID ||
+			std::memcmp(header.Uuid, properties.pipelineCacheUUID.data(), VK_UUID_SIZE) != 0)
+		{
+			return;
+		}
+
+		vk::PipelineCacheCreateInfo info{};
+		info.initialDataSize = data.size();
+		info.pInitialData = data.data();
+		PipelineCache = vk::raii::PipelineCache(Device, info);
+	}
+
+	bool VulkanContext::SavePipelineCache(const std::filesystem::path& file) const
+	{
+		if (!*PipelineCache)
+		{
+			return false;
+		}
+		const std::vector<uint8_t> data = PipelineCache.getData();
+		std::error_code error;
+		std::filesystem::create_directories(file.parent_path(), error);
+		const std::filesystem::path temporary = file.string() + ".tmp";
+		{
+			std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
+			if (!stream.write(reinterpret_cast<const char*>(data.data()), static_cast<std::streamsize>(data.size())))
+			{
+				return false;
+			}
+		}
+		std::filesystem::rename(temporary, file, error);
+		return !error;
 	}
 
 	void VulkanContext::CreateGraphicsCommandPool()

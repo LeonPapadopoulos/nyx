@@ -747,34 +747,52 @@ namespace Nyx::Engine
 		std::vector<std::filesystem::path> searchPaths{ file.parent_path() };
 		searchPaths.insert(searchPaths.end(), SearchPaths.begin(), SearchPaths.end());
 
-		// GLSL: one stage per file, entry point "main"
+		// GLSL: one stage per file, entry point "main". Compiled the way slangc does, with the
+		// entry point named before the file is read: loaded as a module and its main found
+		// afterwards (findAndCheckEntryPoint()), Slang 2026.1 drops layout(local_size_x = ...) in;
+		// and a compute shader runs with workgroups of one.
 		if (const std::optional<SlangStage> stage = GlslStageOf(file))
 		{
-			std::string source;
-			if (!ReadTextFile(file, source))
+			if (!std::filesystem::exists(file))
 			{
 				compile.Fail(file, "file not found");
 				return compile.Finish(false);
 			}
 			ComPtr<slang::ISession> session = MakeSession(Global->Session, ESourceKind::Glsl, searchPaths);
-			const std::string moduleName = file.stem().string() + "_" + file.extension().string().substr(1);
-			ComPtr<slang::IBlob> diagnostics;
-			slang::IModule* module = session->loadModuleFromSourceString(moduleName.c_str(), file.generic_string().c_str(), source.c_str(), diagnostics.writeRef());
-			compile.Take(diagnostics);
-			compile.AddDependencies(module);
-			if (!module)
+			ComPtr<SlangCompileRequest> request;
+			if (SLANG_FAILED(session->createCompileRequest(request.writeRef())) || !request)
+			{
+				compile.Fail(file, "Slang couldn't make a compile request");
+				return compile.Finish(false);
+			}
+			const int unit = request->addTranslationUnit(SLANG_SOURCE_LANGUAGE_GLSL, nullptr);
+			request->addTranslationUnitSourceFile(unit, file.generic_string().c_str());
+			const int entryIndex = request->addEntryPoint(unit, "main", *stage);
+			const SlangResult result = request->compile();
+			if (const char* text = request->getDiagnosticOutput())
+			{
+				compile.DiagnosticText += text;
+			}
+			// Asked after a failed compile, Slang 2026.1 crashes; the file itself and the files the
+			// diagnostics name are dependencies all the same (Compile::Finish())
+			for (int index = 0; SLANG_SUCCEEDED(result) && index < request->getDependencyFileCount(); ++index)
+			{
+				if (const char* dependency = request->getDependencyFilePath(index))
+				{
+					compile.AddDependency(dependency);
+				}
+			}
+			ComPtr<slang::IBlob> code;
+			if (SLANG_FAILED(result) || SLANG_FAILED(request->getEntryPointCodeBlob(entryIndex, 0, code.writeRef())) || !code)
 			{
 				return compile.Finish(false);
 			}
-			ComPtr<slang::IEntryPoint> entryPoint;
-			diagnostics = nullptr;
-			module->findAndCheckEntryPoint("main", *stage, entryPoint.writeRef(), diagnostics.writeRef());
-			compile.Take(diagnostics);
-			if (!entryPoint)
-			{
-				return compile.Finish(false);
-			}
-			return compile.Finish(compile.AddEntryPoints(session, { module, entryPoint }, nullptr));
+			CompiledEntryPoint entryPoint;
+			entryPoint.Spirv = BlobWords(code);
+			entryPoint.Name = SpirvEntryPointName(entryPoint.Spirv);
+			entryPoint.Stage = *StageOf(*stage);
+			compile.Result.EntryPoints.push_back(std::move(entryPoint));
+			return compile.Finish(true);
 		}
 
 		// Slang: every entry point the file defines

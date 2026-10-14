@@ -32,30 +32,24 @@ namespace Nyx::Engine
 		{
 			return dependencyKey == changedKey || (dependencyKey.size() > changedKey.size() && dependencyKey.compare(0, changedKey.size(), changedKey) == 0 && dependencyKey[changedKey.size()] == '/');
 		}
+	}
 
-		std::vector<uint32_t> ReadSpirvFile(const std::filesystem::path& file)
+	ShaderPrograms::ShaderPrograms(std::filesystem::path builtFolder, std::filesystem::path sourceFolder, std::filesystem::path savedFolder)
+		: SourceFolder(std::move(sourceFolder))
+		, Built(std::move(builtFolder), SourceFolder)
+	{
+		if (!savedFolder.empty())
 		{
-			std::ifstream stream(file, std::ios::binary | std::ios::ate);
-			if (!stream)
-			{
-				throw std::runtime_error("Failed to open SPIR-V file: " + file.string());
-			}
-			const std::streamsize size = stream.tellg();
-			if (size <= 0 || size % 4 != 0)
-			{
-				throw std::runtime_error("Not a SPIR-V file: " + file.string());
-			}
-			std::vector<uint32_t> words(static_cast<size_t>(size) / 4);
-			stream.seekg(0);
-			stream.read(reinterpret_cast<char*>(words.data()), size);
-			return words;
+			Saved.emplace(std::move(savedFolder), SourceFolder);
 		}
 	}
 
-	ShaderPrograms::ShaderPrograms(std::filesystem::path compiledFolder, std::filesystem::path sourceFolder)
-		: CompiledFolder(std::move(compiledFolder))
-		, SourceFolder(std::move(sourceFolder))
+	ShaderCompileRequest ShaderPrograms::RequestFor(const std::string& name) const
 	{
+		ShaderCompileRequest request;
+		request.Kind = EShaderCompileKind::Program;
+		request.File = SourceFolder / name;
+		return request;
 	}
 
 	const std::vector<uint32_t>& ShaderPrograms::GetSpirv(const std::string& name)
@@ -63,12 +57,35 @@ namespace Nyx::Engine
 		auto found = Programs.find(name);
 		if (found == Programs.end())
 		{
+			// The newest code that matches the files: live reload's, then the build's. Failing
+			// that, code that doesn't match any more, live reload's first.
+			const ShaderCompileRequest request = RequestFor(name);
+			std::optional<ShaderCache::Entry> saved = Saved ? Saved->Find(request) : std::nullopt;
+			std::optional<ShaderCache::Entry> built = Built.Find(request);
+			std::optional<ShaderCache::Entry>* chosen = saved && saved->bUpToDate ? &saved : built && built->bUpToDate ? &built
+				: saved                                                                                                ? &saved
+																													   : &built;
+			if (!*chosen || (*chosen)->Result.EntryPoints.size() != 1)
+			{
+				throw std::runtime_error("No compiled code for shader " + name + " in " + Built.GetFolder().string() + ": build the shaders (NyxShaders)");
+			}
+
 			Program program;
-			program.Spirv = ReadSpirvFile(CompiledFolder / (name + ".spv"));
-			program.Dependencies.push_back(SourceFolder / name);
+			program.Spirv = (*chosen)->Result.EntryPoints[0].Spirv;
+			program.Dependencies = (*chosen)->Result.Dependencies;
+			program.Dependencies.push_back(request.File);
+			program.bStartedOutOfDate = !(*chosen)->bUpToDate;
+			// Compiled at the first update, without waiting for anything to settle
+			program.bDirty = program.bStartedOutOfDate;
 			found = Programs.emplace(name, std::move(program)).first;
 		}
 		return found->second.Spirv;
+	}
+
+	bool ShaderPrograms::StartedOutOfDate(const std::string& name) const
+	{
+		const auto found = Programs.find(name);
+		return found != Programs.end() && found->second.bStartedOutOfDate;
 	}
 
 	bool ShaderPrograms::EnableLiveReload(std::unique_ptr<IShaderCompileService> service, const std::vector<std::filesystem::path>& moreFolders)
@@ -182,6 +199,11 @@ namespace Nyx::Engine
 			{
 				program.Spirv = response.Result.EntryPoints[0].Spirv;
 				update.bChanged = true;
+				// The next start begins from it
+				if (Saved)
+				{
+					Saved->Store(response.Request, response.Result);
+				}
 			}
 			update.Result = std::move(response.Result);
 			updates.push_back(std::move(update));

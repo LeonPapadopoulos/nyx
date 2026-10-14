@@ -1,8 +1,10 @@
-// ShaderPrograms on real files, compiling in this process: programs start from the build's SPIR-V;
-// a saved source is compiled once it settled; a broken one keeps its last good code and says where
+// ShaderPrograms on real files, compiling in this process: programs start from the newest code that
+// matches their files, the build's or live reload's, and one that changed while nothing ran is
+// compiled at once; a saved source is compiled once it settled; a broken one keeps its last good code and says where
 // it broke; an include's change compiles the programs using it; other files change nothing; and a
 // save during a compile is compiled after it.
 #include "Paths.h"
+#include "ShaderCache.h"
 #include "ShaderCompiler.h"
 #include "ShaderPrograms.h"
 
@@ -81,12 +83,14 @@ namespace
 		std::vector<ShaderCompileRequest> Held;
 	};
 
-	// Sources in a folder of their own, and the "build's" SPIR-V of Live.frag beside them
+	// Sources in a folder of their own, the "build's" cache of Live.frag beside them, and a folder
+	// for live reload's cache
 	struct TestFolders
 	{
 		std::filesystem::path Root = std::filesystem::temp_directory_path() / ("NyxShaderProgramsTests-" + std::to_string(Clock::now().time_since_epoch().count()));
 		std::filesystem::path Sources = Root / "Shaders";
 		std::filesystem::path Compiled = Root / "Compiled";
+		std::filesystem::path Saved = Root / "Saved";
 		std::vector<uint32_t> BuiltSpirv;
 
 		TestFolders()
@@ -101,8 +105,9 @@ namespace
 			const ShaderCompileResult built = compiler.CompileProgram(Sources / "Live.frag");
 			Require(built.bSucceeded, "Live.frag doesn't compile to start with");
 			BuiltSpirv = built.EntryPoints[0].Spirv;
-			std::ofstream stream(Compiled / "Live.frag.spv", std::ios::binary);
-			stream.write(reinterpret_cast<const char*>(BuiltSpirv.data()), static_cast<std::streamsize>(BuiltSpirv.size() * sizeof(uint32_t)));
+			ShaderCompileRequest request;
+			request.File = Sources / "Live.frag";
+			Require(ShaderCache(Compiled, Sources).Store(request, built), "the build's cache entry can't be written");
 			// File times that differ from what the test writes next
 			std::this_thread::sleep_for(std::chrono::milliseconds(50));
 		}
@@ -146,6 +151,7 @@ namespace
 		TestFolders folders;
 		ShaderPrograms programs(folders.Compiled, folders.Sources);
 		Require(programs.GetSpirv("Live.frag") == folders.BuiltSpirv, "Live.frag doesn't start from the build's SPIR-V");
+		Require(!programs.StartedOutOfDate("Live.frag"), "the build's code counts as out of date");
 
 		bool bThrew = false;
 		try
@@ -161,6 +167,44 @@ namespace
 		// Without live reload, nothing is compiled
 		WriteFile(folders.Sources / "Live.frag", LiveSource("vec4(1.0, 0.0, 0.0, 1.0)"));
 		RequireQuiet(programs, "a program was compiled without live reload");
+	}
+
+	// Live.frag changed while nothing ran: it starts from the build's code, is compiled at the first
+	// update without waiting, and the next start begins from what that compile gave
+	void TestOutOfDateProgramsCompileAtOnce()
+	{
+		TestFolders folders;
+		WriteFile(folders.Sources / "Live.frag", LiveSource("vec4(0.0, 0.0, 1.0, 1.0)"));
+
+		std::vector<uint32_t> compiled;
+		{
+			ShaderPrograms programs(folders.Compiled, folders.Sources, folders.Saved);
+			Require(programs.GetSpirv("Live.frag") == folders.BuiltSpirv, "an out-of-date Live.frag doesn't start from the build's code");
+			Require(programs.StartedOutOfDate("Live.frag"), "the changed Live.frag isn't seen as out of date");
+			auto service = std::make_unique<TestService>();
+			TestService& testService = *service;
+			Require(programs.EnableLiveReload(std::move(service)), "live reload doesn't start: " + programs.GetProblem());
+
+			const std::vector<ShaderProgramUpdate> updates = programs.Update();
+			Require(testService.Submits == 1 && updates.size() == 1 && updates[0].bChanged, "the out-of-date Live.frag isn't compiled at the first update");
+			compiled = programs.GetSpirv("Live.frag");
+			Require(compiled != folders.BuiltSpirv, "the compile didn't change Live.frag's code");
+		}
+
+		// The next start: live reload's code, which matches the files
+		ShaderPrograms programs(folders.Compiled, folders.Sources, folders.Saved);
+		Require(programs.GetSpirv("Live.frag") == compiled, "the next start doesn't begin from live reload's code");
+		Require(!programs.StartedOutOfDate("Live.frag"), "live reload's code counts as out of date");
+		auto service = std::make_unique<TestService>();
+		TestService& testService = *service;
+		Require(programs.EnableLiveReload(std::move(service)), "live reload doesn't start: " + programs.GetProblem());
+		RequireQuiet(programs, "a program that matches its files was compiled at start");
+		Require(testService.Submits == 0, "a program that matches its files was sent to compile");
+
+		// The source goes back to what the build compiled: the build's code matches again and wins
+		WriteFile(folders.Sources / "Live.frag", LiveSource("vec4(Tint(), 1.0)"));
+		ShaderPrograms again(folders.Compiled, folders.Sources, folders.Saved);
+		Require(again.GetSpirv("Live.frag") == folders.BuiltSpirv && !again.StartedOutOfDate("Live.frag"), "the build's matching code isn't chosen");
 	}
 
 	void TestSavedProgramsCompileAfterTheySettled()
@@ -275,6 +319,7 @@ int main()
 	try
 	{
 		TestProgramsStartFromTheBuild();
+		TestOutOfDateProgramsCompileAtOnce();
 		TestSavedProgramsCompileAfterTheySettled();
 		TestBrokenProgramsKeepTheirLastGoodCode();
 		TestASaveDuringACompileIsCompiledAfterIt();

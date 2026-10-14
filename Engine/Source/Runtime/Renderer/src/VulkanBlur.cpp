@@ -404,6 +404,6 @@ namespace Nyx::Engine
 		pipelineInfo.layout = *PipelineLayout;
 		pipelineInfo.renderPass = *RenderPass;
 		pipelineInfo.subpass = 0;
-		Pipeline = vk::raii::Pipeline(Context->GetDevice(), nullptr, pipelineInfo);
+		Pipeline = vk::raii::Pipeline(Context->GetDevice(), Context->GetPipelineCache(), pipelineInfo);
 	}
 }
