@@ -75,4 +75,18 @@ namespace Nyx::Engine
 	// the file keeps them, so a shader that gets the field back finds them again.
 	std::vector<MaterialValueProblem> WriteMaterialValues(const ShaderLayout& layout, const MaterialAsset& asset, std::span<std::byte> bytes,
 		const std::function<std::optional<uint32_t>(const std::string& path, bool bLinear)>& textureSlot);
+
+	// A field's value as a material file writes it, read from `bytes` with the field at `offset`,
+	// e.g. its default from the shader's defaults: "0.62 0.6 0.56", "true", "3". Empty for a
+	// texture, whose default is its Default(...) attribute, not a file, and for a field a material
+	// file can't set (WriteMaterialValues() leaves those out too).
+	std::string ReadMaterialValue(const ShaderField& field, std::span<const std::byte> bytes, uint32_t offset);
+
+	// The numbers of a value as a material file writes them ("0.62 0.60, 0.56": apart by spaces or
+	// commas); nullopt when a part isn't a number
+	std::optional<std::vector<double>> ParseMaterialNumbers(std::string_view text);
+
+	// Numbers as a material file writes them, apart by spaces, each as short as reads back as
+	// the same float: 0.3f is "0.3"
+	std::string FormatMaterialNumbers(std::span<const float> values);
 }

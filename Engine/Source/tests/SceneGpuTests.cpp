@@ -12,6 +12,8 @@
 // normal map tilts the normal up the image; a masked material below its cutoff isn't drawn.
 // A view can show a world of its own beside the scene: it draws and picks that world's objects,
 // shows no outline of the scene's selection, and keeps its pending pick when the scene is set anew.
+// Material values set in memory, as the material editor sets them, show in the next frame and
+// leave the file as it is, until the file is saved and read again.
 //
 // NYX_SCENE_TEST_OUTPUT=<folder> saves what was rendered there, e.g. to make a new reference
 // after a change that is meant to change the picture.
@@ -40,6 +42,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -176,7 +179,7 @@ namespace
 	{
 		Nyx::IRenderer& renderer = gpu.Renderer;
 		LiveMaterialFile file("Materials/NyxSceneGpuTests-Live.nyxmat");
-		file.Write("Shader = Shaders/Classic.slang\nAlbedo = Textures/checker.jpg\nReflectivity = 0\n");
+		file.Write("Shader = Shaders/Standard.slang\nAlbedo = Textures/checker.jpg\nRoughness = 1\n");
 
 		DefaultScene scene;
 		AddCube(scene.World, gpu.Renderer, 0.0f, renderer.GetMaterial(file.Path));
@@ -191,7 +194,7 @@ namespace
 		const std::array<uint8_t, 3> textured = MiddlePixel(gpu, view);
 
 		// A mirror now: the sky instead of the checker, a few frames after the save
-		file.Write("Shader = Shaders/Classic.slang\nAlbedo = Textures/checker.jpg\nReflectivity = 1\n");
+		file.Write("Shader = Shaders/Standard.slang\nAlbedo = Textures/checker.jpg\nMetallic = 1\nRoughness = 0\n");
 		std::array<uint8_t, 3> mirrored = textured;
 		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
 		while (mirrored == textured && std::chrono::steady_clock::now() < deadline)
@@ -202,7 +205,7 @@ namespace
 		Require(mirrored != textured, "The saved material file didn't change the picture within five seconds");
 
 		// Saved broken: the last values stay
-		file.Write("Shader = Shaders/Classic.slang\nReflectivity 0\n");
+		file.Write("Shader = Shaders/Standard.slang\nMetallic 0\n");
 		// Drawn for half a second, so that the save settles and is read
 		const auto drawnUntil = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
 		while (std::chrono::steady_clock::now() < drawnUntil)
@@ -517,6 +520,64 @@ namespace
 		renderer.SetWorld(nullptr);
 		gpu.DrawFrames(1);
 	}
+	// What the material editor does: it reads a material's values, its shader's parameters and
+	// their defaults; values it sets show in the next frame while the file stays as it is; the
+	// file saved and read again brings its own values back
+	void TestMaterialValuesSetInMemory(SceneRenderer& gpu)
+	{
+		Nyx::IRenderer& renderer = gpu.Renderer;
+		LiveMaterialFile file("Materials/NyxSceneGpuTests-Edited.nyxmat");
+		const std::string text = "Shader = Shaders/Standard.slang\nBaseColor = 1 0 0\nRoughness = 1\n";
+		file.Write(text);
+
+		DefaultScene scene;
+		AddCube(scene.World, gpu.Renderer, 0.0f, renderer.GetMaterial(file.Path));
+		const Entity camera = scene.World.CreateEntity();
+		scene.World.Add<TransformComponent>(camera, TransformComponent{ .Position = glm::vec3(0.0f, 0.0f, 1.2f), .Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f), .Scale = glm::vec3(1.0f) });
+		scene.World.Add<CameraComponent>(camera, CameraComponent{});
+		renderer.SetWorld(&scene.World);
+		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
+		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
+		gpu.DrawUntilShadersCompiled();
+		const std::array<uint8_t, 3> red = MiddlePixel(gpu, view);
+		Require(red[0] > red[1] && red[0] > red[2], "The red material isn't red: " + Text(red));
+
+		const Nyx::MaterialView material = renderer.ViewMaterial(file.Path);
+		Require(material.Asset && material.Asset->ToText() == text, "The material's values aren't its file's");
+		Require(material.Layout && material.Layout->FindField("Roughness") && material.FileRevision > 0, "The material's shader parameters aren't there once it compiled");
+		const ShaderField* metallic = material.Layout->FindField("Metallic");
+		Require(metallic && ReadMaterialValue(*metallic, material.Defaults, metallic->Offset) == "0", "Standard's Metallic doesn't read as its default, 0");
+		const uint64_t fileRevision = material.FileRevision;
+
+		// Green in the next frame; the file stays red
+		MaterialAsset edited = *material.Asset;
+		edited.SetValue("BaseColor", "0 1 0");
+		renderer.SetMaterialValues(file.Path, edited);
+		const std::array<uint8_t, 3> green = MiddlePixel(gpu, view);
+		Require(green[1] > green[0] && green[1] > green[2], "The values set didn't show in the next frame: " + Text(green));
+		Require(*renderer.ViewMaterial(file.Path).Asset->FindValue("BaseColor") == "0 1 0", "The material doesn't hold the values set");
+		std::ifstream stream(file.File, std::ios::binary);
+		const std::string onDisk((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
+		Require(onDisk == text, "Setting values changed the file");
+
+		// Saved blue: read again, the file's values are drawn
+		file.Write("Shader = Shaders/Standard.slang\nBaseColor = 0 0 1\nRoughness = 1\n");
+		std::array<uint8_t, 3> blue = green;
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+		while (!(blue[2] > blue[0] && blue[2] > blue[1]) && std::chrono::steady_clock::now() < deadline)
+		{
+			std::this_thread::sleep_for(std::chrono::milliseconds(20));
+			blue = MiddlePixel(gpu, view);
+		}
+		Require(blue[2] > blue[0] && blue[2] > blue[1], "The file saved and read again didn't bring its values back: " + Text(blue));
+		Require(renderer.ViewMaterial(file.Path).FileRevision > fileRevision, "Reading the file again didn't count");
+
+		renderer.DestroySceneView(view);
+		renderer.SetWorld(nullptr);
+		gpu.DrawFrames(1);
+	}
+
 	// Clicks the middle of the view: whether a pick came back, and what it hit
 	Nyx::IRenderer::PickResult PickMiddle(SceneRenderer& gpu, uint64_t view)
 	{
@@ -639,6 +700,7 @@ int main()
 		TestStandardMatchesTheCpu(gpu);
 		TestNormalMapsAndMasks(gpu);
 		TestViewsWithWorldsOfTheirOwn(gpu);
+		TestMaterialValuesSetInMemory(gpu);
 	}
 	catch (const std::exception& error)
 	{

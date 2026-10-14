@@ -401,4 +401,80 @@ namespace Nyx::Engine
 		writer.ListUnused();
 		return std::move(writer.Problems);
 	}
+
+	std::string ReadMaterialValue(const ShaderField& field, std::span<const std::byte> bytes, uint32_t offset)
+	{
+		if ((field.Kind != EShaderFieldKind::Scalar && field.Kind != EShaderFieldKind::Vector) || field.ArrayCount != 0)
+		{
+			return {};
+		}
+		const uint32_t count = field.Kind == EShaderFieldKind::Vector ? field.Columns : 1;
+		std::string text;
+		for (uint32_t index = 0; index < count; ++index)
+		{
+			uint32_t word = 0;
+			if (offset + (index + 1) * sizeof(word) <= bytes.size())
+			{
+				std::memcpy(&word, bytes.data() + offset + index * sizeof(word), sizeof(word));
+			}
+			if (index > 0)
+			{
+				text += ' ';
+			}
+			switch (field.Scalar)
+			{
+			case EShaderScalarType::Float:
+			{
+				float value = 0.0f;
+				std::memcpy(&value, &word, sizeof(value));
+				text += FormatMaterialNumbers(std::span<const float>(&value, 1));
+				break;
+			}
+			case EShaderScalarType::Int:
+				text += std::to_string(static_cast<int32_t>(word));
+				break;
+			case EShaderScalarType::UInt:
+				text += std::to_string(word);
+				break;
+			case EShaderScalarType::Bool:
+				text += word != 0 ? "true" : "false";
+				break;
+			default:
+				return {};
+			}
+		}
+		return text;
+	}
+
+	std::optional<std::vector<double>> ParseMaterialNumbers(std::string_view text)
+	{
+		std::vector<double> numbers;
+		for (std::string_view part : SplitComponents(text))
+		{
+			double value = 0.0;
+			const auto [end, error] = std::from_chars(part.data(), part.data() + part.size(), value);
+			if (error != std::errc() || end != part.data() + part.size())
+			{
+				return std::nullopt;
+			}
+			numbers.push_back(value);
+		}
+		return numbers;
+	}
+
+	std::string FormatMaterialNumbers(std::span<const float> values)
+	{
+		std::string text;
+		for (const float value : values)
+		{
+			char buffer[32];
+			const auto [end, error] = std::to_chars(buffer, buffer + sizeof(buffer), value);
+			if (!text.empty())
+			{
+				text += ' ';
+			}
+			text.append(buffer, error == std::errc() ? end : buffer);
+		}
+		return text;
+	}
 }

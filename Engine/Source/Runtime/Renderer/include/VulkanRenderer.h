@@ -280,6 +280,8 @@ namespace Nyx
 		Nyx::Mesh* GetSphereMesh() override;
 		Nyx::Material* GetMaterial(const std::string& path) override;
 		bool IsCompilingShaders() const override;
+		MaterialView ViewMaterial(const std::string& path) override;
+		void SetMaterialValues(const std::string& path, const Nyx::Engine::MaterialAsset& asset) override;
 
 	public:
 		VulkanContext& GetContext();
@@ -681,6 +683,9 @@ namespace Nyx
 
 		// The meshes' materials, from their .nyxmat files
 		Nyx::Engine::VulkanMaterials Materials;
+		// Values set for materials (SetMaterialValues()), written once the UI is built: the frame's
+		// draws are recorded by then, but run after
+		std::map<std::string, Nyx::Engine::MaterialAsset> PendingMaterialValues;
 		// The sky's light, for physically based materials
 		Nyx::Engine::VulkanEnvironment Environment;
 

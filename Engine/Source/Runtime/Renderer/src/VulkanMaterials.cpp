@@ -159,6 +159,32 @@ namespace Nyx::Engine
 		return found->second->Handle.get();
 	}
 
+	VulkanMaterials::View VulkanMaterials::Inspect(const std::string& path)
+	{
+		Get(path);
+		const Entry& entry = *Materials.at(PathKey(path));
+		View view;
+		view.Asset = &entry.Asset;
+		view.FileRevision = entry.FileRevision;
+		if (entry.UsedShader && entry.UsedShader->bReady)
+		{
+			view.Layout = &entry.UsedShader->Layout;
+			view.Defaults = entry.UsedShader->Defaults;
+		}
+		return view;
+	}
+
+	void VulkanMaterials::SetValues(const std::string& path, const MaterialAsset& asset)
+	{
+		Get(path);
+		Entry& entry = *Materials.at(PathKey(path));
+		entry.Asset = asset;
+		entry.bLoaded = true;
+		const std::string shader = entry.Asset.GetShader();
+		entry.UsedShader = shader.empty() ? nullptr : FindShader(shader);
+		WriteBytes(entry);
+	}
+
 	bool VulkanMaterials::IsWaiting() const
 	{
 		return std::any_of(Shaders.begin(), Shaders.end(), [this](const auto& entry)
@@ -186,6 +212,7 @@ namespace Nyx::Engine
 		}
 		entry.Asset = std::move(asset);
 		entry.bLoaded = true;
+		++entry.FileRevision;
 
 		const std::string shader = entry.Asset.GetShader();
 		if (shader.empty())

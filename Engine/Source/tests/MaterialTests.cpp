@@ -3,7 +3,8 @@
 // over the shader's defaults; after the shader's fields change, values are found again by name,
 // and those that no longer fit are left out and listed; textures take their slot, their
 // Default(...) slot when unset, and the missing texture's when they can't be loaded; a [Linear]
-// texture is asked for as linear.
+// texture is asked for as linear. Values read from bytes come back as a file writes them, so
+// the editor can show a shader's defaults beside the file's values.
 #include "BindlessTextures.h"
 #include "MaterialAsset.h"
 #include "Paths.h"
@@ -15,6 +16,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -261,6 +263,53 @@ namespace
 		Require(WordAt(bytes, OffsetOf(layout, "Broken")) == static_cast<uint32_t>(EBindlessTexture::Missing), "a texture that can't be loaded doesn't show as missing");
 		Require(problems.size() == 1 && problems[0].Name == "Broken", "the texture that can't be loaded isn't listed");
 	}
+	// Values read from bytes as a file writes them: what WriteMaterialValues() reads back to the
+	// same bytes; numbers as short as they read back as the same float
+	void TestValuesReadBackAsWritten()
+	{
+		TempFolder folder;
+		const ShaderLayout layout = LayoutOf(folder.Write("Kinds.slang", "import nyx.surface;\nstruct Kinds : ISurface\n{\n"
+																		  "    float3 Color = float3(0.0);\n    float Amount = 0.0;\n    bool Shiny = false;\n"
+																		  "    uint Count = 0;\n    int Offset = 0;\n    float2 Tiling = float2(1, 1);\n"
+																		  "    [Default(\"Black\")] nyx::Texture Mask;\n"
+																		  "    SurfaceOutput shade(SurfaceInput input) { return SurfaceOutput::defaults(input); }\n}\n"));
+		const MaterialAsset asset = Parsed("Color = 0.3, 0.5 1\nAmount = -2.5\nShiny = true\nCount = 7\nOffset = -3\nTiling = 0.1 100\n");
+		std::vector<std::byte> bytes(layout.Size, std::byte{ 0 });
+		Require(WriteMaterialValues(layout, asset, bytes, nullptr).empty(), "the values don't all fit");
+
+		const auto read = [&](const char* name)
+		{
+			const ShaderField* field = layout.FindField(name);
+			Require(field != nullptr, std::string("the layout has no field ") + name);
+			return ReadMaterialValue(*field, bytes, field->Offset);
+		};
+		Require(read("Color") == "0.3 0.5 1", "Color reads back as \"" + read("Color") + "\"");
+		Require(read("Amount") == "-2.5", "Amount reads back as \"" + read("Amount") + "\"");
+		Require(read("Shiny") == "true", "Shiny reads back as \"" + read("Shiny") + "\"");
+		Require(read("Count") == "7" && read("Offset") == "-3", "whole numbers don't read back as written");
+		Require(read("Tiling") == "0.1 100", "Tiling reads back as \"" + read("Tiling") + "\"");
+		Require(read("Mask").empty(), "a texture reads back as a value; its default is its attribute");
+
+		// What was read writes the same bytes again
+		MaterialAsset again;
+		for (const ShaderField& field : layout.Fields)
+		{
+			if (const std::string text = read(field.Name.c_str()); !text.empty())
+			{
+				again.SetValue(field.Name, text);
+			}
+		}
+		std::vector<std::byte> rewritten(layout.Size, std::byte{ 0 });
+		WriteMaterialValues(layout, again, rewritten, nullptr);
+		Require(rewritten == bytes, "the values read back don't write the same bytes");
+
+		const float numbers[] = { 0.3f, 1.0f, -2.5f, 1e-7f };
+		Require(FormatMaterialNumbers(numbers) == "0.3 1 -2.5 1e-07", "numbers are written as \"" + FormatMaterialNumbers(numbers) + "\"");
+		const std::optional<std::vector<double>> parsed = ParseMaterialNumbers("0.62 0.60, 0.56");
+		Require(parsed && parsed->size() == 3 && (*parsed)[1] == 0.6, "\"0.62 0.60, 0.56\" isn't three numbers");
+		Require(!ParseMaterialNumbers("1 rough").has_value(), "\"1 rough\" parses as numbers");
+		Require(ParseMaterialNumbers("") == std::vector<double>{}, "nothing isn't no numbers");
+	}
 }
 
 int main()
@@ -273,6 +322,7 @@ int main()
 		TestValuesThatDontFitAreListed();
 		TestValuesFollowTheirNamesAcrossLayouts();
 		TestTextureSlots();
+		TestValuesReadBackAsWritten();
 	}
 	catch (const std::exception& error)
 	{

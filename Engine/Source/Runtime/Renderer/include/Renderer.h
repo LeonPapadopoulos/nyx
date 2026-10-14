@@ -7,11 +7,14 @@
 #include "Extent2D.h"
 #include "PainterDrawOptions.h"
 #include "ImageFile.h"
+#include "MaterialAsset.h"
 #include <imgui.h>
 #include "glm/glm.hpp"
 
+#include <cstddef>
 #include <filesystem>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -34,6 +37,37 @@ namespace Nyx
 
 namespace Nyx
 {
+	// A material as an editor shows it (IRenderer::ViewMaterial()), valid until the next frame
+	struct MaterialView
+	{
+		// Its values: as its file has them, or as SetMaterialValues() set them since
+		const Nyx::Engine::MaterialAsset* Asset = nullptr;
+		// Its shader's parameters, and the bytes of their defaults
+		// (Nyx::Engine::ReadMaterialValue() reads one); null and empty until the shader first
+		// compiled
+		const Nyx::Engine::ShaderLayout* Layout = nullptr;
+		std::span<const std::byte> Defaults;
+		// Changes each time the file is read, e.g. after it was saved; 0 while it couldn't be
+		uint64_t FileRevision = 0;
+	};
+
+	// Where an editor reads materials and sends its edits of their values: the renderer, or a
+	// test's stand-in
+	class NYXENGINE_API IMaterialSource
+	{
+	public:
+		virtual ~IMaterialSource() = default;
+
+		// A material's values and its shader's parameters, for an editor; loads it like
+		// IRenderer::GetMaterial()
+		virtual MaterialView ViewMaterial(const std::string& path) = 0;
+		// Draws the material with these values, as if its file said them, in every view from
+		// this frame on when called while the UI is built; the file stays as it is
+		// (MaterialAsset::Save() writes it). Reading the file again, once it was saved, takes the
+		// file's values.
+		virtual void SetMaterialValues(const std::string& path, const Nyx::Engine::MaterialAsset& asset) = 0;
+	};
+
 	enum class ESelectionOutlineMode : uint8_t
 	{
 		VisibleOnly = 0,
@@ -41,7 +75,7 @@ namespace Nyx
 		VisibleOccludeHatched = 2
 	};
 
-	class NYXENGINE_API IRenderer
+	class NYXENGINE_API IRenderer : public IMaterialSource
 	{
 	public:
 		struct PickResult

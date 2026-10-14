@@ -15,6 +15,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -51,6 +52,26 @@ namespace Nyx::Engine
 		// ("Materials/Stone.nyxmat"), loaded at the first ask. Never null.
 		Nyx::Material* Get(const std::string& path);
 
+		// What an editor shows of a material (IRenderer::ViewMaterial())
+		struct View
+		{
+			// Its values: as its file has them, or as SetValues() set them since
+			const MaterialAsset* Asset = nullptr;
+			// Its shader's parameters, and the bytes of their defaults; null and empty until the
+			// shader first compiled
+			const ShaderLayout* Layout = nullptr;
+			std::span<const std::byte> Defaults;
+			// Changes each time the file is read, e.g. after a save; 0 while it couldn't be
+			uint64_t FileRevision = 0;
+		};
+		// Loads the material like Get(). Valid until the next Update() or SetValues().
+		View Inspect(const std::string& path);
+
+		// Draws the material with these values, as if its file said them; the file stays as it is.
+		// Call while no frame is in flight. Reading the file again (after it is saved) takes the
+		// file's values.
+		void SetValues(const std::string& path, const MaterialAsset& asset);
+
 		// Once per frame, while no frame is in flight: takes what finished compiling (from
 		// ShaderPrograms::Update()) and the material files saved since, and makes again what they
 		// change
@@ -82,6 +103,8 @@ namespace Nyx::Engine
 			std::filesystem::path File;
 			MaterialAsset Asset;
 			bool bLoaded = false;
+			// Counts the reads of the file (View::FileRevision)
+			uint64_t FileRevision = 0;
 			Shader* UsedShader = nullptr;
 			// Its room in the material buffer
 			std::optional<uint32_t> Offset;

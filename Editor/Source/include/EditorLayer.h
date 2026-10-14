@@ -11,6 +11,8 @@
 #include "GameLinkPanel.h"
 #include "ImGuiDebugTools.h"
 #include "Layer.h"
+#include "MaterialParametersPanel.h"
+#include "Paths.h"
 #include "PainterTestWindow.h"
 #include "MockupOverlay.h"
 #include "PlayControls.h"
@@ -59,6 +61,9 @@ namespace Nyx::Editor
 		void ResolveSceneRuntimeAssets();
 
 		std::string GetCurrentSceneDisplayName() const;
+
+		// Opens a material ("Materials/Stone.nyxmat") in the Parameters window
+		void OpenMaterial(const std::string& path);
 
 	private:
 		// The window's frame (IWindow::SetFrameContent()). The titlebar, one row: the logo, the
@@ -110,6 +115,8 @@ namespace Nyx::Editor
 		bool bAssetBrowserVisible = true;
 		SceneOutlinerPanel Outliner;
 		DetailsPanel Details;
+		// The material open for editing
+		MaterialParametersPanel MaterialParameters{ Nyx::Paths::GetAssetsDir() };
 		SceneViewPanel MainSceneView{ "Scene" };
 		SceneViewPanel SecondarySceneView{ "Scene 2" };
 		// Flies the scene views' free cameras

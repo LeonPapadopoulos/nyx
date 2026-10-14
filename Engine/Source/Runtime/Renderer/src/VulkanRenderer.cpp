@@ -659,6 +659,13 @@ namespace Nyx
 
 		ImGuiBackend->BeginFrame();
 		buildUI();
+		// No frame is in flight, and this one's draws run after it is submitted: values set while
+		// building the UI show in it
+		for (const auto& [path, asset] : PendingMaterialValues)
+		{
+			Materials.SetValues(path, asset);
+		}
+		PendingMaterialValues.clear();
 		// The frame ends here rather than in ImGui::Render(), so that the windows ImGui begins
 		// itself while ending it (drag and drop tooltips) are there when the cards are painted.
 		ImGui::EndFrame();
@@ -958,6 +965,17 @@ namespace Nyx
 	bool VulkanRenderer::IsCompilingShaders() const
 	{
 		return Programs.IsBusy() || Materials.IsWaiting();
+	}
+
+	MaterialView VulkanRenderer::ViewMaterial(const std::string& path)
+	{
+		const Nyx::Engine::VulkanMaterials::View view = Materials.Inspect(path);
+		return MaterialView{ .Asset = view.Asset, .Layout = view.Layout, .Defaults = view.Defaults, .FileRevision = view.FileRevision };
+	}
+
+	void VulkanRenderer::SetMaterialValues(const std::string& path, const Nyx::Engine::MaterialAsset& asset)
+	{
+		PendingMaterialValues.insert_or_assign(path, asset);
 	}
 
 	VulkanContext& VulkanRenderer::GetContext()

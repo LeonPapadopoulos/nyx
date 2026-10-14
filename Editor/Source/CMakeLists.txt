@@ -49,12 +49,16 @@ set(NYX_EDITOR_SOURCES
     src/SceneAssetTypeRegistration.cpp
     src/MeshAssetTypeRegistration.cpp
     src/MaterialAssetTypeRegistration.cpp
+    src/MaterialDocument.cpp
+    src/MaterialParametersPanel.cpp
 )
 
 set(NYX_EDITOR_HEADERS
     src/EditorPCH.h
     include/EditorLayer.h
     include/ThemeEditorWindow.h
+    include/MaterialDocument.h
+    include/MaterialParametersPanel.h
     include/SceneEditor.h
     include/SceneOutlinerPanel.h
     include/DetailsPanel.h
@@ -188,6 +192,14 @@ if(BUILD_TESTING)
     target_precompile_headers(NyxEditorPanelTests REUSE_FROM NyxEditor)
     set_property(TARGET NyxEditorPanelTests PROPERTY FOLDER "Tests")
     add_test(NAME NyxEditorPanelTests COMMAND NyxEditorPanelTests)
+
+    # The material document and the Parameters window, headless, over a stand-in for the renderer
+    add_executable(NyxMaterialEditorTests tests/MaterialEditorTests.cpp src/MaterialDocument.cpp src/MaterialParametersPanel.cpp)
+    target_include_directories(NyxMaterialEditorTests PRIVATE include src ${CMAKE_CURRENT_BINARY_DIR})
+    target_link_libraries(NyxMaterialEditorTests PRIVATE NyxEditorEngine)
+    target_precompile_headers(NyxMaterialEditorTests REUSE_FROM NyxEditor)
+    set_property(TARGET NyxMaterialEditorTests PROPERTY FOLDER "Tests")
+    add_test(NAME NyxMaterialEditorTests COMMAND NyxMaterialEditorTests)
 
     add_executable(NyxUISourceTests tests/UISourceInspectorTests.cpp
         src/UISourceInspector.cpp src/EditorPreferences.cpp src/SourceNavigation.cpp src/ImGuiDebugTools.cpp

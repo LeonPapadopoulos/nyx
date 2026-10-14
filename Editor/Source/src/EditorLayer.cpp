@@ -238,6 +238,7 @@ namespace Nyx::Editor
 
 		Outliner.Draw(Editing);
 		Details.Draw(Editing);
+		MaterialParameters.Draw(*Renderer);
 		MainSceneView.Draw(Editing, Preferences, CameraController);
 		SecondarySceneView.Draw(Editing, Preferences, CameraController);
 
@@ -245,7 +246,8 @@ namespace Nyx::Editor
 		Editing.DetailsContext.PreviewPendingEdits();
 		Editing.Gizmo.PreviewActiveEdit(Editing.Transactions);
 
-		if (!SourceInspector.IsActive()) Editing.HandleHotkeys();
+		// The Parameters window's undo and save keys are the material's while it has focus
+		if (!SourceInspector.IsActive() && !MaterialParameters.HandleHotkeys()) Editing.HandleHotkeys();
 		PreferencesPanel.Draw(Preferences, SourceInspector);
 		// The theme window remembers the theme loaded in the preferences
 		const std::string theme = Preferences.Theme;
@@ -353,6 +355,8 @@ namespace Nyx::Editor
 			if (NYX_UI(Nyx::UI::MenuItem("Preferences"))) PreferencesPanel.bOpen = true;
 			// The painted widgets' colours and sizes, edited live and saved to the theme file
 			NYX_UI(Nyx::UI::MenuItem("Theme", nullptr, &ThemeEditor.bOpen));
+			// The material open for editing; a material opens here when double-clicked in the asset browser
+			NYX_UI(Nyx::UI::MenuItem("Parameters", nullptr, &MaterialParameters.bOpen));
 
 			if (NYX_UI(Nyx::UI::MenuItem("Asset Browser")))
 			{
@@ -623,6 +627,11 @@ namespace Nyx::Editor
 				component.MaterialAsset =
 					component.Material.IsValid() ? AssetResolver->ResolveMaterial(component.Material.Path) : nullptr;
 			});
+	}
+
+	void EditorLayer::OpenMaterial(const std::string& path)
+	{
+		MaterialParameters.OpenMaterial(path);
 	}
 
 	std::string EditorLayer::GetCurrentSceneDisplayName() const
