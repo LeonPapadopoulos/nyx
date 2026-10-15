@@ -1,6 +1,7 @@
 #include "NyxPCH.h"
 #include "Mesh.h"
-#include "ResourceManager.h"
+#include "Assertions.h"
+#include "Resource.h"
 #include <vulkan/vulkan_raii.hpp>
 #include "VulkanContext.h"
 

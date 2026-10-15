@@ -29,17 +29,16 @@ namespace Nyx::Engine
 		// Replaces everything in outWorld with the scene from the file. If the file can't be loaded,
 		// outWorld stays as it was. The context's asset resolver turns the asset paths stored in
 		// components into loaded assets.
-		// Reads versions 1 and 2. In version 2 files, component types and properties this build
-		// doesn't know are skipped with a warning. After loading successfully, every entity has a
-		// guid no other entity in the scene has (see GuidComponent): entities without one, or with
-		// a duplicate, get a new one.
+		// Reads only the current version; files of version 1 stored values without names, so they
+		// fail with an error. Component types and properties this build doesn't know are skipped
+		// with a warning. After loading successfully, every entity has a guid no other entity in the
+		// scene has (see GuidComponent): entities without one, or with a duplicate, get a new one.
 		static bool LoadFromFile(
 			const std::filesystem::path& path,
 			Registry& outWorld,
 			ScenePostLoadContext postLoadContext = {});
 
 		// Describes a scene file as readable text: its entities, components and properties.
-		// Files of older versions are shown as converted to the current version.
 		// Returns false, with the reason at the end of outText, if the file can't be printed.
 		static bool PrintFile(const std::filesystem::path& path, std::string& outText);
 

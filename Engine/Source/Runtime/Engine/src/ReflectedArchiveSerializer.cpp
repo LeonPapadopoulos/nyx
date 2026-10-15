@@ -370,44 +370,6 @@ namespace Nyx::Engine
 		return reader.SkipBlock();
 	}
 
-	bool ReflectedArchiveSerializer::DeserializeUntaggedObject(
-		BinaryReader& reader,
-		void* object,
-		const TypeMetadata& typeMetadata)
-	{
-		for (size_t i = 0; i < typeMetadata.PropertyCount; ++i)
-		{
-			const PropertyMetadata& property = typeMetadata.Properties[i];
-
-			if (!HasFlag(property.Flags, EPropertyFlags::Serialize))
-			{
-				continue;
-			}
-
-			if (property.Kind == EPropertyKind::Struct)
-			{
-				const TypeMetadata* nestedType = TryGetNestedType(property);
-				if (!nestedType || !DeserializeUntaggedObject(reader, GetPropertyAddress(object, property), *nestedType))
-				{
-					return false;
-				}
-
-				continue;
-			}
-
-			// Values were stored the same way as in the tagged format, just without name hash and kind
-			PropertyValue value;
-			if (!ReadValue(reader, property.Kind, value))
-			{
-				return false;
-			}
-
-			SetPropertyValue(object, property, value);
-		}
-
-		return reader.IsValid();
-	}
-
 	void ReflectedArchiveSerializer::WriteValue(BinaryWriter& writer, const PropertyValue& value)
 	{
 		std::visit(

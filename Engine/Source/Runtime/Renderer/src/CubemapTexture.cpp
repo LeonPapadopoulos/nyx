@@ -1,5 +1,6 @@
 #include "NyxPCH.h"
 #include "CubemapTexture.h"
+#include "Assertions.h"
 #include "Paths.h"
 
 #include <cstring>

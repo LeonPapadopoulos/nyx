@@ -32,9 +32,9 @@ namespace
 			return false;
 		}
 
-		if (outVersion < 1 || outVersion > SceneFileVersion)
+		if (outVersion != SceneFileVersion)
 		{
-			outError = "is a scene file of version " + std::to_string(outVersion) + ", but this build reads versions 1 to " +
+			outError = "is a scene file of version " + std::to_string(outVersion) + ", but this build only reads version " +
 				std::to_string(SceneFileVersion);
 			return false;
 		}
@@ -64,7 +64,7 @@ namespace
 		return true;
 	}
 
-	// Version 2: properties with name hash and kind. Component types this build doesn't know are skipped.
+	// Properties with name hash and kind. Component types this build doesn't know are skipped.
 	bool ReadEntities(
 		BinaryReader& reader,
 		Registry& outWorld,
@@ -82,69 +82,6 @@ namespace
 			if (!SceneSerializer::ReadEntity(reader, outWorld, outWorld.CreateEntity(), postLoadContext, warnings))
 			{
 				return false;
-			}
-		}
-
-		return true;
-	}
-
-	// Version 1: an unused number per entity, and property values without names or sizes,
-	// so every component type has to be known and unchanged. On failure, outError says why.
-	bool ReadEntitiesVersion1(
-		BinaryReader& reader,
-		Registry& outWorld,
-		ScenePostLoadContext& postLoadContext,
-		std::string& outError)
-	{
-		uint32_t entityCount = 0;
-		if (!reader.ReadUInt32(entityCount))
-		{
-			return false;
-		}
-
-		for (uint32_t entityIndex = 0; entityIndex < entityCount; ++entityIndex)
-		{
-			uint32_t unusedEntityNumber = 0;
-			if (!reader.ReadUInt32(unusedEntityNumber))
-			{
-				return false;
-			}
-
-			const Entity entity = outWorld.CreateEntity();
-
-			uint32_t componentCount = 0;
-			if (!reader.ReadUInt32(componentCount))
-			{
-				return false;
-			}
-
-			for (uint32_t componentIndex = 0; componentIndex < componentCount; ++componentIndex)
-			{
-				std::string componentTypeName;
-				if (!reader.ReadString(componentTypeName))
-				{
-					return false;
-				}
-
-				const ComponentTypeOps* ops = ComponentTypeRegistry::Get().FindByName(componentTypeName);
-				if (!ops)
-				{
-					outError = "contains component type '" + componentTypeName +
-						"', which this build doesn't know, and scene files of version 1 can't skip it";
-					return false;
-				}
-
-				void* component = ops->Add(outWorld, entity);
-
-				if (!ReflectedArchiveSerializer::DeserializeUntaggedObject(reader, component, *ops->TypeMetadata))
-				{
-					return false;
-				}
-
-				if (ops->PostLoad)
-				{
-					ops->PostLoad(component, postLoadContext);
-				}
 			}
 		}
 
@@ -260,11 +197,7 @@ namespace Nyx::Engine
 		error = "ends early or is damaged";
 		ReadWarnings warnings;
 
-		const bool bRead = (version == 1)
-			? ReadEntitiesVersion1(reader, loadedWorld, postLoadContext, error)
-			: ReadEntities(reader, loadedWorld, postLoadContext, warnings);
-
-		if (!bRead || !reader.IsValid())
+		if (!ReadEntities(reader, loadedWorld, postLoadContext, warnings) || !reader.IsValid())
 		{
 			warnings.Log(path.string());
 			LOG_ERROR("'{0}' {1}", path.string(), error);
@@ -276,12 +209,6 @@ namespace Nyx::Engine
 
 		// Moving keeps outWorld at its address, so pointers to it (such as the renderer's) stay valid
 		outWorld = std::move(loadedWorld);
-
-		if (version < SceneFileVersion)
-		{
-			LOG_INFO("'{0}' is a scene file of version {1}; saving it converts it to version {2}",
-				path.string(), version, SceneFileVersion);
-		}
 
 		return true;
 	}
@@ -421,29 +348,7 @@ namespace Nyx::Engine
 		}
 
 		outText += "Scene file '" + path.string() + "'\n";
-
-		if (version == SceneFileVersion)
-		{
-			outText += "Version " + std::to_string(version) + "\n";
-		}
-		else
-		{
-			// Older versions store values without names, so they are printed the way saving
-			// would write them: loaded like in the editor, then written to memory.
-			Registry world;
-			BinaryWriter converted;
-
-			if (!LoadFromFile(path, world) || !WriteEntities(world, converted))
-			{
-				outText += "Version " + std::to_string(version) + ", which can't be loaded; see the log.\n";
-				return false;
-			}
-
-			reader.LoadFromMemory(converted.GetBytes());
-
-			outText += "Version " + std::to_string(version) + ", shown as converted to version " +
-				std::to_string(SceneFileVersion) + ". Saving the scene in the editor converts the file.\n";
-		}
+		outText += "Version " + std::to_string(version) + "\n";
 
 		if (!PrintEntities(reader, outText))
 		{

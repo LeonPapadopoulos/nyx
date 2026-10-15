@@ -1,5 +1,6 @@
 #include "NyxPCH.h"
 #include "Texture.h"
+#include "Assertions.h"
 #include "Log.h"
 #include "Paths.h"
 

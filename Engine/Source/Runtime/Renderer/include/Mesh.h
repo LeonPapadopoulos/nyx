@@ -1,5 +1,5 @@
 #pragma once
-#include "ResourceManager.h"
+#include "Resource.h"
 #include <vulkan/vulkan.hpp>
 #include "VulkanContext.h"
 

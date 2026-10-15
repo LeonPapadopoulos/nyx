@@ -423,7 +423,6 @@ namespace Nyx
 		void UpdateSceneUniforms(SceneViewInstance& view);
 
 		void CreateTestMeshData();
-		void CreateTestMeshBuffers();
 
 		void CreateBuffer(
 			vk::DeviceSize size,
@@ -452,8 +451,6 @@ namespace Nyx
 		void ApplyShaderUpdates();
 		// One compile into the Shader Log (ShaderCompiles)
 		void RecordCompile(const Nyx::Engine::ShaderProgramUpdate& update);
-
-		void LoadTestGltfScene(std::vector<RenderObject>& outObjects);
 
 		// The cube of a view's sky, with its light, made at the first ask
 		uint32_t GetSkySlot(ESceneViewSky sky);
@@ -763,12 +760,6 @@ namespace Nyx
 
 		std::vector<Vertex> MeshVertices;
 		std::vector<uint32_t> MeshIndices;
-
-		vk::raii::Buffer MeshVertexBuffer{ nullptr };
-		vk::raii::DeviceMemory MeshVertexBufferMemory{ nullptr };
-
-		vk::raii::Buffer MeshIndexBuffer{ nullptr };
-		vk::raii::DeviceMemory MeshIndexBufferMemory{ nullptr };
 
 		// Texture
 

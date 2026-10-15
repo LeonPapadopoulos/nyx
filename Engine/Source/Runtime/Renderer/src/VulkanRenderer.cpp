@@ -268,7 +268,6 @@ namespace Nyx
 		Bindless.Initialize(Context);
 
 		CreateTestMeshData();
-		CreateTestMeshBuffers();
 
 		// Shared layouts / shared GPU assets that per-view creation depends on
 		CreateSceneDescriptorSetLayout();
@@ -311,13 +310,6 @@ namespace Nyx
 			{
 				return GetSceneRenderPass();
 			});
-
-		// @note: Gltf Meshes currently not visible, because the RenderObjects get
-		// cleared and then populated by the world / entity-registry; So manually pushed
-		// RenderObjects, as is currently the case with this GltfScene setup, won't be
-		// rendered.
-		// @todo: Figure out to what extend Gltf scenes should be supported from hereon out.
-		//LoadTestGltfScene();
 	}
 
 	void VulkanRenderer::Shutdown()
@@ -387,11 +379,6 @@ namespace Nyx
 		ImageAvailableSemaphore = nullptr;
 		InFlightFence = nullptr;
 		CommandPool = nullptr;
-
-		MeshIndexBuffer = nullptr;
-		MeshIndexBufferMemory = nullptr;
-		MeshVertexBuffer = nullptr;
-		MeshVertexBufferMemory = nullptr;
 
 		Materials.Shutdown();
 		Environment.Shutdown();
@@ -2744,38 +2731,6 @@ namespace Nyx
 		PlaneMesh.Upload(Context, Nyx::MakePlane(1.0f));
 	}
 
-	void VulkanRenderer::CreateTestMeshBuffers()
-	{
-		const vk::DeviceSize vertexBufferSize = sizeof(Vertex) * MeshVertices.size();
-		const vk::DeviceSize indexBufferSize = sizeof(uint32_t) * MeshIndices.size();
-
-		CreateBuffer(
-			vertexBufferSize,
-			vk::BufferUsageFlagBits::eVertexBuffer,
-			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
-			MeshVertexBuffer,
-			MeshVertexBufferMemory);
-
-		CreateBuffer(
-			indexBufferSize,
-			vk::BufferUsageFlagBits::eIndexBuffer,
-			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
-			MeshIndexBuffer,
-			MeshIndexBufferMemory);
-
-		{
-			void* mapped = MeshVertexBufferMemory.mapMemory(0, vertexBufferSize);
-			std::memcpy(mapped, MeshVertices.data(), static_cast<size_t>(vertexBufferSize));
-			MeshVertexBufferMemory.unmapMemory();
-		}
-
-		{
-			void* mapped = MeshIndexBufferMemory.mapMemory(0, indexBufferSize);
-			std::memcpy(mapped, MeshIndices.data(), static_cast<size_t>(indexBufferSize));
-			MeshIndexBufferMemory.unmapMemory();
-		}
-	}
-
 	void VulkanRenderer::CreateBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties, vk::raii::Buffer& outBuffer, vk::raii::DeviceMemory& outMemory)
 	{
 		vk::BufferCreateInfo bufferInfo{};
@@ -3035,59 +2990,6 @@ namespace Nyx
 		if (uses("Blur"))
 		{
 			BlurPass.RebuildPipeline();
-		}
-	}
-
-	void VulkanRenderer::LoadTestGltfScene(std::vector<RenderObject>& outObjects)
-	{
-		ImportedScene imported{};
-		const bool bLoaded = Nyx::LoadStaticGltfScene(
-			(Nyx::Paths::GetAssetsDir() / "Models" / "Debug" / "teapot.gltf").string(),
-			imported);
-		ASSERT(bLoaded && "Failed to load test glTF scene.");
-
-		// Create mesh resources
-		std::vector<Nyx::Mesh*> importedMeshPtrs;
-		importedMeshPtrs.reserve(imported.Primitives.size());
-
-		for (size_t i = 0; i < imported.Primitives.size(); ++i)
-		{
-			auto mesh = std::make_unique<Nyx::Mesh>("ImportedPrimitive_" + std::to_string(i));
-			const bool bUploaded = mesh->Upload(Context, imported.Primitives[i].Mesh);
-			ASSERT(bUploaded && "Failed to upload imported mesh.");
-
-			importedMeshPtrs.push_back(mesh.get());
-			LoadedMeshes.push_back(std::move(mesh));
-		}
-
-		// Very minimal material choice:
-		// if imported material has a base color texture, use textured material,
-		// otherwise use untextured one.
-		for (const ImportedNodeInstance& instance : imported.Instances)
-		{
-			if (instance.PrimitiveIndex < 0 || instance.PrimitiveIndex >= static_cast<int>(imported.Primitives.size()))
-			{
-				continue;
-			}
-
-			const ImportedPrimitive& importedPrim = imported.Primitives[instance.PrimitiveIndex];
-
-			RenderObject obj{};
-			obj.MeshAsset = importedMeshPtrs[instance.PrimitiveIndex];
-			obj.WorldTransform = instance.WorldTransform;
-
-			if (importedPrim.MaterialIndex >= 0 &&
-				importedPrim.MaterialIndex < static_cast<int>(imported.Materials.size()) &&
-				!imported.Materials[importedPrim.MaterialIndex].BaseColorTexturePath.empty())
-			{
-				obj.MaterialAsset = Materials.Get("Materials/Textured.nyxmat");
-			}
-			else
-			{
-				obj.MaterialAsset = Materials.Get("Materials/Untextured.nyxmat");
-			}
-
-			outObjects.push_back(obj);
 		}
 	}
 

@@ -1,7 +1,7 @@
 #pragma once
 #include "VulkanContext.h"
 #include "Texture.h"
-#include "ResourceManager.h"
+#include "Resource.h"
 
 namespace Nyx
 {

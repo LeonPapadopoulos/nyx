@@ -1,7 +1,7 @@
 #pragma once
 
 #include "NyxEngineAPI.h"
-#include "ResourceManager.h"
+#include "Resource.h"
 #include "VulkanContext.h"
 
 #include <vulkan/vulkan_raii.hpp>

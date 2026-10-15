@@ -43,13 +43,6 @@ add_dependencies(NyxFrameRateLimiterTests NyxGeneratedReflection)
 set_property(TARGET NyxFrameRateLimiterTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxFrameRateLimiterTests COMMAND NyxFrameRateLimiterTests)
 
-# ResourceManager and AsyncResourceManager with stand-in resources.
-add_executable(NyxResourceManagerTests ResourceManagerTests.cpp)
-target_link_libraries(NyxResourceManagerTests PRIVATE NyxEngine)
-add_dependencies(NyxResourceManagerTests NyxGeneratedReflection)
-set_property(TARGET NyxResourceManagerTests PROPERTY FOLDER "Tests")
-add_test(NAME NyxResourceManagerTests COMMAND NyxResourceManagerTests)
-
 # The input system with virtual devices: frames, taps shorter than a frame, devices coming and
 # going, focus, the cursor. No window needed.
 add_executable(NyxInputTests InputTests.cpp)

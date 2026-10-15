@@ -75,13 +75,6 @@ namespace Nyx::Engine
 		// Skips one property block, for example of a component type this build doesn't know.
 		static bool SkipObject(BinaryReader& reader);
 
-		// Reads data from before the tagged format (scene files of version 1): the values of the
-		// Serialize properties in declaration order, without names, kinds or sizes.
-		static bool DeserializeUntaggedObject(
-			BinaryReader& reader,
-			void* object,
-			const Nyx::Reflection::TypeMetadata& typeMetadata);
-
 		// One value of any kind except Struct, without its kind in front.
 		static void WriteValue(BinaryWriter& writer, const Nyx::Reflection::PropertyValue& value);
 		static bool ReadValue(
