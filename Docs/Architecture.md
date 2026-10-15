@@ -199,15 +199,14 @@ it with a warning. `Hello`'s layout never changes.
 
 ## Design notes
 
-The plans some systems were built from, with what was decided and why. They were written before
-the code; most record what turned out differently in *As built* sections. Where they and the
-code disagree, the code is right.
+How some systems work, and why they work that way:
 
-- [Shaders and materials](Design/shader-materials.md): one compiler with live reload for every
-  shader, bindless resources, physically based materials, material instances.
+- [Shaders and materials](Design/shader-materials.md): Slang for every shader, the shader cache
+  and live reload, bindless resources, material files and instances, the light materials are
+  judged under.
 - [UI painter](Design/ui-painter.md): signed distance field shapes, tile binning on the GPU,
-  painting inside ImGui windows, the painted widgets and window chrome.
-- [Input system](Design/input-system.md): devices, input frames, and the actions and bindings
-  planned on top. Only the first part, the `Runtime/Input` module, is built.
-- [Undo by guid](Design/undo-by-guid.md): why undo names entities by guid, and how components
-  are kept whole in undo steps.
+  painting in order with ImGui's drawing, the painted widgets, chrome, glass and ambilight.
+- [Input system](Design/input-system.md): backends, input frames, keys by position, the cursor
+  asked for each frame.
+- [Undo by guid](Design/undo-by-guid.md): why undo names entities by guid, and how it keeps
+  components whole.
