@@ -12,6 +12,7 @@
 #include "ShaderCompiler.h"
 #include "ShaderLog.h"
 #include "ShaderPrograms.h"
+#include "TestSupport.h"
 
 #include <algorithm>
 #include <chrono>
@@ -29,13 +30,7 @@ namespace
 	using namespace Nyx::Engine;
 	using Clock = ShaderPrograms::Clock;
 
-	void Require(bool condition, const std::string& message)
-	{
-		if (!condition)
-		{
-			throw std::runtime_error(message);
-		}
-	}
+	using Nyx::Tests::Require;
 
 	void WriteFile(const std::filesystem::path& file, const std::string& text)
 	{
@@ -93,7 +88,8 @@ namespace
 	// for live reload's cache
 	struct TestFolders
 	{
-		std::filesystem::path Root = std::filesystem::temp_directory_path() / ("NyxShaderProgramsTests-" + std::to_string(Clock::now().time_since_epoch().count()));
+		Nyx::Tests::TestDirectory Directory{ "NyxShaderProgramsTests" };
+		std::filesystem::path Root = Directory.Path;
 		std::filesystem::path Sources = Root / "Shaders";
 		std::filesystem::path Compiled = Root / "Compiled";
 		std::filesystem::path Saved = Root / "Saved";
@@ -116,12 +112,6 @@ namespace
 			Require(ShaderCache(Compiled, Sources).Store(request, built), "the build's cache entry can't be written");
 			// File times that differ from what the test writes next
 			std::this_thread::sleep_for(std::chrono::milliseconds(50));
-		}
-
-		~TestFolders()
-		{
-			std::error_code error;
-			std::filesystem::remove_all(Root, error);
 		}
 	};
 

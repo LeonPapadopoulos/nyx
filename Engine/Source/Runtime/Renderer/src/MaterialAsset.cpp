@@ -1,6 +1,7 @@
 #include "MaterialAsset.h"
 
 #include "BindlessTextures.h"
+#include "StringUtil.h"
 
 #include <algorithm>
 #include <charconv>
@@ -16,23 +17,6 @@ namespace Nyx::Engine
 	{
 		constexpr std::string_view ShaderKey = "Shader";
 		constexpr std::string_view ParentKey = "Parent";
-
-		std::string_view Trim(std::string_view text)
-		{
-			const auto isSpace = [](char c)
-			{
-				return c == ' ' || c == '\t' || c == '\r';
-			};
-			while (!text.empty() && isSpace(text.front()))
-			{
-				text.remove_prefix(1);
-			}
-			while (!text.empty() && isSpace(text.back()))
-			{
-				text.remove_suffix(1);
-			}
-			return text;
-		}
 
 		// "0.62 0.60, 0.56": the numbers, apart by spaces or commas
 		std::vector<std::string_view> SplitComponents(std::string_view text)

@@ -7,6 +7,8 @@
 #include "VulkanBlur.h"
 #include "VulkanContext.h"
 #include "VulkanPainter.h"
+#include "VulkanUtil.h"
+#include "TestSupport.h"
 
 #include <GLFW/glfw3.h>
 
@@ -47,30 +49,11 @@ namespace
 	// About 5 of 255 steps
 	constexpr float Tolerance = 0.02f;
 
-	void Require(bool condition, const std::string& message)
-	{
-		if (!condition)
-		{
-			throw std::runtime_error(message);
-		}
-	}
+	using Nyx::Tests::Require;
 
 	std::string Describe(const glm::vec4& color)
 	{
 		return "(" + std::to_string(color.r) + ", " + std::to_string(color.g) + ", " + std::to_string(color.b) + ", " + std::to_string(color.a) + ")";
-	}
-
-	uint32_t FindMemoryType(vk::PhysicalDevice physicalDevice, uint32_t typeFilter, vk::MemoryPropertyFlags properties)
-	{
-		const vk::PhysicalDeviceMemoryProperties memoryProperties = physicalDevice.getMemoryProperties();
-		for (uint32_t typeIndex = 0; typeIndex < memoryProperties.memoryTypeCount; ++typeIndex)
-		{
-			if ((typeFilter & (1u << typeIndex)) && (memoryProperties.memoryTypes[typeIndex].propertyFlags & properties) == properties)
-			{
-				return typeIndex;
-			}
-		}
-		throw std::runtime_error("No suitable memory type");
 	}
 
 	// The painted pixels of one frame, premultiplied, each channel from 0 to 1
@@ -171,16 +154,9 @@ namespace
 			pass.Draw(commandBuffer, painter, target, options);
 
 			// The painter leaves the image ready to be sampled; copying needs it as a transfer source.
-			vk::ImageMemoryBarrier toTransfer{};
-			toTransfer.srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
-			toTransfer.dstAccessMask = vk::AccessFlagBits::eTransferRead;
-			toTransfer.oldLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-			toTransfer.newLayout = vk::ImageLayout::eTransferSrcOptimal;
-			toTransfer.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			toTransfer.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			toTransfer.image = target.GetImage();
-			toTransfer.subresourceRange = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
-			commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, toTransfer);
+			Nyx::TransitionImageLayout(*commandBuffer, target.GetImage(), vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1),
+				vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageLayout::eTransferSrcOptimal,
+				vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::AccessFlagBits::eColorAttachmentWrite, vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferRead);
 
 			PaintedImage painted = SubmitAndReadBack(commandBuffer, target.GetImage(), target.GetExtent(), false);
 			// The GPU is done: what the binning read back can be taken (GetTarget().GetTiles()).
@@ -236,7 +212,7 @@ namespace
 			imageInfo.samples = vk::SampleCountFlagBits::e1;
 			vk::raii::Image image(device, imageInfo);
 			const vk::MemoryRequirements requirements = image.getMemoryRequirements();
-			vk::raii::DeviceMemory memory(device, vk::MemoryAllocateInfo(requirements.size, FindMemoryType(*Context.GetPhysicalDevice(), requirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal)));
+			vk::raii::DeviceMemory memory(device, vk::MemoryAllocateInfo(requirements.size, Nyx::FindMemoryType(*Context.GetPhysicalDevice(), requirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal)));
 			image.bindMemory(*memory, 0);
 
 			vk::ImageViewCreateInfo viewInfo{};
@@ -309,16 +285,9 @@ namespace
 			commandBuffer.endRenderPass();
 
 			// Instead of being presented, the image is copied out.
-			vk::ImageMemoryBarrier toTransfer{};
-			toTransfer.srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
-			toTransfer.dstAccessMask = vk::AccessFlagBits::eTransferRead;
-			toTransfer.oldLayout = vk::ImageLayout::eColorAttachmentOptimal;
-			toTransfer.newLayout = vk::ImageLayout::eTransferSrcOptimal;
-			toTransfer.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			toTransfer.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			toTransfer.image = *image;
-			toTransfer.subresourceRange = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
-			commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, toTransfer);
+			Nyx::TransitionImageLayout(*commandBuffer, *image, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1),
+				vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::eTransferSrcOptimal,
+				vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::AccessFlagBits::eColorAttachmentWrite, vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferRead);
 
 			const bool bRedBlueSwapped = format == vk::Format::eB8G8R8A8Unorm;
 			return SubmitAndReadBack(commandBuffer, *image, extent, bRedBlueSwapped);
@@ -343,16 +312,9 @@ namespace
 			BlurPass.Blur(commandBuffer, source, sourceExtent, target, options);
 
 			// The blur leaves its image ready to be sampled; copying needs it as a transfer source.
-			vk::ImageMemoryBarrier toTransfer{};
-			toTransfer.srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
-			toTransfer.dstAccessMask = vk::AccessFlagBits::eTransferRead;
-			toTransfer.oldLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-			toTransfer.newLayout = vk::ImageLayout::eTransferSrcOptimal;
-			toTransfer.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			toTransfer.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			toTransfer.image = target.GetImage();
-			toTransfer.subresourceRange = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
-			commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, toTransfer);
+			Nyx::TransitionImageLayout(*commandBuffer, target.GetImage(), vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1),
+				vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageLayout::eTransferSrcOptimal,
+				vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::AccessFlagBits::eColorAttachmentWrite, vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferRead);
 
 			return SubmitAndReadBack(commandBuffer, target.GetImage(), target.GetExtent(), false);
 		}
@@ -376,7 +338,7 @@ namespace
 			imageInfo.samples = vk::SampleCountFlagBits::e1;
 			texture.Image = vk::raii::Image(device, imageInfo);
 			const vk::MemoryRequirements imageRequirements = texture.Image.getMemoryRequirements();
-			texture.Memory = vk::raii::DeviceMemory(device, vk::MemoryAllocateInfo(imageRequirements.size, FindMemoryType(*Context.GetPhysicalDevice(), imageRequirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal)));
+			texture.Memory = vk::raii::DeviceMemory(device, vk::MemoryAllocateInfo(imageRequirements.size, Nyx::FindMemoryType(*Context.GetPhysicalDevice(), imageRequirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal)));
 			texture.Image.bindMemory(*texture.Memory, 0);
 
 			vk::ImageViewCreateInfo viewInfo{};
@@ -395,40 +357,26 @@ namespace
 			texture.Sampler = vk::raii::Sampler(device, samplerInfo);
 
 			// The pixels go through a host-visible buffer.
-			vk::BufferCreateInfo bufferInfo{};
-			bufferInfo.size = rgba.size();
-			bufferInfo.usage = vk::BufferUsageFlagBits::eTransferSrc;
-			vk::raii::Buffer staging(device, bufferInfo);
-			const vk::MemoryRequirements bufferRequirements = staging.getMemoryRequirements();
-			vk::raii::DeviceMemory stagingMemory(device, vk::MemoryAllocateInfo(bufferRequirements.size, FindMemoryType(*Context.GetPhysicalDevice(), bufferRequirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent)));
-			staging.bindMemory(*stagingMemory, 0);
+			vk::raii::Buffer staging{ nullptr };
+			vk::raii::DeviceMemory stagingMemory{ nullptr };
+			Nyx::CreateBuffer(Context, rgba.size(), vk::BufferUsageFlagBits::eTransferSrc,
+				vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, staging, stagingMemory);
 			std::memcpy(stagingMemory.mapMemory(0, rgba.size()), rgba.data(), rgba.size());
 			stagingMemory.unmapMemory();
 
 			RunOnce([&](vk::raii::CommandBuffer& commandBuffer)
 				{
 					const vk::ImageSubresourceRange wholeImage(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
-					vk::ImageMemoryBarrier toCopy{};
-					toCopy.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
-					toCopy.oldLayout = vk::ImageLayout::eUndefined;
-					toCopy.newLayout = vk::ImageLayout::eTransferDstOptimal;
-					toCopy.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-					toCopy.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-					toCopy.image = *texture.Image;
-					toCopy.subresourceRange = wholeImage;
-					commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, toCopy);
+					Nyx::TransitionImageLayout(*commandBuffer, *texture.Image, wholeImage, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal,
+						vk::PipelineStageFlagBits::eTopOfPipe, {}, vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferWrite);
 
 					vk::BufferImageCopy copy{};
 					copy.imageSubresource = vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1);
 					copy.imageExtent = vk::Extent3D(width, height, 1);
 					commandBuffer.copyBufferToImage(*staging, *texture.Image, vk::ImageLayout::eTransferDstOptimal, copy);
 
-					vk::ImageMemoryBarrier toRead = toCopy;
-					toRead.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
-					toRead.dstAccessMask = vk::AccessFlagBits::eShaderRead;
-					toRead.oldLayout = vk::ImageLayout::eTransferDstOptimal;
-					toRead.newLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-					commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, toRead);
+					Nyx::TransitionImageLayout(*commandBuffer, *texture.Image, wholeImage, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal,
+						vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferWrite, vk::PipelineStageFlagBits::eFragmentShader, vk::AccessFlagBits::eShaderRead);
 				});
 
 			vk::DescriptorSetAllocateInfo setInfo{};
@@ -488,17 +436,10 @@ namespace
 			painted.Height = extent.height;
 			const vk::DeviceSize byteCount = static_cast<vk::DeviceSize>(painted.Width) * painted.Height * 4;
 
-			vk::BufferCreateInfo bufferInfo{};
-			bufferInfo.size = byteCount;
-			bufferInfo.usage = vk::BufferUsageFlagBits::eTransferDst;
-			vk::raii::Buffer readback(device, bufferInfo);
-			const vk::MemoryRequirements requirements = readback.getMemoryRequirements();
-			vk::MemoryAllocateInfo memoryInfo{};
-			memoryInfo.allocationSize = requirements.size;
-			memoryInfo.memoryTypeIndex = FindMemoryType(*Context.GetPhysicalDevice(), requirements.memoryTypeBits,
-				vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
-			vk::raii::DeviceMemory readbackMemory(device, memoryInfo);
-			readback.bindMemory(*readbackMemory, 0);
+			vk::raii::Buffer readback{ nullptr };
+			vk::raii::DeviceMemory readbackMemory{ nullptr };
+			Nyx::CreateBuffer(Context, byteCount, vk::BufferUsageFlagBits::eTransferDst,
+				vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, readback, readbackMemory);
 
 			vk::BufferImageCopy copy{};
 			copy.imageSubresource = vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1);
@@ -571,8 +512,8 @@ namespace
 	// shaders.
 	void TestPipelinesFollowChangedShaders(GpuPainter& gpu)
 	{
-		const std::filesystem::path folder = std::filesystem::temp_directory_path() / ("NyxPainterGpuTests-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
-		std::filesystem::create_directories(folder);
+		const Nyx::Tests::TestDirectory directory("NyxPainterGpuTests");
+		const std::filesystem::path& folder = directory.Path;
 		for (const char* name : { "Painter.vert", "Painter.frag", "PainterBin.comp" })
 		{
 			std::filesystem::copy_file(Nyx::Paths::GetShadersDir() / name, folder / name);
@@ -635,7 +576,6 @@ namespace
 		target.Release();
 		changedTarget.Release();
 		pass.Shutdown();
-		std::filesystem::remove_all(folder);
 	}
 
 	// The device's pipeline cache: saved, loaded back, and a file another GPU or driver could have

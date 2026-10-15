@@ -25,6 +25,7 @@
 #include "TransactionObjectRefHelpers.h"
 #include "TransactionSystem.h"
 #include "TransformComponent.h"
+#include "TestSupport.h"
 
 #include <iostream>
 #include <map>
@@ -40,13 +41,7 @@ namespace
 	using namespace Nyx::Editor;
 	using namespace Nyx::Engine;
 
-	void Require(bool condition, const std::string& message)
-	{
-		if (!condition)
-		{
-			throw std::runtime_error(message);
-		}
-	}
+	using Nyx::Tests::Require;
 
 	std::map<uint64_t, std::vector<std::byte>> GetEntitiesByGuid(const Registry& world)
 	{

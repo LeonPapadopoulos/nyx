@@ -3,6 +3,7 @@
 
 #include "Paths.h"
 #include "VulkanContext.h"
+#include "VulkanUtil.h"
 
 #include <algorithm>
 #include <array>
@@ -84,18 +85,6 @@ namespace Nyx::Engine
 		// no empty ones), and grow by doubling.
 		constexpr vk::DeviceSize MinBufferSize = 4096;
 
-		uint32_t FindMemoryType(vk::PhysicalDevice physicalDevice, uint32_t typeFilter, vk::MemoryPropertyFlags properties)
-		{
-			const vk::PhysicalDeviceMemoryProperties memoryProperties = physicalDevice.getMemoryProperties();
-			for (uint32_t typeIndex = 0; typeIndex < memoryProperties.memoryTypeCount; ++typeIndex)
-			{
-				if ((typeFilter & (1u << typeIndex)) && (memoryProperties.memoryTypes[typeIndex].propertyFlags & properties) == properties)
-				{
-					return typeIndex;
-				}
-			}
-			throw std::runtime_error("Painter: no suitable memory type");
-		}
 	}
 
 	void VulkanPainterBuffers::Release()
@@ -719,25 +708,13 @@ namespace Nyx::Engine
 		commandBuffer.begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
 
 		const vk::ImageSubresourceRange wholeImage(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
-		vk::ImageMemoryBarrier toClear{};
-		toClear.srcAccessMask = {};
-		toClear.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
-		toClear.oldLayout = vk::ImageLayout::eUndefined;
-		toClear.newLayout = vk::ImageLayout::eTransferDstOptimal;
-		toClear.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		toClear.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		toClear.image = *EmptyImage;
-		toClear.subresourceRange = wholeImage;
-		commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, toClear);
+		TransitionImageLayout(*commandBuffer, *EmptyImage, wholeImage, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal,
+			vk::PipelineStageFlagBits::eTopOfPipe, {}, vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferWrite);
 
 		commandBuffer.clearColorImage(*EmptyImage, vk::ImageLayout::eTransferDstOptimal, vk::ClearColorValue(std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 0.0f }), wholeImage);
 
-		vk::ImageMemoryBarrier toRead = toClear;
-		toRead.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
-		toRead.dstAccessMask = vk::AccessFlagBits::eShaderRead;
-		toRead.oldLayout = vk::ImageLayout::eTransferDstOptimal;
-		toRead.newLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-		commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, toRead);
+		TransitionImageLayout(*commandBuffer, *EmptyImage, wholeImage, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal,
+			vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferWrite, vk::PipelineStageFlagBits::eFragmentShader, vk::AccessFlagBits::eShaderRead);
 
 		commandBuffer.end();
 		vk::SubmitInfo submitInfo{};
@@ -1022,22 +999,11 @@ namespace Nyx::Engine
 		buffer.Buffer = nullptr;
 		buffer.Memory = nullptr;
 
-		vk::raii::Device& device = Context->GetDevice();
-		vk::BufferCreateInfo bufferInfo{};
-		bufferInfo.size = newSize;
-		bufferInfo.usage = usage;
-		bufferInfo.sharingMode = vk::SharingMode::eExclusive;
-		buffer.Buffer = vk::raii::Buffer(device, bufferInfo);
-
 		// Host-visible and coherent for what the CPU writes or reads back, so it needs no flushing;
 		// the GPU's own memory for the rest.
-		const vk::MemoryRequirements requirements = buffer.Buffer.getMemoryRequirements();
-		vk::MemoryAllocateInfo allocInfo{};
-		allocInfo.allocationSize = requirements.size;
-		allocInfo.memoryTypeIndex = FindMemoryType(*Context->GetPhysicalDevice(), requirements.memoryTypeBits,
-			bHostVisible ? vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent : vk::MemoryPropertyFlagBits::eDeviceLocal);
-		buffer.Memory = vk::raii::DeviceMemory(device, allocInfo);
-		buffer.Buffer.bindMemory(*buffer.Memory, 0);
+		CreateBuffer(*Context, newSize, usage,
+			bHostVisible ? vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent : vk::MemoryPropertyFlagBits::eDeviceLocal,
+			buffer.Buffer, buffer.Memory);
 		buffer.Mapped = bHostVisible ? buffer.Memory.mapMemory(0, newSize) : nullptr;
 		buffer.Size = newSize;
 		return true;

@@ -13,6 +13,7 @@
 #include "Log.h"
 #include "NetConnection.h"
 #include "Paths.h"
+#include "TestSupport.h"
 
 #include <algorithm>
 #include <chrono>
@@ -33,13 +34,7 @@ namespace
 
 	constexpr int CrashExitCode = 3;
 
-	void Require(bool condition, const std::string& message)
-	{
-		if (!condition)
-		{
-			throw std::runtime_error(message);
-		}
-	}
+	using Nyx::Tests::Require;
 
 	void SendLine(EditorLink& link, const std::string& text)
 	{

@@ -1,5 +1,6 @@
 #include "PainterTestWindow.h"
 
+#include "ImGuiConversions.h"
 #include "ImGuiSource.h"
 #include "PainterDrawOptions.h"
 #include "PainterTestSheet.h"
@@ -25,6 +26,8 @@
 namespace Nyx::Editor
 {
 	using namespace Nyx::Engine;
+	using Nyx::UI::ToImGuiColor;
+	using Nyx::UI::ToImVec2;
 
 	namespace
 	{
@@ -37,19 +40,6 @@ namespace Nyx::Editor
 		const glm::vec4 GraphPainterCpuColor{ 1.0f, 0.55f, 0.15f, 1.0f };
 		const glm::vec4 GraphPainterGpuColor{ 0.50f, 0.80f, 0.36f, 1.0f };
 		const glm::vec4 GraphMainWindowGpuColor{ 0.80f, 0.50f, 0.90f, 1.0f };
-
-		ImVec2 ToImVec2(glm::vec2 point, ImVec2 origin)
-		{
-			return ImVec2(origin.x + point.x, origin.y + point.y);
-		}
-
-		// The painter stores premultiplied colour; ImGui takes straight colour.
-		ImU32 ToImGuiColor(uint32_t premultiplied)
-		{
-			const glm::vec4 color = UnpackPremultipliedColor(premultiplied);
-			const glm::vec3 straight = color.a > 0.0f ? glm::vec3(color) / color.a : glm::vec3(0.0f);
-			return ImGui::GetColorU32(ImVec4(straight.r, straight.g, straight.b, color.a));
-		}
 
 		// Whether ImGui replaced the texture during this frame: when its font atlas grows, ImGui
 		// moves to a bigger texture and destroys the old one next frame. Glyphs recorded before

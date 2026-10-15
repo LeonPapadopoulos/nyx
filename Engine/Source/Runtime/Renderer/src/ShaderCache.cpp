@@ -1,6 +1,7 @@
 #include "ShaderCache.h"
 
 #include "BinaryArchive.h"
+#include "StringUtil.h"
 
 #include <algorithm>
 #include <cctype>
@@ -36,15 +37,6 @@ namespace Nyx::Engine
 		std::filesystem::path TextPath(const std::string& text)
 		{
 			return std::filesystem::path(std::u8string(text.begin(), text.end()));
-		}
-
-		std::string Lower(std::string text)
-		{
-			std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c)
-				{
-					return static_cast<char>(std::tolower(c));
-				});
-			return text;
 		}
 
 		std::filesystem::path Normal(const std::filesystem::path& path)
@@ -95,7 +87,7 @@ namespace Nyx::Engine
 
 	std::string ShaderCache::KeyOf(const ShaderCompileRequest& request) const
 	{
-		std::string key = "kind=" + std::to_string(static_cast<int>(request.Kind)) + "\nfile=" + Lower(Relative(request.File));
+		std::string key = "kind=" + std::to_string(static_cast<int>(request.Kind)) + "\nfile=" + ToLower(Relative(request.File));
 		if (request.Kind == EShaderCompileKind::Material)
 		{
 			key += "\ndomain=" + request.Domain.Module;
@@ -132,7 +124,7 @@ namespace Nyx::Engine
 		std::vector<std::filesystem::path> files = result.Dependencies;
 		const bool bHasOwnFile = std::any_of(files.begin(), files.end(), [&](const std::filesystem::path& file)
 			{
-				return Lower(Relative(file)) == Lower(Relative(request.File));
+				return ToLower(Relative(file)) == ToLower(Relative(request.File));
 			});
 		if (!bHasOwnFile)
 		{

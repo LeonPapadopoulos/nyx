@@ -1,5 +1,6 @@
 #include "UIWidgets.h"
 
+#include "ImGuiConversions.h"
 #include "UIAnimation.h"
 #include "UITheme.h"
 #include "WindowPainter.h"
@@ -203,11 +204,6 @@ namespace Nyx::UI
 			storage.assign(text.data(), end);
 			storage += Ellipsis;
 			return storage;
-		}
-
-		ImVec4 ToImVec4(const glm::vec4& color)
-		{
-			return ImVec4(color.r, color.g, color.b, color.a);
 		}
 
 		// A field's look before ImGui's widget for it runs: hovered as ImGui knew it the frame

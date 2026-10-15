@@ -5,6 +5,8 @@
 #include "Paths.h"
 #include "ShaderCompiler.h"
 #include "VulkanContext.h"
+#include "VulkanUtil.h"
+#include "TestSupport.h"
 
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
@@ -30,13 +32,7 @@ namespace
 	constexpr uint32_t MaterialOffset = 64;
 	constexpr uint32_t BufferSize = 1024;
 
-	void Require(bool condition, const std::string& message)
-	{
-		if (!condition)
-		{
-			throw std::runtime_error(message);
-		}
-	}
+	using Nyx::Tests::Require;
 
 	std::string DescribeDiagnostics(const ShaderCompileResult& result)
 	{
@@ -127,19 +123,6 @@ namespace
 	};
 	static_assert(sizeof(ObjectConstants) == 96);
 
-	uint32_t FindMemoryType(vk::PhysicalDevice physicalDevice, uint32_t typeFilter, vk::MemoryPropertyFlags properties)
-	{
-		const vk::PhysicalDeviceMemoryProperties memoryProperties = physicalDevice.getMemoryProperties();
-		for (uint32_t typeIndex = 0; typeIndex < memoryProperties.memoryTypeCount; ++typeIndex)
-		{
-			if ((typeFilter & (1u << typeIndex)) && (memoryProperties.memoryTypes[typeIndex].propertyFlags & properties) == properties)
-			{
-				return typeIndex;
-			}
-		}
-		throw std::runtime_error("No suitable memory type");
-	}
-
 	struct HostBuffer
 	{
 		vk::raii::Buffer Buffer{ nullptr };
@@ -149,12 +132,8 @@ namespace
 		HostBuffer(Nyx::VulkanContext& context, vk::DeviceSize size)
 			: Size(size)
 		{
-			Buffer = vk::raii::Buffer(context.GetDevice(), vk::BufferCreateInfo({}, size, vk::BufferUsageFlagBits::eStorageBuffer));
-			const vk::MemoryRequirements requirements = Buffer.getMemoryRequirements();
-			const uint32_t type = FindMemoryType(*context.GetPhysicalDevice(), requirements.memoryTypeBits,
-				vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
-			Memory = vk::raii::DeviceMemory(context.GetDevice(), vk::MemoryAllocateInfo(requirements.size, type));
-			Buffer.bindMemory(*Memory, 0);
+			Nyx::CreateBuffer(context, size, vk::BufferUsageFlagBits::eStorageBuffer,
+				vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, Buffer, Memory);
 		}
 
 		void Write(const std::vector<uint8_t>& bytes)

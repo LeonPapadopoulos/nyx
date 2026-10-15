@@ -204,13 +204,16 @@ add_dependencies(NyxEditor NyxShaderCompiler)
 #######################################################################################
 
 if(BUILD_TESTING)
+    # TestSupport.h: Require() and the test directory, shared with the engine's tests
+    set(NYX_TEST_SUPPORT_DIR ${PROJECT_SOURCE_DIR}/Engine/Source/tests)
+
     # Exercise the editor's real Open/New paths without starting a window or GPU device.
     set(NYX_EDITOR_TEST_SOURCES ${NYX_EDITOR_SOURCES})
     list(REMOVE_ITEM NYX_EDITOR_TEST_SOURCES main.cpp)
 
     add_executable(NyxEditorSceneTests tests/SceneReplacementTests.cpp ${NYX_EDITOR_TEST_SOURCES} ${NYX_EDITOR_DEV_TOOL_SOURCES}
         "${NYX_EDITOR_REFLECTION_SOURCES}")
-    target_include_directories(NyxEditorSceneTests PRIVATE include src ${CMAKE_CURRENT_BINARY_DIR} ${NYX_DEV_TOOLS_DIR}/include)
+    target_include_directories(NyxEditorSceneTests PRIVATE include src ${CMAKE_CURRENT_BINARY_DIR} ${NYX_DEV_TOOLS_DIR}/include ${NYX_TEST_SUPPORT_DIR})
     target_link_libraries(NyxEditorSceneTests PRIVATE NyxEditorEngine ole32 oleaut32 shell32 comsuppw)
     add_dependencies(NyxEditorSceneTests NyxGeneratedReflection)
     target_precompile_headers(NyxEditorSceneTests REUSE_FROM NyxEditor)
@@ -221,7 +224,7 @@ if(BUILD_TESTING)
     # The pieces EditorLayer is built from: SceneEditor's commands and hotkeys, and the panels drawn headless
     add_executable(NyxEditorPanelTests tests/EditorPanelTests.cpp ${NYX_EDITOR_TEST_SOURCES} ${NYX_EDITOR_DEV_TOOL_SOURCES}
         "${NYX_EDITOR_REFLECTION_SOURCES}")
-    target_include_directories(NyxEditorPanelTests PRIVATE include src ${CMAKE_CURRENT_BINARY_DIR} ${NYX_DEV_TOOLS_DIR}/include)
+    target_include_directories(NyxEditorPanelTests PRIVATE include src ${CMAKE_CURRENT_BINARY_DIR} ${NYX_DEV_TOOLS_DIR}/include ${NYX_TEST_SUPPORT_DIR})
     target_link_libraries(NyxEditorPanelTests PRIVATE NyxEditorEngine ole32 oleaut32 shell32 comsuppw)
     add_dependencies(NyxEditorPanelTests NyxGeneratedReflection)
     target_precompile_headers(NyxEditorPanelTests REUSE_FROM NyxEditor)
@@ -231,7 +234,7 @@ if(BUILD_TESTING)
     # The material document and the Parameters window, headless, over a stand-in for the renderer
     add_executable(NyxMaterialEditorTests tests/MaterialEditorTests.cpp src/MaterialDocument.cpp src/MaterialParametersPanel.cpp src/MaterialPreviewPanel.cpp src/ShaderLogPanel.cpp
         src/NewMaterial.cpp src/Workspaces.cpp src/AssetDragDrop.cpp src/AssetTypeRegistry.cpp src/AssetDatabase.cpp)
-    target_include_directories(NyxMaterialEditorTests PRIVATE include src ${CMAKE_CURRENT_BINARY_DIR})
+    target_include_directories(NyxMaterialEditorTests PRIVATE include src ${CMAKE_CURRENT_BINARY_DIR} ${NYX_TEST_SUPPORT_DIR})
     target_link_libraries(NyxMaterialEditorTests PRIVATE NyxEditorEngine)
     add_dependencies(NyxMaterialEditorTests NyxGeneratedReflection)
     target_precompile_headers(NyxMaterialEditorTests REUSE_FROM NyxEditor)
@@ -241,7 +244,7 @@ if(BUILD_TESTING)
     add_executable(NyxUISourceTests tests/UISourceInspectorTests.cpp
         src/UISourceInspector.cpp src/EditorPreferences.cpp src/SourceNavigation.cpp src/ImGuiDebugTools.cpp
         src/ReflectionSourceRegistry.cpp "${NYX_EDITOR_REFLECTION_SOURCES}")
-    target_include_directories(NyxUISourceTests PRIVATE include src ${CMAKE_CURRENT_BINARY_DIR})
+    target_include_directories(NyxUISourceTests PRIVATE include src ${CMAKE_CURRENT_BINARY_DIR} ${NYX_TEST_SUPPORT_DIR})
     target_link_libraries(NyxUISourceTests PRIVATE NyxEditorEngine ole32 oleaut32 shell32 comsuppw)
     target_precompile_headers(NyxUISourceTests REUSE_FROM NyxEditor)
     add_dependencies(NyxUISourceTests NyxGeneratedReflection)
@@ -253,7 +256,7 @@ if(BUILD_TESTING)
         src/GameLinkSubscriber.cpp src/ComponentPostLoadSubscriber.cpp src/ComponentEdits.cpp src/EntityCopies.cpp src/TransactionSystem.cpp src/TransactionDiffUtil.cpp src/SceneEntityTransactionDomain.cpp
         src/RootObjectSnapshotUtils.cpp src/ReflectedPropertyAccess.cpp
         src/SceneDocument.cpp src/InspectorTargetId.cpp src/InspectorDrawContext.cpp)
-    target_include_directories(NyxGameLinkSubscriberTests PRIVATE include src ${CMAKE_CURRENT_BINARY_DIR})
+    target_include_directories(NyxGameLinkSubscriberTests PRIVATE include src ${CMAKE_CURRENT_BINARY_DIR} ${NYX_TEST_SUPPORT_DIR})
     target_link_libraries(NyxGameLinkSubscriberTests PRIVATE NyxEditorEngine)
     target_precompile_headers(NyxGameLinkSubscriberTests REUSE_FROM NyxEditor)
     add_dependencies(NyxGameLinkSubscriberTests NyxGeneratedReflection)
@@ -262,7 +265,7 @@ if(BUILD_TESTING)
 
     # Several games at once, as Play starts them: this program starts copies of itself as stand-in games
     add_executable(NyxGameInstanceTests tests/GameInstanceTests.cpp src/GameInstance.cpp)
-    target_include_directories(NyxGameInstanceTests PRIVATE include src ${CMAKE_CURRENT_BINARY_DIR})
+    target_include_directories(NyxGameInstanceTests PRIVATE include src ${CMAKE_CURRENT_BINARY_DIR} ${NYX_TEST_SUPPORT_DIR})
     target_link_libraries(NyxGameInstanceTests PRIVATE NyxEditorEngine)
     target_precompile_headers(NyxGameInstanceTests REUSE_FROM NyxEditor)
     add_dependencies(NyxGameInstanceTests NyxGeneratedReflection)
@@ -271,7 +274,7 @@ if(BUILD_TESTING)
 
     # The fly camera of the scene views, with virtual keyboard and mouse and stand-in views
     add_executable(NyxEditorCameraTests tests/EditorCameraTests.cpp src/EditorCameraController.cpp)
-    target_include_directories(NyxEditorCameraTests PRIVATE include src ${CMAKE_CURRENT_BINARY_DIR})
+    target_include_directories(NyxEditorCameraTests PRIVATE include src ${CMAKE_CURRENT_BINARY_DIR} ${NYX_TEST_SUPPORT_DIR})
     target_link_libraries(NyxEditorCameraTests PRIVATE NyxEditorEngine)
     target_precompile_headers(NyxEditorCameraTests REUSE_FROM NyxEditor)
     add_dependencies(NyxEditorCameraTests NyxGeneratedReflection)
@@ -280,7 +283,7 @@ if(BUILD_TESTING)
 
     # Play setups and Play All: saving setups, tiling the windows, choosing the games
     add_executable(NyxPlayWallTests tests/PlayWallTests.cpp src/PlayWall.cpp src/EditorPreferences.cpp)
-    target_include_directories(NyxPlayWallTests PRIVATE include src ${CMAKE_CURRENT_BINARY_DIR})
+    target_include_directories(NyxPlayWallTests PRIVATE include src ${CMAKE_CURRENT_BINARY_DIR} ${NYX_TEST_SUPPORT_DIR})
     target_link_libraries(NyxPlayWallTests PRIVATE NyxEditorEngine ole32 shell32)
     target_precompile_headers(NyxPlayWallTests REUSE_FROM NyxEditor)
     add_dependencies(NyxPlayWallTests NyxGeneratedReflection)

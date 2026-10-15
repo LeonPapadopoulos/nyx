@@ -3,6 +3,7 @@
 #include "ImGuiSource.h"
 #include "Renderer.h"
 #include "ShaderLayout.h"
+#include "StringUtil.h"
 #include "UITheme.h"
 #include "UIWidgets.h"
 
@@ -19,19 +20,6 @@ namespace Nyx::Editor
 {
 	namespace
 	{
-		std::string_view Trim(std::string_view text)
-		{
-			while (!text.empty() && (text.front() == ' ' || text.front() == '\t'))
-			{
-				text.remove_prefix(1);
-			}
-			while (!text.empty() && (text.back() == ' ' || text.back() == '\t'))
-			{
-				text.remove_suffix(1);
-			}
-			return text;
-		}
-
 		// The attribute's text argument, e.g. [Category("Surface")]; null without one
 		const std::string* TextArgument(const Nyx::Engine::ShaderField& field, std::string_view attribute)
 		{

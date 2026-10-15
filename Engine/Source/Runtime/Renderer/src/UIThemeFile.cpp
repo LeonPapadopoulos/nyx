@@ -1,5 +1,7 @@
 #include "UIThemeFile.h"
 
+#include "StringUtil.h"
+
 #include <algorithm>
 #include <charconv>
 #include <cmath>
@@ -194,17 +196,6 @@ namespace Nyx::UI
 #undef NYX_THEME_COLOR
 #undef NYX_THEME_SIZE
 #undef NYX_THEME_EFFECT
-
-		std::string_view Trim(std::string_view text)
-		{
-			const size_t first = text.find_first_not_of(" \t\r");
-			if (first == std::string_view::npos)
-			{
-				return {};
-			}
-			const size_t last = text.find_last_not_of(" \t\r");
-			return text.substr(first, last - first + 1);
-		}
 
 		// The words of a value, split at spaces, tabs and commas
 		std::vector<std::string_view> SplitWords(std::string_view text)

@@ -4,8 +4,10 @@
 #include "ImageFile.h"
 #include "Log.h"
 #include "Mesh.h"
+#include "StringUtil.h"
 #include "VulkanBindless.h"
 #include "VulkanContext.h"
+#include "VulkanUtil.h"
 
 #include <algorithm>
 #include <array>
@@ -23,29 +25,12 @@ namespace Nyx::Engine
 		// Paths as Windows compares them: whole, normalised, without regard to case
 		std::string PathKey(const std::filesystem::path& path)
 		{
-			std::string key = path.lexically_normal().generic_string();
-			std::transform(key.begin(), key.end(), key.begin(), [](unsigned char c)
-				{
-					return static_cast<char>(std::tolower(c));
-				});
+			std::string key = ToLower(path.lexically_normal().generic_string());
 			while (!key.empty() && key.back() == '/')
 			{
 				key.pop_back();
 			}
 			return key;
-		}
-
-		uint32_t FindMemoryType(vk::PhysicalDevice physicalDevice, uint32_t typeFilter, vk::MemoryPropertyFlags properties)
-		{
-			const vk::PhysicalDeviceMemoryProperties memoryProperties = physicalDevice.getMemoryProperties();
-			for (uint32_t typeIndex = 0; typeIndex < memoryProperties.memoryTypeCount; ++typeIndex)
-			{
-				if ((typeFilter & (1u << typeIndex)) && (memoryProperties.memoryTypes[typeIndex].propertyFlags & properties) == properties)
-				{
-					return typeIndex;
-				}
-			}
-			throw std::runtime_error("Materials: no suitable memory type");
 		}
 
 		// The input locations a vertex shader reads: its Input variables' Location decorations.
@@ -580,13 +565,10 @@ namespace Nyx::Engine
 		const vk::DeviceSize byteCount = std::max<vk::DeviceSize>((size + 3) / 4 * 4, 4);
 
 		// The writer stores at set 0, binding 3 (ShaderCompiler::CompileDefaultsWriter())
-		vk::BufferCreateInfo bufferInfo{};
-		bufferInfo.size = byteCount;
-		bufferInfo.usage = vk::BufferUsageFlagBits::eStorageBuffer;
-		vk::raii::Buffer output(device, bufferInfo);
-		const vk::MemoryRequirements requirements = output.getMemoryRequirements();
-		vk::raii::DeviceMemory outputMemory(device, vk::MemoryAllocateInfo(requirements.size, FindMemoryType(*Context->GetPhysicalDevice(), requirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent)));
-		output.bindMemory(*outputMemory, 0);
+		vk::raii::Buffer output{ nullptr };
+		vk::raii::DeviceMemory outputMemory{ nullptr };
+		CreateBuffer(*Context, byteCount, vk::BufferUsageFlagBits::eStorageBuffer,
+			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, output, outputMemory);
 
 		const vk::DescriptorSetLayoutBinding binding(3, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute);
 		vk::raii::DescriptorSetLayout setLayout(device, vk::DescriptorSetLayoutCreateInfo({}, binding));

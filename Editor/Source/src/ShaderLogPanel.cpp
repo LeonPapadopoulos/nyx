@@ -1,5 +1,6 @@
 #include "ShaderLogPanel.h"
 
+#include "ImGuiConversions.h"
 #include "ImGuiSource.h"
 #include "ShaderLog.h"
 #include "UITheme.h"
@@ -14,10 +15,7 @@ namespace Nyx::Editor
 {
 	namespace
 	{
-		ImVec4 Color(const glm::vec4& color)
-		{
-			return ImVec4(color.r, color.g, color.b, color.a);
-		}
+		using Nyx::UI::ToImVec4;
 
 		// "14:03:27", in local time
 		std::string TimeOfDay(std::chrono::system_clock::time_point when)
@@ -54,7 +52,7 @@ namespace Nyx::Editor
 		const std::string text = diagnostic.ToString();
 		const ImVec2 at = ImGui::GetCursorScreenPos();
 		const bool bClicked = NYX_UI(Nyx::UI::Selectable(("##" + text).c_str(), false, 0, glm::vec2(0.0f, ImGui::GetTextLineHeight())));
-		ImGui::GetWindowDrawList()->AddText(at, ImGui::GetColorU32(Color(color)), text.c_str());
+		ImGui::GetWindowDrawList()->AddText(at, ImGui::GetColorU32(ToImVec4(color)), text.c_str());
 		if (!diagnostic.File.empty())
 		{
 			ImGui::SetItemTooltip("Opens %s at line %u", diagnostic.File.string().c_str(), diagnostic.Line);
@@ -100,7 +98,7 @@ namespace Nyx::Editor
 				continue;
 			}
 			ImGui::PushID(entry->Name.c_str());
-			ImGui::PushStyleColor(ImGuiCol_Text, Color(entry->bSucceeded ? theme.StatusOk : theme.StatusError));
+			ImGui::PushStyleColor(ImGuiCol_Text, ToImVec4(entry->bSucceeded ? theme.StatusOk : theme.StatusError));
 			NYX_UI(ImGui::TextUnformatted(entry->bSucceeded ? "Compiled" : "Failed"));
 			ImGui::PopStyleColor();
 			ImGui::SameLine();

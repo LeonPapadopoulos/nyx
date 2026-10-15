@@ -3,6 +3,7 @@
 #include "Assertions.h"
 #include "Log.h"
 #include "Paths.h"
+#include "VulkanUtil.h"
 
 #include <cstring>
 #include <stdexcept>
@@ -13,144 +14,6 @@
 
 namespace
 {
-	uint32_t FindMemoryType(
-		vk::PhysicalDevice physicalDevice,
-		uint32_t typeFilter,
-		vk::MemoryPropertyFlags properties)
-	{
-		const vk::PhysicalDeviceMemoryProperties memoryProperties = physicalDevice.getMemoryProperties();
-
-		for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; ++i)
-		{
-			const bool bTypeMatches = (typeFilter & (1u << i)) != 0;
-			const bool bPropertyMatches =
-				(memoryProperties.memoryTypes[i].propertyFlags & properties) == properties;
-
-			if (bTypeMatches && bPropertyMatches)
-			{
-				return i;
-			}
-		}
-
-		throw std::runtime_error("Failed to find suitable Vulkan memory type.");
-	}
-
-	void CreateBuffer(
-		Nyx::VulkanContext& context,
-		vk::DeviceSize size,
-		vk::BufferUsageFlags usage,
-		vk::MemoryPropertyFlags properties,
-		vk::raii::Buffer& outBuffer,
-		vk::raii::DeviceMemory& outMemory)
-	{
-		vk::BufferCreateInfo bufferInfo{};
-		bufferInfo.size = size;
-		bufferInfo.usage = usage;
-		bufferInfo.sharingMode = vk::SharingMode::eExclusive;
-
-		outBuffer = vk::raii::Buffer(context.GetDevice(), bufferInfo);
-
-		const vk::MemoryRequirements memRequirements = outBuffer.getMemoryRequirements();
-
-		vk::MemoryAllocateInfo allocInfo{};
-		allocInfo.allocationSize = memRequirements.size;
-		allocInfo.memoryTypeIndex = FindMemoryType(
-			*context.GetPhysicalDevice(),
-			memRequirements.memoryTypeBits,
-			properties);
-
-		outMemory = vk::raii::DeviceMemory(context.GetDevice(), allocInfo);
-		outBuffer.bindMemory(*outMemory, 0);
-	}
-
-	vk::raii::CommandBuffer BeginSingleTimeCommands(Nyx::VulkanContext& context)
-	{
-		vk::CommandBufferAllocateInfo allocInfo{};
-		allocInfo.commandPool = *context.GetGraphicsCommandPool();
-		allocInfo.level = vk::CommandBufferLevel::ePrimary;
-		allocInfo.commandBufferCount = 1;
-
-		vk::raii::CommandBuffers commandBuffers(context.GetDevice(), allocInfo);
-		vk::raii::CommandBuffer commandBuffer = std::move(commandBuffers.front());
-
-		vk::CommandBufferBeginInfo beginInfo{};
-		beginInfo.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit;
-
-		commandBuffer.begin(beginInfo);
-		return commandBuffer;
-	}
-
-	void EndSingleTimeCommands(Nyx::VulkanContext& context, vk::raii::CommandBuffer&& commandBuffer)
-	{
-		commandBuffer.end();
-
-		vk::CommandBuffer rawCmd = *commandBuffer;
-
-		vk::SubmitInfo submitInfo{};
-		submitInfo.commandBufferCount = 1;
-		submitInfo.pCommandBuffers = &rawCmd;
-
-		context.GetGraphicsQueue().submit(submitInfo);
-		context.GetGraphicsQueue().waitIdle();
-	}
-
-	void TransitionImageLayout(
-		Nyx::VulkanContext& context,
-		vk::Image image,
-		vk::ImageLayout oldLayout,
-		vk::ImageLayout newLayout)
-	{
-		vk::raii::CommandBuffer commandBuffer = BeginSingleTimeCommands(context);
-
-		vk::ImageMemoryBarrier barrier{};
-		barrier.oldLayout = oldLayout;
-		barrier.newLayout = newLayout;
-		barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		barrier.image = image;
-		barrier.subresourceRange.aspectMask = vk::ImageAspectFlagBits::eColor;
-		barrier.subresourceRange.baseMipLevel = 0;
-		barrier.subresourceRange.levelCount = 1;
-		barrier.subresourceRange.baseArrayLayer = 0;
-		barrier.subresourceRange.layerCount = 1;
-
-		vk::PipelineStageFlags sourceStage;
-		vk::PipelineStageFlags destinationStage;
-
-		if (oldLayout == vk::ImageLayout::eUndefined &&
-			newLayout == vk::ImageLayout::eTransferDstOptimal)
-		{
-			barrier.srcAccessMask = {};
-			barrier.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
-
-			sourceStage = vk::PipelineStageFlagBits::eTopOfPipe;
-			destinationStage = vk::PipelineStageFlagBits::eTransfer;
-		}
-		else if (oldLayout == vk::ImageLayout::eTransferDstOptimal &&
-			newLayout == vk::ImageLayout::eShaderReadOnlyOptimal)
-		{
-			barrier.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
-			barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
-
-			sourceStage = vk::PipelineStageFlagBits::eTransfer;
-			destinationStage = vk::PipelineStageFlagBits::eFragmentShader;
-		}
-		else
-		{
-			throw std::runtime_error("Unsupported image layout transition.");
-		}
-
-		commandBuffer.pipelineBarrier(
-			sourceStage,
-			destinationStage,
-			{},
-			nullptr,
-			nullptr,
-			barrier);
-
-		EndSingleTimeCommands(context, std::move(commandBuffer));
-	}
-
 	void CopyBufferToImage(
 		Nyx::VulkanContext& context,
 		vk::Buffer buffer,
@@ -158,7 +21,7 @@ namespace
 		uint32_t width,
 		uint32_t height)
 	{
-		vk::raii::CommandBuffer commandBuffer = BeginSingleTimeCommands(context);
+		vk::raii::CommandBuffer commandBuffer = Nyx::BeginSingleTimeCommands(context);
 
 		vk::BufferImageCopy region{};
 		region.bufferOffset = 0;
@@ -177,7 +40,7 @@ namespace
 			vk::ImageLayout::eTransferDstOptimal,
 			region);
 
-		EndSingleTimeCommands(context, std::move(commandBuffer));
+		Nyx::EndSingleTimeCommands(context, std::move(commandBuffer));
 	}
 }
 
@@ -367,7 +230,13 @@ namespace Nyx
 		Memory = vk::raii::DeviceMemory(context.GetDevice(), allocInfo);
 		Image.bindMemory(*Memory, 0);
 
-		TransitionImageLayout(context, *Image, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal);
+		const vk::ImageSubresourceRange wholeImage(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
+		{
+			vk::raii::CommandBuffer commandBuffer = BeginSingleTimeCommands(context);
+			TransitionImageLayout(*commandBuffer, *Image, wholeImage, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal,
+				vk::PipelineStageFlagBits::eTopOfPipe, {}, vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferWrite);
+			EndSingleTimeCommands(context, std::move(commandBuffer));
+		}
 
 		CopyBufferToImage(
 			context,
@@ -376,11 +245,12 @@ namespace Nyx
 			static_cast<uint32_t>(imageData.Width),
 			static_cast<uint32_t>(imageData.Height));
 
-		TransitionImageLayout(
-			context,
-			*Image,
-			vk::ImageLayout::eTransferDstOptimal,
-			vk::ImageLayout::eShaderReadOnlyOptimal);
+		{
+			vk::raii::CommandBuffer commandBuffer = BeginSingleTimeCommands(context);
+			TransitionImageLayout(*commandBuffer, *Image, wholeImage, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal,
+				vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferWrite, vk::PipelineStageFlagBits::eFragmentShader, vk::AccessFlagBits::eShaderRead);
+			EndSingleTimeCommands(context, std::move(commandBuffer));
+		}
 	}
 
 	void Texture::CreateImageView(VulkanContext& context)

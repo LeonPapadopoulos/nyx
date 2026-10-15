@@ -1,5 +1,6 @@
 #include "UIChrome.h"
 
+#include "ImGuiConversions.h"
 #include "UIAnimation.h"
 #include "UITheme.h"
 #include "WindowPainter.h"
@@ -123,17 +124,6 @@ namespace Nyx::UI
 		// _FG in imgui.cpp): its docked windows' backgrounds into this one, its tab bars into the
 		// next, which comes after it
 		constexpr int DockHostBackgroundChannel = 0;
-
-		// The rect at `position` of `size`, as ImGui gives windows, dock nodes and viewports
-		PainterRect RectAt(ImVec2 position, ImVec2 size)
-		{
-			return PainterRect{ { position.x, position.y }, { position.x + size.x, position.y + size.y } };
-		}
-
-		ImVec2 ToImVec2(glm::vec2 point)
-		{
-			return ImVec2(point.x, point.y);
-		}
 
 		// Whether the window fills an OS window of its own (ImGui's multi-viewports)
 		bool OwnsOsWindow(const ImGuiWindow& window)

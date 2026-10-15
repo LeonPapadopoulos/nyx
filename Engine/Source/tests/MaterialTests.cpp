@@ -10,6 +10,7 @@
 #include "MaterialAsset.h"
 #include "Paths.h"
 #include "ShaderCompiler.h"
+#include "TestSupport.h"
 
 #include <algorithm>
 #include <chrono>
@@ -29,13 +30,7 @@ namespace
 
 	const std::filesystem::path TestShaders = NYX_TEST_SHADERS_DIR;
 
-	void Require(bool condition, const std::string& message)
-	{
-		if (!condition)
-		{
-			throw std::runtime_error(message);
-		}
-	}
+	using Nyx::Tests::Require;
 
 	ShaderCompiler& Compiler()
 	{
@@ -98,18 +93,8 @@ namespace
 
 	struct TempFolder
 	{
-		std::filesystem::path Path = std::filesystem::temp_directory_path() / ("NyxMaterialTests-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
-
-		TempFolder()
-		{
-			std::filesystem::create_directories(Path);
-		}
-
-		~TempFolder()
-		{
-			std::error_code error;
-			std::filesystem::remove_all(Path, error);
-		}
+		Nyx::Tests::TestDirectory Directory{ "NyxMaterialTests" };
+		std::filesystem::path Path = Directory.Path;
 
 		std::filesystem::path Write(const std::string& name, const std::string& text) const
 		{

@@ -2,6 +2,7 @@
 #include "VulkanBindless.h"
 
 #include "VulkanContext.h"
+#include "VulkanUtil.h"
 
 #include <algorithm>
 #include <array>
@@ -19,19 +20,6 @@ namespace Nyx::Engine
 		constexpr uint32_t TextureBinding = 0;
 		constexpr uint32_t SamplerBinding = 1;
 		constexpr uint32_t MaterialBinding = 2;
-
-		uint32_t FindMemoryType(vk::PhysicalDevice physicalDevice, uint32_t typeFilter, vk::MemoryPropertyFlags properties)
-		{
-			const vk::PhysicalDeviceMemoryProperties memoryProperties = physicalDevice.getMemoryProperties();
-			for (uint32_t typeIndex = 0; typeIndex < memoryProperties.memoryTypeCount; ++typeIndex)
-			{
-				if ((typeFilter & (1u << typeIndex)) && (memoryProperties.memoryTypes[typeIndex].propertyFlags & properties) == properties)
-				{
-					return typeIndex;
-				}
-			}
-			throw std::runtime_error("Bindless: no suitable memory type");
-		}
 
 		std::vector<uint8_t> Filled(uint32_t width, uint32_t height, std::array<uint8_t, 4> color)
 		{
@@ -110,14 +98,8 @@ namespace Nyx::Engine
 
 	void VulkanBindless::CreateMaterialBuffer()
 	{
-		vk::raii::Device& device = Context->GetDevice();
-		vk::BufferCreateInfo bufferInfo{};
-		bufferInfo.size = MaterialBufferSize;
-		bufferInfo.usage = vk::BufferUsageFlagBits::eStorageBuffer;
-		MaterialBuffer = vk::raii::Buffer(device, bufferInfo);
-		const vk::MemoryRequirements requirements = MaterialBuffer.getMemoryRequirements();
-		MaterialMemory = vk::raii::DeviceMemory(device, vk::MemoryAllocateInfo(requirements.size, FindMemoryType(*Context->GetPhysicalDevice(), requirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent)));
-		MaterialBuffer.bindMemory(*MaterialMemory, 0);
+		CreateBuffer(*Context, MaterialBufferSize, vk::BufferUsageFlagBits::eStorageBuffer,
+			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, MaterialBuffer, MaterialMemory);
 		MaterialBytes = static_cast<std::byte*>(MaterialMemory.mapMemory(0, MaterialBufferSize));
 		std::memset(MaterialBytes, 0, MaterialBufferSize);
 	}
@@ -259,13 +241,10 @@ namespace Nyx::Engine
 		viewInfo.subresourceRange = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, levels, 0, layers);
 		texture.View = vk::raii::ImageView(device, viewInfo);
 
-		vk::BufferCreateInfo bufferInfo{};
-		bufferInfo.size = pixels.size();
-		bufferInfo.usage = vk::BufferUsageFlagBits::eTransferSrc;
-		vk::raii::Buffer staging(device, bufferInfo);
-		const vk::MemoryRequirements bufferRequirements = staging.getMemoryRequirements();
-		vk::raii::DeviceMemory stagingMemory(device, vk::MemoryAllocateInfo(bufferRequirements.size, FindMemoryType(*Context->GetPhysicalDevice(), bufferRequirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent)));
-		staging.bindMemory(*stagingMemory, 0);
+		vk::raii::Buffer staging{ nullptr };
+		vk::raii::DeviceMemory stagingMemory{ nullptr };
+		CreateBuffer(*Context, pixels.size(), vk::BufferUsageFlagBits::eTransferSrc,
+			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, staging, stagingMemory);
 		std::memcpy(stagingMemory.mapMemory(0, pixels.size()), pixels.data(), pixels.size());
 		stagingMemory.unmapMemory();
 
@@ -276,15 +255,8 @@ namespace Nyx::Engine
 		vk::raii::CommandBuffer upload = std::move(vk::raii::CommandBuffers(device, commandBufferInfo).front());
 		upload.begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
 
-		vk::ImageMemoryBarrier toCopy{};
-		toCopy.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
-		toCopy.oldLayout = vk::ImageLayout::eUndefined;
-		toCopy.newLayout = vk::ImageLayout::eTransferDstOptimal;
-		toCopy.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		toCopy.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		toCopy.image = *texture.Image;
-		toCopy.subresourceRange = viewInfo.subresourceRange;
-		upload.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, toCopy);
+		TransitionImageLayout(*upload, *texture.Image, viewInfo.subresourceRange, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal,
+			vk::PipelineStageFlagBits::eTopOfPipe, {}, vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferWrite);
 
 		vk::BufferImageCopy copy{};
 		copy.imageSubresource = vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, layers);
@@ -292,22 +264,14 @@ namespace Nyx::Engine
 		upload.copyBufferToImage(*staging, *texture.Image, vk::ImageLayout::eTransferDstOptimal, copy);
 
 		// Each mip from the one before, which is then done
-		vk::ImageMemoryBarrier toRead = toCopy;
-		toRead.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
-		toRead.dstAccessMask = vk::AccessFlagBits::eShaderRead;
-		toRead.oldLayout = vk::ImageLayout::eTransferDstOptimal;
-		toRead.newLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+		const vk::PipelineStageFlags readers = vk::PipelineStageFlagBits::eVertexShader | vk::PipelineStageFlagBits::eFragmentShader;
 		int32_t levelWidth = static_cast<int32_t>(width);
 		int32_t levelHeight = static_cast<int32_t>(height);
 		for (uint32_t level = 1; level < levels; ++level)
 		{
-			vk::ImageMemoryBarrier toSource = toCopy;
-			toSource.subresourceRange = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, level - 1, 1, 0, layers);
-			toSource.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
-			toSource.dstAccessMask = vk::AccessFlagBits::eTransferRead;
-			toSource.oldLayout = vk::ImageLayout::eTransferDstOptimal;
-			toSource.newLayout = vk::ImageLayout::eTransferSrcOptimal;
-			upload.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, toSource);
+			const vk::ImageSubresourceRange source(vk::ImageAspectFlagBits::eColor, level - 1, 1, 0, layers);
+			TransitionImageLayout(*upload, *texture.Image, source, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eTransferSrcOptimal,
+				vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferWrite, vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferRead);
 
 			const int32_t nextWidth = std::max(levelWidth / 2, 1);
 			const int32_t nextHeight = std::max(levelHeight / 2, 1);
@@ -318,18 +282,15 @@ namespace Nyx::Engine
 			blit.dstOffsets[1] = vk::Offset3D(nextWidth, nextHeight, 1);
 			upload.blitImage(*texture.Image, vk::ImageLayout::eTransferSrcOptimal, *texture.Image, vk::ImageLayout::eTransferDstOptimal, blit, vk::Filter::eLinear);
 
-			vk::ImageMemoryBarrier done = toSource;
-			done.srcAccessMask = vk::AccessFlagBits::eTransferRead;
-			done.dstAccessMask = vk::AccessFlagBits::eShaderRead;
-			done.oldLayout = vk::ImageLayout::eTransferSrcOptimal;
-			done.newLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-			upload.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eVertexShader | vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, done);
+			TransitionImageLayout(*upload, *texture.Image, source, vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::eShaderReadOnlyOptimal,
+				vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferRead, readers, vk::AccessFlagBits::eShaderRead);
 
 			levelWidth = nextWidth;
 			levelHeight = nextHeight;
 		}
-		toRead.subresourceRange = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, levels - 1, 1, 0, layers);
-		upload.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eVertexShader | vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, toRead);
+		TransitionImageLayout(*upload, *texture.Image, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, levels - 1, 1, 0, layers),
+			vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal,
+			vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferWrite, readers, vk::AccessFlagBits::eShaderRead);
 		upload.end();
 
 		vk::SubmitInfo submitInfo{};

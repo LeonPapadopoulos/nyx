@@ -6,6 +6,7 @@
 #include "Paths.h"
 #include "ShaderCompileService.h"
 #include "ShaderCompiler.h"
+#include "TestSupport.h"
 
 #include <chrono>
 #include <filesystem>
@@ -22,13 +23,7 @@ namespace
 
 	const std::filesystem::path TestShaders = NYX_TEST_SHADERS_DIR;
 
-	void Require(bool condition, const std::string& message)
-	{
-		if (!condition)
-		{
-			throw std::runtime_error(message);
-		}
-	}
+	using Nyx::Tests::Require;
 
 	std::vector<std::filesystem::path> SearchPaths()
 	{

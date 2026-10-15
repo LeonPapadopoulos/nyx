@@ -76,6 +76,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/SceneViewCameraData.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanImGuiBackend.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanContext.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanUtil.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanSwapchain.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/OffscreenRenderTarget.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanViewportTarget.cpp
@@ -122,6 +123,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/FrameRateLimiter.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/NetConnection.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/FileWatcher.h
+    ${NYX_ENGINE_ROOT}/Runtime/Core/include/StringUtil.h
     
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/NyxPCH.h
 
@@ -167,6 +169,7 @@ set(NYX_ENGINE_HEADERS
 
     # Runtime/Renderer
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ImGuiTheme.h
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ImGuiConversions.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ImGuiSource.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/Mesh.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/Shader.h
@@ -181,6 +184,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanImGuiBackend.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanRenderer.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanContext.h
+    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanUtil.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanSwapchain.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/OffscreenRenderTarget.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanViewportTarget.h

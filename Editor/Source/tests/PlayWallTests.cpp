@@ -2,6 +2,7 @@
 // which games Play and Play All start.
 #include "EditorPreferences.h"
 #include "PlayWall.h"
+#include "TestSupport.h"
 
 #include <cmath>
 #include <filesystem>
@@ -16,13 +17,7 @@ namespace
 	using Nyx::Engine::GameWindowPosition;
 	using Nyx::Engine::GameWindowSize;
 
-	void Require(bool condition, const std::string& message)
-	{
-		if (!condition)
-		{
-			throw std::runtime_error(message);
-		}
-	}
+	using Nyx::Tests::Require;
 
 	// A 1920x1080 monitor with a 40 pixel taskbar, and the frame measured on Windows 11 at 100%
 	PlayWallScreen MakeScreen(int width = 1920, int height = 1040)

@@ -13,6 +13,7 @@
 #include "PropertyWidgetRegistry.h"
 #include "ReflectedPropertyDrawer.h"
 #include "ReflectionUtils.h"
+#include "TestSupport.h"
 
 #include <imgui.h>
 
@@ -27,13 +28,8 @@
 
 namespace
 {
-	void Require(bool condition, const char* message)
-	{
-		if (!condition)
-		{
-			throw std::runtime_error(message);
-		}
-	}
+	using Nyx::Tests::Require;
+	using Nyx::Tests::TestDirectory;
 
 	// What the details panel's string widget was drawn with
 	struct DrawnStringField
@@ -107,35 +103,6 @@ namespace
 		editing.Redo();
 		Require(editing.Scene.GetRegistry().Get<Nyx::Engine::MeshRendererComponent>(entity).Material.Path == "Materials/Stone.nyxmat", "Redo didn't assign the material again");
 	}
-
-	class TestDirectory
-	{
-	public:
-		TestDirectory()
-		{
-			const auto timestamp = std::chrono::steady_clock::now().time_since_epoch().count();
-			for (int attempt = 0; attempt < 64; ++attempt)
-			{
-				const auto candidate = std::filesystem::temp_directory_path() /
-					("NyxEditorSceneTests-" + std::to_string(timestamp) + "-" + std::to_string(attempt));
-				if (std::filesystem::create_directory(candidate))
-				{
-					Path = candidate;
-					return;
-				}
-			}
-			throw std::runtime_error("Could not create the test directory");
-		}
-
-		~TestDirectory()
-		{
-			// Only remove the directory this test created, never an existing directory.
-			std::error_code ignored;
-			std::filesystem::remove_all(Path, ignored);
-		}
-
-		std::filesystem::path Path;
-	};
 }
 
 namespace Nyx::Tests
@@ -366,7 +333,7 @@ int main()
 	{
 		Nyx::Core::Logger::Get().Init();
 		Nyx::Engine::RegisterComponentTypes();
-		TestDirectory directory;
+		TestDirectory directory("NyxEditorSceneTests");
 		const auto validPath = directory.Path / "replacement.nyxscene";
 		Nyx::SceneDocument replacement;
 		const auto entity = replacement.CreateEntity("Replacement");

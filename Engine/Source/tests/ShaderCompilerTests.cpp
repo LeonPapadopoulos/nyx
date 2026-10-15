@@ -4,6 +4,7 @@
 // SPIR-V is checked with SPIRV-Tools' validator.
 #include "Paths.h"
 #include "ShaderCompiler.h"
+#include "TestSupport.h"
 
 #include <spirv-tools/libspirv.h>
 
@@ -27,13 +28,7 @@ namespace
 	// What glslc made of the engine's GLSL shaders (NyxGlslcReference), to compare Slang's with
 	const std::filesystem::path GlslcShaders = NYX_GLSLC_SHADERS_DIR;
 
-	void Require(bool condition, const std::string& message)
-	{
-		if (!condition)
-		{
-			throw std::runtime_error(message);
-		}
-	}
+	using Nyx::Tests::Require;
 
 	std::string DescribeDiagnostics(const ShaderCompileResult& result)
 	{

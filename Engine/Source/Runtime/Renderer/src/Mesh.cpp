@@ -4,62 +4,10 @@
 #include "Resource.h"
 #include <vulkan/vulkan_raii.hpp>
 #include "VulkanContext.h"
+#include "VulkanUtil.h"
 
 #include <cmath>
 #include <vector>
-
-namespace
-{
-	uint32_t FindMemoryType(
-		vk::PhysicalDevice physicalDevice,
-		uint32_t typeFilter,
-		vk::MemoryPropertyFlags properties)
-	{
-		const vk::PhysicalDeviceMemoryProperties memoryProperties = physicalDevice.getMemoryProperties();
-
-		for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; ++i)
-		{
-			const bool bTypeMatches = (typeFilter & (1u << i)) != 0;
-			const bool bPropertyMatches =
-				(memoryProperties.memoryTypes[i].propertyFlags & properties) == properties;
-
-			if (bTypeMatches && bPropertyMatches)
-			{
-				return i;
-			}
-		}
-
-		throw std::runtime_error("Failed to find suitable Vulkan memory type.");
-	}
-
-	void CreateBuffer(
-		Nyx::VulkanContext& context,
-		vk::DeviceSize size,
-		vk::BufferUsageFlags usage,
-		vk::MemoryPropertyFlags properties,
-		vk::raii::Buffer& outBuffer,
-		vk::raii::DeviceMemory& outMemory)
-	{
-		vk::BufferCreateInfo bufferInfo{};
-		bufferInfo.size = size;
-		bufferInfo.usage = usage;
-		bufferInfo.sharingMode = vk::SharingMode::eExclusive;
-
-		outBuffer = vk::raii::Buffer(context.GetDevice(), bufferInfo);
-
-		const vk::MemoryRequirements memRequirements = outBuffer.getMemoryRequirements();
-
-		vk::MemoryAllocateInfo allocInfo{};
-		allocInfo.allocationSize = memRequirements.size;
-		allocInfo.memoryTypeIndex = FindMemoryType(
-			*context.GetPhysicalDevice(),
-			memRequirements.memoryTypeBits,
-			properties);
-
-		outMemory = vk::raii::DeviceMemory(context.GetDevice(), allocInfo);
-		outBuffer.bindMemory(*outMemory, 0);
-	}
-}
 
 namespace Nyx
 {

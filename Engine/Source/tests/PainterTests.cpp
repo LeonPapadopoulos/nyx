@@ -6,6 +6,7 @@
 #include "PainterTiles.h"
 #include "UIDiagnostics.h"
 #include "WindowPainter.h"
+#include "TestSupport.h"
 
 #include <imgui_internal.h> // ImRect
 
@@ -27,13 +28,7 @@ namespace
 	const glm::vec4 Orange{ 1.0f, 0.5f, 0.0f, 1.0f };
 	const glm::vec4 Black{ 0.0f, 0.0f, 0.0f, 1.0f };
 
-	void Require(bool condition, const std::string& message)
-	{
-		if (!condition)
-		{
-			throw std::runtime_error(message);
-		}
-	}
+	using Nyx::Tests::Require;
 
 	bool Near(float a, float b)
 	{

@@ -1,5 +1,7 @@
 #include "ShaderPrograms.h"
 
+#include "StringUtil.h"
+
 #include <algorithm>
 #include <cctype>
 #include <fstream>
@@ -15,11 +17,7 @@ namespace Nyx::Engine
 		{
 			std::error_code error;
 			std::filesystem::path absolute = std::filesystem::absolute(path, error);
-			std::string key = (error ? path : absolute).lexically_normal().generic_string();
-			std::transform(key.begin(), key.end(), key.begin(), [](unsigned char c)
-				{
-					return static_cast<char>(std::tolower(c));
-				});
+			std::string key = ToLower((error ? path : absolute).lexically_normal().generic_string());
 			while (!key.empty() && key.back() == '/')
 			{
 				key.pop_back();

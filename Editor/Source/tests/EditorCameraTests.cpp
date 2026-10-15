@@ -3,6 +3,7 @@
 #include "EditorCameraController.h"
 #include "Log.h"
 #include "VirtualInputBackend.h"
+#include "TestSupport.h"
 
 #include <cmath>
 #include <iostream>
@@ -15,13 +16,7 @@ namespace
 	using namespace Nyx::Editor;
 	using namespace Nyx::Input;
 
-	void Require(bool condition, const std::string& message)
-	{
-		if (!condition)
-		{
-			throw std::runtime_error(message);
-		}
-	}
+	using Nyx::Tests::Require;
 
 	bool Near(float a, float b)
 	{

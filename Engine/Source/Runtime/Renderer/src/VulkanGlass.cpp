@@ -2,6 +2,7 @@
 #include "VulkanGlass.h"
 
 #include "VulkanContext.h"
+#include "VulkanUtil.h"
 
 #include <array>
 #include <stdexcept>
@@ -14,18 +15,6 @@ namespace Nyx::Engine
 		// three times, to 1/8, so a little of the shapes behind still shows through.
 		const BlurOptions GlassBlur{ 3, 1 };
 
-		uint32_t FindMemoryType(vk::PhysicalDevice physicalDevice, uint32_t typeFilter, vk::MemoryPropertyFlags properties)
-		{
-			const vk::PhysicalDeviceMemoryProperties memoryProperties = physicalDevice.getMemoryProperties();
-			for (uint32_t typeIndex = 0; typeIndex < memoryProperties.memoryTypeCount; ++typeIndex)
-			{
-				if ((typeFilter & (1u << typeIndex)) && (memoryProperties.memoryTypes[typeIndex].propertyFlags & properties) == properties)
-				{
-					return typeIndex;
-				}
-			}
-			throw std::runtime_error("Glass: no suitable memory type");
-		}
 	}
 
 	void VulkanGlassBackdrop::Record(vk::raii::CommandBuffer& commandBuffer, VulkanContext& context, VulkanBlur& blur, vk::Format format, vk::Extent2D extent,
@@ -54,16 +43,10 @@ namespace Nyx::Engine
 		commandBuffer.endRenderPass();
 
 		// Drawn, then sampled by the blur
-		vk::ImageMemoryBarrier toSampled{};
-		toSampled.srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
-		toSampled.dstAccessMask = vk::AccessFlagBits::eShaderRead;
-		toSampled.oldLayout = vk::ImageLayout::eColorAttachmentOptimal;
-		toSampled.newLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-		toSampled.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		toSampled.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		toSampled.image = *Image;
-		toSampled.subresourceRange = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
-		commandBuffer.pipelineBarrier(vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, toSampled);
+		TransitionImageLayout(*commandBuffer, *Image, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1),
+			vk::ImageLayout::eColorAttachmentOptimal, vk::ImageLayout::eShaderReadOnlyOptimal,
+			vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::AccessFlagBits::eColorAttachmentWrite,
+			vk::PipelineStageFlagBits::eFragmentShader, vk::AccessFlagBits::eShaderRead);
 
 		blur.Blur(commandBuffer, *View, Extent, Blurred, GlassBlur);
 	}

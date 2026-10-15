@@ -8,6 +8,7 @@
 #include "VulkanImGuiBackend.h"
 #include "VulkanContext.h"
 #include "VulkanSwapchain.h"
+#include "VulkanUtil.h"
 #include "Log.h"
 #include "GltfImporter.h"
 #include "TransformComponent.h"
@@ -1741,6 +1742,7 @@ namespace Nyx
 
 		// Readback buffer for one uint32
 		CreateBuffer(
+			Context,
 			sizeof(uint32_t),
 			vk::BufferUsageFlagBits::eTransferDst,
 			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
@@ -2553,6 +2555,7 @@ namespace Nyx
 		// Per-view scene UBO
 		// ---------------------------------------------------------
 		CreateBuffer(
+			Context,
 			sizeof(SceneUBO),
 			vk::BufferUsageFlagBits::eUniformBuffer,
 			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
@@ -2731,28 +2734,6 @@ namespace Nyx
 		PlaneMesh.Upload(Context, Nyx::MakePlane(1.0f));
 	}
 
-	void VulkanRenderer::CreateBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage, vk::MemoryPropertyFlags properties, vk::raii::Buffer& outBuffer, vk::raii::DeviceMemory& outMemory)
-	{
-		vk::BufferCreateInfo bufferInfo{};
-		bufferInfo.size = size;
-		bufferInfo.usage = usage;
-		bufferInfo.sharingMode = vk::SharingMode::eExclusive;
-
-		outBuffer = vk::raii::Buffer(Context.GetDevice(), bufferInfo);
-
-		const vk::MemoryRequirements memRequirements = outBuffer.getMemoryRequirements();
-
-		vk::MemoryAllocateInfo allocInfo{};
-		allocInfo.allocationSize = memRequirements.size;
-		allocInfo.memoryTypeIndex = FindMemoryType(
-			*Context.GetPhysicalDevice(),
-			memRequirements.memoryTypeBits,
-			properties);
-
-		outMemory = vk::raii::DeviceMemory(Context.GetDevice(), allocInfo);
-		outBuffer.bindMemory(*outMemory, 0);
-	}
-
 	void VulkanRenderer::CreateImage(
 		uint32_t width,
 		uint32_t height,
@@ -2802,22 +2783,6 @@ namespace Nyx
 		viewInfo.subresourceRange.layerCount = 1;
 
 		outImageView = vk::raii::ImageView(Context.GetDevice(), viewInfo);
-	}
-
-	uint32_t VulkanRenderer::FindMemoryType(vk::PhysicalDevice physicalDevice, uint32_t typeFilter, vk::MemoryPropertyFlags properties)
-	{
-		const vk::PhysicalDeviceMemoryProperties memProperties = physicalDevice.getMemoryProperties();
-
-		for (uint32_t i = 0; i < memProperties.memoryTypeCount; ++i)
-		{
-			if ((typeFilter & (1 << i)) &&
-				(memProperties.memoryTypes[i].propertyFlags & properties) == properties)
-			{
-				return i;
-			}
-		}
-
-		throw std::runtime_error("Failed to find suitable memory type.");
 	}
 
 	void VulkanRenderer::StartLiveShaderReload()
@@ -3906,14 +3871,10 @@ namespace Nyx
 
 		// The pixels go through a host-visible buffer, in a short submission of its own. Images are
 		// made rarely (a file opened), so waiting for it is fine.
-		vk::BufferCreateInfo bufferInfo{};
-		bufferInfo.size = source.Pixels.size();
-		bufferInfo.usage = vk::BufferUsageFlagBits::eTransferSrc;
-		vk::raii::Buffer staging(device, bufferInfo);
-		const vk::MemoryRequirements bufferRequirements = staging.getMemoryRequirements();
-		vk::raii::DeviceMemory stagingMemory(device, vk::MemoryAllocateInfo(bufferRequirements.size,
-			FindMemoryType(*Context.GetPhysicalDevice(), bufferRequirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent)));
-		staging.bindMemory(*stagingMemory, 0);
+		vk::raii::Buffer staging{ nullptr };
+		vk::raii::DeviceMemory stagingMemory{ nullptr };
+		CreateBuffer(Context, source.Pixels.size(), vk::BufferUsageFlagBits::eTransferSrc,
+			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, staging, stagingMemory);
 		std::memcpy(stagingMemory.mapMemory(0, source.Pixels.size()), source.Pixels.data(), source.Pixels.size());
 		stagingMemory.unmapMemory();
 
@@ -3924,27 +3885,17 @@ namespace Nyx
 		vk::raii::CommandBuffer upload = std::move(vk::raii::CommandBuffers(device, commandBufferInfo).front());
 		upload.begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
 
-		vk::ImageMemoryBarrier toCopy{};
-		toCopy.dstAccessMask = vk::AccessFlagBits::eTransferWrite;
-		toCopy.oldLayout = vk::ImageLayout::eUndefined;
-		toCopy.newLayout = vk::ImageLayout::eTransferDstOptimal;
-		toCopy.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		toCopy.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		toCopy.image = *image->Image;
-		toCopy.subresourceRange = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
-		upload.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, toCopy);
+		const vk::ImageSubresourceRange wholeImage(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
+		TransitionImageLayout(*upload, *image->Image, wholeImage, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal,
+			vk::PipelineStageFlagBits::eTopOfPipe, {}, vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferWrite);
 
 		vk::BufferImageCopy copy{};
 		copy.imageSubresource = vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1);
 		copy.imageExtent = imageInfo.extent;
 		upload.copyBufferToImage(*staging, *image->Image, vk::ImageLayout::eTransferDstOptimal, copy);
 
-		vk::ImageMemoryBarrier toRead = toCopy;
-		toRead.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
-		toRead.dstAccessMask = vk::AccessFlagBits::eShaderRead;
-		toRead.oldLayout = vk::ImageLayout::eTransferDstOptimal;
-		toRead.newLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-		upload.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, toRead);
+		TransitionImageLayout(*upload, *image->Image, wholeImage, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal,
+			vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferWrite, vk::PipelineStageFlagBits::eFragmentShader, vk::AccessFlagBits::eShaderRead);
 		upload.end();
 
 		vk::SubmitInfo submitInfo{};
@@ -4010,14 +3961,10 @@ namespace Nyx
 
 		const vk::Extent2D extent = view->RenderTarget.GetExtent();
 		const vk::DeviceSize byteCount = static_cast<vk::DeviceSize>(extent.width) * extent.height * 4;
-		vk::BufferCreateInfo bufferInfo{};
-		bufferInfo.size = byteCount;
-		bufferInfo.usage = vk::BufferUsageFlagBits::eTransferDst;
-		vk::raii::Buffer readback(device, bufferInfo);
-		const vk::MemoryRequirements requirements = readback.getMemoryRequirements();
-		vk::raii::DeviceMemory readbackMemory(device, vk::MemoryAllocateInfo(requirements.size,
-			FindMemoryType(*Context.GetPhysicalDevice(), requirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent)));
-		readback.bindMemory(*readbackMemory, 0);
+		vk::raii::Buffer readback{ nullptr };
+		vk::raii::DeviceMemory readbackMemory{ nullptr };
+		CreateBuffer(Context, byteCount, vk::BufferUsageFlagBits::eTransferDst,
+			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, readback, readbackMemory);
 
 		vk::CommandBufferAllocateInfo commandBufferInfo{};
 		commandBufferInfo.commandPool = *Context.GetGraphicsCommandPool();
@@ -4027,28 +3974,17 @@ namespace Nyx
 		copyCommands.begin(vk::CommandBufferBeginInfo{ vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
 
 		// The picture is left ShaderReadOnlyOptimal by its render pass, and goes back to that
-		vk::ImageMemoryBarrier toCopy{};
-		toCopy.srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
-		toCopy.dstAccessMask = vk::AccessFlagBits::eTransferRead;
-		toCopy.oldLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-		toCopy.newLayout = vk::ImageLayout::eTransferSrcOptimal;
-		toCopy.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		toCopy.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		toCopy.image = view->RenderTarget.GetImage();
-		toCopy.subresourceRange = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
-		copyCommands.pipelineBarrier(vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, toCopy);
+		const vk::ImageSubresourceRange wholeImage(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
+		TransitionImageLayout(*copyCommands, view->RenderTarget.GetImage(), wholeImage, vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageLayout::eTransferSrcOptimal,
+			vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::AccessFlagBits::eColorAttachmentWrite, vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferRead);
 
 		vk::BufferImageCopy copy{};
 		copy.imageSubresource = vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1);
 		copy.imageExtent = vk::Extent3D(extent.width, extent.height, 1);
 		copyCommands.copyImageToBuffer(view->RenderTarget.GetImage(), vk::ImageLayout::eTransferSrcOptimal, *readback, copy);
 
-		vk::ImageMemoryBarrier toRead = toCopy;
-		toRead.srcAccessMask = vk::AccessFlagBits::eTransferRead;
-		toRead.dstAccessMask = vk::AccessFlagBits::eShaderRead;
-		toRead.oldLayout = vk::ImageLayout::eTransferSrcOptimal;
-		toRead.newLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-		copyCommands.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, toRead);
+		TransitionImageLayout(*copyCommands, view->RenderTarget.GetImage(), wholeImage, vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::eShaderReadOnlyOptimal,
+			vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferRead, vk::PipelineStageFlagBits::eFragmentShader, vk::AccessFlagBits::eShaderRead);
 		copyCommands.end();
 
 		vk::SubmitInfo submitInfo{};
@@ -4122,39 +4058,23 @@ namespace Nyx
 		vk::raii::Device& device = Context.GetDevice();
 
 		const vk::DeviceSize byteCount = static_cast<vk::DeviceSize>(request.Region.extent.width) * request.Region.extent.height * 4;
-		vk::BufferCreateInfo bufferInfo{};
-		bufferInfo.size = byteCount;
-		bufferInfo.usage = vk::BufferUsageFlagBits::eTransferDst;
-		request.Buffer = vk::raii::Buffer(device, bufferInfo);
-		const vk::MemoryRequirements requirements = request.Buffer.getMemoryRequirements();
-		request.Memory = vk::raii::DeviceMemory(device, vk::MemoryAllocateInfo(requirements.size,
-			FindMemoryType(*Context.GetPhysicalDevice(), requirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent)));
-		request.Buffer.bindMemory(*request.Memory, 0);
+		CreateBuffer(Context, byteCount, vk::BufferUsageFlagBits::eTransferDst,
+			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, request.Buffer, request.Memory);
 
 		// The render pass left the image ready to present; it is copied from, then made ready again.
-		vk::ImageMemoryBarrier toCopy{};
-		toCopy.srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite;
-		toCopy.dstAccessMask = vk::AccessFlagBits::eTransferRead;
-		toCopy.oldLayout = vk::ImageLayout::ePresentSrcKHR;
-		toCopy.newLayout = vk::ImageLayout::eTransferSrcOptimal;
-		toCopy.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		toCopy.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		toCopy.image = Swapchain.GetImages()[imageIndex];
-		toCopy.subresourceRange = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
-		cmd.pipelineBarrier(vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, toCopy);
+		const vk::Image swapchainImage = Swapchain.GetImages()[imageIndex];
+		const vk::ImageSubresourceRange wholeImage(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
+		TransitionImageLayout(*cmd, swapchainImage, wholeImage, vk::ImageLayout::ePresentSrcKHR, vk::ImageLayout::eTransferSrcOptimal,
+			vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::AccessFlagBits::eColorAttachmentWrite, vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferRead);
 
 		vk::BufferImageCopy copy{};
 		copy.imageSubresource = vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1);
 		copy.imageOffset = vk::Offset3D(request.Region.offset.x, request.Region.offset.y, 0);
 		copy.imageExtent = vk::Extent3D(request.Region.extent.width, request.Region.extent.height, 1);
-		cmd.copyImageToBuffer(toCopy.image, vk::ImageLayout::eTransferSrcOptimal, *request.Buffer, copy);
+		cmd.copyImageToBuffer(swapchainImage, vk::ImageLayout::eTransferSrcOptimal, *request.Buffer, copy);
 
-		vk::ImageMemoryBarrier toPresent = toCopy;
-		toPresent.srcAccessMask = vk::AccessFlagBits::eTransferRead;
-		toPresent.dstAccessMask = {};
-		toPresent.oldLayout = vk::ImageLayout::eTransferSrcOptimal;
-		toPresent.newLayout = vk::ImageLayout::ePresentSrcKHR;
-		cmd.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eBottomOfPipe, {}, {}, {}, toPresent);
+		TransitionImageLayout(*cmd, swapchainImage, wholeImage, vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::ePresentSrcKHR,
+			vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferRead, vk::PipelineStageFlagBits::eBottomOfPipe, {});
 
 		request.bRecorded = true;
 	}
@@ -4271,6 +4191,7 @@ namespace Nyx
 	void VulkanRenderer::CreateDebugLineResources()
 	{
 		CreateBuffer(
+			Context,
 			sizeof(DebugLineVertex) * MaxDebugLineVertices,
 			vk::BufferUsageFlagBits::eVertexBuffer,
 			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,

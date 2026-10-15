@@ -1,6 +1,7 @@
 // The game's command line: what the editor writes with MakeGameArguments() and the game reads
 // with ParseGameArguments().
 #include "GameLaunchOptions.h"
+#include "TestSupport.h"
 
 #include <iostream>
 #include <stdexcept>
@@ -12,13 +13,7 @@ namespace
 {
 	using namespace Nyx::Engine;
 
-	void Require(bool condition, const std::string& message)
-	{
-		if (!condition)
-		{
-			throw std::runtime_error(message);
-		}
-	}
+	using Nyx::Tests::Require;
 
 	GameLaunchOptions Parse(const std::vector<std::string>& arguments, std::vector<std::string>& outWarnings)
 	{

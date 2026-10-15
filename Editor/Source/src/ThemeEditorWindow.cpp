@@ -6,6 +6,7 @@
 #include "ImGuiTheme.h"
 #include "Log.h"
 #include "Paths.h"
+#include "StringUtil.h"
 #include "UIWidgets.h"
 
 #include "imgui.h"
@@ -28,15 +29,6 @@ namespace Nyx::Editor
 
 		// How often the file's time is looked at, in seconds
 		constexpr double FileCheckInterval = 0.5;
-
-		// Whether `text` holds `part`, ignoring case
-		bool ContainsIgnoringCase(std::string_view text, std::string_view part)
-		{
-			return std::search(text.begin(), text.end(), part.begin(), part.end(), [](char a, char b)
-					   {
-						   return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b));
-					   }) != text.end();
-		}
 
 		bool Matches(const ThemeValue& value, const std::string& filter)
 		{

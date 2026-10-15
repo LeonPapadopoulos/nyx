@@ -3,6 +3,7 @@
 
 #include "Paths.h"
 #include "VulkanContext.h"
+#include "VulkanUtil.h"
 
 #include <algorithm>
 #include <array>
@@ -40,19 +41,6 @@ namespace Nyx::Engine
 		};
 
 		static_assert(sizeof(BlurPushConstants) == 32, "Blur.frag reads exactly 32 bytes of push constants");
-
-		uint32_t FindMemoryType(vk::PhysicalDevice physicalDevice, uint32_t typeFilter, vk::MemoryPropertyFlags properties)
-		{
-			const vk::PhysicalDeviceMemoryProperties memoryProperties = physicalDevice.getMemoryProperties();
-			for (uint32_t typeIndex = 0; typeIndex < memoryProperties.memoryTypeCount; ++typeIndex)
-			{
-				if ((typeFilter & (1u << typeIndex)) && (memoryProperties.memoryTypes[typeIndex].propertyFlags & properties) == properties)
-				{
-					return typeIndex;
-				}
-			}
-			throw std::runtime_error("Blur: no suitable memory type");
-		}
 
 		// Half the size, at least one pixel
 		vk::Extent2D Halved(vk::Extent2D extent)

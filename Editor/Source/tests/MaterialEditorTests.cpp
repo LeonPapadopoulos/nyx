@@ -19,6 +19,8 @@
 #include "Workspaces.h"
 #include "Renderer.h"
 #include "ShaderLayout.h"
+#include "HeadlessUI.h"
+#include "TestSupport.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -47,27 +49,17 @@ namespace
 	using Nyx::Engine::ShaderField;
 	using Nyx::Engine::ShaderLayout;
 
-	void Require(bool condition, const std::string& message)
-	{
-		if (!condition)
-		{
-			throw std::runtime_error(message);
-		}
-	}
+	using Nyx::Tests::HeadlessUI;
+	using Nyx::Tests::Require;
 
 	struct TempAssets
 	{
-		std::filesystem::path Path = std::filesystem::temp_directory_path() / ("NyxMaterialEditorTests-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+		Nyx::Tests::TestDirectory Directory{ "NyxMaterialEditorTests" };
+		std::filesystem::path Path = Directory.Path;
 
 		TempAssets()
 		{
 			std::filesystem::create_directories(Path / "Materials");
-		}
-
-		~TempAssets()
-		{
-			std::error_code error;
-			std::filesystem::remove_all(Path, error);
 		}
 
 		void Write(const std::string& name, const std::string& text) const
@@ -211,51 +203,6 @@ namespace
 				}
 			}
 			return {};
-		}
-	};
-
-	// A headless ImGui context for the duration of a test
-	class HeadlessUI
-	{
-	public:
-		HeadlessUI()
-		{
-			ImGui::CreateContext();
-			ImGuiIO& io = ImGui::GetIO();
-			io.IniFilename = nullptr;
-			io.DisplaySize = ImVec2(1280, 800);
-			io.DeltaTime = 1.0f / 60.0f;
-			unsigned char* pixels = nullptr;
-			int width = 0;
-			int height = 0;
-			io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
-		}
-
-		~HeadlessUI()
-		{
-			ImGui::DestroyContext();
-		}
-
-		void Frame(const std::function<void()>& draw)
-		{
-			ImGui::NewFrame();
-			draw();
-			ImGui::Render();
-		}
-
-		// One frame in which the key (with Ctrl, and Shift when asked) is pressed, then one in
-		// which it is released
-		void Press(ImGuiKey key, bool bCtrl, bool bShift, const std::function<void()>& draw)
-		{
-			ImGuiIO& io = ImGui::GetIO();
-			io.AddKeyEvent(ImGuiMod_Ctrl, bCtrl);
-			io.AddKeyEvent(ImGuiMod_Shift, bShift);
-			io.AddKeyEvent(key, true);
-			Frame(draw);
-			io.AddKeyEvent(key, false);
-			io.AddKeyEvent(ImGuiMod_Shift, false);
-			io.AddKeyEvent(ImGuiMod_Ctrl, false);
-			Frame(draw);
 		}
 	};
 

@@ -3,6 +3,7 @@
 // wrong are reported with their line numbers while the others are read.
 #include "Paths.h"
 #include "UIThemeFile.h"
+#include "TestSupport.h"
 
 #include <algorithm>
 #include <cmath>
@@ -20,13 +21,7 @@ namespace
 {
 	using namespace Nyx::UI;
 
-	void Require(bool condition, const std::string& message)
-	{
-		if (!condition)
-		{
-			throw std::runtime_error(message);
-		}
-	}
+	using Nyx::Tests::Require;
 
 	bool Near(const glm::vec4& a, const glm::vec4& b, float tolerance)
 	{

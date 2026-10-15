@@ -8,6 +8,7 @@
 #include "Paths.h"
 #include "VulkanImGuiBackend.h" // VulkanRenderer's destructor needs it
 #include "VulkanRenderer.h"
+#include "TestSupport.h"
 
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
@@ -28,13 +29,7 @@ namespace Nyx::RenderTests
 {
 	using Nyx::Engine::RgbaImage;
 
-	inline void Require(bool condition, const std::string& message)
-	{
-		if (!condition)
-		{
-			throw std::runtime_error(message);
-		}
-	}
+	using Nyx::Tests::Require;
 
 	// A hidden window, and a renderer drawing into it
 	class SceneRenderer

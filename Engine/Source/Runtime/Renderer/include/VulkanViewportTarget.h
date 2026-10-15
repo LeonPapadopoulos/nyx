@@ -66,11 +66,6 @@ namespace Nyx
 
 		vk::Format FindDepthFormat(vk::PhysicalDevice physicalDevice);
 
-		uint32_t FindMemoryType(
-			vk::PhysicalDevice physicalDevice,
-			uint32_t typeFilter,
-			vk::MemoryPropertyFlags properties);
-
 	private:
 		vk::Extent2D Extent{ 0, 0 };
 		vk::Format Format = vk::Format::eUndefined;

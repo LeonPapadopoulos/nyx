@@ -25,6 +25,8 @@
 #include "UIThemeFile.h"
 #include "UIWidgets.h"
 #include "WindowPainter.h"
+#include "HeadlessUI.h"
+#include "TestSupport.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -44,13 +46,8 @@ namespace
 	using namespace Nyx::Engine;
 	using namespace Nyx::Editor;
 
-	void Require(bool condition, const std::string& message)
-	{
-		if (!condition)
-		{
-			throw std::runtime_error(message);
-		}
-	}
+	using Nyx::Tests::HeadlessUI;
+	using Nyx::Tests::Require;
 
 	size_t CountEntities(const SceneEditor& editing)
 	{
@@ -66,51 +63,6 @@ namespace
 	{
 		return editing.Scene.GetRegistry().Get<NameComponent>(entity).Name;
 	}
-
-	// A headless ImGui context for the duration of a test
-	class HeadlessUI
-	{
-	public:
-		HeadlessUI()
-		{
-			ImGui::CreateContext();
-			ImGuiIO& io = ImGui::GetIO();
-			io.IniFilename = nullptr;
-			io.DisplaySize = ImVec2(1280, 800);
-			io.DeltaTime = 1.0f / 60.0f;
-			unsigned char* pixels = nullptr;
-			int width = 0;
-			int height = 0;
-			io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
-		}
-
-		~HeadlessUI()
-		{
-			ImGui::DestroyContext();
-		}
-
-		void Frame(const std::function<void()>& draw)
-		{
-			ImGui::NewFrame();
-			draw();
-			ImGui::Render();
-		}
-
-		// One frame in which the key chord is pressed, then one in which it is released
-		void PressChord(ImGuiKey key, bool bShift, const std::function<void()>& handle)
-		{
-			ImGuiIO& io = ImGui::GetIO();
-			io.AddKeyEvent(ImGuiMod_Ctrl, true);
-			io.AddKeyEvent(ImGuiMod_Shift, bShift);
-			io.AddKeyEvent(key, true);
-			Frame(handle);
-
-			io.AddKeyEvent(key, false);
-			io.AddKeyEvent(ImGuiMod_Shift, false);
-			io.AddKeyEvent(ImGuiMod_Ctrl, false);
-			Frame(handle);
-		}
-	};
 
 	void TestCreateAndDeleteAreUndoable()
 	{
@@ -208,22 +160,22 @@ namespace
 		const Entity cube = editing.Scene.CreateEntity("Cube");
 		editing.Scene.GetSelection() = cube;
 
-		ui.PressChord(ImGuiKey_D, false, handle);
+		ui.Press(ImGuiKey_D, true, false, handle);
 		Require(CountEntities(editing) == 2, "Ctrl+D should duplicate");
 
-		ui.PressChord(ImGuiKey_Z, false, handle);
+		ui.Press(ImGuiKey_Z, true, false, handle);
 		Require(CountEntities(editing) == 1, "Ctrl+Z should undo");
 
-		ui.PressChord(ImGuiKey_Z, true, handle);
+		ui.Press(ImGuiKey_Z, true, true, handle);
 		Require(CountEntities(editing) == 2, "Ctrl+Shift+Z should redo");
 
-		ui.PressChord(ImGuiKey_Z, false, handle);
-		ui.PressChord(ImGuiKey_Y, false, handle);
+		ui.Press(ImGuiKey_Z, true, false, handle);
+		ui.Press(ImGuiKey_Y, true, false, handle);
 		Require(CountEntities(editing) == 2, "Ctrl+Y should redo");
 
 		editing.Scene.GetSelection() = cube;
-		ui.PressChord(ImGuiKey_C, false, handle);
-		ui.PressChord(ImGuiKey_V, false, handle);
+		ui.Press(ImGuiKey_C, true, false, handle);
+		ui.Press(ImGuiKey_V, true, false, handle);
 		Require(CountEntities(editing) == 3 && editing.CanPaste(), "Ctrl+C and Ctrl+V should copy and paste");
 	}
 

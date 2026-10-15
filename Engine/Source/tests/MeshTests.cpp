@@ -2,6 +2,7 @@
 // the bitangent, cross(normal, tangent) * w, up the image (falling v); on the sphere every tangent
 // is of unit length, perpendicular to its normal, and the faces wind counter-clockwise outside.
 #include "Mesh.h"
+#include "TestSupport.h"
 
 #include <cmath>
 #include <iostream>
@@ -10,13 +11,7 @@
 
 namespace
 {
-	void Require(bool condition, const std::string& message)
-	{
-		if (!condition)
-		{
-			throw std::runtime_error(message);
-		}
-	}
+	using Nyx::Tests::Require;
 
 	bool Near(const glm::vec3& a, const glm::vec3& b, float tolerance = 1e-4f)
 	{

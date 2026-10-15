@@ -1,6 +1,7 @@
 // The frame rate cap (FrameRateLimiter): when each frame is due, and that waiting holds a loop to
 // its pace on the real clock.
 #include "FrameRateLimiter.h"
+#include "TestSupport.h"
 
 #include <chrono>
 #include <iostream>
@@ -13,13 +14,7 @@ namespace
 	using Clock = FrameRateLimiter::Clock;
 	using namespace std::chrono_literals;
 
-	void Require(bool condition, const std::string& message)
-	{
-		if (!condition)
-		{
-			throw std::runtime_error(message);
-		}
-	}
+	using Nyx::Tests::Require;
 
 	// A frame on time, or a little late, keeps the pace: the next is due one interval after this one was.
 	void TestFramesKeepTheirPace()

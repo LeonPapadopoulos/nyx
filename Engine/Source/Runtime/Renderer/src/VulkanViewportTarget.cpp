@@ -1,6 +1,7 @@
 #include "NyxPCH.h"
 #include "VulkanViewportTarget.h"
 #include "VulkanContext.h"
+#include "VulkanUtil.h"
 
 #include "backends/imgui_impl_vulkan.h"
 
@@ -412,22 +413,4 @@ namespace Nyx
 			vk::FormatFeatureFlagBits::eDepthStencilAttachment);
 	}
 
-	uint32_t VulkanViewportTarget::FindMemoryType(
-		vk::PhysicalDevice physicalDevice,
-		uint32_t typeFilter,
-		vk::MemoryPropertyFlags properties)
-	{
-		const vk::PhysicalDeviceMemoryProperties memProperties = physicalDevice.getMemoryProperties();
-
-		for (uint32_t i = 0; i < memProperties.memoryTypeCount; ++i)
-		{
-			if ((typeFilter & (1 << i)) &&
-				(memProperties.memoryTypes[i].propertyFlags & properties) == properties)
-			{
-				return i;
-			}
-		}
-
-		throw std::runtime_error("Failed to find suitable memory type.");
-	}
 }

@@ -1,5 +1,7 @@
 #include "InputTypes.h"
 
+#include "StringUtil.h"
+
 #include <array>
 #include <atomic>
 #include <cctype>
@@ -34,22 +36,6 @@ namespace Nyx::Input
 				return nullptr;
 			}
 			return control.Device == EDeviceKind::Keyboard ? KeyNames[control.Index] : MouseControlNames[control.Index];
-		}
-
-		bool EqualsIgnoringCase(std::string_view a, std::string_view b)
-		{
-			if (a.size() != b.size())
-			{
-				return false;
-			}
-			for (size_t i = 0; i < a.size(); ++i)
-			{
-				if (std::tolower(static_cast<unsigned char>(a[i])) != std::tolower(static_cast<unsigned char>(b[i])))
-				{
-					return false;
-				}
-			}
-			return true;
 		}
 	}
 

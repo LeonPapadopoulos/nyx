@@ -5,6 +5,7 @@
 #include "VulkanBindless.h"
 #include "Log.h"
 #include "VulkanContext.h"
+#include "VulkanUtil.h"
 
 #include <glm/gtc/packing.hpp>
 
@@ -35,19 +36,6 @@ namespace Nyx::Engine
 		};
 		static_assert(sizeof(EnvironmentConstants) == 32, "EnvironmentConstants must match Environment.slang");
 
-		uint32_t FindMemoryType(vk::PhysicalDevice physicalDevice, uint32_t typeFilter, vk::MemoryPropertyFlags properties)
-		{
-			const vk::PhysicalDeviceMemoryProperties memoryProperties = physicalDevice.getMemoryProperties();
-			for (uint32_t typeIndex = 0; typeIndex < memoryProperties.memoryTypeCount; ++typeIndex)
-			{
-				if ((typeFilter & (1u << typeIndex)) && (memoryProperties.memoryTypes[typeIndex].propertyFlags & properties) == properties)
-				{
-					return typeIndex;
-				}
-			}
-			throw std::runtime_error("Environment: no suitable memory type");
-		}
-
 		uint32_t Groups(uint32_t size)
 		{
 			return (size + 7) / 8;
@@ -61,13 +49,7 @@ namespace Nyx::Engine
 
 			HostBuffer(Nyx::VulkanContext& context, vk::DeviceSize size, vk::BufferUsageFlags usage)
 			{
-				vk::BufferCreateInfo bufferInfo{};
-				bufferInfo.size = size;
-				bufferInfo.usage = usage;
-				Buffer = vk::raii::Buffer(context.GetDevice(), bufferInfo);
-				const vk::MemoryRequirements requirements = Buffer.getMemoryRequirements();
-				Memory = vk::raii::DeviceMemory(context.GetDevice(), vk::MemoryAllocateInfo(requirements.size, FindMemoryType(*context.GetPhysicalDevice(), requirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent)));
-				Buffer.bindMemory(*Memory, 0);
+				CreateBuffer(context, size, usage, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, Buffer, Memory);
 			}
 		};
 	}
@@ -338,18 +320,12 @@ namespace Nyx::Engine
 
 	void VulkanEnvironment::Transition(vk::raii::CommandBuffer& commands, const Image& image, vk::ImageLayout from, vk::ImageLayout to)
 	{
-		vk::ImageMemoryBarrier barrier{};
-		barrier.srcAccessMask = from == vk::ImageLayout::eUndefined ? vk::AccessFlags{} : vk::AccessFlagBits::eShaderWrite;
-		barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite;
-		barrier.oldLayout = from;
-		barrier.newLayout = to;
-		barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		barrier.image = *image.Handle;
-		barrier.subresourceRange = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, image.LevelCount, 0, image.Layers);
+		const bool bFresh = from == vk::ImageLayout::eUndefined;
 		const vk::PipelineStageFlags dstStages = to == vk::ImageLayout::eShaderReadOnlyOptimal ? vk::PipelineStageFlagBits::eComputeShader | vk::PipelineStageFlagBits::eFragmentShader
 																							   : vk::PipelineStageFlagBits::eComputeShader;
-		commands.pipelineBarrier(from == vk::ImageLayout::eUndefined ? vk::PipelineStageFlagBits::eTopOfPipe : vk::PipelineStageFlagBits::eComputeShader, dstStages, {}, {}, {}, barrier);
+		TransitionImageLayout(*commands, *image.Handle, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, image.LevelCount, 0, image.Layers), from, to,
+			bFresh ? vk::PipelineStageFlagBits::eTopOfPipe : vk::PipelineStageFlagBits::eComputeShader, bFresh ? vk::AccessFlags{} : vk::AccessFlagBits::eShaderWrite,
+			dstStages, vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eShaderWrite);
 	}
 
 	void VulkanEnvironment::Dispatch(vk::raii::CommandBuffer& commands, const std::string& entryPoint, const void* constants, const Bindings& bindings, uint32_t groupsX, uint32_t groupsY, uint32_t groupsZ)
@@ -414,26 +390,19 @@ namespace Nyx::Engine
 		HostBuffer readback(*Context, texels * 8, vk::BufferUsageFlagBits::eTransferDst);
 		RunCommands([&](vk::raii::CommandBuffer& commands)
 			{
-				vk::ImageMemoryBarrier barrier{};
-				barrier.srcAccessMask = vk::AccessFlagBits::eShaderRead;
-				barrier.dstAccessMask = vk::AccessFlagBits::eTransferRead;
-				barrier.oldLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
-				barrier.newLayout = vk::ImageLayout::eTransferSrcOptimal;
-				barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-				barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-				barrier.image = *image.Handle;
-				barrier.subresourceRange = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, level, 1, 0, image.Layers);
-				commands.pipelineBarrier(vk::PipelineStageFlagBits::eFragmentShader | vk::PipelineStageFlagBits::eComputeShader, vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, barrier);
+				const vk::ImageSubresourceRange levelRange(vk::ImageAspectFlagBits::eColor, level, 1, 0, image.Layers);
+				TransitionImageLayout(*commands, *image.Handle, levelRange, vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageLayout::eTransferSrcOptimal,
+					vk::PipelineStageFlagBits::eFragmentShader | vk::PipelineStageFlagBits::eComputeShader, vk::AccessFlagBits::eShaderRead,
+					vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferRead);
 
 				vk::BufferImageCopy copy{};
 				copy.imageSubresource = vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, level, 0, image.Layers);
 				copy.imageExtent = vk::Extent3D(size, size, 1);
 				commands.copyImageToBuffer(*image.Handle, vk::ImageLayout::eTransferSrcOptimal, *readback.Buffer, copy);
 
-				std::swap(barrier.oldLayout, barrier.newLayout);
-				barrier.srcAccessMask = vk::AccessFlagBits::eTransferRead;
-				barrier.dstAccessMask = vk::AccessFlagBits::eShaderRead;
-				commands.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eFragmentShader | vk::PipelineStageFlagBits::eComputeShader, {}, {}, {}, barrier);
+				TransitionImageLayout(*commands, *image.Handle, levelRange, vk::ImageLayout::eTransferSrcOptimal, vk::ImageLayout::eShaderReadOnlyOptimal,
+					vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferRead,
+					vk::PipelineStageFlagBits::eFragmentShader | vk::PipelineStageFlagBits::eComputeShader, vk::AccessFlagBits::eShaderRead);
 			});
 
 		std::vector<uint16_t> halves(texels * 4);

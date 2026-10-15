@@ -9,6 +9,7 @@
 #include "VulkanBindless.h"
 #include "VulkanContext.h"
 #include "VulkanEnvironment.h"
+#include "TestSupport.h"
 
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
@@ -27,13 +28,7 @@ namespace
 
 	constexpr float Pi = 3.14159265358979f;
 
-	void Require(bool condition, const std::string& message)
-	{
-		if (!condition)
-		{
-			throw std::runtime_error(message);
-		}
-	}
+	using Nyx::Tests::Require;
 
 	std::string Text(const glm::vec3& value)
 	{

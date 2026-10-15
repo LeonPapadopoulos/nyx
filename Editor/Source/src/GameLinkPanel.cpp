@@ -2,6 +2,7 @@
 
 #include "ImGuiSource.h"
 #include "Paths.h"
+#include "StringUtil.h"
 #include "UIWidgets.h"
 
 #include <imgui.h>
@@ -32,15 +33,6 @@ namespace
 	const char* GetDirectionText(ELinkDirection direction)
 	{
 		return direction == ELinkDirection::Sent ? "-> game" : "<- game";
-	}
-
-	std::string ToLowerCase(std::string text)
-	{
-		for (char& c : text)
-		{
-			c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-		}
-		return text;
 	}
 
 	// The table needs rows of one line each: the first line of a text, and how many follow
@@ -109,7 +101,7 @@ namespace Nyx::Editor
 	void GameLinkPanel::AddGameLogEntry(LogEntry entry)
 	{
 		entry.Sequence = NextLogSequence++;
-		entry.SearchText = ToLowerCase(entry.GameName + " " + entry.LoggerName + " " + entry.Text);
+		entry.SearchText = Nyx::ToLower(entry.GameName + " " + entry.LoggerName + " " + entry.Text);
 		WarningCount += !entry.bSessionStart && entry.Level == ELogLevel::Warning ? 1 : 0;
 		ErrorCount += !entry.bSessionStart && entry.Level >= ELogLevel::Error ? 1 : 0;
 
@@ -535,7 +527,7 @@ namespace Nyx::Editor
 
 	void GameLinkPanel::ApplyGameLogFilter()
 	{
-		const std::string filter = ToLowerCase(GameLogFilter.data());
+		const std::string filter = ToLower(GameLogFilter.data());
 		if (filter == AppliedGameLogFilter)
 		{
 			return;

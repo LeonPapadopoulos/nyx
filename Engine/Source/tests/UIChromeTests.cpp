@@ -1,11 +1,13 @@
 // The painted window chrome (UIChrome.h) in a headless ImGui context with a real dock space:
 // the style it takes over, the cards of docked and floating windows, where their segments go in
 // the draw lists, and the splitter between docked cards. No GPU is involved.
+#include "ImGuiConversions.h"
 #include "ImGuiTheme.h"
 #include "PainterCommands.h"
 #include "UIChrome.h"
 #include "UITheme.h"
 #include "WindowPainter.h"
+#include "TestSupport.h"
 
 #include <imgui.h>
 #include <imgui_internal.h> // dock nodes and the DockBuilder
@@ -24,15 +26,10 @@ namespace
 {
 	using namespace Nyx::Engine;
 	using Nyx::UI::EWindowPainterPlacement;
+	using Nyx::UI::RectAt;
 	using Nyx::UI::WindowPainter;
 
-	void Require(bool condition, const std::string& message)
-	{
-		if (!condition)
-		{
-			throw std::runtime_error(message);
-		}
-	}
+	using Nyx::Tests::Require;
 
 	bool Near(float a, float b)
 	{
@@ -42,11 +39,6 @@ namespace
 	bool Near(const PainterRect& a, const PainterRect& b)
 	{
 		return Near(a.Min.x, b.Min.x) && Near(a.Min.y, b.Min.y) && Near(a.Max.x, b.Max.x) && Near(a.Max.y, b.Max.y);
-	}
-
-	PainterRect RectAt(ImVec2 position, ImVec2 size)
-	{
-		return PainterRect{ { position.x, position.y }, { position.x + size.x, position.y + size.y } };
 	}
 
 	// An 800x600 display with a dock space filling it: "Left" and "Right" docked side by side,

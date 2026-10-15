@@ -17,6 +17,7 @@
 #include "ReflectionUtils.h"
 #include "SceneSerializer.h"
 #include "TransformComponent.h"
+#include "TestSupport.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -31,13 +32,7 @@ namespace
 {
 	using namespace Nyx::Engine;
 
-	void Require(bool condition, const std::string& message)
-	{
-		if (!condition)
-		{
-			throw std::runtime_error(message);
-		}
-	}
+	using Nyx::Tests::Require;
 
 	bool Contains(const std::string& text, const std::string& part)
 	{

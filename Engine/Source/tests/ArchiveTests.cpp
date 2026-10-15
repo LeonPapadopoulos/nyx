@@ -5,6 +5,7 @@
 #include "Log.h"
 #include "NameComponent.h"
 #include "SceneSerializer.h"
+#include "TestSupport.h"
 
 #ifndef NOMINMAX
 	#define NOMINMAX
@@ -24,43 +25,8 @@ namespace
 	using namespace Nyx::Engine;
 	namespace fs = std::filesystem;
 
-	void Require(bool condition, const char* message)
-	{
-		if (!condition)
-		{
-			throw std::runtime_error(message);
-		}
-	}
-
-	// Each run owns a newly created directory. Never remove a pre-existing test directory.
-	class TestDirectory
-	{
-	public:
-		TestDirectory()
-		{
-			const fs::path root = fs::temp_directory_path();
-			for (int attempt = 0; attempt < 64; ++attempt)
-			{
-				const fs::path candidate = root / (L"NyxArchiveTests-" + std::to_wstring(GetCurrentProcessId()) + L"-" +
-					std::to_wstring(GetTickCount64()) + L"-" + std::to_wstring(attempt));
-				if (fs::create_directory(candidate))
-				{
-					Path = candidate;
-					return;
-				}
-			}
-
-			throw std::runtime_error("Could not create the test directory");
-		}
-
-		~TestDirectory()
-		{
-			std::error_code ignored;
-			fs::remove_all(Path, ignored);
-		}
-
-		fs::path Path;
-	};
+	using Nyx::Tests::Require;
+	using Nyx::Tests::TestDirectory;
 
 	// The file is still writable, but cannot be renamed or deleted while this handle is open.
 	// An unsafe writer that truncates the destination directly would incorrectly succeed.
@@ -197,7 +163,7 @@ int main()
 	{
 		Nyx::Core::Logger::Get().Init();
 		Nyx::Engine::RegisterComponentTypes();
-		TestDirectory directory;
+		TestDirectory directory("NyxArchiveTests");
 		TestCreateReplaceAndEmpty(directory.Path);
 		TestFailedReplacement(directory.Path);
 		TestInvalidDestinations(directory.Path);

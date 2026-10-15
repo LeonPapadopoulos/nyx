@@ -1,6 +1,7 @@
 // FileWatcher on a real folder: files written, created in a folder inside, saved the way editors do
 // (to a temporary file, then renamed), and deleted are reported; nothing is when nothing happens.
 #include "FileWatcher.h"
+#include "TestSupport.h"
 
 #include <algorithm>
 #include <chrono>
@@ -17,36 +18,14 @@ namespace
 {
 	using Clock = std::chrono::steady_clock;
 
-	void Require(bool condition, const std::string& message)
-	{
-		if (!condition)
-		{
-			throw std::runtime_error(message);
-		}
-	}
+	using Nyx::Tests::Require;
+	using Nyx::Tests::TestDirectory;
 
 	void WriteFile(const std::filesystem::path& file, const std::string& text)
 	{
 		std::ofstream stream(file, std::ios::binary | std::ios::trunc);
 		stream << text;
 	}
-
-	// A folder of its own for the test, removed afterwards
-	struct TestFolder
-	{
-		std::filesystem::path Path = std::filesystem::temp_directory_path() / ("NyxFileWatcherTests-" + std::to_string(Clock::now().time_since_epoch().count()));
-
-		TestFolder()
-		{
-			std::filesystem::create_directories(Path);
-		}
-
-		~TestFolder()
-		{
-			std::error_code error;
-			std::filesystem::remove_all(Path, error);
-		}
-	};
 
 	bool Contains(const std::vector<std::filesystem::path>& changes, const std::filesystem::path& file)
 	{
@@ -87,7 +66,7 @@ namespace
 
 	void TestChangesAreReported()
 	{
-		TestFolder folder;
+		TestDirectory folder("NyxFileWatcherTests");
 		const std::filesystem::path file = folder.Path / "Grid.frag";
 		WriteFile(file, "first");
 		std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -142,7 +121,7 @@ namespace
 	// Many changes at once: each file is reported, or the folder itself when the system lost track
 	void TestManyChanges()
 	{
-		TestFolder folder;
+		TestDirectory folder("NyxFileWatcherTests");
 		Nyx::FileWatcher watcher;
 		Require(watcher.Watch(folder.Path), "can't watch: " + watcher.GetProblem());
 

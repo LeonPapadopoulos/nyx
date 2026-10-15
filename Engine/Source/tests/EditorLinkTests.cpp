@@ -11,6 +11,7 @@
 #include "NameComponent.h"
 #include "NetConnection.h"
 #include "TransformComponent.h"
+#include "TestSupport.h"
 
 #include <chrono>
 #include <cstdint>
@@ -30,13 +31,7 @@ namespace
 	using namespace Nyx::Engine;
 	using namespace Nyx::Net;
 
-	void Require(bool condition, const std::string& message)
-	{
-		if (!condition)
-		{
-			throw std::runtime_error(message);
-		}
-	}
+	using Nyx::Tests::Require;
 
 	bool Contains(const std::string& text, const std::string& part)
 	{

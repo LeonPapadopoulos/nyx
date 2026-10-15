@@ -424,13 +424,6 @@ namespace Nyx
 
 		void CreateTestMeshData();
 
-		void CreateBuffer(
-			vk::DeviceSize size,
-			vk::BufferUsageFlags usage,
-			vk::MemoryPropertyFlags properties,
-			vk::raii::Buffer& outBuffer,
-			vk::raii::DeviceMemory& outMemory);
-
 		void CreateImage(
 			uint32_t width,
 			uint32_t height,
@@ -440,8 +433,6 @@ namespace Nyx
 			vk::raii::Image& outImage,
 			vk::raii::DeviceMemory& outMemory,
 			vk::raii::ImageView& outImageView);
-
-		uint32_t FindMemoryType(vk::PhysicalDevice physicalDevice, uint32_t typeFilter, vk::MemoryPropertyFlags properties);
 
 		// Live reload of the engine's shaders: turned on where the shader sources and
 		// NyxShaderCompiler.exe are found

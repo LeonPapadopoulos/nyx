@@ -6,6 +6,7 @@
 #include "Paths.h"
 #include "ShaderCache.h"
 #include "ShaderCompiler.h"
+#include "TestSupport.h"
 
 #include <chrono>
 #include <filesystem>
@@ -21,13 +22,7 @@ namespace
 	using namespace Nyx::Engine;
 	using Clock = std::chrono::steady_clock;
 
-	void Require(bool condition, const std::string& message)
-	{
-		if (!condition)
-		{
-			throw std::runtime_error(message);
-		}
-	}
+	using Nyx::Tests::Require;
 
 	void WriteFile(const std::filesystem::path& file, const std::string& text)
 	{
@@ -40,7 +35,8 @@ namespace
 
 	struct TestFolder
 	{
-		std::filesystem::path Root = std::filesystem::temp_directory_path() / ("NyxShaderCacheTests-" + std::to_string(Clock::now().time_since_epoch().count()));
+		Nyx::Tests::TestDirectory Directory{ "NyxShaderCacheTests" };
+		std::filesystem::path Root = Directory.Path;
 		std::filesystem::path Sources = Root / "Shaders";
 		std::filesystem::path Cache = Root / "Cache";
 
@@ -49,12 +45,6 @@ namespace
 			std::filesystem::create_directories(Sources);
 			WriteFile(Sources / "Common.glsl", CommonSource);
 			WriteFile(Sources / "Live.frag", LiveSource);
-		}
-
-		~TestFolder()
-		{
-			std::error_code error;
-			std::filesystem::remove_all(Root, error);
 		}
 	};
 

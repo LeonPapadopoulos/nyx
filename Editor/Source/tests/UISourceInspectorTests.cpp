@@ -5,6 +5,7 @@
 #include "SourceNavigation.h"
 #include "UISourceInspector.h"
 #include "TransformComponent.h"
+#include "TestSupport.h"
 
 #include <imgui_internal.h>
 #include <chrono>
@@ -18,10 +19,7 @@ namespace
 	using namespace Nyx;
 	using namespace Nyx::Editor;
 
-	void Require(bool condition, const char* message)
-	{
-		if (!condition) throw std::runtime_error(message);
-	}
+	using Nyx::Tests::Require;
 
 	class TestUI
 	{
