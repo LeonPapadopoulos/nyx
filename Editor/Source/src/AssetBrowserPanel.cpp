@@ -131,7 +131,7 @@ namespace Nyx::Editor
 				ImGui::SameLine();
 			}
 
-			const AssetTypeDescriptor* descriptor = entry.bIsDirectory ? nullptr : AssetTypeRegistry::Get().FindByTypeId(entry.TypeId);
+			const AssetTypeDescriptor* descriptor = entry.bIsDirectory || !Types ? nullptr : Types->FindByTypeId(entry.TypeId);
 			Nyx::UI::AssetCardOptions card;
 			card.bSelected = SelectedAsset == entry.RelativePath;
 			card.Icon = entry.bIsDirectory ? Nyx::UI::EAssetCardIcon::Folder : Nyx::UI::EAssetCardIcon::File;
@@ -194,14 +194,13 @@ namespace Nyx::Editor
 			{
 				CurrentDirectory = entry.RelativePath;
 			}
-			else if (ActivationContext && descriptor && descriptor->bOpenOnDoubleClick && descriptor->Activate)
+			else if (descriptor && descriptor->bOpenOnDoubleClick && descriptor->Activate)
 			{
-				const bool bCanActivate =
-					!descriptor->CanActivate || descriptor->CanActivate(entry, *ActivationContext);
+				const bool bCanActivate = !descriptor->CanActivate || descriptor->CanActivate(entry);
 
 				if (bCanActivate)
 				{
-					descriptor->Activate(entry, *ActivationContext);
+					descriptor->Activate(entry);
 				}
 			}
 		}

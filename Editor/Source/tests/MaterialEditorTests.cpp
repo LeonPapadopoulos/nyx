@@ -523,7 +523,8 @@ namespace
 	// A material dragged from a source: a target for materials takes it, a target for meshes not
 	void TestMaterialDrops()
 	{
-		AssetTypeRegistry::Get().Register(AssetTypeDescriptor{ .TypeId = "Material", .DisplayName = "Material", .Extensions = { ".nyxmat" } });
+		AssetTypeRegistry types;
+		types.Register(AssetTypeDescriptor{ .TypeId = "Material", .DisplayName = "Material", .Extensions = { ".nyxmat" } });
 		HeadlessUI ui;
 		std::optional<std::string> asMaterial;
 		std::optional<std::string> asMesh;
@@ -546,7 +547,7 @@ namespace
 			ImGui::Button("Material field", ImVec2(100.0f, 30.0f));
 			if (ImGui::BeginDragDropTarget())
 			{
-				if (std::optional<std::string> dropped = AcceptAssetDrop("Material"))
+				if (std::optional<std::string> dropped = AcceptAssetDrop(types, "Material"))
 				{
 					asMaterial = dropped;
 				}
@@ -556,7 +557,7 @@ namespace
 			ImGui::Button("Mesh field", ImVec2(100.0f, 30.0f));
 			if (ImGui::BeginDragDropTarget())
 			{
-				if (std::optional<std::string> dropped = AcceptAssetDrop("Mesh"))
+				if (std::optional<std::string> dropped = AcceptAssetDrop(types, "Mesh"))
 				{
 					asMesh = dropped;
 				}
@@ -576,7 +577,7 @@ namespace
 				io.AddMousePosEvent(source.x + 10.0f + (target.x - source.x) * step / 4.0f, source.y + 10.0f + (target.y - source.y) * step / 4.0f);
 				ui.Frame(draw);
 			}
-			Require(GetDraggedAssetType() == "Material", "The drag doesn't carry a material");
+			Require(GetDraggedAssetType(types) == "Material", "The drag doesn't carry a material");
 			io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
 			ui.Frame(draw);
 			ui.Frame(draw);

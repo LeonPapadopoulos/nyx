@@ -33,7 +33,7 @@ namespace Nyx::Editor
 		}
 
 		const std::string extension = entry.path().extension().string();
-		if (const AssetTypeDescriptor* descriptor = AssetTypeRegistry::Get().FindByExtension(extension))
+		if (const AssetTypeDescriptor* descriptor = Types.FindByExtension(extension))
 		{
 			result.TypeId = descriptor->TypeId;
 		}

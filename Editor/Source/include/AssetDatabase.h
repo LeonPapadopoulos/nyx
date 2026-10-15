@@ -6,6 +6,8 @@
 
 namespace Nyx::Editor
 {
+	class AssetTypeRegistry;
+
 	struct AssetEntry
 	{
 		std::filesystem::path RelativePath;
@@ -23,6 +25,17 @@ namespace Nyx::Editor
 	class AssetDatabase
 	{
 	public:
+		// `types` tells the files' types by their extensions; it must outlive the database
+		explicit AssetDatabase(const AssetTypeRegistry& types)
+			: Types(types)
+		{
+		}
+
+		const AssetTypeRegistry& GetTypes() const
+		{
+			return Types;
+		}
+
 		void SetAssetRoot(const std::filesystem::path& assetRoot);
 		void Rescan();
 
@@ -40,6 +53,7 @@ namespace Nyx::Editor
 		AssetEntry BuildEntry(const std::filesystem::directory_entry& entry) const;
 
 	private:
+		const AssetTypeRegistry& Types;
 		std::filesystem::path AssetRoot;
 		std::vector<AssetEntry> Entries;
 	};

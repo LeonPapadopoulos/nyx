@@ -205,7 +205,7 @@ namespace
 		ImGui::EndDisabled();
 		if (!bReadOnly && ImGui::BeginDragDropTarget())
 		{
-			if (std::optional<std::string> dropped = Nyx::Editor::AcceptAssetDrop(typeId))
+			if (std::optional<std::string> dropped = drawContext.Assets ? Nyx::Editor::AcceptAssetDrop(drawContext.Assets->GetTypes(), typeId) : std::nullopt)
 			{
 				chosen = std::move(dropped);
 			}

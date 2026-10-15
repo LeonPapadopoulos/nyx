@@ -3,10 +3,10 @@
 #include "AssetBrowserPanel.h"
 #include "AssetDatabase.h"
 #include "AssetResolver.h"
+#include "AssetTypeRegistry.h"
 #include "CrashCardsPanel.h"
 #include "DetailsPanel.h"
 #include "EditorCameraController.h"
-#include "EditorAssetActivationContext.h"
 #include "EditorPreferences.h"
 #include "GameLinkPanel.h"
 #include "ImGuiDebugTools.h"
@@ -115,8 +115,9 @@ namespace Nyx::Editor
 		// Turns the asset paths in components into the renderer's assets; created in OnAttach.
 		std::unique_ptr<Nyx::Engine::AssetResolver> AssetResolver;
 
-		std::unique_ptr<EditorAssetActivationContext> AssetActivationContext;
-		AssetDatabase AssetDb;
+		// The asset types the editor knows (RegisterEditorAssetTypes()), filled in OnAttach
+		AssetTypeRegistry AssetTypes;
+		AssetDatabase AssetDb{ AssetTypes };
 		std::filesystem::path CurrentScenePath;
 
 		SceneEditor Editing;

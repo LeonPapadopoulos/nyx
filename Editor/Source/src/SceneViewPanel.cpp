@@ -120,9 +120,9 @@ namespace Nyx::Editor
 
 			// A material dropped on the picture: the entity under the mouse gets it once the pick
 			// is back (ApplyPickResult())
-			if (!bShowingGameView && ImGui::BeginDragDropTarget())
+			if (!bShowingGameView && AssetTypes && ImGui::BeginDragDropTarget())
 			{
-				if (std::optional<std::string> material = AcceptAssetDrop("Material"))
+				if (std::optional<std::string> material = AcceptAssetDrop(*AssetTypes, "Material"))
 				{
 					Nyx::SceneViewCameraData viewData{};
 					if (Renderer->GetSceneViewCameraData(SceneViewId, viewData) && imageSize.x > 0.0f && imageSize.y > 0.0f)

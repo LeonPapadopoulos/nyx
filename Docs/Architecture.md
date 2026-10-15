@@ -63,8 +63,8 @@ The CMake targets:
 - `NyxStartup`: the startup banner, drawn with GDI+ on a thread of its own.
 - `NyxGeneratedReflection`: runs `NyxHeaderTool` over `Runtime/Engine/include` and
   `Runtime/Renderer/include`, into `Build/Windows/Generated`.
-- `NyxEditor` compiles its sources straight into the executable rather than a library: the asset
-  type registrations are global objects that a linker would drop from a library.
+- `NyxEditorLib`: the editor without its `main()`, a static library that `NyxEditor` and the
+  editor's tests link, so the editor compiles once.
 - Tests are in `Engine/Source/tests` and `Editor/Source/tests`; `ctest -C Debug` in
   `Build/Windows` runs them all.
 
@@ -153,10 +153,10 @@ it with a warning. `Hello`'s layout never changes.
 
 ### An asset type
 
-1. `Editor/Source/src/<Name>AssetTypeRegistration.cpp` with a global `AssetTypeRegistrar` for
-   an `AssetTypeDescriptor`: its type id, display name, extensions, and what opening it does
-   (`Activate`). List it in `Editor/Source/CMakeLists.txt`. The asset browser lists it from then
-   on.
+1. Register an `AssetTypeDescriptor` in `RegisterEditorAssetTypes()`
+   (`Editor/Source/src/EditorAssetTypes.cpp`): its type id, display name, extensions, and what
+   opening it does (`Activate`, a callback that captures what it needs). `EditorLayer` owns the
+   registry and fills it in `OnAttach()`; the asset browser lists the type from then on.
 2. For scenes to use it: an `AssetReference` property on a component, resolved in its post-load
    step through `IAssetResolver`. `AssetResolver` resolves materials from their `.nyxmat` files;
    meshes are only the built-in cube and sphere so far.
@@ -188,7 +188,6 @@ it with a warning. `Hello`'s layout never changes.
 | --- | --- |
 | `Core::Logger::Get()` | `Init()` in `main()` (`EntryPoint.h`); the game adds a sink for the editor link (`EditorLinkLogSink::Install()`) |
 | `ComponentTypeRegistry::Get()` | `RegisterComponentTypes()`, in `Application`'s constructor |
-| `AssetTypeRegistry::Get()` (editor) | the global `AssetTypeRegistrar` objects in `*AssetTypeRegistration.cpp`, before `main()` |
 | `PropertyWidgetRegistry::Get()` (editor) | `RegisterDefaultPropertyWidgets()`, in `EditorLayer::OnAttach()` |
 | `ReflectionSourceRegistry::Get()` (editor) | `RegisterRuntimeReflectedSources()`, generated, in `EditorLayer::OnAttach()` |
 | `Nyx::UI::GetTheme()` | the defaults in `UITheme.h`; the editor loads its theme file in `ThemeEditorWindow::LoadAtStartup()` |

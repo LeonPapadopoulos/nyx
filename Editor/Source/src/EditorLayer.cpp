@@ -135,12 +135,14 @@ namespace Nyx::Editor
 			std::filesystem::create_directories(Nyx::Paths::GetMaterialsDir());
 			std::filesystem::create_directories(Nyx::Paths::GetTexturesDir());
 
+			RegisterEditorAssetTypes(AssetTypes, *this);
 			AssetDb.SetAssetRoot(Nyx::Paths::GetAssetsDir());
 			AssetDb.Rescan();
 
-			AssetActivationContext = std::make_unique<EditorAssetActivationContext>(*this);
-			AssetBrowser.SetActivationContext(AssetActivationContext.get());
+			AssetBrowser.SetAssetTypes(&AssetTypes);
 			AssetBrowser.SetDatabase(&AssetDb);
+			MainSceneView.SetAssetTypes(&AssetTypes);
+			SecondarySceneView.SetAssetTypes(&AssetTypes);
 			AssetBrowser.SetCurrentDirectory(std::filesystem::path("Scenes"));
 		}
 

@@ -21,9 +21,9 @@ namespace Nyx::Editor
 			return std::string(static_cast<const char*>(payload->Data), static_cast<size_t>(payload->DataSize));
 		}
 
-		std::string TypeOf(const std::string& path)
+		std::string TypeOf(const AssetTypeRegistry& types, const std::string& path)
 		{
-			const AssetTypeDescriptor* type = AssetTypeRegistry::Get().FindByExtension(std::filesystem::path(path).extension().string());
+			const AssetTypeDescriptor* type = types.FindByExtension(std::filesystem::path(path).extension().string());
 			return type ? type->TypeId : std::string();
 		}
 	}
@@ -34,10 +34,10 @@ namespace Nyx::Editor
 		ImGui::TextUnformatted(std::filesystem::path(path).filename().string().c_str());
 	}
 
-	std::optional<std::string> AcceptAssetDrop(std::string_view typeId)
+	std::optional<std::string> AcceptAssetDrop(const AssetTypeRegistry& types, std::string_view typeId)
 	{
 		const std::optional<std::string> path = DraggedPath();
-		if (!path || TypeOf(*path) != typeId)
+		if (!path || TypeOf(types, *path) != typeId)
 		{
 			return std::nullopt;
 		}
@@ -45,9 +45,9 @@ namespace Nyx::Editor
 		return payload && payload->IsDelivery() ? path : std::nullopt;
 	}
 
-	std::string GetDraggedAssetType()
+	std::string GetDraggedAssetType(const AssetTypeRegistry& types)
 	{
 		const std::optional<std::string> path = DraggedPath();
-		return path ? TypeOf(*path) : std::string();
+		return path ? TypeOf(types, *path) : std::string();
 	}
 }

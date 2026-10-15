@@ -11,6 +11,7 @@
 #include "PlayControls.h"
 #include "PlaySession.h"
 #include "AssetDatabase.h"
+#include "AssetTypeRegistry.h"
 #include "GameLinkPanel.h"
 #include "PropertyWidgetRegistry.h"
 #include "SceneEditor.h"
@@ -251,7 +252,8 @@ namespace
 	{
 		HeadlessUI ui;
 		SceneFilePopups popups;
-		AssetDatabase assets;
+		const AssetTypeRegistry types;
+		AssetDatabase assets{ types };
 
 		popups.RequestSaveAs();
 		SceneFileRequest request;

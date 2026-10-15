@@ -4,12 +4,6 @@
 
 namespace Nyx::Editor
 {
-	AssetTypeRegistry& AssetTypeRegistry::Get()
-	{
-		static AssetTypeRegistry Instance;
-		return Instance;
-	}
-
 	void AssetTypeRegistry::Register(AssetTypeDescriptor descriptor)
 	{
 		auto it = std::find_if(

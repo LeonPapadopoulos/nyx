@@ -17,9 +17,10 @@ namespace Nyx::Editor
 			Database = database;
 		}
 
-		void SetActivationContext(IAssetActivationContext* context)
+		// The types whose files a double click opens (AssetTypeDescriptor::Activate)
+		void SetAssetTypes(const AssetTypeRegistry* types)
 		{
-			ActivationContext = context;
+			Types = types;
 		}
 
 		void Draw();
@@ -47,7 +48,7 @@ namespace Nyx::Editor
 
 	private:
 		AssetDatabase* Database = nullptr;
-		IAssetActivationContext* ActivationContext = nullptr;
+		const AssetTypeRegistry* Types = nullptr;
 		std::filesystem::path CurrentDirectory;
 		// The asset or folder clicked last, shown selected
 		std::filesystem::path SelectedAsset;

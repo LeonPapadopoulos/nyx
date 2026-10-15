@@ -9,15 +9,10 @@
 namespace Nyx::Editor
 {
 	struct AssetEntry;
+	class EditorLayer;
 
-	class IAssetActivationContext
-	{
-	public:
-		virtual ~IAssetActivationContext() = default;
-	};
-
-	using AssetActivateFn = std::function<void(const AssetEntry&, IAssetActivationContext&)>;
-	using AssetCanActivateFn = std::function<bool(const AssetEntry&, IAssetActivationContext&)>;
+	using AssetActivateFn = std::function<void(const AssetEntry&)>;
+	using AssetCanActivateFn = std::function<bool(const AssetEntry&)>;
 
 	struct AssetTypeDescriptor
 	{
@@ -35,8 +30,6 @@ namespace Nyx::Editor
 	class AssetTypeRegistry
 	{
 	public:
-		static AssetTypeRegistry& Get();
-
 		void Register(AssetTypeDescriptor descriptor);
 
 		const AssetTypeDescriptor* FindByTypeId(std::string_view typeId) const;
@@ -50,12 +43,7 @@ namespace Nyx::Editor
 		std::vector<AssetTypeDescriptor> Types;
 	};
 
-	class AssetTypeRegistrar
-	{
-	public:
-		explicit AssetTypeRegistrar(AssetTypeDescriptor descriptor)
-		{
-			AssetTypeRegistry::Get().Register(std::move(descriptor));
-		}
-	};
+	// Every asset type the editor knows (EditorAssetTypes.cpp). Opening one calls into `editor`,
+	// which must outlive the registry's use.
+	void RegisterEditorAssetTypes(AssetTypeRegistry& registry, EditorLayer& editor);
 }

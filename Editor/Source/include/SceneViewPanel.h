@@ -15,6 +15,7 @@ namespace Nyx
 
 namespace Nyx::Editor
 {
+	class AssetTypeRegistry;
 	class EditorCameraController;
 	class SceneEditor;
 	struct EditorPreferences;
@@ -38,6 +39,12 @@ namespace Nyx::Editor
 		uint64_t GetViewId() const
 		{
 			return SceneViewId;
+		}
+
+		// The types of the assets dropped on the view; without them, nothing can be dropped
+		void SetAssetTypes(const AssetTypeRegistry* types)
+		{
+			AssetTypes = types;
 		}
 
 		// Also tells the camera controller whether the view is hovered or focused, and where it is
@@ -65,6 +72,7 @@ namespace Nyx::Editor
 		std::string Title;
 		Nyx::IRenderer* Renderer = nullptr;
 		uint64_t SceneViewId = 0;
+		const AssetTypeRegistry* AssetTypes = nullptr;
 		bool bShowingGameView = false;
 		// A material dropped on the view, given to the entity the pick finds there
 		std::string DroppedMaterial;
