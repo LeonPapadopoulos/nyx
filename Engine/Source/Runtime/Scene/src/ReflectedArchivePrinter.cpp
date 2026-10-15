@@ -89,16 +89,16 @@ namespace
 	constexpr int MaxNestingDepth = 32;
 
 	bool PrintBlock(
-		Nyx::Engine::BinaryReader& reader,
+		Nyx::BinaryReader& reader,
 		const Nyx::Reflection::TypeMetadata* typeMetadata,
 		int indentLevel,
 		int nestingDepth,
 		std::string& outText)
 	{
 		using namespace Nyx::Reflection;
-		using Nyx::Engine::BinaryReader;
-		using Nyx::Engine::ReflectedArchivePrinter;
-		using Nyx::Engine::ReflectedArchiveSerializer;
+		using Nyx::BinaryReader;
+		using Nyx::ReflectedArchivePrinter;
+		using Nyx::ReflectedArchiveSerializer;
 
 		if (nestingDepth > MaxNestingDepth)
 		{
@@ -180,7 +180,7 @@ namespace
 	}
 }
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	using namespace Nyx::Reflection;
 

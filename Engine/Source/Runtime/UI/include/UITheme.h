@@ -56,13 +56,13 @@ namespace Nyx::UI
 		glm::vec4 Separator{ 1.0f, 1.0f, 1.0f, 0.10f };
 
 		// The drop shadow under buttons and knobs; it shrinks to PressedShadow of itself while pressed
-		Engine::PainterShadow ControlShadow{ { 0.0f, 0.0f, 0.0f, 0.35f }, { 0.0f, 1.5f }, 3.0f };
+		PainterShadow ControlShadow{ { 0.0f, 0.0f, 0.0f, 0.35f }, { 0.0f, 1.5f }, 3.0f };
 		float PressedShadow = 0.4f;
 		// How far a button's label moves down while pressed, in pixels
 		float PressedTextOffset = 1.0f;
 
 		// The glow around a control with keyboard focus
-		Engine::PainterGlow FocusGlow{ { 0.561f, 0.518f, 0.941f, 0.8f }, 6.0f, 0.5f };
+		PainterGlow FocusGlow{ { 0.561f, 0.518f, 0.941f, 0.8f }, 6.0f, 0.5f };
 
 		// Toggle: the track's width and height, and the knob's radius, as fractions of the frame
 		// height. The knob shrinks to KnobPressedScale of itself while pressed.
@@ -82,7 +82,7 @@ namespace Nyx::UI
 		// Section header: an accent bar left of the label, and a line after it
 		float SectionBarWidth = 3.0f;
 		float SectionBarGap = 8.0f;
-		Engine::PainterGlow SectionBarGlow{ { 0.561f, 0.518f, 0.941f, 0.6f }, 6.0f, 0.4f };
+		PainterGlow SectionBarGlow{ { 0.561f, 0.518f, 0.941f, 0.6f }, 6.0f, 0.4f };
 		float SectionLineWidth = 1.0f;
 
 		// The window chrome (UIChrome.h): the backdrop behind the dock space, and the card every
@@ -96,15 +96,15 @@ namespace Nyx::UI
 		float CardRounding = 8.0f;
 		// The gap between docked cards, which is also where the splitter between them is
 		float CardGap = 6.0f;
-		Engine::PainterShadow CardShadow{ { 0.0f, 0.0f, 0.0f, 0.45f }, { 0.0f, 2.0f }, 10.0f };
+		PainterShadow CardShadow{ { 0.0f, 0.0f, 0.0f, 0.45f }, { 0.0f, 2.0f }, 10.0f };
 		// Floating windows, popups, menus and tooltips lie higher: lighter, with a stronger shadow
 		glm::vec4 FloatingCard{ 0.157f, 0.18f, 0.204f, 1.0f };
-		Engine::PainterShadow FloatingCardShadow{ { 0.0f, 0.0f, 0.0f, 0.6f }, { 0.0f, 8.0f }, 24.0f };
+		PainterShadow FloatingCardShadow{ { 0.0f, 0.0f, 0.0f, 0.6f }, { 0.0f, 8.0f }, 24.0f };
 		// Glass (UIChrome.h): floating windows, popups, menus and tooltips in the main window show
 		// what lies behind them, blurred, with this tint laid over it at its alpha, bent and lit
 		// near their edge
 		glm::vec4 GlassTint{ 0.118f, 0.137f, 0.161f, 0.651f };
-		Engine::PainterGlass Glass{ 6.0f, 12.0f, 0.15f };
+		PainterGlass Glass{ 6.0f, 12.0f, 0.15f };
 		// A splitter between docked cards shows only while hovered or dragged: a line this wide,
 		// as long as the cards beside it less their rounding
 		glm::vec4 Splitter{ 0.561f, 0.518f, 0.941f, 0.902f };
@@ -140,7 +140,7 @@ namespace Nyx::UI
 		glm::vec4 Field{ 0.098f, 0.114f, 0.129f, 1.0f };
 		glm::vec4 FieldHovered{ 0.122f, 0.141f, 0.161f, 1.0f };
 		glm::vec4 FieldBorder{ 1.0f, 1.0f, 1.0f, 0.078f };
-		Engine::PainterGlow FieldEditGlow{ { 0.561f, 0.518f, 0.941f, 0.4f }, 5.0f, 0.4f };
+		PainterGlow FieldEditGlow{ { 0.561f, 0.518f, 0.941f, 0.4f }, 5.0f, 0.4f };
 		glm::vec4 TextSelection{ 0.561f, 0.518f, 0.941f, 0.302f };
 		glm::vec4 TextCursor{ 0.718f, 0.659f, 0.984f, 1.0f };
 		// A search field's magnifier, as a fraction of the frame height

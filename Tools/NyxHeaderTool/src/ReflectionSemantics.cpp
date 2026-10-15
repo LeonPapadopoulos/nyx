@@ -85,8 +85,8 @@ namespace Nyx::HeaderTool
 		};
 
 		static const std::unordered_map<std::string, WrappedValueType> WrappedValueTypes = {
-			{ "EntityGuid", { EParsedPropertyKind::UInt64, "Nyx::Engine::EntityGuid" } },
-			{ "Nyx::Engine::EntityGuid", { EParsedPropertyKind::UInt64, "Nyx::Engine::EntityGuid" } }
+			{ "EntityGuid", { EParsedPropertyKind::UInt64, "Nyx::EntityGuid" } },
+			{ "Nyx::EntityGuid", { EParsedPropertyKind::UInt64, "Nyx::EntityGuid" } }
 		};
 
 		parsedProperty.StructQualifiedTypeName.clear();

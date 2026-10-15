@@ -19,7 +19,7 @@ namespace Nyx::Editor
 		EndNow();
 	}
 
-	bool GameInstance::Start(const std::filesystem::path& gameExecutable, Nyx::Engine::GameLaunchOptions options, bool bConsoleWindow)
+	bool GameInstance::Start(const std::filesystem::path& gameExecutable, Nyx::GameLaunchOptions options, bool bConsoleWindow)
 	{
 		// The game connects back to the editor on this port: the editor link. Only programs on
 		// this machine can connect. Without it, the game still runs, just not linked.
@@ -38,7 +38,7 @@ namespace Nyx::Editor
 		LaunchOptions = options;
 		this->bConsoleWindow = bConsoleWindow;
 
-		if (!Process.Start(gameExecutable, Nyx::Engine::MakeGameArguments(options), bConsoleWindow))
+		if (!Process.Start(gameExecutable, Nyx::MakeGameArguments(options), bConsoleWindow))
 		{
 			LOG_ERROR("{0}: couldn't start '{1}'", Name, gameExecutable.string());
 			Listener.Close();
@@ -113,7 +113,7 @@ namespace Nyx::Editor
 			// Edits from now on, e.g. to a scene opened meanwhile, aren't for this game
 			StopTakingEdits();
 
-			Link->Send(Nyx::Engine::QuitMessage{});
+			Link->Send(Nyx::QuitMessage{});
 			QuitDeadline = std::chrono::steady_clock::now() + QuitTimeLimit;
 			LOG_INFO("Asked {0} to quit", Name);
 			return;
@@ -152,7 +152,7 @@ namespace Nyx::Editor
 		if (Process.IsRunning() && !QuitDeadline && Link && Link->IsConnected())
 		{
 			StopTakingEdits();
-			Link->Send(Nyx::Engine::QuitMessage{});
+			Link->Send(Nyx::QuitMessage{});
 			QuitDeadline = std::chrono::steady_clock::now() + QuitTimeLimit;
 		}
 	}
@@ -181,7 +181,7 @@ namespace Nyx::Editor
 	{
 		if (Link)
 		{
-			const Nyx::Engine::HelloMessage& game = Link->GetOtherSide();
+			const Nyx::HelloMessage& game = Link->GetOtherSide();
 			return "connected to " + game.ProgramName + " (process " + std::to_string(game.ProcessId) + ")";
 		}
 
@@ -216,8 +216,8 @@ namespace Nyx::Editor
 				continue;
 			}
 
-			auto candidate = std::make_unique<Nyx::Engine::EditorLink>(std::move(connection), "NyxEditor",
-				[this](Nyx::Engine::ELinkDirection direction, const Nyx::Net::Message& message)
+			auto candidate = std::make_unique<Nyx::EditorLink>(std::move(connection), "NyxEditor",
+				[this](Nyx::ELinkDirection direction, const Nyx::Net::Message& message)
 				{
 					if (Observer)
 					{
@@ -228,7 +228,7 @@ namespace Nyx::Editor
 			Candidates.push_back(std::move(candidate));
 		}
 
-		for (std::unique_ptr<Nyx::Engine::EditorLink>& candidate : Candidates)
+		for (std::unique_ptr<Nyx::EditorLink>& candidate : Candidates)
 		{
 			candidate->Update();
 
@@ -237,7 +237,7 @@ namespace Nyx::Editor
 			{
 				Link = std::move(candidate);
 			}
-			else if (candidate->GetState() == Nyx::Engine::EEditorLinkState::Closed)
+			else if (candidate->GetState() == Nyx::EEditorLinkState::Closed)
 			{
 				CloseReason = candidate->GetCloseReason();
 			}
@@ -251,9 +251,9 @@ namespace Nyx::Editor
 		else
 		{
 			std::erase_if(Candidates,
-				[](const std::unique_ptr<Nyx::Engine::EditorLink>& candidate)
+				[](const std::unique_ptr<Nyx::EditorLink>& candidate)
 				{
-					return !candidate || candidate->GetState() == Nyx::Engine::EEditorLinkState::Closed;
+					return !candidate || candidate->GetState() == Nyx::EEditorLinkState::Closed;
 				});
 		}
 
@@ -267,7 +267,7 @@ namespace Nyx::Editor
 		SendQueuedEdits();
 
 		// The link logged why it ended. The game doesn't connect again, so edits can't reach it anymore.
-		if (Link->GetState() == Nyx::Engine::EEditorLinkState::Closed)
+		if (Link->GetState() == Nyx::EEditorLinkState::Closed)
 		{
 			CloseReason = Link->GetCloseReason();
 			Link.reset();
@@ -280,16 +280,16 @@ namespace Nyx::Editor
 		while (std::optional<Nyx::Net::Message> message = Link->Receive())
 		{
 			// The Game Link window shows log lines; it sees every message through the link's observer
-			if (message->Type == static_cast<uint16_t>(Nyx::Engine::EEditorLinkMessage::LogLine))
+			if (message->Type == static_cast<uint16_t>(Nyx::EEditorLinkMessage::LogLine))
 			{
 				continue;
 			}
 
 			// The game is about to end; the report goes on its crash card once it has
-			if (message->Type == static_cast<uint16_t>(Nyx::Engine::EEditorLinkMessage::Crash))
+			if (message->Type == static_cast<uint16_t>(Nyx::EEditorLinkMessage::Crash))
 			{
-				Nyx::Engine::CrashMessage crash;
-				if (Nyx::Engine::ReadNetMessage(*message, crash))
+				Nyx::CrashMessage crash;
+				if (Nyx::ReadNetMessage(*message, crash))
 				{
 					LOG_ERROR("{0} crashed: {1}", Name, crash.Report.Description);
 					CrashReport = std::move(crash.Report);

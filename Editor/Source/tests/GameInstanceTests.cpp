@@ -30,7 +30,7 @@
 namespace
 {
 	using namespace Nyx::Editor;
-	using namespace Nyx::Engine;
+	using namespace Nyx;
 
 	constexpr int CrashExitCode = 3;
 
@@ -377,7 +377,7 @@ int main(int argc, char** argv)
 	const std::vector<std::string_view> arguments(argv + (argc > 0 ? 1 : 0), argv + argc);
 
 	// Started by the tests below as a game
-	Nyx::Core::Logger::Get().Init();
+	Nyx::Logger::Get().Init();
 
 	if (std::find(arguments.begin(), arguments.end(), "--editor-port") != arguments.end())
 	{

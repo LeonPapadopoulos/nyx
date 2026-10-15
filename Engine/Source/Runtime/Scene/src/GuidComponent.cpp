@@ -1,7 +1,7 @@
 #include "NyxPCH.h"
 #include "GuidComponent.h"
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	std::optional<Entity> FindEntityByGuid(const Registry& world, EntityGuid guid)
 	{

@@ -15,7 +15,7 @@ namespace Nyx
 	struct MaterialView;
 }
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	struct ShaderField;
 }
@@ -60,7 +60,7 @@ namespace Nyx::Editor
 
 		// Called with every material's values sent to the renderer: the open one's as they
 		// change, a discarded one's file. The editor sends them to its games.
-		std::function<void(const std::string& path, const Nyx::Engine::MaterialAsset& asset)> ValuesSent;
+		std::function<void(const std::string& path, const Nyx::MaterialAsset& asset)> ValuesSent;
 		// "Saved ...", "Opened ...", or what went wrong last
 		const std::string& GetStatus() const { return Status; }
 
@@ -69,15 +69,15 @@ namespace Nyx::Editor
 	private:
 		// The document's values to the renderer, the file's to the document
 		void Sync(Nyx::IMaterialSource& materials);
-		void SendValues(Nyx::IMaterialSource& materials, const std::string& path, const Nyx::Engine::MaterialAsset& asset);
+		void SendValues(Nyx::IMaterialSource& materials, const std::string& path, const Nyx::MaterialAsset& asset);
 		void Open(const std::string& path, Nyx::IMaterialSource& materials);
 		void Save();
 		void DrawDiscardPopup(Nyx::IMaterialSource& materials);
 		// The parent or the shader, the domain, the instances, the entities that use it
 		void DrawMaterial(const Nyx::MaterialView& view);
 		void DrawParameters(const Nyx::MaterialView& view);
-		void DrawFields(const std::vector<Nyx::Engine::ShaderField>& fields, const std::string& prefix, uint32_t base, const Nyx::MaterialView& view, const std::string* category);
-		void DrawField(const Nyx::Engine::ShaderField& field, const std::string& name, uint32_t offset, const Nyx::MaterialView& view);
+		void DrawFields(const std::vector<Nyx::ShaderField>& fields, const std::string& prefix, uint32_t base, const Nyx::MaterialView& view, const std::string* category);
+		void DrawField(const Nyx::ShaderField& field, const std::string& name, uint32_t offset, const Nyx::MaterialView& view);
 		// The value as typed text, for what has no widget of its own (and a value that doesn't
 		// fit its widget, e.g. typed wrong in the file); set when the field is left
 		void DrawTextValue(const std::string& name, const std::string& current, const char* hint, const std::string& label);

@@ -4,7 +4,7 @@
 #include <glm/vec3.hpp>
 #include <glm/gtc/quaternion.hpp>
 
-namespace Nyx::Engine::Gameplay
+namespace Nyx::Gameplay
 {
 	NYX_REFLECT(Component, meta = (DisplayName = "Transform"))
 	struct TransformComponent

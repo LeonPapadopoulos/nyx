@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	// What finished compiling for a program, for the owner of its pipelines to act on and log
 	struct ShaderProgramUpdate

@@ -10,7 +10,7 @@
 #include <string_view>
 #include <vector>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	// Compiles shaders to SPIR-V with Slang:
 	//   - materials (.slang): a struct named like the file, specialised into a domain's entry points;

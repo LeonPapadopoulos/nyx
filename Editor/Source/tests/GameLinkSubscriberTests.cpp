@@ -39,7 +39,7 @@
 namespace
 {
 	using namespace Nyx::Editor;
-	using namespace Nyx::Engine;
+	using namespace Nyx;
 
 	using Nyx::Tests::Require;
 
@@ -752,7 +752,7 @@ int main()
 {
 	try
 	{
-		Nyx::Core::Logger::Get().Init();
+		Nyx::Logger::Get().Init();
 		RegisterComponentTypes();
 
 		TestEditsUndoAndRedo();

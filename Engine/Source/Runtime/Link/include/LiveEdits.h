@@ -14,7 +14,7 @@
 // messages (SetProperties, CreateEntity, DeleteEntity), and the game applies them to its world.
 // The messages name entities by guid and components by type name, so the same functions work in
 // any program and in either direction.
-namespace Nyx::Engine
+namespace Nyx
 {
 	struct ComponentTypeOps;
 

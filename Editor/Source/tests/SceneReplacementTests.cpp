@@ -65,13 +65,13 @@ namespace
 		Nyx::Editor::RegisterDefaultPropertyWidgets();
 		Nyx::Editor::PropertyWidgetRegistry::Get().Register(Nyx::Reflection::EPropertyKind::String, &RecordStringField);
 
-		Nyx::Engine::MeshRendererComponent meshRenderer{
-			.Mesh = Nyx::Engine::AssetReference{ .Type = "Mesh", .Path = "Meshes/Cube.nyxmesh" },
-			.Material = Nyx::Engine::AssetReference{ .Type = "Material", .Path = "Materials/Textured.nyxmat" } };
-		const Nyx::Reflection::TypeMetadata& meshRendererType = Nyx::Reflection::GetTypeMetadata<Nyx::Engine::MeshRendererComponent>();
+		Nyx::MeshRendererComponent meshRenderer{
+			.Mesh = Nyx::AssetReference{ .Type = "Mesh", .Path = "Meshes/Cube.nyxmesh" },
+			.Material = Nyx::AssetReference{ .Type = "Material", .Path = "Materials/Textured.nyxmat" } };
+		const Nyx::Reflection::TypeMetadata& meshRendererType = Nyx::Reflection::GetTypeMetadata<Nyx::MeshRendererComponent>();
 
 		Nyx::Editor::InspectorDrawContext drawContext;
-		drawContext.CurrentObjectRef = Nyx::Editor::MakeSceneEntityRef(Nyx::Engine::EntityGuid{ 42 });
+		drawContext.CurrentObjectRef = Nyx::Editor::MakeSceneEntityRef(Nyx::EntityGuid{ 42 });
 
 		ImGui::NewFrame();
 		ImGui::SetNextWindowSize(ImVec2(600, 500));
@@ -92,22 +92,22 @@ namespace
 
 		// Assigning a material: one undo step at the reference's place, which undo finds again
 		Nyx::Editor::SceneEditor editing;
-		const Nyx::Engine::Entity entity = editing.Scene.CreateEntity("Cube");
-		editing.Scene.GetRegistry().Add<Nyx::Engine::MeshRendererComponent>(entity, meshRenderer);
+		const Nyx::Entity entity = editing.Scene.CreateEntity("Cube");
+		editing.Scene.GetRegistry().Add<Nyx::MeshRendererComponent>(entity, meshRenderer);
 		Require(Nyx::Editor::AssignMaterial(editing.Scene, editing.Transactions, entity, "Materials/Stone.nyxmat"), "The material wasn't assigned");
 		Require(!Nyx::Editor::AssignMaterial(editing.Scene, editing.Transactions, entity, "Materials/Stone.nyxmat"), "Assigning the material it has was a change");
-		const Nyx::Engine::AssetReference& material = editing.Scene.GetRegistry().Get<Nyx::Engine::MeshRendererComponent>(entity).Material;
+		const Nyx::AssetReference& material = editing.Scene.GetRegistry().Get<Nyx::MeshRendererComponent>(entity).Material;
 		Require(material.Type == "Material" && material.Path == "Materials/Stone.nyxmat", "The MeshRenderer doesn't name the assigned material");
 		editing.Undo();
-		Require(editing.Scene.GetRegistry().Get<Nyx::Engine::MeshRendererComponent>(entity).Material.Path == "Materials/Textured.nyxmat", "Undo didn't bring the material back");
+		Require(editing.Scene.GetRegistry().Get<Nyx::MeshRendererComponent>(entity).Material.Path == "Materials/Textured.nyxmat", "Undo didn't bring the material back");
 		editing.Redo();
-		Require(editing.Scene.GetRegistry().Get<Nyx::Engine::MeshRendererComponent>(entity).Material.Path == "Materials/Stone.nyxmat", "Redo didn't assign the material again");
+		Require(editing.Scene.GetRegistry().Get<Nyx::MeshRendererComponent>(entity).Material.Path == "Materials/Stone.nyxmat", "Redo didn't assign the material again");
 	}
 }
 
 namespace Nyx::Tests
 {
-	using namespace Nyx::Engine;
+	using namespace Nyx;
 	using namespace Nyx::Editor;
 
 	// Seed interactions and GPU completion metadata without opening a window or allocating
@@ -331,14 +331,14 @@ int main()
 {
 	try
 	{
-		Nyx::Core::Logger::Get().Init();
-		Nyx::Engine::RegisterComponentTypes();
+		Nyx::Logger::Get().Init();
+		Nyx::RegisterComponentTypes();
 		TestDirectory directory("NyxEditorSceneTests");
 		const auto validPath = directory.Path / "replacement.nyxscene";
 		Nyx::SceneDocument replacement;
 		const auto entity = replacement.CreateEntity("Replacement");
-		replacement.GetRegistry().Add<Nyx::Engine::TransformComponent>(entity, Nyx::Engine::TransformComponent{});
-		Require(Nyx::Engine::SceneSerializer::SaveToFile(replacement.GetRegistry(), validPath), "Could not save fixture");
+		replacement.GetRegistry().Add<Nyx::TransformComponent>(entity, Nyx::TransformComponent{});
+		Require(Nyx::SceneSerializer::SaveToFile(replacement.GetRegistry(), validPath), "Could not save fixture");
 		const auto damagedPath = directory.Path / "damaged.nyxscene";
 		std::filesystem::copy_file(validPath, damagedPath);
 		std::filesystem::resize_file(damagedPath, std::filesystem::file_size(damagedPath) / 2);

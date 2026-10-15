@@ -28,11 +28,11 @@ namespace Nyx::Game
 
 		// The log lines first: a failed ASSERT says which in the log
 		layer->SendLogLines();
-		layer->Link->Send(Nyx::Engine::CrashMessage{ report });
+		layer->Link->Send(Nyx::CrashMessage{ report });
 		layer->Link->CloseGracefully("the game crashed", std::chrono::milliseconds(1000));
 	}
 
-	EditorLinkLayer::EditorLinkLayer(uint16_t editorPort, std::shared_ptr<Nyx::Engine::EditorLinkLogSink> logSink,
+	EditorLinkLayer::EditorLinkLayer(uint16_t editorPort, std::shared_ptr<Nyx::EditorLinkLogSink> logSink,
 		std::filesystem::path recordingPath)
 		: EditorPort(editorPort)
 		, LogSink(std::move(logSink))
@@ -40,7 +40,7 @@ namespace Nyx::Game
 	{
 	}
 
-	void EditorLinkLayer::OnAttach(Nyx::Engine::Application& application)
+	void EditorLinkLayer::OnAttach(Nyx::Application& application)
 	{
 		App = &application;
 		// The editor compiles, once for all its games, and sends what it compiled
@@ -61,8 +61,8 @@ namespace Nyx::Game
 		GCrashReportLink = this;
 
 		LOG_INFO("Editor link: connecting to the editor on port {0}", EditorPort);
-		Link = std::make_unique<Nyx::Engine::EditorLink>(Nyx::Net::Connection::ConnectToLocalPort(EditorPort), "NyxGame",
-			[this](Nyx::Engine::ELinkDirection direction, const Nyx::Net::Message& message)
+		Link = std::make_unique<Nyx::EditorLink>(Nyx::Net::Connection::ConnectToLocalPort(EditorPort), "NyxGame",
+			[this](Nyx::ELinkDirection direction, const Nyx::Net::Message& message)
 			{
 				Recorder.Record(direction, message);
 			});
@@ -93,9 +93,9 @@ namespace Nyx::Game
 
 		while (std::optional<Nyx::Net::Message> message = Link->Receive())
 		{
-			switch (static_cast<Nyx::Engine::EEditorLinkMessage>(message->Type))
+			switch (static_cast<Nyx::EEditorLinkMessage>(message->Type))
 			{
-			case Nyx::Engine::EEditorLinkMessage::Quit:
+			case Nyx::EEditorLinkMessage::Quit:
 				// Like closing the window: the frame loop ends, and OnDetach says goodbye
 				LOG_INFO("The editor asked the game to quit");
 				App->RequestQuit();
@@ -108,7 +108,7 @@ namespace Nyx::Game
 		}
 
 		// The link logged why it ended; the game runs on without it
-		if (Link->GetState() == Nyx::Engine::EEditorLinkState::Closed)
+		if (Link->GetState() == Nyx::EEditorLinkState::Closed)
 		{
 			EndLink();
 			return;
@@ -120,7 +120,7 @@ namespace Nyx::Game
 	void EditorLinkLayer::ApplyMessage(const Nyx::Net::Message& message)
 	{
 		// The editor's shaders and material values go to the renderer
-		if (Nyx::Engine::ApplyRendererEdit(message, App->GetWindow().GetRenderer()) != Nyx::Engine::ELiveEditResult::NotALiveEdit)
+		if (Nyx::ApplyRendererEdit(message, App->GetWindow().GetRenderer()) != Nyx::ELiveEditResult::NotALiveEdit)
 		{
 			return;
 		}
@@ -132,9 +132,9 @@ namespace Nyx::Game
 		}
 
 		// Logs why it ignores an edit
-		const Nyx::Engine::ELiveEditResult result = Nyx::Engine::ApplyLiveEdit(message, *World, PostLoadContext);
+		const Nyx::ELiveEditResult result = Nyx::ApplyLiveEdit(message, *World, PostLoadContext);
 
-		if (result == Nyx::Engine::ELiveEditResult::NotALiveEdit)
+		if (result == Nyx::ELiveEditResult::NotALiveEdit)
 		{
 			LOG_WARNING("Editor link: skipped a message of type {0}, which this game doesn't know", message.Type);
 		}
@@ -150,7 +150,7 @@ namespace Nyx::Game
 			return;
 		}
 
-		for (const Nyx::Engine::LogLineMessage& line : LogSink->TakeLines())
+		for (const Nyx::LogLineMessage& line : LogSink->TakeLines())
 		{
 			Link->Send(line);
 		}

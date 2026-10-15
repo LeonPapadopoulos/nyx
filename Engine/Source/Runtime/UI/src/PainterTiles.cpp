@@ -8,7 +8,7 @@
 #include <span>
 #include <string>
 
-namespace Nyx::Engine
+namespace Nyx::UI
 {
 	namespace
 	{

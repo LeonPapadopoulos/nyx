@@ -196,7 +196,7 @@ namespace Nyx::Editor
 
 		Nyx::UI::GetTheme() = theme;
 		Saved = theme;
-		Nyx::ApplyThemeToImGui();
+		Nyx::UI::ApplyThemeToImGui();
 		Problems = *problems;
 		for (const std::string& problem : Problems)
 		{
@@ -367,7 +367,7 @@ namespace Nyx::Editor
 			break;
 		case EThemeValueKind::Shadow:
 		{
-			Engine::PainterShadow& shadow = value.In<Engine::PainterShadow>(theme);
+			UI::PainterShadow& shadow = value.In<UI::PainterShadow>(theme);
 			Nyx::UI::BeginPropertyRow(value.Name);
 			bChanged |= DrawColor(shadow.Color);
 			Nyx::UI::EndPropertyRow();
@@ -386,7 +386,7 @@ namespace Nyx::Editor
 		}
 		case EThemeValueKind::Glow:
 		{
-			Engine::PainterGlow& glow = value.In<Engine::PainterGlow>(theme);
+			UI::PainterGlow& glow = value.In<UI::PainterGlow>(theme);
 			Nyx::UI::BeginPropertyRow(value.Name);
 			bChanged |= DrawColor(glow.Color);
 			Nyx::UI::EndPropertyRow();
@@ -400,7 +400,7 @@ namespace Nyx::Editor
 		}
 		case EThemeValueKind::Glass:
 		{
-			Engine::PainterGlass& glass = value.In<Engine::PainterGlass>(theme);
+			UI::PainterGlass& glass = value.In<UI::PainterGlass>(theme);
 			Nyx::UI::BeginPropertyRow((name + " refraction").c_str());
 			bChanged |= DrawSize("##Refraction", glass.Refraction, 0.0f, value.Max, value.Speed);
 			Nyx::UI::EndPropertyRow();
@@ -527,7 +527,7 @@ namespace Nyx::Editor
 		// ImGui's own colours follow the theme too
 		if (bChanged)
 		{
-			Nyx::ApplyThemeToImGui();
+			Nyx::UI::ApplyThemeToImGui();
 		}
 
 		ImGui::End();

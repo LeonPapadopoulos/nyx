@@ -9,8 +9,8 @@ namespace Nyx::Editor
 	SubobjectSnapshot CaptureSubobjectSnapshot(const void* object, const Nyx::Reflection::TypeMetadata& typeMetadata)
 	{
 		// As a property block, as scene files store components, so struct properties are kept
-		Nyx::Engine::BinaryWriter writer;
-		if (!Nyx::Engine::ReflectedArchiveSerializer::SerializeObject(writer, object, typeMetadata))
+		Nyx::BinaryWriter writer;
+		if (!Nyx::ReflectedArchiveSerializer::SerializeObject(writer, object, typeMetadata))
 		{
 			LOG_WARNING("Undo: a property of {0} can't be kept; undo may not bring it back", typeMetadata.Name);
 		}
@@ -39,10 +39,10 @@ namespace Nyx::Editor
 
 		// Properties that aren't saved (e.g. a MeshRenderer's loaded mesh) are left alone;
 		// ComponentPostLoadSubscriber fills them in
-		Nyx::Engine::ReadWarnings warnings;
-		Nyx::Engine::BinaryReader reader;
+		Nyx::ReadWarnings warnings;
+		Nyx::BinaryReader reader;
 		reader.LoadFromMemory(snapshot.Properties);
-		const bool bRead = Nyx::Engine::ReflectedArchiveSerializer::DeserializeObject(reader, object, *snapshot.TypeMetadata, warnings);
+		const bool bRead = Nyx::ReflectedArchiveSerializer::DeserializeObject(reader, object, *snapshot.TypeMetadata, warnings);
 		if (!bRead)
 		{
 			LOG_WARNING("Undo: {0} couldn't be brought back completely", snapshot.TypeMetadata->Name);

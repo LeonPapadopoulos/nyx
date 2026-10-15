@@ -13,7 +13,7 @@
 
 namespace
 {
-	using namespace Nyx::Engine;
+	using namespace Nyx;
 
 	EntityGuid GetGuid(const Registry& world, Entity entity)
 	{
@@ -147,7 +147,7 @@ namespace
 	}
 }
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	std::optional<SetPropertiesMessage> MakeSetPropertiesMessage(
 		const Registry& world,

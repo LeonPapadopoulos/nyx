@@ -13,16 +13,16 @@
 
 namespace Nyx::Editor
 {
-	bool CanAddOrRemoveComponent(const Nyx::Engine::ComponentTypeOps& componentType)
+	bool CanAddOrRemoveComponent(const Nyx::ComponentTypeOps& componentType)
 	{
-		return componentType.TypeMetadata != &Nyx::Reflection::GetTypeMetadata<Nyx::Engine::GuidComponent>() &&
-			componentType.TypeMetadata != &Nyx::Reflection::GetTypeMetadata<Nyx::Engine::NameComponent>();
+		return componentType.TypeMetadata != &Nyx::Reflection::GetTypeMetadata<Nyx::GuidComponent>() &&
+			componentType.TypeMetadata != &Nyx::Reflection::GetTypeMetadata<Nyx::NameComponent>();
 	}
 
-	bool AddComponent(Nyx::SceneDocument& scene, TransactionSystem& transactions, Nyx::Engine::Entity entity,
-		const Nyx::Engine::ComponentTypeOps& componentType)
+	bool AddComponent(Nyx::SceneDocument& scene, TransactionSystem& transactions, Nyx::Entity entity,
+		const Nyx::ComponentTypeOps& componentType)
 	{
-		Nyx::Engine::Registry& world = scene.GetRegistry();
+		Nyx::Registry& world = scene.GetRegistry();
 		const ObjectRef target = MakeSceneEntityRef(scene, entity);
 		if (!target.IsValid() || !CanAddOrRemoveComponent(componentType) || componentType.Has(world, entity))
 		{
@@ -39,10 +39,10 @@ namespace Nyx::Editor
 		return true;
 	}
 
-	bool RemoveComponent(Nyx::SceneDocument& scene, TransactionSystem& transactions, Nyx::Engine::Entity entity,
-		const Nyx::Engine::ComponentTypeOps& componentType)
+	bool RemoveComponent(Nyx::SceneDocument& scene, TransactionSystem& transactions, Nyx::Entity entity,
+		const Nyx::ComponentTypeOps& componentType)
 	{
-		Nyx::Engine::Registry& world = scene.GetRegistry();
+		Nyx::Registry& world = scene.GetRegistry();
 		const ObjectRef target = MakeSceneEntityRef(scene, entity);
 		void* component = componentType.Get(world, entity);
 		if (!target.IsValid() || !CanAddOrRemoveComponent(componentType) || !component)
@@ -62,21 +62,21 @@ namespace Nyx::Editor
 		return true;
 	}
 
-	bool AssignMaterial(Nyx::SceneDocument& scene, TransactionSystem& transactions, Nyx::Engine::Entity entity, const std::string& path)
+	bool AssignMaterial(Nyx::SceneDocument& scene, TransactionSystem& transactions, Nyx::Entity entity, const std::string& path)
 	{
-		Nyx::Engine::Registry& world = scene.GetRegistry();
-		if (!world.IsAlive(entity) || !world.Has<Nyx::Engine::MeshRendererComponent>(entity))
+		Nyx::Registry& world = scene.GetRegistry();
+		if (!world.IsAlive(entity) || !world.Has<Nyx::MeshRendererComponent>(entity))
 		{
 			return false;
 		}
-		Nyx::Engine::MeshRendererComponent& meshRenderer = world.Get<Nyx::Engine::MeshRendererComponent>(entity);
+		Nyx::MeshRendererComponent& meshRenderer = world.Get<Nyx::MeshRendererComponent>(entity);
 		if (meshRenderer.Material.Type == "Material" && meshRenderer.Material.Path == path)
 		{
 			return false;
 		}
 
 		// The reference is a struct inside the component: where it is, so undo finds it
-		const Nyx::Reflection::TypeMetadata& componentType = Nyx::Reflection::GetTypeMetadata<Nyx::Engine::MeshRendererComponent>();
+		const Nyx::Reflection::TypeMetadata& componentType = Nyx::Reflection::GetTypeMetadata<Nyx::MeshRendererComponent>();
 		SubobjectPath location;
 		location.SubobjectType = &componentType;
 		for (size_t index = 0; index < componentType.PropertyCount; ++index)
@@ -87,7 +87,7 @@ namespace Nyx::Editor
 			}
 		}
 		TransactionDiffUtil diff;
-		diff.TakeSnapshot(MakeSceneEntityRef(scene, entity), &meshRenderer.Material, Nyx::Reflection::GetTypeMetadata<Nyx::Engine::AssetReference>(), location);
+		diff.TakeSnapshot(MakeSceneEntityRef(scene, entity), &meshRenderer.Material, Nyx::Reflection::GetTypeMetadata<Nyx::AssetReference>(), location);
 		meshRenderer.Material.Type = "Material";
 		meshRenderer.Material.Path = path;
 		return diff.CommitChanges("Assign Material", transactions);

@@ -94,7 +94,7 @@ namespace Nyx::Editor
 		std::optional<std::filesystem::path> SavePlaySessionScene();
 
 		// Starts one game and adds it to Games. Returns whether it started.
-		bool LaunchGame(const std::string& name, const Nyx::Engine::GameLaunchOptions& launchOptions, bool bConsoleWindow);
+		bool LaunchGame(const std::string& name, const Nyx::GameLaunchOptions& launchOptions, bool bConsoleWindow);
 
 		bool AnyTakesEdits() const;
 

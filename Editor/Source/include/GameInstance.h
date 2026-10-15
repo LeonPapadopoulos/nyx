@@ -29,7 +29,7 @@ namespace Nyx::Editor
 		std::optional<Nyx::CrashReport> Report;
 
 		// To start it again as it was started (Restart)
-		Nyx::Engine::GameLaunchOptions LaunchOptions;
+		Nyx::GameLaunchOptions LaunchOptions;
 		bool bConsoleWindow = true;
 	};
 
@@ -42,7 +42,7 @@ namespace Nyx::Editor
 		// Sees every message of this game's link, both ways, also of programs that connect to its
 		// port and turn out not to be the game. For the Game Link window.
 		using MessageObserver =
-			std::function<void(const std::string& gameName, Nyx::Engine::ELinkDirection direction, const Nyx::Net::Message& message)>;
+			std::function<void(const std::string& gameName, Nyx::ELinkDirection direction, const Nyx::Net::Message& message)>;
 
 		// name tells this game apart in the log and the Game Link window, e.g. "Game 2"
 		GameInstance(std::string name, MessageObserver observer);
@@ -56,7 +56,7 @@ namespace Nyx::Editor
 		// Listens for the game's connection, then starts the game with the options and the
 		// listener's port. Without a port, the game runs unlinked. The game's console window shows
 		// its log, which also reaches the Game Link window once linked. Returns whether it started.
-		bool Start(const std::filesystem::path& gameExecutable, Nyx::Engine::GameLaunchOptions options, bool bConsoleWindow = true);
+		bool Start(const std::filesystem::path& gameExecutable, Nyx::GameLaunchOptions options, bool bConsoleWindow = true);
 
 		// Once per frame: accepts the game's connection, handles its messages, sends queued edits,
 		// and notices when the game exited or didn't quit in time.
@@ -140,11 +140,11 @@ namespace Nyx::Editor
 		Nyx::Net::Listener Listener;
 
 		// The link to the game, once it said Hello
-		std::unique_ptr<Nyx::Engine::EditorLink> Link;
+		std::unique_ptr<Nyx::EditorLink> Link;
 
 		// Connections that haven't said Hello yet. The first whose Hello comes from the game's
 		// process becomes Link, so a program that connects and stays silent can't keep the game out.
-		std::vector<std::unique_ptr<Nyx::Engine::EditorLink>> Candidates;
+		std::vector<std::unique_ptr<Nyx::EditorLink>> Candidates;
 
 		// Why the last link ended, for the tooltip
 		std::string CloseReason;
@@ -153,7 +153,7 @@ namespace Nyx::Editor
 		std::optional<std::chrono::steady_clock::time_point> QuitDeadline;
 
 		// As passed to Start(), for a restart after a crash
-		Nyx::Engine::GameLaunchOptions LaunchOptions;
+		Nyx::GameLaunchOptions LaunchOptions;
 		bool bConsoleWindow = true;
 
 		// From the game's Crash message, until it has exited

@@ -21,15 +21,15 @@ namespace Nyx::Editor
 	namespace
 	{
 		// The attribute's text argument, e.g. [Category("Surface")]; null without one
-		const std::string* TextArgument(const Nyx::Engine::ShaderField& field, std::string_view attribute)
+		const std::string* TextArgument(const Nyx::ShaderField& field, std::string_view attribute)
 		{
-			const Nyx::Engine::ShaderAttribute* found = field.FindAttribute(attribute);
+			const Nyx::ShaderAttribute* found = field.FindAttribute(attribute);
 			return found && !found->Arguments.empty() && found->Arguments[0].bText ? &found->Arguments[0].Text : nullptr;
 		}
 
-		std::optional<double> NumberArgument(const Nyx::Engine::ShaderField& field, std::string_view attribute, size_t index)
+		std::optional<double> NumberArgument(const Nyx::ShaderField& field, std::string_view attribute, size_t index)
 		{
-			const Nyx::Engine::ShaderAttribute* found = field.FindAttribute(attribute);
+			const Nyx::ShaderAttribute* found = field.FindAttribute(attribute);
 			if (!found || found->Arguments.size() <= index || found->Arguments[index].bText)
 			{
 				return std::nullopt;
@@ -37,7 +37,7 @@ namespace Nyx::Editor
 			return found->Arguments[index].Number;
 		}
 
-		std::string Category(const Nyx::Engine::ShaderField& field)
+		std::string Category(const Nyx::ShaderField& field)
 		{
 			const std::string* category = TextArgument(field, "Category");
 			return category ? *category : std::string();
@@ -50,8 +50,8 @@ namespace Nyx::Editor
 			{
 				return true;
 			}
-			const std::optional<std::vector<double>> left = Nyx::Engine::ParseMaterialNumbers(a);
-			const std::optional<std::vector<double>> right = Nyx::Engine::ParseMaterialNumbers(b);
+			const std::optional<std::vector<double>> left = Nyx::ParseMaterialNumbers(a);
+			const std::optional<std::vector<double>> right = Nyx::ParseMaterialNumbers(b);
 			if (!left || !right || left->size() != right->size() || left->empty())
 			{
 				return false;
@@ -67,11 +67,11 @@ namespace Nyx::Editor
 		}
 
 		// The names of the parameters a material file can set ("Layer.Tint" for a struct's member)
-		void CollectNames(const std::vector<Nyx::Engine::ShaderField>& fields, const std::string& prefix, std::set<std::string>& names)
+		void CollectNames(const std::vector<Nyx::ShaderField>& fields, const std::string& prefix, std::set<std::string>& names)
 		{
-			for (const Nyx::Engine::ShaderField& field : fields)
+			for (const Nyx::ShaderField& field : fields)
 			{
-				if (field.Kind == Nyx::Engine::EShaderFieldKind::Struct)
+				if (field.Kind == Nyx::EShaderFieldKind::Struct)
 				{
 					CollectNames(field.Fields, prefix + field.Name + ".", names);
 				}
@@ -332,7 +332,7 @@ namespace Nyx::Editor
 		// The renderer drew values that weren't saved: it draws the file again
 		if (!Discarded.empty())
 		{
-			Nyx::Engine::MaterialAsset file;
+			Nyx::MaterialAsset file;
 			std::string error;
 			if (file.Load((AssetsFolder / Discarded).make_preferred(), error))
 			{
@@ -367,7 +367,7 @@ namespace Nyx::Editor
 		}
 	}
 
-	void MaterialParametersPanel::SendValues(Nyx::IMaterialSource& materials, const std::string& path, const Nyx::Engine::MaterialAsset& asset)
+	void MaterialParametersPanel::SendValues(Nyx::IMaterialSource& materials, const std::string& path, const Nyx::MaterialAsset& asset)
 	{
 		materials.SetMaterialValues(path, asset);
 		if (ValuesSent)
@@ -471,7 +471,7 @@ namespace Nyx::Editor
 
 		// Fields without a category first, then a heading per category, in the order they come
 		std::vector<std::string> categories;
-		for (const Nyx::Engine::ShaderField& field : view.Layout->Fields)
+		for (const Nyx::ShaderField& field : view.Layout->Fields)
 		{
 			const std::string category = Category(field);
 			if (!category.empty() && std::find(categories.begin(), categories.end(), category) == categories.end())
@@ -491,17 +491,17 @@ namespace Nyx::Editor
 		DrawUnknownValues(view);
 	}
 
-	void MaterialParametersPanel::DrawFields(const std::vector<Nyx::Engine::ShaderField>& fields, const std::string& prefix, uint32_t base, const Nyx::MaterialView& view,
+	void MaterialParametersPanel::DrawFields(const std::vector<Nyx::ShaderField>& fields, const std::string& prefix, uint32_t base, const Nyx::MaterialView& view,
 		const std::string* category)
 	{
-		for (const Nyx::Engine::ShaderField& field : fields)
+		for (const Nyx::ShaderField& field : fields)
 		{
 			if ((category && Category(field) != *category) || field.FindAttribute("Hidden"))
 			{
 				continue;
 			}
 			const std::string name = prefix + field.Name;
-			if (field.Kind == Nyx::Engine::EShaderFieldKind::Struct)
+			if (field.Kind == Nyx::EShaderFieldKind::Struct)
 			{
 				const std::string* displayName = TextArgument(field, "DisplayName");
 				ImGui::PushID(name.c_str());
@@ -520,17 +520,17 @@ namespace Nyx::Editor
 		}
 	}
 
-	void MaterialParametersPanel::DrawField(const Nyx::Engine::ShaderField& field, const std::string& name, uint32_t offset, const Nyx::MaterialView& view)
+	void MaterialParametersPanel::DrawField(const Nyx::ShaderField& field, const std::string& name, uint32_t offset, const Nyx::MaterialView& view)
 	{
-		using Nyx::Engine::EShaderFieldKind;
-		using Nyx::Engine::EShaderScalarType;
+		using Nyx::EShaderFieldKind;
+		using Nyx::EShaderScalarType;
 
 		const std::string* displayName = TextArgument(field, "DisplayName");
 		const std::string label = displayName ? *displayName : field.Name;
 		const std::string editLabel = "Edit " + label;
 		const bool bTexture = field.Kind == EShaderFieldKind::Texture;
 		const std::string* set = Document.GetAsset().FindValue(name);
-		const std::string defaultText = Nyx::Engine::ReadMaterialValue(field, view.Defaults, offset);
+		const std::string defaultText = Nyx::ReadMaterialValue(field, view.Defaults, offset);
 		// An instance's value from its parents, when it doesn't set its own
 		const std::string* inherited = view.Inherited ? view.Inherited->FindValue(name) : nullptr;
 		const std::string baseline = inherited ? *inherited : bTexture ? std::string() : defaultText;
@@ -555,7 +555,7 @@ namespace Nyx::Editor
 			Document.PreviewValue(name, std::move(text));
 		};
 		const uint32_t count = field.Kind == EShaderFieldKind::Vector ? field.Columns : 1;
-		const std::optional<std::vector<double>> numbers = bTexture ? std::nullopt : Nyx::Engine::ParseMaterialNumbers(current);
+		const std::optional<std::vector<double>> numbers = bTexture ? std::nullopt : Nyx::ParseMaterialNumbers(current);
 		const bool bNumbersFit = numbers && numbers->size() == count && count <= 4;
 		const bool bSettable = (field.Kind == EShaderFieldKind::Scalar || field.Kind == EShaderFieldKind::Vector) && field.ArrayCount == 0;
 
@@ -612,7 +612,7 @@ namespace Nyx::Editor
 			}
 			if (bChanged)
 			{
-				preview(Nyx::Engine::FormatMaterialNumbers(std::span<const float>(values, count)));
+				preview(Nyx::FormatMaterialNumbers(std::span<const float>(values, count)));
 			}
 		}
 		else if (count == 1)

@@ -97,12 +97,12 @@ namespace Nyx::Editor
 		}
 	}
 
-	void EditorLayer::OnAttach(Nyx::Engine::Application& application)
+	void EditorLayer::OnAttach(Nyx::Application& application)
 	{
 		Window = &application.GetWindow();
 		Renderer = &Window->GetRenderer();
 		Input = &application.GetInput();
-		AssetResolver = std::make_unique<Nyx::Engine::AssetResolver>(*Renderer);
+		AssetResolver = std::make_unique<Nyx::AssetResolver>(*Renderer);
 		if (!Preferences.Load(EditorPreferences::GetUserFile()))
 		{
 			LOG_WARNING("Could not read editor preferences; using defaults.");
@@ -183,13 +183,13 @@ namespace Nyx::Editor
 
 		// The games get what the editor compiles and the material values it edits, saved or not;
 		// a game starting gets the open material's unsaved values first
-		Renderer->SetShaderCompiledListener([this](const Nyx::Engine::ShaderCompileRequest& request, const Nyx::Engine::ShaderCompileResult& result)
+		Renderer->SetShaderCompiledListener([this](const Nyx::ShaderCompileRequest& request, const Nyx::ShaderCompileResult& result)
 			{
-				Games.SendToGames(Nyx::Engine::MakeNetMessage(Nyx::Engine::ShaderProgramMessage{ request, result }));
+				Games.SendToGames(Nyx::MakeNetMessage(Nyx::ShaderProgramMessage{ request, result }));
 			});
-		MaterialParameters.ValuesSent = [this](const std::string& path, const Nyx::Engine::MaterialAsset& asset)
+		MaterialParameters.ValuesSent = [this](const std::string& path, const Nyx::MaterialAsset& asset)
 		{
-			Games.SendToGames(Nyx::Engine::MakeNetMessage(Nyx::Engine::MaterialValuesMessage{ path, asset.ToText() }));
+			Games.SendToGames(Nyx::MakeNetMessage(Nyx::MaterialValuesMessage{ path, asset.ToText() }));
 		};
 		Games.StateForNewGames = [this]()
 		{
@@ -197,7 +197,7 @@ namespace Nyx::Editor
 			const MaterialDocument& document = MaterialParameters.GetDocument();
 			if (document.IsDirty())
 			{
-				state.push_back(Nyx::Engine::MakeNetMessage(Nyx::Engine::MaterialValuesMessage{ document.GetPath(), document.GetAsset().ToText() }));
+				state.push_back(Nyx::MakeNetMessage(Nyx::MaterialValuesMessage{ document.GetPath(), document.GetAsset().ToText() }));
 			}
 			return state;
 		};
@@ -229,7 +229,7 @@ namespace Nyx::Editor
 		}
 
 		// Edits, undo and redo load the assets they need, as loading a scene does
-		Editing.AssetLoader.SetPostLoadContext(Nyx::Engine::ScenePostLoadContext{ .AssetResolver = AssetResolver.get() });
+		Editing.AssetLoader.SetPostLoadContext(Nyx::ScenePostLoadContext{ .AssetResolver = AssetResolver.get() });
 		Editing.Transactions.Subscribe(&Editing.AssetLoader);
 
 		// Edits show up live in the game started with Play
@@ -334,14 +334,14 @@ namespace Nyx::Editor
 			MaterialParameters.Users.clear();
 			const std::string& openMaterial = MaterialParameters.GetDocument().GetPath();
 			MaterialParameters.Instances = openMaterial.empty() ? std::vector<std::string>() : FindInstancesOf(openMaterial);
-			Nyx::Engine::Registry& world = Editing.Scene.GetRegistry();
-			world.Each<Nyx::Engine::MeshRendererComponent>([&](Nyx::Engine::Entity entity, const Nyx::Engine::MeshRendererComponent& meshRenderer)
+			Nyx::Registry& world = Editing.Scene.GetRegistry();
+			world.Each<Nyx::MeshRendererComponent>([&](Nyx::Entity entity, const Nyx::MeshRendererComponent& meshRenderer)
 				{
 					if (openMaterial.empty() || meshRenderer.Material.Path != openMaterial)
 					{
 						return;
 					}
-					const std::string name = world.Has<Nyx::Engine::NameComponent>(entity) ? world.Get<Nyx::Engine::NameComponent>(entity).Name : std::string("Entity");
+					const std::string name = world.Has<Nyx::NameComponent>(entity) ? world.Get<Nyx::NameComponent>(entity).Name : std::string("Entity");
 					MaterialParameters.Users.push_back({ name, [this, entity]()
 						{
 							Editing.Scene.GetSelection() = entity;
@@ -354,16 +354,16 @@ namespace Nyx::Editor
 			Nyx::Mesh* selectedMesh = nullptr;
 			const auto& selection = Editing.Scene.GetSelection();
 			const auto& world = Editing.Scene.GetRegistry();
-			if (selection && world.IsAlive(*selection) && world.Has<Nyx::Engine::MeshRendererComponent>(*selection))
+			if (selection && world.IsAlive(*selection) && world.Has<Nyx::MeshRendererComponent>(*selection))
 			{
-				selectedMesh = world.Get<Nyx::Engine::MeshRendererComponent>(*selection).MeshAsset;
+				selectedMesh = world.Get<Nyx::MeshRendererComponent>(*selection).MeshAsset;
 			}
 			// The material's shader's last compile, when it failed
-			const Nyx::Engine::ShaderLogEntry* failedCompile = nullptr;
+			const Nyx::ShaderLogEntry* failedCompile = nullptr;
 			if (MaterialParameters.GetDocument().IsOpen())
 			{
 				const std::string shader = MaterialParameters.GetDocument().GetAsset().GetShader();
-				const Nyx::Engine::ShaderLogEntry* compile = shader.empty() ? nullptr : Renderer->GetShaderLog().FindByFile((Nyx::Paths::GetAssetsDir() / shader).make_preferred());
+				const Nyx::ShaderLogEntry* compile = shader.empty() ? nullptr : Renderer->GetShaderLog().FindByFile((Nyx::Paths::GetAssetsDir() / shader).make_preferred());
 				failedCompile = compile && !compile->bSucceeded ? compile : nullptr;
 			}
 			MaterialPreview.Draw(*Renderer, MaterialParameters.GetDocument().GetPath(), selectedMesh, failedCompile);
@@ -630,7 +630,7 @@ namespace Nyx::Editor
 		}
 
 		// At the right: the errors logged, the graphics API, and the frame rate and time
-		const Nyx::Core::LogCounts counts = Nyx::Core::Logger::Get().GetCounts();
+		const Nyx::LogCounts counts = Nyx::Logger::Get().GetCounts();
 		char errors[32];
 		std::snprintf(errors, sizeof(errors), "%llu %s", static_cast<unsigned long long>(counts.Errors), counts.Errors == 1 ? "error" : "errors");
 		const float framesPerSecond = ImGui::GetIO().Framerate;
@@ -683,7 +683,7 @@ namespace Nyx::Editor
 
 	bool EditorLayer::SaveCurrentScene(const std::filesystem::path& path)
 	{
-		if (!Nyx::Engine::SceneSerializer::SaveToFile(Editing.Scene.GetRegistry(), path))
+		if (!Nyx::SceneSerializer::SaveToFile(Editing.Scene.GetRegistry(), path))
 		{
 			LOG_ERROR("Failed to save scene to '{0}'", path.string());
 			SetSceneFileStatus("Couldn't save " + path.filename().string(), true);
@@ -697,12 +697,12 @@ namespace Nyx::Editor
 
 	bool EditorLayer::LoadCurrentScene(const std::filesystem::path& path)
 	{
-		Nyx::Engine::ScenePostLoadContext postLoadContext{};
+		Nyx::ScenePostLoadContext postLoadContext{};
 		postLoadContext.AssetResolver = AssetResolver.get();
 
 		// Keep the current scene and its pending edits until the replacement is ready.
-		Nyx::Engine::Registry loadedWorld;
-		if (!Nyx::Engine::SceneSerializer::LoadFromFile(path, loadedWorld, postLoadContext))
+		Nyx::Registry loadedWorld;
+		if (!Nyx::SceneSerializer::LoadFromFile(path, loadedWorld, postLoadContext))
 		{
 			LOG_ERROR("Failed to load scene from '{0}'", path.string());
 			SetSceneFileStatus("Couldn't open " + path.filename().string(), true);
@@ -762,8 +762,8 @@ namespace Nyx::Editor
 
 	void EditorLayer::ResolveSceneRuntimeAssets()
 	{
-		Editing.Scene.GetRegistry().Each<Nyx::Engine::MeshRendererComponent>(
-			[this](Nyx::Engine::Entity /*entity*/, Nyx::Engine::MeshRendererComponent& component)
+		Editing.Scene.GetRegistry().Each<Nyx::MeshRendererComponent>(
+			[this](Nyx::Entity /*entity*/, Nyx::MeshRendererComponent& component)
 			{
 				component.MeshAsset =
 					component.Mesh.IsValid() ? AssetResolver->ResolveMesh(component.Mesh.Path) : nullptr;
@@ -897,7 +897,7 @@ namespace Nyx::Editor
 		FoundInstances.clear();
 		for (const AssetEntry& material : AssetDb.GetAllByType("Material"))
 		{
-			Nyx::Engine::MaterialAsset asset;
+			Nyx::MaterialAsset asset;
 			std::string error;
 			if (asset.Load(material.AbsolutePath, error) && asset.GetParent() == path)
 			{

@@ -17,7 +17,7 @@
 #include <regex>
 #include <sstream>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	namespace
 	{

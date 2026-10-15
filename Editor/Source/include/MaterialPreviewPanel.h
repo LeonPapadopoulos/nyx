@@ -16,7 +16,7 @@ namespace Nyx
 	class Mesh;
 }
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	struct ShaderLogEntry;
 }
@@ -60,7 +60,7 @@ namespace Nyx::Editor
 		// Every frame: the window while open, showing `materialPath` (empty: no material open).
 		// `selectedMesh`: the selected entity's mesh, null without one. `failedCompile`: the last
 		// compile of the material's shader when it failed, null otherwise.
-		void Draw(Nyx::IRenderer& renderer, const std::string& materialPath, Nyx::Mesh* selectedMesh, const Nyx::Engine::ShaderLogEntry* failedCompile = nullptr);
+		void Draw(Nyx::IRenderer& renderer, const std::string& materialPath, Nyx::Mesh* selectedMesh, const Nyx::ShaderLogEntry* failedCompile = nullptr);
 
 		void SetOpenFileAtLine(OpenFileAtLine open) { OpenAtLine = std::move(open); }
 
@@ -89,10 +89,10 @@ namespace Nyx::Editor
 		// Drags and the wheel over the picture
 		void HandleInput(bool bHovered, bool bActive);
 
-		Nyx::Engine::Registry World;
-		Nyx::Engine::Entity Subject;
-		Nyx::Engine::Entity Camera;
-		Nyx::Engine::Entity Sun;
+		Nyx::Registry World;
+		Nyx::Entity Subject;
+		Nyx::Entity Camera;
+		Nyx::Entity Sun;
 
 		Nyx::IRenderer* Renderer = nullptr;
 		uint64_t ViewId = 0;

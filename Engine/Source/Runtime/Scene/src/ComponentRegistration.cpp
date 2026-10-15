@@ -6,7 +6,7 @@
 
 #include "Generated/Runtime/Runtime.reflect.init.h"
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	namespace
 	{

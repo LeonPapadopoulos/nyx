@@ -15,7 +15,7 @@ namespace Nyx
 	class VulkanContext;
 }
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	class ShaderPrograms;
 	class VulkanBindless;

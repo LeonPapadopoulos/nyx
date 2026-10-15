@@ -7,7 +7,7 @@
 
 namespace
 {
-	using namespace Nyx::Engine;
+	using namespace Nyx;
 
 	// "NXLL" in the file
 	constexpr uint32_t RecordingMagic = 0x4C4C584E;
@@ -30,7 +30,7 @@ namespace
 	}
 }
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	bool EditorLinkRecorder::Open(const std::filesystem::path& path, const std::string& programName)
 	{

@@ -73,9 +73,9 @@ namespace
 		Theme changed;
 		changed.Accent = glm::vec4(0.2f, 0.4f, 0.6f, 0.8f);
 		changed.FrameRounding = 3.25f;
-		changed.CardShadow = Nyx::Engine::PainterShadow{ { 0.0f, 0.0f, 0.0f, 0.5f }, { 1.5f, -2.0f }, 12.0f };
-		changed.FocusGlow = Nyx::Engine::PainterGlow{ { 1.0f, 0.0f, 0.0f, 1.0f }, 7.5f, 0.25f };
-		changed.Glass = Nyx::Engine::PainterGlass{ 4.0f, 10.0f, 0.3f };
+		changed.CardShadow = Nyx::UI::PainterShadow{ { 0.0f, 0.0f, 0.0f, 0.5f }, { 1.5f, -2.0f }, 12.0f };
+		changed.FocusGlow = Nyx::UI::PainterGlow{ { 1.0f, 0.0f, 0.0f, 1.0f }, 7.5f, 0.25f };
+		changed.Glass = Nyx::UI::PainterGlass{ 4.0f, 10.0f, 0.3f };
 
 		for (const Theme* original : { &changed, &GetTheme() })
 		{

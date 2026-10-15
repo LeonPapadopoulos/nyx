@@ -15,7 +15,7 @@
 
 // The editor link: the connection between the editor and a game it started. Both ends use the
 // same EditorLink class and the same messages (EditorLinkMessages.h), whichever program listens.
-namespace Nyx::Engine
+namespace Nyx
 {
 	enum class EEditorLinkState : uint8_t
 	{

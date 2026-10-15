@@ -16,7 +16,7 @@
 //  4. Give it a distance function in the painter shader (Painter.frag).
 //  5. Test it in NyxPainterTests, and draw it on the test sheet (PainterTestSheet.cpp).
 
-namespace Nyx::Engine
+namespace Nyx::UI
 {
 	// The values are part of the layout the shader reads, so they are written out.
 	enum class EPainterCommandType : uint32_t

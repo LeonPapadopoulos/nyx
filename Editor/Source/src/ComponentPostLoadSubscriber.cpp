@@ -28,7 +28,7 @@ namespace Nyx::Editor
 	void ComponentPostLoadSubscriber::RunPostLoad(const Transaction& transaction)
 	{
 		// Each entity once, also if the transaction changed it several times
-		std::vector<Nyx::Engine::EntityGuid> guids;
+		std::vector<Nyx::EntityGuid> guids;
 		for (const Change& change : transaction.Changes)
 		{
 			const ObjectRef target = std::visit(
@@ -38,24 +38,24 @@ namespace Nyx::Editor
 				},
 				change.Payload);
 
-			const Nyx::Engine::EntityGuid guid = GetSceneEntityGuid(target);
+			const Nyx::EntityGuid guid = GetSceneEntityGuid(target);
 			if (guid.IsValid() && std::find(guids.begin(), guids.end(), guid) == guids.end())
 			{
 				guids.push_back(guid);
 			}
 		}
 
-		Nyx::Engine::Registry& world = Scene.GetRegistry();
-		for (const Nyx::Engine::EntityGuid guid : guids)
+		Nyx::Registry& world = Scene.GetRegistry();
+		for (const Nyx::EntityGuid guid : guids)
 		{
 			// Deleted entities have nothing to load
-			const std::optional<Nyx::Engine::Entity> entity = Scene.FindEntity(guid);
+			const std::optional<Nyx::Entity> entity = Scene.FindEntity(guid);
 			if (!entity)
 			{
 				continue;
 			}
 
-			for (const Nyx::Engine::ComponentTypeOps& ops : Nyx::Engine::ComponentTypeRegistry::Get().GetAll())
+			for (const Nyx::ComponentTypeOps& ops : Nyx::ComponentTypeRegistry::Get().GetAll())
 			{
 				if (!ops.PostLoad)
 				{

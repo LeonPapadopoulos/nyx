@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	inline constexpr uint32_t SceneFileMagic = 0x53434E45; // 'SCNE'
 

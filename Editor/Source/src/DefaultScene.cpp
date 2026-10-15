@@ -15,91 +15,91 @@ namespace Nyx::Editor
 		auto& world = scene.GetRegistry();
 
 		{
-			Nyx::Engine::Entity e = scene.CreateEntity("Textured Cube");
+			Nyx::Entity e = scene.CreateEntity("Textured Cube");
 
-			world.Add<Nyx::Engine::TransformComponent>(
+			world.Add<Nyx::TransformComponent>(
 				e,
-				Nyx::Engine::TransformComponent{
+				Nyx::TransformComponent{
 					.Position = glm::vec3(-2.0f, 0.0f, 0.0f),
 					.Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
 					.Scale = glm::vec3(1.0f) });
 
-			world.Add<Nyx::Engine::MeshRendererComponent>(
+			world.Add<Nyx::MeshRendererComponent>(
 				e,
-				Nyx::Engine::MeshRendererComponent{
-					.Mesh = Nyx::Engine::AssetReference{
+				Nyx::MeshRendererComponent{
+					.Mesh = Nyx::AssetReference{
 						.Type = "Mesh",
 						.Path = "Meshes/Cube.nyxmesh" },
-					.Material = Nyx::Engine::AssetReference{ .Type = "Material", .Path = "Materials/Textured.nyxmat" },
+					.Material = Nyx::AssetReference{ .Type = "Material", .Path = "Materials/Textured.nyxmat" },
 					.bVisible = true });
 		}
 
 		{
-			Nyx::Engine::Entity e = scene.CreateEntity("Reflective Cube");
+			Nyx::Entity e = scene.CreateEntity("Reflective Cube");
 
-			world.Add<Nyx::Engine::TransformComponent>(
+			world.Add<Nyx::TransformComponent>(
 				e,
-				Nyx::Engine::TransformComponent{
+				Nyx::TransformComponent{
 					.Position = glm::vec3(0.0f, 0.0f, 0.0f),
 					.Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
 					.Scale = glm::vec3(1.0f) });
 
-			world.Add<Nyx::Engine::MeshRendererComponent>(
+			world.Add<Nyx::MeshRendererComponent>(
 				e,
-				Nyx::Engine::MeshRendererComponent{
-					.Mesh = Nyx::Engine::AssetReference{
+				Nyx::MeshRendererComponent{
+					.Mesh = Nyx::AssetReference{
 						.Type = "Mesh",
 						.Path = "Meshes/Cube.nyxmesh" },
-					.Material = Nyx::Engine::AssetReference{ .Type = "Material", .Path = "Materials/Reflective.nyxmat" },
+					.Material = Nyx::AssetReference{ .Type = "Material", .Path = "Materials/Reflective.nyxmat" },
 					.bVisible = true });
 		}
 
 		{
-			Nyx::Engine::Entity e = scene.CreateEntity("Untextured Cube");
+			Nyx::Entity e = scene.CreateEntity("Untextured Cube");
 
-			world.Add<Nyx::Engine::TransformComponent>(
+			world.Add<Nyx::TransformComponent>(
 				e,
-				Nyx::Engine::TransformComponent{
+				Nyx::TransformComponent{
 					.Position = glm::vec3(2.0f, 0.0f, 0.0f),
 					.Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
 					.Scale = glm::vec3(1.0f) });
 
-			world.Add<Nyx::Engine::MeshRendererComponent>(
+			world.Add<Nyx::MeshRendererComponent>(
 				e,
-				Nyx::Engine::MeshRendererComponent{
-					.Mesh = Nyx::Engine::AssetReference{
+				Nyx::MeshRendererComponent{
+					.Mesh = Nyx::AssetReference{
 						.Type = "Mesh",
 						.Path = "Meshes/Cube.nyxmesh" },
-					.Material = Nyx::Engine::AssetReference{ .Type = "Material", .Path = "Materials/Untextured.nyxmat" },
+					.Material = Nyx::AssetReference{ .Type = "Material", .Path = "Materials/Untextured.nyxmat" },
 					.bVisible = true });
 		}
 
 		{
 			// In front of the cubes, looking slightly down at them
-			Nyx::Engine::Entity e = scene.CreateEntity("Main Camera");
+			Nyx::Entity e = scene.CreateEntity("Main Camera");
 
-			world.Add<Nyx::Engine::TransformComponent>(
+			world.Add<Nyx::TransformComponent>(
 				e,
-				Nyx::Engine::TransformComponent{
+				Nyx::TransformComponent{
 					.Position = glm::vec3(0.0f, 2.0f, 6.0f),
 					.Rotation = glm::quat(glm::radians(glm::vec3(-15.0f, 0.0f, 0.0f))),
 					.Scale = glm::vec3(1.0f) });
 
-			world.Add<Nyx::Engine::CameraComponent>(e, Nyx::Engine::CameraComponent{});
+			world.Add<Nyx::CameraComponent>(e, Nyx::CameraComponent{});
 		}
 
 		{
 			// Shines down from the same direction as the fixed light of the editor views
-			Nyx::Engine::Entity e = scene.CreateEntity("Sun");
+			Nyx::Entity e = scene.CreateEntity("Sun");
 
-			world.Add<Nyx::Engine::TransformComponent>(
+			world.Add<Nyx::TransformComponent>(
 				e,
-				Nyx::Engine::TransformComponent{
+				Nyx::TransformComponent{
 					.Position = glm::vec3(0.0f, 5.0f, 0.0f),
 					.Rotation = glm::quat(glm::radians(glm::vec3(-65.0f, 65.0f, 0.0f))),
 					.Scale = glm::vec3(1.0f) });
 
-			world.Add<Nyx::Engine::DirectionalLightComponent>(e, Nyx::Engine::DirectionalLightComponent{});
+			world.Add<Nyx::DirectionalLightComponent>(e, Nyx::DirectionalLightComponent{});
 		}
 	}
 }

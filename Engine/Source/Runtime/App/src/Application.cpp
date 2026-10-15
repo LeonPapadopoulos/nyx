@@ -8,75 +8,71 @@
 
 namespace Nyx
 {
-	namespace Engine
+	Application::Application(const ApplicationSpecs& specs)
 	{
-		Application::Application(const ApplicationSpecs& specs)
+		// Saving and loading scenes, and the editor's details panel and undo, look up
+		// component types in the ComponentTypeRegistry: fill it before any layer runs.
+		RegisterComponentTypes();
+
+		Window = std::unique_ptr<IWindow>(IWindow::Create(specs.Window));
+		if (Nyx::Input::IInputBackend* windowInput = Window->GetInputBackend())
 		{
-			// Saving and loading scenes, and the editor's details panel and undo, look up
-			// component types in the ComponentTypeRegistry: fill it before any layer runs.
-			RegisterComponentTypes();
-
-			Window = std::unique_ptr<IWindow>(IWindow::Create(specs.Window));
-			if (Nyx::Input::IInputBackend* windowInput = Window->GetInputBackend())
-			{
-				Input.AddBackend(*windowInput);
-			}
-		}
-
-		Application::~Application()
-		{
-			// Layers release their GPU resources in OnDetach, so the GPU has to be idle and
-			// the renderer still alive. Detach in reverse order, like a stack.
-			Window->GetRenderer().WaitIdle();
-			for (auto layer = Layers.rbegin(); layer != Layers.rend(); ++layer)
-			{
-				(*layer)->OnDetach();
-			}
-
-			// Destroy the layers now, while the window and renderer they use still exist.
-			Layers.clear();
-		}
-
-		void Application::PushLayer(std::unique_ptr<ILayer> layer)
-		{
-			layer->OnAttach(*this);
-			Layers.push_back(std::move(layer));
-		}
-
-		void Application::Run()
-		{
-			// All layers are attached by now, so the startup banner can make way for the window.
-			Window->FinishStartup();
-
-			auto previousFrameTime = std::chrono::steady_clock::now();
-			while (!Window->ShouldClose())
-			{
-				Window->WaitForNextFrame();
-				Window->PollEvents();
-				Input.BeginFrame(Nyx::Input::NowUs());
-
-				const auto frameTime = std::chrono::steady_clock::now();
-				const float deltaTime = std::chrono::duration<float>(frameTime - previousFrameTime).count();
-				previousFrameTime = frameTime;
-
-				for (const std::unique_ptr<ILayer>& layer : Layers)
-				{
-					layer->OnUpdate(deltaTime);
-				}
-
-				Window->DrawFrame(
-					[this]()
-					{
-						for (const std::unique_ptr<ILayer>& layer : Layers)
-						{
-							layer->OnUI();
-						}
-					});
-
-				// The cursor as the frame's layers asked for it
-				Input.EndFrame();
-			}
+			Input.AddBackend(*windowInput);
 		}
 	}
 
-} // Engine
+	Application::~Application()
+	{
+		// Layers release their GPU resources in OnDetach, so the GPU has to be idle and
+		// the renderer still alive. Detach in reverse order, like a stack.
+		Window->GetRenderer().WaitIdle();
+		for (auto layer = Layers.rbegin(); layer != Layers.rend(); ++layer)
+		{
+			(*layer)->OnDetach();
+		}
+
+		// Destroy the layers now, while the window and renderer they use still exist.
+		Layers.clear();
+	}
+
+	void Application::PushLayer(std::unique_ptr<ILayer> layer)
+	{
+		layer->OnAttach(*this);
+		Layers.push_back(std::move(layer));
+	}
+
+	void Application::Run()
+	{
+		// All layers are attached by now, so the startup banner can make way for the window.
+		Window->FinishStartup();
+
+		auto previousFrameTime = std::chrono::steady_clock::now();
+		while (!Window->ShouldClose())
+		{
+			Window->WaitForNextFrame();
+			Window->PollEvents();
+			Input.BeginFrame(Nyx::Input::NowUs());
+
+			const auto frameTime = std::chrono::steady_clock::now();
+			const float deltaTime = std::chrono::duration<float>(frameTime - previousFrameTime).count();
+			previousFrameTime = frameTime;
+
+			for (const std::unique_ptr<ILayer>& layer : Layers)
+			{
+				layer->OnUpdate(deltaTime);
+			}
+
+			Window->DrawFrame(
+				[this]()
+				{
+					for (const std::unique_ptr<ILayer>& layer : Layers)
+					{
+						layer->OnUI();
+					}
+				});
+
+			// The cursor as the frame's layers asked for it
+			Input.EndFrame();
+		}
+	}
+}

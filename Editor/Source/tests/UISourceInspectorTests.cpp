@@ -170,7 +170,7 @@ namespace
 	{
 		RegisterRuntimeReflectedSources();
 		const auto& sources = ReflectionSourceRegistry::Get();
-		const auto& type = Reflection::GetTypeMetadata<Engine::TransformComponent>();
+		const auto& type = Reflection::GetTypeMetadata<TransformComponent>();
 		Require(sources.Find(type).IsValid(), "Component declaration has no source");
 		bool foundPosition = false;
 		for (size_t i = 0; i < type.PropertyCount; ++i)

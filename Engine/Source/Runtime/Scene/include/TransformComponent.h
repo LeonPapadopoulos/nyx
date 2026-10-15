@@ -7,7 +7,7 @@
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/quaternion.hpp>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	NYX_REFLECT(Component, meta = (DisplayName = "Transform Component"))
 	struct TransformComponent

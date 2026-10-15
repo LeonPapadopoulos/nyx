@@ -7,7 +7,7 @@
 #include "Entity.h"
 #include <optional>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	class Registry;
 }
@@ -21,7 +21,7 @@ namespace Nyx
 		VulkanViewportTarget RenderTarget;
 
 		// The world it shows, when not the renderer's (IRenderer::SetSceneViewWorld())
-		const Nyx::Engine::Registry* OwnWorld = nullptr;
+		const Nyx::Registry* OwnWorld = nullptr;
 
 		EViewportCameraMode CameraMode = EViewportCameraMode::EditorFreeCamera;
 		EditorCamera EditorCam;
@@ -69,7 +69,7 @@ namespace Nyx
 		uint32_t PendingPickX = 0;
 		uint32_t PendingPickY = 0;
 
-		std::optional<Nyx::Engine::Entity> LastPickedEntity;
+		std::optional<Nyx::Entity> LastPickedEntity;
 
 		uint64_t RenderedWorldRevision = 0;
 		uint64_t PickWorldRevision = 0;
@@ -118,7 +118,7 @@ namespace Nyx
 		// Blur: the picture blurred small, for glows and glass (VulkanBlur)
 		// -------------------------------------------------
 
-		Nyx::Engine::VulkanBlurTarget Blur;
+		Nyx::VulkanBlurTarget Blur;
 		// How ImGui shows it: a descriptor set made by ImGui's backend, pointed at the new image
 		// when the blur's images are made anew (its generation changes), so its ImTextureID
 		// never changes

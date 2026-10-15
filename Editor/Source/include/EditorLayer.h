@@ -47,12 +47,12 @@ namespace Nyx::Editor
 	// The whole editor as one layer of the application. It owns the scene being edited
 	// (SceneEditor), the panels that show it, and Play (PlaySession); it draws the window's
 	// titlebar and status bar, and opens, saves and replaces scenes.
-	class EditorLayer : public Nyx::Engine::ILayer
+	class EditorLayer : public Nyx::ILayer
 	{
 		friend struct Nyx::Tests::SceneReplacementTestAccess;
 
 	public:
-		void OnAttach(Nyx::Engine::Application& application) override;
+		void OnAttach(Nyx::Application& application) override;
 		void OnDetach() override;
 		void OnUpdate(float deltaTime) override;
 		void OnUI() override;
@@ -113,7 +113,7 @@ namespace Nyx::Editor
 		Nyx::Input::InputSystem* Input = nullptr;
 
 		// Turns the asset paths in components into the renderer's assets; created in OnAttach.
-		std::unique_ptr<Nyx::Engine::AssetResolver> AssetResolver;
+		std::unique_ptr<Nyx::AssetResolver> AssetResolver;
 
 		// The asset types the editor knows (RegisterEditorAssetTypes()), filled in OnAttach
 		AssetTypeRegistry AssetTypes;

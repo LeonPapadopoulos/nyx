@@ -10,7 +10,7 @@
 #include <string_view>
 #include <vector>
 
-namespace Nyx::Engine
+namespace Nyx::UI
 {
 	// A shadow behind a shape, or behind all shapes of a group together
 	struct PainterShadow

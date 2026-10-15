@@ -30,7 +30,7 @@
 
 namespace
 {
-	using namespace Nyx::Engine;
+	using namespace Nyx;
 
 	using Nyx::Tests::Require;
 
@@ -150,7 +150,7 @@ namespace
 	{
 		SetPropertiesMessage setProperties;
 		setProperties.Entity = EntityGuid{ 0x1122334455667788ull };
-		setProperties.ComponentType = "Nyx::Engine::TransformComponent";
+		setProperties.ComponentType = "Nyx::TransformComponent";
 		BinaryWriter block;
 		BinaryWriter content;
 		content.WriteUInt16(0);
@@ -256,7 +256,7 @@ namespace
 
 		const std::optional<SetPropertiesMessage> move =
 			MakeSetPropertiesMessage(editor, cube, GetOps<TransformComponent>(), { GetPropertyIndex<TransformComponent>("Position") });
-		Require(move && move->Entity == GetGuid(editor, cube) && move->ComponentType == "Nyx::Engine::TransformComponent" &&
+		Require(move && move->Entity == GetGuid(editor, cube) && move->ComponentType == "Nyx::TransformComponent" &&
 				CountProperties(move->Properties) == 1,
 			"The move isn't one property of the cube's transform");
 		Require(Apply(*move, game) == ELiveEditResult::Applied, "The move wasn't applied");
@@ -356,8 +356,12 @@ namespace
 		Require(Apply(unknownEntity, game) == ELiveEditResult::Ignored, "An edit of an unknown entity wasn't ignored");
 
 		SetPropertiesMessage unknownType = move;
-		unknownType.ComponentType = "Nyx::Engine::NoSuchComponent";
+		unknownType.ComponentType = "Nyx::NoSuchComponent";
 		Require(Apply(unknownType, game) == ELiveEditResult::Ignored, "An edit of an unknown component type wasn't ignored");
+
+		// Scene files and link recordings from before the components left Nyx::Engine name them so
+		Require(ComponentTypeRegistry::Get().FindByName("Nyx::Engine::TransformComponent") == &GetOps<TransformComponent>(),
+			"A component type isn't found by the name it had in Nyx::Engine");
 
 		Require(Apply(DeleteEntityMessage{ EntityGuid{ 12345 } }, game) == ELiveEditResult::Ignored, "Deleting an unknown entity wasn't ignored");
 		Require(ApplyLiveEdit(MakeNetMessage(QuitMessage{}), game, {}) == ELiveEditResult::NotALiveEdit, "Quit was taken for a live edit");
@@ -425,7 +429,7 @@ namespace
 			*MakeSetPropertiesMessage(editor, cube, GetOps<TransformComponent>(), { GetPropertyIndex<TransformComponent>("Position") });
 		const EditorLinkMessageText moveText = Describe(move);
 		Require(moveText.Name == "SetProperties" && moveText.Summary == guid + " TransformComponent: Position: (1, 2, 3)" &&
-				Contains(moveText.Details, "Entity: " + guid) && Contains(moveText.Details, "ComponentType: \"Nyx::Engine::TransformComponent\"") &&
+				Contains(moveText.Details, "Entity: " + guid) && Contains(moveText.Details, "ComponentType: \"Nyx::TransformComponent\"") &&
 				Contains(moveText.Details, "\n  Position: (1, 2, 3)"),
 			"SetProperties is described wrongly: " + moveText.Summary + "\n" + moveText.Details);
 		Require(Describe(move, false).Details.empty() && Describe(move, false).Summary == moveText.Summary,
@@ -441,7 +445,7 @@ namespace
 		const EditorLinkMessageText createText = Describe(*MakeCreateEntityMessage(editor, cube));
 		Require(createText.Name == "CreateEntity" && Contains(createText.Summary, guid + " \"Cube\" (") &&
 				Contains(createText.Summary, "MeshRendererComponent") && Contains(createText.Summary, "TransformComponent") &&
-				Contains(createText.Details, "  Nyx::Engine::MeshRendererComponent\n") && Contains(createText.Details, "      Path: \"Cube\""),
+				Contains(createText.Details, "  Nyx::MeshRendererComponent\n") && Contains(createText.Details, "      Path: \"Cube\""),
 			"CreateEntity is described wrongly: " + createText.Summary + "\n" + createText.Details);
 		Require(Describe(*MakeCreateEntityMessage(editor, cube), false).Details.empty(), "CreateEntity has details without asking");
 
@@ -547,7 +551,7 @@ int main()
 {
 	try
 	{
-		Nyx::Core::Logger::Get().Init();
+		Nyx::Logger::Get().Init();
 		RegisterComponentTypes();
 
 		TestMessagesReadBackAsWritten();

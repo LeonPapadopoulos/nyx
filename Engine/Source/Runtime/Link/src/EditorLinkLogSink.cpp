@@ -6,13 +6,13 @@
 #include <algorithm>
 #include <chrono>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	std::shared_ptr<EditorLinkLogSink> EditorLinkLogSink::Install()
 	{
 		auto sink = std::make_shared<EditorLinkLogSink>();
 
-		Nyx::Core::Logger& logger = Nyx::Core::Logger::Get();
+		Nyx::Logger& logger = Nyx::Logger::Get();
 		for (const std::shared_ptr<spdlog::logger>& target : { logger.GetCoreLogger(), logger.GetClientLogger() })
 		{
 			if (target)

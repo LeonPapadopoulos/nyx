@@ -170,7 +170,7 @@ namespace
 		Nyx::Editor::InspectorDrawContext& drawContext,
 		const Nyx::Reflection::TypeMetadata& ownerType)
 	{
-		Nyx::Engine::AssetReference& reference = Nyx::Reflection::AccessProperty<Nyx::Engine::AssetReference>(object, property);
+		Nyx::AssetReference& reference = Nyx::Reflection::AccessProperty<Nyx::AssetReference>(object, property);
 		const char* assetType = Nyx::Reflection::FindMetadataValue(property, "AssetType");
 		const std::string typeId = assetType ? std::string(assetType) : reference.Type;
 
@@ -224,7 +224,7 @@ namespace
 			}
 			location.PropertyIndices.push_back(static_cast<size_t>(&property - ownerType.Properties));
 			Nyx::Editor::TransactionDiffUtil diff;
-			diff.TakeSnapshot(drawContext.CurrentObjectRef, &reference, Nyx::Reflection::GetTypeMetadata<Nyx::Engine::AssetReference>(), location);
+			diff.TakeSnapshot(drawContext.CurrentObjectRef, &reference, Nyx::Reflection::GetTypeMetadata<Nyx::AssetReference>(), location);
 			reference.Type = chosen->empty() ? std::string() : typeId;
 			reference.Path = *chosen;
 			if (drawContext.Transactions)
@@ -248,7 +248,7 @@ namespace
 	{
 		Nyx::UI::SourceDeclarationScope declaration(Nyx::Editor::ReflectionSourceRegistry::Get().Find(property));
 		if (Nyx::Reflection::IsStructProperty(property) &&
-			Nyx::Reflection::TryGetNestedType(property) == &Nyx::Reflection::GetTypeMetadata<Nyx::Engine::AssetReference>())
+			Nyx::Reflection::TryGetNestedType(property) == &Nyx::Reflection::GetTypeMetadata<Nyx::AssetReference>())
 		{
 			return DrawAssetReferenceRow(object, property, drawContext, ownerType);
 		}

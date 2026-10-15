@@ -19,7 +19,7 @@ namespace Nyx
 	class VulkanContext;
 }
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	class VulkanPainter;
 
@@ -78,18 +78,18 @@ namespace Nyx::Engine
 	public:
 		// Starts a new frame, with this frame's budget: drops all painters and segments, keeps the
 		// buffers. What the last binning read back stays until the next ReadBack().
-		void Clear(const PainterBudget& budget = PainterBudget{});
+		void Clear(const UI::PainterBudget& budget = UI::PainterBudget{});
 
 		// Measures the segment and adds it, with its painter's commands, groups and textures if
 		// this frame doesn't have them yet. Its grid covers the whole target with bWholeTarget (a
 		// canvas), else only the tiles its commands touch. Returns the segment's index, for
 		// DrawSegment().
-		uint32_t Add(const Painter& painter, const PainterSegment& segment, bool bWholeTarget = false);
+		uint32_t Add(const UI::Painter& painter, const UI::PainterSegment& segment, bool bWholeTarget = false);
 
 		uint32_t GetSegmentCount() const { return static_cast<uint32_t>(Segments.size()); }
 
 		// One segment's binning statistics: the measuring's this frame, the GPU's since ReadBack()
-		const PainterBinningStats& GetStats(uint32_t segment) const { return Segments[segment].Stats; }
+		const UI::PainterBinningStats& GetStats(uint32_t segment) const { return Segments[segment].Stats; }
 
 		// What went wrong while measuring this frame's segments, and what the GPU found while
 		// binning them (since ReadBack()), one line per problem
@@ -107,14 +107,14 @@ namespace Nyx::Engine
 
 		// A segment's tiles and entries as the GPU binned them, read back; empty without
 		// SetReadBackTiles(true)
-		PainterTiles GetBinned(uint32_t segment) const;
+		UI::PainterTiles GetBinned(uint32_t segment) const;
 
 		// Adds the segment's tiles, each with its commands, to `grid`, a heat grid over the whole
 		// target the segment is drawn into; from the tiles read back
-		void AddHeat(uint32_t segment, PainterHeatGrid& grid) const;
+		void AddHeat(uint32_t segment, UI::PainterHeatGrid& grid) const;
 
 		// The per-tile reduction over all segments, read back
-		PainterReduction GetReduction() const;
+		UI::PainterReduction GetReduction() const;
 
 		// What Bin() copies to the GPU this frame: commands, groups, measured commands and segments
 		size_t GetUploadBytes() const;
@@ -127,7 +127,7 @@ namespace Nyx::Engine
 		// One painter's part of the buffers
 		struct PainterPart
 		{
-			const Painter* Source = nullptr;
+			const UI::Painter* Source = nullptr;
 			uint32_t CommandBase = 0;
 			uint32_t GroupBase = 0;
 			std::vector<ImTextureRef> Textures;
@@ -143,18 +143,18 @@ namespace Nyx::Engine
 			uint32_t OriginY = 0;
 			uint32_t TilesX = 0;
 			uint32_t TilesY = 0;
-			PainterBinningStats Stats;
+			UI::PainterBinningStats Stats;
 		};
 
 		// The painter's part, added if this frame doesn't have it yet
-		uint32_t FindOrAddPainter(const Painter& painter);
+		uint32_t FindOrAddPainter(const UI::Painter& painter);
 
-		PainterBudget Budget;
+		UI::PainterBudget Budget;
 
-		std::vector<PainterCommand> Commands;
-		std::vector<PainterGroup> Groups;
-		std::vector<PainterBinCommand> BinCommands;
-		std::vector<PainterBinSegment> BinSegments;
+		std::vector<UI::PainterCommand> Commands;
+		std::vector<UI::PainterGroup> Groups;
+		std::vector<UI::PainterBinCommand> BinCommands;
+		std::vector<UI::PainterBinSegment> BinSegments;
 		// All segments' tiles, with the padding that starts each at a whole workgroup, and the
 		// most entries they can need (within the budget)
 		uint32_t TileCount = 0;
@@ -170,11 +170,11 @@ namespace Nyx::Engine
 		bool bReadBackPending = false;
 		bool bTilesReadBackPending = false;
 		uint32_t EntryCapacity = 0;
-		std::vector<PainterTile> ReadTiles;
+		std::vector<UI::PainterTile> ReadTiles;
 		std::vector<uint32_t> ReadEntries;
 
 		// Reused for measuring each segment
-		PainterMeasuredSegment Measured;
+		UI::PainterMeasuredSegment Measured;
 
 		VulkanPainterBuffers Buffers;
 	};
@@ -202,7 +202,7 @@ namespace Nyx::Engine
 
 		// The last drawn frame's grid and statistics, and with SetReadBackTiles(true) its tiles and
 		// entries, as read back, e.g. for the Painter Test window
-		PainterTiles GetTiles() const { return Segments.GetSegmentCount() > 0 ? Segments.GetBinned(0) : PainterTiles{}; }
+		UI::PainterTiles GetTiles() const { return Segments.GetSegmentCount() > 0 ? Segments.GetBinned(0) : UI::PainterTiles{}; }
 
 		void Release();
 
@@ -242,7 +242,7 @@ namespace Nyx::Engine
 
 		// Records binning and painting `painter`'s frame into `target`, which takes the painter's
 		// target size. Outside a render pass; the target's image ends in ShaderReadOnlyOptimal layout.
-		void Draw(vk::raii::CommandBuffer& commandBuffer, const Painter& painter, VulkanPainterTarget& target, const PainterDrawOptions& options);
+		void Draw(vk::raii::CommandBuffer& commandBuffer, const UI::Painter& painter, VulkanPainterTarget& target, const UI::PainterDrawOptions& options);
 
 		// Records copying the frame's segments to the GPU and binning them, and reading back what
 		// is read back. Once per frame, after the last Add() and before the first DrawSegment(),

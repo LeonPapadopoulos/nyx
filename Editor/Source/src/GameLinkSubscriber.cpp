@@ -18,9 +18,9 @@
 namespace
 {
 	using namespace Nyx::Editor;
-	using Nyx::Engine::ComponentTypeOps;
-	using Nyx::Engine::Entity;
-	using Nyx::Engine::EntityGuid;
+	using Nyx::ComponentTypeOps;
+	using Nyx::Entity;
+	using Nyx::EntityGuid;
 	using Nyx::Reflection::TypeMetadata;
 
 	// Changed properties (indices) of one type
@@ -85,7 +85,7 @@ namespace
 		const TypeMetadata* componentType = bInStruct ? location.SubobjectType : change.TypeMetadata;
 		const size_t propertyIndex = bInStruct ? location.PropertyIndices.front() : change.PropertyIndex;
 
-		const ComponentTypeOps* ops = componentType ? Nyx::Engine::ComponentTypeRegistry::Get().FindByTypeMetadata(*componentType) : nullptr;
+		const ComponentTypeOps* ops = componentType ? Nyx::ComponentTypeRegistry::Get().FindByTypeMetadata(*componentType) : nullptr;
 		if (!ops)
 		{
 			return std::nullopt;
@@ -210,7 +210,7 @@ namespace Nyx::Editor
 			}
 		}
 
-		const Nyx::Engine::Registry& world = Scene.GetRegistry();
+		const Nyx::Registry& world = Scene.GetRegistry();
 
 		for (const EntityEdit& edit : edits)
 		{
@@ -222,14 +222,14 @@ namespace Nyx::Editor
 			{
 				if (entity)
 				{
-					if (std::optional<Nyx::Engine::CreateEntityMessage> message = Nyx::Engine::MakeCreateEntityMessage(world, *entity))
+					if (std::optional<Nyx::CreateEntityMessage> message = Nyx::MakeCreateEntityMessage(world, *entity))
 					{
-						Keep(Nyx::Engine::MakeNetMessage(*message));
+						Keep(Nyx::MakeNetMessage(*message));
 					}
 				}
 				else
 				{
-					Keep(Nyx::Engine::MakeNetMessage(Nyx::Engine::DeleteEntityMessage{ edit.Guid }));
+					Keep(Nyx::MakeNetMessage(Nyx::DeleteEntityMessage{ edit.Guid }));
 				}
 
 				continue;
@@ -242,10 +242,10 @@ namespace Nyx::Editor
 
 			for (const auto& [ops, propertyIndices] : edit.ChangedProperties)
 			{
-				if (std::optional<Nyx::Engine::SetPropertiesMessage> message =
-						Nyx::Engine::MakeSetPropertiesMessage(world, *entity, *ops, propertyIndices))
+				if (std::optional<Nyx::SetPropertiesMessage> message =
+						Nyx::MakeSetPropertiesMessage(world, *entity, *ops, propertyIndices))
 				{
-					Keep(Nyx::Engine::MakeNetMessage(*message));
+					Keep(Nyx::MakeNetMessage(*message));
 				}
 			}
 		}

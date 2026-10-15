@@ -13,7 +13,7 @@
 #include <utility>
 #include <vector>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	// A material file (.nyxmat): which shader, and values for some of its parameters, one per line;
 	// every parameter not listed takes the shader's default.

@@ -5,7 +5,7 @@
 #include <functional>
 #include <type_traits>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	// Names one entity the same way in its scene file and in every program that loads it, unlike
 	// an Entity handle: that is a slot in one Registry, so it changes with every load and differs
@@ -47,9 +47,9 @@ namespace std
 {
 	// Lets EntityGuid be a key of std::unordered_map and std::unordered_set
 	template<>
-	struct hash<Nyx::Engine::EntityGuid>
+	struct hash<Nyx::EntityGuid>
 	{
-		size_t operator()(Nyx::Engine::EntityGuid guid) const noexcept
+		size_t operator()(Nyx::EntityGuid guid) const noexcept
 		{
 			return hash<uint64_t>{}(guid.Value);
 		}

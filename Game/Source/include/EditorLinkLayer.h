@@ -12,7 +12,7 @@
 #include <filesystem>
 #include <memory>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	class Application;
 }
@@ -26,22 +26,22 @@ namespace Nyx::Game
 	//
 	// Shaders come compiled from the editor (IRenderer::FollowEditorShaders()), with the material
 	// values it edits, saved or not; the game compiles only what nothing compiled yet.
-	class EditorLinkLayer : public Nyx::Engine::ILayer
+	class EditorLinkLayer : public Nyx::ILayer
 	{
 	public:
 		// logSink collects the log lines to send, from startup on. With a recordingPath
 		// (--link-log), every message of the link is recorded there.
-		EditorLinkLayer(uint16_t editorPort, std::shared_ptr<Nyx::Engine::EditorLinkLogSink> logSink,
+		EditorLinkLayer(uint16_t editorPort, std::shared_ptr<Nyx::EditorLinkLogSink> logSink,
 			std::filesystem::path recordingPath);
 
 		// Where the editor's live edits go. Without a world, they are skipped with a warning.
-		void SetWorld(Nyx::Engine::Registry& world, Nyx::Engine::ScenePostLoadContext postLoadContext)
+		void SetWorld(Nyx::Registry& world, Nyx::ScenePostLoadContext postLoadContext)
 		{
 			World = &world;
 			PostLoadContext = postLoadContext;
 		}
 
-		void OnAttach(Nyx::Engine::Application& application) override;
+		void OnAttach(Nyx::Application& application) override;
 		void OnDetach() override;
 		void OnUpdate(float deltaTime) override;
 
@@ -58,13 +58,13 @@ namespace Nyx::Game
 
 	private:
 		uint16_t EditorPort = 0;
-		std::shared_ptr<Nyx::Engine::EditorLinkLogSink> LogSink;
+		std::shared_ptr<Nyx::EditorLinkLogSink> LogSink;
 		std::filesystem::path RecordingPath;
 
-		Nyx::Engine::Application* App = nullptr;
-		Nyx::Engine::Registry* World = nullptr;
-		Nyx::Engine::ScenePostLoadContext PostLoadContext;
-		Nyx::Engine::EditorLinkRecorder Recorder;
-		std::unique_ptr<Nyx::Engine::EditorLink> Link;
+		Nyx::Application* App = nullptr;
+		Nyx::Registry* World = nullptr;
+		Nyx::ScenePostLoadContext PostLoadContext;
+		Nyx::EditorLinkRecorder Recorder;
+		std::unique_ptr<Nyx::EditorLink> Link;
 	};
 }

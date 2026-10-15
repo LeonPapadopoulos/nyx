@@ -2,7 +2,7 @@
 
 #include "ReflectionMacros.h"
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	// A camera the scene can be viewed through, looking along the entity's forward axis (-Z).
 	// The game uses the first camera marked as primary.

@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	// An image in memory: 8 bits per channel, RGBA, row by row from the top left, straight alpha
 	struct RgbaImage

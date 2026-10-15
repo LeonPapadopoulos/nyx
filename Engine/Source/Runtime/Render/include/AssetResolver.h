@@ -7,7 +7,7 @@ namespace Nyx
 	class IRenderer;
 }
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	// Resolves asset paths to what the renderer draws: materials from their .nyxmat files in the
 	// assets folder, and the built-in cube and sphere meshes until meshes are assets of their own.

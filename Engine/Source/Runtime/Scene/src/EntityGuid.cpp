@@ -3,7 +3,7 @@
 
 #include <random>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	EntityGuid EntityGuid::Generate()
 	{

@@ -59,8 +59,8 @@ namespace Nyx::Editor
 
 		NYX_UI(Nyx::UI::Separator());
 
-		world.Each<Nyx::Engine::NameComponent>(
-			[&](Nyx::Engine::Entity entity, const Nyx::Engine::NameComponent& name)
+		world.Each<Nyx::NameComponent>(
+			[&](Nyx::Entity entity, const Nyx::NameComponent& name)
 			{
 				Nyx::UI::TreeRowOptions row;
 				row.bSelected = selection.has_value() && selection.value() == entity;

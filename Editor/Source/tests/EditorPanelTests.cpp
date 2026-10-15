@@ -44,7 +44,8 @@
 
 namespace
 {
-	using namespace Nyx::Engine;
+	using namespace Nyx;
+	using namespace Nyx::UI;
 	using namespace Nyx::Editor;
 
 	using Nyx::Tests::HeadlessUI;
@@ -1447,7 +1448,7 @@ int main()
 {
 	try
 	{
-		Nyx::Core::Logger::Get().Init();
+		Nyx::Logger::Get().Init();
 		RegisterComponentTypes();
 
 		TestCreateAndDeleteAreUndoable();

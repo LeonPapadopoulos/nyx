@@ -22,7 +22,7 @@
 
 namespace
 {
-	using namespace Nyx::Engine;
+	using namespace Nyx;
 	namespace fs = std::filesystem;
 
 	using Nyx::Tests::Require;
@@ -161,8 +161,8 @@ int main()
 {
 	try
 	{
-		Nyx::Core::Logger::Get().Init();
-		Nyx::Engine::RegisterComponentTypes();
+		Nyx::Logger::Get().Init();
+		Nyx::RegisterComponentTypes();
 		TestDirectory directory("NyxArchiveTests");
 		TestCreateReplaceAndEmpty(directory.Path);
 		TestFailedReplacement(directory.Path);

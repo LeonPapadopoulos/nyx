@@ -6,7 +6,7 @@
 #include <string_view>
 #include <vector>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	// What reflection says about a material's struct, as plain data: the parameters panel is built
 	// from it, and material values are written at its offsets. Offsets are in scalar layout, the

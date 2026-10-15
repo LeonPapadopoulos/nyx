@@ -39,7 +39,7 @@ namespace Nyx::Editor
 			return;
 		}
 
-		const Nyx::Engine::Entity selectedEntity = selection.value();
+		const Nyx::Entity selectedEntity = selection.value();
 
 		if (!world.IsAlive(selectedEntity))
 		{
@@ -71,10 +71,10 @@ namespace Nyx::Editor
 		drawContext.CurrentObjectRef = MakeSceneEntityRef(editing.Scene, selectedEntity);
 
 		// Removed after the loop, so it isn't drawn after it is gone
-		const Nyx::Engine::ComponentTypeOps* componentToRemove = nullptr;
+		const Nyx::ComponentTypeOps* componentToRemove = nullptr;
 
 		// One collapsible section per component of the entity, showing its reflected properties
-		for (const Nyx::Engine::ComponentTypeOps& componentType : Nyx::Engine::ComponentTypeRegistry::Get().GetAll())
+		for (const Nyx::ComponentTypeOps& componentType : Nyx::ComponentTypeRegistry::Get().GetAll())
 		{
 			void* component = componentType.Get(world, selectedEntity);
 			if (!component)
@@ -124,11 +124,11 @@ namespace Nyx::Editor
 			ImGui::OpenPopup("##AddComponent");
 		}
 
-		const Nyx::Engine::ComponentTypeOps* componentToAdd = nullptr;
+		const Nyx::ComponentTypeOps* componentToAdd = nullptr;
 		if (Nyx::UI::BeginPopup("##AddComponent"))
 		{
 			bool bAnyMissing = false;
-			for (const Nyx::Engine::ComponentTypeOps& componentType : Nyx::Engine::ComponentTypeRegistry::Get().GetAll())
+			for (const Nyx::ComponentTypeOps& componentType : Nyx::ComponentTypeRegistry::Get().GetAll())
 			{
 				if (!CanAddOrRemoveComponent(componentType) || componentType.Has(world, selectedEntity))
 				{

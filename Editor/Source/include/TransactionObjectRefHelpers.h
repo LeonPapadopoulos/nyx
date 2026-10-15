@@ -10,7 +10,7 @@ namespace Nyx::Editor
 	// A scene entity in an undo step, named by its guid. Not by its handle: once the entity is
 	// deleted, the next entity added can take its slot, and undoing the delete then has to bring
 	// it back elsewhere. Invalid for an entity without a guid; such an edit isn't recorded.
-	inline ObjectRef MakeSceneEntityRef(Nyx::Engine::EntityGuid guid)
+	inline ObjectRef MakeSceneEntityRef(Nyx::EntityGuid guid)
 	{
 		return ObjectRef{
 			.Domain = EObjectDomain::SceneEntity,
@@ -18,13 +18,13 @@ namespace Nyx::Editor
 		};
 	}
 
-	inline ObjectRef MakeSceneEntityRef(const Nyx::SceneDocument& scene, Nyx::Engine::Entity entity)
+	inline ObjectRef MakeSceneEntityRef(const Nyx::SceneDocument& scene, Nyx::Entity entity)
 	{
 		return MakeSceneEntityRef(scene.GetGuid(entity));
 	}
 
-	inline Nyx::Engine::EntityGuid GetSceneEntityGuid(const ObjectRef& ref)
+	inline Nyx::EntityGuid GetSceneEntityGuid(const ObjectRef& ref)
 	{
-		return ref.Domain == EObjectDomain::SceneEntity ? Nyx::Engine::EntityGuid{ ref.Id.Value } : Nyx::Engine::EntityGuid{};
+		return ref.Domain == EObjectDomain::SceneEntity ? Nyx::EntityGuid{ ref.Id.Value } : Nyx::EntityGuid{};
 	}
 }

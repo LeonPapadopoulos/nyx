@@ -9,7 +9,7 @@
 #include <string_view>
 #include <vector>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	class BinaryReader;
 	class BinaryWriter;

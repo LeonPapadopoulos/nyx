@@ -16,7 +16,7 @@ namespace Nyx
 	class VulkanContext;
 }
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	// FixedSamplers in nyx/bindless.slang, in its order
 	enum class EFixedSampler : uint32_t

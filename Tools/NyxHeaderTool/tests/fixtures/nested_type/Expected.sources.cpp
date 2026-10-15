@@ -12,19 +12,19 @@ namespace Nyx::Editor
 
         auto& sources = ReflectionSourceRegistry::Get();
         {
-            const auto& type = Reflection::GetTypeMetadata<Nyx::Engine::InnerMostReflectedType>();
+            const auto& type = Reflection::GetTypeMetadata<Nyx::InnerMostReflectedType>();
             sources.Register(type, { "@SOURCE_FILE@", 12 });
             sources.Register(type.Properties[0], { "@SOURCE_FILE@", 15 });
         }
         {
-            const auto& type = Reflection::GetTypeMetadata<Nyx::Engine::NestedReflectionTest>();
+            const auto& type = Reflection::GetTypeMetadata<Nyx::NestedReflectionTest>();
             sources.Register(type, { "@SOURCE_FILE@", 19 });
             sources.Register(type.Properties[0], { "@SOURCE_FILE@", 22 });
             sources.Register(type.Properties[1], { "@SOURCE_FILE@", 25 });
             sources.Register(type.Properties[2], { "@SOURCE_FILE@", 28 });
         }
         {
-            const auto& type = Reflection::GetTypeMetadata<Nyx::Engine::MeshRendererComponent>();
+            const auto& type = Reflection::GetTypeMetadata<Nyx::MeshRendererComponent>();
             sources.Register(type, { "@SOURCE_FILE@", 33 });
             sources.Register(type.Properties[0], { "@SOURCE_FILE@", 36 });
             sources.Register(type.Properties[1], { "@SOURCE_FILE@", 39 });

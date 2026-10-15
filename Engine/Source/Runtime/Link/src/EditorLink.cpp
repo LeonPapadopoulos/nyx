@@ -21,7 +21,7 @@ namespace
 	}
 }
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	EditorLink::EditorLink(std::unique_ptr<Net::Connection> connection, std::string programName, EditorLinkObserver observer)
 		: Connection(std::move(connection))

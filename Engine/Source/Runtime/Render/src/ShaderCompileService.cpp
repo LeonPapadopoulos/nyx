@@ -7,7 +7,7 @@
 #include <chrono>
 #include <sstream>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	namespace
 	{

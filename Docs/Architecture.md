@@ -54,6 +54,9 @@ circle, so a new dependency starts here.
 | `Platform` | The window | Core, Input, UI, Render |
 | `App` | The application and its layers, `main()`, the options the editor starts a game with | Core, Input, Scene, Render, Platform |
 
+Each folder of `Runtime` has one namespace: `Nyx`, except `Net` (`Nyx::Net`), `Input`
+(`Nyx::Input`) and `UI` (`Nyx::UI`).
+
 Known issue: `Platform` includes `UI` because `WindowsWindow` paints the title bar and the dock
 space. Both belong in the editor; once they move there, `Platform` no longer needs `UI`.
 
@@ -114,7 +117,7 @@ If the GPU device is lost, the renderer stops drawing and the window closes.
   and calls `SetWorld()` again after replacing what's in one.
 - **Layers**: `EditorLayer` in the editor; `GameLayer` and, when the editor started the game,
   `EditorLinkLayer` in the game.
-- **Worlds** (`Engine::Registry`): the scene being edited is in `SceneDocument`, inside
+- **Worlds** (`Registry`): the scene being edited is in `SceneDocument`, inside
   `SceneEditor`, inside `EditorLayer`. The material preview has a world of its own
   (`MaterialPreviewPanel`). The game's is in `GameLayer`. The editor owns the world you edit; a
   game only exists while you play, and gets the editor's edits over the link.
@@ -198,7 +201,7 @@ it with a warning. `Hello`'s layout never changes.
 
 | What | Where it is filled |
 | --- | --- |
-| `Core::Logger::Get()` | `Init()` in `main()` (`EntryPoint.h`); the game adds a sink for the editor link (`EditorLinkLogSink::Install()`) |
+| `Logger::Get()` | `Init()` in `main()` (`EntryPoint.h`); the game adds a sink for the editor link (`EditorLinkLogSink::Install()`) |
 | `ComponentTypeRegistry::Get()` | `RegisterComponentTypes()`, in `Application`'s constructor |
 | `PropertyWidgetRegistry::Get()` (editor) | `RegisterDefaultPropertyWidgets()`, in `EditorLayer::OnAttach()` |
 | `ReflectionSourceRegistry::Get()` (editor) | `RegisterRuntimeReflectedSources()`, generated, in `EditorLayer::OnAttach()` |

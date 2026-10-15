@@ -14,7 +14,7 @@
 
 namespace
 {
-	using namespace Nyx::Engine;
+	using namespace Nyx;
 
 	ImVec4 GetLevelColor(ELogLevel level)
 	{

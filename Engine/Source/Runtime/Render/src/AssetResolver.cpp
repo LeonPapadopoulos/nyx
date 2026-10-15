@@ -2,7 +2,7 @@
 
 #include "Renderer.h"
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	AssetResolver::AssetResolver(Nyx::IRenderer& renderer)
 		: Renderer(renderer)

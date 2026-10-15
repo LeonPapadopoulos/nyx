@@ -13,9 +13,6 @@
 
 namespace Nyx::UI
 {
-	using Engine::PainterRect;
-	using Engine::PainterStyle;
-
 	namespace
 	{
 		// ImGui's colours the chrome paints instead; their alpha is 0 while it is on
@@ -150,7 +147,7 @@ namespace Nyx::UI
 				return;
 			}
 			// An outline is centred on the rect's edge; half a pixel in keeps it inside the card.
-			painter.AddRoundedRect(Engine::Grow(card, -0.5f), std::max(rounding - 0.5f, 0.0f), PainterStyle::Outlined(theme.CardBorder, 1.0f));
+			painter.AddRoundedRect(Grow(card, -0.5f), std::max(rounding - 0.5f, 0.0f), PainterStyle::Outlined(theme.CardBorder, 1.0f));
 		}
 
 		// A thin line along the gap between a split node's two halves, while its splitter is
@@ -190,7 +187,7 @@ namespace Nyx::UI
 
 			glm::vec4 color = theme.Splitter;
 			color.a *= shown;
-			painter.AddLine(from, to, theme.SplitterWidth, Engine::EPainterLineCap::Round, PainterStyle::Filled(color));
+			painter.AddLine(from, to, theme.SplitterWidth, EPainterLineCap::Round, PainterStyle::Filled(color));
 		}
 
 		// Where ImGui puts a tab (TabItemEx()): along the bar by its offset, scrolled with the bar
@@ -259,7 +256,7 @@ namespace Nyx::UI
 				const float right = Animate(ImHashStr("UnderlineRight", 0, key), rect.Max.x - tabBar.FramePadding.x - bar.Min.x, theme.AnimationSpeed);
 				const float y = bar.Max.y - 0.5f * theme.TabUnderlineWidth;
 				const bool bFocused = (tabBar.Flags & ImGuiTabBarFlags_IsFocused) != 0;
-				painter.AddLine({ bar.Min.x + left, y }, { bar.Min.x + right, y }, theme.TabUnderlineWidth, Engine::EPainterLineCap::Round,
+				painter.AddLine({ bar.Min.x + left, y }, { bar.Min.x + right, y }, theme.TabUnderlineWidth, EPainterLineCap::Round,
 					PainterStyle::Filled(bFocused ? theme.TabUnderline : theme.TabUnderlineDimmed));
 			}
 			drawList.PopClipRect();
@@ -393,7 +390,7 @@ namespace Nyx::UI
 			// editor's titlebar, and they would cover it. Floating cards' shadows reach up to the
 			// viewport's edge.
 			const PainterRect viewportRect = RectAt(viewport.Pos, viewport.Size);
-			const PainterRect reach = bInDockSpace ? Engine::Intersect(Engine::Grow(RectAt(window.Pos, window.Size), theme.CardGap), viewportRect) : viewportRect;
+			const PainterRect reach = bInDockSpace ? Intersect(Grow(RectAt(window.Pos, window.Size), theme.CardGap), viewportRect) : viewportRect;
 			drawList.PushClipRect(ToImVec2(reach.Min), ToImVec2(reach.Max), false);
 
 			// A host of floating docked windows in an OS window of its own has nothing behind it
@@ -405,7 +402,7 @@ namespace Nyx::UI
 				behind.AddRect(viewportRect, PainterStyle::Filled(theme.Backdrop));
 			}
 
-			Engine::PainterEffects shadow;
+			PainterEffects shadow;
 			shadow.Shadow = bInDockSpace ? theme.CardShadow : theme.FloatingCardShadow;
 
 			WindowPainter& painter = GetPainterFor(drawList, viewport, window.Name);
@@ -493,7 +490,7 @@ namespace Nyx::UI
 			else
 			{
 				// The card's shadow, then the window's glows over it, as for docked cards, then the card
-				Engine::PainterEffects shadow;
+				PainterEffects shadow;
 				shadow.Shadow = theme.FloatingCardShadow;
 				painter.BeginGroup(shadow);
 				PaintGlowsOf(painter, window);

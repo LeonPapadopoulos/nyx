@@ -6,7 +6,7 @@
 
 #include <string>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	// Turns data written by ReflectedArchiveSerializer into readable text, for NyxDump and
 	// later the editor's message log.

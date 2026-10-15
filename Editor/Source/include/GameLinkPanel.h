@@ -21,7 +21,7 @@ namespace Nyx::Editor
 	public:
 		// Every message of a game's editor link, both ways. gameName tells the games of Play All
 		// apart, e.g. "Game 2". The games' log lines also go to the Game Log tab.
-		void AddMessage(const std::string& gameName, Nyx::Engine::ELinkDirection direction, const Nyx::Net::Message& message);
+		void AddMessage(const std::string& gameName, Nyx::ELinkDirection direction, const Nyx::Net::Message& message);
 
 		// A new play session: clears both tabs ("Clear on Play"), or marks where the session
 		// starts, and starts new recording files if recording is on (one per game).
@@ -46,7 +46,7 @@ namespace Nyx::Editor
 
 			uint64_t TimeMs = 0;
 			std::string GameName;
-			Nyx::Engine::ELogLevel Level = Nyx::Engine::ELogLevel::Info;
+			Nyx::ELogLevel Level = Nyx::ELogLevel::Info;
 			std::string LoggerName;
 			std::string Text;
 
@@ -65,13 +65,13 @@ namespace Nyx::Editor
 			uint64_t TimeMs = 0;
 
 			std::string GameName;
-			Nyx::Engine::ELinkDirection Direction = Nyx::Engine::ELinkDirection::Sent;
+			Nyx::ELinkDirection Direction = Nyx::ELinkDirection::Sent;
 			uint16_t Type = 0;
 			size_t Size = 0;
 
 			// Name and summary. The details are described from the payload when they are shown,
 			// since messages like CreateEntity carry a lot.
-			Nyx::Engine::EditorLinkMessageText Text;
+			Nyx::EditorLinkMessageText Text;
 			std::vector<std::byte> Payload;
 
 			// A row that marks the start of a play session instead of a message
@@ -95,7 +95,7 @@ namespace Nyx::Editor
 		void StopRecording();
 
 		// The game's file of this recording, opened with its first message
-		Nyx::Engine::EditorLinkRecorder* GetRecorder(const std::string& gameName);
+		Nyx::EditorLinkRecorder* GetRecorder(const std::string& gameName);
 
 		bool IsShown(const MessageEntry& entry) const;
 		static std::string ToText(const LogEntry& entry);
@@ -134,7 +134,7 @@ namespace Nyx::Editor
 		// recording's start and the game: GameLink_<start>_<game>.nyxlinklog
 		bool bRecording = false;
 		std::string RecordingStamp;
-		std::map<std::string, std::unique_ptr<Nyx::Engine::EditorLinkRecorder>> Recorders;
+		std::map<std::string, std::unique_ptr<Nyx::EditorLinkRecorder>> Recorders;
 		std::string RecordingStatus;
 	};
 }

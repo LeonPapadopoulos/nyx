@@ -132,7 +132,7 @@ namespace Nyx::Editor
 		if (error) return false;
 
 		const std::string text = ToText();
-		Nyx::Engine::BinaryWriter writer;
+		Nyx::BinaryWriter writer;
 		writer.WriteBytes(text.data(), text.size());
 		return writer.SaveToFile(path);
 	}

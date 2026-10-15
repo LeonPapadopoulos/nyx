@@ -24,7 +24,8 @@
 
 namespace
 {
-	using namespace Nyx::Engine;
+	using namespace Nyx;
+	using namespace Nyx::UI;
 	using Nyx::UI::EWindowPainterPlacement;
 	using Nyx::UI::RectAt;
 	using Nyx::UI::WindowPainter;
@@ -346,7 +347,7 @@ namespace
 		Nyx::UI::SetPaintedChrome(true);
 		theme.CardGap = 11.0f;
 		theme.Card = glm::vec4(0.2f, 0.3f, 0.4f, 0.85f);
-		Nyx::ApplyThemeToImGui();
+		Nyx::UI::ApplyThemeToImGui();
 
 		const ImGuiStyle& style = ImGui::GetStyle();
 		Require(style.Colors[ImGuiCol_WindowBg].w == 0.0f && style.Colors[ImGuiCol_DockingEmptyBg].w == 0.0f && style.Colors[ImGuiCol_ChildBg].w == 0.0f &&
@@ -360,7 +361,7 @@ namespace
 			"Turning the chrome off should give back the colours of the theme applied meanwhile");
 
 		theme = saved;
-		Nyx::ApplyThemeToImGui();
+		Nyx::UI::ApplyThemeToImGui();
 	}
 
 	void TestNothingIsPaintedWhileTheChromeIsOff(DockedEditor& editor)

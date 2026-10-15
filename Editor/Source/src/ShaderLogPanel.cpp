@@ -41,11 +41,11 @@ namespace Nyx::Editor
 		}
 	}
 
-	bool DiagnosticLine(const Nyx::Engine::ShaderDiagnostic& diagnostic, const OpenFileAtLine& open)
+	bool DiagnosticLine(const Nyx::ShaderDiagnostic& diagnostic, const OpenFileAtLine& open)
 	{
 		const Nyx::UI::Theme& theme = Nyx::UI::GetTheme();
-		const glm::vec4 color = diagnostic.Severity == Nyx::Engine::EShaderDiagnosticSeverity::Error ? theme.StatusError
-			: diagnostic.Severity == Nyx::Engine::EShaderDiagnosticSeverity::Warning                ? theme.StatusWarning
+		const glm::vec4 color = diagnostic.Severity == Nyx::EShaderDiagnosticSeverity::Error ? theme.StatusError
+			: diagnostic.Severity == Nyx::EShaderDiagnosticSeverity::Warning                ? theme.StatusWarning
 																									 : theme.TextMuted;
 		// A selectable without a label, for the hover pill and the click, and the text over it in its
 		// colour: painted selectables draw their label in the theme's text colour
@@ -64,7 +64,7 @@ namespace Nyx::Editor
 		return bClicked;
 	}
 
-	void ShaderLogPanel::Draw(const Nyx::Engine::ShaderLog& log)
+	void ShaderLogPanel::Draw(const Nyx::ShaderLog& log)
 	{
 		if (!bOpen)
 		{
@@ -111,7 +111,7 @@ namespace Nyx::Editor
 			NYX_UI(ImGui::TextDisabled("%s", summary.c_str()));
 
 			ImGui::Indent();
-			for (const Nyx::Engine::ShaderDiagnostic& diagnostic : entry->Diagnostics)
+			for (const Nyx::ShaderDiagnostic& diagnostic : entry->Diagnostics)
 			{
 				ImGui::PushID(&diagnostic);
 				DiagnosticLine(diagnostic, Open);

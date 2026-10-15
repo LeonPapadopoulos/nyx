@@ -1,6 +1,6 @@
 #pragma once
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	class Application;
 

@@ -12,16 +12,16 @@ namespace
 {
 	using namespace Nyx::Editor;
 
-	Nyx::Engine::GameWindowSize ScaleSize(const Nyx::Engine::GameWindowSize& size, float scale)
+	Nyx::GameWindowSize ScaleSize(const Nyx::GameWindowSize& size, float scale)
 	{
-		return Nyx::Engine::GameWindowSize{
+		return Nyx::GameWindowSize{
 			(std::max)(1u, static_cast<uint32_t>(std::floor(static_cast<float>(size.Width) * scale))),
 			(std::max)(1u, static_cast<uint32_t>(std::floor(static_cast<float>(size.Height) * scale))),
 		};
 	}
 
 	// Places the pictures at one scale; bFits says whether all are inside the work area
-	PlayWallLayout PlaceAtScale(const std::vector<Nyx::Engine::GameWindowSize>& pictureSizes, const PlayWallScreen& screen, float scale)
+	PlayWallLayout PlaceAtScale(const std::vector<Nyx::GameWindowSize>& pictureSizes, const PlayWallScreen& screen, float scale)
 	{
 		const ScreenRect& area = screen.WorkArea;
 		const WindowFrame& frame = screen.Frame;
@@ -33,9 +33,9 @@ namespace
 		int y = area.Y;
 		int rowHeight = 0;
 
-		for (const Nyx::Engine::GameWindowSize& pictureSize : pictureSizes)
+		for (const Nyx::GameWindowSize& pictureSize : pictureSizes)
 		{
-			const Nyx::Engine::GameWindowSize size = ScaleSize(pictureSize, scale);
+			const Nyx::GameWindowSize size = ScaleSize(pictureSize, scale);
 			const int visibleWidth = static_cast<int>(size.Width) + frame.Left + frame.Right;
 			const int visibleHeight = static_cast<int>(size.Height) + frame.Top + frame.Bottom;
 
@@ -50,7 +50,7 @@ namespace
 			PlayWallTile tile;
 			tile.Size = size;
 			tile.Visible = ScreenRect{ x, y, visibleWidth, visibleHeight };
-			tile.Position = Nyx::Engine::GameWindowPosition{ x - frame.InvisibleLeft, y - frame.InvisibleTop };
+			tile.Position = Nyx::GameWindowPosition{ x - frame.InvisibleLeft, y - frame.InvisibleTop };
 			layout.Tiles.push_back(tile);
 
 			layout.bFits = layout.bFits && x + visibleWidth <= area.X + area.Width && y + visibleHeight <= area.Y + area.Height;
@@ -65,7 +65,7 @@ namespace
 
 namespace Nyx::Editor
 {
-	PlayWallLayout ArrangePlayWall(const std::vector<Nyx::Engine::GameWindowSize>& pictureSizes, const PlayWallScreen& screen)
+	PlayWallLayout ArrangePlayWall(const std::vector<Nyx::GameWindowSize>& pictureSizes, const PlayWallScreen& screen)
 	{
 		PlayWallLayout layout = PlaceAtScale(pictureSizes, screen, 1.0f);
 		if (layout.bFits)
@@ -119,10 +119,10 @@ namespace Nyx::Editor
 			}
 		}
 
-		std::vector<Nyx::Engine::GameWindowSize> sizes;
+		std::vector<Nyx::GameWindowSize> sizes;
 		for (const PlaySetup* setup : setups)
 		{
-			sizes.push_back(Nyx::Engine::GameWindowSize{ setup->Width, setup->Height });
+			sizes.push_back(Nyx::GameWindowSize{ setup->Width, setup->Height });
 		}
 
 		GamePlan plan;

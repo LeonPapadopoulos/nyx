@@ -26,15 +26,12 @@ namespace Nyx
 {
 	class Mesh;
 	struct Material;
+	class Registry;
 }
 
-namespace Nyx
+namespace Nyx::UI
 {
-	namespace Engine
-	{
-		class Registry;
-		class Painter;
-	}
+	class Painter;
 }
 
 namespace Nyx
@@ -43,16 +40,16 @@ namespace Nyx
 	struct MaterialView
 	{
 		// Its values: as its file has them, or as SetMaterialValues() set them since
-		const Nyx::Engine::MaterialAsset* Asset = nullptr;
+		const Nyx::MaterialAsset* Asset = nullptr;
 		// An instance's: the values it takes from its parents, merged; empty for a material on a
 		// shader of its own
-		const Nyx::Engine::MaterialAsset* Inherited = nullptr;
+		const Nyx::MaterialAsset* Inherited = nullptr;
 		// The shader it is drawn with, its own or its parents' ("Shaders/Stone.slang")
 		std::string Shader;
 		// Its shader's parameters, and the bytes of their defaults
-		// (Nyx::Engine::ReadMaterialValue() reads one); null and empty until the shader first
+		// (Nyx::ReadMaterialValue() reads one); null and empty until the shader first
 		// compiled
-		const Nyx::Engine::ShaderLayout* Layout = nullptr;
+		const Nyx::ShaderLayout* Layout = nullptr;
 		std::span<const std::byte> Defaults;
 		// Changes each time the file is read, e.g. after it was saved; 0 while it couldn't be
 		uint64_t FileRevision = 0;
@@ -72,7 +69,7 @@ namespace Nyx
 		// this frame on when called while the UI is built; the file stays as it is
 		// (MaterialAsset::Save() writes it). Reading the file again, once it was saved, takes the
 		// file's values.
-		virtual void SetMaterialValues(const std::string& path, const Nyx::Engine::MaterialAsset& asset) = 0;
+		virtual void SetMaterialValues(const std::string& path, const Nyx::MaterialAsset& asset) = 0;
 	};
 
 	enum class ESelectionOutlineMode : uint8_t
@@ -88,7 +85,7 @@ namespace Nyx
 		struct PickResult
 		{
 			bool bHasNewResult = false;
-			std::optional<Nyx::Engine::Entity> HitEntity;
+			std::optional<Nyx::Entity> HitEntity;
 		};
 
 	public:
@@ -116,7 +113,7 @@ namespace Nyx
 		virtual void RequestPick(uint64_t sceneViewId, uint32_t pixelX, uint32_t pixelY) = 0;
 		virtual PickResult ConsumeLastPickResult(uint64_t sceneViewId) = 0;
 
-		virtual void SetSelectedEntity(std::optional<Nyx::Engine::Entity> entity) = 0;
+		virtual void SetSelectedEntity(std::optional<Nyx::Entity> entity) = 0;
 		virtual void SetSelectionOutlineMode(Nyx::ESelectionOutlineMode mode) = 0;
 
 		virtual void WaitIdle() = 0;
@@ -153,13 +150,13 @@ namespace Nyx
 		// revision of the world and discards the selection and the pending picks of the views
 		// showing it, even when the address is unchanged. Call after replacing the contents of a
 		// registry too. The registry must outlive being set: it is read while frames are drawn.
-		virtual void SetWorld(const Nyx::Engine::Registry* world) = 0;
+		virtual void SetWorld(const Nyx::Registry* world) = 0;
 
 		// A world of the view's own, e.g. a material preview's: the view draws its objects, through
 		// its camera and under its sun, and picks from it. Starts a new revision of the world as
 		// SetWorld() does, so views showing it drop their pending picks. Views of another world
 		// than the renderer's draw no selection outline. Null shows the renderer's world again.
-		virtual void SetSceneViewWorld(uint64_t id, const Nyx::Engine::Registry* world) = 0;
+		virtual void SetSceneViewWorld(uint64_t id, const Nyx::Registry* world) = 0;
 
 		virtual uint64_t CreateSceneView() = 0;
 		virtual void DestroySceneView(uint64_t id) = 0;
@@ -190,7 +187,7 @@ namespace Nyx
 		// it while building the UI: the renderer draws canvases after the UI is built and before
 		// ImGui renders, so an ImGui::Image() of the canvas shows this frame's shapes. A canvas
 		// without a submission keeps its last image.
-		virtual void SubmitPainterCanvas(uint64_t id, const Nyx::Engine::Painter& painter, const Nyx::Engine::PainterDrawOptions& options) = 0;
+		virtual void SubmitPainterCanvas(uint64_t id, const Nyx::UI::Painter& painter, const Nyx::UI::PainterDrawOptions& options) = 0;
 
 		// What ImGui::Image() takes to show the canvas. It stays the same when the canvas changes
 		// size, and is invalid until the canvas is first drawn.
@@ -198,17 +195,17 @@ namespace Nyx
 
 		// The last drawn frame's grid, statistics and problems, as the GPU binned it and read it
 		// back; none before the first draw
-		virtual std::optional<Nyx::Engine::PainterTiles> GetPainterCanvasTiles(uint64_t id) const = 0;
+		virtual std::optional<Nyx::UI::PainterTiles> GetPainterCanvasTiles(uint64_t id) const = 0;
 
 		// Painting inside ImGui windows (Nyx::UI::GetWindowPainter()) in the last drawn frame:
 		// while the UI is built, that is the previous one.
-		virtual const Nyx::Engine::PainterWindowStats& GetWindowPainterStats() const = 0;
+		virtual const Nyx::UI::PainterWindowStats& GetWindowPainterStats() const = 0;
 
 		// Images for the UI (ImGui::Image(), WindowPainter::AddImage()), made from RGBA pixels: 8
 		// bits per channel, straight alpha, in the same sRGB-encoded values as ImGui's colours.
 		// Returns 0 if the image can't be made. Destroying one takes effect after the GPU is done
 		// with the frame, so it can be destroyed while the UI is built.
-		virtual uint64_t CreateUIImage(const Nyx::Engine::RgbaImage& image) = 0;
+		virtual uint64_t CreateUIImage(const Nyx::RgbaImage& image) = 0;
 		virtual void DestroyUIImage(uint64_t id) = 0;
 		// What ImGui::Image() and AddImage() take; ImTextureID_Invalid for an unknown id
 		virtual ImTextureID GetUIImageTextureId(uint64_t id) const = 0;
@@ -237,11 +234,11 @@ namespace Nyx
 
 		// The last compile of every shader that compiled since the start, the engine's and the
 		// materials', with what the compiler said: for the Shader Log
-		virtual const Nyx::Engine::ShaderLog& GetShaderLog() const = 0;
+		virtual const Nyx::ShaderLog& GetShaderLog() const = 0;
 
 		// Called for every shader that compiled here and replaced its code, the engine's and the
 		// materials': the editor sends it to the games it started
-		using ShaderCompiledListener = std::function<void(const Nyx::Engine::ShaderCompileRequest& request, const Nyx::Engine::ShaderCompileResult& result)>;
+		using ShaderCompiledListener = std::function<void(const Nyx::ShaderCompileRequest& request, const Nyx::ShaderCompileResult& result)>;
 		virtual void SetShaderCompiledListener(ShaderCompiledListener listener) = 0;
 
 		// A game started by the editor: shaders come compiled from the editor
@@ -249,7 +246,7 @@ namespace Nyx
 		// compiled yet still compiles here at its first use.
 		virtual void FollowEditorShaders() = 0;
 		// A compile made by the editor, taken in the next frame as if it had compiled here
-		virtual void ApplyCompiledShader(const Nyx::Engine::ShaderCompileRequest& request, const Nyx::Engine::ShaderCompileResult& result) = 0;
+		virtual void ApplyCompiledShader(const Nyx::ShaderCompileRequest& request, const Nyx::ShaderCompileResult& result) = 0;
 	};
 
 	NYXENGINE_API std::unique_ptr<IRenderer> CreateRenderer();

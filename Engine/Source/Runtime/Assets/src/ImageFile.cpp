@@ -12,7 +12,7 @@
 #include <iterator>
 #include <system_error>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	bool LoadRgbaImage(const std::filesystem::path& path, RgbaImage& outImage, std::string& outError)
 	{

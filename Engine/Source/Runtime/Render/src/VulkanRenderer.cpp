@@ -175,18 +175,18 @@ namespace
 	}
 }
 
-static glm::mat4 BuildRotationMatrix(const Nyx::Engine::TransformComponent& transform)
+static glm::mat4 BuildRotationMatrix(const Nyx::TransformComponent& transform)
 {
 	return glm::toMat4(glm::normalize(transform.Rotation));
 }
 
-static glm::vec3 GetForwardVector(const Nyx::Engine::TransformComponent& transform)
+static glm::vec3 GetForwardVector(const Nyx::TransformComponent& transform)
 {
 	const glm::mat4 rotation = BuildRotationMatrix(transform);
 	return glm::normalize(glm::vec3(rotation * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f)));
 }
 
-static glm::vec3 GetRightVector(const Nyx::Engine::TransformComponent& transform)
+static glm::vec3 GetRightVector(const Nyx::TransformComponent& transform)
 {
 	const glm::mat4 rotation = BuildRotationMatrix(transform);
 	return glm::normalize(glm::vec3(rotation * glm::vec4(1.0f, 0.0f, 0.0f, 0.0f)));
@@ -203,7 +203,7 @@ namespace
 		return proj;
 	}
 
-	glm::vec3 GetForwardVectorWS(const Nyx::Engine::TransformComponent& transform)
+	glm::vec3 GetForwardVectorWS(const Nyx::TransformComponent& transform)
 	{
 		const glm::mat4 world = transform.ToMatrix();
 
@@ -674,7 +674,7 @@ namespace Nyx
 		// The frame ends here rather than in ImGui::Render(), so that the windows ImGui begins
 		// itself while ending it (drag and drop tooltips) are there when the cards are painted.
 		ImGui::EndFrame();
-		PendingFrameTimes = Nyx::Engine::PainterWindowStats::Times{};
+		PendingFrameTimes = Nyx::UI::PainterWindowStats::Times{};
 		PendingFrameTimes.Outside = outsideMilliseconds;
 		PendingFrameTimes.WaitForGpu = waitForGpuMilliseconds;
 		PendingFrameTimes.Acquire = acquireMilliseconds;
@@ -770,7 +770,7 @@ namespace Nyx
 		}
 	}
 
-	void VulkanRenderer::SetSelectedEntity(std::optional<Nyx::Engine::Entity> entity)
+	void VulkanRenderer::SetSelectedEntity(std::optional<Nyx::Entity> entity)
 	{
 		SelectedEntity = entity;
 	}
@@ -881,7 +881,7 @@ namespace Nyx
 		return true;
 	}
 
-	void VulkanRenderer::SetWorld(const Nyx::Engine::Registry* world)
+	void VulkanRenderer::SetWorld(const Nyx::Registry* world)
 	{
 		World = world;
 		BeginWorldRevision(world);
@@ -897,7 +897,7 @@ namespace Nyx
 		}
 	}
 
-	void VulkanRenderer::SetSceneViewWorld(uint64_t id, const Nyx::Engine::Registry* world)
+	void VulkanRenderer::SetSceneViewWorld(uint64_t id, const Nyx::Registry* world)
 	{
 		if (SceneViewInstance* view = FindSceneView(id))
 		{
@@ -907,7 +907,7 @@ namespace Nyx
 		}
 	}
 
-	void VulkanRenderer::BeginWorldRevision(const Nyx::Engine::Registry* registry)
+	void VulkanRenderer::BeginWorldRevision(const Nyx::Registry* registry)
 	{
 		if (!registry)
 		{
@@ -927,12 +927,12 @@ namespace Nyx
 		world->DebugLineVertexCount = 0;
 	}
 
-	RenderWorld* VulkanRenderer::FindRenderWorld(const Nyx::Engine::Registry* registry)
+	RenderWorld* VulkanRenderer::FindRenderWorld(const Nyx::Registry* registry)
 	{
 		return const_cast<RenderWorld*>(std::as_const(*this).FindRenderWorld(registry));
 	}
 
-	const RenderWorld* VulkanRenderer::FindRenderWorld(const Nyx::Engine::Registry* registry) const
+	const RenderWorld* VulkanRenderer::FindRenderWorld(const Nyx::Registry* registry) const
 	{
 		if (!registry)
 		{
@@ -1067,11 +1067,11 @@ namespace Nyx
 
 	MaterialView VulkanRenderer::ViewMaterial(const std::string& path)
 	{
-		const Nyx::Engine::VulkanMaterials::View view = Materials.Inspect(path);
+		const Nyx::VulkanMaterials::View view = Materials.Inspect(path);
 		return MaterialView{ .Asset = view.Asset, .Inherited = view.Inherited, .Shader = view.Shader, .Layout = view.Layout, .Defaults = view.Defaults, .FileRevision = view.FileRevision };
 	}
 
-	void VulkanRenderer::SetMaterialValues(const std::string& path, const Nyx::Engine::MaterialAsset& asset)
+	void VulkanRenderer::SetMaterialValues(const std::string& path, const Nyx::MaterialAsset& asset)
 	{
 		PendingMaterialValues.insert_or_assign(path, asset);
 	}
@@ -1206,9 +1206,9 @@ namespace Nyx
 		world.Objects.clear();
 		world.PickingIdToEntity.clear();
 
-		const Nyx::Engine::Registry& registry = *world.Registry;
-		const_cast<Nyx::Engine::Registry&>(registry).Each<Nyx::Engine::MeshRendererComponent>(
-			[&world, &registry](Nyx::Engine::Entity entity, Nyx::Engine::MeshRendererComponent& meshRenderer)
+		const Nyx::Registry& registry = *world.Registry;
+		const_cast<Nyx::Registry&>(registry).Each<Nyx::MeshRendererComponent>(
+			[&world, &registry](Nyx::Entity entity, Nyx::MeshRendererComponent& meshRenderer)
 			{
 				if (!meshRenderer.bVisible)
 				{
@@ -1222,9 +1222,9 @@ namespace Nyx
 
 				glm::mat4 worldTransform = glm::mat4(1.0f);
 
-				if (registry.Has<Nyx::Engine::TransformComponent>(entity))
+				if (registry.Has<Nyx::TransformComponent>(entity))
 				{
-					worldTransform = registry.Get<Nyx::Engine::TransformComponent>(entity).ToMatrix();
+					worldTransform = registry.Get<Nyx::TransformComponent>(entity).ToMatrix();
 				}
 
 				RenderObject obj{};
@@ -2798,7 +2798,7 @@ namespace Nyx
 			LOG_INFO("Live shader reload is off: {} is missing", compiler.string());
 			return;
 		}
-		auto service = std::make_unique<Nyx::Engine::RemoteShaderCompileService>(compiler, std::vector<std::filesystem::path>{ Nyx::Paths::GetShaderLibraryDir() });
+		auto service = std::make_unique<Nyx::RemoteShaderCompileService>(compiler, std::vector<std::filesystem::path>{ Nyx::Paths::GetShaderLibraryDir() });
 		// The assets folder for material shaders
 		if (!Programs.EnableLiveReload(std::move(service), { Nyx::Paths::GetShaderLibraryDir(), Nyx::Paths::GetAssetsDir() }))
 		{
@@ -2808,9 +2808,9 @@ namespace Nyx
 		LOG_INFO("Live shader reload: saving a shader in {} compiles it again", Nyx::Paths::GetShadersDir().string());
 	}
 
-	void VulkanRenderer::RecordCompile(const Nyx::Engine::ShaderProgramUpdate& update)
+	void VulkanRenderer::RecordCompile(const Nyx::ShaderProgramUpdate& update)
 	{
-		using Nyx::Engine::EShaderCompileKind;
+		using Nyx::EShaderCompileKind;
 		const bool bMaterial = update.Request.Kind == EShaderCompileKind::Material || update.Request.Kind == EShaderCompileKind::DefaultsWriter;
 		std::string name = update.Name;
 		if (bMaterial)
@@ -2831,13 +2831,13 @@ namespace Nyx
 			}
 		}
 
-		Nyx::Engine::ShaderLogEntry entry;
+		Nyx::ShaderLogEntry entry;
 		entry.Name = std::move(name);
 		entry.File = update.Request.File;
 		entry.bSucceeded = update.Result.bSucceeded;
 		entry.Milliseconds = update.Result.Milliseconds;
 		entry.EntryPoints = static_cast<uint32_t>(update.Result.EntryPoints.size());
-		for (const Nyx::Engine::CompiledEntryPoint& entryPoint : update.Result.EntryPoints)
+		for (const Nyx::CompiledEntryPoint& entryPoint : update.Result.EntryPoints)
 		{
 			entry.SpirvBytes += entryPoint.Spirv.size() * sizeof(uint32_t);
 		}
@@ -2848,7 +2848,7 @@ namespace Nyx
 
 	void VulkanRenderer::ApplyShaderUpdates()
 	{
-		const std::vector<Nyx::Engine::ShaderProgramUpdate> updates = Programs.Update();
+		const std::vector<Nyx::ShaderProgramUpdate> updates = Programs.Update();
 		// Every frame: saved material files too
 		Materials.Update(updates);
 		if (updates.empty())
@@ -2857,11 +2857,11 @@ namespace Nyx
 		}
 
 		std::set<std::string> changed;
-		for (const Nyx::Engine::ShaderProgramUpdate& update : updates)
+		for (const Nyx::ShaderProgramUpdate& update : updates)
 		{
 			// A material shader's two compiles by its file's name
-			const std::string name = update.Request.Kind == Nyx::Engine::EShaderCompileKind::Material ? update.Request.File.filename().string()
-				: update.Request.Kind == Nyx::Engine::EShaderCompileKind::DefaultsWriter              ? update.Request.File.filename().string() + " (defaults)"
+			const std::string name = update.Request.Kind == Nyx::EShaderCompileKind::Material ? update.Request.File.filename().string()
+				: update.Request.Kind == Nyx::EShaderCompileKind::DefaultsWriter              ? update.Request.File.filename().string() + " (defaults)"
 																									  : update.Name;
 			RecordCompile(update);
 			// Compiled here, not taken from the editor: for the games the editor started
@@ -2879,7 +2879,7 @@ namespace Nyx
 				LOG_ERROR("Shader {} doesn't compile; it keeps its last good code", name);
 			}
 			// With the whole path, so the line can be opened from the log
-			for (const Nyx::Engine::ShaderDiagnostic& diagnostic : update.Result.Diagnostics)
+			for (const Nyx::ShaderDiagnostic& diagnostic : update.Result.Diagnostics)
 			{
 				std::string text = diagnostic.File.empty() ? std::string() : diagnostic.File.string();
 				if (diagnostic.Line > 0)
@@ -2889,10 +2889,10 @@ namespace Nyx
 				text += (text.empty() ? "" : ": ") + diagnostic.Message;
 				switch (diagnostic.Severity)
 				{
-				case Nyx::Engine::EShaderDiagnosticSeverity::Error:
+				case Nyx::EShaderDiagnosticSeverity::Error:
 					LOG_ERROR("{}", text);
 					break;
-				case Nyx::Engine::EShaderDiagnosticSeverity::Warning:
+				case Nyx::EShaderDiagnosticSeverity::Warning:
 					LOG_WARNING("{}", text);
 					break;
 				default:
@@ -2978,7 +2978,7 @@ namespace Nyx
 
 	void VulkanRenderer::ExtractSceneGlobalsFromWorldCamera(
 		SceneViewInstance& view,
-		const Nyx::Engine::Registry& world)
+		const Nyx::Registry& world)
 	{
 		const vk::Extent2D extent = view.RenderTarget.GetExtent();
 		const float aspectRatio = extent.height > 0
@@ -2991,8 +2991,8 @@ namespace Nyx
 		view.SceneGlobals.LightColor = glm::vec3(1.0f, 0.98f, 0.95f);
 		view.SceneGlobals.Ambient = 0.18f;
 
-		world.Each<Nyx::Engine::CameraComponent>(
-			[&](Nyx::Engine::Entity entity, const Nyx::Engine::CameraComponent& cameraComp)
+		world.Each<Nyx::CameraComponent>(
+			[&](Nyx::Entity entity, const Nyx::CameraComponent& cameraComp)
 			{
 				if (view.SceneGlobals.bHasCamera || !cameraComp.bPrimary)
 				{
@@ -3002,9 +3002,9 @@ namespace Nyx
 				glm::mat4 worldMatrix = glm::mat4(1.0f);
 				glm::vec3 cameraPos{ 0.0f };
 
-				if (world.Has<Nyx::Engine::TransformComponent>(entity))
+				if (world.Has<Nyx::TransformComponent>(entity))
 				{
-					const auto& transform = world.Get<Nyx::Engine::TransformComponent>(entity);
+					const auto& transform = world.Get<Nyx::TransformComponent>(entity);
 					worldMatrix = transform.ToMatrix();
 					cameraPos = transform.Position;
 				}
@@ -3030,8 +3030,8 @@ namespace Nyx
 			return;
 		}
 
-		world.Each<Nyx::Engine::DirectionalLightComponent>(
-			[&](Nyx::Engine::Entity entity, const Nyx::Engine::DirectionalLightComponent& lightComp)
+		world.Each<Nyx::DirectionalLightComponent>(
+			[&](Nyx::Entity entity, const Nyx::DirectionalLightComponent& lightComp)
 			{
 				if (view.SceneGlobals.bHasDirectionalLight || !lightComp.bPrimary)
 				{
@@ -3040,9 +3040,9 @@ namespace Nyx
 
 				glm::vec3 lightDir = glm::normalize(glm::vec3(0.4f, 1.0f, 0.2f));
 
-				if (world.Has<Nyx::Engine::TransformComponent>(entity))
+				if (world.Has<Nyx::TransformComponent>(entity))
 				{
-					const auto& transform = world.Get<Nyx::Engine::TransformComponent>(entity);
+					const auto& transform = world.Get<Nyx::TransformComponent>(entity);
 					glm::mat4 worldMatrix = transform.ToMatrix();
 					glm::vec3 forward = glm::normalize(glm::vec3(worldMatrix * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f)));
 					lightDir = -forward;
@@ -3055,7 +3055,7 @@ namespace Nyx
 			});
 	}
 
-	void VulkanRenderer::UpdateViewportSceneGlobals(SceneViewInstance& view, const Nyx::Engine::Registry& registry)
+	void VulkanRenderer::UpdateViewportSceneGlobals(SceneViewInstance& view, const Nyx::Registry& registry)
 	{
 		switch (view.CameraMode)
 		{
@@ -3215,7 +3215,7 @@ namespace Nyx
 			{
 				continue;
 			}
-			BlurPass.Blur(cmd, picture, view.RenderTarget.GetExtent(), view.Blur, Nyx::Engine::BlurOptions{});
+			BlurPass.Blur(cmd, picture, view.RenderTarget.GetExtent(), view.Blur, Nyx::BlurOptions{});
 
 			// ImGui's texture for the blur points at its image, which changes with the view's size.
 			PointImGuiTexture(view.BlurImGuiTexture, view.BlurImGuiTextureGeneration, view.Blur.GetImageView(), view.Blur.GetGeneration());
@@ -3259,7 +3259,7 @@ namespace Nyx
 		if (PlainGlassImageId == 0)
 		{
 			const glm::vec4 color = Nyx::UI::GetTheme().Backdrop;
-			Nyx::Engine::RgbaImage pixel;
+			Nyx::RgbaImage pixel;
 			pixel.Width = 1;
 			pixel.Height = 1;
 			for (const float channel : { color.r, color.g, color.b, 1.0f })
@@ -3393,7 +3393,7 @@ namespace Nyx
 		// The frame that wrote them is done, so they are there. Only the pairs written are read:
 		// the others were reset but never written.
 		const double nanosecondsPerTick = Context.GetPhysicalDevice().getProperties().limits.timestampPeriod;
-		Nyx::Engine::PainterWindowStats::Times& times = WindowPainterStats.FrameTimes;
+		Nyx::UI::PainterWindowStats::Times& times = WindowPainterStats.FrameTimes;
 		for (const TimedPair& timed : UITimedPairs)
 		{
 			const auto [result, ticks] = UITimestamps.getResults<uint64_t>(timed.Pair * 2, 2, 2 * sizeof(uint64_t), sizeof(uint64_t), vk::QueryResultFlagBits::e64);
@@ -3499,7 +3499,7 @@ namespace Nyx
 		canvas.Sampler = nullptr;
 	}
 
-	void VulkanRenderer::SubmitPainterCanvas(uint64_t id, const Nyx::Engine::Painter& painter, const Nyx::Engine::PainterDrawOptions& options)
+	void VulkanRenderer::SubmitPainterCanvas(uint64_t id, const Nyx::UI::Painter& painter, const Nyx::UI::PainterDrawOptions& options)
 	{
 		if (PainterCanvas* canvas = FindPainterCanvas(id))
 		{
@@ -3520,7 +3520,7 @@ namespace Nyx
 		return reinterpret_cast<ImTextureID>(canvas->ImGuiTexture);
 	}
 
-	std::optional<Nyx::Engine::PainterTiles> VulkanRenderer::GetPainterCanvasTiles(uint64_t id) const
+	std::optional<Nyx::UI::PainterTiles> VulkanRenderer::GetPainterCanvasTiles(uint64_t id) const
 	{
 		const PainterCanvas* canvas = FindPainterCanvas(id);
 		if (canvas == nullptr || !canvas->Target.GetImage())
@@ -3592,7 +3592,7 @@ namespace Nyx
 
 	void VulkanRenderer::GatherWindowPainters()
 	{
-		WindowPainterStats = Nyx::Engine::PainterWindowStats{};
+		WindowPainterStats = Nyx::UI::PainterWindowStats{};
 		WindowPainterStats.FrameTimes = PendingFrameTimes;
 		WindowPainters = Nyx::UI::EndWindowPainters();
 		for (const Nyx::UI::WindowPainter* painter : WindowPainters)
@@ -3617,8 +3617,8 @@ namespace Nyx
 			{
 				continue;
 			}
-			Nyx::Engine::PainterWindowStats::OsWindow& osWindow = WindowPainterStats.OsWindows[osWindowIndex];
-			const Nyx::Engine::PainterBinningStats& stats = WindowSegments.GetStats(draw);
+			Nyx::UI::PainterWindowStats::OsWindow& osWindow = WindowPainterStats.OsWindows[osWindowIndex];
+			const Nyx::UI::PainterBinningStats& stats = WindowSegments.GetStats(draw);
 			osWindow.TilesInUse += stats.TilesInUse;
 			osWindow.TileEntries += stats.TileEntries;
 			WindowPainterStats.TilesInUse += stats.TilesInUse;
@@ -3644,7 +3644,7 @@ namespace Nyx
 
 		size_t runPainterCount = 0;
 		// A segment's commands, if it is one of this frame's painters'
-		const auto findSegment = [&](const Nyx::UI::WindowSegmentRef& ref) -> const Nyx::Engine::PainterSegment*
+		const auto findSegment = [&](const Nyx::UI::WindowSegmentRef& ref) -> const Nyx::UI::PainterSegment*
 		{
 			const bool bThisFrame = std::find(WindowPainters.begin(), WindowPainters.end(), ref.Painter) != WindowPainters.end();
 			return bThisFrame && ref.Segment < ref.Painter->GetSegments().size() ? &ref.Painter->GetSegments()[ref.Segment] : nullptr;
@@ -3656,7 +3656,7 @@ namespace Nyx
 			{
 				continue;
 			}
-			Nyx::Engine::PainterWindowStats::OsWindow osWindow;
+			Nyx::UI::PainterWindowStats::OsWindow osWindow;
 			const ImGuiWindow* window = static_cast<ImGuiViewportP*>(viewport)->Window;
 			osWindow.Name = viewport == ImGui::GetMainViewport() ? "Main window" : window != nullptr ? window->Name : "OS window";
 			// Where it goes in the statistics, if it paints
@@ -3697,16 +3697,16 @@ namespace Nyx
 				// a segment alone is added as it is.
 				for (size_t first = 0; first < refs.size();)
 				{
-					const Nyx::Engine::Painter& firstPainter = refs[first].Painter->GetPainter();
+					const Nyx::UI::Painter& firstPainter = refs[first].Painter->GetPainter();
 					size_t count = 1;
 					uint32_t draw = 0;
 					if (first + 1 < refs.size())
 					{
 						if (runPainterCount == RunPainters.size())
 						{
-							RunPainters.push_back(std::make_unique<Nyx::Engine::Painter>());
+							RunPainters.push_back(std::make_unique<Nyx::UI::Painter>());
 						}
-						Nyx::Engine::Painter& runPainter = *RunPainters[runPainterCount];
+						Nyx::UI::Painter& runPainter = *RunPainters[runPainterCount];
 						runPainter.BeginFrame(firstPainter.GetTargetWidth(), firstPainter.GetTargetHeight());
 						runPainter.AppendSegment(firstPainter, *findSegment(refs[first]));
 						while (first + count < refs.size() && runPainter.AppendSegment(refs[first + count].Painter->GetPainter(), *findSegment(refs[first + count])))
@@ -3716,7 +3716,7 @@ namespace Nyx
 						if (count > 1)
 						{
 							++runPainterCount;
-							draw = WindowSegments.Add(runPainter, Nyx::Engine::PainterSegment{ 0, static_cast<uint32_t>(runPainter.GetCommands().size()) });
+							draw = WindowSegments.Add(runPainter, Nyx::UI::PainterSegment{ 0, static_cast<uint32_t>(runPainter.GetCommands().size()) });
 						}
 					}
 					if (count == 1)
@@ -3734,7 +3734,7 @@ namespace Nyx
 					WindowSegmentDrawOsWindows.push_back(osWindowIndex);
 
 					// The measuring's numbers now; the GPU's once it has binned (ReadWindowSegments())
-					const Nyx::Engine::PainterBinningStats& stats = WindowSegments.GetStats(draw);
+					const Nyx::UI::PainterBinningStats& stats = WindowSegments.GetStats(draw);
 					++osWindow.Draws;
 					osWindow.Segments += static_cast<uint32_t>(count);
 					osWindow.Commands += stats.Commands;
@@ -3823,7 +3823,7 @@ namespace Nyx
 		}
 	}
 
-	uint64_t VulkanRenderer::CreateUIImage(const Nyx::Engine::RgbaImage& source)
+	uint64_t VulkanRenderer::CreateUIImage(const Nyx::RgbaImage& source)
 	{
 		if (source.Width == 0 || source.Height == 0 || source.Pixels.size() != static_cast<size_t>(source.Width) * source.Height * 4)
 		{
@@ -3948,7 +3948,7 @@ namespace Nyx
 		image.Memory = nullptr;
 	}
 
-	bool VulkanRenderer::ReadSceneViewPixels(uint64_t id, Nyx::Engine::RgbaImage& outImage)
+	bool VulkanRenderer::ReadSceneViewPixels(uint64_t id, Nyx::RgbaImage& outImage)
 	{
 		SceneViewInstance* view = FindSceneView(id);
 		if (view == nullptr)
@@ -4087,7 +4087,7 @@ namespace Nyx
 		}
 		const ScreenshotRequest& request = *Screenshot;
 
-		Nyx::Engine::RgbaImage image;
+		Nyx::RgbaImage image;
 		image.Width = request.Region.extent.width;
 		image.Height = request.Region.extent.height;
 		image.Pixels.resize(static_cast<size_t>(image.Width) * image.Height * 4);
@@ -4105,7 +4105,7 @@ namespace Nyx
 		}
 
 		std::string error;
-		ScreenshotMessage = Nyx::Engine::SavePng(request.Path, image, error) ? "Saved " + request.Path.string() : "Couldn't save: " + error;
+		ScreenshotMessage = Nyx::SavePng(request.Path, image, error) ? "Saved " + request.Path.string() : "Couldn't save: " + error;
 		Screenshot.reset();
 	}
 

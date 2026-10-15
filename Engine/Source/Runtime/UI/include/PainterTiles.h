@@ -14,7 +14,7 @@
 // The CPU measures each command once (MeasurePainterSegment()); the GPU bins every tile
 // (PainterBin.comp).
 
-namespace Nyx::Engine
+namespace Nyx::UI
 {
 	class Painter;
 	struct PainterSegment;

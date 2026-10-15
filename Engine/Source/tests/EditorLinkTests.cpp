@@ -28,7 +28,7 @@
 
 namespace
 {
-	using namespace Nyx::Engine;
+	using namespace Nyx;
 	using namespace Nyx::Net;
 
 	using Nyx::Tests::Require;
@@ -637,7 +637,7 @@ namespace
 	public:
 		explicit QuietConsole(const std::shared_ptr<spdlog::sinks::sink>& keep)
 		{
-			Nyx::Core::Logger& logger = Nyx::Core::Logger::Get();
+			Nyx::Logger& logger = Nyx::Logger::Get();
 			for (const std::shared_ptr<spdlog::logger>& target : { logger.GetCoreLogger(), logger.GetClientLogger() })
 			{
 				for (const std::shared_ptr<spdlog::sinks::sink>& sink : target->sinks())
@@ -668,12 +668,12 @@ namespace
 	// The logger counts warnings, and errors with critical ones, but not other lines
 	void TestLogCounts()
 	{
-		const Nyx::Core::LogCounts before = Nyx::Core::Logger::Get().GetCounts();
+		const Nyx::LogCounts before = Nyx::Logger::Get().GetCounts();
 		LOG_INFO("An info line, which isn't counted (expected by the test)");
 		LOG_WARNING("A warning (expected by the test)");
 		CORE_LOG_ERROR("An error (expected by the test)");
 		LOG_CRITICAL("A critical error (expected by the test)");
-		const Nyx::Core::LogCounts after = Nyx::Core::Logger::Get().GetCounts();
+		const Nyx::LogCounts after = Nyx::Logger::Get().GetCounts();
 		Require(after.Warnings == before.Warnings + 1,
 			"The logger should count one more warning, counted " + std::to_string(after.Warnings - before.Warnings));
 		Require(after.Errors == before.Errors + 2,
@@ -813,7 +813,7 @@ int main()
 {
 	try
 	{
-		Nyx::Core::Logger::Get().Init();
+		Nyx::Logger::Get().Init();
 		RegisterComponentTypes();
 
 		TestStreamReaderPieces();

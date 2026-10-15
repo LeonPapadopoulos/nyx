@@ -11,7 +11,7 @@
 
 namespace
 {
-	using namespace Nyx::Engine;
+	using namespace Nyx;
 
 	using Nyx::Tests::Require;
 

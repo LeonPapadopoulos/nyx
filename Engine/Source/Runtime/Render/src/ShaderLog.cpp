@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <system_error>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	const ShaderDiagnostic* ShaderLogEntry::FindFirstError() const
 	{

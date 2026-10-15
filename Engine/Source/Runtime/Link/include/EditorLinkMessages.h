@@ -18,7 +18,7 @@
 // Messages name entities by guid, and components and properties by name (hash), never by handle
 // or index: an editor and a game built from different commits then skip what only one of them
 // knows instead of writing it into the wrong place.
-namespace Nyx::Engine
+namespace Nyx
 {
 	// Raise this whenever a message changes in a way the other side would misread. Both sides
 	// refuse to talk to a different version, so an editor and a game built from different commits
@@ -114,7 +114,7 @@ namespace Nyx::Engine
 
 		EntityGuid Entity;
 
-		// The component type's name, as in scene files, e.g. "Nyx::Engine::TransformComponent"
+		// The component type's name, as in scene files, e.g. "Nyx::TransformComponent"
 		std::string ComponentType;
 
 		// Exactly one property block, with its size in front, as ReflectedArchiveSerializer::

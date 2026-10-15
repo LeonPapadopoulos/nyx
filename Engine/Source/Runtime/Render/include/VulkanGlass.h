@@ -11,7 +11,7 @@ namespace Nyx
 	class VulkanContext;
 }
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	// What glass shows: a picture of what lies behind the main window's floating windows, drawn
 	// into an image of its own and blurred. The renderer draws ImGui's windows behind the first

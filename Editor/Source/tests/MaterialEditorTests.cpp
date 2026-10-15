@@ -41,13 +41,13 @@
 namespace
 {
 	using namespace Nyx::Editor;
-	using Nyx::Engine::EShaderFieldKind;
-	using Nyx::Engine::EShaderScalarType;
-	using Nyx::Engine::MaterialAsset;
-	using Nyx::Engine::ShaderAttribute;
-	using Nyx::Engine::ShaderAttributeArgument;
-	using Nyx::Engine::ShaderField;
-	using Nyx::Engine::ShaderLayout;
+	using Nyx::EShaderFieldKind;
+	using Nyx::EShaderScalarType;
+	using Nyx::MaterialAsset;
+	using Nyx::ShaderAttribute;
+	using Nyx::ShaderAttributeArgument;
+	using Nyx::ShaderField;
+	using Nyx::ShaderLayout;
 
 	using Nyx::Tests::HeadlessUI;
 	using Nyx::Tests::Require;
@@ -394,7 +394,7 @@ namespace
 	void TestDiagnosticsOpenTheirLine()
 	{
 		HeadlessUI ui;
-		Nyx::Engine::ShaderDiagnostic diagnostic{ .File = "C:/Assets/Shaders/Stone.slang", .Line = 23, .Column = 14, .Severity = Nyx::Engine::EShaderDiagnosticSeverity::Error, .Message = "undefined identifier 'uvv'." };
+		Nyx::ShaderDiagnostic diagnostic{ .File = "C:/Assets/Shaders/Stone.slang", .Line = 23, .Column = 14, .Severity = Nyx::EShaderDiagnosticSeverity::Error, .Message = "undefined identifier 'uvv'." };
 		std::filesystem::path opened;
 		uint32_t openedLine = 0;
 		const OpenFileAtLine open = [&](const std::filesystem::path& file, uint32_t line)
@@ -423,9 +423,9 @@ namespace
 		Require(opened == diagnostic.File && openedLine == 23, "Clicking the diagnostic didn't open its file at its line");
 
 		// The window with a compile that worked and one that didn't, all and failing only
-		Nyx::Engine::ShaderLog log;
-		log.Add(Nyx::Engine::ShaderLogEntry{ .Name = "Grid.frag", .File = "C:/Engine/Shaders/Grid.frag", .bSucceeded = true, .Milliseconds = 41.0, .EntryPoints = 1, .SpirvBytes = 1240 });
-		log.Add(Nyx::Engine::ShaderLogEntry{ .Name = "Shaders/Stone.slang", .File = diagnostic.File, .bSucceeded = false, .Diagnostics = { diagnostic } });
+		Nyx::ShaderLog log;
+		log.Add(Nyx::ShaderLogEntry{ .Name = "Grid.frag", .File = "C:/Engine/Shaders/Grid.frag", .bSucceeded = true, .Milliseconds = 41.0, .EntryPoints = 1, .SpirvBytes = 1240 });
+		log.Add(Nyx::ShaderLogEntry{ .Name = "Shaders/Stone.slang", .File = diagnostic.File, .bSucceeded = false, .Diagnostics = { diagnostic } });
 		ShaderLogPanel panel;
 		panel.bOpen = true;
 		panel.SetOpenFileAtLine(open);
@@ -433,7 +433,7 @@ namespace
 		panel.bFailingOnly = true;
 		ui.Frame([&]() { panel.Draw(log); });
 		// Nothing compiled yet
-		ui.Frame([&]() { panel.Draw(Nyx::Engine::ShaderLog{}); });
+		ui.Frame([&]() { panel.Draw(Nyx::ShaderLog{}); });
 	}
 }
 

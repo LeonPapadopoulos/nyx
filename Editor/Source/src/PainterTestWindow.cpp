@@ -25,7 +25,7 @@
 
 namespace Nyx::Editor
 {
-	using namespace Nyx::Engine;
+	using namespace Nyx::UI;
 	using Nyx::UI::ToImGuiColor;
 	using Nyx::UI::ToImVec2;
 

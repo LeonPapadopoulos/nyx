@@ -64,7 +64,7 @@ namespace Nyx
 	// and v along z, with tangents
 	MeshData MakePlane(float size);
 
-	class Mesh : public Nyx::Engine::Resource
+	class Mesh : public Nyx::Resource
 	{
 	public:
 		explicit Mesh(const std::string& id)

@@ -38,7 +38,8 @@
 
 namespace
 {
-	using namespace Nyx::Engine;
+	using namespace Nyx;
+	using namespace Nyx::UI;
 
 	const glm::vec4 Transparent{ 0.0f };
 	const glm::vec4 White{ 1.0f };

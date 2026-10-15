@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	class BinaryWriter
 	{

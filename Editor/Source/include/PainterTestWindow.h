@@ -45,14 +45,14 @@ namespace Nyx::Editor
 		void SaveGalleryPng(Nyx::IRenderer& renderer);
 
 		// Takes up `size` at ImGui's cursor and returns where, for painting a forced state there
-		static Nyx::Engine::PainterRect ReserveCell(glm::vec2 size);
+		static Nyx::UI::PainterRect ReserveCell(glm::vec2 size);
 
 		// The test sheet's gradient image (MakePainterTestGradient()), made the first time it's asked for
 		ImTextureRef GetGradientTexture(Nyx::IRenderer& renderer);
 
 		void DrawToolbar();
 		void DrawStatistics() const;
-		void DrawWindowPainterStatistics(const Nyx::Engine::PainterWindowStats& stats) const;
+		void DrawWindowPainterStatistics(const Nyx::UI::PainterWindowStats& stats) const;
 
 		// The wheel zooms around the mouse; dragging with any button pans. Works on the item
 		// drawn last, an invisible button over the canvas.
@@ -61,7 +61,7 @@ namespace Nyx::Editor
 		Nyx::IRenderer* Renderer = nullptr;
 		uint64_t CanvasId = 0;
 		uint64_t GradientImageId = 0;
-		Nyx::Engine::Painter Painter;
+		Nyx::UI::Painter Painter;
 
 		float Zoom = 1.0f;
 		// Where the sheet's top left is in the canvas, in pixels
@@ -138,7 +138,7 @@ namespace Nyx::Editor
 		void RecordFrameSample(const Nyx::IRenderer& renderer);
 		// The frames kept, oldest first
 		std::vector<FrameSample> GetFrameSamples() const;
-		void DrawOsWindowStatistics(const Nyx::Engine::PainterWindowStats& stats) const;
+		void DrawOsWindowStatistics(const Nyx::UI::PainterWindowStats& stats) const;
 		void DrawFrameGraph(std::span<const FrameSample> samples) const;
 		// What the per-tile reduction drops, and what the painter costs a frame, from the frames kept
 		void DrawReduction(std::span<const FrameSample> samples) const;
@@ -154,5 +154,5 @@ namespace Nyx::Editor
 	// left at `origin`. ImDrawList has no shadows, glows or per-corner radii, so those are left out
 	// and a rect gets its largest corner radius. Glyphs and images on a texture ImGui replaced this
 	// frame (its font atlas grew) are left out for that frame.
-	void DrawPainterFrameWithImDrawList(const Nyx::Engine::Painter& painter, ImDrawList& drawList, ImVec2 origin);
+	void DrawPainterFrameWithImDrawList(const Nyx::UI::Painter& painter, ImDrawList& drawList, ImVec2 origin);
 }

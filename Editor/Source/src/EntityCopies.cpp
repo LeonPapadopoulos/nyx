@@ -44,16 +44,16 @@ namespace
 
 namespace Nyx::Editor
 {
-	std::vector<std::byte> CopyEntity(const Nyx::SceneDocument& scene, Nyx::Engine::Entity entity)
+	std::vector<std::byte> CopyEntity(const Nyx::SceneDocument& scene, Nyx::Entity entity)
 	{
-		const Nyx::Engine::Registry& world = scene.GetRegistry();
+		const Nyx::Registry& world = scene.GetRegistry();
 		if (!world.IsAlive(entity))
 		{
 			return {};
 		}
 
-		Nyx::Engine::BinaryWriter writer;
-		if (!Nyx::Engine::SceneSerializer::WriteEntity(world, entity, writer))
+		Nyx::BinaryWriter writer;
+		if (!Nyx::SceneSerializer::WriteEntity(world, entity, writer))
 		{
 			LOG_WARNING("Copy: the entity can't be copied, since a component can't be written");
 			return {};
@@ -62,7 +62,7 @@ namespace Nyx::Editor
 		return writer.GetBytes();
 	}
 
-	std::optional<Nyx::Engine::Entity> PasteEntity(Nyx::SceneDocument& scene, TransactionSystem& transactions, ITransactionDomain& domain,
+	std::optional<Nyx::Entity> PasteEntity(Nyx::SceneDocument& scene, TransactionSystem& transactions, ITransactionDomain& domain,
 		EditorTransactionContext& context, const std::vector<std::byte>& copied, const char* label)
 	{
 		if (copied.empty())
@@ -70,15 +70,15 @@ namespace Nyx::Editor
 			return std::nullopt;
 		}
 
-		Nyx::Engine::Registry& world = scene.GetRegistry();
-		const Nyx::Engine::Entity entity = world.CreateEntity();
+		Nyx::Registry& world = scene.GetRegistry();
+		const Nyx::Entity entity = world.CreateEntity();
 
 		// Assets are loaded by ComponentPostLoadSubscriber when the paste is recorded below
-		Nyx::Engine::BinaryReader reader;
+		Nyx::BinaryReader reader;
 		reader.LoadFromMemory(copied);
-		Nyx::Engine::ScenePostLoadContext noAssets{};
-		Nyx::Engine::ReadWarnings warnings;
-		const bool bRead = Nyx::Engine::SceneSerializer::ReadEntity(reader, world, entity, noAssets, warnings) && reader.IsValid();
+		Nyx::ScenePostLoadContext noAssets{};
+		Nyx::ReadWarnings warnings;
+		const bool bRead = Nyx::SceneSerializer::ReadEntity(reader, world, entity, noAssets, warnings) && reader.IsValid();
 		warnings.Log("Paste");
 
 		if (!bRead)
@@ -89,17 +89,17 @@ namespace Nyx::Editor
 		}
 
 		// A guid of its own, and a name that tells it apart. The copy normally has both already.
-		if (!world.Has<Nyx::Engine::GuidComponent>(entity))
+		if (!world.Has<Nyx::GuidComponent>(entity))
 		{
-			world.Add<Nyx::Engine::GuidComponent>(entity, Nyx::Engine::GuidComponent{});
+			world.Add<Nyx::GuidComponent>(entity, Nyx::GuidComponent{});
 		}
-		world.Get<Nyx::Engine::GuidComponent>(entity).Guid = Nyx::Engine::EntityGuid::Generate();
+		world.Get<Nyx::GuidComponent>(entity).Guid = Nyx::EntityGuid::Generate();
 
-		if (!world.Has<Nyx::Engine::NameComponent>(entity))
+		if (!world.Has<Nyx::NameComponent>(entity))
 		{
-			world.Add<Nyx::Engine::NameComponent>(entity, Nyx::Engine::NameComponent{ "Entity" });
+			world.Add<Nyx::NameComponent>(entity, Nyx::NameComponent{ "Entity" });
 		}
-		Nyx::Engine::NameComponent& name = world.Get<Nyx::Engine::NameComponent>(entity);
+		Nyx::NameComponent& name = world.Get<Nyx::NameComponent>(entity);
 		name.Name = MakeCopyName(scene, name.Name.empty() ? std::string("Entity") : name.Name);
 
 		const ObjectRef target = MakeSceneEntityRef(scene, entity);
@@ -116,8 +116,8 @@ namespace Nyx::Editor
 	std::string MakeCopyName(const Nyx::SceneDocument& scene, const std::string& name)
 	{
 		std::set<std::string> taken;
-		scene.GetRegistry().Each<Nyx::Engine::NameComponent>(
-			[&](Nyx::Engine::Entity, const Nyx::Engine::NameComponent& other)
+		scene.GetRegistry().Each<Nyx::NameComponent>(
+			[&](Nyx::Entity, const Nyx::NameComponent& other)
 			{
 				taken.insert(other.Name);
 			});

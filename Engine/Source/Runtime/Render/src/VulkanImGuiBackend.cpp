@@ -145,7 +145,7 @@ namespace Nyx
 			ImGui::StyleColorsLight();
 			break;
 		case 4:
-			SetNyxTheme();
+			UI::SetNyxTheme();
 			break;
 		default:
 			LOG_ERROR("Failed to set ImGuiStyle - No style associated with given index: {0}", index);

@@ -5,7 +5,7 @@
 #include <glm/glm.hpp>
 #include <imgui.h>
 
-namespace Nyx::Engine
+namespace Nyx::UI
 {
 	class Painter;
 

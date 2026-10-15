@@ -6,7 +6,7 @@
 #include <cmath>
 #include <string>
 
-namespace Nyx::Engine
+namespace Nyx::UI
 {
 	namespace
 	{

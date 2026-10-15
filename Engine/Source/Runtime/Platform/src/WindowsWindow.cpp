@@ -323,7 +323,7 @@ namespace Nyx
 			}
 			if (bPaintedChrome)
 			{
-				Nyx::UI::GetWindowPainter().AddRect(Engine::PainterRect{ { left, minY }, { left + width, maxY } }, Engine::PainterStyle::Filled(color));
+				Nyx::UI::GetWindowPainter().AddRect(UI::PainterRect{ { left, minY }, { left + width, maxY } }, UI::PainterStyle::Filled(color));
 			}
 			else
 			{
@@ -503,9 +503,9 @@ namespace Nyx
 			if (bPaintedChrome)
 			{
 				const Nyx::UI::Theme& theme = Nyx::UI::GetTheme();
-				const Engine::PainterRect border{ { winMin.x, winMin.y }, { winMax.x, winMax.y } };
+				const UI::PainterRect border{ { winMin.x, winMin.y }, { winMax.x, winMax.y } };
 				Nyx::UI::GetForegroundPainter(viewport).AddRoundedRect(border, bIsMaximized ? 0.0f : theme.WindowRounding,
-					Engine::PainterStyle::Outlined(theme.WindowFocusBorder, theme.WindowFocusBorderWidth));
+					UI::PainterStyle::Outlined(theme.WindowFocusBorder, theme.WindowFocusBorderWidth));
 			}
 			else
 			{

@@ -14,8 +14,8 @@
 namespace
 {
 	using namespace Nyx::Editor;
-	using Nyx::Engine::GameWindowPosition;
-	using Nyx::Engine::GameWindowSize;
+	using Nyx::GameWindowPosition;
+	using Nyx::GameWindowSize;
 
 	using Nyx::Tests::Require;
 

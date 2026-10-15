@@ -267,7 +267,7 @@ namespace
 
 int main()
 {
-	Nyx::Core::Logger::Get().Init();
+	Nyx::Logger::Get().Init();
 
 	try
 	{

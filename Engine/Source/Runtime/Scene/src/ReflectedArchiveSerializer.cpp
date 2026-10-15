@@ -22,10 +22,10 @@
 namespace
 {
 	using namespace Nyx::Reflection;
-	using Nyx::Engine::BinaryReader;
-	using Nyx::Engine::BinaryWriter;
-	using Nyx::Engine::ReadWarnings;
-	using Nyx::Engine::ReflectedArchiveSerializer;
+	using Nyx::BinaryReader;
+	using Nyx::BinaryWriter;
+	using Nyx::ReadWarnings;
+	using Nyx::ReflectedArchiveSerializer;
 
 	void WriteFloats(BinaryWriter& writer, std::initializer_list<float> values)
 	{
@@ -108,7 +108,7 @@ namespace
 		return ReflectedArchiveSerializer::ReadValue(reader, kind, ignored);
 	}
 
-	// Names a property in warnings, e.g. "Nyx::Engine::MeshRendererComponent::Mesh"
+	// Names a property in warnings, e.g. "Nyx::MeshRendererComponent::Mesh"
 	std::string GetPropertyPath(const std::string& objectPath, const PropertyMetadata& property)
 	{
 		return objectPath + "::" + property.Name;
@@ -222,7 +222,7 @@ namespace
 	}
 
 	// Reads one property block into the object; see ReflectedArchiveSerializer::DeserializeObject.
-	// objectPath names the object in warnings, e.g. "Nyx::Engine::MeshRendererComponent::Mesh".
+	// objectPath names the object in warnings, e.g. "Nyx::MeshRendererComponent::Mesh".
 	bool ReadObject(
 		BinaryReader& reader,
 		void* object,
@@ -296,7 +296,7 @@ namespace
 	}
 }
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	using namespace Nyx::Reflection;
 

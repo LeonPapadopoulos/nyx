@@ -58,7 +58,7 @@
 
 namespace
 {
-	using namespace Nyx::Engine;
+	using namespace Nyx;
 	using namespace Nyx::RenderTests;
 
 	constexpr uint32_t ViewWidth = 480;
@@ -273,7 +273,7 @@ namespace
 		// The missing material until the shader's first compile, then the file's blue
 		const std::array<uint8_t, 3> blue = DrawUntilMiddleChanges(gpu, view, Tonemapped(glm::vec3(1.0f, 0.0f, 1.0f)));
 		Require(Near(blue, Tonemapped(glm::vec3(0.0f, 0.0f, 1.0f))), "The material doesn't glow in its file's blue: " + Text(blue));
-		const Nyx::Engine::ShaderLogEntry* compiled = renderer.GetShaderLog().FindByFile(shader.File);
+		const Nyx::ShaderLogEntry* compiled = renderer.GetShaderLog().FindByFile(shader.File);
 		Require(compiled && compiled->bSucceeded && compiled->Name == "Shaders/NyxSceneGpuTestsGlow.slang" && compiled->EntryPoints > 0 && compiled->SpirvBytes > 0,
 			"The Shader Log doesn't have the shader's compile, by its path in the assets folder");
 
@@ -293,7 +293,7 @@ namespace
 		}
 		Require(MiddlePixel(gpu, view) == dimmed, "A material shader saved broken changed the picture");
 		// The Shader Log says where it broke: Glow, line 10
-		const Nyx::Engine::ShaderLogEntry* broken = renderer.GetShaderLog().FindByFile(shader.File);
+		const Nyx::ShaderLogEntry* broken = renderer.GetShaderLog().FindByFile(shader.File);
 		Require(broken && !broken->bSucceeded && broken->FindFirstError(), "The Shader Log doesn't have the broken compile");
 		Require(broken->FindFirstError()->Line == 10 && broken->FindFirstError()->Message.find("Glow") != std::string::npos,
 			"The Shader Log's error isn't at the line with Glow: " + broken->FindFirstError()->ToString());
@@ -368,13 +368,13 @@ namespace
 		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
 		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
 
-		Nyx::Engine::VulkanEnvironment& environment = gpu.Renderer.GetEnvironment();
+		Nyx::VulkanEnvironment& environment = gpu.Renderer.GetEnvironment();
 		const std::array<glm::vec3, 9>& c = environment.GetIrradiance(gpu.Renderer.GetSky());
 		const glm::vec3 diffuse = c[0] * 0.282095f + c[2] * 0.488603f + c[6] * 0.315392f * 2.0f;
 
 		// The roughest mip's +Z face, sampled at its middle: the mean of the four middle texels
-		const uint32_t level = Nyx::Engine::VulkanEnvironment::SpecularLevels - 1;
-		const uint32_t size = Nyx::Engine::VulkanEnvironment::SpecularSize >> level;
+		const uint32_t level = Nyx::VulkanEnvironment::SpecularLevels - 1;
+		const uint32_t size = Nyx::VulkanEnvironment::SpecularSize >> level;
 		const std::vector<glm::vec4> rough = environment.ReadSpecularLevel(gpu.Renderer.GetSky(), level);
 		glm::vec3 specular(0.0f);
 		for (const uint32_t y : { size / 2 - 1, size / 2 })
@@ -386,7 +386,7 @@ namespace
 		}
 
 		const std::vector<glm::vec2> lookup = environment.ReadLookup();
-		const glm::vec2 brdf = lookup[64 * Nyx::Engine::VulkanEnvironment::LookupSize + 64];
+		const glm::vec2 brdf = lookup[64 * Nyx::VulkanEnvironment::LookupSize + 64];
 
 		const std::array<glm::vec3, 3> expected = { diffuse, specular, glm::vec3(brdf, 0.0f) };
 		const std::array<const char*, 3> names = { "diffuse light", "specular light", "BRDF table" };
@@ -796,14 +796,14 @@ namespace
 		Require(Near(halfBlue, Tonemapped(glm::vec3(0.0f, 0.0f, 0.5f))), "The instance didn't follow its parent's saved blue: " + Text(halfBlue));
 
 		// The parent set in memory, as the editor does: the instance follows in the next frame
-		Nyx::Engine::MaterialAsset red;
+		Nyx::MaterialAsset red;
 		std::string error;
 		Require(red.Parse("Shader = Shaders/NyxSceneGpuTestsFamily.slang\nGlow = 1 0 0\n", error), error);
 		renderer.SetMaterialValues(parent.Path, red);
 		Require(Near(MiddlePixel(gpu, view), Tonemapped(glm::vec3(0.5f, 0.0f, 0.0f))), "The instance didn't follow its parent's values set in memory");
 
 		// Its own value over the parent's
-		Nyx::Engine::MaterialAsset overriding;
+		Nyx::MaterialAsset overriding;
 		Require(overriding.Parse("Parent = Materials/NyxSceneGpuTests-Parent.nyxmat\nStrength = 0.5\nGlow = 0 1 1\n", error), error);
 		renderer.SetMaterialValues(child.Path, overriding);
 		Require(Near(MiddlePixel(gpu, view), Tonemapped(glm::vec3(0.0f, 0.5f, 0.5f))), "The instance's own value isn't over its parent's");
@@ -865,22 +865,22 @@ namespace
 		Require(MiddlePixel(gpu, view) == red && !renderer.IsCompilingShaders(), "A saved shader compiled while following the editor");
 
 		// The editor's compiles of it, the material's and its defaults writer's, over the link
-		Nyx::Engine::ShaderCompiler compiler({ Nyx::Paths::GetShaderLibraryDir() });
+		Nyx::ShaderCompiler compiler({ Nyx::Paths::GetShaderLibraryDir() });
 		const std::filesystem::path file = std::filesystem::path(shader.File).make_preferred();
-		const Nyx::Engine::ShaderCompileRequest materialRequest{ .Kind = Nyx::Engine::EShaderCompileKind::Material, .File = file, .Domain = Nyx::Engine::ShaderDomain::Surface() };
-		const Nyx::Engine::ShaderCompileRequest defaultsRequest{ .Kind = Nyx::Engine::EShaderCompileKind::DefaultsWriter, .File = file };
-		const Nyx::Engine::ShaderProgramMessage materialCompile{ materialRequest, compiler.CompileMaterial(file, Nyx::Engine::ShaderDomain::Surface()) };
-		const Nyx::Engine::ShaderProgramMessage defaultsCompile{ defaultsRequest, compiler.CompileDefaultsWriter(file) };
+		const Nyx::ShaderCompileRequest materialRequest{ .Kind = Nyx::EShaderCompileKind::Material, .File = file, .Domain = Nyx::ShaderDomain::Surface() };
+		const Nyx::ShaderCompileRequest defaultsRequest{ .Kind = Nyx::EShaderCompileKind::DefaultsWriter, .File = file };
+		const Nyx::ShaderProgramMessage materialCompile{ materialRequest, compiler.CompileMaterial(file, Nyx::ShaderDomain::Surface()) };
+		const Nyx::ShaderProgramMessage defaultsCompile{ defaultsRequest, compiler.CompileDefaultsWriter(file) };
 		Require(materialCompile.Result.bSucceeded && defaultsCompile.Result.bSucceeded, "The editor's compiles failed");
-		Require(Nyx::Engine::ApplyRendererEdit(Nyx::Engine::MakeNetMessage(materialCompile), renderer) == Nyx::Engine::ELiveEditResult::Applied &&
-				Nyx::Engine::ApplyRendererEdit(Nyx::Engine::MakeNetMessage(defaultsCompile), renderer) == Nyx::Engine::ELiveEditResult::Applied,
+		Require(Nyx::ApplyRendererEdit(Nyx::MakeNetMessage(materialCompile), renderer) == Nyx::ELiveEditResult::Applied &&
+				Nyx::ApplyRendererEdit(Nyx::MakeNetMessage(defaultsCompile), renderer) == Nyx::ELiveEditResult::Applied,
 			"The editor's compiles weren't taken");
 		const std::array<uint8_t, 3> dimmed = DrawUntilMiddleChanges(gpu, view, red);
 		Require(Near(dimmed, Tonemapped(glm::vec3(0.5f, 0.0f, 0.0f))), "The editor's compile isn't drawn: " + Text(dimmed));
 
 		// The editor's values, not saved
-		const Nyx::Engine::MaterialValuesMessage values{ material.Path, "Shader = Shaders/NyxSceneGpuTestsLinked.slang\nGlow = 0 0 1\n" };
-		Require(Nyx::Engine::ApplyRendererEdit(Nyx::Engine::MakeNetMessage(values), renderer) == Nyx::Engine::ELiveEditResult::Applied, "The editor's values weren't taken");
+		const Nyx::MaterialValuesMessage values{ material.Path, "Shader = Shaders/NyxSceneGpuTestsLinked.slang\nGlow = 0 0 1\n" };
+		Require(Nyx::ApplyRendererEdit(Nyx::MakeNetMessage(values), renderer) == Nyx::ELiveEditResult::Applied, "The editor's values weren't taken");
 		const std::array<uint8_t, 3> blue = MiddlePixel(gpu, view);
 		Require(Near(blue, Tonemapped(glm::vec3(0.0f, 0.0f, 0.5f))), "The editor's values aren't drawn in the next frame: " + Text(blue));
 
@@ -1000,7 +1000,7 @@ int main()
 {
 	try
 	{
-		Nyx::Core::Logger::Get().Init();
+		Nyx::Logger::Get().Init();
 		SceneRenderer gpu("NyxSceneGpuTests");
 		TestDefaultScene(gpu);
 		TestMissingMaterial(gpu);

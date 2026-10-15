@@ -21,7 +21,7 @@
 
 namespace
 {
-	using namespace Nyx::Engine;
+	using namespace Nyx;
 
 	const std::filesystem::path TestShaders = NYX_TEST_SHADERS_DIR;
 	const std::filesystem::path EngineShaders = NYX_ENGINE_SHADERS_DIR;

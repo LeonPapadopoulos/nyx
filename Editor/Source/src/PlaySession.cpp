@@ -50,7 +50,7 @@ namespace Nyx::Editor
 
 		for (const PlannedGame& planned : plan.Games)
 		{
-			Nyx::Engine::GameLaunchOptions launchOptions = planned.Options;
+			Nyx::GameLaunchOptions launchOptions = planned.Options;
 			launchOptions.ScenePath = *playSessionScene;
 			launchOptions.bWaitForDebugger = bGameWaitsForDebugger;
 			LaunchGame(planned.Name, launchOptions, planned.bConsoleWindow);
@@ -68,7 +68,7 @@ namespace Nyx::Editor
 		// The games run a copy of the open scene, saved next to the executables. That includes
 		// unsaved changes and leaves the scene's own file alone. Each game reads it as it starts.
 		const std::filesystem::path playSessionScene = Nyx::Paths::GetExecutableDir() / "PlaySession.nyxscene";
-		if (!Nyx::Engine::SceneSerializer::SaveToFile(Scene.GetRegistry(), playSessionScene))
+		if (!Nyx::SceneSerializer::SaveToFile(Scene.GetRegistry(), playSessionScene))
 		{
 			LOG_ERROR("Couldn't save the scene for the game to '{0}'", playSessionScene.string());
 			return std::nullopt;
@@ -77,13 +77,13 @@ namespace Nyx::Editor
 		return playSessionScene;
 	}
 
-	bool PlaySession::LaunchGame(const std::string& name, const Nyx::Engine::GameLaunchOptions& launchOptions, bool bConsoleWindow)
+	bool PlaySession::LaunchGame(const std::string& name, const Nyx::GameLaunchOptions& launchOptions, bool bConsoleWindow)
 	{
 		// NyxGame is built next to the editor, since building the editor builds it too
 		const std::filesystem::path gameExecutable = Nyx::Paths::GetExecutableDir() / "NyxGame.exe";
 
 		auto game = std::make_unique<GameInstance>(name,
-			[this](const std::string& gameName, Nyx::Engine::ELinkDirection direction, const Nyx::Net::Message& message)
+			[this](const std::string& gameName, Nyx::ELinkDirection direction, const Nyx::Net::Message& message)
 			{
 				GameLinkWindow.AddMessage(gameName, direction, message);
 			});
@@ -111,7 +111,7 @@ namespace Nyx::Editor
 			return;
 		}
 
-		Nyx::Engine::GameLaunchOptions launchOptions = crash.LaunchOptions;
+		Nyx::GameLaunchOptions launchOptions = crash.LaunchOptions;
 		launchOptions.ScenePath = *playSessionScene;
 
 		if (!LaunchGame(crash.GameName, launchOptions, crash.bConsoleWindow))

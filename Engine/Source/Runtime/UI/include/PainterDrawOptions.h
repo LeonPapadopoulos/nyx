@@ -6,7 +6,7 @@
 
 #include <cstdint>
 
-namespace Nyx::Engine
+namespace Nyx::UI
 {
 	// What the painter shader shows besides the painted shapes
 	enum class EPainterDebugView : uint32_t

@@ -15,7 +15,7 @@ namespace Nyx::Game
 	{
 	}
 
-	void GameLayer::OnAttach(Nyx::Engine::Application& application)
+	void GameLayer::OnAttach(Nyx::Application& application)
 	{
 		Renderer = &application.GetWindow().GetRenderer();
 
@@ -23,12 +23,12 @@ namespace Nyx::Game
 		// both programs run from the same folder.
 		ImGui::GetIO().IniFilename = nullptr;
 
-		AssetResolver = std::make_unique<Nyx::Engine::AssetResolver>(*Renderer);
+		AssetResolver = std::make_unique<Nyx::AssetResolver>(*Renderer);
 
-		Nyx::Engine::ScenePostLoadContext postLoadContext{};
+		Nyx::ScenePostLoadContext postLoadContext{};
 		postLoadContext.AssetResolver = AssetResolver.get();
 
-		if (Nyx::Engine::SceneSerializer::LoadFromFile(ScenePath, World, postLoadContext))
+		if (Nyx::SceneSerializer::LoadFromFile(ScenePath, World, postLoadContext))
 		{
 			LOG_INFO("Running scene '{0}'", ScenePath.string());
 		}
@@ -38,8 +38,8 @@ namespace Nyx::Game
 		}
 
 		bool bHasPrimaryCamera = false;
-		World.Each<Nyx::Engine::CameraComponent>(
-			[&](Nyx::Engine::Entity /*entity*/, Nyx::Engine::CameraComponent& camera)
+		World.Each<Nyx::CameraComponent>(
+			[&](Nyx::Entity /*entity*/, Nyx::CameraComponent& camera)
 			{
 				bHasPrimaryCamera = bHasPrimaryCamera || camera.bPrimary;
 			});

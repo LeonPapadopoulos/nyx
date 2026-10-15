@@ -100,7 +100,7 @@ namespace Nyx::UI
 		Placement = placement;
 		Segments.clear();
 		bSegmentOpen = false;
-		Transforms.assign(1, Engine::PainterTransform{});
+		Transforms.assign(1, PainterTransform{});
 		ClipRectDepth = 0;
 		GroupDepth = 0;
 		bGroupHasShapes = false;
@@ -113,7 +113,7 @@ namespace Nyx::UI
 		Recording.BeginFrame(targetWidth, targetHeight);
 
 		// (position - viewport position) * scale = position * scale - viewport position * scale
-		ViewportTransform = Engine::PainterTransform{ scale, glm::vec2(-viewport.Pos.x, -viewport.Pos.y) * scale };
+		ViewportTransform = PainterTransform{ scale, glm::vec2(-viewport.Pos.x, -viewport.Pos.y) * scale };
 		Recording.PushTransform(ViewportTransform.Scale, ViewportTransform.Offset);
 	}
 
@@ -155,7 +155,7 @@ namespace Nyx::UI
 		bRecording = false;
 	}
 
-	void WindowPainter::AddRect(const Engine::PainterRect& rect, const Engine::PainterStyle& style)
+	void WindowPainter::AddRect(const PainterRect& rect, const PainterStyle& style)
 	{
 		if (PrepareSegment())
 		{
@@ -163,7 +163,7 @@ namespace Nyx::UI
 		}
 	}
 
-	void WindowPainter::AddRoundedRect(const Engine::PainterRect& rect, float radius, const Engine::PainterStyle& style)
+	void WindowPainter::AddRoundedRect(const PainterRect& rect, float radius, const PainterStyle& style)
 	{
 		if (PrepareSegment())
 		{
@@ -171,7 +171,7 @@ namespace Nyx::UI
 		}
 	}
 
-	void WindowPainter::AddRoundedRect(const Engine::PainterRect& rect, const Engine::PainterCornerRadii& radii, const Engine::PainterStyle& style)
+	void WindowPainter::AddRoundedRect(const PainterRect& rect, const PainterCornerRadii& radii, const PainterStyle& style)
 	{
 		if (PrepareSegment())
 		{
@@ -179,7 +179,7 @@ namespace Nyx::UI
 		}
 	}
 
-	void WindowPainter::AddCircle(glm::vec2 center, float radius, const Engine::PainterStyle& style)
+	void WindowPainter::AddCircle(glm::vec2 center, float radius, const PainterStyle& style)
 	{
 		if (PrepareSegment())
 		{
@@ -187,7 +187,7 @@ namespace Nyx::UI
 		}
 	}
 
-	void WindowPainter::AddCircleSector(glm::vec2 center, float innerRadius, float outerRadius, float startAngle, float endAngle, const Engine::PainterStyle& style)
+	void WindowPainter::AddCircleSector(glm::vec2 center, float innerRadius, float outerRadius, float startAngle, float endAngle, const PainterStyle& style)
 	{
 		if (PrepareSegment())
 		{
@@ -195,7 +195,7 @@ namespace Nyx::UI
 		}
 	}
 
-	void WindowPainter::AddArc(glm::vec2 center, float radius, float width, float startAngle, float endAngle, const Engine::PainterStyle& style)
+	void WindowPainter::AddArc(glm::vec2 center, float radius, float width, float startAngle, float endAngle, const PainterStyle& style)
 	{
 		if (PrepareSegment())
 		{
@@ -203,7 +203,7 @@ namespace Nyx::UI
 		}
 	}
 
-	void WindowPainter::AddLine(glm::vec2 from, glm::vec2 to, float width, Engine::EPainterLineCap cap, const Engine::PainterStyle& style)
+	void WindowPainter::AddLine(glm::vec2 from, glm::vec2 to, float width, EPainterLineCap cap, const PainterStyle& style)
 	{
 		if (PrepareSegment())
 		{
@@ -211,7 +211,7 @@ namespace Nyx::UI
 		}
 	}
 
-	void WindowPainter::AddTriangle(glm::vec2 a, glm::vec2 b, glm::vec2 c, const Engine::PainterStyle& style)
+	void WindowPainter::AddTriangle(glm::vec2 a, glm::vec2 b, glm::vec2 c, const PainterStyle& style)
 	{
 		if (PrepareSegment())
 		{
@@ -228,7 +228,7 @@ namespace Nyx::UI
 		}
 	}
 
-	void WindowPainter::AddImage(ImTextureRef texture, const Engine::PainterRect& rect, const Engine::PainterStyle& style, const Engine::PainterRect& uvs)
+	void WindowPainter::AddImage(ImTextureRef texture, const PainterRect& rect, const PainterStyle& style, const PainterRect& uvs)
 	{
 		if (PrepareSegment())
 		{
@@ -236,7 +236,7 @@ namespace Nyx::UI
 		}
 	}
 
-	void WindowPainter::AddImageGlow(ImTextureRef texture, const Engine::PainterRect& rect, float reach, float strength, const Engine::PainterRect& uvs)
+	void WindowPainter::AddImageGlow(ImTextureRef texture, const PainterRect& rect, float reach, float strength, const PainterRect& uvs)
 	{
 		if (PrepareSegment())
 		{
@@ -244,7 +244,7 @@ namespace Nyx::UI
 		}
 	}
 
-	void WindowPainter::AddGlass(ImTextureRef backdrop, const Engine::PainterRect& rect, float radius, const Engine::PainterStyle& style, const Engine::PainterGlass& glass)
+	void WindowPainter::AddGlass(ImTextureRef backdrop, const PainterRect& rect, float radius, const PainterStyle& style, const PainterGlass& glass)
 	{
 		if (PrepareSegment())
 		{
@@ -252,14 +252,14 @@ namespace Nyx::UI
 		}
 	}
 
-	void WindowPainter::PushClipRect(const Engine::PainterRect& rect)
+	void WindowPainter::PushClipRect(const PainterRect& rect)
 	{
 		if (!bRecording)
 		{
 			ReportProblem("PushClipRect() outside Begin()/End(); it is ignored");
 			return;
 		}
-		const Engine::PainterRect onScreen = Transforms.back().Apply(rect);
+		const PainterRect onScreen = Transforms.back().Apply(rect);
 		const glm::vec2 min = glm::min(onScreen.Min, onScreen.Max);
 		const glm::vec2 max = glm::max(onScreen.Min, onScreen.Max);
 		DrawList->PushClipRect(ImVec2(min.x, min.y), ImVec2(max.x, max.y), true);
@@ -286,8 +286,8 @@ namespace Nyx::UI
 		}
 
 		// Painter reports a scale of 0 or less and pushes the outer transform again; so does this.
-		const Engine::PainterTransform& outer = Transforms.back();
-		Transforms.push_back(scale > 0.0f ? Engine::PainterTransform{ outer.Scale * scale, outer.Apply(offset) } : outer);
+		const PainterTransform& outer = Transforms.back();
+		Transforms.push_back(scale > 0.0f ? PainterTransform{ outer.Scale * scale, outer.Apply(offset) } : outer);
 		Recording.PushTransform(scale, offset);
 	}
 
@@ -303,7 +303,7 @@ namespace Nyx::UI
 		Recording.PopTransform();
 	}
 
-	void WindowPainter::BeginGroup(const Engine::PainterEffects& effects)
+	void WindowPainter::BeginGroup(const PainterEffects& effects)
 	{
 		if (GroupDepth == 0)
 		{
@@ -478,10 +478,10 @@ namespace Nyx::UI
 		{
 			Recording.PopClipRect();
 		}
-		Recording.PushTargetClipRect(ViewportTransform.Apply(Engine::PainterRect{ { clipRect.x, clipRect.y }, { clipRect.z, clipRect.w } }));
+		Recording.PushTargetClipRect(ViewportTransform.Apply(PainterRect{ { clipRect.x, clipRect.y }, { clipRect.z, clipRect.w } }));
 
 		const uint32_t segmentIndex = static_cast<uint32_t>(Segments.size());
-		Segments.push_back(Engine::PainterSegment{ static_cast<uint32_t>(Recording.GetCommands().size()), 0 });
+		Segments.push_back(PainterSegment{ static_cast<uint32_t>(Recording.GetCommands().size()), 0 });
 
 		// The segment is drawn here, then ImGui sets up its own render state again for what it
 		// draws next.
@@ -540,7 +540,7 @@ namespace Nyx::UI
 		{
 			return;
 		}
-		Engine::PainterSegment& segment = Segments.back();
+		PainterSegment& segment = Segments.back();
 		segment.CommandCount = static_cast<uint32_t>(Recording.GetCommands().size()) - segment.FirstCommand;
 		bSegmentOpen = false;
 	}

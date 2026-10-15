@@ -27,7 +27,7 @@
 
 namespace
 {
-	using namespace Nyx::Engine;
+	using namespace Nyx;
 	using Clock = ShaderPrograms::Clock;
 
 	using Nyx::Tests::Require;

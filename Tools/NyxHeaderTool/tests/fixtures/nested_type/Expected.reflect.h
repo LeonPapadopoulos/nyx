@@ -5,13 +5,13 @@
 namespace Nyx::Reflection
 {
     template<>
-    const TypeMetadata& GetTypeMetadata<Nyx::Engine::InnerMostReflectedType>();
+    const TypeMetadata& GetTypeMetadata<Nyx::InnerMostReflectedType>();
 
     template<>
-    const TypeMetadata& GetTypeMetadata<Nyx::Engine::NestedReflectionTest>();
+    const TypeMetadata& GetTypeMetadata<Nyx::NestedReflectionTest>();
 
     template<>
-    const TypeMetadata& GetTypeMetadata<Nyx::Engine::MeshRendererComponent>();
+    const TypeMetadata& GetTypeMetadata<Nyx::MeshRendererComponent>();
 
 }
 
@@ -30,7 +30,7 @@ namespace Nyx::Reflection::Generated
             "testProperty",
             EPropertyKind::String,
             EPropertyFlags::Edit | EPropertyFlags::Undo | EPropertyFlags::Serialize,
-            offsetof(Nyx::Engine::InnerMostReflectedType, testProperty),
+            offsetof(Nyx::InnerMostReflectedType, testProperty),
             InnerMostReflectedType_testProperty_MetadataEntries,
             sizeof(InnerMostReflectedType_testProperty_MetadataEntries) / sizeof(InnerMostReflectedType_testProperty_MetadataEntries[0]),
             nullptr
@@ -39,7 +39,7 @@ namespace Nyx::Reflection::Generated
 
     inline constexpr TypeMetadata InnerMostReflectedType_TypeMetadata
     {
-        "Nyx::Engine::InnerMostReflectedType",
+        "Nyx::InnerMostReflectedType",
         "InnerMostReflectedType",
         EReflectedTypeRole::Plain,
         nullptr,
@@ -65,7 +65,7 @@ namespace Nyx::Reflection::Generated
 
     inline const TypeMetadata& NestedReflectionTest_InnerType_NestedTypeResolver()
     {
-        return GetTypeMetadata<Nyx::Engine::InnerMostReflectedType>();
+        return GetTypeMetadata<Nyx::InnerMostReflectedType>();
     }
 
     inline constexpr PropertyMetadata NestedReflectionTest_Properties[] =
@@ -76,7 +76,7 @@ namespace Nyx::Reflection::Generated
             "bBoolProperty",
             EPropertyKind::Bool,
             EPropertyFlags::Edit | EPropertyFlags::Undo | EPropertyFlags::Serialize,
-            offsetof(Nyx::Engine::NestedReflectionTest, bBoolProperty),
+            offsetof(Nyx::NestedReflectionTest, bBoolProperty),
             NestedReflectionTest_bBoolProperty_MetadataEntries,
             sizeof(NestedReflectionTest_bBoolProperty_MetadataEntries) / sizeof(NestedReflectionTest_bBoolProperty_MetadataEntries[0]),
             nullptr
@@ -87,7 +87,7 @@ namespace Nyx::Reflection::Generated
             "floatProperty",
             EPropertyKind::Float,
             EPropertyFlags::Edit | EPropertyFlags::Undo | EPropertyFlags::Serialize,
-            offsetof(Nyx::Engine::NestedReflectionTest, floatProperty),
+            offsetof(Nyx::NestedReflectionTest, floatProperty),
             NestedReflectionTest_floatProperty_MetadataEntries,
             sizeof(NestedReflectionTest_floatProperty_MetadataEntries) / sizeof(NestedReflectionTest_floatProperty_MetadataEntries[0]),
             nullptr
@@ -98,7 +98,7 @@ namespace Nyx::Reflection::Generated
             "InnerType",
             EPropertyKind::Struct,
             EPropertyFlags::Edit | EPropertyFlags::Undo | EPropertyFlags::Serialize,
-            offsetof(Nyx::Engine::NestedReflectionTest, InnerType),
+            offsetof(Nyx::NestedReflectionTest, InnerType),
             NestedReflectionTest_InnerType_MetadataEntries,
             sizeof(NestedReflectionTest_InnerType_MetadataEntries) / sizeof(NestedReflectionTest_InnerType_MetadataEntries[0]),
             &NestedReflectionTest_InnerType_NestedTypeResolver
@@ -107,7 +107,7 @@ namespace Nyx::Reflection::Generated
 
     inline constexpr TypeMetadata NestedReflectionTest_TypeMetadata
     {
-        "Nyx::Engine::NestedReflectionTest",
+        "Nyx::NestedReflectionTest",
         "NestedReflectionTest",
         EReflectedTypeRole::Plain,
         nullptr,
@@ -141,7 +141,7 @@ namespace Nyx::Reflection::Generated
 
     inline const TypeMetadata& MeshRendererComponent_Test_NestedTypeResolver()
     {
-        return GetTypeMetadata<Nyx::Engine::NestedReflectionTest>();
+        return GetTypeMetadata<Nyx::NestedReflectionTest>();
     }
 
     inline constexpr PropertyMetadata MeshRendererComponent_Properties[] =
@@ -152,7 +152,7 @@ namespace Nyx::Reflection::Generated
             "MeshId",
             EPropertyKind::String,
             EPropertyFlags::Edit | EPropertyFlags::Undo | EPropertyFlags::Serialize | EPropertyFlags::ReadOnly,
-            offsetof(Nyx::Engine::MeshRendererComponent, MeshId),
+            offsetof(Nyx::MeshRendererComponent, MeshId),
             MeshRendererComponent_MeshId_MetadataEntries,
             sizeof(MeshRendererComponent_MeshId_MetadataEntries) / sizeof(MeshRendererComponent_MeshId_MetadataEntries[0]),
             nullptr
@@ -163,7 +163,7 @@ namespace Nyx::Reflection::Generated
             "MaterialId",
             EPropertyKind::String,
             EPropertyFlags::Edit | EPropertyFlags::Undo | EPropertyFlags::Serialize | EPropertyFlags::ReadOnly,
-            offsetof(Nyx::Engine::MeshRendererComponent, MaterialId),
+            offsetof(Nyx::MeshRendererComponent, MaterialId),
             MeshRendererComponent_MaterialId_MetadataEntries,
             sizeof(MeshRendererComponent_MaterialId_MetadataEntries) / sizeof(MeshRendererComponent_MaterialId_MetadataEntries[0]),
             nullptr
@@ -174,7 +174,7 @@ namespace Nyx::Reflection::Generated
             "bVisible",
             EPropertyKind::Bool,
             EPropertyFlags::Edit | EPropertyFlags::Undo | EPropertyFlags::Serialize,
-            offsetof(Nyx::Engine::MeshRendererComponent, bVisible),
+            offsetof(Nyx::MeshRendererComponent, bVisible),
             MeshRendererComponent_bVisible_MetadataEntries,
             sizeof(MeshRendererComponent_bVisible_MetadataEntries) / sizeof(MeshRendererComponent_bVisible_MetadataEntries[0]),
             nullptr
@@ -185,7 +185,7 @@ namespace Nyx::Reflection::Generated
             "Test",
             EPropertyKind::Struct,
             EPropertyFlags::Edit | EPropertyFlags::Undo | EPropertyFlags::Serialize,
-            offsetof(Nyx::Engine::MeshRendererComponent, Test),
+            offsetof(Nyx::MeshRendererComponent, Test),
             MeshRendererComponent_Test_MetadataEntries,
             sizeof(MeshRendererComponent_Test_MetadataEntries) / sizeof(MeshRendererComponent_Test_MetadataEntries[0]),
             &MeshRendererComponent_Test_NestedTypeResolver
@@ -194,7 +194,7 @@ namespace Nyx::Reflection::Generated
 
     inline constexpr TypeMetadata MeshRendererComponent_TypeMetadata
     {
-        "Nyx::Engine::MeshRendererComponent",
+        "Nyx::MeshRendererComponent",
         "Mesh Renderer Component",
         EReflectedTypeRole::Component,
         nullptr,
@@ -208,19 +208,19 @@ namespace Nyx::Reflection::Generated
 namespace Nyx::Reflection
 {
     template<>
-    inline const TypeMetadata& GetTypeMetadata<Nyx::Engine::InnerMostReflectedType>()
+    inline const TypeMetadata& GetTypeMetadata<Nyx::InnerMostReflectedType>()
     {
         return Generated::InnerMostReflectedType_TypeMetadata;
     }
 
     template<>
-    inline const TypeMetadata& GetTypeMetadata<Nyx::Engine::NestedReflectionTest>()
+    inline const TypeMetadata& GetTypeMetadata<Nyx::NestedReflectionTest>()
     {
         return Generated::NestedReflectionTest_TypeMetadata;
     }
 
     template<>
-    inline const TypeMetadata& GetTypeMetadata<Nyx::Engine::MeshRendererComponent>()
+    inline const TypeMetadata& GetTypeMetadata<Nyx::MeshRendererComponent>()
     {
         return Generated::MeshRendererComponent_TypeMetadata;
     }

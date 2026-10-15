@@ -4,7 +4,7 @@
 #include "UIChrome.h"
 #include "UITheme.h"
 
-namespace Nyx
+namespace Nyx::UI
 {
 	void ApplyThemeToImGui()
 	{

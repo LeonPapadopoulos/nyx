@@ -8,7 +8,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	namespace
 	{

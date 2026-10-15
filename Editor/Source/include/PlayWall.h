@@ -48,8 +48,8 @@ namespace Nyx::Editor
 	struct PlayWallTile
 	{
 		// For NyxGame's --window-pos and --window-size
-		Nyx::Engine::GameWindowPosition Position;
-		Nyx::Engine::GameWindowSize Size;
+		Nyx::GameWindowPosition Position;
+		Nyx::GameWindowSize Size;
 
 		// The visible window, frame included, as it ends up on the screen
 		ScreenRect Visible;
@@ -74,7 +74,7 @@ namespace Nyx::Editor
 	// Tiles windows for the picture sizes in rows, left to right, then top to bottom, starting at
 	// the work area's top-left corner, with their visible frames touching. Shrinks all pictures by
 	// the same factor if needed (never enlarges them).
-	PlayWallLayout ArrangePlayWall(const std::vector<Nyx::Engine::GameWindowSize>& pictureSizes, const PlayWallScreen& screen);
+	PlayWallLayout ArrangePlayWall(const std::vector<Nyx::GameWindowSize>& pictureSizes, const PlayWallScreen& screen);
 
 	// The work area of the monitor the window (an HWND) is on, and the frame of a game window at
 	// that monitor's scale. Without a window, the main monitor's.
@@ -87,7 +87,7 @@ namespace Nyx::Editor
 		std::string Name;
 
 		// Window size, place and title; the caller adds the scene and the editor port
-		Nyx::Engine::GameLaunchOptions Options;
+		Nyx::GameLaunchOptions Options;
 
 		bool bConsoleWindow = true;
 	};

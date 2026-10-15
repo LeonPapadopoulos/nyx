@@ -14,6 +14,6 @@ namespace Nyx::Reflection::Generated
         }
         bRegistered = true;
 
-        Nyx::Engine::ComponentTypeRegistry::Get().Register<Nyx::Engine::GuidPropertyTestComponent>();
+        Nyx::ComponentTypeRegistry::Get().Register<Nyx::GuidPropertyTestComponent>();
     }
 }

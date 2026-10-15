@@ -21,7 +21,7 @@ namespace Nyx
 		std::vector<std::uint8_t> Pixels;
 	};
 
-	class NYXENGINE_API Texture : public Nyx::Engine::Resource
+	class NYXENGINE_API Texture : public Nyx::Resource
 	{
 	public:
 		explicit Texture(const std::string& id)

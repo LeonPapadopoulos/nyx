@@ -285,27 +285,27 @@ namespace Nyx::UI
 	// themselves out: the widget's whole rect, label included, except the slider's, which is its
 	// frame. Labels are what is shown, without "##".
 
-	void PaintButton(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view label, const WidgetLook& look, EButtonTone tone = EButtonTone::Neutral);
+	void PaintButton(WindowPainter& painter, const PainterRect& rect, std::string_view label, const WidgetLook& look, EButtonTone tone = EButtonTone::Neutral);
 	// `open`: the open menu's pill, faded in from 0 to 1
-	void PaintMenuBarButton(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view label, float open, const WidgetLook& look);
-	void PaintWindowControl(WindowPainter& painter, const Engine::PainterRect& rect, EWindowControl control, const WidgetLook& look);
-	void PaintIconButton(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view label, EIcon icon, const WidgetLook& look, EButtonTone tone = EButtonTone::Neutral, bool bDropdown = false);
+	void PaintMenuBarButton(WindowPainter& painter, const PainterRect& rect, std::string_view label, float open, const WidgetLook& look);
+	void PaintWindowControl(WindowPainter& painter, const PainterRect& rect, EWindowControl control, const WidgetLook& look);
+	void PaintIconButton(WindowPainter& painter, const PainterRect& rect, std::string_view label, EIcon icon, const WidgetLook& look, EButtonTone tone = EButtonTone::Neutral, bool bDropdown = false);
 	// An icon filling `box`, a square
-	void PaintIcon(WindowPainter& painter, const Engine::PainterRect& box, EIcon icon, const glm::vec4& color);
+	void PaintIcon(WindowPainter& painter, const PainterRect& box, EIcon icon, const glm::vec4& color);
 	// `selected`: the raised tab and underline, faded in from 0 to 1
-	void PaintBarTab(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view label, float selected, const WidgetLook& look);
+	void PaintBarTab(WindowPainter& painter, const PainterRect& rect, std::string_view label, float selected, const WidgetLook& look);
 	// `closeLook`: the close button's own look; disabled without a way to close
-	void PaintDocumentTab(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view label, const WidgetLook& look, const WidgetLook& closeLook);
+	void PaintDocumentTab(WindowPainter& painter, const PainterRect& rect, std::string_view label, const WidgetLook& look, const WidgetLook& closeLook);
 	// `rect`: the item, icon and text, as tall as the bar's content
-	void PaintStatusItem(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view text, EStatusIcon icon);
-	void PaintTitlebarLogo(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view name);
+	void PaintStatusItem(WindowPainter& painter, const PainterRect& rect, std::string_view text, EStatusIcon icon);
+	void PaintTitlebarLogo(WindowPainter& painter, const PainterRect& rect, std::string_view name);
 	// `on`: the knob's way from off (0) to on (1)
-	void PaintToggle(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view label, float on, const WidgetLook& look);
+	void PaintToggle(WindowPainter& painter, const PainterRect& rect, std::string_view label, float on, const WidgetLook& look);
 	// `fraction`: the value's way from min (0) to max (1). `valueWidth`: room for the value's
 	// text, the widest it gets (CalcSliderValueWidth()), so the track doesn't change length
 	// with the value.
-	void PaintSlider(WindowPainter& painter, const Engine::PainterRect& frame, std::string_view label, float fraction, std::string_view valueText, float valueWidth, const WidgetLook& look);
-	void PaintSectionHeader(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view label);
+	void PaintSlider(WindowPainter& painter, const PainterRect& frame, std::string_view label, float fraction, std::string_view valueText, float valueWidth, const WidgetLook& look);
+	void PaintSectionHeader(WindowPainter& painter, const PainterRect& rect, std::string_view label);
 
 	// How a tree row looks besides its WidgetLook
 	struct TreeRowLook
@@ -322,17 +322,17 @@ namespace Nyx::UI
 		ETreeRowIcon Icon = ETreeRowIcon::None;
 	};
 	// `rect`: the whole row, the window's width
-	void PaintTreeRow(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view label, const TreeRowLook& row, const WidgetLook& look);
+	void PaintTreeRow(WindowPainter& painter, const PainterRect& rect, std::string_view label, const TreeRowLook& row, const WidgetLook& look);
 	// `open`: the arrow's turn, from closed (0) to open (1)
-	void PaintCollapsingHeader(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view label, float open, const WidgetLook& look);
+	void PaintCollapsingHeader(WindowPainter& painter, const PainterRect& rect, std::string_view label, float open, const WidgetLook& look);
 
 	// The fields' frames, without their text, which ImGui draws. `editing`: how much the field
 	// is being typed in or dragged, from 0 to 1.
-	void PaintField(WindowPainter& painter, const Engine::PainterRect& frame, float editing, const WidgetLook& look);
-	void PaintSearchField(WindowPainter& painter, const Engine::PainterRect& frame, float editing, const WidgetLook& look);
+	void PaintField(WindowPainter& painter, const PainterRect& frame, float editing, const WidgetLook& look);
+	void PaintSearchField(WindowPainter& painter, const PainterRect& frame, float editing, const WidgetLook& look);
 	// One component of a vector field: its frame, with the letter of `axis` (0 for X to 3 for W)
 	// at the left
-	void PaintVectorComponent(WindowPainter& painter, const Engine::PainterRect& frame, int axis, float editing, const WidgetLook& look);
+	void PaintVectorComponent(WindowPainter& painter, const PainterRect& frame, int axis, float editing, const WidgetLook& look);
 
 	// How a property row looks besides its WidgetLook, as for a tree row
 	struct PropertyRowLook
@@ -343,20 +343,20 @@ namespace Nyx::UI
 		int Depth = 0;
 	};
 	// `rect`: the whole row, the window's width. Paints the hover pill, the guides and the label.
-	void PaintPropertyRow(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view label, const PropertyRowLook& row, const WidgetLook& look);
+	void PaintPropertyRow(WindowPainter& painter, const PainterRect& rect, std::string_view label, const PropertyRowLook& row, const WidgetLook& look);
 
 	// `on`: the tick's way in, from off (0) to on (1)
-	void PaintCheckbox(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view label, float on, const WidgetLook& look);
+	void PaintCheckbox(WindowPainter& painter, const PainterRect& rect, std::string_view label, float on, const WidgetLook& look);
 	// `rect`: the item as ImGui lays it out, across the menu, half the item spacing larger than its
 	// text all round
-	void PaintMenuItem(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view label, std::string_view shortcut, bool bChecked, const WidgetLook& look);
+	void PaintMenuItem(WindowPainter& painter, const PainterRect& rect, std::string_view label, std::string_view shortcut, bool bChecked, const WidgetLook& look);
 	// `rect`: as for a menu item. `selected`: the selection pill, faded in from 0 to 1.
-	void PaintSelectable(WindowPainter& painter, const Engine::PainterRect& rect, glm::vec2 labelPosition, std::string_view label, float selected, const WidgetLook& look);
+	void PaintSelectable(WindowPainter& painter, const PainterRect& rect, glm::vec2 labelPosition, std::string_view label, float selected, const WidgetLook& look);
 	// `open`: the chevron's turn, from closed (0, pointing down) to open (1, pointing up)
-	void PaintCombo(WindowPainter& painter, const Engine::PainterRect& frame, std::string_view preview, float open, const WidgetLook& look);
-	void PaintColorSwatch(WindowPainter& painter, const Engine::PainterRect& frame, const glm::vec3& color, const WidgetLook& look);
+	void PaintCombo(WindowPainter& painter, const PainterRect& frame, std::string_view preview, float open, const WidgetLook& look);
+	void PaintColorSwatch(WindowPainter& painter, const PainterRect& frame, const glm::vec3& color, const WidgetLook& look);
 	// A tick in `box`, `amount` of the way drawn (0 to 1)
-	void PaintCheckmark(WindowPainter& painter, const Engine::PainterRect& box, float amount, const glm::vec4& color);
+	void PaintCheckmark(WindowPainter& painter, const PainterRect& box, float amount, const glm::vec4& color);
 
 	// How an asset card looks besides its WidgetLook
 	struct AssetCardLook
@@ -367,7 +367,7 @@ namespace Nyx::UI
 		// The selection, faded in from 0 to 1
 		float Selected = 0.0f;
 	};
-	void PaintAssetCard(WindowPainter& painter, const Engine::PainterRect& rect, std::string_view label, const AssetCardLook& card, const WidgetLook& look);
+	void PaintAssetCard(WindowPainter& painter, const PainterRect& rect, std::string_view label, const AssetCardLook& card, const WidgetLook& look);
 
 	// The sizes the widgets take, at the current font, for the gallery's forced states
 	glm::vec2 CalcButtonSize(const char* label);

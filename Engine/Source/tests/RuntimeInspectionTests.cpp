@@ -32,7 +32,7 @@ int main()
 	if (evaluations != 2) return 1;
 
 	// Runtime reflection still has the data needed for serialization and scene editing.
-	const auto& type = Nyx::Reflection::GetTypeMetadata<Nyx::Engine::TransformComponent>();
+	const auto& type = Nyx::Reflection::GetTypeMetadata<Nyx::TransformComponent>();
 	if (type.PropertyCount == 0 || type.Properties[0].NameHash == 0) return 1;
 
 	std::cout << "Runtime reflection and UI calls work without inspection support.\n";

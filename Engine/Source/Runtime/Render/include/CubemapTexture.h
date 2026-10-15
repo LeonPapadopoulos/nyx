@@ -5,7 +5,7 @@
 
 namespace Nyx
 {
-	class NYXENGINE_API CubemapTexture : public Nyx::Engine::Resource
+	class NYXENGINE_API CubemapTexture : public Nyx::Resource
 	{
 	public:
 		explicit CubemapTexture(const std::string& id)

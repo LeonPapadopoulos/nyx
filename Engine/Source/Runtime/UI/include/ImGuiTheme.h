@@ -2,7 +2,7 @@
 
 #include <imgui.h>
 
-namespace Nyx
+namespace Nyx::UI
 {
 	namespace Colors
 	{

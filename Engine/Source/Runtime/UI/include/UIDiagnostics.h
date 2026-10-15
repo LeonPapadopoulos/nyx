@@ -31,7 +31,7 @@ namespace Nyx::UI
 	uint32_t GetImGuiShapeWindowCount();
 
 	// The painter heatmap: over each OS window, where the painter's work lies, from the heat the
-	// renderer sums per tile over all draws (Engine::PainterHeatGrid). It is drawn with ImGui's
+	// renderer sums per tile over all draws (PainterHeatGrid). It is drawn with ImGui's
 	// draw list, not the painter, so that it doesn't add to the painting it measures.
 	enum class EPainterHeatmap
 	{
@@ -53,5 +53,5 @@ namespace Nyx::UI
 	// has made the draw data) over them, in their foreground draw lists, with a legend in each
 	// one's top right corner and the tile's counts beside the mouse. Call once the frame has ended
 	// and the shapes are marked; the renderer does. Nothing while the heatmap is off.
-	void ShowPainterHeatmap(const Engine::PainterWindowStats& stats);
+	void ShowPainterHeatmap(const PainterWindowStats& stats);
 }

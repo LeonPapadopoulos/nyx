@@ -10,7 +10,7 @@
 #include <string_view>
 #include <vector>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	// Problems found while reading data, collected so that each one is logged once
 	// instead of once per entity.

@@ -8,7 +8,7 @@ namespace Nyx
 	struct Material;
 }
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	class IAssetResolver
 	{

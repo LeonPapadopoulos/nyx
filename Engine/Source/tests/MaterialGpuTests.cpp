@@ -29,7 +29,7 @@
 
 namespace
 {
-	using namespace Nyx::Engine;
+	using namespace Nyx;
 	using namespace Nyx::RenderTests;
 
 	constexpr uint32_t Width = 640;
@@ -281,7 +281,7 @@ int main(int argc, char** argv)
 {
 	try
 	{
-		Nyx::Core::Logger::Get().Init();
+		Nyx::Logger::Get().Init();
 		RegisterComponentTypes();
 		if (argc > 1 && std::strcmp(argv[1], "--write-scene") == 0)
 		{

@@ -32,7 +32,7 @@
 
 namespace
 {
-	using namespace Nyx::Engine;
+	using namespace Nyx;
 
 	std::filesystem::path TextPath(const std::string& text)
 	{

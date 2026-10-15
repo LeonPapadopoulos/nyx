@@ -35,7 +35,7 @@ namespace Nyx::UI
 	// takes it. Call it between the window's own Begin() and End(), not in a child window, each
 	// frame it should glow. Nothing while the chrome is off, nor for a window that fills an OS
 	// window of its own, which has no room around it.
-	void AddWindowGlow(ImTextureRef texture, const Engine::PainterRect& rect, float reach, float strength);
+	void AddWindowGlow(ImTextureRef texture, const PainterRect& rect, float reach, float strength);
 
 	// The picture glass shows: what lies behind the glass windows in the main window, blurred,
 	// as large as the main window. The renderer sets it before PaintWindowCards(), or

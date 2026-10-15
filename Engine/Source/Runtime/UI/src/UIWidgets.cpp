@@ -18,11 +18,6 @@
 
 namespace Nyx::UI
 {
-	using Engine::EPainterLineCap;
-	using Engine::PainterEffects;
-	using Engine::PainterRect;
-	using Engine::PainterStyle;
-
 	namespace
 	{
 		PainterRect ToPainterRect(const ImRect& rect)
@@ -1901,7 +1896,7 @@ namespace Nyx::UI
 		const DocumentTabLayout layout = GetDocumentTabLayout(height, theme);
 
 		// A raised tab, rounded at the top, standing on the bar's bottom; lit a little while hovered
-		const Engine::PainterCornerRadii radii{ theme.BarTabRounding, theme.BarTabRounding, 0.0f, 0.0f };
+		const PainterCornerRadii radii{ theme.BarTabRounding, theme.BarTabRounding, 0.0f, 0.0f };
 		painter.AddRoundedRect(rect, radii, Filled(Shade(theme.BarTab, look, theme), ControlEffects(look, theme, false)));
 		const float hovered = std::max(look.Hovered, look.Pressed);
 		if (hovered > 0.0f)

@@ -9,7 +9,7 @@
 #include <string_view>
 #include <vector>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	// Access to one component type without knowing its C++ type. Lets generic code, such as
 	// the scene serializer or the editor's details panel, work with every component type.

@@ -23,7 +23,8 @@
 
 namespace
 {
-	using namespace Nyx::Engine;
+	using namespace Nyx;
+	using namespace Nyx::UI;
 
 	const glm::vec4 Orange{ 1.0f, 0.5f, 0.0f, 1.0f };
 	const glm::vec4 Black{ 0.0f, 0.0f, 0.0f, 1.0f };

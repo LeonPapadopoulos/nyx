@@ -2,7 +2,7 @@
 
 #include <string>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	class Resource
 	{

@@ -7,7 +7,7 @@
 #include <string_view>
 #include <vector>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	// The size of the game's picture: the window's client area, without titlebar and borders
 	struct GameWindowSize

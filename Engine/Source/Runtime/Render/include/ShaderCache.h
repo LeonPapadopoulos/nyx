@@ -8,7 +8,7 @@
 #include <optional>
 #include <string>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	// Compiled shaders on disk: what the build compiled, next to the programs, and what live
 	// reload compiled since, in Saved/ShaderCache.

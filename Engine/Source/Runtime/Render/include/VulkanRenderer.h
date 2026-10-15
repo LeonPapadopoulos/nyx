@@ -120,7 +120,7 @@ namespace Nyx
 
 	struct RenderObject
 	{
-		Nyx::Engine::Entity SourceEntity{};
+		Nyx::Entity SourceEntity{};
 
 		Nyx::Mesh* MeshAsset = nullptr;
 		Material* MaterialAsset = nullptr;
@@ -137,14 +137,14 @@ namespace Nyx
 	// draws it
 	struct RenderWorld
 	{
-		const Nyx::Engine::Registry* Registry = nullptr;
+		const Nyx::Registry* Registry = nullptr;
 		// New each time the world is set, also at the same address, and never the same for two
 		// worlds; picks of another revision are dropped. 0 is none.
 		uint64_t Revision = 0;
 
 		std::vector<RenderObject> Objects;
 		// Dense picking IDs: ID i is the entity at i - 1, 0 is nothing
-		std::vector<Nyx::Engine::Entity> PickingIdToEntity;
+		std::vector<Nyx::Entity> PickingIdToEntity;
 		// Its debug lines, in DebugLineVertices
 		uint32_t FirstDebugLineVertex = 0;
 		uint32_t DebugLineVertexCount = 0;
@@ -261,7 +261,7 @@ namespace Nyx
 
 		virtual void DrawFrame(const std::function<void()>& buildUI);
 
-		void SetSelectedEntity(std::optional<Nyx::Engine::Entity> entity) override;
+		void SetSelectedEntity(std::optional<Nyx::Entity> entity) override;
 		void SetSelectionOutlineMode(ESelectionOutlineMode mode) override;
 
 		virtual void WaitIdle();
@@ -277,44 +277,44 @@ namespace Nyx
 
 		bool GetSceneViewCameraData(uint64_t sceneViewId, Nyx::SceneViewCameraData& outData) const override;
 
-		void SetWorld(const Nyx::Engine::Registry* world) override;
-		void SetSceneViewWorld(uint64_t id, const Nyx::Engine::Registry* world) override;
+		void SetWorld(const Nyx::Registry* world) override;
+		void SetSceneViewWorld(uint64_t id, const Nyx::Registry* world) override;
 
 		Nyx::Mesh* GetCubeMesh() override;
 		Nyx::Mesh* GetSphereMesh() override;
 		Nyx::Mesh* GetPlaneMesh() override;
 		Nyx::Material* GetMaterial(const std::string& path) override;
 		bool IsCompilingShaders() const override;
-		const Nyx::Engine::ShaderLog& GetShaderLog() const override { return ShaderCompiles; }
+		const Nyx::ShaderLog& GetShaderLog() const override { return ShaderCompiles; }
 		void SetShaderCompiledListener(ShaderCompiledListener listener) override { OnShaderCompiled = std::move(listener); }
 		void FollowEditorShaders() override { Programs.FollowEditor(); }
-		void ApplyCompiledShader(const Nyx::Engine::ShaderCompileRequest& request, const Nyx::Engine::ShaderCompileResult& result) override { Programs.Inject(request, result); }
+		void ApplyCompiledShader(const Nyx::ShaderCompileRequest& request, const Nyx::ShaderCompileResult& result) override { Programs.Inject(request, result); }
 		MaterialView ViewMaterial(const std::string& path) override;
-		void SetMaterialValues(const std::string& path, const Nyx::Engine::MaterialAsset& asset) override;
+		void SetMaterialValues(const std::string& path, const Nyx::MaterialAsset& asset) override;
 
 	public:
 		VulkanContext& GetContext();
 		VulkanSwapchain& GetSwapchain();
 
 		// The light of the sky, for tests
-		Nyx::Engine::VulkanEnvironment& GetEnvironment() { return Environment; }
-		Nyx::Engine::VulkanBindless& GetBindless() { return Bindless; }
+		Nyx::VulkanEnvironment& GetEnvironment() { return Environment; }
+		Nyx::VulkanBindless& GetBindless() { return Bindless; }
 		// The sky drawn behind the scene and lighting it: a cube of the bindless array, e.g. a
 		// test's uniform one; its light is made again (waits for the GPU)
 		void SetSky(uint32_t cubeSlot);
 		uint32_t GetSky() const { return SkyboxTextureIndex; }
 
 		// Draws 2D shapes recorded with a Painter into a VulkanPainterTarget
-		Nyx::Engine::VulkanPainter& GetPainterPass() { return PainterPass; }
+		Nyx::VulkanPainter& GetPainterPass() { return PainterPass; }
 
 		uint64_t CreatePainterCanvas() override;
 		void DestroyPainterCanvas(uint64_t id) override;
-		void SubmitPainterCanvas(uint64_t id, const Nyx::Engine::Painter& painter, const Nyx::Engine::PainterDrawOptions& options) override;
+		void SubmitPainterCanvas(uint64_t id, const Nyx::UI::Painter& painter, const Nyx::UI::PainterDrawOptions& options) override;
 		ImTextureID GetPainterCanvasTextureId(uint64_t id) const override;
-		std::optional<Nyx::Engine::PainterTiles> GetPainterCanvasTiles(uint64_t id) const override;
-		const Nyx::Engine::PainterWindowStats& GetWindowPainterStats() const override { return WindowPainterStats; }
+		std::optional<Nyx::UI::PainterTiles> GetPainterCanvasTiles(uint64_t id) const override;
+		const Nyx::UI::PainterWindowStats& GetWindowPainterStats() const override { return WindowPainterStats; }
 
-		uint64_t CreateUIImage(const Nyx::Engine::RgbaImage& image) override;
+		uint64_t CreateUIImage(const Nyx::RgbaImage& image) override;
 		void DestroyUIImage(uint64_t id) override;
 		ImTextureID GetUIImageTextureId(uint64_t id) const override;
 
@@ -323,7 +323,7 @@ namespace Nyx
 
 		ImTextureID GetSceneViewTextureId(uint64_t id) const override;
 		// What a scene view rendered last, as RGBA; waits for the GPU. False for an unknown view. For tests.
-		bool ReadSceneViewPixels(uint64_t id, Nyx::Engine::RgbaImage& outImage);
+		bool ReadSceneViewPixels(uint64_t id, Nyx::RgbaImage& outImage);
 		Extent2D GetSceneViewExtent(uint64_t id) const override;
 
 
@@ -342,9 +342,9 @@ namespace Nyx
 		bool HasValidFramebufferSize() const;
 
 		// The world's state, once per frame: a new revision when it is set
-		void BeginWorldRevision(const Nyx::Engine::Registry* registry);
-		RenderWorld* FindRenderWorld(const Nyx::Engine::Registry* registry);
-		const RenderWorld* FindRenderWorld(const Nyx::Engine::Registry* registry) const;
+		void BeginWorldRevision(const Nyx::Registry* registry);
+		RenderWorld* FindRenderWorld(const Nyx::Registry* registry);
+		const RenderWorld* FindRenderWorld(const Nyx::Registry* registry) const;
 		// The world the view shows; null without one
 		const RenderWorld* FindShownWorld(const SceneViewInstance& view) const;
 		// The revision of the world the view shows; 0 without one
@@ -441,14 +441,14 @@ namespace Nyx
 		// shaders again
 		void ApplyShaderUpdates();
 		// One compile into the Shader Log (ShaderCompiles)
-		void RecordCompile(const Nyx::Engine::ShaderProgramUpdate& update);
+		void RecordCompile(const Nyx::ShaderProgramUpdate& update);
 
 		// The cube of a view's sky, with its light, made at the first ask
 		uint32_t GetSkySlot(ESceneViewSky sky);
 
 		void ExtractSceneGlobalsFromEditorCamera(SceneViewInstance& view);
-		void ExtractSceneGlobalsFromWorldCamera(SceneViewInstance& view, const Nyx::Engine::Registry& registry);
-		void UpdateViewportSceneGlobals(SceneViewInstance& view, const Nyx::Engine::Registry& registry);
+		void ExtractSceneGlobalsFromWorldCamera(SceneViewInstance& view, const Nyx::Registry& registry);
+		void UpdateViewportSceneGlobals(SceneViewInstance& view, const Nyx::Registry& registry);
 
 		// While a frame is recorded (e.g. as the UI is built), a view made shows from its first
 		// drawn frame on (WasSceneViewRecreatedThisFrame() says so), and a view let go of is
@@ -506,12 +506,12 @@ namespace Nyx
 
 		// The engine's shaders by name; every pipeline is made from them. What live reload compiles
 		// is kept in Saved/ShaderCache/Engine, so the next start begins from it.
-		Nyx::Engine::ShaderPrograms Programs{ Nyx::Paths::GetCompiledShadersDir(), Nyx::Paths::GetShadersDir(), Nyx::Paths::GetShaderCacheDir() / "Engine" };
+		Nyx::ShaderPrograms Programs{ Nyx::Paths::GetCompiledShadersDir(), Nyx::Paths::GetShadersDir(), Nyx::Paths::GetShaderCacheDir() / "Engine" };
 
-		Nyx::Engine::VulkanPainter PainterPass;
+		Nyx::VulkanPainter PainterPass;
 
 		// Blurs every scene view's picture after it renders
-		Nyx::Engine::VulkanBlur BlurPass;
+		Nyx::VulkanBlur BlurPass;
 		void BlurSceneViews(vk::raii::CommandBuffer& cmd);
 		void ReleaseSceneViewBlur(SceneViewInstance& view);
 
@@ -525,7 +525,7 @@ namespace Nyx
 		// What glass shows: ImGui's main window drawn up to the first glass window, blurred, each
 		// frame there is glass, before the main window itself is drawn. Its ImGui texture keeps its
 		// ID.
-		Nyx::Engine::VulkanGlassBackdrop GlassBackdrop;
+		Nyx::VulkanGlassBackdrop GlassBackdrop;
 		VkDescriptorSet GlassImGuiTexture = VK_NULL_HANDLE;
 		uint64_t GlassImGuiTextureGeneration = 0;
 		void DrawGlassBackdrop(vk::raii::CommandBuffer& cmd);
@@ -547,11 +547,11 @@ namespace Nyx
 		struct PainterCanvas
 		{
 			uint64_t Id = 0;
-			Nyx::Engine::VulkanPainterTarget Target;
+			Nyx::VulkanPainterTarget Target;
 
 			// This frame's shapes, copied from SubmitPainterCanvas(); drawn once, then cleared
-			Nyx::Engine::Painter Frame;
-			Nyx::Engine::PainterDrawOptions Options;
+			Nyx::UI::Painter Frame;
+			Nyx::UI::PainterDrawOptions Options;
 			bool bSubmitted = false;
 
 			// How ImGui shows the canvas: a descriptor set made by ImGui's backend. It is pointed
@@ -591,21 +591,21 @@ namespace Nyx
 
 		// This frame's window painters, and their draws
 		std::span<Nyx::UI::WindowPainter* const> WindowPainters;
-		Nyx::Engine::VulkanPainterSegments WindowSegments;
+		Nyx::VulkanPainterSegments WindowSegments;
 		// What each segment's callback draws: the index of its run's draw in WindowSegments at the
 		// run's first segment, NoWindowDraw at the others
 		static constexpr uint32_t NoWindowDraw = UINT32_MAX;
 		std::map<std::pair<const Nyx::UI::WindowPainter*, uint32_t>, uint32_t> WindowSegmentDraws;
 		// The painters runs are copied into, one per draw of several segments. Kept apart, so
 		// that no two have the same address in a frame: WindowSegments tells painters apart by it.
-		std::vector<std::unique_ptr<Nyx::Engine::Painter>> RunPainters;
+		std::vector<std::unique_ptr<Nyx::UI::Painter>> RunPainters;
 		// The OS window of each draw in WindowSegments, as an index into WindowPainterStats.OsWindows
 		std::vector<uint32_t> WindowSegmentDrawOsWindows;
 		// The last frame's statistics: its CPU times as the frame is built, its GPU times once its
 		// fence has passed
-		Nyx::Engine::PainterWindowStats WindowPainterStats;
+		Nyx::UI::PainterWindowStats WindowPainterStats;
 		// This frame's CPU times taken before GatherWindowPainters() starts its statistics
-		Nyx::Engine::PainterWindowStats::Times PendingFrameTimes;
+		Nyx::UI::PainterWindowStats::Times PendingFrameTimes;
 		// When the last frame's DrawFrame() ended, for the time spent outside it
 		std::chrono::steady_clock::time_point LastFrameEnd;
 
@@ -686,25 +686,25 @@ namespace Nyx
 		uint64_t NextSceneViewId = 1;
 
 		// Set 0 of every scene pipeline: every texture, the fixed samplers, the material buffer
-		Nyx::Engine::VulkanBindless Bindless;
+		Nyx::VulkanBindless Bindless;
 
 		vk::raii::DescriptorSetLayout SceneDescriptorSetLayout{ nullptr };
 		// Shared by the scene, sky, grid, debug line, picking and selection mask pipelines
 		vk::raii::PipelineLayout ScenePipelineLayout{ nullptr };
 
 		// The meshes' materials, from their .nyxmat files
-		Nyx::Engine::VulkanMaterials Materials;
+		Nyx::VulkanMaterials Materials;
 		// Every shader's last compile (GetShaderLog())
-		Nyx::Engine::ShaderLog ShaderCompiles;
+		Nyx::ShaderLog ShaderCompiles;
 		ShaderCompiledListener OnShaderCompiled;
 		// Values set for materials (SetMaterialValues()), written once the UI is built: the frame's
 		// draws are recorded by then, but run after
-		std::map<std::string, Nyx::Engine::MaterialAsset> PendingMaterialValues;
+		std::map<std::string, Nyx::MaterialAsset> PendingMaterialValues;
 		// The sky's light, for physically based materials
-		Nyx::Engine::VulkanEnvironment Environment;
+		Nyx::VulkanEnvironment Environment;
 
 		// The renderer's world (SetWorld()), owned by the editor / scene document
-		const Nyx::Engine::Registry* World = nullptr;
+		const Nyx::Registry* World = nullptr;
 		// Every world a scene view shows, the renderer's world among them; owned here so that
 		// their addresses stay while worlds come and go
 		std::vector<std::unique_ptr<RenderWorld>> RenderWorlds;
@@ -716,7 +716,7 @@ namespace Nyx
 		vk::raii::Pipeline PickingPipeline{ nullptr };
 
 		// Selection
-		std::optional<Nyx::Engine::Entity> SelectedEntity;
+		std::optional<Nyx::Entity> SelectedEntity;
 		ESelectionOutlineMode SelectionOutlineMode = ESelectionOutlineMode::VisibleOccludeHatched;
 
 		vk::raii::DescriptorSetLayout OutlineDescriptorSetLayout{ nullptr };

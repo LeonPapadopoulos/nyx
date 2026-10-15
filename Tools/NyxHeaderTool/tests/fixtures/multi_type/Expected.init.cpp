@@ -14,7 +14,7 @@ namespace Nyx::Reflection::Generated
         }
         bRegistered = true;
 
-        Nyx::Engine::ComponentTypeRegistry::Get().Register<Nyx::Engine::NameComponent>();
-        Nyx::Engine::ComponentTypeRegistry::Get().Register<Nyx::Engine::DummyNameComponent>();
+        Nyx::ComponentTypeRegistry::Get().Register<Nyx::NameComponent>();
+        Nyx::ComponentTypeRegistry::Get().Register<Nyx::DummyNameComponent>();
     }
 }

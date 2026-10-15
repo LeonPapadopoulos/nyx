@@ -18,7 +18,7 @@
 
 namespace
 {
-	using namespace Nyx::Engine;
+	using namespace Nyx;
 
 	// Bytes with their size in front (u32)
 	void WriteSizedBytes(BinaryWriter& writer, const std::vector<std::byte>& bytes)
@@ -98,7 +98,7 @@ namespace
 		return ReflectedArchivePrinter::ValueToText(guid.Value);
 	}
 
-	// "TransformComponent" for "Nyx::Engine::TransformComponent", for summaries
+	// "TransformComponent" for "Nyx::TransformComponent", for summaries
 	std::string ShortTypeName(const std::string& typeName)
 	{
 		const size_t lastColons = typeName.rfind("::");
@@ -227,14 +227,15 @@ namespace
 
 			ReadWarnings ignored;
 			bool bRead = false;
+			const Nyx::Reflection::TypeMetadata* type = FindComponentType(typeName);
 
-			if (typeName == guidType.Name)
+			if (type == &guidType)
 			{
 				GuidComponent guid;
 				bRead = ReflectedArchiveSerializer::DeserializeObject(reader, &guid, guidType, ignored);
 				outOverview.Guid = guid.Guid;
 			}
-			else if (typeName == nameType.Name)
+			else if (type == &nameType)
 			{
 				NameComponent name;
 				bRead = ReflectedArchiveSerializer::DeserializeObject(reader, &name, nameType, ignored);
@@ -315,7 +316,7 @@ namespace
 	}
 }
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	void HelloMessage::Write(BinaryWriter& writer) const
 	{

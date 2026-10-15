@@ -18,7 +18,7 @@ namespace Nyx::Net
 	class Listener;
 }
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	// Where shaders get compiled for live reload: in NyxShaderCompiler.exe, so that a compiler
 	// crash costs one compile and not the program (RemoteShaderCompileService), or in this process,

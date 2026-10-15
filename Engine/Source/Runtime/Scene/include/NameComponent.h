@@ -4,7 +4,7 @@
 
 #include <string>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	NYX_REFLECT(Component, meta = (DisplayName = "Name Component"))
 	struct NameComponent

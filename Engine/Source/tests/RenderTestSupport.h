@@ -27,7 +27,7 @@
 
 namespace Nyx::RenderTests
 {
-	using Nyx::Engine::RgbaImage;
+	using Nyx::RgbaImage;
 
 	using Nyx::Tests::Require;
 
@@ -174,10 +174,10 @@ namespace Nyx::RenderTests
 		std::vector<glm::vec2> Lookup;
 
 		// The light of the sky in `skySlot`, e.g. the renderer's (VulkanRenderer::GetSky())
-		EnvironmentSamples(Nyx::Engine::VulkanEnvironment& environment, uint32_t skySlot)
+		EnvironmentSamples(Nyx::VulkanEnvironment& environment, uint32_t skySlot)
 		{
 			Irradiance = environment.GetIrradiance(skySlot);
-			for (uint32_t level = 0; level < Nyx::Engine::VulkanEnvironment::SpecularLevels; ++level)
+			for (uint32_t level = 0; level < Nyx::VulkanEnvironment::SpecularLevels; ++level)
 			{
 				Specular.push_back(environment.ReadSpecularLevel(skySlot, level));
 			}
@@ -194,16 +194,16 @@ namespace Nyx::RenderTests
 		// of its +Z face, between four texels
 		glm::vec3 SpecularFacingZ(float roughness) const
 		{
-			const float level = roughness * static_cast<float>(Nyx::Engine::VulkanEnvironment::SpecularLevels - 1);
+			const float level = roughness * static_cast<float>(Nyx::VulkanEnvironment::SpecularLevels - 1);
 			const uint32_t lower = static_cast<uint32_t>(std::floor(level));
-			const uint32_t upper = std::min(lower + 1, Nyx::Engine::VulkanEnvironment::SpecularLevels - 1);
+			const uint32_t upper = std::min(lower + 1, Nyx::VulkanEnvironment::SpecularLevels - 1);
 			return glm::mix(MiddleOfZ(lower), MiddleOfZ(upper), level - static_cast<float>(lower));
 		}
 
 		// environmentBrdf(1, roughness): the table's last column, between two rows
 		glm::vec2 BrdfHeadOn(float roughness) const
 		{
-			constexpr uint32_t Size = Nyx::Engine::VulkanEnvironment::LookupSize;
+			constexpr uint32_t Size = Nyx::VulkanEnvironment::LookupSize;
 			// Clamped at the edges, as the sampler clamps
 			const float row = std::clamp(roughness * Size - 0.5f, 0.0f, static_cast<float>(Size - 1));
 			const uint32_t lower = static_cast<uint32_t>(std::floor(row));
@@ -214,7 +214,7 @@ namespace Nyx::RenderTests
 	private:
 		glm::vec3 MiddleOfZ(uint32_t level) const
 		{
-			const uint32_t size = Nyx::Engine::VulkanEnvironment::SpecularSize >> level;
+			const uint32_t size = Nyx::VulkanEnvironment::SpecularSize >> level;
 			glm::vec3 sum(0.0f);
 			for (const uint32_t y : { size / 2 - 1, size / 2 })
 			{

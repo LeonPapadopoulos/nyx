@@ -7,7 +7,7 @@
 namespace
 {
 	// The live entity an undo step names, by its guid
-	std::optional<Nyx::Engine::Entity> FindEntity(Nyx::Editor::EditorTransactionContext& context, const Nyx::Editor::ObjectRef& root)
+	std::optional<Nyx::Entity> FindEntity(Nyx::Editor::EditorTransactionContext& context, const Nyx::Editor::ObjectRef& root)
 	{
 		if (!context.ActiveScene || root.Domain != Nyx::Editor::EObjectDomain::SceneEntity)
 		{
@@ -25,14 +25,14 @@ namespace Nyx::Editor
 		const ObjectRef& root,
 		const Nyx::Reflection::TypeMetadata& typeMetadata)
 	{
-		const std::optional<Nyx::Engine::Entity> entity = FindEntity(context, root);
+		const std::optional<Nyx::Entity> entity = FindEntity(context, root);
 		if (!entity)
 		{
 			return nullptr;
 		}
 
-		const Nyx::Engine::ComponentTypeOps* ops =
-			Nyx::Engine::ComponentTypeRegistry::Get().FindByTypeMetadata(typeMetadata);
+		const Nyx::ComponentTypeOps* ops =
+			Nyx::ComponentTypeRegistry::Get().FindByTypeMetadata(typeMetadata);
 		if (!ops)
 		{
 			return nullptr;
@@ -45,7 +45,7 @@ namespace Nyx::Editor
 		EditorTransactionContext& context,
 		const ObjectRef& root)
 	{
-		const Nyx::Engine::EntityGuid guid = GetSceneEntityGuid(root);
+		const Nyx::EntityGuid guid = GetSceneEntityGuid(root);
 		if (!context.ActiveScene || !guid.IsValid())
 		{
 			return false;
@@ -61,8 +61,8 @@ namespace Nyx::Editor
 		// Any free slot will do; the old one may belong to another entity by now. The snapshot
 		// restored next brings the other components back.
 		auto& world = context.ActiveScene->GetRegistry();
-		const Nyx::Engine::Entity entity = world.CreateEntity();
-		world.Add<Nyx::Engine::GuidComponent>(entity, Nyx::Engine::GuidComponent{ guid });
+		const Nyx::Entity entity = world.CreateEntity();
+		world.Add<Nyx::GuidComponent>(entity, Nyx::GuidComponent{ guid });
 		return true;
 	}
 
@@ -70,7 +70,7 @@ namespace Nyx::Editor
 		EditorTransactionContext& context,
 		const ObjectRef& root)
 	{
-		const std::optional<Nyx::Engine::Entity> entity = FindEntity(context, root);
+		const std::optional<Nyx::Entity> entity = FindEntity(context, root);
 		if (!entity)
 		{
 			return false;
@@ -87,14 +87,14 @@ namespace Nyx::Editor
 	{
 		outSubobjects.clear();
 
-		const std::optional<Nyx::Engine::Entity> entity = FindEntity(context, root);
+		const std::optional<Nyx::Entity> entity = FindEntity(context, root);
 		if (!entity)
 		{
 			return;
 		}
 
 		auto& world = context.ActiveScene->GetRegistry();
-		for (const Nyx::Engine::ComponentTypeOps& ops : Nyx::Engine::ComponentTypeRegistry::Get().GetAll())
+		for (const Nyx::ComponentTypeOps& ops : Nyx::ComponentTypeRegistry::Get().GetAll())
 		{
 			void* object = ops.Get(world, *entity);
 			if (!object)
@@ -113,14 +113,14 @@ namespace Nyx::Editor
 		const ObjectRef& root,
 		const Nyx::Reflection::TypeMetadata& typeMetadata)
 	{
-		const std::optional<Nyx::Engine::Entity> entity = FindEntity(context, root);
+		const std::optional<Nyx::Entity> entity = FindEntity(context, root);
 		if (!entity)
 		{
 			return false;
 		}
 
-		const Nyx::Engine::ComponentTypeOps* ops =
-			Nyx::Engine::ComponentTypeRegistry::Get().FindByTypeMetadata(typeMetadata);
+		const Nyx::ComponentTypeOps* ops =
+			Nyx::ComponentTypeRegistry::Get().FindByTypeMetadata(typeMetadata);
 		if (!ops)
 		{
 			return false;
@@ -135,14 +135,14 @@ namespace Nyx::Editor
 		const ObjectRef& root,
 		const Nyx::Reflection::TypeMetadata& typeMetadata)
 	{
-		const std::optional<Nyx::Engine::Entity> entity = FindEntity(context, root);
+		const std::optional<Nyx::Entity> entity = FindEntity(context, root);
 		if (!entity)
 		{
 			return false;
 		}
 
-		const Nyx::Engine::ComponentTypeOps* ops =
-			Nyx::Engine::ComponentTypeRegistry::Get().FindByTypeMetadata(typeMetadata);
+		const Nyx::ComponentTypeOps* ops =
+			Nyx::ComponentTypeRegistry::Get().FindByTypeMetadata(typeMetadata);
 		if (!ops)
 		{
 			return false;

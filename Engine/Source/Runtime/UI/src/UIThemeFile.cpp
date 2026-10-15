@@ -324,7 +324,7 @@ namespace Nyx::UI
 				{
 					return false;
 				}
-				value.In<Engine::PainterShadow>(theme) = Engine::PainterShadow{ *color, { numbers[0], numbers[1] }, numbers[2] };
+				value.In<PainterShadow>(theme) = PainterShadow{ *color, { numbers[0], numbers[1] }, numbers[2] };
 				return true;
 			}
 			case EThemeValueKind::Glow:
@@ -335,7 +335,7 @@ namespace Nyx::UI
 				{
 					return false;
 				}
-				value.In<Engine::PainterGlow>(theme) = Engine::PainterGlow{ *color, numbers[0], numbers[1] };
+				value.In<PainterGlow>(theme) = PainterGlow{ *color, numbers[0], numbers[1] };
 				return true;
 			}
 			case EThemeValueKind::Glass:
@@ -345,7 +345,7 @@ namespace Nyx::UI
 				{
 					return false;
 				}
-				value.In<Engine::PainterGlass>(theme) = Engine::PainterGlass{ numbers[0], numbers[1], numbers[2] };
+				value.In<PainterGlass>(theme) = PainterGlass{ numbers[0], numbers[1], numbers[2] };
 				return true;
 			}
 			}
@@ -385,17 +385,17 @@ namespace Nyx::UI
 				return FormatNumber(value.In<float>(theme));
 			case EThemeValueKind::Shadow:
 			{
-				const Engine::PainterShadow& shadow = value.In<Engine::PainterShadow>(theme);
+				const PainterShadow& shadow = value.In<PainterShadow>(theme);
 				return FormatThemeColor(shadow.Color) + " " + FormatNumber(shadow.Offset.x) + " " + FormatNumber(shadow.Offset.y) + " " + FormatNumber(shadow.Blur);
 			}
 			case EThemeValueKind::Glow:
 			{
-				const Engine::PainterGlow& glow = value.In<Engine::PainterGlow>(theme);
+				const PainterGlow& glow = value.In<PainterGlow>(theme);
 				return FormatThemeColor(glow.Color) + " " + FormatNumber(glow.Distance) + " " + FormatNumber(glow.Strength);
 			}
 			case EThemeValueKind::Glass:
 			{
-				const Engine::PainterGlass& glass = value.In<Engine::PainterGlass>(theme);
+				const PainterGlass& glass = value.In<PainterGlass>(theme);
 				return FormatNumber(glass.Refraction) + " " + FormatNumber(glass.EdgeWidth) + " " + FormatNumber(glass.RimStrength);
 			}
 			}
@@ -439,11 +439,11 @@ namespace Nyx::UI
 		case EThemeValueKind::Float:
 			return sizeof(float);
 		case EThemeValueKind::Shadow:
-			return sizeof(Engine::PainterShadow);
+			return sizeof(PainterShadow);
 		case EThemeValueKind::Glow:
-			return sizeof(Engine::PainterGlow);
+			return sizeof(PainterGlow);
 		case EThemeValueKind::Glass:
-			return sizeof(Engine::PainterGlass);
+			return sizeof(PainterGlass);
 		}
 		return 0;
 	}

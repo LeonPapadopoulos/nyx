@@ -7,7 +7,7 @@
 
 #include <string>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	ELiveEditResult ApplyRendererEdit(const Net::Message& message, Nyx::IRenderer& renderer)
 	{

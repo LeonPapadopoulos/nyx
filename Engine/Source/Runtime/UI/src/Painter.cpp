@@ -7,7 +7,7 @@
 #include <string>
 #include <utility>
 
-namespace Nyx::Engine
+namespace Nyx::UI
 {
 	namespace
 	{

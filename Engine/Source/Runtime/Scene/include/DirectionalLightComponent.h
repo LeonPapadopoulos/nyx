@@ -4,7 +4,7 @@
 
 #include <glm/glm.hpp>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	// Light from a far-away source like the sun, shining along the entity's forward axis (-Z).
 	// The scene is lit by the first light marked as primary.

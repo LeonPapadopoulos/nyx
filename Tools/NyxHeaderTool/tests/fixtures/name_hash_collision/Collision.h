@@ -5,7 +5,7 @@
 // The header tool must reject this type: "Uqyihla" and "Tzrrbfw" have the same FNV-1a
 // name hash (0x53218BB0), so saved data couldn't tell the two properties apart.
 // This fixture has no Input.h, so RegenerateGoldenFiles.bat skips it.
-namespace Nyx::Engine
+namespace Nyx
 {
 	NYX_REFLECT(Component)
 	struct NameHashCollisionComponent

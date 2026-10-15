@@ -5,7 +5,7 @@
 namespace Nyx::Reflection
 {
     template<>
-    const TypeMetadata& GetTypeMetadata<Nyx::Engine::Gameplay::TransformComponent>();
+    const TypeMetadata& GetTypeMetadata<Nyx::Gameplay::TransformComponent>();
 
 }
 
@@ -31,7 +31,7 @@ namespace Nyx::Reflection::Generated
             "Position",
             EPropertyKind::Vec3,
             EPropertyFlags::Edit | EPropertyFlags::Undo | EPropertyFlags::Serialize,
-            offsetof(Nyx::Engine::Gameplay::TransformComponent, Position),
+            offsetof(Nyx::Gameplay::TransformComponent, Position),
             TransformComponent_Position_MetadataEntries,
             sizeof(TransformComponent_Position_MetadataEntries) / sizeof(TransformComponent_Position_MetadataEntries[0]),
             nullptr
@@ -42,7 +42,7 @@ namespace Nyx::Reflection::Generated
             "Rotation",
             EPropertyKind::Quat,
             EPropertyFlags::Edit | EPropertyFlags::Undo | EPropertyFlags::Serialize,
-            offsetof(Nyx::Engine::Gameplay::TransformComponent, Rotation),
+            offsetof(Nyx::Gameplay::TransformComponent, Rotation),
             TransformComponent_Rotation_MetadataEntries,
             sizeof(TransformComponent_Rotation_MetadataEntries) / sizeof(TransformComponent_Rotation_MetadataEntries[0]),
             nullptr
@@ -51,7 +51,7 @@ namespace Nyx::Reflection::Generated
 
     inline constexpr TypeMetadata TransformComponent_TypeMetadata
     {
-        "Nyx::Engine::Gameplay::TransformComponent",
+        "Nyx::Gameplay::TransformComponent",
         "Transform",
         EReflectedTypeRole::Component,
         nullptr,
@@ -65,7 +65,7 @@ namespace Nyx::Reflection::Generated
 namespace Nyx::Reflection
 {
     template<>
-    inline const TypeMetadata& GetTypeMetadata<Nyx::Engine::Gameplay::TransformComponent>()
+    inline const TypeMetadata& GetTypeMetadata<Nyx::Gameplay::TransformComponent>()
     {
         return Generated::TransformComponent_TypeMetadata;
     }

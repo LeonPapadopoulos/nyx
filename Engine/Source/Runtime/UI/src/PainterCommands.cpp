@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace Nyx::Engine
+namespace Nyx::UI
 {
 	PainterRect Intersect(const PainterRect& a, const PainterRect& b)
 	{

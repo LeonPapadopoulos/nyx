@@ -93,9 +93,9 @@ namespace Nyx::Editor
 
 	void MockupOverlay::Load(const std::filesystem::path& path)
 	{
-		Nyx::Engine::RgbaImage image;
+		Nyx::RgbaImage image;
 		std::string error;
-		if (!Nyx::Engine::LoadRgbaImage(path, image, error))
+		if (!Nyx::LoadRgbaImage(path, image, error))
 		{
 			Message = error;
 			return;
@@ -126,7 +126,7 @@ namespace Nyx::Editor
 		// Over everything in the main window, from its top left
 		const ImGuiViewport& viewport = *ImGui::GetMainViewport();
 		const glm::vec2 min = glm::vec2(viewport.Pos.x, viewport.Pos.y) + Offset;
-		const Nyx::Engine::PainterRect rect{ min, min + ImageSize * Scale };
-		Nyx::UI::GetForegroundPainter().AddImage(ImTextureRef(texture), rect, Nyx::Engine::PainterStyle::Filled(glm::vec4(1.0f, 1.0f, 1.0f, Opacity)));
+		const Nyx::UI::PainterRect rect{ min, min + ImageSize * Scale };
+		Nyx::UI::GetForegroundPainter().AddImage(ImTextureRef(texture), rect, Nyx::UI::PainterStyle::Filled(glm::vec4(1.0f, 1.0f, 1.0f, Opacity)));
 	}
 }

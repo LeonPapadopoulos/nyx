@@ -6,7 +6,7 @@
 
 #include <optional>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	// Gives an entity its EntityGuid. Every entity of a scene has one: the editor adds it to the
 	// entities it creates, and loading a scene adds it where it is missing.

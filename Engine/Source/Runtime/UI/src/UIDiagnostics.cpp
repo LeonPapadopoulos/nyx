@@ -11,9 +11,6 @@
 
 namespace Nyx::UI
 {
-	using Engine::PainterRect;
-	using Engine::PainterStyle;
-
 	namespace
 	{
 		// A debugging aid, not part of the look, so its colours aren't the theme's
@@ -246,7 +243,7 @@ namespace Nyx::UI
 		return GetState().Heatmap;
 	}
 
-	void ShowPainterHeatmap(const Engine::PainterWindowStats& stats)
+	void ShowPainterHeatmap(const PainterWindowStats& stats)
 	{
 		const EPainterHeatmap heatmap = GetState().Heatmap;
 		if (heatmap == EPainterHeatmap::Off || ImGui::GetCurrentContext() == nullptr)
@@ -255,9 +252,9 @@ namespace Nyx::UI
 		}
 
 		const ImVec2 mouse = ImGui::GetIO().MousePos;
-		for (const Engine::PainterWindowStats::OsWindow& osWindow : stats.OsWindows)
+		for (const PainterWindowStats::OsWindow& osWindow : stats.OsWindows)
 		{
-			const Engine::PainterHeatGrid& heat = osWindow.Heat;
+			const PainterHeatGrid& heat = osWindow.Heat;
 			ImGuiViewport* viewport = ImGui::FindViewportByID(osWindow.ViewportId);
 			if (viewport == nullptr || heat.TilesX == 0 || heat.TilesY == 0)
 			{
@@ -265,7 +262,7 @@ namespace Nyx::UI
 			}
 			ImDrawList& drawList = *ImGui::GetForegroundDrawList(viewport);
 			const std::vector<uint32_t>& values = heatmap == EPainterHeatmap::Commands ? heat.Commands : heat.Draws;
-			const float tile = static_cast<float>(Engine::PainterTileSize) / osWindow.PixelsPerPoint;
+			const float tile = static_cast<float>(PainterTileSize) / osWindow.PixelsPerPoint;
 			const ImVec2 origin = viewport->Pos;
 
 			// Tiles side by side with the same value are one rect: few rects for the large areas

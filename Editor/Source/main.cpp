@@ -6,18 +6,18 @@
 namespace Nyx::Editor
 {
 	// The editor application: the engine's window and frame loop, with the editor as its only layer.
-	class EditorApplication : public Nyx::Engine::Application
+	class EditorApplication : public Nyx::Application
 	{
 	public:
 		EditorApplication()
-			: Application(Nyx::Engine::ApplicationSpecs{ .Window = { .Title = "Nyx Editor" } })
+			: Application(Nyx::ApplicationSpecs{ .Window = { .Title = "Nyx Editor" } })
 		{
 			PushLayer(std::make_unique<EditorLayer>());
 		}
 	};
 }
 
-Nyx::Engine::Application* Nyx::Engine::CreateApplication(int /*argc*/, char** /*argv*/)
+Nyx::Application* Nyx::CreateApplication(int /*argc*/, char** /*argv*/)
 {
 	return new Nyx::Editor::EditorApplication();
 }

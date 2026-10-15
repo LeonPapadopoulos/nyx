@@ -9,7 +9,7 @@
 #include <mutex>
 #include <vector>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	// Collects the program's log lines, from any thread, to send them over the editor link as
 	// LogLine messages. Install it before anything worth sending is logged; lines are kept until

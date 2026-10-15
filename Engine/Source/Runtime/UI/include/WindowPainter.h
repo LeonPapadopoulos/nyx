@@ -46,24 +46,24 @@ namespace Nyx::UI
 		// Shapes, as Painter's, in ImGui's screen coordinates. Each one starts a new segment if
 		// ImGui has drawn, or changed its clip rect, since the current segment started.
 
-		void AddRect(const Engine::PainterRect& rect, const Engine::PainterStyle& style);
-		void AddRoundedRect(const Engine::PainterRect& rect, float radius, const Engine::PainterStyle& style);
-		void AddRoundedRect(const Engine::PainterRect& rect, const Engine::PainterCornerRadii& radii, const Engine::PainterStyle& style);
-		void AddCircle(glm::vec2 center, float radius, const Engine::PainterStyle& style);
-		void AddCircleSector(glm::vec2 center, float innerRadius, float outerRadius, float startAngle, float endAngle, const Engine::PainterStyle& style);
-		void AddArc(glm::vec2 center, float radius, float width, float startAngle, float endAngle, const Engine::PainterStyle& style);
-		void AddLine(glm::vec2 from, glm::vec2 to, float width, Engine::EPainterLineCap cap, const Engine::PainterStyle& style);
-		void AddTriangle(glm::vec2 a, glm::vec2 b, glm::vec2 c, const Engine::PainterStyle& style);
+		void AddRect(const PainterRect& rect, const PainterStyle& style);
+		void AddRoundedRect(const PainterRect& rect, float radius, const PainterStyle& style);
+		void AddRoundedRect(const PainterRect& rect, const PainterCornerRadii& radii, const PainterStyle& style);
+		void AddCircle(glm::vec2 center, float radius, const PainterStyle& style);
+		void AddCircleSector(glm::vec2 center, float innerRadius, float outerRadius, float startAngle, float endAngle, const PainterStyle& style);
+		void AddArc(glm::vec2 center, float radius, float width, float startAngle, float endAngle, const PainterStyle& style);
+		void AddLine(glm::vec2 from, glm::vec2 to, float width, EPainterLineCap cap, const PainterStyle& style);
+		void AddTriangle(glm::vec2 a, glm::vec2 b, glm::vec2 c, const PainterStyle& style);
 		void AddText(ImFont* font, float size, glm::vec2 position, const glm::vec4& color, std::string_view text);
-		void AddImage(ImTextureRef texture, const Engine::PainterRect& rect, const Engine::PainterStyle& style, const Engine::PainterRect& uvs = Engine::PainterRect{ { 0.0f, 0.0f }, { 1.0f, 1.0f } });
-		void AddImageGlow(ImTextureRef texture, const Engine::PainterRect& rect, float reach, float strength, const Engine::PainterRect& uvs = Engine::PainterRect{ { 0.0f, 0.0f }, { 1.0f, 1.0f } });
+		void AddImage(ImTextureRef texture, const PainterRect& rect, const PainterStyle& style, const PainterRect& uvs = PainterRect{ { 0.0f, 0.0f }, { 1.0f, 1.0f } });
+		void AddImageGlow(ImTextureRef texture, const PainterRect& rect, float reach, float strength, const PainterRect& uvs = PainterRect{ { 0.0f, 0.0f }, { 1.0f, 1.0f } });
 		// The backdrop is as large as the viewport's framebuffer, which the segments are drawn into
-		void AddGlass(ImTextureRef backdrop, const Engine::PainterRect& rect, float radius, const Engine::PainterStyle& style, const Engine::PainterGlass& glass = Engine::PainterGlass{});
+		void AddGlass(ImTextureRef backdrop, const PainterRect& rect, float radius, const PainterStyle& style, const PainterGlass& glass = PainterGlass{});
 
 		// Clip rects, as Painter's, but on ImGui's clip rect stack (ImDrawList::PushClipRect(), cut
 		// by the current one), so whatever ImGui draws until PopClipRect() is clipped too. The rect
 		// is in the current transform's units. Pop each before the window ends.
-		void PushClipRect(const Engine::PainterRect& rect);
+		void PushClipRect(const PainterRect& rect);
 		void PopClipRect();
 
 		// Transforms, as Painter's: scale, then move, applied to everything painted until
@@ -74,13 +74,13 @@ namespace Nyx::UI
 		// Primitive groups, as Painter's. Keep ImGui from drawing between a group's shapes: the
 		// group would be split over two segments, and each part would cast its own shadow and
 		// glow. That is reported as a problem.
-		void BeginGroup(const Engine::PainterEffects& effects);
+		void BeginGroup(const PainterEffects& effects);
 		void EndGroup();
 
 		// The recorded frame: all shapes of the window, in the viewport's framebuffer pixels
-		const Engine::Painter& GetPainter() const { return Recording; }
+		const Painter& GetPainter() const { return Recording; }
 		// The segments, in drawing order, each a run of the painter's commands
-		const std::vector<Engine::PainterSegment>& GetSegments() const { return Segments; }
+		const std::vector<PainterSegment>& GetSegments() const { return Segments; }
 		// The viewport the segments are drawn into
 		ImGuiID GetViewportId() const { return ViewportId; }
 		const ImDrawList* GetDrawList() const { return DrawList; }
@@ -121,8 +121,8 @@ namespace Nyx::UI
 
 		void ReportProblem(const std::string& problem);
 
-		Engine::Painter Recording;
-		std::vector<Engine::PainterSegment> Segments;
+		Painter Recording;
+		std::vector<PainterSegment> Segments;
 		std::vector<std::string> Problems;
 
 		ImDrawList* DrawList = nullptr;
@@ -132,10 +132,10 @@ namespace Nyx::UI
 		bool bRecording = false;
 
 		// From ImGui's screen coordinates to the viewport's framebuffer pixels
-		Engine::PainterTransform ViewportTransform;
+		PainterTransform ViewportTransform;
 		// The transforms pushed with PushTransform(), in screen coordinates; never empty, the
 		// bottom one changes nothing
-		std::vector<Engine::PainterTransform> Transforms{ Engine::PainterTransform{} };
+		std::vector<PainterTransform> Transforms{ PainterTransform{} };
 		// Clip rects pushed onto ImGui's stack with PushClipRect() and not popped yet
 		uint32_t ClipRectDepth = 0;
 

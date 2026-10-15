@@ -12,7 +12,7 @@
 #include <stdexcept>
 #include <string>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	namespace
 	{

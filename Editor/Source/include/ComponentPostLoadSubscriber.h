@@ -20,7 +20,7 @@ namespace Nyx::Editor
 		explicit ComponentPostLoadSubscriber(Nyx::SceneDocument& scene);
 
 		// Where assets come from; until set, PostLoad steps run without an asset resolver
-		void SetPostLoadContext(const Nyx::Engine::ScenePostLoadContext& context)
+		void SetPostLoadContext(const Nyx::ScenePostLoadContext& context)
 		{
 			PostLoadContext = context;
 		}
@@ -33,6 +33,6 @@ namespace Nyx::Editor
 
 	private:
 		Nyx::SceneDocument& Scene;
-		Nyx::Engine::ScenePostLoadContext PostLoadContext;
+		Nyx::ScenePostLoadContext PostLoadContext;
 	};
 }

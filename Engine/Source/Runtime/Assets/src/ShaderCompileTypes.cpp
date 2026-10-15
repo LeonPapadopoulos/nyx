@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <cstring>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	namespace
 	{

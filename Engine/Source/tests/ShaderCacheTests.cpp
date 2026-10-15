@@ -19,7 +19,7 @@
 
 namespace
 {
-	using namespace Nyx::Engine;
+	using namespace Nyx;
 	using Clock = std::chrono::steady_clock;
 
 	using Nyx::Tests::Require;

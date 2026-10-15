@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	// The last compile of a shader, for the Shader Log
 	struct ShaderLogEntry

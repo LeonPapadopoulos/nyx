@@ -6,7 +6,7 @@
 #include <filesystem>
 #include <string>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	class BinaryReader;
 	class BinaryWriter;

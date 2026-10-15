@@ -55,7 +55,7 @@ namespace
 		return static_cast<uint16_t>(*port);
 	}
 
-	std::optional<Nyx::Engine::GameWindowSize> ParseWindowSize(std::string_view text)
+	std::optional<Nyx::GameWindowSize> ParseWindowSize(std::string_view text)
 	{
 		// Both "1280x800" and "1280X800"
 		std::string lowerCase(text);
@@ -70,10 +70,10 @@ namespace
 			return std::nullopt;
 		}
 
-		return Nyx::Engine::GameWindowSize{ size->first, size->second };
+		return Nyx::GameWindowSize{ size->first, size->second };
 	}
 
-	std::optional<Nyx::Engine::GameWindowPosition> ParseWindowPosition(std::string_view text)
+	std::optional<Nyx::GameWindowPosition> ParseWindowPosition(std::string_view text)
 	{
 		const std::optional<std::pair<int32_t, int32_t>> position = ParsePair<int32_t>(text, ',');
 		if (!position)
@@ -81,7 +81,7 @@ namespace
 			return std::nullopt;
 		}
 
-		return Nyx::Engine::GameWindowPosition{ position->first, position->second };
+		return Nyx::GameWindowPosition{ position->first, position->second };
 	}
 
 	// Paths go to the started program as UTF-8, which is what ChildProcess::Start() expects
@@ -97,7 +97,7 @@ namespace
 	}
 }
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	std::vector<std::string> MakeGameArguments(const GameLaunchOptions& options)
 	{

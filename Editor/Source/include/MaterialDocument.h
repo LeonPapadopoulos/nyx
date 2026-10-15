@@ -31,7 +31,7 @@ namespace Nyx::Editor
 
 		const std::string& GetPath() const { return Path; }
 		const std::filesystem::path& GetFile() const { return File; }
-		const Nyx::Engine::MaterialAsset& GetAsset() const { return Asset; }
+		const Nyx::MaterialAsset& GetAsset() const { return Asset; }
 
 		// Whether the values differ from the file's, as last opened, saved or followed
 		bool IsDirty() const;
@@ -63,7 +63,7 @@ namespace Nyx::Editor
 		// The file as read again, e.g. saved in a text editor: taken when nothing is unsaved here,
 		// and the undo history starts anew, as it couldn't take back what changed in the file.
 		// True when taken; false when the values differ from the file's, which they keep.
-		bool FollowFile(const Nyx::Engine::MaterialAsset& file);
+		bool FollowFile(const Nyx::MaterialAsset& file);
 
 	private:
 		// The file's text before and after, which material files are small enough for
@@ -80,7 +80,7 @@ namespace Nyx::Editor
 
 		std::filesystem::path File;
 		std::string Path;
-		Nyx::Engine::MaterialAsset Asset;
+		Nyx::MaterialAsset Asset;
 		// The file's text as last opened, saved or followed
 		std::string SavedText;
 		uint64_t Revision = 0;

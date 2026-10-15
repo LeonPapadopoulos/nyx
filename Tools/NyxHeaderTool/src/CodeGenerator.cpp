@@ -312,7 +312,7 @@ namespace Nyx::HeaderTool
 				// One Register<T>() call per NYX_REFLECT(Component) type
 				if (parsedType.Role == EParsedTypeRole::Component)
 				{
-					out << "        Nyx::Engine::ComponentTypeRegistry::Get().Register<"
+					out << "        Nyx::ComponentTypeRegistry::Get().Register<"
 						<< parsedType.QualifiedName
 						<< ">();\n";
 				}

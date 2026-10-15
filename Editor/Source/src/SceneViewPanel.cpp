@@ -142,7 +142,7 @@ namespace Nyx::Editor
 			const ImTextureID blurred = Renderer->GetSceneViewBlurTextureId(SceneViewId);
 			if (preferences.bAmbilight && blurred != ImTextureID_Invalid)
 			{
-				const Nyx::Engine::PainterRect picture{ { imageMin.x, imageMin.y }, { imageMin.x + imageSize.x, imageMin.y + imageSize.y } };
+				const Nyx::UI::PainterRect picture{ { imageMin.x, imageMin.y }, { imageMin.x + imageSize.x, imageMin.y + imageSize.y } };
 				Nyx::UI::AddWindowGlow(ImTextureRef(blurred), picture, preferences.AmbilightReach, preferences.AmbilightStrength);
 			}
 

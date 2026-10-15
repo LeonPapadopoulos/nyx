@@ -24,7 +24,7 @@
 
 namespace
 {
-	using namespace Nyx::Engine;
+	using namespace Nyx;
 
 	constexpr float Pi = 3.14159265358979f;
 
@@ -286,7 +286,7 @@ int main()
 {
 	try
 	{
-		Nyx::Core::Logger::Get().Init();
+		Nyx::Logger::Get().Init();
 		Gpu gpu;
 		TestUniformSky(gpu);
 		TestSkyLitFromAbove(gpu);

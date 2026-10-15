@@ -8,7 +8,7 @@ namespace Nyx::Editor
 	{
 		Close();
 		const std::filesystem::path file = (assetsFolder / path).make_preferred();
-		Nyx::Engine::MaterialAsset asset;
+		Nyx::MaterialAsset asset;
 		if (!asset.Load(file, outError))
 		{
 			return false;
@@ -25,7 +25,7 @@ namespace Nyx::Editor
 	{
 		File.clear();
 		Path.clear();
-		Asset = Nyx::Engine::MaterialAsset{};
+		Asset = Nyx::MaterialAsset{};
 		SavedText.clear();
 		UndoStack.clear();
 		RedoStack.clear();
@@ -147,7 +147,7 @@ namespace Nyx::Editor
 		return true;
 	}
 
-	bool MaterialDocument::FollowFile(const Nyx::Engine::MaterialAsset& file)
+	bool MaterialDocument::FollowFile(const Nyx::MaterialAsset& file)
 	{
 		if (!IsOpen() || IsDirty() || IsPreviewing())
 		{

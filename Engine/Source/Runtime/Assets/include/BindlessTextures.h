@@ -4,7 +4,7 @@
 #include <optional>
 #include <string_view>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	// Texture slots every program can count on, made by VulkanBindless
 	enum class EBindlessTexture : uint32_t

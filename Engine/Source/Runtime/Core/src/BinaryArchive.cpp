@@ -113,7 +113,7 @@ namespace
 	};
 }
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	bool BinaryWriter::SaveToFile(const std::filesystem::path& path) const
 	{

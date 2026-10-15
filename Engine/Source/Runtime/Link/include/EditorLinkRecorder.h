@@ -7,7 +7,7 @@
 #include <fstream>
 #include <string>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	// Records every message of an editor link to a .nyxlinklog file, with time and direction, to
 	// look at a session afterwards with NyxDump, also after a crash.

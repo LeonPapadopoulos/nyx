@@ -34,7 +34,7 @@ namespace Nyx::Editor
 
 	void SceneEditor::CreateEntity()
 	{
-		const Nyx::Engine::Entity newEntity = Scene.CreateEntity("New Entity");
+		const Nyx::Entity newEntity = Scene.CreateEntity("New Entity");
 		Scene.GetSelection() = newEntity;
 
 		const ObjectRef rootRef = MakeSceneEntityRef(Scene, newEntity);
@@ -56,13 +56,13 @@ namespace Nyx::Editor
 
 	void SceneEditor::DeleteSelectedEntity()
 	{
-		std::optional<Nyx::Engine::Entity>& selection = Scene.GetSelection();
+		std::optional<Nyx::Entity>& selection = Scene.GetSelection();
 		if (!selection)
 		{
 			return;
 		}
 
-		const Nyx::Engine::Entity entityToDelete = *selection;
+		const Nyx::Entity entityToDelete = *selection;
 		const ObjectRef rootRef = MakeSceneEntityRef(Scene, entityToDelete);
 		RootObjectSnapshot snapshot = CaptureRootObjectSnapshot(EntityDomain, TransactionContext, rootRef);
 
@@ -88,7 +88,7 @@ namespace Nyx::Editor
 
 	void SceneEditor::CopySelectedEntity()
 	{
-		const std::optional<Nyx::Engine::Entity>& selection = Scene.GetSelection();
+		const std::optional<Nyx::Entity>& selection = Scene.GetSelection();
 		if (!selection)
 		{
 			return;
@@ -103,7 +103,7 @@ namespace Nyx::Editor
 
 	void SceneEditor::DuplicateSelectedEntity()
 	{
-		const std::optional<Nyx::Engine::Entity>& selection = Scene.GetSelection();
+		const std::optional<Nyx::Entity>& selection = Scene.GetSelection();
 		if (!selection)
 		{
 			return;
@@ -128,7 +128,7 @@ namespace Nyx::Editor
 		// A new entity can move components in memory; edits in progress point at components
 		CancelPendingEdits();
 
-		if (const std::optional<Nyx::Engine::Entity> pasted =
+		if (const std::optional<Nyx::Entity> pasted =
 				Nyx::Editor::PasteEntity(Scene, Transactions, EntityDomain, TransactionContext, copied, label))
 		{
 			Scene.GetSelection() = *pasted;
@@ -138,8 +138,8 @@ namespace Nyx::Editor
 	void SceneEditor::Undo()
 	{
 		// The assets of what undo changed are loaded by AssetLoader
-		std::optional<Nyx::Engine::Entity>& selection = Scene.GetSelection();
-		const Nyx::Engine::EntityGuid selectedGuid = selection ? Scene.GetGuid(*selection) : Nyx::Engine::EntityGuid{};
+		std::optional<Nyx::Entity>& selection = Scene.GetSelection();
+		const Nyx::EntityGuid selectedGuid = selection ? Scene.GetGuid(*selection) : Nyx::EntityGuid{};
 
 		if (Transactions.Undo(TransactionContext) && selectedGuid.IsValid())
 		{
@@ -149,8 +149,8 @@ namespace Nyx::Editor
 
 	void SceneEditor::Redo()
 	{
-		std::optional<Nyx::Engine::Entity>& selection = Scene.GetSelection();
-		const Nyx::Engine::EntityGuid selectedGuid = selection ? Scene.GetGuid(*selection) : Nyx::Engine::EntityGuid{};
+		std::optional<Nyx::Entity>& selection = Scene.GetSelection();
+		const Nyx::EntityGuid selectedGuid = selection ? Scene.GetGuid(*selection) : Nyx::EntityGuid{};
 
 		if (Transactions.Redo(TransactionContext) && selectedGuid.IsValid())
 		{

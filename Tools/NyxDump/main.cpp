@@ -19,14 +19,14 @@ int main(int argc, char** argv)
 
 	// The engine logs through the logger, and the registered component types
 	// let the printout show property names instead of name hashes.
-	Nyx::Core::Logger::Get().Init();
-	Nyx::Engine::RegisterComponentTypes();
+	Nyx::Logger::Get().Init();
+	Nyx::RegisterComponentTypes();
 
 	// Recordings of the editor link (.nyxlinklog) or scene files
 	const std::filesystem::path path(argv[1]);
 	std::string text;
-	const bool bPrinted = path.extension() == ".nyxlinklog" ? Nyx::Engine::EditorLinkRecorder::PrintFile(path, text)
-															: Nyx::Engine::SceneSerializer::PrintFile(path, text);
+	const bool bPrinted = path.extension() == ".nyxlinklog" ? Nyx::EditorLinkRecorder::PrintFile(path, text)
+															: Nyx::SceneSerializer::PrintFile(path, text);
 
 	// On failure, the text ends with the reason
 	(bPrinted ? std::cout : std::cerr) << text;

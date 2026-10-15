@@ -10,7 +10,7 @@
 #include <cstring>
 #include <stdexcept>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	namespace
 	{

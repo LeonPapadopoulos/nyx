@@ -5,7 +5,7 @@
 #include <functional>
 #include <string>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	class ShaderLog;
 	struct ShaderDiagnostic;
@@ -18,7 +18,7 @@ namespace Nyx::Editor
 
 	// Draws a diagnostic as one line ("Stone.slang(23,14): error 30015: undefined identifier"),
 	// red for an error, which opens the file at its line when clicked. True when clicked.
-	bool DiagnosticLine(const Nyx::Engine::ShaderDiagnostic& diagnostic, const OpenFileAtLine& open);
+	bool DiagnosticLine(const Nyx::ShaderDiagnostic& diagnostic, const OpenFileAtLine& open);
 
 	// The "Shader Log" window: the last compile of every shader since the start, the engine's and
 	// the materials', newest first. Each says whether it compiled, when, how long it took, its
@@ -29,7 +29,7 @@ namespace Nyx::Editor
 	public:
 		void SetOpenFileAtLine(OpenFileAtLine open) { Open = std::move(open); }
 
-		void Draw(const Nyx::Engine::ShaderLog& log);
+		void Draw(const Nyx::ShaderLog& log);
 
 		bool bOpen = false;
 		// Only the shaders that don't compile

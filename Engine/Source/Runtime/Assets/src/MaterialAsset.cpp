@@ -11,7 +11,7 @@
 #include <set>
 #include <sstream>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	namespace
 	{

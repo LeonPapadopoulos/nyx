@@ -5,17 +5,17 @@
 
 namespace Nyx
 {
-	Nyx::Engine::Entity SceneDocument::CreateEntity(const std::string& name)
+	Nyx::Entity SceneDocument::CreateEntity(const std::string& name)
 	{
-		Nyx::Engine::Entity entity = Registry.CreateEntity();
-		Registry.Add<Nyx::Engine::NameComponent>(entity, Nyx::Engine::NameComponent{ name });
+		Nyx::Entity entity = Registry.CreateEntity();
+		Registry.Add<Nyx::NameComponent>(entity, Nyx::NameComponent{ name });
 
 		// The entities of a scene are saved, so they need a guid that stays the same in every file and process
-		Registry.Add<Nyx::Engine::GuidComponent>(entity, Nyx::Engine::GuidComponent{ Nyx::Engine::EntityGuid::Generate() });
+		Registry.Add<Nyx::GuidComponent>(entity, Nyx::GuidComponent{ Nyx::EntityGuid::Generate() });
 		return entity;
 	}
 
-	bool SceneDocument::DestroyEntity(Nyx::Engine::Entity entity)
+	bool SceneDocument::DestroyEntity(Nyx::Entity entity)
 	{
 		if (SelectedEntity.has_value() && SelectedEntity.value() == entity)
 		{
@@ -25,7 +25,7 @@ namespace Nyx
 		return Registry.DestroyEntity(entity);
 	}
 
-	std::optional<Nyx::Engine::Entity> SceneDocument::FindEntity(Nyx::Engine::EntityGuid guid) const
+	std::optional<Nyx::Entity> SceneDocument::FindEntity(Nyx::EntityGuid guid) const
 	{
 		if (!guid.IsValid())
 		{
@@ -39,8 +39,8 @@ namespace Nyx
 		}
 
 		// Scenes are small; a search is cheap next to the edit that needs it
-		std::optional<Nyx::Engine::Entity> entity;
-		Registry.ForEachEntity([&](Nyx::Engine::Entity candidate)
+		std::optional<Nyx::Entity> entity;
+		Registry.ForEachEntity([&](Nyx::Entity candidate)
 			{
 				if (!entity && GetGuid(candidate) == guid)
 				{
@@ -60,13 +60,13 @@ namespace Nyx
 		return entity;
 	}
 
-	Nyx::Engine::EntityGuid SceneDocument::GetGuid(Nyx::Engine::Entity entity) const
+	Nyx::EntityGuid SceneDocument::GetGuid(Nyx::Entity entity) const
 	{
-		if (!Registry.IsAlive(entity) || !Registry.Has<Nyx::Engine::GuidComponent>(entity))
+		if (!Registry.IsAlive(entity) || !Registry.Has<Nyx::GuidComponent>(entity))
 		{
 			return {};
 		}
 
-		return Registry.Get<Nyx::Engine::GuidComponent>(entity).Guid;
+		return Registry.Get<Nyx::GuidComponent>(entity).Guid;
 	}
 }

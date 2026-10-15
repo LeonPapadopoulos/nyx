@@ -5,7 +5,7 @@
 namespace Nyx::Reflection
 {
     template<>
-    const TypeMetadata& GetTypeMetadata<Nyx::Engine::NameComponent>();
+    const TypeMetadata& GetTypeMetadata<Nyx::NameComponent>();
 
 }
 
@@ -25,7 +25,7 @@ namespace Nyx::Reflection::Generated
             "Name",
             EPropertyKind::String,
             EPropertyFlags::Edit | EPropertyFlags::Undo | EPropertyFlags::Serialize,
-            offsetof(Nyx::Engine::NameComponent, Name),
+            offsetof(Nyx::NameComponent, Name),
             NameComponent_Name_MetadataEntries,
             sizeof(NameComponent_Name_MetadataEntries) / sizeof(NameComponent_Name_MetadataEntries[0]),
             nullptr
@@ -34,7 +34,7 @@ namespace Nyx::Reflection::Generated
 
     inline constexpr TypeMetadata NameComponent_TypeMetadata
     {
-        "Nyx::Engine::NameComponent",
+        "Nyx::NameComponent",
         "Name",
         EReflectedTypeRole::Component,
         nullptr,
@@ -48,7 +48,7 @@ namespace Nyx::Reflection::Generated
 namespace Nyx::Reflection
 {
     template<>
-    inline const TypeMetadata& GetTypeMetadata<Nyx::Engine::NameComponent>()
+    inline const TypeMetadata& GetTypeMetadata<Nyx::NameComponent>()
     {
         return Generated::NameComponent_TypeMetadata;
     }

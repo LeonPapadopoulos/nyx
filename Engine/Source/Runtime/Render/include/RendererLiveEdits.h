@@ -7,7 +7,7 @@ namespace Nyx
 	class IRenderer;
 }
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	// Applies a ShaderProgram or MaterialValues message to the renderer. A material whose text
 	// doesn't parse is ignored.

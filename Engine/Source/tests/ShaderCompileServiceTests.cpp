@@ -18,7 +18,7 @@
 
 namespace
 {
-	using namespace Nyx::Engine;
+	using namespace Nyx;
 	using Clock = std::chrono::steady_clock;
 
 	const std::filesystem::path TestShaders = NYX_TEST_SHADERS_DIR;

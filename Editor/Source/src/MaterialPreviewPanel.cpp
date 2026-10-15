@@ -41,7 +41,6 @@ namespace Nyx::Editor
 
 	MaterialPreviewPanel::MaterialPreviewPanel()
 	{
-		using namespace Nyx::Engine;
 		Subject = World.CreateEntity();
 		World.Add<TransformComponent>(Subject, TransformComponent{});
 		World.Add<MeshRendererComponent>(Subject, MeshRendererComponent{});
@@ -68,7 +67,7 @@ namespace Nyx::Editor
 		ViewId = 0;
 	}
 
-	void MaterialPreviewPanel::Draw(Nyx::IRenderer& renderer, const std::string& materialPath, Nyx::Mesh* selectedMesh, const Nyx::Engine::ShaderLogEntry* failedCompile)
+	void MaterialPreviewPanel::Draw(Nyx::IRenderer& renderer, const std::string& materialPath, Nyx::Mesh* selectedMesh, const Nyx::ShaderLogEntry* failedCompile)
 	{
 		// The view costs a scene's drawing each frame: only while the window is open
 		if (!bOpen)
@@ -105,7 +104,7 @@ namespace Nyx::Editor
 		}
 
 		// The shader's first error under the picture, while it doesn't compile
-		const Nyx::Engine::ShaderDiagnostic* error = failedCompile ? failedCompile->FindFirstError() : nullptr;
+		const Nyx::ShaderDiagnostic* error = failedCompile ? failedCompile->FindFirstError() : nullptr;
 		ImVec2 avail = ImGui::GetContentRegionAvail();
 		if (error)
 		{
@@ -131,7 +130,6 @@ namespace Nyx::Editor
 
 	void MaterialPreviewPanel::UpdateWorld(Nyx::IRenderer& renderer, const std::string& materialPath, Nyx::Mesh* selectedMesh)
 	{
-		using namespace Nyx::Engine;
 		Nyx::Mesh* mesh = renderer.GetSphereMesh();
 		switch (Shape)
 		{

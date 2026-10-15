@@ -54,7 +54,7 @@ namespace Nyx::Editor
 		EGizmoSpace Space = EGizmoSpace::Local;
 		EGizmoOperation Operation = EGizmoOperation::Translate;
 
-		Nyx::Engine::Entity DragEntity{};
+		Nyx::Entity DragEntity{};
 
 		glm::vec3 DragStartEntityPosition{ 0.0f };
 		glm::vec3 DragStartEntityScale{ 1.0f };
@@ -159,7 +159,7 @@ namespace Nyx::Editor
 		static glm::vec3 GetAxisDirection(
 			ETransformGizmoAxis axis,
 			EGizmoSpace space,
-			const Nyx::Engine::TransformComponent& transform);
+			const Nyx::TransformComponent& transform);
 
 		static glm::vec3 GetAxisBasisLS(ETransformGizmoAxis axis);
 
@@ -180,7 +180,7 @@ namespace Nyx::Editor
 
 		bool TickTranslate(
 			const Nyx::SceneViewCameraData& viewData,
-			const Nyx::Engine::TransformComponent& transform,
+			const Nyx::TransformComponent& transform,
 			const glm::vec3& gizmoOrigin,
 			const ImVec2& imageScreenMin,
 			const ImVec2& imageSize,
@@ -189,7 +189,7 @@ namespace Nyx::Editor
 
 		bool TickRotate(
 			const Nyx::SceneViewCameraData& viewData,
-			const Nyx::Engine::TransformComponent& transform,
+			const Nyx::TransformComponent& transform,
 			const glm::vec3& gizmoOrigin,
 			const ImVec2& imageScreenMin,
 			const ImVec2& imageSize,
@@ -198,7 +198,7 @@ namespace Nyx::Editor
 
 		bool TickScale(
 			const Nyx::SceneViewCameraData& viewData,
-			const Nyx::Engine::TransformComponent& transform,
+			const Nyx::TransformComponent& transform,
 			const glm::vec3& gizmoOrigin,
 			const ImVec2& imageScreenMin,
 			const ImVec2& imageSize,
@@ -236,43 +236,43 @@ namespace Nyx::Editor
 
 		void BeginTranslateDrag(
 			const Nyx::SceneViewCameraData& viewData,
-			Nyx::Engine::Entity entity,
-			const Nyx::Engine::TransformComponent& transform,
+			Nyx::Entity entity,
+			const Nyx::TransformComponent& transform,
 			const glm::vec3& gizmoOrigin,
 			const ImVec2& imageScreenMin,
 			const ImVec2& imageSize);
 
 		void UpdateTranslateDrag(
 			const Nyx::SceneViewCameraData& viewData,
-			Nyx::Engine::TransformComponent& transform,
+			Nyx::TransformComponent& transform,
 			const ImVec2& imageScreenMin,
 			const ImVec2& imageSize);
 
 		void BeginRotateDrag(
 			const Nyx::SceneViewCameraData& viewData,
-			Nyx::Engine::Entity entity,
-			const Nyx::Engine::TransformComponent& transform,
+			Nyx::Entity entity,
+			const Nyx::TransformComponent& transform,
 			const glm::vec3& gizmoOrigin,
 			const ImVec2& imageScreenMin,
 			const ImVec2& imageSize);
 
 		void UpdateRotateDrag(
 			const Nyx::SceneViewCameraData& viewData,
-			Nyx::Engine::TransformComponent& transform,
+			Nyx::TransformComponent& transform,
 			const ImVec2& imageScreenMin,
 			const ImVec2& imageSize);
 
 		void BeginScaleDrag(
 			const Nyx::SceneViewCameraData& viewData,
-			Nyx::Engine::Entity entity,
-			const Nyx::Engine::TransformComponent& transform,
+			Nyx::Entity entity,
+			const Nyx::TransformComponent& transform,
 			const glm::vec3& gizmoOrigin,
 			const ImVec2& imageScreenMin,
 			const ImVec2& imageSize);
 
 		void UpdateScaleDrag(
 			const Nyx::SceneViewCameraData& viewData,
-			Nyx::Engine::TransformComponent& transform,
+			Nyx::TransformComponent& transform,
 			const ImVec2& imageScreenMin,
 			const ImVec2& imageSize);
 

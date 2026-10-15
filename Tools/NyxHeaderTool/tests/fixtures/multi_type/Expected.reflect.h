@@ -5,10 +5,10 @@
 namespace Nyx::Reflection
 {
     template<>
-    const TypeMetadata& GetTypeMetadata<Nyx::Engine::NameComponent>();
+    const TypeMetadata& GetTypeMetadata<Nyx::NameComponent>();
 
     template<>
-    const TypeMetadata& GetTypeMetadata<Nyx::Engine::DummyNameComponent>();
+    const TypeMetadata& GetTypeMetadata<Nyx::DummyNameComponent>();
 
 }
 
@@ -22,7 +22,7 @@ namespace Nyx::Reflection::Generated
             "Name",
             EPropertyKind::String,
             EPropertyFlags::Edit | EPropertyFlags::Undo | EPropertyFlags::Serialize,
-            offsetof(Nyx::Engine::NameComponent, Name),
+            offsetof(Nyx::NameComponent, Name),
             nullptr,
             0,
             nullptr
@@ -31,7 +31,7 @@ namespace Nyx::Reflection::Generated
 
     inline constexpr TypeMetadata NameComponent_TypeMetadata
     {
-        "Nyx::Engine::NameComponent",
+        "Nyx::NameComponent",
         "Name",
         EReflectedTypeRole::Component,
         nullptr,
@@ -48,7 +48,7 @@ namespace Nyx::Reflection::Generated
             "Dummy Name",
             EPropertyKind::String,
             EPropertyFlags::Edit | EPropertyFlags::Undo | EPropertyFlags::Serialize,
-            offsetof(Nyx::Engine::DummyNameComponent, DummyName),
+            offsetof(Nyx::DummyNameComponent, DummyName),
             nullptr,
             0,
             nullptr
@@ -57,7 +57,7 @@ namespace Nyx::Reflection::Generated
 
     inline constexpr TypeMetadata DummyNameComponent_TypeMetadata
     {
-        "Nyx::Engine::DummyNameComponent",
+        "Nyx::DummyNameComponent",
         "Dummy Name",
         EReflectedTypeRole::Component,
         nullptr,
@@ -71,13 +71,13 @@ namespace Nyx::Reflection::Generated
 namespace Nyx::Reflection
 {
     template<>
-    inline const TypeMetadata& GetTypeMetadata<Nyx::Engine::NameComponent>()
+    inline const TypeMetadata& GetTypeMetadata<Nyx::NameComponent>()
     {
         return Generated::NameComponent_TypeMetadata;
     }
 
     template<>
-    inline const TypeMetadata& GetTypeMetadata<Nyx::Engine::DummyNameComponent>()
+    inline const TypeMetadata& GetTypeMetadata<Nyx::DummyNameComponent>()
     {
         return Generated::DummyNameComponent_TypeMetadata;
     }

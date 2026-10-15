@@ -14,7 +14,7 @@
 
 namespace
 {
-	using namespace Nyx::Engine;
+	using namespace Nyx;
 
 	// Reads magic and version. On failure, outError says why.
 	bool ReadHeader(BinaryReader& reader, uint32_t& outVersion, std::string& outError)
@@ -154,7 +154,7 @@ namespace
 	}
 }
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	bool SceneSerializer::SaveToFile(const Registry& world, const std::filesystem::path& path)
 	{

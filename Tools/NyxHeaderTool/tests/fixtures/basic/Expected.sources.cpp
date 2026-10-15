@@ -12,7 +12,7 @@ namespace Nyx::Editor
 
         auto& sources = ReflectionSourceRegistry::Get();
         {
-            const auto& type = Reflection::GetTypeMetadata<Nyx::Engine::NameComponent>();
+            const auto& type = Reflection::GetTypeMetadata<Nyx::NameComponent>();
             sources.Register(type, { "@SOURCE_FILE@", 9 });
             sources.Register(type.Properties[0], { "@SOURCE_FILE@", 12 });
         }

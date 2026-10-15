@@ -6,7 +6,7 @@
 
 #include <string>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	NYX_REFLECT()
 	struct InnerMostReflectedType

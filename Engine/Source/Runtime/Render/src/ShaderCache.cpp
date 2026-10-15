@@ -9,7 +9,7 @@
 #include <fstream>
 #include <vector>
 
-namespace Nyx::Engine
+namespace Nyx
 {
 	namespace
 	{
@@ -28,15 +28,11 @@ namespace Nyx::Engine
 			return hash;
 		}
 
-		std::string PathText(const std::filesystem::path& path)
+		// PathText() with forward slashes, so a path gives the same text however it was written
+		std::string GenericPathText(const std::filesystem::path& path)
 		{
 			const std::u8string text = path.generic_u8string();
 			return std::string(text.begin(), text.end());
-		}
-
-		std::filesystem::path TextPath(const std::string& text)
-		{
-			return std::filesystem::path(std::u8string(text.begin(), text.end()));
 		}
 
 		std::filesystem::path Normal(const std::filesystem::path& path)
@@ -76,7 +72,7 @@ namespace Nyx::Engine
 		const std::filesystem::path normal = Normal(path);
 		const std::filesystem::path relative = normal.lexically_relative(Root);
 		const bool bInside = !relative.empty() && *relative.begin() != "..";
-		return PathText(bInside ? relative : normal);
+		return GenericPathText(bInside ? relative : normal);
 	}
 
 	std::filesystem::path ShaderCache::Absolute(const std::string& relative) const

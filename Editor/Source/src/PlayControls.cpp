@@ -335,17 +335,17 @@ namespace Nyx::Editor
 			Nyx::UI::WindowPainter& painter = Nyx::UI::GetWindowPainter();
 			const auto toPainterRect = [](const ImVec2& min, const ImVec2& max)
 			{
-				return Nyx::Engine::PainterRect{ { min.x, min.y }, { max.x, max.y } };
+				return Nyx::UI::PainterRect{ { min.x, min.y }, { max.x, max.y } };
 			};
 			ImDrawList* drawList = ImGui::GetWindowDrawList();
 			painter.AddRoundedRect(toPainterRect(toPreview(area.X, area.Y), toPreview(area.X + area.Width, area.Y + area.Height)), theme.FrameRounding,
-				Nyx::Engine::PainterStyle::Filled(theme.Field));
+				Nyx::UI::PainterStyle::Filled(theme.Field));
 
 			// The visible windows, as they will sit on the screen
 			for (const PlannedGame& game : plan.Games)
 			{
-				const Nyx::Engine::GameWindowPosition position = *game.Options.WindowPosition;
-				const Nyx::Engine::GameWindowSize size = *game.Options.WindowSize;
+				const Nyx::GameWindowPosition position = *game.Options.WindowPosition;
+				const Nyx::GameWindowSize size = *game.Options.WindowSize;
 				const int visibleX = position.X + screen.Frame.InvisibleLeft;
 				const int visibleY = position.Y + screen.Frame.InvisibleTop;
 				const int visibleWidth = static_cast<int>(size.Width) + screen.Frame.Left + screen.Frame.Right;
@@ -353,9 +353,9 @@ namespace Nyx::Editor
 
 				const ImVec2 min = toPreview(visibleX, visibleY);
 				const ImVec2 max = toPreview(visibleX + visibleWidth, visibleY + visibleHeight);
-				const Nyx::Engine::PainterRect window = toPainterRect(min, max);
-				painter.AddRoundedRect(window, theme.FrameRounding * 0.5f, Nyx::Engine::PainterStyle::Filled(theme.Frame));
-				painter.AddRoundedRect(window, theme.FrameRounding * 0.5f, Nyx::Engine::PainterStyle::Outlined(theme.FrameBorder, theme.FrameBorderWidth));
+				const Nyx::UI::PainterRect window = toPainterRect(min, max);
+				painter.AddRoundedRect(window, theme.FrameRounding * 0.5f, Nyx::UI::PainterStyle::Filled(theme.Frame));
+				painter.AddRoundedRect(window, theme.FrameRounding * 0.5f, Nyx::UI::PainterStyle::Outlined(theme.FrameBorder, theme.FrameBorderWidth));
 				drawList->PushClipRect(min, max, true);
 				drawList->AddText(ImVec2(min.x + 4.0f, min.y + 2.0f), ImGui::GetColorU32(ImGuiCol_Text), game.Name.c_str());
 				drawList->PopClipRect();

@@ -53,9 +53,9 @@ namespace Nyx::Game
 		return std::vector<std::string>(argv + (argc > 0 ? 1 : 0), argv + argc);
 	}
 
-	Nyx::Engine::ApplicationSpecs MakeApplicationSpecs(const Nyx::Engine::GameLaunchOptions& options)
+	Nyx::ApplicationSpecs MakeApplicationSpecs(const Nyx::GameLaunchOptions& options)
 	{
-		Nyx::Engine::ApplicationSpecs specs{ .Window = { .Title = "Nyx Game", .bUseCustomTitlebar = false, .bShowStartupBanner = false } };
+		Nyx::ApplicationSpecs specs{ .Window = { .Title = "Nyx Game", .bUseCustomTitlebar = false, .bShowStartupBanner = false } };
 
 		if (!options.WindowTitle.empty())
 		{
@@ -77,11 +77,11 @@ namespace Nyx::Game
 	}
 
 	// The game application: the engine's window and frame loop, running one scene.
-	class GameApplication : public Nyx::Engine::Application
+	class GameApplication : public Nyx::Application
 	{
 	public:
 		// editorLink is null when the editor didn't start the game
-		GameApplication(const Nyx::Engine::GameLaunchOptions& options, const std::filesystem::path& scenePath,
+		GameApplication(const Nyx::GameLaunchOptions& options, const std::filesystem::path& scenePath,
 			std::unique_ptr<EditorLinkLayer> editorLink)
 			: Application(MakeApplicationSpecs(options))
 		{
@@ -110,7 +110,7 @@ namespace Nyx::Game
 // - --window-size is the size of the picture, without titlebar and borders; --window-pos is where
 //   the window's outer top-left corner goes. The editor's Play All uses them to tile its games.
 // GameLaunchOptions.h reads these, and the editor writes them with the same code.
-Nyx::Engine::Application* Nyx::Engine::CreateApplication(int argc, char** argv)
+Nyx::Application* Nyx::CreateApplication(int argc, char** argv)
 {
 	// A crash shows in the game's console, and on a crash card in the editor that started it.
 	// Written straight to the console rather than logged: the logger may be what crashed.
@@ -126,7 +126,7 @@ Nyx::Engine::Application* Nyx::Engine::CreateApplication(int argc, char** argv)
 	const std::vector<std::string> utf8Arguments = Nyx::Game::GetArguments(argc, argv);
 	const std::vector<std::string_view> arguments(utf8Arguments.begin(), utf8Arguments.end());
 	std::vector<std::string> warnings;
-	const Nyx::Engine::GameLaunchOptions options = Nyx::Engine::ParseGameArguments(arguments, warnings);
+	const Nyx::GameLaunchOptions options = Nyx::ParseGameArguments(arguments, warnings);
 
 	const std::filesystem::path scenePath =
 		options.ScenePath.empty() ? Nyx::Paths::GetScenesDir() / "Default.nyxscene" : options.ScenePath;
@@ -135,7 +135,7 @@ Nyx::Engine::Application* Nyx::Engine::CreateApplication(int argc, char** argv)
 	std::unique_ptr<Nyx::Game::EditorLinkLayer> editorLink;
 	if (options.EditorPort)
 	{
-		editorLink = std::make_unique<Nyx::Game::EditorLinkLayer>(*options.EditorPort, Nyx::Engine::EditorLinkLogSink::Install(),
+		editorLink = std::make_unique<Nyx::Game::EditorLinkLayer>(*options.EditorPort, Nyx::EditorLinkLogSink::Install(),
 			options.LinkLogPath);
 	}
 
