@@ -28,10 +28,9 @@ namespace Nyx::Engine
 {
 	class VulkanBindless;
 
-	// Materials on the GPU (Design/shader-materials.md, stage 1, change 6). A material is a
-	// .nyxmat file (MaterialAsset) in the assets folder: its values are bytes in the material
-	// buffer, laid out by its shader, and it draws with its shader's pipeline. The renderer draws a
-	// Nyx::Material, a handle these keep up to date:
+	// Materials on the GPU. A material is a .nyxmat file (MaterialAsset) in the assets folder: its
+	// values are bytes in the material buffer, laid out by its shader, and it draws with its
+	// shader's pipeline. The renderer draws a Nyx::Material, a handle these keep up to date:
 	//   - a material whose shader hasn't compiled yet, or whose file can't be read, draws as a
 	//     magenta checker (MissingMaterial.slang);
 	//   - saving a material file writes its new values in the next frame;

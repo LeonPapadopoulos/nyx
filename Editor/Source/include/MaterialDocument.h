@@ -11,11 +11,11 @@
 
 namespace Nyx::Editor
 {
-	// A material file open for editing (Design/shader-materials.md, stage 2): its values, whether
-	// they differ from the file's, and an undo history of its own, so that undo in the material
-	// doesn't undo the scene and the other way round. Values are text, as the file holds them;
-	// a value removed takes the shader's default. Every other line of the file stays as it is,
-	// and undo puts the file's text back as it was, lines in their places.
+	// A material file open for editing: its values, whether they differ from the file's, and an
+	// undo history of its own, so that undo in the material doesn't undo the scene and the other
+	// way round. Values are text, as the file holds them; a value removed takes the shader's
+	// default. Every other line of the file stays as it is, and undo puts the file's text back as
+	// it was, lines in their places.
 	//
 	// It knows nothing of the renderer: the Parameters window (MaterialParametersPanel) shows its
 	// values in the scene views (IMaterialSource::SetMaterialValues()) and hands it the file when

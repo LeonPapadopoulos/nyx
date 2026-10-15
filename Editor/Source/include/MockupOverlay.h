@@ -14,10 +14,9 @@ namespace Nyx
 namespace Nyx::Editor
 {
 	// The "Mockup Overlay" window (Debug > Mockup Overlay): lays a mockup image (a PNG or JPEG from
-	// disk) over the editor's main window, half transparent, to match sizes and positions against
-	// a design (Design/editor-ui-architecture.md, 3.10.3). It is painted over everything and
-	// takes no input, so the editor underneath still works. Opacity, offset and scale are set in
-	// the window; closing the window hides the image.
+	// disk) over the editor's main window, half transparent, to match sizes and positions against a
+	// design. It is painted over everything and takes no input, so the editor underneath still
+	// works. Opacity, offset and scale are set in the window; closing the window hides the image.
 	class MockupOverlay
 	{
 	public:

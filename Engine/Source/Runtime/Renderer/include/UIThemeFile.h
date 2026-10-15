@@ -10,9 +10,8 @@
 #include <string_view>
 #include <vector>
 
-// The theme's values by name, for the theme editor, and the theme file that holds them
-// (Design/editor-mockup-styling.md, the theme editor). Every member of Theme is one value here;
-// NyxUIThemeTests fails when a member is missing.
+// The theme's values by name, for the theme editor, and the theme file that holds them. Every
+// member of Theme is one value here; NyxUIThemeTests fails when a member is missing.
 //
 // The theme file is text, one value per line:
 //

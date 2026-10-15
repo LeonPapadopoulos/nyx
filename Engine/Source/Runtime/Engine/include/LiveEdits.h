@@ -48,20 +48,13 @@ namespace Nyx::Engine
 		Unreadable,    // The message is cut off or damaged; logged as an error
 	};
 
-	// Applies a SetProperties, CreateEntity or DeleteEntity message to the world:
-	// - SetProperties reads the values into the entity's component and runs the component's
-	//   post-load step, e.g. to load a changed mesh. Properties the component type doesn't have
-	//   (in this build) are skipped with a warning. If the entity doesn't have the component, the
-	//   message is ignored: it only holds the values that changed.
-	// - CreateEntity adds the entity as it would be loaded from a scene file, and replaces the
-	//   entity with the same guid, if there is one.
-	// - DeleteEntity destroys the entity with the guid.
-	// Messages for entities the world doesn't have are ignored. The context's asset resolver
-	// loads the assets that components refer to.
+	// Applies a SetProperties, CreateEntity or DeleteEntity message to the world. CreateEntity
+	// replaces the entity with the same guid. SetProperties for an entity without that component is
+	// ignored, as it holds only the values that changed; so are messages for entities the world
+	// doesn't have.
 	ELiveEditResult ApplyLiveEdit(const Net::Message& message, Registry& world, ScenePostLoadContext postLoadContext);
 
-	// Applies a ShaderProgram or MaterialValues message to the renderer: the editor's compile is
-	// taken in the next frame (IRenderer::ApplyCompiledShader()), the material is drawn with the
-	// values (IRenderer::SetMaterialValues()). A material whose text doesn't parse is ignored.
+	// Applies a ShaderProgram or MaterialValues message to the renderer. A material whose text
+	// doesn't parse is ignored.
 	ELiveEditResult ApplyRendererEdit(const Net::Message& message, Nyx::IRenderer& renderer);
 }

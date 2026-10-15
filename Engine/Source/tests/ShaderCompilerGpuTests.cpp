@@ -2,9 +2,6 @@
 // loads and stores, the model matrix in the push constants means what glm means, and the
 // generated defaults writer gives a material's defaults, vectors included. Needs a Vulkan device;
 // its window stays hidden.
-//
-// Until change 5 turns on scalarBlockLayout, the validation layer reports the shaders that store
-// whole structs; that message is expected.
 #include "Paths.h"
 #include "ShaderCompiler.h"
 #include "VulkanContext.h"

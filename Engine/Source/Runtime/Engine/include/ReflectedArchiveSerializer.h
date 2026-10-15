@@ -48,24 +48,18 @@ namespace Nyx::Engine
 			const Nyx::Reflection::TypeMetadata& typeMetadata);
 
 		// Writes some of the object's properties as one property block, e.g. the ones an edit
-		// changed. propertyIndices index typeMetadata.Properties; each is written once, in
-		// declaration order. Properties without Serialize are left out, as in SerializeObject.
-		// DeserializeObject reads the block; the properties it doesn't contain keep their values.
-		// Returns false if a property has a kind that can't be written.
+		// changed. propertyIndices index typeMetadata.Properties. Properties without Serialize are
+		// left out, as in SerializeObject. Returns false if a property has a kind that can't be
+		// written.
 		static bool SerializeProperties(
 			BinaryWriter& writer,
 			const void* object,
 			const Nyx::Reflection::TypeMetadata& typeMetadata,
 			std::vector<size_t> propertyIndices);
 
-		// Reads one property block into the object:
-		// - Properties the data doesn't have keep their current value (in a new object: the default).
-		// - Number kinds (Int32, UInt32, Float) are converted into each other.
-		// - Properties the type doesn't have or doesn't save, and other changes of kind, are skipped.
-		// - A kind this build doesn't know (from a newer build) ends reading of the block, because
-		//   its size is unknown. The properties after it keep their current value.
-		// Everything that didn't fit is added to the warnings. Returns false only if the data
-		// is cut off or damaged.
+		// Reads one property block into the object; properties the data doesn't have keep their
+		// value. A kind this build doesn't know ends the block, because its size is unknown. What
+		// didn't fit goes into the warnings. Returns false only if the data is cut off or damaged.
 		static bool DeserializeObject(
 			BinaryReader& reader,
 			void* object,

@@ -11,8 +11,7 @@
 
 namespace Nyx::Engine
 {
-	// The last compile of a shader, as the Shader Log shows it (Design/shader-materials.md, stage
-	// 2, change 4)
+	// The last compile of a shader, for the Shader Log
 	struct ShaderLogEntry
 	{
 		// "Grid.frag", or a material shader's path in the assets folder ("Shaders/Stone.slang")

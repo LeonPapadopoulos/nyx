@@ -27,10 +27,10 @@ namespace Nyx::Engine
 		Anisotropic = 3,
 	};
 
-	// The global descriptor set, set 0 of every scene pipeline (Design/shader-materials.md,
-	// "Binding"): binding 0 one array of every sampled image, 2D and cube alike, which a shader
-	// indexes; binding 1 the fixed samplers; binding 2 the material buffer, every material's
-	// values at its own offset. Bound once per pass; a texture is an index, a material an offset.
+	// The global descriptor set, set 0 of every scene pipeline: binding 0 one array of every
+	// sampled image, 2D and cube alike, which a shader indexes; binding 1 the fixed samplers;
+	// binding 2 the material buffer, every material's values at its own offset. Bound once per
+	// pass; a texture is an index, a material an offset.
 	class VulkanBindless
 	{
 	public:

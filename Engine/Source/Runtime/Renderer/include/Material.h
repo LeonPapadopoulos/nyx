@@ -6,8 +6,8 @@
 
 namespace Nyx
 {
-	// What a mesh is drawn with: a handle VulkanMaterials keeps up to date (Design/shader-materials.md,
-	// stage 1, change 6). The pipeline is its shader's, or the missing material's.
+	// What a mesh is drawn with: a handle VulkanMaterials keeps up to date. The pipeline is its
+	// shader's, or the missing material's.
 	struct Material
 	{
 		vk::raii::Pipeline* Pipeline = nullptr;

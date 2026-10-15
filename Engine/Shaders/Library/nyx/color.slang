@@ -1,5 +1,5 @@
-// Colour: sRGB, luminance and tonemapping (Design/shader-materials.md). Linear values are light;
-// the 8-bit pictures the editor shows hold sRGB-encoded values.
+// Colour: sRGB, luminance and tonemapping. Linear values are light; the 8-bit pictures the editor
+// shows hold sRGB-encoded values.
 
 namespace nyx
 {

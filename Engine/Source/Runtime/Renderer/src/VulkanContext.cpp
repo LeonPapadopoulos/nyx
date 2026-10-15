@@ -231,7 +231,7 @@ namespace Nyx
 		// For the anisotropic one of the fixed samplers (VulkanBindless)
 		physicalDeviceFeatures2.features.samplerAnisotropy = true;
 		// Bindless (VulkanBindless): one array of every texture, indexed by what a draw reads, and
-		// materials loaded from a buffer in scalar layout (Design/shader-materials.md)
+		// materials loaded from a buffer in scalar layout
 		vk::PhysicalDeviceVulkan12Features physicalDeviceVulkan12Features{};
 		physicalDeviceVulkan12Features.descriptorIndexing = true;
 		physicalDeviceVulkan12Features.runtimeDescriptorArray = true;

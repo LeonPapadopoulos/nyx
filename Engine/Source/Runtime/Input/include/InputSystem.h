@@ -8,8 +8,7 @@
 namespace Nyx::Input
 {
 	// Gathers what the backends report into one InputFrame per frame, and makes the cursor what
-	// the frame asked for (Design/input-system.md). The application owns one and runs it around
-	// the layers:
+	// the frame asked for. The application owns one and runs it around the layers:
 	//
 	//   window.PollEvents(); input.BeginFrame(NowUs()); layers' OnUpdate and OnUI; input.EndFrame();
 	class InputSystem

@@ -7,14 +7,14 @@
 #include <cstring>
 
 // The painter's draw commands, laid out exactly as the painter shader reads them. The painter
-// (Painter.h) records them; the plan is in Design/ui-painter.md.
+// (Painter.h) records them.
 //
 // How to add a primitive:
 //  1. Add its type to EPainterCommandType, and a payload struct below that fits in 32 bytes.
 //  2. Add an Add...() function to Painter that fills the payload (Painter.h and Painter.cpp).
 //  3. Give it bounds in GetShapeBounds() (PainterCommands.cpp), so tile binning finds it.
-//  4. Give it a distance function in the painter shader (Painter.frag, from change 3 of the plan).
-//  5. Test it in NyxPainterTests, and draw it on the test sheet (from change 5).
+//  4. Give it a distance function in the painter shader (Painter.frag).
+//  5. Test it in NyxPainterTests, and draw it on the test sheet (PainterTestSheet.cpp).
 
 namespace Nyx::Engine
 {
@@ -57,8 +57,7 @@ namespace Nyx::Engine
 		RoundCaps = 1u << 0,
 	};
 
-	// How a shape's inside is coloured. Only Solid exists yet; gradients are planned
-	// (Design/editor-ui-architecture.md, 3.10.1).
+	// How a shape's inside is coloured. Only Solid exists yet; gradients are planned.
 	enum class EPainterFillMode : uint32_t
 	{
 		Solid = 0,

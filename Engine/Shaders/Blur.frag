@@ -1,8 +1,8 @@
 #version 450
 
-// One pass of the blur chain (VulkanBlur.cpp, Design/ui-painter.md, stage 3, change 1). An image
-// is blurred by halving it a few times, each step averaging around every pixel, then blurring
-// the small result with a Gaussian along x and along y. Small images make wide blurs cheap.
+// One pass of the blur chain (VulkanBlur.cpp). An image is blurred by halving it a few times, each
+// step averaging around every pixel, then blurring the small result with a Gaussian along x and
+// along y. Small images make wide blurs cheap.
 //
 // The source is sampled with bilinear filtering, so one tap between texels averages four.
 

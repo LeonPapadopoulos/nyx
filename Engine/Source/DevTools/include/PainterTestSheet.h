@@ -23,8 +23,7 @@ namespace Nyx::Engine
 	}
 
 	// Draws a sheet with every primitive the painter has, in rows with labels. The editor's
-	// Painter Test window shows it (Design/ui-painter.md, stage 1, change 5); a primitive added
-	// to the painter belongs on it too.
+	// Painter Test window shows it; a primitive added to the painter belongs on it too.
 	//
 	// Draws in the painter's current transform, so a caller zooms and pans the sheet with
 	// PushTransform(). `font` is used for the labels and the text samples, `image` (anything

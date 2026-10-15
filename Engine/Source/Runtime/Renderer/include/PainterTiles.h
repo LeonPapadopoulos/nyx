@@ -11,13 +11,8 @@
 
 // Tile binning: which of a frame's draw commands can touch each 8x8 pixel tile of the target.
 // The painter shader then only evaluates a pixel's own tile's commands, instead of all of them.
-// The plan is in Design/ui-painter.md: stage 1, change 2, for segments stage 2, change 2, and on
-// the GPU stage 3, change 13.
-//
-// The CPU measures each command once (MeasurePainterSegment()): what it can touch, and what it
-// hides. The GPU then bins every tile (PainterBin.comp, VulkanPainter::Bin()): it walks the
-// tile's commands in drawing order, keeps those that touch it, and drops whatever lies under a
-// command that covers the whole tile opaquely, the per-tile reduction.
+// The CPU measures each command once (MeasurePainterSegment()); the GPU bins every tile
+// (PainterBin.comp).
 
 namespace Nyx::Engine
 {
@@ -81,7 +76,7 @@ namespace Nyx::Engine
 
 	// How much painting lies on each tile of an OS window, summed over all its draws: the
 	// commands the tile's pixels walk on the GPU, and the draws they run in. Draws overlap, so one
-	// draw's own counts don't show it (Design/ui-painter.md, stage 3, change 11).
+	// draw's own counts don't show it.
 	struct PainterHeatGrid
 	{
 		// The grid covers the OS window's target from its top left, TilesX by TilesY tiles
@@ -112,9 +107,8 @@ namespace Nyx::Engine
 		}
 	};
 
-	// What the per-tile reduction does (Design/ui-painter.md, stage 3, change 13): in each tile,
-	// every entry before the last command that covers the whole tile opaquely goes, since nothing
-	// drawn before it shows there
+	// What the per-tile reduction does: in each tile, every entry before the last command that
+	// covers the whole tile opaquely goes, since nothing drawn before it shows there
 	struct PainterReduction
 	{
 		// The tiles' entries before the reduction, and those it keeps
@@ -123,8 +117,7 @@ namespace Nyx::Engine
 	};
 
 	// One frame of painting inside ImGui windows (Nyx::UI::WindowPainter), summed over all
-	// windows and their segments, and what the frame's UI cost, e.g. for the Painter Test window
-	// (Design/ui-painter.md, stage 3, change 10)
+	// windows and their segments, and what the frame's UI cost
 	struct PainterWindowStats
 	{
 		// One OS window's painting: its segments, and the draws they are drawn in. Segments that
@@ -213,7 +206,7 @@ namespace Nyx::Engine
 		// commands and segments the GPU bins from
 		size_t UploadBytes = 0;
 		Times FrameTimes;
-		// The per-tile reduction, over all segments, with the docked cards as they are and if opaque
+		// The per-tile reduction, over all segments
 		PainterReduction Reduction;
 
 		// What went wrong: the window painters' problems, each after its window's name, and

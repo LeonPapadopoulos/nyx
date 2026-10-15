@@ -6,14 +6,12 @@
 
 namespace Nyx::UI
 {
-	// How the painted widgets (UIWidgets.h) and the window chrome (UIChrome.h) look. Every
-	// colour, radius, size and effect they use comes from here, never from a literal in a widget,
-	// so that the whole look can change in one place (Design/editor-ui-architecture.md, 3.10.3). The
-	// editor fills it from a theme file (UIThemeFile.h, Editor/Themes) and edits it live in its
-	// theme window. The values here are the default theme's, Editor/Themes/Default.nyxtheme,
-	// which holds the same: blue-black panels with a violet accent, as Night
-	// (Design/editor-mockup-styling.md). ImGui's own colours follow the theme
-	// (ApplyThemeToImGui()), for the text and widgets ImGui still draws.
+	// How the painted widgets (UIWidgets.h) and the window chrome (UIChrome.h) look. Every colour,
+	// radius, size and effect they use comes from here, never from a literal in a widget, so that
+	// the whole look can change in one place. The editor fills it from a theme file (UIThemeFile.h,
+	// Editor/Themes) and edits it live in its theme window. The values here are the default
+	// theme's, Editor/Themes/Default.nyxtheme, which holds the same. ImGui's own colours follow the
+	// theme (ApplyThemeToImGui()), for the text and widgets ImGui still draws.
 	//
 	// Layout (frame padding, item spacing, item width) follows ImGui's style instead, so painted
 	// widgets line up with ImGui's in the same window.
@@ -91,8 +89,7 @@ namespace Nyx::UI
 		// window is painted as
 		glm::vec4 Backdrop{ 0.071f, 0.082f, 0.098f, 1.0f };
 		// Docked cards are slightly translucent, so a window's glow (ambilight) shows faintly
-		// through its neighbours; over the backdrop they show the mockup's panel colour. Floating
-		// cards stay opaque.
+		// through its neighbours. Floating cards stay opaque.
 		glm::vec4 Card{ 0.141f, 0.165f, 0.184f, 0.851f };
 		// A hairline just inside each card's edge, so cards stand apart from the backdrop
 		glm::vec4 CardBorder{ 1.0f, 1.0f, 1.0f, 0.05f };

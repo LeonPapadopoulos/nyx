@@ -10,8 +10,8 @@
 
 namespace Nyx::Engine
 {
-	// Compiled shaders on disk (Design/shader-materials.md, stage 1, change 4): what the build
-	// compiled, next to the programs, and what live reload compiled since, in Saved/ShaderCache.
+	// Compiled shaders on disk: what the build compiled, next to the programs, and what live
+	// reload compiled since, in Saved/ShaderCache.
 	// An entry holds a successful compile's result and every file the compile read, with a hash of
 	// its content, so finding it tells whether it still matches the files.
 	//

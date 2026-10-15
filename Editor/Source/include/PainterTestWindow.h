@@ -18,22 +18,7 @@ namespace Nyx
 
 namespace Nyx::Editor
 {
-	// The "Painter Test" window (Debug > Painter Test), with these tabs (Design/ui-painter.md):
-	//  - Canvas: the painter's test sheet, painted on the GPU into an image and shown pixel for
-	//    pixel. The wheel zooms around the mouse and dragging pans, so edges can be checked at any
-	//    scale. It shows the tile heatmap, the painter's statistics and problems, and on request
-	//    the same frame drawn by ImGui's ImDrawList beside it, for comparison (stage 1, change 5).
-	//  - In a window: the same sheet painted straight into a scrolling child window, row by row,
-	//    with an ImGui button over each row and a painted badge over each button, to show the
-	//    order; with the statistics of all painting inside windows (stage 2, change 4).
-	//  - Widgets, the UI gallery: each painted widget (UIWidgets.h) in every state, forced, then
-	//    the live widget and ImGui's counterpart beside it, at 100% and 150% font size. It is
-	//    where widgets are designed (stage 2, change 5).
-	//  - Blur: a scene view's picture beside its blur (VulkanBlur), as ImGui shows it and painted,
-	//    with the time all blurs take on the GPU (stage 3, change 1).
-	//  - Statistics: what painting the whole editor costs, on the CPU and the GPU, the last frame,
-	//    on average and at its peak over the last frames, per OS window, and as a painted graph
-	//    (stage 3, change 10). Kept while the window is open, whichever tab shows.
+	// A dev tool for the painter: its test sheet, the widget gallery, the blur and painting's costs
 	class PainterTestWindow
 	{
 	public:
@@ -53,7 +38,6 @@ namespace Nyx::Editor
 		void DrawCanvasTab(Nyx::IRenderer& renderer);
 		void DrawInWindowTab(Nyx::IRenderer& renderer);
 		void DrawWidgetsTab(Nyx::IRenderer& renderer);
-		// A scene view's picture beside its blur, shown by ImGui and painted, with the blur's GPU time
 		void DrawBlurTab(Nyx::IRenderer& renderer);
 		void DrawStatisticsTab(Nyx::IRenderer& renderer);
 		void DrawWidgetGalleryTable();
@@ -155,7 +139,6 @@ namespace Nyx::Editor
 		// The frames kept, oldest first
 		std::vector<FrameSample> GetFrameSamples() const;
 		void DrawOsWindowStatistics(const Nyx::Engine::PainterWindowStats& stats) const;
-		// The times of the frames kept as lines over a field, painted, the newest at the right
 		void DrawFrameGraph(std::span<const FrameSample> samples) const;
 		// What the per-tile reduction drops, and what the painter costs a frame, from the frames kept
 		void DrawReduction(std::span<const FrameSample> samples) const;
@@ -167,11 +150,9 @@ namespace Nyx::Editor
 		uint32_t FrameRateCap = 0;
 	};
 
-	// Draws a painter's recorded frame with ImGui's ImDrawList instead, for comparison: shapes
-	// become ImGui's triangles, glyphs and images ImGui's textured quads. `origin` is where the
-	// frame's top left goes on the screen. ImDrawList has no shadows, glows or per-corner radii;
-	// shadows, glows and image glows are left out, and a rect gets its largest corner radius.
-	// Glyphs and images on a texture ImGui replaced this frame (its font atlas grew) are left out
-	// for that frame.
+	// Draws a painter's recorded frame with ImGui's ImDrawList instead, for comparison, with its top
+	// left at `origin`. ImDrawList has no shadows, glows or per-corner radii, so those are left out
+	// and a rect gets its largest corner radius. Glyphs and images on a texture ImGui replaced this
+	// frame (its font atlas grew) are left out for that frame.
 	void DrawPainterFrameWithImDrawList(const Nyx::Engine::Painter& painter, ImDrawList& drawList, ImVec2 origin);
 }

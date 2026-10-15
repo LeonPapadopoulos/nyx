@@ -1226,9 +1226,9 @@ namespace
 		std::filesystem::remove_all(folder, ignored);
 	}
 
-	// The titlebar's widgets (stage 3, change 9a): a button in a tone of its own, a menu bar button
-	// with its open menu's pill, window controls, a multi-line field over a painted frame, and a
-	// logarithmic slider whose knob sits where ImGui's grab is.
+	// The titlebar's widgets: a button in a tone of its own, a menu bar button with its open menu's
+	// pill, window controls, a multi-line field over a painted frame, and a logarithmic slider
+	// whose knob sits where ImGui's grab is.
 	void TestTitlebarWidgetsAndMultilineFields()
 	{
 		HeadlessUI ui;
@@ -1335,10 +1335,10 @@ namespace
 		Require(std::abs(zoom - 100.0f) < 5.0f, "Clicking a logarithmic slider's knob should keep its value, as ImGui's grab is there, got " + std::to_string(zoom));
 	}
 
-	// With the chrome on, the editor's panels leave no shapes to ImGui (stage 3, change 9a): what
-	// Debug > Mark ImGui Shapes finds in them is nothing. ImGui's text stays, and so, until change
-	// 9b, do its close and collapse buttons, which it draws in the text colour; the text is made
-	// transparent here, which hides them from the marks.
+	// With the chrome on, the editor's panels leave no shapes to ImGui: what Debug > Mark ImGui
+	// Shapes finds in them is nothing. ImGui's text stays, and so do its close and collapse
+	// buttons, which it draws in the text colour; the text is made transparent here, which hides
+	// them from the marks.
 	void TestPanelsLeaveNoShapesToImGui()
 	{
 		HeadlessUI ui;

@@ -33,12 +33,11 @@ namespace Nyx::Editor
 	};
 	Orbit OrbitAround(const glm::vec3& target, float distance, float yaw, float pitch);
 
-	// The "Preview" window (Design/shader-materials.md, stage 2): the material open in the
-	// Parameters window on a shape in a world of its own (IRenderer::SetSceneViewWorld()), with a
-	// camera, a sun and a sky. Its bar chooses the shape (sphere, cube, plane, or the mesh of the
-	// entity selected in the scene), what it shows (lit, or one output of the material: base
-	// colour, normals, roughness, ... and where light is NaN or out of range), the sky (studio,
-	// the scene's, black) and the exposure.
+	// The "Preview" window: the material open in the Parameters window on a shape in a world of its
+	// own (IRenderer::SetSceneViewWorld()), with a camera, a sun and a sky. Its bar chooses the
+	// shape (sphere, cube, plane, or the mesh of the entity selected in the scene), what it shows
+	// (lit, or one output of the material: base colour, normals, roughness, ... and where light is
+	// NaN or out of range), the sky (studio, the scene's, black) and the exposure.
 	//
 	// Dragging in the picture turns the camera around the shape, the wheel brings it closer;
 	// with Shift the drag turns the sun, with Ctrl the sky. Its scene view exists while the window

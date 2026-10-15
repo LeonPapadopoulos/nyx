@@ -10,7 +10,7 @@ namespace Nyx::Engine
 {
 	// What reflection says about a material's struct, as plain data: the parameters panel is built
 	// from it, and material values are written at its offsets. Offsets are in scalar layout, the
-	// layout ByteAddressBuffer.Load<T>() reads (Design/shader-materials.md, as built, change 1).
+	// layout ByteAddressBuffer.Load<T>() reads.
 
 	// An argument of an attribute: text, or a number
 	struct ShaderAttributeArgument

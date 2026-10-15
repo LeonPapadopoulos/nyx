@@ -7,8 +7,8 @@
 #include <string>
 #include <string_view>
 
-// The vocabulary of the input system (Design/input-system.md): devices, the controls they have and
-// the names of those controls, and the events backends report.
+// The vocabulary of the input system: devices, the controls they have and the names of those
+// controls, and the events backends report.
 namespace Nyx::Input
 {
 	enum class EDeviceKind : uint8_t

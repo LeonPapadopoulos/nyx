@@ -27,14 +27,14 @@ namespace Nyx::Engine
 		bool bChanged = false;
 	};
 
-	// The SPIR-V of the engine's shaders, by name ("Grid.frag", "Skybox.slang"), with live reload
-	// (Design/shader-materials.md, stage 1, changes 3 and 4). A program starts from the newest
-	// compiled code that matches its files: what live reload compiled last (the saved cache), or
-	// what the build compiled. Code that no longer matches is used all the same, and with live
-	// reload on it is compiled again at once. Saving a source compiles it again, 50 ms after the
-	// last change, and the owner of its pipelines rebuilds them; what compiled is kept in the saved
-	// cache. A program that fails to compile keeps its last good code. Nothing blocks; Update()
-	// runs once per frame. Material shaders (change 6) are compiled the same way (GetResult()).
+	// The SPIR-V of the engine's shaders, by name ("Grid.frag", "Skybox.slang"), with live reload.
+	// A program starts from the newest compiled code that matches its files: what live reload
+	// compiled last (the saved cache), or what the build compiled. Code that no longer matches is
+	// used all the same, and with live reload on it is compiled again at once. Saving a source
+	// compiles it again, 50 ms after the last change, and the owner of its pipelines rebuilds them;
+	// what compiled is kept in the saved cache. A program that fails to compile keeps its last good
+	// code. Nothing blocks; Update() runs once per frame. Material shaders are compiled the same
+	// way (GetResult()).
 	class ShaderPrograms
 	{
 	public:

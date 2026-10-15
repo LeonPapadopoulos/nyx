@@ -1,6 +1,6 @@
-// The surface domain (Design/shader-materials.md): a material for meshes implements ISurface,
-// and the engine's entry points below are generic over it. ShaderCompiler::CompileMaterial()
-// specialises them with the material's struct.
+// The surface domain: a material for meshes implements ISurface, and the engine's entry points
+// below are generic over it. ShaderCompiler::CompileMaterial() specialises them with the
+// material's struct.
 //
 // Bindings follow the bindless plan: set 0 is global and push constants belong to the draw
 // (nyx.bindless), set 1 belongs to the view (nyx.view); a material sees both. The pixel is lit by
@@ -30,7 +30,7 @@ import nyx.lighting;
 // decoded from sRGB
 [__AttributeUsage(_AttributeTargets.Var)] public struct LinearAttribute {};
 // For bools that turn a part of the shader on or off. A plain bool in the material buffer for now;
-// specialisation constants later (Design/shader-materials.md, Left for later).
+// specialisation constants later.
 [__AttributeUsage(_AttributeTargets.Var)] public struct SwitchAttribute {};
 
 // -------------------------------------------------------------------------

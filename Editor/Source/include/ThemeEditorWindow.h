@@ -11,19 +11,7 @@ namespace Nyx::Editor
 {
 	struct EditorPreferences;
 
-	// The "Theme" window: every value of the painted widgets' theme (Nyx::UI::GetTheme()), grouped
-	// and searchable, edited live: the whole editor follows each change at once. Colours take a
-	// picker, a hex field (#RRGGBB or #RRGGBBAA, as design tools give them) and their alpha; sizes
-	// a drag within their range.
-	//
-	// The theme is a file (UIThemeFile.h has its format). Themes live in Editor/Themes, and the
-	// window's combo lists them; Open loads one from anywhere, Save writes the one loaded, Save As
-	// writes the theme to a new file and loads that. The theme loaded is remembered in the
-	// preferences and loaded at startup. Revert reads the file again; Reset to Defaults goes back
-	// to the values in UITheme.h until saved. Loading another theme asks first while there are
-	// unsaved changes. The file loaded is read again whenever it changes on disk, e.g. when edited
-	// in a text editor.
-	//
+	// The Theme window: edits the theme (Nyx::UI::GetTheme()) live, and loads and saves theme files.
 	// It sets EditorPreferences::Theme to the theme loaded; the caller saves the preferences when
 	// that changed.
 	class ThemeEditorWindow

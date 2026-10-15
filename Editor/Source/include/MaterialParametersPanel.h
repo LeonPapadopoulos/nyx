@@ -22,22 +22,7 @@ namespace Nyx::Engine
 
 namespace Nyx::Editor
 {
-	// The "Parameters" window (Design/shader-materials.md, stage 2): the material open for
-	// editing (a MaterialDocument), its shader's parameters as widgets made from the shader's
-	// layout, by category: sliders for [Range], swatches for [Color], checkboxes for bools and
-	// [Switch], combos for [Enum], drags for other numbers, a path for each texture. A value
-	// that differs from the shader's default has a reset button. Every change shows in the scene
-	// views in the same frame; a drag is one undo step. Save writes the file; Revert reads it
-	// again. While the window has focus, Ctrl+Z and Ctrl+Y undo and redo in the material, and
-	// Ctrl+S saves it.
-	//
-	// The file is followed when it is read again, e.g. saved in a text editor, while nothing here
-	// is unsaved. Opening another material asks first while there are unsaved values. Above the
-	// parameters, the material's parent or shader (another can be chosen, as an edit), its
-	// domain, its instances, and the entities of the scene that use it.
-	//
-	// A material instance shows each value it takes from its parents, marked Parent; changing
-	// one overrides it, and Reset goes back to the parent's.
+	// The Parameters window: edits the open material's values, with widgets made from its shader's layout
 	class MaterialParametersPanel
 	{
 	public:

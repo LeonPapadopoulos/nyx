@@ -1,5 +1,5 @@
-// Set 1: the view a scene is drawn for (Design/shader-materials.md, "Binding"). SceneUBO in
-// VulkanRenderer.h; the engine's GLSL shaders declare its first fields as SceneUBO too.
+// Set 1: the view a scene is drawn for. SceneUBO in VulkanRenderer.h; the engine's GLSL shaders
+// declare its first fields as SceneUBO too.
 
 import nyx.bindless;
 

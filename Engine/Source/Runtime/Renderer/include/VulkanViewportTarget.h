@@ -8,9 +8,9 @@ namespace Nyx
 {
 	class VulkanContext;
 
-	// A scene view's targets (Design/shader-materials.md, stage 1, change 7): the scene is drawn in
-	// HDR (R16G16B16A16Sfloat) with a depth buffer, then tonemapped into the 8-bit picture the editor
-	// shows, and the editor's overlays are drawn over the picture, tested against the scene's depth.
+	// A scene view's targets: the scene is drawn in HDR (R16G16B16A16Sfloat) with a depth buffer,
+	// then tonemapped into the 8-bit picture the editor shows, and the editor's overlays are drawn
+	// over the picture, tested against the scene's depth.
 	class VulkanViewportTarget
 	{
 	public:

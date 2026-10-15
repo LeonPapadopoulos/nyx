@@ -15,8 +15,8 @@
 
 namespace Nyx::Engine
 {
-	// A material file (.nyxmat, Design/shader-materials.md): which shader, and values for some of
-	// its parameters, one per line; every parameter not listed takes the shader's default.
+	// A material file (.nyxmat): which shader, and values for some of its parameters, one per line;
+	// every parameter not listed takes the shader's default.
 	//
 	//   # Assets/Materials/WeatheredStone.nyxmat
 	//   Shader = Shaders/Environment/Stone.slang
@@ -24,7 +24,7 @@ namespace Nyx::Engine
 	//   Albedo = Textures/Stone_Albedo.png
 	//
 	// A material instance names another material instead of a shader, and sets only what it
-	// changes; the rest it takes from its parent (Design/shader-materials.md, stage 3, change 2):
+	// changes; the rest it takes from its parent:
 	//
 	//   # Assets/Materials/WetStone.nyxmat
 	//   Parent = Materials/WeatheredStone.nyxmat

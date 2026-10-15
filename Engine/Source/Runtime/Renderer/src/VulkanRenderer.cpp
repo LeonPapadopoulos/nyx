@@ -629,7 +629,7 @@ namespace Nyx
 		}
 		WriteUITimestamp(*cmd, SceneViewsPair, true);
 
-		// Each picture blurred small, before the UI is built, so that the UI shows this frame's
+		// Each picture blurred small, before the UI is built, so that the UI shows this frame's blur
 		BlurSceneViews(cmd);
 		const float sceneMilliseconds = millisecondsSince(sceneStart);
 
@@ -647,10 +647,7 @@ namespace Nyx
 		renderPassInfo.clearValueCount = 1;
 		renderPassInfo.pClearValues = &clearValue;
 
-		// The UI is built before the render pass starts: painter canvases submitted while building
-		// it are drawn in between, outside any render pass, so ImGui shows them in this frame.
-		// What was painted inside windows is uploaded now and drawn as ImGui renders them.
-		// Each step's time, for the painter's statistics (stage 3, change 10)
+		// Each step's time, for the painter's statistics
 		using Clock = std::chrono::steady_clock;
 		Clock::time_point stepStart = Clock::now();
 		const auto takeStepTime = [&stepStart]()
@@ -661,6 +658,9 @@ namespace Nyx
 			return milliseconds;
 		};
 
+		// The UI is built before the render pass starts: painter canvases submitted while building
+		// it are drawn in between, outside any render pass, so ImGui shows them in this frame.
+		// What was painted inside windows is uploaded now and drawn as ImGui renders them.
 		ImGuiBackend->BeginFrame();
 		buildUI();
 		// No frame is in flight, and this one's draws run after it is submitted: values set while

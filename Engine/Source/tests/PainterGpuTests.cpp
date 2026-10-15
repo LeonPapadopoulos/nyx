@@ -566,9 +566,9 @@ namespace
 		return painter;
 	}
 
-	// Live reload (Design/shader-materials.md, stage 1, change 3): Painter.frag changed and compiled
-	// again reaches the pipelines once the painter rebuilds them; PainterBin.comp, compiled by Slang
-	// too, still bins right. On copies of the shaders.
+	// Live reload: Painter.frag changed and compiled again reaches the pipelines once the painter
+	// rebuilds them; PainterBin.comp, compiled by Slang too, still bins right. On copies of the
+	// shaders.
 	void TestPipelinesFollowChangedShaders(GpuPainter& gpu)
 	{
 		const std::filesystem::path folder = std::filesystem::temp_directory_path() / ("NyxPainterGpuTests-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
@@ -1203,7 +1203,7 @@ namespace
 		Require(entries > 0 && segments.GetUploadBytes() >= commands * (sizeof(PainterCommand) + sizeof(PainterBinCommand)),
 			"The upload should hold the painters' commands and the measured commands");
 
-		// The heat over the whole target (stage 3, change 11): every segment's tiles land where
+		// The heat over the whole target: every segment's tiles land where
 		// its grid lies, so the heat holds all their entries and tiles, and overlapping segments add up.
 		PainterHeatGrid heat;
 		heat.Reset(extent.width, extent.height);
@@ -1306,7 +1306,7 @@ namespace
 		Require(segments.GetProblems().empty() && segments.GetReadBackProblems().empty(), "The test sheet's segments should bin without problems");
 	}
 
-	// Segments drawn as one run (stage 3, change 8): another painter's segment and the test sheet
+	// Segments drawn as one run: another painter's segment and the test sheet
 	// in two halves, copied into one painter with Painter::AppendSegment() and drawn once, paint
 	// what the three segments paint drawn one after the other.
 	void TestRunOfSegmentsMatchesItsSegments(GpuPainter& gpu, const ImGuiFonts& fonts)
@@ -1472,7 +1472,7 @@ namespace
 		Require(gpu.GetTarget().GetTiles().TilesX == 4 && gpu.GetTarget().GetTiles().TilesY == 2, "The target should keep the frame's tiles");
 	}
 
-	// Binning on the GPU (PainterBin.comp, stage 3, change 13), read back: which commands each
+	// Binning on the GPU (PainterBin.comp), read back: which commands each
 	// tile holds, in order, without what lies under a command covering the whole tile opaquely
 
 	using TileCoordinates = std::pair<uint32_t, uint32_t>;

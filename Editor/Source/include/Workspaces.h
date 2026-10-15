@@ -7,8 +7,7 @@
 
 namespace Nyx::Editor
 {
-	// The editor's workspaces (architecture 3.1, Design/shader-materials.md stage 2): each a saved
-	// layout of the dock space, and the panels it shows
+	// The editor's workspaces: each a saved layout of the dock space, and the panels it shows
 	enum class EWorkspace : uint8_t
 	{
 		// The scene: outliner, scene views, details

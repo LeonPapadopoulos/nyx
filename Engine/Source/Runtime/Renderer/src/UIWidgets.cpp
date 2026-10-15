@@ -1749,7 +1749,7 @@ namespace Nyx::UI
 		const glm::vec2 max = min + glm::vec2(size);
 		const PainterStyle line = PainterStyle::Filled(Shade(theme.Text, look, theme));
 		const PainterStyle outline = PainterStyle::Outlined(Shade(theme.Text, look, theme), width);
-		// Lines and outlines are centred on their edges: half their width in from the square's
+		// Lines and outlines are centred on their edges: half their width in from the square's edge
 		const float half = width * 0.5f;
 		switch (control)
 		{

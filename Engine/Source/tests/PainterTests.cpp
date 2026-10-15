@@ -1095,7 +1095,7 @@ namespace
 		Require(behind.GetSegments().size() == 2 && behind.GetProblems().empty(), "Painting behind should keep its segments without problems");
 	}
 
-	// Runs of segments (stage 3, change 8): a run's segments are copied into one painter, with
+	// Runs of segments: a run's segments are copied into one painter, with
 	// their groups and textures renumbered for it
 	void TestAppendSegmentRenumbersGroupsAndTextures()
 	{
@@ -1250,7 +1250,7 @@ namespace
 		ImGui::NewFrame();
 	}
 
-	// The painter heatmap over the editor (stage 3, change 11): nothing while off; while on, a rect
+	// The painter heatmap over the editor: nothing while off; while on, a rect
 	// per run of tiles with the same heat along a row, in the OS window's foreground draw list
 	void TestPainterHeatmapIsShownInRuns()
 	{

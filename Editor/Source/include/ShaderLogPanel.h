@@ -20,11 +20,10 @@ namespace Nyx::Editor
 	// red for an error, which opens the file at its line when clicked. True when clicked.
 	bool DiagnosticLine(const Nyx::Engine::ShaderDiagnostic& diagnostic, const OpenFileAtLine& open);
 
-	// The "Shader Log" window (Design/shader-materials.md, stage 2, change 4): the last compile of
-	// every shader since the start, the engine's and the materials', newest first. Each says
-	// whether it compiled, when, how long it took, its entry points and the size of their SPIR-V,
-	// or that the shader keeps its last good code; below it, what the compiler said, each line
-	// opening its file at the line when clicked.
+	// The "Shader Log" window: the last compile of every shader since the start, the engine's and
+	// the materials', newest first. Each says whether it compiled, when, how long it took, its
+	// entry points and the size of their SPIR-V, or that the shader keeps its last good code; below
+	// it, what the compiler said, each line opening its file at the line when clicked.
 	class ShaderLogPanel
 	{
 	public:

@@ -23,10 +23,10 @@ namespace Nyx::Engine
 	class BinaryReader;
 	class BinaryWriter;
 
-	// Where shaders get compiled for live reload (Design/shader-materials.md, stage 1, change 3):
-	// in NyxShaderCompiler.exe, so that a compiler crash costs one compile and not the program
-	// (RemoteShaderCompileService), or in this process, for tests (LocalShaderCompileService).
-	// Nothing blocks: requests go in with Submit(), results come out of TakeResults().
+	// Where shaders get compiled for live reload: in NyxShaderCompiler.exe, so that a compiler
+	// crash costs one compile and not the program (RemoteShaderCompileService), or in this process,
+	// for tests (LocalShaderCompileService). Nothing blocks: requests go in with Submit(), results
+	// come out of TakeResults().
 
 	enum class EShaderCompileKind : uint8_t
 	{

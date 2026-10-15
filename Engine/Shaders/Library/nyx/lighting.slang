@@ -1,7 +1,7 @@
-// Physically based light (Design/shader-materials.md, recommendation 6), glTF's metallic-roughness
-// model: GGX distribution, height-correlated Smith visibility, Schlick Fresnel and Lambert diffuse
-// for the sun; for the sky, its spherical harmonics (diffuse) and its prefiltered cube with the
-// split-sum table (specular), from nyx.environment.
+// Physically based light, glTF's metallic-roughness model: GGX distribution, height-correlated
+// Smith visibility, Schlick Fresnel and Lambert diffuse for the sun; for the sky, its spherical
+// harmonics (diffuse) and its prefiltered cube with the split-sum table (specular), from
+// nyx.environment.
 
 import nyx.bindless;
 import nyx.environment;

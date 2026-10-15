@@ -26,13 +26,9 @@ namespace Nyx::Engine
 		// Serialization or file I/O failures return false without overwriting the previous file.
 		static bool SaveToFile(const Registry& world, const std::filesystem::path& path);
 
-		// Replaces everything in outWorld with the scene from the file. If the file can't be loaded,
-		// outWorld stays as it was. The context's asset resolver turns the asset paths stored in
-		// components into loaded assets.
-		// Reads only the current version; files of version 1 stored values without names, so they
-		// fail with an error. Component types and properties this build doesn't know are skipped
-		// with a warning. After loading successfully, every entity has a guid no other entity in the
-		// scene has (see GuidComponent): entities without one, or with a duplicate, get a new one.
+		// Replaces everything in outWorld with the scene from the file; if the file can't be loaded,
+		// outWorld stays as it was. Only the current version is read, as version 1 stored values
+		// without names. Afterwards every entity has a guid no other entity in the scene has.
 		static bool LoadFromFile(
 			const std::filesystem::path& path,
 			Registry& outWorld,
@@ -46,10 +42,8 @@ namespace Nyx::Engine
 		// count and its components. Returns false if a component can't be written.
 		static bool WriteEntity(const Registry& world, Entity entity, BinaryWriter& writer);
 
-		// Reads what WriteEntity wrote into an entity of the world: adds its components, reads their
-		// properties and runs their post-load step. Component types this build doesn't know are
-		// skipped with a warning. Returns false if the data is cut off or damaged; the entity may
-		// have some of its components then.
+		// Reads what WriteEntity wrote into an entity of the world. Returns false if the data is cut
+		// off or damaged; the entity may have some of its components then.
 		static bool ReadEntity(
 			BinaryReader& reader,
 			Registry& world,
@@ -57,8 +51,8 @@ namespace Nyx::Engine
 			ScenePostLoadContext& postLoadContext,
 			ReadWarnings& warnings);
 
-		// Prints what WriteEntity wrote: each component type, with its properties below,
-		// indented by two spaces per indent level. Returns false if the data is cut off or damaged.
+		// Prints what WriteEntity wrote, indented by two spaces per indent level. Returns false if
+		// the data is cut off or damaged.
 		static bool PrintEntity(BinaryReader& reader, int indentLevel, std::string& outText);
 	};
 }

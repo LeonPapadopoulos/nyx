@@ -1,6 +1,5 @@
-// The environment's light, as VulkanEnvironment makes it from the sky (Design/shader-materials.md,
-// recommendation 6): diffuse light from nine spherical harmonics, specular light from the
-// prefiltered cube, and the split-sum table.
+// The environment's light, as VulkanEnvironment makes it from the sky: diffuse light from nine
+// spherical harmonics, specular light from the prefiltered cube, and the split-sum table.
 
 import nyx.bindless;
 import nyx.view;

@@ -12,7 +12,7 @@
 
 namespace Nyx::Engine
 {
-	// Compiles shaders to SPIR-V with Slang (Design/shader-materials.md, stage 1, change 2):
+	// Compiles shaders to SPIR-V with Slang:
 	//   - materials (.slang): a struct named like the file, specialised into a domain's entry points;
 	//   - programs: the engine's GLSL (.vert, .frag, .comp), or a .slang file with entry points.
 	// No Vulkan; the renderer makes pipelines from what it returns.

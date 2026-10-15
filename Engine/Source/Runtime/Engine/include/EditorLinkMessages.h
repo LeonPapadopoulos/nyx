@@ -151,7 +151,7 @@ namespace Nyx::Engine
 	};
 
 	// Game to editor, from the crash handler: the game is about to end because of an exception
-	// nothing caught. The editor shows it on a crash card, with a Restart button.
+	// nothing caught
 	struct CrashMessage
 	{
 		static constexpr EEditorLinkMessage Type = EEditorLinkMessage::Crash;
@@ -162,8 +162,8 @@ namespace Nyx::Engine
 		bool Read(BinaryReader& reader);
 	};
 
-	// Live materials (Design/shader-materials.md, stage 3, change 1): what the editor compiles and
-	// the values it edits reach the games it started; see ApplyRendererEdit() in LiveEdits.h.
+	// Live materials: what the editor compiles and the values it edits reach the games it started;
+	// see ApplyRendererEdit() in LiveEdits.h.
 
 	// Editor to game: a shader the editor compiled, the engine's or a material's: what was asked
 	// (kind, file, domain) and what came out (each entry point's SPIR-V, a material's layout, the

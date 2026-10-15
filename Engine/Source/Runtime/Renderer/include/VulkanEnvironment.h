@@ -20,8 +20,8 @@ namespace Nyx::Engine
 	class ShaderPrograms;
 	class VulkanBindless;
 
-	// The light of the environment for physically based materials (Design/shader-materials.md,
-	// recommendation 6), made on the GPU from the sky when it loads (Environment.slang):
+	// The light of the environment for physically based materials, made on the GPU from the sky
+	// when it loads (Environment.slang):
 	//   - the specular cube: each mip the sky as a surface of rising roughness reflects it, from 0
 	//     at mip 0 to 1 at the last, prefiltered with GGX;
 	//   - the irradiance: the sky as nine spherical harmonics, already convolved with the cosine,

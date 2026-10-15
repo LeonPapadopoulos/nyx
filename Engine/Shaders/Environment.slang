@@ -1,5 +1,4 @@
-// The light of the environment, made from the sky when it loads (VulkanEnvironment,
-// Design/shader-materials.md, recommendation 6):
+// The light of the environment, made from the sky when it loads (VulkanEnvironment):
 //   - environmentCopy, environmentDownsample: the sky in HDR with every mip, the source of the rest;
 //   - environmentPrefilter: the specular cube, each mip the sky as a rougher surface reflects it
 //     (GGX, filtered importance sampling);

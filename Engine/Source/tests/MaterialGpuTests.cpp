@@ -1,4 +1,4 @@
-// The material test scene on a real GPU (Design/shader-materials.md, stage 1, change 9):
+// The material test scene on a real GPU:
 //   - Assets/Scenes/MaterialTest.nyxscene, a grid of Standard spheres, metallic rising by row and
 //     roughness by column, loaded as the editor loads scenes and compared with an approved
 //     reference image (the mean difference and how many pixels differ much);

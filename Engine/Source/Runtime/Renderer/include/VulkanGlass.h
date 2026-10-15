@@ -13,10 +13,9 @@ namespace Nyx
 
 namespace Nyx::Engine
 {
-	// What glass shows (Design/ui-painter.md, stage 3, change 6): a picture of what lies behind
-	// the main window's floating windows, drawn into an image of its own and blurred. The
-	// renderer draws ImGui's windows behind the first glass window into it (the docked layer),
-	// before it draws the main window itself.
+	// What glass shows: a picture of what lies behind the main window's floating windows, drawn
+	// into an image of its own and blurred. The renderer draws ImGui's windows behind the first
+	// glass window into it (the docked layer), before it draws the main window itself.
 	class VulkanGlassBackdrop
 	{
 	public:

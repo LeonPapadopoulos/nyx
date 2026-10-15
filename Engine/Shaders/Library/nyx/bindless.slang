@@ -1,5 +1,5 @@
-// The bindings every scene program shares (Design/shader-materials.md, "Binding"): set 0 is
-// global (VulkanBindless), push constants belong to the draw. The view's set is nyx.view.
+// The bindings every scene program shares: set 0 is global (VulkanBindless), push constants
+// belong to the draw. The view's set is nyx.view.
 
 // -------------------------------------------------------------------------
 // Set 0: global
@@ -46,7 +46,7 @@ namespace nyx
     // A texture field of a material: an index into TextureHeap, unset slot 0. A plain uint rather
     // than Slang's DescriptorHandle<Texture2D>: a handle has no default, and a material must be
     // constructible with its defaults; and inside a struct, at an offset that isn't a multiple of
-    // 8 bytes, a handle is loaded from the wrong offset (shader-materials.md, as built, change 1).
+    // 8 bytes, a handle is loaded from the wrong offset.
     public struct Texture
     {
         public uint Index = 0;

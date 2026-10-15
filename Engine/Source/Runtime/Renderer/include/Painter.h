@@ -106,26 +106,11 @@ namespace Nyx::Engine
 
 	struct PainterSegment;
 
-	// Records 2D shapes as draw commands for the painter shader, which draws each one as a signed
-	// distance field: edges stay exactly anti-aliased at any size, and shadows and glows are
-	// cheap. One painter records one frame for one target (an offscreen image now; an ImGui
-	// window later). The plan is in Design/ui-painter.md.
-	//
-	// A frame:
-	//
-	//     painter.BeginFrame(width, height);
-	//     painter.AddRoundedRect({ { 10, 10 }, { 110, 40 } }, 6.0f, PainterStyle::Filled(orange));
-	//     painter.BeginGroup(effects); // shapes that cast one shadow together
-	//     ...
-	//     painter.EndGroup();
-	//     painter.EndFrame();
-	//
-	// Positions, sizes and widths are pixels of the target, origin top left, y pointing down,
-	// unless a transform is pushed. Commands are drawn in the order they were added.
-	//
-	// The painter never logs or asserts. Misuse (an EndGroup() too many, a clip rect left pushed)
-	// is collected in GetProblems(), once per kind and frame, for whoever draws the frame to show.
-	// The frame is still drawn as well as possible.
+	// Records one frame of 2D shapes for the painter shader, which draws each as a signed distance
+	// field, so edges stay anti-aliased at any size. Positions are target pixels, origin top left,
+	// y down, unless a transform is pushed. It never logs or asserts: misuse goes into
+	// GetProblems(), for whoever draws the frame to show, and the frame is drawn as well as
+	// possible.
 	class Painter
 	{
 	public:
@@ -155,10 +140,9 @@ namespace Nyx::Engine
 		void AddTriangle(glm::vec2 a, glm::vec2 b, glm::vec2 c, const PainterStyle& style);
 
 		// Text in one of ImGui's fonts, UTF-8, with lines broken at '\n'. `position` is the top
-		// left of the first line, and each line is `size` high. The glyphs come from ImGui's font
-		// atlas, baked at exactly the size they are drawn at (the transform's scale included), so
-		// the text looks like ImGui's own and stays crisp when a canvas zooms. Text casts no
-		// shadow or glow. Needs an ImGui context whose font atlas is built (after the first
+		// left of the first line, and each line is `size` high. The glyphs are baked at exactly the
+		// size they are drawn at (the transform's scale included), so the text stays crisp when a
+		// canvas zooms. Needs an ImGui context whose font atlas is built (after the first
 		// ImGui::NewFrame()).
 		void AddText(ImFont* font, float size, glm::vec2 position, const glm::vec4& color, std::string_view text);
 
@@ -169,20 +153,15 @@ namespace Nyx::Engine
 		// font atlas included; an image with one more is dropped and reported.
 		void AddImage(ImTextureRef texture, const PainterRect& rect, const PainterStyle& style, const PainterRect& uvs = PainterRect{ { 0.0f, 0.0f }, { 1.0f, 1.0f } });
 
-		// Light around a rect, coloured by an image, e.g. a scene view's blurred picture glowing
-		// onto the UI around it (ambilight). A pixel outside the rect takes the texture's colour at
-		// the nearest point of the rect's edge, at `strength` (0 to 1) there, fading out over
-		// `reach` pixels. Inside the rect it is the image itself, at `strength`, so a rounded card
-		// drawn over it leaves no gap at its corners. `texture` and `uvs` as in AddImage(), and
-		// counted the same way. It casts no shadow, even in a group.
+		// Light around a rect, coloured by an image (ambilight): from `strength` (0 to 1) at the
+		// rect's edge, fading out over `reach` pixels. Inside the rect it is the image itself, so a
+		// rounded card drawn over it leaves no gap at its corners. `texture` and `uvs` as in
+		// AddImage().
 		void AddImageGlow(ImTextureRef texture, const PainterRect& rect, float reach, float strength, const PainterRect& uvs = PainterRect{ { 0.0f, 0.0f }, { 1.0f, 1.0f } });
 
 		// Frosted glass: a rounded rect showing `backdrop`, a picture of what lies behind it as
-		// large as the target (e.g. the target's contents, blurred), each pixel the picture at its
-		// own place. The style's colour is laid over the picture at its alpha, as a tint, and its
-		// effects give the glass a shadow or glow; its outline width is ignored. Near the edge the
-		// picture is pulled in from outside and lit, as `glass` says. The backdrop counts as a
-		// texture like an image's.
+		// large as the target, tinted by the style's colour; its outline width is ignored. The
+		// backdrop counts as a texture like an image's.
 		void AddGlass(ImTextureRef backdrop, const PainterRect& rect, float radius, const PainterStyle& style, const PainterGlass& glass = PainterGlass{});
 
 		// Clip rects. A pushed rect is in the current transform's units and is cut by the clip
@@ -210,7 +189,7 @@ namespace Nyx::Engine
 		// Copies a run of another painter's recorded commands to the end of this frame, as they
 		// are: in target pixels, with their clip rects. Their groups and textures come along,
 		// renumbered for this frame. For drawing segments of several painters that follow each
-		// other as one (stage 3, change 8); both painters should have the same target.
+		// other as one draw; both painters should have the same target.
 		// All or nothing: false, with nothing copied, when this frame has no room for the
 		// textures the run uses (PainterMaxTextures).
 		bool AppendSegment(const Painter& source, const PainterSegment& segment);

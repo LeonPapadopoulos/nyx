@@ -25,12 +25,6 @@ namespace Nyx::Engine
 
 	// The buffers one set of segments (or a canvas) needs on the GPU, and the descriptor sets that
 	// point at them. They only ever grow.
-	//  - Written by the CPU each frame (host-visible), then copied into the GPU's own: the
-	//    commands and groups the painter shader reads, and the measured commands and segments the
-	//    binner reads.
-	//  - The GPU's own (device-local): those copies, and what the binner writes, the tiles and
-	//    their entries, each tile's first kept command between its passes, and its sums.
-	//  - Read back (host-visible): the sums each frame, the tiles and entries while asked for.
 	struct VulkanPainterBuffers
 	{
 		struct GpuBuffer
@@ -67,11 +61,8 @@ namespace Nyx::Engine
 		void Release();
 	};
 
-	// The segments of one frame (PainterSegment), from any number of painters, binned on the GPU
-	// and drawn into render passes that already hold other drawing, e.g. ImGui's. Everything they
-	// need on the GPU goes into one set of buffers: each painter's commands and groups, and each
-	// segment's measured commands and tiles, one after the other. Drawing a segment only tells the
-	// shader where its part starts.
+	// One frame's segments (PainterSegment), from any number of painters, in one set of buffers,
+	// binned on the GPU and drawn into render passes that hold other drawing, e.g. ImGui's:
 	//
 	//     segments.Clear(budget);                                          // each frame
 	//     const uint32_t index = segments.Add(painter, segment);           // for each segment
@@ -80,10 +71,8 @@ namespace Nyx::Engine
 	//     ...
 	//     segments.ReadBack();                                             // once the GPU is done
 	//
-	// Add() measures the segment's commands on the CPU (MeasurePainterSegment()) and copies what it
-	// needs, so the painters may change or go afterwards. The textures are kept as ImGui texture
-	// references and resolved when the segment is drawn. Release it (or let it go) before the
-	// Vulkan device is destroyed.
+	// Add() copies what it needs, so the painters may change or go afterwards. Release it (or let
+	// it go) before the Vulkan device is destroyed.
 	class VulkanPainterSegments
 	{
 	public:
@@ -190,11 +179,8 @@ namespace Nyx::Engine
 		VulkanPainterBuffers Buffers;
 	};
 
-	// An image the painter draws into (a canvas): one segment over the whole target, binned and
-	// drawn each frame.
-	//
-	// Empty until VulkanPainter::Draw() first draws into it, which also gives it the painter's
-	// size. Release it (or let it go) before the Vulkan device is destroyed.
+	// An image the painter draws into (a canvas), empty until VulkanPainter::Draw() first draws into
+	// it. Release it (or let it go) before the Vulkan device is destroyed.
 	class VulkanPainterTarget
 	{
 	public:
@@ -235,20 +221,10 @@ namespace Nyx::Engine
 		VulkanPainterSegments Segments;
 	};
 
-	// Draws painted frames with the painter shader (Painter.vert and Painter.frag), after binning
-	// them into tiles on the GPU (PainterBin.comp).
-	//
-	//     VulkanPainter vulkanPainter;
-	//     vulkanPainter.Initialize(context, programs);
-	//     ...
-	//     vulkanPainter.Draw(commandBuffer, painter, target, options);
-	//
-	// It draws either a whole frame into an image of its own (Draw(), a canvas), or segments
-	// into someone else's render pass (Bin() and DrawSegment(), e.g. ImGui's).
-	//
-	// The renderer owns one. It waits for the previous frame's GPU work before recording the next,
-	// so every target and segment set has one set of buffers, rewritten each frame. A target is
-	// drawn at most once per frame.
+	// Draws painted frames with the painter shader, after binning them into tiles on the GPU. The
+	// renderer waits for the previous frame's GPU work before recording the next, so every target
+	// and segment set has one set of buffers, rewritten each frame: a target is drawn at most once
+	// per frame.
 	class VulkanPainter
 	{
 	public:

@@ -6,11 +6,10 @@
 
 namespace Nyx::UI
 {
-	// Finds what ImGui still draws itself, to see what isn't painted yet (Design/ui-painter.md,
-	// stage 3, changes 8 and 9). With marking on, each shape ImGui draws (its rects, lines,
-	// circles and triangles, in any window or in a viewport's background or foreground draw list)
-	// is outlined in red, over everything in its OS window. Shapes ImGui draws fully transparent
-	// don't show, and aren't marked.
+	// Finds what ImGui still draws itself, to see what isn't painted yet. With marking on, each
+	// shape ImGui draws (its rects, lines, circles and triangles, in any window or in a viewport's
+	// background or foreground draw list) is outlined in red, over everything in its OS window.
+	// Shapes ImGui draws fully transparent don't show, and aren't marked.
 	//
 	// ImGui draws shapes and text from the same texture, its font atlas: shapes read the atlas's
 	// white pixel or its baked lines, glyphs the rest. So a triangle all of whose corners read
@@ -31,10 +30,9 @@ namespace Nyx::UI
 	uint32_t GetImGuiShapeCount();
 	uint32_t GetImGuiShapeWindowCount();
 
-	// The painter heatmap (Design/ui-painter.md, stage 3, change 11): over each OS window, where
-	// the painter's work lies, from the heat the renderer sums per tile over all draws
-	// (Engine::PainterHeatGrid). It is drawn with ImGui's draw list, not the painter, so that it
-	// doesn't add to the painting it measures.
+	// The painter heatmap: over each OS window, where the painter's work lies, from the heat the
+	// renderer sums per tile over all draws (Engine::PainterHeatGrid). It is drawn with ImGui's
+	// draw list, not the painter, so that it doesn't add to the painting it measures.
 	enum class EPainterHeatmap
 	{
 		Off,

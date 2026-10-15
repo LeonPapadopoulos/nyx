@@ -1,9 +1,9 @@
 #version 450
 
-// The painter's tile binning, on the GPU (Design/ui-painter.md, stage 3, change 13). For every
-// 8x8 tile of every segment, the commands that can touch it, in drawing order, without those that
-// lie under a command covering the whole tile opaquely (the per-tile reduction): what the
-// painter shader (Painter.frag) walks for each pixel of the tile.
+// The painter's tile binning, on the GPU. For every 8x8 tile of every segment, the commands that
+// can touch it, in drawing order, without those that lie under a command covering the whole tile
+// opaquely (the per-tile reduction): what the painter shader (Painter.frag) walks for each pixel
+// of the tile.
 //
 // The CPU has measured each command (PainterTiles.h, PainterBinCommand). Two passes, one
 // invocation per tile, over the tiles of all segments one after the other:

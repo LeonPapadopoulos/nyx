@@ -77,7 +77,6 @@ namespace Nyx::Engine
 	// Blurs images on the GPU (Blur.vert and Blur.frag): the image is halved a few times, each
 	// time averaging around every pixel, and the small result blurred with a Gaussian along x
 	// and y. A small image makes a wide blur cheap: a few passes over a few thousand pixels.
-	// The plan is in Design/ui-painter.md, stage 3, change 1.
 	//
 	//     VulkanBlur blur;
 	//     blur.Initialize(context, programs);

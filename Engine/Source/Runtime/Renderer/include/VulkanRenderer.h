@@ -304,7 +304,7 @@ namespace Nyx
 		void SetSky(uint32_t cubeSlot);
 		uint32_t GetSky() const { return SkyboxTextureIndex; }
 
-		// Draws 2D shapes recorded with a Painter into a VulkanPainterTarget (Design/ui-painter.md)
+		// Draws 2D shapes recorded with a Painter into a VulkanPainterTarget
 		Nyx::Engine::VulkanPainter& GetPainterPass() { return PainterPass; }
 
 		uint64_t CreatePainterCanvas() override;
@@ -443,8 +443,8 @@ namespace Nyx
 
 		uint32_t FindMemoryType(vk::PhysicalDevice physicalDevice, uint32_t typeFilter, vk::MemoryPropertyFlags properties);
 
-		// Live reload of the engine's shaders (Design/shader-materials.md, stage 1, change 3):
-		// turned on where the shader sources and NyxShaderCompiler.exe are found
+		// Live reload of the engine's shaders: turned on where the shader sources and
+		// NyxShaderCompiler.exe are found
 		void StartLiveShaderReload();
 		// Once per frame, before recording: logs what compiled, and makes the pipelines of changed
 		// shaders again
@@ -519,7 +519,7 @@ namespace Nyx
 
 		Nyx::Engine::VulkanPainter PainterPass;
 
-		// Blurs every scene view's picture after it renders (Design/ui-painter.md, stage 3, change 1)
+		// Blurs every scene view's picture after it renders
 		Nyx::Engine::VulkanBlur BlurPass;
 		void BlurSceneViews(vk::raii::CommandBuffer& cmd);
 		void ReleaseSceneViewBlur(SceneViewInstance& view);
@@ -531,9 +531,9 @@ namespace Nyx
 		// generation the texture shows now.
 		void PointImGuiTexture(VkDescriptorSet& texture, uint64_t& shownGeneration, vk::ImageView view, uint64_t generation);
 
-		// What glass shows (Design/ui-painter.md, stage 3, change 6): ImGui's main window drawn up
-		// to the first glass window, blurred, each frame there is glass, before the main window
-		// itself is drawn. Its ImGui texture keeps its ID.
+		// What glass shows: ImGui's main window drawn up to the first glass window, blurred, each
+		// frame there is glass, before the main window itself is drawn. Its ImGui texture keeps its
+		// ID.
 		Nyx::Engine::VulkanGlassBackdrop GlassBackdrop;
 		VkDescriptorSet GlassImGuiTexture = VK_NULL_HANDLE;
 		uint64_t GlassImGuiTextureGeneration = 0;
@@ -586,8 +586,8 @@ namespace Nyx
 		//  - GatherWindowPainters(), once the UI is built: ends the window painters;
 		//  - UploadWindowSegments(), once ImGui has made the draw data: finds the runs of
 		//    segments with nothing ImGui draws between them (Nyx::UI::FindWindowSegmentRuns()),
-		//    copies each run into one painter (Painter::AppendSegment()) and adds it as one draw
-		//    (stage 3, change 8), then records binning them all on the GPU (change 13).
+		//    copies each run into one painter (Painter::AppendSegment()) and adds it as one draw,
+		//    then records binning them all on the GPU.
 		// ImGui then calls back where each segment goes: DrawWindowSegment() draws a run at its
 		// first segment, and nothing at the others.
 		void GatherWindowPainters();
@@ -610,8 +610,8 @@ namespace Nyx
 		std::vector<std::unique_ptr<Nyx::Engine::Painter>> RunPainters;
 		// The OS window of each draw in WindowSegments, as an index into WindowPainterStats.OsWindows
 		std::vector<uint32_t> WindowSegmentDrawOsWindows;
-		// The last frame's statistics (stage 3, change 10): its CPU times as the frame is built,
-		// its GPU times once its fence has passed
+		// The last frame's statistics: its CPU times as the frame is built, its GPU times once its
+		// fence has passed
 		Nyx::Engine::PainterWindowStats WindowPainterStats;
 		// This frame's CPU times taken before GatherWindowPainters() starts its statistics
 		Nyx::Engine::PainterWindowStats::Times PendingFrameTimes;

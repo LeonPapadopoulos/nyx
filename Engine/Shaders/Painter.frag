@@ -1,15 +1,14 @@
 #version 450
 
-// The painter's pixel shader (Design/ui-painter.md, stage 1, change 3).
+// The painter's pixel shader.
 //
 // Every pixel finds its 8x8 tile, walks the tile's draw commands in order, and blends each one
 // in, in registers: a command's shape is a signed distance field (negative inside, positive
 // outside, in pixels), and one pixel of fade around its edge is the anti-aliasing. The result is
 // written once, premultiplied, and blended over the target with (One, OneMinusSrcAlpha).
 //
-// The buffers can hold more than what is drawn: all segments of a frame share them (stage 2,
-// change 3). The push constants say where the drawn part starts in each, and where its tile
-// grid lies on the target.
+// The buffers can hold more than what is drawn: all segments of a frame share them. The push
+// constants say where the drawn part starts in each, and where its tile grid lies on the target.
 //
 // How to add a primitive: the checklist is in PainterCommands.h. Here, it needs a constant
 // below, a ...Distance() function, and a case in ShapeDistance(). Image glows are the one

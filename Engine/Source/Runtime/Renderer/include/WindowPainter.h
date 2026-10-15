@@ -13,38 +13,11 @@
 
 namespace Nyx::UI
 {
-	// Paints into an ImGui window, in order with ImGui's own drawing there: a shape painted after
-	// an ImGui widget lands in front of it, and the next widget in front of the shape. The plan is
-	// in Design/ui-painter.md, stage 2.
-	//
-	// Inside a window, ask for the window's own with GetWindowPainter(). It records like a
-	// Painter, but in ImGui's screen coordinates, as ImDrawList does:
-	//
-	//     Nyx::UI::WindowPainter& painter = Nyx::UI::GetWindowPainter();
-	//     painter.AddRoundedRect(card, 6.0f, PainterStyle::Filled(cardColor)); // behind the text
-	//     ImGui::TextUnformatted("Hello");
-	//     painter.AddCircle(badgeCenter, 4.0f, PainterStyle::Filled(accent));  // in front of it
-	//
-	// How it keeps the order: the shapes are cut into segments (PainterSegment) wherever ImGui has
-	// drawn in between, and each segment starts with a callback in the window's draw list. ImGui
-	// renders a draw list in order, so the callback, where the renderer draws the segment, comes
-	// after everything ImGui drew before the shapes and before everything it draws after them.
-	//
-	// Painting is clipped like ImGui's drawing: each shape gets ImGui's current clip rect, so
-	// child windows, tables and scrolling regions clip it too. PushClipRect() pushes onto ImGui's
-	// own clip rect stack. A new clip rect starts a new segment, so all shapes of a segment share
-	// one clip rect.
-	//
-	// Shapes are recorded in the viewport's framebuffer pixels: ImGui positions minus the
-	// viewport's position, times its framebuffer scale. Those are the pixels the segments are
-	// drawn into.
-	//
-	// The draw list keeps a pointer to this window painter until ImGui renders it, so it must not
-	// move or be destroyed before then. Like Painter, it never logs or asserts; misuse is collected
-	// in GetProblems().
-	//
-	// A window painter can also paint behind everything already in its draw list (Behind), for a
-	// window's card painted after the window is built (UIChrome.h).
+	// Paints into an ImGui window, in order with ImGui's own drawing there, in ImGui's screen
+	// coordinates. The shapes are cut into segments wherever ImGui has drawn in between, and each
+	// segment starts with a callback in the window's draw list, where the renderer draws it: ImGui
+	// renders a draw list in order, which keeps the order. The draw list keeps a pointer to the
+	// window painter until ImGui renders it, so it must not move or be destroyed before then.
 
 	// Where a window painter's segments go in its draw list
 	enum class EWindowPainterPlacement
@@ -215,7 +188,7 @@ namespace Nyx::UI
 	};
 
 	// Segments that follow each other in a viewport's render order with nothing ImGui draws
-	// between them, so they can be drawn as one (stage 3, change 8)
+	// between them, so they can be drawn as one
 	struct WindowSegmentRun
 	{
 		std::vector<WindowSegmentRef> Segments;
