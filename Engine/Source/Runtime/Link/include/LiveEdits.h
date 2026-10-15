@@ -14,11 +14,6 @@
 // messages (SetProperties, CreateEntity, DeleteEntity), and the game applies them to its world.
 // The messages name entities by guid and components by type name, so the same functions work in
 // any program and in either direction.
-namespace Nyx
-{
-	class IRenderer;
-}
-
 namespace Nyx::Engine
 {
 	struct ComponentTypeOps;
@@ -53,8 +48,4 @@ namespace Nyx::Engine
 	// ignored, as it holds only the values that changed; so are messages for entities the world
 	// doesn't have.
 	ELiveEditResult ApplyLiveEdit(const Net::Message& message, Registry& world, ScenePostLoadContext postLoadContext);
-
-	// Applies a ShaderProgram or MaterialValues message to the renderer. A material whose text
-	// doesn't parse is ignored.
-	ELiveEditResult ApplyRendererEdit(const Net::Message& message, Nyx::IRenderer& renderer);
 }

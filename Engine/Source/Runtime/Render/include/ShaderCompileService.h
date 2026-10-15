@@ -20,29 +20,10 @@ namespace Nyx::Net
 
 namespace Nyx::Engine
 {
-	class BinaryReader;
-	class BinaryWriter;
-
 	// Where shaders get compiled for live reload: in NyxShaderCompiler.exe, so that a compiler
 	// crash costs one compile and not the program (RemoteShaderCompileService), or in this process,
 	// for tests (LocalShaderCompileService). Nothing blocks: requests go in with Submit(), results
 	// come out of TakeResults().
-
-	enum class EShaderCompileKind : uint8_t
-	{
-		Program,        // ShaderCompiler::CompileProgram()
-		Material,       // ShaderCompiler::CompileMaterial()
-		DefaultsWriter, // ShaderCompiler::CompileDefaultsWriter()
-		TestCrash,      // Makes NyxShaderCompiler.exe crash, if it was started to allow that (tests)
-	};
-
-	struct ShaderCompileRequest
-	{
-		uint32_t Id = 0;
-		EShaderCompileKind Kind = EShaderCompileKind::Program;
-		std::filesystem::path File;
-		ShaderDomain Domain; // Material only
-	};
 
 	struct ShaderCompileResponse
 	{
@@ -129,16 +110,4 @@ namespace Nyx::Engine
 		std::deque<ShaderCompileRequest> Waiting; // not sent yet
 		std::deque<ShaderCompileRequest> Sent;    // sent, no result yet; answered in order
 	};
-
-	// How requests and results travel between the engine and NyxShaderCompiler.exe
-	namespace ShaderCompileProtocol
-	{
-		constexpr uint16_t RequestMessage = 1;
-		constexpr uint16_t ResultMessage = 2;
-
-		void WriteRequest(BinaryWriter& writer, const ShaderCompileRequest& request);
-		bool ReadRequest(BinaryReader& reader, ShaderCompileRequest& outRequest);
-		void WriteResult(BinaryWriter& writer, uint32_t requestId, const ShaderCompileResult& result);
-		bool ReadResult(BinaryReader& reader, uint32_t& outRequestId, ShaderCompileResult& outResult);
-	}
 }

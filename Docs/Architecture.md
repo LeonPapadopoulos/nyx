@@ -34,22 +34,34 @@ message on the wire is `payload size (u32) | type (u16) | payload`, little-endia
 
 ## Modules
 
-The engine's source folders, under `Engine/Source`:
+The engine's source folders are under `Engine/Source`: `Reflection`, `DevTools`, and the folders
+of `Runtime`, each with an `include` and a `src` folder. A folder includes only from the folders
+its row lists. `NyxRuntimeFolderDependencies` (`Engine/Source/tests/RuntimeFolderDependencies.cmake`)
+reads this table and fails on any `#include` it doesn't allow, and on a table that goes round in a
+circle, so a new dependency starts here.
 
-- `Runtime/Core`: logging, assertions, paths, the crash handler, child processes, TCP connections.
-- `Reflection`: type and property metadata, and the `NYX_REFLECT` and `NYX_PROPERTY` macros.
-- `Runtime/Input`: keyboard and mouse, gathered from backends into one `InputFrame` per frame.
-- `Runtime/Engine`: the application and window, entities and components, serialization, the
-  editor link and live edits.
-- `Runtime/Renderer`: the Vulkan renderer, shaders and materials, the painter and the painted UI.
-- `DevTools`: the painter's test sheet. Not in any library: the editor compiles it in Debug
-  builds, and the painter tests compile it.
+| Folder | What it holds | Includes from |
+| --- | --- | --- |
+| `Core` | Logging, assertions, paths, text helpers, child processes, the crash handler, file watching, the frame rate limiter, `BinaryArchive` | — |
+| `Reflection` | Type and property metadata, and the `NYX_REFLECT` and `NYX_PROPERTY` macros; not under `Runtime` | — |
+| `Net` | TCP connections and the messages they carry | Core |
+| `Input` | Keyboard and mouse, gathered from backends into one `InputFrame` per frame | Core |
+| `Scene` | Entities and components, the component registry, scene files, the tagged binary format | Core, Reflection |
+| `Assets` | Asset files as plain data: images, materials, glTF meshes, shader compile requests and results | Core |
+| `UI` | The painter, and the painted UI drawn with it on top of ImGui | Core, Reflection |
+| `Link` | The editor link: its messages, live edits, recordings, the log sink | Core, Net, Scene, Assets |
+| `Render` | The Vulkan renderer, scene views, shaders and materials, and applying the link's shaders and material values | Core, Net, Scene, Assets, UI, Link |
+| `Platform` | The window | Core, Input, UI, Render |
+| `App` | The application and its layers, `main()`, the options the editor starts a game with | Core, Input, Scene, Render, Platform |
 
-Which may depend on which:
+Known issue: `Platform` includes `UI` because `WindowsWindow` paints the title bar and the dock
+space. Both belong in the editor; once they move there, `Platform` no longer needs `UI`.
 
-- Core and Reflection depend on no other Nyx module; Input only on Core.
-- Engine and Renderer use each other (the window owns the renderer, the renderer reads the
-  world) and are built as one library.
+`DevTools` holds the painter's test sheet. It is in no library: the editor compiles it in Debug
+builds, and the painter tests compile it.
+
+Beyond the table:
+
 - Nothing under `Engine/Source` includes editor or game code. Only the editor knows the editor.
 - Code the engine has only for the editor sits behind `NYX_UI_INSPECTION` (ImGui source
   inspection); the editor's prototype and diagnostics tools behind `NYX_DEV_TOOLS`, which is
@@ -61,8 +73,8 @@ The CMake targets:
   libraries: `NyxEngine` (`NYX_UI_INSPECTION=0`, for the game and the tools) and
   `NyxEditorEngine` (`=1`, for the editor).
 - `NyxStartup`: the startup banner, drawn with GDI+ on a thread of its own.
-- `NyxGeneratedReflection`: runs `NyxHeaderTool` over `Runtime/Engine/include` and
-  `Runtime/Renderer/include`, into `Build/Windows/Generated`.
+- `NyxGeneratedReflection`: runs `NyxHeaderTool` over `Runtime/Scene/include`, where every
+  reflected type is, into `Build/Windows/Generated`.
 - `NyxEditorLib`: the editor without its `main()`, a static library that `NyxEditor` and the
   editor's tests link, so the editor compiles once.
 - Tests are in `Engine/Source/tests` and `Editor/Source/tests`; `ctest -C Debug` in
@@ -140,7 +152,7 @@ it with a warning. `Hello`'s layout never changes.
 
 ### A component
 
-1. A header in `Engine/Source/Runtime/Engine/include` (or `Runtime/Renderer/include`): a struct
+1. A header in `Engine/Source/Runtime/Scene/include`, the folder the header tool reads: a struct
    marked `NYX_REFLECT(Component, ...)`, its properties `NYX_PROPERTY(Edit, Undo, Serialize, ...)`,
    and `#include "Generated/Runtime/<Header>.reflect.h"` at the end. `NameComponent.h` is the
    smallest example.
@@ -167,7 +179,7 @@ it with a warning. `Hello`'s layout never changes.
 2. A struct with `Type`, `Write()` and `Read()` in `EditorLinkMessages.h` and `.cpp`.
 3. A case in `DescribeEditorLinkMessage()`, so the Game Link window and NyxDump can show it.
 4. Send it with `EditorLink::Send()`; handle it in the game's `EditorLinkLayer` (or in
-   `ApplyLiveEdit()` and `ApplyRendererEdit()`, `LiveEdits.cpp`), or in the editor's
+   `ApplyLiveEdit()`, `LiveEdits.cpp`, and `ApplyRendererEdit()`, `RendererLiveEdits.cpp`), or in the editor's
    `GameInstance`.
 5. Test it in `NyxEditorLinkTests`.
 

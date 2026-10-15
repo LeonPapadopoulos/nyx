@@ -1,4 +1,5 @@
 #pragma once
+#include "MeshData.h"
 #include "Resource.h"
 #include <vulkan/vulkan.hpp>
 #include "VulkanContext.h"
@@ -7,64 +8,47 @@
 
 namespace Nyx
 {
-	struct Vertex
+	// How Vertex is laid out for the vertex shaders
+	inline vk::VertexInputBindingDescription GetVertexBindingDescription()
 	{
-		glm::vec3 Position{ 0.0f, 0.0f, 0.0f };
-		glm::vec3 Color{ 1.0f, 1.0f, 1.0f };
-		glm::vec2 UV{ 0.0f, 0.0f };
-		glm::vec3 Normal{ 0.0f, 1.0f, 0.0f };
-		// Along the texture's u in xyz; w is +1 or -1: the bitangent, cross(normal, tangent) * w,
-		// points up the image (towards falling v), where a normal map's green points. For normal
-		// maps (ComputeTangents()).
-		glm::vec4 Tangent{ 1.0f, 0.0f, 0.0f, 1.0f };
+		vk::VertexInputBindingDescription binding{};
+		binding.binding = 0;
+		binding.stride = sizeof(Vertex);
+		binding.inputRate = vk::VertexInputRate::eVertex;
+		return binding;
+	}
 
-		static vk::VertexInputBindingDescription GetBindingDescription()
-		{
-			vk::VertexInputBindingDescription binding{};
-			binding.binding = 0;
-			binding.stride = sizeof(Vertex);
-			binding.inputRate = vk::VertexInputRate::eVertex;
-			return binding;
-		}
-
-		static std::array<vk::VertexInputAttributeDescription, 5> GetAttributeDescriptions()
-		{
-			std::array<vk::VertexInputAttributeDescription, 5> attributes{};
-
-			attributes[0].binding = 0;
-			attributes[0].location = 0;
-			attributes[0].format = vk::Format::eR32G32B32Sfloat;
-			attributes[0].offset = offsetof(Vertex, Position);
-
-			attributes[1].binding = 0;
-			attributes[1].location = 1;
-			attributes[1].format = vk::Format::eR32G32B32Sfloat;
-			attributes[1].offset = offsetof(Vertex, Color);
-
-			attributes[2].binding = 0;
-			attributes[2].location = 2;
-			attributes[2].format = vk::Format::eR32G32Sfloat;
-			attributes[2].offset = offsetof(Vertex, UV);
-
-			attributes[3].binding = 0;
-			attributes[3].location = 3;
-			attributes[3].format = vk::Format::eR32G32B32Sfloat;
-			attributes[3].offset = offsetof(Vertex, Normal);
-
-			attributes[4].binding = 0;
-			attributes[4].location = 4;
-			attributes[4].format = vk::Format::eR32G32B32A32Sfloat;
-			attributes[4].offset = offsetof(Vertex, Tangent);
-
-			return attributes;
-		}
-	};
-
-	struct MeshData
+	inline std::array<vk::VertexInputAttributeDescription, 5> GetVertexAttributeDescriptions()
 	{
-		std::vector<Vertex> Vertices;
-		std::vector<uint32_t> Indices;
-	};
+		std::array<vk::VertexInputAttributeDescription, 5> attributes{};
+
+		attributes[0].binding = 0;
+		attributes[0].location = 0;
+		attributes[0].format = vk::Format::eR32G32B32Sfloat;
+		attributes[0].offset = offsetof(Vertex, Position);
+
+		attributes[1].binding = 0;
+		attributes[1].location = 1;
+		attributes[1].format = vk::Format::eR32G32B32Sfloat;
+		attributes[1].offset = offsetof(Vertex, Color);
+
+		attributes[2].binding = 0;
+		attributes[2].location = 2;
+		attributes[2].format = vk::Format::eR32G32Sfloat;
+		attributes[2].offset = offsetof(Vertex, UV);
+
+		attributes[3].binding = 0;
+		attributes[3].location = 3;
+		attributes[3].format = vk::Format::eR32G32B32Sfloat;
+		attributes[3].offset = offsetof(Vertex, Normal);
+
+		attributes[4].binding = 0;
+		attributes[4].location = 4;
+		attributes[4].format = vk::Format::eR32G32B32A32Sfloat;
+		attributes[4].offset = offsetof(Vertex, Tangent);
+
+		return attributes;
+	}
 
 	// Each vertex's tangent from the triangles around it: their direction of rising u, made
 	// perpendicular to the normal, and the side of falling v (Lengyel). Exact on flat faces; on

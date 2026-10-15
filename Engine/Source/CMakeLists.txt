@@ -60,6 +60,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Assets/src/GltfImporter.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Assets/src/ImageFile.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Assets/src/MaterialAsset.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Assets/src/ShaderCompileTypes.cpp
 
     # Runtime/UI
     ${NYX_ENGINE_ROOT}/Runtime/UI/src/ImGuiTheme.cpp
@@ -77,7 +78,6 @@ set(NYX_ENGINE_SOURCES
     # Runtime/Render
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/AssetResolver.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Mesh.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Render/src/Shader.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Texture.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/CubemapTexture.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Material.cpp
@@ -104,6 +104,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanBindless.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanMaterials.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanEnvironment.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/RendererLiveEdits.cpp
 
     # Runtime/Link
     ${NYX_ENGINE_ROOT}/Runtime/Link/src/EditorLink.cpp
@@ -173,6 +174,8 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Assets/include/ShaderLayout.h
     ${NYX_ENGINE_ROOT}/Runtime/Assets/include/BindlessTextures.h
     ${NYX_ENGINE_ROOT}/Runtime/Assets/include/MaterialAsset.h
+    ${NYX_ENGINE_ROOT}/Runtime/Assets/include/MeshData.h
+    ${NYX_ENGINE_ROOT}/Runtime/Assets/include/ShaderCompileTypes.h
 
     # Runtime/UI
     ${NYX_ENGINE_ROOT}/Runtime/UI/include/ImGuiTheme.h
@@ -194,7 +197,6 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Resource.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/AssetResolver.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Mesh.h
-    ${NYX_ENGINE_ROOT}/Runtime/Render/include/Shader.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Texture.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/CubemapTexture.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Material.h
@@ -222,6 +224,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanBindless.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanMaterials.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanEnvironment.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/RendererLiveEdits.h
 
     # Runtime/Link
     ${NYX_ENGINE_ROOT}/Runtime/Link/include/EditorLink.h

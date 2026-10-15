@@ -6,6 +6,7 @@
 #include "LiveEdits.h"
 #include "Log.h"
 #include "NetConnection.h"
+#include "RendererLiveEdits.h"
 
 #include <chrono>
 

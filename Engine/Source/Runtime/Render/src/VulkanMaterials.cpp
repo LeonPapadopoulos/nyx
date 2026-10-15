@@ -498,10 +498,10 @@ namespace Nyx::Engine
 
 		// The mesh's vertices, those parts the vertex shader reads (the colour, for one: SurfaceInput
 		// has none)
-		const auto bindingDescription = Nyx::Vertex::GetBindingDescription();
+		const auto bindingDescription = Nyx::GetVertexBindingDescription();
 		const std::vector<uint32_t> read = InputLocations(vertex.Spirv);
 		std::vector<vk::VertexInputAttributeDescription> attributeDescriptions;
-		for (const vk::VertexInputAttributeDescription& attribute : Nyx::Vertex::GetAttributeDescriptions())
+		for (const vk::VertexInputAttributeDescription& attribute : Nyx::GetVertexAttributeDescriptions())
 		{
 			if (std::find(read.begin(), read.end(), attribute.location) != read.end())
 			{

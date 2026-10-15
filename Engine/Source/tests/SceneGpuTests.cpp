@@ -27,10 +27,10 @@
 #include "EditorLinkMessages.h"
 #include "Entity.h"
 #include "ImageFile.h"
-#include "LiveEdits.h"
 #include "Log.h"
 #include "MeshRendererComponent.h"
 #include "Paths.h"
+#include "RendererLiveEdits.h"
 #include "ShaderCompiler.h"
 #include "TransformComponent.h"
 #include "VulkanImGuiBackend.h" // VulkanRenderer's destructor needs it

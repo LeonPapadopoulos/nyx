@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ShaderLayout.h"
+#include "ShaderCompileTypes.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -20,66 +20,6 @@ namespace Nyx::Engine
 	// Slang is delay-loaded: a program that never makes a ShaderCompiler doesn't need slang.dll, and
 	// one without it gets IsAvailable() false instead of a crash. Not thread-safe: one thread at a
 	// time per compiler.
-
-	enum class EShaderStage : uint8_t
-	{
-		Vertex,
-		Fragment,
-		Compute,
-	};
-
-	enum class EShaderDiagnosticSeverity : uint8_t
-	{
-		Note,
-		Warning,
-		Error,
-	};
-
-	struct ShaderDiagnostic
-	{
-		std::filesystem::path File; // empty for a message about no file (e.g. an internal error)
-		uint32_t Line = 0;
-		uint32_t Column = 0; // 0 when Slang showed no position in the line
-		EShaderDiagnosticSeverity Severity = EShaderDiagnosticSeverity::Error;
-		int Code = 0;
-		std::string Message;
-
-		// "Stone.slang(13,32): error 30015: undefined identifier 'Tilling'."
-		std::string ToString() const;
-	};
-
-	struct CompiledEntryPoint
-	{
-		std::string Name; // the name in the SPIR-V, to make the pipeline stage with
-		EShaderStage Stage = EShaderStage::Vertex;
-		std::vector<uint32_t> Spirv;
-	};
-
-	struct ShaderCompileResult
-	{
-		bool bSucceeded = false;
-		std::vector<CompiledEntryPoint> EntryPoints;
-		// Everything Slang said, in its order; a successful compile may have warnings
-		std::vector<ShaderDiagnostic> Diagnostics;
-		// The file itself and every file it imports or includes, for reloading on change
-		std::vector<std::filesystem::path> Dependencies;
-		// Materials only: the material's struct
-		std::optional<ShaderLayout> MaterialLayout;
-		double Milliseconds = 0.0;
-
-		const CompiledEntryPoint* FindEntryPoint(std::string_view name) const;
-		bool HasErrors() const;
-	};
-
-	// Where materials of one kind plug in: a module of the shader library and its entry points.
-	// Entry points that are generic over the material are specialised with the material's struct.
-	struct ShaderDomain
-	{
-		std::string Module;                   // as imported, e.g. "nyx.surface"
-		std::vector<std::string> EntryPoints; // e.g. "surfaceVertex", "surfaceFragment"
-
-		static ShaderDomain Surface();
-	};
 
 	class ShaderCompiler
 	{

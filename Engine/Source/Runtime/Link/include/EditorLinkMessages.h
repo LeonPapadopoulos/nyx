@@ -4,7 +4,7 @@
 #include "CrashHandler.h"
 #include "EntityGuid.h"
 #include "NetConnection.h"
-#include "ShaderCompileService.h"
+#include "ShaderCompileTypes.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -163,7 +163,7 @@ namespace Nyx::Engine
 	};
 
 	// Live materials: what the editor compiles and the values it edits reach the games it started;
-	// see ApplyRendererEdit() in LiveEdits.h.
+	// see ApplyRendererEdit() in RendererLiveEdits.h.
 
 	// Editor to game: a shader the editor compiled, the engine's or a material's: what was asked
 	// (kind, file, domain) and what came out (each entry point's SPIR-V, a material's layout, the

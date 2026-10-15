@@ -49,9 +49,8 @@ Editor/          NyxEditor.exe: panels, gizmo, undo, asset browser, Play; themes
 Engine/
   Shaders/       The engine's shaders, compiled by NyxShaderCompiler during the build
   Source/
-    Runtime/     Core (logging, paths, processes, connections), Engine (application, entities,
-                 components, serialization, editor link), Input, Renderer (Vulkan, materials,
-                 the painter and the painted UI)
+    Runtime/     One folder per part: Core, Net, Input, Scene, Assets, UI (the painter and the
+                 painted UI), Render (Vulkan), Link (editor link), Platform (window), App
     Reflection/  Reflection types and the NYX_REFLECT / NYX_PROPERTY macros
     DevTools/    The painter's test sheet, for the editor's Debug tools and the painter tests
     tests/       The engine's tests

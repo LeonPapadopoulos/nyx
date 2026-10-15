@@ -1,11 +1,16 @@
 #pragma once
 
-#include "Mesh.h"
-#include "Material.h"
 #include "ReflectionMacros.h"
 #include "AssetReference.h"
 
 #include <string>
+
+// What the renderer draws the component with; the scene only holds them
+namespace Nyx
+{
+	class Mesh;
+	struct Material;
+}
 
 namespace Nyx::Engine
 {
