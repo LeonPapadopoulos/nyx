@@ -144,11 +144,9 @@ namespace Nyx::Editor
 			float GpuFrame = 0.0f;
 			float Draws = 0.0f;
 			float Commands = 0.0f;
-			// The tile entries before the per-tile reduction, those it keeps, and those it would
-			// keep with the docked cards opaque
+			// The tile entries before the per-tile reduction, and those it keeps
 			float EntriesBefore = 0.0f;
 			float Entries = 0.0f;
-			float KeptCardsOpaque = 0.0f;
 		};
 		static constexpr size_t StatisticsFrames = 240;
 		std::vector<FrameSample> FrameSamples;
@@ -159,8 +157,7 @@ namespace Nyx::Editor
 		void DrawOsWindowStatistics(const Nyx::Engine::PainterWindowStats& stats) const;
 		// The times of the frames kept as lines over a field, painted, the newest at the right
 		void DrawFrameGraph(std::span<const FrameSample> samples) const;
-		// What the per-tile reduction drops, and the frame now and with the docked cards opaque
-		// (PredictOpaqueDockedCards()), from the frames kept
+		// What the per-tile reduction drops, and what the painter costs a frame, from the frames kept
 		void DrawReduction(std::span<const FrameSample> samples) const;
 		// The note that vsync or the frame rate cap holds the editor's frame rate back, if one does
 		void DrawFrameRateLimitInfo() const;
@@ -169,37 +166,6 @@ namespace Nyx::Editor
 		bool bVSync = false;
 		uint32_t FrameRateCap = 0;
 	};
-
-	// What the painter costs a frame on average, measured (the Statistics tab), for predicting
-	// what opaque docked cards would bring (Design/ui-painter.md, stage 3, changes 12 and 13)
-	struct PainterCosts
-	{
-		// Milliseconds: the editor's frame, the painter's CPU time after the UI is built, and its
-		// draws on the GPU
-		float Frame = 0.0f;
-		float PainterCpu = 0.0f;
-		float PainterGpu = 0.0f;
-		// The tile entries the reduction keeps, and would keep with the docked cards opaque, as
-		// the GPU counts them (PainterReduction)
-		float Kept = 0.0f;
-		float KeptCardsOpaque = 0.0f;
-	};
-
-	// One frame, measured or predicted
-	struct PainterScenario
-	{
-		const char* Name = "";
-		float PainterCpu = 0.0f;
-		float PainterGpu = 0.0f;
-		float Frame = 0.0f;
-	};
-
-	// The frame now, and predicted with the docked cards opaque. The model: the painter's draws on
-	// the GPU take as long as the entries their pixels walk (as if dropped and kept commands cost
-	// the same; the glows under the cards cost more, so it is cautious), the CPU's time stays, and
-	// the editor's frame changes by what the painter's GPU time changes: it runs one frame at a
-	// time, so CPU and GPU times add up.
-	std::vector<PainterScenario> PredictOpaqueDockedCards(const PainterCosts& now);
 
 	// Draws a painter's recorded frame with ImGui's ImDrawList instead, for comparison: shapes
 	// become ImGui's triangles, glyphs and images ImGui's textured quads. `origin` is where the

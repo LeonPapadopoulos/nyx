@@ -72,17 +72,17 @@ namespace Nyx::Engine
 			return reach;
 		}
 
-		// The rect a command covers opaquely: a solid filled rect without outline, opaque or of a
-		// colour in `alsoOpaque`, less its largest rounding (a tile inside that misses its rounded
-		// corners), cut by its clip rect. Empty for anything else.
-		PainterRect MeasureHiding(const PainterCommand& command, std::span<const uint32_t> alsoOpaque)
+		// The rect a command covers opaquely: an opaque, solid filled rect without outline, less its
+		// largest rounding (a tile inside that misses its rounded corners), cut by its clip rect.
+		// Empty for anything else.
+		PainterRect MeasureHiding(const PainterCommand& command)
 		{
 			if (static_cast<EPainterCommandType>(command.Type) != EPainterCommandType::Rect || command.OutlineWidth > 0.0f ||
 				static_cast<EPainterFillMode>(command.FillMode) != EPainterFillMode::Solid)
 			{
 				return PainterRect{};
 			}
-			const bool bOpaque = (command.Color >> 24) == 0xFFu || std::find(alsoOpaque.begin(), alsoOpaque.end(), command.Color) != alsoOpaque.end();
+			const bool bOpaque = (command.Color >> 24) == 0xFFu;
 			if (!bOpaque)
 			{
 				return PainterRect{};
@@ -93,8 +93,7 @@ namespace Nyx::Engine
 			return inside.IsEmpty() ? PainterRect{} : Intersect(inside, command.ClipRect);
 		}
 
-		PainterBinCommand MeasureCommand(const PainterCommand& command, const std::vector<PainterRect>& groupReach, const PainterRect& target,
-			std::span<const uint32_t> alsoOpaque)
+		PainterBinCommand MeasureCommand(const PainterCommand& command, const std::vector<PainterRect>& groupReach, const PainterRect& target)
 		{
 			const bool bInGroup = command.Group < groupReach.size();
 			const PainterRect reach = bInGroup ? groupReach[command.Group] : GetShapeBounds(command);
@@ -107,8 +106,7 @@ namespace Nyx::Engine
 				measured.Reach = PainterRect{};
 				return measured;
 			}
-			measured.Hides = MeasureHiding(command, {});
-			measured.HidesIfAlsoOpaque = MeasureHiding(command, alsoOpaque);
+			measured.Hides = MeasureHiding(command);
 
 			// A line in a group covers the group's reach like any other shape: its shadow and
 			// glow spread around the whole group.
@@ -124,7 +122,7 @@ namespace Nyx::Engine
 	}
 
 	void MeasurePainterSegment(const Painter& painter, const PainterSegment& segment, bool bWholeTarget, const PainterBudget& budget,
-		std::span<const uint32_t> alsoOpaque, PainterMeasuredSegment& inOutSegment)
+		PainterMeasuredSegment& inOutSegment)
 	{
 		const auto startTime = std::chrono::steady_clock::now();
 		PainterMeasuredSegment& measured = inOutSegment;
@@ -152,7 +150,7 @@ namespace Nyx::Engine
 		measured.Commands.reserve(binned);
 		for (size_t index = 0; index < binned; ++index)
 		{
-			measured.Commands.push_back(MeasureCommand(commands[index], groupReach, target, alsoOpaque));
+			measured.Commands.push_back(MeasureCommand(commands[index], groupReach, target));
 			measured.Stats.CulledCommands += measured.Commands.back().Reach.IsEmpty() ? 1 : 0;
 		}
 		measured.Stats.DroppedCommands = static_cast<uint32_t>(commands.size() - binned);

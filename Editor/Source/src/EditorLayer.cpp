@@ -249,8 +249,10 @@ namespace Nyx::Editor
 		// imgui.ini gets the current workspace's layout too, as ImGui saves it
 		Layouts.SaveCurrent();
 		Renderer->SetShaderCompiledListener(nullptr);
+#if NYX_DEV_TOOLS
 		PainterTest.Release();
 		Mockup.Release();
+#endif
 	}
 
 	void EditorLayer::OnUpdate(float deltaTime)
@@ -397,9 +399,11 @@ namespace Nyx::Editor
 		}
 
 		DebugTools.DrawWindows();
+#if NYX_DEV_TOOLS
 		PainterTest.SetFrameRateLimits(Window->IsVSync(), Window->GetFrameRateCap());
 		PainterTest.Draw(*Renderer);
 		Mockup.Draw(*Renderer);
+#endif
 	}
 
 	void EditorLayer::ApplyFrameRate()
@@ -526,8 +530,10 @@ namespace Nyx::Editor
 			DebugTools.DrawMenu();
 			Nyx::UI::Separator();
 			NYX_UI(ImGui::TextDisabled("Nyx"));
+#if NYX_DEV_TOOLS
 			NYX_UI(Nyx::UI::MenuItem("Painter Test", nullptr, &PainterTest.bOpen));
 			NYX_UI(Nyx::UI::MenuItem("Mockup Overlay", nullptr, &Mockup.bOpen));
+#endif
 			bool bPaintedChrome = Nyx::UI::IsPaintedChromeEnabled();
 			if (NYX_UI(Nyx::UI::MenuItem("Painted Chrome", nullptr, &bPaintedChrome)))
 			{

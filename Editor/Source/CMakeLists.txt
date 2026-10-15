@@ -9,8 +9,6 @@ set(NYX_EDITOR_SOURCES
     src/DetailsPanel.cpp
     src/SceneViewPanel.cpp
     src/EditorCameraController.cpp
-    src/PainterTestWindow.cpp
-    src/MockupOverlay.cpp
     src/FileDialogs.cpp
     src/SceneFilePopups.cpp
     src/PreferencesWindow.cpp
@@ -75,8 +73,6 @@ set(NYX_EDITOR_HEADERS
     include/DetailsPanel.h
     include/SceneViewPanel.h
     include/EditorCameraController.h
-    include/PainterTestWindow.h
-    include/MockupOverlay.h
     include/FileDialogs.h
     include/SceneFilePopups.h
     include/PreferencesWindow.h
@@ -119,6 +115,23 @@ set(NYX_EDITOR_HEADERS
     include/EditorAssetActivationContext.h
 )
 
+# The prototype and diagnostics tools (NYX_DEV_TOOLS), with the painter's test sheet that Painter
+# Test shows. The editor gets them in Debug builds only; NYX_DEV_TOOLS tells its code whether they
+# are there. The test targets always compile them, so their tests run in every configuration.
+set(NYX_DEV_TOOLS_DIR ${PROJECT_SOURCE_DIR}/Engine/Source/DevTools)
+set(NYX_EDITOR_DEV_TOOL_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/PainterTestWindow.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/MockupOverlay.cpp
+    ${NYX_DEV_TOOLS_DIR}/src/PainterTestSheet.cpp
+)
+set(NYX_EDITOR_DEV_TOOL_HEADERS
+    include/PainterTestWindow.h
+    include/MockupOverlay.h
+    ${NYX_DEV_TOOLS_DIR}/include/PainterTestSheet.h
+)
+set(NYX_EDITOR_HAS_DEV_TOOLS "$<AND:$<BOOL:${NYX_DEV_TOOLS}>,$<CONFIG:Debug>>")
+add_compile_definitions("NYX_DEV_TOOLS=${NYX_EDITOR_HAS_DEV_TOOLS}")
+
 # The editor and its test targets keep debug information in the object files (/Z7), not in a
 # compiler PDB (/Zi). The test targets reuse the editor's precompiled header, and with /Zi each
 # of them compiles into its own copy of the editor's NyxEditor.pdb. Parallel builds then write
@@ -129,7 +142,9 @@ set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo>:Embedd
 add_executable(NyxEditor
 	${NYX_EDITOR_SOURCES}
 	${NYX_EDITOR_HEADERS}
+	${NYX_EDITOR_DEV_TOOL_HEADERS}
 )
+target_sources(NyxEditor PRIVATE "$<${NYX_EDITOR_HAS_DEV_TOOLS}:${NYX_EDITOR_DEV_TOOL_SOURCES}>")
 
 set(NYX_EDITOR_REFLECTION_SOURCES "${CMAKE_BINARY_DIR}/Generated/Runtime/Runtime.reflect.sources.cpp")
 target_sources(NyxEditor PRIVATE "${NYX_EDITOR_REFLECTION_SOURCES}")
@@ -141,6 +156,7 @@ target_include_directories(NyxEditor
         include
         src
         ${CMAKE_CURRENT_BINARY_DIR}
+        ${NYX_DEV_TOOLS_DIR}/include
 )
 
 target_link_libraries(NyxEditor
@@ -161,6 +177,14 @@ target_precompile_headers(NyxEditor
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES
 	${NYX_EDITOR_SOURCES}
 	${NYX_EDITOR_HEADERS}
+	src/PainterTestWindow.cpp
+	src/MockupOverlay.cpp
+	include/PainterTestWindow.h
+	include/MockupOverlay.h
+)
+source_group(DevTools FILES
+	${NYX_DEV_TOOLS_DIR}/src/PainterTestSheet.cpp
+	${NYX_DEV_TOOLS_DIR}/include/PainterTestSheet.h
 )
 
 # Set working directory to be next to the built .exe
@@ -184,9 +208,9 @@ if(BUILD_TESTING)
     set(NYX_EDITOR_TEST_SOURCES ${NYX_EDITOR_SOURCES})
     list(REMOVE_ITEM NYX_EDITOR_TEST_SOURCES main.cpp)
 
-    add_executable(NyxEditorSceneTests tests/SceneReplacementTests.cpp ${NYX_EDITOR_TEST_SOURCES}
+    add_executable(NyxEditorSceneTests tests/SceneReplacementTests.cpp ${NYX_EDITOR_TEST_SOURCES} ${NYX_EDITOR_DEV_TOOL_SOURCES}
         "${NYX_EDITOR_REFLECTION_SOURCES}")
-    target_include_directories(NyxEditorSceneTests PRIVATE include src ${CMAKE_CURRENT_BINARY_DIR})
+    target_include_directories(NyxEditorSceneTests PRIVATE include src ${CMAKE_CURRENT_BINARY_DIR} ${NYX_DEV_TOOLS_DIR}/include)
     target_link_libraries(NyxEditorSceneTests PRIVATE NyxEditorEngine ole32 oleaut32 shell32 comsuppw)
     add_dependencies(NyxEditorSceneTests NyxGeneratedReflection)
     target_precompile_headers(NyxEditorSceneTests REUSE_FROM NyxEditor)
@@ -195,9 +219,9 @@ if(BUILD_TESTING)
     add_test(NAME NyxEditorSceneTests COMMAND NyxEditorSceneTests)
 
     # The pieces EditorLayer is built from: SceneEditor's commands and hotkeys, and the panels drawn headless
-    add_executable(NyxEditorPanelTests tests/EditorPanelTests.cpp ${NYX_EDITOR_TEST_SOURCES}
+    add_executable(NyxEditorPanelTests tests/EditorPanelTests.cpp ${NYX_EDITOR_TEST_SOURCES} ${NYX_EDITOR_DEV_TOOL_SOURCES}
         "${NYX_EDITOR_REFLECTION_SOURCES}")
-    target_include_directories(NyxEditorPanelTests PRIVATE include src ${CMAKE_CURRENT_BINARY_DIR})
+    target_include_directories(NyxEditorPanelTests PRIVATE include src ${CMAKE_CURRENT_BINARY_DIR} ${NYX_DEV_TOOLS_DIR}/include)
     target_link_libraries(NyxEditorPanelTests PRIVATE NyxEditorEngine ole32 oleaut32 shell32 comsuppw)
     add_dependencies(NyxEditorPanelTests NyxGeneratedReflection)
     target_precompile_headers(NyxEditorPanelTests REUSE_FROM NyxEditor)

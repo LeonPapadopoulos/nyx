@@ -52,7 +52,10 @@ set_property(TARGET NyxInputTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxInputTests COMMAND NyxInputTests)
 
 # The painter's CPU side: draw commands, groups, clip and transform stacks, tile binning. No GPU needed.
-add_executable(NyxPainterTests PainterTests.cpp)
+# The painter's test sheet is a dev tool, not part of the engine library, so the painter tests
+# compile it themselves.
+add_executable(NyxPainterTests PainterTests.cpp ${NYX_ENGINE_ROOT}/DevTools/src/PainterTestSheet.cpp)
+target_include_directories(NyxPainterTests PRIVATE ${NYX_ENGINE_ROOT}/DevTools/include)
 target_link_libraries(NyxPainterTests PRIVATE NyxEngine)
 add_dependencies(NyxPainterTests NyxGeneratedReflection)
 set_property(TARGET NyxPainterTests PROPERTY FOLDER "Tests")
@@ -74,10 +77,11 @@ add_test(NAME NyxUIThemeTests COMMAND NyxUIThemeTests)
 
 # The painter shader on a real GPU: paints small frames and checks pixels read back. Needs a
 # Vulkan device; its window stays hidden.
-add_executable(NyxPainterGpuTests PainterGpuTests.cpp)
+add_executable(NyxPainterGpuTests PainterGpuTests.cpp ${NYX_ENGINE_ROOT}/DevTools/src/PainterTestSheet.cpp)
 target_link_libraries(NyxPainterGpuTests PRIVATE NyxEngine)
 # stb_image_write.h, which GLFW ships, saves painted images when NYX_PAINTER_TEST_OUTPUT is set.
 target_include_directories(NyxPainterGpuTests PRIVATE "${CMAKE_SOURCE_DIR}/Dependencies/glfw/deps")
+target_include_directories(NyxPainterGpuTests PRIVATE ${NYX_ENGINE_ROOT}/DevTools/include)
 add_dependencies(NyxPainterGpuTests NyxGeneratedReflection)
 set_property(TARGET NyxPainterGpuTests PROPERTY FOLDER "Tests")
 nyx_copy_shaders_next_to(NyxPainterGpuTests)

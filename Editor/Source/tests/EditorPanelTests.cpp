@@ -1400,29 +1400,6 @@ namespace
 		Require(shapes == 0, "The editor's panels should leave no shapes to ImGui, found " + std::to_string(shapes));
 	}
 
-	// The Statistics tab's prediction for opaque docked cards (stage 3, change 13), with round
-	// numbers: a 10 ms frame, the painter 1 ms on the CPU and 4 on the GPU, 1000 entries kept, 600
-	// with the cards opaque
-	void TestPainterPredictionsFollowTheModel()
-	{
-		PainterCosts now;
-		now.Frame = 10.0f;
-		now.PainterCpu = 1.0f;
-		now.PainterGpu = 4.0f;
-		now.Kept = 1000.0f;
-		now.KeptCardsOpaque = 600.0f;
-		const std::vector<PainterScenario> scenarios = PredictOpaqueDockedCards(now);
-		Require(scenarios.size() == 2, "There should be the frame now and with opaque cards");
-		const auto near = [](float a, float b)
-		{
-			return std::abs(a - b) < 1.0e-4f;
-		};
-
-		Require(near(scenarios[0].Frame, 10.0f) && near(scenarios[0].PainterGpu, 4.0f) && near(scenarios[0].PainterCpu, 1.0f), "Now should be as measured");
-		Require(near(scenarios[1].PainterGpu, 2.4f) && near(scenarios[1].PainterCpu, 1.0f) && near(scenarios[1].Frame, 8.4f),
-			"Keeping 60% of the entries should cut the GPU time to 60% and the frame by what it saves, the CPU staying");
-	}
-
 	void TestAnimationsEaseAndAreForgotten()
 	{
 		HeadlessUI ui;
@@ -1538,7 +1515,6 @@ int main()
 		TestThemePreferences();
 		TestThemeChoice();
 		TestPanelsLeaveNoShapesToImGui();
-		TestPainterPredictionsFollowTheModel();
 		TestAnimationsEaseAndAreForgotten();
 	}
 	catch (const std::exception& error)

@@ -85,7 +85,6 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/PainterCommands.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/PainterTiles.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanPainter.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/PainterTestSheet.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/WindowPainter.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/UIAnimation.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/UITheme.cpp
@@ -192,7 +191,6 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/PainterTiles.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanPainter.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/PainterDrawOptions.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/PainterTestSheet.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/WindowPainter.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/UIAnimation.h
     ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/UITheme.h

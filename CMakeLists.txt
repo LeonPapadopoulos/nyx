@@ -24,6 +24,10 @@ foreach(CONFIG ${CMAKE_CONFIGURATION_TYPES})
 endforeach()
 # ~End setup shared output directories
 
+# The editor's prototype and diagnostics tools (Painter Test, Mockup Overlay). While on, Debug
+# builds have them; Release builds, which are what ships, never do.
+option(NYX_DEV_TOOLS "Build the editor's prototype and diagnostics tools into Debug builds" ON)
+
 ## Execute CMake files in subdirectories
 # Dependencies
 add_subdirectory(Dependencies/spdlog)

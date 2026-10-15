@@ -69,11 +69,8 @@ namespace Nyx::Engine
 		uint32_t TilesInUse = 0;
 		uint32_t TileEntries = 0;
 		uint32_t MaxCommandsPerTile = 0;
-		// The entries before the per-tile reduction dropped what lies under opaque shapes, and
-		// what it would keep if the colours asked for were opaque too
-		// (VulkanPainterSegments::SetAlsoOpaqueColors())
+		// The entries before the per-tile reduction dropped what lies under opaque shapes
 		uint32_t EntriesBeforeReduction = 0;
-		uint32_t EntriesIfAlsoOpaque = 0;
 
 		// For the statistics in the Painter Test window: 0 when no tile is in use
 		float GetAverageCommandsPerTileInUse() const
@@ -123,8 +120,6 @@ namespace Nyx::Engine
 		// The tiles' entries before the reduction, and those it keeps
 		uint32_t EntriesBefore = 0;
 		uint32_t Kept = 0;
-		// What it would keep if commands of the colours asked for were opaque too, e.g. the docked cards
-		uint32_t KeptIfAlsoOpaque = 0;
 	};
 
 	// One frame of painting inside ImGui windows (Nyx::UI::WindowPainter), summed over all
@@ -253,7 +248,7 @@ namespace Nyx::Engine
 		const PainterTile& GetTile(uint32_t tileX, uint32_t tileY) const { return Tiles[tileY * TilesX + tileX]; }
 	};
 
-	// One command as the GPU binner reads it (PainterBin.comp): 80 bytes, five vec4s (std430).
+	// One command as the GPU binner reads it (PainterBin.comp): 64 bytes, four vec4s (std430).
 	// Rects are in target pixels; an empty rect (Min not below Max) is none.
 	struct PainterBinCommand
 	{
@@ -266,8 +261,6 @@ namespace Nyx::Engine
 		// it there: a solid, opaque rect without outline, less its largest rounding, cut by its clip
 		// rect. Empty for every other command.
 		PainterRect Hides;
-		// The same, with the colours asked for counted as opaque too; only counted, for the statistics
-		PainterRect HidesIfAlsoOpaque;
 		// A line on its own touches only the tiles of its band, row by row, not its whole Reach:
 		// its ends, and how far its pixels reach from it (half its width and the anti-aliasing).
 		// LineReach 0: not a line on its own.
@@ -277,7 +270,7 @@ namespace Nyx::Engine
 		float Unused[3] = {};
 	};
 
-	static_assert(sizeof(PainterBinCommand) == 80, "PainterBin.comp reads commands of exactly 80 bytes");
+	static_assert(sizeof(PainterBinCommand) == 64, "PainterBin.comp reads commands of exactly 64 bytes");
 
 	// The GPU binner's workgroup: a segment's tiles start at a multiple of it, so that one workgroup
 	// bins only one segment's tiles (PainterBin.comp's local_size_x)
@@ -304,12 +297,11 @@ namespace Nyx::Engine
 	{
 		uint32_t EntriesBefore = 0;
 		uint32_t Entries = 0;
-		uint32_t EntriesIfAlsoOpaque = 0;
 		uint32_t TilesInUse = 0;
 		uint32_t MaxPerTile = 0;
 		// Not 0 if some of its tiles' entries didn't fit, and were drawn empty
 		uint32_t Overflowed = 0;
-		uint32_t Unused[2] = {};
+		uint32_t Unused[3] = {};
 	};
 
 	static_assert(sizeof(PainterBinSums) == 32, "PainterBin.comp writes sums of exactly 32 bytes");
@@ -335,10 +327,9 @@ namespace Nyx::Engine
 	// touch and what it hides (PainterBinCommand), the grid, and the most entries. The grid covers
 	// the whole target with bWholeTarget (a canvas), or else only the tiles the commands can
 	// touch: a small painted button costs a few tiles, not the whole target's. A group's reach
-	// counts only its shapes in this segment. `alsoOpaque`: packed colours
-	// (PackPremultipliedColor()) whose solid rects count as opaque in HidesIfAlsoOpaque.
+	// counts only its shapes in this segment.
 	//
 	// Reuses the memory of `inOutSegment` from the previous frame.
 	void MeasurePainterSegment(const Painter& painter, const PainterSegment& segment, bool bWholeTarget, const PainterBudget& budget,
-		std::span<const uint32_t> alsoOpaque, PainterMeasuredSegment& inOutSegment);
+		PainterMeasuredSegment& inOutSegment);
 }

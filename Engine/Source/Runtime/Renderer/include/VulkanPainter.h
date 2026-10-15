@@ -91,10 +91,6 @@ namespace Nyx::Engine
 		// buffers. What the last binning read back stays until the next ReadBack().
 		void Clear(const PainterBudget& budget = PainterBudget{});
 
-		// Packed colours (PackPremultipliedColor()) whose solid rects the statistics count as if
-		// opaque (PainterBinningStats::EntriesIfAlsoOpaque), e.g. the docked cards'. They stay.
-		void SetAlsoOpaqueColors(std::span<const uint32_t> colors);
-
 		// Measures the segment and adds it, with its painter's commands, groups and textures if
 		// this frame doesn't have them yet. Its grid covers the whole target with bWholeTarget (a
 		// canvas), else only the tiles its commands touch. Returns the segment's index, for
@@ -165,7 +161,6 @@ namespace Nyx::Engine
 		uint32_t FindOrAddPainter(const Painter& painter);
 
 		PainterBudget Budget;
-		std::vector<uint32_t> AlsoOpaque;
 
 		std::vector<PainterCommand> Commands;
 		std::vector<PainterGroup> Groups;

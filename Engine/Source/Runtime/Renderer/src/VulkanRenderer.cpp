@@ -3673,10 +3673,7 @@ namespace Nyx
 		WindowSegments.Clear();
 		WindowSegmentDraws.clear();
 		WindowSegmentDrawOsWindows.clear();
-		// The statistics count the docked cards as if opaque too, painted in the theme's card
-		// colour (UIChrome.cpp); the heatmap needs the tiles read back.
-		const uint32_t cardColor = Nyx::Engine::PackPremultipliedColor(Nyx::UI::GetTheme().Card);
-		WindowSegments.SetAlsoOpaqueColors(std::span<const uint32_t>(&cardColor, 1));
+		// The heatmap needs the tiles read back.
 		const bool bHeat = Nyx::UI::GetPainterHeatmap() != Nyx::UI::EPainterHeatmap::Off;
 		WindowSegments.SetReadBackTiles(bHeat);
 

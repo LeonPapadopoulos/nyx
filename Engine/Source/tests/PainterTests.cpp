@@ -362,17 +362,17 @@ namespace
 	// Measuring for binning on the GPU (MeasurePainterSegment()); the binning itself, tile by
 	// tile, is tested in NyxPainterGpuTests
 
-	PainterMeasuredSegment Measure(const Painter& painter, const PainterBudget& budget = PainterBudget{}, std::span<const uint32_t> alsoOpaque = {})
+	PainterMeasuredSegment Measure(const Painter& painter, const PainterBudget& budget = PainterBudget{})
 	{
 		PainterMeasuredSegment measured;
-		MeasurePainterSegment(painter, PainterSegment{ 0, static_cast<uint32_t>(painter.GetCommands().size()) }, true, budget, alsoOpaque, measured);
+		MeasurePainterSegment(painter, PainterSegment{ 0, static_cast<uint32_t>(painter.GetCommands().size()) }, true, budget, measured);
 		return measured;
 	}
 
 	PainterMeasuredSegment MeasureSegment(const Painter& painter, const PainterSegment& segment)
 	{
 		PainterMeasuredSegment measured;
-		MeasurePainterSegment(painter, segment, false, PainterBudget{}, {}, measured);
+		MeasurePainterSegment(painter, segment, false, PainterBudget{}, measured);
 		return measured;
 	}
 
@@ -466,8 +466,7 @@ namespace
 	}
 
 	// What a command hides for the per-tile reduction: a solid, opaque rect, less its largest
-	// rounding, cut by its clip rect; nothing else. The colours asked for count as opaque in
-	// HidesIfAlsoOpaque.
+	// rounding, cut by its clip rect; nothing else.
 	void TestOpaqueRectsHide()
 	{
 		const glm::vec4 translucent{ 0.2f, 0.4f, 0.8f, 0.5f };
@@ -480,12 +479,10 @@ namespace
 		painter.PushClipRect(PainterRect{ { 0, 0 }, { 30, 30 } });
 		painter.AddRect(PainterRect{ { 0, 0 }, { 100, 100 } }, PainterStyle::Filled(Orange));
 		painter.PopClipRect();
-		const uint32_t translucentColor = PackPremultipliedColor(translucent);
-		const PainterMeasuredSegment measured = Measure(painter, PainterBudget{}, std::span<const uint32_t>(&translucentColor, 1));
+		const PainterMeasuredSegment measured = Measure(painter);
 
 		Require(Near(measured.Commands[0].Hides, PainterRect{ { 16, 16 }, { 48, 48 } }), "An opaque rounded rect should hide its inside less its rounding");
-		Require(measured.Commands[1].Hides.IsEmpty() && Near(measured.Commands[1].HidesIfAlsoOpaque, PainterRect{ { 8, 8 }, { 56, 56 } }),
-			"A translucent rect should hide nothing, but count as hiding if its colour is asked for");
+		Require(measured.Commands[1].Hides.IsEmpty(), "A translucent rect should hide nothing");
 		Require(measured.Commands[2].Hides.IsEmpty() && measured.Commands[3].Hides.IsEmpty(), "Outlines and other shapes should hide nothing");
 		Require(Near(measured.Commands[4].Hides, PainterRect{ { 0, 0 }, { 30, 30 } }), "An opaque rect should hide only inside its clip rect");
 	}
@@ -514,12 +511,12 @@ namespace
 		painter.AddRect(PainterRect{ { 0, 0 }, { 64, 64 } }, PainterStyle::Filled(Orange));
 		PainterBudget tight;
 		tight.MaxCommands = 0;
-		MeasurePainterSegment(painter, PainterSegment{ 0, 1 }, true, tight, {}, measured);
+		MeasurePainterSegment(painter, PainterSegment{ 0, 1 }, true, tight, measured);
 		Require(!measured.Problems.empty(), "The first frame should report its dropped command");
 
 		painter.BeginFrame(16, 8);
 		painter.AddCircle({ 4, 4 }, 2.0f, PainterStyle::Filled(Orange));
-		MeasurePainterSegment(painter, PainterSegment{ 0, 1 }, true, PainterBudget{}, {}, measured);
+		MeasurePainterSegment(painter, PainterSegment{ 0, 1 }, true, PainterBudget{}, measured);
 		Require(measured.TilesX == 2 && measured.TilesY == 1 && measured.Commands.size() == 1, "The grid should follow the new target");
 		Require(measured.Problems.empty() && measured.Stats.DroppedCommands == 0 && measured.Stats.Commands == 1, "Problems and statistics shouldn't carry over");
 	}

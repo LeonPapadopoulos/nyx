@@ -25,7 +25,6 @@ struct BinCommand
 {
 	vec4 Reach;
 	vec4 Hides;
-	vec4 HidesIfAlsoOpaque;
 	// From x, y, to x, y
 	vec4 Line;
 	// x: how far a line's pixels reach from it; 0 for anything but a line on its own
@@ -50,12 +49,12 @@ struct BinSums
 {
 	uint EntriesBefore;
 	uint Entries;
-	uint EntriesIfAlsoOpaque;
 	uint TilesInUse;
 	uint MaxPerTile;
 	uint Overflowed;
 	uint Unused0;
 	uint Unused1;
+	uint Unused2;
 };
 
 layout(std430, set = 0, binding = 0) readonly buffer SegmentBuffer
@@ -108,7 +107,6 @@ shared uint SharedCounts[64];
 shared uint SharedBase;
 shared uint SharedEntriesBefore;
 shared uint SharedEntries;
-shared uint SharedEntriesIfAlsoOpaque;
 shared uint SharedTilesInUse;
 shared uint SharedMaxPerTile;
 shared uint SharedOverflowed;
@@ -233,7 +231,6 @@ void main()
 	uint before = 0u;
 	uint count = 0u;
 	uint firstKept = 0u;
-	uint ifAlsoOpaque = 0u;
 	if (bTile)
 	{
 		for (uint index = 0u; index < segment.CommandCount; ++index)
@@ -250,11 +247,6 @@ void main()
 				firstKept = index;
 			}
 			++count;
-			if (IsInside(tileMin, tileMax, command.HidesIfAlsoOpaque))
-			{
-				ifAlsoOpaque = 0u;
-			}
-			++ifAlsoOpaque;
 		}
 	}
 
@@ -264,7 +256,6 @@ void main()
 	{
 		SharedEntriesBefore = 0u;
 		SharedEntries = 0u;
-		SharedEntriesIfAlsoOpaque = 0u;
 		SharedTilesInUse = 0u;
 		SharedMaxPerTile = 0u;
 		SharedOverflowed = 0u;
@@ -298,7 +289,6 @@ void main()
 	// The segment's sums: the workgroup's first, then once into the buffer
 	atomicAdd(SharedEntriesBefore, before);
 	atomicAdd(SharedEntries, count);
-	atomicAdd(SharedEntriesIfAlsoOpaque, ifAlsoOpaque);
 	atomicAdd(SharedTilesInUse, count > 0u ? 1u : 0u);
 	atomicMax(SharedMaxPerTile, count);
 	barrier();
@@ -306,7 +296,6 @@ void main()
 	{
 		atomicAdd(Sums[segmentIndex].EntriesBefore, SharedEntriesBefore);
 		atomicAdd(Sums[segmentIndex].Entries, SharedEntries);
-		atomicAdd(Sums[segmentIndex].EntriesIfAlsoOpaque, SharedEntriesIfAlsoOpaque);
 		atomicAdd(Sums[segmentIndex].TilesInUse, SharedTilesInUse);
 		atomicMax(Sums[segmentIndex].MaxPerTile, SharedMaxPerTile);
 		atomicOr(Sums[segmentIndex].Overflowed, SharedOverflowed);

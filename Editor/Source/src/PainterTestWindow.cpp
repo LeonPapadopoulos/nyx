@@ -438,7 +438,6 @@ namespace Nyx::Editor
 		sample.Commands = static_cast<float>(stats.Commands);
 		sample.EntriesBefore = static_cast<float>(stats.Reduction.EntriesBefore);
 		sample.Entries = static_cast<float>(stats.Reduction.Kept);
-		sample.KeptCardsOpaque = static_cast<float>(stats.Reduction.KeptIfAlsoOpaque);
 
 		if (FrameSamples.size() < StatisticsFrames)
 		{
@@ -673,66 +672,52 @@ namespace Nyx::Editor
 	void PainterTestWindow::DrawReduction(std::span<const FrameSample> samples) const
 	{
 		// The averages over the frames kept
-		PainterCosts now;
+		float frame = 0.0f;
+		float painterCpu = 0.0f;
+		float painterGpu = 0.0f;
+		float kept = 0.0f;
 		float entriesBefore = 0.0f;
 		for (const FrameSample& sample : samples)
 		{
-			now.Frame += sample.Frame;
-			now.PainterCpu += sample.PainterCpu;
-			now.PainterGpu += sample.GpuPainter;
-			now.Kept += sample.Entries;
-			now.KeptCardsOpaque += sample.KeptCardsOpaque;
+			frame += sample.Frame;
+			painterCpu += sample.PainterCpu;
+			painterGpu += sample.GpuPainter;
+			kept += sample.Entries;
 			entriesBefore += sample.EntriesBefore;
 		}
 		const float count = static_cast<float>(samples.size());
-		for (float* value : { &now.Frame, &now.PainterCpu, &now.PainterGpu, &now.Kept, &now.KeptCardsOpaque, &entriesBefore })
+		for (float* value : { &frame, &painterCpu, &painterGpu, &kept, &entriesBefore })
 		{
 			*value /= count;
 		}
 
-		const auto share = [&](float kept)
-		{
-			return entriesBefore > 0.0f ? kept / entriesBefore * 100.0f : 100.0f;
-		};
-		NYX_UI(ImGui::Text("Tile entries %.0f before the reduction: it keeps %.0f (%.0f%%), and would keep %.0f (%.0f%%) with the docked cards opaque",
-			entriesBefore, now.Kept, share(now.Kept), now.KeptCardsOpaque, share(now.KeptCardsOpaque)));
+		const float share = entriesBefore > 0.0f ? kept / entriesBefore * 100.0f : 100.0f;
+		NYX_UI(ImGui::Text("Tile entries %.0f before the reduction: it keeps %.0f (%.0f%%)", entriesBefore, kept, share));
 
-		const std::vector<PainterScenario> scenarios = PredictOpaqueDockedCards(now);
-		if (Nyx::UI::BeginTable("##Predictions", static_cast<int>(scenarios.size()) + 1, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg))
+		if (Nyx::UI::BeginTable("##PainterCosts", 2, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg))
 		{
 			ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, ImGui::GetFontSize() * 12.0f);
-			for (const PainterScenario& scenario : scenarios)
-			{
-				ImGui::TableSetupColumn(scenario.Name);
-			}
+			ImGui::TableSetupColumn("Now");
 			Nyx::UI::TableHeadersRow();
-			const auto row = [&](const char* name, const auto& value, const char* format)
+			const auto row = [](const char* name, float value, const char* format)
 			{
 				Nyx::UI::TableNextRow();
 				ImGui::TableNextColumn();
 				NYX_UI(ImGui::TextUnformatted(name));
-				for (const PainterScenario& scenario : scenarios)
-				{
-					ImGui::TableNextColumn();
-					NYX_UI(ImGui::Text(format, value(scenario)));
-				}
+				ImGui::TableNextColumn();
+				NYX_UI(ImGui::Text(format, value));
 			};
 			const auto perSecond = [](float milliseconds)
 			{
 				return milliseconds > 0.0f ? 1000.0f / milliseconds : 0.0f;
 			};
-			row("Painter CPU, ms", [](const PainterScenario& scenario) { return scenario.PainterCpu; }, "%.3f");
-			row("Painter GPU, ms", [](const PainterScenario& scenario) { return scenario.PainterGpu; }, "%.3f");
-			row("The painter alone, fps", [&](const PainterScenario& scenario) { return perSecond(scenario.PainterCpu + scenario.PainterGpu); }, "%.0f");
-			row("The editor, fps", [&](const PainterScenario& scenario) { return perSecond(scenario.Frame); }, "%.0f");
+			row("Painter CPU, ms", painterCpu, "%.3f");
+			row("Painter GPU, ms", painterGpu, "%.3f");
+			row("The painter alone, fps", perSecond(painterCpu + painterGpu), "%.0f");
+			row("The editor, fps", perSecond(frame), "%.0f");
 			Nyx::UI::EndTable();
 		}
 		DrawFrameRateLimitInfo();
-
-		ImGui::PushTextWrapPos(0.0f);
-		NYX_UI(ImGui::TextDisabled("Opaque docked cards are an estimate: the GPU counts what the reduction would keep, and the painter's draws are taken "
-								   "to go down with the entries their pixels walk. Ambilight would then no longer show through the cards."));
-		ImGui::PopTextWrapPos();
 	}
 
 	void PainterTestWindow::DrawFrameRateLimitInfo() const
@@ -1640,24 +1625,6 @@ namespace Nyx::Editor
 			Pan = mouse - (mouse - Pan) * (newZoom / Zoom);
 			Zoom = newZoom;
 		}
-	}
-
-	std::vector<PainterScenario> PredictOpaqueDockedCards(const PainterCosts& now)
-	{
-		PainterScenario measured;
-		measured.Name = "Now";
-		measured.PainterCpu = now.PainterCpu;
-		measured.PainterGpu = now.PainterGpu;
-		measured.Frame = now.Frame;
-
-		// What a pixel walks with the cards opaque, of what it walks now
-		const float keptShare = now.Kept > 0.0f ? now.KeptCardsOpaque / now.Kept : 1.0f;
-		PainterScenario opaque;
-		opaque.Name = "Opaque docked cards";
-		opaque.PainterCpu = now.PainterCpu;
-		opaque.PainterGpu = now.PainterGpu * keptShare;
-		opaque.Frame = std::max(now.Frame + (opaque.PainterGpu - now.PainterGpu), 0.0f);
-		return { measured, opaque };
 	}
 
 	void DrawPainterFrameWithImDrawList(const Painter& painter, ImDrawList& drawList, ImVec2 origin)

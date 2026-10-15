@@ -15,8 +15,6 @@
 #include "MaterialPreviewPanel.h"
 #include "ShaderLogPanel.h"
 #include "Paths.h"
-#include "PainterTestWindow.h"
-#include "MockupOverlay.h"
 #include "PlayControls.h"
 #include "PlaySession.h"
 #include "PreferencesWindow.h"
@@ -28,6 +26,11 @@
 #include "Workspaces.h"
 #include "UISourceInspector.h"
 #include "Window.h"
+
+#if NYX_DEV_TOOLS
+#include "MockupOverlay.h"
+#include "PainterTestWindow.h"
+#endif
 
 #include <filesystem>
 #include <memory>
@@ -124,8 +127,10 @@ namespace Nyx::Editor
 
 		EditorPreferences Preferences;
 		ImGuiDebugTools DebugTools;
+#if NYX_DEV_TOOLS
 		PainterTestWindow PainterTest;
 		MockupOverlay Mockup;
+#endif
 		UISourceInspector SourceInspector;
 
 		// Panels and windows

@@ -140,15 +140,10 @@ namespace Nyx::Engine
 		ReadEntries.clear();
 	}
 
-	void VulkanPainterSegments::SetAlsoOpaqueColors(std::span<const uint32_t> colors)
-	{
-		AlsoOpaque.assign(colors.begin(), colors.end());
-	}
-
 	uint32_t VulkanPainterSegments::Add(const Painter& painter, const PainterSegment& segment, bool bWholeTarget)
 	{
 		const uint32_t painterIndex = FindOrAddPainter(painter);
-		MeasurePainterSegment(painter, segment, bWholeTarget, Budget, AlsoOpaque, Measured);
+		MeasurePainterSegment(painter, segment, bWholeTarget, Budget, Measured);
 
 		SegmentPart part;
 		part.Painter = painterIndex;
@@ -200,7 +195,6 @@ namespace Nyx::Engine
 			stats.TileEntries = sums[index].Entries;
 			stats.MaxCommandsPerTile = sums[index].MaxPerTile;
 			stats.EntriesBeforeReduction = sums[index].EntriesBefore;
-			stats.EntriesIfAlsoOpaque = sums[index].EntriesIfAlsoOpaque;
 			overflowed += sums[index].Overflowed != 0 ? 1 : 0;
 		}
 		if (overflowed > 0)
@@ -284,7 +278,6 @@ namespace Nyx::Engine
 		{
 			reduction.EntriesBefore += part.Stats.EntriesBeforeReduction;
 			reduction.Kept += part.Stats.TileEntries;
-			reduction.KeptIfAlsoOpaque += part.Stats.EntriesIfAlsoOpaque;
 		}
 		return reduction;
 	}
