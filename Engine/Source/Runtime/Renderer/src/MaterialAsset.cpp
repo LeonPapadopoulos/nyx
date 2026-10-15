@@ -15,6 +15,7 @@ namespace Nyx::Engine
 	namespace
 	{
 		constexpr std::string_view ShaderKey = "Shader";
+		constexpr std::string_view ParentKey = "Parent";
 
 		std::string_view Trim(std::string_view text)
 		{
@@ -340,6 +341,17 @@ namespace Nyx::Engine
 		SetValue(ShaderKey, std::move(path));
 	}
 
+	std::string MaterialAsset::GetParent() const
+	{
+		const std::string* parent = FindValue(ParentKey);
+		return parent ? *parent : std::string();
+	}
+
+	void MaterialAsset::SetParent(std::string path)
+	{
+		SetValue(ParentKey, std::move(path));
+	}
+
 	const std::string* MaterialAsset::FindValue(std::string_view name) const
 	{
 		for (const Line& line : Lines)
@@ -385,7 +397,7 @@ namespace Nyx::Engine
 		std::vector<std::pair<std::string, std::string>> values;
 		for (const Line& line : Lines)
 		{
-			if (!line.Name.empty() && line.Name != ShaderKey)
+			if (!line.Name.empty() && line.Name != ShaderKey && line.Name != ParentKey)
 			{
 				values.emplace_back(line.Name, line.Value);
 			}

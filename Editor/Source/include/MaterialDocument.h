@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace Nyx::Editor
@@ -41,6 +42,8 @@ namespace Nyx::Editor
 		// One edit: `name` set to `value`, or removed (nullopt) so that the shader's default
 		// shows. Nothing is recorded when it changes nothing.
 		void SetValue(const std::string& name, std::optional<std::string> value, std::string label);
+		// Several lines in one edit, e.g. a parent instead of a shader
+		void SetValues(const std::vector<std::pair<std::string, std::optional<std::string>>>& values, std::string label);
 
 		// An edit over several frames, e.g. a slider being dragged: the value changes at once,
 		// and EndPreview() records all of it as one undo step from where it started

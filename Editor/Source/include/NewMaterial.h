@@ -31,6 +31,10 @@ namespace Nyx::Editor
 	// or <name>2, 3, ... when that exists. Nothing is made when it can't be written.
 	std::optional<NewMaterialFiles> CreateMaterialForShader(const std::filesystem::path& assetsFolder, const std::string& shaderPath, std::string& outError);
 
+	// An instance of a material ("Materials/Stone.nyxmat"): Materials/<its name>Instance.nyxmat,
+	// numbered when that exists, with only its parent; it changes nothing until values are set
+	std::optional<NewMaterialFiles> CreateMaterialInstance(const std::filesystem::path& assetsFolder, const std::string& parentPath, std::string& outError);
+
 	// The template's file in the project: Engine/Shaders/Templates/Surface.slang
 	std::filesystem::path GetSurfaceTemplateFile();
 }

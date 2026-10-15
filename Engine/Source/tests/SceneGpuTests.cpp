@@ -17,7 +17,8 @@
 // (black, a studio, the scene's turned) and debug views of its materials' outputs and of light
 // that is NaN or out of range. Following the editor, as a game it started does, a saved shader
 // compiles nothing; the editor's compile, sent over the link, is drawn, and so are material
-// values it sends.
+// values it sends. A material instance draws its parent's values under its own, follows its
+// parent, and a chain of parents that goes round draws as the missing material.
 //
 // NYX_SCENE_TEST_OUTPUT=<folder> saves what was rendered there, e.g. to make a new reference
 // after a change that is meant to change the picture.
@@ -748,6 +749,84 @@ namespace
 		gpu.DrawFrames(1);
 	}
 
+	// A material instance (Parent instead of Shader) draws with its parents' values under its own,
+	// on the shader the chain ends in, and follows its parent saved or set; one whose parents go
+	// round is the missing material
+	void TestMaterialInstances(SceneRenderer& gpu)
+	{
+		Nyx::IRenderer& renderer = gpu.Renderer;
+		LiveMaterialFile shader("Shaders/NyxSceneGpuTestsFamily.slang");
+		shader.Write(GlowShader("    [Color] float3 Glow = float3(1.0, 0.0, 0.0);\n    float Strength = 1.0;\n", "Glow * Strength", "NyxSceneGpuTestsFamily"));
+		LiveMaterialFile parent("Materials/NyxSceneGpuTests-Parent.nyxmat");
+		parent.Write("Shader = Shaders/NyxSceneGpuTestsFamily.slang\nGlow = 0 1 0\n");
+		LiveMaterialFile child("Materials/NyxSceneGpuTests-Child.nyxmat");
+		child.Write("# Half as bright as its parent\nParent = Materials/NyxSceneGpuTests-Parent.nyxmat\nStrength = 0.5\n");
+		LiveMaterialFile loopA("Materials/NyxSceneGpuTests-LoopA.nyxmat");
+		loopA.Write("Parent = Materials/NyxSceneGpuTests-LoopB.nyxmat\n");
+		LiveMaterialFile loopB("Materials/NyxSceneGpuTests-LoopB.nyxmat");
+		loopB.Write("Parent = Materials/NyxSceneGpuTests-LoopA.nyxmat\n");
+
+		DefaultScene scene;
+		const Entity cube = AddCube(scene.World, gpu.Renderer, 0.0f, renderer.GetMaterial(child.Path));
+		const Entity camera = scene.World.CreateEntity();
+		scene.World.Add<TransformComponent>(camera, TransformComponent{ .Position = glm::vec3(0.0f, 0.0f, 1.2f), .Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f), .Scale = glm::vec3(1.0f) });
+		scene.World.Add<CameraComponent>(camera, CameraComponent{});
+		renderer.SetWorld(&scene.World);
+		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
+		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
+
+		// The parent's green, at the child's half strength
+		const std::array<uint8_t, 3> halfGreen = DrawUntilMiddleChanges(gpu, view, Tonemapped(glm::vec3(1.0f, 0.0f, 1.0f)));
+		Require(Near(halfGreen, Tonemapped(glm::vec3(0.0f, 0.5f, 0.0f))), "The instance isn't its parent's green at half strength: " + Text(halfGreen));
+		const Nyx::MaterialView childView = renderer.ViewMaterial(child.Path);
+		Require(childView.Shader == "Shaders/NyxSceneGpuTestsFamily.slang" && childView.Layout && childView.Inherited && childView.Inherited->FindValue("Glow") &&
+				*childView.Inherited->FindValue("Glow") == "0 1 0" && !childView.Inherited->FindValue("Strength"),
+			"The instance's view doesn't have its parent's shader and values");
+
+		// The parent saved blue: the instance follows
+		parent.Write("Shader = Shaders/NyxSceneGpuTestsFamily.slang\nGlow = 0 0 1\n");
+		std::array<uint8_t, 3> halfBlue = halfGreen;
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+		while (halfBlue == halfGreen && std::chrono::steady_clock::now() < deadline)
+		{
+			std::this_thread::sleep_for(std::chrono::milliseconds(20));
+			halfBlue = MiddlePixel(gpu, view);
+		}
+		Require(Near(halfBlue, Tonemapped(glm::vec3(0.0f, 0.0f, 0.5f))), "The instance didn't follow its parent's saved blue: " + Text(halfBlue));
+
+		// The parent set in memory, as the editor does: the instance follows in the next frame
+		Nyx::Engine::MaterialAsset red;
+		std::string error;
+		Require(red.Parse("Shader = Shaders/NyxSceneGpuTestsFamily.slang\nGlow = 1 0 0\n", error), error);
+		renderer.SetMaterialValues(parent.Path, red);
+		Require(Near(MiddlePixel(gpu, view), Tonemapped(glm::vec3(0.5f, 0.0f, 0.0f))), "The instance didn't follow its parent's values set in memory");
+
+		// Its own value over the parent's
+		Nyx::Engine::MaterialAsset overriding;
+		Require(overriding.Parse("Parent = Materials/NyxSceneGpuTests-Parent.nyxmat\nStrength = 0.5\nGlow = 0 1 1\n", error), error);
+		renderer.SetMaterialValues(child.Path, overriding);
+		Require(Near(MiddlePixel(gpu, view), Tonemapped(glm::vec3(0.0f, 0.5f, 0.5f))), "The instance's own value isn't over its parent's");
+
+		// Parents that go round: the missing material
+		scene.World.Get<MeshRendererComponent>(cube).MaterialAsset = renderer.GetMaterial(loopA.Path);
+		gpu.DrawFrames(2);
+		RgbaImage image;
+		Require(gpu.Renderer.ReadSceneViewPixels(view, image), "The scene view can't be read back");
+		const std::array<uint8_t, 3> magenta = Tonemapped(glm::vec3(1.0f, 0.0f, 1.0f));
+		size_t magentaPixels = 0;
+		for (size_t pixel = 0; pixel < static_cast<size_t>(image.Width) * image.Height; ++pixel)
+		{
+			const uint8_t* rgb = &image.Pixels[pixel * 4];
+			magentaPixels += Near({ rgb[0], rgb[1], rgb[2] }, magenta) ? 1 : 0;
+		}
+		Require(magentaPixels > static_cast<size_t>(image.Width) * image.Height / 20, "A chain of parents that goes round isn't the missing material");
+
+		renderer.DestroySceneView(view);
+		renderer.SetWorld(nullptr);
+		gpu.DrawFrames(1);
+	}
+
 	// As a game the editor started: the renderer follows the editor's shaders, so a shader saved
 	// compiles nothing here, while the editor's compiles of it and the material values it edits
 	// arrive as link messages (ShaderProgram, MaterialValues). Last: the renderer follows the
@@ -935,6 +1014,7 @@ int main()
 		TestMaterialValuesSetInMemory(gpu);
 		TestSkiesAndDebugViews(gpu);
 		TestViewsMadeAndLetGoWhileTheUIIsBuilt(gpu);
+		TestMaterialInstances(gpu);
 		// Last: the renderer follows the editor's shaders from there on
 		TestFollowingTheEditor(gpu);
 	}

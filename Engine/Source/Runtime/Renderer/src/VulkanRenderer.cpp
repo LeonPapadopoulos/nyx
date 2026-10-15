@@ -1080,7 +1080,7 @@ namespace Nyx
 	MaterialView VulkanRenderer::ViewMaterial(const std::string& path)
 	{
 		const Nyx::Engine::VulkanMaterials::View view = Materials.Inspect(path);
-		return MaterialView{ .Asset = view.Asset, .Layout = view.Layout, .Defaults = view.Defaults, .FileRevision = view.FileRevision };
+		return MaterialView{ .Asset = view.Asset, .Inherited = view.Inherited, .Shader = view.Shader, .Layout = view.Layout, .Defaults = view.Defaults, .FileRevision = view.FileRevision };
 	}
 
 	void VulkanRenderer::SetMaterialValues(const std::string& path, const Nyx::Engine::MaterialAsset& asset)

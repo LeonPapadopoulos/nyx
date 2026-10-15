@@ -334,6 +334,20 @@ namespace
 	}
 }
 
+namespace
+{
+	// An instance names its parent; the parent isn't one of its values, nor is the shader
+	void TestParents()
+	{
+		MaterialAsset instance = Parsed("# Wet\nParent = Materials/Stone.nyxmat\nRoughness = 0.2\n");
+		Require(instance.GetParent() == "Materials/Stone.nyxmat" && instance.GetShader().empty(), "The instance's parent isn't read");
+		const std::vector<std::pair<std::string, std::string>> values = instance.GetValues();
+		Require(values.size() == 1 && values[0].first == "Roughness", "The parent is listed among the values");
+		instance.SetParent("Materials/Granite.nyxmat");
+		Require(instance.ToText() == "# Wet\nParent = Materials/Granite.nyxmat\nRoughness = 0.2\n", "Setting the parent changed more than its line: " + instance.ToText());
+	}
+}
+
 int main()
 {
 	try
@@ -346,6 +360,7 @@ int main()
 		TestTextureSlots();
 		TestValuesReadBackAsWritten();
 		TestTheTemplateCompiles();
+		TestParents();
 	}
 	catch (const std::exception& error)
 	{

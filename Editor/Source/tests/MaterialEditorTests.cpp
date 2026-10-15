@@ -642,6 +642,33 @@ namespace
 	}
 }
 
+namespace
+{
+	// An instance made of a material; several lines changed as one undo step, as choosing a parent does
+	void TestInstances()
+	{
+		TempAssets assets;
+		std::string error;
+		const std::optional<NewMaterialFiles> first = CreateMaterialInstance(assets.Path, "Materials/Wet Stone.nyxmat", error);
+		Require(first && first->MaterialPath == "Materials/WetStoneInstance.nyxmat", "The instance isn't named after its parent: " + (first ? first->MaterialPath : error));
+		Require(ReadText(assets.Path / first->MaterialPath) == "Parent = Materials/Wet Stone.nyxmat\n", "The instance has more than its parent");
+		const std::optional<NewMaterialFiles> second = CreateMaterialInstance(assets.Path, "Materials/Wet Stone.nyxmat", error);
+		Require(second && second->MaterialPath == "Materials/WetStoneInstance2.nyxmat", "The second instance isn't numbered");
+
+		MaterialDocument document;
+		Require(document.Open(assets.Path, "Materials/WetStoneInstance.nyxmat", error), "The instance doesn't open: " + error);
+		document.SetValue("Roughness", "0.3", "Edit Roughness");
+		document.SetValues({ { "Parent", std::nullopt }, { "Shader", std::string("Shaders/Stone.slang") }, { "BaseColor", std::string("1 0 0") } }, "Remove Parent");
+		Require(document.GetAsset().GetParent().empty() && document.GetAsset().GetShader() == "Shaders/Stone.slang" && document.GetAsset().FindValue("BaseColor"),
+			"Several lines weren't set");
+		Require(*document.GetUndoLabel() == "Remove Parent" && document.Undo(), "Several lines weren't one undo step");
+		Require(document.GetAsset().GetParent() == "Materials/Wet Stone.nyxmat" && !document.GetAsset().FindValue("BaseColor") && *document.GetAsset().FindValue("Roughness") == "0.3",
+			"Undoing the step didn't bring all lines back");
+		document.SetValues({ { "Roughness", std::string("0.3") } }, "Nothing");
+		Require(*document.GetUndoLabel() == "Edit Roughness", "An edit of several lines that changes nothing became a step");
+	}
+}
+
 int main()
 {
 	try
@@ -654,6 +681,7 @@ int main()
 		TestNewMaterial();
 		TestWorkspaces();
 		TestMaterialDrops();
+		TestInstances();
 	}
 	catch (const std::exception& error)
 	{

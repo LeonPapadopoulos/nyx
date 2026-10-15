@@ -145,6 +145,12 @@ namespace Nyx::Engine
 	Nyx::Material* VulkanMaterials::Get(const std::string& path)
 	{
 		const std::string key = PathKey(path);
+		return GetEntry(path).Handle.get();
+	}
+
+	VulkanMaterials::Entry& VulkanMaterials::GetEntry(const std::string& path)
+	{
+		const std::string key = PathKey(path);
 		auto found = Materials.find(key);
 		if (found == Materials.end())
 		{
@@ -152,19 +158,98 @@ namespace Nyx::Engine
 			entry->Path = path;
 			entry->File = (AssetsFolder / path).make_preferred();
 			entry->Handle = std::make_unique<Nyx::Material>();
-			LoadAsset(*entry);
-			WriteBytes(*entry);
+			// In the map before its parents are looked for, so a chain that comes back finds it
 			found = Materials.emplace(key, std::move(entry)).first;
+			LoadAsset(*found->second);
+			WriteBytes(*found->second);
 		}
-		return found->second->Handle.get();
+		return *found->second;
+	}
+
+	bool VulkanMaterials::Resolve(Entry& entry)
+	{
+		const auto fail = [&entry](std::string problem)
+		{
+			if (problem != entry.ChainProblem)
+			{
+				LOG_ERROR("Material {}: {}; it draws as the missing material", entry.Path, problem);
+				entry.ChainProblem = std::move(problem);
+			}
+			entry.UsedShader = nullptr;
+			return false;
+		};
+
+		// Up the chain of parents, nearest first, to the one with a shader
+		entry.Parents.clear();
+		const Entry* last = &entry;
+		while (true)
+		{
+			const std::string parent = last->Asset.GetParent();
+			if (parent.empty())
+			{
+				break;
+			}
+			Entry& next = GetEntry(parent);
+			if (&next == &entry || std::find(entry.Parents.begin(), entry.Parents.end(), &next) != entry.Parents.end())
+			{
+				return fail("its parents go round, back to " + next.Path);
+			}
+			if (!next.bLoaded)
+			{
+				return fail("its parent " + next.Path + " can't be read");
+			}
+			entry.Parents.push_back(&next);
+			last = &next;
+		}
+		const std::string shader = last->Asset.GetShader();
+		if (shader.empty())
+		{
+			return fail(entry.Parents.empty() ? std::string("it names no shader (Shader = Shaders/...slang) and no parent (Parent = Materials/...nyxmat)")
+											  : "its parents end in " + last->Path + ", which names no shader");
+		}
+
+		// The farthest parent's values first, each nearer one's over them, the material's own last
+		entry.Inherited = MaterialAsset{};
+		if (!entry.Parents.empty())
+		{
+			entry.Inherited.SetShader(shader);
+			for (auto parent = entry.Parents.rbegin(); parent != entry.Parents.rend(); ++parent)
+			{
+				for (const auto& [name, value] : (*parent)->Asset.GetValues())
+				{
+					entry.Inherited.SetValue(name, value);
+				}
+			}
+		}
+		entry.Resolved = entry.Inherited;
+		entry.Resolved.SetShader(shader);
+		for (const auto& [name, value] : entry.Asset.GetValues())
+		{
+			entry.Resolved.SetValue(name, value);
+		}
+		entry.UsedShader = FindShader(shader);
+		entry.ChainProblem.clear();
+		return true;
+	}
+
+	void VulkanMaterials::WriteInstancesOf(const Entry& changed)
+	{
+		for (auto& [key, entry] : Materials)
+		{
+			if (std::find(entry->Parents.begin(), entry->Parents.end(), &changed) != entry->Parents.end())
+			{
+				WriteBytes(*entry);
+			}
+		}
 	}
 
 	VulkanMaterials::View VulkanMaterials::Inspect(const std::string& path)
 	{
-		Get(path);
-		const Entry& entry = *Materials.at(PathKey(path));
+		const Entry& entry = GetEntry(path);
 		View view;
 		view.Asset = &entry.Asset;
+		view.Inherited = &entry.Inherited;
+		view.Shader = entry.Resolved.GetShader();
 		view.FileRevision = entry.FileRevision;
 		if (entry.UsedShader && entry.UsedShader->bReady)
 		{
@@ -176,13 +261,11 @@ namespace Nyx::Engine
 
 	void VulkanMaterials::SetValues(const std::string& path, const MaterialAsset& asset)
 	{
-		Get(path);
-		Entry& entry = *Materials.at(PathKey(path));
+		Entry& entry = GetEntry(path);
 		entry.Asset = asset;
 		entry.bLoaded = true;
-		const std::string shader = entry.Asset.GetShader();
-		entry.UsedShader = shader.empty() ? nullptr : FindShader(shader);
 		WriteBytes(entry);
+		WriteInstancesOf(entry);
 	}
 
 	bool VulkanMaterials::IsWaiting() const
@@ -213,15 +296,7 @@ namespace Nyx::Engine
 		entry.Asset = std::move(asset);
 		entry.bLoaded = true;
 		++entry.FileRevision;
-
-		const std::string shader = entry.Asset.GetShader();
-		if (shader.empty())
-		{
-			LOG_ERROR("Material {} names no shader (Shader = Shaders/...slang); it draws as the missing material", entry.Path);
-			entry.UsedShader = nullptr;
-			return false;
-		}
-		entry.UsedShader = FindShader(shader);
+		// Its shader, its own or its parents', when its bytes are written (Resolve())
 		return true;
 	}
 
@@ -292,7 +367,7 @@ namespace Nyx::Engine
 	void VulkanMaterials::WriteBytes(Entry& entry)
 	{
 		Nyx::Material& handle = *entry.Handle;
-		if (!entry.bLoaded || !entry.UsedShader || !Prepare(*entry.UsedShader))
+		if (!entry.bLoaded || !Resolve(entry) || !Prepare(*entry.UsedShader))
 		{
 			handle.Pipeline = &MissingPipeline;
 			handle.MaterialOffset = 0;
@@ -302,7 +377,7 @@ namespace Nyx::Engine
 
 		std::vector<std::byte> bytes = shader.Defaults;
 		bytes.resize(shader.Layout.Size);
-		for (const MaterialValueProblem& problem : WriteMaterialValues(shader.Layout, entry.Asset, bytes, [this](const std::string& path, bool bLinear)
+		for (const MaterialValueProblem& problem : WriteMaterialValues(shader.Layout, entry.Resolved, bytes, [this](const std::string& path, bool bLinear)
 				 {
 					 return TextureSlot(path, bLinear);
 				 }))
@@ -420,6 +495,7 @@ namespace Nyx::Engine
 					LOG_INFO("Material {} reloaded", entry->Path);
 				}
 				WriteBytes(*entry);
+				WriteInstancesOf(*entry);
 			}
 			Saved.clear();
 		}

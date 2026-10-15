@@ -44,6 +44,11 @@ namespace Nyx
 	{
 		// Its values: as its file has them, or as SetMaterialValues() set them since
 		const Nyx::Engine::MaterialAsset* Asset = nullptr;
+		// An instance's: the values it takes from its parents, merged; empty for a material on a
+		// shader of its own
+		const Nyx::Engine::MaterialAsset* Inherited = nullptr;
+		// The shader it is drawn with, its own or its parents' ("Shaders/Stone.slang")
+		std::string Shader;
 		// Its shader's parameters, and the bytes of their defaults
 		// (Nyx::Engine::ReadMaterialValue() reads one); null and empty until the shader first
 		// compiled

@@ -152,6 +152,23 @@ namespace Nyx::Editor
 				SetAssetDragPayload(entry.RelativePath.generic_string());
 				ImGui::EndDragDropSource();
 			}
+			if (entry.TypeId == "Material" && NewMaterialInstance)
+			{
+				const std::string menu = "##MaterialMenu" + entry.Name;
+				if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
+				{
+					ImGui::OpenPopup(menu.c_str());
+				}
+				if (Nyx::UI::BeginPopup(menu.c_str()))
+				{
+					if (NYX_UI(Nyx::UI::MenuItem("New Material Instance")))
+					{
+						NewMaterialInstance(entry.RelativePath.generic_string());
+					}
+					ImGui::SetItemTooltip("A material that takes its values from this one, but those it sets itself");
+					ImGui::EndPopup();
+				}
+			}
 			if (entry.TypeId == "Shader" && NewMaterialForShader)
 			{
 				const std::string menu = "##ShaderMenu" + entry.Name;

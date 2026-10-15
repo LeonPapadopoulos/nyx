@@ -168,6 +168,14 @@ namespace Nyx::Editor
 		{
 			CreateMaterialForShader(shaderPath);
 		};
+		AssetBrowser.NewMaterialInstance = [this](const std::string& materialPath)
+		{
+			CreateMaterialInstance(materialPath);
+		};
+		MaterialParameters.OpenOther = [this](const std::string& path)
+		{
+			OpenMaterial(path);
+		};
 		// Material fields pick from the assets
 		Editing.DetailsContext.Assets = &AssetDb;
 
@@ -314,8 +322,14 @@ namespace Nyx::Editor
 			{
 				MaterialParameters.ShaderChoices.push_back(shader.RelativePath.generic_string());
 			}
+			MaterialParameters.MaterialChoices.clear();
+			for (const AssetEntry& material : AssetDb.GetAllByType("Material"))
+			{
+				MaterialParameters.MaterialChoices.push_back(material.RelativePath.generic_string());
+			}
 			MaterialParameters.Users.clear();
 			const std::string& openMaterial = MaterialParameters.GetDocument().GetPath();
+			MaterialParameters.Instances = openMaterial.empty() ? std::vector<std::string>() : FindInstancesOf(openMaterial);
 			Nyx::Engine::Registry& world = Editing.Scene.GetRegistry();
 			world.Each<Nyx::Engine::MeshRendererComponent>([&](Nyx::Engine::Entity entity, const Nyx::Engine::MeshRendererComponent& meshRenderer)
 				{
@@ -846,6 +860,43 @@ namespace Nyx::Editor
 		OpenAtLine((Nyx::Paths::GetAssetsDir() / files->ShaderPath).make_preferred(), files->ShadeLine);
 		LOG_INFO("Made {} and {}", files->ShaderPath, files->MaterialPath);
 		return true;
+	}
+
+	void EditorLayer::CreateMaterialInstance(const std::string& parentPath)
+	{
+		std::string error;
+		const std::optional<NewMaterialFiles> files = Nyx::Editor::CreateMaterialInstance(Nyx::Paths::GetAssetsDir(), parentPath, error);
+		if (!files)
+		{
+			LOG_ERROR("Couldn't make an instance of {}: {}", parentPath, error);
+			return;
+		}
+		AssetDb.Rescan();
+		InstancesFoundAt = -1.0;
+		OpenMaterial(files->MaterialPath);
+		LOG_INFO("Made {}", files->MaterialPath);
+	}
+
+	const std::vector<std::string>& EditorLayer::FindInstancesOf(const std::string& path)
+	{
+		const double now = ImGui::GetTime();
+		if (path == InstancesOf && InstancesFoundAt >= 0.0 && now - InstancesFoundAt < 1.0)
+		{
+			return FoundInstances;
+		}
+		InstancesOf = path;
+		InstancesFoundAt = now;
+		FoundInstances.clear();
+		for (const AssetEntry& material : AssetDb.GetAllByType("Material"))
+		{
+			Nyx::Engine::MaterialAsset asset;
+			std::string error;
+			if (asset.Load(material.AbsolutePath, error) && asset.GetParent() == path)
+			{
+				FoundInstances.push_back(material.RelativePath.generic_string());
+			}
+		}
+		return FoundInstances;
 	}
 
 	void EditorLayer::CreateMaterialForShader(const std::string& shaderPath)

@@ -23,6 +23,13 @@ namespace Nyx::Engine
 	//   BaseColor = 0.62 0.60 0.56
 	//   Albedo = Textures/Stone_Albedo.png
 	//
+	// A material instance names another material instead of a shader, and sets only what it
+	// changes; the rest it takes from its parent (Design/shader-materials.md, stage 3, change 2):
+	//
+	//   # Assets/Materials/WetStone.nyxmat
+	//   Parent = Materials/WeatheredStone.nyxmat
+	//   Roughness = 0.2
+	//
 	// Text, so it diffs, merges and is written by hand. The lines are kept as they are: comments,
 	// blank lines, and values the shader doesn't know (any more, or yet). Setting a value changes
 	// its own line alone. A member of a struct field is named with a dot ("Layer.Tint").
@@ -41,12 +48,17 @@ namespace Nyx::Engine
 		std::string GetShader() const;
 		void SetShader(std::string path);
 
+		// The parent material's path, relative to the assets folder ("Parent = ..."); empty
+		// without one. A material with a parent takes its shader from its parents.
+		std::string GetParent() const;
+		void SetParent(std::string path);
+
 		// A parameter's value as written, e.g. "0.62 0.60 0.56"; null when the file sets none
 		const std::string* FindValue(std::string_view name) const;
 		// Changes the value's line, or adds a line at the end
 		void SetValue(std::string_view name, std::string value);
 		bool RemoveValue(std::string_view name);
-		// Every parameter's name and value, in the file's order; the shader isn't one
+		// Every parameter's name and value, in the file's order; the shader and the parent aren't
 		std::vector<std::pair<std::string, std::string>> GetValues() const;
 
 	private:

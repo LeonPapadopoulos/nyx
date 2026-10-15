@@ -50,6 +50,21 @@ namespace Nyx::Editor
 		}
 	}
 
+	void MaterialDocument::SetValues(const std::vector<std::pair<std::string, std::optional<std::string>>>& values, std::string label)
+	{
+		EndPreview("Edit");
+		std::string before = Asset.ToText();
+		for (const auto& [name, value] : values)
+		{
+			Apply(name, value);
+		}
+		std::string after = Asset.ToText();
+		if (after != before)
+		{
+			Record(Edit{ std::move(label), std::move(before), std::move(after) });
+		}
+	}
+
 	void MaterialDocument::PreviewValue(const std::string& name, std::optional<std::string> value)
 	{
 		if (!PreviewStart)

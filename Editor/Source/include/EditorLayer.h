@@ -97,6 +97,9 @@ namespace Nyx::Editor
 		void DrawNewMaterialPopup();
 		bool CreateNewMaterial();
 		void CreateMaterialForShader(const std::string& shaderPath);
+		void CreateMaterialInstance(const std::string& parentPath);
+		// The materials whose parent is `path`, read from their files at most once a second
+		const std::vector<std::string>& FindInstancesOf(const std::string& path);
 
 		// Called before destroying the old registry, once its replacement is ready.
 		void ForgetPreviousScene();
@@ -143,6 +146,11 @@ namespace Nyx::Editor
 
 		// The Scene and Materials workspaces' layouts
 		Workspaces Layouts{ Nyx::Paths::GetSavedDir() / "Layouts" };
+
+		// FindInstancesOf()'s last answer
+		std::string InstancesOf;
+		std::vector<std::string> FoundInstances;
+		double InstancesFoundAt = -1.0;
 
 		// New Material's question
 		bool bAskNewMaterialName = false;

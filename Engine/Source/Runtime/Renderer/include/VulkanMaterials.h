@@ -39,6 +39,11 @@ namespace Nyx::Engine
 	//     carried over by name. A shader that stops compiling keeps its last good look.
 	// A new material's bytes are its shader's defaults, from the defaults writer run once on the
 	// GPU. Material textures are loaded from the assets folder, once each.
+	//
+	// A material instance (a Parent line instead of a Shader line) is drawn with its parents'
+	// values under its own, and its shader is the one the chain of parents ends in. A parent's
+	// new values, saved or set, reach its instances in the same update; a chain that goes round,
+	// or ends without a shader, draws as the missing material.
 	class VulkanMaterials
 	{
 	public:
@@ -57,6 +62,11 @@ namespace Nyx::Engine
 		{
 			// Its values: as its file has them, or as SetValues() set them since
 			const MaterialAsset* Asset = nullptr;
+			// An instance's: the values it takes from its parents, all of them merged, and the
+			// shader they end in; empty for a material on a shader of its own
+			const MaterialAsset* Inherited = nullptr;
+			// The shader it is drawn with: its own, or its parents'
+			std::string Shader;
 			// Its shader's parameters, and the bytes of their defaults; null and empty until the
 			// shader first compiled
 			const ShaderLayout* Layout = nullptr;
@@ -106,6 +116,13 @@ namespace Nyx::Engine
 			// Counts the reads of the file (View::FileRevision)
 			uint64_t FileRevision = 0;
 			Shader* UsedShader = nullptr;
+			// Its parents, nearest first, and what they give it (Resolve())
+			std::vector<Entry*> Parents;
+			MaterialAsset Inherited;
+			// Its own values over the inherited ones, with the shader: what is drawn
+			MaterialAsset Resolved;
+			// Why the chain of parents doesn't make a material, as last logged
+			std::string ChainProblem;
 			// Its room in the material buffer
 			std::optional<uint32_t> Offset;
 			uint32_t Size = 0;
@@ -114,6 +131,13 @@ namespace Nyx::Engine
 
 		// False when the file can't be read; a material read before keeps its values
 		bool LoadAsset(Entry& entry);
+		// The entry for `path`, loaded at the first ask
+		Entry& GetEntry(const std::string& path);
+		// The material's parents and what they give it, and its shader; false when the chain
+		// doesn't make a material (logged once)
+		bool Resolve(Entry& entry);
+		// Every material with `changed` among its parents is written again
+		void WriteInstancesOf(const Entry& changed);
 		Shader* FindShader(const std::string& path);
 		// Makes the shader's pipeline and defaults once both its compiles are in; false before
 		bool Prepare(Shader& shader);

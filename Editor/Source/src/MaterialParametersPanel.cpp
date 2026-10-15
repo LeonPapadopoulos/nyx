@@ -161,8 +161,15 @@ namespace Nyx::Editor
 		const std::string name = std::filesystem::path(Document.GetPath()).stem().string();
 		NYX_UI(Nyx::UI::SectionHeader((name + (bDirty ? " *" : "")).c_str()));
 		ImGui::SetItemTooltip("%s", Document.GetFile().string().c_str());
-		const std::string shader = Document.GetAsset().GetShader();
-		NYX_UI(ImGui::TextDisabled("Shader: %s", shader.empty() ? "none" : shader.c_str()));
+		const std::string parent = Document.GetAsset().GetParent();
+		if (parent.empty())
+		{
+			NYX_UI(ImGui::TextDisabled("Shader: %s", view.Shader.empty() ? "none" : view.Shader.c_str()));
+		}
+		else
+		{
+			NYX_UI(ImGui::TextDisabled("Instance of %s, on %s", parent.c_str(), view.Shader.empty() ? "no shader" : view.Shader.c_str()));
+		}
 
 		if (NYX_UI(Nyx::UI::Button("Save")))
 		{
@@ -194,20 +201,72 @@ namespace Nyx::Editor
 		}
 		NYX_UI(Nyx::UI::Separator());
 
-		DrawMaterial();
+		DrawMaterial(view);
 		DrawParameters(view);
 		ImGui::End();
 	}
 
-	void MaterialParametersPanel::DrawMaterial()
+	void MaterialParametersPanel::DrawMaterial(const Nyx::MaterialView& view)
 	{
 		if (!NYX_UI(Nyx::UI::CollapsingHeader("Material")))
 		{
 			return;
 		}
+		const std::string parent = Document.GetAsset().GetParent();
+		Nyx::UI::BeginPropertyRow("Parent");
+		const float openWidth = parent.empty() || !OpenOther ? 0.0f : ImGui::CalcTextSize("Open").x + ImGui::GetStyle().FramePadding.x * 2.0f + ImGui::GetStyle().ItemSpacing.x;
+		ImGui::SetNextItemWidth(ImGui::CalcItemWidth() - openWidth);
+		if (Nyx::UI::BeginCombo("##Parent", parent.empty() ? "None" : parent.c_str()))
+		{
+			if (NYX_UI(Nyx::UI::Selectable("None", parent.empty())) && !parent.empty())
+			{
+				// On its parents' shader, with the values it took from them: it looks the same
+				std::vector<std::pair<std::string, std::optional<std::string>>> values = { { "Parent", std::nullopt }, { "Shader", view.Shader } };
+				if (view.Inherited)
+				{
+					for (const auto& [name, value] : view.Inherited->GetValues())
+					{
+						if (!Document.GetAsset().FindValue(name))
+						{
+							values.emplace_back(name, value);
+						}
+					}
+				}
+				Document.SetValues(values, "Remove Parent");
+			}
+			for (const std::string& choice : MaterialChoices)
+			{
+				if (choice == Document.GetPath())
+				{
+					continue;
+				}
+				if (NYX_UI(Nyx::UI::Selectable(choice.c_str(), choice == parent)) && choice != parent)
+				{
+					// Its own values stay, over the parent's
+					Document.SetValues({ { "Parent", choice }, { "Shader", std::nullopt } }, "Change Parent");
+				}
+			}
+			Nyx::UI::EndCombo();
+		}
+		ImGui::SetItemTooltip("A material with a parent takes the values it doesn't set, and its shader, from the parent");
+		if (openWidth > 0.0f)
+		{
+			ImGui::SameLine();
+			if (NYX_UI(Nyx::UI::Button("Open")))
+			{
+				OpenOther(parent);
+			}
+		}
+		Nyx::UI::EndPropertyRow();
+
 		const std::string shader = Document.GetAsset().GetShader();
 		Nyx::UI::BeginPropertyRow("Shader");
-		if (Nyx::UI::BeginCombo("##Shader", shader.empty() ? "None" : shader.c_str()))
+		if (!parent.empty())
+		{
+			ImGui::AlignTextToFramePadding();
+			NYX_UI(ImGui::TextDisabled("%s (the parent's)", view.Shader.empty() ? "none" : view.Shader.c_str()));
+		}
+		else if (Nyx::UI::BeginCombo("##Shader", shader.empty() ? "None" : shader.c_str()))
 		{
 			for (const std::string& choice : ShaderChoices)
 			{
@@ -223,6 +282,21 @@ namespace Nyx::Editor
 		Nyx::UI::BeginPropertyRow("Domain");
 		ImGui::AlignTextToFramePadding();
 		NYX_UI(ImGui::TextUnformatted("Surface"));
+		Nyx::UI::EndPropertyRow();
+		Nyx::UI::BeginPropertyRow("Instances");
+		if (Instances.empty())
+		{
+			ImGui::AlignTextToFramePadding();
+			NYX_UI(ImGui::TextDisabled("None"));
+		}
+		for (const std::string& instance : Instances)
+		{
+			if (NYX_UI(Nyx::UI::Selectable(instance.c_str())) && OpenOther)
+			{
+				OpenOther(instance);
+			}
+			ImGui::SetItemTooltip("Opens it");
+		}
 		Nyx::UI::EndPropertyRow();
 		Nyx::UI::BeginPropertyRow("Used By");
 		if (Users.empty())
@@ -394,7 +468,7 @@ namespace Nyx::Editor
 	{
 		if (!view.Layout)
 		{
-			const std::string shader = Document.GetAsset().GetShader();
+			const std::string shader = view.Shader.empty() ? std::string("named nowhere") : view.Shader;
 			NYX_UI(ImGui::TextWrapped("Its shader, %s, hasn't compiled yet; its parameters show once it has. The file's values:", shader.c_str()));
 			for (const auto& [name, value] : Document.GetAsset().GetValues())
 			{
@@ -469,8 +543,11 @@ namespace Nyx::Editor
 		const bool bTexture = field.Kind == EShaderFieldKind::Texture;
 		const std::string* set = Document.GetAsset().FindValue(name);
 		const std::string defaultText = Nyx::Engine::ReadMaterialValue(field, view.Defaults, offset);
-		const std::string current = set ? *set : defaultText;
-		const bool bDiffers = set && (bTexture ? !set->empty() : !SameValue(*set, defaultText));
+		// An instance's value from its parents, when it doesn't set its own
+		const std::string* inherited = view.Inherited ? view.Inherited->FindValue(name) : nullptr;
+		const std::string baseline = inherited ? *inherited : bTexture ? std::string() : defaultText;
+		const std::string current = set ? *set : baseline;
+		const bool bDiffers = set && (bTexture ? *set != baseline : !SameValue(*set, baseline));
 
 		ImGui::PushID(name.c_str());
 		Nyx::UI::BeginPropertyRow(label.c_str());
@@ -479,9 +556,9 @@ namespace Nyx::Editor
 			ImGui::SetTooltip("%s", tooltip->c_str());
 		}
 
-		// Room for the reset button on every row, so that the values line up
+		// Room for the reset button (or Parent's mark) on every row, so that the values line up
 		const ImGuiStyle& style = ImGui::GetStyle();
-		const float resetWidth = ImGui::CalcTextSize("Reset").x + style.FramePadding.x * 2.0f;
+		const float resetWidth = std::max(ImGui::CalcTextSize("Reset").x, ImGui::CalcTextSize("Parent").x) + style.FramePadding.x * 2.0f;
 		ImGui::PushItemWidth(std::max(ImGui::CalcItemWidth() - resetWidth - style.ItemSpacing.x, 40.0f));
 
 		const auto preview = [&](std::string text)
@@ -499,7 +576,7 @@ namespace Nyx::Editor
 			// Unset, it takes the slot its Default(...) names: white without one
 			const std::string* fallback = TextArgument(field, "Default");
 			const std::string hint = fallback ? *fallback : "White";
-			DrawTextValue(name, set ? *set : std::string(), hint.c_str(), editLabel);
+			DrawTextValue(name, current, hint.c_str(), editLabel);
 		}
 		else if (!bSettable)
 		{
@@ -606,7 +683,11 @@ namespace Nyx::Editor
 			{
 				Document.SetValue(name, std::nullopt, "Reset " + label);
 			}
-			if (bTexture)
+			if (inherited)
+			{
+				ImGui::SetItemTooltip("Back to the parent's value: %s", inherited->empty() ? "none" : inherited->c_str());
+			}
+			else if (bTexture)
 			{
 				const std::string* fallback = TextArgument(field, "Default");
 				ImGui::SetItemTooltip("Back to the shader's default: %s", fallback ? fallback->c_str() : "White");
@@ -615,6 +696,13 @@ namespace Nyx::Editor
 			{
 				ImGui::SetItemTooltip("Back to the shader's default: %s", defaultText.c_str());
 			}
+		}
+		else if (inherited && !set)
+		{
+			// Taken from the parent; changing it overrides it
+			ImGui::AlignTextToFramePadding();
+			NYX_UI(ImGui::TextDisabled("Parent"));
+			ImGui::SetItemTooltip("From %s; changing it overrides it here", Document.GetAsset().GetParent().c_str());
 		}
 		else
 		{

@@ -111,6 +111,25 @@ namespace Nyx::Editor
 		return files;
 	}
 
+	std::optional<NewMaterialFiles> CreateMaterialInstance(const std::filesystem::path& assetsFolder, const std::string& parentPath, std::string& outError)
+	{
+		const std::string base = MakeMaterialName(std::filesystem::path(parentPath).stem().string()) + "Instance";
+		NewMaterialFiles files;
+		for (int number = 1;; ++number)
+		{
+			files.MaterialPath = "Materials/" + base + (number > 1 ? std::to_string(number) : std::string()) + ".nyxmat";
+			if (!std::filesystem::exists(assetsFolder / files.MaterialPath))
+			{
+				break;
+			}
+		}
+		if (!WriteNewFile((assetsFolder / files.MaterialPath).make_preferred(), "Parent = " + parentPath + "\n", outError))
+		{
+			return std::nullopt;
+		}
+		return files;
+	}
+
 	std::filesystem::path GetSurfaceTemplateFile()
 	{
 		return Nyx::Paths::GetShadersDir() / "Templates" / "Surface.slang";
