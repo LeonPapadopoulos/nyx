@@ -334,6 +334,12 @@ namespace
 		materials.Folder = assets.Path;
 		HeadlessUI ui;
 		MaterialParametersPanel panel(assets.Path);
+		// What the editor sends to its games: every value the renderer gets
+		std::vector<std::string> toGames;
+		panel.ValuesSent = [&](const std::string& path, const MaterialAsset& asset)
+		{
+			toGames.push_back(path + ": " + asset.ToText());
+		};
 		const auto draw = [&]()
 		{
 			panel.Draw(materials);
@@ -357,6 +363,7 @@ namespace
 		document.PreviewValue("Roughness", "0.4");
 		ui.Frame(draw);
 		Require(materials.LastSent("Materials/Test.nyxmat").find("Roughness = 0.4") != std::string::npos, "the edit didn't reach the renderer");
+		Require(!toGames.empty() && toGames.back() == "Materials/Test.nyxmat: " + materials.LastSent("Materials/Test.nyxmat"), "the edit isn't handed on for the games");
 		Require(!document.IsPreviewing() && document.GetUndoLabel(), "the drag didn't end once nothing was dragged");
 
 		// Its keys while it has focus: undo, redo, save

@@ -92,6 +92,17 @@ namespace Nyx::Engine
 		// Whether a compile is waiting or under way, e.g. for tests that wait for one
 		bool IsBusy() const;
 
+		// A compile made elsewhere, e.g. by the editor that started this game: taken as if it had
+		// compiled here, and returned by the next Update() as a change. Only successful compiles
+		// are taken; the saved cache isn't written (the editor wrote it).
+		void Inject(const ShaderCompileRequest& request, ShaderCompileResult result);
+
+		// From now on, shaders come compiled from elsewhere (Inject()): saved files compile
+		// nothing here, nor does code that is out of date. A shader nothing has compiled yet is
+		// still compiled here at its first use, with live reload on.
+		void FollowEditor();
+		bool IsFollowingEditor() const { return bFollowingEditor; }
+
 	private:
 		struct Program
 		{
@@ -121,5 +132,9 @@ namespace Nyx::Engine
 		Clock::time_point LastChange{};
 		uint32_t NextRequestId = 1;
 		std::string Problem;
+
+		bool bFollowingEditor = false;
+		// Compiles injected since the last Update()
+		std::vector<ShaderProgramUpdate> Injected;
 	};
 }

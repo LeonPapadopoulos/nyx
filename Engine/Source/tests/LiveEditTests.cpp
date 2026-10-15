@@ -11,6 +11,7 @@
 #include "Log.h"
 #include "MeshRendererComponent.h"
 #include "NameComponent.h"
+#include "Paths.h"
 #include "ReflectedArchivePrinter.h"
 #include "ReflectedArchiveSerializer.h"
 #include "ReflectionUtils.h"
@@ -495,6 +496,58 @@ namespace
 	}
 }
 
+namespace
+{
+	// A shader compile and a material's values read back as written; the paths travel relative
+	// to the project's root and come back whole
+	void TestRendererMessages()
+	{
+		const std::filesystem::path root = Nyx::Paths::GetProjectRoot();
+		ShaderProgramMessage program;
+		program.Request.Kind = EShaderCompileKind::Material;
+		program.Request.File = root / "Assets" / "Shaders" / "Stone.slang";
+		program.Request.Domain = ShaderDomain::Surface();
+		program.Result.bSucceeded = true;
+		program.Result.Milliseconds = 41.0;
+		program.Result.EntryPoints.push_back(CompiledEntryPoint{ "surfaceFragment", EShaderStage::Fragment, { 0x07230203u, 1u, 2u, 3u } });
+		program.Result.Dependencies = { program.Request.File, root / "Engine" / "Shaders" / "Library" / "nyx" / "surface.slang" };
+		program.Result.Diagnostics.push_back(ShaderDiagnostic{ .File = program.Request.File, .Line = 12, .Severity = EShaderDiagnosticSeverity::Warning, .Message = "unused" });
+		ShaderLayout layout;
+		layout.TypeName = "Stone";
+		layout.Size = 16;
+		layout.Fields.push_back(ShaderField{ .Name = "Roughness", .Kind = EShaderFieldKind::Scalar, .Scalar = EShaderScalarType::Float, .Offset = 12, .Size = 4 });
+		program.Result.MaterialLayout = layout;
+
+		const Nyx::Net::Message message = MakeNetMessage(program);
+		const std::string payload(reinterpret_cast<const char*>(message.Payload.data()), message.Payload.size());
+		Require(payload.find(root.string()) == std::string::npos && payload.find(root.generic_string()) == std::string::npos,
+			"The project's root went over the link; paths travel relative to it");
+
+		ShaderProgramMessage read;
+		Require(ReadNetMessage(message, read), "ShaderProgram can't be read");
+		Require(read.Request.Kind == program.Request.Kind && read.Request.File == program.Request.File.lexically_normal() && read.Request.Domain.Module == "nyx.surface",
+			"ShaderProgram's request changed on the way: " + read.Request.File.string());
+		Require(read.Result.bSucceeded && read.Result.EntryPoints.size() == 1 && read.Result.EntryPoints[0].Spirv == program.Result.EntryPoints[0].Spirv &&
+				read.Result.EntryPoints[0].Name == "surfaceFragment",
+			"ShaderProgram's SPIR-V changed on the way");
+		Require(read.Result.MaterialLayout && read.Result.MaterialLayout->FindField("Roughness") && read.Result.MaterialLayout->FindField("Roughness")->Offset == 12,
+			"ShaderProgram's material layout changed on the way");
+		Require(read.Result.Dependencies.size() == 2 && read.Result.Dependencies[1] == program.Result.Dependencies[1].lexically_normal() &&
+				read.Result.Diagnostics.size() == 1 && read.Result.Diagnostics[0].File == program.Request.File.lexically_normal(),
+			"ShaderProgram's files changed on the way");
+
+		MaterialValuesMessage values{ "Materials/Stone.nyxmat", "Shader = Shaders/Stone.slang\nRoughness = 0.5\n" };
+		MaterialValuesMessage readValues;
+		Require(ReadNetMessage(MakeNetMessage(values), readValues) && readValues.Path == values.Path && readValues.Text == values.Text, "MaterialValues changed on the way");
+
+		const EditorLinkMessageText programText = DescribeEditorLinkMessage(message);
+		Require(programText.Name == "ShaderProgram" && programText.Summary.find("Assets/Shaders/Stone.slang (material), 1 entry points") != std::string::npos,
+			"ShaderProgram is described as: " + programText.Summary);
+		const EditorLinkMessageText valuesText = DescribeEditorLinkMessage(MakeNetMessage(values));
+		Require(valuesText.Name == "MaterialValues" && valuesText.Summary == "Materials/Stone.nyxmat, 2 lines", "MaterialValues is described as: " + valuesText.Summary);
+	}
+}
+
 int main()
 {
 	try
@@ -508,6 +561,7 @@ int main()
 		TestCreateAndDeleteEntities();
 		TestWhatCantBeApplied();
 		TestDescriptions();
+		TestRendererMessages();
 
 		std::cout << "All live edit tests passed.\n";
 		return 0;

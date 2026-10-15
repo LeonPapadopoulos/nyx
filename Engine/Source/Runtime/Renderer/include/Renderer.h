@@ -8,6 +8,7 @@
 #include "PainterDrawOptions.h"
 #include "ImageFile.h"
 #include "MaterialAsset.h"
+#include "ShaderCompileService.h"
 #include "ShaderLog.h"
 #include <imgui.h>
 #include "glm/glm.hpp"
@@ -232,6 +233,18 @@ namespace Nyx
 		// The last compile of every shader that compiled since the start, the engine's and the
 		// materials', with what the compiler said: for the Shader Log
 		virtual const Nyx::Engine::ShaderLog& GetShaderLog() const = 0;
+
+		// Called for every shader that compiled here and replaced its code, the engine's and the
+		// materials': the editor sends it to the games it started
+		using ShaderCompiledListener = std::function<void(const Nyx::Engine::ShaderCompileRequest& request, const Nyx::Engine::ShaderCompileResult& result)>;
+		virtual void SetShaderCompiledListener(ShaderCompiledListener listener) = 0;
+
+		// A game started by the editor: shaders come compiled from the editor
+		// (ApplyCompiledShader()), and saving a shader compiles nothing here. A shader nothing
+		// compiled yet still compiles here at its first use.
+		virtual void FollowEditorShaders() = 0;
+		// A compile made by the editor, taken in the next frame as if it had compiled here
+		virtual void ApplyCompiledShader(const Nyx::Engine::ShaderCompileRequest& request, const Nyx::Engine::ShaderCompileResult& result) = 0;
 	};
 
 	NYXENGINE_API std::unique_ptr<IRenderer> CreateRenderer();

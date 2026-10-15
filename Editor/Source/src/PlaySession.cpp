@@ -92,6 +92,11 @@ namespace Nyx::Editor
 		{
 			return false;
 		}
+		// What the files don't have yet, before the edits to come
+		if (StateForNewGames)
+		{
+			game->QueueEdits(StateForNewGames());
+		}
 
 		Games.push_back(std::move(game));
 		return true;

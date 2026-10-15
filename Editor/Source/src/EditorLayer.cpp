@@ -3,6 +3,7 @@
 #include "Application.h"
 #include "Assertions.h"
 #include "DefaultScene.h"
+#include "EditorLinkMessages.h"
 #include "ImGuiSource.h"
 #include "Log.h"
 #include "MeshRendererComponent.h"
@@ -170,6 +171,27 @@ namespace Nyx::Editor
 		// Material fields pick from the assets
 		Editing.DetailsContext.Assets = &AssetDb;
 
+		// The games get what the editor compiles and the material values it edits, saved or not;
+		// a game starting gets the open material's unsaved values first
+		Renderer->SetShaderCompiledListener([this](const Nyx::Engine::ShaderCompileRequest& request, const Nyx::Engine::ShaderCompileResult& result)
+			{
+				Games.SendToGames(Nyx::Engine::MakeNetMessage(Nyx::Engine::ShaderProgramMessage{ request, result }));
+			});
+		MaterialParameters.ValuesSent = [this](const std::string& path, const Nyx::Engine::MaterialAsset& asset)
+		{
+			Games.SendToGames(Nyx::Engine::MakeNetMessage(Nyx::Engine::MaterialValuesMessage{ path, asset.ToText() }));
+		};
+		Games.StateForNewGames = [this]()
+		{
+			std::vector<Nyx::Net::Message> state;
+			const MaterialDocument& document = MaterialParameters.GetDocument();
+			if (document.IsDirty())
+			{
+				state.push_back(Nyx::Engine::MakeNetMessage(Nyx::Engine::MaterialValuesMessage{ document.GetPath(), document.GetAsset().ToText() }));
+			}
+			return state;
+		};
+
 		MainSceneView.CreateView(*Renderer);
 		SecondarySceneView.CreateView(*Renderer);
 
@@ -218,6 +240,7 @@ namespace Nyx::Editor
 		MaterialPreview.ReleaseView();
 		// imgui.ini gets the current workspace's layout too, as ImGui saves it
 		Layouts.SaveCurrent();
+		Renderer->SetShaderCompiledListener(nullptr);
 		PainterTest.Release();
 		Mockup.Release();
 	}

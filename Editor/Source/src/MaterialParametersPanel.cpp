@@ -274,7 +274,7 @@ namespace Nyx::Editor
 			std::string error;
 			if (file.Load((AssetsFolder / Discarded).make_preferred(), error))
 			{
-				materials.SetMaterialValues(Discarded, file);
+				SendValues(materials, Discarded, file);
 			}
 			Discarded.clear();
 		}
@@ -300,8 +300,17 @@ namespace Nyx::Editor
 		}
 		if (Document.GetRevision() != SentRevision)
 		{
-			materials.SetMaterialValues(Document.GetPath(), Document.GetAsset());
+			SendValues(materials, Document.GetPath(), Document.GetAsset());
 			SentRevision = Document.GetRevision();
+		}
+	}
+
+	void MaterialParametersPanel::SendValues(Nyx::IMaterialSource& materials, const std::string& path, const Nyx::Engine::MaterialAsset& asset)
+	{
+		materials.SetMaterialValues(path, asset);
+		if (ValuesSent)
+		{
+			ValuesSent(path, asset);
 		}
 	}
 

@@ -23,6 +23,9 @@ namespace Nyx::Game
 	// the editor on the port given with --editor-port, sends the game's log lines, applies the
 	// editor's live edits to the game's world and quits when the editor asks. If connecting fails,
 	// or the editor goes away, the game keeps running.
+	//
+	// Shaders come compiled from the editor (IRenderer::FollowEditorShaders()), with the material
+	// values it edits, saved or not; the game compiles only what nothing compiled yet.
 	class EditorLinkLayer : public Nyx::Engine::ILayer
 	{
 	public:

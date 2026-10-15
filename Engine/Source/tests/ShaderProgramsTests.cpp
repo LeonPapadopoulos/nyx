@@ -5,7 +5,8 @@
 // save during a compile is compiled after it; a program with several entry points gives each
 // by name, and keeps them all when a compile drops one; and a material shader, which no cache
 // holds yet, is compiled at the first update and again when saved. The Shader Log keeps each
-// shader's last compile, the newest last.
+// shader's last compile, the newest last. A compile made elsewhere is taken as if it compiled
+// here; following the editor, saved files compile nothing, and only what has no code compiles.
 #include "Paths.h"
 #include "ShaderCache.h"
 #include "ShaderCompiler.h"
@@ -495,6 +496,55 @@ namespace
 	}
 }
 
+namespace
+{
+	// As a game started by the editor: the editor's compiles are taken as if made here, and saved
+	// files compile nothing; a shader without any code still compiles at its first use
+	void TestFollowingTheEditor()
+	{
+		TestFolders folders;
+		ShaderPrograms programs(folders.Compiled, folders.Sources);
+		programs.GetSpirv("Live.frag");
+		auto service = std::make_unique<TestService>();
+		TestService& testService = *service;
+		Require(programs.EnableLiveReload(std::move(service)), "live reload doesn't start: " + programs.GetProblem());
+		programs.FollowEditor();
+
+		// Saved: compiled by the editor, not here
+		WriteFile(folders.Sources / "Live.frag", LiveSource("vec4(1.0, 0.0, 0.0, 1.0)"));
+		RequireQuiet(programs, "a saved file compiled while following the editor");
+		Require(testService.Submits == 0 && programs.GetSpirv("Live.frag") == folders.BuiltSpirv, "a saved file compiled while following the editor");
+
+		// The editor's compile: in the next update, as a change
+		ShaderCompiler compiler({ Nyx::Paths::GetShaderLibraryDir() });
+		ShaderCompileRequest request;
+		request.File = folders.Sources / "Live.frag";
+		const ShaderCompileResult editors = compiler.CompileProgram(request.File);
+		Require(editors.bSucceeded, "the editor's Live.frag doesn't compile");
+		programs.Inject(request, editors);
+		const std::vector<ShaderProgramUpdate> updates = programs.Update();
+		Require(updates.size() == 1 && updates[0].Name == "Live.frag" && updates[0].bChanged, "the editor's compile isn't an update of Live.frag");
+		Require(programs.GetSpirv("Live.frag") == editors.EntryPoints[0].Spirv, "Live.frag doesn't have the editor's SPIR-V");
+		ShaderCompileResult failed;
+		programs.Inject(request, failed);
+		Require(programs.Update().empty() && programs.GetSpirv("Live.frag") == editors.EntryPoints[0].Spirv, "a failed compile from the editor was taken");
+
+		// A material shader nothing compiled yet: compiled here all the same
+		WriteFile(folders.Sources / "Tint.slang", TintSource("float3(1.0, 0.5, 0.0)"));
+		ShaderCompileRequest material;
+		material.Kind = EShaderCompileKind::Material;
+		material.File = folders.Sources / "Tint.slang";
+		material.Domain = ShaderDomain::Surface();
+		Require(programs.GetResult(material) == nullptr && programs.IsPending(material), "a material without code doesn't wait to compile");
+		const Clock::time_point deadline = Clock::now() + std::chrono::seconds(10);
+		while (programs.IsBusy() && Clock::now() < deadline)
+		{
+			programs.Update();
+		}
+		Require(programs.GetResult(material) != nullptr, "a material without code didn't compile while following the editor");
+	}
+}
+
 int main()
 {
 	try
@@ -507,6 +557,7 @@ int main()
 		TestProgramsWithSeveralEntryPoints();
 		TestMaterialShadersCompileWithoutTheBuild();
 		TestShaderLogKeepsEachShadersLastCompile();
+		TestFollowingTheEditor();
 	}
 	catch (const std::exception& error)
 	{

@@ -4,6 +4,7 @@
 #include "TransactionDomain.h"
 
 #include <cstddef>
+#include <utility>
 #include <vector>
 
 namespace Nyx
@@ -50,6 +51,13 @@ namespace Nyx::Editor
 
 		// The messages for the edits since the last call, in order
 		std::vector<Nyx::Net::Message> TakeMessages();
+
+		// A message of another kind for the games, e.g. a compiled shader, in order with the
+		// edits; dropped while no session is active
+		void Queue(Nyx::Net::Message message)
+		{
+			Keep(std::move(message));
+		}
 
 		// If more waits, e.g. because the game never links, the session ends with a warning
 		static constexpr size_t MaxPendingBytes = 16 * 1024 * 1024;

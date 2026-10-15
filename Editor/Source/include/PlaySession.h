@@ -5,6 +5,7 @@
 #include "PlayWall.h"
 
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -38,6 +39,17 @@ namespace Nyx::Editor
 		{
 			return GameEdits;
 		}
+
+		// A message for every game that takes edits, e.g. a shader the editor compiled or a
+		// material's values; dropped while none is running
+		void SendToGames(Nyx::Net::Message message)
+		{
+			GameEdits.Queue(std::move(message));
+		}
+
+		// What a game gets first, before any edit, when it starts: what the editor has that the
+		// files don't, e.g. a material's unsaved values
+		std::function<std::vector<Nyx::Net::Message>()> StateForNewGames;
 
 		// screen is the monitor Play All tiles the games on
 		void Start(const EditorPreferences& preferences, bool bPlayAll, const PlayWallScreen& screen);

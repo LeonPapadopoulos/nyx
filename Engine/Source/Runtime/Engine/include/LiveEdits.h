@@ -14,6 +14,11 @@
 // messages (SetProperties, CreateEntity, DeleteEntity), and the game applies them to its world.
 // The messages name entities by guid and components by type name, so the same functions work in
 // any program and in either direction.
+namespace Nyx
+{
+	class IRenderer;
+}
+
 namespace Nyx::Engine
 {
 	struct ComponentTypeOps;
@@ -54,4 +59,9 @@ namespace Nyx::Engine
 	// Messages for entities the world doesn't have are ignored. The context's asset resolver
 	// loads the assets that components refer to.
 	ELiveEditResult ApplyLiveEdit(const Net::Message& message, Registry& world, ScenePostLoadContext postLoadContext);
+
+	// Applies a ShaderProgram or MaterialValues message to the renderer: the editor's compile is
+	// taken in the next frame (IRenderer::ApplyCompiledShader()), the material is drawn with the
+	// values (IRenderer::SetMaterialValues()). A material whose text doesn't parse is ignored.
+	ELiveEditResult ApplyRendererEdit(const Net::Message& message, Nyx::IRenderer& renderer);
 }

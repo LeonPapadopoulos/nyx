@@ -15,17 +15,22 @@
 // Material values set in memory, as the material editor sets them, show in the next frame and
 // leave the file as it is, until the file is saved and read again. A view has a sky of its own
 // (black, a studio, the scene's turned) and debug views of its materials' outputs and of light
-// that is NaN or out of range.
+// that is NaN or out of range. Following the editor, as a game it started does, a saved shader
+// compiles nothing; the editor's compile, sent over the link, is drawn, and so are material
+// values it sends.
 //
 // NYX_SCENE_TEST_OUTPUT=<folder> saves what was rendered there, e.g. to make a new reference
 // after a change that is meant to change the picture.
 #include "CameraComponent.h"
 #include "DirectionalLightComponent.h"
+#include "EditorLinkMessages.h"
 #include "Entity.h"
 #include "ImageFile.h"
+#include "LiveEdits.h"
 #include "Log.h"
 #include "MeshRendererComponent.h"
 #include "Paths.h"
+#include "ShaderCompiler.h"
 #include "TransformComponent.h"
 #include "VulkanImGuiBackend.h" // VulkanRenderer's destructor needs it
 #include "VulkanRenderer.h"
@@ -743,6 +748,68 @@ namespace
 		gpu.DrawFrames(1);
 	}
 
+	// As a game the editor started: the renderer follows the editor's shaders, so a shader saved
+	// compiles nothing here, while the editor's compiles of it and the material values it edits
+	// arrive as link messages (ShaderProgram, MaterialValues). Last: the renderer follows the
+	// editor from here on.
+	void TestFollowingTheEditor(SceneRenderer& gpu)
+	{
+		Nyx::IRenderer& renderer = gpu.Renderer;
+		LiveMaterialFile shader("Shaders/NyxSceneGpuTestsLinked.slang");
+		shader.Write(GlowShader("    [Color] float3 Glow = float3(1.0, 0.0, 0.0);\n", "Glow", "NyxSceneGpuTestsLinked"));
+		LiveMaterialFile material("Materials/NyxSceneGpuTests-Linked.nyxmat");
+		material.Write("Shader = Shaders/NyxSceneGpuTestsLinked.slang\n");
+		renderer.FollowEditorShaders();
+
+		DefaultScene scene;
+		AddCube(scene.World, gpu.Renderer, 0.0f, renderer.GetMaterial(material.Path));
+		const Entity camera = scene.World.CreateEntity();
+		scene.World.Add<TransformComponent>(camera, TransformComponent{ .Position = glm::vec3(0.0f, 0.0f, 1.2f), .Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f), .Scale = glm::vec3(1.0f) });
+		scene.World.Add<CameraComponent>(camera, CameraComponent{});
+		renderer.SetWorld(&scene.World);
+		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
+		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
+
+		// Nothing compiled the shader yet: it compiles here all the same
+		const std::array<uint8_t, 3> red = DrawUntilMiddleChanges(gpu, view, Tonemapped(glm::vec3(1.0f, 0.0f, 1.0f)));
+		Require(Near(red, Tonemapped(glm::vec3(1.0f, 0.0f, 0.0f))), "The shader nothing compiled yet doesn't draw: " + Text(red));
+
+		// Saved at half the glow: nothing compiles here
+		shader.Write(GlowShader("    [Color] float3 Glow = float3(1.0, 0.0, 0.0);\n", "Glow * 0.5", "NyxSceneGpuTestsLinked"));
+		const auto drawnUntil = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+		while (std::chrono::steady_clock::now() < drawnUntil)
+		{
+			std::this_thread::sleep_for(std::chrono::milliseconds(20));
+			gpu.DrawFrames(1);
+		}
+		Require(MiddlePixel(gpu, view) == red && !renderer.IsCompilingShaders(), "A saved shader compiled while following the editor");
+
+		// The editor's compiles of it, the material's and its defaults writer's, over the link
+		Nyx::Engine::ShaderCompiler compiler({ Nyx::Paths::GetShaderLibraryDir() });
+		const std::filesystem::path file = std::filesystem::path(shader.File).make_preferred();
+		const Nyx::Engine::ShaderCompileRequest materialRequest{ .Kind = Nyx::Engine::EShaderCompileKind::Material, .File = file, .Domain = Nyx::Engine::ShaderDomain::Surface() };
+		const Nyx::Engine::ShaderCompileRequest defaultsRequest{ .Kind = Nyx::Engine::EShaderCompileKind::DefaultsWriter, .File = file };
+		const Nyx::Engine::ShaderProgramMessage materialCompile{ materialRequest, compiler.CompileMaterial(file, Nyx::Engine::ShaderDomain::Surface()) };
+		const Nyx::Engine::ShaderProgramMessage defaultsCompile{ defaultsRequest, compiler.CompileDefaultsWriter(file) };
+		Require(materialCompile.Result.bSucceeded && defaultsCompile.Result.bSucceeded, "The editor's compiles failed");
+		Require(Nyx::Engine::ApplyRendererEdit(Nyx::Engine::MakeNetMessage(materialCompile), renderer) == Nyx::Engine::ELiveEditResult::Applied &&
+				Nyx::Engine::ApplyRendererEdit(Nyx::Engine::MakeNetMessage(defaultsCompile), renderer) == Nyx::Engine::ELiveEditResult::Applied,
+			"The editor's compiles weren't taken");
+		const std::array<uint8_t, 3> dimmed = DrawUntilMiddleChanges(gpu, view, red);
+		Require(Near(dimmed, Tonemapped(glm::vec3(0.5f, 0.0f, 0.0f))), "The editor's compile isn't drawn: " + Text(dimmed));
+
+		// The editor's values, not saved
+		const Nyx::Engine::MaterialValuesMessage values{ material.Path, "Shader = Shaders/NyxSceneGpuTestsLinked.slang\nGlow = 0 0 1\n" };
+		Require(Nyx::Engine::ApplyRendererEdit(Nyx::Engine::MakeNetMessage(values), renderer) == Nyx::Engine::ELiveEditResult::Applied, "The editor's values weren't taken");
+		const std::array<uint8_t, 3> blue = MiddlePixel(gpu, view);
+		Require(Near(blue, Tonemapped(glm::vec3(0.0f, 0.0f, 0.5f))), "The editor's values aren't drawn in the next frame: " + Text(blue));
+
+		renderer.DestroySceneView(view);
+		renderer.SetWorld(nullptr);
+		gpu.DrawFrames(1);
+	}
+
 	// Clicks the middle of the view: whether a pick came back, and what it hit
 	Nyx::IRenderer::PickResult PickMiddle(SceneRenderer& gpu, uint64_t view)
 	{
@@ -868,6 +935,8 @@ int main()
 		TestMaterialValuesSetInMemory(gpu);
 		TestSkiesAndDebugViews(gpu);
 		TestViewsMadeAndLetGoWhileTheUIIsBuilt(gpu);
+		// Last: the renderer follows the editor's shaders from there on
+		TestFollowingTheEditor(gpu);
 	}
 	catch (const std::exception& error)
 	{

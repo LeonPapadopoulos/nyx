@@ -2944,6 +2944,11 @@ namespace Nyx
 				: update.Request.Kind == Nyx::Engine::EShaderCompileKind::DefaultsWriter              ? update.Request.File.filename().string() + " (defaults)"
 																									  : update.Name;
 			RecordCompile(update);
+			// Compiled here, not taken from the editor: for the games the editor started
+			if (OnShaderCompiled && update.bChanged && !Programs.IsFollowingEditor())
+			{
+				OnShaderCompiled(update.Request, update.Result);
+			}
 			if (update.bChanged)
 			{
 				LOG_INFO("Shader {} compiled in {:.0f} ms", name, update.Result.Milliseconds);

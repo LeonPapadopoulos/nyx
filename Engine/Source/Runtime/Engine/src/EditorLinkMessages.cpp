@@ -4,6 +4,7 @@
 #include "ComponentTypeRegistry.h"
 #include "GuidComponent.h"
 #include "NameComponent.h"
+#include "Paths.h"
 #include "ReflectedArchivePrinter.h"
 #include "ReflectedArchiveSerializer.h"
 #include "SceneSerializer.h"
@@ -440,6 +441,78 @@ namespace Nyx::Engine
 		return true;
 	}
 
+	namespace
+	{
+		// Under the project's root: relative to it, as the other side finds its own root
+		std::filesystem::path ToLinkPath(const std::filesystem::path& path)
+		{
+			std::error_code error;
+			const std::filesystem::path relative = std::filesystem::relative(path, Nyx::Paths::GetProjectRoot(), error);
+			return !error && !relative.empty() && *relative.begin() != ".." ? relative : path;
+		}
+
+		std::filesystem::path FromLinkPath(const std::filesystem::path& path)
+		{
+			return path.is_relative() && !path.empty() ? (Nyx::Paths::GetProjectRoot() / path).lexically_normal() : path;
+		}
+
+		// The request's and result's paths, each through `convert`
+		template <typename TConvert>
+		void ConvertPaths(ShaderCompileRequest& request, ShaderCompileResult& result, TConvert convert)
+		{
+			request.File = convert(request.File);
+			for (std::filesystem::path& dependency : result.Dependencies)
+			{
+				dependency = convert(dependency);
+			}
+			for (ShaderDiagnostic& diagnostic : result.Diagnostics)
+			{
+				diagnostic.File = diagnostic.File.empty() ? diagnostic.File : convert(diagnostic.File);
+			}
+		}
+
+		size_t SpirvBytes(const ShaderCompileResult& result)
+		{
+			size_t bytes = 0;
+			for (const CompiledEntryPoint& entryPoint : result.EntryPoints)
+			{
+				bytes += entryPoint.Spirv.size() * sizeof(uint32_t);
+			}
+			return bytes;
+		}
+	}
+
+	void ShaderProgramMessage::Write(BinaryWriter& writer) const
+	{
+		ShaderCompileRequest request = Request;
+		ShaderCompileResult result = Result;
+		ConvertPaths(request, result, ToLinkPath);
+		ShaderCompileProtocol::WriteRequest(writer, request);
+		ShaderCompileProtocol::WriteResult(writer, 0, result);
+	}
+
+	bool ShaderProgramMessage::Read(BinaryReader& reader)
+	{
+		uint32_t requestId = 0;
+		if (!ShaderCompileProtocol::ReadRequest(reader, Request) || !ShaderCompileProtocol::ReadResult(reader, requestId, Result))
+		{
+			return false;
+		}
+		ConvertPaths(Request, Result, FromLinkPath);
+		return true;
+	}
+
+	void MaterialValuesMessage::Write(BinaryWriter& writer) const
+	{
+		writer.WriteString(Path);
+		writer.WriteString(Text);
+	}
+
+	bool MaterialValuesMessage::Read(BinaryReader& reader)
+	{
+		return reader.ReadString(Path) && reader.ReadString(Text);
+	}
+
 	EditorLinkMessageText DescribeEditorLinkMessage(const Net::Message& message, bool bWithDetails)
 	{
 		EditorLinkMessageText text;
@@ -546,6 +619,49 @@ namespace Nyx::Engine
 			text.Name = "Crash";
 			text.Summary = crash.Report.Description + ", " + std::to_string(crash.Report.Frames.size()) + " frames";
 			text.Details = FormatCrashReport(crash.Report);
+			break;
+		}
+
+		case EEditorLinkMessage::ShaderProgram:
+		{
+			ShaderProgramMessage program;
+			if (!ReadNetMessage(message, program))
+			{
+				describeUnreadable("ShaderProgram");
+				break;
+			}
+
+			const char* kind = program.Request.Kind == EShaderCompileKind::Material ? "material" : program.Request.Kind == EShaderCompileKind::DefaultsWriter ? "material defaults"
+																																							 : "program";
+			text.Name = "ShaderProgram";
+			text.Summary = ToLinkPath(program.Request.File).generic_string() + " (" + kind + "), " + std::to_string(program.Result.EntryPoints.size()) + " entry points, " +
+				std::to_string(SpirvBytes(program.Result)) + " bytes of SPIR-V";
+			text.Details = "File: " + Quoted(program.Request.File.string()) + "\nKind: " + kind + "\nDomain: " + Quoted(program.Request.Domain.Module);
+			for (const CompiledEntryPoint& entryPoint : program.Result.EntryPoints)
+			{
+				text.Details += "\nEntry point: " + entryPoint.Name + ", " + std::to_string(entryPoint.Spirv.size() * sizeof(uint32_t)) + " bytes";
+			}
+			if (program.Result.MaterialLayout)
+			{
+				text.Details += "\nMaterial layout: " + program.Result.MaterialLayout->TypeName + ", " + std::to_string(program.Result.MaterialLayout->Fields.size()) + " fields, " +
+					std::to_string(program.Result.MaterialLayout->Size) + " bytes";
+			}
+			break;
+		}
+
+		case EEditorLinkMessage::MaterialValues:
+		{
+			MaterialValuesMessage values;
+			if (!ReadNetMessage(message, values))
+			{
+				describeUnreadable("MaterialValues");
+				break;
+			}
+
+			const size_t lines = static_cast<size_t>(std::count(values.Text.begin(), values.Text.end(), '\n'));
+			text.Name = "MaterialValues";
+			text.Summary = values.Path + ", " + std::to_string(lines) + " lines";
+			text.Details = "Path: " + Quoted(values.Path) + "\nText: " + Quoted(values.Text);
 			break;
 		}
 

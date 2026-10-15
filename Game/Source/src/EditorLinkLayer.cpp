@@ -1,4 +1,6 @@
 #include "EditorLinkLayer.h"
+#include "Renderer.h"
+#include "Window.h"
 
 #include "Application.h"
 #include "LiveEdits.h"
@@ -40,6 +42,8 @@ namespace Nyx::Game
 	void EditorLinkLayer::OnAttach(Nyx::Engine::Application& application)
 	{
 		App = &application;
+		// The editor compiles, once for all its games, and sends what it compiled
+		App->GetWindow().GetRenderer().FollowEditorShaders();
 
 		if (!RecordingPath.empty())
 		{
@@ -114,6 +118,12 @@ namespace Nyx::Game
 
 	void EditorLinkLayer::ApplyMessage(const Nyx::Net::Message& message)
 	{
+		// The editor's shaders and material values go to the renderer
+		if (Nyx::Engine::ApplyRendererEdit(message, App->GetWindow().GetRenderer()) != Nyx::Engine::ELiveEditResult::NotALiveEdit)
+		{
+			return;
+		}
+
 		if (!World)
 		{
 			LOG_WARNING("Editor link: skipped a message of type {0}, since the game has no world for it", message.Type);

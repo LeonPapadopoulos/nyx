@@ -286,6 +286,9 @@ namespace Nyx
 		Nyx::Material* GetMaterial(const std::string& path) override;
 		bool IsCompilingShaders() const override;
 		const Nyx::Engine::ShaderLog& GetShaderLog() const override { return ShaderCompiles; }
+		void SetShaderCompiledListener(ShaderCompiledListener listener) override { OnShaderCompiled = std::move(listener); }
+		void FollowEditorShaders() override { Programs.FollowEditor(); }
+		void ApplyCompiledShader(const Nyx::Engine::ShaderCompileRequest& request, const Nyx::Engine::ShaderCompileResult& result) override { Programs.Inject(request, result); }
 		MaterialView ViewMaterial(const std::string& path) override;
 		void SetMaterialValues(const std::string& path, const Nyx::Engine::MaterialAsset& asset) override;
 
@@ -705,6 +708,7 @@ namespace Nyx
 		Nyx::Engine::VulkanMaterials Materials;
 		// Every shader's last compile (GetShaderLog())
 		Nyx::Engine::ShaderLog ShaderCompiles;
+		ShaderCompiledListener OnShaderCompiled;
 		// Values set for materials (SetMaterialValues()), written once the UI is built: the frame's
 		// draws are recorded by then, but run after
 		std::map<std::string, Nyx::Engine::MaterialAsset> PendingMaterialValues;

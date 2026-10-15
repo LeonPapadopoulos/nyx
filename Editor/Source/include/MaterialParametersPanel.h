@@ -64,6 +64,10 @@ namespace Nyx::Editor
 		// entities of the scene that use the open material
 		std::vector<std::string> ShaderChoices;
 		std::vector<MaterialUser> Users;
+
+		// Called with every material's values sent to the renderer: the open one's as they
+		// change, a discarded one's file. The editor sends them to its games.
+		std::function<void(const std::string& path, const Nyx::Engine::MaterialAsset& asset)> ValuesSent;
 		// "Saved ...", "Opened ...", or what went wrong last
 		const std::string& GetStatus() const { return Status; }
 
@@ -72,6 +76,7 @@ namespace Nyx::Editor
 	private:
 		// The document's values to the renderer, the file's to the document
 		void Sync(Nyx::IMaterialSource& materials);
+		void SendValues(Nyx::IMaterialSource& materials, const std::string& path, const Nyx::Engine::MaterialAsset& asset);
 		void Open(const std::string& path, Nyx::IMaterialSource& materials);
 		void Save();
 		void DrawDiscardPopup(Nyx::IMaterialSource& materials);

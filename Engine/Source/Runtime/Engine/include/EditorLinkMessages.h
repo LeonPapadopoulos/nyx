@@ -4,6 +4,7 @@
 #include "CrashHandler.h"
 #include "EntityGuid.h"
 #include "NetConnection.h"
+#include "ShaderCompileService.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -35,6 +36,8 @@ namespace Nyx::Engine
 		CreateEntity = 5,
 		DeleteEntity = 6,
 		Crash = 7,
+		ShaderProgram = 8,
+		MaterialValues = 9,
 	};
 
 	// The first message in both directions. Its layout never changes, so any two versions can
@@ -154,6 +157,37 @@ namespace Nyx::Engine
 		static constexpr EEditorLinkMessage Type = EEditorLinkMessage::Crash;
 
 		Nyx::CrashReport Report;
+
+		void Write(BinaryWriter& writer) const;
+		bool Read(BinaryReader& reader);
+	};
+
+	// Live materials (Design/shader-materials.md, stage 3, change 1): what the editor compiles and
+	// the values it edits reach the games it started; see ApplyRendererEdit() in LiveEdits.h.
+
+	// Editor to game: a shader the editor compiled, the engine's or a material's: what was asked
+	// (kind, file, domain) and what came out (each entry point's SPIR-V, a material's layout, the
+	// files it read). Paths travel relative to the project's root, which both find themselves.
+	struct ShaderProgramMessage
+	{
+		static constexpr EEditorLinkMessage Type = EEditorLinkMessage::ShaderProgram;
+
+		ShaderCompileRequest Request;
+		ShaderCompileResult Result;
+
+		void Write(BinaryWriter& writer) const;
+		bool Read(BinaryReader& reader);
+	};
+
+	// Editor to game: a material's values as the editor shows them, saved or not: the whole
+	// .nyxmat text
+	struct MaterialValuesMessage
+	{
+		static constexpr EEditorLinkMessage Type = EEditorLinkMessage::MaterialValues;
+
+		// In the assets folder, e.g. "Materials/Stone.nyxmat"
+		std::string Path;
+		std::string Text;
 
 		void Write(BinaryWriter& writer) const;
 		bool Read(BinaryReader& reader);

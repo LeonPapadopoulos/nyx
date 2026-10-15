@@ -4,6 +4,7 @@
 #include <cctype>
 #include <fstream>
 #include <stdexcept>
+#include <utility>
 
 namespace Nyx::Engine
 {
@@ -79,8 +80,9 @@ namespace Nyx::Engine
 		program.Dependencies = program.Code.Dependencies;
 		program.Dependencies.push_back(request.File);
 		program.bStartedOutOfDate = !(*chosen)->bUpToDate;
-		// Compiled at the first update, without waiting for anything to settle
-		program.bDirty = program.bStartedOutOfDate;
+		// Compiled at the first update, without waiting for anything to settle; following the
+		// editor, its compiles bring the new code
+		program.bDirty = program.bStartedOutOfDate && !bFollowingEditor;
 		return program;
 	}
 
@@ -179,6 +181,44 @@ namespace Nyx::Engine
 		return true;
 	}
 
+	void ShaderPrograms::Inject(const ShaderCompileRequest& request, ShaderCompileResult result)
+	{
+		if (!result.bSucceeded)
+		{
+			return;
+		}
+		// Programs are named by their file in the source folder, material shaders by their key
+		const std::string name = request.Kind == EShaderCompileKind::Program ? request.File.filename().string() : GetResultKey(request);
+		Program& program = Programs[name];
+		program.Request = request;
+		program.Request.Id = 0;
+		program.Code = result;
+		program.Dependencies = result.Dependencies;
+		program.Dependencies.push_back(request.File);
+		program.bDirty = false;
+		program.bStartedOutOfDate = false;
+
+		ShaderProgramUpdate update;
+		update.Name = name;
+		update.Request = program.Request;
+		update.Result = std::move(result);
+		update.bChanged = true;
+		Injected.push_back(std::move(update));
+	}
+
+	void ShaderPrograms::FollowEditor()
+	{
+		bFollowingEditor = true;
+		// Out-of-date code waits for the editor's compile; what has no code at all still compiles
+		for (auto& [name, program] : Programs)
+		{
+			if (!program.Code.EntryPoints.empty())
+			{
+				program.bDirty = false;
+			}
+		}
+	}
+
 	bool ShaderPrograms::IsBusy() const
 	{
 		return std::any_of(Programs.begin(), Programs.end(), [](const auto& entry)
@@ -189,15 +229,19 @@ namespace Nyx::Engine
 
 	std::vector<ShaderProgramUpdate> ShaderPrograms::Update(Clock::time_point now)
 	{
-		std::vector<ShaderProgramUpdate> updates;
+		std::vector<ShaderProgramUpdate> updates = std::exchange(Injected, {});
 		if (!Service)
 		{
 			return updates;
 		}
 
-		// Which programs the changed files concern
+		// Which programs the changed files concern; following the editor, none: its compiles come
 		for (const std::filesystem::path& changed : Watcher.TakeChanges())
 		{
+			if (bFollowingEditor)
+			{
+				continue;
+			}
 			const std::string changedKey = PathKey(changed);
 			for (auto& [name, program] : Programs)
 			{
