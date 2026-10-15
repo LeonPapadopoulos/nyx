@@ -26,34 +26,11 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/ChildProcess.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/CrashHandler.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/FrameRateLimiter.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Core/src/NetConnection.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/FileWatcher.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Core/src/BinaryArchive.cpp
 
-    # Runtime/Engine
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/Application.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/Entity.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/TransformComponent.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/MeshRendererComponent.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/CameraComponent.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/DirectionalLightComponent.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/NameComponent.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/EntityGuid.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/GuidComponent.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/TypedHandle.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/cgltf_impl.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/BinaryArchive.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/ReflectedArchivePrinter.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/ReflectedArchiveSerializer.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/ComponentTypeRegistry.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/ComponentRegistration.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/SceneSerializer.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/AssetResolver.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/EditorLink.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/EditorLinkMessages.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/LiveEdits.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/EditorLinkLogSink.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/EditorLinkRecorder.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/GameLaunchOptions.cpp
+    # Runtime/Net
+    ${NYX_ENGINE_ROOT}/Runtime/Net/src/NetConnection.cpp
 
     # Runtime/Input
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputTypes.cpp
@@ -62,49 +39,82 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/VirtualInputBackend.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/GlfwInputBackend.cpp
 
-    # Runtime/Renderer
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ImGuiTheme.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/Mesh.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/Shader.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/Texture.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/CubemapTexture.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/Material.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/Renderer.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/EditorCamera.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/SceneViewTypes.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/SceneView.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/SceneViewCameraData.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanImGuiBackend.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanContext.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanUtil.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanSwapchain.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/OffscreenRenderTarget.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanViewportTarget.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/GltfImporter.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/Extent2D.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/Painter.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/PainterCommands.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/PainterTiles.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanPainter.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/WindowPainter.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/UIAnimation.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/UITheme.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/UIThemeFile.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/UIWidgets.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/UIChrome.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/UIDiagnostics.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanGlass.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ImageFile.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanBlur.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ShaderCompiler.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ShaderCompileService.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ShaderPrograms.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ShaderLog.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ShaderCache.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanBindless.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/MaterialAsset.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanMaterials.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanEnvironment.cpp
+    # Runtime/Scene
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/Entity.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/TransformComponent.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/MeshRendererComponent.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/CameraComponent.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/DirectionalLightComponent.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/NameComponent.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/EntityGuid.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/GuidComponent.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/TypedHandle.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ReflectedArchivePrinter.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ReflectedArchiveSerializer.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ComponentTypeRegistry.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ComponentRegistration.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/SceneSerializer.cpp
+
+    # Runtime/Assets
+    ${NYX_ENGINE_ROOT}/Runtime/Assets/src/cgltf_impl.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Assets/src/GltfImporter.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Assets/src/ImageFile.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Assets/src/MaterialAsset.cpp
+
+    # Runtime/UI
+    ${NYX_ENGINE_ROOT}/Runtime/UI/src/ImGuiTheme.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/UI/src/Painter.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/UI/src/PainterCommands.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/UI/src/PainterTiles.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/UI/src/WindowPainter.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/UI/src/UIAnimation.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/UI/src/UITheme.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/UI/src/UIThemeFile.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/UI/src/UIWidgets.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/UI/src/UIChrome.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/UI/src/UIDiagnostics.cpp
+
+    # Runtime/Render
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/AssetResolver.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/Mesh.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/Shader.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/Texture.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/CubemapTexture.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/Material.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/Renderer.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/EditorCamera.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/SceneViewTypes.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/SceneView.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/SceneViewCameraData.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanImGuiBackend.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanContext.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanUtil.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanSwapchain.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/OffscreenRenderTarget.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanViewportTarget.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/Extent2D.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanPainter.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanGlass.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanBlur.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/ShaderCompiler.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/ShaderCompileService.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/ShaderPrograms.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/ShaderLog.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/ShaderCache.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanBindless.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanMaterials.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanEnvironment.cpp
+
+    # Runtime/Link
+    ${NYX_ENGINE_ROOT}/Runtime/Link/src/EditorLink.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Link/src/EditorLinkMessages.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Link/src/LiveEdits.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Link/src/EditorLinkLogSink.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Link/src/EditorLinkRecorder.cpp
+
+    # Runtime/App
+    ${NYX_ENGINE_ROOT}/Runtime/App/src/Application.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/App/src/GameLaunchOptions.cpp
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/src/ReflectionUtils.cpp
@@ -121,43 +131,14 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/ChildProcess.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/CrashHandler.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/FrameRateLimiter.h
-    ${NYX_ENGINE_ROOT}/Runtime/Core/include/NetConnection.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/FileWatcher.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/StringUtil.h
+    ${NYX_ENGINE_ROOT}/Runtime/Core/include/BinaryArchive.h
     
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/NyxPCH.h
 
-    # Runtime/Engine
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/Application.h
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/Layer.h
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/Entity.h
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/TransformComponent.h
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/MeshRendererComponent.h
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/CameraComponent.h
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/DirectionalLightComponent.h
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/NameComponent.h
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/EntityGuid.h
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/GuidComponent.h
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/Resource.h
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/TypedHandle.h
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/Window.h
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/WindowsWindow.h
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/BinaryArchive.h
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/SceneSerializationTypes.h
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/ReflectedArchivePrinter.h
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/ReflectedArchiveSerializer.h
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/ComponentTypeRegistry.h
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/ComponentRegistration.h
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/SceneSerializer.h
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/AssetResolver.h
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/IAssetResolver.h
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/AssetReference.h
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/EditorLink.h
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/EditorLinkMessages.h
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/LiveEdits.h
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/EditorLinkLogSink.h
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/EditorLinkRecorder.h
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/include/GameLaunchOptions.h
+    # Runtime/Net
+    ${NYX_ENGINE_ROOT}/Runtime/Net/include/NetConnection.h
 
     # Runtime/Input
     ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputTypes.h
@@ -167,55 +148,96 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Input/include/VirtualInputBackend.h
     ${NYX_ENGINE_ROOT}/Runtime/Input/include/GlfwInputBackend.h
 
-    # Runtime/Renderer
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ImGuiTheme.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ImGuiConversions.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ImGuiSource.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/Mesh.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/Shader.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/Texture.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/CubemapTexture.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/Material.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/Renderer.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/EditorCamera.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/SceneViewTypes.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/SceneView.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/SceneViewCameraData.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanImGuiBackend.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanRenderer.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanContext.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanUtil.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanSwapchain.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/OffscreenRenderTarget.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanViewportTarget.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/GltfImporter.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/Extent2D.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/Painter.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/PainterCommands.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/PainterTiles.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanPainter.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/PainterDrawOptions.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/WindowPainter.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/UIAnimation.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/UITheme.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/UIThemeFile.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/UIWidgets.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/UIChrome.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/UIDiagnostics.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanGlass.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ImageFile.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanBlur.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ShaderLayout.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ShaderCompiler.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ShaderCompileService.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ShaderPrograms.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ShaderLog.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/ShaderCache.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanBindless.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/BindlessTextures.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/MaterialAsset.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanMaterials.h
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/include/VulkanEnvironment.h
+    # Runtime/Scene
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/Entity.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/TransformComponent.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/MeshRendererComponent.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/CameraComponent.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/DirectionalLightComponent.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/NameComponent.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/EntityGuid.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/GuidComponent.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/TypedHandle.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/SceneSerializationTypes.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ReflectedArchivePrinter.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ReflectedArchiveSerializer.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ComponentTypeRegistry.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ComponentRegistration.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/SceneSerializer.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/IAssetResolver.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/AssetReference.h
+
+    # Runtime/Assets
+    ${NYX_ENGINE_ROOT}/Runtime/Assets/include/GltfImporter.h
+    ${NYX_ENGINE_ROOT}/Runtime/Assets/include/ImageFile.h
+    ${NYX_ENGINE_ROOT}/Runtime/Assets/include/ShaderLayout.h
+    ${NYX_ENGINE_ROOT}/Runtime/Assets/include/BindlessTextures.h
+    ${NYX_ENGINE_ROOT}/Runtime/Assets/include/MaterialAsset.h
+
+    # Runtime/UI
+    ${NYX_ENGINE_ROOT}/Runtime/UI/include/ImGuiTheme.h
+    ${NYX_ENGINE_ROOT}/Runtime/UI/include/ImGuiConversions.h
+    ${NYX_ENGINE_ROOT}/Runtime/UI/include/ImGuiSource.h
+    ${NYX_ENGINE_ROOT}/Runtime/UI/include/Painter.h
+    ${NYX_ENGINE_ROOT}/Runtime/UI/include/PainterCommands.h
+    ${NYX_ENGINE_ROOT}/Runtime/UI/include/PainterTiles.h
+    ${NYX_ENGINE_ROOT}/Runtime/UI/include/PainterDrawOptions.h
+    ${NYX_ENGINE_ROOT}/Runtime/UI/include/WindowPainter.h
+    ${NYX_ENGINE_ROOT}/Runtime/UI/include/UIAnimation.h
+    ${NYX_ENGINE_ROOT}/Runtime/UI/include/UITheme.h
+    ${NYX_ENGINE_ROOT}/Runtime/UI/include/UIThemeFile.h
+    ${NYX_ENGINE_ROOT}/Runtime/UI/include/UIWidgets.h
+    ${NYX_ENGINE_ROOT}/Runtime/UI/include/UIChrome.h
+    ${NYX_ENGINE_ROOT}/Runtime/UI/include/UIDiagnostics.h
+
+    # Runtime/Render
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/Resource.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/AssetResolver.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/Mesh.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/Shader.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/Texture.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/CubemapTexture.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/Material.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/Renderer.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/EditorCamera.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/SceneViewTypes.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/SceneView.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/SceneViewCameraData.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanImGuiBackend.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanRenderer.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanContext.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanUtil.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanSwapchain.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/OffscreenRenderTarget.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanViewportTarget.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/Extent2D.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanPainter.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanGlass.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanBlur.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/ShaderCompiler.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/ShaderCompileService.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/ShaderPrograms.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/ShaderLog.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/ShaderCache.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanBindless.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanMaterials.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanEnvironment.h
+
+    # Runtime/Link
+    ${NYX_ENGINE_ROOT}/Runtime/Link/include/EditorLink.h
+    ${NYX_ENGINE_ROOT}/Runtime/Link/include/EditorLinkMessages.h
+    ${NYX_ENGINE_ROOT}/Runtime/Link/include/LiveEdits.h
+    ${NYX_ENGINE_ROOT}/Runtime/Link/include/EditorLinkLogSink.h
+    ${NYX_ENGINE_ROOT}/Runtime/Link/include/EditorLinkRecorder.h
+
+    # Runtime/Platform
+    ${NYX_ENGINE_ROOT}/Runtime/Platform/include/Window.h
+    ${NYX_ENGINE_ROOT}/Runtime/Platform/include/WindowsWindow.h
+
+    # Runtime/App
+    ${NYX_ENGINE_ROOT}/Runtime/App/include/Application.h
+    ${NYX_ENGINE_ROOT}/Runtime/App/include/Layer.h
+    ${NYX_ENGINE_ROOT}/Runtime/App/include/GameLaunchOptions.h
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionTypes.h
@@ -236,12 +258,12 @@ add_library(NyxEngineCommon OBJECT
 	${NYX_ENGINE_HEADERS}
 )
 set(NYX_ENGINE_UI_SOURCES
-    ${NYX_ENGINE_ROOT}/Runtime/Engine/src/WindowsWindow.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/VulkanRenderer.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Platform/src/WindowsWindow.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanRenderer.cpp
 )
 add_library(NyxEngine STATIC ${NYX_ENGINE_UI_SOURCES})
 add_library(NyxEditorEngine STATIC ${NYX_ENGINE_UI_SOURCES}
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ImGuiSource.cpp)
+    ${NYX_ENGINE_ROOT}/Runtime/UI/src/ImGuiSource.cpp)
 target_link_libraries(NyxEngine PRIVATE NyxEngineCommon)
 target_link_libraries(NyxEditorEngine PRIVATE NyxEngineCommon)
 
@@ -269,8 +291,7 @@ set(NYX_RUNTIME_REFLECTION_SOURCES_CPP "${NYX_GENERATED_RUNTIME_DIR}/Runtime.ref
 
 file(GLOB_RECURSE NYX_REFLECT_HEADER_INPUTS
     CONFIGURE_DEPENDS
-    "${NYX_ENGINE_ROOT}/Runtime/Engine/include/*.h"
-    "${NYX_ENGINE_ROOT}/Runtime/Renderer/include/*.h"
+    "${NYX_ENGINE_ROOT}/Runtime/Scene/include/*.h"
 )
 
 add_custom_command(
@@ -281,8 +302,7 @@ add_custom_command(
         "${NYX_RUNTIME_REFLECTION_SOURCES_CPP}"
     COMMAND ${CMAKE_COMMAND} -E make_directory "${NYX_GENERATED_RUNTIME_DIR}"
     COMMAND "$<TARGET_FILE:NyxHeaderTool>"
-            --scan-root "${NYX_ENGINE_ROOT}/Runtime/Engine/include"
-            --scan-root "${NYX_ENGINE_ROOT}/Runtime/Renderer/include"
+            --scan-root "${NYX_ENGINE_ROOT}/Runtime/Scene/include"
             --output-dir "${NYX_GENERATED_RUNTIME_DIR}"
             --module-init-header "${NYX_RUNTIME_REFLECTION_INIT_H}"
             --module-init-cpp "${NYX_RUNTIME_REFLECTION_INIT_CPP}"
@@ -329,14 +349,18 @@ foreach(NYX_ENGINE_TARGET NyxEngineCommon NyxEngine NyxEditorEngine)
     target_include_directories(${NYX_ENGINE_TARGET}
         PUBLIC
             ${NYX_ENGINE_ROOT}/Runtime/Core/include
-            ${NYX_ENGINE_ROOT}/Runtime/Engine/include
+            ${NYX_ENGINE_ROOT}/Runtime/Net/include
             ${NYX_ENGINE_ROOT}/Runtime/Input/include
-            ${NYX_ENGINE_ROOT}/Runtime/Renderer/include
+            ${NYX_ENGINE_ROOT}/Runtime/Scene/include
+            ${NYX_ENGINE_ROOT}/Runtime/Assets/include
+            ${NYX_ENGINE_ROOT}/Runtime/UI/include
+            ${NYX_ENGINE_ROOT}/Runtime/Render/include
+            ${NYX_ENGINE_ROOT}/Runtime/Link/include
+            ${NYX_ENGINE_ROOT}/Runtime/Platform/include
+            ${NYX_ENGINE_ROOT}/Runtime/App/include
             ${NYX_ENGINE_ROOT}/Reflection/include
         PRIVATE
             ${NYX_ENGINE_ROOT}/Runtime/Core/src
-            ${NYX_ENGINE_ROOT}/Runtime/Engine/src
-            ${NYX_ENGINE_ROOT}/Runtime/Renderer/src
             ${CMAKE_SOURCE_DIR}/Dependencies/cgltf
             ${CMAKE_SOURCE_DIR}/Dependencies/glfw/deps # stb_image_write.h, for ImageFile.cpp
     )
@@ -385,7 +409,7 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES
 	${NYX_ENGINE_SOURCES}
 	${NYX_ENGINE_HEADERS}
     ${NYX_ENGINE_UI_SOURCES}
-    ${NYX_ENGINE_ROOT}/Runtime/Renderer/src/ImGuiSource.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/UI/src/ImGuiSource.cpp
 )
 
 if(BUILD_TESTING)
