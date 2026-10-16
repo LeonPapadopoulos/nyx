@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <string>
 #include <type_traits>
 
 namespace Nyx
@@ -41,6 +42,9 @@ namespace Nyx
 	static_assert(std::is_same_v<decltype(EntityGuid::Value), uint64_t> && sizeof(EntityGuid) == sizeof(uint64_t) &&
 			std::is_standard_layout_v<EntityGuid>,
 		"EntityGuid must stay a single uint64_t");
+
+	// The guid in hex, as logs and printed scenes show it, e.g. 0x5F3A9C2D1E4B7A10
+	std::string GuidToText(EntityGuid guid);
 }
 
 namespace std

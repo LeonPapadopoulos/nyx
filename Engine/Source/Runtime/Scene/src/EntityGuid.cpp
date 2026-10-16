@@ -1,6 +1,7 @@
 #include "NyxPCH.h"
 #include "EntityGuid.h"
 
+#include <cstdio>
 #include <random>
 
 namespace Nyx
@@ -23,5 +24,12 @@ namespace Nyx
 		}
 
 		return guid;
+	}
+
+	std::string GuidToText(EntityGuid guid)
+	{
+		char text[24];
+		std::snprintf(text, sizeof(text), "0x%016llX", static_cast<unsigned long long>(guid.Value));
+		return text;
 	}
 }

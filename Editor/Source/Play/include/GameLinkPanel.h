@@ -1,6 +1,7 @@
 #pragma once
 
 #include "EditorLink.h"
+#include "EditorLinkMessageText.h"
 #include "EditorLinkRecorder.h"
 
 #include <cstddef>

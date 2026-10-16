@@ -34,11 +34,11 @@ message on the wire is `payload size (u32) | type (u16) | payload`, little-endia
 
 ## Modules
 
-The engine's source folders are under `Engine/Source`: `Reflection`, `DevTools`, and the folders
-of `Runtime`, each with an `include` and a `src` folder. A folder includes only from the folders
-its row lists. `NyxRuntimeFolderDependencies` (`Engine/Source/tests/FolderDependencies.cmake`) reads
-this table and fails on any `#include` it doesn't allow, and on a table that goes round in a
-circle, so a new dependency starts here.
+The engine's source folders are under `Engine/Source`: `Reflection`, `LinkTools`, `DevTools`, and
+the folders of `Runtime`, each with an `include` and a `src` folder. A folder includes only from
+the folders its row lists. `NyxRuntimeFolderDependencies`
+(`Engine/Source/tests/FolderDependencies.cmake`) reads this table and fails on any `#include` it
+doesn't allow, and on a table that goes round in a circle, so a new dependency starts here.
 
 | Folder | What it holds | Includes from |
 | --- | --- | --- |
@@ -50,6 +50,7 @@ circle, so a new dependency starts here.
 | `Assets` | Asset files as plain data: images, materials, glTF meshes, shader compile requests and results | Core |
 | `UI` | The painter, and the painted UI drawn with it on top of ImGui | Core, Reflection |
 | `Link` | The editor link: its messages, live edits, recordings, the log sink | Core, Net, Scene, Assets |
+| `LinkTools` | Link messages, recordings and scene files as readable text, for the editor and NyxDump; not under `Runtime`, and not in the game | Core, Reflection, Scene, Link |
 | `Render` | The Vulkan renderer, scene views, shaders and materials, and applying the link's shaders and material values | Core, Net, Scene, Assets, UI, Link |
 | `Platform` | The window | Core, Input, UI, Render |
 | `App` | The application and its layers, `main()`, the options the editor starts a game with | Core, Input, Scene, Render, Platform |
@@ -78,6 +79,8 @@ The CMake targets:
 - `NyxStartup`: the startup banner, drawn with GDI+ on a thread of its own.
 - `NyxGeneratedReflection`: runs `NyxHeaderTool` over `Runtime/Scene/include`, where every
   reflected type is, into `Build/Windows/Generated`.
+- `NyxLinkTools` (`Engine/Source/LinkTools`): an object library that the editor, NyxDump and the
+  link tests link, and the game doesn't.
 - `NyxEditorLib`: the editor without its `main()`, a static library that `NyxEditor` and the
   editor's tests link, so the editor compiles once.
 - Tests are in `Engine/Source/tests` and `Editor/Source/tests`; `ctest -C Debug` in
@@ -202,7 +205,8 @@ it with a warning. `Hello`'s layout never changes.
 
 1. A number in `EEditorLinkMessage`; never reuse one.
 2. A struct with `Type`, `Write()` and `Read()` in `EditorLinkMessages.h` and `.cpp`.
-3. A case in `DescribeEditorLinkMessage()`, so the Game Link window and NyxDump can show it.
+3. A case in `DescribeEditorLinkMessage()` (`EditorLinkMessageText.cpp`, in `LinkTools`), so the
+   Game Link window and NyxDump can show it.
 4. Send it with `EditorLink::Send()`; handle it in the game's `EditorLinkLayer` (or in
    `ApplyLiveEdit()`, `LiveEdits.cpp`, and `ApplyRendererEdit()`, `RendererLiveEdits.cpp`), or in the editor's
    `GameInstance`.

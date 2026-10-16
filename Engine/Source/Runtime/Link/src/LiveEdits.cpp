@@ -5,7 +5,6 @@
 #include "ComponentTypeRegistry.h"
 #include "GuidComponent.h"
 #include "Log.h"
-#include "ReflectedArchivePrinter.h"
 #include "ReflectedArchiveSerializer.h"
 #include "SceneSerializer.h"
 
@@ -18,11 +17,6 @@ namespace
 	EntityGuid GetGuid(const Registry& world, Entity entity)
 	{
 		return world.Has<GuidComponent>(entity) ? world.Get<GuidComponent>(entity).Guid : EntityGuid{};
-	}
-
-	std::string GuidToText(EntityGuid guid)
-	{
-		return ReflectedArchivePrinter::ValueToText(guid.Value);
 	}
 
 	ELiveEditResult ApplySetProperties(const SetPropertiesMessage& message, Registry& world, ScenePostLoadContext& postLoadContext)

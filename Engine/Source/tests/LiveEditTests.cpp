@@ -3,7 +3,7 @@
 #include "CameraComponent.h"
 #include "ComponentRegistration.h"
 #include "ComponentTypeRegistry.h"
-#include "EditorLinkMessages.h"
+#include "EditorLinkMessageText.h"
 #include "Entity.h"
 #include "GuidComponent.h"
 #include "IAssetResolver.h"

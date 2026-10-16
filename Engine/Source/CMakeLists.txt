@@ -49,7 +49,6 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/EntityGuid.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/GuidComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/TypedHandle.cpp
-    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ReflectedArchivePrinter.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ReflectedArchiveSerializer.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ComponentTypeRegistry.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ComponentRegistration.cpp
@@ -160,7 +159,6 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/GuidComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/TypedHandle.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/SceneSerializationTypes.h
-    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ReflectedArchivePrinter.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ReflectedArchiveSerializer.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ComponentTypeRegistry.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ComponentRegistration.h
@@ -407,12 +405,35 @@ foreach(NYX_ENGINE_TARGET NyxEngineCommon NyxEngine NyxEditorEngine)
     )
 endforeach()
 
+# Link messages, recordings and scene files as readable text, for the editor's message log and
+# NyxDump. The game doesn't need it, so it is in none of the engine libraries; each program that
+# uses it links the engine library it uses as well.
+set(NYX_LINK_TOOLS_SOURCES
+    ${NYX_ENGINE_ROOT}/LinkTools/src/EditorLinkMessageText.cpp
+    ${NYX_ENGINE_ROOT}/LinkTools/src/EditorLinkRecordingPrinter.cpp
+    ${NYX_ENGINE_ROOT}/LinkTools/src/ReflectedArchivePrinter.cpp
+    ${NYX_ENGINE_ROOT}/LinkTools/src/ScenePrinter.cpp
+)
+set(NYX_LINK_TOOLS_HEADERS
+    ${NYX_ENGINE_ROOT}/LinkTools/include/EditorLinkMessageText.h
+    ${NYX_ENGINE_ROOT}/LinkTools/include/EditorLinkRecordingPrinter.h
+    ${NYX_ENGINE_ROOT}/LinkTools/include/ReflectedArchivePrinter.h
+    ${NYX_ENGINE_ROOT}/LinkTools/include/ScenePrinter.h
+)
+add_library(NyxLinkTools OBJECT ${NYX_LINK_TOOLS_SOURCES} ${NYX_LINK_TOOLS_HEADERS})
+target_include_directories(NyxLinkTools PUBLIC ${NYX_ENGINE_ROOT}/LinkTools/include)
+# The engine's headers and settings only: an object library takes no objects from another
+target_link_libraries(NyxLinkTools PRIVATE NyxEngineCommon)
+add_dependencies(NyxLinkTools NyxGeneratedReflection)
+
 # Tell Visual Studio to mimick actual file hierarchy
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES
 	${NYX_ENGINE_SOURCES}
 	${NYX_ENGINE_HEADERS}
     ${NYX_ENGINE_UI_SOURCES}
     ${NYX_ENGINE_ROOT}/Runtime/UI/src/ImGuiSource.cpp
+    ${NYX_LINK_TOOLS_SOURCES}
+    ${NYX_LINK_TOOLS_HEADERS}
 )
 
 if(BUILD_TESTING)

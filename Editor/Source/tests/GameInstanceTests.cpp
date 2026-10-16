@@ -7,7 +7,7 @@
 // don't need, and which Windows sometimes fails to create when many open and close at once.
 #include "BinaryArchive.h"
 #include "EditorLink.h"
-#include "EditorLinkMessages.h"
+#include "EditorLinkMessageText.h"
 #include "GameInstance.h"
 #include "GameLaunchOptions.h"
 #include "Log.h"

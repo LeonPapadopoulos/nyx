@@ -22,6 +22,10 @@ namespace Nyx
 	class SceneSerializer
 	{
 	public:
+		// Reads a scene file's magic and version, which must be this build's. On failure, outError
+		// says why, e.g. "is not a scene file".
+		static bool ReadHeader(BinaryReader& reader, uint32_t& outVersion, std::string& outError);
+
 		// Replaces the destination only after the complete scene has been written successfully.
 		// Serialization or file I/O failures return false without overwriting the previous file.
 		static bool SaveToFile(const Registry& world, const std::filesystem::path& path);
@@ -33,10 +37,6 @@ namespace Nyx
 			const std::filesystem::path& path,
 			Registry& outWorld,
 			ScenePostLoadContext postLoadContext = {});
-
-		// Describes a scene file as readable text: its entities, components and properties.
-		// Returns false, with the reason at the end of outText, if the file can't be printed.
-		static bool PrintFile(const std::filesystem::path& path, std::string& outText);
 
 		// One entity, as stored in scene files and sent to the game (CreateEntity): its component
 		// count and its components. Returns false if a component can't be written.
@@ -50,9 +50,5 @@ namespace Nyx
 			Entity entity,
 			ScenePostLoadContext& postLoadContext,
 			ReadWarnings& warnings);
-
-		// Prints what WriteEntity wrote, indented by two spaces per indent level. Returns false if
-		// the data is cut off or damaged.
-		static bool PrintEntity(BinaryReader& reader, int indentLevel, std::string& outText);
 	};
 }

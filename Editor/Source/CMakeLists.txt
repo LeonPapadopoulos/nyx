@@ -197,7 +197,7 @@ target_include_directories(NyxEditorLib
 )
 
 target_link_libraries(NyxEditorLib
-	PUBLIC NyxEditorEngine ole32 oleaut32 shell32 comsuppw
+	PUBLIC NyxEditorEngine NyxLinkTools ole32 oleaut32 shell32 comsuppw
 )
 
 # The editor includes component headers, which include their generated reflection code.

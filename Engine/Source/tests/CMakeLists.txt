@@ -17,14 +17,14 @@ add_test(NAME NyxRuntimeInspectionTests COMMAND NyxRuntimeInspectionTests)
 
 # The editor link over real sockets on 127.0.0.1, with both ends in one program.
 add_executable(NyxEditorLinkTests EditorLinkTests.cpp)
-target_link_libraries(NyxEditorLinkTests PRIVATE NyxEngine)
+target_link_libraries(NyxEditorLinkTests PRIVATE NyxEngine NyxLinkTools)
 add_dependencies(NyxEditorLinkTests NyxGeneratedReflection)
 set_property(TARGET NyxEditorLinkTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxEditorLinkTests COMMAND NyxEditorLinkTests)
 
 # Live edits: messages made from one world and applied to another, as the editor and the game do.
 add_executable(NyxLiveEditTests LiveEditTests.cpp)
-target_link_libraries(NyxLiveEditTests PRIVATE NyxEngine)
+target_link_libraries(NyxLiveEditTests PRIVATE NyxEngine NyxLinkTools)
 add_dependencies(NyxLiveEditTests NyxGeneratedReflection)
 set_property(TARGET NyxLiveEditTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxLiveEditTests COMMAND NyxLiveEditTests)
@@ -227,7 +227,7 @@ add_test(NAME NyxSceneGpuTests COMMAND NyxSceneGpuTests)
 add_test(NAME NyxRuntimeFolderDependencies
     COMMAND ${CMAKE_COMMAND}
         "-DFOLDERS_DIR=${PROJECT_SOURCE_DIR}/Engine/Source/Runtime"
-        "-DEXTRA_FOLDERS=Reflection=${PROJECT_SOURCE_DIR}/Engine/Source/Reflection"
+        "-DEXTRA_FOLDERS=Reflection=${PROJECT_SOURCE_DIR}/Engine/Source/Reflection$<SEMICOLON>LinkTools=${PROJECT_SOURCE_DIR}/Engine/Source/LinkTools"
         "-DTABLE_HEADING=## Modules"
         "-DARCHITECTURE_DOC=${PROJECT_SOURCE_DIR}/Docs/Architecture.md"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/FolderDependencies.cmake")

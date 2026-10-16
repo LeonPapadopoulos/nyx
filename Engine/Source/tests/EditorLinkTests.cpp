@@ -4,7 +4,9 @@
 #include "ComponentTypeRegistry.h"
 #include "EditorLink.h"
 #include "EditorLinkLogSink.h"
+#include "EditorLinkMessageText.h"
 #include "EditorLinkRecorder.h"
+#include "EditorLinkRecordingPrinter.h"
 #include "GuidComponent.h"
 #include "LiveEdits.h"
 #include "Log.h"
@@ -605,7 +607,7 @@ namespace
 		recorder.Close();
 
 		std::string text;
-		Require(EditorLinkRecorder::PrintFile(path, text), "The recording can't be printed: " + text);
+		Require(PrintEditorLinkRecording(path, text), "The recording can't be printed: " + text);
 		Require(Contains(text, "Recorded by NyxGame") && Contains(text, "sent      Hello (") && Contains(text, "ProgramName: \"NyxGame\"") &&
 				Contains(text, "received  Quit (0 bytes)") && Contains(text, "2 messages"),
 			"The printed recording is missing something:\n" + text);
@@ -614,7 +616,7 @@ namespace
 		const auto fullSize = std::filesystem::file_size(path);
 		std::filesystem::resize_file(path, fullSize - 3);
 		text.clear();
-		Require(EditorLinkRecorder::PrintFile(path, text) && Contains(text, "ends in the middle of a message") &&
+		Require(PrintEditorLinkRecording(path, text) && Contains(text, "ends in the middle of a message") &&
 				Contains(text, "Hello ("),
 			"A cut-off recording isn't printed up to the cut:\n" + text);
 
@@ -624,7 +626,7 @@ namespace
 			other << "not a recording";
 		}
 		text.clear();
-		Require(!EditorLinkRecorder::PrintFile(path, text) && Contains(text, "is not an editor link recording"),
+		Require(!PrintEditorLinkRecording(path, text) && Contains(text, "is not an editor link recording"),
 			"Another file was taken for a recording");
 
 		std::error_code ignored;

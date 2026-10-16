@@ -4,7 +4,7 @@ add_executable(NyxDump
 )
 
 target_link_libraries(NyxDump
-    PRIVATE NyxEngine
+    PRIVATE NyxEngine NyxLinkTools
 )
 
 # Includes engine headers, which include their generated reflection code

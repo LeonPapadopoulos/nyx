@@ -4,7 +4,6 @@
 #include "Entity.h"
 #include "GuidComponent.h"
 #include "Log.h"
-#include "ReflectedArchivePrinter.h"
 #include "ReflectedArchiveSerializer.h"
 
 #include <string>
@@ -15,32 +14,6 @@
 namespace
 {
 	using namespace Nyx;
-
-	// Reads magic and version. On failure, outError says why.
-	bool ReadHeader(BinaryReader& reader, uint32_t& outVersion, std::string& outError)
-	{
-		uint32_t magic = 0;
-		if (!reader.ReadUInt32(magic) || magic != SceneFileMagic)
-		{
-			outError = "is not a scene file";
-			return false;
-		}
-
-		if (!reader.ReadUInt32(outVersion))
-		{
-			outError = "ends early";
-			return false;
-		}
-
-		if (outVersion != SceneFileVersion)
-		{
-			outError = "is a scene file of version " + std::to_string(outVersion) + ", but this build only reads version " +
-				std::to_string(SceneFileVersion);
-			return false;
-		}
-
-		return true;
-	}
 
 	// Everything after the header: entity count, then the entities with their components
 	bool WriteEntities(const Registry& world, BinaryWriter& writer)
@@ -107,7 +80,7 @@ namespace
 				else if (!usedGuids.insert(world.Get<GuidComponent>(entity).Guid).second)
 				{
 					warnings.Add("gave an entity a new guid, because another entity in the scene already had " +
-						ReflectedArchivePrinter::ValueToText(world.Get<GuidComponent>(entity).Guid.Value));
+						GuidToText(world.Get<GuidComponent>(entity).Guid));
 					entitiesNeedingGuid.push_back(entity);
 				}
 			});
@@ -128,34 +101,35 @@ namespace
 			world.Get<GuidComponent>(entity).Guid = guid;
 		}
 	}
-
-	// Prints what WriteEntities wrote
-	bool PrintEntities(BinaryReader& reader, std::string& outText)
-	{
-		uint32_t entityCount = 0;
-		if (!reader.ReadUInt32(entityCount))
-		{
-			return false;
-		}
-
-		outText += std::to_string(entityCount) + " entities\n";
-
-		for (uint32_t entityIndex = 0; entityIndex < entityCount; ++entityIndex)
-		{
-			outText += "\nEntity " + std::to_string(entityIndex) + "\n";
-
-			if (!SceneSerializer::PrintEntity(reader, 1, outText))
-			{
-				return false;
-			}
-		}
-
-		return true;
-	}
 }
 
 namespace Nyx
 {
+	bool SceneSerializer::ReadHeader(BinaryReader& reader, uint32_t& outVersion, std::string& outError)
+	{
+		uint32_t magic = 0;
+		if (!reader.ReadUInt32(magic) || magic != SceneFileMagic)
+		{
+			outError = "is not a scene file";
+			return false;
+		}
+
+		if (!reader.ReadUInt32(outVersion))
+		{
+			outError = "ends early";
+			return false;
+		}
+
+		if (outVersion != SceneFileVersion)
+		{
+			outError = "is a scene file of version " + std::to_string(outVersion) + ", but this build only reads version " +
+				std::to_string(SceneFileVersion);
+			return false;
+		}
+
+		return true;
+	}
+
 	bool SceneSerializer::SaveToFile(const Registry& world, const std::filesystem::path& path)
 	{
 		BinaryWriter writer;
@@ -293,67 +267,6 @@ namespace Nyx
 			{
 				ops->PostLoad(component, postLoadContext);
 			}
-		}
-
-		return true;
-	}
-
-	bool SceneSerializer::PrintEntity(BinaryReader& reader, int indentLevel, std::string& outText)
-	{
-		uint32_t componentCount = 0;
-		if (!reader.ReadUInt32(componentCount))
-		{
-			return false;
-		}
-
-		const std::string indent(static_cast<size_t>(indentLevel) * 2, ' ');
-
-		for (uint32_t componentIndex = 0; componentIndex < componentCount; ++componentIndex)
-		{
-			std::string componentTypeName;
-			if (!reader.ReadString(componentTypeName))
-			{
-				return false;
-			}
-
-			// Unknown component types are printed too, with name hashes instead of property names
-			const ComponentTypeOps* ops = ComponentTypeRegistry::Get().FindByName(componentTypeName);
-			outText += indent + componentTypeName + (ops ? "" : " (a component type this build doesn't know)") + "\n";
-
-			if (!ReflectedArchivePrinter::PrintObject(reader, ops ? ops->TypeMetadata : nullptr, indentLevel + 1, outText))
-			{
-				return false;
-			}
-		}
-
-		return true;
-	}
-
-	bool SceneSerializer::PrintFile(const std::filesystem::path& path, std::string& outText)
-	{
-		BinaryReader reader;
-		if (!reader.LoadFromFile(path))
-		{
-			outText += "Can't open '" + path.string() + "'.\n";
-			return false;
-		}
-
-		uint32_t version = 0;
-		std::string error;
-
-		if (!ReadHeader(reader, version, error))
-		{
-			outText += "'" + path.string() + "' " + error + ".\n";
-			return false;
-		}
-
-		outText += "Scene file '" + path.string() + "'\n";
-		outText += "Version " + std::to_string(version) + "\n";
-
-		if (!PrintEntities(reader, outText))
-		{
-			outText += "The file ends early or is damaged here.\n";
-			return false;
 		}
 
 		return true;
