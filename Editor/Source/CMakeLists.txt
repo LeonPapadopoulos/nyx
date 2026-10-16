@@ -1,112 +1,150 @@
 # The editor without its main(): a library that NyxEditor and the editor's test targets link, so
 # the editor compiles once
 set(NYX_EDITOR_SOURCES
-    src/EditorLayer.cpp
-    src/SceneEditor.cpp
-    src/SceneOutlinerPanel.cpp
-    src/DetailsPanel.cpp
-    src/SceneViewPanel.cpp
-    src/EditorCameraController.cpp
-    src/FileDialogs.cpp
-    src/SceneFilePopups.cpp
-    src/PreferencesWindow.cpp
-    src/ThemeEditorWindow.cpp
-    src/PlaySession.cpp
-    src/PlayControls.cpp
-    src/CrashCardsPanel.cpp
-    src/DefaultScene.cpp
-    src/GameInstance.cpp
-    src/PlayWall.cpp
-    src/GameLinkPanel.cpp
-    src/GameLinkSubscriber.cpp
-    src/ComponentPostLoadSubscriber.cpp
-    src/ComponentEdits.cpp
-    src/EntityCopies.cpp
-    src/EditorPreferences.cpp
-    src/ImGuiDebugTools.cpp
-    src/ReflectionSourceRegistry.cpp
-    src/SourceNavigation.cpp
-    src/UISourceInspector.cpp
-    src/SceneDocument.cpp
-    src/InspectorDrawContext.cpp
-    src/TransformGizmo.cpp
-    src/InspectorTargetId.cpp
-    src/EditorTransactionContext.cpp
-    src/ReflectedPropertyDrawer.cpp
-    src/ReflectedPropertyAccess.cpp
-    src/TransactionSystem.cpp
-    src/TransactionDiffUtil.cpp
-    src/SceneEntityTransactionDomain.cpp
-    src/RootObjectSnapshotUtils.cpp
-    src/PropertyWidgetRegistry.cpp
-    src/AssetDatabase.cpp
-    src/AssetBrowserPanel.cpp
-    src/AssetTypeRegistry.cpp
-    src/EditorAssetTypes.cpp
-    src/MaterialDocument.cpp
-    src/MaterialParametersPanel.cpp
-    src/MaterialPreviewPanel.cpp
-    src/ShaderLogPanel.cpp
-    src/AssetDragDrop.cpp
-    src/NewMaterial.cpp
-    src/Workspaces.cpp
+    # App
+    App/src/EditorLayer.cpp
+    App/src/EditorAssetTypes.cpp
+    App/src/Workspaces.cpp
+
+    # Scene
+    Scene/src/SceneEditor.cpp
+    Scene/src/SceneOutlinerPanel.cpp
+    Scene/src/DetailsPanel.cpp
+    Scene/src/SceneViewPanel.cpp
+    Scene/src/EditorCameraController.cpp
+    Scene/src/SceneFilePopups.cpp
+    Scene/src/DefaultScene.cpp
+    Scene/src/ComponentPostLoadSubscriber.cpp
+    Scene/src/ComponentEdits.cpp
+    Scene/src/EntityCopies.cpp
+    Scene/src/SceneDocument.cpp
+    Scene/src/TransformGizmo.cpp
+    Scene/src/SceneEntityTransactionDomain.cpp
+
+    # Properties
+    Properties/src/InspectorDrawContext.cpp
+    Properties/src/ReflectedPropertyDrawer.cpp
+    Properties/src/PropertyWidgetRegistry.cpp
+
+    # Transactions
+    Transactions/src/InspectorTargetId.cpp
+    Transactions/src/EditorTransactionContext.cpp
+    Transactions/src/TransactionSystem.cpp
+    Transactions/src/TransactionDiffUtil.cpp
+    Transactions/src/RootObjectSnapshotUtils.cpp
+
+    # Assets
+    Assets/src/AssetDatabase.cpp
+    Assets/src/AssetBrowserPanel.cpp
+    Assets/src/AssetTypeRegistry.cpp
+    Assets/src/AssetDragDrop.cpp
+
+    # Materials
+    Materials/src/MaterialDocument.cpp
+    Materials/src/MaterialParametersPanel.cpp
+    Materials/src/MaterialPreviewPanel.cpp
+    Materials/src/ShaderLogPanel.cpp
+    Materials/src/NewMaterial.cpp
+
+    # Play
+    Play/src/PlaySession.cpp
+    Play/src/PlayControls.cpp
+    Play/src/CrashCardsPanel.cpp
+    Play/src/GameInstance.cpp
+    Play/src/PlayWall.cpp
+    Play/src/GameLinkPanel.cpp
+    Play/src/GameLinkSubscriber.cpp
+
+    # Preferences
+    Preferences/src/PreferencesWindow.cpp
+    Preferences/src/ThemeEditorWindow.cpp
+    Preferences/src/EditorPreferences.cpp
+    Preferences/src/SourceNavigation.cpp
+
+    # DevTools
+    DevTools/src/ImGuiDebugTools.cpp
+
+    # Common
+    Common/src/FileDialogs.cpp
+    Common/src/ReflectionSourceRegistry.cpp
+    Common/src/UISourceInspector.cpp
+    Common/src/ReflectedPropertyAccess.cpp
 )
 
 set(NYX_EDITOR_HEADERS
-    src/EditorPCH.h
-    include/EditorLayer.h
-    include/ThemeEditorWindow.h
-    include/MaterialDocument.h
-    include/MaterialParametersPanel.h
-    include/MaterialPreviewPanel.h
-    include/ShaderLogPanel.h
-    include/AssetDragDrop.h
-    include/NewMaterial.h
-    include/Workspaces.h
-    include/SceneEditor.h
-    include/SceneOutlinerPanel.h
-    include/DetailsPanel.h
-    include/SceneViewPanel.h
-    include/EditorCameraController.h
-    include/FileDialogs.h
-    include/SceneFilePopups.h
-    include/PreferencesWindow.h
-    include/PlaySession.h
-    include/PlayControls.h
-    include/CrashCardsPanel.h
-    include/DefaultScene.h
-    include/GameInstance.h
-    include/PlayWall.h
-    include/GameLinkPanel.h
-    include/GameLinkSubscriber.h
-    include/ComponentPostLoadSubscriber.h
-    include/ComponentEdits.h
-    include/EntityCopies.h
-    include/EditorPreferences.h
-    include/ImGuiDebugTools.h
-    include/ReflectionSourceRegistry.h
-    include/SourceNavigation.h
-    include/UISourceInspector.h
-    include/SceneDocument.h
-    include/InspectorDrawContext.h
-    include/TransformGizmo.h
-    include/InspectorTargetId.h
-    include/EditorTransactionContext.h
-    include/ReflectedPropertyDrawer.h
-    include/ReflectedPropertyAccess.h
-    include/TransactionTypes.h
-    include/TransactionSystem.h
-    include/TransactionDiffUtil.h
-    include/TransactionObjectRef.h
-    include/TransactionObjectRefHelpers.h
-    include/TransactionDomain.h
-    include/SceneEntityTransactionDomain.h
-    include/ReflectedObjectSnapshot.h
-    include/RootObjectSnapshotUtils.h
-    include/PropertyWidgetRegistry.h
-    include/AssetDatabase.h
-    include/AssetBrowserPanel.h
-    include/AssetTypeRegistry.h
+    # App
+    App/include/EditorLayer.h
+    App/include/Workspaces.h
+
+    # Scene
+    Scene/include/SceneEditor.h
+    Scene/include/SceneOutlinerPanel.h
+    Scene/include/DetailsPanel.h
+    Scene/include/SceneViewPanel.h
+    Scene/include/EditorCameraController.h
+    Scene/include/SceneFilePopups.h
+    Scene/include/DefaultScene.h
+    Scene/include/ComponentPostLoadSubscriber.h
+    Scene/include/ComponentEdits.h
+    Scene/include/EntityCopies.h
+    Scene/include/SceneDocument.h
+    Scene/include/TransformGizmo.h
+    Scene/include/TransactionObjectRefHelpers.h
+    Scene/include/SceneEntityTransactionDomain.h
+
+    # Properties
+    Properties/include/InspectorDrawContext.h
+    Properties/include/ReflectedPropertyDrawer.h
+    Properties/include/PropertyWidgetRegistry.h
+
+    # Transactions
+    Transactions/include/InspectorTargetId.h
+    Transactions/include/EditorTransactionContext.h
+    Transactions/include/TransactionTypes.h
+    Transactions/include/TransactionSystem.h
+    Transactions/include/TransactionDiffUtil.h
+    Transactions/include/TransactionObjectRef.h
+    Transactions/include/TransactionDomain.h
+    Transactions/include/ReflectedObjectSnapshot.h
+    Transactions/include/RootObjectSnapshotUtils.h
+
+    # Assets
+    Assets/include/AssetDragDrop.h
+    Assets/include/AssetDatabase.h
+    Assets/include/AssetBrowserPanel.h
+    Assets/include/AssetTypeRegistry.h
+
+    # Materials
+    Materials/include/MaterialDocument.h
+    Materials/include/MaterialParametersPanel.h
+    Materials/include/MaterialPreviewPanel.h
+    Materials/include/ShaderLogPanel.h
+    Materials/include/NewMaterial.h
+
+    # Play
+    Play/include/PlaySession.h
+    Play/include/PlayControls.h
+    Play/include/CrashCardsPanel.h
+    Play/include/GameInstance.h
+    Play/include/PlayWall.h
+    Play/include/GameLinkPanel.h
+    Play/include/GameLinkSubscriber.h
+
+    # Preferences
+    Preferences/include/ThemeEditorWindow.h
+    Preferences/include/PreferencesWindow.h
+    Preferences/include/EditorPreferences.h
+    Preferences/include/SourceNavigation.h
+
+    # DevTools
+    DevTools/include/ImGuiDebugTools.h
+
+    # Common
+    Common/src/EditorPCH.h
+    Common/include/FileDialogs.h
+    Common/include/ReflectionSourceRegistry.h
+    Common/include/UISourceInspector.h
+    Common/include/ReflectedPropertyAccess.h
 )
 
 # The prototype and diagnostics tools (NYX_DEV_TOOLS), with the painter's test sheet that Painter
@@ -115,13 +153,13 @@ set(NYX_EDITOR_HEADERS
 # only, where NYX_DEV_TOOLS lets EditorLayer own them.
 set(NYX_DEV_TOOLS_DIR ${PROJECT_SOURCE_DIR}/Engine/Source/DevTools)
 set(NYX_EDITOR_DEV_TOOL_SOURCES
-    src/PainterTestWindow.cpp
-    src/MockupOverlay.cpp
+    DevTools/src/PainterTestWindow.cpp
+    DevTools/src/MockupOverlay.cpp
     ${NYX_DEV_TOOLS_DIR}/src/PainterTestSheet.cpp
 )
 set(NYX_EDITOR_DEV_TOOL_HEADERS
-    include/PainterTestWindow.h
-    include/MockupOverlay.h
+    DevTools/include/PainterTestWindow.h
+    DevTools/include/MockupOverlay.h
     ${NYX_DEV_TOOLS_DIR}/include/PainterTestSheet.h
 )
 add_compile_definitions("NYX_DEV_TOOLS=$<AND:$<BOOL:${NYX_DEV_TOOLS}>,$<CONFIG:Debug>>")
@@ -143,12 +181,21 @@ add_library(NyxEditorLib STATIC
 	"${NYX_EDITOR_REFLECTION_SOURCES}"
 )
 
-configure_file(src/EditorBuildConfig.h.in ${CMAKE_CURRENT_BINARY_DIR}/EditorBuildConfig.h @ONLY)
+configure_file(Preferences/src/EditorBuildConfig.h.in ${CMAKE_CURRENT_BINARY_DIR}/EditorBuildConfig.h @ONLY)
 
 target_include_directories(NyxEditorLib
     PUBLIC
-        include
-        src
+        App/include
+        Scene/include
+        Properties/include
+        Transactions/include
+        Assets/include
+        Materials/include
+        Play/include
+        Preferences/include
+        DevTools/include
+        Common/include
+        Common/src
         ${CMAKE_CURRENT_BINARY_DIR}
         ${NYX_DEV_TOOLS_DIR}/include
 )
@@ -161,17 +208,17 @@ target_link_libraries(NyxEditorLib
 add_dependencies(NyxEditorLib NyxGeneratedReflection)
 
 target_precompile_headers(NyxEditorLib
-    PRIVATE src/EditorPCH.h
+    PRIVATE Common/src/EditorPCH.h
 )
 
 # Tell Visual Studio to mimic the actual file hierarchy
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES
 	${NYX_EDITOR_SOURCES}
 	${NYX_EDITOR_HEADERS}
-	src/PainterTestWindow.cpp
-	src/MockupOverlay.cpp
-	include/PainterTestWindow.h
-	include/MockupOverlay.h
+	DevTools/src/PainterTestWindow.cpp
+	DevTools/src/MockupOverlay.cpp
+	DevTools/include/PainterTestWindow.h
+	DevTools/include/MockupOverlay.h
 )
 source_group(DevTools FILES
 	${NYX_DEV_TOOLS_DIR}/src/PainterTestSheet.cpp

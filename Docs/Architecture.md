@@ -169,9 +169,10 @@ it with a warning. `Hello`'s layout never changes.
 ### An asset type
 
 1. Register an `AssetTypeDescriptor` in `RegisterEditorAssetTypes()`
-   (`Editor/Source/src/EditorAssetTypes.cpp`): its type id, display name, extensions, and what
-   opening it does (`Activate`, a callback that captures what it needs). `EditorLayer` owns the
-   registry and fills it in `OnAttach()`; the asset browser lists the type from then on.
+   (`Editor/Source/App/src/EditorAssetTypes.cpp`): its type id, display name, extensions, and
+   what opening it does (`Activate`, a callback that captures what it needs). `EditorLayer`
+   owns the registry and fills it in `OnAttach()`; the asset browser lists the type from then
+   on.
 2. For scenes to use it: an `AssetReference` property on a component, resolved in its post-load
    step through `IAssetResolver`. `AssetResolver` resolves materials from their `.nyxmat` files;
    meshes are only the built-in cube and sphere so far.
