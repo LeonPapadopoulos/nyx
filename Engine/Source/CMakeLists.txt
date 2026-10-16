@@ -223,6 +223,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanMaterials.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanEnvironment.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/RendererLiveEdits.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanUIBackend.h
 
     # Runtime/Link
     ${NYX_ENGINE_ROOT}/Runtime/Link/include/EditorLink.h
@@ -253,7 +254,8 @@ set(NYX_ENGINE_HEADERS
 )
 
 # Most engine code is identical for editor and game and only needs compiling once.
-# The two files with inspection hooks are compiled separately for each target.
+# The window and the renderer, with its UI backend, are compiled separately for each target,
+# with the target's NYX_UI_INSPECTION.
 add_library(NyxEngineCommon OBJECT
 	${NYX_ENGINE_SOURCES}
 	${NYX_ENGINE_HEADERS}
@@ -261,6 +263,7 @@ add_library(NyxEngineCommon OBJECT
 set(NYX_ENGINE_UI_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Platform/src/WindowsWindow.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanRenderer.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanUIBackend.cpp
 )
 add_library(NyxEngine STATIC ${NYX_ENGINE_UI_SOURCES})
 add_library(NyxEditorEngine STATIC ${NYX_ENGINE_UI_SOURCES}

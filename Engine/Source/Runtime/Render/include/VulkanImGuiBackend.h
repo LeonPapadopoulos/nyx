@@ -13,7 +13,8 @@
 
 namespace Nyx
 {
-	class VulkanRenderer;
+	class VulkanContext;
+	class VulkanSwapchain;
 }
 
 namespace Nyx
@@ -21,7 +22,7 @@ namespace Nyx
 	class NYXENGINE_API VulkanImGuiBackend
 	{
 	public:
-		VulkanImGuiBackend(GLFWwindow* window, VulkanRenderer& vulkan);
+		VulkanImGuiBackend(GLFWwindow* window, VulkanContext& context, VulkanSwapchain& swapchain);
 		~VulkanImGuiBackend();
 
 		// Core functionality methods for ImGui integration
@@ -51,7 +52,8 @@ namespace Nyx
 
 	private:
 		GLFWwindow* Window = nullptr;
-		VulkanRenderer* Vulkan = nullptr;
+		VulkanContext* Context = nullptr;
+		VulkanSwapchain* Swapchain = nullptr;
 
 		vk::raii::Device* Device = nullptr;
 		vk::raii::DescriptorPool DescriptorPool{ nullptr };

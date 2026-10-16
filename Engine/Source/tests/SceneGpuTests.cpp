@@ -33,7 +33,6 @@
 #include "RendererLiveEdits.h"
 #include "ShaderCompiler.h"
 #include "TransformComponent.h"
-#include "VulkanImGuiBackend.h" // VulkanRenderer's destructor needs it
 #include "VulkanRenderer.h"
 #include "RenderTestSupport.h"
 

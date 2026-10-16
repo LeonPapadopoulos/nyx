@@ -6,7 +6,6 @@
 
 #include "MeshRendererComponent.h"
 #include "Paths.h"
-#include "VulkanImGuiBackend.h" // VulkanRenderer's destructor needs it
 #include "VulkanRenderer.h"
 #include "TestSupport.h"
 

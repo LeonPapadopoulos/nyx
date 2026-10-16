@@ -1,6 +1,7 @@
 #include "NyxPCH.h"
 #include "VulkanImGuiBackend.h"
-#include "VulkanRenderer.h"
+#include "VulkanContext.h"
+#include "VulkanSwapchain.h"
 #include "Log.h"
 #include "ImGuiTheme.h"
 #include "UIChrome.h"
@@ -16,9 +17,10 @@
 
 namespace Nyx
 {
-	VulkanImGuiBackend::VulkanImGuiBackend(GLFWwindow* window, VulkanRenderer& vulkan)
+	VulkanImGuiBackend::VulkanImGuiBackend(GLFWwindow* window, VulkanContext& context, VulkanSwapchain& swapchain)
 		: Window(window)
-		, Vulkan(&vulkan)
+		, Context(&context)
+		, Swapchain(&swapchain)
 	{
 	}
 
@@ -81,22 +83,19 @@ namespace Nyx
 
 		ImGui_ImplGlfw_InitForVulkan(Window, true);
 
-		VulkanContext& Context = Vulkan->GetContext();
-		VulkanSwapchain& Swapchain = Vulkan->GetSwapchain();
-
 		ImGui_ImplVulkan_InitInfo init_info{};
-		init_info.Instance = *Context.GetInstance();
-		init_info.PhysicalDevice = *Context.GetPhysicalDevice();
-		init_info.Device = *Context.GetDevice();
-		init_info.QueueFamily = Context.GetGraphicsQueueFamily();
-		init_info.Queue = *Context.GetGraphicsQueue();
+		init_info.Instance = *Context->GetInstance();
+		init_info.PhysicalDevice = *Context->GetPhysicalDevice();
+		init_info.Device = *Context->GetDevice();
+		init_info.QueueFamily = Context->GetGraphicsQueueFamily();
+		init_info.Queue = *Context->GetGraphicsQueue();
 		init_info.DescriptorPool = *DescriptorPool;
-		init_info.MinImageCount = Swapchain.GetMinImageCount();
-		init_info.ImageCount = Swapchain.GetImageCount();
+		init_info.MinImageCount = Swapchain->GetMinImageCount();
+		init_info.ImageCount = Swapchain->GetImageCount();
 		init_info.PipelineCache = VK_NULL_HANDLE;
 
 		init_info.UseDynamicRendering = false;
-		init_info.PipelineInfoMain.RenderPass = *Swapchain.GetRenderPass();
+		init_info.PipelineInfoMain.RenderPass = *Swapchain->GetRenderPass();
 		init_info.PipelineInfoMain.Subpass = 0;
 		init_info.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
 		ImGui_ImplVulkan_Init(&init_info);
@@ -289,6 +288,6 @@ namespace Nyx
 		poolInfo.poolSizeCount = static_cast<uint32_t>(std::size(poolSizes));
 		poolInfo.pPoolSizes = poolSizes;
 
-		DescriptorPool = Vulkan->GetContext().GetDevice().createDescriptorPool(poolInfo);
+		DescriptorPool = Context->GetDevice().createDescriptorPool(poolInfo);
 	}
 }

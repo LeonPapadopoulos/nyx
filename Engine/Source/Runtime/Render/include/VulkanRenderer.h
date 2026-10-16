@@ -5,16 +5,13 @@
 #include "VulkanSwapchain.h"
 #include "OffscreenRenderTarget.h"
 #include "VulkanViewportTarget.h"
-#include "VulkanPainter.h"
 #include "Paths.h"
 #include "ShaderPrograms.h"
 #include "VulkanBlur.h"
 #include "VulkanBindless.h"
 #include "VulkanMaterials.h"
 #include "VulkanEnvironment.h"
-#include "VulkanGlass.h"
-#include "Painter.h"
-#include "WindowPainter.h"
+#include "VulkanUIBackend.h"
 #include "Mesh.h"
 #include "Texture.h"
 #include "CubemapTexture.h"
@@ -47,8 +44,6 @@ namespace Nyx::Tests
 
 namespace Nyx
 {
-	class VulkanImGuiBackend;
-
 	struct SceneUBO
 	{
 		glm::mat4 ViewProj;
@@ -305,21 +300,22 @@ namespace Nyx
 		uint32_t GetSky() const { return SkyboxTextureIndex; }
 
 		// Draws 2D shapes recorded with a Painter into a VulkanPainterTarget
-		Nyx::VulkanPainter& GetPainterPass() { return PainterPass; }
+		Nyx::VulkanPainter& GetPainterPass() { return UI.GetPainterPass(); }
 
-		uint64_t CreatePainterCanvas() override;
-		void DestroyPainterCanvas(uint64_t id) override;
-		void SubmitPainterCanvas(uint64_t id, const Nyx::UI::Painter& painter, const Nyx::UI::PainterDrawOptions& options) override;
-		ImTextureID GetPainterCanvasTextureId(uint64_t id) const override;
-		std::optional<Nyx::UI::PainterTiles> GetPainterCanvasTiles(uint64_t id) const override;
-		const Nyx::UI::PainterWindowStats& GetWindowPainterStats() const override { return WindowPainterStats; }
+		// The UI's, from the UI backend
+		uint64_t CreatePainterCanvas() override { return UI.CreatePainterCanvas(); }
+		void DestroyPainterCanvas(uint64_t id) override { UI.DestroyPainterCanvas(id); }
+		void SubmitPainterCanvas(uint64_t id, const Nyx::UI::Painter& painter, const Nyx::UI::PainterDrawOptions& options) override { UI.SubmitPainterCanvas(id, painter, options); }
+		ImTextureID GetPainterCanvasTextureId(uint64_t id) const override { return UI.GetPainterCanvasTextureId(id); }
+		std::optional<Nyx::UI::PainterTiles> GetPainterCanvasTiles(uint64_t id) const override { return UI.GetPainterCanvasTiles(id); }
+		const Nyx::UI::PainterWindowStats& GetWindowPainterStats() const override { return UI.GetWindowPainterStats(); }
 
-		uint64_t CreateUIImage(const Nyx::RgbaImage& image) override;
-		void DestroyUIImage(uint64_t id) override;
-		ImTextureID GetUIImageTextureId(uint64_t id) const override;
+		uint64_t CreateUIImage(const Nyx::RgbaImage& image) override { return UI.CreateUIImage(image); }
+		void DestroyUIImage(uint64_t id) override { UI.DestroyUIImage(id); }
+		ImTextureID GetUIImageTextureId(uint64_t id) const override { return UI.GetUIImageTextureId(id); }
 
-		void SaveScreenshot(const std::filesystem::path& path, ImVec2 min, ImVec2 max) override;
-		const std::string& GetScreenshotMessage() const override { return ScreenshotMessage; }
+		void SaveScreenshot(const std::filesystem::path& path, ImVec2 min, ImVec2 max) override { UI.SaveScreenshot(path, min, max); }
+		const std::string& GetScreenshotMessage() const override { return UI.GetScreenshotMessage(); }
 
 		ImTextureID GetSceneViewTextureId(uint64_t id) const override;
 		// What a scene view rendered last, as RGBA; waits for the GPU. False for an unknown view. For tests.
@@ -329,7 +325,6 @@ namespace Nyx
 
 	private:
 		void SetupVulkan(const char* applicationName, GLFWwindow* window);
-		void SetupImGui();
 
 		void CreateGraphicsPipeline();
 		void CreateCommandPool();
@@ -464,7 +459,7 @@ namespace Nyx
 
 		ImTextureID GetSceneViewBlurTextureId(uint64_t id) const override;
 		Extent2D GetSceneViewBlurExtent(uint64_t id) const override;
-		float GetBlurMilliseconds() const override { return BlurMilliseconds; }
+		float GetBlurMilliseconds() const override { return UI.GetBlurMilliseconds(); }
 		std::vector<uint64_t> GetSceneViewIds() const override;
 
 		SceneViewInstance* FindSceneView(uint64_t id);
@@ -499,7 +494,6 @@ namespace Nyx
 	private:
 	private:
 		GLFWwindow* Window = nullptr;
-		std::unique_ptr<VulkanImGuiBackend> ImGuiBackend;
 
 		VulkanContext Context;
 		VulkanSwapchain Swapchain;
@@ -508,172 +502,11 @@ namespace Nyx
 		// is kept in Saved/ShaderCache/Engine, so the next start begins from it.
 		Nyx::ShaderPrograms Programs{ Nyx::Paths::GetCompiledShadersDir(), Nyx::Paths::GetShadersDir(), Nyx::Paths::GetShaderCacheDir() / "Engine" };
 
-		Nyx::VulkanPainter PainterPass;
+		// ImGui, the painter, glass and blur, UI images, screenshots, and the frame's GPU times
+		VulkanUIBackend UI{ Context, Swapchain, Programs };
 
-		// Blurs every scene view's picture after it renders
-		Nyx::VulkanBlur BlurPass;
-		void BlurSceneViews(vk::raii::CommandBuffer& cmd);
-		void ReleaseSceneViewBlur(SceneViewInstance& view);
-
-		// Points an ImGui texture at an image: a new texture the first time, the same texture
-		// pointed at the new image when it changed (e.g. a blur target resized). An image is told
-		// by its target's generation, not by its view: a new view may get the handle of the old
-		// one, and the texture would go on showing the destroyed image. `shownGeneration` is the
-		// generation the texture shows now.
-		void PointImGuiTexture(VkDescriptorSet& texture, uint64_t& shownGeneration, vk::ImageView view, uint64_t generation);
-
-		// What glass shows: ImGui's main window drawn up to the first glass window, blurred, each
-		// frame there is glass, before the main window itself is drawn. Its ImGui texture keeps its
-		// ID.
-		Nyx::VulkanGlassBackdrop GlassBackdrop;
-		VkDescriptorSet GlassImGuiTexture = VK_NULL_HANDLE;
-		uint64_t GlassImGuiTextureGeneration = 0;
-		void DrawGlassBackdrop(vk::raii::CommandBuffer& cmd);
-
-		// What glass shows in OS windows of their own (Nyx::UI::SetPlainGlassBackdrop()): one
-		// pixel in the theme's backdrop colour, a UI image made the first time it is asked for
-		ImTextureID GetPlainGlassBackdrop();
-		uint64_t PlainGlassImageId = 0;
-
-		// GPU timestamps around the blurs: written in a frame, read once its fence is signalled.
-		// Null where the graphics queue can't write timestamps.
-		vk::raii::QueryPool BlurTimestamps{ nullptr };
-		bool bBlurTimestampsWritten = false;
-		float BlurMilliseconds = -1.0f;
-		void CreateBlurTimestamps();
-		void ReadBlurTimestamps();
-
-		// An image for 2D shapes, shown with ImGui::Image() (CreatePainterCanvas())
-		struct PainterCanvas
-		{
-			uint64_t Id = 0;
-			Nyx::VulkanPainterTarget Target;
-
-			// This frame's shapes, copied from SubmitPainterCanvas(); drawn once, then cleared
-			Nyx::UI::Painter Frame;
-			Nyx::UI::PainterDrawOptions Options;
-			bool bSubmitted = false;
-
-			// How ImGui shows the canvas: a descriptor set made by ImGui's backend. It is pointed
-			// at the new image when the target is recreated (the target's generation changes),
-			// so its ImTextureID never changes.
-			vk::raii::Sampler Sampler{ nullptr };
-			VkDescriptorSet ImGuiTexture = VK_NULL_HANDLE;
-			uint64_t ImGuiTextureGeneration = 0;
-		};
-
-		// Draws the canvases submitted this frame, before ImGui renders
-		void DrawPainterCanvases(vk::raii::CommandBuffer& cmd);
-		void ReleasePainterCanvas(PainterCanvas& canvas);
-		PainterCanvas* FindPainterCanvas(uint64_t id);
-		const PainterCanvas* FindPainterCanvas(uint64_t id) const;
-
-		// Pointers, so a canvas stays in place while others are added or removed
-		std::vector<std::unique_ptr<PainterCanvas>> PainterCanvases;
-		uint64_t NextPainterCanvasId = 1;
-
-		// Painting inside ImGui windows (Nyx::UI::GetWindowPainter()), in two steps around
-		// ImGui::Render():
-		//  - GatherWindowPainters(), once the UI is built: ends the window painters;
-		//  - UploadWindowSegments(), once ImGui has made the draw data: finds the runs of
-		//    segments with nothing ImGui draws between them (Nyx::UI::FindWindowSegmentRuns()),
-		//    copies each run into one painter (Painter::AppendSegment()) and adds it as one draw,
-		//    then records binning them all on the GPU.
-		// ImGui then calls back where each segment goes: DrawWindowSegment() draws a run at its
-		// first segment, and nothing at the others.
-		void GatherWindowPainters();
-		void UploadWindowSegments(vk::CommandBuffer commandBuffer);
-		// At the start of a frame, once the last one's GPU work is done: the GPU's binning
-		// numbers, and the heatmap's heat, into the last frame's statistics
-		void ReadWindowSegments();
-		static void DrawWindowSegment(const Nyx::UI::WindowPainter& painter, uint32_t segment, const ImDrawCmd& command, void* renderer);
-		void DrawWindowSegment(const Nyx::UI::WindowPainter& painter, uint32_t segment);
-
-		// This frame's window painters, and their draws
-		std::span<Nyx::UI::WindowPainter* const> WindowPainters;
-		Nyx::VulkanPainterSegments WindowSegments;
-		// What each segment's callback draws: the index of its run's draw in WindowSegments at the
-		// run's first segment, NoWindowDraw at the others
-		static constexpr uint32_t NoWindowDraw = UINT32_MAX;
-		std::map<std::pair<const Nyx::UI::WindowPainter*, uint32_t>, uint32_t> WindowSegmentDraws;
-		// The painters runs are copied into, one per draw of several segments. Kept apart, so
-		// that no two have the same address in a frame: WindowSegments tells painters apart by it.
-		std::vector<std::unique_ptr<Nyx::UI::Painter>> RunPainters;
-		// The OS window of each draw in WindowSegments, as an index into WindowPainterStats.OsWindows
-		std::vector<uint32_t> WindowSegmentDrawOsWindows;
-		// The last frame's statistics: its CPU times as the frame is built, its GPU times once its
-		// fence has passed
-		Nyx::UI::PainterWindowStats WindowPainterStats;
-		// This frame's CPU times taken before GatherWindowPainters() starts its statistics
-		Nyx::UI::PainterWindowStats::Times PendingFrameTimes;
 		// When the last frame's DrawFrame() ended, for the time spent outside it
 		std::chrono::steady_clock::time_point LastFrameEnd;
-
-		// GPU timestamps around the frame's drawing, in pairs: the main window's UI pass, the
-		// glass backdrop, the binning, the scene views' editor passes, the scene views, the whole
-		// command buffer, and each window segment draw, in any OS window. Reset and written in a
-		// frame, read once its fence has passed. Null where the graphics queue can't write
-		// timestamps.
-		static constexpr uint32_t MainWindowUIPair = 0;
-		static constexpr uint32_t GlassBackdropPair = 1;
-		static constexpr uint32_t BinningPair = 2;
-		static constexpr uint32_t EditorPassesPair = 3;
-		static constexpr uint32_t SceneViewsPair = 4;
-		static constexpr uint32_t FramePair = 5;
-		static constexpr uint32_t FirstSegmentPair = 6;
-		static constexpr uint32_t MaxTimedSegmentDraws = 250;
-		static constexpr uint32_t UITimestampCount = 2 * (FirstSegmentPair + MaxTimedSegmentDraws);
-		struct TimedPair
-		{
-			uint32_t Pair = 0;
-			// The OS window of a segment draw, an index into WindowPainterStats.OsWindows
-			uint32_t OsWindow = 0;
-		};
-		vk::raii::QueryPool UITimestamps{ nullptr };
-		// The pairs written this frame, and the next free one for a segment draw
-		std::vector<TimedPair> UITimedPairs;
-		uint32_t NextSegmentPair = FirstSegmentPair;
-		void CreateUITimestamps();
-		// Writes a pair's start before what it times, or its end after it, which keeps the pair to
-		// read, with its OS window for a segment draw. Nothing without UITimestamps.
-		void WriteUITimestamp(vk::CommandBuffer commandBuffer, uint32_t pair, bool bEnd, uint32_t osWindow = UINT32_MAX);
-		// Adds the last frame's GPU times to WindowPainterStats
-		void ReadUITimestamps();
-
-		// An image for the UI (CreateUIImage()), shown through a descriptor set made by ImGui's backend
-		struct UIImage
-		{
-			uint64_t Id = 0;
-			vk::raii::Image Image{ nullptr };
-			vk::raii::DeviceMemory Memory{ nullptr };
-			vk::raii::ImageView View{ nullptr };
-			vk::raii::Sampler Sampler{ nullptr };
-			VkDescriptorSet ImGuiTexture = VK_NULL_HANDLE;
-		};
-		std::vector<std::unique_ptr<UIImage>> UIImages;
-		// Destroyed ones, released once the GPU is done with the frame that may still show them
-		std::vector<std::unique_ptr<UIImage>> UIImagesToRelease;
-		uint64_t NextUIImageId = 1;
-		void ReleaseUIImage(UIImage& image);
-
-		// A screenshot asked for this frame (SaveScreenshot()): the rect is copied out of the
-		// swapchain image after ImGui has rendered into it, and written to the file once the
-		// frame's fence is signalled.
-		struct ScreenshotRequest
-		{
-			std::filesystem::path Path;
-			// In the swapchain image's pixels
-			vk::Rect2D Region;
-			vk::raii::Buffer Buffer{ nullptr };
-			vk::raii::DeviceMemory Memory{ nullptr };
-			// The swapchain's format holds blue first (B8G8R8A8)
-			bool bBlueFirst = false;
-			bool bRecorded = false;
-		};
-		std::optional<ScreenshotRequest> Screenshot;
-		std::string ScreenshotMessage;
-		void RecordScreenshot(vk::raii::CommandBuffer& cmd, uint32_t imageIndex);
-		void FinishScreenshot();
 
 		std::vector<std::unique_ptr<Nyx::Mesh>> LoadedMeshes;
 		std::vector<std::unique_ptr<Nyx::Texture>> LoadedTextures;
@@ -768,6 +601,31 @@ namespace Nyx
 
 		// DrawFrame() without its handling of a lost device
 		void DrawFrameOnDevice(const std::function<void()>& buildUI);
+
+		// The frame's start, and the times of its steps before the UI, for the painter's statistics
+		struct FrameClock
+		{
+			std::chrono::steady_clock::time_point Start;
+			Nyx::UI::PainterWindowStats::Times Times;
+		};
+		FrameClock StartFrameClock() const;
+
+		// DrawFrameOnDevice()'s steps, in their order
+		// Until the last frame's GPU work is done; then the views let go of during it are destroyed
+		void WaitForLastFrame(FrameClock& clock);
+		// The swapchain image to draw into; none when the swapchain had to be made again
+		std::optional<uint32_t> AcquireImage(FrameClock& clock);
+		vk::raii::CommandBuffer& BeginCommands(uint32_t imageIndex);
+		// Every shown world's state, the scene views' editor passes, the views, and their blur
+		void RenderScene(vk::raii::CommandBuffer& cmd, FrameClock& clock);
+		// Per view: a size asked for made, its uniforms, and the editor's own passes: picking, and the
+		// selection masks
+		void DrawEditorPasses(vk::raii::CommandBuffer& cmd);
+		// Values set for materials while the UI was built (SetMaterialValues())
+		void ApplyPendingMaterialValues();
+		// The frame's command buffer, ImGui's OS windows, and the fence that covers them all
+		void Submit(vk::raii::CommandBuffer& cmd, uint32_t imageIndex);
+		void Present(uint32_t imageIndex, const FrameClock& clock);
 		// Set when the device is lost; nothing is drawn after that (IsDeviceLost())
 		bool bDeviceLost = false;
 

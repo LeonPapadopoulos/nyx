@@ -116,7 +116,8 @@ checks every `#include` against this table.
 2. `PollEvents()`, then `InputSystem::BeginFrame()`: this frame's input.
 3. Every layer's `OnUpdate(deltaTime)`, in the order they were pushed.
 4. `IWindow::DrawFrame()`. A minimized window draws nothing and waits 50 ms, so the frame loop
-   (and the editor link) keeps running. Otherwise `VulkanRenderer::DrawFrameOnDevice()`:
+   (and the editor link) keeps running. Otherwise `VulkanRenderer::DrawFrameOnDevice()`, which
+   leaves the UI to its `VulkanUIBackend`:
    1. waits for the last frame's fence (one frame in flight), then reads back what that frame
       left: timestamps, the painter's binning, picks;
    2. acquires the swapchain image, and takes shader updates;
@@ -136,7 +137,8 @@ If the GPU device is lost, the renderer stops drawing and the window closes.
   GPU, then detaches the layers in reverse order while the renderer still exists.
 - **`WindowsWindow`** (`IWindow`): the GLFW window, the renderer (`IRenderer`), the frame rate
   limiter, and the startup banner until `FinishStartup()`.
-- **The renderer**: everything on the GPU: scene views, shaders, materials, the painter. It
+- **The renderer**: everything on the GPU: scene views, shaders, materials, and in its
+  `VulkanUIBackend` ImGui, the painter, glass, UI images and screenshots. It
   holds worlds only by pointer (`SetWorld()`, `SetSceneViewWorld()`): their owner keeps them alive,
   and calls `SetWorld()` again after replacing what's in one.
 - **Layers**: `EditorLayer` in the editor; `GameLayer` and, when the editor started the game,
@@ -218,7 +220,7 @@ it with a warning. `Hello`'s layout never changes.
   `SceneViewInstance` (`SceneView.h`), and its use in `VulkanRenderer`: `RenderSceneView()`
   (the scene pass, then the picture pass) or `UpdateSceneUniforms()`.
 - Per-view GPU resources: made in `CreateSceneResourcesForView()`, made again where
-  `DrawFrameOnDevice()` resizes a view, released in `DestroySceneViewNow()`.
+  `DrawEditorPasses()` resizes a view, released in `DestroySceneViewNow()`.
 - Anything only the editor should see goes behind the view's `bShowEditorOverlays`, which a view
   showing the game turns off.
 - The editor's side is `SceneViewPanel`; `NyxSceneGpuTests` renders views on a real GPU.
@@ -233,7 +235,7 @@ it with a warning. `Hello`'s layout never changes.
 | `ReflectionSourceRegistry::Get()` (editor) | `RegisterRuntimeReflectedSources()`, generated, in `EditorLayer::OnAttach()` |
 | `Nyx::UI::GetTheme()` | the defaults in `UITheme.h`; the editor loads its theme file in `ThemeEditorWindow::LoadAtStartup()` |
 | The painted UI's state: chrome, animations, window painters, diagnostics | `UIChrome.cpp`, `UIAnimation.cpp`, `WindowPainter.cpp`, `UIDiagnostics.cpp`, while each frame's UI is built |
-| `WindowPainter::SetSegmentDrawer()` | the renderer, in `Initialize()`; cleared in `Shutdown()` |
+| `WindowPainter::SetSegmentDrawer()` | the renderer's `VulkanUIBackend`, in `InitializePasses()`; cleared in `Shutdown()` |
 | The crash handler | `InstallCrashHandler()`, in the game's `CreateApplication()` |
 | The project root (`Paths`) | found on first use and kept |
 
