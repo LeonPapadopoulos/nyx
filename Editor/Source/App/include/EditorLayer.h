@@ -7,12 +7,11 @@
 #include "CrashCardsPanel.h"
 #include "DetailsPanel.h"
 #include "EditorCameraController.h"
+#include "EditorFrame.h"
 #include "EditorPreferences.h"
 #include "GameLinkPanel.h"
 #include "Layer.h"
-#include "MaterialParametersPanel.h"
-#include "MaterialPreviewPanel.h"
-#include "ShaderLogPanel.h"
+#include "MaterialWorkspace.h"
 #include "Paths.h"
 #include "PlayControls.h"
 #include "PlaySession.h"
@@ -45,8 +44,9 @@ namespace Nyx::Tests
 namespace Nyx::Editor
 {
 	// The whole editor as one layer of the application. It owns the scene being edited
-	// (SceneEditor), the panels that show it, and Play (PlaySession); it draws the window's
-	// titlebar and status bar, and opens, saves and replaces scenes.
+	// (SceneEditor), the panels that show it, the Materials workspace and Play (PlaySession), and
+	// wires them together; EditorFrame draws the window's titlebar and status bar from them. It
+	// opens, saves and replaces scenes.
 	class EditorLayer : public Nyx::ILayer
 	{
 		friend struct Nyx::Tests::SceneReplacementTestAccess;
@@ -75,18 +75,6 @@ namespace Nyx::Editor
 		void OpenShader(const std::filesystem::path& file);
 
 	private:
-		// The window's frame (IWindow::SetFrameContent()). The titlebar, one row: the logo, the
-		// menus, the open scene and Play. The status bar: the last scene saved or opened, errors
-		// logged, the graphics API and the frame rate.
-		void DrawTitlebar(const Nyx::WindowFrameArea& area);
-		void DrawStatusBar(const Nyx::WindowFrameArea& area);
-
-		// New, Save, Save As and Load, in the File menu and the scene's own
-		void DrawSceneMenuItems();
-
-		// What the status bar says about the last scene saved, opened or made
-		void SetSceneFileStatus(std::string text, bool bFailed);
-
 		// Vsync and the frame rate cap, from the preferences, to the window
 		void ApplyFrameRate();
 
@@ -94,15 +82,6 @@ namespace Nyx::Editor
 
 		// Opens the workspace's panels and closes the other's, e.g. after switching
 		void ApplyWorkspacePanels();
-		// The titlebar's workspace tabs
-		void DrawWorkspaceTabs(const Nyx::WindowFrameArea& area);
-		// "New Material": asks for a name, then makes a shader and a material and opens them
-		void DrawNewMaterialPopup();
-		bool CreateNewMaterial();
-		void CreateMaterialForShader(const std::string& shaderPath);
-		void CreateMaterialInstance(const std::string& parentPath);
-		// The materials whose parent is `path`, read from their files at most once a second
-		const std::vector<std::string>& FindInstancesOf(const std::string& path);
 
 		// Called before destroying the old registry, once its replacement is ready.
 		void ForgetPreviousScene();
@@ -122,10 +101,6 @@ namespace Nyx::Editor
 
 		SceneEditor Editing;
 
-		// The last scene saved, opened or made, for the status bar, and whether that failed
-		std::string SceneFileStatus;
-		bool bSceneFileStatusFailed = false;
-
 		EditorPreferences Preferences;
 #if NYX_DEV_TOOLS
 		ImGuiDebugTools DebugTools;
@@ -139,12 +114,6 @@ namespace Nyx::Editor
 		bool bAssetBrowserVisible = true;
 		SceneOutlinerPanel Outliner;
 		DetailsPanel Details;
-		// The material open for editing
-		MaterialParametersPanel MaterialParameters{ Nyx::Paths::GetAssetsDir() };
-		// The material open, on a shape in a world of its own
-		MaterialPreviewPanel MaterialPreview;
-		// Every shader's last compile, and what the compiler said
-		ShaderLogPanel ShaderLogWindow;
 		// Paths of files opened from shader diagnostics: the source editor opens them on a worker,
 		// which reads the path after the diagnostic may be gone
 		std::set<std::string> OpenedShaderFiles;
@@ -153,15 +122,9 @@ namespace Nyx::Editor
 		// The Scene and Materials workspaces' layouts
 		Workspaces Layouts{ Nyx::Paths::GetSavedDir() / "Layouts" };
 
-		// FindInstancesOf()'s last answer
-		std::string InstancesOf;
-		std::vector<std::string> FoundInstances;
-		double InstancesFoundAt = -1.0;
+		// The Parameters, Preview and Shader Log windows, and New Material
+		MaterialWorkspace Materials{ AssetDb, Layouts };
 
-		// New Material's question
-		bool bAskNewMaterialName = false;
-		std::string NewMaterialName;
-		std::string NewMaterialError;
 		SceneViewPanel MainSceneView{ "Scene" };
 		SceneViewPanel SecondarySceneView{ "Scene 2" };
 		// Flies the scene views' free cameras
@@ -179,6 +142,32 @@ namespace Nyx::Editor
 
 		// The games started with Play; edits reach them from Play on
 		PlaySession Games{ Editing.Scene, GameLinkWindow };
+
+		// The window's titlebar and status bar, and the menus in them
+		EditorFrame Frame{ EditorFrame::Parts{
+			.Editing = Editing,
+			.CurrentScenePath = CurrentScenePath,
+			.NewScene = [this]() { NewScene(); },
+			.SaveScene = [this]() { SaveScene(); },
+			.SceneFiles = SceneFiles,
+			.SourceInspector = SourceInspector,
+			.PreferencesPanel = PreferencesPanel,
+			.ThemeEditor = ThemeEditor,
+			.Materials = Materials,
+			.bAssetBrowserVisible = bAssetBrowserVisible,
+			.bShowGameLink = bShowGameLink,
+			.SecondarySceneView = SecondarySceneView,
+			.bSecondaryViewShowsGameView = bSecondaryViewShowsGameView,
+#if NYX_DEV_TOOLS
+			.DebugTools = DebugTools,
+			.PainterTest = PainterTest,
+			.Mockup = Mockup,
+#endif
+			.Layouts = Layouts,
+			.Play = Play,
+			.Games = Games,
+			.Preferences = Preferences,
+		} };
 	};
 
 	// Every asset type the editor knows (EditorAssetTypes.cpp). Opening one calls into `editor`,

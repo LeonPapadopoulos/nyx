@@ -32,9 +32,29 @@ namespace Nyx::Editor
 		// one open has unsaved values, after asking in the window (the next Draw())
 		void OpenMaterial(std::string path);
 
+		// An entity that draws with the open material, which a click selects
+		struct MaterialUser
+		{
+			std::string Name;
+			std::function<void()> Select;
+		};
+
+		// What the window picks from and lists. The caller keeps the lists and builds them again
+		// only when the assets or the scene change; a list left out is empty.
+		struct Choices
+		{
+			// The shaders a material can be on ("Shaders/Stone.slang"), and the materials that can
+			// be the parent ("Materials/Stone.nyxmat")
+			const std::vector<std::string>* Shaders = nullptr;
+			const std::vector<std::string>* Materials = nullptr;
+			// The open material's instances, and the entities of the scene that use it
+			const std::vector<std::string>* Instances = nullptr;
+			const std::vector<MaterialUser>* Users = nullptr;
+		};
+
 		// Every frame: the open material's values to the renderer, the file's to the document
 		// when it was read again, and the window while open
-		void Draw(Nyx::IMaterialSource& materials);
+		void Draw(Nyx::IMaterialSource& materials, const Choices& choices = {});
 
 		// Undo, redo and save while the window has focus. True when it has: the keys are the
 		// material's then, not the scene's.
@@ -42,20 +62,7 @@ namespace Nyx::Editor
 
 		MaterialDocument& GetDocument() { return Document; }
 
-		// An entity that draws with the open material, which a click selects
-		struct MaterialUser
-		{
-			std::string Name;
-			std::function<void()> Select;
-		};
-		// Set before Draw(): the shaders a material can be on ("Shaders/Stone.slang"), and the
-		// entities of the scene that use the open material
-		std::vector<std::string> ShaderChoices;
-		std::vector<MaterialUser> Users;
-		// The materials that can be the parent ("Materials/Stone.nyxmat"), the open material's
-		// instances, and what opens another material
-		std::vector<std::string> MaterialChoices;
-		std::vector<std::string> Instances;
+		// What opens another material: a parent or an instance
 		std::function<void(const std::string& path)> OpenOther;
 
 		// Called with every material's values sent to the renderer: the open one's as they
@@ -83,6 +90,9 @@ namespace Nyx::Editor
 		void DrawTextValue(const std::string& name, const std::string& current, const char* hint, const std::string& label);
 		// The values the file sets that the shader has no parameter for
 		void DrawUnknownValues(const Nyx::MaterialView& view);
+
+		// Draw()'s choices, for the functions it calls
+		Choices CurrentChoices;
 
 		std::filesystem::path AssetsFolder;
 		MaterialDocument Document;

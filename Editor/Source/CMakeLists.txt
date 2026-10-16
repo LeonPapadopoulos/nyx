@@ -5,6 +5,8 @@ set(NYX_EDITOR_SOURCES
     App/src/EditorLayer.cpp
     App/src/EditorAssetTypes.cpp
     App/src/Workspaces.cpp
+    App/src/EditorFrame.cpp
+    App/src/MaterialWorkspace.cpp
 
     # Scene
     Scene/src/SceneEditor.cpp
@@ -72,6 +74,8 @@ set(NYX_EDITOR_HEADERS
     # App
     App/include/EditorLayer.h
     App/include/Workspaces.h
+    App/include/EditorFrame.h
+    App/include/MaterialWorkspace.h
 
     # Scene
     Scene/include/SceneEditor.h

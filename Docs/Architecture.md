@@ -105,7 +105,7 @@ checks every `#include` against this table.
 | `Properties` | Drawing and editing reflected properties: a widget per property kind, and the edit in progress | Common, Transactions, Assets |
 | `Scene` | The scene being edited: its document and undo, the outliner, details, gizmo, scene views and their cameras, scene files, copy and paste | Common, Transactions, Assets, Preferences, Properties |
 | `Play` | Play and Play All: the games, their windows and crash cards, the Game Link window, edits sent to the games | Transactions, Preferences, Scene |
-| `App` | `EditorLayer`, which owns and wires up everything else, the workspaces, the asset types the editor knows | Common, Assets, Materials, Preferences, DevTools, Properties, Scene, Play |
+| `App` | `EditorLayer`, which owns and wires up everything else; `EditorFrame`, the titlebar with its menus and the status bar; `MaterialWorkspace`, which feeds the material windows and makes new materials; the workspaces, the asset types the editor knows | Common, Assets, Materials, Preferences, DevTools, Properties, Scene, Play |
 
 ## One frame
 

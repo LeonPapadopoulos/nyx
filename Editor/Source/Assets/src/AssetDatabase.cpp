@@ -47,6 +47,7 @@ namespace Nyx::Editor
 
 	void AssetDatabase::Rescan()
 	{
+		++Revision;
 		Entries.clear();
 
 		if (!IsValidAssetRoot())

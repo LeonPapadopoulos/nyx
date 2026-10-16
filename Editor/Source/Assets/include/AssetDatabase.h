@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -39,6 +40,12 @@ namespace Nyx::Editor
 		void SetAssetRoot(const std::filesystem::path& assetRoot);
 		void Rescan();
 
+		// Raised by every Rescan(), so what is built from the entries can tell they may have changed
+		uint64_t GetRevision() const
+		{
+			return Revision;
+		}
+
 		const std::filesystem::path& GetAssetRoot() const
 		{
 			return AssetRoot;
@@ -56,5 +63,6 @@ namespace Nyx::Editor
 		const AssetTypeRegistry& Types;
 		std::filesystem::path AssetRoot;
 		std::vector<AssetEntry> Entries;
+		uint64_t Revision = 0;
 	};
 }

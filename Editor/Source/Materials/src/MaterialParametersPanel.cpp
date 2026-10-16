@@ -20,6 +20,14 @@ namespace Nyx::Editor
 {
 	namespace
 	{
+		// The list a choice points at, or an empty one
+		template <typename T>
+		const std::vector<T>& Listed(const std::vector<T>* list)
+		{
+			static const std::vector<T> None;
+			return list ? *list : None;
+		}
+
 		// The attribute's text argument, e.g. [Category("Surface")]; null without one
 		const std::string* TextArgument(const Nyx::ShaderField& field, std::string_view attribute)
 		{
@@ -107,8 +115,10 @@ namespace Nyx::Editor
 		bAskToDiscard = Document.IsDirty();
 	}
 
-	void MaterialParametersPanel::Draw(Nyx::IMaterialSource& materials)
+	void MaterialParametersPanel::Draw(Nyx::IMaterialSource& materials, const Choices& choices)
 	{
+		CurrentChoices = choices;
+
 		// A drag let go of, or a field left, last frame: one undo step
 		if (Document.IsPreviewing() && !ImGui::IsAnyItemActive())
 		{
@@ -222,7 +232,7 @@ namespace Nyx::Editor
 				}
 				Document.SetValues(values, "Remove Parent");
 			}
-			for (const std::string& choice : MaterialChoices)
+			for (const std::string& choice : Listed(CurrentChoices.Materials))
 			{
 				if (choice == Document.GetPath())
 				{
@@ -256,7 +266,7 @@ namespace Nyx::Editor
 		}
 		else if (Nyx::UI::BeginCombo("##Shader", shader.empty() ? "None" : shader.c_str()))
 		{
-			for (const std::string& choice : ShaderChoices)
+			for (const std::string& choice : Listed(CurrentChoices.Shaders))
 			{
 				if (NYX_UI(Nyx::UI::Selectable(choice.c_str(), choice == shader)) && choice != shader)
 				{
@@ -271,13 +281,14 @@ namespace Nyx::Editor
 		ImGui::AlignTextToFramePadding();
 		NYX_UI(ImGui::TextUnformatted("Surface"));
 		Nyx::UI::EndPropertyRow();
+		const std::vector<std::string>& instances = Listed(CurrentChoices.Instances);
 		Nyx::UI::BeginPropertyRow("Instances");
-		if (Instances.empty())
+		if (instances.empty())
 		{
 			ImGui::AlignTextToFramePadding();
 			NYX_UI(ImGui::TextDisabled("None"));
 		}
-		for (const std::string& instance : Instances)
+		for (const std::string& instance : instances)
 		{
 			if (NYX_UI(Nyx::UI::Selectable(instance.c_str())) && OpenOther)
 			{
@@ -286,18 +297,19 @@ namespace Nyx::Editor
 			ImGui::SetItemTooltip("Opens it");
 		}
 		Nyx::UI::EndPropertyRow();
+		const std::vector<MaterialUser>& users = Listed(CurrentChoices.Users);
 		Nyx::UI::BeginPropertyRow("Used By");
-		if (Users.empty())
+		if (users.empty())
 		{
 			ImGui::AlignTextToFramePadding();
 			NYX_UI(ImGui::TextDisabled("No entity in the scene"));
 		}
-		for (size_t index = 0; index < Users.size(); ++index)
+		for (size_t index = 0; index < users.size(); ++index)
 		{
 			ImGui::PushID(static_cast<int>(index));
-			if (NYX_UI(Nyx::UI::Selectable(Users[index].Name.c_str())) && Users[index].Select)
+			if (NYX_UI(Nyx::UI::Selectable(users[index].Name.c_str())) && users[index].Select)
 			{
-				Users[index].Select();
+				users[index].Select();
 			}
 			ImGui::SetItemTooltip("Selects it in the scene");
 			ImGui::PopID();
