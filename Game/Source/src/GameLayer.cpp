@@ -17,8 +17,8 @@ namespace Nyx::Game
 
 	void GameLayer::OnAttach(Nyx::Application& application)
 	{
-		Renderer = &application.GetWindow().GetRenderer();
-		UIRenderer = &application.GetWindow().GetEditorRenderer();
+		Renderer = &application.GetRenderer();
+		UIRenderer = &application.GetEditorRenderer();
 
 		// The game has no window layout to remember, and must not overwrite the editor's imgui.ini:
 		// both programs run from the same folder.

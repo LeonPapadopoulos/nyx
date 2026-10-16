@@ -52,7 +52,7 @@ doesn't allow, and on a table that goes round in a circle, so a new dependency s
 | `Link` | The editor link: its messages, live edits, recordings, the log sink | Core, Net, Scene, Assets |
 | `LinkTools` | Link messages, recordings and scene files as readable text, for the editor and NyxDump; not under `Runtime`, and not in the game | Core, Reflection, Scene, Link |
 | `Render` | The Vulkan renderer, scene views, shaders and materials, and applying the link's shaders and material values | Core, Net, Scene, Assets, UI, Link |
-| `Platform` | The window | Core, Input, UI, Render |
+| `Platform` | The window | Core, Input, UI |
 | `App` | The application and its layers, `main()`, the options the editor starts a game with | Core, Input, Scene, Render, Platform |
 
 Each folder of `Runtime` has one namespace: `Nyx`, except `Net` (`Nyx::Net`), `Input`
@@ -115,9 +115,9 @@ checks every `#include` against this table.
 1. `IWindow::WaitForNextFrame()`: the frame rate cap.
 2. `PollEvents()`, then `InputSystem::BeginFrame()`: this frame's input.
 3. Every layer's `OnUpdate(deltaTime)`, in the order they were pushed.
-4. `IWindow::DrawFrame()`. A minimized window draws nothing and waits 50 ms, so the frame loop
-   (and the editor link) keeps running. Otherwise `VulkanRenderer::DrawFrameOnDevice()`, which
-   leaves the UI to its `VulkanUIBackend`:
+4. `Application::DrawFrame()`. A minimized window draws nothing and waits 50 ms
+   (`IWindow::WaitIfMinimized()`), so the frame loop (and the editor link) keeps running.
+   Otherwise `VulkanRenderer::DrawFrameOnDevice()`, which leaves the UI to its `VulkanUIBackend`:
    1. waits for the last frame's fence (one frame in flight), then reads back what that frame
       left: timestamps, the painter's binning, picks;
    2. acquires the swapchain image, and takes shader updates;
@@ -125,21 +125,26 @@ checks every `#include` against this table.
       masks only when they changed), then the scene in HDR, tonemapped, with the editor's
       overlays (`VulkanEditorOverlays`, in the views that show them); then blurs each view's
       picture;
-   4. builds the UI: an ImGui frame in which every layer's `OnUI()` runs, then the painted window
+   4. builds the UI: an ImGui frame in which the window's dock area and strips (`IWindow::DrawUI()`)
+      hold every layer's `OnUI()`, then the painted window
       chrome, the painter canvases, and the window painters' segments, binned on the GPU;
    5. records the UI pass, submits, renders ImGui's OS windows, signals the fence and presents.
 5. `InputSystem::EndFrame()`: sets the cursor the layers asked for.
 
-If the GPU device is lost, the renderer stops drawing and the window closes.
+If the GPU device is lost, the renderer stops drawing and `Application` closes the window.
 
 ## Who owns what
 
-- **`Application`**: the window, the `InputSystem` and the layers. At shutdown it waits for the
-  GPU, then detaches the layers in reverse order while the renderer still exists.
-- **`WindowsWindow`** (`IWindow`): the GLFW window, the renderer, the frame rate limiter, and the
-  startup banner until `FinishStartup()`. `GetRenderer()` gives the renderer's scene part
+- **`Application`**: the window, the renderer, the `InputSystem` and the layers. It makes the
+  renderer once the window exists, to draw into it. `GetRenderer()` gives the renderer's scene part
   (`IRenderer`), what a game needs; `GetEditorRenderer()` all of it (`IEditorRenderer`), with the
-  editor's overlays and picking, material editing, and what ImGui shows.
+  editor's overlays and picking, material editing, and what ImGui shows. At shutdown it waits for
+  the GPU, detaches the layers in reverse order while the renderer still exists, then shuts the
+  renderer down before the window goes.
+- **`WindowsWindow`** (`IWindow`): the GLFW window, its input, its dock area and frame strips, the
+  frame rate limiter, and the startup banner until `FinishStartup()`. It knows nothing of the
+  renderer: `Application` hands the renderer the window (`GetNativeWindow()`) and is told when its
+  framebuffer changes size.
 - **The renderer**: everything on the GPU: scene views, shaders, materials; in its
   `VulkanUIBackend` ImGui, the painter, glass, UI images and screenshots; in its
   `VulkanEditorOverlays` the grid, debug lines, picking and the selection outline. It

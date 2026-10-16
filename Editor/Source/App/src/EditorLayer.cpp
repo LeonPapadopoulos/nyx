@@ -64,7 +64,7 @@ namespace Nyx::Editor
 	void EditorLayer::OnAttach(Nyx::Application& application)
 	{
 		Window = &application.GetWindow();
-		Renderer = &Window->GetEditorRenderer();
+		Renderer = &application.GetEditorRenderer();
 		Input = &application.GetInput();
 		AssetResolver = std::make_unique<Nyx::AssetResolver>(*Renderer);
 		if (!Preferences.Load(EditorPreferences::GetUserFile()))
@@ -308,7 +308,7 @@ namespace Nyx::Editor
 
 #if NYX_DEV_TOOLS
 		DebugTools.DrawWindows();
-		PainterTest.SetFrameRateLimits(Window->IsVSync(), Window->GetFrameRateCap());
+		PainterTest.SetFrameRateLimits(Renderer->IsVSync(), Window->GetFrameRateCap());
 		PainterTest.Draw(*Renderer);
 		Mockup.Draw(*Renderer);
 #endif
@@ -316,8 +316,9 @@ namespace Nyx::Editor
 
 	void EditorLayer::ApplyFrameRate()
 	{
-		// The window acts only on a change: a new swapchain for vsync, a new pace for the cap.
-		Window->SetVSync(Preferences.bVSync);
+		// Each acts only on a change: the renderer makes a new swapchain for vsync, the window a new
+		// pace for the cap.
+		Renderer->SetVSync(Preferences.bVSync);
 		Window->SetFrameRateCap(Preferences.FrameRateCap);
 	}
 

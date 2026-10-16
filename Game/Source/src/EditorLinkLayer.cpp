@@ -1,6 +1,5 @@
 #include "EditorLinkLayer.h"
 #include "Renderer.h"
-#include "Window.h"
 
 #include "Application.h"
 #include "LiveEdits.h"
@@ -44,7 +43,7 @@ namespace Nyx::Game
 	{
 		App = &application;
 		// The editor compiles, once for all its games, and sends what it compiled
-		App->GetWindow().GetRenderer().FollowEditorShaders();
+		App->GetRenderer().FollowEditorShaders();
 
 		if (!RecordingPath.empty())
 		{
@@ -120,7 +119,7 @@ namespace Nyx::Game
 	void EditorLinkLayer::ApplyMessage(const Nyx::Net::Message& message)
 	{
 		// The editor's shaders and material values go to the renderer
-		if (Nyx::ApplyRendererEdit(message, App->GetWindow().GetRenderer()) != Nyx::ELiveEditResult::NotALiveEdit)
+		if (Nyx::ApplyRendererEdit(message, App->GetRenderer()) != Nyx::ELiveEditResult::NotALiveEdit)
 		{
 			return;
 		}

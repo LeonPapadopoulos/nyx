@@ -1,7 +1,7 @@
 #include "NyxPCH.h"
 #include "Application.h"
 #include "ComponentRegistration.h"
-#include "Renderer.h"
+#include "EditorRenderer.h"
 #include "Window.h"
 
 #include <chrono>
@@ -19,13 +19,23 @@ namespace Nyx
 		{
 			Input.AddBackend(*windowInput);
 		}
+
+		Renderer = Nyx::CreateRenderer();
+		Renderer->SetVSync(true);
+		Window->SetStartupStatus("Starting Vulkan and preparing rendering resources");
+		Renderer->Initialize(specs.Window.Title.c_str(), Window->GetNativeWindow());
+		Window->SetFramebufferResizedCallback([this]()
+			{
+				Renderer->OnFramebufferResized();
+			});
+		Window->StartUIInput();
 	}
 
 	Application::~Application()
 	{
 		// Layers release their GPU resources in OnDetach, so the GPU has to be idle and
 		// the renderer still alive. Detach in reverse order, like a stack.
-		Window->GetRenderer().WaitIdle();
+		Renderer->WaitIdle();
 		for (auto layer = Layers.rbegin(); layer != Layers.rend(); ++layer)
 		{
 			(*layer)->OnDetach();
@@ -33,6 +43,16 @@ namespace Nyx
 
 		// Destroy the layers now, while the window and renderer they use still exist.
 		Layers.clear();
+
+		// The renderer before the window it draws into
+		Window->SetFramebufferResizedCallback({});
+		Renderer->Shutdown();
+		Renderer.reset();
+	}
+
+	IRenderer& Application::GetRenderer()
+	{
+		return *Renderer;
 	}
 
 	void Application::PushLayer(std::unique_ptr<ILayer> layer)
@@ -62,17 +82,37 @@ namespace Nyx
 				layer->OnUpdate(deltaTime);
 			}
 
-			Window->DrawFrame(
-				[this]()
-				{
-					for (const std::unique_ptr<ILayer>& layer : Layers)
-					{
-						layer->OnUI();
-					}
-				});
+			DrawFrame();
 
 			// The cursor as the frame's layers asked for it
 			Input.EndFrame();
+		}
+	}
+
+	void Application::DrawFrame()
+	{
+		// A minimized window has nothing to draw into
+		if (Window->WaitIfMinimized())
+		{
+			return;
+		}
+
+		Renderer->DrawFrame([this]()
+			{
+				Window->DrawUI([this]()
+					{
+						for (const std::unique_ptr<ILayer>& layer : Layers)
+						{
+							layer->OnUI();
+						}
+					});
+			});
+
+		// Without its device the renderer draws nothing more: close as if the user had, so the
+		// application shuts down the usual way.
+		if (Renderer->IsDeviceLost())
+		{
+			Window->RequestClose();
 		}
 	}
 }

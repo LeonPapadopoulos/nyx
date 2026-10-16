@@ -10,11 +10,10 @@ namespace Nyx::Input
 	class IInputBackend;
 }
 
+struct GLFWwindow;
+
 namespace Nyx
 {
-	class IRenderer;
-	class IEditorRenderer;
-
 	// A point on the screen, in screen coordinates
 	struct WindowPosition
 	{
@@ -79,27 +78,28 @@ namespace Nyx
 
 		virtual void PollEvents() = 0;
 
-		// Renders one frame. drawUI is called inside the window's UI frame, so the
-		// windows it draws can be docked into the window's dock area. While the window is
-		// minimized, nothing is drawn: it waits briefly for events instead, so the frame loop
-		// (and the layers' OnUpdate) keeps running at a low rate.
-		virtual void DrawFrame(const std::function<void()>& drawUI) = 0;
+		// While the window is minimized, it has nothing to draw into: waits briefly for events
+		// instead and returns true, so the frame loop (and the layers' OnUpdate) keeps running at a
+		// low rate. False at once otherwise.
+		virtual bool WaitIfMinimized() = 0;
 
-		// The renderer the window draws with: its scene part, and all of it for the editor and the UI
-		virtual IRenderer& GetRenderer() = 0;
-		virtual IEditorRenderer& GetEditorRenderer() = 0;
+		// The window's part of a frame's UI, called inside the renderer's UI frame: the dock area
+		// and the frame's strips, with drawUI's windows, which can be docked into the dock area
+		virtual void DrawUI(const std::function<void()>& drawUI) = 0;
+
+		// What the renderer draws into (IRenderer::Initialize())
+		virtual GLFWwindow* GetNativeWindow() = 0;
+		// Called when the window's framebuffer changed size, e.g. for the renderer's swapchain
+		virtual void SetFramebufferResizedCallback(std::function<void()> callback) = 0;
+		// Once the renderer has set up ImGui: keys and the mouse in ImGui's own OS windows too,
+		// e.g. scene views dragged out of the window
+		virtual void StartUIInput() = 0;
 
 		// Where the window's keyboard and mouse input comes from; it lives as long as the window
 		virtual Input::IInputBackend* GetInputBackend() = 0;
 
 		virtual unsigned int GetWidth() = 0;
 		virtual unsigned int GetHeight() = 0;
-
-		// With vsync (the default), each frame is shown at the monitor's next refresh, and the
-		// frame loop waits for it: the frame rate is at most the monitor's. Without, frames are
-		// drawn as fast as they can be, and each refresh shows the newest one.
-		virtual void SetVSync(bool enabled) = 0;
-		virtual bool IsVSync() const = 0;
 
 		// At most this many frames per second, 0 for no cap. Under vsync too, e.g. 30 on a 60 Hz
 		// monitor.

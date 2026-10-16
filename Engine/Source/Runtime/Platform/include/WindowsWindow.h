@@ -10,8 +10,6 @@ struct GLFWwindow;
 
 namespace Nyx
 {
-	class IRenderer;
-	class IEditorRenderer;
 	class WindowsStartupBanner;
 }
 
@@ -30,16 +28,16 @@ namespace Nyx
 
 		void WaitForNextFrame() override;
 		void PollEvents() override;
-		void DrawFrame(const std::function<void()>& drawUI) override;
-		IRenderer& GetRenderer() override;
-		IEditorRenderer& GetEditorRenderer() override;
+		bool WaitIfMinimized() override;
+		void DrawUI(const std::function<void()>& drawUI) override;
+		GLFWwindow* GetNativeWindow() override { return Window; }
+		void SetFramebufferResizedCallback(std::function<void()> callback) override { OnFramebufferResized = std::move(callback); }
+		void StartUIInput() override;
 		Input::IInputBackend* GetInputBackend() override;
 
 		unsigned int GetWidth() override;
 		unsigned int GetHeight() override;
 
-		virtual void SetVSync(bool enabled) override;
-		virtual bool IsVSync() const override;
 		void SetFrameRateCap(uint32_t framesPerSecond) override;
 		uint32_t GetFrameRateCap() const override;
 		virtual bool ShouldClose() const override;
@@ -65,11 +63,9 @@ namespace Nyx
 
 		bool IsMaximized() const;
 
-		void DrawDockspaceHost(const std::function<void()>& drawUI);
-
 	private:
 		GLFWwindow* Window = nullptr;
-		std::unique_ptr<IEditorRenderer> Renderer = nullptr;
+		std::function<void()> OnFramebufferResized;
 
 		struct WindowData
 		{
@@ -78,7 +74,6 @@ namespace Nyx
 			unsigned int Height;
 			bool bCustomTitlebar;
 			bool bResizable;
-			bool bVSync;
 		};
 
 		WindowData Data;

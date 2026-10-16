@@ -5,9 +5,7 @@
 #include "WindowsStartupBanner.h"
 #include "Log.h"
 #include "Assertions.h"
-#include "EditorRenderer.h"
 #include "ImGuiTheme.h"
-#include "SceneViewTypes.h"
 #include "UIChrome.h"
 #include "UITheme.h"
 #include "UIWidgets.h"
@@ -23,7 +21,6 @@
 #include <GLFW/glfw3native.h>
 
 #include "backends/imgui_impl_glfw.h"
-#include "backends/imgui_impl_vulkan.h"
 #include <imgui_internal.h>
 #include <imgui.h>
 
@@ -46,16 +43,6 @@ namespace Nyx
 		Shutdown();
 	}
 
-	IRenderer& WindowsWindow::GetRenderer()
-	{
-		return *Renderer;
-	}
-
-	IEditorRenderer& WindowsWindow::GetEditorRenderer()
-	{
-		return *Renderer;
-	}
-
 	Input::IInputBackend* WindowsWindow::GetInputBackend()
 	{
 		return InputBackend.get();
@@ -71,7 +58,7 @@ namespace Nyx
 		glfwPollEvents();
 	}
 
-	void WindowsWindow::DrawFrame(const std::function<void()>& drawUI)
+	bool WindowsWindow::WaitIfMinimized()
 	{
 		// A minimized window has no framebuffer to draw into, and drawing would block in the
 		// renderer until the window is restored. Waiting briefly instead keeps the frame loop
@@ -82,21 +69,9 @@ namespace Nyx
 		if (framebufferWidth == 0 || framebufferHeight == 0)
 		{
 			glfwWaitEventsTimeout(0.05);
-			return;
+			return true;
 		}
-
-		Renderer->DrawFrame(
-			[this, &drawUI]()
-			{
-				DrawDockspaceHost(drawUI);
-			});
-
-		// Without its device the renderer draws nothing more: close as if the user had, so the
-		// application shuts down the usual way.
-		if (Renderer->IsDeviceLost())
-		{
-			RequestClose();
-		}
+		return false;
 	}
 
 	unsigned int WindowsWindow::GetWidth()
@@ -107,21 +82,6 @@ namespace Nyx
 	unsigned int WindowsWindow::GetHeight()
 	{
 		return Data.Height;
-	}
-
-	void WindowsWindow::SetVSync(bool enabled)
-	{
-		// The renderer presents its frames; before it exists, it takes this when created.
-		Data.bVSync = enabled;
-		if (Renderer)
-		{
-			Renderer->SetVSync(enabled);
-		}
-	}
-
-	bool WindowsWindow::IsVSync() const
-	{
-		return Data.bVSync;
 	}
 
 	void WindowsWindow::SetFrameRateCap(uint32_t framesPerSecond)
@@ -252,36 +212,23 @@ namespace Nyx
 		glfwSetFramebufferSizeCallback(Window, [](GLFWwindow* window, int width, int height)
 			{
 				auto* self = static_cast<WindowsWindow*>(glfwGetWindowUserPointer(window));
-				self->Renderer->OnFramebufferResized();
+				if (self->OnFramebufferResized)
+				{
+					self->OnFramebufferResized();
+				}
 			});
 
 		// Before the renderer sets up ImGui's GLFW backend, which then calls the input backend's
 		// callbacks after its own
 		InputBackend = std::make_unique<Input::GlfwInputBackend>(Window);
 
-		SetVSync(true);
-
 		ASSERT(glfwVulkanSupported() && "Currently only Vulkan is supported.");
-		Renderer = Nyx::CreateRenderer();
-		Renderer->SetVSync(Data.bVSync);
-		SetStartupStatus("Starting Vulkan and preparing rendering resources");
-		Renderer->Initialize(Data.Title.c_str(), Window);
-
-		// Keys and the mouse in scene views dragged out of the window, too
-		InputBackend->HookImGuiWindows();
 
 		// The window stays hidden behind the startup banner until FinishStartup().
 	}
 
 	void WindowsWindow::Shutdown()
 	{
-		if (Renderer)
-		{
-			Renderer->WaitIdle();
-			Renderer->Shutdown();
-			Renderer.reset();
-		}
-
 		glfwDestroyWindow(Window);
 		Window = nullptr;
 		glfwTerminate();
@@ -435,7 +382,12 @@ namespace Nyx
 		return static_cast<bool>(glfwGetWindowAttrib(Window, GLFW_MAXIMIZED));
 	}
 
-	void WindowsWindow::DrawDockspaceHost(const std::function<void()>& drawUI)
+	void WindowsWindow::StartUIInput()
+	{
+		InputBackend->HookImGuiWindows();
+	}
+
+	void WindowsWindow::DrawUI(const std::function<void()>& drawUI)
 	{
 		// @todo: Expose as parameter
 		const bool bColoredBorderOnFocus = true;

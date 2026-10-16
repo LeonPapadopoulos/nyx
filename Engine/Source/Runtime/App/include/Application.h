@@ -8,14 +8,17 @@
 
 namespace Nyx
 {
+	class IRenderer;
+	class IEditorRenderer;
+
 	// How an application wants to be set up, chosen by the client (for example the editor).
 	struct ApplicationSpecs
 	{
 		WindowSpecs Window;
 	};
 
-	// Owns the window and runs the frame loop. What the application actually does,
-	// for example the editor, is added as layers.
+	// Owns the window and the renderer, and runs the frame loop. What the application actually
+	// does, for example the editor, is added as layers.
 	class NYXENGINE_API Application
 	{
 	public:
@@ -30,6 +33,11 @@ namespace Nyx
 
 		IWindow& GetWindow() { return *Window; }
 
+		// The renderer that draws into the window: its scene part, what a game needs, and all of it
+		// for the editor and the UI
+		IRenderer& GetRenderer();
+		IEditorRenderer& GetEditorRenderer() { return *Renderer; }
+
 		// Keyboard and mouse, gathered once per frame before the layers' OnUpdate
 		Nyx::Input::InputSystem& GetInput() { return Input; }
 
@@ -37,7 +45,12 @@ namespace Nyx
 		void RequestQuit() { Window->RequestClose(); }
 
 	private:
+		// The renderer's frame, with the layers' UI inside the window's; nothing while the window is
+		// minimized
+		void DrawFrame();
+
 		std::unique_ptr<IWindow> Window;
+		std::unique_ptr<IEditorRenderer> Renderer;
 		Nyx::Input::InputSystem Input;
 		std::vector<std::unique_ptr<ILayer>> Layers;
 	};
