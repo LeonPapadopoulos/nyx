@@ -12,7 +12,7 @@
 
 namespace Nyx
 {
-	class IRenderer;
+	class IEditorRenderer;
 	class Mesh;
 }
 
@@ -34,7 +34,7 @@ namespace Nyx::Editor
 	Orbit OrbitAround(const glm::vec3& target, float distance, float yaw, float pitch);
 
 	// The "Preview" window: the material open in the Parameters window on a shape in a world of its
-	// own (IRenderer::SetSceneViewWorld()), with a camera, a sun and a sky. Its bar chooses the
+	// own (IEditorRenderer::SetSceneViewWorld()), with a camera, a sun and a sky. Its bar chooses the
 	// shape (sphere, cube, plane, or the mesh of the entity selected in the scene), what it shows
 	// (lit, or one output of the material: base colour, normals, roughness, ... and where light is
 	// NaN or out of range), the sky (studio, the scene's, black) and the exposure.
@@ -60,7 +60,7 @@ namespace Nyx::Editor
 		// Every frame: the window while open, showing `materialPath` (empty: no material open).
 		// `selectedMesh`: the selected entity's mesh, null without one. `failedCompile`: the last
 		// compile of the material's shader when it failed, null otherwise.
-		void Draw(Nyx::IRenderer& renderer, const std::string& materialPath, Nyx::Mesh* selectedMesh, const Nyx::ShaderLogEntry* failedCompile = nullptr);
+		void Draw(Nyx::IEditorRenderer& renderer, const std::string& materialPath, Nyx::Mesh* selectedMesh, const Nyx::ShaderLogEntry* failedCompile = nullptr);
 
 		void SetOpenFileAtLine(OpenFileAtLine open) { OpenAtLine = std::move(open); }
 
@@ -84,7 +84,7 @@ namespace Nyx::Editor
 	private:
 		// The preview world's entities as the settings say: the shape fitted to a sphere of
 		// radius 0.5 at the origin, the camera around it, the sun
-		void UpdateWorld(Nyx::IRenderer& renderer, const std::string& materialPath, Nyx::Mesh* selectedMesh);
+		void UpdateWorld(Nyx::IEditorRenderer& renderer, const std::string& materialPath, Nyx::Mesh* selectedMesh);
 		void DrawBar();
 		// Drags and the wheel over the picture
 		void HandleInput(bool bHovered, bool bActive);
@@ -94,7 +94,7 @@ namespace Nyx::Editor
 		Nyx::Entity Camera;
 		Nyx::Entity Sun;
 
-		Nyx::IRenderer* Renderer = nullptr;
+		Nyx::IEditorRenderer* Renderer = nullptr;
 		uint64_t ViewId = 0;
 		OpenFileAtLine OpenAtLine;
 	};

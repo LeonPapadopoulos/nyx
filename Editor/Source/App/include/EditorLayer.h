@@ -88,7 +88,7 @@ namespace Nyx::Editor
 
 	private:
 		Nyx::IWindow* Window = nullptr;
-		Nyx::IRenderer* Renderer = nullptr;
+		Nyx::IEditorRenderer* Renderer = nullptr;
 		Nyx::Input::InputSystem* Input = nullptr;
 
 		// Turns the asset paths in components into the renderer's assets; created in OnAttach.

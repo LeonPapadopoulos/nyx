@@ -5,7 +5,7 @@
 #include "PainterDrawOptions.h"
 #include "PainterTestSheet.h"
 #include "Paths.h"
-#include "Renderer.h"
+#include "EditorRenderer.h"
 #include "UIDiagnostics.h"
 #include "UITheme.h"
 #include "UIWidgets.h"
@@ -116,7 +116,7 @@ namespace Nyx::Editor
 		FrameRateCap = frameRateCap;
 	}
 
-	void PainterTestWindow::Draw(Nyx::IRenderer& renderer)
+	void PainterTestWindow::Draw(Nyx::IEditorRenderer& renderer)
 	{
 		if (!bOpen)
 		{
@@ -167,7 +167,7 @@ namespace Nyx::Editor
 		ImGui::End();
 	}
 
-	void PainterTestWindow::DrawCanvasTab(Nyx::IRenderer& renderer)
+	void PainterTestWindow::DrawCanvasTab(Nyx::IEditorRenderer& renderer)
 	{
 		if (CanvasId == 0)
 		{
@@ -230,7 +230,7 @@ namespace Nyx::Editor
 		}
 	}
 
-	void PainterTestWindow::DrawInWindowTab(Nyx::IRenderer& renderer)
+	void PainterTestWindow::DrawInWindowTab(Nyx::IEditorRenderer& renderer)
 	{
 		DrawWindowPainterStatistics(renderer.GetWindowPainterStats());
 
@@ -270,7 +270,7 @@ namespace Nyx::Editor
 		ImGui::EndChild();
 	}
 
-	void PainterTestWindow::DrawWidgetsTab(Nyx::IRenderer& renderer)
+	void PainterTestWindow::DrawWidgetsTab(Nyx::IEditorRenderer& renderer)
 	{
 		// Saves the gallery as it shows, to compare a widget before and after a change
 		if (NYX_UI(Nyx::UI::Button("Save PNG")))
@@ -303,7 +303,7 @@ namespace Nyx::Editor
 		ImGui::EndChild();
 	}
 
-	void PainterTestWindow::DrawBlurTab(Nyx::IRenderer& renderer)
+	void PainterTestWindow::DrawBlurTab(Nyx::IEditorRenderer& renderer)
 	{
 		const std::vector<uint64_t> views = renderer.GetSceneViewIds();
 		if (views.empty())
@@ -390,7 +390,7 @@ namespace Nyx::Editor
 			});
 	}
 
-	void PainterTestWindow::RecordFrameSample(const Nyx::IRenderer& renderer)
+	void PainterTestWindow::RecordFrameSample(const Nyx::IEditorRenderer& renderer)
 	{
 		const PainterWindowStats& stats = renderer.GetWindowPainterStats();
 		const PainterWindowStats::Times& times = stats.FrameTimes;
@@ -451,7 +451,7 @@ namespace Nyx::Editor
 		return ordered;
 	}
 
-	void PainterTestWindow::DrawStatisticsTab(Nyx::IRenderer& renderer)
+	void PainterTestWindow::DrawStatisticsTab(Nyx::IEditorRenderer& renderer)
 	{
 		const PainterWindowStats& stats = renderer.GetWindowPainterStats();
 		const std::vector<FrameSample> samples = GetFrameSamples();
@@ -828,7 +828,7 @@ namespace Nyx::Editor
 		}
 	}
 
-	void PainterTestWindow::SaveGalleryPng(Nyx::IRenderer& renderer)
+	void PainterTestWindow::SaveGalleryPng(Nyx::IEditorRenderer& renderer)
 	{
 		// The renderer reads back the main window only; ImGui makes its other OS windows' images
 		// without the right to copy from them.
@@ -1496,7 +1496,7 @@ namespace Nyx::Editor
 		return PainterRect{ { min.x, min.y }, { min.x + size.x, min.y + size.y } };
 	}
 
-	ImTextureRef PainterTestWindow::GetGradientTexture(Nyx::IRenderer& renderer)
+	ImTextureRef PainterTestWindow::GetGradientTexture(Nyx::IEditorRenderer& renderer)
 	{
 		if (GradientImageId == 0)
 		{

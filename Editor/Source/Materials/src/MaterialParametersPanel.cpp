@@ -1,7 +1,7 @@
 #include "MaterialParametersPanel.h"
 
 #include "ImGuiSource.h"
-#include "Renderer.h"
+#include "EditorRenderer.h"
 #include "ShaderLayout.h"
 #include "StringUtil.h"
 #include "UITheme.h"

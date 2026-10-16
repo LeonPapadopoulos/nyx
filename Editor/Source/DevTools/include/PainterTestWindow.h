@@ -13,7 +13,7 @@
 
 namespace Nyx
 {
-	class IRenderer;
+	class IEditorRenderer;
 }
 
 namespace Nyx::Editor
@@ -22,7 +22,7 @@ namespace Nyx::Editor
 	class PainterTestWindow
 	{
 	public:
-		void Draw(Nyx::IRenderer& renderer);
+		void Draw(Nyx::IEditorRenderer& renderer);
 
 		// Vsync and the frame rate cap the editor runs with (0 for none). While either holds the
 		// editor's frame rate back, the Statistics tab says so beside its frame rates.
@@ -35,20 +35,20 @@ namespace Nyx::Editor
 		bool bOpen = false;
 
 	private:
-		void DrawCanvasTab(Nyx::IRenderer& renderer);
-		void DrawInWindowTab(Nyx::IRenderer& renderer);
-		void DrawWidgetsTab(Nyx::IRenderer& renderer);
-		void DrawBlurTab(Nyx::IRenderer& renderer);
-		void DrawStatisticsTab(Nyx::IRenderer& renderer);
+		void DrawCanvasTab(Nyx::IEditorRenderer& renderer);
+		void DrawInWindowTab(Nyx::IEditorRenderer& renderer);
+		void DrawWidgetsTab(Nyx::IEditorRenderer& renderer);
+		void DrawBlurTab(Nyx::IEditorRenderer& renderer);
+		void DrawStatisticsTab(Nyx::IEditorRenderer& renderer);
 		void DrawWidgetGalleryTable();
 		// Saves the gallery as a PNG file in Saved/Gallery, named by the time
-		void SaveGalleryPng(Nyx::IRenderer& renderer);
+		void SaveGalleryPng(Nyx::IEditorRenderer& renderer);
 
 		// Takes up `size` at ImGui's cursor and returns where, for painting a forced state there
 		static Nyx::UI::PainterRect ReserveCell(glm::vec2 size);
 
 		// The test sheet's gradient image (MakePainterTestGradient()), made the first time it's asked for
-		ImTextureRef GetGradientTexture(Nyx::IRenderer& renderer);
+		ImTextureRef GetGradientTexture(Nyx::IEditorRenderer& renderer);
 
 		void DrawToolbar();
 		void DrawStatistics() const;
@@ -58,7 +58,7 @@ namespace Nyx::Editor
 		// drawn last, an invisible button over the canvas.
 		void HandleCanvasInput(const ImVec2& canvasMin);
 
-		Nyx::IRenderer* Renderer = nullptr;
+		Nyx::IEditorRenderer* Renderer = nullptr;
 		uint64_t CanvasId = 0;
 		uint64_t GradientImageId = 0;
 		Nyx::UI::Painter Painter;
@@ -135,7 +135,7 @@ namespace Nyx::Editor
 		static constexpr size_t StatisticsFrames = 240;
 		std::vector<FrameSample> FrameSamples;
 		size_t NextFrameSample = 0;
-		void RecordFrameSample(const Nyx::IRenderer& renderer);
+		void RecordFrameSample(const Nyx::IEditorRenderer& renderer);
 		// The frames kept, oldest first
 		std::vector<FrameSample> GetFrameSamples() const;
 		void DrawOsWindowStatistics(const Nyx::UI::PainterWindowStats& stats) const;

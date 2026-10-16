@@ -13,6 +13,7 @@ namespace Nyx::Input
 namespace Nyx
 {
 	class IRenderer;
+	class IEditorRenderer;
 
 	// A point on the screen, in screen coordinates
 	struct WindowPosition
@@ -84,7 +85,9 @@ namespace Nyx
 		// (and the layers' OnUpdate) keeps running at a low rate.
 		virtual void DrawFrame(const std::function<void()>& drawUI) = 0;
 
+		// The renderer the window draws with: its scene part, and all of it for the editor and the UI
 		virtual IRenderer& GetRenderer() = 0;
+		virtual IEditorRenderer& GetEditorRenderer() = 0;
 
 		// Where the window's keyboard and mouse input comes from; it lives as long as the window
 		virtual Input::IInputBackend* GetInputBackend() = 0;

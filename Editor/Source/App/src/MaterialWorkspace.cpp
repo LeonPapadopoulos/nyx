@@ -7,7 +7,7 @@
 #include "MeshRendererComponent.h"
 #include "NameComponent.h"
 #include "NewMaterial.h"
-#include "Renderer.h"
+#include "EditorRenderer.h"
 #include "SceneEditor.h"
 #include "UITheme.h"
 #include "UIWidgets.h"
@@ -58,7 +58,7 @@ namespace Nyx::Editor
 		return Parameters.HandleHotkeys();
 	}
 
-	void MaterialWorkspace::Draw(Nyx::IRenderer& renderer, SceneEditor& editing)
+	void MaterialWorkspace::Draw(Nyx::IEditorRenderer& renderer, SceneEditor& editing)
 	{
 		UpdateChoices();
 

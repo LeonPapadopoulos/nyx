@@ -42,6 +42,15 @@ namespace Nyx
 		outBuffer.bindMemory(*outMemory, 0);
 	}
 
+	vk::raii::ShaderModule CreateShaderModule(VulkanContext& context, const std::vector<uint32_t>& spirv)
+	{
+		vk::ShaderModuleCreateInfo createInfo{};
+		createInfo.codeSize = spirv.size() * sizeof(uint32_t);
+		createInfo.pCode = spirv.data();
+
+		return vk::raii::ShaderModule(context.GetDevice(), createInfo);
+	}
+
 	vk::raii::CommandBuffer BeginSingleTimeCommands(VulkanContext& context)
 	{
 		vk::CommandBufferAllocateInfo allocInfo{};

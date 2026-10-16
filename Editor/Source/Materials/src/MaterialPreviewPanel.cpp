@@ -5,7 +5,7 @@
 #include "ImGuiSource.h"
 #include "Mesh.h"
 #include "MeshRendererComponent.h"
-#include "Renderer.h"
+#include "EditorRenderer.h"
 #include "ShaderLog.h"
 #include "TransformComponent.h"
 #include "UITheme.h"
@@ -67,7 +67,7 @@ namespace Nyx::Editor
 		ViewId = 0;
 	}
 
-	void MaterialPreviewPanel::Draw(Nyx::IRenderer& renderer, const std::string& materialPath, Nyx::Mesh* selectedMesh, const Nyx::ShaderLogEntry* failedCompile)
+	void MaterialPreviewPanel::Draw(Nyx::IEditorRenderer& renderer, const std::string& materialPath, Nyx::Mesh* selectedMesh, const Nyx::ShaderLogEntry* failedCompile)
 	{
 		// The view costs a scene's drawing each frame: only while the window is open
 		if (!bOpen)
@@ -128,7 +128,7 @@ namespace Nyx::Editor
 		ImGui::End();
 	}
 
-	void MaterialPreviewPanel::UpdateWorld(Nyx::IRenderer& renderer, const std::string& materialPath, Nyx::Mesh* selectedMesh)
+	void MaterialPreviewPanel::UpdateWorld(Nyx::IEditorRenderer& renderer, const std::string& materialPath, Nyx::Mesh* selectedMesh)
 	{
 		Nyx::Mesh* mesh = renderer.GetSphereMesh();
 		switch (Shape)

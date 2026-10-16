@@ -1,5 +1,5 @@
 #pragma once
-#include "Renderer.h"
+#include "EditorRenderer.h"
 #include <vulkan/vulkan_raii.hpp>
 #include "VulkanContext.h"
 #include "VulkanSwapchain.h"
@@ -12,6 +12,7 @@
 #include "VulkanMaterials.h"
 #include "VulkanEnvironment.h"
 #include "VulkanUIBackend.h"
+#include "VulkanEditorOverlays.h"
 #include "Mesh.h"
 #include "Texture.h"
 #include "CubemapTexture.h"
@@ -140,7 +141,7 @@ namespace Nyx
 		std::vector<RenderObject> Objects;
 		// Dense picking IDs: ID i is the entity at i - 1, 0 is nothing
 		std::vector<Nyx::Entity> PickingIdToEntity;
-		// Its debug lines, in DebugLineVertices
+		// Its debug lines, in the editor overlays' (VulkanEditorOverlays::AddDebugLines())
 		uint32_t FirstDebugLineVertex = 0;
 		uint32_t DebugLineVertexCount = 0;
 	};
@@ -199,43 +200,11 @@ namespace Nyx
 			return GetProjectionMatrix() * GetViewMatrix();
 		}
 	};
-
-	struct DebugLineVertex
-	{
-		glm::vec3 Position{ 0.0f };
-		glm::vec3 Color{ 1.0f };
-
-		static vk::VertexInputBindingDescription GetBindingDescription()
-		{
-			vk::VertexInputBindingDescription binding{};
-			binding.binding = 0;
-			binding.stride = sizeof(DebugLineVertex);
-			binding.inputRate = vk::VertexInputRate::eVertex;
-			return binding;
-		}
-
-		static std::array<vk::VertexInputAttributeDescription, 2> GetAttributeDescriptions()
-		{
-			std::array<vk::VertexInputAttributeDescription, 2> attributes{};
-
-			attributes[0].binding = 0;
-			attributes[0].location = 0;
-			attributes[0].format = vk::Format::eR32G32B32Sfloat;
-			attributes[0].offset = offsetof(DebugLineVertex, Position);
-
-			attributes[1].binding = 0;
-			attributes[1].location = 1;
-			attributes[1].format = vk::Format::eR32G32B32Sfloat;
-			attributes[1].offset = offsetof(DebugLineVertex, Color);
-
-			return attributes;
-		}
-	};
 }
 
 namespace Nyx
 {
-	class VulkanRenderer : public IRenderer
+	class VulkanRenderer : public IEditorRenderer
 	{
 		friend struct Nyx::Tests::SceneReplacementTestAccess;
 
@@ -246,9 +215,6 @@ namespace Nyx
 		virtual void Initialize(const char* applicationName, GLFWwindow* window);
 		virtual void Shutdown();
 
-		virtual void BeginFrame();
-		virtual void EndFrame();
-
 		virtual void OnFramebufferResized();
 		void SetVSync(bool bVSync) override;
 		bool IsVSync() const override;
@@ -257,7 +223,6 @@ namespace Nyx
 		virtual void DrawFrame(const std::function<void()>& buildUI);
 
 		void SetSelectedEntity(std::optional<Nyx::Entity> entity) override;
-		void SetSelectionOutlineMode(ESelectionOutlineMode mode) override;
 
 		virtual void WaitIdle();
 		bool IsDeviceLost() const override;
@@ -344,8 +309,6 @@ namespace Nyx
 		const RenderWorld* FindShownWorld(const SceneViewInstance& view) const;
 		// The revision of the world the view shows; 0 without one
 		uint64_t GetShownWorldRevision(const SceneViewInstance& view) const;
-		// Whether the view shows the renderer's world, and something is selected in it
-		bool ShowsSelection(const SceneViewInstance& view) const;
 		// Every shown world's objects and debug lines; forgets worlds no view shows any more
 		void ExtractRenderWorlds();
 		void ExtractRenderObjects(RenderWorld& world);
@@ -358,8 +321,6 @@ namespace Nyx
 		void CreateScenePipelineLayout();
 		// Binds both sets for the scene pipelines' draws into the view
 		void BindSceneSets(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
-		void CreateGridPipeline();
-		void CreatePickingPipeline();
 
 		// The scene views' scene pass (HDR), for what draws the scene: materials, the sky
 		vk::RenderPass GetSceneRenderPass() const;
@@ -372,43 +333,8 @@ namespace Nyx
 
 		void LoadSkyboxCubemap();
 
-		void CreatePickingResourcesForView(SceneViewInstance& view);
-		void DestroyPickingResourcesForView(SceneViewInstance& view);
-		void RecreatePickingResourcesForView(SceneViewInstance& view);
-
-		struct OutlineCompositePushConstants
-		{
-			glm::vec4 Params0{ 0.0f }; // x=TexelSizeX, y=TexelSizeY, z=Thickness, w=Mode
-			glm::vec4 VisibleOutlineColor{ 1.0f, 0.65f, 0.0f, 1.0f };
-			glm::vec4 OccludedOutlineColor{ 0.2f, 0.8f, 1.0f, 1.0f };
-			glm::vec4 HatchColor{ 0.2f, 0.8f, 1.0f, 0.9f };
-			glm::vec4 HatchParams{ 14.0f, 2.0f, 8.0f, 6.0f }; // spacing, thickness, dashLen, dashGap
-		};
-
-		void CreateOutlineDescriptorSetLayout();
-		void CreateOutlineDescriptorSetForView(SceneViewInstance& view);
-
-		void CreateSelectionMaskResourcesForView(SceneViewInstance& view);
-		void DestroySelectionMaskResourcesForView(SceneViewInstance& view);
-		void RecreateSelectionMaskResourcesForView(SceneViewInstance& view);
-
-		void CreateSelectionMaskPipelines();
-		void DrawVisibleSelectionMaskPass(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd);
-		void DrawFullSelectionMaskPass(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd);
-		// What the view's selection masks are drawn from, as one number: the selection, the
-		// world, the camera, the size, and every object's mesh and transform. Unset while the
-		// view shows no selection (ShowsSelection()), when there is nothing to draw them for.
-		std::optional<uint64_t> GetSelectionMaskFingerprint(const SceneViewInstance& view, const RenderWorld& world) const;
-
-		void CreateOutlineCompositePipeline();
-		void DrawSelectionOutline(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
-
 		void CreateSkyboxPipeline();
 		void DrawSkybox(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
-
-		void DrawGrid(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
-
-		vk::raii::ShaderModule CreateShaderModule(const std::vector<uint32_t>& spirv);
 
 		// A shader's SPIR-V by file name (e.g. "Grid.vert.spv"), from Programs: the last good
 		// compile, at first the build's
@@ -418,16 +344,6 @@ namespace Nyx
 		void UpdateSceneUniforms(SceneViewInstance& view);
 
 		void CreateTestMeshData();
-
-		void CreateImage(
-			uint32_t width,
-			uint32_t height,
-			vk::Format format,
-			vk::ImageUsageFlags usage,
-			vk::ImageAspectFlags aspectFlags,
-			vk::raii::Image& outImage,
-			vk::raii::DeviceMemory& outMemory,
-			vk::raii::ImageView& outImageView);
 
 		// Live reload of the engine's shaders: turned on where the shader sources and
 		// NyxShaderCompiler.exe are found
@@ -468,27 +384,10 @@ namespace Nyx
 		void EnsureSceneViewSize(SceneViewInstance& view, uint32_t width, uint32_t height);
 		void RenderSceneView(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
 
-		void CreateDebugLineResources();
-		void CreateDebugLinePipeline();
-
-		void ResetDebugLines();
-		void AddDebugLine(const glm::vec3& a, const glm::vec3& b, const glm::vec3& color);
-		void AddDebugAxes(const glm::mat4& worldTransform, float axisLength);
-		void AddDebugAABB(const glm::vec3& min, const glm::vec3& max, const glm::vec3& color);
-		void AddDebugOrientedBox(
-			const glm::mat4& worldTransform,
-			const glm::vec3& localMin,
-			const glm::vec3& localMax,
-			const glm::vec3& color);
-
-		void UploadDebugLines();
-		void DrawDebugLines(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd);
-
 		void RequestPick(uint64_t sceneViewId, uint32_t pixelX, uint32_t pixelY);
-		Nyx::IRenderer::PickResult ConsumeLastPickResult(uint64_t sceneViewId);
+		Nyx::IEditorRenderer::PickResult ConsumeLastPickResult(uint64_t sceneViewId);
 
-		void DrawPickingPass(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd);
-		void ResolvePickRequest(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
+		// After the last frame's fence: every view's pick that frame copied
 		void ReadBackPickResults();
 
 	private:
@@ -504,6 +403,8 @@ namespace Nyx
 
 		// ImGui, the painter, glass and blur, UI images, screenshots, and the frame's GPU times
 		VulkanUIBackend UI{ Context, Swapchain, Programs };
+		// The grid, debug lines, picking and the selection outline, of the views that show them
+		VulkanEditorOverlays Overlays{ Context, Programs };
 
 		// When the last frame's DrawFrame() ended, for the time spent outside it
 		std::chrono::steady_clock::time_point LastFrameEnd;
@@ -544,26 +445,6 @@ namespace Nyx
 		uint64_t LastWorldRevision = 0;
 
 		float SceneTime = 0.0f;
-
-		// Picking
-		vk::raii::Pipeline PickingPipeline{ nullptr };
-
-		// Selection
-		std::optional<Nyx::Entity> SelectedEntity;
-		ESelectionOutlineMode SelectionOutlineMode = ESelectionOutlineMode::VisibleOccludeHatched;
-
-		vk::raii::DescriptorSetLayout OutlineDescriptorSetLayout{ nullptr };
-		vk::raii::Sampler OutlineCompositeSampler{ nullptr };
-
-		vk::raii::Pipeline SelectionMaskPipelineVisible{ nullptr };
-		vk::raii::Pipeline SelectionMaskPipelineFull{ nullptr };
-
-		vk::raii::PipelineLayout OutlineCompositePipelineLayout{ nullptr };
-		vk::raii::Pipeline OutlineCompositePipeline{ nullptr };
-
-		// Grid
-		vk::raii::Pipeline GridPipeline{ nullptr };
-
 
 		// HDR to the picture
 		vk::raii::Pipeline TonemapPipeline{ nullptr };
@@ -628,15 +509,5 @@ namespace Nyx
 		void Present(uint32_t imageIndex, const FrameClock& clock);
 		// Set when the device is lost; nothing is drawn after that (IsDeviceLost())
 		bool bDeviceLost = false;
-
-		// Debugging
-		static constexpr uint32_t MaxDebugLineVertices = 65536;
-
-		std::vector<DebugLineVertex> DebugLineVertices;
-
-		vk::raii::Buffer DebugLineVertexBuffer{ nullptr };
-		vk::raii::DeviceMemory DebugLineVertexBufferMemory{ nullptr };
-
-		vk::raii::Pipeline DebugLinePipeline{ nullptr };
 	};
 }

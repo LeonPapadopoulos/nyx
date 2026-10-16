@@ -6,7 +6,7 @@
 
 namespace Nyx
 {
-	class IRenderer;
+	class IEditorRenderer;
 	class IWindow;
 	struct WindowFrameArea;
 }
@@ -72,7 +72,7 @@ namespace Nyx::Editor
 
 		// Draws the titlebar and the status bar into the window's frame (IWindow::SetFrameContent())
 		// until Detach()
-		void Attach(Nyx::IWindow& window, Nyx::IRenderer& renderer);
+		void Attach(Nyx::IWindow& window, Nyx::IEditorRenderer& renderer);
 		void Detach();
 
 		// What the status bar says about the last scene saved, opened or made
@@ -92,7 +92,7 @@ namespace Nyx::Editor
 
 		Parts Editor;
 		Nyx::IWindow* Window = nullptr;
-		Nyx::IRenderer* Renderer = nullptr;
+		Nyx::IEditorRenderer* Renderer = nullptr;
 
 		// The last scene saved, opened or made, and whether that failed
 		std::string SceneFileStatus;

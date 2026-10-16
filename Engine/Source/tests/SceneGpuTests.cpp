@@ -147,12 +147,13 @@ namespace
 	void TestDefaultScene(SceneRenderer& gpu)
 	{
 		// As the editor and game use it; ReadSceneViewPixels() is the renderer's own
-		Nyx::IRenderer& renderer = gpu.Renderer;
+		Nyx::IEditorRenderer& renderer = gpu.Renderer;
 		DefaultScene scene;
 		MakeDefaultScene(scene, gpu.Renderer);
 		renderer.SetWorld(&scene.World);
 
 		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewShowEditorOverlays(view, true);
 		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
 		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
 		renderer.SetSelectedEntity(scene.ReflectiveCube);
@@ -168,7 +169,7 @@ namespace
 		// A click on the middle of the picture hits the reflective cube, one on the sky nothing
 		renderer.RequestPick(view, ViewWidth / 2, ViewHeight / 2);
 		gpu.DrawFrames(3);
-		Nyx::IRenderer::PickResult pick = renderer.ConsumeLastPickResult(view);
+		Nyx::IEditorRenderer::PickResult pick = renderer.ConsumeLastPickResult(view);
 		Require(pick.bHasNewResult && pick.HitEntity == scene.ReflectiveCube, "A click on the middle cube doesn't pick it");
 
 		renderer.RequestPick(view, ViewWidth / 2, 2);
@@ -185,7 +186,7 @@ namespace
 	// A cube filling the view, its material file saved while drawing
 	void TestSavedMaterialFilesReload(SceneRenderer& gpu)
 	{
-		Nyx::IRenderer& renderer = gpu.Renderer;
+		Nyx::IEditorRenderer& renderer = gpu.Renderer;
 		LiveMaterialFile file("Materials/NyxSceneGpuTests-Live.nyxmat");
 		file.Write("Shader = Shaders/Standard.slang\nAlbedo = Textures/checker.jpg\nRoughness = 1\n");
 
@@ -196,6 +197,7 @@ namespace
 		scene.World.Add<CameraComponent>(camera, CameraComponent{});
 		renderer.SetWorld(&scene.World);
 		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewShowEditorOverlays(view, true);
 		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
 		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
 		gpu.DrawUntilShadersCompiled();
@@ -253,7 +255,7 @@ namespace
 	// A cube filling the view, its material's shader saved while drawing
 	void TestSavedMaterialShadersRecompile(SceneRenderer& gpu)
 	{
-		Nyx::IRenderer& renderer = gpu.Renderer;
+		Nyx::IEditorRenderer& renderer = gpu.Renderer;
 		LiveMaterialFile shader("Shaders/NyxSceneGpuTestsGlow.slang");
 		shader.Write(GlowShader("    [Color] float3 Glow = float3(1.0, 0.0, 0.0);\n", "Glow"));
 		LiveMaterialFile material("Materials/NyxSceneGpuTests-Glow.nyxmat");
@@ -266,6 +268,7 @@ namespace
 		scene.World.Add<CameraComponent>(camera, CameraComponent{});
 		renderer.SetWorld(&scene.World);
 		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewShowEditorOverlays(view, true);
 		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
 		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
 
@@ -306,7 +309,7 @@ namespace
 	// the tonemap is the HDR value times two to the exposure
 	void TestHdrAndExposure(SceneRenderer& gpu)
 	{
-		Nyx::IRenderer& renderer = gpu.Renderer;
+		Nyx::IEditorRenderer& renderer = gpu.Renderer;
 		LiveMaterialFile shader("Shaders/NyxSceneGpuTestsHdr.slang");
 		shader.Write(GlowShader("    [Color, HDR] float3 Glow = float3(1.0, 0.0, 0.0);\n", "Glow", "NyxSceneGpuTestsHdr"));
 		LiveMaterialFile material("Materials/NyxSceneGpuTests-Hdr.nyxmat");
@@ -320,6 +323,7 @@ namespace
 		scene.World.Add<CameraComponent>(camera, CameraComponent{});
 		renderer.SetWorld(&scene.World);
 		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewShowEditorOverlays(view, true);
 		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
 		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
 		gpu.DrawUntilShadersCompiled();
@@ -341,7 +345,7 @@ namespace
 	// parts in turn, against what VulkanEnvironment made
 	void TestMaterialsFindTheEnvironment(SceneRenderer& gpu)
 	{
-		Nyx::IRenderer& renderer = gpu.Renderer;
+		Nyx::IEditorRenderer& renderer = gpu.Renderer;
 		LiveMaterialFile shader("Shaders/NyxSceneGpuTestsEnvironment.slang");
 		shader.Write("import nyx.surface;\nimport nyx.environment;\n"
 					 "struct NyxSceneGpuTestsEnvironment : ISurface\n{\n    int Part = 0;\n"
@@ -364,6 +368,7 @@ namespace
 		scene.World.Add<CameraComponent>(camera, CameraComponent{});
 		renderer.SetWorld(&scene.World);
 		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewShowEditorOverlays(view, true);
 		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
 		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
 
@@ -406,7 +411,7 @@ namespace
 	// against the same light computed on the CPU
 	void TestStandardMatchesTheCpu(SceneRenderer& gpu)
 	{
-		Nyx::IRenderer& renderer = gpu.Renderer;
+		Nyx::IEditorRenderer& renderer = gpu.Renderer;
 		LiveMaterialFile dielectric("Materials/NyxSceneGpuTests-Dielectric.nyxmat");
 		dielectric.Write("Shader = Shaders/Standard.slang\nBaseColor = 0.5 0.5 0.5\nRoughness = 0.5\n");
 		LiveMaterialFile metal("Materials/NyxSceneGpuTests-Metal.nyxmat");
@@ -419,6 +424,7 @@ namespace
 		scene.World.Add<CameraComponent>(camera, CameraComponent{});
 		renderer.SetWorld(&scene.World);
 		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewShowEditorOverlays(view, true);
 		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
 		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
 
@@ -444,7 +450,7 @@ namespace
 	// below its cutoff, where the sky behind it shows instead
 	void TestNormalMapsAndMasks(SceneRenderer& gpu)
 	{
-		Nyx::IRenderer& renderer = gpu.Renderer;
+		Nyx::IEditorRenderer& renderer = gpu.Renderer;
 
 		// One texel: in the map's own space (0, 0.6, 0.8), up the image
 		const std::filesystem::path normalFile = Nyx::Paths::GetAssetsDir() / "Textures/NyxSceneGpuTests-Normal.png";
@@ -476,6 +482,7 @@ namespace
 		scene.World.Add<CameraComponent>(camera, CameraComponent{});
 		renderer.SetWorld(&scene.World);
 		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewShowEditorOverlays(view, true);
 		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
 		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
 		gpu.DrawUntilShadersCompiled();
@@ -502,7 +509,7 @@ namespace
 	// A cube whose material file doesn't exist, alone in front of the camera: magenta, unlit
 	void TestMissingMaterial(SceneRenderer& gpu)
 	{
-		Nyx::IRenderer& renderer = gpu.Renderer;
+		Nyx::IEditorRenderer& renderer = gpu.Renderer;
 		Nyx::Material* material = renderer.GetMaterial("Materials/DoesNotExist.nyxmat");
 		Require(material != nullptr && material->Pipeline != nullptr, "A missing material file gives no material to draw with");
 
@@ -514,6 +521,7 @@ namespace
 		renderer.SetWorld(&scene.World);
 
 		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewShowEditorOverlays(view, true);
 		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
 		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
 		gpu.DrawFrames(3);
@@ -541,7 +549,7 @@ namespace
 	// light before tonemapping is NaN or out of range
 	void TestSkiesAndDebugViews(SceneRenderer& gpu)
 	{
-		Nyx::IRenderer& renderer = gpu.Renderer;
+		Nyx::IEditorRenderer& renderer = gpu.Renderer;
 		LiveMaterialFile red("Materials/NyxSceneGpuTests-Preview.nyxmat");
 		red.Write("Shader = Shaders/Standard.slang\nBaseColor = 0.8 0.2 0.1\nRoughness = 0.4\n");
 		LiveMaterialFile glowing("Materials/NyxSceneGpuTests-Bright.nyxmat");
@@ -656,7 +664,7 @@ namespace
 	// file saved and read again brings its own values back
 	void TestMaterialValuesSetInMemory(SceneRenderer& gpu)
 	{
-		Nyx::IRenderer& renderer = gpu.Renderer;
+		Nyx::IEditorRenderer& renderer = gpu.Renderer;
 		LiveMaterialFile file("Materials/NyxSceneGpuTests-Edited.nyxmat");
 		const std::string text = "Shader = Shaders/Standard.slang\nBaseColor = 1 0 0\nRoughness = 1\n";
 		file.Write(text);
@@ -668,6 +676,7 @@ namespace
 		scene.World.Add<CameraComponent>(camera, CameraComponent{});
 		renderer.SetWorld(&scene.World);
 		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewShowEditorOverlays(view, true);
 		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
 		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
 		gpu.DrawUntilShadersCompiled();
@@ -714,11 +723,12 @@ namespace
 	// the view goes once the GPU is done with it.
 	void TestViewsMadeAndLetGoWhileTheUIIsBuilt(SceneRenderer& gpu)
 	{
-		Nyx::IRenderer& renderer = gpu.Renderer;
+		Nyx::IEditorRenderer& renderer = gpu.Renderer;
 		DefaultScene scene;
 		MakeDefaultScene(scene, gpu.Renderer);
 		renderer.SetWorld(&scene.World);
 		const uint64_t kept = renderer.CreateSceneView();
+		renderer.SetSceneViewShowEditorOverlays(kept, true);
 		renderer.SetSceneViewSize(kept, ViewWidth, ViewHeight);
 		gpu.DrawFrames(2);
 
@@ -726,6 +736,7 @@ namespace
 		gpu.Renderer.DrawFrame([&]()
 			{
 				made = renderer.CreateSceneView();
+				renderer.SetSceneViewShowEditorOverlays(made, true);
 				renderer.SetSceneViewSize(made, ViewWidth, ViewHeight);
 				Require(renderer.WasSceneViewRecreatedThisFrame(made), "A view made while the UI is built shows before it was drawn");
 			});
@@ -753,7 +764,7 @@ namespace
 	// round is the missing material
 	void TestMaterialInstances(SceneRenderer& gpu)
 	{
-		Nyx::IRenderer& renderer = gpu.Renderer;
+		Nyx::IEditorRenderer& renderer = gpu.Renderer;
 		LiveMaterialFile shader("Shaders/NyxSceneGpuTestsFamily.slang");
 		shader.Write(GlowShader("    [Color] float3 Glow = float3(1.0, 0.0, 0.0);\n    float Strength = 1.0;\n", "Glow * Strength", "NyxSceneGpuTestsFamily"));
 		LiveMaterialFile parent("Materials/NyxSceneGpuTests-Parent.nyxmat");
@@ -772,6 +783,7 @@ namespace
 		scene.World.Add<CameraComponent>(camera, CameraComponent{});
 		renderer.SetWorld(&scene.World);
 		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewShowEditorOverlays(view, true);
 		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
 		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
 
@@ -832,7 +844,7 @@ namespace
 	// editor from here on.
 	void TestFollowingTheEditor(SceneRenderer& gpu)
 	{
-		Nyx::IRenderer& renderer = gpu.Renderer;
+		Nyx::IEditorRenderer& renderer = gpu.Renderer;
 		LiveMaterialFile shader("Shaders/NyxSceneGpuTestsLinked.slang");
 		shader.Write(GlowShader("    [Color] float3 Glow = float3(1.0, 0.0, 0.0);\n", "Glow", "NyxSceneGpuTestsLinked"));
 		LiveMaterialFile material("Materials/NyxSceneGpuTests-Linked.nyxmat");
@@ -846,6 +858,7 @@ namespace
 		scene.World.Add<CameraComponent>(camera, CameraComponent{});
 		renderer.SetWorld(&scene.World);
 		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewShowEditorOverlays(view, true);
 		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
 		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
 
@@ -889,9 +902,9 @@ namespace
 	}
 
 	// Clicks the middle of the view: whether a pick came back, and what it hit
-	Nyx::IRenderer::PickResult PickMiddle(SceneRenderer& gpu, uint64_t view)
+	Nyx::IEditorRenderer::PickResult PickMiddle(SceneRenderer& gpu, uint64_t view)
 	{
-		Nyx::IRenderer& renderer = gpu.Renderer;
+		Nyx::IEditorRenderer& renderer = gpu.Renderer;
 		renderer.RequestPick(view, ViewWidth / 2, ViewHeight / 2);
 		gpu.DrawFrames(3);
 		return renderer.ConsumeLastPickResult(view);
@@ -899,7 +912,7 @@ namespace
 
 	bool Picks(SceneRenderer& gpu, uint64_t view, Entity entity)
 	{
-		const Nyx::IRenderer::PickResult pick = PickMiddle(gpu, view);
+		const Nyx::IEditorRenderer::PickResult pick = PickMiddle(gpu, view);
 		return pick.bHasNewResult && pick.HitEntity == entity;
 	}
 
@@ -914,7 +927,7 @@ namespace
 	// preview will show one
 	void TestViewsWithWorldsOfTheirOwn(SceneRenderer& gpu)
 	{
-		Nyx::IRenderer& renderer = gpu.Renderer;
+		Nyx::IEditorRenderer& renderer = gpu.Renderer;
 		DefaultScene scene;
 		MakeDefaultScene(scene, gpu.Renderer);
 		renderer.SetWorld(&scene.World);
@@ -933,7 +946,9 @@ namespace
 		Require(sphere == scene.ReflectiveCube, "The test needs the sphere to have the reflective cube's handle");
 
 		const uint64_t sceneView = renderer.CreateSceneView();
+		renderer.SetSceneViewShowEditorOverlays(sceneView, true);
 		const uint64_t previewView = renderer.CreateSceneView();
+		renderer.SetSceneViewShowEditorOverlays(previewView, true);
 		for (const uint64_t view : { sceneView, previewView })
 		{
 			renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
@@ -965,7 +980,7 @@ namespace
 		renderer.SetWorld(&scene.World);
 		gpu.DrawFrames(3);
 		Require(!renderer.ConsumeLastPickResult(sceneView).bHasNewResult, "The scene's view kept its pick of the world set anew");
-		Nyx::IRenderer::PickResult pick = renderer.ConsumeLastPickResult(previewView);
+		Nyx::IEditorRenderer::PickResult pick = renderer.ConsumeLastPickResult(previewView);
 		Require(pick.bHasNewResult && pick.HitEntity == sphere, "Setting the scene dropped the preview's pick");
 
 		renderer.RequestPick(sceneView, ViewWidth / 2, ViewHeight / 2);

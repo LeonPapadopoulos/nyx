@@ -17,7 +17,7 @@
 #include "ShaderLogPanel.h"
 #include "NewMaterial.h"
 #include "Workspaces.h"
-#include "Renderer.h"
+#include "EditorRenderer.h"
 #include "ShaderLayout.h"
 #include "HeadlessUI.h"
 #include "TestSupport.h"

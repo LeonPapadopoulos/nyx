@@ -3,7 +3,7 @@
 #include "FileDialogs.h"
 #include "ImageFile.h"
 #include "ImGuiSource.h"
-#include "Renderer.h"
+#include "EditorRenderer.h"
 #include "UIWidgets.h"
 #include "WindowPainter.h"
 
@@ -12,7 +12,7 @@
 
 namespace Nyx::Editor
 {
-	void MockupOverlay::Draw(Nyx::IRenderer& renderer)
+	void MockupOverlay::Draw(Nyx::IEditorRenderer& renderer)
 	{
 		Renderer = &renderer;
 		if (!bOpen)

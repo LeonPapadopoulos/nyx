@@ -123,7 +123,8 @@ checks every `#include` against this table.
    2. acquires the swapchain image, and takes shader updates;
    3. renders every scene view: the editor's passes (picking only after a click, selection
       masks only when they changed), then the scene in HDR, tonemapped, with the editor's
-      overlays; then blurs each view's picture;
+      overlays (`VulkanEditorOverlays`, in the views that show them); then blurs each view's
+      picture;
    4. builds the UI: an ImGui frame in which every layer's `OnUI()` runs, then the painted window
       chrome, the painter canvases, and the window painters' segments, binned on the GPU;
    5. records the UI pass, submits, renders ImGui's OS windows, signals the fence and presents.
@@ -135,10 +136,13 @@ If the GPU device is lost, the renderer stops drawing and the window closes.
 
 - **`Application`**: the window, the `InputSystem` and the layers. At shutdown it waits for the
   GPU, then detaches the layers in reverse order while the renderer still exists.
-- **`WindowsWindow`** (`IWindow`): the GLFW window, the renderer (`IRenderer`), the frame rate
-  limiter, and the startup banner until `FinishStartup()`.
-- **The renderer**: everything on the GPU: scene views, shaders, materials, and in its
-  `VulkanUIBackend` ImGui, the painter, glass, UI images and screenshots. It
+- **`WindowsWindow`** (`IWindow`): the GLFW window, the renderer, the frame rate limiter, and the
+  startup banner until `FinishStartup()`. `GetRenderer()` gives the renderer's scene part
+  (`IRenderer`), what a game needs; `GetEditorRenderer()` all of it (`IEditorRenderer`), with the
+  editor's overlays and picking, material editing, and what ImGui shows.
+- **The renderer**: everything on the GPU: scene views, shaders, materials; in its
+  `VulkanUIBackend` ImGui, the painter, glass, UI images and screenshots; in its
+  `VulkanEditorOverlays` the grid, debug lines, picking and the selection outline. It
   holds worlds only by pointer (`SetWorld()`, `SetSceneViewWorld()`): their owner keeps them alive,
   and calls `SetWorld()` again after replacing what's in one.
 - **Layers**: `EditorLayer` in the editor; `GameLayer` and, when the editor started the game,
@@ -216,13 +220,16 @@ it with a warning. `Hello`'s layout never changes.
 
 ### A scene view feature
 
-- A per-view setting: a setter by view id on `IRenderer` (`Renderer.h`), a field on
+- A per-view setting: a setter by view id on `IRenderer` (`Renderer.h`), or on `IEditorRenderer`
+  (`EditorRenderer.h`) when only the editor uses it, a field on
   `SceneViewInstance` (`SceneView.h`), and its use in `VulkanRenderer`: `RenderSceneView()`
   (the scene pass, then the picture pass) or `UpdateSceneUniforms()`.
 - Per-view GPU resources: made in `CreateSceneResourcesForView()`, made again where
   `DrawEditorPasses()` resizes a view, released in `DestroySceneViewNow()`.
-- Anything only the editor should see goes behind the view's `bShowEditorOverlays`, which a view
-  showing the game turns off.
+- Anything only the editor should see goes in `VulkanEditorOverlays`, with its per-view resources
+  in `SceneViewOverlays`. The renderer calls it for the views whose `bShowEditorOverlays` is on:
+  off until the editor turns it on (`IEditorRenderer::SetSceneViewShowEditorOverlays()`), and off
+  again while a view shows the game.
 - The editor's side is `SceneViewPanel`; `NyxSceneGpuTests` renders views on a real GPU.
 
 ## Global registries and singletons

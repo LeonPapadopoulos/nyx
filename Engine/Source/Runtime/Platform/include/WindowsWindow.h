@@ -11,6 +11,7 @@ struct GLFWwindow;
 namespace Nyx
 {
 	class IRenderer;
+	class IEditorRenderer;
 	class WindowsStartupBanner;
 }
 
@@ -30,7 +31,8 @@ namespace Nyx
 		void WaitForNextFrame() override;
 		void PollEvents() override;
 		void DrawFrame(const std::function<void()>& drawUI) override;
-		IRenderer& GetRenderer() override { return *Renderer; }
+		IRenderer& GetRenderer() override;
+		IEditorRenderer& GetEditorRenderer() override;
 		Input::IInputBackend* GetInputBackend() override;
 
 		unsigned int GetWidth() override;
@@ -67,7 +69,7 @@ namespace Nyx
 
 	private:
 		GLFWwindow* Window = nullptr;
-		std::unique_ptr<IRenderer> Renderer = nullptr;
+		std::unique_ptr<IEditorRenderer> Renderer = nullptr;
 
 		struct WindowData
 		{

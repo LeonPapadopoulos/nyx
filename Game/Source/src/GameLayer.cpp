@@ -3,7 +3,7 @@
 #include "Application.h"
 #include "CameraComponent.h"
 #include "Log.h"
-#include "Renderer.h"
+#include "EditorRenderer.h"
 #include "SceneSerializer.h"
 
 #include <imgui.h>
@@ -18,6 +18,7 @@ namespace Nyx::Game
 	void GameLayer::OnAttach(Nyx::Application& application)
 	{
 		Renderer = &application.GetWindow().GetRenderer();
+		UIRenderer = &application.GetWindow().GetEditorRenderer();
 
 		// The game has no window layout to remember, and must not overwrite the editor's imgui.ini:
 		// both programs run from the same folder.
@@ -54,7 +55,6 @@ namespace Nyx::Game
 		// The view the player sees: through the scene's camera, without the editor's grid and outlines
 		GameViewId = Renderer->CreateSceneView();
 		Renderer->SetSceneViewCameraMode(GameViewId, Nyx::EViewportCameraMode::ScenePrimaryCamera);
-		Renderer->SetSceneViewShowEditorOverlays(GameViewId, false);
 	}
 
 	void GameLayer::OnDetach()
@@ -97,7 +97,7 @@ namespace Nyx::Game
 		// Like the editor's scene views: skip the image in the frame the view was resized and its texture replaced
 		if (!Renderer->WasSceneViewRecreatedThisFrame(GameViewId))
 		{
-			ImGui::Image(Renderer->GetSceneViewTextureId(GameViewId), size);
+			ImGui::Image(UIRenderer->GetSceneViewTextureId(GameViewId), size);
 		}
 
 		ImGui::End();

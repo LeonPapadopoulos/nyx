@@ -3,6 +3,7 @@
 #include <vulkan/vulkan_raii.hpp>
 
 #include <cstdint>
+#include <vector>
 
 namespace Nyx
 {
@@ -20,6 +21,9 @@ namespace Nyx
 		vk::MemoryPropertyFlags properties,
 		vk::raii::Buffer& outBuffer,
 		vk::raii::DeviceMemory& outMemory);
+
+	// A shader module of the SPIR-V code
+	vk::raii::ShaderModule CreateShaderModule(VulkanContext& context, const std::vector<uint32_t>& spirv);
 
 	// A command buffer from the graphics pool, begun for one submission. EndSingleTimeCommands()
 	// submits it and waits until the GPU has run it.

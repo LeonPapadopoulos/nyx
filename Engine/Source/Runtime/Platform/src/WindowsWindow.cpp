@@ -5,7 +5,7 @@
 #include "WindowsStartupBanner.h"
 #include "Log.h"
 #include "Assertions.h"
-#include "Renderer.h"
+#include "EditorRenderer.h"
 #include "ImGuiTheme.h"
 #include "SceneViewTypes.h"
 #include "UIChrome.h"
@@ -44,6 +44,16 @@ namespace Nyx
 	WindowsWindow::~WindowsWindow()
 	{
 		Shutdown();
+	}
+
+	IRenderer& WindowsWindow::GetRenderer()
+	{
+		return *Renderer;
+	}
+
+	IEditorRenderer& WindowsWindow::GetEditorRenderer()
+	{
+		return *Renderer;
 	}
 
 	Input::IInputBackend* WindowsWindow::GetInputBackend()

@@ -6,7 +6,7 @@
 #include "PlayControls.h"
 #include "PlaySession.h"
 #include "PreferencesWindow.h"
-#include "Renderer.h"
+#include "EditorRenderer.h"
 #include "SceneEditor.h"
 #include "SceneFilePopups.h"
 #include "SceneViewPanel.h"
@@ -72,7 +72,7 @@ namespace Nyx::Editor
 	{
 	}
 
-	void EditorFrame::Attach(Nyx::IWindow& window, Nyx::IRenderer& renderer)
+	void EditorFrame::Attach(Nyx::IWindow& window, Nyx::IEditorRenderer& renderer)
 	{
 		Window = &window;
 		Renderer = &renderer;

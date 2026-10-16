@@ -11,7 +11,7 @@
 
 namespace Nyx
 {
-	class IRenderer;
+	class IEditorRenderer;
 }
 
 namespace Nyx::Editor
@@ -42,7 +42,7 @@ namespace Nyx::Editor
 
 		// The Parameters, Preview and Shader Log windows. `editing` gives the entities that use the
 		// open material, and the selected mesh for the preview.
-		void Draw(Nyx::IRenderer& renderer, SceneEditor& editing);
+		void Draw(Nyx::IEditorRenderer& renderer, SceneEditor& editing);
 
 		// The Parameters window's undo and save keys; true while it has focus
 		bool HandleHotkeys();

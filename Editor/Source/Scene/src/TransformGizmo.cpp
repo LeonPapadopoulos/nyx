@@ -1059,7 +1059,7 @@ namespace Nyx::Editor
 	}
 
 	bool TransformGizmo::TickAndDraw(
-		Nyx::IRenderer& renderer,
+		Nyx::IEditorRenderer& renderer,
 		SceneDocument& scene,
 		Nyx::Editor::TransactionSystem& transactions,
 		uint64_t sceneViewId,

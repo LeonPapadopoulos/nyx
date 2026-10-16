@@ -8,7 +8,7 @@
 
 namespace Nyx
 {
-	class IRenderer;
+	class IEditorRenderer;
 }
 
 namespace Nyx::Editor
@@ -21,7 +21,7 @@ namespace Nyx::Editor
 	{
 	public:
 		// The window and, while it is open, the image over the editor
-		void Draw(Nyx::IRenderer& renderer);
+		void Draw(Nyx::IEditorRenderer& renderer);
 
 		// Gives the image back to the renderer; call it before the renderer shuts down.
 		void Release();
@@ -32,7 +32,7 @@ namespace Nyx::Editor
 		void Load(const std::filesystem::path& path);
 		void DrawOverlay() const;
 
-		Nyx::IRenderer* Renderer = nullptr;
+		Nyx::IEditorRenderer* Renderer = nullptr;
 
 		// The image shown (a UI image of the renderer), and the path typed or chosen
 		uint64_t ImageId = 0;

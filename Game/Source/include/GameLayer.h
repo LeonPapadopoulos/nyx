@@ -12,6 +12,7 @@
 namespace Nyx
 {
 	class IRenderer;
+	class IEditorRenderer;
 }
 
 namespace Nyx::Game
@@ -44,6 +45,8 @@ namespace Nyx::Game
 		std::filesystem::path ScenePath;
 
 		Nyx::IRenderer* Renderer = nullptr;
+		// The same renderer's UI part, for ImGui::Image() of the game's view
+		Nyx::IEditorRenderer* UIRenderer = nullptr;
 		std::unique_ptr<Nyx::AssetResolver> AssetResolver;
 
 		// All entities of the loaded scene

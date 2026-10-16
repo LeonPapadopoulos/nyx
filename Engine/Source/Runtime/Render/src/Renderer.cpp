@@ -1,10 +1,10 @@
 #include "NyxPCH.h"
-#include "Renderer.h"
+#include "EditorRenderer.h"
 #include "VulkanRenderer.h"
 
 namespace Nyx
 {
-	std::unique_ptr<IRenderer> CreateRenderer()
+	std::unique_ptr<IEditorRenderer> CreateRenderer()
 	{
 		return std::make_unique<VulkanRenderer>();
 	}

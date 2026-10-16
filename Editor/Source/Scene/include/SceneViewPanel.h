@@ -10,7 +10,7 @@
 
 namespace Nyx
 {
-	class IRenderer;
+	class IEditorRenderer;
 }
 
 namespace Nyx::Editor
@@ -32,8 +32,8 @@ namespace Nyx::Editor
 		}
 
 		// Creates the panel's scene view, or uses one the caller made (tests)
-		void CreateView(Nyx::IRenderer& renderer);
-		void UseView(Nyx::IRenderer& renderer, uint64_t sceneViewId);
+		void CreateView(Nyx::IEditorRenderer& renderer);
+		void UseView(Nyx::IEditorRenderer& renderer, uint64_t sceneViewId);
 		void DestroyView();
 
 		uint64_t GetViewId() const
@@ -70,7 +70,7 @@ namespace Nyx::Editor
 
 	private:
 		std::string Title;
-		Nyx::IRenderer* Renderer = nullptr;
+		Nyx::IEditorRenderer* Renderer = nullptr;
 		uint64_t SceneViewId = 0;
 		const AssetTypeRegistry* AssetTypes = nullptr;
 		bool bShowingGameView = false;

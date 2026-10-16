@@ -92,7 +92,7 @@ namespace
 		std::cout << "Wrote " << (assets / ScenePath).string() << " and its materials\n";
 	}
 
-	uint64_t MakeView(Nyx::IRenderer& renderer, uint32_t width, uint32_t height)
+	uint64_t MakeView(Nyx::IEditorRenderer& renderer, uint32_t width, uint32_t height)
 	{
 		const uint64_t view = renderer.CreateSceneView();
 		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
@@ -119,7 +119,7 @@ namespace
 	// differ much.
 	void TestTheSceneLooksAsApproved(SceneRenderer& gpu)
 	{
-		Nyx::IRenderer& renderer = gpu.Renderer;
+		Nyx::IEditorRenderer& renderer = gpu.Renderer;
 		AssetResolver resolver(renderer);
 		Registry world;
 		Require(SceneSerializer::LoadFromFile(Nyx::Paths::GetAssetsDir() / ScenePath, world, ScenePostLoadContext{ &resolver }),
@@ -167,7 +167,7 @@ namespace
 	// view both towards the camera) against the light computed on the CPU
 	void TestSpheresMatchTheCpu(SceneRenderer& gpu)
 	{
-		Nyx::IRenderer& renderer = gpu.Renderer;
+		Nyx::IEditorRenderer& renderer = gpu.Renderer;
 		Registry world;
 		const Entity sphere = world.CreateEntity();
 		world.Add<TransformComponent>(sphere, At(glm::vec3(0.0f)));
@@ -199,7 +199,7 @@ namespace
 	// any roughness, metals come out no brighter than it
 	void TestFurnace(SceneRenderer& gpu)
 	{
-		Nyx::IRenderer& renderer = gpu.Renderer;
+		Nyx::IEditorRenderer& renderer = gpu.Renderer;
 		const uint32_t loadedSky = gpu.Renderer.GetSky();
 		const std::vector<uint8_t> grey(static_cast<size_t>(4) * 4 * 6 * 4, 128);
 		gpu.Renderer.SetSky(gpu.Renderer.GetBindless().CreateCubeTexture(4, grey, vk::Format::eR8G8B8A8Unorm));

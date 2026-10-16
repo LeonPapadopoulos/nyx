@@ -5,7 +5,7 @@
 #include "EditorCameraController.h"
 #include "EditorPreferences.h"
 #include "ImGuiSource.h"
-#include "Renderer.h"
+#include "EditorRenderer.h"
 #include "SceneEditor.h"
 #include "UIChrome.h"
 #include "UITheme.h"
@@ -17,15 +17,17 @@
 
 namespace Nyx::Editor
 {
-	void SceneViewPanel::CreateView(Nyx::IRenderer& renderer)
+	void SceneViewPanel::CreateView(Nyx::IEditorRenderer& renderer)
 	{
 		UseView(renderer, renderer.CreateSceneView());
 	}
 
-	void SceneViewPanel::UseView(Nyx::IRenderer& renderer, uint64_t sceneViewId)
+	void SceneViewPanel::UseView(Nyx::IEditorRenderer& renderer, uint64_t sceneViewId)
 	{
 		Renderer = &renderer;
 		SceneViewId = sceneViewId;
+		// The editor's overlays while the view shows the scene, not the game
+		Renderer->SetSceneViewShowEditorOverlays(SceneViewId, !bShowingGameView);
 	}
 
 	void SceneViewPanel::DestroyView()
@@ -58,7 +60,7 @@ namespace Nyx::Editor
 			return;
 		}
 
-		const Nyx::IRenderer::PickResult result = Renderer->ConsumeLastPickResult(SceneViewId);
+		const Nyx::IEditorRenderer::PickResult result = Renderer->ConsumeLastPickResult(SceneViewId);
 		if (!result.bHasNewResult)
 		{
 			return;

@@ -172,12 +172,12 @@ namespace Nyx::Tests
 			editor.CurrentScenePath = "old.nyxscene";
 			for (auto& view : renderer.SceneViews)
 			{
-				view.RenderedWorldRevision = renderer.GetShownWorldRevision(view);
-				view.PickWorldRevision = renderer.GetShownWorldRevision(view);
-				view.bPickRequestPending = true;
-				view.bPickReadbackPending = true;
-				view.bPickResultReady = true;
-				view.LastPickedEntity = entity;
+				view.Overlays.RenderedWorldRevision = renderer.GetShownWorldRevision(view);
+				view.Overlays.PickWorldRevision = renderer.GetShownWorldRevision(view);
+				view.Overlays.bPickRequestPending = true;
+				view.Overlays.bPickReadbackPending = true;
+				view.Overlays.bPickResultReady = true;
+				view.Overlays.LastPickedEntity = entity;
 			}
 			return entity;
 		}
@@ -185,7 +185,7 @@ namespace Nyx::Tests
 		static void RequireInteractionsCleared(EditorLayer& editor, VulkanRenderer& renderer)
 		{
 			Require(!editor.Editing.Scene.GetSelection(), "Selection survived scene replacement");
-			Require(!renderer.SelectedEntity, "Renderer kept the old selection outline");
+			Require(!renderer.Overlays.SelectedEntity, "Renderer kept the old selection outline");
 			Require(!editor.Editing.Transactions.Undo(editor.Editing.TransactionContext), "Undo survived scene replacement");
 			Require(!editor.Editing.Transactions.Redo(editor.Editing.TransactionContext), "Redo survived scene replacement");
 			Require(editor.Editing.SceneRevision == 1, "Inspector widgets did not receive a new scene revision");
@@ -210,9 +210,9 @@ namespace Nyx::Tests
 				"Replacing the registry at the same address did not advance the renderer revision");
 			for (const auto& view : renderer.SceneViews)
 			{
-				Require(!view.bPickRequestPending && !view.bPickReadbackPending && !view.bPickResultReady,
+				Require(!view.Overlays.bPickRequestPending && !view.Overlays.bPickReadbackPending && !view.Overlays.bPickResultReady,
 					"A viewport kept an old pick");
-				Require(!view.LastPickedEntity && view.RenderedWorldRevision == 0,
+				Require(!view.Overlays.LastPickedEntity && view.Overlays.RenderedWorldRevision == 0,
 					"A viewport still represents the old scene as pickable");
 			}
 			editor.ApplyPendingPickResults();
@@ -246,9 +246,9 @@ namespace Nyx::Tests
 
 			// A completed pick from the current revision must still select normally.
 			auto& view = renderer.SceneViews[0];
-			view.PickWorldRevision = renderer.GetShownWorldRevision(renderer.SceneViews[0]);
-			view.bPickResultReady = true;
-			view.LastPickedEntity = oldEntity;
+			view.Overlays.PickWorldRevision = renderer.GetShownWorldRevision(renderer.SceneViews[0]);
+			view.Overlays.bPickResultReady = true;
+			view.Overlays.LastPickedEntity = oldEntity;
 			editor.ApplyPendingPickResults();
 			Require(editor.Editing.Scene.GetSelection() == oldEntity, "New scene picking stopped working");
 			Require(!renderer.ConsumeLastPickResult(view.Id).bHasNewResult, "Pick was delivered twice");
@@ -265,12 +265,12 @@ namespace Nyx::Tests
 				oldName->Name == "Unfinished name", "Failed Open replaced or reverted the old scene");
 			Require(editor.CurrentScenePath == "old.nyxscene" && editor.Editing.SceneRevision == 0,
 				"Failed Open changed the path or widget revision");
-			Require(editor.Editing.Scene.GetSelection() == entity && renderer.SelectedEntity == entity,
+			Require(editor.Editing.Scene.GetSelection() == entity && renderer.Overlays.SelectedEntity == entity,
 				"Failed Open cleared the selection");
 			Require(renderer.GetShownWorldRevision(renderer.SceneViews[0]) == 1, "Failed Open invalidated the renderer revision");
 			for (const auto& view : renderer.SceneViews)
 			{
-				Require(view.bPickRequestPending && view.bPickReadbackPending && view.bPickResultReady,
+				Require(view.Overlays.bPickRequestPending && view.Overlays.bPickReadbackPending && view.Overlays.bPickResultReady,
 					"Failed Open discarded pending picks");
 			}
 			Require(editor.Editing.Gizmo.State.bDragging && editor.Editing.Gizmo.ActiveTransformDiff,
@@ -300,20 +300,20 @@ namespace Nyx::Tests
 			// Reject stale work at every stage, even if its handle is alive in the new scene.
 			for (auto& view : renderer.SceneViews)
 			{
-				view.PickWorldRevision = oldRevision;
-				view.bPickResultReady = true;
-				view.LastPickedEntity = oldEntity;
+				view.Overlays.PickWorldRevision = oldRevision;
+				view.Overlays.bPickResultReady = true;
+				view.Overlays.LastPickedEntity = oldEntity;
 				Require(!renderer.ConsumeLastPickResult(view.Id).bHasNewResult, "A stale result escaped");
 
-				view.PickWorldRevision = oldRevision;
-				view.bPickRequestPending = true;
+				view.Overlays.PickWorldRevision = oldRevision;
+				view.Overlays.bPickRequestPending = true;
 				vk::raii::CommandBuffer unusedCommandBuffer{ nullptr };
-				renderer.ResolvePickRequest(view, unusedCommandBuffer);
-				Require(!view.bPickRequestPending && !view.bPickReadbackPending,
+				renderer.Overlays.ResolvePickRequest(view, *renderer.FindShownWorld(view), unusedCommandBuffer);
+				Require(!view.Overlays.bPickRequestPending && !view.Overlays.bPickReadbackPending,
 					"An old request reached the GPU copy stage");
 
-				view.PickWorldRevision = oldRevision;
-				view.bPickReadbackPending = true;
+				view.Overlays.PickWorldRevision = oldRevision;
+				view.Overlays.bPickReadbackPending = true;
 			}
 			// No readback memory is allocated: attempting to map it would fail this test.
 			renderer.ReadBackPickResults();
@@ -321,7 +321,7 @@ namespace Nyx::Tests
 			Require(!editor.Editing.Scene.GetSelection(), "Late readback selected the reused handle");
 			for (const auto& view : renderer.SceneViews)
 			{
-				Require(!view.bPickReadbackPending && !view.bPickResultReady, "Stale readback was not discarded");
+				Require(!view.Overlays.bPickReadbackPending && !view.Overlays.bPickResultReady, "Stale readback was not discarded");
 			}
 		}
 	};

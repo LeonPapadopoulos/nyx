@@ -10,7 +10,7 @@
 #include "Paths.h"
 #include "PropertyWidgetRegistry.h"
 #include "ReflectionSourceRegistry.h"
-#include "Renderer.h"
+#include "EditorRenderer.h"
 #include "SceneSerializer.h"
 #include "UIChrome.h"
 
@@ -30,7 +30,7 @@ namespace Nyx::Editor
 		class RendererEditorCameras final : public IEditorCameras
 		{
 		public:
-			explicit RendererEditorCameras(Nyx::IRenderer& renderer)
+			explicit RendererEditorCameras(Nyx::IEditorRenderer& renderer)
 				: Renderer(renderer)
 			{
 			}
@@ -46,7 +46,7 @@ namespace Nyx::Editor
 			}
 
 		private:
-			Nyx::IRenderer& Renderer;
+			Nyx::IEditorRenderer& Renderer;
 		};
 
 		// The time of day, as "21:58"
@@ -64,7 +64,7 @@ namespace Nyx::Editor
 	void EditorLayer::OnAttach(Nyx::Application& application)
 	{
 		Window = &application.GetWindow();
-		Renderer = &Window->GetRenderer();
+		Renderer = &Window->GetEditorRenderer();
 		Input = &application.GetInput();
 		AssetResolver = std::make_unique<Nyx::AssetResolver>(*Renderer);
 		if (!Preferences.Load(EditorPreferences::GetUserFile()))

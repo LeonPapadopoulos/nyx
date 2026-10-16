@@ -103,6 +103,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanBindless.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanMaterials.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanEnvironment.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanEditorOverlays.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/RendererLiveEdits.cpp
 
     # Runtime/Link
@@ -224,6 +225,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanEnvironment.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/RendererLiveEdits.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanUIBackend.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanEditorOverlays.h
 
     # Runtime/Link
     ${NYX_ENGINE_ROOT}/Runtime/Link/include/EditorLink.h
