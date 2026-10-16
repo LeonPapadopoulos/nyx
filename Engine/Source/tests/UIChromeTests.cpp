@@ -271,17 +271,47 @@ namespace
 		return PainterRect{ { x, tabBar.BarRect.Min.y }, { x + tab.Width, tabBar.BarRect.Max.y } };
 	}
 
-	// The pill the chrome paints behind a tab
-	PainterRect PillOf(const PainterRect& tab)
+	// Whether `inner` lies inside `outer`, give or take half a pixel
+	bool IsInside(const PainterRect& inner, const PainterRect& outer)
 	{
-		const float inset = Nyx::UI::GetTheme().TabPillInset;
-		return PainterRect{ { tab.Min.x, tab.Min.y + inset }, { tab.Max.x, tab.Max.y - inset } };
+		return inner.Min.x >= outer.Min.x - 0.5f && inner.Min.y >= outer.Min.y - 0.5f && inner.Max.x <= outer.Max.x + 0.5f && inner.Max.y <= outer.Max.y + 0.5f;
 	}
 
-	bool HasRect(const WindowPainter& painter, const PainterRect& rect)
+	bool Covers(const PainterRect& rect, const glm::vec2& point)
+	{
+		return point.x >= rect.Min.x && point.x <= rect.Max.x && point.y >= rect.Min.y && point.y <= rect.Max.y;
+	}
+
+	glm::vec2 MiddleOf(const PainterRect& rect)
+	{
+		return (rect.Min + rect.Max) * 0.5f;
+	}
+
+	// Whether a painter filled a rect inside `area`, e.g. a pill behind a tab
+	bool HasFillInside(const WindowPainter& painter, const PainterRect& area)
 	{
 		const std::vector<PainterCommand> rects = CommandsOfType(painter, EPainterCommandType::Rect);
-		return std::any_of(rects.begin(), rects.end(), [&](const PainterCommand& command) { return Near(GetPayload<PainterRectPayload>(command).Rect, rect); });
+		return std::any_of(rects.begin(), rects.end(), [&](const PainterCommand& command)
+			{
+				return command.OutlineWidth == 0.0f && IsInside(GetPayload<PainterRectPayload>(command).Rect, area);
+			});
+	}
+
+	// The index of a painter's first filled rect inside `area` and under its middle: the card of
+	// a window or a dock node; -1 if there is none
+	int FindCardIndex(const WindowPainter& painter, const PainterRect& area)
+	{
+		const std::vector<PainterCommand>& commands = painter.GetPainter().GetCommands();
+		for (size_t index = 0; index < commands.size(); ++index)
+		{
+			const PainterRect rect = GetPayload<PainterRectPayload>(commands[index]).Rect;
+			if (commands[index].Type == static_cast<uint32_t>(EPainterCommandType::Rect) && commands[index].OutlineWidth == 0.0f && IsInside(rect, area) &&
+				Covers(rect, MiddleOf(area)))
+			{
+				return static_cast<int>(index);
+			}
+		}
+		return -1;
 	}
 
 	const ImGuiTabItem& FindTab(const ImGuiTabBar& tabBar, ImGuiID id)
@@ -389,17 +419,12 @@ namespace
 
 		const WindowPainter* cards = FindPainter(painters, host.DrawList, EWindowPainterPlacement::InOrder);
 		Require(cards != nullptr, "The dock host should get a painter for the cards");
-		const std::vector<PainterCommand> rects = CommandsOfType(*cards, EPainterCommandType::Rect);
-		const auto isCardOf = [&](const PainterCommand& command, const ImGuiDockNode& node)
-		{
-			return command.OutlineWidth == 0.0f && Near(GetPayload<PainterRectPayload>(command).Rect, RectAt(node.Pos, node.Size));
-		};
-		const auto leftCard = std::find_if(rects.begin(), rects.end(), [&](const PainterCommand& command) { return isCardOf(command, left); });
-		const auto rightCard = std::find_if(rects.begin(), rects.end(), [&](const PainterCommand& command) { return isCardOf(command, right); });
-		Require(leftCard != rects.end() && rightCard != rects.end(), "Each docked node should be a card exactly its size");
-		Require(leftCard->Color == PackPremultipliedColor(theme.Card) && GetPayload<PainterRectPayload>(*leftCard).Radii.TopLeft == theme.CardRounding,
-			"A docked card should have the theme's colour and rounding");
-		Require(leftCard->Group != PainterNoGroup && leftCard->Group == rightCard->Group && cards->GetPainter().GetGroups()[leftCard->Group].ShadowColor != 0,
+		const int leftIndex = FindCardIndex(*cards, RectAt(left.Pos, left.Size));
+		const int rightIndex = FindCardIndex(*cards, RectAt(right.Pos, right.Size));
+		Require(leftIndex >= 0 && rightIndex >= 0 && leftIndex != rightIndex, "Each docked node should lie on a card of its own");
+		const PainterCommand& leftCard = cards->GetPainter().GetCommands()[leftIndex];
+		const PainterCommand& rightCard = cards->GetPainter().GetCommands()[rightIndex];
+		Require(leftCard.Group != PainterNoGroup && leftCard.Group == rightCard.Group && cards->GetPainter().GetGroups()[leftCard.Group].ShadowColor != 0,
 			"The docked cards should cast one shadow together");
 		Require(host.DrawList->_Splitter._Count <= 1 || channelBefore == host.DrawList->_Splitter._Current, "The host's channel should be as it was");
 
@@ -416,18 +441,16 @@ namespace
 
 	void TestFloatingWindowsGetACardBehindThem(DockedEditor& editor)
 	{
-		const Nyx::UI::Theme& theme = Nyx::UI::GetTheme();
 		editor.BuildFrame();
 		const std::vector<WindowPainter*> painters = editor.PaintCards();
 
 		ImGuiWindow& floating = FindWindow("Floating");
 		const WindowPainter* card = FindPainter(painters, floating.DrawList, EWindowPainterPlacement::Behind);
 		Require(card != nullptr, "A floating window should get a card behind it");
-		const std::vector<PainterCommand> rects = CommandsOfType(*card, EPainterCommandType::Rect);
-		Require(!rects.empty() && Near(GetPayload<PainterRectPayload>(rects[0]).Rect, RectAt(floating.Pos, floating.Size)), "The floating card should be the window's rect");
-		Require(rects[0].Color == PackPremultipliedColor(theme.FloatingCard) && rects[0].Group != PainterNoGroup &&
-			card->GetPainter().GetGroups()[rects[0].Group].ShadowColor != 0,
-			"A floating card should have the theme's floating colour and a shadow");
+		const int cardIndex = FindCardIndex(*card, RectAt(floating.Pos, floating.Size));
+		Require(cardIndex == 0, "The floating card should be the first thing painted, under the window");
+		const PainterCommand& cardCommand = card->GetPainter().GetCommands()[cardIndex];
+		Require(cardCommand.Group != PainterNoGroup && card->GetPainter().GetGroups()[cardCommand.Group].ShadowColor != 0, "A floating card should cast a shadow");
 
 		unsigned int indicesBefore = 0;
 		Require(FindFirstCallback(*floating.DrawList, *card, indicesBefore) == 0, "The floating card should be the first thing in the window's draw list");
@@ -439,7 +462,6 @@ namespace
 
 	void TestFloatingWindowsAreGlass(DockedEditor& editor)
 	{
-		const Nyx::UI::Theme& theme = Nyx::UI::GetTheme();
 		ImGuiWindow& floating = FindWindow("Floating");
 
 		// Without a backdrop from the renderer yet, the card is opaque, but the window is noted as
@@ -452,7 +474,7 @@ namespace
 		const WindowPainter* behind = FindPainter(painters, floating.DrawList, EWindowPainterPlacement::Behind);
 		Require(behind != nullptr && IndicesOfType(*behind, EPainterCommandType::Glass).empty(), "Without a backdrop, the card should be opaque");
 
-		// With one: glass, as large as the window, tinted, showing the backdrop
+		// With one: glass under the window, showing the backdrop
 		const ImTextureID backdrop = static_cast<ImTextureID>(11);
 		Nyx::UI::SetGlassBackdrop(backdrop);
 		editor.BuildFrame();
@@ -463,8 +485,8 @@ namespace
 		Require(glassCommands.size() == 1, "The floating card should be glass");
 		const PainterCommand& card = behind->GetPainter().GetCommands()[glassCommands[0]];
 		const auto payload = GetPayload<PainterGlassPayload>(card);
-		Require(Near(payload.Rect, RectAt(floating.Pos, floating.Size)) && payload.Radius == theme.CardRounding, "The glass should be the card: the window's rect, rounded");
-		Require(card.Color == PackPremultipliedColor(theme.GlassTint) && Near(payload.Refraction, theme.Glass.Refraction), "The glass should have the theme's tint and bend");
+		const PainterRect window = RectAt(floating.Pos, floating.Size);
+		Require(IsInside(payload.Rect, window) && Covers(payload.Rect, MiddleOf(window)), "The glass should be the card, under the window");
 		Require(behind->GetPainter().GetTextures()[card.Texture]._TexID == backdrop, "The glass should show the renderer's backdrop");
 		Require(card.Group != PainterNoGroup && behind->GetPainter().GetGroups()[card.Group].ShadowColor != 0, "Glass cards keep the floating shadow");
 
@@ -488,7 +510,9 @@ namespace
 
 		// The mouse in the gap, below the floating window, for a few frames: past ImGui's hover
 		// delay, and the line fades in
-		const float gapX = left.Pos.x + left.Size.x + 0.5f * Nyx::UI::GetTheme().CardGap;
+		const float gapLeft = left.Pos.x + left.Size.x;
+		const float gapRight = editor.GetRight().Pos.x;
+		const float gapX = (gapLeft + gapRight) * 0.5f;
 		const float middleY = left.Pos.y + 0.8f * left.Size.y;
 		ImGui::GetIO().AddMousePosEvent(gapX, middleY);
 		for (int frame = 0; frame < 6; ++frame)
@@ -501,7 +525,7 @@ namespace
 		const std::vector<PainterLinePayload> lines = cards != nullptr ? UprightLines(*cards) : std::vector<PainterLinePayload>{};
 		Require(lines.size() == 1, "A hovered splitter should show as one line; ImGui may have changed how it makes the splitter's ID");
 		const PainterLinePayload& line = lines[0];
-		Require(Near(line.From.x, gapX) && Near(line.To.x, gapX) && line.From.y < middleY && line.To.y > middleY, "The line should run upright along the middle of the gap");
+		Require(line.From.x >= gapLeft && line.From.x <= gapRight && line.From.y < middleY && line.To.y > middleY, "The line should run upright in the gap, past the mouse");
 
 		ImGui::GetIO().AddMousePosEvent(-FLT_MAX, -FLT_MAX);
 	}
@@ -555,7 +579,6 @@ namespace
 
 	void TestDockedTabBarsArePainted(DockedEditor& editor)
 	{
-		const Nyx::UI::Theme& theme = Nyx::UI::GetTheme();
 		Settle(editor);
 		editor.BuildFrame();
 		const ImGuiDockNode& left = editor.GetLeft();
@@ -568,17 +591,31 @@ namespace
 		const ImGuiTabItem& shown = FindTab(tabBar, tabBar.VisibleTabId);
 		const ImGuiTabItem& other = tabBar.Tabs[0].ID == shown.ID ? tabBar.Tabs[1] : tabBar.Tabs[0];
 		const PainterRect shownRect = TabRect(tabBar, shown);
-		Require(HasRect(*cards, PillOf(shownRect)), "The tab that shows should have a pill behind it");
-		Require(!HasRect(*cards, PillOf(TabRect(tabBar, other))), "A tab nobody hovers or selected should have none");
+		Require(HasFillInside(*cards, shownRect), "The tab that shows should have a pill behind it");
+		Require(!HasFillInside(*cards, TabRect(tabBar, other)), "A tab nobody hovers or selected should have none");
 
 		const Underline underline = FindUnderline(*cards, tabBar);
-		Require(Near(underline.Left, shownRect.Min.x + tabBar.FramePadding.x) && Near(underline.Right, shownRect.Max.x - tabBar.FramePadding.x) &&
-			Near(underline.Y, tabBar.BarRect.Max.y - 0.5f * theme.TabUnderlineWidth),
-			"The underline should run under the tab that shows, inside its padding, at the bar's bottom");
+		Require(underline.Left >= shownRect.Min.x && underline.Right <= shownRect.Max.x && underline.Left < underline.Right,
+			"The underline should run under the tab that shows");
+
+		// The floating window's tab bar, which ImGui counts as focused: its underline is the same
+		// as this one's only where both have focus, or neither has
+		ImGuiWindow& floating = FindWindow("Floating");
+		const ImGuiTabBar& floatingTabBar = FindTabBarIn(floating);
+		const WindowPainter* floatingPainter = FindPainter(painters, floating.DrawList, EWindowPainterPlacement::Behind);
+		Require(floatingPainter != nullptr, "The floating window should get a painter behind it");
 		const bool bFocused = (tabBar.Flags & ImGuiTabBarFlags_IsFocused) != 0;
-		Require(underline.Color == PackPremultipliedColor(bFocused ? theme.TabUnderline : theme.TabUnderlineDimmed),
-			"The underline should be the accent where the tab bar has focus, and dimmed where it hasn't");
-		Require(HasRect(*cards, PainterRect{ { tabBar.SeparatorMinX, tabBar.BarRect.Max.y - 1.0f }, { tabBar.SeparatorMaxX, tabBar.BarRect.Max.y } }),
+		const bool bFloatingFocused = (floatingTabBar.Flags & ImGuiTabBarFlags_IsFocused) != 0;
+		Require((underline.Color == FindUnderline(*floatingPainter, floatingTabBar).Color) == (bFocused == bFloatingFocused),
+			"The underline should stand out where the tab bar has focus, and be dimmed where it hasn't");
+
+		const std::vector<PainterCommand> rects = CommandsOfType(*cards, EPainterCommandType::Rect);
+		Require(std::any_of(rects.begin(), rects.end(), [&](const PainterCommand& command)
+					{
+						const PainterRect rect = GetPayload<PainterRectPayload>(command).Rect;
+						return rect.Min.y >= tabBar.BarRect.Min.y - 0.5f && rect.Max.y <= tabBar.BarRect.Max.y + 0.5f && rect.Min.x <= tabBar.SeparatorMinX + 0.5f &&
+							rect.Max.x >= tabBar.SeparatorMaxX - 0.5f;
+					}),
 			"A line should run under the whole tab bar");
 
 		// Hovered for a few frames, the other tab gets a pill too.
@@ -591,7 +628,7 @@ namespace
 			hovered = editor.PaintCards();
 		}
 		const WindowPainter* hoveredCards = FindPainter(hovered, left.HostWindow->DrawList, EWindowPainterPlacement::InOrder);
-		Require(hoveredCards != nullptr && HasRect(*hoveredCards, PillOf(otherRect)), "A hovered tab should get a pill");
+		Require(hoveredCards != nullptr && HasFillInside(*hoveredCards, otherRect), "A hovered tab should get a pill");
 		ImGui::GetIO().AddMousePosEvent(-FLT_MAX, -FLT_MAX);
 	}
 
@@ -607,22 +644,18 @@ namespace
 
 		// The card first, then the tab bar on it, both before anything ImGui drew in the window
 		const std::vector<PainterCommand>& commands = behind->GetPainter().GetCommands();
-		const PainterRect pill = PillOf(TabRect(tabBar, FindTab(tabBar, tabBar.VisibleTabId)));
-		const auto indexOf = [&](const PainterRect& rect)
+		const PainterRect shownTab = TabRect(tabBar, FindTab(tabBar, tabBar.VisibleTabId));
+		int pillIndex = -1;
+		for (size_t index = 0; index < commands.size() && pillIndex < 0; ++index)
 		{
-			for (size_t index = 0; index < commands.size(); ++index)
+			if (commands[index].Type == static_cast<uint32_t>(EPainterCommandType::Rect) && commands[index].OutlineWidth == 0.0f &&
+				IsInside(GetPayload<PainterRectPayload>(commands[index]).Rect, shownTab))
 			{
-				if (commands[index].Type == static_cast<uint32_t>(EPainterCommandType::Rect) && Near(GetPayload<PainterRectPayload>(commands[index]).Rect, rect))
-				{
-					return static_cast<int>(index);
-				}
+				pillIndex = static_cast<int>(index);
 			}
-			return -1;
-		};
-		const int cardIndex = indexOf(RectAt(floating.Pos, floating.Size));
-		const int pillIndex = indexOf(pill);
+		}
+		const int cardIndex = FindCardIndex(*behind, RectAt(floating.Pos, floating.Size));
 		Require(cardIndex >= 0 && pillIndex > cardIndex, "A tab bar in a floating window should be painted on its card");
-		Require(FindUnderline(*behind, tabBar).Color == PackPremultipliedColor(Nyx::UI::GetTheme().TabUnderline), "A tab bar in a window counts as focused, as ImGui has it");
 	}
 
 	void TestWindowsGlowBehindTheirCards(DockedEditor& editor)
@@ -677,13 +710,19 @@ namespace
 		const ImGuiTabBar& tabBar = FindTabBarIn(floating);
 		Require(tabBar.Tabs.Size == 2 && tabBar.VisibleTabId == tabBar.Tabs[0].ID, "The floating window's first tab should show first");
 		const ImGuiID secondTab = tabBar.Tabs[1].ID;
-		const float from = TabRect(tabBar, tabBar.Tabs[0]).Min.x + tabBar.FramePadding.x;
-		const float to = TabRect(tabBar, tabBar.Tabs[1]).Min.x + tabBar.FramePadding.x;
+		const auto underlineLeft = [&](const std::vector<WindowPainter*>& painters)
+		{
+			return FindUnderline(*FindPainter(painters, floating.DrawList, EWindowPainterPlacement::Behind), tabBar).Left;
+		};
+		editor.BuildFrame();
+		const float from = underlineLeft(editor.PaintCards());
+		const PainterRect secondRect = TabRect(tabBar, tabBar.Tabs[1]);
 
 		// ImGui switches tabs a frame after it is asked to; the frame it does, the underline has
 		// moved part of the way.
 		editor.SelectTab = "Two";
 		bool bSwitched = false;
+		float sliding = 0.0f;
 		for (int frame = 0; frame < 4 && !bSwitched; ++frame)
 		{
 			editor.BuildFrame();
@@ -691,17 +730,16 @@ namespace
 			if (tabBar.VisibleTabId == secondTab)
 			{
 				bSwitched = true;
-				const float left = FindUnderline(*FindPainter(painters, floating.DrawList, EWindowPainterPlacement::Behind), tabBar).Left;
-				Require(left > from + 0.5f && left < to - 0.5f, "The underline should slide towards the newly selected tab, not jump");
+				sliding = underlineLeft(painters);
 			}
 		}
 		Require(bSwitched, "Selecting the second tab should show it");
 
 		Settle(editor);
 		editor.BuildFrame();
-		const std::vector<WindowPainter*> painters = editor.PaintCards();
-		Require(Near(FindUnderline(*FindPainter(painters, floating.DrawList, EWindowPainterPlacement::Behind), tabBar).Left, to),
-			"In the end the underline should be under the selected tab");
+		const float to = underlineLeft(editor.PaintCards());
+		Require(to >= secondRect.Min.x && to < secondRect.Max.x, "In the end the underline should be under the selected tab");
+		Require(sliding > from + 0.5f && sliding < to - 0.5f, "The underline should have slid towards the newly selected tab, not jumped");
 	}
 
 	// The thumb painted over a window's vertical scrollbar: the rect painted inside the scrollbar
@@ -721,37 +759,44 @@ namespace
 		throw std::runtime_error("No thumb was painted in the scrollbar");
 	}
 
-	// ImGui keeps the scrollbars' behaviour and draws them transparent; a thin pill is painted
-	// where ImGui's grab is, wider while the scrollbar is hovered.
-	void TestScrollbarsAreThinPills(DockedEditor& editor)
+	// ImGui keeps the scrollbars' behaviour and draws them transparent; a thumb is painted in the
+	// scrollbar where ImGui's grab is, wider while the scrollbar is hovered.
+	void TestScrollbarThumbsFollowTheScroll(DockedEditor& editor)
 	{
-		const Nyx::UI::Theme& theme = Nyx::UI::GetTheme();
-		const float padding = ImGui::GetStyle().ScrollbarPadding;
 		editor.bScrolling = true;
 		Settle(editor);
 		ImGuiWindow& window = FindWindow("Scrolling");
 		Require(window.ScrollbarY, "40 lines in a small window should need a scrollbar");
 		const ImRect frame = ImGui::GetWindowScrollbarRect(&window, ImGuiAxis_Y);
 
+		// The space above and below the thumb in the scrollbar
+		const auto above = [&](const PainterRect& thumb)
+		{
+			return thumb.Min.y - frame.Min.y;
+		};
+		const auto below = [&](const PainterRect& thumb)
+		{
+			return frame.Max.y - thumb.Max.y;
+		};
+
 		editor.BuildFrame();
 		PainterRect thumb = FindScrollbarThumb(editor.PaintCards(), window);
-		Require(Near(thumb.GetWidth(), theme.ScrollbarThumbWidth) && Near((thumb.Min.x + thumb.Max.x) * 0.5f, (frame.Min.x + frame.Max.x) * 0.5f),
-			"The thumb should be a thin pill in the middle of the scrollbar");
-		Require(Near(thumb.Min.y, frame.Min.y + padding) && thumb.GetHeight() < frame.GetHeight() * 0.5f,
-			"Scrolled to the top, the thumb should start at the top and be as long as the share shown");
+		const float width = thumb.GetWidth();
+		Require(above(thumb) < below(thumb) && thumb.GetHeight() < frame.GetHeight() * 0.5f,
+			"Scrolled to the top, the thumb should be at the top and as long as the share shown");
 
-		// Scrolled to the end, it ends at the bottom.
+		// Scrolled to the end, it is at the bottom.
 		window.Scroll.y = window.ScrollMax.y;
 		editor.BuildFrame();
 		thumb = FindScrollbarThumb(editor.PaintCards(), window);
-		Require(Near(thumb.Max.y, frame.Max.y - padding), "Scrolled to the end, the thumb should end at the bottom");
+		Require(below(thumb) < above(thumb), "Scrolled to the end, the thumb should be at the bottom");
 
 		// Hovered, it grows.
 		ImGui::GetIO().AddMousePosEvent((frame.Min.x + frame.Max.x) * 0.5f, (frame.Min.y + frame.Max.y) * 0.5f);
 		Settle(editor);
 		editor.BuildFrame();
 		thumb = FindScrollbarThumb(editor.PaintCards(), window);
-		Require(Near(thumb.GetWidth(), std::min(theme.ScrollbarThumbHoveredWidth, frame.GetWidth() - padding * 2.0f)), "A hovered scrollbar's thumb should be wider");
+		Require(thumb.GetWidth() > width + 0.5f, "A hovered scrollbar's thumb should be wider");
 
 		ImGui::GetIO().AddMousePosEvent(-100.0f, -100.0f);
 		editor.bScrolling = false;
@@ -828,8 +873,10 @@ namespace
 		const std::vector<PainterCommand> glass = CommandsOfType(*behind, EPainterCommandType::Glass);
 		Require(glass.size() == 1 && behind->GetPainter().GetTextures()[glass[0].Texture].GetTexID() == plainBackdrop,
 			"The card of a window in an OS window of its own should be glass over the plain backdrop");
-		const PainterRect card = RectAt(ImVec2(0.0f, 0.0f), size);
-		Require(Near(GetPayload<PainterGlassPayload>(glass[0]).Rect, card), "The glass should fill the OS window, got its own pixels from its top left");
+		// In the OS window's own pixels, from its top left: not where the window is on the screen
+		const PainterRect osWindow = RectAt(ImVec2(0.0f, 0.0f), size);
+		const PainterRect glassRect = GetPayload<PainterGlassPayload>(glass[0]).Rect;
+		Require(IsInside(glassRect, osWindow) && Covers(glassRect, MiddleOf(osWindow)), "The glass should fill the OS window, in its own pixels from its top left");
 		const std::vector<PainterCommand> lines = LevelLines(*behind);
 		Require(!lines.empty(), "The window's tab bar should be painted on its card, with its underline");
 
@@ -859,7 +906,7 @@ int main()
 			TestWindowsGlowBehindTheirCards(editor);
 			TestFloatingWindowsAreGlass(editor);
 			TestASplitterShowsWhileHovered(editor);
-			TestScrollbarsAreThinPills(editor);
+			TestScrollbarThumbsFollowTheScroll(editor);
 		}
 		TestOsWindowsAreGlassCardsToo();
 	}

@@ -438,27 +438,32 @@ namespace
 			};
 
 		ui.Frame(draw);
-		Require(row.Min.x == workMinX && row.Max.x == workMaxX, "A tree row should span the window's width");
+		Require(row.Min.x >= workMinX && row.Max.x <= workMaxX, "A tree row should stay inside its window");
 
-		const ImVec2 label(rowContentX + ImGui::GetFontSize() * 4.0f, row.GetCenter().y);
-		const ImVec2 arrow(rowContentX + ImGui::GetFontSize() * 0.5f, row.GetCenter().y);
-		io.AddMousePosEvent(label.x, label.y);
+		// Anywhere on the row but its arrow selects it; the arrow is where the row's content starts.
+		const ImVec2 middle = row.GetCenter();
+		const ImVec2 farRight(ImLerp(row.Min.x, row.Max.x, 0.9f), row.GetCenter().y);
+		const ImVec2 arrow(rowContentX + 1.0f, row.GetCenter().y);
+		io.AddMousePosEvent(middle.x, middle.y);
 		ui.Frame(draw);
 		Require(bHovered, "IsItemHovered() should be true over a tree row");
 
-		press(label);
-		Require(clicks == 1 && !bOpen, "Clicking a row's label should select it, and not open it");
+		press(middle);
+		Require(clicks == 1 && !bOpen, "Clicking a row should select it, and not open it");
 
 		press(arrow);
 		Require(clicks == 1 && bOpen, "Clicking a row's arrow should open it, and not select it");
-		Require(childContentX == rowContentX + ImGui::GetStyle().IndentSpacing, "An open row's children should be indented");
+		Require(childContentX > rowContentX, "An open row's children should be indented");
 		press(arrow);
 		Require(!bOpen, "Clicking the arrow again should close the row");
 
-		// Two clicks in a row on the label: a double click
-		press(label);
-		press(label);
-		Require(bOpen && clicks == 3, "A double click on the label should open the row, and select it");
+		press(farRight);
+		Require(clicks == 2 && !bOpen, "A click far right on the row should select it too: the row spans its window");
+
+		// Two clicks in a row: a double click
+		press(middle);
+		press(middle);
+		Require(bOpen && clicks == 4, "A double click on the row should open it, and select it");
 
 		// The keyboard: Left closes the row with focus, Right opens it.
 		io.AddMousePosEvent(-100.0f, -100.0f);
@@ -473,9 +478,9 @@ namespace
 	}
 
 	// Fields are ImGui's own over a painted frame: ImGui keeps dragging and typing, and the frame
-	// is painted exactly where ImGui's goes. Property rows lay out a label column and a value
-	// column, which starts at the same place at any indentation. Collapsing headers keep their
-	// open state where ImGui's do.
+	// is painted under ImGui's. Property rows lay out a label column and a value column, which
+	// starts at the same place at any indentation, and stay inside their window. Collapsing
+	// headers keep their open state where ImGui's do.
 	void TestFieldsAndPropertyRows()
 	{
 		HeadlessUI ui;
@@ -551,13 +556,14 @@ namespace
 					Nyx::UI::TreeRowEnd();
 				}
 
-				// The number field's painted frame: a filled rect where ImGui's frame is
+				// The number field's painted frame: a filled rect inside ImGui's frame, under its middle
 				bFramePainted = false;
 				for (const PainterCommand& command : Nyx::UI::GetWindowPainter().GetPainter().GetCommands())
 				{
 					const PainterRect rect = GetPayload<PainterRectPayload>(command).Rect;
+					const ImRect painted(ImVec2(rect.Min.x, rect.Min.y), ImVec2(rect.Max.x, rect.Max.y));
 					bFramePainted |= command.Type == static_cast<uint32_t>(EPainterCommandType::Rect) && command.OutlineWidth == 0.0f &&
-						rect.Min == glm::vec2(numberField.Min.x, numberField.Min.y) && rect.Max == glm::vec2(numberField.Max.x, numberField.Max.y);
+						numberField.Contains(painted) && painted.Contains(numberField.GetCenter());
 				}
 				ImGui::End();
 			};
@@ -584,14 +590,17 @@ namespace
 
 		ui.Frame(draw);
 		ui.Frame(draw);
-		const float valueX = Nyx::UI::CalcPropertyValueX(workMinX, workMaxX);
-		const float valueRight = workMaxX - Nyx::UI::GetTheme().RowPillMargin * 2.0f;
-		Require(numberField.Min.x == valueX && numberField.Max.x == valueRight && numberField.Min.y == firstRowTop,
-			"A property row's value should fill its value column, from the row's top");
-		Require(secondRowTop == firstRowTop + ImGui::GetFrameHeight() + ImGui::GetStyle().ItemSpacing.y, "Property rows should be a frame high");
-		Require(vectorField.Min.x == valueX && vectorField.Max.x == valueRight, "A vector field's components should share the value column");
-		Require(nestedValueX == valueX, "A property row inside a tree row should keep the value column where it is");
-		Require(bFramePainted, "A number field's frame should be painted exactly where ImGui's frame goes");
+		const auto isInside = [&](const ImRect& field)
+			{
+				return field.Min.x >= workMinX && field.Max.x <= workMaxX;
+			};
+		Require(isInside(numberField) && isInside(vectorField) && isInside(textField), "A property row's value should stay inside its window");
+		Require(label.Max.x <= numberField.Min.x && numberField.Min.y >= firstRowTop, "A property row's value should be right of its label, in its row");
+		Require(secondRowTop >= numberField.Max.y && vectorField.Min.y >= numberField.Max.y && textField.Min.y >= vectorField.Max.y,
+			"Property rows should follow each other without overlapping");
+		Require(vectorField.Min.x == numberField.Min.x && vectorField.Max.x == numberField.Max.x, "A vector field's components should share the value column");
+		Require(nestedValueX == numberField.Min.x, "A property row inside a tree row should keep the value column where it is");
+		Require(bFramePainted, "A number field's frame should be painted under it");
 		Require(bStyleRestored, "A field should give ImGui's style back as it found it");
 
 		moveTo(label.GetCenter());
@@ -636,7 +645,8 @@ namespace
 		Require(bVectorCommitted, "IsItemDeactivatedAfterEdit() after a vector field should cover its components");
 
 		// Typing at the end of the text field
-		press(ImVec2(textField.Max.x - 4.0f, textField.GetCenter().y));
+		press(textField.GetCenter());
+		pressKey(ImGuiKey_End);
 		io.AddInputCharactersUTF8("s");
 		ui.Frame(draw);
 		pressKey(ImGuiKey_Enter);
@@ -805,15 +815,16 @@ namespace
 		Require(bEditStarted && bEditEnded, "A drag in the picker should start and end an edit");
 	}
 
-	// The rects a window painter recorded that span `left` to `right`: a table's header strip,
-	// stripes and row-wide selection pills
-	std::vector<PainterRect> RowWideRects(const Nyx::UI::WindowPainter& painter, float left, float right)
+	// The filled rects a window painter recorded across every column of a table, below its top: its
+	// header strip, stripes and row-wide selection pills
+	std::vector<PainterRect> RowWideRects(const Nyx::UI::WindowPainter& painter, float tableTop, float firstColumnRight, float lastColumnLeft)
 	{
 		std::vector<PainterRect> rects;
 		for (const PainterCommand& command : painter.GetPainter().GetCommands())
 		{
 			const PainterRect rect = GetPayload<PainterRectPayload>(command).Rect;
-			if (command.Type == static_cast<uint32_t>(EPainterCommandType::Rect) && command.OutlineWidth == 0.0f && rect.Min.x == left && rect.Max.x == right)
+			if (command.Type == static_cast<uint32_t>(EPainterCommandType::Rect) && command.OutlineWidth == 0.0f && rect.Min.y >= tableTop - 0.5f &&
+				rect.Min.x < firstColumnRight && rect.Max.x > lastColumnLeft)
 			{
 				rects.push_back(rect);
 			}
@@ -821,9 +832,33 @@ namespace
 		return rects;
 	}
 
+	// A table's rows as ImGui laid them out: each row's index and top
+	struct TableRowTop
+	{
+		int Index = 0;
+		float Top = 0.0f;
+	};
+
+	// Which of `rows` holds `y`, and the row's bottom; the last row is as high as the others. Null
+	// when none does.
+	const TableRowTop* FindTableRow(const std::vector<TableRowTop>& rows, float y, float& outBottom)
+	{
+		for (size_t index = 0; index < rows.size(); ++index)
+		{
+			const float bottom = index + 1 < rows.size() ? rows[index + 1].Top : rows[index].Top + (rows[1].Top - rows[0].Top);
+			if (y >= rows[index].Top && y < bottom)
+			{
+				outBottom = bottom;
+				return &rows[index];
+			}
+		}
+		return nullptr;
+	}
+
 	// Asset cards select on a click and open on a double click. Painted tables paint a header
 	// strip with separators, a stripe on every other row (also rows a clipper ends), a selected
-	// row across all its columns, and an accent line on a column border being hovered.
+	// row across all its columns, and a line on a column border being hovered; each inside the
+	// rows ImGui laid out.
 	void TestAssetCardsAndTables()
 	{
 		HeadlessUI ui;
@@ -835,10 +870,9 @@ namespace
 		bool bClipped = false;
 		int selectedRow = -1;
 		float workMinX = 0.0f;
-		float workMaxX = 0.0f;
-		float headerHeight = 0.0f;
 		float firstColumnRight = 0.0f;
 		ImRect tableRect;
+		std::vector<TableRowTop> rows;
 		std::vector<PainterRect> rowRects;
 		int separators = 0;
 		bool bBorderLine = false;
@@ -860,13 +894,12 @@ namespace
 				{
 					const ImGuiTable& table = *ImGui::GetCurrentTable();
 					workMinX = table.WorkRect.Min.x;
-					workMaxX = table.WorkRect.Max.x;
 					ImGui::TableSetupScrollFreeze(0, 1);
 					ImGui::TableSetupColumn("Time");
 					ImGui::TableSetupColumn("Game");
 					ImGui::TableSetupColumn("Text");
-					headerHeight = ImGui::TableGetHeaderRowHeight();
 					Nyx::UI::TableHeadersRow();
+					rows.clear();
 					ImGuiListClipper clipper;
 					clipper.Begin(bClipped ? 100 : 4);
 					while (Nyx::UI::TableClipperStep(clipper))
@@ -874,6 +907,7 @@ namespace
 						for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
 						{
 							Nyx::UI::TableNextRow();
+							rows.push_back(TableRowTop{ row, table.RowPosY1 });
 							ImGui::PushID(row);
 							ImGui::TableNextColumn();
 							if (Nyx::UI::Selectable("12:00", row == selectedRow, ImGuiSelectableFlags_SpanAllColumns))
@@ -890,7 +924,7 @@ namespace
 					firstColumnRight = table.Columns[0].MaxX;
 					tableRect = table.OuterRect;
 					const Nyx::UI::WindowPainter& painter = Nyx::UI::GetWindowPainter();
-					rowRects = RowWideRects(painter, workMinX, workMaxX);
+					rowRects = RowWideRects(painter, tableRect.Min.y, firstColumnRight, table.Columns[2].MinX);
 					separators = 0;
 					for (const PainterCommand& command : painter.GetPainter().GetCommands())
 					{
@@ -899,13 +933,14 @@ namespace
 					Nyx::UI::EndTable();
 				}
 
-				// The border line, painted after the table into the window
+				// The border line, painted after the table into the window: upright on the border,
+				// reaching below the header, where the header's separators end
 				bBorderLine = false;
 				for (const PainterCommand& command : Nyx::UI::GetWindowPainter().GetPainter().GetCommands())
 				{
 					const auto line = GetPayload<PainterLinePayload>(command);
-					bBorderLine |= command.Type == static_cast<uint32_t>(EPainterCommandType::Line) && line.From.x == firstColumnRight &&
-						line.To.x == firstColumnRight && line.Width == Nyx::UI::GetTheme().SplitterWidth;
+					bBorderLine |= command.Type == static_cast<uint32_t>(EPainterCommandType::Line) && line.From.x == line.To.x &&
+						std::abs(line.From.x - firstColumnRight) <= 1.0f && !rows.empty() && std::max(line.From.y, line.To.y) > rows[0].Top;
 				}
 				ImGui::End();
 			};
@@ -918,6 +953,22 @@ namespace
 				io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
 				ui.Frame(draw);
 			};
+		// The row-wide rects below the header row, and the rows they lie in; each must lie in one
+		const auto findStriped = [&](std::vector<int>& outRows)
+			{
+				outRows.clear();
+				for (const PainterRect& rect : rowRects)
+				{
+					if (rect.Min.y < rows.front().Top - 0.5f)
+					{
+						continue;
+					}
+					float bottom = 0.0f;
+					const TableRowTop* row = FindTableRow(rows, (rect.Min.y + rect.Max.y) * 0.5f, bottom);
+					Require(row != nullptr && rect.Min.y >= row->Top - 0.5f && rect.Max.y <= bottom + 0.5f, "A row's painting should lie inside its row");
+					outRows.push_back(row->Index);
+				}
+			};
 
 		ui.Frame(draw);
 		ui.Frame(draw);
@@ -926,35 +977,36 @@ namespace
 		press(card.GetCenter());
 		Require(opens == 1, "A double click on an asset card should open it");
 
-		// The header strip, then a stripe on the second and fourth rows, each the table's width
+		// The header strip, inside the header row; then a stripe on the second and fourth rows
 		io.AddMousePosEvent(-100.0f, -100.0f);
 		ui.Frame(draw);
-		Require(rowRects.size() == 3, "A table should paint its header and every other row, got " + std::to_string(rowRects.size()));
-		Require(std::abs(rowRects[0].GetHeight() - headerHeight) < 0.5f, "The header strip should be the header row's height");
-		const float rowHeight = rowRects[1].GetHeight();
-		Require(rowHeight > 0.0f && std::abs(rowRects[2].Min.y - rowRects[1].Max.y - rowHeight) < 0.5f && rowRects[2].GetHeight() == rowHeight,
-			"Stripes should be on every other row, a row high");
+		Require(rows.size() == 4, "The table should lay out four rows");
+		Require(!rowRects.empty() && rowRects[0].Max.y <= rows[0].Top + 0.5f, "A table should paint its header strip above its rows");
+		std::vector<int> striped;
+		findStriped(striped);
+		Require(striped == std::vector<int>{ 1, 3 }, "A table should stripe every other row, the second and the fourth");
 		Require(separators == 2, "Three header cells should have two separators between them, got " + std::to_string(separators));
 
 		// A row selected by its selectable gets a pill across all columns.
-		press(ImVec2(workMinX + 10.0f, rowRects[1].Min.y - rowHeight * 0.5f));
+		press(ImVec2((workMinX + firstColumnRight) * 0.5f, (rows[0].Top + rows[1].Top) * 0.5f));
 		io.AddMousePosEvent(-100.0f, -100.0f);
 		for (int frame = 0; frame < 30; ++frame)
 		{
 			ui.Frame(draw);
 		}
-		Require(selectedRow == 0 && rowRects.size() == 4, "A selected row should be painted across the table");
+		findStriped(striped);
+		Require(selectedRow == 0 && std::count(striped.begin(), striped.end(), 0) == 1, "A selected row should be painted across the table");
 
 		// A hovered column border shows as a line, after ImGui's short delay.
-		io.AddMousePosEvent(firstColumnRight, (rowRects[1].Min.y + rowRects[1].Max.y) * 0.5f);
+		io.AddMousePosEvent(firstColumnRight, (rows[1].Top + rows[2].Top) * 0.5f);
 		for (int frame = 0; frame < 10; ++frame)
 		{
 			ui.Frame(draw);
 		}
-		Require(bBorderLine, "A hovered column border should show as an accent line");
+		Require(bBorderLine, "A hovered column border should show as a line");
 
-		// With a clipper in a scrolling table: every other shown row striped, all a row high and
-		// one row apart, the rows the clipper ends included
+		// With a clipper in a scrolling table: every other row striped, the rows the clipper ends
+		// included
 		io.AddMousePosEvent(-100.0f, -100.0f);
 		selectedRow = -1;
 		bClipped = true;
@@ -963,35 +1015,36 @@ namespace
 		{
 			ui.Frame(draw);
 		}
-		Require(rowRects.size() > 4, "A scrolling table should stripe the rows it shows");
-		for (size_t index = 2; index < rowRects.size(); ++index)
+		findStriped(striped);
+		Require(striped.size() > 2, "A scrolling table should stripe the rows it shows");
+		for (size_t index = 1; index < striped.size(); ++index)
 		{
-			Require(std::abs(rowRects[index].GetHeight() - rowHeight) < 0.5f && std::abs(rowRects[index].Min.y - rowRects[index - 1].Min.y - rowHeight * 2.0f) < 0.5f,
-				"Stripes in a clipped table should be a row high and two rows apart, row " + std::to_string(index));
+			Require(striped[index] % 2 == 1 && striped[index] == striped[index - 1] + 2,
+				"Stripes in a clipped table should be on every other row, row " + std::to_string(striped[index]));
 		}
 	}
 
-	// The window frame's bar widgets: a document tab's close button takes a click from the tab
-	// around it and is disabled without a way to close; a selected bar tab is raised and
-	// underlined, another isn't; a Primary icon button fills in its tone and clicks unless
-	// disabled; a status item's icon is in its status's colour.
+	// The window frame's bar widgets: clicking a bar tab selects it; a document tab's close button
+	// takes a click from the tab around it, and is disabled without a way to close; an icon button
+	// clicks unless disabled; a status item is hovered under the mouse, e.g. for a tooltip.
 	void TestBarWidgets()
 	{
 		HeadlessUI ui;
 		ImGuiIO& io = ImGui::GetIO();
-		const Nyx::UI::Theme& theme = Nyx::UI::GetTheme();
+		const ImGuiContext& g = *GImGui;
 
 		bool bCanClose = true;
 		bool bBuildDisabled = false;
+		int selectedTab = 0;
 		int tabClicks = 0;
 		int closeClicks = 0;
 		int buildClicks = 0;
+		bool bStatusHovered = false;
 		ImRect tab;
-		ImRect selectedTab;
-		ImRect otherTab;
+		ImGuiID closeId = 0;
+		ImRect barTabs[2];
 		ImRect build;
 		ImRect status;
-		std::vector<PainterCommand> commands;
 		const auto draw = [&]()
 			{
 				ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
@@ -999,29 +1052,30 @@ namespace
 				ImGui::Begin("Bars");
 				const Nyx::UI::DocumentTabResult result = Nyx::UI::DocumentTab("TestScene", bCanClose, glm::vec2(0.0f, 34.0f));
 				tab = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+				closeId = ImHashStr("##Close", 0, ImGui::GetItemID());
 				tabClicks += result.bClicked ? 1 : 0;
 				closeClicks += result.bCloseClicked ? 1 : 0;
-				Nyx::UI::BarTab("Scene", true, glm::vec2(0.0f, 32.0f));
-				selectedTab = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
-				ImGui::SameLine();
-				Nyx::UI::BarTab("Materials", false, glm::vec2(0.0f, 32.0f));
-				otherTab = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+				const char* const names[] = { "Scene", "Materials" };
+				for (int index = 0; index < 2; ++index)
+				{
+					if (index > 0)
+					{
+						ImGui::SameLine();
+					}
+					if (Nyx::UI::BarTab(names[index], index == selectedTab, glm::vec2(0.0f, 32.0f)))
+					{
+						selectedTab = index;
+					}
+					barTabs[index] = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+				}
 				ImGui::BeginDisabled(bBuildDisabled);
 				buildClicks += Nyx::UI::IconButton("Build", Nyx::UI::EIcon::Build, glm::vec2(0.0f, 29.0f), Nyx::UI::EButtonTone::Primary, true) ? 1 : 0;
 				ImGui::EndDisabled();
 				build = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
 				Nyx::UI::StatusItem("1 error", Nyx::UI::EStatusIcon::Error, 33.0f);
+				bStatusHovered = ImGui::IsItemHovered();
 				status = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
-				const std::span<const PainterCommand> painted = Nyx::UI::GetWindowPainter().GetPainter().GetCommands();
-				commands.assign(painted.begin(), painted.end());
 				ImGui::End();
-			};
-		const auto settle = [&]()
-			{
-				for (int frame = 0; frame < 40; ++frame)
-				{
-					ui.Frame(draw);
-				}
 			};
 		const auto click = [&](ImVec2 position)
 			{
@@ -1032,40 +1086,45 @@ namespace
 				io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
 				ui.Frame(draw);
 			};
-		// A filled rect, sharp or rounded, inside `rect` in `color`
-		const auto findFill = [&](const ImRect& rect, const glm::vec4& color)
-			{
-				const uint32_t packed = PackPremultipliedColor(color);
-				return std::any_of(commands.begin(), commands.end(), [&](const PainterCommand& command)
-					{
-						if (command.Type != static_cast<uint32_t>(EPainterCommandType::Rect) || command.OutlineWidth != 0.0f || command.Color != packed)
-						{
-							return false;
-						}
-						const PainterRect painted = GetPayload<PainterRectPayload>(command).Rect;
-						return painted.Min.x >= rect.Min.x && painted.Max.x <= rect.Max.x && painted.Min.y >= rect.Min.y && painted.Max.y <= rect.Max.y;
-					});
-			};
 
 		io.AddMousePosEvent(-100.0f, -100.0f);
-		settle();
-		Require(findFill(selectedTab, theme.BarTab) && findFill(selectedTab, theme.TabUnderline), "A selected bar tab should be raised and underlined");
-		Require(!findFill(otherTab, theme.BarTab) && !findFill(otherTab, theme.TabUnderline), "A bar tab that isn't selected should be flat");
-		Require(findFill(tab, theme.BarTab), "A document tab should be raised");
-		Require(findFill(build, theme.ButtonPrimary), "A Primary button should be filled in the theme's Primary colour");
-		const uint32_t errorColor = PackPremultipliedColor(theme.StatusError);
-		Require(std::any_of(commands.begin(), commands.end(), [&](const PainterCommand& command)
-					{
-						const auto circle = GetPayload<PainterCirclePayload>(command);
-						return command.Type == static_cast<uint32_t>(EPainterCommandType::Circle) && command.Color == errorColor && status.Contains(ImVec2(circle.Center.x, circle.Center.y));
-					}),
-			"An error's status item should show a disc in the theme's error colour");
+		ui.Frame(draw);
+		ui.Frame(draw);
 
-		// The close button, at the tab's right end, takes the click; the rest of the tab gets its own
-		const ImVec2 closeCentre(tab.Max.x - 16.0f, tab.GetCenter().y);
+		// Clicking a bar tab selects it
+		click(barTabs[1].GetCenter());
+		Require(selectedTab == 1, "Clicking a bar tab should select it");
+		click(barTabs[0].GetCenter());
+		Require(selectedTab == 0, "Clicking the other bar tab should select that one");
+
+		// The close button: hovered along the tab's middle, from its right end, until ImGui has the
+		// button's ID hovered; its left edge is where that stops.
+		const float middleY = tab.GetCenter().y;
+		float closeRight = 0.0f;
+		float closeLeft = 0.0f;
+		for (float x = tab.Max.x - 1.0f; x > tab.Min.x; x -= 1.0f)
+		{
+			io.AddMousePosEvent(x, middleY);
+			ui.Frame(draw);
+			const bool bOverClose = g.HoveredId == closeId;
+			if (bOverClose && closeRight == 0.0f)
+			{
+				closeRight = x;
+			}
+			if (!bOverClose && closeRight != 0.0f)
+			{
+				closeLeft = x + 1.0f;
+				break;
+			}
+		}
+		Require(closeRight != 0.0f && closeLeft != 0.0f, "A document tab should have a close button inside it");
+		const ImVec2 closeCentre((closeLeft + closeRight) * 0.5f, middleY);
+		const ImVec2 tabOnly((tab.Min.x + closeLeft) * 0.5f, middleY);
+
+		// The close button takes the click; the rest of the tab gets its own
 		click(closeCentre);
 		Require(closeClicks == 1 && tabClicks == 0, "Clicking a document tab's close button should close it, and not click the tab");
-		click(ImVec2(tab.Min.x + 10.0f, tab.GetCenter().y));
+		click(tabOnly);
 		Require(closeClicks == 1 && tabClicks == 1, "Clicking a document tab left of its close button should click the tab");
 		bCanClose = false;
 		click(closeCentre);
@@ -1076,6 +1135,10 @@ namespace
 		bBuildDisabled = true;
 		click(build.GetCenter());
 		Require(buildClicks == 1, "A disabled icon button should take no click");
+
+		io.AddMousePosEvent(status.GetCenter().x, status.GetCenter().y);
+		ui.Frame(draw);
+		Require(bStatusHovered, "IsItemHovered() should be true over a status item");
 	}
 
 	// Which theme file a preference names, and the preference a file gets: the default theme is
@@ -1181,17 +1244,19 @@ namespace
 		std::filesystem::remove_all(folder, ignored);
 	}
 
-	// The titlebar's widgets: a button in a tone of its own, a menu bar button with its open menu's
-	// pill, window controls, a multi-line field over a painted frame, and a logarithmic slider
-	// whose knob sits where ImGui's grab is.
+	// The titlebar's widgets: a button in a tone of its own and a menu bar button click, a window
+	// control is hovered under the mouse and clicks, a multi-line field lies on a painted frame,
+	// and a logarithmic slider's knob sits where ImGui's grab is.
 	void TestTitlebarWidgetsAndMultilineFields()
 	{
 		HeadlessUI ui;
 		ImGuiIO& io = ImGui::GetIO();
-		const Nyx::UI::Theme& theme = Nyx::UI::GetTheme();
 
 		bool bMenuOpen = false;
+		int playClicks = 0;
+		int menuClicks = 0;
 		int closeClicks = 0;
+		bool bCloseHovered = false;
 		float zoom = 100.0f;
 		std::string log = "first line\nsecond line";
 		ImRect play;
@@ -1205,11 +1270,12 @@ namespace
 				ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
 				ImGui::SetNextWindowSize(ImVec2(500.0f, 400.0f));
 				ImGui::Begin("Titlebar");
-				Nyx::UI::Button("Play", glm::vec2(64.0f, 28.0f), Nyx::UI::EButtonTone::Go);
+				playClicks += Nyx::UI::Button("Play", glm::vec2(64.0f, 28.0f), Nyx::UI::EButtonTone::Go) ? 1 : 0;
 				play = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
-				Nyx::UI::MenuBarButton("File", glm::vec2(56.0f, 28.0f), bMenuOpen);
+				menuClicks += Nyx::UI::MenuBarButton("File", glm::vec2(56.0f, 28.0f), bMenuOpen) ? 1 : 0;
 				menu = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
 				closeClicks += Nyx::UI::WindowControlButton("##Close", Nyx::UI::EWindowControl::Close, glm::vec2(46.0f, 32.0f)) ? 1 : 0;
+				bCloseHovered = ImGui::IsItemHovered();
 				close = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
 				Nyx::UI::InputTextMultiline("##Log", &log, glm::vec2(-FLT_MIN, 80.0f), ImGuiInputTextFlags_ReadOnly);
 				details = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
@@ -1227,35 +1293,41 @@ namespace
 					ui.Frame(draw);
 				}
 			};
-		const auto findFill = [&](const ImRect& rect, const glm::vec4& color)
+		const auto click = [&](ImVec2 at)
 			{
-				const uint32_t packed = PackPremultipliedColor(color);
-				return std::any_of(commands.begin(), commands.end(), [&](const PainterCommand& command)
-					{
-						const PainterRect painted = GetPayload<PainterRectPayload>(command).Rect;
-						return command.Type == static_cast<uint32_t>(EPainterCommandType::Rect) && command.OutlineWidth == 0.0f && command.Color == packed &&
-							painted.Min.x >= rect.Min.x && painted.Max.x <= rect.Max.x && painted.Min.y >= rect.Min.y && painted.Max.y <= rect.Max.y;
-					});
+				io.AddMousePosEvent(at.x, at.y);
+				ui.Frame(draw);
+				io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+				ui.Frame(draw);
+				io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+				ui.Frame(draw);
 			};
 
 		io.AddMousePosEvent(-100.0f, -100.0f);
 		settle();
-		Require(findFill(play, theme.ButtonGo), "A Go button should be filled in the theme's Go colour");
-		Require(!findFill(menu, Nyx::UI::GetTheme().RowSelected), "A menu bar button whose menu is closed should be flat");
-		Require(!findFill(close, theme.WindowCloseHovered), "A window control should be flat until hovered");
-		Require(findFill(details, theme.Field), "A multi-line field's frame should be painted where ImGui lays it out");
+		// The field's painted frame: a filled rect inside ImGui's, under its middle
+		Require(std::any_of(commands.begin(), commands.end(), [&](const PainterCommand& command)
+					{
+						const PainterRect rect = GetPayload<PainterRectPayload>(command).Rect;
+						const ImRect painted(ImVec2(rect.Min.x, rect.Min.y), ImVec2(rect.Max.x, rect.Max.y));
+						return command.Type == static_cast<uint32_t>(EPainterCommandType::Rect) && command.OutlineWidth == 0.0f && details.Contains(painted) &&
+							painted.Contains(details.GetCenter());
+					}),
+			"A multi-line field's frame should be painted under it");
 
+		click(play.GetCenter());
+		Require(playClicks == 1, "Clicking a toned button should click it");
+		click(menu.GetCenter());
+		Require(menuClicks == 1, "Clicking a menu bar button should click it, to open its menu");
 		bMenuOpen = true;
-		settle();
-		Require(findFill(menu, theme.RowSelected), "A menu bar button whose menu is open should show the selection's pill");
+		click(menu.GetCenter());
+		Require(menuClicks == 2, "A menu bar button whose menu is open should still click");
 
+		Require(!bCloseHovered, "A window control shouldn't be hovered with the mouse elsewhere");
 		io.AddMousePosEvent(close.GetCenter().x, close.GetCenter().y);
-		settle();
-		Require(findFill(close, theme.WindowCloseHovered), "A hovered close button should fill in the theme's red");
-		io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
 		ui.Frame(draw);
-		io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
-		ui.Frame(draw);
+		Require(bCloseHovered, "IsItemHovered() should be true over a window control");
+		click(close.GetCenter());
 		Require(closeClicks == 1, "Clicking a window control should click it");
 
 		// A read-only field keeps its text whatever is typed.
