@@ -18,7 +18,7 @@ namespace Nyx::Editor
 		};
 	}
 
-	inline ObjectRef MakeSceneEntityRef(const Nyx::SceneDocument& scene, Nyx::Entity entity)
+	inline ObjectRef MakeSceneEntityRef(const SceneDocument& scene, Nyx::Entity entity)
 	{
 		return MakeSceneEntityRef(scene.GetGuid(entity));
 	}

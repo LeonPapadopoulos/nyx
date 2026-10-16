@@ -98,7 +98,7 @@ namespace
 	// The editor's transaction system as EditorLayer sets it up, and the game's world
 	struct EditorAndGame
 	{
-		Nyx::SceneDocument Scene;
+		Nyx::Editor::SceneDocument Scene;
 		SceneEntityTransactionDomain Domain;
 		TransactionSystem Transactions;
 		EditorTransactionContext Context;
@@ -673,7 +673,7 @@ namespace
 
 	void TestCopyNames()
 	{
-		Nyx::SceneDocument scene;
+		Nyx::Editor::SceneDocument scene;
 		scene.CreateEntity("Lamp");
 		Require(MakeCopyName(scene, "Lamp") == "Lamp (2)", "The first copy should be (2)");
 		scene.CreateEntity("Lamp (2)");

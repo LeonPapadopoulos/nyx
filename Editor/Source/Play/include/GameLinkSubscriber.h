@@ -7,13 +7,10 @@
 #include <utility>
 #include <vector>
 
-namespace Nyx
-{
-	class SceneDocument;
-}
-
 namespace Nyx::Editor
 {
+	class SceneDocument;
+
 	// Sends the editor's edits to the game started with Play, so they show up there live.
 	//
 	// Every new edit, undo and redo becomes editor link messages (see LiveEdits.h) that bring the
@@ -29,7 +26,7 @@ namespace Nyx::Editor
 	class GameLinkSubscriber final : public ITransactionSubscriber
 	{
 	public:
-		explicit GameLinkSubscriber(const Nyx::SceneDocument& scene);
+		explicit GameLinkSubscriber(const SceneDocument& scene);
 
 		void OnTransactionCommitted(const Transaction& transaction) override;
 		void OnTransactionApplied(const Transaction& transaction, bool bWasUndo) override;
@@ -67,7 +64,7 @@ namespace Nyx::Editor
 		void Keep(Nyx::Net::Message message);
 
 	private:
-		const Nyx::SceneDocument& Scene;
+		const SceneDocument& Scene;
 		bool bSessionActive = false;
 		std::vector<Nyx::Net::Message> Pending;
 		size_t PendingBytes = 0;

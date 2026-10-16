@@ -13,7 +13,7 @@
 
 namespace Nyx::Editor
 {
-	PlaySession::PlaySession(const Nyx::SceneDocument& scene, GameLinkPanel& gameLinkWindow)
+	PlaySession::PlaySession(const SceneDocument& scene, GameLinkPanel& gameLinkWindow)
 		: Scene(scene)
 		, GameLinkWindow(gameLinkWindow)
 		, GameEdits(scene)

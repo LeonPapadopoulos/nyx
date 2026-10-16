@@ -1,14 +1,11 @@
 #pragma once
 
-namespace Nyx
-{
-	class SceneDocument;
-}
-
 namespace Nyx::Editor
 {
+	class SceneDocument;
+
 	struct EditorTransactionContext
 	{
-		Nyx::SceneDocument* ActiveScene = nullptr;
+		SceneDocument* ActiveScene = nullptr;
 	};
 }

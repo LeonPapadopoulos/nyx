@@ -61,9 +61,6 @@ set(NYX_EDITOR_SOURCES
     Preferences/src/EditorPreferences.cpp
     Preferences/src/SourceNavigation.cpp
 
-    # DevTools
-    DevTools/src/ImGuiDebugTools.cpp
-
     # Common
     Common/src/FileDialogs.cpp
     Common/src/ReflectionSourceRegistry.cpp
@@ -136,9 +133,6 @@ set(NYX_EDITOR_HEADERS
     Preferences/include/EditorPreferences.h
     Preferences/include/SourceNavigation.h
 
-    # DevTools
-    DevTools/include/ImGuiDebugTools.h
-
     # Common
     Common/src/EditorPCH.h
     Common/include/FileDialogs.h
@@ -153,11 +147,13 @@ set(NYX_EDITOR_HEADERS
 # only, where NYX_DEV_TOOLS lets EditorLayer own them.
 set(NYX_DEV_TOOLS_DIR ${PROJECT_SOURCE_DIR}/Engine/Source/DevTools)
 set(NYX_EDITOR_DEV_TOOL_SOURCES
+    DevTools/src/ImGuiDebugTools.cpp
     DevTools/src/PainterTestWindow.cpp
     DevTools/src/MockupOverlay.cpp
     ${NYX_DEV_TOOLS_DIR}/src/PainterTestSheet.cpp
 )
 set(NYX_EDITOR_DEV_TOOL_HEADERS
+    DevTools/include/ImGuiDebugTools.h
     DevTools/include/PainterTestWindow.h
     DevTools/include/MockupOverlay.h
     ${NYX_DEV_TOOLS_DIR}/include/PainterTestSheet.h
@@ -215,10 +211,12 @@ target_precompile_headers(NyxEditorLib
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES
 	${NYX_EDITOR_SOURCES}
 	${NYX_EDITOR_HEADERS}
+	DevTools/src/ImGuiDebugTools.cpp
 	DevTools/src/PainterTestWindow.cpp
 	DevTools/src/MockupOverlay.cpp
 	DevTools/include/PainterTestWindow.h
 	DevTools/include/MockupOverlay.h
+	DevTools/include/ImGuiDebugTools.h
 )
 source_group(DevTools FILES
 	${NYX_DEV_TOOLS_DIR}/src/PainterTestSheet.cpp
@@ -314,4 +312,12 @@ if(BUILD_TESTING)
     target_precompile_headers(NyxPlayWallTests REUSE_FROM NyxEditorLib)
     set_property(TARGET NyxPlayWallTests PROPERTY FOLDER "Tests")
     add_test(NAME NyxPlayWallTests COMMAND NyxPlayWallTests)
+
+    # Every #include between the editor's folders against their table in Docs/Architecture.md
+    add_test(NAME NyxEditorFolderDependencies
+        COMMAND ${CMAKE_COMMAND}
+            "-DFOLDERS_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+            "-DTABLE_HEADING=## Editor folders"
+            "-DARCHITECTURE_DOC=${PROJECT_SOURCE_DIR}/Docs/Architecture.md"
+            -P "${PROJECT_SOURCE_DIR}/Engine/Source/tests/FolderDependencies.cmake")
 endif()

@@ -13,7 +13,7 @@ namespace Nyx
 	class Registry;
 }
 
-namespace Nyx
+namespace Nyx::Editor
 {
 	class SceneDocument
 	{

@@ -223,12 +223,14 @@ nyx_copy_shaders_next_to(NyxSceneGpuTests)
 nyx_copy_shader_compiler_next_to(NyxSceneGpuTests)
 add_test(NAME NyxSceneGpuTests COMMAND NyxSceneGpuTests)
 
-# Every #include between the engine's folders against the table in Docs/Architecture.md
+# Every #include between the engine's folders against their table in Docs/Architecture.md
 add_test(NAME NyxRuntimeFolderDependencies
     COMMAND ${CMAKE_COMMAND}
-        "-DENGINE_SOURCE_DIR=${PROJECT_SOURCE_DIR}/Engine/Source"
+        "-DFOLDERS_DIR=${PROJECT_SOURCE_DIR}/Engine/Source/Runtime"
+        "-DEXTRA_FOLDERS=Reflection=${PROJECT_SOURCE_DIR}/Engine/Source/Reflection"
+        "-DTABLE_HEADING=## Modules"
         "-DARCHITECTURE_DOC=${PROJECT_SOURCE_DIR}/Docs/Architecture.md"
-        -P "${CMAKE_CURRENT_SOURCE_DIR}/RuntimeFolderDependencies.cmake")
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/FolderDependencies.cmake")
 
 if(MSVC)
     add_test(NAME NyxRuntimeInspectionSymbols

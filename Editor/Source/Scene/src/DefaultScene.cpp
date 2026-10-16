@@ -10,7 +10,7 @@
 
 namespace Nyx::Editor
 {
-	void SpawnDefaultScene(Nyx::SceneDocument& scene)
+	void SpawnDefaultScene(SceneDocument& scene)
 	{
 		auto& world = scene.GetRegistry();
 

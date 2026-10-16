@@ -36,8 +36,8 @@ message on the wire is `payload size (u32) | type (u16) | payload`, little-endia
 
 The engine's source folders are under `Engine/Source`: `Reflection`, `DevTools`, and the folders
 of `Runtime`, each with an `include` and a `src` folder. A folder includes only from the folders
-its row lists. `NyxRuntimeFolderDependencies` (`Engine/Source/tests/RuntimeFolderDependencies.cmake`)
-reads this table and fails on any `#include` it doesn't allow, and on a table that goes round in a
+its row lists. `NyxRuntimeFolderDependencies` (`Engine/Source/tests/FolderDependencies.cmake`) reads
+this table and fails on any `#include` it doesn't allow, and on a table that goes round in a
 circle, so a new dependency starts here.
 
 | Folder | What it holds | Includes from |
@@ -82,6 +82,27 @@ The CMake targets:
   editor's tests link, so the editor compiles once.
 - Tests are in `Engine/Source/tests` and `Editor/Source/tests`; `ctest -C Debug` in
   `Build/Windows` runs them all.
+
+## Editor folders
+
+The editor's source folders are under `Editor/Source`, each with an `include` and a `src` folder;
+its tests are in `Editor/Source/tests`. A file used by one folder lives in that folder. `Common`
+holds only pieces used by two or more folders, and includes no other editor folder. As for the
+engine, a folder includes only from the folders its row lists, and `NyxEditorFolderDependencies`
+checks every `#include` against this table.
+
+| Folder | What it holds | Includes from |
+| --- | --- | --- |
+| `Common` | Native file dialogs, the UI source inspector, where reflected properties are declared, property values read and written through reflection, the precompiled header | — |
+| `Assets` | The asset database, asset types, dragging assets, the asset browser | — |
+| `Materials` | The material open for editing, the Parameters and preview windows, New Material, the Shader Log | — |
+| `Transactions` | Undo and redo: transactions, their changes, snapshots of objects | Common |
+| `Preferences` | The editor's preferences, the Preferences and Theme windows, opening source in the chosen editor | Common |
+| `DevTools` | The prototype and diagnostics tools, in Debug builds only (`NYX_DEV_TOOLS`): Painter Test, Mockup Overlay, ImGui's debug windows | Common |
+| `Properties` | Drawing and editing reflected properties: a widget per property kind, and the edit in progress | Common, Transactions, Assets |
+| `Scene` | The scene being edited: its document and undo, the outliner, details, gizmo, scene views and their cameras, scene files, copy and paste | Common, Transactions, Assets, Preferences, Properties |
+| `Play` | Play and Play All: the games, their windows and crash cards, the Game Link window, edits sent to the games | Transactions, Preferences, Scene |
+| `App` | `EditorLayer`, which owns and wires up everything else, the workspaces, the asset types the editor knows | Common, Assets, Materials, Preferences, DevTools, Properties, Scene, Play |
 
 ## One frame
 

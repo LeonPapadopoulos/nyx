@@ -10,7 +10,7 @@
 
 namespace Nyx::Editor
 {
-	ComponentPostLoadSubscriber::ComponentPostLoadSubscriber(Nyx::SceneDocument& scene)
+	ComponentPostLoadSubscriber::ComponentPostLoadSubscriber(SceneDocument& scene)
 		: Scene(scene)
 	{
 	}

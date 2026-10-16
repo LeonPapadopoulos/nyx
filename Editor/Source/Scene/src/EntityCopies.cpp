@@ -44,7 +44,7 @@ namespace
 
 namespace Nyx::Editor
 {
-	std::vector<std::byte> CopyEntity(const Nyx::SceneDocument& scene, Nyx::Entity entity)
+	std::vector<std::byte> CopyEntity(const SceneDocument& scene, Nyx::Entity entity)
 	{
 		const Nyx::Registry& world = scene.GetRegistry();
 		if (!world.IsAlive(entity))
@@ -62,7 +62,7 @@ namespace Nyx::Editor
 		return writer.GetBytes();
 	}
 
-	std::optional<Nyx::Entity> PasteEntity(Nyx::SceneDocument& scene, TransactionSystem& transactions, ITransactionDomain& domain,
+	std::optional<Nyx::Entity> PasteEntity(SceneDocument& scene, TransactionSystem& transactions, ITransactionDomain& domain,
 		EditorTransactionContext& context, const std::vector<std::byte>& copied, const char* label)
 	{
 		if (copied.empty())
@@ -113,7 +113,7 @@ namespace Nyx::Editor
 		return entity;
 	}
 
-	std::string MakeCopyName(const Nyx::SceneDocument& scene, const std::string& name)
+	std::string MakeCopyName(const SceneDocument& scene, const std::string& name)
 	{
 		std::set<std::string> taken;
 		scene.GetRegistry().Each<Nyx::NameComponent>(

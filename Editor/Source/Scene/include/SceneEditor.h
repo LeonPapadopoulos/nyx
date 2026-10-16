@@ -55,7 +55,7 @@ namespace Nyx::Editor
 		void HandleHotkeys();
 
 	public:
-		Nyx::SceneDocument Scene;
+		SceneDocument Scene;
 
 		// Counts scene replacements. Widgets use it in their IDs, so a replacement scene, which can
 		// reuse entity handles, gets no drag or text edit left over from the previous one.

@@ -19,7 +19,7 @@ namespace Nyx::Editor
 			componentType.TypeMetadata != &Nyx::Reflection::GetTypeMetadata<Nyx::NameComponent>();
 	}
 
-	bool AddComponent(Nyx::SceneDocument& scene, TransactionSystem& transactions, Nyx::Entity entity,
+	bool AddComponent(SceneDocument& scene, TransactionSystem& transactions, Nyx::Entity entity,
 		const Nyx::ComponentTypeOps& componentType)
 	{
 		Nyx::Registry& world = scene.GetRegistry();
@@ -39,7 +39,7 @@ namespace Nyx::Editor
 		return true;
 	}
 
-	bool RemoveComponent(Nyx::SceneDocument& scene, TransactionSystem& transactions, Nyx::Entity entity,
+	bool RemoveComponent(SceneDocument& scene, TransactionSystem& transactions, Nyx::Entity entity,
 		const Nyx::ComponentTypeOps& componentType)
 	{
 		Nyx::Registry& world = scene.GetRegistry();
@@ -62,7 +62,7 @@ namespace Nyx::Editor
 		return true;
 	}
 
-	bool AssignMaterial(Nyx::SceneDocument& scene, TransactionSystem& transactions, Nyx::Entity entity, const std::string& path)
+	bool AssignMaterial(SceneDocument& scene, TransactionSystem& transactions, Nyx::Entity entity, const std::string& path)
 	{
 		Nyx::Registry& world = scene.GetRegistry();
 		if (!world.IsAlive(entity) || !world.Has<Nyx::MeshRendererComponent>(entity))

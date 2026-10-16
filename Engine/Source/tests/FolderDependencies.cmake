@@ -1,20 +1,28 @@
-# Checks every #include between the engine's source folders against the table in the Modules
-# section of Docs/Architecture.md: a folder may include only from the folders its row lists, and
-# the table must not go round in a circle, so the folders stay layered.
+# Checks every #include between the folders of a source tree against a table in
+# Docs/Architecture.md: a folder may include only from the folders its row lists, and the table
+# must not go round in a circle, so the folders stay layered.
 #
-# cmake -DENGINE_SOURCE_DIR=<Engine/Source> -DARCHITECTURE_DOC=<Docs/Architecture.md> -P RuntimeFolderDependencies.cmake
+# cmake -DFOLDERS_DIR=<dir> [-DEXTRA_FOLDERS=<Name>=<dir>;...] -DTABLE_HEADING=<"## Heading">
+#       -DARCHITECTURE_DOC=<Docs/Architecture.md> -P FolderDependencies.cmake
+#
+# The folders are the subfolders of FOLDERS_DIR with an include or src folder, and EXTRA_FOLDERS.
+# The table is the first one after TABLE_HEADING; its first column names the folder, its last
+# the folders it may include from, "—" for none.
 
 cmake_minimum_required(VERSION 3.23)
 
-# The folders: each of Runtime, and Reflection
-file(GLOB runtimeFolders LIST_DIRECTORIES true RELATIVE "${ENGINE_SOURCE_DIR}/Runtime" "${ENGINE_SOURCE_DIR}/Runtime/*")
-set(folders Reflection)
-set(FOLDER_DIR_Reflection "${ENGINE_SOURCE_DIR}/Reflection")
-foreach(folder IN LISTS runtimeFolders)
-    if(IS_DIRECTORY "${ENGINE_SOURCE_DIR}/Runtime/${folder}")
+file(GLOB subfolders LIST_DIRECTORIES true RELATIVE "${FOLDERS_DIR}" "${FOLDERS_DIR}/*")
+set(folders "")
+foreach(folder IN LISTS subfolders)
+    if(IS_DIRECTORY "${FOLDERS_DIR}/${folder}/include" OR IS_DIRECTORY "${FOLDERS_DIR}/${folder}/src")
         list(APPEND folders ${folder})
-        set(FOLDER_DIR_${folder} "${ENGINE_SOURCE_DIR}/Runtime/${folder}")
+        set(FOLDER_DIR_${folder} "${FOLDERS_DIR}/${folder}")
     endif()
+endforeach()
+foreach(extra IN LISTS EXTRA_FOLDERS)
+    string(REGEX MATCH "^([^=]+)=(.*)$" unused "${extra}")
+    list(APPEND folders ${CMAKE_MATCH_1})
+    set(FOLDER_DIR_${CMAKE_MATCH_1} "${CMAKE_MATCH_2}")
 endforeach()
 
 # Which folder each header is in. Includes name headers without their folder, so a name may be in
@@ -31,10 +39,9 @@ foreach(folder IN LISTS folders)
     endforeach()
 endforeach()
 
-# The allowed table: the first table after "## Modules"; the first column names the folder, the
-# last the folders it may include from, "—" for none
+# The allowed table
 file(STRINGS "${ARCHITECTURE_DOC}" docLines ENCODING UTF-8)
-set(bInModules FALSE)
+set(bInSection FALSE)
 set(bInTable FALSE)
 set(tableFolders "")
 foreach(line IN LISTS docLines)
@@ -42,11 +49,11 @@ foreach(line IN LISTS docLines)
         if(bInTable)
             break()
         endif()
-        set(bInModules FALSE)
-        if(line STREQUAL "## Modules")
-            set(bInModules TRUE)
+        set(bInSection FALSE)
+        if(line STREQUAL "${TABLE_HEADING}")
+            set(bInSection TRUE)
         endif()
-    elseif(bInModules AND line MATCHES "^\\| `([A-Za-z]+)` \\|.*\\| ([^|]*) \\|$")
+    elseif(bInSection AND line MATCHES "^\\| `([A-Za-z]+)` \\|.*\\| ([^|]*) \\|$")
         set(bInTable TRUE)
         set(folder ${CMAKE_MATCH_1})
         string(STRIP "${CMAKE_MATCH_2}" allowed)
@@ -61,7 +68,7 @@ foreach(line IN LISTS docLines)
     endif()
 endforeach()
 if(NOT tableFolders)
-    message(FATAL_ERROR "No folder table under \"## Modules\" in ${ARCHITECTURE_DOC}")
+    message(FATAL_ERROR "No folder table under \"${TABLE_HEADING}\" in ${ARCHITECTURE_DOC}")
 endif()
 foreach(folder IN LISTS folders)
     if(NOT folder IN_LIST tableFolders)
@@ -104,11 +111,11 @@ foreach(folder IN LISTS folders)
             string(REGEX REPLACE "^[ \t]*#[ \t]*include[ \t]*\"([^\"]+)\".*$" "\\1" included "${include}")
             get_filename_component(name "${included}" NAME)
             if(NOT DEFINED HEADER_FOLDER_${name})
-                continue() # a library's or a generated header
+                continue() # another tree's, a library's or a generated header
             endif()
             set(target ${HEADER_FOLDER_${name}})
             if(NOT target STREQUAL folder AND NOT target IN_LIST ALLOWED_${folder})
-                file(RELATIVE_PATH where "${ENGINE_SOURCE_DIR}" "${source}")
+                file(RELATIVE_PATH where "${FOLDERS_DIR}" "${source}")
                 string(APPEND problems "\n  ${folder} -> ${target}: ${where} includes ${name}")
             endif()
         endforeach()
@@ -116,8 +123,8 @@ foreach(folder IN LISTS folders)
 endforeach()
 
 if(problems)
-    message(FATAL_ERROR "The engine's folders don't keep to the table in ${ARCHITECTURE_DOC}:${problems}")
+    message(FATAL_ERROR "The folders of ${FOLDERS_DIR} don't keep to the table under \"${TABLE_HEADING}\" in ${ARCHITECTURE_DOC}:${problems}")
 endif()
 
 list(JOIN placed ", " order)
-message(STATUS "The engine's folders keep to the table: ${order}")
+message(STATUS "The folders of ${FOLDERS_DIR} keep to the table: ${order}")

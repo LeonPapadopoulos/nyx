@@ -11,13 +11,9 @@
 #include <string>
 #include <vector>
 
-namespace Nyx
-{
-	class SceneDocument;
-}
-
 namespace Nyx::Editor
 {
+	class SceneDocument;
 	class GameLinkPanel;
 	struct EditorPreferences;
 
@@ -29,7 +25,7 @@ namespace Nyx::Editor
 	{
 	public:
 		// The scene is what the games run; the Game Link window sees their logs and messages.
-		PlaySession(const Nyx::SceneDocument& scene, GameLinkPanel& gameLinkWindow);
+		PlaySession(const SceneDocument& scene, GameLinkPanel& gameLinkWindow);
 
 		PlaySession(const PlaySession&) = delete;
 		PlaySession& operator=(const PlaySession&) = delete;
@@ -99,7 +95,7 @@ namespace Nyx::Editor
 		bool AnyTakesEdits() const;
 
 	private:
-		const Nyx::SceneDocument& Scene;
+		const SceneDocument& Scene;
 		GameLinkPanel& GameLinkWindow;
 
 		// The games started with Play that haven't exited yet, each with its own editor link

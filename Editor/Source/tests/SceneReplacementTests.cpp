@@ -335,7 +335,7 @@ int main()
 		Nyx::RegisterComponentTypes();
 		TestDirectory directory("NyxEditorSceneTests");
 		const auto validPath = directory.Path / "replacement.nyxscene";
-		Nyx::SceneDocument replacement;
+		Nyx::Editor::SceneDocument replacement;
 		const auto entity = replacement.CreateEntity("Replacement");
 		replacement.GetRegistry().Add<Nyx::TransformComponent>(entity, Nyx::TransformComponent{});
 		Require(Nyx::SceneSerializer::SaveToFile(replacement.GetRegistry(), validPath), "Could not save fixture");

@@ -97,7 +97,7 @@ namespace
 
 namespace Nyx::Editor
 {
-	GameLinkSubscriber::GameLinkSubscriber(const Nyx::SceneDocument& scene)
+	GameLinkSubscriber::GameLinkSubscriber(const SceneDocument& scene)
 		: Scene(scene)
 	{
 	}

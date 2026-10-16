@@ -93,7 +93,7 @@ namespace Nyx::Editor
 		// Returns true if the gizmo consumed the left-click / interaction.
 		bool TickAndDraw(
 			Nyx::IRenderer& renderer,
-			Nyx::SceneDocument& scene,
+			SceneDocument& scene,
 			Nyx::Editor::TransactionSystem& transactions,
 			uint64_t sceneViewId,
 			const ImVec2& imageScreenMin,

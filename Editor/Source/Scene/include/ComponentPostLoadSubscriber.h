@@ -3,13 +3,10 @@
 #include "SceneSerializationTypes.h"
 #include "TransactionDomain.h"
 
-namespace Nyx
-{
-	class SceneDocument;
-}
-
 namespace Nyx::Editor
 {
+	class SceneDocument;
+
 	// After every edit, undo and redo, runs the PostLoad step of each component of the entities
 	// the transaction touched, as loading a scene does. That is what turns a MeshRenderer's mesh
 	// and material paths into the renderer's assets, so e.g. typing a mesh path in the details
@@ -17,7 +14,7 @@ namespace Nyx::Editor
 	class ComponentPostLoadSubscriber final : public ITransactionSubscriber
 	{
 	public:
-		explicit ComponentPostLoadSubscriber(Nyx::SceneDocument& scene);
+		explicit ComponentPostLoadSubscriber(SceneDocument& scene);
 
 		// Where assets come from; until set, PostLoad steps run without an asset resolver
 		void SetPostLoadContext(const Nyx::ScenePostLoadContext& context)
@@ -32,7 +29,7 @@ namespace Nyx::Editor
 		void RunPostLoad(const Transaction& transaction);
 
 	private:
-		Nyx::SceneDocument& Scene;
+		SceneDocument& Scene;
 		Nyx::ScenePostLoadContext PostLoadContext;
 	};
 }

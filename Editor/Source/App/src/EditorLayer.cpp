@@ -259,7 +259,9 @@ namespace Nyx::Editor
 
 	void EditorLayer::OnUpdate(float deltaTime)
 	{
+#if NYX_DEV_TOOLS
 		DebugTools.BeforeFrame();
+#endif
 
 		// A workspace chosen last frame: its layout, which ImGui loads between frames
 		if (Layouts.ApplyPending())
@@ -400,8 +402,8 @@ namespace Nyx::Editor
 			Games.Restart(*restart);
 		}
 
-		DebugTools.DrawWindows();
 #if NYX_DEV_TOOLS
+		DebugTools.DrawWindows();
 		PainterTest.SetFrameRateLimits(Window->IsVSync(), Window->GetFrameRateCap());
 		PainterTest.Draw(*Renderer);
 		Mockup.Draw(*Renderer);
@@ -529,8 +531,10 @@ namespace Nyx::Editor
 		PlaceMenuUnderLastItem();
 		if (Nyx::UI::BeginPopup("##TitlebarDebugMenu"))
 		{
+#if NYX_DEV_TOOLS
 			DebugTools.DrawMenu();
 			Nyx::UI::Separator();
+#endif
 			NYX_UI(ImGui::TextDisabled("Nyx"));
 #if NYX_DEV_TOOLS
 			NYX_UI(Nyx::UI::MenuItem("Painter Test", nullptr, &PainterTest.bOpen));

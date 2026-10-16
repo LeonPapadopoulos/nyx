@@ -9,7 +9,6 @@
 #include "EditorCameraController.h"
 #include "EditorPreferences.h"
 #include "GameLinkPanel.h"
-#include "ImGuiDebugTools.h"
 #include "Layer.h"
 #include "MaterialParametersPanel.h"
 #include "MaterialPreviewPanel.h"
@@ -28,6 +27,7 @@
 #include "Window.h"
 
 #if NYX_DEV_TOOLS
+#include "ImGuiDebugTools.h"
 #include "MockupOverlay.h"
 #include "PainterTestWindow.h"
 #endif
@@ -127,8 +127,8 @@ namespace Nyx::Editor
 		bool bSceneFileStatusFailed = false;
 
 		EditorPreferences Preferences;
-		ImGuiDebugTools DebugTools;
 #if NYX_DEV_TOOLS
+		ImGuiDebugTools DebugTools;
 		PainterTestWindow PainterTest;
 		MockupOverlay Mockup;
 #endif
@@ -180,4 +180,8 @@ namespace Nyx::Editor
 		// The games started with Play; edits reach them from Play on
 		PlaySession Games{ Editing.Scene, GameLinkWindow };
 	};
+
+	// Every asset type the editor knows (EditorAssetTypes.cpp). Opening one calls into `editor`,
+	// which must outlive the registry's use.
+	void RegisterEditorAssetTypes(AssetTypeRegistry& registry, EditorLayer& editor);
 }

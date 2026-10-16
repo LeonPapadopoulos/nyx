@@ -266,7 +266,7 @@ namespace
 		Require(!request.Load && !request.SaveAs, "Opening a popup should not request anything");
 
 		// Play's commands do nothing harmful without games
-		Nyx::SceneDocument scene;
+		Nyx::Editor::SceneDocument scene;
 		GameLinkPanel gameLink;
 		PlaySession session(scene, gameLink);
 		session.Stop();
@@ -1316,7 +1316,7 @@ namespace
 		crash.ExitCode = 0xC0000005;
 		crash.Report = Nyx::CrashReport{ 0xC0000005, "access violation", std::vector<Nyx::CrashStackFrame>(3) };
 		crashCards.Add(crash, "last line");
-		Nyx::SceneDocument scene;
+		Nyx::Editor::SceneDocument scene;
 		GameLinkPanel gameLink;
 		PlaySession session(scene, gameLink);
 		EditorPreferences preferences;

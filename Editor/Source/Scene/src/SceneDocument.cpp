@@ -3,7 +3,7 @@
 #include "Entity.h"
 #include "GuidComponent.h"
 
-namespace Nyx
+namespace Nyx::Editor
 {
 	Nyx::Entity SceneDocument::CreateEntity(const std::string& name)
 	{

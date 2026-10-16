@@ -9,7 +9,6 @@
 namespace Nyx::Editor
 {
 	struct AssetEntry;
-	class EditorLayer;
 
 	using AssetActivateFn = std::function<void(const AssetEntry&)>;
 	using AssetCanActivateFn = std::function<bool(const AssetEntry&)>;
@@ -42,8 +41,4 @@ namespace Nyx::Editor
 	private:
 		std::vector<AssetTypeDescriptor> Types;
 	};
-
-	// Every asset type the editor knows (EditorAssetTypes.cpp). Opening one calls into `editor`,
-	// which must outlive the registry's use.
-	void RegisterEditorAssetTypes(AssetTypeRegistry& registry, EditorLayer& editor);
 }
