@@ -1,6 +1,7 @@
 #pragma once
 #include "NyxEngineAPI.h"
 #include "Layer.h"
+#include "FixedStepClock.h"
 #include "InputSystem.h"
 #include "Window.h"
 #include <memory>
@@ -41,6 +42,10 @@ namespace Nyx
 		// Keyboard and mouse, gathered once per frame before the layers' OnUpdate
 		Nyx::Input::InputSystem& GetInput() { return Input; }
 
+		// The fixed simulation steps: each frame's real time in steps for the layers' OnFixedUpdate.
+		// Pause, step and time scale go here.
+		FixedStepClock& GetSimulationClock() { return SimulationClock; }
+
 		// Ends the frame loop after the current frame, as if the user closed the window
 		void RequestQuit() { Window->RequestClose(); }
 
@@ -49,9 +54,15 @@ namespace Nyx
 		// minimized
 		void DrawFrame();
 
+		// Runs the steps the clock asks for this frame
+		void RunFixedSteps(double frameSeconds);
+
 		std::unique_ptr<IWindow> Window;
 		std::unique_ptr<IEditorRenderer> Renderer;
 		Nyx::Input::InputSystem Input;
+		FixedStepClock SimulationClock;
+		// Set while the clock drops time, so the warning comes once, not every frame
+		bool WarnedOfDroppedTime = false;
 		std::vector<std::unique_ptr<ILayer>> Layers;
 	};
 

@@ -26,6 +26,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/ChildProcess.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/CrashHandler.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/FrameRateLimiter.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Core/src/FixedStepClock.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/FileWatcher.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/BinaryArchive.cpp
 
@@ -132,6 +133,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/ChildProcess.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/CrashHandler.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/FrameRateLimiter.h
+    ${NYX_ENGINE_ROOT}/Runtime/Core/include/FixedStepClock.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/FileWatcher.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/StringUtil.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/BinaryArchive.h

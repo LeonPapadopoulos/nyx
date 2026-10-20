@@ -43,6 +43,13 @@ add_dependencies(NyxFrameRateLimiterTests NyxGeneratedReflection)
 set_property(TARGET NyxFrameRateLimiterTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxFrameRateLimiterTests COMMAND NyxFrameRateLimiterTests)
 
+# The fixed simulation tick: steps per frame at any frame rate, the cap, pause and step, time scale.
+add_executable(NyxFixedStepClockTests FixedStepClockTests.cpp)
+target_link_libraries(NyxFixedStepClockTests PRIVATE NyxEngine)
+add_dependencies(NyxFixedStepClockTests NyxGeneratedReflection)
+set_property(TARGET NyxFixedStepClockTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxFixedStepClockTests COMMAND NyxFixedStepClockTests)
+
 # The input system with virtual devices: frames, taps shorter than a frame, devices coming and
 # going, focus, the cursor. No window needed.
 add_executable(NyxInputTests InputTests.cpp)

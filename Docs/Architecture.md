@@ -42,7 +42,7 @@ doesn't allow, and on a table that goes round in a circle, so a new dependency s
 
 | Folder | What it holds | Includes from |
 | --- | --- | --- |
-| `Core` | Logging, assertions, paths, text helpers, child processes, the crash handler, file watching, the frame rate limiter, `BinaryArchive` | — |
+| `Core` | Logging, assertions, paths, text helpers, child processes, the crash handler, file watching, the frame rate limiter, the fixed step clock, `BinaryArchive` | — |
 | `Reflection` | Type and property metadata, and the `NYX_REFLECT` and `NYX_PROPERTY` macros; not under `Runtime` | — |
 | `Net` | TCP connections and the messages they carry | Core |
 | `Input` | Keyboard and mouse, gathered from backends into one `InputFrame` per frame | Core |
@@ -115,7 +115,11 @@ checks every `#include` against this table.
 1. `IWindow::WaitForNextFrame()`: the frame rate cap.
 2. `PollEvents()`, then `InputSystem::BeginFrame()`: this frame's input.
 3. Every layer's `OnUpdate(deltaTime)`, in the order they were pushed.
-4. `Application::DrawFrame()`. A minimized window draws nothing and waits 50 ms
+4. The fixed simulation steps: `Application`'s `FixedStepClock` turns the frame's real time into
+   steps of 1/60 s (at most 4 a frame, none while paused), and each step runs every layer's
+   `OnFixedUpdate(step)`, in push order. When it has to drop time, `Application` warns once, and
+   again only after it caught up.
+5. `Application::DrawFrame()`. A minimized window draws nothing and waits 50 ms
    (`IWindow::WaitIfMinimized()`), so the frame loop (and the editor link) keeps running.
    Otherwise `VulkanRenderer::DrawFrameOnDevice()`, which leaves the UI to its `VulkanUIBackend`:
    1. waits for the last frame's fence (one frame in flight), then reads back what that frame
@@ -129,13 +133,14 @@ checks every `#include` against this table.
       hold every layer's `OnUI()`, then the painted window
       chrome, the painter canvases, and the window painters' segments, binned on the GPU;
    5. records the UI pass, submits, renders ImGui's OS windows, signals the fence and presents.
-5. `InputSystem::EndFrame()`: sets the cursor the layers asked for.
+6. `InputSystem::EndFrame()`: sets the cursor the layers asked for.
 
 If the GPU device is lost, the renderer stops drawing and `Application` closes the window.
 
 ## Who owns what
 
-- **`Application`**: the window, the renderer, the `InputSystem` and the layers. It makes the
+- **`Application`**: the window, the renderer, the `InputSystem`, the simulation clock
+  (`GetSimulationClock()`, for pausing and stepping) and the layers. It makes the
   renderer once the window exists, to draw into it. `GetRenderer()` gives the renderer's scene part
   (`IRenderer`), what a game needs; `GetEditorRenderer()` all of it (`IEditorRenderer`), with the
   editor's overlays and picking, material editing, and what ImGui shows. At shutdown it waits for

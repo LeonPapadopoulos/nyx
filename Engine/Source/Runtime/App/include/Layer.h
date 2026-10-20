@@ -1,5 +1,7 @@
 #pragma once
 
+#include "FixedStepClock.h"
+
 namespace Nyx
 {
 	class Application;
@@ -19,6 +21,10 @@ namespace Nyx
 
 		// Called every frame before rendering; deltaTime is in seconds.
 		virtual void OnUpdate(float /*deltaTime*/) {}
+
+		// Called for each fixed simulation step, after every layer's OnUpdate and before rendering:
+		// none, one or a few times a frame, never while the simulation is paused.
+		virtual void OnFixedUpdate(const StepTime& /*step*/) {}
 
 		// Called while a frame's UI is built; draw ImGui windows here.
 		virtual void OnUI() {}

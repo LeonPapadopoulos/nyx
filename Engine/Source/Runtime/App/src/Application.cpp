@@ -2,6 +2,7 @@
 #include "Application.h"
 #include "ComponentRegistration.h"
 #include "EditorRenderer.h"
+#include "Log.h"
 #include "Window.h"
 
 #include <chrono>
@@ -74,19 +75,41 @@ namespace Nyx
 			Input.BeginFrame(Nyx::Input::NowUs());
 
 			const auto frameTime = std::chrono::steady_clock::now();
-			const float deltaTime = std::chrono::duration<float>(frameTime - previousFrameTime).count();
+			const double frameSeconds = std::chrono::duration<double>(frameTime - previousFrameTime).count();
 			previousFrameTime = frameTime;
 
 			for (const std::unique_ptr<ILayer>& layer : Layers)
 			{
-				layer->OnUpdate(deltaTime);
+				layer->OnUpdate(static_cast<float>(frameSeconds));
 			}
+
+			RunFixedSteps(frameSeconds);
 
 			DrawFrame();
 
 			// The cursor as the frame's layers asked for it
 			Input.EndFrame();
 		}
+	}
+
+	void Application::RunFixedSteps(double frameSeconds)
+	{
+		const uint32_t steps = SimulationClock.Advance(frameSeconds);
+		for (uint32_t step = 0; step < steps; ++step)
+		{
+			const StepTime stepTime = SimulationClock.GetFrameStep(step);
+			for (const std::unique_ptr<ILayer>& layer : Layers)
+			{
+				layer->OnFixedUpdate(stepTime);
+			}
+		}
+
+		if (SimulationClock.IsDroppingTime() && !WarnedOfDroppedTime)
+		{
+			CORE_LOG_WARNING("The simulation is dropping time: a frame needed more than {} steps of {:.1f} ms, so the world runs slower than real time",
+				FixedStepClock::MaxStepsPerFrame, SimulationClock.GetStepSeconds() * 1000.0);
+		}
+		WarnedOfDroppedTime = SimulationClock.IsDroppingTime();
 	}
 
 	void Application::DrawFrame()
