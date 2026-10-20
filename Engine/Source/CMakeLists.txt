@@ -243,6 +243,7 @@ set(NYX_ENGINE_HEADERS
     # Runtime/App
     ${NYX_ENGINE_ROOT}/Runtime/App/include/Application.h
     ${NYX_ENGINE_ROOT}/Runtime/App/include/Layer.h
+    ${NYX_ENGINE_ROOT}/Runtime/App/include/GameModule.h
     ${NYX_ENGINE_ROOT}/Runtime/App/include/GameLaunchOptions.h
 
     # Reflection
@@ -411,6 +412,13 @@ foreach(NYX_ENGINE_TARGET NyxEngineCommon NyxEngine NyxEditorEngine)
         PRIVATE ${NYX_ENGINE_ROOT}/Runtime/Core/src/NyxPCH.h
     )
 endforeach()
+
+# The game module of a program built without one: GetLinkedGameModule() gives an empty module.
+# Only the programs link it, so tests and tools need no module at all.
+add_library(NyxNoGameModule OBJECT ${NYX_ENGINE_ROOT}/NoGameModule/src/NoGameModule.cpp)
+# The engine's headers and settings only: an object library takes no objects from another
+target_link_libraries(NyxNoGameModule PRIVATE NyxEngineCommon)
+add_dependencies(NyxNoGameModule NyxGeneratedReflection)
 
 # Link messages, recordings and scene files as readable text, for the editor's message log and
 # NyxDump. The game doesn't need it, so it is in none of the engine libraries; each program that

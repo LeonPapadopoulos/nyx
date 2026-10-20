@@ -11,9 +11,18 @@ namespace Nyx
 {
 	Application::Application(const ApplicationSpecs& specs)
 	{
+		static const GameModule NoGameModule{};
+		Module = specs.Module ? specs.Module : &NoGameModule;
+
 		// Saving and loading scenes, and the editor's details panel and undo, look up
-		// component types in the ComponentTypeRegistry: fill it before any layer runs.
+		// component types in the ComponentTypeRegistry: fill it before any layer runs. The engine's
+		// types first, so a game module's type that takes one of their names is the one refused.
 		RegisterComponentTypes();
+		if (Module->RegisterTypes)
+		{
+			Module->RegisterTypes();
+			LOG_INFO("Game module '{0}'", Module->Name);
+		}
 
 		Window = std::unique_ptr<IWindow>(IWindow::Create(specs.Window));
 		if (Nyx::Input::IInputBackend* windowInput = Window->GetInputBackend())

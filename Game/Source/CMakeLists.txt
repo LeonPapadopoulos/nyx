@@ -22,6 +22,7 @@ target_include_directories(NyxGame
 
 target_link_libraries(NyxGame
 	PRIVATE NyxEngine
+	NyxNoGameModule
 	shell32 # CommandLineToArgvW, for the command line in UTF-8
 )
 

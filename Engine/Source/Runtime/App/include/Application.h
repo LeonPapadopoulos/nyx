@@ -2,6 +2,7 @@
 #include "NyxEngineAPI.h"
 #include "Layer.h"
 #include "FixedStepClock.h"
+#include "GameModule.h"
 #include "InputSystem.h"
 #include "Window.h"
 #include <memory>
@@ -16,6 +17,10 @@ namespace Nyx
 	struct ApplicationSpecs
 	{
 		WindowSpecs Window;
+
+		// The game module whose component types are registered next to the engine's, before any
+		// layer is attached; nullptr: the engine's types only. It must outlive the application.
+		const GameModule* Module = nullptr;
 	};
 
 	// Owns the window and the renderer, and runs the frame loop. What the application actually
@@ -46,6 +51,9 @@ namespace Nyx
 		// Pause, step and time scale go here.
 		FixedStepClock& GetSimulationClock() { return SimulationClock; }
 
+		// The game module the application was made with; an empty one if none
+		const GameModule& GetGameModule() const { return *Module; }
+
 		// Ends the frame loop after the current frame, as if the user closed the window
 		void RequestQuit() { Window->RequestClose(); }
 
@@ -57,6 +65,7 @@ namespace Nyx
 		// Runs the steps the clock asks for this frame
 		void RunFixedSteps(double frameSeconds);
 
+		const GameModule* Module = nullptr;
 		std::unique_ptr<IWindow> Window;
 		std::unique_ptr<IEditorRenderer> Renderer;
 		Nyx::Input::InputSystem Input;

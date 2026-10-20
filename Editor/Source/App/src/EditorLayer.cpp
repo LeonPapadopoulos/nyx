@@ -73,6 +73,10 @@ namespace Nyx::Editor
 		}
 		ApplyFrameRate();
 		RegisterRuntimeReflectedSources();
+		if (const auto registerModuleSources = application.GetGameModule().RegisterSources)
+		{
+			registerModuleSources();
+		}
 		SourceInspector.Attach(
 			[this](SourceLocation location)
 			{

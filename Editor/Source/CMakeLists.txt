@@ -228,7 +228,7 @@ source_group(DevTools FILES
 )
 
 add_executable(NyxEditor main.cpp)
-target_link_libraries(NyxEditor PRIVATE NyxEditorLib)
+target_link_libraries(NyxEditor PRIVATE NyxEditorLib NyxNoGameModule)
 target_precompile_headers(NyxEditor REUSE_FROM NyxEditorLib)
 
 # Play starts NyxGame from next to the editor, so building the editor builds the game too.

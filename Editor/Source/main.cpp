@@ -10,7 +10,7 @@ namespace Nyx::Editor
 	{
 	public:
 		EditorApplication()
-			: Application(Nyx::ApplicationSpecs{ .Window = { .Title = "Nyx Editor" } })
+			: Application(Nyx::ApplicationSpecs{ .Window = { .Title = "Nyx Editor" }, .Module = &Nyx::GetLinkedGameModule() })
 		{
 			PushLayer(std::make_unique<EditorLayer>());
 		}

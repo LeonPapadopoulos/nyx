@@ -55,7 +55,8 @@ namespace Nyx::Game
 
 	Nyx::ApplicationSpecs MakeApplicationSpecs(const Nyx::GameLaunchOptions& options)
 	{
-		Nyx::ApplicationSpecs specs{ .Window = { .Title = "Nyx Game", .bUseCustomTitlebar = false, .bShowStartupBanner = false } };
+		Nyx::ApplicationSpecs specs{ .Window = { .Title = "Nyx Game", .bUseCustomTitlebar = false, .bShowStartupBanner = false },
+			.Module = &Nyx::GetLinkedGameModule() };
 
 		if (!options.WindowTitle.empty())
 		{

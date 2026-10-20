@@ -50,6 +50,14 @@ add_dependencies(NyxFixedStepClockTests NyxGeneratedReflection)
 set_property(TARGET NyxFixedStepClockTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxFixedStepClockTests COMMAND NyxFixedStepClockTests)
 
+# The component type registry: types register once; a second type of a name already taken, such as
+# a game module's type named like one of the engine's, is refused.
+add_executable(NyxComponentTypeRegistryTests ComponentTypeRegistryTests.cpp)
+target_link_libraries(NyxComponentTypeRegistryTests PRIVATE NyxEngine)
+add_dependencies(NyxComponentTypeRegistryTests NyxGeneratedReflection)
+set_property(TARGET NyxComponentTypeRegistryTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxComponentTypeRegistryTests COMMAND NyxComponentTypeRegistryTests)
+
 # The input system with virtual devices: frames, taps shorter than a frame, devices coming and
 # going, focus, the cursor. No window needed.
 add_executable(NyxInputTests InputTests.cpp)

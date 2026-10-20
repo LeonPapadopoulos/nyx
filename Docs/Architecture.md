@@ -81,6 +81,8 @@ The CMake targets:
   reflected type is, into `Build/Windows/Generated`.
 - `NyxLinkTools` (`Engine/Source/LinkTools`): an object library that the editor, NyxDump and the
   link tests link, and the game doesn't.
+- `NyxNoGameModule` (`Engine/Source/NoGameModule`): the empty game module (`GameModule.h`) that
+  the editor and the game link when they are built without one. Tests and tools link no module.
 - `NyxEditorLib`: the editor without its `main()`, a static library that `NyxEditor` and the
   editor's tests link, so the editor compiles once.
 - Tests are in `Engine/Source/tests` and `Editor/Source/tests`; `ctest -C Debug` in
@@ -146,6 +148,12 @@ If the GPU device is lost, the renderer stops drawing and `Application` closes t
   editor's overlays and picking, material editing, and what ImGui shows. At shutdown it waits for
   the GPU, detaches the layers in reverse order while the renderer still exists, then shuts the
   renderer down before the window goes.
+- **The game module** (`GameModule`): a game's own component types, registered next to the
+  engine's. The engine never knows a game: each program passes the module it was built with
+  (`GetLinkedGameModule()`) in `ApplicationSpecs::Module`, and `Application` registers its types
+  after the engine's, before any layer is attached. `GetGameModule()` gives it to the layers; the
+  editor registers the module's source locations from it. A module type named like a type already
+  registered is refused with an error, so the engine's types always keep their names.
 - **`WindowsWindow`** (`IWindow`): the GLFW window, its input, its dock area and frame strips, the
   frame rate limiter, and the startup banner until `FinishStartup()`. It knows nothing of the
   renderer: `Application` hands the renderer the window (`GetNativeWindow()`) and is told when its
@@ -247,7 +255,7 @@ it with a warning. `Hello`'s layout never changes.
 | What | Where it is filled |
 | --- | --- |
 | `Logger::Get()` | `Init()` in `main()` (`EntryPoint.h`); the game adds a sink for the editor link (`EditorLinkLogSink::Install()`) |
-| `ComponentTypeRegistry::Get()` | `RegisterComponentTypes()`, in `Application`'s constructor |
+| `ComponentTypeRegistry::Get()` | `RegisterComponentTypes()`, then the game module's `RegisterTypes()`, in `Application`'s constructor |
 | `PropertyWidgetRegistry::Get()` (editor) | `RegisterDefaultPropertyWidgets()`, in `EditorLayer::OnAttach()` |
 | `ReflectionSourceRegistry::Get()` (editor) | `RegisterRuntimeReflectedSources()`, generated, in `EditorLayer::OnAttach()` |
 | `Nyx::UI::GetTheme()` | the defaults in `UITheme.h`; the editor loads its theme file in `ThemeEditorWindow::LoadAtStartup()` |

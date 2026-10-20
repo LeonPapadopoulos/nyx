@@ -42,7 +42,9 @@ namespace Nyx
 		static ComponentTypeRegistry& Get();
 
 		// Adds component type T. Called by the generated reflection code for every
-		// NYX_REFLECT(Component) type; registering a type twice has no effect.
+		// NYX_REFLECT(Component) type; registering a type twice has no effect. A different type of
+		// the same name, e.g. a game module's type named like one of the engine's, is refused with
+		// an error, and the first one is kept.
 		template<typename T>
 		void Register();
 
@@ -59,6 +61,9 @@ namespace Nyx
 		const ComponentTypeOps* FindByName(std::string_view name) const;
 
 	private:
+		// False if the type is registered already, or another type has its name (logged as an error)
+		bool CanRegister(const Nyx::Reflection::TypeMetadata& typeMetadata) const;
+
 		std::vector<ComponentTypeOps> Types;
 	};
 
@@ -66,7 +71,7 @@ namespace Nyx
 	void ComponentTypeRegistry::Register()
 	{
 		const Nyx::Reflection::TypeMetadata& typeMetadata = Nyx::Reflection::GetTypeMetadata<T>();
-		if (FindByTypeMetadata(typeMetadata))
+		if (!CanRegister(typeMetadata))
 		{
 			return;
 		}

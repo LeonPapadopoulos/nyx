@@ -1,4 +1,5 @@
 #include "ComponentTypeRegistry.h"
+#include "Log.h"
 
 #include <string>
 
@@ -8,6 +9,26 @@ namespace Nyx
 	{
 		static ComponentTypeRegistry Instance;
 		return Instance;
+	}
+
+	bool ComponentTypeRegistry::CanRegister(const Nyx::Reflection::TypeMetadata& typeMetadata) const
+	{
+		if (FindByTypeMetadata(typeMetadata))
+		{
+			return false;
+		}
+
+		// Scene files, undo and the editor link name component types by name: two types of one name
+		// would load into each other
+		if (FindByName(typeMetadata.Name))
+		{
+			LOG_ERROR("Two component types are named '{0}': the second is ignored. Rename one of them, e.g. "
+					  "by putting a game module's types into a namespace of their own.",
+				typeMetadata.Name);
+			return false;
+		}
+
+		return true;
 	}
 
 	const ComponentTypeOps* ComponentTypeRegistry::FindByTypeMetadata(
