@@ -26,7 +26,9 @@ namespace Nyx::Editor
 	class MaterialParametersPanel
 	{
 	public:
-		explicit MaterialParametersPanel(std::filesystem::path assetsFolder);
+		// `assetFolders`: where material paths are looked for, in order (the project's assets, then
+		// the engine's); a material is opened, and saved, where it is found
+		explicit MaterialParametersPanel(std::vector<std::filesystem::path> assetFolders);
 
 		// Opens the material ("Materials/Stone.nyxmat") and the window: at once, or, while the
 		// one open has unsaved values, after asking in the window (the next Draw())
@@ -94,7 +96,7 @@ namespace Nyx::Editor
 		// Draw()'s choices, for the functions it calls
 		Choices CurrentChoices;
 
-		std::filesystem::path AssetsFolder;
+		std::vector<std::filesystem::path> AssetFolders;
 		MaterialDocument Document;
 
 		// What the renderer has: the file's revision taken, the document's revision sent

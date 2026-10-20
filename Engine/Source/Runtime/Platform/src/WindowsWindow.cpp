@@ -128,7 +128,7 @@ namespace Nyx
 	{
 		if (specs.bShowStartupBanner)
 		{
-			StartupBanner = std::make_unique<WindowsStartupBanner>(Paths::GetAssetsDir() / "Startup");
+			StartupBanner = std::make_unique<WindowsStartupBanner>(Paths::GetEngineAssetsDir() / "Startup");
 		}
 		SetStartupStatus("Creating the window");
 		Data.Title = specs.Title;

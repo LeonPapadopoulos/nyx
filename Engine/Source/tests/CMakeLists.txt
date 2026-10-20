@@ -58,6 +58,13 @@ add_dependencies(NyxComponentTypeRegistryTests NyxGeneratedReflection)
 set_property(TARGET NyxComponentTypeRegistryTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxComponentTypeRegistryTests COMMAND NyxComponentTypeRegistryTests)
 
+# Where things are: the roots file next to the programs, assets in the project's folder first
+add_executable(NyxPathsTests PathsTests.cpp)
+target_link_libraries(NyxPathsTests PRIVATE NyxEngine)
+add_dependencies(NyxPathsTests NyxGeneratedReflection)
+set_property(TARGET NyxPathsTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxPathsTests COMMAND NyxPathsTests)
+
 # A game module made and linked the way a game makes and links its own, through the same functions:
 # NyxTestModule's component registers next to the engine's and saves in scenes. The editor's tests
 # link the module too.

@@ -51,13 +51,18 @@ add_subdirectory(Game/Source)
 add_subdirectory(Tools/NyxDump)
 add_subdirectory(Tools/NyxShaderCompiler)
 
-# nyx_add_game_programs([MODULE <name>])
+# nyx_add_game_programs([MODULE <name>] [PROJECT_ROOT <folder>])
 #
 # The editor and the game, NyxEditor.exe and NyxGame.exe, built with the game module <name>
 # (nyx_add_game_module()) or none. Nyx built on its own makes them without a module; a game's
 # repository, which adds Nyx as a subdirectory, makes them with its module.
+# PROJECT_ROOT is the folder with the project's Assets: the top project's folder if not given.
 function(nyx_add_game_programs)
-    cmake_parse_arguments(PARSE_ARGV 0 ARG "" "MODULE" "")
+    cmake_parse_arguments(PARSE_ARGV 0 ARG "" "MODULE;PROJECT_ROOT" "")
+    if(NOT ARG_PROJECT_ROOT)
+        set(ARG_PROJECT_ROOT "${CMAKE_SOURCE_DIR}")
+    endif()
+    cmake_path(ABSOLUTE_PATH ARG_PROJECT_ROOT BASE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" NORMALIZE)
 
     nyx_add_game_program(MODULE ${ARG_MODULE})
     nyx_add_editor_program(MODULE ${ARG_MODULE})
@@ -73,6 +78,14 @@ function(nyx_add_game_programs)
             )
         endforeach()
     endforeach()
+
+    # Where the programs find the engine's folder and the project's (Paths): next to them, for
+    # every configuration
+    file(GENERATE OUTPUT "$<TARGET_FILE_DIR:NyxGame>/NyxRoots.ini" CONTENT
+"# Written by nyx_add_game_programs(): where the programs here find the engine and the project
+EngineRoot = ${CMAKE_CURRENT_FUNCTION_LIST_DIR}
+ProjectRoot = ${ARG_PROJECT_ROOT}
+")
 
     # Set default startup project
     set_property(DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT NyxEditor)

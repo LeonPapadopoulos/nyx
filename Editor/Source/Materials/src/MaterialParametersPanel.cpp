@@ -1,6 +1,7 @@
 #include "MaterialParametersPanel.h"
 
 #include "ImGuiSource.h"
+#include "Paths.h"
 #include "EditorRenderer.h"
 #include "ShaderLayout.h"
 #include "StringUtil.h"
@@ -98,8 +99,8 @@ namespace Nyx::Editor
 		}
 	}
 
-	MaterialParametersPanel::MaterialParametersPanel(std::filesystem::path assetsFolder)
-		: AssetsFolder(std::move(assetsFolder))
+	MaterialParametersPanel::MaterialParametersPanel(std::vector<std::filesystem::path> assetFolders)
+		: AssetFolders(std::move(assetFolders))
 	{
 	}
 
@@ -346,7 +347,7 @@ namespace Nyx::Editor
 		{
 			Nyx::MaterialAsset file;
 			std::string error;
-			if (file.Load((AssetsFolder / Discarded).make_preferred(), error))
+			if (file.Load((Nyx::Paths::FindAssetDirIn(AssetFolders, Discarded) / Discarded).make_preferred(), error))
 			{
 				SendValues(materials, Discarded, file);
 			}
@@ -391,7 +392,7 @@ namespace Nyx::Editor
 	void MaterialParametersPanel::Open(const std::string& path, Nyx::IMaterialSource& materials)
 	{
 		std::string error;
-		if (!Document.Open(AssetsFolder, path, error))
+		if (!Document.Open(Nyx::Paths::FindAssetDirIn(AssetFolders, path), path, error))
 		{
 			Status = "Couldn't open " + path + ": " + error;
 			bStatusFailed = true;

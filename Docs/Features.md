@@ -77,7 +77,8 @@ What the editor and the game do. How the code behind them is organised is in
 NyxGame.exe [scene file] [--window-size <width>x<height>] [--window-pos <x>,<y>] [--window-title <text>]
 ```
 
-- Without a scene file it runs `Assets\Scenes\Default.nyxscene`.
+- Without a scene file it runs `Scenes\Default.nyxscene` from the project's assets, or else from
+  the engine's (`Assets\Scenes\Default.nyxscene` in Nyx's own build).
 - The size is that of the picture, without titlebar and borders; the position is where the
   window's outer top-left corner goes, and may be negative on a monitor left of or above the
   main one.

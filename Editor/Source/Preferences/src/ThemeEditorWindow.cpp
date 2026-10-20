@@ -108,7 +108,7 @@ namespace Nyx::Editor
 
 	std::filesystem::path ThemeEditorWindow::GetProjectThemesFolder()
 	{
-		return Nyx::Paths::GetProjectRoot() / "Editor" / "Themes";
+		return Nyx::Paths::GetEngineRoot() / "Editor" / "Themes";
 	}
 
 	std::filesystem::path ThemeEditorWindow::GetDefaultThemeFile(const std::filesystem::path& themesFolder)

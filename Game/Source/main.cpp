@@ -103,7 +103,8 @@ namespace Nyx::Game
 
 // Usage: NyxGame.exe [scene file] [--wait-for-debugger] [--editor-port <port>] [--link-log <file>]
 //                    [--window-size <width>x<height>] [--window-pos <x>,<y>] [--window-title <text>]
-// - Without a scene file, the game runs Assets/Scenes/Default.nyxscene.
+// - Without a scene file, the game runs Scenes/Default.nyxscene from the project's assets, or else
+//   from the engine's.
 // - With --wait-for-debugger, the game waits at startup until a debugger is attached.
 // - With --editor-port, the game connects back to the editor that started it (the editor link),
 //   sends its log lines there and quits when the editor asks.
@@ -130,7 +131,7 @@ Nyx::Application* Nyx::CreateApplication(int argc, char** argv)
 	const Nyx::GameLaunchOptions options = Nyx::ParseGameArguments(arguments, warnings);
 
 	const std::filesystem::path scenePath =
-		options.ScenePath.empty() ? Nyx::Paths::GetScenesDir() / "Default.nyxscene" : options.ScenePath;
+		options.ScenePath.empty() ? Nyx::Paths::FindAsset(std::filesystem::path("Scenes") / "Default.nyxscene") : options.ScenePath;
 
 	// From here on, log lines are kept for the editor, even before the link is connected
 	std::unique_ptr<Nyx::Game::EditorLinkLayer> editorLink;

@@ -99,7 +99,7 @@ namespace Nyx::Editor
 			if (Parameters.GetDocument().IsOpen())
 			{
 				const std::string shader = Parameters.GetDocument().GetAsset().GetShader();
-				const Nyx::ShaderLogEntry* compile = shader.empty() ? nullptr : renderer.GetShaderLog().FindByFile((Nyx::Paths::GetAssetsDir() / shader).make_preferred());
+				const Nyx::ShaderLogEntry* compile = shader.empty() ? nullptr : renderer.GetShaderLog().FindByFile(Nyx::Paths::FindAsset(shader).make_preferred());
 				failedCompile = compile && !compile->bSucceeded ? compile : nullptr;
 			}
 			Preview.Draw(renderer, Parameters.GetDocument().GetPath(), selectedMesh, failedCompile);

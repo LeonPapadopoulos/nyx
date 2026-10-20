@@ -4,6 +4,7 @@
 #include "ImageFile.h"
 #include "Log.h"
 #include "Mesh.h"
+#include "Paths.h"
 #include "StringUtil.h"
 #include "VulkanBindless.h"
 #include "VulkanContext.h"
@@ -85,20 +86,26 @@ namespace Nyx
 		}
 	}
 
-	void VulkanMaterials::Initialize(Nyx::VulkanContext& context, VulkanBindless& bindless, ShaderPrograms& programs, std::filesystem::path assetsFolder, vk::PipelineLayout layout,
+	void VulkanMaterials::Initialize(Nyx::VulkanContext& context, VulkanBindless& bindless, ShaderPrograms& programs, std::vector<std::filesystem::path> assetFolders, vk::PipelineLayout layout,
 		std::function<vk::RenderPass()> renderPass)
 	{
 		Context = &context;
 		Bindless = &bindless;
 		Programs = &programs;
-		AssetsFolder = std::move(assetsFolder);
+		AssetFolders = std::move(assetFolders);
+		Watchers.clear();
 		Layout = layout;
 		RenderPass = std::move(renderPass);
 		RebuildMissingPipeline();
 
-		if (std::filesystem::is_directory(AssetsFolder) && !Watcher.Watch(AssetsFolder))
+		for (const std::filesystem::path& folder : AssetFolders)
 		{
-			LOG_WARNING("Saved material files won't be reloaded: {}", Watcher.GetProblem());
+			auto watcher = std::make_unique<FileWatcher>();
+			if (std::filesystem::is_directory(folder) && !watcher->Watch(folder))
+			{
+				LOG_WARNING("Saved material files in {} won't be reloaded: {}", folder.string(), watcher->GetProblem());
+			}
+			Watchers.push_back(std::move(watcher));
 		}
 	}
 
@@ -141,7 +148,7 @@ namespace Nyx
 		{
 			auto entry = std::make_unique<Entry>();
 			entry->Path = path;
-			entry->File = (AssetsFolder / path).make_preferred();
+			entry->File = FindAssetFile(path);
 			entry->Handle = std::make_unique<Nyx::Material>();
 			// In the map before its parents are looked for, so a chain that comes back finds it
 			found = Materials.emplace(key, std::move(entry)).first;
@@ -294,10 +301,10 @@ namespace Nyx
 			auto shader = std::make_unique<Shader>();
 			shader->Path = path;
 			shader->MaterialRequest.Kind = EShaderCompileKind::Material;
-			shader->MaterialRequest.File = (AssetsFolder / path).make_preferred();
+			shader->MaterialRequest.File = FindAssetFile(path);
 			shader->MaterialRequest.Domain = ShaderDomain::Surface();
 			shader->DefaultsRequest.Kind = EShaderCompileKind::DefaultsWriter;
-			shader->DefaultsRequest.File = (AssetsFolder / path).make_preferred();
+			shader->DefaultsRequest.File = shader->MaterialRequest.File;
 			found = Shaders.emplace(key, std::move(shader)).first;
 		}
 		return found->second.get();
@@ -404,7 +411,7 @@ namespace Nyx
 		RgbaImage image;
 		std::string error;
 		std::optional<uint32_t> slot;
-		if (LoadRgbaImage((AssetsFolder / path).make_preferred(), image, error))
+		if (LoadRgbaImage(FindAssetFile(path), image, error))
 		{
 			// Colours are stored sRGB-encoded and decoded when sampled; data ([Linear]: normals,
 			// roughness, occlusion) is read as stored. With mips, so that far away they don't shimmer.
@@ -457,7 +464,13 @@ namespace Nyx
 
 		// Material files saved, once their writes settled
 		const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
-		for (const std::filesystem::path& changed : Watcher.TakeChanges())
+		std::vector<std::filesystem::path> changes;
+		for (const std::unique_ptr<FileWatcher>& watcher : Watchers)
+		{
+			std::vector<std::filesystem::path> folderChanges = watcher->TakeChanges();
+			changes.insert(changes.end(), folderChanges.begin(), folderChanges.end());
+		}
+		for (const std::filesystem::path& changed : changes)
 		{
 			const std::string changedKey = PathKey(changed);
 			for (auto& [path, entry] : Materials)
@@ -484,6 +497,11 @@ namespace Nyx
 			}
 			Saved.clear();
 		}
+	}
+
+	std::filesystem::path VulkanMaterials::FindAssetFile(const std::string& path) const
+	{
+		return (Nyx::Paths::FindAssetDirIn(AssetFolders, path) / path).make_preferred();
 	}
 
 	vk::raii::Pipeline VulkanMaterials::MakePipeline(const CompiledEntryPoint& vertex, const CompiledEntryPoint& fragment)

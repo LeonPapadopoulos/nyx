@@ -33,7 +33,7 @@ namespace Nyx
 	// can't disagree about the format.
 	struct GameLaunchOptions
 	{
-		// Empty: the game runs Assets/Scenes/Default.nyxscene
+		// Empty: the game runs Scenes/Default.nyxscene, the project's or else the engine's
 		std::filesystem::path ScenePath;
 
 		// The game waits at startup until a debugger is attached

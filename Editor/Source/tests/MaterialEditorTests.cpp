@@ -280,7 +280,7 @@ namespace
 		FakeMaterials materials;
 		materials.Folder = assets.Path;
 		HeadlessUI ui;
-		MaterialParametersPanel panel(assets.Path);
+		MaterialParametersPanel panel({ assets.Path });
 		// What the editor sends to its games: every value the renderer gets
 		std::vector<std::string> toGames;
 		panel.ValuesSent = [&](const std::string& path, const MaterialAsset& asset)

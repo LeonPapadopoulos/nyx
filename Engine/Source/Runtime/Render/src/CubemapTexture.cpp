@@ -191,7 +191,7 @@ namespace Nyx
 	bool CubemapTexture::LoadCubemapFaces(std::array<ImageData, 6>& outFaces)
 	{
 		const std::filesystem::path cubemapDir =
-			Nyx::Paths::GetAssetsDir() / "Textures" / "Skybox" / GetId();
+			Nyx::Paths::FindAsset(std::filesystem::path("Textures") / "Skybox" / GetId());
 
 		// We expect the following layouting
 		//		  | top	   |

@@ -845,7 +845,7 @@ namespace Nyx::Editor
 		localtime_s(&local, &now);
 		char fileName[64];
 		std::strftime(fileName, sizeof(fileName), "Gallery %Y-%m-%d %H-%M-%S.png", &local);
-		renderer.SaveScreenshot(Nyx::Paths::GetProjectRoot() / "Saved" / "Gallery" / fileName, GalleryMin, GalleryMax);
+		renderer.SaveScreenshot(Nyx::Paths::GetSavedDir() / "Gallery" / fileName, GalleryMin, GalleryMax);
 	}
 
 	void PainterTestWindow::DrawWidgetGalleryTable()

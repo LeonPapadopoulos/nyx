@@ -268,7 +268,7 @@ it with a warning. `Hello`'s layout never changes.
 | The painted UI's state: chrome, animations, window painters, diagnostics | `UIChrome.cpp`, `UIAnimation.cpp`, `WindowPainter.cpp`, `UIDiagnostics.cpp`, while each frame's UI is built |
 | `WindowPainter::SetSegmentDrawer()` | the renderer's `VulkanUIBackend`, in `InitializePasses()`; cleared in `Shutdown()` |
 | The crash handler | `InstallCrashHandler()`, in the game's `CreateApplication()` |
-| The project root (`Paths`) | found on first use and kept |
+| The engine and project roots (`Paths`) | read from `NyxRoots.ini` next to the program on first use, or found above it, and kept |
 
 ## Design notes
 

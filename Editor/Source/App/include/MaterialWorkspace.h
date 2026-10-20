@@ -71,7 +71,7 @@ namespace Nyx::Editor
 		OpenFileAtLine OpenAtLine;
 
 		// The material open for editing
-		MaterialParametersPanel Parameters{ Nyx::Paths::GetAssetsDir() };
+		MaterialParametersPanel Parameters{ Nyx::Paths::GetAssetSearchDirs() };
 		// The material open, on a shape in a world of its own
 		MaterialPreviewPanel Preview;
 		// Every shader's last compile, and what the compiler said

@@ -3,7 +3,8 @@
 How a game made with Nyx brings its own component types, with reflection, saving, undo and
 editing working for them as for the engine's, while Nyx never knows the game. The code is in
 `Engine/Source/GameModules.cmake`, `Engine/Source/Runtime/App/include/GameModule.h`, the header
-tool's `--module-name`, and `nyx_add_game_programs()` in the top `CMakeLists.txt`.
+tool's `--module-name`, `nyx_add_game_programs()` in the top `CMakeLists.txt`, and `Paths` for
+where the game's files are.
 
 ## A game lives outside Nyx
 
@@ -66,6 +67,22 @@ tool's `--module-name`, and `nyx_add_game_programs()` in the top `CMakeLists.txt
 - **Type names are unique.** `ComponentTypeRegistry` refuses a second type with a name already
   registered, with an error. The engine's types register first, so they always keep their names.
 
+## Where the game's files are
+
+- **Two roots.** The engine root is Nyx's folder: the engine's shaders, the editor's themes, the
+  engine's own assets such as the standard material shader and the default scene. The project root
+  is the game's folder: its `Assets` and `Saved`. In Nyx's own build both are Nyx's folder.
+- `nyx_add_game_programs()` writes both into `NyxRoots.ini` next to the programs; the project root
+  is the top project's folder unless `PROJECT_ROOT` names another. `Paths` reads the file on first
+  use. A relative root is taken from the file's folder, so a build can be moved whole. Without the
+  file, both roots are the first folder above the program with an `Assets` folder.
+- **Assets are looked for in the project first, then in the engine** (`Paths::FindAsset()`,
+  `GetAssetSearchDirs()`): a game's material can use the engine's standard shader, and a game
+  overrides an engine asset by having one at the same path. Materials with their shaders and
+  textures, textures, skyboxes, live shader reload and the material editor all look this way.
+- **What the editor makes goes into the project**: new scenes, materials and shaders in the
+  project's `Assets`. An existing material is saved where it was found.
+
 ## Rules
 
 - A module includes the engine's public headers, never the editor's.
@@ -88,9 +105,7 @@ tool's `--module-name`, and `nyx_add_game_programs()` in the top `CMakeLists.txt
 
 ## Not built yet
 
-- **The game's own assets.** `Paths` finds the project root as the first folder above the
-  executable with an `Assets` folder, which is Nyx's. A game needs its folder searched first, with
-  Nyx's after it for the engine's assets and shaders.
+- **Engine assets in the asset browser.** It lists the project's assets only.
 - **A module's own post-load steps and systems**: a hook after its generated registration, and
   `CreateSystems()` once there is a `GameWorld`.
 - **A module's folder dependency table**, checked like the engine's and the editor's.

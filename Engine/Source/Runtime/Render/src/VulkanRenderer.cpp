@@ -296,7 +296,7 @@ namespace Nyx
 		UI.InitializePasses();
 
 		// The meshes' materials, loaded from their files when first asked for
-		Materials.Initialize(Context, Bindless, Programs, Nyx::Paths::GetAssetsDir(), *ScenePipelineLayout, [this]
+		Materials.Initialize(Context, Bindless, Programs, Nyx::Paths::GetAssetSearchDirs(), *ScenePipelineLayout, [this]
 			{
 				return GetSceneRenderPass();
 			});
@@ -1534,8 +1534,11 @@ namespace Nyx
 			return;
 		}
 		auto service = std::make_unique<Nyx::RemoteShaderCompileService>(compiler, std::vector<std::filesystem::path>{ Nyx::Paths::GetShaderLibraryDir() });
-		// The assets folder for material shaders
-		if (!Programs.EnableLiveReload(std::move(service), { Nyx::Paths::GetShaderLibraryDir(), Nyx::Paths::GetAssetsDir() }))
+		// The asset folders for material shaders
+		std::vector<std::filesystem::path> watched{ Nyx::Paths::GetShaderLibraryDir() };
+		const std::vector<std::filesystem::path>& assetFolders = Nyx::Paths::GetAssetSearchDirs();
+		watched.insert(watched.end(), assetFolders.begin(), assetFolders.end());
+		if (!Programs.EnableLiveReload(std::move(service), watched))
 		{
 			LOG_WARNING("Live shader reload is off: {}", Programs.GetProblem());
 			return;
@@ -1550,10 +1553,18 @@ namespace Nyx
 		std::string name = update.Name;
 		if (bMaterial)
 		{
-			// By its path in the assets folder, as materials name it
-			std::error_code error;
-			const std::filesystem::path relative = std::filesystem::relative(update.Request.File, Nyx::Paths::GetAssetsDir(), error);
-			name = !error && !relative.empty() && *relative.begin() != ".." ? relative.generic_string() : update.Request.File.filename().string();
+			// By its path in the asset folder it is in, as materials name it
+			name = update.Request.File.filename().string();
+			for (const std::filesystem::path& folder : Nyx::Paths::GetAssetSearchDirs())
+			{
+				std::error_code error;
+				const std::filesystem::path relative = std::filesystem::relative(update.Request.File, folder, error);
+				if (!error && !relative.empty() && *relative.begin() != "..")
+				{
+					name = relative.generic_string();
+					break;
+				}
+			}
 		}
 		if (update.Request.Kind == EShaderCompileKind::DefaultsWriter)
 		{

@@ -108,7 +108,8 @@ namespace Nyx
 
 		for (const std::string& ext : extensions)
 		{
-			const std::filesystem::path filePath = Nyx::Paths::GetTexturesDir() / (GetId() + ext);
+			// The project's texture, or the engine's
+			const std::filesystem::path filePath = Nyx::Paths::FindAsset(std::filesystem::path("Textures") / (GetId() + ext));
 
 			if (LoadImageData(filePath.string(), imageData))
 			{

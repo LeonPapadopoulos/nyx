@@ -46,13 +46,14 @@ namespace Nyx
 	class VulkanMaterials
 	{
 	public:
-		// `layout` and `renderPass()`: the scene pipelines' layout, and a render pass of the scene
-		// views, asked for each time a pipeline is made
-		void Initialize(Nyx::VulkanContext& context, VulkanBindless& bindless, ShaderPrograms& programs, std::filesystem::path assetsFolder, vk::PipelineLayout layout,
+		// `assetFolders`: where material, shader and texture paths are looked for, in order (the
+		// project's assets, then the engine's). `layout` and `renderPass()`: the scene pipelines'
+		// layout, and a render pass of the scene views, asked for each time a pipeline is made
+		void Initialize(Nyx::VulkanContext& context, VulkanBindless& bindless, ShaderPrograms& programs, std::vector<std::filesystem::path> assetFolders, vk::PipelineLayout layout,
 			std::function<vk::RenderPass()> renderPass);
 		void Shutdown();
 
-		// The material in the file at `path`, relative to the assets folder
+		// The material in the file at `path`, relative to the asset folders
 		// ("Materials/Stone.nyxmat"), loaded at the first ask. Never null.
 		Nyx::Material* Get(const std::string& path);
 
@@ -143,12 +144,14 @@ namespace Nyx
 		void WriteBytes(Entry& entry);
 		std::optional<uint32_t> TextureSlot(const std::string& path, bool bLinear);
 		vk::raii::Pipeline MakePipeline(const CompiledEntryPoint& vertex, const CompiledEntryPoint& fragment);
+		// The file at `path` in the first asset folder that has it, or in the first folder
+		std::filesystem::path FindAssetFile(const std::string& path) const;
 		std::vector<std::byte> RunDefaultsWriter(const CompiledEntryPoint& writer, uint32_t size);
 
 		Nyx::VulkanContext* Context = nullptr;
 		VulkanBindless* Bindless = nullptr;
 		ShaderPrograms* Programs = nullptr;
-		std::filesystem::path AssetsFolder;
+		std::vector<std::filesystem::path> AssetFolders;
 		vk::PipelineLayout Layout;
 		std::function<vk::RenderPass()> RenderPass;
 
@@ -158,7 +161,8 @@ namespace Nyx
 		// Slots of the textures loaded, by path and whether linear; nullopt for one that can't be
 		std::map<std::string, std::optional<uint32_t>> Textures;
 
-		FileWatcher Watcher;
+		// One per asset folder
+		std::vector<std::unique_ptr<FileWatcher>> Watchers;
 		// Material files saved, waiting for their writes to settle
 		std::vector<Entry*> Saved;
 		std::chrono::steady_clock::time_point LastSave{};
