@@ -171,6 +171,12 @@ struct TransformComponent
 #include "Generated/Runtime/TransformComponent.reflect.h"
 ```
 
-During the build, `NyxHeaderTool` reads every header in `Runtime/Engine/include` and
-`Runtime/Renderer/include` and writes the generated files to `Build\Windows\Generated`. Its tests
-compare its output against golden files: `Tools\NyxHeaderTool\tests\RunHeaderToolTests.bat`.
+During the build, `NyxHeaderTool` reads every header in `Engine/Source/Runtime/Scene/include` and
+writes the generated files to `Build\Windows\Generated\Runtime`. Its tests compare its output
+against golden files: `Tools\NyxHeaderTool\tests\RunHeaderToolTests.bat`.
+
+The generated files belong to a *module*, Runtime for the engine's types. `--module-name <Name>`
+names another one: its registration functions become `Register<Name>ReflectedTypes()` and
+`Register<Name>ReflectedSources()`, and its init header `Generated/<Name>/<Name>.reflect.init.h`.
+A name must be a C++ identifier. In the header tool's tests, a fixture names its module in a
+`Module.txt`; `RegenerateGoldenFiles.bat` reads it too.

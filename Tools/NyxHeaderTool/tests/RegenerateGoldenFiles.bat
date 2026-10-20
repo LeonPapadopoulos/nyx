@@ -52,13 +52,22 @@ for /D %%F in ("%FIXTURES_DIR%\*") do (
         )
         mkdir "!OUT_DIR!"
 
+        rem A fixture may name its module in Module.txt; otherwise the tool's default, Runtime
+        set "MODULE=Runtime"
+        set "MODULE_ARGS="
+        if exist "%%~fF\Module.txt" (
+            set /p MODULE=<"%%~fF\Module.txt"
+            set "MODULE_ARGS=--module-name !MODULE!"
+        )
+
         echo Running tool...
         "%TOOL_EXE%" ^
           --scan-root "!CASE_DIR!" ^
           --output-dir "!OUT_DIR!" ^
-          --module-init-header "!OUT_DIR!\Runtime.reflect.init.h" ^
-          --module-init-cpp "!OUT_DIR!\Runtime.reflect.init.cpp" ^
-          --editor-sources-cpp "!OUT_DIR!\Runtime.reflect.sources.cpp"
+          --module-init-header "!OUT_DIR!\!MODULE!.reflect.init.h" ^
+          --module-init-cpp "!OUT_DIR!\!MODULE!.reflect.init.cpp" ^
+          --editor-sources-cpp "!OUT_DIR!\!MODULE!.reflect.sources.cpp" ^
+          !MODULE_ARGS!
 
         if errorlevel 1 (
             echo Failed generating fixture %%~nF
@@ -66,11 +75,11 @@ for /D %%F in ("%FIXTURES_DIR%\*") do (
         )
 
         rem Keep source locations independent of this checkout in the golden files.
-        powershell -NoProfile -Command "$p = Join-Path $env:OUT_DIR 'Runtime.reflect.sources.cpp'; $s = [IO.File]::ReadAllText($p); $s = $s.Replace(($env:CASE_DIR.Replace('\','/') + '/Input.h'), '@SOURCE_FILE@'); [IO.File]::WriteAllText($p, $s, [Text.UTF8Encoding]::new($false))"
+        powershell -NoProfile -Command "$p = Join-Path $env:OUT_DIR ($env:MODULE + '.reflect.sources.cpp'); $s = [IO.File]::ReadAllText($p); $s = $s.Replace(($env:CASE_DIR.Replace('\','/') + '/Input.h'), '@SOURCE_FILE@'); [IO.File]::WriteAllText($p, $s, [Text.UTF8Encoding]::new($false))"
         if errorlevel 1 exit /b 1
 
         echo Copying generated files back to fixture...
-        copy /y "!OUT_DIR!\Runtime.reflect.sources.cpp" "%%~fF\Expected.sources.cpp" >nul
+        copy /y "!OUT_DIR!\!MODULE!.reflect.sources.cpp" "%%~fF\Expected.sources.cpp" >nul
         if errorlevel 1 exit /b 1
         copy /y "!OUT_DIR!\Input.reflect.h" "%%~fF\Expected.reflect.h" >nul
         if errorlevel 1 (
@@ -78,13 +87,13 @@ for /D %%F in ("%FIXTURES_DIR%\*") do (
             exit /b 1
         )
 
-        copy /y "!OUT_DIR!\Runtime.reflect.init.h" "%%~fF\Expected.init.h" >nul
+        copy /y "!OUT_DIR!\!MODULE!.reflect.init.h" "%%~fF\Expected.init.h" >nul
         if errorlevel 1 (
             echo Failed copying Expected.init.h for %%~nF
             exit /b 1
         )
 
-        copy /y "!OUT_DIR!\Runtime.reflect.init.cpp" "%%~fF\Expected.init.cpp" >nul
+        copy /y "!OUT_DIR!\!MODULE!.reflect.init.cpp" "%%~fF\Expected.init.cpp" >nul
         if errorlevel 1 (
             echo Failed copying Expected.init.cpp for %%~nF
             exit /b 1

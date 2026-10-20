@@ -12,9 +12,18 @@ namespace Nyx::HeaderTool
 	{
 	public:
 		static std::string GenerateMetadataHeader(const ParsedHeader& parsedHeader);
-		static std::string GenerateModuleInitHeader();
-		static std::string GenerateModuleInitCpp(const std::vector<ScannedHeader>& scannedHeaders);
-		static std::string GenerateEditorSourcesCpp(const std::vector<ScannedHeader>& scannedHeaders);
+		// A module's files are named after it: Register<Module>ReflectedTypes() in
+		// Generated/<Module>/<Module>.reflect.init.h. The engine's module is Runtime.
+		static std::string GenerateModuleInitHeader(const std::string& moduleName);
+		static std::string GenerateModuleInitCpp(
+			const std::vector<ScannedHeader>& scannedHeaders,
+			const std::string& moduleName);
+		static std::string GenerateEditorSourcesCpp(
+			const std::vector<ScannedHeader>& scannedHeaders,
+			const std::string& moduleName);
+
+		// A module name is part of C++ function names, so it must be an identifier
+		static bool IsValidModuleName(const std::string& moduleName);
 
 		static std::filesystem::path MakeGeneratedHeaderPath(
 			const std::filesystem::path& relativeHeaderPath,

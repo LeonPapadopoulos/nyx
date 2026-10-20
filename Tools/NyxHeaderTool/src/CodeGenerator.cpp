@@ -1,5 +1,7 @@
 #include "CodeGenerator.h"
 
+#include <algorithm>
+#include <cctype>
 #include <iomanip>
 #include <sstream>
 
@@ -269,24 +271,39 @@ namespace Nyx::HeaderTool
 		return out.str();
 	}
 
-	std::string CodeGenerator::GenerateModuleInitHeader()
+	bool CodeGenerator::IsValidModuleName(const std::string& moduleName)
+	{
+		if (moduleName.empty() || std::isdigit(static_cast<unsigned char>(moduleName.front())))
+		{
+			return false;
+		}
+
+		return std::all_of(moduleName.begin(), moduleName.end(), [](char c)
+			{
+				return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
+			});
+	}
+
+	std::string CodeGenerator::GenerateModuleInitHeader(const std::string& moduleName)
 	{
 		std::ostringstream out;
 
 		out << "#pragma once\n\n";
 		out << "namespace Nyx::Reflection::Generated\n";
 		out << "{\n";
-		out << "    void RegisterRuntimeReflectedTypes();\n";
+		out << "    void Register" << moduleName << "ReflectedTypes();\n";
 		out << "}\n";
 
 		return out.str();
 	}
 
-	std::string CodeGenerator::GenerateModuleInitCpp(const std::vector<ScannedHeader>& scannedHeaders)
+	std::string CodeGenerator::GenerateModuleInitCpp(
+		const std::vector<ScannedHeader>& scannedHeaders,
+		const std::string& moduleName)
 	{
 		std::ostringstream out;
 
-		out << "#include \"Generated/Runtime/Runtime.reflect.init.h\"\n";
+		out << "#include \"Generated/" << moduleName << "/" << moduleName << ".reflect.init.h\"\n";
 		out << "#include \"ComponentTypeRegistry.h\"\n\n";
 
 		for (const ScannedHeader& header : scannedHeaders)
@@ -296,7 +313,7 @@ namespace Nyx::HeaderTool
 
 		out << "\nnamespace Nyx::Reflection::Generated\n";
 		out << "{\n";
-		out << "    void RegisterRuntimeReflectedTypes()\n";
+		out << "    void Register" << moduleName << "ReflectedTypes()\n";
 		out << "    {\n";
 		out << "        static bool bRegistered = false;\n";
 		out << "        if (bRegistered)\n";
@@ -325,7 +342,9 @@ namespace Nyx::HeaderTool
 		return out.str();
 	}
 
-	std::string CodeGenerator::GenerateEditorSourcesCpp(const std::vector<ScannedHeader>& scannedHeaders)
+	std::string CodeGenerator::GenerateEditorSourcesCpp(
+		const std::vector<ScannedHeader>& scannedHeaders,
+		const std::string& moduleName)
 	{
 		std::ostringstream out;
 		out << "// Editor-only declaration locations. Runtime reflection contains no source paths.\n";
@@ -335,7 +354,7 @@ namespace Nyx::HeaderTool
 			out << "#include \"" << header.RelativePath.generic_string() << "\"\n";
 		}
 		out << "\nnamespace Nyx::Editor\n{\n";
-		out << "    void RegisterRuntimeReflectedSources()\n    {\n";
+		out << "    void Register" << moduleName << "ReflectedSources()\n    {\n";
 		out << "        static bool registered = false;\n";
 		out << "        if (registered) return;\n";
 		out << "        registered = true;\n\n";

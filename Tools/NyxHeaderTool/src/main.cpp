@@ -199,6 +199,8 @@ static int RunScanMode(int argc, char** argv)
 	std::optional<fs::path> moduleInitHeader;
 	std::optional<fs::path> moduleInitCpp;
 	std::optional<fs::path> editorSourcesCpp;
+	// The engine's module; a game's module passes its own name
+	std::string moduleName = "Runtime";
 
 	for (int i = 1; i < argc; ++i)
 	{
@@ -244,6 +246,14 @@ static int RunScanMode(int argc, char** argv)
 			}
 			editorSourcesCpp = fs::path(argv[++i]);
 		}
+		else if (arg == "--module-name")
+		{
+			if (i + 1 >= argc)
+			{
+				throw std::runtime_error("--module-name requires a value");
+			}
+			moduleName = argv[++i];
+		}
 		else
 		{
 			throw std::runtime_error("Unknown argument: " + arg);
@@ -260,24 +270,29 @@ static int RunScanMode(int argc, char** argv)
 		throw std::runtime_error("Missing --output-dir argument.");
 	}
 
+	if (!CodeGenerator::IsValidModuleName(moduleName))
+	{
+		throw std::runtime_error("--module-name must be a C++ identifier (letters, digits and _, not starting with a digit): '" + moduleName + "'");
+	}
+
 	std::vector<ScannedHeader> scannedHeaders;
 	const size_t count = GenerateForScanRoots(scanRoots, outputDir.value(), scannedHeaders);
 
 	if (moduleInitHeader.has_value())
 	{
-		WriteAllText(moduleInitHeader.value(), CodeGenerator::GenerateModuleInitHeader());
+		WriteAllText(moduleInitHeader.value(), CodeGenerator::GenerateModuleInitHeader(moduleName));
 		std::cout << "Generated: " << moduleInitHeader.value().string() << "\n";
 	}
 
 	if (moduleInitCpp.has_value())
 	{
-		WriteAllText(moduleInitCpp.value(), CodeGenerator::GenerateModuleInitCpp(scannedHeaders));
+		WriteAllText(moduleInitCpp.value(), CodeGenerator::GenerateModuleInitCpp(scannedHeaders, moduleName));
 		std::cout << "Generated: " << moduleInitCpp.value().string() << "\n";
 	}
 
 	if (editorSourcesCpp.has_value())
 	{
-		WriteAllText(editorSourcesCpp.value(), CodeGenerator::GenerateEditorSourcesCpp(scannedHeaders));
+		WriteAllText(editorSourcesCpp.value(), CodeGenerator::GenerateEditorSourcesCpp(scannedHeaders, moduleName));
 		std::cout << "Generated: " << editorSourcesCpp.value().string() << "\n";
 	}
 
@@ -295,11 +310,12 @@ int main(int argc, char** argv)
 			std::cerr << "  NyxHeaderTool <input_header> <output_header> <qualified_type_name>\n";
 			std::cerr << "  NyxHeaderTool --scan-root <dir> [--scan-root <dir> ...] --output-dir <dir>\n";
 			std::cerr << "                [--module-init-header <file>] [--module-init-cpp <file>]\n";
-			std::cerr << "                [--editor-sources-cpp <file>]\n";
+			std::cerr << "                [--editor-sources-cpp <file>] [--module-name <name>]\n";
 			return 1;
 		}
 
-		if (std::string_view(argv[1]) == "--scan-root")
+		// Scan mode takes only options; the single header mode starts with a path
+		if (std::string_view(argv[1]).starts_with("--"))
 		{
 			return RunScanMode(argc, argv);
 		}

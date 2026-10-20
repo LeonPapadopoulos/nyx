@@ -1,6 +1,8 @@
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <optional>
 #include <process.h>
 #include <sstream>
 #include <stdexcept>
@@ -80,18 +82,34 @@ static std::wstring ToWide(const fs::path& path)
 	return path.wstring();
 }
 
+// A fixture names its module in Module.txt; without one the tool is run without --module-name,
+// so the engine's default, Runtime, stays tested too.
+static std::optional<std::string> ReadModuleName(const fs::path& fixtureDir)
+{
+	const fs::path moduleFile = fixtureDir / "Module.txt";
+	if (!fs::exists(moduleFile))
+	{
+		return std::nullopt;
+	}
+
+	std::string moduleName = ReadAllText(moduleFile);
+	while (!moduleName.empty() && std::isspace(static_cast<unsigned char>(moduleName.back())))
+	{
+		moduleName.pop_back();
+	}
+	return moduleName;
+}
+
 static int RunTool(
 	const fs::path& toolPath,
 	const fs::path& fixtureDir,
 	const fs::path& caseOutputDir,
-	const fs::path& actualInitHeader,
-	const fs::path& actualInitCpp)
+	const std::optional<std::string>& moduleName)
 {
+	const std::string fileStem = moduleName.value_or("Runtime");
 	const std::wstring tool = ToWide(toolPath);
 	const std::wstring scanRoot = ToWide(fixtureDir);
 	const std::wstring outputDir = ToWide(caseOutputDir);
-	const std::wstring initHeader = ToWide(actualInitHeader);
-	const std::wstring initCpp = ToWide(actualInitCpp);
 
 	std::wcout << L"Tool:    " << tool << L"\n";
 	std::wcout << L"Fixture: " << scanRoot << L"\n";
@@ -101,10 +119,16 @@ static int RunTool(
 		tool,
 		L"--scan-root", scanRoot,
 		L"--output-dir", outputDir,
-		L"--module-init-header", initHeader,
-		L"--module-init-cpp", initCpp,
-		L"--editor-sources-cpp", ToWide(caseOutputDir / "Runtime.reflect.sources.cpp")
+		L"--module-init-header", ToWide(caseOutputDir / (fileStem + ".reflect.init.h")),
+		L"--module-init-cpp", ToWide(caseOutputDir / (fileStem + ".reflect.init.cpp")),
+		L"--editor-sources-cpp", ToWide(caseOutputDir / (fileStem + ".reflect.sources.cpp"))
 	};
+
+	if (moduleName.has_value())
+	{
+		ownedArgs.push_back(L"--module-name");
+		ownedArgs.push_back(ToWide(moduleName.value()));
+	}
 
 	std::vector<const wchar_t*> argv;
 	argv.reserve(ownedArgs.size() + 1);
@@ -134,21 +158,20 @@ static void RunFixture(
 	fs::remove_all(caseOutputDir);
 	fs::create_directories(caseOutputDir);
 
+	const std::optional<std::string> moduleName = ReadModuleName(fixtureDir);
+	const std::string fileStem = moduleName.value_or("Runtime");
+
 	const fs::path actualReflect = caseOutputDir / relativeOutputName;
-	const fs::path actualInitHeader = caseOutputDir / "Runtime.reflect.init.h";
-	const fs::path actualInitCpp = caseOutputDir / "Runtime.reflect.init.cpp";
+	const fs::path actualInitHeader = caseOutputDir / (fileStem + ".reflect.init.h");
+	const fs::path actualInitCpp = caseOutputDir / (fileStem + ".reflect.init.cpp");
+	const fs::path actualSourcesCpp = caseOutputDir / (fileStem + ".reflect.sources.cpp");
 
 	if (!fs::exists(inputHeader))
 	{
 		throw std::runtime_error("Fixture missing Input.h: " + fixtureDir.string());
 	}
 
-	const int exitCode = RunTool(
-		toolPath,
-		fixtureDir,
-		caseOutputDir,
-		actualInitHeader,
-		actualInitCpp);
+	const int exitCode = RunTool(toolPath, fixtureDir, caseOutputDir, moduleName);
 
 	if (exitCode != 0)
 	{
@@ -174,10 +197,11 @@ static void RunFixture(
 	RequireFileEquals(actualReflect, expectedReflect, inputHeader);
 	RequireFileEquals(actualInitHeader, expectedInitHeader);
 	RequireFileEquals(actualInitCpp, expectedInitCpp);
-	RequireFileEquals(caseOutputDir / "Runtime.reflect.sources.cpp", fixtureDir / "Expected.sources.cpp", inputHeader);
+	RequireFileEquals(actualSourcesCpp, fixtureDir / "Expected.sources.cpp", inputHeader);
 }
 
-// Runs the tool on a fixture it must reject, for example because two property names have the same hash.
+// Runs the tool on a fixture it must reject, for example because two property names have the same
+// hash, or its module name is no C++ identifier.
 static void RunFailingFixture(const fs::path& toolPath, const fs::path& fixtureDir, const std::string& inputHeaderName)
 {
 	// Without its header, the tool would fail for the wrong reason and the test would still pass
@@ -191,12 +215,7 @@ static void RunFailingFixture(const fs::path& toolPath, const fs::path& fixtureD
 	fs::remove_all(caseOutputDir);
 	fs::create_directories(caseOutputDir);
 
-	const int exitCode = RunTool(
-		toolPath,
-		fixtureDir,
-		caseOutputDir,
-		caseOutputDir / "Runtime.reflect.init.h",
-		caseOutputDir / "Runtime.reflect.init.cpp");
+	const int exitCode = RunTool(toolPath, fixtureDir, caseOutputDir, ReadModuleName(fixtureDir));
 
 	if (exitCode == 0)
 	{
@@ -232,7 +251,9 @@ int main(int argc, char** argv)
 		RunFixture(toolPath, fixturesRoot / "nested_namespace", "Input.reflect.h");
 		RunFixture(toolPath, fixturesRoot / "nested_type", "Input.reflect.h");
 		RunFixture(toolPath, fixturesRoot / "guid_property", "Input.reflect.h");
+		RunFixture(toolPath, fixturesRoot / "module_name", "Input.reflect.h");
 		RunFailingFixture(toolPath, fixturesRoot / "name_hash_collision", "Collision.h");
+		RunFailingFixture(toolPath, fixturesRoot / "invalid_module_name", "Invalid.h");
 
 		std::cout << "All NyxHeaderTool fixtures passed.\n";
 		return 0;
