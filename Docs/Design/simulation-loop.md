@@ -1,7 +1,7 @@
 # Simulation loop
 
-**Proposal.** None of this is built yet. It is the plan for how a game's world moves forward in
-time, and why. The code will be in `Engine/Source/Runtime/App` (the loop) and a new
+**Partly a proposal.** The fixed steps are built (`FixedStepClock`, `ILayer::OnFixedUpdate()`, in
+`Application::Run()`); the rest is the plan for how a game's world moves forward in time, and why. The code will be in `Engine/Source/Runtime/App` (the loop) and a new
 `Engine/Source/Runtime/Sim` (steps, commands, the world's systems).
 
 ## The shape of it

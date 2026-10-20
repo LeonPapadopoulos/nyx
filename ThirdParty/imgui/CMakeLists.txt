@@ -1,4 +1,4 @@
-set(IMGUI_DIR ${CMAKE_SOURCE_DIR}/Dependencies/imgui)
+set(IMGUI_DIR ${PROJECT_SOURCE_DIR}/Dependencies/imgui)
 
 add_library(imgui STATIC
 	${IMGUI_DIR}/imgui.cpp

@@ -370,8 +370,8 @@ foreach(NYX_ENGINE_TARGET NyxEngineCommon NyxEngine NyxEditorEngine)
             ${NYX_ENGINE_ROOT}/Reflection/include
         PRIVATE
             ${NYX_ENGINE_ROOT}/Runtime/Core/src
-            ${CMAKE_SOURCE_DIR}/Dependencies/cgltf
-            ${CMAKE_SOURCE_DIR}/Dependencies/glfw/deps # stb_image_write.h, for ImageFile.cpp
+            ${PROJECT_SOURCE_DIR}/Dependencies/cgltf
+            ${PROJECT_SOURCE_DIR}/Dependencies/glfw/deps # stb_image_write.h, for ImageFile.cpp
     )
 
     target_link_libraries(${NYX_ENGINE_TARGET}
@@ -413,12 +413,8 @@ foreach(NYX_ENGINE_TARGET NyxEngineCommon NyxEngine NyxEditorEngine)
     )
 endforeach()
 
-# The game module of a program built without one: GetLinkedGameModule() gives an empty module.
-# Only the programs link it, so tests and tools need no module at all.
-add_library(NyxNoGameModule OBJECT ${NYX_ENGINE_ROOT}/NoGameModule/src/NoGameModule.cpp)
-# The engine's headers and settings only: an object library takes no objects from another
-target_link_libraries(NyxNoGameModule PRIVATE NyxEngineCommon)
-add_dependencies(NyxNoGameModule NyxGeneratedReflection)
+# Game modules: nyx_add_game_module(), nyx_link_game_module(), and the empty NyxNoGameModule
+include(${CMAKE_CURRENT_SOURCE_DIR}/GameModules.cmake)
 
 # Link messages, recordings and scene files as readable text, for the editor's message log and
 # NyxDump. The game doesn't need it, so it is in none of the engine libraries; each program that

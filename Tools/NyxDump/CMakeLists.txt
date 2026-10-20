@@ -12,5 +12,5 @@ add_dependencies(NyxDump NyxGeneratedReflection)
 
 # Pressing F5 in Visual Studio prints the default scene
 set_target_properties(NyxDump PROPERTIES
-    VS_DEBUGGER_COMMAND_ARGUMENTS "\"${CMAKE_SOURCE_DIR}/Assets/Scenes/Default.nyxscene\""
+    VS_DEBUGGER_COMMAND_ARGUMENTS "\"${PROJECT_SOURCE_DIR}/Assets/Scenes/Default.nyxscene\""
 )

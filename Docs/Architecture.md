@@ -81,8 +81,14 @@ The CMake targets:
   reflected type is, into `Build/Windows/Generated`.
 - `NyxLinkTools` (`Engine/Source/LinkTools`): an object library that the editor, NyxDump and the
   link tests link, and the game doesn't.
-- `NyxNoGameModule` (`Engine/Source/NoGameModule`): the empty game module (`GameModule.h`) that
-  the editor and the game link when they are built without one. Tests and tools link no module.
+- `NyxEditor` and `NyxGame` are made by `nyx_add_game_programs()` (top `CMakeLists.txt`), with
+  a game's module or without; a game's repository calls it with its own
+  ([Game modules](Design/game-modules.md)). `Engine/Source/GameModules.cmake` has
+  `nyx_add_game_module()` and `nyx_link_game_module()`, and `NyxNoGameModule`
+  (`Engine/Source/NoGameModule`), the empty module the programs link without one. Tests and tools
+  link no module.
+- Nyx's CMake files name Nyx's folders by `PROJECT_SOURCE_DIR`, not `CMAKE_SOURCE_DIR`: in a
+  game's build the top folder is the game's.
 - `NyxEditorLib`: the editor without its `main()`, a static library that `NyxEditor` and the
   editor's tests link, so the editor compiles once.
 - Tests are in `Engine/Source/tests` and `Editor/Source/tests`; `ctest -C Debug` in
@@ -275,5 +281,9 @@ How some systems work, and why they work that way:
   painting in order with ImGui's drawing, the painted widgets, chrome, glass and ambilight.
 - [Input system](Design/input-system.md): backends, input frames, keys by position, the cursor
   asked for each frame.
+- [Game modules](Design/game-modules.md): how a game outside Nyx brings its own component types
+  into the editor and the game, and what the CMake functions do.
+- [Simulation loop](Design/simulation-loop.md): the fixed steps, and the plan for commands,
+  systems and determinism.
 - [Undo by guid](Design/undo-by-guid.md): why undo names entities by guid, and how it keeps
   components whole.

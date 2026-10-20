@@ -51,8 +51,36 @@ add_subdirectory(Game/Source)
 add_subdirectory(Tools/NyxDump)
 add_subdirectory(Tools/NyxShaderCompiler)
 
-# Set default startup project
-set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT NyxEditor)
+# nyx_add_game_programs([MODULE <name>])
+#
+# The editor and the game, NyxEditor.exe and NyxGame.exe, built with the game module <name>
+# (nyx_add_game_module()) or none. Nyx built on its own makes them without a module; a game's
+# repository, which adds Nyx as a subdirectory, makes them with its module.
+function(nyx_add_game_programs)
+    cmake_parse_arguments(PARSE_ARGV 0 ARG "" "MODULE" "")
+
+    nyx_add_game_program(MODULE ${ARG_MODULE})
+    nyx_add_editor_program(MODULE ${ARG_MODULE})
+
+    # Next to the engine's other programs and the compiled shaders, from whichever folder this is
+    # called
+    foreach(program NyxGame NyxEditor)
+        set_target_properties(${program} PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Binaries)
+        foreach(config ${CMAKE_CONFIGURATION_TYPES})
+            string(TOUPPER ${config} configUpper)
+            set_target_properties(${program} PROPERTIES
+                RUNTIME_OUTPUT_DIRECTORY_${configUpper} ${CMAKE_BINARY_DIR}/Binaries/${config}
+            )
+        endforeach()
+    endforeach()
+
+    # Set default startup project
+    set_property(DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT NyxEditor)
+endfunction()
+
+if(PROJECT_IS_TOP_LEVEL)
+    nyx_add_game_programs()
+endif()
 set_property(TARGET imgui PROPERTY FOLDER "ThirdParty")
 set_property(TARGET spdlog PROPERTY FOLDER "ThirdParty")
 set_property(TARGET stb_image PROPERTY FOLDER "ThirdParty")

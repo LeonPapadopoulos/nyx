@@ -1,4 +1,4 @@
-set(STB_IMAGE_DIR ${CMAKE_SOURCE_DIR}/Dependencies/stb_image)
+set(STB_IMAGE_DIR ${PROJECT_SOURCE_DIR}/Dependencies/stb_image)
 
 # stb_image is technically only a single header file, but we need at least 1 translation unit
 # so we create a dummy one in the CMakeLists.txt file's location

@@ -227,26 +227,38 @@ source_group(DevTools FILES
 	${NYX_DEV_TOOLS_DIR}/include/PainterTestSheet.h
 )
 
-add_executable(NyxEditor main.cpp)
-target_link_libraries(NyxEditor PRIVATE NyxEditorLib NyxNoGameModule)
-target_precompile_headers(NyxEditor REUSE_FROM NyxEditorLib)
+# NyxEditor.exe, the editor with a game module or none. Made by nyx_add_game_programs() (the top
+# CMakeLists.txt), so a game's repository can build it with its own module.
+# nyx_add_editor_program([MODULE <name>])
+function(nyx_add_editor_program)
+    cmake_parse_arguments(PARSE_ARGV 0 ARG "" "MODULE" "")
 
-# Play starts NyxGame from next to the editor, so building the editor builds the game too.
-add_dependencies(NyxEditor NyxGame)
+    add_executable(NyxEditor ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/main.cpp)
+    target_link_libraries(NyxEditor PRIVATE NyxEditorLib)
+    nyx_link_game_module(NyxEditor MODULE ${ARG_MODULE} EDITOR)
 
-# Set working directory to be next to the built .exe
-# ImGui saves the editor's window layout (imgui.ini) in the working directory
-set_target_properties(NyxEditor PROPERTIES
-    VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:NyxEditor>"
-)
+    # The editor shares the library's precompiled header, so it needs the settings this folder gives
+    # its targets; the function may be called from any folder, where they don't apply.
+    target_compile_definitions(NyxEditor PRIVATE "NYX_DEV_TOOLS=$<AND:$<BOOL:${NYX_DEV_TOOLS}>,$<CONFIG:Debug>>")
+    set_target_properties(NyxEditor PROPERTIES
+        MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>"
+    )
+    target_precompile_headers(NyxEditor REUSE_FROM NyxEditorLib)
 
-#######################################################################################
-## Shader
+    # Play starts NyxGame from next to the editor, so building the editor builds the game too.
+    add_dependencies(NyxEditor NyxGame)
 
-# Compiled by Engine/Shaders; the renderer loads them from a "Shaders" folder next to the .exe
-nyx_copy_shaders_next_to(NyxEditor)
-# Live shader reload compiles in NyxShaderCompiler.exe, which sits next to the editor
-add_dependencies(NyxEditor NyxShaderCompiler)
+    # Set working directory to be next to the built .exe
+    # ImGui saves the editor's window layout (imgui.ini) in the working directory
+    set_target_properties(NyxEditor PROPERTIES
+        VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:NyxEditor>"
+    )
+
+    # Compiled by Engine/Shaders; the renderer loads them from a "Shaders" folder next to the .exe
+    nyx_copy_shaders_next_to(NyxEditor)
+    # Live shader reload compiles in NyxShaderCompiler.exe, which sits next to the editor
+    add_dependencies(NyxEditor NyxShaderCompiler)
+endfunction()
 
 #######################################################################################
 
@@ -284,6 +296,15 @@ if(BUILD_TESTING)
     target_precompile_headers(NyxUISourceTests REUSE_FROM NyxEditorLib)
     set_property(TARGET NyxUISourceTests PROPERTY FOLDER "Tests")
     add_test(NAME NyxUISourceTests COMMAND NyxUISourceTests)
+
+    # The editor with a game module, linked as the editor links a game's: the module's source locations
+    add_executable(NyxEditorGameModuleTests tests/EditorGameModuleTests.cpp)
+    target_include_directories(NyxEditorGameModuleTests PRIVATE ${NYX_TEST_SUPPORT_DIR})
+    target_link_libraries(NyxEditorGameModuleTests PRIVATE NyxEditorLib)
+    nyx_link_game_module(NyxEditorGameModuleTests MODULE NyxTestModule EDITOR)
+    target_precompile_headers(NyxEditorGameModuleTests REUSE_FROM NyxEditorLib)
+    set_property(TARGET NyxEditorGameModuleTests PROPERTY FOLDER "Tests")
+    add_test(NAME NyxEditorGameModuleTests COMMAND NyxEditorGameModuleTests)
 
     # Edits, undo and redo turned into live edit messages, and applied to a second world as the game does
     add_executable(NyxGameLinkSubscriberTests tests/GameLinkSubscriberTests.cpp)

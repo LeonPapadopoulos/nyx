@@ -1,41 +1,43 @@
-# NyxGame.exe: runs a scene without the editor. It links only the engine.
-set(NYX_GAME_SOURCES
-    main.cpp
-    src/EditorLinkLayer.cpp
-    src/GameLayer.cpp
-)
+# NyxGame.exe: runs a scene without the editor. It links the engine and a game module, or none.
+# Made by nyx_add_game_programs() (the top CMakeLists.txt), so a game's repository can build it with
+# its own module.
 
-set(NYX_GAME_HEADERS
-    include/EditorLinkLayer.h
-    include/GameLayer.h
-)
+# nyx_add_game_program([MODULE <name>])
+function(nyx_add_game_program)
+    cmake_parse_arguments(PARSE_ARGV 0 ARG "" "MODULE" "")
+    set(root "${CMAKE_CURRENT_FUNCTION_LIST_DIR}")
 
-add_executable(NyxGame
-	${NYX_GAME_SOURCES}
-	${NYX_GAME_HEADERS}
-)
+    set(sources
+        ${root}/main.cpp
+        ${root}/src/EditorLinkLayer.cpp
+        ${root}/src/GameLayer.cpp
+    )
+    set(headers
+        ${root}/include/EditorLinkLayer.h
+        ${root}/include/GameLayer.h
+    )
 
-target_include_directories(NyxGame
-    PRIVATE
-        include
-)
+    add_executable(NyxGame ${sources} ${headers})
 
-target_link_libraries(NyxGame
-	PRIVATE NyxEngine
-	NyxNoGameModule
-	shell32 # CommandLineToArgvW, for the command line in UTF-8
-)
+    target_include_directories(NyxGame
+        PRIVATE
+            ${root}/include
+    )
 
-# The game includes component headers, which include their generated reflection code.
-add_dependencies(NyxGame NyxGeneratedReflection)
+    target_link_libraries(NyxGame
+        PRIVATE NyxEngine
+        shell32 # CommandLineToArgvW, for the command line in UTF-8
+    )
+    nyx_link_game_module(NyxGame MODULE ${ARG_MODULE})
 
-# Tell Visual Studio to mimic the actual file hierarchy
-source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES
-	${NYX_GAME_SOURCES}
-	${NYX_GAME_HEADERS}
-)
+    # The game includes component headers, which include their generated reflection code.
+    add_dependencies(NyxGame NyxGeneratedReflection)
 
-# Compiled by Engine/Shaders; the renderer loads them from a "Shaders" folder next to the .exe
-nyx_copy_shaders_next_to(NyxGame)
-# Live shader reload compiles in NyxShaderCompiler.exe, which sits next to the game
-add_dependencies(NyxGame NyxShaderCompiler)
+    # Tell Visual Studio to mimic the actual file hierarchy
+    source_group(TREE ${root} FILES ${sources} ${headers})
+
+    # Compiled by Engine/Shaders; the renderer loads them from a "Shaders" folder next to the .exe
+    nyx_copy_shaders_next_to(NyxGame)
+    # Live shader reload compiles in NyxShaderCompiler.exe, which sits next to the game
+    add_dependencies(NyxGame NyxShaderCompiler)
+endfunction()

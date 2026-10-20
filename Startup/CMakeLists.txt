@@ -33,14 +33,14 @@ add_executable(NyxStartupPreview
     Preview/main.cpp
     ${NYX_STARTUP_SOURCES}
     # Finds the project's Assets folder from wherever the executable is run.
-    ${CMAKE_SOURCE_DIR}/Engine/Source/Runtime/Core/src/Paths.cpp
+    ${PROJECT_SOURCE_DIR}/Engine/Source/Runtime/Core/src/Paths.cpp
 )
 target_compile_features(NyxStartupPreview PRIVATE cxx_std_20)
 target_compile_definitions(NyxStartupPreview PRIVATE NYX_STARTUP_PREVIEW)
 target_include_directories(NyxStartupPreview PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/Engine/Source/Runtime/Core/include
+    ${PROJECT_SOURCE_DIR}/Engine/Source/Runtime/Core/include
 )
 target_link_libraries(NyxStartupPreview PRIVATE NyxSoftwareIntros gdiplus user32 gdi32)
 set_property(TARGET NyxStartupPreview PROPERTY FOLDER "Startup")

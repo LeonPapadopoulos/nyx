@@ -58,6 +58,16 @@ add_dependencies(NyxComponentTypeRegistryTests NyxGeneratedReflection)
 set_property(TARGET NyxComponentTypeRegistryTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxComponentTypeRegistryTests COMMAND NyxComponentTypeRegistryTests)
 
+# A game module made and linked the way a game makes and links its own, through the same functions:
+# NyxTestModule's component registers next to the engine's and saves in scenes. The editor's tests
+# link the module too.
+nyx_add_game_module(NyxTestModule REFLECT_DIRS TestGameModule/Components)
+add_executable(NyxGameModuleTests GameModuleTests.cpp)
+target_link_libraries(NyxGameModuleTests PRIVATE NyxEngine)
+nyx_link_game_module(NyxGameModuleTests MODULE NyxTestModule)
+set_property(TARGET NyxGameModuleTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxGameModuleTests COMMAND NyxGameModuleTests)
+
 # The input system with virtual devices: frames, taps shorter than a frame, devices coming and
 # going, focus, the cursor. No window needed.
 add_executable(NyxInputTests InputTests.cpp)
@@ -95,7 +105,7 @@ add_test(NAME NyxUIThemeTests COMMAND NyxUIThemeTests)
 add_executable(NyxPainterGpuTests PainterGpuTests.cpp ${NYX_ENGINE_ROOT}/DevTools/src/PainterTestSheet.cpp)
 target_link_libraries(NyxPainterGpuTests PRIVATE NyxEngine)
 # stb_image_write.h, which GLFW ships, saves painted images when NYX_PAINTER_TEST_OUTPUT is set.
-target_include_directories(NyxPainterGpuTests PRIVATE "${CMAKE_SOURCE_DIR}/Dependencies/glfw/deps")
+target_include_directories(NyxPainterGpuTests PRIVATE "${PROJECT_SOURCE_DIR}/Dependencies/glfw/deps")
 target_include_directories(NyxPainterGpuTests PRIVATE ${NYX_ENGINE_ROOT}/DevTools/include)
 add_dependencies(NyxPainterGpuTests NyxGeneratedReflection)
 set_property(TARGET NyxPainterGpuTests PROPERTY FOLDER "Tests")
@@ -112,9 +122,9 @@ find_library(NYX_SPIRV_TOOLS_DEBUG_LIBRARY SPIRV-Toolsd HINTS "${NYX_VULKAN_LIB_
 find_program(NYX_GLSLC glslc HINTS "${NYX_VULKAN_LIB_DIR}/../Bin" REQUIRED)
 set(NYX_GLSLC_REFERENCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/GlslcReference")
 file(GLOB NYX_ENGINE_GLSL CONFIGURE_DEPENDS
-    "${CMAKE_SOURCE_DIR}/Engine/Shaders/*.vert"
-    "${CMAKE_SOURCE_DIR}/Engine/Shaders/*.frag"
-    "${CMAKE_SOURCE_DIR}/Engine/Shaders/*.comp"
+    "${PROJECT_SOURCE_DIR}/Engine/Shaders/*.vert"
+    "${PROJECT_SOURCE_DIR}/Engine/Shaders/*.frag"
+    "${PROJECT_SOURCE_DIR}/Engine/Shaders/*.comp"
 )
 set(NYX_GLSLC_REFERENCES)
 foreach(NYX_SHADER ${NYX_ENGINE_GLSL})
@@ -139,7 +149,7 @@ target_link_libraries(NyxShaderCompilerTests PRIVATE NyxEngine optimized "${NYX_
 target_link_options(NyxShaderCompilerTests PRIVATE "/IGNORE:4099")
 target_compile_definitions(NyxShaderCompilerTests PRIVATE
     NYX_TEST_SHADERS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/Shaders"
-    NYX_ENGINE_SHADERS_DIR="${CMAKE_SOURCE_DIR}/Engine/Shaders"
+    NYX_ENGINE_SHADERS_DIR="${PROJECT_SOURCE_DIR}/Engine/Shaders"
     NYX_GLSLC_SHADERS_DIR="${NYX_GLSLC_REFERENCE_DIR}"
 )
 add_dependencies(NyxShaderCompilerTests NyxGeneratedReflection NyxGlslcReference)
