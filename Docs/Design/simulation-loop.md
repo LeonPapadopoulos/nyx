@@ -1,8 +1,9 @@
 # Simulation loop
 
-**Partly a proposal.** The fixed steps are built (`FixedStepClock`, `ILayer::OnFixedUpdate()`, in
-`Application::Run()`); the rest is the plan for how a game's world moves forward in time, and why. The code will be in `Engine/Source/Runtime/App` (the loop) and a new
-`Engine/Source/Runtime/Sim` (steps, commands, the world's systems).
+**Partly a proposal.** How a game's world moves forward in time, and why. Built so far: the fixed
+steps (`FixedStepClock`, `ILayer::OnFixedUpdate()`, in `Application::Run()`) and the world with its
+ordered systems (`GameWorld`, `ISimSystem`, in `Engine/Source/Runtime/Sim`). Commands, events,
+drawing between steps, Pause and Step are still the plan.
 
 ## The shape of it
 
@@ -38,12 +39,16 @@
 
 ## Systems, in one order
 
-- A `GameWorld` owns the `Registry`, the command queue and the systems, in one list whose order
-  is written in one place. `GameLayer` owns the `GameWorld`.
-- A system implements `Step(SimContext&)`. `SimContext` carries the registry, the `StepTime`, the
-  command and event queues and the engine services (the physics world, later the spatial index).
-  Systems talk through components and queues, never by calling each other.
-- A system can run every nth step: heat or plant growth don't need 60 updates a second.
+- **Built:** a `GameWorld` owns the `Registry` and the systems, in one list in the order they were
+  added (`AddSystem()`). `GameLayer` owns it, has the game module add its systems
+  (`GameModule::CreateSystems`) and steps it in `OnFixedUpdate()`.
+- **Built:** a system implements `ISimSystem::Step(const SimContext&)`; `SimContext` carries the
+  registry and the `StepTime`. Systems talk through components, never by calling each other.
+- **Built:** a system can run every nth step (`AddSystem(system, n)`), counted from step 0, so
+  systems with the same interval run in the same steps: heat or plant growth don't need 60 updates
+  a second.
+- **Not yet:** the command and event queues and the engine services (the physics world, later the
+  spatial index) in `SimContext`.
 - The engine's part of the order is fixed; a game's systems go into the slots around it:
   1. apply commands;
   2. the game's systems that decide forces and constraints;

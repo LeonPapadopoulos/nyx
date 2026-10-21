@@ -1,10 +1,12 @@
 // A game module as a game builds one: NyxTestModule, made by nyx_add_game_module() from a folder
 // outside the engine and linked with nyx_link_game_module(), as the game links its module. Its
-// component types register next to the engine's, and scenes save and load them.
+// component types register next to the engine's, scenes save and load them, its own post-load step
+// runs, and its systems run in a game world.
 #include "ComponentRegistration.h"
 #include "ComponentTypeRegistry.h"
 #include "Entity.h"
 #include "GameModule.h"
+#include "GameWorld.h"
 #include "Log.h"
 #include "SceneSerializer.h"
 #include "TestLanternComponent.h"
@@ -28,6 +30,7 @@ namespace
 		const Nyx::GameModule& module = Nyx::GetLinkedGameModule();
 		Require(std::string_view(module.Name) == "NyxTestModule", "The linked module should be the test module");
 		Require(module.RegisterTypes != nullptr, "The module should register its types");
+		Require(module.CreateSystems != nullptr, "The game's module should make its systems");
 		Require(module.RegisterSources == nullptr, "Only the editor's module registers source locations");
 	}
 
@@ -69,6 +72,44 @@ namespace
 			});
 		Require(lanterns == 1, "The loaded scene should have the module component once");
 	}
+
+	void TestModulePostLoadStepRuns(const std::filesystem::path& directory)
+	{
+		// The module's REGISTER function set a post-load step: an unlabelled lantern is labelled
+		Nyx::Registry world;
+		world.Add<TestLanternComponent>(world.CreateEntity(), TestLanternComponent{ .Brightness = 1.0f });
+
+		const std::filesystem::path scenePath = directory / "Unlabelled.nyxscene";
+		Require(Nyx::SceneSerializer::SaveToFile(world, scenePath), "Saving the unlabelled lantern failed");
+
+		Nyx::Registry loaded;
+		Require(Nyx::SceneSerializer::LoadFromFile(scenePath, loaded), "Loading the unlabelled lantern failed");
+		loaded.Each<TestLanternComponent>(
+			[](Nyx::Entity /*entity*/, TestLanternComponent& lantern)
+			{
+				Require(lantern.Label == "Lit", "The module's post-load step should have labelled the lantern");
+			});
+	}
+
+	void TestModuleSystemsRunInTheGameWorld()
+	{
+		Nyx::GameWorld world;
+		const Nyx::Entity entity = world.GetRegistry().CreateEntity();
+		world.GetRegistry().Add<TestLanternComponent>(entity, TestLanternComponent{ .Brightness = 1.0f });
+
+		// As the game's GameLayer does
+		Nyx::GetLinkedGameModule().CreateSystems(world);
+		Require(world.GetSystems().size() == 1, "The module should add its one system");
+		Require(std::string_view(world.GetSystems().front().System->GetName()) == "Lantern Glow",
+			"The module's system should be its Lantern Glow");
+
+		for (uint64_t step = 0; step < 4; ++step)
+		{
+			world.Step(Nyx::StepTime{ 1.0 / 60.0, step, static_cast<double>(step) / 60.0 });
+		}
+		Require(world.GetRegistry().Get<TestLanternComponent>(entity).Brightness == 3.0f,
+			"Four steps of the module's system should brighten the lantern by 2");
+	}
 }
 
 int main()
@@ -81,6 +122,8 @@ int main()
 		TestTheLinkedModule();
 		TestModuleTypesRegisterNextToTheEngines();
 		TestScenesKeepModuleComponents(directory.Path);
+		TestModulePostLoadStepRuns(directory.Path);
+		TestModuleSystemsRunInTheGameWorld();
 	}
 	catch (const std::exception& error)
 	{

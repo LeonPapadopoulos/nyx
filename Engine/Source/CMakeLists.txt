@@ -55,6 +55,9 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ComponentRegistration.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/SceneSerializer.cpp
 
+    # Runtime/Sim
+    ${NYX_ENGINE_ROOT}/Runtime/Sim/src/GameWorld.cpp
+
     # Runtime/Assets
     ${NYX_ENGINE_ROOT}/Runtime/Assets/src/cgltf_impl.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Assets/src/GltfImporter.cpp
@@ -169,6 +172,10 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/SceneSerializer.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/IAssetResolver.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/AssetReference.h
+
+    # Runtime/Sim
+    ${NYX_ENGINE_ROOT}/Runtime/Sim/include/SimSystem.h
+    ${NYX_ENGINE_ROOT}/Runtime/Sim/include/GameWorld.h
 
     # Runtime/Assets
     ${NYX_ENGINE_ROOT}/Runtime/Assets/include/GltfImporter.h
@@ -362,6 +369,7 @@ foreach(NYX_ENGINE_TARGET NyxEngineCommon NyxEngine NyxEditorEngine)
             ${NYX_ENGINE_ROOT}/Runtime/Net/include
             ${NYX_ENGINE_ROOT}/Runtime/Input/include
             ${NYX_ENGINE_ROOT}/Runtime/Scene/include
+            ${NYX_ENGINE_ROOT}/Runtime/Sim/include
             ${NYX_ENGINE_ROOT}/Runtime/Assets/include
             ${NYX_ENGINE_ROOT}/Runtime/UI/include
             ${NYX_ENGINE_ROOT}/Runtime/Render/include

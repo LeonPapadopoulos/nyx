@@ -29,7 +29,7 @@ namespace Nyx::Game
 		Nyx::ScenePostLoadContext postLoadContext{};
 		postLoadContext.AssetResolver = AssetResolver.get();
 
-		if (Nyx::SceneSerializer::LoadFromFile(ScenePath, World, postLoadContext))
+		if (Nyx::SceneSerializer::LoadFromFile(ScenePath, World.GetRegistry(), postLoadContext))
 		{
 			LOG_INFO("Running scene '{0}'", ScenePath.string());
 		}
@@ -39,7 +39,7 @@ namespace Nyx::Game
 		}
 
 		bool bHasPrimaryCamera = false;
-		World.Each<Nyx::CameraComponent>(
+		World.GetRegistry().Each<Nyx::CameraComponent>(
 			[&](Nyx::Entity /*entity*/, Nyx::CameraComponent& camera)
 			{
 				bHasPrimaryCamera = bHasPrimaryCamera || camera.bPrimary;
@@ -50,7 +50,14 @@ namespace Nyx::Game
 			LOG_WARNING("The scene has no primary camera; showing it from the renderer's default camera");
 		}
 
-		Renderer->SetWorld(&World);
+		Renderer->SetWorld(&World.GetRegistry());
+
+		// The game module's systems, in their order; they run from the first fixed step on
+		if (const auto createSystems = application.GetGameModule().CreateSystems)
+		{
+			createSystems(World);
+			LOG_INFO("{0} simulation system(s)", World.GetSystems().size());
+		}
 
 		// The view the player sees: through the scene's camera, without the editor's grid and outlines
 		GameViewId = Renderer->CreateSceneView();
@@ -61,6 +68,11 @@ namespace Nyx::Game
 	{
 		Renderer->DestroySceneView(GameViewId);
 		Renderer->SetWorld(nullptr);
+	}
+
+	void GameLayer::OnFixedUpdate(const Nyx::StepTime& step)
+	{
+		World.Step(step);
 	}
 
 	void GameLayer::OnUI()

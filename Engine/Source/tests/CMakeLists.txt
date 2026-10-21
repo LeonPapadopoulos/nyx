@@ -68,12 +68,23 @@ add_test(NAME NyxPathsTests COMMAND NyxPathsTests)
 # A game module made and linked the way a game makes and links its own, through the same functions:
 # NyxTestModule's component registers next to the engine's and saves in scenes. The editor's tests
 # link the module too.
-nyx_add_game_module(NyxTestModule REFLECT_DIRS TestGameModule/Components)
+nyx_add_game_module(NyxTestModule
+    REFLECT_DIRS TestGameModule/Components
+    SOURCES TestGameModule/TestGameModule.cpp
+    REGISTER NyxTestModule::RegisterModule
+    SYSTEMS NyxTestModule::CreateSystems)
 add_executable(NyxGameModuleTests GameModuleTests.cpp)
 target_link_libraries(NyxGameModuleTests PRIVATE NyxEngine)
 nyx_link_game_module(NyxGameModuleTests MODULE NyxTestModule)
 set_property(TARGET NyxGameModuleTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxGameModuleTests COMMAND NyxGameModuleTests)
+
+# The game world: systems run in their order, every step or every nth one
+add_executable(NyxGameWorldTests GameWorldTests.cpp)
+target_link_libraries(NyxGameWorldTests PRIVATE NyxEngine)
+add_dependencies(NyxGameWorldTests NyxGeneratedReflection)
+set_property(TARGET NyxGameWorldTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxGameWorldTests COMMAND NyxGameWorldTests)
 
 # The input system with virtual devices: frames, taps shorter than a frame, devices coming and
 # going, focus, the cursor. No window needed.

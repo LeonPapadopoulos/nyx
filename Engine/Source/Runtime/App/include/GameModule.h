@@ -2,6 +2,8 @@
 
 namespace Nyx
 {
+	class GameWorld;
+
 	// What a game's module brings to the programs that run it, the editor and the game: its own
 	// reflected component types, registered next to the engine's. The engine never knows a game;
 	// a program hands its module to the Application (ApplicationSpecs::Module).
@@ -12,6 +14,10 @@ namespace Nyx
 
 		// Registers the module's component types and their post-load steps. nullptr: none.
 		void (*RegisterTypes)() = nullptr;
+
+		// The game only: adds the module's simulation systems to the world, in their order. The
+		// editor doesn't simulate, so it never calls this. nullptr: none.
+		void (*CreateSystems)(GameWorld& world) = nullptr;
 
 		// The editor only: registers where the module's types are declared, so the editor can open
 		// their source. nullptr: none.

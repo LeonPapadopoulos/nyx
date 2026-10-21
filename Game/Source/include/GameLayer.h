@@ -2,6 +2,7 @@
 
 #include "AssetResolver.h"
 #include "Entity.h"
+#include "GameWorld.h"
 #include "Layer.h"
 #include "SceneSerializationTypes.h"
 
@@ -17,8 +18,9 @@ namespace Nyx
 
 namespace Nyx::Game
 {
-	// The whole game for now: loads one scene and shows it through the scene's primary camera
-	// (or the renderer's default camera if it has none), filling the window.
+	// The whole game for now: loads one scene into its world, runs the world's systems each fixed
+	// step, and shows it through the scene's primary camera (or the renderer's default camera if it
+	// has none), filling the window. The game module adds the systems.
 	class GameLayer : public Nyx::ILayer
 	{
 	public:
@@ -26,12 +28,13 @@ namespace Nyx::Game
 
 		void OnAttach(Nyx::Application& application) override;
 		void OnDetach() override;
+		void OnFixedUpdate(const Nyx::StepTime& step) override;
 		void OnUI() override;
 
 		// The world the game runs, e.g. for the editor's live edits. It stays at its address.
 		Nyx::Registry& GetWorld()
 		{
-			return World;
+			return World.GetRegistry();
 		}
 
 		// What components need after they were loaded or changed, e.g. to load the mesh a
@@ -49,8 +52,8 @@ namespace Nyx::Game
 		Nyx::IEditorRenderer* UIRenderer = nullptr;
 		std::unique_ptr<Nyx::AssetResolver> AssetResolver;
 
-		// All entities of the loaded scene
-		Nyx::Registry World;
+		// All entities of the loaded scene, and the systems that run them
+		Nyx::GameWorld World;
 
 		uint64_t GameViewId = 0;
 	};

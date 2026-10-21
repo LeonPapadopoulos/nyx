@@ -36,6 +36,7 @@ namespace
 		const GameModule& module = GetLinkedGameModule();
 		Require(std::string_view(module.Name) == "NyxTestModule", "The linked module should be the test module");
 		Require(module.RegisterSources != nullptr, "The editor's module should register source locations");
+		Require(module.CreateSystems == nullptr, "The editor doesn't simulate, so its module has no systems");
 
 		module.RegisterSources();
 

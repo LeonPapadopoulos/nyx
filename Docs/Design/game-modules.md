@@ -36,7 +36,7 @@ where the game's files are.
 
 ## The shape of it
 
-- **`nyx_add_game_module(<name> REFLECT_DIRS ... [SOURCES ...] [INCLUDE_DIRS ...])`**:
+- **`nyx_add_game_module(<name> REFLECT_DIRS ... [SOURCES ...] [INCLUDE_DIRS ...] [REGISTER <f>] [SYSTEMS <f>])`**:
   - runs the header tool over `REFLECT_DIRS` with `--module-name <name>`, into
     `Generated/<name>`; a component header ends with
     `#include "Generated/<name>/<Header>.reflect.h"`;
@@ -55,8 +55,15 @@ where the game's files are.
   next to the shaders, the shader compiler and the Slang DLLs, as in Nyx's own build. The editor
   shares its library's precompiled header, so the function gives it that folder's settings
   (`NYX_DEV_TOOLS`, embedded debug information) wherever it is called from.
-- **The module says what it has** through `GameModule`: its name, `RegisterTypes` and, for the
-  editor, `RegisterSources`. Each program passes `GetLinkedGameModule()` in
+- **A module's own code at startup**, named by qualified function names it defines:
+  - `REGISTER MyGame::RegisterTypes`, `void ()`: runs right after the module's generated type
+    registration, in the game and the editor, e.g. to set post-load steps
+    (`ComponentTypeRegistry::SetPostLoad()`);
+  - `SYSTEMS MyGame::CreateSystems`, `void (Nyx::GameWorld&)`: adds the module's simulation systems
+    to the game's world, in their order. Only the game calls it; the editor doesn't simulate.
+- **The module says what it has** through `GameModule`: its name, `RegisterTypes` (the generated
+  registration and `REGISTER`), `CreateSystems` for the game, and `RegisterSources` for the
+  editor. Each program passes `GetLinkedGameModule()` in
   `ApplicationSpecs::Module`. `Application` registers its types right after the engine's, before
   any layer; `EditorLayer::OnAttach()` registers its sources. The game's components then appear in
   Add Component and the details panel, and save, undo and go over the editor link like the
@@ -97,8 +104,9 @@ where the game's files are.
 
 - `NyxTestModule` (`Engine/Source/tests/TestGameModule`) is made and linked through the same
   functions a game uses, so the path a private game depends on stays tested in public:
-  - `NyxGameModuleTests`: the game's linked module, its type registered next to the engine's, and
-    a scene that saves and loads its component;
+  - `NyxGameModuleTests`: the game's linked module, its type registered next to the engine's, a
+    scene that saves and loads its component, its post-load step (`REGISTER`) and its system
+    (`SYSTEMS`) running in a `GameWorld`;
   - `NyxEditorGameModuleTests`: the editor's linked module registers where its types and
     properties are declared.
 - `NyxComponentTypeRegistryTests`: a second type of a name already taken is refused.
@@ -106,8 +114,6 @@ where the game's files are.
 ## Not built yet
 
 - **Engine assets in the asset browser.** It lists the project's assets only.
-- **A module's own post-load steps and systems**: a hook after its generated registration, and
-  `CreateSystems()` once there is a `GameWorld`.
 - **A module's folder dependency table**, checked like the engine's and the editor's.
 - **Reloading game code without restarting** (a DLL module). A static build keeps debugging
   simple.
