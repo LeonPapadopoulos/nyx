@@ -1,6 +1,7 @@
 #pragma once
 #include "Log.h"
 #include "Assertions.h"
+#include "Profiler.h"
 #include "Entity.h"
 #include "TypedHandle.h"
 
@@ -13,6 +14,7 @@
 
 int main(int argc, char** argv)
 {
+	NYX_PROFILE_THREAD("Main");
 	Nyx::Logger::Get().Init();
 	CORE_LOG_WARNING("Initialized Log! {0}", 0);
 	LOG_INFO("Initialized Log! {0}", 1);

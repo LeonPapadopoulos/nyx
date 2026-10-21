@@ -28,6 +28,10 @@ endforeach()
 # builds have them; Release builds, which are what ships, never do.
 option(NYX_DEV_TOOLS "Build the editor's prototype and diagnostics tools into Debug builds" ON)
 
+# The Tracy profiler in every program (Profiler.h). It collects nothing until a viewer connects;
+# off, nothing of Tracy is compiled or linked.
+option(NYX_PROFILER "Build the Tracy profiler into the engine and its programs" ON)
+
 ## Execute CMake files in subdirectories
 # Dependencies
 add_subdirectory(Dependencies/spdlog)
@@ -35,6 +39,15 @@ add_subdirectory(Dependencies/glfw)
 add_subdirectory(Dependencies/glm)
 add_subdirectory(ThirdParty/imgui)
 add_subdirectory(ThirdParty/stb_image)
+if(NYX_PROFILER)
+    # Tracy's client listens for a viewer only once one asks for data, only on this machine (as
+    # the editor link does), and leaves crashes to Nyx's own handler (CrashHandler.cpp).
+    set(TRACY_ENABLE ON CACHE BOOL "" FORCE)
+    set(TRACY_ON_DEMAND ON CACHE BOOL "" FORCE)
+    set(TRACY_ONLY_LOCALHOST ON CACHE BOOL "" FORCE)
+    set(TRACY_NO_CRASH_HANDLER ON CACHE BOOL "" FORCE)
+    add_subdirectory(Dependencies/tracy)
+endif()
 
 # Tests
 include(CTest)
@@ -98,6 +111,9 @@ set_property(TARGET imgui PROPERTY FOLDER "ThirdParty")
 set_property(TARGET spdlog PROPERTY FOLDER "ThirdParty")
 set_property(TARGET stb_image PROPERTY FOLDER "ThirdParty")
 set_property(TARGET glm PROPERTY FOLDER "ThirdParty")
+if(TARGET TracyClient)
+    set_property(TARGET TracyClient PROPERTY FOLDER "ThirdParty")
+endif()
 
 # Todo: cleanup targets
 if(TARGET glfw)

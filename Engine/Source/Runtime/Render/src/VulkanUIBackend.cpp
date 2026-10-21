@@ -3,6 +3,7 @@
 
 #include "ImageFile.h"
 #include "Log.h"
+#include "Profiler.h"
 #include "SceneView.h"
 #include "ShaderPrograms.h"
 #include "UIChrome.h"
@@ -152,24 +153,34 @@ namespace Nyx
 
 	void VulkanUIBackend::BuildUI(vk::raii::CommandBuffer& cmd, const std::function<void()>& buildUI, const Nyx::UI::PainterWindowStats::Times& rendererTimes)
 	{
+		NYX_PROFILE_FUNCTION();
 		StepStart = std::chrono::steady_clock::now();
-		ImGuiBackend->BeginFrame();
-		buildUI();
-		// The frame ends here rather than in ImGui::Render(), so that the windows ImGui begins
-		// itself while ending it (drag and drop tooltips) are there when the cards are painted.
-		ImGui::EndFrame();
+		{
+			NYX_PROFILE_SCOPE("Layers' UI");
+			ImGuiBackend->BeginFrame();
+			buildUI();
+			// The frame ends here rather than in ImGui::Render(), so that the windows ImGui begins
+			// itself while ending it (drag and drop tooltips) are there when the cards are painted.
+			ImGui::EndFrame();
+		}
 		PendingFrameTimes = rendererTimes;
 		PendingFrameTimes.BuildUI = TakeStepTime();
 		Nyx::UI::SetGlassBackdrop(GlassImGuiTexture != VK_NULL_HANDLE ? reinterpret_cast<ImTextureID>(GlassImGuiTexture) : ImTextureID_Invalid);
 		Nyx::UI::SetPlainGlassBackdrop(GetPlainGlassBackdrop());
-		Nyx::UI::PaintWindowCards();
+		{
+			NYX_PROFILE_SCOPE("Window chrome");
+			Nyx::UI::PaintWindowCards();
+		}
 		PendingFrameTimes.Chrome = TakeStepTime();
 		// After the chrome, which takes over some of ImGui's shapes
 		Nyx::UI::MarkImGuiShapes();
 		// The last frame's heat, which the statistics still hold; after the marks, which would
 		// mark its rects
 		Nyx::UI::ShowPainterHeatmap(WindowPainterStats);
-		DrawPainterCanvases(cmd);
+		{
+			NYX_PROFILE_SCOPE("Painter canvases");
+			DrawPainterCanvases(cmd);
+		}
 		PendingFrameTimes.Canvases = TakeStepTime();
 		GatherWindowPainters();
 		WindowPainterStats.FrameTimes.Gather = TakeStepTime();
@@ -177,6 +188,7 @@ namespace Nyx
 
 	void VulkanUIBackend::RecordUI(vk::raii::CommandBuffer& cmd, uint32_t imageIndex)
 	{
+		NYX_PROFILE_FUNCTION();
 		// With glass in the main window, what lies behind it is drawn and blurred first, so the
 		// glass shows this frame's. ImGui::Render() makes the draw data for both; the backend's
 		// DrawFrame() finds it made. The window segments are drawn in runs, which only the draw
@@ -208,6 +220,7 @@ namespace Nyx
 
 	void VulkanUIBackend::RenderPlatformWindows()
 	{
+		NYX_PROFILE_FUNCTION();
 		ImGuiBackend->RenderPlatformWindows();
 	}
 

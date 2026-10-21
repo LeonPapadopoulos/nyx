@@ -134,6 +134,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/CrashHandler.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/FrameRateLimiter.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/FixedStepClock.h
+    ${NYX_ENGINE_ROOT}/Runtime/Core/include/Profiler.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/FileWatcher.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/StringUtil.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/BinaryArchive.h
@@ -390,6 +391,12 @@ foreach(NYX_ENGINE_TARGET NyxEngineCommon NyxEngine NyxEditorEngine)
             stb_image
             NyxStartup # The startup banner, from the Startup module.
     )
+
+    # The profiler (Profiler.h): Tracy's client, PUBLIC so every program gets it, or nothing at all
+    target_compile_definitions(${NYX_ENGINE_TARGET} PUBLIC "NYX_PROFILER=$<BOOL:${NYX_PROFILER}>")
+    if(NYX_PROFILER)
+        target_link_libraries(${NYX_ENGINE_TARGET} PUBLIC Tracy::TracyClient)
+    endif()
 
 
     # NYXENGINE_STATIC turns NYXENGINE_API (NyxEngineAPI.h) into nothing: no DLL exports needed.

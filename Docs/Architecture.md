@@ -42,7 +42,7 @@ doesn't allow, and on a table that goes round in a circle, so a new dependency s
 
 | Folder | What it holds | Includes from |
 | --- | --- | --- |
-| `Core` | Logging, assertions, paths, text helpers, child processes, the crash handler, file watching, the frame rate limiter, the fixed step clock, `BinaryArchive` | — |
+| `Core` | Logging, assertions, paths, text helpers, child processes, the crash handler, file watching, the frame rate limiter, the fixed step clock, `BinaryArchive`, the profiler macros (`Profiler.h`) | — |
 | `Reflection` | Type and property metadata, and the `NYX_REFLECT` and `NYX_PROPERTY` macros; not under `Runtime` | — |
 | `Net` | TCP connections and the messages they carry | Core |
 | `Input` | Keyboard and mouse, gathered from backends into one `InputFrame` per frame | Core |
@@ -144,6 +144,22 @@ checks every `#include` against this table.
 6. `InputSystem::EndFrame()`: sets the cursor the layers asked for.
 
 If the GPU device is lost, the renderer stops drawing and `Application` closes the window.
+
+### Profiling
+
+`Profiler.h` (`Core`) has Nyx's profiler macros: `NYX_PROFILE_SCOPE(name)`,
+`NYX_PROFILE_FUNCTION()`, `NYX_PROFILE_FRAME()`, `NYX_PROFILE_THREAD(name)`, `NYX_PROFILE_PLOT()`
+and `NYX_PROFILE_MESSAGE()`. They wrap Tracy, and only `Profiler.h` includes Tracy's headers.
+
+- The CMake option `NYX_PROFILER` (on by default) builds Tracy's client into `NyxEngine` and
+  `NyxEditorEngine`, so every program has it; off, the macros are nothing and Tracy isn't built.
+- Tracy collects only once a viewer connects (`TRACY_ON_DEMAND`), listens only on `127.0.0.1`,
+  from port 8086 up (each program running takes the next free one), and leaves crashes to Nyx's
+  crash handler.
+- Zones: the steps of `Application::Run()` above, one per layer's `OnUpdate` and `OnFixedUpdate`
+  (named by the layer's type), one per fixed step, and the renderer's steps in
+  `DrawFrameOnDevice()` and `VulkanUIBackend`. Each frame ends with a frame mark; `main()` names
+  the main thread.
 
 ## Who owns what
 

@@ -9,6 +9,7 @@
 #include "TransformComponent.h"
 #include "MeshRendererComponent.h"
 #include "Paths.h"
+#include "Profiler.h"
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -397,6 +398,7 @@ namespace Nyx
 
 	void VulkanRenderer::DrawFrameOnDevice(const std::function<void()>& buildUI)
 	{
+		NYX_PROFILE_FUNCTION();
 		FrameClock clock = StartFrameClock();
 		WaitForLastFrame(clock);
 
@@ -411,8 +413,11 @@ namespace Nyx
 			}
 		} recordingEnds{ bRecordingFrame };
 
-		UI.ReadLastFrame();
-		ReadBackPickResults();
+		{
+			NYX_PROFILE_SCOPE("Read back last frame");
+			UI.ReadLastFrame();
+			ReadBackPickResults();
+		}
 
 		const std::optional<uint32_t> imageIndex = AcquireImage(clock);
 		if (!imageIndex)
@@ -421,7 +426,10 @@ namespace Nyx
 		}
 
 		// Shaders saved since the last frame, compiled again; their pipelines are made again
-		ApplyShaderUpdates();
+		{
+			NYX_PROFILE_SCOPE("Shader updates");
+			ApplyShaderUpdates();
+		}
 
 		vk::raii::CommandBuffer& cmd = BeginCommands(*imageIndex);
 		RenderScene(cmd, clock);
@@ -454,6 +462,7 @@ namespace Nyx
 
 	void VulkanRenderer::WaitForLastFrame(FrameClock& clock)
 	{
+		NYX_PROFILE_FUNCTION();
 		const vk::Result fenceResult = Context.GetDevice().waitForFences({ *InFlightFence }, true, UINT64_MAX);
 		(void)fenceResult;
 		clock.Times.WaitForGpu = MillisecondsSince(clock.Start);
@@ -467,6 +476,7 @@ namespace Nyx
 
 	std::optional<uint32_t> VulkanRenderer::AcquireImage(FrameClock& clock)
 	{
+		NYX_PROFILE_FUNCTION();
 		const std::chrono::steady_clock::time_point acquireStart = std::chrono::steady_clock::now();
 		const vk::ResultValue<uint32_t> acquireResult =
 			Swapchain.GetSwapchain().acquireNextImage(UINT64_MAX, *ImageAvailableSemaphore);
@@ -502,6 +512,7 @@ namespace Nyx
 
 	void VulkanRenderer::RenderScene(vk::raii::CommandBuffer& cmd, FrameClock& clock)
 	{
+		NYX_PROFILE_FUNCTION();
 		const std::chrono::steady_clock::time_point sceneStart = std::chrono::steady_clock::now();
 
 		// Each shown world's state, once per frame, for all views that show it
@@ -509,16 +520,22 @@ namespace Nyx
 
 		// Every scene view into its own offscreen target: first the editor's own passes of all
 		// views, then the views, so that each is timed in one go
-		UI.WriteUITimestamp(*cmd, VulkanUIBackend::EditorPassesPair, false);
-		DrawEditorPasses(cmd);
-		UI.WriteUITimestamp(*cmd, VulkanUIBackend::EditorPassesPair, true);
-
-		UI.WriteUITimestamp(*cmd, VulkanUIBackend::SceneViewsPair, false);
-		for (SceneViewInstance& view : SceneViews)
 		{
-			RenderSceneView(view, cmd);
+			NYX_PROFILE_SCOPE("Editor passes");
+			UI.WriteUITimestamp(*cmd, VulkanUIBackend::EditorPassesPair, false);
+			DrawEditorPasses(cmd);
+			UI.WriteUITimestamp(*cmd, VulkanUIBackend::EditorPassesPair, true);
 		}
-		UI.WriteUITimestamp(*cmd, VulkanUIBackend::SceneViewsPair, true);
+
+		{
+			NYX_PROFILE_SCOPE("Scene views");
+			UI.WriteUITimestamp(*cmd, VulkanUIBackend::SceneViewsPair, false);
+			for (SceneViewInstance& view : SceneViews)
+			{
+				RenderSceneView(view, cmd);
+			}
+			UI.WriteUITimestamp(*cmd, VulkanUIBackend::SceneViewsPair, true);
+		}
 
 		// Each picture blurred small, before the UI is built, so that the UI shows this frame's blur
 		UI.BlurSceneViews(cmd, SceneViews);
@@ -573,6 +590,7 @@ namespace Nyx
 
 	void VulkanRenderer::Submit(vk::raii::CommandBuffer& cmd, uint32_t imageIndex)
 	{
+		NYX_PROFILE_FUNCTION();
 		const vk::PipelineStageFlags waitStage = vk::PipelineStageFlagBits::eColorAttachmentOutput;
 
 		vk::SubmitInfo submitInfo{};
@@ -601,6 +619,7 @@ namespace Nyx
 
 	void VulkanRenderer::Present(uint32_t imageIndex, const FrameClock& clock)
 	{
+		NYX_PROFILE_FUNCTION();
 		vk::PresentInfoKHR presentInfo{};
 		presentInfo.waitSemaphoreCount = 1;
 		presentInfo.pWaitSemaphores = &*RenderFinishedSemaphores[imageIndex];

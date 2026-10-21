@@ -3,9 +3,11 @@
 #include "ComponentRegistration.h"
 #include "EditorRenderer.h"
 #include "Log.h"
+#include "Profiler.h"
 #include "Window.h"
 
 #include <chrono>
+#include <typeinfo>
 
 namespace Nyx
 {
@@ -80,8 +82,11 @@ namespace Nyx
 		while (!Window->ShouldClose())
 		{
 			Window->WaitForNextFrame();
-			Window->PollEvents();
-			Input.BeginFrame(Nyx::Input::NowUs());
+			{
+				NYX_PROFILE_SCOPE("PollEvents and input");
+				Window->PollEvents();
+				Input.BeginFrame(Nyx::Input::NowUs());
+			}
 
 			const auto frameTime = std::chrono::steady_clock::now();
 			const double frameSeconds = std::chrono::duration<double>(frameTime - previousFrameTime).count();
@@ -89,6 +94,8 @@ namespace Nyx
 
 			for (const std::unique_ptr<ILayer>& layer : Layers)
 			{
+				NYX_PROFILE_SCOPE("OnUpdate");
+				NYX_PROFILE_ZONE_NAME(typeid(*layer.get()).name());
 				layer->OnUpdate(static_cast<float>(frameSeconds));
 			}
 
@@ -98,17 +105,23 @@ namespace Nyx
 
 			// The cursor as the frame's layers asked for it
 			Input.EndFrame();
+			NYX_PROFILE_FRAME();
 		}
 	}
 
 	void Application::RunFixedSteps(double frameSeconds)
 	{
+		NYX_PROFILE_FUNCTION();
 		const uint32_t steps = SimulationClock.Advance(frameSeconds);
+		NYX_PROFILE_PLOT("Fixed steps per frame", static_cast<int64_t>(steps));
 		for (uint32_t step = 0; step < steps; ++step)
 		{
+			NYX_PROFILE_SCOPE("Fixed step");
 			const StepTime stepTime = SimulationClock.GetFrameStep(step);
 			for (const std::unique_ptr<ILayer>& layer : Layers)
 			{
+				NYX_PROFILE_SCOPE("OnFixedUpdate");
+				NYX_PROFILE_ZONE_NAME(typeid(*layer.get()).name());
 				layer->OnFixedUpdate(stepTime);
 			}
 		}
@@ -123,6 +136,7 @@ namespace Nyx
 
 	void Application::DrawFrame()
 	{
+		NYX_PROFILE_FUNCTION();
 		// A minimized window has nothing to draw into
 		if (Window->WaitIfMinimized())
 		{

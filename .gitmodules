@@ -17,3 +17,6 @@
 [submodule "Dependencies/cgltf"]
 	path = Dependencies/cgltf
 	url = https://github.com/LeonPapadopoulos/cgltf.git
+[submodule "Dependencies/tracy"]
+	path = Dependencies/tracy
+	url = https://github.com/wolfpld/tracy.git

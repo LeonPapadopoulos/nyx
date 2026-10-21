@@ -94,6 +94,22 @@ Build\Windows\Binaries\Debug\NyxDump.exe Assets\Scenes\Default.nyxscene
 
 A `.nyxlinklog` file prints the same way.
 
+## Profiling
+
+Every program has the [Tracy](https://github.com/wolfpld/tracy) profiler built in, while the CMake
+option `NYX_PROFILER` is on (the default). It collects nothing until a viewer connects, so it
+costs next to nothing otherwise.
+
+- Run the Tracy viewer of the same version as `Dependencies/tracy` (`tracy-profiler.exe`). Its
+  start screen lists the programs running on this machine; open one to record it.
+- Each program listens on the first free port from 8086, only on `127.0.0.1`: the editor usually
+  gets 8086, and the games of Play or Play All the next ones. To pick one by hand, type
+  `127.0.0.1:<port>` into the viewer's address field.
+- Each frame is one frame in the viewer. Zones show the input, each layer's update, the fixed
+  steps with each step, and the renderer's steps: the fence wait, the scene views, the UI build
+  and the submit.
+- `-DNYX_PROFILER=OFF` builds without Tracy: the profiler macros compile to nothing.
+
 ## The painted UI
 
 The editor's UI is drawn by the *painter*: 2D shapes as signed distance fields on the GPU, so
