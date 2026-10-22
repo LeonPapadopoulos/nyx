@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <map>
 #include <optional>
+#include <set>
 
 namespace Nyx
 {
@@ -43,7 +44,13 @@ namespace Nyx
 			bool bSeen = false;
 		};
 
+		// Warns once for each entity with a rigid body but no collider, which has no body: easy to
+		// miss, since nothing else shows it
+		void WarnOfRigidBodiesWithoutCollider(const Registry& world);
+
 		// By entity, in a fixed order, so bodies are made and destroyed the same way each time
 		std::map<uint64_t, TrackedBody> Bodies;
+		// The entities warned of; one leaves it once it has a collider, so a later loss warns again
+		std::set<uint64_t> WarnedWithoutCollider;
 	};
 }

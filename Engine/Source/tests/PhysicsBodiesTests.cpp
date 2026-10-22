@@ -200,6 +200,30 @@ namespace
 		Require(after.Height == HeightOf(world, crate), "A system after the physics step should see the transforms written back");
 	}
 
+	void TestARigidBodyWithoutColliderWarnsOnce()
+	{
+		GameWorld world;
+		Steps steps{ world };
+		Registry& registry = world.GetRegistry();
+		const Entity cube = registry.CreateEntity();
+		registry.Add<TransformComponent>(cube, TransformComponent{});
+		registry.Add<RigidBodyComponent>(cube, RigidBodyComponent{});
+
+		const uint64_t before = Logger::Get().GetCounts().Warnings;
+		steps.Run(30);
+		Require(Logger::Get().GetCounts().Warnings == before + 1, "A rigid body without a collider should be warned of, once");
+		Require(world.GetPhysics().GetBodyCount() == 0, "A rigid body without a collider has no body");
+
+		registry.Add<BoxColliderComponent>(cube, BoxColliderComponent{});
+		steps.Run(30);
+		Require(Logger::Get().GetCounts().Warnings == before + 1 && world.GetPhysics().GetBodyCount() == 1,
+			"With a collider, it should get a body and no more warnings");
+
+		registry.Remove<BoxColliderComponent>(cube);
+		steps.Run(5);
+		Require(Logger::Get().GetCounts().Warnings == before + 2, "Losing the collider again should warn again");
+	}
+
 	void TestScenesKeepPhysicsComponents(const std::filesystem::path& directory)
 	{
 		Nyx::RegisterComponentTypes();
@@ -250,6 +274,7 @@ int main()
 		TestChangesRemakeAndRemoveBodies();
 		TestKinematicBodiesFollowTheirTransforms();
 		TestSystemsBeforeAndAfterPhysics();
+		TestARigidBodyWithoutColliderWarnsOnce();
 		TestScenesKeepPhysicsComponents(directory.Path);
 	}
 	catch (const std::exception& error)

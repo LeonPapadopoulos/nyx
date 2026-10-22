@@ -1,6 +1,9 @@
 #include "NyxPCH.h"
 #include "PhysicsBodies.h"
 
+#include "GuidComponent.h"
+#include "Log.h"
+#include "NameComponent.h"
 #include "PhysicsComponents.h"
 #include "Profiler.h"
 #include "TransformComponent.h"
@@ -187,6 +190,8 @@ namespace Nyx
 				}
 			});
 
+		WarnOfRigidBodiesWithoutCollider(world);
+
 		// Bodies whose collider or entity is gone
 		for (auto it = Bodies.begin(); it != Bodies.end();)
 		{
@@ -200,6 +205,38 @@ namespace Nyx
 				++it;
 			}
 		}
+	}
+
+	void PhysicsBodies::WarnOfRigidBodiesWithoutCollider(const Registry& world)
+	{
+		world.Each<RigidBodyComponent>([&](Entity entity, const RigidBodyComponent&)
+			{
+				const bool bHasCollider = world.Has<BoxColliderComponent>(entity) || world.Has<SphereColliderComponent>(entity) ||
+					world.Has<CapsuleColliderComponent>(entity);
+				if (bHasCollider)
+				{
+					WarnedWithoutCollider.erase(entity.Value);
+					return;
+				}
+				if (!WarnedWithoutCollider.insert(entity.Value).second)
+				{
+					return;
+				}
+
+				// By its name, else its guid, as the editor shows them
+				std::string label = "An entity";
+				if (world.Has<NameComponent>(entity) && !world.Get<NameComponent>(entity).Name.empty())
+				{
+					label = "'" + world.Get<NameComponent>(entity).Name + "'";
+				}
+				else if (world.Has<GuidComponent>(entity))
+				{
+					label = "Entity " + std::to_string(world.Get<GuidComponent>(entity).Guid.Value);
+				}
+				LOG_WARNING("{0} has a Rigid Body but no collider, so it has no body and doesn't move: add a Box, "
+							"Sphere or Capsule Collider",
+					label);
+			});
 	}
 
 	void PhysicsBodies::WriteBackAfterStep(Registry& world, PhysicsWorld& physics)
