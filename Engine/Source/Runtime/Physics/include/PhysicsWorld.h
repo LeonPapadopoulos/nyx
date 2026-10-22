@@ -5,6 +5,8 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <vector>
 
 namespace Nyx
 {
@@ -56,6 +58,9 @@ namespace Nyx
 		float GravityFactor = 1.0f;
 		// The owner's own number for the body, e.g. its entity's guid
 		uint64_t UserData = 0;
+		// Detects the moving bodies that enter and leave it (contact events) but pushes nothing, e.g. a
+		// trigger volume
+		bool bSensor = false;
 	};
 
 	// A body of a PhysicsWorld. Valid only in the world that made it, and only until destroyed; never
@@ -76,6 +81,99 @@ namespace Nyx
 		glm::quat Rotation{ 1.0f, 0.0f, 0.0f, 0.0f };
 	};
 
+	// Which bodies a query sees
+	struct QueryFilter
+	{
+		bool bStatic = true;
+		// Kinematic and dynamic bodies
+		bool bMoving = true;
+		bool bSensors = false;
+		// E.g. the body that casts, so it doesn't find itself
+		BodyHandle Ignore;
+	};
+
+	// What a ray or a shape cast hit first
+	struct QueryHit
+	{
+		BodyHandle Body;
+		// Ray: where it enters the body; shape cast: where the shape first touches it
+		glm::vec3 Point{ 0.0f };
+		// The hit body's surface normal there, pointing back at the caster
+		glm::vec3 Normal{ 0.0f };
+		// How far the ray or the shape went before it hit
+		float Distance = 0.0f;
+		uint64_t UserData = 0;
+	};
+
+	enum class EContactEvent : uint8_t
+	{
+		Began,
+		Ended
+	};
+
+	// Two bodies that started or stopped touching during a step; a sensor and a body that entered or
+	// left it alike
+	struct ContactEvent
+	{
+		EContactEvent Kind = EContactEvent::Began;
+		// BodyA has the lower handle. An ended contact can name a body destroyed since.
+		BodyHandle BodyA;
+		BodyHandle BodyB;
+		// Began only: where they touch, in world space, the normal pointing from A to B, and how fast
+		// they were coming together along it (m/s)
+		glm::vec3 Point{ 0.0f };
+		glm::vec3 Normal{ 0.0f };
+		float ApproachSpeed = 0.0f;
+	};
+
+	enum class EConstraintKind : uint8_t
+	{
+		// Holds the bodies where they are to each other
+		Fixed,
+		// Joins them at a point, around which they turn freely: a ball joint
+		Point,
+		// Joins them at a point, turning about one axis only: a door
+		Hinge,
+		// Lets them move along one axis only, without turning: a drawer
+		Slider,
+		// Keeps a point on each between a least and a greatest distance apart: a rope or a rod
+		Distance
+	};
+
+	// A joint between two bodies, or a body and the world. Everything in world space, as the bodies
+	// are now; that is the joint's rest.
+	struct ConstraintDesc
+	{
+		EConstraintKind Kind = EConstraintKind::Fixed;
+		BodyHandle Body;
+		// Invalid: the world
+		BodyHandle Other;
+		// Point, hinge: the pivot; distance: the end on Body
+		glm::vec3 Point{ 0.0f };
+		// Distance: the end on Other, or in the world
+		glm::vec3 OtherPoint{ 0.0f };
+		// Hinge: what it turns about; slider: what it moves along
+		glm::vec3 Axis{ 0.0f, 1.0f, 0.0f };
+		// Hinge and slider: limits away from the rest, in radians (Min in [-pi, 0], Max in [0, pi])
+		// or metres (Min <= 0 <= Max)
+		bool bLimits = false;
+		float LimitMin = 0.0f;
+		float LimitMax = 0.0f;
+		// Distance
+		float MinDistance = 0.0f;
+		float MaxDistance = 1.0f;
+	};
+
+	// A constraint of a PhysicsWorld; like a BodyHandle, valid only there and until destroyed
+	struct ConstraintHandle
+	{
+		static constexpr uint32_t InvalidValue = 0xffffffffu;
+		uint32_t Value = InvalidValue;
+
+		bool IsValid() const { return Value != InvalidValue; }
+		bool operator==(const ConstraintHandle&) const = default;
+	};
+
 	struct PhysicsSettings
 	{
 		glm::vec3 Gravity{ 0.0f, -9.81f, 0.0f };
@@ -84,12 +182,15 @@ namespace Nyx
 		uint32_t MaxContactConstraints = 8192;
 		// Threads that run the step besides the caller's; 0: one per core but one, at most 8
 		uint32_t WorkerThreads = 0;
+		// Contact events kept until taken; later ones are dropped, so a world nobody listens to doesn't grow
+		uint32_t MaxContactEvents = 8192;
 	};
 
-	// Rigid bodies and their collisions, on Jolt: made, moved, pushed and stepped. Bodies collide by
-	// their motion: static with moving, moving with everything. The caller owns the world and calls
-	// everything from one thread; Jolt's own threads run inside Step() only. Same bodies, made in
-	// the same order and stepped the same way, give the same results.
+	// Rigid bodies and their collisions, on Jolt: made, moved, pushed, joined, queried and stepped.
+	// Bodies collide by their motion: static with moving, moving with everything; sensors see moving
+	// bodies only. The caller owns the world and calls everything from one thread; Jolt's own threads
+	// run inside Step() only. Same bodies, made in the same order and stepped the same way, give the
+	// same results and the same contact events.
 	class PhysicsWorld
 	{
 	public:
@@ -101,11 +202,31 @@ namespace Nyx
 
 		// Invalid when the world is full (MaxBodies) or the shape can't be made, which is logged
 		BodyHandle CreateBody(const BodyDesc& desc);
+		// Its constraints go with it
 		void DestroyBody(BodyHandle body);
 		size_t GetBodyCount() const;
 
 		// Moves every body `seconds` on: forces added since the last step act during it, then go
 		void Step(float seconds);
+
+		// The contacts that began and ended in the steps since the last call, step by step, each
+		// step's sorted by their bodies
+		std::vector<ContactEvent> TakeContactEvents();
+
+		// The first body along the ray from `origin` (direction needn't be unit length); a ray that
+		// starts inside a body hits it at once
+		std::optional<QueryHit> RayCast(const glm::vec3& origin, const glm::vec3& direction, float maxDistance,
+			const QueryFilter& filter = {}) const;
+		// The first body a shape meets, moved from `pose` along `direction` at most `maxDistance`
+		std::optional<QueryHit> ShapeCast(const BodyShape& shape, const BodyPose& pose, const glm::vec3& direction,
+			float maxDistance, const QueryFilter& filter = {}) const;
+		// The bodies a shape at `pose` overlaps, in handle order
+		std::vector<BodyHandle> Overlap(const BodyShape& shape, const BodyPose& pose, const QueryFilter& filter = {}) const;
+
+		// Invalid when a body is invalid, or Body is Other, which is logged
+		ConstraintHandle CreateConstraint(const ConstraintDesc& desc);
+		void DestroyConstraint(ConstraintHandle constraint);
+		size_t GetConstraintCount() const;
 
 		BodyPose GetPose(BodyHandle body) const;
 		// Puts the body there at once, without moving it through what lies between, and stops it

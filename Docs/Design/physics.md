@@ -16,18 +16,37 @@ engine is [Jolt](https://github.com/jrouwe/JoltPhysics) (`Dependencies/JoltPhysi
 
 - **`PhysicsWorld`** owns a Jolt physics system, its job threads and its scratch memory. Everything
   is called from one thread; Jolt's threads run only inside `Step()`.
-- **Jolt stays inside the folder.** `PhysicsWorld.h` speaks glm and an opaque `BodyHandle`; only
-  `PhysicsWorld.cpp` includes Jolt. The engine links Jolt privately.
+- **Jolt stays inside the folder.** `PhysicsWorld.h` speaks glm and opaque `BodyHandle`s and
+  `ConstraintHandle`s; only `PhysicsWorld.cpp` includes Jolt. The engine links Jolt privately.
 - **Bodies** are made from a `BodyDesc`: a shape (box, sphere, capsule), a pose, a motion (static,
   kinematic, dynamic), mass (or the shape's volume at the density of water), friction,
   restitution, damping, gravity factor, and a number of the owner's (an entity's guid).
 - **Collision layers** follow from the motion: static bodies collide with moving ones, moving ones
-  with everything. One table in `PhysicsWorld.cpp`; triggers and query-only layers come with the
-  queries.
+  with everything, sensors with moving ones only. One table in `PhysicsWorld.cpp`.
+- **Sensors** (`BodyDesc::bSensor`) detect the moving bodies, kinematic ones too, that enter and
+  leave them and push nothing: trigger volumes.
 - **Forces** (`AddForce`, `AddForceAtPoint`, `AddTorque`) act during the next step and then go.
   A force off the centre of mass turns the body by itself: no extra code for torque.
 - **Teleport** puts a body somewhere at once and stops it, e.g. for an editor's edit.
   **MoveKinematic** moves a kinematic body over the next step, pushing what it meets.
+- **Queries**: `RayCast` and `ShapeCast` (any body shape, swept along a direction) give the first
+  hit: body, point, normal, distance and the body's user data; `Overlap` gives the bodies a shape
+  touches, in handle order. A `QueryFilter` picks static and moving bodies, sensors (left out by
+  default), and one body to ignore, e.g. the caster.
+- **Contact events**: two bodies began or ended touching; for "began" also a point, the normal and
+  how fast they came together. Sensors give the same events. Jolt calls its contact listener on its
+  job threads during `Step()`, many pairs at once, so the listener only appends to a list under a
+  mutex. Once Jolt is done, `Step()` sorts the step's events by their bodies, so the same inputs
+  give the same list whatever thread found what, and keeps them for `TakeContactEvents()` on the
+  caller's thread (at most `MaxContactEvents` waiting).
+- **Sleeping contacts**: Jolt ends a contact when its bodies fall asleep, as it stops looking at
+  them, and begins it again when they wake. A box resting in a trigger would leave it, so
+  `PhysicsWorld` keeps such a contact open until its bodies wake apart, or one is destroyed. A
+  woken body is looked at from the next step on, so that "ended" can come a step late.
+- **Constraints** (`CreateConstraint`, `DestroyConstraint`): fixed, point, hinge (an axis, optional
+  angle limits), slider (an axis, optional limits), distance (least and greatest). Between two
+  bodies, or a body and the world; points and axes in world space, where the bodies are now being
+  the rest. A body's constraints go when it does. Handles are opaque, like body handles.
 - **Jolt's own reports** go to Nyx's log; a failed Jolt assert (Debug builds) is logged, and breaks
   under a debugger.
 
@@ -51,7 +70,12 @@ engine is [Jolt](https://github.com/jrouwe/JoltPhysics) (`Dependencies/JoltPhysi
 `NyxPhysicsTests`: a box falls and comes to rest asleep on a floor; default and given mass; a
 force at the centre moves without turning, one off it turns; impulses; teleporting stops a body;
 a kinematic move reaches its target in one step; twenty boxes piled up twice end exactly alike;
-spheres, capsules, user data, destroyed bodies.
+spheres, capsules, user data, destroyed bodies. A ray hits the nearest box at its face, misses when
+aimed away and passes the ignored body; a shape cast stops at a wall; an overlap finds the bodies
+inside; a box falls through a sensor that tells of it entering and leaving; boxes landing begin one
+contact each, sorted, the same twice, and none ends as they sleep; a sleeping contact ends when the
+box is thrown up, not when it slides; a distance constraint keeps its range, a hinge its axis and
+limits, a slider its body on its axis, a fixed constraint two bodies together.
 
 ## In the game world
 
@@ -79,6 +103,6 @@ spheres, capsules, user data, destroyed bodies.
 
 ## Not built yet
 
-- Queries (raycasts, shape casts, overlaps) and contact events handed to the main thread.
 - Constraints as components; the debug view of shapes and contacts through `DebugDraw`.
+- Path constraints, motors, springs on limits; a character controller.
 - Drawing moving bodies between their last two steps.

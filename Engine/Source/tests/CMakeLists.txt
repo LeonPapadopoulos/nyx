@@ -87,7 +87,7 @@ set_property(TARGET NyxDebugDrawTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxDebugDrawTests COMMAND NyxDebugDrawTests)
 
 # Physics: bodies falling and resting, mass, forces at a point, teleports, kinematic moves, the
-# same results from the same inputs
+# same results from the same inputs, queries, sensors, contact events, constraints
 add_executable(NyxPhysicsTests PhysicsTests.cpp)
 target_link_libraries(NyxPhysicsTests PRIVATE NyxEngine)
 add_dependencies(NyxPhysicsTests NyxGeneratedReflection)
