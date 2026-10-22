@@ -83,8 +83,78 @@ static void GenerateForSingleHeader(const fs::path& inputHeader, const fs::path&
 	std::cout << "Generated: " << outputHeader.string() << "\n";
 }
 
+// Reads the headers under root that have reflected types, in a fixed order, skipping those read
+// already.
+static void ScanReflectedHeaders(
+	const fs::path& root,
+	std::unordered_set<std::string>& processedHeaders,
+	std::vector<ScannedHeader>& outScannedHeaders)
+{
+	if (!fs::exists(root))
+	{
+		throw std::runtime_error("Scan root does not exist: " + root.string());
+	}
+
+	const size_t firstHeaderOfRoot = outScannedHeaders.size();
+
+	for (const fs::directory_entry& entry : fs::recursive_directory_iterator(root))
+	{
+		if (!entry.is_regular_file())
+		{
+			continue;
+		}
+
+		const fs::path headerPath = entry.path();
+		if (!IsHeaderFile(headerPath))
+		{
+			continue;
+		}
+
+		const std::string canonicalHeaderPath = fs::weakly_canonical(headerPath).string();
+		if (processedHeaders.contains(canonicalHeaderPath))
+		{
+			continue;
+		}
+
+		const std::string source = ReadAllText(headerPath);
+		if (!MightContainReflection(source))
+		{
+			continue;
+		}
+
+		ParsedHeader parsedHeader = ParseHeaderSyntaxOnly(source, headerPath);
+		if (parsedHeader.Types.empty())
+		{
+			continue;
+		}
+
+		const fs::path relativePath = fs::relative(headerPath, root);
+
+		outScannedHeaders.push_back(ScannedHeader{
+			.HeaderPath = headerPath,
+			.RelativePath = relativePath,
+			.Parsed = std::move(parsedHeader) });
+
+		processedHeaders.insert(canonicalHeaderPath);
+	}
+
+	// The order of directory entries differs between file systems. Sort the headers, so the
+	// generated code, and with it the order of the registered component types, is always the same.
+	std::sort(
+		outScannedHeaders.begin() + firstHeaderOfRoot,
+		outScannedHeaders.end(),
+		[](const ScannedHeader& a, const ScannedHeader& b)
+		{
+			return a.RelativePath < b.RelativePath;
+		});
+}
+
+// Generates the code for the types in scanRoots. The types in typeRoots, another module's such as
+// the engine's, only lend their names: a type of scanRoots may hold one as a property, and nothing
+// is generated for them.
 static size_t GenerateForScanRoots(
 	const std::vector<fs::path>& scanRoots,
+	const std::vector<fs::path>& typeRoots,
 	const fs::path& outputDir,
 	std::vector<ScannedHeader>& outScannedHeaders)
 {
@@ -93,63 +163,14 @@ static size_t GenerateForScanRoots(
 
 	for (const fs::path& root : scanRoots)
 	{
-		if (!fs::exists(root))
-		{
-			throw std::runtime_error("Scan root does not exist: " + root.string());
-		}
+		ScanReflectedHeaders(root, processedHeaders, outScannedHeaders);
+	}
 
-		const size_t firstHeaderOfRoot = outScannedHeaders.size();
-
-		for (const fs::directory_entry& entry : fs::recursive_directory_iterator(root))
-		{
-			if (!entry.is_regular_file())
-			{
-				continue;
-			}
-
-			const fs::path headerPath = entry.path();
-			if (!IsHeaderFile(headerPath))
-			{
-				continue;
-			}
-
-			const std::string canonicalHeaderPath = fs::weakly_canonical(headerPath).string();
-			if (processedHeaders.contains(canonicalHeaderPath))
-			{
-				continue;
-			}
-
-			const std::string source = ReadAllText(headerPath);
-			if (!MightContainReflection(source))
-			{
-				continue;
-			}
-
-			ParsedHeader parsedHeader = ParseHeaderSyntaxOnly(source, headerPath);
-			if (parsedHeader.Types.empty())
-			{
-				continue;
-			}
-
-			const fs::path relativePath = fs::relative(headerPath, root);
-
-			outScannedHeaders.push_back(ScannedHeader{
-				.HeaderPath = headerPath,
-				.RelativePath = relativePath,
-				.Parsed = std::move(parsedHeader) });
-
-			processedHeaders.insert(canonicalHeaderPath);
-		}
-
-		// The order of directory entries differs between file systems. Sort the headers, so the
-		// generated code, and with it the order of the registered component types, is always the same.
-		std::sort(
-			outScannedHeaders.begin() + firstHeaderOfRoot,
-			outScannedHeaders.end(),
-			[](const ScannedHeader& a, const ScannedHeader& b)
-			{
-				return a.RelativePath < b.RelativePath;
-			});
+	// Read after the module's own roots, so a header in both is the module's
+	std::vector<ScannedHeader> referencedHeaders;
+	for (const fs::path& root : typeRoots)
+	{
+		ScanReflectedHeaders(root, processedHeaders, referencedHeaders);
 	}
 
 	Nyx::HeaderTool::ReflectedTypeIndex typeIndex;
@@ -158,6 +179,14 @@ static size_t GenerateForScanRoots(
 		for (const ParsedType& parsedType : header.Parsed.Types)
 		{
 			typeIndex.Add(parsedType);
+		}
+	}
+
+	for (const ScannedHeader& header : referencedHeaders)
+	{
+		for (const ParsedType& parsedType : header.Parsed.Types)
+		{
+			typeIndex.AddReferenced(parsedType);
 		}
 	}
 
@@ -195,6 +224,7 @@ static int RunSingleHeaderMode(int argc, char** argv)
 static int RunScanMode(int argc, char** argv)
 {
 	std::vector<fs::path> scanRoots;
+	std::vector<fs::path> typeRoots;
 	std::optional<fs::path> outputDir;
 	std::optional<fs::path> moduleInitHeader;
 	std::optional<fs::path> moduleInitCpp;
@@ -213,6 +243,14 @@ static int RunScanMode(int argc, char** argv)
 				throw std::runtime_error("--scan-root requires a value");
 			}
 			scanRoots.emplace_back(argv[++i]);
+		}
+		else if (arg == "--type-root")
+		{
+			if (i + 1 >= argc)
+			{
+				throw std::runtime_error("--type-root requires a value");
+			}
+			typeRoots.emplace_back(argv[++i]);
 		}
 		else if (arg == "--output-dir")
 		{
@@ -276,7 +314,7 @@ static int RunScanMode(int argc, char** argv)
 	}
 
 	std::vector<ScannedHeader> scannedHeaders;
-	const size_t count = GenerateForScanRoots(scanRoots, outputDir.value(), scannedHeaders);
+	const size_t count = GenerateForScanRoots(scanRoots, typeRoots, outputDir.value(), scannedHeaders);
 
 	if (moduleInitHeader.has_value())
 	{
@@ -309,6 +347,7 @@ int main(int argc, char** argv)
 			std::cerr << "Usage:\n";
 			std::cerr << "  NyxHeaderTool <input_header> <output_header> <qualified_type_name>\n";
 			std::cerr << "  NyxHeaderTool --scan-root <dir> [--scan-root <dir> ...] --output-dir <dir>\n";
+			std::cerr << "                [--type-root <dir> ...]\n";
 			std::cerr << "                [--module-init-header <file>] [--module-init-cpp <file>]\n";
 			std::cerr << "                [--editor-sources-cpp <file>] [--module-name <name>]\n";
 			return 1;

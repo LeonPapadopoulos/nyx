@@ -51,6 +51,8 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/PhysicsComponents.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/EntityGuid.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/GuidComponent.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/EntityGuidLookup.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/SurfaceAnchor.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/TypedHandle.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ReflectedArchiveSerializer.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ComponentTypeRegistry.cpp
@@ -181,6 +183,8 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/SceneSerializer.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/IAssetResolver.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/AssetReference.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/EntityGuidLookup.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/SurfaceAnchor.h
 
     # Runtime/Sim
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/SimSystem.h

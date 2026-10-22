@@ -10,6 +10,7 @@
 #include "Log.h"
 #include "SceneSerializer.h"
 #include "TestLanternComponent.h"
+#include "TestMarkerComponent.h"
 #include "TestSupport.h"
 
 #include <iostream>
@@ -20,6 +21,7 @@ namespace
 {
 	using Nyx::ComponentTypeRegistry;
 	using NyxTestModule::TestLanternComponent;
+	using NyxTestModule::TestMarkerComponent;
 
 	using Nyx::Tests::Require;
 
@@ -73,6 +75,37 @@ namespace
 		Require(lanterns == 1, "The loaded scene should have the module component once");
 	}
 
+	void TestModuleComponentsKeepEngineStructs(const std::filesystem::path& directory)
+	{
+		// A module component holding the engine's SurfaceAnchor: the module's header tool run knows
+		// the engine's types, and the anchor saves and loads field by field
+		const Nyx::SurfaceAnchor anchor{ .Host = Nyx::EntityGuid{ 0x5EED },
+			.LocalPosition = glm::vec3(0.5f, -1.0f, 2.0f),
+			.LocalNormal = glm::vec3(0.0f, 0.0f, 1.0f),
+			.LocalTangent = glm::vec3(0.0f, 1.0f, 0.0f) };
+
+		Nyx::Registry world;
+		world.Add<TestMarkerComponent>(world.CreateEntity(), TestMarkerComponent{ .Anchor = anchor });
+
+		const std::filesystem::path scenePath = directory / "Marker.nyxscene";
+		Require(Nyx::SceneSerializer::SaveToFile(world, scenePath), "Saving a scene with a surface anchor failed");
+
+		Nyx::Registry loaded;
+		Require(Nyx::SceneSerializer::LoadFromFile(scenePath, loaded), "Loading a scene with a surface anchor failed");
+
+		int markers = 0;
+		loaded.Each<TestMarkerComponent>(
+			[&](Nyx::Entity /*entity*/, TestMarkerComponent& marker)
+			{
+				++markers;
+				Require(marker.Anchor.Host == anchor.Host, "The anchor's host was lost");
+				Require(marker.Anchor.LocalPosition == anchor.LocalPosition, "The anchor's position was lost");
+				Require(marker.Anchor.LocalNormal == anchor.LocalNormal, "The anchor's normal was lost");
+				Require(marker.Anchor.LocalTangent == anchor.LocalTangent, "The anchor's tangent was lost");
+			});
+		Require(markers == 1, "The loaded scene should have the marker once");
+	}
+
 	void TestModulePostLoadStepRuns(const std::filesystem::path& directory)
 	{
 		// The module's REGISTER function set a post-load step: an unlabelled lantern is labelled
@@ -122,6 +155,7 @@ int main()
 		TestTheLinkedModule();
 		TestModuleTypesRegisterNextToTheEngines();
 		TestScenesKeepModuleComponents(directory.Path);
+		TestModuleComponentsKeepEngineStructs(directory.Path);
 		TestModulePostLoadStepRuns(directory.Path);
 		TestModuleSystemsRunInTheGameWorld();
 	}

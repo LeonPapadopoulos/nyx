@@ -28,6 +28,15 @@ namespace Nyx::HeaderTool
 			}
 		}
 
+		// A type of another module (--type-root) that this module's types may hold. Its short name
+		// never clashes: a type of this module's with the same short name keeps it, and the other is
+		// still found by its qualified name.
+		void AddReferenced(const ParsedType& parsedType)
+		{
+			QualifiedNames.insert(parsedType.QualifiedName);
+			QualifiedByShortName.emplace(parsedType.Name, parsedType.QualifiedName);
+		}
+
 		std::optional<std::string> Resolve(std::string_view typeName) const
 		{
 			const std::string key(typeName);

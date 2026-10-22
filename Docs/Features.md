@@ -228,3 +228,22 @@ names another one: its registration functions become `Register<Name>ReflectedTyp
 `Register<Name>ReflectedSources()`, and its init header `Generated/<Name>/<Name>.reflect.init.h`.
 A name must be a C++ identifier. In the header tool's tests, a fixture names its module in a
 `Module.txt`; `RegenerateGoldenFiles.bat` reads it too.
+
+`--type-root <dir>` names another module's headers, such as the engine's: a type of this module may
+hold one of their types as a property, and nothing is generated for them. A game module's run gets
+the engine's, so a game's component can hold an `AssetReference` or a `SurfaceAnchor`.
+
+## Surface anchors
+
+A `SurfaceAnchor` property hangs something on another entity's surface, such as a mark drawn on a
+rock: a point, the surface's normal and a tangent, kept in the host's local space and naming the
+host by guid. It saves, undoes and goes over the editor link like any other property, and the
+details panel shows its host (in hex) and its three vectors. Without a host it is in world space.
+
+- `ResolveSurfaceAnchor()` gives where it is in the world now (`SurfaceFrame`: position, unit
+  normal and tangent, bitangent, a matrix), following the host as it moves, turns and is scaled;
+  nothing when the host is gone.
+- `MakeSurfaceAnchor()` makes one from a frame in the world, such as where a ray hit.
+- Many anchors in a frame: `MakeEntityGuidLookup()` once, then resolve through it, instead of
+  each one going through every guid of the world.
+- Tests: `NyxSurfaceAnchorTests`; `NyxGameModuleTests` saves and loads one in a module component.

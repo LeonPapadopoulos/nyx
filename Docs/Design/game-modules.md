@@ -39,7 +39,9 @@ where the game's files are.
 - **`nyx_add_game_module(<name> REFLECT_DIRS ... [SOURCES ...] [INCLUDE_DIRS ...] [REGISTER <f>] [SYSTEMS <f>])`**:
   - runs the header tool over `REFLECT_DIRS` with `--module-name <name>`, into
     `Generated/<name>`; a component header ends with
-    `#include "Generated/<name>/<Header>.reflect.h"`;
+    `#include "Generated/<name>/<Header>.reflect.h"`. The engine's reflected headers go in as
+    `--type-root`, so a component can hold one of the engine's structs, such as a
+    `Nyx::SurfaceAnchor`;
   - makes `<name>`, an object library of `SOURCES` and the generated registration, compiled once
     against the engine's headers. It links no engine library, so the game and the editor, which
     use different ones (`NyxEngine`, `NyxEditorEngine`), each link the module's objects with their
@@ -105,8 +107,8 @@ where the game's files are.
 - `NyxTestModule` (`Engine/Source/tests/TestGameModule`) is made and linked through the same
   functions a game uses, so the path a private game depends on stays tested in public:
   - `NyxGameModuleTests`: the game's linked module, its type registered next to the engine's, a
-    scene that saves and loads its component, its post-load step (`REGISTER`) and its system
-    (`SYSTEMS`) running in a `GameWorld`;
+    scene that saves and loads its components, one holding the engine's `SurfaceAnchor`, its
+    post-load step (`REGISTER`) and its system (`SYSTEMS`) running in a `GameWorld`;
   - `NyxEditorGameModuleTests`: the editor's linked module registers where its types and
     properties are declared.
 - `NyxComponentTypeRegistryTests`: a second type of a name already taken is refused.

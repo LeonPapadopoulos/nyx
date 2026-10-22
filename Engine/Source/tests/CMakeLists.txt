@@ -79,6 +79,14 @@ nyx_link_game_module(NyxGameModuleTests MODULE NyxTestModule)
 set_property(TARGET NyxGameModuleTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxGameModuleTests COMMAND NyxGameModuleTests)
 
+# Surface anchors: following a host that moves, turns and is scaled, made and resolved back, without
+# a host
+add_executable(NyxSurfaceAnchorTests SurfaceAnchorTests.cpp)
+target_link_libraries(NyxSurfaceAnchorTests PRIVATE NyxEngine)
+add_dependencies(NyxSurfaceAnchorTests NyxGeneratedReflection)
+set_property(TARGET NyxSurfaceAnchorTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxSurfaceAnchorTests COMMAND NyxSurfaceAnchorTests)
+
 # Debug drawing: shapes as lines, how long they stay, the cap
 add_executable(NyxDebugDrawTests DebugDrawTests.cpp)
 target_link_libraries(NyxDebugDrawTests PRIVATE NyxEngine)

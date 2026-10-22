@@ -9,6 +9,10 @@ add_library(NyxNoGameModule OBJECT ${CMAKE_CURRENT_LIST_DIR}/NoGameModule/src/No
 target_link_libraries(NyxNoGameModule PRIVATE NyxEngineCommon)
 add_dependencies(NyxNoGameModule NyxGeneratedReflection)
 
+# The engine's reflected types, which a module's types may hold as properties, such as an
+# AssetReference: the header tool reads their names from here and generates nothing for them.
+set_property(GLOBAL PROPERTY NYX_ENGINE_REFLECT_DIR "${CMAKE_CURRENT_LIST_DIR}/Runtime/Scene/include")
+
 # Declares a function the module names for REGISTER or SYSTEMS, for the generated
 # GetLinkedGameModule(): `signature` with @FUNCTION@ for its name, inside its namespace if
 # `qualified` has one (MyGame::RegisterTypes).
@@ -35,7 +39,7 @@ endfunction()
 # Makes the module <name>, a C++ identifier that names its generated files and functions:
 # - NyxHeaderTool reads the headers in REFLECT_DIRS into Generated/<name>, so a component header
 #   ends with #include "Generated/<name>/<Header>.reflect.h". The folders are include folders of the
-#   module too.
+#   module too. A component may hold the engine's reflected structs, such as Nyx::SurfaceAnchor.
 # - The target <name>, an object library: SOURCES and the generated type registration, compiled
 #   once against the engine's headers. A module links no engine library: each program links the
 #   one it uses, and the module's objects with it (nyx_link_game_module()).
@@ -78,11 +82,14 @@ function(nyx_add_game_module name)
         list(APPEND headerInputs ${headers})
     endforeach()
 
+    get_property(engineReflectDir GLOBAL PROPERTY NYX_ENGINE_REFLECT_DIR)
+
     add_custom_command(
         OUTPUT "${stamp}" "${initHeader}" "${initCpp}" "${sourcesCpp}"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${generatedDir}"
         COMMAND "$<TARGET_FILE:NyxHeaderTool>"
                 ${scanArguments}
+                --type-root "${engineReflectDir}"
                 --output-dir "${generatedDir}"
                 --module-name "${name}"
                 --module-init-header "${initHeader}"
