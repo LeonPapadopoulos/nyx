@@ -49,6 +49,18 @@ engine is [Jolt](https://github.com/jrouwe/JoltPhysics) (`Dependencies/JoltPhysi
   the rest. A body's constraints go when it does. Handles are opaque, like body handles.
 - **Jolt's own reports** go to Nyx's log; a failed Jolt assert (Debug builds) is logged, and breaks
   under a debugger.
+- **The debug view** (`DrawDebug(DebugDraw&, PhysicsDebugOptions)`) draws the world as lines, where
+  the last step left it; the options switch each part and set its colours:
+  - every body's shape in its axes: a box's 12 edges, a sphere's 3 circles, a capsule's 2 rings, 4
+    sides and 2 round ends; coloured by motion: static, kinematic, dynamic awake, dynamic asleep,
+    sensor;
+  - the last step's contact points, a cross and an arrow along the normal each. Jolt reports them
+    on its threads like the contact events, so they are kept only while asked for
+    (`SetKeepContactPoints()`), and sorted after the step. Sleeping bodies report none.
+  - constraints: a line between the anchor points on their two bodies, with a cross at each;
+    a point or hinge joint that holds shows the two crosses on top of each other.
+
+  Nothing is drawn in Release builds, which compile `DebugDraw` out.
 
 ## Build
 
@@ -75,7 +87,10 @@ aimed away and passes the ignored body; a shape cast stops at a wall; an overlap
 inside; a box falls through a sensor that tells of it entering and leaving; boxes landing begin one
 contact each, sorted, the same twice, and none ends as they sleep; a sleeping contact ends when the
 box is thrown up, not when it slides; a distance constraint keeps its range, a hinge its axis and
-limits, a slider its body on its axis, a fixed constraint two bodies together.
+limits, a slider its body on its axis, a fixed constraint two bodies together. The debug view: a
+box in 12 lines, a sphere in 72 and a capsule in 100, each its size; a colour for each motion;
+contacts after a box lands, on the floor along its normal, and none unless kept; constraints
+between their anchors; nothing with every part off.
 
 ## In the game world
 
@@ -100,9 +115,16 @@ limits, a slider its body on its axis, a fixed constraint two bodies together.
     run. A body's user data is its entity, for `FindEntity()`; never saved.
 - **Systems** get the physics world and the bodies in `SimContext`, and run before the physics step
   (`ESimStage::BeforePhysics`, e.g. to push) or after it (`AfterPhysics`, e.g. to react).
+- **The debug view**: `GameWorld::SetPhysicsDebugView(options)` draws the physics world into the
+  world's debug drawing after each physics step, and keeps contact points while it draws them;
+  `std::nullopt`, the default, switches it off. Both take effect from the next step, so while paused
+  the view changes with Step. The shapes are where the step left the bodies, up to a step ahead of
+  the meshes drawn between steps. In the game, F3 switches it in Debug builds.
 - `NyxPhysicsBodiesTests`: a crate falls onto a floor; a set transform teleports; changed colliders,
   scale and rigid bodies remake the body, and removed colliders or entities destroy it; kinematic
   bodies follow; a force before the step holds a crate up; physics components in scene files.
+  The debug view is off by default, draws each step's bodies and contacts while on, and nothing
+  from the step after it is switched off.
   Drawing between steps: positions mixed and rotations slerped the short way, a transform set
   since the step drawn where it is; a falling crate keeps its pose from before the step, static and
   kinematic bodies, sleeping, teleported, made static and removed bodies none.
@@ -111,6 +133,6 @@ limits, a slider its body on its axis, a fixed constraint two bodies together.
 
 ## Not built yet
 
-- Constraints as components; the debug view of shapes and contacts through `DebugDraw`.
+- Constraints as components.
 - Path constraints, motors, springs on limits; a character controller.
 - Kinematic bodies drawn between their last two steps.

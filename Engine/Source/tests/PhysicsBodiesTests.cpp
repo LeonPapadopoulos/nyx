@@ -2,7 +2,8 @@
 // with their entities' components, transforms written back, a transform set from outside
 // teleporting its body, kinematic bodies following their transforms, systems before and after
 // the physics step, and physics components in scene files. Moving bodies keep where they were
-// before the last step, to be drawn between the two, and the maths of drawing them so.
+// before the last step, to be drawn between the two, and the maths of drawing them so. The world
+// draws the physics debug view after each step while it is on.
 #include "ComponentRegistration.h"
 #include "GameWorld.h"
 #include "Log.h"
@@ -14,6 +15,7 @@
 
 #include <glm/gtc/constants.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <memory>
@@ -334,6 +336,37 @@ namespace
 		Require(!registry.Has<PreviousTransformComponent>(crate), "An entity whose body went shouldn't keep a previous pose");
 	}
 
+	void TestPhysicsDebugView()
+	{
+		GameWorld world;
+		Steps steps{ world };
+		AddFloor(world.GetRegistry());
+		AddCrate(world.GetRegistry(), glm::vec3(0.0f, 1.0f, 0.0f));
+		const PhysicsDebugOptions options;
+		const auto linesIn = [&](const glm::vec3& color)
+		{
+			return std::count_if(world.GetDebugDraw().GetLines().begin(), world.GetDebugDraw().GetLines().end(), [&](const DebugLine& line)
+				{
+					return line.Color == color;
+				});
+		};
+
+		steps.Run(1);
+		Require(world.GetDebugDraw().GetLines().empty(), "The debug view should be off by default");
+
+		world.SetPhysicsDebugView(options);
+		steps.Run(1);
+		Require(linesIn(options.StaticColor) == 12 && linesIn(options.AwakeColor) == 12, "The step should draw the floor and the falling crate");
+		steps.Run(30);
+		Require(linesIn(options.ContactColor) > 0, "The landed crate's contacts should be drawn");
+		const auto drawn = linesIn(options.StaticColor) + linesIn(options.AwakeColor) + linesIn(options.AsleepColor) + linesIn(options.ContactColor);
+		Require(world.GetDebugDraw().GetLines().size() == static_cast<size_t>(drawn), "Each step should draw the view once, over a drawing cleared by the step");
+
+		world.SetPhysicsDebugView(std::nullopt);
+		steps.Run(1);
+		Require(world.GetDebugDraw().GetLines().empty(), "Switched off, the debug view should draw nothing from the next step");
+	}
+
 	void TestScenesKeepPhysicsComponents(const std::filesystem::path& directory)
 	{
 		Nyx::RegisterComponentTypes();
@@ -387,6 +420,10 @@ int main()
 		TestARigidBodyWithoutColliderWarnsOnce();
 		TestInterpolatingTransforms();
 		TestMovingBodiesKeepTheirPreviousPose();
+		if constexpr (DebugDraw::Enabled)
+		{
+			TestPhysicsDebugView();
+		}
 		TestScenesKeepPhysicsComponents(directory.Path);
 	}
 	catch (const std::exception& error)

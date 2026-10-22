@@ -1,6 +1,8 @@
 // Physics (PhysicsWorld): bodies falling and coming to rest, mass, forces at a point, teleporting,
 // kinematic moves, the same results from the same inputs, bodies made and destroyed, queries,
-// sensors, contact events and constraints.
+// sensors, contact events and constraints. The debug view: the lines of each shape, colours by
+// motion, contacts after a landing, constraints, and nothing when switched off.
+#include "DebugDraw.h"
 #include "Log.h"
 #include "PhysicsWorld.h"
 #include "TestSupport.h"
@@ -11,6 +13,7 @@
 #include <cmath>
 #include <optional>
 #include <iostream>
+#include <iterator>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -495,6 +498,173 @@ namespace
 		Require(world.GetConstraintCount() == 0, "A destroyed body's constraints should go with it");
 		RunSteps(world, 10);
 	}
+
+	// The lines of the drawing in a colour
+	std::vector<DebugLine> LinesOf(const DebugDraw& drawing, const glm::vec3& color)
+	{
+		std::vector<DebugLine> lines;
+		std::copy_if(drawing.GetLines().begin(), drawing.GetLines().end(), std::back_inserter(lines), [&](const DebugLine& line)
+			{
+				return line.Color == color;
+			});
+		return lines;
+	}
+
+	const PhysicsDebugOptions OnlyShapes{ .bShapes = true, .bContacts = false, .bConstraints = false };
+
+	// Every line end of the drawing within the box from -extent to extent, and some on its faces
+	bool Spans(const DebugDraw& drawing, const glm::vec3& extent)
+	{
+		glm::vec3 reach(0.0f);
+		for (const DebugLine& line : drawing.GetLines())
+		{
+			reach = glm::max(reach, glm::max(glm::abs(line.From), glm::abs(line.To)));
+		}
+		return glm::all(glm::lessThan(glm::abs(reach - extent), glm::vec3(1e-4f)));
+	}
+
+	void TestDebugViewDrawsEachShape()
+	{
+		const auto draw = [](const BodyShape& shape, DebugDraw& drawing)
+		{
+			PhysicsWorld world;
+			BodyDesc desc;
+			desc.Shape = shape;
+			desc.Motion = EBodyMotion::Static;
+			world.CreateBody(desc);
+			world.DrawDebug(drawing, OnlyShapes);
+		};
+
+		DebugDraw box;
+		draw(BodyShape{ .Kind = EShapeKind::Box, .HalfExtents = glm::vec3(1.0f, 2.0f, 3.0f) }, box);
+		Require(box.GetLines().size() == 12, "A box should be drawn as its 12 edges (" + std::to_string(box.GetLines().size()) + ")");
+		Require(Spans(box, glm::vec3(1.0f, 2.0f, 3.0f)), "A box's edges should be its size");
+
+		DebugDraw sphere;
+		draw(BodyShape{ .Kind = EShapeKind::Sphere, .Radius = 0.5f }, sphere);
+		Require(sphere.GetLines().size() == 72, "A sphere should be drawn as 3 circles of 24 lines (" + std::to_string(sphere.GetLines().size()) + ")");
+		Require(Spans(sphere, glm::vec3(0.5f)), "A sphere's circles should be its size");
+
+		DebugDraw capsule;
+		draw(BodyShape{ .Kind = EShapeKind::Capsule, .Radius = 0.3f, .HalfHeight = 0.7f }, capsule);
+		Require(capsule.GetLines().size() == 100,
+			"A capsule should be drawn as 2 rings of 24 lines, 4 sides and 4 half circles of 12 (" + std::to_string(capsule.GetLines().size()) + ")");
+		Require(Spans(capsule, glm::vec3(0.3f, 1.0f, 0.3f)), "A capsule's lines should reach its round ends, along its Y axis");
+	}
+
+	void TestDebugViewColoursByMotion()
+	{
+		const PhysicsDebugOptions options;
+		PhysicsWorld world;
+		AddFloor(world);
+		const BodyHandle sleeper = AddBox(world, glm::vec3(0.0f, 0.5f, 0.0f));
+		RunSteps(world, 300);
+		Require(!world.IsAwake(sleeper), "The box on the floor should be asleep");
+
+		BodyDesc kinematic;
+		kinematic.Position = glm::vec3(5.0f, 1.0f, 0.0f);
+		kinematic.Motion = EBodyMotion::Kinematic;
+		world.CreateBody(kinematic);
+		BodyDesc sensor;
+		sensor.Position = glm::vec3(-5.0f, 1.0f, 0.0f);
+		sensor.Motion = EBodyMotion::Static;
+		sensor.bSensor = true;
+		world.CreateBody(sensor);
+		AddBox(world, glm::vec3(0.0f, 5.0f, 0.0f));
+
+		DebugDraw drawing;
+		world.DrawDebug(drawing, OnlyShapes);
+		Require(drawing.GetLines().size() == 5 * 12, "Five boxes should be drawn");
+		for (const glm::vec3& color : { options.StaticColor, options.KinematicColor, options.AwakeColor, options.AsleepColor, options.SensorColor })
+		{
+			Require(LinesOf(drawing, color).size() == 12, "Each motion should have its own colour, one box each");
+		}
+	}
+
+	void TestDebugViewDrawsContactsAfterALanding()
+	{
+		const PhysicsDebugOptions onlyContacts{ .bShapes = false, .bContacts = true, .bConstraints = false };
+		for (const bool bKeep : { true, false })
+		{
+			PhysicsWorld world;
+			AddFloor(world);
+			AddBox(world, glm::vec3(0.0f, 2.0f, 0.0f));
+			world.SetKeepContactPoints(bKeep);
+
+			RunSteps(world, 1);
+			DebugDraw inTheAir;
+			world.DrawDebug(inTheAir, onlyContacts);
+			Require(inTheAir.GetLines().empty(), "A box in the air should have no contacts to draw");
+
+			int steps = 0;
+			while (world.TakeContactEvents().empty() && steps++ < 120)
+			{
+				world.Step(Step);
+			}
+			Require(steps < 120, "The box should land");
+
+			DebugDraw landed;
+			world.DrawDebug(landed, onlyContacts);
+			if (!bKeep)
+			{
+				Require(landed.GetLines().empty(), "Contact points not kept shouldn't be drawn");
+				continue;
+			}
+
+			// A cross and an arrow each: 3 lines, then the arrow's 5
+			const std::vector<DebugLine>& lines = landed.GetLines();
+			Require(!lines.empty() && lines.size() % 8 == 0, "Each contact point should be a cross and an arrow (" + std::to_string(lines.size()) + " lines)");
+			Require(LinesOf(landed, PhysicsDebugOptions{}.ContactColor).size() == lines.size(), "Contacts should be in their colour");
+			for (size_t point = 0; point < lines.size(); point += 8)
+			{
+				const DebugLine& normal = lines[point + 3];
+				Require(std::abs(normal.From.y) < 0.1f, "A contact point should be on the floor");
+				Require(Near(std::abs(normal.To.y - normal.From.y), 0.3f, 1e-3f), "A contact's arrow should point along the floor's normal");
+			}
+		}
+	}
+
+	void TestDebugViewDrawsConstraints()
+	{
+		PhysicsWorld world;
+		const BodyHandle a = AddBox(world, glm::vec3(0.0f, 5.0f, 0.0f));
+		const BodyHandle b = AddBox(world, glm::vec3(2.0f, 5.0f, 0.0f));
+		world.CreateConstraint(ConstraintDesc{ .Kind = EConstraintKind::Point, .Body = a, .Other = b, .Point = glm::vec3(1.0f, 5.0f, 0.0f) });
+		world.CreateConstraint(ConstraintDesc{ .Kind = EConstraintKind::Distance,
+			.Body = a,
+			.Point = glm::vec3(0.0f, 5.5f, 0.0f),
+			.OtherPoint = glm::vec3(0.0f, 8.0f, 0.0f),
+			.MinDistance = 0.0f,
+			.MaxDistance = 2.5f });
+
+		DebugDraw drawing;
+		world.DrawDebug(drawing, PhysicsDebugOptions{ .bShapes = false, .bContacts = false, .bConstraints = true });
+		const std::vector<DebugLine> lines = LinesOf(drawing, PhysicsDebugOptions{}.ConstraintColor);
+		Require(drawing.GetLines().size() == 14 && lines.size() == 14, "Each constraint should be a line and a cross at each end");
+
+		// In the order made: the point joint's anchors meet at its pivot; the rope runs from the world to the box
+		Require(glm::length(lines[0].From - glm::vec3(1.0f, 5.0f, 0.0f)) < 1e-4f && glm::length(lines[0].To - lines[0].From) < 1e-4f,
+			"A point joint's anchors should both be at its pivot");
+		const bool bRope = glm::length(lines[7].From - glm::vec3(0.0f, 8.0f, 0.0f)) < 1e-4f && glm::length(lines[7].To - glm::vec3(0.0f, 5.5f, 0.0f)) < 1e-4f;
+		Require(bRope, "A distance constraint should be drawn between its two ends");
+	}
+
+	void TestDebugViewDrawsNothingWhenOff()
+	{
+		PhysicsWorld world;
+		AddFloor(world);
+		const BodyHandle a = AddBox(world, glm::vec3(0.0f, 0.6f, 0.0f));
+		const BodyHandle b = AddBox(world, glm::vec3(0.0f, 1.8f, 0.0f));
+		world.CreateConstraint(ConstraintDesc{ .Kind = EConstraintKind::Fixed, .Body = a, .Other = b });
+		world.SetKeepContactPoints(true);
+		RunSteps(world, 10);
+
+		DebugDraw drawing;
+		world.DrawDebug(drawing, PhysicsDebugOptions{ .bShapes = false, .bContacts = false, .bConstraints = false });
+		Require(drawing.GetLines().empty(), "Nothing should be drawn with every part switched off");
+		world.DrawDebug(drawing, PhysicsDebugOptions{});
+		Require(!LinesOf(drawing, PhysicsDebugOptions{}.ContactColor).empty(), "The resting boxes should have contacts to draw");
+	}
 }
 
 int main()
@@ -519,6 +689,14 @@ int main()
 		TestHingeKeepsItsAxis();
 		TestSliderKeepsItsBodyOnTheAxis();
 		TestFixedConstraintHoldsTwoBodies();
+		if constexpr (DebugDraw::Enabled)
+		{
+			TestDebugViewDrawsEachShape();
+			TestDebugViewColoursByMotion();
+			TestDebugViewDrawsContactsAfterALanding();
+			TestDebugViewDrawsConstraints();
+			TestDebugViewDrawsNothingWhenOff();
+		}
 	}
 	catch (const std::exception& error)
 	{

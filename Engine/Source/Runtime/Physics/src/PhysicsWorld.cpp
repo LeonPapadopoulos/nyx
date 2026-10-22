@@ -1,6 +1,7 @@
 #include "NyxPCH.h"
 #include "PhysicsWorld.h"
 
+#include "DebugDraw.h"
 #include "Log.h"
 #include "Profiler.h"
 
@@ -30,6 +31,8 @@
 #include <Jolt/Physics/PhysicsSettings.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/RegisterTypes.h>
+
+#include <glm/gtc/constants.hpp>
 
 #include <algorithm>
 #include <cstdarg>
@@ -244,6 +247,16 @@ namespace Nyx
 		// The two bodies of a contact, the lower handle first
 		using BodyPair = std::pair<uint32_t, uint32_t>;
 
+		// A point where two bodies touched in a step, for the debug view
+		struct ContactPoint
+		{
+			BodyPair Bodies;
+			// Halfway between both surfaces
+			glm::vec3 Point{ 0.0f };
+			// From the lower handle's body to the other's
+			glm::vec3 Normal{ 0.0f };
+		};
+
 		BodyPair PairOf(const ContactEvent& event)
 		{
 			return { event.BodyA.Value, event.BodyB.Value };
@@ -276,6 +289,12 @@ namespace Nyx
 				event.Normal = ToGlm(manifold.mWorldSpaceNormal);
 				event.ApproachSpeed = std::max(0.0f, -relativeVelocity.Dot(manifold.mWorldSpaceNormal));
 				Add(event);
+				KeepPoints(body1, body2, manifold);
+			}
+
+			void OnContactPersisted(const JPH::Body& body1, const JPH::Body& body2, const JPH::ContactManifold& manifold, JPH::ContactSettings&) override
+			{
+				KeepPoints(body1, body2, manifold);
 			}
 
 			// The bodies can't be read here: Jolt has them locked, and either may be gone already
@@ -302,10 +321,143 @@ namespace Nyx
 				return events;
 			}
 
+			// The points of the step's contacts, if kept
+			std::vector<ContactPoint> TakePoints()
+			{
+				std::vector<ContactPoint> points;
+				const std::scoped_lock lock(Mutex);
+				points.swap(PendingPoints);
+				return points;
+			}
+
+			// Set between steps only, read during them
+			bool bKeepPoints = false;
+
 		private:
+			void KeepPoints(const JPH::Body& body1, const JPH::Body& body2, const JPH::ContactManifold& manifold)
+			{
+				if (!bKeepPoints)
+				{
+					return;
+				}
+				const BodyPair bodies{ ToHandle(body1.GetID()).Value, ToHandle(body2.GetID()).Value };
+				const glm::vec3 normal = ToGlm(manifold.mWorldSpaceNormal);
+				const std::scoped_lock lock(Mutex);
+				for (JPH::uint i = 0; i < manifold.mRelativeContactPointsOn1.size(); ++i)
+				{
+					const JPH::RVec3 point = manifold.mBaseOffset + 0.5f * (manifold.mRelativeContactPointsOn1[i] + manifold.mRelativeContactPointsOn2[i]);
+					PendingPoints.push_back(ContactPoint{ bodies, ToGlm(JPH::Vec3(point)), normal });
+				}
+			}
+
 			std::mutex Mutex;
 			std::vector<ContactEvent> Pending;
+			std::vector<ContactPoint> PendingPoints;
 		};
+
+		// An order that doesn't depend on which thread found which pair
+		void SortContactPoints(std::vector<ContactPoint>& points)
+		{
+			std::sort(points.begin(), points.end(), [](const ContactPoint& a, const ContactPoint& b)
+				{
+					return std::tie(a.Bodies, a.Point.x, a.Point.y, a.Point.z) < std::tie(b.Bodies, b.Point.x, b.Point.y, b.Point.z);
+				});
+		}
+
+		constexpr int DebugCircleSegments = 24;
+
+		// Part of a circle around `center` in the plane of the unit axes `x` and `y`, from angle `from`
+		// to `to` (radians, from x towards y), in `segments` lines
+		void DrawArc(DebugDraw& drawing, const glm::vec3& center, const glm::vec3& x, const glm::vec3& y, float radius, float from,
+			float to, int segments, const glm::vec3& color)
+		{
+			glm::vec3 previous = center + (x * std::cos(from) + y * std::sin(from)) * radius;
+			for (int segment = 1; segment <= segments; ++segment)
+			{
+				const float angle = from + (to - from) * static_cast<float>(segment) / static_cast<float>(segments);
+				const glm::vec3 point = center + (x * std::cos(angle) + y * std::sin(angle)) * radius;
+				drawing.Line(previous, point, color);
+				previous = point;
+			}
+		}
+
+		// A body's shape where the body is, in its axes: a box's 12 edges; a sphere's 3 circles; a
+		// capsule's 2 rings where its ends begin, 4 lines along its sides and its 2 round ends
+		void DrawBodyShape(DebugDraw& drawing, const JPH::Body& body, const glm::vec3& color)
+		{
+			const glm::vec3 center = ToGlm(JPH::Vec3(body.GetPosition()));
+			const glm::quat rotation = ToGlm(body.GetRotation());
+			const glm::vec3 x = rotation * glm::vec3(1.0f, 0.0f, 0.0f);
+			const glm::vec3 y = rotation * glm::vec3(0.0f, 1.0f, 0.0f);
+			const glm::vec3 z = rotation * glm::vec3(0.0f, 0.0f, 1.0f);
+			constexpr float Turn = glm::two_pi<float>();
+			constexpr float HalfTurn = glm::pi<float>();
+
+			const JPH::Shape& shape = *body.GetShape();
+			switch (shape.GetSubType())
+			{
+			case JPH::EShapeSubType::Box:
+			{
+				const glm::vec3 halfExtents = ToGlm(static_cast<const JPH::BoxShape&>(shape).GetHalfExtent());
+				glm::mat4 transform = glm::mat4_cast(rotation);
+				transform[3] = glm::vec4(center, 1.0f);
+				drawing.Box(transform, -halfExtents, halfExtents, color);
+				break;
+			}
+			case JPH::EShapeSubType::Sphere:
+			{
+				const float radius = static_cast<const JPH::SphereShape&>(shape).GetRadius();
+				DrawArc(drawing, center, x, y, radius, 0.0f, Turn, DebugCircleSegments, color);
+				DrawArc(drawing, center, y, z, radius, 0.0f, Turn, DebugCircleSegments, color);
+				DrawArc(drawing, center, z, x, radius, 0.0f, Turn, DebugCircleSegments, color);
+				break;
+			}
+			case JPH::EShapeSubType::Capsule:
+			{
+				const JPH::CapsuleShape& capsule = static_cast<const JPH::CapsuleShape&>(shape);
+				const float radius = capsule.GetRadius();
+				const glm::vec3 top = center + y * capsule.GetHalfHeightOfCylinder();
+				const glm::vec3 bottom = center - y * capsule.GetHalfHeightOfCylinder();
+				DrawArc(drawing, top, x, z, radius, 0.0f, Turn, DebugCircleSegments, color);
+				DrawArc(drawing, bottom, x, z, radius, 0.0f, Turn, DebugCircleSegments, color);
+				for (const glm::vec3& side : { x, -x, z, -z })
+				{
+					drawing.Line(bottom + side * radius, top + side * radius, color);
+				}
+				DrawArc(drawing, top, x, y, radius, 0.0f, HalfTurn, DebugCircleSegments / 2, color);
+				DrawArc(drawing, top, z, y, radius, 0.0f, HalfTurn, DebugCircleSegments / 2, color);
+				DrawArc(drawing, bottom, x, y, radius, HalfTurn, Turn, DebugCircleSegments / 2, color);
+				DrawArc(drawing, bottom, z, y, radius, HalfTurn, Turn, DebugCircleSegments / 2, color);
+				break;
+			}
+			default:
+				// PhysicsWorld makes no other shapes
+				break;
+			}
+		}
+
+		const glm::vec3& ColorOf(const JPH::Body& body, const PhysicsDebugOptions& options)
+		{
+			if (body.IsSensor())
+			{
+				return options.SensorColor;
+			}
+			if (body.IsStatic())
+			{
+				return options.StaticColor;
+			}
+			if (body.IsKinematic())
+			{
+				return options.KinematicColor;
+			}
+			return body.IsActive() ? options.AwakeColor : options.AsleepColor;
+		}
+
+		// Where a constraint holds on to a body, in world space; the world's "body" is at the origin
+		glm::vec3 AnchorOf(const JPH::Body& body, JPH::Mat44Arg constraintToBody)
+		{
+			return ToGlm(JPH::Vec3(body.GetCenterOfMassTransform() * constraintToBody.GetTranslation()));
+		}
 
 		// An order that doesn't depend on which thread found which pair
 		void SortContactEvents(std::vector<ContactEvent>& events)
@@ -487,6 +639,8 @@ namespace Nyx
 		bool bContactEventsDropped = false;
 		// Contacts whose bodies sleep, and whether one of them was awake after the last step
 		std::map<BodyPair, bool> SleepingContacts;
+		// The last step's contact points, sorted, while kept (SetKeepContactPoints())
+		std::vector<ContactPoint> ContactPoints;
 
 		// By handle; ordered, so that removing a body's constraints removes them in the same order
 		// every time, as Jolt solves them in the order they are in
@@ -597,6 +751,8 @@ namespace Nyx
 		}
 
 		// Jolt's threads are done: the step's contact events can be put in order
+		Impl->ContactPoints = Impl->Contacts.TakePoints();
+		SortContactPoints(Impl->ContactPoints);
 		std::vector<ContactEvent> events = Impl->Contacts.Take();
 		Impl->FilterSleepingContacts(events);
 		SortContactEvents(events);
@@ -911,5 +1067,56 @@ namespace Nyx
 	glm::vec3 PhysicsWorld::GetGravity() const
 	{
 		return ToGlm(Impl->System.GetGravity());
+	}
+
+	void PhysicsWorld::DrawDebug(DebugDraw& drawing, const PhysicsDebugOptions& options) const
+	{
+		if constexpr (!DebugDraw::Enabled)
+		{
+			return;
+		}
+		NYX_PROFILE_FUNCTION();
+
+		if (options.bShapes)
+		{
+			// In the order of their handles
+			JPH::BodyIDVector ids;
+			Impl->System.GetBodies(ids);
+			const JPH::BodyLockInterfaceNoLock& locks = Impl->System.GetBodyLockInterfaceNoLock();
+			for (const JPH::BodyID& id : ids)
+			{
+				const JPH::BodyLockRead lock(locks, id);
+				if (lock.Succeeded())
+				{
+					DrawBodyShape(drawing, lock.GetBody(), ColorOf(lock.GetBody(), options));
+				}
+			}
+		}
+
+		if (options.bContacts)
+		{
+			for (const ContactPoint& contact : Impl->ContactPoints)
+			{
+				drawing.Cross(contact.Point, 0.1f, options.ContactColor);
+				drawing.Arrow(contact.Point, contact.Point + contact.Normal * 0.3f, options.ContactColor);
+			}
+		}
+
+		if (options.bConstraints)
+		{
+			for (const auto& [handle, constraint] : Impl->Constraints)
+			{
+				const glm::vec3 anchor1 = AnchorOf(*constraint->GetBody1(), constraint->GetConstraintToBody1Matrix());
+				const glm::vec3 anchor2 = AnchorOf(*constraint->GetBody2(), constraint->GetConstraintToBody2Matrix());
+				drawing.Line(anchor1, anchor2, options.ConstraintColor);
+				drawing.Cross(anchor1, 0.1f, options.ConstraintColor);
+				drawing.Cross(anchor2, 0.1f, options.ConstraintColor);
+			}
+		}
+	}
+
+	void PhysicsWorld::SetKeepContactPoints(bool bKeep)
+	{
+		Impl->Contacts.bKeepPoints = bKeep;
 	}
 }

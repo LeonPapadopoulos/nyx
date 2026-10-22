@@ -10,6 +10,8 @@
 
 namespace Nyx
 {
+	class DebugDraw;
+
 	// How a body moves: not at all, only where it is put (MoveKinematic(); pushes dynamic bodies, is
 	// pushed by nothing), or by forces, gravity and collisions
 	enum class EBodyMotion : uint8_t
@@ -174,6 +176,27 @@ namespace Nyx
 		bool operator==(const ConstraintHandle&) const = default;
 	};
 
+	// What PhysicsWorld::DrawDebug() draws, and in which colours (linear RGB)
+	struct PhysicsDebugOptions
+	{
+		// Every body's shape: a box's edges, circles around a sphere and along a capsule, in the
+		// body's axes and coloured by how it moves
+		bool bShapes = true;
+		// The last step's contact points, each a cross with an arrow along its normal; only kept
+		// while asked for (PhysicsWorld::SetKeepContactPoints())
+		bool bContacts = true;
+		// Each constraint: a line between its anchor points on its two bodies, a cross at each
+		bool bConstraints = true;
+
+		glm::vec3 StaticColor{ 0.6f, 0.6f, 0.6f };
+		glm::vec3 KinematicColor{ 0.3f, 0.6f, 1.0f };
+		glm::vec3 AwakeColor{ 0.2f, 1.0f, 0.3f };
+		glm::vec3 AsleepColor{ 0.15f, 0.45f, 0.2f };
+		glm::vec3 SensorColor{ 1.0f, 0.85f, 0.1f };
+		glm::vec3 ContactColor{ 1.0f, 0.25f, 0.2f };
+		glm::vec3 ConstraintColor{ 1.0f, 0.4f, 1.0f };
+	};
+
 	struct PhysicsSettings
 	{
 		glm::vec3 Gravity{ 0.0f, -9.81f, 0.0f };
@@ -254,6 +277,13 @@ namespace Nyx
 
 		void SetGravity(const glm::vec3& gravity);
 		glm::vec3 GetGravity() const;
+
+		// Draws the world as lines, as the options say, to see its shapes, contacts and joints:
+		// where the last step left them. Nothing in builds without debug drawing (DebugDraw::Enabled).
+		void DrawDebug(DebugDraw& drawing, const PhysicsDebugOptions& options) const;
+		// Whether the steps keep their contact points for DrawDebug(), from the next step on. Off by
+		// default: keeping them costs a little for every pair of touching bodies.
+		void SetKeepContactPoints(bool bKeep);
 
 	private:
 		struct Implementation;

@@ -126,6 +126,10 @@ Code can draw lines over a world to show what it does: forces, anchors, bounds, 
   them (`IRenderer::SetSceneViewShowDebugDrawing()`).
 - Release builds compile debug drawing out: drawing does nothing there.
 - The editor's overlays draw each object's axes and bounds the same way.
+- **The physics debug view**: F3 in a game window (Debug builds) shows every body's shape, coloured
+  by how it moves (static grey, kinematic blue, awake green, asleep dark green, sensors yellow), the
+  last step's contact points with their normals in red, and constraints as pink lines between
+  their anchors. It changes with the next step, so while paused, with Step.
 
 ## Profiling
 

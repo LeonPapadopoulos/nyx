@@ -92,6 +92,14 @@ namespace Nyx::Game
 			volatile int* nowhere = nullptr;
 			*nowhere = 1;
 		}
+
+		// F3 shows the bodies' shapes, contacts and constraints (Debug builds only)
+		if (ImGui::IsKeyPressed(ImGuiKey_F3, false))
+		{
+			const bool bShow = !World.GetPhysicsDebugView();
+			World.SetPhysicsDebugView(bShow ? std::optional(Nyx::PhysicsDebugOptions{}) : std::nullopt);
+			LOG_INFO("Physics debug view {0} (F3)", bShow ? "on" : "off");
+		}
 #endif
 
 		// One window without any decoration that covers the whole application window

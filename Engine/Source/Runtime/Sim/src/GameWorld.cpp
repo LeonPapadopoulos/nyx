@@ -28,8 +28,19 @@ namespace Nyx
 
 		Physics.Step(seconds);
 		Bodies.WriteBackAfterStep(World, Physics);
+		if (PhysicsDebugView)
+		{
+			Physics.DrawDebug(Debug, *PhysicsDebugView);
+		}
 
 		RunStage(ESimStage::AfterPhysics, context);
+	}
+
+	void GameWorld::SetPhysicsDebugView(const std::optional<PhysicsDebugOptions>& options)
+	{
+		PhysicsDebugView = options;
+		// Contact points cost a little each step, so they are kept only to be drawn
+		Physics.SetKeepContactPoints(options && options->bContacts);
 	}
 
 	void GameWorld::RunStage(ESimStage stage, const SimContext& context)

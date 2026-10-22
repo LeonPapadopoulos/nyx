@@ -9,6 +9,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace Nyx
@@ -22,7 +23,7 @@ namespace Nyx
 	// 3. the systems of ESimStage::BeforePhysics, in the order they were added;
 	// 4. the physics step;
 	// 5. dynamic bodies write their poses into their transforms, and where they were before into
-	//    their PreviousTransformComponents;
+	//    their PreviousTransformComponents; the physics debug view is drawn, if on;
 	// 6. the systems of ESimStage::AfterPhysics, in the order they were added.
 	class GameWorld
 	{
@@ -42,6 +43,11 @@ namespace Nyx
 		PhysicsWorld& GetPhysics() { return Physics; }
 		const PhysicsWorld& GetPhysics() const { return Physics; }
 		const PhysicsBodies& GetBodies() const { return Bodies; }
+
+		// Draws the physics world into the debug drawing after each physics step, as the options say
+		// (PhysicsWorld::DrawDebug()), from the next step on; none, the default, draws nothing
+		void SetPhysicsDebugView(const std::optional<PhysicsDebugOptions>& options);
+		const std::optional<PhysicsDebugOptions>& GetPhysicsDebugView() const { return PhysicsDebugView; }
 
 		// Adds the system after those of its stage added before. It runs on every `everyNthStep`th
 		// step (1: every step), counted from step 0, so systems with the same interval run in the
@@ -69,6 +75,7 @@ namespace Nyx
 		DebugDraw Debug;
 		PhysicsWorld Physics;
 		PhysicsBodies Bodies;
+		std::optional<PhysicsDebugOptions> PhysicsDebugView;
 		std::vector<SystemEntry> Systems;
 	};
 }
