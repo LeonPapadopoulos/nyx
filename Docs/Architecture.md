@@ -44,7 +44,7 @@ doesn't allow, and on a table that goes round in a circle, so a new dependency s
 
 | Folder | What it holds | Includes from |
 | --- | --- | --- |
-| `Core` | Logging, assertions, paths, text helpers, child processes, the crash handler, file watching, the frame rate limiter, the fixed step clock, `BinaryArchive`, the profiler macros (`Profiler.h`) | — |
+| `Core` | Logging, assertions, paths, text helpers, child processes, the crash handler, file watching, the frame rate limiter, the fixed step clock, `BinaryArchive`, the profiler macros (`Profiler.h`), debug drawing (`DebugDraw`) | — |
 | `Reflection` | Type and property metadata, and the `NYX_REFLECT` and `NYX_PROPERTY` macros; not under `Runtime` | — |
 | `Net` | TCP connections and the messages they carry | Core |
 | `Input` | Keyboard and mouse, gathered from backends into one `InputFrame` per frame | Core |
@@ -138,8 +138,8 @@ checks every `#include` against this table.
    2. acquires the swapchain image, and takes shader updates;
    3. renders every scene view: the editor's passes (picking only after a click, selection
       masks only when they changed), then the scene in HDR, tonemapped, with the editor's
-      overlays (`VulkanEditorOverlays`, in the views that show them); then blurs each view's
-      picture;
+      overlays (`VulkanEditorOverlays`, in the views that show them) and the world's debug
+      drawing (`VulkanDebugLines`) over it; then blurs each view's picture;
    4. builds the UI: an ImGui frame in which the window's dock area and strips (`IWindow::DrawUI()`)
       hold every layer's `OnUI()`, then the painted window
       chrome, the painter canvases, and the window painters' segments, binned on the GPU;
@@ -185,9 +185,11 @@ and `NYX_PROFILE_MESSAGE()`. They wrap Tracy, and only `Profiler.h` includes Tra
   framebuffer changes size.
 - **The renderer**: everything on the GPU: scene views, shaders, materials; in its
   `VulkanUIBackend` ImGui, the painter, glass, UI images and screenshots; in its
-  `VulkanEditorOverlays` the grid, debug lines, picking and the selection outline. It
-  holds worlds only by pointer (`SetWorld()`, `SetSceneViewWorld()`): their owner keeps them alive,
-  and calls `SetWorld()` again after replacing what's in one.
+  `VulkanEditorOverlays` the grid, the objects' bounds, picking and the selection outline; in its
+  `VulkanDebugLines` every view's debug lines, the overlays' and the worlds' debug drawing
+  (`SetWorldDebugDraw()`). It holds worlds and their drawings only by pointer (`SetWorld()`,
+  `SetSceneViewWorld()`): their owner keeps them alive, and calls `SetWorld()` again after
+  replacing what's in one.
 - **Layers**: `EditorLayer` in the editor; `GameLayer` and, when the editor started the game,
   `EditorLinkLayer` in the game.
 - **Worlds** (`Registry`): the scene being edited is in `SceneDocument`, inside

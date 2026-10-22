@@ -4,6 +4,8 @@
 #include "NameComponent.h"
 #include "TestSupport.h"
 
+#include <glm/glm.hpp>
+
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -112,6 +114,53 @@ namespace
 		Require(world.GetRegistry().Get<Nyx::NameComponent>(entity).Name == "Step 41",
 			"A system should change the world's entities, and see the step it runs in");
 	}
+
+	// Draws a line each step it runs, and a timed one in the first
+	class DrawingSystem final : public Nyx::ISimSystem
+	{
+	public:
+		const char* GetName() const override
+		{
+			return "Drawing";
+		}
+
+		void Step(const Nyx::SimContext& context) override
+		{
+			if (context.Step.StepIndex == 0)
+			{
+				context.Debug.Line(glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), 0.04f);
+			}
+			if (bDraw)
+			{
+				context.Debug.Line(glm::vec3(0.0f), glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+			}
+		}
+
+		bool bDraw = true;
+	};
+
+	void TestDebugDrawingLastsAStep()
+	{
+		if constexpr (!Nyx::DebugDraw::Enabled)
+		{
+			return;
+		}
+
+		GameWorld world;
+		DrawingSystem& system = static_cast<DrawingSystem&>(world.AddSystem(std::make_unique<DrawingSystem>()));
+
+		world.Step(MakeStep(0));
+		Require(world.GetDebugDraw().GetLines().size() == 2, "A step's drawing should be there after the step");
+
+		system.bDraw = false;
+		world.Step(MakeStep(1));
+		Require(world.GetDebugDraw().GetLines().size() == 1, "A step's drawing should go with the next step; the timed line stays");
+
+		// 1/60 s steps: the 0.04 s line is gone after the third step's aging
+		world.Step(MakeStep(2));
+		world.Step(MakeStep(3));
+		Require(world.GetDebugDraw().GetLines().empty(), "A timed line should go once its time in steps ran out");
+	}
 }
 
 int main()
@@ -121,6 +170,7 @@ int main()
 		TestSystemsRunInTheirOrder();
 		TestSystemsRunEveryNthStep();
 		TestSystemsChangeTheirWorld();
+		TestDebugDrawingLastsAStep();
 	}
 	catch (const std::exception& error)
 	{

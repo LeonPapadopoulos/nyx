@@ -18,7 +18,9 @@ namespace Nyx
 	void GameWorld::Step(const StepTime& step)
 	{
 		NYX_PROFILE_SCOPE("GameWorld::Step");
-		const SimContext context{ World, step };
+		Debug.Advance(static_cast<float>(step.FixedDeltaSeconds));
+
+		const SimContext context{ World, step, Debug };
 		for (const SystemEntry& entry : Systems)
 		{
 			if (step.StepIndex % entry.EveryNthStep == 0)

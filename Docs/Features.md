@@ -100,6 +100,18 @@ Build\Windows\Binaries\Debug\NyxDump.exe Assets\Scenes\Default.nyxscene
 
 A `.nyxlinklog` file prints the same way.
 
+## Debug drawing
+
+Code can draw lines over a world to show what it does: forces, anchors, bounds, paths.
+
+- A game's systems draw through their step's `SimContext::Debug`: lines, arrows, boxes, spheres,
+  axes and crosses (`DebugDraw`). What a step draws stays until the next step; a shape given
+  seconds stays that long in the world's time, so pausing the game keeps it.
+- The game's view draws them over the scene, depth tested, in the colours given. A view can hide
+  them (`IRenderer::SetSceneViewShowDebugDrawing()`).
+- Release builds compile debug drawing out: drawing does nothing there.
+- The editor's overlays draw each object's axes and bounds the same way.
+
 ## Profiling
 
 Every program has the [Tracy](https://github.com/wolfpld/tracy) profiler built in, while the CMake

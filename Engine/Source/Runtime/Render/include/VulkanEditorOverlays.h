@@ -1,5 +1,6 @@
 #pragma once
 
+#include "DebugDraw.h"
 #include "EditorRenderer.h"
 #include "Entity.h"
 
@@ -24,6 +25,7 @@ namespace Nyx
 	class Registry;
 	class ShaderPrograms;
 	class VulkanContext;
+	class VulkanDebugLines;
 	struct RenderWorld;
 	struct SceneViewInstance;
 
@@ -32,38 +34,6 @@ namespace Nyx
 		VisibleOnly = 0,
 		FullSilhouette = 1,
 		VisibleOccludeHatched = 2
-	};
-
-	struct DebugLineVertex
-	{
-		glm::vec3 Position{ 0.0f };
-		glm::vec3 Color{ 1.0f };
-
-		static vk::VertexInputBindingDescription GetBindingDescription()
-		{
-			vk::VertexInputBindingDescription binding{};
-			binding.binding = 0;
-			binding.stride = sizeof(DebugLineVertex);
-			binding.inputRate = vk::VertexInputRate::eVertex;
-			return binding;
-		}
-
-		static std::array<vk::VertexInputAttributeDescription, 2> GetAttributeDescriptions()
-		{
-			std::array<vk::VertexInputAttributeDescription, 2> attributes{};
-
-			attributes[0].binding = 0;
-			attributes[0].location = 0;
-			attributes[0].format = vk::Format::eR32G32B32Sfloat;
-			attributes[0].offset = offsetof(DebugLineVertex, Position);
-
-			attributes[1].binding = 0;
-			attributes[1].location = 1;
-			attributes[1].format = vk::Format::eR32G32B32Sfloat;
-			attributes[1].offset = offsetof(DebugLineVertex, Color);
-
-			return attributes;
-		}
 	};
 
 	// A scene view's part of the editor overlays: its picking and selection mask targets, and its
@@ -151,11 +121,11 @@ namespace Nyx
 		// Binds the scene pipelines' two sets, the global one and the view's, for a draw into the view
 		using BindSceneSetsFunction = std::function<void(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)>;
 
-		// Both must outlive the overlays
-		VulkanEditorOverlays(VulkanContext& context, ShaderPrograms& programs);
+		// All three must outlive the overlays. The overlays' debug lines are drawn by `debugLines`,
+		// which the renderer owns and makes the pipeline of.
+		VulkanEditorOverlays(VulkanContext& context, ShaderPrograms& programs, VulkanDebugLines& debugLines);
 
-		// Before the first view is made: what every view's outline set is made with, and the debug
-		// lines' buffer. The overlays draw with the scene pipelines' layout (the global set, the
+		// Before the first view is made: what every view's outline set is made with. The overlays draw with the scene pipelines' layout (the global set, the
 		// view's set, ObjectConstants), which must outlive them.
 		void Initialize(vk::PipelineLayout scenePipelineLayout, BindSceneSetsFunction bindSceneSets);
 		// Once the first view is made: the pipelines, for its passes, which every view's are like
@@ -181,11 +151,9 @@ namespace Nyx
 		// outline
 		void Draw(SceneViewInstance& view, const RenderWorld* world, vk::raii::CommandBuffer& cmd);
 
-		// Every world's debug lines, once per frame: reset, then added world by world, then uploaded
-		void ResetDebugLines();
-		// The world's objects' axes and bounds, and the world's axes
+		// The world's objects' axes and bounds, and the world's axes, into this frame's debug lines
+		// (world.OverlayLines), once per frame
 		void AddDebugLines(RenderWorld& world);
-		void UploadDebugLines();
 
 		// A click at a pixel of the view, which shows `worldRevision` of its world; picked from in
 		// the next frame
@@ -236,20 +204,6 @@ namespace Nyx
 		void CreateOutlineCompositePipeline(const SceneViewInstance& firstView);
 		void DrawSelectionOutline(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
 
-		void CreateDebugLineResources();
-		void CreateDebugLinePipeline(const SceneViewInstance& firstView);
-
-		void AddDebugLine(const glm::vec3& a, const glm::vec3& b, const glm::vec3& color);
-		void AddDebugAxes(const glm::mat4& worldTransform, float axisLength);
-		void AddDebugAABB(const glm::vec3& min, const glm::vec3& max, const glm::vec3& color);
-		void AddDebugOrientedBox(
-			const glm::mat4& worldTransform,
-			const glm::vec3& localMin,
-			const glm::vec3& localMax,
-			const glm::vec3& color);
-
-		void DrawDebugLines(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd);
-
 		void DrawPickingPass(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd);
 		void ResolvePickRequest(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd);
 
@@ -265,6 +219,7 @@ namespace Nyx
 
 		VulkanContext& Context;
 		ShaderPrograms& Programs;
+		VulkanDebugLines& DebugLines;
 		vk::PipelineLayout ScenePipelineLayout;
 		BindSceneSetsFunction BindSceneSets;
 
@@ -288,14 +243,7 @@ namespace Nyx
 		// Grid
 		vk::raii::Pipeline GridPipeline{ nullptr };
 
-		// Debugging
-		static constexpr uint32_t MaxDebugLineVertices = 65536;
-
-		std::vector<DebugLineVertex> DebugLineVertices;
-
-		vk::raii::Buffer DebugLineVertexBuffer{ nullptr };
-		vk::raii::DeviceMemory DebugLineVertexBufferMemory{ nullptr };
-
-		vk::raii::Pipeline DebugLinePipeline{ nullptr };
+		// The objects' axes and bounds, drawn anew each frame (AddDebugLines())
+		DebugDraw OverlayDrawing;
 	};
 }

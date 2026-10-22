@@ -1,5 +1,6 @@
 #pragma once
 
+#include "DebugDraw.h"
 #include "Entity.h"
 #include "FixedStepClock.h"
 
@@ -12,6 +13,9 @@ namespace Nyx
 		Registry& World;
 		// Which step this is, and how long
 		const StepTime& Step;
+		// Lines over the world, to see what the system does; shown until the next step, or for the
+		// seconds given (DebugDraw)
+		DebugDraw& Debug;
 	};
 
 	// One part of the simulation, run by the GameWorld in its place in the order, every step or every

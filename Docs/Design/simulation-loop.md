@@ -43,7 +43,9 @@ Commands, events, drawing between steps and time scale are still the plan.
   added (`AddSystem()`). `GameLayer` owns it, has the game module add its systems
   (`GameModule::CreateSystems`) and steps it in `OnFixedUpdate()`.
 - **Built:** a system implements `ISimSystem::Step(const SimContext&)`; `SimContext` carries the
-  registry and the `StepTime`. Systems talk through components, never by calling each other.
+  registry, the `StepTime` and the world's debug drawing (`DebugDraw`, cleared at the start of
+  each step, timed shapes aged by the step's length). Systems talk through components, never by
+  calling each other.
 - **Built:** a system can run every nth step (`AddSystem(system, n)`), counted from step 0, so
   systems with the same interval run in the same steps: heat or plant growth don't need 60 updates
   a second.

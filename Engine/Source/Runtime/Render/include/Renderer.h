@@ -18,6 +18,7 @@ struct GLFWwindow;
 
 namespace Nyx
 {
+	class DebugDraw;
 	class Mesh;
 	struct Material;
 	class Registry;
@@ -83,6 +84,13 @@ namespace Nyx
 		// SetWorld() does, so views showing it drop their pending picks. Views of another world
 		// than the renderer's draw no selection outline. Null shows the renderer's world again.
 		virtual void SetSceneViewWorld(uint64_t id, const Nyx::Registry* world) = 0;
+
+		// Lines drawn over a world (DebugDraw), e.g. a game's forces and anchors: every view showing
+		// the world draws them, unless it hides them (SetSceneViewShowDebugDrawing()). The drawing
+		// must outlive being set; null takes it away.
+		virtual void SetWorldDebugDraw(const Nyx::Registry* world, const Nyx::DebugDraw* drawing) = 0;
+		// Whether the view draws its world's debug drawing; on for a new view
+		virtual void SetSceneViewShowDebugDrawing(uint64_t id, bool bShow) = 0;
 
 		virtual uint64_t CreateSceneView() = 0;
 		virtual void DestroySceneView(uint64_t id) = 0;

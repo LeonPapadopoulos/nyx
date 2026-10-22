@@ -29,6 +29,9 @@ namespace Nyx
 		// Grid, debug lines, picking and the selection outline; off until the editor turns them on
 		// (IEditorRenderer::SetSceneViewShowEditorOverlays())
 		bool bShowEditorOverlays = false;
+		// Its world's debug drawing (IRenderer::SetWorldDebugDraw()); on unless hidden
+		// (IRenderer::SetSceneViewShowDebugDrawing())
+		bool bShowDebugDrawing = true;
 
 		// See IRenderer::SetSceneViewExposure()
 		float ExposureStops = 0.0f;

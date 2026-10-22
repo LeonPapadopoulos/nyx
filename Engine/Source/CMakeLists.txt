@@ -27,6 +27,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/CrashHandler.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/FrameRateLimiter.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/FixedStepClock.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Core/src/DebugDraw.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/FileWatcher.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/BinaryArchive.cpp
 
@@ -107,6 +108,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanBindless.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanMaterials.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanEnvironment.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanDebugLines.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanEditorOverlays.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/RendererLiveEdits.cpp
 
@@ -137,6 +139,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/CrashHandler.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/FrameRateLimiter.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/FixedStepClock.h
+    ${NYX_ENGINE_ROOT}/Runtime/Core/include/DebugDraw.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/Profiler.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/FileWatcher.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/StringUtil.h
@@ -235,6 +238,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanEnvironment.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/RendererLiveEdits.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanUIBackend.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanDebugLines.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanEditorOverlays.h
 
     # Runtime/Link
@@ -413,6 +417,7 @@ foreach(NYX_ENGINE_TARGET NyxEngineCommon NyxEngine NyxEditorEngine)
         PUBLIC $<$<CONFIG:Debug>:ENGINE_DEBUG>
         PUBLIC $<$<CONFIG:Release>:ENGINE_RELEASE>
         PUBLIC $<$<CONFIG:Debug>:ASSERTIONS_ENABLED>
+        PUBLIC "NYX_DEBUG_DRAW=$<NOT:$<CONFIG:Release>>" # DebugDraw.h: none in Release builds
         PUBLIC VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS # Same vulkan.hpp behavior wherever it is included
         PUBLIC GLM_ENABLE_EXPERIMENTAL # Quaternion utilities, used by the public TransformComponent.h
     )

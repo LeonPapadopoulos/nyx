@@ -12,6 +12,7 @@
 #include "VulkanMaterials.h"
 #include "VulkanEnvironment.h"
 #include "VulkanUIBackend.h"
+#include "VulkanDebugLines.h"
 #include "VulkanEditorOverlays.h"
 #include "Mesh.h"
 #include "Texture.h"
@@ -23,6 +24,7 @@
 #include <map>
 #include <memory>
 #include <span>
+#include <unordered_map>
 
 #include "Entity.h"
 #include "TransformComponent.h"
@@ -141,9 +143,10 @@ namespace Nyx
 		std::vector<RenderObject> Objects;
 		// Dense picking IDs: ID i is the entity at i - 1, 0 is nothing
 		std::vector<Nyx::Entity> PickingIdToEntity;
-		// Its debug lines, in the editor overlays' (VulkanEditorOverlays::AddDebugLines())
-		uint32_t FirstDebugLineVertex = 0;
-		uint32_t DebugLineVertexCount = 0;
+		// This frame's debug lines of the world: the editor overlays' (its objects' bounds and axes)
+		// and its debug drawing's (IRenderer::SetWorldDebugDraw())
+		DebugLineRange OverlayLines;
+		DebugLineRange DebugDrawLines;
 	};
 
 	struct SceneCamera
@@ -239,6 +242,8 @@ namespace Nyx
 
 		void SetWorld(const Nyx::Registry* world) override;
 		void SetSceneViewWorld(uint64_t id, const Nyx::Registry* world) override;
+		void SetWorldDebugDraw(const Nyx::Registry* world, const Nyx::DebugDraw* drawing) override;
+		void SetSceneViewShowDebugDrawing(uint64_t id, bool bShow) override;
 
 		Nyx::Mesh* GetCubeMesh() override;
 		Nyx::Mesh* GetSphereMesh() override;
@@ -403,8 +408,10 @@ namespace Nyx
 
 		// ImGui, the painter, glass and blur, UI images, screenshots, and the frame's GPU times
 		VulkanUIBackend UI{ Context, Swapchain, Programs };
+		// Every view's debug lines, the worlds' debug drawing and the overlays' alike
+		VulkanDebugLines DebugLines{ Context, Programs };
 		// The grid, debug lines, picking and the selection outline, of the views that show them
-		VulkanEditorOverlays Overlays{ Context, Programs };
+		VulkanEditorOverlays Overlays{ Context, Programs, DebugLines };
 
 		// When the last frame's DrawFrame() ended, for the time spent outside it
 		std::chrono::steady_clock::time_point LastFrameEnd;
@@ -443,6 +450,9 @@ namespace Nyx
 		// their addresses stay while worlds come and go
 		std::vector<std::unique_ptr<RenderWorld>> RenderWorlds;
 		uint64_t LastWorldRevision = 0;
+		// The worlds' debug drawing (SetWorldDebugDraw()), by world; kept apart from RenderWorlds,
+		// whose entries come and go with the views
+		std::unordered_map<const Nyx::Registry*, const Nyx::DebugDraw*> WorldDebugDraws;
 
 		float SceneTime = 0.0f;
 

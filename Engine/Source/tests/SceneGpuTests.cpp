@@ -23,6 +23,7 @@
 // NYX_SCENE_TEST_OUTPUT=<folder> saves what was rendered there, e.g. to make a new reference
 // after a change that is meant to change the picture.
 #include "CameraComponent.h"
+#include "DebugDraw.h"
 #include "DirectionalLightComponent.h"
 #include "EditorLinkMessages.h"
 #include "Entity.h"
@@ -1008,6 +1009,59 @@ namespace
 		renderer.DestroySceneView(previewView);
 		gpu.DrawFrames(1);
 	}
+
+	// A world's debug drawing: drawn in a view of the world without the editor's overlays, as the
+	// game's view is, over the scene and in its colour; gone when the view hides it or the drawing
+	// is taken away
+	void TestWorldDebugDrawing(SceneRenderer& gpu)
+	{
+		Nyx::IRenderer& renderer = gpu.Renderer;
+		Registry world;
+		const Entity camera = world.CreateEntity();
+		world.Add<TransformComponent>(camera, TransformComponent{ .Position = glm::vec3(0.0f, 2.0f, 6.0f), .Rotation = glm::quat(glm::radians(glm::vec3(-15.0f, 0.0f, 0.0f))), .Scale = glm::vec3(1.0f) });
+		world.Add<CameraComponent>(camera, CameraComponent{});
+		renderer.SetWorld(&world);
+
+		Nyx::DebugDraw drawing;
+		drawing.Line(glm::vec3(-2.0f, 1.5f, 2.0f), glm::vec3(2.0f, 1.5f, 2.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+		drawing.Arrow(glm::vec3(0.0f, 0.5f, 2.0f), glm::vec3(0.0f, 1.2f, 2.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+
+		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
+		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
+
+		const auto countRedPixels = [&]()
+		{
+			gpu.DrawUntilShadersCompiled();
+			gpu.DrawFrames(2);
+			RgbaImage image;
+			Require(gpu.Renderer.ReadSceneViewPixels(view, image), "The scene view can't be read back");
+			size_t red = 0;
+			for (size_t pixel = 0; pixel < static_cast<size_t>(image.Width) * image.Height; ++pixel)
+			{
+				const uint8_t* rgba = &image.Pixels[pixel * 4];
+				red += rgba[0] > 200 && rgba[1] < 40 && rgba[2] < 40 ? 1 : 0;
+			}
+			return red;
+		};
+
+		Require(countRedPixels() == 0, "Without debug drawing, the view should have no pure red");
+
+		renderer.SetWorldDebugDraw(&world, &drawing);
+		const size_t drawn = countRedPixels();
+		Require(drawn >= 150, "The world's debug lines should be drawn in its view (" + std::to_string(drawn) + " red pixels)");
+
+		renderer.SetSceneViewShowDebugDrawing(view, false);
+		Require(countRedPixels() == 0, "A view hiding the debug drawing shouldn't draw it");
+		renderer.SetSceneViewShowDebugDrawing(view, true);
+
+		renderer.SetWorldDebugDraw(&world, nullptr);
+		Require(countRedPixels() == 0, "A drawing taken away shouldn't be drawn");
+
+		renderer.DestroySceneView(view);
+		renderer.SetWorld(nullptr);
+		gpu.DrawFrames(1);
+	}
 }
 
 int main()
@@ -1025,6 +1079,7 @@ int main()
 		TestStandardMatchesTheCpu(gpu);
 		TestNormalMapsAndMasks(gpu);
 		TestViewsWithWorldsOfTheirOwn(gpu);
+		TestWorldDebugDrawing(gpu);
 		TestMaterialValuesSetInMemory(gpu);
 		TestSkiesAndDebugViews(gpu);
 		TestViewsMadeAndLetGoWhileTheUIIsBuilt(gpu);

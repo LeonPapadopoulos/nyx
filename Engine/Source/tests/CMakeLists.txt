@@ -79,6 +79,13 @@ nyx_link_game_module(NyxGameModuleTests MODULE NyxTestModule)
 set_property(TARGET NyxGameModuleTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxGameModuleTests COMMAND NyxGameModuleTests)
 
+# Debug drawing: shapes as lines, how long they stay, the cap
+add_executable(NyxDebugDrawTests DebugDrawTests.cpp)
+target_link_libraries(NyxDebugDrawTests PRIVATE NyxEngine)
+add_dependencies(NyxDebugDrawTests NyxGeneratedReflection)
+set_property(TARGET NyxDebugDrawTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxDebugDrawTests COMMAND NyxDebugDrawTests)
+
 # The game world: systems run in their order, every step or every nth one
 add_executable(NyxGameWorldTests GameWorldTests.cpp)
 target_link_libraries(NyxGameWorldTests PRIVATE NyxEngine)

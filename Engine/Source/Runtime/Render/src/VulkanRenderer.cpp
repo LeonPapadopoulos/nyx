@@ -273,6 +273,10 @@ namespace Nyx
 		// Shared layouts / shared GPU assets that per-view creation depends on
 		CreateSceneDescriptorSetLayout();
 		CreateScenePipelineLayout();
+		DebugLines.Initialize(*ScenePipelineLayout, [this](SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
+			{
+				BindSceneSets(view, cmd);
+			});
 		Overlays.Initialize(*ScenePipelineLayout, [this](SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
 			{
 				BindSceneSets(view, cmd);
@@ -287,6 +291,7 @@ namespace Nyx
 		CreateSceneView();
 
 		// Pipelines that depend on view-owned render passes / framebuffers
+		DebugLines.CreatePipeline(SceneViews.front());
 		Overlays.CreatePipelines(SceneViews.front());
 
 		// Shared pipelines
@@ -793,7 +798,32 @@ namespace Nyx
 		// Its contents may be new: nothing of the old ones is drawn or picked from
 		world->Objects.clear();
 		world->PickingIdToEntity.clear();
-		world->DebugLineVertexCount = 0;
+		world->OverlayLines = {};
+		world->DebugDrawLines = {};
+	}
+
+	void VulkanRenderer::SetWorldDebugDraw(const Nyx::Registry* world, const Nyx::DebugDraw* drawing)
+	{
+		if (!world)
+		{
+			return;
+		}
+		if (drawing)
+		{
+			WorldDebugDraws[world] = drawing;
+		}
+		else
+		{
+			WorldDebugDraws.erase(world);
+		}
+	}
+
+	void VulkanRenderer::SetSceneViewShowDebugDrawing(uint64_t id, bool bShow)
+	{
+		if (SceneViewInstance* view = FindSceneView(id))
+		{
+			view->bShowDebugDrawing = bShow;
+		}
 	}
 
 	RenderWorld* VulkanRenderer::FindRenderWorld(const Nyx::Registry* registry)
@@ -1037,14 +1067,17 @@ namespace Nyx
 					});
 			});
 
-		Overlays.ResetDebugLines();
+		DebugLines.Reset();
 		for (const std::unique_ptr<RenderWorld>& world : RenderWorlds)
 		{
 			// Used to update Render Objects here (e.g. Transform)
 			ExtractRenderObjects(*world);
 			Overlays.AddDebugLines(*world);
+
+			const auto drawing = WorldDebugDraws.find(world->Registry);
+			world->DebugDrawLines = drawing != WorldDebugDraws.end() ? DebugLines.Add(*drawing->second) : DebugLineRange{};
 		}
-		Overlays.UploadDebugLines();
+		DebugLines.Upload();
 	}
 
 	void VulkanRenderer::ExtractRenderObjects(RenderWorld& world)
@@ -1693,6 +1726,10 @@ namespace Nyx
 		{
 			Environment.Rebuild();
 		}
+		if (uses("DebugLines"))
+		{
+			DebugLines.CreatePipeline(SceneViews.front());
+		}
 		Overlays.RebuildPipelines(uses, SceneViews.front());
 		if (uses("Painter") || changed.contains("PainterBin.comp"))
 		{
@@ -2066,12 +2103,17 @@ namespace Nyx
 		view.RenderTarget.EndRenderPass(cmd);
 
 		// 2. The picture: the scene tonemapped, then the editor's overlays over it (grid, debug
-		// lines, the selection outline), which look as they always did
+		// lines, the selection outline), which look as they always did, then the world's debug
+		// drawing
 		view.RenderTarget.BeginPicturePass(cmd);
 		DrawTonemap(view, cmd);
 		if (view.bShowEditorOverlays)
 		{
 			Overlays.Draw(view, world, cmd);
+		}
+		if (world && view.bShowDebugDrawing)
+		{
+			DebugLines.Draw(view, world->DebugDrawLines, cmd);
 		}
 		view.RenderTarget.EndRenderPass(cmd);
 	}
