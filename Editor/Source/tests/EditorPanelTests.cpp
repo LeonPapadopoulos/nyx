@@ -8,6 +8,7 @@
 #include "NameComponent.h"
 #include "Painter.h"
 #include "PainterTestWindow.h"
+#include "PhysicsComponents.h"
 #include "PlayControls.h"
 #include "PlaySession.h"
 #include "AssetDatabase.h"
@@ -223,6 +224,44 @@ namespace
 				Require(ImGui::FindWindowByName("Scene Outliner") == nullptr || !ImGui::FindWindowByName("Scene Outliner")->Active,
 					"A closed outliner should not be drawn");
 			});
+	}
+
+	// ImGui counts the items that share the ID of the one under the mouse ("visible items with
+	// conflicting ID"). The mouse goes down the details panel row by row, over an entity with every
+	// physics component: a category named like its component ("Rigid Body") or a property must
+	// never share an item's ID.
+	void TestDetailsHaveNoConflictingIds()
+	{
+		HeadlessUI ui;
+		RegisterDefaultPropertyWidgets();
+
+		SceneEditor editing;
+		Registry& world = editing.Scene.GetRegistry();
+		const Entity crate = editing.Scene.CreateEntity("Crate");
+		world.Add<TransformComponent>(crate, TransformComponent{});
+		world.Add<BoxColliderComponent>(crate, BoxColliderComponent{});
+		world.Add<RigidBodyComponent>(crate, RigidBodyComponent{});
+		world.Add<PhysicsMaterialComponent>(crate, PhysicsMaterialComponent{});
+		editing.Scene.GetSelection() = crate;
+
+		DetailsPanel details;
+		const auto draw = [&]()
+		{
+			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+			ImGui::SetNextWindowSize(ImVec2(400.0f, 780.0f));
+			details.Draw(editing);
+		};
+		ui.Frame(draw);
+		ui.Frame(draw);
+
+		for (float y = 0.0f; y < 780.0f; y += 3.0f)
+		{
+			ImGui::GetIO().AddMousePosEvent(40.0f, y);
+			ui.Frame(draw);
+			ui.Frame(draw);
+			Require(ImGui::GetCurrentContext()->HoveredIdPreviousFrameItemCount <= 1,
+				"Two items in the details panel share an ID (under the mouse at y = " + std::to_string(y) + ")");
+		}
 	}
 
 	void TestCrashCards()
@@ -1532,6 +1571,7 @@ int main()
 		TestForgetScene();
 		TestHotkeys();
 		TestPanelsDrawHeadless();
+		TestDetailsHaveNoConflictingIds();
 		TestCrashCards();
 		TestScenePopupsAndIdleSession();
 		TestPainterComparisonSurvivesAtlasGrowth();

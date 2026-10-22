@@ -373,7 +373,10 @@ bool Nyx::Editor::DrawReflectedTypeTable(
 		bAnyChanged |= DrawPropertyRow(object, typeMetadata.Properties[propertyIndex], drawContext, typeMetadata);
 	}
 
-	// A category is a tree row, with its properties inside it
+	// A category is a tree row, with its properties inside it. In an ID scope of their own: a
+	// category may be named like its component ("Rigid Body"), whose header shares the scope, or
+	// like a property
+	ImGui::PushID("##Categories");
 	for (const auto& [category, indices] : buckets.ByCategory)
 	{
 		if (BeginPropertyGroupRow(category.c_str()))
@@ -386,6 +389,7 @@ bool Nyx::Editor::DrawReflectedTypeTable(
 			Nyx::UI::TreeRowEnd();
 		}
 	}
+	ImGui::PopID();
 
 	return bAnyChanged;
 }
