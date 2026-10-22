@@ -19,6 +19,7 @@ struct GLFWwindow;
 namespace Nyx
 {
 	class DebugDraw;
+	class FixedStepClock;
 	class Mesh;
 	struct Material;
 	class Registry;
@@ -91,6 +92,14 @@ namespace Nyx
 		virtual void SetWorldDebugDraw(const Nyx::Registry* world, const Nyx::DebugDraw* drawing) = 0;
 		// Whether the view draws its world's debug drawing; on for a new view
 		virtual void SetSceneViewShowDebugDrawing(uint64_t id, bool bShow) = 0;
+
+		// Draws the world's entities that have a PreviousTransformComponent between their last two
+		// steps, by how far the clock is into the next one (FixedStepClock::GetInterpolationFactor()),
+		// read as each frame is drawn; while the clock is paused, where the last step left them.
+		// Picking and the editor's overlays use the transforms as they are. Off for a world until
+		// set, so the editor's own world is drawn as it is. The clock must outlive being set; null
+		// turns it off.
+		virtual void SetWorldInterpolation(const Nyx::Registry* world, const Nyx::FixedStepClock* clock) = 0;
 
 		virtual uint64_t CreateSceneView() = 0;
 		virtual void DestroySceneView(uint64_t id) = 0;

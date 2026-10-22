@@ -122,7 +122,11 @@ namespace Nyx
 
 		Nyx::Mesh* MeshAsset = nullptr;
 		Material* MaterialAsset = nullptr;
+		// Where the entity is, for picking and the editor's overlays
 		glm::mat4 WorldTransform{ 1.0f };
+		// Where the scene pass draws it: between its last two steps in a world drawn so
+		// (IRenderer::SetWorldInterpolation()), else where it is
+		glm::mat4 DrawTransform{ 1.0f };
 
 		// Will be filled with mesh-derived bounds
 		glm::vec3 LocalBoundsMin{ -0.5f, -0.5f, -0.5f };
@@ -244,6 +248,7 @@ namespace Nyx
 		void SetSceneViewWorld(uint64_t id, const Nyx::Registry* world) override;
 		void SetWorldDebugDraw(const Nyx::Registry* world, const Nyx::DebugDraw* drawing) override;
 		void SetSceneViewShowDebugDrawing(uint64_t id, bool bShow) override;
+		void SetWorldInterpolation(const Nyx::Registry* world, const Nyx::FixedStepClock* clock) override;
 
 		Nyx::Mesh* GetCubeMesh() override;
 		Nyx::Mesh* GetSphereMesh() override;
@@ -453,6 +458,8 @@ namespace Nyx
 		// The worlds' debug drawing (SetWorldDebugDraw()), by world; kept apart from RenderWorlds,
 		// whose entries come and go with the views
 		std::unordered_map<const Nyx::Registry*, const Nyx::DebugDraw*> WorldDebugDraws;
+		// The clocks of the worlds drawn between steps (SetWorldInterpolation()), by world, kept so too
+		std::unordered_map<const Nyx::Registry*, const Nyx::FixedStepClock*> WorldInterpolationClocks;
 
 		float SceneTime = 0.0f;
 

@@ -2,8 +2,8 @@
 
 **Partly a proposal.** How a game's world moves forward in time, and why. Built so far: the fixed
 steps (`FixedStepClock`, `ILayer::OnFixedUpdate()`, in `Application::Run()`), the world with its
-ordered systems (`GameWorld`, `ISimSystem`, in `Engine/Source/Runtime/Sim`), and Pause and Step.
-Commands, events, drawing between steps and time scale are still the plan.
+ordered systems (`GameWorld`, `ISimSystem`, in `Engine/Source/Runtime/Sim`), Pause and Step, and
+drawing moving bodies between steps. Commands, events and time scale are still the plan.
 
 ## The shape of it
 
@@ -66,11 +66,27 @@ Commands, events, drawing between steps and time scale are still the plan.
 
 ## Drawing between steps
 
-- At 60 steps a second on a 144 Hz monitor, a moving rock would jitter if drawn where its last
-  step left it. Moving entities keep their previous transform too (a runtime-only component, never
-  saved), and the renderer draws them between the two by how far the frame is into the next step.
-- Only entities that moved in the last step get the previous transform, so still scenes cost
-  nothing extra.
+- **Built.** At 60 steps a second on a 144 Hz monitor, a moving crate would jitter if drawn where
+  its last step left it. Moving entities keep their previous transform too, and the renderer draws
+  them between the two by how far the frame is into the next step. That shows the world up to one
+  step late, which is the price of smooth motion.
+- **The data:** `PreviousTransformComponent` (Scene): the pose before the last step, and the pose
+  that step left. Not reflected, so never saved, edited or sent. `PhysicsBodies` writes it for
+  dynamic bodies, before writing their new poses; only entities that moved in the last step have
+  one, so still scenes cost nothing extra. Kinematic bodies, and anything else moved only in steps,
+  can opt in the same way (`SetPreviousTransform()`) later.
+- **Teleports aren't smeared.** A transform set from outside since the step, by a system or a live
+  edit, no longer matches the pose the step left, and is drawn where it is
+  (`InterpolateTransform()`). The next step teleports the body and starts from there.
+- **The renderer:** `IRenderer::SetWorldInterpolation(world, clock)` draws the world's entities
+  that have the component at `mix(previous, current, factor)`, rotations slerped the short way,
+  with the clock's `GetInterpolationFactor()`, read as the frame is drawn. The game sets its
+  world's once, with `Application::GetSimulationClock()`: a factor handed over by a layer would be
+  a frame off, as `OnUpdate()` runs before the frame's steps and `OnUI()` after the scene is
+  drawn.
+  - Paused, the factor is 1: the picture is still, and Step shows where each step leaves things.
+  - Picking and the editor's overlays use the transforms as they are.
+  - The editor's own world is never set, so its views draw transforms as they are.
 
 ## Threads
 

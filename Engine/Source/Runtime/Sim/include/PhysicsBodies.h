@@ -16,7 +16,9 @@ namespace Nyx
 	//   the entity's scale changed, and destroyed with their collider or entity. A transform set from
 	//   outside since the last step, by a system or an editor's live edit, teleports its body and
 	//   stops it; a kinematic body is moved to its transform over the step.
-	// - after the step, dynamic bodies write where they are into their transforms.
+	// - after the step, dynamic bodies write where they are into their transforms, and those that
+	//   moved where they were before into a PreviousTransformComponent, to be drawn between the two.
+	//   A teleported body has none until it moves again.
 	class PhysicsBodies
 	{
 	public:

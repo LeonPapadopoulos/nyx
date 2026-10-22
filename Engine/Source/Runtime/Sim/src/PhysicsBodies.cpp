@@ -5,6 +5,7 @@
 #include "Log.h"
 #include "NameComponent.h"
 #include "PhysicsComponents.h"
+#include "PreviousTransformComponent.h"
 #include "Profiler.h"
 #include "TransformComponent.h"
 
@@ -187,6 +188,8 @@ namespace Nyx
 				{
 					physics.Teleport(tracked.Body, pose);
 					tracked.LastPose = pose;
+					// Drawn where it was put, not smeared from where it was
+					world.Remove<PreviousTransformComponent>(entity);
 				}
 			});
 
@@ -197,6 +200,7 @@ namespace Nyx
 		{
 			if (!it->second.bSeen)
 			{
+				world.Remove<PreviousTransformComponent>(it->second.Owner);
 				physics.DestroyBody(it->second.Body);
 				it = Bodies.erase(it);
 			}
@@ -246,14 +250,31 @@ namespace Nyx
 		{
 			if (!tracked.bDynamic || !world.IsAlive(tracked.Owner) || !world.Has<TransformComponent>(tracked.Owner))
 			{
+				// Not moved by the step, e.g. made static since: drawn where its transform is
+				world.Remove<PreviousTransformComponent>(tracked.Owner);
 				continue;
 			}
 
 			const BodyPose pose = physics.GetPose(tracked.Body);
 			TransformComponent& transform = world.Get<TransformComponent>(tracked.Owner);
+			const BodyPose before{ transform.Position, transform.Rotation };
 			transform.Position = pose.Position;
 			transform.Rotation = pose.Rotation;
 			tracked.LastPose = pose;
+
+			// Where it was before the step, to draw it between the two; a body that didn't move has
+			// none, so still scenes cost nothing
+			if (PoseMoved(before, pose))
+			{
+				PreviousTransformComponent& previous = world.Has<PreviousTransformComponent>(tracked.Owner)
+					? world.Get<PreviousTransformComponent>(tracked.Owner)
+					: world.Add<PreviousTransformComponent>(tracked.Owner);
+				SetPreviousTransform(previous, before.Position, before.Rotation, transform);
+			}
+			else
+			{
+				world.Remove<PreviousTransformComponent>(tracked.Owner);
+			}
 		}
 	}
 

@@ -1,14 +1,18 @@
 // Physics in the game world (PhysicsBodies, GameWorld): bodies made, moved, remade and destroyed
 // with their entities' components, transforms written back, a transform set from outside
 // teleporting its body, kinematic bodies following their transforms, systems before and after
-// the physics step, and physics components in scene files.
+// the physics step, and physics components in scene files. Moving bodies keep where they were
+// before the last step, to be drawn between the two, and the maths of drawing them so.
 #include "ComponentRegistration.h"
 #include "GameWorld.h"
 #include "Log.h"
 #include "PhysicsComponents.h"
+#include "PreviousTransformComponent.h"
 #include "SceneSerializer.h"
 #include "TestSupport.h"
 #include "TransformComponent.h"
+
+#include <glm/gtc/constants.hpp>
 
 #include <cmath>
 #include <iostream>
@@ -224,6 +228,112 @@ namespace
 		Require(Logger::Get().GetCounts().Warnings == before + 2, "Losing the collider again should warn again");
 	}
 
+	bool Near(const glm::vec3& a, const glm::vec3& b)
+	{
+		return glm::length(a - b) < 1e-5f;
+	}
+
+	// The angle between two rotations, in radians
+	float AngleBetween(const glm::quat& a, const glm::quat& b)
+	{
+		return 2.0f * std::acos(std::min(std::abs(glm::dot(glm::normalize(a), glm::normalize(b))), 1.0f));
+	}
+
+	void TestInterpolatingTransforms()
+	{
+		const glm::vec3 up(0.0f, 1.0f, 0.0f);
+		TransformComponent current{ .Position = glm::vec3(2.0f, 4.0f, 0.0f),
+			.Rotation = glm::angleAxis(glm::half_pi<float>(), up),
+			.Scale = glm::vec3(3.0f) };
+		PreviousTransformComponent previous;
+		SetPreviousTransform(previous, glm::vec3(0.0f), glm::quat(1.0f, 0.0f, 0.0f, 0.0f), current);
+
+		const TransformComponent start = InterpolateTransform(previous, current, 0.0f);
+		Require(Near(start.Position, glm::vec3(0.0f)) && AngleBetween(start.Rotation, glm::quat(1.0f, 0.0f, 0.0f, 0.0f)) < 1e-3f,
+			"At 0, the transform should be the previous one");
+		const TransformComponent end = InterpolateTransform(previous, current, 1.0f);
+		Require(Near(end.Position, current.Position) && AngleBetween(end.Rotation, current.Rotation) < 1e-3f,
+			"At 1, the transform should be the current one");
+
+		const TransformComponent half = InterpolateTransform(previous, current, 0.5f);
+		Require(Near(half.Position, glm::vec3(1.0f, 2.0f, 0.0f)), "Halfway, the position should be halfway");
+		Require(AngleBetween(half.Rotation, glm::angleAxis(glm::quarter_pi<float>(), up)) < 1e-3f,
+			"Halfway, the rotation should have turned half of the quarter turn");
+		Require(std::abs(glm::length(half.Rotation) - 1.0f) < 1e-5f, "The rotation drawn should be a unit quaternion");
+		Require(half.Scale == current.Scale, "The scale should be the current one");
+
+		// The same rotation with the other sign: still a turn the short way, not most of the way round
+		current.Rotation = -current.Rotation;
+		SetPreviousTransform(previous, glm::vec3(0.0f), glm::quat(1.0f, 0.0f, 0.0f, 0.0f), current);
+		Require(AngleBetween(InterpolateTransform(previous, current, 0.5f).Rotation, glm::angleAxis(glm::quarter_pi<float>(), up)) < 1e-3f,
+			"Rotations should turn the short way round, whatever their sign");
+
+		Require(Near(InterpolateTransform(previous, current, 2.0f).Position, current.Position),
+			"A factor beyond 1 shouldn't draw the transform beyond the current one");
+
+		// Set from outside since the step, a teleport: drawn where it was put
+		TransformComponent teleported = current;
+		teleported.Position = glm::vec3(10.0f, 0.0f, 0.0f);
+		Require(InterpolateTransform(previous, teleported, 0.5f).Position == teleported.Position,
+			"A transform set since the step shouldn't be smeared from the previous one");
+		teleported = current;
+		teleported.Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+		Require(InterpolateTransform(previous, teleported, 0.5f).Rotation == teleported.Rotation,
+			"A rotation set since the step shouldn't be smeared from the previous one");
+	}
+
+	void TestMovingBodiesKeepTheirPreviousPose()
+	{
+		GameWorld world;
+		Steps steps{ world };
+		Registry& registry = world.GetRegistry();
+		const Entity floor = AddFloor(registry);
+		const Entity crate = AddCrate(registry, glm::vec3(0.0f, 4.0f, 0.0f));
+		const Entity platform = AddCrate(registry, glm::vec3(5.0f, 0.0f, 0.0f));
+		registry.Get<RigidBodyComponent>(platform).bKinematic = true;
+
+		steps.Run(10);
+		const glm::vec3 before = registry.Get<TransformComponent>(crate).Position;
+		steps.Run(1);
+		const TransformComponent& transform = registry.Get<TransformComponent>(crate);
+		Require(registry.Has<PreviousTransformComponent>(crate), "A falling crate should keep where it was before the step");
+		const PreviousTransformComponent& previous = registry.Get<PreviousTransformComponent>(crate);
+		Require(previous.Position == before && transform.Position.y < before.y, "The previous pose should be the one before the step");
+		Require(previous.StepPosition == transform.Position && previous.StepRotation == transform.Rotation,
+			"The pose the step left should be the transform written");
+		Require(!registry.Has<PreviousTransformComponent>(floor) && !registry.Has<PreviousTransformComponent>(platform),
+			"Static and kinematic bodies shouldn't get a previous pose");
+
+		// Set from outside, as an editor's live edit does: drawn there at once, and the next step
+		// starts from there
+		const glm::vec3 target(3.0f, 10.0f, 0.0f);
+		registry.Get<TransformComponent>(crate).Position = target;
+		Require(InterpolateTransform(registry.Get<PreviousTransformComponent>(crate), registry.Get<TransformComponent>(crate), 0.5f).Position == target,
+			"A crate put somewhere should be drawn there before the next step");
+		steps.Run(1);
+		Require(registry.Get<PreviousTransformComponent>(crate).Position == target,
+			"After a teleport, the previous pose should be where the crate was put, not where it fell from");
+
+		// At rest, asleep, it no longer moves and keeps nothing
+		steps.Run(400);
+		Require(!world.GetPhysics().IsAwake(world.GetBodies().FindBody(crate)), "The crate should be asleep by now");
+		Require(!registry.Has<PreviousTransformComponent>(crate), "A crate that didn't move in the step shouldn't keep a previous pose");
+
+		// Made static while it moves: drawn where it is from then on
+		registry.Get<TransformComponent>(crate).Position.y = 6.0f;
+		steps.Run(5);
+		Require(registry.Has<PreviousTransformComponent>(crate), "The crate should be falling again");
+		registry.Remove<RigidBodyComponent>(crate);
+		steps.Run(1);
+		Require(!registry.Has<PreviousTransformComponent>(crate), "A body made static shouldn't keep a previous pose");
+
+		registry.Add<RigidBodyComponent>(crate, RigidBodyComponent{});
+		steps.Run(5);
+		registry.Remove<BoxColliderComponent>(crate);
+		steps.Run(1);
+		Require(!registry.Has<PreviousTransformComponent>(crate), "An entity whose body went shouldn't keep a previous pose");
+	}
+
 	void TestScenesKeepPhysicsComponents(const std::filesystem::path& directory)
 	{
 		Nyx::RegisterComponentTypes();
@@ -275,6 +385,8 @@ int main()
 		TestKinematicBodiesFollowTheirTransforms();
 		TestSystemsBeforeAndAfterPhysics();
 		TestARigidBodyWithoutColliderWarnsOnce();
+		TestInterpolatingTransforms();
+		TestMovingBodiesKeepTheirPreviousPose();
 		TestScenesKeepPhysicsComponents(directory.Path);
 	}
 	catch (const std::exception& error)

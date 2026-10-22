@@ -21,7 +21,8 @@ namespace Nyx
 	//    (PhysicsBodies);
 	// 3. the systems of ESimStage::BeforePhysics, in the order they were added;
 	// 4. the physics step;
-	// 5. dynamic bodies write their poses into their transforms;
+	// 5. dynamic bodies write their poses into their transforms, and where they were before into
+	//    their PreviousTransformComponents;
 	// 6. the systems of ESimStage::AfterPhysics, in the order they were added.
 	class GameWorld
 	{

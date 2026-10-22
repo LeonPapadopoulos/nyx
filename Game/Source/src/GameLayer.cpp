@@ -53,6 +53,8 @@ namespace Nyx::Game
 		Renderer->SetWorld(&World.GetRegistry());
 		// What the world's systems draw, in the game's view
 		Renderer->SetWorldDebugDraw(&World.GetRegistry(), &World.GetDebugDraw());
+		// Moving bodies drawn between their last two steps, by the simulation clock
+		Renderer->SetWorldInterpolation(&World.GetRegistry(), &application.GetSimulationClock());
 
 		// The game module's systems, in their order; they run from the first fixed step on
 		if (const auto createSystems = application.GetGameModule().CreateSystems)
@@ -70,6 +72,7 @@ namespace Nyx::Game
 	{
 		Renderer->DestroySceneView(GameViewId);
 		Renderer->SetWorldDebugDraw(&World.GetRegistry(), nullptr);
+		Renderer->SetWorldInterpolation(&World.GetRegistry(), nullptr);
 		Renderer->SetWorld(nullptr);
 	}
 

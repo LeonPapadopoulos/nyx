@@ -92,7 +92,10 @@ limits, a slider its body on its axis, a fixed constraint two bodies together.
   - a transform set since the last step, by a system or an editor's live edit, teleports its body
     and stops it. Compared exactly with what the bodies wrote back, so only real changes count;
   - kinematic bodies are moved to their transforms over the step;
-  - after the step, dynamic bodies write their poses into their transforms.
+  - after the step, dynamic bodies write their poses into their transforms, and those that moved
+    where they were before into a `PreviousTransformComponent`, so the game draws them between
+    their last two steps ([Simulation loop](simulation-loop.md#drawing-between-steps)). A body
+    teleported, made static or gone has none.
   - Bodies are kept by entity in a fixed order, so they are made and destroyed the same way each
     run. A body's user data is its entity, for `FindEntity()`; never saved.
 - **Systems** get the physics world and the bodies in `SimContext`, and run before the physics step
@@ -100,9 +103,14 @@ limits, a slider its body on its axis, a fixed constraint two bodies together.
 - `NyxPhysicsBodiesTests`: a crate falls onto a floor; a set transform teleports; changed colliders,
   scale and rigid bodies remake the body, and removed colliders or entities destroy it; kinematic
   bodies follow; a force before the step holds a crate up; physics components in scene files.
+  Drawing between steps: positions mixed and rotations slerped the short way, a transform set
+  since the step drawn where it is; a falling crate keeps its pose from before the step, static and
+  kinematic bodies, sleeping, teleported, made static and removed bodies none.
+  `NyxSceneGpuTests` draws a cube halfway at half a step, where it is while paused or set from
+  outside, and picks it where it is.
 
 ## Not built yet
 
 - Constraints as components; the debug view of shapes and contacts through `DebugDraw`.
 - Path constraints, motors, springs on limits; a character controller.
-- Drawing moving bodies between their last two steps.
+- Kinematic bodies drawn between their last two steps.

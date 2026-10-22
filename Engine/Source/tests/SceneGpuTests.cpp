@@ -18,7 +18,9 @@
 // that is NaN or out of range. Following the editor, as a game it started does, a saved shader
 // compiles nothing; the editor's compile, sent over the link, is drawn, and so are material
 // values it sends. A material instance draws its parent's values under its own, follows its
-// parent, and a chain of parents that goes round draws as the missing material.
+// parent, and a chain of parents that goes round draws as the missing material. A body between
+// two steps is drawn halfway at half a step, where the step left it while paused, and where it
+// was put when set from outside; picking finds it where it is.
 //
 // NYX_SCENE_TEST_OUTPUT=<folder> saves what was rendered there, e.g. to make a new reference
 // after a change that is meant to change the picture.
@@ -27,10 +29,12 @@
 #include "DirectionalLightComponent.h"
 #include "EditorLinkMessages.h"
 #include "Entity.h"
+#include "FixedStepClock.h"
 #include "ImageFile.h"
 #include "Log.h"
 #include "MeshRendererComponent.h"
 #include "Paths.h"
+#include "PreviousTransformComponent.h"
 #include "RendererLiveEdits.h"
 #include "ShaderCompiler.h"
 #include "TransformComponent.h"
@@ -1062,6 +1066,70 @@ namespace
 		renderer.SetWorld(nullptr);
 		gpu.DrawFrames(1);
 	}
+
+	// A cube that moved from the left of the view to its right in the last step, as PhysicsBodies
+	// leaves a dynamic body: drawn between the two by the clock, as the game draws its world
+	void TestDrawingBetweenSteps(SceneRenderer& gpu)
+	{
+		Nyx::IEditorRenderer& renderer = gpu.Renderer;
+		Registry world;
+		const Entity camera = world.CreateEntity();
+		world.Add<TransformComponent>(camera, TransformComponent{ .Position = glm::vec3(0.0f, 0.0f, 3.0f), .Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f), .Scale = glm::vec3(1.0f) });
+		world.Add<CameraComponent>(camera, CameraComponent{});
+		const Entity cube = AddCube(world, gpu.Renderer, 0.0f, renderer.GetMaterial("Materials/Untextured.nyxmat"));
+		renderer.SetWorld(&world);
+
+		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
+		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
+		const auto draw = [&]()
+		{
+			gpu.DrawUntilShadersCompiled();
+			gpu.DrawFrames(2);
+			return ReadView(gpu, view);
+		};
+
+		// The pictures to compare with: the cube really in the middle, and really on the right
+		const RgbaImage middle = draw();
+		TransformComponent& transform = world.Get<TransformComponent>(cube);
+		transform.Position.x = 1.5f;
+		const RgbaImage right = draw();
+		Require(right.Pixels != middle.Pixels, "The cube on the right looks like the cube in the middle: the test can't see it move");
+
+		PreviousTransformComponent& previous = world.Add<PreviousTransformComponent>(cube);
+		SetPreviousTransform(previous, glm::vec3(-1.5f, 0.0f, 0.0f), glm::quat(1.0f, 0.0f, 0.0f, 0.0f), transform);
+		Require(draw().Pixels == right.Pixels, "A world not drawn between steps should draw the cube where it is");
+
+		// Half a step after the last
+		FixedStepClock clock;
+		clock.SetStepSeconds(0.2);
+		Require(clock.Advance(0.1) == 0 && clock.GetInterpolationFactor() == 0.5, "The clock should be half a step on");
+		renderer.SetWorldInterpolation(&world, &clock);
+		const RgbaImage halfway = draw();
+		SaveIfAsked(halfway, "BetweenSteps");
+		Require(halfway.Pixels == middle.Pixels, "Half a step on, the cube should be drawn halfway");
+
+		// Picking finds it where it is, on the right, not where it is drawn
+		renderer.SetSceneViewShowEditorOverlays(view, true);
+		gpu.DrawFrames(2);
+		const Nyx::IEditorRenderer::PickResult pick = PickMiddle(gpu, view);
+		Require(pick.bHasNewResult, "A click on the view should be answered");
+		Require(!pick.HitEntity, "A click on where the cube is drawn shouldn't pick it: it is on the right");
+		renderer.SetSceneViewShowEditorOverlays(view, false);
+
+		clock.SetPaused(true);
+		Require(draw().Pixels == right.Pixels, "Paused, the cube should be drawn where the last step left it");
+		clock.SetPaused(false);
+
+		// Set from outside, as a live edit does: drawn where it was put, not smeared
+		transform.Position.x = 0.0f;
+		Require(draw().Pixels == middle.Pixels, "A cube put somewhere else since the step should be drawn there");
+
+		renderer.SetWorldInterpolation(&world, nullptr);
+		renderer.DestroySceneView(view);
+		renderer.SetWorld(nullptr);
+		gpu.DrawFrames(1);
+	}
 }
 
 int main()
@@ -1080,6 +1148,7 @@ int main()
 		TestNormalMapsAndMasks(gpu);
 		TestViewsWithWorldsOfTheirOwn(gpu);
 		TestWorldDebugDrawing(gpu);
+		TestDrawingBetweenSteps(gpu);
 		TestMaterialValuesSetInMemory(gpu);
 		TestSkiesAndDebugViews(gpu);
 		TestViewsMadeAndLetGoWhileTheUIIsBuilt(gpu);

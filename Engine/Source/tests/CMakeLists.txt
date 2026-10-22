@@ -103,7 +103,8 @@ set_property(TARGET NyxPhysicsTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxPhysicsTests COMMAND NyxPhysicsTests)
 
 # Physics in the game world: bodies made, moved and removed with their components, transforms
-# written back, live edits teleporting, kinematic bodies, systems around the physics step
+# written back, live edits teleporting, kinematic bodies, systems around the physics step, the
+# previous poses moving bodies are drawn between steps from
 add_executable(NyxPhysicsBodiesTests PhysicsBodiesTests.cpp)
 target_link_libraries(NyxPhysicsBodiesTests PRIVATE NyxEngine)
 add_dependencies(NyxPhysicsBodiesTests NyxGeneratedReflection)

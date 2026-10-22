@@ -7,6 +7,8 @@
 #include "Log.h"
 #include "GltfImporter.h"
 #include "TransformComponent.h"
+#include "PreviousTransformComponent.h"
+#include "FixedStepClock.h"
 #include "MeshRendererComponent.h"
 #include "Paths.h"
 #include "Profiler.h"
@@ -826,6 +828,22 @@ namespace Nyx
 		}
 	}
 
+	void VulkanRenderer::SetWorldInterpolation(const Nyx::Registry* world, const Nyx::FixedStepClock* clock)
+	{
+		if (!world)
+		{
+			return;
+		}
+		if (clock)
+		{
+			WorldInterpolationClocks[world] = clock;
+		}
+		else
+		{
+			WorldInterpolationClocks.erase(world);
+		}
+	}
+
 	RenderWorld* VulkanRenderer::FindRenderWorld(const Nyx::Registry* registry)
 	{
 		return const_cast<RenderWorld*>(std::as_const(*this).FindRenderWorld(registry));
@@ -1086,8 +1104,18 @@ namespace Nyx
 		world.PickingIdToEntity.clear();
 
 		const Nyx::Registry& registry = *world.Registry;
+
+		// How far into the next step the frame is, if the world is drawn between steps; paused, the
+		// last step's poses, so Step shows what each step did
+		std::optional<float> interpolation;
+		const auto clock = WorldInterpolationClocks.find(world.Registry);
+		if (clock != WorldInterpolationClocks.end())
+		{
+			interpolation = clock->second->IsPaused() ? 1.0f : static_cast<float>(clock->second->GetInterpolationFactor());
+		}
+
 		const_cast<Nyx::Registry&>(registry).Each<Nyx::MeshRendererComponent>(
-			[&world, &registry](Nyx::Entity entity, Nyx::MeshRendererComponent& meshRenderer)
+			[&world, &registry, interpolation](Nyx::Entity entity, Nyx::MeshRendererComponent& meshRenderer)
 			{
 				if (!meshRenderer.bVisible)
 				{
@@ -1100,10 +1128,15 @@ namespace Nyx
 				}
 
 				glm::mat4 worldTransform = glm::mat4(1.0f);
+				glm::mat4 drawTransform = glm::mat4(1.0f);
 
 				if (registry.Has<Nyx::TransformComponent>(entity))
 				{
-					worldTransform = registry.Get<Nyx::TransformComponent>(entity).ToMatrix();
+					const Nyx::TransformComponent& transform = registry.Get<Nyx::TransformComponent>(entity);
+					worldTransform = transform.ToMatrix();
+					drawTransform = interpolation && registry.Has<Nyx::PreviousTransformComponent>(entity)
+						? Nyx::InterpolateTransform(registry.Get<Nyx::PreviousTransformComponent>(entity), transform, *interpolation).ToMatrix()
+						: worldTransform;
 				}
 
 				RenderObject obj{};
@@ -1111,6 +1144,7 @@ namespace Nyx
 				obj.MeshAsset = meshRenderer.MeshAsset;
 				obj.MaterialAsset = meshRenderer.MaterialAsset;
 				obj.WorldTransform = worldTransform;
+				obj.DrawTransform = drawTransform;
 				obj.LocalBoundsMin = meshRenderer.MeshAsset->GetLocalBoundsMin();
 				obj.LocalBoundsMax = meshRenderer.MeshAsset->GetLocalBoundsMax();
 
@@ -1135,7 +1169,7 @@ namespace Nyx
 			cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, **obj.MaterialAsset->Pipeline);
 
 			ObjectConstants object{};
-			object.Model = obj.WorldTransform;
+			object.Model = obj.DrawTransform;
 			object.MaterialOffset = obj.MaterialAsset->MaterialOffset;
 			object.EntityId = obj.PickingId;
 			cmd.pushConstants<ObjectConstants>(*ScenePipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, { object });

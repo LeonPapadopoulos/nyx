@@ -111,6 +111,8 @@ Rigid bodies on [Jolt](https://github.com/jrouwe/JoltPhysics), while a game runs
 - The entity's transform places the body and scales its shape.
 - While the game runs, moving an entity in the editor puts its body there and stops it; changing a
   collider or rigid body makes the body again.
+- Moving bodies are drawn between their last two steps, so they move smoothly on monitors faster
+  than the 60 steps a second; paused, where the last step left them.
 - The editor doesn't simulate: Play shows physics.
 
 ## Debug drawing
