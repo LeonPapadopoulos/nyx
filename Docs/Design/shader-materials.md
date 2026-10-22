@@ -48,8 +48,9 @@ One way of binding serves every scene pipeline (`VulkanBindless`, `bindless.slan
 
 - **Set 0, global, bound once per pass:** one array of every sampled image (2D and cube), the
   fixed samplers, and one buffer with every material's values, each at its own offset.
-- **Set 1, per view:** the scene's uniforms and the environment (`view.slang`).
-- **Push constants, per draw:** the model matrix, the material's offset, the entity id.
+- **Set 1, per view:** the scene's uniforms, the environment and the time (`view.slang`).
+- **Push constants, per draw:** the model matrix, the material's offset, the entity id, and six
+  values set by code (`CustomData`, `CustomData2`), such as a decal's.
 
 So there is no descriptor set, pool or layout per material or shader. A material is bytes at an
 offset: changing a value writes those bytes, and switching an object's material changes a push
@@ -64,7 +65,8 @@ on and requires when it chooses the GPU.
 
 - **A shader** is a `.slang` file in `Assets/Shaders`: a struct named like the file, with its
   parameters and their defaults, for a domain. `Standard.slang` is the one in use; Surface (3D
-  meshes) is the only domain so far.
+  meshes) is the only domain so far. `[Enum("A, B, C")]` on a `uint` field makes the Parameters
+  window offer the choices by name.
 - **A material** is a `.nyxmat` text file: which shader, and values for some of its parameters;
   everything else takes the shader's default. Text, so it diffs and can be written by hand. Its
   lines are kept as written when the editor saves it, and values the shader doesn't know stay in
@@ -81,6 +83,44 @@ on and requires when it chooses the GPU.
 - **Editing:** the editor sets values on the renderer (`IRenderer::SetMaterialValues()`) as they
   change, before saving; every view shows them in the same frame, and games started by the
   editor get them over the link.
+
+## Decals
+
+A surface decal (`SurfaceDecalComponent`) draws a surface material on a quad laid on another
+entity's surface. No domain of its own: every surface material can be a decal's.
+
+- **Two pipelines a shader.** The Surface domain has a third entry point, `decalFragment`, compiled
+  with the other two, and each material shader gets a second pipeline from it: depth tested
+  without writing depth, blended. Live reload makes both again; the missing material has both.
+- **Premultiplied alpha**, not additive: `decalFragment` gives the lit colour times the opacity
+  plus the emission, and the pipeline keeps what is beneath by one minus the opacity. A glow alone
+  is additive (opacity 0); a mark that covers, a burn or paint, is opacity 1; one material can do
+  both. Additive blending could only ever brighten.
+- **The decal's values** go in the push constants, not the material buffer: its colour and
+  intensity in `CustomData`, its reveal and pulse in `CustomData2`. `decalFragment` hands them to
+  the material as `SurfaceInput.Decal` (`DecalInput`); `surfaceFragment` gives the defaults (white,
+  intensity 1, revealed, not pulsing), so a decal material on a mesh, as in its preview, shows as
+  it would fully revealed. The time is the view's (`View.Time`, seconds since the renderer
+  started), the same for every material.
+- **Drawn after the sky**, as what is blended comes after all that is opaque, in the scene pass, in
+  HDR, so a glow above 1 reaches the tonemap.
+
+The **masked decal material** (`Assets/Shaders/MaskedDecal.slang`,
+`Assets/Materials/MaskedDecal.nyxmat`) is the engine's decal material, for the tests and as a
+sample:
+
+- its `Mask` is a texture, white on black, tinted by the decal's colour times its intensity; the
+  edge is where the grey crosses `Threshold`, faded over `Softness` pixels by the grey's
+  screen-space derivative (`fwidth()`), so it stays smooth and antialiased near and far. A mask
+  whose edges fade over a few texels, like a distance field, works best. The sample mask,
+  `Textures/DecalRing.png`, is a ring, made by `Scripts/MakeDecalMask.py`;
+- the optional glow around it is the mask read from a smaller mip (`GlowReach` levels down), so it
+  costs one more sample and reaches as far on the decal at any distance;
+- `Reveal` uncovers it as a wipe along `RevealDirection`, out from the middle, or round the middle
+  from `RevealStart` (`RevealMode`), with a soft, brighter edge where it moves: at 0 nothing, at 1
+  all;
+- `Pulse` dims it by up to the pulse and back, `PulseRate` times a second, on `View.Time`;
+- it gives off light only; `Cover` lets the mask cover what is beneath too.
 
 ## Light
 
@@ -102,6 +142,7 @@ white dielectric spheres send back the sky's colour.
 ## Not done
 
 - Domains other than Surface (sprites, UI, post-processing).
+- Decals projected onto curved surfaces: a decal is a flat quad on the tangent plane.
 - `[Switch]` parameters are plain bools in the material buffer, not specialisation constants.
 - Meshes as assets: scenes use the built-in cube and sphere.
 - Shaders are edited in an external editor; there is no built-in one.

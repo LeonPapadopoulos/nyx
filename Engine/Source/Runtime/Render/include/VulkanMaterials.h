@@ -30,7 +30,8 @@ namespace Nyx
 
 	// Materials on the GPU. A material is a .nyxmat file (MaterialAsset) in the assets folder: its
 	// values are bytes in the material buffer, laid out by its shader, and it draws with its
-	// shader's pipeline. The renderer draws a Nyx::Material, a handle these keep up to date:
+	// shader's pipeline, or as a decal with its shader's decal pipeline. The renderer draws a
+	// Nyx::Material, a handle these keep up to date:
 	//   - a material whose shader hasn't compiled yet, or whose file can't be read, draws as a
 	//     magenta checker (MissingMaterial.slang);
 	//   - saving a material file writes its new values in the next frame;
@@ -100,6 +101,7 @@ namespace Nyx
 			ShaderCompileRequest MaterialRequest;
 			ShaderCompileRequest DefaultsRequest;
 			vk::raii::Pipeline Pipeline{ nullptr };
+			vk::raii::Pipeline DecalPipeline{ nullptr };
 			ShaderLayout Layout;
 			std::vector<std::byte> Defaults;
 			bool bReady = false;
@@ -143,7 +145,13 @@ namespace Nyx
 		bool Prepare(Shader& shader);
 		void WriteBytes(Entry& entry);
 		std::optional<uint32_t> TextureSlot(const std::string& path, bool bLinear);
-		vk::raii::Pipeline MakePipeline(const CompiledEntryPoint& vertex, const CompiledEntryPoint& fragment);
+		// Opaque, writing depth; or for decals: blended with premultiplied alpha, not writing depth
+		enum class EPipelineKind : uint8_t
+		{
+			Opaque,
+			Decal,
+		};
+		vk::raii::Pipeline MakePipeline(const CompiledEntryPoint& vertex, const CompiledEntryPoint& fragment, EPipelineKind kind);
 		// The file at `path` in the first asset folder that has it, or in the first folder
 		std::filesystem::path FindAssetFile(const std::string& path) const;
 		std::vector<std::byte> RunDefaultsWriter(const CompiledEntryPoint& writer, uint32_t size);
@@ -156,6 +164,7 @@ namespace Nyx
 		std::function<vk::RenderPass()> RenderPass;
 
 		vk::raii::Pipeline MissingPipeline{ nullptr };
+		vk::raii::Pipeline MissingDecalPipeline{ nullptr };
 		std::map<std::string, std::unique_ptr<Shader>> Shaders;
 		std::map<std::string, std::unique_ptr<Entry>> Materials;
 		// Slots of the textures loaded, by path and whether linear; nullopt for one that can't be

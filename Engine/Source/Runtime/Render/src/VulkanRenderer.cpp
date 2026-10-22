@@ -523,6 +523,7 @@ namespace Nyx
 		const std::chrono::steady_clock::time_point sceneStart = std::chrono::steady_clock::now();
 
 		// Each shown world's state, once per frame, for all views that show it
+		SceneTime = std::chrono::duration<float>(sceneStart - StartTime).count();
 		ExtractRenderWorlds();
 
 		// Every scene view into its own offscreen target: first the editor's own passes of all
@@ -799,6 +800,7 @@ namespace Nyx
 		world->Revision = ++LastWorldRevision;
 		// Its contents may be new: nothing of the old ones is drawn or picked from
 		world->Objects.clear();
+		world->Decals.clear();
 		world->PickingIdToEntity.clear();
 		world->OverlayLines = {};
 		world->DebugDrawLines = {};
@@ -1089,7 +1091,9 @@ namespace Nyx
 		for (const std::unique_ptr<RenderWorld>& world : RenderWorlds)
 		{
 			// Used to update Render Objects here (e.g. Transform)
-			ExtractRenderObjects(*world);
+			const std::optional<float> interpolation = GetWorldInterpolation(world->Registry);
+			ExtractRenderObjects(*world, interpolation);
+			ExtractSurfaceDecals(*world->Registry, interpolation, world->Decals);
 			Overlays.AddDebugLines(*world);
 
 			const auto drawing = WorldDebugDraws.find(world->Registry);
@@ -1098,21 +1102,23 @@ namespace Nyx
 		DebugLines.Upload();
 	}
 
-	void VulkanRenderer::ExtractRenderObjects(RenderWorld& world)
+	std::optional<float> VulkanRenderer::GetWorldInterpolation(const Nyx::Registry* registry) const
+	{
+		// Paused, the last step's poses, so Step shows what each step did
+		const auto clock = WorldInterpolationClocks.find(registry);
+		if (clock == WorldInterpolationClocks.end())
+		{
+			return std::nullopt;
+		}
+		return clock->second->IsPaused() ? 1.0f : static_cast<float>(clock->second->GetInterpolationFactor());
+	}
+
+	void VulkanRenderer::ExtractRenderObjects(RenderWorld& world, std::optional<float> interpolation)
 	{
 		world.Objects.clear();
 		world.PickingIdToEntity.clear();
 
 		const Nyx::Registry& registry = *world.Registry;
-
-		// How far into the next step the frame is, if the world is drawn between steps; paused, the
-		// last step's poses, so Step shows what each step did
-		std::optional<float> interpolation;
-		const auto clock = WorldInterpolationClocks.find(world.Registry);
-		if (clock != WorldInterpolationClocks.end())
-		{
-			interpolation = clock->second->IsPaused() ? 1.0f : static_cast<float>(clock->second->GetInterpolationFactor());
-		}
 
 		const_cast<Nyx::Registry&>(registry).Each<Nyx::MeshRendererComponent>(
 			[&world, &registry, interpolation](Nyx::Entity entity, Nyx::MeshRendererComponent& meshRenderer)
@@ -1132,11 +1138,8 @@ namespace Nyx
 
 				if (registry.Has<Nyx::TransformComponent>(entity))
 				{
-					const Nyx::TransformComponent& transform = registry.Get<Nyx::TransformComponent>(entity);
-					worldTransform = transform.ToMatrix();
-					drawTransform = interpolation && registry.Has<Nyx::PreviousTransformComponent>(entity)
-						? Nyx::InterpolateTransform(registry.Get<Nyx::PreviousTransformComponent>(entity), transform, *interpolation).ToMatrix()
-						: worldTransform;
+					worldTransform = registry.Get<Nyx::TransformComponent>(entity).ToMatrix();
+					drawTransform = Nyx::GetDrawnTransform(registry, entity, interpolation).ToMatrix();
 				}
 
 				RenderObject obj{};
@@ -1178,6 +1181,31 @@ namespace Nyx
 			cmd.bindVertexBuffers(0, { obj.MeshAsset->GetVertexBuffer() }, offsets);
 			cmd.bindIndexBuffer(obj.MeshAsset->GetIndexBuffer(), 0, vk::IndexType::eUint32);
 			cmd.drawIndexed(obj.MeshAsset->GetIndexCount(), 1, 0, 0, 0);
+		}
+	}
+
+	void VulkanRenderer::DrawRenderDecals(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd)
+	{
+		if (world.Decals.empty())
+		{
+			return;
+		}
+
+		BindSceneSets(view, cmd);
+		vk::DeviceSize offsets[] = { 0 };
+		cmd.bindVertexBuffers(0, { PlaneMesh.GetVertexBuffer() }, offsets);
+		cmd.bindIndexBuffer(PlaneMesh.GetIndexBuffer(), 0, vk::IndexType::eUint32);
+		for (const RenderDecal& decal : world.Decals)
+		{
+			cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, **decal.MaterialAsset->DecalPipeline);
+
+			ObjectConstants object{};
+			object.Model = decal.Model;
+			object.MaterialOffset = decal.MaterialAsset->MaterialOffset;
+			object.CustomData = decal.CustomData;
+			object.CustomData2 = decal.CustomData2;
+			cmd.pushConstants<ObjectConstants>(*ScenePipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, { object });
+			cmd.drawIndexed(PlaneMesh.GetIndexCount(), 1, 0, 0, 0);
 		}
 	}
 
@@ -1504,6 +1532,7 @@ namespace Nyx
 		ubo.SpecularTexture = Environment.GetSpecularSlot(sky);
 		ubo.SpecularLevels = Environment.GetSpecularLevels();
 		ubo.BrdfLookup = Environment.GetLookupSlot();
+		ubo.Time = SceneTime;
 		for (size_t term = 0; term < 9; ++term)
 		{
 			ubo.Irradiance[term] = glm::vec4(Environment.GetIrradiance(sky)[term], 0.0f);
@@ -2125,7 +2154,8 @@ namespace Nyx
 
 	void VulkanRenderer::RenderSceneView(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
 	{
-		// 1. The scene in HDR: opaque objects, then the sky
+		// 1. The scene in HDR: opaque objects, then the sky, then the surface decals blended over
+		// both, as what is blended comes after all that is opaque
 		const vk::ClearColorValue clear = vk::ClearColorValue(std::array<float, 4>{ 0.2f, 0.05f, 0.35f, 1.0f });
 		const RenderWorld* world = FindShownWorld(view);
 		view.RenderTarget.BeginScenePass(cmd, clear);
@@ -2134,6 +2164,10 @@ namespace Nyx
 			DrawRenderObjects(view, *world, cmd);
 		}
 		DrawSkybox(view, cmd);
+		if (world)
+		{
+			DrawRenderDecals(view, *world, cmd);
+		}
 		view.RenderTarget.EndRenderPass(cmd);
 
 		// 2. The picture: the scene tonemapped, then the editor's overlays over it (grid, debug

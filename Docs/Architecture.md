@@ -48,7 +48,7 @@ doesn't allow, and on a table that goes round in a circle, so a new dependency s
 | `Reflection` | Type and property metadata, and the `NYX_REFLECT` and `NYX_PROPERTY` macros; not under `Runtime` | — |
 | `Net` | TCP connections and the messages they carry | Core |
 | `Input` | Keyboard and mouse, gathered from backends into one `InputFrame` per frame | Core |
-| `Scene` | Entities and components (the physics components among them), the component registry, scene files, the tagged binary format, surface anchors (`SurfaceAnchor`: a point, normal and tangent on an entity that move with it) | Core, Reflection |
+| `Scene` | Entities and components (the physics components among them), the component registry, scene files, the tagged binary format, surface anchors (`SurfaceAnchor`: a point, normal and tangent on an entity that move with it), surface decals (`SurfaceDecalComponent`) | Core, Reflection |
 | `Physics` | Rigid bodies, their shapes, collisions and the physics step, on Jolt (`PhysicsWorld`); Jolt's headers stay inside | Core |
 | `Sim` | The game world: its entities, their physics bodies kept in step with the physics components (`PhysicsBodies`), and the simulation systems each fixed step runs, in order (`GameWorld`, `ISimSystem`) | Core, Scene, Physics |
 | `Assets` | Asset files as plain data: images, materials, glTF meshes, shader compile requests and results | Core |
@@ -137,10 +137,14 @@ checks every `#include` against this table.
    1. waits for the last frame's fence (one frame in flight), then reads back what that frame
       left: timestamps, the painter's binning, picks;
    2. acquires the swapchain image, and takes shader updates;
-   3. renders every scene view: the editor's passes (picking only after a click, selection
-      masks only when they changed), then the scene in HDR, tonemapped, with the editor's
-      overlays (`VulkanEditorOverlays`, in the views that show them) and the world's debug
-      drawing (`VulkanDebugLines`) over it; then blurs each view's picture;
+   3. extracts what each shown world draws this frame: its objects and its surface decals
+      (`ExtractSurfaceDecals()`, every anchor resolved through one guid lookup), both between
+      their last two steps by one factor for the world when it is drawn so, and its debug lines;
+      then renders every scene view: the editor's passes (picking only after a click, selection
+      masks only when they changed), then the scene in HDR (the objects, the sky, then the decals
+      blended over them), tonemapped, with the editor's overlays (`VulkanEditorOverlays`, in the
+      views that show them) and the world's debug drawing (`VulkanDebugLines`) over it; then
+      blurs each view's picture;
    4. builds the UI: an ImGui frame in which the window's dock area and strips (`IWindow::DrawUI()`)
       hold every layer's `OnUI()`, then the painted window
       chrome, the painter canvases, and the window painters' segments, binned on the GPU;

@@ -120,6 +120,7 @@ namespace Nyx
 		Textures.clear();
 		Saved.clear();
 		MissingPipeline = nullptr;
+		MissingDecalPipeline = nullptr;
 		Context = nullptr;
 	}
 
@@ -127,11 +128,15 @@ namespace Nyx
 	{
 		const std::string vertex = "missingVertex";
 		const std::string fragment = "missingFragment";
-		vk::raii::Pipeline pipeline = MakePipeline(CompiledEntryPoint{ vertex, EShaderStage::Vertex, Programs->GetSpirv(MissingProgram, vertex) },
-			CompiledEntryPoint{ fragment, EShaderStage::Fragment, Programs->GetSpirv(MissingProgram, fragment) });
-		// The handles point at this one object, so it is replaced in place
+		const CompiledEntryPoint vertexCode{ vertex, EShaderStage::Vertex, Programs->GetSpirv(MissingProgram, vertex) };
+		const CompiledEntryPoint fragmentCode{ fragment, EShaderStage::Fragment, Programs->GetSpirv(MissingProgram, fragment) };
+		vk::raii::Pipeline pipeline = MakePipeline(vertexCode, fragmentCode, EPipelineKind::Opaque);
+		// As a decal, the checker is opaque too: its alpha is 1
+		vk::raii::Pipeline decalPipeline = MakePipeline(vertexCode, fragmentCode, EPipelineKind::Decal);
+		// The handles point at these objects, so they are replaced in place
 		Context->WaitIdle();
 		MissingPipeline = std::move(pipeline);
+		MissingDecalPipeline = std::move(decalPipeline);
 	}
 
 	Nyx::Material* VulkanMaterials::Get(const std::string& path)
@@ -330,8 +335,9 @@ namespace Nyx
 
 		const CompiledEntryPoint* vertex = FindEntryPoint(*material, "surfaceVertex");
 		const CompiledEntryPoint* fragment = FindEntryPoint(*material, "surfaceFragment");
+		const CompiledEntryPoint* decalFragment = FindEntryPoint(*material, "decalFragment");
 		const CompiledEntryPoint* writer = FindEntryPoint(*defaults, "writeDefaults");
-		if (!vertex || !fragment || !writer)
+		if (!vertex || !fragment || !decalFragment || !writer)
 		{
 			LOG_ERROR("Material shader {} lacks an entry point of its domain", shader.Path);
 			return shader.bReady;
@@ -339,10 +345,12 @@ namespace Nyx
 
 		try
 		{
-			vk::raii::Pipeline pipeline = MakePipeline(*vertex, *fragment);
+			vk::raii::Pipeline pipeline = MakePipeline(*vertex, *fragment, EPipelineKind::Opaque);
+			vk::raii::Pipeline decalPipeline = MakePipeline(*vertex, *decalFragment, EPipelineKind::Decal);
 			std::vector<std::byte> bytes = RunDefaultsWriter(*writer, material->MaterialLayout->Size);
 			Context->WaitIdle();
 			shader.Pipeline = std::move(pipeline);
+			shader.DecalPipeline = std::move(decalPipeline);
 			shader.Defaults = std::move(bytes);
 			shader.Layout = *material->MaterialLayout;
 			shader.bReady = true;
@@ -362,6 +370,7 @@ namespace Nyx
 		if (!entry.bLoaded || !Resolve(entry) || !Prepare(*entry.UsedShader))
 		{
 			handle.Pipeline = &MissingPipeline;
+			handle.DecalPipeline = &MissingDecalPipeline;
 			handle.MaterialOffset = 0;
 			return;
 		}
@@ -390,12 +399,14 @@ namespace Nyx
 			{
 				LOG_ERROR("Material {}: the material buffer is full; it draws as the missing material", entry.Path);
 				handle.Pipeline = &MissingPipeline;
+				handle.DecalPipeline = &MissingDecalPipeline;
 				handle.MaterialOffset = 0;
 				return;
 			}
 		}
 		Bindless->WriteMaterial(*entry.Offset, bytes);
 		handle.Pipeline = &shader.Pipeline;
+		handle.DecalPipeline = &shader.DecalPipeline;
 		handle.MaterialOffset = *entry.Offset;
 	}
 
@@ -504,7 +515,7 @@ namespace Nyx
 		return (Nyx::Paths::FindAssetDirIn(AssetFolders, path) / path).make_preferred();
 	}
 
-	vk::raii::Pipeline VulkanMaterials::MakePipeline(const CompiledEntryPoint& vertex, const CompiledEntryPoint& fragment)
+	vk::raii::Pipeline VulkanMaterials::MakePipeline(const CompiledEntryPoint& vertex, const CompiledEntryPoint& fragment, EPipelineKind kind)
 	{
 		vk::raii::Device& device = Context->GetDevice();
 		vk::raii::ShaderModule vertexModule(device, vk::ShaderModuleCreateInfo({}, vertex.Spirv.size() * sizeof(uint32_t), vertex.Spirv.data()));
@@ -548,6 +559,20 @@ namespace Nyx
 
 		vk::PipelineColorBlendAttachmentState colorBlendAttachment{};
 		colorBlendAttachment.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
+		if (kind == EPipelineKind::Decal)
+		{
+			// Premultiplied alpha (decalFragment): what is beneath is kept by one minus the decal's
+			// opacity, and the decal's colour, already weighed by its opacity, and its light are
+			// added. So a decal can cover what is beneath, glow on it without covering it (opacity 0),
+			// or both. The alpha is kept as the scene left it.
+			colorBlendAttachment.blendEnable = VK_TRUE;
+			colorBlendAttachment.srcColorBlendFactor = vk::BlendFactor::eOne;
+			colorBlendAttachment.dstColorBlendFactor = vk::BlendFactor::eOneMinusSrcAlpha;
+			colorBlendAttachment.colorBlendOp = vk::BlendOp::eAdd;
+			colorBlendAttachment.srcAlphaBlendFactor = vk::BlendFactor::eZero;
+			colorBlendAttachment.dstAlphaBlendFactor = vk::BlendFactor::eOne;
+			colorBlendAttachment.alphaBlendOp = vk::BlendOp::eAdd;
+		}
 		vk::PipelineColorBlendStateCreateInfo colorBlending{};
 		colorBlending.attachmentCount = 1;
 		colorBlending.pAttachments = &colorBlendAttachment;
@@ -555,10 +580,11 @@ namespace Nyx
 		const std::array<vk::DynamicState, 2> dynamicStates = { vk::DynamicState::eViewport, vk::DynamicState::eScissor };
 		vk::PipelineDynamicStateCreateInfo dynamicState({}, dynamicStates);
 
+		// A decal is hidden by what is in front of it, and hides nothing itself
 		vk::PipelineDepthStencilStateCreateInfo depthStencil{};
 		depthStencil.depthTestEnable = VK_TRUE;
-		depthStencil.depthWriteEnable = VK_TRUE;
-		depthStencil.depthCompareOp = vk::CompareOp::eLess;
+		depthStencil.depthWriteEnable = kind == EPipelineKind::Opaque ? VK_TRUE : VK_FALSE;
+		depthStencil.depthCompareOp = kind == EPipelineKind::Opaque ? vk::CompareOp::eLess : vk::CompareOp::eLessOrEqual;
 
 		vk::GraphicsPipelineCreateInfo pipelineInfo{};
 		pipelineInfo.stageCount = static_cast<uint32_t>(stages.size());

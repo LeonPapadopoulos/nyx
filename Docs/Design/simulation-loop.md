@@ -86,6 +86,9 @@ drawing moving bodies between steps. Commands, events and time scale are still t
   drawn.
   - Paused, the factor is 1: the picture is still, and Step shows where each step leaves things.
   - Picking and the editor's overlays use the transforms as they are.
+  - Surface decals use the same factor, worked out once per world and frame: each is resolved on
+    its host as the host is drawn (`GetDrawnTransform()`), so a decal on a tumbling crate stays on
+    the crate's mesh instead of running a step ahead of it.
   - The editor's own world is never set, so its views draw transforms as they are.
 
 ## Threads

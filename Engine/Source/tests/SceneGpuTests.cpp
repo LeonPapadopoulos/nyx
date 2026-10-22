@@ -20,7 +20,10 @@
 // values it sends. A material instance draws its parent's values under its own, follows its
 // parent, and a chain of parents that goes round draws as the missing material. A body between
 // two steps is drawn halfway at half a step, where the step left it while paused, and where it
-// was put when set from outside; picking finds it where it is.
+// was put when set from outside; picking finds it where it is. A surface decal with the masked
+// decal material brightens a cube where it is, the more the more it is revealed; nothing at all
+// unrevealed, without its host, or behind something else; on a body between two steps, it is
+// drawn where the body is drawn.
 //
 // NYX_SCENE_TEST_OUTPUT=<folder> saves what was rendered there, e.g. to make a new reference
 // after a change that is meant to change the picture.
@@ -30,6 +33,7 @@
 #include "EditorLinkMessages.h"
 #include "Entity.h"
 #include "FixedStepClock.h"
+#include "GuidComponent.h"
 #include "ImageFile.h"
 #include "Log.h"
 #include "MeshRendererComponent.h"
@@ -37,6 +41,7 @@
 #include "PreviousTransformComponent.h"
 #include "RendererLiveEdits.h"
 #include "ShaderCompiler.h"
+#include "SurfaceDecalComponent.h"
 #include "TransformComponent.h"
 #include "VulkanRenderer.h"
 #include "RenderTestSupport.h"
@@ -54,6 +59,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <iterator>
 #include <stdexcept>
@@ -1014,6 +1020,178 @@ namespace
 		gpu.DrawFrames(1);
 	}
 
+	// A cube moved from the left of the view to its right in the last step, with a decal on its front
+	// face: half a step on, drawn between the two, the decal is on it, just as on a cube standing in
+	// the middle
+	void TestDecalsBetweenSteps(SceneRenderer& gpu)
+	{
+		Nyx::IEditorRenderer& renderer = gpu.Renderer;
+		Registry world;
+		const Entity camera = world.CreateEntity();
+		world.Add<TransformComponent>(camera, TransformComponent{ .Position = glm::vec3(0.0f, 0.0f, 3.0f), .Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f), .Scale = glm::vec3(1.0f) });
+		world.Add<CameraComponent>(camera, CameraComponent{});
+		const Entity cube = AddCube(world, gpu.Renderer, 0.0f, renderer.GetMaterial("Materials/Untextured.nyxmat"));
+		world.Add<GuidComponent>(cube, GuidComponent{ EntityGuid{ 0x5EED } });
+		SurfaceDecalComponent decal;
+		decal.Anchor = SurfaceAnchor{ .Host = EntityGuid{ 0x5EED }, .LocalPosition = glm::vec3(0.0f, 0.0f, 0.5f), .LocalNormal = glm::vec3(0.0f, 0.0f, 1.0f), .LocalTangent = glm::vec3(1.0f, 0.0f, 0.0f) };
+		decal.Size = glm::vec2(0.8f, 0.8f);
+		decal.MaterialAsset = renderer.GetMaterial("Materials/MaskedDecal.nyxmat");
+		decal.Intensity = 4.0f;
+		const Entity decalEntity = world.CreateEntity();
+		world.Add<SurfaceDecalComponent>(decalEntity, decal);
+		renderer.SetWorld(&world);
+
+		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
+		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
+		const auto draw = [&]()
+		{
+			gpu.DrawUntilShadersCompiled();
+			gpu.DrawFrames(2);
+			return ReadView(gpu, view);
+		};
+
+		// The pictures to compare with: the cube really in the middle, with its decal and without
+		const RgbaImage middle = draw();
+		world.Get<SurfaceDecalComponent>(decalEntity).bVisible = false;
+		Require(draw().Pixels != middle.Pixels, "The decal doesn't show: the test can't see where it is");
+		world.Get<SurfaceDecalComponent>(decalEntity).bVisible = true;
+
+		// Moved right by the last step; half a step on, cube and decal are drawn in the middle
+		TransformComponent& transform = world.Get<TransformComponent>(cube);
+		transform.Position.x = 1.5f;
+		SetPreviousTransform(world.Add<PreviousTransformComponent>(cube), glm::vec3(-1.5f, 0.0f, 0.0f), glm::quat(1.0f, 0.0f, 0.0f, 0.0f), transform);
+		FixedStepClock clock;
+		clock.SetStepSeconds(0.2);
+		Require(clock.Advance(0.1) == 0 && clock.GetInterpolationFactor() == 0.5, "The clock should be half a step on");
+		renderer.SetWorldInterpolation(&world, &clock);
+		const RgbaImage halfway = draw();
+		SaveIfAsked(halfway, "DecalBetweenSteps");
+		Require(halfway.Pixels == middle.Pixels, "Half a step on, the decal should be drawn on the cube, halfway");
+
+		renderer.SetWorldInterpolation(&world, nullptr);
+		renderer.DestroySceneView(view);
+		renderer.SetWorld(nullptr);
+		gpu.DrawFrames(1);
+	}
+
+	// A cube facing the camera with a glowing decal on its front face, as a game's view shows it
+	// (no editor overlays). Compared, pixel by pixel, with the same view without the decal.
+	void TestSurfaceDecals(SceneRenderer& gpu)
+	{
+		Nyx::IEditorRenderer& renderer = gpu.Renderer;
+		Registry world;
+		const Entity cube = AddCube(world, gpu.Renderer, 0.0f, renderer.GetMaterial("Materials/Untextured.nyxmat"));
+		world.Add<GuidComponent>(cube, GuidComponent{ EntityGuid{ 0xC0BE } });
+		const Entity camera = world.CreateEntity();
+		world.Add<TransformComponent>(camera, TransformComponent{ .Position = glm::vec3(0.0f, 0.0f, 3.0f), .Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f), .Scale = glm::vec3(1.0f) });
+		world.Add<CameraComponent>(camera, CameraComponent{});
+
+		const Entity decalEntity = world.CreateEntity();
+		SurfaceDecalComponent decal;
+		decal.Anchor = SurfaceAnchor{ .Host = EntityGuid{ 0xC0BE }, .LocalPosition = glm::vec3(0.0f, 0.0f, 0.5f), .LocalNormal = glm::vec3(0.0f, 0.0f, 1.0f), .LocalTangent = glm::vec3(1.0f, 0.0f, 0.0f) };
+		decal.Size = glm::vec2(0.8f, 0.8f);
+		decal.MaterialAsset = renderer.GetMaterial("Materials/MaskedDecal.nyxmat");
+		decal.Color = glm::vec3(0.2f, 1.0f, 0.6f);
+		decal.Intensity = 4.0f;
+		decal.bVisible = false;
+		world.Add<SurfaceDecalComponent>(decalEntity, decal);
+
+		renderer.SetWorld(&world);
+		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
+		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
+		gpu.DrawUntilShadersCompiled();
+
+		const auto draw = [&](const std::function<void(SurfaceDecalComponent&)>& change)
+		{
+			SurfaceDecalComponent& component = world.Get<SurfaceDecalComponent>(decalEntity);
+			component = decal;
+			component.bVisible = true;
+			if (change)
+			{
+				change(component);
+			}
+			gpu.DrawFrames(2);
+			return ReadView(gpu, view);
+		};
+		// The pixels the decal made brighter than `without`; any it made darker, or brighter outside
+		// the quad's square (0.8 m at 2.5 m: 75 pixels), fail
+		const auto brightened = [](const RgbaImage& with, const RgbaImage& without, const std::string& what)
+		{
+			size_t count = 0;
+			for (uint32_t y = 0; y < with.Height; ++y)
+			{
+				for (uint32_t x = 0; x < with.Width; ++x)
+				{
+					const size_t pixel = (static_cast<size_t>(y) * with.Width + x) * 4;
+					int gain = 0;
+					for (size_t channel = 0; channel < 3; ++channel)
+					{
+						const int difference = int(with.Pixels[pixel + channel]) - int(without.Pixels[pixel + channel]);
+						Require(difference >= 0, what + ": the decal darkened the pixel at " + std::to_string(x) + ", " + std::to_string(y));
+						gain += difference;
+					}
+					if (gain == 0)
+					{
+						continue;
+					}
+					const bool bInside = std::abs(int(x) - int(ViewWidth / 2)) <= 42 && std::abs(int(y) - int(ViewHeight / 2)) <= 42;
+					Require(bInside, what + ": the decal brightened the pixel at " + std::to_string(x) + ", " + std::to_string(y) + ", outside its quad");
+					count += gain > 30 ? 1 : 0;
+				}
+			}
+			return count;
+		};
+
+		const RgbaImage without = draw([](SurfaceDecalComponent& component)
+			{
+				component.bVisible = false;
+			});
+		SaveIfAsked(without, "Decal-Without");
+
+		const RgbaImage revealed = draw(nullptr);
+		SaveIfAsked(revealed, "Decal-Revealed");
+		const size_t revealedCount = brightened(revealed, without, "Revealed");
+		Require(revealedCount > 500, "The revealed decal brightens only " + std::to_string(revealedCount) + " pixels");
+
+		const RgbaImage halfRevealed = draw([](SurfaceDecalComponent& component)
+			{
+				component.Reveal = 0.5f;
+			});
+		SaveIfAsked(halfRevealed, "Decal-HalfRevealed");
+		const size_t halfCount = brightened(halfRevealed, without, "Half revealed");
+		Require(halfCount > revealedCount / 5 && halfCount < revealedCount * 4 / 5,
+			"Half revealed, the decal brightens " + std::to_string(halfCount) + " pixels, against " + std::to_string(revealedCount) + " revealed");
+
+		Require(draw([](SurfaceDecalComponent& component)
+					{
+						component.Reveal = 0.0f;
+					})
+					.Pixels == without.Pixels,
+			"The decal unrevealed is drawn");
+		Require(draw([](SurfaceDecalComponent& component)
+					{
+						component.Anchor.Host = EntityGuid{ 0xAB5E };
+					})
+					.Pixels == without.Pixels,
+			"The decal whose host isn't there is drawn");
+
+		// A cube between the camera and the decal hides it
+		const Entity front = AddCube(world, gpu.Renderer, 0.0f, renderer.GetMaterial("Materials/Untextured.nyxmat"));
+		world.Get<TransformComponent>(front).Position = glm::vec3(0.0f, 0.0f, 1.5f);
+		const RgbaImage hiddenWithout = draw([](SurfaceDecalComponent& component)
+			{
+				component.bVisible = false;
+			});
+		Require(hiddenWithout.Pixels != without.Pixels, "The cube in front doesn't show");
+		Require(draw(nullptr).Pixels == hiddenWithout.Pixels, "The decal behind the cube in front is drawn over it");
+
+		renderer.DestroySceneView(view);
+		renderer.SetWorld(nullptr);
+		gpu.DrawFrames(1);
+	}
+
 	// A world's debug drawing: drawn in a view of the world without the editor's overlays, as the
 	// game's view is, over the scene and in its colour; gone when the view hides it or the drawing
 	// is taken away
@@ -1149,6 +1327,8 @@ int main()
 		TestViewsWithWorldsOfTheirOwn(gpu);
 		TestWorldDebugDrawing(gpu);
 		TestDrawingBetweenSteps(gpu);
+		TestSurfaceDecals(gpu);
+		TestDecalsBetweenSteps(gpu);
 		TestMaterialValuesSetInMemory(gpu);
 		TestSkiesAndDebugViews(gpu);
 		TestViewsMadeAndLetGoWhileTheUIIsBuilt(gpu);

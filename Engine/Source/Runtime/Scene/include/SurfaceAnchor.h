@@ -11,9 +11,10 @@
 namespace Nyx
 {
 	struct EntityGuidLookup;
+	struct TransformComponent;
 
 	// A point on an entity's surface, with the surface's normal and a tangent along it, that moves
-	// with the entity, such as a mark drawn on a rock. It is kept in the host's local space and names
+	// with the entity, such as a mark drawn on a crate. It is kept in the host's local space and names
 	// the host by guid, never by Entity handle, so a component can hold one as a property that saves,
 	// undoes and goes over the editor link like any other. Without a host (guid 0) it is in world
 	// space.
@@ -63,6 +64,11 @@ namespace Nyx
 	// resolving many anchors in one frame
 	std::optional<SurfaceFrame> ResolveSurfaceAnchor(
 		const Registry& world, const EntityGuidLookup& lookup, const SurfaceAnchor& anchor);
+
+	// The anchor's frame on a host with this transform, whatever entity its Host names: e.g. on the
+	// host as the renderer draws it, between two steps. The caller finds the host; an anchor without
+	// one is in world space, so it takes TransformComponent{} there.
+	SurfaceFrame ResolveSurfaceAnchor(const TransformComponent& host, const SurfaceAnchor& anchor);
 
 	// The anchor on host that resolves to this world frame: the inverse of ResolveSurfaceAnchor(). The
 	// tangent is made unit length and at right angles to the normal first. A null host gives a

@@ -31,7 +31,8 @@ public struct ViewConstants
     public nyx::Cubemap Specular;
     public uint SpecularLevels;
     public nyx::Texture BrdfLookup;
-    public uint _Padding2;
+    // Seconds since the renderer started, for what moves by itself, such as a decal's pulse
+    public float Time;
     public float4 Irradiance[9];
 }
 [vk::binding(0, 1)] public ConstantBuffer<ViewConstants> View;

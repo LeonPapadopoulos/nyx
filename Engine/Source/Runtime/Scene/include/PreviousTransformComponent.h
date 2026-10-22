@@ -1,9 +1,12 @@
 #pragma once
 
+#include "Entity.h"
 #include "TransformComponent.h"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
+
+#include <optional>
 
 namespace Nyx
 {
@@ -30,4 +33,9 @@ namespace Nyx
 	// positions mixed, rotations slerped the short way round, the current scale. A transform set from
 	// outside since the step is drawn as it is, not smeared from where the entity was.
 	TransformComponent InterpolateTransform(const PreviousTransformComponent& previous, const TransformComponent& current, float factor);
+
+	// Where the renderer draws the entity: `factor` of the way between its last two steps when the
+	// world is drawn so (a factor given) and it has a PreviousTransformComponent, else where its
+	// transform is. An entity without a TransformComponent is at the origin.
+	TransformComponent GetDrawnTransform(const Registry& world, Entity entity, std::optional<float> factor);
 }

@@ -23,8 +23,9 @@ public struct ObjectConstants
     public uint MaterialOffset;
     // The entity drawn, as the picking pass writes it
     public uint EntityId;
-    public uint2 _Padding;
-    // Set per object by code (zero until materials are steered)
+    // Two more values set per object by code: a decal's reveal and pulse (DecalInput, nyx.surface)
+    public float2 CustomData2;
+    // Set per object by code (zero until materials are steered): a decal's colour and intensity
     public float4 CustomData;
 }
 [vk::push_constant] public ConstantBuffer<ObjectConstants> Object;

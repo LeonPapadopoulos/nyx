@@ -54,6 +54,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/EntityGuidLookup.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/SurfaceAnchor.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/PreviousTransformComponent.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/SurfaceDecalComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/TypedHandle.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ReflectedArchiveSerializer.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ComponentTypeRegistry.cpp
@@ -89,6 +90,7 @@ set(NYX_ENGINE_SOURCES
 
     # Runtime/Render
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/AssetResolver.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/SurfaceDecals.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Mesh.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Texture.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/CubemapTexture.cpp
@@ -187,6 +189,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/EntityGuidLookup.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/SurfaceAnchor.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/PreviousTransformComponent.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/SurfaceDecalComponent.h
 
     # Runtime/Sim
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/SimSystem.h
@@ -224,6 +227,7 @@ set(NYX_ENGINE_HEADERS
     # Runtime/Render
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Resource.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/AssetResolver.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/SurfaceDecals.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Mesh.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Texture.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/CubemapTexture.h

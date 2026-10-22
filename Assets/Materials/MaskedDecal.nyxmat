@@ -1,0 +1,5 @@
+# A masked decal: a ring, uncovered round from the top as it is revealed
+Shader = Shaders/MaskedDecal.slang
+Mask = Textures/DecalRing.png
+RevealMode = 1
+GlowStrength = 1.0

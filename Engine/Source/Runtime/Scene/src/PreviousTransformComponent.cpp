@@ -29,4 +29,14 @@ namespace Nyx
 		drawn.Rotation = glm::normalize(glm::slerp(previous.Rotation, current.Rotation, t));
 		return drawn;
 	}
+
+	TransformComponent GetDrawnTransform(const Registry& world, Entity entity, std::optional<float> factor)
+	{
+		if (!world.Has<TransformComponent>(entity))
+		{
+			return TransformComponent{};
+		}
+		const TransformComponent& transform = world.Get<TransformComponent>(entity);
+		return factor && world.Has<PreviousTransformComponent>(entity) ? InterpolateTransform(world.Get<PreviousTransformComponent>(entity), transform, *factor) : transform;
+	}
 }

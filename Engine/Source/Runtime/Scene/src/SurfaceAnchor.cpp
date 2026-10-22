@@ -95,6 +95,11 @@ namespace Nyx
 		return ResolveOnHost(world, FindEntityByGuid(world, lookup, anchor.Host), anchor);
 	}
 
+	SurfaceFrame ResolveSurfaceAnchor(const TransformComponent& host, const SurfaceAnchor& anchor)
+	{
+		return ResolveOn(host, anchor);
+	}
+
 	SurfaceAnchor MakeSurfaceAnchor(const Registry& world, Entity host, const glm::vec3& worldPosition,
 		const glm::vec3& worldNormal, const glm::vec3& worldTangent)
 	{

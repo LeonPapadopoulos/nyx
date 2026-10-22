@@ -87,6 +87,14 @@ add_dependencies(NyxSurfaceAnchorTests NyxGeneratedReflection)
 set_property(TARGET NyxSurfaceAnchorTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxSurfaceAnchorTests COMMAND NyxSurfaceAnchorTests)
 
+# Surface decals: the quad following its host, what the renderer extracts of a world's decals, a
+# decal saved and loaded
+add_executable(NyxSurfaceDecalTests SurfaceDecalTests.cpp)
+target_link_libraries(NyxSurfaceDecalTests PRIVATE NyxEngine)
+add_dependencies(NyxSurfaceDecalTests NyxGeneratedReflection)
+set_property(TARGET NyxSurfaceDecalTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxSurfaceDecalTests COMMAND NyxSurfaceDecalTests)
+
 # Debug drawing: shapes as lines, how long they stay, the cap
 add_executable(NyxDebugDrawTests DebugDrawTests.cpp)
 target_link_libraries(NyxDebugDrawTests PRIVATE NyxEngine)

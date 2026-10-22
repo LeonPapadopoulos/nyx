@@ -3,6 +3,7 @@
 #include "ComponentTypeRegistry.h"
 #include "IAssetResolver.h"
 #include "MeshRendererComponent.h"
+#include "SurfaceDecalComponent.h"
 
 #include "Generated/Runtime/Runtime.reflect.init.h"
 
@@ -26,6 +27,14 @@ namespace Nyx
 			component.MaterialAsset =
 				component.Material.IsValid() ? context.AssetResolver->ResolveMaterial(component.Material.Path) : nullptr;
 		}
+
+		// The same for a decal's material
+		void ResolveSurfaceDecalAssets(SurfaceDecalComponent& component, ScenePostLoadContext& context)
+		{
+			component.MaterialAsset = context.AssetResolver && component.Material.IsValid()
+				? context.AssetResolver->ResolveMaterial(component.Material.Path)
+				: nullptr;
+		}
 	}
 
 	void RegisterComponentTypes()
@@ -35,5 +44,6 @@ namespace Nyx
 
 		// Components that need more than their reflected properties after being loaded.
 		ComponentTypeRegistry::Get().SetPostLoad<MeshRendererComponent>(&ResolveMeshRendererAssets);
+		ComponentTypeRegistry::Get().SetPostLoad<SurfaceDecalComponent>(&ResolveSurfaceDecalAssets);
 	}
 }

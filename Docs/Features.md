@@ -242,7 +242,7 @@ the engine's, so a game's component can hold an `AssetReference` or a `SurfaceAn
 ## Surface anchors
 
 A `SurfaceAnchor` property hangs something on another entity's surface, such as a mark drawn on a
-rock: a point, the surface's normal and a tangent, kept in the host's local space and naming the
+crate: a point, the surface's normal and a tangent, kept in the host's local space and naming the
 host by guid. It saves, undoes and goes over the editor link like any other property, and the
 details panel shows its host (in hex) and its three vectors. Without a host it is in world space.
 
@@ -250,6 +250,38 @@ details panel shows its host (in hex) and its three vectors. Without a host it i
   normal and tangent, bitangent, a matrix), following the host as it moves, turns and is scaled;
   nothing when the host is gone.
 - `MakeSurfaceAnchor()` makes one from a frame in the world, such as where a ray hit.
+- `ResolveSurfaceAnchor(host, anchor)` resolves it on a host transform given, such as the host as
+  the renderer draws it between two steps.
 - Many anchors in a frame: `MakeEntityGuidLookup()` once, then resolve through it, instead of
   each one going through every guid of the world.
 - Tests: `NyxSurfaceAnchorTests`; `NyxGameModuleTests` saves and loads one in a module component.
+
+## Surface decals
+
+A *Surface Decal* draws a material flat on another entity's surface and moves with it, such as a
+glowing mark on a crate.
+
+- Its *Anchor* is a surface anchor: the host, by guid, and a point, normal and tangent on it.
+  Without a host, the decal is in world space. *Size* is its width along the tangent and its height
+  across it, in metres: the host's scale moves the anchor, but doesn't stretch the decal.
+- It is drawn with its *Material*, such as `Materials/MaskedDecal.nyxmat`, and gives the material its
+  *Color* times its *Intensity* (above 1, it glows), its *Reveal* (0 to 1: how much of it is drawn)
+  and its *Pulse* (0 to 1: how strongly it throbs). At Reveal 0, or with *Visible* off, it isn't
+  drawn; nor is a decal whose host is gone, until the host is back (an undo, say).
+- It is a quad on its anchor's frame, lifted 3 mm off the surface so the two don't fight for depth,
+  so on a curved surface it lies on the surface's tangent plane. It is drawn after the scene's
+  objects and sky, hidden by what is in front of it, and blended: a material can cover what is
+  beneath (its opacity), glow on it (its emission), or both.
+- On a moving body, which the game draws between its last two steps, a decal is drawn where the
+  body's mesh is drawn, not a step ahead of it.
+- Any surface material can be a decal's. The *masked decal material* (`Shaders/MaskedDecal.slang`)
+  draws a mask, white on black, in the decal's colour, with smooth edges and an optional glow
+  around it; Reveal uncovers it as a wipe along a direction, out from the middle or round it, with
+  a brighter edge where it moves, and Pulse dims it and back, *Pulse Rate* times a second. Its
+  sample mask, `Textures/DecalRing.png`, a ring, is made by `Scripts/MakeDecalMask.py`.
+- The editor's scene views show decals as the game does. Saving, undo and live edits work as for
+  any component, and a decal's shader and material reload when saved.
+- Tests: `NyxSurfaceDecalTests` (the quad following its host, also between two steps, what is
+  drawn, saving and loading), `NyxSceneGpuTests` (a decal on a cube brightens it where it is, partly
+  when partly revealed, and not at all unrevealed, without its host, or behind another cube; on a
+  cube drawn between two steps, it is on the cube).

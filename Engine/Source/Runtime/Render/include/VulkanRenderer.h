@@ -18,6 +18,7 @@
 #include "Texture.h"
 #include "CubemapTexture.h"
 #include "Material.h"
+#include "SurfaceDecals.h"
 #include "GltfImporter.h"
 #include <imgui.h>
 #include <chrono>
@@ -76,7 +77,8 @@ namespace Nyx
 		uint32_t SpecularTexture = 0;
 		uint32_t SpecularLevels = 0;
 		uint32_t BrdfLookup = 0;
-		uint32_t Padding2 = 0;
+		// Seconds since the renderer started
+		float Time = 0.0f;
 		glm::vec4 Irradiance[9] = {};
 	};
 
@@ -92,8 +94,10 @@ namespace Nyx
 		uint32_t MaterialOffset = 0;
 		// The picking pass writes it
 		uint32_t EntityId = 0;
-		uint32_t Padding[2] = {};
-		// Set per object by code; the selection mask passes keep the mask's value in x
+		// Two more values set per object by code: a decal's reveal and pulse
+		glm::vec2 CustomData2{ 0.0f };
+		// Set per object by code; the selection mask passes keep the mask's value in x, a decal its
+		// colour and intensity
 		glm::vec4 CustomData{ 0.0f };
 	};
 
@@ -145,6 +149,8 @@ namespace Nyx
 		uint64_t Revision = 0;
 
 		std::vector<RenderObject> Objects;
+		// Its surface decals, drawn over the objects and the sky
+		std::vector<RenderDecal> Decals;
 		// Dense picking IDs: ID i is the entity at i - 1, 0 is nothing
 		std::vector<Nyx::Entity> PickingIdToEntity;
 		// This frame's debug lines of the world: the editor overlays' (its objects' bounds and axes)
@@ -321,8 +327,14 @@ namespace Nyx
 		uint64_t GetShownWorldRevision(const SceneViewInstance& view) const;
 		// Every shown world's objects and debug lines; forgets worlds no view shows any more
 		void ExtractRenderWorlds();
-		void ExtractRenderObjects(RenderWorld& world);
+		// How far into its next step the world is drawn this frame (SetWorldInterpolation()), for its
+		// meshes and decals alike: none for a world drawn as it is; paused, 1, the last step's poses
+		std::optional<float> GetWorldInterpolation(const Nyx::Registry* registry) const;
+		void ExtractRenderObjects(RenderWorld& world, std::optional<float> interpolation);
 		void DrawRenderObjects(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd);
+		// The world's decals, blended over what the scene pass drew: the plane mesh with each one's
+		// material's decal pipeline
+		void DrawRenderDecals(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd);
 
 		// Set 1, the view's: its SceneUBO
 		void CreateSceneDescriptorSetLayout();
@@ -461,6 +473,8 @@ namespace Nyx
 		// The clocks of the worlds drawn between steps (SetWorldInterpolation()), by world, kept so too
 		std::unordered_map<const Nyx::Registry*, const Nyx::FixedStepClock*> WorldInterpolationClocks;
 
+		// Seconds since the renderer was made, as this frame's views see it (SceneUBO::Time)
+		const std::chrono::steady_clock::time_point StartTime = std::chrono::steady_clock::now();
 		float SceneTime = 0.0f;
 
 		// HDR to the picture
