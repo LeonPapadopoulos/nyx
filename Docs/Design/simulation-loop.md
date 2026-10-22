@@ -47,6 +47,8 @@ Commands, events, drawing between steps and time scale are still the plan.
 - **Built:** a system can run every nth step (`AddSystem(system, n)`), counted from step 0, so
   systems with the same interval run in the same steps: heat or plant growth don't need 60 updates
   a second.
+- **Built:** each step of the world is a profiler zone, with one zone per system named by its
+  `GetName()`, so a system over the step's budget shows by name.
 - **Not yet:** the command and event queues and the engine services (the physics world, later the
   spatial index) in `SimContext`.
 - The engine's part of the order is fixed; a game's systems go into the slots around it:
