@@ -20,3 +20,6 @@
 [submodule "Dependencies/tracy"]
 	path = Dependencies/tracy
 	url = https://github.com/wolfpld/tracy.git
+[submodule "Dependencies/JoltPhysics"]
+	path = Dependencies/JoltPhysics
+	url = https://github.com/jrouwe/JoltPhysics.git
