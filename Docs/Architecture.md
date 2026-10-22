@@ -49,6 +49,7 @@ doesn't allow, and on a table that goes round in a circle, so a new dependency s
 | `Net` | TCP connections and the messages they carry | Core |
 | `Input` | Keyboard and mouse, gathered from backends into one `InputFrame` per frame | Core |
 | `Scene` | Entities and components, the component registry, scene files, the tagged binary format | Core, Reflection |
+| `Physics` | Rigid bodies, their shapes, collisions and the physics step, on Jolt (`PhysicsWorld`); Jolt's headers stay inside | Core |
 | `Sim` | The game world: its entities and the simulation systems each fixed step runs, in order (`GameWorld`, `ISimSystem`) | Core, Scene |
 | `Assets` | Asset files as plain data: images, materials, glTF meshes, shader compile requests and results | Core |
 | `UI` | The painter, and the painted UI drawn with it on top of ImGui | Core, Reflection |
@@ -306,5 +307,7 @@ How some systems work, and why they work that way:
   into the editor and the game, and what the CMake functions do.
 - [Simulation loop](Design/simulation-loop.md): the fixed steps, and the plan for commands,
   systems and determinism.
+- [Physics](Design/physics.md): Jolt behind `PhysicsWorld`, bodies, layers, forces, the build, the
+  numbers.
 - [Undo by guid](Design/undo-by-guid.md): why undo names entities by guid, and how it keeps
   components whole.

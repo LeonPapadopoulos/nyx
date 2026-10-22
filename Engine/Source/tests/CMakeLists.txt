@@ -86,6 +86,20 @@ add_dependencies(NyxDebugDrawTests NyxGeneratedReflection)
 set_property(TARGET NyxDebugDrawTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxDebugDrawTests COMMAND NyxDebugDrawTests)
 
+# Physics: bodies falling and resting, mass, forces at a point, teleports, kinematic moves, the
+# same results from the same inputs
+add_executable(NyxPhysicsTests PhysicsTests.cpp)
+target_link_libraries(NyxPhysicsTests PRIVATE NyxEngine)
+add_dependencies(NyxPhysicsTests NyxGeneratedReflection)
+set_property(TARGET NyxPhysicsTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxPhysicsTests COMMAND NyxPhysicsTests)
+
+# How long a physics step takes with 1000 bodies; not run by ctest, timing depends on the machine
+add_executable(NyxPhysicsBenchmark PhysicsBenchmark.cpp)
+target_link_libraries(NyxPhysicsBenchmark PRIVATE NyxEngine)
+add_dependencies(NyxPhysicsBenchmark NyxGeneratedReflection)
+set_property(TARGET NyxPhysicsBenchmark PROPERTY FOLDER "Tests")
+
 # The game world: systems run in their order, every step or every nth one
 add_executable(NyxGameWorldTests GameWorldTests.cpp)
 target_link_libraries(NyxGameWorldTests PRIVATE NyxEngine)

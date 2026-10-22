@@ -49,6 +49,24 @@ if(NYX_PROFILER)
     add_subdirectory(Dependencies/tracy)
 endif()
 
+# Jolt, the physics engine (Engine/Source/Runtime/Physics), as a static library. Built with the
+# same runtime library and flags as Nyx, without link-time optimization, without its own profiler,
+# its GPU compute, its object streams or its install target. Its asserts are on in Debug.
+set(USE_STATIC_MSVC_RUNTIME_LIBRARY OFF CACHE BOOL "" FORCE)
+set(OVERRIDE_CXX_FLAGS OFF CACHE BOOL "" FORCE)
+set(INTERPROCEDURAL_OPTIMIZATION OFF CACHE BOOL "" FORCE)
+set(ENABLE_ALL_WARNINGS OFF CACHE BOOL "" FORCE)
+set(FLOATING_POINT_EXCEPTIONS_ENABLED OFF CACHE BOOL "" FORCE)
+set(PROFILER_IN_DEBUG_AND_RELEASE OFF CACHE BOOL "" FORCE)
+set(ENABLE_OBJECT_STREAM OFF CACHE BOOL "" FORCE)
+set(ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+set(JPH_USE_DX12 OFF CACHE BOOL "" FORCE)
+set(JPH_USE_VK OFF CACHE BOOL "" FORCE)
+set(JPH_USE_MTL OFF CACHE BOOL "" FORCE)
+set(JPH_USE_CPU_COMPUTE OFF CACHE BOOL "" FORCE)
+add_subdirectory(Dependencies/JoltPhysics/Build)
+target_compile_definitions(Jolt PUBLIC "$<$<CONFIG:Debug>:JPH_ENABLE_ASSERTS>")
+
 # Tests
 include(CTest)
 
@@ -114,6 +132,7 @@ set_property(TARGET glm PROPERTY FOLDER "ThirdParty")
 if(TARGET TracyClient)
     set_property(TARGET TracyClient PROPERTY FOLDER "ThirdParty")
 endif()
+set_property(TARGET Jolt PROPERTY FOLDER "ThirdParty")
 
 # Todo: cleanup targets
 if(TARGET glfw)

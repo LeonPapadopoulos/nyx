@@ -59,6 +59,9 @@ set(NYX_ENGINE_SOURCES
     # Runtime/Sim
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/GameWorld.cpp
 
+    # Runtime/Physics
+    ${NYX_ENGINE_ROOT}/Runtime/Physics/src/PhysicsWorld.cpp
+
     # Runtime/Assets
     ${NYX_ENGINE_ROOT}/Runtime/Assets/src/cgltf_impl.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Assets/src/GltfImporter.cpp
@@ -179,6 +182,9 @@ set(NYX_ENGINE_HEADERS
     # Runtime/Sim
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/SimSystem.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/GameWorld.h
+
+    # Runtime/Physics
+    ${NYX_ENGINE_ROOT}/Runtime/Physics/include/PhysicsWorld.h
 
     # Runtime/Assets
     ${NYX_ENGINE_ROOT}/Runtime/Assets/include/GltfImporter.h
@@ -374,6 +380,7 @@ foreach(NYX_ENGINE_TARGET NyxEngineCommon NyxEngine NyxEditorEngine)
             ${NYX_ENGINE_ROOT}/Runtime/Input/include
             ${NYX_ENGINE_ROOT}/Runtime/Scene/include
             ${NYX_ENGINE_ROOT}/Runtime/Sim/include
+            ${NYX_ENGINE_ROOT}/Runtime/Physics/include
             ${NYX_ENGINE_ROOT}/Runtime/Assets/include
             ${NYX_ENGINE_ROOT}/Runtime/UI/include
             ${NYX_ENGINE_ROOT}/Runtime/Render/include
@@ -403,6 +410,9 @@ foreach(NYX_ENGINE_TARGET NyxEngineCommon NyxEngine NyxEditorEngine)
             stb_image
             NyxStartup # The startup banner, from the Startup module.
     )
+
+    # Physics (PhysicsWorld.cpp) on Jolt, whose headers only the Physics folder includes
+    target_link_libraries(${NYX_ENGINE_TARGET} PRIVATE Jolt)
 
     # The profiler (Profiler.h): Tracy's client, PUBLIC so every program gets it, or nothing at all
     target_compile_definitions(${NYX_ENGINE_TARGET} PUBLIC "NYX_PROFILER=$<BOOL:${NYX_PROFILER}>")
