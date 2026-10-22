@@ -94,6 +94,14 @@ add_dependencies(NyxPhysicsTests NyxGeneratedReflection)
 set_property(TARGET NyxPhysicsTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxPhysicsTests COMMAND NyxPhysicsTests)
 
+# Physics in the game world: bodies made, moved and removed with their components, transforms
+# written back, live edits teleporting, kinematic bodies, systems around the physics step
+add_executable(NyxPhysicsBodiesTests PhysicsBodiesTests.cpp)
+target_link_libraries(NyxPhysicsBodiesTests PRIVATE NyxEngine)
+add_dependencies(NyxPhysicsBodiesTests NyxGeneratedReflection)
+set_property(TARGET NyxPhysicsBodiesTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxPhysicsBodiesTests COMMAND NyxPhysicsBodiesTests)
+
 # How long a physics step takes with 1000 bodies; not run by ctest, timing depends on the machine
 add_executable(NyxPhysicsBenchmark PhysicsBenchmark.cpp)
 target_link_libraries(NyxPhysicsBenchmark PRIVATE NyxEngine)

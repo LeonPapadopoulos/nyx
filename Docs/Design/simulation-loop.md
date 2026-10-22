@@ -54,12 +54,15 @@ Commands, events, drawing between steps and time scale are still the plan.
 - **Not yet:** the command and event queues and the engine services (the physics world, later the
   spatial index) in `SimContext`.
 - The engine's part of the order is fixed; a game's systems go into the slots around it:
-  1. apply commands;
-  2. the game's systems that decide forces and constraints;
-  3. physics step;
-  4. bodies write their transforms;
-  5. the game's systems that react to where things are, each at its own rate;
-  6. hand out events (contacts, regions entered and left).
+  1. apply commands (not built yet);
+  2. bodies follow the physics components and the transforms set since the last step (built:
+     `PhysicsBodies`);
+  3. the game's systems that decide forces and constraints (built: `ESimStage::BeforePhysics`);
+  4. physics step (built);
+  5. bodies write their transforms (built);
+  6. the game's systems that react to where things are, each at its own rate (built:
+     `ESimStage::AfterPhysics`);
+  7. hand out events (contacts, regions entered and left; not built yet).
 
 ## Drawing between steps
 

@@ -53,10 +53,32 @@ force at the centre moves without turning, one off it turns; impulses; teleporti
 a kinematic move reaches its target in one step; twenty boxes piled up twice end exactly alike;
 spheres, capsules, user data, destroyed bodies.
 
+## In the game world
+
+- **Components** (`PhysicsComponents.h`, in Scene so they are reflected, saved and edited):
+  `BoxColliderComponent`, `SphereColliderComponent`, `CapsuleColliderComponent`, a
+  `RigidBodyComponent` that makes the body move (dynamic, or kinematic), and an optional
+  `PhysicsMaterialComponent`. A collider alone is a static body. Small parts that combine, not one
+  component with a shape switch; one collider an entity (box over sphere over capsule).
+- **The entity's transform** places the body, and its scale scales the shape: a box by each axis,
+  a sphere by the largest, a capsule's radius by X and Z and its length by Y.
+- **`PhysicsBodies`** (Sim) keeps the bodies in step with the components, in `GameWorld::Step()`:
+  - before the physics step: bodies made for new colliders, made again (at the transform) when a
+    component's values or the scale changed, destroyed with their collider or entity;
+  - a transform set since the last step, by a system or an editor's live edit, teleports its body
+    and stops it. Compared exactly with what the bodies wrote back, so only real changes count;
+  - kinematic bodies are moved to their transforms over the step;
+  - after the step, dynamic bodies write their poses into their transforms.
+  - Bodies are kept by entity in a fixed order, so they are made and destroyed the same way each
+    run. A body's user data is its entity, for `FindEntity()`; never saved.
+- **Systems** get the physics world and the bodies in `SimContext`, and run before the physics step
+  (`ESimStage::BeforePhysics`, e.g. to push) or after it (`AfterPhysics`, e.g. to react).
+- `NyxPhysicsBodiesTests`: a crate falls onto a floor; a set transform teleports; changed colliders,
+  scale and rigid bodies remake the body, and removed colliders or entities destroy it; kinematic
+  bodies follow; a force before the step holds a crate up; physics components in scene files.
+
 ## Not built yet
 
-- Components (`RigidBodyComponent`, `ColliderComponent`), bodies made and removed with them, and
-  the physics step in the `GameWorld`, writing back the transforms.
 - Queries (raycasts, shape casts, overlaps) and contact events handed to the main thread.
 - Constraints as components; the debug view of shapes and contacts through `DebugDraw`.
 - Drawing moving bodies between their last two steps.

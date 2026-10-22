@@ -3,6 +3,8 @@
 #include "DebugDraw.h"
 #include "Entity.h"
 #include "FixedStepClock.h"
+#include "PhysicsBodies.h"
+#include "PhysicsWorld.h"
 #include "SimSystem.h"
 
 #include <cstdint>
@@ -11,9 +13,16 @@
 
 namespace Nyx
 {
-	// The world a game runs: its entities, and the systems that change them each fixed step, in
-	// one order kept here rather than spread over registrations. The game's GameLayer owns one; a
-	// game module adds its systems (GameModule::CreateSystems).
+	// The world a game runs: its entities, their physics, and the systems that change them each
+	// fixed step, in one order kept here rather than spread over registrations. The game's GameLayer
+	// owns one; a game module adds its systems (GameModule::CreateSystems). A step:
+	// 1. the debug drawing moves on: what the last step drew goes, timed shapes age;
+	// 2. bodies follow the physics components and the transforms set since the last step
+	//    (PhysicsBodies);
+	// 3. the systems of ESimStage::BeforePhysics, in the order they were added;
+	// 4. the physics step;
+	// 5. dynamic bodies write their poses into their transforms;
+	// 6. the systems of ESimStage::AfterPhysics, in the order they were added.
 	class GameWorld
 	{
 	public:
@@ -29,25 +38,36 @@ namespace Nyx
 		DebugDraw& GetDebugDraw() { return Debug; }
 		const DebugDraw& GetDebugDraw() const { return Debug; }
 
-		// Adds the system after those added before. It runs on every `everyNthStep`th step (1:
-		// every step), counted from step 0, so systems with the same interval run in the same steps.
-		ISimSystem& AddSystem(std::unique_ptr<ISimSystem> system, uint32_t everyNthStep = 1);
+		PhysicsWorld& GetPhysics() { return Physics; }
+		const PhysicsWorld& GetPhysics() const { return Physics; }
+		const PhysicsBodies& GetBodies() const { return Bodies; }
 
-		// Runs the systems due in this step, in the order they were added. First the debug drawing
-		// moves on a step: what the last step drew goes, and timed shapes age by the step's length.
+		// Adds the system after those of its stage added before. It runs on every `everyNthStep`th
+		// step (1: every step), counted from step 0, so systems with the same interval run in the
+		// same steps.
+		ISimSystem& AddSystem(std::unique_ptr<ISimSystem> system, uint32_t everyNthStep = 1,
+			ESimStage stage = ESimStage::BeforePhysics);
+
+		// One step of the world, in the order above
 		void Step(const StepTime& step);
 
 		struct SystemEntry
 		{
 			std::unique_ptr<ISimSystem> System;
 			uint32_t EveryNthStep = 1;
+			ESimStage Stage = ESimStage::BeforePhysics;
 		};
 
 		const std::vector<SystemEntry>& GetSystems() const { return Systems; }
 
 	private:
+		// The systems of one stage due in this step
+		void RunStage(ESimStage stage, const SimContext& context);
+
 		Registry World;
 		DebugDraw Debug;
+		PhysicsWorld Physics;
+		PhysicsBodies Bodies;
 		std::vector<SystemEntry> Systems;
 	};
 }

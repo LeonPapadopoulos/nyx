@@ -48,6 +48,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/CameraComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/DirectionalLightComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/NameComponent.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/PhysicsComponents.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/EntityGuid.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/GuidComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/TypedHandle.cpp
@@ -58,6 +59,7 @@ set(NYX_ENGINE_SOURCES
 
     # Runtime/Sim
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/GameWorld.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Sim/src/PhysicsBodies.cpp
 
     # Runtime/Physics
     ${NYX_ENGINE_ROOT}/Runtime/Physics/src/PhysicsWorld.cpp
@@ -168,6 +170,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/CameraComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/DirectionalLightComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/NameComponent.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/PhysicsComponents.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/EntityGuid.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/GuidComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/TypedHandle.h
@@ -182,6 +185,7 @@ set(NYX_ENGINE_HEADERS
     # Runtime/Sim
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/SimSystem.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/GameWorld.h
+    ${NYX_ENGINE_ROOT}/Runtime/Sim/include/PhysicsBodies.h
 
     # Runtime/Physics
     ${NYX_ENGINE_ROOT}/Runtime/Physics/include/PhysicsWorld.h

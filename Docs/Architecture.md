@@ -48,9 +48,9 @@ doesn't allow, and on a table that goes round in a circle, so a new dependency s
 | `Reflection` | Type and property metadata, and the `NYX_REFLECT` and `NYX_PROPERTY` macros; not under `Runtime` | — |
 | `Net` | TCP connections and the messages they carry | Core |
 | `Input` | Keyboard and mouse, gathered from backends into one `InputFrame` per frame | Core |
-| `Scene` | Entities and components, the component registry, scene files, the tagged binary format | Core, Reflection |
+| `Scene` | Entities and components (the physics components among them), the component registry, scene files, the tagged binary format | Core, Reflection |
 | `Physics` | Rigid bodies, their shapes, collisions and the physics step, on Jolt (`PhysicsWorld`); Jolt's headers stay inside | Core |
-| `Sim` | The game world: its entities and the simulation systems each fixed step runs, in order (`GameWorld`, `ISimSystem`) | Core, Scene |
+| `Sim` | The game world: its entities, their physics bodies kept in step with the physics components (`PhysicsBodies`), and the simulation systems each fixed step runs, in order (`GameWorld`, `ISimSystem`) | Core, Scene, Physics |
 | `Assets` | Asset files as plain data: images, materials, glTF meshes, shader compile requests and results | Core |
 | `UI` | The painter, and the painted UI drawn with it on top of ImGui | Core, Reflection |
 | `Link` | The editor link: its messages, live edits, recordings, the log sink | Core, Net, Scene, Assets |

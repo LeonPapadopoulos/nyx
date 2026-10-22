@@ -100,6 +100,19 @@ Build\Windows\Binaries\Debug\NyxDump.exe Assets\Scenes\Default.nyxscene
 
 A `.nyxlinklog` file prints the same way.
 
+## Physics
+
+Rigid bodies on [Jolt](https://github.com/jrouwe/JoltPhysics), while a game runs:
+
+- Add a collider (*Box Collider*, *Sphere Collider* or *Capsule Collider*) to an entity, and it is
+  something others bump into. Add a *Rigid Body* too, and it falls, slides and tumbles; marked
+  kinematic, it moves only where its transform is set, pushing what it meets. A *Physics
+  Material* sets friction and bounce.
+- The entity's transform places the body and scales its shape.
+- While the game runs, moving an entity in the editor puts its body there and stops it; changing a
+  collider or rigid body makes the body again.
+- The editor doesn't simulate: Play shows physics.
+
 ## Debug drawing
 
 Code can draw lines over a world to show what it does: forces, anchors, bounds, paths.
