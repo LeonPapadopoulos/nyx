@@ -20,7 +20,8 @@ namespace Nyx::Editor
 	// Play and Stop: the open scene runs in NyxGame, as separate programs. Play starts one game
 	// with the first play setup; Play All one per setup marked for it, tiled on the editor's
 	// monitor. Stop asks each game to quit, and ends those that don't within GameInstance::QuitTimeLimit.
-	// Every edit, undo and redo reaches the running games (GameLinkSubscriber).
+	// Every edit, undo and redo reaches the running games (GameLinkSubscriber). Pause and Step run
+	// the games' simulations together.
 	class PlaySession
 	{
 	public:
@@ -82,8 +83,32 @@ namespace Nyx::Editor
 		// For the Stop button's tooltip: one line per game, e.g. "Steam Deck: connected to NyxGame (process 1234)"
 		std::string GetLinkStatus() const;
 
+		// Pause: while running games, stops or resumes their fixed steps; frames, the camera and
+		// edits go on. A game started or restarted while paused starts paused. Stop clears it.
+		void SetPaused(bool bPause);
+		bool IsPaused() const
+		{
+			return bPaused;
+		}
+
+		// Step: while paused, every game runs exactly one fixed step
+		void Step();
+
+		// Whether the toolbar's Pause and Step can be used now
+		bool CanPause() const
+		{
+			return IsRunning() && !IsQuitting();
+		}
+		bool CanStep() const
+		{
+			return CanPause() && bPaused;
+		}
+
 		// Set in Play's right-click menu: the games wait at startup until a debugger is attached
 		bool bGameWaitsForDebugger = false;
+
+		// What Play starts: NyxGame, built next to the editor. Tests start stand-ins instead.
+		std::filesystem::path GameExecutable;
 
 	private:
 		// Saves the open scene for games to run; without a path if that failed (logged)
@@ -106,5 +131,7 @@ namespace Nyx::Editor
 		// Turns edits, undo and redo into messages for the games, from Play on. Update() copies
 		// them into each game's queue.
 		GameLinkSubscriber GameEdits;
+
+		bool bPaused = false;
 	};
 }

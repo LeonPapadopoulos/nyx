@@ -24,7 +24,9 @@ message on the wire is `payload size (u32) | type (u16) | payload`, little-endia
   back. Both send `Hello` first; the editor only accepts the process it started. The messages
   are in `EditorLinkMessages.h`:
   - editor to game: `Quit`, the live edits `SetProperties`, `CreateEntity` and `DeleteEntity`,
-    and `ShaderProgram` and `MaterialValues`;
+    `ShaderProgram` and `MaterialValues`, and the toolbar's Pause and Step,
+    `SetSimulationPaused` and `StepSimulation`, which the game applies to its simulation clock
+    (`ApplySimulationControl()`, `LiveEdits.cpp`);
   - game to editor: `LogLine` and `Crash`.
 - **A program and the shader compiler (`RemoteShaderCompileService`).** The program listens,
   starts `NyxShaderCompiler.exe --port`, and sends compile requests; the compiler answers one at a

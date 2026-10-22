@@ -8,11 +8,16 @@
 #include "BinaryArchive.h"
 #include "EditorLink.h"
 #include "EditorLinkMessageText.h"
+#include "EditorPreferences.h"
 #include "GameInstance.h"
 #include "GameLaunchOptions.h"
+#include "GameLinkPanel.h"
 #include "Log.h"
 #include "NetConnection.h"
 #include "Paths.h"
+#include "PlaySession.h"
+#include "PlayWall.h"
+#include "SceneDocument.h"
 #include "TestSupport.h"
 
 #include <algorithm>
@@ -370,6 +375,88 @@ namespace
 
 		Require(std::chrono::steady_clock::now() < deadline, "The games should have quit before the deadline");
 	}
+	// Pause and Step through Play, as the toolbar uses them: every game gets them, also one that
+	// is still starting or is restarted while paused, and Stop ends the pause
+	void TestPauseAndStep()
+	{
+		Nyx::Editor::SceneDocument scene;
+		GameLinkPanel gameLink;
+		PlaySession session(scene, gameLink);
+		session.GameExecutable = Nyx::Paths::GetExecutableDir() / "NyxGameInstanceTests.exe";
+
+		// Without games there is nothing to pause
+		session.SetPaused(true);
+		Require(!session.IsPaused() && !session.CanPause() && !session.CanStep(), "Pause should do nothing without games");
+
+		// Play All with two games
+		EditorPreferences preferences;
+		Require(preferences.PlaySetups.size() >= 2, "The default play setups should be at least two");
+		for (size_t i = 0; i < preferences.PlaySetups.size(); ++i)
+		{
+			preferences.PlaySetups[i].bInPlayAll = i < 2;
+		}
+		const PlayWallScreen screen = GetPlayWallScreen(nullptr);
+		const GamePlan plan = PlanGames(preferences, true, screen);
+		Require(plan.Games.size() == 2, "Play All should plan two games");
+
+		session.Start(preferences, true, screen);
+		Require(session.IsRunning() && session.CanPause() && !session.CanStep(), "Pause should be usable while games run, Step only while paused");
+
+		// Paused and stepped before the games are linked: they get both once they are
+		session.SetPaused(true);
+		Require(session.IsPaused() && session.CanStep(), "Pause should be on, and Step usable");
+		session.Step();
+
+		const auto got = [&](const std::string& gameName, const std::string& text)
+		{
+			return gameLink.GetLastLogLines(gameName, 100).find(text) != std::string::npos;
+		};
+		const std::string paused = "got " + std::to_string(static_cast<uint16_t>(EEditorLinkMessage::SetSimulationPaused)) + " of 1 bytes";
+		const std::string step = "got " + std::to_string(static_cast<uint16_t>(EEditorLinkMessage::StepSimulation)) + " of 0 bytes";
+
+		const auto updateUntil = [&](const std::function<bool()>& condition, const std::string& what)
+		{
+			const auto giveUpAt = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+			while (!condition())
+			{
+				Require(std::chrono::steady_clock::now() < giveUpAt, "Timed out waiting until " + what);
+				session.Update();
+				std::this_thread::sleep_for(std::chrono::milliseconds(5));
+			}
+		};
+
+		updateUntil(
+			[&]()
+			{
+				return got(plan.Games[0].Name, paused) && got(plan.Games[0].Name, step) && got(plan.Games[1].Name, paused) &&
+					got(plan.Games[1].Name, step);
+			},
+			"both games got Pause and Step");
+
+		// A game restarted while paused starts paused
+		GameCrash crash;
+		crash.GameName = "Restarted";
+		crash.bConsoleWindow = false;
+		session.Restart(crash);
+		updateUntil(
+			[&]()
+			{
+				return got("Restarted", paused);
+			},
+			"the restarted game got Pause");
+		Require(!got("Restarted", step), "The restarted game shouldn't get the step made before it started");
+
+		// Stop ends the pause
+		session.Stop();
+		Require(!session.IsPaused() && !session.CanStep() && !session.CanPause(), "Stop should end the pause");
+		updateUntil(
+			[&]()
+			{
+				return !session.IsRunning();
+			},
+			"the games quit");
+		Require(!session.IsPaused(), "The pause should stay off after Stop");
+	}
 }
 
 int main(int argc, char** argv)
@@ -390,6 +477,7 @@ int main(int argc, char** argv)
 		TestSeveralGames();
 		TestCrashReports();
 		TestStoppingBeforeEditorCloses();
+		TestPauseAndStep();
 
 		std::cout << "All game instance tests passed.\n";
 		return 0;

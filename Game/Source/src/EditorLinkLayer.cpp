@@ -118,6 +118,12 @@ namespace Nyx::Game
 
 	void EditorLinkLayer::ApplyMessage(const Nyx::Net::Message& message)
 	{
+		// Pause and Step go to the simulation's clock
+		if (Nyx::ApplySimulationControl(message, App->GetSimulationClock()) != Nyx::ELiveEditResult::NotALiveEdit)
+		{
+			return;
+		}
+
 		// The editor's shaders and material values go to the renderer
 		if (Nyx::ApplyRendererEdit(message, App->GetRenderer()) != Nyx::ELiveEditResult::NotALiveEdit)
 		{

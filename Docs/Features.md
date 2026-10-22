@@ -16,6 +16,11 @@ What the editor and the game do. How the code behind them is organised is in
 - While the game runs, the button is **Stop**: it asks the game to quit, and ends it if it
   hasn't after 3 seconds. Clicking it again while the game is stopping ends it at once.
 - Opening or creating a scene stops the game.
+- **Pause** (F6), next to Play All, stops the game's simulation while the game runs: no fixed
+  steps, while its frames, its camera and live edits go on. The button stays lit while paused;
+  click it again to resume. A game that starts or restarts while paused starts paused, and Stop
+  ends the pause.
+- **Step** (F10, repeating while held) runs exactly one fixed step while paused.
 - To debug the game, either:
   - right-click Play, turn on *Game Waits for Debugger*, and attach Visual Studio to
     `NyxGame.exe`; or
@@ -32,12 +37,13 @@ What the editor and the game do. How the code behind them is organised is in
   ones Play All starts. Play itself uses the first setup.
 - If the windows don't fit, all of them shrink by the same factor, and their titles say so.
 - Each game has its own editor link and gets every edit. **Stop** asks all of them to quit; a
-  game that crashes or is closed doesn't affect the others.
+  game that crashes or is closed doesn't affect the others. Pause and Step act on all of them.
 - The games of Play All have no console windows unless *Console Windows in Play All* is on.
   Their log reaches the Game Link window either way.
 - Play setups are saved with the editor preferences in `%LOCALAPPDATA%\Nyx\Editor.ini`.
 - Tests: `NyxPlayWallTests` (the setups and the tiling), `NyxGameInstanceTests` (several games
-  as real processes, copies of the test program standing in for them).
+  as real processes, copies of the test program standing in for them; Pause and Step through
+  Play All).
 
 ## The editor link and live edits
 
@@ -129,7 +135,7 @@ leaving out what an opaque shape hides.
   window controls; a toolbar with the menus, the command search, Play, Play All, Pause, Step and
   Build; a status bar with the last scene saved or opened, the errors logged, the graphics API
   and the frame rate. What Nyx doesn't do yet (projects, some workspaces and menus, the command
-  search, Pause, Step and Build) is there but disabled, with a tooltip that says so. Empty parts
+  search and Build) is there but disabled, with a tooltip that says so. Empty parts
   of the titlebar and toolbar drag the window.
 - **Painted widgets** (`UIWidgets.h`): buttons, tabs, toggles, sliders, tree rows, fields,
   checkboxes, menus, combos, colour swatches, asset cards and tables, built on ImGui's own

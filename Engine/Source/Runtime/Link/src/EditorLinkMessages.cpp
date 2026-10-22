@@ -220,6 +220,16 @@ namespace Nyx
 		return reader.ReadString(Path) && reader.ReadString(Text);
 	}
 
+	void SetSimulationPausedMessage::Write(BinaryWriter& writer) const
+	{
+		writer.WriteBool(bPaused);
+	}
+
+	bool SetSimulationPausedMessage::Read(BinaryReader& reader)
+	{
+		return reader.ReadBool(bPaused);
+	}
+
 	uint64_t GetClockTimeMs()
 	{
 		const auto sinceEpoch = std::chrono::system_clock::now().time_since_epoch();

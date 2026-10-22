@@ -451,6 +451,26 @@ namespace Nyx
 			break;
 		}
 
+		case EEditorLinkMessage::SetSimulationPaused:
+		{
+			SetSimulationPausedMessage paused;
+			if (!ReadNetMessage(message, paused))
+			{
+				describeUnreadable("SetSimulationPaused");
+				break;
+			}
+
+			text.Name = "SetSimulationPaused";
+			text.Summary = paused.bPaused ? "paused" : "running";
+			text.Details = std::string("Paused: ") + (paused.bPaused ? "true" : "false");
+			break;
+		}
+
+		case EEditorLinkMessage::StepSimulation:
+			text.Name = "StepSimulation";
+			text.Details = "(no fields)";
+			break;
+
 		default:
 			text.Name = "type " + std::to_string(message.Type);
 			text.Summary = "a type this build doesn't know (" + std::to_string(message.Payload.size()) + " bytes)";

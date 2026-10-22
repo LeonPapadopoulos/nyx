@@ -39,6 +39,8 @@ namespace Nyx
 		Crash = 7,
 		ShaderProgram = 8,
 		MaterialValues = 9,
+		SetSimulationPaused = 10,
+		StepSimulation = 11,
 	};
 
 	// The first message in both directions. Its layout never changes, so any two versions can
@@ -190,6 +192,35 @@ namespace Nyx
 
 		void Write(BinaryWriter& writer) const;
 		bool Read(BinaryReader& reader);
+	};
+
+	// Pause and Step: the editor's toolbar runs the games' simulations; see
+	// ApplySimulationControl() in LiveEdits.h. Frames, the camera and live edits go on while paused.
+
+	// Editor to game: stop or resume the fixed steps
+	struct SetSimulationPausedMessage
+	{
+		static constexpr EEditorLinkMessage Type = EEditorLinkMessage::SetSimulationPaused;
+
+		bool bPaused = false;
+
+		void Write(BinaryWriter& writer) const;
+		bool Read(BinaryReader& reader);
+	};
+
+	// Editor to game: while paused, run exactly one fixed step
+	struct StepSimulationMessage
+	{
+		static constexpr EEditorLinkMessage Type = EEditorLinkMessage::StepSimulation;
+
+		void Write(BinaryWriter& /*writer*/) const
+		{
+		}
+
+		bool Read(BinaryReader& /*reader*/)
+		{
+			return true;
+		}
 	};
 
 	// A message as it travels over the connection, e.g. to keep it in a queue until a link is

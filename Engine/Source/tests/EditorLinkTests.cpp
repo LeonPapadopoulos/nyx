@@ -7,6 +7,7 @@
 #include "EditorLinkMessageText.h"
 #include "EditorLinkRecorder.h"
 #include "EditorLinkRecordingPrinter.h"
+#include "FixedStepClock.h"
 #include "GuidComponent.h"
 #include "LiveEdits.h"
 #include "Log.h"
@@ -581,6 +582,12 @@ namespace
 
 		Require(describe(QuitMessage{}).Name == "Quit", "Quit is described wrongly");
 
+		const EditorLinkMessageText pausedText = describe(SetSimulationPausedMessage{ true });
+		Require(pausedText.Name == "SetSimulationPaused" && pausedText.Summary == "paused" && pausedText.Details == "Paused: true",
+			"SetSimulationPaused is described wrongly: " + pausedText.Summary + " / " + pausedText.Details);
+		Require(describe(SetSimulationPausedMessage{ false }).Summary == "running", "SetSimulationPaused is described wrongly");
+		Require(describe(StepSimulationMessage{}).Name == "StepSimulation", "StepSimulation is described wrongly");
+
 		const EditorLinkMessageText unknown = DescribeEditorLinkMessage(Message{ 999, MakeBytes(3, 1) });
 		Require(unknown.Name == "type 999" && Contains(unknown.Details, "(3 bytes)"), "An unknown type is described wrongly: " + unknown.Details);
 
@@ -804,6 +811,75 @@ namespace
 		links.Editor->Close("done");
 	}
 
+	// Pause and Step from the editor reach the game's simulation clock: paused, no steps run; a
+	// step runs exactly one, then none again
+	void TestPauseAndStepOverTheLink(Listener& listener)
+	{
+		LinkPair links = StartLinks(listener);
+		Require(PumpUntil([&]
+					{
+						links.Update(listener, [](EditorLink&)
+							{
+							});
+					},
+					[&]
+					{
+						return links.Game->IsConnected() && links.Editor->IsConnected();
+					}),
+			"The handshake didn't finish");
+
+		links.Editor->Send(SetSimulationPausedMessage{ true });
+		links.Editor->Send(StepSimulationMessage{});
+		links.Editor->Send(SetSimulationPausedMessage{ false });
+
+		FixedStepClock clock;
+		Require(clock.Advance(FixedStepClock::DefaultStepSeconds * 2.5) == 2, "A running clock should step");
+
+		std::vector<Message> received;
+		Require(PumpUntil(
+					[&]
+					{
+						links.Update(listener, [](EditorLink&)
+							{
+							});
+						while (std::optional<Message> message = links.Game->Receive())
+						{
+							received.push_back(std::move(*message));
+						}
+					},
+					[&]
+					{
+						return received.size() == 3;
+					}),
+			"Pause and Step didn't arrive");
+
+		Require(ReadAs<SetSimulationPausedMessage>(received[0]).bPaused, "SetSimulationPaused changed on the way");
+		ReadAs<StepSimulationMessage>(received[1]);
+		Require(!ReadAs<SetSimulationPausedMessage>(received[2]).bPaused, "SetSimulationPaused changed on the way");
+
+		Require(ApplySimulationControl(received[0], clock) == ELiveEditResult::Applied && clock.IsPaused(), "Pause wasn't applied");
+		const uint64_t pausedAt = clock.GetStepIndex();
+		Require(clock.Advance(1.0) == 0 && clock.GetStepIndex() == pausedAt, "A paused clock shouldn't step");
+
+		Require(ApplySimulationControl(received[1], clock) == ELiveEditResult::Applied, "Step wasn't applied");
+		Require(clock.Advance(1.0) == 1, "Step should run exactly one step");
+		Require(clock.Advance(1.0) == 0 && clock.GetStepIndex() == pausedAt + 1, "Step should run one step, once");
+
+		Require(ApplySimulationControl(received[2], clock) == ELiveEditResult::Applied && !clock.IsPaused(), "Resuming wasn't applied");
+		Require(clock.Advance(FixedStepClock::DefaultStepSeconds * 1.5) >= 1, "A resumed clock should step again");
+
+		// A step while running does nothing; other messages aren't for the clock
+		Require(ApplySimulationControl(received[1], clock) == ELiveEditResult::Ignored, "A step while running should be ignored");
+		Require(ApplySimulationControl(MakeNetMessage(QuitMessage{}), clock) == ELiveEditResult::NotALiveEdit,
+			"Quit isn't for the clock");
+		Require(ApplySimulationControl(Message{ static_cast<uint16_t>(EEditorLinkMessage::SetSimulationPaused), {} }, clock) ==
+				ELiveEditResult::Unreadable,
+			"An empty SetSimulationPaused should be unreadable");
+
+		links.Game->Close("done");
+		links.Editor->Close("done");
+	}
+
 	void TestListenerWithoutWaitingPrograms(Listener& listener)
 	{
 		Require(listener.IsListening() && listener.GetPort() != 0, "The listener isn't listening");
@@ -835,6 +911,7 @@ int main()
 		TestBadHellos(listener);
 		TestQuitAndLogLines(listener);
 		TestLiveEditsOverTheLink(listener);
+		TestPauseAndStepOverTheLink(listener);
 		TestDescriptions();
 		TestRecording();
 		TestLogSink();

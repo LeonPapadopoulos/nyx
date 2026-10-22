@@ -220,4 +220,33 @@ namespace Nyx
 			return ELiveEditResult::NotALiveEdit;
 		}
 	}
+
+	ELiveEditResult ApplySimulationControl(const Net::Message& message, FixedStepClock& clock)
+	{
+		switch (static_cast<EEditorLinkMessage>(message.Type))
+		{
+		case EEditorLinkMessage::SetSimulationPaused:
+			return ReadAndApply<SetSimulationPausedMessage>(message, "SetSimulationPaused",
+				[&](const SetSimulationPausedMessage& paused)
+				{
+					clock.SetPaused(paused.bPaused);
+					LOG_INFO("Simulation {0} at step {1}", paused.bPaused ? "paused" : "resumed", clock.GetStepIndex());
+					return ELiveEditResult::Applied;
+				});
+
+		case EEditorLinkMessage::StepSimulation:
+			if (!clock.IsPaused())
+			{
+				LOG_WARNING("Simulation: ignored a step, since it isn't paused");
+				return ELiveEditResult::Ignored;
+			}
+
+			clock.StepOnce();
+			LOG_INFO("Simulation: one step from step {0}", clock.GetStepIndex());
+			return ELiveEditResult::Applied;
+
+		default:
+			return ELiveEditResult::NotALiveEdit;
+		}
+	}
 }

@@ -1,5 +1,6 @@
 #include "PlaySession.h"
 
+#include "EditorLinkMessages.h"
 #include "EditorPreferences.h"
 #include "GameLinkPanel.h"
 #include "Log.h"
@@ -14,7 +15,9 @@
 namespace Nyx::Editor
 {
 	PlaySession::PlaySession(const SceneDocument& scene, GameLinkPanel& gameLinkWindow)
-		: Scene(scene)
+		// NyxGame is built next to the editor, since building the editor builds it too
+		: GameExecutable(Nyx::Paths::GetExecutableDir() / "NyxGame.exe")
+		, Scene(scene)
 		, GameLinkWindow(gameLinkWindow)
 		, GameEdits(scene)
 	{
@@ -79,16 +82,13 @@ namespace Nyx::Editor
 
 	bool PlaySession::LaunchGame(const std::string& name, const Nyx::GameLaunchOptions& launchOptions, bool bConsoleWindow)
 	{
-		// NyxGame is built next to the editor, since building the editor builds it too
-		const std::filesystem::path gameExecutable = Nyx::Paths::GetExecutableDir() / "NyxGame.exe";
-
 		auto game = std::make_unique<GameInstance>(name,
 			[this](const std::string& gameName, Nyx::ELinkDirection direction, const Nyx::Net::Message& message)
 			{
 				GameLinkWindow.AddMessage(gameName, direction, message);
 			});
 
-		if (!game->Start(gameExecutable, launchOptions, bConsoleWindow))
+		if (!game->Start(GameExecutable, launchOptions, bConsoleWindow))
 		{
 			return false;
 		}
@@ -96,6 +96,12 @@ namespace Nyx::Editor
 		if (StateForNewGames)
 		{
 			game->QueueEdits(StateForNewGames());
+		}
+
+		// Starts paused, like the games already running
+		if (bPaused)
+		{
+			game->QueueEdits({ Nyx::MakeNetMessage(Nyx::SetSimulationPausedMessage{ true }) });
 		}
 
 		Games.push_back(std::move(game));
@@ -129,8 +135,30 @@ namespace Nyx::Editor
 		LOG_INFO("Restarted {0}", crash.GameName);
 	}
 
+	void PlaySession::SetPaused(bool bPause)
+	{
+		if (!CanPause() || bPause == bPaused)
+		{
+			return;
+		}
+
+		bPaused = bPause;
+		SendToGames(Nyx::MakeNetMessage(Nyx::SetSimulationPausedMessage{ bPaused }));
+		LOG_INFO("Play: {0} the games", bPaused ? "paused" : "resumed");
+	}
+
+	void PlaySession::Step()
+	{
+		if (CanStep())
+		{
+			SendToGames(Nyx::MakeNetMessage(Nyx::StepSimulationMessage{}));
+		}
+	}
+
 	void PlaySession::Stop()
 	{
+		bPaused = false;
+
 		// Stop pressed again while games are quitting: ends them all at once
 		if (IsQuitting())
 		{
@@ -149,6 +177,7 @@ namespace Nyx::Editor
 
 	void PlaySession::EndNow()
 	{
+		bPaused = false;
 		GameEdits.EndSession();
 
 		for (const std::unique_ptr<GameInstance>& game : Games)
@@ -188,6 +217,7 @@ namespace Nyx::Editor
 			}
 		}
 		GameEdits.EndSession();
+		bPaused = false;
 	}
 
 	void PlaySession::Update()
@@ -221,6 +251,12 @@ namespace Nyx::Editor
 		if (!AnyTakesEdits() && GameEdits.IsSessionActive())
 		{
 			GameEdits.EndSession();
+		}
+
+		// The last game exited by itself: the next Play starts running
+		if (Games.empty())
+		{
+			bPaused = false;
 		}
 	}
 

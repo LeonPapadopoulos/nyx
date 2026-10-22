@@ -1,9 +1,9 @@
 # Simulation loop
 
 **Partly a proposal.** How a game's world moves forward in time, and why. Built so far: the fixed
-steps (`FixedStepClock`, `ILayer::OnFixedUpdate()`, in `Application::Run()`) and the world with its
-ordered systems (`GameWorld`, `ISimSystem`, in `Engine/Source/Runtime/Sim`). Commands, events,
-drawing between steps, Pause and Step are still the plan.
+steps (`FixedStepClock`, `ILayer::OnFixedUpdate()`, in `Application::Run()`), the world with its
+ordered systems (`GameWorld`, `ISimSystem`, in `Engine/Source/Runtime/Sim`), and Pause and Step.
+Commands, events, drawing between steps and time scale are still the plan.
 
 ## The shape of it
 
@@ -74,10 +74,11 @@ drawing between steps, Pause and Step are still the plan.
 
 ## Pause, Step and time scale
 
-- **Pause** stops steps; frames go on, so the camera still moves and debug drawing still shows.
-  **Step** runs exactly one step while paused. Both come from the toolbar's Pause and Step,
-  disabled today, over two new editor link messages. New message types need no new protocol
-  version: a side that doesn't know one skips it.
+- **Built:** **Pause** stops steps; frames go on, so the camera still moves and debug drawing
+  still shows. **Step** runs exactly one step while paused. Both come from the toolbar's Pause and
+  Step (F6 and F10), over the editor link messages `SetSimulationPaused` and `StepSimulation`,
+  for every running game; a game started while paused starts paused. New message types need no
+  new protocol version: a side that doesn't know one skips it.
 - **Time scale** (0.1 to 4) multiplies the time added to the accumulator. Debug only.
 
 ## Determinism

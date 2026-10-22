@@ -15,7 +15,6 @@
 #include <cfloat>
 #include <optional>
 #include <string>
-#include <tuple>
 #include <vector>
 
 namespace Nyx::Editor
@@ -111,19 +110,54 @@ namespace Nyx::Editor
 			ImGui::OpenPopup("##PlayOptions");
 		}
 
-		// Pause and Step, disabled until games can pause
-		ImGui::BeginDisabled();
-		for (const auto& [id, icon, tooltip] : { std::tuple{ "##Pause", Nyx::UI::EIcon::Pause, "Pause: not in Nyx yet" },
-				 std::tuple{ "##Step", Nyx::UI::EIcon::Step, "Step one frame: not in Nyx yet" } })
+		// Pause, lit while on, and Step, while paused. Disabled rather than hidden, so the buttons stay in place.
+		ImGui::SameLine(0.0f, spacing);
+		ImGui::BeginDisabled(!session.CanPause());
+		const Nyx::UI::EButtonTone pauseTone = session.IsPaused() ? Nyx::UI::EButtonTone::Primary : Nyx::UI::EButtonTone::Neutral;
+		if (NYX_UI(Nyx::UI::IconButton("##Pause", Nyx::UI::EIcon::Pause, buttonSize, pauseTone)))
 		{
-			ImGui::SameLine(0.0f, spacing);
-			NYX_UI(Nyx::UI::IconButton(id, icon, buttonSize));
-			if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | ImGuiHoveredFlags_AllowWhenDisabled))
-			{
-				ImGui::SetTooltip("%s", tooltip);
-			}
+			session.SetPaused(!session.IsPaused());
 		}
 		ImGui::EndDisabled();
+
+		if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | ImGuiHoveredFlags_AllowWhenDisabled))
+		{
+			if (session.IsPaused())
+			{
+				ImGui::SetTooltip("Resume (F6): the games' simulations run again.");
+			}
+			else
+			{
+				ImGui::SetTooltip("Pause (F6): stops the games' simulations; their frames, camera and edits go on.\n"
+								  "Games started while paused start paused. Stop ends the pause.");
+			}
+		}
+
+		ImGui::SameLine(0.0f, spacing);
+		ImGui::BeginDisabled(!session.CanStep());
+		if (NYX_UI(Nyx::UI::IconButton("##Step", Nyx::UI::EIcon::Step, buttonSize)))
+		{
+			session.Step();
+		}
+		ImGui::EndDisabled();
+
+		if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | ImGuiHoveredFlags_AllowWhenDisabled))
+		{
+			ImGui::SetTooltip("Step (F10): while paused, every game runs one fixed step.");
+		}
+
+		// Their keys, unless a text field takes them. Step repeats while F10 is held.
+		if (!ImGui::GetIO().WantTextInput)
+		{
+			if (ImGui::IsKeyPressed(ImGuiKey_F6, false))
+			{
+				session.SetPaused(!session.IsPaused());
+			}
+			else if (ImGui::IsKeyPressed(ImGuiKey_F10))
+			{
+				session.Step();
+			}
+		}
 
 		DrawOptionsMenu(session, preferences);
 	}

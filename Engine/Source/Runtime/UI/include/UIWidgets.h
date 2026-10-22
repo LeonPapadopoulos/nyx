@@ -32,7 +32,7 @@ namespace Nyx::UI
 	// The widgets. Each returns what its ImGui counterpart returns.
 
 	// What a button does, which picks its colour: Go starts something (Play), Stop ends it, and
-	// Primary does the main thing of its bar (Build)
+	// Primary does the main thing of its bar (Build), or shows that a toggle is on (Pause)
 	enum class EButtonTone
 	{
 		Neutral,

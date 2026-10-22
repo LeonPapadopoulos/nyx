@@ -2,6 +2,7 @@
 
 #include "EditorLinkMessages.h"
 #include "Entity.h"
+#include "FixedStepClock.h"
 #include "NetConnection.h"
 #include "SceneSerializationTypes.h"
 
@@ -48,4 +49,8 @@ namespace Nyx
 	// ignored, as it holds only the values that changed; so are messages for entities the world
 	// doesn't have.
 	ELiveEditResult ApplyLiveEdit(const Net::Message& message, Registry& world, ScenePostLoadContext postLoadContext);
+
+	// Applies a SetSimulationPaused or StepSimulation message to the simulation's clock. A step
+	// while running is ignored, as the clock steps on its own.
+	ELiveEditResult ApplySimulationControl(const Net::Message& message, FixedStepClock& clock);
 }

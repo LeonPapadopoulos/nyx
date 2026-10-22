@@ -273,6 +273,9 @@ namespace
 		session.OnSceneReplaced();
 		session.Update();
 		Require(!session.IsRunning() && !session.IsQuitting() && session.TakeCrashes().empty(), "An idle session should stay idle");
+		session.SetPaused(true);
+		session.Step();
+		Require(!session.IsPaused() && !session.CanPause() && !session.CanStep(), "Pause and Step should do nothing without games");
 	}
 
 	// The painted widgets (UIWidgets.h) behave as ImGui's own: mouse, keyboard, disabled, and the
