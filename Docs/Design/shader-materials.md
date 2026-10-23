@@ -64,8 +64,11 @@ on and requires when it chooses the GPU.
 ## Materials
 
 - **A shader** is a `.slang` file in `Assets/Shaders`: a struct named like the file, with its
-  parameters and their defaults, for a domain. `Standard.slang` is the one in use; Surface (3D
-  meshes) is the only domain so far. `[Enum("A, B, C")]` on a `uint` field makes the Parameters
+  parameters and their defaults, for a domain. `Standard.slang` is the one in use for most meshes,
+  `VertexColor.slang` draws a mesh in its vertex colours (a generated ground's); Surface (3D
+  meshes) is the only domain so far. A surface material gets `SurfaceInput`: UV, the vertex colour
+  (`Color`, linear, white for meshes without one), normal, tangent, position, the direction to the
+  camera, the draw's custom data and the decal's values. `[Enum("A, B, C")]` on a `uint` field makes the Parameters
   window offer the choices by name.
 - **A material** is a `.nyxmat` text file: which shader, and values for some of its parameters;
   everything else takes the shader's default. Text, so it diffs and can be written by hand. Its

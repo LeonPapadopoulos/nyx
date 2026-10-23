@@ -1,6 +1,7 @@
 #include "ComponentRegistration.h"
 
 #include "ComponentTypeRegistry.h"
+#include "GroundMesh.h"
 #include "IAssetResolver.h"
 #include "MeshRendererComponent.h"
 #include "SurfaceDecalComponent.h"
@@ -36,6 +37,16 @@ namespace Nyx
 			}
 		}
 
+		// A ground's mesh is derived from its values: made, or made again, wherever it is loaded, added or
+		// edited, in the editor and in a game, and never saved. The way generated content is made.
+		void MakeGroundMeshAfterLoad(GroundComponent& component, ScenePostLoadContext& context)
+		{
+			if (context.World)
+			{
+				UpdateGroundMesh(component, *context.World, context.Entity);
+			}
+		}
+
 		// The same for a decal's material
 		void ResolveSurfaceDecalAssets(SurfaceDecalComponent& component, ScenePostLoadContext& context)
 		{
@@ -53,5 +64,7 @@ namespace Nyx
 		// Components that need more than their reflected properties after being loaded.
 		ComponentTypeRegistry::Get().SetPostLoad<MeshRendererComponent>(&ResolveMeshRendererAssets);
 		ComponentTypeRegistry::Get().SetPostLoad<SurfaceDecalComponent>(&ResolveSurfaceDecalAssets);
+		ComponentTypeRegistry::Get().SetPostLoad<GroundComponent>(&MakeGroundMeshAfterLoad);
+		ComponentTypeRegistry::Get().SetOnRemove<GroundComponent>(&RemoveGroundMesh);
 	}
 }

@@ -9,7 +9,6 @@
 #include "EditorRenderer.h"
 #include "OrbitCameras.h"
 #include "PhysicsPick.h"
-#include "SampleGround.h"
 #include "SceneSerializer.h"
 #include "ThirdPersonPlayer.h"
 #include "UIChrome.h"
@@ -86,10 +85,6 @@ namespace Nyx::Game
 		Renderer->SetWorldDebugDraw(&World.GetRegistry(), &World.GetDebugDraw());
 		// Moving bodies drawn between their last two steps, by the simulation clock
 		Renderer->SetWorldInterpolation(&World.GetRegistry(), &application.GetSimulationClock());
-
-		// Nyx's own before the module's: the sample ground's mesh, until a ground generator takes its
-		// place. It costs nothing in a world without a Sample Ground.
-		World.AddSystem(std::make_unique<Nyx::SampleGroundSystem>());
 
 		// The game module's systems, in their order; they run from the first fixed step on
 		if (const auto createSystems = application.GetGameModule().CreateSystems)

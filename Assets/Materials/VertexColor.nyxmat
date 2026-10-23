@@ -1,0 +1,3 @@
+# Its mesh's vertex colours, matte, e.g. a generated ground's
+Shader = Shaders/VertexColor.slang
+Roughness = 0.9

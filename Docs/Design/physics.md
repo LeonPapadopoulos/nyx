@@ -136,9 +136,13 @@ between their anchors; nothing with every part off.
   - a mesh collider's body is made again when its mesh's data (the `MeshData` it points at) or
     revision changes, or the scale or its smooth edge angle; a hash of those is compared each step,
     which costs nothing like making it. Its triangles are made from the `MeshData` only then. A
-    mesh that isn't there yet (its generator's system runs after the bodies are synced, so the
-    first step has none), is empty or isn't valid (logged) leaves the collider without a body until
-    the mesh changes. A rigid body beside it is warned of once and doesn't move it;
+    mesh that isn't there yet, is empty or isn't valid (logged) leaves the collider without a body
+    until the mesh changes. A rigid body beside it is warned of once and doesn't move it. Making the
+    body costs (about 0.3 s for 32 768 triangles in Debug, Jolt's asserts on), so while the mesh
+    keeps changing, e.g. as a ground's value is dragged in the editor during Play, which sends
+    the game a live edit every frame, the old body stays: the new one is made once the mesh has held
+    still for `MeshSettleSteps` (15, a quarter of a second), or `MeshMostStaleSteps` (60) after the
+    first change at most. A body that doesn't exist yet is made at once;
   - a transform set since the last step, by a system or an editor's live edit, teleports its body
     and stops it. Compared exactly with what the bodies wrote back, so only real changes count;
   - kinematic bodies are moved to their transforms over the step;
@@ -206,23 +210,22 @@ between their anchors; nothing with every part off.
   through from below; a character walks up a 25 degree mesh ramp and not up a 50 degree one, climbs
   a 0.25 m mesh step and is stopped by a 0.45 m one, as on boxes; the body is made once, kept while
   nothing changes, also when the data changes without a new revision, and made again once for a new
-  revision, new data and a new scale; a mesh that isn't valid makes none; without its mesh or its
-  collider, the body goes; a rigid body leaves it still, and `PhysicsWorld` refuses a dynamic mesh;
-  the debug view draws two triangles in 6 lines where the body is, and a mesh of more triangles
-  than asked for as its bounds' 12; the sample ground is valid, as big and bumpy as asked, made once
-  and again when its values change; the sample scene loads, and its character and crates stand on
-  the ground.
+  revision, new data and a new scale, each after the mesh held still for `MeshSettleSteps`; a mesh
+  changing every step has its body made again once in `MeshMostStaleSteps`; a mesh that isn't valid
+  makes none; without its mesh or its collider, the body goes; a rigid body leaves it still, and
+  `PhysicsWorld` refuses a dynamic mesh; the debug view draws two triangles in 6 lines where the body
+  is, and a mesh of more triangles than asked for as its bounds' 12.
+- `NyxGroundTests`: a character stands on the ground and a crate slides down the valley's side; the
+  ground's Mesh Collider follows an edit of the ground.
 - **The sample scene** `Assets/Scenes/CharacterTest.nyxscene` (written by
   `NyxCharacterTests --write-scene`, with its materials in `Assets/Materials/CharacterTest`): a
   floor, a 25 degree ramp and a 50 degree one, steps of 0.2 m and 0.5 m, four 10 kg crates, a
   character with the built-in capsule mesh (`Meshes/Capsule.nyxmesh`, the default character's size
   standing on its origin) and an orbit camera following it.
-- **The mesh sample scene** `Assets/Scenes/MeshTest.nyxscene` (written by
-  `NyxMeshColliderTests --write-scene`, with the character test scene's materials): a *Sample
-  Ground* (`SampleGroundComponent`, 40 m square, bumps of 0.6 m every 8 m, in 48 by 48 cells) with
-  a Mesh Renderer and a Mesh Collider, five crates on it, the character and an orbit camera.
-  `SampleGroundSystem` (Sim) makes its mesh in the game, which adds the system to every world; the
-  editor shows the scene without it.
+- **The ground sample scene** `Assets/Scenes/GroundTest.nyxscene` (written by
+  `NyxGroundTests --write-scene`, with the character test scene's materials for the crates and the
+  character): the default `GroundComponent` with `Materials/VertexColor.nyxmat` and a Mesh Collider,
+  five crates, the character and an orbit camera.
 
 ## Not built yet
 

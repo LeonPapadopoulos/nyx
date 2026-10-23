@@ -18,9 +18,11 @@ namespace Nyx
 	// - before the step, bodies are made for new colliders, made again when a component's values or
 	//   the entity's scale changed, and destroyed with their collider or entity. A mesh collider's
 	//   body is made again when its mesh's data or revision changed (RuntimeMeshComponent), and only
-	//   then. A transform set from outside since the last step, by a system or an editor's live
-	//   edit, teleports its body and stops it; a kinematic body is moved to its transform over the
-	//   step.
+	//   then; since that costs as much as making it, the old body stays while the mesh keeps
+	//   changing, e.g. as a value is dragged in the editor, until it has held still for
+	//   MeshSettleSteps, or for MeshMostStaleSteps at most. A transform set from outside since the
+	//   last step, by a system or an editor's live edit, teleports its body and stops it; a kinematic
+	//   body is moved to its transform over the step.
 	// - after the step, dynamic bodies write where they are into their transforms, and those that
 	//   moved where they were before into a PreviousTransformComponent, to be drawn between the two.
 	//   A teleported body has none until it moves again. A kinematic body whose transform a system
@@ -48,6 +50,11 @@ namespace Nyx
 		CharacterHandle FindCharacter(Entity entity) const;
 
 		size_t GetBodyCount() const { return Bodies.size(); }
+
+		// A changed mesh's body is made again once the mesh has held still this many steps, or after
+		// this many steps of changes at most
+		static constexpr uint32_t MeshSettleSteps = 15;
+		static constexpr uint32_t MeshMostStaleSteps = 60;
 		size_t GetCharacterCount() const { return Characters.size(); }
 
 	private:
@@ -63,6 +70,12 @@ namespace Nyx
 			// body's transform as the step began
 			BodyPose LastPose;
 			bool bSeen = false;
+			// A mesh's body: the description it will be made again from once that holds still, how
+			// many steps it has, and how many steps the body is behind its mesh
+			bool bMesh = false;
+			uint64_t PendingHash = 0;
+			uint32_t PendingStillSteps = 0;
+			uint32_t StaleSteps = 0;
 		};
 
 		struct TrackedCharacter
@@ -81,6 +94,11 @@ namespace Nyx
 		};
 
 		void SyncCharacters(Registry& world, PhysicsWorld& physics);
+
+		// Whether a mesh body whose description is now `hash` is made again this step: at once if it
+		// has no body or wasn't a mesh; else once the new description has held still for
+		// MeshSettleSteps, or the body has been behind for MeshMostStaleSteps
+		static bool IsMeshBodyDue(TrackedBody& tracked, bool bMesh, uint64_t hash);
 
 		// Warns once for each entity with a rigid body but no collider, which has no body, or with a
 		// mesh collider, which stays still: easy to miss, since nothing else shows it

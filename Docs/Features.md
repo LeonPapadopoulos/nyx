@@ -133,8 +133,11 @@ Rigid bodies on [Jolt](https://github.com/jrouwe/JoltPhysics), while a game runs
   ([Meshes made at run time](#meshes-made-at-run-time)), scaled as the entity: a generated ground
   that crates land and slide on, characters walk on (its slopes and steps as on boxes) and rays hit.
   It is always static, also with a *Rigid Body* (which is warned of once). Its body is made again
-  when the mesh's revision or data, or the entity's scale, changes, and only then: that costs about
-  as much as making it. A ray from behind a triangle passes through it, as from under a ground. Its
+  when the mesh's revision or data, or the entity's scale, changes, and only then: that costs as
+  much as making it (a 128 m ground's 32 768 triangles, about 0.3 s in a Debug build). So while the
+  mesh keeps changing, e.g. as a value of its ground is dragged in the editor during Play, the old
+  body stays, and the new one is made once the mesh has held still for a quarter of a second, or
+  after a second at most. A ray from behind a triangle passes through it, as from under a ground. Its
   *Smooth Edge Degrees* says where two triangles meet flat enough that what slides over the edge
   doesn't catch on it.
 - While the game runs, moving an entity in the editor puts its body there and stops it; changing a
@@ -149,10 +152,8 @@ Rigid bodies on [Jolt](https://github.com/jrouwe/JoltPhysics), while a game runs
   rays see it unless told to leave it out. Moving it in the editor while the game runs puts it
   there; changing its shape makes it again.
 - `Assets/Scenes/CharacterTest.nyxscene` has a character among ramps, steps and crates.
-- `Assets/Scenes/MeshTest.nyxscene` has a bumpy ground made at run time, with a mesh collider, crates
-  on it and the character. The ground is a *Sample Ground*, a stand-in until a ground generator: its
-  size, cells, bump height and spacing are on the component, and the game makes its mesh again when
-  they change. The editor, which doesn't run systems, shows the scene without the ground.
+- `Assets/Scenes/GroundTest.nyxscene` has the character, crates and an orbit camera in a valley
+  ([The ground](#the-ground)).
 - The editor doesn't simulate: Play shows physics.
 
 ## Input
@@ -450,10 +451,9 @@ mesh is made again as it grows.
 - It is drawn, picked, outlined when selected, shows its bounds, is drawn between steps when it
   moves, and carries surface decals, as a mesh loaded by its path does.
 - It isn't saved, edited or sent to a game: whoever made it makes it again after a scene is loaded.
-  The pattern is a generator component, reflected and saved with its values (a size, a seed, a
-  growth stage), and a system that gives each such entity its `RuntimeMeshComponent` when it has
-  none, or when the values it was made from changed, raising the revision. The editor doesn't run
-  systems, so an editor scene shows such a mesh only once something makes it there.
+  Content made from a component's values, such as the ground, is made in the component's post-load
+  step, so it shows in the editor and the game alike and follows every edit
+  ([Architecture: Generated content](Architecture.md#generated-content)).
 - The editor's details panel shows it read-only under *Mesh Made at Run Time*: its vertices and
   triangles, each section's triangles and material slot, whether it is drawn, and its revision.
 - A *Mesh Collider* makes it ground to stand on ([Physics](#physics)).
@@ -463,6 +463,40 @@ mesh is made again as it grows.
   a mesh share its upload, and one nobody draws is let go of; one that isn't valid draws nothing; a
   click picks it, selected it is outlined; two sections draw with two materials; a decal on it is
   drawn), `NyxEditorPanelTests` (the details panel's lines).
+
+## The ground
+
+A *Ground* is a landscape made from a few values, a placeholder until the game's terrain is
+decided: by default a valley about 128 by 128 m, nearly flat in the middle, its sides rising.
+
+- Add a *Ground*, a *Mesh Renderer* with `Materials/VertexColor.nyxmat` (its *Mesh* left empty) and
+  a *Mesh Collider*. The ground's mesh is made at once, in the editor and in the game, and again
+  whenever a value changes: in the details panel when an edit ends (a drag when it is let go),
+  with undo and redo, and in a running game with each live edit. It is never saved.
+- *Size* and *Spacing*: the area around the entity and the mesh's grid, at most 512 squares a side.
+  *Seed*: another ground of the same kind. *Noise*: layers (*Octaves*) of smooth hills, the first
+  *Frequency* hills a metre, up to *Amplitude* metres high, each layer *Lacunarity* times finer and
+  *Gain* times fainter. *Shape*: a *Basin* (a valley along Z, a bowl, or none) rising *Basin
+  Depth* metres at the edges from a floor *Basin Floor* of the way out; a nearly flat place
+  *Flat Radius* metres round the middle, the hills coming back over *Flat Blend*; terraces of
+  *Terrace Height* metres, from gentle slopes (*Terrace Sharpness* 0) to steps (1).
+- *Colours*: *Grass*, *Earth* and *Stone* (linear RGB) as vertex colours: grass on gentle low ground,
+  thinning to earth from *Grass Thins From* to *Grass Gone At* metres up, earth past *Earth Slope*
+  degrees, stone past *Stone Slope*, blended over *Slope Blend*. UVs are in metres.
+- `Materials/VertexColor.nyxmat` (`Shaders/VertexColor.slang`) draws a mesh in its vertex colours,
+  lit as any surface; every surface material can read them (`SurfaceInput.Color`).
+- The height is a function of the values alone, the same on every machine
+  (`SampleGroundHeight()`), and apart from the mesh: what stands on the ground uses the mesh and
+  rays, so the ground can become chunks or voxels later.
+- Making the default ground takes about 21 ms in a Debug build.
+- `Assets/Scenes/GroundTest.nyxscene` (written by `NyxGroundTests --write-scene`): the default
+  ground, crates on the flat place and up the valley's side, the character and an orbit camera.
+- Tests: `NyxGroundTests` (the same heights every time, to the bit and as when written; smooth;
+  the mesh valid, sized as asked, at the heights, its normals up; steep ground stone, low flat
+  ground grass; the post-load step makes the mesh, nothing again for the same values, a new
+  revision for new ones, the collider follows, removing takes the mesh away, a loaded scene has
+  it; a character stands on it and a crate slides down the valley's side; the sample scene),
+  `NyxEditorPanelTests` (added, edited, undone, removed and undone again in the editor).
 
 ## Surface decals
 

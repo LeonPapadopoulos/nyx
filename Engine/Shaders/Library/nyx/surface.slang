@@ -70,6 +70,8 @@ public struct DecalInput
 public struct SurfaceInput
 {
     public float2 UV;
+    // The mesh's vertex colour, linear; white for a mesh that has none, as the built-in meshes
+    public float3 Color;
     // Normalised
     public float3 NormalWS;
     // Along u in xyz; w the side of the bitangent (normalFromMap())
@@ -153,6 +155,7 @@ public struct VertexInput
 public struct VertexOutput
 {
     public float4 Position : SV_Position;
+    public float3 Color : COLOR;
     public float2 UV : TEXCOORD0;
     public float3 NormalWS : NORMAL;
     public float4 TangentWS : TANGENT;
@@ -176,6 +179,7 @@ public VertexOutput transformSurfaceVertex(VertexInput input)
     float4 positionWS = mul(Object.Model, float4(input.Position, 1.0));
     VertexOutput output;
     output.Position = mul(View.ViewProjection, positionWS);
+    output.Color = input.Color;
     output.UV = input.UV;
     output.NormalWS = mul(normalMatrix(Object.Model), input.Normal);
     // Tangents lie along the surface, so they follow the model itself
@@ -204,6 +208,7 @@ SurfaceInput makeSurfaceInput(VertexOutput vertex, DecalInput decal)
 {
     SurfaceInput input;
     input.UV = vertex.UV;
+    input.Color = vertex.Color;
     input.NormalWS = normalize(vertex.NormalWS);
     input.TangentWS = float4(normalize(vertex.TangentWS.xyz), vertex.TangentWS.w);
     input.PositionWS = vertex.PositionWS;

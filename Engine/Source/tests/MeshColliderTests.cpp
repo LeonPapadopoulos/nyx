@@ -3,39 +3,23 @@
 // comes to rest on the mesh's floor; a ray hits the face it points at, with that face's normal, the
 // scale applied; a character walks up a mesh ramp less steep than its max slope and not up a steeper
 // one, and climbs mesh steps as it climbs boxes; changing the mesh and raising its revision makes the
-// body again once, and nothing else does; a rigid body doesn't make it move; the debug view draws its
-// triangles' edges, and a mesh of more triangles than it draws as its bounds. The sample ground is
-// valid, made once, and made again when its values change; the sample scene loads, and its character
-// and crates stand on the ground.
-//
-// NyxMeshColliderTests --write-scene writes the sample scene, Assets/Scenes/MeshTest.nyxscene: this
-// file is its source.
-#include "CameraComponent.h"
+// body again once, after the mesh held still for a quarter of a second, and nothing else does; a
+// mesh changing every step has its body made again once a second; a rigid body doesn't make it move;
+// the debug view draws its triangles' edges, and a mesh of more triangles than it draws as its bounds.
 #include "CharacterComponent.h"
-#include "ComponentRegistration.h"
 #include "DebugDraw.h"
-#include "DirectionalLightComponent.h"
 #include "GameWorld.h"
-#include "GuidComponent.h"
 #include "Log.h"
-#include "MeshRendererComponent.h"
-#include "NameComponent.h"
-#include "OrbitCameraComponent.h"
-#include "Paths.h"
 #include "PhysicsComponents.h"
 #include "PhysicsPick.h"
 #include "PreviousTransformComponent.h"
 #include "RuntimeMeshComponent.h"
-#include "SampleGround.h"
-#include "SampleGroundComponent.h"
-#include "SceneSerializer.h"
 #include "TestSupport.h"
 #include "TransformComponent.h"
 
 #include <glm/gtc/constants.hpp>
 
 #include <cmath>
-#include <cstring>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -274,7 +258,12 @@ namespace
 		}
 		steps.Run(3);
 		Require(world.GetBodies().FindBody(ground) == first, "A mesh changed without a new revision shouldn't make its body again");
+		// Kept while the mesh might still change, as while a value is dragged in the editor: made again
+		// once it held still for MeshSettleSteps
+		const int settle = static_cast<int>(PhysicsBodies::MeshSettleSteps);
 		MarkRuntimeMeshChanged(registry.Get<RuntimeMeshComponent>(ground));
+		steps.Run(settle);
+		Require(world.GetBodies().FindBody(ground) == first, "A changed mesh's body should wait until the mesh holds still");
 		steps.Run(1);
 		const BodyHandle second = world.GetBodies().FindBody(ground);
 		Require(second.IsValid() && second != first && world.GetPhysics().GetBodyCount() == 1, "A new revision should make the body again, once");
@@ -287,20 +276,33 @@ namespace
 		auto lower = std::make_shared<MeshData>();
 		AddFloorQuad(*lower, -1.0f, glm::vec2(-2.0f), glm::vec2(2.0f));
 		SetRuntimeMesh(registry.Get<RuntimeMeshComponent>(ground), lower);
-		steps.Run(2);
+		steps.Run(settle + 1);
 		const BodyHandle third = world.GetBodies().FindBody(ground);
 		Require(third != second, "New data should make the body again");
 		registry.Get<TransformComponent>(ground).Scale = glm::vec3(1.0f, 2.0f, 1.0f);
-		steps.Run(2);
-		Require(world.GetBodies().FindBody(ground) != third, "A new scale should make the body again");
+		steps.Run(settle + 1);
+		const BodyHandle fourth = world.GetBodies().FindBody(ground);
+		Require(fourth != third, "A new scale should make the body again");
 		const std::optional<PhysicsPick> scaled = PickPhysicsBody(world, down, 10.0f);
 		Require(scaled && std::abs(scaled->Point.y + 2.0f) < 1e-3f, "The scale should be applied to the mesh");
+
+		// A mesh that changes every step, e.g. one that grows: its body follows MeshMostStaleSteps behind
+		int remade = 0;
+		BodyHandle last = fourth;
+		for (uint32_t step = 0; step < PhysicsBodies::MeshMostStaleSteps; ++step)
+		{
+			MarkRuntimeMeshChanged(registry.Get<RuntimeMeshComponent>(ground));
+			steps.Run(1);
+			remade += world.GetBodies().FindBody(ground) != last ? 1 : 0;
+			last = world.GetBodies().FindBody(ground);
+		}
+		Require(remade == 1, "A mesh changing every step should have its body made again once in MeshMostStaleSteps, not " + std::to_string(remade) + " times");
 
 		// Data that isn't a valid mesh makes no body, and isn't tried again every step
 		auto broken = std::make_shared<MeshData>(*lower);
 		broken->Indices[2] = 40;
 		SetRuntimeMesh(registry.Get<RuntimeMeshComponent>(ground), broken);
-		steps.Run(3);
+		steps.Run(settle + 3);
 		Require(!world.GetBodies().FindBody(ground).IsValid() && world.GetPhysics().GetBodyCount() == 0, "A mesh that isn't valid shouldn't make a body");
 
 		// Without its mesh, or its collider, the body goes
@@ -308,7 +310,7 @@ namespace
 		steps.Run(1);
 		Require(world.GetPhysics().GetBodyCount() == 1, "A valid mesh again should make the body again");
 		registry.Remove<RuntimeMeshComponent>(ground);
-		steps.Run(1);
+		steps.Run(settle + 1);
 		Require(world.GetPhysics().GetBodyCount() == 0, "Without its mesh, the collider should have no body");
 		registry.Add<RuntimeMeshComponent>(ground, RuntimeMeshComponent{ .Mesh = lower, .Revision = 1 });
 		steps.Run(1);
@@ -375,150 +377,13 @@ namespace
 		physics.DrawDebug(drawing, fewer);
 		Require(drawing.GetLines().size() == 12, "A mesh of more triangles than drawn should be drawn as its bounds");
 	}
-
-	void TestTheSampleGround()
-	{
-		const SampleGroundComponent values{ .Size = 10.0f, .Cells = 20, .BumpHeight = 0.5f, .BumpSpacing = 4.0f };
-		const MeshData mesh = MakeSampleGroundMesh(values);
-		Require(CheckMeshData(mesh).empty(), "The sample ground should be a valid mesh: " + CheckMeshData(mesh));
-		Require(mesh.Vertices.size() == 21 * 21 && mesh.Indices.size() == 20 * 20 * 6, "The sample ground should have its cells");
-		const MeshBounds bounds = ComputeMeshBounds(mesh);
-		Require(std::abs(bounds.Min.x + 5.0f) < 1e-4f && std::abs(bounds.Max.z - 5.0f) < 1e-4f, "The sample ground should be as wide as its size");
-		Require(bounds.Min.y >= -0.5f - 1e-4f && bounds.Max.y <= 0.5f + 1e-4f && bounds.Max.y - bounds.Min.y > 0.5f, "The sample ground's bumps should be as high as asked");
-		for (const Vertex& vertex : mesh.Vertices)
-		{
-			Require(std::abs(vertex.Position.y - GetSampleGroundHeight(values, vertex.Position.x, vertex.Position.z)) < 1e-5f, "A vertex should be at the ground's height");
-			Require(vertex.Normal.y > 0.7f && std::abs(glm::length(vertex.Normal) - 1.0f) < 1e-4f, "The ground's normals should face up");
-		}
-		// Counter-clockwise from above
-		const glm::vec3 a = mesh.Vertices[mesh.Indices[0]].Position;
-		const glm::vec3 b = mesh.Vertices[mesh.Indices[1]].Position;
-		const glm::vec3 c = mesh.Vertices[mesh.Indices[2]].Position;
-		Require(glm::cross(b - a, c - a).y > 0.0f, "The ground's triangles should face up");
-
-		// Made once by the system, again when its values change
-		GameWorld world;
-		Steps steps{ world };
-		world.AddSystem(std::make_unique<SampleGroundSystem>());
-		Registry& registry = world.GetRegistry();
-		const Entity ground = registry.CreateEntity();
-		registry.Add<SampleGroundComponent>(ground, values);
-		steps.Run(1);
-		Require(registry.Has<RuntimeMeshComponent>(ground), "The sample ground's system should give it its mesh");
-		const RuntimeMeshComponent made = registry.Get<RuntimeMeshComponent>(ground);
-		steps.Run(5);
-		Require(registry.Get<RuntimeMeshComponent>(ground).Mesh == made.Mesh && registry.Get<RuntimeMeshComponent>(ground).Revision == made.Revision,
-			"The sample ground should be made only once");
-		registry.Get<SampleGroundComponent>(ground).BumpHeight = 1.0f;
-		steps.Run(1);
-		Require(registry.Get<RuntimeMeshComponent>(ground).Revision > made.Revision && ComputeMeshBounds(*registry.Get<RuntimeMeshComponent>(ground).Mesh).Max.y > 0.6f,
-			"The sample ground should be made again when its values change");
-	}
-
-	const std::filesystem::path SampleScenePath = "Scenes/MeshTest.nyxscene";
-
-	Entity AddNamed(Registry& world, const std::string& name, const TransformComponent& transform)
-	{
-		const Entity entity = world.CreateEntity();
-		world.Add<NameComponent>(entity, NameComponent{ name });
-		world.Add<GuidComponent>(entity, GuidComponent{ EntityGuid::Generate() });
-		world.Add<TransformComponent>(entity, transform);
-		return entity;
-	}
-
-	MeshRendererComponent DrawnWith(const std::string& mesh, const std::string& material)
-	{
-		return MeshRendererComponent{ .Mesh = mesh.empty() ? AssetReference{} : AssetReference{ .Type = "Mesh", .Path = mesh },
-			.Material = AssetReference{ .Type = "Material", .Path = material },
-			.bVisible = true };
-	}
-
-	// The scene to try mesh colliders in by hand: the sample ground, bumpy, with crates on it, the
-	// character and an orbit camera behind it. Its materials are the character test scene's.
-	void WriteSampleScene()
-	{
-		const glm::quat upright(1.0f, 0.0f, 0.0f, 0.0f);
-		Registry world;
-		const Entity ground = AddNamed(world, "Sample Ground", TransformComponent{});
-		world.Add<SampleGroundComponent>(ground, SampleGroundComponent{});
-		world.Add<MeshRendererComponent>(ground, DrawnWith("", "Materials/Textured.nyxmat"));
-		world.Add<MeshColliderComponent>(ground, MeshColliderComponent{});
-
-		const glm::vec3 crates[] = { { -2.0f, 1.5f, -3.0f }, { -1.2f, 1.5f, -3.4f }, { 2.5f, 1.5f, -2.0f }, { 3.0f, 2.5f, -2.2f }, { 0.5f, 1.5f, -6.0f } };
-		for (size_t i = 0; i < std::size(crates); ++i)
-		{
-			const Entity crate = AddNamed(world, "Crate " + std::to_string(i + 1), TransformComponent{ .Position = crates[i], .Rotation = upright, .Scale = glm::vec3(0.6f) });
-			world.Add<MeshRendererComponent>(crate, DrawnWith("Meshes/Cube.nyxmesh", "Materials/CharacterTest/Crate.nyxmat"));
-			world.Add<BoxColliderComponent>(crate, BoxColliderComponent{ .HalfExtents = glm::vec3(0.5f) });
-			world.Add<RigidBodyComponent>(crate, RigidBodyComponent{ .Mass = 10.0f });
-		}
-
-		const Entity character = AddNamed(world, "Character", TransformComponent{ .Position = glm::vec3(0.0f, 1.0f, 3.0f) });
-		world.Add<MeshRendererComponent>(character, DrawnWith("Meshes/Capsule.nyxmesh", "Materials/CharacterTest/Character.nyxmat"));
-		world.Add<CharacterComponent>(character, CharacterComponent{});
-
-		const Entity camera = AddNamed(world, "Camera",
-			TransformComponent{ .Position = glm::vec3(0.0f, 3.0f, 9.0f), .Rotation = glm::angleAxis(glm::radians(-12.0f), glm::vec3(1.0f, 0.0f, 0.0f)) });
-		world.Add<CameraComponent>(camera, CameraComponent{});
-		world.Add<OrbitCameraComponent>(camera, OrbitCameraComponent{ .Target = world.Get<GuidComponent>(character).Guid });
-
-		const Entity sun = AddNamed(world, "Sun", TransformComponent{ .Position = glm::vec3(0.0f, 5.0f, 0.0f), .Rotation = glm::quat(glm::radians(glm::vec3(-50.0f, 30.0f, 0.0f))) });
-		world.Add<DirectionalLightComponent>(sun, DirectionalLightComponent{});
-
-		const std::filesystem::path path = Nyx::Paths::GetAssetsDir() / SampleScenePath;
-		Require(SceneSerializer::SaveToFile(world, path), "The sample scene can't be saved");
-		std::cout << "Wrote " << path.string() << "\n";
-	}
-
-	void TestTheSampleSceneStands()
-	{
-		GameWorld world;
-		Steps steps{ world };
-		world.AddSystem(std::make_unique<SampleGroundSystem>());
-		Registry& registry = world.GetRegistry();
-		Require(SceneSerializer::LoadFromFile(Nyx::Paths::GetAssetsDir() / SampleScenePath, registry),
-			"The sample scene can't be loaded; NyxMeshColliderTests --write-scene writes it");
-		steps.Run(240);
-
-		const SampleGroundComponent* ground = nullptr;
-		registry.Each<SampleGroundComponent>([&](Entity, SampleGroundComponent& component)
-			{
-				ground = &component;
-			});
-		Require(ground != nullptr, "The sample scene should have the sample ground");
-
-		int characters = 0;
-		registry.Each<CharacterComponent>([&](Entity entity, CharacterComponent& character)
-			{
-				++characters;
-				const glm::vec3 feet = registry.Get<TransformComponent>(entity).Position;
-				Require(character.bOnGround && std::abs(feet.y - GetSampleGroundHeight(*ground, feet.x, feet.z)) < 0.05f,
-					"The sample scene's character should stand on the ground " + Describe(feet));
-			});
-		Require(characters == 1, "The sample scene should have a character");
-		int crates = 0;
-		registry.Each<RigidBodyComponent>([&](Entity entity, RigidBodyComponent&)
-			{
-				++crates;
-				const glm::vec3 position = registry.Get<TransformComponent>(entity).Position;
-				const float above = position.y - GetSampleGroundHeight(*ground, position.x, position.z);
-				Require(above > 0.1f && above < 0.6f, "The sample scene's crates should rest on the ground " + Describe(position));
-			});
-		Require(crates == 5, "The sample scene should have its crates");
-	}
 }
 
-int main(int argc, char** argv)
+int main()
 {
 	try
 	{
 		Nyx::Logger::Get().Init();
-		if (argc > 1 && std::strcmp(argv[1], "--write-scene") == 0)
-		{
-			Nyx::RegisterComponentTypes();
-			WriteSampleScene();
-			return 0;
-		}
 
 		TestABoxSlidesDownAMeshSlope();
 		TestARayHitsTheFaceItPointsAt();
@@ -526,9 +391,6 @@ int main(int argc, char** argv)
 		TestChangesMakeTheBodyAgainOnce();
 		TestItIsStaticOnly();
 		TestTheDebugViewDrawsItsEdges();
-		TestTheSampleGround();
-		Nyx::RegisterComponentTypes();
-		TestTheSampleSceneStands();
 	}
 	catch (const std::exception& error)
 	{

@@ -154,13 +154,22 @@ set_property(TARGET NyxCharacterTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxCharacterTests COMMAND NyxCharacterTests)
 
 # Mesh colliders in the game world: boxes, rays and characters on meshes made at run time, the body
-# made again only when the mesh changes, the debug view's edges, the sample ground and the sample
-# scene. --write-scene writes Assets/Scenes/MeshTest.nyxscene.
+# made again only when the mesh changes, the debug view's edges.
 add_executable(NyxMeshColliderTests MeshColliderTests.cpp)
 target_link_libraries(NyxMeshColliderTests PRIVATE NyxEngine)
 add_dependencies(NyxMeshColliderTests NyxGeneratedReflection)
 set_property(TARGET NyxMeshColliderTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxMeshColliderTests COMMAND NyxMeshColliderTests)
+
+# The ground (GroundComponent) without a GPU: its heights the same every time and smooth, its mesh,
+# colours by slope and height, made in its post-load step as the editor and the game run it, a
+# character standing and a crate rolling on it, the sample scene. --write-scene writes
+# Assets/Scenes/GroundTest.nyxscene.
+add_executable(NyxGroundTests GroundTests.cpp)
+target_link_libraries(NyxGroundTests PRIVATE NyxEngine)
+add_dependencies(NyxGroundTests NyxGeneratedReflection)
+set_property(TARGET NyxGroundTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxGroundTests COMMAND NyxGroundTests)
 
 # How long a physics step takes with 1000 bodies; not run by ctest, timing depends on the machine
 add_executable(NyxPhysicsBenchmark PhysicsBenchmark.cpp)

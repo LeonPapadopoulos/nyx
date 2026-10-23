@@ -280,7 +280,8 @@ namespace Nyx
 				const uint64_t hash = bMesh ? HashMeshSource(HashBody(*desc), world, entity) : HashBody(*desc);
 				const BodyPose pose{ desc->Position, desc->Rotation };
 
-				if (found != Bodies.end() && found->second.DescriptionHash != hash)
+				// A mesh body is kept as it was while its mesh keeps changing
+				if (found != Bodies.end() && found->second.DescriptionHash != hash && IsMeshBodyDue(found->second, bMesh, hash))
 				{
 					// Its shape, scale, motion or values changed: made again where its transform is
 					physics.DestroyBody(found->second.Body);
@@ -308,12 +309,20 @@ namespace Nyx
 							.bKinematic = desc->Motion == EBodyMotion::Kinematic,
 							.bDynamic = desc->Motion == EBodyMotion::Dynamic,
 							.LastPose = pose,
-							.bSeen = true });
+							.bSeen = true,
+							.bMesh = bMesh });
 					return;
 				}
 
 				TrackedBody& tracked = found->second;
 				tracked.bSeen = true;
+				if (tracked.DescriptionHash == hash)
+				{
+					// Changed back before its body was made again, or never changed
+					tracked.PendingHash = 0;
+					tracked.PendingStillSteps = 0;
+					tracked.StaleSteps = 0;
+				}
 				if (!tracked.Body.IsValid())
 				{
 					return;
@@ -350,6 +359,28 @@ namespace Nyx
 				++it;
 			}
 		}
+	}
+
+	// Whether a mesh body whose description is now `hash` is made again this step: at once if it
+	// has no body or wasn't a mesh; else once the new description has held still for
+	// MeshSettleSteps, or the body has been behind for MeshMostStaleSteps
+	bool PhysicsBodies::IsMeshBodyDue(TrackedBody& tracked, bool bMesh, uint64_t hash)
+	{
+		if (!bMesh || !tracked.bMesh || !tracked.Body.IsValid())
+		{
+			return true;
+		}
+		if (tracked.PendingHash != hash)
+		{
+			tracked.PendingHash = hash;
+			tracked.PendingStillSteps = 0;
+		}
+		else
+		{
+			++tracked.PendingStillSteps;
+		}
+		++tracked.StaleSteps;
+		return tracked.PendingStillSteps >= MeshSettleSteps || tracked.StaleSteps >= MeshMostStaleSteps;
 	}
 
 	void PhysicsBodies::SyncCharacters(Registry& world, PhysicsWorld& physics)

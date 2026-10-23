@@ -8,6 +8,7 @@
 #include "DetailsPanel.h"
 #include "EditorPreferences.h"
 #include "EntityReferenceWidget.h"
+#include "GroundComponent.h"
 #include "GuidComponent.h"
 #include "ImGuiSource.h"
 #include "Log.h"
@@ -334,6 +335,38 @@ namespace
 		PostLoadCalls.clear();
 		editing.Undo();
 		Require(ranFor(CameraComponent{}.FovYDegrees), "Undoing an edit should run the post-load step with the values as they were");
+	}
+
+	// A ground in the editor, through its post-load step as the editor runs it after each edit, undo
+	// and redo: added, it has its mesh; edited, a new one; removed, none; undone, its mesh again
+	void TestGroundFollowsEdits()
+	{
+		SceneEditor editing;
+		editing.Transactions.Subscribe(&editing.AssetLoader);
+		Registry& world = editing.Scene.GetRegistry();
+		const Entity ground = editing.Scene.CreateEntity("Ground");
+		const ComponentTypeOps& groundType = *ComponentTypeRegistry::Get().FindByTypeMetadata(Nyx::Reflection::GetTypeMetadata<GroundComponent>());
+
+		Require(AddComponent(editing.Scene, editing.Transactions, ground, groundType), "Adding a ground should be an edit");
+		Require(world.Has<RuntimeMeshComponent>(ground), "An added ground should have its mesh in the editor");
+		const RuntimeMeshComponent added = world.Get<RuntimeMeshComponent>(ground);
+
+		// As the details panel edits a value
+		TransactionDiffUtil diff;
+		diff.TakeSnapshot(MakeSceneEntityRef(editing.Scene, ground), &world.Get<GroundComponent>(ground), Nyx::Reflection::GetTypeMetadata<GroundComponent>());
+		world.Get<GroundComponent>(ground).Seed = 7;
+		Require(diff.CommitChanges("Edit Property", editing.Transactions), "Changing the seed should be an edit");
+		const RuntimeMeshComponent& edited = world.Get<RuntimeMeshComponent>(ground);
+		Require(edited.Mesh != added.Mesh && edited.Revision > added.Revision, "An edited ground should be made again with a new revision");
+
+		editing.Undo();
+		Require(world.Get<GroundComponent>(ground).Seed == 1 && world.Get<RuntimeMeshComponent>(ground).Mesh->Vertices[500].Position == added.Mesh->Vertices[500].Position,
+			"Undoing the edit should make the ground as it was");
+
+		Require(RemoveComponent(editing.Scene, editing.Transactions, ground, groundType), "Removing the ground should be an edit");
+		Require(!world.Has<RuntimeMeshComponent>(ground), "A removed ground should take its mesh with it");
+		editing.Undo();
+		Require(world.Has<GroundComponent>(ground) && world.Has<RuntimeMeshComponent>(ground), "Undoing the removal should bring the ground and its mesh back");
 	}
 
 	// ImGui counts the items that share the ID of the one under the mouse ("visible items with
@@ -2087,6 +2120,7 @@ int main()
 		TestHotkeys();
 		TestPanelsDrawHeadless();
 		TestRuntimeMeshDetails();
+		TestGroundFollowsEdits();
 		TestDetailsHaveNoConflictingIds();
 		TestEntityReferenceCombo();
 		TestEntityReferenceDropFromOutliner();
