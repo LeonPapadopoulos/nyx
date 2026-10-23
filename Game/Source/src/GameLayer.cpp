@@ -22,9 +22,8 @@ namespace Nyx::Game
 #if defined(ENGINE_DEBUG)
 	namespace
 	{
-		// The stand-in character driver's actions and contexts, as data, as FlyCameraInput makes its
-		// own: the walk, the jump, the zoom, the look on the right stick and the look button in one
-		// context, the mouse look in another above it, with the cursor captured
+		// The stand-in character driver's actions and context, as data, as FlyCameraInput makes its
+		// own: the walk and the jump
 		Nyx::Input::InputAssetData MakeCharacterDriverInput()
 		{
 			using namespace Nyx::Input;
@@ -32,9 +31,6 @@ namespace Nyx::Game
 			input.Actions = {
 				{ "CharacterWalk", EActionValue::Axis2D },
 				{ "CharacterJump", EActionValue::Button },
-				{ "CharacterLook", EActionValue::Axis2D },
-				{ "CharacterZoom", EActionValue::Axis1D, EActionDevices::KeyboardMouse },
-				{ "CharacterLookButton", EActionValue::Button, EActionDevices::KeyboardMouse },
 			};
 			const DeadZoneSettings stickDeadZone{ .bEnabled = true, .Shape = EDeadZoneShape::ScaledRadial, .Inner = 0.15f };
 
@@ -63,44 +59,7 @@ namespace Nyx::Game
 				walking.Bindings.push_back(jump);
 			}
 
-			// As the fly camera's right stick: finer near the middle, faster held at the edge
-			InputBindingData lookStick;
-			lookStick.Action = "CharacterLook";
-			lookStick.Control = "Gamepad/RightStick";
-			lookStick.Pipeline.DeadZone = stickDeadZone;
-			lookStick.Pipeline.Curve = { .bEnabled = true, .Kind = ECurveKind::Power, .Exponent = 2.0f };
-			lookStick.Pipeline.Sensitivity = { .bEnabled = true, .Scale = glm::vec3(2.5f) };
-			lookStick.Pipeline.LookAcceleration = { .bEnabled = true };
-			lookStick.Pipeline.bMultiplyByDeltaTime = true;
-			walking.Bindings.push_back(lookStick);
-
-			// The wheel's notches away from the player zoom in
-			InputBindingData zoom;
-			zoom.Action = "CharacterZoom";
-			zoom.Control = "Mouse/Wheel";
-			zoom.SwizzleX = 1;
-			zoom.SwizzleY = -1;
-			zoom.SwizzleZ = -1;
-			walking.Bindings.push_back(zoom);
-
-			InputBindingData lookButton;
-			lookButton.Action = "CharacterLookButton";
-			lookButton.Control = "Mouse/Right";
-			walking.Bindings.push_back(lookButton);
-
-			// The mouse moves a distance: no delta time. Its y points down; the look's up.
-			InputContextData mouseLook;
-			mouseLook.Name = "DebugCharacterMouseLook";
-			mouseLook.Priority = 110;
-			mouseLook.Cursor = EContextCursor::Captured;
-
-			InputBindingData lookMouse;
-			lookMouse.Action = "CharacterLook";
-			lookMouse.Control = "Mouse/Delta";
-			lookMouse.Pipeline.Sensitivity = { .bEnabled = true, .Scale = glm::vec3(0.003f), .bInvertY = true };
-			mouseLook.Bindings.push_back(lookMouse);
-
-			input.Contexts = { walking, mouseLook };
+			input.Contexts = { walking };
 			return input;
 		}
 	}
@@ -121,6 +80,7 @@ namespace Nyx::Game
 		Nyx::Input::LoadDefaultInput(*Input, false, true);
 		FlyCameraInput = std::make_unique<Nyx::Input::FlyCameraInput>(
 			*Input, Nyx::Input::FlyCameraInput::Settings{ .FlyContextName = "FlyCamera", .MouseLookContextName = "FlyCameraMouseLook" });
+		OrbitCameraInput = std::make_unique<Nyx::Input::OrbitCameraInput>(*Input, Nyx::Input::OrbitCameraInput::Settings{});
 
 #if defined(ENGINE_DEBUG)
 		CrashOnPurpose = Input->AddAction({ "CrashOnPurpose", Nyx::Input::EActionValue::Button });
@@ -139,12 +99,8 @@ namespace Nyx::Game
 
 		Nyx::Input::ApplyInputAsset(*Input, MakeCharacterDriverInput());
 		CharacterContext = Input->FindContext("DebugCharacter");
-		CharacterMouseLookContext = Input->FindContext("DebugCharacterMouseLook");
 		CharacterWalk = Input->FindAction("CharacterWalk");
 		CharacterJump = Input->FindAction("CharacterJump");
-		CharacterLook = Input->FindAction("CharacterLook");
-		CharacterZoom = Input->FindAction("CharacterZoom");
-		CharacterLookButton = Input->FindAction("CharacterLookButton");
 #endif
 
 		// The game has no window layout to remember, and must not overwrite the editor's imgui.ini:
@@ -259,7 +215,7 @@ namespace Nyx::Game
 		return MakeViewRay(glm::vec2(mouse.x, mouse.y) - GameViewMin);
 	}
 
-	bool GameLayer::DriveCharacterForDebugging()
+	void GameLayer::DriveCharacterForDebugging()
 	{
 		Nyx::Registry& world = World.GetRegistry();
 		Nyx::OrbitCameraComponent* orbit = nullptr;
@@ -279,17 +235,13 @@ namespace Nyx::Game
 				character = character != nullptr ? character : &walker;
 			});
 
-		// The contexts count from the next frame; the mouse looks while the right button is held,
-		// from the frame after the click
+		// The context counts from the next frame
 		Nyx::Input::InputUser& user = Input->GetUser();
 		const bool bDriving = orbit != nullptr && character != nullptr;
-		const Nyx::Input::ActionState& lookButton = user.Get(CharacterLookButton);
-		bCharacterMouseLook = bDriving && (bCharacterMouseLook ? lookButton.IsTriggered() : lookButton.bStarted);
 		user.SetContextActive(CharacterContext, bDriving, { .Reason = bDriving ? "A character and an orbit camera (Debug builds)" : "" });
-		user.SetContextActive(CharacterMouseLookContext, bCharacterMouseLook, { .Reason = bCharacterMouseLook ? "Right mouse button held" : "" });
 		if (!bDriving)
 		{
-			return false;
+			return;
 		}
 
 		character->DesiredMove = Nyx::GetGroundMove(orbit->Yaw, user.Get(CharacterWalk).Vec2());
@@ -297,27 +249,24 @@ namespace Nyx::Game
 		{
 			character->bJumpRequested = true;
 		}
-		orbit->LookDelta += user.Get(CharacterLook).Vec2();
-		orbit->ZoomDelta += user.Get(CharacterZoom).Float();
-		return true;
 	}
 
 	void GameLayer::OnUpdate(float deltaTime)
 	{
-		bool bDrivingCharacter = false;
-#if defined(ENGINE_DEBUG)
-		bDrivingCharacter = DriveCharacterForDebugging();
-#endif
-		// The entities with a FlyCameraComponent; none: the fly camera's contexts stay off. The
-		// character driver's camera wins over a fly camera.
-		if (bDrivingCharacter)
+		// The cameras first, so the player's rays come from where they look this frame. The entities
+		// with an OrbitCameraComponent, then those with a FlyCameraComponent; none: their contexts
+		// stay off. An orbit camera wins over a fly camera.
+		if (Nyx::Input::UpdateOrbitCameras(World.GetRegistry(), *OrbitCameraInput))
 		{
-			FlyCameraInput->SetActive(false, false, "The character driver has the input");
+			FlyCameraInput->SetActive(false, false, "The orbit camera has the input");
 		}
 		else
 		{
 			Nyx::Input::UpdateFlyCameras(World.GetRegistry(), *FlyCameraInput, deltaTime);
 		}
+#if defined(ENGINE_DEBUG)
+		DriveCharacterForDebugging();
+#endif
 
 		// The player's commands for this frame's steps, from where the camera looks now: a fly camera
 		// as it just moved, an orbit camera as the picture on screen shows it (it follows its target

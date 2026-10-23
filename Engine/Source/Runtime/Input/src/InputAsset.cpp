@@ -4,6 +4,7 @@
 #include "FlyCameraInput.h"
 #include "InputChecks.h"
 #include "Log.h"
+#include "OrbitCameraInput.h"
 #include "Paths.h"
 #include "PropertyValueAccess.h"
 #include "ReflectedArchiveSerializer.h"
@@ -548,6 +549,16 @@ namespace Nyx::Input
 			{
 				asset.Contexts.push_back(std::move(context));
 			}
+		}
+
+		// The game's orbit cameras
+		for (InputActionData& action : OrbitCameraInput::MakeActionsData())
+		{
+			asset.Actions.push_back(std::move(action));
+		}
+		for (InputContextData& context : OrbitCameraInput::MakeContextsData(OrbitCameraInput::Settings{}))
+		{
+			asset.Contexts.push_back(std::move(context));
 		}
 		return asset;
 	}

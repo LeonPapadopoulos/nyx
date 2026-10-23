@@ -213,16 +213,41 @@ without one leaves the keys and the pads to the game's own camera. Without input
 entities alone. The editor's UI source
 inspector turns on a `SourceInspector` context (950) that takes the keyboard and the mouse. The
 game's Ctrl+Alt+Shift+C (crash on purpose) and F3 (the physics debug view) are bindings in a
-`Debug` context (800, Debug builds). In Debug builds the game also has a stand-in character
-driver, for trying characters without a game module's player (`IPlayerController`), which would
-send a command, e.g. `MoveCharacter`, for a system to apply in the step. It is the one code that
-writes a character's simulation input from outside a step. While the world has a
-`CharacterComponent` and an `OrbitCameraComponent`, the contexts `DebugCharacter` (100) and
-`DebugCharacterMouseLook` (110, cursor captured, while the right mouse button is held) are on, with
-the actions CharacterWalk, CharacterJump, CharacterLook, CharacterZoom and CharacterLookButton. The
-game layer writes them into the character's `DesiredMove` (through `GetGroundMove()` and the
-camera's yaw) and `bJumpRequested`, and the camera's `LookDelta` and `ZoomDelta`, and turns the fly
-camera's contexts off.
+`Debug` context (800, Debug builds).
+
+`OrbitCameraInput` gives the game's orbit cameras (`OrbitCameraComponent`) their actions
+(OrbitLook, OrbitZoom, OrbitLookButton) and three contexts, in the default asset with the fly
+camera's:
+- `OrbitCamera` (100): OrbitLook on the right stick (as the fly camera's: dead zone, curve, rate,
+  look acceleration), OrbitZoom on the wheel, OrbitLookButton on the right mouse button;
+- `OrbitCameraMouseLook` (110, cursor captured): OrbitLook on the mouse;
+- `OrbitCameraFreeLook` (105, no bindings): a request.
+
+`Input::UpdateOrbitCameras()`, which the game layer calls each frame before the fly cameras and the
+player, adds the look and zoom to every orbit camera's `LookDelta` and `ZoomDelta` (the camera
+uses them up after the frame's steps, `Nyx::UpdateOrbitCameras()`). `OrbitCamera` is on only while
+the world has an orbit camera. `OrbitCameraMouseLook` is on while the request is on (free look:
+the mouse turns the camera without a button, the cursor captured), or else while the right mouse
+button is held after a click (hold to look: the cursor is free to point with otherwise). Nothing in
+the engine turns the request on: a game's player does, with its user, e.g. while it explores and
+off while it points at surfaces:
+
+```cpp
+const ContextHandle freeLook = frame.Input.FindContext("OrbitCameraFreeLook");
+frame.Input.GetUser().SetContextActive(freeLook, bExploring, { .Reason = "Exploring" });
+```
+
+So the mode is input state, not the world's: the player switches it without writing a component,
+and it counts from the next frame, as all context changes do. The right stick turns the camera in
+both modes. While the world has an orbit camera, the fly camera's contexts are off.
+
+In Debug builds the game also has a stand-in character driver, for trying characters without a
+game module's player (`IPlayerController`), which would send a command, e.g. `MoveCharacter`, for a
+system to apply in the step. It is the one code that writes a character's simulation input from
+outside a step. While the world has a `CharacterComponent` and an `OrbitCameraComponent`, the
+context `DebugCharacter` (100) is on, with the actions CharacterWalk and CharacterJump; the game
+layer writes them into the character's `DesiredMove` (through `GetGroundMove()` and the camera's
+yaw) and `bJumpRequested`.
 ImGui gets its input from GLFW's callbacks, which it shares with the GLFW backend; the editor's
 shortcuts stay ImGui's.
 
@@ -245,6 +270,11 @@ replays the file with the same phases, firings and values every frame; a file cu
 the printout, two watchers at once.
 `NyxFlyCameraTests` checks that only entities with a `FlyCameraComponent` fly, that the fly
 camera's contexts are on only while one exists, and that the component is saved with the scene.
+`NyxOrbitCameraInputTests` checks that the orbit camera's contexts are on only while one exists,
+that the mouse turns it only while the right button is held, with the cursor free, until free look
+is asked for, which turns it without a button and captures the cursor, that the right stick turns
+it in both modes and the wheel zooms, and that the default asset has its actions and contexts, a
+tuned sensitivity counting.
 `NyxOrbitCameraTests` checks that the orbit camera starts from where the camera looks, keeps its
 distance and offset from a moving target, follows it where it is drawn, smooths alike at 30 and 240
 frames a second, clamps its pitch and zoom, wraps its yaw, leaves the camera alone without a target,

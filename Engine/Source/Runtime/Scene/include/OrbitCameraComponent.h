@@ -9,8 +9,9 @@ namespace Nyx
 {
 	// A camera that circles an entity, e.g. the character, looking at a point above it, and follows it
 	// where it is drawn (UpdateOrbitCameras(), OrbitCameras.h). What turns and zooms it is filled in
-	// by its caller each frame (LookDelta, ZoomDelta); it reads no input itself. It starts from where
-	// the camera looks, as placed in the scene, at the Distance set here.
+	// each frame (LookDelta, ZoomDelta): in the game by the orbit camera's input
+	// (Input::UpdateOrbitCameras(), OrbitCameraInput.h). It starts from where the camera looks, as
+	// placed in the scene, at the Distance set here.
 	NYX_REFLECT(Component, meta = (DisplayName = "Orbit Camera"))
 	struct OrbitCameraComponent
 	{
@@ -45,9 +46,11 @@ namespace Nyx
 		float FollowSmoothing = 0.1f;
 
 		// While the game runs, not saved. This frame's input, filled in by the caller and cleared by
-		// UpdateOrbitCameras(): radians to turn (x to the right, y up) and steps to zoom (in > 0)
+		// UpdateOrbitCameras(): radians to turn (x to the right, y up) and steps to zoom (in > 0);
+		// and whether the mouse turns it now (free look, or the right mouse button held)
 		glm::vec2 LookDelta{ 0.0f };
 		float ZoomDelta = 0.0f;
+		bool bMouseLooking = false;
 
 		// Where it is: turned Yaw radians about up from looking along -Z (to the left > 0), Pitch
 		// radians up from level, CurrentDistance from the point it looks at, which follows the target

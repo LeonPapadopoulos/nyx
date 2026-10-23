@@ -153,14 +153,17 @@ contexts, and the context highest on the stack that binds a control gets it.
 - An *Orbit Camera* circles its target entity (an entity picker in Details), looking at a point
   above it (*Target Offset*), at a distance it zooms between *Min* and *Max Distance* in *Zoom
   Steps*, its pitch kept between *Min* and *Max Pitch*. It follows the target as drawn between
-  steps, smoothed by *Follow Smoothing*, and starts from where the scene placed the camera. What
-  turns and zooms it comes from the game; walls don't stop it yet.
+  steps, smoothed by *Follow Smoothing*, and starts from where the scene placed the camera. Walls
+  don't stop it yet.
+- In the game, the right stick turns an orbit camera, the wheel zooms it, and the mouse turns it
+  while the right button is held, leaving the cursor free to point with otherwise. A game's player
+  can ask for free look instead, where the mouse turns it without a button and the cursor is
+  captured. Its bindings are in `Assets/Input/Default.nyxinput`, tuned in *Window > Input* like the
+  fly camera's. An orbit camera wins over a fly camera in the same scene.
 - In Debug builds, a stand-in for a game's player, which would walk its character through
-  commands: in a scene with a
-  *Character* and an *Orbit Camera* (`Assets/Scenes/CharacterTest.nyxscene`), W/A/S/D or the left
-  stick walk the character relative to where the camera looks, Space or the south button jump, the
-  right stick or the mouse with the right button held turn the camera, the wheel zooms. The fly
-  camera keeps out of it.
+  commands: in a scene with a *Character* and an *Orbit Camera*
+  (`Assets/Scenes/CharacterTest.nyxscene`), W/A/S/D or the left stick walk the character relative
+  to where the camera looks, Space or the south button jump.
 - *Window > Input* shows the editor's input:
   - *Devices*: each device with its controls live, sticks with their dead zones and a plot of
     where they have been, calibration that suggests dead zones, and buttons that try rumble,

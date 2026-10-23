@@ -175,6 +175,14 @@ add_dependencies(NyxOrbitCameraTests NyxGeneratedReflection)
 set_property(TARGET NyxOrbitCameraTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxOrbitCameraTests COMMAND NyxOrbitCameraTests)
 
+# The orbit camera's input: its contexts only with an orbit camera, holding the right mouse button
+# or free look asked for by a context, the stick and the wheel, the default asset. No window needed.
+add_executable(NyxOrbitCameraInputTests OrbitCameraInputTests.cpp)
+target_link_libraries(NyxOrbitCameraInputTests PRIVATE NyxEngine)
+add_dependencies(NyxOrbitCameraInputTests NyxGeneratedReflection)
+set_property(TARGET NyxOrbitCameraInputTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxOrbitCameraInputTests COMMAND NyxOrbitCameraInputTests)
+
 # How long the guid lookup a game world makes each step takes with 3000 guids; not run by ctest,
 # timing depends on the machine
 add_executable(NyxGuidLookupBenchmark GuidLookupBenchmark.cpp)
