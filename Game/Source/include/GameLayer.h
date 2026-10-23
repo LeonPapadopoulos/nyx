@@ -2,7 +2,7 @@
 
 #include "AssetResolver.h"
 #include "Entity.h"
-#include "GameFlyCamera.h"
+#include "FlyCameras.h"
 #include "GameWorld.h"
 #include "InputDebugView.h"
 #include "InputHistory.h"
@@ -75,8 +75,9 @@ namespace Nyx::Game
 
 		Nyx::Input::InputSystem* Input = nullptr;
 
-		// Flies the primary camera; made in OnAttach
-		std::unique_ptr<GameFlyCamera> FlyCamera;
+		// The fly camera's actions and contexts, for the world's FlyCameraComponents
+		// (UpdateFlyCameras()); made in OnAttach
+		std::unique_ptr<Nyx::Input::FlyCameraInput> FlyCameraInput;
 
 		// Debug builds: Ctrl+Alt+Shift+C crashes the game on purpose, to try the editor's crash card;
 		// F3 shows the physics debug view; Ctrl+Alt+Shift+I shows the input overlay, the editor's

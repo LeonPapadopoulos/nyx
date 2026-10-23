@@ -26,7 +26,8 @@ namespace Nyx::Game
 		Input = &application.GetInput();
 		// With the player's tuning; without the asset, the cameras' built-in bindings
 		Nyx::Input::LoadDefaultInput(*Input, false, true);
-		FlyCamera = std::make_unique<GameFlyCamera>(*Input);
+		FlyCameraInput = std::make_unique<Nyx::Input::FlyCameraInput>(
+			*Input, Nyx::Input::FlyCameraInput::Settings{ .FlyContextName = "FlyCamera", .MouseLookContextName = "FlyCameraMouseLook" });
 
 #if defined(ENGINE_DEBUG)
 		CrashOnPurpose = Input->AddAction({ "CrashOnPurpose", Nyx::Input::EActionValue::Button });
@@ -134,7 +135,8 @@ namespace Nyx::Game
 
 	void GameLayer::OnUpdate(float deltaTime)
 	{
-		FlyCamera->Update(World.GetRegistry(), deltaTime);
+		// The entities with a FlyCameraComponent; none: the fly camera's contexts stay off
+		Nyx::Input::UpdateFlyCameras(World.GetRegistry(), *FlyCameraInput, deltaTime);
 
 #if defined(ENGINE_DEBUG)
 		InputHistory.Record(*Input);

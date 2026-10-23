@@ -125,7 +125,10 @@ Keyboard, mouse and gamepads (Xbox, DualShock 4, DualSense, through SDL3) go thr
 input system: code reads actions such as *Move* or *Look*, bound to keys, buttons and sticks in
 contexts, and the context highest on the stack that binds a control gets it.
 
-- Scene views fly with W/A/S/D, the mouse and a pad; so does the game's primary camera.
+- Scene views fly with W/A/S/D, the mouse and a pad. In the game, so does a camera with a *Fly
+  Camera Component*, which sets its speed and look sensitivity. Nyx's scenes and new scenes have
+  one on their camera; a scene without one has no fly camera, and the game's own camera gets the
+  input.
 - *Window > Input* shows the editor's input:
   - *Devices*: each device with its controls live, sticks with their dead zones and a plot of
     where they have been, calibration that suggests dead zones, and buttons that try rumble,
@@ -172,7 +175,8 @@ contexts, and the context highest on the stack that binds a control gets it.
 - `NyxPadCheck.exe` lists the pads, prints what they report and tries their output without a
   window.
 - `NyxInputTests`, `NyxInputRouterTests`, `NyxInputGamepadTests`, `NyxInputInspectionTests`,
-  `NyxInputAssetTests`, `NyxInputChecksTests`, `NyxLiveInputTests`, `NyxInputStreamTests`, `NyxInputRecordingTests`, `NyxEditorCameraTests` and
+  `NyxInputAssetTests`, `NyxInputChecksTests`, `NyxLiveInputTests`, `NyxInputStreamTests`,
+  `NyxInputRecordingTests`, `NyxFlyCameraTests`, `NyxEditorCameraTests` and
   `NyxEditorInputTuningTests` test it with virtual devices.
 
 ## Debug drawing

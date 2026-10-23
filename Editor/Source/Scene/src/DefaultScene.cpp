@@ -1,6 +1,7 @@
 #include "DefaultScene.h"
 
 #include "CameraComponent.h"
+#include "FlyCameraComponent.h"
 #include "DirectionalLightComponent.h"
 #include "MeshRendererComponent.h"
 #include "SceneDocument.h"
@@ -86,6 +87,8 @@ namespace Nyx::Editor
 					.Scale = glm::vec3(1.0f) });
 
 			world.Add<Nyx::CameraComponent>(e, Nyx::CameraComponent{});
+			// The game flies it, as long as the scene keeps the component
+			world.Add<Nyx::FlyCameraComponent>(e, Nyx::FlyCameraComponent{});
 		}
 
 		{

@@ -150,6 +150,14 @@ target_link_libraries(NyxPhysicsBenchmark PRIVATE NyxEngine)
 add_dependencies(NyxPhysicsBenchmark NyxGeneratedReflection)
 set_property(TARGET NyxPhysicsBenchmark PROPERTY FOLDER "Tests")
 
+# The game's fly camera: only entities with a FlyCameraComponent fly, its contexts only while one
+# exists, and the component is saved with the scene. No window needed.
+add_executable(NyxFlyCameraTests FlyCameraTests.cpp)
+target_link_libraries(NyxFlyCameraTests PRIVATE NyxEngine)
+add_dependencies(NyxFlyCameraTests NyxGeneratedReflection)
+set_property(TARGET NyxFlyCameraTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxFlyCameraTests COMMAND NyxFlyCameraTests)
+
 # How long the guid lookup a game world makes each step takes with 3000 guids; not run by ctest,
 # timing depends on the machine
 add_executable(NyxGuidLookupBenchmark GuidLookupBenchmark.cpp)

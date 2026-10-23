@@ -204,9 +204,13 @@ same:
 `FlyCameraInput` gives a fly camera its actions (Move, MoveVertical, Look, Speed, LookButton) and
 two contexts, for flying and for looking with the mouse (cursor captured), with keyboard, mouse
 and pad. The editor's fly camera (`EditorCameraController`) uses it with the contexts
-`EditorFlyCamera` (100) and `EditorMouseLook` (110); the game flies its primary camera with it
-(`GameFlyCamera`, contexts `FlyCamera` and `FlyCameraMouseLook`), and leaves the camera alone
-without input. The editor's UI source
+`EditorFlyCamera` (100) and `EditorMouseLook` (110). In the game the fly camera is opt-in per
+scene: `UpdateFlyCameras()`, which the game layer calls each frame, flies every entity with a
+`FlyCameraComponent` (its speed and look sensitivity, saved with the scene; what the wheel and the
+look button made of them while the game runs) with the contexts `FlyCamera` and
+`FlyCameraMouseLook`. The contexts are on only while the world has such an entity, so a scene
+without one leaves the keys and the pads to the game's own camera. Without input it leaves the
+entities alone. The editor's UI source
 inspector turns on a `SourceInspector` context (950) that takes the keyboard and the mouse. The
 game's Ctrl+Alt+Shift+C (crash on purpose) and F3 (the physics debug view) are bindings in a
 `Debug` context (800, Debug builds).
@@ -230,6 +234,8 @@ checks that the replica decides every frame as the original did.
 `NyxInputRecordingTests` records presses, holds, a tap, sticks, mouse look and the focus, and
 replays the file with the same phases, firings and values every frame; a file cut off mid-frame,
 the printout, two watchers at once.
+`NyxFlyCameraTests` checks that only entities with a `FlyCameraComponent` fly, that the fly
+camera's contexts are on only while one exists, and that the component is saved with the scene.
 `NyxInputInspectionTests` checks who gets a control, What if stacks and the calibration;
 `NyxEditorPanelTests` that the Input window leaves no shapes to ImGui.
 `NyxInputGamepadTests` drives virtual pads: hot-plug, analog values, focus, swizzles, composites
