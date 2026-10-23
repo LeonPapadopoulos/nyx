@@ -4,6 +4,7 @@
 #include "ComponentEdits.h"
 #include "EditorCameraController.h"
 #include "EditorPreferences.h"
+#include "ImGuiInput.h"
 #include "ImGuiSource.h"
 #include "EditorRenderer.h"
 #include "SceneEditor.h"
@@ -105,6 +106,9 @@ namespace Nyx::Editor
 		viewState.bFreeCamera = !bShowingGameView;
 		viewState.Window = ImGui::GetWindowViewport()->PlatformHandle;
 		cameraController.ReportView(viewState);
+
+		// Hovering the view doesn't give the mouse to ImGui: it belongs to the camera and gizmo
+		Nyx::Input::MarkAsView();
 
 		const ImVec2 avail = ImGui::GetContentRegionAvail();
 		Renderer->SetSceneViewSize(

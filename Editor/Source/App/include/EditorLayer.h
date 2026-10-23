@@ -127,8 +127,11 @@ namespace Nyx::Editor
 
 		SceneViewPanel MainSceneView{ "Scene" };
 		SceneViewPanel SecondarySceneView{ "Scene 2" };
-		// Flies the scene views' free cameras
-		EditorCameraController CameraController;
+		// Flies the scene views' free cameras; made in OnAttach, with the application's input
+		std::unique_ptr<EditorCameraController> CameraController;
+
+		// On while the UI source inspector is: it takes every key and click
+		Nyx::Input::ContextHandle SourceInspectorContext;
 		bool bSecondaryViewShowsGameView = false;
 		SceneFilePopups SceneFiles;
 		PreferencesWindow PreferencesPanel;

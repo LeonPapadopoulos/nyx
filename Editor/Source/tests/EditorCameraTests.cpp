@@ -1,5 +1,6 @@
 // The editor's fly camera without a window or renderer: virtual keyboard and mouse, stand-in
-// scene views, and cameras kept in a map.
+// scene views, and cameras kept in a map. The camera's contexts come on from the frame after the
+// panels report, as in the editor.
 #include "EditorCameraController.h"
 #include "Log.h"
 #include "VirtualInputBackend.h"
@@ -64,12 +65,15 @@ namespace
 		InputDeviceId Keyboard;
 		InputDeviceId Mouse;
 		MapCameras Cameras;
-		EditorCameraController Controller;
+		EditorCameraController Controller{ Input };
 		int FloatingWindow = 0;
 		uint64_t TimeUs = 1000;
 
 		EditorCameraController::ViewState Main{ MainView, false, false, true, nullptr };
 		EditorCameraController::ViewState Floating{ FloatingView, false, false, true, &FloatingWindow };
+
+		// What ImGui wants, as the application reads it after each frame
+		ImGuiInputState ImGui;
 
 		Rig()
 		{
@@ -86,14 +90,23 @@ namespace
 			return TimeUs;
 		}
 
-		// One frame as the editor runs it: input, the controller, then the panels drawn
-		void Frame(EditorCameraController::Blockers blockers = {})
+		// One frame as the editor runs it: input, the controller, the panels drawn, ImGui's wishes,
+		// the cursor
+		void Frame()
 		{
 			Input.BeginFrame(TimeUs += 100000);
-			Controller.Update(Input, FrameTime, blockers, Cameras);
+			Controller.Update(FrameTime, Cameras);
 			Controller.ReportView(Main);
 			Controller.ReportView(Floating);
+			Input.SetImGuiState(ImGui);
 			Input.EndFrame();
+		}
+
+		// The panels report, the controller turns its context on, and it is on the stack
+		void Settle()
+		{
+			Frame();
+			Frame();
 		}
 
 		const Camera& Of(uint64_t view)
@@ -106,7 +119,8 @@ namespace
 	{
 		Rig rig;
 		rig.Main.bHovered = true;
-		rig.Frame(); // The panels report for the first time
+		rig.Settle();
+		Require(rig.Input.GetUser().IsContextActive(rig.Controller.GetFlyCameraContext()), "Hovering a view turns the fly camera on");
 
 		rig.Backend.Press(rig.Keyboard, Key(EKey::W), rig.Later());
 		rig.Frame();
@@ -120,7 +134,7 @@ namespace
 	{
 		Rig rig;
 		rig.Floating.bFocused = true;
-		rig.Frame();
+		rig.Settle();
 
 		rig.Backend.Press(rig.Keyboard, Key(EKey::E), rig.Later());
 		rig.Frame();
@@ -132,11 +146,16 @@ namespace
 	{
 		Rig rig;
 		rig.Main.bHovered = true;
-		rig.Frame();
+		rig.ImGui.bTypingText = true;
+		rig.Settle();
 
 		rig.Backend.Press(rig.Keyboard, Key(EKey::W), rig.Later());
-		rig.Frame({ .bTypingText = true });
+		rig.Frame();
 		Require(rig.Of(MainView).Position == glm::vec3(0.0f), "Keys typed into a text field shouldn't move the camera");
+
+		const std::vector<const BindingTrace*> traces = rig.Input.GetUser().GetTraces(rig.Controller.GetActions().Move);
+		Require(traces.size() == 1 && traces[0]->Outcome == EBindingOutcome::Taken && traces[0]->TakenBy == rig.Input.GetImGuiContext(),
+			"Move's trace should say ImGui took the keys");
 	}
 
 	void TestGameViewIsLeftAlone()
@@ -144,29 +163,19 @@ namespace
 		Rig rig;
 		rig.Main.bHovered = true;
 		rig.Main.bFreeCamera = false;
-		rig.Frame();
+		rig.Settle();
 
 		rig.Backend.Press(rig.Keyboard, Key(EKey::W), rig.Later());
 		rig.Frame();
 		Require(rig.Of(MainView).Position == glm::vec3(0.0f), "A view showing the game's camera shouldn't fly");
-	}
-
-	void TestInspectingSourcesBlocks()
-	{
-		Rig rig;
-		rig.Main.bHovered = true;
-		rig.Frame();
-
-		rig.Backend.Press(rig.Keyboard, Key(EKey::W), rig.Later());
-		rig.Frame({ .bInspectingSources = true });
-		Require(rig.Of(MainView).Position == glm::vec3(0.0f), "Nothing moves while inspecting sources");
+		Require(!rig.Input.GetUser().IsContextActive(rig.Controller.GetFlyCameraContext()), "Nor turn the fly camera on");
 	}
 
 	void TestMouseLook()
 	{
 		Rig rig;
 		rig.Floating.bHovered = true;
-		rig.Frame();
+		rig.Settle();
 
 		// The click into the view starts looking; its own mouse moves don't turn yet
 		rig.Backend.Press(rig.Mouse, Mouse(EMouseControl::Right), rig.Later());
@@ -174,7 +183,8 @@ namespace
 		rig.Frame();
 		Require(rig.Controller.GetLookingViewId() == FloatingView, "A right click into the view should start looking");
 		Require(rig.Of(FloatingView).Rotation == glm::vec3(0.0f), "The click's frame shouldn't turn the camera");
-		Require(rig.Input.GetCursor().Mode == ECursorMode::Captured, "Looking captures the cursor");
+		Require(rig.Input.GetCursor().Mode == ECursorMode::Captured && rig.Input.GetCursor().Owner == "EditorMouseLook",
+			"Looking captures the cursor, through the mouse look context");
 		Require(rig.Input.GetCursor().Window == &rig.FloatingWindow, "The cursor should be captured in the view's own OS window");
 
 		// The view isn't hovered any more (the captured cursor wanders): it keeps looking
@@ -182,7 +192,7 @@ namespace
 		rig.Backend.SetValue(rig.Mouse, Mouse(EMouseControl::Delta), { 100.0f, -20.0f }, rig.Later());
 		rig.Frame();
 		const float sensitivity = rig.Controller.GetSettings().LookSensitivity;
-		Require(Near(rig.Of(FloatingView).Rotation.y, -100.0f * sensitivity), "Moving right should turn left-handed around Y");
+		Require(Near(rig.Of(FloatingView).Rotation.y, -100.0f * sensitivity), "Moving right should turn right (negative around Y)");
 		Require(Near(rig.Of(FloatingView).Rotation.x, 20.0f * sensitivity), "Moving up should look up");
 
 		// Pitch stops short of straight up
@@ -201,11 +211,12 @@ namespace
 	{
 		Rig rig;
 		rig.Main.bFocused = true;
-		rig.Frame();
+		rig.ImGui.bMouseOverUI = true;
+		rig.Settle();
 
 		rig.Backend.Press(rig.Mouse, Mouse(EMouseControl::Right), rig.Later());
 		rig.Frame();
-		Require(rig.Controller.GetLookingViewId() == 0, "A right click outside the view shouldn't start looking");
+		Require(rig.Controller.GetLookingViewId() == 0, "A right click over other UI shouldn't start looking");
 		Require(rig.Input.GetCursor().Mode == ECursorMode::Free, "The cursor should stay free");
 	}
 
@@ -213,7 +224,7 @@ namespace
 	{
 		Rig rig;
 		rig.Main.bHovered = true;
-		rig.Frame();
+		rig.Settle();
 		rig.Backend.Press(rig.Mouse, Mouse(EMouseControl::Right), rig.Later());
 		rig.Frame();
 		Require(rig.Controller.GetLookingViewId() == MainView, "Expected to be looking");
@@ -230,15 +241,17 @@ namespace
 		Rig rig;
 		const EditorCameraController::Settings& settings = rig.Controller.GetSettings();
 		rig.Main.bFocused = true;
-		rig.Frame();
+		rig.ImGui.bMouseOverUI = true;
+		rig.Settle();
 
-		// Only focused, the cursor is elsewhere (e.g. scrolling the outliner): no change
+		// Only focused, the cursor over other UI (e.g. scrolling the outliner): ImGui takes the wheel
 		rig.Backend.SetValue(rig.Mouse, Mouse(EMouseControl::Wheel), { 0.0f, 1.0f }, rig.Later());
 		rig.Frame();
-		Require(Near(rig.Controller.GetMoveSpeed(), settings.StartSpeed), "Scrolling outside the view shouldn't change the speed");
+		Require(Near(rig.Controller.GetMoveSpeed(), settings.StartSpeed), "Scrolling other UI shouldn't change the speed");
 
 		rig.Main.bHovered = true;
-		rig.Frame();
+		rig.ImGui.bMouseOverUI = false;
+		rig.Settle();
 		rig.Backend.SetValue(rig.Mouse, Mouse(EMouseControl::Wheel), { 0.0f, 2.0f }, rig.Later());
 		rig.Frame();
 		Require(Near(rig.Controller.GetMoveSpeed(), settings.StartSpeed * settings.SpeedStep * settings.SpeedStep),
@@ -260,7 +273,6 @@ int main()
 		TestFocusedViewWhenNoneIsHovered();
 		TestNoMovementWhileTyping();
 		TestGameViewIsLeftAlone();
-		TestInspectingSourcesBlocks();
 		TestMouseLook();
 		TestRightClickOutsideDoesntLook();
 		TestLookEndsWhenViewCloses();

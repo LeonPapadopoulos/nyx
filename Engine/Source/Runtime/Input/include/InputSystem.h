@@ -1,26 +1,95 @@
 #pragma once
 
+#include "ImGuiInput.h"
+#include "InputActions.h"
 #include "InputBackend.h"
+#include "InputContexts.h"
 #include "InputFrame.h"
+#include "InputUser.h"
 
+#include <string_view>
 #include <vector>
 
 namespace Nyx::Input
 {
-	// Gathers what the backends report into one InputFrame per frame, and makes the cursor what
-	// the frame asked for. The application owns one and runs it around the layers:
+	// Gathers what the backends report into one InputFrame per frame, runs the user's context
+	// stack over it to decide the actions, and makes the cursor what the stack says
+	// (Docs/Design/input-system.md). The application owns one and runs it around the layers:
 	//
-	//   window.PollEvents(); input.BeginFrame(NowUs()); layers' OnUpdate and OnUI; input.EndFrame();
+	//   window.PollEvents(); input.BeginFrame(NowUs()); layers' OnUpdate and OnUI;
+	//   input.SetImGuiState(ReadImGuiState()); input.EndFrame();
+	//
+	// Engine code puts its own contexts on the stack, as every other context:
+	// - Unfocused (1000), while none of the program's windows has the focus: takes everything;
+	// - ImGui (900), while ImGui has a text field active (takes the keyboard) or the mouse is over
+	//   UI that isn't a view, with the cursor free (takes the mouse).
 	class InputSystem
 	{
 	public:
+		static constexpr int UnfocusedPriority = 1000;
+		static constexpr int ImGuiPriority = 900;
+
+		InputSystem();
+
+		// Its user points back at it
+		InputSystem(const InputSystem&) = delete;
+		InputSystem& operator=(const InputSystem&) = delete;
+
 		// The backend must outlive the input system; the window owns the GLFW one.
 		void AddBackend(IInputBackend& backend);
 
-		// Takes every backend's events, in the order they happened, into the next frame
+		ActionHandle AddAction(InputActionDef action);
+		ContextHandle AddContext(InputContextDef context);
+
+		// An unknown handle gives an empty definition
+		const InputActionDef& GetAction(ActionHandle action) const;
+		const InputContextDef& GetContext(ContextHandle context) const;
+
+		size_t GetActionCount() const
+		{
+			return Actions.size();
+		}
+
+		size_t GetContextCount() const
+		{
+			return Contexts.size();
+		}
+
+		// The first action of that name; invalid if there is none
+		ActionHandle FindAction(std::string_view name) const;
+
+		// The one player there is, owning every device
+		InputUser& GetUser()
+		{
+			return User;
+		}
+
+		const InputUser& GetUser() const
+		{
+			return User;
+		}
+
+		ContextHandle GetUnfocusedContext() const
+		{
+			return UnfocusedContext;
+		}
+
+		ContextHandle GetImGuiContext() const
+		{
+			return ImGuiContext;
+		}
+
+		// What ImGui wanted in the frame just built; the ImGui context follows it from the next frame
+		void SetImGuiState(const ImGuiInputState& state)
+		{
+			ImGuiState = state;
+		}
+
+		// Takes every backend's events, in the order they happened, into the next frame, and
+		// decides the actions
 		void BeginFrame(uint64_t nowUs);
 
-		// Applies the cursor the frame asked for
+		// Applies the cursor the stack asks for
 		void EndFrame();
 
 		const InputFrame& GetFrame() const
@@ -28,22 +97,25 @@ namespace Nyx::Input
 			return Frame;
 		}
 
-		// Asks for the cursor to be shown, hidden or captured, for this frame only: ask again each
-		// frame for as long as it should stay so. Of several requests the strongest wins (Captured
-		// over Hidden over Free); without any, the cursor is free.
-		void RequestCursor(CursorRequest request);
-
-		// The cursor as the last EndFrame() made it, and who asked for it
+		// The cursor as the last EndFrame() made it, and the context that asked for it
 		const CursorRequest& GetCursor() const
 		{
-			return Cursor;
+			return User.GetCursor();
 		}
 
 	private:
+		void UpdateSystemContexts();
+
 		std::vector<IInputBackend*> Backends;
 		InputFrame Frame;
+		uint64_t PreviousFrameUs = 0;
 
-		std::vector<CursorRequest> CursorRequests;
-		CursorRequest Cursor;
+		std::vector<InputActionDef> Actions;
+		std::vector<InputContextDef> Contexts;
+		InputUser User;
+
+		ContextHandle UnfocusedContext;
+		ContextHandle ImGuiContext;
+		ImGuiInputState ImGuiState;
 	};
 }

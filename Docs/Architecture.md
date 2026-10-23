@@ -47,7 +47,7 @@ doesn't allow, and on a table that goes round in a circle, so a new dependency s
 | `Core` | Logging, assertions, paths, text helpers, child processes, the crash handler, file watching, the frame rate limiter, the fixed step clock, `BinaryArchive`, the profiler macros (`Profiler.h`), debug drawing (`DebugDraw`) | — |
 | `Reflection` | Type and property metadata, and the `NYX_REFLECT` and `NYX_PROPERTY` macros; not under `Runtime` | — |
 | `Net` | TCP connections and the messages they carry | Core |
-| `Input` | Keyboard and mouse, gathered from backends into one `InputFrame` per frame | Core |
+| `Input` | Keyboard and mouse, gathered from backends into one `InputFrame` per frame; the router: context stacks, actions, the value pipeline, triggers and their traces | Core, Scene |
 | `Scene` | Entities and components (the physics components among them), the component registry, scene files, the tagged binary format, surface anchors (`SurfaceAnchor`: a point, normal and tangent on an entity that move with it), surface decals (`SurfaceDecalComponent`), a camera's view and projection and the ray back through a point of its picture (`CameraProjection.h`) | Core, Reflection |
 | `Physics` | Rigid bodies, their shapes, collisions and the physics step, on Jolt (`PhysicsWorld`); Jolt's headers stay inside | Core |
 | `Sim` | The game world: its entities, their physics bodies kept in step with the physics components (`PhysicsBodies`), and the simulation systems each fixed step runs, in order (`GameWorld`, `ISimSystem`), the entity a ray hits first (`PickPhysicsBody()`) | Core, Scene, Physics |
@@ -149,7 +149,8 @@ checks every `#include` against this table.
       hold every layer's `OnUI()`, then the painted window
       chrome, the painter canvases, and the window painters' segments, binned on the GPU;
    5. records the UI pass, submits, renders ImGui's OS windows, signals the fence and presents.
-6. `InputSystem::EndFrame()`: sets the cursor the layers asked for.
+6. `InputSystem::SetImGuiState()` with what ImGui wants (`ReadImGuiState()`), for the `ImGui`
+   context next frame, then `InputSystem::EndFrame()`: sets the cursor the context stack decides.
 
 If the GPU device is lost, the renderer stops drawing and `Application` closes the window.
 

@@ -21,9 +21,10 @@ namespace Nyx::Input
 		uint16_t Presses = 0;
 		uint16_t Releases = 0;
 
-		// When the button last went down, from the event, not the frame: holds are timed in real
-		// time at any frame rate. 0 if it never did.
+		// When the button last went down and up, from the events, not the frame: holds and taps
+		// are timed in real time at any frame rate. 0 if it never did.
 		uint64_t LastPressUs = 0;
+		uint64_t LastReleaseUs = 0;
 	};
 
 	// The state of every device's controls in one frame, made by InputSystem::BeginFrame() from the
@@ -97,8 +98,8 @@ namespace Nyx::Input
 
 		DeviceState* FindDevice(InputDeviceId device);
 
-		// Releases every held button of the device
-		static void ReleaseAll(DeviceState& device);
+		// Releases every held button of the device, at the given time
+		static void ReleaseAll(DeviceState& device, uint64_t timeUs);
 
 		std::vector<DeviceState> Devices;
 		std::vector<InputEvent> Events;

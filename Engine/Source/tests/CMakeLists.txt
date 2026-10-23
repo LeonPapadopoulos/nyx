@@ -156,6 +156,14 @@ add_dependencies(NyxInputTests NyxGeneratedReflection)
 set_property(TARGET NyxInputTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxInputTests COMMAND NyxInputTests)
 
+# Contexts, actions, the value pipeline, triggers and traces, with virtual devices and frames at
+# set times. No window needed.
+add_executable(NyxInputRouterTests InputRouterTests.cpp)
+target_link_libraries(NyxInputRouterTests PRIVATE NyxEngine)
+add_dependencies(NyxInputRouterTests NyxGeneratedReflection)
+set_property(TARGET NyxInputRouterTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxInputRouterTests COMMAND NyxInputRouterTests)
+
 # The painter's CPU side: draw commands, groups, clip and transform stacks, tile binning. No GPU needed.
 # The painter's test sheet is a dev tool, not part of the engine library, so the painter tests
 # compile it themselves.

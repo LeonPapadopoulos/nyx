@@ -103,7 +103,8 @@ namespace Nyx
 
 			DrawFrame();
 
-			// The cursor as the frame's layers asked for it
+			// What ImGui wants decides the ImGui context next frame; the cursor follows the stack
+			Input.SetImGuiState(Nyx::Input::ReadImGuiState());
 			Input.EndFrame();
 			NYX_PROFILE_FRAME();
 		}

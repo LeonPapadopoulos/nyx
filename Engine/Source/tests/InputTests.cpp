@@ -240,28 +240,16 @@ namespace
 		Require(rig.NextFrame().IsDown(Space), "With the focus back, keys count again");
 	}
 
-	void TestCursorRequests()
+	// The cursor follows the context stack (NyxInputRouterTests); here only that it reaches the
+	// backends at the end of every frame
+	void TestCursorAppliedEachFrame()
 	{
 		Rig rig;
 		rig.Input.EndFrame();
-		Require(rig.Backend.GetCursorApplications() == 1, "The cursor should be applied at the end of each frame");
-		Require(rig.Input.GetCursor().Mode == ECursorMode::Free, "Without requests the cursor is free");
-
-		int window = 0;
-		rig.NextFrame();
-		rig.Input.RequestCursor({ ECursorMode::Hidden, nullptr, "Hider" });
-		rig.Input.RequestCursor({ ECursorMode::Captured, &window, "Fly camera" });
-		rig.Input.RequestCursor({ ECursorMode::Free, nullptr, "Menu" });
-		rig.Input.EndFrame();
-		Require(rig.Input.GetCursor().Mode == ECursorMode::Captured, "The strongest request should win");
-		Require(rig.Input.GetCursor().Owner == "Fly camera", "The cursor should say who captured it");
-		Require(rig.Backend.GetAppliedCursor().Window == &window, "The backend should get the requested window");
-
-		// A request lasts one frame
 		rig.NextFrame();
 		rig.Input.EndFrame();
-		Require(rig.Input.GetCursor().Mode == ECursorMode::Free && rig.Backend.GetAppliedCursor().Mode == ECursorMode::Free,
-			"Without a request the next frame, the cursor is free again");
+		Require(rig.Backend.GetCursorApplications() == 2, "The cursor should be applied at the end of each frame");
+		Require(rig.Backend.GetAppliedCursor().Mode == ECursorMode::Free, "Without a context saying otherwise, the cursor is free");
 	}
 }
 
@@ -281,7 +269,7 @@ int main()
 		TestTwoKeyboardsHoldTogether();
 		TestDeviceRemovedWhileHeld();
 		TestFocusLossReleasesEverything();
-		TestCursorRequests();
+		TestCursorAppliedEachFrame();
 	}
 	catch (const std::exception& error)
 	{

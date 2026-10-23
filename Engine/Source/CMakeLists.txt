@@ -40,6 +40,11 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputSystem.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/VirtualInputBackend.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/GlfwInputBackend.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputPipeline.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputTriggers.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputUser.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputTrace.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Input/src/ImGuiInput.cpp
 
     # Runtime/Scene
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/Entity.cpp
@@ -169,6 +174,13 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputSystem.h
     ${NYX_ENGINE_ROOT}/Runtime/Input/include/VirtualInputBackend.h
     ${NYX_ENGINE_ROOT}/Runtime/Input/include/GlfwInputBackend.h
+    ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputActions.h
+    ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputPipeline.h
+    ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputTriggers.h
+    ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputContexts.h
+    ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputUser.h
+    ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputTrace.h
+    ${NYX_ENGINE_ROOT}/Runtime/Input/include/ImGuiInput.h
 
     # Runtime/Scene
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/Entity.h

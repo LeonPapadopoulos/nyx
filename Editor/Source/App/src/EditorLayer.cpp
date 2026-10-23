@@ -66,6 +66,12 @@ namespace Nyx::Editor
 		Window = &application.GetWindow();
 		Renderer = &application.GetEditorRenderer();
 		Input = &application.GetInput();
+		CameraController = std::make_unique<EditorCameraController>(*Input);
+		SourceInspectorContext = Input->AddContext({
+			.Name = "SourceInspector",
+			.Priority = 950,
+			.TakesDevices = Nyx::Input::DeviceBit(Nyx::Input::EDeviceKind::Keyboard) | Nyx::Input::DeviceBit(Nyx::Input::EDeviceKind::Mouse),
+		});
 		AssetResolver = std::make_unique<Nyx::AssetResolver>(*Renderer);
 		if (!Preferences.Load(EditorPreferences::GetUserFile()))
 		{
@@ -231,12 +237,10 @@ namespace Nyx::Editor
 			}
 		}
 
+		Input->GetUser().SetContextActive(SourceInspectorContext, SourceInspector.IsActive(), { .Reason = "Inspecting the UI's sources" });
+
 		RendererEditorCameras cameras(*Renderer);
-		const EditorCameraController::Blockers cameraBlockers{
-			.bInspectingSources = SourceInspector.IsActive(),
-			.bTypingText = ImGui::GetIO().WantTextInput,
-		};
-		CameraController.Update(*Input, deltaTime, cameraBlockers, cameras);
+		CameraController->Update(deltaTime, cameras);
 
 		Games.Update();
 
@@ -279,8 +283,8 @@ namespace Nyx::Editor
 		Outliner.Draw(Editing);
 		Details.Draw(Editing);
 		Materials.Draw(*Renderer, Editing);
-		MainSceneView.Draw(Editing, Preferences, CameraController);
-		SecondarySceneView.Draw(Editing, Preferences, CameraController);
+		MainSceneView.Draw(Editing, Preferences, *CameraController);
+		SecondarySceneView.Draw(Editing, Preferences, *CameraController);
 
 		// Values being dragged or typed reach a running game every frame, not only when the edit ends
 		Editing.DetailsContext.PreviewPendingEdits();

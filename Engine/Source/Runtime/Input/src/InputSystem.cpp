@@ -6,9 +6,67 @@
 
 namespace Nyx::Input
 {
+	namespace
+	{
+		// A frame longer than this (a breakpoint, a stall) counts as this long for the value
+		// pipeline. Triggers time with the events and aren't affected.
+		constexpr float MaxDeltaSeconds = 0.25f;
+	}
+
+	InputSystem::InputSystem()
+	{
+		User.System = this;
+
+		InputContextDef unfocused;
+		unfocused.Name = "Unfocused";
+		unfocused.Priority = UnfocusedPriority;
+		unfocused.TakesDevices = AllDevices;
+		unfocused.Cursor = ECursorMode::Free;
+		UnfocusedContext = AddContext(std::move(unfocused));
+
+		InputContextDef imgui;
+		imgui.Name = "ImGui";
+		imgui.Priority = ImGuiPriority;
+		ImGuiContext = AddContext(std::move(imgui));
+	}
+
 	void InputSystem::AddBackend(IInputBackend& backend)
 	{
 		Backends.push_back(&backend);
+	}
+
+	ActionHandle InputSystem::AddAction(InputActionDef action)
+	{
+		Actions.push_back(std::move(action));
+		return ActionHandle::Make(static_cast<uint32_t>(Actions.size() - 1), 1);
+	}
+
+	ContextHandle InputSystem::AddContext(InputContextDef context)
+	{
+		Contexts.push_back(std::move(context));
+		return ContextHandle::Make(static_cast<uint32_t>(Contexts.size() - 1), 1);
+	}
+
+	const InputActionDef& InputSystem::GetAction(ActionHandle action) const
+	{
+		static const InputActionDef none;
+		return action.IsValid() && action.Index() < Actions.size() ? Actions[action.Index()] : none;
+	}
+
+	const InputContextDef& InputSystem::GetContext(ContextHandle context) const
+	{
+		static const InputContextDef none;
+		return context.IsValid() && context.Index() < Contexts.size() ? Contexts[context.Index()] : none;
+	}
+
+	ActionHandle InputSystem::FindAction(std::string_view name) const
+	{
+		const auto found = std::find_if(Actions.begin(), Actions.end(),
+			[name](const InputActionDef& action)
+			{
+				return action.Name == name;
+			});
+		return found != Actions.end() ? ActionHandle::Make(static_cast<uint32_t>(found - Actions.begin()), 1) : ActionHandle{};
 	}
 
 	void InputSystem::BeginFrame(uint64_t nowUs)
@@ -48,34 +106,48 @@ namespace Nyx::Input
 
 			Frame.Apply(event);
 		}
+
+		const float deltaSeconds = PreviousFrameUs != 0 && nowUs > PreviousFrameUs
+			? std::min(static_cast<float>(nowUs - PreviousFrameUs) / 1'000'000.0f, MaxDeltaSeconds)
+			: 0.0f;
+		PreviousFrameUs = nowUs;
+
+		UpdateSystemContexts();
+		User.Evaluate(*this, Frame, deltaSeconds);
 	}
 
 	void InputSystem::EndFrame()
 	{
-		CursorRequest cursor;
-		for (CursorRequest& request : CursorRequests)
-		{
-			if (request.Mode > cursor.Mode)
-			{
-				cursor = std::move(request);
-			}
-		}
-		CursorRequests.clear();
+		const CursorRequest previous = User.GetCursor();
+		User.DecideCursor();
 
-		if (cursor.Mode != Cursor.Mode || cursor.Window != Cursor.Window)
+		const CursorRequest& cursor = User.GetCursor();
+		if (cursor.Mode != previous.Mode || cursor.Window != previous.Window)
 		{
 			LOG_TRACE("Input: cursor {0}{1}{2}", GetCursorModeName(cursor.Mode), cursor.Owner.empty() ? "" : ", for ", cursor.Owner);
 		}
-		Cursor = std::move(cursor);
 
 		for (IInputBackend* backend : Backends)
 		{
-			backend->ApplyCursor(Cursor);
+			backend->ApplyCursor(cursor);
 		}
 	}
 
-	void InputSystem::RequestCursor(CursorRequest request)
+	void InputSystem::UpdateSystemContexts()
 	{
-		CursorRequests.push_back(std::move(request));
+		User.SetContextActive(UnfocusedContext, !Frame.HasFocus(), { .Reason = "None of the program's windows has the focus" });
+
+		// ImGui gets the mouse only while the cursor is free: a captured cursor wanders over
+		// ImGui's windows without being there
+		const bool bTakesKeyboard = ImGuiState.bTypingText;
+		const bool bTakesMouse = ImGuiState.bMouseOverUI && User.GetCursor().Mode == ECursorMode::Free;
+		const uint32_t devices = (bTakesKeyboard ? DeviceBit(EDeviceKind::Keyboard) : 0u) | (bTakesMouse ? DeviceBit(EDeviceKind::Mouse) : 0u);
+
+		std::string reason = bTakesKeyboard ? "A text field is active" : "";
+		if (bTakesMouse)
+		{
+			reason += reason.empty() ? "The mouse is over ImGui UI" : "; the mouse is over ImGui UI";
+		}
+		User.SetContextActive(ImGuiContext, devices != 0, { .Reason = std::move(reason), .TakesDevices = devices });
 	}
 }

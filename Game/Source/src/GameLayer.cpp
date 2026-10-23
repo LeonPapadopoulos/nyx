@@ -3,6 +3,7 @@
 #include "Application.h"
 #include "CameraComponent.h"
 #include "CameraProjection.h"
+#include "ImGuiInput.h"
 #include "Log.h"
 #include "EditorRenderer.h"
 #include "PhysicsPick.h"
@@ -21,6 +22,19 @@ namespace Nyx::Game
 	{
 		Renderer = &application.GetRenderer();
 		UIRenderer = &application.GetEditorRenderer();
+		Input = &application.GetInput();
+
+#if defined(ENGINE_DEBUG)
+		CrashOnPurpose = Input->AddAction({ "CrashOnPurpose", Nyx::Input::EActionValue::Button });
+		Nyx::Input::InputBinding crash =
+			Nyx::Input::InputBinding::ForControl(CrashOnPurpose, Nyx::Input::Key(Nyx::Input::EKey::C), Nyx::Input::ETriggerKind::Pressed);
+		crash.Modifiers = Nyx::Input::EModifierKeys::Ctrl | Nyx::Input::EModifierKeys::Alt | Nyx::Input::EModifierKeys::Shift;
+		TogglePhysicsDebugView = Input->AddAction({ "TogglePhysicsDebugView", Nyx::Input::EActionValue::Button });
+		const Nyx::Input::InputBinding physicsDebugView = Nyx::Input::InputBinding::ForControl(
+			TogglePhysicsDebugView, Nyx::Input::Key(Nyx::Input::EKey::F3), Nyx::Input::ETriggerKind::Pressed);
+		DebugContext = Input->AddContext({ .Name = "Debug", .Priority = 800, .Bindings = { crash, physicsDebugView } });
+		Input->GetUser().SetContextActive(DebugContext, true, { .Reason = "Debug build" });
+#endif
 
 		// The game has no window layout to remember, and must not overwrite the editor's imgui.ini:
 		// both programs run from the same folder.
@@ -110,12 +124,11 @@ namespace Nyx::Game
 		}
 	}
 
-	void GameLayer::OnUI()
+	void GameLayer::OnUpdate(float /*deltaTime*/)
 	{
 #if defined(ENGINE_DEBUG)
-		// Ctrl+Alt+Shift+C crashes the game on purpose (Debug builds only), to try the editor's
-		// crash card. Through a volatile pointer, so the compiler keeps the write.
-		if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiMod_Alt | ImGuiMod_Shift | ImGuiKey_C))
+		// Through a volatile pointer, so the compiler keeps the write
+		if (Input->GetUser().ConsumeTriggered(CrashOnPurpose))
 		{
 			LOG_WARNING("Crashing on purpose (Ctrl+Alt+Shift+C)");
 			volatile int* nowhere = nullptr;
@@ -124,14 +137,17 @@ namespace Nyx::Game
 
 		// F3 shows the bodies' shapes, contacts and constraints, and where the cursor points at one
 		// (Debug builds only)
-		if (ImGui::IsKeyPressed(ImGuiKey_F3, false))
+		if (Input->GetUser().ConsumeTriggered(TogglePhysicsDebugView))
 		{
 			const bool bShow = !World.GetPhysicsDebugView();
 			World.SetPhysicsDebugView(bShow ? std::optional(Nyx::PhysicsDebugOptions{}) : std::nullopt);
 			LOG_INFO("Physics debug view {0} (F3)", bShow ? "on" : "off");
 		}
 #endif
+	}
 
+	void GameLayer::OnUI()
+	{
 		// One window without any decoration that covers the whole application window
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		ImGui::SetNextWindowPos(viewport->WorkPos);
@@ -145,6 +161,9 @@ namespace Nyx::Game
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
 		ImGui::Begin("Game", nullptr, windowFlags);
 		ImGui::PopStyleVar(2);
+
+		// The game's picture: hovering it doesn't give the mouse to ImGui
+		Nyx::Input::MarkAsView();
 
 		// The game view always matches the window size
 		const ImVec2 size = ImGui::GetContentRegionAvail();

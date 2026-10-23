@@ -30,6 +30,7 @@ namespace Nyx::Input
 			merged.Presses = static_cast<uint16_t>(merged.Presses + state.Presses);
 			merged.Releases = static_cast<uint16_t>(merged.Releases + state.Releases);
 			merged.LastPressUs = std::max(merged.LastPressUs, state.LastPressUs);
+			merged.LastReleaseUs = std::max(merged.LastReleaseUs, state.LastReleaseUs);
 		}
 
 		return merged;
@@ -133,7 +134,7 @@ namespace Nyx::Input
 			DeviceState* device = FindDevice(event.Device.Id);
 			if (device && !device->bRemoved)
 			{
-				ReleaseAll(*device);
+				ReleaseAll(*device, event.TimeUs);
 				device->bRemoved = true;
 			}
 			return;
@@ -147,7 +148,7 @@ namespace Nyx::Input
 				// Keys let go of while another program has the focus never reach us
 				for (DeviceState& device : Devices)
 				{
-					ReleaseAll(device);
+					ReleaseAll(device, event.TimeUs);
 				}
 			}
 			return;
@@ -181,13 +182,14 @@ namespace Nyx::Input
 			{
 				state.Value = glm::vec2(0.0f);
 				++state.Releases;
+				state.LastReleaseUs = event.TimeUs;
 			}
 			return;
 		}
 		}
 	}
 
-	void InputFrame::ReleaseAll(DeviceState& device)
+	void InputFrame::ReleaseAll(DeviceState& device, uint64_t timeUs)
 	{
 		for (uint16_t index = 0; index < device.Controls.size(); ++index)
 		{
@@ -196,6 +198,7 @@ namespace Nyx::Input
 			{
 				state.Value = glm::vec2(0.0f);
 				++state.Releases;
+				state.LastReleaseUs = timeUs;
 			}
 		}
 	}

@@ -20,13 +20,17 @@ namespace Nyx::Editor
 		virtual void SetCamera(uint64_t sceneViewId, const glm::vec3& position, const glm::vec3& rotationRadians) = 0;
 	};
 
-	// Flies the free cameras of the scene views. W/A/S/D move, Q/E down and up, while a view is
-	// hovered or focused. Holding the right mouse button after clicking into a view looks around
-	// with the mouse, with the cursor captured, and keeps flying that view until the button is let
-	// go, wherever the cursor would be. The wheel over the view changes the speed.
+	// Flies the free cameras of the scene views, through two input contexts:
+	// - EditorFlyCamera, on while a view is hovered or focused: Move (W/A/S/D, Q/E down and up),
+	//   Speed (the wheel) and LookButton (the right mouse button);
+	// - EditorMouseLook, above it, on while the right mouse button is held after a click into a
+	//   view: Look (the mouse), with the cursor captured in that view's window. Looking keeps
+	//   flying that view until the button is let go, wherever the cursor would be.
+	// ImGui's context takes the keys while typing and the mouse over other UI, so neither moves
+	// the camera.
 	//
 	// The scene view panels report themselves while they are drawn (ReportView), and Update() uses
-	// the reports of the last frame drawn.
+	// the reports of the last frame drawn. Contexts turned on in Update() count from the next frame.
 	class EditorCameraController
 	{
 	public:
@@ -53,27 +57,21 @@ namespace Nyx::Editor
 			float MinSpeed = 0.25f;
 			float MaxSpeed = 100.0f;
 
-			// Radians per pixel the mouse moves
+			// Radians per pixel the mouse moves; the Look binding's sensitivity
 			float LookSensitivity = 0.003f;
 		};
 
-		// What keeps the cameras still in this frame
-		struct Blockers
-		{
-			// The UI source inspector takes every click
-			bool bInspectingSources = false;
+		static constexpr int FlyCameraPriority = 100;
+		static constexpr int MouseLookPriority = 110;
 
-			// ImGui has a text field active: keys are text, not movement
-			bool bTypingText = false;
-		};
-
-		EditorCameraController();
+		// Adds the camera's actions and contexts to the input system, which must outlive it
+		explicit EditorCameraController(Nyx::Input::InputSystem& input);
 
 		// Called by each scene view panel while it is drawn
 		void ReportView(const ViewState& view);
 
 		// Moves the camera of the view the input goes to. Call once per frame before rendering.
-		void Update(Nyx::Input::InputSystem& input, float deltaTime, const Blockers& blockers, IEditorCameras& cameras);
+		void Update(float deltaTime, IEditorCameras& cameras);
 
 		// The view being looked around with the mouse; 0 for none
 		uint64_t GetLookingViewId() const
@@ -91,13 +89,40 @@ namespace Nyx::Editor
 			return CameraSettings;
 		}
 
+		struct Actions
+		{
+			Nyx::Input::ActionHandle Move;
+			Nyx::Input::ActionHandle Look;
+			Nyx::Input::ActionHandle Speed;
+			Nyx::Input::ActionHandle LookButton;
+		};
+
+		const Actions& GetActions() const
+		{
+			return CameraActions;
+		}
+
+		Nyx::Input::ContextHandle GetFlyCameraContext() const
+		{
+			return FlyCameraContext;
+		}
+
+		Nyx::Input::ContextHandle GetMouseLookContext() const
+		{
+			return MouseLookContext;
+		}
+
 	private:
+		Nyx::Input::InputSystem& Input;
+		Settings CameraSettings;
+		Actions CameraActions;
+		Nyx::Input::ContextHandle FlyCameraContext;
+		Nyx::Input::ContextHandle MouseLookContext;
+
 		// The panels' reports since the last Update(): of the last frame drawn
 		std::vector<ViewState> Views;
 
 		uint64_t LookingViewId = 0;
-
-		Settings CameraSettings;
 		float MoveSpeed = 0.0f;
 	};
 }

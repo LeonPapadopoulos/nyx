@@ -3,6 +3,7 @@
 #include "AssetResolver.h"
 #include "Entity.h"
 #include "GameWorld.h"
+#include "InputSystem.h"
 #include "Layer.h"
 #include "SceneSerializationTypes.h"
 
@@ -31,6 +32,7 @@ namespace Nyx::Game
 		void OnAttach(Nyx::Application& application) override;
 		void OnDetach() override;
 		void OnFixedUpdate(const Nyx::StepTime& step) override;
+		void OnUpdate(float deltaTime) override;
 		void OnUI() override;
 
 		// The world the game runs, e.g. for the editor's live edits. It stays at its address.
@@ -67,5 +69,13 @@ namespace Nyx::Game
 		glm::vec2 GameViewMin{ 0.0f };
 		glm::vec2 GameViewSize{ 0.0f };
 		bool bGameViewHovered = false;
+
+		Nyx::Input::InputSystem* Input = nullptr;
+
+		// Debug builds: Ctrl+Alt+Shift+C crashes the game on purpose, to try the editor's crash card;
+		// F3 shows the physics debug view
+		Nyx::Input::ContextHandle DebugContext;
+		Nyx::Input::ActionHandle CrashOnPurpose;
+		Nyx::Input::ActionHandle TogglePhysicsDebugView;
 	};
 }

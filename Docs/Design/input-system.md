@@ -10,9 +10,12 @@ How keyboard and mouse input reaches the editor and the game, and why. The code 
   the keyboard and mouse; `VirtualInputBackend` stands in for them in tests.
 - **`InputSystem`** takes every backend's events, in the order they happened, into one
   `InputFrame` per frame (`BeginFrame()`), and at the end of the frame makes the cursor what the
-  frame asked for (`EndFrame()`). The application owns it and runs it around the layers.
+  context stack says (`EndFrame()`). The application owns it and runs it around the layers.
 - **`InputFrame`** is the state of every device's controls in that frame, plus the events it was
   made from.
+- **The router** (`InputUser`) goes down the user's stack of *contexts* each frame and decides
+  every *action* from the frame: what each binding's control gives, through the value pipeline
+  and the trigger. It writes down every decision as a trace.
 
 ## Why it works this way
 
@@ -32,22 +35,57 @@ How keyboard and mouse input reaches the editor and the game, and why. The code 
   a new one. A device removed in a frame releases its held buttons in that frame.
 - **Focus.** Without the focus, no button is down, so a key held while switching windows doesn't
   stick.
-- **The cursor is asked for, each frame.** Code asks for the cursor free, hidden or captured for
-  this frame only, and asks again while it should stay so; the strongest request wins. A cursor
+- **One router.** The context stack is the only thing that decides who gets a control. Window
+  focus and ImGui are contexts on it too, with a priority, not flags somewhere else.
+- **The cursor follows from the stack.** A context can say the cursor is free, hidden or
+  captured; the topmost one that says anything decides. Nothing sets the cursor from code, so it
   can't stay captured because something forgot to give it back.
+- **The trace is the truth.** The router records, per binding, what it got, what each step made
+  of it and where it stopped and why. Whatever shows input only reads these records.
 - **Every window counts.** The GLFW backend reads the main window and every OS window ImGui makes
   for floating windows, so a scene view dragged out of the editor gets its keys too.
+
+## Contexts and actions
+
+- **Actions** (`InputActionDef`): a name and a value type, Button or an axis of one to three
+  dimensions. Code holds a handle and reads the action's `ActionState`: its value and phase
+  (Started, Ongoing, Triggered, Completed, Canceled). Only polling, no callbacks;
+  `ConsumeTriggered()` reads a press once.
+- **Contexts** (`InputContextDef`): a named set of bindings with a priority, on or off as a whole
+  (`SetContextActive()`, with a reason). The highest context that binds a control takes it from
+  those below, unless the binding lets it through. Of equal priority, the one turned on later
+  goes first. A context can also take whole devices, and say what the cursor is.
+- **Bindings** (`InputBinding`): a control, or keys making up an axis, with modifier keys, a
+  value pipeline and a trigger.
+- **The value pipeline** (`ValuePipeline`) has a fixed order: dead zone (Axial, Radial, Scaled
+  radial, Hybrid), response curve, sensitivity, look acceleration, smoothing, delta time. Each
+  step can be off, none can move, so the trace always has the same columns.
+- **Triggers** (`TriggerSettings`): Down, Pressed, Released, Toggle, Hold, Tap, DoubleTap, Chord,
+  Repeat, with a buffer, and a press and a release threshold for analog controls (hysteresis).
+- **System contexts**: `Unfocused` (1000) while none of the program's windows has the focus,
+  taking everything; `ImGui` (900) while ImGui has a text field active (the keyboard) or the
+  mouse is over UI that isn't a view (the mouse). Views, such as the scene views and the game's
+  window, say so with `MarkAsView()`. ImGui's state of a frame decides the `ImGui` context of the
+  next one (`SetImGuiState(ReadImGuiState())`).
+- The user also keeps the device used last, for prompts: a nudged mouse doesn't count until it
+  has moved a few pixels.
 
 ## Who uses it
 
 `Application::GetInput()` gives it to the layers. The editor's fly camera
-(`EditorCameraController`) reads the frame and captures the cursor while it flies. ImGui gets
-its input from GLFW's callbacks, which it shares with the GLFW backend.
+(`EditorCameraController`) has the contexts `EditorFlyCamera` (100) and `EditorMouseLook` (110,
+cursor captured) and reads its actions Move, Look, Speed and LookButton. The editor's UI source
+inspector turns on a `SourceInspector` context (950) that takes the keyboard and the mouse. The
+game's Ctrl+Alt+Shift+C (crash on purpose) and F3 (the physics debug view) are bindings in a
+`Debug` context (800, Debug builds).
+ImGui gets its input from GLFW's callbacks, which it shares with the GLFW backend; the editor's
+shortcuts stay ImGui's.
 
 `NyxInputTests` drives the system with virtual devices: frames, taps shorter than a frame,
-devices coming and going, focus and the cursor.
+devices coming and going, focus and the cursor. `NyxInputRouterTests` checks the dead zones,
+curves and pipeline steps against known values, each trigger's phases over set times, taking
+between contexts, the cursor, hysteresis and the device used last, all on traces.
 
 ## Not built yet
 
-Gamepads, and a layer of actions (Move, Look, Jump) bound to controls, so that a game never
-reads keys or buttons directly.
+Gamepads.
