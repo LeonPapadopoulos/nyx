@@ -25,6 +25,7 @@
 #include "PropertyWidgetRegistry.h"
 #include "ReflectionSourceRegistry.h"
 #include "ReflectionUtils.h"
+#include "RuntimeMeshComponent.h"
 #include "SceneEditor.h"
 #include "SceneFilePopups.h"
 #include "SceneOutlinerPanel.h"
@@ -237,6 +238,44 @@ namespace
 				outliner.Draw(editing);
 				Require(ImGui::FindWindowByName("Scene Outliner") == nullptr || !ImGui::FindWindowByName("Scene Outliner")->Active,
 					"A closed outliner should not be drawn");
+			});
+	}
+
+	// A mesh made at run time isn't reflected: the details show what it is, and draw it with the
+	// entity's components
+	void TestRuntimeMeshDetails()
+	{
+		HeadlessUI ui;
+		RegisterDefaultPropertyWidgets();
+
+		SceneEditor editing;
+		const Entity ground = editing.Scene.CreateEntity("Ground");
+		RuntimeMeshComponent runtimeMesh;
+		Require(DescribeRuntimeMesh(runtimeMesh) == std::vector<std::string>{ "No mesh yet" }, "A run-time mesh without data should say so");
+
+		auto mesh = std::make_shared<MeshData>();
+		mesh->Vertices.resize(6);
+		mesh->Indices = { 0, 1, 2, 3, 4, 5 };
+		mesh->Sections = { MeshSection{ .FirstIndex = 0, .IndexCount = 3, .MaterialSlot = 0 }, MeshSection{ .FirstIndex = 3, .IndexCount = 3, .MaterialSlot = 1 } };
+		SetRuntimeMesh(runtimeMesh, mesh);
+		const std::vector<std::string> lines = DescribeRuntimeMesh(runtimeMesh);
+		Require(lines.size() == 4 && lines[0] == "6 vertices, 2 triangles" && lines[1] == "Section 0: 1 triangles, material slot 0" &&
+				lines[2] == "Section 1: 1 triangles, material slot 1" && lines[3] == "Revision 1",
+			"The run-time mesh's details should list its counts and sections");
+
+		mesh->Indices[5] = 6;
+		Require(DescribeRuntimeMesh(runtimeMesh)[3].starts_with("Not drawn: "), "A run-time mesh that isn't valid should say why it isn't drawn");
+
+		editing.Scene.GetRegistry().Add<RuntimeMeshComponent>(ground, runtimeMesh);
+		editing.Scene.GetSelection() = ground;
+		DetailsPanel details;
+		ui.Frame([&]()
+			{
+				details.Draw(editing);
+			});
+		ui.Frame([&]()
+			{
+				details.Draw(editing);
 			});
 	}
 
@@ -1990,6 +2029,7 @@ int main()
 		TestForgetScene();
 		TestHotkeys();
 		TestPanelsDrawHeadless();
+		TestRuntimeMeshDetails();
 		TestDetailsHaveNoConflictingIds();
 		TestEntityReferenceCombo();
 		TestEntityReferenceDropFromOutliner();

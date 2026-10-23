@@ -417,6 +417,39 @@ What lies under a point of a view, for clicking on the world.
   `NyxSurfaceAnchorTests` (the tangent), `NyxSurfaceDecalTests` (the nearest decal under a ray,
   where on it, not from behind, not past the distance, not hidden).
 
+## Meshes made at run time
+
+A game's code can give an entity a mesh it makes itself, such as a generated ground or a tree whose
+mesh is made again as it grows.
+
+- The mesh is plain data (`MeshData`): vertices (position, normal, UV, colour, tangent), indices,
+  three a triangle, and *sections*, runs of the indices each drawn with the material of its slot, so
+  a tree's trunk and leaves are one mesh with two materials. A mesh without sections is one section
+  in slot 0. `CheckMeshData()` says what is wrong with one, `ComputeMeshBounds()` where it is.
+- The entity gets a `RuntimeMeshComponent` holding the data, shared, and a revision. With its
+  *Mesh Renderer*, it is drawn in place of the renderer's *Mesh*: slot 0 with *Material*, slots 1 and
+  on with *Extra Materials*; a slot without a material draws with *Material*.
+- The renderer puts each mesh on the GPU once, when it is first drawn, and again only when the
+  component's revision goes up: change the data, or give new data, then raise it
+  (`SetRuntimeMesh()`, `MarkRuntimeMeshChanged()`). Entities sharing one `MeshData` share its upload.
+  A mesh no view draws any more is let go of. Data that isn't a valid mesh isn't drawn, and is
+  logged once a revision.
+- It is drawn, picked, outlined when selected, shows its bounds, is drawn between steps when it
+  moves, and carries surface decals, as a mesh loaded by its path does.
+- It isn't saved, edited or sent to a game: whoever made it makes it again after a scene is loaded.
+  The pattern is a generator component, reflected and saved with its values (a size, a seed, a
+  growth stage), and a system that gives each such entity its `RuntimeMeshComponent` when it has
+  none, or when the values it was made from changed, raising the revision. The editor doesn't run
+  systems, so an editor scene shows such a mesh only once something makes it there.
+- The editor's details panel shows it read-only under *Mesh Made at Run Time*: its vertices and
+  triangles, each section's triangles and material slot, whether it is drawn, and its revision.
+- Tests: `NyxMeshTests` (which meshes are valid, the sections a mesh without any is drawn in, the
+  bounds), `NyxRuntimeMeshGpuTests` (a sphere made in code draws exactly as the built-in sphere;
+  changed and its revision raised it is drawn anew, unchanged it is uploaded once; entities sharing
+  a mesh share its upload, and one nobody draws is let go of; one that isn't valid draws nothing; a
+  click picks it, selected it is outlined; two sections draw with two materials; a decal on it is
+  drawn), `NyxEditorPanelTests` (the details panel's lines).
+
 ## Surface decals
 
 A *Surface Decal* draws a material flat on another entity's surface and moves with it, such as a

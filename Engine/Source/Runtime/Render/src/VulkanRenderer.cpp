@@ -12,6 +12,7 @@
 #include "FixedStepClock.h"
 #include "DrawnWorldTime.h"
 #include "MeshRendererComponent.h"
+#include "RuntimeMeshComponent.h"
 #include "Paths.h"
 #include "Profiler.h"
 
@@ -311,6 +312,7 @@ namespace Nyx
 	{
 		Context.WaitIdle();
 		Context.SavePipelineCache(Nyx::Paths::GetShaderCacheDir() / "Pipelines.bin");
+		RuntimeMeshes.Clear();
 
 		for (SceneViewInstance& view : SceneViews)
 		{
@@ -471,11 +473,13 @@ namespace Nyx
 		(void)fenceResult;
 		clock.Times.WaitForGpu = MillisecondsSince(clock.Start);
 
-		// Views let go of during the last frame, which the GPU is done with now
+		// Views let go of during the last frame, which the GPU is done with now, and meshes made at
+		// run time that were replaced or no longer drawn
 		for (const uint64_t id : std::exchange(SceneViewsToDestroy, {}))
 		{
 			DestroySceneViewNow(id);
 		}
+		RuntimeMeshes.ReleaseRetired();
 	}
 
 	std::optional<uint32_t> VulkanRenderer::AcquireImage(FrameClock& clock)
@@ -797,6 +801,7 @@ namespace Nyx
 		world->Revision = ++LastWorldRevision;
 		// Its contents may be new: nothing of the old ones is drawn or picked from
 		world->Objects.clear();
+		world->Sections.clear();
 		world->Decals.clear();
 		world->PickingIdToEntity.clear();
 		world->OverlayLines = {};
@@ -1109,6 +1114,8 @@ namespace Nyx
 			world->DebugDrawLines = drawing != WorldDebugDraws.end() ? DebugLines.Add(*drawing->second) : DebugLineRange{};
 		}
 		DebugLines.Upload();
+		// Meshes made at run time that no shown world draws any more
+		RuntimeMeshes.EndFrame();
 	}
 
 	std::optional<float> VulkanRenderer::GetWorldInterpolation(const Nyx::Registry* registry) const
@@ -1135,19 +1142,25 @@ namespace Nyx
 	void VulkanRenderer::ExtractRenderObjects(RenderWorld& world, std::optional<float> interpolation)
 	{
 		world.Objects.clear();
+		world.Sections.clear();
 		world.PickingIdToEntity.clear();
 
 		const Nyx::Registry& registry = *world.Registry;
 
 		const_cast<Nyx::Registry&>(registry).Each<Nyx::MeshRendererComponent>(
-			[&world, &registry, interpolation](Nyx::Entity entity, Nyx::MeshRendererComponent& meshRenderer)
+			[this, &world, &registry, interpolation](Nyx::Entity entity, Nyx::MeshRendererComponent& meshRenderer)
 			{
 				if (!meshRenderer.bVisible)
 				{
 					return;
 				}
 
-				if (!meshRenderer.MeshAsset || !meshRenderer.MaterialAsset)
+				// A mesh made at run time takes the place of the one loaded by its path; it is uploaded
+				// here, before this frame records a draw, when it is new or its revision changed
+				Nyx::Mesh* mesh = registry.Has<Nyx::RuntimeMeshComponent>(entity)
+					? RuntimeMeshes.Acquire(Context, registry.Get<Nyx::RuntimeMeshComponent>(entity))
+					: meshRenderer.MeshAsset;
+				if (!mesh || !meshRenderer.MaterialAsset)
 				{
 					return;
 				}
@@ -1163,12 +1176,21 @@ namespace Nyx
 
 				RenderObject obj{};
 				obj.SourceEntity = entity;
-				obj.MeshAsset = meshRenderer.MeshAsset;
+				obj.MeshAsset = mesh;
 				obj.MaterialAsset = meshRenderer.MaterialAsset;
 				obj.WorldTransform = worldTransform;
 				obj.DrawTransform = drawTransform;
-				obj.LocalBoundsMin = meshRenderer.MeshAsset->GetLocalBoundsMin();
-				obj.LocalBoundsMax = meshRenderer.MeshAsset->GetLocalBoundsMax();
+				obj.LocalBoundsMin = mesh->GetLocalBoundsMin();
+				obj.LocalBoundsMax = mesh->GetLocalBoundsMax();
+
+				obj.FirstSection = static_cast<uint32_t>(world.Sections.size());
+				for (const Nyx::MeshSection& section : mesh->GetSections())
+				{
+					world.Sections.push_back(RenderSection{ .FirstIndex = section.FirstIndex,
+						.IndexCount = section.IndexCount,
+						.MaterialAsset = Nyx::GetSlotMaterial(meshRenderer, section.MaterialSlot) });
+				}
+				obj.SectionCount = static_cast<uint32_t>(world.Sections.size()) - obj.FirstSection;
 
 				// Dense picking ID: 1..N, with 0 reserved for "nothing"
 				world.PickingIdToEntity.push_back(entity);
@@ -1188,18 +1210,23 @@ namespace Nyx
 				continue;
 			}
 
-			cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, **obj.MaterialAsset->Pipeline);
-
-			ObjectConstants object{};
-			object.Model = obj.DrawTransform;
-			object.MaterialOffset = obj.MaterialAsset->MaterialOffset;
-			object.EntityId = obj.PickingId;
-			cmd.pushConstants<ObjectConstants>(*ScenePipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, { object });
-
 			vk::DeviceSize offsets[] = { 0 };
 			cmd.bindVertexBuffers(0, { obj.MeshAsset->GetVertexBuffer() }, offsets);
 			cmd.bindIndexBuffer(obj.MeshAsset->GetIndexBuffer(), 0, vk::IndexType::eUint32);
-			cmd.drawIndexed(obj.MeshAsset->GetIndexCount(), 1, 0, 0, 0);
+
+			// Each section with its slot's material
+			for (uint32_t index = obj.FirstSection; index < obj.FirstSection + obj.SectionCount; ++index)
+			{
+				const RenderSection& section = world.Sections[index];
+				cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, **section.MaterialAsset->Pipeline);
+
+				ObjectConstants object{};
+				object.Model = obj.DrawTransform;
+				object.MaterialOffset = section.MaterialAsset->MaterialOffset;
+				object.EntityId = obj.PickingId;
+				cmd.pushConstants<ObjectConstants>(*ScenePipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, { object });
+				cmd.drawIndexed(section.IndexCount, 1, section.FirstIndex, 0, 0);
+			}
 		}
 	}
 

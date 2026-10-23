@@ -50,12 +50,6 @@ namespace Nyx
 		return attributes;
 	}
 
-	// Each vertex's tangent from the triangles around it: their direction of rising u, made
-	// perpendicular to the normal, and the side of falling v (Lengyel). Exact on flat faces; on
-	// curved ones the mean of the faces, as close as needed for the built-in meshes. Imported meshes
-	// will take their file's tangents, or MikkTSpace's.
-	void ComputeTangents(MeshData& mesh);
-
 	// A sphere of `radius` around the origin: `rings` from pole to pole, `segments` around, u
 	// around it and v from top to bottom, with tangents
 	MeshData MakeSphere(float radius, uint32_t rings, uint32_t segments);
@@ -92,6 +86,11 @@ namespace Nyx
 		vk::Buffer GetIndexBuffer() const;
 		uint32_t GetVertexCount() const;
 		uint32_t GetIndexCount() const;
+		// What each material slot draws (GetMeshSections()), from the last upload
+		const std::vector<MeshSection>& GetSections() const { return Sections; }
+		// New with every upload of any mesh, never 0 once uploaded: tells buffers apart that the
+		// driver may give the same handles as ones destroyed before
+		uint64_t GetUploadId() const { return UploadId; }
 
 		void SetLocalBounds(const glm::vec3& minBounds, const glm::vec3& maxBounds)
 		{
@@ -127,6 +126,9 @@ namespace Nyx
 		vk::raii::DeviceMemory IndexBufferMemory{ nullptr };
 		vk::DeviceSize IndexBufferOffset = 0;
 		uint32_t IndexCount = 0;
+
+		std::vector<MeshSection> Sections;
+		uint64_t UploadId = 0;
 
 		glm::vec3 LocalBoundsMin{ -0.5f, -0.5f, -0.5f };
 		glm::vec3 LocalBoundsMax{ 0.5f, 0.5f, 0.5f };

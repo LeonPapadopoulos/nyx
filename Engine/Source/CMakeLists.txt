@@ -30,6 +30,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/DebugDraw.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/FileWatcher.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/BinaryArchive.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Core/src/MeshData.cpp
 
     # Runtime/Net
     ${NYX_ENGINE_ROOT}/Runtime/Net/src/NetConnection.cpp
@@ -121,6 +122,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/SurfaceDecals.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/DrawnWorldTime.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Mesh.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/RuntimeMeshCache.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Texture.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/CubemapTexture.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Material.cpp
@@ -186,6 +188,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/StringUtil.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/ClockTime.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/BinaryArchive.h
+    ${NYX_ENGINE_ROOT}/Runtime/Core/include/MeshData.h
     
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/NyxPCH.h
 
@@ -247,6 +250,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/EntityGuidLookup.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/SurfaceAnchor.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/PreviousTransformComponent.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/RuntimeMeshComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/SurfaceDecalComponent.h
 
     # Runtime/Sim
@@ -267,7 +271,6 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Assets/include/ShaderLayout.h
     ${NYX_ENGINE_ROOT}/Runtime/Assets/include/BindlessTextures.h
     ${NYX_ENGINE_ROOT}/Runtime/Assets/include/MaterialAsset.h
-    ${NYX_ENGINE_ROOT}/Runtime/Assets/include/MeshData.h
     ${NYX_ENGINE_ROOT}/Runtime/Assets/include/ShaderCompileTypes.h
 
     # Runtime/UI
@@ -292,6 +295,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/SurfaceDecals.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/DrawnWorldTime.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Mesh.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/RuntimeMeshCache.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Texture.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/CubemapTexture.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Material.h

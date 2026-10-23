@@ -12,51 +12,6 @@
 
 namespace Nyx
 {
-	void ComputeTangents(MeshData& mesh)
-	{
-		std::vector<glm::vec3> alongU(mesh.Vertices.size(), glm::vec3(0.0f));
-		std::vector<glm::vec3> alongV(mesh.Vertices.size(), glm::vec3(0.0f));
-		for (size_t index = 0; index + 2 < mesh.Indices.size(); index += 3)
-		{
-			const uint32_t corners[3] = { mesh.Indices[index], mesh.Indices[index + 1], mesh.Indices[index + 2] };
-			const Vertex& a = mesh.Vertices[corners[0]];
-			const Vertex& b = mesh.Vertices[corners[1]];
-			const Vertex& c = mesh.Vertices[corners[2]];
-			const glm::vec3 edge1 = b.Position - a.Position;
-			const glm::vec3 edge2 = c.Position - a.Position;
-			const glm::vec2 uv1 = b.UV - a.UV;
-			const glm::vec2 uv2 = c.UV - a.UV;
-			const float area = uv1.x * uv2.y - uv2.x * uv1.y;
-			if (std::abs(area) < 1e-12f)
-			{
-				continue; // No texture on it, e.g. at a sphere's pole
-			}
-			const glm::vec3 u = (edge1 * uv2.y - edge2 * uv1.y) / area;
-			const glm::vec3 v = (edge2 * uv1.x - edge1 * uv2.x) / area;
-			for (const uint32_t corner : corners)
-			{
-				alongU[corner] += u;
-				alongV[corner] += v;
-			}
-		}
-
-		for (size_t index = 0; index < mesh.Vertices.size(); ++index)
-		{
-			Vertex& vertex = mesh.Vertices[index];
-			const glm::vec3 n = glm::normalize(vertex.Normal);
-			glm::vec3 t = alongU[index] - n * glm::dot(n, alongU[index]);
-			if (glm::dot(t, t) < 1e-12f)
-			{
-				// No triangle with a texture: any direction along the surface
-				t = glm::cross(std::abs(n.y) < 0.99f ? glm::vec3(0.0f, 1.0f, 0.0f) : glm::vec3(1.0f, 0.0f, 0.0f), n);
-			}
-			t = glm::normalize(t);
-			// The bitangent points up the image, towards falling v: where a normal map's green points
-			const float handedness = glm::dot(glm::cross(n, t), -alongV[index]) < 0.0f ? -1.0f : 1.0f;
-			vertex.Tangent = glm::vec4(t, handedness);
-		}
-	}
-
 	MeshData MakeSphere(float radius, uint32_t rings, uint32_t segments)
 	{
 		constexpr float Pi = 3.14159265358979f;
@@ -177,6 +132,10 @@ namespace Nyx
 
 		VertexCount = static_cast<uint32_t>(data.Vertices.size());
 		IndexCount = static_cast<uint32_t>(data.Indices.size());
+		Sections = GetMeshSections(data);
+
+		static uint64_t LastUploadId = 0;
+		UploadId = ++LastUploadId;
 
 		return true;
 	}
@@ -192,6 +151,9 @@ namespace Nyx
 		VertexBufferMemory = nullptr;
 		VertexBufferOffset = 0;
 		VertexCount = 0;
+
+		Sections.clear();
+		UploadId = 0;
 	}
 
 	bool Mesh::DoLoad()

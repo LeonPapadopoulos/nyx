@@ -322,7 +322,10 @@ namespace Nyx
 		rasterizer.rasterizerDiscardEnable = VK_FALSE;
 		rasterizer.polygonMode = vk::PolygonMode::eFill;
 		rasterizer.lineWidth = 1.0f;
-		rasterizer.cullMode = vk::CullModeFlagBits::eBack;
+		// Both sides, as the scene pass draws them (VulkanMaterials): with the projection's Y flipped,
+		// culling clockwise backs left only a closed mesh's inside, and an open one, such as a ground
+		// made at run time, was neither picked nor outlined
+		rasterizer.cullMode = vk::CullModeFlagBits::eNone;
 		rasterizer.frontFace = vk::FrontFace::eClockwise;
 		rasterizer.depthBiasEnable = VK_FALSE;
 
@@ -557,6 +560,8 @@ namespace Nyx
 			addValue(vertexBuffer);
 			addValue(indexBuffer);
 			addValue(obj.MeshAsset->GetIndexCount());
+			// A mesh made at run time and uploaded anew may get the old buffers' handles back
+			addValue(obj.MeshAsset->GetUploadId());
 		}
 		return hash;
 	}
@@ -858,7 +863,10 @@ namespace Nyx
 		vk::PipelineRasterizationStateCreateInfo rasterizer{};
 		rasterizer.polygonMode = vk::PolygonMode::eFill;
 		rasterizer.lineWidth = 1.0f;
-		rasterizer.cullMode = vk::CullModeFlagBits::eBack;
+		// Both sides, as the scene pass draws them (VulkanMaterials): with the projection's Y flipped,
+		// culling clockwise backs left only a closed mesh's inside, and an open one, such as a ground
+		// made at run time, was neither picked nor outlined
+		rasterizer.cullMode = vk::CullModeFlagBits::eNone;
 		rasterizer.frontFace = vk::FrontFace::eClockwise;
 
 		vk::PipelineMultisampleStateCreateInfo multisampling{};

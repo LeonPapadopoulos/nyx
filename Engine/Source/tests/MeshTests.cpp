@@ -1,7 +1,9 @@
 // The built-in meshes' tangents, without a GPU: on a flat face the tangent runs along rising u and
 // the bitangent, cross(normal, tangent) * w, up the image (falling v); on the sphere every tangent
 // is of unit length, perpendicular to its normal, and the faces wind counter-clockwise outside; the
-// capsule stands on the origin, its vertices on its surface.
+// capsule stands on the origin, its vertices on its surface. Meshes as data (MeshData): which are
+// valid (indices of whole triangles below the vertex count, sections one after the other over every
+// index), the sections a mesh without any is drawn in, and the bounds around its vertices.
 #include "Mesh.h"
 #include "TestSupport.h"
 
@@ -113,6 +115,76 @@ namespace
 			}
 		}
 	}
+
+	// Two quads, a section each in slots 0 and 1, as a tree's trunk and leaves
+	Nyx::MeshData MakeTwoQuads()
+	{
+		Nyx::MeshData mesh;
+		for (int quad = 0; quad < 2; ++quad)
+		{
+			const uint32_t first = static_cast<uint32_t>(mesh.Vertices.size());
+			for (const glm::vec2 corner : { glm::vec2(0.0f, 0.0f), glm::vec2(1.0f, 0.0f), glm::vec2(1.0f, 1.0f), glm::vec2(0.0f, 1.0f) })
+			{
+				mesh.Vertices.push_back(Nyx::Vertex{ .Position = glm::vec3(corner.x + 2.0f * quad, corner.y, -1.0f * quad) });
+			}
+			mesh.Indices.insert(mesh.Indices.end(), { first, first + 1, first + 2, first + 2, first + 3, first });
+		}
+		mesh.Sections = { Nyx::MeshSection{ .FirstIndex = 0, .IndexCount = 6, .MaterialSlot = 0 }, Nyx::MeshSection{ .FirstIndex = 6, .IndexCount = 6, .MaterialSlot = 1 } };
+		return mesh;
+	}
+
+	void RequireProblem(const Nyx::MeshData& mesh, const std::string& what)
+	{
+		Require(!Nyx::CheckMeshData(mesh).empty(), "A mesh with " + what + " should not be valid");
+	}
+
+	void TestMeshDataValidity()
+	{
+		const Nyx::MeshData valid = MakeTwoQuads();
+		Require(Nyx::CheckMeshData(valid).empty(), "Two quads in two sections should be valid: " + Nyx::CheckMeshData(valid));
+		Require(Nyx::CheckMeshData(Nyx::MeshData{}).empty(), "An empty mesh should be valid");
+		Require(Nyx::CheckMeshData(Nyx::MakeSphere(0.5f, 8, 16)).empty(), "The sphere should be valid");
+
+		Nyx::MeshData mesh = valid;
+		mesh.Indices[7] = 8;
+		RequireProblem(mesh, "an index past its vertices");
+		mesh = valid;
+		mesh.Indices.pop_back();
+		mesh.Sections[1].IndexCount = 5;
+		RequireProblem(mesh, "indices of no whole triangles");
+		mesh = valid;
+		mesh.Sections[1].FirstIndex = 3;
+		mesh.Sections[1].IndexCount = 9;
+		RequireProblem(mesh, "sections that overlap");
+		mesh = valid;
+		mesh.Sections.pop_back();
+		RequireProblem(mesh, "sections that leave indices out");
+		mesh = valid;
+		mesh.Sections[1].IndexCount = 12;
+		RequireProblem(mesh, "a section past the indices");
+		mesh = valid;
+		mesh.Sections.push_back(Nyx::MeshSection{ .FirstIndex = 12, .IndexCount = 0, .MaterialSlot = 2 });
+		RequireProblem(mesh, "an empty section");
+		mesh = valid;
+		std::swap(mesh.Sections[0], mesh.Sections[1]);
+		RequireProblem(mesh, "sections out of order");
+	}
+
+	void TestMeshSectionsAndBounds()
+	{
+		Nyx::MeshData mesh = MakeTwoQuads();
+		Require(Nyx::GetMeshSections(mesh).size() == 2, "A mesh's own sections should be drawn");
+		mesh.Sections.clear();
+		const std::vector<Nyx::MeshSection> whole = Nyx::GetMeshSections(mesh);
+		Require(whole.size() == 1 && whole[0].FirstIndex == 0 && whole[0].IndexCount == 12 && whole[0].MaterialSlot == 0,
+			"A mesh without sections should be drawn as one of every index in slot 0");
+		Require(Nyx::GetMeshSections(Nyx::MeshData{}).empty(), "An empty mesh should have nothing to draw");
+
+		const Nyx::MeshBounds bounds = Nyx::ComputeMeshBounds(mesh);
+		Require(Near(bounds.Min, glm::vec3(0.0f, 0.0f, -1.0f)) && Near(bounds.Max, glm::vec3(3.0f, 1.0f, 0.0f)), "The bounds should be around the two quads");
+		const Nyx::MeshBounds empty = Nyx::ComputeMeshBounds(Nyx::MeshData{});
+		Require(empty.Min == glm::vec3(0.0f) && empty.Max == glm::vec3(0.0f), "An empty mesh's bounds should be nothing at the origin");
+	}
 }
 
 int main()
@@ -122,6 +194,8 @@ int main()
 		TestFlatFaces();
 		TestSphere();
 		TestCapsule();
+		TestMeshDataValidity();
+		TestMeshSectionsAndBounds();
 	}
 	catch (const std::exception& error)
 	{

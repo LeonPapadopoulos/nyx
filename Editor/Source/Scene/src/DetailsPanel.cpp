@@ -5,6 +5,7 @@
 #include "ImGuiSource.h"
 #include "ReflectedPropertyDrawer.h"
 #include "ReflectionSourceRegistry.h"
+#include "RuntimeMeshComponent.h"
 #include "SceneEditor.h"
 #include "TransactionObjectRefHelpers.h"
 #include "UIWidgets.h"
@@ -18,6 +19,28 @@
 
 namespace Nyx::Editor
 {
+	std::vector<std::string> DescribeRuntimeMesh(const Nyx::RuntimeMeshComponent& component)
+	{
+		if (!component.Mesh)
+		{
+			return { "No mesh yet" };
+		}
+		const Nyx::MeshData& mesh = *component.Mesh;
+		std::vector<std::string> lines = { std::to_string(mesh.Vertices.size()) + " vertices, " + std::to_string(mesh.Indices.size() / 3) + " triangles" };
+		const std::vector<Nyx::MeshSection> sections = Nyx::GetMeshSections(mesh);
+		for (size_t index = 0; index < sections.size(); ++index)
+		{
+			lines.push_back("Section " + std::to_string(index) + ": " + std::to_string(sections[index].IndexCount / 3) + " triangles, material slot " +
+				std::to_string(sections[index].MaterialSlot));
+		}
+		if (const std::string problem = Nyx::CheckMeshData(mesh); !problem.empty())
+		{
+			lines.push_back("Not drawn: " + problem);
+		}
+		lines.push_back("Revision " + std::to_string(component.Revision));
+		return lines;
+	}
+
 	void DetailsPanel::Draw(SceneEditor& editing)
 	{
 		InspectorDrawContext& drawContext = editing.DetailsContext;
@@ -140,6 +163,22 @@ namespace Nyx::Editor
 				DrawReflectedTypeTable(component, *componentType.TypeMetadata, drawContext);
 			}
 
+			ImGui::PopID();
+		}
+
+		// Made by code while the world runs, so there is nothing to edit or save: what it is
+		if (world.Has<Nyx::RuntimeMeshComponent>(selectedEntity))
+		{
+			ImGui::PushID("##RuntimeMesh");
+			const bool bMeshOpen = NYX_UI(Nyx::UI::CollapsingHeader("Mesh Made at Run Time"));
+			ImGui::SetItemTooltip("Made by code while the world runs, e.g. by a generator; not saved, made again after loading");
+			if (bMeshOpen)
+			{
+				for (const std::string& line : DescribeRuntimeMesh(world.Get<Nyx::RuntimeMeshComponent>(selectedEntity)))
+				{
+					NYX_UI(ImGui::TextDisabled("%s", line.c_str()));
+				}
+			}
 			ImGui::PopID();
 		}
 

@@ -11,13 +11,14 @@ namespace Nyx
 {
 	namespace
 	{
-		// A loaded MeshRenderer only knows the paths of its mesh and material; look up the assets.
+		// A loaded MeshRenderer only knows the paths of its mesh and materials; look up the assets.
 		void ResolveMeshRendererAssets(MeshRendererComponent& component, ScenePostLoadContext& context)
 		{
 			if (!context.AssetResolver)
 			{
 				component.MeshAsset = nullptr;
 				component.MaterialAsset = nullptr;
+				component.ExtraMaterialAssets.clear();
 				return;
 			}
 
@@ -26,6 +27,13 @@ namespace Nyx
 
 			component.MaterialAsset =
 				component.Material.IsValid() ? context.AssetResolver->ResolveMaterial(component.Material.Path) : nullptr;
+
+			component.ExtraMaterialAssets.clear();
+			for (const MeshMaterialSlot& slot : component.ExtraMaterials)
+			{
+				component.ExtraMaterialAssets.push_back(
+					slot.Material.IsValid() ? context.AssetResolver->ResolveMaterial(slot.Material.Path) : nullptr);
+			}
 		}
 
 		// The same for a decal's material

@@ -393,7 +393,7 @@ set_property(TARGET NyxShaderCompileServiceTests PROPERTY FOLDER "Tests")
 nyx_copy_shader_compiler_next_to(NyxShaderCompileServiceTests)
 add_test(NAME NyxShaderCompileServiceTests COMMAND NyxShaderCompileServiceTests)
 
-# The built-in meshes' tangents, without a GPU.
+# The built-in meshes' tangents, and meshes as data (validity, sections, bounds), without a GPU.
 add_executable(NyxMeshTests MeshTests.cpp)
 target_link_libraries(NyxMeshTests PRIVATE NyxEngine)
 add_dependencies(NyxMeshTests NyxGeneratedReflection)
@@ -441,6 +441,17 @@ set_property(TARGET NyxSceneGpuTests PROPERTY FOLDER "Tests")
 nyx_copy_shaders_next_to(NyxSceneGpuTests)
 nyx_copy_shader_compiler_next_to(NyxSceneGpuTests)
 add_test(NAME NyxSceneGpuTests COMMAND NyxSceneGpuTests)
+
+# Meshes made at run time on a real GPU: drawn as the same mesh loaded, redrawn when changed, picked,
+# outlined, two sections with two materials, a decal on one. Needs a Vulkan device; its window stays
+# hidden.
+add_executable(NyxRuntimeMeshGpuTests RuntimeMeshGpuTests.cpp)
+target_link_libraries(NyxRuntimeMeshGpuTests PRIVATE NyxEngine)
+add_dependencies(NyxRuntimeMeshGpuTests NyxGeneratedReflection)
+set_property(TARGET NyxRuntimeMeshGpuTests PROPERTY FOLDER "Tests")
+nyx_copy_shaders_next_to(NyxRuntimeMeshGpuTests)
+nyx_copy_shader_compiler_next_to(NyxRuntimeMeshGpuTests)
+add_test(NAME NyxRuntimeMeshGpuTests COMMAND NyxRuntimeMeshGpuTests)
 
 # Every #include between the engine's folders against their table in Docs/Architecture.md
 add_test(NAME NyxRuntimeFolderDependencies

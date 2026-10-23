@@ -49,18 +49,18 @@ doesn't allow, and on a table that goes round in a circle, so a new dependency s
 
 | Folder | What it holds | Includes from |
 | --- | --- | --- |
-| `Core` | Logging, assertions, paths, text helpers, child processes, the crash handler, file watching, the frame rate limiter, the fixed step clock, `BinaryArchive`, the profiler macros (`Profiler.h`), debug drawing (`DebugDraw`) | — |
+| `Core` | Logging, assertions, paths, text helpers, child processes, the crash handler, file watching, the frame rate limiter, the fixed step clock, `BinaryArchive`, the profiler macros (`Profiler.h`), debug drawing (`DebugDraw`), meshes as plain data (`MeshData`: vertices, indices and sections, `CheckMeshData()`, `ComputeMeshBounds()`) | — |
 | `Reflection` | Type, property and enum metadata, and the `NYX_REFLECT`, `NYX_PROPERTY` and `NYX_ENUM` macros; not under `Runtime` | — |
 | `Net` | TCP connections and the messages they carry | Core |
 | `Input` | Keyboard, mouse and gamepads (through SDL3), gathered from backends into one `InputFrame` per frame; the router: context stacks, actions, the value pipeline, triggers and their traces; the input's history and its view (`InputDebugView`), painted with the UI's widgets; input assets (`.nyxinput`), saved through reflection, and their tuning layers; the checks and recipes for bindings; the input's stream and recordings (`.nyxinputrec`); the game's fly cameras, for entities with a `FlyCameraComponent` (`UpdateFlyCameras()`), and its orbit cameras' input (`OrbitCameraInput`, `Input::UpdateOrbitCameras()`) | Core, Reflection, Scene, UI |
-| `Scene` | Entities and components (the physics components, `CharacterComponent` and `OrbitCameraComponent` among them, and the moves along the ground relative to a camera, `GetGroundMove()`), the component registry, scene files, the tagged binary format, surface anchors (`SurfaceAnchor`: a point, normal and tangent on an entity that move with it), surface decals (`SurfaceDecalComponent`), a camera's view and projection and the ray back through a point of its picture (`CameraProjection.h`) | Core, Reflection |
+| `Scene` | Entities and components (the physics components, `CharacterComponent` and `OrbitCameraComponent` among them, and the moves along the ground relative to a camera, `GetGroundMove()`), the component registry, scene files, the tagged binary format, surface anchors (`SurfaceAnchor`: a point, normal and tangent on an entity that move with it), surface decals (`SurfaceDecalComponent`), meshes made at run time (`RuntimeMeshComponent`, not saved), a camera's view and projection and the ray back through a point of its picture (`CameraProjection.h`) | Core, Reflection |
 | `Physics` | Rigid bodies, their shapes, collisions and the physics step, and characters, on Jolt (`PhysicsWorld`); Jolt's headers stay inside | Core |
 | `Sim` | The game world: its entities, their physics bodies and characters kept in step with the physics components (`PhysicsBodies`), and the simulation systems each fixed step runs, in order (`GameWorld`, `ISimSystem`), the players' commands each step applies (`CommandQueue`), the entity a ray hits first (`PickPhysicsBody()`), the orbit cameras following their targets as drawn (`UpdateOrbitCameras()`) | Core, Reflection, Scene, Physics |
 | `Assets` | Asset files as plain data: images, materials, glTF meshes, shader compile requests and results | Core |
 | `UI` | The painter, and the painted UI drawn with it on top of ImGui | Core, Reflection |
 | `Link` | The editor link: its messages, live edits, live tuning of the input (`LiveInput`), recordings, the log sink | Core, Net, Input, Scene, Assets |
 | `LinkTools` | Link messages, recordings, scene files and input files as readable text, for the editor and NyxDump; not under `Runtime`, and not in the game | Core, Reflection, Scene, Input, Link |
-| `Render` | The Vulkan renderer, scene views, shaders and materials, and applying the link's shaders and material values | Core, Net, Scene, Assets, UI, Link |
+| `Render` | The Vulkan renderer, scene views, shaders and materials, meshes made at run time on the GPU (`RuntimeMeshCache`), and applying the link's shaders and material values | Core, Net, Scene, Assets, UI, Link |
 | `Platform` | The window | Core, Input, UI |
 | `App` | The application and its layers, `main()`, the options the editor starts a game with, what a game module brings (`GameModule`) and its player (`IPlayerController`, turning input into commands each frame), the player Nyx's game has without one (`ThirdPersonPlayer`) | Core, Input, Scene, Sim, Render, Platform |
 
@@ -144,9 +144,12 @@ checks every `#include` against this table.
    (`IWindow::WaitIfMinimized()`), so the frame loop (and the editor link) keeps running.
    Otherwise `VulkanRenderer::DrawFrameOnDevice()`, which leaves the UI to its `VulkanUIBackend`:
    1. waits for the last frame's fence (one frame in flight), then reads back what that frame
-      left: timestamps, the painter's binning, picks;
+      left: timestamps, the painter's binning, picks; and destroys the GPU meshes made at run time
+      that were replaced or no longer drawn since;
    2. acquires the swapchain image, and takes shader updates;
-   3. extracts what each shown world draws this frame: its objects and its surface decals
+   3. extracts what each shown world draws this frame: its objects (a mesh made at run time
+      uploaded here, before any draw is recorded, when it is new or its revision changed:
+      `RuntimeMeshCache`) and its surface decals
       (`ExtractSurfaceDecals()`, every anchor resolved through one guid lookup), both between
       their last two steps by one factor for the world when it is drawn so, its time for what
       moves by itself (its clock's, else the renderer's: `GetDrawnWorldTime()`), and its debug
@@ -268,7 +271,8 @@ it with a warning. `Hello`'s layout never changes.
    on.
 2. For scenes to use it: an `AssetReference` property on a component, resolved in its post-load
    step through `IAssetResolver`. `AssetResolver` resolves materials from their `.nyxmat` files;
-   meshes are only the built-in cube and sphere so far.
+   meshes are only the built-in cube and sphere so far. A mesh made by code while the game runs
+   is no asset: it is a `RuntimeMeshComponent`, made again by its maker after loading.
 
 ### A link message
 

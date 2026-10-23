@@ -15,6 +15,7 @@
 #include "VulkanDebugLines.h"
 #include "VulkanEditorOverlays.h"
 #include "Mesh.h"
+#include "RuntimeMeshCache.h"
 #include "Texture.h"
 #include "CubemapTexture.h"
 #include "Material.h"
@@ -122,12 +123,26 @@ namespace Nyx
 		}
 	};
 
+	// A run of an object's mesh drawn with one material (MeshSection)
+	struct RenderSection
+	{
+		uint32_t FirstIndex = 0;
+		uint32_t IndexCount = 0;
+		Material* MaterialAsset = nullptr;
+	};
+
 	struct RenderObject
 	{
 		Nyx::Entity SourceEntity{};
 
+		// The mesh loaded by its path, or the one made at run time (RuntimeMeshComponent)
 		Nyx::Mesh* MeshAsset = nullptr;
+		// The first slot's material; the editor's passes draw the whole mesh with it
 		Material* MaterialAsset = nullptr;
+		// What the scene pass draws: RenderWorld::Sections from FirstSection on, each with its slot's
+		// material
+		uint32_t FirstSection = 0;
+		uint32_t SectionCount = 0;
 		// Where the entity is, for picking and the editor's overlays
 		glm::mat4 WorldTransform{ 1.0f };
 		// Where the scene pass draws it: between its last two steps in a world drawn so
@@ -151,6 +166,7 @@ namespace Nyx
 		uint64_t Revision = 0;
 
 		std::vector<RenderObject> Objects;
+		std::vector<RenderSection> Sections;
 		// Its surface decals, drawn over the objects and the sky, and their materials by path
 		std::vector<RenderDecal> Decals;
 		DecalMaterialCache DecalMaterials;
@@ -298,6 +314,9 @@ namespace Nyx
 		void SaveScreenshot(const std::filesystem::path& path, ImVec2 min, ImVec2 max) override { UI.SaveScreenshot(path, min, max); }
 		const std::string& GetScreenshotMessage() const override { return UI.GetScreenshotMessage(); }
 
+		// The meshes made at run time, on the GPU, for tests
+		const Nyx::RuntimeMeshCache& GetRuntimeMeshes() const { return RuntimeMeshes; }
+
 		ImTextureID GetSceneViewTextureId(uint64_t id) const override;
 		// What a scene view rendered last, as RGBA; waits for the GPU. False for an unknown view. For tests.
 		bool ReadSceneViewPixels(uint64_t id, Nyx::RgbaImage& outImage);
@@ -440,6 +459,9 @@ namespace Nyx
 		std::chrono::steady_clock::time_point LastFrameEnd;
 
 		std::vector<std::unique_ptr<Nyx::Mesh>> LoadedMeshes;
+		// The worlds' meshes made at run time (RuntimeMeshComponent), uploaded as the worlds are
+		// extracted
+		Nyx::RuntimeMeshCache RuntimeMeshes;
 		std::vector<std::unique_ptr<Nyx::Texture>> LoadedTextures;
 
 		std::vector<SceneViewInstance> SceneViews;
