@@ -116,6 +116,9 @@ namespace Nyx
 		virtual Nyx::Mesh* GetCubeMesh() = 0;
 		// Of radius 0.5, like the cube's half size
 		virtual Nyx::Mesh* GetSphereMesh() = 0;
+		// Of radius 0.3 and 1.8 tall, standing on its origin: the default character's
+		// (CharacterComponent)
+		virtual Nyx::Mesh* GetCapsuleMesh() = 0;
 		// A square of side 1 on the ground (y = 0), facing up
 		virtual Nyx::Mesh* GetPlaneMesh() = 0;
 

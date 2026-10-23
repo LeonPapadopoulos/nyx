@@ -1,0 +1,4 @@
+# The character test scene's crates, matte brown (NyxCharacterTests --write-scene)
+Shader = Shaders/Standard.slang
+BaseColor = 0.55 0.36 0.2
+Roughness = 0.8

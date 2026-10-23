@@ -1,0 +1,4 @@
+# The character test scene's character, warm orange plastic (NyxCharacterTests --write-scene)
+Shader = Shaders/Standard.slang
+BaseColor = 1 0.45 0.1
+Roughness = 0.4

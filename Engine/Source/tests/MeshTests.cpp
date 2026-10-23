@@ -1,9 +1,11 @@
 // The built-in meshes' tangents, without a GPU: on a flat face the tangent runs along rising u and
 // the bitangent, cross(normal, tangent) * w, up the image (falling v); on the sphere every tangent
-// is of unit length, perpendicular to its normal, and the faces wind counter-clockwise outside.
+// is of unit length, perpendicular to its normal, and the faces wind counter-clockwise outside; the
+// capsule stands on the origin, its vertices on its surface.
 #include "Mesh.h"
 #include "TestSupport.h"
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
@@ -74,6 +76,43 @@ namespace
 			}
 		}
 	}
+
+	void TestCapsule()
+	{
+		const float radius = 0.3f;
+		const float height = 1.8f;
+		const Nyx::MeshData capsule = Nyx::MakeCapsule(radius, height, 16, 24);
+		Require(capsule.Vertices.size() == 18 * 25 && capsule.Indices.size() == 17 * 24 * 6, "The capsule has the wrong number of vertices or indices");
+		// The nearest point of its middle line, from radius to height - radius
+		const auto axisPointOf = [&](const glm::vec3& position)
+		{
+			return glm::vec3(0.0f, std::clamp(position.y, radius, height - radius), 0.0f);
+		};
+		float lowest = height;
+		float highest = 0.0f;
+		for (const Nyx::Vertex& vertex : capsule.Vertices)
+		{
+			const glm::vec3 outwards = vertex.Position - axisPointOf(vertex.Position);
+			Require(std::abs(glm::length(outwards) - radius) < 1e-4f, "A vertex isn't on the capsule");
+			Require(glm::length(glm::normalize(outwards) - vertex.Normal) < 1e-3f, "A normal doesn't point away from the middle line");
+			Require(std::abs(glm::dot(glm::vec3(vertex.Tangent), vertex.Normal)) < 1e-3f, "A tangent isn't perpendicular to its normal");
+			lowest = std::min(lowest, vertex.Position.y);
+			highest = std::max(highest, vertex.Position.y);
+		}
+		Require(std::abs(lowest) < 1e-5f && std::abs(highest - height) < 1e-5f, "The capsule should stand on the origin, as tall as asked");
+		for (size_t index = 0; index + 2 < capsule.Indices.size(); index += 3)
+		{
+			const glm::vec3 a = capsule.Vertices[capsule.Indices[index]].Position;
+			const glm::vec3 b = capsule.Vertices[capsule.Indices[index + 1]].Position;
+			const glm::vec3 c = capsule.Vertices[capsule.Indices[index + 2]].Position;
+			const glm::vec3 faceNormal = glm::cross(b - a, c - a);
+			const glm::vec3 middle = (a + b + c) / 3.0f;
+			if (glm::dot(faceNormal, faceNormal) > 1e-12f)
+			{
+				Require(glm::dot(faceNormal, middle - axisPointOf(middle)) > 0.0f, "A triangle of the capsule winds clockwise seen from outside");
+			}
+		}
+	}
 }
 
 int main()
@@ -82,6 +121,7 @@ int main()
 	{
 		TestFlatFaces();
 		TestSphere();
+		TestCapsule();
 	}
 	catch (const std::exception& error)
 	{

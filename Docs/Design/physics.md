@@ -48,13 +48,27 @@ engine is [Jolt](https://github.com/jrouwe/JoltPhysics) (`Dependencies/JoltPhysi
   angle limits), slider (an axis, optional limits), distance (least and greatest). Between two
   bodies, or a body and the world; points and axes in world space, where the bodies are now being
   the rest. A body's constraints go when it does. Handles are opaque, like body handles.
+- **Characters** (`CreateCharacter`, `MoveCharacter`, `TeleportCharacter`, `DestroyCharacter`) on
+  Jolt's `CharacterVirtual`: an upright capsule standing on its position (its feet), which moves by
+  collision checks when asked instead of in the step. `MoveCharacter(move, seconds)` turns its
+  velocity towards the walk at the ground or air acceleration, adds gravity (not while it stands on
+  walkable ground, which would slide it down slopes it can stand on) and the jump, then runs Jolt's
+  `ExtendedUpdate()`: it slides along what it meets, climbs steps up to the step height, slides down
+  ground steeper than its max slope, follows the ground down by the snap distance and pushes dynamic
+  bodies with at most its push force. Only the capsule's lower round end stands on things
+  (`mSupportingVolume`); sensors are walked through. Called before `Step()`, as Jolt advises, so the
+  bodies meet it where it is now. A kinematic body 0.9 of its size inside it
+  (`GetCharacterBody()`) is what rays, shape casts and dynamic bodies meet; it carries the
+  character's user data, and `QueryFilter::Ignore` leaves it out. Two characters meet each other's
+  bodies, not each other's capsules.
 - **Jolt's own reports** go to Nyx's log; a failed Jolt assert (Debug builds) is logged, and breaks
   under a debugger.
 - **The debug view** (`DrawDebug(DebugDraw&, PhysicsDebugOptions)`) draws the world as lines, where
   the last step left it; the options switch each part and set its colours:
   - every body's shape in its axes: a box's 12 edges, a sphere's 3 circles, a capsule's 2 rings, 4
     sides and 2 round ends; coloured by motion: static, kinematic, dynamic awake, dynamic asleep,
-    sensor;
+    sensor; every character's capsule, standing on its feet, in its own colour (its body inside
+    isn't drawn);
   - the last step's contact points, a cross and an arrow along the normal each. Jolt reports them
     on its threads like the contact events, so they are kept only while asked for
     (`SetKeepContactPoints()`), and sorted after the step. Sleeping bodies report none.
@@ -112,6 +126,21 @@ between their anchors; nothing with every part off.
     where they were before into a `PreviousTransformComponent`, so the game draws them between
     their last two steps ([Simulation loop](simulation-loop.md#drawing-between-steps)). A body
     teleported, made static or gone has none.
+  - characters (`CharacterComponent`, Scene) are made with the component and a transform, made
+    again (where they stand, from rest) when their radius, height or max slope change, destroyed
+    with the component or entity. Their movement values count from the next step. A position or
+    rotation set since the last step teleports the character and stops it. Colliders on a
+    character's entity make no body: the capsule is its shape. `FindBody()` gives a character's
+    body, `FindEntity()` its entity, `FindCharacter()` the character;
+  - after the systems of `ESimStage::BeforePhysics`, which fill `DesiredMove` and `bJumpRequested`
+    (simulation input: from a player's command, e.g. a game's `MoveCharacter`, never from outside a
+    step), and before the physics step, `MoveCharacters()` walks each character by its component
+    (walk speed, acceleration, air control as a part of it, jump speed, gravity factor, step height,
+    ground snap), clears the jump, writes the feet's position into the transform and what it stands
+    on into the component (`bOnGround`, `GroundNormal`, `Velocity`). The rotation is the game's,
+    e.g. to face where it walks; the capsule stays upright. A position a system set teleports it
+    first. It keeps where it was before into its `PreviousTransformComponent`, drawn turning too
+    when a system turned it;
   - a kinematic body that a system moved during the step (`ESimStage::BeforePhysics`) gets one too:
     from where its transform was as the step began to where the system put it. Its body follows a
     step behind, so the debug view's shape trails the mesh. One moved between steps, by a live
@@ -137,8 +166,26 @@ between their anchors; nothing with every part off.
   put.
   `NyxSceneGpuTests` draws a cube halfway at half a step, where it is while paused or set from
   outside, and picks it where it is.
+- `NyxCharacterTests`: a character falls and lands on a floor; walks 6 m in 2 s at 3 m/s, no faster
+  for a longer desired move, and slows at its acceleration; climbs a 0.25 m step and is stopped by a
+  0.45 m one (step height 0.3 m); stays put on a 30 degree ramp and slides down a 60 degree one (max
+  45); jumps v * v / 2g high and drops a jump asked for in the air; pushes a 5 kg crate along; a ray
+  down hits its body and finds its entity, and passes through to the floor when it leaves it out; a
+  live edit puts it there, a changed height makes it again, removing the component or entity
+  destroys it; walking it keeps its pose from before the step; the debug view draws its 1.8 m
+  capsule in 100 lines of its colour; the same inputs among crates give exactly the same path twice;
+  the component is saved without its runtime values; the sample scene loads and its character
+  stands.
+- **The sample scene** `Assets/Scenes/CharacterTest.nyxscene` (written by
+  `NyxCharacterTests --write-scene`, with its materials in `Assets/Materials/CharacterTest`): a
+  floor, a 25 degree ramp and a 50 degree one, steps of 0.2 m and 0.5 m, four 10 kg crates, a
+  character with the built-in capsule mesh (`Meshes/Capsule.nyxmesh`, the default character's size
+  standing on its origin) and a camera behind it.
 
 ## Not built yet
 
 - Constraints as components.
-- Path constraints, motors, springs on limits; a character controller.
+- Path constraints, motors, springs on limits.
+- Characters meeting each other's capsules (Jolt's `CharacterVsCharacterCollision`), standing on
+  moving characters, crouching (a shape change that checks for room), the push force and mass as
+  component values.

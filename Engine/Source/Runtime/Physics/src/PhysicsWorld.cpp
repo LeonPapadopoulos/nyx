@@ -14,6 +14,7 @@
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Body/BodyLock.h>
 #include <Jolt/Physics/Body/BodyLockMulti.h>
+#include <Jolt/Physics/Character/CharacterVirtual.h>
 #include <Jolt/Physics/Collision/CastResult.h>
 #include <Jolt/Physics/Collision/CollideShape.h>
 #include <Jolt/Physics/Collision/CollisionCollectorImpl.h>
@@ -21,6 +22,7 @@
 #include <Jolt/Physics/Collision/RayCast.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
+#include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
 #include <Jolt/Physics/Collision/ShapeCast.h>
 #include <Jolt/Physics/Constraints/DistanceConstraint.h>
@@ -381,8 +383,29 @@ namespace Nyx
 			}
 		}
 
+		// A capsule along the unit axis `y`, `x` and `z` at right angles to it: 2 rings where its ends
+		// begin, 4 lines along its sides and its 2 round ends
+		void DrawCapsule(DebugDraw& drawing, const glm::vec3& center, const glm::vec3& x, const glm::vec3& y, const glm::vec3& z,
+			float radius, float halfHeightOfCylinder, const glm::vec3& color)
+		{
+			constexpr float Turn = glm::two_pi<float>();
+			constexpr float HalfTurn = glm::pi<float>();
+			const glm::vec3 top = center + y * halfHeightOfCylinder;
+			const glm::vec3 bottom = center - y * halfHeightOfCylinder;
+			DrawArc(drawing, top, x, z, radius, 0.0f, Turn, DebugCircleSegments, color);
+			DrawArc(drawing, bottom, x, z, radius, 0.0f, Turn, DebugCircleSegments, color);
+			for (const glm::vec3& side : { x, -x, z, -z })
+			{
+				drawing.Line(bottom + side * radius, top + side * radius, color);
+			}
+			DrawArc(drawing, top, x, y, radius, 0.0f, HalfTurn, DebugCircleSegments / 2, color);
+			DrawArc(drawing, top, z, y, radius, 0.0f, HalfTurn, DebugCircleSegments / 2, color);
+			DrawArc(drawing, bottom, x, y, radius, HalfTurn, Turn, DebugCircleSegments / 2, color);
+			DrawArc(drawing, bottom, z, y, radius, HalfTurn, Turn, DebugCircleSegments / 2, color);
+		}
+
 		// A body's shape where the body is, in its axes: a box's 12 edges; a sphere's 3 circles; a
-		// capsule's 2 rings where its ends begin, 4 lines along its sides and its 2 round ends
+		// capsule (DrawCapsule())
 		void DrawBodyShape(DebugDraw& drawing, const JPH::Body& body, const glm::vec3& color)
 		{
 			const glm::vec3 center = ToGlm(JPH::Vec3(body.GetPosition()));
@@ -391,7 +414,6 @@ namespace Nyx
 			const glm::vec3 y = rotation * glm::vec3(0.0f, 1.0f, 0.0f);
 			const glm::vec3 z = rotation * glm::vec3(0.0f, 0.0f, 1.0f);
 			constexpr float Turn = glm::two_pi<float>();
-			constexpr float HalfTurn = glm::pi<float>();
 
 			const JPH::Shape& shape = *body.GetShape();
 			switch (shape.GetSubType())
@@ -415,23 +437,11 @@ namespace Nyx
 			case JPH::EShapeSubType::Capsule:
 			{
 				const JPH::CapsuleShape& capsule = static_cast<const JPH::CapsuleShape&>(shape);
-				const float radius = capsule.GetRadius();
-				const glm::vec3 top = center + y * capsule.GetHalfHeightOfCylinder();
-				const glm::vec3 bottom = center - y * capsule.GetHalfHeightOfCylinder();
-				DrawArc(drawing, top, x, z, radius, 0.0f, Turn, DebugCircleSegments, color);
-				DrawArc(drawing, bottom, x, z, radius, 0.0f, Turn, DebugCircleSegments, color);
-				for (const glm::vec3& side : { x, -x, z, -z })
-				{
-					drawing.Line(bottom + side * radius, top + side * radius, color);
-				}
-				DrawArc(drawing, top, x, y, radius, 0.0f, HalfTurn, DebugCircleSegments / 2, color);
-				DrawArc(drawing, top, z, y, radius, 0.0f, HalfTurn, DebugCircleSegments / 2, color);
-				DrawArc(drawing, bottom, x, y, radius, HalfTurn, Turn, DebugCircleSegments / 2, color);
-				DrawArc(drawing, bottom, z, y, radius, HalfTurn, Turn, DebugCircleSegments / 2, color);
+				DrawCapsule(drawing, center, x, y, z, capsule.GetRadius(), capsule.GetHalfHeightOfCylinder(), color);
 				break;
 			}
 			default:
-				// PhysicsWorld makes no other shapes
+				// A character's body, drawn with its character; PhysicsWorld makes no other shapes
 				break;
 			}
 		}
@@ -520,6 +530,49 @@ namespace Nyx
 			const float length = glm::length(v);
 			return length > 1e-6f ? v / length : fallback;
 		}
+
+		// An upright capsule standing on the origin, `fraction` of the given size: a character's, or
+		// its body's inside it
+		JPH::ShapeRefC MakeCharacterShape(float radius, float halfHeightOfCylinder, float fraction)
+		{
+			const JPH::Vec3 center(0.0f, radius + halfHeightOfCylinder, 0.0f);
+			const JPH::ShapeSettings::ShapeResult result = JPH::RotatedTranslatedShapeSettings(center, JPH::Quat::sIdentity(),
+				new JPH::CapsuleShape(halfHeightOfCylinder * fraction, radius * fraction))
+															   .Create();
+			if (result.HasError())
+			{
+				LOG_ERROR("Physics: can't make a character's shape: {0}", result.GetError().c_str());
+				return nullptr;
+			}
+			return result.Get();
+		}
+
+		// `from` moved towards `to` by at most `maxStep`
+		JPH::Vec3 MoveTowards(JPH::Vec3Arg from, JPH::Vec3Arg to, float maxStep)
+		{
+			const JPH::Vec3 difference = to - from;
+			const float length = difference.Length();
+			return length <= maxStep ? JPH::Vec3(to) : from + difference * (maxStep / length);
+		}
+
+		ECharacterGround ToGround(JPH::CharacterBase::EGroundState state)
+		{
+			switch (state)
+			{
+			case JPH::CharacterBase::EGroundState::OnGround:      return ECharacterGround::OnGround;
+			case JPH::CharacterBase::EGroundState::OnSteepGround: return ECharacterGround::OnSteepGround;
+			default:                                              return ECharacterGround::InAir;
+			}
+		}
+
+		// Characters walk into static and moving bodies, and through sensors, which still see their
+		// bodies
+		const QueryFilter CharacterFilter{ .bStatic = true, .bMoving = true, .bSensors = false };
+
+		// A character's body inside its capsule is this much of its size: a little smaller, so it
+		// doesn't touch what the character stands on or walks along, and dynamic bodies meet the
+		// capsule first
+		constexpr float CharacterBodyFraction = 0.9f;
 	}
 
 	struct PhysicsWorld::Implementation
@@ -560,6 +613,17 @@ namespace Nyx
 		}
 
 		using ConstraintMap = std::map<uint32_t, JPH::Ref<JPH::TwoBodyConstraint>>;
+
+		// The body's constraints, which Jolt would have point at it once it is gone
+		void RemoveConstraintsOf(const JPH::BodyID& body)
+		{
+			for (auto it = Constraints.begin(); it != Constraints.end();)
+			{
+				const JPH::TwoBodyConstraint& constraint = *it->second;
+				const bool bJoined = constraint.GetBody1()->GetID() == body || constraint.GetBody2()->GetID() == body;
+				it = bJoined ? RemoveConstraint(it) : std::next(it);
+			}
+		}
 
 		ConstraintMap::iterator RemoveConstraint(ConstraintMap::iterator it)
 		{
@@ -646,6 +710,25 @@ namespace Nyx
 		// every time, as Jolt solves them in the order they are in
 		ConstraintMap Constraints;
 		uint32_t NextConstraint = 0;
+
+		struct Character
+		{
+			JPH::Ref<JPH::CharacterVirtual> Virtual;
+			// Its capsule, for the debug view
+			float Radius = 0.0f;
+			float HalfHeightOfCylinder = 0.0f;
+		};
+
+		JPH::CharacterVirtual* FindCharacter(CharacterHandle character) const
+		{
+			const auto found = Characters.find(character.Value);
+			return found != Characters.end() ? found->second.Virtual.GetPtr() : nullptr;
+		}
+
+		// By handle, so they are drawn in the same order every time. After the system: a character
+		// takes its body out of the system when it goes.
+		std::map<uint32_t, Character> Characters;
+		uint32_t NextCharacter = 0;
 	};
 
 	PhysicsWorld::PhysicsWorld(const PhysicsSettings& settings)
@@ -701,13 +784,7 @@ namespace Nyx
 			return;
 		}
 
-		// Jolt's constraints would point at the body once it is gone
-		for (auto it = Impl->Constraints.begin(); it != Impl->Constraints.end();)
-		{
-			const JPH::TwoBodyConstraint& constraint = *it->second;
-			const bool bJoined = constraint.GetBody1()->GetID() == ToJolt(body) || constraint.GetBody2()->GetID() == ToJolt(body);
-			it = bJoined ? Impl->RemoveConstraint(it) : std::next(it);
-		}
+		Impl->RemoveConstraintsOf(ToJolt(body));
 
 		// Jolt ended these when the bodies fell asleep, so it won't again
 		for (auto it = Impl->SleepingContacts.begin(); it != Impl->SleepingContacts.end();)
@@ -1059,6 +1136,150 @@ namespace Nyx
 		return Impl->Bodies().GetUserData(ToJolt(body));
 	}
 
+	CharacterHandle PhysicsWorld::CreateCharacter(const CharacterDesc& desc)
+	{
+		const float radius = std::max(desc.Radius, 0.01f);
+		const float halfHeightOfCylinder = std::max(0.5f * desc.Height - radius, 0.001f);
+		const JPH::ShapeRefC shape = MakeCharacterShape(radius, halfHeightOfCylinder, 1.0f);
+		const JPH::ShapeRefC bodyShape = MakeCharacterShape(radius, halfHeightOfCylinder, CharacterBodyFraction);
+		if (!shape || !bodyShape)
+		{
+			return {};
+		}
+
+		JPH::Ref<JPH::CharacterVirtualSettings> settings = new JPH::CharacterVirtualSettings();
+		settings->mShape = shape;
+		settings->mInnerBodyShape = bodyShape;
+		settings->mInnerBodyLayer = ObjectLayers::Moving;
+		settings->mMaxSlopeAngle = std::clamp(desc.MaxSlope, 0.0f, glm::half_pi<float>());
+		settings->mMass = std::max(desc.Mass, 0.0f);
+		settings->mMaxStrength = std::max(desc.MaxPushForce, 0.0f);
+		// Only its lower round end stands on things; what touches it higher up is a wall
+		settings->mSupportingVolume = JPH::Plane(JPH::Vec3::sAxisY(), -radius);
+
+		JPH::Ref<JPH::CharacterVirtual> character =
+			new JPH::CharacterVirtual(settings, JPH::RVec3(ToJolt(desc.Position)), JPH::Quat::sIdentity(), desc.UserData, &Impl->System);
+		if (character->GetInnerBodyID().IsInvalid())
+		{
+			LOG_ERROR("Physics: no room for another character's body ({0} bodies at most)", Impl->System.GetMaxBodies());
+			return {};
+		}
+		Impl->bBroadPhaseStale = true;
+
+		// What it stands on from the start, so its first move knows
+		const QueryLayerFilter layerFilter(CharacterFilter);
+		character->RefreshContacts(Impl->System.GetDefaultBroadPhaseLayerFilter(ObjectLayers::Moving), layerFilter, {}, {}, Impl->Temp);
+
+		const CharacterHandle handle{ Impl->NextCharacter++ };
+		Impl->Characters.emplace(handle.Value, Implementation::Character{ character, radius, halfHeightOfCylinder });
+		return handle;
+	}
+
+	void PhysicsWorld::DestroyCharacter(CharacterHandle character)
+	{
+		const auto found = Impl->Characters.find(character.Value);
+		if (found == Impl->Characters.end())
+		{
+			return;
+		}
+		// Its body goes with it, and so must what was joined to that
+		Impl->RemoveConstraintsOf(found->second.Virtual->GetInnerBodyID());
+		Impl->Characters.erase(found);
+	}
+
+	size_t PhysicsWorld::GetCharacterCount() const
+	{
+		return Impl->Characters.size();
+	}
+
+	void PhysicsWorld::MoveCharacter(CharacterHandle handle, const CharacterMove& move, float seconds)
+	{
+		JPH::CharacterVirtual* character = Impl->FindCharacter(handle);
+		if (character == nullptr || seconds <= 0.0f)
+		{
+			return;
+		}
+
+		// What it stands on may have moved since, e.g. a lift
+		character->UpdateGroundVelocity();
+
+		const JPH::Vec3 up = character->GetUp();
+		const JPH::Vec3 gravity = Impl->System.GetGravity() * move.GravityFactor;
+		const JPH::Vec3 velocity = character->GetLinearVelocity();
+		const JPH::Vec3 groundVelocity = character->GetGroundVelocity();
+		JPH::Vec3 vertical = velocity.Dot(up) * up;
+		JPH::Vec3 horizontal = velocity - vertical;
+
+		// Only along the ground, and not up ground too steep
+		JPH::Vec3 walk = ToJolt(move.WalkVelocity);
+		walk = character->CancelVelocityTowardsSteepSlopes(walk - walk.Dot(up) * up);
+
+		// It walks on walkable ground, unless it is leaving it, e.g. jumped off in the last move
+		const bool bLeavingGround = (velocity - groundVelocity).Dot(up) > 0.1f;
+		if (character->GetGroundState() == JPH::CharacterBase::EGroundState::OnGround && !bLeavingGround)
+		{
+			// Carried by what it stands on, and walking on it
+			const JPH::Vec3 groundHorizontal = groundVelocity - groundVelocity.Dot(up) * up;
+			horizontal = groundHorizontal + MoveTowards(horizontal - groundHorizontal, walk, move.GroundAcceleration * seconds);
+			// Not falling into the ground, which would slide it down slopes it can stand on; the
+			// ground snap keeps it on the ground going down
+			vertical = groundVelocity.Dot(up) * up;
+			if (move.JumpSpeed > 0.0f)
+			{
+				vertical += move.JumpSpeed * up + gravity * seconds;
+			}
+		}
+		else
+		{
+			horizontal = MoveTowards(horizontal, walk, move.AirAcceleration * seconds);
+			vertical += gravity * seconds;
+		}
+		character->SetLinearVelocity(horizontal + vertical);
+
+		JPH::CharacterVirtual::ExtendedUpdateSettings settings;
+		settings.mStickToFloorStepDown = -up * std::max(move.GroundSnapDistance, 0.0f);
+		settings.mWalkStairsStepUp = up * std::max(move.StepHeight, 0.0f);
+		const QueryLayerFilter layerFilter(CharacterFilter);
+		character->ExtendedUpdate(seconds, gravity, settings, Impl->System.GetDefaultBroadPhaseLayerFilter(ObjectLayers::Moving), layerFilter,
+			{}, {}, Impl->Temp);
+	}
+
+	CharacterState PhysicsWorld::GetCharacterState(CharacterHandle handle) const
+	{
+		const JPH::CharacterVirtual* character = Impl->FindCharacter(handle);
+		if (character == nullptr)
+		{
+			return {};
+		}
+		const ECharacterGround ground = ToGround(character->GetGroundState());
+		return CharacterState{
+			.Position = ToGlm(JPH::Vec3(character->GetPosition())),
+			.Velocity = ToGlm(character->GetLinearVelocity()),
+			.Ground = ground,
+			.GroundNormal = ground == ECharacterGround::InAir ? glm::vec3(0.0f, 1.0f, 0.0f) : ToGlm(character->GetGroundNormal()),
+		};
+	}
+
+	void PhysicsWorld::TeleportCharacter(CharacterHandle handle, const glm::vec3& position)
+	{
+		JPH::CharacterVirtual* character = Impl->FindCharacter(handle);
+		if (character == nullptr)
+		{
+			return;
+		}
+		character->SetPosition(JPH::RVec3(ToJolt(position)));
+		character->SetLinearVelocity(JPH::Vec3::sZero());
+		// What it stands on there
+		const QueryLayerFilter layerFilter(CharacterFilter);
+		character->RefreshContacts(Impl->System.GetDefaultBroadPhaseLayerFilter(ObjectLayers::Moving), layerFilter, {}, {}, Impl->Temp);
+	}
+
+	BodyHandle PhysicsWorld::GetCharacterBody(CharacterHandle handle) const
+	{
+		const JPH::CharacterVirtual* character = Impl->FindCharacter(handle);
+		return character != nullptr ? ToHandle(character->GetInnerBodyID()) : BodyHandle{};
+	}
+
 	void PhysicsWorld::SetGravity(const glm::vec3& gravity)
 	{
 		Impl->System.SetGravity(ToJolt(gravity));
@@ -1090,6 +1311,18 @@ namespace Nyx
 				{
 					DrawBodyShape(drawing, lock.GetBody(), ColorOf(lock.GetBody(), options));
 				}
+			}
+		}
+
+		if (options.bShapes)
+		{
+			// Upright, standing on their positions
+			for (const auto& [handle, character] : Impl->Characters)
+			{
+				const glm::vec3 feet = ToGlm(JPH::Vec3(character.Virtual->GetPosition()));
+				const glm::vec3 center = feet + glm::vec3(0.0f, character.Radius + character.HalfHeightOfCylinder, 0.0f);
+				DrawCapsule(drawing, center, glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f),
+					character.Radius, character.HalfHeightOfCylinder, options.CharacterColor);
 			}
 		}
 

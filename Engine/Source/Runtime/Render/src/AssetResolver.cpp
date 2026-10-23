@@ -19,6 +19,10 @@ namespace Nyx
 		{
 			return Renderer.GetSphereMesh();
 		}
+		if (meshPath == "Meshes/Capsule.nyxmesh")
+		{
+			return Renderer.GetCapsuleMesh();
+		}
 
 		return nullptr;
 	}

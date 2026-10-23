@@ -131,6 +131,13 @@ Rigid bodies on [Jolt](https://github.com/jrouwe/JoltPhysics), while a game runs
 - Moving bodies are drawn between their last two steps, so they move smoothly on monitors faster
   than the 60 steps a second; paused, where the last step left them. Kinematic bodies too, when a
   game's system moves them before the physics step.
+- A *Character* walks an upright capsule, standing on the entity's position: it falls, climbs
+  steps up to its step height, slides down ground steeper than its max slope, follows the ground
+  down and pushes light crates aside. Its walk speed, acceleration, air control, jump speed,
+  gravity and ground snap are on the component. A game says where it wants to go and when to jump;
+  rays see it unless told to leave it out. Moving it in the editor while the game runs puts it
+  there; changing its shape makes it again.
+- `Assets/Scenes/CharacterTest.nyxscene` has a character among ramps, steps and crates.
 - The editor doesn't simulate: Play shows physics.
 
 ## Input
@@ -205,7 +212,8 @@ Code can draw lines over a world to show what it does: forces, anchors, bounds, 
 - Release builds compile debug drawing out: drawing does nothing there.
 - The editor's overlays draw each object's axes and bounds the same way.
 - **The physics debug view**: F3 in a game window (Debug builds) shows every body's shape, coloured
-  by how it moves (static grey, kinematic blue, awake green, asleep dark green, sensors yellow), the
+  by how it moves (static grey, kinematic blue, awake green, asleep dark green, sensors yellow),
+  characters' capsules in orange, the
   last step's contact points with their normals in red, and constraints as pink lines between
   their anchors. It changes with the next step, so while paused, with Step. A cyan cross and arrow
   show where the cursor points at a body, and the surface's normal there ([Cursor rays](#cursor-rays)).

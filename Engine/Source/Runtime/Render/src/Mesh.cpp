@@ -6,6 +6,7 @@
 #include "VulkanContext.h"
 #include "VulkanUtil.h"
 
+#include <algorithm>
 #include <cmath>
 #include <vector>
 
@@ -82,6 +83,46 @@ namespace Nyx
 			for (uint32_t segment = 0; segment < segments; ++segment)
 			{
 				const uint32_t topLeft = ring * (segments + 1) + segment;
+				const uint32_t bottomLeft = topLeft + segments + 1;
+				mesh.Indices.insert(mesh.Indices.end(), { topLeft, bottomLeft, topLeft + 1, topLeft + 1, bottomLeft, bottomLeft + 1 });
+			}
+		}
+		ComputeTangents(mesh);
+		return mesh;
+	}
+
+	MeshData MakeCapsule(float radius, float height, uint32_t rings, uint32_t segments)
+	{
+		constexpr float Pi = 3.14159265358979f;
+		const uint32_t halfRings = std::max(rings / 2, 1u);
+		const float cylinder = std::max(height - 2.0f * radius, 0.0f);
+		MeshData mesh;
+		// The top end's rings down to its equator, then the bottom end's from its equator: the band
+		// between the two equators is the straight middle
+		for (uint32_t row = 0; row <= 2 * halfRings + 1; ++row)
+		{
+			const bool bTop = row <= halfRings;
+			const uint32_t ring = bTop ? row : row - 1;
+			const float theta = static_cast<float>(ring) / static_cast<float>(2 * halfRings) * Pi;
+			const glm::vec3 center(0.0f, bTop ? radius + cylinder : radius, 0.0f);
+			for (uint32_t segment = 0; segment <= segments; ++segment)
+			{
+				const float u = static_cast<float>(segment) / static_cast<float>(segments);
+				const float phi = u * 2.0f * Pi;
+				const glm::vec3 normal(std::sin(theta) * std::cos(phi), std::cos(theta), -std::sin(theta) * std::sin(phi));
+				Vertex vertex;
+				vertex.Position = center + normal * radius;
+				vertex.Normal = normal;
+				vertex.UV = glm::vec2(u, static_cast<float>(row) / static_cast<float>(2 * halfRings + 1));
+				mesh.Vertices.push_back(vertex);
+			}
+		}
+		// Counter-clockwise seen from outside, like the sphere's
+		for (uint32_t row = 0; row < 2 * halfRings + 1; ++row)
+		{
+			for (uint32_t segment = 0; segment < segments; ++segment)
+			{
+				const uint32_t topLeft = row * (segments + 1) + segment;
 				const uint32_t bottomLeft = topLeft + segments + 1;
 				mesh.Indices.insert(mesh.Indices.end(), { topLeft, bottomLeft, topLeft + 1, topLeft + 1, bottomLeft, bottomLeft + 1 });
 			}

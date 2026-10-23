@@ -879,6 +879,11 @@ namespace Nyx
 		return &SphereMesh;
 	}
 
+	Mesh* VulkanRenderer::GetCapsuleMesh()
+	{
+		return &CapsuleMesh;
+	}
+
 	Mesh* VulkanRenderer::GetPlaneMesh()
 	{
 		return &PlaneMesh;
@@ -1620,6 +1625,10 @@ namespace Nyx
 		SphereMesh.Release();
 		SphereMesh.SetLocalBounds(glm::vec3(-0.5f), glm::vec3(0.5f));
 		SphereMesh.Upload(Context, Nyx::MakeSphere(0.5f, 32, 64));
+
+		CapsuleMesh.Release();
+		CapsuleMesh.SetLocalBounds(glm::vec3(-0.3f, 0.0f, -0.3f), glm::vec3(0.3f, 1.8f, 0.3f));
+		CapsuleMesh.Upload(Context, Nyx::MakeCapsule(0.3f, 1.8f, 32, 48));
 
 		PlaneMesh.Release();
 		PlaneMesh.SetLocalBounds(glm::vec3(-0.5f, 0.0f, -0.5f), glm::vec3(0.5f, 0.0f, 0.5f));

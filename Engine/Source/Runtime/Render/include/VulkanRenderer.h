@@ -250,6 +250,7 @@ namespace Nyx
 
 		Nyx::Mesh* GetCubeMesh() override;
 		Nyx::Mesh* GetSphereMesh() override;
+		Nyx::Mesh* GetCapsuleMesh() override;
 		Nyx::Mesh* GetPlaneMesh() override;
 		Nyx::Material* GetMaterial(const std::string& path) override;
 		bool IsCompilingShaders() const override;
@@ -484,6 +485,7 @@ namespace Nyx
 		// Mesh
 		Mesh CubeMesh = Mesh("Cube");
 		Mesh SphereMesh = Mesh("Sphere");
+		Mesh CapsuleMesh = Mesh("Capsule");
 		Mesh PlaneMesh = Mesh("Plane");
 
 		std::vector<Vertex> MeshVertices;

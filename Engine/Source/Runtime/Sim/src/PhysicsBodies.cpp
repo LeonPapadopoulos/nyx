@@ -1,6 +1,7 @@
 #include "NyxPCH.h"
 #include "PhysicsBodies.h"
 
+#include "CharacterComponent.h"
 #include "GuidComponent.h"
 #include "Log.h"
 #include "NameComponent.h"
@@ -112,20 +113,76 @@ namespace Nyx
 			return last.Position != now.Position || last.Rotation != now.Rotation;
 		}
 
+		// A character's capsule is its shape, so its entity's colliders make no body
 		void ForEachColliderEntity(Registry& world, const auto& visit)
 		{
-			world.Each<BoxColliderComponent>([&](Entity entity, BoxColliderComponent&)
+			const auto visitUnlessCharacter = [&](Entity entity)
+			{
+				if (!world.Has<CharacterComponent>(entity))
 				{
 					visit(entity);
+				}
+			};
+			world.Each<BoxColliderComponent>([&](Entity entity, BoxColliderComponent&)
+				{
+					visitUnlessCharacter(entity);
 				});
 			world.Each<SphereColliderComponent>([&](Entity entity, SphereColliderComponent&)
 				{
-					visit(entity);
+					visitUnlessCharacter(entity);
 				});
 			world.Each<CapsuleColliderComponent>([&](Entity entity, CapsuleColliderComponent&)
 				{
-					visit(entity);
+					visitUnlessCharacter(entity);
 				});
+		}
+
+		CharacterDesc DescribeCharacter(const CharacterComponent& character, const TransformComponent& transform, Entity entity)
+		{
+			return CharacterDesc{
+				.Radius = character.Radius,
+				.Height = character.Height,
+				.Position = transform.Position,
+				.MaxSlope = glm::radians(character.MaxSlopeDegrees),
+				.UserData = entity.Value,
+			};
+		}
+
+		// FNV-1a over what makes a character's shape; its movement values count from the next step
+		// without making it again
+		uint64_t HashCharacter(const CharacterDesc& desc)
+		{
+			uint64_t hash = 14695981039346656037ull;
+			for (const float value : { desc.Radius, desc.Height, desc.MaxSlope, desc.Mass, desc.MaxPushForce })
+			{
+				unsigned char bytes[sizeof(value)];
+				std::memcpy(bytes, &value, sizeof(value));
+				for (const unsigned char byte : bytes)
+				{
+					hash = (hash ^ byte) * 1099511628211ull;
+				}
+			}
+			return hash;
+		}
+
+		CharacterMove MakeCharacterMove(const CharacterComponent& character)
+		{
+			// Along the ground, and no faster than the walk speed
+			glm::vec3 move(character.DesiredMove.x, 0.0f, character.DesiredMove.z);
+			const float length = glm::length(move);
+			if (length > 1.0f)
+			{
+				move /= length;
+			}
+			return CharacterMove{
+				.WalkVelocity = move * character.WalkSpeed,
+				.GroundAcceleration = character.Acceleration,
+				.AirAcceleration = character.Acceleration * std::clamp(character.AirControl, 0.0f, 1.0f),
+				.JumpSpeed = character.bJumpRequested ? character.JumpSpeed : 0.0f,
+				.GravityFactor = character.GravityFactor,
+				.StepHeight = character.StepHeight,
+				.GroundSnapDistance = character.GroundSnapDistance,
+			};
 		}
 	}
 
@@ -194,6 +251,7 @@ namespace Nyx
 			});
 
 		WarnOfRigidBodiesWithoutCollider(world);
+		SyncCharacters(world, physics);
 
 		// Bodies whose collider or entity is gone
 		for (auto it = Bodies.begin(); it != Bodies.end();)
@@ -207,6 +265,128 @@ namespace Nyx
 			else
 			{
 				++it;
+			}
+		}
+	}
+
+	void PhysicsBodies::SyncCharacters(Registry& world, PhysicsWorld& physics)
+	{
+		for (auto& [key, tracked] : Characters)
+		{
+			tracked.bSeen = false;
+		}
+
+		world.Each<CharacterComponent>([&](Entity entity, CharacterComponent& character)
+			{
+				if (!world.Has<TransformComponent>(entity))
+				{
+					return;
+				}
+				TransformComponent& transform = world.Get<TransformComponent>(entity);
+				const CharacterDesc desc = DescribeCharacter(character, transform, entity);
+				const uint64_t hash = HashCharacter(desc);
+
+				auto found = Characters.find(entity.Value);
+				if (found != Characters.end() && found->second.DescriptionHash != hash)
+				{
+					// Its shape changed: made again where it stands, from rest
+					physics.DestroyCharacter(found->second.Character);
+					Characters.erase(found);
+					found = Characters.end();
+				}
+
+				if (found == Characters.end())
+				{
+					const CharacterHandle made = physics.CreateCharacter(desc);
+					if (!made.IsValid())
+					{
+						return;
+					}
+					Characters.emplace(entity.Value,
+						TrackedCharacter{ .Owner = entity,
+							.Character = made,
+							.Body = physics.GetCharacterBody(made),
+							.DescriptionHash = hash,
+							.LastPosition = transform.Position,
+							.LastRotation = transform.Rotation,
+							.bSeen = true });
+					world.Remove<PreviousTransformComponent>(entity);
+					return;
+				}
+
+				TrackedCharacter& tracked = found->second;
+				tracked.bSeen = true;
+				if (transform.Position != tracked.LastPosition || transform.Rotation != tracked.LastRotation)
+				{
+					// Set from outside since the last step, e.g. a live edit: put there, and drawn
+					// there rather than smeared from where it was
+					physics.TeleportCharacter(tracked.Character, transform.Position);
+					tracked.LastPosition = transform.Position;
+					tracked.LastRotation = transform.Rotation;
+					world.Remove<PreviousTransformComponent>(entity);
+				}
+			});
+
+		// Characters whose component, transform or entity is gone
+		for (auto it = Characters.begin(); it != Characters.end();)
+		{
+			if (!it->second.bSeen)
+			{
+				world.Remove<PreviousTransformComponent>(it->second.Owner);
+				physics.DestroyCharacter(it->second.Character);
+				it = Characters.erase(it);
+			}
+			else
+			{
+				++it;
+			}
+		}
+	}
+
+	void PhysicsBodies::MoveCharacters(Registry& world, PhysicsWorld& physics, float seconds)
+	{
+		NYX_PROFILE_SCOPE("PhysicsBodies::MoveCharacters");
+		for (auto& [key, tracked] : Characters)
+		{
+			// A system may have destroyed it, or taken its parts, since SyncBeforeStep()
+			if (!world.IsAlive(tracked.Owner) || !world.Has<CharacterComponent>(tracked.Owner) || !world.Has<TransformComponent>(tracked.Owner))
+			{
+				continue;
+			}
+			CharacterComponent& character = world.Get<CharacterComponent>(tracked.Owner);
+			TransformComponent& transform = world.Get<TransformComponent>(tracked.Owner);
+
+			// A system that put it somewhere, e.g. back at the start, teleports it as a live edit
+			// does; one that turned it, e.g. to face where it walks, is drawn turning
+			BodyPose before{ tracked.LastPosition, tracked.LastRotation };
+			if (transform.Position != tracked.LastPosition)
+			{
+				physics.TeleportCharacter(tracked.Character, transform.Position);
+				before.Position = transform.Position;
+			}
+
+			physics.MoveCharacter(tracked.Character, MakeCharacterMove(character), seconds);
+			character.bJumpRequested = false;
+
+			const CharacterState state = physics.GetCharacterState(tracked.Character);
+			transform.Position = state.Position;
+			character.bOnGround = state.Ground == ECharacterGround::OnGround;
+			character.GroundNormal = state.GroundNormal;
+			character.Velocity = state.Velocity;
+			tracked.LastPosition = transform.Position;
+			tracked.LastRotation = transform.Rotation;
+
+			// Drawn between where it was and where it got to, as the dynamic bodies are
+			if (PoseMoved(before, BodyPose{ transform.Position, transform.Rotation }))
+			{
+				PreviousTransformComponent& previous = world.Has<PreviousTransformComponent>(tracked.Owner)
+					? world.Get<PreviousTransformComponent>(tracked.Owner)
+					: world.Add<PreviousTransformComponent>(tracked.Owner);
+				SetPreviousTransform(previous, before.Position, before.Rotation, transform);
+			}
+			else
+			{
+				world.Remove<PreviousTransformComponent>(tracked.Owner);
 			}
 		}
 	}
@@ -292,7 +472,12 @@ namespace Nyx
 	BodyHandle PhysicsBodies::FindBody(Entity entity) const
 	{
 		const auto found = Bodies.find(entity.Value);
-		return found != Bodies.end() ? found->second.Body : BodyHandle{};
+		if (found != Bodies.end())
+		{
+			return found->second.Body;
+		}
+		const auto character = Characters.find(entity.Value);
+		return character != Characters.end() ? character->second.Body : BodyHandle{};
 	}
 
 	std::optional<Entity> PhysicsBodies::FindEntity(const PhysicsWorld& physics, BodyHandle body) const
@@ -301,11 +486,23 @@ namespace Nyx
 		{
 			return std::nullopt;
 		}
-		const auto found = Bodies.find(physics.GetUserData(body));
-		if (found == Bodies.end() || found->second.Body != body)
+		const uint64_t owner = physics.GetUserData(body);
+		const auto found = Bodies.find(owner);
+		if (found != Bodies.end() && found->second.Body == body)
 		{
-			return std::nullopt;
+			return found->second.Owner;
 		}
-		return found->second.Owner;
+		const auto character = Characters.find(owner);
+		if (character != Characters.end() && character->second.Body == body)
+		{
+			return character->second.Owner;
+		}
+		return std::nullopt;
+	}
+
+	CharacterHandle PhysicsBodies::FindCharacter(Entity entity) const
+	{
+		const auto found = Characters.find(entity.Value);
+		return found != Characters.end() ? found->second.Character : CharacterHandle{};
 	}
 }

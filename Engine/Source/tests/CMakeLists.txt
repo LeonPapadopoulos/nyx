@@ -145,6 +145,14 @@ add_dependencies(NyxPhysicsBodiesTests NyxGeneratedReflection)
 set_property(TARGET NyxPhysicsBodiesTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxPhysicsBodiesTests COMMAND NyxPhysicsBodiesTests)
 
+# Characters in the game world: falling, walking, steps, slopes, jumping, pushing, rays, live edits,
+# drawing between steps, the debug view, scene files and the same path from the same inputs
+add_executable(NyxCharacterTests CharacterTests.cpp)
+target_link_libraries(NyxCharacterTests PRIVATE NyxEngine)
+add_dependencies(NyxCharacterTests NyxGeneratedReflection)
+set_property(TARGET NyxCharacterTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxCharacterTests COMMAND NyxCharacterTests)
+
 # How long a physics step takes with 1000 bodies; not run by ctest, timing depends on the machine
 add_executable(NyxPhysicsBenchmark PhysicsBenchmark.cpp)
 target_link_libraries(NyxPhysicsBenchmark PRIVATE NyxEngine)

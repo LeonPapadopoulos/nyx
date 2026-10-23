@@ -78,8 +78,9 @@ plan.
      `SimContext::Commands`); the game's systems apply those they own;
   2. bodies follow the physics components and the transforms set since the last step (built:
      `PhysicsBodies`), and the guid lookup is made again (built: `SimContext::Guids`);
-  3. the game's systems that decide forces and constraints (built: `ESimStage::BeforePhysics`);
-  4. physics step (built);
+  3. the game's systems that decide forces and constraints, and where characters go (built:
+     `ESimStage::BeforePhysics`);
+  4. characters walk (built: `PhysicsBodies::MoveCharacters()`), then the physics step (built);
   5. bodies write their transforms (built);
   6. the game's systems that react to where things are, each at its own rate (built:
      `ESimStage::AfterPhysics`);

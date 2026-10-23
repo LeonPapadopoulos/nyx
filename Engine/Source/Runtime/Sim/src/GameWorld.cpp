@@ -30,6 +30,9 @@ namespace Nyx
 		const SimContext context{ World, step, Debug, Physics, Bodies, Guids, StepCommands };
 		RunStage(ESimStage::BeforePhysics, context);
 
+		// Where the systems said they want to go, before the bodies move: they meet the characters
+		// where these are now
+		Bodies.MoveCharacters(World, Physics, seconds);
 		Physics.Step(seconds);
 		Bodies.WriteBackAfterStep(World, Physics);
 		if (PhysicsDebugView)

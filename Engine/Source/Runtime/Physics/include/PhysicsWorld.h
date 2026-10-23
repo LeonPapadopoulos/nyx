@@ -176,11 +176,79 @@ namespace Nyx
 		bool operator==(const ConstraintHandle&) const = default;
 	};
 
+	// What a character is made with: an upright capsule standing on its position, which walks
+	// through the world by MoveCharacter() instead of being moved by the step
+	struct CharacterDesc
+	{
+		float Radius = 0.3f;
+		// From its feet to the top of its head, the round ends included; at least twice the radius
+		float Height = 1.8f;
+		// Where its feet are
+		glm::vec3 Position{ 0.0f };
+		// Ground steeper than this, in radians, it can't walk up, and slides down
+		float MaxSlope = 0.7853982f;
+		// In kg: how much it weighs on what it stands on
+		float Mass = 70.0f;
+		// In newtons: how hard it can push the dynamic bodies it walks into
+		float MaxPushForce = 100.0f;
+		// The owner's own number for the character, e.g. its entity; its body has it too
+		uint64_t UserData = 0;
+	};
+
+	// A character of a PhysicsWorld; like a BodyHandle, valid only there and until destroyed
+	struct CharacterHandle
+	{
+		static constexpr uint32_t InvalidValue = 0xffffffffu;
+		uint32_t Value = InvalidValue;
+
+		bool IsValid() const { return Value != InvalidValue; }
+		bool operator==(const CharacterHandle&) const = default;
+	};
+
+	enum class ECharacterGround : uint8_t
+	{
+		// Stands on ground it can walk on
+		OnGround,
+		// Stands on ground too steep for it, and slides down
+		OnSteepGround,
+		// Nothing holds it up: it falls
+		InAir
+	};
+
+	// What a character tries to do in one move (PhysicsWorld::MoveCharacter())
+	struct CharacterMove
+	{
+		// Where it wants to walk, in m/s; only the part along the ground counts
+		glm::vec3 WalkVelocity{ 0.0f };
+		// How fast it gets to that velocity, in m/s per second: on walkable ground, and otherwise
+		float GroundAcceleration = 30.0f;
+		float AirAcceleration = 10.0f;
+		// Above 0: jumps at this speed (m/s), if it stands on walkable ground
+		float JumpSpeed = 0.0f;
+		// 1: falls normally, 0: floats
+		float GravityFactor = 1.0f;
+		// Climbs steps up to this high, and follows the ground down by up to GroundSnapDistance
+		// instead of leaving it, e.g. going down stairs
+		float StepHeight = 0.3f;
+		float GroundSnapDistance = 0.5f;
+	};
+
+	// A character as its last move left it
+	struct CharacterState
+	{
+		// Where its feet are
+		glm::vec3 Position{ 0.0f };
+		glm::vec3 Velocity{ 0.0f };
+		ECharacterGround Ground = ECharacterGround::InAir;
+		// What it stands on faces this way; up in the air
+		glm::vec3 GroundNormal{ 0.0f, 1.0f, 0.0f };
+	};
+
 	// What PhysicsWorld::DrawDebug() draws, and in which colours (linear RGB)
 	struct PhysicsDebugOptions
 	{
 		// Every body's shape: a box's edges, circles around a sphere and along a capsule, in the
-		// body's axes and coloured by how it moves
+		// body's axes and coloured by how it moves; every character's capsule, in its own colour
 		bool bShapes = true;
 		// The last step's contact points, each a cross with an arrow along its normal; only kept
 		// while asked for (PhysicsWorld::SetKeepContactPoints())
@@ -195,6 +263,7 @@ namespace Nyx
 		glm::vec3 SensorColor{ 1.0f, 0.85f, 0.1f };
 		glm::vec3 ContactColor{ 1.0f, 0.25f, 0.2f };
 		glm::vec3 ConstraintColor{ 1.0f, 0.4f, 1.0f };
+		glm::vec3 CharacterColor{ 1.0f, 0.55f, 0.0f };
 	};
 
 	struct PhysicsSettings
@@ -211,9 +280,10 @@ namespace Nyx
 
 	// Rigid bodies and their collisions, on Jolt: made, moved, pushed, joined, queried and stepped.
 	// Bodies collide by their motion: static with moving, moving with everything; sensors see moving
-	// bodies only. The caller owns the world and calls everything from one thread; Jolt's own threads
-	// run inside Step() only. Same bodies, made in the same order and stepped the same way, give the
-	// same results and the same contact events.
+	// bodies only. Characters walk among them (Jolt's CharacterVirtual), each with a kinematic body
+	// inside, so the others see it. The caller owns the world and calls everything from one thread;
+	// Jolt's own threads run inside Step() only. Same bodies, made in the same order and stepped the
+	// same way, give the same results and the same contact events.
 	class PhysicsWorld
 	{
 	public:
@@ -274,6 +344,24 @@ namespace Nyx
 		// Resting bodies sleep and cost nothing until something touches or moves them
 		bool IsAwake(BodyHandle body) const;
 		uint64_t GetUserData(BodyHandle body) const;
+
+		// Invalid when its shape can't be made or the world is full, which is logged. Its body
+		// (GetCharacterBody()), a little smaller than the capsule, is what rays, shape casts and
+		// dynamic bodies meet.
+		CharacterHandle CreateCharacter(const CharacterDesc& desc);
+		void DestroyCharacter(CharacterHandle character);
+		size_t GetCharacterCount() const;
+
+		// Walks the character for `seconds`, at once, not in Step(): its velocity turns towards the
+		// walk, gravity pulls it, it jumps if asked and able, then it moves, sliding along what it
+		// meets, climbing steps, sliding down ground too steep, following the ground down and pushing
+		// dynamic bodies. Called before Step(), so the bodies meet it where it is now, as Jolt advises.
+		void MoveCharacter(CharacterHandle character, const CharacterMove& move, float seconds);
+		CharacterState GetCharacterState(CharacterHandle character) const;
+		// Puts it there at once (its feet), without moving it through what lies between, and stops it
+		void TeleportCharacter(CharacterHandle character, const glm::vec3& position);
+		// The kinematic body inside it, e.g. for QueryFilter::Ignore; it has the character's user data
+		BodyHandle GetCharacterBody(CharacterHandle character) const;
 
 		void SetGravity(const glm::vec3& gravity);
 		glm::vec3 GetGravity() const;
