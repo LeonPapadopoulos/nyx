@@ -27,11 +27,14 @@ namespace Nyx
 		// Adds a default component unless the entity already has one, and returns the component.
 		void* (*Add)(Registry& registry, Entity entity) = nullptr;
 
-		// Removes the component if the entity has one.
-		void (*Remove)(Registry& registry, Entity entity) = nullptr;
+		// Removes the component if the entity has one, then runs the type's remove step, if any
+		// (SetOnRemove())
+		std::function<void(Registry& registry, Entity entity)> Remove;
 
-		// Optional: runs after the component was loaded from a scene file,
-		// for example to look up the assets it references.
+		// Optional: runs after the component was loaded from a scene file, added or edited, in the
+		// editor and in a game, for example to look up the assets it references, or to make what is
+		// derived from it on its entity, such as a generated mesh (ScenePostLoadContext says what it
+		// may change)
 		std::function<void(void* component, ScenePostLoadContext& context)> PostLoad;
 	};
 
@@ -51,6 +54,11 @@ namespace Nyx
 		// Sets the step that runs after a component of type T was loaded from a scene file.
 		template<typename T>
 		void SetPostLoad(void (*postLoad)(T& component, ScenePostLoadContext& context));
+
+		// Sets the step that runs after a component of type T was removed through its ops, e.g. by
+		// the editor or undo: to take away what its post-load step made
+		template<typename T>
+		void SetOnRemove(void (*onRemove)(Registry& registry, Entity entity));
 
 		const std::vector<ComponentTypeOps>& GetAll() const
 		{
@@ -133,5 +141,29 @@ namespace Nyx
 		}
 
 		ASSERT(false && "Register the component type before setting its post-load step.");
+	}
+
+	template<typename T>
+	void ComponentTypeRegistry::SetOnRemove(void (*onRemove)(Registry& registry, Entity entity))
+	{
+		const Nyx::Reflection::TypeMetadata& typeMetadata = Nyx::Reflection::GetTypeMetadata<T>();
+
+		for (ComponentTypeOps& ops : Types)
+		{
+			if (ops.TypeMetadata == &typeMetadata)
+			{
+				ops.Remove = [onRemove](Registry& registry, Entity entity)
+				{
+					if (registry.Has<T>(entity))
+					{
+						registry.Remove<T>(entity);
+						onRemove(registry, entity);
+					}
+				};
+				return;
+			}
+		}
+
+		ASSERT(false && "Register the component type before setting its remove step.");
 	}
 }

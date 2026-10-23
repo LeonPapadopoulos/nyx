@@ -260,7 +260,14 @@ it with a warning. `Hello`'s layout never changes.
    `ComponentTypeRegistry`: saving, loading, the details panel, undo, Add Component, live edits
    and NyxDump all work from that.
 4. If it needs work after loading, such as resolving asset paths, add a `SetPostLoad()` in
-   `ComponentRegistration.cpp`.
+   `ComponentRegistration.cpp`. The step runs whenever the component is loaded from a scene
+   file (also a pasted entity, or a new one sent live), added, edited, undone or redone in the
+   editor, and changed by a live edit in a game. Its `ScenePostLoadContext` has the asset resolver,
+   the world and the entity. It may add or change **derived, unsaved** components on that entity,
+   such as a run-time mesh made from the component's values, and nothing else: no other entity,
+   and no saved component, which undo, scene files and the editor link would not know had
+   changed. What it added can be taken away in a `SetOnRemove()` step, which runs when the
+   component is removed through its type's ops (the editor's Remove Component, undoing an Add).
 
 ### An asset type
 

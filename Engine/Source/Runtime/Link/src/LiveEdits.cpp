@@ -56,6 +56,8 @@ namespace
 		// Also after a damaged message: the component keeps what was read, and its assets have to match
 		if (ops->PostLoad)
 		{
+			postLoadContext.World = &world;
+			postLoadContext.Entity = *entity;
 			ops->PostLoad(component, postLoadContext);
 		}
 

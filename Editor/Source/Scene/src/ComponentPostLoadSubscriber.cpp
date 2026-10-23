@@ -46,6 +46,8 @@ namespace Nyx::Editor
 		}
 
 		Nyx::Registry& world = Scene.GetRegistry();
+		Nyx::ScenePostLoadContext context = PostLoadContext;
+		context.World = &world;
 		for (const Nyx::EntityGuid guid : guids)
 		{
 			// Deleted entities have nothing to load
@@ -54,6 +56,7 @@ namespace Nyx::Editor
 			{
 				continue;
 			}
+			context.Entity = *entity;
 
 			for (const Nyx::ComponentTypeOps& ops : Nyx::ComponentTypeRegistry::Get().GetAll())
 			{
@@ -64,7 +67,7 @@ namespace Nyx::Editor
 
 				if (void* component = ops.Get(world, *entity))
 				{
-					ops.PostLoad(component, PostLoadContext);
+					ops.PostLoad(component, context);
 				}
 			}
 		}

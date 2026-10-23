@@ -265,6 +265,8 @@ namespace Nyx
 
 			if (ops->PostLoad)
 			{
+				postLoadContext.World = &world;
+				postLoadContext.Entity = entity;
 				ops->PostLoad(component, postLoadContext);
 			}
 		}

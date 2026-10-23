@@ -1,4 +1,6 @@
 // Live edits: messages made from one world and applied to another, as the editor and the game do.
+// A component's post-load step is given the world and the entity it belongs to, from a scene's load,
+// a new entity and new values sent live; its remove step, the entity it was removed from.
 #include "BinaryArchive.h"
 #include "CameraComponent.h"
 #include "ComponentRegistration.h"
@@ -21,6 +23,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <iostream>
 #include <map>
 #include <optional>
@@ -288,6 +291,84 @@ namespace
 			MakeSetPropertiesMessage(editor, cube, GetOps<CameraComponent>(), { GetPropertyIndex<CameraComponent>("FovYDegrees") });
 		Require(addCamera && Apply(*addCamera, game) == ELiveEditResult::Ignored && !game.Has<CameraComponent>(gameCube),
 			"Values for a component the game's entity doesn't have weren't ignored");
+	}
+
+	// What a post-load or remove step was given, each time it ran
+	struct StepCall
+	{
+		Registry* World = nullptr;
+		Nyx::Entity Entity{};
+		float FovYDegrees = 0.0f;
+		// Whether the component the step was given is the entity's, in that world
+		bool bOnItsEntity = false;
+	};
+	std::vector<StepCall> PostLoadCalls;
+	std::vector<StepCall> RemoveCalls;
+
+	void RecordPostLoad(CameraComponent& camera, ScenePostLoadContext& context)
+	{
+		const bool bOnItsEntity = context.World && context.World->Has<CameraComponent>(context.Entity) &&
+			&context.World->Get<CameraComponent>(context.Entity) == &camera;
+		PostLoadCalls.push_back(StepCall{ context.World, context.Entity, camera.FovYDegrees, bOnItsEntity });
+	}
+
+	void RecordRemove(Registry& world, Entity entity)
+	{
+		RemoveCalls.push_back(StepCall{ &world, entity, 0.0f, false });
+	}
+
+	// Each way a post-load step runs in a game, through a scene's load and live edits, gives it the
+	// world and the entity of the component, where it may add what it derives from the component
+	void TestPostLoadStepsKnowTheirEntity()
+	{
+		ComponentTypeRegistry::Get().SetPostLoad<CameraComponent>(&RecordPostLoad);
+		ComponentTypeRegistry::Get().SetOnRemove<CameraComponent>(&RecordRemove);
+
+		Registry editor;
+		AddEntity(editor, "Cube");
+		const Entity camera = AddEntity(editor, "Camera");
+		editor.Add<CameraComponent>(camera, CameraComponent{ .FovYDegrees = 50.0f });
+
+		// A scene's load: one call, for the camera's entity. The file is read into a world of its own,
+		// which then becomes the loaded one: the step gets that world, and the entity keeps its handle.
+		Nyx::Tests::TestDirectory directory("NyxLiveEditTests");
+		const std::filesystem::path path = directory.Path / "PostLoad.nyxscene";
+		Require(SceneSerializer::SaveToFile(editor, path), "The scene can't be saved");
+		Registry loaded;
+		PostLoadCalls.clear();
+		Require(SceneSerializer::LoadFromFile(path, loaded), "The scene can't be loaded");
+		const std::optional<Entity> loadedCamera = FindEntityByGuid(loaded, GetGuid(editor, camera));
+		Require(PostLoadCalls.size() == 1 && PostLoadCalls[0].bOnItsEntity && PostLoadCalls[0].Entity == *loadedCamera &&
+				PostLoadCalls[0].FovYDegrees == 50.0f,
+			"Loading a scene should give the post-load step the world and entity of the camera it loads");
+
+		// A new entity sent live
+		Registry game;
+		PostLoadCalls.clear();
+		CopyWorld(editor, game);
+		const std::optional<Entity> gameCamera = FindEntityByGuid(game, GetGuid(editor, camera));
+		Require(PostLoadCalls.size() == 1 && PostLoadCalls[0].bOnItsEntity && PostLoadCalls[0].World == &game &&
+				PostLoadCalls[0].Entity == *gameCamera,
+			"A new entity sent live should give the post-load step the game's world and its entity");
+
+		// New values sent live
+		editor.Get<CameraComponent>(camera).FovYDegrees = 70.0f;
+		const std::optional<SetPropertiesMessage> zoom =
+			MakeSetPropertiesMessage(editor, camera, GetOps<CameraComponent>(), { GetPropertyIndex<CameraComponent>("FovYDegrees") });
+		PostLoadCalls.clear();
+		Require(zoom && Apply(*zoom, game) == ELiveEditResult::Applied, "The new values weren't applied");
+		Require(PostLoadCalls.size() == 1 && PostLoadCalls[0].bOnItsEntity && PostLoadCalls[0].World == &game &&
+				PostLoadCalls[0].Entity == *gameCamera && PostLoadCalls[0].FovYDegrees == 70.0f,
+			"New values sent live should give the post-load step the game's world and the camera's entity, after they are read");
+
+		// Removed through its ops: the remove step, for the entity, once the component is gone
+		RemoveCalls.clear();
+		GetOps<CameraComponent>().Remove(game, *gameCamera);
+		Require(!game.Has<CameraComponent>(*gameCamera) && RemoveCalls.size() == 1 && RemoveCalls[0].World == &game &&
+				RemoveCalls[0].Entity == *gameCamera,
+			"Removing the component should run its remove step for its entity");
+		GetOps<CameraComponent>().Remove(game, *gameCamera);
+		Require(RemoveCalls.size() == 1, "Removing a component that isn't there shouldn't run the remove step");
 	}
 
 	// Added, deleted and brought back, with the assets the game has to load
@@ -561,6 +642,8 @@ int main()
 		TestWhatCantBeApplied();
 		TestDescriptions();
 		TestRendererMessages();
+		// Last: it gives the camera a post-load step of its own
+		TestPostLoadStepsKnowTheirEntity();
 
 		std::cout << "All live edit tests passed.\n";
 		return 0;

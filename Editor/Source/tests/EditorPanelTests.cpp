@@ -1,6 +1,9 @@
 // The pieces EditorLayer is built from, without a window or renderer: SceneEditor's commands and
 // hotkeys, and the panels drawn headless with ImGui.
+#include "CameraComponent.h"
+#include "ComponentEdits.h"
 #include "ComponentRegistration.h"
+#include "ComponentTypeRegistry.h"
 #include "CrashCardsPanel.h"
 #include "DetailsPanel.h"
 #include "EditorPreferences.h"
@@ -32,6 +35,8 @@
 #include "SceneSerializer.h"
 #include "SurfaceDecalComponent.h"
 #include "ThemeEditorWindow.h"
+#include "TransactionDiffUtil.h"
+#include "TransactionObjectRefHelpers.h"
 #include "TransformComponent.h"
 #include "UIAnimation.h"
 #include "UIChrome.h"
@@ -277,6 +282,58 @@ namespace
 			{
 				details.Draw(editing);
 			});
+	}
+
+	// What the camera's post-load step was given, each time it ran
+	struct PostLoadCall
+	{
+		Registry* World = nullptr;
+		Nyx::Entity Entity{};
+		float FovYDegrees = 0.0f;
+	};
+	std::vector<PostLoadCall> PostLoadCalls;
+
+	void RecordPostLoad(CameraComponent& camera, ScenePostLoadContext& context)
+	{
+		// Only the camera that is the entity's, in that world, counts
+		if (context.World && context.World->Has<CameraComponent>(context.Entity) && &context.World->Get<CameraComponent>(context.Entity) == &camera)
+		{
+			PostLoadCalls.push_back(PostLoadCall{ context.World, context.Entity, camera.FovYDegrees });
+		}
+	}
+
+	// The editor runs a component's post-load step after it is added, edited and undone
+	// (ComponentPostLoadSubscriber), with the scene's world and the component's entity
+	void TestPostLoadStepsKnowTheirEntity()
+	{
+		ComponentTypeRegistry::Get().SetPostLoad<CameraComponent>(&RecordPostLoad);
+		SceneEditor editing;
+		editing.Transactions.Subscribe(&editing.AssetLoader);
+		Registry& world = editing.Scene.GetRegistry();
+		editing.Scene.CreateEntity("Cube");
+		const Entity camera = editing.Scene.CreateEntity("Camera");
+		const ComponentTypeOps& cameraType = *ComponentTypeRegistry::Get().FindByTypeMetadata(Nyx::Reflection::GetTypeMetadata<CameraComponent>());
+		const auto ranFor = [&](float fovYDegrees)
+		{
+			return PostLoadCalls.size() == 1 && PostLoadCalls[0].World == &world && PostLoadCalls[0].Entity == camera &&
+				PostLoadCalls[0].FovYDegrees == fovYDegrees;
+		};
+
+		PostLoadCalls.clear();
+		Require(AddComponent(editing.Scene, editing.Transactions, camera, cameraType), "Adding a camera should be an edit");
+		Require(ranFor(CameraComponent{}.FovYDegrees), "Adding a component should run its post-load step for its entity, in the scene's world");
+
+		// As the details panel edits a value
+		TransactionDiffUtil diff;
+		diff.TakeSnapshot(MakeSceneEntityRef(editing.Scene, camera), &world.Get<CameraComponent>(camera), Nyx::Reflection::GetTypeMetadata<CameraComponent>());
+		world.Get<CameraComponent>(camera).FovYDegrees = 80.0f;
+		PostLoadCalls.clear();
+		Require(diff.CommitChanges("Edit Property", editing.Transactions), "Changing the field of view should be an edit");
+		Require(ranFor(80.0f), "Editing a component should run its post-load step for its entity, with the new values");
+
+		PostLoadCalls.clear();
+		editing.Undo();
+		Require(ranFor(CameraComponent{}.FovYDegrees), "Undoing an edit should run the post-load step with the values as they were");
 	}
 
 	// ImGui counts the items that share the ID of the one under the mouse ("visible items with
@@ -2049,6 +2106,8 @@ int main()
 		TestThemeChoice();
 		TestPanelsLeaveNoShapesToImGui();
 		TestAnimationsEaseAndAreForgotten();
+		// Last: it gives the camera a post-load step of its own
+		TestPostLoadStepsKnowTheirEntity();
 	}
 	catch (const std::exception& error)
 	{
