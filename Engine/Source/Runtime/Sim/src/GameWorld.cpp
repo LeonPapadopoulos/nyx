@@ -2,6 +2,7 @@
 #include "GameWorld.h"
 
 #include "Assertions.h"
+#include "CharacterCommands.h"
 #include "Profiler.h"
 
 #include <algorithm>
@@ -26,6 +27,7 @@ namespace Nyx
 
 		Bodies.SyncBeforeStep(World, Physics, seconds);
 		RefreshEntityGuidLookup(World, Guids);
+		ApplyMoveCharacterCommands(World, Guids, StepCommands);
 
 		const SimContext context{ World, step, Debug, Physics, Bodies, Guids, StepCommands };
 		RunStage(ESimStage::BeforePhysics, context);

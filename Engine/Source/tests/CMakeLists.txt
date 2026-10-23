@@ -183,6 +183,14 @@ add_dependencies(NyxOrbitCameraInputTests NyxGeneratedReflection)
 set_property(TARGET NyxOrbitCameraInputTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxOrbitCameraInputTests COMMAND NyxOrbitCameraInputTests)
 
+# Walking a character through commands: a walk relative to the camera, the command in the next
+# step, the last move and one jump of several, the built-in player on the sample scene. No window.
+add_executable(NyxThirdPersonTests ThirdPersonTests.cpp)
+target_link_libraries(NyxThirdPersonTests PRIVATE NyxEngine)
+add_dependencies(NyxThirdPersonTests NyxGeneratedReflection)
+set_property(TARGET NyxThirdPersonTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxThirdPersonTests COMMAND NyxThirdPersonTests)
+
 # How long the guid lookup a game world makes each step takes with 3000 guids; not run by ctest,
 # timing depends on the machine
 add_executable(NyxGuidLookupBenchmark GuidLookupBenchmark.cpp)

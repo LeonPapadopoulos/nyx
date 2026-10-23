@@ -92,6 +92,9 @@ What the editor and the game do. How the code behind them is organised is in
   the world (`PlayerView::ToScreen()`). It shows in every build, unlike the debug drawing.
 - `NyxGameModuleTests` tests it with the test module's player: a key press brightens a lantern
   in the next step, once, and the cursor's ray reaches the player.
+- The engine has one command of its own, `MoveCharacterCommand`, which walks a character; a
+  game's player makes it from the Walk and Jump actions (`MakeMoveCharacterCommand()`). Without a
+  game module's player, Nyx's game uses its own, which does just that (`ThirdPersonPlayer`).
 
 ## The game on its own
 
@@ -160,10 +163,11 @@ contexts, and the context highest on the stack that binds a control gets it.
   can ask for free look instead, where the mouse turns it without a button and the cursor is
   captured. Its bindings are in `Assets/Input/Default.nyxinput`, tuned in *Window > Input* like the
   fly camera's. An orbit camera wins over a fly camera in the same scene.
-- In Debug builds, a stand-in for a game's player, which would walk its character through
-  commands: in a scene with a *Character* and an *Orbit Camera*
-  (`Assets/Scenes/CharacterTest.nyxscene`), W/A/S/D or the left stick walk the character relative
-  to where the camera looks, Space or the south button jump.
+- In a scene with a *Character* and an *Orbit Camera* (`Assets/Scenes/CharacterTest.nyxscene`),
+  without a game module's player: W/A/S/D or the left stick walk the character relative to where
+  the camera looks, Space or the south button jump, the mouse looks around freely, and Tab frees
+  the cursor (then the right button held looks) and back. It goes through the same commands a
+  game's player sends, and the bindings are in `Assets/Input/Default.nyxinput`.
 - *Window > Input* shows the editor's input:
   - *Devices*: each device with its controls live, sticks with their dead zones and a plot of
     where they have been, calibration that suggests dead zones, and buttons that try rumble,

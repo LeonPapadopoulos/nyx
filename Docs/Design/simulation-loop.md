@@ -77,7 +77,8 @@ plan.
 - **Not yet:** the event queue and the engine services (later the spatial index) in `SimContext`.
 - The engine's part of the order is fixed; a game's systems go into the slots around it:
   1. the commands players added since the last step become this step's (built:
-     `SimContext::Commands`); the game's systems apply those they own;
+     `SimContext::Commands`); the engine applies its own, `MoveCharacterCommand`, and the game's
+     systems those they own;
   2. bodies follow the physics components and the transforms set since the last step (built:
      `PhysicsBodies`), and the guid lookup is made again (built: `SimContext::Guids`);
   3. the game's systems that decide forces and constraints, and where characters go (built:

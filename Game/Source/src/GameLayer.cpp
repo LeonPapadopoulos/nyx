@@ -3,68 +3,20 @@
 #include "Application.h"
 #include "CameraComponent.h"
 #include "CameraProjection.h"
-#include "CharacterComponent.h"
-#include "GuidComponent.h"
 #include "ImGuiInput.h"
 #include "InputAsset.h"
 #include "Log.h"
 #include "EditorRenderer.h"
-#include "OrbitCameraComponent.h"
 #include "OrbitCameras.h"
 #include "PhysicsPick.h"
 #include "SceneSerializer.h"
+#include "ThirdPersonPlayer.h"
 #include "UIChrome.h"
 
 #include <imgui.h>
 
 namespace Nyx::Game
 {
-#if defined(ENGINE_DEBUG)
-	namespace
-	{
-		// The stand-in character driver's actions and context, as data, as FlyCameraInput makes its
-		// own: the walk and the jump
-		Nyx::Input::InputAssetData MakeCharacterDriverInput()
-		{
-			using namespace Nyx::Input;
-			InputAssetData input;
-			input.Actions = {
-				{ "CharacterWalk", EActionValue::Axis2D },
-				{ "CharacterJump", EActionValue::Button },
-			};
-			const DeadZoneSettings stickDeadZone{ .bEnabled = true, .Shape = EDeadZoneShape::ScaledRadial, .Inner = 0.15f };
-
-			InputContextData walking;
-			walking.Name = "DebugCharacter";
-			walking.Priority = 100;
-
-			InputBindingData keys;
-			keys.Action = "CharacterWalk";
-			keys.Composite = { .Right = "Keyboard/D", .Left = "Keyboard/A", .Up = "Keyboard/W", .Down = "Keyboard/S" };
-			walking.Bindings.push_back(keys);
-
-			// The stick's up is forward, y
-			InputBindingData walkStick;
-			walkStick.Action = "CharacterWalk";
-			walkStick.Control = "Gamepad/LeftStick";
-			walkStick.Pipeline.DeadZone = stickDeadZone;
-			walking.Bindings.push_back(walkStick);
-
-			for (const char* control : { "Keyboard/Space", "Gamepad/FaceSouth" })
-			{
-				InputBindingData jump;
-				jump.Action = "CharacterJump";
-				jump.Control = control;
-				jump.Trigger.Kind = ETriggerKind::Pressed;
-				walking.Bindings.push_back(jump);
-			}
-
-			input.Contexts = { walking };
-			return input;
-		}
-	}
-#endif
-
 	GameLayer::GameLayer(std::filesystem::path scenePath)
 		: ScenePath(std::move(scenePath))
 	{
@@ -96,11 +48,6 @@ namespace Nyx::Game
 		overlay.Modifiers = crash.Modifiers;
 		DebugContext = Input->AddContext({ .Name = "Debug", .Priority = 800, .Bindings = { crash, physicsDebugView, overlay } });
 		Input->GetUser().SetContextActive(DebugContext, true, { .Reason = "Debug build" });
-
-		Nyx::Input::ApplyInputAsset(*Input, MakeCharacterDriverInput());
-		CharacterContext = Input->FindContext("DebugCharacter");
-		CharacterWalk = Input->FindAction("CharacterWalk");
-		CharacterJump = Input->FindAction("CharacterJump");
 #endif
 
 		// The game has no window layout to remember, and must not overwrite the editor's imgui.ini:
@@ -146,10 +93,15 @@ namespace Nyx::Game
 			LOG_INFO("{0} simulation system(s)", World.GetSystems().size());
 		}
 
-		// The game module's player: its actions and contexts go on the input system now
+		// The game module's player: its actions and contexts go on the input system now. Without one,
+		// Nyx's own, which walks a character an orbit camera follows, through the same commands.
 		if (const auto createPlayer = application.GetGameModule().CreatePlayerController)
 		{
 			Player = createPlayer(*Input);
+		}
+		else
+		{
+			Player = std::make_unique<Nyx::ThirdPersonPlayer>(*Input);
 		}
 
 		// The view the player sees: through the scene's camera, without the editor's grid and outlines
@@ -215,42 +167,6 @@ namespace Nyx::Game
 		return MakeViewRay(glm::vec2(mouse.x, mouse.y) - GameViewMin);
 	}
 
-	void GameLayer::DriveCharacterForDebugging()
-	{
-		Nyx::Registry& world = World.GetRegistry();
-		Nyx::OrbitCameraComponent* orbit = nullptr;
-		world.Each<Nyx::OrbitCameraComponent>([&](Nyx::Entity, Nyx::OrbitCameraComponent& camera)
-			{
-				orbit = orbit != nullptr ? orbit : &camera;
-			});
-		// The character the camera follows, else the first
-		Nyx::CharacterComponent* character = nullptr;
-		if (orbit != nullptr)
-		{
-			const std::optional<Nyx::Entity> target = Nyx::FindEntityByGuid(world, orbit->Target);
-			character = target && world.Has<Nyx::CharacterComponent>(*target) ? &world.Get<Nyx::CharacterComponent>(*target) : nullptr;
-		}
-		world.Each<Nyx::CharacterComponent>([&](Nyx::Entity, Nyx::CharacterComponent& walker)
-			{
-				character = character != nullptr ? character : &walker;
-			});
-
-		// The context counts from the next frame
-		Nyx::Input::InputUser& user = Input->GetUser();
-		const bool bDriving = orbit != nullptr && character != nullptr;
-		user.SetContextActive(CharacterContext, bDriving, { .Reason = bDriving ? "A character and an orbit camera (Debug builds)" : "" });
-		if (!bDriving)
-		{
-			return;
-		}
-
-		character->DesiredMove = Nyx::GetGroundMove(orbit->Yaw, user.Get(CharacterWalk).Vec2());
-		if (user.ConsumeTriggered(CharacterJump))
-		{
-			character->bJumpRequested = true;
-		}
-	}
-
 	void GameLayer::OnUpdate(float deltaTime)
 	{
 		// The cameras first, so the player's rays come from where they look this frame. The entities
@@ -264,9 +180,6 @@ namespace Nyx::Game
 		{
 			Nyx::Input::UpdateFlyCameras(World.GetRegistry(), *FlyCameraInput, deltaTime);
 		}
-#if defined(ENGINE_DEBUG)
-		DriveCharacterForDebugging();
-#endif
 
 		// The player's commands for this frame's steps, from where the camera looks now: a fly camera
 		// as it just moved, an orbit camera as the picture on screen shows it (it follows its target

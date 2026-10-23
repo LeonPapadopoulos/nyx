@@ -45,11 +45,10 @@ namespace Nyx
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Movement", DragSpeed = 0.01, Tooltip = "1: falls normally, 0: floats"))
 		float GravityFactor = 1.0f;
 
-		// While the game runs, not saved. What the player or the game wants, simulation input: set
-		// by a system of ESimStage::BeforePhysics, e.g. from a player's command, never from outside
-		// a step (the game's Debug-only stand-in driver aside). Where to walk, in world space along
-		// the ground, up to 1 long (the walk speed); a jump, taken by this step whether or not it can
-		// jump then
+		// While the game runs, not saved. What the player or the game wants, simulation input: set in
+		// the step from a player's MoveCharacterCommand, or by a system of ESimStage::BeforePhysics,
+		// never from outside a step. Where to walk, in world space along the ground, up to 1 long (the
+		// walk speed), kept until changed; a jump, taken by this step whether or not it can jump then
 		glm::vec3 DesiredMove{ 0.0f };
 		bool bJumpRequested = false;
 

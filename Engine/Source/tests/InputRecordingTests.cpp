@@ -213,7 +213,7 @@ namespace
 		std::string text;
 		Require(Nyx::PrintInputRecording(path, text), "It prints");
 		Require(Contains(text, "Of NyxGame, starting") && Contains(text, std::to_string(original.size()) + " frames."), "The header");
-		Require(Contains(text, "Definitions: 10 actions"), "The definitions");
+		Require(Contains(text, "Definitions: 13 actions"), "The definitions");
 		Require(Contains(text, "Frame 1 at 0.016 s"), "Frames with their times");
 		Require(Contains(text, "Keyboard/W down"), "Events");
 		Require(Contains(text, "stack (lowest first): FlyCamera, FlyCameraMouseLook"), "The stack when it changed");

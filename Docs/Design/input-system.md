@@ -241,13 +241,16 @@ So the mode is input state, not the world's: the player switches it without writ
 and it counts from the next frame, as all context changes do. The right stick turns the camera in
 both modes. While the world has an orbit camera, the fly camera's contexts are off.
 
-In Debug builds the game also has a stand-in character driver, for trying characters without a
-game module's player (`IPlayerController`), which would send a command, e.g. `MoveCharacter`, for a
-system to apply in the step. It is the one code that writes a character's simulation input from
-outside a step. While the world has a `CharacterComponent` and an `OrbitCameraComponent`, the
-context `DebugCharacter` (100) is on, with the actions CharacterWalk and CharacterJump; the game
-layer writes them into the character's `DesiredMove` (through `GetGroundMove()` and the camera's
-yaw) and `bJumpRequested`.
+`ThirdPersonInput` gives a player who walks a character its actions (Walk: W/A/S/D and the left
+stick; Jump: Space and the south button; ToggleFreeLook: Tab) and the context `ThirdPerson` (100),
+in the default asset too. `MakeMoveCharacterCommand()` turns them into a `MoveCharacterCommand`:
+the walk relative to where the camera that follows the character looks (an orbit camera with it as
+its target, else the primary camera; `GetGroundMove()`), the jump taken with `ConsumeTriggered()`.
+A game's player calls it each frame, `MakeMoveCharacterCommand(frame, character, actions)`, and
+adds the command; a still walk too, to stop. When the game module has no player, the game uses
+Nyx's own, `ThirdPersonPlayer` (App): while the world has a character and an orbit camera, it does
+exactly that for the character the camera follows, with the `ThirdPerson` context on, and keeps the
+orbit camera's free look asked for; Tab switches to holding the right mouse button and back.
 ImGui gets its input from GLFW's callbacks, which it shares with the GLFW backend; the editor's
 shortcuts stay ImGui's.
 
@@ -275,6 +278,10 @@ that the mouse turns it only while the right button is held, with the cursor fre
 is asked for, which turns it without a button and captures the cursor, that the right stick turns
 it in both modes and the wheel zooms, and that the default asset has its actions and contexts, a
 tuned sensitivity counting.
+`NyxThirdPersonTests` checks that a walk becomes a `MoveCharacterCommand` relative to the camera's
+yaw, that the command walks the character in the next step, once, through `SimContext::Commands`,
+that of two in one step the last move counts and two jumps jump once, and that the built-in player
+walks the character of `CharacterTest.nyxscene` without a game module, and switches free look.
 `NyxOrbitCameraTests` checks that the orbit camera starts from where the camera looks, keeps its
 distance and offset from a moving target, follows it where it is drawn, smooths alike at 30 and 240
 frames a second, clamps its pitch and zoom, wraps its yaw, leaves the camera alone without a target,

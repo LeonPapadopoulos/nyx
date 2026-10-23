@@ -9,6 +9,7 @@
 #include "PropertyValueAccess.h"
 #include "ReflectedArchiveSerializer.h"
 #include "ReflectionUtils.h"
+#include "ThirdPersonInput.h"
 
 #include <algorithm>
 #include <cstdlib>
@@ -557,6 +558,16 @@ namespace Nyx::Input
 			asset.Actions.push_back(std::move(action));
 		}
 		for (InputContextData& context : OrbitCameraInput::MakeContextsData(OrbitCameraInput::Settings{}))
+		{
+			asset.Contexts.push_back(std::move(context));
+		}
+
+		// The game's built-in player, walking a character
+		for (InputActionData& action : ThirdPersonInput::MakeActionsData())
+		{
+			asset.Actions.push_back(std::move(action));
+		}
+		for (InputContextData& context : ThirdPersonInput::MakeContextsData(ThirdPersonInput::Settings{}))
 		{
 			asset.Contexts.push_back(std::move(context));
 		}

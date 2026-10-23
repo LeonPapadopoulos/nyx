@@ -50,6 +50,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/FlyCameraInput.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/FlyCameras.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/OrbitCameraInput.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Input/src/ThirdPersonInput.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputInspection.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputHistory.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputDebugView.cpp
@@ -67,6 +68,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/CameraProjection.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/FlyCameraComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/CharacterComponent.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/MoveCharacterCommand.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/OrbitCameraComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/DirectionalLightComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/NameComponent.cpp
@@ -89,6 +91,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/PhysicsBodies.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/PhysicsPick.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/OrbitCameras.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Sim/src/CharacterCommands.cpp
 
     # Runtime/Physics
     ${NYX_ENGINE_ROOT}/Runtime/Physics/src/PhysicsWorld.cpp
@@ -159,6 +162,7 @@ set(NYX_ENGINE_SOURCES
     # Runtime/App
     ${NYX_ENGINE_ROOT}/Runtime/App/src/Application.cpp
     ${NYX_ENGINE_ROOT}/Runtime/App/src/GameLaunchOptions.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/App/src/ThirdPersonPlayer.cpp
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/src/ReflectionUtils.cpp
@@ -207,6 +211,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Input/include/FlyCameraInput.h
     ${NYX_ENGINE_ROOT}/Runtime/Input/include/FlyCameras.h
     ${NYX_ENGINE_ROOT}/Runtime/Input/include/OrbitCameraInput.h
+    ${NYX_ENGINE_ROOT}/Runtime/Input/include/ThirdPersonInput.h
     ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputInspection.h
     ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputHistory.h
     ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputDebugView.h
@@ -224,6 +229,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/CameraProjection.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/FlyCameraComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/CharacterComponent.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/MoveCharacterCommand.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/OrbitCameraComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/DirectionalLightComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/NameComponent.h
@@ -250,6 +256,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/PhysicsBodies.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/PhysicsPick.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/OrbitCameras.h
+    ${NYX_ENGINE_ROOT}/Runtime/Sim/include/CharacterCommands.h
 
     # Runtime/Physics
     ${NYX_ENGINE_ROOT}/Runtime/Physics/include/PhysicsWorld.h
@@ -334,6 +341,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/App/include/Layer.h
     ${NYX_ENGINE_ROOT}/Runtime/App/include/GameModule.h
     ${NYX_ENGINE_ROOT}/Runtime/App/include/GameLaunchOptions.h
+    ${NYX_ENGINE_ROOT}/Runtime/App/include/ThirdPersonPlayer.h
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionTypes.h

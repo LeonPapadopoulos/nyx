@@ -62,7 +62,7 @@ doesn't allow, and on a table that goes round in a circle, so a new dependency s
 | `LinkTools` | Link messages, recordings, scene files and input files as readable text, for the editor and NyxDump; not under `Runtime`, and not in the game | Core, Reflection, Scene, Input, Link |
 | `Render` | The Vulkan renderer, scene views, shaders and materials, and applying the link's shaders and material values | Core, Net, Scene, Assets, UI, Link |
 | `Platform` | The window | Core, Input, UI |
-| `App` | The application and its layers, `main()`, the options the editor starts a game with, what a game module brings (`GameModule`) and its player (`IPlayerController`, turning input into commands each frame) | Core, Input, Scene, Render, Platform |
+| `App` | The application and its layers, `main()`, the options the editor starts a game with, what a game module brings (`GameModule`) and its player (`IPlayerController`, turning input into commands each frame), the player Nyx's game has without one (`ThirdPersonPlayer`) | Core, Input, Scene, Sim, Render, Platform |
 
 Each folder of `Runtime` has one namespace: `Nyx`, except `Net` (`Nyx::Net`), `Input`
 (`Nyx::Input`) and `UI` (`Nyx::UI`).

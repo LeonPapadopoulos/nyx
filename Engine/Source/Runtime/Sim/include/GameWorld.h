@@ -24,8 +24,9 @@ namespace Nyx
 	// 2. bodies and characters follow the physics components and the transforms set since the last
 	//    step (PhysicsBodies);
 	// 3. the lookup from guid to entity is made again, in the memory it had (SimContext::Guids);
-	// 4. the systems of ESimStage::BeforePhysics, in the order they were added, e.g. to say where
-	//    the characters go from the players' commands (CharacterComponent::DesiredMove);
+	//    the players' MoveCharacterCommands go into their characters (ApplyMoveCharacterCommands());
+	// 4. the systems of ESimStage::BeforePhysics, in the order they were added, e.g. to change
+	//    where the characters go (CharacterComponent::DesiredMove);
 	// 5. the characters walk, and write their transforms (PhysicsBodies::MoveCharacters());
 	// 6. the physics step;
 	// 7. dynamic bodies write their poses into their transforms, and where they were before into

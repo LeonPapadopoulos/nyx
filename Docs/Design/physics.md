@@ -132,9 +132,13 @@ between their anchors; nothing with every part off.
     rotation set since the last step teleports the character and stops it. Colliders on a
     character's entity make no body: the capsule is its shape. `FindBody()` gives a character's
     body, `FindEntity()` its entity, `FindCharacter()` the character;
-  - after the systems of `ESimStage::BeforePhysics`, which fill `DesiredMove` and `bJumpRequested`
-    (simulation input: from a player's command, e.g. a game's `MoveCharacter`, never from outside a
-    step, the game's Debug-only stand-in driver aside), and before the physics step,
+  - a player walks a character with a `MoveCharacterCommand` (Scene) `{ Character guid, Move,
+    bJump }`. The step applies the commands before its systems (`ApplyMoveCharacterCommands()`,
+    Sim): the last move for a character becomes its `DesiredMove`, kept until the next, so a frame
+    with two steps walks in both; any jump sets `bJumpRequested`. This is the only way in from
+    outside a step: `DesiredMove` and `bJumpRequested` are simulation input;
+  - after the systems of `ESimStage::BeforePhysics`, which may still change `DesiredMove` and
+    `bJumpRequested`, and before the physics step,
     `MoveCharacters()` walks each character by its component (walk speed, acceleration, air control
     as a part of it, jump speed, gravity factor, step height, ground snap), clears the jump, writes
     the feet's position into the transform and what it stands on into the component (`bOnGround`,

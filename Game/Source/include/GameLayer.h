@@ -65,13 +65,6 @@ namespace Nyx::Game
 		// Through the cursor, while it is free and over the picture
 		std::optional<Nyx::Ray> MakeCursorRay() const;
 
-		// Debug builds, a stand-in for a game module's player, which would walk its character with a
-		// command (e.g. MoveCharacter) that a system applies in the step: with a character and an
-		// orbit camera in the scene, W/A/S/D or the left stick walk the character relative to where
-		// the camera looks, Space or the south button jump. It writes the character's simulation
-		// input from outside a step, which nothing else may.
-		void DriveCharacterForDebugging();
-
 		std::filesystem::path ScenePath;
 
 		Nyx::IRenderer* Renderer = nullptr;
@@ -81,8 +74,9 @@ namespace Nyx::Game
 
 		// All entities of the loaded scene, and the systems that run them
 		Nyx::GameWorld World;
-		// The game module's player, turning input into the world's commands each frame; none
-		// without a module that has one (GameModule::CreatePlayerController)
+		// The game module's player, turning input into the world's commands each frame
+		// (GameModule::CreatePlayerController); without a module that has one, Nyx's own
+		// (ThirdPersonPlayer)
 		std::unique_ptr<Nyx::IPlayerController> Player;
 
 		uint64_t GameViewId = 0;
@@ -110,10 +104,6 @@ namespace Nyx::Game
 		Nyx::Input::ActionHandle TogglePhysicsDebugView;
 		Nyx::Input::ActionHandle ToggleInputOverlay;
 		bool bShowInputOverlay = false;
-		// The stand-in character driver's (DriveCharacterForDebugging())
-		Nyx::Input::ContextHandle CharacterContext;
-		Nyx::Input::ActionHandle CharacterWalk;
-		Nyx::Input::ActionHandle CharacterJump;
 		Nyx::Input::InputHistory InputHistory;
 		Nyx::Input::InputDebugView InputView;
 	};
