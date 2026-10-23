@@ -23,7 +23,8 @@
 // was put when set from outside; picking finds it where it is. A surface decal with the masked
 // decal material brightens a cube where it is, the more the more it is revealed; nothing at all
 // unrevealed, without its host, or behind something else; on a body between two steps, it is
-// drawn where the body is drawn.
+// drawn where the body is drawn. A click on a decal's mask picks the decal, one where its mask is
+// empty what is beneath, and a selected decal's quad is outlined.
 //
 // NYX_SCENE_TEST_OUTPUT=<folder> saves what was rendered there, e.g. to make a new reference
 // after a change that is meant to change the picture.
@@ -1192,6 +1193,112 @@ namespace
 		gpu.DrawFrames(1);
 	}
 
+	// The masked decal's ring on the front face of a cube, in a view with the editor's overlays: a
+	// click on the ring picks the decal, one in the ring's middle the cube beneath; a hidden or
+	// unrevealed decal is never picked. Selected, the decal's quad is outlined.
+	void TestPickingDecals(SceneRenderer& gpu)
+	{
+		Nyx::IEditorRenderer& renderer = gpu.Renderer;
+		Registry world;
+		const Entity cube = AddCube(world, gpu.Renderer, 0.0f, renderer.GetMaterial("Materials/Untextured.nyxmat"));
+		world.Add<GuidComponent>(cube, GuidComponent{ EntityGuid{ 0x91C4 } });
+		const Entity camera = world.CreateEntity();
+		world.Add<TransformComponent>(camera, TransformComponent{ .Position = glm::vec3(0.0f, 0.0f, 3.0f), .Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f), .Scale = glm::vec3(1.0f) });
+		world.Add<CameraComponent>(camera, CameraComponent{});
+
+		const Entity decalEntity = world.CreateEntity();
+		SurfaceDecalComponent decal;
+		decal.Anchor = SurfaceAnchor{ .Host = EntityGuid{ 0x91C4 }, .LocalPosition = glm::vec3(0.0f, 0.0f, 0.5f), .LocalNormal = glm::vec3(0.0f, 0.0f, 1.0f), .LocalTangent = glm::vec3(1.0f, 0.0f, 0.0f) };
+		decal.Size = glm::vec2(0.8f, 0.8f);
+		decal.MaterialAsset = renderer.GetMaterial("Materials/MaskedDecal.nyxmat");
+		decal.Intensity = 4.0f;
+		world.Add<SurfaceDecalComponent>(decalEntity, decal);
+
+		renderer.SetWorld(&world);
+		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
+		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
+		gpu.DrawUntilShadersCompiled();
+		gpu.DrawFrames(2);
+
+		// The ring: where the decal brightens the middle row most, right of the middle
+		const RgbaImage with = ReadView(gpu, view);
+		world.Get<SurfaceDecalComponent>(decalEntity).bVisible = false;
+		gpu.DrawFrames(2);
+		const RgbaImage without = ReadView(gpu, view);
+		world.Get<SurfaceDecalComponent>(decalEntity).bVisible = true;
+		uint32_t ringX = ViewWidth / 2;
+		int largestGain = 0;
+		for (uint32_t x = ViewWidth / 2; x < ViewWidth; ++x)
+		{
+			const size_t pixel = (static_cast<size_t>(ViewHeight / 2) * ViewWidth + x) * 4;
+			int gain = 0;
+			for (size_t channel = 0; channel < 3; ++channel)
+			{
+				gain += int(with.Pixels[pixel + channel]) - int(without.Pixels[pixel + channel]);
+			}
+			if (gain > largestGain)
+			{
+				largestGain = gain;
+				ringX = x;
+			}
+		}
+		Require(largestGain > 100 && ringX > ViewWidth / 2 + 10, "The ring doesn't show right of the middle: the test can't click on it");
+
+		// Picking is one of the editor's overlays
+		renderer.SetSceneViewShowEditorOverlays(view, true);
+		const auto pick = [&](uint32_t x)
+		{
+			gpu.DrawFrames(2);
+			renderer.RequestPick(view, x, ViewHeight / 2);
+			gpu.DrawFrames(3);
+			return renderer.ConsumeLastPickResult(view);
+		};
+		Nyx::IEditorRenderer::PickResult result = pick(ringX);
+		Require(result.bHasNewResult && result.HitEntity == decalEntity, "A click on the decal's ring doesn't pick the decal");
+		result = pick(ViewWidth / 2);
+		Require(result.bHasNewResult && result.HitEntity == cube, "A click in the ring's middle, where the mask is empty, doesn't pick the cube beneath");
+
+		world.Get<SurfaceDecalComponent>(decalEntity).bVisible = false;
+		result = pick(ringX);
+		Require(result.bHasNewResult && result.HitEntity == cube, "A click on a hidden decal's ring doesn't pick the cube beneath");
+		world.Get<SurfaceDecalComponent>(decalEntity).bVisible = true;
+		world.Get<SurfaceDecalComponent>(decalEntity).Reveal = 0.0f;
+		result = pick(ringX);
+		Require(result.bHasNewResult && result.HitEntity == cube, "A click on an unrevealed decal's ring doesn't pick the cube beneath");
+		world.Get<SurfaceDecalComponent>(decalEntity).Reveal = 1.0f;
+
+		// Selected, the decal's quad is outlined: the picture changes along its edges (0.8 m at
+		// 2.5 m: 75 pixels across), and only there
+		gpu.DrawFrames(2);
+		const RgbaImage unselected = ReadView(gpu, view);
+		renderer.SetSelectedEntity(decalEntity);
+		gpu.DrawFrames(2);
+		const RgbaImage selected = ReadView(gpu, view);
+		SaveIfAsked(selected, "DecalSelected");
+		size_t outlined = 0;
+		for (uint32_t y = 0; y < ViewHeight; ++y)
+		{
+			for (uint32_t x = 0; x < ViewWidth; ++x)
+			{
+				const size_t pixel = (static_cast<size_t>(y) * ViewWidth + x) * 4;
+				if (std::equal(&selected.Pixels[pixel], &selected.Pixels[pixel + 3], &unselected.Pixels[pixel]))
+				{
+					continue;
+				}
+				const int fromMiddle = std::max(std::abs(int(x) - int(ViewWidth / 2)), std::abs(int(y) - int(ViewHeight / 2)));
+				Require(fromMiddle >= 34 && fromMiddle <= 41, "Selecting the decal changed the pixel at " + std::to_string(x) + ", " + std::to_string(y) + ", off its quad's edges");
+				++outlined;
+			}
+		}
+		Require(outlined > 200, "Selecting the decal outlines only " + std::to_string(outlined) + " pixels");
+
+		renderer.SetSelectedEntity(std::nullopt);
+		renderer.DestroySceneView(view);
+		renderer.SetWorld(nullptr);
+		gpu.DrawFrames(1);
+	}
+
 	// A world's debug drawing: drawn in a view of the world without the editor's overlays, as the
 	// game's view is, over the scene and in its colour; gone when the view hides it or the drawing
 	// is taken away
@@ -1329,6 +1436,7 @@ int main()
 		TestDrawingBetweenSteps(gpu);
 		TestSurfaceDecals(gpu);
 		TestDecalsBetweenSteps(gpu);
+		TestPickingDecals(gpu);
 		TestMaterialValuesSetInMemory(gpu);
 		TestSkiesAndDebugViews(gpu);
 		TestViewsMadeAndLetGoWhileTheUIIsBuilt(gpu);

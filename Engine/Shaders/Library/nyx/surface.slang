@@ -95,6 +95,10 @@ public struct SurfaceOutput
     public float Opacity;
     // Not lit: the base colour as it is, plus the emission
     public bool Unlit;
+    // For a decal: how much of it is at the pixel, 0 to 1, as a click in the editor finds it
+    // (decalPickingFragment), so that a click on a mask's empty parts goes to what is beneath. All
+    // of the quad unless the material says less.
+    public float Coverage;
 
     public static SurfaceOutput defaults(SurfaceInput input)
     {
@@ -107,6 +111,7 @@ public struct SurfaceOutput
         o.Emission = float3(0.0);
         o.Opacity = 1.0;
         o.Unlit = false;
+        o.Coverage = 1.0;
         return o;
     }
 }
@@ -194,12 +199,9 @@ struct ShadedPixel
     float Opacity;
 }
 
-// The material is loaded from the material buffer at the draw's offset, shades the pixel, and
-// nyx.lighting lights what it gave. In a debug view, the pixel is the output shown, opaque.
-ShadedPixel shadeSurfacePixel<S : ISurface>(VertexOutput vertex, DecalInput decal)
+// What the material is given at the pixel
+SurfaceInput makeSurfaceInput(VertexOutput vertex, DecalInput decal)
 {
-    S material = MaterialBuffer.Load<S>(Object.MaterialOffset);
-
     SurfaceInput input;
     input.UV = vertex.UV;
     input.NormalWS = normalize(vertex.NormalWS);
@@ -208,7 +210,27 @@ ShadedPixel shadeSurfacePixel<S : ISurface>(VertexOutput vertex, DecalInput deca
     input.ViewWS = normalize(View.CameraPosition.xyz - vertex.PositionWS);
     input.CustomData = Object.CustomData;
     input.Decal = decal;
+    return input;
+}
 
+// The decal's values, from the draw's push constants
+DecalInput objectDecalInput()
+{
+    DecalInput decal;
+    decal.Color = Object.CustomData.rgb;
+    decal.Intensity = Object.CustomData.a;
+    decal.Reveal = Object.CustomData2.x;
+    decal.Pulse = Object.CustomData2.y;
+    decal.IsDecal = true;
+    return decal;
+}
+
+// The material is loaded from the material buffer at the draw's offset, shades the pixel, and
+// nyx.lighting lights what it gave. In a debug view, the pixel is the output shown, opaque.
+ShadedPixel shadeSurfacePixel<S : ISurface>(VertexOutput vertex, DecalInput decal)
+{
+    S material = MaterialBuffer.Load<S>(Object.MaterialOffset);
+    const SurfaceInput input = makeSurfaceInput(vertex, decal);
     SurfaceOutput o = material.shade(input);
 
     ShadedPixel pixel;
@@ -273,12 +295,26 @@ public float4 surfaceFragment<S : ISurface>(VertexOutput vertex) : SV_Target
 [shader("fragment")]
 public float4 decalFragment<S : ISurface>(VertexOutput vertex) : SV_Target
 {
-    DecalInput decal;
-    decal.Color = Object.CustomData.rgb;
-    decal.Intensity = Object.CustomData.a;
-    decal.Reveal = Object.CustomData2.x;
-    decal.Pulse = Object.CustomData2.y;
-    decal.IsDecal = true;
-    const ShadedPixel pixel = shadeSurfacePixel<S>(vertex, decal);
+    const ShadedPixel pixel = shadeSurfacePixel<S>(vertex, objectDecalInput());
     return float4(pixel.Reflected * pixel.Opacity + pixel.Emission, pixel.Opacity);
+}
+
+// How much of a decal must be at a pixel for a click there to pick it
+static const float DecalPickingCoverage = 0.05;
+
+// The material drawn as a decal in the editor's picking pass (VulkanEditorOverlays): the decal's
+// entity where the material says the decal is (SurfaceOutput.Coverage), not pulsing, so a click
+// finds it at any moment. Elsewhere, such as in a ring's middle, the click goes to what is beneath.
+[shader("fragment")]
+public uint decalPickingFragment<S : ISurface>(VertexOutput vertex) : SV_Target
+{
+    DecalInput decal = objectDecalInput();
+    decal.Pulse = 0.0;
+    S material = MaterialBuffer.Load<S>(Object.MaterialOffset);
+    const SurfaceOutput o = material.shade(makeSurfaceInput(vertex, decal));
+    if (o.Coverage < DecalPickingCoverage)
+    {
+        discard;
+    }
+    return Object.EntityId;
 }

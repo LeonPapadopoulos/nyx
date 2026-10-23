@@ -1,7 +1,8 @@
 // Surface decals without a GPU: a decal's quad follows its host as it moves, turns and is scaled,
 // lifted a little off the surface and keeping its size; on a host drawn between two steps, it is
-// where the host is drawn; what the renderer extracts of a world's decals, and what it leaves out;
-// a decal saved in a scene and loaded with its material resolved.
+// where the host is drawn, and picked and outlined where the host is; what the renderer extracts
+// of a world's decals, and what it leaves out; a decal saved in a scene and loaded with its
+// material resolved.
 #include "ComponentRegistration.h"
 #include "Entity.h"
 #include "EntityGuidLookup.h"
@@ -139,7 +140,8 @@ namespace
 
 	// A decal on the front face of a cube that the last step moved and turned, as PhysicsBodies leaves
 	// a dynamic body: half a step on, the quad is on the face of the cube drawn halfway (as the
-	// renderer draws its mesh); drawn without a factor, on the cube where it is
+	// renderer draws its mesh); drawn without a factor, on the cube where it is. Picking and the
+	// selection's outline go by the cube where it is, as for meshes.
 	void TestCornersFollowTheHostBetweenSteps()
 	{
 		const glm::vec2 size(0.6f, 0.3f);
@@ -197,6 +199,15 @@ namespace
 			for (size_t corner = 0; corner < corners.size(); ++corner)
 			{
 				Require(Near(corners[corner], expected[corner]), what + ", corner " + std::to_string(corner) + " is drawn at " + Text(corners[corner]) + ", expected " + Text(expected[corner]));
+			}
+
+			const std::array<glm::vec3, 4> picked = CornersOf(drawn[0].WorldModel);
+			const std::array<glm::vec3, 4> whereItIs = cornersOnFace(now);
+			for (size_t corner = 0; corner < picked.size(); ++corner)
+			{
+				const std::string which = what + ", corner " + std::to_string(corner);
+				Require(Near(picked[corner], whereItIs[corner]), which + " is picked at " + Text(picked[corner]) + ", expected " + Text(whereItIs[corner]));
+				Require(Near(drawn[0].WorldCorners[corner], whereItIs[corner]), which + " is outlined at " + Text(drawn[0].WorldCorners[corner]) + ", expected " + Text(whereItIs[corner]));
 			}
 		}
 	}

@@ -14,6 +14,8 @@ namespace Nyx
 		// The same material drawn as a decal (SurfaceDecalComponent): over what is drawn already,
 		// blended with premultiplied alpha, depth tested without writing depth
 		vk::raii::Pipeline* DecalPipeline = nullptr;
+		// The decal in the editor's picking pass: its entity's id where the material covers the quad
+		vk::raii::Pipeline* DecalPickingPipeline = nullptr;
 		// Where its values are in the material buffer (VulkanBindless)
 		uint32_t MaterialOffset = 0;
 	};

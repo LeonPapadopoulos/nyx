@@ -255,16 +255,18 @@ namespace
 	{
 		const ShaderCompileResult result = Compiler().CompileMaterial(TestShaders / "Stone.slang", ShaderDomain::Surface());
 		RequireSucceeded(result, "Stone");
-		Require(result.EntryPoints.size() == 3, "Stone has " + std::to_string(result.EntryPoints.size()) + " entry points, expected 3");
+		Require(result.EntryPoints.size() == 4, "Stone has " + std::to_string(result.EntryPoints.size()) + " entry points, expected 4");
 
 		const CompiledEntryPoint* vertex = result.FindEntryPoint("surfaceVertex");
 		const CompiledEntryPoint* fragment = result.FindEntryPoint("surfaceFragment");
 		const CompiledEntryPoint* decalFragment = result.FindEntryPoint("decalFragment");
+		const CompiledEntryPoint* decalPickingFragment = result.FindEntryPoint("decalPickingFragment");
 		Require(vertex && vertex->Stage == EShaderStage::Vertex, "no vertex entry point surfaceVertex");
 		Require(fragment && fragment->Stage == EShaderStage::Fragment, "no fragment entry point surfaceFragment");
 		Require(decalFragment && decalFragment->Stage == EShaderStage::Fragment, "no fragment entry point decalFragment");
+		Require(decalPickingFragment && decalPickingFragment->Stage == EShaderStage::Fragment, "no fragment entry point decalPickingFragment");
 
-		for (const CompiledEntryPoint* entryPoint : { vertex, fragment, decalFragment })
+		for (const CompiledEntryPoint* entryPoint : { vertex, fragment, decalFragment, decalPickingFragment })
 		{
 			const std::string problem = ValidateSpirv(entryPoint->Spirv, true);
 			Require(problem.empty(), entryPoint->Name + " isn't valid SPIR-V: " + problem);
@@ -472,7 +474,7 @@ namespace
 			std::vector<std::pair<std::string, EShaderStage>> EntryPoints;
 		};
 		const Program programs[] = {
-			{ "MissingMaterial.slang", { { "missingVertex", EShaderStage::Vertex }, { "missingFragment", EShaderStage::Fragment } } },
+			{ "MissingMaterial.slang", { { "missingVertex", EShaderStage::Vertex }, { "missingFragment", EShaderStage::Fragment }, { "missingPickingFragment", EShaderStage::Fragment } } },
 			{ "Skybox.slang", { { "skyboxVertex", EShaderStage::Vertex }, { "skyboxFragment", EShaderStage::Fragment } } },
 			{ "Tonemap.slang", { { "tonemapVertex", EShaderStage::Vertex }, { "tonemapFragment", EShaderStage::Fragment } } },
 		};

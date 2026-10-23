@@ -89,9 +89,13 @@ on and requires when it chooses the GPU.
 A surface decal (`SurfaceDecalComponent`) draws a surface material on a quad laid on another
 entity's surface. No domain of its own: every surface material can be a decal's.
 
-- **Two pipelines a shader.** The Surface domain has a third entry point, `decalFragment`, compiled
-  with the other two, and each material shader gets a second pipeline from it: depth tested
-  without writing depth, blended. Live reload makes both again; the missing material has both.
+- **Three pipelines a shader.** The Surface domain has a third entry point, `decalFragment`,
+  compiled with the other two, and each material shader gets a second pipeline from it: depth
+  tested without writing depth, blended. A fourth, `decalPickingFragment`, gives a third, for the
+  editor's picking pass: it writes the decal's entity where the material's `SurfaceOutput.Coverage`
+  is above 0.05 and leaves the rest of the quad to what is beneath. Coverage is 1 unless the
+  material says less; the masked decal says its mask, revealed, without the glow. Live reload
+  makes all three again; the missing material has all three, its picking one covering the quad.
 - **Premultiplied alpha**, not additive: `decalFragment` gives the lit colour times the opacity
   plus the emission, and the pipeline keeps what is beneath by one minus the opacity. A glow alone
   is additive (opacity 0); a mark that covers, a burn or paint, is opacity 1; one material can do

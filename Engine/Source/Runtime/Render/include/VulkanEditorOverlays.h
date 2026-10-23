@@ -22,6 +22,7 @@ namespace Nyx::Tests
 
 namespace Nyx
 {
+	class Mesh;
 	class Registry;
 	class ShaderPrograms;
 	class VulkanContext;
@@ -126,8 +127,9 @@ namespace Nyx
 		VulkanEditorOverlays(VulkanContext& context, ShaderPrograms& programs, VulkanDebugLines& debugLines);
 
 		// Before the first view is made: what every view's outline set is made with. The overlays draw with the scene pipelines' layout (the global set, the
-		// view's set, ObjectConstants), which must outlive them.
-		void Initialize(vk::PipelineLayout scenePipelineLayout, BindSceneSetsFunction bindSceneSets);
+		// view's set, ObjectConstants), which must outlive them, and so must `decalMesh`, the plane
+		// mesh the decals are drawn on.
+		void Initialize(vk::PipelineLayout scenePipelineLayout, BindSceneSetsFunction bindSceneSets, const Mesh& decalMesh);
 		// Once the first view is made: the pipelines, for its passes, which every view's are like
 		void CreatePipelines(const SceneViewInstance& firstView);
 		// The pipelines of the shaders `uses()` says changed ("Grid": Grid.vert or Grid.frag), made
@@ -151,7 +153,8 @@ namespace Nyx
 		// outline
 		void Draw(SceneViewInstance& view, const RenderWorld* world, vk::raii::CommandBuffer& cmd);
 
-		// The world's objects' axes and bounds, and the world's axes, into this frame's debug lines
+		// The world's objects' axes and bounds, the world's axes, and the outline of a selected
+		// decal's quad (a decal has no mesh for the selection outline), into this frame's debug lines
 		// (world.OverlayLines), once per frame
 		void AddDebugLines(RenderWorld& world);
 
@@ -222,6 +225,7 @@ namespace Nyx
 		VulkanDebugLines& DebugLines;
 		vk::PipelineLayout ScenePipelineLayout;
 		BindSceneSetsFunction BindSceneSets;
+		const Mesh* DecalMesh = nullptr;
 
 		// Picking
 		vk::raii::Pipeline PickingPipeline{ nullptr };

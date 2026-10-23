@@ -72,7 +72,7 @@ namespace Nyx
 	struct ShaderDomain
 	{
 		std::string Module;                   // as imported, e.g. "nyx.surface"
-		std::vector<std::string> EntryPoints; // e.g. "surfaceVertex", "surfaceFragment", "decalFragment"
+		std::vector<std::string> EntryPoints; // e.g. "surfaceVertex", "surfaceFragment", "decalFragment", "decalPickingFragment"
 
 		static ShaderDomain Surface();
 	};

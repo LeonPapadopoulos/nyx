@@ -435,7 +435,12 @@ glowing mark on a crate.
   sample mask, `Textures/DecalRing.png`, a ring, is made by `Scripts/MakeDecalMask.py`.
 - The editor's scene views show decals as the game does. Saving, undo and live edits work as for
   any component, and a decal's shader and material reload when saved.
+- A click on a decal in a scene view selects it, where its material says the decal is (the masked
+  decal: its mask where revealed, not its glow); a click where the mask is empty, such as in a
+  ring's middle, picks what is beneath. A hidden or unrevealed decal isn't picked. A selected
+  decal's quad is outlined in the selection's colour.
 - Tests: `NyxSurfaceDecalTests` (the quad following its host, also between two steps, what is
   drawn, saving and loading), `NyxSceneGpuTests` (a decal on a cube brightens it where it is, partly
   when partly revealed, and not at all unrevealed, without its host, or behind another cube; on a
-  cube drawn between two steps, it is on the cube).
+  cube drawn between two steps, it is on the cube; a click on its ring picks it, one in the ring's
+  middle the cube; selected, its quad is outlined).

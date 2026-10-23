@@ -76,6 +76,8 @@ struct MaskedDecal : ISurface
         o.BaseColor = float3(0.0);
         o.Emission = decal.Color * decal.Intensity * throb * ((covered * (1.0 + edge) + glow) * uncovered);
         o.Opacity = covered * uncovered * Cover;
+        // A click picks the mask where it is uncovered, not the glow around it
+        o.Coverage = covered * uncovered;
         return o;
     }
 }

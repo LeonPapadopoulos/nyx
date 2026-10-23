@@ -178,7 +178,7 @@ namespace Nyx
 
 	ShaderDomain ShaderDomain::Surface()
 	{
-		return ShaderDomain{ "nyx.surface", { "surfaceVertex", "surfaceFragment", "decalFragment" } };
+		return ShaderDomain{ "nyx.surface", { "surfaceVertex", "surfaceFragment", "decalFragment", "decalPickingFragment" } };
 	}
 
 	// -------------------------------------------------------------------------

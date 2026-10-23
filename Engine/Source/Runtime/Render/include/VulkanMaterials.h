@@ -49,9 +49,10 @@ namespace Nyx
 	public:
 		// `assetFolders`: where material, shader and texture paths are looked for, in order (the
 		// project's assets, then the engine's). `layout` and `renderPass()`: the scene pipelines'
-		// layout, and a render pass of the scene views, asked for each time a pipeline is made
+		// layout, and a render pass of the scene views, asked for each time a pipeline is made;
+		// `pickingRenderPass()` the same for the views' picking pass
 		void Initialize(Nyx::VulkanContext& context, VulkanBindless& bindless, ShaderPrograms& programs, std::vector<std::filesystem::path> assetFolders, vk::PipelineLayout layout,
-			std::function<vk::RenderPass()> renderPass);
+			std::function<vk::RenderPass()> renderPass, std::function<vk::RenderPass()> pickingRenderPass);
 		void Shutdown();
 
 		// The material in the file at `path`, relative to the asset folders
@@ -102,6 +103,7 @@ namespace Nyx
 			ShaderCompileRequest DefaultsRequest;
 			vk::raii::Pipeline Pipeline{ nullptr };
 			vk::raii::Pipeline DecalPipeline{ nullptr };
+			vk::raii::Pipeline DecalPickingPipeline{ nullptr };
 			ShaderLayout Layout;
 			std::vector<std::byte> Defaults;
 			bool bReady = false;
@@ -145,11 +147,13 @@ namespace Nyx
 		bool Prepare(Shader& shader);
 		void WriteBytes(Entry& entry);
 		std::optional<uint32_t> TextureSlot(const std::string& path, bool bLinear);
-		// Opaque, writing depth; or for decals: blended with premultiplied alpha, not writing depth
+		// Opaque, writing depth; or for decals: blended with premultiplied alpha, not writing depth;
+		// or a decal in the picking pass, writing its entity's id and depth
 		enum class EPipelineKind : uint8_t
 		{
 			Opaque,
 			Decal,
+			DecalPicking,
 		};
 		vk::raii::Pipeline MakePipeline(const CompiledEntryPoint& vertex, const CompiledEntryPoint& fragment, EPipelineKind kind);
 		// The file at `path` in the first asset folder that has it, or in the first folder
@@ -162,9 +166,11 @@ namespace Nyx
 		std::vector<std::filesystem::path> AssetFolders;
 		vk::PipelineLayout Layout;
 		std::function<vk::RenderPass()> RenderPass;
+		std::function<vk::RenderPass()> PickingRenderPass;
 
 		vk::raii::Pipeline MissingPipeline{ nullptr };
 		vk::raii::Pipeline MissingDecalPipeline{ nullptr };
+		vk::raii::Pipeline MissingDecalPickingPipeline{ nullptr };
 		std::map<std::string, std::unique_ptr<Shader>> Shaders;
 		std::map<std::string, std::unique_ptr<Entry>> Materials;
 		// Slots of the textures loaded, by path and whether linear; nullopt for one that can't be

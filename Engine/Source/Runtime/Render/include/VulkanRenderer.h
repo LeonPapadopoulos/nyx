@@ -339,6 +339,8 @@ namespace Nyx
 
 		// The scene views' scene pass (HDR), for what draws the scene: materials, the sky
 		vk::RenderPass GetSceneRenderPass() const;
+		// Their picking pass (an id a pixel), for the decals' picking pipelines
+		vk::RenderPass GetPickingRenderPass() const;
 		// Their picture pass (8-bit, after the tonemap), for what draws over the picture
 		vk::RenderPass GetPictureRenderPass() const;
 		// The view's HDR picture into its bindless slot, after the view's targets were made

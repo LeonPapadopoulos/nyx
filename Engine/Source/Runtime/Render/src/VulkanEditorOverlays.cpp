@@ -22,10 +22,11 @@ namespace Nyx
 	{
 	}
 
-	void VulkanEditorOverlays::Initialize(vk::PipelineLayout scenePipelineLayout, BindSceneSetsFunction bindSceneSets)
+	void VulkanEditorOverlays::Initialize(vk::PipelineLayout scenePipelineLayout, BindSceneSetsFunction bindSceneSets, const Mesh& decalMesh)
 	{
 		ScenePipelineLayout = scenePipelineLayout;
 		BindSceneSets = std::move(bindSceneSets);
+		DecalMesh = &decalMesh;
 		CreateOutlineDescriptorSetLayout();
 	}
 
@@ -135,6 +136,23 @@ namespace Nyx
 		{
 			OverlayDrawing.Axes(obj.WorldTransform, 0.75f);
 			OverlayDrawing.Box(obj.WorldTransform, obj.LocalBoundsMin, obj.LocalBoundsMax, glm::vec3(1.0f, 1.0f, 0.2f));
+		}
+
+		// A selected decal's quad, in the selection outline's colour
+		if (SelectedEntity && world.Registry == World)
+		{
+			const glm::vec3 outlineColor = glm::vec3(OutlineCompositePushConstants{}.VisibleOutlineColor);
+			for (const RenderDecal& decal : world.Decals)
+			{
+				if (decal.SourceEntity != *SelectedEntity)
+				{
+					continue;
+				}
+				for (size_t corner = 0; corner < decal.WorldCorners.size(); ++corner)
+				{
+					OverlayDrawing.Line(decal.WorldCorners[corner], decal.WorldCorners[(corner + 1) % decal.WorldCorners.size()], outlineColor);
+				}
+			}
 		}
 
 		// The world's axes
@@ -1337,6 +1355,28 @@ namespace Nyx
 			cmd.bindVertexBuffers(0, { obj.MeshAsset->GetVertexBuffer() }, offsets);
 			cmd.bindIndexBuffer(obj.MeshAsset->GetIndexBuffer(), 0, vk::IndexType::eUint32);
 			cmd.drawIndexed(obj.MeshAsset->GetIndexCount(), 1, 0, 0, 0);
+		}
+
+		// Then the decals, each with its material's picking pipeline, which leaves out where the
+		// material doesn't cover the quad, so a click there picks what is beneath
+		if (!world.Decals.empty())
+		{
+			vk::DeviceSize offsets[] = { 0 };
+			cmd.bindVertexBuffers(0, { DecalMesh->GetVertexBuffer() }, offsets);
+			cmd.bindIndexBuffer(DecalMesh->GetIndexBuffer(), 0, vk::IndexType::eUint32);
+			for (const RenderDecal& decal : world.Decals)
+			{
+				cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, **decal.MaterialAsset->DecalPickingPipeline);
+
+				ObjectConstants object{};
+				object.Model = decal.WorldModel;
+				object.MaterialOffset = decal.MaterialAsset->MaterialOffset;
+				object.EntityId = decal.PickingId;
+				object.CustomData = decal.CustomData;
+				object.CustomData2 = decal.CustomData2;
+				cmd.pushConstants<ObjectConstants>(ScenePipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, { object });
+				cmd.drawIndexed(DecalMesh->GetIndexCount(), 1, 0, 0, 0);
+			}
 		}
 
 		cmd.endRenderPass();

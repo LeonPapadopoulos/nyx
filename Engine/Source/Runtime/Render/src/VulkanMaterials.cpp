@@ -87,7 +87,7 @@ namespace Nyx
 	}
 
 	void VulkanMaterials::Initialize(Nyx::VulkanContext& context, VulkanBindless& bindless, ShaderPrograms& programs, std::vector<std::filesystem::path> assetFolders, vk::PipelineLayout layout,
-		std::function<vk::RenderPass()> renderPass)
+		std::function<vk::RenderPass()> renderPass, std::function<vk::RenderPass()> pickingRenderPass)
 	{
 		Context = &context;
 		Bindless = &bindless;
@@ -96,6 +96,7 @@ namespace Nyx
 		Watchers.clear();
 		Layout = layout;
 		RenderPass = std::move(renderPass);
+		PickingRenderPass = std::move(pickingRenderPass);
 		RebuildMissingPipeline();
 
 		for (const std::filesystem::path& folder : AssetFolders)
@@ -121,6 +122,7 @@ namespace Nyx
 		Saved.clear();
 		MissingPipeline = nullptr;
 		MissingDecalPipeline = nullptr;
+		MissingDecalPickingPipeline = nullptr;
 		Context = nullptr;
 	}
 
@@ -128,15 +130,19 @@ namespace Nyx
 	{
 		const std::string vertex = "missingVertex";
 		const std::string fragment = "missingFragment";
+		const std::string pickingFragment = "missingPickingFragment";
 		const CompiledEntryPoint vertexCode{ vertex, EShaderStage::Vertex, Programs->GetSpirv(MissingProgram, vertex) };
 		const CompiledEntryPoint fragmentCode{ fragment, EShaderStage::Fragment, Programs->GetSpirv(MissingProgram, fragment) };
+		const CompiledEntryPoint pickingFragmentCode{ pickingFragment, EShaderStage::Fragment, Programs->GetSpirv(MissingProgram, pickingFragment) };
 		vk::raii::Pipeline pipeline = MakePipeline(vertexCode, fragmentCode, EPipelineKind::Opaque);
 		// As a decal, the checker is opaque too: its alpha is 1
 		vk::raii::Pipeline decalPipeline = MakePipeline(vertexCode, fragmentCode, EPipelineKind::Decal);
+		vk::raii::Pipeline decalPickingPipeline = MakePipeline(vertexCode, pickingFragmentCode, EPipelineKind::DecalPicking);
 		// The handles point at these objects, so they are replaced in place
 		Context->WaitIdle();
 		MissingPipeline = std::move(pipeline);
 		MissingDecalPipeline = std::move(decalPipeline);
+		MissingDecalPickingPipeline = std::move(decalPickingPipeline);
 	}
 
 	Nyx::Material* VulkanMaterials::Get(const std::string& path)
@@ -336,8 +342,9 @@ namespace Nyx
 		const CompiledEntryPoint* vertex = FindEntryPoint(*material, "surfaceVertex");
 		const CompiledEntryPoint* fragment = FindEntryPoint(*material, "surfaceFragment");
 		const CompiledEntryPoint* decalFragment = FindEntryPoint(*material, "decalFragment");
+		const CompiledEntryPoint* decalPickingFragment = FindEntryPoint(*material, "decalPickingFragment");
 		const CompiledEntryPoint* writer = FindEntryPoint(*defaults, "writeDefaults");
-		if (!vertex || !fragment || !decalFragment || !writer)
+		if (!vertex || !fragment || !decalFragment || !decalPickingFragment || !writer)
 		{
 			LOG_ERROR("Material shader {} lacks an entry point of its domain", shader.Path);
 			return shader.bReady;
@@ -347,10 +354,12 @@ namespace Nyx
 		{
 			vk::raii::Pipeline pipeline = MakePipeline(*vertex, *fragment, EPipelineKind::Opaque);
 			vk::raii::Pipeline decalPipeline = MakePipeline(*vertex, *decalFragment, EPipelineKind::Decal);
+			vk::raii::Pipeline decalPickingPipeline = MakePipeline(*vertex, *decalPickingFragment, EPipelineKind::DecalPicking);
 			std::vector<std::byte> bytes = RunDefaultsWriter(*writer, material->MaterialLayout->Size);
 			Context->WaitIdle();
 			shader.Pipeline = std::move(pipeline);
 			shader.DecalPipeline = std::move(decalPipeline);
+			shader.DecalPickingPipeline = std::move(decalPickingPipeline);
 			shader.Defaults = std::move(bytes);
 			shader.Layout = *material->MaterialLayout;
 			shader.bReady = true;
@@ -371,6 +380,7 @@ namespace Nyx
 		{
 			handle.Pipeline = &MissingPipeline;
 			handle.DecalPipeline = &MissingDecalPipeline;
+			handle.DecalPickingPipeline = &MissingDecalPickingPipeline;
 			handle.MaterialOffset = 0;
 			return;
 		}
@@ -400,6 +410,7 @@ namespace Nyx
 				LOG_ERROR("Material {}: the material buffer is full; it draws as the missing material", entry.Path);
 				handle.Pipeline = &MissingPipeline;
 				handle.DecalPipeline = &MissingDecalPipeline;
+				handle.DecalPickingPipeline = &MissingDecalPickingPipeline;
 				handle.MaterialOffset = 0;
 				return;
 			}
@@ -407,6 +418,7 @@ namespace Nyx
 		Bindless->WriteMaterial(*entry.Offset, bytes);
 		handle.Pipeline = &shader.Pipeline;
 		handle.DecalPipeline = &shader.DecalPipeline;
+		handle.DecalPickingPipeline = &shader.DecalPickingPipeline;
 		handle.MaterialOffset = *entry.Offset;
 	}
 
@@ -557,6 +569,7 @@ namespace Nyx
 		vk::PipelineMultisampleStateCreateInfo multisampling{};
 		multisampling.rasterizationSamples = vk::SampleCountFlagBits::e1;
 
+		// Not blended in the picking pass: its target holds ids, written as they are
 		vk::PipelineColorBlendAttachmentState colorBlendAttachment{};
 		colorBlendAttachment.colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
 		if (kind == EPipelineKind::Decal)
@@ -580,10 +593,11 @@ namespace Nyx
 		const std::array<vk::DynamicState, 2> dynamicStates = { vk::DynamicState::eViewport, vk::DynamicState::eScissor };
 		vk::PipelineDynamicStateCreateInfo dynamicState({}, dynamicStates);
 
-		// A decal is hidden by what is in front of it, and hides nothing itself
+		// A decal is hidden by what is in front of it, and hides nothing itself. In the picking pass
+		// it hides what is behind it: the nearest decal under a click is picked.
 		vk::PipelineDepthStencilStateCreateInfo depthStencil{};
 		depthStencil.depthTestEnable = VK_TRUE;
-		depthStencil.depthWriteEnable = kind == EPipelineKind::Opaque ? VK_TRUE : VK_FALSE;
+		depthStencil.depthWriteEnable = kind == EPipelineKind::Decal ? VK_FALSE : VK_TRUE;
 		depthStencil.depthCompareOp = kind == EPipelineKind::Opaque ? vk::CompareOp::eLess : vk::CompareOp::eLessOrEqual;
 
 		vk::GraphicsPipelineCreateInfo pipelineInfo{};
@@ -598,7 +612,7 @@ namespace Nyx
 		pipelineInfo.pColorBlendState = &colorBlending;
 		pipelineInfo.pDynamicState = &dynamicState;
 		pipelineInfo.layout = Layout;
-		pipelineInfo.renderPass = RenderPass();
+		pipelineInfo.renderPass = kind == EPipelineKind::DecalPicking ? PickingRenderPass() : RenderPass();
 		pipelineInfo.subpass = 0;
 		return vk::raii::Pipeline(device, Context->GetPipelineCache(), pipelineInfo);
 	}

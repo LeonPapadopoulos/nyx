@@ -273,7 +273,8 @@ namespace Nyx
 		Overlays.Initialize(*ScenePipelineLayout, [this](SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
 			{
 				BindSceneSets(view, cmd);
-			});
+			},
+			PlaneMesh);
 
 		LoadSkyboxCubemap();
 		// Its light: the specular cube, the irradiance, the BRDF table
@@ -298,6 +299,10 @@ namespace Nyx
 		Materials.Initialize(Context, Bindless, Programs, Nyx::Paths::GetAssetSearchDirs(), *ScenePipelineLayout, [this]
 			{
 				return GetSceneRenderPass();
+			},
+			[this]
+			{
+				return GetPickingRenderPass();
 			});
 	}
 
@@ -1090,6 +1095,12 @@ namespace Nyx
 			const std::optional<float> interpolation = GetWorldInterpolation(world->Registry);
 			ExtractRenderObjects(*world, interpolation);
 			ExtractSurfaceDecals(*world->Registry, interpolation, world->Decals);
+			// Picked as the objects are: by their entity, with the ids after the objects'
+			for (RenderDecal& decal : world->Decals)
+			{
+				world->PickingIdToEntity.push_back(decal.SourceEntity);
+				decal.PickingId = static_cast<uint32_t>(world->PickingIdToEntity.size());
+			}
 			Overlays.AddDebugLines(*world);
 
 			const auto drawing = WorldDebugDraws.find(world->Registry);
@@ -1245,6 +1256,12 @@ namespace Nyx
 	{
 		ASSERT(!SceneViews.empty() && "No SceneViews exist yet.");
 		return *SceneViews.front().RenderTarget.GetSceneRenderPass();
+	}
+
+	vk::RenderPass VulkanRenderer::GetPickingRenderPass() const
+	{
+		ASSERT(!SceneViews.empty() && "No SceneViews exist yet.");
+		return *SceneViews.front().Overlays.PickingRenderPass;
 	}
 
 	vk::RenderPass VulkanRenderer::GetPictureRenderPass() const
