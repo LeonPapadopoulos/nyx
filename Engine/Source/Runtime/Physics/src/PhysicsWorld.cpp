@@ -22,6 +22,7 @@
 #include <Jolt/Physics/Collision/RayCast.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
+#include <Jolt/Physics/Collision/Shape/MeshShape.h>
 #include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
 #include <Jolt/Physics/Collision/ShapeCast.h>
@@ -217,6 +218,39 @@ namespace Nyx
 				result = JPH::CapsuleShapeSettings(std::max(shape.HalfHeight, 0.001f), std::max(shape.Radius, 0.001f)).Create();
 				break;
 			}
+			case EShapeKind::Mesh:
+			{
+				if (!shape.Mesh || shape.Mesh->Indices.size() < 3 || shape.Mesh->Indices.size() % 3 != 0)
+				{
+					LOG_ERROR("Physics: a mesh shape needs whole triangles");
+					return nullptr;
+				}
+				JPH::VertexList vertices;
+				vertices.reserve(shape.Mesh->Vertices.size());
+				for (const glm::vec3& vertex : shape.Mesh->Vertices)
+				{
+					vertices.push_back(JPH::Float3(vertex.x, vertex.y, vertex.z));
+				}
+				JPH::IndexedTriangleList triangles;
+				triangles.reserve(shape.Mesh->Indices.size() / 3);
+				for (size_t index = 0; index + 2 < shape.Mesh->Indices.size(); index += 3)
+				{
+					const uint32_t a = shape.Mesh->Indices[index];
+					const uint32_t b = shape.Mesh->Indices[index + 1];
+					const uint32_t c = shape.Mesh->Indices[index + 2];
+					if (std::max({ a, b, c }) >= vertices.size())
+					{
+						LOG_ERROR("Physics: a mesh shape's index {0} is past its {1} vertices", std::max({ a, b, c }), vertices.size());
+						return nullptr;
+					}
+					triangles.push_back(JPH::IndexedTriangle(a, b, c));
+				}
+				// Sanitized by Jolt: degenerate and doubled triangles go
+				JPH::MeshShapeSettings settings(std::move(vertices), std::move(triangles));
+				settings.mActiveEdgeCosThresholdAngle = std::cos(std::clamp(shape.Mesh->SmoothEdgeAngle, 0.0f, glm::pi<float>()));
+				result = settings.Create();
+				break;
+			}
 			default:
 			{
 				// Jolt rounds a box's edges by a convex radius, which no half extent may be below
@@ -404,9 +438,39 @@ namespace Nyx
 			DrawArc(drawing, bottom, z, y, radius, HalfTurn, Turn, DebugCircleSegments / 2, color);
 		}
 
+		// A mesh body's triangles' edges where the body is, or for one of more than `maxTriangles`, the
+		// edges of its bounds
+		void DrawMeshShape(DebugDraw& drawing, const JPH::Body& body, const glm::vec3& color, uint32_t maxTriangles)
+		{
+			const JPH::Shape& shape = *body.GetShape();
+			if (shape.GetStats().mNumTriangles > maxTriangles)
+			{
+				const JPH::AABox bounds = body.GetWorldSpaceBounds();
+				drawing.Box(ToGlm(bounds.mMin), ToGlm(bounds.mMax), color);
+				return;
+			}
+
+			JPH::Shape::GetTrianglesContext context;
+			shape.GetTrianglesStart(context, JPH::AABox::sBiggest(), JPH::Vec3(body.GetCenterOfMassPosition()), body.GetRotation(), JPH::Vec3::sOne());
+			constexpr int Batch = JPH::Shape::cGetTrianglesMinTrianglesRequested;
+			JPH::Float3 corners[Batch * 3];
+			for (int count = shape.GetTrianglesNext(context, Batch, corners); count > 0; count = shape.GetTrianglesNext(context, Batch, corners))
+			{
+				for (int triangle = 0; triangle < count; ++triangle)
+				{
+					const glm::vec3 a = ToGlm(JPH::Vec3(corners[triangle * 3]));
+					const glm::vec3 b = ToGlm(JPH::Vec3(corners[triangle * 3 + 1]));
+					const glm::vec3 c = ToGlm(JPH::Vec3(corners[triangle * 3 + 2]));
+					drawing.Line(a, b, color);
+					drawing.Line(b, c, color);
+					drawing.Line(c, a, color);
+				}
+			}
+		}
+
 		// A body's shape where the body is, in its axes: a box's 12 edges; a sphere's 3 circles; a
-		// capsule (DrawCapsule())
-		void DrawBodyShape(DebugDraw& drawing, const JPH::Body& body, const glm::vec3& color)
+		// capsule (DrawCapsule()); a mesh (DrawMeshShape())
+		void DrawBodyShape(DebugDraw& drawing, const JPH::Body& body, const glm::vec3& color, uint32_t maxMeshTriangles)
 		{
 			const glm::vec3 center = ToGlm(JPH::Vec3(body.GetPosition()));
 			const glm::quat rotation = ToGlm(body.GetRotation());
@@ -438,6 +502,11 @@ namespace Nyx
 			{
 				const JPH::CapsuleShape& capsule = static_cast<const JPH::CapsuleShape&>(shape);
 				DrawCapsule(drawing, center, x, y, z, capsule.GetRadius(), capsule.GetHalfHeightOfCylinder(), color);
+				break;
+			}
+			case JPH::EShapeSubType::Mesh:
+			{
+				DrawMeshShape(drawing, body, color, maxMeshTriangles);
 				break;
 			}
 			default:
@@ -741,6 +810,12 @@ namespace Nyx
 
 	BodyHandle PhysicsWorld::CreateBody(const BodyDesc& desc)
 	{
+		// Jolt can't give triangles a mass, nor collide two meshes
+		if (desc.Shape.Kind == EShapeKind::Mesh && desc.Motion != EBodyMotion::Static)
+		{
+			LOG_ERROR("Physics: a mesh body can only be static");
+			return {};
+		}
 		const JPH::ShapeRefC shape = MakeShape(desc.Shape);
 		if (!shape)
 		{
@@ -859,13 +934,20 @@ namespace Nyx
 		}
 
 		const JPH::RRayCast ray(JPH::RVec3(ToJolt(origin)), ToJolt(unitDirection * maxDistance));
-		JPH::RayCastResult result;
+		// Solid convex shapes, so a ray that starts inside one hits it at once; triangles one-sided,
+		// so a ray from behind passes through, and every hit's normal points back at the caster
+		JPH::RayCastSettings settings;
+		settings.mBackFaceModeTriangles = JPH::EBackFaceMode::IgnoreBackFaces;
+		settings.mTreatConvexAsSolid = true;
+		JPH::ClosestHitCollisionCollector<JPH::CastRayCollector> collector;
 		const QueryLayerFilter layerFilter(filter);
 		const QueryBodyFilter bodyFilter(filter);
-		if (!Impl->System.GetNarrowPhaseQuery().CastRay(ray, result, {}, layerFilter, bodyFilter))
+		Impl->System.GetNarrowPhaseQuery().CastRay(ray, settings, collector, {}, layerFilter, bodyFilter);
+		if (!collector.HadHit())
 		{
 			return std::nullopt;
 		}
+		const JPH::RayCastResult& result = collector.mHit;
 
 		const JPH::BodyLockRead lock(Impl->System.GetBodyLockInterface(), result.mBodyID);
 		if (!lock.Succeeded())
@@ -886,6 +968,11 @@ namespace Nyx
 		float maxDistance, const QueryFilter& filter) const
 	{
 		const glm::vec3 unitDirection = NormalizedOr(direction, glm::vec3(0.0f));
+		if (shape.Kind == EShapeKind::Mesh)
+		{
+			LOG_ERROR("Physics: a mesh can't be cast, only a box, sphere or capsule");
+			return std::nullopt;
+		}
 		const JPH::ShapeRefC joltShape = MakeShape(shape);
 		if (unitDirection == glm::vec3(0.0f) || maxDistance <= 0.0f || !joltShape)
 		{
@@ -916,6 +1003,11 @@ namespace Nyx
 
 	std::vector<BodyHandle> PhysicsWorld::Overlap(const BodyShape& shape, const BodyPose& pose, const QueryFilter& filter) const
 	{
+		if (shape.Kind == EShapeKind::Mesh)
+		{
+			LOG_ERROR("Physics: a mesh can't be overlapped, only a box, sphere or capsule");
+			return {};
+		}
 		const JPH::ShapeRefC joltShape = MakeShape(shape);
 		if (!joltShape)
 		{
@@ -1309,7 +1401,7 @@ namespace Nyx
 				const JPH::BodyLockRead lock(locks, id);
 				if (lock.Succeeded())
 				{
-					DrawBodyShape(drawing, lock.GetBody(), ColorOf(lock.GetBody(), options));
+					DrawBodyShape(drawing, lock.GetBody(), ColorOf(lock.GetBody(), options), options.MaxMeshTriangles);
 				}
 			}
 		}

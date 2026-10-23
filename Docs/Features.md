@@ -129,6 +129,14 @@ Rigid bodies on [Jolt](https://github.com/jrouwe/JoltPhysics), while a game runs
   kinematic, it moves only where its transform is set, pushing what it meets. A *Physics
   Material* sets friction and bounce.
 - The entity's transform places the body and scales its shape.
+- A *Mesh Collider* makes a static body of the triangles of the entity's mesh made at run time
+  ([Meshes made at run time](#meshes-made-at-run-time)), scaled as the entity: a generated ground
+  that crates land and slide on, characters walk on (its slopes and steps as on boxes) and rays hit.
+  It is always static, also with a *Rigid Body* (which is warned of once). Its body is made again
+  when the mesh's revision or data, or the entity's scale, changes, and only then: that costs about
+  as much as making it. A ray from behind a triangle passes through it, as from under a ground. Its
+  *Smooth Edge Degrees* says where two triangles meet flat enough that what slides over the edge
+  doesn't catch on it.
 - While the game runs, moving an entity in the editor puts its body there and stops it; changing a
   collider or rigid body makes the body again.
 - Moving bodies are drawn between their last two steps, so they move smoothly on monitors faster
@@ -141,6 +149,10 @@ Rigid bodies on [Jolt](https://github.com/jrouwe/JoltPhysics), while a game runs
   rays see it unless told to leave it out. Moving it in the editor while the game runs puts it
   there; changing its shape makes it again.
 - `Assets/Scenes/CharacterTest.nyxscene` has a character among ramps, steps and crates.
+- `Assets/Scenes/MeshTest.nyxscene` has a bumpy ground made at run time, with a mesh collider, crates
+  on it and the character. The ground is a *Sample Ground*, a stand-in until a ground generator: its
+  size, cells, bump height and spacing are on the component, and the game makes its mesh again when
+  they change. The editor, which doesn't run systems, shows the scene without the ground.
 - The editor doesn't simulate: Play shows physics.
 
 ## Input
@@ -231,7 +243,8 @@ Code can draw lines over a world to show what it does: forces, anchors, bounds, 
 - The editor's overlays draw each object's axes and bounds the same way.
 - **The physics debug view**: F3 in a game window (Debug builds) shows every body's shape, coloured
   by how it moves (static grey, kinematic blue, awake green, asleep dark green, sensors yellow),
-  characters' capsules in orange, the
+  a mesh's triangles' edges (a mesh of more than 8192 triangles as its bounds, so it doesn't crowd
+  out everything else), characters' capsules in orange, the
   last step's contact points with their normals in red, and constraints as pink lines between
   their anchors. It changes with the next step, so while paused, with Step. A cyan cross and arrow
   show where the cursor points at a body, and the surface's normal there ([Cursor rays](#cursor-rays)).
@@ -443,6 +456,7 @@ mesh is made again as it grows.
   systems, so an editor scene shows such a mesh only once something makes it there.
 - The editor's details panel shows it read-only under *Mesh Made at Run Time*: its vertices and
   triangles, each section's triangles and material slot, whether it is drawn, and its revision.
+- A *Mesh Collider* makes it ground to stand on ([Physics](#physics)).
 - Tests: `NyxMeshTests` (which meshes are valid, the sections a mesh without any is drawn in, the
   bounds), `NyxRuntimeMeshGpuTests` (a sphere made in code draws exactly as the built-in sphere;
   changed and its revision raised it is drawn anew, unchanged it is uploaded once; entities sharing

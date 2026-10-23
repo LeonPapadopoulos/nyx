@@ -6,8 +6,8 @@
 
 // What makes an entity a physics body. A collider alone makes a static body, which others bump into
 // and which never moves; with a RigidBodyComponent too, the body moves. One collider an entity:
-// with more, the box is taken over the sphere, and the sphere over the capsule. The entity's
-// TransformComponent places the body, and its scale scales the shape.
+// with more, the box is taken over the sphere, the sphere over the capsule, and the capsule over the
+// mesh. The entity's TransformComponent places the body, and its scale scales the shape.
 namespace Nyx
 {
 	NYX_REFLECT(Component, meta = (DisplayName = "Box Collider"))
@@ -33,6 +33,18 @@ namespace Nyx
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Collider", DragSpeed = 0.01, Tooltip = "Half the length of the middle, without the round ends; scaled by the entity's Y"))
 		float HalfHeight = 0.5f;
+	};
+
+	// The triangles of the entity's mesh made at run time (RuntimeMeshComponent), e.g. a generated
+	// ground, as a static body: what moves collides with it, characters walk on it, rays hit its
+	// triangles from the front. Always static, also with a Rigid Body: Jolt's meshes can't move by
+	// forces. Made again when the mesh's revision, its data or the entity's scale changes; that costs
+	// about as much as making it, so a mesh that changes every step is better left without one.
+	NYX_REFLECT(Component, meta = (DisplayName = "Mesh Collider"))
+	struct MeshColliderComponent
+	{
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Collider", DragSpeed = 0.1, Tooltip = "Where two triangles meet bending less than this, in degrees, the edge is smooth: what slides across it doesn't catch on it"))
+		float SmoothEdgeDegrees = 5.0f;
 	};
 
 	// The body moves: by forces, gravity and collisions, or, kinematic, only where its transform is set

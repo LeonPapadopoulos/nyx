@@ -26,7 +26,20 @@ namespace Nyx
 		Box,
 		Sphere,
 		// Along the body's Y axis
-		Capsule
+		Capsule,
+		// Triangles (TriangleMesh): static bodies only, and never cast or overlapped
+		Mesh
+	};
+
+	// A body's triangles, in the body's space: three indices a triangle, counter-clockwise seen from
+	// its front. Rays pass through a triangle from behind: one-sided, as a ground is.
+	struct TriangleMesh
+	{
+		std::vector<glm::vec3> Vertices;
+		std::vector<uint32_t> Indices;
+		// Where two triangles meet bending less than this, in radians, the edge between them is
+		// smooth: what slides across it doesn't catch on it. Jolt's default, 5 degrees.
+		float SmoothEdgeAngle = 0.0872665f;
 	};
 
 	// A body's collision shape, around the body's position
@@ -39,6 +52,9 @@ namespace Nyx
 		float Radius = 0.5f;
 		// Capsule: half the length of its middle, without the round ends
 		float HalfHeight = 0.5f;
+		// Mesh: its triangles, shared. Making the body is what costs, the more the more triangles:
+		// Jolt builds a tree of them and finds their smooth edges.
+		std::shared_ptr<const TriangleMesh> Mesh;
 	};
 
 	// What a body is made with
@@ -247,8 +263,9 @@ namespace Nyx
 	// What PhysicsWorld::DrawDebug() draws, and in which colours (linear RGB)
 	struct PhysicsDebugOptions
 	{
-		// Every body's shape: a box's edges, circles around a sphere and along a capsule, in the
-		// body's axes and coloured by how it moves; every character's capsule, in its own colour
+		// Every body's shape: a box's edges, circles around a sphere and along a capsule, a mesh's
+		// triangles' edges, in the body's axes and coloured by how it moves; every character's
+		// capsule, in its own colour
 		bool bShapes = true;
 		// The last step's contact points, each a cross with an arrow along its normal; only kept
 		// while asked for (PhysicsWorld::SetKeepContactPoints())
@@ -264,6 +281,10 @@ namespace Nyx
 		glm::vec3 ContactColor{ 1.0f, 0.25f, 0.2f };
 		glm::vec3 ConstraintColor{ 1.0f, 0.4f, 1.0f };
 		glm::vec3 CharacterColor{ 1.0f, 0.55f, 0.0f };
+
+		// A mesh of more triangles is drawn as its bounds: three lines a triangle would leave little of
+		// DebugDraw's MaxLines to anything else
+		uint32_t MaxMeshTriangles = 8192;
 	};
 
 	struct PhysicsSettings
@@ -293,7 +314,8 @@ namespace Nyx
 		PhysicsWorld(const PhysicsWorld&) = delete;
 		PhysicsWorld& operator=(const PhysicsWorld&) = delete;
 
-		// Invalid when the world is full (MaxBodies) or the shape can't be made, which is logged
+		// Invalid when the world is full (MaxBodies) or the shape can't be made, e.g. a mesh for a body
+		// that isn't static, which is logged
 		BodyHandle CreateBody(const BodyDesc& desc);
 		// Its constraints go with it
 		void DestroyBody(BodyHandle body);
@@ -310,10 +332,11 @@ namespace Nyx
 		// starts inside a body hits it at once
 		std::optional<QueryHit> RayCast(const glm::vec3& origin, const glm::vec3& direction, float maxDistance,
 			const QueryFilter& filter = {}) const;
-		// The first body a shape meets, moved from `pose` along `direction` at most `maxDistance`
+		// The first body a shape meets, moved from `pose` along `direction` at most `maxDistance`; none
+		// for a mesh
 		std::optional<QueryHit> ShapeCast(const BodyShape& shape, const BodyPose& pose, const glm::vec3& direction,
 			float maxDistance, const QueryFilter& filter = {}) const;
-		// The bodies a shape at `pose` overlaps, in handle order
+		// The bodies a shape at `pose` overlaps, in handle order; none for a mesh
 		std::vector<BodyHandle> Overlap(const BodyShape& shape, const BodyPose& pose, const QueryFilter& filter = {}) const;
 
 		// Invalid when a body is invalid, or Body is Other, which is logged

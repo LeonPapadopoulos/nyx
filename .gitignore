@@ -28,6 +28,7 @@ Editor/*.md
 !Assets/Scenes/Default.nyxscene
 !Assets/Scenes/MaterialTest.nyxscene
 !Assets/Scenes/CharacterTest.nyxscene
+!Assets/Scenes/MeshTest.nyxscene
 
 # Files the editor saves, e.g. the UI gallery's PNGs (Saved/Gallery)
 Saved/

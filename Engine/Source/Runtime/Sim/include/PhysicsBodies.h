@@ -16,9 +16,11 @@ namespace Nyx
 	// Keeps a PhysicsWorld's bodies in step with the entities' physics components
 	// (PhysicsComponents.h), each fixed step:
 	// - before the step, bodies are made for new colliders, made again when a component's values or
-	//   the entity's scale changed, and destroyed with their collider or entity. A transform set from
-	//   outside since the last step, by a system or an editor's live edit, teleports its body and
-	//   stops it; a kinematic body is moved to its transform over the step.
+	//   the entity's scale changed, and destroyed with their collider or entity. A mesh collider's
+	//   body is made again when its mesh's data or revision changed (RuntimeMeshComponent), and only
+	//   then. A transform set from outside since the last step, by a system or an editor's live
+	//   edit, teleports its body and stops it; a kinematic body is moved to its transform over the
+	//   step.
 	// - after the step, dynamic bodies write where they are into their transforms, and those that
 	//   moved where they were before into a PreviousTransformComponent, to be drawn between the two.
 	//   A teleported body has none until it moves again. A kinematic body whose transform a system
@@ -80,8 +82,8 @@ namespace Nyx
 
 		void SyncCharacters(Registry& world, PhysicsWorld& physics);
 
-		// Warns once for each entity with a rigid body but no collider, which has no body: easy to
-		// miss, since nothing else shows it
+		// Warns once for each entity with a rigid body but no collider, which has no body, or with a
+		// mesh collider, which stays still: easy to miss, since nothing else shows it
 		void WarnOfRigidBodiesWithoutCollider(const Registry& world);
 
 		// By entity, in a fixed order, so bodies are made and destroyed the same way each time
@@ -89,5 +91,6 @@ namespace Nyx
 		std::map<uint64_t, TrackedCharacter> Characters;
 		// The entities warned of; one leaves it once it has a collider, so a later loss warns again
 		std::set<uint64_t> WarnedWithoutCollider;
+		std::set<uint64_t> WarnedStillMesh;
 	};
 }

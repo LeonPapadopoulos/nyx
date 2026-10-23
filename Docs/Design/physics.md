@@ -18,9 +18,19 @@ engine is [Jolt](https://github.com/jrouwe/JoltPhysics) (`Dependencies/JoltPhysi
   is called from one thread; Jolt's threads run only inside `Step()`.
 - **Jolt stays inside the folder.** `PhysicsWorld.h` speaks glm and opaque `BodyHandle`s and
   `ConstraintHandle`s; only `PhysicsWorld.cpp` includes Jolt. The engine links Jolt privately.
-- **Bodies** are made from a `BodyDesc`: a shape (box, sphere, capsule), a pose, a motion (static,
-  kinematic, dynamic), mass (or the shape's volume at the density of water), friction,
-  restitution, damping, gravity factor, and a number of the owner's (an entity's guid).
+- **Bodies** are made from a `BodyDesc`: a shape (box, sphere, capsule, triangle mesh), a pose, a
+  motion (static, kinematic, dynamic), mass (or the shape's volume at the density of water),
+  friction, restitution, damping, gravity factor, and a number of the owner's (an entity's guid).
+- **Triangle meshes** (`EShapeKind::Mesh`, a shared `TriangleMesh`: vertices, three indices a
+  triangle, the smooth edges' angle) are Jolt's `MeshShape`: static bodies only, since Jolt gives
+  triangles no mass (`CreateBody()` refuses another motion, logged), and never cast or overlapped
+  (`ShapeCast()` and `Overlap()` refuse one, logged). Jolt sanitizes them (degenerate and doubled
+  triangles go) and works out which edges are smooth, where two triangles meet bending less than the
+  angle, so what slides across doesn't catch on them. Making one is what costs, the more the more
+  triangles, so it is made once and again only when its triangles change.
+- **Rays** treat convex shapes as solid (one that starts inside a body hits it at once) and
+  triangles as one-sided: a ray from behind passes through, so every hit's normal points back at
+  the caster.
 - **Collision layers** follow from the motion: static bodies collide with moving ones, moving ones
   with everything, sensors with moving ones only. One table in `PhysicsWorld.cpp`.
 - **Sensors** (`BodyDesc::bSensor`) detect the moving bodies, kinematic ones too, that enter and
@@ -66,7 +76,9 @@ engine is [Jolt](https://github.com/jrouwe/JoltPhysics) (`Dependencies/JoltPhysi
 - **The debug view** (`DrawDebug(DebugDraw&, PhysicsDebugOptions)`) draws the world as lines, where
   the last step left it; the options switch each part and set its colours:
   - every body's shape in its axes: a box's 12 edges, a sphere's 3 circles, a capsule's 2 rings, 4
-    sides and 2 round ends; coloured by motion: static, kinematic, dynamic awake, dynamic asleep,
+    sides and 2 round ends, a mesh's triangles' 3 edges each (shared edges twice), or for a mesh of
+    more triangles than `MaxMeshTriangles` (8192: 24576 lines of `DebugDraw`'s 32768), the 12 edges
+    of its bounds; coloured by motion: static, kinematic, dynamic awake, dynamic asleep,
     sensor; every character's capsule, standing on its feet, in its own colour (its body inside
     isn't drawn);
   - the last step's contact points, a cross and an arrow along the normal each. Jolt reports them
@@ -110,15 +122,23 @@ between their anchors; nothing with every part off.
 ## In the game world
 
 - **Components** (`PhysicsComponents.h`, in Scene so they are reflected, saved and edited):
-  `BoxColliderComponent`, `SphereColliderComponent`, `CapsuleColliderComponent`, a
+  `BoxColliderComponent`, `SphereColliderComponent`, `CapsuleColliderComponent`,
+  `MeshColliderComponent` (the triangles of the entity's `RuntimeMeshComponent`, always static), a
   `RigidBodyComponent` that makes the body move (dynamic, or kinematic), and an optional
   `PhysicsMaterialComponent`. A collider alone is a static body. Small parts that combine, not one
-  component with a shape switch; one collider an entity (box over sphere over capsule).
+  component with a shape switch; one collider an entity (box over sphere over capsule over mesh).
 - **The entity's transform** places the body, and its scale scales the shape: a box by each axis,
-  a sphere by the largest, a capsule's radius by X and Z and its length by Y.
+  a sphere by the largest, a capsule's radius by X and Z and its length by Y, a mesh's vertices by
+  each axis, its triangles turned round when the scale mirrors them.
 - **`PhysicsBodies`** (Sim) keeps the bodies in step with the components, in `GameWorld::Step()`:
   - before the physics step: bodies made for new colliders, made again (at the transform) when a
     component's values or the scale changed, destroyed with their collider or entity;
+  - a mesh collider's body is made again when its mesh's data (the `MeshData` it points at) or
+    revision changes, or the scale or its smooth edge angle; a hash of those is compared each step,
+    which costs nothing like making it. Its triangles are made from the `MeshData` only then. A
+    mesh that isn't there yet (its generator's system runs after the bodies are synced, so the
+    first step has none), is empty or isn't valid (logged) leaves the collider without a body until
+    the mesh changes. A rigid body beside it is warned of once and doesn't move it;
   - a transform set since the last step, by a system or an editor's live edit, teleports its body
     and stops it. Compared exactly with what the bodies wrote back, so only real changes count;
   - kinematic bodies are moved to their transforms over the step;
@@ -180,13 +200,38 @@ between their anchors; nothing with every part off.
   capsule in 100 lines of its colour; the same inputs among crates give exactly the same path twice;
   the component is saved without its runtime values; the sample scene loads and its character
   stands.
+- `NyxMeshColliderTests`: a box dropped on a 35 degree mesh slope lands on it, slides down it and
+  comes to rest on the mesh's floor below; a ray down onto a mesh roof, stretched twice along X,
+  hits the face beneath it where it is, with that face's normal, misses past the eaves and passes
+  through from below; a character walks up a 25 degree mesh ramp and not up a 50 degree one, climbs
+  a 0.25 m mesh step and is stopped by a 0.45 m one, as on boxes; the body is made once, kept while
+  nothing changes, also when the data changes without a new revision, and made again once for a new
+  revision, new data and a new scale; a mesh that isn't valid makes none; without its mesh or its
+  collider, the body goes; a rigid body leaves it still, and `PhysicsWorld` refuses a dynamic mesh;
+  the debug view draws two triangles in 6 lines where the body is, and a mesh of more triangles
+  than asked for as its bounds' 12; the sample ground is valid, as big and bumpy as asked, made once
+  and again when its values change; the sample scene loads, and its character and crates stand on
+  the ground.
 - **The sample scene** `Assets/Scenes/CharacterTest.nyxscene` (written by
   `NyxCharacterTests --write-scene`, with its materials in `Assets/Materials/CharacterTest`): a
   floor, a 25 degree ramp and a 50 degree one, steps of 0.2 m and 0.5 m, four 10 kg crates, a
   character with the built-in capsule mesh (`Meshes/Capsule.nyxmesh`, the default character's size
   standing on its origin) and an orbit camera following it.
+- **The mesh sample scene** `Assets/Scenes/MeshTest.nyxscene` (written by
+  `NyxMeshColliderTests --write-scene`, with the character test scene's materials): a *Sample
+  Ground* (`SampleGroundComponent`, 40 m square, bumps of 0.6 m every 8 m, in 48 by 48 cells) with
+  a Mesh Renderer and a Mesh Collider, five crates on it, the character and an orbit camera.
+  `SampleGroundSystem` (Sim) makes its mesh in the game, which adds the system to every world; the
+  editor shows the scene without it.
 
 ## Not built yet
+
+- Mesh colliders from a loaded mesh: the built-in meshes are on the GPU only, and `Sim` doesn't see
+  the renderer; once meshes are assets with their data on the CPU, a Mesh Collider can take one.
+- Moving mesh bodies: Jolt can move a mesh kinematically; a dynamic one needs a convex hull or
+  convex parts.
+- Heightfields (Jolt's `HeightFieldShape`), cheaper than a mesh for a grid ground, if the ground
+  stays one.
 
 - Constraints as components.
 - Path constraints, motors, springs on limits.

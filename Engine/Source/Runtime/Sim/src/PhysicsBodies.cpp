@@ -8,6 +8,7 @@
 #include "PhysicsComponents.h"
 #include "PreviousTransformComponent.h"
 #include "Profiler.h"
+#include "RuntimeMeshComponent.h"
 #include "TransformComponent.h"
 
 #include <algorithm>
@@ -18,7 +19,8 @@ namespace Nyx
 {
 	namespace
 	{
-		// What a body is made from: its description, or nothing for an entity without a collider
+		// What a body is made from: its description, or nothing for an entity without a collider. A
+		// mesh's triangles aren't in it (MakeTriangleMesh()): they are made only when the body is.
 		std::optional<BodyDesc> DescribeBody(const Registry& world, Entity entity)
 		{
 			BodyDesc desc;
@@ -41,6 +43,10 @@ namespace Nyx
 					.Radius = capsule.Radius * std::max(scale.x, scale.z),
 					.HalfHeight = capsule.HalfHeight * scale.y };
 			}
+			else if (world.Has<MeshColliderComponent>(entity))
+			{
+				desc.Shape = BodyShape{ .Kind = EShapeKind::Mesh };
+			}
 			else
 			{
 				return std::nullopt;
@@ -56,7 +62,7 @@ namespace Nyx
 			}
 
 			desc.Motion = EBodyMotion::Static;
-			if (world.Has<RigidBodyComponent>(entity))
+			if (world.Has<RigidBodyComponent>(entity) && desc.Shape.Kind != EShapeKind::Mesh)
 			{
 				const RigidBodyComponent& rigidBody = world.Get<RigidBodyComponent>(entity);
 				desc.Motion = rigidBody.bKinematic ? EBodyMotion::Kinematic : EBodyMotion::Dynamic;
@@ -106,6 +112,68 @@ namespace Nyx
 			return hash;
 		}
 
+		// What a mesh collider's triangles are made from, added to its description's hash: its mesh's
+		// data and revision, the entity's scale, signed as it mirrors the mesh, and the smooth edges'
+		// angle. Its address only tells data apart: the hash is never kept beyond the world.
+		uint64_t HashMeshSource(uint64_t hash, const Registry& world, Entity entity)
+		{
+			const auto add = [&hash](const auto& value)
+			{
+				unsigned char bytes[sizeof(value)];
+				std::memcpy(bytes, &value, sizeof(value));
+				for (const unsigned char byte : bytes)
+				{
+					hash = (hash ^ byte) * 1099511628211ull;
+				}
+			};
+			const RuntimeMeshComponent* runtimeMesh = world.Has<RuntimeMeshComponent>(entity) ? &world.Get<RuntimeMeshComponent>(entity) : nullptr;
+			add(runtimeMesh ? reinterpret_cast<uintptr_t>(runtimeMesh->Mesh.get()) : uintptr_t(0));
+			add(runtimeMesh ? runtimeMesh->Revision : uint64_t(0));
+			const glm::vec3 scale = world.Has<TransformComponent>(entity) ? world.Get<TransformComponent>(entity).Scale : glm::vec3(1.0f);
+			add(scale.x);
+			add(scale.y);
+			add(scale.z);
+			add(world.Get<MeshColliderComponent>(entity).SmoothEdgeDegrees);
+			return hash;
+		}
+
+		// The triangles of the entity's mesh made at run time, with its scale; none, logged, for a
+		// mesh that isn't there, is empty or isn't valid
+		std::shared_ptr<const TriangleMesh> MakeTriangleMesh(const Registry& world, Entity entity)
+		{
+			const RuntimeMeshComponent* runtimeMesh = world.Has<RuntimeMeshComponent>(entity) ? &world.Get<RuntimeMeshComponent>(entity) : nullptr;
+			if (!runtimeMesh || !runtimeMesh->Mesh || runtimeMesh->Mesh->Indices.empty())
+			{
+				// Usually not made yet: its generator's system runs after the bodies are synced
+				return nullptr;
+			}
+			const MeshData& mesh = *runtimeMesh->Mesh;
+			if (const std::string problem = CheckMeshData(mesh); !problem.empty())
+			{
+				LOG_ERROR("A Mesh Collider's mesh isn't valid, so it has no body: {0}", problem);
+				return nullptr;
+			}
+
+			const glm::vec3 scale = world.Has<TransformComponent>(entity) ? world.Get<TransformComponent>(entity).Scale : glm::vec3(1.0f);
+			auto triangles = std::make_shared<TriangleMesh>();
+			triangles->Vertices.reserve(mesh.Vertices.size());
+			for (const Vertex& vertex : mesh.Vertices)
+			{
+				triangles->Vertices.push_back(vertex.Position * scale);
+			}
+			triangles->Indices = mesh.Indices;
+			// Mirrored by the scale, the triangles turn their backs to where they faced: turned round
+			if (scale.x * scale.y * scale.z < 0.0f)
+			{
+				for (size_t index = 0; index + 2 < triangles->Indices.size(); index += 3)
+				{
+					std::swap(triangles->Indices[index + 1], triangles->Indices[index + 2]);
+				}
+			}
+			triangles->SmoothEdgeAngle = glm::radians(world.Get<MeshColliderComponent>(entity).SmoothEdgeDegrees);
+			return triangles;
+		}
+
 		// Whether a transform was set from outside since the body was last put or left there.
 		// Transforms the bodies wrote themselves match exactly.
 		bool PoseMoved(const BodyPose& last, const BodyPose& now)
@@ -132,6 +200,10 @@ namespace Nyx
 					visitUnlessCharacter(entity);
 				});
 			world.Each<CapsuleColliderComponent>([&](Entity entity, CapsuleColliderComponent&)
+				{
+					visitUnlessCharacter(entity);
+				});
+			world.Each<MeshColliderComponent>([&](Entity entity, MeshColliderComponent&)
 				{
 					visitUnlessCharacter(entity);
 				});
@@ -203,8 +275,9 @@ namespace Nyx
 					return;
 				}
 
-				const std::optional<BodyDesc> desc = DescribeBody(world, entity);
-				const uint64_t hash = HashBody(*desc);
+				std::optional<BodyDesc> desc = DescribeBody(world, entity);
+				const bool bMesh = desc->Shape.Kind == EShapeKind::Mesh;
+				const uint64_t hash = bMesh ? HashMeshSource(HashBody(*desc), world, entity) : HashBody(*desc);
 				const BodyPose pose{ desc->Position, desc->Rotation };
 
 				if (found != Bodies.end() && found->second.DescriptionHash != hash)
@@ -217,8 +290,14 @@ namespace Nyx
 
 				if (found == Bodies.end())
 				{
-					const BodyHandle body = physics.CreateBody(*desc);
-					if (!body.IsValid())
+					// A mesh without triangles yet, or not valid, is kept without a body until its
+					// mesh changes, rather than tried again every step
+					if (bMesh)
+					{
+						desc->Shape.Mesh = MakeTriangleMesh(world, entity);
+					}
+					const BodyHandle body = !bMesh || desc->Shape.Mesh ? physics.CreateBody(*desc) : BodyHandle{};
+					if (!body.IsValid() && !bMesh)
 					{
 						return;
 					}
@@ -235,6 +314,10 @@ namespace Nyx
 
 				TrackedBody& tracked = found->second;
 				tracked.bSeen = true;
+				if (!tracked.Body.IsValid())
+				{
+					return;
+				}
 				if (tracked.bKinematic)
 				{
 					// Follows its transform over the step, pushing what it meets
@@ -393,33 +476,44 @@ namespace Nyx
 
 	void PhysicsBodies::WarnOfRigidBodiesWithoutCollider(const Registry& world)
 	{
+		// By its name, else its guid, as the editor shows them
+		const auto labelOf = [&world](Entity entity)
+		{
+			if (world.Has<NameComponent>(entity) && !world.Get<NameComponent>(entity).Name.empty())
+			{
+				return "'" + world.Get<NameComponent>(entity).Name + "'";
+			}
+			if (world.Has<GuidComponent>(entity))
+			{
+				return "Entity " + std::to_string(world.Get<GuidComponent>(entity).Guid.Value);
+			}
+			return std::string("An entity");
+		};
+
 		world.Each<RigidBodyComponent>([&](Entity entity, const RigidBodyComponent&)
 			{
-				const bool bHasCollider = world.Has<BoxColliderComponent>(entity) || world.Has<SphereColliderComponent>(entity) ||
+				const bool bHasMovingCollider = world.Has<BoxColliderComponent>(entity) || world.Has<SphereColliderComponent>(entity) ||
 					world.Has<CapsuleColliderComponent>(entity);
-				if (bHasCollider)
+				const bool bHasMeshCollider = !bHasMovingCollider && world.Has<MeshColliderComponent>(entity);
+				if (bHasMovingCollider || bHasMeshCollider)
 				{
 					WarnedWithoutCollider.erase(entity.Value);
-					return;
 				}
-				if (!WarnedWithoutCollider.insert(entity.Value).second)
+				if (!bHasMeshCollider)
 				{
-					return;
+					WarnedStillMesh.erase(entity.Value);
 				}
 
-				// By its name, else its guid, as the editor shows them
-				std::string label = "An entity";
-				if (world.Has<NameComponent>(entity) && !world.Get<NameComponent>(entity).Name.empty())
+				if (bHasMeshCollider && WarnedStillMesh.insert(entity.Value).second)
 				{
-					label = "'" + world.Get<NameComponent>(entity).Name + "'";
+					LOG_WARNING("{0} has a Rigid Body and a Mesh Collider: a mesh's body is always static, so it doesn't move", labelOf(entity));
 				}
-				else if (world.Has<GuidComponent>(entity))
+				if (!bHasMovingCollider && !bHasMeshCollider && WarnedWithoutCollider.insert(entity.Value).second)
 				{
-					label = "Entity " + std::to_string(world.Get<GuidComponent>(entity).Guid.Value);
+					LOG_WARNING("{0} has a Rigid Body but no collider, so it has no body and doesn't move: add a Box, "
+								"Sphere or Capsule Collider",
+						labelOf(entity));
 				}
-				LOG_WARNING("{0} has a Rigid Body but no collider, so it has no body and doesn't move: add a Box, "
-							"Sphere or Capsule Collider",
-					label);
 			});
 	}
 

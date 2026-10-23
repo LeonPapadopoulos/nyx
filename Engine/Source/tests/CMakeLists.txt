@@ -153,6 +153,15 @@ add_dependencies(NyxCharacterTests NyxGeneratedReflection)
 set_property(TARGET NyxCharacterTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxCharacterTests COMMAND NyxCharacterTests)
 
+# Mesh colliders in the game world: boxes, rays and characters on meshes made at run time, the body
+# made again only when the mesh changes, the debug view's edges, the sample ground and the sample
+# scene. --write-scene writes Assets/Scenes/MeshTest.nyxscene.
+add_executable(NyxMeshColliderTests MeshColliderTests.cpp)
+target_link_libraries(NyxMeshColliderTests PRIVATE NyxEngine)
+add_dependencies(NyxMeshColliderTests NyxGeneratedReflection)
+set_property(TARGET NyxMeshColliderTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxMeshColliderTests COMMAND NyxMeshColliderTests)
+
 # How long a physics step takes with 1000 bodies; not run by ctest, timing depends on the machine
 add_executable(NyxPhysicsBenchmark PhysicsBenchmark.cpp)
 target_link_libraries(NyxPhysicsBenchmark PRIVATE NyxEngine)
