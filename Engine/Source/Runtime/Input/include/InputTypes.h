@@ -15,6 +15,8 @@ namespace Nyx::Input
 	{
 		Keyboard,
 		Mouse,
+		Gamepad,
+		Count
 	};
 
 	// Keys by their position on the keyboard, named after the US layout. Keyboard/Z is the key
@@ -66,6 +68,47 @@ namespace Nyx::Input
 		Count
 	};
 
+	// Face buttons are named by where they are: South is A on an Xbox pad and Cross on a
+	// DualShock or DualSense. What is printed on them only matters for prompts.
+	enum class EGamepadControl : uint16_t
+	{
+		FaceSouth,
+		FaceEast,
+		FaceWest,
+		FaceNorth,
+		Back,  // View (Xbox), Share (DualShock 4), Create (DualSense)
+		Guide, // Xbox button, PS button
+		Start, // Menu (Xbox), Options
+		LeftStickButton,
+		RightStickButton,
+		LeftShoulder,
+		RightShoulder,
+		DpadUp,
+		DpadDown,
+		DpadLeft,
+		DpadRight,
+		Misc, // Share (Xbox Series), Mute (DualSense)
+		RightPaddle1,
+		LeftPaddle1,
+		RightPaddle2,
+		LeftPaddle2,
+		TouchpadButton,
+		// Sticks: x right, y up, -1 to 1, without dead zone
+		LeftStick,
+		RightStick,
+		// Triggers: 0 to 1
+		LeftTrigger,
+		RightTrigger,
+		// Radians per second around x (pitch), y (yaw), z (roll), where the pad has a gyro
+		Gyro,
+		// Metres per second squared, gravity included, where the pad has an accelerometer
+		Accel,
+		// A finger on the touchpad: x right and y down, 0 to 1, and z its pressure; all 0 without a finger
+		Touchpad0,
+		Touchpad1,
+		Count
+	};
+
 	// One control of one kind of device, e.g. Keyboard/W or Mouse/Right
 	struct ControlId
 	{
@@ -85,17 +128,23 @@ namespace Nyx::Input
 		return ControlId{ EDeviceKind::Mouse, static_cast<uint16_t>(control) };
 	}
 
+	constexpr ControlId Gamepad(EGamepadControl control)
+	{
+		return ControlId{ EDeviceKind::Gamepad, static_cast<uint16_t>(control) };
+	}
+
 	// How many controls a kind of device has; ControlId::Index is below it
 	uint16_t GetControlCount(EDeviceKind device);
 
-	// Buttons are up (0) or down (1)
+	// Buttons are up (0) or down (1). The rest are analog: sticks, triggers, sensors, the mouse's
+	// movement.
 	bool IsButton(ControlId control);
 
 	// Relative controls report how much they changed, e.g. Mouse/Delta. A frame sums them up and
 	// starts again at zero.
 	bool IsRelative(ControlId control);
 
-	// "Keyboard", "Mouse"
+	// "Keyboard", "Mouse", "Gamepad"
 	const char* GetDeviceKindName(EDeviceKind device);
 
 	// The control's name in data, logs and the debug window: "Keyboard/W", "Mouse/Delta"
@@ -120,18 +169,75 @@ namespace Nyx::Input
 	// A new id, unique in the process; backends take their devices' ids from here
 	InputDeviceId MakeDeviceId();
 
+	enum class EGamepadModel : uint8_t
+	{
+		Unknown,
+		Xbox360,
+		XboxOne, // Xbox One and Series pads
+		DualShock4,
+		DualSense,
+		DualSenseEdge,
+		Generic, // Another pad SDL knows how to read
+	};
+
+	const char* GetGamepadModelName(EGamepadModel model);
+
+	enum class EConnection : uint8_t
+	{
+		Unknown,
+		Wired,
+		Wireless, // Bluetooth or a wireless adapter
+	};
+
+	const char* GetConnectionName(EConnection connection);
+
+	// What a device can do besides reporting its controls; a bit each
+	enum class EDeviceCapability : uint32_t
+	{
+		None = 0,
+		Rumble = 1 << 0,
+		TriggerRumble = 1 << 1,    // Xbox impulse triggers, DualSense
+		AdaptiveTriggers = 1 << 2, // DualSense trigger effects
+		Gyro = 1 << 3,
+		Accelerometer = 1 << 4,
+		Touchpad = 1 << 5,
+		Lightbar = 1 << 6,   // An LED of any colour
+		PlayerLeds = 1 << 7, // LEDs that show the player's number
+	};
+
+	constexpr EDeviceCapability operator|(EDeviceCapability a, EDeviceCapability b)
+	{
+		return static_cast<EDeviceCapability>(static_cast<uint32_t>(a) | static_cast<uint32_t>(b));
+	}
+
+	constexpr bool HasCapability(EDeviceCapability capabilities, EDeviceCapability capability)
+	{
+		return (static_cast<uint32_t>(capabilities) & static_cast<uint32_t>(capability)) != 0;
+	}
+
 	struct InputDeviceInfo
 	{
 		InputDeviceId Id;
 		EDeviceKind Kind = EDeviceKind::Keyboard;
-		std::string Name;    // "Keyboard", later e.g. "DualSense Wireless Controller"
-		std::string Backend; // "GLFW", "Virtual"
+		std::string Name;    // "Keyboard", "DualSense Wireless Controller"
+		std::string Backend; // "GLFW", "SDL", "Virtual"
+
+		// Gamepads
+		EGamepadModel Model = EGamepadModel::Unknown;
+		EConnection Connection = EConnection::Unknown;
+		EDeviceCapability Capabilities = EDeviceCapability::None;
+		// 0 to 100; unknown, e.g. on a cable
+		std::optional<int> BatteryPercent;
+		// The same for the same pad when it comes back (serial number or system path), for giving
+		// a player their pad back
+		std::string StableKey;
 	};
 
 	enum class EInputEventKind : uint8_t
 	{
 		DeviceAdded,   // Device: the new device
 		DeviceRemoved, // Device.Id: the device that is gone
+		DeviceChanged, // Device: what is known about it now, e.g. its battery
 		Control,       // Device.Id, Control, Value
 		FocusChanged,  // bFocused: whether one of the program's windows has the focus now
 	};
@@ -144,13 +250,13 @@ namespace Nyx::Input
 		// When it happened, in microseconds of NowUs()
 		uint64_t TimeUs = 0;
 
-		// The whole device for DeviceAdded, only its id otherwise
+		// The whole device for DeviceAdded and DeviceChanged, only its id otherwise
 		InputDeviceInfo Device;
 
 		ControlId Control;
 
-		// Buttons: 1 down, 0 up. Relative controls: how much they changed.
-		glm::vec2 Value{ 0.0f };
+		// Buttons: 1 down, 0 up. Relative controls: how much they changed. Analog: the value now.
+		glm::vec3 Value{ 0.0f };
 
 		bool bFocused = false;
 	};

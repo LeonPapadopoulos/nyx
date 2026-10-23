@@ -8,6 +8,7 @@ namespace Nyx::Input
 	{
 		ControlState merged;
 		const bool bRelative = IsRelative(control);
+		const bool bButton = IsButton(control);
 
 		for (const DeviceState& device : Devices)
 		{
@@ -22,10 +23,17 @@ namespace Nyx::Input
 				merged.Value += state.Value;
 				merged.PreviousValue += state.PreviousValue;
 			}
-			else
+			else if (bButton)
 			{
 				merged.Value = glm::max(merged.Value, state.Value);
 				merged.PreviousValue = glm::max(merged.PreviousValue, state.PreviousValue);
+			}
+			else
+			{
+				// Two pads' sticks don't add up: the one pushed further counts
+				merged.Value = glm::length(state.Value) > glm::length(merged.Value) ? state.Value : merged.Value;
+				merged.PreviousValue =
+					glm::length(state.PreviousValue) > glm::length(merged.PreviousValue) ? state.PreviousValue : merged.PreviousValue;
 			}
 			merged.Presses = static_cast<uint16_t>(merged.Presses + state.Presses);
 			merged.Releases = static_cast<uint16_t>(merged.Releases + state.Releases);
@@ -61,7 +69,7 @@ namespace Nyx::Input
 		return GetState(control).Releases > 0;
 	}
 
-	glm::vec2 InputFrame::GetValue(ControlId control) const
+	glm::vec3 InputFrame::GetValue(ControlId control) const
 	{
 		return GetState(control).Value;
 	}
@@ -99,7 +107,7 @@ namespace Nyx::Input
 				state.Releases = 0;
 				if (IsRelative(ControlId{ device.Info.Kind, index }))
 				{
-					state.Value = glm::vec2(0.0f);
+					state.Value = glm::vec3(0.0f);
 				}
 			}
 		}
@@ -129,6 +137,16 @@ namespace Nyx::Input
 			return;
 		}
 
+		case EInputEventKind::DeviceChanged:
+		{
+			DeviceState* device = FindDevice(event.Device.Id);
+			if (device && !device->bRemoved && device->Info.Kind == event.Device.Kind)
+			{
+				device->Info = event.Device;
+			}
+			return;
+		}
+
 		case EInputEventKind::DeviceRemoved:
 		{
 			DeviceState* device = FindDevice(event.Device.Id);
@@ -145,10 +163,14 @@ namespace Nyx::Input
 			bFocused = event.bFocused;
 			if (!bFocused)
 			{
-				// Keys let go of while another program has the focus never reach us
+				// Keys let go of while another program has the focus never reach us. Gamepads
+				// belong to no window and keep reporting; the Unfocused context decides about them.
 				for (DeviceState& device : Devices)
 				{
-					ReleaseAll(device, event.TimeUs);
+					if (device.Info.Kind != EDeviceKind::Gamepad)
+					{
+						ReleaseAll(device, event.TimeUs);
+					}
 				}
 			}
 			return;
@@ -157,8 +179,8 @@ namespace Nyx::Input
 		case EInputEventKind::Control:
 		{
 			DeviceState* device = FindDevice(event.Device.Id);
-			if (!bFocused || !device || device->bRemoved || device->Info.Kind != event.Control.Device ||
-				event.Control.Index >= device->Controls.size())
+			if (!device || device->bRemoved || device->Info.Kind != event.Control.Device ||
+				event.Control.Index >= device->Controls.size() || (!bFocused && device->Info.Kind != EDeviceKind::Gamepad))
 			{
 				return;
 			}
@@ -169,18 +191,23 @@ namespace Nyx::Input
 				state.Value += event.Value;
 				return;
 			}
+			if (!IsButton(event.Control))
+			{
+				state.Value = event.Value;
+				return;
+			}
 
 			const bool bDown = event.Value.x != 0.0f;
 			const bool bWasDown = state.Value.x != 0.0f;
 			if (bDown && !bWasDown)
 			{
-				state.Value = glm::vec2(1.0f, 0.0f);
+				state.Value = glm::vec3(1.0f, 0.0f, 0.0f);
 				++state.Presses;
 				state.LastPressUs = event.TimeUs;
 			}
 			else if (!bDown && bWasDown)
 			{
-				state.Value = glm::vec2(0.0f);
+				state.Value = glm::vec3(0.0f);
 				++state.Releases;
 				state.LastReleaseUs = event.TimeUs;
 			}
@@ -194,11 +221,17 @@ namespace Nyx::Input
 		for (uint16_t index = 0; index < device.Controls.size(); ++index)
 		{
 			ControlState& state = device.Controls[index];
-			if (IsButton(ControlId{ device.Info.Kind, index }) && state.Value.x != 0.0f)
+			const ControlId control{ device.Info.Kind, index };
+			if (IsButton(control) && state.Value.x != 0.0f)
 			{
-				state.Value = glm::vec2(0.0f);
+				state.Value = glm::vec3(0.0f);
 				++state.Releases;
 				state.LastReleaseUs = timeUs;
+			}
+			else if (!IsButton(control) && !IsRelative(control))
+			{
+				// A stick or trigger isn't held by a device that is gone
+				state.Value = glm::vec3(0.0f);
 			}
 		}
 	}

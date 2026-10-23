@@ -11,10 +11,12 @@ function(nyx_add_game_program)
         ${root}/main.cpp
         ${root}/src/EditorLinkLayer.cpp
         ${root}/src/GameLayer.cpp
+        ${root}/src/GameFlyCamera.cpp
     )
     set(headers
         ${root}/include/EditorLinkLayer.h
         ${root}/include/GameLayer.h
+        ${root}/include/GameFlyCamera.h
     )
 
     add_executable(NyxGame ${sources} ${headers})

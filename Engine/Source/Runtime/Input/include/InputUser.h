@@ -3,6 +3,7 @@
 #include "InputActions.h"
 #include "InputContexts.h"
 #include "InputFrame.h"
+#include "InputOutput.h"
 #include "InputTrace.h"
 
 #include <cstdint>
@@ -60,6 +61,36 @@ namespace Nyx::Input
 			return Cursor;
 		}
 
+		// Output for the user's gamepads, asked during the frame and sent at its end. Several asks
+		// in one frame are merged: the stronger rumble, the later effect or colour.
+		void Rumble(const RumbleOutput& rumble);
+		void TriggerRumble(const TriggerRumbleOutput& rumble);
+		void SetTriggerEffect(ETrigger trigger, const TriggerEffect& effect);
+		void SetLightColor(const glm::vec3& color);
+		void SetPlayerIndex(int playerIndex);
+
+		// Scales rumble and trigger rumble, 0 to 1; 0 turns them off
+		void SetHapticsStrength(float strength);
+		float GetHapticsStrength() const
+		{
+			return HapticsStrength;
+		}
+
+		// What the last frame sent to which device, and what it couldn't send and why, e.g. that
+		// an Xbox pad has no adaptive triggers
+		struct OutputRecord
+		{
+			InputDeviceId Device;
+			std::string What;
+			bool bSent = false;
+			std::string Reason;
+		};
+
+		const std::vector<OutputRecord>& GetOutputRecords() const
+		{
+			return OutputRecords;
+		}
+
 		// For prompts: the device last used on purpose. A stick or mouse that barely moves doesn't
 		// count, so the prompts don't flip back and forth.
 		InputDeviceId GetLastUsedDevice() const
@@ -115,6 +146,10 @@ namespace Nyx::Input
 
 		std::vector<BindingTrace> Traces;
 		CursorRequest Cursor;
+
+		DeviceOutput PendingOutput;
+		float HapticsStrength = 1.0f;
+		std::vector<OutputRecord> OutputRecords;
 		InputDeviceId LastUsedDevice;
 	};
 }

@@ -8,6 +8,11 @@
 #include <memory>
 #include <vector>
 
+namespace Nyx::Input
+{
+	class SdlGamepadBackend;
+}
+
 namespace Nyx
 {
 	class IRenderer;
@@ -44,7 +49,7 @@ namespace Nyx
 		IRenderer& GetRenderer();
 		IEditorRenderer& GetEditorRenderer() { return *Renderer; }
 
-		// Keyboard and mouse, gathered once per frame before the layers' OnUpdate
+		// Keyboard, mouse and gamepads, gathered once per frame before the layers' OnUpdate
 		Nyx::Input::InputSystem& GetInput() { return Input; }
 
 		// The fixed simulation steps: each frame's real time in steps for the layers' OnFixedUpdate.
@@ -68,6 +73,8 @@ namespace Nyx
 		const GameModule* Module = nullptr;
 		std::unique_ptr<IWindow> Window;
 		std::unique_ptr<IEditorRenderer> Renderer;
+		// Before Input, so it outlives the input system that reads it
+		std::unique_ptr<Nyx::Input::SdlGamepadBackend> Gamepads;
 		Nyx::Input::InputSystem Input;
 		FixedStepClock SimulationClock;
 		// Set while the clock drops time, so the warning comes once, not every frame

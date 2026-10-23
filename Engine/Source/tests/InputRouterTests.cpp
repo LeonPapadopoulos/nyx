@@ -412,7 +412,7 @@ namespace
 		Rig rig;
 		const ActionHandle action = rig.Input.AddAction({ "Push", EActionValue::Button });
 		InputBinding binding = InputBinding::ForControl(action, Mouse(EMouseControl::Delta));
-		binding.SourceAxis = 0;
+		binding.Swizzle = glm::ivec3(0, -1, -1);
 		rig.AddContext("Context", 0, { binding });
 		rig.Frame();
 

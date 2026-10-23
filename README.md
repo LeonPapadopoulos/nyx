@@ -43,7 +43,7 @@ The tests run with `ctest -C Debug` in `Build\Windows`.
 
 ```
 Assets/          Scenes, models, materials, shaders, textures and startup artwork
-Dependencies/    Git submodules: spdlog, GLFW, GLM, cgltf
+Dependencies/    Git submodules: spdlog, GLFW, GLM, cgltf, SDL
 Docs/            Architecture, features, and the images they use
 Editor/          NyxEditor.exe: panels, gizmo, undo, asset browser, Play; themes in Editor/Themes
   Source/        One folder per concern: App, Scene, Properties, Transactions, Assets,
@@ -63,5 +63,6 @@ ThirdParty/      Vendored libraries: Dear ImGui (docking branch), stb_image
 Tools/
   NyxDump/           Prints scene files and link recordings as readable text
   NyxHeaderTool/     Reflection code generator and its tests
+  NyxPadCheck/       Lists gamepads, prints what they report, tries rumble and trigger effects
   NyxShaderCompiler/ Compiles shaders with Slang, for the build and for live reload
 ```

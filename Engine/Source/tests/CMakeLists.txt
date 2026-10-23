@@ -164,6 +164,14 @@ add_dependencies(NyxInputRouterTests NyxGeneratedReflection)
 set_property(TARGET NyxInputRouterTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxInputRouterTests COMMAND NyxInputRouterTests)
 
+# Gamepads with virtual pads: routing, output and what pads can do, the DualSense's trigger effect
+# bytes, the fly camera's bindings. No pad needed.
+add_executable(NyxInputGamepadTests InputGamepadTests.cpp)
+target_link_libraries(NyxInputGamepadTests PRIVATE NyxEngine)
+add_dependencies(NyxInputGamepadTests NyxGeneratedReflection)
+set_property(TARGET NyxInputGamepadTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxInputGamepadTests COMMAND NyxInputGamepadTests)
+
 # The painter's CPU side: draw commands, groups, clip and transform stacks, tile binning. No GPU needed.
 # The painter's test sheet is a dev tool, not part of the engine library, so the painter tests
 # compile it themselves.

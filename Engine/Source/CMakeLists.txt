@@ -45,6 +45,9 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputUser.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputTrace.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/ImGuiInput.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputOutput.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Input/src/SdlGamepadBackend.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Input/src/FlyCameraInput.cpp
 
     # Runtime/Scene
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/Entity.cpp
@@ -181,6 +184,9 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputUser.h
     ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputTrace.h
     ${NYX_ENGINE_ROOT}/Runtime/Input/include/ImGuiInput.h
+    ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputOutput.h
+    ${NYX_ENGINE_ROOT}/Runtime/Input/include/SdlGamepadBackend.h
+    ${NYX_ENGINE_ROOT}/Runtime/Input/include/FlyCameraInput.h
 
     # Runtime/Scene
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/Entity.h
@@ -428,6 +434,7 @@ foreach(NYX_ENGINE_TARGET NyxEngineCommon NyxEngine NyxEditorEngine)
         PUBLIC
             spdlog::spdlog
             glfw
+            SDL3::SDL3-static # Gamepads (SdlGamepadBackend)
             imgui::imgui
             glm::glm
             Vulkan::Vulkan # Public headers such as Mesh.h include vulkan.hpp

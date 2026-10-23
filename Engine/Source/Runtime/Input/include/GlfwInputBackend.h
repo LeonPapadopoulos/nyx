@@ -62,7 +62,7 @@ namespace Nyx::Input
 		void Forget(GLFWwindow* window);
 		WindowState* FindWindow(GLFWwindow* window);
 
-		void PushControl(ControlId control, glm::vec2 value);
+		void PushControl(ControlId control, glm::vec3 value);
 		void SetCursorMode(GLFWwindow* window, ECursorMode mode);
 
 		static void OnKey(GLFWwindow* window, int key, int scancode, int action, int mods);

@@ -27,7 +27,39 @@ namespace Nyx::Input
 			"Wheel",
 		};
 
-		constexpr std::array<EDeviceKind, 2> DeviceKinds = { EDeviceKind::Keyboard, EDeviceKind::Mouse };
+		constexpr std::array<const char*, static_cast<size_t>(EGamepadControl::Count)> GamepadControlNames = {
+			"FaceSouth",
+			"FaceEast",
+			"FaceWest",
+			"FaceNorth",
+			"Back",
+			"Guide",
+			"Start",
+			"LeftStickButton",
+			"RightStickButton",
+			"LeftShoulder",
+			"RightShoulder",
+			"DpadUp",
+			"DpadDown",
+			"DpadLeft",
+			"DpadRight",
+			"Misc",
+			"RightPaddle1",
+			"LeftPaddle1",
+			"RightPaddle2",
+			"LeftPaddle2",
+			"TouchpadButton",
+			"LeftStick",
+			"RightStick",
+			"LeftTrigger",
+			"RightTrigger",
+			"Gyro",
+			"Accel",
+			"Touchpad0",
+			"Touchpad1",
+		};
+
+		constexpr std::array<EDeviceKind, 3> DeviceKinds = { EDeviceKind::Keyboard, EDeviceKind::Mouse, EDeviceKind::Gamepad };
 
 		const char* GetControlName(ControlId control)
 		{
@@ -35,7 +67,14 @@ namespace Nyx::Input
 			{
 				return nullptr;
 			}
-			return control.Device == EDeviceKind::Keyboard ? KeyNames[control.Index] : MouseControlNames[control.Index];
+			switch (control.Device)
+			{
+			case EDeviceKind::Keyboard: return KeyNames[control.Index];
+			case EDeviceKind::Mouse:    return MouseControlNames[control.Index];
+			case EDeviceKind::Gamepad:  return GamepadControlNames[control.Index];
+			case EDeviceKind::Count:    break;
+			}
+			return nullptr;
 		}
 	}
 
@@ -45,13 +84,22 @@ namespace Nyx::Input
 		{
 		case EDeviceKind::Keyboard: return static_cast<uint16_t>(EKey::Count);
 		case EDeviceKind::Mouse:    return static_cast<uint16_t>(EMouseControl::Count);
+		case EDeviceKind::Gamepad:  return static_cast<uint16_t>(EGamepadControl::Count);
+		case EDeviceKind::Count:    break;
 		}
 		return 0;
 	}
 
 	bool IsButton(ControlId control)
 	{
-		return !IsRelative(control) && control.Index < GetControlCount(control.Device);
+		switch (control.Device)
+		{
+		case EDeviceKind::Keyboard: return control.Index < static_cast<uint16_t>(EKey::Count);
+		case EDeviceKind::Mouse:    return control.Index < static_cast<uint16_t>(EMouseControl::Delta);
+		case EDeviceKind::Gamepad:  return control.Index < static_cast<uint16_t>(EGamepadControl::LeftStick);
+		case EDeviceKind::Count:    break;
+		}
+		return false;
 	}
 
 	bool IsRelative(ControlId control)
@@ -65,6 +113,34 @@ namespace Nyx::Input
 		{
 		case EDeviceKind::Keyboard: return "Keyboard";
 		case EDeviceKind::Mouse:    return "Mouse";
+		case EDeviceKind::Gamepad:  return "Gamepad";
+		case EDeviceKind::Count:    break;
+		}
+		return "Unknown";
+	}
+
+	const char* GetGamepadModelName(EGamepadModel model)
+	{
+		switch (model)
+		{
+		case EGamepadModel::Unknown:       return "Unknown";
+		case EGamepadModel::Xbox360:       return "Xbox 360";
+		case EGamepadModel::XboxOne:       return "Xbox One";
+		case EGamepadModel::DualShock4:    return "DualShock 4";
+		case EGamepadModel::DualSense:     return "DualSense";
+		case EGamepadModel::DualSenseEdge: return "DualSense Edge";
+		case EGamepadModel::Generic:       return "Generic";
+		}
+		return "Unknown";
+	}
+
+	const char* GetConnectionName(EConnection connection)
+	{
+		switch (connection)
+		{
+		case EConnection::Unknown:  return "Unknown";
+		case EConnection::Wired:    return "Wired";
+		case EConnection::Wireless: return "Wireless";
 		}
 		return "Unknown";
 	}

@@ -32,8 +32,9 @@ namespace Nyx::Input
 		return (static_cast<uint8_t>(keys) & static_cast<uint8_t>(modifier)) != 0;
 	}
 
-	// One axis to three from keys: x is Right minus Left, y Up minus Down, z Forward minus Back.
-	// Keys left out add nothing.
+	// One axis to three from several controls: x is Right minus Left, y Up minus Down, z Forward
+	// minus Back. Buttons add 1 while down, analog controls (e.g. triggers) their value; controls
+	// left out add nothing.
 	struct CompositeKeys
 	{
 		std::optional<ControlId> Right;
@@ -43,7 +44,8 @@ namespace Nyx::Input
 		std::optional<ControlId> Forward;
 		std::optional<ControlId> Back;
 
-		// Scales the vector to length 1, so W and D together aren't faster than W
+		// Scales the vector down to length 1 when it is longer, so W and D together aren't
+		// faster than W
 		bool bNormalize = true;
 	};
 
@@ -55,8 +57,10 @@ namespace Nyx::Input
 
 		// Either one control...
 		std::optional<ControlId> Control;
-		// ...of which only this axis, as x (e.g. 1 for the wheel's y); -1: all of it
-		int SourceAxis = -1;
+		// ...whose axes go to x, y and z: the axis of the control for each (0 x, 1 y, 2 z), or
+		// -1 for 0. E.g. { 1, -1, -1 }: only the wheel's y, as x; { 0, -1, 1 }: a stick's up as
+		// forward (z).
+		glm::ivec3 Swizzle{ 0, 1, 2 };
 
 		// ...or keys making up an axis
 		std::optional<CompositeKeys> Composite;

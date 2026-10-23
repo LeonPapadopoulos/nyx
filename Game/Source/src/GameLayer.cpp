@@ -23,6 +23,7 @@ namespace Nyx::Game
 		Renderer = &application.GetRenderer();
 		UIRenderer = &application.GetEditorRenderer();
 		Input = &application.GetInput();
+		FlyCamera = std::make_unique<GameFlyCamera>(*Input);
 
 #if defined(ENGINE_DEBUG)
 		CrashOnPurpose = Input->AddAction({ "CrashOnPurpose", Nyx::Input::EActionValue::Button });
@@ -124,8 +125,10 @@ namespace Nyx::Game
 		}
 	}
 
-	void GameLayer::OnUpdate(float /*deltaTime*/)
+	void GameLayer::OnUpdate(float deltaTime)
 	{
+		FlyCamera->Update(World.GetRegistry(), deltaTime);
+
 #if defined(ENGINE_DEBUG)
 		// Through a volatile pointer, so the compiler keeps the write
 		if (Input->GetUser().ConsumeTriggered(CrashOnPurpose))

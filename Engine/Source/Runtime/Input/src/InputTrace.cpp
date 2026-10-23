@@ -66,9 +66,15 @@ namespace Nyx::Input
 		if (binding.Control)
 		{
 			source += GetControlPath(*binding.Control);
-			if (binding.SourceAxis >= 0)
+			if (binding.Swizzle != glm::ivec3(0, 1, 2))
 			{
-				source += binding.SourceAxis == 0 ? ".x" : ".y";
+				// "Gamepad/LeftStick (x, 0, y)": which of the control's axes become x, y and z
+				const auto axis = [](int index)
+				{
+					constexpr const char* Names[] = { "x", "y", "z" };
+					return index >= 0 && index < 3 ? Names[index] : "0";
+				};
+				source += std::string(" (") + axis(binding.Swizzle.x) + ", " + axis(binding.Swizzle.y) + ", " + axis(binding.Swizzle.z) + ")";
 			}
 			return source;
 		}

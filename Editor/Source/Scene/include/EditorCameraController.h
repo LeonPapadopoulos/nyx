@@ -1,6 +1,6 @@
 #pragma once
 
-#include "InputSystem.h"
+#include "FlyCameraInput.h"
 
 #include <glm/glm.hpp>
 
@@ -20,11 +20,11 @@ namespace Nyx::Editor
 		virtual void SetCamera(uint64_t sceneViewId, const glm::vec3& position, const glm::vec3& rotationRadians) = 0;
 	};
 
-	// Flies the free cameras of the scene views, through two input contexts:
-	// - EditorFlyCamera, on while a view is hovered or focused: Move (W/A/S/D, Q/E down and up),
-	//   Speed (the wheel) and LookButton (the right mouse button);
+	// Flies the free cameras of the scene views, through the contexts of a FlyCameraInput:
+	// - EditorFlyCamera, on while a view is hovered or focused: W/A/S/D and the left stick move,
+	//   E/Q and the triggers go up and down, the right stick turns, the wheel changes the speed;
 	// - EditorMouseLook, above it, on while the right mouse button is held after a click into a
-	//   view: Look (the mouse), with the cursor captured in that view's window. Looking keeps
+	//   view: the mouse looks around, with the cursor captured in that view's window. Looking keeps
 	//   flying that view until the button is let go, wherever the cursor would be.
 	// ImGui's context takes the keys while typing and the mouse over other UI, so neither moves
 	// the camera.
@@ -56,13 +56,9 @@ namespace Nyx::Editor
 			float SpeedStep = 1.2f;
 			float MinSpeed = 0.25f;
 			float MaxSpeed = 100.0f;
-
-			// Radians per pixel the mouse moves; the Look binding's sensitivity
-			float LookSensitivity = 0.003f;
 		};
 
 		static constexpr int FlyCameraPriority = 100;
-		static constexpr int MouseLookPriority = 110;
 
 		// Adds the camera's actions and contexts to the input system, which must outlive it
 		explicit EditorCameraController(Nyx::Input::InputSystem& input);
@@ -89,35 +85,14 @@ namespace Nyx::Editor
 			return CameraSettings;
 		}
 
-		struct Actions
+		const Nyx::Input::FlyCameraInput& GetInput() const
 		{
-			Nyx::Input::ActionHandle Move;
-			Nyx::Input::ActionHandle Look;
-			Nyx::Input::ActionHandle Speed;
-			Nyx::Input::ActionHandle LookButton;
-		};
-
-		const Actions& GetActions() const
-		{
-			return CameraActions;
-		}
-
-		Nyx::Input::ContextHandle GetFlyCameraContext() const
-		{
-			return FlyCameraContext;
-		}
-
-		Nyx::Input::ContextHandle GetMouseLookContext() const
-		{
-			return MouseLookContext;
+			return Fly;
 		}
 
 	private:
-		Nyx::Input::InputSystem& Input;
+		Nyx::Input::FlyCameraInput Fly;
 		Settings CameraSettings;
-		Actions CameraActions;
-		Nyx::Input::ContextHandle FlyCameraContext;
-		Nyx::Input::ContextHandle MouseLookContext;
 
 		// The panels' reports since the last Update(): of the last frame drawn
 		std::vector<ViewState> Views;

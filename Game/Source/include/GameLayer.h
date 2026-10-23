@@ -2,6 +2,7 @@
 
 #include "AssetResolver.h"
 #include "Entity.h"
+#include "GameFlyCamera.h"
 #include "GameWorld.h"
 #include "InputSystem.h"
 #include "Layer.h"
@@ -71,6 +72,9 @@ namespace Nyx::Game
 		bool bGameViewHovered = false;
 
 		Nyx::Input::InputSystem* Input = nullptr;
+
+		// Flies the primary camera; made in OnAttach
+		std::unique_ptr<GameFlyCamera> FlyCamera;
 
 		// Debug builds: Ctrl+Alt+Shift+C crashes the game on purpose, to try the editor's crash card;
 		// F3 shows the physics debug view

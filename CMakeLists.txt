@@ -37,6 +37,19 @@ option(NYX_PROFILER "Build the Tracy profiler into the engine and its programs" 
 add_subdirectory(Dependencies/spdlog)
 add_subdirectory(Dependencies/glfw)
 add_subdirectory(Dependencies/glm)
+
+# SDL3, for gamepads only: joystick, gamepad, haptic, sensor and HIDAPI, built static. No video,
+# audio or rendering; GLFW keeps the window, keyboard and mouse.
+foreach(SDL_PART AUDIO VIDEO GPU RENDER CAMERA POWER DIALOG TRAY)
+    set(SDL_${SDL_PART} OFF CACHE BOOL "" FORCE)
+endforeach()
+foreach(SDL_PART JOYSTICK HAPTIC HIDAPI SENSOR STATIC)
+    set(SDL_${SDL_PART} ON CACHE BOOL "" FORCE)
+endforeach()
+foreach(SDL_PART SHARED TEST_LIBRARY TESTS EXAMPLES INSTALL UNINSTALL)
+    set(SDL_${SDL_PART} OFF CACHE BOOL "" FORCE)
+endforeach()
+add_subdirectory(Dependencies/SDL)
 add_subdirectory(ThirdParty/imgui)
 add_subdirectory(ThirdParty/stb_image)
 if(NYX_PROFILER)
@@ -81,6 +94,7 @@ add_subdirectory(Editor/Source)
 add_subdirectory(Game/Source)
 add_subdirectory(Tools/NyxDump)
 add_subdirectory(Tools/NyxShaderCompiler)
+add_subdirectory(Tools/NyxPadCheck)
 
 # nyx_add_game_programs([MODULE <name>] [PROJECT_ROOT <folder>])
 #
@@ -141,6 +155,10 @@ endif()
 
 if(TARGET uninstall)
     set_property(TARGET uninstall PROPERTY FOLDER "ThirdParty/glfw3")
+endif()
+
+if(TARGET SDL3-static)
+    set_property(TARGET SDL3-static PROPERTY FOLDER "ThirdParty")
 endif()
 
 if(TARGET update_mappings)

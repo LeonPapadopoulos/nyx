@@ -19,8 +19,22 @@ namespace Nyx::Input
 		void Press(InputDeviceId device, ControlId control, uint64_t timeUs = 0);
 		void Release(InputDeviceId device, ControlId control, uint64_t timeUs = 0);
 
-		// Buttons: 1 down, 0 up. Relative controls: how much they changed.
-		void SetValue(InputDeviceId device, ControlId control, glm::vec2 value, uint64_t timeUs = 0);
+		// Buttons: 1 down, 0 up. Relative controls: how much they changed. Analog: the value now.
+		void SetValue(InputDeviceId device, ControlId control, glm::vec3 value, uint64_t timeUs = 0);
+		void SetValue(InputDeviceId device, ControlId control, glm::vec2 value, uint64_t timeUs = 0)
+		{
+			SetValue(device, control, glm::vec3(value, 0.0f), timeUs);
+		}
+
+		// What the input system asked the device to do, e.g. rumble, in the order it asked
+		const std::vector<std::pair<InputDeviceId, DeviceOutput>>& GetOutputs() const
+		{
+			return Outputs;
+		}
+
+		// Changes what is known about a device, e.g. its model, capabilities or battery; its id and
+		// kind stay
+		void SetDeviceInfo(InputDeviceId device, InputDeviceInfo info, uint64_t timeUs = 0);
 
 		void SetFocus(bool bFocused, uint64_t timeUs = 0);
 
@@ -31,6 +45,7 @@ namespace Nyx::Input
 
 		void Poll(std::vector<InputEvent>& outEvents) override;
 		void ApplyCursor(const CursorRequest& request) override;
+		void ApplyOutput(InputDeviceId device, const DeviceOutput& output) override;
 
 		// What the input system last made the cursor, and how often it applied one
 		const CursorRequest& GetAppliedCursor() const
@@ -45,6 +60,8 @@ namespace Nyx::Input
 
 	private:
 		std::vector<InputEvent> Pending;
+		std::vector<InputDeviceInfo> Devices;
+		std::vector<std::pair<InputDeviceId, DeviceOutput>> Outputs;
 		CursorRequest AppliedCursor;
 		int CursorApplications = 0;
 	};

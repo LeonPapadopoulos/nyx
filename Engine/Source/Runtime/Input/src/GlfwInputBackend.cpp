@@ -320,7 +320,7 @@ namespace Nyx::Input
 		return found != Windows.end() ? &found->second : nullptr;
 	}
 
-	void GlfwInputBackend::PushControl(ControlId control, glm::vec2 value)
+	void GlfwInputBackend::PushControl(ControlId control, glm::vec3 value)
 	{
 		InputEvent event;
 		event.Kind = EInputEventKind::Control;
@@ -359,7 +359,7 @@ namespace Nyx::Input
 		{
 			if (const std::optional<EKey> mapped = ToKey(key))
 			{
-				Instance->PushControl(Key(*mapped), glm::vec2(action == GLFW_PRESS ? 1.0f : 0.0f, 0.0f));
+				Instance->PushControl(Key(*mapped), glm::vec3(action == GLFW_PRESS ? 1.0f : 0.0f, 0.0f, 0.0f));
 			}
 		}
 
@@ -379,7 +379,7 @@ namespace Nyx::Input
 
 		if (const std::optional<EMouseControl> mapped = ToMouseButton(button))
 		{
-			Instance->PushControl(Mouse(*mapped), glm::vec2(action == GLFW_PRESS ? 1.0f : 0.0f, 0.0f));
+			Instance->PushControl(Mouse(*mapped), glm::vec3(action == GLFW_PRESS ? 1.0f : 0.0f, 0.0f, 0.0f));
 		}
 
 		const WindowState* state = Instance->FindWindow(window);
@@ -405,7 +405,7 @@ namespace Nyx::Input
 				const glm::dvec2 delta = glm::dvec2(x, y) - state->LastCursor;
 				if (delta != glm::dvec2(0.0))
 				{
-					Instance->PushControl(Mouse(EMouseControl::Delta), glm::vec2(delta));
+					Instance->PushControl(Mouse(EMouseControl::Delta), glm::vec3(glm::vec2(delta), 0.0f));
 				}
 			}
 			state->LastCursor = glm::dvec2(x, y);
@@ -425,7 +425,7 @@ namespace Nyx::Input
 			return;
 		}
 
-		Instance->PushControl(Mouse(EMouseControl::Wheel), glm::vec2(static_cast<float>(xOffset), static_cast<float>(yOffset)));
+		Instance->PushControl(Mouse(EMouseControl::Wheel), glm::vec3(static_cast<float>(xOffset), static_cast<float>(yOffset), 0.0f));
 
 		const WindowState* state = Instance->FindWindow(window);
 		if (const auto previous = state ? state->PreviousScroll : nullptr)

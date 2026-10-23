@@ -10,11 +10,11 @@ namespace Nyx::Input
 	// One control in one frame
 	struct ControlState
 	{
-		// Buttons: 1 down, 0 up. Relative controls: the sum of the frame.
-		glm::vec2 Value{ 0.0f };
+		// Buttons: 1 down, 0 up. Relative controls: the sum of the frame. Analog: the last value.
+		glm::vec3 Value{ 0.0f };
 
 		// Value at the end of the previous frame
-		glm::vec2 PreviousValue{ 0.0f };
+		glm::vec3 PreviousValue{ 0.0f };
 
 		// How often the button went down and up in this frame. A tap shorter than a frame is one
 		// of each, while the button is up at the end of the frame.
@@ -43,7 +43,8 @@ namespace Nyx::Input
 		};
 
 		// Of all devices of the control's kind together: a button is down while any of them holds
-		// it, presses and relative values add up. A control no device has is up and zero.
+		// it, presses and relative values add up, and of analog values (sticks, triggers) the
+		// longest counts. A control no device has is up and zero.
 		ControlState GetState(ControlId control) const;
 
 		// Of one device; up and zero for a device that isn't there
@@ -55,7 +56,7 @@ namespace Nyx::Input
 		bool WasPressed(ControlId control) const;
 		bool WasReleased(ControlId control) const;
 
-		glm::vec2 GetValue(ControlId control) const;
+		glm::vec3 GetValue(ControlId control) const;
 
 		const std::vector<DeviceState>& GetDevices() const
 		{
@@ -64,7 +65,8 @@ namespace Nyx::Input
 
 		const DeviceState* FindDevice(InputDeviceId device) const;
 
-		// Whether one of the program's windows has the focus. Without it, no button is down.
+		// Whether one of the program's windows has the focus. Without it, no key or mouse button
+		// is down; gamepads keep reporting (the Unfocused context takes them).
 		bool HasFocus() const
 		{
 			return bFocused;
@@ -98,7 +100,7 @@ namespace Nyx::Input
 
 		DeviceState* FindDevice(InputDeviceId device);
 
-		// Releases every held button of the device, at the given time
+		// Releases every held button of the device, at the given time, and zeroes its sticks and triggers
 		static void ReleaseAll(DeviceState& device, uint64_t timeUs);
 
 		std::vector<DeviceState> Devices;

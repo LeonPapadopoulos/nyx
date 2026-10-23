@@ -4,6 +4,7 @@
 #include "EditorRenderer.h"
 #include "Log.h"
 #include "Profiler.h"
+#include "SdlGamepadBackend.h"
 #include "Window.h"
 
 #include <chrono>
@@ -30,6 +31,12 @@ namespace Nyx
 		if (Nyx::Input::IInputBackend* windowInput = Window->GetInputBackend())
 		{
 			Input.AddBackend(*windowInput);
+		}
+
+		Gamepads = std::make_unique<Nyx::Input::SdlGamepadBackend>();
+		if (Gamepads->IsAvailable())
+		{
+			Input.AddBackend(*Gamepads);
 		}
 
 		Renderer = Nyx::CreateRenderer();

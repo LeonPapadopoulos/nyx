@@ -61,19 +61,30 @@ namespace
 			const std::optional<ControlId> parsed = ParseControlPath(GetControlPath(key));
 			Require(parsed && *parsed == key, "Key path doesn't round trip: " + GetControlPath(key));
 		}
-		for (uint16_t index = 0; index < GetControlCount(EDeviceKind::Mouse); ++index)
+		for (const EDeviceKind kind : { EDeviceKind::Mouse, EDeviceKind::Gamepad })
 		{
-			const ControlId control{ EDeviceKind::Mouse, index };
-			const std::optional<ControlId> parsed = ParseControlPath(GetControlPath(control));
-			Require(parsed && *parsed == control, "Mouse path doesn't round trip: " + GetControlPath(control));
+			for (uint16_t index = 0; index < GetControlCount(kind); ++index)
+			{
+				const ControlId control{ kind, index };
+				const std::optional<ControlId> parsed = ParseControlPath(GetControlPath(control));
+				Require(parsed && *parsed == control, "Path doesn't round trip: " + GetControlPath(control));
+			}
 		}
+		Require(GetControlPath(Gamepad(EGamepadControl::FaceSouth)) == "Gamepad/FaceSouth", "FaceSouth's path");
+		Require(ParseControlPath("gamepad/righttrigger") == Gamepad(EGamepadControl::RightTrigger), "Gamepad paths ignore case too");
+
+		Require(IsButton(Gamepad(EGamepadControl::TouchpadButton)) && IsButton(Gamepad(EGamepadControl::DpadLeft)), "Pad buttons are buttons");
+		Require(!IsButton(Gamepad(EGamepadControl::LeftStick)) && !IsButton(Gamepad(EGamepadControl::RightTrigger)) &&
+				!IsButton(Gamepad(EGamepadControl::Gyro)) && !IsButton(Gamepad(EGamepadControl::Touchpad0)),
+			"Sticks, triggers, sensors and touchpad fingers are analog");
+		Require(!IsRelative(Gamepad(EGamepadControl::LeftStick)), "Sticks are absolute");
 
 		Require(GetControlPath(W) == "Keyboard/W", "W's path is " + GetControlPath(W));
 		Require(GetControlPath(Key(EKey::X)) == "Keyboard/X", "X's path is " + GetControlPath(Key(EKey::X)));
 		Require(GetControlPath(Delta) == "Mouse/Delta", "Delta's path is " + GetControlPath(Delta));
 		Require(ParseControlPath("keyboard/space") == Space, "Paths should be read ignoring case");
 		Require(!ParseControlPath("Keyboard/Nope"), "An unknown key was read");
-		Require(!ParseControlPath("Gamepad/FaceSouth"), "An unknown device was read");
+		Require(!ParseControlPath("Joystick/Throttle"), "An unknown device was read");
 		Require(!ParseControlPath("Keyboard"), "A path without a control was read");
 
 		Require(IsButton(W) && IsButton(RightButton), "Keys and mouse buttons are buttons");
@@ -153,12 +164,12 @@ namespace
 		rig.Backend.SetValue(rig.Mouse, Wheel, { 0.0f, 1.0f }, rig.At(1000));
 
 		const InputFrame& frame = rig.NextFrame();
-		Require(frame.GetValue(Delta) == glm::vec2(5.0f, 3.0f), "Mouse/Delta should be the sum of the frame");
-		Require(frame.GetValue(Wheel) == glm::vec2(0.0f, 2.0f), "Mouse/Wheel should be the sum of the frame");
+		Require(frame.GetValue(Delta) == glm::vec3(5.0f, 3.0f, 0.0f), "Mouse/Delta should be the sum of the frame");
+		Require(frame.GetValue(Wheel) == glm::vec3(0.0f, 2.0f, 0.0f), "Mouse/Wheel should be the sum of the frame");
 
 		const InputFrame& next = rig.NextFrame();
-		Require(next.GetValue(Delta) == glm::vec2(0.0f), "Mouse/Delta should start at zero each frame");
-		Require(next.GetState(Delta).PreviousValue == glm::vec2(5.0f, 3.0f), "The previous frame's delta should be kept");
+		Require(next.GetValue(Delta) == glm::vec3(0.0f), "Mouse/Delta should start at zero each frame");
+		Require(next.GetState(Delta).PreviousValue == glm::vec3(5.0f, 3.0f, 0.0f), "The previous frame's delta should be kept");
 	}
 
 	// Two backends' events are applied in the order they happened, not backend by backend
@@ -240,6 +251,62 @@ namespace
 		Require(rig.NextFrame().IsDown(Space), "With the focus back, keys count again");
 	}
 
+	// Sticks report where they are: the frame keeps the last value. Of two pads, the stick pushed
+	// further counts, not the sum.
+	void TestGamepadAnalogValues()
+	{
+		Rig rig;
+		const InputDeviceId first = rig.Backend.AddDevice(EDeviceKind::Gamepad, "First pad", rig.At(1000));
+		const InputDeviceId second = rig.Backend.AddDevice(EDeviceKind::Gamepad, "Second pad", rig.At(1000));
+		const ControlId stick = Gamepad(EGamepadControl::LeftStick);
+		rig.Backend.SetValue(first, stick, glm::vec3(0.2f, 0.1f, 0.0f), rig.At(1000));
+		rig.Backend.SetValue(first, stick, glm::vec3(0.5f, -0.4f, 0.0f), rig.At(1000));
+		rig.Backend.SetValue(second, stick, glm::vec3(-0.1f, 0.0f, 0.0f), rig.At(1000));
+
+		const InputFrame& frame = rig.NextFrame();
+		Require(frame.GetValue(stick) == glm::vec3(0.5f, -0.4f, 0.0f), "The stick pushed further counts, as last reported");
+		Require(rig.NextFrame().GetValue(stick) == glm::vec3(0.5f, -0.4f, 0.0f), "A stick keeps its value until it reports another");
+
+		// A pad that goes away doesn't leave its stick pushed
+		rig.Backend.RemoveDevice(first, rig.At(1000));
+		Require(rig.NextFrame().GetValue(stick) == glm::vec3(-0.1f, 0.0f, 0.0f), "The removed pad's stick is gone, the other one counts");
+	}
+
+	// Pads belong to no window: they keep reporting without the focus (the Unfocused context takes
+	// them in the router), while keys and mouse buttons are released
+	void TestGamepadsWithoutFocus()
+	{
+		Rig rig;
+		const InputDeviceId pad = rig.Backend.AddDevice(EDeviceKind::Gamepad, "Pad", rig.At(1000));
+		rig.Backend.Press(pad, Gamepad(EGamepadControl::FaceSouth), rig.At(1000));
+		rig.Backend.Press(rig.Keyboard, W, rig.At(1000));
+		rig.NextFrame();
+
+		rig.Backend.SetFocus(false, rig.At(1000));
+		rig.Backend.Press(pad, Gamepad(EGamepadControl::FaceNorth), rig.At(1000));
+		const InputFrame& frame = rig.NextFrame();
+		Require(!frame.IsDown(W), "Keys are released with the focus");
+		Require(frame.IsDown(Gamepad(EGamepadControl::FaceSouth)) && frame.IsDown(Gamepad(EGamepadControl::FaceNorth)),
+			"Pad buttons stay down and still come in");
+	}
+
+	void TestDeviceChanges()
+	{
+		Rig rig;
+		const InputDeviceId pad = rig.Backend.AddDevice(EDeviceKind::Gamepad, "Pad", rig.At(1000));
+		rig.NextFrame();
+
+		InputDeviceInfo info = rig.Input.GetFrame().FindDevice(pad)->Info;
+		info.Model = EGamepadModel::DualSense;
+		info.BatteryPercent = 40;
+		info.Kind = EDeviceKind::Keyboard; // Kept as it was
+		rig.Backend.SetDeviceInfo(pad, info, rig.At(1000));
+		const InputFrame::DeviceState* device = rig.NextFrame().FindDevice(pad);
+		Require(device && device->Info.Model == EGamepadModel::DualSense && device->Info.BatteryPercent == 40, "A device's info changes");
+		Require(device->Info.Kind == EDeviceKind::Gamepad && device->Controls.size() == GetControlCount(EDeviceKind::Gamepad),
+			"Its kind and controls stay");
+	}
+
 	// The cursor follows the context stack (NyxInputRouterTests); here only that it reaches the
 	// backends at the end of every frame
 	void TestCursorAppliedEachFrame()
@@ -269,6 +336,9 @@ int main()
 		TestTwoKeyboardsHoldTogether();
 		TestDeviceRemovedWhileHeld();
 		TestFocusLossReleasesEverything();
+		TestGamepadAnalogValues();
+		TestGamepadsWithoutFocus();
+		TestDeviceChanges();
 		TestCursorAppliedEachFrame();
 	}
 	catch (const std::exception& error)

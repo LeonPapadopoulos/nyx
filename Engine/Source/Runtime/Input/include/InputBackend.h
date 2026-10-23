@@ -1,5 +1,6 @@
 #pragma once
 
+#include "InputOutput.h"
 #include "InputTypes.h"
 
 #include <vector>
@@ -23,6 +24,12 @@ namespace Nyx::Input
 		// Makes the cursor what the frame asked for. Called at the end of every frame; mostly
 		// with what it was already.
 		virtual void ApplyCursor(const CursorRequest& /*request*/)
+		{
+		}
+
+		// Sends what the frame asked of one of the backend's devices: rumble, light and the like,
+		// only what the device can do (InputDeviceInfo::Capabilities)
+		virtual void ApplyOutput(InputDeviceId /*device*/, const DeviceOutput& /*output*/)
 		{
 		}
 	};

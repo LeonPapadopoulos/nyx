@@ -3,6 +3,9 @@
 #include "Log.h"
 
 #include <algorithm>
+#include <array>
+#include <optional>
+#include <utility>
 
 namespace Nyx::Input
 {
@@ -76,7 +79,15 @@ namespace Nyx::Input
 		std::vector<InputEvent> events;
 		for (IInputBackend* backend : Backends)
 		{
+			const size_t first = events.size();
 			backend->Poll(events);
+			for (size_t index = first; index < events.size(); ++index)
+			{
+				if (events[index].Kind == EInputEventKind::DeviceAdded)
+				{
+					DeviceBackends[events[index].Device.Id.Value] = backend;
+				}
+			}
 		}
 
 		// Each backend's events are in order already; this interleaves the backends'. Stable, so
@@ -130,6 +141,110 @@ namespace Nyx::Input
 		for (IInputBackend* backend : Backends)
 		{
 			backend->ApplyCursor(cursor);
+		}
+
+		SendOutput();
+	}
+
+	void InputSystem::SendOutput()
+	{
+		User.OutputRecords.clear();
+		DeviceOutput output = std::exchange(User.PendingOutput, DeviceOutput{});
+		if (output.IsEmpty())
+		{
+			return;
+		}
+
+		if (output.Rumble)
+		{
+			output.Rumble->Low *= User.HapticsStrength;
+			output.Rumble->High *= User.HapticsStrength;
+		}
+		if (output.TriggerRumble)
+		{
+			output.TriggerRumble->Left *= User.HapticsStrength;
+			output.TriggerRumble->Right *= User.HapticsStrength;
+		}
+
+		// Each part that was asked for: what a device needs for it, and what it is
+		struct Part
+		{
+			EDeviceCapability Needs;
+			const char* Missing;
+			std::string What;
+		};
+		std::array<std::optional<Part>, 6> parts;
+		if (output.Rumble)
+		{
+			parts[0] = Part{ EDeviceCapability::Rumble, "no rumble", DescribeRumble(*output.Rumble) };
+		}
+		if (output.TriggerRumble)
+		{
+			parts[1] = Part{ EDeviceCapability::TriggerRumble, "no trigger rumble", DescribeTriggerRumble(*output.TriggerRumble) };
+		}
+		if (output.LeftTriggerEffect)
+		{
+			parts[2] = Part{ EDeviceCapability::AdaptiveTriggers, "no adaptive triggers", DescribeTriggerEffect(ETrigger::Left, *output.LeftTriggerEffect) };
+		}
+		if (output.RightTriggerEffect)
+		{
+			parts[3] = Part{ EDeviceCapability::AdaptiveTriggers, "no adaptive triggers", DescribeTriggerEffect(ETrigger::Right, *output.RightTriggerEffect) };
+		}
+		if (output.LightColor)
+		{
+			parts[4] = Part{ EDeviceCapability::Lightbar, "no light", DescribeLightColor(*output.LightColor) };
+		}
+		if (output.PlayerIndex)
+		{
+			parts[5] = Part{ EDeviceCapability::PlayerLeds, "no player LEDs", "Player " + std::to_string(*output.PlayerIndex) };
+		}
+
+		bool bAnyGamepad = false;
+		for (const InputFrame::DeviceState& device : Frame.GetDevices())
+		{
+			if (device.Info.Kind != EDeviceKind::Gamepad || device.bRemoved)
+			{
+				continue;
+			}
+			bAnyGamepad = true;
+
+			// Whether the pad can do the part; recorded either way
+			const std::string name = device.Info.Model != EGamepadModel::Unknown ? GetGamepadModelName(device.Info.Model) : device.Info.Name;
+			const auto offer = [&](size_t index)
+			{
+				if (!parts[index])
+				{
+					return false;
+				}
+				const bool bCan = HasCapability(device.Info.Capabilities, parts[index]->Needs);
+				User.OutputRecords.push_back({ device.Info.Id, parts[index]->What, bCan, bCan ? std::string() : name + " has " + parts[index]->Missing });
+				return bCan;
+			};
+
+			DeviceOutput sent;
+			sent.Rumble = offer(0) ? output.Rumble : std::nullopt;
+			sent.TriggerRumble = offer(1) ? output.TriggerRumble : std::nullopt;
+			sent.LeftTriggerEffect = offer(2) ? output.LeftTriggerEffect : std::nullopt;
+			sent.RightTriggerEffect = offer(3) ? output.RightTriggerEffect : std::nullopt;
+			sent.LightColor = offer(4) ? output.LightColor : std::nullopt;
+			sent.PlayerIndex = offer(5) ? output.PlayerIndex : std::nullopt;
+
+			const auto backend = DeviceBackends.find(device.Info.Id.Value);
+			if (!sent.IsEmpty() && backend != DeviceBackends.end())
+			{
+				backend->second->ApplyOutput(device.Info.Id, sent);
+			}
+		}
+
+		if (!bAnyGamepad)
+		{
+			for (const std::optional<Part>& asked : parts)
+			{
+				if (asked)
+				{
+					User.OutputRecords.push_back({ InputDeviceId{}, asked->What, false, "No gamepad connected" });
+				}
+			}
 		}
 	}
 

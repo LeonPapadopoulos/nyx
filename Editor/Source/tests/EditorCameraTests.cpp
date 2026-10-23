@@ -120,7 +120,7 @@ namespace
 		Rig rig;
 		rig.Main.bHovered = true;
 		rig.Settle();
-		Require(rig.Input.GetUser().IsContextActive(rig.Controller.GetFlyCameraContext()), "Hovering a view turns the fly camera on");
+		Require(rig.Input.GetUser().IsContextActive(rig.Controller.GetInput().GetFlyContext()), "Hovering a view turns the fly camera on");
 
 		rig.Backend.Press(rig.Keyboard, Key(EKey::W), rig.Later());
 		rig.Frame();
@@ -153,8 +153,9 @@ namespace
 		rig.Frame();
 		Require(rig.Of(MainView).Position == glm::vec3(0.0f), "Keys typed into a text field shouldn't move the camera");
 
-		const std::vector<const BindingTrace*> traces = rig.Input.GetUser().GetTraces(rig.Controller.GetActions().Move);
-		Require(traces.size() == 1 && traces[0]->Outcome == EBindingOutcome::Taken && traces[0]->TakenBy == rig.Input.GetImGuiContext(),
+		// Move's first binding is the keys; the second, the left stick, ImGui doesn't take
+		const std::vector<const BindingTrace*> traces = rig.Input.GetUser().GetTraces(rig.Controller.GetInput().GetActions().Move);
+		Require(traces.size() == 2 && traces[0]->Outcome == EBindingOutcome::Taken && traces[0]->TakenBy == rig.Input.GetImGuiContext(),
 			"Move's trace should say ImGui took the keys");
 	}
 
@@ -168,7 +169,7 @@ namespace
 		rig.Backend.Press(rig.Keyboard, Key(EKey::W), rig.Later());
 		rig.Frame();
 		Require(rig.Of(MainView).Position == glm::vec3(0.0f), "A view showing the game's camera shouldn't fly");
-		Require(!rig.Input.GetUser().IsContextActive(rig.Controller.GetFlyCameraContext()), "Nor turn the fly camera on");
+		Require(!rig.Input.GetUser().IsContextActive(rig.Controller.GetInput().GetFlyContext()), "Nor turn the fly camera on");
 	}
 
 	void TestMouseLook()
@@ -191,7 +192,7 @@ namespace
 		rig.Floating.bHovered = false;
 		rig.Backend.SetValue(rig.Mouse, Mouse(EMouseControl::Delta), { 100.0f, -20.0f }, rig.Later());
 		rig.Frame();
-		const float sensitivity = rig.Controller.GetSettings().LookSensitivity;
+		const float sensitivity = rig.Controller.GetInput().GetSettings().MouseSensitivity;
 		Require(Near(rig.Of(FloatingView).Rotation.y, -100.0f * sensitivity), "Moving right should turn right (negative around Y)");
 		Require(Near(rig.Of(FloatingView).Rotation.x, 20.0f * sensitivity), "Moving up should look up");
 

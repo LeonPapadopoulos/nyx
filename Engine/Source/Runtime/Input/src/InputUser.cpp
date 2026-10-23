@@ -9,10 +9,14 @@ namespace Nyx::Input
 {
 	namespace
 	{
-		constexpr size_t DeviceKindCount = 2;
+		constexpr size_t DeviceKindCount = static_cast<size_t>(EDeviceKind::Count);
 
 		// How far the mouse must move in a frame to count as used on purpose, in pixels
 		constexpr float MouseUseDistance = 3.0f;
+
+		// How far a stick or trigger must be pushed to count as used on purpose: past a drifting
+		// stick's rest
+		constexpr float AnalogUseDistance = 0.3f;
 
 		bool IsHeldPhase(EActionPhase phase)
 		{
@@ -88,7 +92,7 @@ namespace Nyx::Input
 			for (const InputFrame::DeviceState& device : frame.GetDevices())
 			{
 				const ControlState state = frame.GetState(device.Info.Id, control);
-				if (state.Value != glm::vec2(0.0f) || state.Presses > 0 || state.Releases > 0)
+				if (state.Value != glm::vec3(0.0f) || state.Presses > 0 || state.Releases > 0)
 				{
 					return device.Info.Id;
 				}
@@ -159,6 +163,38 @@ namespace Nyx::Input
 		}
 		Pending[index].bPending = false;
 		return true;
+	}
+
+	void InputUser::Rumble(const RumbleOutput& rumble)
+	{
+		PendingOutput.MergeFrom({ .Rumble = rumble });
+	}
+
+	void InputUser::TriggerRumble(const TriggerRumbleOutput& rumble)
+	{
+		PendingOutput.MergeFrom({ .TriggerRumble = rumble });
+	}
+
+	void InputUser::SetTriggerEffect(ETrigger trigger, const TriggerEffect& effect)
+	{
+		DeviceOutput output;
+		(trigger == ETrigger::Left ? output.LeftTriggerEffect : output.RightTriggerEffect) = effect;
+		PendingOutput.MergeFrom(output);
+	}
+
+	void InputUser::SetLightColor(const glm::vec3& color)
+	{
+		PendingOutput.MergeFrom({ .LightColor = color });
+	}
+
+	void InputUser::SetPlayerIndex(int playerIndex)
+	{
+		PendingOutput.MergeFrom({ .PlayerIndex = playerIndex });
+	}
+
+	void InputUser::SetHapticsStrength(float strength)
+	{
+		HapticsStrength = std::clamp(strength, 0.0f, 1.0f);
 	}
 
 	void InputUser::SetContextActive(ContextHandle context, bool bActive, ContextActivation activation)
@@ -342,26 +378,29 @@ namespace Nyx::Input
 							runtime.PressUs = now;
 						}
 					}
-					else if (binding.SourceAxis >= 0 && binding.SourceAxis < 2)
-					{
-						raw.x = state.Value[binding.SourceAxis];
-					}
 					else
 					{
-						raw = glm::vec3(state.Value, 0.0f);
+						for (int axis = 0; axis < 3; ++axis)
+						{
+							const int source = binding.Swizzle[axis];
+							raw[axis] = source >= 0 && source < 3 ? state.Value[source] : 0.0f;
+						}
 					}
 				}
 				else
 				{
 					for (const BindingControl* control : available)
 					{
-						if (frame.IsDown(control->Control))
+						// Buttons add 1 while down, analog controls (triggers) how far they are pushed
+						const float amount = IsButton(control->Control) ? (frame.IsDown(control->Control) ? 1.0f : 0.0f)
+																		: glm::length(frame.GetValue(control->Control));
+						if (amount > 0.0f)
 						{
-							raw += control->Direction;
+							raw += control->Direction * amount;
 							trace.Device = trace.Device.IsValid() ? trace.Device : FindActiveDevice(frame, control->Control);
 						}
 					}
-					if (binding.Composite->bNormalize && glm::length(raw) > 0.0f)
+					if (binding.Composite->bNormalize && glm::length(raw) > 1.0f)
 					{
 						raw = glm::normalize(raw);
 					}
@@ -616,9 +655,28 @@ namespace Nyx::Input
 					LastUsedDevice = event.Device.Id;
 				}
 			}
-			else if (IsRelative(event.Control) ? event.Value != glm::vec2(0.0f) : event.Value.x != 0.0f)
+			else if (IsButton(event.Control))
 			{
-				LastUsedDevice = event.Device.Id;
+				if (event.Value.x != 0.0f)
+				{
+					LastUsedDevice = event.Device.Id;
+				}
+			}
+			else if (IsRelative(event.Control))
+			{
+				if (event.Value != glm::vec3(0.0f))
+				{
+					LastUsedDevice = event.Device.Id;
+				}
+			}
+			else if (event.Control == Gamepad(EGamepadControl::LeftStick) || event.Control == Gamepad(EGamepadControl::RightStick) ||
+				event.Control == Gamepad(EGamepadControl::LeftTrigger) || event.Control == Gamepad(EGamepadControl::RightTrigger))
+			{
+				// Sensors never count: a pad on the desk reports them all the time
+				if (glm::length(event.Value) >= AnalogUseDistance)
+				{
+					LastUsedDevice = event.Device.Id;
+				}
 			}
 		}
 	}

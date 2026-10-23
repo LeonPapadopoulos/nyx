@@ -12,6 +12,7 @@ editor and the game do, and the [README](../README.md) how to build them.
 | `NyxShaderCompiler.exe` | Compiles shaders with Slang: the engine's at build time (target `NyxShaders`), and on request at run time, for live shader reload. |
 | `NyxDump.exe` | Prints `.nyxscene` and `.nyxlinklog` files as text. Only reads files. |
 | `NyxHeaderTool.exe` | Runs during the build: generates the reflection code from the engine's headers. |
+| `NyxPadCheck.exe` | Lists gamepads, prints what they report and tries their rumble, trigger effects and light, for checking pads by hand. |
 | `NyxStartupPreview.exe` | Previews the startup banner ([Startup/README.md](../Startup/README.md)). |
 
 All connections are TCP on `127.0.0.1` (`Net::Connection`, `Net::Listener` in
@@ -47,7 +48,7 @@ doesn't allow, and on a table that goes round in a circle, so a new dependency s
 | `Core` | Logging, assertions, paths, text helpers, child processes, the crash handler, file watching, the frame rate limiter, the fixed step clock, `BinaryArchive`, the profiler macros (`Profiler.h`), debug drawing (`DebugDraw`) | — |
 | `Reflection` | Type and property metadata, and the `NYX_REFLECT` and `NYX_PROPERTY` macros; not under `Runtime` | — |
 | `Net` | TCP connections and the messages they carry | Core |
-| `Input` | Keyboard and mouse, gathered from backends into one `InputFrame` per frame; the router: context stacks, actions, the value pipeline, triggers and their traces | Core, Scene |
+| `Input` | Keyboard, mouse and gamepads (through SDL3), gathered from backends into one `InputFrame` per frame; the router: context stacks, actions, the value pipeline, triggers and their traces | Core, Scene |
 | `Scene` | Entities and components (the physics components among them), the component registry, scene files, the tagged binary format, surface anchors (`SurfaceAnchor`: a point, normal and tangent on an entity that move with it), surface decals (`SurfaceDecalComponent`), a camera's view and projection and the ray back through a point of its picture (`CameraProjection.h`) | Core, Reflection |
 | `Physics` | Rigid bodies, their shapes, collisions and the physics step, on Jolt (`PhysicsWorld`); Jolt's headers stay inside | Core |
 | `Sim` | The game world: its entities, their physics bodies kept in step with the physics components (`PhysicsBodies`), and the simulation systems each fixed step runs, in order (`GameWorld`, `ISimSystem`), the entity a ray hits first (`PickPhysicsBody()`) | Core, Scene, Physics |

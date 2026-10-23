@@ -8,6 +8,7 @@
 #include "InputUser.h"
 
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace Nyx::Input
@@ -89,7 +90,7 @@ namespace Nyx::Input
 		// decides the actions
 		void BeginFrame(uint64_t nowUs);
 
-		// Applies the cursor the stack asks for
+		// Applies the cursor the stack asks for, and sends the frame's output to the gamepads
 		void EndFrame();
 
 		const InputFrame& GetFrame() const
@@ -106,7 +107,12 @@ namespace Nyx::Input
 	private:
 		void UpdateSystemContexts();
 
+		// Sends the user's output of the frame to their gamepads, what each can do
+		void SendOutput();
+
 		std::vector<IInputBackend*> Backends;
+		// Which backend reported each device, for sending output back
+		std::unordered_map<uint32_t, IInputBackend*> DeviceBackends;
 		InputFrame Frame;
 		uint64_t PreviousFrameUs = 0;
 
