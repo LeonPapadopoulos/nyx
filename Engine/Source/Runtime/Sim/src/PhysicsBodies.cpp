@@ -248,23 +248,34 @@ namespace Nyx
 		NYX_PROFILE_SCOPE("PhysicsBodies::WriteBackAfterStep");
 		for (auto& [key, tracked] : Bodies)
 		{
-			if (!tracked.bDynamic || !world.IsAlive(tracked.Owner) || !world.Has<TransformComponent>(tracked.Owner))
+			const bool bMoving = tracked.bDynamic || tracked.bKinematic;
+			if (!bMoving || !world.IsAlive(tracked.Owner) || !world.Has<TransformComponent>(tracked.Owner))
 			{
 				// Not moved by the step, e.g. made static since: drawn where its transform is
 				world.Remove<PreviousTransformComponent>(tracked.Owner);
 				continue;
 			}
 
-			const BodyPose pose = physics.GetPose(tracked.Body);
 			TransformComponent& transform = world.Get<TransformComponent>(tracked.Owner);
-			const BodyPose before{ transform.Position, transform.Rotation };
-			transform.Position = pose.Position;
-			transform.Rotation = pose.Rotation;
-			tracked.LastPose = pose;
+			BodyPose before{ transform.Position, transform.Rotation };
+			if (tracked.bDynamic)
+			{
+				const BodyPose pose = physics.GetPose(tracked.Body);
+				transform.Position = pose.Position;
+				transform.Rotation = pose.Rotation;
+				tracked.LastPose = pose;
+			}
+			else
+			{
+				// A kinematic body goes where its transform is: from where that was as the step
+				// began to where the step's systems put it. One set between steps, by a live edit,
+				// starts from there, as a teleported body does.
+				before = tracked.LastPose;
+			}
 
 			// Where it was before the step, to draw it between the two; a body that didn't move has
 			// none, so still scenes cost nothing
-			if (PoseMoved(before, pose))
+			if (PoseMoved(before, BodyPose{ transform.Position, transform.Rotation }))
 			{
 				PreviousTransformComponent& previous = world.Has<PreviousTransformComponent>(tracked.Owner)
 					? world.Get<PreviousTransformComponent>(tracked.Owner)

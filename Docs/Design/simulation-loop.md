@@ -93,9 +93,9 @@ plan.
   step late, which is the price of smooth motion.
 - **The data:** `PreviousTransformComponent` (Scene): the pose before the last step, and the pose
   that step left. Not reflected, so never saved, edited or sent. `PhysicsBodies` writes it for
-  dynamic bodies, before writing their new poses; only entities that moved in the last step have
-  one, so still scenes cost nothing extra. Kinematic bodies, and anything else moved only in steps,
-  can opt in the same way (`SetPreviousTransform()`) later.
+  dynamic bodies, before writing their new poses, and for kinematic bodies a system moved in the
+  step; only entities that moved in the last step have one, so still scenes cost nothing extra.
+  Anything else moved only in steps can opt in the same way (`SetPreviousTransform()`).
 - **Teleports aren't smeared.** A transform set from outside since the step, by a system or a live
   edit, no longer matches the pose the step left, and is drawn where it is
   (`InterpolateTransform()`). The next step teleports the body and starts from there.

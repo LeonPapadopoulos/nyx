@@ -18,7 +18,9 @@ namespace Nyx
 	//   stops it; a kinematic body is moved to its transform over the step.
 	// - after the step, dynamic bodies write where they are into their transforms, and those that
 	//   moved where they were before into a PreviousTransformComponent, to be drawn between the two.
-	//   A teleported body has none until it moves again.
+	//   A teleported body has none until it moves again. A kinematic body whose transform a system
+	//   moved during the step (ESimStage::BeforePhysics) gets one too, from where its transform was
+	//   as the step began; one moved between steps, by a live edit, is drawn where it was put.
 	class PhysicsBodies
 	{
 	public:
@@ -41,7 +43,8 @@ namespace Nyx
 			uint64_t DescriptionHash = 0;
 			bool bKinematic = false;
 			bool bDynamic = false;
-			// Where the body was put or left last, to tell a transform set from outside
+			// Where the body was put or left last, to tell a transform set from outside; a kinematic
+			// body's transform as the step began
 			BodyPose LastPose;
 			bool bSeen = false;
 		};

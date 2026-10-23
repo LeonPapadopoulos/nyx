@@ -129,7 +129,8 @@ Rigid bodies on [Jolt](https://github.com/jrouwe/JoltPhysics), while a game runs
 - While the game runs, moving an entity in the editor puts its body there and stops it; changing a
   collider or rigid body makes the body again.
 - Moving bodies are drawn between their last two steps, so they move smoothly on monitors faster
-  than the 60 steps a second; paused, where the last step left them.
+  than the 60 steps a second; paused, where the last step left them. Kinematic bodies too, when a
+  game's system moves them before the physics step.
 - The editor doesn't simulate: Play shows physics.
 
 ## Input

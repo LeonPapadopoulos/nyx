@@ -1,8 +1,9 @@
 // Physics in the game world (PhysicsBodies, GameWorld): bodies made, moved, remade and destroyed
 // with their entities' components, transforms written back, a transform set from outside
 // teleporting its body, kinematic bodies following their transforms, systems before and after
-// the physics step, and physics components in scene files. Moving bodies keep where they were
-// before the last step, to be drawn between the two, and the maths of drawing them so. The world
+// the physics step, and physics components in scene files. Moving bodies, dynamic and kinematic,
+// keep where they were before the last step, to be drawn between the two, and the maths of drawing
+// them so. The world
 // draws the physics debug view after each step while it is on.
 #include "ComponentRegistration.h"
 #include "GameWorld.h"
@@ -304,7 +305,7 @@ namespace
 		Require(previous.StepPosition == transform.Position && previous.StepRotation == transform.Rotation,
 			"The pose the step left should be the transform written");
 		Require(!registry.Has<PreviousTransformComponent>(floor) && !registry.Has<PreviousTransformComponent>(platform),
-			"Static and kinematic bodies shouldn't get a previous pose");
+			"Static bodies, and kinematic bodies that didn't move, shouldn't get a previous pose");
 
 		// Set from outside, as an editor's live edit does: drawn there at once, and the next step
 		// starts from there
@@ -334,6 +335,67 @@ namespace
 		registry.Remove<BoxColliderComponent>(crate);
 		steps.Run(1);
 		Require(!registry.Has<PreviousTransformComponent>(crate), "An entity whose body went shouldn't keep a previous pose");
+	}
+
+	// Moves every kinematic body along X each step, before the physics step, as a lift or a moving
+	// platform would be
+	class SlideKinematicSystem final : public ISimSystem
+	{
+	public:
+		const char* GetName() const override
+		{
+			return "Slide Kinematic";
+		}
+
+		void Step(const SimContext& context) override
+		{
+			context.World.Each<RigidBodyComponent>(
+				[&](Entity entity, RigidBodyComponent& body)
+				{
+					if (body.bKinematic && bSliding)
+					{
+						context.World.Get<TransformComponent>(entity).Position.x += 0.1f;
+					}
+				});
+		}
+
+		bool bSliding = true;
+	};
+
+	void TestKinematicBodiesKeepTheirPreviousPose()
+	{
+		GameWorld world;
+		Steps steps{ world };
+		Registry& registry = world.GetRegistry();
+		const Entity platform = AddCrate(registry, glm::vec3(0.0f));
+		registry.Get<RigidBodyComponent>(platform).bKinematic = true;
+		auto& slide = static_cast<SlideKinematicSystem&>(world.AddSystem(std::make_unique<SlideKinematicSystem>()));
+
+		steps.Run(3);
+		const glm::vec3 before = registry.Get<TransformComponent>(platform).Position;
+		steps.Run(1);
+		const TransformComponent& transform = registry.Get<TransformComponent>(platform);
+		Require(registry.Has<PreviousTransformComponent>(platform), "A kinematic body a system moved should keep where it was before the step");
+		const PreviousTransformComponent& previous = registry.Get<PreviousTransformComponent>(platform);
+		Require(previous.Position == before && Near(transform.Position, before + glm::vec3(0.1f, 0.0f, 0.0f)),
+			"The previous pose should be where its transform was as the step began");
+		Require(previous.StepPosition == transform.Position, "The pose the step left should be where the system put it");
+		Require(Near(InterpolateTransform(previous, transform, 0.5f).Position, before + glm::vec3(0.05f, 0.0f, 0.0f)),
+			"Halfway into the next step, it should be drawn halfway along its move");
+
+		// Moved between steps, as an editor's live edit does: drawn there at once, and the next step
+		// starts from there
+		const glm::vec3 target(0.0f, 5.0f, 0.0f);
+		registry.Get<TransformComponent>(platform).Position = target;
+		Require(InterpolateTransform(registry.Get<PreviousTransformComponent>(platform), registry.Get<TransformComponent>(platform), 0.5f).Position == target,
+			"A kinematic body put somewhere should be drawn there before the next step");
+		steps.Run(1);
+		Require(registry.Get<PreviousTransformComponent>(platform).Position == target,
+			"After a live edit, the previous pose should be where the body was put");
+
+		slide.bSliding = false;
+		steps.Run(1);
+		Require(!registry.Has<PreviousTransformComponent>(platform), "A kinematic body that stopped shouldn't keep a previous pose");
 	}
 
 	void TestPhysicsDebugView()
@@ -420,6 +482,7 @@ int main()
 		TestARigidBodyWithoutColliderWarnsOnce();
 		TestInterpolatingTransforms();
 		TestMovingBodiesKeepTheirPreviousPose();
+		TestKinematicBodiesKeepTheirPreviousPose();
 		if constexpr (DebugDraw::Enabled)
 		{
 			TestPhysicsDebugView();

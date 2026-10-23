@@ -27,7 +27,8 @@ namespace Nyx
 	// 4. the systems of ESimStage::BeforePhysics, in the order they were added;
 	// 5. the physics step;
 	// 6. dynamic bodies write their poses into their transforms, and where they were before into
-	//    their PreviousTransformComponents; the physics debug view is drawn, if on;
+	//    their PreviousTransformComponents, as do kinematic bodies the systems moved; the physics
+	//    debug view is drawn, if on;
 	// 7. the systems of ESimStage::AfterPhysics, in the order they were added.
 	class GameWorld
 	{

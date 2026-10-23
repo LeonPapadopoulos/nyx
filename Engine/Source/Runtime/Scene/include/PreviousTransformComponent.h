@@ -12,8 +12,8 @@ namespace Nyx
 {
 	// Where an entity moved only in fixed steps was before the last step, and where that step left it,
 	// so the renderer can draw it between the two (IRenderer::SetWorldInterpolation()). Runtime only:
-	// not reflected, so never saved, edited or sent. PhysicsBodies keeps it for dynamic bodies that
-	// moved in the last step; still entities have none.
+	// not reflected, so never saved, edited or sent. PhysicsBodies keeps it for dynamic and kinematic
+	// bodies that moved in the last step; still entities have none.
 	struct PreviousTransformComponent
 	{
 		// Before the last step
