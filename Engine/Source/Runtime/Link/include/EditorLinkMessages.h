@@ -41,6 +41,8 @@ namespace Nyx
 		MaterialValues = 9,
 		SetSimulationPaused = 10,
 		StepSimulation = 11,
+		SetInputAsset = 12,
+		SetInputBackground = 13,
 	};
 
 	// The first message in both directions. Its layout never changes, so any two versions can
@@ -221,6 +223,35 @@ namespace Nyx
 		{
 			return true;
 		}
+	};
+
+	// Live tuning (see LiveInput.h)
+
+	// Editor to game: the whole input asset as the editor has it now, e.g. while a dead zone is
+	// being dragged. The game puts it into its input system at once, with its player's settings
+	// over it; held buttons stay held.
+	struct SetInputAssetMessage
+	{
+		static constexpr EEditorLinkMessage Type = EEditorLinkMessage::SetInputAsset;
+
+		// Exactly one property block of Nyx::Input::InputAssetData, with its size in front, as
+		// ReflectedArchiveSerializer::SerializeObject writes it. Written as it is.
+		std::vector<std::byte> Asset;
+
+		void Write(BinaryWriter& writer) const;
+		bool Read(BinaryReader& reader);
+	};
+
+	// Editor to game: whether its gamepads keep driving it while none of its windows has the
+	// focus, e.g. for every game of Play All at once (--input-background at startup)
+	struct SetInputBackgroundMessage
+	{
+		static constexpr EEditorLinkMessage Type = EEditorLinkMessage::SetInputBackground;
+
+		bool bGamepadsInBackground = false;
+
+		void Write(BinaryWriter& writer) const;
+		bool Read(BinaryReader& reader);
 	};
 
 	// A message as it travels over the connection, e.g. to keep it in a queue until a link is

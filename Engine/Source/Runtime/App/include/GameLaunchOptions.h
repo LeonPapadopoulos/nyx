@@ -45,6 +45,9 @@ namespace Nyx
 		// Records every message of the editor link to this file; only together with EditorPort
 		std::filesystem::path LinkLogPath;
 
+		// Gamepads drive the game also while its window doesn't have the focus
+		bool bInputBackground = false;
+
 		// Unset: the window's default size, or its default place chosen by the system
 		std::optional<GameWindowSize> WindowSize;
 		std::optional<GameWindowPosition> WindowPosition;

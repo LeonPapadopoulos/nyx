@@ -27,7 +27,9 @@ message on the wire is `payload size (u32) | type (u16) | payload`, little-endia
   - editor to game: `Quit`, the live edits `SetProperties`, `CreateEntity` and `DeleteEntity`,
     `ShaderProgram` and `MaterialValues`, and the toolbar's Pause and Step,
     `SetSimulationPaused` and `StepSimulation`, which the game applies to its simulation clock
-    (`ApplySimulationControl()`, `LiveEdits.cpp`);
+    (`ApplySimulationControl()`, `LiveEdits.cpp`), and the input asset as it is edited,
+    `SetInputAsset`, and whether the pads drive the game without the focus, `SetInputBackground`
+    (`ApplyLiveInput()`, `LiveInput.cpp`);
   - game to editor: `LogLine` and `Crash`.
 - **A program and the shader compiler (`RemoteShaderCompileService`).** The program listens,
   starts `NyxShaderCompiler.exe --port`, and sends compile requests; the compiler answers one at a
@@ -54,7 +56,7 @@ doesn't allow, and on a table that goes round in a circle, so a new dependency s
 | `Sim` | The game world: its entities, their physics bodies kept in step with the physics components (`PhysicsBodies`), and the simulation systems each fixed step runs, in order (`GameWorld`, `ISimSystem`), the entity a ray hits first (`PickPhysicsBody()`) | Core, Scene, Physics |
 | `Assets` | Asset files as plain data: images, materials, glTF meshes, shader compile requests and results | Core |
 | `UI` | The painter, and the painted UI drawn with it on top of ImGui | Core, Reflection |
-| `Link` | The editor link: its messages, live edits, recordings, the log sink | Core, Net, Scene, Assets |
+| `Link` | The editor link: its messages, live edits, live tuning of the input (`LiveInput`), recordings, the log sink | Core, Net, Input, Scene, Assets |
 | `LinkTools` | Link messages, recordings, scene files and input files as readable text, for the editor and NyxDump; not under `Runtime`, and not in the game | Core, Reflection, Scene, Input, Link |
 | `Render` | The Vulkan renderer, scene views, shaders and materials, and applying the link's shaders and material values | Core, Net, Scene, Assets, UI, Link |
 | `Platform` | The window | Core, Input, UI |

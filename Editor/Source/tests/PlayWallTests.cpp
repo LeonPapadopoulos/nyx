@@ -32,6 +32,7 @@ namespace
 		EditorPreferences written;
 		written.SourceEditor = ESourceEditor::VisualStudioCode;
 		written.bConsoleWindowsInPlayAll = true;
+		written.bGamepadsDriveAllGames = true;
 		written.bAmbilight = false;
 		written.AmbilightStrength = 0.35f;
 		written.AmbilightReach = 123.5f;
@@ -47,6 +48,7 @@ namespace
 		read.FromText(written.ToText());
 		Require(read.SourceEditor == ESourceEditor::VisualStudioCode, "The source editor was lost");
 		Require(read.bConsoleWindowsInPlayAll, "Console windows in Play All was lost");
+		Require(read.bGamepadsDriveAllGames, "Gamepads drive all games was lost");
 		Require(!read.bAmbilight && read.AmbilightStrength == 0.35f && read.AmbilightReach == 123.5f, "The ambilight settings differ after a round trip");
 		Require(!read.bVSync && read.FrameRateCap == 144, "The frame rate settings differ after a round trip");
 		Require(read.Theme == "Ashen Garden.nyxtheme", "The theme differs after a round trip");
@@ -67,6 +69,7 @@ namespace
 		old.FromText("# Nyx editor user preferences\r\nSourceEditor=VisualStudio\r\n");
 		Require(old.PlaySetups == GetDefaultPlaySetups(), "Without saved setups, the defaults should be used");
 		Require(!old.bConsoleWindowsInPlayAll, "Console windows in Play All should be off by default");
+		Require(!old.bGamepadsDriveAllGames, "Pads should drive only the game with the focus by default");
 		const EditorPreferences defaults;
 		Require(old.bAmbilight && old.AmbilightStrength == defaults.AmbilightStrength && old.AmbilightReach == defaults.AmbilightReach,
 			"Without saved ambilight settings, ambilight should be on with the defaults");

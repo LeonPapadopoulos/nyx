@@ -290,7 +290,16 @@ namespace Nyx::Input
 
 	void InputSystem::UpdateSystemContexts()
 	{
-		User.SetContextActive(UnfocusedContext, !Frame.HasFocus(), { .Reason = "None of the program's windows has the focus" });
+		if (bGamepadsInBackground)
+		{
+			User.SetContextActive(UnfocusedContext, !Frame.HasFocus(),
+				{ .Reason = "None of the program's windows has the focus; pads drive it anyway",
+					.TakesDevices = DeviceBit(EDeviceKind::Keyboard) | DeviceBit(EDeviceKind::Mouse) });
+		}
+		else
+		{
+			User.SetContextActive(UnfocusedContext, !Frame.HasFocus(), { .Reason = "None of the program's windows has the focus" });
+		}
 
 		// ImGui gets the mouse only while the cursor is free: a captured cursor wanders over
 		// ImGui's windows without being there

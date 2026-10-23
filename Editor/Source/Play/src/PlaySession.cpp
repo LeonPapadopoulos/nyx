@@ -3,6 +3,7 @@
 #include "EditorLinkMessages.h"
 #include "EditorPreferences.h"
 #include "GameLinkPanel.h"
+#include "LiveInput.h"
 #include "Log.h"
 #include "Paths.h"
 #include "SceneDocument.h"
@@ -56,6 +57,7 @@ namespace Nyx::Editor
 			Nyx::GameLaunchOptions launchOptions = planned.Options;
 			launchOptions.ScenePath = *playSessionScene;
 			launchOptions.bWaitForDebugger = bGameWaitsForDebugger;
+			launchOptions.bInputBackground = preferences.bGamepadsDriveAllGames;
 			LaunchGame(planned.Name, launchOptions, planned.bConsoleWindow);
 		}
 
@@ -106,6 +108,15 @@ namespace Nyx::Editor
 
 		Games.push_back(std::move(game));
 		return true;
+	}
+
+	void PlaySession::SetGamepadsDriveAllGames(bool bDriveAll)
+	{
+		const Nyx::Net::Message message = Nyx::MakeNetMessage(Nyx::SetInputBackgroundMessage{ bDriveAll });
+		for (const std::unique_ptr<GameInstance>& game : Games)
+		{
+			game->QueueEdits({ message });
+		}
 	}
 
 	void PlaySession::Restart(const GameCrash& crash)

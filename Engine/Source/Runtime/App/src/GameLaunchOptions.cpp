@@ -125,6 +125,11 @@ namespace Nyx
 			arguments.push_back(ToUtf8(options.LinkLogPath));
 		}
 
+		if (options.bInputBackground)
+		{
+			arguments.push_back("--input-background");
+		}
+
 		if (options.WindowSize)
 		{
 			arguments.push_back("--window-size");
@@ -168,6 +173,10 @@ namespace Nyx
 			if (argument == "--wait-for-debugger")
 			{
 				options.bWaitForDebugger = true;
+			}
+			else if (argument == "--input-background")
+			{
+				options.bInputBackground = true;
 			}
 			else if (argument == "--editor-port")
 			{

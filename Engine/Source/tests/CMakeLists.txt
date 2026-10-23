@@ -38,6 +38,14 @@ add_dependencies(NyxLiveEditTests NyxGeneratedReflection)
 set_property(TARGET NyxLiveEditTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxLiveEditTests COMMAND NyxLiveEditTests)
 
+# Live tuning, both ends in one program: the editor's input asset applied in a game while a
+# button is held, pads driving a game without the focus
+add_executable(NyxLiveInputTests LiveInputTests.cpp)
+target_link_libraries(NyxLiveInputTests PRIVATE NyxEngine NyxLinkTools)
+add_dependencies(NyxLiveInputTests NyxGeneratedReflection)
+set_property(TARGET NyxLiveInputTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxLiveInputTests COMMAND NyxLiveInputTests)
+
 # The game's command line, as the editor writes it and the game reads it.
 add_executable(NyxGameLaunchOptionsTests GameLaunchOptionsTests.cpp)
 target_link_libraries(NyxGameLaunchOptionsTests PRIVATE NyxEngine)

@@ -2,6 +2,7 @@
 
 #include "ComponentTypeRegistry.h"
 #include "GuidComponent.h"
+#include "InputAsset.h"
 #include "NameComponent.h"
 #include "ReflectedArchivePrinter.h"
 #include "ReflectedArchiveSerializer.h"
@@ -232,6 +233,29 @@ namespace
 			outText.Details = "Entity: " + GuidToText(message.Entity) + "\nComponentType: " + Quoted(message.ComponentType) +
 				(componentType ? "" : " (a component type this build doesn't know)") + "\nProperties:\n" + printed +
 				(bPrinted ? "" : "  The properties end early or are damaged here.");
+		}
+	}
+
+	void DescribeSetInputAsset(const SetInputAssetMessage& message, bool bWithDetails, EditorLinkMessageText& outText)
+	{
+		BinaryReader reader;
+		reader.LoadFromMemory(message.Asset);
+		Nyx::Input::InputAssetData asset;
+		ReadWarnings warnings;
+		const bool bReadable =
+			ReflectedArchiveSerializer::DeserializeObject(reader, &asset, Nyx::Reflection::GetTypeMetadata<Nyx::Input::InputAssetData>(), warnings);
+
+		outText.Summary = std::to_string(asset.Actions.size()) + " actions, " + std::to_string(asset.Contexts.size()) + " contexts, " +
+			std::to_string(asset.PadProfiles.size()) + " pad profiles" + (bReadable ? "" : " (damaged)");
+
+		if (bWithDetails)
+		{
+			BinaryReader printReader;
+			printReader.LoadFromMemory(message.Asset);
+			std::string printed;
+			const bool bPrinted =
+				ReflectedArchivePrinter::PrintObject(printReader, &Nyx::Reflection::GetTypeMetadata<Nyx::Input::InputAssetData>(), 1, printed);
+			outText.Details = "Asset:\n" + printed + (bPrinted ? "" : "  The asset ends early or is damaged here.");
 		}
 	}
 
@@ -470,6 +494,35 @@ namespace Nyx
 			text.Name = "StepSimulation";
 			text.Details = "(no fields)";
 			break;
+
+		case EEditorLinkMessage::SetInputAsset:
+		{
+			SetInputAssetMessage setInputAsset;
+			if (!ReadNetMessage(message, setInputAsset))
+			{
+				describeUnreadable("SetInputAsset");
+				break;
+			}
+
+			text.Name = "SetInputAsset";
+			DescribeSetInputAsset(setInputAsset, bWithDetails, text);
+			break;
+		}
+
+		case EEditorLinkMessage::SetInputBackground:
+		{
+			SetInputBackgroundMessage background;
+			if (!ReadNetMessage(message, background))
+			{
+				describeUnreadable("SetInputBackground");
+				break;
+			}
+
+			text.Name = "SetInputBackground";
+			text.Summary = background.bGamepadsInBackground ? "pads drive the game in the background" : "pads only with the focus";
+			text.Details = std::string("GamepadsInBackground: ") + (background.bGamepadsInBackground ? "true" : "false");
+			break;
+		}
 
 		default:
 			text.Name = "type " + std::to_string(message.Type);

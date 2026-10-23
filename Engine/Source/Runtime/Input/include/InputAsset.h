@@ -150,7 +150,7 @@ namespace Nyx::Input
 
 	// One tuning value a layer changes: the field at Field's path in InputBindingData (e.g.
 	// "Pipeline.DeadZone.Inner"), in every binding of the context, action and control given; empty
-	// ones match any. Bools take 0 or 1, enums their number.
+	// ones match any. Bools take 0 or 1, enums their number, vectors it in every component.
 	NYX_REFLECT()
 	struct TuningOverrideData
 	{
@@ -239,8 +239,8 @@ namespace Nyx::Input
 	// Whether the override is for this binding of this context
 	bool MatchesOverride(const TuningOverrideData& override, const InputContextData& context, const InputBindingData& binding);
 
-	// Sets the field the override names. False, with the reason, if the field isn't a number, bool
-	// or enum of InputBindingData.
+	// Sets the field the override names. False, with the reason, if the field isn't a number, bool,
+	// enum or vector of InputBindingData.
 	bool ApplyOverride(InputBindingData& binding, const TuningOverrideData& override, std::string* outProblem = nullptr);
 
 	// The asset as it is with its layers for a pad model: the model's profile (none for Unknown),

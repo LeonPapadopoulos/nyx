@@ -5,6 +5,7 @@
 #include "EditorLinkLogSink.h"
 #include "EditorLinkRecorder.h"
 #include "Entity.h"
+#include "InputAsset.h"
 #include "Layer.h"
 #include "SceneSerializationTypes.h"
 
@@ -21,8 +22,9 @@ namespace Nyx::Game
 {
 	// The game's end of the editor link, used when the editor started the game: connects back to
 	// the editor on the port given with --editor-port, sends the game's log lines, applies the
-	// editor's live edits to the game's world and quits when the editor asks. If connecting fails,
-	// or the editor goes away, the game keeps running.
+	// editor's live edits to the game's world and its input asset to the game's input (with the
+	// player's settings over it), and quits when the editor asks. If connecting fails, or the
+	// editor goes away, the game keeps running.
 	//
 	// Shaders come compiled from the editor (IRenderer::FollowEditorShaders()), with the material
 	// values it edits, saved or not; the game compiles only what nothing compiled yet.
@@ -50,8 +52,9 @@ namespace Nyx::Game
 		static void SendCrashReport(const Nyx::CrashReport& report);
 
 	private:
-		// A live edit, or a message this game doesn't know
+		// Live tuning, a live edit, or a message this game doesn't know
 		void ApplyMessage(const Nyx::Net::Message& message);
+		void ApplyLiveEdit(const Nyx::Net::Message& message);
 
 		void SendLogLines();
 		void EndLink();
@@ -66,5 +69,10 @@ namespace Nyx::Game
 		Nyx::ScenePostLoadContext PostLoadContext;
 		Nyx::EditorLinkRecorder Recorder;
 		std::unique_ptr<Nyx::EditorLink> Link;
+
+		// Over the editor's input asset, as at startup
+		std::optional<Nyx::Input::InputPlayerSettingsData> PlayerInputSettings;
+		// What the last asset from the editor had that can't be used, to log it once
+		std::vector<std::string> InputProblems;
 	};
 }

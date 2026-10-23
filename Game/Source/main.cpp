@@ -86,6 +86,11 @@ namespace Nyx::Game
 			std::unique_ptr<EditorLinkLayer> editorLink)
 			: Application(MakeApplicationSpecs(options))
 		{
+			if (options.bInputBackground)
+			{
+				GetInput().SetGamepadsInBackground(true);
+			}
+
 			// Attaching loads the scene
 			auto gameLayer = std::make_unique<GameLayer>(scenePath);
 			GameLayer& game = *gameLayer;
@@ -103,6 +108,7 @@ namespace Nyx::Game
 
 // Usage: NyxGame.exe [scene file] [--wait-for-debugger] [--editor-port <port>] [--link-log <file>]
 //                    [--window-size <width>x<height>] [--window-pos <x>,<y>] [--window-title <text>]
+//                    [--input-background]
 // - Without a scene file, the game runs Scenes/Default.nyxscene from the project's assets, or else
 //   from the engine's.
 // - With --wait-for-debugger, the game waits at startup until a debugger is attached.
@@ -111,6 +117,8 @@ namespace Nyx::Game
 // - With --link-log, every message of the editor link is recorded to the file (NyxDump prints it).
 // - --window-size is the size of the picture, without titlebar and borders; --window-pos is where
 //   the window's outer top-left corner goes. The editor's Play All uses them to tile its games.
+// - With --input-background, gamepads drive the game also while its window doesn't have the
+//   focus, e.g. every game of Play All at once.
 // GameLaunchOptions.h reads these, and the editor writes them with the same code.
 Nyx::Application* Nyx::CreateApplication(int argc, char** argv)
 {

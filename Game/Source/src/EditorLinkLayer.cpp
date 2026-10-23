@@ -3,6 +3,8 @@
 
 #include "Application.h"
 #include "LiveEdits.h"
+#include "LiveInput.h"
+#include "ReflectedArchiveSerializer.h"
 #include "Log.h"
 #include "NetConnection.h"
 #include "RendererLiveEdits.h"
@@ -44,6 +46,14 @@ namespace Nyx::Game
 		App = &application;
 		// The editor compiles, once for all its games, and sends what it compiled
 		App->GetRenderer().FollowEditorShaders();
+
+		const std::filesystem::path playerPath = Nyx::Input::GetPlayerInputSettingsPath();
+		std::error_code error;
+		if (!playerPath.empty() && std::filesystem::exists(playerPath, error))
+		{
+			Nyx::ReadWarnings warnings;
+			PlayerInputSettings = Nyx::Input::LoadPlayerSettings(playerPath, warnings);
+		}
 
 		if (!RecordingPath.empty())
 		{
@@ -130,6 +140,35 @@ namespace Nyx::Game
 			return;
 		}
 
+		// The input asset as the editor edits it, e.g. a dead zone being dragged
+		std::vector<Nyx::Input::InputAssetProblem> problems;
+		const Nyx::ELiveInputResult input =
+			Nyx::ApplyLiveInput(message, App->GetInput(), PlayerInputSettings ? &*PlayerInputSettings : nullptr, &problems);
+		if (input == Nyx::ELiveInputResult::NotLiveInput)
+		{
+			ApplyLiveEdit(message);
+			return;
+		}
+
+		// A drag sends the asset every frame: log what can't be used when that changes
+		const bool bAsset = message.Type == static_cast<uint16_t>(Nyx::EEditorLinkMessage::SetInputAsset);
+		std::vector<std::string> texts;
+		for (const Nyx::Input::InputAssetProblem& problem : problems)
+		{
+			texts.push_back(problem.Where + ": " + problem.What);
+		}
+		if (bAsset && input == Nyx::ELiveInputResult::Applied && texts != InputProblems)
+		{
+			for (const std::string& text : texts)
+			{
+				LOG_WARNING("Input from the editor: {0}", text);
+			}
+			InputProblems = std::move(texts);
+		}
+	}
+
+	void EditorLinkLayer::ApplyLiveEdit(const Nyx::Net::Message& message)
+	{
 		if (!World)
 		{
 			LOG_WARNING("Editor link: skipped a message of type {0}, since the game has no world for it", message.Type);

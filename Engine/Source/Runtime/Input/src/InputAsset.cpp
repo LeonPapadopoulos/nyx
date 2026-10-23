@@ -188,7 +188,11 @@ namespace Nyx::Input
 
 		switch (property->Kind)
 		{
-		case EPropertyKind::Float:  SetPropertyValue(object, *property, override.Value); return true;
+		case EPropertyKind::Float: SetPropertyValue(object, *property, override.Value); return true;
+		// Every component, e.g. a sensitivity's scale
+		case EPropertyKind::Vec2:   SetPropertyValue(object, *property, glm::vec2(override.Value)); return true;
+		case EPropertyKind::Vec3:   SetPropertyValue(object, *property, glm::vec3(override.Value)); return true;
+		case EPropertyKind::Vec4:   SetPropertyValue(object, *property, glm::vec4(override.Value)); return true;
 		case EPropertyKind::Bool:   SetPropertyValue(object, *property, override.Value != 0.0f); return true;
 		case EPropertyKind::Int32:  SetPropertyValue(object, *property, static_cast<int32_t>(override.Value)); return true;
 		case EPropertyKind::UInt32: SetPropertyValue(object, *property, static_cast<uint32_t>(std::max(override.Value, 0.0f))); return true;
@@ -209,7 +213,7 @@ namespace Nyx::Input
 		default:
 			if (outProblem)
 			{
-				*outProblem = "\"" + override.Field + "\" is a " + GetPropertyKindName(property->Kind) + ", not a number, bool or enum";
+				*outProblem = "\"" + override.Field + "\" is a " + GetPropertyKindName(property->Kind) + ", not a number, bool, enum or vector";
 			}
 			return false;
 		}
@@ -304,6 +308,19 @@ namespace Nyx::Input
 					if (const uint32_t* asUInt = std::get_if<uint32_t>(&value))
 					{
 						return static_cast<float>(*asUInt);
+					}
+					// A vector by its x, as an override sets all its components alike
+					if (const glm::vec2* asVec2 = std::get_if<glm::vec2>(&value))
+					{
+						return asVec2->x;
+					}
+					if (const glm::vec3* asVec3 = std::get_if<glm::vec3>(&value))
+					{
+						return asVec3->x;
+					}
+					if (const glm::vec4* asVec4 = std::get_if<glm::vec4>(&value))
+					{
+						return asVec4->x;
 					}
 					return std::nullopt;
 				}

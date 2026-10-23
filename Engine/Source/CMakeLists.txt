@@ -142,6 +142,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Link/src/EditorLink.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Link/src/EditorLinkMessages.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Link/src/LiveEdits.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Link/src/LiveInput.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Link/src/EditorLinkLogSink.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Link/src/EditorLinkRecorder.cpp
 
@@ -299,6 +300,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Link/include/EditorLink.h
     ${NYX_ENGINE_ROOT}/Runtime/Link/include/EditorLinkMessages.h
     ${NYX_ENGINE_ROOT}/Runtime/Link/include/LiveEdits.h
+    ${NYX_ENGINE_ROOT}/Runtime/Link/include/LiveInput.h
     ${NYX_ENGINE_ROOT}/Runtime/Link/include/EditorLinkLogSink.h
     ${NYX_ENGINE_ROOT}/Runtime/Link/include/EditorLinkRecorder.h
 

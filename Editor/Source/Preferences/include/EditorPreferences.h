@@ -43,6 +43,10 @@ namespace Nyx::Editor
 		// anyway, and a wall of games with a console each is crowded. Play always shows the console.
 		bool bConsoleWindowsInPlayAll = false;
 
+		// Whether the gamepads drive every game started with Play, also those whose window doesn't
+		// have the focus (--input-background), e.g. to play all games of Play All with one pad
+		bool bGamepadsDriveAllGames = false;
+
 		// Ambilight: the scene views' pictures glow onto the editor around them. Strength is the
 		// glow's opacity at the picture's edge, from 0 to 1; reach is how far it goes, in pixels,
 		// up to MaxAmbilightReach.

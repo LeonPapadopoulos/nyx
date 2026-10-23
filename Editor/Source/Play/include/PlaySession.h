@@ -48,6 +48,10 @@ namespace Nyx::Editor
 		// files don't, e.g. a material's unsaved values
 		std::function<std::vector<Nyx::Net::Message>()> StateForNewGames;
 
+		// Tells the running games whether their pads drive them without the focus; new games get it
+		// with --input-background from the preferences
+		void SetGamepadsDriveAllGames(bool bDriveAll);
+
 		// screen is the monitor Play All tiles the games on
 		void Start(const EditorPreferences& preferences, bool bPlayAll, const PlayWallScreen& screen);
 

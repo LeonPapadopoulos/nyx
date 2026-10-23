@@ -6,6 +6,7 @@
 #include "EditorLinkMessages.h"
 #include "ImGuiSource.h"
 #include "InputAsset.h"
+#include "LiveInput.h"
 #include "Log.h"
 #include "MeshRendererComponent.h"
 #include "Paths.h"
@@ -166,6 +167,11 @@ namespace Nyx::Editor
 			{
 				state.push_back(Nyx::MakeNetMessage(Nyx::MaterialValuesMessage{ document.GetPath(), document.GetAsset().ToText() }));
 			}
+			// The game reads the input asset's file; unsaved edits it gets once linked
+			if (InputAsset.IsLoaded() && InputAsset.IsDirty())
+			{
+				state.push_back(Nyx::MakeNetMessage(Nyx::MakeSetInputAssetMessage(InputAsset.GetAsset())));
+			}
 			return state;
 		};
 
@@ -250,6 +256,13 @@ namespace Nyx::Editor
 		RendererEditorCameras cameras(*Renderer);
 		CameraController->Update(deltaTime, cameras);
 
+		// The input asset as it is now reaches the running games, once per frame it changed, e.g.
+		// while a value is dragged
+		if (InputAsset.IsLoaded() && InputAsset.GetRevision() != SentInputRevision)
+		{
+			SentInputRevision = InputAsset.GetRevision();
+			Games.SendToGames(Nyx::MakeNetMessage(Nyx::MakeSetInputAssetMessage(InputAsset.GetAsset())));
+		}
 		Games.Update();
 
 		// A game that crashed gets a crash card, with its last log lines

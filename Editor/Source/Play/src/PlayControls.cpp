@@ -200,6 +200,12 @@ namespace Nyx::Editor
 		NYX_UI(Nyx::UI::Separator());
 		bChanged |= NYX_UI(Nyx::UI::Checkbox("Console Windows in Play All", &preferences.bConsoleWindowsInPlayAll));
 		ImGui::SetItemTooltip("Play always shows the game's console. Their log reaches the Game Link window either way.");
+		if (NYX_UI(Nyx::UI::Checkbox("Gamepads Drive All Games", &preferences.bGamepadsDriveAllGames)))
+		{
+			bChanged = true;
+			session.SetGamepadsDriveAllGames(preferences.bGamepadsDriveAllGames);
+		}
+		ImGui::SetItemTooltip("The pads drive every running game, also those whose window doesn't have the focus. Off: only the game with the focus.");
 		NYX_UI(Nyx::UI::MenuItem("Game Waits for Debugger", nullptr, &session.bGameWaitsForDebugger));
 
 		if (bChanged)

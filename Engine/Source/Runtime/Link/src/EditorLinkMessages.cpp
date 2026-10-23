@@ -230,6 +230,27 @@ namespace Nyx
 		return reader.ReadBool(bPaused);
 	}
 
+	void SetInputAssetMessage::Write(BinaryWriter& writer) const
+	{
+		// Already a block, with its size in front
+		writer.WriteBytes(Asset.data(), Asset.size());
+	}
+
+	bool SetInputAssetMessage::Read(BinaryReader& reader)
+	{
+		return ReadWholeBlock(reader, Asset);
+	}
+
+	void SetInputBackgroundMessage::Write(BinaryWriter& writer) const
+	{
+		writer.WriteBool(bGamepadsInBackground);
+	}
+
+	bool SetInputBackgroundMessage::Read(BinaryReader& reader)
+	{
+		return reader.ReadBool(bGamepadsInBackground);
+	}
+
 	uint64_t GetClockTimeMs()
 	{
 		const auto sinceEpoch = std::chrono::system_clock::now().time_since_epoch();

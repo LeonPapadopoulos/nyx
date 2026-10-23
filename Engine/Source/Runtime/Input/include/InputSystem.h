@@ -88,6 +88,19 @@ namespace Nyx::Input
 			return ImGuiContext;
 		}
 
+		// Whether gamepads keep driving the program while none of its windows has the focus: the
+		// Unfocused context then takes the keyboard and the mouse, not the pads. For several games
+		// side by side (Play All) driven by one pad. Off by default.
+		void SetGamepadsInBackground(bool bInBackground)
+		{
+			bGamepadsInBackground = bInBackground;
+		}
+
+		bool AreGamepadsInBackground() const
+		{
+			return bGamepadsInBackground;
+		}
+
 		// What ImGui wanted in the frame just built; the ImGui context follows it from the next frame
 		void SetImGuiState(const ImGuiInputState& state)
 		{
@@ -131,5 +144,6 @@ namespace Nyx::Input
 		ContextHandle UnfocusedContext;
 		ContextHandle ImGuiContext;
 		ImGuiInputState ImGuiState;
+		bool bGamepadsInBackground = false;
 	};
 }

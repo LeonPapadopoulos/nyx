@@ -40,6 +40,9 @@ What the editor and the game do. How the code behind them is organised is in
   game that crashes or is closed doesn't affect the others. Pause and Step act on all of them.
 - The games of Play All have no console windows unless *Console Windows in Play All* is on.
   Their log reaches the Game Link window either way.
+- The pads drive only the game whose window has the focus, unless *Gamepads Drive All Games* is
+  on in Play's right-click menu (`NyxGame.exe --input-background`); switching it reaches running
+  games at once.
 - Play setups are saved with the editor preferences in `%LOCALAPPDATA%\Nyx\Editor.ini`.
 - Tests: `NyxPlayWallTests` (the setups and the tiling), `NyxGameInstanceTests` (several games
   as real processes, copies of the test program standing in for them; Pause and Step through
@@ -149,10 +152,12 @@ contexts, and the context highest on the stack that binds a control gets it.
 - The *Checks* tab lists mistakes that are easy to make and hard to feel (two actions on one
   control, mouse movement times the frame's time, a hold shorter than the tap beside it, ...) and
   which devices can do each action.
+- Running games, all of Play All included, get every change of the asset as it is made, with their
+  player's settings over it; held buttons stay held.
 - `NyxPadCheck.exe` lists the pads, prints what they report and tries their output without a
   window.
 - `NyxInputTests`, `NyxInputRouterTests`, `NyxInputGamepadTests`, `NyxInputInspectionTests`,
-  `NyxInputAssetTests`, `NyxInputChecksTests`, `NyxEditorCameraTests` and
+  `NyxInputAssetTests`, `NyxInputChecksTests`, `NyxLiveInputTests`, `NyxEditorCameraTests` and
   `NyxEditorInputTuningTests` test it with virtual devices.
 
 ## Debug drawing

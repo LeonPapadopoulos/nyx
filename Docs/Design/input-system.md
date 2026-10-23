@@ -132,6 +132,17 @@ are reflected types (`NYX_REFLECT`, `NYX_ENUM`) and the header tool also reads
   travel, degrees per second, frames at 60 fps); the Tuning tab draws the response curve with the
   stick on it and the trigger as a timeline with the last press.
 
+## Running games
+
+- **Live tuning.** The editor sends the whole asset to every running game whenever it changes,
+  every frame of a drag included (`SetInputAsset`, `LiveInput`). A game puts it into its input
+  with its player's settings over it; held buttons stay held, as when the editor applies it. A
+  game started while the asset has unsaved changes gets them once linked.
+- **Pads in the background.** `--input-background` (and `SetInputBackground` for a running game)
+  lets the pads drive a game whose window doesn't have the focus: `Unfocused` then takes only the
+  keyboard and the mouse (`SetGamepadsInBackground()`). *Gamepads Drive All Games* in Play's menu
+  starts the games so and switches the running ones.
+
 ## Seeing it
 
 *Window > Input* in the editor, and in Debug builds the same over a game (Ctrl+Alt+Shift+I, a
@@ -175,6 +186,8 @@ layers and overrides, and that applying keeps handles and on/off.
 `NyxInputChecksTests` runs each check with and without its mistake, every recipe, the
 explanations and the curve; `NyxEditorInputTuningTests` edits inside the asset's arrays with undo
 and redo, and draws the Tuning and Checks tabs headless.
+`NyxLiveInputTests` has both ends in one program: the asset from the editor while a button is
+held, a binding the game can't use, damaged messages, and the pad without the focus.
 `NyxInputInspectionTests` checks who gets a control, What if stacks and the calibration;
 `NyxEditorPanelTests` that the Input window leaves no shapes to ImGui.
 `NyxInputGamepadTests` drives virtual pads: hot-plug, analog values, focus, swizzles, composites
@@ -183,4 +196,4 @@ and tries their output, for checking them by hand.
 
 ## Not built yet
 
-Tuning running games from the editor; A/B and replay.
+The Input window showing a running game; recording, replay and A/B.

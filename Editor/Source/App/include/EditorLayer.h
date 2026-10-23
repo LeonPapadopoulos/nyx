@@ -144,6 +144,8 @@ namespace Nyx::Editor
 		// The input asset, Input/Default.nyxinput: the scene views' bindings, edited in
 		// Window > Input's Tuning tab with the editor's undo
 		InputAssetDocument InputAsset;
+		// The asset's revision the running games last got
+		uint64_t SentInputRevision = 0;
 
 		// Window > Input: the editor's own input, with its traces
 		InputPanel InputWindow;
