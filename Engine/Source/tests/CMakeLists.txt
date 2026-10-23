@@ -213,6 +213,14 @@ add_dependencies(NyxInputChecksTests NyxGeneratedReflection)
 set_property(TARGET NyxInputChecksTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxInputChecksTests COMMAND NyxInputChecksTests)
 
+# An input system's frames as records, and a replica deciding every frame as the original did,
+# as the editor shows a running game's input. No window needed.
+add_executable(NyxInputStreamTests InputStreamTests.cpp)
+target_link_libraries(NyxInputStreamTests PRIVATE NyxEngine NyxLinkTools)
+add_dependencies(NyxInputStreamTests NyxGeneratedReflection)
+set_property(TARGET NyxInputStreamTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxInputStreamTests COMMAND NyxInputStreamTests)
+
 # The painter's CPU side: draw commands, groups, clip and transform stacks, tile binning. No GPU needed.
 # The painter's test sheet is a dev tool, not part of the engine library, so the painter tests
 # compile it themselves.

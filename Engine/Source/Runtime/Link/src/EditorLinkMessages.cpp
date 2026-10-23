@@ -251,6 +251,36 @@ namespace Nyx
 		return reader.ReadBool(bGamepadsInBackground);
 	}
 
+	void InputSubscribeMessage::Write(BinaryWriter& writer) const
+	{
+		writer.WriteBool(bSubscribed);
+	}
+
+	bool InputSubscribeMessage::Read(BinaryReader& reader)
+	{
+		return reader.ReadBool(bSubscribed);
+	}
+
+	void InputDefinitionsMessage::Write(BinaryWriter& writer) const
+	{
+		WriteSizedBytes(writer, Record);
+	}
+
+	bool InputDefinitionsMessage::Read(BinaryReader& reader)
+	{
+		return ReadSizedBytes(reader, Record);
+	}
+
+	void InputFrameMessage::Write(BinaryWriter& writer) const
+	{
+		WriteSizedBytes(writer, Record);
+	}
+
+	bool InputFrameMessage::Read(BinaryReader& reader)
+	{
+		return ReadSizedBytes(reader, Record);
+	}
+
 	uint64_t GetClockTimeMs()
 	{
 		const auto sinceEpoch = std::chrono::system_clock::now().time_since_epoch();

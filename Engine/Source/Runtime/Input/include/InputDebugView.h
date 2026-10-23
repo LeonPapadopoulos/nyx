@@ -67,6 +67,13 @@ namespace Nyx::Input
 			ExtraTabToSelect = std::move(name);
 		}
 
+		// Whether the Devices tab's buttons can try the pads' output: not for a replica of another
+		// program's input, whose pads are only pictures
+		void SetCanSendOutput(bool bCan)
+		{
+			bCanSendOutput = bCan;
+		}
+
 	private:
 		void DrawDevices(InputSystem& input, const InputHistory& history);
 		void DrawGamepad(InputSystem& input, const InputHistory& history, const InputFrame::DeviceState& device);
@@ -79,6 +86,7 @@ namespace Nyx::Input
 
 		std::optional<ETab> TabToSelect;
 		std::string ExtraTabToSelect;
+		bool bCanSendOutput = true;
 
 		// Actions
 		ActionHandle SelectedAction;

@@ -98,11 +98,11 @@ namespace Nyx::Editor
 		Apply();
 	}
 
-	void InputAssetDocument::RefreshChecks()
+	void InputAssetDocument::RefreshChecks(const Nyx::Input::InputSystem* shown)
 	{
-		if (Input)
+		if (const Nyx::Input::InputSystem* input = shown ? shown : Input)
 		{
-			const Nyx::Input::InputCheckRuntime runtime = Nyx::Input::MakeCheckRuntime(*Input);
+			const Nyx::Input::InputCheckRuntime runtime = Nyx::Input::MakeCheckRuntime(*input);
 			Findings = Nyx::Input::RunInputChecks(Asset, &runtime);
 		}
 	}

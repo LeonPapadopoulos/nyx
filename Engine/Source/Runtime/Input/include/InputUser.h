@@ -95,6 +95,13 @@ namespace Nyx::Input
 			return OutputRecords;
 		}
 
+		// For a replica of another program's input (InputReplica): what that program's last frame
+		// sent, until this one's EndFrame()
+		void ReplaceOutputRecords(std::vector<OutputRecord> records)
+		{
+			OutputRecords = std::move(records);
+		}
+
 		// For prompts: the device last used on purpose. A stick or mouse that barely moves doesn't
 		// count, so the prompts don't flip back and forth.
 		InputDeviceId GetLastUsedDevice() const

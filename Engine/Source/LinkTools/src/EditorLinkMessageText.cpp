@@ -3,9 +3,11 @@
 #include "ComponentTypeRegistry.h"
 #include "GuidComponent.h"
 #include "InputAsset.h"
+#include "InputStream.h"
 #include "NameComponent.h"
 #include "ReflectedArchivePrinter.h"
 #include "ReflectedArchiveSerializer.h"
+#include "ReflectionUtils.h"
 #include "ScenePrinter.h"
 
 #include <algorithm>
@@ -506,6 +508,87 @@ namespace Nyx
 
 			text.Name = "SetInputAsset";
 			DescribeSetInputAsset(setInputAsset, bWithDetails, text);
+			break;
+		}
+
+		case EEditorLinkMessage::InputSubscribe:
+		{
+			InputSubscribeMessage subscribe;
+			if (!ReadNetMessage(message, subscribe))
+			{
+				describeUnreadable("InputSubscribe");
+				break;
+			}
+
+			text.Name = "InputSubscribe";
+			text.Summary = subscribe.bSubscribed ? "start streaming the game's input" : "stop streaming the game's input";
+			text.Details = std::string("Subscribed: ") + (subscribe.bSubscribed ? "true" : "false");
+			break;
+		}
+
+		case EEditorLinkMessage::InputDefinitions:
+		{
+			InputDefinitionsMessage definitions;
+			Nyx::Input::InputDefinitionsRecord record;
+			BinaryReader reader;
+			if (ReadNetMessage(message, definitions))
+			{
+				reader.LoadFromMemory(definitions.Record);
+			}
+			if (definitions.Record.empty() || !Nyx::Input::ReadDefinitionsRecord(reader, record))
+			{
+				describeUnreadable("InputDefinitions");
+				break;
+			}
+
+			text.Name = "InputDefinitions";
+			text.Summary = std::to_string(record.Actions.size()) + " actions, " + std::to_string(record.Contexts.size()) + " contexts";
+			for (const Nyx::Input::InputActionDef& action : record.Actions)
+			{
+				text.Details += "Action: " + action.Name + " (" + Nyx::Reflection::EnumValueToText(Nyx::Reflection::GetEnumMetadata<Nyx::Input::EActionValue>(), static_cast<int64_t>(action.ValueType)) + ")\n";
+			}
+			for (const Nyx::Input::InputContextDef& context : record.Contexts)
+			{
+				text.Details += "Context: " + context.Name + " (" + std::to_string(context.Priority) + "), " +
+					std::to_string(context.Bindings.size()) + " bindings\n";
+			}
+			break;
+		}
+
+		case EEditorLinkMessage::InputFrame:
+		{
+			InputFrameMessage frame;
+			Nyx::Input::InputFrameRecord record;
+			BinaryReader reader;
+			if (ReadNetMessage(message, frame))
+			{
+				reader.LoadFromMemory(frame.Record);
+			}
+			if (frame.Record.empty() || !Nyx::Input::ReadFrameRecord(reader, record))
+			{
+				describeUnreadable("InputFrame");
+				break;
+			}
+
+			text.Name = "InputFrame";
+			text.Summary = std::to_string(record.Events.size()) + " events" + (record.Stack ? ", the stack" : "") +
+				(record.Outputs.empty() ? "" : ", " + std::to_string(record.Outputs.size()) + " outputs");
+			text.Details = "TimeUs: " + std::to_string(record.TimeUs) + "\n";
+			for (const Nyx::Input::InputEvent& event : record.Events)
+			{
+				text.Details += "Event: " + std::to_string(event.TimeUs) + " device " + std::to_string(event.Device.Id.Value) + " " +
+					(event.Kind == Nyx::Input::EInputEventKind::Control ? Nyx::Input::GetControlPath(event.Control) + " " +
+								Nyx::Input::FormatValue(event.Value)
+																		: std::string("kind ") + std::to_string(static_cast<int>(event.Kind))) +
+					"\n";
+			}
+			if (record.Stack)
+			{
+				for (const Nyx::Input::InputStackRecord& entry : *record.Stack)
+				{
+					text.Details += "Stack: " + entry.Context + (entry.Reason.empty() ? "" : " (" + entry.Reason + ")") + "\n";
+				}
+			}
 			break;
 		}
 

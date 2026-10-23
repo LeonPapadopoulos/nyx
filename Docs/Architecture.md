@@ -29,8 +29,10 @@ message on the wire is `payload size (u32) | type (u16) | payload`, little-endia
     `SetSimulationPaused` and `StepSimulation`, which the game applies to its simulation clock
     (`ApplySimulationControl()`, `LiveEdits.cpp`), and the input asset as it is edited,
     `SetInputAsset`, and whether the pads drive the game without the focus, `SetInputBackground`
-    (`ApplyLiveInput()`, `LiveInput.cpp`);
-  - game to editor: `LogLine` and `Crash`.
+    (`ApplyLiveInput()`, `LiveInput.cpp`), and `InputSubscribe`, which starts or stops the game's
+    input stream;
+  - game to editor: `LogLine` and `Crash`, and while subscribed the game's input as
+    `InputDefinitions` and `InputFrame` records (`InputStream.h`).
 - **A program and the shader compiler (`RemoteShaderCompileService`).** The program listens,
   starts `NyxShaderCompiler.exe --port`, and sends compile requests; the compiler answers one at a
   time and exits when the connection ends. A compiler crash costs one compile, not the program.
@@ -120,7 +122,7 @@ checks every `#include` against this table.
 | `Properties` | Drawing and editing reflected properties: a widget per property kind, and the edit in progress | Common, Transactions, Assets |
 | `Scene` | The scene being edited: its document and undo, the outliner, details, gizmo, scene views and their cameras, scene files, copy and paste | Common, Transactions, Assets, Preferences, Properties |
 | `Play` | Play and Play All: the games, their windows and crash cards, the Game Link window, edits sent to the games | Transactions, Preferences, Scene |
-| `Input` | The Input window (*Window > Input*): the editor's input, its history and traces; the input asset being edited, with its undo (`InputAssetDocument`), and the Tuning and Checks tabs | Common, Transactions, Properties |
+| `Input` | The Input window (*Window > Input*): the editor's or a running game's input, its history and traces; the input asset being edited, with its undo (`InputAssetDocument`), and the Tuning and Checks tabs | Common, Transactions, Properties, Play |
 | `App` | `EditorLayer`, which owns and wires up everything else; `EditorFrame`, the titlebar with its menus and the status bar; `MaterialWorkspace`, which feeds the material windows and makes new materials; the workspaces, the asset types the editor knows | Common, Assets, Materials, Preferences, DevTools, Properties, Scene, Play, Input |
 
 ## One frame

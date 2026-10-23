@@ -43,6 +43,9 @@ namespace Nyx
 		StepSimulation = 11,
 		SetInputAsset = 12,
 		SetInputBackground = 13,
+		InputSubscribe = 14,
+		InputDefinitions = 15,
+		InputFrame = 16,
 	};
 
 	// The first message in both directions. Its layout never changes, so any two versions can
@@ -249,6 +252,44 @@ namespace Nyx
 		static constexpr EEditorLinkMessage Type = EEditorLinkMessage::SetInputBackground;
 
 		bool bGamepadsInBackground = false;
+
+		void Write(BinaryWriter& writer) const;
+		bool Read(BinaryReader& reader);
+	};
+
+	// The editor's view of a game's input (InputStream.h): the game streams its input frames while
+	// the editor's Input window shows it
+
+	// Editor to game: start or stop streaming the game's input
+	struct InputSubscribeMessage
+	{
+		static constexpr EEditorLinkMessage Type = EEditorLinkMessage::InputSubscribe;
+
+		bool bSubscribed = false;
+
+		void Write(BinaryWriter& writer) const;
+		bool Read(BinaryReader& reader);
+	};
+
+	// Game to editor: every action and context of the game's input, when they changed. Record:
+	// as Nyx::Input::WriteDefinitionsRecord writes it, with its size in front.
+	struct InputDefinitionsMessage
+	{
+		static constexpr EEditorLinkMessage Type = EEditorLinkMessage::InputDefinitions;
+
+		std::vector<std::byte> Record;
+
+		void Write(BinaryWriter& writer) const;
+		bool Read(BinaryReader& reader);
+	};
+
+	// Game to editor: one frame of the game's input, as Nyx::Input::WriteFrameRecord writes it,
+	// with its size in front
+	struct InputFrameMessage
+	{
+		static constexpr EEditorLinkMessage Type = EEditorLinkMessage::InputFrame;
+
+		std::vector<std::byte> Record;
 
 		void Write(BinaryWriter& writer) const;
 		bool Read(BinaryReader& reader);

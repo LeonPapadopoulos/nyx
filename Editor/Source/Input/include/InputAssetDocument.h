@@ -92,12 +92,13 @@ namespace Nyx::Editor
 		}
 
 		// The checks, with what the input system knows now (the stack, the actions the code
-		// consumed); run again by RefreshChecks()
+		// consumed); run again by RefreshChecks(), with another input system's knowledge if given,
+		// e.g. a game's the Input window shows
 		const std::vector<Nyx::Input::InputCheckFinding>& GetFindings() const
 		{
 			return Findings;
 		}
-		void RefreshChecks();
+		void RefreshChecks(const Nyx::Input::InputSystem* shown = nullptr);
 
 		// Puts the asset into the input system again
 		void Apply();

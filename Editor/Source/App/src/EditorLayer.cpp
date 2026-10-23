@@ -211,6 +211,7 @@ namespace Nyx::Editor
 		// Edits of the input asset share the scene's undo, and reach the input system at once
 		InputAsset.Attach(Editing.Transactions);
 		InputWindow.Attach(InputAsset, Editing.Transactions);
+		InputWindow.SetGames(&Games);
 	}
 
 	void EditorLayer::OnDetach()

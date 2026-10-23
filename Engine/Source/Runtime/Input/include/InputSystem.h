@@ -7,6 +7,8 @@
 #include "InputFrame.h"
 #include "InputUser.h"
 
+#include <cstdint>
+#include <functional>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
@@ -67,6 +69,12 @@ namespace Nyx::Input
 		ActionHandle FindAction(std::string_view name) const;
 		ContextHandle FindContext(std::string_view name) const;
 
+		// Counts the changes of actions and contexts: added or replaced
+		uint64_t GetDefinitionsRevision() const
+		{
+			return DefinitionsRevision;
+		}
+
 		// The one player there is, owning every device
 		InputUser& GetUser()
 		{
@@ -107,6 +115,26 @@ namespace Nyx::Input
 			ImGuiState = state;
 		}
 
+		const ImGuiInputState& GetImGuiState() const
+		{
+			return ImGuiState;
+		}
+
+		// Called in every BeginFrame(), after the frame's events and the system contexts, before
+		// the actions are decided: with the stack they are decided with (InputStreamWriter)
+		using FrameObserver = std::function<void(const InputSystem&)>;
+		void SetFrameObserver(FrameObserver observer)
+		{
+			Observer = std::move(observer);
+		}
+
+		// Whether devices coming and going and the cursor are logged; not for a replica of another
+		// program's input
+		void SetLogging(bool bLog)
+		{
+			bLogging = bLog;
+		}
+
 		// Takes every backend's events, in the order they happened, into the next frame, and
 		// decides the actions
 		void BeginFrame(uint64_t nowUs);
@@ -145,5 +173,8 @@ namespace Nyx::Input
 		ContextHandle ImGuiContext;
 		ImGuiInputState ImGuiState;
 		bool bGamepadsInBackground = false;
+		uint64_t DefinitionsRevision = 0;
+		FrameObserver Observer;
+		bool bLogging = true;
 	};
 }

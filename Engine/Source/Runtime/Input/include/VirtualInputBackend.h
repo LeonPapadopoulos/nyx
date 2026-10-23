@@ -38,6 +38,13 @@ namespace Nyx::Input
 
 		void SetFocus(bool bFocused, uint64_t timeUs = 0);
 
+		// An event as another backend reported it, e.g. from a recording or another program's
+		// input (InputReplica): its device ids are kept
+		void Push(const InputEvent& event)
+		{
+			Pending.push_back(event);
+		}
+
 		const char* GetName() const override
 		{
 			return "Virtual";

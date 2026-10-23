@@ -4,6 +4,7 @@
 #include "CrashHandler.h"
 #include "EditorLink.h"
 #include "GameLaunchOptions.h"
+#include "InputStream.h"
 #include "NetConnection.h"
 
 #include <chrono>
@@ -65,6 +66,16 @@ namespace Nyx::Editor
 		// Edits for this game, sent in order once it is linked. Ignored once it doesn't take edits.
 		void QueueEdits(const std::vector<Nyx::Net::Message>& edits);
 
+		// Whether the game streams its input frames to a replica here, for the Input window. The
+		// game is asked as soon as it is linked; turning it on again starts a new replica.
+		void SetInputSubscribed(bool bSubscribed);
+
+		// The game's input as the replica decides it; null while not subscribed
+		Nyx::Input::InputReplica* GetInputReplica()
+		{
+			return InputReplica.get();
+		}
+
 		// From Start() until the game was asked to quit, ended, or its link ended. A game that
 		// falls more than MaxQueuedEditBytes behind stops taking edits too.
 		bool TakesEdits() const
@@ -123,6 +134,7 @@ namespace Nyx::Editor
 	private:
 		void UpdateLink();
 		void HandleMessages();
+		void HandleInputRecord(const Nyx::Net::Message& message);
 		void SendQueuedEdits();
 		void CheckWhetherExited();
 		void StopTakingEdits();
@@ -163,5 +175,11 @@ namespace Nyx::Editor
 		bool bTakesEdits = false;
 		std::vector<Nyx::Net::Message> QueuedEdits;
 		size_t QueuedEditBytes = 0;
+
+		// The game's input, while subscribed, and what the game was last told
+		bool bInputSubscribed = false;
+		bool bInputSubscriptionSent = false;
+		std::unique_ptr<Nyx::Input::InputReplica> InputReplica;
+		bool bInputRecordWarned = false;
 	};
 }

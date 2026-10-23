@@ -81,6 +81,17 @@ namespace Nyx::Editor
 			return !Games.empty();
 		}
 
+		// The games running now, in the order they were started
+		std::vector<GameInstance*> GetGames() const
+		{
+			std::vector<GameInstance*> games;
+			for (const std::unique_ptr<GameInstance>& game : Games)
+			{
+				games.push_back(game.get());
+			}
+			return games;
+		}
+
 		// Whether a game was asked to quit and hasn't yet
 		bool IsQuitting() const;
 

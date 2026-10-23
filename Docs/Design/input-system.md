@@ -142,6 +142,13 @@ are reflected types (`NYX_REFLECT`, `NYX_ENUM`) and the header tool also reads
   lets the pads drive a game whose window doesn't have the focus: `Unfocused` then takes only the
   keyboard and the mouse (`SetGamepadsInBackground()`). *Gamepads Drive All Games* in Play's menu
   starts the games so and switches the running ones.
+- **The Input window shows a running game.** While a game is shown, it streams its input
+  (`InputStreamWriter`, a frame observer of its input system): first a snapshot of its devices,
+  what they hold and its stack, then each frame's events, frame time, ImGui's state, its stack when
+  it changed, and its actions and contexts when they changed. The editor replays the stream in a
+  replica of the game's input system (`InputReplica`, over a virtual backend), which decides every
+  frame as the game did: traces, phases, the stack and the timeline are the game's, not worked out
+  again. The stream can start at any time, and only the game shown streams.
 
 ## Seeing it
 
@@ -188,6 +195,9 @@ explanations and the curve; `NyxEditorInputTuningTests` edits inside the asset's
 and redo, and draws the Tuning and Checks tabs headless.
 `NyxLiveInputTests` has both ends in one program: the asset from the editor while a button is
 held, a binding the game can't use, damaged messages, and the pad without the focus.
+`NyxInputStreamTests` streams presses, holds, taps, the wheel, mouse look, ImGui, focus, pads in
+the background, contexts switched by code, tuning changed mid-hold and a pad unplugged, and
+checks that the replica decides every frame as the original did.
 `NyxInputInspectionTests` checks who gets a control, What if stacks and the calibration;
 `NyxEditorPanelTests` that the Input window leaves no shapes to ImGui.
 `NyxInputGamepadTests` drives virtual pads: hot-plug, analog values, focus, swizzles, composites
@@ -196,4 +206,4 @@ and tries their output, for checking them by hand.
 
 ## Not built yet
 
-The Input window showing a running game; recording, replay and A/B.
+Recording, replay and A/B.

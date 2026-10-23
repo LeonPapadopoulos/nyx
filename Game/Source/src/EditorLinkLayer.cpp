@@ -68,6 +68,7 @@ namespace Nyx::Game
 		}
 
 		GCrashReportLink = this;
+		InputStream = std::make_unique<Nyx::Input::InputStreamWriter>(application.GetInput());
 
 		LOG_INFO("Editor link: connecting to the editor on port {0}", EditorPort);
 		Link = std::make_unique<Nyx::EditorLink>(Nyx::Net::Connection::ConnectToLocalPort(EditorPort), "NyxGame",
@@ -79,6 +80,9 @@ namespace Nyx::Game
 
 	void EditorLinkLayer::OnDetach()
 	{
+		// It observes the application's input system, which may go before this layer
+		InputStream.reset();
+
 		if (!Link)
 		{
 			return;
@@ -110,6 +114,21 @@ namespace Nyx::Game
 				App->RequestQuit();
 				break;
 
+			case Nyx::EEditorLinkMessage::InputSubscribe:
+			{
+				// From the next frame on, starting with a snapshot of the devices and the stack
+				Nyx::InputSubscribeMessage subscribe;
+				if (Nyx::ReadNetMessage(*message, subscribe) && subscribe.bSubscribed)
+				{
+					InputStream->Start();
+				}
+				else
+				{
+					InputStream->Stop();
+				}
+				break;
+			}
+
 			default:
 				ApplyMessage(*message);
 				break;
@@ -124,6 +143,22 @@ namespace Nyx::Game
 		}
 
 		SendLogLines();
+		SendInputFrames();
+	}
+
+	void EditorLinkLayer::SendInputFrames()
+	{
+		for (Nyx::Input::InputStreamWriter::Record& record : InputStream->TakeRecords())
+		{
+			if (record.bDefinitions)
+			{
+				Link->Send(Nyx::InputDefinitionsMessage{ std::move(record.Bytes) });
+			}
+			else
+			{
+				Link->Send(Nyx::InputFrameMessage{ std::move(record.Bytes) });
+			}
+		}
 	}
 
 	void EditorLinkLayer::ApplyMessage(const Nyx::Net::Message& message)
@@ -208,6 +243,10 @@ namespace Nyx::Game
 		}
 
 		Link.reset();
+		if (InputStream)
+		{
+			InputStream->Stop();
+		}
 
 		// Nobody takes the lines anymore
 		LogSink->Stop();

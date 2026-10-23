@@ -40,12 +40,14 @@ namespace Nyx::Input
 
 	ActionHandle InputSystem::AddAction(InputActionDef action)
 	{
+		++DefinitionsRevision;
 		Actions.push_back(std::move(action));
 		return ActionHandle::Make(static_cast<uint32_t>(Actions.size() - 1), 1);
 	}
 
 	ContextHandle InputSystem::AddContext(InputContextDef context)
 	{
+		++DefinitionsRevision;
 		Contexts.push_back(std::move(context));
 		return ContextHandle::Make(static_cast<uint32_t>(Contexts.size() - 1), 1);
 	}
@@ -54,6 +56,7 @@ namespace Nyx::Input
 	{
 		if (action.IsValid() && action.Index() < Actions.size())
 		{
+			++DefinitionsRevision;
 			Actions[action.Index()] = std::move(def);
 		}
 	}
@@ -66,6 +69,7 @@ namespace Nyx::Input
 		}
 
 		// The same bindings with other tuning: what they remember still fits
+		++DefinitionsRevision;
 		const std::vector<InputBinding>& old = Contexts[context.Index()].Bindings;
 		const bool bSameBindings = std::equal(old.begin(), old.end(), def.Bindings.begin(), def.Bindings.end(),
 			[](const InputBinding& a, const InputBinding& b)
@@ -143,10 +147,14 @@ namespace Nyx::Input
 			switch (event.Kind)
 			{
 			case EInputEventKind::DeviceAdded:
+				if (!bLogging)
+				{
+					break;
+				}
 				LOG_INFO("Input: {0} connected ({1}, {2})", event.Device.Name, GetDeviceKindName(event.Device.Kind), event.Device.Backend);
 				break;
 			case EInputEventKind::DeviceRemoved:
-				if (const InputFrame::DeviceState* device = Frame.FindDevice(event.Device.Id))
+				if (const InputFrame::DeviceState* device = bLogging ? Frame.FindDevice(event.Device.Id) : nullptr)
 				{
 					LOG_INFO("Input: {0} disconnected", device->Info.Name);
 				}
@@ -164,6 +172,10 @@ namespace Nyx::Input
 		PreviousFrameUs = nowUs;
 
 		UpdateSystemContexts();
+		if (Observer)
+		{
+			Observer(*this);
+		}
 		User.Evaluate(*this, Frame, deltaSeconds);
 	}
 
@@ -173,7 +185,7 @@ namespace Nyx::Input
 		User.DecideCursor();
 
 		const CursorRequest& cursor = User.GetCursor();
-		if (cursor.Mode != previous.Mode || cursor.Window != previous.Window)
+		if (bLogging && (cursor.Mode != previous.Mode || cursor.Window != previous.Window))
 		{
 			LOG_TRACE("Input: cursor {0}{1}{2}", GetCursorModeName(cursor.Mode), cursor.Owner.empty() ? "" : ", for ", cursor.Owner);
 		}

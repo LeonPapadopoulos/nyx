@@ -599,6 +599,11 @@ namespace Nyx::Input
 
 		// Output: what the user's pads can do, tried on all of them
 		Nyx::UI::SectionHeader("Try");
+		if (!bCanSendOutput)
+		{
+			ImGui::TextDisabled("Rumble, trigger effects and the light can be tried on the editor's own pads (Input: Editor)");
+			return;
+		}
 		InputUser& user = input.GetUser();
 		if (Nyx::UI::Button("Rumble"))
 		{

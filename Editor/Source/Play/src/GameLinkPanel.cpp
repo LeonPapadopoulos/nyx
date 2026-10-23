@@ -76,6 +76,15 @@ namespace Nyx::Editor
 			return;
 		}
 
+		// A game's input frames come every frame while the Input window shows it: kept only while
+		// their type is shown, which it isn't at first, so they don't push out the other messages
+		const bool bInputFrame = message.Type == static_cast<uint16_t>(EEditorLinkMessage::InputFrame);
+		if (bInputFrame && !bShowType[message.Type])
+		{
+			TypeNames.emplace(message.Type, "InputFrame");
+			return;
+		}
+
 		MessageEntry entry;
 		entry.Id = NextMessageId++;
 		entry.TimeMs = GetClockTimeMs();

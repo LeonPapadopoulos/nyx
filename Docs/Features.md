@@ -137,6 +137,9 @@ contexts, and the context highest on the stack that binds a control gets it.
     every binding of the next control pressed (*Press to find*);
   - *Events*: the events, and what was sent to the pads;
   - *Timeline*: chosen actions over the last seconds, with each frame's traces.
+- The dropdown at its top shows a running game's input instead, any game of Play All: while it is
+  shown, the game streams its input frames, and the editor replays them through the same actions
+  and contexts, so traces, the stack and the timeline are the game's.
 - In Debug builds, Ctrl+Alt+Shift+I shows the same over a game.
 - The bindings and their tuning are data, in `Input\Default.nyxinput` in the project's assets, or
   else the engine's (`Assets\Input\Default.nyxinput` in Nyx's own build). The editor writes it
@@ -157,7 +160,7 @@ contexts, and the context highest on the stack that binds a control gets it.
 - `NyxPadCheck.exe` lists the pads, prints what they report and tries their output without a
   window.
 - `NyxInputTests`, `NyxInputRouterTests`, `NyxInputGamepadTests`, `NyxInputInspectionTests`,
-  `NyxInputAssetTests`, `NyxInputChecksTests`, `NyxLiveInputTests`, `NyxEditorCameraTests` and
+  `NyxInputAssetTests`, `NyxInputChecksTests`, `NyxLiveInputTests`, `NyxInputStreamTests`, `NyxEditorCameraTests` and
   `NyxEditorInputTuningTests` test it with virtual devices.
 
 ## Debug drawing

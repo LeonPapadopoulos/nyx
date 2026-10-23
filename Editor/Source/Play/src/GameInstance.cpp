@@ -263,6 +263,14 @@ namespace Nyx::Editor
 		}
 
 		Link->Update();
+
+		// The Input window shows this game, or stopped showing it
+		if (Link->IsConnected() && bInputSubscribed != bInputSubscriptionSent)
+		{
+			Link->Send(Nyx::InputSubscribeMessage{ bInputSubscribed });
+			bInputSubscriptionSent = bInputSubscribed;
+		}
+
 		HandleMessages();
 		SendQueuedEdits();
 
@@ -272,6 +280,53 @@ namespace Nyx::Editor
 			CloseReason = Link->GetCloseReason();
 			Link.reset();
 			StopTakingEdits();
+			bInputSubscriptionSent = false;
+		}
+	}
+
+	void GameInstance::SetInputSubscribed(bool bSubscribed)
+	{
+		if (bSubscribed == bInputSubscribed)
+		{
+			return;
+		}
+
+		// The game starts each subscription with a snapshot: a new replica takes it
+		bInputSubscribed = bSubscribed;
+		if (bSubscribed)
+		{
+			InputReplica = std::make_unique<Nyx::Input::InputReplica>();
+			bInputRecordWarned = false;
+		}
+		else
+		{
+			InputReplica.reset();
+		}
+	}
+
+	void GameInstance::HandleInputRecord(const Nyx::Net::Message& message)
+	{
+		// Frames that were on their way when the subscription ended
+		if (!InputReplica)
+		{
+			return;
+		}
+
+		bool bApplied = false;
+		if (message.Type == static_cast<uint16_t>(Nyx::EEditorLinkMessage::InputDefinitions))
+		{
+			Nyx::InputDefinitionsMessage definitions;
+			bApplied = Nyx::ReadNetMessage(message, definitions) && InputReplica->ApplyDefinitions(definitions.Record);
+		}
+		else
+		{
+			Nyx::InputFrameMessage frame;
+			bApplied = Nyx::ReadNetMessage(message, frame) && InputReplica->ApplyFrame(frame.Record);
+		}
+
+		if (!bApplied && !std::exchange(bInputRecordWarned, true))
+		{
+			LOG_WARNING("{0}: editor link: the game's input can't be read; the Input window may show it wrong", Name);
 		}
 	}
 
@@ -282,6 +337,13 @@ namespace Nyx::Editor
 			// The Game Link window shows log lines; it sees every message through the link's observer
 			if (message->Type == static_cast<uint16_t>(Nyx::EEditorLinkMessage::LogLine))
 			{
+				continue;
+			}
+
+			if (message->Type == static_cast<uint16_t>(Nyx::EEditorLinkMessage::InputDefinitions) ||
+				message->Type == static_cast<uint16_t>(Nyx::EEditorLinkMessage::InputFrame))
+			{
+				HandleInputRecord(*message);
 				continue;
 			}
 
