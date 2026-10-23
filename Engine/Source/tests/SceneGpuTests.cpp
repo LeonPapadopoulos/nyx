@@ -1112,6 +1112,35 @@ namespace
 		gpu.DrawFrames(1);
 	}
 
+	// The pixels a decal made brighter than `without`; any it made darker, or brighter outside the
+	// quad's square in the middle of the view (0.8 m at 2.5 m: 75 pixels), fail
+	size_t BrightenedByTheDecal(const RgbaImage& with, const RgbaImage& without, const std::string& what)
+	{
+		size_t count = 0;
+		for (uint32_t y = 0; y < with.Height; ++y)
+		{
+			for (uint32_t x = 0; x < with.Width; ++x)
+			{
+				const size_t pixel = (static_cast<size_t>(y) * with.Width + x) * 4;
+				int gain = 0;
+				for (size_t channel = 0; channel < 3; ++channel)
+				{
+					const int difference = int(with.Pixels[pixel + channel]) - int(without.Pixels[pixel + channel]);
+					Require(difference >= 0, what + ": the decal darkened the pixel at " + std::to_string(x) + ", " + std::to_string(y));
+					gain += difference;
+				}
+				if (gain == 0)
+				{
+					continue;
+				}
+				const bool bInside = std::abs(int(x) - int(ViewWidth / 2)) <= 42 && std::abs(int(y) - int(ViewHeight / 2)) <= 42;
+				Require(bInside, what + ": the decal brightened the pixel at " + std::to_string(x) + ", " + std::to_string(y) + ", outside its quad");
+				count += gain > 30 ? 1 : 0;
+			}
+		}
+		return count;
+	}
+
 	// A cube facing the camera with a glowing decal on its front face, as a game's view shows it
 	// (no editor overlays). Compared, pixel by pixel, with the same view without the decal.
 	void TestSurfaceDecals(SceneRenderer& gpu)
@@ -1152,35 +1181,6 @@ namespace
 			gpu.DrawFrames(2);
 			return ReadView(gpu, view);
 		};
-		// The pixels the decal made brighter than `without`; any it made darker, or brighter outside
-		// the quad's square (0.8 m at 2.5 m: 75 pixels), fail
-		const auto brightened = [](const RgbaImage& with, const RgbaImage& without, const std::string& what)
-		{
-			size_t count = 0;
-			for (uint32_t y = 0; y < with.Height; ++y)
-			{
-				for (uint32_t x = 0; x < with.Width; ++x)
-				{
-					const size_t pixel = (static_cast<size_t>(y) * with.Width + x) * 4;
-					int gain = 0;
-					for (size_t channel = 0; channel < 3; ++channel)
-					{
-						const int difference = int(with.Pixels[pixel + channel]) - int(without.Pixels[pixel + channel]);
-						Require(difference >= 0, what + ": the decal darkened the pixel at " + std::to_string(x) + ", " + std::to_string(y));
-						gain += difference;
-					}
-					if (gain == 0)
-					{
-						continue;
-					}
-					const bool bInside = std::abs(int(x) - int(ViewWidth / 2)) <= 42 && std::abs(int(y) - int(ViewHeight / 2)) <= 42;
-					Require(bInside, what + ": the decal brightened the pixel at " + std::to_string(x) + ", " + std::to_string(y) + ", outside its quad");
-					count += gain > 30 ? 1 : 0;
-				}
-			}
-			return count;
-		};
-
 		const RgbaImage without = draw([](SurfaceDecalComponent& component)
 			{
 				component.bVisible = false;
@@ -1189,7 +1189,7 @@ namespace
 
 		const RgbaImage revealed = draw(nullptr);
 		SaveIfAsked(revealed, "Decal-Revealed");
-		const size_t revealedCount = brightened(revealed, without, "Revealed");
+		const size_t revealedCount = BrightenedByTheDecal(revealed, without, "Revealed");
 		Require(revealedCount > 500, "The revealed decal brightens only " + std::to_string(revealedCount) + " pixels");
 
 		// Added while the game runs, with only its material's path: drawn as one loaded is; its path
@@ -1213,7 +1213,7 @@ namespace
 				component.Reveal = 0.5f;
 			});
 		SaveIfAsked(halfRevealed, "Decal-HalfRevealed");
-		const size_t halfCount = brightened(halfRevealed, without, "Half revealed");
+		const size_t halfCount = BrightenedByTheDecal(halfRevealed, without, "Half revealed");
 		Require(halfCount > revealedCount / 5 && halfCount < revealedCount * 4 / 5,
 			"Half revealed, the decal brightens " + std::to_string(halfCount) + " pixels, against " + std::to_string(revealedCount) + " revealed");
 
@@ -1239,6 +1239,87 @@ namespace
 			});
 		Require(hiddenWithout.Pixels != without.Pixels, "The cube in front doesn't show");
 		Require(draw(nullptr).Pixels == hiddenWithout.Pixels, "The decal behind the cube in front is drawn over it");
+
+		renderer.DestroySceneView(view);
+		renderer.SetWorld(nullptr);
+		gpu.DrawFrames(1);
+	}
+
+	// A cube turned away from the camera, so its face's depth changes across the picture, with a
+	// decal on that face: at 2.5 m, then 200 m away, cube, quad and distance 80 times as big, so drawn
+	// the same size, with the quad still 3 mm off the face. It brightens as many pixels far away as
+	// near; a depth buffer that can't tell the quad from the face would leave holes in it.
+	void TestSurfaceDecalsFarAway(SceneRenderer& gpu)
+	{
+		Nyx::IEditorRenderer& renderer = gpu.Renderer;
+		Registry world;
+		const Entity cube = AddCube(world, gpu.Renderer, 0.0f, renderer.GetMaterial("Materials/Untextured.nyxmat"));
+		world.Add<GuidComponent>(cube, GuidComponent{ EntityGuid{ 0xFA4 } });
+		const Entity camera = world.CreateEntity();
+		world.Add<TransformComponent>(camera, TransformComponent{ .Position = glm::vec3(0.0f, 0.0f, 3.0f), .Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f), .Scale = glm::vec3(1.0f) });
+		world.Add<CameraComponent>(camera, CameraComponent{});
+
+		const Entity decalEntity = world.CreateEntity();
+		SurfaceDecalComponent decal;
+		decal.Anchor = SurfaceAnchor{ .Host = EntityGuid{ 0xFA4 }, .LocalPosition = glm::vec3(0.0f, 0.0f, 0.5f), .LocalNormal = glm::vec3(0.0f, 0.0f, 1.0f), .LocalTangent = glm::vec3(1.0f, 0.0f, 0.0f) };
+		decal.MaterialAsset = renderer.GetMaterial("Materials/MaskedDecal.nyxmat");
+		decal.Color = glm::vec3(0.2f, 1.0f, 0.6f);
+		decal.Intensity = 4.0f;
+		world.Add<SurfaceDecalComponent>(decalEntity, decal);
+
+		renderer.SetWorld(&world);
+		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
+		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
+		gpu.DrawUntilShadersCompiled();
+
+		const auto brightenedAt = [&](float scale)
+		{
+			const std::string what = std::to_string(int(2.5f * scale)) + " m away";
+			// Turned about its front face's middle, which stays in the middle of the picture
+			TransformComponent& transform = world.Get<TransformComponent>(cube);
+			transform.Rotation = glm::angleAxis(glm::radians(45.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+			transform.Scale = glm::vec3(scale);
+			transform.Position = glm::vec3(0.0f, 0.0f, 0.5f * scale) - transform.Rotation * glm::vec3(0.0f, 0.0f, 0.5f * scale);
+			world.Get<TransformComponent>(camera).Position.z = 3.0f * scale;
+			SurfaceDecalComponent& component = world.Get<SurfaceDecalComponent>(decalEntity);
+			component.Size = glm::vec2(0.6f * scale);
+
+			component.bVisible = false;
+			gpu.DrawFrames(2);
+			const RgbaImage without = ReadView(gpu, view);
+			component.bVisible = true;
+			gpu.DrawFrames(2);
+			const RgbaImage with = ReadView(gpu, view);
+			SaveIfAsked(with, "Decal-" + std::to_string(int(2.5f * scale)) + "m");
+			return BrightenedByTheDecal(with, without, what);
+		};
+
+		const size_t near = brightenedAt(1.0f);
+		Require(near > 300, "At 2.5 m, the decal brightens only " + std::to_string(near) + " pixels");
+		const size_t far = brightenedAt(80.0f);
+		std::cout << "Decal brightens " << near << " pixels at 2.5 m, " << far << " at 200 m\n";
+		Require(far * 50 >= near * 49 && far * 50 <= near * 51,
+			"At 200 m, the decal brightens " + std::to_string(far) + " pixels, against " + std::to_string(near) + " at 2.5 m");
+
+		// A cube like it 2 cm in front of the face, the decal between the two: hidden, as it is near
+		const TransformComponent host = world.Get<TransformComponent>(cube);
+		const Entity front = AddCube(world, gpu.Renderer, 0.0f, renderer.GetMaterial("Materials/Untextured.nyxmat"));
+		world.Get<TransformComponent>(front) = host;
+		world.Get<TransformComponent>(front).Position += host.Rotation * glm::vec3(0.0f, 0.0f, 0.02f);
+		world.Get<SurfaceDecalComponent>(decalEntity).bVisible = false;
+		gpu.DrawFrames(2);
+		const RgbaImage hiddenWithout = ReadView(gpu, view);
+		world.Get<SurfaceDecalComponent>(decalEntity).bVisible = true;
+		gpu.DrawFrames(2);
+		const RgbaImage hidden = ReadView(gpu, view);
+		SaveIfAsked(hidden, "Decal-200m-Hidden");
+		size_t shownThrough = 0;
+		for (size_t pixel = 0; pixel < hidden.Pixels.size(); ++pixel)
+		{
+			shownThrough += hidden.Pixels[pixel] != hiddenWithout.Pixels[pixel] ? 1 : 0;
+		}
+		Require(shownThrough == 0, "At 200 m, the decal shows through a cube 2 cm in front of it (" + std::to_string(shownThrough) + " channels differ)");
 
 		renderer.DestroySceneView(view);
 		renderer.SetWorld(nullptr);
@@ -1551,6 +1632,7 @@ int main()
 		TestWorldDebugDrawing(gpu);
 		TestDrawingBetweenSteps(gpu);
 		TestSurfaceDecals(gpu);
+		TestSurfaceDecalsFarAway(gpu);
 		TestDecalsBetweenSteps(gpu);
 		TestPickingDecals(gpu);
 		TestDecalsPulseOnTheWorldsClock(gpu);

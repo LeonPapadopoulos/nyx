@@ -2,6 +2,7 @@
 #include "VulkanEditorOverlays.h"
 
 #include "Assertions.h"
+#include "CameraProjection.h"
 #include "Log.h"
 #include "SceneView.h"
 #include "ShaderPrograms.h"
@@ -249,7 +250,7 @@ namespace Nyx
 		vk::PipelineDepthStencilStateCreateInfo depthStencil{};
 		depthStencil.depthTestEnable = VK_TRUE;
 		depthStencil.depthWriteEnable = VK_FALSE;
-		depthStencil.depthCompareOp = vk::CompareOp::eLessOrEqual;
+		depthStencil.depthCompareOp = DepthTestNearerOrEqual;
 		depthStencil.depthBoundsTestEnable = VK_FALSE;
 		depthStencil.stencilTestEnable = VK_FALSE;
 
@@ -353,7 +354,7 @@ namespace Nyx
 		vk::PipelineDepthStencilStateCreateInfo depthStencil{};
 		depthStencil.depthTestEnable = VK_TRUE;
 		depthStencil.depthWriteEnable = VK_TRUE;
-		depthStencil.depthCompareOp = vk::CompareOp::eLess;
+		depthStencil.depthCompareOp = DepthTestNearer;
 		depthStencil.depthBoundsTestEnable = VK_FALSE;
 		depthStencil.stencilTestEnable = VK_FALSE;
 
@@ -890,7 +891,7 @@ namespace Nyx
 		vk::PipelineDepthStencilStateCreateInfo depthVisible{};
 		depthVisible.depthTestEnable = VK_TRUE;
 		depthVisible.depthWriteEnable = VK_TRUE;
-		depthVisible.depthCompareOp = vk::CompareOp::eLess;
+		depthVisible.depthCompareOp = DepthTestNearer;
 
 		vk::GraphicsPipelineCreateInfo visibleInfo{};
 		visibleInfo.stageCount = 2;
@@ -925,7 +926,7 @@ namespace Nyx
 	{
 		std::array<vk::ClearValue, 2> clearValues{};
 		clearValues[0].color = vk::ClearColorValue(std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 0.0f });
-		clearValues[1].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
+		clearValues[1].depthStencil = vk::ClearDepthStencilValue(FarPlaneDepth, 0);
 
 		const vk::Extent2D extent = view.RenderTarget.GetExtent();
 
@@ -986,7 +987,7 @@ namespace Nyx
 	{
 		std::array<vk::ClearValue, 2> clearValues{};
 		clearValues[0].color = vk::ClearColorValue(std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 0.0f });
-		clearValues[1].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
+		clearValues[1].depthStencil = vk::ClearDepthStencilValue(FarPlaneDepth, 0);
 
 		const vk::Extent2D extent = view.RenderTarget.GetExtent();
 
@@ -1305,7 +1306,7 @@ namespace Nyx
 	{
 		std::array<vk::ClearValue, 2> clearValues{};
 		clearValues[0].color = vk::ClearColorValue(std::array<uint32_t, 4>{ 0u, 0u, 0u, 0u });
-		clearValues[1].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
+		clearValues[1].depthStencil = vk::ClearDepthStencilValue(FarPlaneDepth, 0);
 
 		const vk::Extent2D extent = view.RenderTarget.GetExtent();
 

@@ -1,5 +1,6 @@
 #include "NyxPCH.h"
 #include "VulkanViewportTarget.h"
+#include "CameraProjection.h"
 #include "VulkanContext.h"
 #include "VulkanUtil.h"
 
@@ -70,11 +71,11 @@ namespace Nyx
 		Initialize(context, width, height, format);
 	}
 
-	void VulkanViewportTarget::BeginScenePass(vk::raii::CommandBuffer& commandBuffer, const vk::ClearColorValue& clearValue, float clearDepth)
+	void VulkanViewportTarget::BeginScenePass(vk::raii::CommandBuffer& commandBuffer, const vk::ClearColorValue& clearValue)
 	{
 		std::vector<vk::ClearValue> clearValues(2);
 		clearValues[0].color = clearValue;
-		clearValues[1].depthStencil = vk::ClearDepthStencilValue(clearDepth, 0);
+		clearValues[1].depthStencil = vk::ClearDepthStencilValue(FarPlaneDepth, 0);
 		BeginPass(commandBuffer, *SceneRenderPass, *SceneFramebuffer, clearValues);
 	}
 
@@ -404,11 +405,11 @@ namespace Nyx
 
 	vk::Format VulkanViewportTarget::FindDepthFormat(vk::PhysicalDevice physicalDevice)
 	{
+		// Floating point only: reversed depth is fine far away because a float is finest near 0
 		return FindSupportedFormat(
 			physicalDevice,
 			{ vk::Format::eD32Sfloat,
-				vk::Format::eD32SfloatS8Uint,
-				vk::Format::eD24UnormS8Uint },
+				vk::Format::eD32SfloatS8Uint },
 			vk::ImageTiling::eOptimal,
 			vk::FormatFeatureFlagBits::eDepthStencilAttachment);
 	}

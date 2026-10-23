@@ -35,9 +35,11 @@ namespace Nyx
 	// Width over height; 1 for a picture without height
 	float GetAspectRatio(float width, float height);
 
-	// The depth MakePerspectiveProjection() gives the near and the far plane: Vulkan's 0 to 1
-	constexpr float NearPlaneDepth = 0.0f;
-	constexpr float FarPlaneDepth = 1.0f;
+	// The depth MakePerspectiveProjection() gives the near and the far plane: reversed, 1 to 0, so
+	// what is nearer has the greater depth. A float depth buffer is finest near 0, where the far
+	// plane is, which keeps surfaces far away apart where 0 to 1 would round them together.
+	constexpr float NearPlaneDepth = 1.0f;
+	constexpr float FarPlaneDepth = 0.0f;
 
 	// From view space to Vulkan's clip space: right-handed, looking along -Z, Y turned so the top of
 	// the picture is up, depth from NearPlaneDepth at the near plane to FarPlaneDepth at the far one

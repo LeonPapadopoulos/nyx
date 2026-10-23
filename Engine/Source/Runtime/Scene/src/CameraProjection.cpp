@@ -29,9 +29,10 @@ namespace Nyx
 
 	glm::mat4 MakePerspectiveProjection(float fovYRadians, float aspectRatio, float nearPlane, float farPlane)
 	{
-		// Depth from 0 to 1, as Vulkan keeps it. Named, not left to GLM_FORCE_DEPTH_ZERO_TO_ONE: OpenGL's
-		// -1 to 1 cut off what was nearer than about twice the near plane.
-		glm::mat4 projection = glm::perspectiveRH_ZO(fovYRadians, aspectRatio, nearPlane, farPlane);
+		// Depth within Vulkan's 0 to 1, reversed: the near and far planes swapped give 1 at the near
+		// plane and 0 at the far one. Named, not left to GLM_FORCE_DEPTH_ZERO_TO_ONE: OpenGL's -1 to 1
+		// cut off what was nearer than about twice the near plane.
+		glm::mat4 projection = glm::perspectiveRH_ZO(fovYRadians, aspectRatio, farPlane, nearPlane);
 
 		// Vulkan's Y points down the picture
 		projection[1][1] *= -1.0f;

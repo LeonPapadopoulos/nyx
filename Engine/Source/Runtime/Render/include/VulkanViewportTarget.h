@@ -22,8 +22,8 @@ namespace Nyx
 		void EnsureSize(VulkanContext& context, uint32_t width, uint32_t height);
 		void Recreate(VulkanContext& context, uint32_t width, uint32_t height, vk::Format format);
 
-		// The scene: the HDR image and the depth, both cleared first
-		void BeginScenePass(vk::raii::CommandBuffer& commandBuffer, const vk::ClearColorValue& clearValue, float clearDepth = 1.0f);
+		// The scene: the HDR image and the depth, both cleared first, the depth to the far plane's
+		void BeginScenePass(vk::raii::CommandBuffer& commandBuffer, const vk::ClearColorValue& clearValue);
 		// The picture: written whole (the tonemap), then drawn over with the scene's depth
 		void BeginPicturePass(vk::raii::CommandBuffer& commandBuffer);
 		void EndRenderPass(vk::raii::CommandBuffer& commandBuffer);

@@ -15,8 +15,9 @@ VertexOutput skyboxVertex(float3 position : POSITION)
 {
     VertexOutput output;
     output.Direction = position;
-    // At the far plane: depth w / w
-    output.Position = mul(View.SkyboxViewProjection, float4(position, 1.0)).xyww;
+    // At the far plane, whose depth is 0 (reversed: MakePerspectiveProjection())
+    const float4 clip = mul(View.SkyboxViewProjection, float4(position, 1.0));
+    output.Position = float4(clip.xy, 0.0, clip.w);
     return output;
 }
 

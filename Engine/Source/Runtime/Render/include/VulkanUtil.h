@@ -9,6 +9,11 @@ namespace Nyx
 {
 	class VulkanContext;
 
+	// The depth tests for what is nearer: depth is reversed (NearPlaneDepth in CameraProjection.h),
+	// so nearer is greater, and depth buffers are cleared to FarPlaneDepth
+	constexpr vk::CompareOp DepthTestNearer = vk::CompareOp::eGreater;
+	constexpr vk::CompareOp DepthTestNearerOrEqual = vk::CompareOp::eGreaterOrEqual;
+
 	// The first memory type that `typeFilter` allows (one bit per type, as in
 	// vk::MemoryRequirements) and that has all of `properties`. Throws when there is none.
 	uint32_t FindMemoryType(vk::PhysicalDevice physicalDevice, uint32_t typeFilter, vk::MemoryPropertyFlags properties);

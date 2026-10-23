@@ -1433,7 +1433,7 @@ namespace Nyx
 		vk::PipelineDepthStencilStateCreateInfo depthStencil{};
 		depthStencil.depthTestEnable = VK_TRUE;
 		depthStencil.depthWriteEnable = VK_FALSE;
-		depthStencil.depthCompareOp = vk::CompareOp::eLessOrEqual;
+		depthStencil.depthCompareOp = DepthTestNearerOrEqual;
 		depthStencil.depthBoundsTestEnable = VK_FALSE;
 		depthStencil.stencilTestEnable = VK_FALSE;
 

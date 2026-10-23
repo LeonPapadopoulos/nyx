@@ -598,7 +598,7 @@ namespace Nyx
 		vk::PipelineDepthStencilStateCreateInfo depthStencil{};
 		depthStencil.depthTestEnable = VK_TRUE;
 		depthStencil.depthWriteEnable = kind == EPipelineKind::Decal ? VK_FALSE : VK_TRUE;
-		depthStencil.depthCompareOp = kind == EPipelineKind::Opaque ? vk::CompareOp::eLess : vk::CompareOp::eLessOrEqual;
+		depthStencil.depthCompareOp = kind == EPipelineKind::Opaque ? DepthTestNearer : DepthTestNearerOrEqual;
 
 		vk::GraphicsPipelineCreateInfo pipelineInfo{};
 		pipelineInfo.stageCount = static_cast<uint32_t>(stages.size());

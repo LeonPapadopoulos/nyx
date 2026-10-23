@@ -1,6 +1,7 @@
 #include "EditorPCH.h"
 #include "TransformGizmo.h"
 
+#include "CameraProjection.h"
 #include "TransformComponent.h"
 #include "ImGuiSource.h"
 #include "TransactionSystem.h"
@@ -1267,8 +1268,8 @@ namespace Nyx::Editor
 		const float ndcX = ((localX / imageSize.x) * 2.0f) - 1.0f;
 		const float ndcY = ((localY / imageSize.y) * 2.0f) - 1.0f;
 
-		const glm::vec4 nearClip(ndcX, ndcY, 0.0f, 1.0f);
-		const glm::vec4 farClip(ndcX, ndcY, 1.0f, 1.0f);
+		const glm::vec4 nearClip(ndcX, ndcY, Nyx::NearPlaneDepth, 1.0f);
+		const glm::vec4 farClip(ndcX, ndcY, Nyx::FarPlaneDepth, 1.0f);
 
 		glm::vec4 nearWorld = viewData.InverseViewProjection * nearClip;
 		glm::vec4 farWorld = viewData.InverseViewProjection * farClip;
