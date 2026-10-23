@@ -90,6 +90,25 @@ How keyboard, mouse and gamepad input reaches the editor and the game, and why. 
 - Bindings take a swizzle (a stick's up as forward), and composites take analog controls
   (triggers as up and down). Sticks and triggers count as the device used last only past 0.3.
 
+## Seeing it
+
+*Window > Input* in the editor, and in Debug builds the same over a game (Ctrl+Alt+Shift+I, a
+binding in the game's `Debug` context), answer "why did or didn't this happen?" from the traces.
+The view is in the engine (`InputDebugView`, painted with the UI's widgets), so both show the
+same:
+
+- `InputHistory` keeps the last 300 frames (actions, traces, the stack) and the last 2000 events
+  and outputs, with pause; the editor records it every frame, open or not.
+- `InputInspection` answers questions about a stack without changing it: who gets a control
+  (every binding that sees it, down to the context that takes it), every binding of a control,
+  a made-up stack for *What if*, and stick calibration (drift over 3 s, range over 5 s), which
+  suggests dead zones without applying them.
+- The tabs: Devices (the pad painted live, sticks with their dead zones, the stick plot,
+  calibration, trying the pads' output), Actions (value, phase, source, and the selected one's
+  traces), Contexts (the stack and who decides the cursor), Control map (who gets each control,
+  now or with other contexts, and *Press to find*), Events (with pause, filter and copy), Timeline
+  (chosen actions with each frame's traces).
+
 ## Who uses it
 
 `Application::GetInput()` gives it to the layers; `Application` owns the SDL backend.
@@ -109,10 +128,12 @@ shortcuts stay ImGui's.
 devices coming and going, focus and the cursor. `NyxInputRouterTests` checks the dead zones,
 curves and pipeline steps against known values, each trigger's phases over set times, taking
 between contexts, the cursor, hysteresis and the device used last, all on traces.
+`NyxInputInspectionTests` checks who gets a control, What if stacks and the calibration;
+`NyxEditorPanelTests` that the Input window leaves no shapes to ImGui.
 `NyxInputGamepadTests` drives virtual pads: hot-plug, analog values, focus, swizzles, composites
 and output. No test machine has pads: `NyxPadCheck.exe` lists the pads, prints what they report
 and tries their output, for checking them by hand.
 
 ## Not built yet
 
-A window that shows the input and its traces.
+Bindings and tuning as data instead of code.

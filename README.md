@@ -47,7 +47,7 @@ Dependencies/    Git submodules: spdlog, GLFW, GLM, cgltf, SDL
 Docs/            Architecture, features, and the images they use
 Editor/          NyxEditor.exe: panels, gizmo, undo, asset browser, Play; themes in Editor/Themes
   Source/        One folder per concern: App, Scene, Properties, Transactions, Assets,
-                 Materials, Play, Preferences, DevTools, Common
+                 Materials, Play, Input, Preferences, DevTools, Common
 Engine/
   Shaders/       The engine's shaders, compiled by NyxShaderCompiler during the build
   Source/

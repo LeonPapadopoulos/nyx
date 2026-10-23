@@ -4,6 +4,8 @@
 #include "Entity.h"
 #include "GameFlyCamera.h"
 #include "GameWorld.h"
+#include "InputDebugView.h"
+#include "InputHistory.h"
 #include "InputSystem.h"
 #include "Layer.h"
 #include "SceneSerializationTypes.h"
@@ -77,9 +79,14 @@ namespace Nyx::Game
 		std::unique_ptr<GameFlyCamera> FlyCamera;
 
 		// Debug builds: Ctrl+Alt+Shift+C crashes the game on purpose, to try the editor's crash card;
-		// F3 shows the physics debug view
+		// F3 shows the physics debug view; Ctrl+Alt+Shift+I shows the input overlay, the editor's
+		// Window > Input for the game
 		Nyx::Input::ContextHandle DebugContext;
 		Nyx::Input::ActionHandle CrashOnPurpose;
 		Nyx::Input::ActionHandle TogglePhysicsDebugView;
+		Nyx::Input::ActionHandle ToggleInputOverlay;
+		bool bShowInputOverlay = false;
+		Nyx::Input::InputHistory InputHistory;
+		Nyx::Input::InputDebugView InputView;
 	};
 }

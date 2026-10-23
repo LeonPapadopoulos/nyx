@@ -1,6 +1,7 @@
 #include "EditorFrame.h"
 
 #include "ImGuiSource.h"
+#include "InputPanel.h"
 #include "Log.h"
 #include "MaterialWorkspace.h"
 #include "PlayControls.h"
@@ -171,6 +172,9 @@ namespace Nyx::Editor
 			{
 				Editor.bAssetBrowserVisible = !Editor.bAssetBrowserVisible;
 			}
+
+			// Devices, actions and why they fire or not, contexts, the control map, events, timeline
+			NYX_UI(Nyx::UI::MenuItem("Input", nullptr, &Editor.InputWindow.bOpen));
 
 			// The game's log and the editor link's messages
 			if (NYX_UI(Nyx::UI::MenuItem("Game Link", nullptr, Editor.bShowGameLink)))

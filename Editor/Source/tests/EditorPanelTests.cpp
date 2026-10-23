@@ -14,6 +14,9 @@
 #include "AssetDatabase.h"
 #include "AssetTypeRegistry.h"
 #include "GameLinkPanel.h"
+#include "EditorCameraController.h"
+#include "InputPanel.h"
+#include "VirtualInputBackend.h"
 #include "PropertyWidgetRegistry.h"
 #include "SceneEditor.h"
 #include "SceneFilePopups.h"
@@ -1463,10 +1466,54 @@ namespace
 			ImGui::Render();
 		}
 		const uint32_t shapes = Nyx::UI::GetImGuiShapeCount();
+
+		// Window > Input, every tab, with a keyboard, a mouse and a pad that reports all it has
+		Nyx::Input::VirtualInputBackend backend;
+		Nyx::Input::InputSystem input;
+		input.AddBackend(backend);
+		backend.AddDevice(Nyx::Input::EDeviceKind::Keyboard, "Keyboard", 1000);
+		backend.AddDevice(Nyx::Input::EDeviceKind::Mouse, "Mouse", 1000);
+		const Nyx::Input::InputDeviceId pad = backend.AddDevice(Nyx::Input::EDeviceKind::Gamepad, "Pad", 1000);
+		Nyx::Input::InputDeviceInfo padInfo;
+		padInfo.Name = "Pad";
+		padInfo.Model = Nyx::Input::EGamepadModel::DualSense;
+		padInfo.Capabilities = Nyx::Input::EDeviceCapability::Gyro | Nyx::Input::EDeviceCapability::Touchpad | Nyx::Input::EDeviceCapability::Rumble;
+		backend.SetDeviceInfo(pad, padInfo, 1000);
+		EditorCameraController cameras(input);
+		InputPanel inputPanel;
+		inputPanel.bOpen = true;
+
+		uint32_t inputShapes = 0;
+		uint64_t time = 1000;
+		for (int tab = 0; tab < static_cast<int>(Nyx::Input::InputDebugView::ETab::Count); ++tab)
+		{
+			inputPanel.SelectTab(static_cast<Nyx::Input::InputDebugView::ETab>(tab));
+			for (int frame = 0; frame < 3; ++frame)
+			{
+				time += 16000;
+				backend.SetValue(pad, Nyx::Input::Gamepad(Nyx::Input::EGamepadControl::LeftStick), glm::vec3(0.3f, 0.1f * static_cast<float>(frame), 0.0f), time - 1);
+				backend.SetValue(pad, Nyx::Input::Gamepad(Nyx::Input::EGamepadControl::Touchpad0), glm::vec3(0.5f, 0.5f, 1.0f), time - 1);
+				input.BeginFrame(time);
+				inputPanel.Record(input);
+
+				ImGui::NewFrame();
+				ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+				ImGui::SetNextWindowSize(ImVec2(1200.0f, 780.0f));
+				inputPanel.Draw(input);
+				ImGui::EndFrame();
+				Nyx::UI::MarkImGuiShapes();
+				ImGui::Render();
+				inputShapes += Nyx::UI::GetImGuiShapeCount();
+
+				input.EndFrame();
+			}
+		}
+
 		Nyx::UI::SetMarkImGuiShapes(false);
 		style.Colors[ImGuiCol_Text] = text;
 		Nyx::UI::SetPaintedChrome(false);
 		Require(shapes == 0, "The editor's panels should leave no shapes to ImGui, found " + std::to_string(shapes));
+		Require(inputShapes == 0, "The Input window should leave no shapes to ImGui, found " + std::to_string(inputShapes));
 	}
 
 	void TestAnimationsEaseAndAreForgotten()

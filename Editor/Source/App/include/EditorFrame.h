@@ -13,6 +13,7 @@ namespace Nyx
 
 namespace Nyx::Editor
 {
+	class InputPanel;
 	class MaterialWorkspace;
 	class PlayControls;
 	class PlaySession;
@@ -52,6 +53,7 @@ namespace Nyx::Editor
 			ThemeEditorWindow& ThemeEditor;
 			MaterialWorkspace& Materials;
 			bool& bAssetBrowserVisible;
+			InputPanel& InputWindow;
 			bool& bShowGameLink;
 			SceneViewPanel& SecondarySceneView;
 			bool& bSecondaryViewShowsGameView;

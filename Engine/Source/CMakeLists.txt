@@ -48,6 +48,9 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputOutput.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/SdlGamepadBackend.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/FlyCameraInput.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputInspection.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputHistory.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputDebugView.cpp
 
     # Runtime/Scene
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/Entity.cpp
@@ -187,6 +190,9 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputOutput.h
     ${NYX_ENGINE_ROOT}/Runtime/Input/include/SdlGamepadBackend.h
     ${NYX_ENGINE_ROOT}/Runtime/Input/include/FlyCameraInput.h
+    ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputInspection.h
+    ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputHistory.h
+    ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputDebugView.h
 
     # Runtime/Scene
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/Entity.h

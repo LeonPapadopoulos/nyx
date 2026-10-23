@@ -172,6 +172,14 @@ add_dependencies(NyxInputGamepadTests NyxGeneratedReflection)
 set_property(TARGET NyxInputGamepadTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxInputGamepadTests COMMAND NyxInputGamepadTests)
 
+# What the Input window asks: who gets a control with a stack, every binding of a control, stick
+# calibration, the history of the last frames. No window needed.
+add_executable(NyxInputInspectionTests InputInspectionTests.cpp)
+target_link_libraries(NyxInputInspectionTests PRIVATE NyxEngine)
+add_dependencies(NyxInputInspectionTests NyxGeneratedReflection)
+set_property(TARGET NyxInputInspectionTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxInputInspectionTests COMMAND NyxInputInspectionTests)
+
 # The painter's CPU side: draw commands, groups, clip and transform stacks, tile binning. No GPU needed.
 # The painter's test sheet is a dev tool, not part of the engine library, so the painter tests
 # compile it themselves.

@@ -115,6 +115,30 @@ Rigid bodies on [Jolt](https://github.com/jrouwe/JoltPhysics), while a game runs
   than the 60 steps a second; paused, where the last step left them.
 - The editor doesn't simulate: Play shows physics.
 
+## Input
+
+Keyboard, mouse and gamepads (Xbox, DualShock 4, DualSense, through SDL3) go through the engine's
+input system: code reads actions such as *Move* or *Look*, bound to keys, buttons and sticks in
+contexts, and the context highest on the stack that binds a control gets it.
+
+- Scene views fly with W/A/S/D, the mouse and a pad; so does the game's primary camera.
+- *Window > Input* shows the editor's input:
+  - *Devices*: each device with its controls live, sticks with their dead zones and a plot of
+    where they have been, calibration that suggests dead zones, and buttons that try rumble,
+    trigger effects and the light;
+  - *Actions*: every action with its value and phase, and for the one selected each binding's
+    trace, where it stopped and why;
+  - *Contexts*: the contexts on the stack, and which one decides the cursor;
+  - *Control map*: which action each control gets, now or with other contexts (*What if*), and
+    every binding of the next control pressed (*Press to find*);
+  - *Events*: the events, and what was sent to the pads;
+  - *Timeline*: chosen actions over the last seconds, with each frame's traces.
+- In Debug builds, Ctrl+Alt+Shift+I shows the same over a game.
+- `NyxPadCheck.exe` lists the pads, prints what they report and tries their output without a
+  window.
+- `NyxInputTests`, `NyxInputRouterTests`, `NyxInputGamepadTests`, `NyxInputInspectionTests` and
+  `NyxEditorCameraTests` test it with virtual devices.
+
 ## Debug drawing
 
 Code can draw lines over a world to show what it does: forces, anchors, bounds, paths.

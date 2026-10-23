@@ -33,7 +33,11 @@ namespace Nyx::Game
 		TogglePhysicsDebugView = Input->AddAction({ "TogglePhysicsDebugView", Nyx::Input::EActionValue::Button });
 		const Nyx::Input::InputBinding physicsDebugView = Nyx::Input::InputBinding::ForControl(
 			TogglePhysicsDebugView, Nyx::Input::Key(Nyx::Input::EKey::F3), Nyx::Input::ETriggerKind::Pressed);
-		DebugContext = Input->AddContext({ .Name = "Debug", .Priority = 800, .Bindings = { crash, physicsDebugView } });
+		ToggleInputOverlay = Input->AddAction({ "ToggleInputOverlay", Nyx::Input::EActionValue::Button });
+		Nyx::Input::InputBinding overlay =
+			Nyx::Input::InputBinding::ForControl(ToggleInputOverlay, Nyx::Input::Key(Nyx::Input::EKey::I), Nyx::Input::ETriggerKind::Pressed);
+		overlay.Modifiers = crash.Modifiers;
+		DebugContext = Input->AddContext({ .Name = "Debug", .Priority = 800, .Bindings = { crash, physicsDebugView, overlay } });
 		Input->GetUser().SetContextActive(DebugContext, true, { .Reason = "Debug build" });
 #endif
 
@@ -130,6 +134,12 @@ namespace Nyx::Game
 		FlyCamera->Update(World.GetRegistry(), deltaTime);
 
 #if defined(ENGINE_DEBUG)
+		InputHistory.Record(*Input);
+		if (Input->GetUser().ConsumeTriggered(ToggleInputOverlay))
+		{
+			bShowInputOverlay = !bShowInputOverlay;
+		}
+
 		// Through a volatile pointer, so the compiler keeps the write
 		if (Input->GetUser().ConsumeTriggered(CrashOnPurpose))
 		{
@@ -157,8 +167,9 @@ namespace Nyx::Game
 		ImGui::SetNextWindowSize(viewport->WorkSize);
 		ImGui::SetNextWindowViewport(viewport->ID);
 
-		const ImGuiWindowFlags windowFlags =
-			ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoSavedSettings;
+		// Never in front of the input overlay, even when clicked
+		const ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDocking |
+			ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus;
 
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
@@ -185,5 +196,20 @@ namespace Nyx::Game
 		}
 
 		ImGui::End();
+
+#if defined(ENGINE_DEBUG)
+		// Over the game: the mouse over it goes to ImGui (the game's window is a view, this isn't)
+		if (bShowInputOverlay)
+		{
+			ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + 20.0f, viewport->WorkPos.y + 20.0f), ImGuiCond_FirstUseEver);
+			ImGui::SetNextWindowSize(ImVec2(640.0f, 560.0f), ImGuiCond_FirstUseEver);
+			ImGui::SetNextWindowBgAlpha(0.92f);
+			if (ImGui::Begin("Input (Ctrl+Alt+Shift+I)", &bShowInputOverlay, ImGuiWindowFlags_NoSavedSettings))
+			{
+				InputView.Draw(*Input, InputHistory);
+			}
+			ImGui::End();
+		}
+#endif
 	}
 }

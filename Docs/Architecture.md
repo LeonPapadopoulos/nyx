@@ -48,7 +48,7 @@ doesn't allow, and on a table that goes round in a circle, so a new dependency s
 | `Core` | Logging, assertions, paths, text helpers, child processes, the crash handler, file watching, the frame rate limiter, the fixed step clock, `BinaryArchive`, the profiler macros (`Profiler.h`), debug drawing (`DebugDraw`) | — |
 | `Reflection` | Type and property metadata, and the `NYX_REFLECT` and `NYX_PROPERTY` macros; not under `Runtime` | — |
 | `Net` | TCP connections and the messages they carry | Core |
-| `Input` | Keyboard, mouse and gamepads (through SDL3), gathered from backends into one `InputFrame` per frame; the router: context stacks, actions, the value pipeline, triggers and their traces | Core, Scene |
+| `Input` | Keyboard, mouse and gamepads (through SDL3), gathered from backends into one `InputFrame` per frame; the router: context stacks, actions, the value pipeline, triggers and their traces; the input's history and its view (`InputDebugView`), painted with the UI's widgets | Core, Scene, UI |
 | `Scene` | Entities and components (the physics components among them), the component registry, scene files, the tagged binary format, surface anchors (`SurfaceAnchor`: a point, normal and tangent on an entity that move with it), surface decals (`SurfaceDecalComponent`), a camera's view and projection and the ray back through a point of its picture (`CameraProjection.h`) | Core, Reflection |
 | `Physics` | Rigid bodies, their shapes, collisions and the physics step, on Jolt (`PhysicsWorld`); Jolt's headers stay inside | Core |
 | `Sim` | The game world: its entities, their physics bodies kept in step with the physics components (`PhysicsBodies`), and the simulation systems each fixed step runs, in order (`GameWorld`, `ISimSystem`), the entity a ray hits first (`PickPhysicsBody()`) | Core, Scene, Physics |
@@ -118,7 +118,8 @@ checks every `#include` against this table.
 | `Properties` | Drawing and editing reflected properties: a widget per property kind, and the edit in progress | Common, Transactions, Assets |
 | `Scene` | The scene being edited: its document and undo, the outliner, details, gizmo, scene views and their cameras, scene files, copy and paste | Common, Transactions, Assets, Preferences, Properties |
 | `Play` | Play and Play All: the games, their windows and crash cards, the Game Link window, edits sent to the games | Transactions, Preferences, Scene |
-| `App` | `EditorLayer`, which owns and wires up everything else; `EditorFrame`, the titlebar with its menus and the status bar; `MaterialWorkspace`, which feeds the material windows and makes new materials; the workspaces, the asset types the editor knows | Common, Assets, Materials, Preferences, DevTools, Properties, Scene, Play |
+| `Input` | The Input window (*Window > Input*): the editor's input, its history and traces | — |
+| `App` | `EditorLayer`, which owns and wires up everything else; `EditorFrame`, the titlebar with its menus and the status bar; `MaterialWorkspace`, which feeds the material windows and makes new materials; the workspaces, the asset types the editor knows | Common, Assets, Materials, Preferences, DevTools, Properties, Scene, Play, Input |
 
 ## One frame
 

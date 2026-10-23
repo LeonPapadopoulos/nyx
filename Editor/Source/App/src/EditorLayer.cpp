@@ -238,6 +238,7 @@ namespace Nyx::Editor
 		}
 
 		Input->GetUser().SetContextActive(SourceInspectorContext, SourceInspector.IsActive(), { .Reason = "Inspecting the UI's sources" });
+		InputWindow.Record(*Input);
 
 		RendererEditorCameras cameras(*Renderer);
 		CameraController->Update(deltaTime, cameras);
@@ -301,6 +302,8 @@ namespace Nyx::Editor
 			LOG_WARNING("Couldn't save the editor preferences to '{0}'", EditorPreferences::GetUserFile().string());
 		}
 		ApplyFrameRate();
+
+		InputWindow.Draw(*Input);
 
 		if (bShowGameLink)
 		{

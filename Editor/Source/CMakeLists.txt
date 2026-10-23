@@ -57,6 +57,9 @@ set(NYX_EDITOR_SOURCES
     Play/src/GameLinkPanel.cpp
     Play/src/GameLinkSubscriber.cpp
 
+    # Input
+    Input/src/InputPanel.cpp
+
     # Preferences
     Preferences/src/PreferencesWindow.cpp
     Preferences/src/ThemeEditorWindow.cpp
@@ -131,6 +134,9 @@ set(NYX_EDITOR_HEADERS
     Play/include/GameLinkPanel.h
     Play/include/GameLinkSubscriber.h
 
+    # Input
+    Input/include/InputPanel.h
+
     # Preferences
     Preferences/include/ThemeEditorWindow.h
     Preferences/include/PreferencesWindow.h
@@ -192,6 +198,7 @@ target_include_directories(NyxEditorLib
         Assets/include
         Materials/include
         Play/include
+        Input/include
         Preferences/include
         DevTools/include
         Common/include

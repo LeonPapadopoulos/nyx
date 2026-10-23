@@ -10,6 +10,7 @@
 #include "EditorFrame.h"
 #include "EditorPreferences.h"
 #include "GameLinkPanel.h"
+#include "InputPanel.h"
 #include "Layer.h"
 #include "MaterialWorkspace.h"
 #include "Paths.h"
@@ -139,6 +140,9 @@ namespace Nyx::Editor
 		PlayControls Play;
 		CrashCardsPanel CrashCards;
 
+		// Window > Input: the editor's own input, with its traces
+		InputPanel InputWindow;
+
 		// The games' logs and every message of their editor links
 		GameLinkPanel GameLinkWindow;
 		bool bShowGameLink = true;
@@ -158,6 +162,7 @@ namespace Nyx::Editor
 			.ThemeEditor = ThemeEditor,
 			.Materials = Materials,
 			.bAssetBrowserVisible = bAssetBrowserVisible,
+			.InputWindow = InputWindow,
 			.bShowGameLink = bShowGameLink,
 			.SecondarySceneView = SecondarySceneView,
 			.bSecondaryViewShowsGameView = bSecondaryViewShowsGameView,
