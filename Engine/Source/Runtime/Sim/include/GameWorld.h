@@ -2,6 +2,7 @@
 
 #include "DebugDraw.h"
 #include "Entity.h"
+#include "EntityGuidLookup.h"
 #include "FixedStepClock.h"
 #include "PhysicsBodies.h"
 #include "PhysicsWorld.h"
@@ -20,11 +21,12 @@ namespace Nyx
 	// 1. the debug drawing moves on: what the last step drew goes, timed shapes age;
 	// 2. bodies follow the physics components and the transforms set since the last step
 	//    (PhysicsBodies);
-	// 3. the systems of ESimStage::BeforePhysics, in the order they were added;
-	// 4. the physics step;
-	// 5. dynamic bodies write their poses into their transforms, and where they were before into
+	// 3. the lookup from guid to entity is made again, in the memory it had (SimContext::Guids);
+	// 4. the systems of ESimStage::BeforePhysics, in the order they were added;
+	// 5. the physics step;
+	// 6. dynamic bodies write their poses into their transforms, and where they were before into
 	//    their PreviousTransformComponents; the physics debug view is drawn, if on;
-	// 6. the systems of ESimStage::AfterPhysics, in the order they were added.
+	// 7. the systems of ESimStage::AfterPhysics, in the order they were added.
 	class GameWorld
 	{
 	public:
@@ -75,6 +77,7 @@ namespace Nyx
 		DebugDraw Debug;
 		PhysicsWorld Physics;
 		PhysicsBodies Bodies;
+		EntityGuidLookup Guids;
 		std::optional<PhysicsDebugOptions> PhysicsDebugView;
 		std::vector<SystemEntry> Systems;
 	};

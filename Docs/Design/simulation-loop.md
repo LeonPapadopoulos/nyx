@@ -51,12 +51,17 @@ drawing moving bodies between steps. Commands, events and time scale are still t
   a second.
 - **Built:** each step of the world is a profiler zone, with one zone per system named by its
   `GetName()`, so a system over the step's budget shows by name.
+- **Built:** `SimContext::Guids` finds the world's entities by guid (`FindEntityByGuid(World,
+  Guids, guid)`), e.g. for surface anchors. `GameWorld` makes it once a step, before the systems,
+  in the memory it had, so it allocates nothing once the world stops growing. An entity made or
+  given a guid during a step is in it from the next step on; one destroyed is gone at once. A
+  system that needs the newer ones searches the world or makes a lookup of its own.
 - **Not yet:** the command and event queues and the engine services (the physics world, later the
   spatial index) in `SimContext`.
 - The engine's part of the order is fixed; a game's systems go into the slots around it:
   1. apply commands (not built yet);
   2. bodies follow the physics components and the transforms set since the last step (built:
-     `PhysicsBodies`);
+     `PhysicsBodies`), and the guid lookup is made again (built: `SimContext::Guids`);
   3. the game's systems that decide forces and constraints (built: `ESimStage::BeforePhysics`);
   4. physics step (built);
   5. bodies write their transforms (built);

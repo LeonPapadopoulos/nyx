@@ -22,8 +22,9 @@ namespace Nyx
 		Debug.Advance(seconds);
 
 		Bodies.SyncBeforeStep(World, Physics, seconds);
+		RefreshEntityGuidLookup(World, Guids);
 
-		const SimContext context{ World, step, Debug, Physics, Bodies };
+		const SimContext context{ World, step, Debug, Physics, Bodies, Guids };
 		RunStage(ESimStage::BeforePhysics, context);
 
 		Physics.Step(seconds);

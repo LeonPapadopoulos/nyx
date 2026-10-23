@@ -1,16 +1,50 @@
 // The game world (GameWorld): its systems run each step in the order they were added, every step
-// or every nth one, and see the world and the step they run in.
+// or every nth one, and see the world and the step they run in, and its entities by guid through
+// a lookup made once a step without allocating.
+#include "EntityGuidLookup.h"
 #include "GameWorld.h"
+#include "GuidComponent.h"
 #include "NameComponent.h"
 #include "TestSupport.h"
 
 #include <glm/glm.hpp>
 
+#include <atomic>
+#include <cstdlib>
+#include <functional>
 #include <iostream>
 #include <memory>
+#include <new>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
+
+// Every allocation of this program counts, so a test can show that something makes none
+namespace
+{
+	std::atomic<size_t> AllocationCount{ 0 };
+}
+
+void* operator new(size_t size)
+{
+	++AllocationCount;
+	if (void* memory = std::malloc(size == 0 ? 1 : size))
+	{
+		return memory;
+	}
+	throw std::bad_alloc();
+}
+
+void operator delete(void* memory) noexcept
+{
+	std::free(memory);
+}
+
+void operator delete(void* memory, size_t /*size*/) noexcept
+{
+	std::free(memory);
+}
 
 namespace
 {
@@ -161,6 +195,193 @@ namespace
 		world.Step(MakeStep(3));
 		Require(world.GetDebugDraw().GetLines().empty(), "A timed line should go once its time in steps ran out");
 	}
+
+	using Nyx::Entity;
+	using Nyx::EntityGuid;
+
+	Entity CreateWithGuid(Nyx::Registry& world, EntityGuid guid)
+	{
+		const Entity entity = world.CreateEntity();
+		world.Add<Nyx::GuidComponent>(entity, Nyx::GuidComponent{ guid });
+		return entity;
+	}
+
+	// Finds a guid through its step's lookup each time it runs
+	class FindingSystem final : public Nyx::ISimSystem
+	{
+	public:
+		explicit FindingSystem(EntityGuid guid)
+			: Guid(guid)
+		{
+		}
+
+		const char* GetName() const override
+		{
+			return "Finding";
+		}
+
+		void Step(const Nyx::SimContext& context) override
+		{
+			Found.push_back(Nyx::FindEntityByGuid(context.World, context.Guids, Guid));
+		}
+
+		EntityGuid Guid;
+		std::vector<std::optional<Entity>> Found;
+	};
+
+	// Runs the test's function each step, to change the world in the middle of one
+	class CallingSystem final : public Nyx::ISimSystem
+	{
+	public:
+		explicit CallingSystem(std::function<void(const Nyx::SimContext&)> call)
+			: Call(std::move(call))
+		{
+		}
+
+		const char* GetName() const override
+		{
+			return "Calling";
+		}
+
+		void Step(const Nyx::SimContext& context) override
+		{
+			Call(context);
+		}
+
+	private:
+		std::function<void(const Nyx::SimContext&)> Call;
+	};
+
+	template<typename T>
+	T& AddSystem(GameWorld& world, std::unique_ptr<T> system, Nyx::ESimStage stage = Nyx::ESimStage::BeforePhysics)
+	{
+		return static_cast<T&>(world.AddSystem(std::move(system), 1, stage));
+	}
+
+	void TestSystemsFindEntitiesByGuid()
+	{
+		GameWorld world;
+		const EntityGuid guid{ 0x10 };
+		const Entity crate = CreateWithGuid(world.GetRegistry(), guid);
+		FindingSystem& before = AddSystem(world, std::make_unique<FindingSystem>(guid));
+		FindingSystem& after = AddSystem(world, std::make_unique<FindingSystem>(guid), Nyx::ESimStage::AfterPhysics);
+
+		world.Step(MakeStep(0));
+		Require(before.Found.back() == crate && after.Found.back() == crate,
+			"Systems before and after the physics step should find an entity made before the step by its guid");
+
+		world.GetRegistry().DestroyEntity(crate);
+		world.Step(MakeStep(1));
+		Require(!before.Found.back() && !after.Found.back(), "An entity destroyed between steps should be gone in the next step");
+	}
+
+	void TestTheLookupIsMadeOnceAStep()
+	{
+		GameWorld world;
+		const EntityGuid guid{ 0x20 };
+		std::optional<Entity> made;
+		const auto makeThenDestroy = [&](const Nyx::SimContext& context)
+		{
+			if (context.Step.StepIndex == 0)
+			{
+				made = CreateWithGuid(context.World, guid);
+			}
+			else if (context.Step.StepIndex == 2)
+			{
+				context.World.DestroyEntity(*made);
+			}
+		};
+		AddSystem(world, std::make_unique<CallingSystem>(makeThenDestroy));
+		FindingSystem& finding = AddSystem(world, std::make_unique<FindingSystem>(guid));
+
+		world.Step(MakeStep(0));
+		Require(!finding.Found.back(), "An entity made during a step should not be in that step's lookup");
+		world.Step(MakeStep(1));
+		Require(finding.Found.back() == made, "An entity made during a step should be in the next step's lookup");
+		world.Step(MakeStep(2));
+		Require(!finding.Found.back(), "An entity destroyed during a step should be gone for the systems after");
+	}
+
+	void TestDuplicateGuidsResolveAsBefore()
+	{
+		GameWorld world;
+		Nyx::Registry& registry = world.GetRegistry();
+		const EntityGuid guid{ 0x30 };
+		const Entity first = CreateWithGuid(registry, guid);
+		const Entity second = CreateWithGuid(registry, guid);
+		FindingSystem& finding = AddSystem(world, std::make_unique<FindingSystem>(guid));
+
+		world.Step(MakeStep(0));
+		Require(finding.Found.back() == first && Nyx::FindEntityByGuid(registry, guid) == first,
+			"Of two entities with one guid, the lookup should find the first, as a search of the world does");
+
+		registry.DestroyEntity(first);
+		world.Step(MakeStep(1));
+		Require(finding.Found.back() == second && Nyx::FindEntityByGuid(registry, guid) == second,
+			"With the first gone, the lookup should find the second, as a search of the world does");
+	}
+
+	// Many guids, small and random, some repeated, some invalid, some entities destroyed: the lookup
+	// finds what a search of the world finds, for each
+	void TestTheLookupMatchesASearch()
+	{
+		Nyx::Registry world;
+		std::vector<EntityGuid> guids;
+		std::vector<Entity> entities;
+		for (uint64_t i = 0; i < 1000; ++i)
+		{
+			EntityGuid guid = i % 2 == 0 ? EntityGuid{ i + 1 } : EntityGuid::Generate();
+			if (i % 7 == 6)
+			{
+				guid = guids[i / 2];
+			}
+			guids.push_back(guid);
+			entities.push_back(CreateWithGuid(world, i % 100 == 50 ? EntityGuid{} : guid));
+		}
+		for (size_t i = 0; i < entities.size(); i += 3)
+		{
+			world.DestroyEntity(entities[i]);
+		}
+
+		Nyx::EntityGuidLookup lookup;
+		Require(!Nyx::FindEntityByGuid(world, lookup, guids[1]), "An empty lookup should find nothing");
+		Nyx::RefreshEntityGuidLookup(world, lookup);
+
+		guids.push_back(EntityGuid{});
+		guids.push_back(EntityGuid{ 0xFFFF'FFFF'FFFF'FFFF });
+		for (const EntityGuid guid : guids)
+		{
+			Require(Nyx::FindEntityByGuid(world, lookup, guid) == Nyx::FindEntityByGuid(world, guid),
+				"The lookup should find what a search of the world finds, for guid " + Nyx::GuidToText(guid));
+		}
+	}
+
+	void TestRefreshingAllocatesNothing()
+	{
+		Nyx::Registry world;
+		std::vector<Entity> entities;
+		for (int i = 0; i < 3000; ++i)
+		{
+			entities.push_back(CreateWithGuid(world, EntityGuid::Generate()));
+		}
+
+		// Counted before Require(), whose message is an allocation of its own
+		Nyx::EntityGuidLookup lookup = Nyx::MakeEntityGuidLookup(world);
+		size_t before = AllocationCount;
+		Nyx::RefreshEntityGuidLookup(world, lookup);
+		size_t allocations = AllocationCount - before;
+		Require(allocations == 0, "Making the lookup again for an unchanged world should allocate nothing");
+
+		const EntityGuid destroyed = world.Get<Nyx::GuidComponent>(entities[7]).Guid;
+		const EntityGuid kept = world.Get<Nyx::GuidComponent>(entities[8]).Guid;
+		world.DestroyEntity(entities[7]);
+		before = AllocationCount;
+		Nyx::RefreshEntityGuidLookup(world, lookup);
+		allocations = AllocationCount - before;
+		Require(allocations == 0, "Making the lookup again for a world with fewer guids should allocate nothing");
+		Require(!Nyx::FindEntityByGuid(world, lookup, destroyed) && Nyx::FindEntityByGuid(world, lookup, kept) == entities[8],
+			"The lookup made again should have the world's entities, and only those");
+	}
 }
 
 int main()
@@ -171,6 +392,11 @@ int main()
 		TestSystemsRunEveryNthStep();
 		TestSystemsChangeTheirWorld();
 		TestDebugDrawingLastsAStep();
+		TestSystemsFindEntitiesByGuid();
+		TestTheLookupIsMadeOnceAStep();
+		TestDuplicateGuidsResolveAsBefore();
+		TestTheLookupMatchesASearch();
+		TestRefreshingAllocatesNothing();
 	}
 	catch (const std::exception& error)
 	{

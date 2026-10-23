@@ -18,8 +18,7 @@ namespace Nyx
 	};
 
 	// The entity with the guid, if the world has one (never for an invalid guid). Goes through every
-	// GuidComponent, which is fast enough for now; a map from guid to entity can follow once
-	// something looks up many guids per frame.
+	// GuidComponent; to look up many guids, go through an EntityGuidLookup (EntityGuidLookup.h).
 	std::optional<Entity> FindEntityByGuid(const Registry& world, EntityGuid guid);
 }
 

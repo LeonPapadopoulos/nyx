@@ -2,6 +2,7 @@
 
 #include "DebugDraw.h"
 #include "Entity.h"
+#include "EntityGuidLookup.h"
 #include "FixedStepClock.h"
 #include "PhysicsBodies.h"
 #include "PhysicsWorld.h"
@@ -25,6 +26,12 @@ namespace Nyx
 		PhysicsWorld& Physics;
 		// Which body is whose (FindBody(), FindEntity())
 		const PhysicsBodies& Bodies;
+		// The world's entities by guid, for FindEntityByGuid(World, Guids, guid), e.g. to resolve
+		// surface anchors. Made once a step, before the systems: an entity made or given another
+		// guid during the step is found by its new guid from the next step on (by its old one until
+		// then), and one destroyed is gone at once. A system that needs them sooner searches the
+		// world (FindEntityByGuid(World, guid)) or makes a lookup of its own.
+		const EntityGuidLookup& Guids;
 	};
 
 	// Where in a step a system runs: before the physics step, e.g. to push bodies, or after it,

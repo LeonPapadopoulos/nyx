@@ -133,7 +133,15 @@ target_link_libraries(NyxPhysicsBenchmark PRIVATE NyxEngine)
 add_dependencies(NyxPhysicsBenchmark NyxGeneratedReflection)
 set_property(TARGET NyxPhysicsBenchmark PROPERTY FOLDER "Tests")
 
-# The game world: systems run in their order, every step or every nth one
+# How long the guid lookup a game world makes each step takes with 3000 guids; not run by ctest,
+# timing depends on the machine
+add_executable(NyxGuidLookupBenchmark GuidLookupBenchmark.cpp)
+target_link_libraries(NyxGuidLookupBenchmark PRIVATE NyxEngine)
+add_dependencies(NyxGuidLookupBenchmark NyxGeneratedReflection)
+set_property(TARGET NyxGuidLookupBenchmark PROPERTY FOLDER "Tests")
+
+# The game world: systems run in their order, every step or every nth one; the guid lookup made
+# each step
 add_executable(NyxGameWorldTests GameWorldTests.cpp)
 target_link_libraries(NyxGameWorldTests PRIVATE NyxEngine)
 add_dependencies(NyxGameWorldTests NyxGeneratedReflection)

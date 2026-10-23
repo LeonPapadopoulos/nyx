@@ -254,7 +254,8 @@ details panel shows its host (in hex) and its three vectors. Without a host it i
 - `ResolveSurfaceAnchor(host, anchor)` resolves it on a host transform given, such as the host as
   the renderer draws it between two steps.
 - Many anchors in a frame: `MakeEntityGuidLookup()` once, then resolve through it, instead of
-  each one going through every guid of the world.
+  each one going through every guid of the world. A game's systems have one made for them each
+  step (`SimContext::Guids`).
 - Tests: `NyxSurfaceAnchorTests`; `NyxGameModuleTests` saves and loads one in a module component.
 
 ## Cursor rays
