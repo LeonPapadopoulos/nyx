@@ -53,9 +53,9 @@ doesn't allow, and on a table that goes round in a circle, so a new dependency s
 | `Reflection` | Type, property and enum metadata, and the `NYX_REFLECT`, `NYX_PROPERTY` and `NYX_ENUM` macros; not under `Runtime` | — |
 | `Net` | TCP connections and the messages they carry | Core |
 | `Input` | Keyboard, mouse and gamepads (through SDL3), gathered from backends into one `InputFrame` per frame; the router: context stacks, actions, the value pipeline, triggers and their traces; the input's history and its view (`InputDebugView`), painted with the UI's widgets; input assets (`.nyxinput`), saved through reflection, and their tuning layers; the checks and recipes for bindings; the input's stream and recordings (`.nyxinputrec`); the game's fly cameras, for entities with a `FlyCameraComponent` (`UpdateFlyCameras()`) | Core, Reflection, Scene, UI |
-| `Scene` | Entities and components (the physics components and `CharacterComponent` among them), the component registry, scene files, the tagged binary format, surface anchors (`SurfaceAnchor`: a point, normal and tangent on an entity that move with it), surface decals (`SurfaceDecalComponent`), a camera's view and projection and the ray back through a point of its picture (`CameraProjection.h`) | Core, Reflection |
+| `Scene` | Entities and components (the physics components, `CharacterComponent` and `OrbitCameraComponent` among them, and the moves along the ground relative to a camera, `GetGroundMove()`), the component registry, scene files, the tagged binary format, surface anchors (`SurfaceAnchor`: a point, normal and tangent on an entity that move with it), surface decals (`SurfaceDecalComponent`), a camera's view and projection and the ray back through a point of its picture (`CameraProjection.h`) | Core, Reflection |
 | `Physics` | Rigid bodies, their shapes, collisions and the physics step, and characters, on Jolt (`PhysicsWorld`); Jolt's headers stay inside | Core |
-| `Sim` | The game world: its entities, their physics bodies and characters kept in step with the physics components (`PhysicsBodies`), and the simulation systems each fixed step runs, in order (`GameWorld`, `ISimSystem`), the players' commands each step applies (`CommandQueue`), the entity a ray hits first (`PickPhysicsBody()`) | Core, Reflection, Scene, Physics |
+| `Sim` | The game world: its entities, their physics bodies and characters kept in step with the physics components (`PhysicsBodies`), and the simulation systems each fixed step runs, in order (`GameWorld`, `ISimSystem`), the players' commands each step applies (`CommandQueue`), the entity a ray hits first (`PickPhysicsBody()`), the orbit cameras following their targets as drawn (`UpdateOrbitCameras()`) | Core, Reflection, Scene, Physics |
 | `Assets` | Asset files as plain data: images, materials, glTF meshes, shader compile requests and results | Core |
 | `UI` | The painter, and the painted UI drawn with it on top of ImGui | Core, Reflection |
 | `Link` | The editor link: its messages, live edits, live tuning of the input (`LiveInput`), recordings, the log sink | Core, Net, Input, Scene, Assets |
@@ -137,7 +137,10 @@ checks every `#include` against this table.
    steps of 1/60 s (at most 4 a frame, none while paused), and each step runs every layer's
    `OnFixedUpdate(step)`, in push order. When it has to drop time, `Application` warns once, and
    again only after it caught up.
-5. `Application::DrawFrame()`. A minimized window draws nothing and waits 50 ms
+5. Every layer's `OnLateUpdate(deltaTime)`, in push order: for what follows the world as it is
+   drawn this frame, e.g. the game's orbit cameras on their targets, by the clock's
+   `GetDrawFactor()`, the factor the renderer draws the world by.
+6. `Application::DrawFrame()`. A minimized window draws nothing and waits 50 ms
    (`IWindow::WaitIfMinimized()`), so the frame loop (and the editor link) keeps running.
    Otherwise `VulkanRenderer::DrawFrameOnDevice()`, which leaves the UI to its `VulkanUIBackend`:
    1. waits for the last frame's fence (one frame in flight), then reads back what that frame

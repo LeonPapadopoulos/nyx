@@ -16,8 +16,10 @@ plan.
   1. wait for the frame, poll events, `InputSystem::BeginFrame()`, as today;
   2. every layer's `OnUpdate()`: reads input and turns it into commands, moves the camera;
   3. zero or more steps: every layer's `OnFixedUpdate()`;
-  4. `DrawFrame()`, which draws moving things between their last two steps;
-  5. `InputSystem::EndFrame()`.
+  4. every layer's `OnLateUpdate()`: what follows the world as it will be drawn, e.g. a camera on a
+     character;
+  5. `DrawFrame()`, which draws moving things between their last two steps;
+  6. `InputSystem::EndFrame()`.
 - **Two kinds of time.** `FrameTime` is what `OnUpdate()` gets: seconds since the last frame and
   the frame's number. `StepTime` is what `OnFixedUpdate()` gets: the step length, the step's
   number (64-bit, never wraps) and the world's time in seconds as a `double`. `OnUpdate(float)`
@@ -102,11 +104,14 @@ plan.
   (`InterpolateTransform()`). The next step teleports the body and starts from there.
 - **The renderer:** `IRenderer::SetWorldInterpolation(world, clock)` draws the world's entities
   that have the component at `mix(previous, current, factor)`, rotations slerped the short way,
-  with the clock's `GetInterpolationFactor()`, read as the frame is drawn. The game sets its
-  world's once, with `Application::GetSimulationClock()`: a factor handed over by a layer would be
-  a frame off, as `OnUpdate()` runs before the frame's steps and `OnUI()` after the scene is
-  drawn.
+  with the clock's `GetDrawFactor()`, read as the frame is drawn. The game sets its world's once,
+  with `Application::GetSimulationClock()`: a factor handed over by a layer would be a frame off,
+  as `OnUpdate()` runs before the frame's steps and `OnUI()` after the scene is drawn.
   - Paused, the factor is 1: the picture is still, and Step shows where each step leaves things.
+  - What must sit on an entity where it is drawn, such as an orbit camera on a character, goes
+    there in `OnLateUpdate()`, after the frame's steps, with the same `GetDrawFactor()` and
+    `GetDrawnTransform()`. From `OnUpdate()` it would be a frame behind, and judder against the
+    entity whenever a step falls between two frames.
   - Picking and the editor's overlays use the transforms as they are.
   - Surface decals use the same factor, worked out once per world and frame: each is resolved on
     its host as the host is drawn (`GetDrawnTransform()`), so a decal on a tumbling crate stays on

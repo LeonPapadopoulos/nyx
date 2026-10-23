@@ -26,6 +26,11 @@ namespace Nyx
 		// none, one or a few times a frame, never while the simulation is paused.
 		virtual void OnFixedUpdate(const StepTime& /*step*/) {}
 
+		// Called every frame after the frame's fixed steps and before rendering, with OnUpdate's
+		// deltaTime: for what follows the world as it is drawn this frame, such as a camera on a
+		// character drawn between its last two steps (FixedStepClock::GetDrawFactor()).
+		virtual void OnLateUpdate(float /*deltaTime*/) {}
+
 		// Called while a frame's UI is built; draw ImGui windows here.
 		virtual void OnUI() {}
 	};

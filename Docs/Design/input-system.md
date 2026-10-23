@@ -213,7 +213,16 @@ without one leaves the keys and the pads to the game's own camera. Without input
 entities alone. The editor's UI source
 inspector turns on a `SourceInspector` context (950) that takes the keyboard and the mouse. The
 game's Ctrl+Alt+Shift+C (crash on purpose) and F3 (the physics debug view) are bindings in a
-`Debug` context (800, Debug builds).
+`Debug` context (800, Debug builds). In Debug builds the game also has a stand-in character
+driver, for trying characters without a game module's player (`IPlayerController`), which would
+send a command, e.g. `MoveCharacter`, for a system to apply in the step. It is the one code that
+writes a character's simulation input from outside a step. While the world has a
+`CharacterComponent` and an `OrbitCameraComponent`, the contexts `DebugCharacter` (100) and
+`DebugCharacterMouseLook` (110, cursor captured, while the right mouse button is held) are on, with
+the actions CharacterWalk, CharacterJump, CharacterLook, CharacterZoom and CharacterLookButton. The
+game layer writes them into the character's `DesiredMove` (through `GetGroundMove()` and the
+camera's yaw) and `bJumpRequested`, and the camera's `LookDelta` and `ZoomDelta`, and turns the fly
+camera's contexts off.
 ImGui gets its input from GLFW's callbacks, which it shares with the GLFW backend; the editor's
 shortcuts stay ImGui's.
 
@@ -236,6 +245,10 @@ replays the file with the same phases, firings and values every frame; a file cu
 the printout, two watchers at once.
 `NyxFlyCameraTests` checks that only entities with a `FlyCameraComponent` fly, that the fly
 camera's contexts are on only while one exists, and that the component is saved with the scene.
+`NyxOrbitCameraTests` checks that the orbit camera starts from where the camera looks, keeps its
+distance and offset from a moving target, follows it where it is drawn, smooths alike at 30 and 240
+frames a second, clamps its pitch and zoom, wraps its yaw, leaves the camera alone without a target,
+and that `GetGroundMove()` walks where the camera looks.
 `NyxInputInspectionTests` checks who gets a control, What if stacks and the calibration;
 `NyxEditorPanelTests` that the Input window leaves no shapes to ImGui.
 `NyxInputGamepadTests` drives virtual pads: hot-plug, analog values, focus, swizzles, composites

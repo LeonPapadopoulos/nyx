@@ -1100,13 +1100,12 @@ namespace Nyx
 
 	std::optional<float> VulkanRenderer::GetWorldInterpolation(const Nyx::Registry* registry) const
 	{
-		// Paused, the last step's poses, so Step shows what each step did
 		const auto clock = WorldInterpolationClocks.find(registry);
 		if (clock == WorldInterpolationClocks.end())
 		{
 			return std::nullopt;
 		}
-		return clock->second->IsPaused() ? 1.0f : static_cast<float>(clock->second->GetInterpolationFactor());
+		return static_cast<float>(clock->second->GetDrawFactor());
 	}
 
 	void VulkanRenderer::ExtractRenderObjects(RenderWorld& world, std::optional<float> interpolation)

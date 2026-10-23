@@ -150,6 +150,17 @@ contexts, and the context highest on the stack that binds a control gets it.
   Camera Component*, which sets its speed and look sensitivity. Nyx's scenes and new scenes have
   one on their camera; a scene without one has no fly camera, and the game's own camera gets the
   input.
+- An *Orbit Camera* circles its target entity (an entity picker in Details), looking at a point
+  above it (*Target Offset*), at a distance it zooms between *Min* and *Max Distance* in *Zoom
+  Steps*, its pitch kept between *Min* and *Max Pitch*. It follows the target as drawn between
+  steps, smoothed by *Follow Smoothing*, and starts from where the scene placed the camera. What
+  turns and zooms it comes from the game; walls don't stop it yet.
+- In Debug builds, a stand-in for a game's player, which would walk its character through
+  commands: in a scene with a
+  *Character* and an *Orbit Camera* (`Assets/Scenes/CharacterTest.nyxscene`), W/A/S/D or the left
+  stick walk the character relative to where the camera looks, Space or the south button jump, the
+  right stick or the mouse with the right button held turn the camera, the wheel zooms. The fly
+  camera keeps out of it.
 - *Window > Input* shows the editor's input:
   - *Devices*: each device with its controls live, sticks with their dead zones and a plot of
     where they have been, calibration that suggests dead zones, and buttons that try rumble,

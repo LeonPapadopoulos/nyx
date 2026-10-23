@@ -66,6 +66,11 @@ namespace Nyx
 		return std::min(Accumulator / StepSeconds, std::nextafter(1.0, 0.0));
 	}
 
+	double FixedStepClock::GetDrawFactor() const
+	{
+		return Paused ? 1.0 : GetInterpolationFactor();
+	}
+
 	double FixedStepClock::GetWorldTimeSeconds() const
 	{
 		return BaseWorldTimeSeconds + static_cast<double>(StepIndex - BaseStepIndex) * StepSeconds;

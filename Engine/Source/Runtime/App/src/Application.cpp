@@ -108,6 +108,13 @@ namespace Nyx
 
 			RunFixedSteps(frameSeconds);
 
+			for (const std::unique_ptr<ILayer>& layer : Layers)
+			{
+				NYX_PROFILE_SCOPE("OnLateUpdate");
+				NYX_PROFILE_ZONE_NAME(typeid(*layer.get()).name());
+				layer->OnLateUpdate(static_cast<float>(frameSeconds));
+			}
+
 			DrawFrame();
 
 			// What ImGui wants decides the ImGui context next frame; the cursor follows the stack

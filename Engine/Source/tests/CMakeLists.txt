@@ -167,6 +167,14 @@ add_dependencies(NyxFlyCameraTests NyxGeneratedReflection)
 set_property(TARGET NyxFlyCameraTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxFlyCameraTests COMMAND NyxFlyCameraTests)
 
+# The orbit camera: following a moving target where it is drawn, smoothing, pitch and zoom limits,
+# yaw wrapping, the ground helpers, and the component in scene files. No window needed.
+add_executable(NyxOrbitCameraTests OrbitCameraTests.cpp)
+target_link_libraries(NyxOrbitCameraTests PRIVATE NyxEngine)
+add_dependencies(NyxOrbitCameraTests NyxGeneratedReflection)
+set_property(TARGET NyxOrbitCameraTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxOrbitCameraTests COMMAND NyxOrbitCameraTests)
+
 # How long the guid lookup a game world makes each step takes with 3000 guids; not run by ctest,
 # timing depends on the machine
 add_executable(NyxGuidLookupBenchmark GuidLookupBenchmark.cpp)

@@ -37,6 +37,7 @@ namespace Nyx::Game
 		void OnDetach() override;
 		void OnFixedUpdate(const Nyx::StepTime& step) override;
 		void OnUpdate(float deltaTime) override;
+		void OnLateUpdate(float deltaTime) override;
 		void OnUI() override;
 
 		// The world the game runs, e.g. for the editor's live edits. It stays at its address.
@@ -63,6 +64,14 @@ namespace Nyx::Game
 		// Through the cursor, while it is free and over the picture
 		std::optional<Nyx::Ray> MakeCursorRay() const;
 
+		// Debug builds, a stand-in for a game module's player, which would walk its character with a
+		// command (e.g. MoveCharacter) that a system applies in the step: with a character and an
+		// orbit camera in the scene, W/A/S/D or the left stick walk the character relative to where
+		// the camera looks, Space or the south button jump, the right stick or the mouse with the
+		// right button held turn the camera, the wheel zooms. It writes the character's simulation
+		// input from outside a step, which nothing else may. Whether it drove them this frame.
+		bool DriveCharacterForDebugging();
+
 		std::filesystem::path ScenePath;
 
 		Nyx::IRenderer* Renderer = nullptr;
@@ -84,6 +93,8 @@ namespace Nyx::Game
 		bool bGameViewHovered = false;
 
 		Nyx::Input::InputSystem* Input = nullptr;
+		// For the factor the world is drawn by, which the orbit cameras follow it at
+		const Nyx::FixedStepClock* SimulationClock = nullptr;
 
 		// The fly camera's actions and contexts, for the world's FlyCameraComponents
 		// (UpdateFlyCameras()); made in OnAttach
@@ -97,6 +108,15 @@ namespace Nyx::Game
 		Nyx::Input::ActionHandle TogglePhysicsDebugView;
 		Nyx::Input::ActionHandle ToggleInputOverlay;
 		bool bShowInputOverlay = false;
+		// The stand-in character driver's (DriveCharacterForDebugging())
+		Nyx::Input::ContextHandle CharacterContext;
+		Nyx::Input::ContextHandle CharacterMouseLookContext;
+		Nyx::Input::ActionHandle CharacterWalk;
+		Nyx::Input::ActionHandle CharacterJump;
+		Nyx::Input::ActionHandle CharacterLook;
+		Nyx::Input::ActionHandle CharacterZoom;
+		Nyx::Input::ActionHandle CharacterLookButton;
+		bool bCharacterMouseLook = false;
 		Nyx::Input::InputHistory InputHistory;
 		Nyx::Input::InputDebugView InputView;
 	};

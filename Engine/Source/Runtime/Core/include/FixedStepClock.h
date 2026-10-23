@@ -44,6 +44,10 @@ namespace Nyx
 
 		// How far the frame is into the next step, in [0, 1): for drawing between two steps
 		double GetInterpolationFactor() const;
+		// What worlds are drawn between their last two steps by: GetInterpolationFactor(), or 1 while
+		// paused, so the picture is the last step's and Step shows what each step did. Also for what
+		// must sit on a moving entity where it is drawn, such as a camera following it.
+		double GetDrawFactor() const;
 
 		// Steps run so far, and the world time they make up
 		uint64_t GetStepIndex() const { return StepIndex; }

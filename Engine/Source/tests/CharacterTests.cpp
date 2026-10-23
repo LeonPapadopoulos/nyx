@@ -16,6 +16,7 @@
 #include "Log.h"
 #include "MeshRendererComponent.h"
 #include "NameComponent.h"
+#include "OrbitCameraComponent.h"
 #include "Paths.h"
 #include "PhysicsComponents.h"
 #include "PhysicsPick.h"
@@ -450,7 +451,8 @@ namespace
 	}
 
 	// The scene to try the character in by hand: a floor, a ramp it walks up and one it slides down,
-	// a step it climbs and one it doesn't, crates to push, the character and a camera behind it
+	// a step it climbs and one it doesn't, crates to push, the character and an orbit camera behind
+	// it
 	void WriteSampleScene()
 	{
 		const std::filesystem::path assets = Nyx::Paths::GetAssetsDir();
@@ -498,6 +500,7 @@ namespace
 		world.Add<TransformComponent>(camera,
 			TransformComponent{ .Position = glm::vec3(0.0f, 2.4f, 8.0f), .Rotation = glm::angleAxis(glm::radians(-12.0f), glm::vec3(1.0f, 0.0f, 0.0f)) });
 		world.Add<CameraComponent>(camera, CameraComponent{});
+		world.Add<OrbitCameraComponent>(camera, OrbitCameraComponent{ .Target = world.Get<GuidComponent>(character).Guid });
 
 		const Entity sun = world.CreateEntity();
 		world.Add<NameComponent>(sun, NameComponent{ "Sun" });
@@ -526,6 +529,14 @@ namespace
 				Require(character.bOnGround && std::abs(position.y) < 0.03f, "The sample scene's character should stand on its floor " + Describe(position));
 			});
 		Require(characters == 1, "The sample scene should have a character");
+		int cameras = 0;
+		registry.Each<OrbitCameraComponent>([&](Entity, OrbitCameraComponent& orbit)
+			{
+				++cameras;
+				const std::optional<Entity> target = FindEntityByGuid(registry, orbit.Target);
+				Require(target && registry.Has<CharacterComponent>(*target), "The sample scene's orbit camera should follow its character");
+			});
+		Require(cameras == 1, "The sample scene should have an orbit camera");
 		int crates = 0;
 		registry.Each<RigidBodyComponent>([&](Entity entity, RigidBodyComponent&)
 			{

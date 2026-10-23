@@ -134,13 +134,13 @@ between their anchors; nothing with every part off.
     body, `FindEntity()` its entity, `FindCharacter()` the character;
   - after the systems of `ESimStage::BeforePhysics`, which fill `DesiredMove` and `bJumpRequested`
     (simulation input: from a player's command, e.g. a game's `MoveCharacter`, never from outside a
-    step), and before the physics step, `MoveCharacters()` walks each character by its component
-    (walk speed, acceleration, air control as a part of it, jump speed, gravity factor, step height,
-    ground snap), clears the jump, writes the feet's position into the transform and what it stands
-    on into the component (`bOnGround`, `GroundNormal`, `Velocity`). The rotation is the game's,
-    e.g. to face where it walks; the capsule stays upright. A position a system set teleports it
-    first. It keeps where it was before into its `PreviousTransformComponent`, drawn turning too
-    when a system turned it;
+    step, the game's Debug-only stand-in driver aside), and before the physics step,
+    `MoveCharacters()` walks each character by its component (walk speed, acceleration, air control
+    as a part of it, jump speed, gravity factor, step height, ground snap), clears the jump, writes
+    the feet's position into the transform and what it stands on into the component (`bOnGround`,
+    `GroundNormal`, `Velocity`). The rotation is the game's, e.g. to face where it walks; the
+    capsule stays upright. A position a system set teleports it first. It keeps where it was before
+    into its `PreviousTransformComponent`, drawn turning too when a system turned it;
   - a kinematic body that a system moved during the step (`ESimStage::BeforePhysics`) gets one too:
     from where its transform was as the step began to where the system put it. Its body follows a
     step behind, so the debug view's shape trails the mesh. One moved between steps, by a live
@@ -180,7 +180,7 @@ between their anchors; nothing with every part off.
   `NyxCharacterTests --write-scene`, with its materials in `Assets/Materials/CharacterTest`): a
   floor, a 25 degree ramp and a 50 degree one, steps of 0.2 m and 0.5 m, four 10 kg crates, a
   character with the built-in capsule mesh (`Meshes/Capsule.nyxmesh`, the default character's size
-  standing on its origin) and a camera behind it.
+  standing on its origin) and an orbit camera following it.
 
 ## Not built yet
 

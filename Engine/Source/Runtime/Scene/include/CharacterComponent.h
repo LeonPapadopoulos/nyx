@@ -47,8 +47,9 @@ namespace Nyx
 
 		// While the game runs, not saved. What the player or the game wants, simulation input: set
 		// by a system of ESimStage::BeforePhysics, e.g. from a player's command, never from outside
-		// a step. Where to walk, in world space along the ground, up to 1 long (the walk speed); a
-		// jump, taken by this step whether or not it can jump then
+		// a step (the game's Debug-only stand-in driver aside). Where to walk, in world space along
+		// the ground, up to 1 long (the walk speed); a jump, taken by this step whether or not it can
+		// jump then
 		glm::vec3 DesiredMove{ 0.0f };
 		bool bJumpRequested = false;
 
