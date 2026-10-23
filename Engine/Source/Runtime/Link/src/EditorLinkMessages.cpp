@@ -4,7 +4,6 @@
 #include "Paths.h"
 
 #include <algorithm>
-#include <chrono>
 #include <vector>
 
 namespace
@@ -279,11 +278,5 @@ namespace Nyx
 	bool InputFrameMessage::Read(BinaryReader& reader)
 	{
 		return ReadSizedBytes(reader, Record);
-	}
-
-	uint64_t GetClockTimeMs()
-	{
-		const auto sinceEpoch = std::chrono::system_clock::now().time_since_epoch();
-		return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(sinceEpoch).count());
 	}
 }

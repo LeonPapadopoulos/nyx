@@ -63,8 +63,17 @@ namespace Nyx::Input
 	void WriteDefinitionsRecord(Nyx::BinaryWriter& writer, const InputDefinitionsRecord& record);
 	bool ReadDefinitionsRecord(Nyx::BinaryReader& reader, InputDefinitionsRecord& outRecord);
 
+	// One record as written: its kind and its bytes, e.g. one editor link message's payload, or one
+	// record of a recording (InputRecording.h)
+	struct InputStreamRecord
+	{
+		bool bDefinitions = false;
+		std::vector<std::byte> Bytes;
+	};
+
 	// Takes an input system's records, frame by frame, from Start() to Stop(). The input system
-	// calls it at each BeginFrame(), with the stack it decides the frame with.
+	// calls it at each BeginFrame(), with the stack it decides the frame with. Several can watch one
+	// input system, e.g. the editor link's and a recording's.
 	class InputStreamWriter
 	{
 	public:
@@ -86,18 +95,15 @@ namespace Nyx::Input
 			return bStreaming;
 		}
 
-		// The records since the last call, in order, each written as its own message payload
-		struct Record
-		{
-			bool bDefinitions = false;
-			std::vector<std::byte> Bytes;
-		};
+		// The records since the last call, in order
+		using Record = InputStreamRecord;
 		std::vector<Record> TakeRecords();
 
 	private:
 		void OnFrame(const InputSystem& input);
 
 		InputSystem& Input;
+		uint32_t ObserverId = 0;
 		bool bStreaming = false;
 		bool bSnapshotNext = false;
 		uint64_t DefinitionsRevision = 0;
@@ -119,6 +125,10 @@ namespace Nyx::Input
 		// False if the record is damaged; then nothing changed
 		bool ApplyDefinitions(const std::vector<std::byte>& bytes);
 		bool ApplyFrame(const std::vector<std::byte>& bytes);
+		bool Apply(const InputStreamRecord& record)
+		{
+			return record.bDefinitions ? ApplyDefinitions(record.Bytes) : ApplyFrame(record.Bytes);
+		}
 
 		InputSystem& GetInput()
 		{

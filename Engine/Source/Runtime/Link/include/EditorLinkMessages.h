@@ -1,6 +1,7 @@
 #pragma once
 
 #include "BinaryArchive.h"
+#include "ClockTime.h"
 #include "CrashHandler.h"
 #include "EntityGuid.h"
 #include "NetConnection.h"
@@ -317,7 +318,4 @@ namespace Nyx
 	// A path under the project's root, made relative to it, as the other side finds its own root:
 	// how shader messages carry paths
 	std::filesystem::path ToLinkPath(const std::filesystem::path& path);
-
-	// Milliseconds since 1970 (UTC), for LogLineMessage::TimeMs
-	uint64_t GetClockTimeMs();
 }

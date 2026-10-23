@@ -514,7 +514,7 @@ namespace Nyx::Input
 	InputStreamWriter::InputStreamWriter(InputSystem& input)
 		: Input(input)
 	{
-		Input.SetFrameObserver(
+		ObserverId = Input.AddFrameObserver(
 			[this](const InputSystem& system)
 			{
 				OnFrame(system);
@@ -523,7 +523,7 @@ namespace Nyx::Input
 
 	InputStreamWriter::~InputStreamWriter()
 	{
-		Input.SetFrameObserver({});
+		Input.RemoveFrameObserver(ObserverId);
 	}
 
 	void InputStreamWriter::Start()

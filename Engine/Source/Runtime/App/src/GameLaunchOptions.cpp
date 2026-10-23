@@ -130,6 +130,12 @@ namespace Nyx
 			arguments.push_back("--input-background");
 		}
 
+		if (!options.InputRecordPath.empty())
+		{
+			arguments.push_back("--input-record");
+			arguments.push_back(ToUtf8(options.InputRecordPath));
+		}
+
 		if (options.WindowSize)
 		{
 			arguments.push_back("--window-size");
@@ -177,6 +183,17 @@ namespace Nyx
 			else if (argument == "--input-background")
 			{
 				options.bInputBackground = true;
+			}
+			else if (argument == "--input-record")
+			{
+				if (const std::optional<std::string_view> value = takeValue())
+				{
+					options.InputRecordPath = FromUtf8(*value);
+				}
+				else
+				{
+					outWarnings.push_back("--input-record needs a file name");
+				}
 			}
 			else if (argument == "--editor-port")
 			{

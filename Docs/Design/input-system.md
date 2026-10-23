@@ -150,6 +150,18 @@ are reflected types (`NYX_REFLECT`, `NYX_ENUM`) and the header tool also reads
   frame as the game did: traces, phases, the stack and the timeline are the game's, not worked out
   again. The stream can start at any time, and only the game shown streams.
 
+## Recording
+
+- A recording (`.nyxinputrec`, `InputRecorder`) is an input system's stream in a file: the
+  definitions, then frame by frame the events, ImGui's state and the stack when it changed. Each
+  frame is flushed, so after a crash a recording is whole up to its last frame, and the first
+  frame is a snapshot, so a recording can start at any time. Several frame observers can watch one
+  input system, a recording and the editor link's stream at once.
+- *Record* in the Input window records the input shown, the editor's or a running game's (which
+  then starts its stream again, so the file starts with a snapshot). `NyxGame.exe --input-record`
+  records a game from its start (`InputRecordingLayer`). `NyxDump` prints recordings
+  (`PrintInputRecording()`, in `LinkTools`).
+
 ## Seeing it
 
 *Window > Input* in the editor, and in Debug builds the same over a game (Ctrl+Alt+Shift+I, a
@@ -198,6 +210,9 @@ held, a binding the game can't use, damaged messages, and the pad without the fo
 `NyxInputStreamTests` streams presses, holds, taps, the wheel, mouse look, ImGui, focus, pads in
 the background, contexts switched by code, tuning changed mid-hold and a pad unplugged, and
 checks that the replica decides every frame as the original did.
+`NyxInputRecordingTests` records presses, holds, a tap, sticks, mouse look and the focus, and
+replays the file with the same phases, firings and values every frame; a file cut off mid-frame,
+the printout, two watchers at once.
 `NyxInputInspectionTests` checks who gets a control, What if stacks and the calibration;
 `NyxEditorPanelTests` that the Input window leaves no shapes to ImGui.
 `NyxInputGamepadTests` drives virtual pads: hot-plug, analog values, focus, swizzles, composites
@@ -206,4 +221,4 @@ and tries their output, for checking them by hand.
 
 ## Not built yet
 
-Recording, replay and A/B.
+Replaying recordings, and A/B.

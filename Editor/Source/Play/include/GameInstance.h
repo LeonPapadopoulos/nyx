@@ -4,6 +4,7 @@
 #include "CrashHandler.h"
 #include "EditorLink.h"
 #include "GameLaunchOptions.h"
+#include "InputRecording.h"
 #include "InputStream.h"
 #include "NetConnection.h"
 
@@ -74,6 +75,21 @@ namespace Nyx::Editor
 		Nyx::Input::InputReplica* GetInputReplica()
 		{
 			return InputReplica.get();
+		}
+
+		// Records the game's input to the file: subscribes, and has the game start its stream
+		// again, so the file starts with a snapshot. False if the file can't be written.
+		bool StartInputRecording(const std::filesystem::path& path);
+		void StopInputRecording();
+
+		bool IsRecordingInput() const
+		{
+			return InputRecorder.IsOpen();
+		}
+
+		const Nyx::Input::InputRecorder& GetInputRecorder() const
+		{
+			return InputRecorder;
 		}
 
 		// From Start() until the game was asked to quit, ended, or its link ended. A game that
@@ -181,5 +197,11 @@ namespace Nyx::Editor
 		bool bInputSubscriptionSent = false;
 		std::unique_ptr<Nyx::Input::InputReplica> InputReplica;
 		bool bInputRecordWarned = false;
+
+		// Recording: the stream asked to start again, and records of the old one skipped until the
+		// new one's snapshot (its definitions) comes
+		Nyx::Input::InputRecorder InputRecorder;
+		bool bRestartInputStream = false;
+		bool bAwaitingInputSnapshot = false;
 	};
 }

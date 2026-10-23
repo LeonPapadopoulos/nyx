@@ -9,12 +9,12 @@
 #include <string>
 
 // NyxDump: prints Nyx data files as readable text, to see exactly what was saved.
-// Usage: NyxDump <file.nyxscene | file.nyxlinklog | file.nyxinput>
+// Usage: NyxDump <file.nyxscene | file.nyxlinklog | file.nyxinput | file.nyxinputrec>
 int main(int argc, char** argv)
 {
 	if (argc != 2)
 	{
-		std::cerr << "Usage: NyxDump <file.nyxscene | file.nyxlinklog | file.nyxinput>\n";
+		std::cerr << "Usage: NyxDump <file.nyxscene | file.nyxlinklog | file.nyxinput | file.nyxinputrec>\n";
 		return 1;
 	}
 
@@ -24,7 +24,7 @@ int main(int argc, char** argv)
 	Nyx::RegisterComponentTypes();
 
 	// Recordings of the editor link (.nyxlinklog), input assets and player input settings
-	// (.nyxinput) or scene files
+	// (.nyxinput), input recordings (.nyxinputrec) or scene files
 	const std::filesystem::path path(argv[1]);
 	std::string text;
 	bool bPrinted = false;
@@ -35,6 +35,10 @@ int main(int argc, char** argv)
 	else if (path.extension() == ".nyxinput")
 	{
 		bPrinted = Nyx::PrintInputFile(path, text);
+	}
+	else if (path.extension() == ".nyxinputrec")
+	{
+		bPrinted = Nyx::PrintInputRecording(path, text);
 	}
 	else
 	{

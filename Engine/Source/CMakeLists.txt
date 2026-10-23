@@ -55,6 +55,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputChecks.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputRecipes.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputStream.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputRecording.cpp
 
     # Runtime/Scene
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/Entity.cpp
@@ -171,6 +172,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/Profiler.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/FileWatcher.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/StringUtil.h
+    ${NYX_ENGINE_ROOT}/Runtime/Core/include/ClockTime.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/BinaryArchive.h
     
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/NyxPCH.h
@@ -202,6 +204,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputChecks.h
     ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputRecipes.h
     ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputStream.h
+    ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputRecording.h
 
     # Runtime/Scene
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/Entity.h

@@ -48,6 +48,9 @@ namespace Nyx
 		// Gamepads drive the game also while its window doesn't have the focus
 		bool bInputBackground = false;
 
+		// Records the game's input to this file (.nyxinputrec)
+		std::filesystem::path InputRecordPath;
+
 		// Unset: the window's default size, or its default place chosen by the system
 		std::optional<GameWindowSize> WindowSize;
 		std::optional<GameWindowPosition> WindowPosition;

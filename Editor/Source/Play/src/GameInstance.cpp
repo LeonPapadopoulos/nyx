@@ -264,11 +264,12 @@ namespace Nyx::Editor
 
 		Link->Update();
 
-		// The Input window shows this game, or stopped showing it
-		if (Link->IsConnected() && bInputSubscribed != bInputSubscriptionSent)
+		// The Input window shows this game, or stopped showing it; or a recording starts
+		if (Link->IsConnected() && (bInputSubscribed != bInputSubscriptionSent || (bInputSubscribed && bRestartInputStream)))
 		{
 			Link->Send(Nyx::InputSubscribeMessage{ bInputSubscribed });
 			bInputSubscriptionSent = bInputSubscribed;
+			bRestartInputStream = false;
 		}
 
 		HandleMessages();
@@ -300,8 +301,25 @@ namespace Nyx::Editor
 		}
 		else
 		{
+			// A recording needs the stream
 			InputReplica.reset();
+			InputRecorder.Close();
 		}
+	}
+
+	bool GameInstance::StartInputRecording(const std::filesystem::path& path)
+	{
+		// A new stream, starting with a snapshot, into a new replica
+		SetInputSubscribed(false);
+		SetInputSubscribed(true);
+		bRestartInputStream = true;
+		bAwaitingInputSnapshot = true;
+		return InputRecorder.Open(path, Name);
+	}
+
+	void GameInstance::StopInputRecording()
+	{
+		InputRecorder.Close();
 	}
 
 	void GameInstance::HandleInputRecord(const Nyx::Net::Message& message)
@@ -312,16 +330,33 @@ namespace Nyx::Editor
 			return;
 		}
 
-		bool bApplied = false;
-		if (message.Type == static_cast<uint16_t>(Nyx::EEditorLinkMessage::InputDefinitions))
+		Nyx::Input::InputStreamRecord record;
+		record.bDefinitions = message.Type == static_cast<uint16_t>(Nyx::EEditorLinkMessage::InputDefinitions);
+		bool bRead = false;
+		if (record.bDefinitions)
 		{
 			Nyx::InputDefinitionsMessage definitions;
-			bApplied = Nyx::ReadNetMessage(message, definitions) && InputReplica->ApplyDefinitions(definitions.Record);
+			bRead = Nyx::ReadNetMessage(message, definitions);
+			record.Bytes = std::move(definitions.Record);
 		}
 		else
 		{
 			Nyx::InputFrameMessage frame;
-			bApplied = Nyx::ReadNetMessage(message, frame) && InputReplica->ApplyFrame(frame.Record);
+			bRead = Nyx::ReadNetMessage(message, frame);
+			record.Bytes = std::move(frame.Record);
+		}
+
+		// The old stream's last frames, before the new one's snapshot
+		if (bAwaitingInputSnapshot && !record.bDefinitions)
+		{
+			return;
+		}
+		bAwaitingInputSnapshot = bAwaitingInputSnapshot && !record.bDefinitions;
+
+		const bool bApplied = bRead && InputReplica->Apply(record);
+		if (bApplied)
+		{
+			InputRecorder.Write(record);
 		}
 
 		if (!bApplied && !std::exchange(bInputRecordWarned, true))

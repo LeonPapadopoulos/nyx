@@ -3,6 +3,7 @@
 #include "EditorLinkLogSink.h"
 #include "GameLaunchOptions.h"
 #include "GameLayer.h"
+#include "InputRecordingLayer.h"
 #include "Paths.h"
 #include "ChildProcess.h"
 #include "CrashHandler.h"
@@ -102,13 +103,18 @@ namespace Nyx::Game
 				editorLink->SetWorld(game.GetWorld(), game.GetPostLoadContext());
 				PushLayer(std::move(editorLink));
 			}
+
+			if (!options.InputRecordPath.empty())
+			{
+				PushLayer(std::make_unique<InputRecordingLayer>(options.InputRecordPath));
+			}
 		}
 	};
 }
 
 // Usage: NyxGame.exe [scene file] [--wait-for-debugger] [--editor-port <port>] [--link-log <file>]
 //                    [--window-size <width>x<height>] [--window-pos <x>,<y>] [--window-title <text>]
-//                    [--input-background]
+//                    [--input-background] [--input-record <file>]
 // - Without a scene file, the game runs Scenes/Default.nyxscene from the project's assets, or else
 //   from the engine's.
 // - With --wait-for-debugger, the game waits at startup until a debugger is attached.
@@ -119,6 +125,8 @@ namespace Nyx::Game
 //   the window's outer top-left corner goes. The editor's Play All uses them to tile its games.
 // - With --input-background, gamepads drive the game also while its window doesn't have the
 //   focus, e.g. every game of Play All at once.
+// - With --input-record, the game's input is recorded to the file (.nyxinputrec), e.g. for a bug
+//   report; the editor's Input window replays it, NyxDump prints it.
 // GameLaunchOptions.h reads these, and the editor writes them with the same code.
 Nyx::Application* Nyx::CreateApplication(int argc, char** argv)
 {

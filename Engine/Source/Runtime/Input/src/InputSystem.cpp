@@ -38,6 +38,21 @@ namespace Nyx::Input
 		Backends.push_back(&backend);
 	}
 
+	uint32_t InputSystem::AddFrameObserver(FrameObserver observer)
+	{
+		Observers.emplace_back(NextObserverId, std::move(observer));
+		return NextObserverId++;
+	}
+
+	void InputSystem::RemoveFrameObserver(uint32_t id)
+	{
+		std::erase_if(Observers,
+			[id](const auto& observer)
+			{
+				return observer.first == id;
+			});
+	}
+
 	ActionHandle InputSystem::AddAction(InputActionDef action)
 	{
 		++DefinitionsRevision;
@@ -172,9 +187,9 @@ namespace Nyx::Input
 		PreviousFrameUs = nowUs;
 
 		UpdateSystemContexts();
-		if (Observer)
+		for (const auto& [id, observer] : Observers)
 		{
-			Observer(*this);
+			observer(*this);
 		}
 		User.Evaluate(*this, Frame, deltaSeconds);
 	}

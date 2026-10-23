@@ -2,6 +2,7 @@
 
 #include "InputDebugView.h"
 #include "InputHistory.h"
+#include "InputRecording.h"
 #include "InputTuningView.h"
 
 namespace Nyx::Input
@@ -77,5 +78,10 @@ namespace Nyx::Editor
 		PlaySession* Games = nullptr;
 		// The game whose input is shown; empty for the editor's
 		std::string ShownGame;
+
+		// Record: the input shown, to a file in GetInputRecordingFolder()
+		void DrawRecordButton(Nyx::Input::InputSystem& editorInput);
+		Nyx::Input::InputRecordingSession EditorRecording;
+		std::string LastRecording;
 	};
 }

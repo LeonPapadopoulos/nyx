@@ -121,12 +121,11 @@ namespace Nyx::Input
 		}
 
 		// Called in every BeginFrame(), after the frame's events and the system contexts, before
-		// the actions are decided: with the stack they are decided with (InputStreamWriter)
+		// the actions are decided: with the stack they are decided with (InputStreamWriter). The
+		// id is for RemoveFrameObserver().
 		using FrameObserver = std::function<void(const InputSystem&)>;
-		void SetFrameObserver(FrameObserver observer)
-		{
-			Observer = std::move(observer);
-		}
+		uint32_t AddFrameObserver(FrameObserver observer);
+		void RemoveFrameObserver(uint32_t id);
 
 		// Whether devices coming and going and the cursor are logged; not for a replica of another
 		// program's input
@@ -174,7 +173,8 @@ namespace Nyx::Input
 		ImGuiInputState ImGuiState;
 		bool bGamepadsInBackground = false;
 		uint64_t DefinitionsRevision = 0;
-		FrameObserver Observer;
+		std::vector<std::pair<uint32_t, FrameObserver>> Observers;
+		uint32_t NextObserverId = 1;
 		bool bLogging = true;
 	};
 }
