@@ -1,5 +1,6 @@
 // Surface anchors: a frame on an entity's surface that follows the entity as it moves, turns and is
-// scaled, made from a world frame and resolved back to it, and what happens without a host.
+// scaled, made from a world frame and resolved back to it, and what happens without a host. The
+// tangent an anchor gets when nothing says which way it turns.
 #include "Entity.h"
 #include "EntityGuidLookup.h"
 #include "GuidComponent.h"
@@ -191,6 +192,27 @@ namespace
 		Require(Near(frame.Normal, anchor.LocalNormal), "A world-space anchor should keep its normal");
 		Require(Near(frame.Tangent, anchor.LocalTangent), "A world-space anchor should keep its tangent");
 	}
+
+	void TestTheSurfaceTangentFollowsWorldX()
+	{
+		Require(Near(Nyx::GetSurfaceTangent(glm::vec3(0.0f, 1.0f, 0.0f)), glm::vec3(1.0f, 0.0f, 0.0f)), "On a floor the tangent should be world X");
+		Require(Near(Nyx::GetSurfaceTangent(glm::vec3(0.0f, 0.0f, -2.0f)), glm::vec3(1.0f, 0.0f, 0.0f)), "On a wall looking along Z the tangent should be world X");
+		Require(Near(Nyx::GetSurfaceTangent(glm::normalize(glm::vec3(1.0f, 1.0f, 0.0f))), glm::normalize(glm::vec3(1.0f, -1.0f, 0.0f))),
+			"On a slope the tangent should be world X along it");
+
+		// Too near X, world Z instead
+		Require(Near(Nyx::GetSurfaceTangent(glm::vec3(1.0f, 0.0f, 0.0f)), glm::vec3(0.0f, 0.0f, 1.0f)), "On a wall looking along X the tangent should be world Z");
+		Require(Near(Nyx::GetSurfaceTangent(glm::vec3(-1.0f, 0.0f, 0.0f)), glm::vec3(0.0f, 0.0f, 1.0f)), "On a wall looking along -X the tangent should be world Z");
+
+		const glm::vec3 normals[] = { glm::normalize(glm::vec3(1.0f, 0.05f, 0.02f)), glm::normalize(glm::vec3(1.0f, 0.2f, 0.0f)),
+			glm::normalize(glm::vec3(-0.3f, -0.8f, 0.5f)), glm::vec3(0.0f) };
+		for (const glm::vec3& normal : normals)
+		{
+			const glm::vec3 tangent = Nyx::GetSurfaceTangent(normal);
+			Require(Near(glm::length(tangent), 1.0f), "The surface tangent should be unit length");
+			Require(Near(glm::dot(tangent, normal), 0.0f), "The surface tangent should be along the surface");
+		}
+	}
 }
 
 int main()
@@ -203,6 +225,7 @@ int main()
 		TestMakeThenResolveGivesTheFrameBack();
 		TestAMissingHostGivesNothing();
 		TestAWorldSpaceAnchorResolvesToItself();
+		TestTheSurfaceTangentFollowsWorldX();
 	}
 	catch (const std::exception& error)
 	{

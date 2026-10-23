@@ -129,7 +129,8 @@ Code can draw lines over a world to show what it does: forces, anchors, bounds, 
 - **The physics debug view**: F3 in a game window (Debug builds) shows every body's shape, coloured
   by how it moves (static grey, kinematic blue, awake green, asleep dark green, sensors yellow), the
   last step's contact points with their normals in red, and constraints as pink lines between
-  their anchors. It changes with the next step, so while paused, with Step.
+  their anchors. It changes with the next step, so while paused, with Step. A cyan cross and arrow
+  show where the cursor points at a body, and the surface's normal there ([Cursor rays](#cursor-rays)).
 
 ## Profiling
 
@@ -255,6 +256,28 @@ details panel shows its host (in hex) and its three vectors. Without a host it i
 - Many anchors in a frame: `MakeEntityGuidLookup()` once, then resolve through it, instead of
   each one going through every guid of the world.
 - Tests: `NyxSurfaceAnchorTests`; `NyxGameModuleTests` saves and loads one in a module component.
+
+## Cursor rays
+
+What lies under a point of a view, for clicking on the world.
+
+- `ScreenPointToRay()` turns a point of a camera's picture, in pixels from its top left corner as
+  ImGui gives the mouse over an image, into a ray through the world from the near plane. It goes
+  back through the same view and projection the renderer draws scene views with
+  (`CameraProjection.h`), so the ray passes through what is drawn there.
+- `PickPhysicsBody()` follows a ray to the first body and gives its entity, the point, the
+  surface's normal and the distance; nothing when the ray meets nothing within the distance given,
+  such as the camera's far plane. Its `QueryFilter` can leave out one body, such as the player's
+  own, and counts sensors only when asked.
+- `MakeSurfaceAnchor(world, pick)` hangs a surface anchor on the entity where the ray hit, such as
+  for a mark placed by a click. Its tangent is world X along the surface, or world Z on a surface
+  facing along X (`GetSurfaceTangent()`), so it doesn't depend on where the camera was.
+- In a game window, the physics debug view (F3, Debug builds) shows where the cursor points at a
+  body. It follows the cursor with each step, so not while paused.
+- Tests: `NyxCursorRayTests` (a point drawn on a pixel lies on that pixel's ray, for cameras moved
+  and turned, at the centre and the corners; picking a box drawn there, the floor behind it when
+  the box is left out, sensors only when asked, nothing past everything; an anchor where the ray
+  hit following the box), `NyxSurfaceAnchorTests` (the tangent).
 
 ## Surface decals
 

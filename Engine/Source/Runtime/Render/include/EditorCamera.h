@@ -1,5 +1,7 @@
 #pragma once
 
+#include "CameraProjection.h"
+
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -25,14 +27,7 @@ namespace Nyx
 
 		glm::mat4 GetProjectionMatrix() const
 		{
-			glm::mat4 proj = glm::perspective(
-				glm::radians(60.0f),
-				AspectRatio,
-				0.1f,
-				1000.0f);
-
-			proj[1][1] *= -1.0f;
-			return proj;
+			return MakePerspectiveProjection(glm::radians(60.0f), AspectRatio, 0.1f, 1000.0f);
 		}
 
 		glm::mat4 GetViewProjectionMatrix() const

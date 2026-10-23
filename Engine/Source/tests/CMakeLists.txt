@@ -80,7 +80,7 @@ set_property(TARGET NyxGameModuleTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxGameModuleTests COMMAND NyxGameModuleTests)
 
 # Surface anchors: following a host that moves, turns and is scaled, made and resolved back, without
-# a host
+# a host, the tangent from world X
 add_executable(NyxSurfaceAnchorTests SurfaceAnchorTests.cpp)
 target_link_libraries(NyxSurfaceAnchorTests PRIVATE NyxEngine)
 add_dependencies(NyxSurfaceAnchorTests NyxGeneratedReflection)
@@ -94,6 +94,14 @@ target_link_libraries(NyxSurfaceDecalTests PRIVATE NyxEngine)
 add_dependencies(NyxSurfaceDecalTests NyxGeneratedReflection)
 set_property(TARGET NyxSurfaceDecalTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxSurfaceDecalTests COMMAND NyxSurfaceDecalTests)
+
+# The cursor ray: a pixel back to a ray through the world, by the projection the renderer draws
+# with, the physics pick along it, an anchor where it hit
+add_executable(NyxCursorRayTests CursorRayTests.cpp)
+target_link_libraries(NyxCursorRayTests PRIVATE NyxEngine)
+add_dependencies(NyxCursorRayTests NyxGeneratedReflection)
+set_property(TARGET NyxCursorRayTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxCursorRayTests COMMAND NyxCursorRayTests)
 
 # Debug drawing: shapes as lines, how long they stay, the cap
 add_executable(NyxDebugDrawTests DebugDrawTests.cpp)

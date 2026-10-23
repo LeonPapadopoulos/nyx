@@ -46,6 +46,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/TransformComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/MeshRendererComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/CameraComponent.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/CameraProjection.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/DirectionalLightComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/NameComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/PhysicsComponents.cpp
@@ -64,6 +65,7 @@ set(NYX_ENGINE_SOURCES
     # Runtime/Sim
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/GameWorld.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/PhysicsBodies.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Sim/src/PhysicsPick.cpp
 
     # Runtime/Physics
     ${NYX_ENGINE_ROOT}/Runtime/Physics/src/PhysicsWorld.cpp
@@ -173,6 +175,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/TransformComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/MeshRendererComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/CameraComponent.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/CameraProjection.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/DirectionalLightComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/NameComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/PhysicsComponents.h
@@ -195,6 +198,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/SimSystem.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/GameWorld.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/PhysicsBodies.h
+    ${NYX_ENGINE_ROOT}/Runtime/Sim/include/PhysicsPick.h
 
     # Runtime/Physics
     ${NYX_ENGINE_ROOT}/Runtime/Physics/include/PhysicsWorld.h

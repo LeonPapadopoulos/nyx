@@ -2,8 +2,10 @@
 
 #include "Application.h"
 #include "CameraComponent.h"
+#include "CameraProjection.h"
 #include "Log.h"
 #include "EditorRenderer.h"
+#include "PhysicsPick.h"
 #include "SceneSerializer.h"
 
 #include <imgui.h>
@@ -79,6 +81,33 @@ namespace Nyx::Game
 	void GameLayer::OnFixedUpdate(const Nyx::StepTime& step)
 	{
 		World.Step(step);
+#if defined(ENGINE_DEBUG)
+		// After the step, so it stays drawn until the next one
+		DrawCursorPick();
+#endif
+	}
+
+	void GameLayer::DrawCursorPick()
+	{
+		if (!World.GetPhysicsDebugView() || !bGameViewHovered)
+		{
+			return;
+		}
+		const std::optional<Nyx::WorldCamera> camera = Nyx::FindPrimaryCamera(World.GetRegistry());
+		if (!camera)
+		{
+			return;
+		}
+
+		const ImVec2 mouse = ImGui::GetMousePos();
+		const Nyx::Ray ray =
+			Nyx::ScreenPointToRay(camera->Transform, camera->Camera, GameViewSize, glm::vec2(mouse.x, mouse.y) - GameViewMin);
+		if (const std::optional<Nyx::PhysicsPick> pick = Nyx::PickPhysicsBody(World, ray, camera->Camera.FarPlane))
+		{
+			const glm::vec3 color(0.1f, 0.9f, 1.0f);
+			World.GetDebugDraw().Cross(pick->Point, 0.1f, color);
+			World.GetDebugDraw().Arrow(pick->Point, pick->Point + pick->Normal * 0.5f, color);
+		}
 	}
 
 	void GameLayer::OnUI()
@@ -93,7 +122,8 @@ namespace Nyx::Game
 			*nowhere = 1;
 		}
 
-		// F3 shows the bodies' shapes, contacts and constraints (Debug builds only)
+		// F3 shows the bodies' shapes, contacts and constraints, and where the cursor points at one
+		// (Debug builds only)
 		if (ImGui::IsKeyPressed(ImGuiKey_F3, false))
 		{
 			const bool bShow = !World.GetPhysicsDebugView();
@@ -120,10 +150,16 @@ namespace Nyx::Game
 		const ImVec2 size = ImGui::GetContentRegionAvail();
 		Renderer->SetSceneViewSize(GameViewId, static_cast<uint32_t>(size.x), static_cast<uint32_t>(size.y));
 
+		const ImVec2 imageMin = ImGui::GetCursorScreenPos();
+		GameViewMin = glm::vec2(imageMin.x, imageMin.y);
+		GameViewSize = glm::vec2(size.x, size.y);
+		bGameViewHovered = false;
+
 		// Like the editor's scene views: skip the image in the frame the view was resized and its texture replaced
 		if (!Renderer->WasSceneViewRecreatedThisFrame(GameViewId))
 		{
 			ImGui::Image(UIRenderer->GetSceneViewTextureId(GameViewId), size);
+			bGameViewHovered = ImGui::IsItemHovered();
 		}
 
 		ImGui::End();

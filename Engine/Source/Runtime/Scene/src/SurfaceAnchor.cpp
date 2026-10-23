@@ -14,6 +14,10 @@ namespace Nyx
 		// Shorter than this, a direction is taken as none
 		constexpr float MinDirectionLength = 1e-6f;
 
+		// Shorter than this, world X along a surface is the sine of under 6 degrees: switching to
+		// world Z there keeps the tangent from swinging round as the normal passes near X
+		constexpr float MinSurfaceAxisLength = 0.1f;
+
 		glm::vec3 NormalizeOr(const glm::vec3& direction, const glm::vec3& fallback)
 		{
 			const float length = glm::length(direction);
@@ -125,5 +129,17 @@ namespace Nyx
 		anchor.LocalNormal = NormalizeOr(transform.Scale * (inverseRotation * normal), glm::vec3(0.0f, 1.0f, 0.0f));
 		anchor.LocalTangent = NormalizeOr(inverseScale * (inverseRotation * tangent), AnyPerpendicular(anchor.LocalNormal));
 		return anchor;
+	}
+
+	glm::vec3 GetSurfaceTangent(const glm::vec3& normal)
+	{
+		const glm::vec3 unitNormal = NormalizeOr(normal, glm::vec3(0.0f, 1.0f, 0.0f));
+		const glm::vec3 alongX = glm::vec3(1.0f, 0.0f, 0.0f) - unitNormal * unitNormal.x;
+		const float length = glm::length(alongX);
+		if (length >= MinSurfaceAxisLength)
+		{
+			return alongX / length;
+		}
+		return glm::normalize(glm::vec3(0.0f, 0.0f, 1.0f) - unitNormal * unitNormal.z);
 	}
 }

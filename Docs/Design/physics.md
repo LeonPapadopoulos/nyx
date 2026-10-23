@@ -32,7 +32,8 @@ engine is [Jolt](https://github.com/jrouwe/JoltPhysics) (`Dependencies/JoltPhysi
 - **Queries**: `RayCast` and `ShapeCast` (any body shape, swept along a direction) give the first
   hit: body, point, normal, distance and the body's user data; `Overlap` gives the bodies a shape
   touches, in handle order. A `QueryFilter` picks static and moving bodies, sensors (left out by
-  default), and one body to ignore, e.g. the caster.
+  default), and one body to ignore, e.g. the caster. `PickPhysicsBody()` (`Sim`) casts a ray in a
+  game world and gives the entity whose body it hit, through `PhysicsBodies::FindEntity()`.
 - **Contact events**: two bodies began or ended touching; for "began" also a point, the normal and
   how fast they came together. Sensors give the same events. Jolt calls its contact listener on its
   job threads during `Step()`, many pairs at once, so the listener only appends to a list under a

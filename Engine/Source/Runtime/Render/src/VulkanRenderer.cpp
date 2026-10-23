@@ -7,6 +7,7 @@
 #include "Log.h"
 #include "GltfImporter.h"
 #include "TransformComponent.h"
+#include "CameraProjection.h"
 #include "PreviousTransformComponent.h"
 #include "FixedStepClock.h"
 #include "MeshRendererComponent.h"
@@ -28,7 +29,6 @@
 #include <optional>
 
 
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/packing.hpp>
@@ -190,15 +190,6 @@ static glm::vec3 GetRightVector(const Nyx::TransformComponent& transform)
 
 namespace
 {
-	glm::mat4 BuildProjectionMatrix(float fovYRadians, float aspectRatio, float nearPlane, float farPlane)
-	{
-		glm::mat4 proj = glm::perspective(fovYRadians, aspectRatio, nearPlane, farPlane);
-
-		// Vulkan clip-space convention with GLM
-		proj[1][1] *= -1.0f;
-		return proj;
-	}
-
 	glm::vec3 GetForwardVectorWS(const Nyx::TransformComponent& transform)
 	{
 		const glm::mat4 world = transform.ToMatrix();
@@ -1807,9 +1798,8 @@ namespace Nyx
 	void VulkanRenderer::ExtractSceneGlobalsFromEditorCamera(SceneViewInstance& view)
 	{
 		const vk::Extent2D extent = view.RenderTarget.GetExtent();
-		view.EditorCam.AspectRatio = extent.height > 0
-			? static_cast<float>(extent.width) / static_cast<float>(extent.height)
-			: 1.0f;
+		view.EditorCam.AspectRatio =
+			Nyx::GetAspectRatio(static_cast<float>(extent.width), static_cast<float>(extent.height));
 
 		view.SceneGlobals = {};
 		view.SceneGlobals.View = view.EditorCam.GetViewMatrix();
@@ -1827,9 +1817,6 @@ namespace Nyx
 		const Nyx::Registry& world)
 	{
 		const vk::Extent2D extent = view.RenderTarget.GetExtent();
-		const float aspectRatio = extent.height > 0
-			? static_cast<float>(extent.width) / static_cast<float>(extent.height)
-			: 1.0f;
 
 		view.SceneGlobals = {};
 		view.SceneGlobals.CameraWorldPos = glm::vec3(0.0f, 0.0f, 3.0f);
@@ -1837,38 +1824,17 @@ namespace Nyx
 		view.SceneGlobals.LightColor = glm::vec3(1.0f, 0.98f, 0.95f);
 		view.SceneGlobals.Ambient = 0.18f;
 
-		world.Each<Nyx::CameraComponent>(
-			[&](Nyx::Entity entity, const Nyx::CameraComponent& cameraComp)
-			{
-				if (view.SceneGlobals.bHasCamera || !cameraComp.bPrimary)
-				{
-					return;
-				}
-
-				glm::mat4 worldMatrix = glm::mat4(1.0f);
-				glm::vec3 cameraPos{ 0.0f };
-
-				if (world.Has<Nyx::TransformComponent>(entity))
-				{
-					const auto& transform = world.Get<Nyx::TransformComponent>(entity);
-					worldMatrix = transform.ToMatrix();
-					cameraPos = transform.Position;
-				}
-
-				view.SceneGlobals.View = glm::inverse(worldMatrix);
-
-				glm::mat4 proj = glm::perspective(
-					glm::radians(cameraComp.FovYDegrees),
-					aspectRatio,
-					cameraComp.NearPlane,
-					cameraComp.FarPlane);
-				proj[1][1] *= -1.0f;
-
-				view.SceneGlobals.Projection = proj;
-				view.SceneGlobals.ViewProjection = proj * view.SceneGlobals.View;
-				view.SceneGlobals.CameraWorldPos = cameraPos;
-				view.SceneGlobals.bHasCamera = true;
-			});
+		// The same view and projection a ray through a pixel goes back through (ScreenPointToRay())
+		if (const std::optional<Nyx::WorldCamera> camera = Nyx::FindPrimaryCamera(world))
+		{
+			const float aspectRatio =
+				Nyx::GetAspectRatio(static_cast<float>(extent.width), static_cast<float>(extent.height));
+			view.SceneGlobals.View = Nyx::GetCameraView(camera->Transform);
+			view.SceneGlobals.Projection = Nyx::GetCameraProjection(camera->Camera, aspectRatio);
+			view.SceneGlobals.ViewProjection = view.SceneGlobals.Projection * view.SceneGlobals.View;
+			view.SceneGlobals.CameraWorldPos = camera->Transform.Position;
+			view.SceneGlobals.bHasCamera = true;
+		}
 
 		if (!view.SceneGlobals.bHasCamera)
 		{

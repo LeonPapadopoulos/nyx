@@ -6,6 +6,8 @@
 #include "Layer.h"
 #include "SceneSerializationTypes.h"
 
+#include <glm/glm.hpp>
+
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -45,6 +47,10 @@ namespace Nyx::Game
 		}
 
 	private:
+		// With the physics debug view on, where the ray through the cursor hits a body, and the
+		// surface's normal there (Debug builds)
+		void DrawCursorPick();
+
 		std::filesystem::path ScenePath;
 
 		Nyx::IRenderer* Renderer = nullptr;
@@ -56,5 +62,10 @@ namespace Nyx::Game
 		Nyx::GameWorld World;
 
 		uint64_t GameViewId = 0;
+		// Where the game view's image was last shown, in ImGui's screen coordinates, and whether the
+		// cursor was over it
+		glm::vec2 GameViewMin{ 0.0f };
+		glm::vec2 GameViewSize{ 0.0f };
+		bool bGameViewHovered = false;
 	};
 }

@@ -31,13 +31,13 @@
 #include "TransformComponent.h"
 #include "MeshRendererComponent.h"
 #include "CameraComponent.h"
+#include "CameraProjection.h"
 #include "DirectionalLightComponent.h"
 #include "EditorCamera.h"
 #include "SceneViewTypes.h"
 #include "SceneView.h"
 #include "Extent2D.h"
 
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -197,15 +197,7 @@ namespace Nyx
 
 		glm::mat4 GetProjectionMatrix() const
 		{
-			glm::mat4 proj = glm::perspective(
-				glm::radians(60.0f),
-				AspectRatio,
-				0.1f,
-				100.0f);
-
-			// Vulkan clip-space convention with GLM
-			proj[1][1] *= -1.0f;
-			return proj;
+			return Nyx::MakePerspectiveProjection(glm::radians(60.0f), AspectRatio, 0.1f, 100.0f);
 		}
 
 		glm::mat4 GetViewProjectionMatrix() const

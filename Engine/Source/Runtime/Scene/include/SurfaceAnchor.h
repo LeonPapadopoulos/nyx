@@ -77,6 +77,12 @@ namespace Nyx
 	// 0, since every position along it lands on the same point.
 	SurfaceAnchor MakeSurfaceAnchor(const Registry& world, Entity host, const glm::vec3& worldPosition,
 		const glm::vec3& worldNormal, const glm::vec3& worldTangent);
+
+	// A unit tangent for a surface with this normal, for an anchor placed where nothing says which way
+	// it turns, such as by a click: world X along the surface, or world Z where the normal is within
+	// about 6 degrees of X and too little of X is left to point a steady way. It turns with the
+	// surface, never by itself.
+	glm::vec3 GetSurfaceTangent(const glm::vec3& normal);
 }
 
 #include "Generated/Runtime/SurfaceAnchor.reflect.h"
