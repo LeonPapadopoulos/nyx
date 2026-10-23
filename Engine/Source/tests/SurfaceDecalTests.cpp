@@ -2,10 +2,12 @@
 // lifted a little off the surface and keeping its size; on a host drawn between two steps, it is
 // where the host is drawn, and picked and outlined where the host is; what the renderer extracts
 // of a world's decals, and what it leaves out; a decal saved in a scene and loaded with its
-// material resolved.
+// material resolved; the time a game's world's decals pulse by, paused and stepped.
 #include "ComponentRegistration.h"
+#include "DrawnWorldTime.h"
 #include "Entity.h"
 #include "EntityGuidLookup.h"
+#include "FixedStepClock.h"
 #include "GuidComponent.h"
 #include "IAssetResolver.h"
 #include "Log.h"
@@ -275,6 +277,39 @@ namespace
 		Require(drawn.size() == 1 && drawn[0].SourceEntity == inWorld, "A decal whose host is gone shouldn't be drawn");
 	}
 
+	// A game's world drawn between its steps: its decals pulse by its time at the moment its poses are
+	// drawn at. Paused, the time stands still, however long the frames take; Step moves it on by
+	// one step.
+	void TestTimeOfAWorldDrawnBetweenSteps()
+	{
+		const auto near = [](float a, double b)
+		{
+			return std::abs(static_cast<double>(a) - b) < 1e-5;
+		};
+		Nyx::FixedStepClock clock;
+		clock.SetStepSeconds(0.1);
+
+		// Two steps run, half of the next one passed: drawn halfway through the second step
+		Require(clock.Advance(0.25) == 2, "The clock should run two steps");
+		Require(near(static_cast<float>(clock.GetDrawFactor()), 0.5) && near(Nyx::GetDrawnWorldTime(clock), 0.15),
+			"Half a step after the second, the world should be drawn at 0.15 s, halfway, not " + std::to_string(Nyx::GetDrawnWorldTime(clock)) + " s");
+
+		// Paused: where the last step left it, at its end, for as long as it stays paused
+		clock.SetPaused(true);
+		for (int frame = 0; frame < 3; ++frame)
+		{
+			Require(clock.Advance(1.0) == 0, "Paused, no steps should run");
+			Require(near(Nyx::GetDrawnWorldTime(clock), 0.2),
+				"Paused, the world should be drawn at 0.2 s, the last step's end, not " + std::to_string(Nyx::GetDrawnWorldTime(clock)) + " s");
+		}
+
+		// Step: one step on, and still again
+		clock.StepOnce();
+		Require(clock.Advance(0.0) == 1, "Step should run one step");
+		Require(near(Nyx::GetDrawnWorldTime(clock), 0.3), "Stepped, the world should be drawn at 0.3 s");
+		Require(clock.Advance(1.0) == 0 && near(Nyx::GetDrawnWorldTime(clock), 0.3), "After the step, the time should stand still again");
+	}
+
 	// Gives one material for every path, and counts the asks
 	class TestAssetResolver final : public Nyx::IAssetResolver
 	{
@@ -402,6 +437,7 @@ int main()
 		TestExtraction();
 		TestRaysFindDecals();
 		TestSavedAndLoaded();
+		TestTimeOfAWorldDrawnBetweenSteps();
 	}
 	catch (const std::exception& error)
 	{

@@ -148,7 +148,9 @@ checks every `#include` against this table.
    2. acquires the swapchain image, and takes shader updates;
    3. extracts what each shown world draws this frame: its objects and its surface decals
       (`ExtractSurfaceDecals()`, every anchor resolved through one guid lookup), both between
-      their last two steps by one factor for the world when it is drawn so, and its debug lines;
+      their last two steps by one factor for the world when it is drawn so, its time for what
+      moves by itself (its clock's, else the renderer's: `GetDrawnWorldTime()`), and its debug
+      lines;
       then renders every scene view: the editor's passes (picking only after a click, selection
       masks only when they changed), then the scene in HDR (the objects, the sky, then the decals
       blended over them), tonemapped, with the editor's overlays (`VulkanEditorOverlays`, in the

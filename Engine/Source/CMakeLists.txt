@@ -115,6 +115,7 @@ set(NYX_ENGINE_SOURCES
     # Runtime/Render
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/AssetResolver.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/SurfaceDecals.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/DrawnWorldTime.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Mesh.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Texture.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/CubemapTexture.cpp
@@ -280,6 +281,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Resource.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/AssetResolver.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/SurfaceDecals.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/DrawnWorldTime.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Mesh.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Texture.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/CubemapTexture.h

@@ -24,7 +24,8 @@
 // decal material brightens a cube where it is, the more the more it is revealed; nothing at all
 // unrevealed, without its host, or behind something else; on a body between two steps, it is
 // drawn where the body is drawn. A click on a decal's mask picks the decal, one where its mask is
-// empty what is beneath, and a selected decal's quad is outlined.
+// empty what is beneath, and a selected decal's quad is outlined. A decal's pulse runs on the
+// renderer's time in the editor's world, and stands still in a game's world while it is paused.
 //
 // NYX_SCENE_TEST_OUTPUT=<folder> saves what was rendered there, e.g. to make a new reference
 // after a change that is meant to change the picture.
@@ -1193,6 +1194,69 @@ namespace
 		gpu.DrawFrames(1);
 	}
 
+	// A pulsing decal on a cube: in the editor's world it throbs on the renderer's time; in a game's
+	// world, drawn by its clock, it stands still while paused, and Step moves it on
+	void TestDecalsPulseOnTheWorldsClock(SceneRenderer& gpu)
+	{
+		Nyx::IEditorRenderer& renderer = gpu.Renderer;
+		Registry world;
+		const Entity cube = AddCube(world, gpu.Renderer, 0.0f, renderer.GetMaterial("Materials/Untextured.nyxmat"));
+		world.Add<GuidComponent>(cube, GuidComponent{ EntityGuid{ 0x9A5E } });
+		const Entity camera = world.CreateEntity();
+		world.Add<TransformComponent>(camera, TransformComponent{ .Position = glm::vec3(0.0f, 0.0f, 3.0f), .Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f), .Scale = glm::vec3(1.0f) });
+		world.Add<CameraComponent>(camera, CameraComponent{});
+		SurfaceDecalComponent decal;
+		decal.Anchor = SurfaceAnchor{ .Host = EntityGuid{ 0x9A5E }, .LocalPosition = glm::vec3(0.0f, 0.0f, 0.5f), .LocalNormal = glm::vec3(0.0f, 0.0f, 1.0f), .LocalTangent = glm::vec3(1.0f, 0.0f, 0.0f) };
+		decal.Size = glm::vec2(0.8f, 0.8f);
+		decal.MaterialAsset = renderer.GetMaterial("Materials/MaskedDecal.nyxmat");
+		decal.Intensity = 4.0f;
+		decal.Pulse = 1.0f;
+		world.Add<SurfaceDecalComponent>(world.CreateEntity(), decal);
+
+		renderer.SetWorld(&world);
+		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
+		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
+		gpu.DrawUntilShadersCompiled();
+		const auto draw = [&]()
+		{
+			gpu.DrawFrames(1);
+			return ReadView(gpu, view);
+		};
+
+		// The editor's world: the pulse moves on within a moment
+		const RgbaImage first = draw();
+		bool bMoved = false;
+		for (int attempt = 0; attempt < 40 && !bMoved; ++attempt)
+		{
+			std::this_thread::sleep_for(std::chrono::milliseconds(50));
+			bMoved = draw().Pixels != first.Pixels;
+		}
+		Require(bMoved, "In the editor's world, the decal doesn't pulse on the renderer's time");
+
+		// A game's world, paused at its start: the same picture however long it stays paused. A
+		// step of a quarter of the pulse's second dims it halfway.
+		FixedStepClock clock;
+		clock.SetStepSeconds(0.25);
+		clock.SetPaused(true);
+		renderer.SetWorldInterpolation(&world, &clock);
+		const RgbaImage paused = draw();
+		std::this_thread::sleep_for(std::chrono::milliseconds(300));
+		Require(draw().Pixels == paused.Pixels, "Paused, the decal's pulse moves on");
+
+		clock.StepOnce();
+		Require(clock.Advance(0.0) == 1, "Step should run one step");
+		const RgbaImage stepped = draw();
+		Require(stepped.Pixels != paused.Pixels, "Stepped, the decal's pulse doesn't move on");
+		std::this_thread::sleep_for(std::chrono::milliseconds(300));
+		Require(draw().Pixels == stepped.Pixels, "Paused again after the step, the decal's pulse moves on");
+
+		renderer.SetWorldInterpolation(&world, nullptr);
+		renderer.DestroySceneView(view);
+		renderer.SetWorld(nullptr);
+		gpu.DrawFrames(1);
+	}
+
 	// The masked decal's ring on the front face of a cube, in a view with the editor's overlays: a
 	// click on the ring picks the decal, one in the ring's middle the cube beneath; a hidden or
 	// unrevealed decal is never picked. Selected, the decal's quad is outlined.
@@ -1437,6 +1501,7 @@ int main()
 		TestSurfaceDecals(gpu);
 		TestDecalsBetweenSteps(gpu);
 		TestPickingDecals(gpu);
+		TestDecalsPulseOnTheWorldsClock(gpu);
 		TestMaterialValuesSetInMemory(gpu);
 		TestSkiesAndDebugViews(gpu);
 		TestViewsMadeAndLetGoWhileTheUIIsBuilt(gpu);

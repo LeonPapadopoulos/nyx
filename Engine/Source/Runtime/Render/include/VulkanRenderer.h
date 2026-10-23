@@ -77,7 +77,8 @@ namespace Nyx
 		uint32_t SpecularTexture = 0;
 		uint32_t SpecularLevels = 0;
 		uint32_t BrdfLookup = 0;
-		// Seconds since the renderer started
+		// Seconds, for what moves by itself, such as a decal's pulse: the view's world's time
+		// (RenderWorld::Time)
 		float Time = 0.0f;
 		glm::vec4 Irradiance[9] = {};
 	};
@@ -153,6 +154,10 @@ namespace Nyx
 		std::vector<RenderDecal> Decals;
 		// Dense picking IDs: ID i is the entity at i - 1, 0 is nothing
 		std::vector<Nyx::Entity> PickingIdToEntity;
+		// This frame's time of what moves by itself in the world, such as a decal's pulse, in
+		// seconds: the world's own where it is drawn between steps (a game's, paused or stepped
+		// with it), else the renderer's
+		float Time = 0.0f;
 		// This frame's debug lines of the world: the editor overlays' (its objects' bounds and axes)
 		// and its debug drawing's (IRenderer::SetWorldDebugDraw())
 		DebugLineRange OverlayLines;
@@ -323,6 +328,9 @@ namespace Nyx
 		// How far into its next step the world is drawn this frame (SetWorldInterpolation()), for its
 		// meshes and decals alike: none for a world drawn as it is; paused, 1, the last step's poses
 		std::optional<float> GetWorldInterpolation(const Nyx::Registry* registry) const;
+		// The world's time this frame (RenderWorld::Time): its clock's at the moment its poses are
+		// drawn at, for a world drawn between steps; else SceneTime
+		float GetWorldTime(const Nyx::Registry* registry) const;
 		void ExtractRenderObjects(RenderWorld& world, std::optional<float> interpolation);
 		void DrawRenderObjects(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd);
 		// The world's decals, blended over what the scene pass drew: the plane mesh with each one's
@@ -358,7 +366,8 @@ namespace Nyx
 		std::vector<uint32_t> ReadSpirvFile(const std::string& fileName);
 
 		void CreateSceneResourcesForView(SceneViewInstance& view);
-		void UpdateSceneUniforms(SceneViewInstance& view);
+		// The view's set, for the world it shows
+		void UpdateSceneUniforms(SceneViewInstance& view, const RenderWorld& world);
 
 		void CreateTestMeshData();
 
@@ -465,10 +474,11 @@ namespace Nyx
 		// The worlds' debug drawing (SetWorldDebugDraw()), by world; kept apart from RenderWorlds,
 		// whose entries come and go with the views
 		std::unordered_map<const Nyx::Registry*, const Nyx::DebugDraw*> WorldDebugDraws;
-		// The clocks of the worlds drawn between steps (SetWorldInterpolation()), by world, kept so too
+		// The clocks of the worlds drawn between steps (SetWorldInterpolation()), by world, kept so
+		// too; they give those worlds their time as well (GetWorldTime())
 		std::unordered_map<const Nyx::Registry*, const Nyx::FixedStepClock*> WorldInterpolationClocks;
 
-		// Seconds since the renderer was made, as this frame's views see it (SceneUBO::Time)
+		// Seconds since the renderer was made, this frame: the time of worlds without a clock
 		const std::chrono::steady_clock::time_point StartTime = std::chrono::steady_clock::now();
 		float SceneTime = 0.0f;
 

@@ -10,6 +10,7 @@
 #include "CameraProjection.h"
 #include "PreviousTransformComponent.h"
 #include "FixedStepClock.h"
+#include "DrawnWorldTime.h"
 #include "MeshRendererComponent.h"
 #include "Paths.h"
 #include "Profiler.h"
@@ -572,7 +573,7 @@ namespace Nyx
 			if (const RenderWorld* world = FindShownWorld(view))
 			{
 				UpdateViewportSceneGlobals(view, *world->Registry);
-				UpdateSceneUniforms(view);
+				UpdateSceneUniforms(view, *world);
 
 				// Editor-only passes: picking, and the masks the selection outline is drawn from
 				if (view.bShowEditorOverlays)
@@ -1093,6 +1094,7 @@ namespace Nyx
 		{
 			// Used to update Render Objects here (e.g. Transform)
 			const std::optional<float> interpolation = GetWorldInterpolation(world->Registry);
+			world->Time = GetWorldTime(world->Registry);
 			ExtractRenderObjects(*world, interpolation);
 			ExtractSurfaceDecals(*world->Registry, interpolation, world->Decals);
 			// Picked as the objects are: by their entity, with the ids after the objects'
@@ -1117,6 +1119,17 @@ namespace Nyx
 			return std::nullopt;
 		}
 		return static_cast<float>(clock->second->GetDrawFactor());
+	}
+
+	float VulkanRenderer::GetWorldTime(const Nyx::Registry* registry) const
+	{
+		// The editor's own worlds have no clock: material previews and edits keep moving
+		const auto clock = WorldInterpolationClocks.find(registry);
+		if (clock == WorldInterpolationClocks.end())
+		{
+			return SceneTime;
+		}
+		return GetDrawnWorldTime(*clock->second);
 	}
 
 	void VulkanRenderer::ExtractRenderObjects(RenderWorld& world, std::optional<float> interpolation)
@@ -1518,7 +1531,7 @@ namespace Nyx
 		Context.GetDevice().updateDescriptorSets(write, {});
 	}
 
-	void VulkanRenderer::UpdateSceneUniforms(SceneViewInstance& view)
+	void VulkanRenderer::UpdateSceneUniforms(SceneViewInstance& view, const RenderWorld& world)
 	{
 		const vk::Extent2D extent = view.RenderTarget.GetExtent();
 
@@ -1544,7 +1557,7 @@ namespace Nyx
 		ubo.SpecularTexture = Environment.GetSpecularSlot(sky);
 		ubo.SpecularLevels = Environment.GetSpecularLevels();
 		ubo.BrdfLookup = Environment.GetLookupSlot();
-		ubo.Time = SceneTime;
+		ubo.Time = world.Time;
 		for (size_t term = 0; term < 9; ++term)
 		{
 			ubo.Irradiance[term] = glm::vec4(Environment.GetIrradiance(sky)[term], 0.0f);

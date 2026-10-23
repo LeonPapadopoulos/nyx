@@ -31,7 +31,8 @@ public struct ViewConstants
     public nyx::Cubemap Specular;
     public uint SpecularLevels;
     public nyx::Texture BrdfLookup;
-    // Seconds since the renderer started, for what moves by itself, such as a decal's pulse
+    // Seconds, for what moves by itself, such as a decal's pulse: the view's world's time. A
+    // game's world's is its simulation's, which stands still while paused; the editor's runs on.
     public float Time;
     public float4 Irradiance[9];
 }

@@ -104,8 +104,12 @@ entity's surface. No domain of its own: every surface material can be a decal's.
   intensity in `CustomData`, its reveal and pulse in `CustomData2`. `decalFragment` hands them to
   the material as `SurfaceInput.Decal` (`DecalInput`); `surfaceFragment` gives the defaults (white,
   intensity 1, revealed, not pulsing), so a decal material on a mesh, as in its preview, shows as
-  it would fully revealed. The time is the view's (`View.Time`, seconds since the renderer
-  started), the same for every material.
+  it would fully revealed. The time is the view's world's (`View.Time`), the same for every
+  material: a game's world, drawn by its clock (`SetWorldInterpolation()`), has its simulation's
+  time at the moment its poses are drawn at, so it stands still while paused and Step moves it
+  on by a step (`GetDrawnWorldTime()`); other worlds, the editor's, have the seconds since the
+  renderer started. A per-world time in the view's set, not a per-decal one in the push
+  constants: every view knows its world, and meshes' materials get it too.
 - **Drawn after the sky**, as what is blended comes after all that is opaque, in the scene pass, in
   HDR, so a glow above 1 reaches the tonemap.
 

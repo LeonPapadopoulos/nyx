@@ -428,6 +428,9 @@ glowing mark on a crate.
   beneath (its opacity), glow on it (its emission), or both.
 - On a moving body, which the game draws between its last two steps, a decal is drawn where the
   body's mesh is drawn, not a step ahead of it.
+- What moves by itself, such as the pulse, follows the world's time. In a game it is the
+  simulation's: paused, a decal stands still, and Step moves it on by one step. In the editor's
+  own world it is the renderer's, so decals and material previews keep moving while editing.
 - Any surface material can be a decal's. The *masked decal material* (`Shaders/MaskedDecal.slang`)
   draws a mask, white on black, in the decal's colour, with smooth edges and an optional glow
   around it; Reveal uncovers it as a wipe along a direction, out from the middle or round it, with
@@ -440,7 +443,8 @@ glowing mark on a crate.
   ring's middle, picks what is beneath. A hidden or unrevealed decal isn't picked. A selected
   decal's quad is outlined in the selection's colour.
 - Tests: `NyxSurfaceDecalTests` (the quad following its host, also between two steps, what is
-  drawn, saving and loading), `NyxSceneGpuTests` (a decal on a cube brightens it where it is, partly
+  drawn, saving and loading, a game's world's time paused and stepped), `NyxSceneGpuTests` (a decal on a cube brightens it where it is, partly
   when partly revealed, and not at all unrevealed, without its host, or behind another cube; on a
   cube drawn between two steps, it is on the cube; a click on its ring picks it, one in the ring's
-  middle the cube; selected, its quad is outlined).
+  middle the cube; selected, its quad is outlined; its pulse moves in the editor's world, and
+  stands still in a game's world while paused until it is stepped).

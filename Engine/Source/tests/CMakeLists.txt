@@ -106,7 +106,7 @@ set_property(TARGET NyxSurfaceAnchorTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxSurfaceAnchorTests COMMAND NyxSurfaceAnchorTests)
 
 # Surface decals: the quad following its host, what the renderer extracts of a world's decals, a
-# decal saved and loaded
+# decal saved and loaded, the time a game's world's decals pulse by
 add_executable(NyxSurfaceDecalTests SurfaceDecalTests.cpp)
 target_link_libraries(NyxSurfaceDecalTests PRIVATE NyxEngine)
 add_dependencies(NyxSurfaceDecalTests NyxGeneratedReflection)
