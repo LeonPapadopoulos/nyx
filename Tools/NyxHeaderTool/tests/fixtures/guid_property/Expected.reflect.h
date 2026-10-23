@@ -11,6 +11,22 @@ namespace Nyx::Reflection
 
 namespace Nyx::Reflection::Generated
 {
+    inline constexpr MetadataEntry GuidPropertyTestComponent_Guid_MetadataEntries[] =
+    {
+        { "UI", "EntityRef" },
+    };
+
+    inline constexpr MetadataEntry GuidPropertyTestComponent_QualifiedGuid_MetadataEntries[] =
+    {
+        { "UI", "EntityRef" },
+    };
+
+    inline constexpr MetadataEntry GuidPropertyTestComponent_OwnGuid_MetadataEntries[] =
+    {
+        { "UI", "Hex" },
+        { "Tooltip", "Its own" },
+    };
+
     inline constexpr PropertyMetadata GuidPropertyTestComponent_Properties[] =
     {
         {
@@ -20,8 +36,8 @@ namespace Nyx::Reflection::Generated
             EPropertyKind::UInt64,
             EPropertyFlags::Serialize | EPropertyFlags::ReadOnly,
             offsetof(Nyx::GuidPropertyTestComponent, Guid),
-            nullptr,
-            0,
+            GuidPropertyTestComponent_Guid_MetadataEntries,
+            sizeof(GuidPropertyTestComponent_Guid_MetadataEntries) / sizeof(GuidPropertyTestComponent_Guid_MetadataEntries[0]),
             nullptr
         },
         {
@@ -31,8 +47,19 @@ namespace Nyx::Reflection::Generated
             EPropertyKind::UInt64,
             EPropertyFlags::Serialize | EPropertyFlags::ReadOnly,
             offsetof(Nyx::GuidPropertyTestComponent, QualifiedGuid),
-            nullptr,
-            0,
+            GuidPropertyTestComponent_QualifiedGuid_MetadataEntries,
+            sizeof(GuidPropertyTestComponent_QualifiedGuid_MetadataEntries) / sizeof(GuidPropertyTestComponent_QualifiedGuid_MetadataEntries[0]),
+            nullptr
+        },
+        {
+            "OwnGuid",
+            0x6659654A,
+            "OwnGuid",
+            EPropertyKind::UInt64,
+            EPropertyFlags::Serialize | EPropertyFlags::ReadOnly,
+            offsetof(Nyx::GuidPropertyTestComponent, OwnGuid),
+            GuidPropertyTestComponent_OwnGuid_MetadataEntries,
+            sizeof(GuidPropertyTestComponent_OwnGuid_MetadataEntries) / sizeof(GuidPropertyTestComponent_OwnGuid_MetadataEntries[0]),
             nullptr
         },
         {
@@ -53,6 +80,9 @@ namespace Nyx::Reflection::Generated
 
     static_assert(std::is_same_v<decltype(Nyx::GuidPropertyTestComponent::QualifiedGuid), Nyx::EntityGuid>,
         "GuidPropertyTestComponent::QualifiedGuid must be a Nyx::EntityGuid");
+
+    static_assert(std::is_same_v<decltype(Nyx::GuidPropertyTestComponent::OwnGuid), Nyx::EntityGuid>,
+        "GuidPropertyTestComponent::OwnGuid must be a Nyx::EntityGuid");
 
     inline constexpr TypeMetadata GuidPropertyTestComponent_TypeMetadata
     {

@@ -9,6 +9,8 @@ namespace Nyx::Editor
 		CurrentLocation = {};
 		GenericPropertyEdit = {};
 		TransformRotationEdit = {};
+		EntityToSelect.reset();
+		EntityPick = {};
 	}
 
 	void InspectorDrawContext::PreviewPendingEdits()

@@ -309,12 +309,32 @@ A name must be a C++ identifier. In the header tool's tests, a fixture names its
 hold one of their types as a property, and nothing is generated for them. A game module's run gets
 the engine's, so a game's component can hold an `AssetReference` or a `SurfaceAnchor`.
 
+## Entity references
+
+An `EntityGuid` property names another entity, such as a surface anchor's host. The details panel
+shows the entity's name, *None* for no guid, or *Missing (0x...)* for a guid no entity of the scene
+has; the guid itself is in the tooltip. It is saved and sent to games as the guid, like any
+`UInt64`.
+
+- The combo lists the scene's entities by name, with a filter (a name or a guid), and *None*.
+- An entity dragged from the outliner can be dropped on the field.
+- The eyedropper button picks the next entity clicked in a scene view, even under the gizmo; Esc,
+  another click on it, or selecting another entity stops it.
+- The target button selects the entity named.
+- Each change is one undo step.
+- The outliner's right-click menu has *Copy Guid*, as saved scenes, logs and NyxDump show it.
+- The header tool gives every `EntityGuid` property `UI = EntityRef`; one that names its own UI is
+  drawn as that instead, such as the entity's own guid in the *Guid Component* (`UI = Hex`).
+- Tests: `NyxEditorPanelTests` (choosing from the combo and its undo, a drop from the outliner,
+  *None*, a missing guid, the eyedropper, saving and loading), `NyxHeaderToolTests`.
+
 ## Surface anchors
 
 A `SurfaceAnchor` property hangs something on another entity's surface, such as a mark drawn on a
 crate: a point, the surface's normal and a tangent, kept in the host's local space and naming the
 host by guid. It saves, undoes and goes over the editor link like any other property, and the
-details panel shows its host (in hex) and its three vectors. Without a host it is in world space.
+details panel shows its host by name (see Entity references) and its three vectors. Without a host
+it is in world space.
 
 - `ResolveSurfaceAnchor()` gives where it is in the world now (`SurfaceFrame`: position, unit
   normal and tangent, bitangent, a matrix), following the host as it moves, turns and is scaled;

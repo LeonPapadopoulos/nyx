@@ -73,6 +73,10 @@ namespace Nyx::UI
 		Step,
 		Build,
 		Document,
+		// Picks something by clicking it, e.g. an entity in a scene view
+		Eyedropper,
+		// Goes to what a field names, e.g. selects the entity
+		Locate,
 	};
 
 	// A button with an icon, alone (a label of "##Play") or before its label; a size of 0 on an

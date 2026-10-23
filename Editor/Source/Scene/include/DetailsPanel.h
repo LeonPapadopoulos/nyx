@@ -12,5 +12,8 @@ namespace Nyx::Editor
 		void Draw(SceneEditor& editing);
 
 		bool bOpen = true;
+
+	private:
+		void DrawWindow(SceneEditor& editing);
 	};
 }

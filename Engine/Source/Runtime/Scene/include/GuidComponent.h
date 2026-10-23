@@ -13,7 +13,8 @@ namespace Nyx
 	NYX_REFLECT(Component, meta = (DisplayName = "Guid Component"))
 	struct GuidComponent
 	{
-		NYX_PROPERTY(Serialize, ReadOnly, meta = (Tooltip = "Names this entity the same way in its scene file and in every program that loads it"))
+		// The entity's own guid, not one naming another entity: shown in hex, not as an entity picker
+		NYX_PROPERTY(Serialize, ReadOnly, meta = (UI = Hex, Tooltip = "Names this entity the same way in its scene file and in every program that loads it"))
 		EntityGuid Guid;
 	};
 

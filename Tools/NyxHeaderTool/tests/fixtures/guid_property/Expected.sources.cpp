@@ -16,7 +16,8 @@ namespace Nyx::Editor
             sources.Register(type, { "@SOURCE_FILE@", 11 });
             sources.Register(type.Properties[0], { "@SOURCE_FILE@", 15 });
             sources.Register(type.Properties[1], { "@SOURCE_FILE@", 18 });
-            sources.Register(type.Properties[2], { "@SOURCE_FILE@", 21 });
+            sources.Register(type.Properties[2], { "@SOURCE_FILE@", 22 });
+            sources.Register(type.Properties[3], { "@SOURCE_FILE@", 25 });
         }
     }
 }

@@ -50,8 +50,9 @@ namespace Nyx::Editor
 		// Also tells the camera controller whether the view is hovered or focused, and where it is
 		void Draw(SceneEditor& editing, const EditorPreferences& preferences, EditorCameraController& cameraController);
 
-		// Selects the entity of a click the renderer has finished picking. Before drawing, so the
-		// panels see the new selection in the same frame.
+		// Selects the entity of a click the renderer has finished picking, or gives it to the entity
+		// reference whose eyedropper waits (InspectorDrawContext::EntityPick). Before drawing, so the
+		// panels see it in the same frame.
 		void ApplyPickResult(SceneEditor& editing);
 
 		// Shows the scene the way the game sees it: through its primary camera, without editor

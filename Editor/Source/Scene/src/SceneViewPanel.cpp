@@ -74,6 +74,18 @@ namespace Nyx::Editor
 			AssignMaterial(editing.Scene, editing.Transactions, *result.HitEntity, dropped);
 		}
 
+		// An entity reference's eyedropper takes the clicked entity instead of the selection; a click
+		// on nothing keeps it waiting
+		EntityPickState& pick = editing.DetailsContext.EntityPick;
+		if (dropped.empty() && pick.IsWaiting())
+		{
+			if (result.HitEntity && editing.Scene.GetRegistry().IsAlive(*result.HitEntity))
+			{
+				pick.Picked = editing.Scene.GetGuid(*result.HitEntity);
+			}
+			return;
+		}
+
 		if (!result.HitEntity.has_value() || editing.Scene.GetRegistry().IsAlive(*result.HitEntity))
 		{
 			editing.Scene.GetSelection() = result.HitEntity;
@@ -152,6 +164,9 @@ namespace Nyx::Editor
 				Nyx::UI::AddWindowGlow(ImTextureRef(blurred), picture, preferences.AmbilightReach, preferences.AmbilightStrength);
 			}
 
+			// While an entity reference's eyedropper waits, a click picks for it (ApplyPickResult()),
+			// even on the gizmo
+			const bool bPickingEntity = editing.DetailsContext.EntityPick.IsWaiting();
 			const bool bGizmoConsumedInteraction =
 				editing.Gizmo.TickAndDraw(
 					*Renderer,
@@ -160,7 +175,13 @@ namespace Nyx::Editor
 					SceneViewId,
 					imageMin,
 					imageSize,
-					bImageHovered);
+					bImageHovered && !bPickingEntity);
+
+			if (bImageHovered && bPickingEntity)
+			{
+				ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+				ImGui::SetTooltip("Click an entity to pick it; Esc stops");
+			}
 
 			if (!bGizmoConsumedInteraction &&
 				bImageHovered &&

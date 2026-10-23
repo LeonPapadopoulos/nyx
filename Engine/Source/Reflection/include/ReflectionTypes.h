@@ -18,7 +18,9 @@ namespace Nyx::Reflection
 	// - ReflectedArchivePrinter::ValueToText
 	// - in the editor: a widget in PropertyWidgetRegistry.cpp
 	//
-	// UInt64 is meant for IDs, such as EntityGuid: it is shown in hex and never converted.
+	// UInt64 is meant for IDs, such as EntityGuid: it is shown in hex and never converted. An
+	// EntityGuid property gets the metadata UI = EntityRef from the header tool, unless it names its
+	// own UI, so the editor shows the entity it names instead.
 	// Enum is an enum class declared with NYX_ENUM; its value is saved as an Int32. Array is a
 	// std::vector of any other kind but Array; its elements are reached through ArrayMetadata.
 	enum class EPropertyKind : uint8_t

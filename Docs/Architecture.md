@@ -113,13 +113,13 @@ checks every `#include` against this table.
 
 | Folder | What it holds | Includes from |
 | --- | --- | --- |
-| `Common` | Native file dialogs, the UI source inspector, where reflected properties are declared, property values read and written through reflection, the precompiled header | — |
+| `Common` | Native file dialogs, the UI source inspector, where reflected properties are declared, property values read and written through reflection, dragging entities, the precompiled header | — |
 | `Assets` | The asset database, asset types, dragging assets, the asset browser | — |
 | `Materials` | The material open for editing, the Parameters and preview windows, New Material, the Shader Log | — |
 | `Transactions` | Undo and redo: transactions, their changes, snapshots of objects | Common |
 | `Preferences` | The editor's preferences, the Preferences and Theme windows, opening source in the chosen editor | Common |
 | `DevTools` | The prototype and diagnostics tools, in Debug builds only (`NYX_DEV_TOOLS`): Painter Test, Mockup Overlay, ImGui's debug windows | Common |
-| `Properties` | Drawing and editing reflected properties: a widget per property kind, and the edit in progress | Common, Transactions, Assets |
+| `Properties` | Drawing and editing reflected properties: a widget per property kind (an entity reference's picker among them), and the edit in progress | Common, Transactions, Assets |
 | `Scene` | The scene being edited: its document and undo, the outliner, details, gizmo, scene views and their cameras, scene files, copy and paste | Common, Transactions, Assets, Preferences, Properties |
 | `Play` | Play and Play All: the games, their windows and crash cards, the Game Link window, edits sent to the games | Transactions, Preferences, Scene |
 | `Input` | The Input window (*Window > Input*): the editor's or a running game's input, its history and traces; the input asset being edited, with its undo (`InputAssetDocument`), and the Tuning and Checks tabs | Common, Transactions, Properties, Play |

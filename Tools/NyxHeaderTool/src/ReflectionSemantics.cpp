@@ -1,5 +1,6 @@
 #include "ReflectionSemantics.h"
 
+#include <algorithm>
 #include <stdexcept>
 #include <unordered_map>
 
@@ -92,6 +93,8 @@ namespace Nyx::HeaderTool
 		ParsedProperty& parsedProperty,
 		const ReflectedTypeIndex& typeIndex)
 	{
+		parsedProperty.DefaultUI.clear();
+
 		// std::vector<T>: an Array of T, where T is anything a property can be but another vector
 		constexpr std::string_view VectorPrefix = "std::vector<";
 		const std::string& type = parsedProperty.Type;
@@ -161,15 +164,18 @@ namespace Nyx::HeaderTool
 		// Engine types that are saved and edited as the single value inside them, while C++ code
 		// keeps a type of its own for them. Since they are recognised by name, the generated code
 		// checks that the member really has the engine type and not another type of the same name.
+		// DefaultUI: how the editor draws it, unless the property names its own UI.
 		struct WrappedValueType
 		{
 			EParsedPropertyKind Kind;
 			const char* CppType;
+			const char* DefaultUI;
 		};
 
+		// An EntityGuid names another entity: the editor offers the scene's entities for it
 		static const std::unordered_map<std::string, WrappedValueType> WrappedValueTypes = {
-			{ "EntityGuid", { EParsedPropertyKind::UInt64, "Nyx::EntityGuid" } },
-			{ "Nyx::EntityGuid", { EParsedPropertyKind::UInt64, "Nyx::EntityGuid" } }
+			{ "EntityGuid", { EParsedPropertyKind::UInt64, "Nyx::EntityGuid", "EntityRef" } },
+			{ "Nyx::EntityGuid", { EParsedPropertyKind::UInt64, "Nyx::EntityGuid", "EntityRef" } }
 		};
 
 		parsedProperty.StructQualifiedTypeName.clear();
@@ -185,6 +191,7 @@ namespace Nyx::HeaderTool
 		{
 			parsedProperty.Kind = it->second.Kind;
 			parsedProperty.RequiredCppType = it->second.CppType;
+			parsedProperty.DefaultUI = it->second.DefaultUI;
 			return;
 		}
 
@@ -287,6 +294,16 @@ namespace Nyx::HeaderTool
 			{
 				def->ApplyProperty(ctx, entry);
 			}
+		}
+
+		const bool bNamesItsUI = std::any_of(parsedProperty.EmittedMetadata.begin(), parsedProperty.EmittedMetadata.end(),
+			[](const ParsedMacroEntry& entry)
+			{
+				return entry.Name == "UI";
+			});
+		if (!parsedProperty.DefaultUI.empty() && !bNamesItsUI)
+		{
+			ctx.AddIdentifierMetadata("UI", parsedProperty.DefaultUI);
 		}
 	}
 

@@ -55,12 +55,17 @@ namespace
 
 	static void DrawPropertyTooltipIfHovered(const Nyx::Reflection::PropertyMetadata& property)
 	{
-		// Read-only properties are drawn disabled, and their tooltips should show too
+		// Read-only properties are drawn disabled, and their tooltips should show too. Under a
+		// tooltip the widget showed itself, such as an entity reference's guid.
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
 		{
 			if (const char* tooltip = GetPropertyTooltip(property))
 			{
-				ImGui::SetTooltip("%s", tooltip);
+				if (ImGui::BeginTooltip())
+				{
+					ImGui::TextUnformatted(tooltip);
+					ImGui::EndTooltip();
+				}
 			}
 		}
 	}

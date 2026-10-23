@@ -4,6 +4,9 @@
 #include "CrashCardsPanel.h"
 #include "DetailsPanel.h"
 #include "EditorPreferences.h"
+#include "EntityReferenceWidget.h"
+#include "GuidComponent.h"
+#include "ImGuiSource.h"
 #include "Log.h"
 #include "NameComponent.h"
 #include "Painter.h"
@@ -20,9 +23,13 @@
 #include "InputRecording.h"
 #include "VirtualInputBackend.h"
 #include "PropertyWidgetRegistry.h"
+#include "ReflectionSourceRegistry.h"
+#include "ReflectionUtils.h"
 #include "SceneEditor.h"
 #include "SceneFilePopups.h"
 #include "SceneOutlinerPanel.h"
+#include "SceneSerializer.h"
+#include "SurfaceDecalComponent.h"
 #include "ThemeEditorWindow.h"
 #include "TransformComponent.h"
 #include "UIAnimation.h"
@@ -41,8 +48,10 @@
 #include <algorithm>
 #include <cfloat>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <iostream>
+#include <iterator>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -267,6 +276,315 @@ namespace
 			Require(ImGui::GetCurrentContext()->HoveredIdPreviousFrameItemCount <= 1,
 				"Two items in the details panel share an ID (under the mouse at y = " + std::to_string(y) + ")");
 		}
+	}
+
+	// A cube and a decal, the decal selected: its details at the top left, the outliner beside them.
+	// The items of the decal's host field are found through the UI source inspector's callback, which
+	// reports each item with the property it belongs to; the host's declaration is marked for that.
+	class EntityFieldFixture
+	{
+	public:
+		EntityFieldFixture()
+		{
+			RegisterDefaultPropertyWidgets();
+			Registry& world = Editing.Scene.GetRegistry();
+			Cube = Editing.Scene.CreateEntity("Cube");
+			world.Add<TransformComponent>(Cube, TransformComponent{});
+			Decal = Editing.Scene.CreateEntity("Decal");
+			world.Add<SurfaceDecalComponent>(Decal, SurfaceDecalComponent{});
+			Editing.Scene.GetSelection() = Decal;
+
+			ReflectionSourceRegistry::Get().Register(GetHostProperty(), SourceLocation(HostMarker, 1));
+			Nyx::UI::SetSourceItemCallback(&Collect, this);
+			Nyx::UI::SetInspectingSources(true);
+		}
+
+		~EntityFieldFixture()
+		{
+			Nyx::UI::SetInspectingSources(false);
+			Nyx::UI::SetSourceItemCallback(nullptr, nullptr);
+			ReflectionSourceRegistry::Get().Register(GetHostProperty(), SourceLocation{});
+		}
+
+		EntityFieldFixture(const EntityFieldFixture&) = delete;
+		EntityFieldFixture& operator=(const EntityFieldFixture&) = delete;
+
+		void Draw()
+		{
+			Items.clear();
+			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+			ImGui::SetNextWindowSize(ImVec2(400.0f, 780.0f));
+			Details.Draw(Editing);
+			ImGui::SetNextWindowPos(ImVec2(420.0f, 0.0f));
+			ImGui::SetNextWindowSize(ImVec2(300.0f, 400.0f));
+			Outliner.Draw(Editing);
+		}
+
+		void Frame()
+		{
+			UI.Frame([&]()
+				{
+					Draw();
+				});
+		}
+
+		void MoveTo(ImVec2 at)
+		{
+			ImGui::GetIO().AddMousePosEvent(at.x, at.y);
+			Frame();
+		}
+
+		void Press(ImVec2 at)
+		{
+			MoveTo(at);
+			ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+			Frame();
+			ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+			Frame();
+		}
+
+		// Opens the host's combo; a popup is placed in the frames after it opens
+		void OpenCombo()
+		{
+			Press(GetHostItems().back().GetCenter());
+			Frame();
+			Frame();
+		}
+
+		void DragTo(ImVec2 from, ImVec2 to)
+		{
+			MoveTo(from);
+			ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+			Frame();
+			for (int step = 1; step <= 4; ++step)
+			{
+				MoveTo(ImVec2(from.x + (to.x - from.x) * step / 4.0f, from.y + (to.y - from.y) * step / 4.0f));
+			}
+			ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+			Frame();
+			Frame();
+		}
+
+		EntityGuid GetHost() const
+		{
+			return Editing.Scene.GetRegistry().Get<SurfaceDecalComponent>(Decal).Anchor.Host;
+		}
+
+		// The host field's items in the details: the eyedropper, the select button, the combo
+		std::vector<ImRect> GetHostItems() const
+		{
+			return Find([](const Item& item)
+				{
+					return item.bHost && item.WindowName == "Details";
+				});
+		}
+
+		// The combo's list, while it is open: the filter, None, then the entities. The combo itself
+		// comes first in the list's window, as it is reported once its list has begun.
+		std::vector<ImRect> GetListItems() const
+		{
+			std::vector<ImRect> items = Find([](const Item& item)
+				{
+					return item.bHost && item.WindowName.starts_with("##Combo");
+				});
+			if (!items.empty())
+			{
+				items.erase(items.begin());
+			}
+			return items;
+		}
+
+		// The outliner's rows are the last of its items, in the order the entities were made
+		ImRect GetOutlinerRow(Entity entity) const
+		{
+			const std::vector<ImRect> items = Find([](const Item& item)
+				{
+					return item.WindowName == "Scene Outliner";
+				});
+			const size_t rows = 2;
+			Require(items.size() >= rows, "The outliner should show both entities");
+			return items[items.size() - rows + (entity == Cube ? 0 : 1)];
+		}
+
+		HeadlessUI UI;
+		SceneEditor Editing;
+		DetailsPanel Details;
+		SceneOutlinerPanel Outliner;
+		Entity Cube;
+		Entity Decal;
+
+	private:
+		static constexpr const char* HostMarker = "EntityFieldFixture: SurfaceAnchor::Host";
+
+		struct Item
+		{
+			std::string WindowName;
+			bool bHost = false;
+			bool bWindow = false;
+			ImRect Rect;
+		};
+
+		static const Nyx::Reflection::PropertyMetadata& GetHostProperty()
+		{
+			return Nyx::Reflection::GetTypeMetadata<SurfaceAnchor>().Properties[0];
+		}
+
+		static void Collect(const Nyx::UI::SourceItem& item, void* userData)
+		{
+			EntityFieldFixture& fixture = *static_cast<EntityFieldFixture*>(userData);
+			fixture.Items.push_back(Item{ item.Window ? std::string(item.Window->Name) : std::string(),
+				std::string_view(item.Declaration.File) == HostMarker, item.bWindow, ImRect(item.Min, item.Max) });
+		}
+
+		template<typename Predicate>
+		std::vector<ImRect> Find(Predicate predicate) const
+		{
+			std::vector<ImRect> found;
+			for (const Item& item : Items)
+			{
+				if (!item.bWindow && predicate(item))
+				{
+					found.push_back(item.Rect);
+				}
+			}
+			return found;
+		}
+
+		std::vector<Item> Items;
+	};
+
+	// The host field: choosing from its combo, its filter, None, and undo of each
+	void TestEntityReferenceCombo()
+	{
+		EntityFieldFixture fixture;
+		const EntityGuid cubeGuid = fixture.Editing.Scene.GetGuid(fixture.Cube);
+		const char* ui = Nyx::Reflection::FindMetadataValue(Nyx::Reflection::GetTypeMetadata<SurfaceAnchor>().Properties[0], "UI");
+		Require(ui && std::string_view(ui) == "EntityRef", "An EntityGuid property should get UI = EntityRef from the header tool");
+		fixture.Frame();
+		fixture.Frame();
+		Require(fixture.GetHostItems().size() == 3, "The host field should show its eyedropper, select button and combo");
+
+		fixture.OpenCombo();
+		Require(fixture.GetListItems().size() == 4, "The combo should list its filter, None and both entities");
+		// The filter has the keyboard once the list opens
+		ImGui::GetIO().AddInputCharactersUTF8("CUB");
+		fixture.Frame();
+		fixture.Frame();
+		Require(fixture.Editing.DetailsContext.EntityFilter == "CUB", "Typing should go into the list's filter");
+		Require(fixture.GetListItems().size() == 3, "The filter should leave None and the cube, whatever the case");
+		fixture.Press(fixture.GetListItems()[2].GetCenter());
+		Require(fixture.GetHost() == cubeGuid, "Choosing the cube from the combo should make it the host");
+
+		fixture.Editing.Undo();
+		Require(!fixture.GetHost().IsValid(), "Undo should clear the host again");
+		fixture.Editing.Redo();
+		Require(fixture.GetHost() == cubeGuid, "Redo should make the cube the host again");
+
+		fixture.Frame();
+		fixture.OpenCombo();
+		fixture.Press(fixture.GetListItems()[1].GetCenter());
+		Require(!fixture.GetHost().IsValid(), "Choosing None should clear the host");
+		fixture.Editing.Undo();
+		Require(fixture.GetHost() == cubeGuid, "Undoing None should bring the host back");
+	}
+
+	// An entity dragged from the outliner onto the host field becomes the host, without being selected
+	// on the way; a click on a row still selects it
+	void TestEntityReferenceDropFromOutliner()
+	{
+		EntityFieldFixture fixture;
+		fixture.Frame();
+		fixture.Frame();
+		fixture.DragTo(fixture.GetOutlinerRow(fixture.Cube).GetCenter(), fixture.GetHostItems().back().GetCenter());
+		Require(fixture.GetHost() == fixture.Editing.Scene.GetGuid(fixture.Cube), "The cube dropped on the field should become the host");
+		Require(fixture.Editing.Scene.GetSelection() == fixture.Decal, "Dragging the cube shouldn't select it");
+		fixture.Editing.Undo();
+		Require(!fixture.GetHost().IsValid(), "The drop should be one undo step");
+
+		fixture.Press(fixture.GetOutlinerRow(fixture.Cube).GetCenter());
+		Require(fixture.Editing.Scene.GetSelection() == fixture.Cube, "A click on a row should still select it");
+	}
+
+	// The eyedropper takes the entity a scene view picks; Esc, or the field going away, stops it. The
+	// select button selects the host; a missing host shows as missing and can't be selected.
+	void TestEntityReferencePickSelectAndMissing()
+	{
+		EntityFieldFixture fixture;
+		const Registry& world = fixture.Editing.Scene.GetRegistry();
+		const EntityGuid cubeGuid = fixture.Editing.Scene.GetGuid(fixture.Cube);
+		EntityPickState& pick = fixture.Editing.DetailsContext.EntityPick;
+		fixture.Frame();
+		fixture.Frame();
+
+		fixture.Press(fixture.GetHostItems()[0].GetCenter());
+		Require(pick.IsWaiting(), "The eyedropper should wait for a click in a scene view");
+		// What SceneViewPanel::ApplyPickResult() does with a click on the cube
+		pick.Picked = cubeGuid;
+		fixture.Frame();
+		Require(fixture.GetHost() == cubeGuid && !pick.IsWaiting(), "The eyedropper should make the picked entity the host, and stop");
+		fixture.Editing.Undo();
+		Require(!fixture.GetHost().IsValid(), "A pick should be one undo step");
+
+		fixture.Press(fixture.GetHostItems()[0].GetCenter());
+		Require(pick.IsWaiting(), "The eyedropper should wait again");
+		fixture.UI.Press(ImGuiKey_Escape, false, false, [&]()
+			{
+				fixture.Draw();
+			});
+		Require(!pick.IsWaiting(), "Esc should stop the eyedropper");
+
+		fixture.Frame();
+		fixture.Press(fixture.GetHostItems()[0].GetCenter());
+		fixture.Editing.Scene.GetSelection() = fixture.Cube;
+		fixture.Frame();
+		Require(!pick.IsWaiting(), "Selecting another entity should stop the eyedropper");
+
+		fixture.Editing.Scene.GetSelection() = fixture.Decal;
+		fixture.Editing.Scene.GetRegistry().Get<SurfaceDecalComponent>(fixture.Decal).Anchor.Host = cubeGuid;
+		fixture.Frame();
+		fixture.Press(fixture.GetHostItems()[1].GetCenter());
+		Require(fixture.Editing.Scene.GetSelection() == fixture.Cube, "The select button should select the host");
+
+		Require(DescribeEntityReference(&world, cubeGuid) == "Cube", "A host should show its name");
+		Require(DescribeEntityReference(&world, EntityGuid{}) == "None", "No host should show as None");
+		const EntityGuid missing{ 0x1234 };
+		Require(DescribeEntityReference(&world, missing) == "Missing (0x0000000000001234)",
+			"A guid no entity has should show as missing, with the guid");
+
+		fixture.Editing.Scene.GetSelection() = fixture.Decal;
+		fixture.Editing.Scene.GetRegistry().Get<SurfaceDecalComponent>(fixture.Decal).Anchor.Host = missing;
+		fixture.Frame();
+		fixture.Press(fixture.GetHostItems()[1].GetCenter());
+		Require(fixture.Editing.Scene.GetSelection() == fixture.Decal, "A missing host can't be selected");
+	}
+
+	// A host chosen in the field is saved and loaded as the guid it was, and saved again byte for byte
+	void TestEntityReferenceSavesAndLoads()
+	{
+		EntityFieldFixture fixture;
+		const EntityGuid cubeGuid = fixture.Editing.Scene.GetGuid(fixture.Cube);
+		const EntityGuid decalGuid = fixture.Editing.Scene.GetGuid(fixture.Decal);
+		fixture.Frame();
+		fixture.Frame();
+		fixture.OpenCombo();
+		fixture.Press(fixture.GetListItems()[2].GetCenter());
+		Require(fixture.GetHost() == cubeGuid, "The cube should be the host before saving");
+
+		const Nyx::Tests::TestDirectory folder("NyxEntityReferenceTests");
+		Require(SceneSerializer::SaveToFile(fixture.Editing.Scene.GetRegistry(), folder.Path / "Saved.nyxscene"), "The scene should save");
+		Registry loaded;
+		Require(SceneSerializer::LoadFromFile(folder.Path / "Saved.nyxscene", loaded), "The scene should load");
+		const std::optional<Entity> decal = FindEntityByGuid(loaded, decalGuid);
+		Require(decal && loaded.Get<SurfaceDecalComponent>(*decal).Anchor.Host == cubeGuid, "The loaded decal should have the cube as its host");
+		Require(FindEntityByGuid(loaded, cubeGuid).has_value(), "The loaded scene should have the cube under the same guid");
+
+		Require(SceneSerializer::SaveToFile(loaded, folder.Path / "Again.nyxscene"), "The loaded scene should save");
+		const auto read = [](const std::filesystem::path& path)
+		{
+			std::ifstream file(path, std::ios::binary);
+			return std::vector<char>(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+		};
+		Require(read(folder.Path / "Saved.nyxscene") == read(folder.Path / "Again.nyxscene"), "Saving the loaded scene should give the same file");
 	}
 
 	void TestCrashCards()
@@ -1673,6 +1991,10 @@ int main()
 		TestHotkeys();
 		TestPanelsDrawHeadless();
 		TestDetailsHaveNoConflictingIds();
+		TestEntityReferenceCombo();
+		TestEntityReferenceDropFromOutliner();
+		TestEntityReferencePickSelectAndMissing();
+		TestEntityReferenceSavesAndLoads();
 		TestCrashCards();
 		TestScenePopupsAndIdleSession();
 		TestPainterComparisonSurvivesAtlasGrowth();

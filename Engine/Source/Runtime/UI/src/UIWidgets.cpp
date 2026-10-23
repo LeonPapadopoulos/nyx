@@ -1856,6 +1856,20 @@ namespace Nyx::UI
 			painter.AddLine(at(0.34f, 0.62f), at(0.66f, 0.62f), width, EPainterLineCap::Round, fill);
 			break;
 		}
+		case EIcon::Eyedropper:
+		{
+			// A pipette: its bulb at the top right, its tube down to the tip at the bottom left
+			painter.AddCircle(at(0.74f, 0.26f), size * 0.2f, fill);
+			painter.AddLine(at(0.62f, 0.38f), at(0.14f, 0.86f), std::max(1.0f, std::floor(size * 0.16f)), EPainterLineCap::Round, fill);
+			break;
+		}
+		case EIcon::Locate:
+		{
+			// A target: a ring, with a dot in its middle
+			painter.AddCircle(at(0.5f, 0.5f), size * 0.38f, PainterStyle::Outlined(color, std::max(1.0f, std::floor(size * 0.1f))));
+			painter.AddCircle(at(0.5f, 0.5f), size * 0.14f, fill);
+			break;
+		}
 		}
 	}
 

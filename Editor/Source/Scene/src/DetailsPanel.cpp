@@ -12,11 +12,36 @@
 #include "imgui.h"
 
 #include <cfloat>
+#include <optional>
 #include <string>
+#include <utility>
 
 namespace Nyx::Editor
 {
 	void DetailsPanel::Draw(SceneEditor& editing)
+	{
+		InspectorDrawContext& drawContext = editing.DetailsContext;
+
+		// An entity reference picks only while it is drawn: closing its component or the panel, or
+		// selecting another entity, stops the eyedropper
+		drawContext.EntityPick.bDrawn = false;
+		DrawWindow(editing);
+		if (!drawContext.EntityPick.bDrawn)
+		{
+			drawContext.EntityPick = {};
+		}
+
+		// An entity reference's Select button, after drawing, so no row is drawn for another entity
+		if (const std::optional<Nyx::Entity> toSelect = std::exchange(drawContext.EntityToSelect, std::nullopt))
+		{
+			if (editing.Scene.GetRegistry().IsAlive(*toSelect))
+			{
+				editing.Scene.GetSelection() = *toSelect;
+			}
+		}
+	}
+
+	void DetailsPanel::DrawWindow(SceneEditor& editing)
 	{
 		if (!bOpen)
 		{
@@ -68,6 +93,7 @@ namespace Nyx::Editor
 
 		InspectorDrawContext& drawContext = editing.DetailsContext;
 		drawContext.Transactions = &editing.Transactions;
+		drawContext.Entities = &world;
 		drawContext.CurrentObjectRef = MakeSceneEntityRef(editing.Scene, selectedEntity);
 
 		// Removed after the loop, so it isn't drawn after it is gone

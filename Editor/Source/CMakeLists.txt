@@ -27,6 +27,7 @@ set(NYX_EDITOR_SOURCES
     Properties/src/InspectorDrawContext.cpp
     Properties/src/ReflectedPropertyDrawer.cpp
     Properties/src/PropertyWidgetRegistry.cpp
+    Properties/src/EntityReferenceWidget.cpp
 
     # Transactions
     Transactions/src/InspectorTargetId.cpp
@@ -73,6 +74,7 @@ set(NYX_EDITOR_SOURCES
     Common/src/ReflectionSourceRegistry.cpp
     Common/src/UISourceInspector.cpp
     Common/src/ReflectedPropertyAccess.cpp
+    Common/src/EntityDragDrop.cpp
 )
 
 set(NYX_EDITOR_HEADERS
@@ -102,6 +104,7 @@ set(NYX_EDITOR_HEADERS
     Properties/include/InspectorDrawContext.h
     Properties/include/ReflectedPropertyDrawer.h
     Properties/include/PropertyWidgetRegistry.h
+    Properties/include/EntityReferenceWidget.h
 
     # Transactions
     Transactions/include/InspectorTargetId.h
@@ -153,6 +156,7 @@ set(NYX_EDITOR_HEADERS
     Common/include/ReflectionSourceRegistry.h
     Common/include/UISourceInspector.h
     Common/include/ReflectedPropertyAccess.h
+    Common/include/EntityDragDrop.h
 )
 
 # The prototype and diagnostics tools (NYX_DEV_TOOLS), with the painter's test sheet that Painter

@@ -120,6 +120,10 @@ namespace Nyx::HeaderTool
 		// member must really have. The generated code checks it.
 		std::string RequiredCppType;
 
+		// For those types too: the UI metadata the property gets unless it names its own, e.g.
+		// EntityRef for an EntityGuid, which the editor draws as an entity picker
+		std::string DefaultUI;
+
 		std::vector<ParsedMacroEntry> EmittedMetadata;
 	};
 

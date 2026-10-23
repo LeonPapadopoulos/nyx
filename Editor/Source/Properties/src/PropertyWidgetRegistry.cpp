@@ -1,6 +1,7 @@
 #include "ImGuiSource.h"
 #include "PropertyWidgetRegistry.h"
 
+#include "EntityReferenceWidget.h"
 #include "ReflectionUtils.h"
 #include "UIWidgets.h"
 
@@ -218,9 +219,15 @@ namespace
 		return bChanged;
 	}
 
-	// 64-bit values are IDs, so they are shown and typed in hex instead of dragged
+	// 64-bit values are IDs, so they are shown and typed in hex instead of dragged. An EntityGuid
+	// naming another entity (UI = EntityRef) shows that entity instead.
 	static bool DrawUInt64Widget(const PropertyWidgetArgs& args)
 	{
+		if (PropertyUsesUI(*args.Property, "EntityRef"))
+		{
+			return DrawEntityReferenceWidget(args);
+		}
+
 		uint64_t& value = Nyx::Reflection::AccessProperty<uint64_t>(args.Object, *args.Property);
 
 		const bool bChanged = NYX_UI(Nyx::UI::InputScalar(
