@@ -48,4 +48,10 @@ namespace Nyx
 	// the camera. Pixel (0, 0) is the picture's top left corner, not the centre of its first pixel.
 	Ray ScreenPointToRay(const TransformComponent& transform, const CameraComponent& camera,
 		const glm::vec2& viewportSize, const glm::vec2& pixel);
+
+	// The other way: where a point of the world shows in the picture, from its top left corner, as
+	// ScreenPointToRay() takes it; may be outside the picture. Empty for a point behind the camera
+	// (or on its plane), which shows nowhere.
+	std::optional<glm::vec2> WorldToScreenPoint(const TransformComponent& transform, const CameraComponent& camera,
+		const glm::vec2& viewportSize, const glm::vec3& point);
 }

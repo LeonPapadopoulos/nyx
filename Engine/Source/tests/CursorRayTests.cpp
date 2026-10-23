@@ -103,6 +103,27 @@ namespace
 		}
 	}
 
+	// Back from the world to the picture: the pixel each point projects to, and none behind the camera
+	void TestWorldPointsShowOnTheirPixels()
+	{
+		const CameraComponent camera{ .FovYDegrees = 50.0f, .NearPlane = 0.3f, .FarPlane = 500.0f };
+		const glm::vec2 viewport(1280.0f, 720.0f);
+		const TransformComponent transform = MovedAndTurnedCamera();
+		const glm::vec3 localPoints[] = { glm::vec3(0.0f, 0.0f, -10.0f), glm::vec3(1.5f, -0.7f, -4.0f), glm::vec3(30.0f, -10.0f, -300.0f) };
+		for (const glm::vec3& local : localPoints)
+		{
+			const glm::vec3 point = transform.Position + transform.Rotation * local;
+			const std::optional<glm::vec2> pixel = WorldToScreenPoint(transform, camera, viewport, point);
+			Require(pixel.has_value(), "A point ahead of the camera should show");
+			Require(glm::length(*pixel - ProjectToPixel(transform, camera, viewport, point)) < 0.01f,
+				"It should show where the renderer's matrices put it: " + ToString(point));
+			RequireOnRay(ScreenPointToRay(transform, camera, viewport, *pixel), point, "Its pixel's ray");
+		}
+
+		const glm::vec3 behind = transform.Position + transform.Rotation * glm::vec3(0.5f, 0.0f, 3.0f);
+		Require(!WorldToScreenPoint(transform, camera, viewport, behind), "A point behind the camera should show nowhere");
+	}
+
 	void TestTheCentreAndCorners()
 	{
 		const CameraComponent camera{ .FovYDegrees = 60.0f };
@@ -301,6 +322,7 @@ int main()
 	try
 	{
 		TestProjectedPointsLieOnTheirPixelsRays();
+		TestWorldPointsShowOnTheirPixels();
 		TestTheCentreAndCorners();
 		TestThePrimaryCameraIsFoundAsTheRendererFindsIt();
 		TestAPickFindsTheBoxDrawnThere();

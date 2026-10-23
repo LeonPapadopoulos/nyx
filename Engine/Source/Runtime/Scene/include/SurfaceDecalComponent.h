@@ -1,12 +1,15 @@
 #pragma once
 
 #include "AssetReference.h"
+#include "CameraProjection.h"
+#include "EntityGuidLookup.h"
 #include "ReflectionMacros.h"
 #include "SurfaceAnchor.h"
 
 #include <glm/glm.hpp>
 
 #include <array>
+#include <optional>
 
 // What the renderer draws the decal with; the scene only holds it
 namespace Nyx
@@ -62,6 +65,25 @@ namespace Nyx
 	// The quad's corners in the world, in the order of the plane mesh's UVs: (0, 0), (1, 0), (1, 1),
 	// (0, 1)
 	std::array<glm::vec3, 4> GetSurfaceDecalCorners(const SurfaceFrame& frame, const glm::vec2& size);
+
+	// Where a ray met a decal's quad
+	struct SurfaceDecalHit
+	{
+		// The entity with the SurfaceDecalComponent
+		Entity Decal;
+		glm::vec3 Point{ 0.0f };
+		float Distance = 0.0f;
+		// On the quad, as the plane mesh's UVs: (0, 0) to (1, 1)
+		glm::vec2 UV{ 0.0f };
+	};
+
+	// The nearest decal whose quad the ray passes through from the front, the side its normal faces,
+	// within `maxDistance`: e.g. what the cursor points at, in front of the surface it is on. Decals
+	// not visible or whose host is gone are left out; what the material draws, its mask and the
+	// Reveal don't count. The quads are where the hosts' transforms are, not where they are drawn
+	// between steps.
+	std::optional<SurfaceDecalHit> RaycastSurfaceDecals(
+		const Registry& world, const EntityGuidLookup& lookup, const Ray& ray, float maxDistance);
 }
 
 #include "Generated/Runtime/SurfaceDecalComponent.reflect.h"

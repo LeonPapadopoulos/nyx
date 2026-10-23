@@ -4,6 +4,7 @@
 // a decal saved in a scene and loaded with its material resolved.
 #include "ComponentRegistration.h"
 #include "Entity.h"
+#include "EntityGuidLookup.h"
 #include "GuidComponent.h"
 #include "IAssetResolver.h"
 #include "Log.h"
@@ -282,6 +283,62 @@ namespace
 		std::vector<std::string> Paths;
 	};
 
+	// A decal in the middle of the host's top face, `size` big, its tangent along x
+	Nyx::Entity AddTopDecal(Nyx::Registry& world, EntityGuid host, const glm::vec2& size)
+	{
+		const Nyx::Entity decal = world.CreateEntity();
+		SurfaceDecalComponent component;
+		component.Anchor = SurfaceAnchor{ .Host = host, .LocalPosition = glm::vec3(0.0f, 0.5f, 0.0f) };
+		component.Size = size;
+		world.Add<SurfaceDecalComponent>(decal, component);
+		return decal;
+	}
+
+	// What the cursor points at: the nearest decal's quad, hit from the front, where on it
+	void TestRaysFindDecals()
+	{
+		Nyx::Registry world;
+		const EntityGuid nearHost = EntityGuid::Generate();
+		const EntityGuid farHost = EntityGuid::Generate();
+		CreateHost(world, nearHost, TransformComponent{ .Position = glm::vec3(0.0f, 1.0f, 0.0f) });
+		CreateHost(world, farHost, TransformComponent{ .Position = glm::vec3(0.0f, -2.0f, 0.0f) });
+		const Nyx::Entity nearDecal = AddTopDecal(world, nearHost, glm::vec2(0.6f, 0.4f));
+		const Nyx::Entity farDecal = AddTopDecal(world, farHost, glm::vec2(4.0f));
+		const Nyx::EntityGuidLookup lookup = Nyx::MakeEntityGuidLookup(world);
+		const glm::vec3 down(0.0f, -1.0f, 0.0f);
+
+		// Straight down on the near quad's middle: it is in front of the far one
+		const std::optional<Nyx::SurfaceDecalHit> middle =
+			Nyx::RaycastSurfaceDecals(world, lookup, Nyx::Ray{ glm::vec3(0.0f, 5.0f, 0.0f), down }, 100.0f);
+		Require(middle && middle->Decal == nearDecal, "The ray should find the nearer decal");
+		Require(Near(middle->Point, glm::vec3(0.0f, 1.5f + Nyx::SurfaceDecalLift, 0.0f)) && std::abs(middle->Distance - (3.5f - Nyx::SurfaceDecalLift)) < Tolerance,
+			"It should meet the quad where it lies, 3 mm above the face: " + Text(middle->Point));
+		Require(glm::length(middle->UV - glm::vec2(0.5f)) < Tolerance, "The middle of the quad should be UV (0.5, 0.5)");
+
+		// Towards a corner: UV along the tangent (x) and the bitangent
+		const std::optional<Nyx::SurfaceDecalHit> corner =
+			Nyx::RaycastSurfaceDecals(world, lookup, Nyx::Ray{ glm::vec3(0.25f, 5.0f, 0.15f), down }, 100.0f);
+		Require(corner && corner->Decal == nearDecal, "Inside the quad, the ray should find it");
+		Require(corner->UV.x > 0.9f && std::abs(corner->UV.y - 0.5f) > 0.3f, "Near a corner, the UV should be near the quad's edges");
+
+		// Beside the near quad, but over the big far one
+		const std::optional<Nyx::SurfaceDecalHit> beside =
+			Nyx::RaycastSurfaceDecals(world, lookup, Nyx::Ray{ glm::vec3(1.0f, 5.0f, 0.0f), down }, 100.0f);
+		Require(beside && beside->Decal == farDecal, "Outside a quad, the ray should go on to the next");
+
+		// From below, from the back: nothing; too short: nothing
+		Require(!Nyx::RaycastSurfaceDecals(world, lookup, Nyx::Ray{ glm::vec3(0.0f, -5.0f, 0.0f), -down }, 100.0f),
+			"A decal shouldn't be hit from behind");
+		Require(!Nyx::RaycastSurfaceDecals(world, lookup, Nyx::Ray{ glm::vec3(0.0f, 5.0f, 0.0f), down }, 3.0f),
+			"A decal beyond the distance shouldn't be hit");
+
+		// Hidden: the far one shows through
+		world.Get<SurfaceDecalComponent>(nearDecal).bVisible = false;
+		const std::optional<Nyx::SurfaceDecalHit> hidden =
+			Nyx::RaycastSurfaceDecals(world, lookup, Nyx::Ray{ glm::vec3(0.0f, 5.0f, 0.0f), down }, 100.0f);
+		Require(hidden && hidden->Decal == farDecal, "A hidden decal shouldn't be hit");
+	}
+
 	void TestSavedAndLoaded()
 	{
 		Nyx::Tests::TestDirectory directory("NyxSurfaceDecalTests");
@@ -332,6 +389,7 @@ int main()
 		TestCornersFollowTheHost();
 		TestCornersFollowTheHostBetweenSteps();
 		TestExtraction();
+		TestRaysFindDecals();
 		TestSavedAndLoaded();
 	}
 	catch (const std::exception& error)

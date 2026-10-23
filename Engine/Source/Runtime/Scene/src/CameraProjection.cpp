@@ -70,4 +70,18 @@ namespace Nyx
 		const glm::vec3 farPoint = toWorld(1.0f);
 		return Ray{ nearPoint, glm::normalize(farPoint - nearPoint) };
 	}
+
+	std::optional<glm::vec2> WorldToScreenPoint(const TransformComponent& transform, const CameraComponent& camera,
+		const glm::vec2& viewportSize, const glm::vec3& point)
+	{
+		const glm::mat4 viewProjection =
+			GetCameraProjection(camera, GetAspectRatio(viewportSize.x, viewportSize.y)) * GetCameraView(transform);
+		const glm::vec4 clip = viewProjection * glm::vec4(point, 1.0f);
+		if (clip.w <= 0.0f)
+		{
+			return std::nullopt;
+		}
+		const glm::vec2 ndc = glm::vec2(clip) / clip.w;
+		return (ndc + 1.0f) * 0.5f * viewportSize;
+	}
 }

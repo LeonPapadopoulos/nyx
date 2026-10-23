@@ -87,6 +87,9 @@ What the editor and the game do. How the code behind them is organised is in
   for the simulation. The next step's systems apply them; nothing else changes the game's world.
 - A command is a reflected struct of the game's whose Serialize properties are all that arrives:
   entities by guid, never by handle.
+- The player can draw its own UI over the game's picture, with ImGui, each frame
+  (`IPlayerController::DrawUI()`): a hotbar, or a ghost of what a click would place at a point of
+  the world (`PlayerView::ToScreen()`). It shows in every build, unlike the debug drawing.
 - `NyxGameModuleTests` tests it with the test module's player: a key press brightens a lantern
   in the next step, once, and the cursor's ray reaches the player.
 
@@ -372,12 +375,20 @@ What lies under a point of a view, for clicking on the world.
 - `MakeSurfaceAnchor(world, pick)` hangs a surface anchor on the entity where the ray hit, such as
   for a mark placed by a click. Its tangent is world X along the surface, or world Z on a surface
   facing along X (`GetSurfaceTangent()`), so it doesn't depend on where the camera was.
+- `WorldToScreenPoint()` goes the other way: where a point of the world shows in the picture, or
+  nowhere behind the camera. A game's player draws its UI at world points with it
+  (`PlayerView::ToScreen()`).
+- `RaycastSurfaceDecals()` finds the nearest decal whose quad a ray passes through from the front,
+  and where on it (its UV), in front of the surface it lies on: what the cursor points at when it
+  is over a mark.
 - In a game window, the physics debug view (F3, Debug builds) shows where the cursor points at a
   body. It follows the cursor with each step, so not while paused.
 - Tests: `NyxCursorRayTests` (a point drawn on a pixel lies on that pixel's ray, for cameras moved
   and turned, at the centre and the corners; picking a box drawn there, the floor behind it when
   the box is left out, sensors only when asked, nothing past everything; an anchor where the ray
-  hit following the box), `NyxSurfaceAnchorTests` (the tangent).
+  hit following the box; a world point back on its pixel, none behind the camera),
+  `NyxSurfaceAnchorTests` (the tangent), `NyxSurfaceDecalTests` (the nearest decal under a ray,
+  where on it, not from behind, not past the distance, not hidden).
 
 ## Surface decals
 

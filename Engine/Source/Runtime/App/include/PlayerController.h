@@ -35,6 +35,29 @@ namespace Nyx
 		float DeltaSeconds = 0.0f;
 	};
 
+	// What the player's UI is drawn over each frame: the game's picture, and the camera it shows
+	struct PlayerView
+	{
+		const GameWorld& World;
+		// The picture in ImGui's screen coordinates, where the UI draws
+		glm::vec2 PictureMin{ 0.0f };
+		glm::vec2 PictureSize{ 0.0f };
+		// The scene's primary camera; empty without one
+		std::optional<WorldCamera> Camera;
+
+		// Where a point of the world shows, in ImGui's screen coordinates (WorldToScreenPoint());
+		// empty behind the camera or without one
+		std::optional<glm::vec2> ToScreen(const glm::vec3& point) const
+		{
+			if (!Camera)
+			{
+				return std::nullopt;
+			}
+			const std::optional<glm::vec2> pixel = WorldToScreenPoint(Camera->Transform, Camera->Camera, PictureSize, point);
+			return pixel ? std::optional<glm::vec2>(PictureMin + *pixel) : std::nullopt;
+		}
+	};
+
 	// The game's player: turns input into commands once a frame. The game module makes it
 	// (GameModule::CreatePlayerController), and it adds its actions and contexts to the input
 	// system it is made with. It looks at the world and never changes it, so whatever reads the
@@ -46,5 +69,13 @@ namespace Nyx
 		virtual ~IPlayerController() = default;
 
 		virtual void Update(const PlayerFrame& frame) = 0;
+
+		// Its own UI over the game's picture, with ImGui, inside the game's window: e.g. a hotbar,
+		// or a ghost of what a click would place, drawn with ImGui::GetWindowDrawList() at
+		// ToScreen() of world points. In every build, unlike the world's debug drawing; it changes
+		// nothing in the world either.
+		virtual void DrawUI(const PlayerView& /*view*/)
+		{
+		}
 	};
 }

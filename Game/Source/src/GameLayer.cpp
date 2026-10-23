@@ -238,6 +238,13 @@ namespace Nyx::Game
 			bGameViewHovered = ImGui::IsItemHovered();
 		}
 
+		// The player's UI over the picture, in this window, so the input overlay stays in front
+		if (Player)
+		{
+			Player->DrawUI(Nyx::PlayerView{
+				.World = World, .PictureMin = GameViewMin, .PictureSize = GameViewSize, .Camera = Nyx::FindPrimaryCamera(World.GetRegistry()) });
+		}
+
 		ImGui::End();
 
 #if defined(ENGINE_DEBUG)
