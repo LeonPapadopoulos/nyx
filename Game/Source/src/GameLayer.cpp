@@ -9,6 +9,7 @@
 #include "EditorRenderer.h"
 #include "PhysicsPick.h"
 #include "SceneSerializer.h"
+#include "UIChrome.h"
 
 #include <imgui.h>
 
@@ -180,6 +181,8 @@ namespace Nyx::Game
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
 		ImGui::Begin("Game", nullptr, windowFlags);
 		ImGui::PopStyleVar(2);
+		// In front of the dock space's backdrop, which the flag above would leave over it
+		Nyx::UI::ShowAboveBackdrop();
 
 		// The game's picture: hovering it doesn't give the mouse to ImGui
 		Nyx::Input::MarkAsView();

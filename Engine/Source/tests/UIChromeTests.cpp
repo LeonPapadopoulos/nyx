@@ -1,6 +1,7 @@
 // The painted window chrome (UIChrome.h) in a headless ImGui context with a real dock space:
 // the style it takes over, the cards of docked and floating windows, where their segments go in
-// the draw lists, and the splitter between docked cards. No GPU is involved.
+// the draw lists, the splitter between docked cards, and a window behind the others (the game's
+// picture) shown above the backdrop. No GPU is involved.
 #include "ImGuiConversions.h"
 #include "ImGuiTheme.h"
 #include "PainterCommands.h"
@@ -808,6 +809,92 @@ namespace
 	// so its card, painted behind, shows: glass over the plain backdrop, with the window's tab
 	// bar on it. With multiple viewports and stand-in platform functions, ImGui gives a window
 	// outside the main viewport a viewport of its own, without making an OS window.
+	// Where a window is drawn among the others: higher is in front
+	int DisplayIndex(const char* name)
+	{
+		const ImGuiWindow* window = ImGui::FindWindowByName(name);
+		Require(window != nullptr, std::string(name) + " exists");
+		const ImVector<ImGuiWindow*>& windows = ImGui::GetCurrentContext()->Windows;
+		return static_cast<int>(windows.index_from_ptr(std::find(windows.begin(), windows.end(), window)));
+	}
+
+	// One frame of a program like the game: the dock space's host window with the backdrop, then
+	// a window filling the viewport behind the others (the game's picture), and with bOverlay a
+	// window over it (the game's input overlay)
+	void BuildBackWindowFrame(bool bShowAboveBackdrop, bool bOverlay)
+	{
+		ImGui::NewFrame();
+		const ImGuiWindowFlags backFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDocking |
+			ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus;
+
+		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+		ImGui::SetNextWindowSize(ImVec2(800.0f, 600.0f));
+		ImGui::Begin("Dock space host", nullptr, backFlags | ImGuiWindowFlags_NoBackground);
+		Nyx::UI::PaintBackdrop();
+		ImGui::End();
+
+		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+		ImGui::SetNextWindowSize(ImVec2(800.0f, 600.0f));
+		ImGui::Begin("Game", nullptr, backFlags);
+		if (bShowAboveBackdrop)
+		{
+			Nyx::UI::ShowAboveBackdrop();
+		}
+		ImGui::End();
+
+		if (bOverlay)
+		{
+			ImGui::SetNextWindowPos(ImVec2(20.0f, 20.0f));
+			ImGui::SetNextWindowSize(ImVec2(300.0f, 200.0f));
+			ImGui::Begin("Input overlay", nullptr, ImGuiWindowFlags_NoSavedSettings);
+			ImGui::End();
+		}
+		ImGui::Render();
+	}
+
+	// A window that fills the viewport behind the others, as the game's picture does, is drawn in
+	// front of the dock space's host and its backdrop, while windows made after it, and clicking
+	// it, leave it behind them. Without ShowAboveBackdrop() the backdrop covers it: the game
+	// showed a dark window.
+	void TestABackWindowShowsAboveTheBackdrop()
+	{
+		for (const bool bShowAboveBackdrop : { false, true })
+		{
+			ImGuiContext* context = ImGui::CreateContext();
+			ImGuiIO& io = ImGui::GetIO();
+			io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+			io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
+			io.DisplaySize = ImVec2(800.0f, 600.0f);
+			io.DeltaTime = 1.0f / 60.0f;
+			io.IniFilename = nullptr;
+			io.Fonts->AddFontDefault();
+			Nyx::UI::SetPaintedChrome(true);
+
+			BuildBackWindowFrame(bShowAboveBackdrop, false);
+			if (!bShowAboveBackdrop)
+			{
+				Require(DisplayIndex("Game") < DisplayIndex("Dock space host"),
+					"ImGui puts a back window made after the host behind it (what ShowAboveBackdrop() is for)");
+			}
+			else
+			{
+				Require(DisplayIndex("Game") > DisplayIndex("Dock space host"), "The game's window is in front of the backdrop");
+
+				BuildBackWindowFrame(true, true);
+				Require(DisplayIndex("Input overlay") > DisplayIndex("Game"), "A window made later is in front of the game's");
+
+				ImGui::SetWindowFocus("Game");
+				BuildBackWindowFrame(true, true);
+				BuildBackWindowFrame(true, true);
+				Require(DisplayIndex("Input overlay") > DisplayIndex("Game") && DisplayIndex("Game") > DisplayIndex("Dock space host"),
+					"Focusing the game's window leaves it between the backdrop and the overlay");
+			}
+
+			Nyx::UI::SetPaintedChrome(false);
+			ImGui::DestroyContext(context);
+		}
+	}
+
 	void TestOsWindowsAreGlassCardsToo()
 	{
 		ImGuiContext* context = ImGui::CreateContext();
@@ -909,6 +996,7 @@ int main()
 			TestScrollbarThumbsFollowTheScroll(editor);
 		}
 		TestOsWindowsAreGlassCardsToo();
+		TestABackWindowShowsAboveTheBackdrop();
 	}
 	catch (const std::exception& error)
 	{

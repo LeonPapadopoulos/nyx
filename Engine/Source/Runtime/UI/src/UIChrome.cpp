@@ -672,6 +672,14 @@ namespace Nyx::UI
 		TakeOverStyleColors(ImGui::GetStyle(), state.StyleBefore);
 	}
 
+	void ShowAboveBackdrop()
+	{
+		if (ImGui::IsWindowAppearing())
+		{
+			ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
+		}
+	}
+
 	void PaintBackdrop()
 	{
 		if (!GetState().bEnabled)

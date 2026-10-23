@@ -30,6 +30,14 @@ namespace Nyx::UI
 	// chrome is off.
 	void PaintBackdrop();
 
+	// For a window that fills the main viewport behind the other windows, such as the game's
+	// picture: call right after its Begin(). Such a window has
+	// ImGuiWindowFlags_NoBringToFrontOnFocus, and ImGui puts a window with that flag behind every
+	// window there is when it first appears, also behind the dock space's host window, whose
+	// backdrop then covers it. This puts it in front of the windows there are, once, when it
+	// appears; windows made after it stay in front of it, also when it is clicked.
+	void ShowAboveBackdrop();
+
 	// Light from a picture onto the editor around the window being built (ambilight): an image
 	// glow of `texture` around `rect`, in ImGui's screen coordinates, as Painter::AddImageGlow()
 	// takes it. Call it between the window's own Begin() and End(), not in a child window, each
