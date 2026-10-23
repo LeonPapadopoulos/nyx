@@ -42,6 +42,11 @@ namespace Nyx::Input
 		ActionHandle AddAction(InputActionDef action);
 		ContextHandle AddContext(InputContextDef context);
 
+		// Changes what an action or context is, keeping its handle: a context stays on or off, its
+		// bindings start afresh. For new tuning, e.g. from an input asset.
+		void ReplaceAction(ActionHandle action, InputActionDef def);
+		void ReplaceContext(ContextHandle context, InputContextDef def);
+
 		// An unknown handle gives an empty definition
 		const InputActionDef& GetAction(ActionHandle action) const;
 		const InputContextDef& GetContext(ContextHandle context) const;
@@ -56,8 +61,9 @@ namespace Nyx::Input
 			return Contexts.size();
 		}
 
-		// The first action of that name; invalid if there is none
+		// The first action or context of that name; invalid if there is none
 		ActionHandle FindAction(std::string_view name) const;
+		ContextHandle FindContext(std::string_view name) const;
 
 		// The one player there is, owning every device
 		InputUser& GetUser()

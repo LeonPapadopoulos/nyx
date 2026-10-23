@@ -48,14 +48,14 @@ doesn't allow, and on a table that goes round in a circle, so a new dependency s
 | `Core` | Logging, assertions, paths, text helpers, child processes, the crash handler, file watching, the frame rate limiter, the fixed step clock, `BinaryArchive`, the profiler macros (`Profiler.h`), debug drawing (`DebugDraw`) | — |
 | `Reflection` | Type, property and enum metadata, and the `NYX_REFLECT`, `NYX_PROPERTY` and `NYX_ENUM` macros; not under `Runtime` | — |
 | `Net` | TCP connections and the messages they carry | Core |
-| `Input` | Keyboard, mouse and gamepads (through SDL3), gathered from backends into one `InputFrame` per frame; the router: context stacks, actions, the value pipeline, triggers and their traces; the input's history and its view (`InputDebugView`), painted with the UI's widgets | Core, Scene, UI |
+| `Input` | Keyboard, mouse and gamepads (through SDL3), gathered from backends into one `InputFrame` per frame; the router: context stacks, actions, the value pipeline, triggers and their traces; the input's history and its view (`InputDebugView`), painted with the UI's widgets; input assets (`.nyxinput`), saved through reflection, and their tuning layers | Core, Reflection, Scene, UI |
 | `Scene` | Entities and components (the physics components among them), the component registry, scene files, the tagged binary format, surface anchors (`SurfaceAnchor`: a point, normal and tangent on an entity that move with it), surface decals (`SurfaceDecalComponent`), a camera's view and projection and the ray back through a point of its picture (`CameraProjection.h`) | Core, Reflection |
 | `Physics` | Rigid bodies, their shapes, collisions and the physics step, on Jolt (`PhysicsWorld`); Jolt's headers stay inside | Core |
 | `Sim` | The game world: its entities, their physics bodies kept in step with the physics components (`PhysicsBodies`), and the simulation systems each fixed step runs, in order (`GameWorld`, `ISimSystem`), the entity a ray hits first (`PickPhysicsBody()`) | Core, Scene, Physics |
 | `Assets` | Asset files as plain data: images, materials, glTF meshes, shader compile requests and results | Core |
 | `UI` | The painter, and the painted UI drawn with it on top of ImGui | Core, Reflection |
 | `Link` | The editor link: its messages, live edits, recordings, the log sink | Core, Net, Scene, Assets |
-| `LinkTools` | Link messages, recordings and scene files as readable text, for the editor and NyxDump; not under `Runtime`, and not in the game | Core, Reflection, Scene, Link |
+| `LinkTools` | Link messages, recordings, scene files and input files as readable text, for the editor and NyxDump; not under `Runtime`, and not in the game | Core, Reflection, Scene, Input, Link |
 | `Render` | The Vulkan renderer, scene views, shaders and materials, and applying the link's shaders and material values | Core, Net, Scene, Assets, UI, Link |
 | `Platform` | The window | Core, Input, UI |
 | `App` | The application and its layers, `main()`, the options the editor starts a game with | Core, Input, Scene, Render, Platform |
@@ -82,8 +82,8 @@ The CMake targets:
   libraries: `NyxEngine` (`NYX_UI_INSPECTION=0`, for the game and the tools) and
   `NyxEditorEngine` (`=1`, for the editor).
 - `NyxStartup`: the startup banner, drawn with GDI+ on a thread of its own.
-- `NyxGeneratedReflection`: runs `NyxHeaderTool` over `Runtime/Scene/include`, where every
-  reflected type is, into `Build/Windows/Generated`.
+- `NyxGeneratedReflection`: runs `NyxHeaderTool` over `Runtime/Scene/include` and
+  `Runtime/Input/include`, where every reflected type is, into `Build/Windows/Generated`.
 - `NyxLinkTools` (`Engine/Source/LinkTools`): an object library that the editor, NyxDump and the
   link tests link, and the game doesn't.
 - `NyxEditor` and `NyxGame` are made by `nyx_add_game_programs()` (top `CMakeLists.txt`), with

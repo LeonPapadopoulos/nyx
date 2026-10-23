@@ -299,6 +299,8 @@ namespace Nyx::Input
 		{
 			size_t TraceIndex = 0;
 			const InputBinding* Binding = nullptr;
+			// The binding, or its variant for the pad driving it: its pipeline and trigger count
+			const InputBinding* Tuned = nullptr;
 			BindingRuntime* Runtime = nullptr;
 			TriggerInput Input;
 		};
@@ -340,11 +342,30 @@ namespace Nyx::Input
 
 				Evaluation evaluation;
 				evaluation.Binding = &binding;
+				evaluation.Tuned = &binding;
 				evaluation.Runtime = &runtime;
 				evaluation.Input.NowUs = now;
 
 				const bool bModifiersHeld = ModifiersHeld(frame, binding.Modifiers);
 				const bool bSingleButton = binding.Control && IsButton(*binding.Control);
+
+				// A pad of a model with a profile drives the binding: its variant's pipeline and trigger
+				const InputBinding* tuned = &binding;
+				const auto useVariantFor = [&](InputDeviceId device)
+				{
+					const InputFrame::DeviceState* state = frame.FindDevice(device);
+					if (!state || state->Info.Kind != EDeviceKind::Gamepad)
+					{
+						return;
+					}
+					for (const InputContextDef::ModelBindings& variant : def.ModelVariants)
+					{
+						if (variant.Model == state->Info.Model && bindingIndex < variant.Bindings.size())
+						{
+							tuned = &variant.Bindings[bindingIndex];
+						}
+					}
+				};
 				glm::vec3 raw{ 0.0f };
 
 				if (!bModifiersHeld)
@@ -360,6 +381,7 @@ namespace Nyx::Input
 					const ControlId control = *binding.Control;
 					const ControlState state = frame.GetState(control);
 					trace.Device = FindActiveDevice(frame, control);
+					useVariantFor(trace.Device);
 					if (bSingleButton)
 					{
 						raw.x = state.Value.x;
@@ -404,10 +426,11 @@ namespace Nyx::Input
 					{
 						raw = glm::normalize(raw);
 					}
+					useVariantFor(trace.Device);
 				}
 
 				// Run even without input, so smoothing settles and look acceleration resets
-				const PipelineResult result = RunPipeline(raw, binding.Pipeline, runtime.Pipeline, deltaSeconds);
+				const PipelineResult result = RunPipeline(raw, tuned->Pipeline, runtime.Pipeline, deltaSeconds);
 				trace.Raw = raw;
 				trace.AfterStep = result.AfterStep;
 				trace.Value = result.Value;
@@ -416,13 +439,13 @@ namespace Nyx::Input
 				{
 					// Analog: down from the press threshold, up below the release threshold
 					const float magnitude = glm::length(result.Value);
-					if (!runtime.bActuated && magnitude >= binding.Trigger.PressThreshold)
+					if (!runtime.bActuated && magnitude >= tuned->Trigger.PressThreshold)
 					{
 						runtime.bActuated = true;
 						runtime.PressUs = now;
 						evaluation.Input.Presses = 1;
 					}
-					else if (runtime.bActuated && magnitude < binding.Trigger.ReleaseThreshold)
+					else if (runtime.bActuated && magnitude < tuned->Trigger.ReleaseThreshold)
 					{
 						runtime.bActuated = false;
 						evaluation.Input.Releases = 1;
@@ -441,6 +464,7 @@ namespace Nyx::Input
 					}
 				}
 
+				evaluation.Tuned = tuned;
 				evaluation.TraceIndex = Traces.size();
 				Traces.push_back(std::move(trace));
 				evaluations.push_back(evaluation);
@@ -495,12 +519,13 @@ namespace Nyx::Input
 				return;
 			}
 
-			if (binding.Trigger.Kind == ETriggerKind::Chord)
+			const TriggerSettings& trigger = evaluation.Tuned->Trigger;
+			if (trigger.Kind == ETriggerKind::Chord)
 			{
-				evaluation.Input.bChordTriggered = Get(binding.Trigger.ChordAction).IsTriggered();
+				evaluation.Input.bChordTriggered = Get(trigger.ChordAction).IsTriggered();
 			}
 
-			const TriggerResult result = UpdateTrigger(binding.Trigger, evaluation.Runtime->Trigger, evaluation.Input);
+			const TriggerResult result = UpdateTrigger(trigger, evaluation.Runtime->Trigger, evaluation.Input);
 			trace.Trigger = result;
 
 			const bool bButtonAction = input.GetAction(binding.Action).ValueType == EActionValue::Button;
@@ -541,7 +566,7 @@ namespace Nyx::Input
 			if (result.bTriggered)
 			{
 				action.bTriggered = true;
-				bufferSeconds[actionIndex] = std::max(bufferSeconds[actionIndex], binding.Trigger.BufferSeconds);
+				bufferSeconds[actionIndex] = std::max(bufferSeconds[actionIndex], trigger.BufferSeconds);
 			}
 
 			// The phase that ranks highest decides, and of equal ones the larger value
@@ -571,14 +596,14 @@ namespace Nyx::Input
 
 		for (Evaluation& evaluation : evaluations)
 		{
-			if (evaluation.Binding->Trigger.Kind != ETriggerKind::Chord)
+			if (evaluation.Tuned->Trigger.Kind != ETriggerKind::Chord)
 			{
 				evaluate(evaluation);
 			}
 		}
 		for (Evaluation& evaluation : evaluations)
 		{
-			if (evaluation.Binding->Trigger.Kind == ETriggerKind::Chord)
+			if (evaluation.Tuned->Trigger.Kind == ETriggerKind::Chord)
 			{
 				evaluate(evaluation);
 			}
@@ -598,6 +623,14 @@ namespace Nyx::Input
 				Pending[index].bPending = true;
 				Pending[index].ExpiresUs = now + static_cast<uint64_t>(bufferSeconds[index] * 1'000'000.0f);
 			}
+		}
+	}
+
+	void InputUser::ForgetBindingStates(ContextHandle context)
+	{
+		if (context.IsValid() && context.Index() < Bindings.size())
+		{
+			Bindings[context.Index()].clear();
 		}
 	}
 

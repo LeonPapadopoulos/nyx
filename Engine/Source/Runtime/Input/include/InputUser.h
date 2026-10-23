@@ -118,6 +118,9 @@ namespace Nyx::Input
 
 		void Evaluate(const InputSystem& input, const InputFrame& frame, float deltaSeconds);
 
+		// The context's bindings changed: what they remembered no longer fits
+		void ForgetBindingStates(ContextHandle context);
+
 		// Reads the cursor off the stack as it is now
 		void DecideCursor();
 

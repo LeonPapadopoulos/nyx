@@ -5,6 +5,7 @@
 #include "DefaultScene.h"
 #include "EditorLinkMessages.h"
 #include "ImGuiSource.h"
+#include "InputAsset.h"
 #include "Log.h"
 #include "MeshRendererComponent.h"
 #include "Paths.h"
@@ -66,6 +67,8 @@ namespace Nyx::Editor
 		Window = &application.GetWindow();
 		Renderer = &application.GetEditorRenderer();
 		Input = &application.GetInput();
+		// The bindings as the project has them, not as a player tuned them
+		Nyx::Input::LoadDefaultInput(*Input, true, false);
 		CameraController = std::make_unique<EditorCameraController>(*Input);
 		SourceInspectorContext = Input->AddContext({
 			.Name = "SourceInspector",

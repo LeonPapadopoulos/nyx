@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ReflectionMacros.h"
 #include "InputTypes.h"
 #include "TypedHandle.h"
 
@@ -20,6 +21,7 @@ namespace Nyx::Input
 	using ActionHandle = TypedHandle<InputActionTag>;
 	using ContextHandle = TypedHandle<InputContextTag>;
 
+	NYX_ENUM()
 	enum class EActionValue : uint8_t
 	{
 		Button, // Value.x: 1 while triggered, else 0
@@ -92,3 +94,5 @@ namespace Nyx::Input
 		}
 	};
 }
+
+#include "Generated/Runtime/InputActions.reflect.h"

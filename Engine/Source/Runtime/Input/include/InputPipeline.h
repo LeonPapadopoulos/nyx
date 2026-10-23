@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ReflectionMacros.h"
+
 #include <glm/glm.hpp>
 
 #include <array>
@@ -28,6 +30,7 @@ namespace Nyx::Input
 	// "dead zone", "curve", ...
 	const char* GetPipelineStepName(EPipelineStep step);
 
+	NYX_ENUM()
 	enum class EDeadZoneShape : uint8_t
 	{
 		// Each axis on its own: |x| below Inner is 0, from Inner to Outer it rises from 0 to 1
@@ -42,14 +45,20 @@ namespace Nyx::Input
 
 	const char* GetDeadZoneShapeName(EDeadZoneShape shape);
 
+	NYX_REFLECT()
 	struct DeadZoneSettings
 	{
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		bool bEnabled = false;
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		EDeadZoneShape Shape = EDeadZoneShape::ScaledRadial;
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		float Inner = 0.1f;
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		float Outer = 0.95f;
 	};
 
+	NYX_ENUM()
 	enum class ECurveKind : uint8_t
 	{
 		Linear,
@@ -62,50 +71,76 @@ namespace Nyx::Input
 	const char* GetCurveKindName(ECurveKind kind);
 
 	// Shapes the vector's length; its direction is kept
+	NYX_REFLECT()
 	struct CurveSettings
 	{
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		bool bEnabled = false;
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		ECurveKind Kind = ECurveKind::Linear;
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		float Exponent = 2.0f;
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		std::vector<glm::vec2> Points;
 	};
 
+	NYX_REFLECT()
 	struct SensitivitySettings
 	{
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		bool bEnabled = false;
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		glm::vec3 Scale{ 1.0f };
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		bool bInvertX = false;
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		bool bInvertY = false;
 	};
 
 	// For sticks that turn a camera: once the stick has been past Threshold for DelaySeconds, the
 	// value grows to MaxMultiplier times over RampSeconds, until the stick comes back.
+	NYX_REFLECT()
 	struct LookAccelerationSettings
 	{
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		bool bEnabled = false;
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		float Threshold = 0.9f;
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		float DelaySeconds = 0.25f;
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		float RampSeconds = 0.5f;
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		float MaxMultiplier = 2.0f;
 	};
 
 	// Follows the value with a delay of about TimeConstantSeconds. It adds that much latency.
+	NYX_REFLECT()
 	struct SmoothingSettings
 	{
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		bool bEnabled = false;
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		float TimeConstantSeconds = 0.03f;
 	};
 
+	NYX_REFLECT()
 	struct ValuePipeline
 	{
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		DeadZoneSettings DeadZone;
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		CurveSettings Curve;
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		SensitivitySettings Sensitivity;
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		LookAccelerationSettings LookAcceleration;
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		SmoothingSettings Smoothing;
 
 		// Multiplies by the frame's time, for values that are rates (a stick turning a camera).
 		// Not for Mouse/Delta: that is a distance already.
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		bool bMultiplyByDeltaTime = false;
 	};
 
@@ -129,3 +164,5 @@ namespace Nyx::Input
 
 	PipelineResult RunPipeline(const glm::vec3& raw, const ValuePipeline& pipeline, PipelineState& state, float deltaSeconds);
 }
+
+#include "Generated/Runtime/InputPipeline.reflect.h"

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ReflectionMacros.h"
+
 #include <glm/glm.hpp>
 
 #include <cstdint>
@@ -169,6 +171,7 @@ namespace Nyx::Input
 	// A new id, unique in the process; backends take their devices' ids from here
 	InputDeviceId MakeDeviceId();
 
+	NYX_ENUM()
 	enum class EGamepadModel : uint8_t
 	{
 		Unknown,
@@ -264,6 +267,7 @@ namespace Nyx::Input
 	// The input system's clock, in microseconds, for event times and frames
 	uint64_t NowUs();
 
+	NYX_ENUM()
 	enum class ECursorMode : uint8_t
 	{
 		Free,     // The normal cursor
@@ -285,3 +289,5 @@ namespace Nyx::Input
 		std::string Owner;
 	};
 }
+
+#include "Generated/Runtime/InputTypes.reflect.h"

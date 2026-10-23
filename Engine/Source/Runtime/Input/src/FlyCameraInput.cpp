@@ -1,65 +1,114 @@
 #include "FlyCameraInput.h"
 
+#include "InputAsset.h"
+
 namespace Nyx::Input
 {
-	FlyCameraInput::FlyCameraInput(InputSystem& input, Settings settings)
-		: Input(input)
-		, FlySettings(std::move(settings))
+	std::vector<InputActionData> FlyCameraInput::MakeActionsData()
 	{
-		FlyActions.Move = Input.AddAction({ "Move", EActionValue::Axis3D });
-		FlyActions.MoveVertical = Input.AddAction({ "MoveVertical", EActionValue::Axis1D });
-		FlyActions.Look = Input.AddAction({ "Look", EActionValue::Axis2D });
-		FlyActions.Speed = Input.AddAction({ "Speed", EActionValue::Axis1D });
-		FlyActions.LookButton = Input.AddAction({ "LookButton", EActionValue::Button });
+		return {
+			{ "Move", EActionValue::Axis3D },
+			{ "MoveVertical", EActionValue::Axis1D },
+			{ "Look", EActionValue::Axis2D },
+			{ "Speed", EActionValue::Axis1D },
+			{ "LookButton", EActionValue::Button },
+		};
+	}
 
-		const DeadZoneSettings stickDeadZone{ .bEnabled = true, .Shape = EDeadZoneShape::ScaledRadial, .Inner = FlySettings.StickDeadZone };
+	std::vector<InputContextData> FlyCameraInput::MakeContextsData(const Settings& settings)
+	{
+		const DeadZoneSettings stickDeadZone{ .bEnabled = true, .Shape = EDeadZoneShape::ScaledRadial, .Inner = settings.StickDeadZone };
 
-		InputContextDef fly;
-		fly.Name = FlySettings.FlyContextName;
-		fly.Priority = FlySettings.Priority;
+		InputContextData fly;
+		fly.Name = settings.FlyContextName;
+		fly.Priority = settings.Priority;
 
-		fly.Bindings.push_back(InputBinding::ForComposite(FlyActions.Move,
-			CompositeKeys{ .Right = Key(EKey::D), .Left = Key(EKey::A), .Forward = Key(EKey::W), .Back = Key(EKey::S) }));
+		InputBindingData keys;
+		keys.Action = "Move";
+		keys.Composite = { .Right = "Keyboard/D", .Left = "Keyboard/A", .Forward = "Keyboard/W", .Back = "Keyboard/S" };
+		fly.Bindings.push_back(keys);
 
 		// The left stick's up is forward
-		InputBinding moveStick = InputBinding::ForControl(FlyActions.Move, Gamepad(EGamepadControl::LeftStick));
-		moveStick.Swizzle = glm::ivec3(0, -1, 1);
+		InputBindingData moveStick;
+		moveStick.Action = "Move";
+		moveStick.Control = "Gamepad/LeftStick";
+		moveStick.SwizzleY = -1;
+		moveStick.SwizzleZ = 1;
 		moveStick.Pipeline.DeadZone = stickDeadZone;
 		fly.Bindings.push_back(moveStick);
 
 		// Up and down as one axis: E and the right trigger up, Q and the left trigger down
-		fly.Bindings.push_back(InputBinding::ForComposite(FlyActions.MoveVertical, CompositeKeys{ .Right = Key(EKey::E), .Left = Key(EKey::Q) }));
-		InputBinding verticalTriggers = InputBinding::ForComposite(FlyActions.MoveVertical,
-			CompositeKeys{ .Right = Gamepad(EGamepadControl::RightTrigger), .Left = Gamepad(EGamepadControl::LeftTrigger) });
+		InputBindingData verticalKeys;
+		verticalKeys.Action = "MoveVertical";
+		verticalKeys.Composite = { .Right = "Keyboard/E", .Left = "Keyboard/Q" };
+		fly.Bindings.push_back(verticalKeys);
+
+		InputBindingData verticalTriggers;
+		verticalTriggers.Action = "MoveVertical";
+		verticalTriggers.Composite = { .Right = "Gamepad/RightTrigger", .Left = "Gamepad/LeftTrigger" };
 		verticalTriggers.Pipeline.DeadZone = { .bEnabled = true, .Shape = EDeadZoneShape::ScaledRadial, .Inner = 0.05f };
 		fly.Bindings.push_back(verticalTriggers);
 
 		// The right stick turns at a rate: finer near the middle (curve), faster held at the edge
 		// (look acceleration), times the frame's time
-		InputBinding lookStick = InputBinding::ForControl(FlyActions.Look, Gamepad(EGamepadControl::RightStick));
+		InputBindingData lookStick;
+		lookStick.Action = "Look";
+		lookStick.Control = "Gamepad/RightStick";
 		lookStick.Pipeline.DeadZone = stickDeadZone;
 		lookStick.Pipeline.Curve = { .bEnabled = true, .Kind = ECurveKind::Power, .Exponent = 2.0f };
-		lookStick.Pipeline.Sensitivity = { .bEnabled = true, .Scale = glm::vec3(FlySettings.StickTurnRate) };
+		lookStick.Pipeline.Sensitivity = { .bEnabled = true, .Scale = glm::vec3(settings.StickTurnRate) };
 		lookStick.Pipeline.LookAcceleration = { .bEnabled = true };
 		lookStick.Pipeline.bMultiplyByDeltaTime = true;
 		fly.Bindings.push_back(lookStick);
 
-		InputBinding speed = InputBinding::ForControl(FlyActions.Speed, Mouse(EMouseControl::Wheel));
-		speed.Swizzle = glm::ivec3(1, -1, -1);
+		InputBindingData speed;
+		speed.Action = "Speed";
+		speed.Control = "Mouse/Wheel";
+		speed.SwizzleX = 1;
+		speed.SwizzleY = -1;
+		speed.SwizzleZ = -1;
 		fly.Bindings.push_back(speed);
 
-		fly.Bindings.push_back(InputBinding::ForControl(FlyActions.LookButton, Mouse(EMouseControl::Right)));
-		FlyContext = Input.AddContext(std::move(fly));
+		InputBindingData lookButton;
+		lookButton.Action = "LookButton";
+		lookButton.Control = "Mouse/Right";
+		fly.Bindings.push_back(lookButton);
 
 		// The mouse moves a distance, not a rate: no delta time. Its y points down; Look's up.
-		InputContextDef look;
-		look.Name = FlySettings.MouseLookContextName;
-		look.Priority = FlySettings.Priority + 10;
-		look.Cursor = ECursorMode::Captured;
-		InputBinding lookMouse = InputBinding::ForControl(FlyActions.Look, Mouse(EMouseControl::Delta));
-		lookMouse.Pipeline.Sensitivity = { .bEnabled = true, .Scale = glm::vec3(FlySettings.MouseSensitivity), .bInvertY = true };
+		InputContextData look;
+		look.Name = settings.MouseLookContextName;
+		look.Priority = settings.Priority + 10;
+		look.Cursor = EContextCursor::Captured;
+
+		InputBindingData lookMouse;
+		lookMouse.Action = "Look";
+		lookMouse.Control = "Mouse/Delta";
+		lookMouse.Pipeline.Sensitivity = { .bEnabled = true, .Scale = glm::vec3(settings.MouseSensitivity), .bInvertY = true };
 		look.Bindings.push_back(lookMouse);
-		MouseLookContext = Input.AddContext(std::move(look));
+
+		return { fly, look };
+	}
+
+	FlyCameraInput::FlyCameraInput(InputSystem& input, Settings settings)
+		: Input(input)
+		, FlySettings(std::move(settings))
+	{
+		// Without an input asset that has them, the defaults
+		if (!Input.FindContext(FlySettings.FlyContextName).IsValid() || !Input.FindContext(FlySettings.MouseLookContextName).IsValid())
+		{
+			InputAssetData defaults;
+			defaults.Actions = MakeActionsData();
+			defaults.Contexts = MakeContextsData(FlySettings);
+			ApplyInputAsset(Input, defaults);
+		}
+
+		FlyActions.Move = Input.FindAction("Move");
+		FlyActions.MoveVertical = Input.FindAction("MoveVertical");
+		FlyActions.Look = Input.FindAction("Look");
+		FlyActions.Speed = Input.FindAction("Speed");
+		FlyActions.LookButton = Input.FindAction("LookButton");
+		FlyContext = Input.FindContext(FlySettings.FlyContextName);
+		MouseLookContext = Input.FindContext(FlySettings.MouseLookContextName);
 	}
 
 	void FlyCameraInput::SetActive(bool bFlying, bool bLooking, std::string reason, void* lookWindow)

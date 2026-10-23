@@ -5,9 +5,13 @@
 #include <glm/glm.hpp>
 
 #include <string>
+#include <vector>
 
 namespace Nyx::Input
 {
+	struct InputActionData;
+	struct InputContextData;
+
 	// The actions and contexts of a camera that flies freely, for the editor's scene views and the
 	// game. Two contexts:
 	// - the fly context: Move (W/A/S/D, left stick), MoveVertical (E/Q, right/left trigger), Look
@@ -18,6 +22,7 @@ namespace Nyx::Input
 	class FlyCameraInput
 	{
 	public:
+		// The names its contexts are found by, and the defaults its bindings get when it adds them
 		struct Settings
 		{
 			std::string FlyContextName = "FlyCamera";
@@ -53,8 +58,14 @@ namespace Nyx::Input
 			bool bLookButtonHeld = false;
 		};
 
-		// Adds the actions and contexts to the input system, which must outlive this
+		// Uses the actions and contexts of its names in the input system, e.g. from an input asset;
+		// adds them as MakeContextsData() has them if they aren't there. The input system must
+		// outlive this.
 		FlyCameraInput(InputSystem& input, Settings settings);
+
+		// Its actions and contexts as data, as the default input asset has them
+		static std::vector<InputActionData> MakeActionsData();
+		static std::vector<InputContextData> MakeContextsData(const Settings& settings);
 
 		// Changes count from the next frame, as all context changes do. lookWindow: where the
 		// cursor is captured while looking (null: the main window).

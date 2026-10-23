@@ -51,6 +51,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputInspection.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputHistory.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputDebugView.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputAsset.cpp
 
     # Runtime/Scene
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/Entity.cpp
@@ -193,6 +194,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputInspection.h
     ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputHistory.h
     ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputDebugView.h
+    ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputAsset.h
 
     # Runtime/Scene
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/Entity.h
@@ -361,6 +363,7 @@ set(NYX_RUNTIME_REFLECTION_SOURCES_CPP "${NYX_GENERATED_RUNTIME_DIR}/Runtime.ref
 file(GLOB_RECURSE NYX_REFLECT_HEADER_INPUTS
     CONFIGURE_DEPENDS
     "${NYX_ENGINE_ROOT}/Runtime/Scene/include/*.h"
+    "${NYX_ENGINE_ROOT}/Runtime/Input/include/*.h"
 )
 
 add_custom_command(
@@ -372,6 +375,7 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E make_directory "${NYX_GENERATED_RUNTIME_DIR}"
     COMMAND "$<TARGET_FILE:NyxHeaderTool>"
             --scan-root "${NYX_ENGINE_ROOT}/Runtime/Scene/include"
+            --scan-root "${NYX_ENGINE_ROOT}/Runtime/Input/include"
             --output-dir "${NYX_GENERATED_RUNTIME_DIR}"
             --module-init-header "${NYX_RUNTIME_REFLECTION_INIT_H}"
             --module-init-cpp "${NYX_RUNTIME_REFLECTION_INIT_CPP}"
@@ -497,12 +501,14 @@ set(NYX_LINK_TOOLS_SOURCES
     ${NYX_ENGINE_ROOT}/LinkTools/src/EditorLinkRecordingPrinter.cpp
     ${NYX_ENGINE_ROOT}/LinkTools/src/ReflectedArchivePrinter.cpp
     ${NYX_ENGINE_ROOT}/LinkTools/src/ScenePrinter.cpp
+    ${NYX_ENGINE_ROOT}/LinkTools/src/InputFilePrinter.cpp
 )
 set(NYX_LINK_TOOLS_HEADERS
     ${NYX_ENGINE_ROOT}/LinkTools/include/EditorLinkMessageText.h
     ${NYX_ENGINE_ROOT}/LinkTools/include/EditorLinkRecordingPrinter.h
     ${NYX_ENGINE_ROOT}/LinkTools/include/ReflectedArchivePrinter.h
     ${NYX_ENGINE_ROOT}/LinkTools/include/ScenePrinter.h
+    ${NYX_ENGINE_ROOT}/LinkTools/include/InputFilePrinter.h
 )
 add_library(NyxLinkTools OBJECT ${NYX_LINK_TOOLS_SOURCES} ${NYX_LINK_TOOLS_HEADERS})
 target_include_directories(NyxLinkTools PUBLIC ${NYX_ENGINE_ROOT}/LinkTools/include)

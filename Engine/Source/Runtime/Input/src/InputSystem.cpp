@@ -50,6 +50,23 @@ namespace Nyx::Input
 		return ContextHandle::Make(static_cast<uint32_t>(Contexts.size() - 1), 1);
 	}
 
+	void InputSystem::ReplaceAction(ActionHandle action, InputActionDef def)
+	{
+		if (action.IsValid() && action.Index() < Actions.size())
+		{
+			Actions[action.Index()] = std::move(def);
+		}
+	}
+
+	void InputSystem::ReplaceContext(ContextHandle context, InputContextDef def)
+	{
+		if (context.IsValid() && context.Index() < Contexts.size())
+		{
+			Contexts[context.Index()] = std::move(def);
+			User.ForgetBindingStates(context);
+		}
+	}
+
 	const InputActionDef& InputSystem::GetAction(ActionHandle action) const
 	{
 		static const InputActionDef none;
@@ -70,6 +87,16 @@ namespace Nyx::Input
 				return action.Name == name;
 			});
 		return found != Actions.end() ? ActionHandle::Make(static_cast<uint32_t>(found - Actions.begin()), 1) : ActionHandle{};
+	}
+
+	ContextHandle InputSystem::FindContext(std::string_view name) const
+	{
+		const auto found = std::find_if(Contexts.begin(), Contexts.end(),
+			[name](const InputContextDef& context)
+			{
+				return context.Name == name;
+			});
+		return found != Contexts.end() ? ContextHandle::Make(static_cast<uint32_t>(found - Contexts.begin()), 1) : ContextHandle{};
 	}
 
 	void InputSystem::BeginFrame(uint64_t nowUs)

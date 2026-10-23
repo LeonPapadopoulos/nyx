@@ -1,14 +1,17 @@
 #pragma once
 
+#include "ReflectionMacros.h"
 #include "InputActions.h"
 
 #include <cstdint>
+#include <string>
 
 // When a binding fires its action. A trigger sees its control as down or up (an analog value
 // counts as down from PressThreshold and up again below ReleaseThreshold), with the presses and
 // releases of the frame and when they happened.
 namespace Nyx::Input
 {
+	NYX_ENUM()
 	enum class ETriggerKind : uint8_t
 	{
 		Down,      // Fires every frame while down; a tap within one frame fires once
@@ -24,25 +27,39 @@ namespace Nyx::Input
 
 	const char* GetTriggerKindName(ETriggerKind kind);
 
+	NYX_REFLECT()
 	struct TriggerSettings
 	{
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		ETriggerKind Kind = ETriggerKind::Down;
 
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		float HoldSeconds = 0.5f;
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		bool bHoldRepeats = false;
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		float TapMaxSeconds = 0.2f;
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		float DoubleTapMaxGapSeconds = 0.3f;
+		// For Chord: the other action, by name in assets (ChordActionName), by handle at run time
+		NYX_PROPERTY(Edit, Undo, Serialize)
+		std::string ChordActionName;
 		ActionHandle ChordAction;
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		float RepeatDelaySeconds = 0.4f;
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		float RepeatIntervalSeconds = 0.1f;
 
 		// A firing that the code hasn't taken with InputUser::ConsumeTriggered() stays available
 		// this long, e.g. a Jump pressed just before landing still jumps. 0: only in its frame.
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		float BufferSeconds = 0.0f;
 
 		// For analog values: down from PressThreshold, up again below ReleaseThreshold, so a
 		// value resting near the threshold doesn't flicker
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		float PressThreshold = 0.5f;
+		NYX_PROPERTY(Edit, Undo, Serialize)
 		float ReleaseThreshold = 0.4f;
 	};
 
@@ -87,3 +104,5 @@ namespace Nyx::Input
 
 	TriggerResult UpdateTrigger(const TriggerSettings& settings, TriggerState& state, const TriggerInput& input);
 }
+
+#include "Generated/Runtime/InputTriggers.reflect.h"

@@ -98,7 +98,8 @@ Prints what a scene file or a link recording contains, e.g. from the repository 
 Build\Windows\Binaries\Debug\NyxDump.exe Assets\Scenes\Default.nyxscene
 ```
 
-A `.nyxlinklog` file prints the same way.
+A `.nyxlinklog` file prints the same way, and so does an input asset or a player's input settings
+(`.nyxinput`).
 
 ## Physics
 
@@ -134,10 +135,16 @@ contexts, and the context highest on the stack that binds a control gets it.
   - *Events*: the events, and what was sent to the pads;
   - *Timeline*: chosen actions over the last seconds, with each frame's traces.
 - In Debug builds, Ctrl+Alt+Shift+I shows the same over a game.
+- The bindings and their tuning are data, in `Input\Default.nyxinput` in the project's assets, or
+  else the engine's (`Assets\Input\Default.nyxinput` in Nyx's own build). The editor writes it
+  from the built-in defaults when there is none. A pad model's profile can tune bindings while
+  that model drives them, and the game also reads the player's own tuning from
+  `%LOCALAPPDATA%\Nyx\PlayerInput.nyxinput`. Bindings that can't be used are logged with where
+  they are.
 - `NyxPadCheck.exe` lists the pads, prints what they report and tries their output without a
   window.
-- `NyxInputTests`, `NyxInputRouterTests`, `NyxInputGamepadTests`, `NyxInputInspectionTests` and
-  `NyxEditorCameraTests` test it with virtual devices.
+- `NyxInputTests`, `NyxInputRouterTests`, `NyxInputGamepadTests`, `NyxInputInspectionTests`,
+  `NyxInputAssetTests` and `NyxEditorCameraTests` test it with virtual devices.
 
 ## Debug drawing
 

@@ -90,6 +90,27 @@ How keyboard, mouse and gamepad input reaches the editor and the game, and why. 
 - Bindings take a swizzle (a stick's up as forward), and composites take analog controls
   (triggers as up and down). Sticks and triggers count as the device used last only past 0.3.
 
+## Input as data
+
+Actions, contexts and bindings live in an input asset, `Input/Default.nyxinput`, found like any
+asset (`Paths::FindAsset()`: the project's first, then the engine's). It is saved through
+reflection like scenes are, with controls by path and actions by name, so the input's settings
+are reflected types (`NYX_REFLECT`, `NYX_ENUM`) and the header tool also reads
+`Runtime/Input/include`.
+
+- The editor writes the asset from the built-in defaults when there is none; the editor and the
+  game load it at start, and code finds its contexts by name. `FlyCameraInput` adds its defaults
+  only for what the asset doesn't have.
+- **Tuning comes in layers**, the later one wins: the asset, a pad model's profile, and the
+  player's own settings (`%LOCALAPPDATA%\Nyx\PlayerInput.nyxinput`, read by the game only). An
+  override sets one value by its path, such as `Pipeline.DeadZone.Inner`, for the bindings it
+  matches. `FindTuning()` says which layer a value comes from.
+- Each context gets a variant of its bindings per profiled model; while a pad of that model drives
+  a binding, the router uses the variant's pipeline, thresholds and trigger.
+- Applying an asset (`ApplyInputAsset()`) keeps the handles code holds and whether each context is
+  on. A binding that can't be used is left out and reported once, with where it is.
+- `NyxDump` prints `.nyxinput` files (`PrintInputFile()`, in `LinkTools`).
+
 ## Seeing it
 
 *Window > Input* in the editor, and in Debug builds the same over a game (Ctrl+Alt+Shift+I, a
@@ -128,6 +149,8 @@ shortcuts stay ImGui's.
 devices coming and going, focus and the cursor. `NyxInputRouterTests` checks the dead zones,
 curves and pipeline steps against known values, each trigger's phases over set times, taking
 between contexts, the cursor, hysteresis and the device used last, all on traces.
+`NyxInputAssetTests` checks the asset's round trip and printout, the problems it reports, the
+layers and overrides, and that applying keeps handles and on/off.
 `NyxInputInspectionTests` checks who gets a control, What if stacks and the calibration;
 `NyxEditorPanelTests` that the Input window leaves no shapes to ImGui.
 `NyxInputGamepadTests` drives virtual pads: hot-plug, analog values, focus, swizzles, composites
@@ -136,4 +159,4 @@ and tries their output, for checking them by hand.
 
 ## Not built yet
 
-Bindings and tuning as data instead of code.
+Editing the asset in the editor, with undo; recipes and checks.

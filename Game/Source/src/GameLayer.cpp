@@ -4,6 +4,7 @@
 #include "CameraComponent.h"
 #include "CameraProjection.h"
 #include "ImGuiInput.h"
+#include "InputAsset.h"
 #include "Log.h"
 #include "EditorRenderer.h"
 #include "PhysicsPick.h"
@@ -23,6 +24,8 @@ namespace Nyx::Game
 		Renderer = &application.GetRenderer();
 		UIRenderer = &application.GetEditorRenderer();
 		Input = &application.GetInput();
+		// With the player's tuning; without the asset, the cameras' built-in bindings
+		Nyx::Input::LoadDefaultInput(*Input, false, true);
 		FlyCamera = std::make_unique<GameFlyCamera>(*Input);
 
 #if defined(ENGINE_DEBUG)

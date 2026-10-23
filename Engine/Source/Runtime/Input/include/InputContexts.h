@@ -116,6 +116,16 @@ namespace Nyx::Input
 		// Devices it takes as a whole while on (DeviceBit()), e.g. everything while the program
 		// has no focus
 		uint32_t TakesDevices = 0;
+
+		// The bindings as a pad model's profile tunes them (InputAsset.h): the same bindings, in
+		// the same order and with the same controls, with other pipelines and triggers. A binding
+		// a pad of that model drives uses its variant.
+		struct ModelBindings
+		{
+			EGamepadModel Model = EGamepadModel::Unknown;
+			std::vector<InputBinding> Bindings;
+		};
+		std::vector<ModelBindings> ModelVariants;
 	};
 
 	// Why a context is on, and what for

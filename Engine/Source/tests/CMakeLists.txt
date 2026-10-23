@@ -189,6 +189,14 @@ add_dependencies(NyxInputInspectionTests NyxGeneratedReflection)
 set_property(TARGET NyxInputInspectionTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxInputInspectionTests COMMAND NyxInputInspectionTests)
 
+# Input assets: saving and reading back, problems with where they are, tuning layers and the
+# router using a pad model's variant. No window needed.
+add_executable(NyxInputAssetTests InputAssetTests.cpp)
+target_link_libraries(NyxInputAssetTests PRIVATE NyxEngine NyxLinkTools)
+add_dependencies(NyxInputAssetTests NyxGeneratedReflection)
+set_property(TARGET NyxInputAssetTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxInputAssetTests COMMAND NyxInputAssetTests)
+
 # The painter's CPU side: draw commands, groups, clip and transform stacks, tile binning. No GPU needed.
 # The painter's test sheet is a dev tool, not part of the engine library, so the painter tests
 # compile it themselves.
