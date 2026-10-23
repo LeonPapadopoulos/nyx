@@ -21,7 +21,14 @@ namespace Nyx::Reflection
 		case EPropertyKind::Vec4:   return AccessProperty<glm::vec4>(object, property);
 		case EPropertyKind::Quat:   return AccessProperty<glm::quat>(object, property);
 		case EPropertyKind::String: return AccessProperty<std::string>(object, property);
-		default:                    return std::monostate{};
+		case EPropertyKind::Enum:
+		{
+			// The enumerator's number, as an Int32
+			const EnumMetadata* enumMetadata = TryGetEnum(property);
+			return enumMetadata ? PropertyValue(static_cast<int32_t>(ReadEnumValue(GetPropertyAddress(object, property), *enumMetadata)))
+								: PropertyValue(std::monostate{});
+		}
+		default: return std::monostate{};
 		}
 	}
 
@@ -39,7 +46,13 @@ namespace Nyx::Reflection
 		case EPropertyKind::Vec4:   AccessProperty<glm::vec4>(object, property) = std::get<glm::vec4>(value); break;
 		case EPropertyKind::Quat:   AccessProperty<glm::quat>(object, property) = std::get<glm::quat>(value); break;
 		case EPropertyKind::String: AccessProperty<std::string>(object, property) = std::get<std::string>(value); break;
-		default:                    break;
+		case EPropertyKind::Enum:
+			if (const EnumMetadata* enumMetadata = TryGetEnum(property))
+			{
+				WriteEnumValue(GetPropertyAddress(object, property), *enumMetadata, std::get<int32_t>(value));
+			}
+			break;
+		default: break;
 		}
 	}
 }

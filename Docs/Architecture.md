@@ -46,7 +46,7 @@ doesn't allow, and on a table that goes round in a circle, so a new dependency s
 | Folder | What it holds | Includes from |
 | --- | --- | --- |
 | `Core` | Logging, assertions, paths, text helpers, child processes, the crash handler, file watching, the frame rate limiter, the fixed step clock, `BinaryArchive`, the profiler macros (`Profiler.h`), debug drawing (`DebugDraw`) | — |
-| `Reflection` | Type and property metadata, and the `NYX_REFLECT` and `NYX_PROPERTY` macros; not under `Runtime` | — |
+| `Reflection` | Type, property and enum metadata, and the `NYX_REFLECT`, `NYX_PROPERTY` and `NYX_ENUM` macros; not under `Runtime` | — |
 | `Net` | TCP connections and the messages they carry | Core |
 | `Input` | Keyboard, mouse and gamepads (through SDL3), gathered from backends into one `InputFrame` per frame; the router: context stacks, actions, the value pipeline, triggers and their traces; the input's history and its view (`InputDebugView`), painted with the UI's widgets | Core, Scene, UI |
 | `Scene` | Entities and components (the physics components among them), the component registry, scene files, the tagged binary format, surface anchors (`SurfaceAnchor`: a point, normal and tangent on an entity that move with it), surface decals (`SurfaceDecalComponent`), a camera's view and projection and the ray back through a point of its picture (`CameraProjection.h`) | Core, Reflection |
@@ -224,7 +224,8 @@ kind, so:
 - a property the data doesn't have keeps its value (a new object's default);
 - a property or component type this build doesn't know is skipped with a warning, and saving
   drops it;
-- number kinds (`Int32`, `UInt32`, `Float`) convert into each other;
+- number kinds (`Int32`, `UInt32`, `Float`, `Enum`) convert into each other, also an array's
+  elements; an enum number no enumerator has keeps the value;
 - a kind this build doesn't know ends the block, since its size is unknown;
 - damaged data fails cleanly: every length is checked against the bytes left, and nesting is
   limited.

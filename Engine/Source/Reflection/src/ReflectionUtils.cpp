@@ -1,6 +1,7 @@
 #include "ReflectionUtils.h"
 
 #include <cstdio>
+#include <cstring>
 
 namespace Nyx::Reflection
 {
@@ -164,6 +165,8 @@ namespace Nyx::Reflection
 		case EPropertyKind::Quat:   return "Quat";
 		case EPropertyKind::String: return "String";
 		case EPropertyKind::Struct: return "Struct";
+		case EPropertyKind::Enum:   return "Enum";
+		case EPropertyKind::Array:  return "Array";
 		default:                    return "Unknown";
 		}
 	}
@@ -205,5 +208,93 @@ namespace Nyx::Reflection
 	bool IsStructProperty(const PropertyMetadata& property)
 	{
 		return property.Kind == EPropertyKind::Struct && property.NestedTypeResolver != nullptr;
+	}
+
+	const EnumMetadata* TryGetEnum(const PropertyMetadata& property)
+	{
+		return property.EnumResolver ? &property.EnumResolver() : nullptr;
+	}
+
+	int64_t ReadEnumValue(const void* address, const EnumMetadata& enumMetadata)
+	{
+		switch (enumMetadata.Size)
+		{
+		case 1:
+		{
+			uint8_t value = 0;
+			std::memcpy(&value, address, 1);
+			return enumMetadata.bSigned ? static_cast<int64_t>(static_cast<int8_t>(value)) : value;
+		}
+		case 2:
+		{
+			uint16_t value = 0;
+			std::memcpy(&value, address, 2);
+			return enumMetadata.bSigned ? static_cast<int64_t>(static_cast<int16_t>(value)) : value;
+		}
+		case 4:
+		{
+			uint32_t value = 0;
+			std::memcpy(&value, address, 4);
+			return enumMetadata.bSigned ? static_cast<int64_t>(static_cast<int32_t>(value)) : value;
+		}
+		case 8:
+		{
+			int64_t value = 0;
+			std::memcpy(&value, address, 8);
+			return value;
+		}
+		default:
+			return 0;
+		}
+	}
+
+	void WriteEnumValue(void* address, const EnumMetadata& enumMetadata, int64_t value)
+	{
+		// Little-endian: the low bytes are the value in the enum's size
+		if (enumMetadata.Size == 1 || enumMetadata.Size == 2 || enumMetadata.Size == 4 || enumMetadata.Size == 8)
+		{
+			std::memcpy(address, &value, enumMetadata.Size);
+		}
+	}
+
+	const EnumEntry* FindEnumEntry(const EnumMetadata& enumMetadata, int64_t value)
+	{
+		for (size_t i = 0; i < enumMetadata.EntryCount; ++i)
+		{
+			if (enumMetadata.Entries[i].Value == value)
+			{
+				return &enumMetadata.Entries[i];
+			}
+		}
+		return nullptr;
+	}
+
+	const EnumEntry* FindEnumEntryByName(const EnumMetadata& enumMetadata, std::string_view name)
+	{
+		for (size_t i = 0; i < enumMetadata.EntryCount; ++i)
+		{
+			if (enumMetadata.Entries[i].Name == name)
+			{
+				return &enumMetadata.Entries[i];
+			}
+		}
+		return nullptr;
+	}
+
+	std::string EnumValueToText(const EnumMetadata& enumMetadata, int64_t value)
+	{
+		const EnumEntry* entry = FindEnumEntry(enumMetadata, value);
+		return entry ? entry->Name : std::to_string(value);
+	}
+
+	const ArrayMetadata* TryGetArray(const PropertyMetadata& property)
+	{
+		return property.Kind == EPropertyKind::Array ? property.Array : nullptr;
+	}
+
+	size_t GetArraySize(const void* object, const PropertyMetadata& property)
+	{
+		const ArrayMetadata* array = TryGetArray(property);
+		return array && object ? array->GetSize(GetPropertyAddress(object, property)) : 0;
 	}
 }

@@ -7,6 +7,11 @@ namespace Nyx::HeaderTool
 {
 	void ReflectionSemantics::Apply(ParsedHeader& parsedHeader, const ReflectedTypeIndex& typeIndex)
 	{
+		for (ParsedEnum& parsedEnum : parsedHeader.Enums)
+		{
+			ApplyEnumSemantics(parsedEnum);
+		}
+
 		for (ParsedType& parsedType : parsedHeader.Types)
 		{
 			ApplyTypeSemantics(parsedType);
@@ -58,10 +63,88 @@ namespace Nyx::HeaderTool
 		return hash;
 	}
 
+	void ReflectionSemantics::ApplyEnumSemantics(ParsedEnum& parsedEnum)
+	{
+		parsedEnum.DisplayName = parsedEnum.Name;
+
+		if (!parsedEnum.RawArguments.Specifiers.empty())
+		{
+			throw std::runtime_error("Unsupported NYX_ENUM specifier on enum '" + parsedEnum.Name + "': " + parsedEnum.RawArguments.Specifiers[0].Name);
+		}
+
+		for (const ParsedMacroEntry& entry : parsedEnum.RawArguments.Metadata)
+		{
+			if (entry.Name != "DisplayName")
+			{
+				throw std::runtime_error("Unsupported NYX_ENUM metadata on enum '" + parsedEnum.Name + "': " + entry.Name);
+			}
+			ValidateEntryValue(entry, ESpecifierValueKind::RequiredString);
+			parsedEnum.DisplayName = entry.Value->Text;
+		}
+
+		if (parsedEnum.Entries.empty())
+		{
+			throw std::runtime_error("NYX_ENUM '" + parsedEnum.Name + "' has no enumerators.");
+		}
+	}
+
 	void ReflectionSemantics::ResolvePropertyType(
 		ParsedProperty& parsedProperty,
 		const ReflectedTypeIndex& typeIndex)
 	{
+		// std::vector<T>: an Array of T, where T is anything a property can be but another vector
+		constexpr std::string_view VectorPrefix = "std::vector<";
+		const std::string& type = parsedProperty.Type;
+		if (type.starts_with(VectorPrefix) && type.ends_with(">"))
+		{
+			ParsedProperty element;
+			element.Name = parsedProperty.Name;
+			element.Type = type.substr(VectorPrefix.size(), type.size() - VectorPrefix.size() - 1);
+			while (!element.Type.empty() && element.Type.back() == ' ')
+			{
+				element.Type.pop_back();
+			}
+			if (element.Type.starts_with(VectorPrefix))
+			{
+				throw std::runtime_error("Property '" + parsedProperty.Name + "': arrays of arrays aren't supported: " + type);
+			}
+
+			ResolvePropertyType(element, typeIndex);
+			if (!element.RequiredCppType.empty())
+			{
+				throw std::runtime_error("Property '" + parsedProperty.Name + "': arrays of " + element.Type + " aren't supported");
+			}
+
+			parsedProperty.Kind = EParsedPropertyKind::Array;
+			parsedProperty.StructQualifiedTypeName.clear();
+			parsedProperty.RequiredCppType.clear();
+			parsedProperty.EnumQualifiedTypeName.clear();
+			parsedProperty.ElementKind = element.Kind;
+			parsedProperty.ElementStructQualifiedTypeName = element.StructQualifiedTypeName;
+			parsedProperty.ElementEnumQualifiedTypeName = element.EnumQualifiedTypeName;
+			// The element's type as C++ names it, for the generated VectorArrayOps<T>
+			parsedProperty.ElementCppType = element.Type;
+			if (!element.StructQualifiedTypeName.empty())
+			{
+				parsedProperty.ElementCppType = element.StructQualifiedTypeName;
+			}
+			else if (!element.EnumQualifiedTypeName.empty())
+			{
+				parsedProperty.ElementCppType = element.EnumQualifiedTypeName;
+			}
+			return;
+		}
+
+		parsedProperty.EnumQualifiedTypeName.clear();
+		if (const std::optional<std::string> resolvedEnum = typeIndex.ResolveEnum(type))
+		{
+			parsedProperty.Kind = EParsedPropertyKind::Enum;
+			parsedProperty.StructQualifiedTypeName.clear();
+			parsedProperty.RequiredCppType.clear();
+			parsedProperty.EnumQualifiedTypeName = *resolvedEnum;
+			return;
+		}
+
 		static const std::unordered_map<std::string, EParsedPropertyKind> PrimitiveKinds = {
 			{ "bool", EParsedPropertyKind::Bool },
 			{ "int32_t", EParsedPropertyKind::Int32 },

@@ -78,6 +78,20 @@ namespace Nyx::Reflection
 	const TypeMetadata* TryGetNestedType(const PropertyMetadata& property);
 	bool IsStructProperty(const PropertyMetadata& property);
 
+	// Enum properties: their enumerators, and their value as a number whatever the enum's size
+	const EnumMetadata* TryGetEnum(const PropertyMetadata& property);
+	int64_t ReadEnumValue(const void* address, const EnumMetadata& enumMetadata);
+	void WriteEnumValue(void* address, const EnumMetadata& enumMetadata, int64_t value);
+	// Null for a value no enumerator has
+	const EnumEntry* FindEnumEntry(const EnumMetadata& enumMetadata, int64_t value);
+	const EnumEntry* FindEnumEntryByName(const EnumMetadata& enumMetadata, std::string_view name);
+	// The enumerator's name, or the number for a value no enumerator has
+	std::string EnumValueToText(const EnumMetadata& enumMetadata, int64_t value);
+
+	// Array properties: what is known about their elements, and how many there are
+	const ArrayMetadata* TryGetArray(const PropertyMetadata& property);
+	size_t GetArraySize(const void* object, const PropertyMetadata& property);
+
 	template<typename T>
 	T& AccessByOffset(void* object, size_t offset)
 	{

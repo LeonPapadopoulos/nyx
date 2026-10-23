@@ -19,6 +19,8 @@ namespace Nyx::Reflection
 	// - in the editor: a widget in PropertyWidgetRegistry.cpp
 	//
 	// UInt64 is meant for IDs, such as EntityGuid: it is shown in hex and never converted.
+	// Enum is an enum class declared with NYX_ENUM; its value is saved as an Int32. Array is a
+	// std::vector of any other kind but Array; its elements are reached through ArrayMetadata.
 	enum class EPropertyKind : uint8_t
 	{
 		Unknown = 0,
@@ -32,10 +34,12 @@ namespace Nyx::Reflection
 		Quat = 8,
 		String = 9,
 		Struct = 10,
-		UInt64 = 11
+		UInt64 = 11,
+		Enum = 12,
+		Array = 13
 	};
 
-	inline constexpr EPropertyKind LastPropertyKind = EPropertyKind::UInt64;
+	inline constexpr EPropertyKind LastPropertyKind = EPropertyKind::Array;
 
 	enum class EPropertyFlags : uint32_t
 	{
@@ -71,8 +75,11 @@ namespace Nyx::Reflection
 	};
 
 	struct TypeMetadata;
+	struct EnumMetadata;
+	struct ArrayMetadata;
 
 	using NestedTypeResolverFn = const TypeMetadata& (*)();
+	using EnumResolverFn = const EnumMetadata& (*)();
 
 	struct PropertyMetadata
 	{
@@ -92,6 +99,44 @@ namespace Nyx::Reflection
 		size_t MetadataCount = 0;
 
 		NestedTypeResolverFn NestedTypeResolver = nullptr;
+
+		// Enum: its enumerators. Array: what its elements are, and how to reach them.
+		EnumResolverFn EnumResolver = nullptr;
+		const ArrayMetadata* Array = nullptr;
+	};
+
+	struct EnumEntry
+	{
+		const char* Name = "";
+		int64_t Value = 0;
+	};
+
+	// An enum class declared with NYX_ENUM: its enumerators, and how large and signed it is in
+	// memory. Saved values are the enumerators' numbers, so these must never change.
+	struct EnumMetadata
+	{
+		const char* Name = "";
+		const char* DisplayName = "";
+		const EnumEntry* Entries = nullptr;
+		size_t EntryCount = 0;
+		size_t Size = 4;
+		bool bSigned = true;
+	};
+
+	// A std::vector property: its element, as a property of its own at offset 0 of each element
+	// (Kind, NestedTypeResolver, EnumResolver), and functions on the vector
+	struct ArrayMetadata
+	{
+		PropertyMetadata Element;
+
+		size_t (*GetSize)(const void* array) = nullptr;
+		void (*Resize)(void* array, size_t size) = nullptr;
+		void* (*GetElement)(void* array, size_t index) = nullptr;
+		const void* (*GetConstElement)(const void* array, size_t index) = nullptr;
+		// A default element at index, the ones from there on move up
+		void (*Insert)(void* array, size_t index) = nullptr;
+		void (*Erase)(void* array, size_t index) = nullptr;
+		void (*Swap)(void* array, size_t a, size_t b) = nullptr;
 	};
 
 	struct TypeMetadata
@@ -109,4 +154,7 @@ namespace Nyx::Reflection
 
 	template<typename T>
 	const TypeMetadata& GetTypeMetadata();
+
+	template<typename T>
+	const EnumMetadata& GetEnumMetadata();
 }

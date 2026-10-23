@@ -51,7 +51,7 @@ static bool IsHeaderFile(const fs::path& path)
 
 static bool MightContainReflection(std::string_view text)
 {
-	return text.find("NYX_REFLECT") != std::string_view::npos;
+	return text.find("NYX_REFLECT") != std::string_view::npos || text.find("NYX_ENUM") != std::string_view::npos;
 }
 
 static ParsedHeader ParseHeaderSyntaxOnly(const std::string& text, const fs::path& sourcePath)
@@ -71,10 +71,14 @@ static void GenerateForSingleHeader(const fs::path& inputHeader, const fs::path&
 	{
 		typeIndex.Add(parsedType);
 	}
+	for (const ParsedEnum& parsedEnum : parsedHeader.Enums)
+	{
+		typeIndex.AddEnum(parsedEnum);
+	}
 
 	ReflectionSemantics::Apply(parsedHeader, typeIndex);
 
-	if (parsedHeader.Types.empty())
+	if (parsedHeader.Types.empty() && parsedHeader.Enums.empty())
 	{
 		throw std::runtime_error("No NYX_REFLECT() types found in: " + inputHeader.string());
 	}
@@ -123,7 +127,7 @@ static void ScanReflectedHeaders(
 		}
 
 		ParsedHeader parsedHeader = ParseHeaderSyntaxOnly(source, headerPath);
-		if (parsedHeader.Types.empty())
+		if (parsedHeader.Types.empty() && parsedHeader.Enums.empty())
 		{
 			continue;
 		}
@@ -180,6 +184,10 @@ static size_t GenerateForScanRoots(
 		{
 			typeIndex.Add(parsedType);
 		}
+		for (const ParsedEnum& parsedEnum : header.Parsed.Enums)
+		{
+			typeIndex.AddEnum(parsedEnum);
+		}
 	}
 
 	for (const ScannedHeader& header : referencedHeaders)
@@ -187,6 +195,10 @@ static size_t GenerateForScanRoots(
 		for (const ParsedType& parsedType : header.Parsed.Types)
 		{
 			typeIndex.AddReferenced(parsedType);
+		}
+		for (const ParsedEnum& parsedEnum : header.Parsed.Enums)
+		{
+			typeIndex.AddReferencedEnum(parsedEnum);
 		}
 	}
 

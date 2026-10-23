@@ -32,6 +32,8 @@ namespace Nyx::HeaderTool
 		case EParsedPropertyKind::Quat:   return "EPropertyKind::Quat";
 		case EParsedPropertyKind::String: return "EPropertyKind::String";
 		case EParsedPropertyKind::Struct: return "EPropertyKind::Struct";
+		case EParsedPropertyKind::Enum:   return "EPropertyKind::Enum";
+		case EParsedPropertyKind::Array:  return "EPropertyKind::Array";
 		default:                          return "EPropertyKind::Unknown";
 		}
 	}
@@ -76,11 +78,32 @@ namespace Nyx::HeaderTool
 	{
 		std::ostringstream out;
 
+		const bool bHasArrays = std::any_of(parsedHeader.Types.begin(), parsedHeader.Types.end(),
+			[](const ParsedType& parsedType)
+			{
+				return std::any_of(parsedType.Properties.begin(), parsedType.Properties.end(),
+					[](const ParsedProperty& property)
+					{
+						return property.Kind == EParsedPropertyKind::Array;
+					});
+			});
+
 		out << "#pragma once\n\n";
-		out << "#include \"ReflectionTypes.h\"\n\n";
+		out << "#include \"ReflectionTypes.h\"\n";
+		if (bHasArrays)
+		{
+			out << "#include \"ReflectionArrays.h\"\n";
+		}
+		out << "\n";
 
 		out << "namespace Nyx::Reflection\n";
 		out << "{\n";
+
+		for (const ParsedEnum& parsedEnum : parsedHeader.Enums)
+		{
+			out << "    template<>\n";
+			out << "    const EnumMetadata& GetEnumMetadata<" << parsedEnum.QualifiedName << ">();\n\n";
+		}
 
 		for (const ParsedType& parsedType : parsedHeader.Types)
 		{
@@ -94,6 +117,30 @@ namespace Nyx::HeaderTool
 
 		out << "namespace Nyx::Reflection::Generated\n";
 		out << "{\n";
+
+		// --------------------------------------------------
+		// Enums: their enumerators, size and sign
+		// --------------------------------------------------
+		for (const ParsedEnum& parsedEnum : parsedHeader.Enums)
+		{
+			out << "    inline constexpr EnumEntry " << parsedEnum.Name << "_EnumEntries[] =\n";
+			out << "    {\n";
+			for (const ParsedEnumEntry& entry : parsedEnum.Entries)
+			{
+				out << "        { \"" << EscapeCString(entry.Name) << "\", " << entry.Value << " },\n";
+			}
+			out << "    };\n\n";
+
+			out << "    inline constexpr EnumMetadata " << parsedEnum.Name << "_EnumMetadata\n";
+			out << "    {\n";
+			out << "        \"" << EscapeCString(parsedEnum.QualifiedName) << "\",\n";
+			out << "        \"" << EscapeCString(parsedEnum.DisplayName) << "\",\n";
+			out << "        " << parsedEnum.Name << "_EnumEntries,\n";
+			out << "        sizeof(" << parsedEnum.Name << "_EnumEntries) / sizeof(" << parsedEnum.Name << "_EnumEntries[0]),\n";
+			out << "        sizeof(" << parsedEnum.QualifiedName << "),\n";
+			out << "        std::is_signed_v<std::underlying_type_t<" << parsedEnum.QualifiedName << ">>\n";
+			out << "    };\n\n";
+		}
 
 		for (const ParsedType& parsedType : parsedHeader.Types)
 		{
@@ -166,6 +213,75 @@ namespace Nyx::HeaderTool
 			}
 
 			// --------------------------------------------------
+			// Enum resolvers, and arrays: their element and the functions on the vector
+			// --------------------------------------------------
+			for (const ParsedProperty& property : parsedType.Properties)
+			{
+				const std::string prefix = parsedType.Name + "_" + property.Name;
+				if (property.Kind == EParsedPropertyKind::Enum)
+				{
+					out << "    inline const EnumMetadata& " << prefix << "_EnumResolver()\n";
+					out << "    {\n";
+					out << "        return GetEnumMetadata<" << property.EnumQualifiedTypeName << ">();\n";
+					out << "    }\n\n";
+				}
+
+				if (property.Kind != EParsedPropertyKind::Array)
+				{
+					continue;
+				}
+
+				std::string elementNested = "nullptr";
+				std::string elementEnum = "nullptr";
+				if (property.ElementKind == EParsedPropertyKind::Struct)
+				{
+					out << "    inline const TypeMetadata& " << prefix << "_ElementTypeResolver()\n";
+					out << "    {\n";
+					out << "        return GetTypeMetadata<" << property.ElementStructQualifiedTypeName << ">();\n";
+					out << "    }\n\n";
+					elementNested = "&" + prefix + "_ElementTypeResolver";
+				}
+				if (property.ElementKind == EParsedPropertyKind::Enum)
+				{
+					out << "    inline const EnumMetadata& " << prefix << "_ElementEnumResolver()\n";
+					out << "    {\n";
+					out << "        return GetEnumMetadata<" << property.ElementEnumQualifiedTypeName << ">();\n";
+					out << "    }\n\n";
+					elementEnum = "&" + prefix + "_ElementEnumResolver";
+				}
+
+				const std::string ops = "VectorArrayOps<" + property.ElementCppType + ">";
+				out << "    inline constexpr ArrayMetadata " << prefix << "_Array\n";
+				out << "    {\n";
+				out << "        {\n";
+				out << "            \"Element\",\n";
+				out << "            0,\n";
+				out << "            \"Element\",\n";
+				out << "            " << ToGeneratedPropertyKind(property.ElementKind) << ",\n";
+				out << "            " << ToGeneratedPropertyFlags(property.Flags) << ",\n";
+				out << "            0,\n";
+				out << "            nullptr,\n";
+				out << "            0,\n";
+				out << "            " << elementNested << ",\n";
+				out << "            " << elementEnum << ",\n";
+				out << "            nullptr\n";
+				out << "        },\n";
+				out << "        &" << ops << "::GetSize,\n";
+				out << "        &" << ops << "::Resize,\n";
+				out << "        &" << ops << "::GetElement,\n";
+				out << "        &" << ops << "::GetConstElement,\n";
+				out << "        &" << ops << "::Insert,\n";
+				out << "        &" << ops << "::Erase,\n";
+				out << "        &" << ops << "::Swap\n";
+				out << "    };\n\n";
+
+				// The generated element type must be what the member holds
+				out << "    static_assert(std::is_same_v<decltype(" << parsedType.QualifiedName << "::" << property.Name << "), std::vector<"
+					<< property.ElementCppType << ">>,\n";
+				out << "        \"" << parsedType.Name << "::" << property.Name << " must be a std::vector<" << property.ElementCppType << ">\");\n\n";
+			}
+
+			// --------------------------------------------------
 			// Property array
 			// --------------------------------------------------
 			out << "    inline constexpr PropertyMetadata "
@@ -201,7 +317,16 @@ namespace Nyx::HeaderTool
 				out << "            offsetof(" << parsedType.QualifiedName << ", " << property.Name << "),\n";
 				out << "            " << propertyMetadataPointer << ",\n";
 				out << "            " << propertyMetadataCount << ",\n";
-				out << "            " << nestedTypeResolver << "\n";
+				out << "            " << nestedTypeResolver;
+				if (property.Kind == EParsedPropertyKind::Enum)
+				{
+					out << ",\n            &" << parsedType.Name << "_" << property.Name << "_EnumResolver";
+				}
+				if (property.Kind == EParsedPropertyKind::Array)
+				{
+					out << ",\n            nullptr,\n            &" << parsedType.Name << "_" << property.Name << "_Array";
+				}
+				out << "\n";
 				out << "        },\n";
 			}
 
@@ -252,6 +377,15 @@ namespace Nyx::HeaderTool
 
 		out << "namespace Nyx::Reflection\n";
 		out << "{\n";
+
+		for (const ParsedEnum& parsedEnum : parsedHeader.Enums)
+		{
+			out << "    template<>\n";
+			out << "    inline const EnumMetadata& GetEnumMetadata<" << parsedEnum.QualifiedName << ">()\n";
+			out << "    {\n";
+			out << "        return Generated::" << parsedEnum.Name << "_EnumMetadata;\n";
+			out << "    }\n\n";
+		}
 
 		for (const ParsedType& parsedType : parsedHeader.Types)
 		{

@@ -131,6 +131,12 @@ namespace Nyx::HeaderTool
 			return;
 		}
 
+		if (CheckIdentifier("NYX_ENUM"))
+		{
+			outHeader.Enums.push_back(ParseReflectedEnum());
+			return;
+		}
+
 		if (Check(ETokenKind::LBrace))
 		{
 			SkipBalanced(ETokenKind::LBrace, ETokenKind::RBrace);
@@ -198,6 +204,66 @@ namespace Nyx::HeaderTool
 
 		Match(ETokenKind::Semicolon);
 		return parsedType;
+	}
+
+	ParsedEnum Parser::ParseReflectedEnum()
+	{
+		ExpectIdentifier("Expected NYX_ENUM.");
+		Expect(ETokenKind::LParen, "Expected '(' after NYX_ENUM.");
+
+		ParsedEnum parsedEnum{};
+		parsedEnum.RawArguments = ParseMacroArguments();
+
+		if (!MatchIdentifier("enum") || !(MatchIdentifier("class") || MatchIdentifier("struct")))
+		{
+			ErrorHere("Expected 'enum class' after NYX_ENUM(...).");
+		}
+
+		const Token& enumName = ExpectIdentifier("Expected the enum's name.");
+		parsedEnum.Name = enumName.Text;
+		parsedEnum.SourceLine = enumName.Line;
+		parsedEnum.QualifiedName = BuildQualifiedTypeName(parsedEnum.Name);
+
+		// The underlying type, if any, up to the body
+		while (!IsAtEnd() && !Check(ETokenKind::LBrace))
+		{
+			Advance();
+		}
+		Expect(ETokenKind::LBrace, "Expected '{' to begin the enum's body.");
+
+		// Enumerators count up from 0, or from the number given to the one before
+		int64_t nextValue = 0;
+		while (!IsAtEnd() && !Check(ETokenKind::RBrace))
+		{
+			const Token& entryName = ExpectIdentifier("Expected an enumerator.");
+			int64_t value = nextValue;
+			if (Match(ETokenKind::Equals))
+			{
+				const bool bNegative = Match(ETokenKind::Minus);
+				const Token& number = Expect(ETokenKind::IntegerLiteral, "NYX_ENUM enumerators can only be given plain numbers.");
+				try
+				{
+					value = std::stoll(number.Text, nullptr, 0);
+				}
+				catch (const std::exception&)
+				{
+					ErrorAtToken(number, "Couldn't read this number.");
+				}
+				value = bNegative ? -value : value;
+			}
+
+			parsedEnum.Entries.push_back({ entryName.Text, value });
+			nextValue = value + 1;
+
+			if (!Match(ETokenKind::Comma))
+			{
+				break;
+			}
+		}
+
+		Expect(ETokenKind::RBrace, "Expected '}' to close the enum's body.");
+		Match(ETokenKind::Semicolon);
+		return parsedEnum;
 	}
 
 	std::vector<ParsedProperty> Parser::ParseReflectedStructBody()

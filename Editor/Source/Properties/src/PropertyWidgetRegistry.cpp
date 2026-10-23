@@ -5,6 +5,7 @@
 #include "UIWidgets.h"
 
 #include <cstdlib>
+#include <string>
 #include <string_view>
 #include <unordered_map>
 
@@ -131,6 +132,58 @@ namespace
 			return true;
 		}
 
+		return false;
+	}
+
+	// An enum's enumerators in a combo; choosing one is one undo step
+	static bool DrawEnumWidget(const PropertyWidgetArgs& args)
+	{
+		const Nyx::Reflection::EnumMetadata* enumMetadata = Nyx::Reflection::TryGetEnum(*args.Property);
+		if (!enumMetadata)
+		{
+			NYX_UI(ImGui::TextDisabled("<no enumerators>"));
+			return false;
+		}
+
+		void* address = Nyx::Reflection::GetPropertyAddress(args.Object, *args.Property);
+		const int64_t current = Nyx::Reflection::ReadEnumValue(address, *enumMetadata);
+		const std::string preview = Nyx::Reflection::EnumValueToText(*enumMetadata, current);
+
+		bool bChanged = false;
+		if (NYX_UI(Nyx::UI::BeginCombo("##Field", preview.c_str())))
+		{
+			for (size_t i = 0; i < enumMetadata->EntryCount; ++i)
+			{
+				const Nyx::Reflection::EnumEntry& entry = enumMetadata->Entries[i];
+				if (Nyx::UI::Selectable(entry.Name, entry.Value == current) && entry.Value != current)
+				{
+					PropertyEditTransactionState immediateEditState{};
+					immediateEditState.Target = args.DrawContext->CurrentObjectRef;
+					immediateEditState.PendingDiff.emplace();
+					immediateEditState.PendingDiff->TakeSnapshot(
+						args.DrawContext->CurrentObjectRef, args.Object, *args.OwnerType, args.DrawContext->CurrentLocation);
+
+					Nyx::Reflection::WriteEnumValue(address, *enumMetadata, entry.Value);
+
+					if (args.DrawContext->Transactions)
+					{
+						immediateEditState.PendingDiff->CommitChanges("Edit Property", *args.DrawContext->Transactions);
+					}
+					bChanged = true;
+				}
+			}
+			Nyx::UI::EndCombo();
+		}
+
+		return bChanged;
+	}
+
+	// How many elements an array has. Editing its elements comes with the input assets.
+	static bool DrawArrayWidget(const PropertyWidgetArgs& args)
+	{
+		const size_t count = Nyx::Reflection::GetArraySize(args.Object, *args.Property);
+		ImGui::AlignTextToFramePadding();
+		NYX_UI(ImGui::TextDisabled("%zu %s", count, count == 1 ? "element" : "elements"));
 		return false;
 	}
 
@@ -391,5 +444,7 @@ namespace Nyx::Editor
 		registry.Register(Nyx::Reflection::EPropertyKind::Vec4, &DrawVec4Widget);
 		registry.Register(Nyx::Reflection::EPropertyKind::Quat, &DrawQuatWidget);
 		registry.Register(Nyx::Reflection::EPropertyKind::String, &DrawStringWidget);
+		registry.Register(Nyx::Reflection::EPropertyKind::Enum, &DrawEnumWidget);
+		registry.Register(Nyx::Reflection::EPropertyKind::Array, &DrawArrayWidget);
 	}
 }

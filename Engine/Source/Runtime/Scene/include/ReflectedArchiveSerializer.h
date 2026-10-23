@@ -31,9 +31,11 @@ namespace Nyx
 	//
 	//   Property block: byte size (u32, not counting itself) | property count (u16) | properties
 	//   Property:       name hash (u32) | kind (u8) | value
-	//   Value:          Bool = 1 byte; Int32, UInt32 and Float = 4 bytes; UInt64 and Vec2 = 8;
-	//                   Vec3 = 12; Vec4 and Quat (w, x, y, z) = 16; String = length (u32) + bytes;
-	//                   Struct = a property block
+	//   Value:          Bool = 1 byte; Int32, UInt32, Float and Enum (its number) = 4 bytes;
+	//                   UInt64 and Vec2 = 8; Vec3 = 12; Vec4 and Quat (w, x, y, z) = 16;
+	//                   String = length (u32) + bytes; Struct = a property block;
+	//                   Array = byte size (u32, not counting itself) | element kind (u8) |
+	//                           element count (u32) | the elements' values
 	//
 	// Every property carries its name hash and kind, and every block its size, so data stays
 	// readable after properties are added, removed, reordered or change their type.
@@ -57,9 +59,15 @@ namespace Nyx
 			const Nyx::Reflection::TypeMetadata& typeMetadata,
 			std::vector<size_t> propertyIndices);
 
-		// Reads one property block into the object; properties the data doesn't have keep their
-		// value. A kind this build doesn't know ends the block, because its size is unknown. What
-		// didn't fit goes into the warnings. Returns false only if the data is cut off or damaged.
+		// Reads one property block into the object:
+		// - Properties the data doesn't have keep their current value (in a new object: the default).
+		// - Number kinds (Int32, UInt32, Float, Enum) are converted into each other, also an
+		//   array's elements. An Enum number no enumerator has keeps the current value.
+		// - Properties the type doesn't have or doesn't save, and other changes of kind, are skipped.
+		// - A kind this build doesn't know (from a newer build) ends reading of the block, because
+		//   its size is unknown. The properties after it keep their current value.
+		// Everything that didn't fit is added to the warnings. Returns false only if the data
+		// is cut off or damaged.
 		static bool DeserializeObject(
 			BinaryReader& reader,
 			void* object,
@@ -69,7 +77,7 @@ namespace Nyx
 		// Skips one property block, for example of a component type this build doesn't know.
 		static bool SkipObject(BinaryReader& reader);
 
-		// One value of any kind except Struct, without its kind in front.
+		// One value of any kind except Struct and Array, without its kind in front.
 		static void WriteValue(BinaryWriter& writer, const Nyx::Reflection::PropertyValue& value);
 		static bool ReadValue(
 			BinaryReader& reader,

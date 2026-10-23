@@ -37,6 +37,36 @@ namespace Nyx::HeaderTool
 			QualifiedByShortName.emplace(parsedType.Name, parsedType.QualifiedName);
 		}
 
+		void AddEnum(const ParsedEnum& parsedEnum)
+		{
+			EnumQualifiedNames.insert(parsedEnum.QualifiedName);
+
+			const auto [it, inserted] = EnumQualifiedByShortName.emplace(parsedEnum.Name, parsedEnum.QualifiedName);
+			if (!inserted && it->second != parsedEnum.QualifiedName)
+			{
+				throw std::runtime_error("Ambiguous reflected enum short name: " + parsedEnum.Name);
+			}
+		}
+
+		// An enum of another module (--type-root), as AddReferenced() for types
+		void AddReferencedEnum(const ParsedEnum& parsedEnum)
+		{
+			EnumQualifiedNames.insert(parsedEnum.QualifiedName);
+			EnumQualifiedByShortName.emplace(parsedEnum.Name, parsedEnum.QualifiedName);
+		}
+
+		std::optional<std::string> ResolveEnum(std::string_view enumName) const
+		{
+			const std::string key(enumName);
+			if (EnumQualifiedNames.contains(key))
+			{
+				return key;
+			}
+
+			const auto it = EnumQualifiedByShortName.find(key);
+			return it != EnumQualifiedByShortName.end() ? std::optional<std::string>(it->second) : std::nullopt;
+		}
+
 		std::optional<std::string> Resolve(std::string_view typeName) const
 		{
 			const std::string key(typeName);
@@ -58,5 +88,7 @@ namespace Nyx::HeaderTool
 	private:
 		std::unordered_set<std::string> QualifiedNames;
 		std::unordered_map<std::string, std::string> QualifiedByShortName;
+		std::unordered_set<std::string> EnumQualifiedNames;
+		std::unordered_map<std::string, std::string> EnumQualifiedByShortName;
 	};
 }

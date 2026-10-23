@@ -34,6 +34,7 @@ namespace Nyx::HeaderTool
 		void ParseDeclarationInCurrentScope(ParsedHeader& outHeader);
 		void ParseNamespace(ParsedHeader& outHeader);
 		ParsedType ParseReflectedType();
+		ParsedEnum ParseReflectedEnum();
 
 		std::vector<ParsedProperty> ParseReflectedStructBody();
 		ParsedProperty ParseProperty();

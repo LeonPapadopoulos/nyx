@@ -58,7 +58,9 @@ namespace Nyx::HeaderTool
 		Quat,
 		String,
 		Struct,
-		UInt64
+		UInt64,
+		Enum,
+		Array
 	};
 
 	enum class EParsedPropertyFlags : uint32_t
@@ -105,6 +107,15 @@ namespace Nyx::HeaderTool
 
 		std::string StructQualifiedTypeName;
 
+		// Enum: the NYX_ENUM's qualified name
+		std::string EnumQualifiedTypeName;
+
+		// Array (std::vector<T>): what T is, as for a property of its own, and T as C++ names it
+		EParsedPropertyKind ElementKind = EParsedPropertyKind::Unknown;
+		std::string ElementCppType;
+		std::string ElementStructQualifiedTypeName;
+		std::string ElementEnumQualifiedTypeName;
+
 		// For engine types the tool recognises by name (see ReflectionSemantics), the C++ type the
 		// member must really have. The generated code checks it.
 		std::string RequiredCppType;
@@ -126,10 +137,28 @@ namespace Nyx::HeaderTool
 		std::vector<ParsedProperty> Properties;
 	};
 
+	struct ParsedEnumEntry
+	{
+		std::string Name;
+		int64_t Value = 0;
+	};
+
+	// An enum class declared with NYX_ENUM
+	struct ParsedEnum
+	{
+		uint32_t SourceLine = 0;
+		std::string Name;
+		std::string QualifiedName;
+		std::string DisplayName;
+		ParsedMacroArguments RawArguments;
+		std::vector<ParsedEnumEntry> Entries;
+	};
+
 	struct ParsedHeader
 	{
 		std::string SourceFile;
 		std::vector<ParsedType> Types;
+		std::vector<ParsedEnum> Enums;
 	};
 
 	struct ScannedHeader

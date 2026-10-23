@@ -1,3 +1,12 @@
+# Enum and Array properties: the header tool's enum_and_array fixture compiled with its generated
+# code (the golden file), through PropertyValue, the archive serializer and the printer.
+add_executable(NyxReflectionKindsTests ReflectionKindsTests.cpp)
+target_include_directories(NyxReflectionKindsTests PRIVATE "${PROJECT_SOURCE_DIR}/Tools/NyxHeaderTool/tests/fixtures/enum_and_array")
+target_link_libraries(NyxReflectionKindsTests PRIVATE NyxEngine NyxLinkTools)
+add_dependencies(NyxReflectionKindsTests NyxGeneratedReflection)
+set_property(TARGET NyxReflectionKindsTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxReflectionKindsTests COMMAND NyxReflectionKindsTests)
+
 # Headless file tests: they exercise the same writer used by scene saving.
 add_executable(NyxArchiveTests
     ArchiveTests.cpp

@@ -52,7 +52,8 @@ namespace
 	// left out: its values are IDs, and most of them don't fit any other number kind.
 	bool IsNumberKind(EPropertyKind kind)
 	{
-		return kind == EPropertyKind::Int32 || kind == EPropertyKind::UInt32 || kind == EPropertyKind::Float;
+		return kind == EPropertyKind::Int32 || kind == EPropertyKind::UInt32 || kind == EPropertyKind::Float ||
+			kind == EPropertyKind::Enum;
 	}
 
 	// Converts a number to another number kind, rounded and clamped to the range of the new kind
@@ -76,6 +77,7 @@ namespace
 		switch (targetKind)
 		{
 		case EPropertyKind::Int32:
+		case EPropertyKind::Enum:
 		{
 			constexpr double Min = std::numeric_limits<int32_t>::min();
 			constexpr double Max = std::numeric_limits<int32_t>::max();
@@ -99,7 +101,7 @@ namespace
 	// Skips one saved value of a kind this build knows
 	bool SkipValue(BinaryReader& reader, EPropertyKind kind)
 	{
-		if (kind == EPropertyKind::Struct)
+		if (kind == EPropertyKind::Struct || kind == EPropertyKind::Array)
 		{
 			return reader.SkipBlock();
 		}
@@ -120,6 +122,134 @@ namespace
 		const TypeMetadata& typeMetadata,
 		const std::string& objectPath,
 		ReadWarnings& warnings);
+
+	// Writes an array property's value: its elements' kind and count, then each element
+	bool WriteArray(BinaryWriter& writer, const void* object, const PropertyMetadata& property)
+	{
+		const ArrayMetadata* array = TryGetArray(property);
+		if (!array)
+		{
+			return false;
+		}
+
+		const PropertyMetadata& element = array->Element;
+		const void* vector = GetPropertyAddress(object, property);
+		const size_t count = array->GetSize(vector);
+
+		BinaryWriter block;
+		block.WriteUInt8(static_cast<uint8_t>(element.Kind));
+		block.WriteUInt32(static_cast<uint32_t>(count));
+
+		for (size_t index = 0; index < count; ++index)
+		{
+			const void* elementObject = array->GetConstElement(vector, index);
+			if (element.Kind == EPropertyKind::Struct)
+			{
+				const TypeMetadata* nestedType = TryGetNestedType(element);
+				if (!nestedType || !ReflectedArchiveSerializer::SerializeObject(block, elementObject, *nestedType))
+				{
+					return false;
+				}
+				continue;
+			}
+
+			// The element is a property of itself, at offset 0
+			const PropertyValue value = GetPropertyValue(elementObject, element);
+			if (std::holds_alternative<std::monostate>(value))
+			{
+				return false;
+			}
+			ReflectedArchiveSerializer::WriteValue(block, value);
+		}
+
+		writer.WriteBlock(block);
+		return true;
+	}
+
+	// Sets a read value, unless it is an Enum number no enumerator has
+	void SetReadValue(void* object, const PropertyMetadata& property, const PropertyValue& value, const std::string& path, ReadWarnings& warnings)
+	{
+		if (property.Kind == EPropertyKind::Enum)
+		{
+			const EnumMetadata* enumMetadata = TryGetEnum(property);
+			const int32_t* number = std::get_if<int32_t>(&value);
+			if (!enumMetadata || !number || !FindEnumEntry(*enumMetadata, *number))
+			{
+				warnings.Add(path + ": kept the value, because the saved number (" + (number ? std::to_string(*number) : std::string("?")) +
+					") isn't one of the enum's");
+				return;
+			}
+		}
+
+		SetPropertyValue(object, property, value);
+	}
+
+	// Reads an array's saved value into the property: as many elements as were saved, each read
+	// like a property, converted between number kinds
+	bool ReadArray(BinaryReader& reader, void* object, const PropertyMetadata& property, const std::string& path, ReadWarnings& warnings)
+	{
+		BinaryReader block;
+		uint8_t kindNumber = 0;
+		uint32_t count = 0;
+		if (!reader.ReadBlock(block) || !block.ReadUInt8(kindNumber) || !block.ReadUInt32(count))
+		{
+			return false;
+		}
+
+		// Every element takes at least a byte: more than that is damaged data
+		if (count > block.GetRemainingSize())
+		{
+			return false;
+		}
+
+		const ArrayMetadata* array = TryGetArray(property);
+		const EPropertyKind savedKind = static_cast<EPropertyKind>(kindNumber);
+		if (!array)
+		{
+			warnings.Add(path + ": skipped the saved array, because the property's elements aren't reflected");
+			return true;
+		}
+
+		const PropertyMetadata& element = array->Element;
+		const bool bConvert = savedKind != element.Kind && IsNumberKind(savedKind) && IsNumberKind(element.Kind);
+		if (!IsKnownPropertyKind(savedKind) || savedKind == EPropertyKind::Array || (savedKind != element.Kind && !bConvert))
+		{
+			warnings.Add(path + ": skipped the saved array (elements saved as " + GetPropertyKindName(savedKind) + ", they are " +
+				GetPropertyKindName(element.Kind) + " now)");
+			return true;
+		}
+		if (bConvert)
+		{
+			warnings.Add(path + ": converted the saved " + GetPropertyKindName(savedKind) + " elements to " + GetPropertyKindName(element.Kind));
+		}
+
+		void* vector = GetPropertyAddress(object, property);
+		array->Resize(vector, count);
+		for (uint32_t index = 0; index < count; ++index)
+		{
+			void* elementObject = array->GetElement(vector, index);
+			const std::string elementPath = path + "[" + std::to_string(index) + "]";
+
+			if (savedKind == EPropertyKind::Struct)
+			{
+				const TypeMetadata* nestedType = TryGetNestedType(element);
+				if (!nestedType || !ReadObject(block, elementObject, *nestedType, elementPath, warnings))
+				{
+					return false;
+				}
+				continue;
+			}
+
+			PropertyValue value;
+			if (!ReflectedArchiveSerializer::ReadValue(block, savedKind, value))
+			{
+				return false;
+			}
+			SetReadValue(elementObject, element, bConvert ? ConvertNumber(value, element.Kind) : value, elementPath, warnings);
+		}
+
+		return true;
+	}
 
 	// Writes the properties at the indices (into typeMetadata.Properties, each Serialize) as one
 	// property block. Returns false if a property has a kind that can't be written.
@@ -144,6 +274,13 @@ namespace
 			{
 				const TypeMetadata* nestedType = TryGetNestedType(property);
 				if (!nestedType || !ReflectedArchiveSerializer::SerializeObject(block, GetPropertyAddress(object, property), *nestedType))
+				{
+					return false;
+				}
+			}
+			else if (property.Kind == EPropertyKind::Array)
+			{
+				if (!WriteArray(block, object, property))
 				{
 					return false;
 				}
@@ -188,6 +325,11 @@ namespace
 			return ReadObject(reader, GetPropertyAddress(object, property), *nestedType, GetPropertyPath(objectPath, property), warnings);
 		}
 
+		if (savedKind == property.Kind && property.Kind == EPropertyKind::Array)
+		{
+			return ReadArray(reader, object, property, GetPropertyPath(objectPath, property), warnings);
+		}
+
 		if (savedKind == property.Kind)
 		{
 			PropertyValue value;
@@ -196,7 +338,7 @@ namespace
 				return false;
 			}
 
-			SetPropertyValue(object, property, value);
+			SetReadValue(object, property, value, GetPropertyPath(objectPath, property), warnings);
 			return true;
 		}
 
@@ -208,7 +350,7 @@ namespace
 				return false;
 			}
 
-			SetPropertyValue(object, property, ConvertNumber(value, property.Kind));
+			SetReadValue(object, property, ConvertNumber(value, property.Kind), GetPropertyPath(objectPath, property), warnings);
 
 			warnings.Add(GetPropertyPath(objectPath, property) + ": converted the saved " + GetPropertyKindName(savedKind) +
 				" to " + GetPropertyKindName(property.Kind));
@@ -443,6 +585,7 @@ namespace Nyx
 		}
 
 		case EPropertyKind::Int32:
+		case EPropertyKind::Enum:
 		{
 			int32_t value = 0;
 			if (!reader.ReadInt32(value))

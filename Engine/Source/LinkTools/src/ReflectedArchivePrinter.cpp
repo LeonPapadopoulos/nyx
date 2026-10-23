@@ -93,6 +93,83 @@ namespace
 		const Nyx::Reflection::TypeMetadata* typeMetadata,
 		int indentLevel,
 		int nestingDepth,
+		std::string& outText);
+
+	// A value, with an Enum's number as its enumerator's name when the property is known
+	std::string ValueText(const Nyx::Reflection::PropertyValue& value, Nyx::Reflection::EPropertyKind savedKind,
+		const Nyx::Reflection::PropertyMetadata* property)
+	{
+		using namespace Nyx::Reflection;
+		const EnumMetadata* enumMetadata = property && property->Kind == EPropertyKind::Enum ? TryGetEnum(*property) : nullptr;
+		const int32_t* number = std::get_if<int32_t>(&value);
+		if (savedKind == EPropertyKind::Enum && enumMetadata && number)
+		{
+			return EnumValueToText(*enumMetadata, *number);
+		}
+		return Nyx::ReflectedArchivePrinter::ValueToText(value);
+	}
+
+	// An array's elements, one line each ("[0]: ..."), structs indented under theirs.
+	// `property`: the array property, if the type has it, for its elements' type.
+	bool PrintArray(
+		Nyx::BinaryReader& reader,
+		const Nyx::Reflection::PropertyMetadata* property,
+		const std::string& label,
+		const std::string& note,
+		int indentLevel,
+		int nestingDepth,
+		std::string& outText)
+	{
+		using namespace Nyx::Reflection;
+		using Nyx::BinaryReader;
+
+		BinaryReader block;
+		uint8_t kindNumber = 0;
+		uint32_t count = 0;
+		if (!reader.ReadBlock(block) || !block.ReadUInt8(kindNumber) || !block.ReadUInt32(count) || count > block.GetRemainingSize())
+		{
+			return false;
+		}
+
+		const std::string indent(static_cast<size_t>(indentLevel) * 2, ' ');
+		const EPropertyKind elementKind = static_cast<EPropertyKind>(kindNumber);
+		outText += indent + label + ": " + std::to_string(count) + " " + GetPropertyKindName(elementKind) + (count == 1 ? "" : "s") + note + "\n";
+		if (!IsKnownPropertyKind(elementKind) || elementKind == EPropertyKind::Array)
+		{
+			outText += indent + "  (elements of a kind this build can't read)\n";
+			return true;
+		}
+
+		const ArrayMetadata* array = property ? TryGetArray(*property) : nullptr;
+		const PropertyMetadata* element = array && array->Element.Kind == elementKind ? &array->Element : nullptr;
+		for (uint32_t index = 0; index < count; ++index)
+		{
+			const std::string elementLabel = "[" + std::to_string(index) + "]";
+			if (elementKind == EPropertyKind::Struct)
+			{
+				outText += indent + "  " + elementLabel + ":\n";
+				if (!PrintBlock(block, element ? TryGetNestedType(*element) : nullptr, indentLevel + 2, nestingDepth + 1, outText))
+				{
+					return false;
+				}
+				continue;
+			}
+
+			PropertyValue value;
+			if (!Nyx::ReflectedArchiveSerializer::ReadValue(block, elementKind, value))
+			{
+				return false;
+			}
+			outText += indent + "  " + elementLabel + ": " + ValueText(value, elementKind, element) + "\n";
+		}
+		return true;
+	}
+
+	bool PrintBlock(
+		Nyx::BinaryReader& reader,
+		const Nyx::Reflection::TypeMetadata* typeMetadata,
+		int indentLevel,
+		int nestingDepth,
 		std::string& outText)
 	{
 		using namespace Nyx::Reflection;
@@ -167,13 +244,24 @@ namespace
 				continue;
 			}
 
+			if (savedKind == EPropertyKind::Array)
+			{
+				const PropertyMetadata* array = property && property->Kind == EPropertyKind::Array ? property : nullptr;
+				if (!PrintArray(block, array, label, note, indentLevel, nestingDepth + 1, outText))
+				{
+					return false;
+				}
+
+				continue;
+			}
+
 			PropertyValue value;
 			if (!ReflectedArchiveSerializer::ReadValue(block, savedKind, value))
 			{
 				return false;
 			}
 
-			outText += indent + label + ": " + ReflectedArchivePrinter::ValueToText(value) + note + "\n";
+			outText += indent + label + ": " + ValueText(value, savedKind, property) + note + "\n";
 		}
 
 		return true;

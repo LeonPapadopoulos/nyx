@@ -16,6 +16,7 @@ namespace Nyx::HeaderTool
 
 	private:
 		static void ApplyTypeSemantics(ParsedType& parsedType);
+		static void ApplyEnumSemantics(ParsedEnum& parsedEnum);
 		static void ApplyPropertySemantics(ParsedProperty& parsedProperty);
 
 		static void ResolvePropertyType(ParsedProperty& parsedProperty, const ReflectedTypeIndex& typeIndex);

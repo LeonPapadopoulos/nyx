@@ -250,6 +250,10 @@ struct TransformComponent
 #include "Generated/Runtime/TransformComponent.reflect.h"
 ```
 
+Properties can be numbers, vectors, quaternions, strings, reflected structs, enum classes
+declared with `NYX_ENUM()`, and `std::vector`s of any of these; enums are saved as their
+enumerators' numbers.
+
 During the build, `NyxHeaderTool` reads every header in `Engine/Source/Runtime/Scene/include` and
 writes the generated files to `Build\Windows\Generated\Runtime`. Its tests compare its output
 against golden files: `Tools\NyxHeaderTool\tests\RunHeaderToolTests.bat`.
