@@ -178,15 +178,6 @@ namespace
 		return bChanged;
 	}
 
-	// How many elements an array has. Editing its elements comes with the input assets.
-	static bool DrawArrayWidget(const PropertyWidgetArgs& args)
-	{
-		const size_t count = Nyx::Reflection::GetArraySize(args.Object, *args.Property);
-		ImGui::AlignTextToFramePadding();
-		NYX_UI(ImGui::TextDisabled("%zu %s", count, count == 1 ? "element" : "elements"));
-		return false;
-	}
-
 	static bool DrawInt32Widget(const PropertyWidgetArgs& args)
 	{
 		int32_t& value = Nyx::Reflection::AccessProperty<int32_t>(args.Object, *args.Property);
@@ -445,6 +436,5 @@ namespace Nyx::Editor
 		registry.Register(Nyx::Reflection::EPropertyKind::Quat, &DrawQuatWidget);
 		registry.Register(Nyx::Reflection::EPropertyKind::String, &DrawStringWidget);
 		registry.Register(Nyx::Reflection::EPropertyKind::Enum, &DrawEnumWidget);
-		registry.Register(Nyx::Reflection::EPropertyKind::Array, &DrawArrayWidget);
 	}
 }

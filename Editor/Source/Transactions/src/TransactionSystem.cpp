@@ -6,39 +6,29 @@ namespace
 {
 	using namespace Nyx::Editor;
 
-	// The object whose property the change sets: the subobject itself, or the struct inside it
-	// that change.Location leads to. Null if the path no longer fits the types, e.g. after a
-	// property was removed from the code.
-	void* ResolveLocation(ITransactionDomain& domain, EditorTransactionContext& context, const SetValueChange& change)
+	// The object whose property a change sets: the subobject itself, or the struct (or array
+	// element) inside it that location leads to. Null if the path no longer fits the types, e.g.
+	// after a property was removed from the code.
+	void* ResolveLocation(
+		ITransactionDomain& domain,
+		EditorTransactionContext& context,
+		const ObjectRef& target,
+		const Nyx::Reflection::TypeMetadata& typeMetadata,
+		const SubobjectPath& location)
 	{
-		const SubobjectPath& location = change.Location;
 		if (!location.SubobjectType)
 		{
-			return domain.ResolveMutable(context, change.Target, *change.TypeMetadata);
+			return domain.ResolveMutable(context, target, typeMetadata);
 		}
 
-		void* object = domain.ResolveMutable(context, change.Target, *location.SubobjectType);
-		const Nyx::Reflection::TypeMetadata* type = location.SubobjectType;
-
-		for (const size_t propertyIndex : location.PropertyIndices)
+		void* subobject = domain.ResolveMutable(context, target, *location.SubobjectType);
+		if (!subobject)
 		{
-			if (!object || !type->Properties || propertyIndex >= type->PropertyCount)
-			{
-				return nullptr;
-			}
-
-			const Nyx::Reflection::PropertyMetadata& property = type->Properties[propertyIndex];
-			const Nyx::Reflection::TypeMetadata* nestedType = Nyx::Reflection::TryGetNestedType(property);
-			if (!nestedType)
-			{
-				return nullptr;
-			}
-
-			object = Nyx::Reflection::GetPropertyAddress(object, property);
-			type = nestedType;
+			return nullptr;
 		}
 
-		return type == change.TypeMetadata ? object : nullptr;
+		const ResolvedObject resolved = ResolvePropertyPath(subobject, *location.SubobjectType, location.PropertyIndices);
+		return resolved.TypeMetadata == &typeMetadata ? resolved.Object : nullptr;
 	}
 }
 
@@ -184,6 +174,10 @@ namespace Nyx::Editor
 			break;
 		}
 
+		case EChangeKind::ReplaceArray:
+			ApplyReplaceArrayChange(context, std::get<ReplaceArrayChange>(change.Payload), bRedo);
+			break;
+
 		default:
 			break;
 		}
@@ -221,7 +215,7 @@ namespace Nyx::Editor
 			return;
 		}
 
-		void* object = ResolveLocation(*domain, context, change);
+		void* object = ResolveLocation(*domain, context, change.Target, *change.TypeMetadata, change.Location);
 		if (!object)
 		{
 			return;
@@ -234,6 +228,20 @@ namespace Nyx::Editor
 
 		const Nyx::Reflection::PropertyMetadata& property = change.TypeMetadata->Properties[change.PropertyIndex];
 		WriteReflectedPropertyValue(object, property, bRedo ? change.After : change.Before);
+	}
+
+	void TransactionSystem::ApplyReplaceArrayChange(EditorTransactionContext& context, const ReplaceArrayChange& change, bool bRedo)
+	{
+		ITransactionDomain* domain = change.Target.IsValid() && change.TypeMetadata ? FindDomain(change.Target.Domain) : nullptr;
+		if (!domain)
+		{
+			return;
+		}
+
+		if (void* object = ResolveLocation(*domain, context, change.Target, *change.TypeMetadata, change.Location))
+		{
+			LoadReflectedProperty(object, *change.TypeMetadata, bRedo ? change.After : change.Before);
+		}
 	}
 
 	void TransactionSystem::ApplyAddObjectChange(EditorTransactionContext& context, const AddObjectChange& change, bool bRedo)

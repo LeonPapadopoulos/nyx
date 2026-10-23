@@ -9,7 +9,9 @@ namespace Nyx::Editor
 	enum class EObjectDomain : uint8_t
 	{
 		None = 0,
-		SceneEntity
+		SceneEntity,
+		// The input asset the Input window edits (InputAssetDocument)
+		InputAsset
 	};
 
 	struct ObjectRef

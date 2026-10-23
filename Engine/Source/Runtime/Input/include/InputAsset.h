@@ -30,6 +30,15 @@ namespace Nyx
 // A layer is a list of overrides: one tuning value each, by its path in InputBindingData.
 namespace Nyx::Input
 {
+	// Which devices should be able to do an action, for the Coverage check
+	NYX_ENUM()
+	enum class EActionDevices : uint8_t
+	{
+		All,
+		KeyboardMouse,
+		Gamepad,
+	};
+
 	NYX_REFLECT()
 	struct InputActionData
 	{
@@ -38,6 +47,9 @@ namespace Nyx::Input
 
 		NYX_PROPERTY(Edit, Undo, Serialize)
 		EActionValue ValueType = EActionValue::Button;
+
+		NYX_PROPERTY(Edit, Undo, Serialize)
+		EActionDevices Devices = EActionDevices::All;
 	};
 
 	// Controls making up an axis, by their paths ("Keyboard/W"); empty ones add nothing. x is Right
@@ -274,8 +286,8 @@ namespace Nyx::Input
 
 	// Puts Assets/Input/Default.nyxinput into the input system, made from MakeDefaultInputAsset()
 	// first if it isn't there and bCreateIfMissing; with the player's settings if
-	// bWithPlayerSettings and they have any. Logs what can't be read or used. False if there is no
-	// asset to read.
+	// bWithPlayerSettings and they have any. Logs what can't be read or used, and what the checks
+	// find (InputChecks.h). False if there is no asset to read.
 	bool LoadDefaultInput(InputSystem& input, bool bCreateIfMissing, bool bWithPlayerSettings);
 }
 

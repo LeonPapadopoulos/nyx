@@ -111,6 +111,27 @@ are reflected types (`NYX_REFLECT`, `NYX_ENUM`) and the header tool also reads
   on. A binding that can't be used is left out and reported once, with where it is.
 - `NyxDump` prints `.nyxinput` files (`PrintInputFile()`, in `LinkTools`).
 
+## Finding the right setup
+
+- **Editing with undo.** The editor holds the asset as a document (`InputAssetDocument`, in the
+  editor's `Input` folder) in its undo, as `EObjectDomain::InputAsset`. Every edit, undo, redo and
+  drag applies the asset again, so it is felt at once; a held button keeps its state, since
+  `ReplaceContext()` keeps what bindings remember when only their tuning changed. The details
+  panel edits arrays for it: elements in place, added, removed and moved, each one undo step.
+- **Checks** (`InputChecks`) find what is easy to get wrong and hard to feel: two actions on one
+  control in one context, a binding a higher context always takes, an action no keyboard and mouse
+  or no pad can do (Coverage), Down on an action the code consumes once, delta time on mouse
+  movement or none on a stick that turns, a composite not normalized, dead zones that don't fit,
+  a hold shorter than the tap beside it, smoothing's latency, a threshold without hysteresis, a
+  control only some pads have. Each says where it is; the obvious ones carry a fix. Loading the
+  asset logs what they find.
+- **Recipes** (`InputRecipes`): *Add Action* asks what the action is for (once per press, while
+  held, charge and release, tap or hold, move, look, an analog amount, stepping through a menu)
+  and writes plain bindings that pass every check, edited like any others afterwards.
+- **What a value means**: `ExplainBinding()` says a binding's values in units (percent of a stick's
+  travel, degrees per second, frames at 60 fps); the Tuning tab draws the response curve with the
+  stick on it and the trigger as a timeline with the last press.
+
 ## Seeing it
 
 *Window > Input* in the editor, and in Debug builds the same over a game (Ctrl+Alt+Shift+I, a
@@ -151,6 +172,9 @@ curves and pipeline steps against known values, each trigger's phases over set t
 between contexts, the cursor, hysteresis and the device used last, all on traces.
 `NyxInputAssetTests` checks the asset's round trip and printout, the problems it reports, the
 layers and overrides, and that applying keeps handles and on/off.
+`NyxInputChecksTests` runs each check with and without its mistake, every recipe, the
+explanations and the curve; `NyxEditorInputTuningTests` edits inside the asset's arrays with undo
+and redo, and draws the Tuning and Checks tabs headless.
 `NyxInputInspectionTests` checks who gets a control, What if stacks and the calibration;
 `NyxEditorPanelTests` that the Input window leaves no shapes to ImGui.
 `NyxInputGamepadTests` drives virtual pads: hot-plug, analog values, focus, swizzles, composites
@@ -159,4 +183,4 @@ and tries their output, for checking them by hand.
 
 ## Not built yet
 
-Editing the asset in the editor, with undo; recipes and checks.
+Tuning running games from the editor; A/B and replay.

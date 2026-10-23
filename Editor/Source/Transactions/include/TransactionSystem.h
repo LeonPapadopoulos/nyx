@@ -32,6 +32,7 @@ namespace Nyx::Editor
 		void ApplyChange(EditorTransactionContext& context, const Change& change, bool bRedo);
 
 		void ApplySetValueChange(EditorTransactionContext& context, const SetValueChange& change, bool bRedo);
+		void ApplyReplaceArrayChange(EditorTransactionContext& context, const ReplaceArrayChange& change, bool bRedo);
 		void ApplyAddObjectChange(EditorTransactionContext& context, const AddObjectChange& change, bool bRedo);
 		void ApplyDeleteObjectChange(EditorTransactionContext& context, const DeleteObjectChange& change, bool bRedo);
 

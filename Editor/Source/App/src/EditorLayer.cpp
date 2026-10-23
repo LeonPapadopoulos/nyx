@@ -68,7 +68,7 @@ namespace Nyx::Editor
 		Renderer = &application.GetEditorRenderer();
 		Input = &application.GetInput();
 		// The bindings as the project has them, not as a player tuned them
-		Nyx::Input::LoadDefaultInput(*Input, true, false);
+		InputAsset.Load(*Input, Nyx::Input::GetDefaultInputAssetPath());
 		CameraController = std::make_unique<EditorCameraController>(*Input);
 		SourceInspectorContext = Input->AddContext({
 			.Name = "SourceInspector",
@@ -201,6 +201,10 @@ namespace Nyx::Editor
 
 		// Edits show up live in the game started with Play
 		Editing.Transactions.Subscribe(&Games.GetEditSubscriber());
+
+		// Edits of the input asset share the scene's undo, and reach the input system at once
+		InputAsset.Attach(Editing.Transactions);
+		InputWindow.Attach(InputAsset, Editing.Transactions);
 	}
 
 	void EditorLayer::OnDetach()

@@ -47,6 +47,8 @@ namespace Nyx::Input
 		// Scales the vector down to length 1 when it is longer, so W and D together aren't
 		// faster than W
 		bool bNormalize = true;
+
+		bool operator==(const CompositeKeys&) const = default;
 	};
 
 	// One way to drive an action: a control (or keys making up an axis), what the value goes

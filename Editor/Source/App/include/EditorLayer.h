@@ -10,6 +10,7 @@
 #include "EditorFrame.h"
 #include "EditorPreferences.h"
 #include "GameLinkPanel.h"
+#include "InputAssetDocument.h"
 #include "InputPanel.h"
 #include "Layer.h"
 #include "MaterialWorkspace.h"
@@ -139,6 +140,10 @@ namespace Nyx::Editor
 		ThemeEditorWindow ThemeEditor;
 		PlayControls Play;
 		CrashCardsPanel CrashCards;
+
+		// The input asset, Input/Default.nyxinput: the scene views' bindings, edited in
+		// Window > Input's Tuning tab with the editor's undo
+		InputAssetDocument InputAsset;
 
 		// Window > Input: the editor's own input, with its traces
 		InputPanel InputWindow;

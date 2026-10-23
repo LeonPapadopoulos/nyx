@@ -17,7 +17,8 @@ namespace Nyx::Editor
 		AddObject,
 		DeleteObject,
 		AddSubobject,
-		RemoveSubobject
+		RemoveSubobject,
+		ReplaceArray
 	};
 
 	// Where an object inside a root object is: in which subobject (component), and through which
@@ -27,7 +28,9 @@ namespace Nyx::Editor
 	{
 		const Nyx::Reflection::TypeMetadata* SubobjectType = nullptr;
 
-		// Indices into the Properties of each type on the way, starting with SubobjectType's
+		// Indices into the Properties of each type on the way, starting with SubobjectType's. An
+		// Array property's index is followed by an element's index: the element is the next
+		// object, of the element's struct type, or for other elements of GetArrayElementType().
 		std::vector<size_t> PropertyIndices;
 
 		bool operator==(const SubobjectPath&) const = default;
@@ -74,12 +77,28 @@ namespace Nyx::Editor
 		SubobjectSnapshot BeforeRemove;
 	};
 
+	// An array property's elements replaced as a whole: added, removed or moved. Before and After
+	// hold the property alone as a property block (ReflectedArchiveSerializer::SerializeProperties).
+	struct ReplaceArrayChange
+	{
+		ObjectRef Target{};
+
+		// The type the array property belongs to, and where that object is, as in SetValueChange
+		const Nyx::Reflection::TypeMetadata* TypeMetadata = nullptr;
+		size_t PropertyIndex = 0;
+		SubobjectPath Location;
+
+		std::vector<std::byte> Before;
+		std::vector<std::byte> After;
+	};
+
 	using ChangePayload = std::variant<
 		SetValueChange,
 		AddObjectChange,
 		DeleteObjectChange,
 		AddSubobjectChange,
-		RemoveSubobjectChange>;
+		RemoveSubobjectChange,
+		ReplaceArrayChange>;
 
 	struct Change
 	{

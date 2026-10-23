@@ -157,12 +157,22 @@ namespace Nyx::Input
 	bool InputUser::ConsumeTriggered(ActionHandle action)
 	{
 		const uint32_t index = action.Index();
+		if (action.IsValid())
+		{
+			ConsumedEver.resize(std::max<size_t>(ConsumedEver.size(), index + 1), false);
+			ConsumedEver[index] = true;
+		}
 		if (!action.IsValid() || index >= Pending.size() || !Pending[index].bPending)
 		{
 			return false;
 		}
 		Pending[index].bPending = false;
 		return true;
+	}
+
+	bool InputUser::WasEverConsumed(ActionHandle action) const
+	{
+		return action.IsValid() && action.Index() < ConsumedEver.size() && ConsumedEver[action.Index()];
 	}
 
 	void InputUser::Rumble(const RumbleOutput& rumble)

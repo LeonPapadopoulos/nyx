@@ -42,8 +42,10 @@ namespace Nyx::Input
 		ActionHandle AddAction(InputActionDef action);
 		ContextHandle AddContext(InputContextDef context);
 
-		// Changes what an action or context is, keeping its handle: a context stays on or off, its
-		// bindings start afresh. For new tuning, e.g. from an input asset.
+		// Changes what an action or context is, keeping its handle: a context stays on or off. Its
+		// bindings keep what they remember (a held button, a hold's time) if they are the same
+		// bindings, in the same order, with other tuning; otherwise they start afresh. For new
+		// tuning, e.g. from an input asset while it is edited.
 		void ReplaceAction(ActionHandle action, InputActionDef def);
 		void ReplaceContext(ContextHandle context, InputContextDef def);
 

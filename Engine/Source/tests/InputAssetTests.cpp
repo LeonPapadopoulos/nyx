@@ -283,6 +283,48 @@ namespace
 		Require(Near(input.GetUser().GetHapticsStrength(), 0.5f), "The player's haptics strength");
 	}
 
+	// Tuning while a button is held, as the editor does on every drag: the hold goes on
+	void TestReapplyKeepsWhatBindingsRemember()
+	{
+		InputAssetData asset;
+		asset.Actions = { { "Reload", EActionValue::Button } };
+		InputContextData play;
+		play.Name = "Play";
+		InputBindingData hold;
+		hold.Action = "Reload";
+		hold.Control = "Gamepad/FaceWest";
+		hold.Trigger.Kind = ETriggerKind::Hold;
+		hold.Trigger.HoldSeconds = 0.5f;
+		play.Bindings.push_back(hold);
+		asset.Contexts.push_back(play);
+
+		Rig rig;
+		Require(ApplyInputAsset(rig.Input, asset).empty(), "No problems");
+		const ActionHandle reload = rig.Input.FindAction("Reload");
+		rig.Input.GetUser().SetContextActive(rig.Input.FindContext("Play"), true);
+		rig.Frame();
+
+		rig.Backend.Press(rig.Pad, Gamepad(EGamepadControl::FaceWest), rig.NowUs + 1 * Ms);
+		for (int frame = 0; frame < 20; ++frame)
+		{
+			rig.Frame();
+		}
+		Require(!rig.Input.GetUser().Get(reload).bTriggered, "Held 320 ms of 500");
+
+		// Shorter: fires at once, counting from the press, not from the change
+		asset.Contexts[0].Bindings[0].Trigger.HoldSeconds = 0.3f;
+		ApplyInputAsset(rig.Input, asset);
+		rig.Frame();
+		Require(rig.Input.GetUser().Get(reload).bTriggered, "The press kept its time across the change");
+
+		// Another control: what it remembered no longer fits
+		asset.Contexts[0].Bindings[0].Control = "Gamepad/FaceNorth";
+		ApplyInputAsset(rig.Input, asset);
+		rig.Backend.Press(rig.Pad, Gamepad(EGamepadControl::FaceNorth), rig.NowUs + 1 * Ms);
+		rig.Frame();
+		Require(rig.Input.GetUser().Get(reload).Phase == EActionPhase::Started, "A new binding starts afresh");
+	}
+
 	void TestRouterUsesTheModelsVariant()
 	{
 		InputAssetData asset = MakeWalkAsset();
@@ -316,6 +358,7 @@ int main()
 		TestLayersAndWhereValuesComeFrom();
 		TestOverrideKinds();
 		TestApplyKeepsHandlesAndState();
+		TestReapplyKeepsWhatBindingsRemember();
 		TestRouterUsesTheModelsVariant();
 	}
 	catch (const std::exception& error)

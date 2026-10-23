@@ -60,9 +60,22 @@ namespace Nyx::Input
 
 	void InputSystem::ReplaceContext(ContextHandle context, InputContextDef def)
 	{
-		if (context.IsValid() && context.Index() < Contexts.size())
+		if (!context.IsValid() || context.Index() >= Contexts.size())
 		{
-			Contexts[context.Index()] = std::move(def);
+			return;
+		}
+
+		// The same bindings with other tuning: what they remember still fits
+		const std::vector<InputBinding>& old = Contexts[context.Index()].Bindings;
+		const bool bSameBindings = std::equal(old.begin(), old.end(), def.Bindings.begin(), def.Bindings.end(),
+			[](const InputBinding& a, const InputBinding& b)
+			{
+				return a.Action == b.Action && a.Control == b.Control && a.Composite == b.Composite && a.Modifiers == b.Modifiers;
+			});
+
+		Contexts[context.Index()] = std::move(def);
+		if (!bSameBindings)
+		{
 			User.ForgetBindingStates(context);
 		}
 	}

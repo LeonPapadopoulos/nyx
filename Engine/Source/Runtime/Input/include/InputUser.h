@@ -37,6 +37,10 @@ namespace Nyx::Input
 		// gone at the next frame, or after its trigger's BufferSeconds.
 		bool ConsumeTriggered(ActionHandle action);
 
+		// Whether the code has called ConsumeTriggered() on the action, for the checks: such an
+		// action is meant to happen once per firing
+		bool WasEverConsumed(ActionHandle action) const;
+
 		// Puts the context on the stack or takes it off. Turning on a context that is on updates
 		// its activation. Changes count from the next frame on: the stack is read once per frame.
 		void SetContextActive(ContextHandle context, bool bActive, ContextActivation activation = {});
@@ -141,6 +145,7 @@ namespace Nyx::Input
 			uint64_t ExpiresUs = 0;
 		};
 		std::vector<PendingTrigger> Pending;
+		std::vector<bool> ConsumedEver;
 
 		// By context index
 		std::vector<std::optional<ActiveContext>> Active;

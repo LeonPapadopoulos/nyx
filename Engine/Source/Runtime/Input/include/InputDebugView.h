@@ -5,7 +5,9 @@
 #include "InputSystem.h"
 
 #include <cstdint>
+#include <functional>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -41,14 +43,28 @@ namespace Nyx::Input
 
 		static const char* GetTabName(ETab tab);
 
+		// A tab of the owner's after the view's own, e.g. the editor's Tuning and Checks
+		struct ExtraTab
+		{
+			const char* Name = "";
+			std::function<void()> Draw;
+		};
+
 		// Draws the tabs. Asks the user for output when the Devices tab's buttons are clicked, and
 		// runs calibration from the frames it is drawn in.
-		void Draw(InputSystem& input, InputHistory& history);
+		void Draw(InputSystem& input, InputHistory& history, std::span<const ExtraTab> extraTabs = {});
 
 		// Shows this tab from the next Draw() on
 		void SelectTab(ETab tab)
 		{
 			TabToSelect = tab;
+			ExtraTabToSelect.clear();
+		}
+
+		void SelectExtraTab(std::string name)
+		{
+			TabToSelect.reset();
+			ExtraTabToSelect = std::move(name);
 		}
 
 	private:
@@ -62,6 +78,7 @@ namespace Nyx::Input
 		void DrawTimeline(const InputSystem& input, InputHistory& history);
 
 		std::optional<ETab> TabToSelect;
+		std::string ExtraTabToSelect;
 
 		// Actions
 		ActionHandle SelectedAction;

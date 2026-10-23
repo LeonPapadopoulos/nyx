@@ -58,7 +58,9 @@ set(NYX_EDITOR_SOURCES
     Play/src/GameLinkSubscriber.cpp
 
     # Input
+    Input/src/InputAssetDocument.cpp
     Input/src/InputPanel.cpp
+    Input/src/InputTuningView.cpp
 
     # Preferences
     Preferences/src/PreferencesWindow.cpp
@@ -135,7 +137,9 @@ set(NYX_EDITOR_HEADERS
     Play/include/GameLinkSubscriber.h
 
     # Input
+    Input/include/InputAssetDocument.h
     Input/include/InputPanel.h
+    Input/include/InputTuningView.h
 
     # Preferences
     Preferences/include/ThemeEditorWindow.h
@@ -288,6 +292,15 @@ if(BUILD_TESTING)
     target_precompile_headers(NyxEditorPanelTests REUSE_FROM NyxEditorLib)
     set_property(TARGET NyxEditorPanelTests PROPERTY FOLDER "Tests")
     add_test(NAME NyxEditorPanelTests COMMAND NyxEditorPanelTests)
+
+    # The input asset as the editor edits it: undo inside its arrays, live previews, saving, the
+    # Tuning and Checks tabs drawn headless
+    add_executable(NyxEditorInputTuningTests tests/InputTuningTests.cpp)
+    target_include_directories(NyxEditorInputTuningTests PRIVATE ${NYX_TEST_SUPPORT_DIR})
+    target_link_libraries(NyxEditorInputTuningTests PRIVATE NyxEditorLib)
+    target_precompile_headers(NyxEditorInputTuningTests REUSE_FROM NyxEditorLib)
+    set_property(TARGET NyxEditorInputTuningTests PROPERTY FOLDER "Tests")
+    add_test(NAME NyxEditorInputTuningTests COMMAND NyxEditorInputTuningTests)
 
     # The material document and the Parameters window, headless, over a stand-in for the renderer
     add_executable(NyxMaterialEditorTests tests/MaterialEditorTests.cpp)

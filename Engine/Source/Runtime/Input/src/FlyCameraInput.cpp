@@ -6,12 +6,13 @@ namespace Nyx::Input
 {
 	std::vector<InputActionData> FlyCameraInput::MakeActionsData()
 	{
+		// The wheel and the right mouse button have nothing to do on a pad
 		return {
 			{ "Move", EActionValue::Axis3D },
 			{ "MoveVertical", EActionValue::Axis1D },
 			{ "Look", EActionValue::Axis2D },
-			{ "Speed", EActionValue::Axis1D },
-			{ "LookButton", EActionValue::Button },
+			{ "Speed", EActionValue::Axis1D, EActionDevices::KeyboardMouse },
+			{ "LookButton", EActionValue::Button, EActionDevices::KeyboardMouse },
 		};
 	}
 

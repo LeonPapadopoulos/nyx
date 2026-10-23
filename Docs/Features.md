@@ -141,10 +141,19 @@ contexts, and the context highest on the stack that binds a control gets it.
   that model drives them, and the game also reads the player's own tuning from
   `%LOCALAPPDATA%\Nyx\PlayerInput.nyxinput`. Bindings that can't be used are logged with where
   they are.
+- The Input window's *Tuning* tab edits the asset with undo, felt at once in the scene views. For
+  each binding: what the checks find, with their fixes; what its values mean in units (an inner
+  dead zone of 0.15 "ignores the first 15 % of the stick's travel") and which layer each comes
+  from; its response curve with the stick on it; its trigger as a timeline with the last press.
+  *Add Action* asks what the action is for and writes a recipe's bindings.
+- The *Checks* tab lists mistakes that are easy to make and hard to feel (two actions on one
+  control, mouse movement times the frame's time, a hold shorter than the tap beside it, ...) and
+  which devices can do each action.
 - `NyxPadCheck.exe` lists the pads, prints what they report and tries their output without a
   window.
 - `NyxInputTests`, `NyxInputRouterTests`, `NyxInputGamepadTests`, `NyxInputInspectionTests`,
-  `NyxInputAssetTests` and `NyxEditorCameraTests` test it with virtual devices.
+  `NyxInputAssetTests`, `NyxInputChecksTests`, `NyxEditorCameraTests` and
+  `NyxEditorInputTuningTests` test it with virtual devices.
 
 ## Debug drawing
 
@@ -259,7 +268,8 @@ struct TransformComponent
 
 Properties can be numbers, vectors, quaternions, strings, reflected structs, enum classes
 declared with `NYX_ENUM()`, and `std::vector`s of any of these; enums are saved as their
-enumerators' numbers.
+enumerators' numbers. The details panel edits an array's elements, and adds, removes and moves
+them (right-click an element), with undo.
 
 During the build, `NyxHeaderTool` reads every header in `Engine/Source/Runtime/Scene/include` and
 writes the generated files to `Build\Windows\Generated\Runtime`. Its tests compare its output

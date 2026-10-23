@@ -2,6 +2,7 @@
 
 #include "BinaryArchive.h"
 #include "FlyCameraInput.h"
+#include "InputChecks.h"
 #include "Log.h"
 #include "Paths.h"
 #include "PropertyValueAccess.h"
@@ -575,6 +576,11 @@ namespace Nyx::Input
 		for (const InputAssetProblem& problem : ApplyInputAsset(input, *asset, player ? &*player : nullptr))
 		{
 			LOG_WARNING("Input: {0}: {1}: {2}", assetPath.filename().string(), problem.Where, problem.What);
+		}
+		for (const InputCheckFinding& finding : RunInputChecks(*asset))
+		{
+			LOG_WARNING("Input: {0}: {1}: {2}: {3}", assetPath.filename().string(), GetInputCheckName(finding.Check), DescribeWhere(*asset, finding),
+				finding.Message);
 		}
 		return true;
 	}

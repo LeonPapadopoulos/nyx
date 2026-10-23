@@ -329,7 +329,7 @@ namespace Nyx::Input
 		return "";
 	}
 
-	void InputDebugView::Draw(InputSystem& input, InputHistory& history)
+	void InputDebugView::Draw(InputSystem& input, InputHistory& history, std::span<const ExtraTab> extraTabs)
 	{
 		Calibration.Sample(input.GetFrame());
 
@@ -363,7 +363,23 @@ namespace Nyx::Input
 			ImGui::EndChild();
 			ImGui::EndTabItem();
 		}
+
+		for (const ExtraTab& extra : extraTabs)
+		{
+			const ImGuiTabItemFlags flags = ExtraTabToSelect == extra.Name ? ImGuiTabItemFlags_SetSelected : 0;
+			if (!ImGui::BeginTabItem(extra.Name, nullptr, flags))
+			{
+				continue;
+			}
+			if (ImGui::BeginChild("##InputTab", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None))
+			{
+				extra.Draw();
+			}
+			ImGui::EndChild();
+			ImGui::EndTabItem();
+		}
 		TabToSelect.reset();
+		ExtraTabToSelect.clear();
 
 		ImGui::EndTabBar();
 	}

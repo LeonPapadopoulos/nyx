@@ -52,6 +52,8 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputHistory.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputDebugView.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputAsset.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputChecks.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputRecipes.cpp
 
     # Runtime/Scene
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/Entity.cpp
@@ -195,6 +197,8 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputHistory.h
     ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputDebugView.h
     ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputAsset.h
+    ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputChecks.h
+    ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputRecipes.h
 
     # Runtime/Scene
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/Entity.h

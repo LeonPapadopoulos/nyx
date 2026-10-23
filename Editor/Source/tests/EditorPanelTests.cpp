@@ -15,6 +15,7 @@
 #include "AssetTypeRegistry.h"
 #include "GameLinkPanel.h"
 #include "EditorCameraController.h"
+#include "InputAssetDocument.h"
 #include "InputPanel.h"
 #include "VirtualInputBackend.h"
 #include "PropertyWidgetRegistry.h"
@@ -1479,15 +1480,45 @@ namespace
 		padInfo.Model = Nyx::Input::EGamepadModel::DualSense;
 		padInfo.Capabilities = Nyx::Input::EDeviceCapability::Gyro | Nyx::Input::EDeviceCapability::Touchpad | Nyx::Input::EDeviceCapability::Rumble;
 		backend.SetDeviceInfo(pad, padInfo, 1000);
+		// With an input asset, for the Tuning and Checks tabs: a stick with its curve, a tap with its
+		// timeline, the contexts as an array, the checks
+		const std::filesystem::path inputAssetPath = std::filesystem::temp_directory_path() / "NyxEditorPanelTests.nyxinput";
+		std::filesystem::remove(inputAssetPath);
+		InputAssetDocument inputAsset;
+		Require(inputAsset.Load(input, inputAssetPath), "The input asset should be made and read");
+		inputAsset.Attach(editing.Transactions);
+		Nyx::Input::AddRecipe(inputAsset.GetAsset(), 0, Nyx::Input::EInputRecipe::TapAndHold, "Use");
+		inputAsset.Apply();
 		EditorCameraController cameras(input);
 		InputPanel inputPanel;
 		inputPanel.bOpen = true;
+		inputPanel.Attach(inputAsset, editing.Transactions);
 
+		const int debugTabs = static_cast<int>(Nyx::Input::InputDebugView::ETab::Count);
 		uint32_t inputShapes = 0;
 		uint64_t time = 1000;
-		for (int tab = 0; tab < static_cast<int>(Nyx::Input::InputDebugView::ETab::Count); ++tab)
+		for (int tab = 0; tab < debugTabs + 4; ++tab)
 		{
-			inputPanel.SelectTab(static_cast<Nyx::Input::InputDebugView::ETab>(tab));
+			if (tab < debugTabs)
+			{
+				inputPanel.SelectTab(static_cast<Nyx::Input::InputDebugView::ETab>(tab));
+			}
+			else
+			{
+				inputPanel.SelectExtraTab(tab == debugTabs + 3 ? "Checks" : "Tuning");
+				if (tab == debugTabs)
+				{
+					inputPanel.GetTuning().SelectBinding(0, 4);
+				}
+				else if (tab == debugTabs + 1)
+				{
+					inputPanel.GetTuning().SelectBinding(0, inputAsset.GetAsset().Contexts[0].Bindings.size() - 4);
+				}
+				else if (tab == debugTabs + 2)
+				{
+					inputPanel.GetTuning().SelectBinding(99, 0);
+				}
+			}
 			for (int frame = 0; frame < 3; ++frame)
 			{
 				time += 16000;
@@ -1512,6 +1543,7 @@ namespace
 		Nyx::UI::SetMarkImGuiShapes(false);
 		style.Colors[ImGuiCol_Text] = text;
 		Nyx::UI::SetPaintedChrome(false);
+		std::filesystem::remove(inputAssetPath);
 		Require(shapes == 0, "The editor's panels should leave no shapes to ImGui, found " + std::to_string(shapes));
 		Require(inputShapes == 0, "The Input window should leave no shapes to ImGui, found " + std::to_string(inputShapes));
 	}
