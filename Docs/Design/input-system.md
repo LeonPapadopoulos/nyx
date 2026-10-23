@@ -161,6 +161,13 @@ are reflected types (`NYX_REFLECT`, `NYX_ENUM`) and the header tool also reads
   then starts its stream again, so the file starts with a snapshot). `NyxGame.exe --input-record`
   records a game from its start (`InputRecordingLayer`). `NyxDump` prints recordings
   (`PrintInputRecording()`, in `LinkTools`).
+- *Replay...* opens a recording as the Input window's source (`InputPlayback`, a replica): at the
+  recorded pace, paused, a frame at a time, or moved to any frame by replaying from the start.
+- `NyxGame.exe --input-replay` plays a recording into the game's own input instead of its devices
+  (`InputSystem::StartReplay()`): the recorded times, events, focus and ImGui state go through the
+  game's own actions and contexts, so a replay can try other tuning. While it plays, the devices
+  are ignored and what they held lets go; the recorded devices get ids of their own and go at the
+  end, when the devices count again.
 
 ## Seeing it
 
@@ -221,4 +228,4 @@ and tries their output, for checking them by hand.
 
 ## Not built yet
 
-Replaying recordings, and A/B.
+A/B.

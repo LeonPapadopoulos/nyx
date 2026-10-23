@@ -18,4 +18,7 @@ namespace Nyx::Editor
 	// Where to save a theme file, starting in `folder` with `name` filled in; ".nyxtheme" is added
 	// when the name has no extension, and choosing a file that exists asks first
 	std::optional<std::filesystem::path> ChooseThemeFileToSave(const std::filesystem::path& folder, const std::wstring& name);
+
+	// For an input recording (*.nyxinputrec), starting in `folder` if it is there
+	std::optional<std::filesystem::path> ChooseInputRecording(const std::filesystem::path& folder);
 }

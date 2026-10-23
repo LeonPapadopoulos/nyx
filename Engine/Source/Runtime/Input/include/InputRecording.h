@@ -92,6 +92,79 @@ namespace Nyx::Input
 	// with the reason, if the file isn't a recording.
 	std::optional<InputRecording> LoadInputRecording(const std::filesystem::path& path, std::string* outProblem = nullptr);
 
+	// A recording played back in a replica, for the editor's Input window: at the recorded pace,
+	// paused, a frame at a time, or again from the start up to a frame
+	class InputPlayback
+	{
+	public:
+		bool Load(const std::filesystem::path& path, std::string* outProblem = nullptr);
+
+		const std::filesystem::path& GetPath() const
+		{
+			return Path;
+		}
+
+		// While playing: the frames whose time has come, deltaSeconds after the last call. Stops at
+		// the end.
+		void Update(float deltaSeconds);
+
+		void SetPlaying(bool bPlay);
+		bool IsPlaying() const
+		{
+			return bPlaying;
+		}
+
+		// One frame on, if there is one
+		void Step();
+
+		// Starts again, and replays `frames` frames: the replica as it was after them
+		void SeekTo(size_t frames);
+
+		// Frames replayed so far, and in all
+		size_t GetFrame() const
+		{
+			return ReplayedFrames;
+		}
+
+		size_t GetFrameCount() const
+		{
+			return FrameRecords.size();
+		}
+
+		// When a frame was recorded, in seconds from the first
+		float GetSeconds(size_t frame) const;
+
+		bool IsAtEnd() const
+		{
+			return ReplayedFrames >= FrameRecords.size();
+		}
+
+		InputReplica& GetReplica()
+		{
+			return *Replica;
+		}
+
+		const InputRecording& GetRecording() const
+		{
+			return Recording;
+		}
+
+	private:
+		void ReplayNextFrame();
+
+		std::filesystem::path Path;
+		InputRecording Recording;
+		// Each frame's record, and when it was recorded
+		std::vector<size_t> FrameRecords;
+		std::vector<uint64_t> FrameTimes;
+
+		std::unique_ptr<InputReplica> Replica = std::make_unique<InputReplica>();
+		size_t NextRecord = 0;
+		size_t ReplayedFrames = 0;
+		double PlayedSeconds = 0.0;
+		bool bPlaying = false;
+	};
+
 	// Where the editor puts its recordings: an "InputRecordings" folder next to it
 	std::filesystem::path GetInputRecordingFolder();
 

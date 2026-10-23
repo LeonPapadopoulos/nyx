@@ -8,6 +8,7 @@
 #include "InputRecording.h"
 #include "Log.h"
 
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -227,6 +228,96 @@ namespace
 		std::filesystem::remove(path);
 	}
 
+	// --input-replay: the recording plays into a game's own input system instead of its devices,
+	// and decides as it did; the devices are ignored while it plays, and count again after it
+	void TestReplayIntoAGame()
+	{
+		const std::filesystem::path path = TempPath("NyxInputRecordingTestsReplay.nyxinputrec");
+		const std::vector<ActionFrame> original = Record(path, 10);
+		std::optional<InputRecording> recording = LoadInputRecording(path);
+		Require(recording.has_value(), "The recording loads");
+
+		// A game in another state: started later, its keyboard holding A
+		Game game;
+		game.NowUs = 50'000'000;
+		game.Backend.Press(game.Keyboard, Key(EKey::A), game.NowUs + 1);
+		game.Frame();
+		game.Input.StartReplay(std::move(*recording));
+		Require(game.Input.IsReplaying() && game.Input.GetReplayFrameCount() == original.size(), "Replaying");
+
+		const std::vector<std::function<void(Game&)>> script = MakeScript();
+		for (size_t frame = 0; frame < original.size(); ++frame)
+		{
+			// The game's code does as it did (the mouse look on at frame 6); its devices do something else
+			if (frame == 6)
+			{
+				game.Camera->SetActive(true, true, "Looking");
+			}
+			game.Backend.Press(game.Keyboard, Key(EKey::D), game.NowUs + 1);
+			game.Backend.SetValue(game.Pad, Gamepad(EGamepadControl::LeftStick), glm::vec3(-1.0f, 0.0f, 0.0f), game.NowUs + 1);
+			game.Frame();
+
+			const ActionFrame replayed = Snapshot(game.Input);
+			for (size_t action = 0; action < replayed.Phases.size() && frame > 0; ++action)
+			{
+				const std::string at = "action " + std::to_string(action) + ", frame " + std::to_string(frame);
+				Require(original[frame].Phases[action] == replayed.Phases[action], "The same phase: " + at);
+				Require(glm::length(original[frame].Values[action] - replayed.Values[action]) < 1e-5f, "The same value: " + at);
+			}
+		}
+		Require(game.Input.GetReplayedFrames() == original.size(), "Every frame replayed");
+
+		// The end: the recorded devices go, the game's own count again
+		game.Frame();
+		Require(!game.Input.IsReplaying(), "The replay ended");
+		game.Backend.Release(game.Keyboard, Key(EKey::D), game.NowUs + 1);
+		game.Backend.Press(game.Keyboard, Key(EKey::D), game.NowUs + 2);
+		game.Frame();
+		const ActionHandle move = game.Input.FindAction("Move");
+		Require(game.Input.GetUser().Get(move).Vec3().x > 0.5f, "D moves right again");
+		for (const InputFrame::DeviceState& device : game.Input.GetFrame().GetDevices())
+		{
+			Require(device.Info.Id.Value < 0x40000000u, "No recorded device is left: " + device.Info.Name);
+		}
+		std::filesystem::remove(path);
+	}
+
+	// The editor's Replay: at the recorded pace, paused, stepped, seeked
+	void TestPlayback()
+	{
+		const std::filesystem::path path = TempPath("NyxInputRecordingTestsPlayback.nyxinputrec");
+		const std::vector<ActionFrame> original = Record(path, 10);
+
+		InputPlayback playback;
+		Require(playback.Load(path) && playback.GetFrameCount() == original.size(), "It loads");
+		Require(playback.GetFrame() == 0 && !playback.IsPlaying(), "At the start, paused");
+		Require(std::abs(playback.GetSeconds(3) - 0.048f) < 1e-4f, "Frames 16 ms apart");
+
+		playback.SetPlaying(true);
+		playback.Update(0.040f);
+		Require(playback.GetFrame() == 3, "40 ms: frames at 0, 16 and 32 ms, " + std::to_string(playback.GetFrame()));
+		playback.Step();
+		Require(!playback.IsPlaying() && playback.GetFrame() == 4, "Step pauses and goes one frame on");
+		playback.Update(1.0f);
+		Require(playback.GetFrame() == 4, "Paused, time doesn't move it");
+
+		// Seeking replays from the start: the replica as after that many frames
+		playback.SeekTo(8);
+		const InputSystem& replica = playback.GetReplica().GetInput();
+		for (uint32_t action = 0; action < static_cast<uint32_t>(replica.GetActionCount()); ++action)
+		{
+			Require(replica.GetUser().Get(ActionHandle::Make(action, 1)).Phase == original[7].Phases[action], "Seeked to frame 8");
+		}
+		Require(playback.GetReplica().GetHistory().GetFrames().size() == 8, "Its timeline has those frames");
+
+		playback.SetPlaying(true);
+		playback.Update(10.0f);
+		Require(playback.IsAtEnd() && !playback.IsPlaying(), "Played to the end, it stops");
+		playback.SetPlaying(true);
+		Require(playback.GetFrame() == 0 && playback.IsPlaying(), "Play at the end starts over");
+		std::filesystem::remove(path);
+	}
+
 	void TestNotARecording()
 	{
 		const std::filesystem::path path = TempPath("NyxInputRecordingTests.txt");
@@ -268,6 +359,8 @@ int main()
 	try
 	{
 		TestReplayGivesTheSamePhases();
+		TestReplayIntoAGame();
+		TestPlayback();
 		TestNotARecording();
 		TestTwoWatchers();
 	}

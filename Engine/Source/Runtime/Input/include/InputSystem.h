@@ -9,12 +9,15 @@
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
 
 namespace Nyx::Input
 {
+	struct InputRecording;
+
 	// Gathers what the backends report into one InputFrame per frame, runs the user's context
 	// stack over it to decide the actions, and makes the cursor what the stack says
 	// (Docs/Design/input-system.md). The application owns one and runs it around the layers:
@@ -33,6 +36,7 @@ namespace Nyx::Input
 		static constexpr int ImGuiPriority = 900;
 
 		InputSystem();
+		~InputSystem();
 
 		// Its user points back at it
 		InputSystem(const InputSystem&) = delete;
@@ -127,6 +131,24 @@ namespace Nyx::Input
 		uint32_t AddFrameObserver(FrameObserver observer);
 		void RemoveFrameObserver(uint32_t id);
 
+		// Plays a recording (InputRecording.h) instead of the devices: one recorded frame per frame,
+		// with the recorded times, events, focus and ImGui state, so the actions decide as they did
+		// when it was recorded, as far as the program's code puts the same contexts on the stack.
+		// Its actions and contexts are this program's own (the recording's definitions are left
+		// out), so a replay can try other tuning. While it plays, the devices' controls and the
+		// focus are ignored, and what they held lets go at its start; their coming and going isn't. The recorded devices get ids of their
+		// own and are removed at the end; then the devices count again.
+		void StartReplay(InputRecording recording);
+		void StopReplay();
+		bool IsReplaying() const
+		{
+			return Replay != nullptr;
+		}
+
+		// Frames replayed, and how many the recording has
+		size_t GetReplayedFrames() const;
+		size_t GetReplayFrameCount() const;
+
 		// Whether devices coming and going and the cursor are logged; not for a replica of another
 		// program's input
 		void SetLogging(bool bLog)
@@ -175,6 +197,15 @@ namespace Nyx::Input
 		uint64_t DefinitionsRevision = 0;
 		std::vector<std::pair<uint32_t, FrameObserver>> Observers;
 		uint32_t NextObserverId = 1;
+
+		// The recording being replayed, and where it is (InputSystem.cpp)
+		struct ReplayState;
+		std::unique_ptr<ReplayState> Replay;
+		// The replayed devices' removal, for the frame after the replay
+		std::vector<InputEvent> ReplayEnded;
+
+		// The next replayed frame instead of the devices' events; false at the end of the recording
+		bool TakeReplayFrame(uint64_t& inOutNowUs, std::vector<InputEvent>& inOutEvents);
 		bool bLogging = true;
 	};
 }

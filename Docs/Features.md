@@ -143,6 +143,11 @@ contexts, and the context highest on the stack that binds a control gets it.
 - *Record* beside it writes the input shown to a `.nyxinputrec` file in an `InputRecordings`
   folder next to the editor; `NyxGame.exe --input-record <file>` records a game from its start,
   e.g. for a bug report.
+- *Replay...* opens a recording as the source: it plays at the recorded pace through the recorded
+  actions and contexts, and can be paused, stepped a frame at a time and moved to any frame, with
+  each frame's traces in the Timeline. `NyxGame.exe --input-replay <file>` plays a recording into
+  the game itself instead of its devices, with the game's own actions and contexts, then goes on
+  with the devices.
 - In Debug builds, Ctrl+Alt+Shift+I shows the same over a game.
 - The bindings and their tuning are data, in `Input\Default.nyxinput` in the project's assets, or
   else the engine's (`Assets\Input\Default.nyxinput` in Nyx's own build). The editor writes it

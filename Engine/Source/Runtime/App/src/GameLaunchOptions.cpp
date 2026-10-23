@@ -136,6 +136,12 @@ namespace Nyx
 			arguments.push_back(ToUtf8(options.InputRecordPath));
 		}
 
+		if (!options.InputReplayPath.empty())
+		{
+			arguments.push_back("--input-replay");
+			arguments.push_back(ToUtf8(options.InputReplayPath));
+		}
+
 		if (options.WindowSize)
 		{
 			arguments.push_back("--window-size");
@@ -183,6 +189,17 @@ namespace Nyx
 			else if (argument == "--input-background")
 			{
 				options.bInputBackground = true;
+			}
+			else if (argument == "--input-replay")
+			{
+				if (const std::optional<std::string_view> value = takeValue())
+				{
+					options.InputReplayPath = FromUtf8(*value);
+				}
+				else
+				{
+					outWarnings.push_back("--input-replay needs a file name");
+				}
 			}
 			else if (argument == "--input-record")
 			{

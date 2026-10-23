@@ -59,6 +59,15 @@ namespace Nyx::Editor
 		void SelectSource(std::string gameName)
 		{
 			ShownGame = std::move(gameName);
+			bShowPlayback = false;
+		}
+
+		// Replay: shows the recording, played from its start. False, logged, if it can't be read.
+		bool OpenRecording(const std::filesystem::path& path);
+
+		Nyx::Input::InputPlayback* GetPlayback()
+		{
+			return Playback.get();
 		}
 
 		InputTuningView& GetTuning()
@@ -83,5 +92,10 @@ namespace Nyx::Editor
 		void DrawRecordButton(Nyx::Input::InputSystem& editorInput);
 		Nyx::Input::InputRecordingSession EditorRecording;
 		std::string LastRecording;
+
+		// Replay: a recording as the source, with its controls
+		void DrawPlaybackControls();
+		std::unique_ptr<Nyx::Input::InputPlayback> Playback;
+		bool bShowPlayback = false;
 	};
 }

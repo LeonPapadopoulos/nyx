@@ -39,7 +39,7 @@ namespace
 		const GameLaunchOptions options = Parse({}, warnings);
 		Require(warnings.empty(), "No arguments should give no warnings");
 		Require(options.ScenePath.empty() && !options.bWaitForDebugger && !options.EditorPort && options.LinkLogPath.empty() &&
-					!options.bInputBackground && options.InputRecordPath.empty() && !options.WindowSize && !options.WindowPosition && options.WindowTitle.empty(),
+					!options.bInputBackground && options.InputRecordPath.empty() && options.InputReplayPath.empty() && !options.WindowSize && !options.WindowPosition && options.WindowTitle.empty(),
 			"No arguments should leave every option at its default");
 	}
 
@@ -52,6 +52,7 @@ namespace
 		written.LinkLogPath = "Link Logs/Game 1.nyxlinklog";
 		written.bInputBackground = true;
 		written.InputRecordPath = "Input Recordings/Run 1.nyxinputrec";
+		written.InputReplayPath = "Bug 42.nyxinputrec";
 		written.WindowSize = GameWindowSize{ 1280, 800 };
 		written.WindowPosition = GameWindowPosition{ -1920, -40 };
 		written.WindowTitle = "Nyx Game - Steam Deck";
@@ -67,6 +68,7 @@ namespace
 		Require(read.LinkLogPath == written.LinkLogPath, "Link log path differs after a round trip");
 		Require(read.bInputBackground, "--input-background lost in a round trip");
 		Require(read.InputRecordPath == written.InputRecordPath, "Input record path differs after a round trip");
+		Require(read.InputReplayPath == written.InputReplayPath, "Input replay path differs after a round trip");
 		Require(read.WindowSize == written.WindowSize, "Window size differs after a round trip");
 		Require(read.WindowPosition == written.WindowPosition, "Window position differs after a round trip");
 		Require(read.WindowTitle == written.WindowTitle, "Window title differs after a round trip");

@@ -1,5 +1,8 @@
 #include "InputSystem.h"
 
+#include "BinaryArchive.h"
+#include "InputRecording.h"
+
 #include "Log.h"
 
 #include <algorithm>
@@ -14,6 +17,136 @@ namespace Nyx::Input
 		// A frame longer than this (a breakpoint, a stall) counts as this long for the value
 		// pipeline. Triggers time with the events and aren't affected.
 		constexpr float MaxDeltaSeconds = 0.25f;
+	}
+
+	// A replayed device's id: the recorded one with this bit, so it can't be taken for a device
+	// that is connected
+	constexpr uint32_t ReplayedDeviceBit = 0x40000000u;
+
+	struct InputSystem::ReplayState
+	{
+		InputRecording Recording;
+		size_t NextRecord = 0;
+		size_t ReplayedFrames = 0;
+		size_t FrameCount = 0;
+
+		// Recorded time plus this is this program's time
+		int64_t TimeOffset = 0;
+		bool bStarted = false;
+
+		std::vector<InputDeviceId> Devices;
+	};
+
+	InputSystem::~InputSystem() = default;
+
+	void InputSystem::StartReplay(InputRecording recording)
+	{
+		StopReplay();
+		Replay = std::make_unique<ReplayState>();
+		Replay->FrameCount = recording.GetFrameCount();
+		Replay->Recording = std::move(recording);
+		LOG_INFO("Input: replaying {0} frames of {1}'s input", Replay->FrameCount, Replay->Recording.ProgramName);
+	}
+
+	void InputSystem::StopReplay()
+	{
+		if (!Replay)
+		{
+			return;
+		}
+
+		// The recorded devices go in the next frame, letting go of what they held
+		LOG_INFO("Input: replay ended after {0} of {1} frames", Replay->ReplayedFrames, Replay->FrameCount);
+		for (const InputDeviceId device : Replay->Devices)
+		{
+			InputEvent removed{ .Kind = EInputEventKind::DeviceRemoved, .TimeUs = Frame.GetTimeUs() };
+			removed.Device.Id = device;
+			ReplayEnded.push_back(removed);
+		}
+		Replay.reset();
+	}
+
+	size_t InputSystem::GetReplayedFrames() const
+	{
+		return Replay ? Replay->ReplayedFrames : 0;
+	}
+
+	size_t InputSystem::GetReplayFrameCount() const
+	{
+		return Replay ? Replay->FrameCount : 0;
+	}
+
+	bool InputSystem::TakeReplayFrame(uint64_t& inOutNowUs, std::vector<InputEvent>& inOutEvents)
+	{
+		// The devices' controls and the focus don't count while a recording plays
+		std::erase_if(inOutEvents,
+			[](const InputEvent& event)
+			{
+				return event.Kind == EInputEventKind::Control || event.Kind == EInputEventKind::FocusChanged;
+			});
+
+		// The next frame record; the program's own definitions count, not the recording's
+		InputFrameRecord record;
+		bool bFound = false;
+		std::vector<InputStreamRecord>& records = Replay->Recording.Records;
+		while (Replay->NextRecord < records.size() && !bFound)
+		{
+			const InputStreamRecord& next = records[Replay->NextRecord++];
+			if (next.bDefinitions)
+			{
+				continue;
+			}
+			Nyx::BinaryReader reader;
+			reader.LoadFromMemory(next.Bytes);
+			bFound = ReadFrameRecord(reader, record);
+		}
+		if (!bFound)
+		{
+			return false;
+		}
+
+		// The recorded times, moved to start now. What the devices hold lets go: only the recording counts.
+		if (!Replay->bStarted)
+		{
+			Replay->TimeOffset = static_cast<int64_t>(inOutNowUs) - static_cast<int64_t>(record.TimeUs);
+			Replay->bStarted = true;
+			for (const InputFrame::DeviceState& device : Frame.GetDevices())
+			{
+				for (size_t index = 0; index < device.Controls.size() && !device.bRemoved; ++index)
+				{
+					if (device.Controls[index].Value != glm::vec3(0.0f))
+					{
+						InputEvent release{ .Kind = EInputEventKind::Control, .TimeUs = inOutNowUs };
+						release.Device.Id = device.Info.Id;
+						release.Control = ControlId{ device.Info.Kind, static_cast<uint16_t>(index) };
+						inOutEvents.push_back(release);
+					}
+				}
+			}
+		}
+		const auto shift = [this](uint64_t timeUs)
+		{
+			return timeUs == 0 ? 0 : static_cast<uint64_t>(static_cast<int64_t>(timeUs) + Replay->TimeOffset);
+		};
+		inOutNowUs = std::max(shift(record.TimeUs), PreviousFrameUs);
+
+		for (InputEvent event : record.Events)
+		{
+			event.TimeUs = shift(event.TimeUs);
+			if (event.Device.Id.IsValid())
+			{
+				event.Device.Id.Value |= ReplayedDeviceBit;
+			}
+			if (event.Kind == EInputEventKind::DeviceAdded)
+			{
+				Replay->Devices.push_back(event.Device.Id);
+			}
+			inOutEvents.push_back(event);
+		}
+		ImGuiState = record.ImGui;
+		bGamepadsInBackground = record.bGamepadsInBackground;
+		++Replay->ReplayedFrames;
+		return true;
 	}
 
 	InputSystem::InputSystem()
@@ -133,9 +266,7 @@ namespace Nyx::Input
 
 	void InputSystem::BeginFrame(uint64_t nowUs)
 	{
-		Frame.Begin(nowUs);
-
-		std::vector<InputEvent> events;
+		std::vector<InputEvent> events = std::exchange(ReplayEnded, {});
 		for (IInputBackend* backend : Backends)
 		{
 			const size_t first = events.size();
@@ -148,6 +279,18 @@ namespace Nyx::Input
 				}
 			}
 		}
+
+		// A recording replaces the devices' input while it plays
+		if (Replay && !TakeReplayFrame(nowUs, events))
+		{
+			StopReplay();
+			events.insert(events.end(), ReplayEnded.begin(), ReplayEnded.end());
+			ReplayEnded.clear();
+		}
+
+		// A replay's clock can run ahead of this program's; time never goes back
+		nowUs = std::max(nowUs, PreviousFrameUs);
+		Frame.Begin(nowUs);
 
 		// Each backend's events are in order already; this interleaves the backends'. Stable, so
 		// events at the same time keep the order their backend reported them in.

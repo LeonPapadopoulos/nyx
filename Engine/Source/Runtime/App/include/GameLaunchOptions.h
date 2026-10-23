@@ -51,6 +51,9 @@ namespace Nyx
 		// Records the game's input to this file (.nyxinputrec)
 		std::filesystem::path InputRecordPath;
 
+		// Plays this recording instead of the devices' input, then the devices again
+		std::filesystem::path InputReplayPath;
+
 		// Unset: the window's default size, or its default place chosen by the system
 		std::optional<GameWindowSize> WindowSize;
 		std::optional<GameWindowPosition> WindowPosition;

@@ -17,6 +17,7 @@
 #include "EditorCameraController.h"
 #include "InputAssetDocument.h"
 #include "InputPanel.h"
+#include "InputRecording.h"
 #include "VirtualInputBackend.h"
 #include "PropertyWidgetRegistry.h"
 #include "SceneEditor.h"
@@ -1494,12 +1495,23 @@ namespace
 		inputPanel.bOpen = true;
 		inputPanel.Attach(inputAsset, editing.Transactions);
 
+		// And a recording of it, replayed with its controls in the last pass
+		const std::filesystem::path recordingPath = std::filesystem::temp_directory_path() / "NyxEditorPanelTests.nyxinputrec";
+		Nyx::Input::InputRecordingSession recording;
+		Require(recording.Start(input, recordingPath, "NyxEditor"), "The input should be recorded");
+
 		const int debugTabs = static_cast<int>(Nyx::Input::InputDebugView::ETab::Count);
 		uint32_t inputShapes = 0;
 		uint64_t time = 1000;
-		for (int tab = 0; tab < debugTabs + 4; ++tab)
+		for (int tab = 0; tab < debugTabs + 5; ++tab)
 		{
-			if (tab < debugTabs)
+			if (tab == debugTabs + 4)
+			{
+				recording.Stop();
+				Require(inputPanel.OpenRecording(recordingPath), "The recording should replay");
+				inputPanel.SelectTab(Nyx::Input::InputDebugView::ETab::Timeline);
+			}
+			else if (tab < debugTabs)
 			{
 				inputPanel.SelectTab(static_cast<Nyx::Input::InputDebugView::ETab>(tab));
 			}
@@ -1525,6 +1537,7 @@ namespace
 				backend.SetValue(pad, Nyx::Input::Gamepad(Nyx::Input::EGamepadControl::LeftStick), glm::vec3(0.3f, 0.1f * static_cast<float>(frame), 0.0f), time - 1);
 				backend.SetValue(pad, Nyx::Input::Gamepad(Nyx::Input::EGamepadControl::Touchpad0), glm::vec3(0.5f, 0.5f, 1.0f), time - 1);
 				input.BeginFrame(time);
+				recording.Update();
 				inputPanel.Record(input);
 
 				ImGui::NewFrame();
@@ -1544,6 +1557,8 @@ namespace
 		style.Colors[ImGuiCol_Text] = text;
 		Nyx::UI::SetPaintedChrome(false);
 		std::filesystem::remove(inputAssetPath);
+		Require(inputPanel.GetPlayback() && inputPanel.GetPlayback()->GetFrame() > 0, "The recording should have played");
+		std::filesystem::remove(recordingPath);
 		Require(shapes == 0, "The editor's panels should leave no shapes to ImGui, found " + std::to_string(shapes));
 		Require(inputShapes == 0, "The Input window should leave no shapes to ImGui, found " + std::to_string(inputShapes));
 	}

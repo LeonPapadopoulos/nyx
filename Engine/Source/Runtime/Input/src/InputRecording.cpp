@@ -169,6 +169,111 @@ namespace Nyx::Input
 		return recording;
 	}
 
+	// ---------------------------------------------------------------------------------------
+	// Playback
+
+	bool InputPlayback::Load(const std::filesystem::path& path, std::string* outProblem)
+	{
+		std::optional<InputRecording> recording = LoadInputRecording(path, outProblem);
+		if (!recording)
+		{
+			return false;
+		}
+
+		Path = path;
+		Recording = std::move(*recording);
+		FrameRecords.clear();
+		FrameTimes.clear();
+		for (size_t index = 0; index < Recording.Records.size(); ++index)
+		{
+			const InputStreamRecord& record = Recording.Records[index];
+			if (record.bDefinitions)
+			{
+				continue;
+			}
+
+			// A frame record starts with its time
+			Nyx::BinaryReader reader;
+			reader.LoadFromMemory(record.Bytes);
+			uint64_t timeUs = 0;
+			reader.ReadUInt64(timeUs);
+			FrameRecords.push_back(index);
+			FrameTimes.push_back(timeUs);
+		}
+		SeekTo(0);
+		return true;
+	}
+
+	float InputPlayback::GetSeconds(size_t frame) const
+	{
+		if (FrameTimes.empty())
+		{
+			return 0.0f;
+		}
+		frame = std::min(frame, FrameTimes.size() - 1);
+		return static_cast<float>(static_cast<double>(FrameTimes[frame] - FrameTimes.front()) / 1'000'000.0);
+	}
+
+	void InputPlayback::ReplayNextFrame()
+	{
+		if (IsAtEnd())
+		{
+			return;
+		}
+
+		// The definitions before the frame, then the frame
+		const size_t frameRecord = FrameRecords[ReplayedFrames];
+		while (NextRecord <= frameRecord)
+		{
+			Replica->Apply(Recording.Records[NextRecord++]);
+		}
+		++ReplayedFrames;
+	}
+
+	void InputPlayback::Update(float deltaSeconds)
+	{
+		if (!bPlaying)
+		{
+			return;
+		}
+
+		PlayedSeconds += deltaSeconds;
+		while (!IsAtEnd() && GetSeconds(ReplayedFrames) <= PlayedSeconds)
+		{
+			ReplayNextFrame();
+		}
+		bPlaying = !IsAtEnd();
+	}
+
+	void InputPlayback::SetPlaying(bool bPlay)
+	{
+		// At the end, Play starts again
+		if (bPlay && IsAtEnd())
+		{
+			SeekTo(0);
+		}
+		bPlaying = bPlay && !IsAtEnd();
+	}
+
+	void InputPlayback::Step()
+	{
+		bPlaying = false;
+		ReplayNextFrame();
+		PlayedSeconds = ReplayedFrames > 0 ? GetSeconds(ReplayedFrames - 1) : 0.0;
+	}
+
+	void InputPlayback::SeekTo(size_t frames)
+	{
+		Replica = std::make_unique<InputReplica>();
+		NextRecord = 0;
+		ReplayedFrames = 0;
+		while (ReplayedFrames < std::min(frames, FrameRecords.size()))
+		{
+			ReplayNextFrame();
+		}
+		PlayedSeconds = ReplayedFrames > 0 ? GetSeconds(ReplayedFrames - 1) : 0.0;
+	}
+
 	std::filesystem::path GetInputRecordingFolder()
 	{
 		return Paths::GetExecutableDir() / "InputRecordings";

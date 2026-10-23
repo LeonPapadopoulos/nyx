@@ -85,6 +85,15 @@ namespace Nyx::Editor
 		return ShowFileDialog(DialogOptions{ .Title = L"Choose an image", .Filters = filters });
 	}
 
+	std::optional<std::filesystem::path> ChooseInputRecording(const std::filesystem::path& folder)
+	{
+		constexpr COMDLG_FILTERSPEC filters[] = {
+			{ L"Input recordings", L"*.nyxinputrec" },
+			{ L"All files", L"*.*" },
+		};
+		return ShowFileDialog(DialogOptions{ .Title = L"Choose an input recording", .Filters = filters, .Folder = folder });
+	}
+
 	std::optional<std::filesystem::path> ChooseThemeFileToOpen(const std::filesystem::path& folder)
 	{
 		return ShowFileDialog(DialogOptions{ .Title = L"Load a theme", .Filters = ThemeFilters, .Folder = folder });
