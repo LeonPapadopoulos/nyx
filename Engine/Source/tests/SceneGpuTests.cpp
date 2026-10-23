@@ -23,9 +23,11 @@
 // was put when set from outside; picking finds it where it is. A surface decal with the masked
 // decal material brightens a cube where it is, the more the more it is revealed; nothing at all
 // unrevealed, without its host, or behind something else; on a body between two steps, it is
-// drawn where the body is drawn. A click on a decal's mask picks the decal, one where its mask is
-// empty what is beneath, and a selected decal's quad is outlined. A decal's pulse runs on the
-// renderer's time in the editor's world, and stands still in a game's world while it is paused.
+// drawn where the body is drawn; with only its material's path, as one made while the game runs,
+// it is drawn as one loaded from a scene. A click on a decal's mask picks the decal, one where
+// its mask is empty what is beneath, and a selected decal's quad is outlined. A decal's pulse
+// runs on the renderer's time in the editor's world, and stands still in a game's world while it
+// is paused.
 //
 // NYX_SCENE_TEST_OUTPUT=<folder> saves what was rendered there, e.g. to make a new reference
 // after a change that is meant to change the picture.
@@ -1156,6 +1158,22 @@ namespace
 		SaveIfAsked(revealed, "Decal-Revealed");
 		const size_t revealedCount = brightened(revealed, without, "Revealed");
 		Require(revealedCount > 500, "The revealed decal brightens only " + std::to_string(revealedCount) + " pixels");
+
+		// Added while the game runs, with only its material's path: drawn as one loaded is; its path
+		// swapped for another material's, drawn with that one
+		Require(draw([](SurfaceDecalComponent& component)
+					{
+						component.MaterialAsset = nullptr;
+						component.Material = AssetReference{ .Type = "Material", .Path = "Materials/MaskedDecal.nyxmat" };
+					})
+					.Pixels == revealed.Pixels,
+			"The decal with only its material's path isn't drawn as the one with its material");
+		Require(draw([](SurfaceDecalComponent& component)
+					{
+						component.Material = AssetReference{ .Type = "Material", .Path = "Materials/Untextured.nyxmat" };
+					})
+					.Pixels != revealed.Pixels,
+			"The decal whose material's path changed is drawn with the old material");
 
 		const RgbaImage halfRevealed = draw([](SurfaceDecalComponent& component)
 			{

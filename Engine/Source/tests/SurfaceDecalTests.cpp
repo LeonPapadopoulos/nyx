@@ -1,8 +1,9 @@
 // Surface decals without a GPU: a decal's quad follows its host as it moves, turns and is scaled,
 // lifted a little off the surface and keeping its size; on a host drawn between two steps, it is
 // where the host is drawn, and picked and outlined where the host is; what the renderer extracts
-// of a world's decals, and what it leaves out; a decal saved in a scene and loaded with its
-// material resolved; the time a game's world's decals pulse by, paused and stepped.
+// of a world's decals, and what it leaves out; a decal made at run time with only its material's
+// path, drawn with that material; a decal saved in a scene and loaded with its material
+// resolved; the time a game's world's decals pulse by, paused and stepped.
 #include "ComponentRegistration.h"
 #include "DrawnWorldTime.h"
 #include "Entity.h"
@@ -26,6 +27,7 @@
 #include <cmath>
 #include <functional>
 #include <iostream>
+#include <map>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -60,6 +62,42 @@ namespace
 		world.Add<Nyx::GuidComponent>(host, Nyx::GuidComponent{ guid });
 		world.Add<TransformComponent>(host, transform);
 		return host;
+	}
+
+	// Resolves the paths it has materials for, and nothing else, and counts the asks by path
+	class MaterialsByPath final : public Nyx::IAssetResolver
+	{
+	public:
+		Nyx::Mesh* ResolveMesh(const std::string&) override
+		{
+			return nullptr;
+		}
+
+		Nyx::Material* ResolveMaterial(const std::string& path) override
+		{
+			++Asks[path];
+			const auto found = Materials.find(path);
+			return found != Materials.end() ? found->second : nullptr;
+		}
+
+		std::map<std::string, Nyx::Material*> Materials;
+		std::map<std::string, int> Asks;
+	};
+
+	// What the renderer extracts of the world's decals, its material paths resolved by `assets`
+	std::vector<Nyx::RenderDecal> Extract(const Nyx::Registry& world, std::optional<float> interpolation, Nyx::IAssetResolver& assets, Nyx::DecalMaterialCache& materials)
+	{
+		std::vector<Nyx::RenderDecal> drawn;
+		Nyx::ExtractSurfaceDecals(world, interpolation, assets, materials, drawn);
+		return drawn;
+	}
+
+	// The same for decals that name no material paths
+	std::vector<Nyx::RenderDecal> Extract(const Nyx::Registry& world, std::optional<float> interpolation)
+	{
+		MaterialsByPath assets;
+		Nyx::DecalMaterialCache materials;
+		return Extract(world, interpolation, assets, materials);
 	}
 
 	// The quad's corners in the order of the plane mesh's UVs, from the plane mesh's corners
@@ -126,8 +164,7 @@ namespace
 			Require(frame.has_value(), what + ": the decal's anchor should resolve");
 			const std::array<glm::vec3, 4> corners = Nyx::GetSurfaceDecalCorners(*frame, size);
 
-			std::vector<Nyx::RenderDecal> drawn;
-			Nyx::ExtractSurfaceDecals(world, std::nullopt, drawn);
+			const std::vector<Nyx::RenderDecal> drawn = Extract(world, std::nullopt);
 			Require(drawn.size() == 1, what + ": the decal should be drawn");
 			const std::array<glm::vec3, 4> drawnCorners = CornersOf(drawn[0].Model);
 
@@ -193,8 +230,7 @@ namespace
 		for (const auto& [factor, cube] : cases)
 		{
 			const std::string what = factor ? "Half a step on" : "Without a factor";
-			std::vector<Nyx::RenderDecal> drawn;
-			Nyx::ExtractSurfaceDecals(world, factor, drawn);
+			const std::vector<Nyx::RenderDecal> drawn = Extract(world, factor);
 			Require(drawn.size() == 1, what + ": the decal should be drawn");
 			const std::array<glm::vec3, 4> corners = CornersOf(drawn[0].Model);
 			const std::array<glm::vec3, 4> expected = cornersOnFace(cube);
@@ -261,8 +297,7 @@ namespace
 			});
 		addDecal(EntityGuid{ 0x41 }, nullptr);
 
-		std::vector<Nyx::RenderDecal> drawn;
-		Nyx::ExtractSurfaceDecals(world, std::nullopt, drawn);
+		std::vector<Nyx::RenderDecal> drawn = Extract(world, std::nullopt);
 		Require(drawn.size() == 2, "Two of the decals should be drawn, not " + std::to_string(drawn.size()));
 		Require(drawn[0].SourceEntity == onHost && drawn[1].SourceEntity == inWorld, "The decals should be drawn in the world's order");
 		Require(drawn[0].MaterialAsset == &material, "The decal should be drawn with its material");
@@ -273,7 +308,7 @@ namespace
 
 		// Its host gone, the decal on it isn't drawn
 		world.DestroyEntity(host);
-		Nyx::ExtractSurfaceDecals(world, std::nullopt, drawn);
+		drawn = Extract(world, std::nullopt);
 		Require(drawn.size() == 1 && drawn[0].SourceEntity == inWorld, "A decal whose host is gone shouldn't be drawn");
 	}
 
@@ -308,6 +343,48 @@ namespace
 		Require(clock.Advance(0.0) == 1, "Step should run one step");
 		Require(near(Nyx::GetDrawnWorldTime(clock), 0.3), "Stepped, the world should be drawn at 0.3 s");
 		Require(clock.Advance(1.0) == 0 && near(Nyx::GetDrawnWorldTime(clock), 0.3), "After the step, the time should stand still again");
+	}
+
+	// A decal added while the game runs, with only its material's path, as a system adds one: drawn
+	// with the path's material from the next extraction on, the path asked for once. A path that
+	// names nothing isn't drawn and isn't asked for again; a path changed is followed.
+	void TestMaterialsByPath()
+	{
+		Nyx::Material ring;
+		Nyx::Material plain;
+		MaterialsByPath assets;
+		assets.Materials["Materials/Ring.nyxmat"] = &ring;
+		assets.Materials["Materials/Plain.nyxmat"] = &plain;
+		Nyx::DecalMaterialCache materials;
+
+		Nyx::Registry world;
+		SurfaceDecalComponent decal;
+		decal.Material = Nyx::AssetReference{ .Type = "Material", .Path = "Materials/Ring.nyxmat" };
+		const Nyx::Entity entity = world.CreateEntity();
+		world.Add<SurfaceDecalComponent>(entity, decal);
+		Require(!world.Get<SurfaceDecalComponent>(entity).MaterialAsset, "The test needs a decal without a resolved material");
+
+		for (int frame = 0; frame < 3; ++frame)
+		{
+			const std::vector<Nyx::RenderDecal> drawn = Extract(world, std::nullopt, assets, materials);
+			Require(drawn.size() == 1 && drawn[0].MaterialAsset == &ring, "A decal with only its material's path should be drawn with that material");
+		}
+		Require(assets.Asks["Materials/Ring.nyxmat"] == 1, "The path should be resolved once, not " + std::to_string(assets.Asks["Materials/Ring.nyxmat"]) + " times");
+
+		// A path that names nothing: not drawn, asked for once
+		world.Get<SurfaceDecalComponent>(entity).Material.Path = "Materials/Nothing.nyxmat";
+		for (int frame = 0; frame < 3; ++frame)
+		{
+			Require(Extract(world, std::nullopt, assets, materials).empty(), "A decal whose material's path names nothing shouldn't be drawn");
+		}
+		Require(assets.Asks["Materials/Nothing.nyxmat"] == 1, "A path that names nothing should be asked for once");
+
+		// Swapped for another path, even with the old material resolved into the component
+		SurfaceDecalComponent& component = world.Get<SurfaceDecalComponent>(entity);
+		component.MaterialAsset = &ring;
+		component.Material.Path = "Materials/Plain.nyxmat";
+		const std::vector<Nyx::RenderDecal> drawn = Extract(world, std::nullopt, assets, materials);
+		Require(drawn.size() == 1 && drawn[0].MaterialAsset == &plain, "A decal whose path changed should be drawn with the new path's material");
 	}
 
 	// Gives one material for every path, and counts the asks
@@ -435,6 +512,7 @@ int main()
 		TestCornersFollowTheHost();
 		TestCornersFollowTheHostBetweenSteps();
 		TestExtraction();
+		TestMaterialsByPath();
 		TestRaysFindDecals();
 		TestSavedAndLoaded();
 		TestTimeOfAWorldDrawnBetweenSteps();

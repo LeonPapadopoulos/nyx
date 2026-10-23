@@ -7,10 +7,13 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace Nyx
 {
+	class IAssetResolver;
 	struct Material;
 
 	// A surface decal (SurfaceDecalComponent) as a frame draws it: the plane mesh placed on its
@@ -36,10 +39,23 @@ namespace Nyx
 		uint32_t PickingId = 0;
 	};
 
+	// The materials a world's decals name by path, kept from one extraction to the next (one per
+	// world): each path is resolved once, and one that resolves to nothing is kept as nothing, so it
+	// is neither asked for nor logged again
+	struct DecalMaterialCache
+	{
+		std::unordered_map<std::string, Material*> ByPath;
+	};
+
 	// The world's decals to draw, in the order the world holds them: those visible, with a material,
-	// revealed above 0, and whose host is in the world. Their anchors are resolved through one guid
-	// lookup, made once per call, on their hosts as the meshes are drawn (GetDrawnTransform()): with
-	// `interpolation`, between the host's last two steps, so a decal stays on a moving body's mesh;
-	// picking and the editor's overlays go by where the host is. No picking ids are given.
-	void ExtractSurfaceDecals(const Registry& world, std::optional<float> interpolation, std::vector<RenderDecal>& outDecals);
+	// revealed above 0, and whose host is in the world. A decal's material is the one its Material
+	// path names, resolved through `materials` (and `assets` the first time), so a decal made while
+	// the game runs, with only its path, is drawn, and one whose path changes draws with the new
+	// material; without a path, its MaterialAsset, as code set it. Their anchors are resolved
+	// through one guid lookup, made once per call, on their hosts as the meshes are drawn
+	// (GetDrawnTransform()): with `interpolation`, between the host's last two steps, so a decal
+	// stays on a moving body's mesh; picking and the editor's overlays go by where the host is. No
+	// picking ids are given.
+	void ExtractSurfaceDecals(const Registry& world, std::optional<float> interpolation, IAssetResolver& assets, DecalMaterialCache& materials,
+		std::vector<RenderDecal>& outDecals);
 }

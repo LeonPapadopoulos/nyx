@@ -2,6 +2,8 @@
 #include "SurfaceDecals.h"
 
 #include "EntityGuidLookup.h"
+#include "IAssetResolver.h"
+#include "Log.h"
 #include "PreviousTransformComponent.h"
 #include "SurfaceAnchor.h"
 #include "SurfaceDecalComponent.h"
@@ -11,7 +13,28 @@
 
 namespace Nyx
 {
-	void ExtractSurfaceDecals(const Registry& world, std::optional<float> interpolation, std::vector<RenderDecal>& outDecals)
+	namespace
+	{
+		// The material at `path`: as kept, or resolved now and kept, also when it is nothing
+		Material* FindDecalMaterial(const std::string& path, IAssetResolver& assets, DecalMaterialCache& materials)
+		{
+			const auto found = materials.ByPath.find(path);
+			if (found != materials.ByPath.end())
+			{
+				return found->second;
+			}
+			Material* material = assets.ResolveMaterial(path);
+			if (!material)
+			{
+				LOG_WARNING("Surface decal material {} can't be found; decals with it aren't drawn", path);
+			}
+			materials.ByPath.emplace(path, material);
+			return material;
+		}
+	}
+
+	void ExtractSurfaceDecals(const Registry& world, std::optional<float> interpolation, IAssetResolver& assets, DecalMaterialCache& materials,
+		std::vector<RenderDecal>& outDecals)
 	{
 		outDecals.clear();
 
@@ -20,7 +43,14 @@ namespace Nyx
 		world.Each<SurfaceDecalComponent>([&](Entity entity, const SurfaceDecalComponent& decal)
 			{
 				const float reveal = glm::clamp(decal.Reveal, 0.0f, 1.0f);
-				if (!decal.bVisible || !decal.MaterialAsset || reveal <= 0.0f)
+				if (!decal.bVisible || reveal <= 0.0f)
+				{
+					return;
+				}
+				// By its path where it has one: a scene's load gave its MaterialAsset from the same path,
+				// but a decal made while the game runs has none, and a path changed since isn't in it
+				Material* material = decal.Material.IsValid() ? FindDecalMaterial(decal.Material.Path, assets, materials) : decal.MaterialAsset;
+				if (!material)
 				{
 					return;
 				}
@@ -48,7 +78,7 @@ namespace Nyx
 
 				RenderDecal& drawn = outDecals.emplace_back();
 				drawn.SourceEntity = entity;
-				drawn.MaterialAsset = decal.MaterialAsset;
+				drawn.MaterialAsset = material;
 				drawn.Model = MakeSurfaceDecalMatrix(frame, decal.Size);
 				drawn.WorldModel = MakeSurfaceDecalMatrix(worldFrame, decal.Size);
 				drawn.WorldCorners = GetSurfaceDecalCorners(worldFrame, decal.Size);

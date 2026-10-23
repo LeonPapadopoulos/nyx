@@ -1096,7 +1096,7 @@ namespace Nyx
 			const std::optional<float> interpolation = GetWorldInterpolation(world->Registry);
 			world->Time = GetWorldTime(world->Registry);
 			ExtractRenderObjects(*world, interpolation);
-			ExtractSurfaceDecals(*world->Registry, interpolation, world->Decals);
+			ExtractSurfaceDecals(*world->Registry, interpolation, DecalAssets, world->DecalMaterials, world->Decals);
 			// Picked as the objects are: by their entity, with the ids after the objects'
 			for (RenderDecal& decal : world->Decals)
 			{

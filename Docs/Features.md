@@ -422,6 +422,10 @@ glowing mark on a crate.
   *Color* times its *Intensity* (above 1, it glows), its *Reveal* (0 to 1: how much of it is drawn)
   and its *Pulse* (0 to 1: how strongly it throbs). At Reveal 0, or with *Visible* off, it isn't
   drawn; nor is a decal whose host is gone, until the host is back (an undo, say).
+- The renderer finds a decal's material by its *Material* path, once per path and world, so a
+  decal that a system adds while the game runs, with only its path, is drawn, and one whose path
+  a system changes is drawn with the new material. A path that names no material is logged once,
+  and the decal isn't drawn.
 - It is a quad on its anchor's frame, lifted 3 mm off the surface so the two don't fight for depth,
   so on a curved surface it lies on the surface's tangent plane. It is drawn after the scene's
   objects and sky, hidden by what is in front of it, and blended: a material can cover what is
@@ -442,9 +446,11 @@ glowing mark on a crate.
   decal: its mask where revealed, not its glow); a click where the mask is empty, such as in a
   ring's middle, picks what is beneath. A hidden or unrevealed decal isn't picked. A selected
   decal's quad is outlined in the selection's colour.
-- Tests: `NyxSurfaceDecalTests` (the quad following its host, also between two steps, what is
-  drawn, saving and loading, a game's world's time paused and stepped), `NyxSceneGpuTests` (a decal on a cube brightens it where it is, partly
-  when partly revealed, and not at all unrevealed, without its host, or behind another cube; on a
-  cube drawn between two steps, it is on the cube; a click on its ring picks it, one in the ring's
-  middle the cube; selected, its quad is outlined; its pulse moves in the editor's world, and
+- Tests: `NyxSurfaceDecalTests` (the quad following its host, also between two steps, what is drawn,
+  a decal with only its material's path, saving and loading, a game's world's time paused and
+  stepped), `NyxSceneGpuTests` (a decal on a cube brightens it where it is, partly when partly
+  revealed, and not at all unrevealed, without its host, or behind another cube; on a cube drawn
+  between two steps, it is on the cube; with only its material's path, it is drawn as with its
+  material, and with a path changed, with the new one; a click on its ring picks it, one in the
+  ring's middle the cube; selected, its quad is outlined; its pulse moves in the editor's world, and
   stands still in a game's world while paused until it is stepped).

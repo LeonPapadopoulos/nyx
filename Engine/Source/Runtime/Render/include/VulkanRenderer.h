@@ -19,6 +19,7 @@
 #include "CubemapTexture.h"
 #include "Material.h"
 #include "SurfaceDecals.h"
+#include "AssetResolver.h"
 #include "GltfImporter.h"
 #include <imgui.h>
 #include <chrono>
@@ -150,8 +151,9 @@ namespace Nyx
 		uint64_t Revision = 0;
 
 		std::vector<RenderObject> Objects;
-		// Its surface decals, drawn over the objects and the sky
+		// Its surface decals, drawn over the objects and the sky, and their materials by path
 		std::vector<RenderDecal> Decals;
+		DecalMaterialCache DecalMaterials;
 		// Dense picking IDs: ID i is the entity at i - 1, 0 is nothing
 		std::vector<Nyx::Entity> PickingIdToEntity;
 		// This frame's time of what moves by itself in the world, such as a decal's pulse, in
@@ -467,6 +469,8 @@ namespace Nyx
 
 		// The renderer's world (SetWorld()), owned by the editor / scene document
 		const Nyx::Registry* World = nullptr;
+		// What the worlds' decals' material paths are resolved by (ExtractSurfaceDecals())
+		AssetResolver DecalAssets{ *this };
 		// Every world a scene view shows, the renderer's world among them; owned here so that
 		// their addresses stay while worlds come and go
 		std::vector<std::unique_ptr<RenderWorld>> RenderWorlds;
