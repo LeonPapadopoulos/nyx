@@ -23,3 +23,6 @@
 [submodule "Dependencies/JoltPhysics"]
 	path = Dependencies/JoltPhysics
 	url = https://github.com/jrouwe/JoltPhysics.git
+[submodule "Dependencies/SDL"]
+	path = Dependencies/SDL
+	url = https://github.com/libsdl-org/SDL.git
