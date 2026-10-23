@@ -1,7 +1,8 @@
 // The cursor ray: a world point drawn by the renderer's view and projection lands on a pixel whose
-// ray passes through the point, for cameras moved and turned, at the picture's centre and corners;
-// the primary camera found as the renderer finds it; the physics pick along a ray, which ignores a
-// body or sensors when asked and finds nothing past everything; an anchor made where it hit.
+// ray passes through the point, for cameras moved and turned, at the picture's centre and corners,
+// and just past the near plane, where a box is drawn and hit; the primary camera found as the
+// renderer finds it; the physics pick along a ray, which ignores a body or sensors when asked and
+// finds nothing past everything; an anchor made where it hit.
 #include "CameraProjection.h"
 #include "GameWorld.h"
 #include "GuidComponent.h"
@@ -156,6 +157,34 @@ namespace
 					"A point along a corner's ray should be drawn on that corner");
 			}
 		}
+	}
+
+	// A box whose front face is just past the near plane, at 1.2 times it: inside Vulkan's clip
+	// volume (0 <= z <= w), so drawn, and hit by the ray through where it is drawn
+	void TestJustPastTheNearPlane()
+	{
+		const CameraComponent camera{ .NearPlane = 0.3f, .FarPlane = 500.0f };
+		const glm::vec2 viewport(1280.0f, 720.0f);
+		const TransformComponent transform = MovedAndTurnedCamera();
+		const float distance = camera.NearPlane * 1.2f;
+
+		GameWorld world;
+		Registry& registry = world.GetRegistry();
+		const Entity box = registry.CreateEntity();
+		registry.Add<TransformComponent>(box, TransformComponent{ .Position = transform.Position + transform.Rotation * glm::vec3(0.0f, 0.0f, -distance - 0.5f), .Rotation = transform.Rotation });
+		registry.Add<BoxColliderComponent>(box, BoxColliderComponent{ .HalfExtents = glm::vec3(0.5f) });
+		world.Step(StepTime{ 1.0 / 60.0, 0, 0.0 });
+
+		const glm::vec3 point = transform.Position + transform.Rotation * glm::vec3(0.02f, -0.01f, -distance);
+		const glm::mat4 viewProjection = GetCameraProjection(camera, GetAspectRatio(viewport.x, viewport.y)) * GetCameraView(transform);
+		const glm::vec4 clip = viewProjection * glm::vec4(point, 1.0f);
+		Require(clip.z > 0.0f && clip.z < clip.w, "A point at 1.2 times the near plane should be inside the clip volume (depth " + std::to_string(clip.z / clip.w) + ")");
+
+		const Ray ray = ScreenPointToRay(transform, camera, viewport, ProjectToPixel(transform, camera, viewport, point));
+		RequireOnRay(ray, point, "A point just past the near plane");
+		const std::optional<PhysicsPick> pick = PickPhysicsBody(world, ray, camera.FarPlane);
+		Require(pick && pick->HitEntity == box, "The ray should hit the box just past the near plane");
+		Require(Near(pick->Point, point), "The ray should hit the box where it is drawn " + ToString(pick->Point));
 	}
 
 	void TestThePrimaryCameraIsFoundAsTheRendererFindsIt()
@@ -324,6 +353,7 @@ int main()
 		TestProjectedPointsLieOnTheirPixelsRays();
 		TestWorldPointsShowOnTheirPixels();
 		TestTheCentreAndCorners();
+		TestJustPastTheNearPlane();
 		TestThePrimaryCameraIsFoundAsTheRendererFindsIt();
 		TestAPickFindsTheBoxDrawnThere();
 		TestIgnoringTheBoxFindsTheFloorBehindIt();

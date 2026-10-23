@@ -35,8 +35,12 @@ namespace Nyx
 	// Width over height; 1 for a picture without height
 	float GetAspectRatio(float width, float height);
 
+	// The depth MakePerspectiveProjection() gives the near and the far plane: Vulkan's 0 to 1
+	constexpr float NearPlaneDepth = 0.0f;
+	constexpr float FarPlaneDepth = 1.0f;
+
 	// From view space to Vulkan's clip space: right-handed, looking along -Z, Y turned so the top of
-	// the picture is up, depth from -1 at the near plane to 1 at the far plane
+	// the picture is up, depth from NearPlaneDepth at the near plane to FarPlaneDepth at the far one
 	glm::mat4 MakePerspectiveProjection(float fovYRadians, float aspectRatio, float nearPlane, float farPlane);
 
 	// From the world to the camera's view space: the inverse of the camera's transform

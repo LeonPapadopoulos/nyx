@@ -12,6 +12,7 @@
 // normal map tilts the normal up the image; a masked material below its cutoff isn't drawn.
 // A view can show a world of its own beside the scene: it draws and picks that world's objects,
 // shows no outline of the scene's selection, and keeps its pending pick when the scene is set anew.
+// A cube just past the near plane is drawn and picked.
 // Material values set in memory, as the material editor sets them, show in the next frame and
 // leave the file as it is, until the file is saved and read again. A view has a sky of its own
 // (black, a studio, the scene's turned) and debug views of its materials' outputs and of light
@@ -938,6 +939,38 @@ namespace
 		return image;
 	}
 
+	// A camera just past the near plane from a cube's front face, at 1.2 times it: the face is drawn
+	// as it is from farther away, and a click on it picks the cube
+	void TestJustPastTheNearPlane(SceneRenderer& gpu)
+	{
+		Nyx::IEditorRenderer& renderer = gpu.Renderer;
+		Registry world;
+		const Entity cube = AddCube(world, gpu.Renderer, 0.0f, renderer.GetMaterial("Materials/Untextured.nyxmat"));
+		const CameraComponent lens{};
+		const Entity camera = world.CreateEntity();
+		world.Add<TransformComponent>(camera, TransformComponent{ .Position = glm::vec3(0.0f, 0.0f, 3.0f), .Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f), .Scale = glm::vec3(1.0f) });
+		world.Add<CameraComponent>(camera, lens);
+		renderer.SetWorld(&world);
+
+		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewShowEditorOverlays(view, true);
+		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
+		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
+		gpu.DrawUntilShadersCompiled();
+
+		const std::array<uint8_t, 3> farther = MiddlePixel(gpu, view);
+		Require(Picks(gpu, view, cube), "A click on the cube from 2.5 m doesn't pick it");
+
+		world.Get<TransformComponent>(camera).Position.z = 0.5f + lens.NearPlane * 1.2f;
+		const std::array<uint8_t, 3> near = MiddlePixel(gpu, view);
+		Require(Near(near, farther), "Just past the near plane, the cube's face is drawn " + Text(near) + ", from 2.5 m " + Text(farther));
+		Require(Picks(gpu, view, cube), "A click on the cube just past the near plane doesn't pick it");
+
+		renderer.DestroySceneView(view);
+		renderer.SetWorld(nullptr);
+		gpu.DrawFrames(1);
+	}
+
 	// The default scene in one view, a world of a sphere of its own in another, as a material's
 	// preview will show one
 	void TestViewsWithWorldsOfTheirOwn(SceneRenderer& gpu)
@@ -1514,6 +1547,7 @@ int main()
 		TestStandardMatchesTheCpu(gpu);
 		TestNormalMapsAndMasks(gpu);
 		TestViewsWithWorldsOfTheirOwn(gpu);
+		TestJustPastTheNearPlane(gpu);
 		TestWorldDebugDrawing(gpu);
 		TestDrawingBetweenSteps(gpu);
 		TestSurfaceDecals(gpu);

@@ -46,7 +46,7 @@ float GridLevelVisibility(vec2 planePos, float spacing)
 
 void main()
 {
-    // For Vulkan-style depth with GLM_FORCE_DEPTH_ZERO_TO_ONE:
+    // Depth as MakePerspectiveProjection() gives it (NearPlaneDepth, FarPlaneDepth):
     // near = 0, far = 1
     vec3 nearPoint = Unproject(vNdc, 0.0);
     vec3 farPoint  = Unproject(vNdc, 1.0);
