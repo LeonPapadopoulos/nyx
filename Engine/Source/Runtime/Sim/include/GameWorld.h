@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CommandQueue.h"
 #include "DebugDraw.h"
 #include "Entity.h"
 #include "EntityGuidLookup.h"
@@ -18,6 +19,7 @@ namespace Nyx
 	// The world a game runs: its entities, their physics, and the systems that change them each
 	// fixed step, in one order kept here rather than spread over registrations. The game's GameLayer
 	// owns one; a game module adds its systems (GameModule::CreateSystems). A step:
+	// 0. the commands players added since the last step become this step's (SimContext::Commands);
 	// 1. the debug drawing moves on: what the last step drew goes, timed shapes age;
 	// 2. bodies follow the physics components and the transforms set since the last step
 	//    (PhysicsBodies);
@@ -60,6 +62,10 @@ namespace Nyx
 		// One step of the world, in the order above
 		void Step(const StepTime& step);
 
+		// Where players' commands go between steps (IPlayerController): the next step hands them to
+		// its systems, then they are gone. Only those systems change the simulated world.
+		CommandQueue& GetCommands() { return Commands; }
+
 		struct SystemEntry
 		{
 			std::unique_ptr<ISimSystem> System;
@@ -78,6 +84,9 @@ namespace Nyx
 		PhysicsWorld Physics;
 		PhysicsBodies Bodies;
 		EntityGuidLookup Guids;
+		// Added since the last step, and the ones the step running now applies
+		CommandQueue Commands;
+		CommandQueue StepCommands;
 		std::optional<PhysicsDebugOptions> PhysicsDebugView;
 		std::vector<SystemEntry> Systems;
 	};

@@ -7,6 +7,11 @@
 #include "Entity.h"
 #include "GameModule.h"
 #include "GameWorld.h"
+#include "GuidComponent.h"
+#include "InputSystem.h"
+#include "PlayerController.h"
+#include "TestCommands.h"
+#include "VirtualInputBackend.h"
 #include "Log.h"
 #include "SceneSerializer.h"
 #include "TestLanternComponent.h"
@@ -14,14 +19,20 @@
 #include "TestSupport.h"
 
 #include <iostream>
+#include <memory>
+#include <optional>
 #include <stdexcept>
+#include <string>
 #include <string_view>
+#include <vector>
 
 namespace
 {
 	using Nyx::ComponentTypeRegistry;
+	using NyxTestModule::TestBrightenCommand;
 	using NyxTestModule::TestLanternComponent;
 	using NyxTestModule::TestMarkerComponent;
+	using NyxTestModule::TestRelabelCommand;
 
 	using Nyx::Tests::Require;
 
@@ -33,6 +44,7 @@ namespace
 		Require(std::string_view(module.Name) == "NyxTestModule", "The linked module should be the test module");
 		Require(module.RegisterTypes != nullptr, "The module should register its types");
 		Require(module.CreateSystems != nullptr, "The game's module should make its systems");
+		Require(module.CreatePlayerController != nullptr, "The game's module should make its player");
 		Require(module.RegisterSources == nullptr, "Only the editor's module registers source locations");
 	}
 
@@ -132,9 +144,9 @@ namespace
 
 		// As the game's GameLayer does
 		Nyx::GetLinkedGameModule().CreateSystems(world);
-		Require(world.GetSystems().size() == 1, "The module should add its one system");
-		Require(std::string_view(world.GetSystems().front().System->GetName()) == "Lantern Glow",
-			"The module's system should be its Lantern Glow");
+		Require(world.GetSystems().size() == 2, "The module should add its two systems");
+		Require(std::string_view(world.GetSystems().back().System->GetName()) == "Lantern Glow",
+			"The module's last system should be its Lantern Glow");
 
 		for (uint64_t step = 0; step < 4; ++step)
 		{
@@ -142,6 +154,105 @@ namespace
 		}
 		Require(world.GetRegistry().Get<TestLanternComponent>(entity).Brightness == 3.0f,
 			"Four steps of the module's system should brighten the lantern by 2");
+	}
+
+	// A command keeps its Serialize properties only, in order, whatever its type
+	void TestCommandsAreTheirProperties()
+	{
+		const Nyx::EntityGuid lantern = Nyx::EntityGuid::Generate();
+		Nyx::CommandQueue queue;
+		queue.Add(TestBrightenCommand{ .Lantern = lantern, .Amount = 1.5f, .LeftBehind = 9.0f });
+		queue.Add(TestRelabelCommand{ .Label = "Porch" });
+		queue.Add(TestBrightenCommand{ .Lantern = lantern, .Amount = 3.0f });
+		Require(queue.GetCount() == 3, "The queue should hold three commands");
+
+		std::vector<float> amounts;
+		queue.ForEach<TestBrightenCommand>(
+			[&](const TestBrightenCommand& command)
+			{
+				Require(command.Lantern == lantern, "A command should keep the guid it names");
+				Require(command.LeftBehind == 0.0f, "What isn't a Serialize property shouldn't arrive");
+				amounts.push_back(command.Amount);
+			});
+		Require(amounts == std::vector<float>{ 1.5f, 3.0f }, "Commands of a type should come in the order they were added");
+
+		std::string label;
+		queue.ForEach<TestRelabelCommand>([&](const TestRelabelCommand& command)
+			{
+				label = command.Label;
+			});
+		Require(label == "Porch", "Each type should get only its own commands");
+
+		Nyx::CommandQueue next;
+		next.Add(TestRelabelCommand{ .Label = "Gate" });
+		queue.TakeFrom(next);
+		std::vector<std::string> labels;
+		queue.ForEach<TestRelabelCommand>([&](const TestRelabelCommand& command)
+			{
+				labels.push_back(command.Label);
+			});
+		Require(labels == std::vector<std::string>{ "Porch", "Gate" } && next.IsEmpty(), "Taken commands should follow, and leave the other empty");
+
+		queue.Clear();
+		Require(queue.IsEmpty(), "A cleared queue should be empty");
+	}
+
+	// The module's player, as the game's GameLayer drives it: input becomes commands, and only the
+	// next step changes the world, once
+	void TestThePlayersCommandsReachTheNextStep()
+	{
+		Nyx::GameWorld world;
+		const Nyx::Entity entity = world.GetRegistry().CreateEntity();
+		world.GetRegistry().Add<Nyx::GuidComponent>(entity, Nyx::GuidComponent{ Nyx::EntityGuid::Generate() });
+		world.GetRegistry().Add<TestLanternComponent>(entity, TestLanternComponent{ .Brightness = 1.0f });
+		Nyx::GetLinkedGameModule().CreateSystems(world);
+
+		Nyx::Input::VirtualInputBackend backend;
+		Nyx::Input::InputSystem input;
+		input.AddBackend(backend);
+		const Nyx::Input::InputDeviceId keyboard = backend.AddDevice(Nyx::Input::EDeviceKind::Keyboard, "Keyboard", 1000);
+		const std::unique_ptr<Nyx::IPlayerController> player = Nyx::GetLinkedGameModule().CreatePlayerController(input);
+		Require(player != nullptr, "The module should make its player");
+
+		uint64_t timeUs = 1000;
+		uint64_t step = 0;
+		const auto frame = [&](std::optional<Nyx::Ray> cursorRay)
+		{
+			timeUs += 16000;
+			input.BeginFrame(timeUs);
+			player->Update(Nyx::PlayerFrame{ .World = world, .Input = input, .Commands = world.GetCommands(), .CursorRay = cursorRay, .DeltaSeconds = 0.016f });
+			input.EndFrame();
+		};
+		const auto stepOnce = [&]
+		{
+			world.Step(Nyx::StepTime{ 1.0 / 60.0, step, static_cast<double>(step) / 60.0 });
+			++step;
+		};
+		const auto brightness = [&]
+		{
+			return world.GetRegistry().Get<TestLanternComponent>(entity).Brightness;
+		};
+
+		backend.Press(keyboard, Nyx::Input::Key(Nyx::Input::EKey::B), timeUs + 1000);
+		frame(std::nullopt);
+		Require(brightness() == 1.0f, "The player should only ask; the world changes in the step");
+		Require(world.GetCommands().GetCount() == 1, "B should queue one command");
+
+		stepOnce();
+		Require(brightness() == 3.5f, "The step should apply the command (+2) before the glow (+0.5)");
+		stepOnce();
+		Require(brightness() == 4.0f, "A command should be applied by one step only");
+
+		// Held down, B fires once; a frame without steps keeps its commands for the next step
+		frame(std::nullopt);
+		Require(world.GetCommands().IsEmpty(), "A held key shouldn't ask again");
+
+		frame(Nyx::Ray{ glm::vec3(0.0f), glm::vec3(0.0f, 0.0f, -1.0f) });
+		frame(Nyx::Ray{ glm::vec3(0.0f), glm::vec3(0.0f, 0.0f, -1.0f) });
+		Require(world.GetCommands().GetCount() == 2, "Two frames without a step should keep both frames' commands");
+		stepOnce();
+		Require(world.GetRegistry().Get<TestLanternComponent>(entity).Label == "Pointed", "The cursor's ray should reach the player");
+		Require(world.GetCommands().IsEmpty(), "The step should have taken them");
 	}
 }
 
@@ -158,6 +269,8 @@ int main()
 		TestModuleComponentsKeepEngineStructs(directory.Path);
 		TestModulePostLoadStepRuns(directory.Path);
 		TestModuleSystemsRunInTheGameWorld();
+		TestCommandsAreTheirProperties();
+		TestThePlayersCommandsReachTheNextStep();
 	}
 	catch (const std::exception& error)
 	{

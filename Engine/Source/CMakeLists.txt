@@ -81,6 +81,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/SceneSerializer.cpp
 
     # Runtime/Sim
+    ${NYX_ENGINE_ROOT}/Runtime/Sim/src/CommandQueue.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/GameWorld.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/PhysicsBodies.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/PhysicsPick.cpp
@@ -235,6 +236,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/SurfaceDecalComponent.h
 
     # Runtime/Sim
+    ${NYX_ENGINE_ROOT}/Runtime/Sim/include/CommandQueue.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/SimSystem.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/GameWorld.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/PhysicsBodies.h

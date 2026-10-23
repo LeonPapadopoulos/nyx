@@ -89,7 +89,8 @@ nyx_add_game_module(NyxTestModule
     REFLECT_DIRS TestGameModule/Components
     SOURCES TestGameModule/TestGameModule.cpp
     REGISTER NyxTestModule::RegisterModule
-    SYSTEMS NyxTestModule::CreateSystems)
+    SYSTEMS NyxTestModule::CreateSystems
+    PLAYER NyxTestModule::CreatePlayer)
 add_executable(NyxGameModuleTests GameModuleTests.cpp)
 target_link_libraries(NyxGameModuleTests PRIVATE NyxEngine)
 nyx_link_game_module(NyxGameModuleTests MODULE NyxTestModule)

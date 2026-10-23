@@ -80,6 +80,16 @@ What the editor and the game do. How the code behind them is organised is in
 - In Debug builds, Ctrl+Alt+Shift+C in a game window crashes it on purpose, to try this.
 - `NyxGameInstanceTests` crashes a stand-in game for real and checks the report.
 
+## A game's player
+
+- A game module can have a player (`PLAYER` in `nyx_add_game_module()`): it adds its own input
+  actions and contexts, and each frame turns them, with the ray through the cursor, into commands
+  for the simulation. The next step's systems apply them; nothing else changes the game's world.
+- A command is a reflected struct of the game's whose Serialize properties are all that arrives:
+  entities by guid, never by handle.
+- `NyxGameModuleTests` tests it with the test module's player: a key press brightens a lantern
+  in the next step, once, and the cursor's ray reaches the player.
+
 ## The game on its own
 
 ```

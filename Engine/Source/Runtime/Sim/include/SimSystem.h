@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CommandQueue.h"
 #include "DebugDraw.h"
 #include "Entity.h"
 #include "EntityGuidLookup.h"
@@ -32,6 +33,9 @@ namespace Nyx
 		// then), and one destroyed is gone at once. A system that needs them sooner searches the
 		// world (FindEntityByGuid(World, guid)) or makes a lookup of its own.
 		const EntityGuidLookup& Guids;
+		// What players asked for since the last step, in order (CommandQueue::ForEach<T>()). The
+		// systems that own what a command changes apply it; a command nobody reads is dropped.
+		const CommandQueue& Commands;
 	};
 
 	// Where in a step a system runs: before the physics step, e.g. to push bodies, or after it,

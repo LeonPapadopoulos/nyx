@@ -3,7 +3,8 @@
 **Partly a proposal.** How a game's world moves forward in time, and why. Built so far: the fixed
 steps (`FixedStepClock`, `ILayer::OnFixedUpdate()`, in `Application::Run()`), the world with its
 ordered systems (`GameWorld`, `ISimSystem`, in `Engine/Source/Runtime/Sim`), Pause and Step, and
-drawing moving bodies between steps. Commands, events and time scale are still the plan.
+drawing moving bodies between steps, and players' commands. Events and time scale are still the
+plan.
 
 ## The shape of it
 
@@ -28,6 +29,21 @@ drawing moving bodies between steps. Commands, events and time scale are still t
   `PickUp { item guid }` or `Interact { target guid, point }`. A game declares its own.
   `OnUpdate()` queues it, and the next step applies it before its systems run. Nothing else writes
   simulated components: not `OnUpdate()`, not `OnUI()`, not the renderer.
+- **Built.** A command is a reflected struct of the game's (`NYX_REFLECT()`, its fields
+  `NYX_PROPERTY(Serialize)`), kept in a `CommandQueue` as its property block, so only data
+  arrives: a field that isn't a Serialize property stays behind, and entities are named by guid.
+  - The game module's player (`IPlayerController`, made by `GameModule::CreatePlayerController`,
+    `PLAYER` in `nyx_add_game_module()`) gets a `PlayerFrame` in `GameLayer::OnUpdate()`, after
+    the cameras moved: the world to look at, read-only; the input system with the actions it
+    added; the queue; the ray through the cursor while it is free and over the picture, and the
+    ray through the picture's middle, both from the primary camera.
+  - It adds commands to `GameWorld::GetCommands()`. The next step makes them its own before
+    anything else (`SimContext::Commands`), and its systems read them by type
+    (`CommandQueue::ForEach<T>()`); after the step they are gone. A frame without a step keeps its
+    commands for the next one, behind the earlier frames'.
+  - Recording an input session (`--input-record`) and replaying it gives the same commands, so
+    commands themselves aren't recorded yet. Sending them to another machine later is writing the
+    same bytes on the wire.
 - **Why.** Co-op later sends these same commands over the network to the one machine that runs
   the simulation, and sends back what changed. If only commands change the world, that is an
   addition. If any code can write the world from anywhere, it is a rewrite.
@@ -56,10 +72,10 @@ drawing moving bodies between steps. Commands, events and time scale are still t
   in the memory it had, so it allocates nothing once the world stops growing. An entity made or
   given a guid during a step is in it from the next step on; one destroyed is gone at once. A
   system that needs the newer ones searches the world or makes a lookup of its own.
-- **Not yet:** the command and event queues and the engine services (the physics world, later the
-  spatial index) in `SimContext`.
+- **Not yet:** the event queue and the engine services (later the spatial index) in `SimContext`.
 - The engine's part of the order is fixed; a game's systems go into the slots around it:
-  1. apply commands (not built yet);
+  1. the commands players added since the last step become this step's (built:
+     `SimContext::Commands`); the game's systems apply those they own;
   2. bodies follow the physics components and the transforms set since the last step (built:
      `PhysicsBodies`), and the guid lookup is made again (built: `SimContext::Guids`);
   3. the game's systems that decide forces and constraints (built: `ESimStage::BeforePhysics`);

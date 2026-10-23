@@ -8,6 +8,7 @@
 #include "InputHistory.h"
 #include "InputSystem.h"
 #include "Layer.h"
+#include "PlayerController.h"
 #include "SceneSerializationTypes.h"
 
 #include <glm/glm.hpp>
@@ -56,6 +57,12 @@ namespace Nyx::Game
 		// surface's normal there (Debug builds)
 		void DrawCursorPick();
 
+		// The ray from the scene's primary camera through a pixel of the game's picture, from its top
+		// left corner; empty without a camera or a picture
+		std::optional<Nyx::Ray> MakeViewRay(const glm::vec2& pixel) const;
+		// Through the cursor, while it is free and over the picture
+		std::optional<Nyx::Ray> MakeCursorRay() const;
+
 		std::filesystem::path ScenePath;
 
 		Nyx::IRenderer* Renderer = nullptr;
@@ -65,6 +72,9 @@ namespace Nyx::Game
 
 		// All entities of the loaded scene, and the systems that run them
 		Nyx::GameWorld World;
+		// The game module's player, turning input into the world's commands each frame; none
+		// without a module that has one (GameModule::CreatePlayerController)
+		std::unique_ptr<Nyx::IPlayerController> Player;
 
 		uint64_t GameViewId = 0;
 		// Where the game view's image was last shown, in ImGui's screen coordinates, and whether the

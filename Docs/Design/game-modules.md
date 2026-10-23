@@ -36,7 +36,7 @@ where the game's files are.
 
 ## The shape of it
 
-- **`nyx_add_game_module(<name> REFLECT_DIRS ... [SOURCES ...] [INCLUDE_DIRS ...] [REGISTER <f>] [SYSTEMS <f>])`**:
+- **`nyx_add_game_module(<name> REFLECT_DIRS ... [SOURCES ...] [INCLUDE_DIRS ...] [REGISTER <f>] [SYSTEMS <f>] [PLAYER <f>])`**:
   - runs the header tool over `REFLECT_DIRS` with `--module-name <name>`, into
     `Generated/<name>`; a component header ends with
     `#include "Generated/<name>/<Header>.reflect.h"`. The engine's reflected headers go in as
@@ -63,9 +63,14 @@ where the game's files are.
     (`ComponentTypeRegistry::SetPostLoad()`);
   - `SYSTEMS MyGame::CreateSystems`, `void (Nyx::GameWorld&)`: adds the module's simulation systems
     to the game's world, in their order. Only the game calls it; the editor doesn't simulate.
+  - `PLAYER MyGame::CreatePlayer`,
+    `std::unique_ptr<Nyx::IPlayerController> (Nyx::Input::InputSystem&)`: makes the player's
+    controller, which adds its actions and contexts to the input system and, each frame, turns
+    them into commands for the next step (`PlayerController.h`, `CommandQueue.h`). Only the game
+    calls it.
 - **The module says what it has** through `GameModule`: its name, `RegisterTypes` (the generated
-  registration and `REGISTER`), `CreateSystems` for the game, and `RegisterSources` for the
-  editor. Each program passes `GetLinkedGameModule()` in
+  registration and `REGISTER`), `CreateSystems` and `CreatePlayerController` for the game, and
+  `RegisterSources` for the editor. Each program passes `GetLinkedGameModule()` in
   `ApplicationSpecs::Module`. `Application` registers its types right after the engine's, before
   any layer; `EditorLayer::OnAttach()` registers its sources. The game's components then appear in
   Add Component and the details panel, and save, undo and go over the editor link like the
@@ -108,7 +113,9 @@ where the game's files are.
   functions a game uses, so the path a private game depends on stays tested in public:
   - `NyxGameModuleTests`: the game's linked module, its type registered next to the engine's, a
     scene that saves and loads its components, one holding the engine's `SurfaceAnchor`, its
-    post-load step (`REGISTER`) and its system (`SYSTEMS`) running in a `GameWorld`;
+    post-load step (`REGISTER`) and its systems (`SYSTEMS`) running in a `GameWorld`; its commands
+    keeping only their Serialize properties; its player (`PLAYER`) turning a key press and the
+    cursor's ray into commands that the next step applies, once;
   - `NyxEditorGameModuleTests`: the editor's linked module registers where its types and
     properties are declared.
 - `NyxComponentTypeRegistryTests`: a second type of a name already taken is refused.

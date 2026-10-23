@@ -13,7 +13,7 @@ add_dependencies(NyxNoGameModule NyxGeneratedReflection)
 # AssetReference: the header tool reads their names from here and generates nothing for them.
 set_property(GLOBAL PROPERTY NYX_ENGINE_REFLECT_DIR "${CMAKE_CURRENT_LIST_DIR}/Runtime/Scene/include")
 
-# Declares a function the module names for REGISTER or SYSTEMS, for the generated
+# Declares a function the module names for REGISTER, SYSTEMS or PLAYER, for the generated
 # GetLinkedGameModule(): `signature` with @FUNCTION@ for its name, inside its namespace if
 # `qualified` has one (MyGame::RegisterTypes).
 function(_nyx_declare_module_function module option qualified signature outVariable)
@@ -34,7 +34,7 @@ function(_nyx_declare_module_function module option qualified signature outVaria
 endfunction()
 
 # nyx_add_game_module(<name> REFLECT_DIRS <dir>... [SOURCES <file>...] [INCLUDE_DIRS <dir>...]
-#                     [REGISTER <function>] [SYSTEMS <function>])
+#                     [REGISTER <function>] [SYSTEMS <function>] [PLAYER <function>])
 #
 # Makes the module <name>, a C++ identifier that names its generated files and functions:
 # - NyxHeaderTool reads the headers in REFLECT_DIRS into Generated/<name>, so a component header
@@ -47,10 +47,14 @@ endfunction()
 #   registration: for post-load steps (ComponentTypeRegistry::SetPostLoad) and the like.
 # - SYSTEMS names a function of the module's, `void F(Nyx::GameWorld& world)`, that adds its
 #   simulation systems to the game's world, in their order.
-#   Both are qualified names, e.g. MyGame::RegisterTypes; the module defines them in its SOURCES.
+# - PLAYER names a function of the module's,
+#   `std::unique_ptr<Nyx::IPlayerController> F(Nyx::Input::InputSystem& input)`, that makes the
+#   player's controller: it turns input into commands for the simulation each frame
+#   (PlayerController.h).
+#   All are qualified names, e.g. MyGame::RegisterTypes; the module defines them in its SOURCES.
 # Relative folders and files are taken from the folder of the CMakeLists.txt that calls it.
 function(nyx_add_game_module name)
-    cmake_parse_arguments(PARSE_ARGV 1 ARG "" "REGISTER;SYSTEMS" "SOURCES;REFLECT_DIRS;INCLUDE_DIRS")
+    cmake_parse_arguments(PARSE_ARGV 1 ARG "" "REGISTER;SYSTEMS;PLAYER" "SOURCES;REFLECT_DIRS;INCLUDE_DIRS")
 
     if(NOT name MATCHES "^[A-Za-z_][A-Za-z0-9_]*$")
         message(FATAL_ERROR "nyx_add_game_module: '${name}' is no C++ identifier; it names the module's generated functions")
@@ -108,9 +112,9 @@ function(nyx_add_game_module name)
     add_dependencies(${name} ${name}Reflection NyxGeneratedReflection)
 
     # What each program needs besides the module's objects: GetLinkedGameModule(), naming its
-    # registration and its systems. The editor's also registers where the module's types are
-    # declared, generated code that includes the editor's headers, so it is compiled only for the
-    # editor; the editor doesn't simulate, so its module has no systems.
+    # registration, its systems and its player. The editor's also registers where the module's
+    # types are declared, generated code that includes the editor's headers, so it is compiled only
+    # for the editor; the editor doesn't simulate, so its module has no systems and no player.
     set(moduleDeclarations "")
     set(registerCall "")
     set(createSystems "nullptr")
@@ -123,6 +127,13 @@ function(nyx_add_game_module name)
         _nyx_declare_module_function(${name} SYSTEMS "${ARG_SYSTEMS}" "void @FUNCTION@(Nyx::GameWorld& world)" declaration)
         string(APPEND moduleDeclarations "${declaration}")
         set(createSystems "&::${ARG_SYSTEMS}")
+    endif()
+    set(createPlayer "nullptr")
+    if(ARG_PLAYER)
+        _nyx_declare_module_function(${name} PLAYER "${ARG_PLAYER}"
+            "std::unique_ptr<Nyx::IPlayerController> @FUNCTION@(Nyx::Input::InputSystem& input)" declaration)
+        string(APPEND moduleDeclarations "${declaration}")
+        set(createPlayer "&::${ARG_PLAYER}")
     endif()
 
     set(gameGlue "${generatedDir}/${name}.module.game.cpp")
@@ -146,7 +157,8 @@ namespace Nyx
 	{
 		static const GameModule Module{ .Name = "@name@",
 			.RegisterTypes = &RegisterModuleTypes,
-			.CreateSystems = @createSystems@ };
+			.CreateSystems = @createSystems@,
+			.CreatePlayerController = @createPlayer@ };
 		return Module;
 	}
 }

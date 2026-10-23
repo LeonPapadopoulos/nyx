@@ -18,13 +18,16 @@ namespace Nyx
 	void GameWorld::Step(const StepTime& step)
 	{
 		NYX_PROFILE_SCOPE("GameWorld::Step");
+		StepCommands.Clear();
+		StepCommands.TakeFrom(Commands);
+
 		const float seconds = static_cast<float>(step.FixedDeltaSeconds);
 		Debug.Advance(seconds);
 
 		Bodies.SyncBeforeStep(World, Physics, seconds);
 		RefreshEntityGuidLookup(World, Guids);
 
-		const SimContext context{ World, step, Debug, Physics, Bodies, Guids };
+		const SimContext context{ World, step, Debug, Physics, Bodies, Guids, StepCommands };
 		RunStage(ESimStage::BeforePhysics, context);
 
 		Physics.Step(seconds);

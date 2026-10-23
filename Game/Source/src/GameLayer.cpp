@@ -89,6 +89,12 @@ namespace Nyx::Game
 			LOG_INFO("{0} simulation system(s)", World.GetSystems().size());
 		}
 
+		// The game module's player: its actions and contexts go on the input system now
+		if (const auto createPlayer = application.GetGameModule().CreatePlayerController)
+		{
+			Player = createPlayer(*Input);
+		}
+
 		// The view the player sees: through the scene's camera, without the editor's grid and outlines
 		GameViewId = Renderer->CreateSceneView();
 		Renderer->SetSceneViewCameraMode(GameViewId, Nyx::EViewportCameraMode::ScenePrimaryCamera);
@@ -113,20 +119,18 @@ namespace Nyx::Game
 
 	void GameLayer::DrawCursorPick()
 	{
-		if (!World.GetPhysicsDebugView() || !bGameViewHovered)
+		if (!World.GetPhysicsDebugView())
 		{
 			return;
 		}
+		const std::optional<Nyx::Ray> ray = MakeCursorRay();
 		const std::optional<Nyx::WorldCamera> camera = Nyx::FindPrimaryCamera(World.GetRegistry());
-		if (!camera)
+		if (!ray || !camera)
 		{
 			return;
 		}
 
-		const ImVec2 mouse = ImGui::GetMousePos();
-		const Nyx::Ray ray =
-			Nyx::ScreenPointToRay(camera->Transform, camera->Camera, GameViewSize, glm::vec2(mouse.x, mouse.y) - GameViewMin);
-		if (const std::optional<Nyx::PhysicsPick> pick = Nyx::PickPhysicsBody(World, ray, camera->Camera.FarPlane))
+		if (const std::optional<Nyx::PhysicsPick> pick = Nyx::PickPhysicsBody(World, *ray, camera->Camera.FarPlane))
 		{
 			const glm::vec3 color(0.1f, 0.9f, 1.0f);
 			World.GetDebugDraw().Cross(pick->Point, 0.1f, color);
@@ -134,10 +138,41 @@ namespace Nyx::Game
 		}
 	}
 
+	std::optional<Nyx::Ray> GameLayer::MakeViewRay(const glm::vec2& pixel) const
+	{
+		const std::optional<Nyx::WorldCamera> camera = Nyx::FindPrimaryCamera(World.GetRegistry());
+		if (!camera || GameViewSize.x <= 0.0f || GameViewSize.y <= 0.0f)
+		{
+			return std::nullopt;
+		}
+		return Nyx::ScreenPointToRay(camera->Transform, camera->Camera, GameViewSize, pixel);
+	}
+
+	std::optional<Nyx::Ray> GameLayer::MakeCursorRay() const
+	{
+		if (!bGameViewHovered || Input->GetUser().GetCursor().Mode != Nyx::Input::ECursorMode::Free)
+		{
+			return std::nullopt;
+		}
+		const ImVec2 mouse = ImGui::GetMousePos();
+		return MakeViewRay(glm::vec2(mouse.x, mouse.y) - GameViewMin);
+	}
+
 	void GameLayer::OnUpdate(float deltaTime)
 	{
 		// The entities with a FlyCameraComponent; none: the fly camera's contexts stay off
 		Nyx::Input::UpdateFlyCameras(World.GetRegistry(), *FlyCameraInput, deltaTime);
+
+		// The player's commands for this frame's steps, from where the camera looks now
+		if (Player)
+		{
+			Player->Update(Nyx::PlayerFrame{ .World = World,
+				.Input = *Input,
+				.Commands = World.GetCommands(),
+				.CursorRay = MakeCursorRay(),
+				.ViewCenterRay = MakeViewRay(GameViewSize * 0.5f),
+				.DeltaSeconds = deltaTime });
+		}
 
 #if defined(ENGINE_DEBUG)
 		InputHistory.Record(*Input);
