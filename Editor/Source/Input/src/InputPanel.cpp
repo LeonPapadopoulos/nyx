@@ -38,6 +38,10 @@ namespace Nyx::Editor
 	{
 		History.Record(input);
 		EditorRecording.Update();
+		if (Document)
+		{
+			Document->HandleSwapChord(input);
+		}
 
 		// A game that ended can't be shown; the editor's input again
 		if (!ShownGame.empty() && !FindGame(Games, ShownGame))
@@ -65,6 +69,7 @@ namespace Nyx::Editor
 			return false;
 		}
 
+		PlaybackB.reset();
 		Playback = std::move(playback);
 		Playback->SetPlaying(true);
 		bShowPlayback = true;
@@ -73,24 +78,88 @@ namespace Nyx::Editor
 		return true;
 	}
 
+	void InputPanel::SetComparing(bool bCompare)
+	{
+		if (!Playback || bCompare == (PlaybackB != nullptr))
+		{
+			return;
+		}
+
+		if (!bCompare || !Document || !Document->HasA())
+		{
+			PlaybackB.reset();
+			Playback->SetTuning(std::nullopt);
+			return;
+		}
+
+		PlaybackB = std::make_unique<Nyx::Input::InputPlayback>();
+		if (!PlaybackB->Load(Playback->GetPath()))
+		{
+			PlaybackB.reset();
+			return;
+		}
+		ComparedRevision = Document->GetRevision() + 1;
+		UpdateComparisonTuning();
+		PlaybackB->SetPlaying(Playback->IsPlaying());
+	}
+
+	void InputPanel::UpdateComparisonTuning()
+	{
+		// A and B as they are now: B changes with every edit, A with Keep as A
+		if (!PlaybackB || !Document || ComparedRevision == Document->GetRevision())
+		{
+			return;
+		}
+		if (!Document->HasA())
+		{
+			SetComparing(false);
+			return;
+		}
+		ComparedRevision = Document->GetRevision();
+		Playback->SetTuning(*Document->GetA());
+		PlaybackB->SetTuning(Document->GetAsset());
+		PlaybackB->SeekTo(Playback->GetFrame());
+	}
+
 	void InputPanel::DrawPlaybackControls()
 	{
+		// Both replays in step when comparing
 		Nyx::Input::InputPlayback& playback = *Playback;
+		const auto both = [this](const auto& action)
+		{
+			action(*Playback);
+			if (PlaybackB)
+			{
+				action(*PlaybackB);
+			}
+		};
+
 		if (NYX_UI(Nyx::UI::Button(playback.IsPlaying() ? "Pause###PlayPause" : "Play###PlayPause")))
 		{
-			playback.SetPlaying(!playback.IsPlaying());
+			const bool bPlay = !playback.IsPlaying();
+			both([bPlay](Nyx::Input::InputPlayback& each)
+				{
+					each.SetPlaying(bPlay);
+				});
 		}
 		ImGui::SameLine();
 		if (NYX_UI(Nyx::UI::Button("Step")))
 		{
-			playback.Step();
+			both([](Nyx::Input::InputPlayback& each)
+				{
+					each.Step();
+				});
 		}
 		ImGui::SetItemTooltip("One frame on; the Timeline shows its traces when hovered");
 		ImGui::SameLine();
 		if (NYX_UI(Nyx::UI::Button("Start over")))
 		{
-			playback.SeekTo(0);
-			playback.SetPlaying(true);
+			both(
+				[](Nyx::Input::InputPlayback& each)
+				{
+					each.SeekTo(0);
+					each.SetPlaying(true);
+				});
 		}
 
 		// Seeking replays from the start up to the frame
@@ -100,15 +169,38 @@ namespace Nyx::Editor
 		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16.0f);
 		if (NYX_UI(Nyx::UI::SliderFloat("##Frame", &frame, 0.0f, static_cast<float>(playback.GetFrameCount()), format.c_str())))
 		{
-			playback.SetPlaying(false);
-			playback.SeekTo(static_cast<size_t>(frame + 0.5f));
+			const size_t to = static_cast<size_t>(frame + 0.5f);
+			both(
+				[to](Nyx::Input::InputPlayback& each)
+				{
+					each.SetPlaying(false);
+					each.SeekTo(to);
+				});
 		}
 		ImGui::SameLine();
 		ImGui::AlignTextToFramePadding();
 		ImGui::TextDisabled("%.2f s", playback.GetSeconds(playback.GetFrame() > 0 ? playback.GetFrame() - 1 : 0));
+
+		// Through A and B: the same hands, two tunings
+		if (Document && Document->HasA())
+		{
+			ImGui::SameLine();
+			bool bCompare = PlaybackB != nullptr;
+			if (NYX_UI(Nyx::UI::Checkbox("Through A and B", &bCompare)))
+			{
+				SetComparing(bCompare);
+			}
+			ImGui::SetItemTooltip("Replays the recording through A (Keep as A) and through B, the tuning now; the Timeline draws both");
+		}
+		else
+		{
+			SetComparing(false);
+		}
+
 		ImGui::SameLine();
 		if (NYX_UI(Nyx::UI::Button("Close")))
 		{
+			PlaybackB.reset();
 			Playback.reset();
 			bShowPlayback = false;
 		}
@@ -221,11 +313,18 @@ namespace Nyx::Editor
 				DrawPlaybackControls();
 			}
 			// Close, in the controls, ends it
+			View.SetComparison(nullptr, {}, {});
 			if (bShowPlayback && Playback)
 			{
+				UpdateComparisonTuning();
 				Playback->Update(ImGui::GetIO().DeltaTime);
 				shown = &Playback->GetReplica().GetInput();
 				history = &Playback->GetReplica().GetHistory();
+				if (PlaybackB)
+				{
+					PlaybackB->Update(ImGui::GetIO().DeltaTime);
+					View.SetComparison(&PlaybackB->GetReplica().GetHistory(), "A", "B");
+				}
 			}
 			else if (GameInstance* game = FindGame(Games, ShownGame))
 			{

@@ -1510,6 +1510,13 @@ namespace
 				recording.Stop();
 				Require(inputPanel.OpenRecording(recordingPath), "The recording should replay");
 				inputPanel.SelectTab(Nyx::Input::InputDebugView::ETab::Timeline);
+
+				// Through A and B, the Timeline drawing both
+				inputAsset.KeepAsA();
+				inputAsset.GetAsset().Contexts[0].Bindings[1].Pipeline.DeadZone.Inner = 0.5f;
+				inputAsset.Apply();
+				inputPanel.SetComparing(true);
+				Require(inputPanel.GetPlaybackB() != nullptr, "The recording should replay through B too");
 			}
 			else if (tab < debugTabs)
 			{

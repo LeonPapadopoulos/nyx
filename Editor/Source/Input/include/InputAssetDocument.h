@@ -100,8 +100,40 @@ namespace Nyx::Editor
 		}
 		void RefreshChecks(const Nyx::Input::InputSystem* shown = nullptr);
 
-		// Puts the asset into the input system again
+		// Puts the asset into the input system again: A while A is shown, the asset otherwise
 		void Apply();
+
+		// A/B: Keep as A remembers the tuning as it is; edits after that are B. Swapping shows one
+		// or the other, in the editor and every running game, to feel the difference in a second.
+		// An edit shows B again.
+		void KeepAsA();
+		void ForgetA();
+		bool HasA() const
+		{
+			return KeptA.has_value();
+		}
+
+		void SetShowingA(bool bShowA);
+		bool IsShowingA() const
+		{
+			return bShowingA && KeptA;
+		}
+
+		const Nyx::Input::InputAssetData* GetA() const
+		{
+			return KeptA ? &*KeptA : nullptr;
+		}
+
+		// What the input system and the games have: A or the asset
+		const Nyx::Input::InputAssetData& GetAppliedAsset() const
+		{
+			return IsShowingA() ? *KeptA : Asset;
+		}
+
+		// The swap chord: the pad's Back (View, Share, Create) held and its top face button pressed,
+		// read from the input's devices whatever its contexts do, so it works while a game has the
+		// focus. Once per frame.
+		void HandleSwapChord(const Nyx::Input::InputSystem& input);
 
 		// ITransactionDomain: one root object, the asset, with itself as its only subobject
 		void* ResolveMutable(EditorTransactionContext& context, const ObjectRef& root, const Nyx::Reflection::TypeMetadata& typeMetadata) override;
@@ -130,5 +162,8 @@ namespace Nyx::Editor
 
 		std::vector<Nyx::Input::InputAssetProblem> Problems;
 		std::vector<Nyx::Input::InputCheckFinding> Findings;
+
+		std::optional<Nyx::Input::InputAssetData> KeptA;
+		bool bShowingA = false;
 	};
 }

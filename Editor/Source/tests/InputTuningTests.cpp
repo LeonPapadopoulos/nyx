@@ -178,6 +178,62 @@ namespace
 		Require(bFound, "The checks know which actions the code takes once");
 	}
 
+	// A/B: A kept, B edited, either felt; the pad chord swaps while a game has the focus
+	void TestKeepAsAAndSwap()
+	{
+		Rig rig;
+		VirtualInputBackend backend;
+		rig.Input.AddBackend(backend);
+		const InputDeviceId pad = backend.AddDevice(EDeviceKind::Gamepad, "Pad", 1000);
+		uint64_t time = 1000;
+		const auto frame = [&]()
+		{
+			time += 16000;
+			rig.Input.BeginFrame(time);
+			rig.Document.HandleSwapChord(rig.Input);
+			rig.Input.EndFrame();
+		};
+
+		rig.Document.KeepAsA();
+		Require(rig.Document.HasA() && !rig.Document.IsShowingA(), "A kept, B shown");
+		rig.Asset().Contexts[0].Bindings[1].Pipeline.DeadZone.Inner = 0.4f;
+		rig.Document.Apply();
+		Require(Near(rig.Applied("EditorFlyCamera", 1).Pipeline.DeadZone.Inner, 0.4f), "B felt");
+
+		const uint64_t revision = rig.Document.GetRevision();
+		rig.Document.SetShowingA(true);
+		Require(rig.Document.IsShowingA() && rig.Document.GetRevision() != revision, "A shown, as a change for the games");
+		Require(Near(rig.Applied("EditorFlyCamera", 1).Pipeline.DeadZone.Inner, 0.15f), "A felt");
+		Require(Near(rig.Document.GetAppliedAsset().Contexts[0].Bindings[1].Pipeline.DeadZone.Inner, 0.15f), "What the games get");
+		Require(Near(rig.Asset().Contexts[0].Bindings[1].Pipeline.DeadZone.Inner, 0.4f), "B kept as the asset");
+
+		// The chord: Back held, the top face button pressed
+		backend.Press(pad, Gamepad(EGamepadControl::Back), time + 1);
+		frame();
+		Require(rig.Document.IsShowingA(), "Back alone does nothing");
+		backend.Press(pad, Gamepad(EGamepadControl::FaceNorth), time + 1);
+		frame();
+		Require(!rig.Document.IsShowingA(), "Back and the top face button swap to B");
+		frame();
+		Require(!rig.Document.IsShowingA(), "Once per press");
+		backend.Release(pad, Gamepad(EGamepadControl::FaceNorth), time + 1);
+		frame();
+		backend.Press(pad, Gamepad(EGamepadControl::FaceNorth), time + 1);
+		frame();
+		Require(rig.Document.IsShowingA(), "And again to A");
+
+		// An edit is B's
+		DeadZoneSettings& deadZone = rig.Asset().Contexts[0].Bindings[1].Pipeline.DeadZone;
+		TransactionDiffUtil diff;
+		diff.TakeSnapshot(InputAssetDocument::GetRef(), &deadZone, Nyx::Reflection::GetTypeMetadata<DeadZoneSettings>(), rig.DeadZonePath(0, 1));
+		deadZone.Inner = 0.45f;
+		diff.CommitChanges("Edit Property", rig.Editing.Transactions);
+		Require(!rig.Document.IsShowingA() && Near(rig.Applied("EditorFlyCamera", 1).Pipeline.DeadZone.Inner, 0.45f), "An edit shows B again");
+
+		rig.Document.ForgetA();
+		Require(!rig.Document.HasA(), "Forgotten");
+	}
+
 	// The Tuning and Checks tabs, headless, on each kind of selection
 	void TestTabsDraw()
 	{
@@ -256,6 +312,7 @@ int main()
 		TestEditInsideArraysUndoes();
 		TestWholeArrayChanges();
 		TestSaveAndChecks();
+		TestKeepAsAAndSwap();
 		TestTabsDraw();
 	}
 	catch (const std::exception& error)

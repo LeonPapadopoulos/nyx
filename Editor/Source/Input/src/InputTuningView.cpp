@@ -219,6 +219,31 @@ namespace Nyx::Editor
 		ImGui::AlignTextToFramePadding();
 		ImGui::TextDisabled("%s%s", document.GetPath().filename().string().c_str(), document.IsDirty() ? " (changed)" : "");
 
+		// A/B
+		ImGui::SameLine();
+		if (NYX_UI(Nyx::UI::Button(document.HasA() ? "Keep as A again" : "Keep as A")))
+		{
+			document.KeepAsA();
+		}
+		ImGui::SetItemTooltip("Remembers the tuning as it is as A; edits after this are B");
+		if (document.HasA())
+		{
+			ImGui::SameLine();
+			const bool bShowingA = document.IsShowingA();
+			if (NYX_UI(Nyx::UI::Button(bShowingA ? "Showing A###SwapAB" : "Showing B###SwapAB", glm::vec2(0.0f),
+					bShowingA ? Nyx::UI::EButtonTone::Go : Nyx::UI::EButtonTone::Neutral)))
+			{
+				document.SetShowingA(!bShowingA);
+			}
+			ImGui::SetItemTooltip("Swaps A and B, here and in every running game. While playing: hold the pad's Back (View, Share, "
+								  "Create) and press its top face button.");
+			ImGui::SameLine();
+			if (NYX_UI(Nyx::UI::Button("Forget A")))
+			{
+				document.ForgetA();
+			}
+		}
+
 		// Which profile the values are shown with; the pad in hand by default
 		const EGamepadModel inHand = LayerModel == 0 ? GetShownModel(input) : EGamepadModel::Unknown;
 		const std::string handLabel = std::string("Pad in hand (") + (inHand == EGamepadModel::Unknown ? "none" : GetGamepadModelName(inHand)) + ")";
@@ -496,6 +521,10 @@ namespace Nyx::Editor
 			}
 		}
 
+		if (document.IsShowingA())
+		{
+			TextWarning("A is what is felt now; these are B's values. An edit shows B again.");
+		}
 		DrawContext.CurrentLocation = BindingPath(SelectedContext, SelectedBinding);
 		DrawReflectedTypeTable(&binding, Nyx::Reflection::GetTypeMetadata<InputBindingData>(), DrawContext);
 

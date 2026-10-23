@@ -150,6 +150,16 @@ are reflected types (`NYX_REFLECT`, `NYX_ENUM`) and the header tool also reads
   frame as the game did: traces, phases, the stack and the timeline are the game's, not worked out
   again. The stream can start at any time, and only the game shown streams.
 
+## Comparing A against B
+
+- *Keep as A* in the Tuning tab remembers the tuning; edits after it are B. *Showing A/B* swaps
+  them in the editor and in every running game (they get the asset shown,
+  `InputAssetDocument::GetAppliedAsset()`), so the difference is felt in a second; so does holding
+  a pad's Back and pressing its top face button while playing, read from the devices whatever the
+  contexts do. An edit shows B again.
+- A recording replayed *Through A and B* runs twice in step, once through each tuning
+  (`InputPlayback::SetTuning()`), and the Timeline draws both: the same hands, two tunings.
+
 ## Recording
 
 - A recording (`.nyxinputrec`, `InputRecorder`) is an input system's stream in a file: the
@@ -228,4 +238,6 @@ and tries their output, for checking them by hand.
 
 ## Not built yet
 
-A/B.
+Rebinding in a player settings screen, button prompts for the device used last, local multiplayer,
+gamepad navigation for in-game UI (as a context), and keeping the full traces only while someone
+looks.

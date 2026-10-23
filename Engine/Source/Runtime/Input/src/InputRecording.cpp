@@ -204,6 +204,13 @@ namespace Nyx::Input
 		return true;
 	}
 
+	void InputPlayback::SetTuning(std::optional<InputAssetData> asset)
+	{
+		Tuning = std::move(asset);
+		const size_t frames = ReplayedFrames;
+		SeekTo(frames);
+	}
+
 	float InputPlayback::GetSeconds(size_t frame) const
 	{
 		if (FrameTimes.empty())
@@ -221,11 +228,15 @@ namespace Nyx::Input
 			return;
 		}
 
-		// The definitions before the frame, then the frame
+		// The definitions before the frame, with the tuning over them, then the frame
 		const size_t frameRecord = FrameRecords[ReplayedFrames];
 		while (NextRecord <= frameRecord)
 		{
-			Replica->Apply(Recording.Records[NextRecord++]);
+			const InputStreamRecord& record = Recording.Records[NextRecord++];
+			if (Replica->Apply(record) && record.bDefinitions && Tuning)
+			{
+				ApplyInputAsset(Replica->GetInput(), *Tuning);
+			}
 		}
 		++ReplayedFrames;
 	}

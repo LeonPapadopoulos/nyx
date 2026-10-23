@@ -1198,32 +1198,66 @@ namespace Nyx::Input
 			}
 		}
 
+		// The compared history's frame for each drawn one: both end at the same frame
+		const std::deque<InputHistory::Frame>* compared = Comparison ? &Comparison->GetFrames() : nullptr;
+		const auto comparedFrame = [&](size_t frameIndex) -> const InputHistory::Frame*
+		{
+			if (!compared || frames.size() - frameIndex > compared->size())
+			{
+				return nullptr;
+			}
+			return &(*compared)[compared->size() - (frames.size() - frameIndex)];
+		};
+
 		// Each action's value as its length, scaled to the largest shown; buttons 0 or 1. A dot
-		// where it fired.
+		// where it fired. The compared history faint, under it.
 		for (size_t series = 0; series < shown.size(); ++series)
 		{
 			const uint32_t action = shown[series];
 			const glm::vec4& color = colors[series % colors.size()];
-			float highest = 1e-6f;
-			for (const InputHistory::Frame& frame : frames)
+			const auto valueOf = [action](const InputHistory::Frame* frame)
 			{
-				highest = std::max(highest, action < frame.Actions.size() ? glm::length(frame.Actions[action].Value) : 0.0f);
-			}
-			const auto pointOf = [&](size_t frameIndex)
-			{
-				const InputHistory::Frame& frame = frames[frameIndex];
-				const float value = action < frame.Actions.size() ? glm::length(frame.Actions[action].Value) / highest : 0.0f;
-				return glm::vec2(xOf(frameIndex), area.Max.y - 4.0f - value * (area.GetHeight() - 8.0f));
+				return frame && action < frame->Actions.size() ? glm::length(frame->Actions[action].Value) : 0.0f;
 			};
+			float highest = 1e-6f;
+			for (size_t index = 0; index < frames.size(); ++index)
+			{
+				highest = std::max({ highest, valueOf(&frames[index]), valueOf(comparedFrame(index)) });
+			}
+			const auto pointAt = [&](size_t frameIndex, float value)
+			{
+				return glm::vec2(xOf(frameIndex), area.Max.y - 4.0f - value / highest * (area.GetHeight() - 8.0f));
+			};
+
+			if (compared)
+			{
+				const glm::vec4 faint(color.r, color.g, color.b, color.a * 0.4f);
+				for (size_t index = 1; index < frames.size(); ++index)
+				{
+					const InputHistory::Frame* before = comparedFrame(index - 1);
+					const InputHistory::Frame* now = comparedFrame(index);
+					if (before && now)
+					{
+						painter.AddLine(pointAt(index - 1, valueOf(before)), pointAt(index, valueOf(now)), 3.0f, EPainterLineCap::Round,
+							PainterStyle::Filled(faint));
+					}
+					if (now && action < now->Actions.size() && now->Actions[action].bTriggered)
+					{
+						painter.AddCircle(pointAt(index, valueOf(now)), 3.5f, PainterStyle::Outlined(faint, 1.5f));
+					}
+				}
+			}
+
 			for (size_t index = 1; index < frames.size(); ++index)
 			{
-				painter.AddLine(pointOf(index - 1), pointOf(index), 1.5f, EPainterLineCap::Round, PainterStyle::Filled(color));
+				painter.AddLine(pointAt(index - 1, valueOf(&frames[index - 1])), pointAt(index, valueOf(&frames[index])), 1.5f, EPainterLineCap::Round,
+					PainterStyle::Filled(color));
 			}
 			for (size_t index = 0; index < frames.size(); ++index)
 			{
 				if (action < frames[index].Actions.size() && frames[index].Actions[action].bTriggered)
 				{
-					painter.AddCircle(pointOf(index), 2.5f, PainterStyle::Filled(color));
+					painter.AddCircle(pointAt(index, valueOf(&frames[index])), 2.5f, PainterStyle::Filled(color));
 				}
 			}
 		}
@@ -1245,6 +1279,11 @@ namespace Nyx::Input
 			painter.AddRoundedRect(swatch, 2.0f, PainterStyle::Filled(colors[series % colors.size()]));
 			ImGui::SameLine();
 			ImGui::TextUnformatted(input.GetAction(ActionHandle::Make(shown[series], 1)).Name.c_str());
+		}
+		if (compared)
+		{
+			ImGui::SameLine();
+			ImGui::TextDisabled("  solid: %s, faint: %s", ComparisonLabels[0].c_str(), ComparisonLabels[1].c_str());
 		}
 
 		// The frame under the mouse, with its traces
@@ -1268,6 +1307,19 @@ namespace Nyx::Input
 				if (trace.Action.Index() == action)
 				{
 					ImGui::TextWrapped("%s", FormatTrace(input, trace).c_str());
+				}
+			}
+		}
+
+		// The compared frame's values beside
+		if (const InputHistory::Frame* other = comparedFrame(hovered))
+		{
+			for (const uint32_t action : shown)
+			{
+				if (action < frame.Actions.size() && action < other->Actions.size())
+				{
+					ImGui::Text("%s: %s %s, %s %s", input.GetAction(ActionHandle::Make(action, 1)).Name.c_str(), ComparisonLabels[0].c_str(),
+						FormatValue(frame.Actions[action].Value).c_str(), ComparisonLabels[1].c_str(), FormatValue(other->Actions[action].Value).c_str());
 				}
 			}
 		}

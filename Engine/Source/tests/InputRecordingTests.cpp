@@ -318,6 +318,43 @@ namespace
 		std::filesystem::remove(path);
 	}
 
+	// Replay through A and B: the same recording, other tuning
+	void TestPlaybackThroughOtherTuning()
+	{
+		const std::filesystem::path path = TempPath("NyxInputRecordingTestsTuning.nyxinputrec");
+		Record(path, 10);
+
+		// In the script, the right stick turns at 0.95 from frame 3 on, the mouse from frame 7
+		InputPlayback recorded;
+		Require(recorded.Load(path), "It loads");
+		recorded.SeekTo(6);
+		const ActionHandle look = recorded.GetReplica().GetInput().FindAction("Look");
+		Require(glm::length(recorded.GetReplica().GetInput().GetUser().Get(look).Value) > 0.0f, "As recorded, the stick turns");
+
+		// Through tuning whose dead zone takes it all
+		InputAssetData deadStick = MakeDefaultInputAsset();
+		for (InputBindingData& binding : deadStick.Contexts[2].Bindings)
+		{
+			if (binding.Control == "Gamepad/RightStick")
+			{
+				binding.Pipeline.DeadZone.Inner = 0.98f;
+				binding.Pipeline.DeadZone.Outer = 0.99f;
+			}
+		}
+		InputPlayback tuned;
+		Require(tuned.Load(path), "It loads again");
+		tuned.SeekTo(6);
+		tuned.SetTuning(deadStick);
+		Require(tuned.GetFrame() == 6, "Still at frame 6");
+		Require(glm::length(tuned.GetReplica().GetInput().GetUser().Get(look).Value) == 0.0f, "Through the other tuning, it doesn't");
+		const InputContextDef& fly = tuned.GetReplica().GetInput().GetContext(tuned.GetReplica().GetInput().FindContext("FlyCamera"));
+		Require(fly.Bindings[4].Pipeline.DeadZone.Inner == 0.98f, "The other tuning is in the replica");
+
+		tuned.SetTuning(std::nullopt);
+		Require(glm::length(tuned.GetReplica().GetInput().GetUser().Get(look).Value) > 0.0f, "Back to the recorded tuning");
+		std::filesystem::remove(path);
+	}
+
 	void TestNotARecording()
 	{
 		const std::filesystem::path path = TempPath("NyxInputRecordingTests.txt");
@@ -361,6 +398,7 @@ int main()
 		TestReplayGivesTheSamePhases();
 		TestReplayIntoAGame();
 		TestPlayback();
+		TestPlaybackThroughOtherTuning();
 		TestNotARecording();
 		TestTwoWatchers();
 	}

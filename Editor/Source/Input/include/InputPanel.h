@@ -70,6 +70,15 @@ namespace Nyx::Editor
 			return Playback.get();
 		}
 
+		// Replays the recording shown through A and B, as its Through A and B box does: needs A
+		void SetComparing(bool bCompare);
+
+		// The recording through B while it is replayed through A and B
+		Nyx::Input::InputPlayback* GetPlaybackB()
+		{
+			return PlaybackB.get();
+		}
+
 		InputTuningView& GetTuning()
 		{
 			return Tuning;
@@ -97,5 +106,10 @@ namespace Nyx::Editor
 		void DrawPlaybackControls();
 		std::unique_ptr<Nyx::Input::InputPlayback> Playback;
 		bool bShowPlayback = false;
+
+		// Replay through A and B: the recording again, in step, through B; the shown one through A
+		void UpdateComparisonTuning();
+		std::unique_ptr<Nyx::Input::InputPlayback> PlaybackB;
+		uint64_t ComparedRevision = 0;
 	};
 }

@@ -165,6 +165,10 @@ contexts, and the context highest on the stack that binds a control gets it.
   which devices can do each action.
 - Running games, all of Play All included, get every change of the asset as it is made, with their
   player's settings over it; held buttons stay held.
+- *Keep as A* remembers the tuning; edits after it are B, and *Showing A/B* swaps them here and in
+  every running game, as does holding a pad's Back (View, Share, Create) and pressing its top face
+  button while playing. A recording replayed *Through A and B* draws both in the Timeline: the
+  same hands, two tunings.
 - `NyxPadCheck.exe` lists the pads, prints what they report and tries their output without a
   window.
 - `NyxInputTests`, `NyxInputRouterTests`, `NyxInputGamepadTests`, `NyxInputInspectionTests`,

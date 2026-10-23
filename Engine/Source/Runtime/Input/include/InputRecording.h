@@ -1,5 +1,6 @@
 #pragma once
 
+#include "InputAsset.h"
 #include "InputStream.h"
 
 #include <cstdint>
@@ -104,6 +105,11 @@ namespace Nyx::Input
 			return Path;
 		}
 
+		// Plays through other tuning than the recorded one, e.g. A or B: put into the replica
+		// after each of the recording's definitions, by name, as ApplyInputAsset() does. From the
+		// start; null for the recorded tuning.
+		void SetTuning(std::optional<InputAssetData> asset);
+
 		// While playing: the frames whose time has come, deltaSeconds after the last call. Stops at
 		// the end.
 		void Update(float deltaSeconds);
@@ -159,6 +165,7 @@ namespace Nyx::Input
 		std::vector<uint64_t> FrameTimes;
 
 		std::unique_ptr<InputReplica> Replica = std::make_unique<InputReplica>();
+		std::optional<InputAssetData> Tuning;
 		size_t NextRecord = 0;
 		size_t ReplayedFrames = 0;
 		double PlayedSeconds = 0.0;

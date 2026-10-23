@@ -4,6 +4,7 @@
 #include "InputInspection.h"
 #include "InputSystem.h"
 
+#include <array>
 #include <cstdint>
 #include <functional>
 #include <optional>
@@ -67,6 +68,14 @@ namespace Nyx::Input
 			ExtraTabToSelect = std::move(name);
 		}
 
+		// The Timeline draws a second history over the drawn one, frame by frame, e.g. the same
+		// recording replayed through B over A: the drawn one solid, this one faint. Null for none.
+		void SetComparison(const InputHistory* other, std::string drawnLabel, std::string otherLabel)
+		{
+			Comparison = other;
+			ComparisonLabels = { std::move(drawnLabel), std::move(otherLabel) };
+		}
+
 		// Whether the Devices tab's buttons can try the pads' output: not for a replica of another
 		// program's input, whose pads are only pictures
 		void SetCanSendOutput(bool bCan)
@@ -102,8 +111,10 @@ namespace Nyx::Input
 		std::string EventFilter;
 		bool bShowSensors = false;
 
-		// Timeline: which actions it shows
+		// Timeline: which actions it shows, and what it compares with
 		std::vector<bool> TimelineActions;
+		const InputHistory* Comparison = nullptr;
+		std::array<std::string, 2> ComparisonLabels;
 
 		// Devices
 		StickCalibration Calibration;

@@ -111,7 +111,50 @@ namespace Nyx::Editor
 	{
 		if (Input)
 		{
-			Problems = Nyx::Input::ApplyInputAsset(*Input, Asset, bApplyPlayerSettings ? GetPlayerSettings() : nullptr);
+			Problems = Nyx::Input::ApplyInputAsset(*Input, GetAppliedAsset(), bApplyPlayerSettings ? GetPlayerSettings() : nullptr);
+		}
+	}
+
+	void InputAssetDocument::KeepAsA()
+	{
+		KeptA = Asset;
+		bShowingA = false;
+		LOG_INFO("Input: kept the tuning as A; edits from now on are B");
+	}
+
+	void InputAssetDocument::ForgetA()
+	{
+		const bool bWasShowingA = IsShowingA();
+		KeptA.reset();
+		bShowingA = false;
+		if (bWasShowingA)
+		{
+			++Revision;
+			Apply();
+		}
+	}
+
+	void InputAssetDocument::SetShowingA(bool bShowA)
+	{
+		if (!KeptA || bShowA == bShowingA)
+		{
+			return;
+		}
+
+		// The games get it as any change (PlaySession sends GetAppliedAsset())
+		bShowingA = bShowA;
+		++Revision;
+		Apply();
+		LOG_INFO("Input: tuning {0}", bShowingA ? "A" : "B");
+	}
+
+	void InputAssetDocument::HandleSwapChord(const Nyx::Input::InputSystem& input)
+	{
+		const Nyx::Input::InputFrame& frame = input.GetFrame();
+		if (KeptA && frame.IsDown(Nyx::Input::Gamepad(Nyx::Input::EGamepadControl::Back)) &&
+			frame.WasPressed(Nyx::Input::Gamepad(Nyx::Input::EGamepadControl::FaceNorth)))
+		{
+			SetShowingA(!bShowingA);
 		}
 	}
 
@@ -168,6 +211,8 @@ namespace Nyx::Editor
 	{
 		if (TouchesAsset(transaction))
 		{
+			// An edit is B's
+			bShowingA = false;
 			++Revision;
 			Apply();
 			RefreshChecks();

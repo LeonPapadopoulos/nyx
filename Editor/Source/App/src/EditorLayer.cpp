@@ -167,10 +167,10 @@ namespace Nyx::Editor
 			{
 				state.push_back(Nyx::MakeNetMessage(Nyx::MaterialValuesMessage{ document.GetPath(), document.GetAsset().ToText() }));
 			}
-			// The game reads the input asset's file; unsaved edits it gets once linked
-			if (InputAsset.IsLoaded() && InputAsset.IsDirty())
+			// The game reads the input asset's file; unsaved edits, or A, it gets once linked
+			if (InputAsset.IsLoaded() && (InputAsset.IsDirty() || InputAsset.IsShowingA()))
 			{
-				state.push_back(Nyx::MakeNetMessage(Nyx::MakeSetInputAssetMessage(InputAsset.GetAsset())));
+				state.push_back(Nyx::MakeNetMessage(Nyx::MakeSetInputAssetMessage(InputAsset.GetAppliedAsset())));
 			}
 			return state;
 		};
@@ -262,7 +262,7 @@ namespace Nyx::Editor
 		if (InputAsset.IsLoaded() && InputAsset.GetRevision() != SentInputRevision)
 		{
 			SentInputRevision = InputAsset.GetRevision();
-			Games.SendToGames(Nyx::MakeNetMessage(Nyx::MakeSetInputAssetMessage(InputAsset.GetAsset())));
+			Games.SendToGames(Nyx::MakeNetMessage(Nyx::MakeSetInputAssetMessage(InputAsset.GetAppliedAsset())));
 		}
 		Games.Update();
 
