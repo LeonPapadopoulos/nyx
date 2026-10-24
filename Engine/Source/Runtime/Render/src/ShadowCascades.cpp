@@ -98,8 +98,11 @@ namespace Nyx
 		const float farDistance = -(center.z - radius);
 		// Reversed, as the scene's depth: the near plane's depth 1, the far plane's 0
 		glm::mat4 projection = glm::orthoRH_ZO(center.x - radius, center.x + radius, center.y - radius, center.y + radius, farDistance, nearDistance);
-		// Vulkan's Y points down the picture, as the camera's (MakePerspectiveProjection())
+		// Vulkan's Y points down the picture, as the camera's (MakePerspectiveProjection()). The whole
+		// of clip Y turns: the box is off the light view's axis, so its offset turns with its scale,
+		// or the map would cover the box mirrored about the axis, not the sphere.
 		projection[1][1] *= -1.0f;
+		projection[3][1] *= -1.0f;
 
 		ShadowCascade cascade;
 		cascade.ViewProjection = projection * lightView;

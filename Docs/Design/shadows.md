@@ -62,7 +62,13 @@ The radius is rounded up to 1/64 m, so rounding in the matrices can't make it di
 - **Reversed**, as the scene's (`NearPlaneDepth` is 1): the orthographic projection is made with its
   near and far planes swapped, the map cleared to 0, nearer the light greater, `DepthTestNearer`. Y is
   turned for Vulkan as the camera's projection turns it, so the light sees the front faces
-  counter-clockwise, as the camera does.
+  counter-clockwise, as the camera does. All of clip Y turns, its offset with its scale: a
+  cascade's box is off the light view's axis (the light's view is turned only, about the world's
+  origin), and turning the scale alone, as the camera's centred projection may, mirrors the box
+  about the axis. The map then covered another square than the sphere, the further from the origin
+  the further off, and the view's points beyond it read its edge: shadows over sunlit ground that
+  moved with the camera. `NyxShadowCascadeTests` checks cascades centred on spheres far from the
+  origin, `NyxShadowGpuTests` a large ground's shadows from cameras all round.
 - **Reaching back to the casters**: a caster between the light and the slice's sphere, a tree
   beside the slice or a hill behind it, must still be drawn into it. The cascade's near plane is as
   far towards the light as the corner of the world's caster bounds that reaches furthest, or the

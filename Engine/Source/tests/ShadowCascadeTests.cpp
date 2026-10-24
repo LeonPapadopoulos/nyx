@@ -1,9 +1,9 @@
 // The directional light's cascades without a GPU (ShadowCascades.h): the splits from the near
 // plane to the shadow distance, even, logarithmic and between; the sphere around each slice of the
 // camera's view holds the slice's corners, is hardly bigger than it must be, and keeps its radius
-// however the camera turns; the light's view of a sphere holds it, its depth reversed and reaching
-// back to what casts into it; and its texels stay where they are in the world as the camera moves
-// and turns, so still shadows don't shimmer.
+// however the camera turns; the light's view of a sphere holds it, centred, wherever the sphere
+// is, its depth reversed and reaching back to what casts into it; and its texels stay where they
+// are in the world as the camera moves and turns, so still shadows don't shimmer.
 #include "CameraProjection.h"
 #include "ShadowCascades.h"
 #include "TestSupport.h"
@@ -149,6 +149,34 @@ namespace
 		Require(GetCasterReach(below, sphere.Center, towardsLight) == 0.0f, "A box away from the light reaches towards it");
 	}
 
+	// Wherever the sphere is, far from the world's origin every way, and wherever the light comes
+	// from, the cascade is centred on it and holds all of it: the light's view is off its axis there,
+	// and the picture's Y must turn with the offset, or the map covers the sphere mirrored about the
+	// axis, and points of the view fall off it
+	void TestCascadesAwayFromTheOrigin()
+	{
+		const glm::vec3 lights[] = { glm::normalize(glm::vec3(0.32f, 0.77f, 0.56f)), glm::normalize(glm::vec3(-0.6f, 0.4f, 0.2f)), glm::normalize(glm::vec3(0.1f, 0.995f, -0.05f)),
+			glm::normalize(glm::vec3(0.0f, 0.3f, -1.0f)) };
+		const glm::vec3 centers[] = { glm::vec3(0.0f), glm::vec3(0.0f, 2.0f, -74.0f), glm::vec3(150.0f, 10.0f, 0.0f), glm::vec3(-120.0f, -30.0f, 210.0f), glm::vec3(0.0f, 300.0f, 0.0f),
+			glm::vec3(-60.0f, 5.0f, -250.0f) };
+		for (const glm::vec3& towardsLight : lights)
+		{
+			for (const glm::vec3& center : centers)
+			{
+				const BoundingSphere sphere{ center, 40.0f };
+				const ShadowCascade cascade = MakeShadowCascade(sphere, towardsLight, 1024, 0.0f);
+				const glm::vec3 middle = ToClip(cascade, center);
+				// Within the half texel the centre was snapped by
+				Require(std::abs(middle.x) < 2.0f / 1024.0f && std::abs(middle.y) < 2.0f / 1024.0f, "A cascade isn't centred on its sphere away from the origin: " + std::to_string(middle.x) + ", " + std::to_string(middle.y));
+				for (const glm::vec3& offset : { glm::vec3(1, 0, 0), glm::vec3(-1, 0, 0), glm::vec3(0, 1, 0), glm::vec3(0, -1, 0), glm::vec3(0, 0, 1), glm::vec3(0, 0, -1), glm::normalize(glm::vec3(1, -1, 1)) })
+				{
+					const glm::vec3 clip = ToClip(cascade, center + offset * sphere.Radius * 0.99f);
+					Require(std::abs(clip.x) <= 1.0f && std::abs(clip.y) <= 1.0f && clip.z >= 0.0f && clip.z <= 1.0f, "A point of a sphere away from the origin is outside its cascade");
+				}
+			}
+		}
+	}
+
 	// Where a point of the world lands in the shadow map, in texels across its first axis, and how
 	// far into its texel
 	float TexelOffset(const ShadowCascade& cascade, const glm::vec3& point, uint32_t resolution)
@@ -206,6 +234,7 @@ int main()
 		TestSplits();
 		TestSpheres();
 		TestCascades();
+		TestCascadesAwayFromTheOrigin();
 		TestTexelSnapping();
 		TestShadowCamera();
 	}

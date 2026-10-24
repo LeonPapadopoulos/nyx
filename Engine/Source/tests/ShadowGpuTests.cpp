@@ -6,7 +6,9 @@
 // quad whose back faces the sun casts nothing; a two-sided one casts. Each cascade is culled by
 // its own frustum: the nearest leaves out what is far away, the farthest draws it. The editor's
 // camera draws the scene's shadows too. The debug view tints the picture by cascade and shows the
-// cascades' maps along the bottom.
+// cascades' maps along the bottom. On a large generated ground that casts and receives, a place in
+// a cube's shadow stays in it and a sunlit place on a far hillside stays lit, whichever way the
+// camera looks from wherever it is.
 //
 // NYX_SCENE_TEST_OUTPUT=<folder> saves what was rendered there, e.g. to make a new reference
 // after a change that is meant to change the picture.
@@ -14,10 +16,13 @@
 #include "CameraProjection.h"
 #include "DirectionalLightComponent.h"
 #include "Entity.h"
+#include "GroundComponent.h"
+#include "GroundMesh.h"
 #include "ImageFile.h"
 #include "Log.h"
 #include "MeshInstancesComponent.h"
 #include "MeshRendererComponent.h"
+#include "RuntimeMeshComponent.h"
 #include "TransformComponent.h"
 #include "VulkanRenderer.h"
 #include "RenderTestSupport.h"
@@ -333,6 +338,140 @@ namespace
 
 		EndView(gpu, view);
 	}
+
+	// A camera looking from `position` at `target`, upright
+	TransformComponent LookingAt(const glm::vec3& position, const glm::vec3& target)
+	{
+		return Placed(position, glm::vec3(1.0f), glm::quatLookAt(glm::normalize(target - position), glm::vec3(0.0f, 1.0f, 0.0f)));
+	}
+
+	// The default generated ground, 128 m across with its hills, casting and receiving, a lone 1 m cube
+	// on it and a few dozen drawn instanced, under the ground test scene's sun. The ground in the
+	// cube's shadow stays in it, and a sunlit place on a hillside 55 m from the middle stays lit,
+	// seen from cameras near and far, high and low, turned every way: what the light's cascades
+	// cover follows the camera, but what is in shadow doesn't.
+	void TestGroundShadowsStayAsTheCameraMoves(SceneRenderer& gpu)
+	{
+		IEditorRenderer& renderer = gpu.Renderer;
+		Registry world;
+		const GroundComponent groundSettings{};
+		const auto heightAt = [&groundSettings](float x, float z)
+		{
+			return SampleGroundHeight(groundSettings, x, z);
+		};
+		const Entity ground = world.CreateEntity();
+		world.Add<TransformComponent>(ground, Placed(glm::vec3(0.0f)));
+		MeshRendererComponent groundRenderer;
+		groundRenderer.MaterialAsset = renderer.GetMaterial("Materials/VertexColor.nyxmat");
+		world.Add<MeshRendererComponent>(ground, groundRenderer);
+		RuntimeMeshComponent groundMesh;
+		SetRuntimeMesh(groundMesh, std::make_shared<MeshData>(MakeGroundMesh(groundSettings)));
+		world.Add<RuntimeMeshComponent>(ground, groundMesh);
+
+		Material* material = renderer.GetMaterial("Materials/Untextured.nyxmat");
+		auto instances = std::make_shared<MeshInstances>();
+		for (int row = 0; row < 6; ++row)
+		{
+			for (int column = 0; column < 6; ++column)
+			{
+				const glm::vec2 at(-16.0f + column * 2.5f, -8.0f + row * 2.5f);
+				instances->Transforms.push_back(Placed(glm::vec3(at.x, heightAt(at.x, at.y) + 0.5f, at.y)).ToMatrix());
+			}
+		}
+		const Entity field = AddMesh(world, Placed(glm::vec3(0.0f)), renderer.GetCubeMesh(), material);
+		MeshInstancesComponent meshInstances;
+		SetMeshInstances(meshInstances, std::move(instances));
+		world.Add<MeshInstancesComponent>(field, meshInstances);
+		const glm::vec3 cubeFoot(6.0f, heightAt(6.0f, -2.0f), -2.0f);
+		const Entity cube = AddMesh(world, Placed(cubeFoot + glm::vec3(0.0f, 0.5f, 0.0f)), renderer.GetCubeMesh(), material);
+
+		const Entity sun = world.CreateEntity();
+		world.Add<TransformComponent>(sun, Placed(glm::vec3(0.0f, 5.0f, 0.0f), glm::vec3(1.0f), glm::quat(glm::radians(glm::vec3(-50.0f, 30.0f, 0.0f)))));
+		world.Add<DirectionalLightComponent>(sun, DirectionalLightComponent{});
+		const glm::vec3 towardsLight = -glm::normalize(world.Get<TransformComponent>(sun).Rotation * glm::vec3(0.0f, 0.0f, -1.0f));
+
+		// Under the middle of the shadow of the cube's top; and a place on the hillside to the west,
+		// turned to the sun, which nothing shades: no ground rises between it and the sun
+		const glm::vec3 shadedFlat = cubeFoot + glm::vec3(0.0f, 1.0f, 0.0f) - towardsLight * (1.0f / towardsLight.y);
+		const glm::vec3 shaded(shadedFlat.x, heightAt(shadedFlat.x, shadedFlat.z), shadedFlat.z);
+		const glm::vec3 open(-40.0f, heightAt(-40.0f, -40.0f), -40.0f);
+		for (float along = 0.5f; along < 150.0f; along += 0.25f)
+		{
+			const glm::vec3 point = open + towardsLight * along;
+			Require(point.y > heightAt(point.x, point.z), "The test's open place is in the ground's own shadow");
+		}
+
+		const CameraComponent lens{};
+		const Entity camera = world.CreateEntity();
+		world.Add<TransformComponent>(camera, Placed(glm::vec3(0.0f, 2.0f, 6.0f)));
+		world.Add<CameraComponent>(camera, lens);
+		renderer.SetWorld(&world);
+		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewCameraMode(view, EViewportCameraMode::ScenePrimaryCamera);
+		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
+		gpu.DrawUntilShadersCompiled();
+
+		struct Shot
+		{
+			glm::vec3 Position;
+			// Where the camera looks, off the place so it isn't always in the middle
+			glm::vec3 Aside;
+		};
+		const auto check = [&](const glm::vec3& place, bool bShaded, const std::vector<Shot>& shots, const std::string& what)
+		{
+			for (size_t index = 0; index < shots.size(); ++index)
+			{
+				const std::string shot = what + " from shot " + std::to_string(index);
+				TransformComponent& transform = world.Get<TransformComponent>(camera);
+				transform = LookingAt(shots[index].Position, place + shots[index].Aside);
+				const std::optional<glm::vec2> pixel = WorldToScreenPoint(transform, lens, glm::vec2(ViewWidth, ViewHeight), place);
+				Require(pixel && pixel->x >= 0.0f && pixel->y >= 0.0f && pixel->x < ViewWidth && pixel->y < ViewHeight, shot + ": the place is out of the picture");
+				// Nothing of the ground hides the place from the camera
+				for (float part = 0.02f; part < 0.98f; part += 0.01f)
+				{
+					const glm::vec3 point = glm::mix(shots[index].Position, place, part);
+					Require(point.y > heightAt(point.x, point.z), shot + ": the ground hides the place");
+				}
+
+				world.Get<DirectionalLightComponent>(sun).bCastShadows = true;
+				const RgbaImage with = Draw(gpu, view);
+				SaveIfAsked(with, "Ground-" + std::string(bShaded ? "Shaded-" : "Open-") + std::to_string(index));
+				world.Get<DirectionalLightComponent>(sun).bCastShadows = false;
+				const RgbaImage without = Draw(gpu, view);
+				// The cube doesn't hide the place either: without it, the place looks the same
+				world.Get<MeshRendererComponent>(cube).bVisible = false;
+				const RgbaImage withoutCube = Draw(gpu, view);
+				world.Get<MeshRendererComponent>(cube).bVisible = true;
+				Require(Near(PixelAt(without, *pixel), PixelAt(withoutCube, *pixel), 2), shot + ": the cube hides the place");
+
+				const int lit = Brightness(PixelAt(without, *pixel));
+				const int drawn = Brightness(PixelAt(with, *pixel));
+				if (bShaded)
+				{
+					Require(drawn * 4 < lit * 3, shot + ": the place isn't in the cube's shadow, " + std::to_string(drawn) + " against " + std::to_string(lit) + " in the sun");
+				}
+				else
+				{
+					Require(std::abs(drawn - lit) <= 6, shot + ": the place in the sun is shadowed, " + std::to_string(drawn) + " against " + std::to_string(lit) + " without shadows");
+				}
+			}
+		};
+		// The cube's shadow falls away from the sun, towards -X and -Z: seen from that side and from
+		// above, near and far
+		check(shaded, true,
+			{ { glm::vec3(-6.0f, 5.0f, -14.0f), glm::vec3(0.0f) }, { glm::vec3(-12.0f, 3.0f, 0.0f), glm::vec3(0.0f, 0.0f, 2.0f) },
+				{ glm::vec3(0.0f, 20.0f, -10.0f), glm::vec3(1.5f, 0.0f, 0.0f) }, { glm::vec3(20.0f, 6.0f, -20.0f), glm::vec3(0.0f) },
+				{ glm::vec3(-40.0f, 25.0f, -50.0f), glm::vec3(-4.0f, 0.0f, 3.0f) }, { glm::vec3(5.0f, 1.5f, -12.0f), glm::vec3(-1.0f, 0.5f, 0.0f) } },
+			"The cube's shadow");
+		// The hillside faces the sun, east: seen from the valley, from above, from far
+		check(open, false,
+			{ { glm::vec3(0.0f, 2.0f, 6.0f), glm::vec3(10.0f, 4.0f, 0.0f) }, { glm::vec3(10.0f, 15.0f, -60.0f), glm::vec3(0.0f) },
+				{ glm::vec3(-20.0f, 40.0f, 10.0f), glm::vec3(5.0f, 0.0f, 5.0f) }, { glm::vec3(-15.0f, 6.0f, -10.0f), glm::vec3(0.0f) },
+				{ glm::vec3(30.0f, 8.0f, 30.0f), glm::vec3(-6.0f, 3.0f, 0.0f) }, { glm::vec3(20.0f, 30.0f, -45.0f), glm::vec3(0.0f, 0.0f, -8.0f) } },
+			"The open hillside");
+
+		EndView(gpu, view);
+	}
 }
 
 int main()
@@ -345,6 +484,7 @@ int main()
 		TestCascadesCullByTheirOwnFrustum(gpu);
 		TestTwoSidedCasting(gpu);
 		TestEditorCameraAndDebugView(gpu);
+		TestGroundShadowsStayAsTheCameraMoves(gpu);
 	}
 	catch (const std::exception& error)
 	{
