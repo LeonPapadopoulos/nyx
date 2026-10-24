@@ -1,12 +1,13 @@
 #include "DetailsPanel.h"
 
+#include "BinaryArchive.h"
 #include "ComponentEdits.h"
 #include "ComponentTypeRegistry.h"
+#include "GuidComponent.h"
 #include "ImGuiSource.h"
-#include "MeshInstancesComponent.h"
+#include "ReflectedArchiveSerializer.h"
 #include "ReflectedPropertyDrawer.h"
 #include "ReflectionSourceRegistry.h"
-#include "RuntimeMeshComponent.h"
 #include "SceneEditor.h"
 #include "TransactionObjectRefHelpers.h"
 #include "UIWidgets.h"
@@ -20,41 +21,34 @@
 
 namespace Nyx::Editor
 {
-	std::vector<std::string> DescribeRuntimeMesh(const Nyx::RuntimeMeshComponent& component)
+	std::optional<RuntimeSection> GetRuntimeSection(const Nyx::Registry& world, Nyx::Entity entity, const std::optional<GameInspection>& game)
 	{
-		if (!component.Mesh)
+		if (!game)
 		{
-			return { "No mesh yet" };
+			std::vector<Nyx::InspectedComponent> components = Nyx::InspectRuntimeComponents(world, entity);
+			if (components.empty())
+			{
+				return std::nullopt;
+			}
+			return RuntimeSection{ "This world", std::move(components) };
 		}
-		const Nyx::MeshData& mesh = *component.Mesh;
-		std::vector<std::string> lines = { std::to_string(mesh.Vertices.size()) + " vertices, " + std::to_string(mesh.Indices.size() / 3) + " triangles" };
-		const std::vector<Nyx::MeshSection> sections = Nyx::GetMeshSections(mesh);
-		for (size_t index = 0; index < sections.size(); ++index)
-		{
-			lines.push_back("Section " + std::to_string(index) + ": " + std::to_string(sections[index].IndexCount / 3) + " triangles, material slot " +
-				std::to_string(sections[index].MaterialSlot));
-		}
-		if (const std::string problem = Nyx::CheckMeshData(mesh); !problem.empty())
-		{
-			lines.push_back("Not drawn: " + problem);
-		}
-		lines.push_back("Revision " + std::to_string(component.Revision));
-		return lines;
-	}
 
-	std::vector<std::string> DescribeMeshInstances(const Nyx::MeshInstancesComponent& component)
-	{
-		if (!component.Instances)
+		if (!game->Answer)
 		{
-			return { "No instances yet" };
+			return RuntimeSection{ "Waiting for " + game->GameName, {} };
 		}
-		const Nyx::MeshInstances& instances = *component.Instances;
-		const std::string cells = instances.Cells.empty() ? std::string("one cell") : std::to_string(instances.Cells.size()) + " cells";
-		return { std::to_string(instances.Transforms.size()) + " instances in " + cells, "Revision " + std::to_string(component.Revision) };
+		if (!game->Answer->bFound)
+		{
+			return RuntimeSection{ game->GameName + " has no such entity", {} };
+		}
+		return RuntimeSection{ game->GameName + ", step " + std::to_string(game->Answer->Step), game->Answer->Components };
 	}
 
 	void DetailsPanel::Draw(SceneEditor& editing)
 	{
+		// Set again if the Runtime section is drawn open
+		InspectedEntity.reset();
+
 		InspectorDrawContext& drawContext = editing.DetailsContext;
 
 		// An entity reference picks only while it is drawn: closing its component or the panel, or
@@ -134,10 +128,11 @@ namespace Nyx::Editor
 		// Removed after the loop, so it isn't drawn after it is gone
 		const Nyx::ComponentTypeOps* componentToRemove = nullptr;
 
-		// One collapsible section per component of the entity, showing its reflected properties
+		// One collapsible section per component of the entity, showing its reflected properties; the
+		// run-time ones after them, in the Runtime section
 		for (const Nyx::ComponentTypeOps& componentType : Nyx::ComponentTypeRegistry::Get().GetAll())
 		{
-			void* component = componentType.Get(world, selectedEntity);
+			void* component = componentType.IsRuntime() ? nullptr : componentType.Get(world, selectedEntity);
 			if (!component)
 			{
 				continue;
@@ -178,35 +173,7 @@ namespace Nyx::Editor
 			ImGui::PopID();
 		}
 
-		// Made by code while the world runs, so there is nothing to edit or save: what it is
-		if (world.Has<Nyx::RuntimeMeshComponent>(selectedEntity))
-		{
-			ImGui::PushID("##RuntimeMesh");
-			const bool bMeshOpen = NYX_UI(Nyx::UI::CollapsingHeader("Mesh Made at Run Time"));
-			ImGui::SetItemTooltip("Made by code while the world runs, e.g. by a generator; not saved, made again after loading");
-			if (bMeshOpen)
-			{
-				for (const std::string& line : DescribeRuntimeMesh(world.Get<Nyx::RuntimeMeshComponent>(selectedEntity)))
-				{
-					NYX_UI(ImGui::TextDisabled("%s", line.c_str()));
-				}
-			}
-			ImGui::PopID();
-		}
-		if (world.Has<Nyx::MeshInstancesComponent>(selectedEntity))
-		{
-			ImGui::PushID("##MeshInstances");
-			const bool bInstancesOpen = NYX_UI(Nyx::UI::CollapsingHeader("Mesh Instances"));
-			ImGui::SetItemTooltip("The mesh drawn at every one of these transforms, made by code while the world runs, e.g. by a scatter; not saved, made again after loading");
-			if (bInstancesOpen)
-			{
-				for (const std::string& line : DescribeMeshInstances(world.Get<Nyx::MeshInstancesComponent>(selectedEntity)))
-				{
-					NYX_UI(ImGui::TextDisabled("%s", line.c_str()));
-				}
-			}
-			ImGui::PopID();
-		}
+		DrawRuntimeSection(world, selectedEntity);
 
 		// The component types the entity doesn't have yet
 		NYX_UI(ImGui::Spacing());
@@ -260,5 +227,84 @@ namespace Nyx::Editor
 		ImGui::PopID();
 		ImGui::PopID();
 		ImGui::End();
+	}
+
+	void DetailsPanel::DrawRuntimeSection(const Nyx::Registry& world, Nyx::Entity entity)
+	{
+		const std::optional<RuntimeSection> section = GetRuntimeSection(world, entity, Game);
+		if (!section)
+		{
+			return;
+		}
+
+		ImGui::PushID("##Runtime");
+		const bool bOpen = NYX_UI(Nyx::UI::CollapsingHeader("Runtime"));
+		ImGui::SetItemTooltip("Made while the world runs and never saved; while Play runs, as the game has it, a few times a second");
+		if (bOpen)
+		{
+			if (world.Has<Nyx::GuidComponent>(entity))
+			{
+				InspectedEntity = world.Get<Nyx::GuidComponent>(entity).Guid;
+			}
+
+			NYX_UI(ImGui::TextDisabled("%s", section->Source.c_str()));
+			for (const Nyx::InspectedComponent& component : section->Components)
+			{
+				DrawInspectedComponent(component);
+			}
+		}
+		ImGui::PopID();
+	}
+
+	void DetailsPanel::DrawInspectedComponent(const Nyx::InspectedComponent& component)
+	{
+		ImGui::PushID(component.Type.c_str());
+		const std::string& name = component.DisplayName.empty() ? component.Type : component.DisplayName;
+		Nyx::UI::TreeRowOptions options;
+		options.bDefaultOpen = true;
+		options.bToggleOnClick = true;
+		if (NYX_UI(Nyx::UI::TreeRow(name.c_str(), options)).bOpen)
+		{
+			// The properties read into a component of the type, if this editor knows it, and drawn as
+			// any component's: greyed, and with nothing to undo
+			const Nyx::ComponentTypeOps* ops = Nyx::ComponentTypeRegistry::Get().FindByName(component.Type);
+			if (!component.Properties.empty() && ops && ops->TypeMetadata->PropertyCount > 0)
+			{
+				if (!ScratchEntity || !Scratch.IsAlive(*ScratchEntity))
+				{
+					ScratchEntity = Scratch.CreateEntity();
+				}
+				ops->Remove(Scratch, *ScratchEntity);
+				void* object = ops->Add(Scratch, *ScratchEntity);
+
+				Nyx::BinaryReader reader;
+				reader.LoadFromMemory(component.Properties);
+				Nyx::ReadWarnings warnings;
+				if (Nyx::ReflectedArchiveSerializer::DeserializeObject(reader, object, *ops->TypeMetadata, warnings))
+				{
+					ScratchContext.CurrentLocation = {};
+					ImGui::BeginDisabled();
+					DrawReflectedTypeTable(object, *ops->TypeMetadata, ScratchContext);
+					ImGui::EndDisabled();
+				}
+				else
+				{
+					NYX_UI(ImGui::TextDisabled("Its properties can't be read"));
+				}
+			}
+			else if (!component.Properties.empty())
+			{
+				NYX_UI(ImGui::TextDisabled("A type this editor doesn't know"));
+			}
+
+			for (const Nyx::InspectedValue& value : component.Values)
+			{
+				Nyx::UI::BeginPropertyRow(value.Name.c_str());
+				NYX_UI(ImGui::TextDisabled("%s", value.Value.c_str()));
+				Nyx::UI::EndPropertyRow();
+			}
+			Nyx::UI::TreeRowEnd();
+		}
+		ImGui::PopID();
 	}
 }

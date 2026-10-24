@@ -1,9 +1,20 @@
 // The editor with a game module (NyxTestModule, linked as the editor links a game's module): the
-// module gives the editor where its types are declared, so the source inspector can open them.
+// module gives the editor where its types are declared, so the source inspector can open them, and
+// the Details panel reads a game's run-time components of the module's types.
+#include "BinaryArchive.h"
+#include "ComponentEdits.h"
+#include "ComponentRegistration.h"
+#include "ComponentTypeRegistry.h"
+#include "DetailsPanel.h"
 #include "GameModule.h"
+#include "HeadlessUI.h"
 #include "Log.h"
+#include "PropertyWidgetRegistry.h"
+#include "ReflectedArchiveSerializer.h"
 #include "ReflectionSourceRegistry.h"
+#include "SceneEditor.h"
 #include "TestLanternComponent.h"
+#include "TestLanternGlowComponent.h"
 #include "TestSupport.h"
 
 #include <fstream>
@@ -65,6 +76,50 @@ namespace
 	}
 }
 
+namespace
+{
+	// A game's run-time component of the module's type: the editor knows the type from the module,
+	// doesn't offer it to add, and shows a game's answer with it in the Runtime section
+	void TestModuleRuntimeComponentsInTheDetails()
+	{
+		RegisterComponentTypes();
+		GetLinkedGameModule().RegisterTypes();
+		const ComponentTypeOps* glowType = ComponentTypeRegistry::Get().FindByName("NyxTestModule::TestLanternGlowComponent");
+		Require(glowType && glowType->IsRuntime(), "The module's glow should be a run-time type in the editor too");
+		Require(!CanAddOrRemoveComponent(*glowType), "A run-time type should not be offered to add");
+
+		const NyxTestModule::TestLanternGlowComponent glow{ .Glow = 2.5f, .Steps = 9 };
+		BinaryWriter block;
+		Require(ReflectedArchiveSerializer::SerializeObject(block, &glow, *glowType->TypeMetadata), "The glow should be written");
+		InspectedEntityMessage answer;
+		answer.bFound = true;
+		answer.Step = 9;
+		answer.Components.push_back(InspectedComponent{ .Type = glowType->TypeMetadata->Name, .DisplayName = "Test Lantern Glow", .Properties = block.GetBytes() });
+
+		Tests::HeadlessUI ui;
+		RegisterDefaultPropertyWidgets();
+		SceneEditor editing;
+		const Entity lantern = editing.Scene.CreateEntity("Lantern");
+		editing.Scene.GetSelection() = lantern;
+		answer.Entity = editing.Scene.GetGuid(lantern);
+
+		const std::optional<RuntimeSection> section = GetRuntimeSection(editing.Scene.GetRegistry(), lantern, GameInspection{ "Game 1", &answer });
+		Require(section && section->Source == "Game 1, step 9" && section->Components.size() == 1, "The game's answer should be the Runtime section");
+
+		DetailsPanel details;
+		details.SetGameInspection(GameInspection{ "Game 1", &answer });
+		const auto draw = [&]()
+		{
+			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+			ImGui::SetNextWindowSize(ImVec2(400.0f, 780.0f));
+			details.Draw(editing);
+		};
+		ui.Frame(draw);
+		ui.Frame(draw);
+		Require(details.GetInspectedEntity() == answer.Entity, "The details should show the lantern's Runtime section");
+	}
+}
+
 int main()
 {
 	Nyx::Logger::Get().Init();
@@ -72,6 +127,7 @@ int main()
 	try
 	{
 		TestModuleRegistersItsSources();
+		TestModuleRuntimeComponentsInTheDetails();
 	}
 	catch (const std::exception& error)
 	{

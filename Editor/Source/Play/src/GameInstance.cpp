@@ -274,6 +274,7 @@ namespace Nyx::Editor
 
 		HandleMessages();
 		SendQueuedEdits();
+		AskForInspection();
 
 		// The link logged why it ended. The game doesn't connect again, so edits can't reach it anymore.
 		if (Link->GetState() == Nyx::EEditorLinkState::Closed)
@@ -282,6 +283,54 @@ namespace Nyx::Editor
 			Link.reset();
 			StopTakingEdits();
 			bInputSubscriptionSent = false;
+			bInspectAnswerPending = false;
+		}
+	}
+
+	void GameInstance::SetInspectedEntity(std::optional<Nyx::EntityGuid> entity)
+	{
+		if (entity == InspectedEntity)
+		{
+			return;
+		}
+
+		// Asked at once, unless the last question's answer is still to come
+		InspectedEntity = entity;
+		Inspection.reset();
+		LastInspectSent = {};
+	}
+
+	void GameInstance::AskForInspection()
+	{
+		const auto now = std::chrono::steady_clock::now();
+		if (!InspectedEntity || bInspectAnswerPending || !Link || !Link->IsConnected() || now - LastInspectSent < InspectInterval)
+		{
+			return;
+		}
+
+		Link->Send(Nyx::InspectEntityMessage{ .Request = ++InspectRequest, .Entity = *InspectedEntity });
+		bInspectAnswerPending = true;
+		LastInspectSent = now;
+	}
+
+	void GameInstance::HandleInspection(const Nyx::Net::Message& message)
+	{
+		Nyx::InspectedEntityMessage answer;
+		if (!Nyx::ReadNetMessage(message, answer))
+		{
+			LOG_WARNING("{0}: editor link: an answer about an entity can't be read", Name);
+			bInspectAnswerPending = false;
+			return;
+		}
+
+		// The answer to the last question; about the entity asked about now, unless that changed meanwhile
+		if (answer.Request == InspectRequest)
+		{
+			bInspectAnswerPending = false;
+		}
+		if (InspectedEntity && answer.Entity == *InspectedEntity)
+		{
+			Inspection = std::move(answer);
 		}
 	}
 
@@ -379,6 +428,12 @@ namespace Nyx::Editor
 				message->Type == static_cast<uint16_t>(Nyx::EEditorLinkMessage::InputFrame))
 			{
 				HandleInputRecord(*message);
+				continue;
+			}
+
+			if (message->Type == static_cast<uint16_t>(Nyx::EEditorLinkMessage::InspectedEntity))
+			{
+				HandleInspection(*message);
 				continue;
 			}
 

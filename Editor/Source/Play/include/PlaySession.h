@@ -1,5 +1,7 @@
 #pragma once
 
+#include "DetailsPanel.h"
+#include "EntityGuid.h"
 #include "GameInstance.h"
 #include "GameLinkSubscriber.h"
 #include "PlayWall.h"
@@ -95,6 +97,14 @@ namespace Nyx::Editor
 		// Whether a game was asked to quit and hasn't yet
 		bool IsQuitting() const;
 
+		// The Details panel's Runtime section: the first game that takes edits is asked about the
+		// entity a few times a second (GameInstance::SetInspectedEntity()), the others not; none stops
+		// asking
+		void InspectEntity(std::optional<Nyx::EntityGuid> entity);
+
+		// The asked game's last answer about it; none while no game runs
+		std::optional<GameInspection> GetEntityInspection() const;
+
 		// For the Stop button's tooltip: one line per game, e.g. "Steam Deck: connected to NyxGame (process 1234)"
 		std::string GetLinkStatus() const;
 
@@ -133,6 +143,9 @@ namespace Nyx::Editor
 		bool LaunchGame(const std::string& name, const Nyx::GameLaunchOptions& launchOptions, bool bConsoleWindow);
 
 		bool AnyTakesEdits() const;
+
+		// The game InspectEntity() asks: the first that takes edits
+		GameInstance* GetInspectedGame() const;
 
 	private:
 		const SceneDocument& Scene;

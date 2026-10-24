@@ -27,6 +27,7 @@
 #include "InputRecording.h"
 #include "VirtualInputBackend.h"
 #include "PropertyWidgetRegistry.h"
+#include "ReflectedArchiveSerializer.h"
 #include "ReflectionSourceRegistry.h"
 #include "ReflectionUtils.h"
 #include "MeshInstancesComponent.h"
@@ -344,51 +345,127 @@ namespace
 		Require(ImGui::FindWindowByName("Game Link")->Size.x > 100.0f, "The Game Link should take the room the details left");
 	}
 
-	// A mesh made at run time isn't reflected: the details show what it is, and draw it with the
-	// entity's components
-	void TestRuntimeMeshDetails()
+	// Run-time components: a mesh made at run time and mesh instances aren't reflected, and say what
+	// they are; they aren't saved, copied or offered to add; the details show them in the Runtime
+	// section, the editor's own world's or a game's answer, and say which entity they show
+	void TestRuntimeDetails()
 	{
 		HeadlessUI ui;
 		RegisterDefaultPropertyWidgets();
 
-		SceneEditor editing;
-		const Entity ground = editing.Scene.CreateEntity("Ground");
 		RuntimeMeshComponent runtimeMesh;
-		Require(DescribeRuntimeMesh(runtimeMesh) == std::vector<std::string>{ "No mesh yet" }, "A run-time mesh without data should say so");
+		Require(DescribeRuntimeMesh(runtimeMesh) == std::vector<InspectedValue>{ { "Mesh", "none yet" } }, "A run-time mesh without data should say so");
 
 		auto mesh = std::make_shared<MeshData>();
 		mesh->Vertices.resize(6);
 		mesh->Indices = { 0, 1, 2, 3, 4, 5 };
 		mesh->Sections = { MeshSection{ .FirstIndex = 0, .IndexCount = 3, .MaterialSlot = 0 }, MeshSection{ .FirstIndex = 3, .IndexCount = 3, .MaterialSlot = 1 } };
 		SetRuntimeMesh(runtimeMesh, mesh);
-		const std::vector<std::string> lines = DescribeRuntimeMesh(runtimeMesh);
-		Require(lines.size() == 4 && lines[0] == "6 vertices, 2 triangles" && lines[1] == "Section 0: 1 triangles, material slot 0" &&
-				lines[2] == "Section 1: 1 triangles, material slot 1" && lines[3] == "Revision 1",
+		Require(DescribeRuntimeMesh(runtimeMesh) ==
+				std::vector<InspectedValue>{ { "Mesh", "6 vertices, 2 triangles" }, { "Section 0", "1 triangles, material slot 0" },
+					{ "Section 1", "1 triangles, material slot 1" }, { "Revision", "1" } },
 			"The run-time mesh's details should list its counts and sections");
 
 		mesh->Indices[5] = 6;
-		Require(DescribeRuntimeMesh(runtimeMesh)[3].starts_with("Not drawn: "), "A run-time mesh that isn't valid should say why it isn't drawn");
+		Require(DescribeRuntimeMesh(runtimeMesh)[3].Name == "Not drawn", "A run-time mesh that isn't valid should say why it isn't drawn");
+		mesh->Indices[5] = 5;
 
 		MeshInstancesComponent meshInstances;
-		Require(DescribeMeshInstances(meshInstances) == std::vector<std::string>{ "No instances yet" }, "Mesh instances without data should say so");
+		Require(DescribeMeshInstances(meshInstances) == std::vector<InspectedValue>{ { "Instances", "none yet" } }, "Mesh instances without data should say so");
 		auto instances = std::make_shared<MeshInstances>();
 		instances->Transforms.resize(5);
 		SetMeshInstances(meshInstances, instances);
-		Require(DescribeMeshInstances(meshInstances) == std::vector<std::string>{ "5 instances in one cell", "Revision 1" }, "Mesh instances without cells should be one cell");
+		Require(DescribeMeshInstances(meshInstances) == std::vector<InspectedValue>{ { "Instances", "5 in one cell" }, { "Revision", "1" } },
+			"Mesh instances without cells should be one cell");
 		instances->Cells.resize(2);
-		Require(DescribeMeshInstances(meshInstances)[0] == "5 instances in 2 cells", "Mesh instances should say how many cells they are in");
+		Require(DescribeMeshInstances(meshInstances)[0].Value == "5 in 2 cells", "Mesh instances should say how many cells they are in");
 
-		editing.Scene.GetRegistry().Add<RuntimeMeshComponent>(ground, runtimeMesh);
+		// Run-time types: not offered to add or remove
+		const ComponentTypeOps* meshType = ComponentTypeRegistry::Get().FindByName("Nyx::RuntimeMeshComponent");
+		Require(meshType && meshType->IsRuntime() && meshType->Describe, "A mesh made at run time should be a run-time type that says what it is");
+		Require(!CanAddOrRemoveComponent(*meshType), "A run-time type should not be offered to add or remove");
+		Require(!ComponentTypeRegistry::Get().FindByName("Nyx::TransformComponent")->IsRuntime(), "A saved type should not be a run-time type");
+
+		SceneEditor editing;
+		Registry& world = editing.Scene.GetRegistry();
+		const Entity ground = editing.Scene.CreateEntity("Ground");
+		const Entity plain = editing.Scene.CreateEntity("Plain");
+		world.Add<RuntimeMeshComponent>(ground, runtimeMesh);
+		world.Add<MeshInstancesComponent>(ground, meshInstances);
+
+		// Not saved, so not copied either
+		BinaryWriter writer;
+		Require(SceneSerializer::WriteEntity(world, ground, writer), "The entity should be written");
+		Registry copy;
+		const Entity copied = copy.CreateEntity();
+		BinaryReader reader;
+		reader.LoadFromMemory(writer.GetBytes());
+		ScenePostLoadContext postLoad;
+		ReadWarnings warnings;
+		Require(SceneSerializer::ReadEntity(reader, copy, copied, postLoad, warnings) && copy.Has<NameComponent>(copied), "The entity should read back");
+		Require(!copy.Has<RuntimeMeshComponent>(copied) && !copy.Has<MeshInstancesComponent>(copied), "Run-time components should not be saved");
+
+		// The editor's own world's, without a game
+		const std::optional<RuntimeSection> own = GetRuntimeSection(world, ground, std::nullopt);
+		Require(own && own->Source == "This world" && own->Components.size() == 2, "The world's own run-time components should be shown");
+		Require(own->Components[0].Type == "Nyx::RuntimeMeshComponent" && own->Components[0].DisplayName == "Mesh Made at Run Time" &&
+				own->Components[0].Properties.empty() && own->Components[0].Values == DescribeRuntimeMesh(runtimeMesh),
+			"A mesh made at run time should be shown by what it says it is");
+		Require(own->Components[1].Type == "Nyx::MeshInstancesComponent", "Mesh instances should follow, in the registry's order");
+		Require(!GetRuntimeSection(world, plain, std::nullopt), "Without a game, an entity without run-time components has no Runtime section");
+
+		// A game's answer, whatever the editor's world has
+		Require(GetRuntimeSection(world, plain, GameInspection{ "Game 1", nullptr })->Source == "Waiting for Game 1", "Before an answer, the game is waited for");
+		InspectedEntityMessage answer;
+		answer.Entity = editing.Scene.GetGuid(ground);
+		Require(GetRuntimeSection(world, ground, GameInspection{ "Game 1", &answer })->Source == "Game 1 has no such entity",
+			"An entity the game doesn't have should say so");
+		answer.bFound = true;
+		answer.Step = 42;
+		answer.Components.push_back(InspectedComponent{ .Type = "Game::Counter", .DisplayName = "Counter", .Values = { { "Count", "7" } } });
+		const std::optional<RuntimeSection> fromGame = GetRuntimeSection(world, ground, GameInspection{ "Game 1", &answer });
+		Require(fromGame && fromGame->Source == "Game 1, step 42" && fromGame->Components.size() == 1 && fromGame->Components[0].Values[0].Value == "7",
+			"The game's answer should be shown, with its step");
+
+		// Drawn: with properties of a type the editor knows (read into one of its type), of one it
+		// doesn't, and values; the panel says which entity its Runtime section shows
+		TransformComponent moved;
+		moved.Position = glm::vec3(1.0f, 2.0f, 3.0f);
+		BinaryWriter transformBlock;
+		Require(ReflectedArchiveSerializer::SerializeObject(transformBlock, &moved, Reflection::GetTypeMetadata<TransformComponent>()), "A block should be written");
+		answer.Components.push_back(InspectedComponent{ .Type = "Nyx::TransformComponent", .DisplayName = "Transform", .Properties = transformBlock.GetBytes() });
+		answer.Components.push_back(InspectedComponent{ .Type = "Game::Unknown", .DisplayName = "Unknown", .Properties = transformBlock.GetBytes() });
+
 		editing.Scene.GetSelection() = ground;
 		DetailsPanel details;
-		ui.Frame([&]()
-			{
-				details.Draw(editing);
-			});
-		ui.Frame([&]()
-			{
-				details.Draw(editing);
-			});
+		const auto draw = [&]()
+		{
+			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+			ImGui::SetNextWindowSize(ImVec2(400.0f, 780.0f));
+			details.Draw(editing);
+		};
+		ui.Frame(draw);
+		ui.Frame(draw);
+		Require(details.GetInspectedEntity() == editing.Scene.GetGuid(ground), "The Runtime section should say which entity it shows");
+
+		details.SetGameInspection(GameInspection{ "Game 1", &answer });
+		ui.Frame(draw);
+		ui.Frame(draw);
+		Require(details.GetInspectedEntity() == editing.Scene.GetGuid(ground), "The Runtime section should show the game's answer for the entity");
+
+		// While Play runs, every entity has the section, even one without run-time components here
+		editing.Scene.GetSelection() = plain;
+		ui.Frame(draw);
+		Require(details.GetInspectedEntity() == editing.Scene.GetGuid(plain), "While a game runs, any entity should be asked about");
+
+		details.SetGameInspection(std::nullopt);
+		ui.Frame(draw);
+		Require(!details.GetInspectedEntity(), "Without a game or run-time components, nothing should be asked about");
+
+		editing.Scene.GetSelection() = ground;
+		details.bOpen = false;
+		ui.Frame(draw);
+		Require(!details.GetInspectedEntity(), "A closed panel should ask about nothing");
 	}
 
 	// What the camera's post-load step was given, each time it ran
@@ -2275,7 +2352,7 @@ int main()
 		TestHotkeys();
 		TestPanelsDrawHeadless();
 		TestPanelsDockNarrow();
-		TestRuntimeMeshDetails();
+		TestRuntimeDetails();
 		TestGroundFollowsEdits();
 		TestScatterFollowsBlockers();
 		TestDetailsHaveNoConflictingIds();

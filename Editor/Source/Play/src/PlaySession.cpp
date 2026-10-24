@@ -271,6 +271,37 @@ namespace Nyx::Editor
 		}
 	}
 
+	GameInstance* PlaySession::GetInspectedGame() const
+	{
+		for (const std::unique_ptr<GameInstance>& game : Games)
+		{
+			if (game->TakesEdits())
+			{
+				return game.get();
+			}
+		}
+		return nullptr;
+	}
+
+	void PlaySession::InspectEntity(std::optional<Nyx::EntityGuid> entity)
+	{
+		const GameInstance* asked = GetInspectedGame();
+		for (const std::unique_ptr<GameInstance>& game : Games)
+		{
+			game->SetInspectedEntity(game.get() == asked ? entity : std::nullopt);
+		}
+	}
+
+	std::optional<GameInspection> PlaySession::GetEntityInspection() const
+	{
+		const GameInstance* game = GetInspectedGame();
+		if (!game)
+		{
+			return std::nullopt;
+		}
+		return GameInspection{ .GameName = game->GetName(), .Answer = game->GetInspection() };
+	}
+
 	std::vector<GameCrash> PlaySession::TakeCrashes()
 	{
 		return std::exchange(Crashes, {});

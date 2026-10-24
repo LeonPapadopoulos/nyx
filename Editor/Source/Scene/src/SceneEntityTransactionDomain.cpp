@@ -93,10 +93,11 @@ namespace Nyx::Editor
 			return;
 		}
 
+		// Run-time components aren't the entity's to undo: they are made again from it
 		auto& world = context.ActiveScene->GetRegistry();
 		for (const Nyx::ComponentTypeOps& ops : Nyx::ComponentTypeRegistry::Get().GetAll())
 		{
-			void* object = ops.Get(world, *entity);
+			void* object = ops.IsRuntime() ? nullptr : ops.Get(world, *entity);
 			if (!object)
 			{
 				continue;

@@ -92,10 +92,12 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/SurfaceAnchor.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/PreviousTransformComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/MeshInstancesComponent.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/RuntimeMeshComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/SurfaceDecalComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/TypedHandle.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ReflectedArchiveSerializer.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ComponentTypeRegistry.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ComponentInspection.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ComponentRegistration.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/SceneSerializer.cpp
 
@@ -278,6 +280,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/SceneSerializationTypes.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ReflectedArchiveSerializer.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ComponentTypeRegistry.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ComponentInspection.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ComponentRegistration.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/SceneSerializer.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/IAssetResolver.h

@@ -53,4 +53,9 @@ namespace Nyx
 	// Applies a SetSimulationPaused or StepSimulation message to the simulation's clock. A step
 	// while running is ignored, as the clock steps on its own.
 	ELiveEditResult ApplySimulationControl(const Net::Message& message, FixedStepClock& clock);
+
+	// The answer to an InspectEntity message: the entity's run-time components
+	// (InspectRuntimeComponents()), at the simulation's step; not found if the world has no entity of
+	// that guid
+	InspectedEntityMessage MakeInspectedEntityMessage(const Registry& world, const InspectEntityMessage& request, uint64_t step);
 }

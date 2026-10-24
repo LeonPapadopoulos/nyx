@@ -114,6 +114,74 @@ namespace Nyx
 		return reader.ReadUInt64(Entity.Value);
 	}
 
+	void InspectEntityMessage::Write(BinaryWriter& writer) const
+	{
+		writer.WriteUInt32(Request);
+		writer.WriteUInt64(Entity.Value);
+	}
+
+	bool InspectEntityMessage::Read(BinaryReader& reader)
+	{
+		return reader.ReadUInt32(Request) && reader.ReadUInt64(Entity.Value);
+	}
+
+	// An answer has at most this many components and values each, so damaged data can't make the
+	// reader allocate a lot
+	constexpr uint32_t MaxInspectedComponents = 4096;
+	constexpr uint32_t MaxInspectedValues = 4096;
+
+	void InspectedEntityMessage::Write(BinaryWriter& writer) const
+	{
+		writer.WriteUInt32(Request);
+		writer.WriteUInt64(Entity.Value);
+		writer.WriteBool(bFound);
+		writer.WriteUInt64(Step);
+		writer.WriteUInt32(static_cast<uint32_t>(Components.size()));
+		for (const InspectedComponent& component : Components)
+		{
+			writer.WriteString(component.Type);
+			writer.WriteString(component.DisplayName);
+			WriteSizedBytes(writer, component.Properties);
+			writer.WriteUInt32(static_cast<uint32_t>(component.Values.size()));
+			for (const InspectedValue& value : component.Values)
+			{
+				writer.WriteString(value.Name);
+				writer.WriteString(value.Value);
+			}
+		}
+	}
+
+	bool InspectedEntityMessage::Read(BinaryReader& reader)
+	{
+		uint32_t componentCount = 0;
+		if (!reader.ReadUInt32(Request) || !reader.ReadUInt64(Entity.Value) || !reader.ReadBool(bFound) || !reader.ReadUInt64(Step) ||
+			!reader.ReadUInt32(componentCount) || componentCount > MaxInspectedComponents)
+		{
+			return false;
+		}
+
+		Components.clear();
+		Components.resize(componentCount);
+		for (InspectedComponent& component : Components)
+		{
+			uint32_t valueCount = 0;
+			if (!reader.ReadString(component.Type) || !reader.ReadString(component.DisplayName) || !ReadSizedBytes(reader, component.Properties) ||
+				!reader.ReadUInt32(valueCount) || valueCount > MaxInspectedValues)
+			{
+				return false;
+			}
+			component.Values.resize(valueCount);
+			for (InspectedValue& value : component.Values)
+			{
+				if (!reader.ReadString(value.Name) || !reader.ReadString(value.Value))
+				{
+					return false;
+				}
+			}
+		}
+		return true;
+	}
+
 	// A crash report has at most this many frames (the crash handler sends at most 64), so
 	// damaged data can't make the reader allocate a lot
 	constexpr uint32_t MaxCrashStackFrames = 256;

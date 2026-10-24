@@ -129,6 +129,10 @@ namespace Nyx::Game
 				break;
 			}
 
+			case Nyx::EEditorLinkMessage::InspectEntity:
+				AnswerInspection(*message);
+				break;
+
 			default:
 				ApplyMessage(*message);
 				break;
@@ -159,6 +163,25 @@ namespace Nyx::Game
 				Link->Send(Nyx::InputFrameMessage{ std::move(record.Bytes) });
 			}
 		}
+	}
+
+	void EditorLinkLayer::AnswerInspection(const Nyx::Net::Message& message)
+	{
+		Nyx::InspectEntityMessage request;
+		if (!Nyx::ReadNetMessage(message, request))
+		{
+			LOG_WARNING("Editor link: an InspectEntity message can't be read");
+			return;
+		}
+
+		const uint64_t step = App->GetSimulationClock().GetStepIndex();
+		if (!World)
+		{
+			// Not found, which the editor says
+			Link->Send(Nyx::InspectedEntityMessage{ .Request = request.Request, .Entity = request.Entity, .Step = step });
+			return;
+		}
+		Link->Send(Nyx::MakeInspectedEntityMessage(*World, request, step));
 	}
 
 	void EditorLinkLayer::ApplyMessage(const Nyx::Net::Message& message)

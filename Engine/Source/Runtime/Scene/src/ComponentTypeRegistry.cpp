@@ -31,6 +31,38 @@ namespace Nyx
 		return true;
 	}
 
+	bool ComponentTypeRegistry::IsOwnRuntimeType(std::string_view name) const
+	{
+		const ComponentTypeOps* ops = FindByName(name);
+		if (!ops)
+		{
+			return false;
+		}
+		for (const Nyx::Reflection::TypeMetadata& metadata : OwnMetadata)
+		{
+			if (&metadata == ops->TypeMetadata)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	ComponentTypeOps* ComponentTypeRegistry::FindRegistered(const Nyx::Reflection::TypeMetadata& typeMetadata, const char* what)
+	{
+		for (ComponentTypeOps& ops : Types)
+		{
+			if (ops.TypeMetadata == &typeMetadata)
+			{
+				return &ops;
+			}
+		}
+
+		LOG_ERROR("Component type '{0}' isn't registered, {1} is ignored. Register it first.", typeMetadata.Name, what);
+		ASSERT(false && "Register the component type first.");
+		return nullptr;
+	}
+
 	const ComponentTypeOps* ComponentTypeRegistry::FindByTypeMetadata(
 		const Nyx::Reflection::TypeMetadata& typeMetadata) const
 	{

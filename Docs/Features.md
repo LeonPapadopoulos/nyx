@@ -64,6 +64,35 @@ What the editor and the game do. How the code behind them is organised is in
 - Tests: `NyxEditorLinkTests` (both ends of the link in one program), `NyxLiveEditTests` and
   `NyxGameLinkSubscriberTests`.
 
+## Runtime inspection
+
+What a running game made of an entity while it runs, in the editor's Details panel
+([Runtime inspection](Design/runtime-inspection.md)).
+
+- Some component types are made while the world runs and never saved: a mesh made at run time,
+  mesh instances, and a game's own, such as a system's state. A game module makes a reflected type
+  one in its `RegisterTypes()` (`ComponentTypeRegistry::SetRuntime<T>()`); a type that isn't
+  reflected is registered as one with a name and, if it likes, a list of names and values saying what
+  it is (`RegisterRuntime<T>()`, `SetDescribe<T>()`).
+- They aren't saved, copied, undone or offered under Add Component. The Details panel shows them
+  greyed in a *Runtime* section after the entity's components: their reflected properties with the
+  usual widgets, read-only, and their values.
+- While Play runs, the section shows the first game's: the editor asks it about the selected entity
+  over the editor link four times a second, only while the section is open, and shows its answer
+  with the step it was taken at (*Game 1, step 1234*), *waiting for Game 1*, or *Game 1 has no such
+  entity*. Without a game it shows the editor's own world's, and only for an entity that has any.
+- The Game Link window and NyxDump show the questions and answers (`InspectEntity`,
+  `InspectedEntity`).
+- Tests: `NyxEditorLinkTests` (a question answered over the link, an entity not found, the answer
+  read back whole, cut off or oversized refused, both described), `NyxGameModuleTests` (the test
+  module's run-time glow made by its system, not saved, answered with its properties read back),
+  `NyxComponentTypeRegistryTests` (a reflected type made a run-time type, one that isn't registered
+  once, neither saved, data naming one skipped, both inspected), `NyxEditorPanelTests` (what a mesh
+  made at run time and mesh instances say, not saved or offered to add, the section from the world
+  or a game's answer, drawn with known and unknown types, which entity is asked about),
+  `NyxEditorGameModuleTests` (a game's answer with the module's type drawn), `NyxGameInstanceTests`
+  (a stand-in game answering, about four questions a second, another entity, none).
+
 ## The Game Link window
 
 - *Window > Game Link* shows the games' log lines (*Game Log* tab) and every message of their
@@ -504,15 +533,16 @@ mesh is made again as it grows.
   Content made from a component's values, such as the ground, is made in the component's post-load
   step, so it shows in the editor and the game alike and follows every edit
   ([Architecture: Generated content](Architecture.md#generated-content)).
-- The editor's details panel shows it read-only under *Mesh Made at Run Time*: its vertices and
-  triangles, each section's triangles and material slot, whether it is drawn, and its revision.
+- The editor's details panel shows it greyed in its *Runtime* section, as *Mesh Made at Run Time*:
+  its vertices and triangles, each section's triangles and material slot, whether it is drawn, and
+  its revision; while Play runs, as the game has it ([Runtime inspection](#runtime-inspection)).
 - A *Mesh Collider* makes it ground to stand on ([Physics](#physics)).
 - Tests: `NyxMeshTests` (which meshes are valid, the sections a mesh without any is drawn in, the
   bounds), `NyxRuntimeMeshGpuTests` (a sphere made in code draws exactly as the built-in sphere;
   changed and its revision raised it is drawn anew, unchanged it is uploaded once; entities sharing
   a mesh share its upload, and one nobody draws is let go of; one that isn't valid draws nothing; a
   click picks it, selected it is outlined; two sections draw with two materials; a decal on it is
-  drawn), `NyxEditorPanelTests` (the details panel's lines).
+  drawn), `NyxEditorPanelTests` (what the details panel says of it).
 
 ## Faces and two-sided materials
 
@@ -658,8 +688,8 @@ entity, and every scene view draws only what its camera can see.
   new revision; entities sharing them share the upload; instances nobody draws are let go of. They
   aren't saved, edited or sent to a game: whoever made them makes them again in a post-load step.
 - A click on any instance picks the entity; selected, all of its instances are outlined; its bounds
-  are around all of them. The details panel shows *Mesh Instances* read-only: how many, in how many
-  cells, the revision.
+  are around all of them. The details panel shows *Mesh Instances* greyed in its *Runtime* section:
+  how many, in how many cells, the revision.
 - **Culling**: every scene view, the editor's and the game's alike, leaves out what is outside its
   camera's frustum: an entity by its bounds where it is drawn, an instanced one cell by cell (a
   cell's bounds hold the mesh at each of its instances, even when the cell's own bounds are too

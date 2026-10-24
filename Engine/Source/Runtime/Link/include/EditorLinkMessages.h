@@ -2,6 +2,7 @@
 
 #include "BinaryArchive.h"
 #include "ClockTime.h"
+#include "ComponentInspection.h"
 #include "CrashHandler.h"
 #include "EntityGuid.h"
 #include "NetConnection.h"
@@ -48,6 +49,8 @@ namespace Nyx
 		InputDefinitions = 15,
 		InputFrame = 16,
 		PhysicsMaterialValues = 17,
+		InspectEntity = 18,
+		InspectedEntity = 19,
 	};
 
 	// The first message in both directions. Its layout never changes, so any two versions can
@@ -306,6 +309,44 @@ namespace Nyx
 		static constexpr EEditorLinkMessage Type = EEditorLinkMessage::InputFrame;
 
 		std::vector<std::byte> Record;
+
+		void Write(BinaryWriter& writer) const;
+		bool Read(BinaryReader& reader);
+	};
+
+	// Runtime inspection (see MakeInspectedEntityMessage() in LiveEdits.h): the editor's Details panel
+	// shows what a running game made of an entity while it runs, its run-time components
+
+	// Editor to game: the entity's run-time components, please. The game answers at once; the editor
+	// asks again a few times a second while it shows them.
+	struct InspectEntityMessage
+	{
+		static constexpr EEditorLinkMessage Type = EEditorLinkMessage::InspectEntity;
+
+		// Given back in the answer, so the editor knows which question it answers
+		uint32_t Request = 0;
+
+		EntityGuid Entity;
+
+		void Write(BinaryWriter& writer) const;
+		bool Read(BinaryReader& reader);
+	};
+
+	// Game to editor: the run-time components of the entity asked about, as InspectRuntimeComponents()
+	// gives them, and the simulation's step when they were taken
+	struct InspectedEntityMessage
+	{
+		static constexpr EEditorLinkMessage Type = EEditorLinkMessage::InspectedEntity;
+
+		uint32_t Request = 0;
+		EntityGuid Entity;
+
+		// Whether the game has the entity; without it, no components
+		bool bFound = false;
+
+		uint64_t Step = 0;
+
+		std::vector<InspectedComponent> Components;
 
 		void Write(BinaryWriter& writer) const;
 		bool Read(BinaryReader& reader);

@@ -76,12 +76,20 @@ namespace Nyx::Editor
 			return;
 		}
 
-		// A game's input frames come every frame while the Input window shows it: kept only while
-		// their type is shown, which it isn't at first, so they don't push out the other messages
-		const bool bInputFrame = message.Type == static_cast<uint16_t>(EEditorLinkMessage::InputFrame);
-		if (bInputFrame && !bShowType[message.Type])
+		// A game's input frames come every frame while the Input window shows it, questions about an
+		// entity and their answers a few times a second while the Details panel shows it: kept only
+		// while their type is shown, which it isn't at first, so they don't push out the other messages
+		const char* frequentType = nullptr;
+		switch (static_cast<EEditorLinkMessage>(message.Type))
 		{
-			TypeNames.emplace(message.Type, "InputFrame");
+		case EEditorLinkMessage::InputFrame: frequentType = "InputFrame"; break;
+		case EEditorLinkMessage::InspectEntity: frequentType = "InspectEntity"; break;
+		case EEditorLinkMessage::InspectedEntity: frequentType = "InspectedEntity"; break;
+		default: break;
+		}
+		if (frequentType && !bShowType[message.Type])
+		{
+			TypeNames.emplace(message.Type, frequentType);
 			return;
 		}
 

@@ -251,4 +251,18 @@ namespace Nyx
 			return ELiveEditResult::NotALiveEdit;
 		}
 	}
+
+	InspectedEntityMessage MakeInspectedEntityMessage(const Registry& world, const InspectEntityMessage& request, uint64_t step)
+	{
+		InspectedEntityMessage answer;
+		answer.Request = request.Request;
+		answer.Entity = request.Entity;
+		answer.Step = step;
+		if (const std::optional<Entity> entity = request.Entity.IsValid() ? FindEntityByGuid(world, request.Entity) : std::nullopt)
+		{
+			answer.bFound = true;
+			answer.Components = InspectRuntimeComponents(world, *entity);
+		}
+		return answer;
+	}
 }

@@ -15,7 +15,7 @@ namespace Nyx::Editor
 {
 	bool CanAddOrRemoveComponent(const Nyx::ComponentTypeOps& componentType)
 	{
-		return componentType.TypeMetadata != &Nyx::Reflection::GetTypeMetadata<Nyx::GuidComponent>() &&
+		return !componentType.IsRuntime() && componentType.TypeMetadata != &Nyx::Reflection::GetTypeMetadata<Nyx::GuidComponent>() &&
 			componentType.TypeMetadata != &Nyx::Reflection::GetTypeMetadata<Nyx::NameComponent>();
 	}
 

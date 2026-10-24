@@ -77,6 +77,19 @@ namespace Nyx::Editor
 			return InputReplica.get();
 		}
 
+		// Asks the game for the entity's run-time components every InspectInterval while it is linked,
+		// and only once the last answer came, so a game that doesn't read isn't sent a pile of
+		// questions. Another entity drops the answer so far; none stops asking.
+		void SetInspectedEntity(std::optional<Nyx::EntityGuid> entity);
+
+		// The game's last answer about the entity asked about now; null until one came
+		const Nyx::InspectedEntityMessage* GetInspection() const
+		{
+			return Inspection ? &*Inspection : nullptr;
+		}
+
+		static constexpr std::chrono::milliseconds InspectInterval{ 250 };
+
 		// Records the game's input to the file: subscribes, and has the game start its stream
 		// again, so the file starts with a snapshot. False if the file can't be written.
 		bool StartInputRecording(const std::filesystem::path& path);
@@ -151,6 +164,8 @@ namespace Nyx::Editor
 		void UpdateLink();
 		void HandleMessages();
 		void HandleInputRecord(const Nyx::Net::Message& message);
+		void HandleInspection(const Nyx::Net::Message& message);
+		void AskForInspection();
 		void SendQueuedEdits();
 		void CheckWhetherExited();
 		void StopTakingEdits();
@@ -197,6 +212,14 @@ namespace Nyx::Editor
 		bool bInputSubscriptionSent = false;
 		std::unique_ptr<Nyx::Input::InputReplica> InputReplica;
 		bool bInputRecordWarned = false;
+
+		// The entity asked about, the game's last answer about it, the last question's number, and
+		// whether its answer is still to come
+		std::optional<Nyx::EntityGuid> InspectedEntity;
+		std::optional<Nyx::InspectedEntityMessage> Inspection;
+		uint32_t InspectRequest = 0;
+		bool bInspectAnswerPending = false;
+		std::chrono::steady_clock::time_point LastInspectSent;
 
 		// Recording: the stream asked to start again, and records of the old one skipped until the
 		// new one's snapshot (its definitions) comes

@@ -1,7 +1,8 @@
 // A game module as a game builds one: NyxTestModule, made by nyx_add_game_module() from a folder
 // outside the engine and linked with nyx_link_game_module(), as the game links its module. Its
 // component types register next to the engine's, scenes save and load them, its own post-load step
-// runs, and its systems run in a game world.
+// runs, and its systems run in a game world. Its run-time type isn't saved, and is what the editor is
+// shown of an entity.
 #include "ComponentRegistration.h"
 #include "ComponentTypeRegistry.h"
 #include "Entity.h"
@@ -9,12 +10,15 @@
 #include "GameWorld.h"
 #include "GuidComponent.h"
 #include "InputSystem.h"
+#include "LiveEdits.h"
 #include "PlayerController.h"
 #include "TestCommands.h"
 #include "VirtualInputBackend.h"
 #include "Log.h"
+#include "ReflectedArchiveSerializer.h"
 #include "SceneSerializer.h"
 #include "TestLanternComponent.h"
+#include "TestLanternGlowComponent.h"
 #include "TestMarkerComponent.h"
 #include "TestSupport.h"
 
@@ -31,6 +35,7 @@ namespace
 	using Nyx::ComponentTypeRegistry;
 	using NyxTestModule::TestBrightenCommand;
 	using NyxTestModule::TestLanternComponent;
+	using NyxTestModule::TestLanternGlowComponent;
 	using NyxTestModule::TestMarkerComponent;
 	using NyxTestModule::TestRelabelCommand;
 
@@ -156,6 +161,58 @@ namespace
 			"Four steps of the module's system should brighten the lantern by 2");
 	}
 
+	// The module's run-time type: made by its system as the game runs, never saved, and what the
+	// editor is shown of the entity, its properties read back as they were
+	void TestModuleRuntimeComponents(const std::filesystem::path& directory)
+	{
+		const Nyx::ComponentTypeOps* glowType = ComponentTypeRegistry::Get().FindByName("NyxTestModule::TestLanternGlowComponent");
+		Require(glowType && glowType->IsRuntime(), "The module's REGISTER function should have made its glow a run-time type");
+		Require(!ComponentTypeRegistry::Get().FindByName(LanternTypeName)->IsRuntime(), "The module's lantern should stay a saved type");
+
+		Nyx::GameWorld world;
+		Nyx::Registry& registry = world.GetRegistry();
+		const Nyx::Entity entity = registry.CreateEntity();
+		registry.Add<Nyx::GuidComponent>(entity, Nyx::GuidComponent{ Nyx::EntityGuid{ 0x1A27 } });
+		registry.Add<TestLanternComponent>(entity, TestLanternComponent{ .Brightness = 1.0f, .Label = "Porch" });
+		Nyx::GetLinkedGameModule().CreateSystems(world);
+		for (uint64_t step = 0; step < 3; ++step)
+		{
+			world.Step(Nyx::StepTime{ 1.0 / 60.0, step, static_cast<double>(step) / 60.0 });
+		}
+		Require(registry.Has<TestLanternGlowComponent>(entity) && registry.Get<TestLanternGlowComponent>(entity).Steps == 3,
+			"The module's system should have made the glow");
+
+		const std::filesystem::path scenePath = directory / "Glowing.nyxscene";
+		Require(Nyx::SceneSerializer::SaveToFile(registry, scenePath), "Saving the glowing lantern failed");
+		Nyx::Registry loaded;
+		Require(Nyx::SceneSerializer::LoadFromFile(scenePath, loaded), "Loading the glowing lantern failed");
+		int lanterns = 0;
+		loaded.Each<TestLanternComponent>(
+			[&](Nyx::Entity loadedEntity, TestLanternComponent& /*lantern*/)
+			{
+				++lanterns;
+				Require(!loaded.Has<TestLanternGlowComponent>(loadedEntity), "The run-time glow should not have been saved");
+			});
+		Require(lanterns == 1, "The lantern itself should have been saved");
+
+		// The editor's question and the game's answer
+		const Nyx::InspectedEntityMessage answer = Nyx::MakeInspectedEntityMessage(registry, Nyx::InspectEntityMessage{ .Request = 5, .Entity = Nyx::EntityGuid{ 0x1A27 } }, 3);
+		Require(answer.Request == 5 && answer.Entity == Nyx::EntityGuid{ 0x1A27 } && answer.bFound && answer.Step == 3, "The answer should name the question, the entity and the step");
+		Require(answer.Components.size() == 1 && answer.Components[0].Type == "NyxTestModule::TestLanternGlowComponent" &&
+				answer.Components[0].DisplayName == "Test Lantern Glow" && answer.Components[0].Values.empty(),
+			"The answer should have the glow, and nothing saved");
+
+		Nyx::BinaryReader reader;
+		reader.LoadFromMemory(answer.Components[0].Properties);
+		TestLanternGlowComponent read;
+		Nyx::ReadWarnings warnings;
+		Require(Nyx::ReflectedArchiveSerializer::DeserializeObject(reader, &read, *glowType->TypeMetadata, warnings), "The glow's properties should read");
+		Require(read.Steps == 3 && read.Glow == registry.Get<TestLanternComponent>(entity).Brightness, "The glow's properties should read back as they were");
+
+		const Nyx::InspectedEntityMessage missing = Nyx::MakeInspectedEntityMessage(registry, Nyx::InspectEntityMessage{ .Request = 6, .Entity = Nyx::EntityGuid{ 0xBAD } }, 3);
+		Require(!missing.bFound && missing.Components.empty() && missing.Request == 6, "An entity the world doesn't have should not be found");
+	}
+
 	// A command keeps its Serialize properties only, in order, whatever its type
 	void TestCommandsAreTheirProperties()
 	{
@@ -269,6 +326,7 @@ int main()
 		TestModuleComponentsKeepEngineStructs(directory.Path);
 		TestModulePostLoadStepRuns(directory.Path);
 		TestModuleSystemsRunInTheGameWorld();
+		TestModuleRuntimeComponents(directory.Path);
 		TestCommandsAreTheirProperties();
 		TestThePlayersCommandsReachTheNextStep();
 	}

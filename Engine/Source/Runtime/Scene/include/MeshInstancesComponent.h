@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ComponentInspection.h"
+
 #include <glm/glm.hpp>
 
 #include <cstdint>
@@ -31,8 +33,8 @@ namespace Nyx
 	};
 
 	// Draws the entity's mesh (its MeshRendererComponent's mesh, or its RuntimeMeshComponent's)
-	// with its materials once per transform instead of once. Run-time only, never saved, like
-	// RuntimeMeshComponent: whoever fills it does so in a post-load step.
+	// with its materials once per transform instead of once. Run-time only, a run-time type never
+	// saved, like RuntimeMeshComponent: whoever fills it does so in a post-load step.
 	struct MeshInstancesComponent
 	{
 		std::shared_ptr<const MeshInstances> Instances;
@@ -41,4 +43,7 @@ namespace Nyx
 
 	// Sets the instances and raises the revision, so the renderer uploads them again
 	void SetMeshInstances(MeshInstancesComponent& component, std::shared_ptr<const MeshInstances> instances);
+
+	// What they are, for the editor: how many, in how many cells, and the revision
+	std::vector<InspectedValue> DescribeMeshInstances(const MeshInstancesComponent& component);
 }

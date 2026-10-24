@@ -191,10 +191,11 @@ namespace Nyx
 	{
 		const auto& componentTypes = ComponentTypeRegistry::Get().GetAll();
 
+		// Run-time components are made again after loading, never saved
 		uint32_t componentCount = 0;
 		for (const ComponentTypeOps& ops : componentTypes)
 		{
-			if (ops.Has(world, entity))
+			if (!ops.IsRuntime() && ops.Has(world, entity))
 			{
 				++componentCount;
 			}
@@ -204,7 +205,7 @@ namespace Nyx
 
 		for (const ComponentTypeOps& ops : componentTypes)
 		{
-			if (!ops.Has(world, entity))
+			if (ops.IsRuntime() || !ops.Has(world, entity))
 			{
 				continue;
 			}
@@ -243,10 +244,10 @@ namespace Nyx
 			}
 
 			const ComponentTypeOps* ops = ComponentTypeRegistry::Get().FindByName(componentTypeName);
-			if (!ops)
+			if (!ops || ops->IsRuntime())
 			{
 				warnings.Add("skipped component type '" + componentTypeName +
-					"', which this build doesn't know; saving the scene drops it");
+					(ops ? "', which is made at run time and never saved" : "', which this build doesn't know; saving the scene drops it"));
 
 				if (!ReflectedArchiveSerializer::SkipObject(reader))
 				{

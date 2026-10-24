@@ -13,6 +13,7 @@
 #include "Log.h"
 #include "NameComponent.h"
 #include "NetConnection.h"
+#include "RuntimeMeshComponent.h"
 #include "TransformComponent.h"
 #include "TestSupport.h"
 
@@ -880,6 +881,115 @@ namespace
 		links.Editor->Close("done");
 	}
 
+	// Runtime inspection: the editor asks about an entity, the game answers with its run-time
+	// components (a mesh made at run time here) and its step; an entity it doesn't have isn't found;
+	// the messages read back whole, refuse what is cut off or too large, and are described
+	void TestInspectionOverTheLink(Listener& listener)
+	{
+		Registry world;
+		const Entity tree = world.CreateEntity();
+		world.Add<GuidComponent>(tree, GuidComponent{ EntityGuid{ 0x7EE } });
+		world.Add<TransformComponent>(tree, TransformComponent{});
+		auto mesh = std::make_shared<MeshData>();
+		mesh->Vertices.resize(3);
+		mesh->Indices = { 0, 1, 2 };
+		RuntimeMeshComponent runtimeMesh;
+		SetRuntimeMesh(runtimeMesh, mesh);
+		world.Add<RuntimeMeshComponent>(tree, runtimeMesh);
+
+		LinkPair links = StartLinks(listener);
+		Require(PumpUntil([&]
+					{
+						links.Update(listener, [](EditorLink&)
+							{
+							});
+					},
+					[&]
+					{
+						return links.Game->IsConnected() && links.Editor->IsConnected();
+					}),
+			"The handshake didn't finish");
+
+		links.Editor->Send(InspectEntityMessage{ .Request = 1, .Entity = EntityGuid{ 0x7EE } });
+		links.Editor->Send(InspectEntityMessage{ .Request = 2, .Entity = EntityGuid{ 0x404 } });
+
+		// The game answers each question at once, as its EditorLinkLayer does
+		std::vector<Message> answers;
+		Require(PumpUntil(
+					[&]
+					{
+						links.Update(listener, [](EditorLink&)
+							{
+							});
+						while (std::optional<Message> question = links.Game->Receive())
+						{
+							const InspectEntityMessage request = ReadAs<InspectEntityMessage>(*question);
+							links.Game->Send(MakeInspectedEntityMessage(world, request, 1200));
+						}
+						while (std::optional<Message> answer = links.Editor->Receive())
+						{
+							answers.push_back(std::move(*answer));
+						}
+					},
+					[&]
+					{
+						return answers.size() == 2;
+					}),
+			"The answers didn't arrive");
+
+		const InspectedEntityMessage found = ReadAs<InspectedEntityMessage>(answers[0]);
+		Require(found.Request == 1 && found.Entity == EntityGuid{ 0x7EE } && found.bFound && found.Step == 1200, "The answer should name its question, entity and step");
+		Require(found.Components.size() == 1 && found.Components[0].Type == "Nyx::RuntimeMeshComponent" && found.Components[0].Properties.empty() &&
+				found.Components[0].Values == DescribeRuntimeMesh(runtimeMesh),
+			"The answer should have the run-time mesh as it says it is, and nothing saved");
+		const InspectedEntityMessage missing = ReadAs<InspectedEntityMessage>(answers[1]);
+		Require(missing.Request == 2 && !missing.bFound && missing.Components.empty(), "An entity the game doesn't have should not be found");
+
+		links.Game->Close("done");
+		links.Editor->Close("done");
+
+		// Whole, with properties and values; nothing of a cut off or oversized one
+		InspectedEntityMessage message;
+		message.Request = 9;
+		message.Entity = EntityGuid{ 0xABC };
+		message.bFound = true;
+		message.Step = 77;
+		message.Components.push_back(InspectedComponent{ .Type = "Game::Counter", .DisplayName = "Counter", .Properties = MakeBytes(12, 3),
+			.Values = { { "Count", "7" }, { "Last", "" } } });
+		message.Components.push_back(InspectedComponent{ .Type = "Game::Empty" });
+		const Message sent = MakeNetMessage(message);
+		const InspectedEntityMessage read = ReadAs<InspectedEntityMessage>(sent);
+		Require(read.Request == 9 && read.Entity == message.Entity && read.bFound && read.Step == 77 && read.Components.size() == 2 &&
+				read.Components[0].Type == "Game::Counter" && read.Components[0].DisplayName == "Counter" &&
+				read.Components[0].Properties == message.Components[0].Properties && read.Components[0].Values == message.Components[0].Values &&
+				read.Components[1].Type == "Game::Empty" && read.Components[1].Values.empty(),
+			"An answer should read back whole");
+		for (size_t size = 0; size < sent.Payload.size(); size += 5)
+		{
+			InspectedEntityMessage cut;
+			Require(!ReadNetMessage(Message{ sent.Type, std::vector<std::byte>(sent.Payload.begin(), sent.Payload.begin() + size) }, cut),
+				"An answer cut off after " + std::to_string(size) + " bytes should not read");
+		}
+		BinaryWriter huge;
+		huge.WriteUInt32(1);
+		huge.WriteUInt64(1);
+		huge.WriteBool(true);
+		huge.WriteUInt64(1);
+		huge.WriteUInt32(1u << 30);
+		InspectedEntityMessage tooMany;
+		Require(!ReadNetMessage(Message{ sent.Type, huge.GetBytes() }, tooMany), "An answer claiming a billion components should not read");
+
+		// Described for the Game Link window and NyxDump
+		const EditorLinkMessageText question = DescribeEditorLinkMessage(MakeNetMessage(InspectEntityMessage{ .Request = 3, .Entity = EntityGuid{ 0x7EE } }));
+		Require(question.Name == "InspectEntity" && Contains(question.Summary, GuidToText(EntityGuid{ 0x7EE })) && Contains(question.Details, "Request: 3"),
+			"InspectEntity is described wrongly: " + question.Summary + " / " + question.Details);
+		const EditorLinkMessageText answerText = DescribeEditorLinkMessage(answers[0]);
+		Require(answerText.Name == "InspectedEntity" && Contains(answerText.Summary, "at step 1200: RuntimeMeshComponent") &&
+				Contains(answerText.Details, "Component: \"Nyx::RuntimeMeshComponent\"") && Contains(answerText.Details, "Revision: \"1\""),
+			"InspectedEntity is described wrongly: " + answerText.Summary + " / " + answerText.Details);
+		Require(Contains(DescribeEditorLinkMessage(answers[1]).Summary, "not found"), "An entity not found should be described so");
+	}
+
 	void TestListenerWithoutWaitingPrograms(Listener& listener)
 	{
 		Require(listener.IsListening() && listener.GetPort() != 0, "The listener isn't listening");
@@ -912,6 +1022,7 @@ int main()
 		TestQuitAndLogLines(listener);
 		TestLiveEditsOverTheLink(listener);
 		TestPauseAndStepOverTheLink(listener);
+		TestInspectionOverTheLink(listener);
 		TestDescriptions();
 		TestRecording();
 		TestLogSink();

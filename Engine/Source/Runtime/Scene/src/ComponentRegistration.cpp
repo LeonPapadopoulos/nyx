@@ -3,7 +3,9 @@
 #include "ComponentTypeRegistry.h"
 #include "GroundMesh.h"
 #include "IAssetResolver.h"
+#include "MeshInstancesComponent.h"
 #include "MeshRendererComponent.h"
+#include "RuntimeMeshComponent.h"
 #include "ScatterInstances.h"
 #include "SurfaceDecalComponent.h"
 
@@ -79,5 +81,9 @@ namespace Nyx
 		ComponentTypeRegistry::Get().SetOnRemove<GroundComponent>(&RemoveGroundMesh);
 		ComponentTypeRegistry::Get().SetPostLoad<ScatterComponent>(&ScatterAfterLoad);
 		ComponentTypeRegistry::Get().SetOnRemove<ScatterComponent>(&RemoveScatter);
+
+		// Made while the world runs and never saved; the editor shows what they are
+		ComponentTypeRegistry::Get().RegisterRuntime<RuntimeMeshComponent>("Nyx::RuntimeMeshComponent", "Mesh Made at Run Time", &DescribeRuntimeMesh);
+		ComponentTypeRegistry::Get().RegisterRuntime<MeshInstancesComponent>("Nyx::MeshInstancesComponent", "Mesh Instances", &DescribeMeshInstances);
 	}
 }

@@ -238,6 +238,42 @@ namespace
 		}
 	}
 
+	void DescribeInspectedEntity(const InspectedEntityMessage& message, bool bWithDetails, EditorLinkMessageText& outText)
+	{
+		std::string types;
+		for (const InspectedComponent& component : message.Components)
+		{
+			types += (types.empty() ? "" : ", ") + ShortTypeName(component.Type);
+		}
+		outText.Summary = GuidToText(message.Entity) + (message.bFound ? " at step " + std::to_string(message.Step) + ": " +
+			(types.empty() ? std::string("no run-time components") : types) : std::string(" not found"));
+
+		if (!bWithDetails)
+		{
+			return;
+		}
+
+		outText.Details = "Request: " + std::to_string(message.Request) + "\nEntity: " + GuidToText(message.Entity) +
+			"\nFound: " + (message.bFound ? "true" : "false") + "\nStep: " + std::to_string(message.Step);
+		for (const InspectedComponent& component : message.Components)
+		{
+			const Nyx::Reflection::TypeMetadata* componentType = FindComponentType(component.Type);
+			outText.Details += "\nComponent: " + Quoted(component.Type) + (componentType ? "" : " (a component type this build doesn't know)");
+			if (!component.Properties.empty())
+			{
+				BinaryReader reader;
+				reader.LoadFromMemory(component.Properties);
+				std::string printed;
+				const bool bPrinted = ReflectedArchivePrinter::PrintObject(reader, componentType, 1, printed);
+				outText.Details += "\nProperties:\n" + printed + (bPrinted ? "" : "  The properties end early or are damaged here.");
+			}
+			for (const InspectedValue& value : component.Values)
+			{
+				outText.Details += "\n  " + value.Name + ": " + Quoted(value.Value);
+			}
+		}
+	}
+
 	void DescribeSetInputAsset(const SetInputAssetMessage& message, bool bWithDetails, EditorLinkMessageText& outText)
 	{
 		BinaryReader reader;
@@ -620,6 +656,35 @@ namespace Nyx
 			text.Name = "SetInputBackground";
 			text.Summary = background.bGamepadsInBackground ? "pads drive the game in the background" : "pads only with the focus";
 			text.Details = std::string("GamepadsInBackground: ") + (background.bGamepadsInBackground ? "true" : "false");
+			break;
+		}
+
+		case EEditorLinkMessage::InspectEntity:
+		{
+			InspectEntityMessage inspect;
+			if (!ReadNetMessage(message, inspect))
+			{
+				describeUnreadable("InspectEntity");
+				break;
+			}
+
+			text.Name = "InspectEntity";
+			text.Summary = GuidToText(inspect.Entity);
+			text.Details = "Request: " + std::to_string(inspect.Request) + "\nEntity: " + GuidToText(inspect.Entity);
+			break;
+		}
+
+		case EEditorLinkMessage::InspectedEntity:
+		{
+			InspectedEntityMessage inspected;
+			if (!ReadNetMessage(message, inspected))
+			{
+				describeUnreadable("InspectedEntity");
+				break;
+			}
+
+			text.Name = "InspectedEntity";
+			DescribeInspectedEntity(inspected, bWithDetails, text);
 			break;
 		}
 

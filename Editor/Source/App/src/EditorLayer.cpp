@@ -285,6 +285,9 @@ namespace Nyx::Editor
 				Games.SendToGames(Nyx::MakeNetMessage(Nyx::PhysicsMaterialValuesMessage{ PhysicsMaterial.GetPath(), PhysicsMaterial.GetText() }));
 			}
 		}
+		// The entity the Details panel's Runtime section showed last frame is asked about in the first
+		// game, a few times a second
+		Games.InspectEntity(Details.GetInspectedEntity());
 		Games.Update();
 
 		// A game that crashed gets a crash card, with its last log lines
@@ -328,6 +331,7 @@ namespace Nyx::Editor
 		}
 
 		Outliner.Draw(Editing);
+		Details.SetGameInspection(Games.GetEntityInspection());
 		Details.Draw(Editing);
 		Materials.Draw(*Renderer, Editing);
 		SceneViews.Draw(Editing, Preferences, *CameraController);

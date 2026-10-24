@@ -2,7 +2,8 @@
 //
 // The games are this program again, started with the game's command line: it then acts as a
 // small stand-in for NyxGame (RunStandInGame) that needs no window or GPU. It says Hello, reports
-// every message it gets as a log line, and quits when asked. A title containing "Crash" makes it
+// every message it gets as a log line, answers questions about entities (the entity 0x7EE has a
+// counter of the answers so far), and quits when asked. A title containing "Crash" makes it
 // exit with code 3 right after its Hello. The stand-ins run without console windows, which they
 // don't need, and which Windows sometimes fails to create when many open and close at once.
 #include "BinaryArchive.h"
@@ -70,6 +71,7 @@ namespace
 		EditorLink link(Nyx::Net::Connection::ConnectToLocalPort(*options.EditorPort), "NyxGame");
 		const bool bCrash = options.WindowTitle.find("Crash") != std::string::npos;
 		bool bSaidStarted = false;
+		uint64_t answers = 0;
 
 		const auto giveUpAt = std::chrono::steady_clock::now() + std::chrono::seconds(30);
 		while (std::chrono::steady_clock::now() < giveUpAt)
@@ -108,6 +110,19 @@ namespace
 
 			while (std::optional<Nyx::Net::Message> message = link.Receive())
 			{
+				InspectEntityMessage question;
+				if (message->Type == static_cast<uint16_t>(EEditorLinkMessage::InspectEntity) && ReadNetMessage(*message, question))
+				{
+					++answers;
+					InspectedEntityMessage answer{ .Request = question.Request, .Entity = question.Entity, .Step = answers };
+					if (question.Entity == EntityGuid{ 0x7EE })
+					{
+						answer.bFound = true;
+						answer.Components.push_back(InspectedComponent{ .Type = "Test::Counter", .DisplayName = "Counter", .Values = { { "Answers", std::to_string(answers) } } });
+					}
+					link.Send(answer);
+				}
+
 				if (message->Type == static_cast<uint16_t>(EEditorLinkMessage::Quit))
 				{
 					SendLine(link, "bye");
@@ -459,6 +474,84 @@ namespace
 	}
 }
 
+namespace
+{
+	// The Details panel's question about an entity reaches the first game, which answers; it is asked
+	// again a few times a second, not every frame; another entity drops the answer so far; none stops
+	// the questions
+	void TestInspection()
+	{
+		Nyx::Editor::SceneDocument scene;
+		GameLinkPanel gameLink;
+		PlaySession session(scene, gameLink);
+		session.GameExecutable = Nyx::Paths::GetExecutableDir() / "NyxGameInstanceTests.exe";
+		Require(!session.GetEntityInspection(), "Without a game nothing should be inspected");
+
+		EditorPreferences preferences;
+		const PlayWallScreen screen = GetPlayWallScreen(nullptr);
+		const GamePlan plan = PlanGames(preferences, false, screen);
+		session.Start(preferences, false, screen);
+		Require(session.IsRunning() && session.GetEntityInspection() && !session.GetEntityInspection()->Answer,
+			"A started game should be the one asked, with no answer yet");
+		const std::string gameName = plan.Games[0].Name;
+		Require(session.GetEntityInspection()->GameName == gameName, "The answer should name the game");
+
+		// As EditorLayer does each frame
+		const auto updateFor = [&](std::optional<EntityGuid> entity, std::chrono::milliseconds time, const std::function<bool()>& until)
+		{
+			const auto giveUpAt = std::chrono::steady_clock::now() + time;
+			while (std::chrono::steady_clock::now() < giveUpAt && !until())
+			{
+				session.InspectEntity(entity);
+				session.Update();
+				std::this_thread::sleep_for(std::chrono::milliseconds(5));
+			}
+		};
+		const auto answer = [&]()
+		{
+			return session.GetEntityInspection() ? session.GetEntityInspection()->Answer : nullptr;
+		};
+
+		updateFor(EntityGuid{ 0x7EE }, std::chrono::seconds(20), [&] { return answer() != nullptr; });
+		Require(answer() && answer()->bFound && answer()->Entity == EntityGuid{ 0x7EE } && answer()->Components.size() == 1 &&
+				answer()->Components[0].Values[0] == InspectedValue{ "Answers", std::to_string(answer()->Step) },
+			"The game's answer about the entity should arrive");
+
+		// About four a second, however many frames
+		const uint64_t firstAnswer = answer()->Step;
+		updateFor(EntityGuid{ 0x7EE }, std::chrono::milliseconds(1100), [] { return false; });
+		const uint64_t answersInASecond = answer()->Step - firstAnswer;
+		Require(answersInASecond >= 2 && answersInASecond <= 5, "The game should be asked about four times a second, was " + std::to_string(answersInASecond));
+
+		// Another entity: the answer so far is dropped, and the new one says the game hasn't it
+		session.InspectEntity(EntityGuid{ 0x404 });
+		Require(answer() == nullptr, "Another entity should drop the answer so far");
+		updateFor(EntityGuid{ 0x404 }, std::chrono::seconds(20), [&] { return answer() != nullptr; });
+		Require(answer() && answer()->Entity == EntityGuid{ 0x404 } && !answer()->bFound, "An entity the game doesn't have should not be found");
+
+		// None: no more questions
+		const auto questions = [&]()
+		{
+			const std::string lines = gameLink.GetLastLogLines(gameName, 1000);
+			const std::string got = "got " + std::to_string(static_cast<uint16_t>(EEditorLinkMessage::InspectEntity)) + " of";
+			size_t count = 0;
+			for (size_t at = lines.find(got); at != std::string::npos; at = lines.find(got, at + 1))
+			{
+				++count;
+			}
+			return count;
+		};
+		updateFor(std::nullopt, std::chrono::milliseconds(400), [] { return false; });
+		const size_t asked = questions();
+		updateFor(std::nullopt, std::chrono::milliseconds(700), [] { return false; });
+		Require(questions() == asked, "Without an entity to inspect, the game should not be asked");
+
+		session.Stop();
+		updateFor(std::nullopt, std::chrono::seconds(20), [&] { return !session.IsRunning(); });
+		Require(!session.IsRunning() && !session.GetEntityInspection(), "After Stop nothing should be inspected");
+	}
+}
+
 int main(int argc, char** argv)
 {
 	const std::vector<std::string_view> arguments(argv + (argc > 0 ? 1 : 0), argv + argc);
@@ -478,6 +571,7 @@ int main(int argc, char** argv)
 		TestCrashReports();
 		TestStoppingBeforeEditorCloses();
 		TestPauseAndStep();
+		TestInspection();
 
 		std::cout << "All game instance tests passed.\n";
 		return 0;

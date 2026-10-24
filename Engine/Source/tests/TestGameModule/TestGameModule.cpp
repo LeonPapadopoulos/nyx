@@ -6,8 +6,10 @@
 #include "SimSystem.h"
 #include "TestCommands.h"
 #include "TestLanternComponent.h"
+#include "TestLanternGlowComponent.h"
 
 #include <memory>
+#include <vector>
 
 // The test module's own code, named in nyx_add_game_module(): REGISTER, SYSTEMS and PLAYER
 namespace NyxTestModule
@@ -95,7 +97,8 @@ namespace NyxTestModule
 			Nyx::Input::ActionHandle Brighten;
 		};
 
-		// Every lantern grows half a unit brighter each step it runs
+		// Every lantern grows half a unit brighter each step it runs, and its glow, a run-time
+		// component, says how bright and for how many steps
 		class LanternGlowSystem final : public Nyx::ISimSystem
 		{
 		public:
@@ -106,11 +109,23 @@ namespace NyxTestModule
 
 			void Step(const Nyx::SimContext& context) override
 			{
+				std::vector<Nyx::Entity> lanterns;
 				context.World.Each<TestLanternComponent>(
-					[](Nyx::Entity /*entity*/, TestLanternComponent& lantern)
+					[&](Nyx::Entity entity, TestLanternComponent& lantern)
 					{
 						lantern.Brightness += 0.5f;
+						lanterns.push_back(entity);
 					});
+				for (const Nyx::Entity entity : lanterns)
+				{
+					if (!context.World.Has<TestLanternGlowComponent>(entity))
+					{
+						context.World.Add<TestLanternGlowComponent>(entity, TestLanternGlowComponent{});
+					}
+					TestLanternGlowComponent& glow = context.World.Get<TestLanternGlowComponent>(entity);
+					glow.Glow = context.World.Get<TestLanternComponent>(entity).Brightness;
+					++glow.Steps;
+				}
 			}
 		};
 	}
@@ -118,6 +133,7 @@ namespace NyxTestModule
 	void RegisterModule()
 	{
 		Nyx::ComponentTypeRegistry::Get().SetPostLoad<TestLanternComponent>(&LabelOnLoad);
+		Nyx::ComponentTypeRegistry::Get().SetRuntime<TestLanternGlowComponent>();
 	}
 
 	void CreateSystems(Nyx::GameWorld& world)
