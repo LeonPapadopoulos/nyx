@@ -85,6 +85,12 @@ public struct SurfaceInput
     // Towards the camera, normalised
     public float3 ViewWS;
     public float4 CustomData;
+    // The mesh's own four numbers at the pixel, between its vertices' (Nyx::Vertex::Custom); zero
+    // for a mesh without them
+    public float4 Custom;
+    // The instance's four numbers (MeshInstances::Custom), or the entity's where it is drawn once
+    // (MeshRendererComponent::Custom); zero unless set
+    public float4 InstanceCustom;
     public DecalInput Decal;
 }
 
@@ -147,9 +153,12 @@ namespace nyx
 // Entry points
 // -------------------------------------------------------------------------
 
-// Nyx::Vertex, then the instance's transform from the second stream, one mat4 per instance
-// (GetInstanceAttributeDescriptions()), relative to Object.Model: a MeshInstancesComponent's, or
-// the identity for an entity drawn once. Its four columns, as glm keeps a mat4.
+// Nyx::Vertex (GpuVertex), then the instance from the second stream (MeshInstanceData,
+// GetInstanceAttributeDescriptions()): its transform relative to Object.Model, a
+// MeshInstancesComponent's or the identity for an entity drawn once, as its four columns, as glm
+// keeps a mat4; and its custom numbers. The vertex's custom numbers come after the instance's
+// transform, at locations 9 and 10 by their order here, so the engine's GLSL shaders find the
+// transform where it was.
 public struct VertexInput
 {
     public float3 Position : POSITION;
@@ -161,6 +170,8 @@ public struct VertexInput
     public float4 Instance1 : INSTANCE1;
     public float4 Instance2 : INSTANCE2;
     public float4 Instance3 : INSTANCE3;
+    public float4 Custom : CUSTOM;
+    public float4 InstanceCustom : INSTANCE_CUSTOM;
 }
 
 public struct VertexOutput
@@ -171,6 +182,9 @@ public struct VertexOutput
     public float3 NormalWS : NORMAL;
     public float4 TangentWS : TANGENT;
     public float3 PositionWS : POSITION_WS;
+    public float4 Custom : CUSTOM;
+    // The same at every vertex of an instance
+    public nointerpolation float4 InstanceCustom : INSTANCE_CUSTOM;
 }
 
 // The inverse of the transpose, which carries normals: made from the rows' cross products
@@ -205,6 +219,8 @@ public VertexOutput transformSurfaceVertex(VertexInput input)
     // Tangents lie along the surface, so they follow the model itself
     output.TangentWS = float4(mul((float3x3)model, input.Tangent.xyz), input.Tangent.w);
     output.PositionWS = positionWS.xyz;
+    output.Custom = input.Custom;
+    output.InstanceCustom = input.InstanceCustom;
     return output;
 }
 
@@ -247,6 +263,8 @@ SurfaceInput makeSurfaceInput(VertexOutput vertex, DecalInput decal, bool bFront
     input.PositionWS = vertex.PositionWS;
     input.ViewWS = normalize(View.CameraPosition.xyz - vertex.PositionWS);
     input.CustomData = Object.CustomData;
+    input.Custom = vertex.Custom;
+    input.InstanceCustom = vertex.InstanceCustom;
     input.Decal = decal;
     return input;
 }

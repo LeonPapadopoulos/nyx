@@ -12,16 +12,18 @@ code is in `Engine/Source/Runtime/Render` (`MeshInstanceCache`, `SceneCulling.h`
   space, and a run of the transforms), and a revision. It is derived data like a
   `RuntimeMeshComponent`: not reflected, never saved, made in a post-load step by whatever
   scatters it ([Architecture: Generated content](../Architecture.md#generated-content)).
-- **On the GPU** the transforms are a vertex buffer of `glm::mat4`, one for each `MeshInstances`,
-  kept by `MeshInstanceCache` exactly as `RuntimeMeshCache` keeps meshes: keyed by the data's
-  address (the cache holds a reference, so the address can't be reused while it is a key),
-  uploaded when first drawn and again only for a higher revision, into a new buffer, the old one
-  destroyed after the next frame's fence; instances no shown world drew in a frame are let go of.
-- **Every mesh pipeline reads a second vertex stream**: binding 1, one `mat4` per instance, its
-  columns at locations 5 to 8 (`GetInstanceAttributeDescriptions()`). `transformSurfaceVertex()`
-  in `nyx/surface.slang` (every surface material, the missing material) and `Picking.vert` and
-  `SelectionMask.vert` place a vertex at `Model × instance`, the normal by the cofactor matrix of
-  that product. A draw without instances binds the cache's identity buffer, a single `mat4`; the
+- **On the GPU** the transforms are a vertex buffer of `MeshInstanceData`, each transform with its
+  instance's custom numbers ([Vertex data](vertex-data.md)), one for each `MeshInstances`, kept by
+  `MeshInstanceCache` exactly as `RuntimeMeshCache` keeps meshes: keyed by the data's address (the
+  cache holds a reference, so the address can't be reused while it is a key), uploaded when first
+  drawn and again only for a higher revision, into a new buffer, the old one destroyed after the
+  next frame's fence; instances no shown world drew in a frame are let go of.
+- **Every mesh pipeline reads a second vertex stream**: binding 1, one `MeshInstanceData` per
+  instance, its transform's columns at locations 5 to 8 and its custom numbers at 10
+  (`GetInstanceAttributeDescriptions()`). `transformSurfaceVertex()` in `nyx/surface.slang` (every
+  surface material, the missing material) and `Picking.vert` and `SelectionMask.vert` place a
+  vertex at `Model × instance`, the normal by the cofactor matrix of that product. A draw without
+  instances binds the cache's identity buffer, a single identity with custom numbers of zero; the
   identity leaves `Model` exactly as it was, so what was drawn before draws to the same bits.
 - **Culling** happens per scene view, after the worlds are extracted (`PrepareSceneViews()`): each
   view's camera (the editor's free camera, the game's primary camera, a frozen one) gives a
@@ -29,8 +31,8 @@ code is in `Engine/Source/Runtime/Render` (`MeshInstanceCache`, `SceneCulling.h`
   outside it. The scene pass draws that list; picking and the selection masks draw everything, as
   before, a click may be anywhere and the masks are drawn only when they change.
 - **Batching**: entities drawn once that draw alike, the same mesh with the same material in each
-  section, are one draw: their transforms go into this frame's instance stream, with `Model` the
-  identity.
+  section, are one draw: their transforms, and their *Custom Data*, go into this frame's instance
+  stream, with `Model` the identity.
 
 ## Why a vertex stream and not a storage buffer
 

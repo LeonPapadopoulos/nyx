@@ -20,8 +20,9 @@ namespace Nyx
 	// the data as RuntimeMeshCache keys meshes: entities that share instances share their buffer.
 	// The transforms go up once, when first drawn, and again only when a component that draws them
 	// has a higher revision than the one uploaded; instances that no shown world drew in a frame are
-	// let go of. Every mesh pipeline reads them as its second vertex stream, a mat4 per instance
-	// (GetInstanceBindingDescription()); a draw without instances reads the identity buffer here.
+	// let go of. Every mesh pipeline reads them as its second vertex stream, a MeshInstanceData per
+	// instance: its transform and its custom numbers (GetInstanceBindingDescription()); a draw
+	// without instances reads the identity buffer here.
 	//
 	// Uploaded into new buffers while the worlds are extracted, before the frame records a draw; a
 	// buffer replaced or let go of is kept until after the next frame's fence (ReleaseRetired()),
@@ -55,7 +56,7 @@ namespace Nyx
 		// cells made for a mesh of `meshBounds` (again when the mesh's bounds changed); null when
 		// there is nothing to draw: no data, no transforms, or no cell that covers any
 		const Instances* Acquire(VulkanContext& context, const MeshInstancesComponent& component, const BoundingBox& meshBounds);
-		// One identity transform, for draws without instances
+		// One identity transform with custom numbers of zero, for draws without instances
 		vk::Buffer GetIdentity() const { return *Identity.Buffer; }
 
 		// After every shown world was extracted: the instances none of them drew this frame are retired

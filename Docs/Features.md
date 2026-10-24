@@ -461,10 +461,10 @@ What lies under a point of a view, for clicking on the world.
 A game's code can give an entity a mesh it makes itself, such as a generated ground or a tree whose
 mesh is made again as it grows.
 
-- The mesh is plain data (`MeshData`): vertices (position, normal, UV, colour, tangent), indices,
-  three a triangle, and *sections*, runs of the indices each drawn with the material of its slot, so
-  a tree's trunk and leaves are one mesh with two materials. A mesh without sections is one section
-  in slot 0. `CheckMeshData()` says what is wrong with one, `ComputeMeshBounds()` where it is.
+- The mesh is plain data (`MeshData`): vertices (position, normal, UV, colour, tangent, four
+  custom channels for the materials), indices, three a triangle, and *sections*, runs of the
+  indices each drawn with the material of its slot, so a tree's trunk and leaves are one mesh with
+  two materials. A mesh without sections is one section in slot 0. `CheckMeshData()` says what is wrong with one, `ComputeMeshBounds()` where it is.
 - The entity gets a `RuntimeMeshComponent` holding the data, shared, and a revision. With its
   *Mesh Renderer*, it is drawn in place of the renderer's *Mesh*: slot 0 with *Material*, slots 1 and
   on with *Extra Materials*; a slot without a material draws with *Material*.
@@ -644,6 +644,29 @@ entity, and every scene view draws only what its camera can see.
   its entity and it is outlined; entities and cells out of view culled, the frozen view, the bounds
   drawn), `NyxEditorPanelTests` (the details panel's lines). `NyxInstancingBenchmark` measures the
   numbers.
+
+## Materials' own numbers
+
+A game can hand its materials numbers of its own, for a sway, a growth, a tint for each copy
+([Design: Vertex data](Design/vertex-data.md)).
+
+- **For each vertex**: four numbers in a mesh made at run time (`Vertex::Custom`), such as how far
+  each vertex bends in the wind or the ages at which it appears and is fully grown. Zero in every
+  mesh Nyx makes or imports. On the GPU in half precision: about three digits, 0, 1 and small whole
+  numbers exactly.
+- **For each copy**: four numbers beside each transform of a `MeshInstancesComponent`
+  (`MeshInstances::Custom`); a *Scatter* gives every copy a number of its own from 0 up to 1 in x.
+  An entity drawn once has its own, *Custom Data* on its *Mesh Renderer*, which a system can change
+  every frame for nothing more than its transform costs; the material gets it as an instance's, so
+  one material serves a scatter's copies and a single entity alike.
+- Every surface material reads them (`SurfaceInput.Custom`, `SurfaceInput.InstanceCustom`), and
+  the time, `View.Time`, which stands still while the game is paused.
+- Tests: `NyxMeshTests` (the vertex as the GPU reads it, the channels back from half precision,
+  every attribute where it belongs; zero in every mesh Nyx makes or imports), `NyxScatterTests`
+  (every copy's number from 0 up to 1, the same every time and cell by cell, spread evenly),
+  `NyxVertexDataGpuTests` (a mesh's channels, each instance's and an entity's reach the material, an
+  entity's changed every frame without an upload, two entities in one draw each with its own; the
+  time stands still while paused and moves on by a step).
 
 ## The ground
 

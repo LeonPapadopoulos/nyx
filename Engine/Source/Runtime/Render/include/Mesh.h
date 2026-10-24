@@ -8,72 +8,116 @@
 
 namespace Nyx
 {
-	// How Vertex is laid out for the vertex shaders
+	// A vertex as the GPU reads it: Vertex with its custom channels in half precision, so a mesh
+	// pays 8 bytes for them, not 16 (68 bytes a vertex, from 60 before they came). Made from a
+	// Vertex on upload (ToGpuVertex()).
+	struct GpuVertex
+	{
+		glm::vec3 Position{ 0.0f };
+		glm::vec3 Color{ 1.0f };
+		glm::vec2 UV{ 0.0f };
+		glm::vec3 Normal{ 0.0f, 1.0f, 0.0f };
+		glm::vec4 Tangent{ 1.0f, 0.0f, 0.0f, 1.0f };
+		// Vertex::Custom as four half floats, x and y in the first, z and w in the second
+		// (glm::packHalf2x16())
+		uint32_t Custom[2] = {};
+	};
+	static_assert(sizeof(GpuVertex) == 68, "GpuVertex is the vertex buffer's stride");
+
+	GpuVertex ToGpuVertex(const Vertex& vertex);
+	// Vertex::Custom back from the GPU's half floats, for tests
+	glm::vec4 GetGpuVertexCustom(const GpuVertex& vertex);
+
+	// How GpuVertex is laid out for the vertex shaders
 	inline vk::VertexInputBindingDescription GetVertexBindingDescription()
 	{
 		vk::VertexInputBindingDescription binding{};
 		binding.binding = 0;
-		binding.stride = sizeof(Vertex);
+		binding.stride = sizeof(GpuVertex);
 		binding.inputRate = vk::VertexInputRate::eVertex;
 		return binding;
 	}
 
-	inline std::array<vk::VertexInputAttributeDescription, 5> GetVertexAttributeDescriptions()
+	// Locations 0 to 4 and 9: the custom channels after the instance's transform (5 to 8), which
+	// the engine's GLSL shaders read where they always were
+	constexpr uint32_t VertexCustomLocation = 9;
+
+	inline std::array<vk::VertexInputAttributeDescription, 6> GetVertexAttributeDescriptions()
 	{
-		std::array<vk::VertexInputAttributeDescription, 5> attributes{};
+		std::array<vk::VertexInputAttributeDescription, 6> attributes{};
 
 		attributes[0].binding = 0;
 		attributes[0].location = 0;
 		attributes[0].format = vk::Format::eR32G32B32Sfloat;
-		attributes[0].offset = offsetof(Vertex, Position);
+		attributes[0].offset = offsetof(GpuVertex, Position);
 
 		attributes[1].binding = 0;
 		attributes[1].location = 1;
 		attributes[1].format = vk::Format::eR32G32B32Sfloat;
-		attributes[1].offset = offsetof(Vertex, Color);
+		attributes[1].offset = offsetof(GpuVertex, Color);
 
 		attributes[2].binding = 0;
 		attributes[2].location = 2;
 		attributes[2].format = vk::Format::eR32G32Sfloat;
-		attributes[2].offset = offsetof(Vertex, UV);
+		attributes[2].offset = offsetof(GpuVertex, UV);
 
 		attributes[3].binding = 0;
 		attributes[3].location = 3;
 		attributes[3].format = vk::Format::eR32G32B32Sfloat;
-		attributes[3].offset = offsetof(Vertex, Normal);
+		attributes[3].offset = offsetof(GpuVertex, Normal);
 
 		attributes[4].binding = 0;
 		attributes[4].location = 4;
 		attributes[4].format = vk::Format::eR32G32B32A32Sfloat;
-		attributes[4].offset = offsetof(Vertex, Tangent);
+		attributes[4].offset = offsetof(GpuVertex, Tangent);
+
+		attributes[5].binding = 0;
+		attributes[5].location = VertexCustomLocation;
+		attributes[5].format = vk::Format::eR16G16B16A16Sfloat;
+		attributes[5].offset = offsetof(GpuVertex, Custom);
 
 		return attributes;
 	}
 
-	// Every mesh pipeline's second vertex stream: the instance's transform, a glm::mat4 per
-	// instance, relative to the draw's ObjectConstants::Model (MeshInstanceCache; the identity for
-	// a draw without instances). Its columns at locations 5 to 8, after the vertex's.
+	// Every mesh pipeline's second vertex stream: an instance a MeshInstanceData, its transform
+	// relative to the draw's ObjectConstants::Model and its custom numbers (MeshInstanceCache; the
+	// identity and zero for a draw without instances). The transform's columns at locations 5 to 8,
+	// after the vertex's, its custom numbers at 10.
 	constexpr uint32_t InstanceBinding = 1;
+	constexpr uint32_t InstanceCustomLocation = 10;
+
+	struct MeshInstanceData
+	{
+		glm::mat4 Transform{ 1.0f };
+		// MeshInstances::Custom of an instance, or MeshRendererComponent::Custom of an entity drawn
+		// once (SurfaceInput.InstanceCustom)
+		glm::vec4 Custom{ 0.0f };
+	};
+	static_assert(sizeof(MeshInstanceData) == 80, "MeshInstanceData is the instance stream's stride");
 
 	inline vk::VertexInputBindingDescription GetInstanceBindingDescription()
 	{
 		vk::VertexInputBindingDescription binding{};
 		binding.binding = InstanceBinding;
-		binding.stride = sizeof(glm::mat4);
+		binding.stride = sizeof(MeshInstanceData);
 		binding.inputRate = vk::VertexInputRate::eInstance;
 		return binding;
 	}
 
-	inline std::array<vk::VertexInputAttributeDescription, 4> GetInstanceAttributeDescriptions()
+	inline std::array<vk::VertexInputAttributeDescription, 5> GetInstanceAttributeDescriptions()
 	{
-		std::array<vk::VertexInputAttributeDescription, 4> attributes{};
+		std::array<vk::VertexInputAttributeDescription, 5> attributes{};
 		for (uint32_t column = 0; column < 4; ++column)
 		{
 			attributes[column].binding = InstanceBinding;
 			attributes[column].location = 5 + column;
 			attributes[column].format = vk::Format::eR32G32B32A32Sfloat;
-			attributes[column].offset = column * sizeof(glm::vec4);
+			attributes[column].offset = offsetof(MeshInstanceData, Transform) + column * sizeof(glm::vec4);
 		}
+		attributes[4].binding = InstanceBinding;
+		attributes[4].location = InstanceCustomLocation;
+		attributes[4].format = vk::Format::eR32G32B32A32Sfloat;
+		attributes[4].offset = offsetof(MeshInstanceData, Custom);
 		return attributes;
 	}
 
@@ -144,6 +188,7 @@ namespace Nyx
 
 	private:
 		bool LoadMeshData(const std::string& filePath, std::vector<Vertex>& vertices, std::vector<uint32_t>& indices);
+		// As GpuVertex
 		void CreateVertexBuffer(VulkanContext& context, const std::vector<Vertex>& vertices);
 		void CreateIndexBuffer(VulkanContext& context, const std::vector<uint32_t>& indices);
 		vk::Device GetDevice();

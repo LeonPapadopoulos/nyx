@@ -6,6 +6,8 @@
 #include "VulkanContext.h"
 #include "VulkanUtil.h"
 
+#include <glm/gtc/packing.hpp>
+
 #include <algorithm>
 #include <cmath>
 #include <initializer_list>
@@ -13,6 +15,24 @@
 
 namespace Nyx
 {
+	GpuVertex ToGpuVertex(const Vertex& vertex)
+	{
+		GpuVertex gpu;
+		gpu.Position = vertex.Position;
+		gpu.Color = vertex.Color;
+		gpu.UV = vertex.UV;
+		gpu.Normal = vertex.Normal;
+		gpu.Tangent = vertex.Tangent;
+		gpu.Custom[0] = glm::packHalf2x16(glm::vec2(vertex.Custom.x, vertex.Custom.y));
+		gpu.Custom[1] = glm::packHalf2x16(glm::vec2(vertex.Custom.z, vertex.Custom.w));
+		return gpu;
+	}
+
+	glm::vec4 GetGpuVertexCustom(const GpuVertex& vertex)
+	{
+		return glm::vec4(glm::unpackHalf2x16(vertex.Custom[0]), glm::unpackHalf2x16(vertex.Custom[1]));
+	}
+
 	MeshData MakeCube(float size)
 	{
 		const float h = size * 0.5f;
@@ -250,7 +270,7 @@ namespace Nyx
 			return;
 		}
 
-		const vk::DeviceSize size = sizeof(Vertex) * vertices.size();
+		const vk::DeviceSize size = sizeof(GpuVertex) * vertices.size();
 
 		CreateBuffer(
 			context,
@@ -260,8 +280,8 @@ namespace Nyx
 			VertexBuffer,
 			VertexBufferMemory);
 
-		void* mapped = VertexBufferMemory.mapMemory(0, size);
-		std::memcpy(mapped, vertices.data(), static_cast<size_t>(size));
+		auto* mapped = static_cast<GpuVertex*>(VertexBufferMemory.mapMemory(0, size));
+		std::transform(vertices.begin(), vertices.end(), mapped, ToGpuVertex);
 		VertexBufferMemory.unmapMemory();
 	}
 

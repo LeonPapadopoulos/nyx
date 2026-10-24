@@ -12,7 +12,8 @@
 // a scene's load, the editor and a live edit run it, makes the instances, makes nothing again for
 // nothing new, and makes them again when the scatter, its surface's mesh or where the surface lies
 // changes; a scatter loaded before its surface finds it, and removing the component takes the
-// instances away. Blockers and masks are saved and loaded. Scattering about 50,000 instances on the
+// instances away. Each instance has a number of its own from 0 up to 1 in its Custom.x, the same
+// every time and however its cells were made, spread evenly. Blockers and masks are saved and loaded. Scattering about 50,000 instances on the
 // default ground, and dragging a blocker over 40,000, are timed.
 #include "ComponentRegistration.h"
 #include "ComponentTypeRegistry.h"
@@ -33,6 +34,7 @@
 #include <glm/gtc/quaternion.hpp>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -87,6 +89,7 @@ namespace
 	{
 		Require(made.Transforms == expected.Transforms,
 			why + ": the transforms should be those of a full scatter (" + std::to_string(made.Transforms.size()) + " and " + std::to_string(expected.Transforms.size()) + ")");
+		Require(made.Custom == expected.Custom, why + ": each instance's own number should be that of a full scatter");
 		Require(made.Cells.size() == expected.Cells.size(), why + ": the cells should be those of a full scatter");
 		for (size_t cell = 0; cell < made.Cells.size(); ++cell)
 		{
@@ -186,6 +189,38 @@ namespace
 		scatter.Seed = 2;
 		const MeshInstances other = ScatterOnMesh(scatter, mesh, glm::mat4(1.0f));
 		Require(HashTransforms(other) != hash, "Another seed should give other transforms");
+	}
+
+	// Each instance's Custom.x: from 0 up to 1, a hash of where it stands, so the same values give the
+	// same numbers, and they spread over the range (each tenth holds about a tenth of them); y, z and
+	// w are zero
+	void TestEachInstanceHasANumberOfItsOwn()
+	{
+		const GroundComponent ground;
+		const MeshData mesh = MakeGroundMesh(ground);
+		ScatterComponent scatter = OnGround();
+		scatter.Density = 2.0f;
+		scatter.Spacing = 0.3f;
+		const MeshInstances first = ScatterOnMesh(scatter, mesh, glm::mat4(1.0f));
+		const MeshInstances second = ScatterOnMesh(scatter, mesh, glm::mat4(1.0f));
+		Require(first.Custom.size() == first.Transforms.size(), "Every instance should have its custom numbers");
+		Require(first.Custom == second.Custom, "The same values should give the same numbers");
+		std::array<size_t, 10> tenths{};
+		std::set<float> distinct;
+		for (const glm::vec4& custom : first.Custom)
+		{
+			Require(custom.x >= 0.0f && custom.x < 1.0f, "An instance's number should be from 0 up to 1, not " + std::to_string(custom.x));
+			Require(custom.y == 0.0f && custom.z == 0.0f && custom.w == 0.0f, "An instance's custom y, z and w should be zero");
+			++tenths[std::min<size_t>(static_cast<size_t>(custom.x * 10.0f), 9)];
+			distinct.insert(custom.x);
+		}
+		const double expected = static_cast<double>(first.Custom.size()) / 10.0;
+		for (size_t tenth = 0; tenth < tenths.size(); ++tenth)
+		{
+			Require(std::abs(static_cast<double>(tenths[tenth]) - expected) < expected * 0.25,
+				"Tenth " + std::to_string(tenth) + " of the range holds " + std::to_string(tenths[tenth]) + " numbers, not about " + std::to_string(expected));
+		}
+		Require(distinct.size() > first.Custom.size() * 99 / 100, "The instances' numbers should be nearly all different");
 	}
 
 	// The area of the triangles' parts in the scatter's area, cut along X and Z: the ground's squares
@@ -1153,6 +1188,7 @@ int main()
 		Nyx::RegisterComponentTypes();
 
 		TestTheSameValuesGiveTheSameTransforms();
+		TestEachInstanceHasANumberOfItsOwn();
 		TestTheDensity();
 		TestTheSpacing();
 		TestTheSlopeAndHeightLimits();

@@ -215,6 +215,9 @@ namespace Nyx
 		bool bMirrored = false;
 		// Whether it casts the primary light's shadows (MeshRendererComponent::bCastShadows)
 		bool bCastShadows = true;
+		// Drawn once, its instance's custom numbers in the stream (MeshRendererComponent::Custom);
+		// drawn instanced, each instance has its own
+		glm::vec4 Custom{ 0.0f };
 
 		// Its mesh's bounds, in the entity's space; drawn instanced, around all of its instances
 		glm::vec3 LocalBoundsMin{ -0.5f, -0.5f, -0.5f };
@@ -623,10 +626,10 @@ namespace Nyx
 		Nyx::RuntimeMeshCache RuntimeMeshes;
 		// The worlds' instances (MeshInstancesComponent), uploaded so too
 		Nyx::MeshInstanceCache MeshInstances;
-		// This frame's instance stream of the entities drawn together (CullSceneView()), every view's,
-		// written after the last frame's fence, while no frame reads it (one frame in flight); the
-		// buffers it outgrew are kept until the next fence
-		std::vector<glm::mat4> FrameInstances;
+		// This frame's instance stream of the entities drawn together (CullSceneView()), every view's:
+		// their transforms and custom numbers, written after the last frame's fence, while no frame
+		// reads it (one frame in flight); the buffers it outgrew are kept until the next fence
+		std::vector<MeshInstanceData> FrameInstances;
 		vk::raii::Buffer FrameInstanceBuffer{ nullptr };
 		vk::raii::DeviceMemory FrameInstanceMemory{ nullptr };
 		size_t FrameInstanceCapacity = 0;

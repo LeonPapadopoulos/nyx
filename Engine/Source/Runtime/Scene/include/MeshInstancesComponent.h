@@ -22,6 +22,10 @@ namespace Nyx
 	{
 		// Each relative to the entity's TransformComponent
 		std::vector<glm::mat4> Transforms;
+		// Optional: four numbers of each instance's own, for the materials
+		// (SurfaceInput.InstanceCustom), such as a phase for its sway or its age. One a transform;
+		// empty, or fewer, means zero for those without.
+		std::vector<glm::vec4> Custom;
 		// Optional: empty means one cell over all of them
 		std::vector<MeshInstanceCell> Cells;
 	};

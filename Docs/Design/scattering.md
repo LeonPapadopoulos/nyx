@@ -57,7 +57,10 @@ off at the area's edge), and each cell is sampled on its own:
    Range*, its up tilted from the entity's Y towards the normal by *Align To Normal*, and sunk
    *Sink Depth* along its up.
 6. The cells' copies go one cell after another, each non-empty cell with the bounds of its origins
-   and its range of transforms.
+   and its range of transforms. Each copy gets a number of its own from 0 up to 1 in its custom
+   numbers' x (`MeshInstances::Custom`, [Vertex data](vertex-data.md)), for a material to give it
+   its own phase or tint: a hash of the bits of its origin, so a copy made again where it was gets
+   the same number, and a cell made alone gives what a full scatter gives.
 
 Because a cell's pieces are its own share of the surface, the count is density times the surface's
 area inside the area, before limits, masks and spacing, with no points wasted outside it. Each cell

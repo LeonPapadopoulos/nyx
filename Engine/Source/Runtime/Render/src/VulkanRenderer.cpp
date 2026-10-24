@@ -1302,6 +1302,7 @@ namespace Nyx
 				obj.DrawTransform = drawTransform;
 				obj.bMirrored = glm::determinant(glm::mat3(drawTransform)) < 0.0f;
 				obj.bCastShadows = meshRenderer.bCastShadows;
+				obj.Custom = meshRenderer.Custom;
 				obj.LocalBoundsMin = mesh->GetLocalBoundsMin();
 				obj.LocalBoundsMax = mesh->GetLocalBoundsMax();
 				obj.InstanceBuffer = MeshInstances.GetIdentity();
@@ -1510,9 +1511,10 @@ namespace Nyx
 				++end;
 			}
 			const uint32_t firstInstance = static_cast<uint32_t>(FrameInstances.size());
-			for (size_t member = first; member < end; ++member)
+			for (size_t index = first; index < end; ++index)
 			{
-				FrameInstances.push_back(world.Objects[drawnOnce[member]].DrawTransform);
+				const RenderObject& member = world.Objects[drawnOnce[index]];
+				FrameInstances.push_back(MeshInstanceData{ .Transform = member.DrawTransform, .Custom = member.Custom });
 			}
 			outDraws.push_back(SceneViewDraw{ .Object = drawnOnce[first], .InstanceBuffer = nullptr, .FirstInstance = firstInstance,
 				.InstanceCount = static_cast<uint32_t>(end - first), .Model = glm::mat4(1.0f) });
@@ -1654,10 +1656,10 @@ namespace Nyx
 				RetiredFrameInstanceBuffers.emplace_back(std::move(FrameInstanceBuffer), std::move(FrameInstanceMemory));
 			}
 			FrameInstanceCapacity = std::max<size_t>(FrameInstances.size() + FrameInstances.size() / 2, 1024);
-			CreateBuffer(Context, FrameInstanceCapacity * sizeof(glm::mat4), vk::BufferUsageFlagBits::eVertexBuffer,
+			CreateBuffer(Context, FrameInstanceCapacity * sizeof(MeshInstanceData), vk::BufferUsageFlagBits::eVertexBuffer,
 				vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, FrameInstanceBuffer, FrameInstanceMemory);
 		}
-		const vk::DeviceSize size = FrameInstances.size() * sizeof(glm::mat4);
+		const vk::DeviceSize size = FrameInstances.size() * sizeof(MeshInstanceData);
 		void* mapped = FrameInstanceMemory.mapMemory(0, size);
 		std::memcpy(mapped, FrameInstances.data(), static_cast<size_t>(size));
 		FrameInstanceMemory.unmapMemory();
@@ -1866,16 +1868,8 @@ namespace Nyx
 		vk::PipelineShaderStageCreateInfo shaderStages[] = { vertStageInfo, fragStageInfo };
 
 		// Only position is used by the skybox shader.
-		vk::VertexInputBindingDescription bindingDescription{};
-		bindingDescription.binding = 0;
-		bindingDescription.stride = sizeof(Vertex);
-		bindingDescription.inputRate = vk::VertexInputRate::eVertex;
-
-		vk::VertexInputAttributeDescription positionAttribute{};
-		positionAttribute.binding = 0;
-		positionAttribute.location = 0;
-		positionAttribute.format = vk::Format::eR32G32B32Sfloat;
-		positionAttribute.offset = offsetof(Vertex, Position);
+		const vk::VertexInputBindingDescription bindingDescription = GetVertexBindingDescription();
+		const vk::VertexInputAttributeDescription positionAttribute = GetVertexAttributeDescriptions()[0];
 
 		vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
 		vertexInputInfo.vertexBindingDescriptionCount = 1;

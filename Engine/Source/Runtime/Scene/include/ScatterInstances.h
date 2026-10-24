@@ -136,8 +136,11 @@ namespace Nyx
 	// scatter's space), survives the noise mask and the blockers (a hash against the density they
 	// leave), and is at least Spacing from every one kept before in its square and every one of the
 	// squares before it. Each is scaled, turned about its up and tilted to the normal as the values
-	// say, and sunk along its up. A function of the values, the mesh and the blockers alone, the same
-	// on every machine: integer hashes, and arithmetic that IEEE 754 rounds the same everywhere.
+	// say, and sunk along its up. Each gets a number of its own from 0 up to 1 in Custom.x (y, z and
+	// w zero), e.g. a phase for its sway: a hash of where it stands, so the same instance gets the
+	// same number however its cells were made. A function of the values, the mesh and the blockers
+	// alone, the same on every machine: integer hashes, and arithmetic that IEEE 754 rounds the same
+	// everywhere.
 	MeshInstances ScatterOnMesh(const ScatterComponent& scatter, const MeshData& surface, const glm::mat4& surfaceToScatter,
 		std::span<const ScatterBlocker> blockers = {});
 

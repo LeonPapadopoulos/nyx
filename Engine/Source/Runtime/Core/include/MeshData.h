@@ -20,6 +20,11 @@ namespace Nyx
 		// points up the image (towards falling v), where a normal map's green points. For normal
 		// maps (ComputeTangents()).
 		glm::vec4 Tangent{ 1.0f, 0.0f, 0.0f, 1.0f };
+		// Four numbers of the mesh's own, for the materials (SurfaceInput.Custom and a vertex
+		// function's input), such as how far a vertex sways in the wind, or the ages at which it
+		// appears and is fully grown. Zero for a mesh that has none. On the GPU in half precision,
+		// about three significant digits (GpuVertex): for weights, ages and phases, not positions.
+		glm::vec4 Custom{ 0.0f };
 	};
 
 	// A run of a mesh's triangles drawn with one material: the one in slot MaterialSlot of whatever

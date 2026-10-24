@@ -6,7 +6,10 @@
 // needs: the cube, the sphere, the capsule, the plane, a generated ground and the glTF files in
 // Assets/Models. Meshes as data (MeshData): which are
 // valid (indices of whole triangles below the vertex count, sections one after the other over every
-// index), the sections a mesh without any is drawn in, and the bounds around its vertices.
+// index), the sections a mesh without any is drawn in, and the bounds around its vertices. The
+// vertex as the GPU reads it (GpuVertex): every field where its attribute says, the custom channels
+// back from half precision as close as it keeps them, the instance stream laid out alike; and the
+// custom channels zero in every mesh Nyx makes or imports.
 #include "GltfImporter.h"
 #include "GroundComponent.h"
 #include "GroundMesh.h"
@@ -255,6 +258,114 @@ namespace
 		}
 		Require(files > 0, "No glTF files in " + models.string());
 	}
+
+	// The custom channels in the vertex buffer: four half floats, as close as they keep them (one
+	// part in 2048 of the value), 0 and 1 and small whole numbers exactly
+	void TestVertexLayout()
+	{
+		const Nyx::Vertex vertex{ .Position = glm::vec3(1.0f, -2.0f, 3.5f),
+			.Color = glm::vec3(0.1f, 0.2f, 0.3f),
+			.UV = glm::vec2(0.25f, 0.75f),
+			.Normal = glm::vec3(0.0f, 0.6f, 0.8f),
+			.Tangent = glm::vec4(0.8f, 0.0f, -0.6f, -1.0f),
+			.Custom = glm::vec4(0.0f, 1.0f, 0.3333f, -12.5f) };
+		const Nyx::GpuVertex gpu = Nyx::ToGpuVertex(vertex);
+		Require(gpu.Position == vertex.Position && gpu.Color == vertex.Color && gpu.UV == vertex.UV && gpu.Normal == vertex.Normal && gpu.Tangent == vertex.Tangent,
+			"The GPU's vertex should keep everything but the custom channels as it is");
+		const glm::vec4 custom = Nyx::GetGpuVertexCustom(gpu);
+		Require(custom.x == 0.0f && custom.y == 1.0f && custom.w == -12.5f, "0, 1 and -12.5 should come back from half precision exactly");
+		Require(std::abs(custom.z - 0.3333f) < 0.3333f / 2048.0f, "A third should come back within half precision, not as " + std::to_string(custom.z));
+		Require(Nyx::GetGpuVertexCustom(Nyx::ToGpuVertex(Nyx::Vertex{})) == glm::vec4(0.0f), "A vertex's custom channels should be zero unless set");
+
+		// Every attribute inside the stride, none over another, each where its field is
+		const vk::VertexInputBindingDescription binding = Nyx::GetVertexBindingDescription();
+		Require(binding.stride == sizeof(Nyx::GpuVertex) && binding.stride == 68, "The vertex buffer's stride should be 68 bytes");
+		const auto attributes = Nyx::GetVertexAttributeDescriptions();
+		const auto instanceAttributes = Nyx::GetInstanceAttributeDescriptions();
+		const auto size = [](vk::Format format)
+		{
+			switch (format)
+			{
+			case vk::Format::eR32G32Sfloat:
+				return 8u;
+			case vk::Format::eR32G32B32Sfloat:
+				return 12u;
+			case vk::Format::eR32G32B32A32Sfloat:
+				return 16u;
+			case vk::Format::eR16G16B16A16Sfloat:
+				return 8u;
+			default:
+				return 0u;
+			}
+		};
+		std::vector<bool> taken(binding.stride, false);
+		for (const vk::VertexInputAttributeDescription& attribute : attributes)
+		{
+			Require(size(attribute.format) > 0 && attribute.offset + size(attribute.format) <= binding.stride, "A vertex attribute reaches past the vertex");
+			for (uint32_t byte = attribute.offset; byte < attribute.offset + size(attribute.format); ++byte)
+			{
+				Require(!taken[byte], "Two vertex attributes overlap");
+				taken[byte] = true;
+			}
+		}
+		Require(std::all_of(taken.begin(), taken.end(), [](bool bTaken) { return bTaken; }), "Some bytes of the vertex aren't read by any attribute");
+		Require(attributes[5].offset == offsetof(Nyx::GpuVertex, Custom) && attributes[5].format == vk::Format::eR16G16B16A16Sfloat && attributes[5].location == Nyx::VertexCustomLocation,
+			"The custom channels should be read as four half floats at location 9");
+
+		// The instance stream: the transform's columns, then its custom numbers
+		Require(Nyx::GetInstanceBindingDescription().stride == sizeof(Nyx::MeshInstanceData) && sizeof(Nyx::MeshInstanceData) == 80, "The instance stream's stride should be 80 bytes");
+		for (uint32_t column = 0; column < 4; ++column)
+		{
+			Require(instanceAttributes[column].offset == column * 16 && instanceAttributes[column].location == 5 + column, "The instance's columns should be at locations 5 to 8");
+		}
+		Require(instanceAttributes[4].offset == 64 && instanceAttributes[4].location == Nyx::InstanceCustomLocation, "The instance's custom numbers should be at location 10, after its transform");
+
+		// Each location once
+		std::vector<uint32_t> locations;
+		for (const auto& attribute : attributes)
+		{
+			locations.push_back(attribute.location);
+		}
+		for (const auto& attribute : instanceAttributes)
+		{
+			locations.push_back(attribute.location);
+		}
+		std::sort(locations.begin(), locations.end());
+		Require(std::adjacent_find(locations.begin(), locations.end()) == locations.end(), "Two attributes share a location");
+	}
+
+	void RequireNoCustom(const Nyx::MeshData& mesh, const std::string& what)
+	{
+		for (const Nyx::Vertex& vertex : mesh.Vertices)
+		{
+			Require(vertex.Custom == glm::vec4(0.0f), what + " has custom channels that aren't zero");
+		}
+	}
+
+	// What Nyx makes and imports has no custom channels of its own: all zero
+	void TestCustomChannelsZero()
+	{
+		RequireNoCustom(Nyx::MakeCube(1.0f), "The cube");
+		RequireNoCustom(Nyx::MakeSphere(0.5f, 8, 16), "The sphere");
+		RequireNoCustom(Nyx::MakeCapsule(0.3f, 1.8f, 8, 12), "The capsule");
+		RequireNoCustom(Nyx::MakePlane(1.0f), "The plane");
+		Nyx::GroundComponent ground;
+		ground.Size = glm::vec2(16.0f);
+		RequireNoCustom(Nyx::MakeGroundMesh(ground), "The ground");
+		for (const std::filesystem::directory_entry& entry : std::filesystem::recursive_directory_iterator(Nyx::Paths::GetAssetsDir() / "Models"))
+		{
+			if (entry.path().extension() != ".gltf")
+			{
+				continue;
+			}
+			Nyx::ImportedScene scene;
+			Require(Nyx::LoadStaticGltfScene(entry.path().string(), scene), "Can't read " + entry.path().string());
+			for (const auto& primitive : scene.Primitives)
+			{
+				RequireNoCustom(primitive.Mesh, entry.path().filename().string());
+			}
+		}
+	}
 }
 
 int main()
@@ -267,6 +378,8 @@ int main()
 		TestMeshDataValidity();
 		TestMeshSectionsAndBounds();
 		TestWinding();
+		TestVertexLayout();
+		TestCustomChannelsZero();
 	}
 	catch (const std::exception& error)
 	{

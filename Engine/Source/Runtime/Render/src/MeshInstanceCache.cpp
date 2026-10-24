@@ -2,6 +2,7 @@
 #include "MeshInstanceCache.h"
 
 #include "Log.h"
+#include "Mesh.h"
 #include "MeshInstancesComponent.h"
 #include "VulkanUtil.h"
 
@@ -21,7 +22,7 @@ namespace Nyx
 
 	void MeshInstanceCache::Initialize(VulkanContext& context)
 	{
-		const glm::mat4 identity(1.0f);
+		const MeshInstanceData identity{};
 		Identity = std::move(*MakeBuffer(context, &identity, sizeof(identity)));
 	}
 
@@ -86,7 +87,15 @@ namespace Nyx
 		{
 			return;
 		}
-		entry.Gpu = MakeBuffer(context, transforms.data(), transforms.size() * sizeof(glm::mat4));
+		// Each transform with its custom numbers, zero for those that have none
+		const std::vector<glm::vec4>& custom = entry.Source->Custom;
+		std::vector<MeshInstanceData> stream(transforms.size());
+		for (size_t index = 0; index < transforms.size(); ++index)
+		{
+			stream[index].Transform = transforms[index];
+			stream[index].Custom = index < custom.size() ? custom[index] : glm::vec4(0.0f);
+		}
+		entry.Gpu = MakeBuffer(context, stream.data(), stream.size() * sizeof(MeshInstanceData));
 		entry.Drawn.Buffer = *entry.Gpu->Buffer;
 		entry.Drawn.Count = static_cast<uint32_t>(transforms.size());
 		entry.Drawn.UploadId = ++LastUploadId;

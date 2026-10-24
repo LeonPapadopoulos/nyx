@@ -65,6 +65,15 @@ namespace Nyx
 			return static_cast<float>(hash >> 8) * (1.0f / 16777216.0f);
 		}
 
+		// From 0 up to 1 for where an instance stands, the bits of its origin hashed: its own number
+		// (MeshInstances::Custom.x), the same however its cell was made
+		float HashInstanceOrigin(const glm::mat4& transform)
+		{
+			uint32_t bits[3] = {};
+			std::memcpy(bits, &transform[3][0], sizeof(bits));
+			return ToUnit(MixBits(MixBits(MixBits(bits[0] ^ 0x27D4EB2Fu) + bits[1] * 0x165667B1u) + bits[2] * 0xD3A2646Cu));
+		}
+
 		// The same with all 32 bits, for picking one of many triangles
 		double ToUnitDouble(uint32_t hash)
 		{
@@ -1020,6 +1029,7 @@ namespace Nyx
 			count += cell.Kept.size();
 		}
 		instances.Transforms.reserve(count);
+		instances.Custom.reserve(count);
 		for (const ScatterCells::Cell& cell : cells.Cells)
 		{
 			if (cell.Kept.empty())
@@ -1034,6 +1044,10 @@ namespace Nyx
 				bounds.BoundsMax = glm::max(bounds.BoundsMax, glm::vec3(transform[3]));
 			}
 			instances.Transforms.insert(instances.Transforms.end(), cell.Kept.begin(), cell.Kept.end());
+			for (const glm::mat4& transform : cell.Kept)
+			{
+				instances.Custom.push_back(glm::vec4(HashInstanceOrigin(transform), 0.0f, 0.0f, 0.0f));
+			}
 			instances.Cells.push_back(bounds);
 		}
 		return instances;

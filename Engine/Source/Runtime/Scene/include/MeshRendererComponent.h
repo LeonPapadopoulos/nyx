@@ -3,6 +3,8 @@
 #include "ReflectionMacros.h"
 #include "AssetReference.h"
 
+#include <glm/glm.hpp>
+
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -41,6 +43,13 @@ namespace Nyx
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Rendering", Tooltip = "The materials of slots 1, 2 and on, for a mesh whose sections ask for them, such as a tree's leaves beside its trunk"))
 		std::vector<Nyx::MeshMaterialSlot> ExtraMaterials;
+
+		// What the materials get as the instance's custom numbers (SurfaceInput.InstanceCustom) where
+		// the entity is drawn once, as each instance of a MeshInstancesComponent has its own, so one
+		// material works both ways. Cheap to change every frame, e.g. by a system: it goes to the GPU
+		// with the entity's transform, never with its mesh.
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Rendering", DisplayName = "Custom Data", DragSpeed = 0.01, Tooltip = "Four numbers for the materials, as an instance's own: its sway's phase, its age, whatever they read. Not used when the entity is drawn instanced, whose instances have their own"))
+		glm::vec4 Custom{ 0.0f };
 
 		Nyx::Mesh* MeshAsset = nullptr;
 		Nyx::Material* MaterialAsset = nullptr;

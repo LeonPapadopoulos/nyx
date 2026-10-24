@@ -160,6 +160,7 @@ namespace Nyx
 					vert.Normal = glm::vec3(n[0], n[1], n[2]);
 					vert.UV = glm::vec2(uv[0], uv[1]);
 					vert.Color = glm::vec3(1.0f); // default white
+					// Custom stays zero: glTF has no standard attribute for it
 					imported.Mesh.Vertices[static_cast<size_t>(v)] = vert;
 				}
 

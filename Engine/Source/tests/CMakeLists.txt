@@ -518,6 +518,17 @@ nyx_copy_shaders_next_to(NyxInstancingGpuTests)
 nyx_copy_shader_compiler_next_to(NyxInstancingGpuTests)
 add_test(NAME NyxInstancingGpuTests COMMAND NyxInstancingGpuTests)
 
+# The materials' own numbers on a real GPU: a mesh's custom channels, each instance's and an entity's
+# drawn once reach the material, the view's time stands still while the world's clock is paused.
+# Needs a Vulkan device; its window stays hidden.
+add_executable(NyxVertexDataGpuTests VertexDataGpuTests.cpp)
+target_link_libraries(NyxVertexDataGpuTests PRIVATE NyxEngine)
+add_dependencies(NyxVertexDataGpuTests NyxGeneratedReflection)
+set_property(TARGET NyxVertexDataGpuTests PROPERTY FOLDER "Tests")
+nyx_copy_shaders_next_to(NyxVertexDataGpuTests)
+nyx_copy_shader_compiler_next_to(NyxVertexDataGpuTests)
+add_test(NAME NyxVertexDataGpuTests COMMAND NyxVertexDataGpuTests)
+
 # The primary light's shadows on a real GPU: a box shadowing a plane and an instanced field shadowing
 # it too, compared with a reference image; shadows switched off on the light and on a mesh; a
 # two-sided quad casting from both sides; each cascade culled by its own frustum; the debug view.
