@@ -251,6 +251,99 @@ namespace
 			});
 	}
 
+	// Docked panels can be made as narrow as Nyx::UI::DockedWindowMinWidth: by dragging the splitter
+	// beside them, and in a split without the dock space's middle, where ImGui gives each side its
+	// minimum. What they hold is cut off; it doesn't hold them wide.
+	void TestPanelsDockNarrow()
+	{
+		HeadlessUI ui;
+		ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+		RegisterDefaultPropertyWidgets();
+
+		// A selected entity, so the details show its components' tables
+		SceneEditor editing;
+		const Entity cube = editing.Scene.CreateEntity("A cube with a long name that would want room");
+		editing.Scene.GetRegistry().Add<TransformComponent>(cube, TransformComponent{});
+		editing.Scene.GetSelection() = cube;
+		SceneOutlinerPanel outliner;
+		DetailsPanel details;
+		GameLinkPanel gameLink;
+		bool bGameLinkOpen = true;
+
+		// The outliner on the left, the middle empty, and on the right the details beside the Game
+		// Link, in a split of their own
+		bool bBuilt = false;
+		const auto frame = [&]()
+		{
+			ui.Frame([&]()
+				{
+					const ImGuiViewport* viewport = ImGui::GetMainViewport();
+					ImGui::SetNextWindowPos(viewport->Pos);
+					ImGui::SetNextWindowSize(viewport->Size);
+					ImGui::Begin("DockSpaceWindow", nullptr, ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
+					const ImGuiID dockSpace = ImGui::GetID("NarrowDockSpace");
+					Nyx::UI::DockSpace(dockSpace);
+					if (!bBuilt)
+					{
+						bBuilt = true;
+						ImGui::DockBuilderRemoveNodeChildNodes(dockSpace);
+						ImGui::DockBuilderSetNodeSize(dockSpace, viewport->Size);
+						ImGuiID middle = dockSpace;
+						const ImGuiID left = ImGui::DockBuilderSplitNode(middle, ImGuiDir_Left, 0.2f, nullptr, &middle);
+						ImGuiID right = ImGui::DockBuilderSplitNode(middle, ImGuiDir_Right, 0.7f, nullptr, &middle);
+						const ImGuiID rightOfRight = ImGui::DockBuilderSplitNode(right, ImGuiDir_Right, 0.5f, nullptr, &right);
+						ImGui::DockBuilderDockWindow("Scene Outliner", left);
+						ImGui::DockBuilderDockWindow("Details", right);
+						ImGui::DockBuilderDockWindow("Game Link", rightOfRight);
+						ImGui::DockBuilderFinish(dockSpace);
+					}
+					ImGui::End();
+					outliner.Draw(editing);
+					details.Draw(editing);
+					gameLink.Draw(bGameLinkOpen);
+				});
+		};
+		for (int index = 0; index < 3; ++index)
+		{
+			frame();
+		}
+		ImGuiWindow* outlinerWindow = ImGui::FindWindowByName("Scene Outliner");
+		ImGuiWindow* detailsWindow = ImGui::FindWindowByName("Details");
+		Require(outlinerWindow && outlinerWindow->DockNode && detailsWindow && detailsWindow->DockNode, "The outliner and the details should be docked");
+		Require(outlinerWindow->Size.x > 100.0f && detailsWindow->Size.x > 100.0f, "The panels should start wide");
+
+		// The splitter right of the outliner, dragged to the window's left edge
+		ImGuiIO& io = ImGui::GetIO();
+		const float splitterX = outlinerWindow->DockNode->Pos.x + outlinerWindow->DockNode->Size.x + ImGui::GetStyle().DockingSeparatorSize * 0.5f;
+		const float splitterY = outlinerWindow->DockNode->Pos.y + outlinerWindow->DockNode->Size.y * 0.5f;
+		io.AddMousePosEvent(splitterX, splitterY);
+		frame();
+		io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+		frame();
+		for (float x = splitterX; x > 0.0f; x -= 40.0f)
+		{
+			io.AddMousePosEvent(x, splitterY);
+			frame();
+		}
+		io.AddMousePosEvent(0.0f, splitterY);
+		frame();
+		io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+		frame();
+		frame();
+		Require(outlinerWindow->Size.x <= Nyx::UI::DockedWindowMinWidth + 2.0f,
+			"Dragging the splitter should make the outliner as narrow as " + std::to_string(static_cast<int>(Nyx::UI::DockedWindowMinWidth)) + " pixels, not " + std::to_string(static_cast<int>(outlinerWindow->Size.x)));
+
+		// The details' side of their split asked to be next to nothing
+		detailsWindow->DockNode->SizeRef.x = 1.0f;
+		frame();
+		frame();
+		Require(detailsWindow->Size.x <= Nyx::UI::DockedWindowMinWidth + 2.0f,
+			"The details should be as narrow as " + std::to_string(static_cast<int>(Nyx::UI::DockedWindowMinWidth)) + " pixels in a split of their own, not " + std::to_string(static_cast<int>(detailsWindow->Size.x)));
+		Require(detailsWindow->Size.x >= Nyx::UI::DockedWindowMinWidth - 1.0f, "The details should keep their minimum width");
+
+		Require(ImGui::FindWindowByName("Game Link")->Size.x > 100.0f, "The Game Link should take the room the details left");
+	}
+
 	// A mesh made at run time isn't reflected: the details show what it is, and draw it with the
 	// entity's components
 	void TestRuntimeMeshDetails()
@@ -2181,6 +2274,7 @@ int main()
 		TestForgetScene();
 		TestHotkeys();
 		TestPanelsDrawHeadless();
+		TestPanelsDockNarrow();
 		TestRuntimeMeshDetails();
 		TestGroundFollowsEdits();
 		TestScatterFollowsBlockers();

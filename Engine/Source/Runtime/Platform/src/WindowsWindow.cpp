@@ -508,11 +508,7 @@ namespace Nyx
 		// at the strips.
 		ImGui::SetCursorPosY(titlebarHeight + toolbarHeight + padding);
 
-		ImGuiStyle& style = ImGui::GetStyle();
-		const float prevMinWinSizeX = style.WindowMinSize.x;
-		style.WindowMinSize.x = 370.0f;
-		ImGui::DockSpace(ImGui::GetID("MyDockspace"), ImVec2(0.0f, -statusBarHeight));
-		style.WindowMinSize.x = prevMinWinSizeX;
+		Nyx::UI::DockSpace(ImGui::GetID("MyDockspace"), ImVec2(0.0f, -statusBarHeight));
 
 		// Draw the application's UI (for the editor: its panels), which can dock into the dock space above
 		drawUI();

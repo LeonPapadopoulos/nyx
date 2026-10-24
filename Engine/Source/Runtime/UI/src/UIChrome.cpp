@@ -680,6 +680,16 @@ namespace Nyx::UI
 		}
 	}
 
+	ImGuiID DockSpace(ImGuiID id, const ImVec2& size)
+	{
+		ImGuiStyle& style = ImGui::GetStyle();
+		const float minWidth = style.WindowMinSize.x;
+		style.WindowMinSize.x = DockedWindowMinWidth;
+		const ImGuiID dockSpace = ImGui::DockSpace(id, size);
+		style.WindowMinSize.x = minWidth;
+		return dockSpace;
+	}
+
 	void PaintBackdrop()
 	{
 		if (!GetState().bEnabled)

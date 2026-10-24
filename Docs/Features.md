@@ -339,6 +339,8 @@ variable `NYX_PAINTER_TEST_OUTPUT` naming a folder, it saves what it painted as 
   matter; there is no `imgui.ini`.
 - *Window > Reset Layout* puts the current workspace's panels back where they first were, and
   opens them.
+- Docked panels can be dragged as narrow as 10 pixels (`Nyx::UI::DockedWindowMinWidth`), the
+  outliner and details among them; what they hold is cut off at their edge.
 - **Scene views**: *Window > New Scene View* opens another, "Scene 2", "Scene 3" and so on, docked
   beside the first and looking from where it looks; each has its own camera after. Any can be
   closed but the last. *Window > Game View in ...* shows a view the way the game sees the scene,
@@ -347,8 +349,9 @@ variable `NYX_PAINTER_TEST_OUTPUT` naming a folder, it saves what it painted as 
   Culling* and *Shadow Cascades* reach every view, those opened later too.
 - `NyxEditorLayoutTests` saves and loads layouts headless: the docking, the window's placement,
   saving while running, switching workspaces, Reset Layout and keeping the window on the monitors.
-  `NyxEditorSceneViewGpuTests` opens and closes scene views on a GPU: their cameras, culling and
-  debug views, and their section of the layout read back.
+  `NyxEditorPanelTests` drags docked panels narrow. `NyxEditorSceneViewGpuTests` opens and closes
+  scene views on a GPU: their cameras, culling and debug views, and their section of the layout
+  read back.
 
 ## Reflection
 

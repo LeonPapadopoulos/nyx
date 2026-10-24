@@ -18,6 +18,15 @@ namespace Nyx::UI
 	void SetPaintedChrome(bool bEnabled);
 	bool IsPaintedChromeEnabled();
 
+	// How narrow a docked window may get, in pixels: next to nothing, so a panel can be docked as
+	// a sliver. What it holds is cut off at its edge rather than holding it wide.
+	constexpr float DockedWindowMinWidth = 10.0f;
+
+	// ImGui::DockSpace(), with docked windows as narrow as DockedWindowMinWidth. ImGui keeps the
+	// dock space's nodes at least style.WindowMinSize wide, which is for floating windows; it
+	// takes the size while the dock space is updated, so it is changed only for that.
+	ImGuiID DockSpace(ImGuiID id, const ImVec2& size = ImVec2(0.0f, 0.0f));
+
 	// After ImGui's style colours were set again while the chrome is on, e.g. for another theme
 	// (ApplyThemeToImGui()): keeps them as the colours to put back when the chrome goes off, makes
 	// those the chrome paints transparent again, and takes the gap between docked cards from the
