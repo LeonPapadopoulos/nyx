@@ -49,11 +49,14 @@ namespace Nyx::Game
 		ToggleShadowDebug = Input->AddAction({ "ToggleShadowDebug", Nyx::Input::EActionValue::Button });
 		const Nyx::Input::InputBinding shadowDebug =
 			Nyx::Input::InputBinding::ForControl(ToggleShadowDebug, Nyx::Input::Key(Nyx::Input::EKey::F5), Nyx::Input::ETriggerKind::Pressed);
+		CycleViewDebug = Input->AddAction({ "CycleViewDebug", Nyx::Input::EActionValue::Button });
+		const Nyx::Input::InputBinding viewDebug =
+			Nyx::Input::InputBinding::ForControl(CycleViewDebug, Nyx::Input::Key(Nyx::Input::EKey::F6), Nyx::Input::ETriggerKind::Pressed);
 		ToggleInputOverlay = Input->AddAction({ "ToggleInputOverlay", Nyx::Input::EActionValue::Button });
 		Nyx::Input::InputBinding overlay =
 			Nyx::Input::InputBinding::ForControl(ToggleInputOverlay, Nyx::Input::Key(Nyx::Input::EKey::I), Nyx::Input::ETriggerKind::Pressed);
 		overlay.Modifiers = crash.Modifiers;
-		DebugContext = Input->AddContext({ .Name = "Debug", .Priority = 800, .Bindings = { crash, physicsDebugView, cullingDebug, shadowDebug, overlay } });
+		DebugContext = Input->AddContext({ .Name = "Debug", .Priority = 800, .Bindings = { crash, physicsDebugView, cullingDebug, shadowDebug, viewDebug, overlay } });
 		Input->GetUser().SetContextActive(DebugContext, true, { .Reason = "Debug build" });
 #endif
 
@@ -243,6 +246,14 @@ namespace Nyx::Game
 			ShadowDebug = ShadowDebug == Nyx::ESceneViewShadowDebug::Off ? Nyx::ESceneViewShadowDebug::Cascades : Nyx::ESceneViewShadowDebug::Off;
 			Renderer->SetSceneViewShadowDebug(GameViewId, ShadowDebug);
 			LOG_INFO("Shadow cascades debug view {0} (F5)", ShadowDebug == Nyx::ESceneViewShadowDebug::Off ? "off" : "on");
+		}
+
+		// F6 shows the game view's bloom alone; again, the lit scene
+		if (Input->GetUser().ConsumeTriggered(CycleViewDebug))
+		{
+			ViewDebug = ViewDebug == Nyx::ESceneViewDebug::Lit ? Nyx::ESceneViewDebug::Bloom : Nyx::ESceneViewDebug::Lit;
+			Renderer->SetSceneViewDebug(GameViewId, ViewDebug);
+			LOG_INFO("Bloom debug view {0} (F6)", ViewDebug == Nyx::ESceneViewDebug::Bloom ? "on" : "off");
 		}
 #endif
 	}

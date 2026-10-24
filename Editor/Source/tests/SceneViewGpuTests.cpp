@@ -199,6 +199,22 @@ namespace
 		views.SetShadowDebug(ESceneViewShadowDebug::Off);
 		Require(Nyx::RenderTests::Near(Middle(editor.Picture(later)), Middle(lit), 2), "Shadow Cascades off should light the plane again");
 
+		// Debug > Bloom: the views open and those opened after show their bloom alone, black in a
+		// world without an environment, under the editor's grid
+		views.SetViewDebug(ESceneViewDebug::Bloom);
+		const SceneViewPanel& bloomed = views.Open();
+		const auto dark = [&](const std::array<uint8_t, 3>& rgb)
+		{
+			return int(rgb[0]) + int(rgb[1]) + int(rgb[2]) < 80 && int(Middle(lit)[0]) + int(Middle(lit)[1]) + int(Middle(lit)[2]) > 200;
+		};
+		const std::array<uint8_t, 3> bloomedMiddle = Middle(editor.Picture(bloomed));
+		const std::array<uint8_t, 3> firstMiddle = Middle(editor.Picture(first));
+		Require(dark(bloomedMiddle) && dark(firstMiddle),
+			"Views open and opened with Bloom on should show the bloom alone: " + Nyx::RenderTests::Text(bloomedMiddle) + ", " + Nyx::RenderTests::Text(firstMiddle) + ", lit " +
+				Nyx::RenderTests::Text(Middle(lit)));
+		views.SetViewDebug(ESceneViewDebug::Lit);
+		Require(Nyx::RenderTests::Near(Middle(editor.Picture(bloomed)), Middle(lit), 2), "Bloom off should show the lit scene again");
+
 		// Debug > Freeze Culling: a view opened after culls by where its camera was at first
 		views.SetCullingDebug(ESceneViewCullingDebug::Frozen);
 		const SceneViewPanel& frozen = views.Open();

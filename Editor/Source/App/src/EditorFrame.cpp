@@ -260,6 +260,12 @@ namespace Nyx::Editor
 			{
 				Editor.SceneViews.SetShadowDebug(bShadowCascades ? Nyx::ESceneViewShadowDebug::Off : Nyx::ESceneViewShadowDebug::Cascades);
 			}
+			// Every scene view's bloom alone, as the tonemap adds it
+			const bool bBloom = Editor.SceneViews.GetViewDebug() == Nyx::ESceneViewDebug::Bloom;
+			if (NYX_UI(Nyx::UI::MenuItem("Bloom", nullptr, bBloom)))
+			{
+				Editor.SceneViews.SetViewDebug(bBloom ? Nyx::ESceneViewDebug::Lit : Nyx::ESceneViewDebug::Bloom);
+			}
 			// Where the painter's work lies: one of the two views, or neither
 			const Nyx::UI::EPainterHeatmap heatmap = Nyx::UI::GetPainterHeatmap();
 			for (const auto& [label, view] : { std::pair{ "Painter Heatmap: Commands", Nyx::UI::EPainterHeatmap::Commands },

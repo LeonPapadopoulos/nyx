@@ -1,13 +1,15 @@
 # Atmosphere
 
-The world's air: height fog and a sky that follows the sun, and why they work as they do. The
-settings are on `EnvironmentComponent` (`Scene`); the math is in `Engine/Source/Runtime/Render`
-(`Atmosphere.h`), the shaders in `Engine/Shaders/Library/nyx/atmosphere.slang` and `Skybox.slang`.
+The world's air and what a camera makes of bright light: height fog, a sky that follows the sun,
+and bloom, and why they work as they do. The settings are on `EnvironmentComponent` (`Scene`); the
+math is in `Engine/Source/Runtime/Render` (`Atmosphere.h`, `Bloom.h`), the passes in `VulkanBloom`,
+the shaders in `Engine/Shaders/Library/nyx/atmosphere.slang`, `Skybox.slang`, `Bloom.slang` and
+`Tonemap.slang`.
 
 ## The environment component
 
-One component holds the world's air: *Fog* and *Sky* (`EnvironmentComponent`, reflected, with undo,
-saved in scenes, sent to a running game). The world's first one counts; a world without one is
+One component holds the world's air and the camera's response to light: *Fog*, *Sky* and *Bloom*
+(`EnvironmentComponent`, reflected, with undo, saved in scenes, sent to a running game). The world's first one counts; a world without one is
 drawn as before, to the bit, and so is one whose fog and sky are both off (`NyxAtmosphereGpuTests`
 checks both).
 
@@ -90,12 +92,58 @@ The sky stays the cube map it is: the clouds keep their shapes, only tinted. A s
 sun's place (a scattering model) would be the next step; the tint gives the warm, hazy low sun
 without one.
 
+## Bloom
+
+Light much brighter than the screen can show spreads round what gives it off, as a lens and an eye
+spread it: an emissive surface or decal glows. `VulkanBloom`, per scene view, between its scene
+pass and its tonemap, from the HDR scene:
+
+1. **The bright part, halved** (`bloomPrefilterFragment`): the scene exposed as the tonemap exposes
+   it, so *Threshold* is in what the screen shows (1 is white); each colour's bloomed part is what
+   is above the threshold, starting smoothly a *Knee* below it (`GetBloomFactor()`: a quadratic, as
+   Unity's bloom has it), so nothing pops in as a light crosses the threshold. Halved into the
+   chain's first level with 13 taps (Jimenez's downsample, five overlapping 2 × 2 groups), each
+   group weighed down by its brightness (Karis's average): a few very bright pixels spread as
+   wide as a dimmer patch, rather than flickering as they move or as the camera turns.
+2. **Down** (`bloomDownsampleFragment`): each level halved into the next with the same 13 taps,
+   for *Levels* (1 to 8) levels, but no smaller than 8 pixels on its shorter side
+   (`GetBloomLevelCount()`): a smaller level, filtered up across the view, shows its texels as
+   creases and squares in the widest glow. A 1280 × 720 view gets six (640 × 360 down to 20 × 11).
+3. **Up** (`bloomUpsampleFragment`): from the last up, each level filtered up with a cubic B-spline
+   (four bilinear taps; smooth and a little blurred) and mixed into the level above by *Radius*:
+   `above · (1 - r) + below · r`, by blending, in place. The radius is how much each wider level
+   weighs: 0 only the first level, a tight glow; near 1 mostly the widest.
+4. **Added** by the tonemap (`ViewConstants.Bloom`), filtered up from half the view's size, times
+   *Intensity*, before tonemapping, so a glow is tonemapped with what it lies over.
+
+- **One image a view**, the levels its mips, each a render target and a texture in the bindless
+  array; made at the first frame that blooms and when the view's size or levels change
+  (`VulkanBloom::Prepare()`), let go of when bloom goes off, with the view, or when its world goes.
+  B10G11R11 (4 bytes a texel, light above 1 kept) where the device can draw into it and blend it,
+  else RGBA16F. 640 × 360 and its mips: about 1.2 MB.
+- **Why not `VulkanBlur`**: the blur that UI glass reads is a chain of halvings too, but 8-bit, of
+  the tonemapped picture, keeping only its smallest level, blurred by a Gaussian. Bloom needs light
+  above 1, a threshold, and every level kept for the way up; bending the blur to that would give it
+  a second format, three more modes and levels it doesn't need. The two share the idea and the
+  fixed-function setup (one triangle a pass, a render pass a level), not the code.
+- **Every view's set each frame.** A view whose world went away kept its last set, whose bloom slot
+  pointed at the chain the view had just let go of: its tonemap read a freed image and the device
+  was lost (found by `NyxAtmosphereGpuTests`). `UpdateSceneUniforms()` now writes every view's set
+  each frame, with a world or without.
+- **Not bloomed**: a material's debug views (their outputs aren't light); with the exposure low
+  enough, nothing reaches the threshold and the picture is the one without bloom, to the bit.
+- **Seeing it**: *Debug > Bloom* in the editor, for every scene view, and F6 in a Debug build of
+  the game, show the bloom alone, tonemapped (`ESceneViewDebug::Bloom`). Its passes are timed on
+  the GPU, view by view, for the first eight views (`VulkanRenderer::GetSceneViewGpuTimes()`;
+  `NyxInstancingBenchmark` prints them).
+
 ## Seeing it
 
 - *Environment* on an entity in the editor: every value edited live, in the editor's views and a
   running game. `Assets/Scenes/AtmosphereTest.nyxscene` (written by `NyxAtmosphereGpuTests
   --write-scene`) is the ground test scene with about 24 000 small cubes scattered over its ground,
-  a hazy environment and a low sun.
+  a hazy environment, a low sun, and for bloom a glowing cube (`Materials/Emissive.nyxmat`) and a
+  glowing ring (`MaskedDecal`) on a crate.
 
 ## Numbers
 
@@ -126,6 +174,30 @@ second time in Release: 1.70 ms without, 1.63 ms with). A pixel pays a few expon
 division for the fog, against the lighting's and the shadow lookup's 9 bilinear taps; the CPU finds
 the component and works out a handful of values once a view. The ground scene's 24 336 scattered
 cubes cost no more fogged than the field's 50 000.
+
+Bloom, on top of the fog and the sky (the same scenes and shots); *bloom GPU* is the bloom's passes
+alone, by timestamps of their own (`VulkanRenderer::GetSceneViewGpuTimes()`):
+
+| Build | Scene, shot | Bloom | Frame | Scene CPU | Scene views GPU | Bloom GPU |
+| --- | --- | --- | --- | --- | --- | --- |
+| Debug | instanced, above | off | 9.16 ms | 5.76 ms | 1.99 ms | |
+| Debug | instanced, above | on | 9.10 ms | 5.69 ms | 2.06 ms | 0.06 ms |
+| Debug | instanced, inside | off | 8.48 ms | 5.68 ms | 1.48 ms | |
+| Debug | instanced, inside | on | 8.79 ms | 5.72 ms | 1.67 ms | 0.07 ms |
+| Debug | ground | off | 3.80 ms | 1.22 ms | 1.51 ms | |
+| Debug | ground | on | 4.05 ms | 1.35 ms | 1.60 ms | 0.05 ms |
+| Release | instanced, above | off | 2.68 ms | 0.24 ms | 1.79 ms | |
+| Release | instanced, above | on | 2.64 ms | 0.25 ms | 1.67 ms | 0.05 ms |
+| Release | instanced, inside | off | 2.15 ms | 0.24 ms | 1.21 ms | |
+| Release | instanced, inside | on | 2.24 ms | 0.26 ms | 1.27 ms | 0.05 ms |
+| Release | ground | off | 2.21 ms | 0.09 ms | 1.53 ms | |
+| Release | ground | on | 2.54 ms | 0.12 ms | 1.74 ms | 0.05 ms |
+
+What it says: bloom's own passes take 0.05 ms of GPU time at 1280 × 720 (11 passes: the prefilter,
+at half size, reads the full-size scene; then five halvings and five mixes back up, all small),
+whatever the scene, as a pass over the screen does. The scene views' total moves by more than that,
+up and down (from -0.12 to +0.21 ms), which is the spread from one run to the next plus the GPU
+waiting between passes that depend on each other. The CPU records the passes in 0.01 to 0.03 ms.
 
 ## Later
 

@@ -79,6 +79,13 @@ public struct ViewConstants
     public float4 SkyTint;
     // The sky's glow round the sun, and how much it gathers round it (a, g)
     public float4 SunGlow;
+
+    // The view's bloom (VulkanBloom), exposed light already: its chain's first level, half the
+    // view's size, 0 without bloom; and how much of it the tonemap adds
+    public nyx::Texture Bloom;
+    public float BloomIntensity;
+    public uint BloomPadding0;
+    public uint BloomPadding1;
 }
 [vk::binding(0, 1)] public ConstantBuffer<ViewConstants> View;
 
@@ -96,6 +103,7 @@ namespace nyx
     public static const uint DebugUvChecker = 8;
     public static const uint DebugNanInf = 9;
     public static const uint DebugOutOfRange = 10;
+    public static const uint DebugBloom = 11;
 
     // Whether the view shows one output of its materials, not light
     public bool isMaterialDebugView()

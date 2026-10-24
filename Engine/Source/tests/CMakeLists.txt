@@ -446,7 +446,8 @@ set_property(TARGET NyxShadowCascadeTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxShadowCascadeTests COMMAND NyxShadowCascadeTests)
 
 # The world's air without a GPU: the sun through the air, the daylight, the view's air from an
-# environment, the height fog along rays against the fog summed in steps, the component saved.
+# environment, the height fog along rays against the fog summed in steps, bloom's chain and
+# threshold, the component saved.
 add_executable(NyxAtmosphereTests AtmosphereTests.cpp)
 target_link_libraries(NyxAtmosphereTests PRIVATE NyxEngine)
 add_dependencies(NyxAtmosphereTests NyxGeneratedReflection)
@@ -541,6 +542,18 @@ set_property(TARGET NyxAtmosphereGpuTests PROPERTY FOLDER "Tests")
 nyx_copy_shaders_next_to(NyxAtmosphereGpuTests)
 nyx_copy_shader_compiler_next_to(NyxAtmosphereGpuTests)
 add_test(NAME NyxAtmosphereGpuTests COMMAND NyxAtmosphereGpuTests)
+
+# Bloom on a real GPU: an emissive cube and decal spreading their light, the threshold, exposure,
+# radius and levels, a view's own chain, the debug view, against a reference image. Needs a Vulkan
+# device; its window stays hidden.
+add_executable(NyxBloomGpuTests BloomGpuTests.cpp)
+target_link_libraries(NyxBloomGpuTests PRIVATE NyxEngine)
+target_compile_definitions(NyxBloomGpuTests PRIVATE NYX_TEST_REFERENCES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/References")
+add_dependencies(NyxBloomGpuTests NyxGeneratedReflection)
+set_property(TARGET NyxBloomGpuTests PROPERTY FOLDER "Tests")
+nyx_copy_shaders_next_to(NyxBloomGpuTests)
+nyx_copy_shader_compiler_next_to(NyxBloomGpuTests)
+add_test(NAME NyxBloomGpuTests COMMAND NyxBloomGpuTests)
 
 # How long the renderer takes for 50 000 small meshes in 200 cells and 300 more, drawn one by one
 # and instanced; not run by ctest, timing depends on the machine. Needs a Vulkan device.

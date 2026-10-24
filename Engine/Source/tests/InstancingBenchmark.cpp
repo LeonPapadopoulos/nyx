@@ -8,7 +8,8 @@
 //
 // Instanced, the field is then put on a ground plane under a sun, and measured again with the
 // sun's shadows off and on (its defaults: four cascades of 2048 texels out to 80 m), then with the
-// world's air (an EnvironmentComponent of the defaults: height fog, the sky following the sun).
+// world's air (an EnvironmentComponent of the defaults: height fog, the sky following the sun), and
+// with its bloom.
 //
 // The ground mode draws the atmosphere test scene (Assets/Scenes/AtmosphereTest.nyxscene: the
 // ground test scene with about 24 000 small cubes scattered over its ground) from its camera,
@@ -185,6 +186,8 @@ namespace
 		double Frame = 0.0;
 		double SceneCpu = 0.0;
 		double SceneViewsGpu = 0.0;
+		// Of that, the passes after the scene pass, every view's
+		double BloomGpu = 0.0;
 	};
 
 	double Median(std::vector<double> values)
@@ -200,6 +203,7 @@ namespace
 		std::vector<double> frame;
 		std::vector<double> scene;
 		std::vector<double> sceneViews;
+		std::vector<double> bloom;
 		for (int index = 0; index < frames; ++index)
 		{
 			const auto start = std::chrono::steady_clock::now();
@@ -210,6 +214,12 @@ namespace
 					if (index > 0 && times.bGpu)
 					{
 						sceneViews.push_back(times.GpuSceneViews);
+						SceneViewGpuTimes passes;
+						for (const uint64_t view : static_cast<IEditorRenderer&>(gpu.Renderer).GetSceneViewIds())
+						{
+							passes.Bloom += gpu.Renderer.GetSceneViewGpuTimes(view)->Bloom;
+						}
+						bloom.push_back(passes.Bloom);
 					}
 				});
 			frame.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
@@ -218,24 +228,28 @@ namespace
 		if (sceneViews.empty())
 		{
 			sceneViews.push_back(0.0);
+			bloom.push_back(0.0);
 		}
-		return Timing{ Median(frame), Median(scene), Median(sceneViews) };
+		return Timing{ Median(frame), Median(scene), Median(sceneViews), Median(bloom) };
 	}
 
 	void PrintTiming(const char* name, const Timing& timing)
 	{
-		std::printf("  %-7s frame %8.2f ms   scene CPU %8.2f ms   scene views GPU %7.2f ms\n", name, timing.Frame, timing.SceneCpu, timing.SceneViewsGpu);
+		std::printf("  %-7s frame %8.2f ms   scene CPU %8.2f ms   scene views GPU %7.2f ms   bloom GPU %5.2f ms\n", name, timing.Frame, timing.SceneCpu,
+			timing.SceneViewsGpu, timing.BloomGpu);
 	}
 
-	// The world's air, each way it is measured
+	// The world's air, each way it is measured: each line adds to the one before
 	struct AirSetting
 	{
 		const char* Name;
 		bool bEnvironment = false;
+		bool bBloom = false;
 	};
 	const AirSetting AirSettings[] = {
-		{ "without an environment", false },
-		{ "with an environment (height fog, the sky following the sun)", true },
+		{ "without an environment", false, false },
+		{ "with an environment: height fog, the sky following the sun", true, false },
+		{ "with an environment and bloom", true, true },
 	};
 
 	void SetAir(Registry& world, Entity air, const AirSetting& setting)
@@ -243,7 +257,9 @@ namespace
 		world.Remove<EnvironmentComponent>(air);
 		if (setting.bEnvironment)
 		{
-			world.Add<EnvironmentComponent>(air, EnvironmentComponent{});
+			EnvironmentComponent environment;
+			environment.bBloom = setting.bBloom;
+			world.Add<EnvironmentComponent>(air, environment);
 		}
 	}
 

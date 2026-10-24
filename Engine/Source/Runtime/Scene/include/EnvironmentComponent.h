@@ -4,13 +4,16 @@
 
 #include <glm/glm.hpp>
 
+#include <cstdint>
+
 namespace Nyx
 {
-	// The world's air and sky, as every view of the world draws them: height fog, thick near the
-	// ground and thinning upwards, which hides what is far away in its colour and glows towards the
-	// sun; and a sky that follows the primary light, its colour tinted by the sun's, dimmer as the
-	// sun goes down, its light warmer and weaker the lower the sun is, through more air. The world's
-	// first such component counts; without one, nothing of this is drawn.
+	// The world's air and sky, and what the camera makes of bright light, as every view of the
+	// world draws them: height fog, thick near the ground and thinning upwards, which hides what is
+	// far away in its colour and glows towards the sun; a sky that follows the primary light, its
+	// colour tinted by the sun's, dimmer as the sun goes down, its light warmer and weaker the lower
+	// the sun is, through more air; and bloom, the light of what is brightest spread round it. The
+	// world's first such component counts; without one, nothing of this is drawn.
 	NYX_REFLECT(Component, meta = (DisplayName = "Environment"))
 	struct EnvironmentComponent
 	{
@@ -58,6 +61,24 @@ namespace Nyx
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Sky", DisplayName = "Sun Glow Lobe", DragSpeed = 0.01, Tooltip = "How much the glow gathers round the sun, 0 to 0.99: near 1 a small, bright glow"))
 		float SunGlowLobe = 0.8f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Bloom", DisplayName = "Bloom", Tooltip = "Whether light brighter than the threshold spreads round what gives it off, as a lens spreads it: emissive surfaces and decals glow"))
+		bool bBloom = true;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Bloom", DisplayName = "Threshold", DragSpeed = 0.01, Tooltip = "How bright light must be to bloom, after the exposure: 1 is white on the screen"))
+		float BloomThreshold = 1.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Bloom", DisplayName = "Knee", DragSpeed = 0.01, Tooltip = "How softly blooming starts round the threshold: light this much below it starts to bloom a little; 0 a hard start"))
+		float BloomKnee = 0.5f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Bloom", DisplayName = "Intensity", DragSpeed = 0.01, Tooltip = "How much of the spread light is added to the picture"))
+		float BloomIntensity = 0.6f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Bloom", DisplayName = "Radius", DragSpeed = 0.01, Tooltip = "How far the light spreads, 0 to 1: how much each wider level of the blur weighs against the one above it"))
+		float BloomRadius = 0.7f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Bloom", DisplayName = "Levels", Tooltip = "How many times the picture is halved, 1 to 8: each level spreads the light twice as far"))
+		int32_t BloomLevels = 6;
 	};
 }
 

@@ -23,8 +23,8 @@ namespace Nyx
 	};
 
 	// What a scene view shows (IRenderer::SetSceneViewDebug()): the lit scene, one output of its
-	// surface materials, or where the light before tonemapping is wrong. The values are
-	// nyx/view.slang's Debug* constants.
+	// surface materials, where the light before tonemapping is wrong, or what a pass after the
+	// scene made of it. The values are nyx/view.slang's Debug* constants.
 	enum class ESceneViewDebug : uint8_t
 	{
 		Lit,
@@ -42,6 +42,8 @@ namespace Nyx
 		NanInf,
 		// Light above 1 before tonemapping in red, below 0 in blue, over the scene in grey
 		OutOfRange,
+		// The bloom alone, as the tonemap adds it (black where nothing blooms, or bloom is off)
+		Bloom,
 	};
 
 	// What a scene view shows of its culling (IRenderer::SetSceneViewCullingDebug())
@@ -121,6 +123,26 @@ namespace Nyx
 		glm::vec3 SunColor{ 1.0f };
 	};
 
+	// The view's bloom (EnvironmentComponent, in range: MakeSceneViewBloomSettings()); none
+	// without an environment
+	struct SceneViewBloomSettings
+	{
+		bool bBloom = false;
+		float Threshold = 1.0f;
+		float Knee = 0.5f;
+		float Intensity = 0.6f;
+		float Radius = 0.7f;
+		uint32_t Levels = 6;
+	};
+
+	// What a view's passes after its scene pass took on the GPU in the last frame drawn, in
+	// milliseconds (VulkanRenderer::GetSceneViewGpuTimes()): 0 for a pass that didn't run, and
+	// without timestamps on the device
+	struct SceneViewGpuTimes
+	{
+		float Bloom = 0.0f;
+	};
+
 	struct ExtractedSceneGlobals
 	{
 		glm::mat4 View{ 1.0f };
@@ -135,6 +157,7 @@ namespace Nyx
 		float Ambient = 0.18f;
 		SceneViewShadowSettings Shadows;
 		SceneViewAtmosphere Atmosphere;
+		SceneViewBloomSettings Bloom;
 
 		bool bHasCamera = false;
 		bool bHasDirectionalLight = false;

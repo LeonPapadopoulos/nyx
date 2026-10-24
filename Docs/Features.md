@@ -564,6 +564,29 @@ the sun. Without one, nothing changes.
   glowing round a low sun, the light warmer; nothing changed with it all off; a reference
   picture; the test scene), the other reference pictures unchanged.
 
+## Bloom
+
+Light brighter than the screen can show spreads round what gives it off: emissive materials and
+decals glow, in the editor's scene views and in the game alike. On with an *Environment*, under
+*Bloom*; without one, nothing changes.
+
+- *Threshold* (how bright light must be to bloom, after the exposure: 1 is white on the screen),
+  *Knee* (how softly it starts below the threshold), *Intensity*, *Radius* (how far it spreads,
+  0 to 1), *Levels* (how many halvings, 1 to 8; each spreads twice as far). All with undo, saved in
+  scenes and sent to a running game.
+- Each scene view has its own, made for its size. `Materials/Emissive.nyxmat` glows orange; a
+  `MaskedDecal` with an intensity above 1 glows in its colour. The atmosphere test scene has both.
+- **Seeing it**: *Debug > Bloom* in the editor (F6 in a Debug build of the game) shows the bloom
+  alone.
+- Its passes take about 0.05 ms of GPU time a 1280 × 720 view ([Atmosphere](Design/atmosphere.md#numbers)).
+- Tests: `NyxAtmosphereTests` (the levels, their sizes, the threshold's knee, the settings in
+  range), `NyxBloomGpuTests` (an emissive cube and decal spreading their light into the black
+  round them, and only there; a threshold above them, no intensity, an exposure under the
+  threshold and no environment change nothing; a wider radius spreads further; a view's own chain,
+  a second view's; the debug view; a view whose world goes away; a reference picture; the test
+  scene), `NyxEditorSceneViewGpuTests` (*Debug > Bloom* reaching views opened later), the other
+  reference pictures unchanged.
+
 ## Instanced meshes and culling
 
 Many copies of one mesh, such as grass, flowers or stones scattered over a ground, are drawn as one

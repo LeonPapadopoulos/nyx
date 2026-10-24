@@ -6,7 +6,7 @@
 // instanced cube, a plain one and a two-sided quad's back are fogged alike; a box still shadows
 // the fogged ground. The sky follows the sun: darker and warmer as it goes down, its glow round
 // the sun, the light warmer through more air, the sky's light dimmer at night. Without the
-// component, and with its fog and sky both off, the picture is the same to the bit. A scene of
+// component, and with its fog, sky and bloom all off, the picture is the same to the bit. A scene of
 // fog and a low sun looks as its reference picture does, and the atmosphere test scene loads and
 // is fogged.
 //
@@ -104,11 +104,12 @@ namespace
 		return glm::angleAxis(glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 	}
 
-	// Fog and nothing else: the fog's colour alone, no sun scattered, the sky as it is
+	// Fog and nothing else: the fog's colour alone, no sun scattered, the sky as it is, no bloom
 	EnvironmentComponent PlainFog(float density, float falloff, float height)
 	{
 		EnvironmentComponent environment;
 		environment.bSkyFollowsSun = false;
+		environment.bBloom = false;
 		environment.FogDensity = density;
 		environment.FogHeightFalloff = falloff;
 		environment.FogHeight = height;
@@ -256,8 +257,7 @@ namespace
 
 		// A ground the fog thins above, from 6 m up: thicker further away and lower down, as the
 		// CPU works it out along each ray
-		MeshRendererComponent& wall = scene.World.Get<MeshRendererComponent>(scene.Wall);
-		wall.bVisible = false;
+		scene.World.Get<MeshRendererComponent>(scene.Wall).bVisible = false;
 		const Entity ground = AddMesh(scene.World, Placed(glm::vec3(0.0f), glm::vec3(400.0f, 1.0f, 400.0f)), gpu.Renderer.GetPlaneMesh(), scene.Black);
 		TransformComponent& camera = scene.World.Get<TransformComponent>(scene.Camera);
 		camera.Position = glm::vec3(0.0f, 6.0f, 0.0f);
@@ -275,7 +275,7 @@ namespace
 		scene.World.DestroyEntity(ground);
 		camera.Position = glm::vec3(0.0f, 2.0f, 0.0f);
 		camera.Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
-		wall.bVisible = true;
+		scene.World.Get<MeshRendererComponent>(scene.Wall).bVisible = true;
 
 		// Without the component, and with its fog off: the black wall
 		scene.World.Remove<EnvironmentComponent>(scene.Environment);
@@ -500,12 +500,13 @@ namespace
 		const RgbaImage noGlow = Draw(gpu, view);
 		Require(Brightness(PixelAt(glowing, middle)) > Brightness(PixelAt(noGlow, middle)) + 30, "No glow round the sun: " + Text(PixelAt(glowing, middle)) + " against " + Text(PixelAt(noGlow, middle)));
 
-		// Fog and sky both off: as without the component, to the bit
+		// Fog, sky and bloom all off: as without the component, to the bit
 		scene.World.Get<EnvironmentComponent>(scene.Environment).bSkyFollowsSun = false;
+		scene.World.Get<EnvironmentComponent>(scene.Environment).bBloom = false;
 		const RgbaImage allOff = Draw(gpu, view);
 		scene.World.Remove<EnvironmentComponent>(scene.Environment);
 		const RgbaImage none = Draw(gpu, view);
-		Require(allOff.Pixels == none.Pixels, "Fog and sky off don't draw the picture as without the component");
+		Require(allOff.Pixels == none.Pixels, "Fog, sky and bloom off don't draw the picture as without the component");
 		EndView(gpu, view);
 	}
 
@@ -520,8 +521,9 @@ namespace
 		return entity;
 	}
 
-	// The ground test scene with small cubes scattered over its ground, a hazy environment, and the
-	// sun low in the south-west, as this test expects it
+	// The ground test scene with small cubes scattered over its ground, a hazy environment, the sun
+	// low in the south-west, and for bloom (NyxBloomGpuTests) a glowing cube and a glowing ring on
+	// the nearest crate, as the tests expect it
 	void WriteScene()
 	{
 		const std::filesystem::path assets = Paths::GetAssetsDir();
@@ -551,6 +553,31 @@ namespace
 		scatter.ScaleRange = glm::vec2(0.12f, 0.3f);
 		scatter.SinkDepth = 0.03f;
 		world.Add<ScatterComponent>(cubes, scatter);
+
+		// A cube of an emissive material floating over the ground, and an emissive decal, a ring, on
+		// the front of the first crate
+		const Entity glowingCube = AddEntity(world, "Glowing Cube", 0xA7305C0BE6ull,
+			Placed(glm::vec3(1.6f, 1.3f, -1.5f), glm::vec3(0.45f), glm::quat(glm::radians(glm::vec3(25.0f, 40.0f, 10.0f)))));
+		MeshRendererComponent glowing;
+		glowing.Mesh = AssetReference{ .Type = "Mesh", .Path = "Meshes/Cube.nyxmesh" };
+		glowing.Material = AssetReference{ .Type = "Material", .Path = "Materials/Emissive.nyxmat" };
+		world.Add<MeshRendererComponent>(glowingCube, glowing);
+		EntityGuid crate;
+		world.Each<NameComponent>([&](Entity entity, const NameComponent& name)
+			{
+				if (name.Name == "Crate 1")
+				{
+					crate = world.Get<GuidComponent>(entity).Guid;
+				}
+			});
+		const Entity ring = AddEntity(world, "Glowing Ring", 0xA7305DECAull, Placed(glm::vec3(0.0f)));
+		SurfaceDecalComponent decal;
+		decal.Anchor = SurfaceAnchor{ .Host = crate, .LocalPosition = glm::vec3(0.0f, 0.0f, 0.5f), .LocalNormal = glm::vec3(0.0f, 0.0f, 1.0f), .LocalTangent = glm::vec3(1.0f, 0.0f, 0.0f) };
+		decal.Size = glm::vec2(0.5f, 0.5f);
+		decal.Material = AssetReference{ .Type = "Material", .Path = "Materials/MaskedDecal.nyxmat" };
+		decal.Color = glm::vec3(1.0f, 0.55f, 0.15f);
+		decal.Intensity = 6.0f;
+		world.Add<SurfaceDecalComponent>(ring, decal);
 
 		// Hazier than the defaults, across a valley 128 m wide
 		const Entity air = AddEntity(world, "Environment", 0xA7305E2Full, Placed(glm::vec3(0.0f)));
@@ -623,8 +650,11 @@ namespace
 		const Entity sun = world.CreateEntity();
 		world.Add<TransformComponent>(sun, Placed(glm::vec3(0.0f), glm::vec3(1.0f), glm::quat(glm::radians(glm::vec3(-8.0f, 25.0f, 0.0f)))));
 		world.Add<DirectionalLightComponent>(sun, DirectionalLightComponent{});
+		// The fog and the sky alone: bloom has a picture of its own (NyxBloomGpuTests)
 		const Entity air = world.CreateEntity();
-		world.Add<EnvironmentComponent>(air, EnvironmentComponent{});
+		EnvironmentComponent environment;
+		environment.bBloom = false;
+		world.Add<EnvironmentComponent>(air, environment);
 
 		const uint64_t view = MakeView(gpu, world, ESceneViewSky::Scene);
 		const RgbaImage image = Draw(gpu, view, 3);

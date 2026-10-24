@@ -3,8 +3,10 @@
 // environment, in range, the sky tinted by the sun's hue without its brightness; the height fog's
 // depth along a ray against the fog summed in small steps, level, up, down, from where it starts,
 // from below and above its height, held at its most opacity; the light it scatters, gathered round
-// the sun; and the component saved in a scene and read back.
+// the sun; bloom's levels, their sizes and its threshold's knee; and the component saved in a scene
+// and read back.
 #include "Atmosphere.h"
+#include "Bloom.h"
 #include "ComponentRegistration.h"
 #include "Entity.h"
 #include "EnvironmentComponent.h"
@@ -253,6 +255,44 @@ namespace
 		Require(std::abs(Luminance(warm) - 1.0f) < 1e-5f && std::abs(warm.r / warm.b - 10.0f) < 1e-3f, "The hue isn't the colour at luminance 1: " + Text(warm));
 	}
 
+	void TestBloom()
+	{
+		// Levels: the view halved again and again, rounded down, at least a pixel; as many as asked
+		// for while the last keeps 8 pixels both ways, at least 1, at most 8
+		Require(GetBloomLevelSize(1280, 720, 0) == glm::uvec2(640, 360) && GetBloomLevelSize(1280, 720, 5) == glm::uvec2(20, 11), "A level's size isn't the view halved");
+		Require(GetBloomLevelSize(3, 1, 0) == glm::uvec2(1, 1), "A level is less than a pixel");
+		Require(GetBloomLevelCount(1280, 720, 6) == 6 && GetBloomLevelCount(1280, 720, 3) == 3 && GetBloomLevelCount(1280, 720, 0) == 1, "The level count isn't as asked");
+		Require(GetBloomLevelCount(1280, 720, 20) == 6 && GetBloomLevelCount(1920, 1080, 20) == 7 && GetBloomLevelCount(7680, 4320, 20) == MaxBloomLevels,
+			"The level count doesn't stop where the last level would be under 8 pixels, or at 8 levels");
+		Require(GetBloomLevelCount(480, 270, 6) == 5 && GetBloomLevelCount(64, 16, 8) == 1, "A small view's levels go under 8 pixels");
+		Require(GetBloomLevelCount(1, 1, 6) == 1, "A view of a pixel has no level");
+
+		// The threshold and its knee: nothing well below, the part above it well above, smoothly
+		// from threshold - knee
+		Require(GetBloomFactor(0.4f, 1.0f, 0.5f) == 0.0f, "Light below the knee blooms");
+		Require(std::abs(GetBloomFactor(3.0f, 1.0f, 0.5f) - 2.0f / 3.0f) < 1e-6f, "Light above the knee doesn't bloom by its part above the threshold");
+		float last = 0.0f;
+		for (float brightness = 0.5f; brightness <= 1.6f; brightness += 0.01f)
+		{
+			const float bloomed = GetBloomFactor(brightness, 1.0f, 0.5f) * brightness;
+			Require(bloomed >= last - 1e-6f, "The bloomed light isn't rising with the brightness at " + std::to_string(brightness));
+			last = bloomed;
+		}
+		Require(GetBloomFactor(0.99f, 1.0f, 0.0f) == 0.0f && GetBloomFactor(1.5f, 1.0f, 0.0f) > 0.33f, "A knee of 0 isn't a hard start");
+
+		// The view's settings from the environment, in range
+		EnvironmentComponent environment;
+		const SceneViewBloomSettings defaults = MakeSceneViewBloomSettings(environment);
+		Require(defaults.bBloom && defaults.Threshold == 1.0f && defaults.Levels == 6, "The environment's bloom isn't on by its defaults");
+		environment.BloomLevels = 40;
+		environment.BloomRadius = 2.0f;
+		environment.BloomKnee = -1.0f;
+		const SceneViewBloomSettings tamed = MakeSceneViewBloomSettings(environment);
+		Require(tamed.Levels == MaxBloomLevels && tamed.Radius == 1.0f && tamed.Knee == 0.0f, "The bloom's values aren't brought into range");
+		environment.BloomIntensity = 0.0f;
+		Require(!MakeSceneViewBloomSettings(environment).bBloom, "Bloom of no intensity is drawn");
+	}
+
 	// Saved with a scene and read back as it was
 	void TestSavedWithTheScene()
 	{
@@ -295,6 +335,7 @@ int main()
 		TestHeightFog();
 		TestHenyeyGreenstein();
 		TestChromaticity();
+		TestBloom();
 		TestSavedWithTheScene();
 	}
 	catch (const std::exception& error)

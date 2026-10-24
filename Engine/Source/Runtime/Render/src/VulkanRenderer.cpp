@@ -7,6 +7,7 @@
 #include "Log.h"
 #include "GltfImporter.h"
 #include "Atmosphere.h"
+#include "Bloom.h"
 #include "EnvironmentComponent.h"
 #include "TransformComponent.h"
 #include "CameraProjection.h"
@@ -273,6 +274,10 @@ namespace Nyx
 			{
 				BindSceneSets(view, cmd);
 			});
+		Bloom.Initialize(Bindless, *ScenePipelineLayout, [this](SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
+			{
+				BindSceneSets(view, cmd);
+			});
 
 		LoadSkyboxCubemap();
 		// Its light: the specular cube, the irradiance, the BRDF table
@@ -293,6 +298,7 @@ namespace Nyx
 
 		// 2D shapes, the scene views' blur for glows and glass, and the frame's GPU times
 		UI.InitializePasses();
+		CreatePassTimestamps();
 
 		// The meshes' materials, loaded from their files when first asked for
 		Materials.Initialize(Context, Bindless, Programs, Nyx::Paths::GetAssetSearchDirs(), *ScenePipelineLayout, [this]
@@ -323,6 +329,7 @@ namespace Nyx
 			view.SceneUniformBufferMemory = nullptr;
 
 			UI.ReleaseSceneViewBlur(view);
+			Bloom.Release(view.Bloom);
 			view.RenderTarget.Shutdown(Context);
 		}
 		SceneViews.clear();
@@ -340,6 +347,8 @@ namespace Nyx
 		Materials.Shutdown();
 		Environment.Shutdown();
 		Shadows.Shutdown();
+		Bloom.Shutdown();
+		PassTimestamps = nullptr;
 		Bindless.Shutdown();
 		Context.Shutdown();
 	}
@@ -425,6 +434,7 @@ namespace Nyx
 			NYX_PROFILE_SCOPE("Read back last frame");
 			UI.ReadLastFrame();
 			ReadBackPickResults();
+			ReadPassTimestamps();
 		}
 
 		const std::optional<uint32_t> imageIndex = AcquireImage(clock);
@@ -549,8 +559,14 @@ namespace Nyx
 		{
 			NYX_PROFILE_SCOPE("Scene views");
 			UI.WriteUITimestamp(*cmd, VulkanUIBackend::SceneViewsPair, false);
+			if (*PassTimestamps)
+			{
+				cmd.resetQueryPool(*PassTimestamps, 0, MaxTimedViews * static_cast<uint32_t>(ETimedPass::Count) * 2);
+			}
+			uint32_t viewIndex = 0;
 			for (SceneViewInstance& view : SceneViews)
 			{
+				view.TimedViewIndex = viewIndex++;
 				RenderSceneView(view, cmd);
 			}
 			UI.WriteUITimestamp(*cmd, VulkanUIBackend::SceneViewsPair, true);
@@ -565,15 +581,13 @@ namespace Nyx
 	{
 		for (SceneViewInstance& view : SceneViews)
 		{
-			if (const RenderWorld* world = FindShownWorld(view))
-			{
-				UpdateSceneUniforms(view, *world);
+			const RenderWorld* world = FindShownWorld(view);
+			UpdateSceneUniforms(view, world);
 
-				// Editor-only passes: picking, and the masks the selection outline is drawn from
-				if (view.bShowEditorOverlays)
-				{
-					Overlays.DrawPasses(view, *world, cmd);
-				}
+			// Editor-only passes: picking, and the masks the selection outline is drawn from
+			if (world && view.bShowEditorOverlays)
+			{
+				Overlays.DrawPasses(view, *world, cmd);
 			}
 		}
 	}
@@ -733,6 +747,77 @@ namespace Nyx
 	{
 		const SceneViewInstance* view = FindSceneView(id);
 		return view ? &view->Shadows : nullptr;
+	}
+
+	const SceneViewBloom* VulkanRenderer::GetSceneViewBloom(uint64_t id) const
+	{
+		const SceneViewInstance* view = FindSceneView(id);
+		return view ? &view->Bloom : nullptr;
+	}
+
+	const SceneViewGpuTimes* VulkanRenderer::GetSceneViewGpuTimes(uint64_t id) const
+	{
+		const SceneViewInstance* view = FindSceneView(id);
+		return view ? &view->GpuTimes : nullptr;
+	}
+
+	void VulkanRenderer::CreatePassTimestamps()
+	{
+		const std::vector<vk::QueueFamilyProperties> families = Context.GetPhysicalDevice().getQueueFamilyProperties();
+		const uint32_t family = Context.GetGraphicsQueueFamily();
+		if (family >= families.size() || families[family].timestampValidBits == 0)
+		{
+			return;
+		}
+		vk::QueryPoolCreateInfo queryInfo{};
+		queryInfo.queryType = vk::QueryType::eTimestamp;
+		queryInfo.queryCount = MaxTimedViews * static_cast<uint32_t>(ETimedPass::Count) * 2;
+		PassTimestamps = vk::raii::QueryPool(Context.GetDevice(), queryInfo);
+	}
+
+	void VulkanRenderer::WritePassTimestamp(vk::raii::CommandBuffer& cmd, const SceneViewInstance& view, ETimedPass pass, bool bEnd)
+	{
+		if (!*PassTimestamps || view.TimedViewIndex >= MaxTimedViews)
+		{
+			return;
+		}
+		const uint32_t firstQuery = (view.TimedViewIndex * static_cast<uint32_t>(ETimedPass::Count) + static_cast<uint32_t>(pass)) * 2;
+		cmd.writeTimestamp(vk::PipelineStageFlagBits::eBottomOfPipe, *PassTimestamps, firstQuery + (bEnd ? 1 : 0));
+		if (bEnd)
+		{
+			TimedPasses.push_back(TimedPass{ view.Id, pass, firstQuery });
+		}
+	}
+
+	void VulkanRenderer::ReadPassTimestamps()
+	{
+		for (SceneViewInstance& view : SceneViews)
+		{
+			view.GpuTimes = {};
+		}
+		if (!*PassTimestamps)
+		{
+			return;
+		}
+		const double nanosecondsPerTick = Context.GetPhysicalDevice().getProperties().limits.timestampPeriod;
+		for (const TimedPass& timed : std::exchange(TimedPasses, {}))
+		{
+			SceneViewInstance* view = FindSceneView(timed.ViewId);
+			const auto [result, ticks] = PassTimestamps.getResults<uint64_t>(timed.FirstQuery, 2, 2 * sizeof(uint64_t), sizeof(uint64_t), vk::QueryResultFlagBits::e64);
+			if (view == nullptr || result != vk::Result::eSuccess || ticks.size() != 2)
+			{
+				continue;
+			}
+			const float milliseconds = static_cast<float>(static_cast<double>(ticks[1] - ticks[0]) * nanosecondsPerTick / 1.0e6);
+			switch (timed.Pass)
+			{
+			case ETimedPass::Bloom:
+				view->GpuTimes.Bloom = milliseconds;
+				break;
+			default:
+				break;
+			}
+		}
 	}
 
 	void VulkanRenderer::SetSceneViewEditorCameraTransform(uint64_t id, const glm::vec3& pos, const glm::vec3& rot)
@@ -1290,6 +1375,13 @@ namespace Nyx
 				CullSceneView(view, *world);
 				PrepareSceneViewShadows(view, *world);
 			}
+
+			// Its bloom's chain, for its size; none without a world, or in a debug view of the
+			// materials, whose outputs aren't light
+			SceneViewBloomSettings bloom = FindShownWorld(view) ? view.SceneGlobals.Bloom : SceneViewBloomSettings{};
+			const uint32_t debugView = static_cast<uint32_t>(view.Debug);
+			bloom.bBloom = bloom.bBloom && (debugView < static_cast<uint32_t>(ESceneViewDebug::BaseColor) || debugView > static_cast<uint32_t>(ESceneViewDebug::UvChecker));
+			Bloom.Prepare(view.Bloom, view.RenderTarget.GetExtent(), bloom);
 		}
 
 		// One shadow map for every view: as big as the largest any of them asks for
@@ -1918,7 +2010,7 @@ namespace Nyx
 		Context.GetDevice().updateDescriptorSets(write, {});
 	}
 
-	void VulkanRenderer::UpdateSceneUniforms(SceneViewInstance& view, const RenderWorld& world)
+	void VulkanRenderer::UpdateSceneUniforms(SceneViewInstance& view, const RenderWorld* world)
 	{
 		const vk::Extent2D extent = view.RenderTarget.GetExtent();
 
@@ -1944,7 +2036,7 @@ namespace Nyx
 		ubo.SpecularTexture = Environment.GetSpecularSlot(sky);
 		ubo.SpecularLevels = Environment.GetSpecularLevels();
 		ubo.BrdfLookup = Environment.GetLookupSlot();
-		ubo.Time = world.Time;
+		ubo.Time = world ? world->Time : SceneTime;
 		for (size_t term = 0; term < 9; ++term)
 		{
 			ubo.Irradiance[term] = glm::vec4(Environment.GetIrradiance(sky)[term], 0.0f);
@@ -1976,6 +2068,13 @@ namespace Nyx
 		ubo.FogSun = glm::vec4(air.FogSunColor, air.FogSunLobe);
 		ubo.SkyTint = glm::vec4(air.SkyTint, 0.0f);
 		ubo.SunGlow = glm::vec4(air.SunGlowColor, air.SunGlowLobe);
+
+		// Its bloom, the chain's first level
+		if (view.Bloom.Settings.bBloom && view.Bloom.Levels > 0)
+		{
+			ubo.BloomTexture = view.Bloom.Slots.front();
+			ubo.BloomIntensity = view.Bloom.Settings.Intensity;
+		}
 
 		void* mapped = view.SceneUniformBufferMemory.mapMemory(0, sizeof(SceneUBO));
 		std::memcpy(mapped, &ubo, sizeof(SceneUBO));
@@ -2159,6 +2258,10 @@ namespace Nyx
 		{
 			Shadows.CreatePipelines(GetPictureRenderPass());
 		}
+		if (changed.contains("Bloom.slang"))
+		{
+			Bloom.CreatePipelines();
+		}
 		if (uses("DebugLines"))
 		{
 			DebugLines.CreatePipeline(SceneViews.front());
@@ -2295,6 +2398,7 @@ namespace Nyx
 				bFound = true;
 				view.SceneGlobals.Atmosphere = Nyx::MakeSceneViewAtmosphere(environment, view.SceneGlobals.LightDirectionWS, view.SceneGlobals.LightColor);
 				view.SceneGlobals.LightColor = view.SceneGlobals.Atmosphere.SunColor;
+				view.SceneGlobals.Bloom = Nyx::MakeSceneViewBloomSettings(environment);
 			});
 	}
 
@@ -2350,6 +2454,7 @@ namespace Nyx
 			it->SceneUniformBufferMemory = nullptr;
 
 			Overlays.DestroyViewResources(*it);
+			Bloom.Release(it->Bloom);
 
 			Bindless.RemoveTexture(it->HdrTextureSlot);
 			it->RenderTarget.Shutdown(Context);
@@ -2554,9 +2659,17 @@ namespace Nyx
 		}
 		view.RenderTarget.EndRenderPass(cmd);
 
-		// 2. The picture: the scene tonemapped, then the editor's overlays over it (grid, debug
-		// lines, the selection outline), which look as they always did, then the world's debug
-		// drawing
+		// Its bloom, from the scene in HDR, for the tonemap to add
+		if (view.Bloom.Settings.bBloom && view.Bloom.Levels > 0)
+		{
+			WritePassTimestamp(cmd, view, ETimedPass::Bloom, false);
+			Bloom.Draw(view, view.HdrTextureSlot, cmd);
+			WritePassTimestamp(cmd, view, ETimedPass::Bloom, true);
+		}
+
+		// 2. The picture: the scene tonemapped with its bloom, then the editor's overlays over it
+		// (grid, debug lines, the selection outline), which look as they always did, then the
+		// world's debug drawing
 		view.RenderTarget.BeginPicturePass(cmd);
 		DrawTonemap(view, cmd);
 		if (view.bShowEditorOverlays)

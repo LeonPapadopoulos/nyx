@@ -54,6 +54,10 @@ namespace Nyx::Editor
 		Nyx::ESceneViewCullingDebug GetCullingDebug() const { return CullingDebug; }
 		void SetShadowDebug(Nyx::ESceneViewShadowDebug mode);
 		Nyx::ESceneViewShadowDebug GetShadowDebug() const { return ShadowDebug; }
+		// What the set's own views show (the Debug menu's Bloom), views opened later too; the
+		// material preview's view keeps its own
+		void SetViewDebug(Nyx::ESceneViewDebug view);
+		Nyx::ESceneViewDebug GetViewDebug() const { return ViewDebug; }
 
 		const std::vector<std::unique_ptr<SceneViewPanel>>& GetViews() const { return Views; }
 		// The views' windows, e.g. for the default layout to dock
@@ -78,5 +82,6 @@ namespace Nyx::Editor
 
 		Nyx::ESceneViewCullingDebug CullingDebug = Nyx::ESceneViewCullingDebug::Off;
 		Nyx::ESceneViewShadowDebug ShadowDebug = Nyx::ESceneViewShadowDebug::Off;
+		Nyx::ESceneViewDebug ViewDebug = Nyx::ESceneViewDebug::Lit;
 	};
 }

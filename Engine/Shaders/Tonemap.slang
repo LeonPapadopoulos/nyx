@@ -1,5 +1,6 @@
-// A scene view's HDR picture, exposed and tonemapped into the 8-bit picture the editor shows
-// (sRGB-encoded). One triangle over the view; the editor's overlays are drawn over it afterwards.
+// A scene view's HDR picture, exposed, its bloom added, and tonemapped into the 8-bit picture the
+// editor shows (sRGB-encoded). One triangle over the view; the editor's overlays are drawn over it
+// afterwards.
 
 import nyx.bindless;
 import nyx.color;
@@ -28,7 +29,18 @@ float4 tonemapFragment(float4 position : SV_Position) : SV_Target
         return float4(saturate(hdr), 1.0);
     }
 
-    const float3 scene = hdr * View.ExposureScale;
+    // The bloom, half the view's size, filtered up; it is exposed light already
+    float3 scene = hdr * View.ExposureScale;
+    float3 bloom = float3(0.0);
+    if (View.Bloom.Index != 0)
+    {
+        bloom = View.Bloom.SampleLevel(nyx::LinearClamp, position.xy / View.ViewportSize, 0.0).rgb * View.BloomIntensity;
+        scene += bloom;
+    }
+    if (debug == nyx::DebugBloom)
+    {
+        return float4(nyx::linearToSrgb(nyx::tonemapPbrNeutral(bloom)), 1.0);
+    }
     const float3 picture = nyx::linearToSrgb(nyx::tonemapPbrNeutral(scene));
     // Where the light went wrong, over the picture in grey
     const float3 grey = dot(picture, float3(0.2126, 0.7152, 0.0722)) * 0.6;

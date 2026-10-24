@@ -15,6 +15,7 @@
 #include "VulkanDebugLines.h"
 #include "VulkanEditorOverlays.h"
 #include "VulkanShadows.h"
+#include "VulkanBloom.h"
 #include "Mesh.h"
 #include "RuntimeMeshCache.h"
 #include "MeshInstanceCache.h"
@@ -119,11 +120,17 @@ namespace Nyx
 		glm::vec4 FogSun{ 0.0f };
 		glm::vec4 SkyTint{ 1.0f, 1.0f, 1.0f, 0.0f };
 		glm::vec4 SunGlow{ 0.0f };
+
+		// The view's bloom (VulkanBloom): its first level in the bindless array, 0 without bloom,
+		// and how much of it the tonemap adds
+		uint32_t BloomTexture = 0;
+		float BloomIntensity = 0.0f;
+		uint32_t BloomPadding[2] = {};
 	};
 
 	// The view's set (set 1) as nyx/view.slang reads it, in scalar layout; to whole 16 bytes, as
 	// std140 would be too
-	static_assert(sizeof(SceneUBO) == 864, "SceneUBO must match ViewConstants in nyx/view.slang");
+	static_assert(sizeof(SceneUBO) == 880, "SceneUBO must match ViewConstants in nyx/view.slang");
 
 	// One draw's push constants, the same for every scene pipeline: ObjectConstants in
 	// nyx/bindless.slang
@@ -329,6 +336,12 @@ namespace Nyx
 		// The view's shadows in the last frame: its cascades and what each drew; null for an
 		// unknown view. For tests.
 		const SceneViewShadows* GetSceneViewShadows(uint64_t id) const;
+		// The view's bloom in the last frame: its chain's levels and its settings; null for an
+		// unknown view. For tests.
+		const SceneViewBloom* GetSceneViewBloom(uint64_t id) const;
+		// What the view's passes after its scene pass took on the GPU in the last frame drawn; null
+		// for an unknown view. For tests and the benchmark.
+		const SceneViewGpuTimes* GetSceneViewGpuTimes(uint64_t id) const;
 
 		bool GetSceneViewCameraData(uint64_t sceneViewId, Nyx::SceneViewCameraData& outData) const override;
 
@@ -477,8 +490,9 @@ namespace Nyx
 		std::vector<uint32_t> ReadSpirvFile(const std::string& fileName);
 
 		void CreateSceneResourcesForView(SceneViewInstance& view);
-		// The view's set, for the world it shows
-		void UpdateSceneUniforms(SceneViewInstance& view, const RenderWorld& world);
+		// The view's set, for the world it shows, or for none: every view's each frame, so that none
+		// keeps a slot of the bindless array from a frame before, which may be gone (a bloom chain)
+		void UpdateSceneUniforms(SceneViewInstance& view, const RenderWorld* world);
 
 		void CreateTestMeshData();
 
@@ -552,6 +566,31 @@ namespace Nyx
 		VulkanEditorOverlays Overlays{ Context, Programs, DebugLines };
 		// The primary light's shadow map, which every view's cascades are drawn into in turn
 		VulkanShadows Shadows{ Context, Programs };
+		// Each view's bloom, between its scene pass and its tonemap
+		VulkanBloom Bloom{ Context, Programs };
+
+		// The GPU times of each view's passes after its scene pass (SceneViewGpuTimes), for the
+		// first MaxTimedViews views: a pair of timestamps a pass a view, reset at the frame's start
+		// and read after its fence. None without timestamps on the device.
+		enum class ETimedPass : uint32_t
+		{
+			Bloom,
+			Count
+		};
+		static constexpr uint32_t MaxTimedViews = 8;
+		vk::raii::QueryPool PassTimestamps{ nullptr };
+		struct TimedPass
+		{
+			uint64_t ViewId = 0;
+			ETimedPass Pass = ETimedPass::Bloom;
+			uint32_t FirstQuery = 0;
+		};
+		std::vector<TimedPass> TimedPasses;
+		void CreatePassTimestamps();
+		// A timestamp before (bEnd false) or after a pass of the view, if it is one timed
+		void WritePassTimestamp(vk::raii::CommandBuffer& cmd, const SceneViewInstance& view, ETimedPass pass, bool bEnd);
+		// After the last frame's fence: its passes' times into their views
+		void ReadPassTimestamps();
 
 		// When the last frame's DrawFrame() ended, for the time spent outside it
 		std::chrono::steady_clock::time_point LastFrameEnd;

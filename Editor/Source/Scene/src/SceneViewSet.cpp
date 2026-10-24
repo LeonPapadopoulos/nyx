@@ -130,6 +130,7 @@ namespace Nyx::Editor
 		const uint64_t sceneViewId = Views.back()->GetViewId();
 		Renderer->SetSceneViewCullingDebug(sceneViewId, CullingDebug);
 		Renderer->SetSceneViewShadowDebug(sceneViewId, ShadowDebug);
+		Renderer->SetSceneViewDebug(sceneViewId, ViewDebug);
 		return *Views.back();
 	}
 
@@ -200,6 +201,18 @@ namespace Nyx::Editor
 			for (const uint64_t sceneViewId : Renderer->GetSceneViewIds())
 			{
 				Renderer->SetSceneViewShadowDebug(sceneViewId, mode);
+			}
+		}
+	}
+
+	void SceneViewSet::SetViewDebug(Nyx::ESceneViewDebug view)
+	{
+		ViewDebug = view;
+		if (Renderer)
+		{
+			for (const std::unique_ptr<SceneViewPanel>& panel : Views)
+			{
+				Renderer->SetSceneViewDebug(panel->GetViewId(), view);
 			}
 		}
 	}

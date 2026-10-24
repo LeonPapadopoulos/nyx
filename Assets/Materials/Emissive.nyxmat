@@ -1,0 +1,5 @@
+# Glows orange, well above white: for bloom (the atmosphere test scene, NyxBloomGpuTests)
+Shader = Shaders/Standard.slang
+BaseColor = 0.1 0.05 0.02
+Roughness = 0.6
+Emission = 6 2.5 0.8

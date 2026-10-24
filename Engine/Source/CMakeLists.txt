@@ -139,6 +139,8 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/ShadowCascades.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanShadows.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Atmosphere.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/Bloom.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanBloom.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Texture.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/CubemapTexture.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Material.cpp
@@ -326,6 +328,8 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/ShadowCascades.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanShadows.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Atmosphere.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/Bloom.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanBloom.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Texture.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/CubemapTexture.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Material.h
