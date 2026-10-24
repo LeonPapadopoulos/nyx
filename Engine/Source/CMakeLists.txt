@@ -31,6 +31,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/FileWatcher.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/BinaryArchive.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/MeshData.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Core/src/PointCloudRecognizer.cpp
 
     # Runtime/Net
     ${NYX_ENGINE_ROOT}/Runtime/Net/src/NetConnection.cpp
@@ -213,6 +214,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/ClockTime.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/BinaryArchive.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/MeshData.h
+    ${NYX_ENGINE_ROOT}/Runtime/Core/include/PointCloudRecognizer.h
     
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/NyxPCH.h
 

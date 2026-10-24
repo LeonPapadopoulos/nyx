@@ -128,6 +128,14 @@ add_dependencies(NyxDebugDrawTests NyxGeneratedReflection)
 set_property(TARGET NyxDebugDrawTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxDebugDrawTests COMMAND NyxDebugDrawTests)
 
+# The point-cloud recogniser: known shapes drawn again in other stroke orders, turned, a scribble
+# rejected, the same result every time, the template text, 50 templates under 1 ms in Release
+add_executable(NyxPointCloudRecognizerTests PointCloudRecognizerTests.cpp)
+target_link_libraries(NyxPointCloudRecognizerTests PRIVATE NyxEngine)
+add_dependencies(NyxPointCloudRecognizerTests NyxGeneratedReflection)
+set_property(TARGET NyxPointCloudRecognizerTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxPointCloudRecognizerTests COMMAND NyxPointCloudRecognizerTests)
+
 # Physics: bodies falling and resting, mass, forces at a point, teleports, kinematic moves, the
 # same results from the same inputs, queries, sensors, contact events, constraints, the debug view
 add_executable(NyxPhysicsTests PhysicsTests.cpp)

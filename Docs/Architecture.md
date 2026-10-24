@@ -49,7 +49,7 @@ doesn't allow, and on a table that goes round in a circle, so a new dependency s
 
 | Folder | What it holds | Includes from |
 | --- | --- | --- |
-| `Core` | Logging, assertions, paths, text helpers, child processes, the crash handler, file watching, the frame rate limiter, the fixed step clock, `BinaryArchive`, the profiler macros (`Profiler.h`), debug drawing (`DebugDraw`), meshes as plain data (`MeshData`: vertices with four custom channels for the materials, indices and sections, `CheckMeshData()`, `ComputeMeshBounds()`) | — |
+| `Core` | Logging, assertions, paths, text helpers, child processes, the crash handler, file watching, the frame rate limiter, the fixed step clock, `BinaryArchive`, the profiler macros (`Profiler.h`), debug drawing (`DebugDraw`), meshes as plain data (`MeshData`: vertices with four custom channels for the materials, indices and sections, `CheckMeshData()`, `ComputeMeshBounds()`), shapes drawn by hand told apart (`PointCloudRecognizer`, the $P point-cloud recogniser, and its template text) | — |
 | `Reflection` | Type, property and enum metadata, and the `NYX_REFLECT`, `NYX_PROPERTY` and `NYX_ENUM` macros; not under `Runtime` | — |
 | `Net` | TCP connections and the messages they carry | Core |
 | `Input` | Keyboard, mouse and gamepads (through SDL3), gathered from backends into one `InputFrame` per frame; the router: context stacks, actions, the value pipeline, triggers and their traces; the input's history and its view (`InputDebugView`), painted with the UI's widgets; input assets (`.nyxinput`), saved through reflection, and their tuning layers; the checks and recipes for bindings; the input's stream and recordings (`.nyxinputrec`); the game's fly cameras, for entities with a `FlyCameraComponent` (`UpdateFlyCameras()`), and its orbit cameras' input (`OrbitCameraInput`, `Input::UpdateOrbitCameras()`) | Core, Reflection, Scene, UI |
@@ -422,3 +422,6 @@ How some systems work, and why they work that way:
   triangle area cell by cell, the same on every machine, made in the post-load step and following
   the surface and the blockers each frame, an edit making only the cells it reaches again;
   blockers and a noise mask, painted masks later.
+- [Stroke recognition](Design/stroke-recognition.md): shapes drawn by hand as point clouds ($P),
+  whatever their stroke order and direction, turned or as drawn, the same result on every machine,
+  the cost, the template text.

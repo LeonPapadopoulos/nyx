@@ -848,3 +848,25 @@ glowing mark on a crate.
   material, and with a path changed, with the new one; a click on its ring picks it, one in the
   ring's middle the cube; selected, its quad is outlined; its pulse moves in the editor's world, and
   stands still in a game's world while paused until it is stepped).
+
+## Shapes drawn by hand
+
+Which shape a player drew, for a game that lets them draw: `PointCloudRecognizer`, in `Core`
+([Stroke recognition](Design/stroke-recognition.md)).
+
+- Templates are named examples of shapes, several per name, each some strokes of points, +Y up:
+  added in code (`AddTemplate()`), or read from a game's text file of `template` and `stroke` lines
+  (`LoadStrokeTemplates()`; `WriteStrokeTemplates()` writes them, e.g. ones a player recorded).
+- `Recognize()` gives the closest template, its score from 0 to 1 and the closest of another name,
+  whatever the order and direction the strokes were drawn in, how many there were, how large and
+  where. What scores high enough is the game's to say.
+- By default a shape turned is the same shape, and the match says which way the template's up lay
+  in the drawing, e.g. where an arrow points. Rotation sensitive, the strokes are matched with an
+  up the game gives, such as the view's, and an arrow up and one to the right are two shapes.
+- The same templates and strokes give the same result on every machine running the same build.
+  50 templates take about half a millisecond, 0.12 ms when rotation sensitive (Release).
+- Tests: `NyxPointCloudRecognizerTests` (circles, triangles, arrows and zigzags drawn again shakier,
+  larger, elsewhere, in other stroke orders and directions and turned, recognised, with a runner-up
+  of another name; where a turned arrow points; scribbles below 0.75; arrows told apart by the up
+  given; the same results to the bit; the text read, written and read back exactly, its problems
+  with their lines; 50 templates under 1 ms in Release).
