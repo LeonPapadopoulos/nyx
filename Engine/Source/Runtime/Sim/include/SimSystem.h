@@ -6,6 +6,7 @@
 #include "EntityGuidLookup.h"
 #include "FixedStepClock.h"
 #include "PhysicsBodies.h"
+#include "PhysicsConstraints.h"
 #include "PhysicsWorld.h"
 
 #include <cstdint>
@@ -36,6 +37,9 @@ namespace Nyx
 		// What players asked for since the last step, in order (CommandQueue::ForEach<T>()). The
 		// systems that own what a command changes apply it; a command nobody reads is dropped.
 		const CommandQueue& Commands;
+		// Which constraint is whose (FindConstraint()), and which broke in this step's physics step
+		// (GetBrokenConstraints(), for ESimStage::AfterPhysics)
+		const PhysicsConstraints& Constraints;
 	};
 
 	// Where in a step a system runs: before the physics step, e.g. to push bodies, or after it,

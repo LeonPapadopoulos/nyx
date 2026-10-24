@@ -1,6 +1,8 @@
 // Physics (PhysicsWorld): bodies falling and coming to rest, mass, forces at a point, teleporting,
 // kinematic moves, the same results from the same inputs, bodies made and destroyed, queries,
-// sensors, contact events and constraints. The debug view: the lines of each shape, colours by
+// sensors, contact events and constraints: in world space and in each body's own, holding a body at
+// its rest, the load it held read back, limits and motors, switched off and on, breaking past a load,
+// two bodies joined, the same results over 600 steps. The debug view: the lines of each shape, colours by
 // motion, contacts after a landing, constraints, and nothing when switched off.
 #include "DebugDraw.h"
 #include "Log.h"
@@ -8,6 +10,8 @@
 #include "TestSupport.h"
 
 #include <glm/glm.hpp>
+#include <glm/gtc/constants.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -499,6 +503,270 @@ namespace
 		RunSteps(world, 10);
 	}
 
+	// A box hung by its top from a point in the world, given in each one's own space: the box's top
+	// centre, and the world's point
+	ConstraintDesc HangFromTheWorld(BodyHandle box, const glm::vec3& worldPoint)
+	{
+		return ConstraintDesc{ .Kind = EConstraintKind::Point,
+			.Body = box,
+			.Space = EConstraintSpace::Local,
+			.BodyFrame = ConstraintFrame{ .Point = glm::vec3(0.0f, 0.5f, 0.0f) },
+			.OtherFrame = ConstraintFrame{ .Point = worldPoint } };
+	}
+
+	std::string Text(const glm::vec3& v)
+	{
+		return "(" + std::to_string(v.x) + ", " + std::to_string(v.y) + ", " + std::to_string(v.z) + ")";
+	}
+
+	void TestALocalPointConstraintHoldsABodyAtItsRest()
+	{
+		PhysicsWorld world;
+		// Placed 30 cm below its rest: pulled up there
+		const BodyHandle box = AddBox(world, glm::vec3(0.0f, 4.2f, 0.0f), 2.0f);
+		const ConstraintHandle hook = world.CreateConstraint(HangFromTheWorld(box, glm::vec3(0.0f, 5.0f, 0.0f)));
+		Require(hook.IsValid() && world.IsConstraintEnabled(hook), "A point constraint in local space should be made, on");
+		Require(world.GetConstraintLoad(hook).Force == glm::vec3(0.0f), "Before its first step a constraint should have held nothing");
+
+		RunSteps(world, 240);
+		const BodyPose pose = world.GetPose(box);
+		Require(NearVec(pose.Position + pose.Rotation * glm::vec3(0.0f, 0.5f, 0.0f), glm::vec3(0.0f, 5.0f, 0.0f), 0.01f),
+			"The box's top should be at the world's point");
+		Require(NearVec(pose.Position, glm::vec3(0.0f, 4.5f, 0.0f), 0.02f), "The box should hang straight below its rest " + Text(pose.Position));
+
+		// It holds the box up against its weight, and nothing else
+		const ConstraintLoad load = world.GetConstraintLoad(hook);
+		const float weight = 2.0f * 9.81f;
+		Require(NearVec(load.Force, glm::vec3(0.0f, weight, 0.0f), weight * 0.02f), "The load should be the box's weight, upwards " + Text(load.Force));
+		Require(glm::length(load.Torque) < 1e-3f, "A point constraint should hold no torque");
+	}
+
+	void TestAFixedConstraintHoldsTheTurnOfAnArm()
+	{
+		PhysicsWorld world;
+		// A 1 kg box welded a metre out from a point in the world: what holds it up at the point
+		// also keeps it from turning down, with the weight times the metre
+		const BodyHandle box = AddBox(world, glm::vec3(1.0f, 5.0f, 0.0f), 1.0f);
+		const ConstraintHandle weld = world.CreateConstraint(ConstraintDesc{ .Kind = EConstraintKind::Fixed,
+			.Body = box,
+			.Space = EConstraintSpace::Local,
+			.BodyFrame = ConstraintFrame{ .Point = glm::vec3(-1.0f, 0.0f, 0.0f) },
+			.OtherFrame = ConstraintFrame{ .Point = glm::vec3(0.0f, 5.0f, 0.0f) } });
+		RunSteps(world, 120);
+
+		const BodyPose pose = world.GetPose(box);
+		Require(NearVec(pose.Position, glm::vec3(1.0f, 5.0f, 0.0f), 0.01f), "The welded box should stay where its rest is " + Text(pose.Position));
+		const ConstraintLoad load = world.GetConstraintLoad(weld);
+		Require(NearVec(load.Force, glm::vec3(0.0f, 9.81f, 0.0f), 0.2f), "The weld should hold the box's weight " + Text(load.Force));
+		Require(NearVec(load.Torque, glm::vec3(0.0f, 0.0f, 9.81f), 0.2f), "The weld should hold the arm's turn, 9.81 N m about Z " + Text(load.Torque));
+	}
+
+	void TestALocalSliderStaysWithinItsLimitsAndDrives()
+	{
+		PhysicsWorld world;
+		// Its axis along the world's Z: the frames turned a quarter about Y
+		const glm::quat alongZ = glm::angleAxis(-glm::half_pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f));
+		const BodyHandle box = AddBox(world, glm::vec3(0.0f, 3.0f, 0.0f), 1.0f);
+		const ConstraintHandle slider = world.CreateConstraint(ConstraintDesc{ .Kind = EConstraintKind::Slider,
+			.Body = box,
+			.Space = EConstraintSpace::Local,
+			.BodyFrame = ConstraintFrame{ .Rotation = alongZ },
+			.OtherFrame = ConstraintFrame{ .Point = glm::vec3(0.0f, 3.0f, 0.0f), .Rotation = alongZ },
+			.bLimits = true,
+			.LimitMin = -0.5f,
+			.LimitMax = 1.5f });
+		Require(slider.IsValid(), "A slider in local space should be made");
+
+		// Shoved along, across and up, then back
+		world.AddImpulse(box, glm::vec3(2.0f, 2.0f, 3.0f));
+		for (int step = 0; step < 240; ++step)
+		{
+			if (step == 120)
+			{
+				world.AddImpulse(box, glm::vec3(0.0f, 0.0f, -3.0f));
+			}
+			world.Step(Step);
+			const glm::vec3 position = world.GetPose(box).Position;
+			Require(Near(position.x, 0.0f, 0.02f) && Near(position.y, 3.0f, 0.02f), "The box should stay on the slider's axis " + Text(position));
+			Require(position.z > -0.55f && position.z < 1.55f, "The box should stay within the limits " + Text(position));
+		}
+		Require(world.GetPose(box).Position.z < -0.45f, "The shove back should carry the box to its lower limit");
+
+		// A position motor pulls it to 1 m along
+		world.SetConstraintMotor(slider, ConstraintMotor{ .Mode = EConstraintMotor::Position, .Target = 1.0f, .Frequency = 4.0f });
+		RunSteps(world, 180);
+		Require(Near(world.GetPose(box).Position.z, 1.0f, 0.02f), "The motor should pull the box to its target " + Text(world.GetPose(box).Position));
+		// A velocity motor drives it to the upper limit, and the limit holds it there
+		world.SetConstraintMotor(slider, ConstraintMotor{ .Mode = EConstraintMotor::Velocity, .Target = 2.0f, .MaxForce = 50.0f });
+		RunSteps(world, 120);
+		Require(Near(world.GetPose(box).Position.z, 1.5f, 0.02f), "Driven along, the box should stop at its upper limit " + Text(world.GetPose(box).Position));
+	}
+
+	void TestAConstraintSwitchesOffAndOn()
+	{
+		PhysicsWorld world;
+		const BodyHandle box = AddBox(world, glm::vec3(0.0f, 4.5f, 0.0f), 1.0f);
+		const ConstraintHandle hook = world.CreateConstraint(HangFromTheWorld(box, glm::vec3(0.0f, 5.0f, 0.0f)));
+		RunSteps(world, 60);
+		Require(Near(world.GetPose(box).Position.y, 4.5f, 0.02f), "The box should hang at its rest");
+
+		world.SetConstraintEnabled(hook, false);
+		Require(!world.IsConstraintEnabled(hook) && world.GetConstraintCount() == 1, "Switched off, the constraint should stay there");
+		RunSteps(world, 45);
+		Require(world.GetPose(box).Position.y < 3.0f, "Switched off, the box should fall");
+		Require(world.GetConstraintLoad(hook).Force.y > 9.0f, "Off, the load should be what it held before");
+
+		world.SetConstraintEnabled(hook, true);
+		RunSteps(world, 180);
+		const BodyPose pose = world.GetPose(box);
+		Require(NearVec(pose.Position + pose.Rotation * glm::vec3(0.0f, 0.5f, 0.0f), glm::vec3(0.0f, 5.0f, 0.0f), 0.02f),
+			"Switched on again, it should pull the box back to its rest " + Text(pose.Position));
+		Require(glm::length(world.GetLinearVelocity(box)) < 0.1f, "And hold it there");
+
+		// A constraint made off holds nothing until switched on
+		const BodyHandle other = AddBox(world, glm::vec3(5.0f, 4.5f, 0.0f), 1.0f);
+		ConstraintDesc off = HangFromTheWorld(other, glm::vec3(5.0f, 5.0f, 0.0f));
+		off.bEnabled = false;
+		const ConstraintHandle loose = world.CreateConstraint(off);
+		RunSteps(world, 45);
+		Require(!world.IsConstraintEnabled(loose) && world.GetPose(other).Position.y < 3.0f, "A constraint made off shouldn't hold");
+	}
+
+	void TestAConstraintBreaksPastItsMaxLoad()
+	{
+		PhysicsWorld world;
+		// 2 kg hang from it, 19.6 N; it takes 30 N for a quarter of a second
+		const BodyHandle box = AddBox(world, glm::vec3(0.0f, 4.5f, 0.0f), 2.0f);
+		ConstraintDesc desc = HangFromTheWorld(box, glm::vec3(0.0f, 5.0f, 0.0f));
+		desc.BreakForce = 30.0f;
+		desc.BreakSeconds = 0.25f;
+		const ConstraintHandle hook = world.CreateConstraint(desc);
+		RunSteps(world, 60);
+		Require(world.IsConstraintEnabled(hook) && world.TakeConstraintBreaks().empty(), "Under its weight alone it should hold");
+
+		// Pulled down by another 20 N: 39.6 N in all
+		int stepsHeld = 0;
+		while (world.IsConstraintEnabled(hook) && stepsHeld < 60)
+		{
+			world.AddForce(box, glm::vec3(0.0f, -20.0f, 0.0f));
+			world.Step(Step);
+			++stepsHeld;
+		}
+		Require(stepsHeld == 15, "It should break in the step its load has been too much for a quarter of a second (" + std::to_string(stepsHeld) + " steps)");
+		const std::vector<ConstraintBreak> breaks = world.TakeConstraintBreaks();
+		Require(breaks.size() == 1 && breaks[0].Constraint == hook, "The break should be told of once");
+		Require(Near(breaks[0].Load.Force.y, 39.62f, 1.0f), "The break should tell the load that broke it " + Text(breaks[0].Load.Force));
+		Require(world.TakeConstraintBreaks().empty() && world.GetConstraintCount() == 1, "Broken, it should be off, not gone");
+		RunSteps(world, 30);
+		Require(world.GetPose(box).Position.y < 3.5f, "Broken, the box should fall");
+
+		// A torque threshold too: a weld a metre from a 1 kg box holds 9.81 N m
+		const BodyHandle arm = AddBox(world, glm::vec3(11.0f, 5.0f, 0.0f), 1.0f);
+		const ConstraintHandle weld = world.CreateConstraint(ConstraintDesc{ .Kind = EConstraintKind::Fixed,
+			.Body = arm,
+			.Space = EConstraintSpace::Local,
+			.BodyFrame = ConstraintFrame{ .Point = glm::vec3(-1.0f, 0.0f, 0.0f) },
+			.OtherFrame = ConstraintFrame{ .Point = glm::vec3(10.0f, 5.0f, 0.0f) },
+			.BreakTorque = 5.0f });
+		world.Step(Step);
+		Require(!world.IsConstraintEnabled(weld) && world.TakeConstraintBreaks().size() == 1, "Past its torque, a weld should break at once");
+	}
+
+	void TestAConstraintJoinsTwoBodies()
+	{
+		PhysicsWorld world;
+		// A chain: the upper box hangs from the world, the lower from the upper's bottom by its top
+		const BodyHandle upper = AddBox(world, glm::vec3(0.0f, 4.5f, 0.0f), 1.0f);
+		const BodyHandle lower = AddBox(world, glm::vec3(0.0f, 3.2f, 0.0f), 3.0f);
+		const ConstraintHandle top = world.CreateConstraint(HangFromTheWorld(upper, glm::vec3(0.0f, 5.0f, 0.0f)));
+		const ConstraintHandle link = world.CreateConstraint(ConstraintDesc{ .Kind = EConstraintKind::Point,
+			.Body = lower,
+			.Other = upper,
+			.Space = EConstraintSpace::Local,
+			.BodyFrame = ConstraintFrame{ .Point = glm::vec3(0.0f, 0.5f, 0.0f) },
+			.OtherFrame = ConstraintFrame{ .Point = glm::vec3(0.0f, -0.5f, 0.0f) } });
+		RunSteps(world, 300);
+
+		Require(NearVec(world.GetPose(upper).Position, glm::vec3(0.0f, 4.5f, 0.0f), 0.02f), "The upper box should hang at its rest " + Text(world.GetPose(upper).Position));
+		Require(NearVec(world.GetPose(lower).Position, glm::vec3(0.0f, 3.5f, 0.0f), 0.03f), "The lower box should hang from the upper's bottom " + Text(world.GetPose(lower).Position));
+		Require(Near(world.GetConstraintLoad(link).Force.y, 3.0f * 9.81f, 0.6f), "The link should hold the lower box's weight " + Text(world.GetConstraintLoad(link).Force));
+		Require(Near(world.GetConstraintLoad(top).Force.y, 4.0f * 9.81f, 0.8f), "The top should hold both boxes' weight " + Text(world.GetConstraintLoad(top).Force));
+
+		world.DestroyBody(upper);
+		Require(!world.HasConstraint(top) && !world.HasConstraint(link) && world.GetConstraintCount() == 0, "A body's constraints should go with it");
+	}
+
+	// Poses as numbers, to tell that two runs end exactly alike
+	std::vector<float> PosesOf(const PhysicsWorld& world, const std::vector<BodyHandle>& bodies)
+	{
+		std::vector<float> values;
+		for (const BodyHandle body : bodies)
+		{
+			const BodyPose pose = world.GetPose(body);
+			values.insert(values.end(), { pose.Position.x, pose.Position.y, pose.Position.z, pose.Rotation.w, pose.Rotation.x, pose.Rotation.y, pose.Rotation.z });
+		}
+		return values;
+	}
+
+	// A chain of five swinging over a floor, a door driven round and a slider on springs shoved back
+	// and forth, for 600 steps
+	std::vector<float> RunConstrainedScene()
+	{
+		PhysicsWorld world;
+		AddFloor(world);
+		std::vector<BodyHandle> bodies;
+		BodyHandle previous;
+		for (int link = 0; link < 5; ++link)
+		{
+			const BodyHandle box = AddBox(world, glm::vec3(0.6f * static_cast<float>(link), 8.0f - static_cast<float>(link), 0.0f), 1.0f);
+			world.CreateConstraint(ConstraintDesc{ .Kind = EConstraintKind::Point,
+				.Body = box,
+				.Other = previous,
+				.Space = EConstraintSpace::Local,
+				.BodyFrame = ConstraintFrame{ .Point = glm::vec3(0.0f, 0.5f, 0.0f) },
+				.OtherFrame = ConstraintFrame{ .Point = previous.IsValid() ? glm::vec3(0.0f, -0.5f, 0.0f) : glm::vec3(0.0f, 9.0f, 0.0f) } });
+			bodies.push_back(previous = box);
+		}
+		const glm::quat upright = glm::angleAxis(glm::half_pi<float>(), glm::vec3(0.0f, 0.0f, 1.0f));
+		const BodyHandle door = AddBox(world, glm::vec3(4.0f, 2.0f, 0.0f), 2.0f);
+		world.CreateConstraint(ConstraintDesc{ .Kind = EConstraintKind::Hinge,
+			.Body = door,
+			.Space = EConstraintSpace::Local,
+			.BodyFrame = ConstraintFrame{ .Point = glm::vec3(-0.5f, 0.0f, 0.0f), .Rotation = upright },
+			.OtherFrame = ConstraintFrame{ .Point = glm::vec3(3.5f, 2.0f, 0.0f), .Rotation = upright },
+			.Motor = ConstraintMotor{ .Mode = EConstraintMotor::Velocity, .Target = 1.5f, .MaxForce = 40.0f } });
+		bodies.push_back(door);
+		const BodyHandle drawer = AddBox(world, glm::vec3(-4.0f, 3.0f, 0.0f), 1.0f);
+		world.CreateConstraint(ConstraintDesc{ .Kind = EConstraintKind::Slider,
+			.Body = drawer,
+			.Space = EConstraintSpace::Local,
+			.OtherFrame = ConstraintFrame{ .Point = glm::vec3(-4.0f, 3.0f, 0.0f) },
+			.bLimits = true,
+			.LimitMin = -1.0f,
+			.LimitMax = 1.0f,
+			.SpringFrequency = 3.0f,
+			.SpringDamping = 0.2f });
+		bodies.push_back(drawer);
+
+		world.AddImpulse(bodies[4], glm::vec3(0.0f, 0.0f, 3.0f));
+		for (int step = 0; step < 600; ++step)
+		{
+			if (step % 100 == 0)
+			{
+				world.AddImpulse(drawer, glm::vec3(step % 200 == 0 ? 6.0f : -6.0f, 0.0f, 0.0f));
+			}
+			world.Step(Step);
+		}
+		return PosesOf(world, bodies);
+	}
+
+	void TestConstraintsGiveTheSameResultsOver600Steps()
+	{
+		const std::vector<float> first = RunConstrainedScene();
+		const std::vector<float> second = RunConstrainedScene();
+		Require(first == second, "The same constrained scene should end exactly alike after 600 steps");
+	}
+
 	// The lines of the drawing in a colour
 	std::vector<DebugLine> LinesOf(const DebugDraw& drawing, const glm::vec3& color)
 	{
@@ -647,6 +915,12 @@ namespace
 			"A point joint's anchors should both be at its pivot");
 		const bool bRope = glm::length(lines[7].From - glm::vec3(0.0f, 8.0f, 0.0f)) < 1e-4f && glm::length(lines[7].To - glm::vec3(0.0f, 5.5f, 0.0f)) < 1e-4f;
 		Require(bRope, "A distance constraint should be drawn between its two ends");
+
+		// One that is off holds nothing, so it isn't drawn
+		world.SetConstraintEnabled(ConstraintHandle{ 1 }, false);
+		DebugDraw withoutRope;
+		world.DrawDebug(withoutRope, PhysicsDebugOptions{ .bShapes = false, .bContacts = false, .bConstraints = true });
+		Require(withoutRope.GetLines().size() == 7, "A constraint switched off shouldn't be drawn");
 	}
 
 	void TestDebugViewDrawsNothingWhenOff()
@@ -689,6 +963,13 @@ int main()
 		TestHingeKeepsItsAxis();
 		TestSliderKeepsItsBodyOnTheAxis();
 		TestFixedConstraintHoldsTwoBodies();
+		TestALocalPointConstraintHoldsABodyAtItsRest();
+		TestAFixedConstraintHoldsTheTurnOfAnArm();
+		TestALocalSliderStaysWithinItsLimitsAndDrives();
+		TestAConstraintSwitchesOffAndOn();
+		TestAConstraintBreaksPastItsMaxLoad();
+		TestAConstraintJoinsTwoBodies();
+		TestConstraintsGiveTheSameResultsOver600Steps();
 		if constexpr (DebugDraw::Enabled)
 		{
 			TestDebugViewDrawsEachShape();

@@ -38,6 +38,7 @@
 #include <glm/gtc/constants.hpp>
 
 #include <algorithm>
+#include <cfloat>
 #include <cstdarg>
 #include <cstdio>
 #include <map>
@@ -538,6 +539,136 @@ namespace Nyx
 			return ToGlm(JPH::Vec3(body.GetCenterOfMassTransform() * constraintToBody.GetTranslation()));
 		}
 
+		// Where a constraint holds one of its bodies, as Jolt's settings take it: a point and two axes,
+		// in world space or the body's local space about its centre of mass
+		struct JointFrame
+		{
+			JPH::Vec3 Point = JPH::Vec3::sZero();
+			JPH::Vec3 AxisX = JPH::Vec3::sAxisX();
+			JPH::Vec3 AxisY = JPH::Vec3::sAxisY();
+		};
+
+		// A frame in a body's own space, about its position, moved to be about its centre of mass; the
+		// world's as it is
+		JointFrame ToJointFrame(const ConstraintFrame& frame, const JPH::Body& body)
+		{
+			const float length = glm::length(frame.Rotation);
+			const JPH::Quat rotation = length > 1e-6f ? ToJolt(frame.Rotation) : JPH::Quat::sIdentity();
+			const JPH::Vec3 centerOfMass = &body == &JPH::Body::sFixedToWorld ? JPH::Vec3::sZero() : body.GetShape()->GetCenterOfMass();
+			return JointFrame{ .Point = ToJolt(frame.Point) - centerOfMass, .AxisX = rotation * JPH::Vec3::sAxisX(), .AxisY = rotation * JPH::Vec3::sAxisY() };
+		}
+
+		JPH::MotorSettings ToJolt(const ConstraintMotor& motor)
+		{
+			const float limit = motor.MaxForce > 0.0f ? motor.MaxForce : FLT_MAX;
+			return JPH::MotorSettings(std::max(motor.Frequency, 0.0f), std::max(motor.Damping, 0.0f), limit, limit);
+		}
+
+		JPH::EMotorState ToJolt(EConstraintMotor mode)
+		{
+			switch (mode)
+			{
+			case EConstraintMotor::Velocity: return JPH::EMotorState::Velocity;
+			case EConstraintMotor::Position: return JPH::EMotorState::Position;
+			default:                         return JPH::EMotorState::Off;
+			}
+		}
+
+		// A hinge's or slider's; others have none
+		void ApplyMotor(JPH::TwoBodyConstraint& constraint, const ConstraintMotor& motor)
+		{
+			if (constraint.GetSubType() == JPH::EConstraintSubType::Hinge)
+			{
+				JPH::HingeConstraint& hinge = static_cast<JPH::HingeConstraint&>(constraint);
+				hinge.GetMotorSettings() = ToJolt(motor);
+				hinge.SetMotorState(ToJolt(motor.Mode));
+				hinge.SetTargetAngularVelocity(motor.Target);
+				hinge.SetTargetAngle(motor.Target);
+			}
+			else if (constraint.GetSubType() == JPH::EConstraintSubType::Slider)
+			{
+				JPH::SliderConstraint& slider = static_cast<JPH::SliderConstraint&>(constraint);
+				slider.GetMotorSettings() = ToJolt(motor);
+				slider.SetMotorState(ToJolt(motor.Mode));
+				slider.SetTargetVelocity(motor.Target);
+				slider.SetTargetPosition(motor.Target);
+			}
+		}
+
+		// The impulses a constraint gave its body 2, Nyx's Body, in its last step, in world space. Jolt
+		// keeps each part's total lambda: a vector in world space, or numbers along axes it works out
+		// from the bodies each step, worked out again here from where the step left them.
+		ConstraintLoad ImpulsesOf(const JPH::TwoBodyConstraint& constraint)
+		{
+			const JPH::Body& body1 = *constraint.GetBody1();
+			const JPH::Body& body2 = *constraint.GetBody2();
+			JPH::Vec3 force = JPH::Vec3::sZero();
+			JPH::Vec3 torque = JPH::Vec3::sZero();
+			switch (constraint.GetSubType())
+			{
+			case JPH::EConstraintSubType::Point:
+				force = static_cast<const JPH::PointConstraint&>(constraint).GetTotalLambdaPosition();
+				break;
+			case JPH::EConstraintSubType::Fixed:
+			{
+				const JPH::FixedConstraint& fixed = static_cast<const JPH::FixedConstraint&>(constraint);
+				force = fixed.GetTotalLambdaPosition();
+				torque = fixed.GetTotalLambdaRotation();
+				break;
+			}
+			case JPH::EConstraintSubType::Hinge:
+			{
+				// The rotation part holds body 2's hinge axis along body 1's, pushing along the
+				// perpendiculars of body 2's; the limits and the motor turn about body 1's
+				const JPH::HingeConstraint& hinge = static_cast<const JPH::HingeConstraint&>(constraint);
+				const JPH::Vec3 axis1 = body1.GetRotation() * hinge.GetLocalSpaceHingeAxis1();
+				const JPH::Vec3 axis2 = body2.GetRotation() * hinge.GetLocalSpaceHingeAxis2();
+				const JPH::Vec3 across = axis2.GetNormalizedPerpendicular();
+				const JPH::Vec3 acrossToo = axis2.Cross(across);
+				const JPH::Vector<2> rotation = hinge.GetTotalLambdaRotation();
+				force = hinge.GetTotalLambdaPosition();
+				torque = across.Cross(axis1) * rotation[0] + acrossToo.Cross(axis1) * rotation[1] +
+					axis1 * (hinge.GetTotalLambdaRotationLimits() + hinge.GetTotalLambdaMotor());
+				break;
+			}
+			case JPH::EConstraintSubType::Slider:
+			{
+				// Its axes are body 1's: along, and the two across that hold body 2 on the axis
+				const JPH::SliderConstraint& slider = static_cast<const JPH::SliderConstraint&>(constraint);
+				const JPH::Mat44 axes = JPH::Mat44::sRotation(body1.GetRotation()).Multiply3x3(slider.GetConstraintToBody1Matrix());
+				const JPH::Vector<2> position = slider.GetTotalLambdaPosition();
+				force = axes.GetColumn3(1) * position[0] + axes.GetColumn3(2) * position[1] +
+					axes.GetColumn3(0) * (slider.GetTotalLambdaPositionLimits() + slider.GetTotalLambdaMotor());
+				torque = slider.GetTotalLambdaRotation();
+				break;
+			}
+			case JPH::EConstraintSubType::Distance:
+			{
+				// Along the line from body 1's end to body 2's
+				const glm::vec3 end1 = AnchorOf(body1, constraint.GetConstraintToBody1Matrix());
+				const glm::vec3 end2 = AnchorOf(body2, constraint.GetConstraintToBody2Matrix());
+				const JPH::Vec3 along = ToJolt(end2 - end1).NormalizedOr(JPH::Vec3::sAxisY());
+				force = along * static_cast<const JPH::DistanceConstraint&>(constraint).GetTotalLambdaPosition();
+				break;
+			}
+			default:
+				break;
+			}
+			return ConstraintLoad{ .Force = ToGlm(force), .Torque = ToGlm(torque) };
+		}
+
+		// Jolt keeps the impulses of a constraint that is off, or whose bodies sleep, as they were the
+		// last step it held
+		ConstraintLoad LoadOf(const JPH::TwoBodyConstraint& constraint, float seconds)
+		{
+			if (seconds <= 0.0f)
+			{
+				return {};
+			}
+			const ConstraintLoad impulses = ImpulsesOf(constraint);
+			return ConstraintLoad{ .Force = impulses.Force / seconds, .Torque = impulses.Torque / seconds };
+		}
+
 		// An order that doesn't depend on which thread found which pair
 		void SortContactEvents(std::vector<ContactEvent>& events)
 		{
@@ -655,6 +786,7 @@ namespace Nyx
 			System.SetGravity(ToJolt(settings.Gravity));
 			System.SetContactListener(&Contacts);
 			MaxContactEvents = settings.MaxContactEvents;
+			MaxConstraintBreaks = settings.MaxConstraintBreaks;
 		}
 
 		JPH::BodyInterface& Bodies()
@@ -681,14 +813,30 @@ namespace Nyx
 			}
 		}
 
-		using ConstraintMap = std::map<uint32_t, JPH::Ref<JPH::TwoBodyConstraint>>;
+		struct Joint
+		{
+			JPH::Ref<JPH::TwoBodyConstraint> Constraint;
+			// ConstraintDesc's, and how long its load has been past them
+			float BreakForce = 0.0f;
+			float BreakTorque = 0.0f;
+			float BreakSeconds = 0.0f;
+			float OverloadSeconds = 0.0f;
+		};
+
+		using ConstraintMap = std::map<uint32_t, Joint>;
+
+		JPH::TwoBodyConstraint* FindConstraint(ConstraintHandle constraint) const
+		{
+			const auto found = Constraints.find(constraint.Value);
+			return found != Constraints.end() ? found->second.Constraint.GetPtr() : nullptr;
+		}
 
 		// The body's constraints, which Jolt would have point at it once it is gone
 		void RemoveConstraintsOf(const JPH::BodyID& body)
 		{
 			for (auto it = Constraints.begin(); it != Constraints.end();)
 			{
-				const JPH::TwoBodyConstraint& constraint = *it->second;
+				const JPH::TwoBodyConstraint& constraint = *it->second.Constraint;
 				const bool bJoined = constraint.GetBody1()->GetID() == body || constraint.GetBody2()->GetID() == body;
 				it = bJoined ? RemoveConstraint(it) : std::next(it);
 			}
@@ -696,12 +844,45 @@ namespace Nyx
 
 		ConstraintMap::iterator RemoveConstraint(ConstraintMap::iterator it)
 		{
-			const JPH::Ref<JPH::TwoBodyConstraint> constraint = it->second;
+			const JPH::Ref<JPH::TwoBodyConstraint> constraint = it->second.Constraint;
 			System.RemoveConstraint(constraint);
 			// What hung from it falls now, even if it was asleep
 			ActivateIfMoving(constraint->GetBody1());
 			ActivateIfMoving(constraint->GetBody2());
 			return Constraints.erase(it);
+		}
+
+		// After a step: constraints whose load has been past their thresholds long enough break,
+		// switching themselves off, in handle order
+		void BreakOverloadedConstraints(float seconds)
+		{
+			for (auto& [handle, joint] : Constraints)
+			{
+				const bool bBreakable = joint.BreakForce > 0.0f || joint.BreakTorque > 0.0f;
+				if (!bBreakable || !joint.Constraint->GetEnabled())
+				{
+					continue;
+				}
+
+				const ConstraintLoad load = LoadOf(*joint.Constraint, seconds);
+				const bool bOverloaded = (joint.BreakForce > 0.0f && glm::length(load.Force) > joint.BreakForce) ||
+					(joint.BreakTorque > 0.0f && glm::length(load.Torque) > joint.BreakTorque);
+				joint.OverloadSeconds = bOverloaded ? joint.OverloadSeconds + seconds : 0.0f;
+				// Half a step's slack, so the step that reaches the time counts despite rounding
+				if (!bOverloaded || joint.OverloadSeconds < joint.BreakSeconds - seconds * 0.5f)
+				{
+					continue;
+				}
+
+				joint.Constraint->SetEnabled(false);
+				joint.OverloadSeconds = 0.0f;
+				ActivateIfMoving(joint.Constraint->GetBody1());
+				ActivateIfMoving(joint.Constraint->GetBody2());
+				if (ConstraintBreaks.size() < MaxConstraintBreaks)
+				{
+					ConstraintBreaks.push_back(ConstraintBreak{ .Constraint = ConstraintHandle{ handle }, .Load = load });
+				}
+			}
 		}
 
 		// Jolt ends the contacts of bodies falling asleep, as it stops looking at them, and begins
@@ -779,6 +960,11 @@ namespace Nyx
 		// every time, as Jolt solves them in the order they are in
 		ConstraintMap Constraints;
 		uint32_t NextConstraint = 0;
+		// Broken since taken (TakeConstraintBreaks()), up to the most kept
+		std::vector<ConstraintBreak> ConstraintBreaks;
+		uint32_t MaxConstraintBreaks = 0;
+		// How long the last step was, to make the constraints' impulses forces
+		float LastStepSeconds = 0.0f;
 
 		struct Character
 		{
@@ -901,6 +1087,8 @@ namespace Nyx
 		{
 			LOG_WARNING("Physics: the step ran out of room ({0}); raise PhysicsSettings' limits", static_cast<uint32_t>(error));
 		}
+		Impl->LastStepSeconds = seconds;
+		Impl->BreakOverloadedConstraints(seconds);
 
 		// Jolt's threads are done: the step's contact events can be put in order
 		Impl->ContactPoints = Impl->Contacts.TakePoints();
@@ -1042,65 +1230,6 @@ namespace Nyx
 			return {};
 		}
 
-		const JPH::Vec3 point = ToJolt(desc.Point);
-		const JPH::Vec3 axis = ToJolt(NormalizedOr(desc.Axis, glm::vec3(0.0f, 1.0f, 0.0f)));
-		JPH::Ref<JPH::TwoBodyConstraintSettings> settings;
-		switch (desc.Kind)
-		{
-		case EConstraintKind::Fixed:
-		{
-			JPH::FixedConstraintSettings fixed;
-			fixed.mAutoDetectPoint = true;
-			settings = new JPH::FixedConstraintSettings(fixed);
-			break;
-		}
-		case EConstraintKind::Point:
-		{
-			JPH::PointConstraintSettings pivot;
-			pivot.mPoint1 = pivot.mPoint2 = JPH::RVec3(point);
-			settings = new JPH::PointConstraintSettings(pivot);
-			break;
-		}
-		case EConstraintKind::Hinge:
-		{
-			JPH::HingeConstraintSettings hinge;
-			hinge.mPoint1 = hinge.mPoint2 = JPH::RVec3(point);
-			hinge.mHingeAxis1 = hinge.mHingeAxis2 = axis;
-			hinge.mNormalAxis1 = hinge.mNormalAxis2 = axis.GetNormalizedPerpendicular();
-			if (desc.bLimits)
-			{
-				hinge.mLimitsMin = std::clamp(desc.LimitMin, -JPH::JPH_PI, 0.0f);
-				hinge.mLimitsMax = std::clamp(desc.LimitMax, 0.0f, JPH::JPH_PI);
-			}
-			settings = new JPH::HingeConstraintSettings(hinge);
-			break;
-		}
-		case EConstraintKind::Slider:
-		{
-			JPH::SliderConstraintSettings slider;
-			slider.mAutoDetectPoint = true;
-			slider.SetSliderAxis(axis);
-			if (desc.bLimits)
-			{
-				slider.mLimitsMin = std::min(desc.LimitMin, 0.0f);
-				slider.mLimitsMax = std::max(desc.LimitMax, 0.0f);
-			}
-			settings = new JPH::SliderConstraintSettings(slider);
-			break;
-		}
-		default:
-		{
-			// Jolt's body 1 is Other below, so its end is point 1
-			JPH::DistanceConstraintSettings distance;
-			distance.mPoint1 = JPH::RVec3(ToJolt(desc.OtherPoint));
-			distance.mPoint2 = JPH::RVec3(point);
-			distance.mMinDistance = std::max(desc.MinDistance, 0.0f);
-			distance.mMaxDistance = std::max(desc.MaxDistance, distance.mMinDistance);
-			settings = new JPH::DistanceConstraintSettings(distance);
-			break;
-		}
-		}
-
 		JPH::Ref<JPH::TwoBodyConstraint> constraint;
 		{
 			// The world, or the other body, comes first: Jolt's slider turns from body 1, which
@@ -1114,8 +1243,123 @@ namespace Nyx
 				LOG_ERROR("Physics: a constraint's body doesn't exist");
 				return {};
 			}
+
+			// Where it holds Other (Jolt's body 1) and Body (body 2): in world space both alike, where
+			// the bodies are now being the rest, or each in its body's space
+			JPH::EConstraintSpace space = JPH::EConstraintSpace::WorldSpace;
+			JointFrame frame1;
+			JointFrame frame2;
+			// In world space a fixed joint and a slider hold the bodies where they are
+			bool bAutoDetectPoint = false;
+			if (desc.Space == EConstraintSpace::Local)
+			{
+				space = JPH::EConstraintSpace::LocalToBodyCOM;
+				frame1 = ToJointFrame(desc.OtherFrame, *other);
+				frame2 = ToJointFrame(desc.BodyFrame, *body);
+			}
+			else
+			{
+				const JPH::Vec3 axis = ToJolt(NormalizedOr(desc.Axis, glm::vec3(0.0f, 1.0f, 0.0f)));
+				frame1 = frame2 = JointFrame{ .Point = ToJolt(desc.Point), .AxisX = axis, .AxisY = axis.GetNormalizedPerpendicular() };
+				frame1.Point = desc.Kind == EConstraintKind::Distance ? ToJolt(desc.OtherPoint) : frame1.Point;
+				bAutoDetectPoint = desc.Kind == EConstraintKind::Fixed || desc.Kind == EConstraintKind::Slider;
+			}
+			const bool bSpring = desc.SpringFrequency > 0.0f;
+			const JPH::SpringSettings spring(JPH::ESpringMode::FrequencyAndDamping, std::max(desc.SpringFrequency, 0.0f), std::max(desc.SpringDamping, 0.0f));
+
+			JPH::Ref<JPH::TwoBodyConstraintSettings> settings;
+			switch (desc.Kind)
+			{
+			case EConstraintKind::Fixed:
+			{
+				JPH::FixedConstraintSettings fixed;
+				fixed.mSpace = space;
+				fixed.mAutoDetectPoint = bAutoDetectPoint;
+				fixed.mPoint1 = JPH::RVec3(frame1.Point);
+				fixed.mAxisX1 = frame1.AxisX;
+				fixed.mAxisY1 = frame1.AxisY;
+				fixed.mPoint2 = JPH::RVec3(frame2.Point);
+				fixed.mAxisX2 = frame2.AxisX;
+				fixed.mAxisY2 = frame2.AxisY;
+				settings = new JPH::FixedConstraintSettings(fixed);
+				break;
+			}
+			case EConstraintKind::Point:
+			{
+				JPH::PointConstraintSettings pivot;
+				pivot.mSpace = space;
+				pivot.mPoint1 = JPH::RVec3(frame1.Point);
+				pivot.mPoint2 = JPH::RVec3(frame2.Point);
+				settings = new JPH::PointConstraintSettings(pivot);
+				break;
+			}
+			case EConstraintKind::Hinge:
+			{
+				JPH::HingeConstraintSettings hinge;
+				hinge.mSpace = space;
+				hinge.mPoint1 = JPH::RVec3(frame1.Point);
+				hinge.mHingeAxis1 = frame1.AxisX;
+				hinge.mNormalAxis1 = frame1.AxisY;
+				hinge.mPoint2 = JPH::RVec3(frame2.Point);
+				hinge.mHingeAxis2 = frame2.AxisX;
+				hinge.mNormalAxis2 = frame2.AxisY;
+				if (desc.bLimits)
+				{
+					hinge.mLimitsMin = std::clamp(desc.LimitMin, -JPH::JPH_PI, 0.0f);
+					hinge.mLimitsMax = std::clamp(desc.LimitMax, 0.0f, JPH::JPH_PI);
+				}
+				if (bSpring)
+				{
+					hinge.mLimitsSpringSettings = spring;
+				}
+				hinge.mMotorSettings = ToJolt(desc.Motor);
+				settings = new JPH::HingeConstraintSettings(hinge);
+				break;
+			}
+			case EConstraintKind::Slider:
+			{
+				JPH::SliderConstraintSettings slider;
+				slider.mSpace = space;
+				slider.mAutoDetectPoint = bAutoDetectPoint;
+				slider.mPoint1 = JPH::RVec3(frame1.Point);
+				slider.mSliderAxis1 = frame1.AxisX;
+				slider.mNormalAxis1 = frame1.AxisY;
+				slider.mPoint2 = JPH::RVec3(frame2.Point);
+				slider.mSliderAxis2 = frame2.AxisX;
+				slider.mNormalAxis2 = frame2.AxisY;
+				if (desc.bLimits)
+				{
+					slider.mLimitsMin = std::min(desc.LimitMin, 0.0f);
+					slider.mLimitsMax = std::max(desc.LimitMax, 0.0f);
+				}
+				if (bSpring)
+				{
+					slider.mLimitsSpringSettings = spring;
+				}
+				slider.mMotorSettings = ToJolt(desc.Motor);
+				settings = new JPH::SliderConstraintSettings(slider);
+				break;
+			}
+			default:
+			{
+				JPH::DistanceConstraintSettings distance;
+				distance.mSpace = space;
+				distance.mPoint1 = JPH::RVec3(frame1.Point);
+				distance.mPoint2 = JPH::RVec3(frame2.Point);
+				distance.mMinDistance = std::max(desc.MinDistance, 0.0f);
+				distance.mMaxDistance = std::max(desc.MaxDistance, distance.mMinDistance);
+				if (bSpring)
+				{
+					distance.mLimitsSpringSettings = spring;
+				}
+				settings = new JPH::DistanceConstraintSettings(distance);
+				break;
+			}
+			}
+			settings->mEnabled = desc.bEnabled;
 			constraint = settings->Create(*other, *body);
 		}
+		ApplyMotor(*constraint, desc.Motor);
 
 		Impl->System.AddConstraint(constraint);
 		// Sleeping bodies would hang where they are until something woke them
@@ -1123,7 +1367,8 @@ namespace Nyx
 		Impl->ActivateIfMoving(constraint->GetBody2());
 
 		const ConstraintHandle handle{ Impl->NextConstraint++ };
-		Impl->Constraints.emplace(handle.Value, constraint);
+		Impl->Constraints.emplace(handle.Value,
+			Implementation::Joint{ .Constraint = constraint, .BreakForce = desc.BreakForce, .BreakTorque = desc.BreakTorque, .BreakSeconds = desc.BreakSeconds });
 		return handle;
 	}
 
@@ -1139,6 +1384,57 @@ namespace Nyx
 	size_t PhysicsWorld::GetConstraintCount() const
 	{
 		return Impl->Constraints.size();
+	}
+
+	bool PhysicsWorld::HasConstraint(ConstraintHandle constraint) const
+	{
+		return Impl->FindConstraint(constraint) != nullptr;
+	}
+
+	void PhysicsWorld::SetConstraintEnabled(ConstraintHandle constraint, bool bEnabled)
+	{
+		const auto it = Impl->Constraints.find(constraint.Value);
+		if (it == Impl->Constraints.end())
+		{
+			return;
+		}
+		Implementation::Joint& joint = it->second;
+		if (bEnabled && !joint.Constraint->GetEnabled())
+		{
+			// What it held while it was last on is no guess for what it holds now
+			joint.Constraint->ResetWarmStart();
+			joint.OverloadSeconds = 0.0f;
+		}
+		joint.Constraint->SetEnabled(bEnabled);
+		Impl->ActivateIfMoving(joint.Constraint->GetBody1());
+		Impl->ActivateIfMoving(joint.Constraint->GetBody2());
+	}
+
+	bool PhysicsWorld::IsConstraintEnabled(ConstraintHandle constraint) const
+	{
+		const JPH::TwoBodyConstraint* found = Impl->FindConstraint(constraint);
+		return found != nullptr && found->GetEnabled();
+	}
+
+	void PhysicsWorld::SetConstraintMotor(ConstraintHandle constraint, const ConstraintMotor& motor)
+	{
+		if (JPH::TwoBodyConstraint* found = Impl->FindConstraint(constraint))
+		{
+			ApplyMotor(*found, motor);
+			Impl->ActivateIfMoving(found->GetBody1());
+			Impl->ActivateIfMoving(found->GetBody2());
+		}
+	}
+
+	ConstraintLoad PhysicsWorld::GetConstraintLoad(ConstraintHandle constraint) const
+	{
+		const JPH::TwoBodyConstraint* found = Impl->FindConstraint(constraint);
+		return found != nullptr ? LoadOf(*found, Impl->LastStepSeconds) : ConstraintLoad{};
+	}
+
+	std::vector<ConstraintBreak> PhysicsWorld::TakeConstraintBreaks()
+	{
+		return std::exchange(Impl->ConstraintBreaks, {});
 	}
 
 	BodyPose PhysicsWorld::GetPose(BodyHandle body) const
@@ -1429,8 +1725,13 @@ namespace Nyx
 
 		if (options.bConstraints)
 		{
-			for (const auto& [handle, constraint] : Impl->Constraints)
+			for (const auto& [handle, joint] : Impl->Constraints)
 			{
+				const JPH::Ref<JPH::TwoBodyConstraint>& constraint = joint.Constraint;
+				if (!constraint->GetEnabled())
+				{
+					continue;
+				}
 				const glm::vec3 anchor1 = AnchorOf(*constraint->GetBody1(), constraint->GetConstraintToBody1Matrix());
 				const glm::vec3 anchor2 = AnchorOf(*constraint->GetBody2(), constraint->GetConstraintToBody2Matrix());
 				drawing.Line(anchor1, anchor2, options.ConstraintColor);

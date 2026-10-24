@@ -158,20 +158,68 @@ namespace Nyx
 		Distance
 	};
 
-	// A joint between two bodies, or a body and the world. Everything in world space, as the bodies
-	// are now; that is the joint's rest.
+	// How a ConstraintDesc gives where it holds its bodies
+	enum class EConstraintSpace : uint8_t
+	{
+		// Point, OtherPoint and Axis, in world space, as the bodies are now: that is the joint's rest
+		World,
+		// BodyFrame and OtherFrame, each in its own body's space: the rest is where the two frames
+		// meet, wherever the bodies are now, and bodies away from it are pulled there
+		Local
+	};
+
+	// Where a constraint holds a body: a point, and axes turned by Rotation, in the body's own space
+	// (about its position, turning with it), or in world space for the world. The axes' X is what a
+	// hinge turns about and a slider moves along; their Y is where a hinge's angle is 0.
+	struct ConstraintFrame
+	{
+		glm::vec3 Point{ 0.0f };
+		glm::quat Rotation{ 1.0f, 0.0f, 0.0f, 0.0f };
+	};
+
+	enum class EConstraintMotor : uint8_t
+	{
+		Off,
+		// Turns or slides at Target radians or metres a second
+		Velocity,
+		// Pulls to Target radians or metres away from the rest, like a spring
+		Position
+	};
+
+	// What drives a hinge about its axis or a slider along it, against its Other
+	struct ConstraintMotor
+	{
+		EConstraintMotor Mode = EConstraintMotor::Off;
+		// Velocity: radians or metres a second; Position: radians or metres from the rest, kept within
+		// the limits
+		float Target = 0.0f;
+		// Position: how fast it pulls to the target, in Hz, and how much of the swing about it is damped
+		// (1: none past it)
+		float Frequency = 2.0f;
+		float Damping = 1.0f;
+		// The most it pushes, in N m for a hinge and N for a slider; 0: no limit
+		float MaxForce = 0.0f;
+	};
+
+	// A joint between two bodies, or a body and the world
 	struct ConstraintDesc
 	{
 		EConstraintKind Kind = EConstraintKind::Fixed;
 		BodyHandle Body;
 		// Invalid: the world
 		BodyHandle Other;
-		// Point, hinge: the pivot; distance: the end on Body
+
+		EConstraintSpace Space = EConstraintSpace::World;
+		// World space. Point, hinge: the pivot; distance: the end on Body
 		glm::vec3 Point{ 0.0f };
-		// Distance: the end on Other, or in the world
+		// World space. Distance: the end on Other, or in the world
 		glm::vec3 OtherPoint{ 0.0f };
-		// Hinge: what it turns about; slider: what it moves along
+		// World space. Hinge: what it turns about; slider: what it moves along
 		glm::vec3 Axis{ 0.0f, 1.0f, 0.0f };
+		// Local space: where it holds Body, in Body's space, and Other, in Other's (or the world's)
+		ConstraintFrame BodyFrame;
+		ConstraintFrame OtherFrame;
+
 		// Hinge and slider: limits away from the rest, in radians (Min in [-pi, 0], Max in [0, pi])
 		// or metres (Min <= 0 <= Max)
 		bool bLimits = false;
@@ -180,6 +228,20 @@ namespace Nyx
 		// Distance
 		float MinDistance = 0.0f;
 		float MaxDistance = 1.0f;
+		// Above 0: a distance's range, or a hinge's or slider's limits, are a spring of this frequency
+		// (Hz) and damping (1: no swing past them), soft rather than hard
+		float SpringFrequency = 0.0f;
+		float SpringDamping = 1.0f;
+		// Hinge and slider
+		ConstraintMotor Motor;
+
+		// Off, it holds nothing until switched on (SetConstraintEnabled())
+		bool bEnabled = true;
+		// Above 0: it breaks, switching itself off, once the force (N) or the torque (N m) it holds
+		// Body with (GetConstraintLoad()) has stayed above these for BreakSeconds (0: one step)
+		float BreakForce = 0.0f;
+		float BreakTorque = 0.0f;
+		float BreakSeconds = 0.0f;
 	};
 
 	// A constraint of a PhysicsWorld; like a BodyHandle, valid only there and until destroyed
@@ -190,6 +252,22 @@ namespace Nyx
 
 		bool IsValid() const { return Value != InvalidValue; }
 		bool operator==(const ConstraintHandle&) const = default;
+	};
+
+	// What a constraint did to its Body in the last step, in world space: the force (N) it held it
+	// with at its point, and the torque (N m) it kept it from turning with. Other got the opposite.
+	// Jolt's impulses (its lambdas) over the step, divided by the step's time.
+	struct ConstraintLoad
+	{
+		glm::vec3 Force{ 0.0f };
+		glm::vec3 Torque{ 0.0f };
+	};
+
+	// A constraint that broke in a step, and the load that broke it
+	struct ConstraintBreak
+	{
+		ConstraintHandle Constraint;
+		ConstraintLoad Load;
 	};
 
 	// What a character is made with: an upright capsule standing on its position, which walks
@@ -270,7 +348,7 @@ namespace Nyx
 		// The last step's contact points, each a cross with an arrow along its normal; only kept
 		// while asked for (PhysicsWorld::SetKeepContactPoints())
 		bool bContacts = true;
-		// Each constraint: a line between its anchor points on its two bodies, a cross at each
+		// Each constraint that is on: a line between its anchor points on its two bodies, a cross at each
 		bool bConstraints = true;
 
 		glm::vec3 StaticColor{ 0.6f, 0.6f, 0.6f };
@@ -297,6 +375,8 @@ namespace Nyx
 		uint32_t WorkerThreads = 0;
 		// Contact events kept until taken; later ones are dropped, so a world nobody listens to doesn't grow
 		uint32_t MaxContactEvents = 8192;
+		// Constraint breaks kept until taken, the same way
+		uint32_t MaxConstraintBreaks = 1024;
 	};
 
 	// Rigid bodies and their collisions, on Jolt: made, moved, pushed, joined, queried and stepped.
@@ -343,6 +423,22 @@ namespace Nyx
 		ConstraintHandle CreateConstraint(const ConstraintDesc& desc);
 		void DestroyConstraint(ConstraintHandle constraint);
 		size_t GetConstraintCount() const;
+		// Whether the constraint is there: a body's go with it
+		bool HasConstraint(ConstraintHandle constraint) const;
+
+		// Off, it holds nothing and costs almost nothing in the step, but keeps its rest; on again, it
+		// pulls its bodies back to it. Either way its bodies wake. Switching a broken one on mends it.
+		void SetConstraintEnabled(ConstraintHandle constraint, bool bEnabled);
+		bool IsConstraintEnabled(ConstraintHandle constraint) const;
+		// A hinge's or slider's motor, changed at once without making the constraint again, e.g. by
+		// a system each step; wakes its bodies
+		void SetConstraintMotor(ConstraintHandle constraint, const ConstraintMotor& motor);
+		// What it did to its Body in the last step it held: while off or asleep, as it was then (a
+		// broken one's, the load that broke it); nothing before its first step
+		ConstraintLoad GetConstraintLoad(ConstraintHandle constraint) const;
+		// The constraints that broke in the steps since the last call (ConstraintDesc::BreakForce),
+		// step by step, each step's in handle order. They are off now, not destroyed.
+		std::vector<ConstraintBreak> TakeConstraintBreaks();
 
 		BodyPose GetPose(BodyHandle body) const;
 		// Puts the body there at once, without moving it through what lies between, and stops it

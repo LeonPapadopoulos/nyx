@@ -78,6 +78,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/EnvironmentComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/NameComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/PhysicsComponents.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ConstraintComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/GroundComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/GradientNoise.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/GroundMesh.cpp
@@ -101,6 +102,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/CommandQueue.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/GameWorld.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/PhysicsBodies.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Sim/src/PhysicsConstraints.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/PhysicsPick.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/OrbitCameras.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/CharacterCommands.cpp
@@ -258,6 +260,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/EnvironmentComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/NameComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/PhysicsComponents.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ConstraintComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/GroundComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/GradientNoise.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/GroundMesh.h
@@ -286,6 +289,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/SimSystem.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/GameWorld.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/PhysicsBodies.h
+    ${NYX_ENGINE_ROOT}/Runtime/Sim/include/PhysicsConstraints.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/PhysicsPick.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/OrbitCameras.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/CharacterCommands.h

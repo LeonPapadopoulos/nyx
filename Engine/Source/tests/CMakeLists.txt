@@ -145,6 +145,15 @@ add_dependencies(NyxPhysicsBodiesTests NyxGeneratedReflection)
 set_property(TARGET NyxPhysicsBodiesTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxPhysicsBodiesTests COMMAND NyxPhysicsBodiesTests)
 
+# Constraints in the game world: held at their rest, their load read back, switched off and on,
+# breaking, two bodies joined by a third entity, made again when they or their bodies change, motors
+# driven each step, scene files, live edits and the same steps from the same scene
+add_executable(NyxConstraintTests ConstraintTests.cpp)
+target_link_libraries(NyxConstraintTests PRIVATE NyxEngine)
+add_dependencies(NyxConstraintTests NyxGeneratedReflection)
+set_property(TARGET NyxConstraintTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxConstraintTests COMMAND NyxConstraintTests)
+
 # Characters in the game world: falling, walking, steps, slopes, jumping, pushing, rays, live edits,
 # drawing between steps, the debug view, scene files and the same path from the same inputs
 add_executable(NyxCharacterTests CharacterTests.cpp)

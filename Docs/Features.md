@@ -142,6 +142,17 @@ Rigid bodies on [Jolt](https://github.com/jrouwe/JoltPhysics), while a game runs
   doesn't catch on it.
 - While the game runs, moving an entity in the editor puts its body there and stops it; changing a
   collider or rigid body makes the body again.
+- A *Constraint* joins an entity's body to another's, or to the world: *Fixed* holds them together,
+  *Point* is a ball joint, *Hinge* a door, *Slider* a drawer, *Distance* a rope or a rod. Each end is
+  a point and a rotation in its own entity's space, its *Rest*: the bodies are pulled to where the
+  two meet, wherever they are placed. Hinges and sliders can have *Limits* and a *Motor*, turning
+  at a speed or pulled to a target; limits and a rope's range can be springs. It can sit on either
+  entity or a third, naming both. *Enabled* switches it off and on without losing its rest. Given a
+  *Break Force* or *Break Torque*, it breaks once its load stays past it for *Break Seconds*,
+  switching itself off; switching it on mends it. A game reads what it held each step (its force
+  and torque, on the entity's `ConstraintStateComponent`) and which broke
+  (`SimContext::Constraints`). While the game runs, editing it makes it again; switching it and its
+  motor reach it as they are.
 - Moving bodies are drawn between their last two steps, so they move smoothly on monitors faster
   than the 60 steps a second; paused, where the last step left them. Kinematic bodies too, when a
   game's system moves them before the physics step.
@@ -246,8 +257,8 @@ Code can draw lines over a world to show what it does: forces, anchors, bounds, 
   by how it moves (static grey, kinematic blue, awake green, asleep dark green, sensors yellow),
   a mesh's triangles' edges (a mesh of more than 8192 triangles as its bounds, so it doesn't crowd
   out everything else), characters' capsules in orange, the
-  last step's contact points with their normals in red, and constraints as pink lines between
-  their anchors. It changes with the next step, so while paused, with Step. A cyan cross and arrow
+  last step's contact points with their normals in red, and constraints that are on as pink lines
+  between their anchors. It changes with the next step, so while paused, with Step. A cyan cross and arrow
   show where the cursor points at a body, and the surface's normal there ([Cursor rays](#cursor-rays)).
 
 ## Profiling

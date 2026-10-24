@@ -57,7 +57,10 @@ engine is [Jolt](https://github.com/jrouwe/JoltPhysics) (`Dependencies/JoltPhysi
 - **Constraints** (`CreateConstraint`, `DestroyConstraint`): fixed, point, hinge (an axis, optional
   angle limits), slider (an axis, optional limits), distance (least and greatest). Between two
   bodies, or a body and the world; points and axes in world space, where the bodies are now being
-  the rest. A body's constraints go when it does. Handles are opaque, like body handles.
+  the rest, or each end in its own body's space. Limits can be springs, hinges and sliders can have
+  motors; a constraint can be switched off and on, reports the load it held each step, and breaks
+  past a force or torque. A body's constraints go when it does. Handles are opaque, like body
+  handles. See [Physics constraints](physics-constraints-and-materials.md).
 - **Characters** (`CreateCharacter`, `MoveCharacter`, `TeleportCharacter`, `DestroyCharacter`) on
   Jolt's `CharacterVirtual`: an upright capsule standing on its position (its feet), which moves by
   collision checks when asked instead of in the step. `MoveCharacter(move, seconds)` turns its
@@ -117,7 +120,9 @@ box is thrown up, not when it slides; a distance constraint keeps its range, a h
 limits, a slider its body on its axis, a fixed constraint two bodies together. The debug view: a
 box in 12 lines, a sphere in 72 and a capsule in 100, each its size; a colour for each motion;
 contacts after a box lands, on the floor along its normal, and none unless kept; constraints
-between their anchors; nothing with every part off.
+between their anchors, none for one switched off; nothing with every part off. The constraints in
+each body's own space, their loads, motors, switching and breaking: [Physics
+constraints](physics-constraints-and-materials.md#tests).
 
 ## In the game world
 
@@ -125,7 +130,9 @@ between their anchors; nothing with every part off.
   `BoxColliderComponent`, `SphereColliderComponent`, `CapsuleColliderComponent`,
   `MeshColliderComponent` (the triangles of the entity's `RuntimeMeshComponent`, always static), a
   `RigidBodyComponent` that makes the body move (dynamic, or kinematic), and an optional
-  `PhysicsMaterialComponent`. A collider alone is a static body. Small parts that combine, not one
+  `PhysicsMaterialComponent`. A `ConstraintComponent` joins two entities' bodies, or one's and the
+  world, kept in step by `PhysicsConstraints` ([Physics
+  constraints](physics-constraints-and-materials.md#in-the-game-world)). A collider alone is a static body. Small parts that combine, not one
   component with a shape switch; one collider an entity (box over sphere over capsule over mesh).
 - **The entity's transform** places the body, and its scale scales the shape: a box by each axis,
   a sphere by the largest, a capsule's radius by X and Z and its length by Y, a mesh's vertices by
@@ -236,8 +243,7 @@ between their anchors; nothing with every part off.
 - Heightfields (Jolt's `HeightFieldShape`), cheaper than a mesh for a grid ground, if the ground
   stays one.
 
-- Constraints as components.
-- Path constraints, motors, springs on limits.
+- Jolt's other constraints: cone, swing-twist, six degrees of freedom, path, gears, pulleys.
 - Characters meeting each other's capsules (Jolt's `CharacterVsCharacterCollision`), standing on
   moving characters, crouching (a shape change that checks for room), the push force and mass as
   component values.

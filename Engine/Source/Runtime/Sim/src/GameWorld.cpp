@@ -27,9 +27,10 @@ namespace Nyx
 
 		Bodies.SyncBeforeStep(World, Physics, seconds);
 		RefreshEntityGuidLookup(World, Guids);
+		Constraints.SyncBeforeStep(World, Physics, Bodies, Guids);
 		ApplyMoveCharacterCommands(World, Guids, StepCommands);
 
-		const SimContext context{ World, step, Debug, Physics, Bodies, Guids, StepCommands };
+		const SimContext context{ World, step, Debug, Physics, Bodies, Guids, StepCommands, Constraints };
 		RunStage(ESimStage::BeforePhysics, context);
 
 		// Where the systems said they want to go, before the bodies move: they meet the characters
@@ -37,6 +38,7 @@ namespace Nyx
 		Bodies.MoveCharacters(World, Physics, seconds);
 		Physics.Step(seconds);
 		Bodies.WriteBackAfterStep(World, Physics);
+		Constraints.ReadBackAfterStep(World, Physics);
 		if (PhysicsDebugView)
 		{
 			Physics.DrawDebug(Debug, *PhysicsDebugView);

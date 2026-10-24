@@ -6,6 +6,7 @@
 #include "EntityGuidLookup.h"
 #include "FixedStepClock.h"
 #include "PhysicsBodies.h"
+#include "PhysicsConstraints.h"
 #include "PhysicsWorld.h"
 #include "SimSystem.h"
 
@@ -24,14 +25,16 @@ namespace Nyx
 	// 2. bodies and characters follow the physics components and the transforms set since the last
 	//    step (PhysicsBodies);
 	// 3. the lookup from guid to entity is made again, in the memory it had (SimContext::Guids);
-	//    the players' MoveCharacterCommands go into their characters (ApplyMoveCharacterCommands());
+	//    constraints follow their components and the bodies (PhysicsConstraints); the players'
+	//    MoveCharacterCommands go into their characters (ApplyMoveCharacterCommands());
 	// 4. the systems of ESimStage::BeforePhysics, in the order they were added, e.g. to change
 	//    where the characters go (CharacterComponent::DesiredMove);
 	// 5. the characters walk, and write their transforms (PhysicsBodies::MoveCharacters());
 	// 6. the physics step;
 	// 7. dynamic bodies write their poses into their transforms, and where they were before into
-	//    their PreviousTransformComponents, as do kinematic bodies the systems moved; the physics
-	//    debug view is drawn, if on;
+	//    their PreviousTransformComponents, as do kinematic bodies the systems moved; constraints
+	//    write what they held into their ConstraintStateComponents, and those that broke switch off;
+	//    the physics debug view is drawn, if on;
 	// 8. the systems of ESimStage::AfterPhysics, in the order they were added.
 	class GameWorld
 	{
@@ -51,6 +54,7 @@ namespace Nyx
 		PhysicsWorld& GetPhysics() { return Physics; }
 		const PhysicsWorld& GetPhysics() const { return Physics; }
 		const PhysicsBodies& GetBodies() const { return Bodies; }
+		const PhysicsConstraints& GetConstraints() const { return Constraints; }
 
 		// Draws the physics world into the debug drawing after each physics step, as the options say
 		// (PhysicsWorld::DrawDebug()), from the next step on; none, the default, draws nothing
@@ -87,6 +91,7 @@ namespace Nyx
 		DebugDraw Debug;
 		PhysicsWorld Physics;
 		PhysicsBodies Bodies;
+		PhysicsConstraints Constraints;
 		EntityGuidLookup Guids;
 		// Added since the last step, and the ones the step running now applies
 		CommandQueue Commands;
