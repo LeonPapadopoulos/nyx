@@ -1,6 +1,7 @@
 // The surface domain: a material for meshes implements ISurface, and the engine's entry points
 // below are generic over it. ShaderCompiler::CompileMaterial() specialises them with the
-// material's struct.
+// material's struct. A material that moves its vertices implements ISurfaceVertex too, and is
+// drawn with the displaced* entry points, which run its vertex function.
 //
 // Bindings follow the bindless plan: set 0 is global and push constants belong to the draw
 // (nyx.bindless), set 1 belongs to the view (nyx.view); a material sees both. The pixel is lit by
@@ -134,6 +135,44 @@ public interface ISurface
     SurfaceOutput shade(SurfaceInput input);
 }
 
+// What a material's vertex function (ISurfaceVertex) is given, and moves: one vertex of its mesh,
+// before it is placed in the world
+public struct SurfaceVertex
+{
+    // Where the vertex is, and its normal, in the mesh's own space: moved here, a vertex follows the
+    // entity's and the instance's turn and scale, e.g. a part shrunk towards a point of the mesh.
+    // The normal needn't stay of unit length.
+    public float3 Position;
+    public float3 Normal;
+    // Added to where the vertex lands in the world, in metres, after its transform: for moves that
+    // keep their size and direction however the entity is turned or scaled, such as a wind's. Zero
+    // to begin with.
+    public float3 OffsetWS;
+
+    // What it may read
+    public float3 Color;
+    public float2 UV;
+    // The mesh's own numbers at the vertex (SurfaceInput.Custom)
+    public float4 Custom;
+    // The instance's, or the entity's where it is drawn once (SurfaceInput.InstanceCustom)
+    public float4 InstanceCustom;
+    // From the mesh's space to the world: the draw's transform after the instance's
+    public float4x4 ObjectToWorld;
+    // Seconds (View.Time): the world's time, standing still while a game is paused
+    public float Time;
+}
+
+// A material that moves its vertices, such as one that sways in the wind or grows, implements
+// this beside ISurface; its fields are its parameters, as shade()'s are. displace() runs wherever
+// the mesh is drawn: the scene, the shadows it casts, the editor's picking and selection outline,
+// so all of them move together. It may move a vertex at most the material's MaxVertexOffset
+// (MaterialOptions) away from where it was, in metres in the world: the renderer widens the
+// bounds it culls by that much, and a mesh moved farther may be left out while in view.
+public interface ISurfaceVertex
+{
+    void displace(inout SurfaceVertex vertex);
+}
+
 namespace nyx
 {
     // A normal map's sample (green up, as glTF's are) as a normal in world space; `scale` makes
@@ -203,31 +242,92 @@ float4x4 instanceTransform(VertexInput input)
     return transpose(float4x4(input.Instance0, input.Instance1, input.Instance2, input.Instance3));
 }
 
-// What surfaceVertex does, for other entry points that place meshes the same way. (Called from
-// another entry point, an entry point crashes Slang 2026.1 when compiled through its API.)
-public VertexOutput transformSurfaceVertex(VertexInput input)
+// The draw's transform after the instance's; an entity drawn once has the identity, which leaves
+// the draw's as it is, exactly
+float4x4 objectToWorld(VertexInput input)
 {
-    // The draw's transform after the instance's; an entity drawn once has the identity, which
-    // leaves the draw's as it is, exactly
-    const float4x4 model = mul(Object.Model, instanceTransform(input));
-    float4 positionWS = mul(model, float4(input.Position, 1.0));
+    return mul(Object.Model, instanceTransform(input));
+}
+
+// The instance's custom numbers: the stream's and the draw's own, one of which is zero. An entity
+// drawn once from the identity buffer, as the editor's passes draw it, has its numbers in the
+// draw's.
+float4 instanceCustom(VertexInput input)
+{
+    return input.InstanceCustom + Object.InstanceCustom;
+}
+
+// The vertex placed in the world by `model`, at `position` with `normal` in the mesh's space, then
+// moved by `offsetWS` in the world
+VertexOutput placeSurfaceVertex(VertexInput input, float4x4 model, float3 position, float3 normal, float3 offsetWS)
+{
+    float4 positionWS = mul(model, float4(position, 1.0));
+    positionWS.xyz += offsetWS;
     VertexOutput output;
     output.Position = mul(View.ViewProjection, positionWS);
     output.Color = input.Color;
     output.UV = input.UV;
-    output.NormalWS = mul(normalMatrix(model), input.Normal);
+    output.NormalWS = mul(normalMatrix(model), normal);
     // Tangents lie along the surface, so they follow the model itself
     output.TangentWS = float4(mul((float3x3)model, input.Tangent.xyz), input.Tangent.w);
     output.PositionWS = positionWS.xyz;
     output.Custom = input.Custom;
-    output.InstanceCustom = input.InstanceCustom;
+    output.InstanceCustom = instanceCustom(input);
     return output;
+}
+
+// What surfaceVertex does, for other entry points that place meshes the same way. (Called from
+// another entry point, an entry point crashes Slang 2026.1 when compiled through its API.)
+public VertexOutput transformSurfaceVertex(VertexInput input)
+{
+    return placeSurfaceVertex(input, objectToWorld(input), input.Position, input.Normal, float3(0.0));
+}
+
+// The vertex as the material's vertex function moves it, the material loaded from the material
+// buffer at the draw's offset
+SurfaceVertex displaceSurfaceVertex<S : ISurfaceVertex>(VertexInput input, float4x4 model)
+{
+    SurfaceVertex vertex;
+    vertex.Position = input.Position;
+    vertex.Normal = input.Normal;
+    vertex.OffsetWS = float3(0.0);
+    vertex.Color = input.Color;
+    vertex.UV = input.UV;
+    vertex.Custom = input.Custom;
+    vertex.InstanceCustom = instanceCustom(input);
+    vertex.ObjectToWorld = model;
+    vertex.Time = View.Time;
+    S material = MaterialBuffer.Load<S>(Object.MaterialOffset);
+    material.displace(vertex);
+    return vertex;
 }
 
 [shader("vertex")]
 public VertexOutput surfaceVertex(VertexInput input)
 {
     return transformSurfaceVertex(input);
+}
+
+// surfaceVertex for a material with a vertex function: the scene pass's, and the editor's
+// picking and selection masks' with their own fragment shaders
+[shader("vertex")]
+public VertexOutput displacedSurfaceVertex<S : ISurfaceVertex>(VertexInput input)
+{
+    const float4x4 model = objectToWorld(input);
+    const SurfaceVertex vertex = displaceSurfaceVertex<S>(input, model);
+    return placeSurfaceVertex(input, model, vertex.Position, vertex.Normal, vertex.OffsetWS);
+}
+
+// What a material with a vertex function casts into the shadow map (VulkanShadows), moved as the
+// scene pass draws it
+[shader("vertex")]
+public float4 displacedShadowVertex<S : ISurfaceVertex>(VertexInput input) : SV_Position
+{
+    const float4x4 model = objectToWorld(input);
+    const SurfaceVertex vertex = displaceSurfaceVertex<S>(input, model);
+    float4 positionWS = mul(model, float4(vertex.Position, 1.0));
+    positionWS.xyz += vertex.OffsetWS;
+    return nyx::shadowCasterPosition(positionWS);
 }
 
 // A pixel as its material and the light make it: the light it sends back, the sun's and the sky's

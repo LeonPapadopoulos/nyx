@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace Nyx::Tests
@@ -27,6 +28,7 @@ namespace Nyx
 	class ShaderPrograms;
 	class VulkanContext;
 	class VulkanDebugLines;
+	struct ObjectConstants;
 	struct RenderObject;
 	struct RenderWorld;
 	struct SceneViewInstance;
@@ -137,6 +139,11 @@ namespace Nyx
 		// The pipelines of the shaders `uses()` says changed ("Grid": Grid.vert or Grid.frag), made
 		// again; the GPU must be done with the old ones
 		void RebuildPipelines(const std::function<bool(const char* shader)>& uses, const SceneViewInstance& firstView);
+		// The picking pipeline, or a selection mask's (the visible part, or the whole silhouette),
+		// with another vertex shader and the pass's own fragment shader: a material's vertex
+		// function's (displacedSurfaceVertex). For the first view's passes, as CreatePipelines().
+		vk::raii::Pipeline MakePickingPipeline(const SceneViewInstance& firstView, const std::vector<uint32_t>& vertexSpirv, const std::string& entryPoint) const;
+		vk::raii::Pipeline MakeSelectionMaskPipeline(const SceneViewInstance& firstView, const std::vector<uint32_t>& vertexSpirv, const std::string& entryPoint, bool bVisibleOnly) const;
 
 		// The renderer's world, which the selection is in; discards the selection
 		void SetWorld(const Nyx::Registry* world);
@@ -210,9 +217,18 @@ namespace Nyx
 		void DrawSelectionOutline(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
 
 		void DrawPickingPass(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd);
-		// The object's mesh with whatever pipeline is bound: once, or at every instance of its cells,
-		// each section with the faces its material draws (SetMeshFaces())
-		void DrawObjectMesh(const RenderWorld& world, const RenderObject& obj, vk::raii::CommandBuffer& cmd);
+		// The passes that draw the objects' meshes
+		enum class EMeshPass : uint8_t
+		{
+			Picking,
+			SelectionMaskVisible,
+			SelectionMaskFull,
+		};
+		// The object's mesh for `pass`: once, or at every instance of its cells, each section with the
+		// faces its material draws (SetMeshFaces()) and with the pass's pipeline, or its material's
+		// own for its vertex function, given the material's offset in `object`; an object drawn once
+		// with its custom numbers there too. `bound` is the pipeline bound, kept up to date.
+		void DrawObjectMesh(const RenderWorld& world, const RenderObject& obj, ObjectConstants object, EMeshPass pass, vk::Pipeline& bound, vk::raii::CommandBuffer& cmd);
 		void ResolvePickRequest(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd);
 
 		void CreateImage(

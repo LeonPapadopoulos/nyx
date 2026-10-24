@@ -152,8 +152,8 @@ Rigid bodies on [Jolt](https://github.com/jrouwe/JoltPhysics), while a game runs
   rays see it unless told to leave it out. Moving it in the editor while the game runs puts it
   there; changing its shape makes it again.
 - `Assets/Scenes/CharacterTest.nyxscene` has a character among ramps, steps and crates.
-- `Assets/Scenes/GroundTest.nyxscene` has the character, crates and an orbit camera in a valley
-  ([The ground](#the-ground)).
+- `Assets/Scenes/GroundTest.nyxscene` has the character, crates and an orbit camera in a valley,
+  in grass that sways in the wind ([The ground](#the-ground)).
 - The editor doesn't simulate: Play shows physics.
 
 ## Input
@@ -495,7 +495,7 @@ Only the front of a triangle is drawn, the side its normal faces: half of a clos
 triangles cost nothing.
 
 - Every mesh Nyx makes winds counter-clockwise seen from its front, as glTF's do: the built-in cube,
-  sphere, capsule and plane, a ground, a scatter's copies.
+  sphere, capsule, plane and crossed quads, a ground, a scatter's copies.
 - An entity mirrored by a negative scale still shows its outside, and is picked and outlined there.
 - A **two-sided** material draws both sides, for single sheets such as leaves, blades of grass and
   petals: tick *Two-Sided* under *Material* in the material editor, or write `TwoSided = true` in
@@ -661,12 +661,30 @@ A game can hand its materials numbers of its own, for a sway, a growth, a tint f
   one material serves a scatter's copies and a single entity alike.
 - Every surface material reads them (`SurfaceInput.Custom`, `SurfaceInput.InstanceCustom`), and
   the time, `View.Time`, which stands still while the game is paused.
+- **A vertex function**: a material can move its vertices (`ISurfaceVertex` in
+  `nyx/surface.slang`), in the mesh's space or in the world, by its values, these numbers and the
+  time; a project's material as well as the engine's. The mesh moves alike in the scene, its
+  shadow, and the editor's picking and selection outline. The material's *Max Vertex Offset*
+  (under *Material* in the material editor) says how far it moves a vertex at most, and what is
+  culled is judged by bounds that much larger.
+- **Wind**: `Materials/VertexColorWind.nyxmat` (and `VertexColorWindTwoSided.nyxmat` for single
+  sheets) draws vertex colours that sway: each vertex as far as its custom x says (0 at a foot, 1
+  at a tip), each copy at its own phase, gusts crossing the ground along the wind. Its *Wind*
+  values: direction, strength, gustiness, gust frequency and length, flutter and its frequency.
+  The built-in *Crossed Quads* mesh (`Meshes/CrossedQuads.nyxmesh`) carries the weights; the
+  ground test scene has a scatter of them swaying round the flat place.
 - Tests: `NyxMeshTests` (the vertex as the GPU reads it, the channels back from half precision,
   every attribute where it belongs; zero in every mesh Nyx makes or imports), `NyxScatterTests`
   (every copy's number from 0 up to 1, the same every time and cell by cell, spread evenly),
   `NyxVertexDataGpuTests` (a mesh's channels, each instance's and an entity's reach the material, an
   entity's changed every frame without an upload, two entities in one draw each with its own; the
-  time stands still while paused and moves on by a step).
+  time stands still while paused and moves on by a step; a mesh moved by its material's vertex
+  function drawn, shadowed, picked and outlined where an unmoved one put there is; bounds widened
+  so a mesh moved into view isn't culled, and culled without; the function gets each number, in
+  picking too; it stands still while paused), `NyxShaderCompilerTests` (a material with a vertex
+  function gets its two entry points, valid, reading the numbers it uses; one without gets
+  neither), `NyxMaterialTests` (the option read and inherited), `NyxMeshTests` (the crossed
+  quads), `NyxGroundTests` (the test scene's grass).
 
 ## The ground
 
@@ -694,7 +712,9 @@ decided: by default a valley about 128 by 128 m, nearly flat in the middle, its 
   rays, so the ground can become chunks or voxels later.
 - Making the default ground takes about 21 ms in a Debug build.
 - `Assets/Scenes/GroundTest.nyxscene` (written by `NyxGroundTests --write-scene`): the default
-  ground, crates on the flat place and up the valley's side, the character and an orbit camera.
+  ground, crates on the flat place and up the valley's side, the character and an orbit camera,
+  and grass round the flat place: crossed quads scattered over the ground, swaying in the wind
+  ([Materials' own numbers](#materials-own-numbers)).
 - Tests: `NyxGroundTests` (the same heights every time, to the bit and as when written; smooth;
   the mesh valid, sized as asked, at the heights, its normals up; steep ground stone, low flat
   ground grass; the post-load step makes the mesh, nothing again for the same values, a new

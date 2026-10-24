@@ -27,6 +27,10 @@ namespace Nyx
 	// The box around both
 	BoundingBox UniteBoxes(const BoundingBox& a, const BoundingBox& b);
 
+	// The box `margin` larger on every side, e.g. by how far a material's vertex function moves a
+	// vertex at most
+	BoundingBox ExpandBox(const BoundingBox& box, float margin);
+
 	// What a camera sees: six planes facing inwards (left, right, bottom, top, and the two of the
 	// depth range), each of unit normal, so a point p is on its inner side where
 	// dot(plane.xyz, p) + plane.w >= 0. Made from the camera's view and projection; what is wholly

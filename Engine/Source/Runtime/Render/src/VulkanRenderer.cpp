@@ -313,7 +313,24 @@ namespace Nyx
 			[this]
 			{
 				return GetPickingRenderPass();
-			});
+			},
+			// What a material's vertex function needs to move its meshes in the other passes too
+			Nyx::VulkanMaterials::VertexFunctionPasses{ .Shadow = [this](const Nyx::CompiledEntryPoint& vertex)
+				{
+					return Shadows.MakeCasterPipeline(vertex.Spirv, vertex.Name);
+				},
+				.Picking = [this](const Nyx::CompiledEntryPoint& vertex)
+				{
+					return Overlays.MakePickingPipeline(SceneViews.front(), vertex.Spirv, vertex.Name);
+				},
+				.SelectionMaskVisible = [this](const Nyx::CompiledEntryPoint& vertex)
+				{
+					return Overlays.MakeSelectionMaskPipeline(SceneViews.front(), vertex.Spirv, vertex.Name, true);
+				},
+				.SelectionMaskFull = [this](const Nyx::CompiledEntryPoint& vertex)
+				{
+					return Overlays.MakeSelectionMaskPipeline(SceneViews.front(), vertex.Spirv, vertex.Name, false);
+				} });
 	}
 
 	void VulkanRenderer::Shutdown()
@@ -1013,6 +1030,11 @@ namespace Nyx
 		return &CapsuleMesh;
 	}
 
+	Mesh* VulkanRenderer::GetCrossedQuadsMesh()
+	{
+		return &CrossedQuadsMesh;
+	}
+
 	Mesh* VulkanRenderer::GetPlaneMesh()
 	{
 		return &PlaneMesh;
@@ -1329,20 +1351,30 @@ namespace Nyx
 					}
 					obj.CellCount = static_cast<uint32_t>(instances->Cells.size());
 				}
-				obj.WorldBounds = TransformBox(BoundingBox{ obj.LocalBoundsMin, obj.LocalBoundsMax }, drawTransform);
+				obj.FirstSection = static_cast<uint32_t>(world.Sections.size());
+				float maxVertexOffset = 0.0f;
+				for (const Nyx::MeshSection& section : mesh->GetSections())
+				{
+					Material* material = Nyx::GetSlotMaterial(meshRenderer, section.MaterialSlot);
+					world.Sections.push_back(RenderSection{ .FirstIndex = section.FirstIndex, .IndexCount = section.IndexCount, .MaterialAsset = material });
+					maxVertexOffset = std::max(maxVertexOffset, material ? material->MaxVertexOffset : 0.0f);
+				}
+				obj.SectionCount = static_cast<uint32_t>(world.Sections.size()) - obj.FirstSection;
+
+				// Culled by bounds as far out as its materials' vertex functions may move it, every cell
+				// alike, so nothing is left out while a part of it is in view
+				obj.WorldBounds = ExpandBox(TransformBox(BoundingBox{ obj.LocalBoundsMin, obj.LocalBoundsMax }, drawTransform), maxVertexOffset);
+				if (maxVertexOffset > 0.0f)
+				{
+					for (uint32_t cell = obj.FirstCell; cell < obj.FirstCell + obj.CellCount; ++cell)
+					{
+						world.Cells[cell].Bounds = ExpandBox(world.Cells[cell].Bounds, maxVertexOffset);
+					}
+				}
 				if (obj.bCastShadows)
 				{
 					world.CasterBounds = world.CasterBounds ? UniteBoxes(*world.CasterBounds, obj.WorldBounds) : obj.WorldBounds;
 				}
-
-				obj.FirstSection = static_cast<uint32_t>(world.Sections.size());
-				for (const Nyx::MeshSection& section : mesh->GetSections())
-				{
-					world.Sections.push_back(RenderSection{ .FirstIndex = section.FirstIndex,
-						.IndexCount = section.IndexCount,
-						.MaterialAsset = Nyx::GetSlotMaterial(meshRenderer, section.MaterialSlot) });
-				}
-				obj.SectionCount = static_cast<uint32_t>(world.Sections.size()) - obj.FirstSection;
 
 				// Dense picking ID: 1..N, with 0 reserved for "nothing"
 				world.PickingIdToEntity.push_back(entity);
@@ -1568,6 +1600,7 @@ namespace Nyx
 			BindSceneSets(view, cmd);
 			const Mesh* boundMesh = nullptr;
 			vk::Buffer boundInstances;
+			vk::Pipeline boundPipeline = Shadows.GetCasterPipeline();
 			for (const SceneViewDraw& draw : shadows.Draws[cascade])
 			{
 				const RenderObject& obj = world.Objects[draw.Object];
@@ -1581,14 +1614,22 @@ namespace Nyx
 				}
 
 				// The cascade in CustomData2.x; each section with the faces its material draws, so a
-				// two-sided one casts from both sides
+				// two-sided one casts from both sides, and with its vertex function, if it has one,
+				// so it casts as it is drawn
 				ObjectConstants object{};
 				object.Model = draw.Model;
 				object.CustomData2 = glm::vec2(static_cast<float>(cascade), 0.0f);
-				cmd.pushConstants<ObjectConstants>(*ScenePipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, { object });
 				for (uint32_t index = obj.FirstSection; index < obj.FirstSection + obj.SectionCount; ++index)
 				{
 					const RenderSection& section = world.Sections[index];
+					const vk::Pipeline pipeline = section.MaterialAsset->ShadowPipeline ? **section.MaterialAsset->ShadowPipeline : Shadows.GetCasterPipeline();
+					if (pipeline != boundPipeline)
+					{
+						cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline);
+						boundPipeline = pipeline;
+					}
+					object.MaterialOffset = section.MaterialAsset->MaterialOffset;
+					cmd.pushConstants<ObjectConstants>(*ScenePipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, { object });
 					SetMeshFaces(cmd, section.MaterialAsset->bTwoSided, obj.bMirrored);
 					cmd.drawIndexed(section.IndexCount, draw.InstanceCount, section.FirstIndex, 0, draw.FirstInstance);
 				}
@@ -2130,6 +2171,10 @@ namespace Nyx
 		PlaneMesh.Release();
 		PlaneMesh.SetLocalBounds(glm::vec3(-0.5f, 0.0f, -0.5f), glm::vec3(0.5f, 0.0f, 0.5f));
 		PlaneMesh.Upload(Context, Nyx::MakePlane(1.0f));
+
+		CrossedQuadsMesh.Release();
+		CrossedQuadsMesh.SetLocalBounds(glm::vec3(-0.3f, 0.0f, -0.3f), glm::vec3(0.3f, 1.0f, 0.3f));
+		CrossedQuadsMesh.Upload(Context, Nyx::MakeCrossedQuads(0.6f, 1.0f, 3));
 	}
 
 	void VulkanRenderer::StartLiveShaderReload()
@@ -2303,6 +2348,10 @@ namespace Nyx
 			DebugLines.CreatePipeline(SceneViews.front());
 		}
 		Overlays.RebuildPipelines(uses, SceneViews.front());
+		if (uses("Picking") || uses("SelectionMask"))
+		{
+			Materials.RebuildVertexFunctionPipelines();
+		}
 		if (uses("Painter") || changed.contains("PainterBin.comp"))
 		{
 			UI.RebuildPainterPipelines();

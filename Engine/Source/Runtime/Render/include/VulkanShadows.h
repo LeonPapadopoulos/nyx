@@ -7,6 +7,8 @@
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <string>
+#include <vector>
 
 namespace Nyx
 {
@@ -24,7 +26,9 @@ namespace Nyx
 	//
 	// What casts is drawn by the renderer between BeginCascade() and EndCascade(), with the casters'
 	// pipeline (Shadow.slang's shadowVertex): depth only, reversed as the scene's, the faces the
-	// material draws (SetMeshFaces()), so a two-sided material casts from both sides.
+	// material draws (SetMeshFaces()), so a two-sided material casts from both sides. A material
+	// with a vertex function casts with a pipeline of its own, made alike from its vertex shader
+	// (MakeCasterPipeline()), so its shadow moves as it does.
 	class VulkanShadows
 	{
 	public:
@@ -50,6 +54,11 @@ namespace Nyx
 		// Once the first view is made, and again when Shadow.slang changed: the casters' pipeline,
 		// and the debug view's for the views' picture pass, which every view's is like
 		void CreatePipelines(vk::RenderPass picturePass);
+		// A casters' pipeline with another vertex shader: a material's vertex function's
+		// (displacedShadowVertex), after Initialize()
+		vk::raii::Pipeline MakeCasterPipeline(const std::vector<uint32_t>& vertexSpirv, const std::string& entryPoint) const;
+		// The casters' own pipeline, to go back to after a material's
+		vk::Pipeline GetCasterPipeline() const { return *CasterPipeline; }
 
 		// While no frame is in flight and before this frame's draws are recorded: the map `size`
 		// texels a side, made again (and put into a new slot) when that changed

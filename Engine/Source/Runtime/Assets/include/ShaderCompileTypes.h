@@ -69,10 +69,14 @@ namespace Nyx
 
 	// Where materials of one kind plug in: a module of the shader library and its entry points.
 	// Entry points that are generic over the material are specialised with the material's struct.
+	// A material that also implements the domain's vertex interface, a vertex function, gets the
+	// vertex entry points as well, which run it; the others don't.
 	struct ShaderDomain
 	{
 		std::string Module;                   // as imported, e.g. "nyx.surface"
 		std::vector<std::string> EntryPoints; // e.g. "surfaceVertex", "surfaceFragment", "decalFragment", "decalPickingFragment"
+		std::string VertexInterface;          // e.g. "ISurfaceVertex"; empty: none
+		std::vector<std::string> VertexEntryPoints; // e.g. "displacedSurfaceVertex", "displacedShadowVertex"
 
 		static ShaderDomain Surface();
 	};

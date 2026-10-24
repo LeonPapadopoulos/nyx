@@ -45,6 +45,11 @@ namespace Nyx
 		return BoundingBox{ movedCenter - movedHalfSize, movedCenter + movedHalfSize };
 	}
 
+	BoundingBox ExpandBox(const BoundingBox& box, float margin)
+	{
+		return BoundingBox{ box.Min - glm::vec3(margin), box.Max + glm::vec3(margin) };
+	}
+
 	BoundingBox UniteBoxes(const BoundingBox& a, const BoundingBox& b)
 	{
 		return BoundingBox{ glm::min(a.Min, b.Min), glm::max(a.Max, b.Max) };

@@ -34,7 +34,7 @@ namespace Nyx
 		CreateOutlineDescriptorSetLayout();
 	}
 
-	void VulkanEditorOverlays::DrawObjectMesh(const RenderWorld& world, const RenderObject& obj, vk::raii::CommandBuffer& cmd)
+	void VulkanEditorOverlays::DrawObjectMesh(const RenderWorld& world, const RenderObject& obj, ObjectConstants object, EMeshPass pass, vk::Pipeline& bound, vk::raii::CommandBuffer& cmd)
 	{
 		cmd.bindVertexBuffers(0, { obj.MeshAsset->GetVertexBuffer(), obj.InstanceBuffer }, { vk::DeviceSize{ 0 }, vk::DeviceSize{ 0 } });
 		cmd.bindIndexBuffer(obj.MeshAsset->GetIndexBuffer(), 0, vk::IndexType::eUint32);
@@ -48,11 +48,46 @@ namespace Nyx
 		{
 			AppendInstanceRuns(std::span(world.Cells).subspan(obj.FirstCell, obj.CellCount), nullptr, runs);
 		}
-		// Section by section, with the faces its material draws
+		// Drawn once, from the identity buffer: its custom numbers with the draw, for a material's
+		// vertex function
+		if (obj.CellCount == 0)
+		{
+			object.InstanceCustom = obj.Custom;
+		}
+		// Section by section, with the faces its material draws, and its vertex function if it has one
 		for (uint32_t index = obj.FirstSection; index < obj.FirstSection + obj.SectionCount; ++index)
 		{
 			const RenderSection& section = world.Sections[index];
-			SetMeshFaces(cmd, section.MaterialAsset && section.MaterialAsset->bTwoSided, obj.bMirrored);
+			const Material* material = section.MaterialAsset;
+			vk::raii::Pipeline* own = nullptr;
+			vk::Pipeline pipeline;
+			switch (pass)
+			{
+			case EMeshPass::Picking:
+				own = material ? material->PickingPipeline : nullptr;
+				pipeline = *PickingPipeline;
+				break;
+			case EMeshPass::SelectionMaskVisible:
+				own = material ? material->SelectionMaskVisiblePipeline : nullptr;
+				pipeline = *SelectionMaskPipelineVisible;
+				break;
+			case EMeshPass::SelectionMaskFull:
+				own = material ? material->SelectionMaskFullPipeline : nullptr;
+				pipeline = *SelectionMaskPipelineFull;
+				break;
+			}
+			if (own)
+			{
+				pipeline = **own;
+			}
+			if (pipeline != bound)
+			{
+				cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline);
+				bound = pipeline;
+			}
+			object.MaterialOffset = material ? material->MaterialOffset : 0;
+			cmd.pushConstants<ObjectConstants>(ScenePipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, { object });
+			SetMeshFaces(cmd, material && material->bTwoSided, obj.bMirrored);
 			for (const InstanceRun& run : runs)
 			{
 				cmd.drawIndexed(section.IndexCount, run.Count, section.FirstIndex, 0, run.First);
@@ -303,16 +338,20 @@ namespace Nyx
 
 	void VulkanEditorOverlays::CreatePickingPipeline(const SceneViewInstance& firstView)
 	{
-		const std::vector<uint32_t> vertCode = Programs.GetSpirv("Picking.vert");
+		PickingPipeline = MakePickingPipeline(firstView, Programs.GetSpirv("Picking.vert"), "main");
+	}
+
+	vk::raii::Pipeline VulkanEditorOverlays::MakePickingPipeline(const SceneViewInstance& firstView, const std::vector<uint32_t>& vertexSpirv, const std::string& entryPoint) const
+	{
 		const std::vector<uint32_t> fragCode = Programs.GetSpirv("Picking.frag");
 
-		vk::raii::ShaderModule vertShaderModule = CreateShaderModule(Context, vertCode);
+		vk::raii::ShaderModule vertShaderModule = CreateShaderModule(Context, vertexSpirv);
 		vk::raii::ShaderModule fragShaderModule = CreateShaderModule(Context, fragCode);
 
 		vk::PipelineShaderStageCreateInfo vertStageInfo{};
 		vertStageInfo.stage = vk::ShaderStageFlagBits::eVertex;
 		vertStageInfo.module = *vertShaderModule;
-		vertStageInfo.pName = "main";
+		vertStageInfo.pName = entryPoint.c_str();
 
 		vk::PipelineShaderStageCreateInfo fragStageInfo{};
 		fragStageInfo.stage = vk::ShaderStageFlagBits::eFragment;
@@ -321,13 +360,10 @@ namespace Nyx
 
 		vk::PipelineShaderStageCreateInfo shaderStages[] = { vertStageInfo, fragStageInfo };
 
-		// The vertices' positions, and each instance's transform from the second stream
+		// What the vertex shader reads of the vertices and of each instance from the second stream:
+		// Picking.vert the positions and transforms, a material's what its vertex function uses
 		const std::array<vk::VertexInputBindingDescription, 2> bindingDescriptions = { GetVertexBindingDescription(), GetInstanceBindingDescription() };
-		std::vector<vk::VertexInputAttributeDescription> attributeDescriptions = { GetVertexAttributeDescriptions()[0] };
-		for (const vk::VertexInputAttributeDescription& attribute : GetInstanceAttributeDescriptions())
-		{
-			attributeDescriptions.push_back(attribute);
-		}
+		const std::vector<vk::VertexInputAttributeDescription> attributeDescriptions = GetMeshAttributesRead(vertexSpirv);
 
 		vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
 		vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(bindingDescriptions.size());
@@ -400,7 +436,7 @@ namespace Nyx
 		pipelineInfo.renderPass = pickingRenderPass;
 		pipelineInfo.subpass = 0;
 
-		PickingPipeline = std::move(vk::raii::Pipeline(Context.GetDevice(), Context.GetPipelineCache(), pipelineInfo));
+		return vk::raii::Pipeline(Context.GetDevice(), Context.GetPipelineCache(), pipelineInfo);
 	}
 
 	void VulkanEditorOverlays::CreatePickingResourcesForView(SceneViewInstance& view)
@@ -569,6 +605,7 @@ namespace Nyx
 		const vk::Extent2D extent = view.RenderTarget.GetExtent();
 		addValue(extent.width);
 		addValue(extent.height);
+		bool bMoving = false;
 		for (const RenderObject& obj : world.Objects)
 		{
 			if (!obj.MeshAsset || !obj.MaterialAsset)
@@ -587,6 +624,17 @@ namespace Nyx
 			addValue(obj.MeshAsset->GetUploadId());
 			addValue(obj.InstanceUploadId);
 			addValue(obj.CellCount);
+			addValue(obj.Custom);
+			for (uint32_t section = obj.FirstSection; section < obj.FirstSection + obj.SectionCount; ++section)
+			{
+				const Material* material = world.Sections[section].MaterialAsset;
+				bMoving = bMoving || (material && material->SelectionMaskVisiblePipeline);
+			}
+		}
+		// A material's vertex function may move its meshes by the time: drawn every frame then
+		if (bMoving)
+		{
+			addValue(world.Time);
 		}
 		return hash;
 	}
@@ -844,15 +892,21 @@ namespace Nyx
 	void VulkanEditorOverlays::CreateSelectionMaskPipelines(const SceneViewInstance& firstView)
 	{
 		const std::vector<uint32_t> vertCode = Programs.GetSpirv("SelectionMask.vert");
+		SelectionMaskPipelineVisible = MakeSelectionMaskPipeline(firstView, vertCode, "main", true);
+		SelectionMaskPipelineFull = MakeSelectionMaskPipeline(firstView, vertCode, "main", false);
+	}
+
+	vk::raii::Pipeline VulkanEditorOverlays::MakeSelectionMaskPipeline(const SceneViewInstance& firstView, const std::vector<uint32_t>& vertexSpirv, const std::string& entryPoint, bool bVisibleOnly) const
+	{
 		const std::vector<uint32_t> fragCode = Programs.GetSpirv("SelectionMask.frag");
 
-		vk::raii::ShaderModule vertShaderModule = CreateShaderModule(Context, vertCode);
+		vk::raii::ShaderModule vertShaderModule = CreateShaderModule(Context, vertexSpirv);
 		vk::raii::ShaderModule fragShaderModule = CreateShaderModule(Context, fragCode);
 
 		vk::PipelineShaderStageCreateInfo vertStageInfo{};
 		vertStageInfo.stage = vk::ShaderStageFlagBits::eVertex;
 		vertStageInfo.module = *vertShaderModule;
-		vertStageInfo.pName = "main";
+		vertStageInfo.pName = entryPoint.c_str();
 
 		vk::PipelineShaderStageCreateInfo fragStageInfo{};
 		fragStageInfo.stage = vk::ShaderStageFlagBits::eFragment;
@@ -861,13 +915,10 @@ namespace Nyx
 
 		vk::PipelineShaderStageCreateInfo shaderStages[] = { vertStageInfo, fragStageInfo };
 
-		// The vertices' positions, and each instance's transform from the second stream
+		// What the vertex shader reads of the vertices and of each instance from the second stream:
+		// SelectionMask.vert the positions and transforms, a material's what its vertex function uses
 		const std::array<vk::VertexInputBindingDescription, 2> bindingDescriptions = { GetVertexBindingDescription(), GetInstanceBindingDescription() };
-		std::vector<vk::VertexInputAttributeDescription> attributeDescriptions = { GetVertexAttributeDescriptions()[0] };
-		for (const vk::VertexInputAttributeDescription& attribute : GetInstanceAttributeDescriptions())
-		{
-			attributeDescriptions.push_back(attribute);
-		}
+		const std::vector<vk::VertexInputAttributeDescription> attributeDescriptions = GetMeshAttributesRead(vertexSpirv);
 
 		vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
 		vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(bindingDescriptions.size());
@@ -912,39 +963,28 @@ namespace Nyx
 
 		vk::RenderPass renderPass = *firstView.Overlays.SelectionMaskRenderPass;
 
-		// Visible-only
-		vk::PipelineDepthStencilStateCreateInfo depthVisible{};
-		depthVisible.depthTestEnable = VK_TRUE;
-		depthVisible.depthWriteEnable = VK_TRUE;
-		depthVisible.depthCompareOp = DepthTestNearer;
+		// Visible-only: depth tested and written; the full silhouette: neither
+		vk::PipelineDepthStencilStateCreateInfo depthStencil{};
+		depthStencil.depthTestEnable = bVisibleOnly ? VK_TRUE : VK_FALSE;
+		depthStencil.depthWriteEnable = bVisibleOnly ? VK_TRUE : VK_FALSE;
+		depthStencil.depthCompareOp = bVisibleOnly ? DepthTestNearer : vk::CompareOp::eAlways;
 
-		vk::GraphicsPipelineCreateInfo visibleInfo{};
-		visibleInfo.stageCount = 2;
-		visibleInfo.pStages = shaderStages;
-		visibleInfo.pVertexInputState = &vertexInputInfo;
-		visibleInfo.pInputAssemblyState = &inputAssembly;
-		visibleInfo.pViewportState = &viewportState;
-		visibleInfo.pRasterizationState = &rasterizer;
-		visibleInfo.pMultisampleState = &multisampling;
-		visibleInfo.pDepthStencilState = &depthVisible;
-		visibleInfo.pColorBlendState = &colorBlending;
-		visibleInfo.pDynamicState = &dynamicState;
-		visibleInfo.layout = ScenePipelineLayout;
-		visibleInfo.renderPass = renderPass;
-		visibleInfo.subpass = 0;
+		vk::GraphicsPipelineCreateInfo pipelineInfo{};
+		pipelineInfo.stageCount = 2;
+		pipelineInfo.pStages = shaderStages;
+		pipelineInfo.pVertexInputState = &vertexInputInfo;
+		pipelineInfo.pInputAssemblyState = &inputAssembly;
+		pipelineInfo.pViewportState = &viewportState;
+		pipelineInfo.pRasterizationState = &rasterizer;
+		pipelineInfo.pMultisampleState = &multisampling;
+		pipelineInfo.pDepthStencilState = &depthStencil;
+		pipelineInfo.pColorBlendState = &colorBlending;
+		pipelineInfo.pDynamicState = &dynamicState;
+		pipelineInfo.layout = ScenePipelineLayout;
+		pipelineInfo.renderPass = renderPass;
+		pipelineInfo.subpass = 0;
 
-		SelectionMaskPipelineVisible = std::move(vk::raii::Pipeline(Context.GetDevice(), Context.GetPipelineCache(), visibleInfo));
-
-		// Full silhouette
-		vk::PipelineDepthStencilStateCreateInfo depthFull{};
-		depthFull.depthTestEnable = VK_FALSE;
-		depthFull.depthWriteEnable = VK_FALSE;
-		depthFull.depthCompareOp = vk::CompareOp::eAlways;
-
-		vk::GraphicsPipelineCreateInfo fullInfo = visibleInfo;
-		fullInfo.pDepthStencilState = &depthFull;
-
-		SelectionMaskPipelineFull = std::move(vk::raii::Pipeline(Context.GetDevice(), Context.GetPipelineCache(), fullInfo));
+		return vk::raii::Pipeline(Context.GetDevice(), Context.GetPipelineCache(), pipelineInfo);
 	}
 
 	void VulkanEditorOverlays::DrawVisibleSelectionMaskPass(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd)
@@ -980,7 +1020,8 @@ namespace Nyx
 		cmd.setViewport(0, viewport);
 		cmd.setScissor(0, scissor);
 
-		cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *SelectionMaskPipelineVisible);
+		vk::Pipeline bound = *SelectionMaskPipelineVisible;
+		cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, bound);
 
 		BindSceneSets(view, cmd);
 
@@ -997,9 +1038,7 @@ namespace Nyx
 			ObjectConstants object{};
 			object.Model = obj.WorldTransform;
 			object.CustomData.x = bIsSelected ? 1.0f : 0.0f;
-			cmd.pushConstants<ObjectConstants>(ScenePipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, { object });
-
-			DrawObjectMesh(world, obj, cmd);
+			DrawObjectMesh(world, obj, object, EMeshPass::SelectionMaskVisible, bound, cmd);
 		}
 
 		cmd.endRenderPass();
@@ -1038,7 +1077,8 @@ namespace Nyx
 		cmd.setViewport(0, viewport);
 		cmd.setScissor(0, scissor);
 
-		cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *SelectionMaskPipelineFull);
+		vk::Pipeline bound = *SelectionMaskPipelineFull;
+		cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, bound);
 
 		BindSceneSets(view, cmd);
 
@@ -1063,9 +1103,7 @@ namespace Nyx
 			ObjectConstants object{};
 			object.Model = obj.WorldTransform;
 			object.CustomData.x = 1.0f;
-			cmd.pushConstants<ObjectConstants>(ScenePipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, { object });
-
-			DrawObjectMesh(world, obj, cmd);
+			DrawObjectMesh(world, obj, object, EMeshPass::SelectionMaskFull, bound, cmd);
 		}
 
 		cmd.endRenderPass();
@@ -1354,7 +1392,8 @@ namespace Nyx
 		cmd.setViewport(0, viewport);
 		cmd.setScissor(0, scissor);
 
-		cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *PickingPipeline);
+		vk::Pipeline bound = *PickingPipeline;
+		cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, bound);
 
 		BindSceneSets(view, cmd);
 
@@ -1367,11 +1406,8 @@ namespace Nyx
 
 			ObjectConstants object{};
 			object.Model = obj.WorldTransform;
-			object.MaterialOffset = obj.MaterialAsset->MaterialOffset;
 			object.EntityId = obj.PickingId;
-			cmd.pushConstants<ObjectConstants>(ScenePipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, { object });
-
-			DrawObjectMesh(world, obj, cmd);
+			DrawObjectMesh(world, obj, object, EMeshPass::Picking, bound, cmd);
 		}
 
 		// Then the decals, each with its material's picking pipeline, which leaves out where the

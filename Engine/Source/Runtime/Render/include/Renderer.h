@@ -131,6 +131,9 @@ namespace Nyx
 		virtual Nyx::Mesh* GetCapsuleMesh() = 0;
 		// A square of side 1 on the ground (y = 0), facing up
 		virtual Nyx::Mesh* GetPlaneMesh() = 0;
+		// Two upright quads crossed, 0.6 wide and 1 tall, standing on the origin, with weights to sway
+		// by (MakeCrossedQuads()): for small plants drawn with a swaying, two-sided material
+		virtual Nyx::Mesh* GetCrossedQuadsMesh() = 0;
 
 		// The material in a .nyxmat file, by its path in the assets folder
 		// ("Materials/Stone.nyxmat"), loaded at the first ask. Never null: one that can't be drawn

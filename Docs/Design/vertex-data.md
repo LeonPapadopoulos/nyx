@@ -1,15 +1,16 @@
 # Vertex data
 
 Numbers of a game's own that reach the materials: a mesh's for each vertex, an instance's or an
-entity's for each draw, and the time. The code is in `Engine/Source/Runtime/Core` (`MeshData.h`),
-`Engine/Source/Runtime/Render` (`Mesh.h`, `MeshInstanceCache`, `VulkanRenderer`),
-`Engine/Source/Runtime/Scene` (`MeshInstancesComponent`, `MeshRendererComponent`) and
-`Engine/Shaders/Library/nyx/surface.slang`.
+entity's for each draw, and the time; and a material's vertex function, which moves its meshes'
+vertices by them. The code is in `Engine/Source/Runtime/Core` (`MeshData.h`),
+`Engine/Source/Runtime/Render` (`Mesh.h`, `MeshInstanceCache`, `VulkanRenderer`,
+`VulkanMaterials`, `ShaderCompiler`), `Engine/Source/Runtime/Scene` (`MeshInstancesComponent`,
+`MeshRendererComponent`) and `Engine/Shaders/Library/nyx/surface.slang`.
 
 What it is for, as examples: a sway in the wind (how far each vertex bends, a phase for each copy
 of a plant), something that grows (the ages at which each vertex appears and is fully grown, and
-how old each copy is), a tint or a wear for each copy. Nyx doesn't know what the numbers mean; the
-material that reads them does.
+how old each copy is, its unborn parts shrunk away), a tint or a wear for each copy. Nyx doesn't
+know what the numbers mean; the material that reads them does.
 
 ## The shape of it
 
@@ -44,8 +45,9 @@ material that reads them does.
   that draw alike (see [Instancing](instancing.md)): its transform goes into the stream every
   frame anyway, and its custom numbers go with it. Changing them every frame costs nothing more:
   no upload of the mesh, no new push constant, no draw split off. A draw that binds the identity
-  buffer instead (decals, the editor's passes) gets zero.
-- **Pipelines read what their vertex shader reads** (`InputLocations()` in `VulkanMaterials`), as
+  buffer instead gets zero: decals, and the editor's passes, which a vertex function changes
+  ([below](#how-it-is-compiled-the-least-new-machinery)).
+- **Pipelines read what their vertex shader reads** (`GetMeshAttributesRead()`), as
   before; every surface material's vertex shader passes both on, so every mesh pipeline reads
   them. The fetch is a few bytes more for each vertex and each instance ([Numbers](#numbers)).
 
@@ -94,8 +96,120 @@ What it says: nothing that stands out of the noise. The field's 1.8 million vert
 8 more bytes each, and each instance 16 more; at these sizes the GPU's time goes to other things.
 On the CPU, the batched entities' 16 more bytes in this frame's stream don't show either.
 
+## The vertex function
+
+A material moves its vertices by implementing `ISurfaceVertex` beside `ISurface`
+(`nyx/surface.slang`): one function, `displace(inout SurfaceVertex vertex)`, a method of the
+material's struct, so its fields are its parameters as `shade()`'s are.
+
+- **What it gets**: the vertex's position and normal in the mesh's own space, its colour, UV and
+  custom numbers, the instance's (or the entity's) custom numbers, the transform from the mesh's
+  space to the world (`ObjectToWorld`, the draw's after the instance's) and the time.
+- **What it moves**: `Position` and `Normal` in the mesh's own space, which then follow the
+  entity's and the instance's turn and scale, e.g. a part shrunk towards a point of the mesh; and
+  `OffsetWS`, added in the world after the transform, in metres, for moves that keep their size and
+  direction however the entity lies, such as a wind's. Either or both.
+- **Where it runs**: wherever the mesh is drawn, so everything moves together: the scene pass, the
+  primary light's shadow maps, and the editor's picking and selection masks. A click picks the mesh
+  where it is drawn, and the outline follows it. Decals drawn with such a material lie flat as
+  ever: a decal's quad isn't moved.
+- **Culling**: a material declares how far its function moves a vertex at most, its *Max Vertex
+  Offset* (`MaxVertexOffset = 0.2` in the `.nyxmat`, a `MaterialOptions` option, inherited by
+  instances). The renderer widens the bounds it culls an entity by, every cell of an instanced
+  one, and the shadows' caster bounds, by the largest of its sections' materials'. Keeping within
+  it is the material's part: a vertex moved farther may be culled while in view, as a too small
+  bound would. Nothing measures it.
+
+### How it is compiled: the least new machinery
+
+Materials were already compiled as the surface domain's entry points specialised with the
+material's struct (`ShaderCompiler::CompileMaterial()`); the vertex side adds to that, not beside
+it:
+
+- **The domain names an interface and the entry points that need it**
+  (`ShaderDomain::VertexInterface` and `VertexEntryPoints`: `ISurfaceVertex`,
+  `displacedSurfaceVertex` and `displacedShadowVertex`). The compiler asks Slang's reflection whether the material's struct
+  implements the interface (`ProgramLayout::isSubType()`); if it does, those two entry points are
+  compiled with the others, generic over the material as the fragment ones are. A material without
+  a vertex function compiles to exactly what it did, four entry points; one with it to six.
+- **No new kind of file, no flag.** The function is part of the material's shader, so a material a
+  project ships is searched for and compiled as before, project assets before the engine's, and
+  live reload makes it again when the file is saved.
+- **Its pipelines.** `VulkanMaterials` makes the material's scene pipeline from
+  `displacedSurfaceVertex` in place of `surfaceVertex`. The other passes that draw meshes have
+  their own state (render pass, depth, what the fragment writes), which their owners know, so
+  each owner makes the material's pipeline from its vertex shader with its own state and fragment
+  shader (`VulkanMaterials::VertexFunctionPasses`: `VulkanShadows::MakeCasterPipeline()` from
+  `displacedShadowVertex`, `VulkanEditorOverlays::MakePickingPipeline()` and
+  `MakeSelectionMaskPipeline()` from `displacedSurfaceVertex`). The material's handle points at
+  them (`Material::ShadowPipeline`, ...); null for any other material, which the passes draw with
+  their shared pipelines as before. A pass switches pipelines per section only where a material
+  has its own.
+- **What the pipelines read** of the vertex and the instance is what their vertex shader reads
+  (`GetMeshAttributesRead()`, the SPIR-V's input locations), for the shared pipelines as for the
+  materials'.
+- **The editor's passes** draw an entity drawn once from the identity buffer, not from this
+  frame's instance stream, so its custom numbers go in the draw's push constants
+  (`ObjectConstants::InstanceCustom`, 16 more bytes, 112 in all, within the 128 every device has),
+  which the shader adds to the stream's: one of the two is always zero. The selection masks, drawn
+  again only when what they show changes, are drawn every frame while a material with a vertex
+  function is in the world, as it may move by the time.
+
+### The wind, as the example
+
+`Shaders/VertexColorWind.slang`, `Materials/VertexColorWind.nyxmat` and its two-sided instance
+`Materials/VertexColorWindTwoSided.nyxmat`: the vertex colours, swaying.
+
+- A vertex bends by its mesh's `Custom.x` (0 where it holds still, a blade's foot; 1 where it
+  bends most, its tip), each instance with its own phase from its `InstanceCustom.x`, which a
+  scatter gives every copy.
+- The wind's settings are the material's: *Direction* along the ground, *Strength* (how far a tip
+  leans at a gust's peak, in metres), *Gustiness* (how much of the lean comes and goes), *Gust
+  Frequency* and *Gust Length* (gusts cross the ground along the wind, so neighbours lean together
+  and a field ripples), *Flutter* and *Flutter Frequency* (a quick sway on top, each copy at its
+  phase). Material values rather than a wind of the world's: simple, editable live, and one wind
+  for each look; a world's wind can come later as view constants the materials read.
+- A tip moves at most *Strength* × (1 + *Flutter*), 0.162 m with the defaults; the material's Max
+  Vertex Offset is 0.17.
+- The built-in *Crossed Quads* mesh (`Meshes/CrossedQuads.nyxmesh`, `MakeCrossedQuads()`) carries
+  the weights: two upright quads crossed, the usual stand-in for small plants, its weight the
+  square of the height's fraction so a lean curves. `Assets/Scenes/GroundTest.nyxscene` has a
+  scatter of them round the flat place, in `Materials/GroundTest/Grass.nyxmat`, swaying, their
+  shadows with them.
+
+### What it costs
+
+The same benchmark with the field in `Materials/VertexColorWind.nyxmat` (its weights are zero on
+the cubes, but the function runs for every vertex all the same) against
+`Materials/VertexColor.nyxmat`, which looks the same without the function:
+
+| Build | Field | Shot | Scene CPU `VertexColor` | `VertexColorWind` | GPU `VertexColor` | `VertexColorWind` |
+| --- | --- | --- | --- | --- | --- | --- |
+| Release | instanced | above | 0.23 ms | 0.24 ms | 0.81 ms | 1.00 ms |
+| Release | instanced | inside | 0.21 ms | 0.22 ms | 0.25 ms | 0.30 ms |
+| Release | instanced, 4 shadow cascades | above | 0.35 ms | 0.36 ms | 1.60 ms | 1.92 ms |
+| Release | instanced, 4 shadow cascades | inside | 0.35 ms | 0.37 ms | 1.13 ms | 1.46 ms |
+| Debug | instanced | above | 4.45, 4.62 ms | 4.49, 4.44 ms | 0.88, 0.99 ms | 1.19, 1.09 ms |
+| Debug | instanced | inside | 4.26, 4.25 ms | 4.20, 4.19 ms | 0.27, 0.31 ms | 0.36, 0.33 ms |
+| Debug | instanced, 4 shadow cascades | above | 5.75, 5.65 ms | 5.63, 5.68 ms | 1.95, 1.95 ms | 2.29, 2.36 ms |
+| Debug | instanced, 4 shadow cascades | inside | 5.86, 5.70 ms | 5.67, 5.67 ms | 1.40, 1.45 ms | 1.54, 1.44 ms |
+
+(Medians of 300 frames in Release and 60 in Debug; two numbers: two runs taken in turn.)
+
+What it says: the CPU pays nothing; the material's pipelines are made once, and the passes switch
+pipelines only where a material has its own. The GPU pays for the function at every vertex of every
+pass that draws the mesh: about 0.2 ms more for the field's 1.8 million vertices in the scene pass
+with all of it in view, and as much again across the four shadow cascades, about a tenth of a
+millisecond a million vertices a pass on this GPU. A field of grass, whose vertices are a few
+dozen a copy, costs a few hundredths of that.
+
 ## Later
 
 - More than four numbers a vertex, as a second attribute, when a use needs them.
 - glTF's own custom attributes (`_CUSTOM`) read into the channels on import.
 - Half precision for the colour, UV and normal too, which would take the vertex below its old size.
+- A world's wind (direction, strength, gusts) as view constants every swaying material reads,
+  beside the time.
+- Bounds measured rather than declared, e.g. the function run on the CPU over a mesh's vertices,
+  or a debug view that shows a vertex past its material's Max Vertex Offset.
+- The previous frame's offset, for motion vectors, when Nyx gets temporal effects.

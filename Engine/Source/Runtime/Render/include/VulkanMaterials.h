@@ -43,6 +43,11 @@ namespace Nyx
 	// A material's options (MaterialOptions, e.g. two-sided) are in its handle; its shader's opaque
 	// pipeline draws the front faces only, or both, as the draw sets it (SetMeshFaces()).
 	//
+	// A shader with a vertex function (ISurfaceVertex in nyx/surface.slang) draws the scene with it,
+	// and has pipelines of its own for the other passes that draw meshes, made by those passes'
+	// owners from its vertex shader (VertexFunctionPasses): the shadow casters', the editor's
+	// picking and selection masks', so its meshes move alike in all of them.
+	//
 	// A material instance (a Parent line instead of a Shader line) is drawn with its parents'
 	// values and options under its own, and its shader is the one the chain of parents ends in. A parent's
 	// new values, saved or set, reach its instances in the same update; a chain that goes round,
@@ -50,12 +55,29 @@ namespace Nyx
 	class VulkanMaterials
 	{
 	public:
+		// Makes a pass's pipeline for meshes from a material's vertex shader, with the pass's own
+		// state and fragment shader, if any
+		using MakeVertexPipeline = std::function<vk::raii::Pipeline(const CompiledEntryPoint& vertex)>;
+
+		// The passes besides the scene's that draw meshes, for materials with a vertex function
+		struct VertexFunctionPasses
+		{
+			// From displacedShadowVertex: into the shadow map (VulkanShadows)
+			MakeVertexPipeline Shadow;
+			// From displacedSurfaceVertex: the editor's picking, its visible selection mask and its
+			// whole silhouette (VulkanEditorOverlays)
+			MakeVertexPipeline Picking;
+			MakeVertexPipeline SelectionMaskVisible;
+			MakeVertexPipeline SelectionMaskFull;
+		};
+
 		// `assetFolders`: where material, shader and texture paths are looked for, in order (the
 		// project's assets, then the engine's). `layout` and `renderPass()`: the scene pipelines'
 		// layout, and a render pass of the scene views, asked for each time a pipeline is made;
-		// `pickingRenderPass()` the same for the views' picking pass
+		// `pickingRenderPass()` the same for the views' picking pass; `vertexPasses` make the other
+		// passes' pipelines for a shader with a vertex function
 		void Initialize(Nyx::VulkanContext& context, VulkanBindless& bindless, ShaderPrograms& programs, std::vector<std::filesystem::path> assetFolders, vk::PipelineLayout layout,
-			std::function<vk::RenderPass()> renderPass, std::function<vk::RenderPass()> pickingRenderPass);
+			std::function<vk::RenderPass()> renderPass, std::function<vk::RenderPass()> pickingRenderPass, VertexFunctionPasses vertexPasses);
 		void Shutdown();
 
 		// The material in the file at `path`, relative to the asset folders
@@ -95,6 +117,10 @@ namespace Nyx
 		// MissingMaterial.slang changed
 		void RebuildMissingPipeline();
 
+		// The passes' own shaders changed (Picking or SelectionMask): every shader with a vertex
+		// function makes its pipelines of those passes again. Call while no frame is in flight.
+		void RebuildVertexFunctionPipelines();
+
 		// Whether a material still waits for its shader's first compile
 		bool IsWaiting() const;
 
@@ -107,6 +133,13 @@ namespace Nyx
 			vk::raii::Pipeline Pipeline{ nullptr };
 			vk::raii::Pipeline DecalPipeline{ nullptr };
 			vk::raii::Pipeline DecalPickingPipeline{ nullptr };
+			// With a vertex function: its vertex shaders, and the other passes' pipelines made of them
+			std::optional<CompiledEntryPoint> DisplacedVertex;
+			std::optional<CompiledEntryPoint> DisplacedShadowVertex;
+			vk::raii::Pipeline ShadowPipeline{ nullptr };
+			vk::raii::Pipeline PickingPipeline{ nullptr };
+			vk::raii::Pipeline SelectionMaskVisiblePipeline{ nullptr };
+			vk::raii::Pipeline SelectionMaskFullPipeline{ nullptr };
 			ShaderLayout Layout;
 			std::vector<std::byte> Defaults;
 			bool bReady = false;
@@ -172,6 +205,7 @@ namespace Nyx
 		vk::PipelineLayout Layout;
 		std::function<vk::RenderPass()> RenderPass;
 		std::function<vk::RenderPass()> PickingRenderPass;
+		VertexFunctionPasses VertexPasses;
 
 		vk::raii::Pipeline MissingPipeline{ nullptr };
 		vk::raii::Pipeline MissingDecalPipeline{ nullptr };

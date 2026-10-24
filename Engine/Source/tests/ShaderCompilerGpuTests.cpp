@@ -120,8 +120,9 @@ namespace
 		uint32_t EntityId = 0;
 		uint32_t Padding[2]{};
 		glm::vec4 CustomData{ 0.0f };
+		glm::vec4 InstanceCustom{ 0.0f };
 	};
-	static_assert(sizeof(ObjectConstants) == 96);
+	static_assert(sizeof(ObjectConstants) == 112);
 
 	struct HostBuffer
 	{

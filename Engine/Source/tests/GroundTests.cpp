@@ -5,7 +5,8 @@
 // as a scene's load, the editor and a live edit run it, makes the mesh, makes nothing again for the
 // same values, makes it again with a new revision for new ones, and a Mesh Collider's body follows;
 // removing the component takes the mesh away. A character stands on the ground and a crate slides
-// down the valley's side. The sample scene loads, and its character and crates stand on the ground.
+// down the valley's side. The sample scene loads, and its character and crates stand on the ground;
+// its grass, crossed quads scattered round the flat place, swaying in the wind, is there.
 // Making the default ground is timed.
 //
 // NyxGroundTests --write-scene writes the sample scene, Assets/Scenes/GroundTest.nyxscene: this file
@@ -27,6 +28,8 @@
 #include "PhysicsComponents.h"
 #include "PreviousTransformComponent.h"
 #include "RuntimeMeshComponent.h"
+#include "MeshInstancesComponent.h"
+#include "ScatterComponent.h"
 #include "SceneSerializer.h"
 #include "TestSupport.h"
 #include "TransformComponent.h"
@@ -358,7 +361,9 @@ namespace
 	}
 
 	// The scene to try the ground in by hand: the default ground in its vertex colours, with a Mesh
-	// Collider, crates on the flat place and up the valley's side, the character and an orbit camera
+	// Collider, crates on the flat place and up the valley's side, the character and an orbit camera,
+	// and grass round the flat place: the built-in crossed quads scattered over the ground, swaying in
+	// the wind (Materials/GroundTest/Grass.nyxmat, an instance of VertexColorWindTwoSided)
 	// behind it. The crates and the character have the character test scene's materials.
 	void WriteSampleScene()
 	{
@@ -378,6 +383,23 @@ namespace
 			world.Add<BoxColliderComponent>(crate, BoxColliderComponent{ .HalfExtents = glm::vec3(0.5f) });
 			world.Add<RigidBodyComponent>(crate, RigidBodyComponent{ .Mass = 10.0f });
 		}
+
+		const Entity grass = AddNamed(world, "Grass", TransformComponent{});
+		world.Add<MeshRendererComponent>(grass, DrawnWith("Meshes/CrossedQuads.nyxmesh", "Materials/GroundTest/Grass.nyxmat"));
+		ScatterComponent scatter;
+		scatter.Surface = world.Get<GuidComponent>(ground).Guid;
+		scatter.Size = glm::vec2(28.0f, 28.0f);
+		scatter.Density = 5.0f;
+		scatter.Spacing = 0.15f;
+		scatter.SlopeRange = glm::vec2(0.0f, 30.0f);
+		scatter.ScaleRange = glm::vec2(0.3f, 0.55f);
+		scatter.AlignToNormal = 0.3f;
+		scatter.SinkDepth = 0.02f;
+		scatter.bNoiseMask = true;
+		scatter.NoiseFrequency = 0.12f;
+		scatter.NoiseThreshold = 0.35f;
+		scatter.CellSize = 7.0f;
+		world.Add<ScatterComponent>(grass, scatter);
 
 		const Entity character = AddNamed(world, "Character", TransformComponent{ .Position = glm::vec3(0.0f, SampleGroundHeight(values, 0.0f, 3.0f) + 0.5f, 3.0f) });
 		world.Add<MeshRendererComponent>(character, DrawnWith("Meshes/Capsule.nyxmesh", "Materials/CharacterTest/Character.nyxmat"));
@@ -431,6 +453,21 @@ namespace
 				Require(above > 0.1f && above < 0.7f, "The sample scene's crates should rest on the ground " + Describe(position));
 			});
 		Require(crates == 5, "The sample scene should have its crates");
+
+		// Its grass: the built-in crossed quads over the ground, each copy with its own phase
+		int scatters = 0;
+		world.Each<ScatterComponent>([&](Entity entity, ScatterComponent&)
+			{
+				++scatters;
+				Require(world.Get<MeshRendererComponent>(entity).Mesh.Path == "Meshes/CrossedQuads.nyxmesh" &&
+							world.Get<MeshRendererComponent>(entity).Material.Path == "Materials/GroundTest/Grass.nyxmat",
+					"The sample scene's grass should be the crossed quads in its swaying material");
+				Require(world.Has<MeshInstancesComponent>(entity), "The sample scene's grass should be scattered once loaded");
+				const MeshInstances& instances = *world.Get<MeshInstancesComponent>(entity).Instances;
+				Require(instances.Transforms.size() > 1000 && instances.Custom.size() == instances.Transforms.size(),
+					"The sample scene's grass should have many copies, each with its own number");
+			});
+		Require(scatters == 1, "The sample scene should have its grass");
 	}
 }
 

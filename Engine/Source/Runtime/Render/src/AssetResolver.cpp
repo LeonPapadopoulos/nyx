@@ -23,6 +23,10 @@ namespace Nyx
 		{
 			return Renderer.GetCapsuleMesh();
 		}
+		if (meshPath == "Meshes/CrossedQuads.nyxmesh")
+		{
+			return Renderer.GetCrossedQuadsMesh();
+		}
 
 		return nullptr;
 	}

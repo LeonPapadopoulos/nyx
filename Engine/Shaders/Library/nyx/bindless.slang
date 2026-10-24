@@ -27,6 +27,9 @@ public struct ObjectConstants
     public float2 CustomData2;
     // Set per object by code (zero until materials are steered): a decal's colour and intensity
     public float4 CustomData;
+    // Added to the instance stream's custom numbers (SurfaceInput.InstanceCustom): an entity drawn
+    // once from the identity buffer, as the editor's passes draw it, has its own here; else zero
+    public float4 InstanceCustom;
 }
 [vk::push_constant] public ConstantBuffer<ObjectConstants> Object;
 

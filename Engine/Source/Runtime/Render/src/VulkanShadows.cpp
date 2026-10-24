@@ -167,54 +167,9 @@ namespace Nyx
 		vk::PipelineMultisampleStateCreateInfo multisampling{};
 		multisampling.rasterizationSamples = vk::SampleCountFlagBits::e1;
 
-		// The casters: depth only, the faces each material draws, as the light sees them
-		{
-			const std::string entryPoint = "shadowVertex";
-			vk::raii::ShaderModule module = CreateShaderModule(Context, Programs.GetSpirv("Shadow.slang", entryPoint));
-			const vk::PipelineShaderStageCreateInfo stage({}, vk::ShaderStageFlagBits::eVertex, *module, entryPoint.c_str());
-
-			// The vertices' positions, and each instance's transform from the second stream
-			const std::array<vk::VertexInputBindingDescription, 2> bindings = { GetVertexBindingDescription(), GetInstanceBindingDescription() };
-			std::vector<vk::VertexInputAttributeDescription> attributes = { GetVertexAttributeDescriptions()[0] };
-			for (const vk::VertexInputAttributeDescription& attribute : GetInstanceAttributeDescriptions())
-			{
-				attributes.push_back(attribute);
-			}
-			vk::PipelineVertexInputStateCreateInfo vertexInput{};
-			vertexInput.vertexBindingDescriptionCount = static_cast<uint32_t>(bindings.size());
-			vertexInput.pVertexBindingDescriptions = bindings.data();
-			vertexInput.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributes.size());
-			vertexInput.pVertexAttributeDescriptions = attributes.data();
-
-			vk::PipelineRasterizationStateCreateInfo rasterizer{};
-			rasterizer.polygonMode = vk::PolygonMode::eFill;
-			rasterizer.lineWidth = 1.0f;
-			rasterizer.cullMode = vk::CullModeFlagBits::eBack;
-			rasterizer.frontFace = vk::FrontFace::eCounterClockwise;
-
-			vk::PipelineDepthStencilStateCreateInfo depthStencil{};
-			depthStencil.depthTestEnable = VK_TRUE;
-			depthStencil.depthWriteEnable = VK_TRUE;
-			depthStencil.depthCompareOp = DepthTestNearer;
-
-			vk::PipelineColorBlendStateCreateInfo colorBlending{};
-			vk::PipelineDynamicStateCreateInfo dynamicState({}, MeshDynamicStates);
-
-			vk::GraphicsPipelineCreateInfo info{};
-			info.stageCount = 1;
-			info.pStages = &stage;
-			info.pVertexInputState = &vertexInput;
-			info.pInputAssemblyState = &inputAssembly;
-			info.pViewportState = &viewportState;
-			info.pRasterizationState = &rasterizer;
-			info.pMultisampleState = &multisampling;
-			info.pDepthStencilState = &depthStencil;
-			info.pColorBlendState = &colorBlending;
-			info.pDynamicState = &dynamicState;
-			info.layout = ScenePipelineLayout;
-			info.renderPass = *RenderPass;
-			CasterPipeline = vk::raii::Pipeline(device, Context.GetPipelineCache(), info);
-		}
+		// The casters
+		const std::string casterEntryPoint = "shadowVertex";
+		CasterPipeline = MakeCasterPipeline(Programs.GetSpirv("Shadow.slang", casterEntryPoint), casterEntryPoint);
 
 		// The debug view: squares over the picture, no vertices, no depth
 		{
@@ -255,6 +210,60 @@ namespace Nyx
 			info.renderPass = picturePass;
 			DebugPipeline = vk::raii::Pipeline(device, Context.GetPipelineCache(), info);
 		}
+	}
+
+	vk::raii::Pipeline VulkanShadows::MakeCasterPipeline(const std::vector<uint32_t>& vertexSpirv, const std::string& entryPoint) const
+	{
+		// Depth only, the faces each material draws, as the light sees them
+		vk::raii::Device& device = Context.GetDevice();
+		vk::raii::ShaderModule module = CreateShaderModule(Context, vertexSpirv);
+		const vk::PipelineShaderStageCreateInfo stage({}, vk::ShaderStageFlagBits::eVertex, *module, entryPoint.c_str());
+
+		// What the vertex shader reads of the vertices and of each instance from the second stream:
+		// the shared one their positions and transforms, a material's what its vertex function uses
+		const std::array<vk::VertexInputBindingDescription, 2> bindings = { GetVertexBindingDescription(), GetInstanceBindingDescription() };
+		const std::vector<vk::VertexInputAttributeDescription> attributes = GetMeshAttributesRead(vertexSpirv);
+		vk::PipelineVertexInputStateCreateInfo vertexInput{};
+		vertexInput.vertexBindingDescriptionCount = static_cast<uint32_t>(bindings.size());
+		vertexInput.pVertexBindingDescriptions = bindings.data();
+		vertexInput.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributes.size());
+		vertexInput.pVertexAttributeDescriptions = attributes.data();
+
+		vk::PipelineInputAssemblyStateCreateInfo inputAssembly({}, vk::PrimitiveTopology::eTriangleList);
+		vk::PipelineViewportStateCreateInfo viewportState{};
+		viewportState.viewportCount = 1;
+		viewportState.scissorCount = 1;
+		vk::PipelineMultisampleStateCreateInfo multisampling{};
+		multisampling.rasterizationSamples = vk::SampleCountFlagBits::e1;
+
+		vk::PipelineRasterizationStateCreateInfo rasterizer{};
+		rasterizer.polygonMode = vk::PolygonMode::eFill;
+		rasterizer.lineWidth = 1.0f;
+		rasterizer.cullMode = vk::CullModeFlagBits::eBack;
+		rasterizer.frontFace = vk::FrontFace::eCounterClockwise;
+
+		vk::PipelineDepthStencilStateCreateInfo depthStencil{};
+		depthStencil.depthTestEnable = VK_TRUE;
+		depthStencil.depthWriteEnable = VK_TRUE;
+		depthStencil.depthCompareOp = DepthTestNearer;
+
+		vk::PipelineColorBlendStateCreateInfo colorBlending{};
+		vk::PipelineDynamicStateCreateInfo dynamicState({}, MeshDynamicStates);
+
+		vk::GraphicsPipelineCreateInfo info{};
+		info.stageCount = 1;
+		info.pStages = &stage;
+		info.pVertexInputState = &vertexInput;
+		info.pInputAssemblyState = &inputAssembly;
+		info.pViewportState = &viewportState;
+		info.pRasterizationState = &rasterizer;
+		info.pMultisampleState = &multisampling;
+		info.pDepthStencilState = &depthStencil;
+		info.pColorBlendState = &colorBlending;
+		info.pDynamicState = &dynamicState;
+		info.layout = ScenePipelineLayout;
+		info.renderPass = *RenderPass;
+		return vk::raii::Pipeline(device, Context.GetPipelineCache(), info);
 	}
 
 	void VulkanShadows::BeginCascade(vk::raii::CommandBuffer& cmd, uint32_t cascade, uint32_t resolution)

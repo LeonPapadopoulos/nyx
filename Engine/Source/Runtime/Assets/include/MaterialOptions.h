@@ -17,6 +17,13 @@ namespace Nyx
 		// sees it.
 		NYX_PROPERTY(Edit, Serialize, meta = (DisplayName = "Two-Sided", Tooltip = "Draws both sides of every triangle, the back one lit as a front, for single sheets such as leaves, blades and petals"))
 		bool bTwoSided = false;
+
+		// For a shader with a vertex function (ISurfaceVertex in nyx/surface.slang): how far it
+		// moves a vertex at most, in metres in the world. The renderer widens every bounds it culls
+		// a mesh of the material by this much, in the scene and in the shadows, so a swaying or
+		// growing mesh isn't left out while a part of it is in view. 0: it moves nothing.
+		NYX_PROPERTY(Edit, Serialize, meta = (DisplayName = "Max Vertex Offset", DragSpeed = 0.01, Tooltip = "How far the shader's vertex function moves a vertex at most, in metres: what is culled is judged by bounds this much larger"))
+		float MaxVertexOffset = 0.0f;
 	};
 }
 

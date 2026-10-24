@@ -1,7 +1,8 @@
 // The primary light's shadow maps (VulkanShadows): what casts shadows, as the light sees it,
 // into the map's layer of a cascade, depth only. The cascade is the draw's CustomData2.x; its
-// light view and projection are the view's (ViewConstants.ShadowViewProjection). The shadow debug
-// view shows each layer in a square of the picture.
+// light view and projection are the view's (ViewConstants.ShadowViewProjection). A material with a
+// vertex function casts with its own pipeline instead (displacedShadowVertex in nyx.surface). The
+// shadow debug view shows each layer in a square of the picture.
 
 import nyx.surface;
 
@@ -11,8 +12,7 @@ float4 shadowVertex(VertexInput input) : SV_Position
     // The draw's transform after the instance's, as transformSurfaceVertex() places a mesh
     const float4x4 instance = transpose(float4x4(input.Instance0, input.Instance1, input.Instance2, input.Instance3));
     const float4x4 model = mul(Object.Model, instance);
-    const uint cascade = min(uint(Object.CustomData2.x), nyx::MaxShadowCascades - 1);
-    return mul(View.ShadowViewProjection[cascade], mul(model, float4(input.Position, 1.0)));
+    return nyx::shadowCasterPosition(mul(model, float4(input.Position, 1.0)));
 }
 
 struct DebugVertexOutput

@@ -91,6 +91,11 @@ namespace Nyx
 			{
 				key += "\nentry=" + entryPoint;
 			}
+			key += "\nvertex=" + request.Domain.VertexInterface;
+			for (const std::string& entryPoint : request.Domain.VertexEntryPoints)
+			{
+				key += "\nvertexentry=" + entryPoint;
+			}
 		}
 		return key;
 	}

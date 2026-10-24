@@ -6,6 +6,9 @@
 
 #include <glm/glm.hpp>
 
+#include <array>
+#include <vector>
+
 namespace Nyx
 {
 	// A vertex as the GPU reads it: Vertex with its custom channels in half precision, so a mesh
@@ -121,6 +124,11 @@ namespace Nyx
 		return attributes;
 	}
 
+	// The attributes of both streams (GetVertexAttributeDescriptions(),
+	// GetInstanceAttributeDescriptions()) that a vertex shader reads: the locations of its inputs.
+	// Slang leaves out inputs nothing uses, and attributes a shader doesn't read only slow the GPU.
+	std::vector<vk::VertexInputAttributeDescription> GetMeshAttributesRead(const std::vector<uint32_t>& vertexSpirv);
+
 	// The built-in meshes wind counter-clockwise seen from outside, as glTF's do: the side their
 	// normals face is their front, which the renderer draws (SetMeshFaces()).
 
@@ -140,6 +148,14 @@ namespace Nyx
 	// A square of side `size` on the ground (y = 0) around the origin, facing up, with u along x
 	// and v along z, with tangents
 	MeshData MakePlane(float size);
+
+	// Two upright quads crossed at right angles, `width` wide and `height` tall, standing on the
+	// origin, facing +Z and +X: the usual stand-in for small plants, drawn with a two-sided
+	// material. Each is cut in `rows` from the foot up, u across and v from the top down, with
+	// tangents. Custom.x is the weight a swaying material bends a vertex by (VertexColorWind): the
+	// square of its height's fraction, 0 at the foot to 1 at the top, so a lean curves. The colour
+	// darkens from white at the top to 0.55 at the foot, where less light reaches.
+	MeshData MakeCrossedQuads(float width, float height, uint32_t rows);
 
 	class Mesh : public Nyx::Resource
 	{

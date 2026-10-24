@@ -49,8 +49,9 @@ One way of binding serves every scene pipeline (`VulkanBindless`, `bindless.slan
 - **Set 0, global, bound once per pass:** one array of every sampled image (2D and cube), the
   fixed samplers, and one buffer with every material's values, each at its own offset.
 - **Set 1, per view:** the scene's uniforms, the environment and the time (`view.slang`).
-- **Push constants, per draw:** the model matrix, the material's offset, the entity id, and six
-  values set by code (`CustomData`, `CustomData2`), such as a decal's.
+- **Push constants, per draw:** the model matrix, the material's offset, the entity id, six
+  values set by code (`CustomData`, `CustomData2`), such as a decal's, and the instance's custom
+  numbers where a draw has no instance stream of its own (`InstanceCustom`; 112 bytes in all).
 
 So there is no descriptor set, pool or layout per material or shader. A material is bytes at an
 offset: changing a value writes those bytes, and switching an object's material changes a push
@@ -81,12 +82,13 @@ on and requires when it chooses the GPU.
 - **Options** are how a material is drawn rather than its shader's values: a reflected struct,
   `MaterialOptions`, each property a line of the file named as the property (a bool's without its
   b), inherited by instances like a value, shown under *Material* in the Parameters window from its
-  reflection. The first is `TwoSided`. Options aren't shader parameters, so `GetValues()` and
-  *Not in the Shader* leave them out, and the material buffer has no room for them: the renderer
-  reads them into the material's handle (`Material::bTwoSided`).
-- **Faces.** Every mesh Nyx makes (the built-in cube, sphere, capsule and plane, a ground, a
-  scatter's copies) and glTF's wind counter-clockwise seen from the side their normals face, and
-  the surface pipelines cull the backs: half the triangles of a closed mesh aren't shaded.
+  reflection: `TwoSided`, and `MaxVertexOffset` for a shader with a vertex function. Options
+  aren't shader parameters, so `GetValues()` and *Not in the Shader* leave them out, and the
+  material buffer has no room for them: the renderer reads them into the material's handle
+  (`Material::bTwoSided`, `Material::MaxVertexOffset`).
+- **Faces.** Every mesh Nyx makes (the built-in cube, sphere, capsule, plane and crossed quads, a
+  ground, a scatter's copies) and glTF's wind counter-clockwise seen from the side their normals
+  face, and the surface pipelines cull the backs: half the triangles of a closed mesh aren't shaded.
   `NyxMeshTests` checks the winding of every one. The draw sets which faces are drawn (dynamic
   cull mode and front face, `SetMeshFaces()`), so one pipeline a shader serves both kinds of
   material, and an entity whose transform mirrors it (a negative scale) is drawn with its front
@@ -100,6 +102,14 @@ on and requires when it chooses the GPU.
   drawn from either side, as they lie on what they decal. Instances that mirror one by one
   (`MeshInstancesComponent` transforms of negative determinant) aren't turned round: the cull mode
   is per draw.
+- **A vertex function.** A material that moves its vertices, such as one that sways in the wind or
+  grows, implements `ISurfaceVertex` beside `ISurface`: `displace()` moves a vertex in the mesh's
+  space or in the world, by the material's values, the mesh's and the instance's own numbers and
+  the time. The compiler finds it by reflection and compiles two more entry points for it; it
+  runs in the scene, the shadows and the editor's picking and outline alike, and the material's
+  *Max Vertex Offset* option widens the bounds it is culled by
+  ([Vertex data](vertex-data.md#the-vertex-function)). `Materials/VertexColorWind.nyxmat` and its
+  two-sided instance sway in the wind.
 - **Defaults:** reflection gives default values for scalars only. So for each material shader the
   engine generates a small compute shader that stores the struct made with its defaults, runs it
   once on the GPU, and keeps the bytes: a new material starts from those.

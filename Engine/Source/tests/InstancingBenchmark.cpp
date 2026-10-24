@@ -15,7 +15,9 @@
 // ground test scene with about 24 000 small cubes scattered over its ground) from its camera,
 // without and with its environment.
 //
-// NyxInstancingBenchmark [plain|instanced|ground] [frames]: one mode, or all.
+// NyxInstancingBenchmark [plain|instanced|ground] [frames] [material]: one mode, or all; the field
+// drawn with another material than Materials/Untextured.nyxmat, e.g. one with a vertex function
+// (Materials/VertexColorWind.nyxmat), to measure what it costs.
 #include "AssetResolver.h"
 #include "CameraComponent.h"
 #include "ComponentRegistration.h"
@@ -318,14 +320,14 @@ namespace
 		gpu.DrawFrames(2);
 	}
 
-	void Run(SceneRenderer& gpu, const std::string& mode, int frames)
+	void Run(SceneRenderer& gpu, const std::string& mode, int frames, const std::string& materialPath)
 	{
 		Registry world;
 		const Entity camera = world.CreateEntity();
 		world.Add<TransformComponent>(camera, TransformComponent{});
 		world.Add<CameraComponent>(camera, CameraComponent{});
 
-		Material* material = gpu.Renderer.GetMaterial("Materials/Untextured.nyxmat");
+		Material* material = gpu.Renderer.GetMaterial(materialPath);
 		const std::vector<Piece> field = MakeField();
 		const auto buildStart = std::chrono::steady_clock::now();
 		if (mode == "plain")
@@ -421,6 +423,8 @@ int main(int argc, char** argv)
 	const int frames = argc > 2 ? std::atoi(argv[2]) : 60;
 	std::cout << "Debug, median of " << frames << " frames, " << ViewWidth << " x " << ViewHeight << "\n";
 #endif
+	const std::string materialPath = argc > 3 ? argv[3] : "Materials/Untextured.nyxmat";
+	std::cout << "The field in " << materialPath << "\n";
 	try
 	{
 		SceneRenderer gpu("NyxInstancingBenchmark");
@@ -444,7 +448,7 @@ int main(int argc, char** argv)
 				continue;
 			}
 #endif
-			Run(gpu, mode, frames);
+			Run(gpu, mode, frames, materialPath);
 		}
 	}
 	catch (const std::exception& error)

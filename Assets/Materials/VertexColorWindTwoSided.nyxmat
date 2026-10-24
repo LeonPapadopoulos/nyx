@@ -1,0 +1,4 @@
+# Vertex colours that sway in the wind, both sides of each triangle drawn: for single sheets such
+# as blades of grass, petals and leaves
+Parent = Materials/VertexColorWind.nyxmat
+TwoSided = true

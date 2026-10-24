@@ -370,6 +370,16 @@ namespace
 		MaterialAsset edited = Parsed("Shader = Shaders/Standard.slang\n");
 		edited.SetValue("TwoSided", FormatMaterialOption(read, type.Properties[0]));
 		Require(edited.ToText() == "Shader = Shaders/Standard.slang\nTwoSided = true\n", "The option isn't written as a line: " + edited.ToText());
+
+		// How far a vertex function moves a vertex at most: a number, 0 unless set, inherited
+		MaterialOptions swaying;
+		Require(swaying.MaxVertexOffset == 0.0f, "A material's vertices move nowhere unless it says so");
+		Require(ReadMaterialOptions(Parsed("Shader = Shaders/VertexColorWind.slang\nMaxVertexOffset = 0.25\n"), swaying).empty() && swaying.MaxVertexOffset == 0.25f,
+			"MaxVertexOffset = 0.25 isn't read");
+		Require(ReadMaterialOptions(Parsed("Parent = Materials/VertexColorWind.nyxmat\nTwoSided = true\n"), swaying).empty() && swaying.MaxVertexOffset == 0.25f,
+			"An instance that doesn't set it loses its parent's Max Vertex Offset");
+		Require(HasProblem(ReadMaterialOptions(Parsed("MaxVertexOffset = far\n"), swaying), "MaxVertexOffset") && swaying.MaxVertexOffset == 0.25f,
+			"A Max Vertex Offset that isn't a number isn't named");
 	}
 }
 

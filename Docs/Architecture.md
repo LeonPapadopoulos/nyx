@@ -150,7 +150,8 @@ checks every `#include` against this table.
    3. extracts what each shown world draws this frame: its objects (a mesh made at run time
       uploaded here, before any draw is recorded, when it is new or its revision changed:
       `RuntimeMeshCache`; mesh instances so too: `MeshInstanceCache`), each with its bounds in the
-      world, and those drawn instanced with their cells', and its surface decals
+      world, and those drawn instanced with their cells', widened as far as its materials' vertex
+      functions move it (`Material::MaxVertexOffset`), and its surface decals
       (`ExtractSurfaceDecals()`, every anchor resolved through one guid lookup), both between
       their last two steps by one factor for the world when it is drawn so, its time for what
       moves by itself (its clock's, else the renderer's: `GetDrawnWorldTime()`), and its debug
@@ -398,7 +399,9 @@ How some systems work, and why they work that way:
   vertex stream, frustum culling per view and per cell, entities that draw alike batched, the
   numbers.
 - [Vertex data](Design/vertex-data.md): numbers of a game's own for the materials, a mesh's for
-  each vertex and an instance's or an entity's for each draw, their sizes on the GPU, and the time.
+  each vertex and an instance's or an entity's for each draw, their sizes on the GPU, and the time;
+  a material's vertex function, which moves its meshes in the scene, the shadows, picking and the
+  outline alike, compiled as two more entry points of its domain; the wind as the example.
 - [Shadows](Design/shadows.md): the primary light's cascaded shadow maps, stable as the camera
   moves, one map for every view, culled per cascade, filtering and biases, the numbers.
 - [Atmosphere](Design/atmosphere.md): the world's air on one component, height fog integrated

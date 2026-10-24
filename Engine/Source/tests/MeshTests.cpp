@@ -8,8 +8,8 @@
 // valid (indices of whole triangles below the vertex count, sections one after the other over every
 // index), the sections a mesh without any is drawn in, and the bounds around its vertices. The
 // vertex as the GPU reads it (GpuVertex): every field where its attribute says, the custom channels
-// back from half precision as close as it keeps them, the instance stream laid out alike; and the
-// custom channels zero in every mesh Nyx makes or imports.
+// back from half precision as close as it keeps them, the instance stream laid out alike; the
+// custom channels zero in every mesh Nyx makes or imports, but the crossed quads' sway weights.
 #include "GltfImporter.h"
 #include "GroundComponent.h"
 #include "GroundMesh.h"
@@ -233,6 +233,7 @@ namespace
 		RequireFrontOutside(Nyx::MakeSphere(0.5f, 32, 64), "The sphere");
 		RequireFrontOutside(Nyx::MakeCapsule(0.3f, 1.8f, 32, 48), "The capsule");
 		RequireFrontOutside(Nyx::MakePlane(1.0f), "The plane");
+		RequireFrontOutside(Nyx::MakeCrossedQuads(1.0f, 1.0f, 3), "The crossed quads");
 
 		// A ground with hills, a basin and terraces, so its normals lean every way
 		Nyx::GroundComponent ground;
@@ -342,6 +343,23 @@ namespace
 		}
 	}
 
+	// The crossed quads: two upright quads standing on the origin, their sway weight the square of
+	// the height's fraction, 0 at the foot and 1 at the top, darker towards the foot
+	void TestCrossedQuads()
+	{
+		const Nyx::MeshData quads = Nyx::MakeCrossedQuads(0.5f, 2.0f, 3);
+		Require(Nyx::CheckMeshData(quads).empty(), "The crossed quads aren't a valid mesh: " + Nyx::CheckMeshData(quads));
+		Require(quads.Indices.size() == 2 * 3 * 6, "The crossed quads should be two quads of three rows");
+		const Nyx::MeshBounds bounds = Nyx::ComputeMeshBounds(quads);
+		Require(Near(bounds.Min, glm::vec3(-0.25f, 0.0f, -0.25f)) && Near(bounds.Max, glm::vec3(0.25f, 2.0f, 0.25f)), "The crossed quads should stand on the origin, 0.5 wide and 2 tall");
+		for (const Nyx::Vertex& vertex : quads.Vertices)
+		{
+			const float up = vertex.Position.y / 2.0f;
+			Require(std::abs(vertex.Custom.x - up * up) < 1e-6f && vertex.Custom.y == 0.0f, "A vertex's sway weight should be the square of its height's fraction");
+			Require(std::abs(vertex.Color.r - (0.55f + 0.45f * up)) < 1e-6f, "The crossed quads should darken towards the foot");
+		}
+	}
+
 	// What Nyx makes and imports has no custom channels of its own: all zero
 	void TestCustomChannelsZero()
 	{
@@ -380,6 +398,7 @@ int main()
 		TestWinding();
 		TestVertexLayout();
 		TestCustomChannelsZero();
+		TestCrossedQuads();
 	}
 	catch (const std::exception& error)
 	{

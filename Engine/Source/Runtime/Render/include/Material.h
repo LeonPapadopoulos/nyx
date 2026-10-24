@@ -21,5 +21,17 @@ namespace Nyx
 		// Both sides of its triangles drawn, the back one lit as a front (MaterialOptions); only
 		// the front otherwise. The draw sets it (SetMeshFaces()).
 		bool bTwoSided = false;
+
+		// For a material whose shader has a vertex function (ISurfaceVertex in nyx/surface.slang),
+		// the pipelines of the passes besides the scene's that run it too: what casts the primary
+		// light's shadows, the editor's picking, and its selection masks, the visible part and the
+		// whole silhouette. Null for any other material: the passes' own pipelines draw it.
+		vk::raii::Pipeline* ShadowPipeline = nullptr;
+		vk::raii::Pipeline* PickingPipeline = nullptr;
+		vk::raii::Pipeline* SelectionMaskVisiblePipeline = nullptr;
+		vk::raii::Pipeline* SelectionMaskFullPipeline = nullptr;
+		// How far its vertex function moves a vertex at most, in metres (MaterialOptions): what the
+		// renderer culls a mesh drawn with it by is widened by this much
+		float MaxVertexOffset = 0.0f;
 	};
 }

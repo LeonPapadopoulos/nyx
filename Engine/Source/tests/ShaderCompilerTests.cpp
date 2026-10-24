@@ -1,7 +1,9 @@
-// ShaderCompiler without a GPU: materials compiled into their domain, the layout reflection
+// ShaderCompiler without a GPU: materials compiled into their domain, a material with a vertex
+// function into its entry points too (and the engine's wind material), the layout reflection
 // reports, diagnostics with file, line and column, dependencies, the engine's GLSL compiled by
 // Slang with the same layouts as glslc's, and the engine's Slang programs on the planned bindings.
 // SPIR-V is checked with SPIRV-Tools' validator.
+#include "Mesh.h"
 #include "Paths.h"
 #include "ShaderCompiler.h"
 #include "TestSupport.h"
@@ -277,6 +279,36 @@ namespace
 		Require(bindings == std::vector<std::string>{ "0.0", "0.1", "0.2", "1.0" }, "the fragment's bindings aren't the plan's");
 	}
 
+	// A material that implements ISurfaceVertex gets the two entry points that run its function,
+	// valid, reading the custom numbers it uses; one that doesn't gets neither
+	void TestVertexFunctionEntryPoints()
+	{
+		for (const std::filesystem::path& file : { TestShaders / "Swaying.slang", Paths::GetAssetsDir() / "Shaders" / "VertexColorWind.slang" })
+		{
+			const std::string name = file.stem().string();
+			const ShaderCompileResult result = Compiler().CompileMaterial(file, ShaderDomain::Surface());
+			RequireSucceeded(result, name);
+			Require(result.EntryPoints.size() == 6, name + " has " + std::to_string(result.EntryPoints.size()) + " entry points, expected 6");
+			for (const char* entryPointName : { "displacedSurfaceVertex", "displacedShadowVertex" })
+			{
+				const CompiledEntryPoint* entryPoint = result.FindEntryPoint(entryPointName);
+				Require(entryPoint && entryPoint->Stage == EShaderStage::Vertex, name + " has no vertex entry point " + entryPointName);
+				const std::string problem = ValidateSpirv(entryPoint->Spirv, true);
+				Require(problem.empty(), name + ": " + entryPointName + " isn't valid SPIR-V: " + problem);
+				std::vector<uint32_t> locations;
+				for (const auto& attribute : GetMeshAttributesRead(entryPoint->Spirv))
+				{
+					locations.push_back(attribute.location);
+				}
+				Require(std::find(locations.begin(), locations.end(), VertexCustomLocation) != locations.end() &&
+							std::find(locations.begin(), locations.end(), InstanceCustomLocation) != locations.end(),
+					name + ": " + entryPointName + " doesn't read the custom numbers its function uses");
+			}
+		}
+		const ShaderCompileResult stone = Compiler().CompileMaterial(TestShaders / "Stone.slang", ShaderDomain::Surface());
+		Require(!stone.FindEntryPoint("displacedSurfaceVertex") && !stone.FindEntryPoint("displacedShadowVertex"), "Stone has no vertex function, but got its entry points");
+	}
+
 	void TestMaterialLayout()
 	{
 		const ShaderCompileResult result = Compiler().CompileMaterial(TestShaders / "Stone.slang", ShaderDomain::Surface());
@@ -543,6 +575,7 @@ int main()
 	{
 		TestCompilerStarts();
 		TestMaterialCompilesIntoItsDomain();
+		TestVertexFunctionEntryPoints();
 		TestMaterialLayout();
 		TestSlangDiagnostics();
 		TestGlslDiagnostics();

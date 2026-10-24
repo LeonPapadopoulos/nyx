@@ -164,9 +164,13 @@ namespace Nyx
 		// Set per object by code; the selection mask passes keep the mask's value in x, a decal its
 		// colour and intensity
 		glm::vec4 CustomData{ 0.0f };
+		// Added to the instance stream's custom numbers: an entity drawn once from the identity
+		// buffer (the editor's passes) has its MeshRendererComponent::Custom here; else zero
+		glm::vec4 InstanceCustom{ 0.0f };
 	};
 
-	static_assert(sizeof(ObjectConstants) == 96, "ObjectConstants must match nyx/bindless.slang");
+	// Within the 128 bytes of push constants every Vulkan device has
+	static_assert(sizeof(ObjectConstants) == 112, "ObjectConstants must match nyx/bindless.slang");
 
 	struct Transform
 	{
@@ -222,7 +226,9 @@ namespace Nyx
 		// Its mesh's bounds, in the entity's space; drawn instanced, around all of its instances
 		glm::vec3 LocalBoundsMin{ -0.5f, -0.5f, -0.5f };
 		glm::vec3 LocalBoundsMax{ 0.5f, 0.5f, 0.5f };
-		// Around all of it where it is drawn, in the world: what the views cull it by
+		// Around all of it where it is drawn, in the world: what the views cull it by, widened by
+		// the most its materials' vertex functions move a vertex (Material::MaxVertexOffset), as
+		// its cells are
 		BoundingBox WorldBounds;
 
 		// Its instances (MeshInstancesComponent), the second vertex stream, relative to the entity's
@@ -375,6 +381,7 @@ namespace Nyx
 		Nyx::Mesh* GetCubeMesh() override;
 		Nyx::Mesh* GetSphereMesh() override;
 		Nyx::Mesh* GetCapsuleMesh() override;
+		Nyx::Mesh* GetCrossedQuadsMesh() override;
 		Nyx::Mesh* GetPlaneMesh() override;
 		Nyx::Material* GetMaterial(const std::string& path) override;
 		bool IsCompilingShaders() const override;
@@ -699,6 +706,7 @@ namespace Nyx
 		Mesh SphereMesh = Mesh("Sphere");
 		Mesh CapsuleMesh = Mesh("Capsule");
 		Mesh PlaneMesh = Mesh("Plane");
+		Mesh CrossedQuadsMesh = Mesh("CrossedQuads");
 
 		// Texture
 

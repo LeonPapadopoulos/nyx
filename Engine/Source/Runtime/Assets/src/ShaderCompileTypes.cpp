@@ -178,7 +178,8 @@ namespace Nyx
 
 	ShaderDomain ShaderDomain::Surface()
 	{
-		return ShaderDomain{ "nyx.surface", { "surfaceVertex", "surfaceFragment", "decalFragment", "decalPickingFragment" } };
+		return ShaderDomain{ "nyx.surface", { "surfaceVertex", "surfaceFragment", "decalFragment", "decalPickingFragment" }, "ISurfaceVertex",
+			{ "displacedSurfaceVertex", "displacedShadowVertex" } };
 	}
 
 	// -------------------------------------------------------------------------
@@ -195,6 +196,12 @@ namespace Nyx
 			writer.WriteString(request.Domain.Module);
 			writer.WriteUInt32(static_cast<uint32_t>(request.Domain.EntryPoints.size()));
 			for (const std::string& entryPoint : request.Domain.EntryPoints)
+			{
+				writer.WriteString(entryPoint);
+			}
+			writer.WriteString(request.Domain.VertexInterface);
+			writer.WriteUInt32(static_cast<uint32_t>(request.Domain.VertexEntryPoints.size()));
+			for (const std::string& entryPoint : request.Domain.VertexEntryPoints)
 			{
 				writer.WriteString(entryPoint);
 			}
@@ -218,6 +225,18 @@ namespace Nyx
 				std::string entryPoint;
 				reader.ReadString(entryPoint);
 				outRequest.Domain.EntryPoints.push_back(std::move(entryPoint));
+			}
+			uint32_t vertexEntryPointCount = 0;
+			outRequest.Domain.VertexEntryPoints.clear();
+			if (!reader.ReadString(outRequest.Domain.VertexInterface) || !reader.ReadUInt32(vertexEntryPointCount))
+			{
+				return false;
+			}
+			for (uint32_t index = 0; index < vertexEntryPointCount && reader.IsValid(); ++index)
+			{
+				std::string entryPoint;
+				reader.ReadString(entryPoint);
+				outRequest.Domain.VertexEntryPoints.push_back(std::move(entryPoint));
 			}
 			return reader.IsValid();
 		}

@@ -11,6 +11,8 @@
 #include <algorithm>
 #include <cmath>
 #include <initializer_list>
+#include <map>
+#include <span>
 #include <vector>
 
 namespace Nyx
@@ -31,6 +33,59 @@ namespace Nyx
 	glm::vec4 GetGpuVertexCustom(const GpuVertex& vertex)
 	{
 		return glm::vec4(glm::unpackHalf2x16(vertex.Custom[0]), glm::unpackHalf2x16(vertex.Custom[1]));
+	}
+
+	std::vector<vk::VertexInputAttributeDescription> GetMeshAttributesRead(const std::vector<uint32_t>& vertexSpirv)
+	{
+		// The Input variables' Location decorations
+		constexpr uint32_t OpVariable = 59;
+		constexpr uint32_t OpDecorate = 71;
+		constexpr uint32_t DecorationLocation = 30;
+		constexpr uint32_t StorageClassInput = 1;
+		std::map<uint32_t, uint32_t> locations;
+		std::vector<uint32_t> inputs;
+		for (size_t index = 5; index < vertexSpirv.size();)
+		{
+			const uint32_t wordCount = vertexSpirv[index] >> 16;
+			const uint32_t opcode = vertexSpirv[index] & 0xFFFF;
+			if (wordCount == 0)
+			{
+				break;
+			}
+			if (opcode == OpDecorate && wordCount >= 4 && vertexSpirv[index + 2] == DecorationLocation)
+			{
+				locations[vertexSpirv[index + 1]] = vertexSpirv[index + 3];
+			}
+			else if (opcode == OpVariable && wordCount >= 4 && vertexSpirv[index + 3] == StorageClassInput)
+			{
+				inputs.push_back(vertexSpirv[index + 2]);
+			}
+			index += wordCount;
+		}
+		std::vector<uint32_t> read;
+		for (const uint32_t input : inputs)
+		{
+			if (const auto found = locations.find(input); found != locations.end())
+			{
+				read.push_back(found->second);
+			}
+		}
+
+		std::vector<vk::VertexInputAttributeDescription> attributes;
+		const auto vertexAttributes = GetVertexAttributeDescriptions();
+		const auto instanceAttributes = GetInstanceAttributeDescriptions();
+		for (const std::span<const vk::VertexInputAttributeDescription> stream : { std::span<const vk::VertexInputAttributeDescription>(vertexAttributes),
+				 std::span<const vk::VertexInputAttributeDescription>(instanceAttributes) })
+		{
+			for (const vk::VertexInputAttributeDescription& attribute : stream)
+			{
+				if (std::find(read.begin(), read.end(), attribute.location) != read.end())
+				{
+					attributes.push_back(attribute);
+				}
+			}
+		}
+		return attributes;
 	}
 
 	MeshData MakeCube(float size)
@@ -152,6 +207,41 @@ namespace Nyx
 		}
 		// Counter-clockwise seen from above
 		mesh.Indices = { 0, 3, 2, 0, 2, 1 };
+		ComputeTangents(mesh);
+		return mesh;
+	}
+
+	MeshData MakeCrossedQuads(float width, float height, uint32_t rows)
+	{
+		MeshData mesh;
+		rows = std::max(rows, 1u);
+		// Along each quad's width; its normal is across(width, up)
+		for (const glm::vec3& across : { glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, -1.0f) })
+		{
+			const uint32_t first = static_cast<uint32_t>(mesh.Vertices.size());
+			const glm::vec3 normal = glm::cross(across, glm::vec3(0.0f, 1.0f, 0.0f));
+			for (uint32_t row = 0; row <= rows; ++row)
+			{
+				const float up = static_cast<float>(row) / static_cast<float>(rows);
+				for (const float side : { 0.0f, 1.0f })
+				{
+					Vertex vertex;
+					vertex.Position = across * ((side - 0.5f) * width) + glm::vec3(0.0f, up * height, 0.0f);
+					vertex.Normal = normal;
+					vertex.UV = glm::vec2(side, 1.0f - up);
+					vertex.Color = glm::vec3(0.55f + 0.45f * up);
+					vertex.Custom = glm::vec4(up * up, 0.0f, 0.0f, 0.0f);
+					mesh.Vertices.push_back(vertex);
+				}
+			}
+			// Counter-clockwise seen from the side the normal faces
+			for (uint32_t row = 0; row < rows; ++row)
+			{
+				const uint32_t below = first + row * 2;
+				const uint32_t above = below + 2;
+				mesh.Indices.insert(mesh.Indices.end(), { below, below + 1, above + 1, above + 1, above, below });
+			}
+		}
 		ComputeTangents(mesh);
 		return mesh;
 	}

@@ -32,6 +32,15 @@ namespace nyx
         return View.ShadowMap.get();
     }
 
+    // Where a point of the world is drawn into the shadow map's layer of the draw's cascade
+    // (Object.CustomData2.x): what casts, as Shadow.slang and a material's vertex function
+    // (nyx.surface) draw it
+    public float4 shadowCasterPosition(float4 positionWS)
+    {
+        const uint cascade = min(uint(Object.CustomData2.x), MaxShadowCascades - 1);
+        return mul(View.ShadowViewProjection[cascade], positionWS);
+    }
+
     // How far the point is along the camera's view, in metres
     float viewDepth(float3 positionWS)
     {

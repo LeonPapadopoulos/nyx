@@ -35,45 +35,6 @@ namespace Nyx
 			return key;
 		}
 
-		// The input locations a vertex shader reads: its Input variables' Location decorations.
-		// Slang leaves out inputs nothing uses, and attributes it doesn't read only slow the GPU.
-		std::vector<uint32_t> InputLocations(const std::vector<uint32_t>& spirv)
-		{
-			constexpr uint32_t OpVariable = 59;
-			constexpr uint32_t OpDecorate = 71;
-			constexpr uint32_t DecorationLocation = 30;
-			constexpr uint32_t StorageClassInput = 1;
-			std::map<uint32_t, uint32_t> locations;
-			std::vector<uint32_t> inputs;
-			for (size_t index = 5; index < spirv.size();)
-			{
-				const uint32_t wordCount = spirv[index] >> 16;
-				const uint32_t opcode = spirv[index] & 0xFFFF;
-				if (wordCount == 0)
-				{
-					break;
-				}
-				if (opcode == OpDecorate && wordCount >= 4 && spirv[index + 2] == DecorationLocation)
-				{
-					locations[spirv[index + 1]] = spirv[index + 3];
-				}
-				else if (opcode == OpVariable && wordCount >= 4 && spirv[index + 3] == StorageClassInput)
-				{
-					inputs.push_back(spirv[index + 2]);
-				}
-				index += wordCount;
-			}
-			std::vector<uint32_t> result;
-			for (const uint32_t input : inputs)
-			{
-				if (const auto found = locations.find(input); found != locations.end())
-				{
-					result.push_back(found->second);
-				}
-			}
-			return result;
-		}
-
 		const CompiledEntryPoint* FindEntryPoint(const ShaderCompileResult& result, const std::string& name)
 		{
 			for (const CompiledEntryPoint& entryPoint : result.EntryPoints)
@@ -88,7 +49,7 @@ namespace Nyx
 	}
 
 	void VulkanMaterials::Initialize(Nyx::VulkanContext& context, VulkanBindless& bindless, ShaderPrograms& programs, std::vector<std::filesystem::path> assetFolders, vk::PipelineLayout layout,
-		std::function<vk::RenderPass()> renderPass, std::function<vk::RenderPass()> pickingRenderPass)
+		std::function<vk::RenderPass()> renderPass, std::function<vk::RenderPass()> pickingRenderPass, VertexFunctionPasses vertexPasses)
 	{
 		Context = &context;
 		Bindless = &bindless;
@@ -98,6 +59,7 @@ namespace Nyx
 		Layout = layout;
 		RenderPass = std::move(renderPass);
 		PickingRenderPass = std::move(pickingRenderPass);
+		VertexPasses = std::move(vertexPasses);
 		RebuildMissingPipeline();
 
 		for (const std::filesystem::path& folder : AssetFolders)
@@ -144,6 +106,29 @@ namespace Nyx
 		MissingPipeline = std::move(pipeline);
 		MissingDecalPipeline = std::move(decalPipeline);
 		MissingDecalPickingPipeline = std::move(decalPickingPipeline);
+	}
+
+	void VulkanMaterials::RebuildVertexFunctionPipelines()
+	{
+		Context->WaitIdle();
+		for (auto& [key, shader] : Shaders)
+		{
+			if (!shader->DisplacedVertex)
+			{
+				continue;
+			}
+			try
+			{
+				// In place: the handles point at these objects
+				shader->PickingPipeline = VertexPasses.Picking(*shader->DisplacedVertex);
+				shader->SelectionMaskVisiblePipeline = VertexPasses.SelectionMaskVisible(*shader->DisplacedVertex);
+				shader->SelectionMaskFullPipeline = VertexPasses.SelectionMaskFull(*shader->DisplacedVertex);
+			}
+			catch (const std::exception& error)
+			{
+				LOG_ERROR("Material shader {}: its vertex function's editor pipelines can't be made again: {}", shader->Path, error.what());
+			}
+		}
 	}
 
 	Nyx::Material* VulkanMaterials::Get(const std::string& path)
@@ -361,17 +346,43 @@ namespace Nyx
 			LOG_ERROR("Material shader {} lacks an entry point of its domain", shader.Path);
 			return shader.bReady;
 		}
+		// With a vertex function, both of its vertex shaders, or neither
+		const CompiledEntryPoint* displacedVertex = FindEntryPoint(*material, "displacedSurfaceVertex");
+		const CompiledEntryPoint* displacedShadowVertex = FindEntryPoint(*material, "displacedShadowVertex");
+		if (!displacedVertex != !displacedShadowVertex)
+		{
+			LOG_ERROR("Material shader {} lacks one of its vertex function's entry points", shader.Path);
+			return shader.bReady;
+		}
 
 		try
 		{
-			vk::raii::Pipeline pipeline = MakePipeline(*vertex, *fragment, EPipelineKind::Opaque);
+			// The mesh moved by the vertex function; a decal lies flat on what it decals, as ever
+			vk::raii::Pipeline pipeline = MakePipeline(displacedVertex ? *displacedVertex : *vertex, *fragment, EPipelineKind::Opaque);
 			vk::raii::Pipeline decalPipeline = MakePipeline(*vertex, *decalFragment, EPipelineKind::Decal);
 			vk::raii::Pipeline decalPickingPipeline = MakePipeline(*vertex, *decalPickingFragment, EPipelineKind::DecalPicking);
+			vk::raii::Pipeline shadowPipeline{ nullptr };
+			vk::raii::Pipeline pickingPipeline{ nullptr };
+			vk::raii::Pipeline selectionMaskVisiblePipeline{ nullptr };
+			vk::raii::Pipeline selectionMaskFullPipeline{ nullptr };
+			if (displacedVertex)
+			{
+				shadowPipeline = VertexPasses.Shadow(*displacedShadowVertex);
+				pickingPipeline = VertexPasses.Picking(*displacedVertex);
+				selectionMaskVisiblePipeline = VertexPasses.SelectionMaskVisible(*displacedVertex);
+				selectionMaskFullPipeline = VertexPasses.SelectionMaskFull(*displacedVertex);
+			}
 			std::vector<std::byte> bytes = RunDefaultsWriter(*writer, material->MaterialLayout->Size);
 			Context->WaitIdle();
 			shader.Pipeline = std::move(pipeline);
 			shader.DecalPipeline = std::move(decalPipeline);
 			shader.DecalPickingPipeline = std::move(decalPickingPipeline);
+			shader.DisplacedVertex = displacedVertex ? std::optional<CompiledEntryPoint>(*displacedVertex) : std::nullopt;
+			shader.DisplacedShadowVertex = displacedShadowVertex ? std::optional<CompiledEntryPoint>(*displacedShadowVertex) : std::nullopt;
+			shader.ShadowPipeline = std::move(shadowPipeline);
+			shader.PickingPipeline = std::move(pickingPipeline);
+			shader.SelectionMaskVisiblePipeline = std::move(selectionMaskVisiblePipeline);
+			shader.SelectionMaskFullPipeline = std::move(selectionMaskFullPipeline);
 			shader.Defaults = std::move(bytes);
 			shader.Layout = *material->MaterialLayout;
 			shader.bReady = true;
@@ -391,6 +402,12 @@ namespace Nyx
 		const bool bResolved = entry.bLoaded && Resolve(entry);
 		// Its options, also while it draws as the missing material
 		handle.bTwoSided = bResolved && entry.Options.bTwoSided;
+		handle.MaxVertexOffset = bResolved ? std::max(entry.Options.MaxVertexOffset, 0.0f) : 0.0f;
+		// Until it has a shader with a vertex function, the passes' own pipelines draw it
+		handle.ShadowPipeline = nullptr;
+		handle.PickingPipeline = nullptr;
+		handle.SelectionMaskVisiblePipeline = nullptr;
+		handle.SelectionMaskFullPipeline = nullptr;
 		if (!bResolved || !Prepare(*entry.UsedShader))
 		{
 			handle.Pipeline = &MissingPipeline;
@@ -434,6 +451,13 @@ namespace Nyx
 		handle.Pipeline = &shader.Pipeline;
 		handle.DecalPipeline = &shader.DecalPipeline;
 		handle.DecalPickingPipeline = &shader.DecalPickingPipeline;
+		if (shader.DisplacedVertex)
+		{
+			handle.ShadowPipeline = &shader.ShadowPipeline;
+			handle.PickingPipeline = &shader.PickingPipeline;
+			handle.SelectionMaskVisiblePipeline = &shader.SelectionMaskVisiblePipeline;
+			handle.SelectionMaskFullPipeline = &shader.SelectionMaskFullPipeline;
+		}
 		handle.MaterialOffset = *entry.Offset;
 	}
 
@@ -552,24 +576,10 @@ namespace Nyx
 			vk::PipelineShaderStageCreateInfo({}, vk::ShaderStageFlagBits::eFragment, *fragmentModule, fragment.Name.c_str()),
 		};
 
-		// The mesh's vertices, those parts the vertex shader reads (the colour, for one: SurfaceInput
-		// has none), and each instance's transform from the second stream
+		// The mesh's vertices and each instance from the second stream, those parts the vertex shader
+		// reads
 		const std::array<vk::VertexInputBindingDescription, 2> bindingDescriptions = { Nyx::GetVertexBindingDescription(), Nyx::GetInstanceBindingDescription() };
-		const std::vector<uint32_t> read = InputLocations(vertex.Spirv);
-		std::vector<vk::VertexInputAttributeDescription> attributeDescriptions;
-		const auto vertexAttributes = Nyx::GetVertexAttributeDescriptions();
-		const auto instanceAttributes = Nyx::GetInstanceAttributeDescriptions();
-		for (const std::span<const vk::VertexInputAttributeDescription> attributes : { std::span<const vk::VertexInputAttributeDescription>(vertexAttributes),
-				 std::span<const vk::VertexInputAttributeDescription>(instanceAttributes) })
-		{
-			for (const vk::VertexInputAttributeDescription& attribute : attributes)
-			{
-				if (std::find(read.begin(), read.end(), attribute.location) != read.end())
-				{
-					attributeDescriptions.push_back(attribute);
-				}
-			}
-		}
+		const std::vector<vk::VertexInputAttributeDescription> attributeDescriptions = Nyx::GetMeshAttributesRead(vertex.Spirv);
 		vk::PipelineVertexInputStateCreateInfo vertexInput{};
 		vertexInput.vertexBindingDescriptionCount = static_cast<uint32_t>(bindingDescriptions.size());
 		vertexInput.pVertexBindingDescriptions = bindingDescriptions.data();

@@ -789,10 +789,28 @@ namespace Nyx
 			return compile.Finish(false);
 		}
 
+		// A material with a vertex function (its struct implements the domain's vertex interface) gets
+		// the entry points that run it too
+		std::vector<std::string> entryPoints = domain.EntryPoints;
+		if (!domain.VertexInterface.empty())
+		{
+			slang::ProgramLayout* layout = material.Module->getLayout();
+			slang::TypeReflection* vertexInterface = layout->findTypeByName(domain.VertexInterface.c_str());
+			if (!vertexInterface)
+			{
+				compile.Fail(file, domain.Module + " has no " + domain.VertexInterface);
+				return compile.Finish(false);
+			}
+			if (layout->isSubType(material.Type, vertexInterface))
+			{
+				entryPoints.insert(entryPoints.end(), domain.VertexEntryPoints.begin(), domain.VertexEntryPoints.end());
+			}
+		}
+
 		// Each entry point on its own. The domain's module must come first in the parts: without it,
 		// or after the material, Slang 2026.1 fails with an internal error while generating code.
 		bool bSucceeded = true;
-		for (const std::string& name : domain.EntryPoints)
+		for (const std::string& name : entryPoints)
 		{
 			ComPtr<slang::IEntryPoint> entryPoint;
 			if (SLANG_FAILED(domainModule->findEntryPointByName(name.c_str(), entryPoint.writeRef())) || !entryPoint)
