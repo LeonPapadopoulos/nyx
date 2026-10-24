@@ -136,6 +136,14 @@ add_dependencies(NyxPointCloudRecognizerTests NyxGeneratedReflection)
 set_property(TARGET NyxPointCloudRecognizerTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxPointCloudRecognizerTests COMMAND NyxPointCloudRecognizerTests)
 
+# The sparse field: a bump spreading and decaying, carried downwind, stable at long steps, the cap
+# on bricks, the same values over 600 steps, the ambient outside the bricks, the cost at the cap
+add_executable(NyxSparseFieldTests SparseFieldTests.cpp)
+target_link_libraries(NyxSparseFieldTests PRIVATE NyxEngine)
+add_dependencies(NyxSparseFieldTests NyxGeneratedReflection)
+set_property(TARGET NyxSparseFieldTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxSparseFieldTests COMMAND NyxSparseFieldTests)
+
 # Physics: bodies falling and resting, mass, forces at a point, teleports, kinematic moves, the
 # same results from the same inputs, queries, sensors, contact events, constraints, the debug view
 add_executable(NyxPhysicsTests PhysicsTests.cpp)

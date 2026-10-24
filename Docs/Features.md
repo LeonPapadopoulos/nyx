@@ -870,3 +870,27 @@ Which shape a player drew, for a game that lets them draw: `PointCloudRecognizer
   of another name; where a turned arrow points; scribbles below 0.75; arrows told apart by the up
   given; the same results to the bit; the text read, written and read back exactly, its problems
   with their lines; 50 templates under 1 ms in Release).
+
+## Fields over the world
+
+A number or a vector in every cell of a grid over the world, for a game's own meanings (a
+temperature, a concentration, a wind): `SparseField<float>` and `SparseField<glm::vec3>`, in `Sim`
+([Sparse fields](Design/sparse-fields.md)).
+
+- Cells (0.5 m by default) in bricks of 8 x 8 x 8, made where the game asks (`Allocate()`) and
+  freed once they settle back (`FreeSettled()`); everywhere else the field is its ambient value.
+- Sources spread an amount over a box's cells by a weight of the game's; diffusion, stable at any
+  step; decay towards the ambient; advection along a velocity field (semi-Lagrangian), the field's
+  own or another's; trilinear sampling anywhere.
+- At most `MaxBricks` bricks (64 by default), so a step has a bound: 0.5 to 0.7 ms at the cap in
+  Release. At the cap a new brick takes the place of the one nearest the ambient that wasn't asked
+  for this step; with all asked for, it is refused and the game is told.
+- The same steps give the same values to the bit on every machine running the same build; bricks
+  are walked in the order of their coordinates, and neighbours read from before the step.
+- Tests: `NyxSparseFieldTests` (a source in still air spreading into a bump the same mirrored and
+  turned, decaying to the ambient, its bricks then freed; diffusion at 13 times the explicit limit
+  never overshooting; a wind, as the ambient or on bricks, carrying the bump 4 m downwind in 2 s,
+  keeping its mass; the wind carrying itself; the cap of 8 holding, the hot brick kept over the
+  settled ones, new ones refused once all are asked for; the ambient outside the bricks and
+  blended in at their sides; 600 steps at the cap the same to the bit, and under it the same with
+  boxes asked for in another order; the cost of a step at the cap).

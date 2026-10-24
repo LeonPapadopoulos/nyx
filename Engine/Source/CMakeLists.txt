@@ -108,6 +108,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/PhysicsPick.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/OrbitCameras.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/CharacterCommands.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Sim/src/SparseField.cpp
 
     # Runtime/Physics
     ${NYX_ENGINE_ROOT}/Runtime/Physics/src/PhysicsWorld.cpp
@@ -298,6 +299,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/PhysicsPick.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/OrbitCameras.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/CharacterCommands.h
+    ${NYX_ENGINE_ROOT}/Runtime/Sim/include/SparseField.h
 
     # Runtime/Physics
     ${NYX_ENGINE_ROOT}/Runtime/Physics/include/PhysicsWorld.h
