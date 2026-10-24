@@ -35,6 +35,9 @@ set(NYX_ENGINE_SOURCES
     # Runtime/Net
     ${NYX_ENGINE_ROOT}/Runtime/Net/src/NetConnection.cpp
 
+    # Runtime/Platform
+    ${NYX_ENGINE_ROOT}/Runtime/Platform/src/WindowPlacement.cpp
+
     # Runtime/Input
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputTypes.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputFrame.cpp

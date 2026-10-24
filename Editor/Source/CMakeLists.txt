@@ -263,8 +263,8 @@ function(nyx_add_editor_program)
     # Play starts NyxGame from next to the editor, so building the editor builds the game too.
     add_dependencies(NyxEditor NyxGame)
 
-    # Set working directory to be next to the built .exe
-    # ImGui saves the editor's window layout (imgui.ini) in the working directory
+    # Set working directory to be next to the built .exe. The editor's layout is kept in the
+    # project's Saved/Layouts, not in the working directory.
     set_target_properties(NyxEditor PROPERTIES
         VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:NyxEditor>"
     )
@@ -296,6 +296,14 @@ if(BUILD_TESTING)
     target_precompile_headers(NyxEditorPanelTests REUSE_FROM NyxEditorLib)
     set_property(TARGET NyxEditorPanelTests PROPERTY FOLDER "Tests")
     add_test(NAME NyxEditorPanelTests COMMAND NyxEditorPanelTests)
+
+    # The layout kept between runs: the workspaces' layout files, docking, the window's placement
+    add_executable(NyxEditorLayoutTests tests/EditorLayoutTests.cpp)
+    target_include_directories(NyxEditorLayoutTests PRIVATE ${NYX_TEST_SUPPORT_DIR})
+    target_link_libraries(NyxEditorLayoutTests PRIVATE NyxEditorLib)
+    target_precompile_headers(NyxEditorLayoutTests REUSE_FROM NyxEditorLib)
+    set_property(TARGET NyxEditorLayoutTests PROPERTY FOLDER "Tests")
+    add_test(NAME NyxEditorLayoutTests COMMAND NyxEditorLayoutTests)
 
     # The input asset as the editor edits it: undo inside its arrays, live previews, saving, the
     # Tuning and Checks tabs drawn headless

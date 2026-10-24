@@ -61,7 +61,7 @@ doesn't allow, and on a table that goes round in a circle, so a new dependency s
 | `Link` | The editor link: its messages, live edits, live tuning of the input (`LiveInput`), recordings, the log sink | Core, Net, Input, Scene, Assets |
 | `LinkTools` | Link messages, recordings, scene files and input files as readable text, for the editor and NyxDump; not under `Runtime`, and not in the game | Core, Reflection, Scene, Input, Link |
 | `Render` | The Vulkan renderer, scene views, shaders and materials, meshes made at run time and mesh instances on the GPU (`RuntimeMeshCache`, `MeshInstanceCache`), culling by the views' cameras (`SceneCulling.h`), the primary light's cascaded shadow maps (`ShadowCascades.h`, `VulkanShadows`), and applying the link's shaders and material values | Core, Net, Scene, Assets, UI, Link |
-| `Platform` | The window | Core, Input, UI |
+| `Platform` | The window, and where it is kept on the monitors (`FitWindowOnScreen()`) | Core, Input, UI |
 | `App` | The application and its layers, `main()`, the options the editor starts a game with, what a game module brings (`GameModule`) and its player (`IPlayerController`, turning input into commands each frame), the player Nyx's game has without one (`ThirdPersonPlayer`) | Core, Input, Scene, Sim, Render, Platform |
 
 Each folder of `Runtime` has one namespace: `Nyx`, except `Net` (`Nyx::Net`), `Input`
@@ -123,7 +123,7 @@ checks every `#include` against this table.
 | `Scene` | The scene being edited: its document and undo, the outliner, details, gizmo, scene views and their cameras, scene files, copy and paste | Common, Transactions, Assets, Preferences, Properties |
 | `Play` | Play and Play All: the games, their windows and crash cards, the Game Link window, edits sent to the games | Transactions, Preferences, Scene |
 | `Input` | The Input window (*Window > Input*): the editor's or a running game's input, its history and traces; the input asset being edited, with its undo (`InputAssetDocument`), and the Tuning and Checks tabs | Common, Transactions, Properties, Play |
-| `App` | `EditorLayer`, which owns and wires up everything else; `EditorFrame`, the titlebar with its menus and the status bar; `MaterialWorkspace`, which feeds the material windows and makes new materials; the workspaces, the asset types the editor knows | Common, Assets, Materials, Preferences, DevTools, Properties, Scene, Play, Input |
+| `App` | `EditorLayer`, which owns and wires up everything else; `EditorFrame`, the titlebar with its menus and the status bar; `MaterialWorkspace`, which feeds the material windows and makes new materials; the workspaces and their layout files (`Workspaces`, in the project's `Saved/Layouts`, with the window's placement), the asset types the editor knows | Common, Assets, Materials, Preferences, DevTools, Properties, Scene, Play, Input |
 
 ## One frame
 
@@ -208,7 +208,8 @@ and `NYX_PROFILE_MESSAGE()`. They wrap Tracy, and only `Profiler.h` includes Tra
   editor registers the module's source locations from it. A module type named like a type already
   registered is refused with an error, so the engine's types always keep their names.
 - **`WindowsWindow`** (`IWindow`): the GLFW window, its input, its dock area and frame strips, the
-  frame rate limiter, and the startup banner until `FinishStartup()`. It knows nothing of the
+  frame rate limiter, its placement (`GetPlacement()`, `SetPlacement()`: the editor keeps it in its
+  layout files), and the startup banner until `FinishStartup()`. It knows nothing of the
   renderer: `Application` hands the renderer the window (`GetNativeWindow()`) and is told when its
   framebuffer changes size.
 - **The renderer**: everything on the GPU: scene views, shaders, materials; in its

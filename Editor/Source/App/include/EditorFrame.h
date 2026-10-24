@@ -67,6 +67,8 @@ namespace Nyx::Editor
 
 			// The workspace tabs, and Play
 			Workspaces& Layouts;
+			// The current workspace's default layout, with its panels open (Window > Reset Layout)
+			std::function<void()> ResetLayout;
 			PlayControls& Play;
 			PlaySession& Games;
 			EditorPreferences& Preferences;

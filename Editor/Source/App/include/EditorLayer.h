@@ -179,6 +179,11 @@ namespace Nyx::Editor
 			.Mockup = Mockup,
 #endif
 			.Layouts = Layouts,
+			.ResetLayout = [this]()
+			{
+				Layouts.RequestDefaultLayout();
+				ApplyWorkspacePanels();
+			},
 			.Play = Play,
 			.Games = Games,
 			.Preferences = Preferences,

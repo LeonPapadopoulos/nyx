@@ -188,6 +188,12 @@ namespace Nyx::Editor
 				Editor.Play.bShowSetups = !Editor.Play.bShowSetups;
 			}
 
+			// The workspace's panels where they first were, and open
+			if (NYX_UI(Nyx::UI::MenuItem("Reset Layout")))
+			{
+				Editor.ResetLayout();
+			}
+
 			// Shows "Scene 2" the way the game sees the scene: through its primary camera, without editor overlays
 			if (NYX_UI(Nyx::UI::MenuItem("Game View in Scene 2", nullptr, Editor.bSecondaryViewShowsGameView)))
 			{

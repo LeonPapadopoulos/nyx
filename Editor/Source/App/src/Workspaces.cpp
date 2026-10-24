@@ -5,12 +5,19 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
+#include <cstdio>
 #include <fstream>
 #include <sstream>
 #include <string>
 
 namespace Nyx::Editor
 {
+	namespace
+	{
+		// The type of the editor's sections in the layout files: "[Nyx][<name>]"
+		constexpr const char* SectionType = "Nyx";
+	}
+
 	const char* GetWorkspaceName(EWorkspace workspace)
 	{
 		return workspace == EWorkspace::Materials ? "Materials" : "Scene";
@@ -28,6 +35,50 @@ namespace Nyx::Editor
 		return std::nullopt;
 	}
 
+	std::vector<std::string> WriteWindowPlacement(const Nyx::WindowPlacement& placement)
+	{
+		const Nyx::ScreenRect& rect = placement.Rect;
+		return {
+			"Pos=" + std::to_string(rect.X) + "," + std::to_string(rect.Y),
+			"Size=" + std::to_string(rect.Width) + "," + std::to_string(rect.Height),
+			std::string("Maximized=") + (placement.bMaximized ? "1" : "0"),
+		};
+	}
+
+	std::optional<Nyx::WindowPlacement> ReadWindowPlacement(const std::vector<std::string>& lines)
+	{
+		Nyx::WindowPlacement placement;
+		bool bHasPos = false;
+		bool bHasSize = false;
+		for (const std::string& line : lines)
+		{
+			int x = 0;
+			int y = 0;
+			int maximized = 0;
+			if (std::sscanf(line.c_str(), "Pos=%d,%d", &x, &y) == 2)
+			{
+				placement.Rect.X = x;
+				placement.Rect.Y = y;
+				bHasPos = true;
+			}
+			else if (std::sscanf(line.c_str(), "Size=%d,%d", &x, &y) == 2 && x > 0 && y > 0)
+			{
+				placement.Rect.Width = x;
+				placement.Rect.Height = y;
+				bHasSize = true;
+			}
+			else if (std::sscanf(line.c_str(), "Maximized=%d", &maximized) == 1)
+			{
+				placement.bMaximized = maximized != 0;
+			}
+		}
+		if (!bHasPos || !bHasSize)
+		{
+			return std::nullopt;
+		}
+		return placement;
+	}
+
 	Workspaces::Workspaces(std::filesystem::path layoutsFolder)
 		: LayoutsFolder(std::move(layoutsFolder))
 	{
@@ -38,18 +89,116 @@ namespace Nyx::Editor
 		return LayoutsFolder / (std::string(GetWorkspaceName(workspace)) + ".ini");
 	}
 
-	void Workspaces::SaveCurrent() const
+	void Workspaces::AddSection(std::string name, std::function<std::vector<std::string>()> write)
+	{
+		Sections.push_back(Section{ std::move(name), std::move(write) });
+	}
+
+	const std::vector<std::string>* Workspaces::GetLoadedSection(std::string_view name) const
+	{
+		const auto found = LoadedSections.find(name);
+		return found != LoadedSections.end() ? &found->second : nullptr;
+	}
+
+	void Workspaces::Start(EWorkspace workspace)
+	{
+		Current = workspace;
+
+		// ImGui would load imgui.ini from the working directory at the first frame and save it
+		// there; the layout files do that instead
+		ImGui::GetIO().IniFilename = nullptr;
+		if (!bStarted)
+		{
+			ImGuiSettingsHandler handler;
+			handler.TypeName = SectionType;
+			handler.TypeHash = ImHashStr(SectionType);
+			handler.ReadInitFn = &Workspaces::ReadInit;
+			handler.ReadOpenFn = &Workspaces::ReadOpen;
+			handler.ReadLineFn = &Workspaces::ReadLine;
+			handler.WriteAllFn = &Workspaces::WriteAll;
+			handler.UserData = this;
+			ImGui::AddSettingsHandler(&handler);
+			bStarted = true;
+		}
+
+		bBuildDefault = !LoadCurrentFile();
+	}
+
+	void Workspaces::Stop()
+	{
+		if (!bStarted)
+		{
+			return;
+		}
+		SaveCurrent();
+		ImGui::RemoveSettingsHandler(SectionType);
+		bStarted = false;
+	}
+
+	void Workspaces::SaveCurrent()
 	{
 		std::error_code error;
 		std::filesystem::create_directories(LayoutsFolder, error);
 		size_t size = 0;
 		const char* settings = ImGui::SaveIniSettingsToMemory(&size);
+		ImGui::GetIO().WantSaveIniSettings = false;
 		std::ofstream stream(GetLayoutFile(Current), std::ios::binary | std::ios::trunc);
 		stream.write(settings, static_cast<std::streamsize>(size));
 		if (!stream)
 		{
 			LOG_WARNING("Couldn't save the {} workspace's layout to {}", GetWorkspaceName(Current), GetLayoutFile(Current).string());
 		}
+	}
+
+	void Workspaces::SaveIfChanged()
+	{
+		// ImGui counts down from the first change, so a section changing every frame, e.g. a camera
+		// flying, is still saved every few seconds
+		if (bStarted && WriteSections() != SavedSections)
+		{
+			ImGui::MarkIniSettingsDirty();
+		}
+		if (ImGui::GetIO().WantSaveIniSettings)
+		{
+			SaveCurrent();
+		}
+	}
+
+	std::string Workspaces::WriteSections() const
+	{
+		std::string text;
+		for (const Section& section : Sections)
+		{
+			text += std::string("[") + SectionType + "][" + section.Name + "]\n";
+			for (const std::string& line : section.Write())
+			{
+				text += line + "\n";
+			}
+			text += "\n";
+		}
+		return text;
+	}
+
+	void Workspaces::ReadInit(ImGuiContext*, ImGuiSettingsHandler* handler)
+	{
+		static_cast<Workspaces*>(handler->UserData)->LoadedSections.clear();
+	}
+
+	void* Workspaces::ReadOpen(ImGuiContext*, ImGuiSettingsHandler* handler, const char* name)
+	{
+		return &static_cast<Workspaces*>(handler->UserData)->LoadedSections[name];
+	}
+
+	void Workspaces::ReadLine(ImGuiContext*, ImGuiSettingsHandler*, void* entry, const char* line)
+	{
+		static_cast<std::vector<std::string>*>(entry)->emplace_back(line);
+	}
+
+	void Workspaces::WriteAll(ImGuiContext*, ImGuiSettingsHandler* handler, ImGuiTextBuffer* buffer)
+	{
+		Workspaces& workspaces = *static_cast<Workspaces*>(handler->UserData);
+		workspaces.SavedSections = workspaces.WriteSections();
+		buffer->append(workspaces.SavedSections.c_str());
 	}
 
 	bool Workspaces::ApplyPending()
@@ -63,11 +212,16 @@ namespace Nyx::Editor
 		Current = *Requested;
 		Requested.reset();
 
+		bBuildDefault = !LoadCurrentFile();
+		return true;
+	}
+
+	bool Workspaces::LoadCurrentFile()
+	{
 		std::ifstream stream(GetLayoutFile(Current), std::ios::binary);
 		if (!stream)
 		{
-			bBuildDefault = true;
-			return true;
+			return false;
 		}
 		std::stringstream settings;
 		settings << stream.rdbuf();

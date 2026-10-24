@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <span>
 #include <string>
 
 namespace Nyx::Input
@@ -20,6 +21,35 @@ namespace Nyx
 		int X = 0;
 		int Y = 0;
 	};
+
+	// A rectangle on the screen, in screen coordinates, e.g. a monitor's work area: without the
+	// taskbar
+	struct ScreenRect
+	{
+		int X = 0;
+		int Y = 0;
+		int Width = 0;
+		int Height = 0;
+
+		bool operator==(const ScreenRect&) const = default;
+	};
+
+	// Where a window is and how big, to put it back there the next time: its client area (without
+	// titlebar and borders) as it is when neither maximized nor minimized, and whether it is
+	// maximized. A maximized window keeps the rectangle it goes back to when restored.
+	struct WindowPlacement
+	{
+		ScreenRect Rect{ 0, 0, 1280, 720 };
+		bool bMaximized = false;
+
+		bool operator==(const WindowPlacement&) const = default;
+	};
+
+	// The placement moved onto the monitors, e.g. after one was unplugged: unchanged while a strip
+	// along its top (where it is dragged) lies on one of `workAreas`; else on the work area it
+	// overlaps most, or the first, made no bigger than that and moved fully onto it. Unchanged
+	// without work areas.
+	NYXENGINE_API WindowPlacement FitWindowOnScreen(const WindowPlacement& placement, std::span<const ScreenRect> workAreas);
 
 	struct WindowSpecs
 	{
@@ -100,6 +130,12 @@ namespace Nyx
 
 		virtual unsigned int GetWidth() = 0;
 		virtual unsigned int GetHeight() = 0;
+
+		// Where the window is, e.g. to save as the application closes
+		virtual WindowPlacement GetPlacement() const = 0;
+		// Moves and sizes the window, kept on the monitors there are now (FitWindowOnScreen()).
+		// Before FinishStartup(), while the window is hidden, it appears there, maximized if asked.
+		virtual void SetPlacement(const WindowPlacement& placement) = 0;
 
 		// At most this many frames per second, 0 for no cap. Under vsync too, e.g. 30 on a 60 Hz
 		// monitor.

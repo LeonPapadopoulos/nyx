@@ -328,6 +328,20 @@ variable `NYX_PAINTER_TEST_OUTPUT` naming a folder, it saves what it painted as 
   its file changes on disk, so it can be edited in a text editor too.
 - `NyxUIThemeTests` checks that every theme value is in the file and reads back as written.
 
+## The editor's layout
+
+- The editor starts as it was closed: the window's size and place, maximized or not, the dock
+  layout, and the floating panels' sizes and places. A window last on a monitor that is gone
+  comes back on one there is; ImGui does the same for panels floating in OS windows of their own.
+- Each workspace's layout is kept in the project, in `Saved/Layouts` (`Scene.ini`,
+  `Materials.ini`): saved a few seconds after it changes and when the editor closes, so stopping
+  the editor in the debugger loses at most the last few seconds. The working directory doesn't
+  matter; there is no `imgui.ini`.
+- *Window > Reset Layout* puts the current workspace's panels back where they first were, and
+  opens them.
+- `NyxEditorLayoutTests` saves and loads layouts headless: the docking, the window's placement,
+  saving while running, switching workspaces, Reset Layout and keeping the window on the monitors.
+
 ## Reflection
 
 Types and properties are exposed to the editor, saving and live edits with macros:

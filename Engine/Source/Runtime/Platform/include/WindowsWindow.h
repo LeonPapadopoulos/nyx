@@ -38,6 +38,9 @@ namespace Nyx
 		unsigned int GetWidth() override;
 		unsigned int GetHeight() override;
 
+		WindowPlacement GetPlacement() const override;
+		void SetPlacement(const WindowPlacement& placement) override;
+
 		void SetFrameRateCap(uint32_t framesPerSecond) override;
 		uint32_t GetFrameRateCap() const override;
 		virtual bool ShouldClose() const override;
@@ -63,6 +66,9 @@ namespace Nyx
 
 		bool IsMaximized() const;
 
+		// Keeps Placement up to date with where the window is, except while it is minimized
+		void TrackPlacement();
+
 	private:
 		GLFWwindow* Window = nullptr;
 		std::function<void()> OnFramebufferResized;
@@ -81,6 +87,10 @@ namespace Nyx
 		bool bTitlebarHovered = false;
 
 		WindowFrameContent FrameContent;
+
+		// Where the window is, or was before it was minimized (GetPlacement()); while it is hidden
+		// before FinishStartup(), whether it will appear maximized
+		WindowPlacement Placement;
 
 		// Shown while the application starts up; released by FinishStartup().
 		std::unique_ptr<WindowsStartupBanner> StartupBanner;

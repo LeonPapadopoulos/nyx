@@ -56,6 +56,7 @@ namespace Nyx
 	void WindowsWindow::PollEvents()
 	{
 		glfwPollEvents();
+		TrackPlacement();
 	}
 
 	bool WindowsWindow::WaitIfMinimized()
@@ -82,6 +83,56 @@ namespace Nyx
 	unsigned int WindowsWindow::GetHeight()
 	{
 		return Data.Height;
+	}
+
+	WindowPlacement WindowsWindow::GetPlacement() const
+	{
+		return Placement;
+	}
+
+	void WindowsWindow::SetPlacement(const WindowPlacement& placement)
+	{
+		std::vector<ScreenRect> workAreas;
+		int monitorCount = 0;
+		GLFWmonitor** monitors = glfwGetMonitors(&monitorCount);
+		for (int index = 0; index < monitorCount; ++index)
+		{
+			ScreenRect area;
+			glfwGetMonitorWorkarea(monitors[index], &area.X, &area.Y, &area.Width, &area.Height);
+			workAreas.push_back(area);
+		}
+		const WindowPlacement fitted = FitWindowOnScreen(placement, workAreas);
+
+		// A maximized window is restored first, so its rectangle is the one it is restored to
+		const bool bVisible = glfwGetWindowAttrib(Window, GLFW_VISIBLE) == GLFW_TRUE;
+		if (bVisible && (IsMaximized() || glfwGetWindowAttrib(Window, GLFW_ICONIFIED) == GLFW_TRUE))
+		{
+			glfwRestoreWindow(Window);
+		}
+		glfwSetWindowPos(Window, fitted.Rect.X, fitted.Rect.Y);
+		glfwSetWindowSize(Window, fitted.Rect.Width, fitted.Rect.Height);
+		Data.Width = static_cast<unsigned int>(fitted.Rect.Width);
+		Data.Height = static_cast<unsigned int>(fitted.Rect.Height);
+		Placement = fitted;
+		if (bVisible && fitted.bMaximized)
+		{
+			glfwMaximizeWindow(Window);
+		}
+	}
+
+	void WindowsWindow::TrackPlacement()
+	{
+		// Hidden, the window has the placement it will appear with; minimized, the one it had
+		if (glfwGetWindowAttrib(Window, GLFW_VISIBLE) != GLFW_TRUE || glfwGetWindowAttrib(Window, GLFW_ICONIFIED) == GLFW_TRUE)
+		{
+			return;
+		}
+		Placement.bMaximized = IsMaximized();
+		if (!Placement.bMaximized)
+		{
+			glfwGetWindowPos(Window, &Placement.Rect.X, &Placement.Rect.Y);
+			glfwGetWindowSize(Window, &Placement.Rect.Width, &Placement.Rect.Height);
+		}
 	}
 
 	void WindowsWindow::SetFrameRateCap(uint32_t framesPerSecond)
@@ -121,7 +172,15 @@ namespace Nyx
 	void WindowsWindow::FinishStartup()
 	{
 		StartupBanner.reset();
-		glfwShowWindow(Window);
+		// Shown maximized in one step; GLFW would show the window and then maximize it
+		if (Placement.bMaximized)
+		{
+			ShowWindow(glfwGetWin32Window(Window), SW_SHOWMAXIMIZED);
+		}
+		else
+		{
+			glfwShowWindow(Window);
+		}
 	}
 
 	void WindowsWindow::Initialize(const WindowSpecs& specs)
@@ -193,6 +252,9 @@ namespace Nyx
 			glfwGetWindowFrameSize(Window, &frameLeft, &frameTop, nullptr, nullptr);
 			glfwSetWindowPos(Window, specs.Position->X + frameLeft, specs.Position->Y + frameTop);
 		}
+
+		glfwGetWindowPos(Window, &Placement.Rect.X, &Placement.Rect.Y);
+		glfwGetWindowSize(Window, &Placement.Rect.Width, &Placement.Rect.Height);
 
 		const bool bTransparent = glfwGetWindowAttrib(Window, GLFW_TRANSPARENT_FRAMEBUFFER) == GLFW_TRUE;
 		ASSERT(bTransparent && "Transparent framebuffer not supported on this platform/path.");

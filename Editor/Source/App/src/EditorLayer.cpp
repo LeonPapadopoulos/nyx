@@ -132,8 +132,17 @@ namespace Nyx::Editor
 		};
 		Materials.SetOpenFileAtLine(OpenAtLine);
 
-		// The workspace of the last session, whose layout ImGui read from imgui.ini
+		// The workspace of the last session, with its layout and the window where it was; the
+		// workspace saved last has the window's placement as it was last
+		Layouts.AddSection("Window", [this]() { return WriteWindowPlacement(Window->GetPlacement()); });
 		Layouts.Start(FindWorkspace(Preferences.Workspace).value_or(EWorkspace::Scene));
+		if (const std::vector<std::string>* windowSection = Layouts.GetLoadedSection("Window"))
+		{
+			if (const std::optional<Nyx::WindowPlacement> placement = ReadWindowPlacement(*windowSection))
+			{
+				Window->SetPlacement(*placement);
+			}
+		}
 		ApplyWorkspacePanels();
 		AssetBrowser.NewMaterial = [this]()
 		{
@@ -223,11 +232,11 @@ namespace Nyx::Editor
 		SourceInspector.Detach();
 		Frame.Detach();
 
+		// The layout as it is, before the panels go
+		Layouts.Stop();
 		MainSceneView.DestroyView();
 		SecondarySceneView.DestroyView();
 		Materials.Release();
-		// imgui.ini gets the current workspace's layout too, as ImGui saves it
-		Layouts.SaveCurrent();
 		Renderer->SetShaderCompiledListener(nullptr);
 #if NYX_DEV_TOOLS
 		PainterTest.Release();
@@ -251,6 +260,7 @@ namespace Nyx::Editor
 				LOG_WARNING("Couldn't save the editor preferences to '{0}'", EditorPreferences::GetUserFile().string());
 			}
 		}
+		Layouts.SaveIfChanged();
 
 		Input->GetUser().SetContextActive(SourceInspectorContext, SourceInspector.IsActive(), { .Reason = "Inspecting the UI's sources" });
 		InputWindow.Record(*Input);
