@@ -31,6 +31,9 @@
 #include "ReflectionUtils.h"
 #include "MeshInstancesComponent.h"
 #include "RuntimeMeshComponent.h"
+#include "ScatterBlockerComponent.h"
+#include "ScatterComponent.h"
+#include "ScatterInstances.h"
 #include "SceneEditor.h"
 #include "SceneFilePopups.h"
 #include "SceneOutlinerPanel.h"
@@ -377,6 +380,55 @@ namespace
 		Require(!world.Has<RuntimeMeshComponent>(ground), "A removed ground should take its mesh with it");
 		editing.Undo();
 		Require(world.Has<GroundComponent>(ground) && world.Has<RuntimeMeshComponent>(ground), "Undoing the removal should bring the ground and its mesh back");
+	}
+
+	// A scatter and a blocker in the editor, followed each frame as EditorLayer::OnUpdate() follows
+	// them: a blocker added takes the copies round it away the next frame, dragged it makes only the
+	// cells it reaches again, and undone the copies come back as they were
+	void TestScatterFollowsBlockers()
+	{
+		SceneEditor editing;
+		editing.Transactions.Subscribe(&editing.AssetLoader);
+		Registry& world = editing.Scene.GetRegistry();
+		const Entity meadow = editing.Scene.CreateEntity("Meadow");
+		const ComponentTypeOps& scatterType = *ComponentTypeRegistry::Get().FindByTypeMetadata(Nyx::Reflection::GetTypeMetadata<ScatterComponent>());
+		Require(AddComponent(editing.Scene, editing.Transactions, meadow, scatterType), "Adding a scatter should be an edit");
+		world.Get<ScatterComponent>(meadow).Size = glm::vec2(64.0f, 64.0f);
+		world.Get<ScatterComponent>(meadow).CellSize = 8.0f;
+		world.Get<ScatterComponent>(meadow).Density = 2.0f;
+		UpdateScatters(world);
+		const std::vector<glm::mat4> unblocked = world.Get<MeshInstancesComponent>(meadow).Instances->Transforms;
+
+		// A crate scaled six times: its blocker, without a collider, is a circle of 0.5 m times 6
+		const Entity crate = editing.Scene.CreateEntity("Crate");
+		world.Add<TransformComponent>(crate, TransformComponent{ .Scale = glm::vec3(6.0f) });
+		const ComponentTypeOps& blockerType = *ComponentTypeRegistry::Get().FindByTypeMetadata(Nyx::Reflection::GetTypeMetadata<ScatterBlockerComponent>());
+		const auto copiesRound = [&](float x)
+		{
+			return std::count_if(world.Get<MeshInstancesComponent>(meadow).Instances->Transforms.begin(), world.Get<MeshInstancesComponent>(meadow).Instances->Transforms.end(),
+				[x](const glm::mat4& transform)
+				{
+					return glm::length(glm::vec2(transform[3].x - x, transform[3].z)) < 3.1f;
+				});
+		};
+		Require(copiesRound(0.0f) > 10, "The meadow should have copies where the crate is");
+		Require(AddComponent(editing.Scene, editing.Transactions, crate, blockerType), "Adding a scatter blocker should be an edit");
+		UpdateScatters(world);
+		Require(copiesRound(0.0f) == 0, "An added blocker should take the copies round it away the next frame");
+
+		// Dragged by the gizmo, a frame at a time
+		for (int frame = 1; frame <= 4; ++frame)
+		{
+			world.Get<TransformComponent>(crate).Position.x = 0.5f * static_cast<float>(frame);
+			UpdateScatters(world);
+			Require(copiesRound(0.5f * static_cast<float>(frame)) == 0, "A dragged blocker should keep the copies away where it is");
+			Require(world.Get<ScatterComponent>(meadow).Cells->CellsThrown <= 4, "A dragged blocker should make only the cells it reaches again");
+		}
+
+		editing.Undo();
+		Require(!world.Has<ScatterBlockerComponent>(crate), "Undoing should take the blocker away");
+		UpdateScatters(world);
+		Require(world.Get<MeshInstancesComponent>(meadow).Instances->Transforms == unblocked, "Without the blocker, the copies should be as they were");
 	}
 
 	// ImGui counts the items that share the ID of the one under the mouse ("visible items with
@@ -2131,6 +2183,7 @@ int main()
 		TestPanelsDrawHeadless();
 		TestRuntimeMeshDetails();
 		TestGroundFollowsEdits();
+		TestScatterFollowsBlockers();
 		TestDetailsHaveNoConflictingIds();
 		TestEntityReferenceCombo();
 		TestEntityReferenceDropFromOutliner();

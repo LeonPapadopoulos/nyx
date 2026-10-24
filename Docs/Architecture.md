@@ -53,7 +53,7 @@ doesn't allow, and on a table that goes round in a circle, so a new dependency s
 | `Reflection` | Type, property and enum metadata, and the `NYX_REFLECT`, `NYX_PROPERTY` and `NYX_ENUM` macros; not under `Runtime` | — |
 | `Net` | TCP connections and the messages they carry | Core |
 | `Input` | Keyboard, mouse and gamepads (through SDL3), gathered from backends into one `InputFrame` per frame; the router: context stacks, actions, the value pipeline, triggers and their traces; the input's history and its view (`InputDebugView`), painted with the UI's widgets; input assets (`.nyxinput`), saved through reflection, and their tuning layers; the checks and recipes for bindings; the input's stream and recordings (`.nyxinputrec`); the game's fly cameras, for entities with a `FlyCameraComponent` (`UpdateFlyCameras()`), and its orbit cameras' input (`OrbitCameraInput`, `Input::UpdateOrbitCameras()`) | Core, Reflection, Scene, UI |
-| `Scene` | Entities and components (the physics components, `CharacterComponent` and `OrbitCameraComponent` among them, and the moves along the ground relative to a camera, `GetGroundMove()`), the component registry, scene files, the tagged binary format, surface anchors (`SurfaceAnchor`: a point, normal and tangent on an entity that move with it), surface decals (`SurfaceDecalComponent`), meshes made at run time (`RuntimeMeshComponent`, not saved), a mesh drawn at many transforms (`MeshInstancesComponent`, not saved), the ground (`GroundComponent`, its heights `SampleGroundHeight()` and its mesh `MakeGroundMesh()`, made in its post-load step), scattering (`ScatterComponent`: copies of an entity's mesh over another entity's mesh, `ScatterOnMesh()`, into the entity's `MeshInstancesComponent`, made in its post-load step and following its surface each frame, `UpdateScatters()`), a camera's view and projection and the ray back through a point of its picture (`CameraProjection.h`) | Core, Reflection |
+| `Scene` | Entities and components (the physics components, `CharacterComponent` and `OrbitCameraComponent` among them, and the moves along the ground relative to a camera, `GetGroundMove()`), the component registry, scene files, the tagged binary format, surface anchors (`SurfaceAnchor`: a point, normal and tangent on an entity that move with it), surface decals (`SurfaceDecalComponent`), meshes made at run time (`RuntimeMeshComponent`, not saved), a mesh drawn at many transforms (`MeshInstancesComponent`, not saved), the ground (`GroundComponent`, its heights `SampleGroundHeight()` and its mesh `MakeGroundMesh()`, made in its post-load step), scattering (`ScatterComponent`: copies of an entity's mesh over another entity's mesh, `ScatterOnMesh()`, into the entity's `MeshInstancesComponent`, made in its post-load step and following its surface and the blockers each frame, `UpdateScatters()`, cell by cell so an edit makes only the cells it reaches again; `ScatterBlockerComponent` keeps copies out of an entity's collider or a circle round it; a noise mask), gradient noise shared by the ground and the scatter (`SampleGradientNoise()`), a camera's view and projection and the ray back through a point of its picture (`CameraProjection.h`) | Core, Reflection |
 | `Physics` | Rigid bodies, their shapes (boxes, spheres, capsules, static triangle meshes), collisions and the physics step, and characters, on Jolt (`PhysicsWorld`); Jolt's headers stay inside | Core |
 | `Sim` | The game world: its entities, their physics bodies and characters kept in step with the physics components (`PhysicsBodies`), and the simulation systems each fixed step runs, in order (`GameWorld`, `ISimSystem`), the players' commands each step applies (`CommandQueue`), the entity a ray hits first (`PickPhysicsBody()`), the orbit cameras following their targets as drawn (`UpdateOrbitCameras()`) | Core, Reflection, Scene, Physics |
 | `Assets` | Asset files as plain data: images, materials and their options (`MaterialOptions`, reflected, e.g. two-sided), glTF meshes, shader compile requests and results | Core, Reflection |
@@ -305,6 +305,9 @@ data: made from the values wherever they are, in the editor and in the game alik
    entity's steps only), and may only read it. Its step makes what it can, and it follows the other
    entity by its revision and transform once a frame, in the editor and the game, as the renderer
    follows a mesh (`UpdateScatters()`, [Scattering](Design/scattering.md)); the hash includes them.
+   Content that is costly to make again whole, such as a scatter of tens of thousands, can keep
+   what it made in parts in an unreflected field (`ScatterComponent::Cells`) and make again only
+   the parts an edit reaches, as long as each part comes out exactly as a full make gives it.
 
 A simulation system is for what changes as the game runs (a tree growing a stage), and makes its
 data the same way, through the same pure functions.
@@ -391,5 +394,6 @@ How some systems work, and why they work that way:
 - [Undo by guid](Design/undo-by-guid.md): why undo names entities by guid, and how it keeps
   components whole.
 - [Scattering](Design/scattering.md): copies of a mesh over another entity's mesh, sampled by
-  triangle area, the same on every machine, made in the post-load step and following the surface
-  each frame; masks later.
+  triangle area cell by cell, the same on every machine, made in the post-load step and following
+  the surface and the blockers each frame, an edit making only the cells it reaches again;
+  blockers and a noise mask, painted masks later.

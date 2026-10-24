@@ -593,24 +593,42 @@ over a ground ([Design: Scattering](Design/scattering.md)).
   *Surface*: an entity with a mesh made at run time, such as a *Ground*. Without one, the copies are
   on the flat plane through the entity, so a scatter just added shows them at once. The copies are
   made in the editor and the game, again whenever a value changes, and again whenever the surface's
-  mesh changes or either entity moves, whichever was loaded first. They are never saved.
+  mesh changes, either entity moves or a blocker changes, whichever was loaded first. They are never
+  saved.
 - *Size*: the area around the entity. *Density*: copies a square metre of surface. *Seed*: other
   places for the same values. *Spacing*: the least distance between two copies; it wins over the
   density. *Limits*: the *Slope Range* in degrees and the *Height Range* along the entity's Y.
   *Placement*: *Scale Range*, a random turn about the up of up to *Yaw Range* degrees, *Align To
   Normal* from upright (0) to along the surface's normal (1), and *Sink Depth* into the surface.
-  *Culling*: the copies are grouped in squares of *Cell Size*, which the renderer culls whole.
-- The surface's triangles are sampled by their area, so any mesh works; the same values give the
-  same copies on every machine.
+  *Masks*: *Use Blockers* (see below), and a *Noise Mask* that thins the copies in patches, for
+  drifts with soft edges or, with *Noise Invert*, clearings: *Noise Frequency* (patches a metre),
+  *Noise Threshold* (0.5 leaves out about half), *Noise Softness* (how softly they thin at a patch's
+  edge), *Noise Seed*. *Culling*: the copies are made and grouped in squares of *Cell Size*, which
+  the renderer culls whole.
+- A *Scatter Blocker* keeps every scatter's copies out of its entity, e.g. grass out of a crate or a
+  tree's trunk: its box, sphere or capsule collider (*Shape* *Collider*), or a circle of *Radius*
+  round it (*Circle*, or a collider blocker without a collider), scaled with the entity; no copy
+  within *Margin* metres of it, and fewer over the *Falloff* past that. A scatter with *Use
+  Blockers* off grows through them.
+- An edit makes only the squares it reaches again: a blocker added, removed, edited or moved by more
+  than a centimetre, or a surface changed in one place. The rest keep their copies, and the result
+  is exactly what scattering all of it gives.
+- The surface's triangles are sampled by their area, square by square, so any mesh works; the same
+  values, surface and blockers give the same copies on every machine.
 - The copies are a `MeshInstancesComponent` (transforms relative to the entity, in cells with
   bounds), which the renderer draws; any code can fill one.
-- Scattering about 50,000 copies on the default 128 m ground takes about 200 ms in a Debug
-  build, 20 ms in Release.
+- Scattering about 50,000 copies on the default 128 m ground takes about 210 ms in a Debug
+  build, 20 ms in Release. Dragging a blocker over 40,000 copies takes about 9 ms a frame in
+  Debug (it was about 150 ms, when every change scattered everything).
 - Tests: `NyxScatterTests` (the same transforms every time, to the bit and as when written; the
   density's count; the spacing; the slope and height limits; copies on the ground, moved and
   turned, scaled, turned and sunk as asked; the cells cover every copy once, with their bounds; the
   post-load step makes them, nothing again for nothing new, again for an edited scatter, an edited
-  or moved ground; a surface loaded after its scatter is found; removing takes them away; timed).
+  or moved ground; a surface loaded after its scatter is found; removing takes them away; no copy
+  within a blocker and its margin, for each shape; the falloff's density; blockers moved, added,
+  edited and removed, and a surface edited in one place, make only their cells again, the same as a
+  full scatter; the noise mask the same every time, about half at 0.5, inverted the complement; a
+  scatter that opts out of blockers; blockers and masks saved and loaded; timed, a drag too).
 
 ## Surface decals
 

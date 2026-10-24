@@ -173,7 +173,9 @@ add_test(NAME NyxGroundTests COMMAND NyxGroundTests)
 
 # Scattering (ScatterComponent) without a GPU: the same transforms every time, the density, spacing,
 # slope and height limits, instances on their surface, the cells, the post-load step and a surface
-# loaded after its scatter; scattering about 50,000 instances on the default ground is timed.
+# loaded after its scatter; blockers and their falloff, edits making only their cells again, the
+# same as a full scatter, the noise mask, saving and loading; scattering about 50,000 instances on
+# the default ground, and dragging a blocker over 40,000, are timed.
 add_executable(NyxScatterTests ScatterTests.cpp)
 target_link_libraries(NyxScatterTests PRIVATE NyxEngine)
 add_dependencies(NyxScatterTests NyxGeneratedReflection)
