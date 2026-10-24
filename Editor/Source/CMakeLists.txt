@@ -59,6 +59,10 @@ set(NYX_EDITOR_SOURCES
     Play/src/GameLinkPanel.cpp
     Play/src/GameLinkSubscriber.cpp
 
+    # Physics
+    Physics/src/PhysicsMaterialDocument.cpp
+    Physics/src/PhysicsMaterialPanel.cpp
+
     # Input
     Input/src/InputAssetDocument.cpp
     Input/src/InputPanel.cpp
@@ -141,6 +145,10 @@ set(NYX_EDITOR_HEADERS
     Play/include/GameLinkPanel.h
     Play/include/GameLinkSubscriber.h
 
+    # Physics
+    Physics/include/PhysicsMaterialDocument.h
+    Physics/include/PhysicsMaterialPanel.h
+
     # Input
     Input/include/InputAssetDocument.h
     Input/include/InputPanel.h
@@ -209,6 +217,7 @@ target_include_directories(NyxEditorLib
         Materials/include
         Play/include
         Input/include
+        Physics/include
         Preferences/include
         DevTools/include
         Common/include
@@ -327,6 +336,15 @@ if(BUILD_TESTING)
     target_precompile_headers(NyxEditorInputTuningTests REUSE_FROM NyxEditorLib)
     set_property(TARGET NyxEditorInputTuningTests PROPERTY FOLDER "Tests")
     add_test(NAME NyxEditorInputTuningTests COMMAND NyxEditorInputTuningTests)
+
+    # A physics material as the editor edits it: its lines, the editor's undo, saving, the Physics
+    # Material window drawn headless
+    add_executable(NyxPhysicsMaterialEditorTests tests/PhysicsMaterialEditorTests.cpp)
+    target_include_directories(NyxPhysicsMaterialEditorTests PRIVATE ${NYX_TEST_SUPPORT_DIR})
+    target_link_libraries(NyxPhysicsMaterialEditorTests PRIVATE NyxEditorLib)
+    target_precompile_headers(NyxPhysicsMaterialEditorTests REUSE_FROM NyxEditorLib)
+    set_property(TARGET NyxPhysicsMaterialEditorTests PROPERTY FOLDER "Tests")
+    add_test(NAME NyxPhysicsMaterialEditorTests COMMAND NyxPhysicsMaterialEditorTests)
 
     # The material document and the Parameters window, headless, over a stand-in for the renderer
     add_executable(NyxMaterialEditorTests tests/MaterialEditorTests.cpp)

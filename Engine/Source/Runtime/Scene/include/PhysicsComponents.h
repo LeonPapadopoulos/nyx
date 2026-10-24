@@ -1,5 +1,6 @@
 #pragma once
 
+#include "AssetReference.h"
 #include "ReflectionMacros.h"
 
 #include <glm/glm.hpp>
@@ -7,7 +8,9 @@
 // What makes an entity a physics body. A collider alone makes a static body, which others bump into
 // and which never moves; with a RigidBodyComponent too, the body moves. One collider an entity:
 // with more, the box is taken over the sphere, the sphere over the capsule, and the capsule over the
-// mesh. The entity's TransformComponent places the body, and its scale scales the shape.
+// mesh. The entity's TransformComponent places the body, and its scale scales the shape. The
+// collider's physics material (a .nyxphysmat asset, PhysicsMaterials in Sim) gives the body its
+// friction, restitution and density.
 namespace Nyx
 {
 	NYX_REFLECT(Component, meta = (DisplayName = "Box Collider"))
@@ -15,6 +18,9 @@ namespace Nyx
 	{
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Collider", DragSpeed = 0.01, Tooltip = "Half the box's size along each axis, before the entity's scale"))
 		glm::vec3 HalfExtents{ 0.5f };
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Collider", AssetType = PhysicsMaterial, Tooltip = "How its surface slides and bounces, how heavy its stuff is, and the game's own numbers (.nyxphysmat); none: the engine's"))
+		Nyx::AssetReference Material;
 	};
 
 	NYX_REFLECT(Component, meta = (DisplayName = "Sphere Collider"))
@@ -22,6 +28,9 @@ namespace Nyx
 	{
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Collider", DragSpeed = 0.01, Tooltip = "Before the entity's scale; the largest axis of the scale counts"))
 		float Radius = 0.5f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Collider", AssetType = PhysicsMaterial, Tooltip = "How its surface slides and bounces, how heavy its stuff is, and the game's own numbers (.nyxphysmat); none: the engine's"))
+		Nyx::AssetReference Material;
 	};
 
 	// Upright along the entity's Y axis
@@ -33,6 +42,9 @@ namespace Nyx
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Collider", DragSpeed = 0.01, Tooltip = "Half the length of the middle, without the round ends; scaled by the entity's Y"))
 		float HalfHeight = 0.5f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Collider", AssetType = PhysicsMaterial, Tooltip = "How its surface slides and bounces, how heavy its stuff is, and the game's own numbers (.nyxphysmat); none: the engine's"))
+		Nyx::AssetReference Material;
 	};
 
 	// The triangles of the entity's mesh made at run time (RuntimeMeshComponent), e.g. a generated
@@ -45,6 +57,9 @@ namespace Nyx
 	{
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Collider", DragSpeed = 0.1, Tooltip = "Where two triangles meet bending less than this, in degrees, the edge is smooth: what slides across it doesn't catch on it"))
 		float SmoothEdgeDegrees = 5.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Collider", AssetType = PhysicsMaterial, Tooltip = "How its surface slides and bounces, how heavy its stuff is, and the game's own numbers (.nyxphysmat); none: the engine's"))
+		Nyx::AssetReference Material;
 	};
 
 	// The body moves: by forces, gravity and collisions, or, kinematic, only where its transform is set
@@ -54,7 +69,7 @@ namespace Nyx
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Rigid Body", Tooltip = "Moves only where its transform is set, pushing what it meets; nothing pushes it"))
 		bool bKinematic = false;
 
-		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Rigid Body", DragSpeed = 0.1, Tooltip = "In kg; 0: from the shape's volume at the density of water"))
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Rigid Body", DragSpeed = 0.1, Tooltip = "In kg; 0: from the shape's volume at its physics material's density"))
 		float Mass = 0.0f;
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Rigid Body", DragSpeed = 0.01, Tooltip = "Velocity lost per second, roughly"))
@@ -67,7 +82,7 @@ namespace Nyx
 		float GravityFactor = 1.0f;
 	};
 
-	// How a body's surface slides and bounces; without one, the defaults
+	// How one entity's surface slides and bounces, over its collider's physics material
 	NYX_REFLECT(Component, meta = (DisplayName = "Physics Material"))
 	struct PhysicsMaterialComponent
 	{

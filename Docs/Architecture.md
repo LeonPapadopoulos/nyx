@@ -55,8 +55,8 @@ doesn't allow, and on a table that goes round in a circle, so a new dependency s
 | `Input` | Keyboard, mouse and gamepads (through SDL3), gathered from backends into one `InputFrame` per frame; the router: context stacks, actions, the value pipeline, triggers and their traces; the input's history and its view (`InputDebugView`), painted with the UI's widgets; input assets (`.nyxinput`), saved through reflection, and their tuning layers; the checks and recipes for bindings; the input's stream and recordings (`.nyxinputrec`); the game's fly cameras, for entities with a `FlyCameraComponent` (`UpdateFlyCameras()`), and its orbit cameras' input (`OrbitCameraInput`, `Input::UpdateOrbitCameras()`) | Core, Reflection, Scene, UI |
 | `Scene` | Entities and components (the physics components, `ConstraintComponent` with its runtime `ConstraintStateComponent`, `CharacterComponent` and `OrbitCameraComponent` among them, and the moves along the ground relative to a camera, `GetGroundMove()`), the component registry, scene files, the tagged binary format, surface anchors (`SurfaceAnchor`: a point, normal and tangent on an entity that move with it), surface decals (`SurfaceDecalComponent`), meshes made at run time (`RuntimeMeshComponent`, not saved), a mesh drawn at many transforms (`MeshInstancesComponent`, not saved, each instance with custom numbers for the materials), the ground (`GroundComponent`, its heights `SampleGroundHeight()` and its mesh `MakeGroundMesh()`, made in its post-load step), scattering (`ScatterComponent`: copies of an entity's mesh over another entity's mesh, `ScatterOnMesh()`, into the entity's `MeshInstancesComponent`, made in its post-load step and following its surface and the blockers each frame, `UpdateScatters()`, cell by cell so an edit makes only the cells it reaches again; `ScatterBlockerComponent` keeps copies out of an entity's collider or a circle round it; a noise mask), gradient noise shared by the ground and the scatter (`SampleGradientNoise()`), the world's air (`EnvironmentComponent`: height fog, the sky following the sun, bloom, ambient occlusion), a camera's view and projection and the ray back through a point of its picture (`CameraProjection.h`) | Core, Reflection |
 | `Physics` | Rigid bodies, their shapes (boxes, spheres, capsules, static triangle meshes), collisions and the physics step, constraints (each end in its body's own space, limits, motors, the load they held, switched off and on, breaking), and characters, on Jolt (`PhysicsWorld`); Jolt's headers stay inside | Core |
-| `Sim` | The game world: its entities, their physics bodies and characters kept in step with the physics components (`PhysicsBodies`), their constraints with their `ConstraintComponent`s (`PhysicsConstraints`), and the simulation systems each fixed step runs, in order (`GameWorld`, `ISimSystem`), the players' commands each step applies (`CommandQueue`), the entity a ray hits first (`PickPhysicsBody()`), the orbit cameras following their targets as drawn (`UpdateOrbitCameras()`) | Core, Reflection, Scene, Physics |
-| `Assets` | Asset files as plain data: images, materials and their options (`MaterialOptions`, reflected, e.g. two-sided), glTF meshes, shader compile requests and results | Core, Reflection |
+| `Sim` | The game world: its entities, their physics bodies and characters kept in step with the physics components (`PhysicsBodies`), their constraints with their `ConstraintComponent`s (`PhysicsConstraints`), the physics materials their colliders name, read once, kept and changed live (`PhysicsMaterials`, `GetPhysicsMaterial()`), and the simulation systems each fixed step runs, in order (`GameWorld`, `ISimSystem`), the players' commands each step applies (`CommandQueue`), the entity a ray hits first (`PickPhysicsBody()`), the orbit cameras following their targets as drawn (`UpdateOrbitCameras()`) | Core, Reflection, Scene, Physics, Assets |
+| `Assets` | Asset files as plain data: images, materials and their options (`MaterialOptions`, reflected, e.g. two-sided), physics materials (`PhysicsMaterialAsset`, `.nyxphysmat`, and their values `PhysicsMaterialData`, reflected, with a game's own extras), glTF meshes, shader compile requests and results | Core, Reflection |
 | `UI` | The painter, and the painted UI drawn with it on top of ImGui, the dock space among it (`Nyx::UI::DockSpace()`, docked windows down to `DockedWindowMinWidth`) | Core, Reflection |
 | `Link` | The editor link: its messages, live edits, live tuning of the input (`LiveInput`), recordings, the log sink | Core, Net, Input, Scene, Assets |
 | `LinkTools` | Link messages, recordings, scene files and input files as readable text, for the editor and NyxDump; not under `Runtime`, and not in the game | Core, Reflection, Scene, Input, Link |
@@ -122,8 +122,9 @@ checks every `#include` against this table.
 | `Properties` | Drawing and editing reflected properties: a widget per property kind (an entity reference's picker among them), and the edit in progress | Common, Transactions, Assets |
 | `Scene` | The scene being edited: its document and undo, the outliner, details, gizmo, scene views (`SceneViewSet`: any number of `SceneViewPanel`s) and their cameras, scene files, copy and paste | Common, Transactions, Assets, Preferences, Properties |
 | `Play` | Play and Play All: the games, their windows and crash cards, the Game Link window, edits sent to the games | Transactions, Preferences, Scene |
+| `Physics` | The physics material open for editing, with its undo (`PhysicsMaterialDocument`), and the Physics Material window | Common, Transactions, Properties |
 | `Input` | The Input window (*Window > Input*): the editor's or a running game's input, its history and traces; the input asset being edited, with its undo (`InputAssetDocument`), and the Tuning and Checks tabs | Common, Transactions, Properties, Play |
-| `App` | `EditorLayer`, which owns and wires up everything else; `EditorFrame`, the titlebar with its menus and the status bar; `MaterialWorkspace`, which feeds the material windows and makes new materials; the workspaces and their layout files (`Workspaces`, in the project's `Saved/Layouts`, with the window's placement), the asset types the editor knows | Common, Assets, Materials, Preferences, DevTools, Properties, Scene, Play, Input |
+| `App` | `EditorLayer`, which owns and wires up everything else; `EditorFrame`, the titlebar with its menus and the status bar; `MaterialWorkspace`, which feeds the material windows and makes new materials; the workspaces and their layout files (`Workspaces`, in the project's `Saved/Layouts`, with the window's placement), the asset types the editor knows | Common, Assets, Materials, Physics, Preferences, DevTools, Properties, Scene, Play, Input |
 
 ## One frame
 
@@ -329,7 +330,9 @@ data the same way, through the same pure functions.
    on.
 2. For scenes to use it: an `AssetReference` property on a component, resolved in its post-load
    step through `IAssetResolver`. `AssetResolver` resolves materials from their `.nyxmat` files;
-   meshes are only the built-in cube and sphere so far. A mesh made by code while the game runs
+   meshes are only the built-in cube and sphere so far. What the simulation reads, the renderer
+   needn't see: a collider's physics material is resolved by the game world's
+   `PhysicsMaterials` (Sim), by path, when its body is made. A mesh made by code while the game runs
    is no asset: it is a `RuntimeMeshComponent`, made again by its maker after loading.
 
 ### A link message
@@ -395,9 +398,10 @@ How some systems work, and why they work that way:
   systems and determinism.
 - [Physics](Design/physics.md): Jolt behind `PhysicsWorld`, bodies, layers, forces, the build, the
   numbers.
-- [Physics constraints](Design/physics-constraints-and-materials.md): each end in its body's own
-  space, limits, springs and motors, the load read back from Jolt's lambdas, off and on, breaking,
-  and the components a game world keeps them in step with.
+- [Physics constraints and materials](Design/physics-constraints-and-materials.md): each end in
+  its body's own space, limits, springs and motors, the load read back from Jolt's lambdas, off and
+  on, breaking, and the components a game world keeps them in step with; physics material assets
+  with a game's own numbers, how they reach the bodies, and how the editor edits them live.
 - [Instancing and culling](Design/instancing.md): a mesh drawn at many transforms as a second
   vertex stream, frustum culling per view and per cell, entities that draw alike batched, the
   numbers.

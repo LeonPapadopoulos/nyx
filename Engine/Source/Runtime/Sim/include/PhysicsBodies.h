@@ -16,7 +16,10 @@ namespace Nyx
 	// Keeps a PhysicsWorld's bodies in step with the entities' physics components
 	// (PhysicsComponents.h), each fixed step:
 	// - before the step, bodies are made for new colliders, made again when a component's values or
-	//   the entity's scale changed, and destroyed with their collider or entity. A mesh collider's
+	//   the entity's scale changed, and destroyed with their collider or entity. A body's friction,
+	//   restitution and density come from its collider's physics material (PhysicsMaterials), its
+	//   surface over that from a PhysicsMaterialComponent; a changed surface reaches the body as it
+	//   moves, a changed density that gives its mass makes it again. A mesh collider's
 	//   body is made again when its mesh's data or revision changed (RuntimeMeshComponent), and only
 	//   then; since that costs as much as making it, the old body stays while the mesh keeps
 	//   changing, e.g. as a value is dragged in the editor, until it has held still for
@@ -31,10 +34,12 @@ namespace Nyx
 	// Characters (CharacterComponent) the same way: made with the component, made again when its
 	// shape changes, destroyed with it or the entity; a position set from outside teleports them. They
 	// walk in MoveCharacters(), before the physics step.
+	class PhysicsMaterials;
+
 	class PhysicsBodies
 	{
 	public:
-		void SyncBeforeStep(Registry& world, PhysicsWorld& physics, float seconds);
+		void SyncBeforeStep(Registry& world, PhysicsWorld& physics, PhysicsMaterials& materials, float seconds);
 		// After the systems of ESimStage::BeforePhysics, which say where the characters want to go,
 		// and before the physics step: walks each character by its component, writes where it got to
 		// into its transform and where it was before into its PreviousTransformComponent, and what it
@@ -66,6 +71,9 @@ namespace Nyx
 			uint64_t DescriptionHash = 0;
 			bool bKinematic = false;
 			bool bDynamic = false;
+			// Its surface as last given, which changes without making it again
+			float Friction = 0.0f;
+			float Restitution = 0.0f;
 			// Where the body was put or left last, to tell a transform set from outside; a kinematic
 			// body's transform as the step began
 			BodyPose LastPose;

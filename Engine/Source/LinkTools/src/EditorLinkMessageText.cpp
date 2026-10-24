@@ -477,6 +477,22 @@ namespace Nyx
 			break;
 		}
 
+		case EEditorLinkMessage::PhysicsMaterialValues:
+		{
+			PhysicsMaterialValuesMessage values;
+			if (!ReadNetMessage(message, values))
+			{
+				describeUnreadable("PhysicsMaterialValues");
+				break;
+			}
+
+			const size_t lines = static_cast<size_t>(std::count(values.Text.begin(), values.Text.end(), '\n'));
+			text.Name = "PhysicsMaterialValues";
+			text.Summary = values.Path + ", " + std::to_string(lines) + " lines";
+			text.Details = "Path: " + Quoted(values.Path) + "\nText: " + Quoted(values.Text);
+			break;
+		}
+
 		case EEditorLinkMessage::SetSimulationPaused:
 		{
 			SetSimulationPausedMessage paused;

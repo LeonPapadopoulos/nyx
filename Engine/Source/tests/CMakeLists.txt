@@ -154,6 +154,15 @@ add_dependencies(NyxConstraintTests NyxGeneratedReflection)
 set_property(TARGET NyxConstraintTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxConstraintTests COMMAND NyxConstraintTests)
 
+# Physics materials: .nyxphysmat files read and written with their unknown lines and extras kept,
+# friction deciding a slide down a slope and changed live, density giving the mass, a game's own
+# numbers served, scene files
+add_executable(NyxPhysicsMaterialTests PhysicsMaterialTests.cpp)
+target_link_libraries(NyxPhysicsMaterialTests PRIVATE NyxEngine)
+add_dependencies(NyxPhysicsMaterialTests NyxGeneratedReflection)
+set_property(TARGET NyxPhysicsMaterialTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxPhysicsMaterialTests COMMAND NyxPhysicsMaterialTests)
+
 # Characters in the game world: falling, walking, steps, slopes, jumping, pushing, rays, live edits,
 # drawing between steps, the debug view, scene files and the same path from the same inputs
 add_executable(NyxCharacterTests CharacterTests.cpp)

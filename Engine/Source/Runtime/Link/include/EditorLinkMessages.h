@@ -47,6 +47,7 @@ namespace Nyx
 		InputSubscribe = 14,
 		InputDefinitions = 15,
 		InputFrame = 16,
+		PhysicsMaterialValues = 17,
 	};
 
 	// The first message in both directions. Its layout never changes, so any two versions can
@@ -193,6 +194,20 @@ namespace Nyx
 		static constexpr EEditorLinkMessage Type = EEditorLinkMessage::MaterialValues;
 
 		// In the assets folder, e.g. "Materials/Stone.nyxmat"
+		std::string Path;
+		std::string Text;
+
+		void Write(BinaryWriter& writer) const;
+		bool Read(BinaryReader& reader);
+	};
+
+	// Editor to game: a physics material's values as the editor shows them, saved or not: the whole
+	// .nyxphysmat text, for the game world's PhysicsMaterials (PhysicsMaterials::SetText())
+	struct PhysicsMaterialValuesMessage
+	{
+		static constexpr EEditorLinkMessage Type = EEditorLinkMessage::PhysicsMaterialValues;
+
+		// In the assets folder, e.g. "PhysicsMaterials/Wood.nyxphysmat"
 		std::string Path;
 		std::string Text;
 

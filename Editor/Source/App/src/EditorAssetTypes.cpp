@@ -41,6 +41,18 @@ namespace Nyx::Editor
 				editor.OpenMaterial(entry.RelativePath.generic_string());
 			} });
 
+		// Opens it in the Physics Material window
+		registry.Register(AssetTypeDescriptor{
+			.TypeId = "PhysicsMaterial",
+			.DisplayName = "Physics Material",
+			.Extensions = { ".nyxphysmat" },
+			.bBrowsable = true,
+			.bOpenOnDoubleClick = true,
+			.Activate = [&editor](const AssetEntry& entry)
+			{
+				editor.OpenPhysicsMaterial(entry.RelativePath.generic_string());
+			} });
+
 		// Opens it in the source editor: shaders are written there
 		registry.Register(AssetTypeDescriptor{
 			.TypeId = "Shader",

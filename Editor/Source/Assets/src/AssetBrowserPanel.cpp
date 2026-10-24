@@ -104,17 +104,22 @@ namespace Nyx::Editor
 		const std::vector<AssetEntry> children = Database->GetChildren(CurrentDirectory);
 
 		// Right-click where there is no card: what can be made here
-		if (NewMaterial && ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+		if ((NewMaterial || NewPhysicsMaterial) && ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
 		{
 			ImGui::OpenPopup("##FolderMenu");
 		}
 		if (Nyx::UI::BeginPopup("##FolderMenu"))
 		{
-			if (NYX_UI(Nyx::UI::MenuItem("New Material...")))
+			if (NewMaterial && NYX_UI(Nyx::UI::MenuItem("New Material...")))
 			{
 				NewMaterial();
 			}
 			ImGui::SetItemTooltip("A surface shader and a material on it, opened in the Materials workspace");
+			if (NewPhysicsMaterial && NYX_UI(Nyx::UI::MenuItem("New Physics Material")))
+			{
+				NewPhysicsMaterial();
+			}
+			ImGui::SetItemTooltip("A collider's friction, bounce and density, and the game's own numbers, in this folder, opened in the Physics Material window");
 			ImGui::EndPopup();
 		}
 

@@ -7,6 +7,7 @@
 #include "FixedStepClock.h"
 #include "PhysicsBodies.h"
 #include "PhysicsConstraints.h"
+#include "PhysicsMaterials.h"
 #include "PhysicsWorld.h"
 #include "SimSystem.h"
 
@@ -22,8 +23,8 @@ namespace Nyx
 	// owns one; a game module adds its systems (GameModule::CreateSystems). A step:
 	// 0. the commands players added since the last step become this step's (SimContext::Commands);
 	// 1. the debug drawing moves on: what the last step drew goes, timed shapes age;
-	// 2. bodies and characters follow the physics components and the transforms set since the last
-	//    step (PhysicsBodies);
+	// 2. bodies and characters follow the physics components, their physics materials and the
+	//    transforms set since the last step (PhysicsBodies);
 	// 3. the lookup from guid to entity is made again, in the memory it had (SimContext::Guids);
 	//    constraints follow their components and the bodies (PhysicsConstraints); the players'
 	//    MoveCharacterCommands go into their characters (ApplyMoveCharacterCommands());
@@ -55,6 +56,12 @@ namespace Nyx
 		const PhysicsWorld& GetPhysics() const { return Physics; }
 		const PhysicsBodies& GetBodies() const { return Bodies; }
 		const PhysicsConstraints& GetConstraints() const { return Constraints; }
+		// The physics materials the colliders name, read once and kept; a game's tools hand it the
+		// editor's values (PhysicsMaterials::SetText())
+		PhysicsMaterials& GetPhysicsMaterials() { return Materials; }
+		// The physics material of the entity's collider, the engine's without one (GetExtra() reads a
+		// game's own numbers from it)
+		const PhysicsMaterialData& GetPhysicsMaterial(Entity entity) { return Nyx::GetPhysicsMaterial(World, Materials, entity); }
 
 		// Draws the physics world into the debug drawing after each physics step, as the options say
 		// (PhysicsWorld::DrawDebug()), from the next step on; none, the default, draws nothing
@@ -92,6 +99,7 @@ namespace Nyx
 		PhysicsWorld Physics;
 		PhysicsBodies Bodies;
 		PhysicsConstraints Constraints;
+		PhysicsMaterials Materials;
 		EntityGuidLookup Guids;
 		// Added since the last step, and the ones the step running now applies
 		CommandQueue Commands;

@@ -59,6 +59,8 @@ What the editor and the game do. How the code behind them is organised is in
   the game every frame; the end of the drag is one undo step.
 - Edits made while the game is still starting are sent once it is linked; edits after Stop
   aren't sent.
+- The physics material open in the *Physics Material* window reaches the game the same way, every
+  frame it changes, saved or not ([Physics](#physics)).
 - Tests: `NyxEditorLinkTests` (both ends of the link in one program), `NyxLiveEditTests` and
   `NyxGameLinkSubscriberTests`.
 
@@ -142,6 +144,18 @@ Rigid bodies on [Jolt](https://github.com/jrouwe/JoltPhysics), while a game runs
   doesn't catch on it.
 - While the game runs, moving an entity in the editor puts its body there and stops it; changing a
   collider or rigid body makes the body again.
+- A collider's *Material* names a physics material (`.nyxphysmat`), or none for the engine's
+  (friction 0.5, no bounce, the density of water): its *Friction*, *Restitution* and *Density*,
+  which gives a body's mass unless its *Rigid Body* gives one, and numbers of the game's own by name
+  (*Extras*, e.g. `Extra.Flammability = 0.8` in the file), which Nyx keeps and serves without
+  knowing what they mean: a game reads them with `GetPhysicsMaterial(entity)` and
+  `GetExtra(material, "Flammability", fallback)`. Right-click in the asset browser for *New Physics
+  Material*; double-click one to edit it in the *Physics Material* window, as a component's
+  properties are, with the editor's undo, and *Save* (Ctrl+S). While the game runs, its bodies take
+  the values as they are edited, saved or not: friction and bounce at once, as they move, a density
+  that gives a mass by making the body again. A file saved by hand while the game runs is read
+  again too. The file keeps its comments and any line Nyx doesn't know. A *Physics Material*
+  component still sets one entity's friction and bounce over its collider's material.
 - A *Constraint* joins an entity's body to another's, or to the world: *Fixed* holds them together,
   *Point* is a ball joint, *Hinge* a door, *Slider* a drawer, *Distance* a rope or a rod. Each end is
   a point and a rotation in its own entity's space, its *Rest*: the bodies are pulled to where the

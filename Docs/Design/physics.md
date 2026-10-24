@@ -19,8 +19,10 @@ engine is [Jolt](https://github.com/jrouwe/JoltPhysics) (`Dependencies/JoltPhysi
 - **Jolt stays inside the folder.** `PhysicsWorld.h` speaks glm and opaque `BodyHandle`s and
   `ConstraintHandle`s; only `PhysicsWorld.cpp` includes Jolt. The engine links Jolt privately.
 - **Bodies** are made from a `BodyDesc`: a shape (box, sphere, capsule, triangle mesh), a pose, a
-  motion (static, kinematic, dynamic), mass (or the shape's volume at the density of water),
-  friction, restitution, damping, gravity factor, and a number of the owner's (an entity's guid).
+  motion (static, kinematic, dynamic), mass (or the shape's volume at its density, water's by
+  default), friction, restitution, damping, gravity factor, and a number of the owner's (an entity's
+  guid). Friction and restitution change on a live body (`SetFriction()`, `SetRestitution()`),
+  waking it and what touches it.
 - **Triangle meshes** (`EShapeKind::Mesh`, a shared `TriangleMesh`: vertices, three indices a
   triangle, the smooth edges' angle) are Jolt's `MeshShape`: static bodies only, since Jolt gives
   triangles no mass (`CreateBody()` refuses another motion, logged), and never cast or overlapped
@@ -130,7 +132,10 @@ constraints](physics-constraints-and-materials.md#tests).
   `BoxColliderComponent`, `SphereColliderComponent`, `CapsuleColliderComponent`,
   `MeshColliderComponent` (the triangles of the entity's `RuntimeMeshComponent`, always static), a
   `RigidBodyComponent` that makes the body move (dynamic, or kinematic), and an optional
-  `PhysicsMaterialComponent`. A `ConstraintComponent` joins two entities' bodies, or one's and the
+  `PhysicsMaterialComponent`. Each collider names a physics material asset (`.nyxphysmat`, none:
+  the engine's) for its friction, restitution and density ([Physics
+  materials](physics-constraints-and-materials.md#physics-materials)); a `PhysicsMaterialComponent`
+  sets one entity's friction and restitution over it. A `ConstraintComponent` joins two entities' bodies, or one's and the
   world, kept in step by `PhysicsConstraints` ([Physics
   constraints](physics-constraints-and-materials.md#in-the-game-world)). A collider alone is a static body. Small parts that combine, not one
   component with a shape switch; one collider an entity (box over sphere over capsule over mesh).

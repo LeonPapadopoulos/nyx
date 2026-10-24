@@ -69,6 +69,9 @@ namespace Nyx::Game
 		Nyx::ScenePostLoadContext postLoadContext{};
 		postLoadContext.AssetResolver = AssetResolver.get();
 
+		// A physics material saved while the game runs, in the editor or by hand, is read again
+		World.GetPhysicsMaterials().Watch();
+
 		if (Nyx::SceneSerializer::LoadFromFile(ScenePath, World.GetRegistry(), postLoadContext))
 		{
 			LOG_INFO("Running scene '{0}'", ScenePath.string());
@@ -179,6 +182,8 @@ namespace Nyx::Game
 
 	void GameLayer::OnUpdate(float deltaTime)
 	{
+		World.GetPhysicsMaterials().ReloadChanged();
+
 		// The cameras first, so the player's rays come from where they look this frame. The entities
 		// with an OrbitCameraComponent, then those with a FlyCameraComponent; none: their contexts
 		// stay off. An orbit camera wins over a fly camera.

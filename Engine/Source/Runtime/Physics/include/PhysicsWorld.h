@@ -64,8 +64,10 @@ namespace Nyx
 		glm::vec3 Position{ 0.0f };
 		glm::quat Rotation{ 1.0f, 0.0f, 0.0f, 0.0f };
 		EBodyMotion Motion = EBodyMotion::Dynamic;
-		// In kg; 0: from the shape's volume at the density of water
+		// In kg; 0: from the shape's volume at Density
 		float Mass = 0.0f;
+		// In kg per cubic metre, for the mass when none is given; water's by default
+		float Density = 1000.0f;
 		float Friction = 0.5f;
 		// 0: no bounce, 1: bounces back as fast as it came
 		float Restitution = 0.0f;
@@ -459,6 +461,11 @@ namespace Nyx
 		void AddImpulse(BodyHandle body, const glm::vec3& impulse);
 
 		float GetMass(BodyHandle body) const;
+		// How its surface slides and bounces, changed at once, without making the body again
+		void SetFriction(BodyHandle body, float friction);
+		void SetRestitution(BodyHandle body, float restitution);
+		float GetFriction(BodyHandle body) const;
+		float GetRestitution(BodyHandle body) const;
 		glm::vec3 GetCenterOfMass(BodyHandle body) const;
 		// Resting bodies sleep and cost nothing until something touches or moves them
 		bool IsAwake(BodyHandle body) const;

@@ -6,6 +6,7 @@
 #include "Log.h"
 #include "NameComponent.h"
 #include "PhysicsComponents.h"
+#include "PhysicsMaterials.h"
 #include "PreviousTransformComponent.h"
 #include "Profiler.h"
 #include "RuntimeMeshComponent.h"
@@ -21,7 +22,7 @@ namespace Nyx
 	{
 		// What a body is made from: its description, or nothing for an entity without a collider. A
 		// mesh's triangles aren't in it (MakeTriangleMesh()): they are made only when the body is.
-		std::optional<BodyDesc> DescribeBody(const Registry& world, Entity entity)
+		std::optional<BodyDesc> DescribeBody(const Registry& world, PhysicsMaterials& materials, Entity entity)
 		{
 			BodyDesc desc;
 			const glm::vec3 scale = world.Has<TransformComponent>(entity) ? glm::abs(world.Get<TransformComponent>(entity).Scale) : glm::vec3(1.0f);
@@ -72,18 +73,24 @@ namespace Nyx
 				desc.GravityFactor = rigidBody.GravityFactor;
 			}
 
+			// The collider's physics material, its surface over one entity's own
+			const PhysicsMaterialData& material = GetPhysicsMaterial(world, materials, entity);
+			desc.Friction = material.Friction;
+			desc.Restitution = material.Restitution;
+			desc.Density = material.Density;
 			if (world.Has<PhysicsMaterialComponent>(entity))
 			{
-				const PhysicsMaterialComponent& material = world.Get<PhysicsMaterialComponent>(entity);
-				desc.Friction = material.Friction;
-				desc.Restitution = material.Restitution;
+				const PhysicsMaterialComponent& surface = world.Get<PhysicsMaterialComponent>(entity);
+				desc.Friction = surface.Friction;
+				desc.Restitution = surface.Restitution;
 			}
 
 			desc.UserData = entity.Value;
 			return desc;
 		}
 
-		// FNV-1a over everything of a description but its pose and user data
+		// FNV-1a over everything of a description but its pose, its user data and its surface, which
+		// reaches the body without making it again; the density only where it gives the mass
 		uint64_t HashBody(const BodyDesc& desc)
 		{
 			uint64_t hash = 14695981039346656037ull;
@@ -104,8 +111,7 @@ namespace Nyx
 			add(desc.Shape.HalfHeight);
 			add(desc.Motion);
 			add(desc.Mass);
-			add(desc.Friction);
-			add(desc.Restitution);
+			add(desc.Motion == EBodyMotion::Dynamic && desc.Mass <= 0.0f ? desc.Density : 0.0f);
 			add(desc.LinearDamping);
 			add(desc.AngularDamping);
 			add(desc.GravityFactor);
@@ -258,7 +264,7 @@ namespace Nyx
 		}
 	}
 
-	void PhysicsBodies::SyncBeforeStep(Registry& world, PhysicsWorld& physics, float seconds)
+	void PhysicsBodies::SyncBeforeStep(Registry& world, PhysicsWorld& physics, PhysicsMaterials& materials, float seconds)
 	{
 		NYX_PROFILE_SCOPE("PhysicsBodies::SyncBeforeStep");
 		for (auto& [key, tracked] : Bodies)
@@ -275,7 +281,7 @@ namespace Nyx
 					return;
 				}
 
-				std::optional<BodyDesc> desc = DescribeBody(world, entity);
+				std::optional<BodyDesc> desc = DescribeBody(world, materials, entity);
 				const bool bMesh = desc->Shape.Kind == EShapeKind::Mesh;
 				const uint64_t hash = bMesh ? HashMeshSource(HashBody(*desc), world, entity) : HashBody(*desc);
 				const BodyPose pose{ desc->Position, desc->Rotation };
@@ -308,6 +314,8 @@ namespace Nyx
 							.DescriptionHash = hash,
 							.bKinematic = desc->Motion == EBodyMotion::Kinematic,
 							.bDynamic = desc->Motion == EBodyMotion::Dynamic,
+							.Friction = desc->Friction,
+							.Restitution = desc->Restitution,
 							.LastPose = pose,
 							.bSeen = true,
 							.bMesh = bMesh });
@@ -326,6 +334,17 @@ namespace Nyx
 				if (!tracked.Body.IsValid())
 				{
 					return;
+				}
+				// A surface changed, e.g. its material tuned live: the body keeps moving as it was
+				if (tracked.Friction != desc->Friction)
+				{
+					physics.SetFriction(tracked.Body, desc->Friction);
+					tracked.Friction = desc->Friction;
+				}
+				if (tracked.Restitution != desc->Restitution)
+				{
+					physics.SetRestitution(tracked.Body, desc->Restitution);
+					tracked.Restitution = desc->Restitution;
 				}
 				if (tracked.bKinematic)
 				{

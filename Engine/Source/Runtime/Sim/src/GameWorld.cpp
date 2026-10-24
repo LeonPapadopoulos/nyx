@@ -25,12 +25,12 @@ namespace Nyx
 		const float seconds = static_cast<float>(step.FixedDeltaSeconds);
 		Debug.Advance(seconds);
 
-		Bodies.SyncBeforeStep(World, Physics, seconds);
+		Bodies.SyncBeforeStep(World, Physics, Materials, seconds);
 		RefreshEntityGuidLookup(World, Guids);
 		Constraints.SyncBeforeStep(World, Physics, Bodies, Guids);
 		ApplyMoveCharacterCommands(World, Guids, StepCommands);
 
-		const SimContext context{ World, step, Debug, Physics, Bodies, Guids, StepCommands, Constraints };
+		const SimContext context{ World, step, Debug, Physics, Bodies, Guids, StepCommands, Constraints, Materials };
 		RunStage(ESimStage::BeforePhysics, context);
 
 		// Where the systems said they want to go, before the bodies move: they meet the characters

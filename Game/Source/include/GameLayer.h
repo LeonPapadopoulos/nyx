@@ -48,6 +48,12 @@ namespace Nyx::Game
 			return World.GetRegistry();
 		}
 
+		// The physics materials the world's colliders name, e.g. for the editor's live values
+		Nyx::PhysicsMaterials& GetPhysicsMaterials()
+		{
+			return World.GetPhysicsMaterials();
+		}
+
 		// What components need after they were loaded or changed, e.g. to load the mesh a
 		// MeshRenderer refers to. Valid once the layer is attached.
 		Nyx::ScenePostLoadContext GetPostLoadContext() const

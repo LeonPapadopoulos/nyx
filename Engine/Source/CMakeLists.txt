@@ -103,6 +103,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/GameWorld.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/PhysicsBodies.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/PhysicsConstraints.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Sim/src/PhysicsMaterials.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/PhysicsPick.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/OrbitCameras.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/CharacterCommands.cpp
@@ -115,6 +116,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Assets/src/GltfImporter.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Assets/src/ImageFile.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Assets/src/MaterialAsset.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Assets/src/PhysicsMaterialAsset.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Assets/src/ShaderCompileTypes.cpp
 
     # Runtime/UI
@@ -290,6 +292,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/GameWorld.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/PhysicsBodies.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/PhysicsConstraints.h
+    ${NYX_ENGINE_ROOT}/Runtime/Sim/include/PhysicsMaterials.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/PhysicsPick.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/OrbitCameras.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/CharacterCommands.h
@@ -303,6 +306,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Assets/include/ShaderLayout.h
     ${NYX_ENGINE_ROOT}/Runtime/Assets/include/BindlessTextures.h
     ${NYX_ENGINE_ROOT}/Runtime/Assets/include/MaterialAsset.h
+    ${NYX_ENGINE_ROOT}/Runtime/Assets/include/PhysicsMaterialAsset.h
     ${NYX_ENGINE_ROOT}/Runtime/Assets/include/MaterialOptions.h
     ${NYX_ENGINE_ROOT}/Runtime/Assets/include/ShaderCompileTypes.h
 

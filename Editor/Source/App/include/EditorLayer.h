@@ -15,6 +15,8 @@
 #include "Layer.h"
 #include "MaterialWorkspace.h"
 #include "Paths.h"
+#include "PhysicsMaterialDocument.h"
+#include "PhysicsMaterialPanel.h"
 #include "PlayControls.h"
 #include "PlaySession.h"
 #include "PreferencesWindow.h"
@@ -75,6 +77,11 @@ namespace Nyx::Editor
 		void OpenMaterial(const std::string& path);
 		// Opens a shader file in the source editor of the preferences
 		void OpenShader(const std::filesystem::path& file);
+		// Opens a physics material ("PhysicsMaterials/Wood.nyxphysmat") in the Physics Material window
+		void OpenPhysicsMaterial(const std::string& path);
+		// The asset browser's New Physics Material: a file of the engine's values in the folder shown,
+		// opened
+		void CreatePhysicsMaterial();
 
 	private:
 		// Vsync and the frame rate cap, from the preferences, to the window
@@ -148,6 +155,12 @@ namespace Nyx::Editor
 
 		// Window > Input: the editor's own input, with its traces
 		InputPanel InputWindow;
+
+		// The physics material being edited, with the scene's undo, and its window
+		PhysicsMaterialDocument PhysicsMaterial;
+		PhysicsMaterialPanel PhysicsMaterialWindow;
+		// The material's revision the running games last got
+		uint64_t SentPhysicsMaterialRevision = 0;
 
 		// The games' logs and every message of their editor links
 		GameLinkPanel GameLinkWindow;

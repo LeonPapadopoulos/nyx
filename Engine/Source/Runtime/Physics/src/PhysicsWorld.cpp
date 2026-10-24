@@ -204,19 +204,25 @@ namespace Nyx
 			}
 		}
 
-		JPH::ShapeRefC MakeShape(const BodyShape& shape)
+		// A convex shape's density gives its mass and inertia; a mesh has none
+		JPH::ShapeRefC MakeShape(const BodyShape& shape, float density = 1000.0f)
 		{
 			JPH::ShapeSettings::ShapeResult result;
+			density = std::max(density, 0.001f);
 			switch (shape.Kind)
 			{
 			case EShapeKind::Sphere:
 			{
-				result = JPH::SphereShapeSettings(std::max(shape.Radius, 0.001f)).Create();
+				JPH::SphereShapeSettings settings(std::max(shape.Radius, 0.001f));
+				settings.SetDensity(density);
+				result = settings.Create();
 				break;
 			}
 			case EShapeKind::Capsule:
 			{
-				result = JPH::CapsuleShapeSettings(std::max(shape.HalfHeight, 0.001f), std::max(shape.Radius, 0.001f)).Create();
+				JPH::CapsuleShapeSettings settings(std::max(shape.HalfHeight, 0.001f), std::max(shape.Radius, 0.001f));
+				settings.SetDensity(density);
+				result = settings.Create();
 				break;
 			}
 			case EShapeKind::Mesh:
@@ -257,7 +263,9 @@ namespace Nyx
 				// Jolt rounds a box's edges by a convex radius, which no half extent may be below
 				const glm::vec3 halfExtents = glm::max(shape.HalfExtents, glm::vec3(0.001f));
 				const float convexRadius = std::min(JPH::cDefaultConvexRadius, std::min({ halfExtents.x, halfExtents.y, halfExtents.z }) * 0.5f);
-				result = JPH::BoxShapeSettings(ToJolt(halfExtents), convexRadius).Create();
+				JPH::BoxShapeSettings settings(ToJolt(halfExtents), convexRadius);
+				settings.SetDensity(density);
+				result = settings.Create();
 				break;
 			}
 			}
@@ -813,6 +821,22 @@ namespace Nyx
 			}
 		}
 
+		// The body and every body touching it, e.g. asleep on a static floor whose surface changed
+		void WakeAround(const JPH::BodyID& body)
+		{
+			JPH::AABox bounds;
+			{
+				const JPH::BodyLockRead lock(System.GetBodyLockInterface(), body);
+				if (!lock.Succeeded())
+				{
+					return;
+				}
+				bounds = lock.GetBody().GetWorldSpaceBounds();
+			}
+			bounds.ExpandBy(JPH::Vec3::sReplicate(0.05f));
+			Bodies().ActivateBodiesInAABox(bounds, {}, {});
+		}
+
 		struct Joint
 		{
 			JPH::Ref<JPH::TwoBodyConstraint> Constraint;
@@ -1002,7 +1026,7 @@ namespace Nyx
 			LOG_ERROR("Physics: a mesh body can only be static");
 			return {};
 		}
-		const JPH::ShapeRefC shape = MakeShape(desc.Shape);
+		const JPH::ShapeRefC shape = MakeShape(desc.Shape, desc.Density);
 		if (!shape)
 		{
 			return {};
@@ -1507,6 +1531,28 @@ namespace Nyx
 		}
 		const float inverseMass = lock.GetBody().GetMotionProperties()->GetInverseMass();
 		return inverseMass > 0.0f ? 1.0f / inverseMass : 0.0f;
+	}
+
+	void PhysicsWorld::SetFriction(BodyHandle body, float friction)
+	{
+		Impl->Bodies().SetFriction(ToJolt(body), friction);
+		Impl->WakeAround(ToJolt(body));
+	}
+
+	void PhysicsWorld::SetRestitution(BodyHandle body, float restitution)
+	{
+		Impl->Bodies().SetRestitution(ToJolt(body), restitution);
+		Impl->WakeAround(ToJolt(body));
+	}
+
+	float PhysicsWorld::GetFriction(BodyHandle body) const
+	{
+		return Impl->Bodies().GetFriction(ToJolt(body));
+	}
+
+	float PhysicsWorld::GetRestitution(BodyHandle body) const
+	{
+		return Impl->Bodies().GetRestitution(ToJolt(body));
 	}
 
 	glm::vec3 PhysicsWorld::GetCenterOfMass(BodyHandle body) const

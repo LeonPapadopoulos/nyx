@@ -1,9 +1,11 @@
-# Physics constraints
+# Physics constraints and materials
 
-How constraints join bodies in Nyx, what they report back, and why. The physics side is in
+How constraints join bodies in Nyx, what they report back, and why; and the physics materials that
+give bodies their surface and weight, with numbers of a game's own. The physics side is in
 `Engine/Source/Runtime/Physics` (`PhysicsWorld`), the components in `Scene`
-(`ConstraintComponent.h`), and what keeps them in step in `Sim` (`PhysicsConstraints`). The rest of
-the physics is in [Physics](physics.md).
+(`ConstraintComponent.h`, `PhysicsComponents.h`), the material files in `Assets`
+(`PhysicsMaterialAsset`), and what keeps them in step in `Sim` (`PhysicsConstraints`,
+`PhysicsMaterials`). The rest of the physics is in [Physics](physics.md).
 
 ## A rest in each body's own space
 
@@ -106,6 +108,72 @@ constraint applied over the step, divided by the step's time.
   or the eyedropper ([Entity references](../Features.md#entity-references)). The editor doesn't
   simulate; the game started with Play gets every edit, and makes the constraint again.
 
+## Physics materials
+
+A physics material is an asset, `.nyxphysmat`, that colliders name: friction, restitution, density,
+and numbers of a game's own. A crate and a cart of the same wood share it; tuning the wood tunes
+both, and a game asks what a body is made of, e.g. how readily it burns, without Nyx knowing what
+burning is.
+
+```
+# Assets/PhysicsMaterials/Wood.nyxphysmat
+Friction = 0.6
+Restitution = 0.1
+Density = 600
+Extra.Flammability = 0.8
+```
+
+- **The file** is text, as a material file is, so it diffs, merges and is written by hand. Its lines
+  are kept as they are (`PhysicsMaterialAsset`): comments, blank lines, and lines Nyx doesn't know,
+  for a later Nyx or a game's own tools. Writing values changes their own lines alone, adds new ones
+  at the end and drops an extra that is gone; a value that reads the same keeps its line as
+  written. A value that isn't a number is listed and left at the engine's.
+- **The values** are `PhysicsMaterialData`, reflected, so the editor draws them as a component's
+  properties. Its defaults are the engine's material, which a collider without one has: friction
+  0.5, no bounce, the density of water.
+- **Extras**: `Extra.<Name> = value`, a name of letters, digits and _. Nyx stores and serves them
+  and never reads them: `GetExtra(material, "Flammability", fallback)`. A game defines what it
+  needs; a material without one gives the fallback.
+- **Colliders** (box, sphere, capsule, mesh) each have a `Material` asset reference
+  (`AssetType = PhysicsMaterial`), so the details panel picks from the physics materials and takes
+  one dragged from the asset browser. One collider an entity makes its body, so one material a
+  body. A `PhysicsMaterialComponent` still sets one entity's friction and restitution over it.
+- **`PhysicsMaterials`** (Sim), owned by the game world, reads each material on first use, by its
+  path in the asset folders (the project's, then the engine's), and keeps it. A file that isn't
+  there or can't be read is logged once and has the engine's values. `GetPhysicsMaterial(world,
+  materials, entity)` gives the material of the collider that makes the entity's body;
+  `GameWorld::GetPhysicsMaterial(entity)`, and `GetPhysicsMaterial(context, entity)` for systems
+  (`SimContext::Materials`), say the same.
+- **Bodies**: `PhysicsBodies` gives each body its collider's material: friction and restitution to
+  Jolt, the density to the shape (Jolt's `ConvexShapeSettings::mDensity`), which gives the mass and
+  inertia unless the rigid body gives a mass. A changed friction or restitution reaches the body
+  as it moves (`PhysicsWorld::SetFriction()`, `SetRestitution()`, which wake it and what touches
+  it, so a crate asleep on a slope made icy slides); a changed density that gives the mass makes
+  the body again, as any value that makes it does. Jolt mixes two bodies' friction as the square
+  root of their product, and their restitution as the greater.
+
+### Editing them
+
+- The asset browser lists them (type `PhysicsMaterial`); *New Physics Material* in a folder's
+  right-click menu writes the engine's values into a new file there and opens it.
+- Double-clicking one opens it in the **Physics Material** window (`PhysicsMaterialPanel`, editor
+  folder `Physics`), which draws its values with the details table, extras as an array of name and
+  value. Its document (`PhysicsMaterialDocument`) is an object of the editor's undo
+  (`EObjectDomain::PhysicsMaterial`), as the input asset is, so an edit, its undo and redo, and a
+  value being dragged are recorded and previewed like any other, and Ctrl+Z undoes them in turn with
+  the scene's. Each material opened is another object of the undo: steps of one closed since find
+  nothing and do nothing. *Save* or Ctrl+S, while the window has the focus, writes the file.
+- Every change writes the values into the file's lines and counts a revision; each frame the
+  revision changed, the editor sends the whole text to the running games
+  (`PhysicsMaterialValuesMessage`, link message 17), saved or not, and a game that starts gets the
+  open material's unsaved text first. The game's `EditorLinkLayer` hands it to its world's
+  `PhysicsMaterials::SetText()`, so the next step's bodies have it.
+- The game also watches the asset folders (`PhysicsMaterials::Watch()`, `ReloadChanged()` each
+  frame) and reads a material in use again when its file changes: saved in the editor, or by hand.
+- Why the editor's undo and not one of its own, as a material file has: a physics material has a
+  few numbers and no shader to compile, its values are reflected, and sharing the undo gives it the
+  details table, live previews and the games' updates for nothing.
+
 ## Tests
 
 - `NyxPhysicsTests`: a box hung by its top from a point of the world, given in each one's own
@@ -128,3 +196,20 @@ constraint applied over the step, divided by the step's time.
   scene files keep every value and never the state; a live edit from another world moves the rest,
   an entity sent again replaces the constraint; three linked crates, a driven door and a shoved
   drawer end bit for bit alike after 600 steps.
+- `NyxPhysicsMaterialTests`: a wood file read, its values and extras by name, a missing extra the
+  fallback, written back unchanged; values changed rewrite their own lines alone, an extra gone
+  loses its line, a new one gets one, a name that isn't one is left out, the comment and an unknown
+  line stay; saved and loaded; a line that isn't one refused, a value that isn't a number listed. On
+  a 30 degree slope a rubber box holds and an ice box slides; the rubber's friction set live to 0.05
+  slides the same body, and the file read again restores it. A cubic metre of pine weighs 600 kg,
+  one without a material 1000, one given 5 kg 5; denser live, the pine's body is made again at
+  2500 kg and the one given its mass is not. A system reads a straw bale's flammability through its
+  context, the game world another extra; a collider without a material, one whose file isn't there
+  and an entity without a collider have the engine's; live text with an extra Nyx never heard of is
+  served, text that can't be read changes nothing. Scene files keep a collider's material.
+- `NyxPhysicsMaterialEditorTests`: an edit changes its own line, a new extra gets one, undo and redo
+  put the text back, a value being dragged reaches the text at once; saving writes the file; another
+  material opened is untouched by the last one's undo, one that isn't there doesn't open; the window
+  draws headless without changing anything and Ctrl+S in it saves.
+- `NyxLiveEditTests`: `PhysicsMaterialValues` reads back as written and is described by its path and
+  lines.

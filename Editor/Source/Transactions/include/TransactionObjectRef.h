@@ -11,7 +11,9 @@ namespace Nyx::Editor
 		None = 0,
 		SceneEntity,
 		// The input asset the Input window edits (InputAssetDocument)
-		InputAsset
+		InputAsset,
+		// The physics material the Physics Material window edits (PhysicsMaterialDocument)
+		PhysicsMaterial
 	};
 
 	struct ObjectRef

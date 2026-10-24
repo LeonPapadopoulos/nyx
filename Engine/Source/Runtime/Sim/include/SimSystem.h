@@ -7,6 +7,7 @@
 #include "FixedStepClock.h"
 #include "PhysicsBodies.h"
 #include "PhysicsConstraints.h"
+#include "PhysicsMaterials.h"
 #include "PhysicsWorld.h"
 
 #include <cstdint>
@@ -40,7 +41,16 @@ namespace Nyx
 		// Which constraint is whose (FindConstraint()), and which broke in this step's physics step
 		// (GetBrokenConstraints(), for ESimStage::AfterPhysics)
 		const PhysicsConstraints& Constraints;
+		// The physics materials the colliders name (GetPhysicsMaterial(context, entity) below)
+		PhysicsMaterials& Materials;
 	};
+
+	// The physics material of the entity's collider, the engine's without one; a game's own numbers
+	// are read from it with GetExtra(material, "Flammability", fallback)
+	inline const PhysicsMaterialData& GetPhysicsMaterial(const SimContext& context, Entity entity)
+	{
+		return GetPhysicsMaterial(context.World, context.Materials, entity);
+	}
 
 	// Where in a step a system runs: before the physics step, e.g. to push bodies, or after it,
 	// e.g. to react to where they ended up

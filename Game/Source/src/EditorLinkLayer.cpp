@@ -175,6 +175,25 @@ namespace Nyx::Game
 			return;
 		}
 
+		// A physics material's values as the editor edits them, saved or not
+		if (message.Type == static_cast<uint16_t>(Nyx::EEditorLinkMessage::PhysicsMaterialValues))
+		{
+			Nyx::PhysicsMaterialValuesMessage values;
+			if (!Nyx::ReadNetMessage(message, values))
+			{
+				LOG_ERROR("Editor link: a physics material's values can't be read");
+			}
+			else if (!PhysicsMaterials)
+			{
+				LOG_WARNING("Editor link: skipped the values of '{0}', since the game has no physics materials for them", values.Path);
+			}
+			else
+			{
+				PhysicsMaterials->SetText(values.Path, values.Text);
+			}
+			return;
+		}
+
 		// The input asset as the editor edits it, e.g. a dead zone being dragged
 		std::vector<Nyx::Input::InputAssetProblem> problems;
 		const Nyx::ELiveInputResult input =

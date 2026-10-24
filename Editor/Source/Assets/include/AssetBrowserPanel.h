@@ -41,6 +41,8 @@ namespace Nyx::Editor
 		std::function<void(const std::string& shaderPath)> NewMaterialForShader;
 		// New Material Instance in a material's menu
 		std::function<void(const std::string& materialPath)> NewMaterialInstance;
+		// New Physics Material, in the folder shown
+		std::function<void()> NewPhysicsMaterial;
 
 	private:
 		void DrawDirectoryTree(const std::filesystem::path& relativeDirectory);
