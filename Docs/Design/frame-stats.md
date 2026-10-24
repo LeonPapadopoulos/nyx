@@ -191,3 +191,27 @@ What the numbers showed, and what came of it.
   pass cheap, not its shadows. The ambient occlusion and bloom, unchanged, measured a little slower
   after (0.11 to 0.15 ms, 0.05 to 0.12 ms in the atmosphere test): passes that small move with the
   GPU's clocks and the other program's share from run to run.
+- **Frames spent in the UI step** (`ui_ms`): up to 36 ms while another program loaded the GPU,
+  6 to 15 ms on a quieter one, a few a minute in the atmosphere test with the overlay on. Timed
+  step by step, with the thread's own cycles beside the clock, they were
+  two things, and in both the thread waited rather than worked (an 11 ms step used 1 ms of
+  cycles):
+  - **ImGui's Vulkan backend making its buffers again.** Its vertex and index buffers, a pair for
+    each swapchain image, are freed and allocated again, at exactly the size needed, whenever a
+    frame draws more than they hold; that took 5 to 7 ms each time. The overlay's graph has as
+    many points as frames in five seconds, so its vertex count rose to a new peak now and then
+    for as long as it ran. Nyx now has the backend allocate at least a megabyte
+    (`ImGui_ImplVulkan_InitInfo::MinAllocationSize`, `VulkanImGuiBackend::Initialize()`): about
+    50 000 vertices, more than the game's UI draws, so they are made once.
+  - **Windows calls ImGui's GLFW backend makes every frame**, which now and then wait 2 to 10 ms
+    on the system: its monitors' positions, video modes, work areas and scales
+    (`ImGui_ImplGlfw_UpdateMonitors()`, every frame since ImGui stopped using GLFW's monitor
+    callback), and each window's mouse pass-through set again (`glfwSetWindowAttrib()` with
+    `GLFW_MOUSE_PASSTHROUGH`, in `ImGui_ImplGlfw_UpdateMouseData()`). Both are in
+    `Dependencies/imgui`, not Nyx; it would take a change there (asking for the monitors only
+    when they change, setting the pass-through only when it changes) or upstream.
+
+  Runs of 60 s with the overlay on, frames with over 5 ms of UI: before, 42 in 12 runs (1 to 6 a
+  run, the worst 14.6 ms); after, 1 in 3 runs (9.8 ms, the GLFW backend's). Texture uploads (ImGui's font atlas), the submit, the layers' own UI and ImGui's
+  layout took no part, nor did saving ImGui's settings: the game saves none (`IniFilename` is
+  null), the editor's layout files being the editor's alone.

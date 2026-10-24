@@ -93,6 +93,11 @@ namespace Nyx
 		init_info.MinImageCount = Swapchain->GetMinImageCount();
 		init_info.ImageCount = Swapchain->GetImageCount();
 		init_info.PipelineCache = VK_NULL_HANDLE;
+		// ImGui's vertex and index buffers (a pair for each swapchain image of each OS window) are
+		// made again at exactly the size a frame needs whenever it needs more: freeing and
+		// allocating their memory takes milliseconds, so a UI that changes every frame, such as the
+		// frame stats' graph, stalled at each new peak. A megabyte holds about 50 000 vertices.
+		init_info.MinAllocationSize = 1024 * 1024;
 
 		init_info.UseDynamicRendering = false;
 		init_info.PipelineInfoMain.RenderPass = *Swapchain->GetRenderPass();
