@@ -103,5 +103,6 @@ namespace Nyx::Editor
 		bool bSceneFileStatusFailed = false;
 		// What the scene views show of their culling (Debug > Culling Bounds, Freeze Culling)
 		Nyx::ESceneViewCullingDebug SceneCullingDebug = Nyx::ESceneViewCullingDebug::Off;
+		Nyx::ESceneViewShadowDebug SceneShadowDebug = Nyx::ESceneViewShadowDebug::Off;
 	};
 }

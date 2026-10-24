@@ -128,39 +128,6 @@ namespace
 		std::cout << "Saved " << path.string() << "\n";
 	}
 
-	// Rendering on the same GPU and driver gives the same picture; another GPU or driver may round
-	// a little differently, and may differ in a few pixels along edges.
-	void RequireLooksLike(const RgbaImage& image, const std::filesystem::path& referencePath)
-	{
-		RgbaImage reference;
-		std::string error;
-		Require(LoadRgbaImage(referencePath, reference, error),
-			"No reference image " + referencePath.string() + " (" + error + "); run with NYX_SCENE_TEST_OUTPUT set to make one");
-		Require(reference.Width == image.Width && reference.Height == image.Height, "The reference image has another size");
-
-		constexpr int ChannelTolerance = 3;
-		size_t differentPixels = 0;
-		size_t changedPixels = 0;
-		int largestDifference = 0;
-		for (size_t pixel = 0; pixel < static_cast<size_t>(image.Width) * image.Height; ++pixel)
-		{
-			int difference = 0;
-			for (size_t channel = 0; channel < 3; ++channel)
-			{
-				difference = std::max(difference, std::abs(int(image.Pixels[pixel * 4 + channel]) - int(reference.Pixels[pixel * 4 + channel])));
-			}
-			largestDifference = std::max(largestDifference, difference);
-			differentPixels += difference > ChannelTolerance ? 1 : 0;
-			changedPixels += difference > 0 ? 1 : 0;
-		}
-		std::cout << referencePath.filename().string() << ": " << changedPixels << " pixels differ, by up to " << largestDifference << "\n";
-
-		const size_t allowed = static_cast<size_t>(image.Width) * image.Height / 1000;
-		Require(differentPixels <= allowed,
-			"The picture differs from " + referencePath.filename().string() + " in " + std::to_string(differentPixels) + " pixels (at most " + std::to_string(allowed) +
-				" may), by up to " + std::to_string(largestDifference) + "; NYX_SCENE_TEST_OUTPUT saves it");
-	}
-
 	void TestDefaultScene(SceneRenderer& gpu)
 	{
 		// As the editor and game use it; ReadSceneViewPixels() is the renderer's own

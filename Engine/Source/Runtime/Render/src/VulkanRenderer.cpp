@@ -189,6 +189,9 @@ namespace
 
 namespace
 {
+	// The profiler's names of the shadow cascades' zones, which must be literals
+	constexpr const char* ShadowCascadeZoneNames[Nyx::MaxShadowCascades] = { "Shadow cascade 0", "Shadow cascade 1", "Shadow cascade 2", "Shadow cascade 3" };
+
 	// Milliseconds since `start`, for the frame's step times
 	float MillisecondsSince(std::chrono::steady_clock::time_point start)
 	{
@@ -264,6 +267,10 @@ namespace Nyx
 				BindSceneSets(view, cmd);
 			},
 			PlaneMesh, MeshInstances.GetIdentity());
+		Shadows.Initialize(Bindless, *ScenePipelineLayout, [this](SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
+			{
+				BindSceneSets(view, cmd);
+			});
 
 		LoadSkyboxCubemap();
 		// Its light: the specular cube, the irradiance, the BRDF table
@@ -276,6 +283,7 @@ namespace Nyx
 		// Pipelines that depend on view-owned render passes / framebuffers
 		DebugLines.CreatePipeline(SceneViews.front());
 		Overlays.CreatePipelines(SceneViews.front());
+		Shadows.CreatePipelines(GetPictureRenderPass());
 
 		// Shared pipelines
 		CreateSkyboxPipeline();
@@ -329,6 +337,7 @@ namespace Nyx
 
 		Materials.Shutdown();
 		Environment.Shutdown();
+		Shadows.Shutdown();
 		Bindless.Shutdown();
 		Context.Shutdown();
 	}
@@ -710,6 +719,20 @@ namespace Nyx
 		return view ? &view->Culling : nullptr;
 	}
 
+	void VulkanRenderer::SetSceneViewShadowDebug(uint64_t id, ESceneViewShadowDebug mode)
+	{
+		if (SceneViewInstance* view = FindSceneView(id))
+		{
+			view->ShadowDebug = mode;
+		}
+	}
+
+	const SceneViewShadows* VulkanRenderer::GetSceneViewShadows(uint64_t id) const
+	{
+		const SceneViewInstance* view = FindSceneView(id);
+		return view ? &view->Shadows : nullptr;
+	}
+
 	void VulkanRenderer::SetSceneViewEditorCameraTransform(uint64_t id, const glm::vec3& pos, const glm::vec3& rot)
 	{
 		SceneViewInstance* view = FindSceneView(id);
@@ -799,6 +822,7 @@ namespace Nyx
 		world->Objects.clear();
 		world->Sections.clear();
 		world->Cells.clear();
+		world->CasterBounds.reset();
 		world->Decals.clear();
 		world->PickingIdToEntity.clear();
 		world->OverlayLines = {};
@@ -1141,6 +1165,7 @@ namespace Nyx
 		world.Objects.clear();
 		world.Sections.clear();
 		world.Cells.clear();
+		world.CasterBounds.reset();
 		world.PickingIdToEntity.clear();
 
 		const Nyx::Registry& registry = *world.Registry;
@@ -1179,6 +1204,7 @@ namespace Nyx
 				obj.WorldTransform = worldTransform;
 				obj.DrawTransform = drawTransform;
 				obj.bMirrored = glm::determinant(glm::mat3(drawTransform)) < 0.0f;
+				obj.bCastShadows = meshRenderer.bCastShadows;
 				obj.LocalBoundsMin = mesh->GetLocalBoundsMin();
 				obj.LocalBoundsMax = mesh->GetLocalBoundsMax();
 				obj.InstanceBuffer = MeshInstances.GetIdentity();
@@ -1206,6 +1232,10 @@ namespace Nyx
 					obj.CellCount = static_cast<uint32_t>(instances->Cells.size());
 				}
 				obj.WorldBounds = TransformBox(BoundingBox{ obj.LocalBoundsMin, obj.LocalBoundsMax }, drawTransform);
+				if (obj.bCastShadows)
+				{
+					world.CasterBounds = world.CasterBounds ? UniteBoxes(*world.CasterBounds, obj.WorldBounds) : obj.WorldBounds;
+				}
 
 				obj.FirstSection = static_cast<uint32_t>(world.Sections.size());
 				for (const Nyx::MeshSection& section : mesh->GetSections())
@@ -1251,12 +1281,25 @@ namespace Nyx
 			view.Draws.clear();
 			view.Culling = {};
 			view.CullingLines = {};
+			view.Shadows.CascadeCount = 0;
 			if (const RenderWorld* world = FindShownWorld(view))
 			{
 				UpdateViewportSceneGlobals(view, *world->Registry);
 				CullSceneView(view, *world);
+				PrepareSceneViewShadows(view, *world);
 			}
 		}
+
+		// One shadow map for every view: as big as the largest any of them asks for
+		uint32_t shadowMapSize = 0;
+		for (const SceneViewInstance& view : SceneViews)
+		{
+			if (view.Shadows.CascadeCount > 0)
+			{
+				shadowMapSize = std::max(shadowMapSize, view.Shadows.Settings.Resolution);
+			}
+		}
+		Shadows.EnsureSize(shadowMapSize);
 		UploadFrameInstances();
 	}
 
@@ -1277,13 +1320,26 @@ namespace Nyx
 			view.FrozenCullingViewProjection.reset();
 		}
 		const Frustum frustum = MakeFrustum(cullingViewProjection);
+		CullDraws(world, frustum, false, view.Draws, view.Culling);
 
-		SceneViewCullingStats& stats = view.Culling;
+		if (view.CullingDebug != ESceneViewCullingDebug::Off)
+		{
+			AddCullingLines(view, world, frustum, cullingViewProjection);
+		}
+	}
+
+	void VulkanRenderer::CullDraws(const RenderWorld& world, const Frustum& frustum, bool bCastersOnly, std::vector<SceneViewDraw>& outDraws, SceneViewCullingStats& stats)
+	{
+		const size_t firstDraw = outDraws.size();
 		std::vector<uint32_t> drawnOnce;
 		std::vector<InstanceRun> runs;
 		for (uint32_t index = 0; index < world.Objects.size(); ++index)
 		{
 			const RenderObject& obj = world.Objects[index];
+			if (bCastersOnly && !obj.bCastShadows)
+			{
+				continue;
+			}
 			++stats.Objects;
 			if (!IsBoxVisible(frustum, obj.WorldBounds))
 			{
@@ -1303,7 +1359,7 @@ namespace Nyx
 			stats.CellsCulled += obj.CellCount - drawnCells;
 			for (const InstanceRun& run : runs)
 			{
-				view.Draws.push_back(SceneViewDraw{ .Object = index, .InstanceBuffer = obj.InstanceBuffer, .FirstInstance = run.First, .InstanceCount = run.Count, .Model = obj.DrawTransform });
+				outDraws.push_back(SceneViewDraw{ .Object = index, .InstanceBuffer = obj.InstanceBuffer, .FirstInstance = run.First, .InstanceCount = run.Count, .Model = obj.DrawTransform });
 				stats.Instances += run.Count;
 			}
 		}
@@ -1350,16 +1406,84 @@ namespace Nyx
 			{
 				FrameInstances.push_back(world.Objects[drawnOnce[member]].DrawTransform);
 			}
-			view.Draws.push_back(SceneViewDraw{ .Object = drawnOnce[first], .InstanceBuffer = nullptr, .FirstInstance = firstInstance,
+			outDraws.push_back(SceneViewDraw{ .Object = drawnOnce[first], .InstanceBuffer = nullptr, .FirstInstance = firstInstance,
 				.InstanceCount = static_cast<uint32_t>(end - first), .Model = glm::mat4(1.0f) });
 			stats.Instances += static_cast<uint32_t>(end - first);
 			first = end;
 		}
-		stats.Draws = static_cast<uint32_t>(view.Draws.size());
+		stats.Draws = static_cast<uint32_t>(outDraws.size() - firstDraw);
+	}
 
-		if (view.CullingDebug != ESceneViewCullingDebug::Off)
+	void VulkanRenderer::PrepareSceneViewShadows(SceneViewInstance& view, const RenderWorld& world)
+	{
+		SceneViewShadows& shadows = view.Shadows;
+		shadows.CascadeCount = 0;
+		const SceneViewShadowSettings& settings = view.SceneGlobals.Shadows;
+		if (!settings.bCastShadows || !world.CasterBounds)
 		{
-			AddCullingLines(view, world, frustum, cullingViewProjection);
+			return;
+		}
+		shadows.Settings = settings;
+
+		// Slices of the view from its near plane out to the shadow distance, each in a sphere that
+		// keeps its size however the camera turns, snapped to its texels; each reaches back towards
+		// the light as far as anything that casts
+		const glm::vec3 towardsLight = glm::normalize(view.SceneGlobals.LightDirectionWS);
+		const ShadowCamera camera = MakeShadowCamera(view.SceneGlobals.View, view.SceneGlobals.Projection, view.SceneGlobals.NearPlane);
+		const std::array<float, MaxShadowCascades + 1> splits = ComputeCascadeSplits(camera.NearPlane, settings.Distance, settings.CascadeCount, settings.SplitBlend);
+		for (uint32_t index = 0; index < settings.CascadeCount; ++index)
+		{
+			const BoundingSphere sphere = FitCascadeSphere(camera, splits[index], splits[index + 1]);
+			ShadowCascade& cascade = shadows.Cascades[index];
+			cascade = MakeShadowCascade(sphere, towardsLight, settings.Resolution, GetCasterReach(*world.CasterBounds, sphere.Center, towardsLight));
+			cascade.SplitNear = splits[index];
+			cascade.SplitFar = splits[index + 1];
+
+			// What casts into it, by its own frustum, as the view's camera culls
+			shadows.Draws[index].clear();
+			shadows.Culling[index] = {};
+			CullDraws(world, MakeFrustum(cascade.ViewProjection), true, shadows.Draws[index], shadows.Culling[index]);
+		}
+		shadows.CascadeCount = settings.CascadeCount;
+	}
+
+	void VulkanRenderer::DrawShadowCascades(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd)
+	{
+		const SceneViewShadows& shadows = view.Shadows;
+		for (uint32_t cascade = 0; cascade < shadows.CascadeCount; ++cascade)
+		{
+			NYX_PROFILE_SCOPE("Shadow cascade");
+			NYX_PROFILE_ZONE_NAME(ShadowCascadeZoneNames[cascade]);
+			Shadows.BeginCascade(cmd, cascade, shadows.Settings.Resolution);
+			BindSceneSets(view, cmd);
+			const Mesh* boundMesh = nullptr;
+			vk::Buffer boundInstances;
+			for (const SceneViewDraw& draw : shadows.Draws[cascade])
+			{
+				const RenderObject& obj = world.Objects[draw.Object];
+				const vk::Buffer instances = draw.InstanceBuffer ? draw.InstanceBuffer : *FrameInstanceBuffer;
+				if (obj.MeshAsset != boundMesh || instances != boundInstances)
+				{
+					cmd.bindVertexBuffers(0, { obj.MeshAsset->GetVertexBuffer(), instances }, { vk::DeviceSize{ 0 }, vk::DeviceSize{ 0 } });
+					cmd.bindIndexBuffer(obj.MeshAsset->GetIndexBuffer(), 0, vk::IndexType::eUint32);
+					boundMesh = obj.MeshAsset;
+					boundInstances = instances;
+				}
+
+				// The cascade in CustomData2.x; each section with the faces its material draws, so a
+				// two-sided one casts from both sides
+				ObjectConstants object{};
+				object.Model = draw.Model;
+				object.CustomData2 = glm::vec2(static_cast<float>(cascade), 0.0f);
+				cmd.pushConstants<ObjectConstants>(*ScenePipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, { object });
+				for (uint32_t index = obj.FirstSection; index < obj.FirstSection + obj.SectionCount; ++index)
+				{
+					const RenderSection& section = world.Sections[index];
+					SetMeshFaces(cmd, section.MaterialAsset->bTwoSided, obj.bMirrored);
+					cmd.drawIndexed(section.IndexCount, draw.InstanceCount, section.FirstIndex, 0, draw.FirstInstance);
+				}
+			}
+			Shadows.EndCascade(cmd);
 		}
 	}
 
@@ -1824,6 +1948,25 @@ namespace Nyx
 			ubo.Irradiance[term] = glm::vec4(Environment.GetIrradiance(sky)[term], 0.0f);
 		}
 
+		// The shadows' cascades, in the part of each layer the view drew into
+		const SceneViewShadows& shadows = view.Shadows;
+		ubo.CameraForward = glm::vec4(-glm::normalize(glm::vec3(glm::inverse(view.SceneGlobals.View)[2])), 0.0f);
+		ubo.ShadowMap = Shadows.GetSlot();
+		ubo.ShadowCascadeCount = shadows.CascadeCount;
+		ubo.ShadowMapTexel = 1.0f / static_cast<float>(std::max(Shadows.GetSize(), 1u));
+		ubo.ShadowMapScale = static_cast<float>(std::min(shadows.Settings.Resolution, Shadows.GetSize())) * ubo.ShadowMapTexel;
+		for (uint32_t cascade = 0; cascade < shadows.CascadeCount; ++cascade)
+		{
+			ubo.ShadowViewProjection[cascade] = shadows.Cascades[cascade].ViewProjection;
+			ubo.ShadowSplits[cascade] = shadows.Cascades[cascade].SplitFar;
+			ubo.ShadowTexelSizes[cascade] = shadows.Cascades[cascade].TexelSize;
+		}
+		ubo.ShadowSoftness = shadows.Settings.Softness;
+		ubo.ShadowDepthBias = shadows.Settings.DepthBias;
+		ubo.ShadowNormalBias = shadows.Settings.NormalBias;
+		ubo.ShadowDistance = shadows.Settings.Distance;
+		ubo.ShadowDebug = static_cast<uint32_t>(view.ShadowDebug);
+
 		void* mapped = view.SceneUniformBufferMemory.mapMemory(0, sizeof(SceneUBO));
 		std::memcpy(mapped, &ubo, sizeof(SceneUBO));
 		view.SceneUniformBufferMemory.unmapMemory();
@@ -2002,6 +2145,10 @@ namespace Nyx
 		{
 			Environment.Rebuild();
 		}
+		if (changed.contains("Shadow.slang"))
+		{
+			Shadows.CreatePipelines(GetPictureRenderPass());
+		}
 		if (uses("DebugLines"))
 		{
 			DebugLines.CreatePipeline(SceneViews.front());
@@ -2027,6 +2174,7 @@ namespace Nyx
 		view.SceneGlobals.View = view.EditorCam.GetViewMatrix();
 		view.SceneGlobals.Projection = view.EditorCam.GetProjectionMatrix();
 		view.SceneGlobals.ViewProjection = view.EditorCam.GetViewProjectionMatrix();
+		view.SceneGlobals.NearPlane = EditorCamera::NearPlane;
 		view.SceneGlobals.CameraWorldPos = view.EditorCam.Position;
 
 		view.SceneGlobals.LightDirectionWS = glm::normalize(glm::vec3(0.4f, 1.0f, 0.2f));
@@ -2054,6 +2202,7 @@ namespace Nyx
 			view.SceneGlobals.View = Nyx::GetCameraView(camera->Transform);
 			view.SceneGlobals.Projection = Nyx::GetCameraProjection(camera->Camera, aspectRatio);
 			view.SceneGlobals.ViewProjection = view.SceneGlobals.Projection * view.SceneGlobals.View;
+			view.SceneGlobals.NearPlane = camera->Camera.NearPlane;
 			view.SceneGlobals.CameraWorldPos = camera->Transform.Position;
 			view.SceneGlobals.bHasCamera = true;
 		}
@@ -2061,9 +2210,11 @@ namespace Nyx
 		if (!view.SceneGlobals.bHasCamera)
 		{
 			ExtractSceneGlobalsFromEditorCamera(view);
-			return;
 		}
+	}
 
+	void VulkanRenderer::ExtractSceneLight(SceneViewInstance& view, const Nyx::Registry& world)
+	{
 		world.Each<Nyx::DirectionalLightComponent>(
 			[&](Nyx::Entity entity, const Nyx::DirectionalLightComponent& lightComp)
 			{
@@ -2086,6 +2237,17 @@ namespace Nyx
 				view.SceneGlobals.LightColor = lightComp.Color * lightComp.Intensity;
 				view.SceneGlobals.Ambient = lightComp.Ambient;
 				view.SceneGlobals.bHasDirectionalLight = true;
+
+				// Its shadows' settings, in range
+				SceneViewShadowSettings& shadows = view.SceneGlobals.Shadows;
+				shadows.bCastShadows = lightComp.bCastShadows;
+				shadows.CascadeCount = static_cast<uint32_t>(std::clamp<int32_t>(lightComp.CascadeCount, 1, static_cast<int32_t>(MaxShadowCascades)));
+				shadows.Distance = std::max(lightComp.ShadowDistance, view.SceneGlobals.NearPlane + 1.0f);
+				shadows.SplitBlend = std::clamp(lightComp.SplitBlend, 0.0f, 1.0f);
+				shadows.DepthBias = std::max(lightComp.DepthBias, 0.0f);
+				shadows.NormalBias = std::max(lightComp.NormalBias, 0.0f);
+				shadows.Softness = std::clamp(lightComp.FilterSoftness, 0.0f, 3.0f);
+				shadows.Resolution = VulkanShadows::ClampResolution(lightComp.ShadowMapResolution);
 			});
 	}
 
@@ -2105,6 +2267,8 @@ namespace Nyx
 			ExtractSceneGlobalsFromEditorCamera(view);
 			break;
 		}
+		// The scene's sun, and its shadows, through the editor's camera too
+		ExtractSceneLight(view, registry);
 	}
 
 	uint64_t VulkanRenderer::CreateSceneView()
@@ -2346,6 +2510,11 @@ namespace Nyx
 		// both, as what is blended comes after all that is opaque
 		const vk::ClearColorValue clear = vk::ClearColorValue(std::array<float, 4>{ 0.2f, 0.05f, 0.35f, 1.0f });
 		const RenderWorld* world = FindShownWorld(view);
+		// 0. Its shadow cascades, into the shadow map its scene pass reads
+		if (world && view.Shadows.CascadeCount > 0)
+		{
+			DrawShadowCascades(view, *world, cmd);
+		}
 		view.RenderTarget.BeginScenePass(cmd, clear);
 		if (world)
 		{
@@ -2374,6 +2543,10 @@ namespace Nyx
 		if (view.CullingDebug != ESceneViewCullingDebug::Off)
 		{
 			DebugLines.Draw(view, view.CullingLines, cmd);
+		}
+		if (view.ShadowDebug != ESceneViewShadowDebug::Off)
+		{
+			Shadows.DrawDebug(view, view.Shadows.CascadeCount, cmd);
 		}
 		view.RenderTarget.EndRenderPass(cmd);
 	}

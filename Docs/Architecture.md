@@ -60,7 +60,7 @@ doesn't allow, and on a table that goes round in a circle, so a new dependency s
 | `UI` | The painter, and the painted UI drawn with it on top of ImGui | Core, Reflection |
 | `Link` | The editor link: its messages, live edits, live tuning of the input (`LiveInput`), recordings, the log sink | Core, Net, Input, Scene, Assets |
 | `LinkTools` | Link messages, recordings, scene files and input files as readable text, for the editor and NyxDump; not under `Runtime`, and not in the game | Core, Reflection, Scene, Input, Link |
-| `Render` | The Vulkan renderer, scene views, shaders and materials, meshes made at run time and mesh instances on the GPU (`RuntimeMeshCache`, `MeshInstanceCache`), culling by the views' cameras (`SceneCulling.h`), and applying the link's shaders and material values | Core, Net, Scene, Assets, UI, Link |
+| `Render` | The Vulkan renderer, scene views, shaders and materials, meshes made at run time and mesh instances on the GPU (`RuntimeMeshCache`, `MeshInstanceCache`), culling by the views' cameras (`SceneCulling.h`), the primary light's cascaded shadow maps (`ShadowCascades.h`, `VulkanShadows`), and applying the link's shaders and material values | Core, Net, Scene, Assets, UI, Link |
 | `Platform` | The window | Core, Input, UI |
 | `App` | The application and its layers, `main()`, the options the editor starts a game with, what a game module brings (`GameModule`) and its player (`IPlayerController`, turning input into commands each frame), the player Nyx's game has without one (`ThirdPersonPlayer`) | Core, Input, Scene, Sim, Render, Platform |
 
@@ -155,14 +155,17 @@ checks every `#include` against this table.
       their last two steps by one factor for the world when it is drawn so, its time for what
       moves by itself (its clock's, else the renderer's: `GetDrawnWorldTime()`), and its debug
       lines;
-      then, per scene view, takes a size asked for, its camera, and culls (`CullSceneView()`): the
-      objects out of its camera's frustum, and the cells of instances, are left out, and what draws
-      alike is batched into this frame's instance stream ([Instancing](Design/instancing.md));
+      then, per scene view, takes a size asked for, its camera and its world's sun, and culls
+      (`CullSceneView()`): the objects out of its camera's frustum, and the cells of instances, are
+      left out, and what draws alike is batched into this frame's instance stream
+      ([Instancing](Design/instancing.md)); its shadow cascades are fitted and each culled by its
+      own frustum the same way (`PrepareSceneViewShadows()`, [Shadows](Design/shadows.md)), and the
+      shadow map made as big as the largest view asks for;
       then renders every scene view: the editor's passes (picking only after a click, selection
-      masks only when they changed), then the scene in HDR (the objects, the sky, then the decals
-      blended over them), tonemapped, with the editor's overlays (`VulkanEditorOverlays`, in the
-      views that show them) and the world's debug drawing (`VulkanDebugLines`) over it; then
-      blurs each view's picture;
+      masks only when they changed), then per view its shadow cascades into the shadow map, the
+      scene in HDR (the objects, the sky, then the decals blended over them), tonemapped, with the
+      editor's overlays (`VulkanEditorOverlays`, in the views that show them) and the world's debug
+      drawing (`VulkanDebugLines`) over it; then blurs each view's picture;
    4. builds the UI: an ImGui frame in which the window's dock area and strips (`IWindow::DrawUI()`)
       hold every layer's `OnUI()`, then the painted window
       chrome, the painter canvases, and the window painters' segments, binned on the GPU;
@@ -185,7 +188,8 @@ and `NYX_PROFILE_MESSAGE()`. They wrap Tracy, and only `Profiler.h` includes Tra
   crash handler.
 - Zones: the steps of `Application::Run()` above, one per layer's `OnUpdate` and `OnFixedUpdate`
   (named by the layer's type), one per fixed step, and the renderer's steps in
-  `DrawFrameOnDevice()` and `VulkanUIBackend`. Each frame ends with a frame mark; `main()` names
+  `DrawFrameOnDevice()` and `VulkanUIBackend`, a shadow cascade's recording each its own
+  (*Shadow cascade 0* to *3*). Each frame ends with a frame mark; `main()` names
   the main thread.
 
 ## Who owns what
@@ -337,8 +341,8 @@ data the same way, through the same pure functions.
 - Per-view GPU resources: made in `CreateSceneResourcesForView()`, made again where
   `PrepareSceneViews()` resizes a view, released in `DestroySceneViewNow()`.
 - What a view draws is its culled draw list (`SceneViewInstance::Draws`, made by
-  `CullSceneView()`); a new pass that draws the scene, such as a shadow cascade, culls by its own
-  camera with the same functions (`SceneCulling.h`).
+  `CullSceneView()`); a pass that draws the scene from elsewhere, as a shadow cascade does
+  (`SceneViewInstance::Shadows`), culls by its own camera with the same function (`CullDraws()`).
 - A pipeline that draws meshes has `MeshDynamicStates` and sets each section's faces before its
   draw (`SetMeshFaces()`: the back culled unless the material is two-sided, the front clockwise for
   a mirrored entity).
@@ -382,6 +386,8 @@ How some systems work, and why they work that way:
 - [Instancing and culling](Design/instancing.md): a mesh drawn at many transforms as a second
   vertex stream, frustum culling per view and per cell, entities that draw alike batched, the
   numbers.
+- [Shadows](Design/shadows.md): the primary light's cascaded shadow maps, stable as the camera
+  moves, one map for every view, culled per cascade, filtering and biases, the numbers.
 - [Undo by guid](Design/undo-by-guid.md): why undo names entities by guid, and how it keeps
   components whole.
 - [Scattering](Design/scattering.md): copies of a mesh over another entity's mesh, sampled by

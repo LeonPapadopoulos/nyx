@@ -484,6 +484,35 @@ triangles cost nothing.
   picked, and lit from behind as its front from before; a mirrored cube drawn as the cube, also
   beside an unmirrored one; the reference pictures unchanged).
 
+## Shadows
+
+The primary *Directional Light* casts shadows, in the editor's scene views and in the game alike:
+cascaded shadow maps, near shadows sharp and far ones coarser, steady as the camera moves and turns.
+
+- Everything with a *Mesh Renderer* casts, unless its *Cast Shadows* is off, and every lit surface
+  receives, decals too. Instanced meshes cast, each cascade drawing only the cells near it. A
+  two-sided material casts from both sides.
+- The light's *Shadows* settings: *Cast Shadows*; *Cascades* (1 to 4); *Shadow Distance* (metres
+  from the camera; shadows fade out over its last tenth); *Split Blend* (how the cascades share the
+  distance: 0 evenly, 1 each a few times the one before, so near ones are small and sharp);
+  *Depth Bias* and *Normal Bias* (in texels: more takes acne away, too much lifts shadows off their
+  casters); *Softness* (how many texels on each side are filtered together, 0 to 3); *Resolution*
+  (texels across each cascade, 256 to 4096). All with undo, saved in scenes and sent to a running
+  game.
+- The editor's free camera shows the scene's sun and its shadows, as the game's camera does.
+- **Seeing it**: *Debug > Shadow Cascades* in the editor (F5 in a Debug build of the game) tints the
+  picture by the cascade each surface's shadow comes from (red, green, blue, yellow, nearest first)
+  and shows each cascade's shadow map along the bottom left. The profiler has a zone per cascade.
+- Four cascades of 2048 texels cost the instancing benchmark's field of 50 000 cubes, on a ground,
+  about 1 ms of GPU time and 0.1 ms of the renderer's CPU time a frame in Release ([Shadows](Design/shadows.md#numbers)).
+- Tests: `NyxShadowCascadeTests` (the splits; the spheres round the view's slices hold them, no
+  bigger, the same however the camera turns; the light's view of a sphere holds it, reversed, back
+  to the casters; a still point keeps its place in its texel as the camera walks and turns),
+  `NyxShadowGpuTests` (a box and an instanced field shadowing a plane, against a reference image;
+  no shadow with the light's or the box's casting off; a one-sided quad's back casts nothing, a
+  two-sided one's does; each cascade culled by its own frustum; two cascades; the editor's camera;
+  the debug view), the scene and material reference pictures unchanged.
+
 ## Instanced meshes and culling
 
 Many copies of one mesh, such as grass, flowers or stones scattered over a ground, are drawn as one

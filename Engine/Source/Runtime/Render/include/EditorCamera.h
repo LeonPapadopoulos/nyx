@@ -9,6 +9,9 @@ namespace Nyx
 {
 	struct EditorCamera
 	{
+		// Where its view starts, in metres: also where the first shadow cascade does
+		static constexpr float NearPlane = 0.1f;
+
 		float AspectRatio = 16.0f / 9.0f;
 
 		glm::vec3 Position = glm::vec3(0.0f, 2.0f, 6.0f);
@@ -27,7 +30,7 @@ namespace Nyx
 
 		glm::mat4 GetProjectionMatrix() const
 		{
-			return MakePerspectiveProjection(glm::radians(60.0f), AspectRatio, 0.1f, 1000.0f);
+			return MakePerspectiveProjection(glm::radians(60.0f), AspectRatio, NearPlane, 1000.0f);
 		}
 
 		glm::mat4 GetViewProjectionMatrix() const

@@ -240,6 +240,16 @@ namespace Nyx::Editor
 					}
 				}
 			}
+			// Every scene view's shadows: tinted by the cascade each surface's shadow comes from, and
+			// the cascades' shadow maps along the bottom
+			if (NYX_UI(Nyx::UI::MenuItem("Shadow Cascades", nullptr, SceneShadowDebug != Nyx::ESceneViewShadowDebug::Off)))
+			{
+				SceneShadowDebug = SceneShadowDebug == Nyx::ESceneViewShadowDebug::Off ? Nyx::ESceneViewShadowDebug::Cascades : Nyx::ESceneViewShadowDebug::Off;
+				for (const uint64_t view : Renderer->GetSceneViewIds())
+				{
+					Renderer->SetSceneViewShadowDebug(view, SceneShadowDebug);
+				}
+			}
 			// Where the painter's work lies: one of the two views, or neither
 			const Nyx::UI::EPainterHeatmap heatmap = Nyx::UI::GetPainterHeatmap();
 			for (const auto& [label, view] : { std::pair{ "Painter Heatmap: Commands", Nyx::UI::EPainterHeatmap::Commands },

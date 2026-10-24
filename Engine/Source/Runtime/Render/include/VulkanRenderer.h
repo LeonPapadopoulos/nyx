@@ -14,6 +14,7 @@
 #include "VulkanUIBackend.h"
 #include "VulkanDebugLines.h"
 #include "VulkanEditorOverlays.h"
+#include "VulkanShadows.h"
 #include "Mesh.h"
 #include "RuntimeMeshCache.h"
 #include "MeshInstanceCache.h"
@@ -85,10 +86,35 @@ namespace Nyx
 		// (RenderWorld::Time)
 		float Time = 0.0f;
 		glm::vec4 Irradiance[9] = {};
+
+		// The primary light's shadows (VulkanShadows, nyx.shadows): each cascade's light view and
+		// projection, from the world to its layer of the shadow map
+		glm::mat4 ShadowViewProjection[MaxShadowCascades] = {};
+		// Where each cascade ends, in metres from the camera along its view
+		glm::vec4 ShadowSplits{ 0.0f };
+		// How wide a texel of each cascade is in the world, in metres
+		glm::vec4 ShadowTexelSizes{ 0.0f };
+		// xyz: the way the camera looks
+		glm::vec4 CameraForward{ 0.0f, 0.0f, -1.0f, 0.0f };
+		// The shadow map, a 2D texture array in the bindless array; 0 cascades: no shadows
+		uint32_t ShadowMap = 0;
+		uint32_t ShadowCascadeCount = 0;
+		// A texel of the map as a part of its width, and the part of each layer the view drew into
+		float ShadowMapTexel = 0.0f;
+		float ShadowMapScale = 1.0f;
+		// The light's settings: PCF reach and the biases in texels, the shadow distance in metres
+		float ShadowSoftness = 0.0f;
+		float ShadowDepthBias = 0.0f;
+		float ShadowNormalBias = 0.0f;
+		float ShadowDistance = 0.0f;
+		// ESceneViewShadowDebug
+		uint32_t ShadowDebug = 0;
+		uint32_t ShadowPadding[3] = {};
 	};
 
-	// The view's set (set 1) as nyx/view.slang reads it: std140 and scalar layout agree on it
-	static_assert(sizeof(SceneUBO) == 432, "SceneUBO must match ViewConstants in nyx/view.slang");
+	// The view's set (set 1) as nyx/view.slang reads it, in scalar layout; to whole 16 bytes, as
+	// std140 would be too
+	static_assert(sizeof(SceneUBO) == 784, "SceneUBO must match ViewConstants in nyx/view.slang");
 
 	// One draw's push constants, the same for every scene pipeline: ObjectConstants in
 	// nyx/bindless.slang
@@ -153,6 +179,8 @@ namespace Nyx
 		// Its transform mirrors it (a negative determinant, e.g. one scale negative): its triangles
 		// wind the other way round on the screen (SetMeshFaces())
 		bool bMirrored = false;
+		// Whether it casts the primary light's shadows (MeshRendererComponent::bCastShadows)
+		bool bCastShadows = true;
 
 		// Its mesh's bounds, in the entity's space; drawn instanced, around all of its instances
 		glm::vec3 LocalBoundsMin{ -0.5f, -0.5f, -0.5f };
@@ -187,6 +215,9 @@ namespace Nyx
 		// The cells of the objects drawn instanced, in the world where they are drawn
 		// (RenderObject::FirstCell)
 		std::vector<InstanceCullCell> Cells;
+		// Around every object that casts shadows, where it is drawn; none without one. The shadows'
+		// cascades reach back towards the light as far as these do.
+		std::optional<BoundingBox> CasterBounds;
 		// Its surface decals, drawn over the objects and the sky, and their materials by path
 		std::vector<RenderDecal> Decals;
 		DecalMaterialCache DecalMaterials;
@@ -285,6 +316,10 @@ namespace Nyx
 		void SetSceneViewCullingDebug(uint64_t id, ESceneViewCullingDebug mode) override;
 		// What the view drew and culled in the last frame; null for an unknown view. For tests.
 		const SceneViewCullingStats* GetSceneViewCullingStats(uint64_t id) const;
+		void SetSceneViewShadowDebug(uint64_t id, ESceneViewShadowDebug mode) override;
+		// The view's shadows in the last frame: its cascades and what each drew; null for an
+		// unknown view. For tests.
+		const SceneViewShadows* GetSceneViewShadows(uint64_t id) const;
 
 		bool GetSceneViewCameraData(uint64_t sceneViewId, Nyx::SceneViewCameraData& outData) const override;
 
@@ -385,6 +420,16 @@ namespace Nyx
 		// alike (the same mesh, each section with the same material) as one draw of their
 		// transforms in this frame's instance stream; with the view's culling debug, its bounds
 		void CullSceneView(SceneViewInstance& view, const RenderWorld& world);
+		// The draws of what of the world is inside `frustum`, as CullSceneView() makes them, appended
+		// to `outDraws`, with what was culled in `stats`; with `bCastersOnly`, of the objects that
+		// cast shadows alone
+		void CullDraws(const RenderWorld& world, const Frustum& frustum, bool bCastersOnly, std::vector<SceneViewDraw>& outDraws, SceneViewCullingStats& stats);
+		// The view's shadow cascades this frame, if its world's primary light casts shadows and
+		// something casts them: each fitted round its slice of the view, snapped to its texels, and
+		// what casts into it culled by its own frustum (SceneViewInstance::Shadows)
+		void PrepareSceneViewShadows(SceneViewInstance& view, const RenderWorld& world);
+		// Each of the view's cascades into its layer of the shadow map, before the view's scene pass
+		void DrawShadowCascades(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd);
 		// The bounds culled by, as the view's culling debug shows them
 		void AddCullingLines(SceneViewInstance& view, const RenderWorld& world, const Frustum& frustum, const glm::mat4& cullingViewProjection);
 		// FrameInstances into their buffer, made bigger when they don't fit
@@ -442,6 +487,9 @@ namespace Nyx
 
 		void ExtractSceneGlobalsFromEditorCamera(SceneViewInstance& view);
 		void ExtractSceneGlobalsFromWorldCamera(SceneViewInstance& view, const Nyx::Registry& registry);
+		// The world's primary directional light, and its shadows, whichever camera the view has; the
+		// default sun, casting none, without one
+		void ExtractSceneLight(SceneViewInstance& view, const Nyx::Registry& registry);
 		void UpdateViewportSceneGlobals(SceneViewInstance& view, const Nyx::Registry& registry);
 
 		// While a frame is recorded (e.g. as the UI is built), a view made shows from its first
@@ -490,6 +538,8 @@ namespace Nyx
 		VulkanDebugLines DebugLines{ Context, Programs };
 		// The grid, debug lines, picking and the selection outline, of the views that show them
 		VulkanEditorOverlays Overlays{ Context, Programs, DebugLines };
+		// The primary light's shadow map, which every view's cascades are drawn into in turn
+		VulkanShadows Shadows{ Context, Programs };
 
 		// When the last frame's DrawFrame() ended, for the time spent outside it
 		std::chrono::steady_clock::time_point LastFrameEnd;

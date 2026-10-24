@@ -33,10 +33,10 @@ namespace nyx
     }
 
     // The light a surface sends towards `v` (normalised, towards the camera), from the sun and the
-    // sky. `roughness` is perceptual, as materials give it; `occlusion` dims the sky's light alone.
-    // The sun's colour is what a white matte surface facing it shows: its irradiance is pi times
-    // that.
-    public float3 lightSurface(float3 baseColor, float metallic, float roughness, float occlusion, float3 n, float3 v)
+    // sky. `roughness` is perceptual, as materials give it; `occlusion` dims the sky's light alone,
+    // `sunShadow` the sun's alone (nyx::sunShadow(): 1 where the sun reaches, 0 in shadow). The
+    // sun's colour is what a white matte surface facing it shows: its irradiance is pi times that.
+    public float3 lightSurface(float3 baseColor, float metallic, float roughness, float occlusion, float3 n, float3 v, float sunShadow = 1.0)
     {
         const float perceptual = clamp(roughness, 0.045, 1.0);
         const float alpha = perceptual * perceptual;
@@ -51,7 +51,7 @@ namespace nyx
         const float nDotH = saturate(dot(n, h));
         const float lDotH = saturate(dot(l, h));
         const float3 specular = distributionGgx(nDotH, alpha) * visibilitySmithGgx(nDotV, nDotL, alpha) * fresnelSchlick(f0, lDotH);
-        const float3 sun = (diffuseColor + Pi * specular) * View.LightColor.rgb * nDotL;
+        const float3 sun = (diffuseColor + Pi * specular) * View.LightColor.rgb * nDotL * sunShadow;
 
         // The sky. The diffuse part gets what the specular part leaves, so that a white
         // dielectric under a uniform sky shows the sky's colour (the furnace test).

@@ -36,6 +36,9 @@ namespace Nyx
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Rendering", Tooltip = "Whether the mesh is rendered"))
 		bool bVisible = true;
 
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Rendering", DisplayName = "Cast Shadows", Tooltip = "Whether the mesh casts shadows from the primary light; a hidden mesh casts none"))
+		bool bCastShadows = true;
+
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Rendering", Tooltip = "The materials of slots 1, 2 and on, for a mesh whose sections ask for them, such as a tree's leaves beside its trunk"))
 		std::vector<Nyx::MeshMaterialSlot> ExtraMaterials;
 

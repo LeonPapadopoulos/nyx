@@ -75,6 +75,11 @@ namespace Nyx
 		// its camera is now (ESceneViewCullingDebug); off by default.
 		virtual void SetSceneViewCullingDebug(uint64_t id, ESceneViewCullingDebug mode) = 0;
 
+		// The primary directional light casts shadows in every view, from the cascades of its
+		// shadow maps (DirectionalLightComponent). This shows which cascade a surface's shadow
+		// comes from, and the cascades' shadow maps (ESceneViewShadowDebug); off by default.
+		virtual void SetSceneViewShadowDebug(uint64_t id, ESceneViewShadowDebug mode) = 0;
+
 		virtual bool GetSceneViewCameraData(uint64_t sceneViewId, Nyx::SceneViewCameraData& outData) const = 0;
 
 		// The renderer's world, which every scene view shows unless it has one of its own

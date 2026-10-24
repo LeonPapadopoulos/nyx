@@ -4,11 +4,13 @@
 //
 // Bindings follow the bindless plan: set 0 is global and push constants belong to the draw
 // (nyx.bindless), set 1 belongs to the view (nyx.view); a material sees both. The pixel is lit by
-// nyx.lighting: the sun and the sky's light, physically based (metallic-roughness).
+// nyx.lighting: the sun and the sky's light, physically based (metallic-roughness), the sun's
+// shadowed by nyx.shadows.
 
 __exported import nyx.bindless;
 __exported import nyx.view;
 __exported import nyx.environment;
+__exported import nyx.shadows;
 import nyx.lighting;
 
 // -------------------------------------------------------------------------
@@ -299,10 +301,23 @@ ShadedPixel shadeSurfacePixel<S : ISurface>(VertexOutput vertex, DecalInput deca
         return pixel;
     }
 
+    // The sun's shadow by the surface's own normal, not a normal map's: the map's bumps don't move
+    // where the shadow falls. A decal is shadowed as what it lies on is.
     pixel.Reflected = o.Unlit ? o.BaseColor
-                              : nyx::lightSurface(o.BaseColor, o.Metallic, o.Roughness, o.Occlusion, normalize(o.Normal), input.ViewWS);
+                              : nyx::lightSurface(o.BaseColor, o.Metallic, o.Roughness, o.Occlusion, normalize(o.Normal), input.ViewWS,
+                                    nyx::sunShadow(input.PositionWS, input.NormalWS));
     pixel.Emission = o.Emission;
     pixel.Opacity = o.Opacity;
+
+    // The shadow debug view: tinted by the cascade the shadow comes from
+    if (View.ShadowDebug != 0 && !decal.IsDecal)
+    {
+        const uint cascade = nyx::shadowCascadeAt(input.PositionWS);
+        if (cascade < View.ShadowCascadeCount)
+        {
+            pixel.Reflected *= nyx::shadowCascadeTint(cascade);
+        }
+    }
     return pixel;
 }
 

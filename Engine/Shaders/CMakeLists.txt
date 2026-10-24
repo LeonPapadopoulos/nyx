@@ -13,6 +13,7 @@ set(NYX_SHADER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/Skybox.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Tonemap.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Environment.slang
+    ${CMAKE_CURRENT_SOURCE_DIR}/Shadow.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Grid.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/Grid.frag
     ${CMAKE_CURRENT_SOURCE_DIR}/DebugLines.vert
@@ -32,6 +33,7 @@ set(NYX_SHADER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/color.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/environment.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/lighting.slang
+    ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/shadows.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/view.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/surface.slang
 )

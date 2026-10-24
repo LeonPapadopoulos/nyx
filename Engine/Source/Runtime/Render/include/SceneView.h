@@ -4,12 +4,14 @@
 #include "VulkanBlur.h"
 #include "EditorCamera.h"
 #include "SceneViewTypes.h"
+#include "ShadowCascades.h"
 #include "VulkanDebugLines.h"
 #include "VulkanEditorOverlays.h"
 
 #include <glm/glm.hpp>
 #include <vulkan/vulkan.hpp>
 
+#include <array>
 #include <optional>
 #include <vector>
 
@@ -33,6 +35,19 @@ namespace Nyx
 		uint32_t FirstInstance = 0;
 		uint32_t InstanceCount = 1;
 		glm::mat4 Model{ 1.0f };
+	};
+
+	// The primary light's shadows as a view draws them this frame
+	// (VulkanRenderer::PrepareSceneViewShadows()): its cascades, each with the draws of what casts
+	// into it, culled by the cascade's own frustum as the view's are by its camera
+	struct SceneViewShadows
+	{
+		// 0: none this frame (no light that casts, or nothing to cast)
+		uint32_t CascadeCount = 0;
+		SceneViewShadowSettings Settings;
+		std::array<ShadowCascade, MaxShadowCascades> Cascades{};
+		std::array<std::vector<SceneViewDraw>, MaxShadowCascades> Draws;
+		std::array<SceneViewCullingStats, MaxShadowCascades> Culling{};
 	};
 
 	struct SceneViewInstance
@@ -71,6 +86,9 @@ namespace Nyx
 		std::vector<SceneViewDraw> Draws;
 		SceneViewCullingStats Culling;
 		DebugLineRange CullingLines;
+		// Its shadows this frame, and what it shows of them (IRenderer::SetSceneViewShadowDebug())
+		SceneViewShadows Shadows;
+		ESceneViewShadowDebug ShadowDebug = ESceneViewShadowDebug::Off;
 		// The HDR picture's slot in the bindless texture array, for the tonemap
 		uint32_t HdrTextureSlot = 0;
 

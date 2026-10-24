@@ -141,7 +141,8 @@ its extraction, bounds and sort every frame, so a field belongs in one instanced
 - The transforms are in host-visible memory, as the meshes' vertices are; device-local memory with
   a staging copy reads faster on discrete GPUs.
 - Only a transform per instance: a colour or a wind phase would be another stream or a wider one.
-- No culling by distance or level of detail, no occlusion culling, nothing on the GPU yet.
+- No culling by distance or level of detail, no occlusion culling, nothing on the GPU yet. The
+  shadows' cascades cull with the same code, each by its own frustum ([Shadows](shadows.md)).
 - Picking and the selection masks draw every instance, unculled.
 - Entities that share one `MeshInstances` but have meshes of different bounds make the cells again
   each time the other is drawn.

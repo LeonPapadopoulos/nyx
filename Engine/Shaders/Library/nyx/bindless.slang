@@ -67,6 +67,17 @@ namespace nyx
         public float4 SampleLevel(SamplerState sampler, float3 direction, float level) { return get().SampleLevel(sampler, direction, level); }
     }
 
+    // The same for a 2D texture array, e.g. the shadow map: sampled by UV and layer
+    public struct TextureArray
+    {
+        public uint Index = 0;
+
+        public Texture2DArray get() { return TextureHeap[Index].asOpaqueDescriptor<Texture2DArray>(); }
+        public float4 SampleLevel(SamplerState sampler, float3 uvLayer, float level) { return get().SampleLevel(sampler, uvLayer, level); }
+        // A texel as it is: x and y, the layer, the mip
+        public float4 Load(int4 texelLayerMip) { return get().Load(texelLayerMip); }
+    }
+
     // FixedSamplers, in EFixedSampler's order
     public property SamplerState LinearWrap { get { return FixedSamplers[0]; } }
     public property SamplerState LinearClamp { get { return FixedSamplers[1]; } }

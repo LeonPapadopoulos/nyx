@@ -85,8 +85,10 @@ namespace
 		}
 		const Entity camera = AddEntity(world, "Camera", At(glm::vec3(0.0f, 0.0f, 6.5f)));
 		world.Add<CameraComponent>(camera, CameraComponent{});
+		// Casting no shadows: the spheres are judged by their materials alone, not one in another's
+		// shadow
 		const Entity sun = AddEntity(world, "Sun", At(glm::vec3(0.0f, 5.0f, 0.0f), glm::vec3(-50.0f, 30.0f, 0.0f)));
-		world.Add<DirectionalLightComponent>(sun, DirectionalLightComponent{});
+		world.Add<DirectionalLightComponent>(sun, DirectionalLightComponent{ .bCastShadows = false });
 
 		Require(SceneSerializer::SaveToFile(world, assets / ScenePath), "The scene can't be saved");
 		std::cout << "Wrote " << (assets / ScenePath).string() << " and its materials\n";

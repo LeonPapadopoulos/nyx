@@ -46,11 +46,14 @@ namespace Nyx::Game
 		ToggleCullingDebug = Input->AddAction({ "ToggleCullingDebug", Nyx::Input::EActionValue::Button });
 		const Nyx::Input::InputBinding cullingDebug =
 			Nyx::Input::InputBinding::ForControl(ToggleCullingDebug, Nyx::Input::Key(Nyx::Input::EKey::F4), Nyx::Input::ETriggerKind::Pressed);
+		ToggleShadowDebug = Input->AddAction({ "ToggleShadowDebug", Nyx::Input::EActionValue::Button });
+		const Nyx::Input::InputBinding shadowDebug =
+			Nyx::Input::InputBinding::ForControl(ToggleShadowDebug, Nyx::Input::Key(Nyx::Input::EKey::F5), Nyx::Input::ETriggerKind::Pressed);
 		ToggleInputOverlay = Input->AddAction({ "ToggleInputOverlay", Nyx::Input::EActionValue::Button });
 		Nyx::Input::InputBinding overlay =
 			Nyx::Input::InputBinding::ForControl(ToggleInputOverlay, Nyx::Input::Key(Nyx::Input::EKey::I), Nyx::Input::ETriggerKind::Pressed);
 		overlay.Modifiers = crash.Modifiers;
-		DebugContext = Input->AddContext({ .Name = "Debug", .Priority = 800, .Bindings = { crash, physicsDebugView, cullingDebug, overlay } });
+		DebugContext = Input->AddContext({ .Name = "Debug", .Priority = 800, .Bindings = { crash, physicsDebugView, cullingDebug, shadowDebug, overlay } });
 		Input->GetUser().SetContextActive(DebugContext, true, { .Reason = "Debug build" });
 #endif
 
@@ -231,6 +234,15 @@ namespace Nyx::Game
 																			: Nyx::ESceneViewCullingDebug::Off;
 			Renderer->SetSceneViewCullingDebug(GameViewId, CullingDebug);
 			LOG_INFO("Culling debug view {0} (F4)", CullingDebug == Nyx::ESceneViewCullingDebug::Off ? "off" : CullingDebug == Nyx::ESceneViewCullingDebug::Bounds ? "showing the bounds" : "frozen");
+		}
+
+		// F5 tints the game view by the shadow cascade each surface's shadow comes from, and shows
+		// the cascades' shadow maps along the bottom; again, neither
+		if (Input->GetUser().ConsumeTriggered(ToggleShadowDebug))
+		{
+			ShadowDebug = ShadowDebug == Nyx::ESceneViewShadowDebug::Off ? Nyx::ESceneViewShadowDebug::Cascades : Nyx::ESceneViewShadowDebug::Off;
+			Renderer->SetSceneViewShadowDebug(GameViewId, ShadowDebug);
+			LOG_INFO("Shadow cascades debug view {0} (F5)", ShadowDebug == Nyx::ESceneViewShadowDebug::Off ? "off" : "on");
 		}
 #endif
 	}

@@ -435,6 +435,14 @@ add_dependencies(NyxCullingTests NyxGeneratedReflection)
 set_property(TARGET NyxCullingTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxCullingTests COMMAND NyxCullingTests)
 
+# The directional light's cascades without a GPU: splits, the spheres round the view's slices, the
+# light's view of them, snapped to their texels.
+add_executable(NyxShadowCascadeTests ShadowCascadeTests.cpp)
+target_link_libraries(NyxShadowCascadeTests PRIVATE NyxEngine)
+add_dependencies(NyxShadowCascadeTests NyxGeneratedReflection)
+set_property(TARGET NyxShadowCascadeTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxShadowCascadeTests COMMAND NyxShadowCascadeTests)
+
 # Material files and their values without a GPU: reading and writing, offsets, layouts that change.
 add_executable(NyxMaterialTests MaterialTests.cpp)
 target_link_libraries(NyxMaterialTests PRIVATE NyxEngine)
@@ -498,6 +506,19 @@ set_property(TARGET NyxInstancingGpuTests PROPERTY FOLDER "Tests")
 nyx_copy_shaders_next_to(NyxInstancingGpuTests)
 nyx_copy_shader_compiler_next_to(NyxInstancingGpuTests)
 add_test(NAME NyxInstancingGpuTests COMMAND NyxInstancingGpuTests)
+
+# The primary light's shadows on a real GPU: a box shadowing a plane and an instanced field shadowing
+# it too, compared with a reference image; shadows switched off on the light and on a mesh; a
+# two-sided quad casting from both sides; each cascade culled by its own frustum; the debug view.
+# Needs a Vulkan device; its window stays hidden.
+add_executable(NyxShadowGpuTests ShadowGpuTests.cpp)
+target_link_libraries(NyxShadowGpuTests PRIVATE NyxEngine)
+target_compile_definitions(NyxShadowGpuTests PRIVATE NYX_TEST_REFERENCES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/References")
+add_dependencies(NyxShadowGpuTests NyxGeneratedReflection)
+set_property(TARGET NyxShadowGpuTests PROPERTY FOLDER "Tests")
+nyx_copy_shaders_next_to(NyxShadowGpuTests)
+nyx_copy_shader_compiler_next_to(NyxShadowGpuTests)
+add_test(NAME NyxShadowGpuTests COMMAND NyxShadowGpuTests)
 
 # How long the renderer takes for 50 000 small meshes in 200 cells and 300 more, drawn one by one
 # and instanced; not run by ctest, timing depends on the machine. Needs a Vulkan device.

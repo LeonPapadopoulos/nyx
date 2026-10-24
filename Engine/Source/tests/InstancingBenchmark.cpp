@@ -6,8 +6,12 @@
 // Per frame: the whole frame on the CPU (DrawFrame()), the renderer's scene work on the CPU (the
 // worlds and the views recorded), and the scene views on the GPU, by timestamps.
 //
+// Instanced, the field is then put on a ground plane under a sun, and measured again with the
+// sun's shadows off and on (its defaults: four cascades of 2048 texels out to 80 m).
+//
 // NyxInstancingBenchmark [plain|instanced] [frames]: one mode, or both.
 #include "CameraComponent.h"
+#include "DirectionalLightComponent.h"
 #include "Entity.h"
 #include "Log.h"
 #include "MeshRendererComponent.h"
@@ -251,6 +255,29 @@ namespace
 			transform.Rotation = shot.Rotation;
 			const Timing timing = Measure(gpu, frames);
 			std::printf("  %-7s frame %8.2f ms   scene CPU %8.2f ms   scene views GPU %7.2f ms\n", shot.Name, timing.Frame, timing.SceneCpu, timing.SceneViewsGpu);
+		}
+
+		// On the ground, under the sun, without and with its shadows
+		if (mode != "plain")
+		{
+			AddMesh(world, TransformComponent{ .Position = glm::vec3(0.0f), .Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f), .Scale = glm::vec3(CellsX * CellSize, 1.0f, CellsZ * CellSize) },
+				gpu.Renderer.GetPlaneMesh(), material);
+			const Entity sun = world.CreateEntity();
+			world.Add<TransformComponent>(sun, TransformComponent{ .Position = glm::vec3(0.0f), .Rotation = glm::quat(glm::radians(glm::vec3(-50.0f, -60.0f, 0.0f))), .Scale = glm::vec3(1.0f) });
+			world.Add<DirectionalLightComponent>(sun, DirectionalLightComponent{});
+			for (const bool bShadows : { false, true })
+			{
+				world.Get<DirectionalLightComponent>(sun).bCastShadows = bShadows;
+				std::cout << mode << " on a ground, under a sun, " << (bShadows ? "with its shadows (4 cascades)" : "without shadows") << ":\n";
+				for (const Shot& shot : shots)
+				{
+					TransformComponent& transform = world.Get<TransformComponent>(camera);
+					transform.Position = shot.Position;
+					transform.Rotation = shot.Rotation;
+					const Timing timing = Measure(gpu, frames);
+					std::printf("  %-7s frame %8.2f ms   scene CPU %8.2f ms   scene views GPU %7.2f ms\n", shot.Name, timing.Frame, timing.SceneCpu, timing.SceneViewsGpu);
+				}
+			}
 		}
 
 		renderer.DestroySceneView(view);

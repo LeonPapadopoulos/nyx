@@ -130,6 +130,8 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/RuntimeMeshCache.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/MeshInstanceCache.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/SceneCulling.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/ShadowCascades.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanShadows.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Texture.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/CubemapTexture.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Material.cpp
@@ -311,6 +313,8 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/RuntimeMeshCache.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/MeshInstanceCache.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/SceneCulling.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/ShadowCascades.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanShadows.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Texture.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/CubemapTexture.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Material.h

@@ -161,15 +161,17 @@ Materials are judged under physically based light, so the lighting is a fixed ba
 than a look:
 
 - glTF's metallic-roughness model: GGX distribution, height-correlated Smith visibility, Schlick
-  Fresnel and Lambert diffuse, for the sun (`lighting.slang`);
+  Fresnel and Lambert diffuse, for the sun (`lighting.slang`), shadowed by the sun's cascaded
+  shadow maps (`shadows.slang`, [Shadows](shadows.md)); the sky's light isn't shadowed;
 - light from the sky (`VulkanEnvironment`, `Environment.slang`): a specular cube prefiltered by
   roughness into its mips, diffuse light as nine spherical harmonics, and a split-sum lookup
   table, made on the GPU when the sky loads;
 - scene views render in HDR (`R16G16B16A16Sfloat`) with an exposure and are tonemapped into the
   8-bit picture; the editor's overlays are drawn after tonemapping.
 
-`NyxMaterialGpuTests` renders a grid of spheres (metallic by row, roughness by column) and
-compares it with an approved reference image, and runs the furnace test: under a uniform sky,
+`NyxMaterialGpuTests` renders a grid of spheres (metallic by row, roughness by column), under a
+sun that casts no shadows so no sphere is judged in another's, and compares it with an approved
+reference image, and runs the furnace test: under a uniform sky,
 white dielectric spheres send back the sky's colour.
 
 ## Not done
