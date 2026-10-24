@@ -117,8 +117,6 @@ namespace Nyx::Editor
 
 			AssetBrowser.SetAssetTypes(&AssetTypes);
 			AssetBrowser.SetDatabase(&AssetDb);
-			MainSceneView.SetAssetTypes(&AssetTypes);
-			SecondarySceneView.SetAssetTypes(&AssetTypes);
 			AssetBrowser.SetCurrentDirectory(std::filesystem::path("Scenes"));
 		}
 
@@ -132,9 +130,10 @@ namespace Nyx::Editor
 		};
 		Materials.SetOpenFileAtLine(OpenAtLine);
 
-		// The workspace of the last session, with its layout and the window where it was; the
-		// workspace saved last has the window's placement as it was last
+		// The workspace of the last session, with its layout, the window where it was and the scene
+		// views that were open; the workspace saved last has them as they were last
 		Layouts.AddSection("Window", [this]() { return WriteWindowPlacement(Window->GetPlacement()); });
+		Layouts.AddSection("SceneViews", [this]() { return SceneViews.Write(); });
 		Layouts.Start(FindWorkspace(Preferences.Workspace).value_or(EWorkspace::Scene));
 		if (const std::vector<std::string>* windowSection = Layouts.GetLoadedSection("Window"))
 		{
@@ -185,17 +184,10 @@ namespace Nyx::Editor
 			return state;
 		};
 
-		MainSceneView.CreateView(*Renderer);
-		SecondarySceneView.CreateView(*Renderer);
-
+		SceneViews.Attach(*Renderer, &AssetTypes);
+		if (const std::vector<std::string>* sceneViewSection = Layouts.GetLoadedSection("SceneViews"))
 		{
-			// @todo: Allow the user to switch Camera Modes on demand via editor UI and on per-view basis
-			const uint64_t secondaryViewId = SecondarySceneView.GetViewId();
-			Renderer->SetSceneViewCameraMode(secondaryViewId, EViewportCameraMode::EditorFreeCamera);
-			// Give the 2nd camera a different starting position & rotation to make it distinctly different
-			glm::vec3 camPosition = glm::vec3(6.0f, 2.0f, 0.0f);
-			glm::vec3 camRotationRadians = glm::vec3(-0.25f, 0.5 * 3.1415 /* PI */, 0.0f);
-			Renderer->SetSceneViewEditorCameraTransform(secondaryViewId, camPosition, camRotationRadians);
+			SceneViews.Read(*sceneViewSection);
 		}
 
 		SpawnDefaultScene(Editing.Scene);
@@ -234,8 +226,7 @@ namespace Nyx::Editor
 
 		// The layout as it is, before the panels go
 		Layouts.Stop();
-		MainSceneView.DestroyView();
-		SecondarySceneView.DestroyView();
+		SceneViews.Detach();
 		Materials.Release();
 		Renderer->SetShaderCompiledListener(nullptr);
 #if NYX_DEV_TOOLS
@@ -295,7 +286,7 @@ namespace Nyx::Editor
 	void EditorLayer::OnUI()
 	{
 		// Inside the window of the dock space, before the panels: a workspace's first layout
-		Layouts.BuildDefaultLayout(ImGui::GetID("MyDockspace"));
+		Layouts.BuildDefaultLayout(ImGui::GetID("MyDockspace"), SceneViews.GetTitles());
 		Materials.DrawNewMaterialPopup();
 
 		if (!SourceInspector.IsActive()) Editing.Gizmo.TickHotkeys();
@@ -320,8 +311,7 @@ namespace Nyx::Editor
 		Outliner.Draw(Editing);
 		Details.Draw(Editing);
 		Materials.Draw(*Renderer, Editing);
-		MainSceneView.Draw(Editing, Preferences, *CameraController);
-		SecondarySceneView.Draw(Editing, Preferences, *CameraController);
+		SceneViews.Draw(Editing, Preferences, *CameraController);
 
 		// Values being dragged or typed reach a running game every frame, not only when the edit ends
 		Editing.DetailsContext.PreviewPendingEdits();
@@ -476,8 +466,7 @@ namespace Nyx::Editor
 		const bool bMaterials = Layouts.GetCurrent() == EWorkspace::Materials;
 		Outliner.bOpen = !bMaterials;
 		Details.bOpen = !bMaterials;
-		MainSceneView.bOpen = !bMaterials;
-		SecondarySceneView.bOpen = !bMaterials;
+		SceneViews.bShown = !bMaterials;
 		Materials.GetParameters().bOpen = bMaterials;
 		Materials.GetPreview().bOpen = bMaterials;
 		Materials.GetShaderLog().bOpen = bMaterials;
@@ -496,7 +485,6 @@ namespace Nyx::Editor
 
 	void EditorLayer::ApplyPendingPickResults()
 	{
-		MainSceneView.ApplyPickResult(Editing);
-		SecondarySceneView.ApplyPickResult(Editing);
+		SceneViews.ApplyPickResults(Editing);
 	}
 }

@@ -18,6 +18,11 @@
 
 namespace Nyx::Editor
 {
+	std::string SceneViewPanel::GetTitle(int number)
+	{
+		return number == 1 ? std::string("Scene") : "Scene " + std::to_string(number);
+	}
+
 	void SceneViewPanel::CreateView(Nyx::IEditorRenderer& renderer)
 	{
 		UseView(renderer, renderer.CreateSceneView());
@@ -92,19 +97,25 @@ namespace Nyx::Editor
 		}
 	}
 
-	void SceneViewPanel::Draw(SceneEditor& editing, const EditorPreferences& preferences, EditorCameraController& cameraController)
+	void SceneViewPanel::Draw(SceneEditor& editing, const EditorPreferences& preferences, EditorCameraController& cameraController, bool bCanClose)
 	{
 		if (!bOpen || !Renderer || SceneViewId == 0)
 		{
 			return;
 		}
 
+		if (PendingDockId != 0)
+		{
+			ImGui::SetNextWindowDockID(std::exchange(PendingDockId, 0u));
+		}
+
 		// The picture fills the card, in from its edges only as far as the card's rounded corners
 		// reach in along the diagonal, r(1 - 1/sqrt(2)), so that its square corners stay inside them
 		const float padding = std::ceil(Nyx::UI::GetTheme().CardRounding * (1.0f - 0.70710678f));
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(padding, padding));
-		const bool bVisible = Nyx::UI::Begin(Title.c_str(), &bOpen);
+		const bool bVisible = Nyx::UI::Begin(Title.c_str(), bCanClose ? &bOpen : nullptr);
 		ImGui::PopStyleVar();
+		DockId = ImGui::GetWindowDockID();
 		if (!bVisible)
 		{
 			ImGui::End();

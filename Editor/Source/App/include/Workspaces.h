@@ -79,8 +79,9 @@ namespace Nyx::Editor
 		void RequestDefaultLayout() { bBuildDefault = true; }
 
 		// In the frame, in the window that holds the dock space `dockSpace` (its ID), before the
-		// panels are drawn: the default layout of a workspace without a file, or reset
-		void BuildDefaultLayout(unsigned int dockSpace);
+		// panels are drawn: the default layout of a workspace without a file, or reset. The Scene
+		// workspace's docks the scene views' windows, `sceneViews`, in the middle.
+		void BuildDefaultLayout(unsigned int dockSpace, const std::vector<std::string>& sceneViews);
 
 		// Saves the current layout to its file, e.g. as the editor closes
 		void SaveCurrent();

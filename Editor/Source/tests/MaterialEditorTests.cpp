@@ -492,7 +492,7 @@ namespace
 			ImGui::Begin("DockSpaceWindow", nullptr, ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar);
 			const ImGuiID dockSpace = ImGui::GetID("MyDockspace");
 			ImGui::DockSpace(dockSpace);
-			layouts.BuildDefaultLayout(dockSpace);
+			layouts.BuildDefaultLayout(dockSpace, { "Scene" });
 			for (const char* name : { "Preview", "Parameters", "Scene Outliner" })
 			{
 				ImGui::Begin(name);

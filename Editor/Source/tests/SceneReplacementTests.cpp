@@ -117,8 +117,8 @@ namespace Nyx::Tests
 		static Entity Prepare(EditorLayer& editor, VulkanRenderer& renderer)
 		{
 			editor.Renderer = &renderer;
-			editor.MainSceneView.UseView(renderer, 1);
-			editor.SecondarySceneView.UseView(renderer, 2);
+			const uint64_t sceneViewIds[] = { 1, 2 };
+			editor.SceneViews.UseViews(renderer, sceneViewIds);
 			renderer.SceneViews.resize(2);
 			renderer.SceneViews[0].Id = 1;
 			renderer.SceneViews[1].Id = 2;
@@ -159,7 +159,7 @@ namespace Nyx::Tests
 			gizmo.State.bDragging = true;
 			gizmo.State.ActiveAxis = ETransformGizmoAxis::X;
 			gizmo.State.HoveredAxis = ETransformGizmoAxis::X;
-			gizmo.State.ActiveSceneViewId = editor.MainSceneView.GetViewId();
+			gizmo.State.ActiveSceneViewId = editor.SceneViews.GetViews().front()->GetViewId();
 			gizmo.State.DragEntity = entity;
 			gizmo.State.Operation = EGizmoOperation::Rotate;
 			gizmo.State.Space = EGizmoSpace::World;

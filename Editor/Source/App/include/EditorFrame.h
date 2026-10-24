@@ -1,7 +1,5 @@
 #pragma once
 
-#include "SceneViewTypes.h"
-
 #include <filesystem>
 #include <functional>
 #include <string>
@@ -22,7 +20,7 @@ namespace Nyx::Editor
 	class PreferencesWindow;
 	class SceneEditor;
 	class SceneFilePopups;
-	class SceneViewPanel;
+	class SceneViewSet;
 	class ThemeEditorWindow;
 	class UISourceInspector;
 	class Workspaces;
@@ -57,8 +55,7 @@ namespace Nyx::Editor
 			bool& bAssetBrowserVisible;
 			InputPanel& InputWindow;
 			bool& bShowGameLink;
-			SceneViewPanel& SecondarySceneView;
-			bool& bSecondaryViewShowsGameView;
+			SceneViewSet& SceneViews;
 #if NYX_DEV_TOOLS
 			ImGuiDebugTools& DebugTools;
 			PainterTestWindow& PainterTest;
@@ -103,8 +100,5 @@ namespace Nyx::Editor
 		// The last scene saved, opened or made, and whether that failed
 		std::string SceneFileStatus;
 		bool bSceneFileStatusFailed = false;
-		// What the scene views show of their culling (Debug > Culling Bounds, Freeze Culling)
-		Nyx::ESceneViewCullingDebug SceneCullingDebug = Nyx::ESceneViewCullingDebug::Off;
-		Nyx::ESceneViewShadowDebug SceneShadowDebug = Nyx::ESceneViewShadowDebug::Off;
 	};
 }

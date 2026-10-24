@@ -230,7 +230,7 @@ namespace Nyx::Editor
 		return true;
 	}
 
-	void Workspaces::BuildDefaultLayout(unsigned int dockSpace)
+	void Workspaces::BuildDefaultLayout(unsigned int dockSpace, const std::vector<std::string>& sceneViews)
 	{
 		if (!bBuildDefault)
 		{
@@ -264,8 +264,10 @@ namespace Nyx::Editor
 			ImGui::DockBuilderDockWindow("Details", right);
 			ImGui::DockBuilderDockWindow("Asset Browser", bottom);
 			ImGui::DockBuilderDockWindow("Game Link", bottom);
-			ImGui::DockBuilderDockWindow("Scene", middle);
-			ImGui::DockBuilderDockWindow("Scene 2", middle);
+			for (const std::string& sceneView : sceneViews)
+			{
+				ImGui::DockBuilderDockWindow(sceneView.c_str(), middle);
+			}
 		}
 		ImGui::DockBuilderFinish(dockSpace);
 	}

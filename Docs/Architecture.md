@@ -120,7 +120,7 @@ checks every `#include` against this table.
 | `Preferences` | The editor's preferences, the Preferences and Theme windows, opening source in the chosen editor | Common |
 | `DevTools` | The prototype and diagnostics tools, in Debug builds only (`NYX_DEV_TOOLS`): Painter Test, Mockup Overlay, ImGui's debug windows | Common |
 | `Properties` | Drawing and editing reflected properties: a widget per property kind (an entity reference's picker among them), and the edit in progress | Common, Transactions, Assets |
-| `Scene` | The scene being edited: its document and undo, the outliner, details, gizmo, scene views and their cameras, scene files, copy and paste | Common, Transactions, Assets, Preferences, Properties |
+| `Scene` | The scene being edited: its document and undo, the outliner, details, gizmo, scene views (`SceneViewSet`: any number of `SceneViewPanel`s) and their cameras, scene files, copy and paste | Common, Transactions, Assets, Preferences, Properties |
 | `Play` | Play and Play All: the games, their windows and crash cards, the Game Link window, edits sent to the games | Transactions, Preferences, Scene |
 | `Input` | The Input window (*Window > Input*): the editor's or a running game's input, its history and traces; the input asset being edited, with its undo (`InputAssetDocument`), and the Tuning and Checks tabs | Common, Transactions, Properties, Play |
 | `App` | `EditorLayer`, which owns and wires up everything else; `EditorFrame`, the titlebar with its menus and the status bar; `MaterialWorkspace`, which feeds the material windows and makes new materials; the workspaces and their layout files (`Workspaces`, in the project's `Saved/Layouts`, with the window's placement), the asset types the editor knows | Common, Assets, Materials, Preferences, DevTools, Properties, Scene, Play, Input |
@@ -218,7 +218,9 @@ and `NYX_PROFILE_MESSAGE()`. They wrap Tracy, and only `Profiler.h` includes Tra
   `VulkanDebugLines` every view's debug lines, the overlays' and the worlds' debug drawing
   (`SetWorldDebugDraw()`). It holds worlds and their drawings only by pointer (`SetWorld()`,
   `SetSceneViewWorld()`): their owner keeps them alive, and calls `SetWorld()` again after
-  replacing what's in one.
+  replacing what's in one. It makes a scene view of its own first, whose render passes its pipelines are
+  made with, so the editor's views (any number, `SceneViewSet`) can come and go; a view destroyed
+  while a frame is recorded goes once the GPU is done with it.
 - **Layers**: `EditorLayer` in the editor; `GameLayer` and, when the editor started the game,
   `EditorLinkLayer` in the game.
 - **Worlds** (`Registry`): the scene being edited is in `SceneDocument`, inside

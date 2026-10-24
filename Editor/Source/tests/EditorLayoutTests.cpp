@@ -43,7 +43,7 @@ namespace
 				ImGui::Begin("DockSpaceWindow", nullptr, ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
 				const ImGuiID dockSpace = ImGui::GetID("MyDockspace");
 				ImGui::DockSpace(dockSpace);
-				layouts.BuildDefaultLayout(dockSpace);
+				layouts.BuildDefaultLayout(dockSpace, { "Scene", "Scene 2" });
 				ImGui::End();
 				for (const char* panel : ScenePanels)
 				{

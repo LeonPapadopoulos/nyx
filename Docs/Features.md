@@ -3,7 +3,7 @@
 What the editor and the game do. How the code behind them is organised is in
 [Architecture.md](Architecture.md).
 
-- Editor with scene outliner, details panel, asset browser and two viewports
+- Editor with scene outliner, details panel, asset browser and any number of scene views
 - Picking, transform gizmo, undo/redo
 - Vulkan renderer
 - Reflection system (see below)
@@ -339,8 +339,16 @@ variable `NYX_PAINTER_TEST_OUTPUT` naming a folder, it saves what it painted as 
   matter; there is no `imgui.ini`.
 - *Window > Reset Layout* puts the current workspace's panels back where they first were, and
   opens them.
+- **Scene views**: *Window > New Scene View* opens another, "Scene 2", "Scene 3" and so on, docked
+  beside the first and looking from where it looks; each has its own camera after. Any can be
+  closed but the last. *Window > Game View in ...* shows a view the way the game sees the scene,
+  through its primary camera and without the editor's overlays. The views open, each one's camera
+  and whether it shows the game are kept with the layout. *Debug > Culling Bounds*, *Freeze
+  Culling* and *Shadow Cascades* reach every view, those opened later too.
 - `NyxEditorLayoutTests` saves and loads layouts headless: the docking, the window's placement,
   saving while running, switching workspaces, Reset Layout and keeping the window on the monitors.
+  `NyxEditorSceneViewGpuTests` opens and closes scene views on a GPU: their cameras, culling and
+  debug views, and their section of the layout read back.
 
 ## Reflection
 

@@ -21,7 +21,7 @@
 #include "SceneEditor.h"
 #include "SceneFilePopups.h"
 #include "SceneOutlinerPanel.h"
-#include "SceneViewPanel.h"
+#include "SceneViewSet.h"
 #include "ThemeEditorWindow.h"
 #include "Workspaces.h"
 #include "UISourceInspector.h"
@@ -127,14 +127,13 @@ namespace Nyx::Editor
 		// The Parameters, Preview and Shader Log windows, and New Material
 		MaterialWorkspace Materials{ AssetDb, Layouts };
 
-		SceneViewPanel MainSceneView{ "Scene" };
-		SceneViewPanel SecondarySceneView{ "Scene 2" };
+		// The scene views, as many as are open (Window > New Scene View)
+		SceneViewSet SceneViews;
 		// Flies the scene views' free cameras; made in OnAttach, with the application's input
 		std::unique_ptr<EditorCameraController> CameraController;
 
 		// On while the UI source inspector is: it takes every key and click
 		Nyx::Input::ContextHandle SourceInspectorContext;
-		bool bSecondaryViewShowsGameView = false;
 		SceneFilePopups SceneFiles;
 		PreferencesWindow PreferencesPanel;
 		ThemeEditorWindow ThemeEditor;
@@ -171,8 +170,7 @@ namespace Nyx::Editor
 			.bAssetBrowserVisible = bAssetBrowserVisible,
 			.InputWindow = InputWindow,
 			.bShowGameLink = bShowGameLink,
-			.SecondarySceneView = SecondarySceneView,
-			.bSecondaryViewShowsGameView = bSecondaryViewShowsGameView,
+			.SceneViews = SceneViews,
 #if NYX_DEV_TOOLS
 			.DebugTools = DebugTools,
 			.PainterTest = PainterTest,

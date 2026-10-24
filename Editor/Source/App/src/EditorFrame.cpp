@@ -10,7 +10,7 @@
 #include "EditorRenderer.h"
 #include "SceneEditor.h"
 #include "SceneFilePopups.h"
-#include "SceneViewPanel.h"
+#include "SceneViewSet.h"
 #include "ThemeEditorWindow.h"
 #include "UIChrome.h"
 #include "UIDiagnostics.h"
@@ -194,11 +194,21 @@ namespace Nyx::Editor
 				Editor.ResetLayout();
 			}
 
-			// Shows "Scene 2" the way the game sees the scene: through its primary camera, without editor overlays
-			if (NYX_UI(Nyx::UI::MenuItem("Game View in Scene 2", nullptr, Editor.bSecondaryViewShowsGameView)))
+			// Another scene view, with its own camera, beside the first
+			NYX_UI(Nyx::UI::Separator());
+			if (NYX_UI(Nyx::UI::MenuItem("New Scene View")))
 			{
-				Editor.bSecondaryViewShowsGameView = !Editor.bSecondaryViewShowsGameView;
-				Editor.SecondarySceneView.SetShowsGameView(Editor.bSecondaryViewShowsGameView);
+				Editor.SceneViews.Open();
+			}
+			// Shows a scene view the way the game sees the scene: through its primary camera,
+			// without editor overlays
+			for (const std::unique_ptr<SceneViewPanel>& view : Editor.SceneViews.GetViews())
+			{
+				const std::string label = "Game View in " + view->GetTitle();
+				if (NYX_UI(Nyx::UI::MenuItem(label.c_str(), nullptr, view->IsShowingGameView())))
+				{
+					view->SetShowsGameView(!view->IsShowingGameView());
+				}
 			}
 
 			ImGui::EndPopup();
@@ -237,24 +247,18 @@ namespace Nyx::Editor
 			for (const auto& [label, mode] : { std::pair{ "Culling Bounds", Nyx::ESceneViewCullingDebug::Bounds },
 					 std::pair{ "Freeze Culling", Nyx::ESceneViewCullingDebug::Frozen } })
 			{
-				if (NYX_UI(Nyx::UI::MenuItem(label, nullptr, SceneCullingDebug == mode)))
+				const Nyx::ESceneViewCullingDebug culling = Editor.SceneViews.GetCullingDebug();
+				if (NYX_UI(Nyx::UI::MenuItem(label, nullptr, culling == mode)))
 				{
-					SceneCullingDebug = SceneCullingDebug == mode ? Nyx::ESceneViewCullingDebug::Off : mode;
-					for (const uint64_t view : Renderer->GetSceneViewIds())
-					{
-						Renderer->SetSceneViewCullingDebug(view, SceneCullingDebug);
-					}
+					Editor.SceneViews.SetCullingDebug(culling == mode ? Nyx::ESceneViewCullingDebug::Off : mode);
 				}
 			}
 			// Every scene view's shadows: tinted by the cascade each surface's shadow comes from, and
 			// the cascades' shadow maps along the bottom
-			if (NYX_UI(Nyx::UI::MenuItem("Shadow Cascades", nullptr, SceneShadowDebug != Nyx::ESceneViewShadowDebug::Off)))
+			const bool bShadowCascades = Editor.SceneViews.GetShadowDebug() != Nyx::ESceneViewShadowDebug::Off;
+			if (NYX_UI(Nyx::UI::MenuItem("Shadow Cascades", nullptr, bShadowCascades)))
 			{
-				SceneShadowDebug = SceneShadowDebug == Nyx::ESceneViewShadowDebug::Off ? Nyx::ESceneViewShadowDebug::Cascades : Nyx::ESceneViewShadowDebug::Off;
-				for (const uint64_t view : Renderer->GetSceneViewIds())
-				{
-					Renderer->SetSceneViewShadowDebug(view, SceneShadowDebug);
-				}
+				Editor.SceneViews.SetShadowDebug(bShadowCascades ? Nyx::ESceneViewShadowDebug::Off : Nyx::ESceneViewShadowDebug::Cascades);
 			}
 			// Where the painter's work lies: one of the two views, or neither
 			const Nyx::UI::EPainterHeatmap heatmap = Nyx::UI::GetPainterHeatmap();

@@ -13,6 +13,7 @@ set(NYX_EDITOR_SOURCES
     Scene/src/SceneOutlinerPanel.cpp
     Scene/src/DetailsPanel.cpp
     Scene/src/SceneViewPanel.cpp
+    Scene/src/SceneViewSet.cpp
     Scene/src/EditorCameraController.cpp
     Scene/src/SceneFilePopups.cpp
     Scene/src/DefaultScene.cpp
@@ -89,6 +90,7 @@ set(NYX_EDITOR_HEADERS
     Scene/include/SceneOutlinerPanel.h
     Scene/include/DetailsPanel.h
     Scene/include/SceneViewPanel.h
+    Scene/include/SceneViewSet.h
     Scene/include/EditorCameraController.h
     Scene/include/SceneFilePopups.h
     Scene/include/DefaultScene.h
@@ -304,6 +306,18 @@ if(BUILD_TESTING)
     target_precompile_headers(NyxEditorLayoutTests REUSE_FROM NyxEditorLib)
     set_property(TARGET NyxEditorLayoutTests PROPERTY FOLDER "Tests")
     add_test(NAME NyxEditorLayoutTests COMMAND NyxEditorLayoutTests)
+
+    # The scene views on a real GPU: any number opened and closed, each with its own camera, the
+    # Debug menu's culling and shadow views, their section of the layout files. Needs a Vulkan
+    # device; its window stays hidden.
+    add_executable(NyxEditorSceneViewGpuTests tests/SceneViewGpuTests.cpp)
+    target_include_directories(NyxEditorSceneViewGpuTests PRIVATE ${NYX_TEST_SUPPORT_DIR})
+    target_link_libraries(NyxEditorSceneViewGpuTests PRIVATE NyxEditorLib)
+    target_precompile_headers(NyxEditorSceneViewGpuTests REUSE_FROM NyxEditorLib)
+    set_property(TARGET NyxEditorSceneViewGpuTests PROPERTY FOLDER "Tests")
+    nyx_copy_shaders_next_to(NyxEditorSceneViewGpuTests)
+    nyx_copy_shader_compiler_next_to(NyxEditorSceneViewGpuTests)
+    add_test(NAME NyxEditorSceneViewGpuTests COMMAND NyxEditorSceneViewGpuTests)
 
     # The input asset as the editor edits it: undo inside its arrays, live previews, saving, the
     # Tuning and Checks tabs drawn headless
