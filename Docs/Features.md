@@ -15,7 +15,8 @@ What the editor and the game do. How the code behind them is organised is in
   Material for Shader* on a shader), then *Show in Explorer*, which opens Windows' File Explorer at
   its folder with it selected (a folder opened), and *Copy Path*, its full path on the clipboard.
 - Right-click where there is no card: the same for the folder shown, and what can be made there
-  (*New Material...*, *New Physics Material*).
+  (*New Material...*, and *New \<type\>* for each reflected asset type, such as *New Physics
+  Material* or a game's own, every value written at its default).
 
 ## Play
 
@@ -67,8 +68,9 @@ What the editor and the game do. How the code behind them is organised is in
   the game every frame; the end of the drag is one undo step.
 - Edits made while the game is still starting are sent once it is linked; edits after Stop
   aren't sent.
-- The physics material open in the *Physics Material* window reaches the game the same way, every
-  frame it changes, saved or not ([Physics](#physics)).
+- An asset open in its window (a physics material, a game's own type) reaches the game the same way,
+  every frame it changes, saved or not, to whoever in the game listens for its type
+  ([Reflected assets](#reflected-assets)).
 - Tests: `NyxEditorLinkTests` (both ends of the link in one program), `NyxLiveEditTests` and
   `NyxGameLinkSubscriberTests`.
 
@@ -189,8 +191,9 @@ Rigid bodies on [Jolt](https://github.com/jrouwe/JoltPhysics), while a game runs
   (*Extras*, e.g. `Extra.Flammability = 0.8` in the file), which Nyx keeps and serves without
   knowing what they mean: a game reads them with `GetPhysicsMaterial(entity)` and
   `GetExtra(material, "Flammability", fallback)`. Right-click in the asset browser for *New Physics
-  Material*; double-click one to edit it in the *Physics Material* window, as a component's
-  properties are, with the editor's undo, and *Save* (Ctrl+S). While the game runs, its bodies take
+  Material*; double-click one to edit it in its window, a reflected asset's
+  ([Reflected assets](#reflected-assets)), with the editor's undo, and *Save* (Ctrl+S); friction or
+  density below 0 and restitution outside 0 to 1 show as problems at their values. While the game runs, its bodies take
   the values as they are edited, saved or not: friction and bounce at once, as they move, a density
   that gives a mass by making the body again. A file saved by hand while the game runs is read
   again too. The file keeps its comments and any line Nyx doesn't know. A *Physics Material*
@@ -488,6 +491,34 @@ A name must be a C++ identifier. In the header tool's tests, a fixture names its
 `--type-root <dir>` names another module's headers, such as the engine's: a type of this module may
 hold one of their types as a property, and nothing is generated for them. A game module's run gets
 the engine's, so a game's component can hold an `AssetReference` or a `SurfaceAnchor`.
+
+## Reflected assets
+
+A game's own data files, edited in the editor without any of the game's code in Nyx
+([Reflected assets](Design/reflected-assets.md)).
+
+- A game registers an asset type in its module's `RegisterTypes()`: a file extension, a display name,
+  a reflected struct whose properties are the file's contents, and, if it likes, a check of its values
+  (`ReflectedAssetTypes::Register()`). Nyx's physics materials are one.
+- The file is text, `Name = value` lines, read and written through reflection: numbers, bools,
+  strings, enums, colours and vectors, asset references by path, arrays of values on one line,
+  structs' values by `Struct.Value`, named entries (an array of structs with a `Name`, each by its
+  name: `Attack.Bite.Damage = 12`, or one line for an entry of one value, `Resist.Fire = 0.5`),
+  structs on one line (`NYX_REFLECT(meta = (Inline))`: `Range.Sight = 30 10 60`), other arrays of
+  structs by index. `TextName` gives a property another name in the file. Writing keeps the file's
+  comments and lines it doesn't know, and changes only the lines of values that changed.
+- Double-click one in the asset browser to open it in a window of its own, any number at once: its
+  values in the details table with the editor's undo, a dirty marker, *Save* (Ctrl+S). Named
+  entries are added with a name of their own (*Entry*, *Entry2*, ...), renamed by their *Name* and
+  taken away or moved by their row's right-click menu.
+- What is wrong is shown under the value it is about, in red: values in the file that can't be read,
+  the type's own check (e.g. a minimum above its maximum), and entries' names that are missing, twice
+  or not letters, digits and _.
+- A file changed on disk is read again into its window if it has no changes; with changes the window
+  says so, with *Reload*.
+- While a game runs, each change reaches it, saved or not, for whoever listens for the type
+  (`ReflectedAssetListener`).
+- Tests: `NyxReflectedAssetTests`, `NyxReflectedAssetEditorTests`.
 
 ## Entity references
 

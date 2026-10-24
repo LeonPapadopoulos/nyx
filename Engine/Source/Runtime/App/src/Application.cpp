@@ -4,6 +4,7 @@
 #include "EditorRenderer.h"
 #include "Log.h"
 #include "Profiler.h"
+#include "ReflectedAssetTypes.h"
 #include "SdlGamepadBackend.h"
 #include "Window.h"
 
@@ -19,8 +20,10 @@ namespace Nyx
 
 		// Saving and loading scenes, and the editor's details panel and undo, look up
 		// component types in the ComponentTypeRegistry: fill it before any layer runs. The engine's
-		// types first, so a game module's type that takes one of their names is the one refused.
+		// types first, so a game module's type that takes one of their names is the one refused. The
+		// same for the asset types the editor edits by reflection (ReflectedAssetTypes).
 		RegisterComponentTypes();
+		RegisterEngineAssetTypes();
 		if (Module->RegisterTypes)
 		{
 			Module->RegisterTypes();

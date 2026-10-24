@@ -12,8 +12,9 @@ namespace Nyx::Editor
 		SceneEntity,
 		// The input asset the Input window edits (InputAssetDocument)
 		InputAsset,
-		// The physics material the Physics Material window edits (PhysicsMaterialDocument)
-		PhysicsMaterial
+		// The assets edited by reflection in their own windows, a physics material among them
+		// (ReflectedAssetEditors), each by its own id
+		ReflectedAsset
 	};
 
 	struct ObjectRef

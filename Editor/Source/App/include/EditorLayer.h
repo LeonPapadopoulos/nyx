@@ -15,11 +15,11 @@
 #include "Layer.h"
 #include "MaterialWorkspace.h"
 #include "Paths.h"
-#include "PhysicsMaterialDocument.h"
-#include "PhysicsMaterialPanel.h"
 #include "PlayControls.h"
 #include "PlaySession.h"
 #include "PreferencesWindow.h"
+#include "ReflectedAssetEditors.h"
+#include "ReflectedAssetWindows.h"
 #include "SceneEditor.h"
 #include "SceneFilePopups.h"
 #include "SceneOutlinerPanel.h"
@@ -77,11 +77,11 @@ namespace Nyx::Editor
 		void OpenMaterial(const std::string& path);
 		// Opens a shader file in the source editor of the preferences
 		void OpenShader(const std::filesystem::path& file);
-		// Opens a physics material ("PhysicsMaterials/Wood.nyxphysmat") in the Physics Material window
-		void OpenPhysicsMaterial(const std::string& path);
-		// The asset browser's New Physics Material: a file of the engine's values in the folder shown,
-		// opened
-		void CreatePhysicsMaterial();
+		// Opens an asset of a reflected asset type, e.g. "PhysicsMaterials/Wood.nyxphysmat", in its window
+		void OpenReflectedAsset(const std::string& path);
+		// The asset browser's New <DisplayName>: a file of the type's defaults in `folder` (relative to
+		// the assets folder), opened
+		void CreateReflectedAsset(const Nyx::ReflectedAssetType& type, const std::filesystem::path& folder);
 
 	private:
 		// Vsync and the frame rate cap, from the preferences, to the window
@@ -156,11 +156,10 @@ namespace Nyx::Editor
 		// Window > Input: the editor's own input, with its traces
 		InputPanel InputWindow;
 
-		// The physics material being edited, with the scene's undo, and its window
-		PhysicsMaterialDocument PhysicsMaterial;
-		PhysicsMaterialPanel PhysicsMaterialWindow;
-		// The material's revision the running games last got
-		uint64_t SentPhysicsMaterialRevision = 0;
+		// The assets of reflected asset types being edited (physics materials, a game's own types),
+		// with the scene's undo, and their windows
+		ReflectedAssetEditors AssetEditors;
+		ReflectedAssetWindows AssetEditorWindows;
 
 		// The games' logs and every message of their editor links
 		GameLinkPanel GameLinkWindow;

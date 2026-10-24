@@ -1,5 +1,6 @@
-// Physics materials (PhysicsMaterialAsset, PhysicsMaterials): a .nyxphysmat file read and written,
-// its comments, unknown lines and a game's own extras kept, values that aren't numbers listed;
+// Physics materials (PhysicsMaterialData as a reflected asset, PhysicsMaterials): a .nyxphysmat file
+// read and written, its comments, unknown lines and a game's own extras kept, values that aren't
+// numbers listed, its problems checked;
 // colliders naming one in a game world, a missing one the engine's; friction from the material
 // deciding whether a box slides down a slope, changed live without making the body again; density
 // giving the mass unless a mass is given, made again when it changes; a game reading its own numbers
@@ -10,6 +11,7 @@
 #include "PhysicsComponents.h"
 #include "PhysicsMaterialAsset.h"
 #include "PhysicsMaterials.h"
+#include "ReflectedAssetTypes.h"
 #include "SceneSerializer.h"
 #include "TestSupport.h"
 #include "TransformComponent.h"
@@ -17,6 +19,7 @@
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/quaternion.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -90,11 +93,11 @@ namespace
 
 	void TestAFileIsReadAndWritten(const std::filesystem::path& directory)
 	{
-		PhysicsMaterialAsset asset;
+		ReflectedAssetText asset;
 		std::string error;
 		Require(asset.Parse(WoodText, error), "The wood should be read: " + error);
-		std::vector<std::string> problems;
-		const PhysicsMaterialData wood = asset.Read(&problems);
+		std::vector<PropertyProblem> problems;
+		const PhysicsMaterialData wood = asset.Read<PhysicsMaterialData>(&problems);
 		Require(problems.empty(), "The wood should have no problems");
 		Require(wood.Friction == 0.6f && wood.Restitution == 0.0f && wood.Density == 600.0f, "The wood's values, the engine's where it sets none");
 		Require(wood.Extras.size() == 2 && wood.Extras[0].Name == "Flammability" && wood.Extras[1].Name == "Hardness", "The game's extras, in the file's order");
@@ -102,8 +105,8 @@ namespace
 		Require(GetExtra(wood, "Wetness", 0.25f) == 0.25f, "An extra it doesn't have should be the fallback");
 		Require(asset.ToText() == WoodText, "Read and written unchanged, the text should be the same");
 
-		// Values changed: their own lines change, an extra gone loses its line, a new one gets one;
-		// the comment, the blank line and the line Nyx doesn't know stay
+		// Values changed: their own lines change, an extra gone loses its line, a new one gets one
+		// after the other extras; the comment, the blank line and the line Nyx doesn't know stay
 		PhysicsMaterialData changed = wood;
 		changed.Friction = 0.3f;
 		changed.Restitution = 0.25f;
@@ -117,25 +120,45 @@ namespace
 									 "Grain = along\n"
 									 "\n"
 									 "Extra.Flammability = 0.8\n"
-									 "Restitution = 0.25\n"
-									 "Extra.Smoke = 0.5\n";
+									 "Extra.Smoke = 0.5\n"
+									 "Restitution = 0.25\n";
 		Require(asset.ToText() == expected, "Only the changed values' lines should change:\n" + asset.ToText());
 		Require(asset.FindValue("Grain") && *asset.FindValue("Grain") == "along", "A line Nyx doesn't know should be kept");
 
 		// Written to a file and read back
 		const std::filesystem::path file = directory / "Wood.nyxphysmat";
 		Require(asset.Save(file, error), "The wood should be saved: " + error);
-		PhysicsMaterialAsset loaded;
+		ReflectedAssetText loaded;
 		Require(loaded.Load(file, error) && loaded.ToText() == expected, "The wood should load as saved");
 
 		// What can't be read
-		PhysicsMaterialAsset broken;
+		ReflectedAssetText broken;
 		Require(!broken.Parse("Friction = 0.5\nnot a line\n", error) && error.find("line 2") != std::string::npos, "A line that isn't Name = value should be refused: " + error);
 		Require(broken.Parse("Friction = slippery\nExtra.Heat = 3\n", error), "A value that isn't a number is still a line");
 		problems.clear();
-		const PhysicsMaterialData slippery = broken.Read(&problems);
-		Require(problems.size() == 1 && slippery.Friction == 0.5f && GetExtra(slippery, "Heat", 0.0f) == 3.0f,
+		const PhysicsMaterialData slippery = broken.Read<PhysicsMaterialData>(&problems);
+		Require(problems.size() == 1 && problems[0].Path == "Friction" && slippery.Friction == 0.5f && GetExtra(slippery, "Heat", 0.0f) == 3.0f,
 			"A value that isn't a number should be listed and left at the engine's");
+
+		// The registered type checks the values, and the extras' names
+		const ReflectedAssetType* type = ReflectedAssetTypes::Get().FindByExtension(PhysicsMaterialExtension);
+		Require(type && type->TypeId == "PhysicsMaterial" && type->Struct.Metadata == &Reflection::GetTypeMetadata<PhysicsMaterialData>(),
+			"Physics materials should be a reflected asset type");
+		PhysicsMaterialData odd;
+		odd.Friction = -1.0f;
+		odd.Restitution = 2.0f;
+		odd.Extras = { PhysicsMaterialExtra{ .Name = "Heat" }, PhysicsMaterialExtra{ .Name = "Heat" }, PhysicsMaterialExtra{} };
+		const std::vector<PropertyProblem> oddProblems = ValidateReflectedAsset(*type, &odd);
+		const auto has = [&oddProblems](const std::string& path)
+		{
+			return std::any_of(oddProblems.begin(), oddProblems.end(), [&path](const PropertyProblem& problem)
+				{
+					return problem.Path == path;
+				});
+		};
+		Require(oddProblems.size() == 4 && has("Friction") && has("Restitution") && has("Extras.Heat.Name") && has("Extras[2].Name"),
+			"Friction below 0, restitution above 1, an extra named twice and one without a name should be problems");
+		Require(ValidateReflectedAsset(*type, &wood).empty(), "The wood should have no problems");
 	}
 
 	// A static slope turned 30 degrees about Z, and a box resting on it, both in the game world
@@ -310,6 +333,7 @@ int main()
 {
 	Nyx::Logger::Get().Init();
 	Nyx::RegisterComponentTypes();
+	Nyx::RegisterEngineAssetTypes();
 
 	try
 	{

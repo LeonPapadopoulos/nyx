@@ -54,6 +54,10 @@ namespace Nyx
 	// while running is ignored, as the clock steps on its own.
 	ELiveEditResult ApplySimulationControl(const Net::Message& message, FixedStepClock& clock);
 
+	// Hands an AssetValues message's text to whoever in the game listens for its asset's type
+	// (ReflectedAssetTypes::TakeLiveText()); ignored, with a warning, when no one does
+	ELiveEditResult ApplyAssetValues(const Net::Message& message);
+
 	// The answer to an InspectEntity message: the entity's run-time components
 	// (InspectRuntimeComponents()), at the simulation's step; not found if the world has no entity of
 	// that guid

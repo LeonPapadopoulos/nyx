@@ -155,10 +155,6 @@ namespace Nyx::Editor
 		{
 			Materials.CreateMaterialInstance(materialPath);
 		};
-		AssetBrowser.NewPhysicsMaterial = [this]()
-		{
-			CreatePhysicsMaterial();
-		};
 		// Material fields pick from the assets
 		Editing.DetailsContext.Assets = &AssetDb;
 
@@ -180,9 +176,9 @@ namespace Nyx::Editor
 			{
 				state.push_back(Nyx::MakeNetMessage(Nyx::MaterialValuesMessage{ document.GetPath(), document.GetAsset().ToText() }));
 			}
-			if (PhysicsMaterial.IsDirty())
+			for (const Nyx::AssetValuesMessage& values : AssetEditors.GetUnsavedValues())
 			{
-				state.push_back(Nyx::MakeNetMessage(Nyx::PhysicsMaterialValuesMessage{ PhysicsMaterial.GetPath(), PhysicsMaterial.GetText() }));
+				state.push_back(Nyx::MakeNetMessage(values));
 			}
 			// The game reads the input asset's file; unsaved edits, or A, it gets once linked
 			if (InputAsset.IsLoaded() && (InputAsset.IsDirty() || InputAsset.IsShowingA()))
@@ -220,8 +216,11 @@ namespace Nyx::Editor
 
 		// Edits of the input asset share the scene's undo, and reach the input system at once
 		InputAsset.Attach(Editing.Transactions);
-		// So do a physics material's, and they reach the games each frame they change
-		PhysicsMaterial.Attach(Editing.Transactions);
+		// So do the assets edited by reflection, which reach the games each frame they change, and are
+		// read again when their files change while they have no changes
+		AssetEditors.SetAssetFolders(Nyx::Paths::GetAssetSearchDirs());
+		AssetEditors.Attach(Editing.Transactions);
+		AssetEditors.Watch();
 		InputWindow.Attach(InputAsset, Editing.Transactions);
 		InputWindow.SetGames(&Games);
 	}
@@ -276,14 +275,12 @@ namespace Nyx::Editor
 			SentInputRevision = InputAsset.GetRevision();
 			Games.SendToGames(Nyx::MakeNetMessage(Nyx::MakeSetInputAssetMessage(InputAsset.GetAppliedAsset())));
 		}
-		// The physics material open, as it is now, the same way, e.g. while its friction is dragged
-		if (PhysicsMaterial.GetRevision() != SentPhysicsMaterialRevision)
+		// The assets open, as they are now, the same way, e.g. while a physics material's friction is
+		// dragged
+		AssetEditors.Update();
+		for (const Nyx::AssetValuesMessage& values : AssetEditors.TakeValuesToSend())
 		{
-			SentPhysicsMaterialRevision = PhysicsMaterial.GetRevision();
-			if (PhysicsMaterial.IsOpen())
-			{
-				Games.SendToGames(Nyx::MakeNetMessage(Nyx::PhysicsMaterialValuesMessage{ PhysicsMaterial.GetPath(), PhysicsMaterial.GetText() }));
-			}
+			Games.SendToGames(Nyx::MakeNetMessage(values));
 		}
 		// The entity the Details panel's Runtime section showed last frame is asked about in the first
 		// game, a few times a second
@@ -340,11 +337,11 @@ namespace Nyx::Editor
 		Editing.DetailsContext.PreviewPendingEdits();
 		Editing.Gizmo.PreviewActiveEdit(Editing.Transactions);
 
-		PhysicsMaterialWindow.Draw(PhysicsMaterial, Editing.Transactions);
+		AssetEditorWindows.Draw(AssetEditors, Editing.Transactions, &AssetDb);
 
-		// The Parameters window's undo and save keys are the material's while it has focus; the
-		// Physics Material window's save key is its material's
-		if (!SourceInspector.IsActive() && !Materials.HandleHotkeys() && !PhysicsMaterialWindow.HandleHotkeys(PhysicsMaterial)) Editing.HandleHotkeys();
+		// The Parameters window's undo and save keys are the material's while it has focus; an asset
+		// window's save key is its asset's
+		if (!SourceInspector.IsActive() && !Materials.HandleHotkeys() && !AssetEditorWindows.HandleHotkeys(AssetEditors)) Editing.HandleHotkeys();
 		PreferencesPanel.Draw(Preferences, SourceInspector);
 		// The theme window remembers the theme loaded in the preferences
 		const std::string theme = Preferences.Theme;
@@ -488,42 +485,26 @@ namespace Nyx::Editor
 		OpenAtLine(file, 1);
 	}
 
-	void EditorLayer::OpenPhysicsMaterial(const std::string& path)
+	void EditorLayer::OpenReflectedAsset(const std::string& path)
 	{
 		std::string error;
-		if (!PhysicsMaterial.Open(Nyx::Paths::GetAssetSearchDirs(), path, error))
+		if (!AssetEditors.Open(path, error))
 		{
-			LOG_ERROR("Couldn't open physics material '{0}': {1}", path, error);
+			LOG_ERROR("Couldn't open '{0}': {1}", path, error);
 		}
 	}
 
-	void EditorLayer::CreatePhysicsMaterial()
+	void EditorLayer::CreateReflectedAsset(const Nyx::ReflectedAssetType& type, const std::filesystem::path& folder)
 	{
-		// In the folder shown, named apart from what is there
-		const std::filesystem::path folder = AssetBrowser.GetCurrentDirectory();
-		std::filesystem::path relative;
-		for (int number = 1; relative.empty() || std::filesystem::exists(Nyx::Paths::GetAssetsDir() / relative); ++number)
-		{
-			const std::string name = number == 1 ? "NewPhysicsMaterial" : "NewPhysicsMaterial" + std::to_string(number);
-			relative = folder / (name + std::string(Nyx::PhysicsMaterialAsset::Extension));
-		}
-
-		// The engine's values, written out to be changed
-		Nyx::PhysicsMaterialAsset asset;
 		std::string error;
-		asset.Parse("# How a collider's surface slides and bounces, and how heavy its stuff is. A game's own\n"
-					"# numbers are Extra.<Name> = value, e.g. Extra.Flammability = 0.8\n"
-					"Friction = 0.5\n"
-					"Restitution = 0\n"
-					"Density = 1000\n",
-			error);
-		if (!asset.Save(Nyx::Paths::GetAssetsDir() / relative, error))
+		const std::string path = AssetEditors.Create(type, folder, error);
+		if (path.empty())
 		{
-			LOG_ERROR("Couldn't make a physics material: {0}", error);
+			LOG_ERROR("Couldn't make a {0}: {1}", type.DisplayName, error);
 			return;
 		}
 		AssetDb.Rescan();
-		OpenPhysicsMaterial(relative.generic_string());
+		OpenReflectedAsset(path);
 	}
 
 	void EditorLayer::ApplyWorkspacePanels()

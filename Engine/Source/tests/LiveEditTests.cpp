@@ -626,13 +626,13 @@ namespace
 		const EditorLinkMessageText valuesText = DescribeEditorLinkMessage(MakeNetMessage(values));
 		Require(valuesText.Name == "MaterialValues" && valuesText.Summary == "Materials/Stone.nyxmat, 2 lines", "MaterialValues is described as: " + valuesText.Summary);
 
-		const PhysicsMaterialValuesMessage physics{ "PhysicsMaterials/Wood.nyxphysmat", "Friction = 0.6\nExtra.Flammability = 0.8\n" };
-		PhysicsMaterialValuesMessage readPhysics;
+		const AssetValuesMessage physics{ "PhysicsMaterials/Wood.nyxphysmat", "Friction = 0.6\nExtra.Flammability = 0.8\n" };
+		AssetValuesMessage readPhysics;
 		Require(ReadNetMessage(MakeNetMessage(physics), readPhysics) && readPhysics.Path == physics.Path && readPhysics.Text == physics.Text,
-			"PhysicsMaterialValues changed on the way");
+			"AssetValues changed on the way");
 		const EditorLinkMessageText physicsText = DescribeEditorLinkMessage(MakeNetMessage(physics));
-		Require(physicsText.Name == "PhysicsMaterialValues" && physicsText.Summary == "PhysicsMaterials/Wood.nyxphysmat, 2 lines",
-			"PhysicsMaterialValues is described as: " + physicsText.Summary);
+		Require(physicsText.Name == "AssetValues" && physicsText.Summary == "PhysicsMaterials/Wood.nyxphysmat, 2 lines",
+			"AssetValues is described as: " + physicsText.Summary);
 	}
 }
 

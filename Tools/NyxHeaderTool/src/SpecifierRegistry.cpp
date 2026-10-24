@@ -141,6 +141,19 @@ namespace Nyx::HeaderTool
 		ctx.AddIdentifierMetadata("AssetType", entry.Value->Text);
 	}
 
+	// The property's name in an asset's text (ReflectedAssetText), e.g. TextName = Extra for a
+	// property Extras, whose lines are "Extra.<Name> = value"
+	static void ApplyTextNameToProperty(PropertySemanticContext& ctx, const ParsedMacroEntry& entry)
+	{
+		ctx.AddIdentifierMetadata("TextName", entry.Value->Text);
+	}
+
+	// A struct an asset's text writes on one line, its values apart by spaces: "Range = 1 0 5"
+	static void ApplyInlineToType(TypeSemanticContext& ctx, const ParsedMacroEntry&)
+	{
+		ctx.Type.EmittedMetadata.push_back(ParsedMacroEntry{ .Name = "Inline" });
+	}
+
 	const SpecifierDefinition SpecifierRegistry::Definitions[] = {
 		{ "Component", EMacroEntrySource::Specifier, static_cast<uint8_t>(ESpecifierTarget::Type), ESpecifierValueKind::None, ApplyComponentToType, nullptr },
 
@@ -157,6 +170,8 @@ namespace Nyx::HeaderTool
 		{ "DragSpeed", EMacroEntrySource::Metadata, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::RequiredNumber, nullptr, ApplyDragSpeedToProperty },
 		{ "UI", EMacroEntrySource::Metadata, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::RequiredIdentifier, nullptr, ApplyUIToProperty },
 		{ "AssetType", EMacroEntrySource::Metadata, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::RequiredIdentifier, nullptr, ApplyAssetTypeToProperty },
+		{ "TextName", EMacroEntrySource::Metadata, static_cast<uint8_t>(ESpecifierTarget::Property), ESpecifierValueKind::RequiredIdentifier, nullptr, ApplyTextNameToProperty },
+		{ "Inline", EMacroEntrySource::Metadata, static_cast<uint8_t>(ESpecifierTarget::Type), ESpecifierValueKind::None, ApplyInlineToType, nullptr },
 	};
 
 	const size_t SpecifierRegistry::DefinitionCount = sizeof(Definitions) / sizeof(Definitions[0]);

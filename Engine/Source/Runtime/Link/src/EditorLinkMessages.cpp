@@ -287,13 +287,13 @@ namespace Nyx
 		return reader.ReadString(Path) && reader.ReadString(Text);
 	}
 
-	void PhysicsMaterialValuesMessage::Write(BinaryWriter& writer) const
+	void AssetValuesMessage::Write(BinaryWriter& writer) const
 	{
 		writer.WriteString(Path);
 		writer.WriteString(Text);
 	}
 
-	bool PhysicsMaterialValuesMessage::Read(BinaryReader& reader)
+	bool AssetValuesMessage::Read(BinaryReader& reader)
 	{
 		return reader.ReadString(Path) && reader.ReadString(Text);
 	}

@@ -6,6 +6,7 @@
 #include "GuidComponent.h"
 #include "Log.h"
 #include "ReflectedArchiveSerializer.h"
+#include "ReflectedAssetTypes.h"
 #include "SceneSerializer.h"
 
 #include <string>
@@ -250,6 +251,24 @@ namespace Nyx
 		default:
 			return ELiveEditResult::NotALiveEdit;
 		}
+	}
+
+	ELiveEditResult ApplyAssetValues(const Net::Message& message)
+	{
+		if (static_cast<EEditorLinkMessage>(message.Type) != EEditorLinkMessage::AssetValues)
+		{
+			return ELiveEditResult::NotALiveEdit;
+		}
+		return ReadAndApply<AssetValuesMessage>(message, "AssetValues",
+			[](const AssetValuesMessage& values)
+			{
+				if (!ReflectedAssetTypes::Get().TakeLiveText(values.Path, values.Text))
+				{
+					LOG_WARNING("Editor link: skipped the values of '{0}', since nothing in the game listens for its type", values.Path);
+					return ELiveEditResult::Ignored;
+				}
+				return ELiveEditResult::Applied;
+			});
 	}
 
 	InspectedEntityMessage MakeInspectedEntityMessage(const Registry& world, const InspectEntityMessage& request, uint64_t step)

@@ -10,6 +10,7 @@
 #include "Layer.h"
 #include "OrbitCameraInput.h"
 #include "PlayerController.h"
+#include "ReflectedAssetTypes.h"
 #include "SceneSerializationTypes.h"
 #include "SceneViewTypes.h"
 
@@ -49,12 +50,6 @@ namespace Nyx::Game
 			return World.GetRegistry();
 		}
 
-		// The physics materials the world's colliders name, e.g. for the editor's live values
-		Nyx::PhysicsMaterials& GetPhysicsMaterials()
-		{
-			return World.GetPhysicsMaterials();
-		}
-
 		// Shows the frame's numbers over the picture, as F8 does
 		void SetShowFrameStats(bool bShow)
 		{
@@ -88,6 +83,9 @@ namespace Nyx::Game
 
 		// All entities of the loaded scene, and the systems that run them
 		Nyx::GameWorld World;
+		// The editor's values of a physics material as it edits them, saved or not, for the world's
+		// physics materials (link message AssetValues)
+		Nyx::ReflectedAssetListener PhysicsMaterialValues;
 		// The game module's player, turning input into the world's commands each frame
 		// (GameModule::CreatePlayerController); without a module that has one, Nyx's own
 		// (ThirdPersonPlayer)

@@ -8,7 +8,6 @@
 #include "InputAsset.h"
 #include "InputStream.h"
 #include "Layer.h"
-#include "PhysicsMaterials.h"
 #include "SceneSerializationTypes.h"
 
 #include <cstdint>
@@ -31,8 +30,9 @@ namespace Nyx::Game
 	// keeps running.
 	//
 	// Shaders come compiled from the editor (IRenderer::FollowEditorShaders()), with the material
-	// values it edits, saved or not; the game compiles only what nothing compiled yet. The physics
-	// materials it edits go to the world's PhysicsMaterials the same way.
+	// values it edits, saved or not; the game compiles only what nothing compiled yet. The values of
+	// the reflected assets it edits (physics materials, a game's own types) go to whoever listens for
+	// their type (ApplyAssetValues()) the same way.
 	class EditorLinkLayer : public Nyx::ILayer
 	{
 	public:
@@ -46,12 +46,6 @@ namespace Nyx::Game
 		{
 			World = &world;
 			PostLoadContext = postLoadContext;
-		}
-
-		// Where the editor's physics material values go. Without, they are skipped with a warning.
-		void SetPhysicsMaterials(Nyx::PhysicsMaterials& materials)
-		{
-			PhysicsMaterials = &materials;
 		}
 
 		void OnAttach(Nyx::Application& application) override;
@@ -81,7 +75,6 @@ namespace Nyx::Game
 		Nyx::Application* App = nullptr;
 		Nyx::Registry* World = nullptr;
 		Nyx::ScenePostLoadContext PostLoadContext;
-		Nyx::PhysicsMaterials* PhysicsMaterials = nullptr;
 		Nyx::EditorLinkRecorder Recorder;
 		std::unique_ptr<Nyx::EditorLink> Link;
 

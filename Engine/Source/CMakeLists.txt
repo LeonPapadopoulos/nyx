@@ -123,6 +123,8 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Assets/src/ImageFile.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Assets/src/MaterialAsset.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Assets/src/PhysicsMaterialAsset.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Assets/src/ReflectedAssetText.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Assets/src/ReflectedAssetTypes.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Assets/src/ShaderCompileTypes.cpp
 
     # Runtime/UI
@@ -324,6 +326,8 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Assets/include/BindlessTextures.h
     ${NYX_ENGINE_ROOT}/Runtime/Assets/include/MaterialAsset.h
     ${NYX_ENGINE_ROOT}/Runtime/Assets/include/PhysicsMaterialAsset.h
+    ${NYX_ENGINE_ROOT}/Runtime/Assets/include/ReflectedAssetText.h
+    ${NYX_ENGINE_ROOT}/Runtime/Assets/include/ReflectedAssetTypes.h
     ${NYX_ENGINE_ROOT}/Runtime/Assets/include/MaterialOptions.h
     ${NYX_ENGINE_ROOT}/Runtime/Assets/include/ShaderCompileTypes.h
 

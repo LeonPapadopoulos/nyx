@@ -513,17 +513,17 @@ namespace Nyx
 			break;
 		}
 
-		case EEditorLinkMessage::PhysicsMaterialValues:
+		case EEditorLinkMessage::AssetValues:
 		{
-			PhysicsMaterialValuesMessage values;
+			AssetValuesMessage values;
 			if (!ReadNetMessage(message, values))
 			{
-				describeUnreadable("PhysicsMaterialValues");
+				describeUnreadable("AssetValues");
 				break;
 			}
 
 			const size_t lines = static_cast<size_t>(std::count(values.Text.begin(), values.Text.end(), '\n'));
-			text.Name = "PhysicsMaterialValues";
+			text.Name = "AssetValues";
 			text.Summary = values.Path + ", " + std::to_string(lines) + " lines";
 			text.Details = "Path: " + Quoted(values.Path) + "\nText: " + Quoted(values.Text);
 			break;

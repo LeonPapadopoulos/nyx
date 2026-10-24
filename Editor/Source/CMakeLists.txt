@@ -59,9 +59,10 @@ set(NYX_EDITOR_SOURCES
     Play/src/GameLinkPanel.cpp
     Play/src/GameLinkSubscriber.cpp
 
-    # Physics
-    Physics/src/PhysicsMaterialDocument.cpp
-    Physics/src/PhysicsMaterialPanel.cpp
+    # ReflectedAssets
+    ReflectedAssets/src/ReflectedAssetDocument.cpp
+    ReflectedAssets/src/ReflectedAssetEditors.cpp
+    ReflectedAssets/src/ReflectedAssetWindows.cpp
 
     # Input
     Input/src/InputAssetDocument.cpp
@@ -145,9 +146,10 @@ set(NYX_EDITOR_HEADERS
     Play/include/GameLinkPanel.h
     Play/include/GameLinkSubscriber.h
 
-    # Physics
-    Physics/include/PhysicsMaterialDocument.h
-    Physics/include/PhysicsMaterialPanel.h
+    # ReflectedAssets
+    ReflectedAssets/include/ReflectedAssetDocument.h
+    ReflectedAssets/include/ReflectedAssetEditors.h
+    ReflectedAssets/include/ReflectedAssetWindows.h
 
     # Input
     Input/include/InputAssetDocument.h
@@ -217,7 +219,7 @@ target_include_directories(NyxEditorLib
         Materials/include
         Play/include
         Input/include
-        Physics/include
+        ReflectedAssets/include
         Preferences/include
         DevTools/include
         Common/include
@@ -337,14 +339,16 @@ if(BUILD_TESTING)
     set_property(TARGET NyxEditorInputTuningTests PROPERTY FOLDER "Tests")
     add_test(NAME NyxEditorInputTuningTests COMMAND NyxEditorInputTuningTests)
 
-    # A physics material as the editor edits it: its lines, the editor's undo, saving, the Physics
-    # Material window drawn headless
-    add_executable(NyxPhysicsMaterialEditorTests tests/PhysicsMaterialEditorTests.cpp)
-    target_include_directories(NyxPhysicsMaterialEditorTests PRIVATE ${NYX_TEST_SUPPORT_DIR})
-    target_link_libraries(NyxPhysicsMaterialEditorTests PRIVATE NyxEditorLib)
-    target_precompile_headers(NyxPhysicsMaterialEditorTests REUSE_FROM NyxEditorLib)
-    set_property(TARGET NyxPhysicsMaterialEditorTests PROPERTY FOLDER "Tests")
-    add_test(NAME NyxPhysicsMaterialEditorTests COMMAND NyxPhysicsMaterialEditorTests)
+    # Assets edited by reflection, a physics material and the test module's creature: their lines, the
+    # editor's undo with named entries added, renamed and taken away, problems at their values,
+    # saving, files read again, what reaches the games, New, the windows drawn headless
+    add_executable(NyxReflectedAssetEditorTests tests/ReflectedAssetEditorTests.cpp)
+    target_include_directories(NyxReflectedAssetEditorTests PRIVATE ${NYX_TEST_SUPPORT_DIR})
+    target_link_libraries(NyxReflectedAssetEditorTests PRIVATE NyxEditorLib)
+    nyx_link_game_module(NyxReflectedAssetEditorTests MODULE NyxTestModule EDITOR)
+    target_precompile_headers(NyxReflectedAssetEditorTests REUSE_FROM NyxEditorLib)
+    set_property(TARGET NyxReflectedAssetEditorTests PROPERTY FOLDER "Tests")
+    add_test(NAME NyxReflectedAssetEditorTests COMMAND NyxReflectedAssetEditorTests)
 
     # The material document and the Parameters window, headless, over a stand-in for the renderer
     add_executable(NyxMaterialEditorTests tests/MaterialEditorTests.cpp)

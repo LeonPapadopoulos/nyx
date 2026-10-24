@@ -36,13 +36,12 @@ namespace Nyx::Editor
 		}
 
 		// What the right-click menus do: New Material in the folder's menu, New Material for
-		// Shader in a shader's
+		// Shader in a shader's. The folder's menu also has New <DisplayName> for each asset type that
+		// can make one (AssetTypeDescriptor::Create).
 		std::function<void()> NewMaterial;
 		std::function<void(const std::string& shaderPath)> NewMaterialForShader;
 		// New Material Instance in a material's menu
 		std::function<void(const std::string& materialPath)> NewMaterialInstance;
-		// New Physics Material, in the folder shown
-		std::function<void()> NewPhysicsMaterial;
 
 	private:
 		void DrawDirectoryTree(const std::filesystem::path& relativeDirectory);

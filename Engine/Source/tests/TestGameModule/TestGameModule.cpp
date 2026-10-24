@@ -3,8 +3,10 @@
 #include "GuidComponent.h"
 #include "InputSystem.h"
 #include "PlayerController.h"
+#include "ReflectedAssetTypes.h"
 #include "SimSystem.h"
 #include "TestCommands.h"
+#include "TestCreatureAsset.h"
 #include "TestLanternComponent.h"
 #include "TestLanternGlowComponent.h"
 
@@ -134,6 +136,27 @@ namespace NyxTestModule
 	{
 		Nyx::ComponentTypeRegistry::Get().SetPostLoad<TestLanternComponent>(&LabelOnLoad);
 		Nyx::ComponentTypeRegistry::Get().SetRuntime<TestLanternGlowComponent>();
+
+		// The module's own asset type, which the editor opens, makes and sends to the games
+		Nyx::ReflectedAssetTypes::Get().Register(Nyx::ReflectedAssetDesc<TestCreatureData>{
+			.TypeId = "TestCreature",
+			.DisplayName = "Test Creature",
+			.Extension = TestCreatureExtension,
+			.Description = "A creature's stats, as a game's own asset type",
+			.Validate = [](const TestCreatureData& creature, std::vector<Nyx::PropertyProblem>& outProblems)
+			{
+				if (creature.Speed < 0.0f)
+				{
+					outProblems.push_back({ "Speed", "can't be below 0" });
+				}
+				for (const TestCreatureRange& range : creature.Ranges)
+				{
+					if (range.Min > range.Max)
+					{
+						outProblems.push_back({ "Ranges." + range.Name + ".Min", "is above Max" });
+					}
+				}
+			} });
 	}
 
 	void CreateSystems(Nyx::GameWorld& world)

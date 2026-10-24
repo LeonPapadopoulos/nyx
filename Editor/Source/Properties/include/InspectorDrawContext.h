@@ -2,6 +2,7 @@
 
 #include "Entity.h"
 #include "EntityGuid.h"
+#include "ReflectedAssetText.h"
 #include "TransactionDiffUtil.h"
 #include "TransactionObjectRef.h"
 #include "TransactionSystem.h"
@@ -9,6 +10,7 @@
 #include <glm/glm.hpp>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace Nyx::Editor
 {
@@ -74,6 +76,19 @@ namespace Nyx::Editor
 		// Where the object being drawn is inside CurrentObjectRef: empty while drawing a component's
 		// own properties, set while drawing a struct inside one. Edits record it, so undo finds the struct.
 		SubobjectPath CurrentLocation;
+
+		// Problems to show under the values they are about (Nyx::PropertyProblem::Path), e.g. an asset's;
+		// none without
+		const std::vector<Nyx::PropertyProblem>* Problems = nullptr;
+		// Which of Problems the drawing showed, by index, for its owner to clear before drawing; the
+		// rest are about values it didn't draw
+		std::vector<size_t> ShownProblems;
+		// The path of the property being drawn, as a problem names it; kept by the drawing
+		std::string CurrentPath;
+
+		// An entry added to an array of named entries (Nyx::FindEntryNameProperty()) gets a name no
+		// entry has yet, "Entry", "Entry2", ..., as asset windows want it
+		bool bNameNewEntries = false;
 
 		// Generic reflected property editing state
 		PropertyEditTransactionState GenericPropertyEdit;

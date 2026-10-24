@@ -4,6 +4,7 @@
 #include "Log.h"
 #include "Paths.h"
 #include "PhysicsComponents.h"
+#include "ReflectedAssetText.h"
 
 #include <algorithm>
 #include <cctype>
@@ -27,11 +28,11 @@ namespace Nyx
 			return text;
 		}
 
-		void LogProblems(const std::string& path, const std::vector<std::string>& problems)
+		void LogProblems(const std::string& path, const std::vector<PropertyProblem>& problems)
 		{
-			for (const std::string& problem : problems)
+			for (const PropertyProblem& problem : problems)
 			{
-				LOG_WARNING("Physics material '{0}': {1}", path, problem);
+				LOG_WARNING("Physics material '{0}': {1}: {2}", path, problem.Path, problem.Message);
 			}
 		}
 	}
@@ -61,30 +62,30 @@ namespace Nyx
 
 		// Kept as the default when it can't be read, so it is tried once and logged once
 		PhysicsMaterialData& material = Loaded[path];
-		PhysicsMaterialAsset asset;
+		ReflectedAssetText asset;
 		std::string error;
 		if (!asset.Load(FindFile(path), error))
 		{
 			LOG_WARNING("Physics material '{0}' can't be read, so its colliders have the engine's: {1}", path, error);
 			return material;
 		}
-		std::vector<std::string> problems;
-		material = asset.Read(&problems);
+		std::vector<PropertyProblem> problems;
+		material = asset.Read<PhysicsMaterialData>(&problems);
 		LogProblems(path, problems);
 		return material;
 	}
 
 	bool PhysicsMaterials::SetText(const std::string& path, std::string_view text)
 	{
-		PhysicsMaterialAsset asset;
+		ReflectedAssetText asset;
 		std::string error;
 		if (path.empty() || !asset.Parse(text, error))
 		{
 			LOG_WARNING("Physics material '{0}' from the editor can't be read: {1}", path, error);
 			return false;
 		}
-		std::vector<std::string> problems;
-		Loaded[path] = asset.Read(&problems);
+		std::vector<PropertyProblem> problems;
+		Loaded[path] = asset.Read<PhysicsMaterialData>(&problems);
 		LogProblems(path, problems);
 		++Revision;
 		return true;
@@ -92,15 +93,15 @@ namespace Nyx
 
 	bool PhysicsMaterials::Reload(const std::string& path)
 	{
-		PhysicsMaterialAsset asset;
+		ReflectedAssetText asset;
 		std::string error;
 		if (path.empty() || !asset.Load(FindFile(path), error))
 		{
 			LOG_WARNING("Physics material '{0}' can't be read again: {1}", path, error);
 			return false;
 		}
-		std::vector<std::string> problems;
-		Loaded[path] = asset.Read(&problems);
+		std::vector<PropertyProblem> problems;
+		Loaded[path] = asset.Read<PhysicsMaterialData>(&problems);
 		LogProblems(path, problems);
 		++Revision;
 		return true;

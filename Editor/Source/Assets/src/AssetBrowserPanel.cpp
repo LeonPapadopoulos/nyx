@@ -121,7 +121,11 @@ namespace Nyx::Editor
 			{
 				ImGui::SetClipboardText(folder.lexically_normal().make_preferred().string().c_str());
 			}
-			if (NewMaterial || NewPhysicsMaterial)
+			const bool bMakes = Types && std::any_of(Types->GetAll().begin(), Types->GetAll().end(), [](const AssetTypeDescriptor& type)
+				{
+					return static_cast<bool>(type.Create);
+				});
+			if (NewMaterial || bMakes)
 			{
 				NYX_UI(Nyx::UI::Separator());
 			}
@@ -130,11 +134,25 @@ namespace Nyx::Editor
 				NewMaterial();
 			}
 			ImGui::SetItemTooltip("A surface shader and a material on it, opened in the Materials workspace");
-			if (NewPhysicsMaterial && NYX_UI(Nyx::UI::MenuItem("New Physics Material")))
+			// Each type that makes its own, e.g. a physics material or a game's asset type, in this
+			// folder, opened in its window
+			static const std::vector<AssetTypeDescriptor> NoTypes;
+			for (const AssetTypeDescriptor& type : Types ? Types->GetAll() : NoTypes)
 			{
-				NewPhysicsMaterial();
+				if (!type.Create)
+				{
+					continue;
+				}
+				const std::string label = "New " + type.DisplayName;
+				if (NYX_UI(Nyx::UI::MenuItem(label.c_str())))
+				{
+					type.Create(CurrentDirectory);
+				}
+				if (!type.Description.empty())
+				{
+					ImGui::SetItemTooltip("%s", type.Description.c_str());
+				}
 			}
-			ImGui::SetItemTooltip("A collider's friction, bounce and density, and the game's own numbers, in this folder, opened in the Physics Material window");
 			ImGui::EndPopup();
 		}
 

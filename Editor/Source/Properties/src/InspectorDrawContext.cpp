@@ -7,6 +7,7 @@ namespace Nyx::Editor
 	{
 		CurrentObjectRef = {};
 		CurrentLocation = {};
+		CurrentPath.clear();
 		GenericPropertyEdit = {};
 		TransformRotationEdit = {};
 		EntityToSelect.reset();

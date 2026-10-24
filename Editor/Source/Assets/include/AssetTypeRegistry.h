@@ -24,6 +24,11 @@ namespace Nyx::Editor
 
 		AssetCanActivateFn CanActivate;
 		AssetActivateFn Activate;
+
+		// Optional: the asset browser's folder menu has New <DisplayName>, which calls this with the
+		// folder shown, relative to the assets folder; Description is its tooltip
+		std::function<void(const std::filesystem::path& folder)> Create;
+		std::string Description;
 	};
 
 	class AssetTypeRegistry

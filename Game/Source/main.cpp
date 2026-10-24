@@ -111,7 +111,6 @@ namespace Nyx::Game
 			{
 				// The editor's live edits go into the world the game runs
 				editorLink->SetWorld(game.GetWorld(), game.GetPostLoadContext());
-				editorLink->SetPhysicsMaterials(game.GetPhysicsMaterials());
 				PushLayer(std::move(editorLink));
 			}
 

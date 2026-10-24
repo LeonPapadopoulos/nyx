@@ -82,6 +82,10 @@ namespace Nyx::Game
 
 		// A physics material saved while the game runs, in the editor or by hand, is read again
 		World.GetPhysicsMaterials().Watch();
+		PhysicsMaterialValues = Nyx::ReflectedAssetListener(std::string(Nyx::PhysicsMaterialExtension), [this](const std::string& path, std::string_view text)
+			{
+				World.GetPhysicsMaterials().SetText(path, text);
+			});
 
 		if (Nyx::SceneSerializer::LoadFromFile(ScenePath, World.GetRegistry(), postLoadContext))
 		{

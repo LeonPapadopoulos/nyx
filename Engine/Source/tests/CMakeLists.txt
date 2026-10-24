@@ -99,6 +99,14 @@ nyx_add_game_module(NyxTestModule
     REGISTER NyxTestModule::RegisterModule
     SYSTEMS NyxTestModule::CreateSystems
     PLAYER NyxTestModule::CreatePlayer)
+# Reflected assets on the test module's creature: every shape written and read back, hand-written
+# files kept through edits, problems at their properties, the registry, live text over a real link
+add_executable(NyxReflectedAssetTests ReflectedAssetTests.cpp)
+target_link_libraries(NyxReflectedAssetTests PRIVATE NyxEngine NyxLinkTools)
+nyx_link_game_module(NyxReflectedAssetTests MODULE NyxTestModule)
+set_property(TARGET NyxReflectedAssetTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxReflectedAssetTests COMMAND NyxReflectedAssetTests)
+
 add_executable(NyxGameModuleTests GameModuleTests.cpp)
 target_link_libraries(NyxGameModuleTests PRIVATE NyxEngine)
 nyx_link_game_module(NyxGameModuleTests MODULE NyxTestModule)

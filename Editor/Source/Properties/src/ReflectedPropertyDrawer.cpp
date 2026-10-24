@@ -10,6 +10,7 @@
 #include "ImGuiSource.h"
 #include "PropertyValueAccess.h"
 #include "ReflectionSourceRegistry.h"
+#include "UITheme.h"
 #include "UIWidgets.h"
 
 #include <functional>
@@ -17,6 +18,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include <imgui.h>
 
@@ -24,7 +26,8 @@
 // column on the left and its value's widget on the right, and a tree row for each category and
 // each struct, which opens and closes the rows inside it. An array is a tree row too, with a row
 // per element (a tree row for a struct) and an Add row; each element's context menu inserts,
-// removes and moves elements.
+// removes and moves elements. A problem the draw context has about a property (InspectorDrawContext::
+// Problems, e.g. an asset's) is a row of its own right under the property's row.
 
 namespace
 {
@@ -67,6 +70,53 @@ namespace
 					ImGui::EndTooltip();
 				}
 			}
+		}
+	}
+
+	// The path of the property being drawn (InspectorDrawContext::CurrentPath) while it lives
+	struct PropertyPathScope
+	{
+		PropertyPathScope(Nyx::Editor::InspectorDrawContext& drawContext, std::string path)
+			: DrawContext(drawContext)
+			, Outer(std::exchange(drawContext.CurrentPath, std::move(path)))
+		{
+		}
+
+		~PropertyPathScope()
+		{
+			DrawContext.CurrentPath = std::move(Outer);
+		}
+
+		PropertyPathScope(const PropertyPathScope&) = delete;
+		PropertyPathScope& operator=(const PropertyPathScope&) = delete;
+
+		Nyx::Editor::InspectorDrawContext& DrawContext;
+		std::string Outer;
+	};
+
+	// The problems about the property being drawn, each a row in the colour of errors
+	static void DrawPropertyProblems(Nyx::Editor::InspectorDrawContext& drawContext)
+	{
+		if (!drawContext.Problems)
+		{
+			return;
+		}
+		const std::vector<Nyx::PropertyProblem>& problems = *drawContext.Problems;
+		for (size_t index = 0; index < problems.size(); ++index)
+		{
+			if (problems[index].Path != drawContext.CurrentPath)
+			{
+				continue;
+			}
+			drawContext.ShownProblems.push_back(index);
+			ImGui::PushID(static_cast<int>(index));
+			Nyx::UI::BeginPropertyRow("##Problem");
+			const glm::vec4& error = Nyx::UI::GetTheme().StatusError;
+			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(error.r, error.g, error.b, error.a));
+			NYX_UI(ImGui::TextWrapped("%s", problems[index].Message.c_str()));
+			ImGui::PopStyleColor();
+			Nyx::UI::EndPropertyRow();
+			ImGui::PopID();
 		}
 	}
 
@@ -167,6 +217,7 @@ namespace
 
 		DrawPropertyTooltipIfHovered(property);
 		Nyx::UI::EndPropertyRow();
+		DrawPropertyProblems(drawContext);
 
 		ImGui::PopID();
 		return bAnyChanged;
@@ -253,6 +304,7 @@ namespace
 		}
 
 		Nyx::UI::EndPropertyRow();
+		DrawPropertyProblems(drawContext);
 		ImGui::PopID();
 		return bChanged;
 	}
@@ -270,6 +322,7 @@ namespace
 		const Nyx::Reflection::TypeMetadata& ownerType)
 	{
 		Nyx::UI::SourceDeclarationScope declaration(Nyx::Editor::ReflectionSourceRegistry::Get().Find(property));
+		const PropertyPathScope path(drawContext, drawContext.CurrentPath.empty() ? std::string(property.Name) : drawContext.CurrentPath + "." + property.Name);
 		if (Nyx::Reflection::IsStructProperty(property) &&
 			Nyx::Reflection::TryGetNestedType(property) == &Nyx::Reflection::GetTypeMetadata<Nyx::AssetReference>())
 		{
@@ -362,6 +415,10 @@ namespace
 		const std::string rowLabel = std::string(GetPropertyDisplayName(property)) + "##StructNode";
 		const bool bOpen = BeginPropertyGroupRow(rowLabel.c_str());
 		DrawPropertyTooltipIfHovered(property);
+		if (bOpen)
+		{
+			DrawPropertyProblems(drawContext);
+		}
 
 		if (bOpen)
 		{
@@ -464,6 +521,16 @@ namespace
 		case ArrayEdit::EKind::MoveDown:    array.Swap(arrayAddress, edit.Index, edit.Index + 1); break;
 		}
 
+		// A named entry put in gets a name of its own
+		const bool bPutIn = edit.Kind == ArrayEdit::EKind::Add || edit.Kind == ArrayEdit::EKind::InsertAbove;
+		const Nyx::Reflection::PropertyMetadata* nameProperty = Nyx::FindEntryNameProperty(array);
+		if (bPutIn && drawContext.bNameNewEntries && nameProperty)
+		{
+			std::string name = Nyx::MakeEntryName(arrayAddress, array, "Entry");
+			Nyx::Reflection::AccessProperty<std::string>(array.GetElement(arrayAddress, edit.Kind == ArrayEdit::EKind::Add ? count : edit.Index), *nameProperty) =
+				std::move(name);
+		}
+
 		if (!drawContext.Transactions || !drawContext.CurrentObjectRef.IsValid())
 		{
 			return;
@@ -509,6 +576,8 @@ namespace
 
 		if (bOpen)
 		{
+			DrawPropertyProblems(drawContext);
+
 			if (bReadOnly)
 			{
 				ImGui::BeginDisabled();
@@ -516,6 +585,7 @@ namespace
 
 			// Each element's edits record where it is: the array's owner, the array, the element
 			const Nyx::Editor::SubobjectPath outerLocation = drawContext.CurrentLocation;
+			const std::string arrayPath = drawContext.CurrentPath;
 			std::optional<ArrayEdit> edit;
 			for (size_t index = 0; index < count; ++index)
 			{
@@ -530,6 +600,7 @@ namespace
 
 				void* element = array.GetElement(arrayAddress, index);
 				const std::string elementLabel = "[" + std::to_string(index) + "]";
+				const PropertyPathScope elementPath(drawContext, Nyx::GetElementPath(arrayPath, element, bStructs ? elementType : nullptr, index));
 				if (bStructs)
 				{
 					const std::string summary = GetElementSummary(element, *elementType);
@@ -538,6 +609,7 @@ namespace
 					DrawElementMenu(index, count, edit);
 					if (bElementOpen)
 					{
+						DrawPropertyProblems(drawContext);
 						bAnyChanged |= DrawNestedStructRows(element, *elementType, drawContext);
 						Nyx::UI::TreeRowEnd();
 					}

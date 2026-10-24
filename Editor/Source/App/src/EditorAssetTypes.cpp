@@ -2,6 +2,7 @@
 
 #include "AssetDatabase.h"
 #include "EditorLayer.h"
+#include "ReflectedAssetTypes.h"
 
 namespace Nyx::Editor
 {
@@ -41,17 +42,26 @@ namespace Nyx::Editor
 				editor.OpenMaterial(entry.RelativePath.generic_string());
 			} });
 
-		// Opens it in the Physics Material window
-		registry.Register(AssetTypeDescriptor{
-			.TypeId = "PhysicsMaterial",
-			.DisplayName = "Physics Material",
-			.Extensions = { ".nyxphysmat" },
-			.bBrowsable = true,
-			.bOpenOnDoubleClick = true,
-			.Activate = [&editor](const AssetEntry& entry)
-			{
-				editor.OpenPhysicsMaterial(entry.RelativePath.generic_string());
-			} });
+		// The asset types edited by reflection, the engine's (physics materials) and the game module's:
+		// opened in a window of their own, made new from the asset browser's folder menu
+		for (const Nyx::ReflectedAssetType& type : Nyx::ReflectedAssetTypes::Get().GetAll())
+		{
+			registry.Register(AssetTypeDescriptor{
+				.TypeId = type.TypeId,
+				.DisplayName = type.DisplayName,
+				.Extensions = { type.Extension },
+				.bBrowsable = true,
+				.bOpenOnDoubleClick = true,
+				.Activate = [&editor](const AssetEntry& entry)
+				{
+					editor.OpenReflectedAsset(entry.RelativePath.generic_string());
+				},
+				.Create = [&editor, &type](const std::filesystem::path& folder)
+				{
+					editor.CreateReflectedAsset(type, folder);
+				},
+				.Description = type.Description });
+		}
 
 		// Opens it in the source editor: shaders are written there
 		registry.Register(AssetTypeDescriptor{

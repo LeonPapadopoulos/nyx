@@ -48,7 +48,7 @@ namespace Nyx
 		InputSubscribe = 14,
 		InputDefinitions = 15,
 		InputFrame = 16,
-		PhysicsMaterialValues = 17,
+		AssetValues = 17,
 		InspectEntity = 18,
 		InspectedEntity = 19,
 	};
@@ -204,13 +204,14 @@ namespace Nyx
 		bool Read(BinaryReader& reader);
 	};
 
-	// Editor to game: a physics material's values as the editor shows them, saved or not: the whole
-	// .nyxphysmat text, for the game world's PhysicsMaterials (PhysicsMaterials::SetText())
-	struct PhysicsMaterialValuesMessage
+	// Editor to game: an asset's values as the editor shows them, saved or not: the whole text of an
+	// asset of a reflected asset type (ReflectedAssetTypes), a physics material or a game's own, for
+	// whoever in the game listens for its type (ApplyAssetValues())
+	struct AssetValuesMessage
 	{
-		static constexpr EEditorLinkMessage Type = EEditorLinkMessage::PhysicsMaterialValues;
+		static constexpr EEditorLinkMessage Type = EEditorLinkMessage::AssetValues;
 
-		// In the assets folder, e.g. "PhysicsMaterials/Wood.nyxphysmat"
+		// In the assets folders, e.g. "PhysicsMaterials/Wood.nyxphysmat"
 		std::string Path;
 		std::string Text;
 

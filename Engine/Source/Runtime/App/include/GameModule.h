@@ -21,7 +21,8 @@ namespace Nyx
 		// Shown in the log; empty for a program built without a game module
 		const char* Name = "";
 
-		// Registers the module's component types and their post-load steps. nullptr: none.
+		// Registers the module's component types and their post-load steps, and its asset types edited
+		// by reflection (ReflectedAssetTypes::Register()). nullptr: none.
 		void (*RegisterTypes)() = nullptr;
 
 		// The game only: adds the module's simulation systems to the world, in their order. The
