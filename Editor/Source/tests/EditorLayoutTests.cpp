@@ -11,8 +11,10 @@
 #include <imgui_internal.h>
 
 #include <cmath>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
@@ -276,10 +278,196 @@ namespace
 		Require(std::abs(FindWindow("Scene Outliner").Size.x - widened) < 1.0f, "Switching back should bring the workspace's layout back");
 		layouts.Stop();
 	}
+	// The editor's two workspaces as it draws them: the dock space, each workspace's own panels,
+	// three scene views in the Scene workspace, and a floating window in both
+	struct WorkspaceRig
+	{
+		explicit WorkspaceRig(const std::filesystem::path& folder)
+			: Layouts(folder)
+		{
+			EnableDocking();
+			Layouts.Start(EWorkspace::Scene);
+		}
+
+		void Frame(const std::function<void()>& beforePanels = {})
+		{
+			UI.Frame([&]()
+				{
+					const ImGuiViewport* viewport = ImGui::GetMainViewport();
+					ImGui::SetNextWindowPos(viewport->Pos);
+					ImGui::SetNextWindowSize(viewport->Size);
+					ImGui::Begin("DockSpaceWindow", nullptr, ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
+					const ImGuiID dockSpace = ImGui::GetID("MyDockspace");
+					ImGui::DockSpace(dockSpace);
+					Layouts.BuildDefaultLayout(dockSpace, SceneViews);
+					if (beforePanels)
+					{
+						beforePanels();
+					}
+					ImGui::End();
+					const bool bScene = Layouts.GetCurrent() == EWorkspace::Scene;
+					for (const char* panel : bScene ? std::vector<const char*>{ "Scene Outliner", "Details", "Asset Browser", "Game Link" }
+													: std::vector<const char*>{ "Preview", "Parameters", "###ShaderLog", "Asset Browser" })
+					{
+						ImGui::Begin(panel);
+						ImGui::End();
+					}
+					if (bScene)
+					{
+						for (const std::string& view : SceneViews)
+						{
+							ImGui::Begin(view.c_str());
+							ImGui::End();
+						}
+					}
+					ImGui::SetNextWindowPos(ImVec2(700.0f, 300.0f), ImGuiCond_FirstUseEver);
+					ImGui::SetNextWindowSize(ImVec2(300.0f, 200.0f), ImGuiCond_FirstUseEver);
+					ImGui::Begin("Preferences");
+					ImGui::End();
+				});
+			Layouts.SaveIfChanged();
+		}
+
+		void Frames(int count)
+		{
+			for (int frame = 0; frame < count; ++frame)
+			{
+				Frame();
+			}
+		}
+
+		// As a click on a workspace's tab does: switched between frames
+		void SwitchTo(EWorkspace workspace)
+		{
+			Layouts.Request(workspace);
+			Require(Layouts.ApplyPending(), "The workspace should switch");
+			Frames(3);
+		}
+
+		HeadlessUI UI;
+		Workspaces Layouts;
+		const std::vector<std::string> SceneViews = { "Scene", "Scene 2", "Scene 3" };
+	};
+
+	// Every node of the dock tree holds windows only if it is a leaf; ImGui asserts on a split
+	// node with windows or a tab bar
+	void RequireNoWindowsInSplitNodes(const std::string& when)
+	{
+		for (const ImGuiStoragePair& pair : ImGui::GetCurrentContext()->DockContext.Nodes.Data)
+		{
+			const ImGuiDockNode* node = static_cast<const ImGuiDockNode*>(pair.val_p);
+			Require(!node || !node->IsSplitNode() || (node->Windows.Size == 0 && node->TabBar == nullptr), "A split node holds windows " + when);
+		}
+	}
+
+	// Switching workspaces loads the other's layout while the panels drawn last frame are still
+	// there, and ImGui docks each into the node the layout names. Both ways, several times, with
+	// three scene views, one of them floating, a floating window, a node split and Reset Layout
+	// in each workspace.
+	void TestWorkspaceSwitchesBothWays()
+	{
+		TestDirectory directory("NyxEditorLayoutSwitches");
+		WorkspaceRig rig(directory.Path);
+		rig.Frames(3);
+
+		// "Scene 3" floated out of the dock space
+		rig.Frame([]() { ImGui::DockBuilderDockWindow("Scene 3", 0); });
+		rig.Frames(2);
+		Require(FindWindow("Scene 3").DockId == 0, "Scene 3 should float");
+
+		rig.SwitchTo(EWorkspace::Materials);
+		rig.Frames(3);
+		// The Parameters docked beside the Preview, splitting its node
+		rig.Frame([&]()
+			{
+				ImGuiID left = 0;
+				const ImGuiID right = ImGui::DockBuilderSplitNode(FindWindow("Preview").DockId, ImGuiDir_Right, 0.3f, nullptr, &left);
+				ImGui::DockBuilderDockWindow("Parameters", right);
+				ImGui::DockBuilderDockWindow("Preview", left);
+				ImGui::DockBuilderFinish(ImGui::GetID("MyDockspace"));
+			});
+		rig.Frames(2);
+		const ImGuiID parametersDock = FindWindow("Parameters").DockId;
+
+		for (int round = 0; round < 4; ++round)
+		{
+			const std::string when = "after switching " + std::to_string(round + 1) + " times";
+			rig.SwitchTo(EWorkspace::Scene);
+			RequireNoWindowsInSplitNodes("in Scene " + when);
+			Require(FindWindow("Scene").DockNode != nullptr && FindWindow("Scene 2").DockNode != nullptr, "The docked scene views should be docked again " + when);
+			Require(FindWindow("Scene 3").DockId == 0, "The floating scene view should still float " + when);
+			Require(FindWindow("Preferences").DockId == 0 && FindWindow("Preferences").Size.x == 300.0f, "The floating window should keep its size " + when);
+
+			rig.SwitchTo(EWorkspace::Materials);
+			RequireNoWindowsInSplitNodes("in Materials " + when);
+			Require(FindWindow("Parameters").DockId == parametersDock, "The Parameters should stay where they were docked " + when);
+		}
+
+		// Reset Layout in either workspace, then once more both ways
+		rig.Layouts.RequestDefaultLayout();
+		rig.Frames(2);
+		rig.SwitchTo(EWorkspace::Scene);
+		rig.Layouts.RequestDefaultLayout();
+		rig.Frames(2);
+		for (const std::string& view : rig.SceneViews)
+		{
+			Require(FindWindow(view.c_str()).DockNode != nullptr, "Reset Layout should dock " + view);
+		}
+		rig.SwitchTo(EWorkspace::Materials);
+		RequireNoWindowsInSplitNodes("in Materials after Reset Layout");
+		rig.SwitchTo(EWorkspace::Scene);
+		RequireNoWindowsInSplitNodes("in Scene after Reset Layout");
+		rig.Layouts.Stop();
+	}
+
+	// A layout file as the editor crashed on, switching to Materials: the Scene view docked in a
+	// node the file splits, and Game Link in a node it doesn't have. ImGui writes a hidden window's
+	// node as the window last knew it, so a file can have either. Loaded while those windows were
+	// drawn last frame, ImGui asserted (a split node with a tab bar, a node not found); now they
+	// are docked nowhere.
+	void TestLayoutDockingIntoSplitNodesIsDropped()
+	{
+		const std::string written =
+			"[Window][Scene]\nPos=0,0\nSize=100,100\nCollapsed=0\nDockId=0x00000006,0\n\n"
+			"[Window][Game Link]\nPos=0,0\nSize=100,100\nCollapsed=0\nDockId=0x00000042,1\n\n"
+			"[Window][Preview]\nPos=0,0\nSize=100,100\nCollapsed=0\nDockId=0x0000000B,0\n\n"
+			"[Docking][Data]\n"
+			"DockSpace       ID=0xB0F8A8CA Window=0x7CF38D7C Pos=0,0 Size=1280,800 Split=X\n"
+			"  DockNode      ID=0x00000006 Parent=0xB0F8A8CA SizeRef=900,800 Split=X Selected=0xE601B12F\n"
+			"    DockNode    ID=0x0000000B Parent=0x00000006 SizeRef=600,800 CentralNode=1 Selected=0xE41466B5\n"
+			"    DockNode    ID=0x0000000C Parent=0x00000006 SizeRef=300,800\n"
+			"  DockNode      ID=0x00000002 Parent=0xB0F8A8CA SizeRef=380,800\n";
+		const std::string kept = DockOnlyIntoLeafNodes(written);
+		Require(kept.find("[Window][Scene]\nPos=0,0\nSize=100,100\nCollapsed=0\n\n") != std::string::npos, "A window docked in a split node should lose its docking");
+		Require(kept.find("DockId=0x00000042") == std::string::npos, "A window docked in a node the layout doesn't have should lose its docking");
+		Require(kept.find("DockId=0x0000000B,0") != std::string::npos, "A window docked in a leaf node should keep its docking");
+		Require(kept.find("[Docking][Data]\nDockSpace       ID=0xB0F8A8CA") != std::string::npos, "The docking itself should stay as it was");
+
+		TestDirectory directory("NyxEditorLayoutSplitNodes");
+		WorkspaceRig rig(directory.Path);
+		rig.Frames(3);
+		{
+			std::ofstream file(rig.Layouts.GetLayoutFile(EWorkspace::Materials), std::ios::binary);
+			file << written;
+		}
+		for (int round = 0; round < 3; ++round)
+		{
+			rig.SwitchTo(EWorkspace::Materials);
+			RequireNoWindowsInSplitNodes("loading the file");
+			Require(FindWindow("Preview").DockId == 0x0000000B, "The Preview should be docked where the file says");
+			rig.SwitchTo(EWorkspace::Scene);
+			Require(FindWindow("Scene").DockNode != nullptr, "The Scene view should be docked in the Scene workspace again");
+		}
+		rig.Layouts.Stop();
+	}
 }
 
 int main()
 {
+	// An ImGui assertion, e.g. from a layout it can't load, fails the test with its message on the
+	// console rather than in a dialog that waits
+	_set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+
 	try
 	{
 		Nyx::Logger::Get().Init();
@@ -289,6 +477,8 @@ int main()
 		TestLayoutRoundTrip();
 		TestLayoutSavedWhileRunning();
 		TestWorkspaceSwitchKeepsLayouts();
+		TestWorkspaceSwitchesBothWays();
+		TestLayoutDockingIntoSplitNodesIsDropped();
 	}
 	catch (const std::exception& error)
 	{

@@ -5,8 +5,11 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
+#include <algorithm>
+#include <charconv>
 #include <cstdio>
 #include <fstream>
+#include <set>
 #include <sstream>
 #include <string>
 
@@ -77,6 +80,66 @@ namespace Nyx::Editor
 			return std::nullopt;
 		}
 		return placement;
+	}
+
+	std::string DockOnlyIntoLeafNodes(const std::string& layout)
+	{
+		std::vector<std::string_view> lines;
+		for (size_t start = 0; start < layout.size();)
+		{
+			const size_t end = std::min(layout.find('\n', start), layout.size());
+			lines.push_back(std::string_view(layout).substr(start, end + 1 - start));
+			start = end + 1;
+		}
+		const auto hexAfter = [](std::string_view line, std::string_view key) -> std::optional<unsigned int>
+		{
+			const size_t at = line.find(key);
+			if (at == std::string_view::npos)
+			{
+				return std::nullopt;
+			}
+			const char* first = line.data() + at + key.size();
+			unsigned int id = 0;
+			const auto [end, error] = std::from_chars(first, line.data() + line.size(), id, 16);
+			return error == std::errc() && end != first ? std::optional<unsigned int>(id) : std::nullopt;
+		};
+
+		// The dock tree's leaves: "DockSpace ID=0x..." and "DockNode ID=0x..." without "Split="
+		std::set<unsigned int> leaves;
+		bool bInDocking = false;
+		for (const std::string_view line : lines)
+		{
+			if (line.starts_with('['))
+			{
+				bInDocking = line.starts_with("[Docking][Data]");
+			}
+			else if (const std::optional<unsigned int> id = hexAfter(line, " ID=0x"); bInDocking && id && line.find(" Split=") == std::string_view::npos)
+			{
+				leaves.insert(*id);
+			}
+		}
+
+		// The windows' "DockId=0x...,<order>" naming anything else go; such a window is docked
+		// nowhere, as ImGui would undock it when drawn
+		std::string kept;
+		bool bInWindow = false;
+		for (const std::string_view line : lines)
+		{
+			if (line.starts_with('['))
+			{
+				bInWindow = line.starts_with("[Window][");
+			}
+			else if (bInWindow && line.starts_with("DockId="))
+			{
+				const std::optional<unsigned int> id = hexAfter(line, "DockId=0x");
+				if (!id || !leaves.contains(*id))
+				{
+					continue;
+				}
+			}
+			kept += line;
+		}
+		return kept;
 	}
 
 	Workspaces::Workspaces(std::filesystem::path layoutsFolder)
@@ -225,7 +288,7 @@ namespace Nyx::Editor
 		}
 		std::stringstream settings;
 		settings << stream.rdbuf();
-		const std::string text = settings.str();
+		const std::string text = DockOnlyIntoLeafNodes(settings.str());
 		ImGui::LoadIniSettingsFromMemory(text.c_str(), text.size());
 		return true;
 	}

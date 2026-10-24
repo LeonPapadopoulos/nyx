@@ -36,6 +36,11 @@ namespace Nyx::Editor
 	// Nothing without a position and a size of at least 1 by 1; lines it doesn't know are skipped
 	std::optional<Nyx::WindowPlacement> ReadWindowPlacement(const std::vector<std::string>& lines);
 
+	// A layout file's text without the windows docked into a node its dock tree splits or doesn't
+	// have. ImGui docks the windows drawn last frame into their nodes as a layout is loaded, and
+	// asserts on such a node, which a layout saved with a hidden window in a node split since has.
+	std::string DockOnlyIntoLeafNodes(const std::string& layout);
+
 	// Switches between the workspaces' layouts and keeps them in their files. ImGui keeps one
 	// layout: the current workspace's. Each workspace's file, in the project's Saved/Layouts, holds
 	// ImGui's windows and docking and the editor's own sections, such as the window's placement;
