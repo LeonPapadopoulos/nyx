@@ -12,6 +12,7 @@
 #include "Paths.h"
 #include "PropertyWidgetRegistry.h"
 #include "ReflectionSourceRegistry.h"
+#include "ScatterInstances.h"
 #include "EditorRenderer.h"
 #include "SceneSerializer.h"
 #include "UIChrome.h"
@@ -272,6 +273,10 @@ namespace Nyx::Editor
 			std::string lastLogLines = GameLinkWindow.GetLastLogLines(crash.GameName, CrashCardsPanel::LogLineCount);
 			CrashCards.Add(std::move(crash), std::move(lastLogLines));
 		}
+
+		// Scatters follow their surfaces, which their own post-load steps change, e.g. a ground edited
+		// or loaded after the scatter
+		Nyx::UpdateScatters(Editing.Scene.GetRegistry());
 
 		// Keep renderer-facing selection state up to date before rendering
 		Renderer->SetSelectedEntity(Editing.Scene.GetSelection());

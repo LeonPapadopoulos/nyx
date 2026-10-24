@@ -171,6 +171,15 @@ add_dependencies(NyxGroundTests NyxGeneratedReflection)
 set_property(TARGET NyxGroundTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxGroundTests COMMAND NyxGroundTests)
 
+# Scattering (ScatterComponent) without a GPU: the same transforms every time, the density, spacing,
+# slope and height limits, instances on their surface, the cells, the post-load step and a surface
+# loaded after its scatter; scattering about 50,000 instances on the default ground is timed.
+add_executable(NyxScatterTests ScatterTests.cpp)
+target_link_libraries(NyxScatterTests PRIVATE NyxEngine)
+add_dependencies(NyxScatterTests NyxGeneratedReflection)
+set_property(TARGET NyxScatterTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxScatterTests COMMAND NyxScatterTests)
+
 # How long a physics step takes with 1000 bodies; not run by ctest, timing depends on the machine
 add_executable(NyxPhysicsBenchmark PhysicsBenchmark.cpp)
 target_link_libraries(NyxPhysicsBenchmark PRIVATE NyxEngine)

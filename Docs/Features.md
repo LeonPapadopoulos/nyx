@@ -535,6 +535,34 @@ decided: by default a valley about 128 by 128 m, nearly flat in the middle, its 
   it; a character stands on it and a crate slides down the valley's side; the sample scene),
   `NyxEditorPanelTests` (added, edited, undone, removed and undone again in the editor).
 
+## Scattering
+
+A *Scatter* puts many copies of its entity's mesh over another entity's surface, such as plants
+over a ground ([Design: Scattering](Design/scattering.md)).
+
+- Give an entity a *Mesh Renderer* (or a mesh made at run time) and a *Scatter*, and pick the
+  *Surface*: an entity with a mesh made at run time, such as a *Ground*. Without one, the copies are
+  on the flat plane through the entity, so a scatter just added shows them at once. The copies are
+  made in the editor and the game, again whenever a value changes, and again whenever the surface's
+  mesh changes or either entity moves, whichever was loaded first. They are never saved.
+- *Size*: the area around the entity. *Density*: copies a square metre of surface. *Seed*: other
+  places for the same values. *Spacing*: the least distance between two copies; it wins over the
+  density. *Limits*: the *Slope Range* in degrees and the *Height Range* along the entity's Y.
+  *Placement*: *Scale Range*, a random turn about the up of up to *Yaw Range* degrees, *Align To
+  Normal* from upright (0) to along the surface's normal (1), and *Sink Depth* into the surface.
+  *Culling*: the copies are grouped in squares of *Cell Size*, which the renderer culls whole.
+- The surface's triangles are sampled by their area, so any mesh works; the same values give the
+  same copies on every machine.
+- The copies are a `MeshInstancesComponent` (transforms relative to the entity, in cells with
+  bounds), which the renderer draws; any code can fill one.
+- Scattering about 50,000 copies on the default 128 m ground takes about 200 ms in a Debug
+  build, 20 ms in Release.
+- Tests: `NyxScatterTests` (the same transforms every time, to the bit and as when written; the
+  density's count; the spacing; the slope and height limits; copies on the ground, moved and
+  turned, scaled, turned and sunk as asked; the cells cover every copy once, with their bounds; the
+  post-load step makes them, nothing again for nothing new, again for an edited scatter, an edited
+  or moved ground; a surface loaded after its scatter is found; removing takes them away; timed).
+
 ## Surface decals
 
 A *Surface Decal* draws a material flat on another entity's surface and moves with it, such as a

@@ -4,6 +4,7 @@
 #include "GroundMesh.h"
 #include "IAssetResolver.h"
 #include "MeshRendererComponent.h"
+#include "ScatterInstances.h"
 #include "SurfaceDecalComponent.h"
 
 #include "Generated/Runtime/Runtime.reflect.init.h"
@@ -47,6 +48,16 @@ namespace Nyx
 			}
 		}
 
+		// A scatter's instances are derived the same way, from its values and its surface's mesh. A
+		// surface loaded after it, or changed by its own step, is found by UpdateScatters() each frame.
+		void ScatterAfterLoad(ScatterComponent& component, ScenePostLoadContext& context)
+		{
+			if (context.World)
+			{
+				UpdateScatter(component, *context.World, context.Entity);
+			}
+		}
+
 		// The same for a decal's material
 		void ResolveSurfaceDecalAssets(SurfaceDecalComponent& component, ScenePostLoadContext& context)
 		{
@@ -66,5 +77,7 @@ namespace Nyx
 		ComponentTypeRegistry::Get().SetPostLoad<SurfaceDecalComponent>(&ResolveSurfaceDecalAssets);
 		ComponentTypeRegistry::Get().SetPostLoad<GroundComponent>(&MakeGroundMeshAfterLoad);
 		ComponentTypeRegistry::Get().SetOnRemove<GroundComponent>(&RemoveGroundMesh);
+		ComponentTypeRegistry::Get().SetPostLoad<ScatterComponent>(&ScatterAfterLoad);
+		ComponentTypeRegistry::Get().SetOnRemove<ScatterComponent>(&RemoveScatter);
 	}
 }

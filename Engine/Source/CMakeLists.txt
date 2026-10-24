@@ -76,6 +76,8 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/PhysicsComponents.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/GroundComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/GroundMesh.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ScatterComponent.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ScatterInstances.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/EntityGuid.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/GuidComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/EntityGuidLookup.cpp
@@ -244,6 +246,8 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/PhysicsComponents.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/GroundComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/GroundMesh.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ScatterComponent.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ScatterInstances.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/EntityGuid.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/GuidComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/TypedHandle.h
