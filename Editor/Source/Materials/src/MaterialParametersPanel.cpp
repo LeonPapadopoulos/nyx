@@ -223,11 +223,14 @@ namespace Nyx::Editor
 				std::vector<std::pair<std::string, std::optional<std::string>>> values = { { "Parent", std::nullopt }, { "Shader", view.Shader } };
 				if (view.Inherited)
 				{
-					for (const auto& [name, value] : view.Inherited->GetValues())
+					for (const auto& list : { view.Inherited->GetValues(), view.Inherited->GetOptionValues() })
 					{
-						if (!Document.GetAsset().FindValue(name))
+						for (const auto& [name, value] : list)
 						{
-							values.emplace_back(name, value);
+							if (!Document.GetAsset().FindValue(name))
+							{
+								values.emplace_back(name, value);
+							}
 						}
 					}
 				}
@@ -282,6 +285,7 @@ namespace Nyx::Editor
 		ImGui::AlignTextToFramePadding();
 		NYX_UI(ImGui::TextUnformatted("Surface"));
 		Nyx::UI::EndPropertyRow();
+		DrawOptions(view);
 		const std::vector<std::string>& instances = Listed(CurrentChoices.Instances);
 		Nyx::UI::BeginPropertyRow("Instances");
 		if (instances.empty())
@@ -316,6 +320,74 @@ namespace Nyx::Editor
 			ImGui::PopID();
 		}
 		Nyx::UI::EndPropertyRow();
+	}
+
+	void MaterialParametersPanel::DrawOptions(const Nyx::MaterialView& view)
+	{
+		// What a material that sets none of them is drawn with, then its parents', then its own
+		Nyx::MaterialOptions inherited;
+		if (view.Inherited)
+		{
+			Nyx::ReadMaterialOptions(*view.Inherited, inherited);
+		}
+		Nyx::MaterialOptions current = inherited;
+		Nyx::ReadMaterialOptions(Document.GetAsset(), current);
+
+		const Nyx::Reflection::TypeMetadata& type = Nyx::Reflection::GetTypeMetadata<Nyx::MaterialOptions>();
+		for (size_t index = 0; index < type.PropertyCount; ++index)
+		{
+			const Nyx::Reflection::PropertyMetadata& property = type.Properties[index];
+			if (!Nyx::Reflection::HasFlag(property.Flags, Nyx::Reflection::EPropertyFlags::Edit))
+			{
+				continue;
+			}
+			const std::string name = Nyx::GetMaterialOptionName(property);
+			const char* label = *property.DisplayName ? property.DisplayName : property.Name;
+			const std::string editLabel = std::string("Edit ") + label;
+			const std::string* set = Document.GetAsset().FindValue(name);
+			const std::string* fromParent = view.Inherited ? view.Inherited->FindValue(name) : nullptr;
+			const std::string baseline = Nyx::FormatMaterialOption(inherited, property);
+			const std::string value = Nyx::FormatMaterialOption(current, property);
+
+			ImGui::PushID(name.c_str());
+			Nyx::UI::BeginPropertyRow(label);
+			for (size_t entry = 0; entry < property.MetadataCount; ++entry)
+			{
+				if (std::string_view(property.Metadata[entry].Key) == "Tooltip" && ImGui::IsItemHovered())
+				{
+					ImGui::SetTooltip("%s", property.Metadata[entry].Value);
+				}
+			}
+			if (property.Kind == Nyx::Reflection::EPropertyKind::Bool)
+			{
+				bool bValue = value == "true";
+				if (NYX_UI(Nyx::UI::Checkbox("##Value", &bValue)))
+				{
+					Document.SetValue(name, bValue ? "true" : "false", editLabel);
+				}
+			}
+			else
+			{
+				DrawTextValue(name, set ? *set : value, nullptr, editLabel);
+			}
+			ImGui::SameLine();
+			if (set && *set != baseline)
+			{
+				if (NYX_UI(Nyx::UI::Button("Reset")))
+				{
+					Document.SetValue(name, std::nullopt, std::string("Reset ") + label);
+				}
+				ImGui::SetItemTooltip(fromParent ? "Back to the parent's: %s" : "Back to the default: %s", baseline.c_str());
+			}
+			else if (fromParent && !set)
+			{
+				ImGui::AlignTextToFramePadding();
+				NYX_UI(ImGui::TextDisabled("Parent"));
+				ImGui::SetItemTooltip("From %s; changing it overrides it here", Document.GetAsset().GetParent().c_str());
+			}
+			Nyx::UI::EndPropertyRow();
+			ImGui::PopID();
+		}
 	}
 
 	bool MaterialParametersPanel::HandleHotkeys()

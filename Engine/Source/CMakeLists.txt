@@ -283,6 +283,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Assets/include/ShaderLayout.h
     ${NYX_ENGINE_ROOT}/Runtime/Assets/include/BindlessTextures.h
     ${NYX_ENGINE_ROOT}/Runtime/Assets/include/MaterialAsset.h
+    ${NYX_ENGINE_ROOT}/Runtime/Assets/include/MaterialOptions.h
     ${NYX_ENGINE_ROOT}/Runtime/Assets/include/ShaderCompileTypes.h
 
     # Runtime/UI
@@ -417,6 +418,7 @@ file(GLOB_RECURSE NYX_REFLECT_HEADER_INPUTS
     CONFIGURE_DEPENDS
     "${NYX_ENGINE_ROOT}/Runtime/Scene/include/*.h"
     "${NYX_ENGINE_ROOT}/Runtime/Input/include/*.h"
+    "${NYX_ENGINE_ROOT}/Runtime/Assets/include/*.h"
 )
 
 add_custom_command(
@@ -429,6 +431,7 @@ add_custom_command(
     COMMAND "$<TARGET_FILE:NyxHeaderTool>"
             --scan-root "${NYX_ENGINE_ROOT}/Runtime/Scene/include"
             --scan-root "${NYX_ENGINE_ROOT}/Runtime/Input/include"
+            --scan-root "${NYX_ENGINE_ROOT}/Runtime/Assets/include"
             --output-dir "${NYX_GENERATED_RUNTIME_DIR}"
             --module-init-header "${NYX_RUNTIME_REFLECTION_INIT_H}"
             --module-init-cpp "${NYX_RUNTIME_REFLECTION_INIT_CPP}"

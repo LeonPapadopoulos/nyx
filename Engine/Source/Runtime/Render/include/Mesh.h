@@ -77,6 +77,13 @@ namespace Nyx
 		return attributes;
 	}
 
+	// The built-in meshes wind counter-clockwise seen from outside, as glTF's do: the side their
+	// normals face is their front, which the renderer draws (SetMeshFaces()).
+
+	// A cube of side `size` around the origin, each face its own four vertices and the whole UV
+	// square, with tangents
+	MeshData MakeCube(float size);
+
 	// A sphere of `radius` around the origin: `rings` from pole to pole, `segments` around, u
 	// around it and v from top to bottom, with tangents
 	MeshData MakeSphere(float radius, uint32_t rings, uint32_t segments);

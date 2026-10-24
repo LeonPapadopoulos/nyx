@@ -77,6 +77,28 @@ on and requires when it chooses the GPU.
 - **A material instance** names a parent material instead of a shader and sets only what it
   changes. It is drawn with its parents' values under its own; a parent's change reaches its
   instances in the same update.
+- **Options** are how a material is drawn rather than its shader's values: a reflected struct,
+  `MaterialOptions`, each property a line of the file named as the property (a bool's without its
+  b), inherited by instances like a value, shown under *Material* in the Parameters window from its
+  reflection. The first is `TwoSided`. Options aren't shader parameters, so `GetValues()` and
+  *Not in the Shader* leave them out, and the material buffer has no room for them: the renderer
+  reads them into the material's handle (`Material::bTwoSided`).
+- **Faces.** Every mesh Nyx makes (the built-in cube, sphere, capsule and plane, a ground, a
+  scatter's copies) and glTF's wind counter-clockwise seen from the side their normals face, and
+  the surface pipelines cull the backs: half the triangles of a closed mesh aren't shaded.
+  `NyxMeshTests` checks the winding of every one. The draw sets which faces are drawn (dynamic
+  cull mode and front face, `SetMeshFaces()`), so one pipeline a shader serves both kinds of
+  material, and an entity whose transform mirrors it (a negative scale) is drawn with its front
+  clockwise, outside still out; entities batched together are mirrored alike. A *two-sided*
+  material (`TwoSided = true`) draws both sides, for single sheets such as leaves, blades and
+  petals: on a back face `surfaceFragment` turns the normal round (`SV_IsFrontFace`), and the
+  bitangent's side with it, so the back is lit as a front by a light on its side, and a normal
+  map's bumps show mirrored through the sheet. `Materials/VertexColorTwoSided.nyxmat` is the
+  vertex colours, two-sided. Picking and the selection outline draw the faces the scene pass
+  draws, section by section: a click on a one-sided back goes to what is behind it. Decals are
+  drawn from either side, as they lie on what they decal. Instances that mirror one by one
+  (`MeshInstancesComponent` transforms of negative determinant) aren't turned round: the cull mode
+  is per draw.
 - **Defaults:** reflection gives default values for scalars only. So for each material shader the
   engine generates a small compute shader that stores the struct made with its defaults, runs it
   once on the GPU, and keeps the bytes: a new material starts from those.

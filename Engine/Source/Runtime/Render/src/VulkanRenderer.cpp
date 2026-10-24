@@ -79,23 +79,6 @@ namespace
 		return result;
 	}
 
-	void ComputeLocalBounds(
-		const std::vector<Nyx::Vertex>& vertices,
-		glm::vec3& outMin,
-		glm::vec3& outMax)
-	{
-		ASSERT(!vertices.empty());
-
-		outMin = glm::vec3(std::numeric_limits<float>::max());
-		outMax = glm::vec3(std::numeric_limits<float>::lowest());
-
-		for (const Nyx::Vertex& vertex : vertices)
-		{
-			outMin = glm::min(outMin, vertex.Position);
-			outMax = glm::max(outMax, vertex.Position);
-		}
-	}
-
 	void TransformAABB(
 		const glm::vec3& localMin,
 		const glm::vec3& localMax,
@@ -1195,6 +1178,7 @@ namespace Nyx
 				obj.MaterialAsset = meshRenderer.MaterialAsset;
 				obj.WorldTransform = worldTransform;
 				obj.DrawTransform = drawTransform;
+				obj.bMirrored = glm::determinant(glm::mat3(drawTransform)) < 0.0f;
 				obj.LocalBoundsMin = mesh->GetLocalBoundsMin();
 				obj.LocalBoundsMax = mesh->GetLocalBoundsMax();
 				obj.InstanceBuffer = MeshInstances.GetIdentity();
@@ -1325,8 +1309,9 @@ namespace Nyx
 		}
 
 		// Those drawn once that draw alike, the same mesh with the same material in each section,
-		// are drawn together: their transforms in this frame's stream, one draw for them all. In the
-		// order of their entities among themselves, so the same world draws the same way.
+		// mirrored alike, are drawn together: their transforms in this frame's stream, one draw for
+		// them all. In the order of their entities among themselves, so the same world draws the
+		// same way.
 		const auto drawsBefore = [&world](uint32_t a, uint32_t b)
 		{
 			const RenderObject& first = world.Objects[a];
@@ -1334,6 +1319,11 @@ namespace Nyx
 			if (first.MeshAsset != second.MeshAsset)
 			{
 				return std::less<const Mesh*>{}(first.MeshAsset, second.MeshAsset);
+			}
+			// Mirrored, its faces wind the other way round
+			if (first.bMirrored != second.bMirrored)
+			{
+				return second.bMirrored;
 			}
 			// One mesh has the same sections
 			for (uint32_t section = 0; section < first.SectionCount; ++section)
@@ -1463,6 +1453,7 @@ namespace Nyx
 			{
 				const RenderSection& section = world.Sections[index];
 				cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, **section.MaterialAsset->Pipeline);
+				SetMeshFaces(cmd, section.MaterialAsset->bTwoSided, obj.bMirrored);
 
 				ObjectConstants object{};
 				object.Model = draw.Model;
@@ -1840,86 +1831,9 @@ namespace Nyx
 
 	void VulkanRenderer::CreateTestMeshData()
 	{
-		// Cube with individual faces (no shared corner vertices)
-		// {Position}, {Color}, {UV}, {Normal}
-		MeshVertices = {
-			// Front (+Z)
-			{ { -0.5f, -0.5f, 0.5f }, { 1.0f, 1.0f, 1.0f }, { 0.0f, 0.0f }, { 0.0f, 0.0f, 1.0f } },
-			{ { 0.5f, -0.5f, 0.5f }, { 1.0f, 1.0f, 1.0f }, { 1.0f, 0.0f }, { 0.0f, 0.0f, 1.0f } },
-			{ { 0.5f, 0.5f, 0.5f }, { 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f }, { 0.0f, 0.0f, 1.0f } },
-			{ { -0.5f, 0.5f, 0.5f }, { 1.0f, 1.0f, 1.0f }, { 0.0f, 1.0f }, { 0.0f, 0.0f, 1.0f } },
-
-			// Back (-Z)
-			{ { 0.5f, -0.5f, -0.5f }, { 1.0f, 1.0f, 1.0f }, { 0.0f, 0.0f }, { 0.0f, 0.0f, -1.0f } },
-			{ { -0.5f, -0.5f, -0.5f }, { 1.0f, 1.0f, 1.0f }, { 1.0f, 0.0f }, { 0.0f, 0.0f, -1.0f } },
-			{ { -0.5f, 0.5f, -0.5f }, { 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f }, { 0.0f, 0.0f, -1.0f } },
-			{ { 0.5f, 0.5f, -0.5f }, { 1.0f, 1.0f, 1.0f }, { 0.0f, 1.0f }, { 0.0f, 0.0f, -1.0f } },
-
-			// Left (-X)
-			{ { -0.5f, -0.5f, -0.5f }, { 1.0f, 1.0f, 1.0f }, { 0.0f, 0.0f }, { -1.0f, 0.0f, 0.0f } },
-			{ { -0.5f, -0.5f, 0.5f }, { 1.0f, 1.0f, 1.0f }, { 1.0f, 0.0f }, { -1.0f, 0.0f, 0.0f } },
-			{ { -0.5f, 0.5f, 0.5f }, { 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f }, { -1.0f, 0.0f, 0.0f } },
-			{ { -0.5f, 0.5f, -0.5f }, { 1.0f, 1.0f, 1.0f }, { 0.0f, 1.0f }, { -1.0f, 0.0f, 0.0f } },
-
-			// Right (+X)
-			{ { 0.5f, -0.5f, 0.5f }, { 1.0f, 1.0f, 1.0f }, { 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f } },
-			{ { 0.5f, -0.5f, -0.5f }, { 1.0f, 1.0f, 1.0f }, { 1.0f, 0.0f }, { 1.0f, 0.0f, 0.0f } },
-			{ { 0.5f, 0.5f, -0.5f }, { 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f }, { 1.0f, 0.0f, 0.0f } },
-			{ { 0.5f, 0.5f, 0.5f }, { 1.0f, 1.0f, 1.0f }, { 0.0f, 1.0f }, { 1.0f, 0.0f, 0.0f } },
-
-			// Top (+Y)
-			{ { -0.5f, 0.5f, 0.5f }, { 1.0f, 1.0f, 1.0f }, { 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f } },
-			{ { 0.5f, 0.5f, 0.5f }, { 1.0f, 1.0f, 1.0f }, { 1.0f, 0.0f }, { 0.0f, 1.0f, 0.0f } },
-			{ { 0.5f, 0.5f, -0.5f }, { 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f }, { 0.0f, 1.0f, 0.0f } },
-			{ { -0.5f, 0.5f, -0.5f }, { 1.0f, 1.0f, 1.0f }, { 0.0f, 1.0f }, { 0.0f, 1.0f, 0.0f } },
-
-			// Bottom (-Y)
-			{ { -0.5f, -0.5f, -0.5f }, { 1.0f, 1.0f, 1.0f }, { 0.0f, 0.0f }, { 0.0f, -1.0f, 0.0f } },
-			{ { 0.5f, -0.5f, -0.5f }, { 1.0f, 1.0f, 1.0f }, { 1.0f, 0.0f }, { 0.0f, -1.0f, 0.0f } },
-			{ { 0.5f, -0.5f, 0.5f }, { 1.0f, 1.0f, 1.0f }, { 1.0f, 1.0f }, { 0.0f, -1.0f, 0.0f } },
-			{ { -0.5f, -0.5f, 0.5f }, { 1.0f, 1.0f, 1.0f }, { 0.0f, 1.0f }, { 0.0f, -1.0f, 0.0f } }
-		};
-
-		MeshIndices = {
-			// Front
-			0, 1, 2, 2, 3, 0,
-
-			// Back
-			4, 5, 6, 6, 7, 4,
-
-			// Left
-			8, 9, 10, 10, 11, 8,
-
-			// Right
-			12, 13, 14, 14, 15, 12,
-
-			// Top
-			16, 17, 18, 18, 19, 16,
-
-			// Bottom
-			20, 21, 22, 22, 23, 20
-		};
-
-		// @todo: Move Cube Mesh Management to a more generalized place for mesh handling
-		{
-			CubeMesh.Release();
-
-			Nyx::MeshData cubeData;
-			cubeData.Vertices = MeshVertices;
-			cubeData.Indices = MeshIndices;
-			Nyx::ComputeTangents(cubeData);
-			MeshVertices = cubeData.Vertices;
-
-			{
-				glm::vec3 localMin{};
-				glm::vec3 localMax{};
-				ComputeLocalBounds(MeshVertices, localMin, localMax);
-
-				CubeMesh.SetLocalBounds(localMin, localMax);
-			}
-
-			CubeMesh.Upload(Context, cubeData);
-		}
+		CubeMesh.Release();
+		CubeMesh.SetLocalBounds(glm::vec3(-0.5f), glm::vec3(0.5f));
+		CubeMesh.Upload(Context, Nyx::MakeCube(1.0f));
 
 		SphereMesh.Release();
 		SphereMesh.SetLocalBounds(glm::vec3(-0.5f), glm::vec3(0.5f));

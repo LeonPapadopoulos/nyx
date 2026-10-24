@@ -2,6 +2,7 @@
 
 #include <vulkan/vulkan_raii.hpp>
 
+#include <array>
 #include <cstdint>
 #include <vector>
 
@@ -13,6 +14,17 @@ namespace Nyx
 	// so nearer is greater, and depth buffers are cleared to FarPlaneDepth
 	constexpr vk::CompareOp DepthTestNearer = vk::CompareOp::eGreater;
 	constexpr vk::CompareOp DepthTestNearerOrEqual = vk::CompareOp::eGreaterOrEqual;
+
+	// The dynamic states of every pipeline that draws meshes (materials, the editor's picking and
+	// selection masks): the viewport, the scissor, and which faces are drawn (SetMeshFaces())
+	constexpr std::array<vk::DynamicState, 4> MeshDynamicStates = { vk::DynamicState::eViewport, vk::DynamicState::eScissor, vk::DynamicState::eCullMode,
+		vk::DynamicState::eFrontFace };
+
+	// Which faces of a mesh's triangles the next draws draw: the front, counter-clockwise as the
+	// camera sees it (every mesh Nyx makes and glTF's), or both for a two-sided material. A
+	// transform that mirrors (whose determinant is negative) turns the winding round, so the
+	// front is clockwise then.
+	void SetMeshFaces(const vk::raii::CommandBuffer& cmd, bool bTwoSided, bool bMirrored);
 
 	// The first memory type that `typeFilter` allows (one bit per type, as in
 	// vk::MemoryRequirements) and that has all of `properties`. Throws when there is none.

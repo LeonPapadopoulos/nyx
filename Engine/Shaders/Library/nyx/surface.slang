@@ -218,14 +218,18 @@ struct ShadedPixel
     float Opacity;
 }
 
-// What the material is given at the pixel
-SurfaceInput makeSurfaceInput(VertexOutput vertex, DecalInput decal)
+// What the material is given at the pixel. On a triangle's back, which only a two-sided material
+// draws (MaterialOptions), the normal is turned round, and the bitangent's side with it, so that
+// the bitangent still points up the image: the back is lit as a front, a normal map's bumps
+// mirrored through the sheet.
+SurfaceInput makeSurfaceInput(VertexOutput vertex, DecalInput decal, bool bFrontFace)
 {
+    const float side = bFrontFace ? 1.0 : -1.0;
     SurfaceInput input;
     input.UV = vertex.UV;
     input.Color = vertex.Color;
-    input.NormalWS = normalize(vertex.NormalWS);
-    input.TangentWS = float4(normalize(vertex.TangentWS.xyz), vertex.TangentWS.w);
+    input.NormalWS = normalize(vertex.NormalWS) * side;
+    input.TangentWS = float4(normalize(vertex.TangentWS.xyz), vertex.TangentWS.w * side);
     input.PositionWS = vertex.PositionWS;
     input.ViewWS = normalize(View.CameraPosition.xyz - vertex.PositionWS);
     input.CustomData = Object.CustomData;
@@ -247,10 +251,10 @@ DecalInput objectDecalInput()
 
 // The material is loaded from the material buffer at the draw's offset, shades the pixel, and
 // nyx.lighting lights what it gave. In a debug view, the pixel is the output shown, opaque.
-ShadedPixel shadeSurfacePixel<S : ISurface>(VertexOutput vertex, DecalInput decal)
+ShadedPixel shadeSurfacePixel<S : ISurface>(VertexOutput vertex, DecalInput decal, bool bFrontFace)
 {
     S material = MaterialBuffer.Load<S>(Object.MaterialOffset);
-    const SurfaceInput input = makeSurfaceInput(vertex, decal);
+    const SurfaceInput input = makeSurfaceInput(vertex, decal, bFrontFace);
     SurfaceOutput o = material.shade(input);
 
     ShadedPixel pixel;
@@ -303,9 +307,9 @@ ShadedPixel shadeSurfacePixel<S : ISurface>(VertexOutput vertex, DecalInput deca
 }
 
 [shader("fragment")]
-public float4 surfaceFragment<S : ISurface>(VertexOutput vertex) : SV_Target
+public float4 surfaceFragment<S : ISurface>(VertexOutput vertex, bool bFrontFace : SV_IsFrontFace) : SV_Target
 {
-    const ShadedPixel pixel = shadeSurfacePixel<S>(vertex, DecalInput::defaults());
+    const ShadedPixel pixel = shadeSurfacePixel<S>(vertex, DecalInput::defaults(), bFrontFace);
     return float4(pixel.Reflected + pixel.Emission, pixel.Opacity);
 }
 
@@ -313,9 +317,9 @@ public float4 surfaceFragment<S : ISurface>(VertexOutput vertex) : SV_Target
 // decal pipeline blends with (VulkanMaterials): its colour covers what is beneath by its opacity,
 // and its emission adds to both, so it can glow without covering anything
 [shader("fragment")]
-public float4 decalFragment<S : ISurface>(VertexOutput vertex) : SV_Target
+public float4 decalFragment<S : ISurface>(VertexOutput vertex, bool bFrontFace : SV_IsFrontFace) : SV_Target
 {
-    const ShadedPixel pixel = shadeSurfacePixel<S>(vertex, objectDecalInput());
+    const ShadedPixel pixel = shadeSurfacePixel<S>(vertex, objectDecalInput(), bFrontFace);
     return float4(pixel.Reflected * pixel.Opacity + pixel.Emission, pixel.Opacity);
 }
 
@@ -326,12 +330,12 @@ static const float DecalPickingCoverage = 0.05;
 // entity where the material says the decal is (SurfaceOutput.Coverage), not pulsing, so a click
 // finds it at any moment. Elsewhere, such as in a ring's middle, the click goes to what is beneath.
 [shader("fragment")]
-public uint decalPickingFragment<S : ISurface>(VertexOutput vertex) : SV_Target
+public uint decalPickingFragment<S : ISurface>(VertexOutput vertex, bool bFrontFace : SV_IsFrontFace) : SV_Target
 {
     DecalInput decal = objectDecalInput();
     decal.Pulse = 0.0;
     S material = MaterialBuffer.Load<S>(Object.MaterialOffset);
-    const SurfaceOutput o = material.shade(makeSurfaceInput(vertex, decal));
+    const SurfaceOutput o = material.shade(makeSurfaceInput(vertex, decal, bFrontFace));
     if (o.Coverage < DecalPickingCoverage)
     {
         discard;

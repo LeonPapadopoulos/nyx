@@ -8,10 +8,42 @@
 
 #include <algorithm>
 #include <cmath>
+#include <initializer_list>
 #include <vector>
 
 namespace Nyx
 {
+	MeshData MakeCube(float size)
+	{
+		const float h = size * 0.5f;
+		MeshData mesh;
+		// Each face: its normal, then its corners from the bottom left, counter-clockwise seen from
+		// outside, with UVs (0, 0), (1, 0), (1, 1), (0, 1)
+		const auto face = [&mesh](const glm::vec3& normal, std::initializer_list<glm::vec3> corners)
+		{
+			const uint32_t first = static_cast<uint32_t>(mesh.Vertices.size());
+			const glm::vec2 uvs[4] = { { 0.0f, 0.0f }, { 1.0f, 0.0f }, { 1.0f, 1.0f }, { 0.0f, 1.0f } };
+			uint32_t corner = 0;
+			for (const glm::vec3& position : corners)
+			{
+				Vertex vertex;
+				vertex.Position = position;
+				vertex.UV = uvs[corner++];
+				vertex.Normal = normal;
+				mesh.Vertices.push_back(vertex);
+			}
+			mesh.Indices.insert(mesh.Indices.end(), { first, first + 1, first + 2, first + 2, first + 3, first });
+		};
+		face({ 0.0f, 0.0f, 1.0f }, { { -h, -h, h }, { h, -h, h }, { h, h, h }, { -h, h, h } });
+		face({ 0.0f, 0.0f, -1.0f }, { { h, -h, -h }, { -h, -h, -h }, { -h, h, -h }, { h, h, -h } });
+		face({ -1.0f, 0.0f, 0.0f }, { { -h, -h, -h }, { -h, -h, h }, { -h, h, h }, { -h, h, -h } });
+		face({ 1.0f, 0.0f, 0.0f }, { { h, -h, h }, { h, -h, -h }, { h, h, -h }, { h, h, h } });
+		face({ 0.0f, 1.0f, 0.0f }, { { -h, h, h }, { h, h, h }, { h, h, -h }, { -h, h, -h } });
+		face({ 0.0f, -1.0f, 0.0f }, { { -h, -h, -h }, { h, -h, -h }, { h, -h, h }, { -h, -h, h } });
+		ComputeTangents(mesh);
+		return mesh;
+	}
+
 	MeshData MakeSphere(float radius, uint32_t rings, uint32_t segments)
 	{
 		constexpr float Pi = 3.14159265358979f;

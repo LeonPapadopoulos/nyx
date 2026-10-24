@@ -212,8 +212,10 @@ namespace Nyx
 											  : "its parents end in " + last->Path + ", which names no shader");
 		}
 
-		// The farthest parent's values first, each nearer one's over them, the material's own last
+		// The farthest parent's values and options first, each nearer one's over them, the
+		// material's own last
 		entry.Inherited = MaterialAsset{};
+		entry.Options = MaterialOptions{};
 		if (!entry.Parents.empty())
 		{
 			entry.Inherited.SetShader(shader);
@@ -223,7 +225,16 @@ namespace Nyx
 				{
 					entry.Inherited.SetValue(name, value);
 				}
+				for (const auto& [name, value] : (*parent)->Asset.GetOptionValues())
+				{
+					entry.Inherited.SetValue(name, value);
+				}
+				ReadMaterialOptions((*parent)->Asset, entry.Options);
 			}
+		}
+		for (const MaterialValueProblem& problem : ReadMaterialOptions(entry.Asset, entry.Options))
+		{
+			LOG_WARNING("Material {}, {}: {}", entry.Path, problem.Name, problem.Message);
 		}
 		entry.Resolved = entry.Inherited;
 		entry.Resolved.SetShader(shader);
@@ -377,7 +388,10 @@ namespace Nyx
 	void VulkanMaterials::WriteBytes(Entry& entry)
 	{
 		Nyx::Material& handle = *entry.Handle;
-		if (!entry.bLoaded || !Resolve(entry) || !Prepare(*entry.UsedShader))
+		const bool bResolved = entry.bLoaded && Resolve(entry);
+		// Its options, also while it draws as the missing material
+		handle.bTwoSided = bResolved && entry.Options.bTwoSided;
+		if (!bResolved || !Prepare(*entry.UsedShader))
 		{
 			handle.Pipeline = &MissingPipeline;
 			handle.DecalPipeline = &MissingDecalPipeline;
@@ -567,11 +581,13 @@ namespace Nyx
 		viewportState.viewportCount = 1;
 		viewportState.scissorCount = 1;
 
+		// A mesh's back faces aren't drawn, unless its material is two-sided: the draw says which
+		// (SetMeshFaces()). A decal is a quad on what it lies on, seen from wherever.
 		vk::PipelineRasterizationStateCreateInfo rasterizer{};
 		rasterizer.polygonMode = vk::PolygonMode::eFill;
 		rasterizer.lineWidth = 1.0f;
-		rasterizer.cullMode = vk::CullModeFlagBits::eNone; // @todo: back faces, once meshes agree on their winding
-		rasterizer.frontFace = vk::FrontFace::eClockwise;
+		rasterizer.cullMode = kind == EPipelineKind::Opaque ? vk::CullModeFlagBits::eBack : vk::CullModeFlagBits::eNone;
+		rasterizer.frontFace = vk::FrontFace::eCounterClockwise;
 
 		vk::PipelineMultisampleStateCreateInfo multisampling{};
 		multisampling.rasterizationSamples = vk::SampleCountFlagBits::e1;
@@ -597,8 +613,9 @@ namespace Nyx
 		colorBlending.attachmentCount = 1;
 		colorBlending.pAttachments = &colorBlendAttachment;
 
-		const std::array<vk::DynamicState, 2> dynamicStates = { vk::DynamicState::eViewport, vk::DynamicState::eScissor };
-		vk::PipelineDynamicStateCreateInfo dynamicState({}, dynamicStates);
+		const std::span<const vk::DynamicState> dynamicStates = kind == EPipelineKind::Opaque ? std::span<const vk::DynamicState>(MeshDynamicStates)
+																							  : std::span<const vk::DynamicState>(MeshDynamicStates).first(2);
+		vk::PipelineDynamicStateCreateInfo dynamicState({}, static_cast<uint32_t>(dynamicStates.size()), dynamicStates.data());
 
 		// A decal is hidden by what is in front of it, and hides nothing itself. In the picking pass
 		// it hides what is behind it: the nearest decal under a click is picked.

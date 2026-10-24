@@ -210,7 +210,8 @@ namespace Nyx
 		void DrawSelectionOutline(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
 
 		void DrawPickingPass(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd);
-		// The object's mesh with whatever pipeline is bound: once, or at every instance of its cells
+		// The object's mesh with whatever pipeline is bound: once, or at every instance of its cells,
+		// each section with the faces its material draws (SetMeshFaces())
 		void DrawObjectMesh(const RenderWorld& world, const RenderObject& obj, vk::raii::CommandBuffer& cmd);
 		void ResolvePickRequest(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd);
 

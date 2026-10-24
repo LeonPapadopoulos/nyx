@@ -1,14 +1,22 @@
 // The built-in meshes' tangents, without a GPU: on a flat face the tangent runs along rising u and
 // the bitangent, cross(normal, tangent) * w, up the image (falling v); on the sphere every tangent
 // is of unit length, perpendicular to its normal, and the faces wind counter-clockwise outside; the
-// capsule stands on the origin, its vertices on its surface. Meshes as data (MeshData): which are
+// capsule stands on the origin, its vertices on its surface. Every mesh Nyx makes or ships winds
+// counter-clockwise seen from the side its normals face, as the renderer's back-face culling
+// needs: the cube, the sphere, the capsule, the plane, a generated ground and the glTF files in
+// Assets/Models. Meshes as data (MeshData): which are
 // valid (indices of whole triangles below the vertex count, sections one after the other over every
 // index), the sections a mesh without any is drawn in, and the bounds around its vertices.
+#include "GltfImporter.h"
+#include "GroundComponent.h"
+#include "GroundMesh.h"
 #include "Mesh.h"
+#include "Paths.h"
 #include "TestSupport.h"
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -187,6 +195,68 @@ namespace
 	}
 }
 
+namespace
+{
+	// How many of the mesh's triangles wind clockwise seen from the side their vertices' normals
+	// face, i.e. would be culled where they should be seen; degenerate ones aside
+	size_t CountWrongWinding(const Nyx::MeshData& mesh)
+	{
+		size_t wrong = 0;
+		for (size_t index = 0; index + 2 < mesh.Indices.size(); index += 3)
+		{
+			const Nyx::Vertex& a = mesh.Vertices[mesh.Indices[index]];
+			const Nyx::Vertex& b = mesh.Vertices[mesh.Indices[index + 1]];
+			const Nyx::Vertex& c = mesh.Vertices[mesh.Indices[index + 2]];
+			const glm::vec3 face = glm::cross(b.Position - a.Position, c.Position - a.Position);
+			const glm::vec3 normals = a.Normal + b.Normal + c.Normal;
+			if (glm::length(face) > 1e-9f && glm::dot(face, normals) <= 0.0f)
+			{
+				++wrong;
+			}
+		}
+		return wrong;
+	}
+
+	void RequireFrontOutside(const Nyx::MeshData& mesh, const std::string& what)
+	{
+		Require(!mesh.Indices.empty(), what + " has no triangles");
+		const size_t wrong = CountWrongWinding(mesh);
+		Require(wrong == 0, what + ": " + std::to_string(wrong) + " of " + std::to_string(mesh.Indices.size() / 3) + " triangles wind clockwise seen from where their normals face");
+	}
+
+	void TestWinding()
+	{
+		RequireFrontOutside(Nyx::MakeCube(1.0f), "The cube");
+		RequireFrontOutside(Nyx::MakeSphere(0.5f, 32, 64), "The sphere");
+		RequireFrontOutside(Nyx::MakeCapsule(0.3f, 1.8f, 32, 48), "The capsule");
+		RequireFrontOutside(Nyx::MakePlane(1.0f), "The plane");
+
+		// A ground with hills, a basin and terraces, so its normals lean every way
+		Nyx::GroundComponent ground;
+		ground.Size = glm::vec2(64.0f);
+		ground.Spacing = 1.0f;
+		RequireFrontOutside(Nyx::MakeGroundMesh(ground), "The ground");
+
+		const std::filesystem::path models = Nyx::Paths::GetAssetsDir() / "Models";
+		size_t files = 0;
+		for (const std::filesystem::directory_entry& entry : std::filesystem::recursive_directory_iterator(models))
+		{
+			if (entry.path().extension() != ".gltf")
+			{
+				continue;
+			}
+			Nyx::ImportedScene scene;
+			Require(Nyx::LoadStaticGltfScene(entry.path().string(), scene), "Can't read " + entry.path().string());
+			for (size_t primitive = 0; primitive < scene.Primitives.size(); ++primitive)
+			{
+				RequireFrontOutside(scene.Primitives[primitive].Mesh, entry.path().filename().string() + ", primitive " + std::to_string(primitive));
+			}
+			++files;
+		}
+		Require(files > 0, "No glTF files in " + models.string());
+	}
+}
+
 int main()
 {
 	try
@@ -196,6 +266,7 @@ int main()
 		TestCapsule();
 		TestMeshDataValidity();
 		TestMeshSectionsAndBounds();
+		TestWinding();
 	}
 	catch (const std::exception& error)
 	{

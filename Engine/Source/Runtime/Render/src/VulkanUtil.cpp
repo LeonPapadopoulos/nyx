@@ -7,6 +7,12 @@
 
 namespace Nyx
 {
+	void SetMeshFaces(const vk::raii::CommandBuffer& cmd, bool bTwoSided, bool bMirrored)
+	{
+		cmd.setCullMode(bTwoSided ? vk::CullModeFlagBits::eNone : vk::CullModeFlagBits::eBack);
+		cmd.setFrontFace(bMirrored ? vk::FrontFace::eClockwise : vk::FrontFace::eCounterClockwise);
+	}
+
 	uint32_t FindMemoryType(vk::PhysicalDevice physicalDevice, uint32_t typeFilter, vk::MemoryPropertyFlags properties)
 	{
 		const vk::PhysicalDeviceMemoryProperties memoryProperties = physicalDevice.getMemoryProperties();

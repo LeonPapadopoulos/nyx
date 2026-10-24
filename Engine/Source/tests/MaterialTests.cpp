@@ -5,7 +5,9 @@
 // Default(...) slot when unset, and the missing texture's when they can't be loaded; a [Linear]
 // texture is asked for as linear. Values read from bytes come back as a file writes them, so
 // the editor can show a shader's defaults beside the file's values. New Material's template
-// compiles as a material, with its parameters.
+// compiles as a material, with its parameters. A material's options (two-sided) are lines of
+// their own, not values of the shader's: read over the defaults, an instance's over its parents',
+// and a value that isn't one is named.
 #include "BindlessTextures.h"
 #include "MaterialAsset.h"
 #include "Paths.h"
@@ -333,6 +335,44 @@ namespace
 	}
 }
 
+namespace
+{
+	// TwoSided is an option, named as its property without the b; the values leave it out, and it
+	// is read over what it is written on, as an instance's over its parents'
+	void TestOptions()
+	{
+		const Reflection::TypeMetadata& type = Reflection::GetTypeMetadata<MaterialOptions>();
+		Require(type.PropertyCount >= 1 && GetMaterialOptionName(type.Properties[0]) == "TwoSided", "The two-sided option isn't named TwoSided in material files");
+		Require(IsMaterialOptionName("TwoSided") && !IsMaterialOptionName("Roughness") && !IsMaterialOptionName("bTwoSided"), "Options aren't told apart from values");
+
+		MaterialAsset leaves = Parsed("Shader = Shaders/Standard.slang\nTwoSided = true\nRoughness = 0.8\n");
+		const std::vector<std::pair<std::string, std::string>> values = leaves.GetValues();
+		Require(values.size() == 1 && values[0].first == "Roughness", "The option is listed among the shader's values");
+		const std::vector<std::pair<std::string, std::string>> options = leaves.GetOptionValues();
+		Require(options.size() == 1 && options[0].first == "TwoSided" && options[0].second == "true", "The option isn't listed among the options");
+
+		MaterialOptions read;
+		Require(!read.bTwoSided, "A material is two-sided unless it says so");
+		Require(ReadMaterialOptions(leaves, read).empty() && read.bTwoSided, "TwoSided = true isn't read");
+		Require(FormatMaterialOption(read, type.Properties[0]) == "true", "The option isn't written as a file writes it");
+
+		// An instance that sets nothing keeps its parent's; one that sets false turns it off
+		MaterialOptions inherited = read;
+		Require(ReadMaterialOptions(Parsed("Parent = Materials/Leaves.nyxmat\n"), inherited).empty() && inherited.bTwoSided, "An instance that doesn't set it loses its parent's option");
+		Require(ReadMaterialOptions(Parsed("Parent = Materials/Leaves.nyxmat\nTwoSided = 0\n"), inherited).empty() && !inherited.bTwoSided, "An instance's own option isn't read over its parent's");
+
+		// Not a bool: named, and the option left as it was
+		MaterialOptions wrong;
+		const std::vector<MaterialValueProblem> problems = ReadMaterialOptions(Parsed("TwoSided = both\n"), wrong);
+		Require(HasProblem(problems, "TwoSided") && !wrong.bTwoSided, "A two-sided value that isn't true or false isn't named");
+
+		// Set from the editor, it is a line like any other
+		MaterialAsset edited = Parsed("Shader = Shaders/Standard.slang\n");
+		edited.SetValue("TwoSided", FormatMaterialOption(read, type.Properties[0]));
+		Require(edited.ToText() == "Shader = Shaders/Standard.slang\nTwoSided = true\n", "The option isn't written as a line: " + edited.ToText());
+	}
+}
+
 int main()
 {
 	try
@@ -346,6 +386,7 @@ int main()
 		TestValuesReadBackAsWritten();
 		TestTheTemplateCompiles();
 		TestParents();
+		TestOptions();
 	}
 	catch (const std::exception& error)
 	{

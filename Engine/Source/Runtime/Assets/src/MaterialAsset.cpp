@@ -1,10 +1,13 @@
 #include "MaterialAsset.h"
 
 #include "BindlessTextures.h"
+#include "PropertyValueAccess.h"
 #include "StringUtil.h"
 
 #include <algorithm>
+#include <cctype>
 #include <charconv>
+#include <cmath>
 #include <cstring>
 #include <fstream>
 #include <map>
@@ -381,12 +384,125 @@ namespace Nyx
 		std::vector<std::pair<std::string, std::string>> values;
 		for (const Line& line : Lines)
 		{
-			if (!line.Name.empty() && line.Name != ShaderKey && line.Name != ParentKey)
+			if (!line.Name.empty() && line.Name != ShaderKey && line.Name != ParentKey && !IsMaterialOptionName(line.Name))
 			{
 				values.emplace_back(line.Name, line.Value);
 			}
 		}
 		return values;
+	}
+
+	std::vector<std::pair<std::string, std::string>> MaterialAsset::GetOptionValues() const
+	{
+		std::vector<std::pair<std::string, std::string>> values;
+		for (const Line& line : Lines)
+		{
+			if (IsMaterialOptionName(line.Name))
+			{
+				values.emplace_back(line.Name, line.Value);
+			}
+		}
+		return values;
+	}
+
+	std::string GetMaterialOptionName(const Reflection::PropertyMetadata& property)
+	{
+		const std::string_view name = property.Name;
+		const bool bPrefixed = property.Kind == Reflection::EPropertyKind::Bool && name.size() > 1 && name[0] == 'b' && std::isupper(static_cast<unsigned char>(name[1]));
+		return std::string(bPrefixed ? name.substr(1) : name);
+	}
+
+	bool IsMaterialOptionName(std::string_view name)
+	{
+		const Reflection::TypeMetadata& type = Reflection::GetTypeMetadata<MaterialOptions>();
+		for (size_t index = 0; index < type.PropertyCount; ++index)
+		{
+			if (!name.empty() && GetMaterialOptionName(type.Properties[index]) == name)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	std::vector<MaterialValueProblem> ReadMaterialOptions(const MaterialAsset& asset, MaterialOptions& options)
+	{
+		using Reflection::EPropertyKind;
+		std::vector<MaterialValueProblem> problems;
+		const Reflection::TypeMetadata& type = Reflection::GetTypeMetadata<MaterialOptions>();
+		for (size_t index = 0; index < type.PropertyCount; ++index)
+		{
+			const Reflection::PropertyMetadata& property = type.Properties[index];
+			const std::string name = GetMaterialOptionName(property);
+			const std::string* value = asset.FindValue(name);
+			if (!value)
+			{
+				continue;
+			}
+			const std::string_view text = Trim(*value);
+			const std::optional<std::vector<double>> numbers = ParseMaterialNumbers(text);
+			const bool bNumber = numbers && numbers->size() == 1;
+			switch (property.Kind)
+			{
+			case EPropertyKind::Bool:
+				if (text == "true" || text == "1" || text == "false" || text == "0")
+				{
+					Reflection::SetPropertyValue(&options, property, text == "true" || text == "1");
+					continue;
+				}
+				problems.push_back({ name, "\"" + *value + "\" isn't true or false" });
+				continue;
+			case EPropertyKind::Float:
+				if (bNumber)
+				{
+					Reflection::SetPropertyValue(&options, property, static_cast<float>(numbers->front()));
+					continue;
+				}
+				break;
+			case EPropertyKind::Int32:
+			case EPropertyKind::Enum:
+				if (bNumber && numbers->front() == std::floor(numbers->front()))
+				{
+					Reflection::SetPropertyValue(&options, property, static_cast<int32_t>(numbers->front()));
+					continue;
+				}
+				break;
+			case EPropertyKind::UInt32:
+				if (bNumber && numbers->front() >= 0.0 && numbers->front() == std::floor(numbers->front()))
+				{
+					Reflection::SetPropertyValue(&options, property, static_cast<uint32_t>(numbers->front()));
+					continue;
+				}
+				break;
+			default:
+				problems.push_back({ name, "options of this kind can't be set from a material file" });
+				continue;
+			}
+			problems.push_back({ name, "\"" + *value + "\" isn't a number of the option's kind" });
+		}
+		return problems;
+	}
+
+	std::string FormatMaterialOption(const MaterialOptions& options, const Reflection::PropertyMetadata& property)
+	{
+		const Reflection::PropertyValue value = Reflection::GetPropertyValue(&options, property);
+		if (const bool* flag = std::get_if<bool>(&value))
+		{
+			return *flag ? "true" : "false";
+		}
+		if (const float* number = std::get_if<float>(&value))
+		{
+			return FormatMaterialNumbers(std::span<const float>(number, 1));
+		}
+		if (const int32_t* number = std::get_if<int32_t>(&value))
+		{
+			return std::to_string(*number);
+		}
+		if (const uint32_t* number = std::get_if<uint32_t>(&value))
+		{
+			return std::to_string(*number);
+		}
+		return {};
 	}
 
 	std::vector<MaterialValueProblem> WriteMaterialValues(const ShaderLayout& layout, const MaterialAsset& asset, std::span<std::byte> bytes,

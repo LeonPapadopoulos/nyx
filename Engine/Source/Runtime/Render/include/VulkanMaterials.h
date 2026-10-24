@@ -40,8 +40,11 @@ namespace Nyx
 	// A new material's bytes are its shader's defaults, from the defaults writer run once on the
 	// GPU. Material textures are loaded from the assets folder, once each.
 	//
+	// A material's options (MaterialOptions, e.g. two-sided) are in its handle; its shader's opaque
+	// pipeline draws the front faces only, or both, as the draw sets it (SetMeshFaces()).
+	//
 	// A material instance (a Parent line instead of a Shader line) is drawn with its parents'
-	// values under its own, and its shader is the one the chain of parents ends in. A parent's
+	// values and options under its own, and its shader is the one the chain of parents ends in. A parent's
 	// new values, saved or set, reach its instances in the same update; a chain that goes round,
 	// or ends without a shader, draws as the missing material.
 	class VulkanMaterials
@@ -125,6 +128,8 @@ namespace Nyx
 			MaterialAsset Inherited;
 			// Its own values over the inherited ones, with the shader: what is drawn
 			MaterialAsset Resolved;
+			// Its options, its own over its parents' (ReadMaterialOptions())
+			MaterialOptions Options;
 			// Why the chain of parents doesn't make a material, as last logged
 			std::string ChainProblem;
 			// Its room in the material buffer
@@ -147,7 +152,7 @@ namespace Nyx
 		bool Prepare(Shader& shader);
 		void WriteBytes(Entry& entry);
 		std::optional<uint32_t> TextureSlot(const std::string& path, bool bLinear);
-		// Opaque, writing depth; or for decals: blended with premultiplied alpha, not writing depth;
+		// Opaque, writing depth, its back faces culled unless the draw says otherwise; or for decals: blended with premultiplied alpha, not writing depth;
 		// or a decal in the picking pass, writing its entity's id and depth
 		enum class EPipelineKind : uint8_t
 		{

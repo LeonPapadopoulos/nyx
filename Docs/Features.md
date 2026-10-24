@@ -464,6 +464,26 @@ mesh is made again as it grows.
   click picks it, selected it is outlined; two sections draw with two materials; a decal on it is
   drawn), `NyxEditorPanelTests` (the details panel's lines).
 
+## Faces and two-sided materials
+
+Only the front of a triangle is drawn, the side its normal faces: half of a closed mesh's
+triangles cost nothing.
+
+- Every mesh Nyx makes winds counter-clockwise seen from its front, as glTF's do: the built-in cube,
+  sphere, capsule and plane, a ground, a scatter's copies.
+- An entity mirrored by a negative scale still shows its outside, and is picked and outlined there.
+- A **two-sided** material draws both sides, for single sheets such as leaves, blades of grass and
+  petals: tick *Two-Sided* under *Material* in the material editor, or write `TwoSided = true` in
+  the `.nyxmat` file. An instance takes it from its parent unless it sets its own. The back is lit
+  as a front: its normal is turned round, so a light on that side lights it.
+  `Materials/VertexColorTwoSided.nyxmat` draws vertex colours two-sided.
+- A click on a one-sided back picks what is behind it; on a two-sided one, the entity.
+- Tests: `NyxMeshTests` (every built-in mesh, a ground and the glTF files wind with their
+  normals), `NyxMaterialTests` (the option read, inherited, named when wrong, written as a line),
+  `NyxSceneGpuTests` (a one-sided quad's back neither drawn nor picked; a two-sided one's drawn,
+  picked, and lit from behind as its front from before; a mirrored cube drawn as the cube, also
+  beside an unmirrored one; the reference pictures unchanged).
+
 ## Instanced meshes and culling
 
 Many copies of one mesh, such as grass, flowers or stones scattered over a ground, are drawn as one

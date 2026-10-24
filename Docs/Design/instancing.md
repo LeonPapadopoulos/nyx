@@ -92,6 +92,13 @@ output of such a pass, so nothing here has to be undone for it.
 The shadows' cascades will cull the same way: a cascade's view-projection gives its frustum, and
 `ClassifyBox()` and `AppendInstanceRuns()` its draw list.
 
+## Faces
+
+An instanced draw culls back faces as any other, its material's way (two-sided or not,
+[Shaders and materials](shader-materials.md#materials)), and for the whole draw: the entity's
+transform may mirror it, but its instances' transforms shouldn't, as one instance mirrored would be
+drawn inside out. Entities batched into one draw are mirrored alike or not at all.
+
 ## Numbers
 
 `NyxInstancingBenchmark`: 50 000 cubes of 0.15 to 0.3 m in 200 cells of 10 × 10 m (250 each) over

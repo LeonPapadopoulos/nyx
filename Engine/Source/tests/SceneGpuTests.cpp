@@ -28,7 +28,8 @@
 // it is drawn as one loaded from a scene. A click on a decal's mask picks the decal, one where
 // its mask is empty what is beneath, and a selected decal's quad is outlined. A decal's pulse
 // runs on the renderer's time in the editor's world, and stands still in a game's world while it
-// is paused.
+// is paused. A one-sided quad seen from behind isn't drawn and isn't picked; a two-sided one is,
+// lit from behind as it is from the front; a mirrored cube shows its outside.
 //
 // NYX_SCENE_TEST_OUTPUT=<folder> saves what was rendered there, e.g. to make a new reference
 // after a change that is meant to change the picture.
@@ -971,6 +972,144 @@ namespace
 		gpu.DrawFrames(1);
 	}
 
+	// A quad facing up, 4 m across, seen from straight above or below under a sun straight above or
+	// below, in front of the black sky, so only the sun lights it: a one-sided material's back isn't
+	// drawn or picked; a two-sided one's is, and lit as its front is, by a sun on its side
+	void TestBackFacesAndTwoSidedMaterials(SceneRenderer& gpu)
+	{
+		Nyx::IEditorRenderer& renderer = gpu.Renderer;
+		LiveMaterialFile twoSidedFile("Materials/NyxSceneGpuTestsTwoSided.nyxmat");
+		twoSidedFile.Write("Parent = Materials/Untextured.nyxmat\nTwoSided = true\n");
+		Nyx::Material* oneSided = renderer.GetMaterial("Materials/Untextured.nyxmat");
+		Nyx::Material* twoSided = renderer.GetMaterial(twoSidedFile.Path);
+		Require(!oneSided->bTwoSided && twoSided->bTwoSided, "The material files' TwoSided lines aren't in their materials");
+
+		Registry world;
+		const Entity quad = world.CreateEntity();
+		world.Add<TransformComponent>(quad, TransformComponent{ .Position = glm::vec3(0.0f), .Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f), .Scale = glm::vec3(4.0f) });
+		MeshRendererComponent meshRenderer;
+		meshRenderer.MeshAsset = renderer.GetPlaneMesh();
+		meshRenderer.MaterialAsset = oneSided;
+		world.Add<MeshRendererComponent>(quad, meshRenderer);
+		const Entity camera = world.CreateEntity();
+		world.Add<TransformComponent>(camera, TransformComponent{});
+		world.Add<CameraComponent>(camera, CameraComponent{});
+		const Entity sun = world.CreateEntity();
+		world.Add<TransformComponent>(sun, TransformComponent{});
+		world.Add<DirectionalLightComponent>(sun, DirectionalLightComponent{});
+		renderer.SetWorld(&world);
+
+		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewShowEditorOverlays(view, true);
+		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
+		renderer.SetSceneViewSky(view, Nyx::ESceneViewSky::Black, 0.0f);
+		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
+		gpu.DrawUntilShadersCompiled();
+
+		// Turned about X: -90 degrees looks (or shines) straight down, 90 straight up
+		const auto place = [&](bool bCameraAbove, bool bSunAbove, Nyx::Material* material)
+		{
+			world.Get<TransformComponent>(camera) = TransformComponent{ .Position = glm::vec3(0.0f, bCameraAbove ? 3.0f : -3.0f, 0.0f),
+				.Rotation = glm::quat(glm::radians(glm::vec3(bCameraAbove ? -90.0f : 90.0f, 0.0f, 0.0f))), .Scale = glm::vec3(1.0f) };
+			world.Get<TransformComponent>(sun).Rotation = glm::quat(glm::radians(glm::vec3(bSunAbove ? -90.0f : 90.0f, 0.0f, 0.0f)));
+			world.Get<MeshRendererComponent>(quad).MaterialAsset = material;
+		};
+
+		place(false, false, oneSided);
+		world.Get<MeshRendererComponent>(quad).bVisible = false;
+		const std::array<uint8_t, 3> sky = MiddlePixel(gpu, view);
+		world.Get<MeshRendererComponent>(quad).bVisible = true;
+		const std::array<uint8_t, 3> oneSidedBack = MiddlePixel(gpu, view);
+		Require(oneSidedBack == sky, "A one-sided quad's back is drawn: " + Text(oneSidedBack) + " where the sky is " + Text(sky));
+		const Nyx::IEditorRenderer::PickResult backPick = PickMiddle(gpu, view);
+		Require(backPick.bHasNewResult && !backPick.HitEntity, "A click on a one-sided quad's back picks it");
+
+		place(true, true, oneSided);
+		const std::array<uint8_t, 3> front = MiddlePixel(gpu, view);
+		Require(front[0] > sky[0] + 40, "The quad's front under the sun isn't lit: " + Text(front));
+		Require(Picks(gpu, view, quad), "A click on the quad's front doesn't pick it");
+
+		place(true, true, twoSided);
+		const std::array<uint8_t, 3> twoSidedFront = MiddlePixel(gpu, view);
+		Require(Near(twoSidedFront, front), "A two-sided quad's front is drawn " + Text(twoSidedFront) + ", a one-sided one's " + Text(front));
+
+		// From below, under a sun below: lit as the front is from above
+		place(false, false, twoSided);
+		const std::array<uint8_t, 3> twoSidedBack = MiddlePixel(gpu, view);
+		Require(Near(twoSidedBack, front), "A two-sided quad's back under a sun on its side is drawn " + Text(twoSidedBack) + ", its front " + Text(front));
+		Require(Picks(gpu, view, quad), "A click on a two-sided quad's back doesn't pick it");
+
+		// Its back faces away from a sun above: dark
+		place(false, true, twoSided);
+		const std::array<uint8_t, 3> twoSidedBackAway = MiddlePixel(gpu, view);
+		Require(twoSidedBackAway[0] + 40 < front[0], "A two-sided quad's back is lit by a sun on its other side: " + Text(twoSidedBackAway));
+
+		renderer.DestroySceneView(view);
+		renderer.SetWorld(nullptr);
+		gpu.DrawFrames(1);
+	}
+
+	// A cube mirrored by a negative scale winds the other way round on the screen: its outside is
+	// still drawn, as the cube unmirrored is, and picked; and beside an unmirrored one, both
+	// are drawn alike
+	void TestMirroredMeshes(SceneRenderer& gpu)
+	{
+		Nyx::IEditorRenderer& renderer = gpu.Renderer;
+		Registry world;
+		const Entity cube = AddCube(world, gpu.Renderer, 0.0f, renderer.GetMaterial("Materials/Untextured.nyxmat"));
+		const Entity camera = world.CreateEntity();
+		world.Add<TransformComponent>(camera, TransformComponent{ .Position = glm::vec3(0.0f, 1.0f, 3.0f), .Rotation = glm::quat(glm::radians(glm::vec3(-15.0f, 0.0f, 0.0f))), .Scale = glm::vec3(1.0f) });
+		world.Add<CameraComponent>(camera, CameraComponent{});
+		renderer.SetWorld(&world);
+
+		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewShowEditorOverlays(view, true);
+		renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
+		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
+		gpu.DrawUntilShadersCompiled();
+		gpu.DrawFrames(1);
+		const RgbaImage unmirrored = ReadView(gpu, view);
+
+		// Mirrored across X, the symmetrical cube looks the same
+		world.Get<TransformComponent>(cube).Scale = glm::vec3(-1.0f, 1.0f, 1.0f);
+		gpu.DrawFrames(1);
+		const RgbaImage mirrored = ReadView(gpu, view);
+		size_t different = 0;
+		for (size_t pixel = 0; pixel < mirrored.Pixels.size(); pixel += 4)
+		{
+			for (size_t channel = 0; channel < 3; ++channel)
+			{
+				if (std::abs(int(mirrored.Pixels[pixel + channel]) - int(unmirrored.Pixels[pixel + channel])) > 2)
+				{
+					++different;
+					break;
+				}
+			}
+		}
+		Require(different <= mirrored.Pixels.size() / 4 / 1000, "The mirrored cube is drawn otherwise than the cube: " + std::to_string(different) + " pixels differ");
+		Require(Picks(gpu, view, cube), "A click on the mirrored cube doesn't pick it");
+
+		// Beside an unmirrored one: drawn in one batch, one of them would be inside out
+		const Entity other = AddCube(world, gpu.Renderer, -0.75f, renderer.GetMaterial("Materials/Untextured.nyxmat"));
+		world.Get<TransformComponent>(cube).Position.x = 0.75f;
+		gpu.DrawFrames(1);
+		const RgbaImage pair = ReadView(gpu, view);
+		const auto pixelAt = [&pair](uint32_t x, uint32_t y)
+		{
+			const size_t offset = (static_cast<size_t>(y) * pair.Width + x) * 4;
+			return std::array<uint8_t, 3>{ pair.Pixels[offset], pair.Pixels[offset + 1], pair.Pixels[offset + 2] };
+		};
+		// Their front faces, at the same height, the same distance either side of the middle
+		const std::array<uint8_t, 3> left = pixelAt(ViewWidth / 2 - 70, ViewHeight / 2 + 20);
+		const std::array<uint8_t, 3> right = pixelAt(ViewWidth / 2 + 70, ViewHeight / 2 + 20);
+		Require(Near(left, right, 6), "Side by side, the cube is drawn " + Text(left) + " and the mirrored one " + Text(right));
+		(void)other;
+
+		renderer.DestroySceneView(view);
+		renderer.SetWorld(nullptr);
+		gpu.DrawFrames(1);
+	}
+
 	// The default scene in one view, a world of a sphere of its own in another, as a material's
 	// preview will show one
 	void TestViewsWithWorldsOfTheirOwn(SceneRenderer& gpu)
@@ -1629,6 +1768,8 @@ int main()
 		TestNormalMapsAndMasks(gpu);
 		TestViewsWithWorldsOfTheirOwn(gpu);
 		TestJustPastTheNearPlane(gpu);
+		TestBackFacesAndTwoSidedMaterials(gpu);
+		TestMirroredMeshes(gpu);
 		TestWorldDebugDrawing(gpu);
 		TestDrawingBetweenSteps(gpu);
 		TestSurfaceDecals(gpu);

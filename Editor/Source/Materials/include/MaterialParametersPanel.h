@@ -82,8 +82,10 @@ namespace Nyx::Editor
 		void Open(const std::string& path, Nyx::IMaterialSource& materials);
 		void Save();
 		void DrawDiscardPopup(Nyx::IMaterialSource& materials);
-		// The parent or the shader, the domain, the instances, the entities that use it
+		// The parent or the shader, the domain, the options, the instances, the entities that use it
 		void DrawMaterial(const Nyx::MaterialView& view);
+		// The material's options (MaterialOptions), from its reflection: its own, or its parents'
+		void DrawOptions(const Nyx::MaterialView& view);
 		void DrawParameters(const Nyx::MaterialView& view);
 		void DrawFields(const std::vector<Nyx::ShaderField>& fields, const std::string& prefix, uint32_t base, const Nyx::MaterialView& view, const std::string* category);
 		void DrawField(const Nyx::ShaderField& field, const std::string& name, uint32_t offset, const Nyx::MaterialView& view);

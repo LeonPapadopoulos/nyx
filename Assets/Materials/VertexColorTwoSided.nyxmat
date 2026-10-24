@@ -1,0 +1,4 @@
+# Its mesh's vertex colours, matte, both sides of each triangle drawn: for single sheets made at
+# run time, such as blades of grass, petals and leaves
+Parent = Materials/VertexColor.nyxmat
+TwoSided = true

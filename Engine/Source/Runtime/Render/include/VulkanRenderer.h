@@ -150,6 +150,9 @@ namespace Nyx
 		// Where the scene pass draws it: between its last two steps in a world drawn so
 		// (IRenderer::SetWorldInterpolation()), else where it is
 		glm::mat4 DrawTransform{ 1.0f };
+		// Its transform mirrors it (a negative determinant, e.g. one scale negative): its triangles
+		// wind the other way round on the screen (SetMeshFaces())
+		bool bMirrored = false;
 
 		// Its mesh's bounds, in the entity's space; drawn instanced, around all of its instances
 		glm::vec3 LocalBoundsMin{ -0.5f, -0.5f, -0.5f };
@@ -570,9 +573,6 @@ namespace Nyx
 		Mesh SphereMesh = Mesh("Sphere");
 		Mesh CapsuleMesh = Mesh("Capsule");
 		Mesh PlaneMesh = Mesh("Plane");
-
-		std::vector<Vertex> MeshVertices;
-		std::vector<uint32_t> MeshIndices;
 
 		// Texture
 

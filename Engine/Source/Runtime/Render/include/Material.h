@@ -18,5 +18,8 @@ namespace Nyx
 		vk::raii::Pipeline* DecalPickingPipeline = nullptr;
 		// Where its values are in the material buffer (VulkanBindless)
 		uint32_t MaterialOffset = 0;
+		// Both sides of its triangles drawn, the back one lit as a front (MaterialOptions); only
+		// the front otherwise. The draw sets it (SetMeshFaces()).
+		bool bTwoSided = false;
 	};
 }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "MaterialOptions.h"
 #include "ShaderLayout.h"
 
 #include <cstddef>
@@ -30,6 +31,13 @@ namespace Nyx
 	//   Parent = Materials/WeatheredStone.nyxmat
 	//   Roughness = 0.2
 	//
+	// Besides the shader's values, a material has options for how it is drawn (MaterialOptions),
+	// one line each, which an instance also takes from its parent when it doesn't set them:
+	//
+	//   # Assets/Materials/Leaves.nyxmat
+	//   Shader = Shaders/Standard.slang
+	//   TwoSided = true
+	//
 	// Text, so it diffs, merges and is written by hand. The lines are kept as they are: comments,
 	// blank lines, and values the shader doesn't know (any more, or yet). Setting a value changes
 	// its own line alone. A member of a struct field is named with a dot ("Layer.Tint").
@@ -58,8 +66,11 @@ namespace Nyx
 		// Changes the value's line, or adds a line at the end
 		void SetValue(std::string_view name, std::string value);
 		bool RemoveValue(std::string_view name);
-		// Every parameter's name and value, in the file's order; the shader and the parent aren't
+		// Every parameter's name and value, in the file's order; the shader, the parent and the
+		// options aren't
 		std::vector<std::pair<std::string, std::string>> GetValues() const;
+		// The options the file sets (MaterialOptions), by name and value, in the file's order
+		std::vector<std::pair<std::string, std::string>> GetOptionValues() const;
 
 	private:
 		struct Line
@@ -77,6 +88,19 @@ namespace Nyx
 		std::string Name;
 		std::string Message;
 	};
+
+	// The line of a material file a MaterialOptions property is: named as the property, a bool's
+	// without its b ("TwoSided")
+	std::string GetMaterialOptionName(const Reflection::PropertyMetadata& property);
+	// Whether a line of that name is an option rather than a value of the shader's
+	bool IsMaterialOptionName(std::string_view name);
+
+	// The options `asset` sets, written over `options`: for an instance, its farthest parent's
+	// first and its own last. A value that doesn't read as its option's kind ("true" or "false"
+	// for a bool, a number for a number) is left out and listed.
+	std::vector<MaterialValueProblem> ReadMaterialOptions(const MaterialAsset& asset, MaterialOptions& options);
+	// An option's value as a material file writes it, e.g. "true"
+	std::string FormatMaterialOption(const MaterialOptions& options, const Reflection::PropertyMetadata& property);
 
 	// Writes `asset`'s values into `bytes`, which hold the shader's defaults (layout.Size of them),
 	// at the layout's offsets. A texture's value is an asset path, which `textureSlot` turns into

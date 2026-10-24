@@ -56,7 +56,7 @@ doesn't allow, and on a table that goes round in a circle, so a new dependency s
 | `Scene` | Entities and components (the physics components, `CharacterComponent` and `OrbitCameraComponent` among them, and the moves along the ground relative to a camera, `GetGroundMove()`), the component registry, scene files, the tagged binary format, surface anchors (`SurfaceAnchor`: a point, normal and tangent on an entity that move with it), surface decals (`SurfaceDecalComponent`), meshes made at run time (`RuntimeMeshComponent`, not saved), a mesh drawn at many transforms (`MeshInstancesComponent`, not saved), the ground (`GroundComponent`, its heights `SampleGroundHeight()` and its mesh `MakeGroundMesh()`, made in its post-load step), scattering (`ScatterComponent`: copies of an entity's mesh over another entity's mesh, `ScatterOnMesh()`, into the entity's `MeshInstancesComponent`, made in its post-load step and following its surface each frame, `UpdateScatters()`), a camera's view and projection and the ray back through a point of its picture (`CameraProjection.h`) | Core, Reflection |
 | `Physics` | Rigid bodies, their shapes (boxes, spheres, capsules, static triangle meshes), collisions and the physics step, and characters, on Jolt (`PhysicsWorld`); Jolt's headers stay inside | Core |
 | `Sim` | The game world: its entities, their physics bodies and characters kept in step with the physics components (`PhysicsBodies`), and the simulation systems each fixed step runs, in order (`GameWorld`, `ISimSystem`), the players' commands each step applies (`CommandQueue`), the entity a ray hits first (`PickPhysicsBody()`), the orbit cameras following their targets as drawn (`UpdateOrbitCameras()`) | Core, Reflection, Scene, Physics |
-| `Assets` | Asset files as plain data: images, materials, glTF meshes, shader compile requests and results | Core |
+| `Assets` | Asset files as plain data: images, materials and their options (`MaterialOptions`, reflected, e.g. two-sided), glTF meshes, shader compile requests and results | Core, Reflection |
 | `UI` | The painter, and the painted UI drawn with it on top of ImGui | Core, Reflection |
 | `Link` | The editor link: its messages, live edits, live tuning of the input (`LiveInput`), recordings, the log sink | Core, Net, Input, Scene, Assets |
 | `LinkTools` | Link messages, recordings, scene files and input files as readable text, for the editor and NyxDump; not under `Runtime`, and not in the game | Core, Reflection, Scene, Input, Link |
@@ -339,6 +339,9 @@ data the same way, through the same pure functions.
 - What a view draws is its culled draw list (`SceneViewInstance::Draws`, made by
   `CullSceneView()`); a new pass that draws the scene, such as a shadow cascade, culls by its own
   camera with the same functions (`SceneCulling.h`).
+- A pipeline that draws meshes has `MeshDynamicStates` and sets each section's faces before its
+  draw (`SetMeshFaces()`: the back culled unless the material is two-sided, the front clockwise for
+  a mirrored entity).
 - Anything only the editor should see goes in `VulkanEditorOverlays`, with its per-view resources
   in `SceneViewOverlays`. The renderer calls it for the views whose `bShowEditorOverlays` is on:
   off until the editor turns it on (`IEditorRenderer::SetSceneViewShowEditorOverlays()`), and off
@@ -364,8 +367,8 @@ data the same way, through the same pure functions.
 How some systems work, and why they work that way:
 
 - [Shaders and materials](Design/shader-materials.md): Slang for every shader, the shader cache
-  and live reload, bindless resources, material files and instances, the light materials are
-  judged under.
+  and live reload, bindless resources, material files, instances and options, faces and two-sided
+  materials, the light materials are judged under.
 - [UI painter](Design/ui-painter.md): signed distance field shapes, tile binning on the GPU,
   painting in order with ImGui's drawing, the painted widgets, chrome, glass and ambilight.
 - [Input system](Design/input-system.md): backends, input frames, keys by position, the cursor

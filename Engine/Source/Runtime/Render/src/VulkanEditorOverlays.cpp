@@ -38,17 +38,25 @@ namespace Nyx
 	{
 		cmd.bindVertexBuffers(0, { obj.MeshAsset->GetVertexBuffer(), obj.InstanceBuffer }, { vk::DeviceSize{ 0 }, vk::DeviceSize{ 0 } });
 		cmd.bindIndexBuffer(obj.MeshAsset->GetIndexBuffer(), 0, vk::IndexType::eUint32);
-		if (obj.CellCount == 0)
-		{
-			cmd.drawIndexed(obj.MeshAsset->GetIndexCount(), 1, 0, 0, 0);
-			return;
-		}
 		// Every instance its cells draw, culled or not: a click may be anywhere in the view
 		std::vector<InstanceRun> runs;
-		AppendInstanceRuns(std::span(world.Cells).subspan(obj.FirstCell, obj.CellCount), nullptr, runs);
-		for (const InstanceRun& run : runs)
+		if (obj.CellCount == 0)
 		{
-			cmd.drawIndexed(obj.MeshAsset->GetIndexCount(), run.Count, 0, 0, run.First);
+			runs.push_back(InstanceRun{ .First = 0, .Count = 1 });
+		}
+		else
+		{
+			AppendInstanceRuns(std::span(world.Cells).subspan(obj.FirstCell, obj.CellCount), nullptr, runs);
+		}
+		// Section by section, with the faces its material draws
+		for (uint32_t index = obj.FirstSection; index < obj.FirstSection + obj.SectionCount; ++index)
+		{
+			const RenderSection& section = world.Sections[index];
+			SetMeshFaces(cmd, section.MaterialAsset && section.MaterialAsset->bTwoSided, obj.bMirrored);
+			for (const InstanceRun& run : runs)
+			{
+				cmd.drawIndexed(section.IndexCount, run.Count, section.FirstIndex, 0, run.First);
+			}
 		}
 	}
 
@@ -340,11 +348,10 @@ namespace Nyx
 		rasterizer.rasterizerDiscardEnable = VK_FALSE;
 		rasterizer.polygonMode = vk::PolygonMode::eFill;
 		rasterizer.lineWidth = 1.0f;
-		// Both sides, as the scene pass draws them (VulkanMaterials): with the projection's Y flipped,
-		// culling clockwise backs left only a closed mesh's inside, and an open one, such as a ground
-		// made at run time, was neither picked nor outlined
-		rasterizer.cullMode = vk::CullModeFlagBits::eNone;
-		rasterizer.frontFace = vk::FrontFace::eClockwise;
+		// The faces the scene pass draws, section by section (DrawObjectMesh()): a click on what a
+		// one-sided material leaves out goes to what is behind it
+		rasterizer.cullMode = vk::CullModeFlagBits::eBack;
+		rasterizer.frontFace = vk::FrontFace::eCounterClockwise;
 		rasterizer.depthBiasEnable = VK_FALSE;
 
 		vk::PipelineMultisampleStateCreateInfo multisampling{};
@@ -363,10 +370,7 @@ namespace Nyx
 		colorBlending.attachmentCount = 1;
 		colorBlending.pAttachments = &colorBlendAttachment;
 
-		std::array<vk::DynamicState, 2> dynamicStates = {
-			vk::DynamicState::eViewport,
-			vk::DynamicState::eScissor
-		};
+		const std::array<vk::DynamicState, 4> dynamicStates = MeshDynamicStates;
 
 		vk::PipelineDynamicStateCreateInfo dynamicState{};
 		dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
@@ -881,11 +885,9 @@ namespace Nyx
 		vk::PipelineRasterizationStateCreateInfo rasterizer{};
 		rasterizer.polygonMode = vk::PolygonMode::eFill;
 		rasterizer.lineWidth = 1.0f;
-		// Both sides, as the scene pass draws them (VulkanMaterials): with the projection's Y flipped,
-		// culling clockwise backs left only a closed mesh's inside, and an open one, such as a ground
-		// made at run time, was neither picked nor outlined
-		rasterizer.cullMode = vk::CullModeFlagBits::eNone;
-		rasterizer.frontFace = vk::FrontFace::eClockwise;
+		// The faces the scene pass draws, section by section (DrawObjectMesh())
+		rasterizer.cullMode = vk::CullModeFlagBits::eBack;
+		rasterizer.frontFace = vk::FrontFace::eCounterClockwise;
 
 		vk::PipelineMultisampleStateCreateInfo multisampling{};
 		multisampling.rasterizationSamples = vk::SampleCountFlagBits::e1;
@@ -902,10 +904,7 @@ namespace Nyx
 		colorBlending.attachmentCount = 1;
 		colorBlending.pAttachments = &colorBlendAttachment;
 
-		std::array<vk::DynamicState, 2> dynamicStates = {
-			vk::DynamicState::eViewport,
-			vk::DynamicState::eScissor
-		};
+		const std::array<vk::DynamicState, 4> dynamicStates = MeshDynamicStates;
 
 		vk::PipelineDynamicStateCreateInfo dynamicState{};
 		dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
