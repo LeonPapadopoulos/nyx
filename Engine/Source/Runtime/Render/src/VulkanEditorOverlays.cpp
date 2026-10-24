@@ -219,7 +219,15 @@ namespace Nyx
 			}
 		}
 
-		// A selected decal's quad, and a selected light's range, in the selection outline's colour
+		// Each particle emitter's icon: a small box of lines, which a click picks too
+		for (const RenderParticleEmitter& emitter : world.Particles.Emitters)
+		{
+			OverlayDrawing.Box(emitter.WorldPosition - glm::vec3(ParticleEmitterIconRadius * 0.6f), emitter.WorldPosition + glm::vec3(ParticleEmitterIconRadius * 0.6f),
+				glm::vec3(0.85f, 0.85f, 0.85f));
+		}
+
+		// A selected decal's quad, a selected light's range and a selected emitter's particles'
+		// bounds, in the selection outline's colour
 		if (SelectedEntity && world.Registry == World)
 		{
 			const glm::vec3 outlineColor = glm::vec3(OutlineCompositePushConstants{}.VisibleOutlineColor);
@@ -240,6 +248,13 @@ namespace Nyx
 				{
 					OverlayDrawing.Sphere(light.WorldPosition, light.Range, outlineColor);
 					OverlayDrawing.Sphere(light.WorldPosition, PointLightIconRadius, outlineColor);
+				}
+			}
+			for (const RenderParticleEmitter& emitter : world.Particles.Emitters)
+			{
+				if (emitter.SourceEntity == *SelectedEntity)
+				{
+					OverlayDrawing.Box(emitter.Bounds.Min, emitter.Bounds.Max, outlineColor);
 				}
 			}
 		}
@@ -1455,8 +1470,9 @@ namespace Nyx
 			}
 		}
 
-		// Then the point lights' icons, as balls, so a click on one selects its light
-		if (!world.PointLights.empty())
+		// Then the point lights' and the particle emitters' icons, as balls, so a click on one selects
+		// its entity
+		if (!world.PointLights.empty() || !world.Particles.Emitters.empty())
 		{
 			cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *PickingPipeline);
 			SetMeshFaces(cmd, false, false);
@@ -1468,6 +1484,14 @@ namespace Nyx
 				// The sphere mesh is a metre across
 				object.Model = glm::scale(glm::translate(glm::mat4(1.0f), light.WorldPosition), glm::vec3(PointLightIconRadius * 2.0f));
 				object.EntityId = light.PickingId;
+				cmd.pushConstants<ObjectConstants>(ScenePipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, { object });
+				cmd.drawIndexed(IconMesh->GetIndexCount(), 1, 0, 0, 0);
+			}
+			for (const RenderParticleEmitter& emitter : world.Particles.Emitters)
+			{
+				ObjectConstants object{};
+				object.Model = glm::scale(glm::translate(glm::mat4(1.0f), emitter.WorldPosition), glm::vec3(ParticleEmitterIconRadius * 2.0f));
+				object.EntityId = emitter.PickingId;
 				cmd.pushConstants<ObjectConstants>(ScenePipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, { object });
 				cmd.drawIndexed(IconMesh->GetIndexCount(), 1, 0, 0, 0);
 			}

@@ -704,6 +704,44 @@ editor's scene views and in the game alike.
   picked and its range drawn in the editor's views; a reference picture; the test scene), the other
   reference pictures unchanged.
 
+## Particles
+
+A *Particle Emitter* gives off particles from its entity, such as sparks, embers, smoke or a fire's
+flames: soft round quads facing the camera, or small meshes, glowing or lit, carried by the wind,
+in the editor's scene views and in the game alike.
+
+- *Emission*: *Emitting*, *Rate*, *Bursts* (many at once, once or again and again), *Lifetime*,
+  *Spawn Radius*. *Motion*: *Direction* and *Cone Angle*, *Speed*, *Gravity*, *Buoyancy* (rising,
+  as smoke does), *Drag* (how much the air carries them), *Spin*, *Local Space* (moving with the
+  entity, or left where born). *Look*: *Shape* (Billboard or Mesh, a cube or the *Mesh* given),
+  *Size*, *Size Over Life* and *Color Over Life* (a few keys each), *Blend* (Additive or Alpha),
+  *Emissive Intensity* (above 1, they glow and bloom), *Lit* (by the sun, the sky and the point
+  lights, as smoke by a fire), *Soft Distance* (fading where they meet the ground). *Budget*: *Max
+  Particles*, *Seed*. All with undo, saved in scenes and sent to a running game.
+- The *Environment*'s *Particles*: *Wind*, the air's speed everywhere, and *Max Particles*, the most
+  in the world at once (50 000 without an environment). A game can give a world its own air, which
+  is asked where each particle is (`IParticleVelocityField`).
+- Only for the eye: nothing in the world feels them. They follow the world's time: in a game they
+  stand still while it is paused and move on with Step; in the editor they play as you edit. The
+  same seed plays the same particles; a new seed starts the emitter again.
+- Hidden behind what is in front of them, fading softly where they meet it, seen through the fog.
+  Alpha blended ones are drawn back to front; an emitter out of view isn't drawn, but moves on.
+- **In the editor**: each emitter shows as a small box of lines, which a click selects, even with
+  no particles; a selected emitter's particles' bounds are drawn round them. *Debug > Culling
+  Bounds* shows them, and the lights' ranges.
+- `Assets/Scenes/ParticlesTest.nyxscene`: the lights test scene with a fire: flames, embers and
+  smoke drifting in the wind, a warm light at the flames.
+- 10 emitters of 2 000 particles each take 1.2 ms of the CPU and 0.16 ms of the GPU in
+  Release at 1280 × 720 ([Lights and particles](Design/lights-and-particles.md#numbers)).
+- Tests: `NyxParticleTests` (the same particles from the same seed, others from another; a paused
+  step changing nothing; lifetimes, the rate, bursts once and again; an emitter's budget and the
+  world's; gravity, buoyancy, the drag to the wind, a velocity field; the entity's space; the keys;
+  back to front; a world's emitters started, started again and forgotten; saved and loaded),
+  `NyxParticleGpuTests` (one particle against the CPU's numbers: additive, alpha, its emissive
+  intensity, lit by a red light or dark without one; hidden behind a box, soft where it meets the
+  floor; paused, stepped, carried by a velocity field, culled out of view; its icon picked; a
+  reference picture of sparks, smoke and embers; the test scene).
+
 ## Instanced meshes and culling
 
 Many copies of one mesh, such as grass, flowers or stones scattered over a ground, are drawn as one

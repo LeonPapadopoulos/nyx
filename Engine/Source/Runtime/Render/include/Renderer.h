@@ -20,6 +20,7 @@ namespace Nyx
 {
 	class DebugDraw;
 	class FixedStepClock;
+	class IParticleVelocityField;
 	class Mesh;
 	struct Material;
 	class Registry;
@@ -110,6 +111,11 @@ namespace Nyx
 		// set, so the editor's own world is drawn as it is. The clock must outlive being set; null
 		// turns it off.
 		virtual void SetWorldInterpolation(const Nyx::Registry* world, const Nyx::FixedStepClock* clock) = 0;
+
+		// The air that carries the world's particles (ParticleEmitterComponent), as the game knows
+		// it, asked for each particle as they are moved, each frame; null, or until set: the world's
+		// wind (EnvironmentComponent), the same everywhere. The field must outlive being set.
+		virtual void SetWorldParticleVelocityField(const Nyx::Registry* world, const Nyx::IParticleVelocityField* field) = 0;
 
 		virtual uint64_t CreateSceneView() = 0;
 		virtual void DestroySceneView(uint64_t id) = 0;

@@ -22,8 +22,10 @@ namespace Nyx
 	// far away in its colour and glows towards the sun; a sky that follows the primary light, its
 	// colour tinted by the sun's, dimmer as the sun goes down, its light warmer and weaker the lower
 	// the sun is, through more air; bloom, the light of what is brightest spread round it; and
-	// ambient occlusion, the sky's light kept out of creases, corners and the feet of things. The
-	// world's first such component counts; without one, nothing of this is drawn.
+	// ambient occlusion, the sky's light kept out of creases, corners and the feet of things; and
+	// for particles, the wind that carries them and how many the world has at most. The world's
+	// first such component counts; without one, nothing of this is drawn, no wind blows and the
+	// world has up to 50 000 particles.
 	NYX_REFLECT(Component, meta = (DisplayName = "Environment"))
 	struct EnvironmentComponent
 	{
@@ -101,6 +103,12 @@ namespace Nyx
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Ambient Occlusion", DisplayName = "Quality", Tooltip = "How many samples a pixel takes: Low is cheapest and noisiest"))
 		EAmbientOcclusionQuality OcclusionQuality = EAmbientOcclusionQuality::Medium;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Particles", DragSpeed = 0.05, Tooltip = "The air's speed everywhere, in metres a second, which carries particles by their drag; a game's air field takes its place"))
+		glm::vec3 Wind{ 0.0f, 0.0f, 0.0f };
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Particles", DisplayName = "Max Particles", Tooltip = "The most particles alive in the world at once, every emitter's together; no more are born until some die"))
+		int32_t MaxParticles = 50000;
 	};
 }
 

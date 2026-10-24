@@ -17,6 +17,7 @@
 #include "VulkanShadows.h"
 #include "VulkanBloom.h"
 #include "VulkanAmbientOcclusion.h"
+#include "VulkanParticles.h"
 #include "Mesh.h"
 #include "RuntimeMeshCache.h"
 #include "MeshInstanceCache.h"
@@ -26,6 +27,7 @@
 #include "Material.h"
 #include "SurfaceDecals.h"
 #include "PointLights.h"
+#include "Particles.h"
 #include "AssetResolver.h"
 #include "GltfImporter.h"
 #include <imgui.h>
@@ -273,6 +275,9 @@ namespace Nyx
 		DecalMaterialCache DecalMaterials;
 		// Its point lights, which each view culls for its own pixels
 		std::vector<RenderPointLight> PointLights;
+		// Its particles, moved on each frame by its time, and the meshes its emitters name by path
+		RenderParticles Particles;
+		std::unordered_map<std::string, Nyx::Mesh*> ParticleMeshes;
 		// Dense picking IDs: ID i is the entity at i - 1, 0 is nothing
 		std::vector<Nyx::Entity> PickingIdToEntity;
 		// This frame's time of what moves by itself in the world, such as a decal's pulse, in
@@ -386,6 +391,7 @@ namespace Nyx
 		void SetWorldDebugDraw(const Nyx::Registry* world, const Nyx::DebugDraw* drawing) override;
 		void SetSceneViewShowDebugDrawing(uint64_t id, bool bShow) override;
 		void SetWorldInterpolation(const Nyx::Registry* world, const Nyx::FixedStepClock* clock) override;
+		void SetWorldParticleVelocityField(const Nyx::Registry* world, const Nyx::IParticleVelocityField* field) override;
 
 		Nyx::Mesh* GetCubeMesh() override;
 		Nyx::Mesh* GetSphereMesh() override;
@@ -489,6 +495,15 @@ namespace Nyx
 		void PrepareSceneViewShadows(SceneViewInstance& view, const RenderWorld& world);
 		// Each of the view's cascades into its layer of the shadow map, before the view's scene pass
 		void DrawShadowCascades(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd);
+		// The view's particle draws (SceneViewInstance::Particles): the emitters whose particles are
+		// in view, the alpha blended ones farthest first and their particles back to front, then the
+		// additive ones, appended to this frame's particle stream; none in a debug view of the
+		// materials
+		void CullSceneViewParticles(SceneViewInstance& view, const RenderWorld& world, const Frustum& frustum);
+		// The world's particles moved on to its time, carried by its air, with each emitter's mesh
+		void ExtractParticles(RenderWorld& world, std::optional<float> interpolation);
+		// The mesh an emitter's particles are drawn as: its path's, resolved once a world, else the cube
+		Nyx::Mesh* FindParticleMesh(RenderWorld& world, const std::string& path);
 		// The bounds culled by, as the view's culling debug shows them
 		void AddCullingLines(SceneViewInstance& view, const RenderWorld& world, const Frustum& frustum, const glm::mat4& cullingViewProjection);
 		// FrameInstances into their buffer, made bigger when they don't fit
@@ -608,6 +623,10 @@ namespace Nyx
 		VulkanBloom Bloom{ Context, Programs };
 		// Each view's ambient occlusion, right after its scene pass
 		VulkanAmbientOcclusion AmbientOcclusion{ Context, Programs };
+		// Each view's particles, after its ambient occlusion
+		VulkanParticles Particles{ Context, Programs };
+		// This frame's particles of every view, in the order they are drawn
+		std::vector<ParticleInstanceData> FrameParticles;
 
 		// The GPU times of each view's passes after its scene pass (SceneViewGpuTimes), for the
 		// first MaxTimedViews views: a pair of timestamps a pass a view, reset at the frame's start
@@ -616,6 +635,7 @@ namespace Nyx
 		{
 			Bloom,
 			AmbientOcclusion,
+			Particles,
 			Count
 		};
 		static constexpr uint32_t MaxTimedViews = 8;
@@ -693,6 +713,8 @@ namespace Nyx
 		// The clocks of the worlds drawn between steps (SetWorldInterpolation()), by world, kept so
 		// too; they give those worlds their time as well (GetWorldTime())
 		std::unordered_map<const Nyx::Registry*, const Nyx::FixedStepClock*> WorldInterpolationClocks;
+		// The air carrying the worlds' particles (SetWorldParticleVelocityField()), by world, kept so too
+		std::unordered_map<const Nyx::Registry*, const Nyx::IParticleVelocityField*> WorldParticleFields;
 
 		// Seconds since the renderer was made, this frame: the time of worlds without a clock
 		const std::chrono::steady_clock::time_point StartTime = std::chrono::steady_clock::now();

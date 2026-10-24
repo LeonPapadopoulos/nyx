@@ -164,8 +164,9 @@ namespace Nyx
 		void Draw(SceneViewInstance& view, const RenderWorld* world, vk::raii::CommandBuffer& cmd);
 
 		// The world's objects' axes and bounds, the world's axes, the outline of a selected decal's
-		// quad (a decal has no mesh for the selection outline), each point light's icon and a selected
-		// one's range, into this frame's debug lines (world.OverlayLines), once per frame
+		// quad (a decal has no mesh for the selection outline), each point light's and particle
+		// emitter's icon, a selected light's range and a selected emitter's particles' bounds, into
+		// this frame's debug lines (world.OverlayLines), once per frame
 		void AddDebugLines(RenderWorld& world);
 
 		// A click at a pixel of the view, which shows `worldRevision` of its world; picked from in

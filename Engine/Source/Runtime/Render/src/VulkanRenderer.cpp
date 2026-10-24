@@ -17,6 +17,7 @@
 #include "DrawnWorldTime.h"
 #include "MeshInstancesComponent.h"
 #include "MeshRendererComponent.h"
+#include "ParticleVelocityField.h"
 #include "RuntimeMeshComponent.h"
 #include "Paths.h"
 #include "Profiler.h"
@@ -283,6 +284,10 @@ namespace Nyx
 			{
 				BindSceneSets(view, cmd);
 			});
+		Particles.Initialize(*ScenePipelineLayout, [this](SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
+			{
+				BindSceneSets(view, cmd);
+			});
 
 		LoadSkyboxCubemap();
 		// Its light: the specular cube, the irradiance, the BRDF table
@@ -355,6 +360,7 @@ namespace Nyx
 			UI.ReleaseSceneViewBlur(view);
 			Bloom.Release(view.Bloom);
 			AmbientOcclusion.Release(view.AmbientOcclusion);
+			Particles.Release(view.Particles);
 			view.RenderTarget.Shutdown(Context);
 		}
 		SceneViews.clear();
@@ -374,6 +380,7 @@ namespace Nyx
 		Shadows.Shutdown();
 		Bloom.Shutdown();
 		AmbientOcclusion.Shutdown();
+		Particles.Shutdown();
 		PassTimestamps = nullptr;
 		Bindless.Shutdown();
 		Context.Shutdown();
@@ -520,6 +527,7 @@ namespace Nyx
 		RuntimeMeshes.ReleaseRetired();
 		MeshInstances.ReleaseRetired();
 		RetiredFrameInstanceBuffers.clear();
+		Particles.ReleaseRetired();
 	}
 
 	std::optional<uint32_t> VulkanRenderer::AcquireImage(FrameClock& clock)
@@ -843,6 +851,9 @@ namespace Nyx
 			case ETimedPass::AmbientOcclusion:
 				view->GpuTimes.AmbientOcclusion = milliseconds;
 				break;
+			case ETimedPass::Particles:
+				view->GpuTimes.Particles = milliseconds;
+				break;
 			default:
 				break;
 			}
@@ -982,6 +993,22 @@ namespace Nyx
 		else
 		{
 			WorldInterpolationClocks.erase(world);
+		}
+	}
+
+	void VulkanRenderer::SetWorldParticleVelocityField(const Nyx::Registry* world, const Nyx::IParticleVelocityField* field)
+	{
+		if (!world)
+		{
+			return;
+		}
+		if (field)
+		{
+			WorldParticleFields[world] = field;
+		}
+		else
+		{
+			WorldParticleFields.erase(world);
 		}
 	}
 
@@ -1257,6 +1284,12 @@ namespace Nyx
 				world->PickingIdToEntity.push_back(light.SourceEntity);
 				light.PickingId = static_cast<uint32_t>(world->PickingIdToEntity.size());
 			}
+			ExtractParticles(*world, interpolation);
+			for (RenderParticleEmitter& emitter : world->Particles.Emitters)
+			{
+				world->PickingIdToEntity.push_back(emitter.SourceEntity);
+				emitter.PickingId = static_cast<uint32_t>(world->PickingIdToEntity.size());
+			}
 			Overlays.AddDebugLines(*world);
 
 			const auto drawing = WorldDebugDraws.find(world->Registry);
@@ -1399,9 +1432,55 @@ namespace Nyx
 			});
 	}
 
+	void VulkanRenderer::ExtractParticles(RenderWorld& world, std::optional<float> interpolation)
+	{
+		// The world's wind and its budget, from its first environment
+		ParticleAir air;
+		uint32_t worldMax = DefaultWorldMaxParticles;
+		bool bFound = false;
+		world.Registry->Each<Nyx::EnvironmentComponent>([&](Nyx::Entity, const Nyx::EnvironmentComponent& environment)
+			{
+				if (!bFound)
+				{
+					bFound = true;
+					air.Wind = environment.Wind;
+					worldMax = static_cast<uint32_t>(std::max(environment.MaxParticles, 0));
+				}
+			});
+		const auto field = WorldParticleFields.find(world.Registry);
+		air.Field = field != WorldParticleFields.end() ? field->second : nullptr;
+		UpdateParticles(*world.Registry, world.Time, interpolation, air, worldMax, world.Particles);
+		for (RenderParticleEmitter& emitter : world.Particles.Emitters)
+		{
+			emitter.MeshAsset = emitter.Shape == EParticleShape::Mesh ? FindParticleMesh(world, emitter.MeshPath) : nullptr;
+		}
+	}
+
+	Nyx::Mesh* VulkanRenderer::FindParticleMesh(RenderWorld& world, const std::string& path)
+	{
+		if (path.empty())
+		{
+			return &CubeMesh;
+		}
+		const auto found = world.ParticleMeshes.find(path);
+		if (found != world.ParticleMeshes.end())
+		{
+			return found->second;
+		}
+		Nyx::Mesh* mesh = DecalAssets.ResolveMesh(path);
+		if (!mesh)
+		{
+			LOG_WARNING("Particle mesh {} can't be found; emitters with it draw cubes", path);
+			mesh = &CubeMesh;
+		}
+		world.ParticleMeshes.emplace(path, mesh);
+		return mesh;
+	}
+
 	void VulkanRenderer::PrepareSceneViews()
 	{
 		FrameInstances.clear();
+		FrameParticles.clear();
 		for (SceneViewInstance& view : SceneViews)
 		{
 			if (view.bResizePending)
@@ -1425,6 +1504,7 @@ namespace Nyx
 
 			view.Draws.clear();
 			view.PointLights.clear();
+			view.Particles.Draws.clear();
 			view.Culling = {};
 			view.CullingLines = {};
 			view.Shadows.CascadeCount = 0;
@@ -1445,6 +1525,13 @@ namespace Nyx
 			SceneViewAmbientOcclusionSettings occlusion = view.SceneGlobals.AmbientOcclusion;
 			occlusion.bAmbientOcclusion = occlusion.bAmbientOcclusion && bLit;
 			AmbientOcclusion.Prepare(view.AmbientOcclusion, view.RenderTarget, occlusion, view.bRecreatedThisFrame);
+			// Its particles' pass, over its HDR scene: their draws were culled with the rest, and none
+			// are drawn in a debug view of the materials
+			if (!bLit)
+			{
+				view.Particles.Draws.clear();
+			}
+			Particles.Prepare(view.Particles, view.RenderTarget, view.bRecreatedThisFrame);
 		}
 
 		// One shadow map for every view: as big as the largest any of them asks for
@@ -1458,6 +1545,7 @@ namespace Nyx
 		}
 		Shadows.EnsureSize(shadowMapSize);
 		UploadFrameInstances();
+		Particles.Upload(FrameParticles);
 	}
 
 	void VulkanRenderer::CullSceneView(SceneViewInstance& view, const RenderWorld& world)
@@ -1485,9 +1573,77 @@ namespace Nyx
 		view.Culling.PointLightsCulled = lights.Culled;
 		view.Culling.PointLightsDropped = lights.Dropped;
 
+		CullSceneViewParticles(view, world, frustum);
+
 		if (view.CullingDebug != ESceneViewCullingDebug::Off)
 		{
 			AddCullingLines(view, world, frustum, cullingViewProjection);
+		}
+	}
+
+	void VulkanRenderer::CullSceneViewParticles(SceneViewInstance& view, const RenderWorld& world, const Frustum& frustum)
+	{
+		const RenderParticles& particles = world.Particles;
+		std::vector<uint32_t> alpha;
+		std::vector<uint32_t> additive;
+		for (uint32_t index = 0; index < particles.Emitters.size(); ++index)
+		{
+			if (particles.Emitters[index].InstanceCount == 0)
+			{
+				continue;
+			}
+			++view.Culling.ParticleEmitters;
+			if (!IsBoxVisible(frustum, particles.Emitters[index].Bounds))
+			{
+				++view.Culling.ParticleEmittersCulled;
+				continue;
+			}
+			(particles.Emitters[index].Blend == EParticleBlend::Alpha ? alpha : additive).push_back(index);
+		}
+
+		// The alpha blended emitters farthest first, by their bounds' middles, each's particles back
+		// to front; then the additive ones, whose order changes nothing
+		const glm::vec3 camera = view.SceneGlobals.CameraWorldPos;
+		const auto distance = [&](uint32_t index)
+		{
+			const BoundingBox& bounds = particles.Emitters[index].Bounds;
+			const glm::vec3 offset = (bounds.Min + bounds.Max) * 0.5f - camera;
+			return glm::dot(offset, offset);
+		};
+		std::stable_sort(alpha.begin(), alpha.end(), [&](uint32_t a, uint32_t b)
+			{
+				return distance(a) > distance(b);
+			});
+		std::vector<uint32_t> order;
+		for (const std::vector<uint32_t>* emitters : { &alpha, &additive })
+		{
+			for (const uint32_t index : *emitters)
+			{
+				const RenderParticleEmitter& emitter = particles.Emitters[index];
+				const std::span<const ParticleInstanceData> instances(particles.Instances.data() + emitter.FirstInstance, emitter.InstanceCount);
+				SceneViewParticleDraw draw;
+				draw.FirstInstance = static_cast<uint32_t>(FrameParticles.size());
+				draw.InstanceCount = emitter.InstanceCount;
+				draw.Blend = emitter.Blend;
+				draw.Shape = emitter.Shape;
+				draw.MeshAsset = emitter.MeshAsset;
+				draw.SoftDistance = emitter.SoftDistance;
+				draw.bLit = emitter.bLit;
+				if (emitter.Blend == EParticleBlend::Alpha)
+				{
+					SortParticlesBackToFront(instances, camera, order);
+					for (const uint32_t particle : order)
+					{
+						FrameParticles.push_back(instances[particle]);
+					}
+				}
+				else
+				{
+					FrameParticles.insert(FrameParticles.end(), instances.begin(), instances.end());
+				}
+				view.Culling.Particles += emitter.InstanceCount;
+				view.Particles.Draws.push_back(draw);
+			}
 		}
 	}
 
@@ -1681,6 +1837,18 @@ namespace Nyx
 			{
 				const BoundingBox& bounds = world.Cells[cell].Bounds;
 				CullingDrawing.Box(bounds.Min, bounds.Max, IsBoxVisible(frustum, bounds) ? drawnColor : culledColor);
+			}
+		}
+		// The point lights' ranges, and the boxes of the emitters' particles
+		for (const RenderPointLight& light : world.PointLights)
+		{
+			CullingDrawing.Sphere(light.Position, light.Range, IsSphereVisible(frustum, light.Position, light.Range) ? drawnColor : culledColor);
+		}
+		for (const RenderParticleEmitter& emitter : world.Particles.Emitters)
+		{
+			if (emitter.InstanceCount > 0)
+			{
+				CullingDrawing.Box(emitter.Bounds.Min, emitter.Bounds.Max, IsBoxVisible(frustum, emitter.Bounds) ? drawnColor : culledColor);
 			}
 		}
 
@@ -2187,12 +2355,13 @@ namespace Nyx
 		// Its ambient occlusion; and the projection, for the picture and the depth back to view space
 		const glm::mat4& projection = view.SceneGlobals.Projection;
 		ubo.ProjectionInfo = glm::vec4(1.0f / projection[0][0], 1.0f / projection[1][1], projection[2][2], projection[3][2]);
+		// The scene's depth, for the occlusion and the particles
+		ubo.SceneDepthTexture = view.DepthTextureSlot;
 		const SceneViewAmbientOcclusion& occlusion = view.AmbientOcclusion;
 		if (occlusion.Settings.bAmbientOcclusion && occlusion.Extent.width > 0)
 		{
 			ubo.AmbientOcclusion = 1;
 			ubo.AmbientLightTexture = view.AmbientTextureSlot;
-			ubo.SceneDepthTexture = view.DepthTextureSlot;
 			ubo.OcclusionTexture = occlusion.Occlusion.Slot;
 			ubo.OcclusionDepthTexture = occlusion.Depth.Slot;
 			ubo.OcclusionRadius = occlusion.Settings.Radius;
@@ -2405,6 +2574,10 @@ namespace Nyx
 		{
 			AmbientOcclusion.CreatePipelines();
 		}
+		if (changed.contains("Particle.slang"))
+		{
+			Particles.CreatePipelines();
+		}
 		if (uses("DebugLines"))
 		{
 			DebugLines.CreatePipeline(SceneViews.front());
@@ -2608,6 +2781,7 @@ namespace Nyx
 			Overlays.DestroyViewResources(*it);
 			Bloom.Release(it->Bloom);
 			AmbientOcclusion.Release(it->AmbientOcclusion);
+			Particles.Release(it->Particles);
 
 			Bindless.RemoveTexture(it->HdrTextureSlot);
 			Bindless.RemoveTexture(it->AmbientTextureSlot);
@@ -2821,6 +2995,14 @@ namespace Nyx
 			WritePassTimestamp(cmd, view, ETimedPass::AmbientOcclusion, false);
 			AmbientOcclusion.Draw(view, view.DepthTextureSlot, cmd);
 			WritePassTimestamp(cmd, view, ETimedPass::AmbientOcclusion, true);
+		}
+
+		// Its particles, over the scene with its occluded sky's light, tested against its depth
+		if (!view.Particles.Draws.empty())
+		{
+			WritePassTimestamp(cmd, view, ETimedPass::Particles, false);
+			Particles.Draw(view, cmd);
+			WritePassTimestamp(cmd, view, ETimedPass::Particles, true);
 		}
 
 		// Its bloom, from the scene in HDR, for the tonemap to add

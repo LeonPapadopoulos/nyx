@@ -479,6 +479,15 @@ add_dependencies(NyxPointLightTests NyxGeneratedReflection)
 set_property(TARGET NyxPointLightTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxPointLightTests COMMAND NyxPointLightTests)
 
+# Particles without a GPU: an emitter stepped as the renderer steps it, the same with the same seed,
+# lifetimes, the rate and bursts, budgets, the air and a game's velocity field, the keys, the order
+# alpha particles are drawn in, a world's emitters.
+add_executable(NyxParticleTests ParticleTests.cpp)
+target_link_libraries(NyxParticleTests PRIVATE NyxEngine)
+add_dependencies(NyxParticleTests NyxGeneratedReflection)
+set_property(TARGET NyxParticleTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxParticleTests COMMAND NyxParticleTests)
+
 # The directional light's cascades without a GPU: splits, the spheres round the view's slices, the
 # light's view of them, snapped to their texels.
 add_executable(NyxShadowCascadeTests ShadowCascadeTests.cpp)
@@ -631,6 +640,19 @@ set_property(TARGET NyxPointLightGpuTests PROPERTY FOLDER "Tests")
 nyx_copy_shaders_next_to(NyxPointLightGpuTests)
 nyx_copy_shader_compiler_next_to(NyxPointLightGpuTests)
 add_test(NAME NyxPointLightGpuTests COMMAND NyxPointLightGpuTests)
+
+# Particles on a real GPU, stepped by a clock: one particle against the CPU's numbers, additive and
+# alpha, lit, hidden behind a box, soft where it meets the floor; paused and stepped, carried by a
+# velocity field, culled out of view, its icon picked; against a reference image. Needs a Vulkan
+# device; its window stays hidden.
+add_executable(NyxParticleGpuTests ParticleGpuTests.cpp)
+target_link_libraries(NyxParticleGpuTests PRIVATE NyxEngine)
+target_compile_definitions(NyxParticleGpuTests PRIVATE NYX_TEST_REFERENCES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/References")
+add_dependencies(NyxParticleGpuTests NyxGeneratedReflection)
+set_property(TARGET NyxParticleGpuTests PROPERTY FOLDER "Tests")
+nyx_copy_shaders_next_to(NyxParticleGpuTests)
+nyx_copy_shader_compiler_next_to(NyxParticleGpuTests)
+add_test(NAME NyxParticleGpuTests COMMAND NyxParticleGpuTests)
 
 # How long the renderer takes for 50 000 small meshes in 200 cells and 300 more, drawn one by one
 # and instanced; not run by ctest, timing depends on the machine. Needs a Vulkan device.

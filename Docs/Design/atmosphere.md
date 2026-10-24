@@ -13,7 +13,8 @@ One component holds the world's air and the camera's response to light: *Fog*, *
 *Ambient Occlusion* (`EnvironmentComponent`, reflected, with undo, saved in scenes, sent to a
 running game). The world's first one counts; a world without one is
 drawn as before, to the bit, and so is one whose fog and sky are both off (`NyxAtmosphereGpuTests`
-checks both).
+checks both). Its *Particles* settings, the wind and the most particles in the world, are in
+[Lights and particles](lights-and-particles.md#particles).
 
 Why a component of its own, not more settings on the `DirectionalLightComponent`:
 

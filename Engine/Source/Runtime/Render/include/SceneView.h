@@ -10,6 +10,7 @@
 #include "ShadowCascades.h"
 #include "VulkanDebugLines.h"
 #include "VulkanEditorOverlays.h"
+#include "VulkanParticles.h"
 
 #include <glm/glm.hpp>
 #include <vulkan/vulkan.hpp>
@@ -102,6 +103,8 @@ namespace Nyx
 		// Its ambient occlusion: its targets at half its size, and its settings this frame
 		// (VulkanAmbientOcclusion)
 		SceneViewAmbientOcclusion AmbientOcclusion;
+		// Its particles this frame, and their pass's framebuffer (VulkanParticles)
+		SceneViewParticles Particles;
 		// What its passes after the scene pass took on the GPU, in the last frame drawn; and its
 		// place among the views timed this frame (VulkanRenderer::PassTimestamps)
 		SceneViewGpuTimes GpuTimes;

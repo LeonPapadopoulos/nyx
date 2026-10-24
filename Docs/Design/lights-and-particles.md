@@ -1,10 +1,14 @@
 # Lights and particles
 
-Light from points, such as a lamp or a fire, and how it gets to the pixels; and why it works as it
-does. The settings are on `PointLightComponent` (`Scene`); the math is in
-`Engine/Source/Runtime/Render/PointLights.h`, the renderer's part in `VulkanRenderer`
-(`ExtractPointLights()`, `CullSceneView()`, `UpdateSceneUniforms()`), the shaders in
-`Engine/Shaders/Library/nyx/view.slang` and `lighting.slang`.
+Light from points, such as a lamp or a fire, and how it gets to the pixels; particles, such as
+sparks, embers and smoke, moved on the CPU and drawn instanced; and why they work as they do. The
+settings are on `PointLightComponent` and `ParticleEmitterComponent` (`Scene`), with the world's
+wind and particle budget on `EnvironmentComponent`; the math is in
+`Engine/Source/Runtime/Render/PointLights.h` and `Particles.h`, a game's air comes in through
+`ParticleVelocityField.h`; the renderer's part is in `VulkanRenderer` (`ExtractPointLights()`,
+`ExtractParticles()`, `CullSceneView()`, `UpdateSceneUniforms()`) and `VulkanParticles`, the
+shaders in `Engine/Shaders/Library/nyx/view.slang`, `lighting.slang` and
+`Engine/Shaders/Particle.slang`.
 
 ## Point lights
 
@@ -111,6 +115,132 @@ small point light where it should light its surroundings:
 The lights test scene (`Assets/Scenes/LightsTest.nyxscene`) pairs its glowing cube and its glowing
 ring with lights this way.
 
+## Particles
+
+A *Particle Emitter* (`ParticleEmitterComponent`, reflected, with undo, saved in scenes, sent to a
+running game) gives off particles from its entity's position: sparks, embers, smoke, the flames of
+a fire. Its settings:
+
+- **Emission**: *Emitting*, *Rate* (particles a second), *Bursts* (many at once at moments of the
+  emitter's life, once or again every *Interval*), *Lifetime* (a range), *Spawn Radius* (born
+  anywhere in a ball).
+- **Motion**: *Direction* and *Cone Angle* (each born heading somewhere in the cone, as likely
+  anywhere in it), *Speed* (a range), *Gravity* (down), *Buoyancy* (up, as warm smoke rises),
+  *Drag* (how fast a particle takes on the air's speed), *Spin*, *Local Space* (moving with the
+  entity, like a torch's flame, or left where born, like a trail of smoke).
+- **Look**: *Shape* (a billboard, a soft round quad facing the camera, or a small mesh, such as
+  an ember: *Mesh*, the cube without one), *Size* (a range), *Size Over Life* and *Color Over Life*
+  (a few keys each, between which it goes straight; colour and alpha), *Blend* (Additive or
+  Alpha), *Emissive Intensity* (the colour times this: above 1 it glows and blooms), *Lit*, *Soft
+  Distance*.
+- **Budget**: *Max Particles*, and *Seed*.
+
+The world's first *Environment* has the rest, under *Particles*: *Wind*, the air's speed
+everywhere, and *Max Particles*, the most alive in the world at once, every emitter's together
+(50 000 without an environment).
+
+### Simulated on the CPU, for the eye alone
+
+Particles are moved on the CPU, by the renderer, as it extracts each shown world
+(`UpdateParticles()`, `StepParticleEmitter()` in `Particles.h`, plain code that tests step as the
+renderer does). Nothing in the world feels them: they are never in the registry, never in the
+physics, never in the simulation's steps, so a game plays the same with or without them, and the
+editor and the game draw the same particles from the same components.
+
+- **The world's time.** An emitter moves on by the world's time since the last frame
+  (`RenderWorld::Time`, at most 0.1 s a frame, so a hitch doesn't make particles leap): a game's is
+  its simulation clock's at the drawn moment, which stands still while the game is paused and
+  moves on by one step at a time with *Step*, as the decals' pulse does; the editor's own world's
+  runs on, so particles play in the editor's scene views as they are edited (a preview without
+  playing). A jump back in time starts every emitter again.
+- **The same every time.** Each emitter has its own random numbers (PCG's output on a linear
+  congruential state), started from its *Seed*; a particle's numbers are drawn in one order whether
+  or not it is born. The same seed and the same steps give the same particles to the bit
+  (`NyxParticleTests`); a new seed starts the emitter again, which is also how a test or an edit
+  replays it.
+- **Moving.** Each step: aged, those past their lifetime gone; gravity and buoyancy as an
+  acceleration; the drag pulls the velocity towards the air's speed by `1 - e^(-drag · dt)` (exact
+  for any step length); then moved. Particles born during a step are spread over it, each as if
+  born when it was due, so a low frame rate doesn't make them come in clumps.
+- **Budgets in data.** An emitter never has more than its *Max Particles*; the world never more
+  than its environment's *Max Particles*, taken from by the emitters in the world's order; a
+  particle that would pass either isn't born (counted, `ParticleEmitterState::Refused`).
+- **Kept per world**, by entity, from frame to frame (`RenderWorld::Particles`); an emitter gone is
+  forgotten.
+
+### Carried by the air
+
+`IParticleVelocityField` (`ParticleVelocityField.h`) is the seam a game's air comes in by: its
+wind, the draught of a fire, the air a moving body pushes, whatever field it keeps. A game gives one
+to a world (`IRenderer::SetWorldParticleVelocityField()`); the renderer asks it once per emitter a
+step for the air's speed at every one of the emitter's particles, in the world, at the world's time;
+without one, the environment's *Wind* is the air everywhere. *Drag* says how much a particle
+follows the air: sparks a little, smoke a lot. One call an emitter rather than one a particle, so a
+game's field can look up its cells for many particles at once; never written to, so the field may be
+anything that can answer.
+
+### Drawn instanced
+
+- **One stream a frame.** Each world's particles become `ParticleInstanceData` (48 bytes: where,
+  how big, the colour times the emissive intensity and the alpha, the turn) once a frame; each view
+  takes those of its emitters in view into this frame's particle stream, one host-visible vertex
+  buffer for every view (`VulkanParticles::Upload()`), written while no frame reads it (one frame in
+  flight).
+- **Culled by bounds per view**: an emitter's box round its particles as drawn, against the view's
+  frustum (`SceneViewCullingStats::ParticleEmitters`, `ParticleEmittersCulled`, `Particles`). An
+  emitter out of view still moves: its particles are where they should be when it comes back.
+- **Sorted only where needed**: alpha blended emitters are drawn first, the farthest first by their
+  boxes' middles, each one's particles back to front from the camera (`SortParticlesBackToFront()`:
+  one key a particle, its distance and its index in one integer); additive ones after, in any order,
+  as adding doesn't care. Particles of two alpha emitters that overlap aren't sorted between them.
+- **Billboards** are two triangles an instance, their corners from the vertex's index, turned about
+  the view by each particle's angle, facing the camera's plane (not its position, so they don't
+  swing as they pass the edge of the view); their alpha falls to 0 at their rim. **Meshes** are the
+  mesh's triangles an instance, turned by each particle's quaternion; their back faces are culled
+  (no depth buffer sorts a mesh's faces, so the meshes should be convex), shaded a little by how
+  they face the camera.
+- **Lit** particles take, at their middle, the sun's light, the sky's from above and the point
+  lights' (all of it, whichever way it comes, as a puff of smoke scatters light): smoke is lit by
+  the fire beside it. Unlit ones show their colour: glows and sparks.
+- **Fog**: additive particles' light is dimmed by the fog's transmittance; alpha ones are fogged
+  as a decal is (premultiplied).
+
+### Their pass, and soft particles
+
+The particles have a pass of their own (`VulkanParticles`, `Particle.slang`) after the view's
+ambient occlusion and before its bloom: over the HDR scene, with **no depth buffer**, each pixel
+tested against the scene's depth in the shader, which reads the depth the ambient occlusion
+already reads (`ViewConstants.SceneDepth`, now always set), turned to a readable layout and back
+around the pass as the occlusion does. So:
+
+- behind what the scene drew, a particle's pixel is dropped: hidden as with a depth test;
+- in front, its alpha is faded over the emitter's *Soft Distance* to what is behind it: **soft
+  particles**, with no hard line where smoke meets the ground or a flame a log. It costs one depth
+  read and a division a pixel.
+- after the occlusion, a particle isn't darkened by the occlusion of what is behind it, and covers
+  the occluded light as it should; before the bloom, emissive particles bloom.
+
+Why not in the scene pass, tested against its depth buffer: the depth can't be read in the pass that
+writes it (no soft particles), and the particles would have to write the ambient occlusion's
+second target too. Four pipelines (billboard and mesh, additive and alpha) with the scene pipelines'
+layout; the emitter's soft distance, lit and blend in the draw's push constants.
+
+### In the editor
+
+Each emitter has an icon, a small box of lines, which a click selects (also an emitter with no
+particles, such as one whose burst is over); a selected emitter's particles' bounds are drawn in
+the selection's colour. Particles play in the scene views as they are edited; a new *Seed* replays
+the emitter.
+
+### A fire, as an example
+
+`Assets/Scenes/ParticlesTest.nyxscene` (written by `NyxParticleGpuTests --write-scene`): the lights
+test scene with a fire: flames (additive billboards, rising by their buoyancy, growing then
+shrinking, yellow to red and gone), embers (small cubes, additive, glowing above the bloom's
+threshold, thrown up and spinning, falling back slowly), smoke (alpha, lit, rising and growing,
+drifting in the environment's wind), and a warm point light at the flames. A game would carry the
+smoke by its own air field and flicker the light with the flames.
+
 ## Seeing it
 
 - In the editor's scene views, each light has an icon, a star of lines in its colour; a click on
@@ -118,6 +248,12 @@ ring with lights this way.
   selection's colour.
 - `Assets/Scenes/LightsTest.nyxscene` (written by `NyxPointLightGpuTests --write-scene`): the
   atmosphere test scene at dusk, the sun just set, with six coloured lights.
+- Each particle emitter has an icon too, a small box of lines; a selected emitter's particles'
+  bounds are drawn round them.
+- `Assets/Scenes/ParticlesTest.nyxscene` (written by `NyxParticleGpuTests --write-scene`): the
+  lights test scene with a fire's flames, embers and smoke in a wind.
+- *Debug > Culling Bounds* (F4 in a Debug build of the game) shows the lights' ranges and the
+  emitters' particles' boxes beside the meshes' bounds, green where drawn, red where culled.
 
 ## Numbers
 
@@ -154,6 +290,32 @@ What it says:
 - The scene's 24 000 cubes are lit by every light within reach, instanced or not, at no cost of
   their own beyond their pixels.
 
+Particles: `NyxInstancingBenchmark particles`, the same scene, camera and machine, with 10 emitters
+in front of the camera, 2 000 particles each (alive at once, after 300 frames of filling up): five of
+sparks (additive billboards, 5 to 8 cm), five of smoke (alpha blended, lit, sorted back to front,
+30 to 50 cm). *Particles GPU* is their pass alone, by timestamps of its own
+(`SceneViewGpuTimes::Particles`).
+
+| Build | Emitters | Particles | Frame | Scene CPU | Scene views GPU | Particles GPU |
+| --- | --- | --- | --- | --- | --- | --- |
+| Debug | 0 | 0 | 5.13 ms | 1.66 ms | 1.82 ms | |
+| Debug | 10 | 20 000 | 16.60 ms | 12.04 ms | 2.83 ms | 0.22 ms |
+| Release | 0 | 0 | 2.77 ms | 0.15 ms | 1.80 ms | |
+| Release | 10 | 20 000 | 4.00 ms | 1.34 ms | 1.88 ms | 0.16 ms |
+
+What it says:
+
+- In Release, 20 000 particles cost 1.2 ms of the CPU a frame, about 60 ns a particle: moved,
+  turned into what the GPU draws, the smoke's 10 000 sorted, and copied into the frame's stream.
+  The GPU draws them in 0.16 ms, soft against the scene's depth, fogged and lit; the scene views'
+  time grows by less, as the pass overlaps the others.
+- In Debug, 10.4 ms of the CPU, about 0.5 µs a particle: Debug builds call glm's operators rather
+  than inline them. The hot loops are written in plain floats (moving a particle, its bounds) and
+  the sort is one integer key a particle on a plain array, which took it from about 30 ms; a Debug
+  build of a scene with a few fires (a few thousand particles) stays well within a frame.
+- The emitters out of view still move; culling saves their drawing, not their stepping. Past about
+  100 000 particles, the simulation belongs on the GPU (Later).
+
 ## Later
 
 - Clusters of lights, when views see more than a few dozen (above).
@@ -161,3 +323,9 @@ What it says:
 - Spot lights: a point light with a cone, the same list, two more numbers a light.
 - The fog lit by the lights: a glow round a light in fog (the fog adds the sun's and the sky's
   light only).
+- Particles: textures and flipbooks for the billboards (a soft disc for now), billboards stretched
+  along their velocity for sparks, collisions with the ground, trails; their simulation on the GPU
+  in a compute pass when hundreds of thousands are wanted (the CPU's is enough for the tens of
+  thousands a scene of fires and dust has); alpha particles of different emitters sorted together
+  where they overlap; an emitter far from every view moved less often; particles lit per pixel, and
+  casting shadows.

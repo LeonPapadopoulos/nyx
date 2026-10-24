@@ -14,9 +14,10 @@
 // The ground mode draws the atmosphere test scene (Assets/Scenes/AtmosphereTest.nyxscene: the
 // ground test scene with about 24 000 small cubes scattered over its ground) from its camera,
 // without and with its environment. The lights mode draws it with its environment and 0, 1, 16
-// and 64 point lights in view, each reaching 6 m.
+// and 64 point lights in view, each reaching 6 m. The particles mode draws it with 10 emitters of
+// 2 000 particles each, half additive, half alpha blended, lit and sorted.
 //
-// NyxInstancingBenchmark [plain|instanced|ground|lights] [frames] [material]: one mode, or all; the field
+// NyxInstancingBenchmark [plain|instanced|ground|lights|particles] [frames] [material]: one mode, or all; the field
 // drawn with another material than Materials/Untextured.nyxmat, e.g. one with a vertex function
 // (Materials/VertexColorWind.nyxmat), to measure what it costs.
 #include "AssetResolver.h"
@@ -27,6 +28,7 @@
 #include "EnvironmentComponent.h"
 #include "Log.h"
 #include "MeshRendererComponent.h"
+#include "ParticleEmitterComponent.h"
 #include "Paths.h"
 #include "PointLightComponent.h"
 #include "ScatterInstances.h"
@@ -193,6 +195,7 @@ namespace
 		// Of that, the passes after the scene pass, every view's
 		double BloomGpu = 0.0;
 		double OcclusionGpu = 0.0;
+		double ParticlesGpu = 0.0;
 	};
 
 	double Median(std::vector<double> values)
@@ -210,6 +213,7 @@ namespace
 		std::vector<double> sceneViews;
 		std::vector<double> bloom;
 		std::vector<double> occlusion;
+		std::vector<double> particles;
 		for (int index = 0; index < frames; ++index)
 		{
 			const auto start = std::chrono::steady_clock::now();
@@ -225,9 +229,11 @@ namespace
 						{
 							passes.Bloom += gpu.Renderer.GetSceneViewGpuTimes(view)->Bloom;
 							passes.AmbientOcclusion += gpu.Renderer.GetSceneViewGpuTimes(view)->AmbientOcclusion;
+							passes.Particles += gpu.Renderer.GetSceneViewGpuTimes(view)->Particles;
 						}
 						bloom.push_back(passes.Bloom);
 						occlusion.push_back(passes.AmbientOcclusion);
+						particles.push_back(passes.Particles);
 					}
 				});
 			frame.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
@@ -238,14 +244,15 @@ namespace
 			sceneViews.push_back(0.0);
 			bloom.push_back(0.0);
 			occlusion.push_back(0.0);
+			particles.push_back(0.0);
 		}
-		return Timing{ Median(frame), Median(scene), Median(sceneViews), Median(bloom), Median(occlusion) };
+		return Timing{ Median(frame), Median(scene), Median(sceneViews), Median(bloom), Median(occlusion), Median(particles) };
 	}
 
 	void PrintTiming(const char* name, const Timing& timing)
 	{
-		std::printf("  %-7s frame %8.2f ms   scene CPU %8.2f ms   scene views GPU %7.2f ms   bloom GPU %5.2f ms   occlusion GPU %5.2f ms\n", name, timing.Frame,
-			timing.SceneCpu, timing.SceneViewsGpu, timing.BloomGpu, timing.OcclusionGpu);
+		std::printf("  %-7s frame %8.2f ms   scene CPU %8.2f ms   scene views GPU %7.2f ms   bloom GPU %5.2f ms   occlusion GPU %5.2f ms   particles GPU %5.2f ms\n", name,
+			timing.Frame, timing.SceneCpu, timing.SceneViewsGpu, timing.BloomGpu, timing.OcclusionGpu, timing.ParticlesGpu);
 	}
 
 	// The world's air, each way it is measured: each line adds to the one before
@@ -368,6 +375,69 @@ namespace
 		gpu.DrawFrames(2);
 	}
 
+	// The atmosphere test scene from its own camera, with its environment, and 10 emitters in front of
+	// the camera, 2 000 particles each: five of sparks, additive, and five of smoke, alpha blended
+	// and lit, so sorted back to front each frame
+	void RunParticles(SceneRenderer& gpu, int frames)
+	{
+		Registry world;
+		AssetResolver resolver(gpu.Renderer);
+		ScenePostLoadContext context{};
+		context.AssetResolver = &resolver;
+		const std::filesystem::path path = Paths::GetAssetsDir() / "Scenes/AtmosphereTest.nyxscene";
+		if (!SceneSerializer::LoadFromFile(path, world, context))
+		{
+			std::cout << "particles: " << path.string() << " can't be loaded\n";
+			return;
+		}
+		UpdateScatters(world);
+
+		IEditorRenderer& renderer = gpu.Renderer;
+		renderer.SetWorld(&world);
+		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewCameraMode(view, EViewportCameraMode::ScenePrimaryCamera);
+		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
+		gpu.DrawUntilShadersCompiled();
+		std::cout << "particles: the atmosphere test scene with its environment, from its camera, emitters of 2 000 particles each in front of it\n";
+		for (const int count : { 0, 10 })
+		{
+			for (int index = 0; index < count; ++index)
+			{
+				const bool bSmoke = index % 2 == 1;
+				ParticleEmitterComponent emitter;
+				emitter.MaxParticles = 2000;
+				emitter.Lifetime = glm::vec2(1.5f, 2.5f);
+				// Enough a second that 2 000 stay alive
+				emitter.Rate = 1500.0f;
+				emitter.SpawnRadius = 0.3f;
+				emitter.ConeAngle = 35.0f;
+				emitter.Speed = bSmoke ? glm::vec2(0.3f, 0.6f) : glm::vec2(1.5f, 3.0f);
+				emitter.Gravity = bSmoke ? 0.0f : 3.0f;
+				emitter.Buoyancy = bSmoke ? 0.5f : 0.0f;
+				emitter.Drag = 0.5f;
+				emitter.Size = bSmoke ? glm::vec2(0.3f, 0.5f) : glm::vec2(0.05f, 0.08f);
+				emitter.Blend = bSmoke ? EParticleBlend::Alpha : EParticleBlend::Additive;
+				emitter.bLit = bSmoke;
+				emitter.EmissiveIntensity = bSmoke ? 1.0f : 3.0f;
+				emitter.ColorOverLife = { { .Time = 0.0f, .Color = bSmoke ? glm::vec3(0.5f) : glm::vec3(1.0f, 0.6f, 0.2f), .Alpha = bSmoke ? 0.4f : 1.0f },
+					{ .Time = 1.0f, .Color = bSmoke ? glm::vec3(0.4f) : glm::vec3(1.0f, 0.2f, 0.05f), .Alpha = 0.0f } };
+				emitter.Seed = index + 1;
+				const Entity entity = world.CreateEntity();
+				world.Add<TransformComponent>(entity, TransformComponent{ .Position = glm::vec3(-9.0f + index * 2.0f, 0.5f, 2.0f - (index % 3) * 3.0f) });
+				world.Add<ParticleEmitterComponent>(entity, emitter);
+			}
+			// Filled up
+			gpu.DrawFrames(count > 0 ? 300 : 1);
+			const Timing timing = Measure(gpu, frames);
+			const SceneViewCullingStats* stats = gpu.Renderer.GetSceneViewCullingStats(view);
+			std::cout << "  " << count << " emitters, " << stats->Particles << " particles drawn:\n";
+			PrintTiming("camera", timing);
+		}
+		renderer.DestroySceneView(view);
+		renderer.SetWorld(nullptr);
+		gpu.DrawFrames(2);
+	}
+
 	void Run(SceneRenderer& gpu, const std::string& mode, int frames, const std::string& materialPath)
 	{
 		Registry world;
@@ -478,7 +548,7 @@ int main(int argc, char** argv)
 		SceneRenderer gpu("NyxInstancingBenchmark");
 		gpu.Renderer.SetVSync(false);
 		Nyx::RegisterComponentTypes();
-		for (const char* mode : { "plain", "instanced", "ground", "lights" })
+		for (const char* mode : { "plain", "instanced", "ground", "lights", "particles" })
 		{
 			if (!only.empty() && only != mode)
 			{
@@ -492,6 +562,11 @@ int main(int argc, char** argv)
 			if (std::string(mode) == "lights")
 			{
 				RunLights(gpu, frames);
+				continue;
+			}
+			if (std::string(mode) == "particles")
+			{
+				RunParticles(gpu, frames);
 				continue;
 			}
 #if !NYX_BENCHMARK_INSTANCING

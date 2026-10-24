@@ -78,6 +78,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/DirectionalLightComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/EnvironmentComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/PointLightComponent.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ParticleEmitterComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/NameComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/PhysicsComponents.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ConstraintComponent.cpp
@@ -141,6 +142,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/AssetResolver.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/SurfaceDecals.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/PointLights.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/Particles.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/DrawnWorldTime.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Mesh.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/RuntimeMeshCache.cpp
@@ -153,6 +155,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Bloom.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanBloom.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanAmbientOcclusion.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanParticles.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Texture.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/CubemapTexture.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Material.cpp
@@ -268,6 +271,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/DirectionalLightComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/EnvironmentComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/PointLightComponent.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ParticleEmitterComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/NameComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/PhysicsComponents.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ConstraintComponent.h
@@ -341,6 +345,8 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/AssetResolver.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/SurfaceDecals.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/PointLights.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/Particles.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/ParticleVelocityField.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/DrawnWorldTime.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Mesh.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/RuntimeMeshCache.h
@@ -353,6 +359,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Bloom.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanBloom.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanAmbientOcclusion.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanParticles.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Texture.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/CubemapTexture.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Material.h

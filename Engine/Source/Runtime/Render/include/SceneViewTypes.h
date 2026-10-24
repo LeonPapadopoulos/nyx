@@ -90,6 +90,11 @@ namespace Nyx
 		uint32_t PointLights = 0;
 		uint32_t PointLightsCulled = 0;
 		uint32_t PointLightsDropped = 0;
+		// The world's particle emitters with particles to draw, those wholly out of view, and the
+		// particles drawn
+		uint32_t ParticleEmitters = 0;
+		uint32_t ParticleEmittersCulled = 0;
+		uint32_t Particles = 0;
 	};
 
 	// The primary light's shadows as a view draws them (DirectionalLightComponent's settings, in
@@ -150,6 +155,7 @@ namespace Nyx
 	{
 		float Bloom = 0.0f;
 		float AmbientOcclusion = 0.0f;
+		float Particles = 0.0f;
 	};
 
 	// The view's ambient occlusion (EnvironmentComponent, in range:
