@@ -13,9 +13,10 @@
 //
 // The ground mode draws the atmosphere test scene (Assets/Scenes/AtmosphereTest.nyxscene: the
 // ground test scene with about 24 000 small cubes scattered over its ground) from its camera,
-// without and with its environment.
+// without and with its environment. The lights mode draws it with its environment and 0, 1, 16
+// and 64 point lights in view, each reaching 6 m.
 //
-// NyxInstancingBenchmark [plain|instanced|ground] [frames] [material]: one mode, or all; the field
+// NyxInstancingBenchmark [plain|instanced|ground|lights] [frames] [material]: one mode, or all; the field
 // drawn with another material than Materials/Untextured.nyxmat, e.g. one with a vertex function
 // (Materials/VertexColorWind.nyxmat), to measure what it costs.
 #include "AssetResolver.h"
@@ -27,6 +28,7 @@
 #include "Log.h"
 #include "MeshRendererComponent.h"
 #include "Paths.h"
+#include "PointLightComponent.h"
 #include "ScatterInstances.h"
 #include "SceneSerializer.h"
 #include "TransformComponent.h"
@@ -320,6 +322,52 @@ namespace
 		gpu.DrawFrames(2);
 	}
 
+	// The atmosphere test scene from its own camera, with its environment, lit by more and more
+	// point lights in front of the camera, among its cubes
+	void RunLights(SceneRenderer& gpu, int frames)
+	{
+		Registry world;
+		AssetResolver resolver(gpu.Renderer);
+		ScenePostLoadContext context{};
+		context.AssetResolver = &resolver;
+		const std::filesystem::path path = Paths::GetAssetsDir() / "Scenes/AtmosphereTest.nyxscene";
+		if (!SceneSerializer::LoadFromFile(path, world, context))
+		{
+			std::cout << "lights: " << path.string() << " can't be loaded\n";
+			return;
+		}
+		UpdateScatters(world);
+
+		IEditorRenderer& renderer = gpu.Renderer;
+		renderer.SetWorld(&world);
+		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewCameraMode(view, EViewportCameraMode::ScenePrimaryCamera);
+		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
+		gpu.DrawUntilShadersCompiled();
+		std::cout << "lights: the atmosphere test scene with its environment, from its camera, point lights reaching 6 m in front of it\n";
+		Random random;
+		std::vector<Entity> lights;
+		for (const int count : { 0, 1, 16, 64 })
+		{
+			while (static_cast<int>(lights.size()) < count)
+			{
+				const Entity light = world.CreateEntity();
+				const glm::vec3 position(-12.0f + random.Next() * 24.0f, 0.3f + random.Next() * 1.7f, -14.0f + random.Next() * 20.0f);
+				world.Add<TransformComponent>(light, TransformComponent{ .Position = position });
+				world.Add<PointLightComponent>(light, PointLightComponent{ .Color = glm::vec3(0.4f + random.Next() * 0.6f, 0.4f + random.Next() * 0.6f, 0.4f + random.Next() * 0.6f),
+					.Intensity = 2.0f, .Range = 6.0f });
+				lights.push_back(light);
+			}
+			const Timing timing = Measure(gpu, frames);
+			const SceneViewCullingStats* stats = gpu.Renderer.GetSceneViewCullingStats(view);
+			std::cout << "  " << count << " point lights, " << (stats->PointLights - stats->PointLightsCulled) << " of them in view:\n";
+			PrintTiming("camera", timing);
+		}
+		renderer.DestroySceneView(view);
+		renderer.SetWorld(nullptr);
+		gpu.DrawFrames(2);
+	}
+
 	void Run(SceneRenderer& gpu, const std::string& mode, int frames, const std::string& materialPath)
 	{
 		Registry world;
@@ -430,7 +478,7 @@ int main(int argc, char** argv)
 		SceneRenderer gpu("NyxInstancingBenchmark");
 		gpu.Renderer.SetVSync(false);
 		Nyx::RegisterComponentTypes();
-		for (const char* mode : { "plain", "instanced", "ground" })
+		for (const char* mode : { "plain", "instanced", "ground", "lights" })
 		{
 			if (!only.empty() && only != mode)
 			{
@@ -439,6 +487,11 @@ int main(int argc, char** argv)
 			if (std::string(mode) == "ground")
 			{
 				RunGround(gpu, frames);
+				continue;
+			}
+			if (std::string(mode) == "lights")
+			{
+				RunLights(gpu, frames);
 				continue;
 			}
 #if !NYX_BENCHMARK_INSTANCING

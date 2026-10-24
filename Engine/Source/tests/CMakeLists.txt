@@ -471,6 +471,14 @@ add_dependencies(NyxCullingTests NyxGeneratedReflection)
 set_property(TARGET NyxCullingTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxCullingTests COMMAND NyxCullingTests)
 
+# Point lights without a GPU: the falloff to 0 at the range, a world's lights as a frame draws them,
+# and a view's culling of them by its frustum and past the most it is lit by.
+add_executable(NyxPointLightTests PointLightTests.cpp)
+target_link_libraries(NyxPointLightTests PRIVATE NyxEngine)
+add_dependencies(NyxPointLightTests NyxGeneratedReflection)
+set_property(TARGET NyxPointLightTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxPointLightTests COMMAND NyxPointLightTests)
+
 # The directional light's cascades without a GPU: splits, the spheres round the view's slices, the
 # light's view of them, snapped to their texels.
 add_executable(NyxShadowCascadeTests ShadowCascadeTests.cpp)
@@ -611,6 +619,18 @@ set_property(TARGET NyxAmbientOcclusionGpuTests PROPERTY FOLDER "Tests")
 nyx_copy_shaders_next_to(NyxAmbientOcclusionGpuTests)
 nyx_copy_shader_compiler_next_to(NyxAmbientOcclusionGpuTests)
 add_test(NAME NyxAmbientOcclusionGpuTests COMMAND NyxAmbientOcclusionGpuTests)
+
+# Point lights on a real GPU: a light on a floor fading to nothing at its range, a coloured light,
+# two adding up, under fog, behind the camera, culled out of view, never dimmed by ambient
+# occlusion, against a reference image. Needs a Vulkan device; its window stays hidden.
+add_executable(NyxPointLightGpuTests PointLightGpuTests.cpp)
+target_link_libraries(NyxPointLightGpuTests PRIVATE NyxEngine)
+target_compile_definitions(NyxPointLightGpuTests PRIVATE NYX_TEST_REFERENCES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/References")
+add_dependencies(NyxPointLightGpuTests NyxGeneratedReflection)
+set_property(TARGET NyxPointLightGpuTests PROPERTY FOLDER "Tests")
+nyx_copy_shaders_next_to(NyxPointLightGpuTests)
+nyx_copy_shader_compiler_next_to(NyxPointLightGpuTests)
+add_test(NAME NyxPointLightGpuTests COMMAND NyxPointLightGpuTests)
 
 # How long the renderer takes for 50 000 small meshes in 200 cells and 300 more, drawn one by one
 # and instanced; not run by ctest, timing depends on the machine. Needs a Vulkan device.

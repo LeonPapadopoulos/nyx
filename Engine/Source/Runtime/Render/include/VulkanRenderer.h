@@ -25,6 +25,7 @@
 #include "CubemapTexture.h"
 #include "Material.h"
 #include "SurfaceDecals.h"
+#include "PointLights.h"
 #include "AssetResolver.h"
 #include "GltfImporter.h"
 #include <imgui.h>
@@ -144,11 +145,15 @@ namespace Nyx
 		// 1 / the projection's [0][0] and [1][1], its [2][2] and [3][2]: from the picture and the
 		// depth buffer to view space
 		glm::vec4 ProjectionInfo{ 0.0f };
+
+		// How many of the view's point lights (its set's second binding) its pixels are lit by
+		uint32_t PointLightCount = 0;
+		uint32_t PointLightPadding[3] = {};
 	};
 
 	// The view's set (set 1) as nyx/view.slang reads it, in scalar layout; to whole 16 bytes, as
 	// std140 would be too
-	static_assert(sizeof(SceneUBO) == 944, "SceneUBO must match ViewConstants in nyx/view.slang");
+	static_assert(sizeof(SceneUBO) == 960, "SceneUBO must match ViewConstants in nyx/view.slang");
 
 	// One draw's push constants, the same for every scene pipeline: ObjectConstants in
 	// nyx/bindless.slang
@@ -266,6 +271,8 @@ namespace Nyx
 		// Its surface decals, drawn over the objects and the sky, and their materials by path
 		std::vector<RenderDecal> Decals;
 		DecalMaterialCache DecalMaterials;
+		// Its point lights, which each view culls for its own pixels
+		std::vector<RenderPointLight> PointLights;
 		// Dense picking IDs: ID i is the entity at i - 1, 0 is nothing
 		std::vector<Nyx::Entity> PickingIdToEntity;
 		// This frame's time of what moves by itself in the world, such as a decal's pulse, in
@@ -491,7 +498,7 @@ namespace Nyx
 		// material's decal pipeline
 		void DrawRenderDecals(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd);
 
-		// Set 1, the view's: its SceneUBO
+		// Set 1, the view's: its SceneUBO, and its point lights
 		void CreateSceneDescriptorSetLayout();
 		// The layout of every scene pipeline: the global set (Bindless), the view's set, and
 		// ObjectConstants

@@ -5,6 +5,7 @@
 #include "VulkanBloom.h"
 #include "VulkanAmbientOcclusion.h"
 #include "EditorCamera.h"
+#include "PointLights.h"
 #include "SceneViewTypes.h"
 #include "ShadowCascades.h"
 #include "VulkanDebugLines.h"
@@ -106,9 +107,14 @@ namespace Nyx
 		SceneViewGpuTimes GpuTimes;
 		uint32_t TimedViewIndex = 0;
 
-		// The view's set (set 1): its SceneUBO
+		// The point lights its pixels are lit by this frame (VulkanRenderer::CullSceneView())
+		std::vector<ViewPointLight> PointLights;
+
+		// The view's set (set 1): its SceneUBO, and its point lights, room for MaxViewPointLights
 		vk::raii::Buffer SceneUniformBuffer{ nullptr };
 		vk::raii::DeviceMemory SceneUniformBufferMemory{ nullptr };
+		vk::raii::Buffer PointLightBuffer{ nullptr };
+		vk::raii::DeviceMemory PointLightBufferMemory{ nullptr };
 		vk::raii::DescriptorPool SceneDescriptorPool{ nullptr };
 		vk::raii::DescriptorSets SceneDescriptorSets{ nullptr };
 

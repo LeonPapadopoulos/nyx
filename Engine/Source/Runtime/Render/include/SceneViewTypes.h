@@ -85,6 +85,11 @@ namespace Nyx
 		// a cell's instances, those of cells that follow on, or entities that draw alike, together
 		uint32_t Instances = 0;
 		uint32_t Draws = 0;
+		// The world's point lights, those whose light reaches nowhere in view, and those in view left
+		// out past the most a view lights its pixels with (CullPointLights())
+		uint32_t PointLights = 0;
+		uint32_t PointLightsCulled = 0;
+		uint32_t PointLightsDropped = 0;
 	};
 
 	// The primary light's shadows as a view draws them (DirectionalLightComponent's settings, in

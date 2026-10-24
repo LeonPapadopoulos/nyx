@@ -48,7 +48,8 @@ One way of binding serves every scene pipeline (`VulkanBindless`, `bindless.slan
 
 - **Set 0, global, bound once per pass:** one array of every sampled image (2D and cube), the
   fixed samplers, and one buffer with every material's values, each at its own offset.
-- **Set 1, per view:** the scene's uniforms, the environment and the time (`view.slang`).
+- **Set 1, per view:** the scene's uniforms, the environment and the time (`view.slang`), and
+  the point lights that reach the view, a storage buffer (`PointLights`).
 - **Push constants, per draw:** the model matrix, the material's offset, the entity id, six
   values set by code (`CustomData`, `CustomData2`), such as a decal's, and the instance's custom
   numbers where a draw has no instance stream of its own (`InstanceCustom`; 112 bytes in all).

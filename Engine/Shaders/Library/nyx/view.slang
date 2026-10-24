@@ -1,5 +1,5 @@
 // Set 1: the view a scene is drawn for. SceneUBO in VulkanRenderer.h; the engine's GLSL shaders
-// declare its first fields as SceneUBO too.
+// declare its first fields as SceneUBO too. Its second binding is the view's point lights.
 
 import nyx.bindless;
 
@@ -107,8 +107,26 @@ public struct ViewConstants
     // From the picture to view space: 1 / the projection's [0][0] and [1][1]; and from a depth of
     // the depth buffer to metres along the view (reversed): [3][2] / (depth + [2][2]), z and w here
     public float4 ProjectionInfo;
+
+    // How many of PointLights the view's pixels are lit by (CullPointLights() in PointLights.h)
+    public uint PointLightCount;
+    public uint PointLightPadding0;
+    public uint PointLightPadding1;
+    public uint PointLightPadding2;
 }
 [vk::binding(0, 1)] public ConstantBuffer<ViewConstants> View;
+
+// A point light as the view's pixels read it (ViewPointLight in PointLights.h): where it is, 1 / its
+// range squared, its colour times its intensity
+public struct PointLight
+{
+    public float3 Position;
+    public float InverseRangeSquared;
+    public float3 Color;
+    public uint Padding;
+}
+// The point lights that reach the view, View.PointLightCount of them (nyx::lightSurfaceApart())
+[vk::binding(1, 1)] public StructuredBuffer<PointLight> PointLights;
 
 namespace nyx
 {

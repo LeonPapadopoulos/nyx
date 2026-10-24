@@ -30,6 +30,7 @@ Editor/*.md
 !Assets/Scenes/CharacterTest.nyxscene
 !Assets/Scenes/GroundTest.nyxscene
 !Assets/Scenes/AtmosphereTest.nyxscene
+!Assets/Scenes/LightsTest.nyxscene
 
 # Files the editor saves, e.g. the UI gallery's PNGs (Saved/Gallery)
 Saved/

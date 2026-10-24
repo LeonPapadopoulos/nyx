@@ -131,9 +131,10 @@ namespace Nyx
 
 		// Before the first view is made: what every view's outline set is made with. The overlays draw with the scene pipelines' layout (the global set, the
 		// view's set, ObjectConstants), which must outlive them, and so must `decalMesh`, the plane
-		// mesh the decals are drawn on, and `identityInstance`, the instance stream of what is drawn
-		// once (MeshInstanceCache::GetIdentity()).
-		void Initialize(vk::PipelineLayout scenePipelineLayout, BindSceneSetsFunction bindSceneSets, const Mesh& decalMesh, vk::Buffer identityInstance);
+		// mesh the decals are drawn on, `iconMesh`, the sphere a light's icon is picked by, and
+		// `identityInstance`, the instance stream of what is drawn once
+		// (MeshInstanceCache::GetIdentity()).
+		void Initialize(vk::PipelineLayout scenePipelineLayout, BindSceneSetsFunction bindSceneSets, const Mesh& decalMesh, const Mesh& iconMesh, vk::Buffer identityInstance);
 		// Once the first view is made: the pipelines, for its passes, which every view's are like
 		void CreatePipelines(const SceneViewInstance& firstView);
 		// The pipelines of the shaders `uses()` says changed ("Grid": Grid.vert or Grid.frag), made
@@ -162,9 +163,9 @@ namespace Nyx
 		// outline
 		void Draw(SceneViewInstance& view, const RenderWorld* world, vk::raii::CommandBuffer& cmd);
 
-		// The world's objects' axes and bounds, the world's axes, and the outline of a selected
-		// decal's quad (a decal has no mesh for the selection outline), into this frame's debug lines
-		// (world.OverlayLines), once per frame
+		// The world's objects' axes and bounds, the world's axes, the outline of a selected decal's
+		// quad (a decal has no mesh for the selection outline), each point light's icon and a selected
+		// one's range, into this frame's debug lines (world.OverlayLines), once per frame
 		void AddDebugLines(RenderWorld& world);
 
 		// A click at a pixel of the view, which shows `worldRevision` of its world; picked from in
@@ -247,6 +248,7 @@ namespace Nyx
 		vk::PipelineLayout ScenePipelineLayout;
 		BindSceneSetsFunction BindSceneSets;
 		const Mesh* DecalMesh = nullptr;
+		const Mesh* IconMesh = nullptr;
 		vk::Buffer IdentityInstance;
 
 		// Picking

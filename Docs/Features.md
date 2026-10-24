@@ -674,6 +674,36 @@ without one, nothing changes. Only the sky's light is dimmed, never the sun's.
   view; a reference picture), `NyxEditorSceneViewGpuTests` (*Debug > Ambient Occlusion* reaching
   views opened later), the other reference pictures unchanged.
 
+## Point lights
+
+A *Point Light* lights what is round it from its entity's position, such as a lamp or a fire: in
+every colour, fading to nothing at its range, on every lit material, decals included, in the
+editor's scene views and in the game alike.
+
+- *Color*, *Intensity* (what a white matte surface facing it shows from a metre away, as the sun's
+  intensity is what it shows facing the sun) and *Range* (in metres; shorter is cheaper). All with
+  undo, saved in scenes and sent to a running game.
+- Its light falls off as the square of the distance, softened to reach 0 at the range without an
+  edge. It is lit as the sun is (diffuse and a highlight), seen through the fog as everything is,
+  and never dimmed by ambient occlusion. It casts no shadows yet.
+- Each view lights its pixels with the lights whose range reaches into it, up to 256; a light whose
+  light reaches nowhere in view costs nothing there. A light moving with a body follows its mesh.
+- Emissive materials and decals glow but light nothing: a light beside them does
+  ([Lights and particles](Design/lights-and-particles.md#emissive-surfaces-dont-light)).
+- **In the editor**: each light shows as a star of lines in its colour, which a click selects; a
+  selected light's range is drawn round it.
+- `Assets/Scenes/LightsTest.nyxscene`: the atmosphere test scene at dusk with six coloured lights,
+  the glowing cube and ring each with a light of its colour.
+- 64 lights in view take 0.25 to 0.5 ms of GPU time a 1280 × 720 view
+  ([Lights and particles](Design/lights-and-particles.md#numbers)).
+- Tests: `NyxPointLightTests` (the falloff; the lights a frame draws, a moving one between its steps;
+  a view's culling by its frustum, behind the camera, past the far plane, and past the most a view
+  takes), `NyxPointLightGpuTests` (a light on a floor against the CPU's numbers out to its range and
+  black past it; brighter, further, moved; a coloured light; two adding up; under fog; behind the
+  camera; one out of view culled, changing nothing; never dimmed by ambient occlusion; its icon
+  picked and its range drawn in the editor's views; a reference picture; the test scene), the other
+  reference pictures unchanged.
+
 ## Instanced meshes and culling
 
 Many copies of one mesh, such as grass, flowers or stones scattered over a ground, are drawn as one

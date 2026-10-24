@@ -274,9 +274,10 @@ namespace
 			Require(problem.empty(), entryPoint->Name + " isn't valid SPIR-V: " + problem);
 		}
 
-		// The bindless plan: 0.0 textures, 0.1 samplers, 0.2 materials, 1.0 the view
+		// The bindless plan: 0.0 textures, 0.1 samplers, 0.2 materials, 1.0 the view, 1.1 its point
+		// lights
 		const std::vector<std::string> bindings = DescriptorBindings(fragment->Spirv);
-		Require(bindings == std::vector<std::string>{ "0.0", "0.1", "0.2", "1.0" }, "the fragment's bindings aren't the plan's");
+		Require(bindings == std::vector<std::string>{ "0.0", "0.1", "0.2", "1.0", "1.1" }, "the fragment's bindings aren't the plan's");
 	}
 
 	// A material that implements ISurfaceVertex gets the two entry points that run its function,
@@ -510,7 +511,7 @@ namespace
 			{ "Skybox.slang", { { "skyboxVertex", EShaderStage::Vertex }, { "skyboxFragment", EShaderStage::Fragment } } },
 			{ "Tonemap.slang", { { "tonemapVertex", EShaderStage::Vertex }, { "tonemapFragment", EShaderStage::Fragment } } },
 		};
-		const std::vector<std::string> planned{ "0.0", "0.1", "0.2", "1.0" };
+		const std::vector<std::string> planned{ "0.0", "0.1", "0.2", "1.0", "1.1" };
 		for (const Program& program : programs)
 		{
 			const ShaderCompileResult result = Compiler().CompileProgram(EngineShaders / program.File);

@@ -270,7 +270,7 @@ namespace Nyx
 			{
 				BindSceneSets(view, cmd);
 			},
-			PlaneMesh, MeshInstances.GetIdentity());
+			PlaneMesh, SphereMesh, MeshInstances.GetIdentity());
 		Shadows.Initialize(Bindless, *ScenePipelineLayout, [this](SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
 			{
 				BindSceneSets(view, cmd);
@@ -349,6 +349,8 @@ namespace Nyx
 			view.SceneDescriptorPool = nullptr;
 			view.SceneUniformBuffer = nullptr;
 			view.SceneUniformBufferMemory = nullptr;
+			view.PointLightBuffer = nullptr;
+			view.PointLightBufferMemory = nullptr;
 
 			UI.ReleaseSceneViewBlur(view);
 			Bloom.Release(view.Bloom);
@@ -1242,11 +1244,18 @@ namespace Nyx
 			world->Time = GetWorldTime(world->Registry);
 			ExtractRenderObjects(*world, interpolation);
 			ExtractSurfaceDecals(*world->Registry, interpolation, DecalAssets, world->DecalMaterials, world->Decals);
-			// Picked as the objects are: by their entity, with the ids after the objects'
+			ExtractPointLights(*world->Registry, interpolation, world->PointLights);
+			// Picked as the objects are: by their entity, with the ids after the objects', the
+			// lights by their icons in the editor
 			for (RenderDecal& decal : world->Decals)
 			{
 				world->PickingIdToEntity.push_back(decal.SourceEntity);
 				decal.PickingId = static_cast<uint32_t>(world->PickingIdToEntity.size());
+			}
+			for (RenderPointLight& light : world->PointLights)
+			{
+				world->PickingIdToEntity.push_back(light.SourceEntity);
+				light.PickingId = static_cast<uint32_t>(world->PickingIdToEntity.size());
 			}
 			Overlays.AddDebugLines(*world);
 
@@ -1415,6 +1424,7 @@ namespace Nyx
 			}
 
 			view.Draws.clear();
+			view.PointLights.clear();
 			view.Culling = {};
 			view.CullingLines = {};
 			view.Shadows.CascadeCount = 0;
@@ -1468,6 +1478,12 @@ namespace Nyx
 		}
 		const Frustum frustum = MakeFrustum(cullingViewProjection);
 		CullDraws(world, frustum, false, view.Draws, view.Culling);
+
+		// The point lights whose light reaches into view
+		const PointLightCullStats lights = CullPointLights(world.PointLights, frustum, view.SceneGlobals.CameraWorldPos, MaxViewPointLights, view.PointLights);
+		view.Culling.PointLights = lights.Lights;
+		view.Culling.PointLightsCulled = lights.Culled;
+		view.Culling.PointLightsDropped = lights.Dropped;
 
 		if (view.CullingDebug != ESceneViewCullingDebug::Off)
 		{
@@ -1776,15 +1792,20 @@ namespace Nyx
 
 	void VulkanRenderer::CreateSceneDescriptorSetLayout()
 	{
-		vk::DescriptorSetLayoutBinding uboBinding{};
-		uboBinding.binding = 0;
-		uboBinding.descriptorType = vk::DescriptorType::eUniformBuffer;
-		uboBinding.descriptorCount = 1;
-		uboBinding.stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment;
+		std::array<vk::DescriptorSetLayoutBinding, 2> bindings{};
+		bindings[0].binding = 0;
+		bindings[0].descriptorType = vk::DescriptorType::eUniformBuffer;
+		bindings[0].descriptorCount = 1;
+		bindings[0].stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment;
+		// The view's point lights (nyx.view's PointLights)
+		bindings[1].binding = 1;
+		bindings[1].descriptorType = vk::DescriptorType::eStorageBuffer;
+		bindings[1].descriptorCount = 1;
+		bindings[1].stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment;
 
 		vk::DescriptorSetLayoutCreateInfo layoutInfo{};
-		layoutInfo.bindingCount = 1;
-		layoutInfo.pBindings = &uboBinding;
+		layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+		layoutInfo.pBindings = bindings.data();
 
 		SceneDescriptorSetLayout = vk::raii::DescriptorSetLayout(Context.GetDevice(), layoutInfo);
 	}
@@ -2032,16 +2053,26 @@ namespace Nyx
 			view.SceneUniformBuffer,
 			view.SceneUniformBufferMemory);
 
+		// Its point lights, as many as a view is lit by
+		CreateBuffer(
+			Context,
+			sizeof(ViewPointLight) * MaxViewPointLights,
+			vk::BufferUsageFlagBits::eStorageBuffer,
+			vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+			view.PointLightBuffer,
+			view.PointLightBufferMemory);
+
 		// ---------------------------------------------------------
-		// Per-view scene descriptor pool: binding 0 = SceneUBO
+		// Per-view scene descriptor pool: binding 0 = SceneUBO, 1 = the point lights
 		// ---------------------------------------------------------
-		const vk::DescriptorPoolSize poolSize(vk::DescriptorType::eUniformBuffer, 1);
+		const std::array<vk::DescriptorPoolSize, 2> poolSizes = { vk::DescriptorPoolSize(vk::DescriptorType::eUniformBuffer, 1),
+			vk::DescriptorPoolSize(vk::DescriptorType::eStorageBuffer, 1) };
 
 		vk::DescriptorPoolCreateInfo poolInfo{};
 		poolInfo.flags = vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet;
 		poolInfo.maxSets = 1;
-		poolInfo.poolSizeCount = 1;
-		poolInfo.pPoolSizes = &poolSize;
+		poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+		poolInfo.pPoolSizes = poolSizes.data();
 
 		view.SceneDescriptorPool = vk::raii::DescriptorPool(Context.GetDevice(), poolInfo);
 
@@ -2065,15 +2096,26 @@ namespace Nyx
 		bufferInfo.offset = 0;
 		bufferInfo.range = sizeof(SceneUBO);
 
-		vk::WriteDescriptorSet write{};
-		write.dstSet = *view.SceneDescriptorSets.front();
-		write.dstBinding = 0;
-		write.dstArrayElement = 0;
-		write.descriptorType = vk::DescriptorType::eUniformBuffer;
-		write.descriptorCount = 1;
-		write.pBufferInfo = &bufferInfo;
+		vk::DescriptorBufferInfo lightsInfo{};
+		lightsInfo.buffer = *view.PointLightBuffer;
+		lightsInfo.offset = 0;
+		lightsInfo.range = sizeof(ViewPointLight) * MaxViewPointLights;
 
-		Context.GetDevice().updateDescriptorSets(write, {});
+		std::array<vk::WriteDescriptorSet, 2> writes{};
+		writes[0].dstSet = *view.SceneDescriptorSets.front();
+		writes[0].dstBinding = 0;
+		writes[0].dstArrayElement = 0;
+		writes[0].descriptorType = vk::DescriptorType::eUniformBuffer;
+		writes[0].descriptorCount = 1;
+		writes[0].pBufferInfo = &bufferInfo;
+		writes[1].dstSet = *view.SceneDescriptorSets.front();
+		writes[1].dstBinding = 1;
+		writes[1].dstArrayElement = 0;
+		writes[1].descriptorType = vk::DescriptorType::eStorageBuffer;
+		writes[1].descriptorCount = 1;
+		writes[1].pBufferInfo = &lightsInfo;
+
+		Context.GetDevice().updateDescriptorSets(writes, {});
 	}
 
 	void VulkanRenderer::UpdateSceneUniforms(SceneViewInstance& view, const RenderWorld* world)
@@ -2157,6 +2199,16 @@ namespace Nyx
 			ubo.OcclusionIntensity = occlusion.Settings.Intensity;
 			ubo.OcclusionSlices = occlusion.Settings.Slices;
 			ubo.OcclusionSteps = occlusion.Settings.Steps;
+		}
+
+		// Its point lights, culled for it; none without a world
+		if (world && !view.PointLights.empty())
+		{
+			ubo.PointLightCount = static_cast<uint32_t>(view.PointLights.size());
+			const vk::DeviceSize size = sizeof(ViewPointLight) * view.PointLights.size();
+			void* lights = view.PointLightBufferMemory.mapMemory(0, size);
+			std::memcpy(lights, view.PointLights.data(), static_cast<size_t>(size));
+			view.PointLightBufferMemory.unmapMemory();
 		}
 
 		void* mapped = view.SceneUniformBufferMemory.mapMemory(0, sizeof(SceneUBO));
@@ -2550,6 +2602,8 @@ namespace Nyx
 			it->SceneDescriptorPool = nullptr;
 			it->SceneUniformBuffer = nullptr;
 			it->SceneUniformBufferMemory = nullptr;
+			it->PointLightBuffer = nullptr;
+			it->PointLightBufferMemory = nullptr;
 
 			Overlays.DestroyViewResources(*it);
 			Bloom.Release(it->Bloom);

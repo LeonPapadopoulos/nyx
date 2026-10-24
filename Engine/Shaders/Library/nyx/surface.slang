@@ -5,10 +5,11 @@
 //
 // Bindings follow the bindless plan: set 0 is global and push constants belong to the draw
 // (nyx.bindless), set 1 belongs to the view (nyx.view); a material sees both. The pixel is lit by
-// nyx.lighting: the sun and the sky's light, physically based (metallic-roughness), the sun's
-// shadowed by nyx.shadows; then seen through the world's height fog (nyx.atmosphere). With the
-// view's ambient occlusion on, the sky's light goes to a second target, for the occlusion to dim
-// it alone after the scene pass (VulkanAmbientOcclusion).
+// nyx.lighting: the sun, the view's point lights and the sky's light, physically based
+// (metallic-roughness), the sun's shadowed by nyx.shadows; then seen through the world's height fog
+// (nyx.atmosphere). With the view's ambient occlusion on, the sky's light goes to a second target,
+// for the occlusion to dim it alone after the scene pass (VulkanAmbientOcclusion): the sun's and the
+// point lights' are never dimmed by it.
 
 __exported import nyx.atmosphere;
 __exported import nyx.bindless;
@@ -441,7 +442,7 @@ ShadedPixel shadeSurfacePixel<S : ISurface>(VertexOutput vertex, DecalInput deca
     else
     {
         const nyx::SurfaceLight light = nyx::lightSurfaceApart(o.BaseColor, o.Metallic, o.Roughness, o.Occlusion, normalize(o.Normal), input.ViewWS,
-            nyx::sunShadow(input.PositionWS, input.NormalWS));
+            input.PositionWS, nyx::sunShadow(input.PositionWS, input.NormalWS));
         pixel.Direct = light.Direct;
         pixel.Ambient = light.Ambient;
     }

@@ -12,6 +12,7 @@
 #include "VulkanUtil.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <span>
 #include <vector>
@@ -25,11 +26,12 @@ namespace Nyx
 	{
 	}
 
-	void VulkanEditorOverlays::Initialize(vk::PipelineLayout scenePipelineLayout, BindSceneSetsFunction bindSceneSets, const Mesh& decalMesh, vk::Buffer identityInstance)
+	void VulkanEditorOverlays::Initialize(vk::PipelineLayout scenePipelineLayout, BindSceneSetsFunction bindSceneSets, const Mesh& decalMesh, const Mesh& iconMesh, vk::Buffer identityInstance)
 	{
 		ScenePipelineLayout = scenePipelineLayout;
 		BindSceneSets = std::move(bindSceneSets);
 		DecalMesh = &decalMesh;
+		IconMesh = &iconMesh;
 		IdentityInstance = identityInstance;
 		CreateOutlineDescriptorSetLayout();
 	}
@@ -203,7 +205,21 @@ namespace Nyx
 			OverlayDrawing.Box(obj.WorldTransform, obj.LocalBoundsMin, obj.LocalBoundsMax, glm::vec3(1.0f, 1.0f, 0.2f));
 		}
 
-		// A selected decal's quad, in the selection outline's colour
+		// Each point light's icon, a star of seven lines in its colour at its brightest: along the
+		// axes and the diagonals, few lines for many lights. A click on the ball round it picks the
+		// light (DrawPickingPass()).
+		for (const RenderPointLight& light : world.PointLights)
+		{
+			const glm::vec3 color = light.Color / std::max(light.Color.r, std::max(light.Color.g, light.Color.b));
+			const float diagonal = PointLightIconRadius / std::sqrt(3.0f);
+			for (const glm::vec3 arm : { glm::vec3(PointLightIconRadius, 0.0f, 0.0f), glm::vec3(0.0f, PointLightIconRadius, 0.0f), glm::vec3(0.0f, 0.0f, PointLightIconRadius),
+					 glm::vec3(diagonal, diagonal, diagonal), glm::vec3(-diagonal, diagonal, diagonal), glm::vec3(diagonal, -diagonal, diagonal), glm::vec3(diagonal, diagonal, -diagonal) })
+			{
+				OverlayDrawing.Line(light.WorldPosition - arm, light.WorldPosition + arm, color);
+			}
+		}
+
+		// A selected decal's quad, and a selected light's range, in the selection outline's colour
 		if (SelectedEntity && world.Registry == World)
 		{
 			const glm::vec3 outlineColor = glm::vec3(OutlineCompositePushConstants{}.VisibleOutlineColor);
@@ -216,6 +232,14 @@ namespace Nyx
 				for (size_t corner = 0; corner < decal.WorldCorners.size(); ++corner)
 				{
 					OverlayDrawing.Line(decal.WorldCorners[corner], decal.WorldCorners[(corner + 1) % decal.WorldCorners.size()], outlineColor);
+				}
+			}
+			for (const RenderPointLight& light : world.PointLights)
+			{
+				if (light.SourceEntity == *SelectedEntity)
+				{
+					OverlayDrawing.Sphere(light.WorldPosition, light.Range, outlineColor);
+					OverlayDrawing.Sphere(light.WorldPosition, PointLightIconRadius, outlineColor);
 				}
 			}
 		}
@@ -1428,6 +1452,24 @@ namespace Nyx
 				object.CustomData2 = decal.CustomData2;
 				cmd.pushConstants<ObjectConstants>(ScenePipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, { object });
 				cmd.drawIndexed(DecalMesh->GetIndexCount(), 1, 0, 0, 0);
+			}
+		}
+
+		// Then the point lights' icons, as balls, so a click on one selects its light
+		if (!world.PointLights.empty())
+		{
+			cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *PickingPipeline);
+			SetMeshFaces(cmd, false, false);
+			cmd.bindVertexBuffers(0, { IconMesh->GetVertexBuffer(), IdentityInstance }, { vk::DeviceSize{ 0 }, vk::DeviceSize{ 0 } });
+			cmd.bindIndexBuffer(IconMesh->GetIndexBuffer(), 0, vk::IndexType::eUint32);
+			for (const RenderPointLight& light : world.PointLights)
+			{
+				ObjectConstants object{};
+				// The sphere mesh is a metre across
+				object.Model = glm::scale(glm::translate(glm::mat4(1.0f), light.WorldPosition), glm::vec3(PointLightIconRadius * 2.0f));
+				object.EntityId = light.PickingId;
+				cmd.pushConstants<ObjectConstants>(ScenePipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, { object });
+				cmd.drawIndexed(IconMesh->GetIndexCount(), 1, 0, 0, 0);
 			}
 		}
 

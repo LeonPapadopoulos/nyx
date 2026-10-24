@@ -77,6 +77,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/OrbitCameraComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/DirectionalLightComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/EnvironmentComponent.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/PointLightComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/NameComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/PhysicsComponents.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ConstraintComponent.cpp
@@ -139,6 +140,7 @@ set(NYX_ENGINE_SOURCES
     # Runtime/Render
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/AssetResolver.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/SurfaceDecals.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/PointLights.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/DrawnWorldTime.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Mesh.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/RuntimeMeshCache.cpp
@@ -265,6 +267,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/OrbitCameraComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/DirectionalLightComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/EnvironmentComponent.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/PointLightComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/NameComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/PhysicsComponents.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ConstraintComponent.h
@@ -337,6 +340,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Resource.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/AssetResolver.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/SurfaceDecals.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/PointLights.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/DrawnWorldTime.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Mesh.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/RuntimeMeshCache.h
