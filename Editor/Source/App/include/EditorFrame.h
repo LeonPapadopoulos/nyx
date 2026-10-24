@@ -6,6 +6,7 @@
 
 namespace Nyx
 {
+	class FrameStatsWindow;
 	class IEditorRenderer;
 	class IWindow;
 	struct WindowFrameArea;
@@ -74,8 +75,8 @@ namespace Nyx::Editor
 		explicit EditorFrame(Parts parts);
 
 		// Draws the titlebar and the status bar into the window's frame (IWindow::SetFrameContent())
-		// until Detach()
-		void Attach(Nyx::IWindow& window, Nyx::IEditorRenderer& renderer);
+		// until Detach(); the status bar shows the frame's numbers (Application::GetFrameStats())
+		void Attach(Nyx::IWindow& window, Nyx::IEditorRenderer& renderer, const Nyx::FrameStatsWindow& frameStats);
 		void Detach();
 
 		// What the status bar says about the last scene saved, opened or made
@@ -86,6 +87,8 @@ namespace Nyx::Editor
 		// last scene saved or opened, errors logged, the graphics API and the frame rate.
 		void DrawTitlebar(const Nyx::WindowFrameArea& area);
 		void DrawStatusBar(const Nyx::WindowFrameArea& area);
+		// Over the frame time: the last second's, where the time went and what was drawn
+		void DrawFrameTimeTooltip();
 
 		// New, Save, Save As and Load, in the File menu and the scene's own
 		void DrawSceneMenuItems();
@@ -96,6 +99,7 @@ namespace Nyx::Editor
 		Parts Editor;
 		Nyx::IWindow* Window = nullptr;
 		Nyx::IEditorRenderer* Renderer = nullptr;
+		const Nyx::FrameStatsWindow* FrameStats = nullptr;
 
 		// The last scene saved, opened or made, and whether that failed
 		std::string SceneFileStatus;

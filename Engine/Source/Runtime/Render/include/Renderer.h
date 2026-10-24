@@ -68,6 +68,14 @@ namespace Nyx
 		// drawn after that: the renderer can't make a new device, so the window should close.
 		virtual bool IsDeviceLost() const = 0;
 
+		// What the last frame whose GPU work is done took and drew: its CPU times, its GPU times by
+		// timestamps, and every scene view's draws and passes summed (RenderFrameStats). A frame's
+		// stats are complete at the start of the next one, after its fence. Kept in place: reading
+		// them allocates nothing.
+		virtual const RenderFrameStats& GetFrameStats() const = 0;
+		// The same frame's of one scene view; null for an unknown view
+		virtual const SceneViewFrameStats* GetSceneViewFrameStats(uint64_t id) const = 0;
+
 		virtual void SetSceneViewCameraMode(uint64_t id, EViewportCameraMode mode) = 0;
 
 		// How bright the view shows its scene, in stops: +1 twice as bright, -1 half. 0 by default.

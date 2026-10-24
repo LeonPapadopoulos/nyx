@@ -1,4 +1,5 @@
 #include "Engine.h"
+#include "BenchmarkLayer.h"
 #include "EditorLinkLayer.h"
 #include "EditorLinkLogSink.h"
 #include "GameLaunchOptions.h"
@@ -76,6 +77,8 @@ namespace Nyx::Game
 			specs.Window.Position = Nyx::WindowPosition{ options.WindowPosition->X, options.WindowPosition->Y };
 		}
 
+		specs.Window.bVisible = !options.bWindowHidden;
+
 		return specs;
 	}
 
@@ -101,6 +104,7 @@ namespace Nyx::Game
 			// Attaching loads the scene
 			auto gameLayer = std::make_unique<GameLayer>(scenePath);
 			GameLayer& game = *gameLayer;
+			game.SetShowFrameStats(options.bShowFrameStats);
 			PushLayer(std::move(gameLayer));
 
 			if (editorLink)
@@ -115,6 +119,17 @@ namespace Nyx::Game
 			{
 				PushLayer(std::make_unique<InputRecordingLayer>(options.InputRecordPath, options.InputReplayPath));
 			}
+
+			// Last, so it moves the camera after the game's cameras have moved
+			if (options.BenchmarkSeconds)
+			{
+				BenchmarkSettings benchmark{ .Seconds = *options.BenchmarkSeconds, .OutPath = options.BenchmarkOutPath, .CameraPath = options.BenchmarkCameraPath };
+				if (options.BenchmarkWarmupSeconds)
+				{
+					benchmark.WarmupSeconds = *options.BenchmarkWarmupSeconds;
+				}
+				PushLayer(std::make_unique<BenchmarkLayer>(std::move(benchmark), game.GetWorld(), scenePath));
+			}
 		}
 	};
 }
@@ -122,6 +137,9 @@ namespace Nyx::Game
 // Usage: NyxGame.exe [scene file] [--wait-for-debugger] [--editor-port <port>] [--link-log <file>]
 //                    [--window-size <width>x<height>] [--window-pos <x>,<y>] [--window-title <text>]
 //                    [--input-background] [--input-record <file>] [--input-replay <file>] [--msaa <samples>]
+//                    [--window-hidden] [--frame-stats]
+//                    [--benchmark <seconds> [--benchmark-out <file.csv>] [--benchmark-warmup <seconds>]
+//                     [--benchmark-camera <file>]]
 // - Without a scene file, the game runs Scenes/Default.nyxscene from the project's assets, or else
 //   from the engine's.
 // - With --wait-for-debugger, the game waits at startup until a debugger is attached.
@@ -137,6 +155,14 @@ namespace Nyx::Game
 //   game plays a recording instead of the devices' input, then goes on with the devices.
 // - --msaa is the samples a pixel of multisample anti-aliasing, 1 (off), 2, 4 or 8; the editor's
 //   preference for the games Play starts.
+// - With --window-hidden, the window is never shown, e.g. for an automated test.
+// - With --frame-stats, the frame's numbers show over the picture from the start; F8 shows and
+//   hides them in every build.
+// - With --benchmark, the game waits for the scene to settle (--benchmark-warmup, 3 s by default,
+//   and until no shader compiles), records every frame's numbers for the seconds given without
+//   vsync, writes them as CSV (--benchmark-out, else Saved/Benchmarks/<scene>-<time>.csv) and quits
+//   with exit code 0, or 1 if it couldn't. The camera follows --benchmark-camera's path, else the
+//   scene's cameras in turn (BenchmarkLayer).
 // GameLaunchOptions.h reads these, and the editor writes them with the same code.
 Nyx::Application* Nyx::CreateApplication(int argc, char** argv)
 {
@@ -176,6 +202,11 @@ Nyx::Application* Nyx::CreateApplication(int argc, char** argv)
 	if (!options.EditorPort && !options.LinkLogPath.empty())
 	{
 		LOG_WARNING("--link-log only records together with --editor-port");
+	}
+
+	if (!options.BenchmarkSeconds && (options.BenchmarkWarmupSeconds || !options.BenchmarkOutPath.empty() || !options.BenchmarkCameraPath.empty()))
+	{
+		LOG_WARNING("--benchmark-warmup, --benchmark-out and --benchmark-camera only work together with --benchmark");
 	}
 
 	if (options.bWaitForDebugger)

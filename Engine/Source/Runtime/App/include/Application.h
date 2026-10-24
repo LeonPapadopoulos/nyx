@@ -2,6 +2,7 @@
 #include "NyxEngineAPI.h"
 #include "Layer.h"
 #include "FixedStepClock.h"
+#include "FrameStats.h"
 #include "GameModule.h"
 #include "InputSystem.h"
 #include "Window.h"
@@ -62,13 +63,22 @@ namespace Nyx
 		// Ends the frame loop after the current frame, as if the user closed the window
 		void RequestQuit() { Window->RequestClose(); }
 
+		// What main() returns once the application has ended; 0 unless set
+		void SetExitCode(int exitCode) { ExitCode = exitCode; }
+		int GetExitCode() const { return ExitCode; }
+
+		// Every frame's numbers, a frame after it was drawn: the renderer's (IRenderer::GetFrameStats())
+		// with the frame loop's own times, the last window's average and worst, and the last frames'
+		// times for a graph
+		const FrameStatsWindow& GetFrameStats() const { return FrameStats; }
+
 	private:
 		// The renderer's frame, with the layers' UI inside the window's; nothing while the window is
-		// minimized
-		void DrawFrame();
+		// minimized. Whether it drew.
+		bool DrawFrame();
 
-		// Runs the steps the clock asks for this frame
-		void RunFixedSteps(double frameSeconds);
+		// Runs the steps the clock asks for this frame; how many
+		uint32_t RunFixedSteps(double frameSeconds);
 
 		const GameModule* Module = nullptr;
 		std::unique_ptr<IWindow> Window;
@@ -80,6 +90,14 @@ namespace Nyx
 		// Set while the clock drops time, so the warning comes once, not every frame
 		bool WarnedOfDroppedTime = false;
 		std::vector<std::unique_ptr<ILayer>> Layers;
+
+		// The frame loop's times of the frame drawn last, for its numbers once the renderer has
+		// them; the renderer's frame they were added for last
+		FrameStatsWindow FrameStats;
+		ApplicationFrameTimes DrawnFrameTimes;
+		uint64_t LastStatsFrame = 0;
+
+		int ExitCode = 0;
 	};
 
 	// To be defined by the client (for example the editor), which can use the command line arguments.

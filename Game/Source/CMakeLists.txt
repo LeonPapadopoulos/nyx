@@ -9,12 +9,16 @@ function(nyx_add_game_program)
 
     set(sources
         ${root}/main.cpp
+        ${root}/src/BenchmarkLayer.cpp
         ${root}/src/EditorLinkLayer.cpp
+        ${root}/src/FrameStatsOverlay.cpp
         ${root}/src/GameLayer.cpp
         ${root}/src/InputRecordingLayer.cpp
     )
     set(headers
+        ${root}/include/BenchmarkLayer.h
         ${root}/include/EditorLinkLayer.h
+        ${root}/include/FrameStatsOverlay.h
         ${root}/include/GameLayer.h
         ${root}/include/InputRecordingLayer.h
     )
@@ -42,4 +46,15 @@ function(nyx_add_game_program)
     nyx_copy_shaders_next_to(NyxGame)
     # Live shader reload compiles in NyxShaderCompiler.exe, which sits next to the game
     add_dependencies(NyxGame NyxShaderCompiler)
+
+    # The game's benchmark mode from end to end: a second of the engine's default scene along a
+    # camera path, in a hidden window, and the CSV it writes. Needs a Vulkan device.
+    if(BUILD_TESTING)
+        add_test(NAME NyxGameBenchmarkTests
+            COMMAND ${CMAKE_COMMAND}
+                "-DGAME=$<TARGET_FILE:NyxGame>"
+                "-DSCENE=${root}/../../Assets/Scenes/Default.nyxscene"
+                "-DOUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/NyxGameBenchmarkTests"
+                -P "${root}/tests/GameBenchmarkTest.cmake")
+    endif()
 endfunction()

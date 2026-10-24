@@ -67,6 +67,10 @@ namespace Nyx
 
 		// Shows the startup banner (see Assets/Startup) while the application is starting.
 		bool bShowStartupBanner = true;
+
+		// False: the window stays hidden, also after startup, e.g. for an automated test; the
+		// application draws into it as it would shown
+		bool bVisible = true;
 	};
 
 	// A strip of the window's frame, in ImGui's screen coordinates

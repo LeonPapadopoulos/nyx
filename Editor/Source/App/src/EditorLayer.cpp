@@ -100,7 +100,7 @@ namespace Nyx::Editor
 		Window->SetStartupStatus("Preparing the scene and editor panels");
 		// The editor's windows are painted as cards on a backdrop (Debug > Painted Chrome)
 		Nyx::UI::SetPaintedChrome(true);
-		Frame.Attach(*Window, *Renderer);
+		Frame.Attach(*Window, *Renderer, application.GetFrameStats());
 
 		Renderer->SetWorld(&Editing.Scene.GetRegistry());
 

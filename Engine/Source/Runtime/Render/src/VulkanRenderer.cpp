@@ -203,6 +203,17 @@ namespace
 		return std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - start).count();
 	}
 
+	// The instances of an object drawn instanced, in all of its cells
+	uint32_t CountInstances(const Nyx::RenderWorld& world, const Nyx::RenderObject& obj)
+	{
+		uint32_t instances = 0;
+		for (uint32_t cell = obj.FirstCell; cell < obj.FirstCell + obj.CellCount; ++cell)
+		{
+			instances += world.Cells[cell].Count;
+		}
+		return instances;
+	}
+
 	bool LoadImageDataRGBA(const std::filesystem::path& path, Nyx::ImageData& outImageData)
 	{
 		outImageData = {};
@@ -473,6 +484,7 @@ namespace Nyx
 			UI.ReadLastFrame();
 			ReadBackPickResults();
 			ReadPassTimestamps();
+			CompleteFrameStats();
 		}
 
 		const std::optional<uint32_t> imageIndex = AcquireImage(clock);
@@ -501,6 +513,7 @@ namespace Nyx
 		cmd.end();
 
 		Submit(cmd, *imageIndex);
+		bFrameStatsPending = true;
 		Present(*imageIndex, clock);
 	}
 
@@ -580,11 +593,15 @@ namespace Nyx
 		// draws of it, with the lines that shows; then the frame's debug lines go up
 		SceneTime = std::chrono::duration<float>(sceneStart - StartTime).count();
 		ExtractRenderWorlds();
+		PendingSceneTimes.Extract = MillisecondsSince(sceneStart);
+		const std::chrono::steady_clock::time_point cullStart = std::chrono::steady_clock::now();
 		{
 			NYX_PROFILE_SCOPE("Culling");
 			PrepareSceneViews();
 		}
+		PendingSceneTimes.Cull = MillisecondsSince(cullStart);
 		DebugLines.Upload();
+		const std::chrono::steady_clock::time_point recordStart = std::chrono::steady_clock::now();
 
 		// Every scene view into its own offscreen target: first the editor's own passes of all
 		// views, then the views, so that each is timed in one go
@@ -610,6 +627,7 @@ namespace Nyx
 			}
 			UI.WriteUITimestamp(*cmd, VulkanUIBackend::SceneViewsPair, true);
 		}
+		PendingSceneTimes.Record = MillisecondsSince(recordStart);
 
 		// Each picture blurred small, before the UI is built, so that the UI shows this frame's blur
 		UI.BlurSceneViews(cmd, SceneViews);
@@ -850,8 +868,11 @@ namespace Nyx
 			const float milliseconds = static_cast<float>(static_cast<double>(ticks[1] - ticks[0]) * nanosecondsPerTick / 1.0e6);
 			switch (timed.Pass)
 			{
-			case ETimedPass::Bloom:
-				view->GpuTimes.Bloom = milliseconds;
+			case ETimedPass::Shadows:
+				view->GpuTimes.Shadows = milliseconds;
+				break;
+			case ETimedPass::Scene:
+				view->GpuTimes.Scene = milliseconds;
 				break;
 			case ETimedPass::AmbientOcclusion:
 				view->GpuTimes.AmbientOcclusion = milliseconds;
@@ -859,9 +880,67 @@ namespace Nyx
 			case ETimedPass::Particles:
 				view->GpuTimes.Particles = milliseconds;
 				break;
+			case ETimedPass::Bloom:
+				view->GpuTimes.Bloom = milliseconds;
+				break;
+			case ETimedPass::Picture:
+				view->GpuTimes.Picture = milliseconds;
+				break;
 			default:
 				break;
 			}
+		}
+	}
+
+	const SceneViewFrameStats* VulkanRenderer::GetSceneViewFrameStats(uint64_t id) const
+	{
+		const SceneViewInstance* view = FindSceneView(id);
+		return view ? &view->Stats : nullptr;
+	}
+
+	void VulkanRenderer::CompleteFrameStats()
+	{
+		if (!bFrameStatsPending)
+		{
+			return;
+		}
+		bFrameStatsPending = false;
+
+		// The frame's CPU times, as the UI backend kept them, and its GPU times, read just now
+		const Nyx::UI::PainterWindowStats::Times& times = UI.GetWindowPainterStats().FrameTimes;
+		const uint64_t frame = FrameStats.Frame + 1;
+		FrameStats = RenderFrameStats{};
+		FrameStats.Frame = frame;
+		FrameStats.FrameTime = times.Frame;
+		FrameStats.Extract = PendingSceneTimes.Extract;
+		FrameStats.Cull = PendingSceneTimes.Cull;
+		FrameStats.Record = PendingSceneTimes.Record;
+		FrameStats.Scene = times.Scene;
+		FrameStats.UI = times.BuildUI + times.Chrome + times.Canvases + times.Gather + times.ImGuiRender + times.Segments + times.RecordUI;
+		FrameStats.WaitForGpu = times.WaitForGpu;
+		FrameStats.Present = times.Acquire + times.Present;
+		FrameStats.bGpuTimes = times.bGpu;
+		FrameStats.GpuFrame = times.GpuFrame;
+		FrameStats.GpuSceneViews = times.GpuSceneViews;
+		FrameStats.MsaaSamples = static_cast<uint32_t>(MsaaSamples);
+
+		// What each view drew is still the frame's: the next frame culls after this
+		for (SceneViewInstance& view : SceneViews)
+		{
+			SceneViewFrameStats& stats = view.Stats;
+			stats = SceneViewFrameStats{};
+			stats.Scene = view.Culling;
+			stats.ShadowCascades = view.Shadows.CascadeCount;
+			for (uint32_t cascade = 0; cascade < view.Shadows.CascadeCount; ++cascade)
+			{
+				stats.Shadows += view.Shadows.Culling[cascade];
+			}
+			const RenderWorld* world = FindShownWorld(view);
+			stats.Decals = world ? static_cast<uint32_t>(world->Decals.size()) : 0;
+			stats.Gpu = view.GpuTimes;
+
+			FrameStats.Views += stats;
+			++FrameStats.SceneViews;
 		}
 	}
 
@@ -1680,6 +1759,7 @@ namespace Nyx
 			if (!IsBoxVisible(frustum, obj.WorldBounds))
 			{
 				++stats.ObjectsCulled;
+				stats.InstancesCulled += obj.CellCount == 0 ? 1 : CountInstances(world, obj);
 				continue;
 			}
 			if (obj.CellCount == 0)
@@ -1693,11 +1773,14 @@ namespace Nyx
 			const uint32_t drawnCells = AppendInstanceRuns(std::span(world.Cells).subspan(obj.FirstCell, obj.CellCount), &frustum, runs);
 			stats.Cells += obj.CellCount;
 			stats.CellsCulled += obj.CellCount - drawnCells;
+			uint32_t drawnInstances = 0;
 			for (const InstanceRun& run : runs)
 			{
 				outDraws.push_back(SceneViewDraw{ .Object = index, .InstanceBuffer = obj.InstanceBuffer, .FirstInstance = run.First, .InstanceCount = run.Count, .Model = obj.DrawTransform });
-				stats.Instances += run.Count;
+				drawnInstances += run.Count;
 			}
+			stats.Instances += drawnInstances;
+			stats.InstancesCulled += CountInstances(world, obj) - drawnInstances;
 		}
 
 		// Those drawn once that draw alike, the same mesh with the same material in each section,
@@ -1749,6 +1832,19 @@ namespace Nyx
 			first = end;
 		}
 		stats.Draws = static_cast<uint32_t>(outDraws.size() - firstDraw);
+
+		// Each draw is recorded as a draw call for each section of its mesh
+		for (size_t drawIndex = firstDraw; drawIndex < outDraws.size(); ++drawIndex)
+		{
+			const SceneViewDraw& draw = outDraws[drawIndex];
+			const RenderObject& obj = world.Objects[draw.Object];
+			stats.DrawCalls += obj.SectionCount;
+			stats.InstancedDrawCalls += draw.InstanceCount > 1 ? obj.SectionCount : 0;
+			for (uint32_t section = obj.FirstSection; section < obj.FirstSection + obj.SectionCount; ++section)
+			{
+				stats.Triangles += static_cast<uint64_t>(world.Sections[section].IndexCount / 3) * draw.InstanceCount;
+			}
+		}
 	}
 
 	void VulkanRenderer::PrepareSceneViewShadows(SceneViewInstance& view, const RenderWorld& world)
@@ -3017,8 +3113,11 @@ namespace Nyx
 		// 0. Its shadow cascades, into the shadow map its scene pass reads
 		if (world && view.Shadows.CascadeCount > 0)
 		{
+			WritePassTimestamp(cmd, view, ETimedPass::Shadows, false);
 			DrawShadowCascades(view, *world, cmd);
+			WritePassTimestamp(cmd, view, ETimedPass::Shadows, true);
 		}
+		WritePassTimestamp(cmd, view, ETimedPass::Scene, false);
 		view.RenderTarget.BeginScenePass(cmd, clear);
 		if (world)
 		{
@@ -3030,6 +3129,7 @@ namespace Nyx
 			DrawRenderDecals(view, *world, cmd);
 		}
 		view.RenderTarget.EndRenderPass(cmd);
+		WritePassTimestamp(cmd, view, ETimedPass::Scene, true);
 
 		// Its ambient occlusion: the sky's light the scene pass wrote apart, occluded, added to the
 		// scene
@@ -3059,6 +3159,7 @@ namespace Nyx
 		// 2. The picture: the scene tonemapped with its bloom, then the editor's overlays over it
 		// (grid, debug lines, the selection outline), which look as they always did, then the
 		// world's debug drawing
+		WritePassTimestamp(cmd, view, ETimedPass::Picture, false);
 		view.RenderTarget.BeginPicturePass(cmd);
 		DrawTonemap(view, cmd);
 		if (view.bShowEditorOverlays)
@@ -3078,6 +3179,7 @@ namespace Nyx
 			Shadows.DrawDebug(view, view.Shadows.CascadeCount, cmd);
 		}
 		view.RenderTarget.EndRenderPass(cmd);
+		WritePassTimestamp(cmd, view, ETimedPass::Picture, true);
 	}
 
 	void VulkanRenderer::RequestPick(uint64_t sceneViewId, uint32_t pixelX, uint32_t pixelY)

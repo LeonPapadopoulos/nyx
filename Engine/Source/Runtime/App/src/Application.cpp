@@ -86,6 +86,10 @@ namespace Nyx
 		Window->FinishStartup();
 
 		auto previousFrameTime = std::chrono::steady_clock::now();
+		const auto millisecondsSince = [](std::chrono::steady_clock::time_point start)
+		{
+			return std::chrono::duration<float, std::milli>(std::chrono::steady_clock::now() - start).count();
+		};
 		while (!Window->ShouldClose())
 		{
 			Window->WaitForNextFrame();
@@ -99,23 +103,40 @@ namespace Nyx
 			const double frameSeconds = std::chrono::duration<double>(frameTime - previousFrameTime).count();
 			previousFrameTime = frameTime;
 
+			ApplicationFrameTimes times;
 			for (const std::unique_ptr<ILayer>& layer : Layers)
 			{
 				NYX_PROFILE_SCOPE("OnUpdate");
 				NYX_PROFILE_ZONE_NAME(typeid(*layer.get()).name());
 				layer->OnUpdate(static_cast<float>(frameSeconds));
 			}
+			times.Update = millisecondsSince(frameTime);
 
-			RunFixedSteps(frameSeconds);
+			const auto stepsStart = std::chrono::steady_clock::now();
+			times.SimulationSteps = RunFixedSteps(frameSeconds);
+			times.Simulation = millisecondsSince(stepsStart);
 
+			const auto lateUpdateStart = std::chrono::steady_clock::now();
 			for (const std::unique_ptr<ILayer>& layer : Layers)
 			{
 				NYX_PROFILE_SCOPE("OnLateUpdate");
 				NYX_PROFILE_ZONE_NAME(typeid(*layer.get()).name());
 				layer->OnLateUpdate(static_cast<float>(frameSeconds));
 			}
+			times.LateUpdate = millisecondsSince(lateUpdateStart);
 
-			DrawFrame();
+			if (DrawFrame())
+			{
+				// The renderer's numbers are of the frame drawn before this one, once its GPU work is
+				// done: they go with that frame's times
+				const RenderFrameStats& renderStats = Renderer->GetFrameStats();
+				if (renderStats.Frame != LastStatsFrame)
+				{
+					FrameStats.Add(MakeFrameStatsSample(renderStats, DrawnFrameTimes));
+					LastStatsFrame = renderStats.Frame;
+				}
+				DrawnFrameTimes = times;
+			}
 
 			// What ImGui wants decides the ImGui context next frame; the cursor follows the stack
 			Input.SetImGuiState(Nyx::Input::ReadImGuiState());
@@ -124,7 +145,7 @@ namespace Nyx
 		}
 	}
 
-	void Application::RunFixedSteps(double frameSeconds)
+	uint32_t Application::RunFixedSteps(double frameSeconds)
 	{
 		NYX_PROFILE_FUNCTION();
 		const uint32_t steps = SimulationClock.Advance(frameSeconds);
@@ -147,15 +168,16 @@ namespace Nyx
 				FixedStepClock::MaxStepsPerFrame, SimulationClock.GetStepSeconds() * 1000.0);
 		}
 		WarnedOfDroppedTime = SimulationClock.IsDroppingTime();
+		return steps;
 	}
 
-	void Application::DrawFrame()
+	bool Application::DrawFrame()
 	{
 		NYX_PROFILE_FUNCTION();
 		// A minimized window has nothing to draw into
 		if (Window->WaitIfMinimized())
 		{
-			return;
+			return false;
 		}
 
 		Renderer->DrawFrame([this]()
@@ -175,5 +197,6 @@ namespace Nyx
 		{
 			Window->RequestClose();
 		}
+		return true;
 	}
 }

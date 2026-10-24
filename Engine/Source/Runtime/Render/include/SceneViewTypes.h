@@ -95,6 +95,35 @@ namespace Nyx
 		uint32_t ParticleEmitters = 0;
 		uint32_t ParticleEmittersCulled = 0;
 		uint32_t Particles = 0;
+		// Meshes left out, each instance one: an entity out of view, or every instance of a cell
+		uint32_t InstancesCulled = 0;
+		// The draw calls the draws are recorded as, one for each section of a mesh, and those of them
+		// of more than one instance; the triangles they submit, every instance's
+		uint32_t DrawCalls = 0;
+		uint32_t InstancedDrawCalls = 0;
+		uint64_t Triangles = 0;
+
+		// Adds another's counts, e.g. of a view's cascades together
+		SceneViewCullingStats& operator+=(const SceneViewCullingStats& other)
+		{
+			Objects += other.Objects;
+			ObjectsCulled += other.ObjectsCulled;
+			Cells += other.Cells;
+			CellsCulled += other.CellsCulled;
+			Instances += other.Instances;
+			Draws += other.Draws;
+			InstancesCulled += other.InstancesCulled;
+			DrawCalls += other.DrawCalls;
+			InstancedDrawCalls += other.InstancedDrawCalls;
+			Triangles += other.Triangles;
+			PointLights += other.PointLights;
+			PointLightsCulled += other.PointLightsCulled;
+			PointLightsDropped += other.PointLightsDropped;
+			ParticleEmitters += other.ParticleEmitters;
+			ParticleEmittersCulled += other.ParticleEmittersCulled;
+			Particles += other.Particles;
+			return *this;
+		}
 	};
 
 	// The primary light's shadows as a view draws them (DirectionalLightComponent's settings, in
@@ -148,14 +177,93 @@ namespace Nyx
 		uint32_t Levels = 6;
 	};
 
-	// What a view's passes after its scene pass took on the GPU in the last frame drawn, in
-	// milliseconds (VulkanRenderer::GetSceneViewGpuTimes()): 0 for a pass that didn't run, and
-	// without timestamps on the device
+	// What a view's passes took on the GPU in the last frame drawn, in milliseconds
+	// (VulkanRenderer::GetSceneViewGpuTimes()): 0 for a pass that didn't run, and without timestamps
+	// on the device. Its shadow cascades, its scene pass (the objects, the sky and the decals, and with
+	// MSAA the resolve at its end), its ambient occlusion, its particles, its bloom, and its picture
+	// (the tonemap, and the overlays and lines over it).
 	struct SceneViewGpuTimes
 	{
-		float Bloom = 0.0f;
+		float Shadows = 0.0f;
+		float Scene = 0.0f;
 		float AmbientOcclusion = 0.0f;
 		float Particles = 0.0f;
+		float Bloom = 0.0f;
+		float Picture = 0.0f;
+
+		float GetTotal() const { return Shadows + Scene + AmbientOcclusion + Particles + Bloom + Picture; }
+
+		SceneViewGpuTimes& operator+=(const SceneViewGpuTimes& other)
+		{
+			Shadows += other.Shadows;
+			Scene += other.Scene;
+			AmbientOcclusion += other.AmbientOcclusion;
+			Particles += other.Particles;
+			Bloom += other.Bloom;
+			Picture += other.Picture;
+			return *this;
+		}
+	};
+
+	// What a view drew in a frame and what its passes took on the GPU, once the frame's GPU work is
+	// done (IRenderer::GetSceneViewFrameStats()). The scene pass's draws and what it culled; its
+	// shadow cascades and the draws of all of them, summed; its surface decals, a draw each.
+	struct SceneViewFrameStats
+	{
+		SceneViewCullingStats Scene;
+		uint32_t ShadowCascades = 0;
+		SceneViewCullingStats Shadows;
+		uint32_t Decals = 0;
+		SceneViewGpuTimes Gpu;
+
+		// Adds another view's, e.g. for a frame's every view
+		SceneViewFrameStats& operator+=(const SceneViewFrameStats& other)
+		{
+			Scene += other.Scene;
+			ShadowCascades += other.ShadowCascades;
+			Shadows += other.Shadows;
+			Decals += other.Decals;
+			Gpu += other.Gpu;
+			return *this;
+		}
+	};
+
+	// What the last frame whose GPU work is done took and drew (IRenderer::GetFrameStats()), in
+	// milliseconds. Complete one frame after it was drawn: its GPU times are read once its fence
+	// has passed, at the start of the next frame.
+	struct RenderFrameStats
+	{
+		// How many frames were drawn up to and with this one; 0 before the first is complete
+		uint64_t Frame = 0;
+
+		// CPU: the whole frame, from the end of the frame before to this one's present, so it
+		// includes the application's updates and the simulation steps before the renderer
+		float FrameTime = 0.0f;
+		// The renderer's own work on the worlds and the scene views: extracting the worlds, the
+		// views' cameras and culling, recording their passes; and all of it, with the uploads and the
+		// pictures' blur
+		float Extract = 0.0f;
+		float Cull = 0.0f;
+		float Record = 0.0f;
+		float Scene = 0.0f;
+		// Building the UI (the layers' OnUI() among it) and recording it
+		float UI = 0.0f;
+		// Waiting for the frame before's GPU work (long when the GPU is what limits the frame
+		// rate), for the swapchain's image, and presenting it (long under vsync)
+		float WaitForGpu = 0.0f;
+		float Present = 0.0f;
+
+		// GPU, while bGpuTimes (timestamps on the device): the frame's whole command buffer, and its
+		// scene views alone
+		bool bGpuTimes = false;
+		float GpuFrame = 0.0f;
+		float GpuSceneViews = 0.0f;
+
+		// Every scene view's, summed, and how many there were; the samples a pixel they drew with
+		// (IRenderer::GetMsaaSamples())
+		uint32_t SceneViews = 0;
+		SceneViewFrameStats Views;
+		uint32_t MsaaSamples = 1;
 	};
 
 	// The view's ambient occlusion (EnvironmentComponent, in range:

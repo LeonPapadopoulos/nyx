@@ -64,6 +64,23 @@ namespace Nyx
 		// Multisample anti-aliasing of the game's view (IRenderer::SetMsaaSamples()): 1, 2, 4 or 8
 		// samples a pixel. Unset: the renderer's default.
 		std::optional<uint32_t> MsaaSamples;
+
+		// The window stays hidden, e.g. for an automated test; the game runs as it would shown
+		bool bWindowHidden = false;
+
+		// The frame's numbers are shown over the picture from the start, as F8 shows them
+		bool bShowFrameStats = false;
+
+		// Benchmark mode: the game waits BenchmarkWarmupSeconds (or the default) for the scene to
+		// settle and its shaders to compile, records every frame for this many seconds without
+		// vsync, writes them to BenchmarkOutPath (or the default) as CSV, and quits. Unset: no
+		// benchmark.
+		std::optional<double> BenchmarkSeconds;
+		std::optional<double> BenchmarkWarmupSeconds;
+		std::filesystem::path BenchmarkOutPath;
+		// The camera's path through the recording (ParseBenchmarkCameraPath()); empty: the scene's
+		// cameras
+		std::filesystem::path BenchmarkCameraPath;
 	};
 
 	// The command line arguments for the options, in UTF-8, without the program name, e.g.

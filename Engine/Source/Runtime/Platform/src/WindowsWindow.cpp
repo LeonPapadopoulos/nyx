@@ -172,6 +172,10 @@ namespace Nyx
 	void WindowsWindow::FinishStartup()
 	{
 		StartupBanner.reset();
+		if (!Data.bVisible)
+		{
+			return;
+		}
 		// Shown maximized in one step; GLFW would show the window and then maximize it
 		if (Placement.bMaximized)
 		{
@@ -195,6 +199,7 @@ namespace Nyx
 		Data.Height = specs.Height;
 		Data.bCustomTitlebar = specs.bUseCustomTitlebar;
 		Data.bResizable = specs.bResizable;
+		Data.bVisible = specs.bVisible;
 
 		LOG_INFO("Creating Window. {0} {1} {2}", Data.Title, Data.Width, Data.Height);
 

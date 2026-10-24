@@ -138,6 +138,8 @@ NyxGame.exe [scene file] [--window-size <width>x<height>] [--window-pos <x>,<y>]
 - The size is that of the picture, without titlebar and borders; the position is where the
   window's outer top-left corner goes, and may be negative on a monitor left of or above the
   main one.
+- `--window-hidden` never shows the window, e.g. for an automated test; `--frame-stats` and
+  `--benchmark` are under [Frame statistics and benchmarks](#frame-statistics-and-benchmarks).
 - `NyxGameLaunchOptionsTests` tests the command line.
 
 ## NyxDump
@@ -319,6 +321,41 @@ costs next to nothing otherwise.
   steps with each step, and the renderer's steps: the fence wait, the scene views, the UI build
   and the submit.
 - `-DNYX_PROFILER=OFF` builds without Tracy: the profiler macros compile to nothing.
+
+## Frame statistics and benchmarks
+
+- **F8 in a game window** (every build) shows the frame's numbers over the picture's top left: the
+  frame rate and time with the last second's worst; on the CPU the updates, the simulation's fixed
+  steps, extracting, culling, recording, the UI and waiting for the GPU; on the GPU the frame and
+  the scene views' shadows, scene (with the MSAA resolve), ambient occlusion, particles, bloom and
+  picture; the scene views and their MSAA samples, their draw calls (and how many draw many
+  instances), instances drawn and culled, triangles, shadow cascades with their draw calls and
+  triangles, decals, the point lights lit, and the particles with their emitters; and a graph of the last five seconds'
+  frame times, the CPU's and the GPU's. The numbers are each second's average, so they hold still
+  to be read. `NyxGame.exe --frame-stats` shows them from the start.
+- **The editor's status bar** shows the same frame rate and time; the frame time's tooltip has the
+  breakdown and the counts.
+- **A benchmark** runs a scene, records every frame, writes a CSV and quits:
+
+  ```
+  NyxGame.exe Scenes\Valley.nyxscene --benchmark 10 --benchmark-out valley.csv
+  ```
+
+  It turns vsync off, waits 3 s for the scene to settle (`--benchmark-warmup <seconds>`) and for
+  its shaders to compile, records for the seconds given, and ends with exit code 0 (1 if it
+  failed). The CSV has a row a frame with every number above, then the average, the 1% low (what
+  only the slowest 1% of frames exceed) and the worst; the log has the summary in a line. Without
+  `--benchmark-out` it goes to `Saved\Benchmarks\<scene>-<date>-<time>.csv`.
+- **The camera** of a benchmark: `--benchmark-camera <file>` moves a camera of its own along a path,
+  a line a key: `<seconds> <x> <y> <z> <look-at x> <look-at y> <look-at z>`, in a straight line
+  from key to key. Without one, a scene with several cameras is seen through each in turn, for an
+  equal share of the time; else through its primary camera.
+- The simulation runs as usual, so a seeded scene repeats, though the fixed steps fall in other
+  frames on every run; compare averages and 1% lows of runs of ten seconds or more.
+- How it works, and its numbers: [Frame statistics](Design/frame-stats.md).
+- Tests: `NyxFrameStatsTests` (the windows' averages and worst, the history, the summary, the CSV,
+  the camera path), `NyxGameLaunchOptionsTests` (the options), `NyxGameBenchmarkTests` (a second
+  of the default scene in a hidden window, and the CSV it writes).
 
 ## The painted UI
 

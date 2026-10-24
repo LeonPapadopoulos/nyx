@@ -73,6 +73,26 @@ namespace
 		return Nyx::GameWindowSize{ size->first, size->second };
 	}
 
+	// A number of seconds above 0, e.g. "10" or "2.5"; at most a day
+	std::optional<double> ParseSeconds(std::string_view text)
+	{
+		const std::optional<double> seconds = ParseNumber<double>(text);
+		if (!seconds || !(*seconds > 0.0) || *seconds > 86400.0)
+		{
+			return std::nullopt;
+		}
+
+		return seconds;
+	}
+
+	// A double as the shortest text that reads back as the same number
+	std::string FormatSeconds(double seconds)
+	{
+		char text[32];
+		const auto [end, error] = std::to_chars(text, text + sizeof(text), seconds);
+		return error == std::errc() ? std::string(text, end) : std::string();
+	}
+
 	std::optional<Nyx::GameWindowPosition> ParseWindowPosition(std::string_view text)
 	{
 		const std::optional<std::pair<int32_t, int32_t>> position = ParsePair<int32_t>(text, ',');
@@ -176,6 +196,40 @@ namespace Nyx
 		{
 			arguments.push_back("--msaa");
 			arguments.push_back(std::to_string(*options.MsaaSamples));
+		}
+
+		if (options.bWindowHidden)
+		{
+			arguments.push_back("--window-hidden");
+		}
+
+		if (options.bShowFrameStats)
+		{
+			arguments.push_back("--frame-stats");
+		}
+
+		if (options.BenchmarkSeconds)
+		{
+			arguments.push_back("--benchmark");
+			arguments.push_back(FormatSeconds(*options.BenchmarkSeconds));
+		}
+
+		if (options.BenchmarkWarmupSeconds)
+		{
+			arguments.push_back("--benchmark-warmup");
+			arguments.push_back(FormatSeconds(*options.BenchmarkWarmupSeconds));
+		}
+
+		if (!options.BenchmarkOutPath.empty())
+		{
+			arguments.push_back("--benchmark-out");
+			arguments.push_back(ToUtf8(options.BenchmarkOutPath));
+		}
+
+		if (!options.BenchmarkCameraPath.empty())
+		{
+			arguments.push_back("--benchmark-camera");
+			arguments.push_back(ToUtf8(options.BenchmarkCameraPath));
 		}
 
 		return arguments;
@@ -287,6 +341,54 @@ namespace Nyx
 				if (!options.MsaaSamples)
 				{
 					outWarnings.push_back("--msaa needs 1, 2, 4 or 8 samples; the renderer's default is used");
+				}
+			}
+			else if (argument == "--window-hidden")
+			{
+				options.bWindowHidden = true;
+			}
+			else if (argument == "--frame-stats")
+			{
+				options.bShowFrameStats = true;
+			}
+			else if (argument == "--benchmark")
+			{
+				const std::optional<std::string_view> value = takeValue();
+				options.BenchmarkSeconds = value ? ParseSeconds(*value) : std::nullopt;
+				if (!options.BenchmarkSeconds)
+				{
+					outWarnings.push_back("--benchmark needs the seconds to record, above 0, e.g. 10; the game runs without a benchmark");
+				}
+			}
+			else if (argument == "--benchmark-warmup")
+			{
+				const std::optional<std::string_view> value = takeValue();
+				options.BenchmarkWarmupSeconds = value ? ParseSeconds(*value) : std::nullopt;
+				if (!options.BenchmarkWarmupSeconds)
+				{
+					outWarnings.push_back("--benchmark-warmup needs the seconds to wait, above 0, e.g. 3; the benchmark waits its default");
+				}
+			}
+			else if (argument == "--benchmark-out")
+			{
+				if (const std::optional<std::string_view> value = takeValue())
+				{
+					options.BenchmarkOutPath = FromUtf8(*value);
+				}
+				else
+				{
+					outWarnings.push_back("--benchmark-out needs a file name");
+				}
+			}
+			else if (argument == "--benchmark-camera")
+			{
+				if (const std::optional<std::string_view> value = takeValue())
+				{
+					options.BenchmarkCameraPath = FromUtf8(*value);
+				}
+				else
+				{
+					outWarnings.push_back("--benchmark-camera needs a file name");
 				}
 			}
 			else if (argument.starts_with("--"))

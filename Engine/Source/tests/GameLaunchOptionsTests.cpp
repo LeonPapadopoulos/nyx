@@ -57,6 +57,12 @@ namespace
 		written.WindowPosition = GameWindowPosition{ -1920, -40 };
 		written.WindowTitle = "Nyx Game - Steam Deck";
 		written.MsaaSamples = 8;
+		written.bWindowHidden = true;
+		written.bShowFrameStats = true;
+		written.BenchmarkSeconds = 12.5;
+		written.BenchmarkWarmupSeconds = 0.1;
+		written.BenchmarkOutPath = "Benchmarks/Valley at night.csv";
+		written.BenchmarkCameraPath = "Benchmarks/Valley.txt";
 
 		const std::vector<std::string> arguments = MakeGameArguments(written);
 
@@ -74,6 +80,12 @@ namespace
 		Require(read.WindowPosition == written.WindowPosition, "Window position differs after a round trip");
 		Require(read.WindowTitle == written.WindowTitle, "Window title differs after a round trip");
 		Require(read.MsaaSamples == written.MsaaSamples, "MSAA samples differ after a round trip");
+		Require(read.bWindowHidden, "--window-hidden lost in a round trip");
+		Require(read.bShowFrameStats, "--frame-stats lost in a round trip");
+		Require(read.BenchmarkSeconds == written.BenchmarkSeconds, "Benchmark seconds differ after a round trip");
+		Require(read.BenchmarkWarmupSeconds == written.BenchmarkWarmupSeconds, "Benchmark warm-up seconds differ after a round trip");
+		Require(read.BenchmarkOutPath == written.BenchmarkOutPath, "Benchmark output path differs after a round trip");
+		Require(read.BenchmarkCameraPath == written.BenchmarkCameraPath, "Benchmark camera path differs after a round trip");
 	}
 
 	// Paths and titles beyond ASCII, e.g. a play setup named in German: everything is UTF-8
@@ -112,10 +124,35 @@ namespace
 		}
 	}
 
+	void TestBenchmarkValues()
+	{
+		// The command line a benchmark is run with
+		std::vector<std::string> warnings;
+		GameLaunchOptions options = Parse({ "Scenes/Valley.nyxscene", "--benchmark", "10", "--benchmark-out", "valley.csv" }, warnings);
+		Require(warnings.empty(), "A benchmark's command line shouldn't warn");
+		Require(options.ScenePath == "Scenes/Valley.nyxscene", "The scene path of a benchmark was lost");
+		Require(options.BenchmarkSeconds == 10.0, "--benchmark 10 should record 10 seconds");
+		Require(options.BenchmarkOutPath == "valley.csv", "--benchmark-out was lost");
+		Require(!options.BenchmarkWarmupSeconds && options.BenchmarkCameraPath.empty(), "Options not given should stay unset");
+
+		options = Parse({ "--benchmark", "0.5", "--benchmark-warmup", "1e1" }, warnings);
+		Require(warnings.empty() && options.BenchmarkSeconds == 0.5 && options.BenchmarkWarmupSeconds == 10.0, "Fractions and exponents are seconds too");
+
+		// Each is left unset, with a warning that names the option
+		for (const char* seconds : { "0", "-1", "ten", "10s", "", "1e9", "nan", "inf" })
+		{
+			options = ParseWithOneWarning({ "--benchmark", seconds }, "--benchmark");
+			Require(!options.BenchmarkSeconds, std::string("Accepted the benchmark seconds ") + seconds);
+			options = ParseWithOneWarning({ "--benchmark-warmup", seconds }, "--benchmark-warmup");
+			Require(!options.BenchmarkWarmupSeconds, std::string("Accepted the warm-up seconds ") + seconds);
+		}
+	}
+
 	void TestMissingAndBadValues()
 	{
 		// An option at the end, without its value
-		for (const char* option : { "--editor-port", "--link-log", "--window-size", "--window-pos", "--window-title", "--msaa" })
+		for (const char* option : { "--editor-port", "--link-log", "--window-size", "--window-pos", "--window-title", "--msaa", "--benchmark", "--benchmark-warmup",
+				 "--benchmark-out", "--benchmark-camera" })
 		{
 			ParseWithOneWarning({ "Scene.nyxscene", option }, option);
 		}
@@ -155,6 +192,7 @@ int main()
 		TestRoundTrip();
 		TestNonAsciiRoundTrip();
 		TestWindowValues();
+		TestBenchmarkValues();
 		TestMissingAndBadValues();
 		TestUnknownOption();
 	}

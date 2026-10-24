@@ -22,7 +22,9 @@ int main(int argc, char** argv)
 
 	auto app = Nyx::CreateApplication(argc, argv);
 	app->Run();
+	const int exitCode = app->GetExitCode();
 	delete app;
+	return exitCode;
 }
 
 //#endif

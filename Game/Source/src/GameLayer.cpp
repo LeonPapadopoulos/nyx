@@ -7,6 +7,7 @@
 #include "InputAsset.h"
 #include "Log.h"
 #include "EditorRenderer.h"
+#include "FrameStatsOverlay.h"
 #include "OrbitCameras.h"
 #include "PhysicsPick.h"
 #include "ScatterInstances.h"
@@ -34,6 +35,13 @@ namespace Nyx::Game
 		FlyCameraInput = std::make_unique<Nyx::Input::FlyCameraInput>(
 			*Input, Nyx::Input::FlyCameraInput::Settings{ .FlyContextName = "FlyCamera", .MouseLookContextName = "FlyCameraMouseLook" });
 		OrbitCameraInput = std::make_unique<Nyx::Input::OrbitCameraInput>(*Input, Nyx::Input::OrbitCameraInput::Settings{});
+
+		FrameStats = &application.GetFrameStats();
+		ToggleFrameStats = Input->AddAction({ "ToggleFrameStats", Nyx::Input::EActionValue::Button });
+		const Nyx::Input::InputBinding frameStats =
+			Nyx::Input::InputBinding::ForControl(ToggleFrameStats, Nyx::Input::Key(Nyx::Input::EKey::F8), Nyx::Input::ETriggerKind::Pressed);
+		FrameStatsContext = Input->AddContext({ .Name = "FrameStats", .Priority = 800, .Bindings = { frameStats } });
+		Input->GetUser().SetContextActive(FrameStatsContext, true, { .Reason = "Every build" });
 
 #if defined(ENGINE_DEBUG)
 		CrashOnPurpose = Input->AddAction({ "CrashOnPurpose", Nyx::Input::EActionValue::Button });
@@ -212,6 +220,12 @@ namespace Nyx::Game
 				.DeltaSeconds = deltaTime });
 		}
 
+		// F8 shows the frame rate, where the frame's time went and what was drawn, over the picture
+		if (Input->GetUser().ConsumeTriggered(ToggleFrameStats))
+		{
+			bShowFrameStats = !bShowFrameStats;
+		}
+
 #if defined(ENGINE_DEBUG)
 		InputHistory.Record(*Input);
 		if (Input->GetUser().ConsumeTriggered(ToggleInputOverlay))
@@ -332,6 +346,11 @@ namespace Nyx::Game
 		}
 
 		ImGui::End();
+
+		if (bShowFrameStats)
+		{
+			DrawFrameStatsOverlay(*FrameStats, GameViewMin + glm::vec2(10.0f));
+		}
 
 #if defined(ENGINE_DEBUG)
 		// Over the game: the mouse over it goes to ImGui (the game's window is a view, this isn't)

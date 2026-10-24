@@ -386,6 +386,8 @@ namespace Nyx
 		// What the view's passes after its scene pass took on the GPU in the last frame drawn; null
 		// for an unknown view. For tests and the benchmark.
 		const SceneViewGpuTimes* GetSceneViewGpuTimes(uint64_t id) const;
+		const RenderFrameStats& GetFrameStats() const override { return FrameStats; }
+		const SceneViewFrameStats* GetSceneViewFrameStats(uint64_t id) const override;
 
 		bool GetSceneViewCameraData(uint64_t sceneViewId, Nyx::SceneViewCameraData& outData) const override;
 
@@ -641,14 +643,17 @@ namespace Nyx
 		// This frame's particles of every view, in the order they are drawn
 		std::vector<ParticleInstanceData> FrameParticles;
 
-		// The GPU times of each view's passes after its scene pass (SceneViewGpuTimes), for the
-		// first MaxTimedViews views: a pair of timestamps a pass a view, reset at the frame's start
-		// and read after its fence. None without timestamps on the device.
+		// The GPU times of each view's passes (SceneViewGpuTimes), for the first MaxTimedViews views:
+		// a pair of timestamps a pass a view, reset at the frame's start and read after its fence.
+		// None without timestamps on the device.
 		enum class ETimedPass : uint32_t
 		{
-			Bloom,
+			Shadows,
+			Scene,
 			AmbientOcclusion,
 			Particles,
+			Bloom,
+			Picture,
 			Count
 		};
 		static constexpr uint32_t MaxTimedViews = 8;
@@ -665,6 +670,22 @@ namespace Nyx
 		void WritePassTimestamp(vk::raii::CommandBuffer& cmd, const SceneViewInstance& view, ETimedPass pass, bool bEnd);
 		// After the last frame's fence: its passes' times into their views
 		void ReadPassTimestamps();
+
+		// The last frame whose GPU work is done (IRenderer::GetFrameStats()), and its views'
+		// (SceneViewInstance::Stats). A frame's CPU times for the scene are kept until then, and
+		// whether a frame was submitted since.
+		RenderFrameStats FrameStats;
+		struct SceneTimes
+		{
+			float Extract = 0.0f;
+			float Cull = 0.0f;
+			float Record = 0.0f;
+		};
+		SceneTimes PendingSceneTimes;
+		bool bFrameStatsPending = false;
+		// After the last frame's fence and its timestamps: its stats made from its CPU times, its
+		// views' draws and its GPU times, if it was submitted
+		void CompleteFrameStats();
 
 		// When the last frame's DrawFrame() ended, for the time spent outside it
 		std::chrono::steady_clock::time_point LastFrameEnd;

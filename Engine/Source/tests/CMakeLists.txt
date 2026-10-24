@@ -53,6 +53,14 @@ add_dependencies(NyxGameLaunchOptionsTests NyxGeneratedReflection)
 set_property(TARGET NyxGameLaunchOptionsTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxGameLaunchOptionsTests COMMAND NyxGameLaunchOptionsTests)
 
+# Frame statistics without a GPU: a frame's numbers, their windows' averages and worst, the graph's
+# history; a benchmark's summary, its CSV and its camera path.
+add_executable(NyxFrameStatsTests FrameStatsTests.cpp)
+target_link_libraries(NyxFrameStatsTests PRIVATE NyxEngine)
+add_dependencies(NyxFrameStatsTests NyxGeneratedReflection)
+set_property(TARGET NyxFrameStatsTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxFrameStatsTests COMMAND NyxFrameStatsTests)
+
 # The frame rate cap's pace, and its waiting on the real clock.
 add_executable(NyxFrameRateLimiterTests FrameRateLimiterTests.cpp)
 target_link_libraries(NyxFrameRateLimiterTests PRIVATE NyxEngine)

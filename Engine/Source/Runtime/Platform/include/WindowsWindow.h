@@ -80,6 +80,7 @@ namespace Nyx
 			unsigned int Height;
 			bool bCustomTitlebar;
 			bool bResizable;
+			bool bVisible;
 		};
 
 		WindowData Data;

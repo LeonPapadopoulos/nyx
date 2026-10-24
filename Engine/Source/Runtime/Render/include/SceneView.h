@@ -105,10 +105,13 @@ namespace Nyx
 		SceneViewAmbientOcclusion AmbientOcclusion;
 		// Its particles this frame, and their pass's framebuffer (VulkanParticles)
 		SceneViewParticles Particles;
-		// What its passes after the scene pass took on the GPU, in the last frame drawn; and its
+		// What its passes took on the GPU, in the last frame drawn; and its
 		// place among the views timed this frame (VulkanRenderer::PassTimestamps)
 		SceneViewGpuTimes GpuTimes;
 		uint32_t TimedViewIndex = 0;
+		// What it drew and its GPU times, in the last frame whose GPU work is done
+		// (IRenderer::GetSceneViewFrameStats())
+		SceneViewFrameStats Stats;
 
 		// The point lights its pixels are lit by this frame (VulkanRenderer::CullSceneView())
 		std::vector<ViewPointLight> PointLights;

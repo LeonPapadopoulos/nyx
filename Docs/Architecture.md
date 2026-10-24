@@ -61,9 +61,9 @@ doesn't allow, and on a table that goes round in a circle, so a new dependency s
 | `UI` | The painter, and the painted UI drawn with it on top of ImGui, the dock space among it (`Nyx::UI::DockSpace()`, docked windows down to `DockedWindowMinWidth`) | Core, Reflection |
 | `Link` | The editor link: its messages, live edits, live tuning of the input (`LiveInput`), the answer to the editor's question about an entity's run-time components (`MakeInspectedEntityMessage()`), recordings, the log sink | Core, Net, Input, Scene, Assets |
 | `LinkTools` | Link messages, recordings, scene files and input files as readable text, for the editor and NyxDump; not under `Runtime`, and not in the game | Core, Reflection, Scene, Input, Link |
-| `Render` | The Vulkan renderer, scene views, shaders and materials, meshes made at run time and mesh instances on the GPU (`RuntimeMeshCache`, `MeshInstanceCache`), culling by the views' cameras (`SceneCulling.h`), the primary light's cascaded shadow maps (`ShadowCascades.h`, `VulkanShadows`), the world's air as plain math (`Atmosphere.h`: the sun through the air, the sky's tint, height fog along a ray), bloom (`Bloom.h`, `VulkanBloom`), ambient occlusion (`AmbientOcclusion.h`, `VulkanAmbientOcclusion`), multisample anti-aliasing of the scene views (`Multisampling.h`, resolved in `VulkanViewportTarget`), point lights as plain math (`PointLights.h`: their falloff, a world's lights, a view's culling of them), particles (`Particles.h`: emitters stepped on the CPU by the world's time, their budgets, sorting; a game's air through `IParticleVelocityField`; `VulkanParticles`, their pass), and applying the link's shaders and material values | Core, Net, Scene, Assets, UI, Link |
+| `Render` | The Vulkan renderer, scene views, shaders and materials, meshes made at run time and mesh instances on the GPU (`RuntimeMeshCache`, `MeshInstanceCache`), culling by the views' cameras (`SceneCulling.h`), the primary light's cascaded shadow maps (`ShadowCascades.h`, `VulkanShadows`), the world's air as plain math (`Atmosphere.h`: the sun through the air, the sky's tint, height fog along a ray), bloom (`Bloom.h`, `VulkanBloom`), ambient occlusion (`AmbientOcclusion.h`, `VulkanAmbientOcclusion`), multisample anti-aliasing of the scene views (`Multisampling.h`, resolved in `VulkanViewportTarget`), point lights as plain math (`PointLights.h`: their falloff, a world's lights, a view's culling of them), particles (`Particles.h`: emitters stepped on the CPU by the world's time, their budgets, sorting; a game's air through `IParticleVelocityField`; `VulkanParticles`, their pass), each frame's numbers once its GPU work is done (`RenderFrameStats`, `SceneViewFrameStats`: CPU times, GPU times by timestamps, what each view drew and lit), and applying the link's shaders and material values | Core, Net, Scene, Assets, UI, Link |
 | `Platform` | The window, and where it is kept on the monitors (`FitWindowOnScreen()`) | Core, Input, UI |
-| `App` | The application and its layers, `main()`, the options the editor starts a game with, what a game module brings (`GameModule`) and its player (`IPlayerController`, turning input into commands each frame), the player Nyx's game has without one (`ThirdPersonPlayer`) | Core, Input, Scene, Sim, Render, Platform |
+| `App` | The application and its layers, `main()`, the options the editor starts a game with, what a game module brings (`GameModule`) and its player (`IPlayerController`, turning input into commands each frame), the player Nyx's game has without one (`ThirdPersonPlayer`), frame statistics (`FrameStats.h`: a frame's numbers, windows of a second's average and worst, `Application::GetFrameStats()`) and benchmarks (`FrameBenchmark.h`: the summary, the CSV, the camera path) | Core, Input, Scene, Sim, Render, Platform |
 
 Each folder of `Runtime` has one namespace: `Nyx`, except `Net` (`Nyx::Net`), `Input`
 (`Nyx::Input`) and `UI` (`Nyx::UI`).
@@ -134,7 +134,8 @@ checks every `#include` against this table.
 
 1. `IWindow::WaitForNextFrame()`: the frame rate cap.
 2. `PollEvents()`, then `InputSystem::BeginFrame()`: this frame's input.
-3. Every layer's `OnUpdate(deltaTime)`, in the order they were pushed.
+3. Every layer's `OnUpdate(deltaTime)`, in the order they were pushed. `Application` times this
+   step, the next two and the steps' count, for the frame's numbers (`ApplicationFrameTimes`).
 4. The fixed simulation steps: `Application`'s `FixedStepClock` turns the frame's real time into
    steps of 1/60 s (at most 4 a frame, none while paused), and each step runs every layer's
    `OnFixedUpdate(step)`, in push order. When it has to drop time, `Application` warns once, and
@@ -146,8 +147,10 @@ checks every `#include` against this table.
    (`IWindow::WaitIfMinimized()`), so the frame loop (and the editor link) keeps running.
    Otherwise `VulkanRenderer::DrawFrameOnDevice()`, which leaves the UI to its `VulkanUIBackend`:
    1. waits for the last frame's fence (one frame in flight), then reads back what that frame
-      left: timestamps, the painter's binning, picks; and destroys the GPU meshes made at run time
-      that were replaced or no longer drawn since;
+      left: timestamps, the painter's binning, picks; completes that frame's numbers
+      (`CompleteFrameStats()`: its CPU times, its views' counts and its GPU times, all of one
+      frame); and destroys the GPU meshes made at run time that were replaced or no longer drawn
+      since;
    2. acquires the swapchain image, and takes shader updates;
    3. extracts what each shown world draws this frame: its objects (a mesh made at run time
       uploaded here, before any draw is recorded, when it is new or its revision changed:
@@ -186,6 +189,9 @@ checks every `#include` against this table.
    5. records the UI pass, submits, renders ImGui's OS windows, signals the fence and presents.
 6. `InputSystem::SetImGuiState()` with what ImGui wants (`ReadImGuiState()`), for the `ImGui`
    context next frame, then `InputSystem::EndFrame()`: sets the cursor the context stack decides.
+
+After `DrawFrame()`, `Application` adds the frame the renderer completed, with that frame's own
+times, to its `FrameStatsWindow` ([Frame statistics](Design/frame-stats.md)).
 
 If the GPU device is lost, the renderer stops drawing and `Application` closes the window.
 
@@ -236,7 +242,7 @@ and `NYX_PROFILE_MESSAGE()`. They wrap Tracy, and only `Profiler.h` includes Tra
   made with, so the editor's views (any number, `SceneViewSet`) can come and go; a view destroyed
   while a frame is recorded goes once the GPU is done with it.
 - **Layers**: `EditorLayer` in the editor; `GameLayer` and, when the editor started the game,
-  `EditorLinkLayer` in the game.
+  `EditorLinkLayer` in the game, and `BenchmarkLayer` in benchmark mode (`--benchmark`).
 - **Worlds** (`Registry`): the scene being edited is in `SceneDocument`, inside
   `SceneEditor`, inside `EditorLayer`. The material preview has a world of its own
   (`MaterialPreviewPanel`). The game's is in `GameLayer`. The editor owns the world you edit; a
@@ -448,6 +454,10 @@ How some systems work, and why they work that way:
   the numbers.
 - [Undo by guid](Design/undo-by-guid.md): why undo names entities by guid, and how it keeps
   components whole.
+- [Frame statistics](Design/frame-stats.md): each frame's CPU and GPU times and draw counts, made
+  whole one frame late after its fence, windows of a second's average and worst without
+  allocating, the game's overlay, benchmark mode, its CSV and camera path, what doesn't repeat
+  between runs, the numbers.
 - [Scattering](Design/scattering.md): copies of a mesh over another entity's mesh, sampled by
   triangle area cell by cell, the same on every machine, made in the post-load step and following
   the surface and the blockers each frame, an edit making only the cells it reaches again;

@@ -197,6 +197,8 @@ set(NYX_ENGINE_SOURCES
 
     # Runtime/App
     ${NYX_ENGINE_ROOT}/Runtime/App/src/Application.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/App/src/FrameBenchmark.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/App/src/FrameStats.cpp
     ${NYX_ENGINE_ROOT}/Runtime/App/src/GameLaunchOptions.cpp
     ${NYX_ENGINE_ROOT}/Runtime/App/src/ThirdPersonPlayer.cpp
 
@@ -408,6 +410,8 @@ set(NYX_ENGINE_HEADERS
 
     # Runtime/App
     ${NYX_ENGINE_ROOT}/Runtime/App/include/Application.h
+    ${NYX_ENGINE_ROOT}/Runtime/App/include/FrameBenchmark.h
+    ${NYX_ENGINE_ROOT}/Runtime/App/include/FrameStats.h
     ${NYX_ENGINE_ROOT}/Runtime/App/include/Layer.h
     ${NYX_ENGINE_ROOT}/Runtime/App/include/GameModule.h
     ${NYX_ENGINE_ROOT}/Runtime/App/include/GameLaunchOptions.h

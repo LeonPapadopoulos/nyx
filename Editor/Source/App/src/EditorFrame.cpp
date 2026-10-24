@@ -1,4 +1,5 @@
 #include "EditorFrame.h"
+#include "FrameStats.h"
 
 #include "ImGuiSource.h"
 #include "InputPanel.h"
@@ -73,8 +74,9 @@ namespace Nyx::Editor
 	{
 	}
 
-	void EditorFrame::Attach(Nyx::IWindow& window, Nyx::IEditorRenderer& renderer)
+	void EditorFrame::Attach(Nyx::IWindow& window, Nyx::IEditorRenderer& renderer, const Nyx::FrameStatsWindow& frameStats)
 	{
+		FrameStats = &frameStats;
 		Window = &window;
 		Renderer = &renderer;
 		window.SetFrameContent(Nyx::WindowFrameContent{
@@ -351,15 +353,19 @@ namespace Nyx::Editor
 			NYX_UI(Nyx::UI::StatusItem(SceneFileStatus.c_str(), bSceneFileStatusFailed ? Nyx::UI::EStatusIcon::Error : Nyx::UI::EStatusIcon::Ok, area.Height));
 		}
 
-		// At the right: the errors logged, the graphics API, and the frame rate and time
+		// At the right: the errors logged, the graphics API, and the frame rate and time: the last
+		// second's average, ImGui's until the first second has passed
 		const Nyx::LogCounts counts = Nyx::Logger::Get().GetCounts();
 		char errors[32];
 		std::snprintf(errors, sizeof(errors), "%llu %s", static_cast<unsigned long long>(counts.Errors), counts.Errors == 1 ? "error" : "errors");
-		const float framesPerSecond = ImGui::GetIO().Framerate;
+		const bool bFrameStats = FrameStats && FrameStats->GetWindowFrames() > 0;
+		const float milliseconds = bFrameStats ? static_cast<float>(FrameStats->GetAverage()[Nyx::EFrameStat::FrameTime])
+			: ImGui::GetIO().Framerate > 0.0f        ? 1000.0f / ImGui::GetIO().Framerate
+													 : 0.0f;
 		char frameRate[32];
-		std::snprintf(frameRate, sizeof(frameRate), "%.0f FPS", framesPerSecond);
+		std::snprintf(frameRate, sizeof(frameRate), "%.0f FPS", milliseconds > 0.0f ? 1000.0f / milliseconds : 0.0f);
 		char frameTime[32];
-		std::snprintf(frameTime, sizeof(frameTime), "%.1f ms", framesPerSecond > 0.0f ? 1000.0f / framesPerSecond : 0.0f);
+		std::snprintf(frameTime, sizeof(frameTime), "%.1f ms", milliseconds);
 
 		struct Item
 		{
@@ -394,7 +400,35 @@ namespace Nyx::Editor
 				ImGui::SetItemTooltip("Errors the editor has logged since it started, and %llu warnings. Its console shows them.",
 					static_cast<unsigned long long>(counts.Warnings));
 			}
+			if (index == std::size(items) - 1 && bFrameStats)
+			{
+				DrawFrameTimeTooltip();
+			}
 		}
+	}
+
+	void EditorFrame::DrawFrameTimeTooltip()
+	{
+		if (!ImGui::BeginItemTooltip())
+		{
+			return;
+		}
+		using Nyx::EFrameStat;
+		const Nyx::FrameStatsSample& average = FrameStats->GetAverage();
+		const Nyx::FrameStatsSample& worst = FrameStats->GetWorst();
+		ImGui::Text("The last second: %.2f ms a frame on average, %.2f ms the slowest", average[EFrameStat::FrameTime], worst[EFrameStat::FrameTime]);
+		ImGui::Text("CPU: update %.2f, simulation %.2f, extract %.2f, cull %.2f, record %.2f, UI %.2f, waiting for the GPU %.2f",
+			average[EFrameStat::Update], average[EFrameStat::Simulation], average[EFrameStat::Extract], average[EFrameStat::Cull], average[EFrameStat::Record],
+			average[EFrameStat::UI], average[EFrameStat::WaitForGpu]);
+		ImGui::Text("GPU: %.2f ms; the scene views' shadows %.2f, scenes %.2f, ambient occlusion %.2f, particles %.2f, bloom %.2f, pictures %.2f",
+			average[EFrameStat::GpuFrame], average[EFrameStat::GpuShadows], average[EFrameStat::GpuScene], average[EFrameStat::GpuAmbientOcclusion],
+			average[EFrameStat::GpuParticles], average[EFrameStat::GpuBloom], average[EFrameStat::GpuPicture]);
+		ImGui::Text("%.0f scene views at %.0fx MSAA: %.0f draw calls, %.0f instances, %.0f culled, %.0f triangles; shadows %.0f draw calls",
+			average[EFrameStat::SceneViews], average[EFrameStat::MsaaSamples], average[EFrameStat::DrawCalls], average[EFrameStat::Instances],
+			average[EFrameStat::InstancesCulled], average[EFrameStat::Triangles], average[EFrameStat::ShadowDrawCalls]);
+		ImGui::Text("Point lights %.0f, particles %.0f from %.0f emitters", average[EFrameStat::PointLights], average[EFrameStat::Particles],
+			average[EFrameStat::ParticleEmitters]);
+		ImGui::EndTooltip();
 	}
 
 	void EditorFrame::SetSceneFileStatus(std::string text, bool bFailed)

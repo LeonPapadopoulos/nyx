@@ -21,6 +21,7 @@
 
 namespace Nyx
 {
+	class FrameStatsWindow;
 	class IRenderer;
 	class IEditorRenderer;
 }
@@ -52,6 +53,12 @@ namespace Nyx::Game
 		Nyx::PhysicsMaterials& GetPhysicsMaterials()
 		{
 			return World.GetPhysicsMaterials();
+		}
+
+		// Shows the frame's numbers over the picture, as F8 does
+		void SetShowFrameStats(bool bShow)
+		{
+			bShowFrameStats = bShow;
 		}
 
 		// What components need after they were loaded or changed, e.g. to load the mesh a
@@ -102,6 +109,12 @@ namespace Nyx::Game
 		std::unique_ptr<Nyx::Input::FlyCameraInput> FlyCameraInput;
 		// The orbit camera's, for the world's OrbitCameraComponents (Input::UpdateOrbitCameras())
 		std::unique_ptr<Nyx::Input::OrbitCameraInput> OrbitCameraInput;
+
+		// Every build: F8 shows the frame's numbers over the picture (DrawFrameStatsOverlay())
+		Nyx::Input::ContextHandle FrameStatsContext;
+		Nyx::Input::ActionHandle ToggleFrameStats;
+		bool bShowFrameStats = false;
+		const Nyx::FrameStatsWindow* FrameStats = nullptr;
 
 		// Debug builds: Ctrl+Alt+Shift+C crashes the game on purpose, to try the editor's crash card;
 		// F3 shows the physics debug view; F4 shows the game view's culling, then freezes it, then
