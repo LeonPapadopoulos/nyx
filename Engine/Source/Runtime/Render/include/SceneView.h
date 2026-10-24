@@ -4,7 +4,14 @@
 #include "VulkanBlur.h"
 #include "EditorCamera.h"
 #include "SceneViewTypes.h"
+#include "VulkanDebugLines.h"
 #include "VulkanEditorOverlays.h"
+
+#include <glm/glm.hpp>
+#include <vulkan/vulkan.hpp>
+
+#include <optional>
+#include <vector>
 
 namespace Nyx
 {
@@ -13,6 +20,21 @@ namespace Nyx
 
 namespace Nyx
 {
+	// One draw of a view's scene pass, of every section of an object's mesh with its slot's
+	// material: `InstanceCount` instances from `FirstInstance` on in the instance stream, each
+	// relative to `Model`. The stream is the object's instances, or for a batch of objects that draw
+	// alike, null: this frame's stream of their transforms (VulkanRenderer::FrameInstances), with
+	// `Model` the identity.
+	struct SceneViewDraw
+	{
+		// In RenderWorld::Objects; the first of a batch
+		uint32_t Object = 0;
+		vk::Buffer InstanceBuffer;
+		uint32_t FirstInstance = 0;
+		uint32_t InstanceCount = 1;
+		glm::mat4 Model{ 1.0f };
+	};
+
 	struct SceneViewInstance
 	{
 		uint64_t Id = 0;
@@ -39,6 +61,16 @@ namespace Nyx
 		ESceneViewSky Sky = ESceneViewSky::Scene;
 		float SkyRotation = 0.0f;
 		ESceneViewDebug Debug = ESceneViewDebug::Lit;
+		// See IRenderer::SetSceneViewCullingDebug(); a frozen view's camera as it was frozen, taken
+		// at its first culling after
+		ESceneViewCullingDebug CullingDebug = ESceneViewCullingDebug::Off;
+		std::optional<glm::mat4> FrozenCullingViewProjection;
+
+		// What its scene pass draws this frame, culled by its camera (VulkanRenderer::CullSceneView()),
+		// what was culled, and the bounds culled by as debug lines (CullingDebug)
+		std::vector<SceneViewDraw> Draws;
+		SceneViewCullingStats Culling;
+		DebugLineRange CullingLines;
 		// The HDR picture's slot in the bindless texture array, for the tonemap
 		uint32_t HdrTextureSlot = 0;
 

@@ -29,6 +29,7 @@
 #include "PropertyWidgetRegistry.h"
 #include "ReflectionSourceRegistry.h"
 #include "ReflectionUtils.h"
+#include "MeshInstancesComponent.h"
 #include "RuntimeMeshComponent.h"
 #include "SceneEditor.h"
 #include "SceneFilePopups.h"
@@ -271,6 +272,15 @@ namespace
 
 		mesh->Indices[5] = 6;
 		Require(DescribeRuntimeMesh(runtimeMesh)[3].starts_with("Not drawn: "), "A run-time mesh that isn't valid should say why it isn't drawn");
+
+		MeshInstancesComponent meshInstances;
+		Require(DescribeMeshInstances(meshInstances) == std::vector<std::string>{ "No instances yet" }, "Mesh instances without data should say so");
+		auto instances = std::make_shared<MeshInstances>();
+		instances->Transforms.resize(5);
+		SetMeshInstances(meshInstances, instances);
+		Require(DescribeMeshInstances(meshInstances) == std::vector<std::string>{ "5 instances in one cell", "Revision 1" }, "Mesh instances without cells should be one cell");
+		instances->Cells.resize(2);
+		Require(DescribeMeshInstances(meshInstances)[0] == "5 instances in 2 cells", "Mesh instances should say how many cells they are in");
 
 		editing.Scene.GetRegistry().Add<RuntimeMeshComponent>(ground, runtimeMesh);
 		editing.Scene.GetSelection() = ground;

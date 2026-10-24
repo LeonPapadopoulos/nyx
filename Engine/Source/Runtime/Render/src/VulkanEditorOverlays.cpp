@@ -13,6 +13,8 @@
 
 #include <algorithm>
 #include <cstring>
+#include <span>
+#include <vector>
 
 namespace Nyx
 {
@@ -23,12 +25,31 @@ namespace Nyx
 	{
 	}
 
-	void VulkanEditorOverlays::Initialize(vk::PipelineLayout scenePipelineLayout, BindSceneSetsFunction bindSceneSets, const Mesh& decalMesh)
+	void VulkanEditorOverlays::Initialize(vk::PipelineLayout scenePipelineLayout, BindSceneSetsFunction bindSceneSets, const Mesh& decalMesh, vk::Buffer identityInstance)
 	{
 		ScenePipelineLayout = scenePipelineLayout;
 		BindSceneSets = std::move(bindSceneSets);
 		DecalMesh = &decalMesh;
+		IdentityInstance = identityInstance;
 		CreateOutlineDescriptorSetLayout();
+	}
+
+	void VulkanEditorOverlays::DrawObjectMesh(const RenderWorld& world, const RenderObject& obj, vk::raii::CommandBuffer& cmd)
+	{
+		cmd.bindVertexBuffers(0, { obj.MeshAsset->GetVertexBuffer(), obj.InstanceBuffer }, { vk::DeviceSize{ 0 }, vk::DeviceSize{ 0 } });
+		cmd.bindIndexBuffer(obj.MeshAsset->GetIndexBuffer(), 0, vk::IndexType::eUint32);
+		if (obj.CellCount == 0)
+		{
+			cmd.drawIndexed(obj.MeshAsset->GetIndexCount(), 1, 0, 0, 0);
+			return;
+		}
+		// Every instance its cells draw, culled or not: a click may be anywhere in the view
+		std::vector<InstanceRun> runs;
+		AppendInstanceRuns(std::span(world.Cells).subspan(obj.FirstCell, obj.CellCount), nullptr, runs);
+		for (const InstanceRun& run : runs)
+		{
+			cmd.drawIndexed(obj.MeshAsset->GetIndexCount(), run.Count, 0, 0, run.First);
+		}
 	}
 
 	void VulkanEditorOverlays::CreatePipelines(const SceneViewInstance& firstView)
@@ -292,22 +313,19 @@ namespace Nyx
 
 		vk::PipelineShaderStageCreateInfo shaderStages[] = { vertStageInfo, fragStageInfo };
 
-		vk::VertexInputBindingDescription bindingDescription{};
-		bindingDescription.binding = 0;
-		bindingDescription.stride = sizeof(Vertex);
-		bindingDescription.inputRate = vk::VertexInputRate::eVertex;
-
-		vk::VertexInputAttributeDescription positionAttribute{};
-		positionAttribute.binding = 0;
-		positionAttribute.location = 0;
-		positionAttribute.format = vk::Format::eR32G32B32Sfloat;
-		positionAttribute.offset = offsetof(Vertex, Position);
+		// The vertices' positions, and each instance's transform from the second stream
+		const std::array<vk::VertexInputBindingDescription, 2> bindingDescriptions = { GetVertexBindingDescription(), GetInstanceBindingDescription() };
+		std::vector<vk::VertexInputAttributeDescription> attributeDescriptions = { GetVertexAttributeDescriptions()[0] };
+		for (const vk::VertexInputAttributeDescription& attribute : GetInstanceAttributeDescriptions())
+		{
+			attributeDescriptions.push_back(attribute);
+		}
 
 		vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
-		vertexInputInfo.vertexBindingDescriptionCount = 1;
-		vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
-		vertexInputInfo.vertexAttributeDescriptionCount = 1;
-		vertexInputInfo.pVertexAttributeDescriptions = &positionAttribute;
+		vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(bindingDescriptions.size());
+		vertexInputInfo.pVertexBindingDescriptions = bindingDescriptions.data();
+		vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
+		vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 
 		vk::PipelineInputAssemblyStateCreateInfo inputAssembly{};
 		inputAssembly.topology = vk::PrimitiveTopology::eTriangleList;
@@ -560,8 +578,11 @@ namespace Nyx
 			addValue(vertexBuffer);
 			addValue(indexBuffer);
 			addValue(obj.MeshAsset->GetIndexCount());
-			// A mesh made at run time and uploaded anew may get the old buffers' handles back
+			// A mesh made at run time and uploaded anew may get the old buffers' handles back; so may
+			// instances
 			addValue(obj.MeshAsset->GetUploadId());
+			addValue(obj.InstanceUploadId);
+			addValue(obj.CellCount);
 		}
 		return hash;
 	}
@@ -836,22 +857,19 @@ namespace Nyx
 
 		vk::PipelineShaderStageCreateInfo shaderStages[] = { vertStageInfo, fragStageInfo };
 
-		vk::VertexInputBindingDescription bindingDescription{};
-		bindingDescription.binding = 0;
-		bindingDescription.stride = sizeof(Vertex);
-		bindingDescription.inputRate = vk::VertexInputRate::eVertex;
-
-		vk::VertexInputAttributeDescription positionAttribute{};
-		positionAttribute.binding = 0;
-		positionAttribute.location = 0;
-		positionAttribute.format = vk::Format::eR32G32B32Sfloat;
-		positionAttribute.offset = offsetof(Vertex, Position);
+		// The vertices' positions, and each instance's transform from the second stream
+		const std::array<vk::VertexInputBindingDescription, 2> bindingDescriptions = { GetVertexBindingDescription(), GetInstanceBindingDescription() };
+		std::vector<vk::VertexInputAttributeDescription> attributeDescriptions = { GetVertexAttributeDescriptions()[0] };
+		for (const vk::VertexInputAttributeDescription& attribute : GetInstanceAttributeDescriptions())
+		{
+			attributeDescriptions.push_back(attribute);
+		}
 
 		vk::PipelineVertexInputStateCreateInfo vertexInputInfo{};
-		vertexInputInfo.vertexBindingDescriptionCount = 1;
-		vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
-		vertexInputInfo.vertexAttributeDescriptionCount = 1;
-		vertexInputInfo.pVertexAttributeDescriptions = &positionAttribute;
+		vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(bindingDescriptions.size());
+		vertexInputInfo.pVertexBindingDescriptions = bindingDescriptions.data();
+		vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
+		vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 
 		vk::PipelineInputAssemblyStateCreateInfo inputAssembly{};
 		inputAssembly.topology = vk::PrimitiveTopology::eTriangleList;
@@ -982,10 +1000,7 @@ namespace Nyx
 			object.CustomData.x = bIsSelected ? 1.0f : 0.0f;
 			cmd.pushConstants<ObjectConstants>(ScenePipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, { object });
 
-			vk::DeviceSize offsets[] = { 0 };
-			cmd.bindVertexBuffers(0, { obj.MeshAsset->GetVertexBuffer() }, offsets);
-			cmd.bindIndexBuffer(obj.MeshAsset->GetIndexBuffer(), 0, vk::IndexType::eUint32);
-			cmd.drawIndexed(obj.MeshAsset->GetIndexCount(), 1, 0, 0, 0);
+			DrawObjectMesh(world, obj, cmd);
 		}
 
 		cmd.endRenderPass();
@@ -1051,10 +1066,7 @@ namespace Nyx
 			object.CustomData.x = 1.0f;
 			cmd.pushConstants<ObjectConstants>(ScenePipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, { object });
 
-			vk::DeviceSize offsets[] = { 0 };
-			cmd.bindVertexBuffers(0, { obj.MeshAsset->GetVertexBuffer() }, offsets);
-			cmd.bindIndexBuffer(obj.MeshAsset->GetIndexBuffer(), 0, vk::IndexType::eUint32);
-			cmd.drawIndexed(obj.MeshAsset->GetIndexCount(), 1, 0, 0, 0);
+			DrawObjectMesh(world, obj, cmd);
 		}
 
 		cmd.endRenderPass();
@@ -1360,18 +1372,14 @@ namespace Nyx
 			object.EntityId = obj.PickingId;
 			cmd.pushConstants<ObjectConstants>(ScenePipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, { object });
 
-			vk::DeviceSize offsets[] = { 0 };
-			cmd.bindVertexBuffers(0, { obj.MeshAsset->GetVertexBuffer() }, offsets);
-			cmd.bindIndexBuffer(obj.MeshAsset->GetIndexBuffer(), 0, vk::IndexType::eUint32);
-			cmd.drawIndexed(obj.MeshAsset->GetIndexCount(), 1, 0, 0, 0);
+			DrawObjectMesh(world, obj, cmd);
 		}
 
 		// Then the decals, each with its material's picking pipeline, which leaves out where the
 		// material doesn't cover the quad, so a click there picks what is beneath
 		if (!world.Decals.empty())
 		{
-			vk::DeviceSize offsets[] = { 0 };
-			cmd.bindVertexBuffers(0, { DecalMesh->GetVertexBuffer() }, offsets);
+			cmd.bindVertexBuffers(0, { DecalMesh->GetVertexBuffer(), IdentityInstance }, { vk::DeviceSize{ 0 }, vk::DeviceSize{ 0 } });
 			cmd.bindIndexBuffer(DecalMesh->GetIndexBuffer(), 0, vk::IndexType::eUint32);
 			for (const RenderDecal& decal : world.Decals)
 			{

@@ -11,6 +11,7 @@
 #include "PreviousTransformComponent.h"
 #include "FixedStepClock.h"
 #include "DrawnWorldTime.h"
+#include "MeshInstancesComponent.h"
 #include "MeshRendererComponent.h"
 #include "RuntimeMeshComponent.h"
 #include "Paths.h"
@@ -22,6 +23,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <functional>
 #include <ranges>
 #include <set>
 #include <string>
@@ -264,6 +266,8 @@ namespace Nyx
 		Bindless.Initialize(Context);
 
 		CreateTestMeshData();
+		// The instance stream of what is drawn once
+		MeshInstances.Initialize(Context);
 
 		// Shared layouts / shared GPU assets that per-view creation depends on
 		CreateSceneDescriptorSetLayout();
@@ -276,7 +280,7 @@ namespace Nyx
 			{
 				BindSceneSets(view, cmd);
 			},
-			PlaneMesh);
+			PlaneMesh, MeshInstances.GetIdentity());
 
 		LoadSkyboxCubemap();
 		// Its light: the specular cube, the irradiance, the BRDF table
@@ -313,6 +317,10 @@ namespace Nyx
 		Context.WaitIdle();
 		Context.SavePipelineCache(Nyx::Paths::GetShaderCacheDir() / "Pipelines.bin");
 		RuntimeMeshes.Clear();
+		MeshInstances.Clear();
+		FrameInstanceBuffer = nullptr;
+		FrameInstanceMemory = nullptr;
+		RetiredFrameInstanceBuffers.clear();
 
 		for (SceneViewInstance& view : SceneViews)
 		{
@@ -474,12 +482,14 @@ namespace Nyx
 		clock.Times.WaitForGpu = MillisecondsSince(clock.Start);
 
 		// Views let go of during the last frame, which the GPU is done with now, and meshes made at
-		// run time that were replaced or no longer drawn
+		// run time and instances that were replaced or no longer drawn
 		for (const uint64_t id : std::exchange(SceneViewsToDestroy, {}))
 		{
 			DestroySceneViewNow(id);
 		}
 		RuntimeMeshes.ReleaseRetired();
+		MeshInstances.ReleaseRetired();
+		RetiredFrameInstanceBuffers.clear();
 	}
 
 	std::optional<uint32_t> VulkanRenderer::AcquireImage(FrameClock& clock)
@@ -523,9 +533,15 @@ namespace Nyx
 		NYX_PROFILE_FUNCTION();
 		const std::chrono::steady_clock::time_point sceneStart = std::chrono::steady_clock::now();
 
-		// Each shown world's state, once per frame, for all views that show it
+		// Each shown world's state, once per frame, for all views that show it; then what each view
+		// draws of it, with the lines that shows; then the frame's debug lines go up
 		SceneTime = std::chrono::duration<float>(sceneStart - StartTime).count();
 		ExtractRenderWorlds();
+		{
+			NYX_PROFILE_SCOPE("Culling");
+			PrepareSceneViews();
+		}
+		DebugLines.Upload();
 
 		// Every scene view into its own offscreen target: first the editor's own passes of all
 		// views, then the views, so that each is timed in one go
@@ -555,28 +571,8 @@ namespace Nyx
 	{
 		for (SceneViewInstance& view : SceneViews)
 		{
-			if (view.bResizePending)
-			{
-				view.RenderTarget.Recreate(
-					Context,
-					std::max(1u, view.PendingWidth),
-					std::max(1u, view.PendingHeight),
-					vk::Format::eR8G8B8A8Unorm);
-
-				RegisterHdrPicture(view);
-				Overlays.RecreateViewResources(view);
-
-				view.bResizePending = false;
-				view.bRecreatedThisFrame = true;
-			}
-			else
-			{
-				view.bRecreatedThisFrame = false;
-			}
-
 			if (const RenderWorld* world = FindShownWorld(view))
 			{
-				UpdateViewportSceneGlobals(view, *world->Registry);
 				UpdateSceneUniforms(view, *world);
 
 				// Editor-only passes: picking, and the masks the selection outline is drawn from
@@ -714,6 +710,23 @@ namespace Nyx
 		}
 	}
 
+	void VulkanRenderer::SetSceneViewCullingDebug(uint64_t id, ESceneViewCullingDebug mode)
+	{
+		SceneViewInstance* view = FindSceneView(id);
+		if (view && view->CullingDebug != mode)
+		{
+			view->CullingDebug = mode;
+			// Frozen anew where the camera is at the next frame
+			view->FrozenCullingViewProjection.reset();
+		}
+	}
+
+	const SceneViewCullingStats* VulkanRenderer::GetSceneViewCullingStats(uint64_t id) const
+	{
+		const SceneViewInstance* view = FindSceneView(id);
+		return view ? &view->Culling : nullptr;
+	}
+
 	void VulkanRenderer::SetSceneViewEditorCameraTransform(uint64_t id, const glm::vec3& pos, const glm::vec3& rot)
 	{
 		SceneViewInstance* view = FindSceneView(id);
@@ -802,6 +815,7 @@ namespace Nyx
 		// Its contents may be new: nothing of the old ones is drawn or picked from
 		world->Objects.clear();
 		world->Sections.clear();
+		world->Cells.clear();
 		world->Decals.clear();
 		world->PickingIdToEntity.clear();
 		world->OverlayLines = {};
@@ -1113,9 +1127,9 @@ namespace Nyx
 			const auto drawing = WorldDebugDraws.find(world->Registry);
 			world->DebugDrawLines = drawing != WorldDebugDraws.end() ? DebugLines.Add(*drawing->second) : DebugLineRange{};
 		}
-		DebugLines.Upload();
-		// Meshes made at run time that no shown world draws any more
+		// Meshes made at run time and instances that no shown world draws any more
 		RuntimeMeshes.EndFrame();
+		MeshInstances.EndFrame();
 	}
 
 	std::optional<float> VulkanRenderer::GetWorldInterpolation(const Nyx::Registry* registry) const
@@ -1143,6 +1157,7 @@ namespace Nyx
 	{
 		world.Objects.clear();
 		world.Sections.clear();
+		world.Cells.clear();
 		world.PickingIdToEntity.clear();
 
 		const Nyx::Registry& registry = *world.Registry;
@@ -1182,6 +1197,31 @@ namespace Nyx
 				obj.DrawTransform = drawTransform;
 				obj.LocalBoundsMin = mesh->GetLocalBoundsMin();
 				obj.LocalBoundsMax = mesh->GetLocalBoundsMax();
+				obj.InstanceBuffer = MeshInstances.GetIdentity();
+
+				// Instanced: the mesh at every transform of its instances, uploaded here as a mesh made
+				// at run time is, and culled cell by cell where it is drawn. Without instances to
+				// draw, nothing.
+				if (registry.Has<Nyx::MeshInstancesComponent>(entity))
+				{
+					const MeshInstanceCache::Instances* instances = MeshInstances.Acquire(Context, registry.Get<Nyx::MeshInstancesComponent>(entity),
+						BoundingBox{ obj.LocalBoundsMin, obj.LocalBoundsMax });
+					if (!instances)
+					{
+						return;
+					}
+					obj.InstanceBuffer = instances->Buffer;
+					obj.InstanceUploadId = instances->UploadId;
+					obj.LocalBoundsMin = instances->Bounds.Min;
+					obj.LocalBoundsMax = instances->Bounds.Max;
+					obj.FirstCell = static_cast<uint32_t>(world.Cells.size());
+					for (const InstanceCullCell& cell : instances->Cells)
+					{
+						world.Cells.push_back(InstanceCullCell{ .Bounds = TransformBox(cell.Bounds, drawTransform), .First = cell.First, .Count = cell.Count });
+					}
+					obj.CellCount = static_cast<uint32_t>(instances->Cells.size());
+				}
+				obj.WorldBounds = TransformBox(BoundingBox{ obj.LocalBoundsMin, obj.LocalBoundsMax }, drawTransform);
 
 				obj.FirstSection = static_cast<uint32_t>(world.Sections.size());
 				for (const Nyx::MeshSection& section : mesh->GetSections())
@@ -1200,19 +1240,223 @@ namespace Nyx
 			});
 	}
 
-	void VulkanRenderer::DrawRenderObjects(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd)
+	void VulkanRenderer::PrepareSceneViews()
 	{
-		BindSceneSets(view, cmd);
-		for (const RenderObject& obj : world.Objects)
+		FrameInstances.clear();
+		for (SceneViewInstance& view : SceneViews)
 		{
-			if (!obj.MeshAsset || !obj.MaterialAsset)
+			if (view.bResizePending)
 			{
+				view.RenderTarget.Recreate(
+					Context,
+					std::max(1u, view.PendingWidth),
+					std::max(1u, view.PendingHeight),
+					vk::Format::eR8G8B8A8Unorm);
+
+				RegisterHdrPicture(view);
+				Overlays.RecreateViewResources(view);
+
+				view.bResizePending = false;
+				view.bRecreatedThisFrame = true;
+			}
+			else
+			{
+				view.bRecreatedThisFrame = false;
+			}
+
+			view.Draws.clear();
+			view.Culling = {};
+			view.CullingLines = {};
+			if (const RenderWorld* world = FindShownWorld(view))
+			{
+				UpdateViewportSceneGlobals(view, *world->Registry);
+				CullSceneView(view, *world);
+			}
+		}
+		UploadFrameInstances();
+	}
+
+	void VulkanRenderer::CullSceneView(SceneViewInstance& view, const RenderWorld& world)
+	{
+		// Frozen: by the camera as it was at the first culling since
+		glm::mat4 cullingViewProjection = view.SceneGlobals.ViewProjection;
+		if (view.CullingDebug == ESceneViewCullingDebug::Frozen)
+		{
+			if (!view.FrozenCullingViewProjection)
+			{
+				view.FrozenCullingViewProjection = cullingViewProjection;
+			}
+			cullingViewProjection = *view.FrozenCullingViewProjection;
+		}
+		else
+		{
+			view.FrozenCullingViewProjection.reset();
+		}
+		const Frustum frustum = MakeFrustum(cullingViewProjection);
+
+		SceneViewCullingStats& stats = view.Culling;
+		std::vector<uint32_t> drawnOnce;
+		std::vector<InstanceRun> runs;
+		for (uint32_t index = 0; index < world.Objects.size(); ++index)
+		{
+			const RenderObject& obj = world.Objects[index];
+			++stats.Objects;
+			if (!IsBoxVisible(frustum, obj.WorldBounds))
+			{
+				++stats.ObjectsCulled;
+				continue;
+			}
+			if (obj.CellCount == 0)
+			{
+				drawnOnce.push_back(index);
 				continue;
 			}
 
-			vk::DeviceSize offsets[] = { 0 };
-			cmd.bindVertexBuffers(0, { obj.MeshAsset->GetVertexBuffer() }, offsets);
-			cmd.bindIndexBuffer(obj.MeshAsset->GetIndexBuffer(), 0, vk::IndexType::eUint32);
+			// Instanced: the cells in view, each run of them one draw
+			runs.clear();
+			const uint32_t drawnCells = AppendInstanceRuns(std::span(world.Cells).subspan(obj.FirstCell, obj.CellCount), &frustum, runs);
+			stats.Cells += obj.CellCount;
+			stats.CellsCulled += obj.CellCount - drawnCells;
+			for (const InstanceRun& run : runs)
+			{
+				view.Draws.push_back(SceneViewDraw{ .Object = index, .InstanceBuffer = obj.InstanceBuffer, .FirstInstance = run.First, .InstanceCount = run.Count, .Model = obj.DrawTransform });
+				stats.Instances += run.Count;
+			}
+		}
+
+		// Those drawn once that draw alike, the same mesh with the same material in each section,
+		// are drawn together: their transforms in this frame's stream, one draw for them all. In the
+		// order of their entities among themselves, so the same world draws the same way.
+		const auto drawsBefore = [&world](uint32_t a, uint32_t b)
+		{
+			const RenderObject& first = world.Objects[a];
+			const RenderObject& second = world.Objects[b];
+			if (first.MeshAsset != second.MeshAsset)
+			{
+				return std::less<const Mesh*>{}(first.MeshAsset, second.MeshAsset);
+			}
+			// One mesh has the same sections
+			for (uint32_t section = 0; section < first.SectionCount; ++section)
+			{
+				const Material* firstMaterial = world.Sections[first.FirstSection + section].MaterialAsset;
+				const Material* secondMaterial = world.Sections[second.FirstSection + section].MaterialAsset;
+				if (firstMaterial != secondMaterial)
+				{
+					return std::less<const Material*>{}(firstMaterial, secondMaterial);
+				}
+			}
+			return false;
+		};
+		std::stable_sort(drawnOnce.begin(), drawnOnce.end(), drawsBefore);
+		for (size_t first = 0; first < drawnOnce.size();)
+		{
+			size_t end = first + 1;
+			while (end < drawnOnce.size() && !drawsBefore(drawnOnce[first], drawnOnce[end]))
+			{
+				++end;
+			}
+			const uint32_t firstInstance = static_cast<uint32_t>(FrameInstances.size());
+			for (size_t member = first; member < end; ++member)
+			{
+				FrameInstances.push_back(world.Objects[drawnOnce[member]].DrawTransform);
+			}
+			view.Draws.push_back(SceneViewDraw{ .Object = drawnOnce[first], .InstanceBuffer = nullptr, .FirstInstance = firstInstance,
+				.InstanceCount = static_cast<uint32_t>(end - first), .Model = glm::mat4(1.0f) });
+			stats.Instances += static_cast<uint32_t>(end - first);
+			first = end;
+		}
+		stats.Draws = static_cast<uint32_t>(view.Draws.size());
+
+		if (view.CullingDebug != ESceneViewCullingDebug::Off)
+		{
+			AddCullingLines(view, world, frustum, cullingViewProjection);
+		}
+	}
+
+	void VulkanRenderer::AddCullingLines(SceneViewInstance& view, const RenderWorld& world, const Frustum& frustum, const glm::mat4& cullingViewProjection)
+	{
+		const glm::vec3 drawnColor(0.2f, 0.9f, 0.3f);
+		const glm::vec3 culledColor(0.95f, 0.2f, 0.15f);
+		CullingDrawing.Clear();
+		for (const RenderObject& obj : world.Objects)
+		{
+			const bool bVisible = IsBoxVisible(frustum, obj.WorldBounds);
+			if (obj.CellCount == 0 || !bVisible)
+			{
+				CullingDrawing.Box(obj.WorldBounds.Min, obj.WorldBounds.Max, bVisible ? drawnColor : culledColor);
+				continue;
+			}
+			for (uint32_t cell = obj.FirstCell; cell < obj.FirstCell + obj.CellCount; ++cell)
+			{
+				const BoundingBox& bounds = world.Cells[cell].Bounds;
+				CullingDrawing.Box(bounds.Min, bounds.Max, IsBoxVisible(frustum, bounds) ? drawnColor : culledColor);
+			}
+		}
+
+		// The frozen camera's frustum: its corners where depth is at the near and the far plane
+		if (view.CullingDebug == ESceneViewCullingDebug::Frozen)
+		{
+			const glm::mat4 toWorld = glm::inverse(cullingViewProjection);
+			std::array<glm::vec3, 8> corners{};
+			for (int corner = 0; corner < 8; ++corner)
+			{
+				const glm::vec4 clip((corner & 1) ? 1.0f : -1.0f, (corner & 2) ? 1.0f : -1.0f, (corner & 4) ? Nyx::FarPlaneDepth : Nyx::NearPlaneDepth, 1.0f);
+				const glm::vec4 point = toWorld * clip;
+				corners[corner] = glm::vec3(point) / point.w;
+			}
+			const glm::vec3 frustumColor(1.0f, 0.85f, 0.1f);
+			for (int corner = 0; corner < 8; ++corner)
+			{
+				for (const int axis : { 1, 2, 4 })
+				{
+					if ((corner & axis) == 0)
+					{
+						CullingDrawing.Line(corners[corner], corners[corner | axis], frustumColor);
+					}
+				}
+			}
+		}
+		view.CullingLines = DebugLines.Add(CullingDrawing);
+	}
+
+	void VulkanRenderer::UploadFrameInstances()
+	{
+		if (FrameInstances.empty())
+		{
+			return;
+		}
+		if (FrameInstances.size() > FrameInstanceCapacity)
+		{
+			if (*FrameInstanceBuffer)
+			{
+				RetiredFrameInstanceBuffers.emplace_back(std::move(FrameInstanceBuffer), std::move(FrameInstanceMemory));
+			}
+			FrameInstanceCapacity = std::max<size_t>(FrameInstances.size() + FrameInstances.size() / 2, 1024);
+			CreateBuffer(Context, FrameInstanceCapacity * sizeof(glm::mat4), vk::BufferUsageFlagBits::eVertexBuffer,
+				vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, FrameInstanceBuffer, FrameInstanceMemory);
+		}
+		const vk::DeviceSize size = FrameInstances.size() * sizeof(glm::mat4);
+		void* mapped = FrameInstanceMemory.mapMemory(0, size);
+		std::memcpy(mapped, FrameInstances.data(), static_cast<size_t>(size));
+		FrameInstanceMemory.unmapMemory();
+	}
+
+	void VulkanRenderer::DrawRenderObjects(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd)
+	{
+		BindSceneSets(view, cmd);
+		const Mesh* boundMesh = nullptr;
+		vk::Buffer boundInstances;
+		for (const SceneViewDraw& draw : view.Draws)
+		{
+			const RenderObject& obj = world.Objects[draw.Object];
+			const vk::Buffer instances = draw.InstanceBuffer ? draw.InstanceBuffer : *FrameInstanceBuffer;
+			if (obj.MeshAsset != boundMesh || instances != boundInstances)
+			{
+				cmd.bindVertexBuffers(0, { obj.MeshAsset->GetVertexBuffer(), instances }, { vk::DeviceSize{ 0 }, vk::DeviceSize{ 0 } });
+				cmd.bindIndexBuffer(obj.MeshAsset->GetIndexBuffer(), 0, vk::IndexType::eUint32);
+				boundMesh = obj.MeshAsset;
+				boundInstances = instances;
+			}
 
 			// Each section with its slot's material
 			for (uint32_t index = obj.FirstSection; index < obj.FirstSection + obj.SectionCount; ++index)
@@ -1221,11 +1465,11 @@ namespace Nyx
 				cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, **section.MaterialAsset->Pipeline);
 
 				ObjectConstants object{};
-				object.Model = obj.DrawTransform;
+				object.Model = draw.Model;
 				object.MaterialOffset = section.MaterialAsset->MaterialOffset;
 				object.EntityId = obj.PickingId;
 				cmd.pushConstants<ObjectConstants>(*ScenePipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, { object });
-				cmd.drawIndexed(section.IndexCount, 1, section.FirstIndex, 0, 0);
+				cmd.drawIndexed(section.IndexCount, draw.InstanceCount, section.FirstIndex, 0, draw.FirstInstance);
 			}
 		}
 	}
@@ -1238,8 +1482,7 @@ namespace Nyx
 		}
 
 		BindSceneSets(view, cmd);
-		vk::DeviceSize offsets[] = { 0 };
-		cmd.bindVertexBuffers(0, { PlaneMesh.GetVertexBuffer() }, offsets);
+		cmd.bindVertexBuffers(0, { PlaneMesh.GetVertexBuffer(), MeshInstances.GetIdentity() }, { vk::DeviceSize{ 0 }, vk::DeviceSize{ 0 } });
 		cmd.bindIndexBuffer(PlaneMesh.GetIndexBuffer(), 0, vk::IndexType::eUint32);
 		for (const RenderDecal& decal : world.Decals)
 		{
@@ -2213,6 +2456,10 @@ namespace Nyx
 		if (world && view.bShowDebugDrawing)
 		{
 			DebugLines.Draw(view, world->DebugDrawLines, cmd);
+		}
+		if (view.CullingDebug != ESceneViewCullingDebug::Off)
+		{
+			DebugLines.Draw(view, view.CullingLines, cmd);
 		}
 		view.RenderTarget.EndRenderPass(cmd);
 	}

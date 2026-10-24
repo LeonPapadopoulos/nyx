@@ -15,6 +15,7 @@
 #include <cctype>
 #include <cstddef>
 #include <cstring>
+#include <span>
 #include <stdexcept>
 
 namespace Nyx
@@ -538,20 +539,26 @@ namespace Nyx
 		};
 
 		// The mesh's vertices, those parts the vertex shader reads (the colour, for one: SurfaceInput
-		// has none)
-		const auto bindingDescription = Nyx::GetVertexBindingDescription();
+		// has none), and each instance's transform from the second stream
+		const std::array<vk::VertexInputBindingDescription, 2> bindingDescriptions = { Nyx::GetVertexBindingDescription(), Nyx::GetInstanceBindingDescription() };
 		const std::vector<uint32_t> read = InputLocations(vertex.Spirv);
 		std::vector<vk::VertexInputAttributeDescription> attributeDescriptions;
-		for (const vk::VertexInputAttributeDescription& attribute : Nyx::GetVertexAttributeDescriptions())
+		const auto vertexAttributes = Nyx::GetVertexAttributeDescriptions();
+		const auto instanceAttributes = Nyx::GetInstanceAttributeDescriptions();
+		for (const std::span<const vk::VertexInputAttributeDescription> attributes : { std::span<const vk::VertexInputAttributeDescription>(vertexAttributes),
+				 std::span<const vk::VertexInputAttributeDescription>(instanceAttributes) })
 		{
-			if (std::find(read.begin(), read.end(), attribute.location) != read.end())
+			for (const vk::VertexInputAttributeDescription& attribute : attributes)
 			{
-				attributeDescriptions.push_back(attribute);
+				if (std::find(read.begin(), read.end(), attribute.location) != read.end())
+				{
+					attributeDescriptions.push_back(attribute);
+				}
 			}
 		}
 		vk::PipelineVertexInputStateCreateInfo vertexInput{};
-		vertexInput.vertexBindingDescriptionCount = 1;
-		vertexInput.pVertexBindingDescriptions = &bindingDescription;
+		vertexInput.vertexBindingDescriptionCount = static_cast<uint32_t>(bindingDescriptions.size());
+		vertexInput.pVertexBindingDescriptions = bindingDescriptions.data();
 		vertexInput.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
 		vertexInput.pVertexAttributeDescriptions = attributeDescriptions.data();
 

@@ -23,8 +23,14 @@ layout(push_constant) uniform ObjectConstants
 };
 
 layout(location = 0) in vec3 aPosition;
+// The instance's transform, relative to uModel: the second vertex stream, one mat4 per instance,
+// the identity for an entity drawn once (VertexInput in nyx/surface.slang)
+layout(location = 5) in vec4 aInstance0;
+layout(location = 6) in vec4 aInstance1;
+layout(location = 7) in vec4 aInstance2;
+layout(location = 8) in vec4 aInstance3;
 
 void main()
 {
-    gl_Position = uViewProj * uModel * vec4(aPosition, 1.0);
+    gl_Position = uViewProj * uModel * mat4(aInstance0, aInstance1, aInstance2, aInstance3) * vec4(aPosition, 1.0);
 }

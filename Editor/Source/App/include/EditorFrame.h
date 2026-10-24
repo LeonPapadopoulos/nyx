@@ -1,5 +1,7 @@
 #pragma once
 
+#include "SceneViewTypes.h"
+
 #include <filesystem>
 #include <functional>
 #include <string>
@@ -99,5 +101,7 @@ namespace Nyx::Editor
 		// The last scene saved, opened or made, and whether that failed
 		std::string SceneFileStatus;
 		bool bSceneFileStatusFailed = false;
+		// What the scene views show of their culling (Debug > Culling Bounds, Freeze Culling)
+		Nyx::ESceneViewCullingDebug SceneCullingDebug = Nyx::ESceneViewCullingDebug::Off;
 	};
 }

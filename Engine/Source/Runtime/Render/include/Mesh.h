@@ -50,6 +50,33 @@ namespace Nyx
 		return attributes;
 	}
 
+	// Every mesh pipeline's second vertex stream: the instance's transform, a glm::mat4 per
+	// instance, relative to the draw's ObjectConstants::Model (MeshInstanceCache; the identity for
+	// a draw without instances). Its columns at locations 5 to 8, after the vertex's.
+	constexpr uint32_t InstanceBinding = 1;
+
+	inline vk::VertexInputBindingDescription GetInstanceBindingDescription()
+	{
+		vk::VertexInputBindingDescription binding{};
+		binding.binding = InstanceBinding;
+		binding.stride = sizeof(glm::mat4);
+		binding.inputRate = vk::VertexInputRate::eInstance;
+		return binding;
+	}
+
+	inline std::array<vk::VertexInputAttributeDescription, 4> GetInstanceAttributeDescriptions()
+	{
+		std::array<vk::VertexInputAttributeDescription, 4> attributes{};
+		for (uint32_t column = 0; column < 4; ++column)
+		{
+			attributes[column].binding = InstanceBinding;
+			attributes[column].location = 5 + column;
+			attributes[column].format = vk::Format::eR32G32B32A32Sfloat;
+			attributes[column].offset = column * sizeof(glm::vec4);
+		}
+		return attributes;
+	}
+
 	// A sphere of `radius` around the origin: `rings` from pole to pole, `segments` around, u
 	// around it and v from top to bottom, with tangents
 	MeshData MakeSphere(float radius, uint32_t rings, uint32_t segments);

@@ -226,6 +226,20 @@ namespace Nyx::Editor
 			{
 				Nyx::UI::SetMarkImGuiShapes(bMarkImGuiShapes);
 			}
+			// What every scene view culls: the bounds it tests, green drawn and red culled; frozen,
+			// each culls by where its camera was, so flying on shows what it left out
+			for (const auto& [label, mode] : { std::pair{ "Culling Bounds", Nyx::ESceneViewCullingDebug::Bounds },
+					 std::pair{ "Freeze Culling", Nyx::ESceneViewCullingDebug::Frozen } })
+			{
+				if (NYX_UI(Nyx::UI::MenuItem(label, nullptr, SceneCullingDebug == mode)))
+				{
+					SceneCullingDebug = SceneCullingDebug == mode ? Nyx::ESceneViewCullingDebug::Off : mode;
+					for (const uint64_t view : Renderer->GetSceneViewIds())
+					{
+						Renderer->SetSceneViewCullingDebug(view, SceneCullingDebug);
+					}
+				}
+			}
 			// Where the painter's work lies: one of the two views, or neither
 			const Nyx::UI::EPainterHeatmap heatmap = Nyx::UI::GetPainterHeatmap();
 			for (const auto& [label, view] : { std::pair{ "Painter Heatmap: Commands", Nyx::UI::EPainterHeatmap::Commands },

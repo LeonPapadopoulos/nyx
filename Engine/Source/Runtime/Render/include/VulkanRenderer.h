@@ -16,6 +16,8 @@
 #include "VulkanEditorOverlays.h"
 #include "Mesh.h"
 #include "RuntimeMeshCache.h"
+#include "MeshInstanceCache.h"
+#include "SceneCulling.h"
 #include "Texture.h"
 #include "CubemapTexture.h"
 #include "Material.h"
@@ -149,9 +151,21 @@ namespace Nyx
 		// (IRenderer::SetWorldInterpolation()), else where it is
 		glm::mat4 DrawTransform{ 1.0f };
 
-		// Will be filled with mesh-derived bounds
+		// Its mesh's bounds, in the entity's space; drawn instanced, around all of its instances
 		glm::vec3 LocalBoundsMin{ -0.5f, -0.5f, -0.5f };
 		glm::vec3 LocalBoundsMax{ 0.5f, 0.5f, 0.5f };
+		// Around all of it where it is drawn, in the world: what the views cull it by
+		BoundingBox WorldBounds;
+
+		// Its instances (MeshInstancesComponent), the second vertex stream, relative to the entity's
+		// transform: their buffer (MeshInstanceCache), or the identity for an entity drawn once
+		vk::Buffer InstanceBuffer;
+		// New with each upload of its instances; 0 drawn once
+		uint64_t InstanceUploadId = 0;
+		// Its instances' cells, culled one by one: RenderWorld::Cells from FirstCell on; none for
+		// an entity drawn once
+		uint32_t FirstCell = 0;
+		uint32_t CellCount = 0;
 
 		uint32_t PickingId = 0;
 	};
@@ -167,6 +181,9 @@ namespace Nyx
 
 		std::vector<RenderObject> Objects;
 		std::vector<RenderSection> Sections;
+		// The cells of the objects drawn instanced, in the world where they are drawn
+		// (RenderObject::FirstCell)
+		std::vector<InstanceCullCell> Cells;
 		// Its surface decals, drawn over the objects and the sky, and their materials by path
 		std::vector<RenderDecal> Decals;
 		DecalMaterialCache DecalMaterials;
@@ -262,6 +279,9 @@ namespace Nyx
 		void SetSceneViewExposure(uint64_t id, float stops) override;
 		void SetSceneViewSky(uint64_t id, ESceneViewSky sky, float rotationRadians) override;
 		void SetSceneViewDebug(uint64_t id, ESceneViewDebug view) override;
+		void SetSceneViewCullingDebug(uint64_t id, ESceneViewCullingDebug mode) override;
+		// What the view drew and culled in the last frame; null for an unknown view. For tests.
+		const SceneViewCullingStats* GetSceneViewCullingStats(uint64_t id) const;
 
 		bool GetSceneViewCameraData(uint64_t sceneViewId, Nyx::SceneViewCameraData& outData) const override;
 
@@ -314,8 +334,9 @@ namespace Nyx
 		void SaveScreenshot(const std::filesystem::path& path, ImVec2 min, ImVec2 max) override { UI.SaveScreenshot(path, min, max); }
 		const std::string& GetScreenshotMessage() const override { return UI.GetScreenshotMessage(); }
 
-		// The meshes made at run time, on the GPU, for tests
+		// The meshes made at run time, and the instances, on the GPU, for tests
 		const Nyx::RuntimeMeshCache& GetRuntimeMeshes() const { return RuntimeMeshes; }
+		const Nyx::MeshInstanceCache& GetMeshInstances() const { return MeshInstances; }
 
 		ImTextureID GetSceneViewTextureId(uint64_t id) const override;
 		// What a scene view rendered last, as RGBA; waits for the GPU. False for an unknown view. For tests.
@@ -353,6 +374,18 @@ namespace Nyx
 		// drawn at, for a world drawn between steps; else SceneTime
 		float GetWorldTime(const Nyx::Registry* registry) const;
 		void ExtractRenderObjects(RenderWorld& world, std::optional<float> interpolation);
+		// Per view, once the worlds are extracted: a size asked for made, its camera, and what it
+		// draws of its world (CullSceneView()); then this frame's instance stream goes up
+		void PrepareSceneViews();
+		// What the view's camera sees of the world, as its draws (SceneViewInstance::Draws): the
+		// entities whose bounds are in view, those drawn instanced cell by cell, and those that draw
+		// alike (the same mesh, each section with the same material) as one draw of their
+		// transforms in this frame's instance stream; with the view's culling debug, its bounds
+		void CullSceneView(SceneViewInstance& view, const RenderWorld& world);
+		// The bounds culled by, as the view's culling debug shows them
+		void AddCullingLines(SceneViewInstance& view, const RenderWorld& world, const Frustum& frustum, const glm::mat4& cullingViewProjection);
+		// FrameInstances into their buffer, made bigger when they don't fit
+		void UploadFrameInstances();
 		void DrawRenderObjects(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd);
 		// The world's decals, blended over what the scene pass drew: the plane mesh with each one's
 		// material's decal pipeline
@@ -462,6 +495,18 @@ namespace Nyx
 		// The worlds' meshes made at run time (RuntimeMeshComponent), uploaded as the worlds are
 		// extracted
 		Nyx::RuntimeMeshCache RuntimeMeshes;
+		// The worlds' instances (MeshInstancesComponent), uploaded so too
+		Nyx::MeshInstanceCache MeshInstances;
+		// This frame's instance stream of the entities drawn together (CullSceneView()), every view's,
+		// written after the last frame's fence, while no frame reads it (one frame in flight); the
+		// buffers it outgrew are kept until the next fence
+		std::vector<glm::mat4> FrameInstances;
+		vk::raii::Buffer FrameInstanceBuffer{ nullptr };
+		vk::raii::DeviceMemory FrameInstanceMemory{ nullptr };
+		size_t FrameInstanceCapacity = 0;
+		std::vector<std::pair<vk::raii::Buffer, vk::raii::DeviceMemory>> RetiredFrameInstanceBuffers;
+		// What a view's culling debug draws (AddCullingLines()), view after view
+		Nyx::DebugDraw CullingDrawing;
 		std::vector<std::unique_ptr<Nyx::Texture>> LoadedTextures;
 
 		std::vector<SceneViewInstance> SceneViews;
@@ -560,10 +605,10 @@ namespace Nyx
 		// The swapchain image to draw into; none when the swapchain had to be made again
 		std::optional<uint32_t> AcquireImage(FrameClock& clock);
 		vk::raii::CommandBuffer& BeginCommands(uint32_t imageIndex);
-		// Every shown world's state, the scene views' editor passes, the views, and their blur
+		// Every shown world's state, what each scene view draws of it, the views' editor passes, the
+		// views, and their blur
 		void RenderScene(vk::raii::CommandBuffer& cmd, FrameClock& clock);
-		// Per view: a size asked for made, its uniforms, and the editor's own passes: picking, and the
-		// selection masks
+		// Per view: its uniforms, and the editor's own passes: picking, and the selection masks
 		void DrawEditorPasses(vk::raii::CommandBuffer& cmd);
 		// Values set for materials while the UI was built (SetMaterialValues())
 		void ApplyPendingMaterialValues();

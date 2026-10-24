@@ -142,7 +142,9 @@ namespace nyx
 // Entry points
 // -------------------------------------------------------------------------
 
-// Nyx::Vertex
+// Nyx::Vertex, then the instance's transform from the second stream, one mat4 per instance
+// (GetInstanceAttributeDescriptions()), relative to Object.Model: a MeshInstancesComponent's, or
+// the identity for an entity drawn once. Its four columns, as glm keeps a mat4.
 public struct VertexInput
 {
     public float3 Position : POSITION;
@@ -150,6 +152,10 @@ public struct VertexInput
     public float2 UV : TEXCOORD0;
     public float3 Normal : NORMAL;
     public float4 Tangent : TANGENT;
+    public float4 Instance0 : INSTANCE0;
+    public float4 Instance1 : INSTANCE1;
+    public float4 Instance2 : INSTANCE2;
+    public float4 Instance3 : INSTANCE3;
 }
 
 public struct VertexOutput
@@ -172,18 +178,27 @@ float3x3 normalMatrix(float4x4 model)
     return cofactors / dot(r0, cross(r1, r2));
 }
 
+// The instance's transform: its columns made a matrix that mul() applies as Object.Model is
+float4x4 instanceTransform(VertexInput input)
+{
+    return transpose(float4x4(input.Instance0, input.Instance1, input.Instance2, input.Instance3));
+}
+
 // What surfaceVertex does, for other entry points that place meshes the same way. (Called from
 // another entry point, an entry point crashes Slang 2026.1 when compiled through its API.)
 public VertexOutput transformSurfaceVertex(VertexInput input)
 {
-    float4 positionWS = mul(Object.Model, float4(input.Position, 1.0));
+    // The draw's transform after the instance's; an entity drawn once has the identity, which
+    // leaves the draw's as it is, exactly
+    const float4x4 model = mul(Object.Model, instanceTransform(input));
+    float4 positionWS = mul(model, float4(input.Position, 1.0));
     VertexOutput output;
     output.Position = mul(View.ViewProjection, positionWS);
     output.Color = input.Color;
     output.UV = input.UV;
-    output.NormalWS = mul(normalMatrix(Object.Model), input.Normal);
+    output.NormalWS = mul(normalMatrix(model), input.Normal);
     // Tangents lie along the surface, so they follow the model itself
-    output.TangentWS = float4(mul((float3x3)Object.Model, input.Tangent.xyz), input.Tangent.w);
+    output.TangentWS = float4(mul((float3x3)model, input.Tangent.xyz), input.Tangent.w);
     output.PositionWS = positionWS.xyz;
     return output;
 }

@@ -27,6 +27,7 @@ namespace Nyx
 	class ShaderPrograms;
 	class VulkanContext;
 	class VulkanDebugLines;
+	struct RenderObject;
 	struct RenderWorld;
 	struct SceneViewInstance;
 
@@ -128,8 +129,9 @@ namespace Nyx
 
 		// Before the first view is made: what every view's outline set is made with. The overlays draw with the scene pipelines' layout (the global set, the
 		// view's set, ObjectConstants), which must outlive them, and so must `decalMesh`, the plane
-		// mesh the decals are drawn on.
-		void Initialize(vk::PipelineLayout scenePipelineLayout, BindSceneSetsFunction bindSceneSets, const Mesh& decalMesh);
+		// mesh the decals are drawn on, and `identityInstance`, the instance stream of what is drawn
+		// once (MeshInstanceCache::GetIdentity()).
+		void Initialize(vk::PipelineLayout scenePipelineLayout, BindSceneSetsFunction bindSceneSets, const Mesh& decalMesh, vk::Buffer identityInstance);
 		// Once the first view is made: the pipelines, for its passes, which every view's are like
 		void CreatePipelines(const SceneViewInstance& firstView);
 		// The pipelines of the shaders `uses()` says changed ("Grid": Grid.vert or Grid.frag), made
@@ -208,6 +210,8 @@ namespace Nyx
 		void DrawSelectionOutline(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
 
 		void DrawPickingPass(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd);
+		// The object's mesh with whatever pipeline is bound: once, or at every instance of its cells
+		void DrawObjectMesh(const RenderWorld& world, const RenderObject& obj, vk::raii::CommandBuffer& cmd);
 		void ResolvePickRequest(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd);
 
 		void CreateImage(
@@ -226,6 +230,7 @@ namespace Nyx
 		vk::PipelineLayout ScenePipelineLayout;
 		BindSceneSetsFunction BindSceneSets;
 		const Mesh* DecalMesh = nullptr;
+		vk::Buffer IdentityInstance;
 
 		// Picking
 		vk::raii::Pipeline PickingPipeline{ nullptr };

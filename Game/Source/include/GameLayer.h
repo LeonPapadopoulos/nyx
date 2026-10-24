@@ -11,6 +11,7 @@
 #include "OrbitCameraInput.h"
 #include "PlayerController.h"
 #include "SceneSerializationTypes.h"
+#include "SceneViewTypes.h"
 
 #include <glm/glm.hpp>
 
@@ -97,11 +98,13 @@ namespace Nyx::Game
 		std::unique_ptr<Nyx::Input::OrbitCameraInput> OrbitCameraInput;
 
 		// Debug builds: Ctrl+Alt+Shift+C crashes the game on purpose, to try the editor's crash card;
-		// F3 shows the physics debug view; Ctrl+Alt+Shift+I shows the input overlay, the editor's
-		// Window > Input for the game
+		// F3 shows the physics debug view; F4 shows the game view's culling, then freezes it, then
+		// neither; Ctrl+Alt+Shift+I shows the input overlay, the editor's Window > Input for the game
 		Nyx::Input::ContextHandle DebugContext;
 		Nyx::Input::ActionHandle CrashOnPurpose;
 		Nyx::Input::ActionHandle TogglePhysicsDebugView;
+		Nyx::Input::ActionHandle ToggleCullingDebug;
+		Nyx::ESceneViewCullingDebug CullingDebug = Nyx::ESceneViewCullingDebug::Off;
 		Nyx::Input::ActionHandle ToggleInputOverlay;
 		bool bShowInputOverlay = false;
 		Nyx::Input::InputHistory InputHistory;

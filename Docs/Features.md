@@ -464,6 +464,43 @@ mesh is made again as it grows.
   click picks it, selected it is outlined; two sections draw with two materials; a decal on it is
   drawn), `NyxEditorPanelTests` (the details panel's lines).
 
+## Instanced meshes and culling
+
+Many copies of one mesh, such as grass, flowers or stones scattered over a ground, are drawn as one
+entity, and every scene view draws only what its camera can see.
+
+- An entity with a *Mesh Renderer* (or a mesh made at run time) and a `MeshInstancesComponent` is
+  drawn at every transform of its instances, each relative to the entity's transform, with the
+  entity's materials, section by section. The transforms may be in *cells*, each with the bounds of
+  its instances' origins and a run of the transforms; without cells, all of them are one.
+- Like a mesh made at run time, the instances are plain shared data with a revision
+  (`SetMeshInstances()`, or raise `Revision` after changing them): uploaded once, again only for a
+  new revision; entities sharing them share the upload; instances nobody draws are let go of. They
+  aren't saved, edited or sent to a game: whoever made them makes them again in a post-load step.
+- A click on any instance picks the entity; selected, all of its instances are outlined; its bounds
+  are around all of them. The details panel shows *Mesh Instances* read-only: how many, in how many
+  cells, the revision.
+- **Culling**: every scene view, the editor's and the game's alike, leaves out what is outside its
+  camera's frustum: an entity by its bounds where it is drawn, an instanced one cell by cell (a
+  cell's bounds hold the mesh at each of its instances, even when the cell's own bounds are too
+  small). Cells in view that follow on in the transforms are one draw.
+- **Batching**: entities drawn once that draw alike, the same mesh with the same material in each
+  section (many trees on one cached mesh, say), are drawn in one draw.
+- **Seeing it**: *Debug > Culling Bounds* in the editor (F4 in a Debug build of the game) draws the
+  bounds each view culls by, green drawn and red culled; *Freeze Culling* (F4 again) keeps culling
+  by where the camera was, its frustum in yellow, while the camera moves on and shows what was left
+  out. `IRenderer::SetSceneViewCullingDebug()`.
+- 50 000 small cubes in 200 cells and 300 spheres take 0.15 ms of the renderer's CPU time in Release
+  instead of 24.6 ms as 50 300 entities, and 1.4 ms a frame instead of 30 ([Instancing](Design/instancing.md#numbers)).
+- Tests: `NyxCullingTests` (the frustum against boxes inside, outside and across it; boxes taken
+  into other spaces; cells with the mesh added at each instance, cut short, grown; the runs of
+  cells inside, outside and straddling), `NyxInstancingGpuTests` (a row of turned and squashed
+  spheres drawn instanced as five entities draw them, in one draw; uploaded again only for a new
+  revision or new data, shared, let go of; no transforms draw nothing; a click on an instance picks
+  its entity and it is outlined; entities and cells out of view culled, the frozen view, the bounds
+  drawn), `NyxEditorPanelTests` (the details panel's lines). `NyxInstancingBenchmark` measures the
+  numbers.
+
 ## The ground
 
 A *Ground* is a landscape made from a few values, a placeholder until the game's terrain is

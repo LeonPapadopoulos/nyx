@@ -3,6 +3,7 @@
 #include "ComponentEdits.h"
 #include "ComponentTypeRegistry.h"
 #include "ImGuiSource.h"
+#include "MeshInstancesComponent.h"
 #include "ReflectedPropertyDrawer.h"
 #include "ReflectionSourceRegistry.h"
 #include "RuntimeMeshComponent.h"
@@ -39,6 +40,17 @@ namespace Nyx::Editor
 		}
 		lines.push_back("Revision " + std::to_string(component.Revision));
 		return lines;
+	}
+
+	std::vector<std::string> DescribeMeshInstances(const Nyx::MeshInstancesComponent& component)
+	{
+		if (!component.Instances)
+		{
+			return { "No instances yet" };
+		}
+		const Nyx::MeshInstances& instances = *component.Instances;
+		const std::string cells = instances.Cells.empty() ? std::string("one cell") : std::to_string(instances.Cells.size()) + " cells";
+		return { std::to_string(instances.Transforms.size()) + " instances in " + cells, "Revision " + std::to_string(component.Revision) };
 	}
 
 	void DetailsPanel::Draw(SceneEditor& editing)
@@ -175,6 +187,20 @@ namespace Nyx::Editor
 			if (bMeshOpen)
 			{
 				for (const std::string& line : DescribeRuntimeMesh(world.Get<Nyx::RuntimeMeshComponent>(selectedEntity)))
+				{
+					NYX_UI(ImGui::TextDisabled("%s", line.c_str()));
+				}
+			}
+			ImGui::PopID();
+		}
+		if (world.Has<Nyx::MeshInstancesComponent>(selectedEntity))
+		{
+			ImGui::PushID("##MeshInstances");
+			const bool bInstancesOpen = NYX_UI(Nyx::UI::CollapsingHeader("Mesh Instances"));
+			ImGui::SetItemTooltip("The mesh drawn at every one of these transforms, made by code while the world runs, e.g. by a scatter; not saved, made again after loading");
+			if (bInstancesOpen)
+			{
+				for (const std::string& line : DescribeMeshInstances(world.Get<Nyx::MeshInstancesComponent>(selectedEntity)))
 				{
 					NYX_UI(ImGui::TextDisabled("%s", line.c_str()));
 				}

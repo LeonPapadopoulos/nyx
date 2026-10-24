@@ -42,11 +42,14 @@ namespace Nyx::Game
 		TogglePhysicsDebugView = Input->AddAction({ "TogglePhysicsDebugView", Nyx::Input::EActionValue::Button });
 		const Nyx::Input::InputBinding physicsDebugView = Nyx::Input::InputBinding::ForControl(
 			TogglePhysicsDebugView, Nyx::Input::Key(Nyx::Input::EKey::F3), Nyx::Input::ETriggerKind::Pressed);
+		ToggleCullingDebug = Input->AddAction({ "ToggleCullingDebug", Nyx::Input::EActionValue::Button });
+		const Nyx::Input::InputBinding cullingDebug =
+			Nyx::Input::InputBinding::ForControl(ToggleCullingDebug, Nyx::Input::Key(Nyx::Input::EKey::F4), Nyx::Input::ETriggerKind::Pressed);
 		ToggleInputOverlay = Input->AddAction({ "ToggleInputOverlay", Nyx::Input::EActionValue::Button });
 		Nyx::Input::InputBinding overlay =
 			Nyx::Input::InputBinding::ForControl(ToggleInputOverlay, Nyx::Input::Key(Nyx::Input::EKey::I), Nyx::Input::ETriggerKind::Pressed);
 		overlay.Modifiers = crash.Modifiers;
-		DebugContext = Input->AddContext({ .Name = "Debug", .Priority = 800, .Bindings = { crash, physicsDebugView, overlay } });
+		DebugContext = Input->AddContext({ .Name = "Debug", .Priority = 800, .Bindings = { crash, physicsDebugView, cullingDebug, overlay } });
 		Input->GetUser().SetContextActive(DebugContext, true, { .Reason = "Debug build" });
 #endif
 
@@ -216,6 +219,17 @@ namespace Nyx::Game
 			const bool bShow = !World.GetPhysicsDebugView();
 			World.SetPhysicsDebugView(bShow ? std::optional(Nyx::PhysicsDebugOptions{}) : std::nullopt);
 			LOG_INFO("Physics debug view {0} (F3)", bShow ? "on" : "off");
+		}
+
+		// F4 shows the bounds the game view culls by, green drawn and red culled; again, it freezes
+		// the culling where the camera is, to walk round and see what it left out; again, neither
+		if (Input->GetUser().ConsumeTriggered(ToggleCullingDebug))
+		{
+			CullingDebug = CullingDebug == Nyx::ESceneViewCullingDebug::Off ? Nyx::ESceneViewCullingDebug::Bounds
+				: CullingDebug == Nyx::ESceneViewCullingDebug::Bounds       ? Nyx::ESceneViewCullingDebug::Frozen
+																			: Nyx::ESceneViewCullingDebug::Off;
+			Renderer->SetSceneViewCullingDebug(GameViewId, CullingDebug);
+			LOG_INFO("Culling debug view {0} (F4)", CullingDebug == Nyx::ESceneViewCullingDebug::Off ? "off" : CullingDebug == Nyx::ESceneViewCullingDebug::Bounds ? "showing the bounds" : "frozen");
 		}
 #endif
 	}

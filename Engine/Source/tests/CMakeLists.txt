@@ -418,6 +418,14 @@ add_dependencies(NyxMeshTests NyxGeneratedReflection)
 set_property(TARGET NyxMeshTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxMeshTests COMMAND NyxMeshTests)
 
+# Culling without a GPU: a camera's frustum, boxes inside, outside and across it, the cells of mesh
+# instances and the runs of instances drawn of them.
+add_executable(NyxCullingTests CullingTests.cpp)
+target_link_libraries(NyxCullingTests PRIVATE NyxEngine)
+add_dependencies(NyxCullingTests NyxGeneratedReflection)
+set_property(TARGET NyxCullingTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxCullingTests COMMAND NyxCullingTests)
+
 # Material files and their values without a GPU: reading and writing, offsets, layouts that change.
 add_executable(NyxMaterialTests MaterialTests.cpp)
 target_link_libraries(NyxMaterialTests PRIVATE NyxEngine)
@@ -470,6 +478,26 @@ set_property(TARGET NyxRuntimeMeshGpuTests PROPERTY FOLDER "Tests")
 nyx_copy_shaders_next_to(NyxRuntimeMeshGpuTests)
 nyx_copy_shader_compiler_next_to(NyxRuntimeMeshGpuTests)
 add_test(NAME NyxRuntimeMeshGpuTests COMMAND NyxRuntimeMeshGpuTests)
+
+# Instanced drawing and culling on a real GPU: a mesh drawn at every transform of its instances as
+# it would be on an entity for each, uploaded again only for a new revision, picked, culled by cell
+# and by entity, a view's culling frozen and shown. Needs a Vulkan device; its window stays hidden.
+add_executable(NyxInstancingGpuTests InstancingGpuTests.cpp)
+target_link_libraries(NyxInstancingGpuTests PRIVATE NyxEngine)
+add_dependencies(NyxInstancingGpuTests NyxGeneratedReflection)
+set_property(TARGET NyxInstancingGpuTests PROPERTY FOLDER "Tests")
+nyx_copy_shaders_next_to(NyxInstancingGpuTests)
+nyx_copy_shader_compiler_next_to(NyxInstancingGpuTests)
+add_test(NAME NyxInstancingGpuTests COMMAND NyxInstancingGpuTests)
+
+# How long the renderer takes for 50 000 small meshes in 200 cells and 300 more, drawn one by one
+# and instanced; not run by ctest, timing depends on the machine. Needs a Vulkan device.
+add_executable(NyxInstancingBenchmark InstancingBenchmark.cpp)
+target_link_libraries(NyxInstancingBenchmark PRIVATE NyxEngine)
+add_dependencies(NyxInstancingBenchmark NyxGeneratedReflection)
+set_property(TARGET NyxInstancingBenchmark PROPERTY FOLDER "Tests")
+nyx_copy_shaders_next_to(NyxInstancingBenchmark)
+nyx_copy_shader_compiler_next_to(NyxInstancingBenchmark)
 
 # Every #include between the engine's folders against their table in Docs/Architecture.md
 add_test(NAME NyxRuntimeFolderDependencies

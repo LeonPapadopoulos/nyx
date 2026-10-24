@@ -53,14 +53,14 @@ doesn't allow, and on a table that goes round in a circle, so a new dependency s
 | `Reflection` | Type, property and enum metadata, and the `NYX_REFLECT`, `NYX_PROPERTY` and `NYX_ENUM` macros; not under `Runtime` | — |
 | `Net` | TCP connections and the messages they carry | Core |
 | `Input` | Keyboard, mouse and gamepads (through SDL3), gathered from backends into one `InputFrame` per frame; the router: context stacks, actions, the value pipeline, triggers and their traces; the input's history and its view (`InputDebugView`), painted with the UI's widgets; input assets (`.nyxinput`), saved through reflection, and their tuning layers; the checks and recipes for bindings; the input's stream and recordings (`.nyxinputrec`); the game's fly cameras, for entities with a `FlyCameraComponent` (`UpdateFlyCameras()`), and its orbit cameras' input (`OrbitCameraInput`, `Input::UpdateOrbitCameras()`) | Core, Reflection, Scene, UI |
-| `Scene` | Entities and components (the physics components, `CharacterComponent` and `OrbitCameraComponent` among them, and the moves along the ground relative to a camera, `GetGroundMove()`), the component registry, scene files, the tagged binary format, surface anchors (`SurfaceAnchor`: a point, normal and tangent on an entity that move with it), surface decals (`SurfaceDecalComponent`), meshes made at run time (`RuntimeMeshComponent`, not saved), the ground (`GroundComponent`, its heights `SampleGroundHeight()` and its mesh `MakeGroundMesh()`, made in its post-load step), a camera's view and projection and the ray back through a point of its picture (`CameraProjection.h`) | Core, Reflection |
+| `Scene` | Entities and components (the physics components, `CharacterComponent` and `OrbitCameraComponent` among them, and the moves along the ground relative to a camera, `GetGroundMove()`), the component registry, scene files, the tagged binary format, surface anchors (`SurfaceAnchor`: a point, normal and tangent on an entity that move with it), surface decals (`SurfaceDecalComponent`), meshes made at run time (`RuntimeMeshComponent`, not saved), a mesh drawn at many transforms (`MeshInstancesComponent`, not saved), the ground (`GroundComponent`, its heights `SampleGroundHeight()` and its mesh `MakeGroundMesh()`, made in its post-load step), a camera's view and projection and the ray back through a point of its picture (`CameraProjection.h`) | Core, Reflection |
 | `Physics` | Rigid bodies, their shapes (boxes, spheres, capsules, static triangle meshes), collisions and the physics step, and characters, on Jolt (`PhysicsWorld`); Jolt's headers stay inside | Core |
 | `Sim` | The game world: its entities, their physics bodies and characters kept in step with the physics components (`PhysicsBodies`), and the simulation systems each fixed step runs, in order (`GameWorld`, `ISimSystem`), the players' commands each step applies (`CommandQueue`), the entity a ray hits first (`PickPhysicsBody()`), the orbit cameras following their targets as drawn (`UpdateOrbitCameras()`) | Core, Reflection, Scene, Physics |
 | `Assets` | Asset files as plain data: images, materials, glTF meshes, shader compile requests and results | Core |
 | `UI` | The painter, and the painted UI drawn with it on top of ImGui | Core, Reflection |
 | `Link` | The editor link: its messages, live edits, live tuning of the input (`LiveInput`), recordings, the log sink | Core, Net, Input, Scene, Assets |
 | `LinkTools` | Link messages, recordings, scene files and input files as readable text, for the editor and NyxDump; not under `Runtime`, and not in the game | Core, Reflection, Scene, Input, Link |
-| `Render` | The Vulkan renderer, scene views, shaders and materials, meshes made at run time on the GPU (`RuntimeMeshCache`), and applying the link's shaders and material values | Core, Net, Scene, Assets, UI, Link |
+| `Render` | The Vulkan renderer, scene views, shaders and materials, meshes made at run time and mesh instances on the GPU (`RuntimeMeshCache`, `MeshInstanceCache`), culling by the views' cameras (`SceneCulling.h`), and applying the link's shaders and material values | Core, Net, Scene, Assets, UI, Link |
 | `Platform` | The window | Core, Input, UI |
 | `App` | The application and its layers, `main()`, the options the editor starts a game with, what a game module brings (`GameModule`) and its player (`IPlayerController`, turning input into commands each frame), the player Nyx's game has without one (`ThirdPersonPlayer`) | Core, Input, Scene, Sim, Render, Platform |
 
@@ -149,11 +149,15 @@ checks every `#include` against this table.
    2. acquires the swapchain image, and takes shader updates;
    3. extracts what each shown world draws this frame: its objects (a mesh made at run time
       uploaded here, before any draw is recorded, when it is new or its revision changed:
-      `RuntimeMeshCache`) and its surface decals
+      `RuntimeMeshCache`; mesh instances so too: `MeshInstanceCache`), each with its bounds in the
+      world, and those drawn instanced with their cells', and its surface decals
       (`ExtractSurfaceDecals()`, every anchor resolved through one guid lookup), both between
       their last two steps by one factor for the world when it is drawn so, its time for what
       moves by itself (its clock's, else the renderer's: `GetDrawnWorldTime()`), and its debug
       lines;
+      then, per scene view, takes a size asked for, its camera, and culls (`CullSceneView()`): the
+      objects out of its camera's frustum, and the cells of instances, are left out, and what draws
+      alike is batched into this frame's instance stream ([Instancing](Design/instancing.md));
       then renders every scene view: the editor's passes (picking only after a click, selection
       masks only when they changed), then the scene in HDR (the objects, the sky, then the decals
       blended over them), tonemapped, with the editor's overlays (`VulkanEditorOverlays`, in the
@@ -281,7 +285,8 @@ data: made from the values wherever they are, in the editor and in the game alik
    same on every machine uses only correctly rounded arithmetic (no `sin`, `pow` or `exp` of a C
    library, no random distributions) and its own hashes for randomness.
 3. The component's post-load step (`SetPostLoad()`) makes the data on its entity, e.g. a
-   `RuntimeMeshComponent`, and raises its revision. It runs on load, on every edit, undo and redo
+   `RuntimeMeshComponent`, or a `MeshInstancesComponent` of the transforms a mesh is drawn at,
+   and raises its revision. It runs on load, on every edit, undo and redo
    in the editor and on every live edit in a game, so the content shows in the editor and follows
    its details panel. It keeps a hash of what it made the data from in an unreflected field
    (`GroundComponent::MadeFrom`) and makes nothing again for the same values: the step also runs
@@ -325,7 +330,10 @@ data the same way, through the same pure functions.
   `SceneViewInstance` (`SceneView.h`), and its use in `VulkanRenderer`: `RenderSceneView()`
   (the scene pass, then the picture pass) or `UpdateSceneUniforms()`.
 - Per-view GPU resources: made in `CreateSceneResourcesForView()`, made again where
-  `DrawEditorPasses()` resizes a view, released in `DestroySceneViewNow()`.
+  `PrepareSceneViews()` resizes a view, released in `DestroySceneViewNow()`.
+- What a view draws is its culled draw list (`SceneViewInstance::Draws`, made by
+  `CullSceneView()`); a new pass that draws the scene, such as a shadow cascade, culls by its own
+  camera with the same functions (`SceneCulling.h`).
 - Anything only the editor should see goes in `VulkanEditorOverlays`, with its per-view resources
   in `SceneViewOverlays`. The renderer calls it for the views whose `bShowEditorOverlays` is on:
   off until the editor turns it on (`IEditorRenderer::SetSceneViewShowEditorOverlays()`), and off
@@ -362,6 +370,9 @@ How some systems work, and why they work that way:
 - [Simulation loop](Design/simulation-loop.md): the fixed steps, and the plan for commands,
   systems and determinism.
 - [Physics](Design/physics.md): Jolt behind `PhysicsWorld`, bodies, layers, forces, the build, the
+  numbers.
+- [Instancing and culling](Design/instancing.md): a mesh drawn at many transforms as a second
+  vertex stream, frustum culling per view and per cell, entities that draw alike batched, the
   numbers.
 - [Undo by guid](Design/undo-by-guid.md): why undo names entities by guid, and how it keeps
   components whole.

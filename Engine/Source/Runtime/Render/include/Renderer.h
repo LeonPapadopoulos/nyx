@@ -70,6 +70,11 @@ namespace Nyx
 		// What the view shows: the lit scene by default, or a debug view of its materials
 		virtual void SetSceneViewDebug(uint64_t id, ESceneViewDebug view) = 0;
 
+		// Every view culls what its camera can't see: entities by their bounds, those drawn
+		// instanced cell by cell. This shows the bounds it culls by, or freezes its culling where
+		// its camera is now (ESceneViewCullingDebug); off by default.
+		virtual void SetSceneViewCullingDebug(uint64_t id, ESceneViewCullingDebug mode) = 0;
+
 		virtual bool GetSceneViewCameraData(uint64_t sceneViewId, Nyx::SceneViewCameraData& outData) const = 0;
 
 		// The renderer's world, which every scene view shows unless it has one of its own
