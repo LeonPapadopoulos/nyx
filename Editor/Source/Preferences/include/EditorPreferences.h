@@ -62,6 +62,12 @@ namespace Nyx::Editor
 		uint32_t FrameRateCap = 0;
 		static constexpr uint32_t FrameRateCaps[] = { 30, 60, 90, 120, 144, 240 };
 
+		// Multisample anti-aliasing of the scene views (IRenderer::SetMsaaSamples()), and of the
+		// games Play starts: the samples a pixel, one of MsaaSampleCounts, 1 for none; 4, the
+		// renderer's default, unless chosen
+		uint32_t MsaaSamples = 4;
+		static constexpr uint32_t MsaaSampleCounts[] = { 1, 2, 4, 8 };
+
 		// The theme file the editor loads (ThemeEditorWindow): a file name in Editor/Themes, e.g.
 		// "Dark.nyxtheme", or a whole path to one elsewhere. Empty for the default theme.
 		std::string Theme;

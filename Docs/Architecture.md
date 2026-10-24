@@ -61,7 +61,7 @@ doesn't allow, and on a table that goes round in a circle, so a new dependency s
 | `UI` | The painter, and the painted UI drawn with it on top of ImGui, the dock space among it (`Nyx::UI::DockSpace()`, docked windows down to `DockedWindowMinWidth`) | Core, Reflection |
 | `Link` | The editor link: its messages, live edits, live tuning of the input (`LiveInput`), the answer to the editor's question about an entity's run-time components (`MakeInspectedEntityMessage()`), recordings, the log sink | Core, Net, Input, Scene, Assets |
 | `LinkTools` | Link messages, recordings, scene files and input files as readable text, for the editor and NyxDump; not under `Runtime`, and not in the game | Core, Reflection, Scene, Input, Link |
-| `Render` | The Vulkan renderer, scene views, shaders and materials, meshes made at run time and mesh instances on the GPU (`RuntimeMeshCache`, `MeshInstanceCache`), culling by the views' cameras (`SceneCulling.h`), the primary light's cascaded shadow maps (`ShadowCascades.h`, `VulkanShadows`), the world's air as plain math (`Atmosphere.h`: the sun through the air, the sky's tint, height fog along a ray), bloom (`Bloom.h`, `VulkanBloom`), ambient occlusion (`AmbientOcclusion.h`, `VulkanAmbientOcclusion`), point lights as plain math (`PointLights.h`: their falloff, a world's lights, a view's culling of them), particles (`Particles.h`: emitters stepped on the CPU by the world's time, their budgets, sorting; a game's air through `IParticleVelocityField`; `VulkanParticles`, their pass), and applying the link's shaders and material values | Core, Net, Scene, Assets, UI, Link |
+| `Render` | The Vulkan renderer, scene views, shaders and materials, meshes made at run time and mesh instances on the GPU (`RuntimeMeshCache`, `MeshInstanceCache`), culling by the views' cameras (`SceneCulling.h`), the primary light's cascaded shadow maps (`ShadowCascades.h`, `VulkanShadows`), the world's air as plain math (`Atmosphere.h`: the sun through the air, the sky's tint, height fog along a ray), bloom (`Bloom.h`, `VulkanBloom`), ambient occlusion (`AmbientOcclusion.h`, `VulkanAmbientOcclusion`), multisample anti-aliasing of the scene views (`Multisampling.h`, resolved in `VulkanViewportTarget`), point lights as plain math (`PointLights.h`: their falloff, a world's lights, a view's culling of them), particles (`Particles.h`: emitters stepped on the CPU by the world's time, their budgets, sorting; a game's air through `IParticleVelocityField`; `VulkanParticles`, their pass), and applying the link's shaders and material values | Core, Net, Scene, Assets, UI, Link |
 | `Platform` | The window, and where it is kept on the monitors (`FitWindowOnScreen()`) | Core, Input, UI |
 | `App` | The application and its layers, `main()`, the options the editor starts a game with, what a game module brings (`GameModule`) and its player (`IPlayerController`, turning input into commands each frame), the player Nyx's game has without one (`ThirdPersonPlayer`) | Core, Input, Scene, Sim, Render, Platform |
 
@@ -159,7 +159,8 @@ checks every `#include` against this table.
       by its time and carried by its air (`ExtractParticles()`, `UpdateParticles()`) by one factor for the world when it is drawn so, its time for what
       moves by itself (its clock's, else the renderer's: `GetDrawnWorldTime()`), and its debug
       lines;
-      then, per scene view, takes a size asked for, its camera, its world's sun and its air
+      then, per scene view, takes a size asked for (or a new sample count,
+      `SetMsaaSamples()`: every view's targets, then the scene pass's pipelines, made again), its camera, its world's sun and its air
       (`ExtractSceneEnvironment()`, [Atmosphere](Design/atmosphere.md)), and culls
       (`CullSceneView()`): the objects out of its camera's frustum, and the cells of instances, are
       left out, and what draws alike is batched into this frame's instance stream
@@ -171,10 +172,11 @@ checks every `#include` against this table.
       then renders every scene view: the editor's passes (picking only after a click, selection
       masks only when they changed), then per view its shadow cascades into the shadow map, the
       scene in HDR (the objects, the sky, then the decals blended over them, each through the
-      height fog; the sky's light apart while it has ambient occlusion), its ambient occlusion
+      height fog; the sky's light apart while it has ambient occlusion; multisampled and resolved
+      at the pass's end, [Anti-aliasing](Design/anti-aliasing.md)), its ambient occlusion
       (`VulkanAmbientOcclusion`, the occluded sky's light added), its particles (`VulkanParticles`,
-      tested against the scene's depth, which they read, and soft where they meet it), its bloom
-      (`VulkanBloom`),
+      after the resolve, tested against the scene's resolved depth, which they read, and soft
+      where they meet it), its bloom (`VulkanBloom`),
       tonemapped with it, with the editor's overlays (`VulkanEditorOverlays`, in the views that
       show them) and the world's debug drawing (`VulkanDebugLines`) over it; then blurs each
       view's picture;
@@ -371,6 +373,10 @@ data the same way, through the same pure functions.
 - What a view draws is its culled draw list (`SceneViewInstance::Draws`, made by
   `CullSceneView()`); a pass that draws the scene from elsewhere, as a shadow cascade does
   (`SceneViewInstance::Shadows`), culls by its own camera with the same function (`CullDraws()`).
+- A pipeline that draws into the scene pass is made for the scene views' sample count
+  (`GetSceneSamples()`, `VulkanMaterials::ScenePass`) and made again when it changes
+  (`RebuildScenePipelines()`); a pass after the scene pass reads the resolved, single-sampled
+  targets.
 - A pipeline that draws meshes has `MeshDynamicStates` and sets each section's faces before its
   draw (`SetMeshFaces()`: the back culled unless the material is two-sided, the front clockwise for
   a mirrored entity).
@@ -436,6 +442,10 @@ How some systems work, and why they work that way:
   for the eye, the same from the same seed, carried by a game's air, budgets, drawn instanced in a
   pass of their own after the ambient occlusion, sorted where needed, soft against the scene's
   depth; the numbers.
+- [Anti-aliasing](Design/anti-aliasing.md): multisample anti-aliasing in the scene pass, one
+  sample count for the renderer, the colours and the nearest depth resolved before anything reads
+  them, picking left exact; why not alpha to coverage yet, what TAA would add and why it was left;
+  the numbers.
 - [Undo by guid](Design/undo-by-guid.md): why undo names entities by guid, and how it keeps
   components whole.
 - [Scattering](Design/scattering.md): copies of a mesh over another entity's mesh, sampled by

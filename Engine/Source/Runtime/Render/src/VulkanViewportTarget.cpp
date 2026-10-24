@@ -13,10 +13,12 @@
 
 namespace Nyx
 {
-	void VulkanViewportTarget::Initialize(VulkanContext& context, uint32_t width, uint32_t height, vk::Format format)
+	void VulkanViewportTarget::Initialize(VulkanContext& context, uint32_t width, uint32_t height, vk::Format format, vk::SampleCountFlagBits samples)
 	{
 		Extent = vk::Extent2D{ std::max(1u, width), std::max(1u, height) };
 		Format = format;
+		Samples = samples;
+		MemorySize = 0;
 
 		CreateImage(context);
 		CreateImageView(context);
@@ -24,6 +26,21 @@ namespace Nyx
 		CreateSampler(context);
 
 		CreateDepthResources(context);
+
+		if (Samples != vk::SampleCountFlagBits::e1)
+		{
+			// Drawn into and resolved, never read afterwards: transient, which a tiled GPU keeps on chip
+			constexpr vk::ImageUsageFlags transient = vk::ImageUsageFlagBits::eTransientAttachment;
+			CreateMultisampledImage(context, HdrFormat, vk::ImageUsageFlagBits::eColorAttachment | transient, vk::ImageAspectFlagBits::eColor, MultisampledHdrImage,
+				MultisampledHdrMemory, MultisampledHdrImageView);
+			CreateMultisampledImage(context, AmbientFormat, vk::ImageUsageFlagBits::eColorAttachment | transient, vk::ImageAspectFlagBits::eColor, MultisampledAmbientImage,
+				MultisampledAmbientMemory, MultisampledAmbientImageView);
+			CreateMultisampledImage(context, DepthFormat, vk::ImageUsageFlagBits::eDepthStencilAttachment | transient, vk::ImageAspectFlagBits::eDepth, MultisampledDepthImage,
+				MultisampledDepthMemory, MultisampledDepthImageView);
+
+			const auto properties = context.GetPhysicalDevice().getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceDepthStencilResolveProperties>();
+			DepthResolveMode = ChooseDepthResolveMode(properties.get<vk::PhysicalDeviceDepthStencilResolveProperties>().supportedDepthResolveModes);
+		}
 
 		CreateRenderPass(context);
 		CreateFramebuffer(context);
@@ -40,6 +57,15 @@ namespace Nyx
 		RenderPass = nullptr;
 		SceneFramebuffer = nullptr;
 		SceneRenderPass = nullptr;
+		MultisampledDepthImageView = nullptr;
+		MultisampledDepthMemory = nullptr;
+		MultisampledDepthImage = nullptr;
+		MultisampledAmbientImageView = nullptr;
+		MultisampledAmbientMemory = nullptr;
+		MultisampledAmbientImage = nullptr;
+		MultisampledHdrImageView = nullptr;
+		MultisampledHdrMemory = nullptr;
+		MultisampledHdrImage = nullptr;
 		AmbientImageView = nullptr;
 		AmbientMemory = nullptr;
 		AmbientImage = nullptr;
@@ -53,6 +79,7 @@ namespace Nyx
 
 		Extent = vk::Extent2D{ 0, 0 };
 		Format = vk::Format::eUndefined;
+		MemorySize = 0;
 	}
 
 	void VulkanViewportTarget::EnsureSize(VulkanContext& context, uint32_t width, uint32_t height)
@@ -65,17 +92,23 @@ namespace Nyx
 			return;
 		}
 
-		Recreate(context, width, height, Format);
+		Recreate(context, width, height, Format, Samples);
 	}
 
-	void VulkanViewportTarget::Recreate(VulkanContext& context, uint32_t width, uint32_t height, vk::Format format)
+	void VulkanViewportTarget::Recreate(VulkanContext& context, uint32_t width, uint32_t height, vk::Format format, vk::SampleCountFlagBits samples)
 	{
 		Shutdown(context);
-		Initialize(context, width, height, format);
+		Initialize(context, width, height, format, samples);
+	}
+
+	vk::ResolveModeFlagBits VulkanViewportTarget::ChooseDepthResolveMode(vk::ResolveModeFlags supported)
+	{
+		return (supported & vk::ResolveModeFlagBits::eMax) ? vk::ResolveModeFlagBits::eMax : vk::ResolveModeFlagBits::eSampleZero;
 	}
 
 	void VulkanViewportTarget::BeginScenePass(vk::raii::CommandBuffer& commandBuffer, const vk::ClearColorValue& clearValue)
 	{
+		// The first three attachments, multisampled or not: the targets drawn into
 		std::vector<vk::ClearValue> clearValues(3);
 		clearValues[0].color = clearValue;
 		clearValues[1].color = vk::ClearColorValue(std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 0.0f });
@@ -134,18 +167,35 @@ namespace Nyx
 		imageInfo.sharingMode = vk::SharingMode::eExclusive;
 
 		Image = vk::raii::Image(context.GetDevice(), imageInfo);
+		Memory = AllocateImageMemory(context, Image);
+	}
 
-		const vk::MemoryRequirements memRequirements = Image.getMemoryRequirements();
+	vk::raii::DeviceMemory VulkanViewportTarget::AllocateImageMemory(VulkanContext& context, const vk::raii::Image& image)
+	{
+		const vk::MemoryRequirements requirements = image.getMemoryRequirements();
+		vk::raii::DeviceMemory memory(context.GetDevice(),
+			vk::MemoryAllocateInfo(requirements.size, FindMemoryType(*context.GetPhysicalDevice(), requirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal)));
+		image.bindMemory(*memory, 0);
+		MemorySize += requirements.size;
+		return memory;
+	}
 
-		vk::MemoryAllocateInfo allocInfo{};
-		allocInfo.allocationSize = memRequirements.size;
-		allocInfo.memoryTypeIndex = FindMemoryType(
-			*context.GetPhysicalDevice(),
-			memRequirements.memoryTypeBits,
-			vk::MemoryPropertyFlagBits::eDeviceLocal);
-
-		Memory = vk::raii::DeviceMemory(context.GetDevice(), allocInfo);
-		Image.bindMemory(*Memory, 0);
+	void VulkanViewportTarget::CreateMultisampledImage(VulkanContext& context, vk::Format format, vk::ImageUsageFlags usage, vk::ImageAspectFlags aspect, vk::raii::Image& outImage,
+		vk::raii::DeviceMemory& outMemory, vk::raii::ImageView& outView)
+	{
+		vk::ImageCreateInfo imageInfo{};
+		imageInfo.imageType = vk::ImageType::e2D;
+		imageInfo.extent = vk::Extent3D(Extent.width, Extent.height, 1);
+		imageInfo.mipLevels = 1;
+		imageInfo.arrayLayers = 1;
+		imageInfo.format = format;
+		imageInfo.tiling = vk::ImageTiling::eOptimal;
+		imageInfo.initialLayout = vk::ImageLayout::eUndefined;
+		imageInfo.usage = usage;
+		imageInfo.samples = Samples;
+		outImage = vk::raii::Image(context.GetDevice(), imageInfo);
+		outMemory = AllocateImageMemory(context, outImage);
+		outView = vk::raii::ImageView(context.GetDevice(), vk::ImageViewCreateInfo({}, *outImage, vk::ImageViewType::e2D, format, {}, vk::ImageSubresourceRange(aspect, 0, 1, 0, 1)));
 	}
 
 	void VulkanViewportTarget::CreateImageView(VulkanContext& context)
@@ -176,11 +226,7 @@ namespace Nyx
 		imageInfo.usage = vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled;
 		imageInfo.samples = vk::SampleCountFlagBits::e1;
 		HdrImage = vk::raii::Image(context.GetDevice(), imageInfo);
-
-		const vk::MemoryRequirements memRequirements = HdrImage.getMemoryRequirements();
-		HdrMemory = vk::raii::DeviceMemory(context.GetDevice(), vk::MemoryAllocateInfo(memRequirements.size,
-			FindMemoryType(*context.GetPhysicalDevice(), memRequirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal)));
-		HdrImage.bindMemory(*HdrMemory, 0);
+		HdrMemory = AllocateImageMemory(context, HdrImage);
 
 		vk::ImageViewCreateInfo viewInfo{};
 		viewInfo.image = *HdrImage;
@@ -192,10 +238,7 @@ namespace Nyx
 		// The sky's light apart, as big
 		imageInfo.format = AmbientFormat;
 		AmbientImage = vk::raii::Image(context.GetDevice(), imageInfo);
-		const vk::MemoryRequirements ambientRequirements = AmbientImage.getMemoryRequirements();
-		AmbientMemory = vk::raii::DeviceMemory(context.GetDevice(), vk::MemoryAllocateInfo(ambientRequirements.size,
-			FindMemoryType(*context.GetPhysicalDevice(), ambientRequirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal)));
-		AmbientImage.bindMemory(*AmbientMemory, 0);
+		AmbientMemory = AllocateImageMemory(context, AmbientImage);
 		viewInfo.image = *AmbientImage;
 		viewInfo.format = AmbientFormat;
 		AmbientImageView = vk::raii::ImageView(context.GetDevice(), viewInfo);
@@ -228,6 +271,11 @@ namespace Nyx
 		subpass.pDepthStencilAttachment = &depthRef;
 
 		// The scene: HDR colour, the ambient light and depth, cleared, all kept for the passes after
+		if (Samples != vk::SampleCountFlagBits::e1)
+		{
+			CreateMultisampledScenePass(context);
+		}
+		else
 		{
 			const std::array<vk::AttachmentReference, 2> sceneColorRefs = { vk::AttachmentReference(0, vk::ImageLayout::eColorAttachmentOptimal),
 				vk::AttachmentReference(1, vk::ImageLayout::eColorAttachmentOptimal) };
@@ -314,6 +362,81 @@ namespace Nyx
 		}
 	}
 
+	void VulkanViewportTarget::CreateMultisampledScenePass(VulkanContext& context)
+	{
+		// 0 to 2: the multisampled HDR colour, ambient light and depth, cleared, not kept; 3 to 5:
+		// the single-sampled ones they are resolved into at the pass's end, kept for the passes
+		// after. A depth resolve needs the second version of render passes (Vulkan 1.2).
+		vk::AttachmentDescription2 color{};
+		color.format = HdrFormat;
+		color.samples = Samples;
+		color.loadOp = vk::AttachmentLoadOp::eClear;
+		color.storeOp = vk::AttachmentStoreOp::eDontCare;
+		color.stencilLoadOp = vk::AttachmentLoadOp::eDontCare;
+		color.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
+		color.initialLayout = vk::ImageLayout::eUndefined;
+		color.finalLayout = vk::ImageLayout::eColorAttachmentOptimal;
+
+		vk::AttachmentDescription2 ambient = color;
+		ambient.format = AmbientFormat;
+
+		vk::AttachmentDescription2 depth = color;
+		depth.format = DepthFormat;
+		depth.finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
+
+		vk::AttachmentDescription2 resolvedColor = color;
+		resolvedColor.samples = vk::SampleCountFlagBits::e1;
+		resolvedColor.loadOp = vk::AttachmentLoadOp::eDontCare;
+		resolvedColor.storeOp = vk::AttachmentStoreOp::eStore;
+		resolvedColor.finalLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+
+		vk::AttachmentDescription2 resolvedAmbient = resolvedColor;
+		resolvedAmbient.format = AmbientFormat;
+
+		vk::AttachmentDescription2 resolvedDepth = resolvedColor;
+		resolvedDepth.format = DepthFormat;
+		resolvedDepth.finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal;
+
+		const std::array<vk::AttachmentReference2, 2> colorRefs = { vk::AttachmentReference2(0, vk::ImageLayout::eColorAttachmentOptimal, vk::ImageAspectFlagBits::eColor),
+			vk::AttachmentReference2(1, vk::ImageLayout::eColorAttachmentOptimal, vk::ImageAspectFlagBits::eColor) };
+		const std::array<vk::AttachmentReference2, 2> resolveRefs = { vk::AttachmentReference2(3, vk::ImageLayout::eColorAttachmentOptimal, vk::ImageAspectFlagBits::eColor),
+			vk::AttachmentReference2(4, vk::ImageLayout::eColorAttachmentOptimal, vk::ImageAspectFlagBits::eColor) };
+		const vk::AttachmentReference2 depthRef(2, vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::ImageAspectFlagBits::eDepth);
+		const vk::AttachmentReference2 resolvedDepthRef(5, vk::ImageLayout::eDepthStencilAttachmentOptimal, vk::ImageAspectFlagBits::eDepth);
+
+		// The depth's nearest sample (ChooseDepthResolveMode()); a format with a stencil, which
+		// nothing uses, resolves both by the first sample, which any device can do for both
+		const bool bStencil = DepthFormat == vk::Format::eD32SfloatS8Uint;
+		const vk::SubpassDescriptionDepthStencilResolve depthResolve(bStencil ? vk::ResolveModeFlagBits::eSampleZero : DepthResolveMode,
+			bStencil ? vk::ResolveModeFlagBits::eSampleZero : vk::ResolveModeFlagBits::eNone, &resolvedDepthRef);
+		vk::SubpassDescription2 subpass{};
+		subpass.pNext = &depthResolve;
+		subpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
+		subpass.colorAttachmentCount = static_cast<uint32_t>(colorRefs.size());
+		subpass.pColorAttachments = colorRefs.data();
+		subpass.pResolveAttachments = resolveRefs.data();
+		subpass.pDepthStencilAttachment = &depthRef;
+
+		// As with one sample; the resolves write in the colour output stage, the depth's too
+		std::array<vk::SubpassDependency2, 2> dependencies{};
+		dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+		dependencies[0].dstSubpass = 0;
+		dependencies[0].srcStageMask = vk::PipelineStageFlagBits::eTopOfPipe;
+		dependencies[0].dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eEarlyFragmentTests;
+		dependencies[0].dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite | vk::AccessFlagBits::eDepthStencilAttachmentWrite;
+
+		// The passes after sample the resolved colours and depth, and test against the depth
+		dependencies[1].srcSubpass = 0;
+		dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+		dependencies[1].srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput | vk::PipelineStageFlagBits::eLateFragmentTests;
+		dependencies[1].dstStageMask = vk::PipelineStageFlagBits::eFragmentShader | vk::PipelineStageFlagBits::eEarlyFragmentTests | vk::PipelineStageFlagBits::eLateFragmentTests;
+		dependencies[1].srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite | vk::AccessFlagBits::eDepthStencilAttachmentWrite;
+		dependencies[1].dstAccessMask = vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eDepthStencilAttachmentRead | vk::AccessFlagBits::eDepthStencilAttachmentWrite;
+
+		const std::array<vk::AttachmentDescription2, 6> attachments = { color, ambient, depth, resolvedColor, resolvedAmbient, resolvedDepth };
+		SceneRenderPass = vk::raii::RenderPass(context.GetDevice(), vk::RenderPassCreateInfo2({}, attachments, subpass, dependencies));
+	}
+
 	void VulkanViewportTarget::CreateFramebuffer(VulkanContext& context)
 	{
 		std::array<vk::ImageView, 2> attachments = {
@@ -331,10 +454,17 @@ namespace Nyx
 
 		Framebuffer = vk::raii::Framebuffer(context.GetDevice(), fbInfo);
 
+		// With more samples, the multisampled targets first, then those they resolve into
 		const std::array<vk::ImageView, 3> sceneAttachments = { *HdrImageView, *AmbientImageView, *DepthImageView };
+		const bool bMultisampled = Samples != vk::SampleCountFlagBits::e1;
+		std::array<vk::ImageView, 6> multisampledAttachments{};
+		if (bMultisampled)
+		{
+			multisampledAttachments = { *MultisampledHdrImageView, *MultisampledAmbientImageView, *MultisampledDepthImageView, *HdrImageView, *AmbientImageView, *DepthImageView };
+		}
 		fbInfo.renderPass = *SceneRenderPass;
-		fbInfo.attachmentCount = static_cast<uint32_t>(sceneAttachments.size());
-		fbInfo.pAttachments = sceneAttachments.data();
+		fbInfo.attachmentCount = bMultisampled ? static_cast<uint32_t>(multisampledAttachments.size()) : static_cast<uint32_t>(sceneAttachments.size());
+		fbInfo.pAttachments = bMultisampled ? multisampledAttachments.data() : sceneAttachments.data();
 		SceneFramebuffer = vk::raii::Framebuffer(context.GetDevice(), fbInfo);
 	}
 
@@ -380,18 +510,7 @@ namespace Nyx
 			vk::ImageLayout::eUndefined);
 
 		DepthImage = vk::raii::Image(context.GetDevice(), imageInfo);
-
-		vk::MemoryRequirements memRequirements = DepthImage.getMemoryRequirements();
-
-		vk::MemoryAllocateInfo allocInfo(
-			memRequirements.size,
-			FindMemoryType(
-				*context.GetPhysicalDevice(),
-				memRequirements.memoryTypeBits,
-				vk::MemoryPropertyFlagBits::eDeviceLocal));
-
-		DepthMemory = vk::raii::DeviceMemory(context.GetDevice(), allocInfo);
-		DepthImage.bindMemory(*DepthMemory, 0);
+		DepthMemory = AllocateImageMemory(context, DepthImage);
 	}
 
 	void VulkanViewportTarget::CreateDepthImageView(VulkanContext& context)

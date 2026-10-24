@@ -594,7 +594,7 @@ int main(int argc, char** argv)
 			WriteScene();
 			return 0;
 		}
-		SceneRenderer gpu("NyxPointLightGpuTests");
+		SceneRenderer gpu("NyxPointLightGpuTests", MsaaSamplesFromArguments(argc, argv));
 		TestOneLight(gpu);
 		TestColouredAndTwoLights(gpu);
 		TestLightUnderFog(gpu);

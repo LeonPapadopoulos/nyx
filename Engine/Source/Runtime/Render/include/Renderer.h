@@ -47,6 +47,16 @@ namespace Nyx
 		virtual void SetVSync(bool bVSync) = 0;
 		virtual bool IsVSync() const = 0;
 
+		// Multisample anti-aliasing of the scene views (Docs/Design/anti-aliasing.md): how many
+		// samples each pixel of their scene has as it is drawn, which smooths the edges of what is
+		// in it. 1 (none), 2, 4 or 8, the same for every view; DefaultMsaaSamples (4) unless set.
+		// More than the device can do is the most it can. Set before Initialize(), or later, which
+		// makes the views' targets and the scene's pipelines again before the next frame is drawn.
+		virtual void SetMsaaSamples(uint32_t samples) = 0;
+		// The samples a pixel the views draw with: as set, as far as the device can; from the frame
+		// after it was set
+		virtual uint32_t GetMsaaSamples() const = 0;
+
 		// The graphics API it draws with, as shown to the user, e.g. "Vulkan"
 		virtual const char* GetApiName() const = 0;
 

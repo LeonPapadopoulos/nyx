@@ -39,7 +39,7 @@ namespace
 		const GameLaunchOptions options = Parse({}, warnings);
 		Require(warnings.empty(), "No arguments should give no warnings");
 		Require(options.ScenePath.empty() && !options.bWaitForDebugger && !options.EditorPort && options.LinkLogPath.empty() &&
-					!options.bInputBackground && options.InputRecordPath.empty() && options.InputReplayPath.empty() && !options.WindowSize && !options.WindowPosition && options.WindowTitle.empty(),
+					!options.bInputBackground && options.InputRecordPath.empty() && options.InputReplayPath.empty() && !options.WindowSize && !options.WindowPosition && options.WindowTitle.empty() && !options.MsaaSamples,
 			"No arguments should leave every option at its default");
 	}
 
@@ -56,6 +56,7 @@ namespace
 		written.WindowSize = GameWindowSize{ 1280, 800 };
 		written.WindowPosition = GameWindowPosition{ -1920, -40 };
 		written.WindowTitle = "Nyx Game - Steam Deck";
+		written.MsaaSamples = 8;
 
 		const std::vector<std::string> arguments = MakeGameArguments(written);
 
@@ -72,6 +73,7 @@ namespace
 		Require(read.WindowSize == written.WindowSize, "Window size differs after a round trip");
 		Require(read.WindowPosition == written.WindowPosition, "Window position differs after a round trip");
 		Require(read.WindowTitle == written.WindowTitle, "Window title differs after a round trip");
+		Require(read.MsaaSamples == written.MsaaSamples, "MSAA samples differ after a round trip");
 	}
 
 	// Paths and titles beyond ASCII, e.g. a play setup named in German: everything is UTF-8
@@ -113,9 +115,15 @@ namespace
 	void TestMissingAndBadValues()
 	{
 		// An option at the end, without its value
-		for (const char* option : { "--editor-port", "--link-log", "--window-size", "--window-pos", "--window-title" })
+		for (const char* option : { "--editor-port", "--link-log", "--window-size", "--window-pos", "--window-title", "--msaa" })
 		{
 			ParseWithOneWarning({ "Scene.nyxscene", option }, option);
+		}
+
+		for (const char* samples : { "0", "3", "16", "-4", "four" })
+		{
+			const GameLaunchOptions options = ParseWithOneWarning({ "--msaa", samples }, "--msaa");
+			Require(!options.MsaaSamples, std::string("Accepted the sample count ") + samples);
 		}
 
 		for (const char* port : { "0", "65536", "-1", "port" })

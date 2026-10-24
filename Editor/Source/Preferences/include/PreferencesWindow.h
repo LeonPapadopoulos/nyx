@@ -27,6 +27,7 @@ namespace Nyx::Editor
 		void DrawAmbilight(EditorPreferences& preferences);
 		// Vsync on or off, and the frame rate cap
 		void DrawFrameRate(EditorPreferences& preferences);
+		void DrawAntiAliasing(EditorPreferences& preferences);
 
 		std::future<std::string> PendingSourceOpen;
 		std::string SourceNavigationStatus;

@@ -58,6 +58,7 @@ namespace Nyx::Editor
 			launchOptions.ScenePath = *playSessionScene;
 			launchOptions.bWaitForDebugger = bGameWaitsForDebugger;
 			launchOptions.bInputBackground = preferences.bGamepadsDriveAllGames;
+			launchOptions.MsaaSamples = preferences.MsaaSamples;
 			LaunchGame(planned.Name, launchOptions, planned.bConsoleWindow);
 		}
 

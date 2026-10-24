@@ -3,6 +3,7 @@
 #include "EditorLinkLogSink.h"
 #include "GameLaunchOptions.h"
 #include "GameLayer.h"
+#include "Renderer.h"
 #include "InputRecordingLayer.h"
 #include "Paths.h"
 #include "ChildProcess.h"
@@ -92,6 +93,11 @@ namespace Nyx::Game
 				GetInput().SetGamepadsInBackground(true);
 			}
 
+			if (options.MsaaSamples)
+			{
+				GetRenderer().SetMsaaSamples(*options.MsaaSamples);
+			}
+
 			// Attaching loads the scene
 			auto gameLayer = std::make_unique<GameLayer>(scenePath);
 			GameLayer& game = *gameLayer;
@@ -115,7 +121,7 @@ namespace Nyx::Game
 
 // Usage: NyxGame.exe [scene file] [--wait-for-debugger] [--editor-port <port>] [--link-log <file>]
 //                    [--window-size <width>x<height>] [--window-pos <x>,<y>] [--window-title <text>]
-//                    [--input-background] [--input-record <file>] [--input-replay <file>]
+//                    [--input-background] [--input-record <file>] [--input-replay <file>] [--msaa <samples>]
 // - Without a scene file, the game runs Scenes/Default.nyxscene from the project's assets, or else
 //   from the engine's.
 // - With --wait-for-debugger, the game waits at startup until a debugger is attached.
@@ -129,6 +135,8 @@ namespace Nyx::Game
 // - With --input-record, the game's input is recorded to the file (.nyxinputrec), e.g. for a bug
 //   report; the editor's Input window replays it, NyxDump prints it. With --input-replay, the
 //   game plays a recording instead of the devices' input, then goes on with the devices.
+// - --msaa is the samples a pixel of multisample anti-aliasing, 1 (off), 2, 4 or 8; the editor's
+//   preference for the games Play starts.
 // GameLaunchOptions.h reads these, and the editor writes them with the same code.
 Nyx::Application* Nyx::CreateApplication(int argc, char** argv)
 {

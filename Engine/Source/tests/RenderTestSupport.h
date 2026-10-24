@@ -18,6 +18,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -32,12 +33,33 @@ namespace Nyx::RenderTests
 
 	using Nyx::Tests::Require;
 
-	// A hidden window, and a renderer drawing into it
+	// The samples a pixel the test's renderer draws with (SceneRenderer). The reference images are
+	// made with one; with more, RequireLooksLike() matches them away from edges.
+	inline uint32_t TestMsaaSamples = 1;
+
+	// "--msaa <samples>" among a test's arguments, else 1: the GPU tests run again with more
+	// samples a pixel that way (ctest's ...Msaa tests)
+	inline uint32_t MsaaSamplesFromArguments(int argc, char** argv)
+	{
+		for (int index = 1; index + 1 < argc; ++index)
+		{
+			if (std::string(argv[index]) == "--msaa")
+			{
+				return static_cast<uint32_t>(std::max(1, std::atoi(argv[index + 1])));
+			}
+		}
+		return 1;
+	}
+
+	// A hidden window, and a renderer drawing into it, with `samples` samples a pixel: one unless a
+	// test asks for more, so that the reference images stay as they were made
 	class SceneRenderer
 	{
 	public:
-		explicit SceneRenderer(const char* name)
+		explicit SceneRenderer(const char* name, uint32_t samples = 1)
 		{
+			TestMsaaSamples = samples;
+			Renderer.SetMsaaSamples(samples);
 			if (!glfwInit())
 			{
 				throw std::runtime_error("GLFW failed to start");
@@ -52,6 +74,10 @@ namespace Nyx::RenderTests
 			Renderer.Initialize(name, Window);
 			// No imgui.ini wherever the test runs
 			ImGui::GetIO().IniFilename = nullptr;
+			if (samples > 1)
+			{
+				std::cout << name << ": " << Renderer.GetMsaaSamples() << " samples a pixel\n";
+			}
 		}
 
 		~SceneRenderer()
@@ -142,9 +168,54 @@ namespace Nyx::RenderTests
 		return std::to_string(rgb[0]) + " " + std::to_string(rgb[1]) + " " + std::to_string(rgb[2]);
 	}
 
+	// The pixels of `image` near an edge: those within `reach` pixels of one whose neighbour, across
+	// or down, differs from it by more than `step` in a channel
+	inline std::vector<bool> FindEdges(const RgbaImage& image, int step, int reach)
+	{
+		const int width = static_cast<int>(image.Width);
+		const int height = static_cast<int>(image.Height);
+		const auto differs = [&](int x0, int y0, int x1, int y1)
+		{
+			const size_t a = (static_cast<size_t>(y0) * width + x0) * 4;
+			const size_t b = (static_cast<size_t>(y1) * width + x1) * 4;
+			for (size_t channel = 0; channel < 3; ++channel)
+			{
+				if (std::abs(int(image.Pixels[a + channel]) - int(image.Pixels[b + channel])) > step)
+				{
+					return true;
+				}
+			}
+			return false;
+		};
+		std::vector<bool> edges(static_cast<size_t>(width) * height, false);
+		for (int y = 0; y < height; ++y)
+		{
+			for (int x = 0; x < width; ++x)
+			{
+				if (!((x + 1 < width && differs(x, y, x + 1, y)) || (y + 1 < height && differs(x, y, x, y + 1))))
+				{
+					continue;
+				}
+				for (int dy = -reach; dy <= reach + 1; ++dy)
+				{
+					for (int dx = -reach; dx <= reach + 1; ++dx)
+					{
+						if (x + dx >= 0 && x + dx < width && y + dy >= 0 && y + dy < height)
+						{
+							edges[static_cast<size_t>(y + dy) * width + x + dx] = true;
+						}
+					}
+				}
+			}
+		}
+		return edges;
+	}
+
 	// Rendering on the same GPU and driver gives the same picture; another GPU or driver may round
 	// a little differently, and may differ in a few pixels along edges: at most one in a thousand
-	// may differ by more than 3 in a channel
+	// may differ by more than 3 in a channel. With more than one sample a pixel (TestMsaaSamples),
+	// edges are smoothed where the reference has steps: the pixels near the reference's edges are
+	// left out, as far as the occlusion's blur reaches from them, and the rest must match alike.
 	inline void RequireLooksLike(const RgbaImage& image, const std::filesystem::path& referencePath)
 	{
 		RgbaImage reference;
@@ -153,12 +224,20 @@ namespace Nyx::RenderTests
 			"No reference image " + referencePath.string() + " (" + error + "); run with NYX_SCENE_TEST_OUTPUT set to make one");
 		Require(reference.Width == image.Width && reference.Height == image.Height, "The reference image has another size");
 
+		const bool bMultisampled = TestMsaaSamples > 1;
+		const std::vector<bool> edges = bMultisampled ? FindEdges(reference, 24, 4) : std::vector<bool>();
+		size_t edgePixels = 0;
 		constexpr int ChannelTolerance = 3;
 		size_t differentPixels = 0;
 		size_t changedPixels = 0;
 		int largestDifference = 0;
 		for (size_t pixel = 0; pixel < static_cast<size_t>(image.Width) * image.Height; ++pixel)
 		{
+			if (bMultisampled && edges[pixel])
+			{
+				++edgePixels;
+				continue;
+			}
 			int difference = 0;
 			for (size_t channel = 0; channel < 3; ++channel)
 			{
@@ -168,7 +247,13 @@ namespace Nyx::RenderTests
 			differentPixels += difference > ChannelTolerance ? 1 : 0;
 			changedPixels += difference > 0 ? 1 : 0;
 		}
-		std::cout << referencePath.filename().string() << ": " << changedPixels << " pixels differ, by up to " << largestDifference << "\n";
+		std::cout << referencePath.filename().string() << ": " << changedPixels << " pixels differ, by up to " << largestDifference;
+		if (bMultisampled)
+		{
+			std::cout << " (" << TestMsaaSamples << " samples a pixel: " << edgePixels << " pixels near edges left out)";
+			Require(edgePixels * 4 < static_cast<size_t>(image.Width) * image.Height * 3, "Three quarters of the picture are near edges: too little is left to compare");
+		}
+		std::cout << "\n";
 
 		const size_t allowed = static_cast<size_t>(image.Width) * image.Height / 1000;
 		Require(differentPixels <= allowed,

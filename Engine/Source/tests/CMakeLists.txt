@@ -546,6 +546,8 @@ set_property(TARGET NyxSceneGpuTests PROPERTY FOLDER "Tests")
 nyx_copy_shaders_next_to(NyxSceneGpuTests)
 nyx_copy_shader_compiler_next_to(NyxSceneGpuTests)
 add_test(NAME NyxSceneGpuTests COMMAND NyxSceneGpuTests)
+# Again with 4 samples a pixel: the reference images matched away from edges
+add_test(NAME NyxSceneGpuTestsMsaa COMMAND NyxSceneGpuTests --msaa 4)
 
 # Meshes made at run time on a real GPU: drawn as the same mesh loaded, redrawn when changed, picked,
 # outlined, two sections with two materials, a decal on one. Needs a Vulkan device; its window stays
@@ -592,6 +594,7 @@ set_property(TARGET NyxShadowGpuTests PROPERTY FOLDER "Tests")
 nyx_copy_shaders_next_to(NyxShadowGpuTests)
 nyx_copy_shader_compiler_next_to(NyxShadowGpuTests)
 add_test(NAME NyxShadowGpuTests COMMAND NyxShadowGpuTests)
+add_test(NAME NyxShadowGpuTestsMsaa COMMAND NyxShadowGpuTests --msaa 4)
 
 # The world's air on a real GPU: height fog on surfaces, decals and the sky against the CPU's,
 # the sky following the sun, against a reference image. Needs a Vulkan device; its window stays
@@ -616,6 +619,7 @@ set_property(TARGET NyxBloomGpuTests PROPERTY FOLDER "Tests")
 nyx_copy_shaders_next_to(NyxBloomGpuTests)
 nyx_copy_shader_compiler_next_to(NyxBloomGpuTests)
 add_test(NAME NyxBloomGpuTests COMMAND NyxBloomGpuTests)
+add_test(NAME NyxBloomGpuTestsMsaa COMMAND NyxBloomGpuTests --msaa 4)
 
 # Ambient occlusion on a real GPU: a box's foot occluded and the open floor not, never the sun's
 # light, the radius, intensity and qualities, fog and decals, a dense instanced field, against a
@@ -628,6 +632,18 @@ set_property(TARGET NyxAmbientOcclusionGpuTests PROPERTY FOLDER "Tests")
 nyx_copy_shaders_next_to(NyxAmbientOcclusionGpuTests)
 nyx_copy_shader_compiler_next_to(NyxAmbientOcclusionGpuTests)
 add_test(NAME NyxAmbientOcclusionGpuTests COMMAND NyxAmbientOcclusionGpuTests)
+add_test(NAME NyxAmbientOcclusionGpuTestsMsaa COMMAND NyxAmbientOcclusionGpuTests --msaa 4)
+
+# Multisample anti-aliasing on a real GPU: thin bars without shades between at one sample, with them
+# at 2, 4 and 8; the count clamped and changed live; picking the same at every count; the targets'
+# memory. Needs a Vulkan device; its window stays hidden.
+add_executable(NyxMultisamplingGpuTests MultisamplingGpuTests.cpp)
+target_link_libraries(NyxMultisamplingGpuTests PRIVATE NyxEngine)
+add_dependencies(NyxMultisamplingGpuTests NyxGeneratedReflection)
+set_property(TARGET NyxMultisamplingGpuTests PROPERTY FOLDER "Tests")
+nyx_copy_shaders_next_to(NyxMultisamplingGpuTests)
+nyx_copy_shader_compiler_next_to(NyxMultisamplingGpuTests)
+add_test(NAME NyxMultisamplingGpuTests COMMAND NyxMultisamplingGpuTests)
 
 # Point lights on a real GPU: a light on a floor fading to nothing at its range, a coloured light,
 # two adding up, under fog, behind the camera, culled out of view, never dimmed by ambient
@@ -640,6 +656,7 @@ set_property(TARGET NyxPointLightGpuTests PROPERTY FOLDER "Tests")
 nyx_copy_shaders_next_to(NyxPointLightGpuTests)
 nyx_copy_shader_compiler_next_to(NyxPointLightGpuTests)
 add_test(NAME NyxPointLightGpuTests COMMAND NyxPointLightGpuTests)
+add_test(NAME NyxPointLightGpuTestsMsaa COMMAND NyxPointLightGpuTests --msaa 4)
 
 # Particles on a real GPU, stepped by a clock: one particle against the CPU's numbers, additive and
 # alpha, lit, hidden behind a box, soft where it meets the floor; paused and stepped, carried by a
@@ -653,6 +670,7 @@ set_property(TARGET NyxParticleGpuTests PROPERTY FOLDER "Tests")
 nyx_copy_shaders_next_to(NyxParticleGpuTests)
 nyx_copy_shader_compiler_next_to(NyxParticleGpuTests)
 add_test(NAME NyxParticleGpuTests COMMAND NyxParticleGpuTests)
+add_test(NAME NyxParticleGpuTestsMsaa COMMAND NyxParticleGpuTests --msaa 4)
 
 # How long the renderer takes for 50 000 small meshes in 200 cells and 300 more, drawn one by one
 # and instanced; not run by ctest, timing depends on the machine. Needs a Vulkan device.

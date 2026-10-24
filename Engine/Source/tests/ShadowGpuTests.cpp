@@ -591,7 +591,7 @@ namespace
 				world.Get<MeshRendererComponent>(cube).bVisible = false;
 				const RgbaImage withoutCube = Draw(gpu, view);
 				world.Get<MeshRendererComponent>(cube).bVisible = true;
-				Require(Near(PixelAt(without, *pixel), PixelAt(withoutCube, *pixel), 2), shot + ": the cube hides the place");
+				Require(Near(PixelAt(without, *pixel), PixelAt(withoutCube, *pixel), 2), shot + ": the cube hides the place: " + Text(PixelAt(without, *pixel)) + " against " + Text(PixelAt(withoutCube, *pixel)) + " at " + std::to_string(pixel->x) + ", " + std::to_string(pixel->y));
 
 				const int lit = Brightness(PixelAt(without, *pixel));
 				const int drawn = Brightness(PixelAt(with, *pixel));
@@ -606,11 +606,12 @@ namespace
 			}
 		};
 		// The cube's shadow falls away from the sun, towards -X and -Z: seen from that side and from
-		// above, near and far
+		// above, near and far. The far one looks across the shadow rather than along it: along it, the
+		// place is a fraction of a pixel in front of the cube's face, which anti-aliasing blends in.
 		check(shaded, true,
 			{ { glm::vec3(-6.0f, 5.0f, -14.0f), glm::vec3(0.0f) }, { glm::vec3(-12.0f, 3.0f, 0.0f), glm::vec3(0.0f, 0.0f, 2.0f) },
 				{ glm::vec3(0.0f, 20.0f, -10.0f), glm::vec3(1.5f, 0.0f, 0.0f) }, { glm::vec3(20.0f, 6.0f, -20.0f), glm::vec3(0.0f) },
-				{ glm::vec3(-40.0f, 25.0f, -50.0f), glm::vec3(-4.0f, 0.0f, 3.0f) }, { glm::vec3(5.0f, 1.5f, -12.0f), glm::vec3(-1.0f, 0.5f, 0.0f) } },
+				{ glm::vec3(-60.0f, 25.0f, -14.0f), glm::vec3(-4.0f, 0.0f, 3.0f) }, { glm::vec3(5.0f, 1.5f, -12.0f), glm::vec3(-1.0f, 0.5f, 0.0f) } },
 			"The cube's shadow");
 		// The hillside faces the sun, east: seen from the valley, from above, from far
 		check(open, false,
@@ -623,12 +624,12 @@ namespace
 	}
 }
 
-int main()
+int main(int argc, char** argv)
 {
 	try
 	{
 		Nyx::Logger::Get().Init();
-		SceneRenderer gpu("NyxShadowGpuTests");
+		SceneRenderer gpu("NyxShadowGpuTests", MsaaSamplesFromArguments(argc, argv));
 		TestShadowedScene(gpu);
 		TestCascadesCullByTheirOwnFrustum(gpu);
 		TestTwoSidedCasting(gpu);

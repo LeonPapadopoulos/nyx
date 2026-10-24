@@ -25,6 +25,7 @@
 #include "Texture.h"
 #include "CubemapTexture.h"
 #include "Material.h"
+#include "Multisampling.h"
 #include "SurfaceDecals.h"
 #include "PointLights.h"
 #include "Particles.h"
@@ -354,6 +355,8 @@ namespace Nyx
 		virtual void OnFramebufferResized();
 		void SetVSync(bool bVSync) override;
 		bool IsVSync() const override;
+		void SetMsaaSamples(uint32_t samples) override { MsaaSamplesWanted = samples; }
+		uint32_t GetMsaaSamples() const override { return static_cast<uint32_t>(MsaaSamples); }
 		const char* GetApiName() const override { return "Vulkan"; }
 
 		virtual void DrawFrame(const std::function<void()>& buildUI);
@@ -444,6 +447,9 @@ namespace Nyx
 		ImTextureID GetSceneViewTextureId(uint64_t id) const override;
 		// What a scene view rendered last, as RGBA; waits for the GPU. False for an unknown view. For tests.
 		bool ReadSceneViewPixels(uint64_t id, Nyx::RgbaImage& outImage);
+		// The memory of a scene view's targets, in bytes; 0 for an unknown view. For tests and the
+		// benchmark.
+		uint64_t GetSceneViewTargetMemory(uint64_t id) const;
 		Extent2D GetSceneViewExtent(uint64_t id) const override;
 
 
@@ -523,6 +529,13 @@ namespace Nyx
 
 		// The scene views' scene pass (HDR), for what draws the scene: materials, the sky
 		vk::RenderPass GetSceneRenderPass() const;
+		// Its samples a pixel, which those pipelines are made for
+		vk::SampleCountFlagBits GetSceneSamples() const;
+		// The samples MsaaSamplesWanted comes to on this device
+		vk::SampleCountFlagBits ChooseSceneSamples() const;
+		// What draws into the scene pass, made again for its new sample count: the sky's pipeline
+		// and the materials' (waits for the GPU)
+		void RebuildScenePipelines();
 		// Their picking pass (an id a pixel), for the decals' picking pipelines
 		vk::RenderPass GetPickingRenderPass() const;
 		// Their picture pass (8-bit, after the tonemap), for what draws over the picture
@@ -675,6 +688,13 @@ namespace Nyx
 		std::vector<std::unique_ptr<Nyx::Texture>> LoadedTextures;
 
 		std::vector<SceneViewInstance> SceneViews;
+		// Multisample anti-aliasing (SetMsaaSamples()): the samples asked for; those every view
+		// draws with now, taken from what was asked as the frame's views are prepared
+		// (PrepareSceneViews()); and the counts the device can do for colour and depth alike, one
+		// bit each (vk::SampleCountFlags)
+		uint32_t MsaaSamplesWanted = Nyx::DefaultMsaaSamples;
+		vk::SampleCountFlagBits MsaaSamples = vk::SampleCountFlagBits::e1;
+		uint32_t SupportedMsaaSamples = 1;
 		// Views let go of while a frame was recorded, destroyed at the next frame's start
 		std::vector<uint64_t> SceneViewsToDestroy;
 		// Between waiting for the last frame and the end of DrawFrame(): the frame's commands are recorded

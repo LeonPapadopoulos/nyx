@@ -349,13 +349,13 @@ namespace
 	}
 }
 
-int main()
+int main(int argc, char** argv)
 {
 	Nyx::Logger::Get().Init();
 	try
 	{
 		RegisterComponentTypes();
-		SceneRenderer gpu("NyxBloomGpuTests");
+		SceneRenderer gpu("NyxBloomGpuTests", MsaaSamplesFromArguments(argc, argv));
 		TestBloomSpreadsTheLight(gpu);
 		TestAtmosphereTestSceneBlooms(gpu);
 	}

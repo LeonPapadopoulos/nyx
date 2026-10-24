@@ -48,6 +48,9 @@ namespace Nyx
 	// bloom, over its HDR scene with no depth buffer: Particle.slang tests each pixel against the
 	// scene's depth, which it reads, and fades it in front of what is behind it. Four pipelines:
 	// billboards and meshes, each additive or alpha blended, with the scene pipelines' layout.
+	// With multisample anti-aliasing the pass comes after the scene pass's resolve: one sample a
+	// pixel, over the resolved HDR scene, against the resolved (nearest) depth, as the ambient
+	// occlusion reads it (Docs/Design/anti-aliasing.md).
 	class VulkanParticles
 	{
 	public:

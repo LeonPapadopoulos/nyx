@@ -59,6 +59,14 @@ namespace Nyx
 		// state and fragment shader, if any
 		using MakeVertexPipeline = std::function<vk::raii::Pipeline(const CompiledEntryPoint& vertex)>;
 
+		// The scene views' scene pass, as a pipeline that draws into it is made for: a render pass of
+		// it, and the samples a pixel it has (IRenderer::SetMsaaSamples())
+		struct ScenePass
+		{
+			vk::RenderPass RenderPass;
+			vk::SampleCountFlagBits Samples = vk::SampleCountFlagBits::e1;
+		};
+
 		// The passes besides the scene's that draw meshes, for materials with a vertex function
 		struct VertexFunctionPasses
 		{
@@ -72,12 +80,12 @@ namespace Nyx
 		};
 
 		// `assetFolders`: where material, shader and texture paths are looked for, in order (the
-		// project's assets, then the engine's). `layout` and `renderPass()`: the scene pipelines'
-		// layout, and a render pass of the scene views, asked for each time a pipeline is made;
+		// project's assets, then the engine's). `layout` and `scenePass()`: the scene pipelines'
+		// layout, and the scene views' scene pass, asked for each time a pipeline is made;
 		// `pickingRenderPass()` the same for the views' picking pass; `vertexPasses` make the other
 		// passes' pipelines for a shader with a vertex function
 		void Initialize(Nyx::VulkanContext& context, VulkanBindless& bindless, ShaderPrograms& programs, std::vector<std::filesystem::path> assetFolders, vk::PipelineLayout layout,
-			std::function<vk::RenderPass()> renderPass, std::function<vk::RenderPass()> pickingRenderPass, VertexFunctionPasses vertexPasses);
+			std::function<ScenePass()> scenePass, std::function<vk::RenderPass()> pickingRenderPass, VertexFunctionPasses vertexPasses);
 		void Shutdown();
 
 		// The material in the file at `path`, relative to the asset folders
@@ -117,6 +125,11 @@ namespace Nyx
 		// MissingMaterial.slang changed
 		void RebuildMissingPipeline();
 
+		// The scene pass's samples changed: every shader's pipelines that draw into it (its opaque
+		// and its decal pipeline) and the missing material's are made again, from the code they were
+		// made of. Call while no frame is in flight.
+		void RebuildScenePipelines();
+
 		// The passes' own shaders changed (Picking or SelectionMask): every shader with a vertex
 		// function makes its pipelines of those passes again. Call while no frame is in flight.
 		void RebuildVertexFunctionPipelines();
@@ -133,6 +146,11 @@ namespace Nyx
 			vk::raii::Pipeline Pipeline{ nullptr };
 			vk::raii::Pipeline DecalPipeline{ nullptr };
 			vk::raii::Pipeline DecalPickingPipeline{ nullptr };
+			// The code of the pipelines that draw into the scene pass, to make them again for
+			// another sample count: its vertex shader (the decal's), its fragment shaders
+			std::optional<CompiledEntryPoint> Vertex;
+			std::optional<CompiledEntryPoint> Fragment;
+			std::optional<CompiledEntryPoint> DecalFragment;
 			// With a vertex function: its vertex shaders, and the other passes' pipelines made of them
 			std::optional<CompiledEntryPoint> DisplacedVertex;
 			std::optional<CompiledEntryPoint> DisplacedShadowVertex;
@@ -203,7 +221,7 @@ namespace Nyx
 		ShaderPrograms* Programs = nullptr;
 		std::vector<std::filesystem::path> AssetFolders;
 		vk::PipelineLayout Layout;
-		std::function<vk::RenderPass()> RenderPass;
+		std::function<ScenePass()> SceneRenderPass;
 		std::function<vk::RenderPass()> PickingRenderPass;
 		VertexFunctionPasses VertexPasses;
 

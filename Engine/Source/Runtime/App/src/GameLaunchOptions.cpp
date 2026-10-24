@@ -84,6 +84,18 @@ namespace
 		return Nyx::GameWindowPosition{ position->first, position->second };
 	}
 
+	// One of the sample counts the renderer offers
+	std::optional<uint32_t> ParseMsaaSamples(std::string_view text)
+	{
+		const std::optional<uint32_t> samples = ParseNumber<uint32_t>(text);
+		if (!samples || (*samples != 1 && *samples != 2 && *samples != 4 && *samples != 8))
+		{
+			return std::nullopt;
+		}
+
+		return samples;
+	}
+
 	// Paths go to the started program as UTF-8, which is what ChildProcess::Start() expects
 	std::string ToUtf8(const std::filesystem::path& path)
 	{
@@ -158,6 +170,12 @@ namespace Nyx
 		{
 			arguments.push_back("--window-title");
 			arguments.push_back(options.WindowTitle);
+		}
+
+		if (options.MsaaSamples)
+		{
+			arguments.push_back("--msaa");
+			arguments.push_back(std::to_string(*options.MsaaSamples));
 		}
 
 		return arguments;
@@ -260,6 +278,15 @@ namespace Nyx
 				else
 				{
 					outWarnings.push_back("--window-title needs a text");
+				}
+			}
+			else if (argument == "--msaa")
+			{
+				const std::optional<std::string_view> value = takeValue();
+				options.MsaaSamples = value ? ParseMsaaSamples(*value) : std::nullopt;
+				if (!options.MsaaSamples)
+				{
+					outWarnings.push_back("--msaa needs 1, 2, 4 or 8 samples; the renderer's default is used");
 				}
 			}
 			else if (argument.starts_with("--"))

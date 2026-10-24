@@ -17,7 +17,13 @@
 // and 64 point lights in view, each reaching 6 m. The particles mode draws it with 10 emitters of
 // 2 000 particles each, half additive, half alpha blended, lit and sorted.
 //
-// NyxInstancingBenchmark [plain|instanced|ground|lights|particles] [frames] [material]: one mode, or all; the field
+// The msaa mode measures multisample anti-aliasing (IRenderer::SetMsaaSamples()) at 1, 4 and 8
+// samples a pixel: the instanced field on its ground under a sun casting its shadows, with the
+// world's air (the environment's defaults: fog, the sky, bloom, ambient occlusion), the atmosphere
+// test scene as saved, then the lights and particles modes; and the memory of a 1920 x 1080 view's
+// targets at each count. The other modes draw with one sample, as before anti-aliasing.
+//
+// NyxInstancingBenchmark [plain|instanced|ground|lights|particles|msaa] [frames] [material]: one mode, or all; the field
 // drawn with another material than Materials/Untextured.nyxmat, e.g. one with a vertex function
 // (Materials/VertexColorWind.nyxmat), to measure what it costs.
 #include "AssetResolver.h"
@@ -438,6 +444,100 @@ namespace
 		gpu.DrawFrames(2);
 	}
 
+	// Anti-aliasing at 1, 4 and 8 samples a pixel: the field on its ground with its shadows and air,
+	// the atmosphere test scene, with lights and with particles, a 1920 x 1080 view's targets
+	void RunMsaa(SceneRenderer& gpu, int frames, const std::string& materialPath)
+	{
+		IEditorRenderer& renderer = gpu.Renderer;
+		Material* material = gpu.Renderer.GetMaterial(materialPath);
+		Registry field;
+		const Entity camera = field.CreateEntity();
+		field.Add<TransformComponent>(camera, TransformComponent{});
+		field.Add<CameraComponent>(camera, CameraComponent{});
+		AddInstancedField(field, gpu, material, MakeField());
+		AddSpheres(field, gpu, material);
+		AddMesh(field, TransformComponent{ .Position = glm::vec3(0.0f), .Rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f), .Scale = glm::vec3(CellsX * CellSize, 1.0f, CellsZ * CellSize) },
+			gpu.Renderer.GetPlaneMesh(), material);
+		const Entity sun = field.CreateEntity();
+		field.Add<TransformComponent>(sun, TransformComponent{ .Position = glm::vec3(0.0f), .Rotation = glm::quat(glm::radians(glm::vec3(-50.0f, -60.0f, 0.0f))), .Scale = glm::vec3(1.0f) });
+		field.Add<DirectionalLightComponent>(sun, DirectionalLightComponent{});
+		field.Add<EnvironmentComponent>(field.CreateEntity(), EnvironmentComponent{});
+
+		Registry ground;
+		AssetResolver resolver(gpu.Renderer);
+		ScenePostLoadContext context{};
+		context.AssetResolver = &resolver;
+		const std::filesystem::path path = Paths::GetAssetsDir() / "Scenes/AtmosphereTest.nyxscene";
+		const bool bGround = SceneSerializer::LoadFromFile(path, ground, context);
+		if (bGround)
+		{
+			UpdateScatters(ground);
+		}
+		else
+		{
+			std::cout << "msaa: " << path.string() << " can't be loaded\n";
+		}
+
+		const Shot shots[] = {
+			{ "above", glm::vec3(0.0f, 120.0f, 60.0f), glm::angleAxis(glm::radians(-63.0f), glm::vec3(1.0f, 0.0f, 0.0f)) },
+			{ "inside", glm::vec3(0.0f, 2.0f, 0.0f), glm::quat(1.0f, 0.0f, 0.0f, 0.0f) },
+		};
+		for (const uint32_t samples : { 1u, 4u, 8u })
+		{
+			renderer.SetMsaaSamples(samples);
+			gpu.DrawFrames(2);
+			if (renderer.GetMsaaSamples() != samples)
+			{
+				std::cout << "msaa: " << samples << " samples a pixel: the GPU can't, skipped\n";
+				continue;
+			}
+
+			renderer.SetWorld(&field);
+			uint64_t view = renderer.CreateSceneView();
+			renderer.SetSceneViewCameraMode(view, EViewportCameraMode::ScenePrimaryCamera);
+			renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
+			gpu.DrawUntilShadersCompiled();
+			std::cout << "msaa: " << samples << " samples a pixel, the instanced field on a ground, with its shadows and the environment's defaults:\n";
+			for (const Shot& shot : shots)
+			{
+				TransformComponent& transform = field.Get<TransformComponent>(camera);
+				transform.Position = shot.Position;
+				transform.Rotation = shot.Rotation;
+				PrintTiming(shot.Name, Measure(gpu, frames));
+			}
+			renderer.DestroySceneView(view);
+
+			if (bGround)
+			{
+				renderer.SetWorld(&ground);
+				view = renderer.CreateSceneView();
+				renderer.SetSceneViewCameraMode(view, EViewportCameraMode::ScenePrimaryCamera);
+				renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
+				gpu.DrawUntilShadersCompiled();
+				std::cout << "msaa: " << samples << " samples a pixel, the atmosphere test scene from its camera:\n";
+				PrintTiming("camera", Measure(gpu, frames));
+				renderer.DestroySceneView(view);
+			}
+
+			// The memory of a 1920 x 1080 view's targets
+			view = renderer.CreateSceneView();
+			renderer.SetSceneViewSize(view, 1920, 1080);
+			gpu.DrawFrames(2);
+			std::printf("  a 1920 x 1080 view's targets: %.1f MiB\n", static_cast<double>(gpu.Renderer.GetSceneViewTargetMemory(view)) / (1024.0 * 1024.0));
+			renderer.DestroySceneView(view);
+			renderer.SetWorld(nullptr);
+			gpu.DrawFrames(2);
+
+			// Point lights, and particles drawn after the resolve
+			std::cout << "msaa: " << samples << " samples a pixel, ";
+			RunLights(gpu, frames);
+			std::cout << "msaa: " << samples << " samples a pixel, ";
+			RunParticles(gpu, frames);
+		}
+		renderer.SetMsaaSamples(1);
+		gpu.DrawFrames(2);
+	}
+
 	void Run(SceneRenderer& gpu, const std::string& mode, int frames, const std::string& materialPath)
 	{
 		Registry world;
@@ -548,10 +648,15 @@ int main(int argc, char** argv)
 		SceneRenderer gpu("NyxInstancingBenchmark");
 		gpu.Renderer.SetVSync(false);
 		Nyx::RegisterComponentTypes();
-		for (const char* mode : { "plain", "instanced", "ground", "lights", "particles" })
+		for (const char* mode : { "plain", "instanced", "ground", "lights", "particles", "msaa" })
 		{
 			if (!only.empty() && only != mode)
 			{
+				continue;
+			}
+			if (std::string(mode) == "msaa")
+			{
+				RunMsaa(gpu, frames, materialPath);
 				continue;
 			}
 			if (std::string(mode) == "ground")

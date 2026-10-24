@@ -379,9 +379,10 @@ namespace Nyx::Editor
 
 	void EditorLayer::ApplyFrameRate()
 	{
-		// Each acts only on a change: the renderer makes a new swapchain for vsync, the window a new
-		// pace for the cap.
+		// Each acts only on a change: the renderer makes a new swapchain for vsync and the views'
+		// targets for the samples, the window a new pace for the cap.
 		Renderer->SetVSync(Preferences.bVSync);
+		Renderer->SetMsaaSamples(Preferences.MsaaSamples);
 		Window->SetFrameRateCap(Preferences.FrameRateCap);
 	}
 

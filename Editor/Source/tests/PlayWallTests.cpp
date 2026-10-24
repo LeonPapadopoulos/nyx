@@ -38,6 +38,7 @@ namespace
 		written.AmbilightReach = 123.5f;
 		written.bVSync = false;
 		written.FrameRateCap = 144;
+		written.MsaaSamples = 8;
 		written.Theme = "Ashen Garden.nyxtheme";
 		written.PlaySetups = {
 			PlaySetup{ .Name = "Phone, portrait", .Width = 390, .Height = 844, .bInPlayAll = false },
@@ -51,6 +52,7 @@ namespace
 		Require(read.bGamepadsDriveAllGames, "Gamepads drive all games was lost");
 		Require(!read.bAmbilight && read.AmbilightStrength == 0.35f && read.AmbilightReach == 123.5f, "The ambilight settings differ after a round trip");
 		Require(!read.bVSync && read.FrameRateCap == 144, "The frame rate settings differ after a round trip");
+		Require(read.MsaaSamples == 8, "The anti-aliasing samples differ after a round trip");
 		Require(read.Theme == "Ashen Garden.nyxtheme", "The theme differs after a round trip");
 		Require(read.PlaySetups == written.PlaySetups, "The play setups differ after a round trip (a comma in a name?)");
 
@@ -76,6 +78,12 @@ namespace
 
 		Require(old.bVSync && old.FrameRateCap == 0, "Without saved frame rate settings, vsync should be on and the frame rate uncapped");
 		Require(old.Theme.empty(), "Without a saved theme, the default theme should be loaded");
+		Require(old.MsaaSamples == 4, "Without saved anti-aliasing, the scene views should draw with 4 samples a pixel");
+
+		// A sample count other than those offered keeps the count there was
+		EditorPreferences samples;
+		samples.FromText("MsaaSamples=2\nMsaaSamples=3\nMsaaSamples=16\nMsaaSamples=many\n");
+		Require(samples.MsaaSamples == 2, "Sample counts not offered should be skipped");
 
 		// A frame rate cap other than those offered, or unreadable, keeps the cap there was.
 		EditorPreferences frameRate;

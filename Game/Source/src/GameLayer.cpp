@@ -52,11 +52,14 @@ namespace Nyx::Game
 		CycleViewDebug = Input->AddAction({ "CycleViewDebug", Nyx::Input::EActionValue::Button });
 		const Nyx::Input::InputBinding viewDebug =
 			Nyx::Input::InputBinding::ForControl(CycleViewDebug, Nyx::Input::Key(Nyx::Input::EKey::F6), Nyx::Input::ETriggerKind::Pressed);
+		CycleMsaaSamples = Input->AddAction({ "CycleMsaaSamples", Nyx::Input::EActionValue::Button });
+		const Nyx::Input::InputBinding msaaSamples =
+			Nyx::Input::InputBinding::ForControl(CycleMsaaSamples, Nyx::Input::Key(Nyx::Input::EKey::F7), Nyx::Input::ETriggerKind::Pressed);
 		ToggleInputOverlay = Input->AddAction({ "ToggleInputOverlay", Nyx::Input::EActionValue::Button });
 		Nyx::Input::InputBinding overlay =
 			Nyx::Input::InputBinding::ForControl(ToggleInputOverlay, Nyx::Input::Key(Nyx::Input::EKey::I), Nyx::Input::ETriggerKind::Pressed);
 		overlay.Modifiers = crash.Modifiers;
-		DebugContext = Input->AddContext({ .Name = "Debug", .Priority = 800, .Bindings = { crash, physicsDebugView, cullingDebug, shadowDebug, viewDebug, overlay } });
+		DebugContext = Input->AddContext({ .Name = "Debug", .Priority = 800, .Bindings = { crash, physicsDebugView, cullingDebug, shadowDebug, viewDebug, msaaSamples, overlay } });
 		Input->GetUser().SetContextActive(DebugContext, true, { .Reason = "Debug build" });
 #endif
 
@@ -261,6 +264,15 @@ namespace Nyx::Game
 															 : Nyx::ESceneViewDebug::Lit;
 			Renderer->SetSceneViewDebug(GameViewId, ViewDebug);
 			LOG_INFO("Debug view {0} (F6)", ViewDebug == Nyx::ESceneViewDebug::Bloom ? "bloom" : ViewDebug == Nyx::ESceneViewDebug::AmbientOcclusion ? "ambient occlusion" : "off");
+		}
+
+		// F7 doubles the samples a pixel of anti-aliasing, after 8 back to 1 (off); the renderer
+		// draws with as many as the GPU can and logs it
+		if (Input->GetUser().ConsumeTriggered(CycleMsaaSamples))
+		{
+			const uint32_t samples = Renderer->GetMsaaSamples() >= 8 ? 1 : Renderer->GetMsaaSamples() * 2;
+			Renderer->SetMsaaSamples(samples);
+			LOG_INFO("Anti-aliasing: {0} samples a pixel asked for (F7)", samples);
 		}
 #endif
 	}

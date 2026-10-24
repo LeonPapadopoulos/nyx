@@ -260,6 +260,11 @@ namespace Nyx
 		// The instance stream of what is drawn once
 		MeshInstances.Initialize(Context);
 
+		// The samples the scene views draw with, before the first is made
+		const vk::PhysicalDeviceLimits& limits = Context.GetPhysicalDevice().getProperties().limits;
+		SupportedMsaaSamples = static_cast<uint32_t>(limits.framebufferColorSampleCounts & limits.framebufferDepthSampleCounts);
+		MsaaSamples = ChooseSceneSamples();
+
 		// Shared layouts / shared GPU assets that per-view creation depends on
 		CreateSceneDescriptorSetLayout();
 		CreateScenePipelineLayout();
@@ -313,7 +318,7 @@ namespace Nyx
 		// The meshes' materials, loaded from their files when first asked for
 		Materials.Initialize(Context, Bindless, Programs, Nyx::Paths::GetAssetSearchDirs(), *ScenePipelineLayout, [this]
 			{
-				return GetSceneRenderPass();
+				return Nyx::VulkanMaterials::ScenePass{ GetSceneRenderPass(), GetSceneSamples() };
 			},
 			[this]
 			{
@@ -1481,15 +1486,22 @@ namespace Nyx
 	{
 		FrameInstances.clear();
 		FrameParticles.clear();
+		// A new sample count (SetMsaaSamples()): every view's targets made again for it, as for a
+		// new size, then what draws into their scene pass
+		const vk::SampleCountFlagBits samples = ChooseSceneSamples();
+		const bool bNewSamples = samples != MsaaSamples;
+		MsaaSamples = samples;
 		for (SceneViewInstance& view : SceneViews)
 		{
-			if (view.bResizePending)
+			if (view.bResizePending || bNewSamples)
 			{
+				const vk::Extent2D extent = view.RenderTarget.GetExtent();
 				view.RenderTarget.Recreate(
 					Context,
-					std::max(1u, view.PendingWidth),
-					std::max(1u, view.PendingHeight),
-					vk::Format::eR8G8B8A8Unorm);
+					std::max(1u, view.bResizePending ? view.PendingWidth : extent.width),
+					std::max(1u, view.bResizePending ? view.PendingHeight : extent.height),
+					vk::Format::eR8G8B8A8Unorm,
+					MsaaSamples);
 
 				RegisterHdrPicture(view);
 				Overlays.RecreateViewResources(view);
@@ -1532,6 +1544,11 @@ namespace Nyx
 				view.Particles.Draws.clear();
 			}
 			Particles.Prepare(view.Particles, view.RenderTarget, view.bRecreatedThisFrame);
+		}
+
+		if (bNewSamples)
+		{
+			RebuildScenePipelines();
 		}
 
 		// One shadow map for every view: as big as the largest any of them asks for
@@ -2006,6 +2023,25 @@ namespace Nyx
 		return *SceneViews.front().RenderTarget.GetSceneRenderPass();
 	}
 
+	vk::SampleCountFlagBits VulkanRenderer::GetSceneSamples() const
+	{
+		ASSERT(!SceneViews.empty() && "No SceneViews exist yet.");
+		return SceneViews.front().RenderTarget.GetSamples();
+	}
+
+	vk::SampleCountFlagBits VulkanRenderer::ChooseSceneSamples() const
+	{
+		return static_cast<vk::SampleCountFlagBits>(Nyx::ChooseMsaaSamples(MsaaSamplesWanted, SupportedMsaaSamples));
+	}
+
+	void VulkanRenderer::RebuildScenePipelines()
+	{
+		Context.WaitIdle();
+		CreateSkyboxPipeline();
+		Materials.RebuildScenePipelines();
+		LOG_INFO("The scene views draw with {} sample(s) a pixel", static_cast<uint32_t>(MsaaSamples));
+	}
+
 	vk::RenderPass VulkanRenderer::GetPickingRenderPass() const
 	{
 		ASSERT(!SceneViews.empty() && "No SceneViews exist yet.");
@@ -2134,9 +2170,10 @@ namespace Nyx
 		rasterizer.frontFace = vk::FrontFace::eCounterClockwise;
 		rasterizer.depthBiasEnable = VK_FALSE;
 
+		// As many samples as the scene pass has, so that edges against the sky are smoothed too
 		vk::PipelineMultisampleStateCreateInfo multisampling{};
 		multisampling.sampleShadingEnable = VK_FALSE;
-		multisampling.rasterizationSamples = vk::SampleCountFlagBits::e1;
+		multisampling.rasterizationSamples = GetSceneSamples();
 
 		vk::PipelineColorBlendAttachmentState colorBlendAttachment{};
 		colorBlendAttachment.blendEnable = VK_FALSE;
@@ -2730,7 +2767,7 @@ namespace Nyx
 		Nyx::SceneViewInstance view{};
 		view.Id = NextSceneViewId++;
 
-		view.RenderTarget.Initialize(Context, 1, 1, vk::Format::eR8G8B8A8Unorm);
+		view.RenderTarget.Initialize(Context, 1, 1, vk::Format::eR8G8B8A8Unorm, MsaaSamples);
 		view.HdrTextureSlot = Bindless.AddTexture(view.RenderTarget.GetHdrImageView());
 		view.AmbientTextureSlot = Bindless.AddTexture(view.RenderTarget.GetAmbientImageView());
 		view.DepthTextureSlot = Bindless.AddTexture(view.RenderTarget.GetDepthImageView());
@@ -2810,6 +2847,12 @@ namespace Nyx
 		}
 
 		return ImTextureID{};
+	}
+
+	uint64_t VulkanRenderer::GetSceneViewTargetMemory(uint64_t id) const
+	{
+		const SceneViewInstance* view = FindSceneView(id);
+		return view ? static_cast<uint64_t>(view->RenderTarget.GetMemorySize()) : 0;
 	}
 
 	Extent2D VulkanRenderer::GetSceneViewExtent(uint64_t id) const

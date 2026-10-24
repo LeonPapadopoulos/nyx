@@ -385,13 +385,13 @@ namespace
 	}
 }
 
-int main()
+int main(int argc, char** argv)
 {
 	Nyx::Logger::Get().Init();
 	try
 	{
 		RegisterComponentTypes();
-		SceneRenderer gpu("NyxAmbientOcclusionGpuTests");
+		SceneRenderer gpu("NyxAmbientOcclusionGpuTests", MsaaSamplesFromArguments(argc, argv));
 		TestTheBoxsFootIsOccluded(gpu);
 		TestTheSunsLightIsNeverOccluded(gpu);
 		TestFogAndDecals(gpu);

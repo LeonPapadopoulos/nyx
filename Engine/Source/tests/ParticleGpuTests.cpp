@@ -624,7 +624,7 @@ int main(int argc, char** argv)
 			WriteScene();
 			return 0;
 		}
-		SceneRenderer gpu("NyxParticleGpuTests");
+		SceneRenderer gpu("NyxParticleGpuTests", MsaaSamplesFromArguments(argc, argv));
 		TestOneParticle(gpu);
 		TestDepth(gpu);
 		TestClockFieldAndCulling(gpu);

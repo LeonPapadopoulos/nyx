@@ -741,6 +741,30 @@ in the editor's scene views and in the game alike.
   intensity, lit by a red light or dark without one; hidden behind a box, soft where it meets the
   floor; paused, stepped, carried by a velocity field, culled out of view; its icon picked; a
   reference picture of sparks, smoke and embers; the test scene).
+## Anti-aliasing
+
+The edges of what the scene views draw are smoothed by multisample anti-aliasing: a stalk, a wire
+or a branch thinner than a pixel in the distance shows as a fainter line instead of breaking up
+into dots that crawl as the camera moves, and edges are no longer staircases.
+
+- 4 samples a pixel by default; 1 (off), 2, 4 or 8 in *Window > Preferences > Anti-aliasing*,
+  changed at once in every scene view, saved with the editor's preferences and given to the games
+  Play starts. More than the GPU can do is the most it can.
+- The game takes `--msaa <samples>` on its command line; F7 in a Debug build cycles 1, 2, 4, 8.
+  A game sets it with `IRenderer::SetMsaaSamples()`.
+- The sky, decals, fog, point lights, ambient occlusion, bloom, instanced meshes, two-sided
+  materials, materials that cast no shadows and vertex functions all work with it; particles are
+  drawn after it, soft against the smoothed scene; picking, the selection outline and the lights'
+  and emitters' icons stay exact, a pixel each.
+- What it costs, and why it isn't temporal anti-aliasing: [Anti-aliasing](Design/anti-aliasing.md).
+- Tests: `NyxMultisamplingGpuTests` (thin bars with nothing between the sky and a bar at one sample,
+  their edges in as many shades as the samples allow at 2, 4 and 8; the count clamped to the
+  device's; changed live, views made again, the same picture to the bit when changed back; a view
+  made later drawing with it; picking the same at every count; the targets' memory),
+  `NyxAmbientOcclusionGpuTests`, `NyxBloomGpuTests`, `NyxSceneGpuTests`, `NyxShadowGpuTests`,
+  `NyxPointLightGpuTests` and `NyxParticleGpuTests` run again at 4 samples (decals, picking, point
+  lights, soft particles, materials that cast no shadows and the reference pictures, matched away
+  from edges), the reference pictures unchanged at one sample.
 
 ## Instanced meshes and culling
 

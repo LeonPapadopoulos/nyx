@@ -149,6 +149,7 @@ namespace Nyx::Editor
 		text += "AmbilightReach=" + FormatFloat(AmbilightReach) + "\n";
 		text += std::string("VSync=") + (bVSync ? "1\n" : "0\n");
 		text += "FrameRateCap=" + std::to_string(FrameRateCap) + "\n";
+		text += "MsaaSamples=" + std::to_string(MsaaSamples) + "\n";
 		// A line break would end the setting; such a theme isn't saved
 		if (!Theme.empty() && Theme.find_first_of("\r\n") == std::string::npos)
 		{
@@ -222,6 +223,17 @@ namespace Nyx::Editor
 					(cap == 0 || std::ranges::find(FrameRateCaps, cap) != std::end(FrameRateCaps)))
 				{
 					FrameRateCap = cap;
+				}
+			}
+			else if (setting.starts_with("MsaaSamples="))
+			{
+				// One of the counts offered; anything else keeps the count there was
+				const std::string_view value = setting.substr(std::string_view("MsaaSamples=").size());
+				uint32_t samples = 0;
+				const auto [end, error] = std::from_chars(value.data(), value.data() + value.size(), samples);
+				if (error == std::errc() && end == value.data() + value.size() && std::ranges::find(MsaaSampleCounts, samples) != std::end(MsaaSampleCounts))
+				{
+					MsaaSamples = samples;
 				}
 			}
 			else if (setting.starts_with("Theme="))

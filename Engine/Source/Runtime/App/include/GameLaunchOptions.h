@@ -60,10 +60,14 @@ namespace Nyx
 
 		// Empty: "Nyx Game"
 		std::string WindowTitle;
+
+		// Multisample anti-aliasing of the game's view (IRenderer::SetMsaaSamples()): 1, 2, 4 or 8
+		// samples a pixel. Unset: the renderer's default.
+		std::optional<uint32_t> MsaaSamples;
 	};
 
 	// The command line arguments for the options, in UTF-8, without the program name, e.g.
-	// { "Scene.nyxscene", "--window-size", "1280x800", "--window-pos", "0,0" }
+	// { "Scene.nyxscene", "--window-size", "1280x800", "--window-pos", "0,0", "--msaa", "4" }
 	std::vector<std::string> MakeGameArguments(const GameLaunchOptions& options);
 
 	// Reads the arguments (UTF-8, without the program name) as MakeGameArguments() writes them. An

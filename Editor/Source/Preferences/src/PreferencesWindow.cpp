@@ -10,6 +10,7 @@
 
 #include <cfloat>
 #include <chrono>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -66,6 +67,8 @@ namespace Nyx::Editor
 			DrawAmbilight(preferences);
 			ImGui::Spacing();
 			DrawFrameRate(preferences);
+			ImGui::Spacing();
+			DrawAntiAliasing(preferences);
 		}
 		ImGui::End();
 	}
@@ -87,6 +90,31 @@ namespace Nyx::Editor
 		if (bSave && !preferences.Save(EditorPreferences::GetUserFile()))
 		{
 			SourceNavigationStatus = "Could not save user preferences.";
+		}
+	}
+
+	void PreferencesWindow::DrawAntiAliasing(EditorPreferences& preferences)
+	{
+		NYX_UI(ImGui::TextUnformatted("Anti-aliasing"));
+		ImGui::PushTextWrapPos(0.0f);
+		NYX_UI(ImGui::TextDisabled("Samples a pixel the scene views and the games Play starts draw with: more smooth thin things and edges, and cost GPU time and memory."));
+		ImGui::PopTextWrapPos();
+
+		// "Off", then each count offered; the count saved is always one of them (FromText())
+		constexpr const char* Names[] = { "Off", "2x MSAA", "4x MSAA", "8x MSAA" };
+		static_assert(std::size(Names) == std::size(EditorPreferences::MsaaSampleCounts));
+		int selected = 0;
+		for (int index = 0; index < static_cast<int>(std::size(EditorPreferences::MsaaSampleCounts)); ++index)
+		{
+			selected = EditorPreferences::MsaaSampleCounts[index] == preferences.MsaaSamples ? index : selected;
+		}
+		if (NYX_UI(Nyx::UI::Combo("Anti-aliasing", &selected, Names)))
+		{
+			preferences.MsaaSamples = EditorPreferences::MsaaSampleCounts[selected];
+			if (!preferences.Save(EditorPreferences::GetUserFile()))
+			{
+				SourceNavigationStatus = "Could not save user preferences.";
+			}
 		}
 	}
 

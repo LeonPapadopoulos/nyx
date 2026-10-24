@@ -49,7 +49,7 @@ namespace Nyx
 	}
 
 	void VulkanMaterials::Initialize(Nyx::VulkanContext& context, VulkanBindless& bindless, ShaderPrograms& programs, std::vector<std::filesystem::path> assetFolders, vk::PipelineLayout layout,
-		std::function<vk::RenderPass()> renderPass, std::function<vk::RenderPass()> pickingRenderPass, VertexFunctionPasses vertexPasses)
+		std::function<ScenePass()> scenePass, std::function<vk::RenderPass()> pickingRenderPass, VertexFunctionPasses vertexPasses)
 	{
 		Context = &context;
 		Bindless = &bindless;
@@ -57,7 +57,7 @@ namespace Nyx
 		AssetFolders = std::move(assetFolders);
 		Watchers.clear();
 		Layout = layout;
-		RenderPass = std::move(renderPass);
+		SceneRenderPass = std::move(scenePass);
 		PickingRenderPass = std::move(pickingRenderPass);
 		VertexPasses = std::move(vertexPasses);
 		RebuildMissingPipeline();
@@ -106,6 +106,39 @@ namespace Nyx
 		MissingPipeline = std::move(pipeline);
 		MissingDecalPipeline = std::move(decalPipeline);
 		MissingDecalPickingPipeline = std::move(decalPickingPipeline);
+	}
+
+	void VulkanMaterials::RebuildScenePipelines()
+	{
+		RebuildMissingPipeline();
+		for (auto& [key, shader] : Shaders)
+		{
+			if (!shader->bReady || !shader->Vertex || !shader->Fragment || !shader->DecalFragment)
+			{
+				continue;
+			}
+			try
+			{
+				// In place: the handles point at these objects
+				vk::raii::Pipeline pipeline = MakePipeline(shader->DisplacedVertex ? *shader->DisplacedVertex : *shader->Vertex, *shader->Fragment, EPipelineKind::Opaque);
+				vk::raii::Pipeline decalPipeline = MakePipeline(*shader->Vertex, *shader->DecalFragment, EPipelineKind::Decal);
+				shader->Pipeline = std::move(pipeline);
+				shader->DecalPipeline = std::move(decalPipeline);
+			}
+			catch (const std::exception& error)
+			{
+				// Its old pipelines have the old sample count: it draws as the missing material
+				LOG_ERROR("Material shader {}: its pipelines can't be made again for the new sample count: {}", shader->Path, error.what());
+				shader->bReady = false;
+			}
+		}
+		for (auto& [key, entry] : Materials)
+		{
+			if (entry->UsedShader && !entry->UsedShader->bReady)
+			{
+				WriteBytes(*entry);
+			}
+		}
 	}
 
 	void VulkanMaterials::RebuildVertexFunctionPipelines()
@@ -377,6 +410,9 @@ namespace Nyx
 			shader.Pipeline = std::move(pipeline);
 			shader.DecalPipeline = std::move(decalPipeline);
 			shader.DecalPickingPipeline = std::move(decalPickingPipeline);
+			shader.Vertex = *vertex;
+			shader.Fragment = *fragment;
+			shader.DecalFragment = *decalFragment;
 			shader.DisplacedVertex = displacedVertex ? std::optional<CompiledEntryPoint>(*displacedVertex) : std::nullopt;
 			shader.DisplacedShadowVertex = displacedShadowVertex ? std::optional<CompiledEntryPoint>(*displacedShadowVertex) : std::nullopt;
 			shader.ShadowPipeline = std::move(shadowPipeline);
@@ -600,8 +636,10 @@ namespace Nyx
 		rasterizer.cullMode = kind == EPipelineKind::Opaque ? vk::CullModeFlagBits::eBack : vk::CullModeFlagBits::eNone;
 		rasterizer.frontFace = vk::FrontFace::eCounterClockwise;
 
+		// The scene pass's samples a pixel; the picking pass has one, an id a pixel
+		const ScenePass scenePass = kind == EPipelineKind::DecalPicking ? ScenePass{ PickingRenderPass(), vk::SampleCountFlagBits::e1 } : SceneRenderPass();
 		vk::PipelineMultisampleStateCreateInfo multisampling{};
-		multisampling.rasterizationSamples = vk::SampleCountFlagBits::e1;
+		multisampling.rasterizationSamples = scenePass.Samples;
 
 		// Not blended in the picking pass: its target holds ids, written as they are
 		vk::PipelineColorBlendAttachmentState colorBlendAttachment{};
@@ -650,7 +688,7 @@ namespace Nyx
 		pipelineInfo.pColorBlendState = &colorBlending;
 		pipelineInfo.pDynamicState = &dynamicState;
 		pipelineInfo.layout = Layout;
-		pipelineInfo.renderPass = kind == EPipelineKind::DecalPicking ? PickingRenderPass() : RenderPass();
+		pipelineInfo.renderPass = scenePass.RenderPass;
 		pipelineInfo.subpass = 0;
 		return vk::raii::Pipeline(device, Context->GetPipelineCache(), pipelineInfo);
 	}

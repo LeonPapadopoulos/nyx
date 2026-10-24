@@ -1719,12 +1719,12 @@ namespace
 	}
 }
 
-int main()
+int main(int argc, char** argv)
 {
 	try
 	{
 		Nyx::Logger::Get().Init();
-		SceneRenderer gpu("NyxSceneGpuTests");
+		SceneRenderer gpu("NyxSceneGpuTests", MsaaSamplesFromArguments(argc, argv));
 		TestDefaultScene(gpu);
 		TestMissingMaterial(gpu);
 		TestSavedMaterialFilesReload(gpu);
