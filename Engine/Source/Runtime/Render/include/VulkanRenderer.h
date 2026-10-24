@@ -217,7 +217,9 @@ namespace Nyx
 		// Its transform mirrors it (a negative determinant, e.g. one scale negative): its triangles
 		// wind the other way round on the screen (SetMeshFaces())
 		bool bMirrored = false;
-		// Whether it casts the primary light's shadows (MeshRendererComponent::bCastShadows)
+		// Whether it casts the primary light's shadows: its Mesh Renderer's Cast Shadows
+		// (MeshRendererComponent::bCastShadows) and one of its sections' materials' at least
+		// (Material::bCastShadows); the cascades draw only the sections whose materials cast
 		bool bCastShadows = true;
 		// Drawn once, its instance's custom numbers in the stream (MeshRendererComponent::Custom);
 		// drawn instanced, each instance has its own

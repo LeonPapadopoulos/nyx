@@ -402,6 +402,7 @@ namespace Nyx
 		const bool bResolved = entry.bLoaded && Resolve(entry);
 		// Its options, also while it draws as the missing material
 		handle.bTwoSided = bResolved && entry.Options.bTwoSided;
+		handle.bCastShadows = !bResolved || entry.Options.bCastShadows;
 		handle.MaxVertexOffset = bResolved ? std::max(entry.Options.MaxVertexOffset, 0.0f) : 0.0f;
 		// Until it has a shader with a vertex function, the passes' own pipelines draw it
 		handle.ShadowPipeline = nullptr;

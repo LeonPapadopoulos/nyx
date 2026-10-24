@@ -1353,13 +1353,19 @@ namespace Nyx
 				}
 				obj.FirstSection = static_cast<uint32_t>(world.Sections.size());
 				float maxVertexOffset = 0.0f;
+				bool bAnySectionCasts = false;
 				for (const Nyx::MeshSection& section : mesh->GetSections())
 				{
 					Material* material = Nyx::GetSlotMaterial(meshRenderer, section.MaterialSlot);
 					world.Sections.push_back(RenderSection{ .FirstIndex = section.FirstIndex, .IndexCount = section.IndexCount, .MaterialAsset = material });
 					maxVertexOffset = std::max(maxVertexOffset, material ? material->MaxVertexOffset : 0.0f);
+					bAnySectionCasts = bAnySectionCasts || !material || material->bCastShadows;
 				}
 				obj.SectionCount = static_cast<uint32_t>(world.Sections.size()) - obj.FirstSection;
+				// A caster only if one of its materials casts too, read each frame, so a material's
+				// edit is in the cascades at once: an entity whose materials all cast nothing is
+				// culled by none of them, its instances with it
+				obj.bCastShadows = obj.bCastShadows && bAnySectionCasts;
 
 				// Culled by bounds as far out as its materials' vertex functions may move it, every cell
 				// alike, so nothing is left out while a part of it is in view
@@ -1615,13 +1621,17 @@ namespace Nyx
 
 				// The cascade in CustomData2.x; each section with the faces its material draws, so a
 				// two-sided one casts from both sides, and with its vertex function, if it has one,
-				// so it casts as it is drawn
+				// so it casts as it is drawn. A section whose material casts no shadows is left out.
 				ObjectConstants object{};
 				object.Model = draw.Model;
 				object.CustomData2 = glm::vec2(static_cast<float>(cascade), 0.0f);
 				for (uint32_t index = obj.FirstSection; index < obj.FirstSection + obj.SectionCount; ++index)
 				{
 					const RenderSection& section = world.Sections[index];
+					if (!section.MaterialAsset->bCastShadows)
+					{
+						continue;
+					}
 					const vk::Pipeline pipeline = section.MaterialAsset->ShadowPipeline ? **section.MaterialAsset->ShadowPipeline : Shadows.GetCasterPipeline();
 					if (pipeline != boundPipeline)
 					{

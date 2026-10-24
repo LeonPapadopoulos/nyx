@@ -18,6 +18,13 @@ namespace Nyx
 		NYX_PROPERTY(Edit, Serialize, meta = (DisplayName = "Two-Sided", Tooltip = "Draws both sides of every triangle, the back one lit as a front, for single sheets such as leaves, blades and petals"))
 		bool bTwoSided = false;
 
+		// Whether what is drawn with it casts the primary light's shadows, as its entity's Mesh
+		// Renderer also has to (MeshRendererComponent::bCastShadows); off, the cascades leave its
+		// sections out, so many small meshes cost nothing in the shadow passes. It is still drawn,
+		// and still receives shadows.
+		NYX_PROPERTY(Edit, Serialize, meta = (DisplayName = "Cast Shadows", Tooltip = "Whether meshes drawn with it cast the sun's shadows; off, the shadow cascades leave them out, while they still receive shadows"))
+		bool bCastShadows = true;
+
 		// For a shader with a vertex function (ISurfaceVertex in nyx/surface.slang): how far it
 		// moves a vertex at most, in metres in the world. The renderer widens every bounds it culls
 		// a mesh of the material by this much, in the scene and in the shadows, so a swaying or

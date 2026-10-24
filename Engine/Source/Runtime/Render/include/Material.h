@@ -21,6 +21,9 @@ namespace Nyx
 		// Both sides of its triangles drawn, the back one lit as a front (MaterialOptions); only
 		// the front otherwise. The draw sets it (SetMeshFaces()).
 		bool bTwoSided = false;
+		// Whether its meshes cast the primary light's shadows (MaterialOptions): the shadow cascades
+		// leave its sections out otherwise
+		bool bCastShadows = true;
 
 		// For a material whose shader has a vertex function (ISurfaceVertex in nyx/surface.slang),
 		// the pipelines of the passes besides the scene's that run it too: what casts the primary

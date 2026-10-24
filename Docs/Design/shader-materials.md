@@ -82,10 +82,17 @@ on and requires when it chooses the GPU.
 - **Options** are how a material is drawn rather than its shader's values: a reflected struct,
   `MaterialOptions`, each property a line of the file named as the property (a bool's without its
   b), inherited by instances like a value, shown under *Material* in the Parameters window from its
-  reflection: `TwoSided`, and `MaxVertexOffset` for a shader with a vertex function. Options
-  aren't shader parameters, so `GetValues()` and *Not in the Shader* leave them out, and the
-  material buffer has no room for them: the renderer reads them into the material's handle
-  (`Material::bTwoSided`, `Material::MaxVertexOffset`).
+  reflection: `TwoSided`, `CastShadows`, and `MaxVertexOffset` for a shader with a vertex
+  function. Options aren't shader parameters, so `GetValues()` and *Not in the Shader* leave them
+  out, and the material buffer has no room for them: the renderer reads them into the material's
+  handle (`Material::bTwoSided`, `Material::bCastShadows`, `Material::MaxVertexOffset`).
+- **Casting shadows.** `CastShadows = false` takes everything drawn with the material out of the
+  sun's shadow maps, while it is still drawn and still receives shadows: one switch for a whole
+  kind of mesh, however many entities draw it. A section casts only if its entity's Mesh Renderer
+  and its material both do; an entity none of whose materials cast is left out before the cascades
+  cull it, its instances with it, and an entity of both kinds has only its non-casting sections
+  left out ([Shadows](shadows.md#what-casts)). Like `TwoSided`, it reaches the renderer's handle
+  as soon as the material is set from the editor or saved.
 - **Faces.** Every mesh Nyx makes (the built-in cube, sphere, capsule, plane and crossed quads, a
   ground, a scatter's copies) and glTF's wind counter-clockwise seen from the side their normals
   face, and the surface pipelines cull the backs: half the triangles of a closed mesh aren't shaded.

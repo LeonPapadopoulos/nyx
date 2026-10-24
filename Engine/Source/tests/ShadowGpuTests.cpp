@@ -3,7 +3,10 @@
 // box's shadow falls the plane is a quarter darker than in the sun or more (the sky still lights
 // it), and the field's instances darken it too. Switched off on the light, or on the box's Mesh
 // Renderer, the shadow is gone and the plane there is as bright as with no box at all. A one-sided
-// quad whose back faces the sun casts nothing; a two-sided one casts. Each cascade is culled by
+// quad whose back faces the sun casts nothing; a two-sided one casts. A box and the field drawn
+// with a material that casts no shadows cast none, and no cascade culls the field's cells, while
+// the plane still receives the others' shadows; the material edited live casts again. Of an
+// entity of two sections, only the one whose material casts does. Each cascade is culled by
 // its own frustum: the nearest leaves out what is far away, the farthest draws it. The editor's
 // camera draws the scene's shadows too. The debug view tints the picture by cascade and shows the
 // cascades' maps along the bottom. On a large generated ground that casts and receives, a place in
@@ -20,6 +23,7 @@
 #include "GroundMesh.h"
 #include "ImageFile.h"
 #include "Log.h"
+#include "MaterialAsset.h"
 #include "MeshInstancesComponent.h"
 #include "MeshRendererComponent.h"
 #include "RuntimeMeshComponent.h"
@@ -70,6 +74,19 @@ namespace
 	int Brightness(const std::array<uint8_t, 3>& rgb)
 	{
 		return int(rgb[0]) + int(rgb[1]) + int(rgb[2]);
+	}
+
+	// How many pixels are clearly darker in `with` than in `without`
+	size_t CountDarker(const RgbaImage& with, const RgbaImage& without)
+	{
+		size_t darker = 0;
+		for (size_t pixel = 0; pixel < with.Pixels.size(); pixel += 4)
+		{
+			const int a = int(with.Pixels[pixel]) + int(with.Pixels[pixel + 1]) + int(with.Pixels[pixel + 2]);
+			const int b = int(without.Pixels[pixel]) + int(without.Pixels[pixel + 1]) + int(without.Pixels[pixel + 2]);
+			darker += a + 30 < b ? 1 : 0;
+		}
+		return darker;
 	}
 
 	TransformComponent Placed(const glm::vec3& position, const glm::vec3& scale = glm::vec3(1.0f), const glm::quat& rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f))
@@ -218,13 +235,7 @@ namespace
 		scene.World.Get<MeshRendererComponent>(scene.Field).bCastShadows = false;
 		const RgbaImage fieldNotCasting = Draw(gpu, view);
 		scene.World.Get<MeshRendererComponent>(scene.Field).bCastShadows = true;
-		size_t darkened = 0;
-		for (size_t pixel = 0; pixel < image.Pixels.size(); pixel += 4)
-		{
-			const int with = int(image.Pixels[pixel]) + int(image.Pixels[pixel + 1]) + int(image.Pixels[pixel + 2]);
-			const int without = int(fieldNotCasting.Pixels[pixel]) + int(fieldNotCasting.Pixels[pixel + 1]) + int(fieldNotCasting.Pixels[pixel + 2]);
-			darkened += with + 30 < without ? 1 : 0;
-		}
+		const size_t darkened = CountDarker(image, fieldNotCasting);
 		Require(darkened > 150, "The instanced field casts hardly any shadow: " + std::to_string(darkened) + " pixels darker");
 		gpu.DrawFrames(1);
 		uint32_t fieldInstances = 0;
@@ -304,6 +315,144 @@ namespace
 		const RgbaImage twoSided = Draw(gpu, view);
 		SaveIfAsked(twoSided, "TwoSidedQuad");
 		Require(Brightness(PixelAt(twoSided, quadShadow)) * 4 < open * 3, "A two-sided quad doesn't cast from its back: " + std::to_string(Brightness(PixelAt(twoSided, quadShadow))) + " against " + std::to_string(open));
+
+		EndView(gpu, view);
+	}
+
+	// The cells of the field the view's cascades cull this frame, all of them together
+	uint32_t CascadeCells(const SceneViewShadows& shadows)
+	{
+		uint32_t cells = 0;
+		for (uint32_t cascade = 0; cascade < shadows.CascadeCount; ++cascade)
+		{
+			cells += shadows.Culling[cascade].Cells;
+		}
+		return cells;
+	}
+
+	// A material that casts no shadows (CastShadows = false): the box drawn with it is drawn and
+	// casts nothing, while the plane still receives the field's shadows; the field drawn with it
+	// casts nothing either, and no cascade so much as culls its cells. Saved casting again, its
+	// shadows are back within moments; set off from the editor, gone in the next frame.
+	void TestMaterialsThatCastNoShadows(SceneRenderer& gpu)
+	{
+		LiveMaterialFile noShadowsFile("Materials/NyxShadowGpuTestsNoShadows.nyxmat");
+		noShadowsFile.Write("Parent = Materials/Untextured.nyxmat\nCastShadows = false\n");
+		Material* casting = gpu.Renderer.GetMaterial("Materials/Untextured.nyxmat");
+		Material* notCasting = gpu.Renderer.GetMaterial(noShadowsFile.Path);
+		Require(casting->bCastShadows && !notCasting->bCastShadows, "The material file's CastShadows line isn't in its material");
+
+		ShadowScene scene(gpu.Renderer);
+		const uint64_t view = MakeView(gpu, scene);
+		const SceneViewShadows& shadows = *gpu.Renderer.GetSceneViewShadows(view);
+		const glm::vec2 boxShadow = scene.Pixel(scene.ShadowOnPlane(glm::vec3(-1.5f, 1.5f, 0.0f)));
+		const glm::vec2 boxItself = scene.Pixel(glm::vec3(-1.5f, 1.5f, 0.5f));
+		scene.World.Get<MeshRendererComponent>(scene.Box).bVisible = false;
+		const RgbaImage noBox = Draw(gpu, view);
+		scene.World.Get<MeshRendererComponent>(scene.Box).bVisible = true;
+		Require(CascadeCells(shadows) > 0, "The cascades don't cull the field's cells");
+
+		// The box in it: drawn, and the plane under it as bright as with no box at all
+		scene.World.Get<MeshRendererComponent>(scene.Box).MaterialAsset = notCasting;
+		gpu.DrawUntilShadersCompiled();
+		const RgbaImage boxNotCasting = Draw(gpu, view);
+		SaveIfAsked(boxNotCasting, "BoxMaterialNotCasting");
+		Require(Near(PixelAt(boxNotCasting, boxShadow), PixelAt(noBox, boxShadow), 2), "A box whose material casts no shadow still darkens the plane: " + Text(PixelAt(boxNotCasting, boxShadow)) +
+			" without it " + Text(PixelAt(noBox, boxShadow)));
+		Require(!Near(PixelAt(boxNotCasting, boxItself), PixelAt(noBox, boxItself), 10), "A box whose material casts no shadow isn't drawn");
+
+		// The field in it too: the shadows it cast on the plane beside the box are gone, and the
+		// cascades leave it out before culling a cell
+		scene.World.Get<MeshRendererComponent>(scene.Field).MaterialAsset = notCasting;
+		const RgbaImage fieldNotCasting = Draw(gpu, view);
+		SaveIfAsked(fieldNotCasting, "FieldMaterialNotCasting");
+		const size_t darkened = CountDarker(boxNotCasting, fieldNotCasting);
+		Require(darkened > 150, "Beside a box whose material casts none, the plane doesn't receive the field's shadows: " + std::to_string(darkened) + " pixels darker");
+		Require(shadows.CascadeCount == 4, "The other casters' cascades went with the field's shadows");
+		Require(CascadeCells(shadows) == 0, "A cascade culls the cells of a field whose material casts no shadows");
+		for (uint32_t cascade = 0; cascade < shadows.CascadeCount; ++cascade)
+		{
+			for (const SceneViewDraw& draw : shadows.Draws[cascade])
+			{
+				Require(!draw.InstanceBuffer, "A cascade draws the instances of a field whose material casts no shadows");
+			}
+		}
+
+		// Saved casting again: the field's cells are culled again and the box's shadow is back,
+		// without the scene being loaded again
+		noShadowsFile.Write("Parent = Materials/Untextured.nyxmat\nCastShadows = true\n");
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+		while (CascadeCells(shadows) == 0 && std::chrono::steady_clock::now() < deadline)
+		{
+			std::this_thread::sleep_for(std::chrono::milliseconds(20));
+			gpu.DrawFrames(1);
+		}
+		Require(notCasting->bCastShadows && CascadeCells(shadows) > 0, "The material saved casting again didn't bring the field's shadows back within five seconds");
+		const RgbaImage castingAgain = Draw(gpu, view);
+		SaveIfAsked(castingAgain, "MaterialCastingAgain");
+		Require(Brightness(PixelAt(castingAgain, boxShadow)) * 4 < Brightness(PixelAt(noBox, boxShadow)) * 3, "The material saved casting again doesn't bring the box's shadow back");
+
+		// Set off from the editor, unsaved: gone in the next frames
+		MaterialAsset edited;
+		std::string error;
+		Require(edited.Parse("Parent = Materials/Untextured.nyxmat\nCastShadows = false\n", error), error);
+		gpu.Renderer.SetMaterialValues(noShadowsFile.Path, edited);
+		const RgbaImage editedOff = Draw(gpu, view);
+		Require(!notCasting->bCastShadows && CascadeCells(shadows) == 0, "The material set not to cast from the editor still casts");
+		Require(Near(PixelAt(editedOff, boxShadow), PixelAt(noBox, boxShadow), 2), "The material set not to cast from the editor still shadows the plane");
+
+		EndView(gpu, view);
+	}
+
+	// One entity of two squares side by side, 2 m above the plane, facing up, one section each: with
+	// the second section's material casting none, the first still casts and the second doesn't
+	void TestSectionsCastByTheirMaterials(SceneRenderer& gpu)
+	{
+		LiveMaterialFile noShadowsFile("Materials/NyxShadowGpuTestsNoShadowsSection.nyxmat");
+		noShadowsFile.Write("Parent = Materials/Untextured.nyxmat\nCastShadows = false\n");
+		ShadowScene scene(gpu.Renderer);
+		scene.World.Get<MeshRendererComponent>(scene.Box).bVisible = false;
+
+		// In the XY plane facing +Z, counter-clockwise, turned to face up
+		const auto mesh = std::make_shared<MeshData>();
+		for (const float left : { -1.0f, 0.0f })
+		{
+			const uint32_t first = static_cast<uint32_t>(mesh->Vertices.size());
+			for (const glm::vec2 corner : { glm::vec2(0.0f, -0.5f), glm::vec2(1.0f, -0.5f), glm::vec2(1.0f, 0.5f), glm::vec2(0.0f, 0.5f) })
+			{
+				mesh->Vertices.push_back(Vertex{ .Position = glm::vec3(left + corner.x, corner.y, 0.0f), .Normal = glm::vec3(0.0f, 0.0f, 1.0f) });
+			}
+			mesh->Indices.insert(mesh->Indices.end(), { first, first + 1, first + 2, first + 2, first + 3, first });
+		}
+		mesh->Sections = { MeshSection{ .FirstIndex = 0, .IndexCount = 6, .MaterialSlot = 0 }, MeshSection{ .FirstIndex = 6, .IndexCount = 6, .MaterialSlot = 1 } };
+		const glm::vec3 center(-2.0f, 2.0f, 1.0f);
+		const float size = 1.5f;
+		const Entity squares = AddMesh(scene.World, Placed(center, glm::vec3(size), glm::quat(glm::radians(glm::vec3(-90.0f, 0.0f, 0.0f)))), nullptr,
+			gpu.Renderer.GetMaterial("Materials/Untextured.nyxmat"));
+		RuntimeMeshComponent runtimeMesh;
+		SetRuntimeMesh(runtimeMesh, mesh);
+		scene.World.Add<RuntimeMeshComponent>(squares, runtimeMesh);
+		const uint64_t view = MakeView(gpu, scene);
+
+		const glm::vec2 firstShadow = scene.Pixel(scene.ShadowOnPlane(center - glm::vec3(size * 0.5f, 0.0f, 0.0f)));
+		const glm::vec2 secondShadow = scene.Pixel(scene.ShadowOnPlane(center + glm::vec3(size * 0.5f, 0.0f, 0.0f)));
+		scene.World.Get<MeshRendererComponent>(squares).bVisible = false;
+		const RgbaImage open = Draw(gpu, view);
+		scene.World.Get<MeshRendererComponent>(squares).bVisible = true;
+
+		const RgbaImage bothCasting = Draw(gpu, view);
+		SaveIfAsked(bothCasting, "BothSectionsCasting");
+		Require(Brightness(PixelAt(bothCasting, firstShadow)) * 4 < Brightness(PixelAt(open, firstShadow)) * 3 &&
+				Brightness(PixelAt(bothCasting, secondShadow)) * 4 < Brightness(PixelAt(open, secondShadow)) * 3,
+			"The two squares in a material that casts don't both cast");
+
+		scene.World.Get<MeshRendererComponent>(squares).ExtraMaterialAssets = { gpu.Renderer.GetMaterial(noShadowsFile.Path) };
+		gpu.DrawUntilShadersCompiled();
+		const RgbaImage firstCasting = Draw(gpu, view);
+		SaveIfAsked(firstCasting, "FirstSectionCasting");
+		Require(Brightness(PixelAt(firstCasting, firstShadow)) * 4 < Brightness(PixelAt(open, firstShadow)) * 3, "The section whose material casts stopped casting beside one whose material doesn't");
+		Require(std::abs(Brightness(PixelAt(firstCasting, secondShadow)) - Brightness(PixelAt(open, secondShadow))) <= 6, "The section whose material casts no shadows still casts: " +
+			std::to_string(Brightness(PixelAt(firstCasting, secondShadow))) + " against " + std::to_string(Brightness(PixelAt(open, secondShadow))));
 
 		EndView(gpu, view);
 	}
@@ -483,6 +632,8 @@ int main()
 		TestShadowedScene(gpu);
 		TestCascadesCullByTheirOwnFrustum(gpu);
 		TestTwoSidedCasting(gpu);
+		TestMaterialsThatCastNoShadows(gpu);
+		TestSectionsCastByTheirMaterials(gpu);
 		TestEditorCameraAndDebugView(gpu);
 		TestGroundShadowsStayAsTheCameraMoves(gpu);
 	}

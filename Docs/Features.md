@@ -517,6 +517,13 @@ cascaded shadow maps, near shadows sharp and far ones coarser, steady as the cam
 - Everything with a *Mesh Renderer* casts, unless its *Cast Shadows* is off, and every lit surface
   receives, decals too. Instanced meshes cast, each cascade drawing only the cells near it. A
   two-sided material casts from both sides.
+- A **material** can cast no shadows: untick *Cast Shadows* under *Material* in the material editor,
+  or write `CastShadows = false` in the `.nyxmat` file; instances take it from their parent unless
+  they set their own. Everything drawn with it, on any number of entities, then stays out of the
+  shadow maps and costs the shadow passes nothing, while it is still drawn and still receives
+  shadows. A mesh casts where both its *Mesh Renderer* and its material do: of a mesh with several
+  materials, only the sections whose materials cast. It takes effect at once, while the scene is
+  open.
 - The light's *Shadows* settings: *Cast Shadows*; *Cascades* (1 to 4); *Shadow Distance* (metres
   from the camera; shadows fade out over its last tenth); *Split Blend* (how the cascades share the
   distance: 0 evenly, 1 each a few times the one before, so near ones are small and sharp);
@@ -535,8 +542,12 @@ cascaded shadow maps, near shadows sharp and far ones coarser, steady as the cam
   to the casters; a still point keeps its place in its texel as the camera walks and turns),
   `NyxShadowGpuTests` (a box and an instanced field shadowing a plane, against a reference image;
   no shadow with the light's or the box's casting off; a one-sided quad's back casts nothing, a
-  two-sided one's does; each cascade culled by its own frustum; two cascades; the editor's camera;
-  the debug view), the scene and material reference pictures unchanged.
+  two-sided one's does; a box and the field in a material that casts none cast nothing, the field's
+  cells not even culled by the cascades, the plane still shadowed by the rest, and the material
+  saved or set from the editor switching casting on and off live; of two sections, only the one
+  whose material casts; each cascade culled by its own frustum; two cascades; the editor's camera;
+  the debug view), `NyxMaterialTests` (the `CastShadows` option read, written, inherited and
+  overridden), the scene and material reference pictures unchanged.
 
 ## Fog and the sky
 

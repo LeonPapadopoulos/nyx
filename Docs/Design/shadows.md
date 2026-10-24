@@ -16,7 +16,10 @@ view, and compares its depth with the map's texels around it.
 Each frame, per scene view, after the worlds are extracted and the view culled:
 
 1. **Extraction** keeps, per world, the box around every object that casts
-   (`RenderWorld::CasterBounds`; `MeshRendererComponent::bCastShadows`, on by default).
+   (`RenderWorld::CasterBounds`): its Mesh Renderer's *Cast Shadows*
+   (`MeshRendererComponent::bCastShadows`) and at least one of its sections' materials' (the
+   `CastShadows` option, `Material::bCastShadows`), both on by default. See
+   [What casts](#what-casts).
 2. **The light** is the world's first primary `DirectionalLightComponent`, whichever camera the view
    has: the editor's free camera too, so the editor shows the scene lit and shadowed as the game
    does (`ExtractSceneLight()`). Without one, the default sun casts nothing. Its settings are
@@ -115,6 +118,30 @@ The shadow pass draws the faces the scene pass draws (`SetMeshFaces()`): a one-s
 front faces, as the light sees them, a two-sided material's both. So a leaf facing away from the
 sun still casts, and a closed mesh's back faces cost nothing. A mirrored entity winds the other way
 round there too.
+
+## What casts
+
+Two switches, both on by default, and a mesh section casts only with both on: its entity's
+*Cast Shadows* on the Mesh Renderer, and its material's (`CastShadows = false` in the `.nyxmat`,
+*Cast Shadows* under *Material* in the material editor, inherited by instances like any option).
+The entity's switch is for one thing; the material's for everything drawn with it at once, such as
+thousands of small instanced plants scattered over many entities, from one place.
+
+- **Where it is decided.** Extraction makes an entity a caster (`RenderObject::bCastShadows`) only
+  if its Mesh Renderer casts and one of its sections' materials does. An entity that isn't one is
+  skipped by every cascade's `CullDraws()` before its bounds are looked at: no cell of an instanced
+  one is culled, no draw is made, nothing is recorded, and it doesn't stretch `CasterBounds`, so
+  the cascades don't reach back for it either. A field of non-casting instances costs the shadow
+  passes nothing.
+- **Mixed entities.** Casting is decided per entity, materials per section. An entity with both
+  kinds, a trunk that casts beside leaves that don't, is a caster: it is culled as a whole, and
+  `DrawShadowCascades()` leaves out the sections whose materials cast nothing. Its bounds stay the
+  whole mesh's, a little larger than its casting sections need.
+- **Live.** The option is read into the material's handle (`Material::bCastShadows`), as
+  `bTwoSided` is, whenever the material is set from the editor or its file is saved, and the
+  extraction reads the handles every frame: the next frame's cascades follow, the scene untouched.
+  A material that draws as the missing one casts.
+- Either way, what doesn't cast is still drawn and still receives shadows.
 
 ## Seeing it
 
