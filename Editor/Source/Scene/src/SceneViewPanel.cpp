@@ -34,6 +34,8 @@ namespace Nyx::Editor
 		SceneViewId = sceneViewId;
 		// The editor's overlays while the view shows the scene, not the game
 		Renderer->SetSceneViewShowEditorOverlays(SceneViewId, !bShowingGameView);
+		// Drawn only while its window shows it: not behind another tab, nor in a workspace not shown
+		Renderer->SetSceneViewDrawnWhenShown(SceneViewId, true);
 	}
 
 	void SceneViewPanel::DestroyView()

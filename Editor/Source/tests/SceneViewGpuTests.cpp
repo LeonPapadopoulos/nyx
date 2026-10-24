@@ -1,6 +1,7 @@
 // The editor's scene views on a real GPU: any number opened and closed, each with its own camera,
-// the Debug menu's culling and shadow views reaching views opened later, and the views' section of
-// the layout files read back. Needs a Vulkan device; its window stays hidden.
+// drawn only while they are shown, the Debug menu's culling and shadow views reaching views opened
+// later, and the views' section of the layout files read back. Needs a Vulkan device; its window
+// stays hidden.
 #include "DirectionalLightComponent.h"
 #include "EditorCameraController.h"
 #include "EditorPreferences.h"
@@ -78,11 +79,19 @@ namespace
 				});
 		}
 
-		// What a view shows, at the test's size, drawn without the windows
+		// What a view shows, at the test's size, drawn without the windows: frames that ask for its
+		// picture as its window would, since the editor's views are drawn only when shown
 		RgbaImage Picture(const SceneViewPanel& view)
 		{
-			static_cast<IEditorRenderer&>(Gpu.Renderer).SetSceneViewSize(view.GetViewId(), ViewWidth, ViewHeight);
-			Gpu.DrawFrames(2);
+			IEditorRenderer& renderer = Gpu.Renderer;
+			renderer.SetSceneViewSize(view.GetViewId(), ViewWidth, ViewHeight);
+			for (int frame = 0; frame < 2; ++frame)
+			{
+				Gpu.Renderer.DrawFrame([&]()
+					{
+						renderer.GetSceneViewTextureId(view.GetViewId());
+					});
+			}
 			RgbaImage image;
 			Require(Gpu.Renderer.ReadSceneViewPixels(view.GetViewId(), image), "The scene view can't be read back");
 			return image;
@@ -137,6 +146,9 @@ namespace
 			editor.DrawFrame();
 		}
 		gpu.DrawUntilShadersCompiled();
+		// The views are drawn in the frames after one that showed them in their windows
+		editor.DrawFrame();
+		editor.DrawFrame();
 
 		// Each its own scene view and camera, starting where the first looks from
 		for (const std::unique_ptr<SceneViewPanel>& view : views.GetViews())
@@ -154,6 +166,28 @@ namespace
 		editor.DrawFrame();
 		Require(gpu.Renderer.GetSceneViewCullingStats(third)->ObjectsCulled == 2, "A view looking away should cull everything");
 		Require(gpu.Renderer.GetSceneViewCullingStats(views.GetViews()[1]->GetViewId())->ObjectsCulled == 0, "Moving one view's camera shouldn't move another's");
+
+		// Hidden, as in the Materials workspace: no view is drawn, until they show again
+		const auto requireDrawn = [&](bool bDrawn, const std::string& message)
+		{
+			for (const std::unique_ptr<SceneViewPanel>& view : views.GetViews())
+			{
+				const SceneViewFrameStats* stats = gpu.Renderer.GetSceneViewFrameStats(view->GetViewId());
+				Require(stats && stats->bDrawn == bDrawn && (stats->Scene.Objects > 0) == bDrawn, view->GetTitle() + " " + message);
+			}
+		};
+		views.bShown = false;
+		for (int frame = 0; frame < 3; ++frame)
+		{
+			editor.DrawFrame();
+		}
+		requireDrawn(false, "shouldn't be drawn while the views are hidden");
+		views.bShown = true;
+		for (int frame = 0; frame < 3; ++frame)
+		{
+			editor.DrawFrame();
+		}
+		requireDrawn(true, "should be drawn again once the views show");
 
 		// Closing two
 		const uint64_t second = views.GetViews()[1]->GetViewId();

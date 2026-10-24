@@ -250,8 +250,9 @@ namespace Nyx
 
 		for (SceneViewInstance& view : views)
 		{
+			// A view not drawn this frame keeps the blur of its picture as it was drawn last
 			const vk::ImageView picture = view.RenderTarget.GetImageView();
-			if (!picture)
+			if (!picture || !view.bDrawnThisFrame)
 			{
 				continue;
 			}

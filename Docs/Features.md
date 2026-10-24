@@ -336,7 +336,7 @@ costs next to nothing otherwise.
   frame rate and time with the last second's worst; on the CPU the updates, the simulation's fixed
   steps, extracting, culling, recording, the UI and waiting for the GPU; on the GPU the frame and
   the scene views' shadows, scene (with the MSAA resolve), ambient occlusion, particles, bloom and
-  picture; the scene views and their MSAA samples, their draw calls (and how many draw many
+  picture; the scene views drawn and their MSAA samples, their draw calls (and how many draw many
   instances), instances drawn and culled, triangles, shadow cascades with their draw calls and
   triangles, decals, the point lights lit, and the particles with their emitters; and a graph of the last five seconds'
   frame times, the CPU's and the GPU's. The numbers are each second's average, so they hold still
@@ -393,7 +393,9 @@ leaving out what an opaque shape hides.
   the GPU busy drawing frames the monitor never shows: *Vsync* (on by default) and a *Frame rate
   cap* of 30 to 240 fps, with or without vsync.
 - **Scene views** draw their picking pass only for a click, and their selection masks only
-  while something is selected and what they show changed.
+  while something is selected and what they show changed. A scene view, or the material preview,
+  is drawn at all only while its window shows it: behind another tab, or in a workspace not shown,
+  it culls, casts shadows and draws nothing, and shown again it is drawn from the next frame.
 
 Debug tools:
 
@@ -449,8 +451,8 @@ variable `NYX_PAINTER_TEST_OUTPUT` naming a folder, it saves what it painted as 
 - `NyxEditorLayoutTests` saves and loads layouts headless: the docking, the window's placement,
   saving while running, switching workspaces, Reset Layout and keeping the window on the monitors.
   `NyxEditorPanelTests` drags docked panels narrow. `NyxEditorSceneViewGpuTests` opens and closes
-  scene views on a GPU: their cameras, culling and debug views, and their section of the layout
-  read back.
+  scene views on a GPU: their cameras, culling and debug views, drawn only while shown, and their
+  section of the layout read back.
 
 ## Reflection
 

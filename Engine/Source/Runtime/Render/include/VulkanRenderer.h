@@ -447,7 +447,8 @@ namespace Nyx
 		const Nyx::MeshInstanceCache& GetMeshInstances() const { return MeshInstances; }
 
 		ImTextureID GetSceneViewTextureId(uint64_t id) const override;
-		// What a scene view rendered last, as RGBA; waits for the GPU. False for an unknown view. For tests.
+		// What a scene view rendered last, as RGBA; waits for the GPU. False for an unknown view, or
+		// one not drawn since its targets were made. For tests.
 		bool ReadSceneViewPixels(uint64_t id, Nyx::RgbaImage& outImage);
 		// The memory of a scene view's targets, in bytes; 0 for an unknown view. For tests and the
 		// benchmark.
@@ -485,8 +486,9 @@ namespace Nyx
 		// drawn at, for a world drawn between steps; else SceneTime
 		float GetWorldTime(const Nyx::Registry* registry) const;
 		void ExtractRenderObjects(RenderWorld& world, std::optional<float> interpolation);
-		// Per view, once the worlds are extracted: a size asked for made, its camera, and what it
-		// draws of its world (CullSceneView()); then this frame's instance stream goes up
+		// Per view, once the worlds are extracted: a size asked for made; whether it is drawn this
+		// frame (SetSceneViewDrawnWhenShown()); if so its camera, and what it draws of its world
+		// (CullSceneView()); then this frame's instance stream goes up
 		void PrepareSceneViews();
 		// What the view's camera sees of the world, as its draws (SceneViewInstance::Draws): the
 		// entities whose bounds are in view, those drawn instanced cell by cell, and those that draw
@@ -558,8 +560,9 @@ namespace Nyx
 		std::vector<uint32_t> ReadSpirvFile(const std::string& fileName);
 
 		void CreateSceneResourcesForView(SceneViewInstance& view);
-		// The view's set, for the world it shows, or for none: every view's each frame, so that none
-		// keeps a slot of the bindless array from a frame before, which may be gone (a bloom chain)
+		// The view's set, for the world it shows, or for none: every drawn view's each frame, so that
+		// none draws with a slot of the bindless array from a frame before, which may be gone (a
+		// bloom chain)
 		void UpdateSceneUniforms(SceneViewInstance& view, const RenderWorld* world);
 
 		void CreateTestMeshData();
@@ -593,6 +596,7 @@ namespace Nyx
 		uint64_t CreateSceneView();
 		void DestroySceneView(uint64_t id);
 		void DestroySceneViewNow(uint64_t id);
+		void SetSceneViewDrawnWhenShown(uint64_t id, bool bWhenShown) override;
 
 		void SetSceneViewSize(uint64_t id, uint32_t width, uint32_t height) override;
 
@@ -709,6 +713,10 @@ namespace Nyx
 		std::vector<std::unique_ptr<Nyx::Texture>> LoadedTextures;
 
 		std::vector<SceneViewInstance> SceneViews;
+		// The renderer's own view, the first, made as it starts: the scene's pipelines are made from
+		// its render passes, for every view. Nobody shows it, so it is never drawn; GetSceneViewIds()
+		// leaves it out.
+		uint64_t PipelineViewId = 0;
 		// Multisample anti-aliasing (SetMsaaSamples()): the samples asked for; those every view
 		// draws with now, taken from what was asked as the frame's views are prepared
 		// (PrepareSceneViews()); and the counts the device can do for colour and depth alike, one
@@ -814,7 +822,8 @@ namespace Nyx
 		// Every shown world's state, what each scene view draws of it, the views' editor passes, the
 		// views, and their blur
 		void RenderScene(vk::raii::CommandBuffer& cmd, FrameClock& clock);
-		// Per view: its uniforms, and the editor's own passes: picking, and the selection masks
+		// Per view drawn this frame: its uniforms, and the editor's own passes: picking, and the
+		// selection masks
 		void DrawEditorPasses(vk::raii::CommandBuffer& cmd);
 		// Values set for materials while the UI was built (SetMaterialValues())
 		void ApplyPendingMaterialValues();

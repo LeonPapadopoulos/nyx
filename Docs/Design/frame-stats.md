@@ -109,10 +109,11 @@ NyxGame.exe <scene> --benchmark <seconds> [--benchmark-out <file.csv>] [--benchm
   for every section of its mesh, each with its own material's pipeline; `DrawCalls` is what the
   command buffer gets. The sky, the tonemap and the overlays aren't counted: they are the same few
   every frame.
-- **Every scene view is summed.** A frame's cost is all of its views'; one view's numbers are
-  there for whoever wants them (`GetSceneViewFrameStats()`). The game draws the renderer's first
-  view as well as its own: the renderer makes one when it starts, 1 by 1 pixels, which still culls
-  and draws its shadow cascades; the overlay's view count shows it.
+- **Every scene view drawn is summed.** A frame's cost is all of its views'; one view's numbers
+  are there for whoever wants them (`GetSceneViewFrameStats()`). A view not drawn in the frame
+  (one drawn only when shown, and not shown: `SetSceneViewDrawnWhenShown()`) adds nothing and
+  isn't counted; its own numbers are zero with `bDrawn` false. The renderer's own first view is
+  never drawn (Findings below), so the game's frame is its one view's.
 - **The MSAA resolve has no time of its own.** The multisampled scene is resolved by the scene
   render pass itself, into its resolve attachments as the pass ends, so its cost is in
   `gpu_scene_ms`; timing it apart would take a pass of its own, slower than the resolve. Compare
@@ -128,7 +129,7 @@ NyxGame.exe <scene> --benchmark <seconds> [--benchmark-out <file.csv>] [--benchm
 
 The engine's test scenes, from their orbit cameras, 10 s each after 3 s, Release, 1280 by 720,
 4x MSAA (the default), RTX 3070 Ti, both views summed (the game's and the renderer's first, 1 by
-1): the ground test (`GroundTest.nyxscene`: crates, a character, grass scattered, the sun's four
+1, which was still drawn then: see Findings for the numbers since): the ground test (`GroundTest.nyxscene`: crates, a character, grass scattered, the sun's four
 cascades), the atmosphere test (the same ground with small cubes scattered, fog, bloom, ambient
 occlusion), the lights test (it at dusk with point lights) and the particles test (the lights test
 with emitters). Averages:
@@ -151,3 +152,42 @@ with emitters). Averages:
   times the triangles the scene pass does: every cascade draws what casts into it, in both views.
 - Particles and point lights cost little here: 0.04 ms for 325 particles, and the twelve lights
   show in the scene pass (0.50 against 0.52 ms without them, within the noise).
+
+## Findings
+
+What the numbers showed, and what came of it.
+
+- **The game drew two scene views** (`scene_views` 2, `shadow_cascades` 8). The renderer makes a
+  view of its own as it starts, 1 by 1 pixels, whose render passes the scene's pipelines are made
+  from, so that every other view can come and go; it was drawn every frame, through the editor's
+  default camera, with all four cascades of the sun's shadows, though nobody showed it. Now a view
+  can be drawn only when shown (`IRenderer::SetSceneViewDrawnWhenShown()`): in the frames after one
+  whose UI asked for its picture (`GetSceneViewTextureId()`, `GetSceneViewBlurTextureId()`,
+  `WasSceneViewRecreatedThisFrame()`); else it doesn't cull, cast shadows, draw its passes or the
+  editor's, or blur its picture. The renderer's own view is such a view and nobody asks for it, so
+  it is never drawn; `GetSceneViewIds()` leaves it out. The editor's scene views and the material
+  preview are drawn so too: a view in a tab behind another, the scene views while the Materials
+  workspace shows, the preview while it doesn't, cost nothing. Shown again, a view shows the
+  picture it drew last for one frame, then that frame's; if its targets were made again while it
+  was hidden (a new sample count), it has no picture until it is drawn, which
+  `WasSceneViewRecreatedThisFrame()` says, as for a view just made. Its ambient occlusion and
+  particles keep framebuffers of its targets: they are made again at its next draw
+  (`bTargetsNotDrawn`), not only in the frame the targets were. Views not shown that way are drawn
+  every frame, as tests reading a view back need.
+
+  The same machine, the same ground and atmosphere tests as above, two runs each, another program
+  using part of the GPU in both (`wait_for_gpu_ms` a millisecond and more of each frame), averages:
+
+  | | Ground before | Ground after | Atmosphere before | Atmosphere after |
+  | --- | --- | --- | --- | --- |
+  | Scene views, shadow cascades | 2, 8 | 1, 4 | 2, 8 | 1, 4 |
+  | GPU frame | 1.22 ms | 0.70 ms | 2.02 ms | 1.32 ms |
+  | GPU shadows, scene | 0.62, 0.40 ms | 0.34, 0.28 ms | 1.24, 0.53 ms | 0.58, 0.39 ms |
+  | Triangles: scene, shadows | 121 k, 543 k | 63 k, 278 k | 312 k, 1.62 M | 181 k, 869 k |
+  | CPU cull, record | 0.016, 0.073 ms | 0.010, 0.047 ms | 0.024, 0.118 ms | 0.015, 0.083 ms |
+  | Frame (fps) | 1.84 ms (544) | 1.29 ms (778) | 2.74 ms (365) | 1.95 ms (513) |
+
+  The 1 by 1 view drew half the triangles, through a camera of its own: its size made its scene
+  pass cheap, not its shadows. The ambient occlusion and bloom, unchanged, measured a little slower
+  after (0.11 to 0.15 ms, 0.05 to 0.12 ms in the atmosphere test): passes that small move with the
+  GPU's clocks and the other program's share from run to run.

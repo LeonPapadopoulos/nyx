@@ -12,7 +12,10 @@
 // normal map tilts the normal up the image; a masked material below its cutoff isn't drawn.
 // A view can show a world of its own beside the scene: it draws and picks that world's objects,
 // shows no outline of the scene's selection, and keeps its pending pick when the scene is set anew.
-// A cube just past the near plane is drawn and picked.
+// A cube just past the near plane is drawn and picked. A view drawn when shown, as the editor's
+// are, does nothing while nobody shows it; shown again, it has no picture for a frame, then the
+// one of that frame, also after its targets were made again meanwhile; it picks while shown. The
+// renderer's own first view is never drawn.
 // Material values set in memory, as the material editor sets them, show in the next frame and
 // leave the file as it is, until the file is saved and read again. A view has a sky of its own
 // (black, a studio, the scene's turned) and debug views of its materials' outputs and of light
@@ -38,6 +41,7 @@
 #include "DirectionalLightComponent.h"
 #include "EditorLinkMessages.h"
 #include "Entity.h"
+#include "EnvironmentComponent.h"
 #include "FixedStepClock.h"
 #include "GuidComponent.h"
 #include "ImageFile.h"
@@ -741,6 +745,130 @@ namespace
 		renderer.DestroySceneView(kept);
 		renderer.SetWorld(nullptr);
 		gpu.DrawFrames(1);
+	}
+
+	// The most two pictures of the same size differ by in a channel
+	int MaxDifference(const RgbaImage& a, const RgbaImage& b)
+	{
+		Require(a.Width == b.Width && a.Height == b.Height, "The pictures compared have other sizes");
+		int most = 0;
+		for (size_t index = 0; index < a.Pixels.size(); ++index)
+		{
+			most = std::max(most, std::abs(int(a.Pixels[index]) - int(b.Pixels[index])));
+		}
+		return most;
+	}
+
+	// As the editor's windows show their views: a view drawn when shown does nothing in the frames
+	// after one that didn't ask for its picture, and shown again it has no picture for a frame,
+	// then the one drawn in that frame, not the one from before it was hidden, also when its
+	// targets were made again for a new sample count meanwhile. Picking works while it is shown.
+	// The renderer's own first view, which its pipelines are made from, is never drawn.
+	void TestViewsDrawnOnlyWhenShown(SceneRenderer& gpu)
+	{
+		Nyx::IEditorRenderer& renderer = gpu.Renderer;
+		DefaultScene scene;
+		MakeDefaultScene(scene, gpu.Renderer);
+		// Its ambient occlusion and bloom keep targets of the view's, which are made again with them
+		scene.World.Add<EnvironmentComponent>(scene.World.CreateEntity(), EnvironmentComponent{});
+		renderer.SetWorld(&scene.World);
+
+		// Both through the scene's camera at the same size, so they draw the same picture
+		const uint64_t always = renderer.CreateSceneView();
+		const uint64_t whenShown = renderer.CreateSceneView();
+		for (const uint64_t view : { always, whenShown })
+		{
+			renderer.SetSceneViewCameraMode(view, Nyx::EViewportCameraMode::ScenePrimaryCamera);
+			renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
+		}
+		renderer.SetSceneViewDrawnWhenShown(whenShown, true);
+		Require(renderer.GetSceneViewIds() == std::vector<uint64_t>{ always, whenShown }, "The renderer's own view shouldn't be among the views");
+
+		// Frames whose UI shows the view, as its window would
+		const auto drawShown = [&](int frames)
+		{
+			for (int frame = 0; frame < frames; ++frame)
+			{
+				gpu.Renderer.DrawFrame([&]()
+					{
+						renderer.GetSceneViewTextureId(whenShown);
+					});
+			}
+		};
+		gpu.DrawUntilShadersCompiled();
+		drawShown(3);
+		const SceneViewFrameStats* stats = renderer.GetSceneViewFrameStats(whenShown);
+		Require(stats && stats->bDrawn && stats->Scene.DrawCalls > 0 && stats->ShadowCascades > 0, "A view shown should be drawn, with its shadows");
+		Require(renderer.GetFrameStats().SceneViews == 2,
+			"The two views should be drawn, and not the renderer's own: " + std::to_string(renderer.GetFrameStats().SceneViews) + " drawn");
+		RgbaImage before;
+		Require(gpu.Renderer.ReadSceneViewPixels(whenShown, before), "The view shown can't be read back");
+
+		// A click in it while it is shown picks the middle cube
+		// (a click is taken once the view was drawn with its overlays, as in the editor)
+		renderer.SetSceneViewShowEditorOverlays(whenShown, true);
+		drawShown(2);
+		renderer.RequestPick(whenShown, ViewWidth / 2, ViewHeight / 2);
+		drawShown(3);
+		const Nyx::IEditorRenderer::PickResult pick = renderer.ConsumeLastPickResult(whenShown);
+		Require(pick.bHasNewResult && pick.HitEntity == scene.ReflectiveCube,
+			std::string("A click in a view shown should pick the middle cube: ") + (pick.bHasNewResult ? (pick.HitEntity ? "another entity" : "nothing") : "no result"));
+		renderer.SetSceneViewShowEditorOverlays(whenShown, false);
+
+		// Hidden: it culls, casts and draws nothing, nor takes any time on the GPU
+		const auto requireIdle = [&](const std::string& when)
+		{
+			const SceneViewFrameStats* idle = renderer.GetSceneViewFrameStats(whenShown);
+			Require(idle && !idle->bDrawn && idle->Scene.Objects == 0 && idle->Scene.DrawCalls == 0 && idle->ShadowCascades == 0 && idle->Shadows.DrawCalls == 0 &&
+						idle->Gpu.GetTotal() == 0.0f,
+				"A view nobody shows should do nothing " + when);
+			Require(gpu.Renderer.GetSceneViewCullingStats(whenShown)->Objects == 0, "A view nobody shows shouldn't cull " + when);
+			const RenderFrameStats& frame = renderer.GetFrameStats();
+			const SceneViewFrameStats* shown = renderer.GetSceneViewFrameStats(always);
+			Require(frame.SceneViews == 1 && shown && shown->bDrawn && frame.Views.ShadowCascades == shown->ShadowCascades && frame.Views.Scene.DrawCalls == shown->Scene.DrawCalls,
+				"Only the other view should be drawn " + when);
+		};
+		gpu.DrawFrames(3);
+		requireIdle("");
+
+		// Meanwhile the camera moves, and a new sample count makes every view's targets again
+		scene.World.Each<CameraComponent>([&](Entity camera, CameraComponent&)
+			{
+				scene.World.Get<TransformComponent>(camera).Position.x += 1.5f;
+			});
+		const uint32_t samples = renderer.GetMsaaSamples();
+		renderer.SetMsaaSamples(samples == 1 ? 2 : 1);
+		gpu.DrawFrames(3);
+		requireIdle("after its targets were made again");
+
+		// Shown again: no picture in the frame it is first shown, then the one drawn in the next
+		bool bNoPictureYet = false;
+		gpu.Renderer.DrawFrame([&]()
+			{
+				bNoPictureYet = renderer.WasSceneViewRecreatedThisFrame(whenShown);
+				renderer.GetSceneViewTextureId(whenShown);
+			});
+		Require(bNoPictureYet, "A view shown again after its targets were made anew shouldn't have a picture before it is drawn");
+		bool bPicture = false;
+		gpu.Renderer.DrawFrame([&]()
+			{
+				bPicture = !renderer.WasSceneViewRecreatedThisFrame(whenShown);
+				renderer.GetSceneViewTextureId(whenShown);
+			});
+		Require(bPicture, "A view shown again should have a picture from the frame after");
+		RgbaImage again;
+		RgbaImage reference;
+		Require(gpu.Renderer.ReadSceneViewPixels(whenShown, again) && gpu.Renderer.ReadSceneViewPixels(always, reference), "The views can't be read back");
+		SaveIfAsked(again, "ViewShownAgain");
+		Require(MaxDifference(again, reference) <= 2,
+			"A view shown again should draw what the view drawn every frame does: they differ by " + std::to_string(MaxDifference(again, reference)));
+		Require(MaxDifference(again, before) > 40, "A view shown again should draw where the camera is now, not show what it drew before");
+
+		renderer.SetMsaaSamples(samples);
+		renderer.DestroySceneView(always);
+		renderer.DestroySceneView(whenShown);
+		renderer.SetWorld(nullptr);
+		gpu.DrawFrames(2);
 	}
 
 	// A material instance (Parent instead of Shader) draws with its parents' values under its own,
@@ -1747,6 +1875,7 @@ int main(int argc, char** argv)
 		TestMaterialValuesSetInMemory(gpu);
 		TestSkiesAndDebugViews(gpu);
 		TestViewsMadeAndLetGoWhileTheUIIsBuilt(gpu);
+		TestViewsDrawnOnlyWhenShown(gpu);
 		TestMaterialInstances(gpu);
 		// Last: the renderer follows the editor's shaders from there on
 		TestFollowingTheEditor(gpu);

@@ -92,12 +92,15 @@ namespace Nyx
 		using ShaderCompiledListener = std::function<void(const Nyx::ShaderCompileRequest& request, const Nyx::ShaderCompileResult& result)>;
 		virtual void SetShaderCompiledListener(ShaderCompiledListener listener) = 0;
 
-		// The scene view's picture, as ImGui::Image() takes it
+		// The scene view's picture, as ImGui::Image() takes it. Asking shows the view, so that a view
+		// drawn when shown (IRenderer::SetSceneViewDrawnWhenShown()) is drawn next frame: ask in
+		// every frame the picture is shown.
 		virtual ImTextureID GetSceneViewTextureId(uint64_t id) const = 0;
 
 		// The scene view's picture blurred small, about 1/16 of its size (VulkanBlur), for glows
 		// and glass. What ImGui::Image() and AddImage() take: it stays the same when the view
-		// changes size, and is invalid before the view's first frame.
+		// changes size, and is invalid before the view's first frame. Asking shows the view, as
+		// GetSceneViewTextureId() does.
 		virtual ImTextureID GetSceneViewBlurTextureId(uint64_t id) const = 0;
 		virtual Extent2D GetSceneViewBlurExtent(uint64_t id) const = 0;
 		// How long blurring all scene views took on the GPU, in milliseconds, as of the last frame

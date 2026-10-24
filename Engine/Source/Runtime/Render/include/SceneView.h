@@ -147,5 +147,15 @@ namespace Nyx
 		uint32_t PendingHeight = 1;
 
 		bool bRecreatedThisFrame = false;
+		// Its targets were made, or made again, and nothing was drawn into them since: no picture
+		// yet, and what draws into them must make what it keeps of them again
+		bool bTargetsNotDrawn = true;
+
+		// Drawn only in the frames it is shown in (IRenderer::SetSceneViewDrawnWhenShown()); whether
+		// its picture was asked for since the frame's views were prepared, and whether it is drawn
+		// this frame
+		bool bDrawnWhenShown = false;
+		mutable bool bShownSincePrepared = false;
+		bool bDrawnThisFrame = false;
 	};
 }

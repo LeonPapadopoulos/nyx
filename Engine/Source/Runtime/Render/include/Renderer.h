@@ -138,12 +138,24 @@ namespace Nyx
 		virtual uint64_t CreateSceneView() = 0;
 		virtual void DestroySceneView(uint64_t id) = 0;
 
+		// A view drawn when shown culls, casts shadows and draws only in the frames it is shown in:
+		// those after a frame that asked for its picture to show it (IEditorRenderer::
+		// GetSceneViewTextureId() or GetSceneViewBlurTextureId(), or WasSceneViewRecreatedThisFrame()).
+		// So a view nobody shows, e.g. in a window behind another's tab, costs nothing; shown again,
+		// it shows the picture it drew last for a frame, then this frame's. Off for a new view, which
+		// is drawn every frame, e.g. one read back offscreen.
+		virtual void SetSceneViewDrawnWhenShown(uint64_t id, bool bWhenShown) = 0;
+
 		virtual void SetSceneViewSize(uint64_t id, uint32_t width, uint32_t height) = 0;
 
 		virtual Extent2D GetSceneViewExtent(uint64_t id) const = 0;
+		// Whether the view has no picture to show this frame: it was made or made again (a new
+		// size, a new sample count) and not drawn since. Asking shows the view (see
+		// SetSceneViewDrawnWhenShown()), so that it is drawn next frame.
 		virtual bool WasSceneViewRecreatedThisFrame(uint64_t id) const = 0;
 
-		// The scene views there are, oldest first, e.g. for debug windows to choose from
+		// The scene views there are, oldest first, e.g. for debug windows to choose from; not the
+		// renderer's own, which its pipelines' render passes are made from and which is never drawn
 		virtual std::vector<uint64_t> GetSceneViewIds() const = 0;
 
 		// temporary demo-asset accessors, until meshes are assets

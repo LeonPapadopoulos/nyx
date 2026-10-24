@@ -82,6 +82,8 @@ namespace Nyx::Editor
 			renderer.SetSceneViewWorld(ViewId, &World);
 			renderer.SetSceneViewCameraMode(ViewId, EViewportCameraMode::ScenePrimaryCamera);
 			renderer.SetSceneViewShowEditorOverlays(ViewId, false);
+			// Drawn only while the window shows it, e.g. not while the Materials workspace is hidden
+			renderer.SetSceneViewDrawnWhenShown(ViewId, true);
 		}
 		UpdateWorld(renderer, materialPath, selectedMesh);
 		renderer.SetSceneViewSky(ViewId, Sky, SkyRotation);

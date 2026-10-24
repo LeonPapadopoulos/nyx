@@ -207,9 +207,11 @@ namespace Nyx
 
 	// What a view drew in a frame and what its passes took on the GPU, once the frame's GPU work is
 	// done (IRenderer::GetSceneViewFrameStats()). The scene pass's draws and what it culled; its
-	// shadow cascades and the draws of all of them, summed; its surface decals, a draw each.
+	// shadow cascades and the draws of all of them, summed; its surface decals, a draw each. A view
+	// not drawn in the frame (IRenderer::SetSceneViewDrawnWhenShown()) has nothing but bDrawn false.
 	struct SceneViewFrameStats
 	{
+		bool bDrawn = false;
 		SceneViewCullingStats Scene;
 		uint32_t ShadowCascades = 0;
 		SceneViewCullingStats Shadows;
@@ -259,7 +261,8 @@ namespace Nyx
 		float GpuFrame = 0.0f;
 		float GpuSceneViews = 0.0f;
 
-		// Every scene view's, summed, and how many there were; the samples a pixel they drew with
+		// Every scene view's drawn in the frame, summed, and how many there were (a view not shown
+		// isn't drawn: IRenderer::SetSceneViewDrawnWhenShown()); the samples a pixel they drew with
 		// (IRenderer::GetMsaaSamples())
 		uint32_t SceneViews = 0;
 		SceneViewFrameStats Views;

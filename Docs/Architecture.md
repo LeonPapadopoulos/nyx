@@ -163,7 +163,9 @@ checks every `#include` against this table.
       moves by itself (its clock's, else the renderer's: `GetDrawnWorldTime()`), and its debug
       lines;
       then, per scene view, takes a size asked for (or a new sample count,
-      `SetMsaaSamples()`: every view's targets, then the scene pass's pipelines, made again), its camera, its world's sun and its air
+      `SetMsaaSamples()`: every view's targets, then the scene pass's pipelines, made again); a
+      view drawn only when shown (`SetSceneViewDrawnWhenShown()`) that the last frame's UI didn't
+      show stops there, keeping its last picture; for the others, its camera, its world's sun and its air
       (`ExtractSceneEnvironment()`, [Atmosphere](Design/atmosphere.md)), and culls
       (`CullSceneView()`): the objects out of its camera's frustum, and the cells of instances, are
       left out, and what draws alike is batched into this frame's instance stream
@@ -172,7 +174,7 @@ checks every `#include` against this table.
       to front into this frame's particle stream ([Lights and particles](Design/lights-and-particles.md)); its shadow cascades are fitted and each culled by its
       own frustum the same way (`PrepareSceneViewShadows()`, [Shadows](Design/shadows.md)), and the
       shadow map made as big as the largest view asks for;
-      then renders every scene view: the editor's passes (picking only after a click, selection
+      then renders every scene view drawn this frame: the editor's passes (picking only after a click, selection
       masks only when they changed), then per view its shadow cascades into the shadow map, the
       scene in HDR (the objects, the sky, then the decals blended over them, each through the
       height fog; the sky's light apart while it has ambient occlusion; multisampled and resolved
@@ -182,7 +184,7 @@ checks every `#include` against this table.
       where they meet it), its bloom (`VulkanBloom`),
       tonemapped with it, with the editor's overlays (`VulkanEditorOverlays`, in the views that
       show them) and the world's debug drawing (`VulkanDebugLines`) over it; then blurs each
-      view's picture;
+      drawn view's picture;
    4. builds the UI: an ImGui frame in which the window's dock area and strips (`IWindow::DrawUI()`)
       hold every layer's `OnUI()`, then the painted window
       chrome, the painter canvases, and the window painters' segments, binned on the GPU;
@@ -239,8 +241,12 @@ and `NYX_PROFILE_MESSAGE()`. They wrap Tracy, and only `Profiler.h` includes Tra
   (`SetWorldDebugDraw()`). It holds worlds and their drawings only by pointer (`SetWorld()`,
   `SetSceneViewWorld()`): their owner keeps them alive, and calls `SetWorld()` again after
   replacing what's in one. It makes a scene view of its own first, whose render passes its pipelines are
-  made with, so the editor's views (any number, `SceneViewSet`) can come and go; a view destroyed
-  while a frame is recorded goes once the GPU is done with it.
+  made with, so the editor's views (any number, `SceneViewSet`) can come and go; nobody shows it,
+  so it is never drawn. A view destroyed while a frame is recorded goes once the GPU is done with
+  it. The editor's views and the material preview are drawn only when shown
+  (`SetSceneViewDrawnWhenShown()`): in the frames after one whose UI asked for their picture, so
+  one behind another tab, or in a workspace not shown, costs nothing; the game's view, always
+  shown, and tests' views are drawn every frame.
 - **Layers**: `EditorLayer` in the editor; `GameLayer` and, when the editor started the game,
   `EditorLinkLayer` in the game, and `BenchmarkLayer` in benchmark mode (`--benchmark`).
 - **Worlds** (`Registry`): the scene being edited is in `SceneDocument`, inside
@@ -372,10 +378,14 @@ data the same way, through the same pure functions.
 - A per-view setting: a setter by view id on `IRenderer` (`Renderer.h`), or on `IEditorRenderer`
   (`EditorRenderer.h`) when only the editor uses it, a field on
   `SceneViewInstance` (`SceneView.h`), and its use in `VulkanRenderer`: `RenderSceneView()`
-  (the scene pass, then the picture pass) or `UpdateSceneUniforms()` (every view's, each frame,
-  with a world or without, so none reads a slot of the bindless array let go of since).
+  (the scene pass, then the picture pass) or `UpdateSceneUniforms()` (every drawn view's, each
+  frame, with a world or without, so none reads a slot of the bindless array let go of since).
 - Per-view GPU resources: made in `CreateSceneResourcesForView()`, made again where
-  `PrepareSceneViews()` resizes a view, released in `DestroySceneViewNow()`.
+  `PrepareSceneViews()` resizes a view, released in `DestroySceneViewNow()`. What keeps a
+  framebuffer or view of the view's targets makes it again when they are new, at the view's next
+  draw (`bTargetsNotDrawn`), not in the frame they were made: a view not shown isn't drawn
+  (`SetSceneViewDrawnWhenShown()`), and its work each frame belongs after `PrepareSceneViews()`
+  skips it.
 - What a view draws is its culled draw list (`SceneViewInstance::Draws`, made by
   `CullSceneView()`); a pass that draws the scene from elsewhere, as a shadow cascade does
   (`SceneViewInstance::Shadows`), culls by its own camera with the same function (`CullDraws()`).

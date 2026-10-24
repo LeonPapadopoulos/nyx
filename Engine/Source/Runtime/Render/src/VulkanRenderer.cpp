@@ -310,8 +310,10 @@ namespace Nyx
 		Environment.Initialize(Context, Bindless, Programs);
 		Environment.Build(SkyboxTextureIndex);
 
-		// First scene view: creates per-view resources
-		CreateSceneView();
+		// The renderer's own first view, for the render passes of the pipelines below: drawn only
+		// when shown, which it never is, so it costs no culling, shadows or passes
+		PipelineViewId = CreateSceneView();
+		SetSceneViewDrawnWhenShown(PipelineViewId, true);
 
 		// Pipelines that depend on view-owned render passes / framebuffers
 		DebugLines.CreatePipeline(SceneViews.front());
@@ -622,6 +624,10 @@ namespace Nyx
 			uint32_t viewIndex = 0;
 			for (SceneViewInstance& view : SceneViews)
 			{
+				if (!view.bDrawnThisFrame)
+				{
+					continue;
+				}
 				view.TimedViewIndex = viewIndex++;
 				RenderSceneView(view, cmd);
 			}
@@ -638,6 +644,10 @@ namespace Nyx
 	{
 		for (SceneViewInstance& view : SceneViews)
 		{
+			if (!view.bDrawnThisFrame)
+			{
+				continue;
+			}
 			const RenderWorld* world = FindShownWorld(view);
 			UpdateSceneUniforms(view, world);
 
@@ -924,11 +934,17 @@ namespace Nyx
 		FrameStats.GpuSceneViews = times.GpuSceneViews;
 		FrameStats.MsaaSamples = static_cast<uint32_t>(MsaaSamples);
 
-		// What each view drew is still the frame's: the next frame culls after this
+		// What each view drew is still the frame's: the next frame culls after this. A view not
+		// drawn did nothing.
 		for (SceneViewInstance& view : SceneViews)
 		{
 			SceneViewFrameStats& stats = view.Stats;
 			stats = SceneViewFrameStats{};
+			if (!view.bDrawnThisFrame)
+			{
+				continue;
+			}
+			stats.bDrawn = true;
 			stats.Scene = view.Culling;
 			stats.ShadowCascades = view.Shadows.CascadeCount;
 			for (uint32_t cascade = 0; cascade < view.Shadows.CascadeCount; ++cascade)
@@ -1587,6 +1603,7 @@ namespace Nyx
 
 				view.bResizePending = false;
 				view.bRecreatedThisFrame = true;
+				view.bTargetsNotDrawn = true;
 			}
 			else
 			{
@@ -1599,6 +1616,18 @@ namespace Nyx
 			view.Culling = {};
 			view.CullingLines = {};
 			view.Shadows.CascadeCount = 0;
+
+			// A view drawn when shown and not shown in the frame before does nothing more: its
+			// picture stays as it was drawn last
+			view.bDrawnThisFrame = !view.bDrawnWhenShown || view.bShownSincePrepared;
+			view.bShownSincePrepared = false;
+			if (!view.bDrawnThisFrame)
+			{
+				continue;
+			}
+			// Drawn into from here on; what keeps its targets makes them again if they are new
+			const bool bTargetsNew = std::exchange(view.bTargetsNotDrawn, false);
+
 			if (const RenderWorld* world = FindShownWorld(view))
 			{
 				UpdateViewportSceneGlobals(view, *world->Registry);
@@ -1615,14 +1644,14 @@ namespace Nyx
 			Bloom.Prepare(view.Bloom, view.RenderTarget.GetExtent(), bloom);
 			SceneViewAmbientOcclusionSettings occlusion = view.SceneGlobals.AmbientOcclusion;
 			occlusion.bAmbientOcclusion = occlusion.bAmbientOcclusion && bLit;
-			AmbientOcclusion.Prepare(view.AmbientOcclusion, view.RenderTarget, occlusion, view.bRecreatedThisFrame);
+			AmbientOcclusion.Prepare(view.AmbientOcclusion, view.RenderTarget, occlusion, bTargetsNew);
 			// Its particles' pass, over its HDR scene: their draws were culled with the rest, and none
 			// are drawn in a debug view of the materials
 			if (!bLit)
 			{
 				view.Particles.Draws.clear();
 			}
-			Particles.Prepare(view.Particles, view.RenderTarget, view.bRecreatedThisFrame);
+			Particles.Prepare(view.Particles, view.RenderTarget, bTargetsNew);
 		}
 
 		if (bNewSamples)
@@ -2935,10 +2964,19 @@ namespace Nyx
 		}
 	}
 
+	void VulkanRenderer::SetSceneViewDrawnWhenShown(uint64_t id, bool bWhenShown)
+	{
+		if (SceneViewInstance* view = FindSceneView(id))
+		{
+			view->bDrawnWhenShown = bWhenShown;
+		}
+	}
+
 	ImTextureID VulkanRenderer::GetSceneViewTextureId(uint64_t id) const
 	{
 		if (const SceneViewInstance* view = FindSceneView(id))
 		{
+			view->bShownSincePrepared = true;
 			return view->RenderTarget.GetImGuiTextureId();
 		}
 
@@ -2965,7 +3003,12 @@ namespace Nyx
 	ImTextureID VulkanRenderer::GetSceneViewBlurTextureId(uint64_t id) const
 	{
 		const SceneViewInstance* view = FindSceneView(id);
-		if (view == nullptr || view->BlurImGuiTexture == VK_NULL_HANDLE)
+		if (view == nullptr)
+		{
+			return ImTextureID_Invalid;
+		}
+		view->bShownSincePrepared = true;
+		if (view->BlurImGuiTexture == VK_NULL_HANDLE)
 		{
 			return ImTextureID_Invalid;
 		}
@@ -2987,7 +3030,10 @@ namespace Nyx
 		std::vector<uint64_t> ids;
 		for (const SceneViewInstance& view : SceneViews)
 		{
-			ids.push_back(view.Id);
+			if (view.Id != PipelineViewId)
+			{
+				ids.push_back(view.Id);
+			}
 		}
 		return ids;
 	}
@@ -2996,7 +3042,9 @@ namespace Nyx
 	{
 		if (const SceneViewInstance* view = FindSceneView(id))
 		{
-			return view->bRecreatedThisFrame;
+			// Asked by whoever is about to show it
+			view->bShownSincePrepared = true;
+			return view->bRecreatedThisFrame || view->bTargetsNotDrawn;
 		}
 
 		return false;
@@ -3005,7 +3053,8 @@ namespace Nyx
 	bool VulkanRenderer::ReadSceneViewPixels(uint64_t id, Nyx::RgbaImage& outImage)
 	{
 		SceneViewInstance* view = FindSceneView(id);
-		if (view == nullptr)
+		// Without a picture, its image isn't in the layout the copy expects
+		if (view == nullptr || view->bTargetsNotDrawn)
 		{
 			return false;
 		}
