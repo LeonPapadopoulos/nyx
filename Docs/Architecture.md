@@ -114,8 +114,8 @@ checks every `#include` against this table.
 
 | Folder | What it holds | Includes from |
 | --- | --- | --- |
-| `Common` | Native file dialogs, the UI source inspector, where reflected properties are declared, property values read and written through reflection, dragging entities, the precompiled header | — |
-| `Assets` | The asset database, asset types, dragging assets, the asset browser | — |
+| `Common` | Native file dialogs and showing a file in File Explorer, the UI source inspector, where reflected properties are declared, property values read and written through reflection, dragging entities, the precompiled header | — |
+| `Assets` | The asset database, asset types, dragging assets, the asset browser | Common |
 | `Materials` | The material open for editing, the Parameters and preview windows, New Material, the Shader Log | — |
 | `Transactions` | Undo and redo: transactions, their changes, snapshots of objects | Common |
 | `Preferences` | The editor's preferences, the Preferences and Theme windows, opening source in the chosen editor | Common |

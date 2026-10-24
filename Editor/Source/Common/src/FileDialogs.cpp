@@ -2,6 +2,8 @@
 
 #include <Windows.h>
 #include <ShObjIdl.h>
+#include <ShlObj.h>
+#include <shellapi.h>
 #include <wrl/client.h>
 
 #include <span>
@@ -103,5 +105,34 @@ namespace Nyx::Editor
 	{
 		return ShowFileDialog(
 			DialogOptions{ .bSave = true, .Title = L"Save the theme as", .Filters = ThemeFilters, .Folder = folder, .Name = name, .DefaultExtension = L"nyxtheme" });
+	}
+
+	bool ShowInFileExplorer(const std::filesystem::path& path)
+	{
+		std::error_code error;
+		const std::filesystem::path absolute = std::filesystem::absolute(path, error).make_preferred();
+		if (error || !std::filesystem::exists(absolute, error))
+		{
+			return false;
+		}
+		if (std::filesystem::is_directory(absolute, error))
+		{
+			return reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr, L"explore", absolute.c_str(), nullptr, nullptr, SW_SHOWNORMAL)) > 32;
+		}
+
+		// A file: its folder, with it selected. The shell's items are COM, which may already be set up
+		// on this thread, or not.
+		const HRESULT initialized = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+		bool bShown = false;
+		if (PIDLIST_ABSOLUTE item = ILCreateFromPathW(absolute.c_str()))
+		{
+			bShown = SUCCEEDED(SHOpenFolderAndSelectItems(item, 0, nullptr, 0));
+			ILFree(item);
+		}
+		if (SUCCEEDED(initialized))
+		{
+			CoUninitialize();
+		}
+		return bShown;
 	}
 }

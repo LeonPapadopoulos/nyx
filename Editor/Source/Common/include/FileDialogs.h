@@ -21,4 +21,8 @@ namespace Nyx::Editor
 
 	// For an input recording (*.nyxinputrec), starting in `folder` if it is there
 	std::optional<std::filesystem::path> ChooseInputRecording(const std::filesystem::path& folder);
+
+	// Shows `path` in Windows' File Explorer: a file selected in its folder, a folder opened. False
+	// if there is nothing at `path` or Explorer couldn't show it.
+	bool ShowInFileExplorer(const std::filesystem::path& path);
 }

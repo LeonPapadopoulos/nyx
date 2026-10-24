@@ -9,6 +9,14 @@ What the editor and the game do. How the code behind them is organised is in
 - Reflection system (see below)
 - Animated startup banner
 
+## The asset browser
+
+- Right-click a file or folder: what its type can make (*New Material Instance* on a material, *New
+  Material for Shader* on a shader), then *Show in Explorer*, which opens Windows' File Explorer at
+  its folder with it selected (a folder opened), and *Copy Path*, its full path on the clipboard.
+- Right-click where there is no card: the same for the folder shown, and what can be made there
+  (*New Material...*, *New Physics Material*).
+
 ## Play
 
 - **Play** in the toolbar runs the open scene in `NyxGame.exe`, as a separate program, with

@@ -1,6 +1,7 @@
 #include "ImGuiSource.h"
 #include "AssetBrowserPanel.h"
 #include "AssetDragDrop.h"
+#include "FileDialogs.h"
 #include "UIWidgets.h"
 
 #include <imgui.h>
@@ -103,13 +104,27 @@ namespace Nyx::Editor
 
 		const std::vector<AssetEntry> children = Database->GetChildren(CurrentDirectory);
 
-		// Right-click where there is no card: what can be made here
-		if ((NewMaterial || NewPhysicsMaterial) && ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+		// Right-click where there is no card: what can be made here, and the folder itself
+		if (ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
 		{
 			ImGui::OpenPopup("##FolderMenu");
 		}
 		if (Nyx::UI::BeginPopup("##FolderMenu"))
 		{
+			const std::filesystem::path folder = Database->GetAssetRoot() / CurrentDirectory;
+			if (NYX_UI(Nyx::UI::MenuItem("Show in Explorer")))
+			{
+				ShowInFileExplorer(folder);
+			}
+			ImGui::SetItemTooltip("This folder in Windows' File Explorer");
+			if (NYX_UI(Nyx::UI::MenuItem("Copy Path")))
+			{
+				ImGui::SetClipboardText(folder.lexically_normal().make_preferred().string().c_str());
+			}
+			if (NewMaterial || NewPhysicsMaterial)
+			{
+				NYX_UI(Nyx::UI::Separator());
+			}
 			if (NewMaterial && NYX_UI(Nyx::UI::MenuItem("New Material...")))
 			{
 				NewMaterial();
@@ -157,38 +172,46 @@ namespace Nyx::Editor
 				SetAssetDragPayload(entry.RelativePath.generic_string());
 				ImGui::EndDragDropSource();
 			}
-			if (entry.TypeId == "Material" && NewMaterialInstance)
+			// Right-click a card: what its type can make, then where it is on disk
+			const std::string menu = "##AssetMenu" + entry.Name;
+			if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
 			{
-				const std::string menu = "##MaterialMenu" + entry.Name;
-				if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
-				{
-					ImGui::OpenPopup(menu.c_str());
-				}
-				if (Nyx::UI::BeginPopup(menu.c_str()))
+				ImGui::OpenPopup(menu.c_str());
+			}
+			if (Nyx::UI::BeginPopup(menu.c_str()))
+			{
+				bool bMade = false;
+				if (entry.TypeId == "Material" && NewMaterialInstance)
 				{
 					if (NYX_UI(Nyx::UI::MenuItem("New Material Instance")))
 					{
 						NewMaterialInstance(entry.RelativePath.generic_string());
 					}
 					ImGui::SetItemTooltip("A material that takes its values from this one, but those it sets itself");
-					ImGui::EndPopup();
+					bMade = true;
 				}
-			}
-			if (entry.TypeId == "Shader" && NewMaterialForShader)
-			{
-				const std::string menu = "##ShaderMenu" + entry.Name;
-				if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
-				{
-					ImGui::OpenPopup(menu.c_str());
-				}
-				if (Nyx::UI::BeginPopup(menu.c_str()))
+				if (entry.TypeId == "Shader" && NewMaterialForShader)
 				{
 					if (NYX_UI(Nyx::UI::MenuItem("New Material for Shader")))
 					{
 						NewMaterialForShader(entry.RelativePath.generic_string());
 					}
-					ImGui::EndPopup();
+					bMade = true;
 				}
+				if (bMade)
+				{
+					NYX_UI(Nyx::UI::Separator());
+				}
+				if (NYX_UI(Nyx::UI::MenuItem("Show in Explorer")))
+				{
+					ShowInFileExplorer(entry.AbsolutePath);
+				}
+				ImGui::SetItemTooltip(entry.bIsDirectory ? "This folder in Windows' File Explorer" : "Its folder in Windows' File Explorer, with it selected");
+				if (NYX_UI(Nyx::UI::MenuItem("Copy Path")))
+				{
+					ImGui::SetClipboardText(entry.AbsolutePath.lexically_normal().make_preferred().string().c_str());
+				}
+				ImGui::EndPopup();
 			}
 			if (!result.bOpened)
 			{
