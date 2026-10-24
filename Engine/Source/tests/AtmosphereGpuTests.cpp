@@ -6,9 +6,9 @@
 // instanced cube, a plain one and a two-sided quad's back are fogged alike; a box still shadows
 // the fogged ground. The sky follows the sun: darker and warmer as it goes down, its glow round
 // the sun, the light warmer through more air, the sky's light dimmer at night. Without the
-// component, and with its fog, sky and bloom all off, the picture is the same to the bit. A scene of
-// fog and a low sun looks as its reference picture does, and the atmosphere test scene loads and
-// is fogged.
+// component, and with its fog, sky, bloom and ambient occlusion all off, the picture is the same to
+// the bit. A scene of fog and a low sun looks as its reference picture does, and the atmosphere
+// test scene loads and is fogged.
 //
 // NYX_SCENE_TEST_OUTPUT=<folder> saves what was rendered there, e.g. to make a new reference
 // after a change that is meant to change the picture. NyxAtmosphereGpuTests --write-scene writes
@@ -104,12 +104,14 @@ namespace
 		return glm::angleAxis(glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 	}
 
-	// Fog and nothing else: the fog's colour alone, no sun scattered, the sky as it is, no bloom
+	// Fog and nothing else: the fog's colour alone, no sun scattered, the sky as it is, no bloom, no
+	// ambient occlusion
 	EnvironmentComponent PlainFog(float density, float falloff, float height)
 	{
 		EnvironmentComponent environment;
 		environment.bSkyFollowsSun = false;
 		environment.bBloom = false;
+		environment.bAmbientOcclusion = false;
 		environment.FogDensity = density;
 		environment.FogHeightFalloff = falloff;
 		environment.FogHeight = height;
@@ -500,13 +502,14 @@ namespace
 		const RgbaImage noGlow = Draw(gpu, view);
 		Require(Brightness(PixelAt(glowing, middle)) > Brightness(PixelAt(noGlow, middle)) + 30, "No glow round the sun: " + Text(PixelAt(glowing, middle)) + " against " + Text(PixelAt(noGlow, middle)));
 
-		// Fog, sky and bloom all off: as without the component, to the bit
+		// Fog, sky, bloom and ambient occlusion all off: as without the component, to the bit
 		scene.World.Get<EnvironmentComponent>(scene.Environment).bSkyFollowsSun = false;
 		scene.World.Get<EnvironmentComponent>(scene.Environment).bBloom = false;
+		scene.World.Get<EnvironmentComponent>(scene.Environment).bAmbientOcclusion = false;
 		const RgbaImage allOff = Draw(gpu, view);
 		scene.World.Remove<EnvironmentComponent>(scene.Environment);
 		const RgbaImage none = Draw(gpu, view);
-		Require(allOff.Pixels == none.Pixels, "Fog, sky and bloom off don't draw the picture as without the component");
+		Require(allOff.Pixels == none.Pixels, "Fog, sky, bloom and ambient occlusion off don't draw the picture as without the component");
 		EndView(gpu, view);
 	}
 
@@ -650,10 +653,12 @@ namespace
 		const Entity sun = world.CreateEntity();
 		world.Add<TransformComponent>(sun, Placed(glm::vec3(0.0f), glm::vec3(1.0f), glm::quat(glm::radians(glm::vec3(-8.0f, 25.0f, 0.0f)))));
 		world.Add<DirectionalLightComponent>(sun, DirectionalLightComponent{});
-		// The fog and the sky alone: bloom has a picture of its own (NyxBloomGpuTests)
+		// The fog and the sky alone: bloom and ambient occlusion have pictures of their own
+		// (NyxBloomGpuTests, NyxAmbientOcclusionGpuTests)
 		const Entity air = world.CreateEntity();
 		EnvironmentComponent environment;
 		environment.bBloom = false;
+		environment.bAmbientOcclusion = false;
 		world.Add<EnvironmentComponent>(air, environment);
 
 		const uint64_t view = MakeView(gpu, world, ESceneViewSky::Scene);

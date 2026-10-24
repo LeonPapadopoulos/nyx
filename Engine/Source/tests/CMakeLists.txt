@@ -555,6 +555,18 @@ nyx_copy_shaders_next_to(NyxBloomGpuTests)
 nyx_copy_shader_compiler_next_to(NyxBloomGpuTests)
 add_test(NAME NyxBloomGpuTests COMMAND NyxBloomGpuTests)
 
+# Ambient occlusion on a real GPU: a box's foot occluded and the open floor not, never the sun's
+# light, the radius, intensity and qualities, fog and decals, a dense instanced field, against a
+# reference image. Needs a Vulkan device; its window stays hidden.
+add_executable(NyxAmbientOcclusionGpuTests AmbientOcclusionGpuTests.cpp)
+target_link_libraries(NyxAmbientOcclusionGpuTests PRIVATE NyxEngine)
+target_compile_definitions(NyxAmbientOcclusionGpuTests PRIVATE NYX_TEST_REFERENCES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/References")
+add_dependencies(NyxAmbientOcclusionGpuTests NyxGeneratedReflection)
+set_property(TARGET NyxAmbientOcclusionGpuTests PROPERTY FOLDER "Tests")
+nyx_copy_shaders_next_to(NyxAmbientOcclusionGpuTests)
+nyx_copy_shader_compiler_next_to(NyxAmbientOcclusionGpuTests)
+add_test(NAME NyxAmbientOcclusionGpuTests COMMAND NyxAmbientOcclusionGpuTests)
+
 # How long the renderer takes for 50 000 small meshes in 200 cells and 300 more, drawn one by one
 # and instanced; not run by ctest, timing depends on the machine. Needs a Vulkan device.
 add_executable(NyxInstancingBenchmark InstancingBenchmark.cpp)

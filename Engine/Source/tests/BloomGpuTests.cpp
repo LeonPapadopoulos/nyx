@@ -89,12 +89,13 @@ namespace
 		return entity;
 	}
 
-	// Bloom alone: no fog, the sky as it is
+	// Bloom alone: no fog, the sky as it is, no ambient occlusion
 	EnvironmentComponent BloomOnly()
 	{
 		EnvironmentComponent environment;
 		environment.bFog = false;
 		environment.bSkyFollowsSun = false;
+		environment.bAmbientOcclusion = false;
 		return environment;
 	}
 

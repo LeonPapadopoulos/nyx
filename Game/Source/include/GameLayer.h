@@ -99,8 +99,9 @@ namespace Nyx::Game
 
 		// Debug builds: Ctrl+Alt+Shift+C crashes the game on purpose, to try the editor's crash card;
 		// F3 shows the physics debug view; F4 shows the game view's culling, then freezes it, then
-		// neither; F5 shows its shadow cascades; F6 shows its bloom alone; Ctrl+Alt+Shift+I shows the
-		// input overlay, the editor's Window > Input for the game
+		// neither; F5 shows its shadow cascades; F6 shows its bloom alone, then its ambient
+		// occlusion, then neither; Ctrl+Alt+Shift+I shows the input overlay, the editor's Window >
+		// Input for the game
 		Nyx::Input::ContextHandle DebugContext;
 		Nyx::Input::ActionHandle CrashOnPurpose;
 		Nyx::Input::ActionHandle TogglePhysicsDebugView;

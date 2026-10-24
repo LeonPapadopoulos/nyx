@@ -10,11 +10,16 @@ namespace Nyx
 
 	// A scene view's targets: the scene is drawn in HDR (R16G16B16A16Sfloat) with a depth buffer,
 	// then tonemapped into the 8-bit picture the editor shows, and the editor's overlays are drawn
-	// over the picture, tested against the scene's depth.
+	// over the picture, tested against the scene's depth. While the view has ambient occlusion, the
+	// scene pass writes the sky's light apart into a second target (the ambient light), for the
+	// occlusion, which reads the depth, to darken it alone.
 	class VulkanViewportTarget
 	{
 	public:
 		static constexpr vk::Format HdrFormat = vk::Format::eR16G16B16A16Sfloat;
+		// The sky's light apart, as precise as the scene's: where nothing is occluded, the picture is
+		// the one without occlusion within a step (B10G11R11's 5 bits of blue were 2 steps off)
+		static constexpr vk::Format AmbientFormat = HdrFormat;
 
 		void Initialize(VulkanContext& context, uint32_t width, uint32_t height, vk::Format format);
 		void Shutdown(VulkanContext& context);
@@ -22,7 +27,8 @@ namespace Nyx
 		void EnsureSize(VulkanContext& context, uint32_t width, uint32_t height);
 		void Recreate(VulkanContext& context, uint32_t width, uint32_t height, vk::Format format);
 
-		// The scene: the HDR image and the depth, both cleared first, the depth to the far plane's
+		// The scene: the HDR image, the ambient light and the depth, all cleared first, the ambient
+		// light to black, the depth to the far plane's
 		void BeginScenePass(vk::raii::CommandBuffer& commandBuffer, const vk::ClearColorValue& clearValue);
 		// The picture: written whole (the tonemap), then drawn over with the scene's depth
 		void BeginPicturePass(vk::raii::CommandBuffer& commandBuffer);
@@ -37,6 +43,12 @@ namespace Nyx
 		vk::Image GetImage() const { return *Image; }
 		// The scene in HDR, in ShaderReadOnlyOptimal layout after the scene pass
 		vk::ImageView GetHdrImageView() const { return *HdrImageView; }
+		// The sky's light the scene pass wrote apart, in ShaderReadOnlyOptimal layout after it
+		vk::ImageView GetAmbientImageView() const { return *AmbientImageView; }
+		// The scene's depth, in DepthStencilAttachmentOptimal layout after the scene pass; its depth
+		// aspect sampled in ShaderReadOnlyOptimal
+		vk::Image GetDepthImage() const { return *DepthImage; }
+		vk::ImageView GetDepthImageView() const { return *DepthImageView; }
 		// The picture pass's, for what draws over the picture
 		vk::raii::RenderPass& GetRenderPass() { return RenderPass; }
 		const vk::raii::RenderPass& GetRenderPass() const { return RenderPass; };
@@ -84,6 +96,10 @@ namespace Nyx
 		vk::raii::Image HdrImage{ nullptr };
 		vk::raii::DeviceMemory HdrMemory{ nullptr };
 		vk::raii::ImageView HdrImageView{ nullptr };
+
+		vk::raii::Image AmbientImage{ nullptr };
+		vk::raii::DeviceMemory AmbientMemory{ nullptr };
+		vk::raii::ImageView AmbientImageView{ nullptr };
 
 		vk::raii::RenderPass SceneRenderPass{ nullptr };
 		vk::raii::Framebuffer SceneFramebuffer{ nullptr };

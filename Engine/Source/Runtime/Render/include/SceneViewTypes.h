@@ -44,6 +44,9 @@ namespace Nyx
 		OutOfRange,
 		// The bloom alone, as the tonemap adds it (black where nothing blooms, or bloom is off)
 		Bloom,
+		// The ambient occlusion, white where all of the sky's light reaches, darker where less does
+		// (white where it is off)
+		AmbientOcclusion,
 	};
 
 	// What a scene view shows of its culling (IRenderer::SetSceneViewCullingDebug())
@@ -141,6 +144,19 @@ namespace Nyx
 	struct SceneViewGpuTimes
 	{
 		float Bloom = 0.0f;
+		float AmbientOcclusion = 0.0f;
+	};
+
+	// The view's ambient occlusion (EnvironmentComponent, in range:
+	// MakeSceneViewAmbientOcclusionSettings()); none without an environment. The slices round the
+	// view and the steps out along each side a pixel takes, by its quality.
+	struct SceneViewAmbientOcclusionSettings
+	{
+		bool bAmbientOcclusion = false;
+		float Radius = 1.0f;
+		float Intensity = 1.5f;
+		uint32_t Slices = 3;
+		uint32_t Steps = 6;
 	};
 
 	struct ExtractedSceneGlobals
@@ -158,6 +174,7 @@ namespace Nyx
 		SceneViewShadowSettings Shadows;
 		SceneViewAtmosphere Atmosphere;
 		SceneViewBloomSettings Bloom;
+		SceneViewAmbientOcclusionSettings AmbientOcclusion;
 
 		bool bHasCamera = false;
 		bool bHasDirectionalLight = false;

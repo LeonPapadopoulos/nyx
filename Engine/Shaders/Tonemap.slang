@@ -41,6 +41,13 @@ float4 tonemapFragment(float4 position : SV_Position) : SV_Target
     {
         return float4(nyx::linearToSrgb(nyx::tonemapPbrNeutral(bloom)), 1.0);
     }
+    // The occlusion as it is, at half the view's size, grey: white where all of the sky's light
+    // reaches; white where there is none
+    if (debug == nyx::DebugAmbientOcclusion)
+    {
+        const float occlusion = View.AmbientOcclusion != 0 ? View.Occlusion.SampleLevel(nyx::LinearClamp, position.xy / View.ViewportSize, 0.0).r : 1.0;
+        return float4(occlusion.xxx, 1.0);
+    }
     const float3 picture = nyx::linearToSrgb(nyx::tonemapPbrNeutral(scene));
     // Where the light went wrong, over the picture in grey
     const float3 grey = dot(picture, float3(0.2126, 0.7152, 0.0722)) * 0.6;

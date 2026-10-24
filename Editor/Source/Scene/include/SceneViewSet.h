@@ -54,8 +54,8 @@ namespace Nyx::Editor
 		Nyx::ESceneViewCullingDebug GetCullingDebug() const { return CullingDebug; }
 		void SetShadowDebug(Nyx::ESceneViewShadowDebug mode);
 		Nyx::ESceneViewShadowDebug GetShadowDebug() const { return ShadowDebug; }
-		// What the set's own views show (the Debug menu's Bloom), views opened later too; the
-		// material preview's view keeps its own
+		// What the set's own views show (the Debug menu's Bloom and Ambient Occlusion), views opened
+		// later too; the material preview's view keeps its own
 		void SetViewDebug(Nyx::ESceneViewDebug view);
 		Nyx::ESceneViewDebug GetViewDebug() const { return ViewDebug; }
 

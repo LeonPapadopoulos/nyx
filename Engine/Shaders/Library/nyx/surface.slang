@@ -5,7 +5,9 @@
 // Bindings follow the bindless plan: set 0 is global and push constants belong to the draw
 // (nyx.bindless), set 1 belongs to the view (nyx.view); a material sees both. The pixel is lit by
 // nyx.lighting: the sun and the sky's light, physically based (metallic-roughness), the sun's
-// shadowed by nyx.shadows; then seen through the world's height fog (nyx.atmosphere).
+// shadowed by nyx.shadows; then seen through the world's height fog (nyx.atmosphere). With the
+// view's ambient occlusion on, the sky's light goes to a second target, for the occlusion to dim
+// it alone after the scene pass (VulkanAmbientOcclusion).
 
 __exported import nyx.atmosphere;
 __exported import nyx.bindless;
@@ -212,13 +214,22 @@ public VertexOutput surfaceVertex(VertexInput input)
     return transformSurfaceVertex(input);
 }
 
-// A pixel as its material and the light make it: the light it sends back, the light it gives off
-// and how much it covers
+// A pixel as its material and the light make it: the light it sends back, the sun's and the sky's
+// apart, the light it gives off and how much it covers
 struct ShadedPixel
 {
-    float3 Reflected;
+    float3 Direct;
+    float3 Ambient;
     float3 Emission;
     float Opacity;
+}
+
+// The scene pass's two targets: the light, and the sky's light apart while the view has ambient
+// occlusion (else all of the light is in the first, and the second black)
+public struct SceneTargets
+{
+    public float4 Color : SV_Target0;
+    public float4 Ambient : SV_Target1;
 }
 
 // What the material is given at the pixel. On a triangle's back, which only a two-sided material
@@ -261,6 +272,7 @@ ShadedPixel shadeSurfacePixel<S : ISurface>(VertexOutput vertex, DecalInput deca
     SurfaceOutput o = material.shade(input);
 
     ShadedPixel pixel;
+    pixel.Ambient = float3(0.0);
     pixel.Emission = float3(0.0);
     pixel.Opacity = 1.0;
 
@@ -270,32 +282,32 @@ ShadedPixel shadeSurfacePixel<S : ISurface>(VertexOutput vertex, DecalInput deca
         switch (View.DebugView)
         {
         case nyx::DebugBaseColor:
-            pixel.Reflected = o.BaseColor;
+            pixel.Direct = o.BaseColor;
             break;
         case nyx::DebugNormal:
-            pixel.Reflected = normalize(o.Normal) * 0.5 + 0.5;
+            pixel.Direct = normalize(o.Normal) * 0.5 + 0.5;
             break;
         case nyx::DebugRoughness:
-            pixel.Reflected = o.Roughness.xxx;
+            pixel.Direct = o.Roughness.xxx;
             break;
         case nyx::DebugMetallic:
-            pixel.Reflected = o.Metallic.xxx;
+            pixel.Direct = o.Metallic.xxx;
             break;
         case nyx::DebugOcclusion:
-            pixel.Reflected = o.Occlusion.xxx;
+            pixel.Direct = o.Occlusion.xxx;
             break;
         case nyx::DebugEmission:
-            pixel.Reflected = o.Emission;
+            pixel.Direct = o.Emission;
             break;
         case nyx::DebugOpacity:
-            pixel.Reflected = o.Opacity.xxx;
+            pixel.Direct = o.Opacity.xxx;
             break;
         default:
         {
             // Eight cells across the UV square, light and dark, tinted red along u and green along v
             const float2 cell = floor(input.UV * 8.0);
             const float shade = frac((cell.x + cell.y) * 0.5) < 0.25 ? 0.9 : 0.45;
-            pixel.Reflected = float3(frac(input.UV), 0.25) * shade;
+            pixel.Direct = float3(frac(input.UV), 0.25) * shade;
             break;
         }
         }
@@ -303,10 +315,18 @@ ShadedPixel shadeSurfacePixel<S : ISurface>(VertexOutput vertex, DecalInput deca
     }
 
     // The sun's shadow by the surface's own normal, not a normal map's: the map's bumps don't move
-    // where the shadow falls. A decal is shadowed as what it lies on is.
-    pixel.Reflected = o.Unlit ? o.BaseColor
-                              : nyx::lightSurface(o.BaseColor, o.Metallic, o.Roughness, o.Occlusion, normalize(o.Normal), input.ViewWS,
-                                    nyx::sunShadow(input.PositionWS, input.NormalWS));
+    // where the shadow falls. A decal is shadowed as what it lies on is. Unlit, all of it is direct.
+    if (o.Unlit)
+    {
+        pixel.Direct = o.BaseColor;
+    }
+    else
+    {
+        const nyx::SurfaceLight light = nyx::lightSurfaceApart(o.BaseColor, o.Metallic, o.Roughness, o.Occlusion, normalize(o.Normal), input.ViewWS,
+            nyx::sunShadow(input.PositionWS, input.NormalWS));
+        pixel.Direct = light.Direct;
+        pixel.Ambient = light.Ambient;
+    }
     pixel.Emission = o.Emission;
     pixel.Opacity = o.Opacity;
 
@@ -316,7 +336,8 @@ ShadedPixel shadeSurfacePixel<S : ISurface>(VertexOutput vertex, DecalInput deca
         const uint cascade = nyx::shadowCascadeAt(input.PositionWS);
         if (cascade < View.ShadowCascadeCount)
         {
-            pixel.Reflected *= nyx::shadowCascadeTint(cascade);
+            pixel.Direct *= nyx::shadowCascadeTint(cascade);
+            pixel.Ambient *= nyx::shadowCascadeTint(cascade);
         }
     }
     return pixel;
@@ -332,11 +353,30 @@ nyx::Fog surfaceFog(VertexOutput vertex)
     return nyx::heightFog(vertex.PositionWS);
 }
 
+// While the view has ambient occlusion, the sky's light apart, dimmed by the fog as the rest is
+// (the fog's own light goes with the rest: the occlusion doesn't dim it)
+bool writesAmbientApart()
+{
+    return View.AmbientOcclusion != 0 && !nyx::isMaterialDebugView();
+}
+
 [shader("fragment")]
-public float4 surfaceFragment<S : ISurface>(VertexOutput vertex, bool bFrontFace : SV_IsFrontFace) : SV_Target
+public SceneTargets surfaceFragment<S : ISurface>(VertexOutput vertex, bool bFrontFace : SV_IsFrontFace)
 {
     const ShadedPixel pixel = shadeSurfacePixel<S>(vertex, DecalInput::defaults(), bFrontFace);
-    return float4(surfaceFog(vertex).apply(pixel.Reflected + pixel.Emission), pixel.Opacity);
+    const nyx::Fog fog = surfaceFog(vertex);
+    SceneTargets targets;
+    if (writesAmbientApart())
+    {
+        targets.Color = float4(fog.apply(pixel.Direct + pixel.Emission), pixel.Opacity);
+        targets.Ambient = float4(pixel.Ambient * fog.Transmittance, pixel.Opacity);
+    }
+    else
+    {
+        targets.Color = float4(fog.apply(pixel.Direct + pixel.Ambient + pixel.Emission), pixel.Opacity);
+        targets.Ambient = float4(0.0, 0.0, 0.0, pixel.Opacity);
+    }
+    return targets;
 }
 
 // The material drawn as a decal, over what is drawn already, in premultiplied alpha, which the
@@ -345,10 +385,22 @@ public float4 surfaceFragment<S : ISurface>(VertexOutput vertex, bool bFrontFace
 // fogged already: the decal's light is dimmed by the fog, and the fog's own added by its opacity
 // alone, for the part of it the decal covers.
 [shader("fragment")]
-public float4 decalFragment<S : ISurface>(VertexOutput vertex, bool bFrontFace : SV_IsFrontFace) : SV_Target
+public SceneTargets decalFragment<S : ISurface>(VertexOutput vertex, bool bFrontFace : SV_IsFrontFace)
 {
     const ShadedPixel pixel = shadeSurfacePixel<S>(vertex, objectDecalInput(), bFrontFace);
-    return float4(surfaceFog(vertex).applyPremultiplied(pixel.Reflected * pixel.Opacity + pixel.Emission, pixel.Opacity), pixel.Opacity);
+    const nyx::Fog fog = surfaceFog(vertex);
+    SceneTargets targets;
+    if (writesAmbientApart())
+    {
+        targets.Color = float4(fog.applyPremultiplied(pixel.Direct * pixel.Opacity + pixel.Emission, pixel.Opacity), pixel.Opacity);
+        targets.Ambient = float4(pixel.Ambient * (pixel.Opacity * fog.Transmittance), pixel.Opacity);
+    }
+    else
+    {
+        targets.Color = float4(fog.applyPremultiplied((pixel.Direct + pixel.Ambient) * pixel.Opacity + pixel.Emission, pixel.Opacity), pixel.Opacity);
+        targets.Ambient = float4(0.0, 0.0, 0.0, pixel.Opacity);
+    }
+    return targets;
 }
 
 // How much of a decal must be at a pixel for a click there to pick it

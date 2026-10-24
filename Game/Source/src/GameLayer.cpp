@@ -248,12 +248,14 @@ namespace Nyx::Game
 			LOG_INFO("Shadow cascades debug view {0} (F5)", ShadowDebug == Nyx::ESceneViewShadowDebug::Off ? "off" : "on");
 		}
 
-		// F6 shows the game view's bloom alone; again, the lit scene
+		// F6 shows the game view's bloom alone; again, its ambient occlusion; again, the lit scene
 		if (Input->GetUser().ConsumeTriggered(CycleViewDebug))
 		{
-			ViewDebug = ViewDebug == Nyx::ESceneViewDebug::Lit ? Nyx::ESceneViewDebug::Bloom : Nyx::ESceneViewDebug::Lit;
+			ViewDebug = ViewDebug == Nyx::ESceneViewDebug::Lit ? Nyx::ESceneViewDebug::Bloom
+				: ViewDebug == Nyx::ESceneViewDebug::Bloom   ? Nyx::ESceneViewDebug::AmbientOcclusion
+															 : Nyx::ESceneViewDebug::Lit;
 			Renderer->SetSceneViewDebug(GameViewId, ViewDebug);
-			LOG_INFO("Bloom debug view {0} (F6)", ViewDebug == Nyx::ESceneViewDebug::Bloom ? "on" : "off");
+			LOG_INFO("Debug view {0} (F6)", ViewDebug == Nyx::ESceneViewDebug::Bloom ? "bloom" : ViewDebug == Nyx::ESceneViewDebug::AmbientOcclusion ? "ambient occlusion" : "off");
 		}
 #endif
 	}

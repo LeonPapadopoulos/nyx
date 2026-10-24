@@ -3,6 +3,7 @@
 #include "VulkanViewportTarget.h"
 #include "VulkanBlur.h"
 #include "VulkanBloom.h"
+#include "VulkanAmbientOcclusion.h"
 #include "EditorCamera.h"
 #include "SceneViewTypes.h"
 #include "ShadowCascades.h"
@@ -90,10 +91,16 @@ namespace Nyx
 		// Its shadows this frame, and what it shows of them (IRenderer::SetSceneViewShadowDebug())
 		SceneViewShadows Shadows;
 		ESceneViewShadowDebug ShadowDebug = ESceneViewShadowDebug::Off;
-		// The HDR picture's slot in the bindless texture array, for the tonemap
+		// The HDR picture's slot in the bindless texture array, for the tonemap; the ambient light's
+		// and the depth's, for the ambient occlusion
 		uint32_t HdrTextureSlot = 0;
+		uint32_t AmbientTextureSlot = 0;
+		uint32_t DepthTextureSlot = 0;
 		// Its bloom: the chain's levels, made for its size, and its settings this frame (VulkanBloom)
 		SceneViewBloom Bloom;
+		// Its ambient occlusion: its targets at half its size, and its settings this frame
+		// (VulkanAmbientOcclusion)
+		SceneViewAmbientOcclusion AmbientOcclusion;
 		// What its passes after the scene pass took on the GPU, in the last frame drawn; and its
 		// place among the views timed this frame (VulkanRenderer::PassTimestamps)
 		SceneViewGpuTimes GpuTimes;

@@ -32,11 +32,25 @@ namespace nyx
         return f0 + (1.0 - f0) * pow(1.0 - cosine, 5.0);
     }
 
+    // The light a surface sends back, apart: the sun's, and the sky's (what ambient occlusion dims)
+    public struct SurfaceLight
+    {
+        public float3 Direct;
+        public float3 Ambient;
+    }
+
     // The light a surface sends towards `v` (normalised, towards the camera), from the sun and the
     // sky. `roughness` is perceptual, as materials give it; `occlusion` dims the sky's light alone,
     // `sunShadow` the sun's alone (nyx::sunShadow(): 1 where the sun reaches, 0 in shadow). The
     // sun's colour is what a white matte surface facing it shows: its irradiance is pi times that.
     public float3 lightSurface(float3 baseColor, float metallic, float roughness, float occlusion, float3 n, float3 v, float sunShadow = 1.0)
+    {
+        const SurfaceLight light = lightSurfaceApart(baseColor, metallic, roughness, occlusion, n, v, sunShadow);
+        return light.Direct + light.Ambient;
+    }
+
+    // lightSurface(), the sun's light and the sky's apart
+    public SurfaceLight lightSurfaceApart(float3 baseColor, float metallic, float roughness, float occlusion, float3 n, float3 v, float sunShadow = 1.0)
     {
         const float perceptual = clamp(roughness, 0.045, 1.0);
         const float alpha = perceptual * perceptual;
@@ -59,6 +73,9 @@ namespace nyx
         const float3 specularShare = f0 * brdf.x + brdf.y;
         const float3 skySpecular = environmentSpecular(reflect(-v, n), perceptual) * specularShare;
         const float3 skyDiffuse = diffuseColor * environmentDiffuse(n) * (1.0 - specularShare);
-        return sun + (skyDiffuse + skySpecular) * occlusion;
+        SurfaceLight light;
+        light.Direct = sun;
+        light.Ambient = (skyDiffuse + skySpecular) * occlusion;
+        return light;
     }
 }

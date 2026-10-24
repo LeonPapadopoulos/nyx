@@ -86,6 +86,27 @@ public struct ViewConstants
     public float BloomIntensity;
     public uint BloomPadding0;
     public uint BloomPadding1;
+
+    // The view's ambient occlusion (VulkanAmbientOcclusion; nyx.surface, AmbientOcclusion.slang):
+    // 1 while the scene pass writes the sky's light apart for it; that light, the scene's depth,
+    // the occlusion and its depth in metres at half size
+    public uint AmbientOcclusion;
+    public nyx::Texture AmbientLight;
+    public nyx::Texture SceneDepth;
+    public nyx::Texture Occlusion;
+    public nyx::Texture OcclusionDepth;
+    // How far round a point it looks, in metres; the power its visibility is raised to; the slices
+    // round the view and the steps out along each side of one
+    public float OcclusionRadius;
+    public float OcclusionIntensity;
+    public uint OcclusionSlices;
+    public uint OcclusionSteps;
+    public uint OcclusionPadding0;
+    public uint OcclusionPadding1;
+    public uint OcclusionPadding2;
+    // From the picture to view space: 1 / the projection's [0][0] and [1][1]; and from a depth of
+    // the depth buffer to metres along the view (reversed): [3][2] / (depth + [2][2]), z and w here
+    public float4 ProjectionInfo;
 }
 [vk::binding(0, 1)] public ConstantBuffer<ViewConstants> View;
 
@@ -104,6 +125,7 @@ namespace nyx
     public static const uint DebugNanInf = 9;
     public static const uint DebugOutOfRange = 10;
     public static const uint DebugBloom = 11;
+    public static const uint DebugAmbientOcclusion = 12;
 
     // Whether the view shows one output of its materials, not light
     public bool isMaterialDebugView()

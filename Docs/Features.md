@@ -587,6 +587,27 @@ decals glow, in the editor's scene views and in the game alike. On with an *Envi
   scene), `NyxEditorSceneViewGpuTests` (*Debug > Bloom* reaching views opened later), the other
   reference pictures unchanged.
 
+## Ambient occlusion
+
+The sky's light reaches less far into creases, corners and the feet of things: crates sit on the
+ground, grass darkens down among its blades. On with an *Environment*, under *Ambient Occlusion*;
+without one, nothing changes. Only the sky's light is dimmed, never the sun's.
+
+- *Radius* (how far round a point what hides the sky is looked for, in metres), *Intensity*,
+  *Quality* (Low, Medium, High: more samples are smoother and cost more). All with undo, saved in
+  scenes and sent to a running game.
+- Found from the scene's depth at half the view's size, blurred and filtered up along edges, in
+  every scene view; it works the same on instanced meshes, decals and through fog.
+- **Seeing it**: *Debug > Ambient Occlusion* in the editor (F6 twice in a Debug build of the game)
+  shows the occlusion, white where all of the sky's light reaches.
+- It takes about 0.1 ms of GPU time a 1280 × 720 view ([Atmosphere](Design/atmosphere.md#numbers)).
+- Tests: `NyxAtmosphereTests` (its size, samples and settings; a slice of the sky open, beside a
+  wall, walled in; a tilted open surface wholly visible), `NyxAmbientOcclusionGpuTests` (a box's
+  foot darker and the open floor not; never the sun's light; radius, intensity, qualities, no
+  environment; through fog and on a decal; a dense instanced field, its noise and cost; the debug
+  view; a reference picture), `NyxEditorSceneViewGpuTests` (*Debug > Ambient Occlusion* reaching
+  views opened later), the other reference pictures unchanged.
+
 ## Instanced meshes and culling
 
 Many copies of one mesh, such as grass, flowers or stones scattered over a ground, are drawn as one

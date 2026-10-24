@@ -609,9 +609,12 @@ namespace Nyx
 			colorBlendAttachment.dstAlphaBlendFactor = vk::BlendFactor::eOne;
 			colorBlendAttachment.alphaBlendOp = vk::BlendOp::eAdd;
 		}
+		// The scene pass has two targets: the light, and the sky's light apart for the ambient
+		// occlusion (nyx.surface), blended alike; the picking pass one
+		const std::array<vk::PipelineColorBlendAttachmentState, 2> sceneBlendAttachments = { colorBlendAttachment, colorBlendAttachment };
 		vk::PipelineColorBlendStateCreateInfo colorBlending{};
-		colorBlending.attachmentCount = 1;
-		colorBlending.pAttachments = &colorBlendAttachment;
+		colorBlending.attachmentCount = kind == EPipelineKind::DecalPicking ? 1u : static_cast<uint32_t>(sceneBlendAttachments.size());
+		colorBlending.pAttachments = sceneBlendAttachments.data();
 
 		const std::span<const vk::DynamicState> dynamicStates = kind == EPipelineKind::Opaque ? std::span<const vk::DynamicState>(MeshDynamicStates)
 																							  : std::span<const vk::DynamicState>(MeshDynamicStates).first(2);

@@ -1,15 +1,17 @@
 # Atmosphere
 
-The world's air and what a camera makes of bright light: height fog, a sky that follows the sun,
-and bloom, and why they work as they do. The settings are on `EnvironmentComponent` (`Scene`); the
-math is in `Engine/Source/Runtime/Render` (`Atmosphere.h`, `Bloom.h`), the passes in `VulkanBloom`,
-the shaders in `Engine/Shaders/Library/nyx/atmosphere.slang`, `Skybox.slang`, `Bloom.slang` and
-`Tonemap.slang`.
+The world's air, and what a camera and the sky's light make of it: height fog, a sky that follows
+the sun, bloom and ambient occlusion, and why they work as they do. The settings are on
+`EnvironmentComponent` (`Scene`); the math is in `Engine/Source/Runtime/Render` (`Atmosphere.h`,
+`Bloom.h`, `AmbientOcclusion.h`), the passes in `VulkanBloom` and `VulkanAmbientOcclusion`, the
+shaders in `Engine/Shaders/Library/nyx/atmosphere.slang`, `surface.slang`, `Skybox.slang`,
+`Bloom.slang`, `AmbientOcclusion.slang` and `Tonemap.slang`.
 
 ## The environment component
 
-One component holds the world's air and the camera's response to light: *Fog*, *Sky* and *Bloom*
-(`EnvironmentComponent`, reflected, with undo, saved in scenes, sent to a running game). The world's first one counts; a world without one is
+One component holds the world's air and the camera's response to light: *Fog*, *Sky*, *Bloom* and
+*Ambient Occlusion* (`EnvironmentComponent`, reflected, with undo, saved in scenes, sent to a
+running game). The world's first one counts; a world without one is
 drawn as before, to the bit, and so is one whose fog and sky are both off (`NyxAtmosphereGpuTests`
 checks both).
 
@@ -137,6 +139,58 @@ pass and its tonemap, from the HDR scene:
   the GPU, view by view, for the first eight views (`VulkanRenderer::GetSceneViewGpuTimes()`;
   `NyxInstancingBenchmark` prints them).
 
+## Ambient occlusion
+
+The sky's light reaches less far into creases, corners and the feet of things than onto open
+ground; the sun's light is shadowed already. Screen-space ambient occlusion finds, from the scene's
+depth, how much of the sky above each pixel what is near it hides, and dims the sky's light alone
+by it (`VulkanAmbientOcclusion`, per scene view):
+
+1. **The sky's light apart.** A forward renderer lights a pixel in one go; to dim only the sky's
+   part, the scene pass writes it to a second target (`VulkanViewportTarget`'s ambient light,
+   RGBA16F), the rest to the first: `lightSurfaceApart()` gives the sun's and the sky's light
+   apart, `surfaceFragment` and `decalFragment` write `SceneTargets` (a decal blends into both, by
+   its opacity). Through fog, the second target gets the sky's light dimmed by the fog's
+   transmittance, the first the fog's own light: the occlusion dims what of the sky's light reaches
+   the camera, not the fog. Without occlusion (no environment, or it off), all of the light goes to
+   the first target, summed as before, and the second is black: every picture of a scene without
+   it is the same to the bit. A depth prepass, the other way, would draw every mesh twice (every
+   blade of a field of grass) and need each material's vertex stage; the second target costs a
+   write a pixel.
+2. **The depth, halved** (`occlusionDepthFragment`): each half-size pixel takes the depth of the
+   top left of its four, as metres along the view (R32F). One of the four, not their mean: a mean
+   across an edge is a depth nothing is at. The scene's depth is read in place (its layout turned
+   to ShaderReadOnlyOptimal for the passes and back for the picture pass's overlays).
+3. **The occlusion at half size** (`occlusionFragment`): ground truth ambient occlusion (Jimenez
+   et al. 2016, as Intel's XeGTAO does it). The normal comes from the depth (across and up, the
+   neighbour each way whose depth is nearer, so a step at an edge isn't taken for a slope); for a
+   few slices round the view direction, the horizons on both sides are found by stepping out across
+   the screen up to *Radius* metres (what lies beyond counts less and less over its outer 60 %),
+   and the cosine-weighted visible arc between them is integrated exactly (`GetSliceVisibility()`
+   on the CPU, for the tests), times the normal's length in the slice; raised to *Intensity*.
+   *Quality* is the slices and steps: Low 2 × 4, Medium 3 × 6, High 4 × 8. Each pixel's slices and
+   steps are turned by its place in a 4 × 4 tile, mixed so neighbours are far apart, and a
+   point's depth is placed at its own full-size pixel (a quarter texel off the half-size middle,
+   which made an open slope lean into itself).
+4. **The blur** (`occlusionBlurFragment`): along x, then y, five taps four texels wide (the ends
+   half), so the 4 × 4 tile's noise evens out; each tap weighed down by how far its depth is from
+   the pixel's, so it doesn't run across edges.
+5. **Added** (`occlusionCompositeFragment`): the sky's light times the occlusion, filtered up by
+   depth (the four half-size pixels round each pixel, weighed by nearness and by how near their
+   depth is to its own: a bilateral upsample), added to the scene before bloom and the tonemap.
+
+- **No temporal accumulation**: Nyx has no temporal antialiasing to hide a noisier, cheaper
+  estimate under, so the noise is evened out in space; a still picture stays still.
+- **What it can't see**: only what is on the screen occludes; a plane seen nearly edge on finds a
+  little of itself above its horizon (the test box's top, seen from half a metre above it, 2.5 %
+  darker; the far floor under 0.5 %).
+- **Not occluded**: the sky, a material's debug views, the sun's light (`NyxAmbientOcclusionGpuTests`
+  draws a scene lit by the sun alone the same to the bit with it and without).
+- **Seeing it**: *Debug > Ambient Occlusion* in the editor and F6 twice in a Debug build of the
+  game show the occlusion, white where all of the sky's light reaches
+  (`ESceneViewDebug::AmbientOcclusion`). Its passes are timed on the GPU per view
+  (`SceneViewGpuTimes::AmbientOcclusion`).
+
 ## Seeing it
 
 - *Environment* on an entity in the editor: every value edited live, in the editor's views and a
@@ -199,7 +253,57 @@ whatever the scene, as a pass over the screen does. The scene views' total moves
 up and down (from -0.12 to +0.21 ms), which is the spread from one run to the next plus the GPU
 waiting between passes that depend on each other. The CPU records the passes in 0.01 to 0.03 ms.
 
+Ambient occlusion, on top of the fog, the sky and bloom, at each quality; *AO GPU* is its passes
+alone, by their own timestamps:
+
+| Build | Scene, shot | Ambient occlusion | Frame | Scene CPU | Scene views GPU | AO GPU |
+| --- | --- | --- | --- | --- | --- | --- |
+| Debug | instanced, above | off | 10.45 ms | 6.89 ms | 2.19 ms | |
+| Debug | instanced, above | Low | 9.39 ms | 5.85 ms | 2.15 ms | 0.08 ms |
+| Debug | instanced, above | Medium | 9.72 ms | 6.45 ms | 2.02 ms | 0.09 ms |
+| Debug | instanced, above | High | 10.42 ms | 6.32 ms | 2.48 ms | 0.12 ms |
+| Debug | instanced, inside | off | 8.60 ms | 5.85 ms | 1.49 ms | |
+| Debug | instanced, inside | Low | 9.50 ms | 6.68 ms | 1.59 ms | 0.08 ms |
+| Debug | instanced, inside | Medium | 9.24 ms | 6.15 ms | 1.54 ms | 0.09 ms |
+| Debug | instanced, inside | High | 9.39 ms | 6.30 ms | 1.68 ms | 0.12 ms |
+| Debug | ground | off | 3.83 ms | 1.28 ms | 1.61 ms | |
+| Debug | ground | Low | 4.08 ms | 1.38 ms | 1.69 ms | 0.08 ms |
+| Debug | ground | Medium | 4.32 ms | 1.50 ms | 1.71 ms | 0.10 ms |
+| Debug | ground | High | 4.05 ms | 1.42 ms | 1.71 ms | 0.12 ms |
+| Release | instanced, above | off | 2.76 ms | 0.27 ms | 1.82 ms | |
+| Release | instanced, above | Low | 2.85 ms | 0.29 ms | 1.92 ms | 0.07 ms |
+| Release | instanced, above | Medium | 2.76 ms | 0.26 ms | 1.75 ms | 0.08 ms |
+| Release | instanced, above | High | 2.84 ms | 0.25 ms | 1.95 ms | 0.10 ms |
+| Release | instanced, inside | off | 2.28 ms | 0.26 ms | 1.35 ms | |
+| Release | instanced, inside | Low | 2.31 ms | 0.25 ms | 1.52 ms | 0.07 ms |
+| Release | instanced, inside | Medium | 2.53 ms | 0.40 ms | 1.50 ms | 0.08 ms |
+| Release | instanced, inside | High | 2.27 ms | 0.24 ms | 1.38 ms | 0.10 ms |
+| Release | ground | off | 2.31 ms | 0.09 ms | 1.62 ms | |
+| Release | ground | Low | 2.59 ms | 0.12 ms | 1.84 ms | 0.08 ms |
+| Release | ground | Medium | 2.58 ms | 0.11 ms | 1.86 ms | 0.10 ms |
+| Release | ground | High | 2.55 ms | 0.11 ms | 1.78 ms | 0.12 ms |
+
+What it says: the occlusion's passes take 0.07 to 0.12 ms of GPU time at 1280 × 720, Low to High,
+whatever is drawn: they work on the depth at half size, so 50 000 instanced cubes, or 24 000
+scattered ones, cost them no more than a plane. The scene views' totals move by more (up to
++0.24 ms), for the passes waiting on each other and the spread from one run to the next; the CPU
+records five passes in about 0.02 ms in Release. The scene pass's second target costs nothing that
+can be measured with the occlusion off (the same scenes on patch 02's build and this one, without
+an environment: 1.68 against 1.70 ms on the ground scene, 1.20 against 1.20 ms inside the field).
+
+Noise, from `NyxAmbientOcclusionGpuTests` (480 × 270): on the open floor the picture's mean step
+between neighbouring pixels is 0.05 of 255 with the occlusion and 0.06 without: no noise. Down
+among 20 000 thin blades drawn instanced, like grass, the
+occlusion is 0.43, 0.34 and 0.31 (Low, Medium, High) and its mean step between neighbours 14.3,
+13.3 and 12.0 of 255, against the lit picture's own 16.4, 15.9 and 15.3 from the blades' edges:
+the blur evens out the noise, and what is left follows the blades. Its passes there: 0.024, 0.029
+and 0.035 ms.
+
 ## Later
+
+- Ambient occlusion: a temporal filter, once there is temporal antialiasing (fewer samples, less
+  noise); bent normals for the sky's light; the depth's mips for far samples (XeGTAO's), so wide
+  radii cost no more.
 
 - A sky made from the sun's place, by scattering (a sky-view lookup table), instead of a tinted
   cube map; and the environment's light made again from it as the sun moves.

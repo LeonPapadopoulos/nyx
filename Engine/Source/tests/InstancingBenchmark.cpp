@@ -8,8 +8,8 @@
 //
 // Instanced, the field is then put on a ground plane under a sun, and measured again with the
 // sun's shadows off and on (its defaults: four cascades of 2048 texels out to 80 m), then with the
-// world's air (an EnvironmentComponent of the defaults: height fog, the sky following the sun), and
-// with its bloom.
+// world's air (an EnvironmentComponent of the defaults: height fog, the sky following the sun), with
+// its bloom, and with its ambient occlusion at each quality.
 //
 // The ground mode draws the atmosphere test scene (Assets/Scenes/AtmosphereTest.nyxscene: the
 // ground test scene with about 24 000 small cubes scattered over its ground) from its camera,
@@ -188,6 +188,7 @@ namespace
 		double SceneViewsGpu = 0.0;
 		// Of that, the passes after the scene pass, every view's
 		double BloomGpu = 0.0;
+		double OcclusionGpu = 0.0;
 	};
 
 	double Median(std::vector<double> values)
@@ -204,6 +205,7 @@ namespace
 		std::vector<double> scene;
 		std::vector<double> sceneViews;
 		std::vector<double> bloom;
+		std::vector<double> occlusion;
 		for (int index = 0; index < frames; ++index)
 		{
 			const auto start = std::chrono::steady_clock::now();
@@ -218,8 +220,10 @@ namespace
 						for (const uint64_t view : static_cast<IEditorRenderer&>(gpu.Renderer).GetSceneViewIds())
 						{
 							passes.Bloom += gpu.Renderer.GetSceneViewGpuTimes(view)->Bloom;
+							passes.AmbientOcclusion += gpu.Renderer.GetSceneViewGpuTimes(view)->AmbientOcclusion;
 						}
 						bloom.push_back(passes.Bloom);
+						occlusion.push_back(passes.AmbientOcclusion);
 					}
 				});
 			frame.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
@@ -229,14 +233,15 @@ namespace
 		{
 			sceneViews.push_back(0.0);
 			bloom.push_back(0.0);
+			occlusion.push_back(0.0);
 		}
-		return Timing{ Median(frame), Median(scene), Median(sceneViews), Median(bloom) };
+		return Timing{ Median(frame), Median(scene), Median(sceneViews), Median(bloom), Median(occlusion) };
 	}
 
 	void PrintTiming(const char* name, const Timing& timing)
 	{
-		std::printf("  %-7s frame %8.2f ms   scene CPU %8.2f ms   scene views GPU %7.2f ms   bloom GPU %5.2f ms\n", name, timing.Frame, timing.SceneCpu,
-			timing.SceneViewsGpu, timing.BloomGpu);
+		std::printf("  %-7s frame %8.2f ms   scene CPU %8.2f ms   scene views GPU %7.2f ms   bloom GPU %5.2f ms   occlusion GPU %5.2f ms\n", name, timing.Frame,
+			timing.SceneCpu, timing.SceneViewsGpu, timing.BloomGpu, timing.OcclusionGpu);
 	}
 
 	// The world's air, each way it is measured: each line adds to the one before
@@ -245,11 +250,16 @@ namespace
 		const char* Name;
 		bool bEnvironment = false;
 		bool bBloom = false;
+		bool bAmbientOcclusion = false;
+		EAmbientOcclusionQuality Quality = EAmbientOcclusionQuality::Medium;
 	};
 	const AirSetting AirSettings[] = {
-		{ "without an environment", false, false },
-		{ "with an environment: height fog, the sky following the sun", true, false },
-		{ "with an environment and bloom", true, true },
+		{ "without an environment", false, false, false },
+		{ "with an environment: height fog, the sky following the sun", true, false, false },
+		{ "with an environment and bloom", true, true, false },
+		{ "with an environment, bloom and ambient occlusion (low)", true, true, true, EAmbientOcclusionQuality::Low },
+		{ "with an environment, bloom and ambient occlusion (medium, the default)", true, true, true, EAmbientOcclusionQuality::Medium },
+		{ "with an environment, bloom and ambient occlusion (high)", true, true, true, EAmbientOcclusionQuality::High },
 	};
 
 	void SetAir(Registry& world, Entity air, const AirSetting& setting)
@@ -259,6 +269,8 @@ namespace
 		{
 			EnvironmentComponent environment;
 			environment.bBloom = setting.bBloom;
+			environment.bAmbientOcclusion = setting.bAmbientOcclusion;
+			environment.OcclusionQuality = setting.Quality;
 			world.Add<EnvironmentComponent>(air, environment);
 		}
 	}

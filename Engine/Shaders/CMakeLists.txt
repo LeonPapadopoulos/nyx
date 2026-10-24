@@ -15,6 +15,7 @@ set(NYX_SHADER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/Environment.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Shadow.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Bloom.slang
+    ${CMAKE_CURRENT_SOURCE_DIR}/AmbientOcclusion.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Grid.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/Grid.frag
     ${CMAKE_CURRENT_SOURCE_DIR}/DebugLines.vert

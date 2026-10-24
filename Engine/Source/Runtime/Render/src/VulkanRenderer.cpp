@@ -6,6 +6,7 @@
 #include "VulkanUtil.h"
 #include "Log.h"
 #include "GltfImporter.h"
+#include "AmbientOcclusion.h"
 #include "Atmosphere.h"
 #include "Bloom.h"
 #include "EnvironmentComponent.h"
@@ -278,6 +279,10 @@ namespace Nyx
 			{
 				BindSceneSets(view, cmd);
 			});
+		AmbientOcclusion.Initialize(Bindless, *ScenePipelineLayout, [this](SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
+			{
+				BindSceneSets(view, cmd);
+			});
 
 		LoadSkyboxCubemap();
 		// Its light: the specular cube, the irradiance, the BRDF table
@@ -330,6 +335,7 @@ namespace Nyx
 
 			UI.ReleaseSceneViewBlur(view);
 			Bloom.Release(view.Bloom);
+			AmbientOcclusion.Release(view.AmbientOcclusion);
 			view.RenderTarget.Shutdown(Context);
 		}
 		SceneViews.clear();
@@ -348,6 +354,7 @@ namespace Nyx
 		Environment.Shutdown();
 		Shadows.Shutdown();
 		Bloom.Shutdown();
+		AmbientOcclusion.Shutdown();
 		PassTimestamps = nullptr;
 		Bindless.Shutdown();
 		Context.Shutdown();
@@ -813,6 +820,9 @@ namespace Nyx
 			{
 			case ETimedPass::Bloom:
 				view->GpuTimes.Bloom = milliseconds;
+				break;
+			case ETimedPass::AmbientOcclusion:
+				view->GpuTimes.AmbientOcclusion = milliseconds;
 				break;
 			default:
 				break;
@@ -1376,12 +1386,16 @@ namespace Nyx
 				PrepareSceneViewShadows(view, *world);
 			}
 
-			// Its bloom's chain, for its size; none without a world, or in a debug view of the
-			// materials, whose outputs aren't light
-			SceneViewBloomSettings bloom = FindShownWorld(view) ? view.SceneGlobals.Bloom : SceneViewBloomSettings{};
+			// Its bloom's chain and its ambient occlusion's targets, for its size; none without a
+			// world, or in a debug view of the materials, whose outputs aren't light
 			const uint32_t debugView = static_cast<uint32_t>(view.Debug);
-			bloom.bBloom = bloom.bBloom && (debugView < static_cast<uint32_t>(ESceneViewDebug::BaseColor) || debugView > static_cast<uint32_t>(ESceneViewDebug::UvChecker));
+			const bool bLit = FindShownWorld(view) && (debugView < static_cast<uint32_t>(ESceneViewDebug::BaseColor) || debugView > static_cast<uint32_t>(ESceneViewDebug::UvChecker));
+			SceneViewBloomSettings bloom = view.SceneGlobals.Bloom;
+			bloom.bBloom = bloom.bBloom && bLit;
 			Bloom.Prepare(view.Bloom, view.RenderTarget.GetExtent(), bloom);
+			SceneViewAmbientOcclusionSettings occlusion = view.SceneGlobals.AmbientOcclusion;
+			occlusion.bAmbientOcclusion = occlusion.bAmbientOcclusion && bLit;
+			AmbientOcclusion.Prepare(view.AmbientOcclusion, view.RenderTarget, occlusion, view.bRecreatedThisFrame);
 		}
 
 		// One shadow map for every view: as big as the largest any of them asks for
@@ -1765,7 +1779,11 @@ namespace Nyx
 	void VulkanRenderer::RegisterHdrPicture(SceneViewInstance& view)
 	{
 		Bindless.RemoveTexture(view.HdrTextureSlot);
+		Bindless.RemoveTexture(view.AmbientTextureSlot);
+		Bindless.RemoveTexture(view.DepthTextureSlot);
 		view.HdrTextureSlot = Bindless.AddTexture(view.RenderTarget.GetHdrImageView());
+		view.AmbientTextureSlot = Bindless.AddTexture(view.RenderTarget.GetAmbientImageView());
+		view.DepthTextureSlot = Bindless.AddTexture(view.RenderTarget.GetDepthImageView());
 	}
 
 	void VulkanRenderer::CreateTonemapPipeline()
@@ -1894,10 +1912,13 @@ namespace Nyx
 			vk::ColorComponentFlagBits::eB |
 			vk::ColorComponentFlagBits::eA;
 
+		// The scene pass's second target, the sky's light apart for the ambient occlusion, is written
+		// black: the sky isn't occluded. (Blended alike, as without independent blending they must.)
+		const std::array<vk::PipelineColorBlendAttachmentState, 2> blendAttachments = { colorBlendAttachment, colorBlendAttachment };
 		vk::PipelineColorBlendStateCreateInfo colorBlending{};
 		colorBlending.logicOpEnable = VK_FALSE;
-		colorBlending.attachmentCount = 1;
-		colorBlending.pAttachments = &colorBlendAttachment;
+		colorBlending.attachmentCount = static_cast<uint32_t>(blendAttachments.size());
+		colorBlending.pAttachments = blendAttachments.data();
 
 		std::array<vk::DynamicState, 2> dynamicStates = {
 			vk::DynamicState::eViewport,
@@ -2074,6 +2095,23 @@ namespace Nyx
 		{
 			ubo.BloomTexture = view.Bloom.Slots.front();
 			ubo.BloomIntensity = view.Bloom.Settings.Intensity;
+		}
+
+		// Its ambient occlusion; and the projection, for the picture and the depth back to view space
+		const glm::mat4& projection = view.SceneGlobals.Projection;
+		ubo.ProjectionInfo = glm::vec4(1.0f / projection[0][0], 1.0f / projection[1][1], projection[2][2], projection[3][2]);
+		const SceneViewAmbientOcclusion& occlusion = view.AmbientOcclusion;
+		if (occlusion.Settings.bAmbientOcclusion && occlusion.Extent.width > 0)
+		{
+			ubo.AmbientOcclusion = 1;
+			ubo.AmbientLightTexture = view.AmbientTextureSlot;
+			ubo.SceneDepthTexture = view.DepthTextureSlot;
+			ubo.OcclusionTexture = occlusion.Occlusion.Slot;
+			ubo.OcclusionDepthTexture = occlusion.Depth.Slot;
+			ubo.OcclusionRadius = occlusion.Settings.Radius;
+			ubo.OcclusionIntensity = occlusion.Settings.Intensity;
+			ubo.OcclusionSlices = occlusion.Settings.Slices;
+			ubo.OcclusionSteps = occlusion.Settings.Steps;
 		}
 
 		void* mapped = view.SceneUniformBufferMemory.mapMemory(0, sizeof(SceneUBO));
@@ -2262,6 +2300,10 @@ namespace Nyx
 		{
 			Bloom.CreatePipelines();
 		}
+		if (changed.contains("AmbientOcclusion.slang"))
+		{
+			AmbientOcclusion.CreatePipelines();
+		}
 		if (uses("DebugLines"))
 		{
 			DebugLines.CreatePipeline(SceneViews.front());
@@ -2399,6 +2441,7 @@ namespace Nyx
 				view.SceneGlobals.Atmosphere = Nyx::MakeSceneViewAtmosphere(environment, view.SceneGlobals.LightDirectionWS, view.SceneGlobals.LightColor);
 				view.SceneGlobals.LightColor = view.SceneGlobals.Atmosphere.SunColor;
 				view.SceneGlobals.Bloom = Nyx::MakeSceneViewBloomSettings(environment);
+				view.SceneGlobals.AmbientOcclusion = Nyx::MakeSceneViewAmbientOcclusionSettings(environment);
 			});
 	}
 
@@ -2411,6 +2454,8 @@ namespace Nyx
 
 		view.RenderTarget.Initialize(Context, 1, 1, vk::Format::eR8G8B8A8Unorm);
 		view.HdrTextureSlot = Bindless.AddTexture(view.RenderTarget.GetHdrImageView());
+		view.AmbientTextureSlot = Bindless.AddTexture(view.RenderTarget.GetAmbientImageView());
+		view.DepthTextureSlot = Bindless.AddTexture(view.RenderTarget.GetDepthImageView());
 
 		CreateSceneResourcesForView(view);
 		Overlays.CreateViewResources(view);
@@ -2455,8 +2500,11 @@ namespace Nyx
 
 			Overlays.DestroyViewResources(*it);
 			Bloom.Release(it->Bloom);
+			AmbientOcclusion.Release(it->AmbientOcclusion);
 
 			Bindless.RemoveTexture(it->HdrTextureSlot);
+			Bindless.RemoveTexture(it->AmbientTextureSlot);
+			Bindless.RemoveTexture(it->DepthTextureSlot);
 			it->RenderTarget.Shutdown(Context);
 			UI.ReleaseSceneViewBlur(*it);
 
@@ -2658,6 +2706,15 @@ namespace Nyx
 			DrawRenderDecals(view, *world, cmd);
 		}
 		view.RenderTarget.EndRenderPass(cmd);
+
+		// Its ambient occlusion: the sky's light the scene pass wrote apart, occluded, added to the
+		// scene
+		if (view.AmbientOcclusion.Settings.bAmbientOcclusion && view.AmbientOcclusion.Extent.width > 0)
+		{
+			WritePassTimestamp(cmd, view, ETimedPass::AmbientOcclusion, false);
+			AmbientOcclusion.Draw(view, view.DepthTextureSlot, cmd);
+			WritePassTimestamp(cmd, view, ETimedPass::AmbientOcclusion, true);
+		}
 
 		// Its bloom, from the scene in HDR, for the tonemap to add
 		if (view.Bloom.Settings.bBloom && view.Bloom.Levels > 0)

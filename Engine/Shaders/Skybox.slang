@@ -23,8 +23,15 @@ VertexOutput skyboxVertex(float3 position : POSITION)
     return output;
 }
 
-[shader("fragment")]
-float4 skyboxFragment(VertexOutput input) : SV_Target
+// The scene pass's two targets (nyx.surface's SceneTargets): the sky, and no light for the ambient
+// occlusion to dim
+struct SkyTargets
+{
+    float4 Color : SV_Target0;
+    float4 Ambient : SV_Target1;
+}
+
+float4 skyColor(VertexOutput input)
 {
     // Behind a material's debug view, a dark grey that keeps the shape apart: the same on screen
     // whether the view encodes colours (base colour, emission) or shows data as it is
@@ -37,4 +44,13 @@ float4 skyboxFragment(VertexOutput input) : SV_Target
     const float4 sky = View.Environment.Sample(nyx::LinearClamp, nyx::skyDirection(direction));
     const float3 color = sky.rgb * nyx::skyTint() + nyx::sunGlow(direction);
     return float4(nyx::skyFog(direction).apply(color), sky.a);
+}
+
+[shader("fragment")]
+SkyTargets skyboxFragment(VertexOutput input)
+{
+    SkyTargets targets;
+    targets.Color = skyColor(input);
+    targets.Ambient = float4(0.0, 0.0, 0.0, 1.0);
+    return targets;
 }

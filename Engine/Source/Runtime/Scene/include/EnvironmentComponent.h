@@ -8,11 +8,21 @@
 
 namespace Nyx
 {
+	// How many samples ambient occlusion takes a pixel: more are smoother and cost more
+	NYX_ENUM()
+	enum class EAmbientOcclusionQuality : uint8_t
+	{
+		Low,
+		Medium,
+		High
+	};
+
 	// The world's air and sky, and what the camera makes of bright light, as every view of the
 	// world draws them: height fog, thick near the ground and thinning upwards, which hides what is
 	// far away in its colour and glows towards the sun; a sky that follows the primary light, its
 	// colour tinted by the sun's, dimmer as the sun goes down, its light warmer and weaker the lower
-	// the sun is, through more air; and bloom, the light of what is brightest spread round it. The
+	// the sun is, through more air; bloom, the light of what is brightest spread round it; and
+	// ambient occlusion, the sky's light kept out of creases, corners and the feet of things. The
 	// world's first such component counts; without one, nothing of this is drawn.
 	NYX_REFLECT(Component, meta = (DisplayName = "Environment"))
 	struct EnvironmentComponent
@@ -79,6 +89,18 @@ namespace Nyx
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Bloom", DisplayName = "Levels", Tooltip = "How many times the picture is halved, 1 to 8: each level spreads the light twice as far"))
 		int32_t BloomLevels = 6;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Ambient Occlusion", DisplayName = "Ambient Occlusion", Tooltip = "Whether the sky's light is kept out of creases, corners and the feet of things, by what is near them on the screen; the sun's light is left as it is"))
+		bool bAmbientOcclusion = true;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Ambient Occlusion", DisplayName = "Radius", DragSpeed = 0.01, Tooltip = "How far round a point what hides the sky from it is looked for, in metres"))
+		float OcclusionRadius = 1.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Ambient Occlusion", DisplayName = "Intensity", DragSpeed = 0.01, Tooltip = "How dark the occlusion makes the sky's light, 0 to 8: 1 as found, more darker"))
+		float OcclusionIntensity = 1.5f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Ambient Occlusion", DisplayName = "Quality", Tooltip = "How many samples a pixel takes: Low is cheapest and noisiest"))
+		EAmbientOcclusionQuality OcclusionQuality = EAmbientOcclusionQuality::Medium;
 	};
 }
 

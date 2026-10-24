@@ -3,8 +3,11 @@
 // environment, in range, the sky tinted by the sun's hue without its brightness; the height fog's
 // depth along a ray against the fog summed in small steps, level, up, down, from where it starts,
 // from below and above its height, held at its most opacity; the light it scatters, gathered round
-// the sun; bloom's levels, their sizes and its threshold's knee; and the component saved in a scene
-// and read back.
+// the sun; bloom's levels, their sizes and its threshold's knee; ambient occlusion's size, samples
+// and settings, and the visible part of a slice of the sky, open, beside a wall, between two, and
+// averaged round the view for a tilted open surface; and the component saved in a scene and read
+// back.
+#include "AmbientOcclusion.h"
 #include "Atmosphere.h"
 #include "Bloom.h"
 #include "ComponentRegistration.h"
@@ -293,6 +296,66 @@ namespace
 		Require(!MakeSceneViewBloomSettings(environment).bBloom, "Bloom of no intensity is drawn");
 	}
 
+	// The visible part of an open surface, averaged over the slices round the view as
+	// AmbientOcclusion.slang takes them: each slice's plane through the view direction, the normal
+	// projected into it, its horizons as low as the surface lets them be
+	float OpenSurfaceVisibility(const glm::vec3& normal, int slices)
+	{
+		const glm::vec3 toCamera(0.0f, 0.0f, -1.0f);
+		double sum = 0.0;
+		for (int slice = 0; slice < slices; ++slice)
+		{
+			const float phi = (slice + 0.5f) / slices * Pi;
+			const glm::vec3 direction(std::cos(phi), std::sin(phi), 0.0f);
+			const glm::vec3 ortho = direction - glm::dot(direction, toCamera) * toCamera;
+			const glm::vec3 axis = glm::normalize(glm::cross(ortho, toCamera));
+			const glm::vec3 projected = normal - axis * glm::dot(normal, axis);
+			const float length = glm::length(projected);
+			const float sign = glm::dot(ortho, projected) < 0.0f ? -1.0f : 1.0f;
+			const float n = sign * std::acos(std::clamp(glm::dot(projected, toCamera) / length, -1.0f, 1.0f));
+			sum += length * GetSliceVisibility(n, n - Pi * 0.5f, n + Pi * 0.5f);
+		}
+		return static_cast<float>(sum / slices);
+	}
+
+	void TestAmbientOcclusion()
+	{
+		// Half the view, at least a pixel
+		Require(GetAmbientOcclusionSize(1280, 720) == glm::uvec2(640, 360) && GetAmbientOcclusionSize(3, 5) == glm::uvec2(1, 2) && GetAmbientOcclusionSize(1, 1) == glm::uvec2(1, 1),
+			"The occlusion's size isn't half the view's");
+		Require(GetAmbientOcclusionSamples(EAmbientOcclusionQuality::Low) == glm::uvec2(2, 4) && GetAmbientOcclusionSamples(EAmbientOcclusionQuality::Medium) == glm::uvec2(3, 6) &&
+				GetAmbientOcclusionSamples(EAmbientOcclusionQuality::High) == glm::uvec2(4, 8),
+			"The qualities' samples aren't 2 x 4, 3 x 6 and 4 x 8");
+
+		// The settings from the environment, in range
+		EnvironmentComponent environment;
+		const SceneViewAmbientOcclusionSettings defaults = MakeSceneViewAmbientOcclusionSettings(environment);
+		Require(defaults.bAmbientOcclusion && defaults.Radius == 1.0f && defaults.Slices == 3 && defaults.Steps == 6, "The environment's occlusion isn't on by its defaults");
+		environment.OcclusionQuality = EAmbientOcclusionQuality::High;
+		environment.OcclusionIntensity = 20.0f;
+		environment.OcclusionRadius = 500.0f;
+		const SceneViewAmbientOcclusionSettings tamed = MakeSceneViewAmbientOcclusionSettings(environment);
+		Require(tamed.Slices == 4 && tamed.Steps == 8 && tamed.Intensity == 8.0f && tamed.Radius == 100.0f, "The occlusion's values aren't brought into range");
+		environment.OcclusionIntensity = 0.0f;
+		Require(!MakeSceneViewAmbientOcclusionSettings(environment).bAmbientOcclusion, "Occlusion of no intensity is drawn");
+
+		// One slice of a surface facing the camera: open, all of it; a wall right beside it on one
+		// side, half; on both, none; horizons beyond the surface's own count as its own
+		Require(std::abs(GetSliceVisibility(0.0f, -Pi * 0.5f, Pi * 0.5f) - 1.0f) < 1e-6f, "An open slice isn't wholly visible");
+		Require(std::abs(GetSliceVisibility(0.0f, -Pi * 0.5f, 0.0f) - 0.5f) < 1e-6f, "A slice with a wall on one side isn't half visible");
+		Require(std::abs(GetSliceVisibility(0.0f, 0.0f, 0.0f)) < 1e-6f, "A slice walled in on both sides is visible");
+		Require(GetSliceVisibility(0.0f, -3.0f, 3.0f) == GetSliceVisibility(0.0f, -Pi * 0.5f, Pi * 0.5f), "Horizons below the surface aren't its own");
+		Require(GetSliceVisibility(0.0f, -Pi * 0.5f, 0.6f) < GetSliceVisibility(0.0f, -Pi * 0.5f, 1.2f), "A higher horizon doesn't hide more");
+
+		// A tilted open surface, its slices round the view averaged: all of it visible
+		for (const float tilt : { 0.0f, 0.4f, 0.9f, 1.3f })
+		{
+			const glm::vec3 normal(std::sin(tilt) * 0.6f, std::sin(tilt) * 0.8f, -std::cos(tilt));
+			const float visibility = OpenSurfaceVisibility(normal, 4000);
+			Require(std::abs(visibility - 1.0f) < 2e-3f, "An open surface tilted by " + std::to_string(tilt) + " isn't wholly visible: " + std::to_string(visibility));
+		}
+	}
+
 	// Saved with a scene and read back as it was
 	void TestSavedWithTheScene()
 	{
@@ -336,6 +399,7 @@ int main()
 		TestHenyeyGreenstein();
 		TestChromaticity();
 		TestBloom();
+		TestAmbientOcclusion();
 		TestSavedWithTheScene();
 	}
 	catch (const std::exception& error)

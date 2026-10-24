@@ -215,6 +215,15 @@ namespace
 		views.SetViewDebug(ESceneViewDebug::Lit);
 		Require(Nyx::RenderTests::Near(Middle(editor.Picture(bloomed)), Middle(lit), 2), "Bloom off should show the lit scene again");
 
+		// Debug > Ambient Occlusion: white in a world without an environment, under the grid
+		views.SetViewDebug(ESceneViewDebug::AmbientOcclusion);
+		const SceneViewPanel& occluded = views.Open();
+		const std::array<uint8_t, 3> occludedMiddle = Middle(editor.Picture(occluded));
+		Require(int(occludedMiddle[0]) + int(occludedMiddle[1]) + int(occludedMiddle[2]) > 600 && !Nyx::RenderTests::Near(occludedMiddle, Middle(lit), 20),
+			"Views opened with Ambient Occlusion on should show it: " + Nyx::RenderTests::Text(occludedMiddle));
+		views.SetViewDebug(ESceneViewDebug::Lit);
+		Require(Nyx::RenderTests::Near(Middle(editor.Picture(occluded)), Middle(lit), 2), "Ambient Occlusion off should show the lit scene again");
+
 		// Debug > Freeze Culling: a view opened after culls by where its camera was at first
 		views.SetCullingDebug(ESceneViewCullingDebug::Frozen);
 		const SceneViewPanel& frozen = views.Open();

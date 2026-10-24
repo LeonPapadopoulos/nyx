@@ -16,6 +16,7 @@
 #include "VulkanEditorOverlays.h"
 #include "VulkanShadows.h"
 #include "VulkanBloom.h"
+#include "VulkanAmbientOcclusion.h"
 #include "Mesh.h"
 #include "RuntimeMeshCache.h"
 #include "MeshInstanceCache.h"
@@ -126,11 +127,28 @@ namespace Nyx
 		uint32_t BloomTexture = 0;
 		float BloomIntensity = 0.0f;
 		uint32_t BloomPadding[2] = {};
+
+		// The view's ambient occlusion (VulkanAmbientOcclusion): 1 while the scene pass writes the
+		// sky's light apart for it; that light, the scene's depth, the occlusion and its depth in
+		// metres at half size, in the bindless array; its radius, intensity, slices and steps
+		uint32_t AmbientOcclusion = 0;
+		uint32_t AmbientLightTexture = 0;
+		uint32_t SceneDepthTexture = 0;
+		uint32_t OcclusionTexture = 0;
+		uint32_t OcclusionDepthTexture = 0;
+		float OcclusionRadius = 0.0f;
+		float OcclusionIntensity = 1.0f;
+		uint32_t OcclusionSlices = 0;
+		uint32_t OcclusionSteps = 0;
+		uint32_t OcclusionPadding[3] = {};
+		// 1 / the projection's [0][0] and [1][1], its [2][2] and [3][2]: from the picture and the
+		// depth buffer to view space
+		glm::vec4 ProjectionInfo{ 0.0f };
 	};
 
 	// The view's set (set 1) as nyx/view.slang reads it, in scalar layout; to whole 16 bytes, as
 	// std140 would be too
-	static_assert(sizeof(SceneUBO) == 880, "SceneUBO must match ViewConstants in nyx/view.slang");
+	static_assert(sizeof(SceneUBO) == 944, "SceneUBO must match ViewConstants in nyx/view.slang");
 
 	// One draw's push constants, the same for every scene pipeline: ObjectConstants in
 	// nyx/bindless.slang
@@ -475,7 +493,8 @@ namespace Nyx
 		vk::RenderPass GetPickingRenderPass() const;
 		// Their picture pass (8-bit, after the tonemap), for what draws over the picture
 		vk::RenderPass GetPictureRenderPass() const;
-		// The view's HDR picture into its bindless slot, after the view's targets were made
+		// The view's HDR picture, its ambient light and its depth into their bindless slots, after
+		// the view's targets were made
 		void RegisterHdrPicture(SceneViewInstance& view);
 		void CreateTonemapPipeline();
 		void DrawTonemap(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
@@ -568,6 +587,8 @@ namespace Nyx
 		VulkanShadows Shadows{ Context, Programs };
 		// Each view's bloom, between its scene pass and its tonemap
 		VulkanBloom Bloom{ Context, Programs };
+		// Each view's ambient occlusion, right after its scene pass
+		VulkanAmbientOcclusion AmbientOcclusion{ Context, Programs };
 
 		// The GPU times of each view's passes after its scene pass (SceneViewGpuTimes), for the
 		// first MaxTimedViews views: a pair of timestamps a pass a view, reset at the frame's start
@@ -575,6 +596,7 @@ namespace Nyx
 		enum class ETimedPass : uint32_t
 		{
 			Bloom,
+			AmbientOcclusion,
 			Count
 		};
 		static constexpr uint32_t MaxTimedViews = 8;

@@ -40,6 +40,9 @@ namespace Nyx
 		RenderPass = nullptr;
 		SceneFramebuffer = nullptr;
 		SceneRenderPass = nullptr;
+		AmbientImageView = nullptr;
+		AmbientMemory = nullptr;
+		AmbientImage = nullptr;
 		HdrImageView = nullptr;
 		HdrMemory = nullptr;
 		HdrImage = nullptr;
@@ -73,9 +76,10 @@ namespace Nyx
 
 	void VulkanViewportTarget::BeginScenePass(vk::raii::CommandBuffer& commandBuffer, const vk::ClearColorValue& clearValue)
 	{
-		std::vector<vk::ClearValue> clearValues(2);
+		std::vector<vk::ClearValue> clearValues(3);
 		clearValues[0].color = clearValue;
-		clearValues[1].depthStencil = vk::ClearDepthStencilValue(FarPlaneDepth, 0);
+		clearValues[1].color = vk::ClearColorValue(std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 0.0f });
+		clearValues[2].depthStencil = vk::ClearDepthStencilValue(FarPlaneDepth, 0);
 		BeginPass(commandBuffer, *SceneRenderPass, *SceneFramebuffer, clearValues);
 	}
 
@@ -184,7 +188,19 @@ namespace Nyx
 		viewInfo.format = HdrFormat;
 		viewInfo.subresourceRange = vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1);
 		HdrImageView = vk::raii::ImageView(context.GetDevice(), viewInfo);
+
+		// The sky's light apart, as big
+		imageInfo.format = AmbientFormat;
+		AmbientImage = vk::raii::Image(context.GetDevice(), imageInfo);
+		const vk::MemoryRequirements ambientRequirements = AmbientImage.getMemoryRequirements();
+		AmbientMemory = vk::raii::DeviceMemory(context.GetDevice(), vk::MemoryAllocateInfo(ambientRequirements.size,
+			FindMemoryType(*context.GetPhysicalDevice(), ambientRequirements.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal)));
+		AmbientImage.bindMemory(*AmbientMemory, 0);
+		viewInfo.image = *AmbientImage;
+		viewInfo.format = AmbientFormat;
+		AmbientImageView = vk::raii::ImageView(context.GetDevice(), viewInfo);
 	}
+
 
 	void VulkanViewportTarget::CreateSampler(VulkanContext& context)
 	{
@@ -211,8 +227,17 @@ namespace Nyx
 		subpass.pColorAttachments = &colorRef;
 		subpass.pDepthStencilAttachment = &depthRef;
 
-		// The scene: HDR colour and depth, cleared, both kept for the picture pass
+		// The scene: HDR colour, the ambient light and depth, cleared, all kept for the passes after
 		{
+			const std::array<vk::AttachmentReference, 2> sceneColorRefs = { vk::AttachmentReference(0, vk::ImageLayout::eColorAttachmentOptimal),
+				vk::AttachmentReference(1, vk::ImageLayout::eColorAttachmentOptimal) };
+			const vk::AttachmentReference sceneDepthRef(2, vk::ImageLayout::eDepthStencilAttachmentOptimal);
+			vk::SubpassDescription sceneSubpass{};
+			sceneSubpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
+			sceneSubpass.colorAttachmentCount = static_cast<uint32_t>(sceneColorRefs.size());
+			sceneSubpass.pColorAttachments = sceneColorRefs.data();
+			sceneSubpass.pDepthStencilAttachment = &sceneDepthRef;
+
 			vk::AttachmentDescription color{};
 			color.format = HdrFormat;
 			color.samples = vk::SampleCountFlagBits::e1;
@@ -222,6 +247,9 @@ namespace Nyx
 			color.stencilStoreOp = vk::AttachmentStoreOp::eDontCare;
 			color.initialLayout = vk::ImageLayout::eUndefined;
 			color.finalLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
+
+			vk::AttachmentDescription ambient = color;
+			ambient.format = AmbientFormat;
 
 			vk::AttachmentDescription depth = color;
 			depth.format = DepthFormat;
@@ -242,8 +270,8 @@ namespace Nyx
 			dependencies[1].srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite | vk::AccessFlagBits::eDepthStencilAttachmentWrite;
 			dependencies[1].dstAccessMask = vk::AccessFlagBits::eShaderRead | vk::AccessFlagBits::eDepthStencilAttachmentRead | vk::AccessFlagBits::eDepthStencilAttachmentWrite;
 
-			const std::array<vk::AttachmentDescription, 2> attachments = { color, depth };
-			SceneRenderPass = vk::raii::RenderPass(context.GetDevice(), vk::RenderPassCreateInfo({}, attachments, subpass, dependencies));
+			const std::array<vk::AttachmentDescription, 3> attachments = { color, ambient, depth };
+			SceneRenderPass = vk::raii::RenderPass(context.GetDevice(), vk::RenderPassCreateInfo({}, attachments, sceneSubpass, dependencies));
 		}
 
 		// The picture: written whole by the tonemap, so not loaded; the scene's depth loaded
@@ -303,8 +331,9 @@ namespace Nyx
 
 		Framebuffer = vk::raii::Framebuffer(context.GetDevice(), fbInfo);
 
-		const std::array<vk::ImageView, 2> sceneAttachments = { *HdrImageView, *DepthImageView };
+		const std::array<vk::ImageView, 3> sceneAttachments = { *HdrImageView, *AmbientImageView, *DepthImageView };
 		fbInfo.renderPass = *SceneRenderPass;
+		fbInfo.attachmentCount = static_cast<uint32_t>(sceneAttachments.size());
 		fbInfo.pAttachments = sceneAttachments.data();
 		SceneFramebuffer = vk::raii::Framebuffer(context.GetDevice(), fbInfo);
 	}
@@ -345,7 +374,7 @@ namespace Nyx
 			1,
 			vk::SampleCountFlagBits::e1,
 			vk::ImageTiling::eOptimal,
-			vk::ImageUsageFlagBits::eDepthStencilAttachment,
+			vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled,
 			vk::SharingMode::eExclusive,
 			{},
 			vk::ImageLayout::eUndefined);
