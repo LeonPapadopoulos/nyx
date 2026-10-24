@@ -55,6 +55,17 @@ namespace Nyx
 
 	void WindowsWindow::PollEvents()
 	{
+		// Windows takes a window whose thread hasn't taken a message from its queue for about five
+		// seconds for hung, and shows it so for a moment: the window flashes and its taskbar button
+		// blinks. A window nobody touches gets no messages, and this loop waits for vsync or its frame
+		// limit, not for messages, so polling an empty queue doesn't count. A message of its own, once
+		// a second, keeps it from looking hung.
+		const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+		if (now - LastKeepAlive >= std::chrono::seconds(1))
+		{
+			PostMessageW(glfwGetWin32Window(Window), WM_NULL, 0, 0);
+			LastKeepAlive = now;
+		}
 		glfwPollEvents();
 		TrackPlacement();
 	}

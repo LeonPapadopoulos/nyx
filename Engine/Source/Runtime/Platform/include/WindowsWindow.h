@@ -3,6 +3,7 @@
 #include "FrameRateLimiter.h"
 #include "Window.h"
 
+#include <chrono>
 #include <functional>
 #include <memory>
 
@@ -86,6 +87,10 @@ namespace Nyx
 		WindowData Data;
 		FrameRateLimiter FrameLimiter;
 		bool bTitlebarHovered = false;
+
+		// When PollEvents() last gave the window a message of its own (WM_NULL), so Windows doesn't take
+		// it for hung while nothing else sends it any
+		std::chrono::steady_clock::time_point LastKeepAlive{};
 
 		WindowFrameContent FrameContent;
 
