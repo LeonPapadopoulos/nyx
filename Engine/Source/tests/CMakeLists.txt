@@ -445,6 +445,14 @@ add_dependencies(NyxShadowCascadeTests NyxGeneratedReflection)
 set_property(TARGET NyxShadowCascadeTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxShadowCascadeTests COMMAND NyxShadowCascadeTests)
 
+# The world's air without a GPU: the sun through the air, the daylight, the view's air from an
+# environment, the height fog along rays against the fog summed in steps, the component saved.
+add_executable(NyxAtmosphereTests AtmosphereTests.cpp)
+target_link_libraries(NyxAtmosphereTests PRIVATE NyxEngine)
+add_dependencies(NyxAtmosphereTests NyxGeneratedReflection)
+set_property(TARGET NyxAtmosphereTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxAtmosphereTests COMMAND NyxAtmosphereTests)
+
 # Material files and their values without a GPU: reading and writing, offsets, layouts that change.
 add_executable(NyxMaterialTests MaterialTests.cpp)
 target_link_libraries(NyxMaterialTests PRIVATE NyxEngine)
@@ -521,6 +529,18 @@ set_property(TARGET NyxShadowGpuTests PROPERTY FOLDER "Tests")
 nyx_copy_shaders_next_to(NyxShadowGpuTests)
 nyx_copy_shader_compiler_next_to(NyxShadowGpuTests)
 add_test(NAME NyxShadowGpuTests COMMAND NyxShadowGpuTests)
+
+# The world's air on a real GPU: height fog on surfaces, decals and the sky against the CPU's,
+# the sky following the sun, against a reference image. Needs a Vulkan device; its window stays
+# hidden.
+add_executable(NyxAtmosphereGpuTests AtmosphereGpuTests.cpp)
+target_link_libraries(NyxAtmosphereGpuTests PRIVATE NyxEngine)
+target_compile_definitions(NyxAtmosphereGpuTests PRIVATE NYX_TEST_REFERENCES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/References")
+add_dependencies(NyxAtmosphereGpuTests NyxGeneratedReflection)
+set_property(TARGET NyxAtmosphereGpuTests PROPERTY FOLDER "Tests")
+nyx_copy_shaders_next_to(NyxAtmosphereGpuTests)
+nyx_copy_shader_compiler_next_to(NyxAtmosphereGpuTests)
+add_test(NAME NyxAtmosphereGpuTests COMMAND NyxAtmosphereGpuTests)
 
 # How long the renderer takes for 50 000 small meshes in 200 cells and 300 more, drawn one by one
 # and instanced; not run by ctest, timing depends on the machine. Needs a Vulkan device.

@@ -66,6 +66,19 @@ public struct ViewConstants
     public uint ShadowPadding0;
     public uint ShadowPadding1;
     public uint ShadowPadding2;
+
+    // The world's air (EnvironmentComponent; nyx.atmosphere reads it). The height fog's own
+    // colour, tinted as the sky is, and its density a metre at its height (a); 0: no fog
+    public float4 FogColor;
+    // How fast it thins upwards, its height, how far from the camera it starts, its most opacity
+    public float4 FogShape;
+    // The sun's light it scatters towards the camera, and how much round the sun (a, g)
+    public float4 FogSun;
+    // What the sky and its light are multiplied by: the sun's hue and the daylight; white without
+    // an environment
+    public float4 SkyTint;
+    // The sky's glow round the sun, and how much it gathers round it (a, g)
+    public float4 SunGlow;
 }
 [vk::binding(0, 1)] public ConstantBuffer<ViewConstants> View;
 

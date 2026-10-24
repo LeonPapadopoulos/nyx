@@ -7,14 +7,25 @@
 // worlds and the views recorded), and the scene views on the GPU, by timestamps.
 //
 // Instanced, the field is then put on a ground plane under a sun, and measured again with the
-// sun's shadows off and on (its defaults: four cascades of 2048 texels out to 80 m).
+// sun's shadows off and on (its defaults: four cascades of 2048 texels out to 80 m), then with the
+// world's air (an EnvironmentComponent of the defaults: height fog, the sky following the sun).
 //
-// NyxInstancingBenchmark [plain|instanced] [frames]: one mode, or both.
+// The ground mode draws the atmosphere test scene (Assets/Scenes/AtmosphereTest.nyxscene: the
+// ground test scene with about 24 000 small cubes scattered over its ground) from its camera,
+// without and with its environment.
+//
+// NyxInstancingBenchmark [plain|instanced|ground] [frames]: one mode, or all.
+#include "AssetResolver.h"
 #include "CameraComponent.h"
+#include "ComponentRegistration.h"
 #include "DirectionalLightComponent.h"
 #include "Entity.h"
+#include "EnvironmentComponent.h"
 #include "Log.h"
 #include "MeshRendererComponent.h"
+#include "Paths.h"
+#include "ScatterInstances.h"
+#include "SceneSerializer.h"
 #include "TransformComponent.h"
 #include "VulkanRenderer.h"
 #include "RenderTestSupport.h"
@@ -211,6 +222,74 @@ namespace
 		return Timing{ Median(frame), Median(scene), Median(sceneViews) };
 	}
 
+	void PrintTiming(const char* name, const Timing& timing)
+	{
+		std::printf("  %-7s frame %8.2f ms   scene CPU %8.2f ms   scene views GPU %7.2f ms\n", name, timing.Frame, timing.SceneCpu, timing.SceneViewsGpu);
+	}
+
+	// The world's air, each way it is measured
+	struct AirSetting
+	{
+		const char* Name;
+		bool bEnvironment = false;
+	};
+	const AirSetting AirSettings[] = {
+		{ "without an environment", false },
+		{ "with an environment (height fog, the sky following the sun)", true },
+	};
+
+	void SetAir(Registry& world, Entity air, const AirSetting& setting)
+	{
+		world.Remove<EnvironmentComponent>(air);
+		if (setting.bEnvironment)
+		{
+			world.Add<EnvironmentComponent>(air, EnvironmentComponent{});
+		}
+	}
+
+	// The atmosphere test scene from its own camera, each way the air is measured
+	void RunGround(SceneRenderer& gpu, int frames)
+	{
+		Registry world;
+		AssetResolver resolver(gpu.Renderer);
+		ScenePostLoadContext context{};
+		context.AssetResolver = &resolver;
+		const std::filesystem::path path = Paths::GetAssetsDir() / "Scenes/AtmosphereTest.nyxscene";
+		if (!SceneSerializer::LoadFromFile(path, world, context))
+		{
+			std::cout << "ground: " << path.string() << " can't be loaded\n";
+			return;
+		}
+		UpdateScatters(world);
+		size_t cubes = 0;
+		world.Each<MeshInstancesComponent>([&](Entity, const MeshInstancesComponent& instances)
+			{
+				cubes += instances.Instances ? instances.Instances->Transforms.size() : 0;
+			});
+		Entity air;
+		world.Each<EnvironmentComponent>([&](Entity entity, const EnvironmentComponent&)
+			{
+				air = entity;
+			});
+
+		IEditorRenderer& renderer = gpu.Renderer;
+		renderer.SetWorld(&world);
+		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewCameraMode(view, EViewportCameraMode::ScenePrimaryCamera);
+		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
+		gpu.DrawUntilShadersCompiled();
+		std::cout << "ground: the atmosphere test scene, " << cubes << " cubes scattered, from its camera\n";
+		for (const AirSetting& setting : AirSettings)
+		{
+			SetAir(world, air, setting);
+			std::cout << "  " << setting.Name << ":\n";
+			PrintTiming("camera", Measure(gpu, frames));
+		}
+		renderer.DestroySceneView(view);
+		renderer.SetWorld(nullptr);
+		gpu.DrawFrames(2);
+	}
+
 	void Run(SceneRenderer& gpu, const std::string& mode, int frames)
 	{
 		Registry world;
@@ -253,8 +332,7 @@ namespace
 			TransformComponent& transform = world.Get<TransformComponent>(camera);
 			transform.Position = shot.Position;
 			transform.Rotation = shot.Rotation;
-			const Timing timing = Measure(gpu, frames);
-			std::printf("  %-7s frame %8.2f ms   scene CPU %8.2f ms   scene views GPU %7.2f ms\n", shot.Name, timing.Frame, timing.SceneCpu, timing.SceneViewsGpu);
+			PrintTiming(shot.Name, Measure(gpu, frames));
 		}
 
 		// On the ground, under the sun, without and with its shadows
@@ -274,8 +352,26 @@ namespace
 					TransformComponent& transform = world.Get<TransformComponent>(camera);
 					transform.Position = shot.Position;
 					transform.Rotation = shot.Rotation;
-					const Timing timing = Measure(gpu, frames);
-					std::printf("  %-7s frame %8.2f ms   scene CPU %8.2f ms   scene views GPU %7.2f ms\n", shot.Name, timing.Frame, timing.SceneCpu, timing.SceneViewsGpu);
+					PrintTiming(shot.Name, Measure(gpu, frames));
+				}
+			}
+
+			// With its shadows, and the world's air
+			const Entity air = world.CreateEntity();
+			for (const AirSetting& setting : AirSettings)
+			{
+				if (!setting.bEnvironment)
+				{
+					continue;
+				}
+				SetAir(world, air, setting);
+				std::cout << mode << " on a ground, under a sun, with its shadows, " << setting.Name << ":\n";
+				for (const Shot& shot : shots)
+				{
+					TransformComponent& transform = world.Get<TransformComponent>(camera);
+					transform.Position = shot.Position;
+					transform.Rotation = shot.Rotation;
+					PrintTiming(shot.Name, Measure(gpu, frames));
 				}
 			}
 		}
@@ -301,10 +397,16 @@ int main(int argc, char** argv)
 	{
 		SceneRenderer gpu("NyxInstancingBenchmark");
 		gpu.Renderer.SetVSync(false);
-		for (const char* mode : { "plain", "instanced" })
+		Nyx::RegisterComponentTypes();
+		for (const char* mode : { "plain", "instanced", "ground" })
 		{
 			if (!only.empty() && only != mode)
 			{
+				continue;
+			}
+			if (std::string(mode) == "ground")
+			{
+				RunGround(gpu, frames);
 				continue;
 			}
 #if !NYX_BENCHMARK_INSTANCING

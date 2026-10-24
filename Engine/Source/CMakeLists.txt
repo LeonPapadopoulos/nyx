@@ -75,6 +75,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/MoveCharacterCommand.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/OrbitCameraComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/DirectionalLightComponent.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/EnvironmentComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/NameComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/PhysicsComponents.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/GroundComponent.cpp
@@ -137,6 +138,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/SceneCulling.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/ShadowCascades.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanShadows.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/Atmosphere.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Texture.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/CubemapTexture.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Material.cpp
@@ -249,6 +251,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/MoveCharacterCommand.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/OrbitCameraComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/DirectionalLightComponent.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/EnvironmentComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/NameComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/PhysicsComponents.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/GroundComponent.h
@@ -322,6 +325,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/SceneCulling.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/ShadowCascades.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanShadows.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/Atmosphere.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Texture.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/CubemapTexture.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Material.h

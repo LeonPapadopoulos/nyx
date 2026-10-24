@@ -5,8 +5,9 @@
 // Bindings follow the bindless plan: set 0 is global and push constants belong to the draw
 // (nyx.bindless), set 1 belongs to the view (nyx.view); a material sees both. The pixel is lit by
 // nyx.lighting: the sun and the sky's light, physically based (metallic-roughness), the sun's
-// shadowed by nyx.shadows.
+// shadowed by nyx.shadows; then seen through the world's height fog (nyx.atmosphere).
 
+__exported import nyx.atmosphere;
 __exported import nyx.bindless;
 __exported import nyx.view;
 __exported import nyx.environment;
@@ -321,21 +322,33 @@ ShadedPixel shadeSurfacePixel<S : ISurface>(VertexOutput vertex, DecalInput deca
     return pixel;
 }
 
+// The fog between the camera and the pixel; none in a debug view of the materials
+nyx::Fog surfaceFog(VertexOutput vertex)
+{
+    if (nyx::isMaterialDebugView())
+    {
+        return nyx::heightFogAlong(float3(0.0, 0.0, -1.0), 0.0);
+    }
+    return nyx::heightFog(vertex.PositionWS);
+}
+
 [shader("fragment")]
 public float4 surfaceFragment<S : ISurface>(VertexOutput vertex, bool bFrontFace : SV_IsFrontFace) : SV_Target
 {
     const ShadedPixel pixel = shadeSurfacePixel<S>(vertex, DecalInput::defaults(), bFrontFace);
-    return float4(pixel.Reflected + pixel.Emission, pixel.Opacity);
+    return float4(surfaceFog(vertex).apply(pixel.Reflected + pixel.Emission), pixel.Opacity);
 }
 
 // The material drawn as a decal, over what is drawn already, in premultiplied alpha, which the
 // decal pipeline blends with (VulkanMaterials): its colour covers what is beneath by its opacity,
-// and its emission adds to both, so it can glow without covering anything
+// and its emission adds to both, so it can glow without covering anything. What is beneath is
+// fogged already: the decal's light is dimmed by the fog, and the fog's own added by its opacity
+// alone, for the part of it the decal covers.
 [shader("fragment")]
 public float4 decalFragment<S : ISurface>(VertexOutput vertex, bool bFrontFace : SV_IsFrontFace) : SV_Target
 {
     const ShadedPixel pixel = shadeSurfacePixel<S>(vertex, objectDecalInput(), bFrontFace);
-    return float4(pixel.Reflected * pixel.Opacity + pixel.Emission, pixel.Opacity);
+    return float4(surfaceFog(vertex).applyPremultiplied(pixel.Reflected * pixel.Opacity + pixel.Emission, pixel.Opacity), pixel.Opacity);
 }
 
 // How much of a decal must be at a pixel for a click there to pick it

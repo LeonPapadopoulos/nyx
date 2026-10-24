@@ -110,11 +110,20 @@ namespace Nyx
 		// ESceneViewShadowDebug
 		uint32_t ShadowDebug = 0;
 		uint32_t ShadowPadding[3] = {};
+
+		// The world's air (SceneViewAtmosphere, nyx.atmosphere): the height fog's colour and its
+		// density (0: no fog); its falloff, height, start distance and most opacity; the sun's light
+		// it scatters and its lobe; the sky's tint; the sky's glow round the sun and its lobe
+		glm::vec4 FogColor{ 0.0f };
+		glm::vec4 FogShape{ 0.0f, 0.0f, 0.0f, 1.0f };
+		glm::vec4 FogSun{ 0.0f };
+		glm::vec4 SkyTint{ 1.0f, 1.0f, 1.0f, 0.0f };
+		glm::vec4 SunGlow{ 0.0f };
 	};
 
 	// The view's set (set 1) as nyx/view.slang reads it, in scalar layout; to whole 16 bytes, as
 	// std140 would be too
-	static_assert(sizeof(SceneUBO) == 784, "SceneUBO must match ViewConstants in nyx/view.slang");
+	static_assert(sizeof(SceneUBO) == 864, "SceneUBO must match ViewConstants in nyx/view.slang");
 
 	// One draw's push constants, the same for every scene pipeline: ObjectConstants in
 	// nyx/bindless.slang
@@ -490,6 +499,9 @@ namespace Nyx
 		// The world's primary directional light, and its shadows, whichever camera the view has; the
 		// default sun, casting none, without one
 		void ExtractSceneLight(SceneViewInstance& view, const Nyx::Registry& registry);
+		// The world's first EnvironmentComponent, under the view's light, after it: its fog and
+		// sky, and the light as the air leaves it; none without one
+		void ExtractSceneEnvironment(SceneViewInstance& view, const Nyx::Registry& registry);
 		void UpdateViewportSceneGlobals(SceneViewInstance& view, const Nyx::Registry& registry);
 
 		// While a frame is recorded (e.g. as the UI is built), a view made shows from its first

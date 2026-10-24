@@ -1,6 +1,8 @@
-// The sky: the view's environment cube map on a cube around the camera, at the far plane.
+// The sky: the view's environment cube map on a cube around the camera, at the far plane, tinted
+// as the world's air says, with its glow round the sun, behind the height fog (nyx.atmosphere).
 // Ported from Skybox.vert and .frag.
 
+import nyx.atmosphere;
 import nyx.bindless;
 import nyx.view;
 
@@ -31,5 +33,8 @@ float4 skyboxFragment(VertexOutput input) : SV_Target
         const bool bColor = View.DebugView == nyx::DebugBaseColor || View.DebugView == nyx::DebugEmission;
         return float4((bColor ? 0.003 : 0.04).xxx, 1.0);
     }
-    return View.Environment.Sample(nyx::LinearClamp, nyx::skyDirection(normalize(input.Direction)));
+    const float3 direction = normalize(input.Direction);
+    const float4 sky = View.Environment.Sample(nyx::LinearClamp, nyx::skyDirection(direction));
+    const float3 color = sky.rgb * nyx::skyTint() + nyx::sunGlow(direction);
+    return float4(nyx::skyFog(direction).apply(color), sky.a);
 }

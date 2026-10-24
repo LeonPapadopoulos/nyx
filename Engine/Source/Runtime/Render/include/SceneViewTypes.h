@@ -96,6 +96,31 @@ namespace Nyx
 		uint32_t Resolution = 2048;
 	};
 
+	// The world's air as a view draws it (EnvironmentComponent, in range, under the view's light:
+	// MakeSceneViewAtmosphere()); without an environment, none: no fog, the sky as it is
+	struct SceneViewAtmosphere
+	{
+		// The height fog: none at density 0. Its density a metre at its height, how fast it thins
+		// upwards, from how far from the camera on, and how much it hides at most
+		float FogDensity = 0.0f;
+		float FogHeightFalloff = 0.0f;
+		float FogHeight = 0.0f;
+		float FogStartDistance = 0.0f;
+		float FogMaxOpacity = 1.0f;
+		// What it scatters towards the camera: its own colour, tinted as the sky is, and the sun's
+		// light, gathered round the sun by its lobe (Henyey-Greenstein's g)
+		glm::vec3 FogColor{ 0.0f };
+		glm::vec3 FogSunColor{ 0.0f };
+		float FogSunLobe = 0.0f;
+		// What the sky and its light are multiplied by
+		glm::vec3 SkyTint{ 1.0f };
+		// The sky's glow round the sun, and its lobe
+		glm::vec3 SunGlowColor{ 0.0f };
+		float SunGlowLobe = 0.0f;
+		// The light's colour where it reaches the ground, through the air
+		glm::vec3 SunColor{ 1.0f };
+	};
+
 	struct ExtractedSceneGlobals
 	{
 		glm::mat4 View{ 1.0f };
@@ -109,6 +134,7 @@ namespace Nyx
 		glm::vec3 LightColor{ 1.0f, 0.98f, 0.95f };
 		float Ambient = 0.18f;
 		SceneViewShadowSettings Shadows;
+		SceneViewAtmosphere Atmosphere;
 
 		bool bHasCamera = false;
 		bool bHasDirectionalLight = false;

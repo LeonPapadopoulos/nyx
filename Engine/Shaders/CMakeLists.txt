@@ -29,6 +29,7 @@ set(NYX_SHADER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/PainterBin.comp
     ${CMAKE_CURRENT_SOURCE_DIR}/Blur.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/Blur.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/atmosphere.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/bindless.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/color.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/environment.slang

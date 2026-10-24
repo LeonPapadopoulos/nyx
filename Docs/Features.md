@@ -538,6 +538,32 @@ cascaded shadow maps, near shadows sharp and far ones coarser, steady as the cam
   two-sided one's does; each cascade culled by its own frustum; two cascades; the editor's camera;
   the debug view), the scene and material reference pictures unchanged.
 
+## Fog and the sky
+
+An *Environment* component on any entity gives the world its air, in the editor's scene views and
+in the game alike: height fog, thick near the ground and thinning upwards, and a sky that follows
+the sun. Without one, nothing changes.
+
+- **Height fog** (*Fog*): *Density*, *Height Falloff* (how fast it thins upwards), *Height* (where
+  it is as thick as its density), *Start Distance* (nothing nearer is fogged), *Color*, *Max
+  Opacity* (below 1, the far hills and the horizon still show), *Sun Scattering* and *Sun Lobe*
+  (the haze glowing towards the sun, in the light's colour). Meshes, instanced ones, two-sided
+  ones and decals are fogged, a decal's glow dimmed through it; the sky is hazy on the horizon.
+- **The sky follows the sun** (*Sky*): with *Follow Sun*, the sky and its light take the sun's hue
+  (*Sun Tint*) and dim through dusk to *Night Brightness*; the sun's light warms and weakens as it
+  goes down, through more air (*Sun Reddening*), and is gone once it has set; a glow round the sun
+  (*Sun Glow*, *Sun Glow Lobe*). A low sun gives warm light, warm haze and long warm shadows.
+- All with undo, saved in scenes and sent to a running game. `Assets/Scenes/AtmosphereTest.nyxscene`:
+  the ground test scene with small cubes scattered over its ground, haze and a low sun.
+- The fog and the sky cost no measurable time, on the GPU or the CPU, with 50 000 instanced cubes in
+  view ([Atmosphere](Design/atmosphere.md#numbers)).
+- Tests: `NyxAtmosphereTests` (the sun through the air; the daylight; the environment's values in
+  range; the fog along rays against the fog summed in steps; the component saved),
+  `NyxAtmosphereGpuTests` (fog on surfaces and the sky against the CPU's numbers; a decal over
+  fog; instanced, plain and two-sided alike; shadows through fog; the sky darker, warmer and
+  glowing round a low sun, the light warmer; nothing changed with it all off; a reference
+  picture; the test scene), the other reference pictures unchanged.
+
 ## Instanced meshes and culling
 
 Many copies of one mesh, such as grass, flowers or stones scattered over a ground, are drawn as one

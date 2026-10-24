@@ -53,14 +53,14 @@ doesn't allow, and on a table that goes round in a circle, so a new dependency s
 | `Reflection` | Type, property and enum metadata, and the `NYX_REFLECT`, `NYX_PROPERTY` and `NYX_ENUM` macros; not under `Runtime` | — |
 | `Net` | TCP connections and the messages they carry | Core |
 | `Input` | Keyboard, mouse and gamepads (through SDL3), gathered from backends into one `InputFrame` per frame; the router: context stacks, actions, the value pipeline, triggers and their traces; the input's history and its view (`InputDebugView`), painted with the UI's widgets; input assets (`.nyxinput`), saved through reflection, and their tuning layers; the checks and recipes for bindings; the input's stream and recordings (`.nyxinputrec`); the game's fly cameras, for entities with a `FlyCameraComponent` (`UpdateFlyCameras()`), and its orbit cameras' input (`OrbitCameraInput`, `Input::UpdateOrbitCameras()`) | Core, Reflection, Scene, UI |
-| `Scene` | Entities and components (the physics components, `CharacterComponent` and `OrbitCameraComponent` among them, and the moves along the ground relative to a camera, `GetGroundMove()`), the component registry, scene files, the tagged binary format, surface anchors (`SurfaceAnchor`: a point, normal and tangent on an entity that move with it), surface decals (`SurfaceDecalComponent`), meshes made at run time (`RuntimeMeshComponent`, not saved), a mesh drawn at many transforms (`MeshInstancesComponent`, not saved), the ground (`GroundComponent`, its heights `SampleGroundHeight()` and its mesh `MakeGroundMesh()`, made in its post-load step), scattering (`ScatterComponent`: copies of an entity's mesh over another entity's mesh, `ScatterOnMesh()`, into the entity's `MeshInstancesComponent`, made in its post-load step and following its surface and the blockers each frame, `UpdateScatters()`, cell by cell so an edit makes only the cells it reaches again; `ScatterBlockerComponent` keeps copies out of an entity's collider or a circle round it; a noise mask), gradient noise shared by the ground and the scatter (`SampleGradientNoise()`), a camera's view and projection and the ray back through a point of its picture (`CameraProjection.h`) | Core, Reflection |
+| `Scene` | Entities and components (the physics components, `CharacterComponent` and `OrbitCameraComponent` among them, and the moves along the ground relative to a camera, `GetGroundMove()`), the component registry, scene files, the tagged binary format, surface anchors (`SurfaceAnchor`: a point, normal and tangent on an entity that move with it), surface decals (`SurfaceDecalComponent`), meshes made at run time (`RuntimeMeshComponent`, not saved), a mesh drawn at many transforms (`MeshInstancesComponent`, not saved), the ground (`GroundComponent`, its heights `SampleGroundHeight()` and its mesh `MakeGroundMesh()`, made in its post-load step), scattering (`ScatterComponent`: copies of an entity's mesh over another entity's mesh, `ScatterOnMesh()`, into the entity's `MeshInstancesComponent`, made in its post-load step and following its surface and the blockers each frame, `UpdateScatters()`, cell by cell so an edit makes only the cells it reaches again; `ScatterBlockerComponent` keeps copies out of an entity's collider or a circle round it; a noise mask), gradient noise shared by the ground and the scatter (`SampleGradientNoise()`), the world's air (`EnvironmentComponent`: height fog, the sky following the sun), a camera's view and projection and the ray back through a point of its picture (`CameraProjection.h`) | Core, Reflection |
 | `Physics` | Rigid bodies, their shapes (boxes, spheres, capsules, static triangle meshes), collisions and the physics step, and characters, on Jolt (`PhysicsWorld`); Jolt's headers stay inside | Core |
 | `Sim` | The game world: its entities, their physics bodies and characters kept in step with the physics components (`PhysicsBodies`), and the simulation systems each fixed step runs, in order (`GameWorld`, `ISimSystem`), the players' commands each step applies (`CommandQueue`), the entity a ray hits first (`PickPhysicsBody()`), the orbit cameras following their targets as drawn (`UpdateOrbitCameras()`) | Core, Reflection, Scene, Physics |
 | `Assets` | Asset files as plain data: images, materials and their options (`MaterialOptions`, reflected, e.g. two-sided), glTF meshes, shader compile requests and results | Core, Reflection |
 | `UI` | The painter, and the painted UI drawn with it on top of ImGui, the dock space among it (`Nyx::UI::DockSpace()`, docked windows down to `DockedWindowMinWidth`) | Core, Reflection |
 | `Link` | The editor link: its messages, live edits, live tuning of the input (`LiveInput`), recordings, the log sink | Core, Net, Input, Scene, Assets |
 | `LinkTools` | Link messages, recordings, scene files and input files as readable text, for the editor and NyxDump; not under `Runtime`, and not in the game | Core, Reflection, Scene, Input, Link |
-| `Render` | The Vulkan renderer, scene views, shaders and materials, meshes made at run time and mesh instances on the GPU (`RuntimeMeshCache`, `MeshInstanceCache`), culling by the views' cameras (`SceneCulling.h`), the primary light's cascaded shadow maps (`ShadowCascades.h`, `VulkanShadows`), and applying the link's shaders and material values | Core, Net, Scene, Assets, UI, Link |
+| `Render` | The Vulkan renderer, scene views, shaders and materials, meshes made at run time and mesh instances on the GPU (`RuntimeMeshCache`, `MeshInstanceCache`), culling by the views' cameras (`SceneCulling.h`), the primary light's cascaded shadow maps (`ShadowCascades.h`, `VulkanShadows`), the world's air as plain math (`Atmosphere.h`: the sun through the air, the sky's tint, height fog along a ray), and applying the link's shaders and material values | Core, Net, Scene, Assets, UI, Link |
 | `Platform` | The window, and where it is kept on the monitors (`FitWindowOnScreen()`) | Core, Input, UI |
 | `App` | The application and its layers, `main()`, the options the editor starts a game with, what a game module brings (`GameModule`) and its player (`IPlayerController`, turning input into commands each frame), the player Nyx's game has without one (`ThirdPersonPlayer`) | Core, Input, Scene, Sim, Render, Platform |
 
@@ -155,7 +155,8 @@ checks every `#include` against this table.
       their last two steps by one factor for the world when it is drawn so, its time for what
       moves by itself (its clock's, else the renderer's: `GetDrawnWorldTime()`), and its debug
       lines;
-      then, per scene view, takes a size asked for, its camera and its world's sun, and culls
+      then, per scene view, takes a size asked for, its camera, its world's sun and its air
+      (`ExtractSceneEnvironment()`, [Atmosphere](Design/atmosphere.md)), and culls
       (`CullSceneView()`): the objects out of its camera's frustum, and the cells of instances, are
       left out, and what draws alike is batched into this frame's instance stream
       ([Instancing](Design/instancing.md)); its shadow cascades are fitted and each culled by its
@@ -163,9 +164,10 @@ checks every `#include` against this table.
       shadow map made as big as the largest view asks for;
       then renders every scene view: the editor's passes (picking only after a click, selection
       masks only when they changed), then per view its shadow cascades into the shadow map, the
-      scene in HDR (the objects, the sky, then the decals blended over them), tonemapped, with the
-      editor's overlays (`VulkanEditorOverlays`, in the views that show them) and the world's debug
-      drawing (`VulkanDebugLines`) over it; then blurs each view's picture;
+      scene in HDR (the objects, the sky, then the decals blended over them, each through the
+      height fog), tonemapped, with the editor's overlays (`VulkanEditorOverlays`, in the views
+      that show them) and the world's debug drawing (`VulkanDebugLines`) over it; then blurs each
+      view's picture;
    4. builds the UI: an ImGui frame in which the window's dock area and strips (`IWindow::DrawUI()`)
       hold every layer's `OnUI()`, then the painted window
       chrome, the painter canvases, and the window painters' segments, binned on the GPU;
@@ -394,6 +396,9 @@ How some systems work, and why they work that way:
   numbers.
 - [Shadows](Design/shadows.md): the primary light's cascaded shadow maps, stable as the camera
   moves, one map for every view, culled per cascade, filtering and biases, the numbers.
+- [Atmosphere](Design/atmosphere.md): the world's air on one component, height fog integrated
+  exactly along each ray in the surface and sky shaders, decals over fog, a sky and a light that
+  follow the sun's height through the air, the numbers.
 - [Undo by guid](Design/undo-by-guid.md): why undo names entities by guid, and how it keeps
   components whole.
 - [Scattering](Design/scattering.md): copies of a mesh over another entity's mesh, sampled by

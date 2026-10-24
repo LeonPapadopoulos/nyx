@@ -6,6 +6,8 @@
 #include "VulkanUtil.h"
 #include "Log.h"
 #include "GltfImporter.h"
+#include "Atmosphere.h"
+#include "EnvironmentComponent.h"
 #include "TransformComponent.h"
 #include "CameraProjection.h"
 #include "PreviousTransformComponent.h"
@@ -1967,6 +1969,14 @@ namespace Nyx
 		ubo.ShadowDistance = shadows.Settings.Distance;
 		ubo.ShadowDebug = static_cast<uint32_t>(view.ShadowDebug);
 
+		// The world's air
+		const SceneViewAtmosphere& air = view.SceneGlobals.Atmosphere;
+		ubo.FogColor = glm::vec4(air.FogColor, air.FogDensity);
+		ubo.FogShape = glm::vec4(air.FogHeightFalloff, air.FogHeight, air.FogStartDistance, air.FogMaxOpacity);
+		ubo.FogSun = glm::vec4(air.FogSunColor, air.FogSunLobe);
+		ubo.SkyTint = glm::vec4(air.SkyTint, 0.0f);
+		ubo.SunGlow = glm::vec4(air.SunGlowColor, air.SunGlowLobe);
+
 		void* mapped = view.SceneUniformBufferMemory.mapMemory(0, sizeof(SceneUBO));
 		std::memcpy(mapped, &ubo, sizeof(SceneUBO));
 		view.SceneUniformBufferMemory.unmapMemory();
@@ -2267,8 +2277,25 @@ namespace Nyx
 			ExtractSceneGlobalsFromEditorCamera(view);
 			break;
 		}
-		// The scene's sun, and its shadows, through the editor's camera too
+		// The scene's sun, and its shadows, through the editor's camera too; then its air
 		ExtractSceneLight(view, registry);
+		ExtractSceneEnvironment(view, registry);
+	}
+
+	void VulkanRenderer::ExtractSceneEnvironment(SceneViewInstance& view, const Nyx::Registry& world)
+	{
+		bool bFound = false;
+		world.Each<Nyx::EnvironmentComponent>(
+			[&](Nyx::Entity, const Nyx::EnvironmentComponent& environment)
+			{
+				if (bFound)
+				{
+					return;
+				}
+				bFound = true;
+				view.SceneGlobals.Atmosphere = Nyx::MakeSceneViewAtmosphere(environment, view.SceneGlobals.LightDirectionWS, view.SceneGlobals.LightColor);
+				view.SceneGlobals.LightColor = view.SceneGlobals.Atmosphere.SunColor;
+			});
 	}
 
 	uint64_t VulkanRenderer::CreateSceneView()

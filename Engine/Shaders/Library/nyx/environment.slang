@@ -1,6 +1,8 @@
 // The environment's light, as VulkanEnvironment makes it from the sky: diffuse light from nine
-// spherical harmonics, specular light from the prefiltered cube, and the split-sum table.
+// spherical harmonics, specular light from the prefiltered cube, and the split-sum table. Both
+// lights are tinted as the sky is (nyx::skyTint(): white without an environment).
 
+import nyx.atmosphere;
 import nyx.bindless;
 import nyx.view;
 
@@ -21,14 +23,14 @@ namespace nyx
                 + c[6].rgb * 0.315392 * (3.0 * n.z * n.z - 1.0)
                 + c[7].rgb * 1.092548 * n.x * n.z
                 + c[8].rgb * 0.546274 * (n.x * n.x - n.y * n.y),
-            0.0);
+            0.0) * skyTint();
     }
 
     // The light a surface of `roughness` (0 to 1) reflects from direction `r`
     public float3 environmentSpecular(float3 r, float roughness)
     {
         const float level = saturate(roughness) * float(View.SpecularLevels - 1);
-        return View.Specular.SampleLevel(LinearClamp, skyDirection(r), level).rgb;
+        return View.Specular.SampleLevel(LinearClamp, skyDirection(r), level).rgb * skyTint();
     }
 
     // The split-sum's scale (x) and bias (y) of F0, for n·v and roughness
