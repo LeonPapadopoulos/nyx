@@ -4,6 +4,7 @@
 #include "VulkanBlur.h"
 #include "VulkanBloom.h"
 #include "VulkanAmbientOcclusion.h"
+#include "VulkanColorGrading.h"
 #include "EditorCamera.h"
 #include "PointLights.h"
 #include "SceneViewTypes.h"
@@ -103,6 +104,8 @@ namespace Nyx
 		// Its ambient occlusion: its targets at half its size, and its settings this frame
 		// (VulkanAmbientOcclusion)
 		SceneViewAmbientOcclusion AmbientOcclusion;
+		// Its colour grading: its lookup table, and its grade this frame (VulkanColorGrading)
+		SceneViewColorGrading ColorGrading;
 		// Its particles this frame, and their pass's framebuffer (VulkanParticles)
 		SceneViewParticles Particles;
 		// What its passes took on the GPU, in the last frame drawn; and its

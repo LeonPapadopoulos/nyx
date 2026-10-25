@@ -26,7 +26,7 @@ namespace Nyx
 		UI,
 		WaitForGpu,
 		// The GPU: the frame's whole command buffer, and the scene views' passes (the scene pass
-		// with the MSAA resolve at its end)
+		// with the MSAA resolve at its end; the colour grading's bake, in frames that bake)
 		GpuFrame,
 		GpuShadows,
 		GpuScene,
@@ -34,6 +34,7 @@ namespace Nyx
 		GpuParticles,
 		GpuBloom,
 		GpuPicture,
+		GpuColorGrading,
 		// The scene views drawn and the samples a pixel they drew with (MSAA, 1 without), and what all
 		// of them drew (SceneViewFrameStats), summed: their scene passes' draw calls, those of many
 		// instances, the instances drawn and culled, the triangles; their shadow cascades, their

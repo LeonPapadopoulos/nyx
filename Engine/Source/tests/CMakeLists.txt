@@ -529,6 +529,14 @@ add_dependencies(NyxTimeOfDayTests NyxGeneratedReflection)
 set_property(TARGET NyxTimeOfDayTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxTimeOfDayTests COMMAND NyxTimeOfDayTests)
 
+# Colour grading without a GPU: the identity's table, each control's way, values in range, the keys
+# blended by the sun's height, baked again only when the grade moved, the component saved.
+add_executable(NyxColorGradingTests ColorGradingTests.cpp)
+target_link_libraries(NyxColorGradingTests PRIVATE NyxEngine)
+add_dependencies(NyxColorGradingTests NyxGeneratedReflection)
+set_property(TARGET NyxColorGradingTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxColorGradingTests COMMAND NyxColorGradingTests)
+
 # Material files and their values without a GPU: reading and writing, offsets, layouts that change.
 add_executable(NyxMaterialTests MaterialTests.cpp)
 target_link_libraries(NyxMaterialTests PRIVATE NyxEngine)
@@ -653,6 +661,18 @@ nyx_copy_shaders_next_to(NyxBloomGpuTests)
 nyx_copy_shader_compiler_next_to(NyxBloomGpuTests)
 add_test(NAME NyxBloomGpuTests COMMAND NyxBloomGpuTests)
 add_test(NAME NyxBloomGpuTestsMsaa COMMAND NyxBloomGpuTests --msaa 4)
+
+# Colour grading on a real GPU: the lookup table against the CPU's grade, baked only when the grade
+# changes, graded pixels, the keys by the sun's height, the picture unchanged to the bit without
+# it, against a reference image. Needs a Vulkan device; its window stays hidden.
+add_executable(NyxColorGradingGpuTests ColorGradingGpuTests.cpp)
+target_link_libraries(NyxColorGradingGpuTests PRIVATE NyxEngine)
+target_compile_definitions(NyxColorGradingGpuTests PRIVATE NYX_TEST_REFERENCES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/References")
+add_dependencies(NyxColorGradingGpuTests NyxGeneratedReflection)
+set_property(TARGET NyxColorGradingGpuTests PROPERTY FOLDER "Tests")
+nyx_copy_shaders_next_to(NyxColorGradingGpuTests)
+nyx_copy_shader_compiler_next_to(NyxColorGradingGpuTests)
+add_test(NAME NyxColorGradingGpuTests COMMAND NyxColorGradingGpuTests)
 
 # Ambient occlusion on a real GPU: a box's foot occluded and the open floor not, never the sun's
 # light, the radius, intensity and qualities, fog and decals, a dense instanced field, against a

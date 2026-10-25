@@ -113,6 +113,13 @@ public struct ViewConstants
     public uint PointLightPadding0;
     public uint PointLightPadding1;
     public uint PointLightPadding2;
+
+    // The view's colour grading (VulkanColorGrading): its lookup table, 0 without grading. The
+    // tonemapped picture, sRGB-encoded, is looked up in it (Tonemap.slang).
+    public nyx::Volume ColorGradingTable;
+    public uint ColorGradingPadding0;
+    public uint ColorGradingPadding1;
+    public uint ColorGradingPadding2;
 }
 [vk::binding(0, 1)] public ConstantBuffer<ViewConstants> View;
 

@@ -75,6 +75,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/CharacterComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/MoveCharacterCommand.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/OrbitCameraComponent.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ColorGradingComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/DirectionalLightComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/EnvironmentComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/TimeOfDayComponent.cpp
@@ -160,6 +161,8 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Atmosphere.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Bloom.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanBloom.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/ColorGrading.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanColorGrading.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanAmbientOcclusion.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanParticles.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Multisampling.cpp
@@ -277,6 +280,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/CharacterComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/MoveCharacterCommand.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/OrbitCameraComponent.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ColorGradingComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/DirectionalLightComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/EnvironmentComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/PointLightComponent.h
@@ -370,6 +374,8 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Atmosphere.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Bloom.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanBloom.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/ColorGrading.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanColorGrading.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanAmbientOcclusion.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanParticles.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Multisampling.h

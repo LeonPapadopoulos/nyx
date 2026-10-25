@@ -1,12 +1,13 @@
 # Atmosphere
 
 The world's air, and what a camera and the sky's light make of it: height fog, a sky that follows
-the sun, the time of day that turns the sun, bloom and ambient occlusion, and why they work as they
-do. The settings are on
-`EnvironmentComponent` (`Scene`); the math is in `Engine/Source/Runtime/Render` (`Atmosphere.h`,
-`Bloom.h`, `AmbientOcclusion.h`), the passes in `VulkanBloom` and `VulkanAmbientOcclusion`, the
-shaders in `Engine/Shaders/Library/nyx/atmosphere.slang`, `surface.slang`, `Skybox.slang`,
-`Bloom.slang`, `AmbientOcclusion.slang` and `Tonemap.slang`.
+the sun, the time of day that turns the sun, bloom, ambient occlusion and colour grading, and why
+they work as they do. The settings are on `EnvironmentComponent`, `TimeOfDayComponent` and
+`ColorGradingComponent` (`Scene`); the math is in `Engine/Source/Runtime/Render` (`Atmosphere.h`,
+`Bloom.h`, `AmbientOcclusion.h`, `ColorGrading.h`), the passes in `VulkanBloom`,
+`VulkanAmbientOcclusion` and `VulkanColorGrading`, the shaders in
+`Engine/Shaders/Library/nyx/atmosphere.slang`, `surface.slang`, `Skybox.slang`, `Bloom.slang`,
+`AmbientOcclusion.slang`, `ColorGrading.slang` and `Tonemap.slang`.
 
 ## The environment component
 
@@ -247,6 +248,113 @@ by it (`VulkanAmbientOcclusion`, per scene view):
   (`ESceneViewDebug::AmbientOcclusion`). Its passes are timed on the GPU per view
   (`SceneViewGpuTimes::AmbientOcclusion`).
 
+## Colour grading
+
+The picture graded as a painter or a colourist would: its white balance, contrast, shadows,
+midtones and highlights, saturation, and its shadows and highlights tinted apart. The settings are
+on a component of their own, `ColorGradingComponent` (`Scene`): the world's first one counts, and
+without one, or with *Grading* off, every picture is the same to the bit (`NyxColorGradingGpuTests`).
+The math is in `ColorGrading.h` (`Render`), the pass in `VulkanColorGrading`, the bake in
+`ColorGrading.slang`, the lookup in `Tonemap.slang`.
+
+Why a component of its own, not more settings on `EnvironmentComponent`: grading is how the
+picture is shown, not the world's air. A world may want the air without a grade, or a grade
+without fog; and the grade's keys, each a whole grade, would double the environment's settings.
+
+### Where it is applied: after the tonemap
+
+The grade works on the picture as the tonemap shows it, sRGB-encoded, 0 to 1, between the tonemap
+(Khronos PBR Neutral) and the 8-bit picture:
+
+- **Its controls have a fixed black and white.** Lift moves black and keeps white, gain the other
+  way; split toning parts the shadows from the highlights by how bright they are shown. On the HDR
+  scene, "the highlights" would have no top, and what counts as a shadow would change with the
+  exposure and the sun's intensity; after the tonemap a grade looks the same whatever they are.
+- **The table's range is exact.** The tonemap's output is 0 to 1 each way, so 32 texels a side
+  cover all of it evenly in sRGB's steps, which are even to the eye: no shaper curve, no range to
+  pick, nothing clipped. An HDR table would need a log shaper and a range of stops, and would spend
+  its texels on light no screen shows.
+- **The tonemap stays what it was.** PBR Neutral passes colours up to 0.76 through all but
+  unchanged and keeps hues, so grading after it grades nearly the light itself in the shadows and
+  midtones, where most of a grade's work is. Bloom is added before the tonemap, so it is graded
+  too: a warm grade warms the glow.
+- **White balance** is on linear light still: the encoded colour is made linear, adapted, and
+  encoded again in the table, which costs nothing per pixel.
+
+### The grade
+
+`GradeColor()` on the CPU, `gradeColor()` in the bake, the same math in the same order, on each
+colour the table stands for:
+
+1. **White balance** (*Temperature*, *Tint*): a von Kries adaptation in CIECAM02's cone space
+   (CAT02), from a white on the CIE daylight locus to D65. *Temperature* moves that white's x by
+   0.06 a unit (from about 25 000 K for 1 to 4 300 K for -1), so a picture lit by a bluer white is
+   made warmer; *Tint* moves its y by 0.04 a unit, across the locus, green to magenta. Scaled so
+   white keeps its luminance; at 0 and 0, the identity. One 3 × 3 matrix, worked out on the CPU.
+2. **Contrast**, on what is shown, round mid grey (0.18 linear, 0.461 encoded): a power curve each
+   side, `p (x / p)^k` below and `1 - (1 - p) ((1 - x) / (1 - p))^k` above, as steep as `k` at mid
+   grey from both sides; 0 and 1 kept.
+3. **Lift, gamma, gain**, each red, green and blue, on what is shown:
+   `x = gain (x + lift (1 - x))`, then `x^(1 / gamma)`. Lift moves black to itself and keeps white;
+   gain moves white and keeps black; gamma bends the midtones, black and white kept.
+4. **Split toning**, on light: by how bright a colour is shown (its luminance, encoded, moved by
+   *Tint Balance* / 2), a smoothstep from shadows to highlights; the colour multiplied by each tint's
+   hue at luminance 1, by its strength and its share. Grey keeps its luminance; black stays black.
+5. **Saturation**, on light, round the colour's luminance, which it keeps.
+
+Every value is held in range first (`MakeColorGradingConstants()`): *Temperature* and *Tint* -1 to
+1, *Contrast* 0.01 to 4, *Lift* -1 to 1, *Gamma* 0.1 to 10, *Gain* and *Saturation* 0 to 4, the
+strengths 0 to 1, the balance -1 to 1, so no grade gives a NaN or a colour outside 0 to 1. The
+defaults are the identity: every texel of their table is its own colour, within 1e-4 on the CPU and
+within 1e-3 on the GPU (half floats).
+
+### The keys: graded by the sun's height
+
+With *Use Keys*, *Keys* holds grades, each at a height of the primary light above the horizon, in
+degrees, in any order. The view's light (`ExtractSceneLight()`, the same `DirectionalLightComponent`
+everything else follows) gives the sun's height, `asin` of its direction's y; between the two keys
+round it each value is mixed by where the sun is between them (`BlendColorGradingKeys()`), below the
+lowest or above the highest that key is used. Without keys, or with *Use Keys* off, *Grade* is.
+
+- **The values are mixed, not the tables or the constants**: halfway between two keys every
+  control is halfway, as the editor shows them; the white balance's matrix is then made from the
+  mixed temperature and tint.
+- **Only the sun's height counts.** Nothing in the grade depends on the camera: a camera on the
+  ground, in a treetop or a kilometre and a half up at cloud height grades alike (the GPU test
+  moves it there). A grade by the camera's height, e.g. hazier and bluer high up, would be keys of
+  its own on the same blend, if a look ever wants it.
+- **Sunrise and sunset at the same height share a grade.** The keys know the sun's height, not
+  which way it moves. A key for the morning apart from the evening needs the time of day (the
+  sun's path), and could be a key's side of noon.
+- Two looks of the plan as keys (`NyxColorGradingGpuTests`' `GoldenHourKeys()`, the test scene):
+  a gold-green dusk 3 degrees up (warm, green-tinted, teal shadows lifted a little, gold
+  highlights) and a warm backlight at 12 degrees (warmer, gold highlights over violet-blue
+  shadows, more contrast), between a cool, desaturated night at -8 and a clear noon at 50.
+
+### Baked into a table
+
+Each view has a lookup table, 32 × 32 × 32 texels, RGBA16F (256 KB; a core storage format, filtered
+everywhere), made at the first frame it grades and let go of when it stops (`VulkanColorGrading`):
+
+- **Baked on the GPU** by one compute dispatch of 8 × 8 × 8 groups (`colorGradingBake`), its grade in
+  push constants (128 bytes, the most every device takes), recorded in the frame's own commands
+  before the view's picture pass, with a barrier each way: after the frames before read it, before
+  this one's tonemap reads it. On the CPU the same bake would take milliseconds in a Debug build, a
+  hitch whenever the sun moved.
+- **Only when it moved noticeably**: the frame's grade, made ready for the bake, is compared with
+  what the table was baked from, value by value; it is baked again only when one moved by more
+  than 1/1024 (`IsColorGradingBakeNeeded()`), well under a step of the 8-bit picture. Compared with
+  what was baked, not with the frame before, so a slow sun can't drift away from it: a sun rising
+  20 degrees over 20 000 frames bakes a few hundred times (`NyxColorGradingTests` prints it), a
+  still one never.
+- **Looked up** in the tonemap (`View.ColorGradingTable`): the picture, sRGB-encoded, scaled to run
+  from the middle of the first texel to the middle of the last, sampled with the linear clamp
+  sampler; one lookup a pixel instead of the grade's handful of powers.
+- **Per view, not per world**: views of one world bake the same table; at 256 KB and a dispatch
+  when it changes, sharing it isn't worth a cache with its lifetimes.
+- **Not graded**: a material's debug views (no table is made for them) and the editor's overlays,
+  drawn over the picture. *Debug > Bloom* and *Ambient Occlusion* show their passes ungraded.
+
 ## Seeing it
 
 - *Environment* on an entity in the editor: every value edited live, in the editor's views and a
@@ -254,6 +362,10 @@ by it (`VulkanAmbientOcclusion`, per scene view):
   --write-scene`) is the ground test scene with about 24 000 small cubes scattered over its ground,
   a hazy environment, a low sun, and for bloom a glowing cube (`Materials/Emissive.nyxmat`) and a
   glowing ring (`MaskedDecal`) on a crate.
+- *Color Grading* on an entity, the same way. `Assets/Scenes/ColorGradingTest.nyxscene` (written
+  by `NyxColorGradingGpuTests --write-scene`) is the atmosphere test scene with a grading of four
+  keys, a cool night at -8 degrees, a gold-green dusk at 3, a warm backlight at 12 and a clear noon
+  at 50; turning its sun moves the grade between them.
 
 ## Numbers
 
@@ -355,6 +467,25 @@ occlusion is 0.43, 0.34 and 0.31 (Low, Medium, High) and its mean step between n
 the blur evens out the noise, and what is left follows the blades. Its passes there: 0.024, 0.029
 and 0.035 ms.
 
+Colour grading, on top of the fog, the sky, bloom and ambient occlusion: `NyxGame --benchmark 10`,
+Release, 1280 × 720, a hidden window, 4 samples a pixel, an RTX 3070 Ti, the atmosphere test scene from its camera
+against the colour grading test scene (the same scene and camera, graded by its four keys), three
+runs each, alternating; the averages of each run:
+
+| Scene | Frame | GPU frame | GPU scene | GPU bloom | GPU picture | GPU grading |
+| --- | --- | --- | --- | --- | --- | --- |
+| atmosphere test, not graded | 1.93, 2.05, 2.32 ms | 1.32, 1.38, 1.47 ms | 0.39, 0.42, 0.53 ms | 0.14, 0.07, 0.05 ms | 0.015, 0.015, 0.015 ms | 0 |
+| colour grading test, graded | 2.20, 1.96, 2.00 ms | 1.50, 1.33, 1.35 ms | 0.54, 0.39, 0.41 ms | 0.05, 0.11, 0.09 ms | 0.017, 0.018, 0.017 ms | 0 |
+
+What it says: the lookup costs about 0.002 ms a frame, the picture pass's 0.015 ms against 0.017 to
+0.018; the rest moves by more from one run to the next. The sun stands still, so the table is baked
+once, before the recording, and the grading's own time is 0. A bake, timed by
+`NyxColorGradingGpuTests` (the frame that bakes, 32 768 texels): 0.005 to 0.006 ms. A sun moving
+with the time of day bakes in a few frames of every hundred (282 times as it rises 20 degrees over
+20 000 frames, `NyxColorGradingTests`), so it averages well under 0.001 ms a frame. The CPU makes
+the grade ready (a 3 × 3 matrix, a dozen values) once a view a frame, too little to show in
+*extract* or *record*.
+
 ## Later
 
 - Ambient occlusion: a temporal filter, once there is temporal antialiasing (fewer samples, less
@@ -365,3 +496,6 @@ and 0.035 ms.
   cube map; and the environment's light made again from it as the sun moves.
 - Volumetric fog: shadowed shafts of light, local fog volumes.
 - The fog over a point light's or a decal's own light: the fog adds the sun's and the sky's only.
+- Colour grading: keys for the morning apart from the evening, once the time of day gives the
+  sun's path; a view's switch to see its picture ungraded beside the graded one; the grade's
+  controls as curves, if a look needs more than lift, gamma and gain.

@@ -9,6 +9,8 @@
 #include "AmbientOcclusion.h"
 #include "Atmosphere.h"
 #include "Bloom.h"
+#include "ColorGrading.h"
+#include "ColorGradingComponent.h"
 #include "EnvironmentComponent.h"
 #include "TransformComponent.h"
 #include "TimeOfDay.h"
@@ -305,6 +307,7 @@ namespace Nyx
 			{
 				BindSceneSets(view, cmd);
 			});
+		ColorGrading.Initialize(Bindless);
 
 		LoadSkyboxCubemap();
 		// Its light: the specular cube, the irradiance, the BRDF table
@@ -379,6 +382,7 @@ namespace Nyx
 			UI.ReleaseSceneViewBlur(view);
 			Bloom.Release(view.Bloom);
 			AmbientOcclusion.Release(view.AmbientOcclusion);
+			ColorGrading.Release(view.ColorGrading);
 			Particles.Release(view.Particles);
 			view.RenderTarget.Shutdown(Context);
 		}
@@ -399,6 +403,7 @@ namespace Nyx
 		Shadows.Shutdown();
 		Bloom.Shutdown();
 		AmbientOcclusion.Shutdown();
+		ColorGrading.Shutdown();
 		Particles.Shutdown();
 		PassTimestamps = nullptr;
 		Bindless.Shutdown();
@@ -823,6 +828,18 @@ namespace Nyx
 		return view ? &view->Bloom : nullptr;
 	}
 
+	const SceneViewColorGrading* VulkanRenderer::GetSceneViewColorGrading(uint64_t id) const
+	{
+		const SceneViewInstance* view = FindSceneView(id);
+		return view ? &view->ColorGrading : nullptr;
+	}
+
+	std::vector<glm::vec4> VulkanRenderer::ReadSceneViewColorGradingTable(uint64_t id)
+	{
+		const SceneViewInstance* view = FindSceneView(id);
+		return view ? ColorGrading.ReadTable(view->ColorGrading) : std::vector<glm::vec4>{};
+	}
+
 	const SceneViewGpuTimes* VulkanRenderer::GetSceneViewGpuTimes(uint64_t id) const
 	{
 		const SceneViewInstance* view = FindSceneView(id);
@@ -896,6 +913,9 @@ namespace Nyx
 				break;
 			case ETimedPass::Picture:
 				view->GpuTimes.Picture = milliseconds;
+				break;
+			case ETimedPass::ColorGrading:
+				view->GpuTimes.ColorGrading = milliseconds;
 				break;
 			default:
 				break;
@@ -1646,6 +1666,10 @@ namespace Nyx
 			SceneViewAmbientOcclusionSettings occlusion = view.SceneGlobals.AmbientOcclusion;
 			occlusion.bAmbientOcclusion = occlusion.bAmbientOcclusion && bLit;
 			AmbientOcclusion.Prepare(view.AmbientOcclusion, view.RenderTarget, occlusion, bTargetsNew);
+			// Its colour grading's table, baked again if its grade moved
+			SceneViewColorGradingSettings grading = view.SceneGlobals.ColorGrading;
+			grading.bColorGrading = grading.bColorGrading && bLit;
+			ColorGrading.Prepare(view.ColorGrading, grading);
 			// Its particles' pass, over its HDR scene: their draws were culled with the rest, and none
 			// are drawn in a debug view of the materials
 			if (!bLit)
@@ -2533,6 +2557,13 @@ namespace Nyx
 			ubo.OcclusionSteps = occlusion.Settings.Steps;
 		}
 
+		// Its colour grading's table, once baked or baked this frame, before its picture pass
+		const SceneViewColorGrading& grading = view.ColorGrading;
+		if (grading.Settings.bColorGrading && grading.Slot != 0 && (grading.bBaked || grading.bBakePending))
+		{
+			ubo.ColorGradingTable = grading.Slot;
+		}
+
 		// Its point lights, culled for it; none without a world
 		if (world && !view.PointLights.empty())
 		{
@@ -2737,6 +2768,14 @@ namespace Nyx
 		{
 			AmbientOcclusion.CreatePipelines();
 		}
+		if (changed.contains("ColorGrading.slang"))
+		{
+			ColorGrading.CreatePipelines();
+			for (SceneViewInstance& view : SceneViews)
+			{
+				ColorGrading.Rebake(view.ColorGrading);
+			}
+		}
 		if (changed.contains("Particle.slang"))
 		{
 			Particles.CreatePipelines();
@@ -2873,6 +2912,7 @@ namespace Nyx
 		{
 			view.SceneGlobals.Shadows.bCastShadows = false;
 		}
+		ExtractSceneColorGrading(view, registry);
 	}
 
 	void VulkanRenderer::ExtractSceneEnvironment(SceneViewInstance& view, const Nyx::Registry& world)
@@ -2890,6 +2930,22 @@ namespace Nyx
 				view.SceneGlobals.LightColor = view.SceneGlobals.Atmosphere.SunColor;
 				view.SceneGlobals.Bloom = Nyx::MakeSceneViewBloomSettings(environment);
 				view.SceneGlobals.AmbientOcclusion = Nyx::MakeSceneViewAmbientOcclusionSettings(environment);
+			});
+	}
+
+	void VulkanRenderer::ExtractSceneColorGrading(SceneViewInstance& view, const Nyx::Registry& world)
+	{
+		view.SceneGlobals.ColorGrading = {};
+		bool bFound = false;
+		world.Each<Nyx::ColorGradingComponent>(
+			[&](Nyx::Entity, const Nyx::ColorGradingComponent& grading)
+			{
+				if (bFound)
+				{
+					return;
+				}
+				bFound = true;
+				view.SceneGlobals.ColorGrading = Nyx::MakeSceneViewColorGrading(grading, view.SceneGlobals.LightDirectionWS);
 			});
 	}
 
@@ -2951,6 +3007,7 @@ namespace Nyx
 			Overlays.DestroyViewResources(*it);
 			Bloom.Release(it->Bloom);
 			AmbientOcclusion.Release(it->AmbientOcclusion);
+			ColorGrading.Release(it->ColorGrading);
 			Particles.Release(it->Particles);
 
 			Bindless.RemoveTexture(it->HdrTextureSlot);
@@ -3213,8 +3270,16 @@ namespace Nyx
 			WritePassTimestamp(cmd, view, ETimedPass::Bloom, true);
 		}
 
-		// 2. The picture: the scene tonemapped with its bloom, then the editor's overlays over it
-		// (grid, debug lines, the selection outline), which look as they always did, then the
+		// Its colour grading's table, baked again if its grade moved, for the tonemap to look up in
+		if (view.ColorGrading.bBakePending)
+		{
+			WritePassTimestamp(cmd, view, ETimedPass::ColorGrading, false);
+			ColorGrading.Bake(view.ColorGrading, cmd);
+			WritePassTimestamp(cmd, view, ETimedPass::ColorGrading, true);
+		}
+
+		// 2. The picture: the scene tonemapped with its bloom and graded, then the editor's overlays
+		// over it (grid, debug lines, the selection outline), which look as they always did, then the
 		// world's debug drawing
 		WritePassTimestamp(cmd, view, ETimedPass::Picture, false);
 		view.RenderTarget.BeginPicturePass(cmd);

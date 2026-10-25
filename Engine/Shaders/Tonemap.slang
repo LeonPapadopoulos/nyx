@@ -1,6 +1,6 @@
-// A scene view's HDR picture, exposed, its bloom added, and tonemapped into the 8-bit picture the
-// editor shows (sRGB-encoded). One triangle over the view; the editor's overlays are drawn over it
-// afterwards.
+// A scene view's HDR picture, exposed, its bloom added, tonemapped into the 8-bit picture the
+// editor shows (sRGB-encoded), and graded by the view's lookup table if it has one. One triangle
+// over the view; the editor's overlays are drawn over it afterwards.
 
 import nyx.bindless;
 import nyx.color;
@@ -48,7 +48,15 @@ float4 tonemapFragment(float4 position : SV_Position) : SV_Target
         const float occlusion = View.AmbientOcclusion != 0 ? View.Occlusion.SampleLevel(nyx::LinearClamp, position.xy / View.ViewportSize, 0.0).r : 1.0;
         return float4(occlusion.xxx, 1.0);
     }
-    const float3 picture = nyx::linearToSrgb(nyx::tonemapPbrNeutral(scene));
+    float3 picture = nyx::linearToSrgb(nyx::tonemapPbrNeutral(scene));
+    // Graded: the picture as shown looked up in the view's table (VulkanColorGrading), its 32
+    // texels a side from the middle of the first to the middle of the last
+    if (View.ColorGradingTable.Index != 0)
+    {
+        const float scale = 31.0 / 32.0;
+        const float offset = 0.5 / 32.0;
+        picture = View.ColorGradingTable.SampleLevel(nyx::LinearClamp, picture * scale + offset, 0.0).rgb;
+    }
     // Where the light went wrong, over the picture in grey
     const float3 grey = dot(picture, float3(0.2126, 0.7152, 0.0722)) * 0.6;
     if (debug == nyx::DebugNanInf)

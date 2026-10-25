@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ColorGrading.h"
+
 #include <cstdint>
 #include <glm/glm.hpp>
 
@@ -181,7 +183,8 @@ namespace Nyx
 	// (VulkanRenderer::GetSceneViewGpuTimes()): 0 for a pass that didn't run, and without timestamps
 	// on the device. Its shadow cascades, its scene pass (the objects, the sky and the decals, and with
 	// MSAA the resolve at its end), its ambient occlusion, its particles, its bloom, and its picture
-	// (the tonemap, and the overlays and lines over it).
+	// (the tonemap, and the overlays and lines over it). Its colour grading's bake, in a frame that
+	// baked its table again (its lookup is the tonemap's, in the picture).
 	struct SceneViewGpuTimes
 	{
 		float Shadows = 0.0f;
@@ -190,8 +193,9 @@ namespace Nyx
 		float Particles = 0.0f;
 		float Bloom = 0.0f;
 		float Picture = 0.0f;
+		float ColorGrading = 0.0f;
 
-		float GetTotal() const { return Shadows + Scene + AmbientOcclusion + Particles + Bloom + Picture; }
+		float GetTotal() const { return Shadows + Scene + AmbientOcclusion + Particles + Bloom + Picture + ColorGrading; }
 
 		SceneViewGpuTimes& operator+=(const SceneViewGpuTimes& other)
 		{
@@ -201,6 +205,7 @@ namespace Nyx
 			Particles += other.Particles;
 			Bloom += other.Bloom;
 			Picture += other.Picture;
+			ColorGrading += other.ColorGrading;
 			return *this;
 		}
 	};
@@ -297,6 +302,7 @@ namespace Nyx
 		SceneViewAtmosphere Atmosphere;
 		SceneViewBloomSettings Bloom;
 		SceneViewAmbientOcclusionSettings AmbientOcclusion;
+		SceneViewColorGradingSettings ColorGrading;
 
 		bool bHasCamera = false;
 		bool bHasDirectionalLight = false;

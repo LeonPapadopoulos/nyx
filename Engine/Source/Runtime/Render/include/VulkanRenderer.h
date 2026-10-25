@@ -17,6 +17,7 @@
 #include "VulkanShadows.h"
 #include "VulkanBloom.h"
 #include "VulkanAmbientOcclusion.h"
+#include "VulkanColorGrading.h"
 #include "VulkanParticles.h"
 #include "Mesh.h"
 #include "RuntimeMeshCache.h"
@@ -152,11 +153,16 @@ namespace Nyx
 		// How many of the view's point lights (its set's second binding) its pixels are lit by
 		uint32_t PointLightCount = 0;
 		uint32_t PointLightPadding[3] = {};
+
+		// The view's colour grading (VulkanColorGrading): its lookup table in the bindless array, 0
+		// without grading
+		uint32_t ColorGradingTable = 0;
+		uint32_t ColorGradingPadding[3] = {};
 	};
 
 	// The view's set (set 1) as nyx/view.slang reads it, in scalar layout; to whole 16 bytes, as
 	// std140 would be too
-	static_assert(sizeof(SceneUBO) == 960, "SceneUBO must match ViewConstants in nyx/view.slang");
+	static_assert(sizeof(SceneUBO) == 976, "SceneUBO must match ViewConstants in nyx/view.slang");
 
 	// One draw's push constants, the same for every scene pipeline: ObjectConstants in
 	// nyx/bindless.slang
@@ -383,6 +389,12 @@ namespace Nyx
 		// The view's bloom in the last frame: its chain's levels and its settings; null for an
 		// unknown view. For tests.
 		const SceneViewBloom* GetSceneViewBloom(uint64_t id) const;
+		// The view's colour grading in the last frame: its grade, what its table was baked from and
+		// how often; null for an unknown view. For tests.
+		const SceneViewColorGrading* GetSceneViewColorGrading(uint64_t id) const;
+		// The view's grading table as it is on the GPU, x fastest, then y, then z; empty without one.
+		// Between frames; waits for the GPU. For tests.
+		std::vector<glm::vec4> ReadSceneViewColorGradingTable(uint64_t id);
 		// What the view's passes after its scene pass took on the GPU in the last frame drawn; null
 		// for an unknown view. For tests and the benchmark.
 		const SceneViewGpuTimes* GetSceneViewGpuTimes(uint64_t id) const;
@@ -587,6 +599,9 @@ namespace Nyx
 		// The world's first EnvironmentComponent, under the view's light, after it: its fog and
 		// sky, and the light as the air leaves it; none without one
 		void ExtractSceneEnvironment(SceneViewInstance& view, const Nyx::Registry& registry);
+		// The world's first ColorGradingComponent, its grade by the height of the view's light; none
+		// without one
+		void ExtractSceneColorGrading(SceneViewInstance& view, const Nyx::Registry& registry);
 		void UpdateViewportSceneGlobals(SceneViewInstance& view, const Nyx::Registry& registry);
 
 		// While a frame is recorded (e.g. as the UI is built), a view made shows from its first
@@ -642,6 +657,8 @@ namespace Nyx
 		VulkanBloom Bloom{ Context, Programs };
 		// Each view's ambient occlusion, right after its scene pass
 		VulkanAmbientOcclusion AmbientOcclusion{ Context, Programs };
+		// Each view's colour grading table, baked before its picture pass when its grade changed
+		VulkanColorGrading ColorGrading{ Context, Programs };
 		// Each view's particles, after its ambient occlusion
 		VulkanParticles Particles{ Context, Programs };
 		// This frame's particles of every view, in the order they are drawn
@@ -658,6 +675,7 @@ namespace Nyx
 			Particles,
 			Bloom,
 			Picture,
+			ColorGrading,
 			Count
 		};
 		static constexpr uint32_t MaxTimedViews = 8;

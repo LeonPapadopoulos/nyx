@@ -45,7 +45,7 @@ namespace
 		render.WaitForGpu = 9.0f;
 		render.GpuFrame = 12.0f;
 		render.SceneViews = 2;
-		render.Views.Gpu = SceneViewGpuTimes{ .Shadows = 3.0f, .Scene = 6.0f, .AmbientOcclusion = 1.0f, .Particles = 0.75f, .Bloom = 0.5f, .Picture = 0.25f };
+		render.Views.Gpu = SceneViewGpuTimes{ .Shadows = 3.0f, .Scene = 6.0f, .AmbientOcclusion = 1.0f, .Particles = 0.75f, .Bloom = 0.5f, .Picture = 0.25f, .ColorGrading = 0.125f };
 		render.MsaaSamples = 4;
 		render.Views.Scene.DrawCalls = 120;
 		render.Views.Scene.InstancedDrawCalls = 40;
@@ -73,7 +73,7 @@ namespace
 			"The renderer's CPU times");
 		Require(Near(sample[EFrameStat::GpuFrame], 12.0) && Near(sample[EFrameStat::GpuShadows], 3.0) && Near(sample[EFrameStat::GpuScene], 6.0) &&
 				Near(sample[EFrameStat::GpuAmbientOcclusion], 1.0) && Near(sample[EFrameStat::GpuParticles], 0.75) && Near(sample[EFrameStat::GpuBloom], 0.5) &&
-				Near(sample[EFrameStat::GpuPicture], 0.25),
+				Near(sample[EFrameStat::GpuPicture], 0.25) && Near(sample[EFrameStat::GpuColorGrading], 0.125),
 			"The GPU times");
 		Require(sample[EFrameStat::SceneViews] == 2.0 && sample[EFrameStat::DrawCalls] == 120.0 && sample[EFrameStat::InstancedDrawCalls] == 40.0 &&
 				sample[EFrameStat::Instances] == 38000.0 && sample[EFrameStat::InstancesCulled] == 12000.0,

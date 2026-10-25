@@ -338,9 +338,9 @@ costs next to nothing otherwise.
 - **F8 in a game window** (every build) shows the frame's numbers over the picture's top left: the
   frame rate and time with the last second's worst; on the CPU the updates, the simulation's fixed
   steps, extracting, culling, recording, the UI and waiting for the GPU; on the GPU the frame and
-  the scene views' shadows, scene (with the MSAA resolve), ambient occlusion, particles, bloom and
-  picture; the scene views drawn and their MSAA samples, their draw calls (and how many draw many
-  instances), instances drawn and culled, triangles, shadow cascades with their draw calls and
+  the scene views' shadows, scene (with the MSAA resolve), ambient occlusion, particles, bloom,
+  picture and colour grading's bake; the scene views drawn and their MSAA samples, their draw
+  calls (and how many draw many instances), instances drawn and culled, triangles, shadow cascades with their draw calls and
   triangles, decals, the point lights lit, and the particles with their emitters; and a graph of the last five seconds'
   frame times, the CPU's and the GPU's. The numbers are each second's average, so they hold still
   to be read. `NyxGame.exe --frame-stats` shows them from the start.
@@ -809,6 +809,37 @@ without one, nothing changes. Only the sky's light is dimmed, never the sun's.
   environment; through fog and on a decal; a dense instanced field, its noise and cost; the debug
   view; a reference picture), `NyxEditorSceneViewGpuTests` (*Debug > Ambient Occlusion* reaching
   views opened later), the other reference pictures unchanged.
+
+## Colour grading
+
+A *Color Grading* component on any entity grades the picture, in the editor's scene views and in
+the game alike, after the tonemap: what is shown, not the light. Without one, or with *Grading*
+off, the picture is as it was, to the bit.
+
+- A grade: *Temperature* and *Tint* (the white balance: warmer or cooler, greener or more
+  magenta), *Contrast* (round mid grey, black and white kept), *Lift*, *Gamma* and *Gain* (the
+  shadows, midtones and highlights, each red, green and blue), *Saturation* (the brightness kept),
+  and split toning: *Shadow Tint* and *Highlight Tint*, each a hue with a strength, and *Tint
+  Balance* (where the shadows' tint gives way to the highlights'). The defaults change nothing.
+- **By the sun's height**: with *Use Keys*, *Keys* holds grades at heights of the primary light
+  (e.g. night, a gold-green dusk, a warm golden hour, noon), blended by where the sun is: halfway
+  between two keys, halfway; below the lowest or above the highest, that one. Without, the one
+  *Grade*. Only the sun's height counts: a camera on the ground and one at cloud height grade
+  alike.
+- Baked into a 32 × 32 × 32 lookup table per view whenever the grade moves noticeably (a moving
+  sun bakes it every few frames, a still one never); the tonemap looks each pixel up in it.
+- All with undo, saved in scenes and sent to a running game: every edit shows at once.
+  `Assets/Scenes/ColorGradingTest.nyxscene`: the atmosphere test scene graded by four keys for a
+  painted golden hour.
+- Costs: the lookup about 0.002 ms of GPU time a 1280 × 720 view, in the picture pass; a bake about
+  0.006 ms, in the frames that bake ([Atmosphere](Design/atmosphere.md#numbers)).
+- Tests: `NyxColorGradingTests` (the defaults' table the identity; each control's way, black and
+  white kept where they should be; values out of range; the keys halfway and outside; the sun's
+  height; baked again only when the grade moved; the component saved), `NyxColorGradingGpuTests`
+  (the table read back against the CPU's grade; baked once for a change, not for one too small to
+  show; graded pixels against the CPU's; the keys by the sun, the camera 1.5 km up graded alike;
+  without it, or off, the picture to the bit; a reference picture; the test scene), the other
+  reference pictures unchanged.
 
 ## Point lights
 
