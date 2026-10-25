@@ -595,19 +595,31 @@ namespace
 			});
 		Require(emitters == 3, "The particles test scene has " + std::to_string(emitters) + " emitters, not 3");
 
+		// The world's time a clock's, stepped a frame at a time as the other tests' is: the particles
+		// born in 30 steps, half a second, however fast this machine draws the frames. On the
+		// renderer's own time, 30 frames were as many particles as the frames took real time, and a
+		// cheaper frame (no shadows from a sun that has set) left the smoke without one.
+		FixedStepClock clock;
+		clock.SetStepSeconds(Step);
 		IEditorRenderer& renderer = gpu.Renderer;
 		renderer.SetWorld(&world);
+		renderer.SetWorldInterpolation(&world, &clock);
 		const uint64_t view = renderer.CreateSceneView();
 		renderer.SetSceneViewCameraMode(view, EViewportCameraMode::ScenePrimaryCamera);
 		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
 		gpu.DrawUntilShadersCompiled();
-		gpu.DrawFrames(30);
+		for (int step = 0; step < 30; ++step)
+		{
+			clock.Advance(Step);
+			gpu.DrawFrames(1);
+		}
 		RgbaImage image;
 		Require(gpu.Renderer.ReadSceneViewPixels(view, image), "The scene view can't be read back");
 		SaveIfAsked(image, "TestScene");
 		const SceneViewCullingStats* stats = gpu.Renderer.GetSceneViewCullingStats(view);
 		Require(stats && stats->ParticleEmitters == 3 && stats->Particles > 0, "The particles test scene's particles aren't drawn");
 		renderer.DestroySceneView(view);
+		renderer.SetWorldInterpolation(&world, nullptr);
 		renderer.SetWorld(nullptr);
 		gpu.DrawFrames(1);
 	}
