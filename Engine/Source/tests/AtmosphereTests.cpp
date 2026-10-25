@@ -5,8 +5,10 @@
 // from below and above its height, held at its most opacity; the light it scatters, gathered round
 // the sun; bloom's levels, their sizes and its threshold's knee; ambient occlusion's size, samples
 // and settings, and the visible part of a slice of the sky, open, beside a wall, between two, and
-// averaged round the view for a tilted open surface; and the component saved in a scene and read
-// back.
+// averaged round the view for a tilted open surface; the sky made by the air's scattering: its
+// transmittance, 1 at no distance and falling with the path, the sun's light redder low, the horizon
+// lower for a camera high up, its settings in range and what is made again as they change; and the
+// component saved in a scene and read back.
 #include "AmbientOcclusion.h"
 #include "Atmosphere.h"
 #include "Bloom.h"
@@ -16,6 +18,7 @@
 #include "GuidComponent.h"
 #include "Log.h"
 #include "SceneSerializer.h"
+#include "SkyAtmosphere.h"
 #include "TestSupport.h"
 
 #include <glm/glm.hpp>
@@ -87,6 +90,15 @@ namespace
 		Require(GetDaylight(-0.5f, 2.0f) == 1.0f && GetDaylight(-0.5f, -1.0f) == 0.0f, "The night's brightness isn't kept from 0 to 1");
 	}
 
+	// The environment's defaults with the sky's cube map tinted by the sun, as before the sky made
+	// by the air's scattering
+	EnvironmentComponent TintedSky()
+	{
+		EnvironmentComponent environment;
+		environment.SkyMode = ESkyMode::TintedCubeMap;
+		return environment;
+	}
+
 	void TestViewAtmosphere()
 	{
 		// Without fog or the sky following, nothing: the light as it is, a white sky
@@ -99,7 +111,7 @@ namespace
 		Require(GetHeightFogTransmittance(none, glm::vec3(0.0f), glm::vec3(0.0f, 0.0f, -1000.0f)) == 1.0f, "No fog hides something");
 
 		// A white sun overhead: a white sky at full brightness, the light unchanged
-		const EnvironmentComponent defaults;
+		const EnvironmentComponent defaults = TintedSky();
 		const SceneViewAtmosphere noon = MakeSceneViewAtmosphere(defaults, glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(1.0f));
 		Require(glm::all(glm::lessThan(glm::abs(noon.SkyTint - glm::vec3(1.0f)), glm::vec3(1e-3f))), "The noon sky isn't white: " + Text(noon.SkyTint));
 		Require(glm::all(glm::lessThan(glm::abs(noon.SunColor - glm::vec3(1.0f)), glm::vec3(1e-3f))), "The noon sun isn't the light's colour: " + Text(noon.SunColor));
@@ -140,6 +152,136 @@ namespace
 		EnvironmentComponent negative = defaults;
 		negative.FogDensity = -0.1f;
 		Require(MakeSceneViewAtmosphere(negative, glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(1.0f)).FogDensity == 0.0f, "A negative density makes fog");
+	}
+
+	glm::vec3 SunAt(float degrees)
+	{
+		return glm::normalize(glm::vec3(0.0f, SinOf(degrees), -std::cos(degrees * Pi / 180.0f)));
+	}
+
+	float RedOverBlue(const glm::vec3& color)
+	{
+		return color.r / std::max(color.b, 1e-12f);
+	}
+
+	// The sky made by the air's scattering, on the CPU (SkyAtmosphere.h)
+	void TestSkyAtmosphere()
+	{
+		const EnvironmentComponent defaults;
+		const glm::vec3 ground(0.0f, 2.0f, 0.0f);
+		const SceneViewSkyAtmosphere sky = MakeSceneViewSkyAtmosphere(defaults, SunAt(60.0f), glm::vec3(1.0f), ground);
+		Require(sky.bAtmosphere, "The defaults don't make the sky by the air's scattering");
+		Require(std::abs(sky.CameraHeight - 0.002f) < 1e-6f && sky.PlanetRadius == 6360.0f && sky.AtmosphereHeight == 100.0f, "The camera's height or the planet isn't in kilometres");
+		Require(std::abs(sky.SunIlluminance.g - Pi) < 1e-5f, "The sun's illuminance isn't pi times its light");
+
+		// The transmittance: 1 at no distance, less with every kilometre further
+		Require(GetAtmosphereTransmittance(sky, 0.002f, 0.3f, 0.0f) == glm::vec3(1.0f), "Light doesn't all get through no air");
+		glm::vec3 previous(1.0f);
+		for (const float distance : { 0.5f, 2.0f, 10.0f, 40.0f, 150.0f, 400.0f })
+		{
+			const glm::vec3 through = GetAtmosphereTransmittance(sky, 0.002f, 0.05f, distance);
+			Require(glm::all(glm::lessThan(through, previous)), "The transmittance doesn't fall over " + std::to_string(distance) + " km: " + Text(through));
+			previous = through;
+		}
+		// Straight up most gets through, blue least; along the horizon far less, red most; into the
+		// ground nothing
+		const glm::vec3 up = GetAtmosphereTransmittance(sky, 0.002f, 1.0f);
+		Require(up.b > 0.6f && up.b < up.g && up.g < up.r && up.r < 1.0f, "Straight up, the air isn't clear and bluish: " + Text(up));
+		const glm::vec3 horizon = GetAtmosphereTransmittance(sky, 0.002f, 0.0f);
+		Require(horizon.r < up.r * 0.5f && RedOverBlue(horizon) > 100.0f, "Along the horizon the air doesn't take most, the blue most of all: " + Text(horizon));
+		Require(GetAtmosphereTransmittance(sky, 0.002f, -0.05f) == glm::vec3(0.0f), "Light gets through the ground");
+
+		// The sun's light: redder and dimmer the lower the sun, gone once it has set
+		float lastRedness = 0.0f;
+		float lastLuminance = 1e9f;
+		for (const float degrees : { 60.0f, 20.0f, 6.0f, 2.0f, 0.5f })
+		{
+			const SceneViewSkyAtmosphere at = MakeSceneViewSkyAtmosphere(defaults, SunAt(degrees), glm::vec3(1.0f), ground);
+			const glm::vec3 light = GetSunLightThroughAtmosphere(at, glm::vec3(1.0f));
+			Require(RedOverBlue(light) > lastRedness && Luminance(light) < lastLuminance, "The sun's light isn't redder and dimmer at " + std::to_string(degrees) + " degrees: " + Text(light));
+			lastRedness = RedOverBlue(light);
+			lastLuminance = Luminance(light);
+		}
+		const glm::vec3 noon = GetSunLightThroughAtmosphere(MakeSceneViewSkyAtmosphere(defaults, SunAt(90.0f), glm::vec3(1.0f), ground), glm::vec3(1.0f));
+		Require(noon.r > 0.9f && noon.b > 0.6f, "The sun overhead isn't nearly as bright as its light: " + Text(noon));
+		Require(GetSunLightThroughAtmosphere(MakeSceneViewSkyAtmosphere(defaults, SunAt(-2.0f), glm::vec3(1.0f), ground), glm::vec3(1.0f)) == glm::vec3(0.0f),
+			"The sun shines below the horizon");
+		// The Atmosphere mode's view air: the light through the air, no tint, no glow
+		const SceneViewAtmosphere air = MakeSceneViewAtmosphere(defaults, SunAt(6.0f), glm::vec3(2.0f), ground);
+		const glm::vec3 through = GetSunLightThroughAtmosphere(MakeSceneViewSkyAtmosphere(defaults, SunAt(6.0f), glm::vec3(2.0f), ground), glm::vec3(2.0f));
+		Require(air.SkyTint == glm::vec3(1.0f) && air.SunGlowColor == glm::vec3(0.0f), "The air's sky is tinted, or has the cube map's glow");
+		Require(glm::all(glm::lessThan(glm::abs(air.SunColor - through), glm::vec3(1e-6f))), "The light isn't the sun's through the air");
+
+		// A camera high up: the horizon dips below the level (1.44 degrees at 2 km), and the low
+		// sun shines through less air
+		Require(GetHorizonCosine(6360.0f, 0.0f) == 0.0f, "On the ground the horizon isn't level");
+		const float dip = std::acos(GetHorizonCosine(6360.0f, 2.0f)) * 180.0f / Pi - 90.0f;
+		Require(std::abs(dip - 1.4367f) < 0.002f, "The horizon 2 km up doesn't dip 1.44 degrees: " + std::to_string(dip));
+		// A metre apart, a few metres up, told apart
+		Require(GetHorizonCosine(6360.0f, 0.002f) < GetHorizonCosine(6360.0f, 0.001f), "The horizon 1 m and 2 m up are the same");
+		const SceneViewSkyAtmosphere high = MakeSceneViewSkyAtmosphere(defaults, SunAt(3.0f), glm::vec3(1.0f), glm::vec3(0.0f, 2000.0f, 0.0f));
+		Require(std::abs(high.CameraHeight - 2.0f) < 1e-6f, "The camera's height isn't 2 km");
+		const glm::vec3 lowSunFromGround = GetSunLightThroughAtmosphere(MakeSceneViewSkyAtmosphere(defaults, SunAt(3.0f), glm::vec3(1.0f), ground), glm::vec3(1.0f));
+		const glm::vec3 lowSunFromHigh = GetSunLightThroughAtmosphere(high, glm::vec3(1.0f));
+		Require(glm::all(glm::greaterThan(lowSunFromHigh, lowSunFromGround)), "The low sun isn't brighter 2 km up: " + Text(lowSunFromHigh) + " against " + Text(lowSunFromGround));
+		// 2 km up, a sun a degree below the level is still above the horizon
+		Require(Luminance(GetSunLightThroughAtmosphere(MakeSceneViewSkyAtmosphere(defaults, SunAt(-1.0f), glm::vec3(1.0f), glm::vec3(0.0f, 2000.0f, 0.0f)), glm::vec3(1.0f))) > 0.0f,
+			"2 km up, the sun a degree below the level has set");
+
+		// Off: with Follow Sun off, or the tinted cube map
+		EnvironmentComponent off;
+		off.bSkyFollowsSun = false;
+		Require(!MakeSceneViewSkyAtmosphere(off, SunAt(60.0f), glm::vec3(1.0f), ground).bAtmosphere, "Follow Sun off makes the air's sky");
+		Require(!MakeSceneViewSkyAtmosphere(TintedSky(), SunAt(60.0f), glm::vec3(1.0f), ground).bAtmosphere, "The tinted cube map makes the air's sky");
+
+		// Values out of range brought into it
+		EnvironmentComponent wild;
+		wild.RayleighScatteringScale = -1.0f;
+		wild.RayleighHeight = 0.0f;
+		wild.MieAnisotropy = 2.0f;
+		wild.GroundAlbedo = glm::vec3(-1.0f, 0.5f, 3.0f);
+		wild.PlanetRadius = 0.0f;
+		wild.SkyWarmth = 5.0f;
+		wild.SunDiskSize = -1.0f;
+		const SceneViewSkyAtmosphere tamed = MakeSceneViewSkyAtmosphere(wild, SunAt(60.0f), glm::vec3(1.0f), glm::vec3(0.0f, -50.0f, 0.0f));
+		Require(tamed.RayleighScattering == glm::vec3(0.0f) && tamed.RayleighHeight > 0.0f && tamed.MieAnisotropy == 0.95f && tamed.GroundAlbedo == glm::vec3(0.0f, 0.5f, 1.0f)
+				&& tamed.PlanetRadius == 1.0f && tamed.WarmthTint == GetSkyWarmthTint(1.0f) && tamed.SunDiskCosine == std::cos(glm::radians(0.005f)) && tamed.CameraHeight == 0.001f,
+			"The sky's values aren't brought into range");
+
+		// Warmth: warmer above 0, cooler below, as bright
+		const glm::vec3 warm = GetSkyWarmthTint(1.0f);
+		const glm::vec3 cool = GetSkyWarmthTint(-1.0f);
+		Require(GetSkyWarmthTint(0.0f) == glm::vec3(1.0f), "No warmth tints the sky");
+		Require(RedOverBlue(warm) > 1.5f && RedOverBlue(cool) < 0.7f && std::abs(Luminance(warm) - 1.0f) < 1e-5f && std::abs(Luminance(cool) - 1.0f) < 1e-5f,
+			"The warmth isn't warmer or cooler at the same brightness: " + Text(warm) + ", " + Text(cool));
+
+		// What is made again: nothing for the same; the sky view for the sun turned noticeably, a
+		// brighter light or a camera risen a noticeable part of its height; everything for the air
+		const auto changes = [&](const SceneViewSkyAtmosphere& wanted)
+		{
+			const SkyAtmosphereChanges made = GetSkyAtmosphereChanges(sky, wanted);
+			return std::to_string(made.bAir) + std::to_string(made.bSkyView);
+		};
+		Require(changes(sky) == "00", "The same sky is made again");
+		const auto turned = [&](float degrees)
+		{
+			return MakeSceneViewSkyAtmosphere(defaults, SunAt(60.0f + degrees), glm::vec3(1.0f), ground);
+		};
+		Require(changes(turned(0.01f)) == "00" && changes(turned(0.1f)) == "01", "The sun turning 0.01 and 0.1 degrees: " + changes(turned(0.01f)) + ", " + changes(turned(0.1f)));
+		Require(changes(MakeSceneViewSkyAtmosphere(defaults, SunAt(60.0f), glm::vec3(1.1f), ground)) == "01", "A brighter sun doesn't make the sky view again");
+		Require(changes(MakeSceneViewSkyAtmosphere(defaults, SunAt(60.0f), glm::vec3(1.0f), glm::vec3(0.0f, 2.8f, 0.0f))) == "00"
+				&& changes(MakeSceneViewSkyAtmosphere(defaults, SunAt(60.0f), glm::vec3(1.0f), glm::vec3(0.0f, 3.5f, 0.0f))) == "01",
+			"The camera rising 0.8 m and 1.5 m");
+		const SceneViewSkyAtmosphere atHeight = MakeSceneViewSkyAtmosphere(defaults, SunAt(60.0f), glm::vec3(1.0f), glm::vec3(0.0f, 2000.0f, 0.0f));
+		Require(!GetSkyAtmosphereChanges(atHeight, MakeSceneViewSkyAtmosphere(defaults, SunAt(60.0f), glm::vec3(1.0f), glm::vec3(0.0f, 2015.0f, 0.0f))).bSkyView
+				&& GetSkyAtmosphereChanges(atHeight, MakeSceneViewSkyAtmosphere(defaults, SunAt(60.0f), glm::vec3(1.0f), glm::vec3(0.0f, 2030.0f, 0.0f))).bSkyView,
+			"2 km up, the camera rising 15 m and 30 m");
+		EnvironmentComponent hazy = defaults;
+		hazy.MieScatteringScale *= 3.0f;
+		Require(changes(MakeSceneViewSkyAtmosphere(hazy, SunAt(60.0f), glm::vec3(1.0f), ground)) == "11", "Hazier air doesn't make everything again");
+		EnvironmentComponent bigSun = defaults;
+		bigSun.SunDiskSize = 3.0f;
+		Require(changes(MakeSceneViewSkyAtmosphere(bigSun, SunAt(60.0f), glm::vec3(1.0f), ground)) == "00", "The sun's disk, drawn per pixel, makes the tables again");
 	}
 
 	// The fog along the ray, summed in many small steps
@@ -366,6 +508,10 @@ namespace
 		environment.FogColor = glm::vec3(0.1f, 0.2f, 0.3f);
 		environment.bSkyFollowsSun = false;
 		environment.SunGlowLobe = 0.5f;
+		environment.SkyMode = ESkyMode::TintedCubeMap;
+		environment.RayleighScattering = glm::vec3(0.3f, 0.5f, 0.9f);
+		environment.PlanetRadius = 2000.0f;
+		environment.SkyWarmth = -0.25f;
 		world.Add<EnvironmentComponent>(entity, environment);
 		world.Add<GuidComponent>(entity, GuidComponent{ EntityGuid{ 0xE2F } });
 
@@ -381,6 +527,8 @@ namespace
 				bFound = true;
 				Require(read.FogDensity == 0.0123f && read.FogColor == glm::vec3(0.1f, 0.2f, 0.3f) && !read.bSkyFollowsSun && read.SunGlowLobe == 0.5f && read.bFog,
 					"The environment isn't read back as saved");
+				Require(read.SkyMode == ESkyMode::TintedCubeMap && read.RayleighScattering == glm::vec3(0.3f, 0.5f, 0.9f) && read.PlanetRadius == 2000.0f && read.SkyWarmth == -0.25f,
+					"The sky's settings aren't read back as saved");
 			});
 		Require(bFound, "The environment isn't saved");
 	}
@@ -395,6 +543,7 @@ int main()
 		TestSunTransmittance();
 		TestDaylight();
 		TestViewAtmosphere();
+		TestSkyAtmosphere();
 		TestHeightFog();
 		TestHenyeyGreenstein();
 		TestChromaticity();

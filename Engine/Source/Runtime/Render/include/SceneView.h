@@ -12,6 +12,7 @@
 #include "VulkanDebugLines.h"
 #include "VulkanEditorOverlays.h"
 #include "VulkanParticles.h"
+#include "VulkanSkyAtmosphere.h"
 
 #include <glm/glm.hpp>
 #include <vulkan/vulkan.hpp>
@@ -108,6 +109,8 @@ namespace Nyx
 		SceneViewColorGrading ColorGrading;
 		// Its particles this frame, and their pass's framebuffer (VulkanParticles)
 		SceneViewParticles Particles;
+		// Its sky's tables and light, while it draws the Atmosphere sky (VulkanSkyAtmosphere)
+		SceneViewSkyTables SkyTables;
 		// What its passes took on the GPU, in the last frame drawn; and its
 		// place among the views timed this frame (VulkanRenderer::PassTimestamps)
 		SceneViewGpuTimes GpuTimes;

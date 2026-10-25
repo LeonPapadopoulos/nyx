@@ -648,6 +648,17 @@ set_property(TARGET NyxTimeOfDayGpuTests PROPERTY FOLDER "Tests")
 nyx_copy_shaders_next_to(NyxTimeOfDayGpuTests)
 nyx_copy_shader_compiler_next_to(NyxTimeOfDayGpuTests)
 add_test(NAME NyxTimeOfDayGpuTests COMMAND NyxTimeOfDayGpuTests)
+# The sky made by the air's scattering on a real GPU: its tables against the CPU's, the sky at noon
+# and at sunset, from 2 m and 2 km up, its light on a wall and in the fog, made again only as it
+# must be, unchanged to the bit without it, its GPU times. Needs a Vulkan device; its window stays
+# hidden.
+add_executable(NyxSkyAtmosphereGpuTests SkyAtmosphereGpuTests.cpp)
+target_link_libraries(NyxSkyAtmosphereGpuTests PRIVATE NyxEngine)
+add_dependencies(NyxSkyAtmosphereGpuTests NyxGeneratedReflection)
+set_property(TARGET NyxSkyAtmosphereGpuTests PROPERTY FOLDER "Tests")
+nyx_copy_shaders_next_to(NyxSkyAtmosphereGpuTests)
+nyx_copy_shader_compiler_next_to(NyxSkyAtmosphereGpuTests)
+add_test(NAME NyxSkyAtmosphereGpuTests COMMAND NyxSkyAtmosphereGpuTests)
 
 # Bloom on a real GPU: an emissive cube and decal spreading their light, the threshold, exposure,
 # radius and levels, a view's own chain, the debug view, against a reference image. Needs a Vulkan

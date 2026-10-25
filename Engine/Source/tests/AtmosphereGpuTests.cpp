@@ -435,9 +435,11 @@ namespace
 			DirectionalLightComponent light;
 			light.bCastShadows = false;
 			World.Add<DirectionalLightComponent>(Sun, light);
+			// The sky's cube map tinted by the sun (NyxSkyAtmosphereGpuTests has the air's sky)
 			Environment = World.CreateEntity();
 			EnvironmentComponent environment;
 			environment.bFog = false;
+			environment.SkyMode = ESkyMode::TintedCubeMap;
 			World.Add<EnvironmentComponent>(Environment, environment);
 		}
 
@@ -653,10 +655,12 @@ namespace
 		const Entity sun = world.CreateEntity();
 		world.Add<TransformComponent>(sun, Placed(glm::vec3(0.0f), glm::vec3(1.0f), glm::quat(glm::radians(glm::vec3(-8.0f, 25.0f, 0.0f)))));
 		world.Add<DirectionalLightComponent>(sun, DirectionalLightComponent{});
-		// The fog and the sky alone: bloom and ambient occlusion have pictures of their own
-		// (NyxBloomGpuTests, NyxAmbientOcclusionGpuTests)
+		// The fog and the tinted sky alone: bloom and ambient occlusion have pictures of their own
+		// (NyxBloomGpuTests, NyxAmbientOcclusionGpuTests), the air's sky its tests
+		// (NyxSkyAtmosphereGpuTests)
 		const Entity air = world.CreateEntity();
 		EnvironmentComponent environment;
+		environment.SkyMode = ESkyMode::TintedCubeMap;
 		environment.bBloom = false;
 		environment.bAmbientOcclusion = false;
 		world.Add<EnvironmentComponent>(air, environment);

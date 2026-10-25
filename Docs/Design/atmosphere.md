@@ -1,13 +1,14 @@
 # Atmosphere
 
 The world's air, and what a camera and the sky's light make of it: height fog, a sky that follows
-the sun, the time of day that turns the sun, bloom, ambient occlusion and colour grading, and why
-they work as they do. The settings are on `EnvironmentComponent`, `TimeOfDayComponent` and
-`ColorGradingComponent` (`Scene`); the math is in `Engine/Source/Runtime/Render` (`Atmosphere.h`,
-`Bloom.h`, `AmbientOcclusion.h`, `ColorGrading.h`), the passes in `VulkanBloom`,
-`VulkanAmbientOcclusion` and `VulkanColorGrading`, the shaders in
-`Engine/Shaders/Library/nyx/atmosphere.slang`, `surface.slang`, `Skybox.slang`, `Bloom.slang`,
-`AmbientOcclusion.slang`, `ColorGrading.slang` and `Tonemap.slang`.
+the sun (made by the air's scattering, or the sky's cube map tinted), the time of day that turns the
+sun, bloom, ambient occlusion and colour grading, and why they work as they do. The settings are on
+`EnvironmentComponent`, `TimeOfDayComponent` and `ColorGradingComponent` (`Scene`); the math is in
+`Engine/Source/Runtime/Render` (`Atmosphere.h`, `SkyAtmosphere.h`, `Bloom.h`, `AmbientOcclusion.h`,
+`ColorGrading.h`), the passes in `VulkanSkyAtmosphere`, `VulkanBloom`, `VulkanAmbientOcclusion` and
+`VulkanColorGrading`, the shaders in `Engine/Shaders/Library/nyx/atmosphere.slang`, `sky.slang`,
+`surface.slang`, `SkyAtmosphere.slang`, `Skybox.slang`, `Bloom.slang`, `AmbientOcclusion.slang`,
+`ColorGrading.slang` and `Tonemap.slang`.
 
 ## The environment component
 
@@ -15,7 +16,7 @@ One component holds the world's air and the camera's response to light: *Fog*, *
 *Ambient Occlusion* (`EnvironmentComponent`, reflected, with undo, saved in scenes, sent to a
 running game). The world's first one counts; a world without one is
 drawn as before, to the bit, and so is one whose fog and sky are both off (`NyxAtmosphereGpuTests`
-checks both). Its *Particles* settings, the wind and the most particles in the world, are in
+and `NyxSkyAtmosphereGpuTests` check both). Its *Particles* settings, the wind and the most particles in the world, are in
 [Lights and particles](lights-and-particles.md#particles).
 
 Why a component of its own, not more settings on the `DirectionalLightComponent`:
@@ -29,9 +30,10 @@ Why a component of its own, not more settings on the `DirectionalLightComponent`
 
 What the renderer makes of it, per view, each frame: `VulkanRenderer::ExtractSceneEnvironment()`,
 after the view's light is found, calls `MakeSceneViewAtmosphere()` with the light's direction and
-colour, which brings the settings into range and works out what the shaders need
-(`SceneViewAtmosphere`, in the view's set: `ViewConstants.FogColor` to `SunGlow`). The editor's
-free camera shows it as the game's camera does.
+colour and the camera's place, which brings the settings into range and works out what the shaders
+need (`SceneViewAtmosphere`, in the view's set: `ViewConstants.FogColor` to `SunGlow`), and
+`MakeSceneViewSkyAtmosphere()`, what the sky's tables are made from in the Atmosphere mode
+(`SceneViewSkyAtmosphere`, below). The editor's free camera shows it as the game's camera does.
 
 ## Height fog
 
@@ -76,8 +78,13 @@ the sky's horizon too, towards the sun and away from it.
 
 ## The sky follows the sun
 
-With *Follow Sun* on, the sky's cube map, its light (the irradiance and the specular cube) and the
-fog's colour are multiplied by a tint, and the sun's light by what the air leaves of it:
+With *Follow Sun* on, the sky follows the primary light, as its *Mode* makes it: *Atmosphere* (the
+default), the sky made from the sun's place by the air's scattering (the next section), or *Tinted
+Cube Map*, the sky's cube map tinted by the sun, as follows. With *Follow Sun* off, the cube map is
+drawn as it is, whatever the mode, and nothing of the air's sky is made.
+
+In the *Tinted Cube Map* mode, the sky's cube map, its light (the irradiance and the specular cube)
+and the fog's colour are multiplied by a tint, and the sun's light by what the air leaves of it:
 
 - **The light through the air** (`GetSunTransmittance()`): `e^(-β (m - 1))`, `m` the air mass along
   the sun's ray (Kasten and Young's formula: 1 overhead, about 38 on the horizon), `β` about
@@ -93,9 +100,222 @@ fog's colour are multiplied by a tint, and the sun's light by what the air leave
 - **The glow round the sun**: the light's hue by *Sun Glow*, gathered by *Sun Glow Lobe*
   (Henyey-Greenstein again), added to the sky; gone once the sun has set.
 
-The sky stays the cube map it is: the clouds keep their shapes, only tinted. A sky made from the
-sun's place (a scattering model) would be the next step; the tint gives the warm, hazy low sun
-without one.
+The sky stays the cube map it is: the clouds keep their shapes, only tinted. The tint gives the
+warm, hazy low sun without a scattering model; the Atmosphere mode is that model.
+
+## The sky made by the air
+
+The *Atmosphere* mode makes the sky from the sun's place, by the light the air scatters towards the
+camera, as Hillaire's sky does (Hillaire 2020, *A Scalable and Production Ready Sky and Atmosphere
+Rendering Technique*): blue by day, orange and red at sunset, the zenith deep blue, haze round the
+sun; for a camera kilometres up, the horizon below eye level and the sky above darker. No texture is
+painted: the sky is what a planet with a shell of air under the sun gives.
+
+Why this, and not more tint: a tinted cube map has one colour for the whole sky at a time; the air
+gives each direction its own, from how far the light went through it: the horizon towards a low sun
+gold while the zenith is still blue, the sky opposite it pink over a darker band. The step after,
+clouds lit by the sun through the air, needs the same numbers, and a camera above the ground needs a
+sky that knows its height. A path traced sky would be exact but slow; the precomputed scattering
+of 2008 (four-dimensional tables, made again only when the air changes) is exact for single
+scattering but heavy to make as the sun moves; Hillaire's makes small tables each time the sun or
+the camera's height changes, in a fraction of a millisecond, and its multiple scattering is close to
+a path tracer's for earth-like air.
+
+### The air
+
+A planet of *Planet Radius* (6360 km) with air up to *Atmosphere Height* (100 km) above its ground,
+the world's height 0. The air is three things, each a colour times a scale, per kilometre of it at
+the ground (`MakeSceneViewSkyAtmosphere()` brings them into range, `SceneViewSkyAtmosphere`):
+
+- **Molecules** (Rayleigh): scatter blue most (*Rayleigh Scattering* and *Rayleigh Scale*, the
+  earth's (5.8, 13.6, 33.1) × 10⁻³), falling off with height by *Rayleigh Height* (8 km), the
+  phase `3 / 16π (1 + cos²)`: what makes the sky blue and the low sun red.
+- **Haze** (Mie): scatters about white, mostly forwards (*Mie Scattering*, *Mie Scale*, 4 × 10⁻³;
+  *Mie Absorption*, 0.44 × 10⁻³, taken away without scattering), falling off by *Mie Height*
+  (1.2 km), the phase Henyey and Greenstein's of *Mie Anisotropy* (0.8): the glow round the sun.
+- **Ozone**: absorbs orange most (*Ozone Absorption*, *Ozone Scale*, 1.9 × 10⁻³ at its thickest), a
+  tent from 10 to 40 km up, thickest at 25 km: what keeps the sky blue, not grey, at dusk.
+
+*Ground Albedo* is the planet's ground below the horizon, as the sky sees it: the light it sends
+back up lights the air from below, and it is the ground the sky shows below the horizon where the
+world has no mesh. *Warmth* (-1 to 1) tints the sky's light warmer or cooler at the same luminance
+(`GetSkyWarmthTint()`: red × 2^(w/2), blue × 2^(-w/2), over its luminance): a stylising offset on
+the air's colours, for the sky, its light and the fog alike; the sun's own light is the air's.
+
+### The tables
+
+`VulkanSkyAtmosphere`, per view, by the compute shaders of `SkyAtmosphere.slang`, into the frame's
+command buffer before the view's shadows and scene pass, only when what they depend on changed
+(`GetSkyAtmosphereChanges()`):
+
+1. **Transmittance** (256 × 64, when the air changes): how much light gets through from a height,
+   at an angle, to the top of the air: 40 steps along each ray. Laid out as the 2008 precomputed
+   scattering's: u by the distance to the top between its least and most at that height, v by the
+   distance to the horizon, so the near-horizontal rays, which change fastest, get most of it.
+2. **Multiple scattering** (32 × 32, when the air changes): by height and the sun's angle, the
+   light scattered two and more times, as a factor of the sun's: a group a texel, its 64 threads 64
+   directions over the sphere, 20 steps each, summed in shared memory; the second order `L₂` and
+   the part `f` of light that scatters again give all orders as `L₂ / (1 - f)` (Hillaire's
+   equations 5 to 10).
+3. **Sky view** (192 × 108, when the air, the sun or the camera's height changes): the sky round
+   the camera at its height, 4 to 30 steps along each ray (more along the long, low ones), once
+   scattered light from the sun through the transmittance table, the multiple scattering on top,
+   the planet's ground lit by the sun where a ray ends on it. u is the angle round the up axis from
+   the sun (squared, so more of it is near the sun; the sky is the same either side), v from the
+   zenith through the horizon to the nadir, most of it near the horizon wherever the horizon is at
+   that height. Its light is the sun's illuminance (π times the light's colour, what a white
+   surface facing the sun shows times π) times what the air gives per unit of it, times the
+   warmth, plus the night's light (below).
+4. **The sky as a cube** (64 a side, 7 mips), from the sky view, without the sun's disk, which
+   lights the world by itself; its **irradiance** (8 a side, the diffuse light over π, summed from
+   its 4 × 4 mip) and **specular** cube (64 a side, 6 mips, GGX prefiltered with 32 samples, as
+   `Environment.slang` does the cube map's): the world's light (below).
+
+Each image is written whole, from Undefined to General layout, and ends in ShaderReadOnlyOptimal
+for the passes after; each dispatch is followed by a barrier for the next. The tables are about
+0.8 MB a view (0.4 MB more while the debug window shows them), made at the first frame the view
+draws the air's sky and let go of when it no longer does (no environment, *Follow Sun* off, the
+tinted mode, a studio or black sky in the view).
+
+**What is made again, when:** the air's settings change, everything; the sun turns by more than
+0.02°, its light changes, or the warmth or the night's light changes, the sky view and the cube;
+the camera rises or falls by more than a metre and 1 % of its height, the sky view and the cube
+(`GetSkyViewHeightTolerance()`: the horizon then never more than a few hundredths of a degree off).
+A camera moving sideways changes nothing: the camera is always above the planet's middle. Nothing
+changed, nothing is recorded and the sky's passes take no time.
+
+### The sky, the sun and the night
+
+The sky pass (`Skybox.slang`, the same cube at the far plane) reads, per pixel, the sky view by the
+pixel's direction (`nyx::skyAtmosphereRadiance()`) at the height the table was made for, and adds
+the **sun's disk** (`nyx::sunDiskRadiance()`): *Sun Disk Size* across (1° by default, the real
+sun's 0.53°, larger for the stylised look), its light *Sun Disk Brightness* (40) times the light's
+colour, through the air to the camera (the transmittance table), darker and redder towards its edge
+(limb darkening, `μ^(0.397, 0.503, 0.652)` per channel, as Hillaire's Frostbite sky has it), its
+edge smoothed over a pixel. Forty times what a white surface facing the sun shows blooms well past
+any threshold, but stays far below the half floats' 65 504 (the real sun, about 46 000 times, would
+not with a bright light). Then the height fog, as on the cube map's sky.
+
+The **sun's light** on the world is the light's colour times the air's transmittance from the
+camera's height towards the sun (`GetSunLightThroughAtmosphere()`, integrated on the CPU along the
+same 40 steps as the table, within 5 × 10⁻⁴ of it), times the part of its disk above the horizon,
+so it sets over the disk's own width rather than going out at once. *Sun Reddening* and the tint's
+settings are the tinted mode's; this light is the air's. With a time of day, its *Horizon Fade*
+fades that light too, below the level horizon (the time of day's section); the sky itself is lit by
+the light before that fade (`ExtractedSceneGlobals::SunLightColor`), since the air high up still
+scatters the sun's light after it has set below: the dusk and the night's light stay
+(`NyxSkyAtmosphereGpuTests` checks the dusk sky 4° after sunset the same with a time of day as
+without).
+
+**At night** the air gives nothing; *Night Brightness* adds a faint light to the sky and its light
+as the sun goes down (the dusk of `GetDaylight()`), blue as the molecules' scattering, as bright
+against a clear day sky high up as it says (`NightSkyRadiance`, 0.01 of the sun's illuminance a
+steradian: the day sky's zenith is about 0.004, its mean above the horizon 0.04). The night's light
+is lit by the light before a time of day's fade, so it stays at night. Moon and stars are later.
+
+### Its light lights the world
+
+The world's ambient light, in this mode, is the sky's, at the camera's height: `nyx.environment`'s
+diffuse light samples the irradiance cube by the normal, and its specular light the specular cube
+by the reflected direction at the roughness's mip, in place of the cube map's spherical harmonics
+and prefiltered cube, untinted; the split-sum table is the same. So a surface the sun doesn't reach
+takes the sky's light: bluish by day, dimmer and warmer towards the sun at golden hour, and from
+below the planet's ground's (`NyxSkyAtmosphereGpuTests` checks a wall in the sun's shadow against
+the cubes it read back, within 1 of 255). Ambient occlusion dims it as it dims the cube map's.
+
+The sky is much darker than a white surface in the sun, as it is outside: with the sun 70° up, the
+sky above the horizon is 0.12 on average, a sunlit white about 0.8, and the zenith deep blue. The
+picture is a photograph's at a fixed exposure; the colour grading and the view's exposure make it
+brighter or more painted.
+
+### The fog takes its colour
+
+In this mode the fog's own colour (`nyx::heightFogAlong()`) is the sky's at the horizon the way
+the ray looks (`nyx::skyAtmosphereHorizon()`: the sky view's last row above the horizon, by the
+angle round from the sun), instead of *Color*: brighter and warmer towards the sun, pinker and
+dimmer away from it, and always what the sky behind it shows, so distant fogged hills melt into the
+horizon. The fog's own scattering of the sun (*Sun Scattering*, *Sun Lobe*) is added as before.
+`NyxSkyAtmosphereGpuTests` checks a wall hidden by fog against the sky view's horizon, within 1 of
+255. Fog over the sky's horizon then hides it in its own colour, the same. The colour depends only on
+the angle round from the sun, as the light along a level ray does: under fog so thick that it hides
+the sky overhead, looking up shows the horizon's colours as vertical bands, the brightest above the
+sun. The aerial perspective of the plan's next step (the air between the camera and each point)
+replaces it.
+
+### The camera high up
+
+The tables take the camera's **height above the ground**, planet-centred, as Hillaire's do: from 2 m
+the horizon is at eye level; from 2 km it is 1.44° below it (`GetHorizonCosine()`), the haze above
+it brighter than the ground below, and the sky straight up darker, through thinner air
+(`NyxSkyAtmosphereGpuTests` finds the horizon's edge 19 rows below eye level in a 20° view, as
+computed, and the zenith darker). The sun sets later up there: from 2 km a sun a degree below the
+level still shines. The ambient cube is made for the camera's height too, so a treetop sees the
+sky's light as it is up there.
+
+**Units and precision.** The world is in metres; the air's math is in kilometres, as Hillaire's,
+which keeps a planet's radius and a camera a metre up apart: a single float holds 6360 km to about
+half a metre, so a height is never taken as the difference of two radii. Everything that needs the
+height near the ground works from it as it is: the distance to the horizon `√(h (2R + h))`, the
+distance to the ground and to the top of the air (`r² - R²` as `h (2R + h)`), the height along a ray
+(`(h (2R + h) + t (t + 2 r μ)) / (|p| + R)`). The camera's height is clamped to at least a metre and
+just under the top of the air: a camera above the air (a view from orbit) would need the ray moved
+to the top first, which isn't done.
+
+### What the next steps take from it
+
+- **A 2D cloud layer** (a sphere shell at an altitude, ray-intersected per sky pixel) is lit by the
+  sun's colour at its height: the transmittance table at the shell's height and the sun's angle
+  there (`nyx::transmittanceUv()` takes the height); its ambient from the sky view or the cube; it
+  is seen through the air between it and the camera (the transmittance along the view ray, the
+  table by the camera's height and angle, divided at the shell's for a ray that ends there), and
+  sits in the sky pass before the fog. The shell's intersection should use the same `h (2R + h)`
+  forms (`nyx::skyHeightSquare()`), with the shell's radius as the planet's plus its altitude.
+- **Volumetric clouds** the camera can be inside or above need, per sample: the transmittance
+  table towards the sun from the sample's height, the multiple scattering table for their ambient
+  part, and the aerial perspective (step 3's froxel volume, or for now the transmittance and
+  sky view) between the sample and the camera. Above the cloud layer, the sky view below the
+  horizon is the planet's ground under air, which the cloud sea then covers.
+- **Aerial perspective** (step 3) is the same integration as the sky view, into a froxel volume
+  along the view, with the same tables.
+- Tables per world rather than per view: views of one world make the same transmittance and
+  multiple scattering tables; sharing them saves their cost when the air changes, which is rare.
+
+### Seeing it
+
+- *Debug > Sky Tables* in the editor (a dev tool, in Debug builds): a scene view's tables as
+  pictures, as the GPU made them for its camera and sun: the transmittance as it is, the multiple
+  scattering (× 50), the sky view, and the sky's cube unfolded as a cross, exposed by a slider
+  (`IEditorRenderer::GetSceneViewSkyTablePictures()`, written by `skyPreview` in the frames they
+  are asked for).
+- The sky's passes are timed on the GPU per view, in the frames they run (`SceneViewGpuTimes::Sky`,
+  *sky* in the frame statistics, F8 in a game, `gpu_sky_ms` in a benchmark's CSV).
+
+### Its cost
+
+On the RTX 3070 Ti, `NyxSkyAtmosphereGpuTests` at 1280 × 720, the median of 60 frames each:
+
+| What | GPU |
+| --- | --- |
+| The sky view, the cube, its irradiance and specular light, made again (the sun turning) | 0.126 ms |
+| of it: the sky view | 0.016 ms |
+| of it: the irradiance | 0.031 ms |
+| of it: the specular cube | 0.068 ms |
+| The scene pass, a ground plane and the sky, with the air's sky | 0.044 ms |
+| The same with the tinted cube map | 0.046 ms |
+
+Within the plan's 0.3 ms for the sky and its tables, made in the frames something changed and
+nothing in the others; the sky per pixel costs no more than the cube map's (two bilinear taps of
+small tables and a few square roots, against a cube map's tap). The first version took 0.23 ms to
+make again: the irradiance summed a 8 × 8 mip into 16 × 16 faces (0.07 ms), and the specular cube
+took 64 samples (0.11 ms); both are smooth for a sky without its sun, so a 4 × 4 mip into 8 × 8
+faces and 32 samples look the same at half the time. A game turning its sun every frame (a time of
+day) pays it every frame the sun has turned more than 0.02°.
+
+In the game (`NyxGame --benchmark 10`, the atmosphere test scene, the frame statistics'
+`gpu_sky_ms`): with a benchmark camera rising from 2 m to 2 km in the 10 s, 286 of the 5781 frames
+made the sky view again, 0.115 ms each (the median), 0.006 ms a frame on average; with the scene's
+own camera, still, no frame did (the tables were made while the scene settled). The scene views'
+GPU time is the same in a Debug and a Release build: the shaders are compiled alike.
 
 ## The time of day turns the sun
 
@@ -492,8 +712,8 @@ the grade ready (a 3 × 3 matrix, a dozen values) once a view a frame, too littl
   noise); bent normals for the sky's light; the depth's mips for far samples (XeGTAO's), so wide
   radii cost no more.
 
-- A sky made from the sun's place, by scattering (a sky-view lookup table), instead of a tinted
-  cube map; and the environment's light made again from it as the sun moves.
+- The air's sky: aerial perspective (a froxel volume of the air between the camera and what it
+  sees); a camera above the air; the sky's tables shared by the views of one world; moon and stars.
 - Volumetric fog: shadowed shafts of light, local fog volumes.
 - The fog over a point light's or a decal's own light: the fog adds the sun's and the sky's only.
 - Colour grading: keys for the morning apart from the evening, once the time of day gives the

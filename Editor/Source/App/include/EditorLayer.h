@@ -33,6 +33,7 @@
 #include "ImGuiDebugTools.h"
 #include "MockupOverlay.h"
 #include "PainterTestWindow.h"
+#include "SkyTablesWindow.h"
 #endif
 
 #include <filesystem>
@@ -115,6 +116,7 @@ namespace Nyx::Editor
 		ImGuiDebugTools DebugTools;
 		PainterTestWindow PainterTest;
 		MockupOverlay Mockup;
+		SkyTablesWindow SkyTables;
 #endif
 		UISourceInspector SourceInspector;
 
@@ -187,6 +189,7 @@ namespace Nyx::Editor
 			.DebugTools = DebugTools,
 			.PainterTest = PainterTest,
 			.Mockup = Mockup,
+			.SkyTables = SkyTables,
 #endif
 			.Layouts = Layouts,
 			.ResetLayout = [this]()

@@ -2,6 +2,7 @@
 #include "Atmosphere.h"
 
 #include "EnvironmentComponent.h"
+#include "SkyAtmosphere.h"
 
 #include <algorithm>
 #include <cmath>
@@ -70,12 +71,19 @@ namespace Nyx
 		return luminance > 1e-6f ? glm::max(color, glm::vec3(0.0f)) / luminance : glm::vec3(1.0f);
 	}
 
-	SceneViewAtmosphere MakeSceneViewAtmosphere(const EnvironmentComponent& environment, const glm::vec3& towardsLight, const glm::vec3& lightColor)
+	SceneViewAtmosphere MakeSceneViewAtmosphere(const EnvironmentComponent& environment, const glm::vec3& towardsLight, const glm::vec3& lightColor, const glm::vec3& cameraPosition)
 	{
 		SceneViewAtmosphere atmosphere;
 		atmosphere.SunColor = lightColor;
 		const float sinElevation = std::clamp(towardsLight.y, -1.0f, 1.0f);
-		if (environment.bSkyFollowsSun)
+		const SceneViewSkyAtmosphere sky = MakeSceneViewSkyAtmosphere(environment, towardsLight, lightColor, cameraPosition);
+		if (sky.bAtmosphere)
+		{
+			// The air's own: the sun's light through it to the camera; the sky and its light are what
+			// it scatters, untinted, and its glow round the sun is in them
+			atmosphere.SunColor = GetSunLightThroughAtmosphere(sky, lightColor);
+		}
+		else if (environment.bSkyFollowsSun)
 		{
 			atmosphere.SunColor = lightColor * GetSunTransmittance(sinElevation, std::max(environment.SunReddening, 0.0f));
 			// The sky takes the sun's hue, not its brightness: that is the daylight's

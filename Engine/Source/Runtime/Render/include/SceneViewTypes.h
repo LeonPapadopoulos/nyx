@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ColorGrading.h"
+#include "SkyAtmosphere.h"
 
 #include <cstdint>
 #include <glm/glm.hpp>
@@ -181,12 +182,14 @@ namespace Nyx
 
 	// What a view's passes took on the GPU in the last frame drawn, in milliseconds
 	// (VulkanRenderer::GetSceneViewGpuTimes()): 0 for a pass that didn't run, and without timestamps
-	// on the device. Its shadow cascades, its scene pass (the objects, the sky and the decals, and with
-	// MSAA the resolve at its end), its ambient occlusion, its particles, its bloom, and its picture
-	// (the tonemap, and the overlays and lines over it). Its colour grading's bake, in a frame that
-	// baked its table again (its lookup is the tonemap's, in the picture).
+	// on the device. Its sky's tables, in the frames they are made again (VulkanSkyAtmosphere), its
+	// shadow cascades, its scene pass (the objects, the sky and the decals, and with MSAA the resolve
+	// at its end), its ambient occlusion, its particles, its bloom, and its picture (the tonemap, and
+	// the overlays and lines over it). Its colour grading's bake, in a frame that baked its table
+	// again (its lookup is the tonemap's, in the picture).
 	struct SceneViewGpuTimes
 	{
+		float Sky = 0.0f;
 		float Shadows = 0.0f;
 		float Scene = 0.0f;
 		float AmbientOcclusion = 0.0f;
@@ -195,10 +198,11 @@ namespace Nyx
 		float Picture = 0.0f;
 		float ColorGrading = 0.0f;
 
-		float GetTotal() const { return Shadows + Scene + AmbientOcclusion + Particles + Bloom + Picture + ColorGrading; }
+		float GetTotal() const { return Sky + Shadows + Scene + AmbientOcclusion + Particles + Bloom + Picture + ColorGrading; }
 
 		SceneViewGpuTimes& operator+=(const SceneViewGpuTimes& other)
 		{
+			Sky += other.Sky;
 			Shadows += other.Shadows;
 			Scene += other.Scene;
 			AmbientOcclusion += other.AmbientOcclusion;
@@ -297,9 +301,15 @@ namespace Nyx
 		glm::vec3 CameraWorldPos{ 0.0f, 0.0f, 3.0f };
 		glm::vec3 LightDirectionWS{ glm::normalize(glm::vec3(0.4f, 1.0f, 0.2f)) };
 		glm::vec3 LightColor{ 1.0f, 0.98f, 0.95f };
+		// The light's colour as it gives it, before the time of day fades it below the horizon and
+		// before the air: what the sky made by the air's scattering is lit by, so that its dusk and
+		// its night's light stay after the sun's own light has gone
+		glm::vec3 SunLightColor{ 1.0f, 0.98f, 0.95f };
 		float Ambient = 0.18f;
 		SceneViewShadowSettings Shadows;
 		SceneViewAtmosphere Atmosphere;
+		// The sky made by the air's scattering, in the Atmosphere mode (MakeSceneViewSkyAtmosphere())
+		SceneViewSkyAtmosphere SkyAtmosphere;
 		SceneViewBloomSettings Bloom;
 		SceneViewAmbientOcclusionSettings AmbientOcclusion;
 		SceneViewColorGradingSettings ColorGrading;

@@ -181,7 +181,10 @@ namespace
 	void TestNoonToNight()
 	{
 		SunScene scene;
+		// The tinted cube map's air, whose tint this checks; the air's own sky and light are
+		// NyxAtmosphereTests' and NyxSkyAtmosphereGpuTests'
 		EnvironmentComponent environment;
+		environment.SkyMode = ESkyMode::TintedCubeMap;
 		const glm::vec3 white(1.0f);
 		struct Seen
 		{

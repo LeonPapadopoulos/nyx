@@ -6,8 +6,10 @@
 #include "PainterDrawOptions.h"
 #include "ShaderLog.h"
 
+#include <glm/glm.hpp>
 #include <imgui.h>
 
+#include <array>
 #include <cstddef>
 #include <filesystem>
 #include <memory>
@@ -96,6 +98,18 @@ namespace Nyx
 		// drawn when shown (IRenderer::SetSceneViewDrawnWhenShown()) is drawn next frame: ask in
 		// every frame the picture is shown.
 		virtual ImTextureID GetSceneViewTextureId(uint64_t id) const = 0;
+
+		// The scene view's sky tables as pictures (the Atmosphere sky's: Docs/Design/atmosphere.md),
+		// for a debug window: the transmittance as it is, the multiple scattering, the sky view and
+		// the sky's cube unfolded, exposed by `exposure` (a multiple), 8-bit. Asking draws them in
+		// the view's next frame: ask in every frame they are shown. None for a view without that sky,
+		// or before they were first drawn.
+		struct SkyTablePictures
+		{
+			std::array<ImTextureID, 4> Textures{};
+			std::array<glm::uvec2, 4> Sizes{};
+		};
+		virtual SkyTablePictures GetSceneViewSkyTablePictures(uint64_t id, float exposure) = 0;
 
 		// The scene view's picture blurred small, about 1/16 of its size (VulkanBlur), for glows
 		// and glass. What ImGui::Image() and AddImage() take: it stays the same when the view

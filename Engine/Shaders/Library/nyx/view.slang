@@ -80,6 +80,22 @@ public struct ViewConstants
     // The sky's glow round the sun, and how much it gathers round it (a, g)
     public float4 SunGlow;
 
+    // The sky made by the air's scattering (VulkanSkyAtmosphere; nyx.sky reads it): 1 while the
+    // view draws it, else 0 and nothing below is set. Its sky view and transmittance tables; its
+    // light, diffuse and specular (a roughness a mip); the planet's and the top of the air's radii
+    // in kilometres; the camera's height above the ground the tables were made for, in kilometres
+    // (x); the sun's disk's light before the air, and the cosine of its angular radius (a)
+    public uint SkyAtmosphere;
+    public nyx::Texture SkyViewLut;
+    public nyx::Texture TransmittanceLut;
+    public nyx::Cubemap SkyIrradiance;
+    public nyx::Cubemap SkySpecular;
+    public uint SkySpecularLevels;
+    public float PlanetRadius;
+    public float AtmosphereTopRadius;
+    public float4 SkyCamera;
+    public float4 SunDisk;
+
     // The view's bloom (VulkanBloom), exposed light already: its chain's first level, half the
     // view's size, 0 without bloom; and how much of it the tonemap adds
     public nyx::Texture Bloom;

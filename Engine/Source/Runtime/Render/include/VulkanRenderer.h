@@ -19,6 +19,7 @@
 #include "VulkanAmbientOcclusion.h"
 #include "VulkanColorGrading.h"
 #include "VulkanParticles.h"
+#include "VulkanSkyAtmosphere.h"
 #include "Mesh.h"
 #include "RuntimeMeshCache.h"
 #include "MeshInstanceCache.h"
@@ -127,6 +128,22 @@ namespace Nyx
 		glm::vec4 SkyTint{ 1.0f, 1.0f, 1.0f, 0.0f };
 		glm::vec4 SunGlow{ 0.0f };
 
+		// The sky made by the air's scattering (VulkanSkyAtmosphere, nyx.sky), while the view draws
+		// it: 1; its sky view and transmittance tables, its light's diffuse and specular cubes and
+		// the latter's mips, in the bindless array; the planet's and the top of the air's radii in
+		// kilometres; the camera's height above the ground the tables were made for, in kilometres
+		// (x); the sun's disk's light before the air, and the cosine of its angular radius
+		uint32_t SkyAtmosphere = 0;
+		uint32_t SkyViewLut = 0;
+		uint32_t TransmittanceLut = 0;
+		uint32_t SkyIrradiance = 0;
+		uint32_t SkySpecular = 0;
+		uint32_t SkySpecularLevels = 0;
+		float PlanetRadius = 0.0f;
+		float AtmosphereTopRadius = 0.0f;
+		glm::vec4 SkyCamera{ 0.0f };
+		glm::vec4 SunDisk{ 0.0f, 0.0f, 0.0f, 1.0f };
+
 		// The view's bloom (VulkanBloom): its first level in the bindless array, 0 without bloom,
 		// and how much of it the tonemap adds
 		uint32_t BloomTexture = 0;
@@ -162,7 +179,7 @@ namespace Nyx
 
 	// The view's set (set 1) as nyx/view.slang reads it, in scalar layout; to whole 16 bytes, as
 	// std140 would be too
-	static_assert(sizeof(SceneUBO) == 976, "SceneUBO must match ViewConstants in nyx/view.slang");
+	static_assert(sizeof(SceneUBO) == 1040, "SceneUBO must match ViewConstants in nyx/view.slang");
 
 	// One draw's push constants, the same for every scene pipeline: ObjectConstants in
 	// nyx/bindless.slang
@@ -395,6 +412,11 @@ namespace Nyx
 		// The view's grading table as it is on the GPU, x fastest, then y, then z; empty without one.
 		// Between frames; waits for the GPU. For tests.
 		std::vector<glm::vec4> ReadSceneViewColorGradingTable(uint64_t id);
+		// The view's sky tables (VulkanSkyAtmosphere), and the pass that makes them; null for an
+		// unknown view. For tests.
+		SceneViewSkyTables* GetSceneViewSkyTables(uint64_t id);
+		Nyx::VulkanSkyAtmosphere& GetSkyAtmosphere() { return SkyAtmosphere; }
+		SkyTablePictures GetSceneViewSkyTablePictures(uint64_t id, float exposure) override;
 		// What the view's passes after its scene pass took on the GPU in the last frame drawn; null
 		// for an unknown view. For tests and the benchmark.
 		const SceneViewGpuTimes* GetSceneViewGpuTimes(uint64_t id) const;
@@ -661,6 +683,8 @@ namespace Nyx
 		VulkanColorGrading ColorGrading{ Context, Programs };
 		// Each view's particles, after its ambient occlusion
 		VulkanParticles Particles{ Context, Programs };
+		// Each view's sky tables, made before its passes when what they depend on changes
+		VulkanSkyAtmosphere SkyAtmosphere{ Context, Programs };
 		// This frame's particles of every view, in the order they are drawn
 		std::vector<ParticleInstanceData> FrameParticles;
 
@@ -669,6 +693,7 @@ namespace Nyx
 		// None without timestamps on the device.
 		enum class ETimedPass : uint32_t
 		{
+			Sky,
 			Shadows,
 			Scene,
 			AmbientOcclusion,

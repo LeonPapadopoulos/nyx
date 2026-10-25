@@ -24,6 +24,7 @@
 #include "ImGuiDebugTools.h"
 #include "MockupOverlay.h"
 #include "PainterTestWindow.h"
+#include "SkyTablesWindow.h"
 #endif
 
 #include "imgui.h"
@@ -232,6 +233,7 @@ namespace Nyx::Editor
 #if NYX_DEV_TOOLS
 			NYX_UI(Nyx::UI::MenuItem("Painter Test", nullptr, &Editor.PainterTest.bOpen));
 			NYX_UI(Nyx::UI::MenuItem("Mockup Overlay", nullptr, &Editor.Mockup.bOpen));
+			NYX_UI(Nyx::UI::MenuItem("Sky Tables", nullptr, &Editor.SkyTables.bOpen));
 #endif
 			bool bPaintedChrome = Nyx::UI::IsPaintedChromeEnabled();
 			if (NYX_UI(Nyx::UI::MenuItem("Painted Chrome", nullptr, &bPaintedChrome)))
@@ -420,8 +422,8 @@ namespace Nyx::Editor
 		ImGui::Text("CPU: update %.2f, simulation %.2f, extract %.2f, cull %.2f, record %.2f, UI %.2f, waiting for the GPU %.2f",
 			average[EFrameStat::Update], average[EFrameStat::Simulation], average[EFrameStat::Extract], average[EFrameStat::Cull], average[EFrameStat::Record],
 			average[EFrameStat::UI], average[EFrameStat::WaitForGpu]);
-		ImGui::Text("GPU: %.2f ms; the scene views' shadows %.2f, scenes %.2f, ambient occlusion %.2f, particles %.2f, bloom %.2f, pictures %.2f, grading %.2f",
-			average[EFrameStat::GpuFrame], average[EFrameStat::GpuShadows], average[EFrameStat::GpuScene], average[EFrameStat::GpuAmbientOcclusion],
+		ImGui::Text("GPU: %.2f ms; the scene views' sky %.2f, shadows %.2f, scenes %.2f, ambient occlusion %.2f, particles %.2f, bloom %.2f, pictures %.2f, grading %.2f",
+			average[EFrameStat::GpuFrame], average[EFrameStat::GpuSky], average[EFrameStat::GpuShadows], average[EFrameStat::GpuScene], average[EFrameStat::GpuAmbientOcclusion],
 			average[EFrameStat::GpuParticles], average[EFrameStat::GpuBloom], average[EFrameStat::GpuPicture], average[EFrameStat::GpuColorGrading]);
 		ImGui::Text("%.0f scene views at %.0fx MSAA: %.0f draw calls, %.0f instances, %.0f culled, %.0f triangles; shadows %.0f draw calls",
 			average[EFrameStat::SceneViews], average[EFrameStat::MsaaSamples], average[EFrameStat::DrawCalls], average[EFrameStat::Instances],

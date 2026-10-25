@@ -18,6 +18,7 @@ set(NYX_SHADER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/AmbientOcclusion.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/ColorGrading.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Particle.slang
+    ${CMAKE_CURRENT_SOURCE_DIR}/SkyAtmosphere.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Grid.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/Grid.frag
     ${CMAKE_CURRENT_SOURCE_DIR}/DebugLines.vert
@@ -39,6 +40,7 @@ set(NYX_SHADER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/environment.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/lighting.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/shadows.slang
+    ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/sky.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/view.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/surface.slang
 )

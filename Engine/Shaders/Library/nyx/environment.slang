@@ -1,9 +1,12 @@
 // The environment's light, as VulkanEnvironment makes it from the sky: diffuse light from nine
 // spherical harmonics, specular light from the prefiltered cube, and the split-sum table. Both
-// lights are tinted as the sky is (nyx::skyTint(): white without an environment).
+// lights are tinted as the sky is (nyx::skyTint(): white without an environment). While the view
+// draws the sky made by the air's scattering, both are that sky's instead, at the camera's height
+// (VulkanSkyAtmosphere's irradiance and specular cubes), as they are.
 
 import nyx.atmosphere;
 import nyx.bindless;
+import nyx.sky;
 import nyx.view;
 
 namespace nyx
@@ -12,6 +15,10 @@ namespace nyx
     // Lambertian surface shows
     public float3 environmentDiffuse(float3 worldNormal)
     {
+        if (hasSkyAtmosphere())
+        {
+            return View.SkyIrradiance.SampleLevel(LinearClamp, worldNormal, 0.0).rgb;
+        }
         const float3 n = skyDirection(worldNormal);
         const float4 c[9] = View.Irradiance;
         return max(c[0].rgb * 0.282095
@@ -29,6 +36,10 @@ namespace nyx
     // The light a surface of `roughness` (0 to 1) reflects from direction `r`
     public float3 environmentSpecular(float3 r, float roughness)
     {
+        if (hasSkyAtmosphere())
+        {
+            return View.SkySpecular.SampleLevel(LinearClamp, r, saturate(roughness) * float(View.SkySpecularLevels - 1)).rgb;
+        }
         const float level = saturate(roughness) * float(View.SpecularLevels - 1);
         return View.Specular.SampleLevel(LinearClamp, skyDirection(r), level).rgb * skyTint();
     }

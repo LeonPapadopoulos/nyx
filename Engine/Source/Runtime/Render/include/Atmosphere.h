@@ -29,8 +29,12 @@ namespace Nyx
 
 	// The view's air (SceneViewAtmosphere) from the world's environment, in range, under its
 	// primary light: `towardsLight` (normalised) and `lightColor` as the light gives them, before
-	// the air. The light that reaches the ground, reddened by the air, is the result's SunColor.
-	SceneViewAtmosphere MakeSceneViewAtmosphere(const EnvironmentComponent& environment, const glm::vec3& towardsLight, const glm::vec3& lightColor);
+	// the air, for a camera at `cameraPosition`. The light that reaches the ground, reddened by the
+	// air, is the result's SunColor: in the Atmosphere mode, through the air from the camera's
+	// height (SkyAtmosphere.h). In that mode the fog's own colour is the sky's at the horizon, which
+	// only the GPU's tables know: GetHeightFogInscattering() gives the Tinted mode's.
+	SceneViewAtmosphere MakeSceneViewAtmosphere(const EnvironmentComponent& environment, const glm::vec3& towardsLight, const glm::vec3& lightColor,
+		const glm::vec3& cameraPosition = glm::vec3(0.0f));
 
 	// How much fog lies between `from` and `to`, as an optical depth: the light that gets through
 	// is exp(-depth) (nyx::heightFog() works it out the same way). The fog starts at the view's

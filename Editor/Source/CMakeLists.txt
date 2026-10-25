@@ -182,12 +182,14 @@ set(NYX_EDITOR_DEV_TOOL_SOURCES
     DevTools/src/ImGuiDebugTools.cpp
     DevTools/src/PainterTestWindow.cpp
     DevTools/src/MockupOverlay.cpp
+    DevTools/src/SkyTablesWindow.cpp
     ${NYX_DEV_TOOLS_DIR}/src/PainterTestSheet.cpp
 )
 set(NYX_EDITOR_DEV_TOOL_HEADERS
     DevTools/include/ImGuiDebugTools.h
     DevTools/include/PainterTestWindow.h
     DevTools/include/MockupOverlay.h
+    DevTools/include/SkyTablesWindow.h
     ${NYX_DEV_TOOLS_DIR}/include/PainterTestSheet.h
 )
 add_compile_definitions("NYX_DEV_TOOLS=$<AND:$<BOOL:${NYX_DEV_TOOLS}>,$<CONFIG:Debug>>")
@@ -248,8 +250,10 @@ source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES
 	DevTools/src/ImGuiDebugTools.cpp
 	DevTools/src/PainterTestWindow.cpp
 	DevTools/src/MockupOverlay.cpp
+	DevTools/src/SkyTablesWindow.cpp
 	DevTools/include/PainterTestWindow.h
 	DevTools/include/MockupOverlay.h
+	DevTools/include/SkyTablesWindow.h
 	DevTools/include/ImGuiDebugTools.h
 )
 source_group(DevTools FILES

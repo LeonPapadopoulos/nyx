@@ -131,8 +131,8 @@ namespace Nyx::Game
 		if (bGpu)
 		{
 			ImGui::Text("GPU  %.2f ms  worst %.2f", shown[EFrameStat::GpuFrame], worst[EFrameStat::GpuFrame]);
-			ImGui::Text("     shadows %.2f  scene %.2f  occlusion %.2f  particles %.2f  bloom %.2f  picture %.2f  grading %.2f", shown[EFrameStat::GpuShadows],
-				shown[EFrameStat::GpuScene], shown[EFrameStat::GpuAmbientOcclusion], shown[EFrameStat::GpuParticles], shown[EFrameStat::GpuBloom],
+			ImGui::Text("     sky %.2f  shadows %.2f  scene %.2f  occlusion %.2f  particles %.2f  bloom %.2f  picture %.2f  grading %.2f", shown[EFrameStat::GpuSky],
+				shown[EFrameStat::GpuShadows], shown[EFrameStat::GpuScene], shown[EFrameStat::GpuAmbientOcclusion], shown[EFrameStat::GpuParticles], shown[EFrameStat::GpuBloom],
 				shown[EFrameStat::GpuPicture], shown[EFrameStat::GpuColorGrading]);
 		}
 		else

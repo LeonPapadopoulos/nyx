@@ -2,8 +2,10 @@
 // between the camera and what it sees, thick near the ground and thinning upwards, which takes
 // the light of what is behind it away and adds its own, glowing towards the sun; and the sky's
 // tint and its glow round the sun. Without an environment, the fog's density is 0 and the tint
-// white: nothing changes.
+// white: nothing changes. Under the sky made by the air's scattering (nyx.sky), the fog's own
+// colour is that sky's at the horizon the way the ray looks, so that the fog and the sky agree.
 
+import nyx.sky;
 import nyx.view;
 
 namespace nyx
@@ -72,7 +74,8 @@ namespace nyx
         const float startHeight = View.CameraPosition.y + direction.y * startDistance;
         const float depth = fogDepthAlong(density, View.FogShape.x, View.FogShape.y, startHeight, direction.y, distance - startDistance);
         fog.Transmittance = max(exp(-depth), 1.0 - View.FogShape.w);
-        fog.Inscattering = View.FogColor.rgb + View.FogSun.rgb * henyeyGreenstein(dot(direction, normalize(View.LightDirection.xyz)), View.FogSun.w);
+        const float3 own = hasSkyAtmosphere() ? skyAtmosphereHorizon(direction) : View.FogColor.rgb;
+        fog.Inscattering = own + View.FogSun.rgb * henyeyGreenstein(dot(direction, normalize(View.LightDirection.xyz)), View.FogSun.w);
         return fog;
     }
 

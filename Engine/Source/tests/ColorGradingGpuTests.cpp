@@ -487,9 +487,11 @@ namespace
 		const Entity sun = world.CreateEntity();
 		world.Add<TransformComponent>(sun, Placed(glm::vec3(0.0f), glm::vec3(1.0f), glm::quat(glm::radians(glm::vec3(-8.0f, 155.0f, 0.0f)))));
 		world.Add<DirectionalLightComponent>(sun, DirectionalLightComponent{});
-		// The fog and the sky; bloom and ambient occlusion have pictures of their own
+		// The fog and the sky's cube map tinted by the sun, as the reference was made; bloom and
+		// ambient occlusion have pictures of their own
 		const Entity air = world.CreateEntity();
 		EnvironmentComponent environment;
+		environment.SkyMode = ESkyMode::TintedCubeMap;
 		environment.bBloom = false;
 		environment.bAmbientOcclusion = false;
 		world.Add<EnvironmentComponent>(air, environment);

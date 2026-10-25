@@ -308,6 +308,7 @@ namespace Nyx
 				BindSceneSets(view, cmd);
 			});
 		ColorGrading.Initialize(Bindless);
+		SkyAtmosphere.Initialize(Bindless);
 
 		LoadSkyboxCubemap();
 		// Its light: the specular cube, the irradiance, the BRDF table
@@ -384,6 +385,7 @@ namespace Nyx
 			AmbientOcclusion.Release(view.AmbientOcclusion);
 			ColorGrading.Release(view.ColorGrading);
 			Particles.Release(view.Particles);
+			SkyAtmosphere.Release(view.SkyTables);
 			view.RenderTarget.Shutdown(Context);
 		}
 		SceneViews.clear();
@@ -405,6 +407,7 @@ namespace Nyx
 		AmbientOcclusion.Shutdown();
 		ColorGrading.Shutdown();
 		Particles.Shutdown();
+		SkyAtmosphere.Shutdown();
 		PassTimestamps = nullptr;
 		Bindless.Shutdown();
 		Context.Shutdown();
@@ -846,6 +849,30 @@ namespace Nyx
 		return view ? &view->GpuTimes : nullptr;
 	}
 
+	SceneViewSkyTables* VulkanRenderer::GetSceneViewSkyTables(uint64_t id)
+	{
+		SceneViewInstance* view = FindSceneView(id);
+		return view ? &view->SkyTables : nullptr;
+	}
+
+	IEditorRenderer::SkyTablePictures VulkanRenderer::GetSceneViewSkyTablePictures(uint64_t id, float exposure)
+	{
+		SkyTablePictures pictures;
+		SceneViewInstance* view = FindSceneView(id);
+		if (view == nullptr)
+		{
+			return pictures;
+		}
+		view->SkyTables.bPreviewsAsked = true;
+		view->SkyTables.AskedPreviewExposure = exposure;
+		for (uint32_t picture = 0; picture < pictures.Textures.size(); ++picture)
+		{
+			pictures.Textures[picture] = SkyAtmosphere.GetPreviewTextureId(view->SkyTables, picture);
+			pictures.Sizes[picture] = SkyAtmosphere.GetPreviewSize(view->SkyTables, picture);
+		}
+		return pictures;
+	}
+
 	void VulkanRenderer::CreatePassTimestamps()
 	{
 		const std::vector<vk::QueueFamilyProperties> families = Context.GetPhysicalDevice().getQueueFamilyProperties();
@@ -896,6 +923,9 @@ namespace Nyx
 			const float milliseconds = static_cast<float>(static_cast<double>(ticks[1] - ticks[0]) * nanosecondsPerTick / 1.0e6);
 			switch (timed.Pass)
 			{
+			case ETimedPass::Sky:
+				view->GpuTimes.Sky = milliseconds;
+				break;
 			case ETimedPass::Shadows:
 				view->GpuTimes.Shadows = milliseconds;
 				break;
@@ -1677,6 +1707,11 @@ namespace Nyx
 				view.Particles.Draws.clear();
 			}
 			Particles.Prepare(view.Particles, view.RenderTarget, bTargetsNew);
+			// Its sky's tables, while it draws the Atmosphere sky of its world (not a studio's or
+			// black sky), made again in part as the air, the sun or its camera's height change
+			SceneViewSkyAtmosphere sky = view.SceneGlobals.SkyAtmosphere;
+			sky.bAtmosphere = sky.bAtmosphere && FindShownWorld(view) && view.Sky == ESceneViewSky::Scene;
+			SkyAtmosphere.Prepare(view.SkyTables, sky, std::exchange(view.SkyTables.bPreviewsAsked, false), view.SkyTables.AskedPreviewExposure);
 		}
 
 		if (bNewSamples)
@@ -2532,6 +2567,25 @@ namespace Nyx
 		ubo.SkyTint = glm::vec4(air.SkyTint, 0.0f);
 		ubo.SunGlow = glm::vec4(air.SunGlowColor, air.SunGlowLobe);
 
+		// The sky made by the air's scattering, by the tables made for it: they say where the
+		// horizon is for the camera's height they were made at
+		const SceneViewSkyTables& skyTables = view.SkyTables;
+		if (skyTables.IsMade() && skyTables.bBuilt && view.Sky == ESceneViewSky::Scene)
+		{
+			const SceneViewSkyAtmosphere& built = skyTables.Built;
+			ubo.SkyAtmosphere = 1;
+			ubo.SkyViewLut = skyTables.SkyView.Slot;
+			ubo.TransmittanceLut = skyTables.Transmittance.Slot;
+			ubo.SkyIrradiance = skyTables.Irradiance.Slot;
+			ubo.SkySpecular = skyTables.Specular.Slot;
+			ubo.SkySpecularLevels = VulkanSkyAtmosphere::SpecularLevels;
+			ubo.PlanetRadius = built.PlanetRadius;
+			ubo.AtmosphereTopRadius = built.PlanetRadius + built.AtmosphereHeight;
+			ubo.SkyCamera = glm::vec4(built.CameraHeight, built.PlanetRadius + built.CameraHeight, 0.0f, 0.0f);
+			const SceneViewSkyAtmosphere& sky = view.SceneGlobals.SkyAtmosphere;
+			ubo.SunDisk = glm::vec4(sky.SunDiskColor, sky.SunDiskCosine);
+		}
+
 		// Its bloom, the chain's first level
 		if (view.Bloom.Settings.bBloom && view.Bloom.Levels > 0)
 		{
@@ -2780,6 +2834,14 @@ namespace Nyx
 		{
 			Particles.CreatePipelines();
 		}
+		if (changed.contains("SkyAtmosphere.slang"))
+		{
+			SkyAtmosphere.CreatePipelines();
+			for (SceneViewInstance& view : SceneViews)
+			{
+				SkyAtmosphere.Invalidate(view.SkyTables);
+			}
+		}
 		if (uses("DebugLines"))
 		{
 			DebugLines.CreatePipeline(SceneViews.front());
@@ -2870,8 +2932,8 @@ namespace Nyx
 
 				view.SceneGlobals.LightDirectionWS = glm::normalize(lightDir);
 				// A sun the time of day has taken below the horizon fades out there
-				view.SceneGlobals.LightColor = lightComp.Color * lightComp.Intensity *
-					Nyx::GetTimeOfDayLightFade(world, entity, view.SceneGlobals.LightDirectionWS);
+				view.SceneGlobals.SunLightColor = lightComp.Color * lightComp.Intensity;
+				view.SceneGlobals.LightColor = view.SceneGlobals.SunLightColor * Nyx::GetTimeOfDayLightFade(world, entity, view.SceneGlobals.LightDirectionWS);
 				view.SceneGlobals.Ambient = lightComp.Ambient;
 				view.SceneGlobals.bHasDirectionalLight = true;
 
@@ -2926,7 +2988,10 @@ namespace Nyx
 					return;
 				}
 				bFound = true;
-				view.SceneGlobals.Atmosphere = Nyx::MakeSceneViewAtmosphere(environment, view.SceneGlobals.LightDirectionWS, view.SceneGlobals.LightColor);
+				const glm::vec3& camera = view.SceneGlobals.CameraWorldPos;
+				// The air's sky by the light unfaded: it still scatters light once the sun has set
+				view.SceneGlobals.SkyAtmosphere = Nyx::MakeSceneViewSkyAtmosphere(environment, view.SceneGlobals.LightDirectionWS, view.SceneGlobals.SunLightColor, camera);
+				view.SceneGlobals.Atmosphere = Nyx::MakeSceneViewAtmosphere(environment, view.SceneGlobals.LightDirectionWS, view.SceneGlobals.LightColor, camera);
 				view.SceneGlobals.LightColor = view.SceneGlobals.Atmosphere.SunColor;
 				view.SceneGlobals.Bloom = Nyx::MakeSceneViewBloomSettings(environment);
 				view.SceneGlobals.AmbientOcclusion = Nyx::MakeSceneViewAmbientOcclusionSettings(environment);
@@ -3009,6 +3074,7 @@ namespace Nyx
 			AmbientOcclusion.Release(it->AmbientOcclusion);
 			ColorGrading.Release(it->ColorGrading);
 			Particles.Release(it->Particles);
+			SkyAtmosphere.Release(it->SkyTables);
 
 			Bindless.RemoveTexture(it->HdrTextureSlot);
 			Bindless.RemoveTexture(it->AmbientTextureSlot);
@@ -3224,7 +3290,14 @@ namespace Nyx
 		// both, as what is blended comes after all that is opaque
 		const vk::ClearColorValue clear = vk::ClearColorValue(std::array<float, 4>{ 0.2f, 0.05f, 0.35f, 1.0f });
 		const RenderWorld* world = FindShownWorld(view);
-		// 0. Its shadow cascades, into the shadow map its scene pass reads
+		// 0. Its sky's tables, when what they depend on changed, for its scene pass and its light
+		if (view.SkyTables.IsMade() && view.SkyTables.HasWork())
+		{
+			WritePassTimestamp(cmd, view, ETimedPass::Sky, false);
+			SkyAtmosphere.Record(view.SkyTables, cmd);
+			WritePassTimestamp(cmd, view, ETimedPass::Sky, true);
+		}
+		// Its shadow cascades, into the shadow map its scene pass reads
 		if (world && view.Shadows.CascadeCount > 0)
 		{
 			WritePassTimestamp(cmd, view, ETimedPass::Shadows, false);

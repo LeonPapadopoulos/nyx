@@ -30,6 +30,7 @@ namespace Nyx::Editor
 	class ImGuiDebugTools;
 	class MockupOverlay;
 	class PainterTestWindow;
+	class SkyTablesWindow;
 #endif
 
 	// The editor's part of the window's frame: the titlebar with the menus, the workspace tabs,
@@ -61,6 +62,7 @@ namespace Nyx::Editor
 			ImGuiDebugTools& DebugTools;
 			PainterTestWindow& PainterTest;
 			MockupOverlay& Mockup;
+			SkyTablesWindow& SkyTables;
 #endif
 
 			// The workspace tabs, and Play

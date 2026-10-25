@@ -338,9 +338,10 @@ costs next to nothing otherwise.
 - **F8 in a game window** (every build) shows the frame's numbers over the picture's top left: the
   frame rate and time with the last second's worst; on the CPU the updates, the simulation's fixed
   steps, extracting, culling, recording, the UI and waiting for the GPU; on the GPU the frame and
-  the scene views' shadows, scene (with the MSAA resolve), ambient occlusion, particles, bloom,
-  picture and colour grading's bake; the scene views drawn and their MSAA samples, their draw
-  calls (and how many draw many instances), instances drawn and culled, triangles, shadow cascades with their draw calls and
+  the scene views' sky tables (in the frames they are made), shadows, scene (with the MSAA
+  resolve), ambient occlusion, particles, bloom, picture and colour grading's bake; the scene views
+  drawn and their MSAA samples, their draw calls (and how many draw many instances), instances
+  drawn and culled, triangles, shadow cascades with their draw calls and
   triangles, decals, the point lights lit, and the particles with their emitters; and a graph of the last five seconds'
   frame times, the CPU's and the GPU's. The numbers are each second's average, so they hold still
   to be read. `NyxGame.exe --frame-stats` shows them from the start.
@@ -717,20 +718,45 @@ the sun. Without one, nothing changes.
   Opacity* (below 1, the far hills and the horizon still show), *Sun Scattering* and *Sun Lobe*
   (the haze glowing towards the sun, in the light's colour). Meshes, instanced ones, two-sided
   ones and decals are fogged, a decal's glow dimmed through it; the sky is hazy on the horizon.
-- **The sky follows the sun** (*Sky*): with *Follow Sun*, the sky and its light take the sun's hue
-  (*Sun Tint*) and dim through dusk to *Night Brightness*; the sun's light warms and weakens as it
-  goes down, through more air (*Sun Reddening*), and is gone once it has set; a glow round the sun
-  (*Sun Glow*, *Sun Glow Lobe*). A low sun gives warm light, warm haze and long warm shadows.
+- **The sky follows the sun** (*Sky*), with *Follow Sun*, as its *Mode* makes it:
+  - **Atmosphere** (the default): the sky made from the sun's place by the light the air scatters
+    (Hillaire's sky), no texture: blue by day, gold, orange and red as the sun goes down, haze round
+    the sun, a sun's disk (*Sun Disk Size*, *Sun Disk Brightness*) bright enough to bloom, darker
+    and redder at its edge. Its light lights the world: surfaces the sun doesn't reach take the
+    sky's colour, bluish by day, dimmer and warmer at golden hour; the fog takes the sky's colour at
+    the horizon, brighter towards the sun, so fog and sky agree; the sun's light is what the air
+    leaves of it. For a camera high up (a treetop, a cloud's height), the horizon sinks below eye
+    level and the sky above darkens. The air is the earth's by default and every part of it a
+    setting: *Rayleigh Scattering*, *Scale* and *Height* (the molecules: the blue), *Mie
+    Scattering*, *Scale*, *Absorption*, *Height* and *Anisotropy* (the haze: the glow), *Ozone
+    Absorption* and *Scale*, *Ground Albedo*, *Planet Radius*, *Atmosphere Height*, and *Warmth*, a
+    stylising tint of the sky's light. Its tables are made again only when the air, the sun or the
+    camera's height changes: about 0.13 ms of GPU time then, nothing otherwise
+    ([Atmosphere](Design/atmosphere.md#the-sky-made-by-the-air)). *Debug > Sky Tables* in the
+    editor (Debug builds) shows them.
+  - **Tinted Cube Map**: the sky's cube map and its light take the sun's hue (*Sun Tint*) and dim
+    through dusk to *Night Brightness*; the sun's light warms and weakens as it goes down, through
+    more air (*Sun Reddening*), and is gone once it has set; a glow round the sun (*Sun Glow*, *Sun
+    Glow Lobe*).
+
+  A low sun gives warm light, warm haze and long warm shadows. With *Follow Sun* off, the sky's
+  cube map as it is.
 - All with undo, saved in scenes and sent to a running game. `Assets/Scenes/AtmosphereTest.nyxscene`:
   the ground test scene with small cubes scattered over its ground, haze and a low sun.
 - The fog and the sky cost no measurable time, on the GPU or the CPU, with 50 000 instanced cubes in
   view ([Atmosphere](Design/atmosphere.md#numbers)).
 - Tests: `NyxAtmosphereTests` (the sun through the air; the daylight; the environment's values in
-  range; the fog along rays against the fog summed in steps; the component saved),
+  range; the fog along rays against the fog summed in steps; the air's transmittance, 1 at no
+  distance and falling with the path, the sun's light redder low, the horizon's dip 2 km up, the
+  sky's settings in range and what is made again as they change; the component saved),
   `NyxAtmosphereGpuTests` (fog on surfaces and the sky against the CPU's numbers; a decal over
-  fog; instanced, plain and two-sided alike; shadows through fog; the sky darker, warmer and
-  glowing round a low sun, the light warmer; nothing changed with it all off; a reference
-  picture; the test scene), the other reference pictures unchanged.
+  fog; instanced, plain and two-sided alike; shadows through fog; the tinted sky darker, warmer
+  and glowing round a low sun, the light warmer; nothing changed with it all off; a reference
+  picture; the test scene), `NyxSkyAtmosphereGpuTests` (the air's tables against the CPU's; the
+  sky bluer at noon than at sunset; from 2 m and 2 km up, the horizon at and below eye level and the
+  zenith darker; a wall lit by the sky's light; the fog the sky's colour at the horizon; the sun's
+  disk blooming; made again only as needed; unchanged to the bit with *Follow Sun* off; its GPU
+  times), the other reference pictures unchanged.
 
 ## Time of day
 

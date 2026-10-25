@@ -374,6 +374,7 @@ namespace Nyx::Editor
 		PainterTest.SetFrameRateLimits(Renderer->IsVSync(), Window->GetFrameRateCap());
 		PainterTest.Draw(*Renderer);
 		Mockup.Draw(*Renderer);
+		SkyTables.Draw(*Renderer);
 #endif
 	}
 
