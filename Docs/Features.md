@@ -539,6 +539,30 @@ has; the guid itself is in the tooltip. It is saved and sent to games as the gui
 - Tests: `NyxEditorPanelTests` (choosing from the combo and its undo, a drop from the outliner,
   *None*, a missing guid, the eyedropper, saving and loading), `NyxHeaderToolTests`.
 
+## Overridable values
+
+A component that inherits most of its values from somewhere else, such as a data file or a parent,
+and overrides a few, as a material instance does its parent's parameters
+([Overridable values](Design/overridable-values.md)). It keeps only its overrides; everything else
+follows the source, also when the source changes.
+
+- The overrides are a property `std::vector<Nyx::ValueOverride>` (a name and a value) with
+  `UI = Overrides`: saved, copied, undone and sent to a running game like any array.
+- A game module lists what an instance can override in its `RegisterTypes()`
+  (`ComponentTypeRegistry::SetOverridableValues<T>()`): each value's name, display name, inherited
+  value, range, tooltip and source. The list may depend on the instance, so it is asked every time
+  the Details panel draws.
+- The Details panel shows one row per listed value instead of the array: an inherited value greyed,
+  with where it comes from in its tooltip; an overridden one in the normal colour with a reset
+  arrow. Editing a greyed value overrides it; edits stay in the value's range. Each edit, reset and
+  removal is one undo step.
+- An override that isn't listed (renamed, or of a value this instance doesn't have) or a second one
+  of a name is shown as *not listed*, with *Remove*; it is never dropped by itself.
+- Without a provider the property is drawn as any array.
+- Floats only, for now. `GetOverriddenValue()` gives what an instance uses.
+- Tests: `NyxEditorGameModuleTests` (the test module's lantern: rows, overriding, reset, a value
+  not listed, undo of each, the range, a component without a provider), `NyxComponentTypeRegistryTests`.
+
 ## Surface anchors
 
 A `SurfaceAnchor` property hangs something on another entity's surface, such as a mark drawn on a

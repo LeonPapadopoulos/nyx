@@ -29,6 +29,7 @@ set(NYX_EDITOR_SOURCES
     Properties/src/ReflectedPropertyDrawer.cpp
     Properties/src/PropertyWidgetRegistry.cpp
     Properties/src/EntityReferenceWidget.cpp
+    Properties/src/OverrideRows.cpp
 
     # Transactions
     Transactions/src/InspectorTargetId.cpp
@@ -112,6 +113,7 @@ set(NYX_EDITOR_HEADERS
     Properties/include/ReflectedPropertyDrawer.h
     Properties/include/PropertyWidgetRegistry.h
     Properties/include/EntityReferenceWidget.h
+    Properties/include/OverrideRows.h
 
     # Transactions
     Transactions/include/InspectorTargetId.h

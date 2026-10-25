@@ -66,7 +66,8 @@ namespace
 		Require(lantern != nullptr, "The module's component type should be registered");
 		Require(std::string_view(lantern->TypeMetadata->DisplayName) == "Test Lantern",
 			"The module's type should have its reflected display name");
-		Require(lantern->TypeMetadata->PropertyCount == 2, "The module's type should have its two properties");
+		Require(lantern->TypeMetadata->PropertyCount == 4, "The module's type should have its four properties");
+		Require(static_cast<bool>(lantern->ListOverridableValues), "The module should list what its type can override");
 	}
 
 	void TestScenesKeepModuleComponents(const std::filesystem::path& directory)

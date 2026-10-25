@@ -8,6 +8,7 @@
 #include "PropertyWidgetRegistry.h"
 #include "ReflectionUtils.h"
 #include "ImGuiSource.h"
+#include "OverrideRows.h"
 #include "PropertyValueAccess.h"
 #include "ReflectionSourceRegistry.h"
 #include "UITheme.h"
@@ -26,7 +27,8 @@
 // column on the left and its value's widget on the right, and a tree row for each category and
 // each struct, which opens and closes the rows inside it. An array is a tree row too, with a row
 // per element (a tree row for a struct) and an Add row; each element's context menu inserts,
-// removes and moves elements. A problem the draw context has about a property (InspectorDrawContext::
+// removes and moves elements; a component's overrides of values it inherits are a row per value
+// instead (OverrideRows.h). A problem the draw context has about a property (InspectorDrawContext::
 // Problems, e.g. an asset's) is a row of its own right under the property's row.
 
 namespace
@@ -331,6 +333,10 @@ namespace
 		if (Nyx::Reflection::IsStructProperty(property))
 		{
 			return DrawStructPropertyRow(object, property, drawContext, ownerType);
+		}
+		if (const Nyx::ComponentTypeOps* provider = Nyx::Editor::FindOverridableValuesProvider(property, ownerType))
+		{
+			return Nyx::Editor::DrawOverrideRows(object, property, ownerType, *provider, drawContext);
 		}
 		if (Nyx::Reflection::TryGetArray(property))
 		{

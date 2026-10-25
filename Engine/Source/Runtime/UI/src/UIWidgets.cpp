@@ -1870,6 +1870,15 @@ namespace Nyx::UI
 			painter.AddCircle(at(0.5f, 0.5f), size * 0.14f, fill);
 			break;
 		}
+		case EIcon::Reset:
+		{
+			// An arrow turning back: three quarters of a ring from the top round to the left, its
+			// head at the top pointing into the gap
+			const float pi = 3.14159265f;
+			painter.AddArc(at(0.5f, 0.56f), size * 0.3f, std::max(1.0f, std::floor(size * 0.11f)), -0.5f * pi, pi, fill);
+			painter.AddTriangle(at(0.24f, 0.26f), at(0.54f, 0.06f), at(0.54f, 0.46f), fill);
+			break;
+		}
 		}
 	}
 

@@ -77,6 +77,8 @@ namespace Nyx::UI
 		Eyedropper,
 		// Goes to what a field names, e.g. selects the entity
 		Locate,
+		// Puts a value back to what it was given, e.g. takes an override away
+		Reset,
 	};
 
 	// A button with an icon, alone (a label of "##Play") or before its label; a size of 0 on an

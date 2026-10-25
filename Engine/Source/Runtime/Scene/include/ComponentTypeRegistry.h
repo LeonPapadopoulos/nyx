@@ -3,6 +3,7 @@
 #include "Assertions.h"
 #include "ComponentInspection.h"
 #include "Entity.h"
+#include "ValueOverride.h"
 #include "ReflectionTypes.h"
 #include "SceneSerializationTypes.h"
 
@@ -59,6 +60,11 @@ namespace Nyx
 		// reflection doesn't show; the Details panel's Runtime section shows them
 		std::function<std::vector<InspectedValue>(const void* component)> Describe;
 
+		// Optional: the values a component can override, for its property with UI = Overrides
+		// (ValueOverride.h), appended to out. Asked each time the Details panel draws it: another
+		// of the component's values may decide which values there are.
+		std::function<void(const void* component, std::vector<OverridableValue>& out)> ListOverridableValues;
+
 		bool IsRuntime() const
 		{
 			return (static_cast<uint8_t>(Flags) & static_cast<uint8_t>(EComponentTypeFlags::Runtime)) != 0;
@@ -103,6 +109,12 @@ namespace Nyx
 		// the editor or undo: to take away what its post-load step made
 		template<typename T>
 		void SetOnRemove(void (*onRemove)(Registry& registry, Entity entity));
+
+		// Sets what a component of a registered reflected type T can override
+		// (ComponentTypeOps::ListOverridableValues): listValues appends each value it inherits, from
+		// wherever the game keeps it, e.g. a data file. A game module calls it in its RegisterTypes().
+		template<typename T>
+		void SetOverridableValues(void (*listValues)(const T& component, std::vector<OverridableValue>& out));
 
 		const std::vector<ComponentTypeOps>& GetAll() const
 		{
@@ -192,6 +204,18 @@ namespace Nyx
 		if (ComponentTypeOps* ops = FindRegistered(Nyx::Reflection::GetTypeMetadata<T>(), "setting its describe step"))
 		{
 			ops->Describe = MakeDescribe<T>(describe);
+		}
+	}
+
+	template<typename T>
+	void ComponentTypeRegistry::SetOverridableValues(void (*listValues)(const T& component, std::vector<OverridableValue>& out))
+	{
+		if (ComponentTypeOps* ops = FindRegistered(Nyx::Reflection::GetTypeMetadata<T>(), "setting what it can override"))
+		{
+			ops->ListOverridableValues = [listValues](const void* component, std::vector<OverridableValue>& out)
+			{
+				listValues(*static_cast<const T*>(component), out);
+			};
 		}
 	}
 

@@ -47,6 +47,19 @@ namespace Nyx::Editor
 		}
 	};
 
+	// An overridable value being dragged or typed (OverrideRows.h): which, its override's value
+	// changing as an array element's does, and, when the edit made the override, the whole array
+	// before it, so that making it and the drag are one undo step
+	struct OverrideEditState
+	{
+		bool bEditing = false;
+		ObjectRef Target{};
+		const Nyx::Reflection::PropertyMetadata* Property = nullptr;
+		std::string Name;
+		std::optional<TransactionDiffUtil> PendingDiff;
+		std::optional<std::vector<std::byte>> ArrayBefore;
+	};
+
 	struct InspectorDrawContext
 	{
 		// Discard snapshots without reading or restoring the objects they referred to.
@@ -95,5 +108,7 @@ namespace Nyx::Editor
 
 		// Special-case only for quaternion-as-degrees UI
 		TransformRotationEditState TransformRotationEdit;
+
+		OverrideEditState OverrideEdit;
 	};
 }

@@ -1,6 +1,7 @@
 // The component type registry: types register once, and a second type with a name already taken,
 // such as a game module's type named like one of the engine's, is refused and the first one kept.
 // Run-time types, reflected or not, are never saved, and are what InspectRuntimeComponents() gives.
+// A type's provider of overridable values lists what an instance inherits.
 #include "BinaryArchive.h"
 #include "ComponentInspection.h"
 #include "ComponentRegistration.h"
@@ -191,6 +192,48 @@ namespace
 	}
 }
 
+namespace
+{
+	// The provider is asked with the component, which may decide what it lists; an override is the
+	// first of its name, kept in its value's range when edited
+	void TestOverridableValues()
+	{
+		ComponentTypeRegistry& registry = ComponentTypeRegistry::Get();
+		const Nyx::ComponentTypeOps* lantern = registry.FindByName("Sample::LanternComponent");
+		Require(lantern && !lantern->ListOverridableValues, "A type should have no provider at first");
+
+		registry.SetOverridableValues<ModuleLanternComponent>(
+			[](const ModuleLanternComponent& component, std::vector<Nyx::OverridableValue>& out)
+			{
+				out.push_back({ .Name = "Glow", .Inherited = component.Brightness * 2.0f, .Min = 0.0f, .Max = 10.0f, .Source = "Brightness" });
+				if (component.Brightness > 2.0f)
+				{
+					out.push_back({ .Name = "Glare", .Inherited = 1.0f });
+				}
+			});
+		Require(static_cast<bool>(lantern->ListOverridableValues), "The provider should be set");
+
+		ModuleLanternComponent dim{ .Brightness = 1.0f };
+		std::vector<Nyx::OverridableValue> values;
+		lantern->ListOverridableValues(&dim, values);
+		Require(values.size() == 1 && values[0].Name == "Glow" && values[0].Inherited == 2.0f && values[0].HasRange(),
+			"A dim lantern should list its glow, inherited from its brightness");
+		const ModuleLanternComponent bright{ .Brightness = 3.0f };
+		values.clear();
+		lantern->ListOverridableValues(&bright, values);
+		Require(values.size() == 2 && values[1].Name == "Glare" && !values[1].HasRange(), "A bright one should list its glare too, without a range");
+
+		Require(values[0].Clamp(12.0f) == 10.0f && values[0].Clamp(-1.0f) == 0.0f && values[0].Clamp(4.0f) == 4.0f, "A value should be kept in its range");
+		Require(values[1].Clamp(1e30f) == 1e30f, "A value without a range should be kept as it is");
+
+		const std::vector<Nyx::ValueOverride> overrides = { { "Glow", 5.0f }, { "Gone", 1.0f }, { "Glow", 7.0f } };
+		Require(Nyx::FindValueOverride(overrides, "Glow") == &overrides[0] && !Nyx::FindValueOverride(overrides, "Glare"),
+			"The first override of a name should be found, and none for a value not overridden");
+		Require(Nyx::GetOverriddenValue(overrides, "Glow", 6.0f) == 5.0f && Nyx::GetOverriddenValue(overrides, "Glare", 1.0f) == 1.0f,
+			"An instance should use its override, else what it inherits");
+	}
+}
+
 int main()
 {
 	Nyx::Logger::Get().Init();
@@ -201,6 +244,7 @@ int main()
 		TestSecondTypeOfANameIsRefused();
 		TestEngineTypesWinOverModuleTypes();
 		TestRuntimeTypes();
+		TestOverridableValues();
 	}
 	catch (const std::exception& error)
 	{

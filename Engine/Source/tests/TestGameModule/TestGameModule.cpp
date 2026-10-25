@@ -27,6 +27,20 @@ namespace NyxTestModule
 			}
 		}
 
+		// What a lantern inherits from its shade, as a game's components inherit from its data files:
+		// a warm one's reach and flicker, a cold one's reach alone; its glow follows its own brightness
+		void ListLanternValues(const TestLanternComponent& lantern, std::vector<Nyx::OverridableValue>& out)
+		{
+			const bool bCold = lantern.Shade == "Cold";
+			const std::string shade = bCold ? "the cold shade" : "the warm shade";
+			out.push_back({ .Name = "Reach", .Inherited = bCold ? 20.0f : 12.0f, .Min = 0.0f, .Max = 40.0f, .Tooltip = "How far it lights", .Source = shade });
+			if (!bCold)
+			{
+				out.push_back({ .Name = "Flicker", .DisplayName = "Flicker Amount", .Inherited = 0.25f, .Min = 0.0f, .Max = 1.0f, .Source = shade });
+			}
+			out.push_back({ .Name = "Glow", .Inherited = lantern.Brightness * 2.0f, .Tooltip = "No range", .Source = "Brightness" });
+		}
+
 		// The player's commands, before anything else of the step: what a game's systems do with theirs
 		class LanternCommandSystem final : public Nyx::ISimSystem
 		{
@@ -136,6 +150,7 @@ namespace NyxTestModule
 	{
 		Nyx::ComponentTypeRegistry::Get().SetPostLoad<TestLanternComponent>(&LabelOnLoad);
 		Nyx::ComponentTypeRegistry::Get().SetRuntime<TestLanternGlowComponent>();
+		Nyx::ComponentTypeRegistry::Get().SetOverridableValues<TestLanternComponent>(&ListLanternValues);
 
 		// The module's own asset type, which the editor opens, makes and sends to the games
 		Nyx::ReflectedAssetTypes::Get().Register(Nyx::ReflectedAssetDesc<TestCreatureData>{

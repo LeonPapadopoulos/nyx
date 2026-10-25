@@ -10,6 +10,7 @@ namespace Nyx::Editor
 		CurrentPath.clear();
 		GenericPropertyEdit = {};
 		TransformRotationEdit = {};
+		OverrideEdit = {};
 		EntityToSelect.reset();
 		EntityPick = {};
 	}
@@ -28,6 +29,10 @@ namespace Nyx::Editor
 			{
 				edit->PendingDiff->PreviewChanges("Edit Property", *Transactions);
 			}
+		}
+		if (OverrideEdit.bEditing && OverrideEdit.PendingDiff)
+		{
+			OverrideEdit.PendingDiff->PreviewChanges("Edit Property", *Transactions);
 		}
 	}
 }
