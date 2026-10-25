@@ -77,6 +77,8 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/OrbitCameraComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/DirectionalLightComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/EnvironmentComponent.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/TimeOfDayComponent.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/TimeOfDay.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/PointLightComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ParticleEmitterComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/NameComponent.cpp
@@ -113,6 +115,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/PhysicsPick.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/OrbitCameras.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/CharacterCommands.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Sim/src/TimeOfDayClock.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/SparseField.cpp
 
     # Runtime/Physics

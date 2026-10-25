@@ -13,6 +13,7 @@
 #include "PropertyWidgetRegistry.h"
 #include "ReflectionSourceRegistry.h"
 #include "ScatterInstances.h"
+#include "TimeOfDay.h"
 #include "EditorRenderer.h"
 #include "SceneSerializer.h"
 #include "UIChrome.h"
@@ -297,6 +298,8 @@ namespace Nyx::Editor
 		// Scatters follow their surfaces, which their own post-load steps change, e.g. a ground edited
 		// or loaded after the scatter
 		Nyx::UpdateScatters(Editing.Scene.GetRegistry());
+		// The sun turns to the time of day as it is set, edited or undone; time doesn't run here
+		Nyx::ApplyTimeOfDay(Editing.Scene.GetRegistry());
 
 		// Keep renderer-facing selection state up to date before rendering
 		Renderer->SetSelectedEntity(Editing.Scene.GetSelection());

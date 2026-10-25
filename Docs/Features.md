@@ -732,6 +732,40 @@ the sun. Without one, nothing changes.
   glowing round a low sun, the light warmer; nothing changed with it all off; a reference
   picture; the test scene), the other reference pictures unchanged.
 
+## Time of day
+
+A *Time Of Day* component on any entity turns the sun by the time, so the sky, the fog and the
+shadows, which follow the sun's direction, follow the time: from noon through a long warm sunset to
+night. In the editor's scene views and in the game alike; the world's first one counts. Without
+one, nothing turns the sun.
+
+- *Time*: hours, 0 to 24 (6 sunrise, 12 noon, 18 sunset); past 24 it wraps. Drag it in the Details
+  panel and the sun turns at once, in the editor's views and, as a live edit, in a running game,
+  also while it is paused; undo turns it back.
+- *Time Runs* and *Day Length*: a running game moves the time on with its steps, a day every *Day
+  Length* seconds. The time after a step is the time it ran from plus the world's time since, so a
+  recording played again, or another machine, gets the same sun whatever its frame rate; Pause
+  stops it, Step moves it one step. A time sent from the editor while it runs goes on from there.
+  The editor shows the time as it is set; it runs only in a game.
+- The sun's path (*Sun*): which entity is the sun (a *Directional Light*; none: the first primary
+  one), *Path Tilt* (like a latitude: 0 overhead at noon, 30 at noon 60 degrees up), *Sunrise
+  Direction* (where on the horizon it rises, degrees round from +X towards -Z).
+- **Night**: below the horizon the sun's light fades out over *Horizon Fade* degrees, so a sun under
+  the ground lights nothing from below, with an *Environment* or without; a light that gives no
+  light casts no shadows, so none are drawn at night. With an *Environment*, the air reddens the
+  sun as it goes down and the sky dims to its *Night Brightness*.
+- The sun's rotation is the time of day's: turned by hand, it turns back to the time. Its position,
+  colour, intensity and shadows are its own.
+- All with undo, saved in scenes and sent to a running game.
+- Tests: `NyxTimeOfDayTests` (the sun's direction at sunrise, noon, sunset and midnight on a
+  straight and a tilted path, the time wrapping; the light's rotation away from the sun all day,
+  without rolling or jumping; the fade below the horizon, and the air's light and sky from noon to
+  night; the sun found by guid or as the primary light; a game world's steps moving the time on,
+  through midnight, without drift, the same to the bit with different frame times; a time sent live
+  going on from there; a new day length without a jump; the component saved),
+  `NyxTimeOfDayGpuTests` (the sky and the ground darker at sunset and at midnight than at noon; a
+  ceiling under a sun straight below lit by the light alone, not by the time of day's sun).
+
 ## Bloom
 
 Light brighter than the screen can show spreads round what gives it off: emissive materials and

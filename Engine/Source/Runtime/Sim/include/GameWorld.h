@@ -10,6 +10,7 @@
 #include "PhysicsMaterials.h"
 #include "PhysicsWorld.h"
 #include "SimSystem.h"
+#include "TimeOfDayClock.h"
 
 #include <cstdint>
 #include <memory>
@@ -27,7 +28,8 @@ namespace Nyx
 	//    transforms set since the last step (PhysicsBodies);
 	// 3. the lookup from guid to entity is made again, in the memory it had (SimContext::Guids);
 	//    constraints follow their components and the bodies (PhysicsConstraints); the players'
-	//    MoveCharacterCommands go into their characters (ApplyMoveCharacterCommands());
+	//    MoveCharacterCommands go into their characters (ApplyMoveCharacterCommands()); the time of
+	//    day moves on to the step's end while it runs, and the sun turns to it (TimeOfDayClock);
 	// 4. the systems of ESimStage::BeforePhysics, in the order they were added, e.g. to change
 	//    where the characters go (CharacterComponent::DesiredMove);
 	// 5. the characters walk, and write their transforms (PhysicsBodies::MoveCharacters());
@@ -100,6 +102,7 @@ namespace Nyx
 		PhysicsBodies Bodies;
 		PhysicsConstraints Constraints;
 		PhysicsMaterials Materials;
+		TimeOfDayClock TimeOfDay;
 		EntityGuidLookup Guids;
 		// Added since the last step, and the ones the step running now applies
 		CommandQueue Commands;

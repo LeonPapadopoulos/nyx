@@ -11,6 +11,7 @@
 #include "Bloom.h"
 #include "EnvironmentComponent.h"
 #include "TransformComponent.h"
+#include "TimeOfDay.h"
 #include "CameraProjection.h"
 #include "PreviousTransformComponent.h"
 #include "FixedStepClock.h"
@@ -2829,7 +2830,9 @@ namespace Nyx
 				}
 
 				view.SceneGlobals.LightDirectionWS = glm::normalize(lightDir);
-				view.SceneGlobals.LightColor = lightComp.Color * lightComp.Intensity;
+				// A sun the time of day has taken below the horizon fades out there
+				view.SceneGlobals.LightColor = lightComp.Color * lightComp.Intensity *
+					Nyx::GetTimeOfDayLightFade(world, entity, view.SceneGlobals.LightDirectionWS);
 				view.SceneGlobals.Ambient = lightComp.Ambient;
 				view.SceneGlobals.bHasDirectionalLight = true;
 
@@ -2865,6 +2868,11 @@ namespace Nyx
 		// The scene's sun, and its shadows, through the editor's camera too; then its air
 		ExtractSceneLight(view, registry);
 		ExtractSceneEnvironment(view, registry);
+		// A light that gives none, such as a sun that has set, casts no shadows: none are drawn
+		if (view.SceneGlobals.LightColor == glm::vec3(0.0f))
+		{
+			view.SceneGlobals.Shadows.bCastShadows = false;
+		}
 	}
 
 	void VulkanRenderer::ExtractSceneEnvironment(SceneViewInstance& view, const Nyx::Registry& world)

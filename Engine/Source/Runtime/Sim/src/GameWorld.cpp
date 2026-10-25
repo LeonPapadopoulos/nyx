@@ -29,6 +29,7 @@ namespace Nyx
 		RefreshEntityGuidLookup(World, Guids);
 		Constraints.SyncBeforeStep(World, Physics, Bodies, Guids);
 		ApplyMoveCharacterCommands(World, Guids, StepCommands);
+		TimeOfDay.Step(World, step);
 
 		const SimContext context{ World, step, Debug, Physics, Bodies, Guids, StepCommands, Constraints, Materials };
 		RunStage(ESimStage::BeforePhysics, context);

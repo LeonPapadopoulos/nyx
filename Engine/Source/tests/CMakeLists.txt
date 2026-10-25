@@ -521,6 +521,14 @@ add_dependencies(NyxAtmosphereTests NyxGeneratedReflection)
 set_property(TARGET NyxAtmosphereTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxAtmosphereTests COMMAND NyxAtmosphereTests)
 
+# The time of day: the sun's path, its light below the horizon, and the time moving on with a game
+# world's steps, the same whatever the frames, set live from the editor
+add_executable(NyxTimeOfDayTests TimeOfDayTests.cpp)
+target_link_libraries(NyxTimeOfDayTests PRIVATE NyxEngine NyxLinkTools)
+add_dependencies(NyxTimeOfDayTests NyxGeneratedReflection)
+set_property(TARGET NyxTimeOfDayTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxTimeOfDayTests COMMAND NyxTimeOfDayTests)
+
 # Material files and their values without a GPU: reading and writing, offsets, layouts that change.
 add_executable(NyxMaterialTests MaterialTests.cpp)
 target_link_libraries(NyxMaterialTests PRIVATE NyxEngine)
@@ -623,6 +631,15 @@ set_property(TARGET NyxAtmosphereGpuTests PROPERTY FOLDER "Tests")
 nyx_copy_shaders_next_to(NyxAtmosphereGpuTests)
 nyx_copy_shader_compiler_next_to(NyxAtmosphereGpuTests)
 add_test(NAME NyxAtmosphereGpuTests COMMAND NyxAtmosphereGpuTests)
+
+# The time of day on a GPU: the sky darker at sunset and at night, no light from a sun that has set
+add_executable(NyxTimeOfDayGpuTests TimeOfDayGpuTests.cpp)
+target_link_libraries(NyxTimeOfDayGpuTests PRIVATE NyxEngine)
+add_dependencies(NyxTimeOfDayGpuTests NyxGeneratedReflection)
+set_property(TARGET NyxTimeOfDayGpuTests PROPERTY FOLDER "Tests")
+nyx_copy_shaders_next_to(NyxTimeOfDayGpuTests)
+nyx_copy_shader_compiler_next_to(NyxTimeOfDayGpuTests)
+add_test(NAME NyxTimeOfDayGpuTests COMMAND NyxTimeOfDayGpuTests)
 
 # Bloom on a real GPU: an emissive cube and decal spreading their light, the threshold, exposure,
 # radius and levels, a view's own chain, the debug view, against a reference image. Needs a Vulkan

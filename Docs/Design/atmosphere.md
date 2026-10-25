@@ -1,7 +1,8 @@
 # Atmosphere
 
 The world's air, and what a camera and the sky's light make of it: height fog, a sky that follows
-the sun, bloom and ambient occlusion, and why they work as they do. The settings are on
+the sun, the time of day that turns the sun, bloom and ambient occlusion, and why they work as they
+do. The settings are on
 `EnvironmentComponent` (`Scene`); the math is in `Engine/Source/Runtime/Render` (`Atmosphere.h`,
 `Bloom.h`, `AmbientOcclusion.h`), the passes in `VulkanBloom` and `VulkanAmbientOcclusion`, the
 shaders in `Engine/Shaders/Library/nyx/atmosphere.slang`, `surface.slang`, `Skybox.slang`,
@@ -94,6 +95,60 @@ fog's colour are multiplied by a tint, and the sun's light by what the air leave
 The sky stays the cube map it is: the clouds keep their shapes, only tinted. A sky made from the
 sun's place (a scattering model) would be the next step; the tint gives the warm, hazy low sun
 without one.
+
+## The time of day turns the sun
+
+The fog, the sky and the shadows follow the primary light's direction, so the time of day only has
+to turn the light: a *Time Of Day* (`TimeOfDayComponent`, `Scene`) sets its sun's rotation from
+the time, and nothing in the renderer, the fog or the sky knows the time. The math is in
+`TimeOfDay.h` (`Scene`), the running time in `TimeOfDayClock` (`Sim`).
+
+- **The path** (`GetSunDirection()`): the sun turns once a day about the path's axis, at 15 degrees
+  an hour, its hour angle 0 at noon. In the path's frame (east where it rises, *Sunrise Direction*
+  round the up axis from +X towards -Z; the axis's side 90 degrees to the left of that), the
+  direction towards the sun at hour angle `H` is `noon · cos H - east · sin H`, with
+  `noon = up · cos φ - side · sin φ` and `φ` the *Path Tilt*: it is the sun's path at a latitude
+  `φ` on the days the sun rises due east (no seasons). So the sun rises at 6, is highest at noon,
+  `90 - φ` degrees up, sets at 18 and is lowest at midnight, as far below; 12 hours of day, 12 of
+  night, whatever the tilt.
+- **The rotation** (`GetSunRotation()`): the light's +Z towards the sun, its +X the path's axis,
+  which is at right angles to every direction of the path. So the light turns about one fixed
+  axis all day: smoothly through noon and midnight (a look-at with a fixed up would flip at the
+  top), and it never rolls. Its position is left as it is.
+- **The sun**: the entity *Sun* names, if it has a `DirectionalLightComponent`, or the world's first
+  primary one when it names none (`FindTimeOfDaySun()`, through the lights only, not every entity).
+- **Each frame** the editor and a game turn the sun to the time as it is (`ApplyTimeOfDay()`, next
+  to `UpdateScatters()`): a time dragged in the Details panel, undone, or sent to a game as a live
+  edit, turns the sun at once, also while the game is paused. Nothing else is sent: the editor's
+  frame turns its own sun, the game's its own, from the same time. The sun's rotation is derived,
+  like a ground's mesh; turned by hand, it turns back.
+- **The time runs** in a game, in its steps (`GameWorld::Step()`, before the systems, so they see
+  the step's sun). The time after a step is `from + (t - t0) · 24 / day length`, wrapped into
+  0 to 24: `from` the time it ran from, `t0` the world's time then, `t` the world's time at the
+  step's end, in doubles. A function of the steps, not of the frames, so a recording played again
+  or another machine with the same steps gets the same sun to the bit, and there is no drift from
+  adding a small step to a float 60 times a second (about a hundredth of an hour in 20 000 steps).
+  A time that isn't the one the last step wrote was set from outside (an edit, a live edit, a
+  load); it, a new day length, or time starting to run again, starts it running from there. The
+  editor's world isn't stepped, so the time doesn't run there: it would change the scene as it is
+  being edited.
+- **Below the horizon** the sun's light fades out over *Horizon Fade* degrees (3 by default, a
+  smoothstep from the horizon down; `GetSunHorizonFade()`): the renderer multiplies the time of
+  day's sun's light by it as it reads the light (`GetTimeOfDayLightFade()`), so a sun under the
+  ground lights nothing from below, with an environment or without. With *Follow Sun*, the air
+  fades it too, by about the same angle, after reddening it. A light that gives no light casts no
+  shadows (`UpdateViewportSceneGlobals()`), so the cascades aren't drawn at night.
+- **A moon later**: a second directional light on the same path half a day off
+  (`GetSunRotation(path, hours + 12)`), its own colour and intensity, faded the same way, and a
+  time of day naming it as well as the sun; the renderer lights the scene by one directional light
+  today, so the moon waits for a second one, or takes the primary light's place while the sun is
+  down.
+- **At any height**: the sun's direction is the same everywhere, and nothing here knows where the
+  camera or the ground is. Elsewhere: the horizon the sun fades at, here and in the air, is the
+  level one, not the horizon seen from up high, which dips below it (about 0.7 degrees at 500 m,
+  1.4 at 2 km), so from a treetop at cloud height the sun's light goes a little before the sun
+  reaches the visible horizon; a sky made from the planet's size would fix both. The fog is exact
+  at every height, above it too.
 
 ## Bloom
 
