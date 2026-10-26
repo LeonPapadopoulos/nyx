@@ -20,6 +20,9 @@ Design/StartupConcepts/*
 Design/Checkpoints/*
 Design/*.md
 
+# Docs
+Docs/Design/**
+
 # Editor
 Editor/*.md
 
