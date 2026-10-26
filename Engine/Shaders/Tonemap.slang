@@ -1,6 +1,6 @@
-// A scene view's HDR picture, exposed, its bloom added, tonemapped into the 8-bit picture the
-// editor shows (sRGB-encoded), and graded by the view's lookup table if it has one. One triangle
-// over the view; the editor's overlays are drawn over it afterwards.
+// A scene view's HDR picture, exposed, its light shafts and bloom added, tonemapped into the 8-bit
+// picture the editor shows (sRGB-encoded), and graded by the view's lookup table if it has one. One
+// triangle over the view; the editor's overlays are drawn over it afterwards.
 
 import nyx.bindless;
 import nyx.color;
@@ -29,8 +29,15 @@ float4 tonemapFragment(float4 position : SV_Position) : SV_Target
         return float4(saturate(hdr), 1.0);
     }
 
-    // The bloom, half the view's size, filtered up; it is exposed light already
+    // The light shafts (LightShafts.slang), half the view's size, filtered up, times their colour;
+    // exposed light already. Added with the bloom, not before it: they are as soft as its glow
+    // already, and bloomed they would only double the glow round the sun.
     float3 scene = hdr * View.ExposureScale;
+    if (View.LightShafts.Index != 0)
+    {
+        scene += View.LightShafts.SampleLevel(nyx::LinearClamp, position.xy / View.ViewportSize, 0.0).r * View.LightShaftsColor.rgb;
+    }
+    // The bloom, half the view's size, filtered up; it is exposed light already
     float3 bloom = float3(0.0);
     if (View.Bloom.Index != 0)
     {

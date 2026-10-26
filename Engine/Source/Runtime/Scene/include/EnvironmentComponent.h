@@ -36,8 +36,8 @@ namespace Nyx
 	// far away in its colour and glows towards the sun; a sky that follows the primary light, made
 	// by the air's scattering from the sun's place (or its cube map tinted by the sun's colour),
 	// dimmer as the sun goes down, its light warmer and weaker the lower the sun is; bloom, the light of what is brightest spread round it; and
-	// ambient occlusion, the sky's light kept out of creases, corners and the feet of things; and
-	// for particles, the wind that carries them and how many the world has at most. The world's
+	// ambient occlusion, the sky's light kept out of creases, corners and the feet of things; light
+	// shafts, the sun streaming through gaps in what stands before it; and for particles, the wind that carries them and how many the world has at most. The world's
 	// first such component counts; without one, nothing of this is drawn, no wind blows and the
 	// world has up to 50 000 particles.
 	NYX_REFLECT(Component, meta = (DisplayName = "Environment"))
@@ -179,6 +179,26 @@ namespace Nyx
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Ambient Occlusion", DisplayName = "Quality", Tooltip = "How many samples a pixel takes: Low is cheapest and noisiest"))
 		EAmbientOcclusionQuality OcclusionQuality = EAmbientOcclusionQuality::Medium;
+
+		// Light shafts: the sky's light round the sun smeared out from it across the picture, held
+		// back by what stands before it, so that the sun streams through gaps (VulkanLightShafts)
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Light Shafts", DisplayName = "Light Shafts", Tooltip = "Whether the sun's light streams through the gaps in what stands before it, in shafts out from the sun across the picture: while the sun is on or near the picture and above the horizon"))
+		bool bLightShafts = false;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Light Shafts", DisplayName = "Intensity", DragSpeed = 0.01, Tooltip = "How bright the shafts are, 0 to 16: how much of the light they gather from the sky round the sun they add"))
+		float LightShaftsIntensity = 0.5f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Light Shafts", DisplayName = "Length", DragSpeed = 0.01, Tooltip = "How far the light of a shaft carries from the gap it comes through, as a part of the way to the sun: its light falls to a tenth over this part, 0.01 to 10"))
+		float LightShaftsLength = 1.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Light Shafts", DisplayName = "Density", DragSpeed = 0.01, Tooltip = "How far towards the sun each pixel gathers light, 0.05 to 1 of the way: less keeps the shafts away from the sun and makes them finer"))
+		float LightShaftsDensity = 0.9f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Light Shafts", DisplayName = "Depth Threshold", DragSpeed = 1.0, Tooltip = "How far away, in metres, what stands before the sun starts to let its light through as the sky does, all of it at twice as far: nearer, it blocks the light"))
+		float LightShaftsDepthThreshold = 1000.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Light Shafts", DisplayName = "Tint", UI = Color, Tooltip = "Multiplies the shafts' colour, which is the sun's as it reaches the camera: white keeps the sun's"))
+		glm::vec3 LightShaftsTint{ 1.0f, 1.0f, 1.0f };
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Particles", DragSpeed = 0.05, Tooltip = "The air's speed everywhere, in metres a second, which carries particles by their drag; a game's air field takes its place"))
 		glm::vec3 Wind{ 0.0f, 0.0f, 0.0f };

@@ -26,14 +26,15 @@ namespace Nyx
 		UI,
 		WaitForGpu,
 		// The GPU: the frame's whole command buffer, and the scene views' passes (the sky's tables
-		// in the frames they are made; the scene pass with the MSAA resolve at its end; the colour
-		// grading's bake, in frames that bake)
+		// in the frames they are made; the scene pass with the MSAA resolve at its end; the light
+		// shafts in the frames the sun gives some; the colour grading's bake, in frames that bake)
 		GpuFrame,
 		GpuSky,
 		GpuShadows,
 		GpuScene,
 		GpuAmbientOcclusion,
 		GpuParticles,
+		GpuLightShafts,
 		GpuBloom,
 		GpuPicture,
 		GpuColorGrading,

@@ -4,6 +4,7 @@
 #include "VulkanBlur.h"
 #include "VulkanBloom.h"
 #include "VulkanAmbientOcclusion.h"
+#include "VulkanLightShafts.h"
 #include "VulkanColorGrading.h"
 #include "EditorCamera.h"
 #include "PointLights.h"
@@ -109,6 +110,9 @@ namespace Nyx
 		SceneViewColorGrading ColorGrading;
 		// Its particles this frame, and their pass's framebuffer (VulkanParticles)
 		SceneViewParticles Particles;
+		// Its light shafts: their targets at half its size, and its settings this frame
+		// (VulkanLightShafts)
+		SceneViewLightShafts LightShafts;
 		// Its sky's tables and light, while it draws the Atmosphere sky (VulkanSkyAtmosphere)
 		SceneViewSkyTables SkyTables;
 		// What its passes took on the GPU, in the last frame drawn; and its

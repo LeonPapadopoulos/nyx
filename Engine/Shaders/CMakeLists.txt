@@ -16,6 +16,7 @@ set(NYX_SHADER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/Shadow.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Bloom.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/AmbientOcclusion.slang
+    ${CMAKE_CURRENT_SOURCE_DIR}/LightShafts.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/ColorGrading.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Particle.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/SkyAtmosphere.slang

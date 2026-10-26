@@ -537,6 +537,14 @@ add_dependencies(NyxColorGradingTests NyxGeneratedReflection)
 set_property(TARGET NyxColorGradingTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxColorGradingTests COMMAND NyxColorGradingTests)
 
+# Light shafts without a GPU: the sun's place on the picture, their fade as the sun leaves it, goes
+# behind the camera or sets, the decay by their length, values in range, the component saved.
+add_executable(NyxLightShaftsTests LightShaftsTests.cpp)
+target_link_libraries(NyxLightShaftsTests PRIVATE NyxEngine)
+add_dependencies(NyxLightShaftsTests NyxGeneratedReflection)
+set_property(TARGET NyxLightShaftsTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxLightShaftsTests COMMAND NyxLightShaftsTests)
+
 # Material files and their values without a GPU: reading and writing, offsets, layouts that change.
 add_executable(NyxMaterialTests MaterialTests.cpp)
 target_link_libraries(NyxMaterialTests PRIVATE NyxEngine)
@@ -684,6 +692,19 @@ set_property(TARGET NyxColorGradingGpuTests PROPERTY FOLDER "Tests")
 nyx_copy_shaders_next_to(NyxColorGradingGpuTests)
 nyx_copy_shader_compiler_next_to(NyxColorGradingGpuTests)
 add_test(NAME NyxColorGradingGpuTests COMMAND NyxColorGradingGpuTests)
+
+# Light shafts on a real GPU: a sun behind a wall streaming through a window in it, none from a sun
+# behind the camera or below the horizon, the picture unchanged to the bit without them, the same
+# from a camera at cloud height, their GPU time, the test scene. Needs a Vulkan device; its window
+# stays hidden.
+add_executable(NyxLightShaftsGpuTests LightShaftsGpuTests.cpp)
+target_link_libraries(NyxLightShaftsGpuTests PRIVATE NyxEngine)
+add_dependencies(NyxLightShaftsGpuTests NyxGeneratedReflection)
+set_property(TARGET NyxLightShaftsGpuTests PROPERTY FOLDER "Tests")
+nyx_copy_shaders_next_to(NyxLightShaftsGpuTests)
+nyx_copy_shader_compiler_next_to(NyxLightShaftsGpuTests)
+add_test(NAME NyxLightShaftsGpuTests COMMAND NyxLightShaftsGpuTests)
+add_test(NAME NyxLightShaftsGpuTestsMsaa COMMAND NyxLightShaftsGpuTests --msaa 4)
 
 # Ambient occlusion on a real GPU: a box's foot occluded and the open floor not, never the sun's
 # light, the radius, intensity and qualities, fog and decals, a dense instanced field, against a

@@ -166,6 +166,8 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/SkyAtmosphere.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanSkyAtmosphere.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanAmbientOcclusion.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/LightShafts.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanLightShafts.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanParticles.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Multisampling.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Texture.cpp
@@ -381,6 +383,8 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/SkyAtmosphere.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanSkyAtmosphere.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanAmbientOcclusion.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/LightShafts.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanLightShafts.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanParticles.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Multisampling.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Texture.h

@@ -22,6 +22,7 @@ namespace Nyx
 			{ "gpu_scene_ms", true },
 			{ "gpu_ambient_occlusion_ms", true },
 			{ "gpu_particles_ms", true },
+			{ "gpu_light_shafts_ms", true },
 			{ "gpu_bloom_ms", true },
 			{ "gpu_picture_ms", true },
 			{ "gpu_color_grading_ms", true },
@@ -64,6 +65,7 @@ namespace Nyx
 		sample[EFrameStat::GpuScene] = views.Gpu.Scene;
 		sample[EFrameStat::GpuAmbientOcclusion] = views.Gpu.AmbientOcclusion;
 		sample[EFrameStat::GpuParticles] = views.Gpu.Particles;
+		sample[EFrameStat::GpuLightShafts] = views.Gpu.LightShafts;
 		sample[EFrameStat::GpuBloom] = views.Gpu.Bloom;
 		sample[EFrameStat::GpuPicture] = views.Gpu.Picture;
 		sample[EFrameStat::GpuColorGrading] = views.Gpu.ColorGrading;

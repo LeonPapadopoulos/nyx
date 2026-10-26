@@ -2,18 +2,19 @@
 
 The world's air, and what a camera and the sky's light make of it: height fog, a sky that follows
 the sun (made by the air's scattering, or the sky's cube map tinted), the time of day that turns the
-sun, bloom, ambient occlusion and colour grading, and why they work as they do. The settings are on
-`EnvironmentComponent`, `TimeOfDayComponent` and `ColorGradingComponent` (`Scene`); the math is in
-`Engine/Source/Runtime/Render` (`Atmosphere.h`, `SkyAtmosphere.h`, `Bloom.h`, `AmbientOcclusion.h`,
-`ColorGrading.h`), the passes in `VulkanSkyAtmosphere`, `VulkanBloom`, `VulkanAmbientOcclusion` and
-`VulkanColorGrading`, the shaders in `Engine/Shaders/Library/nyx/atmosphere.slang`, `sky.slang`,
-`surface.slang`, `SkyAtmosphere.slang`, `Skybox.slang`, `Bloom.slang`, `AmbientOcclusion.slang`,
-`ColorGrading.slang` and `Tonemap.slang`.
+sun, bloom, ambient occlusion, light shafts and colour grading, and why they work as they do. The
+settings are on `EnvironmentComponent`, `TimeOfDayComponent` and `ColorGradingComponent` (`Scene`);
+the math is in `Engine/Source/Runtime/Render` (`Atmosphere.h`, `SkyAtmosphere.h`, `Bloom.h`,
+`AmbientOcclusion.h`, `LightShafts.h`, `ColorGrading.h`), the passes in `VulkanSkyAtmosphere`,
+`VulkanBloom`, `VulkanAmbientOcclusion`, `VulkanLightShafts` and `VulkanColorGrading`, the shaders in
+`Engine/Shaders/Library/nyx/atmosphere.slang`, `sky.slang`, `surface.slang`, `SkyAtmosphere.slang`,
+`Skybox.slang`, `Bloom.slang`, `AmbientOcclusion.slang`, `LightShafts.slang`, `ColorGrading.slang`
+and `Tonemap.slang`.
 
 ## The environment component
 
-One component holds the world's air and the camera's response to light: *Fog*, *Sky*, *Bloom* and
-*Ambient Occlusion* (`EnvironmentComponent`, reflected, with undo, saved in scenes, sent to a
+One component holds the world's air and the camera's response to light: *Fog*, *Sky*, *Bloom*,
+*Ambient Occlusion* and *Light Shafts* (`EnvironmentComponent`, reflected, with undo, saved in scenes, sent to a
 running game). The world's first one counts; a world without one is
 drawn as before, to the bit, and so is one whose fog and sky are both off (`NyxAtmosphereGpuTests`
 and `NyxSkyAtmosphereGpuTests` check both). Its *Particles* settings, the wind and the most particles in the world, are in
@@ -497,6 +498,133 @@ by it (`VulkanAmbientOcclusion`, per scene view):
   (`ESceneViewDebug::AmbientOcclusion`). Its passes are timed on the GPU per view
   (`SceneViewGpuTimes::AmbientOcclusion`).
 
+## Light shafts
+
+The sun's light streaming through the gaps in what stands before it: between columns and branches,
+past the edge of a wall, in shafts out from the sun across the picture. `VulkanLightShafts`, per
+scene view, after its particles, from its HDR scene and its depth, at half its size; the math in
+`LightShafts.h`, the shader `LightShafts.slang`. On with an *Environment*, under *Light Shafts*.
+
+It is the screen-space radial blur of crepuscular rays (Mitchell, *GPU Gems 3*, 2007): the cheap,
+stylised stand-in the plan allows before its volumetric fog (step 9), which gives real shafts in
+the air.
+
+1. **The light that may stream, halved** (`lightShaftsPrefilterFragment`): for each half-size
+   pixel, its four pixels' brightness (luminance), exposed as the tonemap exposes it and held below
+   4 (the sun's disk, forty times a white surface in the sun, would drown the sky round it), each
+   as much as the depth lets through: the sky, at the far plane, all of it; what stands nearer
+   than *Depth Threshold* none; all of it from twice as far, smoothly between. Times a glow round
+   the sun: the cosine between the pixel's way and the sun's, raised to the 8th (half at about 24
+   degrees from the sun, a tenth at 45), so the blue sky far from the sun doesn't stream. The
+   cosine is taken in view space, from the projection, so it is the world's whatever the lens.
+2. **Gathered along the line to the sun** (`lightShaftsBlurFragment`): 48 bilinear samples
+   (`LightShaftsSamples`) from the pixel towards the sun's place on the picture, over *Density* of
+   the way, each weighing the decay times the one before; their mean by those weights. What lies
+   off the picture gives nothing. So a gap's light streams out from it, away from the sun, over
+   what stands nearer, and fades as it goes.
+3. **Evened out along the line** (`lightShaftsSmoothFragment`): each line starts up to a step
+   further on, by interleaved gradient noise (Jimenez 2014); without it, the steps show as copies
+   of every gap's edge further out. Four taps over a step along the line, each its own turn of the
+   noise, even the noise out again. Nothing temporal: a still picture stays still.
+4. **Added by the tonemap**, filtered up from half size, times the shafts' colour: the sun's hue
+   as it reaches the camera (its light through the air at luminance 1), times *Tint*, *Intensity*
+   and the fade below. One channel, the shafts' brightness, in R16F: two targets of 640 × 360 at
+   1280 × 720, about 0.9 MB.
+
+**With the bloom, not before it.** The tonemap adds the shafts as it adds the bloom, rather than a
+pass adding them into the HDR scene before the bloom reads it:
+
+- They are as soft as the bloom's glow already; bloomed, the brightest of them, round the sun,
+  would only spread again and double the glow the sun's disk blooms with.
+- No full-size pass to add them: one bilinear tap a pixel in a pass that runs anyway.
+- They are still tonemapped and graded with the picture, as the bloom is: a warm grade warms them.
+- The bloom reads the scene as it was, so it is the same with the shafts or without.
+
+**The settings**, held in range by `MakeSceneViewLightShaftsSettings()`:
+
+- *Intensity* (0.5, 0 to 16): how much of the light they gather they add.
+- *Length* (1, 0.01 to 10): how far the light carries from the gap it comes through, as a part of
+  the way to the sun: the decay is made so that the light from that part of the way falls to a
+  tenth, `decay^(48 · length / density) = 0.1` (`GetLightShaftsDecay()`), so a length means the
+  same whatever the density or the samples.
+- *Density* (0.9, 0.05 to 1): how far towards the sun the lines reach. Less keeps the shafts away
+  from the sun and makes them finer, as the samples are closer together.
+- *Depth Threshold* (1000 m): what stands nearer blocks the light, from twice as far it lets it
+  through as the sky does. At its default only the sky streams (the scene's far plane is a
+  kilometre away by default); lower, a far, fogged hillside glows through too.
+- *Tint* (white): times the sun's colour.
+
+**Off by default.** They are a look a scene asks for, not part of every world's air; every scene
+saved before, and every reference picture, stays as it was; and the volumetric fog of the plan's
+step 9 takes their place where it is built. The *Light Shafts* setting on the environment turns
+them on; `Assets/Scenes/LightShaftsTest.nyxscene` has them on.
+
+**When the sun gives none** (`MakeSceneViewLightShaftsSettings()`, under the view's light as
+`ExtractSceneEnvironment()` has it):
+
+- **Its place on the picture** is the point at infinity towards it through the view's projection:
+  the camera's place doesn't count, only where it looks. Behind the camera, or level with it,
+  none.
+- **Leaving the picture**: all of them while the sun is on it; beyond its edge they fade, to none
+  half a picture past it (the farther of its two coordinates, -1 to 1 on the picture, from 1 to 2,
+  a smoothstep: `GetLightShaftsScreenFade()`). A sun just off the picture still streams in.
+- **Setting**: by the part of the light's own colour the air and the time of day leave it (the
+  light as it reaches the camera, against the light as it gives it: `GetLightShaftsSunFade()`),
+  all of them down to a tenth, none at nothing: in the earth's air they start to go about a degree
+  above the horizon and are gone before the sun's light is. That is the light the renderer
+  extracts, through the air from the camera's height, so a camera at cloud height, which still
+  sees the sun after it has set for the ground, keeps its shafts that much longer. With *Follow
+  Sun* off and no time of day, nothing fades the sun below the horizon, and so nothing fades its
+  shafts.
+- **No sun**: a world without a primary directional light has none.
+
+Then nothing is drawn, the tonemap reads nothing, and the picture is the one without them, to the
+bit; the targets are kept for when the sun comes back, and let go of when the shafts go off.
+**Not drawn** either in a material's debug view (its outputs aren't light), or with a studio's or a
+black sky (their light isn't the sun's).
+
+### Its limits, against volumetric fog
+
+- **Only what is on the picture.** A gap off the picture streams nothing, a sun far off it gives
+  no shafts at all, and turning away fades them; a shaft between the trees beside the camera is
+  still there in the air.
+- **On the picture, not in the air.** The light is smeared over everything along the line, near or
+  far: it can't fall onto the ground as a lit stripe through haze, or be seen from the side, or
+  stand round a camera inside it, and a sun behind the camera (shafts going away towards the
+  point opposite it) gives none. A froxel volume of the air, lit by the sun through its shadow map
+  (step 9), gives each of these, at its place in space.
+- **Blocked by the depth on the picture**, not by the shadow map: a branch blocks as much as the
+  pixels it covers; what is behind the camera or off the picture blocks nothing.
+- **Its brightness is the sky's round the sun**, not light scattered by the air: a bright cloud
+  near the sun streams, a dark one holds the light back; there is no fog density to set, only an
+  intensity. Fog makes no shafts brighter or longer.
+- What it does well: a few hundredths of a millisecond (below), any height, any sky, no volume.
+
+### The camera at cloud height, and the clouds
+
+Nothing in it knows where the ground is: the sun's place is a direction, the occlusion comes from
+the depth and the light on the picture, and the fade is the light the air leaves at the camera's
+height. `NyxLightShaftsGpuTests` draws the same wall and sun 1.5 km up, with the same shafts.
+
+The cloud layer (the plan's step 6) is drawn in the sky pass, into the HDR scene, so its lit edges
+already stream by their brightness and its darker bodies less. To hold the sun's light back as a
+whole where the clouds are thick, it should give the shafts **the clouds' transmittance along each
+view ray** (1 clear sky, 0 thick cloud), at the scene's size or half of it, in a target of its own
+or a channel nothing else reads: the prefilter multiplies what the depth lets through by it, one
+lookup. Not the depth: the layer is kilometres away, beyond any useful threshold, and its edges are
+soft, which a depth can't say. Volumetric clouds the camera is in or above need the same, or the
+froxel fog, which takes the shafts' place there.
+
+### Seeing it
+
+- *Light Shafts* on an *Environment*, every value edited live, in the editor's views and a running
+  game. `Assets/Scenes/LightShaftsTest.nyxscene` (written by `NyxLightShaftsGpuTests
+  --write-scene`): a ground, two rows of columns under a roof, the camera looking through them,
+  hazy air with the shafts on, and a time of day at 17:12 with the sun low behind the columns;
+  scrubbing the time moves the shafts and sets them with the sun.
+- Their passes are timed on the GPU per view (`SceneViewGpuTimes::LightShafts`, *shafts* in the
+  frame statistics, F8 in a game, `gpu_light_shafts_ms` in a benchmark's CSV).
+
 ## Colour grading
 
 The picture graded as a painter or a colourist would: its white balance, contrast, shadows,
@@ -735,6 +863,14 @@ with the time of day bakes in a few frames of every hundred (282 times as it ris
 the grade ready (a 3 × 3 matrix, a dozen values) once a view a frame, too little to show in
 *extract* or *record*.
 
+Light shafts, on top of the sky made by the air: `NyxLightShaftsGpuTests` at 1280 × 720 (a wall
+with a window in it, the sun behind it), the median of 60 frames, a Debug build (the shaders are
+compiled alike in both): their three passes 0.055 ms, all at half size (48 bilinear taps a pixel for
+the gathering, four for the prefilter and the evening out); the picture pass 0.015 ms with them
+against 0.017 ms without, the same within the spread: the tonemap's tap costs nothing that can be
+measured. Well within the plan's millisecond for fog and shafts together. In the frames the sun
+gives none (behind the camera, off the picture, set), nothing is recorded and they take nothing.
+
 ## Later
 
 - Ambient occlusion: a temporal filter, once there is temporal antialiasing (fewer samples, less
@@ -743,7 +879,9 @@ the grade ready (a 3 × 3 matrix, a dozen values) once a view a frame, too littl
 
 - The air's sky: aerial perspective (a froxel volume of the air between the camera and what it
   sees); a camera above the air; the sky's tables shared by the views of one world; moon and stars.
-- Volumetric fog: shadowed shafts of light, local fog volumes.
+- Volumetric fog: shadowed shafts of light, local fog volumes; it takes the light shafts' place,
+  which could stay for what lies beyond its range.
+- Light shafts: the cloud layer's transmittance as their mask (above); a debug view of them alone.
 - The fog over a point light's or a decal's own light: the fog adds the sun's and the sky's only.
 - Colour grading: keys for the morning apart from the evening, once the time of day gives the
   sun's path; a view's switch to see its picture ungraded beside the graded one; the grade's

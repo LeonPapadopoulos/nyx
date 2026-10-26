@@ -184,9 +184,9 @@ namespace Nyx
 	// (VulkanRenderer::GetSceneViewGpuTimes()): 0 for a pass that didn't run, and without timestamps
 	// on the device. Its sky's tables, in the frames they are made again (VulkanSkyAtmosphere), its
 	// shadow cascades, its scene pass (the objects, the sky and the decals, and with MSAA the resolve
-	// at its end), its ambient occlusion, its particles, its bloom, and its picture (the tonemap, and
-	// the overlays and lines over it). Its colour grading's bake, in a frame that baked its table
-	// again (its lookup is the tonemap's, in the picture).
+	// at its end), its ambient occlusion, its particles, its light shafts, its bloom, and its picture
+	// (the tonemap, and the overlays and lines over it). Its colour grading's bake, in a frame that
+	// baked its table again (its lookup is the tonemap's, in the picture).
 	struct SceneViewGpuTimes
 	{
 		float Sky = 0.0f;
@@ -194,11 +194,12 @@ namespace Nyx
 		float Scene = 0.0f;
 		float AmbientOcclusion = 0.0f;
 		float Particles = 0.0f;
+		float LightShafts = 0.0f;
 		float Bloom = 0.0f;
 		float Picture = 0.0f;
 		float ColorGrading = 0.0f;
 
-		float GetTotal() const { return Sky + Shadows + Scene + AmbientOcclusion + Particles + Bloom + Picture + ColorGrading; }
+		float GetTotal() const { return Sky + Shadows + Scene + AmbientOcclusion + Particles + LightShafts + Bloom + Picture + ColorGrading; }
 
 		SceneViewGpuTimes& operator+=(const SceneViewGpuTimes& other)
 		{
@@ -207,6 +208,7 @@ namespace Nyx
 			Scene += other.Scene;
 			AmbientOcclusion += other.AmbientOcclusion;
 			Particles += other.Particles;
+			LightShafts += other.LightShafts;
 			Bloom += other.Bloom;
 			Picture += other.Picture;
 			ColorGrading += other.ColorGrading;
@@ -290,6 +292,28 @@ namespace Nyx
 		uint32_t Steps = 6;
 	};
 
+	// The view's light shafts (EnvironmentComponent, in range, under the view's light:
+	// MakeSceneViewLightShaftsSettings()); none without an environment. On, its targets are kept;
+	// drawn only in the frames its sun gives some (IsDrawn()).
+	struct SceneViewLightShaftsSettings
+	{
+		bool bLightShafts = false;
+		float Intensity = 0.0f;
+		// How far towards the sun each pixel's line reaches, 0 to 1 of the way; what each sample
+		// along it keeps of the one before; how far away, in metres, what stands before the sun
+		// starts to let its light through (all of it at twice that)
+		float Density = 1.0f;
+		float Decay = 1.0f;
+		float DepthThreshold = 0.0f;
+		// The sun's place on the picture, 0 to 1 across it (beyond, off it); the light the shafts
+		// add a unit of the light they gather: the sun's colour, tinted, times the intensity and
+		// faded as the sun leaves the picture, goes behind the camera or sets. Black: none drawn.
+		glm::vec2 SunUv{ 0.5f };
+		glm::vec3 Color{ 0.0f };
+
+		bool IsDrawn() const { return bLightShafts && glm::max(Color.r, glm::max(Color.g, Color.b)) > 1e-5f; }
+	};
+
 	struct ExtractedSceneGlobals
 	{
 		glm::mat4 View{ 1.0f };
@@ -312,6 +336,7 @@ namespace Nyx
 		SceneViewSkyAtmosphere SkyAtmosphere;
 		SceneViewBloomSettings Bloom;
 		SceneViewAmbientOcclusionSettings AmbientOcclusion;
+		SceneViewLightShaftsSettings LightShafts;
 		SceneViewColorGradingSettings ColorGrading;
 
 		bool bHasCamera = false;

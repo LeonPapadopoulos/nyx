@@ -12,6 +12,7 @@
 #include "ColorGrading.h"
 #include "ColorGradingComponent.h"
 #include "EnvironmentComponent.h"
+#include "LightShafts.h"
 #include "TransformComponent.h"
 #include "TimeOfDay.h"
 #include "CameraProjection.h"
@@ -307,6 +308,10 @@ namespace Nyx
 			{
 				BindSceneSets(view, cmd);
 			});
+		LightShafts.Initialize(Bindless, *ScenePipelineLayout, [this](SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
+			{
+				BindSceneSets(view, cmd);
+			});
 		ColorGrading.Initialize(Bindless);
 		SkyAtmosphere.Initialize(Bindless);
 
@@ -385,6 +390,7 @@ namespace Nyx
 			AmbientOcclusion.Release(view.AmbientOcclusion);
 			ColorGrading.Release(view.ColorGrading);
 			Particles.Release(view.Particles);
+			LightShafts.Release(view.LightShafts);
 			SkyAtmosphere.Release(view.SkyTables);
 			view.RenderTarget.Shutdown(Context);
 		}
@@ -407,6 +413,7 @@ namespace Nyx
 		AmbientOcclusion.Shutdown();
 		ColorGrading.Shutdown();
 		Particles.Shutdown();
+		LightShafts.Shutdown();
 		SkyAtmosphere.Shutdown();
 		PassTimestamps = nullptr;
 		Bindless.Shutdown();
@@ -831,6 +838,12 @@ namespace Nyx
 		return view ? &view->Bloom : nullptr;
 	}
 
+	const SceneViewLightShafts* VulkanRenderer::GetSceneViewLightShafts(uint64_t id) const
+	{
+		const SceneViewInstance* view = FindSceneView(id);
+		return view ? &view->LightShafts : nullptr;
+	}
+
 	const SceneViewColorGrading* VulkanRenderer::GetSceneViewColorGrading(uint64_t id) const
 	{
 		const SceneViewInstance* view = FindSceneView(id);
@@ -937,6 +950,9 @@ namespace Nyx
 				break;
 			case ETimedPass::Particles:
 				view->GpuTimes.Particles = milliseconds;
+				break;
+			case ETimedPass::LightShafts:
+				view->GpuTimes.LightShafts = milliseconds;
 				break;
 			case ETimedPass::Bloom:
 				view->GpuTimes.Bloom = milliseconds;
@@ -1707,6 +1723,11 @@ namespace Nyx
 				view.Particles.Draws.clear();
 			}
 			Particles.Prepare(view.Particles, view.RenderTarget, bTargetsNew);
+			// Its light shafts' targets, for its size, while its world's sky shows (not a studio's or
+			// black sky, whose light isn't the sun's)
+			SceneViewLightShaftsSettings shafts = view.SceneGlobals.LightShafts;
+			shafts.bLightShafts = shafts.bLightShafts && bLit && view.Sky == ESceneViewSky::Scene;
+			LightShafts.Prepare(view.LightShafts, view.RenderTarget.GetExtent(), shafts);
 			// Its sky's tables, while it draws the Atmosphere sky of its world (not a studio's or
 			// black sky), made again in part as the air, the sun or its camera's height change
 			SceneViewSkyAtmosphere sky = view.SceneGlobals.SkyAtmosphere;
@@ -2618,6 +2639,16 @@ namespace Nyx
 			ubo.ColorGradingTable = grading.Slot;
 		}
 
+		// Its light shafts, in the frames its sun gives some
+		const SceneViewLightShafts& shafts = view.LightShafts;
+		if (shafts.Settings.IsDrawn() && shafts.Extent.width > 0)
+		{
+			ubo.LightShaftsTexture = shafts.Gathered.Slot;
+			ubo.LightShaftsSamples = LightShaftsSamples;
+			ubo.LightShaftsSun = glm::vec4(shafts.Settings.SunUv, shafts.Settings.Density, shafts.Settings.DepthThreshold);
+			ubo.LightShaftsColor = glm::vec4(shafts.Settings.Color, shafts.Settings.Decay);
+		}
+
 		// Its point lights, culled for it; none without a world
 		if (world && !view.PointLights.empty())
 		{
@@ -2834,6 +2865,10 @@ namespace Nyx
 		{
 			Particles.CreatePipelines();
 		}
+		if (changed.contains("LightShafts.slang"))
+		{
+			LightShafts.CreatePipelines();
+		}
 		if (changed.contains("SkyAtmosphere.slang"))
 		{
 			SkyAtmosphere.CreatePipelines();
@@ -2995,6 +3030,13 @@ namespace Nyx
 				view.SceneGlobals.LightColor = view.SceneGlobals.Atmosphere.SunColor;
 				view.SceneGlobals.Bloom = Nyx::MakeSceneViewBloomSettings(environment);
 				view.SceneGlobals.AmbientOcclusion = Nyx::MakeSceneViewAmbientOcclusionSettings(environment);
+				// The shafts by the sun's light as it reaches the camera, through the air; none without
+				// a sun
+				if (view.SceneGlobals.bHasDirectionalLight)
+				{
+					view.SceneGlobals.LightShafts = Nyx::MakeSceneViewLightShaftsSettings(environment, view.SceneGlobals.ViewProjection, view.SceneGlobals.LightDirectionWS,
+						view.SceneGlobals.LightColor, view.SceneGlobals.SunLightColor);
+				}
 			});
 	}
 
@@ -3074,6 +3116,7 @@ namespace Nyx
 			AmbientOcclusion.Release(it->AmbientOcclusion);
 			ColorGrading.Release(it->ColorGrading);
 			Particles.Release(it->Particles);
+			LightShafts.Release(it->LightShafts);
 			SkyAtmosphere.Release(it->SkyTables);
 
 			Bindless.RemoveTexture(it->HdrTextureSlot);
@@ -3335,6 +3378,14 @@ namespace Nyx
 			WritePassTimestamp(cmd, view, ETimedPass::Particles, true);
 		}
 
+		// Its light shafts, from the scene in HDR and its depth, for the tonemap to add with the bloom
+		if (view.LightShafts.Settings.IsDrawn() && view.LightShafts.Extent.width > 0)
+		{
+			WritePassTimestamp(cmd, view, ETimedPass::LightShafts, false);
+			LightShafts.Draw(view, cmd);
+			WritePassTimestamp(cmd, view, ETimedPass::LightShafts, true);
+		}
+
 		// Its bloom, from the scene in HDR, for the tonemap to add
 		if (view.Bloom.Settings.bBloom && view.Bloom.Levels > 0)
 		{
@@ -3351,7 +3402,7 @@ namespace Nyx
 			WritePassTimestamp(cmd, view, ETimedPass::ColorGrading, true);
 		}
 
-		// 2. The picture: the scene tonemapped with its bloom and graded, then the editor's overlays
+		// 2. The picture: the scene tonemapped with its light shafts and bloom and graded, then the editor's overlays
 		// over it (grid, debug lines, the selection outline), which look as they always did, then the
 		// world's debug drawing
 		WritePassTimestamp(cmd, view, ETimedPass::Picture, false);

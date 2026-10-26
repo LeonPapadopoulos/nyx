@@ -18,7 +18,8 @@ How Nyx measures a frame, shows it, and records it, and why. The code is in
     and acquiring and presenting;
   - on the GPU, by timestamps: the whole command buffer, the scene views together, and each view's
     passes: its shadow cascades, its scene pass (objects, sky, decals, and with MSAA the resolve
-    at its end), its ambient occlusion, its particles, its bloom, its picture (the tonemap, its
+    at its end), its ambient occlusion, its particles, its light shafts (in a frame its sun gives
+    some, else 0), its bloom, its picture (the tonemap, its
     colour grading's lookup, and what is drawn over it), its colour grading's bake (in a frame that
     bakes its table again, else 0); and the samples a pixel the views draw with;
   - what each view drew, counted as it culls (`CullDraws()`): its scene pass's draw calls (one for

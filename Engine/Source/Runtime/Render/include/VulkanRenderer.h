@@ -17,6 +17,7 @@
 #include "VulkanShadows.h"
 #include "VulkanBloom.h"
 #include "VulkanAmbientOcclusion.h"
+#include "VulkanLightShafts.h"
 #include "VulkanColorGrading.h"
 #include "VulkanParticles.h"
 #include "VulkanSkyAtmosphere.h"
@@ -175,11 +176,20 @@ namespace Nyx
 		// without grading
 		uint32_t ColorGradingTable = 0;
 		uint32_t ColorGradingPadding[3] = {};
+
+		// The view's light shafts (VulkanLightShafts): what they gathered in the bindless array, 0
+		// without them, and the samples along each line; the sun's place on the picture, how far
+		// towards it the lines reach and the depth threshold; the light they add and the decay
+		uint32_t LightShaftsTexture = 0;
+		uint32_t LightShaftsSamples = 0;
+		uint32_t LightShaftsPadding[2] = {};
+		glm::vec4 LightShaftsSun{ 0.0f };
+		glm::vec4 LightShaftsColor{ 0.0f };
 	};
 
 	// The view's set (set 1) as nyx/view.slang reads it, in scalar layout; to whole 16 bytes, as
 	// std140 would be too
-	static_assert(sizeof(SceneUBO) == 1040, "SceneUBO must match ViewConstants in nyx/view.slang");
+	static_assert(sizeof(SceneUBO) == 1088, "SceneUBO must match ViewConstants in nyx/view.slang");
 
 	// One draw's push constants, the same for every scene pipeline: ObjectConstants in
 	// nyx/bindless.slang
@@ -406,6 +416,9 @@ namespace Nyx
 		// The view's bloom in the last frame: its chain's levels and its settings; null for an
 		// unknown view. For tests.
 		const SceneViewBloom* GetSceneViewBloom(uint64_t id) const;
+		// The view's light shafts in the last frame: their targets' size and their settings; null
+		// for an unknown view. For tests.
+		const SceneViewLightShafts* GetSceneViewLightShafts(uint64_t id) const;
 		// The view's colour grading in the last frame: its grade, what its table was baked from and
 		// how often; null for an unknown view. For tests.
 		const SceneViewColorGrading* GetSceneViewColorGrading(uint64_t id) const;
@@ -683,6 +696,8 @@ namespace Nyx
 		VulkanColorGrading ColorGrading{ Context, Programs };
 		// Each view's particles, after its ambient occlusion
 		VulkanParticles Particles{ Context, Programs };
+		// Each view's light shafts, after its particles, for its tonemap to add
+		VulkanLightShafts LightShafts{ Context, Programs };
 		// Each view's sky tables, made before its passes when what they depend on changes
 		VulkanSkyAtmosphere SkyAtmosphere{ Context, Programs };
 		// This frame's particles of every view, in the order they are drawn
@@ -698,6 +713,7 @@ namespace Nyx
 			Scene,
 			AmbientOcclusion,
 			Particles,
+			LightShafts,
 			Bloom,
 			Picture,
 			ColorGrading,

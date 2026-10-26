@@ -136,6 +136,19 @@ public struct ViewConstants
     public uint ColorGradingPadding0;
     public uint ColorGradingPadding1;
     public uint ColorGradingPadding2;
+
+    // The view's light shafts (VulkanLightShafts; LightShafts.slang, Tonemap.slang): what they
+    // gathered at half the view's size, exposed light, 0 without them; the samples along each
+    // pixel's line to the sun. The sun's place on the picture (xy, 0 to 1 across it), how far
+    // towards it the lines reach (z, 0 to 1 of the way), and from how far away, in metres, what
+    // stands before it lets its light through (w). The light the shafts add a unit of what they
+    // gathered (rgb), and what each sample keeps of the one before it (a).
+    public nyx::Texture LightShafts;
+    public uint LightShaftsSamples;
+    public uint LightShaftsPadding0;
+    public uint LightShaftsPadding1;
+    public float4 LightShaftsSun;
+    public float4 LightShaftsColor;
 }
 [vk::binding(0, 1)] public ConstantBuffer<ViewConstants> View;
 

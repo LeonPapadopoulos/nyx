@@ -339,7 +339,7 @@ costs next to nothing otherwise.
   frame rate and time with the last second's worst; on the CPU the updates, the simulation's fixed
   steps, extracting, culling, recording, the UI and waiting for the GPU; on the GPU the frame and
   the scene views' sky tables (in the frames they are made), shadows, scene (with the MSAA
-  resolve), ambient occlusion, particles, bloom, picture and colour grading's bake; the scene views
+  resolve), ambient occlusion, particles, light shafts, bloom, picture and colour grading's bake; the scene views
   drawn and their MSAA samples, their draw calls (and how many draw many instances), instances
   drawn and culled, triangles, shadow cascades with their draw calls and
   triangles, decals, the point lights lit, and the particles with their emitters; and a graph of the last five seconds'
@@ -842,6 +842,37 @@ without one, nothing changes. Only the sky's light is dimmed, never the sun's.
   environment; through fog and on a decal; a dense instanced field, its noise and cost; the debug
   view; a reference picture), `NyxEditorSceneViewGpuTests` (*Debug > Ambient Occlusion* reaching
   views opened later), the other reference pictures unchanged.
+
+## Light shafts
+
+The sun streams through the gaps in what stands before it, in shafts out from the sun across the
+picture: between columns and branches, past the edge of a wall, round the sun behind a cloud's
+edge. In the editor's scene views and in the game alike. On with an *Environment*, under *Light
+Shafts*, off by default; without one, or off, the picture is as it was, to the bit.
+
+- *Intensity*, *Length* (how far a shaft's light carries from its gap, as a part of the way to the
+  sun), *Density* (how far towards the sun each pixel gathers light), *Depth Threshold* (how far
+  away what stands before the sun starts to let its light through as the sky does, in metres),
+  *Tint* (times the sun's colour, which the shafts take as it reaches the camera: golden at golden
+  hour). All with undo, saved in scenes and sent to a running game.
+- They fade out as the sun leaves the picture, goes behind the camera or sets: none at night, none
+  from a sun behind you. They work the same from the ground and from a camera at cloud height.
+- A blur along lines out from the sun's place on the picture, at half the view's size: cheap and
+  stylised, but only what is on the picture makes them, and they lie over it rather than in the
+  air ([Atmosphere](Design/atmosphere.md#light-shafts) has how, and its limits next to real
+  volumetric fog).
+- `Assets/Scenes/LightShaftsTest.nyxscene`: a colonnade against a low sun, with a time of day to
+  scrub.
+- They take about 0.055 ms of GPU time a 1280 × 720 view, and nothing while the sun gives none
+  ([Atmosphere](Design/atmosphere.md#numbers)).
+- Tests: `NyxLightShaftsTests` (the sun's place on the picture, from the ground and 2 km up; none
+  behind the camera, beside it or far off the picture, some just past its edge; the fade as it
+  leaves the picture and as it sets; the length's decay; values in range; the component saved),
+  `NyxLightShaftsGpuTests` (a wall with a window, the sun behind it: the wall beyond the window
+  brighter along the sun's line, the nearer the more, the rest of the wall unchanged; the same 1.5
+  km up; a sun behind the camera, below the horizon or far to the side, no intensity, and no
+  environment, to the bit; no shafts in a debug view of the materials; a view whose world goes
+  away; their GPU time; the test scene), the other reference pictures unchanged.
 
 ## Colour grading
 

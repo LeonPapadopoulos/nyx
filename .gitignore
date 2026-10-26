@@ -31,6 +31,7 @@ Editor/*.md
 !Assets/Scenes/GroundTest.nyxscene
 !Assets/Scenes/AtmosphereTest.nyxscene
 !Assets/Scenes/ColorGradingTest.nyxscene
+!Assets/Scenes/LightShaftsTest.nyxscene
 !Assets/Scenes/LightsTest.nyxscene
 !Assets/Scenes/ParticlesTest.nyxscene
 
