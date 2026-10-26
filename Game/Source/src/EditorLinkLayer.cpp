@@ -2,6 +2,7 @@
 #include "Renderer.h"
 
 #include "Application.h"
+#include "ComponentInspection.h"
 #include "LiveEdits.h"
 #include "LiveInput.h"
 #include "ReflectedArchiveSerializer.h"
@@ -15,6 +16,12 @@ namespace
 {
 	// The layer whose link a crash report goes over; there is one per game
 	Nyx::Game::EditorLinkLayer* GCrashReportLink = nullptr;
+
+	// Seconds on a steady clock, for how long ago the editor asked about an entity
+	double NowSeconds()
+	{
+		return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+	}
 }
 
 namespace Nyx::Game
@@ -146,6 +153,12 @@ namespace Nyx::Game
 			return;
 		}
 
+		// The entities the editor stopped asking about
+		if (World)
+		{
+			Nyx::ForgetInspectionRequests(*World, NowSeconds());
+		}
+
 		SendLogLines();
 		SendInputFrames();
 	}
@@ -181,6 +194,8 @@ namespace Nyx::Game
 			Link->Send(Nyx::InspectedEntityMessage{ .Request = request.Request, .Entity = request.Entity, .Step = step });
 			return;
 		}
+		// Marked for the game's systems while the editor keeps asking (OnUpdate() forgets the mark)
+		Nyx::MarkInspectionRequest(*World, request.Entity, NowSeconds());
 		Link->Send(Nyx::MakeInspectedEntityMessage(*World, request, step));
 	}
 
@@ -272,6 +287,10 @@ namespace Nyx::Game
 		}
 
 		Link.reset();
+		if (World)
+		{
+			Nyx::ForgetInspectionRequests(*World);
+		}
 		if (InputStream)
 		{
 			InputStream->Stop();

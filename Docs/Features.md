@@ -91,6 +91,9 @@ What a running game made of an entity while it runs, in the editor's Details pan
   over the editor link four times a second, only while the section is open, and shows its answer
   with the step it was taken at (*Game 1, step 1234*), *waiting for Game 1*, or *Game 1 has no such
   entity*. Without a game it shows the editor's own world's, and only for an entity that has any.
+- While the editor asks about an entity, the game marks it (`InspectionRequestComponent`, gone a
+  second after the editor stops asking): a game's system that keeps a view of its own for the
+  inspector, such as the terms of what it computed, fills it only for marked entities.
 - The Game Link window and NyxDump show the questions and answers (`InspectEntity`,
   `InspectedEntity`).
 - Tests: `NyxEditorLinkTests` (a question answered over the link, an entity not found, the answer

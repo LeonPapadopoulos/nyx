@@ -1,8 +1,10 @@
 #pragma once
 
 #include "Entity.h"
+#include "EntityGuid.h"
 
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -39,4 +41,24 @@ namespace Nyx
 
 	// The entity's run-time components, in the registry's order of types
 	std::vector<InspectedComponent> InspectRuntimeComponents(const Registry& world, Entity entity);
+
+	// On an entity the editor is asking about (InspectEntity), while it asks: the game's end of the
+	// link marks it, and forgets the mark once the editor stops asking. A game's system that keeps a
+	// view of its own for the inspector, such as the terms of what it computed, fills it only for
+	// entities with this, so it costs nothing while nobody looks. Not a registered type: never saved,
+	// never shown.
+	struct InspectionRequestComponent
+	{
+		// When it was last asked about, in the seconds of the clock MarkInspectionRequest() was given
+		double LastAsked = 0.0;
+	};
+
+	// How long a mark lasts without being asked again: a few of the editor's intervals (250 ms)
+	inline constexpr double InspectionRequestTimeout = 1.0;
+
+	// Marks the entity of that guid as asked about at `now`, if the world has it; returns whether it does
+	bool MarkInspectionRequest(Registry& world, EntityGuid entity, double now);
+	// Takes the mark off every entity not asked about for `timeout` seconds before `now`; with no
+	// `now`, off all
+	void ForgetInspectionRequests(Registry& world, std::optional<double> now = std::nullopt, double timeout = InspectionRequestTimeout);
 }

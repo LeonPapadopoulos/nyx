@@ -1,11 +1,13 @@
 // The component type registry: types register once, and a second type with a name already taken,
 // such as a game module's type named like one of the engine's, is refused and the first one kept.
 // Run-time types, reflected or not, are never saved, and are what InspectRuntimeComponents() gives.
+// An entity the editor asks about is marked while it asks, and the mark forgotten once it stops.
 // A type's provider of overridable values lists what an instance inherits.
 #include "BinaryArchive.h"
 #include "ComponentInspection.h"
 #include "ComponentRegistration.h"
 #include "ComponentTypeRegistry.h"
+#include "GuidComponent.h"
 #include "Log.h"
 #include "NameComponent.h"
 #include "ReflectedArchiveSerializer.h"
@@ -194,6 +196,41 @@ namespace
 
 namespace
 {
+	// Marked when asked about, the mark kept while asked again within the timeout and forgotten after
+	// it; an unknown guid marks nothing; forgetting without a time takes every mark off
+	void TestInspectionRequests()
+	{
+		Nyx::Registry world;
+		const Nyx::Entity asked = world.CreateEntity();
+		const Nyx::Entity other = world.CreateEntity();
+		world.Add<Nyx::GuidComponent>(asked, Nyx::GuidComponent{ Nyx::EntityGuid{ 0xA5 } });
+		world.Add<Nyx::GuidComponent>(other, Nyx::GuidComponent{ Nyx::EntityGuid{ 0xB6 } });
+
+		Require(Nyx::MarkInspectionRequest(world, Nyx::EntityGuid{ 0xA5 }, 10.0) && world.Has<Nyx::InspectionRequestComponent>(asked) &&
+				!world.Has<Nyx::InspectionRequestComponent>(other),
+			"The entity asked about should be marked, and no other");
+		Require(!Nyx::MarkInspectionRequest(world, Nyx::EntityGuid{ 0xBAD }, 10.0) && !Nyx::MarkInspectionRequest(world, Nyx::EntityGuid{}, 10.0),
+			"A guid the world doesn't have should mark nothing");
+
+		Require(Nyx::MarkInspectionRequest(world, Nyx::EntityGuid{ 0xA5 }, 10.8), "Asked again, it should stay marked");
+		Nyx::ForgetInspectionRequests(world, 11.5);
+		Require(world.Get<Nyx::InspectionRequestComponent>(asked).LastAsked == 10.8, "Asked within the timeout, the mark should be kept");
+		Nyx::ForgetInspectionRequests(world, 10.8 + Nyx::InspectionRequestTimeout + 0.01);
+		Require(!world.Has<Nyx::InspectionRequestComponent>(asked), "Not asked for longer than the timeout, the mark should be forgotten");
+
+		Nyx::MarkInspectionRequest(world, Nyx::EntityGuid{ 0xA5 }, 20.0);
+		Nyx::MarkInspectionRequest(world, Nyx::EntityGuid{ 0xB6 }, 20.0);
+		Nyx::ForgetInspectionRequests(world);
+		Require(!world.Has<Nyx::InspectionRequestComponent>(asked) && !world.Has<Nyx::InspectionRequestComponent>(other),
+			"Forgetting without a time, e.g. as the link ends, should take every mark off");
+
+		Nyx::MarkInspectionRequest(world, Nyx::EntityGuid{ 0xA5 }, 30.0);
+		Require(Nyx::InspectRuntimeComponents(world, asked).empty(), "The mark should be no run-time component to show");
+	}
+}
+
+namespace
+{
 	// The provider is asked with the component, which may decide what it lists; an override is the
 	// first of its name, kept in its value's range when edited
 	void TestOverridableValues()
@@ -244,6 +281,7 @@ int main()
 		TestSecondTypeOfANameIsRefused();
 		TestEngineTypesWinOverModuleTypes();
 		TestRuntimeTypes();
+		TestInspectionRequests();
 		TestOverridableValues();
 	}
 	catch (const std::exception& error)

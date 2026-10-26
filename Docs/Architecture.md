@@ -507,5 +507,5 @@ How some systems work, and why they work that way:
   where something happens, a hard cap on bricks and who is dropped at it, diffusion, decay and
   advection, deterministic and double buffered, the cost at the cap.
 - [Runtime inspection](Design/runtime-inspection.md): run-time component types, never saved; the
-  editor asking a running game about an entity a few times a second, the game answering at once,
-  and the Details panel's Runtime section.
+  editor asking a running game about an entity a few times a second, the game answering at once
+  and marking the entity while asked, and the Details panel's Runtime section.

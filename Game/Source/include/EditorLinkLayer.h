@@ -25,7 +25,8 @@ namespace Nyx::Game
 	// the editor on the port given with --editor-port, sends the game's log lines, applies the
 	// editor's live edits to the game's world and its input asset to the game's input (with the
 	// player's settings over it), streams the game's input while the editor's Input window shows
-	// it, answers the editor's questions about an entity's run-time components, and quits when the
+	// it, answers the editor's questions about an entity's run-time components (marking the entity
+	// for the game's systems while the editor asks, InspectionRequestComponent), and quits when the
 	// editor asks. If connecting fails, or the editor goes away, the game
 	// keeps running.
 	//
@@ -60,7 +61,7 @@ namespace Nyx::Game
 		// Live tuning, a live edit, or a message this game doesn't know
 		void ApplyMessage(const Nyx::Net::Message& message);
 		void ApplyLiveEdit(const Nyx::Net::Message& message);
-		// An InspectEntity message: the entity's run-time components, at once
+		// An InspectEntity message: the entity's run-time components, at once; marks the entity
 		void AnswerInspection(const Nyx::Net::Message& message);
 
 		void SendLogLines();

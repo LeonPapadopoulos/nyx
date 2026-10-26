@@ -2,8 +2,8 @@
 
 How the editor shows what a running game made of an entity while it runs, and why it works this
 way. Built: run-time component types (`EComponentTypeFlags::Runtime`), `InspectRuntimeComponents()`
-(`Scene`), the link messages `InspectEntity` and `InspectedEntity`, the game's answer
-(`EditorLinkLayer`), the editor's asking (`GameInstance`, `PlaySession`) and the Details panel's
+(`Scene`), the link messages `InspectEntity` and `InspectedEntity`, the game's answer and its mark on
+the entity asked about (`EditorLinkLayer`, `InspectionRequestComponent`), the editor's asking (`GameInstance`, `PlaySession`) and the Details panel's
 *Runtime* section.
 
 ## Run-time component types
@@ -33,8 +33,15 @@ way. Built: run-time component types (`EComponentTypeFlags::Runtime`), `InspectR
 
 - **Asked, not streamed.** The editor sends `InspectEntity { Request, Entity }` by guid; the game
   answers at once with `InspectedEntity { Request, Entity, bFound, Step, Components }`, the step its
-  simulation is at. The game keeps no state for it: nothing to start, stop or forget when the editor
-  goes, and nothing sent that nobody looks at.
+  simulation is at. Nothing to start or stop, and nothing sent that nobody looks at.
+- **Marked while asked:** the game's end marks the entity asked about with an
+  `InspectionRequestComponent` (the time it was last asked), and takes the mark off once it hasn't
+  been asked for `InspectionRequestTimeout` (1 s, four of the editor's intervals), and off all as
+  the link ends (`MarkInspectionRequest()`, `ForgetInspectionRequests()`). A game's system that keeps
+  a view of its own for the inspector, such as the terms of what it computed as readable lines, fills
+  it only for marked entities, so it costs nothing while nobody looks. The mark is not a registered
+  type: never saved, never shown. The first answer about an entity comes before any step saw the
+  mark, so such a view shows from the second answer on, a quarter of a second later.
 - **Paced by the editor.** `GameInstance::SetInspectedEntity()` asks every `InspectInterval`
   (250 ms: four times a second), and only once the last answer came, so a game paused in the
   debugger is asked once, not a queue full. An answer about another entity than the one asked
