@@ -70,6 +70,12 @@ namespace Nyx
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Fog", DisplayName = "Sun Lobe", DragSpeed = 0.01, Tooltip = "How much the scattered sunlight gathers round the sun, 0 to 0.95: 0 the same all round, near 1 a tight glow"))
 		float FogSunLobe = 0.6f;
 
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Fog", DisplayName = "Haze Brightness", DragSpeed = 0.01, Tooltip = "Atmosphere: what the fog's colour, the sky's the way each ray looks, is multiplied by: above 1 a brighter, more luminous haze, below 1 a darker one; 1 the sky's own"))
+		float HazeBrightness = 1.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Fog", DisplayName = "Haze Tint", UI = Color, Tooltip = "Atmosphere: a colour the fog's colour, the sky's the way each ray looks, is multiplied by, as Color is the fog's own in the cube map modes; white the sky's own"))
+		glm::vec3 HazeTint{ 1.0f, 1.0f, 1.0f };
+
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Sky", DisplayName = "Mode", Tooltip = "Atmosphere: the sky made from the sun's place by the air's scattering, which lights the world. Tinted Cube Map: the sky's cube map tinted by the sun (the Tinted Cube Map settings below). Cube Map: the sky's cube map as it is"))
 		ESkyMode SkyMode = ESkyMode::Atmosphere;
 
@@ -149,6 +155,12 @@ namespace Nyx
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Sky", DisplayName = "Night Sky Color", UI = Color, Tooltip = "Atmosphere: the colour of the sky's light at night (Night Sky Brightness)"))
 		glm::vec3 NightSkyColor{ 0.3f, 0.45f, 1.0f };
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Sky", DisplayName = "Sky Light Intensity", DragSpeed = 0.01, Tooltip = "Atmosphere: what the sky's light on surfaces is multiplied by, diffuse and reflected, not how the sky itself looks: above 1 brighter shade and fill, as a painted sky gives; 1 the air's own"))
+		float SkyLightIntensity = 2.5f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Exposure", DisplayName = "Exposure Compensation", DragSpeed = 0.01, Tooltip = "How much brighter (above 0) or darker the whole picture is made before tonemapping, in stops (EV): +1 twice as bright; on top of the view's own exposure, in every sky mode"))
+		float ExposureCompensation = 0.0f;
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Bloom", DisplayName = "Bloom", Tooltip = "Whether light brighter than the threshold spreads round what gives it off, as a lens spreads it: emissive surfaces and decals glow"))
 		bool bBloom = true;

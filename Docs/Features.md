@@ -720,7 +720,8 @@ the sun. Without one, nothing changes.
   it is as thick as its density), *Start Distance* (nothing nearer is fogged), *Color*, *Max
   Opacity* (below 1, the far hills and the horizon still show), *Sun Scattering* and *Sun Lobe*
   (the haze glowing towards the sun, in the light's colour). Meshes, instanced ones, two-sided
-  ones and decals are fogged, a decal's glow dimmed through it; the sky is hazy on the horizon.
+  ones and decals are fogged, a decal's glow dimmed through it; the sky is hazy on the horizon. In
+  the Atmosphere mode the fog takes the sky's colour; *Haze Brightness* and *Haze Tint* change it.
 - **The sky** (*Sky*), as its *Mode* makes it:
   - **Atmosphere** (the default): the sky made from the sun's place by the light the air scatters
     (Hillaire's sky), no texture: blue by day, gold, orange and red as the sun goes down, haze round
@@ -736,6 +737,8 @@ the sun. Without one, nothing changes.
     stylising tint of the sky's light. At night the air's sky is black; *Night Sky Brightness* and
     *Night Sky Color* keep an artistic light in it (and in its light on the world), fading in as the
     sun goes down, none by day; 0 is none, the air's own sky (0.02, a dark blue night, by default).
+    *Sky Light Intensity* multiplies the sky's light on surfaces, not the sky itself (2.5 by
+    default, so shade isn't flat next to the cube map's; 1 is the air's own).
     Its tables are made again only when the air, the sun or the
     camera's height changes: about 0.13 ms of GPU time then, nothing otherwise
     ([Atmosphere](Design/atmosphere.md#the-sky-made-by-the-air)). *Debug > Sky Tables* in the
@@ -747,7 +750,8 @@ the sun. Without one, nothing changes.
 
   - **Cube Map**: the sky's cube map as it is, whatever the sun does.
 
-  A low sun gives warm light, warm haze and long warm shadows. Scenes saved with the old *Follow
+  *Exposure Compensation* (*Exposure*) brightens or darkens the whole picture before tonemapping,
+  in stops, in every mode. A low sun gives warm light, warm haze and long warm shadows. Scenes saved with the old *Follow
   Sun* off load as *Cube Map*, as they looked; with it on, in the mode they had.
 - All with undo, saved in scenes and sent to a running game. `Assets/Scenes/AtmosphereTest.nyxscene`:
   the ground test scene with small cubes scattered over its ground, haze and a low sun.

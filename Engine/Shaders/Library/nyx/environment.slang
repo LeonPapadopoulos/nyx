@@ -2,7 +2,7 @@
 // spherical harmonics, specular light from the prefiltered cube, and the split-sum table. Both
 // lights are tinted as the sky is (nyx::skyTint(): white without an environment). While the view
 // draws the sky made by the air's scattering, both are that sky's instead, at the camera's height
-// (VulkanSkyAtmosphere's irradiance and specular cubes), as they are.
+// (VulkanSkyAtmosphere's irradiance and specular cubes), times its Sky Light Intensity.
 
 import nyx.atmosphere;
 import nyx.bindless;
@@ -17,7 +17,7 @@ namespace nyx
     {
         if (hasSkyAtmosphere())
         {
-            return View.SkyIrradiance.SampleLevel(LinearClamp, worldNormal, 0.0).rgb;
+            return View.SkyIrradiance.SampleLevel(LinearClamp, worldNormal, 0.0).rgb * View.SkyTint.a;
         }
         const float3 n = skyDirection(worldNormal);
         const float4 c[9] = View.Irradiance;
@@ -38,7 +38,7 @@ namespace nyx
     {
         if (hasSkyAtmosphere())
         {
-            return View.SkySpecular.SampleLevel(LinearClamp, r, saturate(roughness) * float(View.SkySpecularLevels - 1)).rgb;
+            return View.SkySpecular.SampleLevel(LinearClamp, r, saturate(roughness) * float(View.SkySpecularLevels - 1)).rgb * View.SkyTint.a;
         }
         const float level = saturate(roughness) * float(View.SpecularLevels - 1);
         return View.Specular.SampleLevel(LinearClamp, skyDirection(r), level).rgb * skyTint();

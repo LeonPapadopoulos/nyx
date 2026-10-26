@@ -671,6 +671,7 @@ add_test(NAME NyxTimeOfDayGpuTests COMMAND NyxTimeOfDayGpuTests)
 # hidden.
 add_executable(NyxSkyAtmosphereGpuTests SkyAtmosphereGpuTests.cpp)
 target_link_libraries(NyxSkyAtmosphereGpuTests PRIVATE NyxEngine)
+target_compile_definitions(NyxSkyAtmosphereGpuTests PRIVATE NYX_TEST_REFERENCES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/References")
 add_dependencies(NyxSkyAtmosphereGpuTests NyxGeneratedReflection)
 set_property(TARGET NyxSkyAtmosphereGpuTests PROPERTY FOLDER "Tests")
 nyx_copy_shaders_next_to(NyxSkyAtmosphereGpuTests)

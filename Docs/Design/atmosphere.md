@@ -252,6 +252,36 @@ sky above the horizon is 0.12 on average, a sunlit white about 0.8, and the zeni
 picture is a photograph's at a fixed exposure; the colour grading and the view's exposure make it
 brighter or more painted.
 
+### The look: the sky's light, the exposure, the haze
+
+The air's light is the physical one, and next to the painted cube map its shade looked flat and
+dim: in the crate yard at noon a grey crate's face in its own shade showed 68 72 78 of 255 under the
+air's sky against 130 123 130 under the cube map, the sunlit ground about the same in both. Three
+settings on the environment are the artistic handles, each 1 or 0 for the air as it is (with all
+four at those values the picture is today's to the pixel: `NyxSkyAtmosphereGpuTests` draws the crate
+yard at sunset, with fog, bloom and ambient occlusion, against `References/SkyAtmosphereNeutral.png`,
+drawn before they were there):
+
+- **Sky Light Intensity** (*Sky*, the Atmosphere mode's): what the sky's light on surfaces is
+  multiplied by, the irradiance and the specular cube alike (`View.SkyTint.a` in
+  `nyx.environment`), not how the sky looks; the night's light and a cloud layer's are in it too.
+  **2.5 by default**: the crate's shade is then 115 119 128, near the cube map's, still cooler and
+  bluer than it, as shade under a clear sky is, and the sunset stays a sunset (its shade 48 35 37
+  against 42 24 12). The cube map modes' light is the painted cube map's, already as bright as it is
+  meant to be, so it leaves them as they are (the reference pictures of the tinted mode unchanged).
+- **Exposure Compensation** (*Exposure*, every mode): stops added to the view's own exposure
+  before tonemapping (`ExposureScale`), so the bloom's threshold and the light shafts see the same
+  light; 0 by default, since the air's sunlit ground is already as bright as the cube map's.
+- **Haze Brightness** and **Haze Tint** (*Fog*, the Atmosphere mode's): what the fog's colour, the
+  sky's the way each ray looks, is multiplied by (in the fog's colour constant, which the air's sky
+  doesn't use otherwise), as *Color* is the fog's own in the cube map modes: a brighter or a warmer
+  haze over the distance. 1 and white by default. The aerial perspective of the plan's next step
+  would take them too.
+
+`NyxSkyAtmosphereGpuTests` checks each alone: the sky's light doubles the shade, not the sky (the
+sky's pixels the same); one stop brightens both; a warm, brighter haze tints the fogged distance
+more than the near ground; in the tinted mode the sky's light and the haze change nothing.
+
 ### The fog takes its colour
 
 In this mode the fog's own colour (`nyx::heightFogAlong()`) is the sky's the way the ray looks

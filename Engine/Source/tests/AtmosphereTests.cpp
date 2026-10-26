@@ -139,7 +139,7 @@ namespace
 			"The night isn't dark: tint " + Text(night.SkyTint) + ", sun " + Text(night.SunColor));
 
 		// Values out of range brought into it
-		EnvironmentComponent wild;
+		EnvironmentComponent wild = TintedSky();
 		wild.FogHeightFalloff = -1.0f;
 		wild.FogStartDistance = -5.0f;
 		wild.FogMaxOpacity = 4.0f;
@@ -227,6 +227,28 @@ namespace
 		// 2 km up, a sun a degree below the level is still above the horizon
 		Require(Luminance(GetSunLightThroughAtmosphere(MakeSceneViewSkyAtmosphere(defaults, SunAt(-1.0f), glm::vec3(1.0f), glm::vec3(0.0f, 2000.0f, 0.0f)), glm::vec3(1.0f))) > 0.0f,
 			"2 km up, the sun a degree below the level has set");
+
+		// The look settings: the sky's light on surfaces and the haze the Atmosphere mode's, 1 and
+		// the fog's colour in the cube map modes; the exposure compensation in every mode, in range
+		EnvironmentComponent look = defaults;
+		look.SkyLightIntensity = 1.75f;
+		look.ExposureCompensation = 0.5f;
+		look.HazeBrightness = 2.0f;
+		look.HazeTint = glm::vec3(1.0f, 0.5f, 0.25f);
+		const SceneViewAtmosphere looked = MakeSceneViewAtmosphere(look, SunAt(30.0f), glm::vec3(1.0f), ground);
+		Require(looked.SkyLightIntensity == 1.75f && looked.ExposureCompensation == 0.5f && looked.FogColor == glm::vec3(2.0f, 1.0f, 0.5f),
+			"The look settings aren't the Atmosphere mode's: " + Text(looked.FogColor));
+		Require(defaults.SkyLightIntensity == 2.5f && MakeSceneViewAtmosphere(defaults, SunAt(30.0f), glm::vec3(1.0f), ground).SkyLightIntensity == 2.5f,
+			"The sky's light on surfaces isn't 2.5 by default");
+		look.SkyMode = ESkyMode::TintedCubeMap;
+		const SceneViewAtmosphere lookTinted = MakeSceneViewAtmosphere(look, SunAt(30.0f), glm::vec3(1.0f), ground);
+		Require(lookTinted.SkyLightIntensity == 1.0f && lookTinted.ExposureCompensation == 0.5f && lookTinted.FogColor == look.FogColor * lookTinted.SkyTint,
+			"The Atmosphere mode's sky light or haze reach the tinted cube map");
+		look.SkyLightIntensity = -1.0f;
+		look.ExposureCompensation = 40.0f;
+		look.SkyMode = ESkyMode::Atmosphere;
+		const SceneViewAtmosphere lookTamed = MakeSceneViewAtmosphere(look, SunAt(30.0f), glm::vec3(1.0f), ground);
+		Require(lookTamed.SkyLightIntensity == 0.0f && lookTamed.ExposureCompensation == 16.0f, "The look settings aren't brought into range");
 
 		// Off: the cube map as it is, or tinted
 		EnvironmentComponent off;

@@ -167,6 +167,10 @@ namespace Nyx
 		float SunGlowLobe = 0.0f;
 		// The light's colour where it reaches the ground, through the air
 		glm::vec3 SunColor{ 1.0f };
+		// What the sky's light on surfaces is multiplied by (the Atmosphere mode's Sky Light
+		// Intensity; 1 otherwise), and the exposure added to the view's, in stops
+		float SkyLightIntensity = 1.0f;
+		float ExposureCompensation = 0.0f;
 	};
 
 	// The view's bloom (EnvironmentComponent, in range: MakeSceneViewBloomSettings()); none

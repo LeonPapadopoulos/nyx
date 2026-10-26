@@ -2587,7 +2587,7 @@ namespace Nyx
 		const uint32_t sky = GetSkySlot(view.Sky);
 		ubo.EnvironmentTexture = sky;
 		ubo.SceneTexture = view.HdrTextureSlot;
-		ubo.ExposureScale = std::exp2(view.ExposureStops);
+		ubo.ExposureScale = std::exp2(view.ExposureStops + view.SceneGlobals.Atmosphere.ExposureCompensation);
 		ubo.SpecularTexture = Environment.GetSpecularSlot(sky);
 		ubo.SpecularLevels = Environment.GetSpecularLevels();
 		ubo.BrdfLookup = Environment.GetLookupSlot();
@@ -2621,7 +2621,7 @@ namespace Nyx
 		ubo.FogColor = glm::vec4(air.FogColor, air.FogDensity);
 		ubo.FogShape = glm::vec4(air.FogHeightFalloff, air.FogHeight, air.FogStartDistance, air.FogMaxOpacity);
 		ubo.FogSun = glm::vec4(air.FogSunColor, air.FogSunLobe);
-		ubo.SkyTint = glm::vec4(air.SkyTint, 0.0f);
+		ubo.SkyTint = glm::vec4(air.SkyTint, air.SkyLightIntensity);
 		ubo.SunGlow = glm::vec4(air.SunGlowColor, air.SunGlowLobe);
 
 		// The sky made by the air's scattering, by the tables made for it: they say where the

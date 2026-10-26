@@ -75,7 +75,7 @@ namespace nyx
         const float startHeight = View.CameraPosition.y + direction.y * startDistance;
         const float depth = fogDepthAlong(density, View.FogShape.x, View.FogShape.y, startHeight, direction.y, distance - startDistance);
         fog.Transmittance = max(exp(-depth), 1.0 - View.FogShape.w);
-        const float3 own = hasSkyAtmosphere() ? skyAtmosphereFogColor(direction) : View.FogColor.rgb;
+        const float3 own = hasSkyAtmosphere() ? skyAtmosphereFogColor(direction) * View.FogColor.rgb : View.FogColor.rgb;
         fog.Inscattering = own + View.FogSun.rgb * henyeyGreenstein(dot(direction, normalize(View.LightDirection.xyz)), View.FogSun.w);
         return fog;
     }

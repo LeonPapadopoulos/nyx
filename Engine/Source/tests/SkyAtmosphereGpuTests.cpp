@@ -411,7 +411,7 @@ namespace
 		const float row = static_cast<float>(Size) - 0.5f;
 		const glm::vec2 brdf = glm::mix(lookup[(Size - 2) * Size + Size - 1], lookup[(Size - 1) * Size + Size - 1], std::clamp(row - static_cast<float>(Size - 2), 0.0f, 1.0f));
 		const glm::vec3 share = glm::vec3(0.04f) * brdf.x + brdf.y;
-		const glm::vec3 expected = irradiance * (1.0f - share) + specular * share;
+		const glm::vec3 expected = (irradiance * (1.0f - share) + specular * share) * scene.Air().SkyLightIntensity;
 		const std::array<uint8_t, 3> pixel = PixelAt(wall, ViewWidth / 2, ViewHeight / 2);
 		std::cout << "The wall lit by the sky: " << RenderTests::Text(pixel) << ", the tables' " << RenderTests::Text(Tonemapped(expected)) << " (irradiance " << Text(irradiance) << ")\n";
 		Require(Near(pixel, Tonemapped(expected), 3), "The wall isn't lit by the sky's tables: " + RenderTests::Text(pixel) + ", expected " + RenderTests::Text(Tonemapped(expected)));
@@ -717,6 +717,167 @@ namespace
 		EndView(gpu, view);
 	}
 
+	// A crate yard: a grey ground and rows of grey crates under the primary light, a camera 3 m up
+	// looking along them, and an environment at its defaults in a sky mode: the lit scene the
+	// Atmosphere and Cube Map modes are looked at side by side in
+	struct CrateYard
+	{
+		Registry World;
+		LiveMaterialFile GreyFile{ "Materials/SkyAtmosphereTestGrey.nyxmat" };
+		Entity Sun;
+		Entity Air;
+
+		explicit CrateYard(VulkanRenderer& renderer)
+		{
+			GreyFile.Write("Shader = Shaders/Standard.slang\nBaseColor = 0.6 0.6 0.6\nMetallic = 0\nRoughness = 0.8\n");
+			Material* grey = renderer.GetMaterial(GreyFile.Path);
+			AddMesh(World, Placed(glm::vec3(0.0f), glm::vec3(300.0f, 1.0f, 300.0f)), renderer.GetPlaneMesh(), grey);
+			for (int row = 0; row < 6; ++row)
+			{
+				for (int column = -2; column <= 2; ++column)
+				{
+					AddMesh(World, Placed(glm::vec3(column * 6.0f + (row % 2) * 3.0f, 1.0f, -8.0f - row * 14.0f), glm::vec3(2.0f)), renderer.GetCubeMesh(), grey);
+				}
+			}
+			const Entity camera = World.CreateEntity();
+			World.Add<TransformComponent>(camera, Placed(glm::vec3(0.0f, 3.0f, 6.0f), glm::vec3(1.0f), glm::quat(glm::radians(glm::vec3(-4.0f, 0.0f, 0.0f)))));
+			CameraComponent lens;
+			lens.FarPlane = 10000.0f;
+			World.Add<CameraComponent>(camera, lens);
+			Sun = World.CreateEntity();
+			World.Add<TransformComponent>(Sun, Placed(glm::vec3(0.0f)));
+			World.Add<DirectionalLightComponent>(Sun, DirectionalLightComponent{});
+			Air = World.CreateEntity();
+			World.Add<EnvironmentComponent>(Air, EnvironmentComponent{});
+		}
+
+		// The sun `degrees` up, behind the camera and to its right
+		void SetSun(float degrees)
+		{
+			World.Get<TransformComponent>(Sun).Rotation = glm::quat(glm::radians(glm::vec3(-degrees, 155.0f, 0.0f)));
+		}
+	};
+
+	// The mean light the picture shows below its horizon (the yard), sRGB decoded
+	float YardLight(const RgbaImage& image)
+	{
+		double sum = 0.0;
+		for (uint32_t y = image.Height / 2; y < image.Height; ++y)
+		{
+			for (uint32_t x = 0; x < image.Width; ++x)
+			{
+				sum += LinearLuminance(PixelAt(image, x, y));
+			}
+		}
+		return static_cast<float>(sum / (static_cast<double>(image.Width) * (image.Height - image.Height / 2)));
+	}
+
+	// The Environment's look settings at their neutral values: today's picture
+	void SetNeutralLook(EnvironmentComponent& environment)
+	{
+		environment.SkyLightIntensity = 1.0f;
+		environment.ExposureCompensation = 0.0f;
+		environment.HazeBrightness = 1.0f;
+		environment.HazeTint = glm::vec3(1.0f);
+	}
+
+	// The crate yard at noon and at sunset in the Atmosphere and the Cube Map modes, at the
+	// environment's defaults, for looking at side by side; the yard's mean light printed
+	void TestLookAgainstCubeMap(SceneRenderer& gpu)
+	{
+		CrateYard yard(gpu.Renderer);
+		const uint64_t view = MakeView(gpu, yard.World);
+		for (const float degrees : { 50.0f, 5.0f })
+		{
+			for (const ESkyMode mode : { ESkyMode::Atmosphere, ESkyMode::CubeMap })
+			{
+				yard.SetSun(degrees);
+				yard.World.Get<EnvironmentComponent>(yard.Air).SkyMode = mode;
+				const RgbaImage image = Draw(gpu, view, 3);
+				const std::string name = std::string("Yard") + (mode == ESkyMode::Atmosphere ? "Atmosphere" : "CubeMap") + (degrees > 20.0f ? "Noon" : "Sunset");
+				SaveIfAsked(image, name);
+				std::cout << name << ": the yard's mean light " << YardLight(image) << "\n";
+			}
+		}
+		EndView(gpu, view);
+	}
+
+	// The look settings at their neutral values draw today's picture: the crate yard at sunset in the
+	// Atmosphere mode with fog, bloom and ambient occlusion, against References/SkyAtmosphereNeutral.png,
+	// made before the settings were there
+	void TestNeutralLookIsToday(SceneRenderer& gpu)
+	{
+		CrateYard yard(gpu.Renderer);
+		yard.SetSun(6.0f);
+		SetNeutralLook(yard.World.Get<EnvironmentComponent>(yard.Air));
+		const uint64_t view = MakeView(gpu, yard.World);
+		const RgbaImage image = Draw(gpu, view, 3);
+		SaveIfAsked(image, "Neutral");
+		RequireLooksLike(image, std::filesystem::path(NYX_TEST_REFERENCES_DIR) / "SkyAtmosphereNeutral.png");
+		EndView(gpu, view);
+	}
+
+	// The look settings, each on its own, in the crate yard at noon in the Atmosphere mode: the sky's
+	// light on surfaces scales the shade and not the sky; the exposure compensation brightens all of
+	// it by its stops; the haze's brightness and tint change the fogged distance, not the near
+	// ground's sunlit part; in the cube map modes the sky's light and the haze are the cube map's,
+	// unchanged
+	void TestLookSettings(SceneRenderer& gpu)
+	{
+		CrateYard yard(gpu.Renderer);
+		yard.SetSun(50.0f);
+		EnvironmentComponent& air = yard.World.Get<EnvironmentComponent>(yard.Air);
+		SetNeutralLook(air);
+		air.bBloom = false;
+		const uint64_t view = MakeView(gpu, yard.World);
+		// A crate's face in its own shade, the sky above the horizon, the near sunlit ground, the far
+		// fogged ground
+		const glm::uvec2 shade(240, 160);
+		const glm::uvec2 sky(240, 20);
+		const glm::uvec2 near(240, 250);
+		const glm::uvec2 far(100, 128);
+		const auto at = [&](const RgbaImage& image, const glm::uvec2& pixel)
+		{
+			return LinearLuminance(PixelAt(image, pixel.x, pixel.y));
+		};
+		const RgbaImage neutral = Draw(gpu, view, 3);
+
+		air.SkyLightIntensity = 2.0f;
+		const RgbaImage brighterLight = Draw(gpu, view, 3);
+		std::cout << "Sky Light Intensity 2: the shade " << at(neutral, shade) << " -> " << at(brighterLight, shade) << ", the sky " << at(neutral, sky) << " -> "
+				  << at(brighterLight, sky) << "\n";
+		Require(at(brighterLight, shade) > at(neutral, shade) * 1.3f, "The sky's light on surfaces doesn't brighten the shade");
+		Require(PixelAt(brighterLight, sky.x, sky.y) == PixelAt(neutral, sky.x, sky.y), "The sky's light on surfaces changes how the sky looks");
+		air.SkyLightIntensity = 1.0f;
+
+		air.ExposureCompensation = 1.0f;
+		const RgbaImage brighter = Draw(gpu, view, 3);
+		std::cout << "Exposure +1: the shade " << at(neutral, shade) << " -> " << at(brighter, shade) << ", the sky " << at(neutral, sky) << " -> " << at(brighter, sky) << "\n";
+		Require(at(brighter, shade) > at(neutral, shade) * 1.3f && at(brighter, sky) > at(neutral, sky) * 1.3f, "One stop of exposure doesn't brighten the picture");
+		air.ExposureCompensation = 0.0f;
+
+		air.HazeBrightness = 2.0f;
+		air.HazeTint = glm::vec3(1.0f, 0.6f, 0.3f);
+		const RgbaImage hazy = Draw(gpu, view, 3);
+		const std::array<uint8_t, 3> farNeutral = PixelAt(neutral, far.x, far.y);
+		const std::array<uint8_t, 3> farHazy = PixelAt(hazy, far.x, far.y);
+		std::cout << "Haze x2, warm: the far ground " << RenderTests::Text(farNeutral) << " -> " << RenderTests::Text(farHazy) << ", the near " << RenderTests::Text(PixelAt(neutral, near.x, near.y))
+				  << " -> " << RenderTests::Text(PixelAt(hazy, near.x, near.y)) << "\n";
+		Require(float(farHazy[0]) / std::max(float(farHazy[2]), 1.0f) > float(farNeutral[0]) / std::max(float(farNeutral[2]), 1.0f) * 1.1f, "The haze's tint doesn't tint the fogged distance");
+		Require(std::abs(at(hazy, near) - at(neutral, near)) < std::abs(at(hazy, far) - at(neutral, far)), "The haze changes the near ground more than the far");
+
+		// In the cube map modes, the sky's light and the haze are the cube map's: unchanged
+		air.SkyMode = ESkyMode::TintedCubeMap;
+		SetNeutralLook(air);
+		const RgbaImage tinted = Draw(gpu, view, 3);
+		air.SkyLightIntensity = 3.0f;
+		air.HazeBrightness = 3.0f;
+		air.HazeTint = glm::vec3(1.0f, 0.2f, 0.2f);
+		const RgbaImage tintedSet = Draw(gpu, view, 3);
+		Require(tinted.Pixels == tintedSet.Pixels, "The Atmosphere mode's sky light and haze change the tinted cube map");
+		EndView(gpu, view);
+	}
+
 	// The sky's passes on the GPU at 1280 x 720: the tables made each frame (the sun turned a little
 	// each frame), and the scene pass with the air's sky against the cube map's
 	void TestGpuTimes(SceneRenderer& gpu)
@@ -776,6 +937,9 @@ int main(int argc, char** argv)
 		TestDuskWithTimeOfDay(gpu);
 		TestNoBandAboveLowSun(gpu);
 		TestNightSky(gpu);
+		TestLookAgainstCubeMap(gpu);
+		TestNeutralLookIsToday(gpu);
+		TestLookSettings(gpu);
 		TestGpuTimes(gpu);
 	}
 	catch (const std::exception& error)

@@ -220,10 +220,12 @@ namespace
 		return glm::quatLookAt(-glm::normalize(towardsSun), glm::vec3(0.0f, 1.0f, 0.0f));
 	}
 
-	// The air's sky alone: no fog, bloom, ambient occlusion or shafts
+	// The air's sky alone, its own light on surfaces (Sky Light Intensity 1): no fog, bloom,
+	// ambient occlusion or shafts
 	EnvironmentComponent SkyOnly()
 	{
 		EnvironmentComponent environment;
+		environment.SkyLightIntensity = 1.0f;
 		environment.bFog = false;
 		environment.bBloom = false;
 		environment.bAmbientOcclusion = false;

@@ -82,6 +82,7 @@ namespace Nyx
 			// The air's own: the sun's light through it to the camera; the sky and its light are what
 			// it scatters, untinted, and its glow round the sun is in them
 			atmosphere.SunColor = GetSunLightThroughAtmosphere(sky, lightColor);
+			atmosphere.SkyLightIntensity = std::max(environment.SkyLightIntensity, 0.0f);
 		}
 		else if (environment.SkyMode == ESkyMode::TintedCubeMap)
 		{
@@ -94,6 +95,7 @@ namespace Nyx
 			atmosphere.SunGlowLobe = std::clamp(environment.SunGlowLobe, 0.0f, 0.99f);
 		}
 
+		atmosphere.ExposureCompensation = std::clamp(environment.ExposureCompensation, -16.0f, 16.0f);
 		if (environment.bFog && environment.FogDensity > 0.0f)
 		{
 			atmosphere.FogDensity = environment.FogDensity;
@@ -101,7 +103,9 @@ namespace Nyx
 			atmosphere.FogHeight = environment.FogHeight;
 			atmosphere.FogStartDistance = std::max(environment.FogStartDistance, 0.0f);
 			atmosphere.FogMaxOpacity = std::clamp(environment.FogMaxOpacity, 0.0f, 1.0f);
-			atmosphere.FogColor = glm::max(environment.FogColor, glm::vec3(0.0f)) * atmosphere.SkyTint;
+			// The air's own colour for its fog is the sky's (nyx.sky); this is what it is multiplied by
+			atmosphere.FogColor = sky.bAtmosphere ? glm::max(environment.HazeTint, glm::vec3(0.0f)) * std::max(environment.HazeBrightness, 0.0f)
+												  : glm::max(environment.FogColor, glm::vec3(0.0f)) * atmosphere.SkyTint;
 			atmosphere.FogSunColor = atmosphere.SunColor * std::max(environment.FogSunScattering, 0.0f);
 			atmosphere.FogSunLobe = std::clamp(environment.FogSunLobe, 0.0f, 0.95f);
 		}
