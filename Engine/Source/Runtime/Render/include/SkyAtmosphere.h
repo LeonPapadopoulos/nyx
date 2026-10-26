@@ -40,8 +40,9 @@ namespace Nyx
 		// The camera's height above the ground, in kilometres, at least a metre
 		float CameraHeight = 0.001f;
 
-		// What the sky's light is multiplied by (GetSkyWarmthTint()), and the faint light it has
-		// left once the sun is down (the Night Brightness)
+		// What the sky's light is multiplied by (GetSkyWarmthTint()), and the light it keeps at
+		// night, a radiance (Night Sky Brightness times Night Sky Color, faded in as the sun goes
+		// down; none by day)
 		glm::vec3 WarmthTint{ 1.0f };
 		glm::vec3 NightLight{ 0.0f };
 
@@ -58,8 +59,7 @@ namespace Nyx
 
 	// The view's sky from the world's environment, in range, under its primary light (`towardsLight`
 	// normalised and `lightColor` as the light gives them, before the air), for a camera at
-	// `cameraPosition` (metres; its height is y). Not in the Atmosphere mode, or with Follow Sun off:
-	// bAtmosphere false.
+	// `cameraPosition` (metres; its height is y). Not in the Atmosphere mode: bAtmosphere false.
 	SceneViewSkyAtmosphere MakeSceneViewSkyAtmosphere(const EnvironmentComponent& environment, const glm::vec3& towardsLight, const glm::vec3& lightColor,
 		const glm::vec3& cameraPosition);
 

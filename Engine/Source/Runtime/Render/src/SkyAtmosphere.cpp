@@ -13,11 +13,6 @@ namespace Nyx
 	{
 		constexpr float Pi = 3.14159265358979f;
 
-		// How bright the night sky is at a Night Brightness of 1, as a radiance per unit of the sun's
-		// illuminance: about a clear day sky's high up (its zenith about 0.004, its mean above the
-		// horizon about 0.04)
-		constexpr float NightSkyRadiance = 0.01f;
-
 		// How far the sun may turn before the sky view is made again, as the length between its two
 		// directions: about 0.02 degrees
 		constexpr float SunTurnTolerance = 3.5e-4f;
@@ -66,7 +61,7 @@ namespace Nyx
 		const glm::vec3& cameraPosition)
 	{
 		SceneViewSkyAtmosphere sky;
-		sky.bAtmosphere = environment.bSkyFollowsSun && environment.SkyMode == ESkyMode::Atmosphere;
+		sky.bAtmosphere = environment.SkyMode == ESkyMode::Atmosphere;
 		if (!sky.bAtmosphere)
 		{
 			return sky;
@@ -89,11 +84,10 @@ namespace Nyx
 		sky.CameraHeight = std::clamp(cameraPosition.y * 0.001f, 0.001f, sky.AtmosphereHeight * 0.999f);
 
 		sky.WarmthTint = GetSkyWarmthTint(std::clamp(environment.SkyWarmth, -1.0f, 1.0f));
-		// The night's faint light, blue as the air's scattering, as the sun goes down (GetDaylight()'s
-		// dusk); as bright against a day sky as the Night Brightness says
+		// The night's light, an artistic one (Night Sky Brightness, Night Sky Color), fading in through
+		// dusk as the sun goes down (GetDaylight()'s dusk), none by day; 0, none: the air alone
 		const float night = 1.0f - SmoothStep(-0.1f, 0.2f, sky.TowardsSun.y);
-		const float sunLuminance = glm::dot(sky.SunIlluminance, glm::vec3(0.2126f, 0.7152f, 0.0722f));
-		sky.NightLight = GetChromaticity(sky.RayleighScattering) * (std::clamp(environment.NightBrightness, 0.0f, 1.0f) * NightSkyRadiance * sunLuminance * night);
+		sky.NightLight = glm::max(environment.NightSkyColor, glm::vec3(0.0f)) * (std::max(environment.NightSkyBrightness, 0.0f) * night);
 
 		const float radius = glm::radians(std::clamp(environment.SunDiskSize, 0.01f, 20.0f) * 0.5f);
 		sky.SunDiskCosine = std::cos(radius);

@@ -323,7 +323,7 @@ namespace
 		FloorScene scene(gpu.Renderer);
 		const Entity air = scene.World.CreateEntity();
 		EnvironmentComponent environment;
-		environment.bSkyFollowsSun = false;
+		environment.SkyMode = ESkyMode::CubeMap;
 		environment.bBloom = false;
 		environment.bAmbientOcclusion = false;
 		environment.FogDensity = 0.08f;
@@ -379,7 +379,7 @@ namespace
 		const Entity air = scene.World.CreateEntity();
 		EnvironmentComponent environment;
 		environment.bFog = false;
-		environment.bSkyFollowsSun = false;
+		environment.SkyMode = ESkyMode::CubeMap;
 		environment.bBloom = false;
 		environment.bAmbientOcclusion = false;
 		environment.OcclusionIntensity = 4.0f;

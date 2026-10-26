@@ -226,7 +226,7 @@ namespace
 
 			Environment = World.CreateEntity();
 			EnvironmentComponent environment;
-			environment.bSkyFollowsSun = false;
+			environment.SkyMode = ESkyMode::CubeMap;
 			environment.bBloom = false;
 			environment.bAmbientOcclusion = false;
 			environment.FogDensity = 0.5f;

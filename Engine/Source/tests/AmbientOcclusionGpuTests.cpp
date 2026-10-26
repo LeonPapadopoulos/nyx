@@ -92,7 +92,7 @@ namespace
 	{
 		EnvironmentComponent environment;
 		environment.bFog = false;
-		environment.bSkyFollowsSun = false;
+		environment.SkyMode = ESkyMode::CubeMap;
 		environment.bBloom = false;
 		return environment;
 	}

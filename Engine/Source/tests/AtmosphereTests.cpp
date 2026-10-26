@@ -104,7 +104,7 @@ namespace
 		// Without fog or the sky following, nothing: the light as it is, a white sky
 		EnvironmentComponent off;
 		off.bFog = false;
-		off.bSkyFollowsSun = false;
+		off.SkyMode = ESkyMode::CubeMap;
 		const SceneViewAtmosphere none = MakeSceneViewAtmosphere(off, glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(2.0f, 1.0f, 0.5f));
 		Require(none.FogDensity == 0.0f && none.SkyTint == glm::vec3(1.0f) && none.SunGlowColor == glm::vec3(0.0f) && none.SunColor == glm::vec3(2.0f, 1.0f, 0.5f),
 			"An environment with all off changes the view");
@@ -228,10 +228,24 @@ namespace
 		Require(Luminance(GetSunLightThroughAtmosphere(MakeSceneViewSkyAtmosphere(defaults, SunAt(-1.0f), glm::vec3(1.0f), glm::vec3(0.0f, 2000.0f, 0.0f)), glm::vec3(1.0f))) > 0.0f,
 			"2 km up, the sun a degree below the level has set");
 
-		// Off: with Follow Sun off, or the tinted cube map
+		// Off: the cube map as it is, or tinted
 		EnvironmentComponent off;
-		off.bSkyFollowsSun = false;
-		Require(!MakeSceneViewSkyAtmosphere(off, SunAt(60.0f), glm::vec3(1.0f), ground).bAtmosphere, "Follow Sun off makes the air's sky");
+		off.SkyMode = ESkyMode::CubeMap;
+		Require(!MakeSceneViewSkyAtmosphere(off, SunAt(60.0f), glm::vec3(1.0f), ground).bAtmosphere, "The plain cube map makes the air's sky");
+		const SceneViewAtmosphere plain = MakeSceneViewAtmosphere(off, SunAt(6.0f), glm::vec3(2.0f), ground);
+		Require(plain.SkyTint == glm::vec3(1.0f) && plain.SunGlowColor == glm::vec3(0.0f) && plain.SunColor == glm::vec3(2.0f), "The plain cube map follows the sun");
+
+		// The night's light: none by day, the Night Sky Color times its brightness at night, none
+		// at 0
+		const SceneViewSkyAtmosphere midnight = MakeSceneViewSkyAtmosphere(defaults, SunAt(-60.0f), glm::vec3(1.0f), ground);
+		Require(sky.NightLight == glm::vec3(0.0f), "The night's light shines by day");
+		Require(glm::all(glm::lessThan(glm::abs(midnight.NightLight - defaults.NightSkyColor * defaults.NightSkyBrightness), glm::vec3(1e-6f))),
+			"The night's light isn't the Night Sky Color times its brightness: " + Text(midnight.NightLight));
+		EnvironmentComponent physical = defaults;
+		physical.NightSkyBrightness = 0.0f;
+		Require(MakeSceneViewSkyAtmosphere(physical, SunAt(-60.0f), glm::vec3(1.0f), ground).NightLight == glm::vec3(0.0f), "A night brightness of 0 adds light");
+		Require(GetSkyAtmosphereChanges(midnight, MakeSceneViewSkyAtmosphere(physical, SunAt(-60.0f), glm::vec3(1.0f), ground)).bSkyView,
+			"The night's light changing doesn't make the sky view again");
 		Require(!MakeSceneViewSkyAtmosphere(TintedSky(), SunAt(60.0f), glm::vec3(1.0f), ground).bAtmosphere, "The tinted cube map makes the air's sky");
 
 		// Values out of range brought into it
@@ -506,14 +520,29 @@ namespace
 		EnvironmentComponent environment;
 		environment.FogDensity = 0.0123f;
 		environment.FogColor = glm::vec3(0.1f, 0.2f, 0.3f);
-		environment.bSkyFollowsSun = false;
 		environment.SunGlowLobe = 0.5f;
 		environment.SkyMode = ESkyMode::TintedCubeMap;
 		environment.RayleighScattering = glm::vec3(0.3f, 0.5f, 0.9f);
 		environment.PlanetRadius = 2000.0f;
 		environment.SkyWarmth = -0.25f;
+		environment.NightSkyBrightness = 0.07f;
 		world.Add<EnvironmentComponent>(entity, environment);
 		world.Add<GuidComponent>(entity, GuidComponent{ EntityGuid{ 0xE2F } });
+		// Scenes saved before the sky had three modes: Follow Sun off made the sky the cube map as
+		// it is, in either mode; on, the mode as it was
+		const auto addLegacy = [&](uint64_t guid, bool bFollowsSun, ESkyMode mode)
+		{
+			const Entity legacy = world.CreateEntity();
+			EnvironmentComponent old;
+			old.bSkyFollowsSun = bFollowsSun;
+			old.SkyMode = mode;
+			world.Add<EnvironmentComponent>(legacy, old);
+			world.Add<GuidComponent>(legacy, GuidComponent{ EntityGuid{ guid } });
+		};
+		addLegacy(0xE30, false, ESkyMode::TintedCubeMap);
+		addLegacy(0xE31, false, ESkyMode::Atmosphere);
+		addLegacy(0xE32, true, ESkyMode::TintedCubeMap);
+		addLegacy(0xE33, true, ESkyMode::Atmosphere);
 
 		Nyx::Tests::TestDirectory directory("NyxAtmosphereTests");
 		const std::filesystem::path path = directory.Path / "Environment.nyxscene";
@@ -521,16 +550,25 @@ namespace
 		Registry loaded;
 		ScenePostLoadContext context{};
 		Require(SceneSerializer::LoadFromFile(path, loaded, context), "The scene can't be loaded");
-		bool bFound = false;
-		loaded.Each<EnvironmentComponent>([&](Entity, const EnvironmentComponent& read)
+		size_t found = 0;
+		loaded.Each<EnvironmentComponent>([&](Entity entity, const EnvironmentComponent& read)
 			{
-				bFound = true;
-				Require(read.FogDensity == 0.0123f && read.FogColor == glm::vec3(0.1f, 0.2f, 0.3f) && !read.bSkyFollowsSun && read.SunGlowLobe == 0.5f && read.bFog,
-					"The environment isn't read back as saved");
-				Require(read.SkyMode == ESkyMode::TintedCubeMap && read.RayleighScattering == glm::vec3(0.3f, 0.5f, 0.9f) && read.PlanetRadius == 2000.0f && read.SkyWarmth == -0.25f,
-					"The sky's settings aren't read back as saved");
+				++found;
+				Require(read.bSkyFollowsSun, "Follow Sun isn't folded into the mode as the scene loads");
+				const uint64_t guid = loaded.Get<GuidComponent>(entity).Guid.Value;
+				if (guid == 0xE2F)
+				{
+					Require(read.FogDensity == 0.0123f && read.FogColor == glm::vec3(0.1f, 0.2f, 0.3f) && read.SunGlowLobe == 0.5f && read.bFog,
+						"The environment isn't read back as saved");
+					Require(read.SkyMode == ESkyMode::TintedCubeMap && read.RayleighScattering == glm::vec3(0.3f, 0.5f, 0.9f) && read.PlanetRadius == 2000.0f
+							&& read.SkyWarmth == -0.25f && read.NightSkyBrightness == 0.07f,
+						"The sky's settings aren't read back as saved");
+					return;
+				}
+				const ESkyMode expected = guid == 0xE30 || guid == 0xE31 ? ESkyMode::CubeMap : guid == 0xE32 ? ESkyMode::TintedCubeMap : ESkyMode::Atmosphere;
+				Require(read.SkyMode == expected, "An old scene's sky doesn't load as it looked: " + std::to_string(guid));
 			});
-		Require(bFound, "The environment isn't saved");
+		Require(found == 5, "The environments aren't saved");
 	}
 }
 

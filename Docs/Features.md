@@ -718,19 +718,22 @@ the sun. Without one, nothing changes.
   Opacity* (below 1, the far hills and the horizon still show), *Sun Scattering* and *Sun Lobe*
   (the haze glowing towards the sun, in the light's colour). Meshes, instanced ones, two-sided
   ones and decals are fogged, a decal's glow dimmed through it; the sky is hazy on the horizon.
-- **The sky follows the sun** (*Sky*), with *Follow Sun*, as its *Mode* makes it:
+- **The sky** (*Sky*), as its *Mode* makes it:
   - **Atmosphere** (the default): the sky made from the sun's place by the light the air scatters
     (Hillaire's sky), no texture: blue by day, gold, orange and red as the sun goes down, haze round
-    the sun, a sun's disk (*Sun Disk Size*, *Sun Disk Brightness*) bright enough to bloom, darker
-    and redder at its edge. Its light lights the world: surfaces the sun doesn't reach take the
-    sky's colour, bluish by day, dimmer and warmer at golden hour; the fog takes the sky's colour at
-    the horizon, brighter towards the sun, so fog and sky agree; the sun's light is what the air
+    the sun as a halo round it, a sun's disk (*Sun Disk Size*, *Sun Disk Brightness*) bright enough
+    to bloom, darker and redder at its edge. Its light lights the world: surfaces the sun doesn't reach take the
+    sky's colour, bluish by day, dimmer and warmer at golden hour; the fog takes the sky's colour the
+    way it looks (the horizon's below it), brighter towards the sun, so fog and sky agree; the sun's light is what the air
     leaves of it. For a camera high up (a treetop, a cloud's height), the horizon sinks below eye
     level and the sky above darkens. The air is the earth's by default and every part of it a
     setting: *Rayleigh Scattering*, *Scale* and *Height* (the molecules: the blue), *Mie
     Scattering*, *Scale*, *Absorption*, *Height* and *Anisotropy* (the haze: the glow), *Ozone
     Absorption* and *Scale*, *Ground Albedo*, *Planet Radius*, *Atmosphere Height*, and *Warmth*, a
-    stylising tint of the sky's light. Its tables are made again only when the air, the sun or the
+    stylising tint of the sky's light. At night the air's sky is black; *Night Sky Brightness* and
+    *Night Sky Color* keep an artistic light in it (and in its light on the world), fading in as the
+    sun goes down, none by day; 0 is none, the air's own sky (0.02, a dark blue night, by default).
+    Its tables are made again only when the air, the sun or the
     camera's height changes: about 0.13 ms of GPU time then, nothing otherwise
     ([Atmosphere](Design/atmosphere.md#the-sky-made-by-the-air)). *Debug > Sky Tables* in the
     editor (Debug builds) shows them.
@@ -739,8 +742,10 @@ the sun. Without one, nothing changes.
     more air (*Sun Reddening*), and is gone once it has set; a glow round the sun (*Sun Glow*, *Sun
     Glow Lobe*).
 
-  A low sun gives warm light, warm haze and long warm shadows. With *Follow Sun* off, the sky's
-  cube map as it is.
+  - **Cube Map**: the sky's cube map as it is, whatever the sun does.
+
+  A low sun gives warm light, warm haze and long warm shadows. Scenes saved with the old *Follow
+  Sun* off load as *Cube Map*, as they looked; with it on, in the mode they had.
 - All with undo, saved in scenes and sent to a running game. `Assets/Scenes/AtmosphereTest.nyxscene`:
   the ground test scene with small cubes scattered over its ground, haze and a low sun.
 - The fog and the sky cost no measurable time, on the GPU or the CPU, with 50 000 instanced cubes in
@@ -755,7 +760,8 @@ the sun. Without one, nothing changes.
   picture; the test scene), `NyxSkyAtmosphereGpuTests` (the air's tables against the CPU's; the
   sky bluer at noon than at sunset; from 2 m and 2 km up, the horizon at and below eye level and the
   zenith darker; a wall lit by the sky's light; the fog the sky's colour at the horizon; the sun's
-  disk blooming; made again only as needed; unchanged to the bit with *Follow Sun* off; its GPU
+  disk blooming; made again only as needed; the glow round a low sun a halo, not a band up the sky, with fog and without; the night's light,
+  none at 0 and none at noon; unchanged to the bit in the *Cube Map* mode; its GPU
   times), the other reference pictures unchanged.
 
 ## Time of day
@@ -779,7 +785,8 @@ one, nothing turns the sun.
 - **Night**: below the horizon the sun's light fades out over *Horizon Fade* degrees, so a sun under
   the ground lights nothing from below, with an *Environment* or without; a light that gives no
   light casts no shadows, so none are drawn at night. With an *Environment*, the air reddens the
-  sun as it goes down and the sky dims to its *Night Brightness*.
+  sun as it goes down and the sky dims to its night (the tinted mode's *Night Brightness*, the
+  Atmosphere mode's *Night Sky Brightness*).
 - The sun's rotation is the time of day's: turned by hand, it turns back to the time. Its position,
   colour, intensity and shadows are its own.
 - All with undo, saved in scenes and sent to a running game.

@@ -424,7 +424,7 @@ namespace
 		const Entity air = scene.World.CreateEntity();
 		EnvironmentComponent environment;
 		environment.bFog = false;
-		environment.bSkyFollowsSun = false;
+		environment.SkyMode = ESkyMode::CubeMap;
 		environment.bAmbientOcclusion = false;
 		environment.Wind = glm::vec3(0.8f, 0.0f, 0.0f);
 		scene.World.Add<EnvironmentComponent>(air, environment);

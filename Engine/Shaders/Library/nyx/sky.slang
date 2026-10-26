@@ -236,12 +236,17 @@ namespace nyx
         return View.SunDisk.rgb * limb * coverage * skyAtmosphereTransmittance(direction);
     }
 
-    // The sky's colour at the horizon round the up axis the way `direction` looks: the row of the
-    // sky view just above the horizon, warmer towards the sun. What the fog takes as its own.
-    public float3 skyAtmosphereHorizon(float3 direction)
+    // What the fog takes as its own colour, looking along `direction`: the sky's the same way, as the
+    // air scatters it along that ray; below the horizon, the sky's just above it (the sky view's
+    // last row above the horizon), round the up axis the way the ray looks. Taken from the ray's
+    // own direction, not from the horizon alone: the glow round a low sun stays a halo round it,
+    // and doesn't climb the sky above it as a band.
+    public float3 skyAtmosphereFogColor(float3 direction)
     {
-        const float2 uv = float2(unitToSubUv(sqrt(saturate(-skyAzimuthCosine(direction, normalize(View.LightDirection.xyz)) * 0.5 + 0.5)), SkyViewLutWidth),
-            (floor(0.5 * SkyViewLutHeight) - 0.5) / SkyViewLutHeight);
-        return View.SkyViewLut.SampleLevel(LinearClamp, uv, 0.0).rgb;
+        const SkyPlanet planet = viewPlanet();
+        const float height = View.SkyCamera.x;
+        const float2 uv = skyViewUv(planet, height, max(direction.y, skyHorizonCosine(planet, height)), skyAzimuthCosine(direction, normalize(View.LightDirection.xyz)), false);
+        const float lastRowAbove = (floor(0.5 * SkyViewLutHeight) - 0.5) / SkyViewLutHeight;
+        return View.SkyViewLut.SampleLevel(LinearClamp, float2(uv.x, min(uv.y, lastRowAbove)), 0.0).rgb;
     }
 }

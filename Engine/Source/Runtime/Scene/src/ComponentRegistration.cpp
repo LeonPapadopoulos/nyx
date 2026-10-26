@@ -1,6 +1,7 @@
 #include "ComponentRegistration.h"
 
 #include "ComponentTypeRegistry.h"
+#include "EnvironmentComponent.h"
 #include "GroundMesh.h"
 #include "IAssetResolver.h"
 #include "MeshInstancesComponent.h"
@@ -60,6 +61,12 @@ namespace Nyx
 			}
 		}
 
+		// Follow Sun from scenes saved before the sky had three modes, into the mode
+		void FoldLegacySkyModeAfterLoad(EnvironmentComponent& component, ScenePostLoadContext&)
+		{
+			FoldLegacySkyMode(component);
+		}
+
 		// The same for a decal's material
 		void ResolveSurfaceDecalAssets(SurfaceDecalComponent& component, ScenePostLoadContext& context)
 		{
@@ -77,6 +84,7 @@ namespace Nyx
 		// Components that need more than their reflected properties after being loaded.
 		ComponentTypeRegistry::Get().SetPostLoad<MeshRendererComponent>(&ResolveMeshRendererAssets);
 		ComponentTypeRegistry::Get().SetPostLoad<SurfaceDecalComponent>(&ResolveSurfaceDecalAssets);
+		ComponentTypeRegistry::Get().SetPostLoad<EnvironmentComponent>(&FoldLegacySkyModeAfterLoad);
 		ComponentTypeRegistry::Get().SetPostLoad<GroundComponent>(&MakeGroundMeshAfterLoad);
 		ComponentTypeRegistry::Get().SetOnRemove<GroundComponent>(&RemoveGroundMesh);
 		ComponentTypeRegistry::Get().SetPostLoad<ScatterComponent>(&ScatterAfterLoad);

@@ -4,11 +4,12 @@
 // noon than at sunset. The sky from 2 m and from 2 km up: up there the horizon is below eye level
 // and the sky above is darker. Its light lights the world: a wall the sun doesn't reach shows the
 // sky's irradiance and specular light as the tables have them, warmer towards a low sun. The fog's
-// own colour is the sky's at the horizon, brighter towards the sun. The tables are made again only
-// when the air, the sun or the camera's height changes. Without the component, and with Follow Sun
-// off, the picture is the same to the bit, and nothing of the sky is made. Its passes' GPU times
+// own colour is the sky's the way the ray looks, brighter towards the sun. The tables are made again only
+// when the air, the sun or the camera's height changes. Without the component, and with the plain
+// cube map, the picture is the same to the bit, and nothing of the sky is made. Its passes' GPU times
 // at 1280 x 720 are printed. A time of day fading the set sun's light leaves the air's dusk and night
-// as they are.
+// as they are. The glow round a low sun is a halo, not a band up the sky, with fog or without; the
+// night's light is none at 0, brighter above it, and no part of the noon sky.
 //
 // NYX_SCENE_TEST_OUTPUT=<folder> saves what was rendered there, for looking at by hand.
 #include "CameraComponent.h"
@@ -497,7 +498,7 @@ namespace
 		EndView(gpu, view);
 	}
 
-	// Without the component, and with Follow Sun off, the same picture to the bit, and no tables;
+	// Without the component, and with the plain cube map, the same picture to the bit, and no tables;
 	// the tables made again only as what they depend on changes
 	void TestUnchangedAndMadeWhenNeeded(SceneRenderer& gpu)
 	{
@@ -535,14 +536,14 @@ namespace
 		Require(!gpu.Renderer.GetSceneViewSkyTables(view)->IsMade(), "A view with the studio sky keeps the air's tables");
 		gpu.Renderer.SetSceneViewSky(view, ESceneViewSky::Scene, 0.0f);
 
-		// Follow Sun off, and no component: the same picture, to the bit, no tables
-		scene.Air().bSkyFollowsSun = false;
+		// The plain cube map, and no component: the same picture, to the bit, no tables
+		scene.Air().SkyMode = ESkyMode::CubeMap;
 		const RgbaImage off = Draw(gpu, view);
-		Require(!gpu.Renderer.GetSceneViewSkyTables(view)->IsMade(), "Follow Sun off keeps the air's tables");
+		Require(!gpu.Renderer.GetSceneViewSkyTables(view)->IsMade(), "The plain cube map keeps the air's tables");
 		scene.World.Remove<EnvironmentComponent>(scene.Environment);
 		const RgbaImage none = Draw(gpu, view);
 		SaveIfAsked(none, "NoEnvironment");
-		Require(off.Pixels == none.Pixels, "Follow Sun off doesn't draw the picture as without the component");
+		Require(off.Pixels == none.Pixels, "The plain cube map doesn't draw the picture as without the component");
 		Require(on.Pixels != none.Pixels, "The air's sky changes nothing");
 		EndView(gpu, view);
 	}
@@ -580,7 +581,117 @@ namespace
 		}
 		const float nightLuminance = Luminance(nightSum) / static_cast<float>(night.size() / 2);
 		std::cout << "The night sky's mean above the horizon: " << nightLuminance << "\n";
-		Require(nightLuminance > 1e-4f && nightLuminance < 0.01f, "The night sky isn't a faint part of the day's: " + std::to_string(nightLuminance));
+		Require(nightLuminance > 1e-4f && nightLuminance < 0.02f, "The night sky isn't a faint part of the day's: " + std::to_string(nightLuminance));
+		EndView(gpu, view);
+	}
+
+	// What the tonemapped picture shows as light again: sRGB decoded, its luminance
+	float LinearLuminance(const std::array<uint8_t, 3>& rgb)
+	{
+		const auto decode = [](uint8_t value)
+		{
+			const float c = static_cast<float>(value) / 255.0f;
+			return c <= 0.04045f ? c / 12.92f : std::pow((c + 0.055f) / 1.055f, 2.4f);
+		};
+		return Luminance(glm::vec3(decode(rgb[0]), decode(rgb[1]), decode(rgb[2])));
+	}
+
+	// A sun 2 degrees up: its forward glow is a halo round it, not a band up the sky above it. 60
+	// degrees up on the sun's side is no brighter than 60 degrees up at its side but for the air's
+	// own phases, with the fog and without: the molecules' phase is 1.28 times stronger 58 degrees
+	// from the sun than 88 (1 + cos²), and the haze, which scatters forwards far more, is thin that
+	// high, so 1.5 times at most. The fog over the sky above the horizon takes the sky's own colour
+	// there, so it changes nothing; the halo 5 degrees above the sun is far brighter than both.
+	// (The fog's colour came from the horizon by the angle round from the sun alone, so it carried
+	// the horizon's glow straight up the sky over a low sun, a wedge narrowing to the zenith.)
+	void TestNoBandAboveLowSun(SceneRenderer& gpu)
+	{
+		SkyWorld scene;
+		scene.SetSun(2.0f, true);
+		const uint64_t view = MakeView(gpu, scene.World);
+		const auto at = [&](float yaw, float pitch, const std::string& name)
+		{
+			TransformComponent& camera = scene.World.Get<TransformComponent>(scene.Camera);
+			camera.Rotation = glm::angleAxis(glm::radians(yaw), glm::vec3(0.0f, 1.0f, 0.0f)) * glm::angleAxis(glm::radians(pitch), glm::vec3(1.0f, 0.0f, 0.0f));
+			const RgbaImage image = Draw(gpu, view);
+			SaveIfAsked(image, name);
+			return PixelAt(image, ViewWidth / 2, ViewHeight / 2);
+		};
+		std::array<uint8_t, 3> unfogged{};
+		for (const bool bFog : { false, true })
+		{
+			scene.Air().bFog = bFog;
+			const std::string name = bFog ? "LowSunFog" : "LowSun";
+			const std::array<uint8_t, 3> sunSide = at(0.0f, 60.0f, name + "Up");
+			const std::array<uint8_t, 3> side = at(90.0f, 60.0f, name + "UpAside");
+			const std::array<uint8_t, 3> halo = at(0.0f, 7.0f, name + "Halo");
+			std::cout << "A sun 2 degrees up" << (bFog ? ", fog" : "") << ": 60 degrees up on its side " << RenderTests::Text(sunSide) << ", at its side "
+					  << RenderTests::Text(side) << ", 5 degrees above it " << RenderTests::Text(halo) << "\n";
+			Require(LinearLuminance(sunSide) <= LinearLuminance(side) * 1.5f, "The sky high above a low sun is brighter than at its side: a band up the sky");
+			Require(LinearLuminance(halo) > LinearLuminance(sunSide) * 3.0f, "No halo round a low sun");
+			if (!bFog)
+			{
+				unfogged = sunSide;
+			}
+			else
+			{
+				Require(Near(sunSide, unfogged, 2), "The fog changes the sky high above the horizon: " + RenderTests::Text(sunSide) + " against " + RenderTests::Text(unfogged));
+			}
+		}
+		EndView(gpu, view);
+	}
+
+	// The night's light (Night Sky Brightness): at 0 none, the air's own sky, black at midnight; above
+	// 0 the midnight sky and a wall lit by the sky alone brighter; the noon sky the same either way
+	void TestNightSky(SceneRenderer& gpu)
+	{
+		SkyWorld scene;
+		LiveMaterialFile whiteFile("Materials/SkyAtmosphereTestNight.nyxmat");
+		whiteFile.Write("Shader = Shaders/Standard.slang\nBaseColor = 1 1 1\nMetallic = 0\nRoughness = 1\n");
+		AddMesh(scene.World, Placed(glm::vec3(0.0f, 2.0f, -10.0f), glm::vec3(40.0f, 1.0f, 40.0f), glm::angleAxis(glm::radians(90.0f), glm::vec3(1.0f, 0.0f, 0.0f))),
+			gpu.Renderer.GetPlaneMesh(), gpu.Renderer.GetMaterial(whiteFile.Path));
+		const uint64_t view = MakeView(gpu, scene.World);
+		struct Seen
+		{
+			std::vector<glm::vec4> SkyView;
+			std::array<uint8_t, 3> Wall{};
+			std::array<uint8_t, 3> Sky{};
+		};
+		const auto seen = [&](float sunDegrees, float brightness, const std::string& name)
+		{
+			scene.Air().NightSkyBrightness = brightness;
+			scene.SetSun(sunDegrees, true);
+			Seen result;
+			scene.SetCamera(2.0f, 0.0f);
+			const RgbaImage wall = Draw(gpu, view);
+			SaveIfAsked(wall, name + "Wall");
+			result.Wall = PixelAt(wall, ViewWidth / 2, ViewHeight / 2);
+			scene.SetCamera(2.0f, 60.0f);
+			const RgbaImage sky = Draw(gpu, view);
+			SaveIfAsked(sky, name + "Sky");
+			result.Sky = PixelAt(sky, ViewWidth / 2, ViewHeight / 2);
+			result.SkyView = Read(gpu, view, ESkyTable::SkyView);
+			return result;
+		};
+
+		const Seen black = seen(-60.0f, 0.0f, "Midnight0");
+		const Seen lit = seen(-60.0f, EnvironmentComponent{}.NightSkyBrightness, "MidnightDefault");
+		float brightest = 0.0f;
+		for (const glm::vec4& texel : black.SkyView)
+		{
+			brightest = std::max(brightest, std::max(texel.r, std::max(texel.g, texel.b)));
+		}
+		std::cout << "Midnight at a night brightness of 0: the sky " << RenderTests::Text(black.Sky) << ", the wall " << RenderTests::Text(black.Wall)
+				  << " (the sky view's brightest texel " << brightest << "); at the default: the sky " << RenderTests::Text(lit.Sky) << ", the wall "
+				  << RenderTests::Text(lit.Wall) << "\n";
+		Require(brightest == 0.0f && black.Sky == std::array<uint8_t, 3>{ 0, 0, 0 }, "At a night brightness of 0 the midnight sky isn't the air's own, black");
+		Require(LinearLuminance(lit.Sky) > LinearLuminance(black.Sky) + 1e-3f, "The night's light doesn't brighten the midnight sky");
+		Require(LinearLuminance(lit.Wall) > LinearLuminance(black.Wall) + 1e-3f, "The night's light doesn't light a wall by the sky");
+
+		const Seen noonPhysical = seen(60.0f, 0.0f, "Noon0");
+		const Seen noonLit = seen(60.0f, 0.2f, "NoonBright");
+		Require(noonPhysical.SkyView == noonLit.SkyView && noonPhysical.Sky == noonLit.Sky && noonPhysical.Wall == noonLit.Wall,
+			"The night's light changes the noon sky");
 		EndView(gpu, view);
 	}
 
@@ -663,6 +774,8 @@ int main(int argc, char** argv)
 		TestUnchangedAndMadeWhenNeeded(gpu);
 		TestSunDisk(gpu);
 		TestDuskWithTimeOfDay(gpu);
+		TestNoBandAboveLowSun(gpu);
+		TestNightSky(gpu);
 		TestGpuTimes(gpu);
 	}
 	catch (const std::exception& error)

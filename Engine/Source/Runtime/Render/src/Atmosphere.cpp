@@ -83,7 +83,7 @@ namespace Nyx
 			// it scatters, untinted, and its glow round the sun is in them
 			atmosphere.SunColor = GetSunLightThroughAtmosphere(sky, lightColor);
 		}
-		else if (environment.bSkyFollowsSun)
+		else if (environment.SkyMode == ESkyMode::TintedCubeMap)
 		{
 			atmosphere.SunColor = lightColor * GetSunTransmittance(sinElevation, std::max(environment.SunReddening, 0.0f));
 			// The sky takes the sun's hue, not its brightness: that is the daylight's

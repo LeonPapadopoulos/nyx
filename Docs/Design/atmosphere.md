@@ -78,10 +78,22 @@ the sky's horizon too, towards the sun and away from it.
 
 ## The sky follows the sun
 
-With *Follow Sun* on, the sky follows the primary light, as its *Mode* makes it: *Atmosphere* (the
-default), the sky made from the sun's place by the air's scattering (the next section), or *Tinted
-Cube Map*, the sky's cube map tinted by the sun, as follows. With *Follow Sun* off, the cube map is
-drawn as it is, whatever the mode, and nothing of the air's sky is made.
+The sky's *Mode* is one of three: *Atmosphere* (the default), the sky made from the sun's place by
+the air's scattering (the next section), which follows the sun by what it is; *Tinted Cube Map*,
+the sky's cube map tinted by the sun, as follows; or *Cube Map*, the cube map drawn as it is,
+whatever the sun does, and nothing of the air's sky made. The tinted mode's settings say so in
+their tooltips, and so do the air's (the Details panel shows a category's settings whatever the
+mode; none of them can contradict it).
+
+**Follow Sun, from older scenes.** The sky had a *Follow Sun* switch before it had three modes: off,
+the cube map as it is, whatever the mode said, the air's sky included. Scenes keep it: the
+component's post-load step (`FoldLegacySkyMode()`, registered in `RegisterComponentTypes()`) folds
+it into the mode as a scene loads, so a scene looks as it did: *Follow Sun* off, in either mode, is
+*Cube Map*; on, the mode as saved; a scene older still, from before the modes, has the default
+mode, *Atmosphere*, as it has had since. *Follow Sun* is then on, hidden (`NYX_PROPERTY(Serialize,
+Hidden)`), and read by nothing else. *Cube Map* is the mode's last value, as modes are saved by
+their number. `NyxAtmosphereTests` saves environments with *Follow Sun* off and on in both modes
+and checks how they load.
 
 In the *Tinted Cube Map* mode, the sky's cube map, its light (the irradiance and the specular cube)
 and the fog's colour are multiplied by a tint, and the sun's light by what the air leaves of it:
@@ -174,8 +186,7 @@ command buffer before the view's shadows and scene pass, only when what they dep
 Each image is written whole, from Undefined to General layout, and ends in ShaderReadOnlyOptimal
 for the passes after; each dispatch is followed by a barrier for the next. The tables are about
 0.8 MB a view (0.4 MB more while the debug window shows them), made at the first frame the view
-draws the air's sky and let go of when it no longer does (no environment, *Follow Sun* off, the
-tinted mode, a studio or black sky in the view).
+draws the air's sky and let go of when it no longer does (no environment, a cube map mode, a studio or black sky in the view).
 
 **What is made again, when:** the air's settings change, everything; the sun turns by more than
 0.02°, its light changes, or the warmth or the night's light changes, the sky view and the cube;
@@ -207,11 +218,19 @@ scatters the sun's light after it has set below: the dusk and the night's light 
 (`NyxSkyAtmosphereGpuTests` checks the dusk sky 4° after sunset the same with a time of day as
 without).
 
-**At night** the air gives nothing; *Night Brightness* adds a faint light to the sky and its light
-as the sun goes down (the dusk of `GetDaylight()`), blue as the molecules' scattering, as bright
-against a clear day sky high up as it says (`NightSkyRadiance`, 0.01 of the sun's illuminance a
-steradian: the day sky's zenith is about 0.004, its mean above the horizon 0.04). The night's light
-is lit by the light before a time of day's fade, so it stays at night. Moon and stars are later.
+**At night** the air gives nothing: with the sun well below the horizon its sky is black, as a
+moonless night is. *Night Sky Brightness* is an artistic light it keeps instead: a radiance, in
+*Night Sky Color* (a dark blue by default), added to every direction of the sky view as the sun
+goes down (the dusk of `GetDaylight()`: none from 0.2 above the horizon, all from 0.1 below), so
+it is in the sky, in its light on the world and in the fog's colour alike, and no part of the day
+sky. It doesn't depend on the sun's light, so a time of day's fade doesn't take it. **0 is none**:
+the air's own sky, black at midnight (`NyxSkyAtmosphereGpuTests` reads every texel of the sky view
+0, a wall lit by the sky alone black). The default is 0.02, a dark blue night (the sky 1 11 32 of
+255 at midnight, a white wall lit by it as much), so that a scene isn't black at night unless asked:
+the tinted mode keeps 5 % of its cube map's light at night too. The tinted mode's *Night
+Brightness* is its own. (Until now the air's night took 0.01 of the sun's illuminance a steradian
+times the tinted mode's *Night Brightness*: a mean of 0.0016 above the horizon at the defaults, at
+most 13 of 255 on the screen, which read as black.) Moon and stars are later.
 
 ### Its light lights the world
 
@@ -230,17 +249,26 @@ brighter or more painted.
 
 ### The fog takes its colour
 
-In this mode the fog's own colour (`nyx::heightFogAlong()`) is the sky's at the horizon the way
-the ray looks (`nyx::skyAtmosphereHorizon()`: the sky view's last row above the horizon, by the
-angle round from the sun), instead of *Color*: brighter and warmer towards the sun, pinker and
-dimmer away from it, and always what the sky behind it shows, so distant fogged hills melt into the
-horizon. The fog's own scattering of the sun (*Sun Scattering*, *Sun Lobe*) is added as before.
+In this mode the fog's own colour (`nyx::heightFogAlong()`) is the sky's the way the ray looks
+(`nyx::skyAtmosphereFogColor()`: the sky view in the ray's direction; for a ray below the horizon,
+its last row above it, by the angle round from the sun), instead of *Color*: brighter and warmer
+towards the sun, pinker and dimmer away from it, and always what the sky behind it shows, so
+distant fogged hills melt into the horizon, and fog over the sky changes nothing there. The fog's
+own scattering of the sun (*Sun Scattering*, *Sun Lobe*) is added as before.
 `NyxSkyAtmosphereGpuTests` checks a wall hidden by fog against the sky view's horizon, within 1 of
-255. Fog over the sky's horizon then hides it in its own colour, the same. The colour depends only on
-the angle round from the sun, as the light along a level ray does: under fog so thick that it hides
-the sky overhead, looking up shows the horizon's colours as vertical bands, the brightest above the
-sun. The aerial perspective of the plan's next step (the air between the camera and each point)
-replaces it.
+255.
+
+The colour first came from the horizon alone, by the angle round from the sun, for every ray: the
+light along a level ray. A ray up the sky above a low sun then took the horizon's glow next to the
+sun, and the fog's thin part over the sky drew it as a band of the sun's colour from the sun up to
+the zenith, narrowing there (a constant angle round, the sky view itself was right: 60° up on the
+sun's side it gave 2 14 36 of 255 without fog, and 66 23 8 with it, against 2 13 35 at the side).
+Taken from the ray's own direction, the glow is a halo round the sun, as the air's phases make it;
+`NyxSkyAtmosphereGpuTests` checks, with the sun 2° up, that 60° up on its side is no brighter than
+60° up at its side by more than the air's own phases give (1.5 times: the molecules' phase is 1.28
+times stronger 58° from the sun than 88°, the haze is thin that high), with fog and without, that
+fog changes the sky there by at most 2 of 255, and that the halo 5° above the sun is more than 3
+times brighter.
 
 ### The camera high up
 
@@ -356,8 +384,9 @@ the time, and nothing in the renderer, the fog or the sky knows the time. The ma
 - **Below the horizon** the sun's light fades out over *Horizon Fade* degrees (3 by default, a
   smoothstep from the horizon down; `GetSunHorizonFade()`): the renderer multiplies the time of
   day's sun's light by it as it reads the light (`GetTimeOfDayLightFade()`), so a sun under the
-  ground lights nothing from below, with an environment or without. With *Follow Sun*, the air
-  fades it too, by about the same angle, after reddening it. A light that gives no light casts no
+  ground lights nothing from below, with an environment or without. In the tinted mode the air
+  fades it too, by about the same angle, after reddening it; in the Atmosphere mode the air takes
+  it once the sun's disk is below the horizon. A light that gives no light casts no
   shadows (`UpdateViewportSceneGlobals()`), so the cascades aren't drawn at night.
 - **A moon later**: a second directional light on the same path half a day off
   (`GetSunRotation(path, hours + 12)`), its own colour and intensity, faded the same way, and a

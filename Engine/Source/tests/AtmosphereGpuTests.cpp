@@ -109,7 +109,7 @@ namespace
 	EnvironmentComponent PlainFog(float density, float falloff, float height)
 	{
 		EnvironmentComponent environment;
-		environment.bSkyFollowsSun = false;
+		environment.SkyMode = ESkyMode::CubeMap;
 		environment.bBloom = false;
 		environment.bAmbientOcclusion = false;
 		environment.FogDensity = density;
@@ -505,7 +505,7 @@ namespace
 		Require(Brightness(PixelAt(glowing, middle)) > Brightness(PixelAt(noGlow, middle)) + 30, "No glow round the sun: " + Text(PixelAt(glowing, middle)) + " against " + Text(PixelAt(noGlow, middle)));
 
 		// Fog, sky, bloom and ambient occlusion all off: as without the component, to the bit
-		scene.World.Get<EnvironmentComponent>(scene.Environment).bSkyFollowsSun = false;
+		scene.World.Get<EnvironmentComponent>(scene.Environment).SkyMode = ESkyMode::CubeMap;
 		scene.World.Get<EnvironmentComponent>(scene.Environment).bBloom = false;
 		scene.World.Get<EnvironmentComponent>(scene.Environment).bAmbientOcclusion = false;
 		const RgbaImage allOff = Draw(gpu, view);
