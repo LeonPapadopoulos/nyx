@@ -1059,7 +1059,8 @@ in the editor's scene views and in the game alike.
   Particles*, *Seed*. All with undo, saved in scenes and sent to a running game.
 - The *Environment*'s *Particles*: *Wind*, the air's speed everywhere, and *Max Particles*, the most
   in the world at once (50 000 without an environment). A game can give a world its own air, which
-  is asked where each particle is (`IParticleVelocityField`).
+  is asked where each particle is (`IParticleVelocityField`): a game module's systems keep it, and
+  Nyx's game hands it to the renderer (`GameWorld::SetParticleVelocityField()`).
 - Only for the eye: nothing in the world feels them. They follow the world's time: in a game they
   stand still while it is paused and move on with Step; in the editor they play as you edit. The
   same seed plays the same particles; a new seed starts the emitter again.

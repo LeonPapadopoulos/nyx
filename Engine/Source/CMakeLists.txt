@@ -297,6 +297,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/EnvironmentComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/PointLightComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ParticleEmitterComponent.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ParticleVelocityField.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/NameComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/PhysicsComponents.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ConstraintComponent.h
@@ -374,7 +375,6 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/SurfaceDecals.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/PointLights.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Particles.h
-    ${NYX_ENGINE_ROOT}/Runtime/Render/include/ParticleVelocityField.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/DrawnWorldTime.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Mesh.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/RuntimeMeshCache.h

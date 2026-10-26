@@ -19,6 +19,8 @@
 
 namespace Nyx
 {
+	class IParticleVelocityField;
+
 	// The world a game runs: its entities, their physics, and the systems that change them each
 	// fixed step, in one order kept here rather than spread over registrations. The game's GameLayer
 	// owns one; a game module adds its systems (GameModule::CreateSystems). A step:
@@ -70,6 +72,13 @@ namespace Nyx
 		void SetPhysicsDebugView(const std::optional<PhysicsDebugOptions>& options);
 		const std::optional<PhysicsDebugOptions>& GetPhysicsDebugView() const { return PhysicsDebugView; }
 
+		// The air the world's particles are carried by, as the game keeps it (its wind, the draught of
+		// a fire), which the game hands to the renderer once the systems are made
+		// (IRenderer::SetWorldParticleVelocityField()); none, the default: the environment's wind. A
+		// game module sets it in CreateSystems(), and it must live as long as the world's systems.
+		void SetParticleVelocityField(const IParticleVelocityField* field) { ParticleVelocityField = field; }
+		const IParticleVelocityField* GetParticleVelocityField() const { return ParticleVelocityField; }
+
 		// Adds the system after those of its stage added before. It runs on every `everyNthStep`th
 		// step (1: every step), counted from step 0, so systems with the same interval run in the
 		// same steps.
@@ -108,6 +117,7 @@ namespace Nyx
 		CommandQueue Commands;
 		CommandQueue StepCommands;
 		std::optional<PhysicsDebugOptions> PhysicsDebugView;
+		const IParticleVelocityField* ParticleVelocityField = nullptr;
 		std::vector<SystemEntry> Systems;
 	};
 }

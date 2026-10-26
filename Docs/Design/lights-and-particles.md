@@ -5,7 +5,7 @@ sparks, embers and smoke, moved on the CPU and drawn instanced; and why they wor
 settings are on `PointLightComponent` and `ParticleEmitterComponent` (`Scene`), with the world's
 wind and particle budget on `EnvironmentComponent`; the math is in
 `Engine/Source/Runtime/Render/PointLights.h` and `Particles.h`, a game's air comes in through
-`ParticleVelocityField.h`; the renderer's part is in `VulkanRenderer` (`ExtractPointLights()`,
+`ParticleVelocityField.h` (`Scene`); the renderer's part is in `VulkanRenderer` (`ExtractPointLights()`,
 `ExtractParticles()`, `CullSceneView()`, `UpdateSceneUniforms()`) and `VulkanParticles`, the
 shaders in `Engine/Shaders/Library/nyx/view.slang`, `lighting.slang` and
 `Engine/Shaders/Particle.slang`.
@@ -172,7 +172,8 @@ editor and the game draw the same particles from the same components.
 
 `IParticleVelocityField` (`ParticleVelocityField.h`) is the seam a game's air comes in by: its
 wind, the draught of a fire, the air a moving body pushes, whatever field it keeps. A game gives one
-to a world (`IRenderer::SetWorldParticleVelocityField()`); the renderer asks it once per emitter a
+to a world (`IRenderer::SetWorldParticleVelocityField()`): a game module sets it on its game world
+as it makes its systems (`GameWorld::SetParticleVelocityField()`), and Nyx's game hands it on; the renderer asks it once per emitter a
 step for the air's speed at every one of the emitter's particles, in the world, at the world's time;
 without one, the environment's *Wind* is the air everywhere. *Drag* says how much a particle
 follows the air: sparks a little, smoke a lot. One call an emitter rather than one a particle, so a

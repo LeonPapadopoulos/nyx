@@ -1,14 +1,16 @@
 // The game world (GameWorld): its systems run each step in the order they were added, every step
 // or every nth one, and see the world and the step they run in, and its entities by guid through
-// a lookup made once a step without allocating.
+// a lookup made once a step without allocating; it keeps the air its game gives its particles.
 #include "EntityGuidLookup.h"
 #include "GameWorld.h"
 #include "GuidComponent.h"
 #include "NameComponent.h"
+#include "ParticleVelocityField.h"
 #include "TestSupport.h"
 
 #include <glm/glm.hpp>
 
+#include <algorithm>
 #include <atomic>
 #include <cstdlib>
 #include <functional>
@@ -17,6 +19,7 @@
 #include <new>
 #include <optional>
 #include <stdexcept>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -382,6 +385,29 @@ namespace
 		Require(!Nyx::FindEntityByGuid(world, lookup, destroyed) && Nyx::FindEntityByGuid(world, lookup, kept) == entities[8],
 			"The lookup made again should have the world's entities, and only those");
 	}
+
+	// The same air everywhere, as a game's would be somewhere
+	class SteadyAir final : public Nyx::IParticleVelocityField
+	{
+	public:
+		void SampleVelocities(std::span<const glm::vec3> /*positions*/, float /*time*/, std::span<glm::vec3> outVelocities) const override
+		{
+			std::fill(outVelocities.begin(), outVelocities.end(), glm::vec3(1.0f, 0.0f, 0.0f));
+		}
+	};
+
+	// A world has no air of its own until its game gives it one, which it keeps, untouched by its steps
+	void TestTheWorldKeepsItsParticlesAir()
+	{
+		GameWorld world;
+		Require(world.GetParticleVelocityField() == nullptr, "A world should have no air for its particles until its game gives it one");
+		const SteadyAir air;
+		world.SetParticleVelocityField(&air);
+		world.Step(MakeStep(0));
+		Require(world.GetParticleVelocityField() == &air, "A world should keep the air its game gave its particles");
+		world.SetParticleVelocityField(nullptr);
+		Require(world.GetParticleVelocityField() == nullptr, "A world given no air should have none");
+	}
 }
 
 int main()
@@ -397,6 +423,7 @@ int main()
 		TestDuplicateGuidsResolveAsBefore();
 		TestTheLookupMatchesASearch();
 		TestRefreshingAllocatesNothing();
+		TestTheWorldKeepsItsParticlesAir();
 	}
 	catch (const std::exception& error)
 	{

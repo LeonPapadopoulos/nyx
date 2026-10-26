@@ -121,6 +121,8 @@ namespace Nyx::Game
 			createSystems(World);
 			LOG_INFO("{0} simulation system(s)", World.GetSystems().size());
 		}
+		// The air the module's systems keep, if they keep one, carries the world's particles
+		Renderer->SetWorldParticleVelocityField(&World.GetRegistry(), World.GetParticleVelocityField());
 
 		// The game module's player: its actions and contexts go on the input system now. Without one,
 		// Nyx's own, which walks a character an orbit camera follows, through the same commands.
@@ -142,6 +144,7 @@ namespace Nyx::Game
 	{
 		Renderer->DestroySceneView(GameViewId);
 		Renderer->SetWorldDebugDraw(&World.GetRegistry(), nullptr);
+		Renderer->SetWorldParticleVelocityField(&World.GetRegistry(), nullptr);
 		Renderer->SetWorldInterpolation(&World.GetRegistry(), nullptr);
 		Renderer->SetWorld(nullptr);
 	}
