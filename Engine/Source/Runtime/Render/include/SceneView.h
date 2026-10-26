@@ -6,6 +6,7 @@
 #include "VulkanAmbientOcclusion.h"
 #include "VulkanLightShafts.h"
 #include "VulkanCloudLayer.h"
+#include "VulkanVolumetricClouds.h"
 #include "VulkanColorGrading.h"
 #include "EditorCamera.h"
 #include "PointLights.h"
@@ -118,6 +119,8 @@ namespace Nyx
 		SceneViewSkyTables SkyTables;
 		// Its high cloud layer's noise and target, and its settings this frame (VulkanCloudLayer)
 		SceneViewCloudLayer CloudLayer;
+		// Its volumetric clouds' noises and pictures, and what this frame marches (VulkanVolumetricClouds)
+		SceneViewVolumetricClouds VolumetricClouds;
 		// What its passes took on the GPU, in the last frame drawn; and its
 		// place among the views timed this frame (VulkanRenderer::PassTimestamps)
 		SceneViewGpuTimes GpuTimes;

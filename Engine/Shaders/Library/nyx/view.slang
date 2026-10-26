@@ -170,6 +170,50 @@ public struct ViewConstants
     public float4 CloudOrigin;
     public float4 CloudSun;
     public float4x4 CloudInverseSkyViewProjection;
+
+    // The view's volumetric clouds (VulkanVolumetricClouds; nyx.volumetricclouds,
+    // VolumetricClouds.slang): 1 while they are drawn, else 0 and nothing below is set. Their light
+    // along each pixel's ray and the part of the light from behind them that gets through (a), at
+    // half the view's size, as this frame leaves them, and how far along the ray they are, in
+    // kilometres. What this frame marched (x: 1 for every pixel, else one of each 4 x 4; the debug
+    // view from the 8th bit up), and what it marched into; the frame before's light and depth; the
+    // noises (the shapes, the details, the weather map). The steps along a ray and towards the sun,
+    // and which pixel of each 4 x 4 this frame marches. The band's bottom and top, the farthest
+    // marched (kilometres) and the extinction a kilometre where they are densest. The coverage, its
+    // variation, the type, its variation. The details, billowiness, edges' softness, brightness.
+    // 1 / each noise's repeat in kilometres (the weather map's, the shapes', the details') and
+    // the sky's light on them. Where the camera is over the weather map and the shapes (in
+    // repeats), over the details, and the half size. The silver lining, its spread, the powder,
+    // the multiple scattering. The shadow tint. The sun's light at the top of the air. How far the
+    // camera moved, less how far the wind carried the clouds, since the frame before (kilometres),
+    // and the frame before's rotation and projection without its place.
+    public uint VolumetricClouds;
+    public nyx::Texture VolumetricCloudLight;
+    public nyx::Texture VolumetricCloudDepth;
+    public uint VolumetricCloudMode;
+    public nyx::Texture VolumetricCloudMarchLight;
+    public nyx::Texture VolumetricCloudMarchDepth;
+    public nyx::Texture VolumetricCloudPreviousLight;
+    public nyx::Texture VolumetricCloudPreviousDepth;
+    public nyx::Volume VolumetricCloudShape;
+    public nyx::Volume VolumetricCloudDetail;
+    public nyx::Texture VolumetricCloudWeather;
+    public uint VolumetricCloudSteps;
+    public uint VolumetricCloudLightSteps;
+    public uint VolumetricCloudUpdateX;
+    public uint VolumetricCloudUpdateY;
+    public uint VolumetricCloudPadding;
+    public float4 VolumetricCloudBand;
+    public float4 VolumetricCloudCoverage;
+    public float4 VolumetricCloudErosion;
+    public float4 VolumetricCloudRepeats;
+    public float4 VolumetricCloudOrigins;
+    public float4 VolumetricCloudDetailOrigin;
+    public float4 VolumetricCloudLighting;
+    public float4 VolumetricCloudShadowTint;
+    public float4 VolumetricCloudSun;
+    public float4 VolumetricCloudMotion;
+    public float4x4 VolumetricCloudPreviousSkyViewProjection;
 }
 [vk::binding(0, 1)] public ConstantBuffer<ViewConstants> View;
 

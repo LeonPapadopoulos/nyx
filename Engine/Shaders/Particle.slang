@@ -136,7 +136,7 @@ float4 particleFragment(ParticleVaryings input) : SV_Target
         alpha *= saturate(gap / soft);
     }
 
-    // Through the high cloud layer, where it lies between, and the fog
+    // Through the clouds, where they lie between, and the fog
     const nyx::Fog fog = nyx::heightFog(input.PositionWS);
     const nyx::CloudCover clouds = nyx::cloudCoverBefore(input.PositionWS, input.Position.xy);
     if (Object.CustomData.z < 0.5)

@@ -1,0 +1,4 @@
+# The volumetric clouds test scene's town wall: pale weathered stone
+Shader = Shaders/Standard.slang
+BaseColor = 0.55 0.52 0.47
+Roughness = 0.9

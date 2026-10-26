@@ -15,6 +15,8 @@
 #include "LightShafts.h"
 #include "CloudLayer.h"
 #include "CloudLayerComponent.h"
+#include "VolumetricClouds.h"
+#include "VolumetricCloudsComponent.h"
 #include "TransformComponent.h"
 #include "TimeOfDay.h"
 #include "CameraProjection.h"
@@ -59,6 +61,13 @@ namespace
 	bool IsCloudLayerDrawn(const Nyx::SceneViewInstance& view)
 	{
 		return view.CloudLayer.IsDrawn() && view.SkyTables.IsMade() && view.SkyTables.bBuilt && view.Sky == Nyx::ESceneViewSky::Scene;
+	}
+
+	// Whether a view draws its volumetric clouds this frame: their noises and pictures made, under the
+	// sky made by the air, whose tables they read
+	bool IsVolumetricCloudsDrawn(const Nyx::SceneViewInstance& view)
+	{
+		return view.VolumetricClouds.IsDrawn() && view.SkyTables.IsMade() && view.SkyTables.bBuilt && view.Sky == Nyx::ESceneViewSky::Scene;
 	}
 
 	struct ProjectedPoint
@@ -325,6 +334,10 @@ namespace Nyx
 			{
 				BindSceneSets(view, cmd);
 			});
+		VolumetricClouds.Initialize(Bindless, *ScenePipelineLayout, [this](SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
+			{
+				BindSceneSets(view, cmd);
+			});
 		ColorGrading.Initialize(Bindless);
 		SkyAtmosphere.Initialize(Bindless);
 
@@ -405,6 +418,7 @@ namespace Nyx
 			Particles.Release(view.Particles);
 			LightShafts.Release(view.LightShafts);
 			CloudLayer.Release(view.CloudLayer);
+			VolumetricClouds.Release(view.VolumetricClouds);
 			SkyAtmosphere.Release(view.SkyTables);
 			view.RenderTarget.Shutdown(Context);
 		}
@@ -429,6 +443,7 @@ namespace Nyx
 		Particles.Shutdown();
 		LightShafts.Shutdown();
 		CloudLayer.Shutdown();
+		VolumetricClouds.Shutdown();
 		SkyAtmosphere.Shutdown();
 		PassTimestamps = nullptr;
 		Bindless.Shutdown();
@@ -865,6 +880,12 @@ namespace Nyx
 		return view ? &view->CloudLayer : nullptr;
 	}
 
+	const SceneViewVolumetricClouds* VulkanRenderer::GetSceneViewVolumetricClouds(uint64_t id) const
+	{
+		const SceneViewInstance* view = FindSceneView(id);
+		return view ? &view->VolumetricClouds : nullptr;
+	}
+
 	const SceneViewColorGrading* VulkanRenderer::GetSceneViewColorGrading(uint64_t id) const
 	{
 		const SceneViewInstance* view = FindSceneView(id);
@@ -962,6 +983,9 @@ namespace Nyx
 				break;
 			case ETimedPass::Clouds:
 				view->GpuTimes.Clouds = milliseconds;
+				break;
+			case ETimedPass::VolumetricClouds:
+				view->GpuTimes.VolumetricClouds = milliseconds;
 				break;
 			case ETimedPass::Shadows:
 				view->GpuTimes.Shadows = milliseconds;
@@ -1761,6 +1785,18 @@ namespace Nyx
 			SceneViewCloudLayerSettings clouds = view.SceneGlobals.CloudLayer;
 			clouds.bClouds = clouds.bClouds && bLit && sky.bAtmosphere;
 			CloudLayer.Prepare(view.CloudLayer, view.RenderTarget.GetExtent(), clouds);
+			// Its volumetric clouds' noises and pictures, under that sky only, and what of them this
+			// frame marches and carries from the frame before
+			SceneViewVolumetricCloudsSettings volume = view.SceneGlobals.VolumetricClouds;
+			volume.bClouds = volume.bClouds && bLit && sky.bAtmosphere;
+			VolumetricCloudsFrame cloudFrame;
+			cloudFrame.ViewExtent = view.RenderTarget.GetExtent();
+			cloudFrame.SkyViewProjection = view.SceneGlobals.Projection * glm::mat4(glm::mat3(view.SceneGlobals.View));
+			cloudFrame.Camera = glm::dvec3(view.SceneGlobals.CameraWorldPos);
+			const RenderWorld* shownWorld = FindShownWorld(view);
+			cloudFrame.WorldTime = static_cast<double>(shownWorld ? shownWorld->Time : SceneTime);
+			cloudFrame.TowardsSun = view.SceneGlobals.LightDirectionWS;
+			VolumetricClouds.Prepare(view.VolumetricClouds, cloudFrame, volume);
 			SceneViewCloudCapture capture;
 			capture.bClouds = clouds.bClouds && clouds.bLightsWorld && view.CloudLayer.NoiseSlot != 0;
 			if (capture.bClouds)
@@ -2692,6 +2728,44 @@ namespace Nyx
 			ubo.CloudInverseSkyViewProjection = glm::inverse(ubo.SkyboxViewProj);
 		}
 
+		// Its volumetric clouds, under the sky made by the air: the picture this frame writes, and
+		// what it marches into and carries from
+		if (ubo.SkyAtmosphere != 0 && IsVolumetricCloudsDrawn(view))
+		{
+			const SceneViewVolumetricClouds& volume = view.VolumetricClouds;
+			const SceneViewVolumetricCloudsSettings& clouds = volume.Settings;
+			const VolumetricCloudPicture& written = volume.Pictures[volume.Written];
+			const VolumetricCloudPicture& before = volume.Pictures[volume.Written ^ 1u];
+			ubo.VolumetricClouds = 1;
+			ubo.VolumetricCloudLightTexture = written.LightSlot;
+			ubo.VolumetricCloudDepthTexture = written.DepthSlot;
+			ubo.VolumetricCloudMode = (volume.bMarchAll ? 1u : 0u) | (clouds.Debug * 256u);
+			ubo.VolumetricCloudMarchLightTexture = volume.March.LightSlot;
+			ubo.VolumetricCloudMarchDepthTexture = volume.March.DepthSlot;
+			ubo.VolumetricCloudPreviousLightTexture = before.LightSlot;
+			ubo.VolumetricCloudPreviousDepthTexture = before.DepthSlot;
+			ubo.VolumetricCloudShapeTexture = volume.Shape.Slot;
+			ubo.VolumetricCloudDetailTexture = volume.Detail.Slot;
+			ubo.VolumetricCloudWeatherTexture = volume.Weather.Slot;
+			ubo.VolumetricCloudSteps = clouds.Steps;
+			ubo.VolumetricCloudLightSteps = clouds.LightSteps;
+			ubo.VolumetricCloudUpdateX = volume.UpdateOffset.x;
+			ubo.VolumetricCloudUpdateY = volume.UpdateOffset.y;
+			ubo.VolumetricCloudBand = glm::vec4(clouds.Bottom, clouds.Top, clouds.MaxDistance, clouds.Density * VolumetricCloudExtinction);
+			ubo.VolumetricCloudCoverage = glm::vec4(clouds.Coverage, clouds.CoverageVariation, clouds.Type, clouds.TypeVariation);
+			ubo.VolumetricCloudErosion = glm::vec4(clouds.Detail, clouds.Billowiness, clouds.EdgeSoftness, clouds.Brightness);
+			ubo.VolumetricCloudRepeats = glm::vec4(1.0f / clouds.WeatherRepeat, 1.0f / clouds.ShapeRepeat, 1.0f / clouds.DetailRepeat, clouds.Ambient);
+			ubo.VolumetricCloudOrigins = glm::vec4(clouds.WeatherOrigin, clouds.ShapeOrigin);
+			ubo.VolumetricCloudDetailOrigin = glm::vec4(clouds.DetailOrigin, static_cast<float>(volume.Extent.width), static_cast<float>(volume.Extent.height));
+			ubo.VolumetricCloudLighting = glm::vec4(clouds.SilverLining, clouds.SilverLiningSpread, clouds.Powder, clouds.MultipleScattering);
+			ubo.VolumetricCloudShadowTint = glm::vec4(clouds.ShadowTint, 0.0f);
+			// Lit as the air's sky is, by the light before the time of day fades it
+			ubo.VolumetricCloudSun = glm::vec4(view.SceneGlobals.SunLightColor, 0.0f);
+			ubo.VolumetricCloudMotion = glm::vec4(volume.Motion, 0.0f);
+			ubo.VolumetricCloudPreviousSkyViewProjection = volume.PreviousSkyViewProjection;
+			ubo.CloudInverseSkyViewProjection = glm::inverse(ubo.SkyboxViewProj);
+		}
+
 		// Its light shafts, in the frames its sun gives some
 		const SceneViewLightShafts& shafts = view.LightShafts;
 		if (shafts.Settings.IsDrawn() && shafts.Extent.width > 0)
@@ -2930,6 +3004,14 @@ namespace Nyx
 				CloudLayer.Invalidate(view.CloudLayer);
 			}
 		}
+		if (changed.contains("VolumetricClouds.slang") || changed.contains("VolumetricCloudNoise.slang") || changed.contains("VolumetricCloudWeather.slang"))
+		{
+			VolumetricClouds.CreatePipelines();
+			for (SceneViewInstance& view : SceneViews)
+			{
+				VolumetricClouds.Invalidate(view.VolumetricClouds);
+			}
+		}
 		if (changed.contains("SkyAtmosphere.slang"))
 		{
 			SkyAtmosphere.CreatePipelines();
@@ -3072,6 +3154,7 @@ namespace Nyx
 		}
 		ExtractSceneColorGrading(view, registry);
 		ExtractSceneCloudLayer(view, registry);
+		ExtractSceneVolumetricClouds(view, registry);
 	}
 
 	void VulkanRenderer::ExtractSceneEnvironment(SceneViewInstance& view, const Nyx::Registry& world)
@@ -3133,6 +3216,24 @@ namespace Nyx
 				// Carried by the wind with the world's time: a game's, by its steps; the editor's, the
 				// renderer's
 				view.SceneGlobals.CloudLayer = Nyx::MakeSceneViewCloudLayerSettings(clouds, view.SceneGlobals.CameraWorldPos, static_cast<double>(GetWorldTime(&world)));
+			});
+	}
+
+	void VulkanRenderer::ExtractSceneVolumetricClouds(SceneViewInstance& view, const Nyx::Registry& world)
+	{
+		view.SceneGlobals.VolumetricClouds = {};
+		bool bFound = false;
+		world.Each<Nyx::VolumetricCloudsComponent>(
+			[&](Nyx::Entity, const Nyx::VolumetricCloudsComponent& clouds)
+			{
+				if (bFound)
+				{
+					return;
+				}
+				bFound = true;
+				// Carried by the wind with the world's time: a game's, by its steps; the editor's, the
+				// renderer's
+				view.SceneGlobals.VolumetricClouds = Nyx::MakeSceneViewVolumetricCloudsSettings(clouds, view.SceneGlobals.CameraWorldPos, static_cast<double>(GetWorldTime(&world)));
 			});
 	}
 
@@ -3198,6 +3299,7 @@ namespace Nyx
 			Particles.Release(it->Particles);
 			LightShafts.Release(it->LightShafts);
 			CloudLayer.Release(it->CloudLayer);
+			VolumetricClouds.Release(it->VolumetricClouds);
 			SkyAtmosphere.Release(it->SkyTables);
 
 			Bindless.RemoveTexture(it->HdrTextureSlot);
@@ -3429,6 +3531,13 @@ namespace Nyx
 			WritePassTimestamp(cmd, view, ETimedPass::Clouds, false);
 			CloudLayer.Draw(view, cmd);
 			WritePassTimestamp(cmd, view, ETimedPass::Clouds, true);
+		}
+		// Its volumetric clouds, from those tables, for its scene pass and its light shafts
+		if (IsVolumetricCloudsDrawn(view))
+		{
+			WritePassTimestamp(cmd, view, ETimedPass::VolumetricClouds, false);
+			VolumetricClouds.Draw(view, cmd);
+			WritePassTimestamp(cmd, view, ETimedPass::VolumetricClouds, true);
 		}
 		// Its shadow cascades, into the shadow map its scene pass reads
 		if (world && view.Shadows.CascadeCount > 0)

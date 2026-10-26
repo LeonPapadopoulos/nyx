@@ -1,0 +1,4 @@
+# The volumetric clouds test scene's fields: a dry green, rough
+Shader = Shaders/Standard.slang
+BaseColor = 0.22 0.3 0.12
+Roughness = 0.95

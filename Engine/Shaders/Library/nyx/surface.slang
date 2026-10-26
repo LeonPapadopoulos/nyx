@@ -473,8 +473,9 @@ nyx::Fog surfaceFog(VertexOutput vertex)
     return nyx::heightFog(vertex.PositionWS);
 }
 
-// The high cloud layer between the camera and the pixel, where it lies between them (seen from above
-// it, the ground below; from below, what stands above it); none in a debug view of the materials
+// The clouds between the camera and the pixel: the high layer where it lies between them (seen from
+// above it, the ground below; from below, what stands above it), the volumetric clouds where the
+// pixel is beyond them; none in a debug view of the materials
 nyx::CloudCover surfaceClouds(VertexOutput vertex)
 {
     if (nyx::isMaterialDebugView())

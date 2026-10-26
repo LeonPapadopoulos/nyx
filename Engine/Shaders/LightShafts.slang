@@ -3,14 +3,15 @@
 // blur, as Mitchell's in GPU Gems 3), at half the view's size. What may stream is the scene's
 // light where the depth says it is the sky (or far enough away), the more of it the nearer the
 // sun; each pixel gathers it along its line towards the sun, so a gap's light streams out from it,
-// away from the sun, over what stands nearer. Where a high cloud layer lies over the sky, the sky
-// streams only as much as the clouds let through (their transmittance along the pixel's ray). The tonemap adds what they gathered, times their
+// away from the sun, over what stands nearer. Where clouds lie over the sky (volumetric or a high
+// layer), the sky streams only as much as they let through (their transmittance along the pixel's ray). The tonemap adds what they gathered, times their
 // colour (ViewConstants.LightShaftsColor). Every pass is one triangle over its target; its source
 // is in the draw's push constants:
 //   - MaterialOffset: the slot of its source (0 for the first, which reads the view's set);
 //   - CustomData.xy: a texel of the target, as a part of its size; .zw: its size.
 
 import nyx.bindless;
+import nyx.clouds;
 import nyx.color;
 import nyx.view;
 
@@ -64,9 +65,9 @@ float lightShaftsPrefilterFragment(float4 position : SV_Position) : SV_Target
         const int2 pixel = min(first + int2(index & 1, index >> 1), last);
         const float depth = View.SceneDepth.get().Load(int3(pixel, 0)).r;
         float through = depth <= 0.0 ? 1.0 : smoothstep(threshold, 2.0 * threshold, linearDepth(depth));
-        if (depth <= 0.0 && View.CloudLayer != 0)
+        if (depth <= 0.0 && (nyx::hasCloudLayer() || nyx::hasVolumetricClouds()))
         {
-            through = View.CloudLight.get().Load(int3(pixel, 0)).a;
+            through = nyx::cloudsAt(float2(pixel)).a;
         }
         const float3 hdr = View.Scene.get().Load(int3(pixel, 0)).rgb;
         light += min(nyx::luminance(max(hdr, 0.0)) * View.ExposureScale, MostLight) * through;

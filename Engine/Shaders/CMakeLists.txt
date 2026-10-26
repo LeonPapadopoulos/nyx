@@ -22,6 +22,9 @@ set(NYX_SHADER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/SkyAtmosphere.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/CloudNoise.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/CloudLayer.slang
+    ${CMAKE_CURRENT_SOURCE_DIR}/VolumetricCloudNoise.slang
+    ${CMAKE_CURRENT_SOURCE_DIR}/VolumetricCloudWeather.slang
+    ${CMAKE_CURRENT_SOURCE_DIR}/VolumetricClouds.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Grid.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/Grid.frag
     ${CMAKE_CURRENT_SOURCE_DIR}/DebugLines.vert
@@ -39,6 +42,7 @@ set(NYX_SHADER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/Blur.frag
     ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/atmosphere.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/bindless.slang
+    ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/cloudnoise.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/clouds.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/color.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/environment.slang
@@ -47,6 +51,7 @@ set(NYX_SHADER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/sky.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/view.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/surface.slang
+    ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/volumetricclouds.slang
 )
 
 set(NYX_SHADER_BUILD_DIR "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/Shaders")

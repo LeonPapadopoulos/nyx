@@ -1,0 +1,4 @@
+# The volumetric clouds test scene's roofs: old terracotta
+Shader = Shaders/Standard.slang
+BaseColor = 0.42 0.2 0.12
+Roughness = 0.8

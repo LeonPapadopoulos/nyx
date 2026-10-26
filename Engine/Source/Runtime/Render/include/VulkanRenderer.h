@@ -19,6 +19,7 @@
 #include "VulkanAmbientOcclusion.h"
 #include "VulkanLightShafts.h"
 #include "VulkanCloudLayer.h"
+#include "VulkanVolumetricClouds.h"
 #include "VulkanColorGrading.h"
 #include "VulkanParticles.h"
 #include "VulkanSkyAtmosphere.h"
@@ -202,11 +203,46 @@ namespace Nyx
 		glm::vec4 CloudOrigin{ 0.0f };
 		glm::vec4 CloudSun{ 0.0f };
 		glm::mat4 CloudInverseSkyViewProjection{ 1.0f };
+
+		// The view's volumetric clouds (VulkanVolumetricClouds, nyx.volumetricclouds), while they are
+		// drawn: 1; their light and transmittance and their depth at half the view's size as this
+		// frame leaves them, in the bindless array; what this frame marches (bit 0: every pixel) and
+		// the debug view (from bit 8); what it marches into, the frame before's, the noises; the steps,
+		// the pixel of each 4 x 4 marched; the band, coverage, erosion, the noises' repeats and where
+		// the camera is over them, the lighting, the sun's light at the top of the air; how far the
+		// camera moved less the wind since the frame before, and its rotation and projection then
+		uint32_t VolumetricClouds = 0;
+		uint32_t VolumetricCloudLightTexture = 0;
+		uint32_t VolumetricCloudDepthTexture = 0;
+		uint32_t VolumetricCloudMode = 0;
+		uint32_t VolumetricCloudMarchLightTexture = 0;
+		uint32_t VolumetricCloudMarchDepthTexture = 0;
+		uint32_t VolumetricCloudPreviousLightTexture = 0;
+		uint32_t VolumetricCloudPreviousDepthTexture = 0;
+		uint32_t VolumetricCloudShapeTexture = 0;
+		uint32_t VolumetricCloudDetailTexture = 0;
+		uint32_t VolumetricCloudWeatherTexture = 0;
+		uint32_t VolumetricCloudSteps = 0;
+		uint32_t VolumetricCloudLightSteps = 0;
+		uint32_t VolumetricCloudUpdateX = 0;
+		uint32_t VolumetricCloudUpdateY = 0;
+		uint32_t VolumetricCloudPadding = 0;
+		glm::vec4 VolumetricCloudBand{ 0.0f };
+		glm::vec4 VolumetricCloudCoverage{ 0.0f };
+		glm::vec4 VolumetricCloudErosion{ 0.0f };
+		glm::vec4 VolumetricCloudRepeats{ 0.0f };
+		glm::vec4 VolumetricCloudOrigins{ 0.0f };
+		glm::vec4 VolumetricCloudDetailOrigin{ 0.0f };
+		glm::vec4 VolumetricCloudLighting{ 0.0f };
+		glm::vec4 VolumetricCloudShadowTint{ 0.0f };
+		glm::vec4 VolumetricCloudSun{ 0.0f };
+		glm::vec4 VolumetricCloudMotion{ 0.0f };
+		glm::mat4 VolumetricCloudPreviousSkyViewProjection{ 1.0f };
 	};
 
 	// The view's set (set 1) as nyx/view.slang reads it, in scalar layout; to whole 16 bytes, as
 	// std140 would be too
-	static_assert(sizeof(SceneUBO) == 1248, "SceneUBO must match ViewConstants in nyx/view.slang");
+	static_assert(sizeof(SceneUBO) == 1536, "SceneUBO must match ViewConstants in nyx/view.slang");
 
 	// One draw's push constants, the same for every scene pipeline: ObjectConstants in
 	// nyx/bindless.slang
@@ -439,6 +475,9 @@ namespace Nyx
 		// The view's cloud layer in the last frame: its noise, its target and its settings; null for
 		// an unknown view. For tests.
 		const SceneViewCloudLayer* GetSceneViewCloudLayer(uint64_t id) const;
+		// The view's volumetric clouds in the last frame: their noises, pictures and settings, what
+		// the frame marched; null for an unknown view. For tests.
+		const SceneViewVolumetricClouds* GetSceneViewVolumetricClouds(uint64_t id) const;
 		// The view's colour grading in the last frame: its grade, what its table was baked from and
 		// how often; null for an unknown view. For tests.
 		const SceneViewColorGrading* GetSceneViewColorGrading(uint64_t id) const;
@@ -660,6 +699,9 @@ namespace Nyx
 		// The world's first CloudLayerComponent, for the view's camera at the world's time; none
 		// without one
 		void ExtractSceneCloudLayer(SceneViewInstance& view, const Nyx::Registry& registry);
+		// The world's first VolumetricCloudsComponent, for the view's camera at the world's time; none
+		// without one
+		void ExtractSceneVolumetricClouds(SceneViewInstance& view, const Nyx::Registry& registry);
 		void UpdateViewportSceneGlobals(SceneViewInstance& view, const Nyx::Registry& registry);
 
 		// While a frame is recorded (e.g. as the UI is built), a view made shows from its first
@@ -725,6 +767,8 @@ namespace Nyx
 		VulkanSkyAtmosphere SkyAtmosphere{ Context, Programs };
 		// Each view's high cloud layer, after its sky tables and before its scene pass
 		VulkanCloudLayer CloudLayer{ Context, Programs };
+		// Each view's volumetric clouds, after its cloud layer and before its scene pass
+		VulkanVolumetricClouds VolumetricClouds{ Context, Programs };
 		// This frame's particles of every view, in the order they are drawn
 		std::vector<ParticleInstanceData> FrameParticles;
 
@@ -735,6 +779,7 @@ namespace Nyx
 		{
 			Sky,
 			Clouds,
+			VolumetricClouds,
 			Shadows,
 			Scene,
 			AmbientOcclusion,

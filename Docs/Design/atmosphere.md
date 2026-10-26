@@ -2,16 +2,18 @@
 
 The world's air, and what a camera and the sky's light make of it: height fog, a sky that follows
 the sun (made by the air's scattering, or the sky's cube map tinted), a high layer of cloud in it,
-the time of day that turns the sun, bloom, ambient occlusion, light shafts and colour grading, and
-why they work as they do. The settings are on `EnvironmentComponent`, `CloudLayerComponent`,
-`TimeOfDayComponent` and `ColorGradingComponent` (`Scene`); the math is in
-`Engine/Source/Runtime/Render` (`Atmosphere.h`, `SkyAtmosphere.h`, `CloudLayer.h`, `Bloom.h`,
-`AmbientOcclusion.h`, `LightShafts.h`, `ColorGrading.h`), the passes in `VulkanSkyAtmosphere`,
-`VulkanCloudLayer`, `VulkanBloom`, `VulkanAmbientOcclusion`, `VulkanLightShafts` and
+the time of day that turns the sun, bloom, ambient occlusion, light shafts, volumetric clouds and
+colour grading, and why they work as they do. The settings are on `EnvironmentComponent`,
+`CloudLayerComponent`, `VolumetricCloudsComponent`, `TimeOfDayComponent` and
+`ColorGradingComponent` (`Scene`); the math is in `Engine/Source/Runtime/Render` (`Atmosphere.h`,
+`SkyAtmosphere.h`, `CloudLayer.h`, `VolumetricClouds.h`, `Bloom.h`, `AmbientOcclusion.h`,
+`LightShafts.h`, `ColorGrading.h`), the passes in `VulkanSkyAtmosphere`, `VulkanCloudLayer`,
+`VulkanVolumetricClouds`, `VulkanBloom`, `VulkanAmbientOcclusion`, `VulkanLightShafts` and
 `VulkanColorGrading`, the shaders in `Engine/Shaders/Library/nyx/atmosphere.slang`, `sky.slang`,
-`clouds.slang`, `surface.slang`, `SkyAtmosphere.slang`, `CloudNoise.slang`, `CloudLayer.slang`,
-`Skybox.slang`, `Bloom.slang`, `AmbientOcclusion.slang`, `LightShafts.slang`, `ColorGrading.slang`
-and `Tonemap.slang`.
+`clouds.slang`, `cloudnoise.slang`, `volumetricclouds.slang`, `surface.slang`,
+`SkyAtmosphere.slang`, `CloudNoise.slang`, `CloudLayer.slang`, `VolumetricCloudNoise.slang`,
+`VolumetricCloudWeather.slang`, `VolumetricClouds.slang`, `Skybox.slang`, `Bloom.slang`,
+`AmbientOcclusion.slang`, `LightShafts.slang`, `ColorGrading.slang` and `Tonemap.slang`.
 
 ## The environment component
 
@@ -645,8 +647,8 @@ layer](#the-high-cloud-layer)). So a thick layer over the sun holds its shafts b
 while the gaps between cloudlets still stream. Not the depth: the layer is kilometres away, beyond
 any useful threshold, and its edges are soft, which a depth can't say. `NyxCloudLayerGpuTests`
 finds the shaft through a window 25 of 255 brighter under a clear sky, 1 to 7 under an overcast
-layer. Volumetric clouds the camera is in or above need the same, or the froxel fog, which takes
-the shafts' place there.
+layer. The volumetric clouds give it the same way (what gets through them and the layer both); a
+camera in or above them needs the froxel fog, which takes the shafts' place there.
 
 ### Seeing it
 
@@ -668,12 +670,13 @@ light. Seen from the ground, from a treetop at its height and from above it. The
 (*Cloud Layer*, `Scene`); the math in `CloudLayer.h`, the pass `VulkanCloudLayer`, the shaders
 `CloudNoise.slang` (its noise), `CloudLayer.slang` (the clouds per pixel) and
 `Library/nyx/clouds.slang` (the shell, and the clouds before what lies beyond it). It is the plan's
-step 6; the volumetric clouds of step 7, which the camera can be inside, are apart (below).
+step 6; the volumetric clouds of step 7, which the camera can be inside, are apart
+([The volumetric clouds](#the-volumetric-clouds)).
 
 Why a component of its own, not more settings on `EnvironmentComponent`: the air's settings are
 already two dozen; a cloud layer is a look of its own that a world may have or not with the same
-air; and the volumetric clouds later are another component (the plan's `CloudBandComponent`)
-beside it, not a mode of it: a world may have both, the high layer above the band. The world's
+air; and the volumetric clouds are another component (`VolumetricCloudsComponent`) beside it, not
+a mode of it: a world may have both, the high layer above the band. The world's
 first one counts; without one, with it off, or with the sky in another mode than *Atmosphere*
 (whose tables light it), there are no clouds and every picture is the same to the bit
 (`NyxCloudLayerGpuTests`, and the other GPU tests' pictures against the build before it, all 71 of
@@ -930,7 +933,8 @@ edges are why it is full size. The scene pass is the same with it and without, w
 - **Lighting is a slab's**: two-stream scattering with a fake thickness, no light between
   cloudlets bouncing off each other, no light from below off the ground beyond the cube's.
 
-What the volumetric clouds (step 7) will reuse from it: the planet-centred shell math (their band
+What the volumetric clouds (step 7) were to reuse from it, as planned here (what they did is in
+[The volumetric clouds](#the-volumetric-clouds)): the planet-centred shell math (their band
 is two shells; `GetCloudShellHits()` gives where a ray enters and leaves each, from below, inside
 and above), the camera's own height for it, the ray from the view without its place; the sun's
 light at a height from the transmittance table (`nyx::cloudSunLight()`), the air between by the
@@ -944,6 +948,290 @@ write the same target at a lower resolution and the rest needs nothing new; the 
 the camera inside the band, marching from where it stands. What they replace: the slab's lighting
 by the band's march (Beer's law, the powder term, multiple scattering by octaves), the type blend by
 a weather map, and the high layer stays above them for cirrus.
+
+## The volumetric clouds
+
+Clouds with volume: a band of them between two altitudes round the planet's curve, marched along
+each pixel's ray, so they have bright sunlit tops and shaded bellies, thin edges that glow against
+the sun and dark cores, and are seen from the ground, from inside the band and from above it. A
+weather map places them, 3D noise shapes them, the sun through the air and through the clouds
+themselves lights them, scattered many times. The settings are a component of their own,
+`VolumetricCloudsComponent` (*Volumetric Clouds*, `Scene`); the math in `VolumetricClouds.h`, the
+passes `VulkanVolumetricClouds`, the shaders `VolumetricCloudNoise.slang` and
+`VolumetricCloudWeather.slang` (the noises), `Library/nyx/cloudnoise.slang` (tiling noise),
+`Library/nyx/volumetricclouds.slang` (the march) and `VolumetricClouds.slang` (the passes). It is
+the plan's step 7, its first part.
+
+Why not more of the high cloud layer: a thin shell has one shape a pixel and a fake thickness; its
+light is a slab's, and it can't have tops, bellies, sides or a camera among them, which are what
+the cumulus of a summer sky are made of. Why a component of its own, not a mode of the layer: a
+world may want both, the layer high above the band for thin cirrus, and their settings have little
+in common. The world's first one counts; without one, with it off, or with the sky in another mode
+than *Atmosphere* (whose tables light them), there are none and every picture is the same to the
+bit (`NyxVolumetricCloudsGpuTests`, and the other GPU tests' pictures against the build before it).
+
+### The band
+
+Two shells round the planet's middle, *Bottom Altitude* and *Top Altitude* above its ground (1500
+and 5000 m by default), in kilometres, planet-centred as the sky's tables and the high layer are.
+Where a ray is inside the band (`GetCloudBandSpan()`, `nyx::volumetricCloudBandSpan()`) comes from
+where it meets each shell (the layer's `GetCloudShellHits()`, exact by the heights):
+
+- **from below**, from where it leaves the bottom shell to where it leaves the top one; none where
+  it meets the ground first (from the ground, the level ray's span starts about 140 km off);
+- **inside**, from the camera to where it leaves, through the bottom shell if it goes down into it,
+  else the top;
+- **from above**, from where it enters the top shell to where it leaves through the bottom, or past
+  the planet's curve through the top again; a ray that would enter again beyond counts only its
+  first span.
+
+`NyxVolumetricCloudsTests` checks each end on a shell within a metre and the middle inside, from 2 m,
+800 m, just below the bottom, inside, just below and above the top, 7 and 20 km, every way from
+straight up to straight down; and that a ray found to miss has nothing of the band before the
+ground. The march stops at *Max Distance* (150 km) from the camera.
+
+### The weather map
+
+A square of 512 texels a side that tiles, laid over the ground, *Weather Size* × 4 across (48 km by
+default), carried by the wind (`VolumetricCloudWeather.slang`, made from the seed):
+
+- **r, the coverage**: fractal gradient noise from 4 cells across, mixed with cellular noise, so
+  there are patches and bands. *Coverage* is moved up and down by it, by *Coverage Variation* (0 an
+  even field, 1 patches and bands with open sky between), but not at none or all: no coverage stays
+  clear, all of it overcast.
+- **g, the type**: larger, slower noise; *Type* moved by *Type Variation*: tall clouds here, small
+  puffs there.
+- **b, the density**: some clouds thicker than others (0.6 to 1.4 times *Density*).
+- **a**, finer cells, not read yet.
+
+### Shapes from noise
+
+Two cubes of noise that tile, made by compute shaders when the clouds are first drawn and when the
+*Seed* changes (`VolumetricCloudNoise.slang`), never otherwise, with their mips:
+
+- **the shapes**, 128 texels a side (8 MB), over *Cloud Size* × 4: Perlin-Worley, fractal gradient
+  noise of five octaves lifted by cellular noise (round, billowy blobs), worn where cellular noise
+  of three finer octaves is low (Schneider's remap). That field is about normal, its mean 0.83 and
+  its deviation 0.056, so a threshold of it covers all or nothing; it is spread out by its
+  distribution (a logistic close to the normal's) to lie about evenly between 0 and 1, so that a
+  threshold at `1 - c` leaves about `c` of space inside (0.22, 0.43 and 0.61 for 0.2, 0.4 and 0.6,
+  measured). Its far mips, which average blobs and gaps together, are spread out again as much
+  (their values huddle round the middle from the third mip on), so the clouds cover as much of the
+  sky far off as near.
+- **the details**, 32 texels a side, over *Detail Size* × 4: cellular noise of three octaves, the
+  small billows and wisps.
+
+Per sample (`nyx::volumetricCloudDensity()`), at its height `h` through the band (0 its bottom, 1
+its top), with the weather there:
+
+1. **How tall the type grows**: stratus a thin sheet at the bottom, small puffs the lower 20 to 45 %,
+   towering cumulus up to most of the band, blended by the type; each flat at the base and rounding
+   off towards its top (`volumetricCloudHeightProfile()`). The shapes' field is multiplied by it, so
+   the threshold rounds the tops.
+2. **Thresholded by the coverage**: `remap(field, 1 - coverage, 1, 0, 1)`.
+3. **Worn by the details**, by *Detail*: cells worn into wisps at the base, round billows (the gaps
+   between them worn, inverted cells) from a quarter of the way up, by *Billowiness*.
+4. **Its edges** as soft as *Edge Softness* says (the density reaches its full value that far in),
+   denser towards the middle so the light inside shades, times the weather's density.
+
+The extinction is the density times *Density* times 40 a kilometre (a cumulus's 0.04 a metre: 200 m
+of it lets a third through).
+
+### The wind and the world's time
+
+The noises are carried by *Wind Speed* along *Wind Direction* (round the up axis from +X towards
+-Z) with the world's time, as the layer's: where the camera is over each of them
+(`MakeSceneViewVolumetricCloudsSettings()`) is its place over the ground less the wind times the
+world's time, in that noise's repeats, in doubles on the CPU, kept between 0 and 1; the shaders add
+each sample's offset from the camera. So the clouds are anchored in the world and carried by the
+wind, the same sky for the same seed and time on any machine, and the origins never grow
+(`NyxVolumetricCloudsTests`: a second of the wind after 100 hours within 10⁻⁶ of a repeat of the
+first). The world's time is the renderer's for the world (`RenderWorld::Time`), as the layer's.
+
+### Lighting
+
+Each sample in a cloud (`volumetricCloudSample()`):
+
+- **The sun at the sample**: the light's colour as it gives it (`ExtractedSceneGlobals::SunLightColor`,
+  before the time of day's fade, as the air's sky is lit) times the transmittance table from the
+  sample's height towards the sun, with the sun's cosine to the sample's own up; none once the sun
+  is below the horizon seen from there, fading as its disk goes down. So gold and red at sunset,
+  the band's top keeping the sun a little longer than its bottom.
+- **Through the clouds towards the sun**: Beer's law over the optical depth of *Light Steps* (6)
+  samples further and further apart (quadratically) up to 35 % of the band's thickness, at most
+  1.5 km, the first with its details; and one twice as far, for the shadow of a large cloud beyond.
+  The samples are as jittered as the ray's, so their steps don't show as bands of shadow.
+- **Scattered once and many times** (Wrenninge's octaves, as Hillaire's Frostbite clouds have them):
+  four orders, each lit through 0.3 times the depth of the one before, by a lobe half as sharp, and
+  *Multiple Scattering* times as strong; the orders after the first in *Shadow Tint*. So a cloud's
+  inside, which the light reaches only by scattering, is lit softly and in the tint, not black.
+- **The phase**: a dual-lobe Henyey-Greenstein, half a weak lobe backwards (`g` -0.2) and half a
+  forward one (`g` from 0.9 to 0.5 by *Silver Lining Spread*), its light above even scattering
+  times *Silver Lining*: the thin edges of a cloud against the sun glow.
+- **The powder** of thin edges (Schneider's): seen away from the sun, a sample's light is dimmed by
+  how thin it is, `1 - e^(-σ · 60 m)`, by *Powder*: the sunlit edges and creases are a little darker
+  than the insides, which gives the cauliflower its relief.
+- **The sky's light**: the irradiance cube's from above, 15 % of it at the band's bottom to 70 % at
+  its top (the clouds above hide it), and a quarter of the ground's from below, by *Ambient*, in
+  *Shadow Tint*: the bellies grey-violet, and at night the night sky's blue, dark.
+- *Brightness* times all of it.
+
+Each sample adds what it scatters towards the camera as much as it hides (`(1 - e^(-σ Δt))` of what
+still gets through, the albedo taken as 1: energy-conserving, so a step's length changes how much
+it hides, not how bright it is).
+
+### The march
+
+Along each ray inside the band, more steps along the longer rays towards the horizon, up to *Steps*
+(128): half of them through the band straight up, all of them from about four times its thickness.
+Coarse steps through the clear air test the shapes alone (no details, no light); where they find
+cloud, the step before it (where it may have begun) and every step through it are taken again in
+quarters, with the details and the light. The march stops once less than 0.5 % of the light gets
+through. Where in each step a pixel's samples are is the 2 × 2 Bayer matrix's order by the pixel
+(a quarter of a step apart), the same every frame, so a still picture stays still; the filter up to
+the view's size, a 2 × 2 box, evens them out exactly. A 4 × 4 matrix's sixteenths showed as a fine
+regular pattern on the near clouds' sides through any filter that kept their edges.
+
+Each ray gives three numbers: the clouds' light, what of the light from behind them gets through,
+and how far along the ray they are (where their light comes from on average, weighed by how much
+each sample hid; where the band ends for a ray through none).
+
+**Through the air**: the clouds' light is multiplied by the transmittance between the camera and
+that depth (the table's ratio, as the layer's), and they hide what is behind them by their opacity
+times its mean, so far off they melt into the sky behind them, which stands in for the haze's own
+light between (no aerial perspective of their own yet).
+
+### At half size, carried from frame to frame
+
+The march runs at half the view's size each way (960 × 540 at 1920 × 1080), and with *Temporal* on
+(the default) only one pixel of each 4 × 4 a frame, the one the frame's place in a Bayer matrix's
+order says (`GetVolumetricCloudUpdateOffset()`: every pixel once in 16 frames, those of
+neighbouring frames far apart). Two passes a frame (`VolumetricClouds.slang`):
+
+1. **The march** (`volumetricCloudsMarchFragment`), into a quarter of its target each way: one ray
+   for each 4 × 4 of the half size.
+2. **The resolve** (`volumetricCloudsResolveFragment`), into one of two pictures of the half size,
+   from the march and the other one, the frame before's: the pixels marched this frame from the
+   march; every other pixel from where the clouds it looks at were in the frame before: as far
+   along its ray as the frame before's clouds at the pixel were, moved back by how far the camera
+   moved and the wind carried them since (`ViewConstants.VolumetricCloudMotion`), seen through the
+   frame before's rotation and projection. A point that lands exactly where it was (within a
+   hundredth of a texel) is taken as it was; else it is filtered by Catmull and Rom's cubic (nine
+   bilinear taps): sharp, so clouds carried frame after frame as the camera turns don't blur, as
+   bilinear filtering would blur them a little each time. Where that is off the picture, this
+   frame's marched pixels round it, blended.
+
+**Everything is marched again**, every pixel in one frame, when what the frames before were marched
+with no longer holds (`IsVolumetricCloudsLookChanged()`): the first frame, a new size, a new seed,
+any setting but the wind's place (a value dragged in the Details panel is seen at once, not over 16
+frames), or the sun turning more than 0.03 degrees in a frame (a time of day running a day in 20
+minutes turns it 0.005 degrees a frame at 60 frames a second; one scrubbed in the editor far more);
+and when the camera jumps or the wind carries the clouds more than 500 m in a frame. A pixel is
+marched again within 16 frames otherwise, so a sun turning slowly lights them all within a tenth of
+a degree and a half of each other.
+
+`NyxVolumetricCloudsGpuTests` checks that a still picture, carried for 17 frames, is the same to the
+bit as every pixel marched; and with the camera turned 3 degrees a frame for 5 frames, the part that
+was in view before within 1.4 of 255 on average of every pixel marched, which keeps, until a
+pixel is marched again, the dither of the pixel it was marched at (the left quarter that came into
+view, its pixels marched one of 16 a frame since, blocky until they are: 2.2 over the whole
+picture).
+
+**Read filtered up** (`nyx::volumetricCloudsAt()`): the sky, the surfaces and the light shafts read
+the picture of the half size as the mean of four bilinear taps half a texel round each pixel (a 2 × 2
+box over the bilinear filter): smooth, and the march's 2 × 2 dither evened out exactly, which a cubic
+B-spline (tried first) only damps to a third. The clouds are worked out along each ray whatever
+stands in the way, so no depth-aware filter is needed: the sky's pixels next to a wall's edge read
+the clouds behind it as they are.
+
+### What it is drawn over and under
+
+The passes run per view after the high layer's pass, before the scene pass, reading the sky's
+tables. Their pictures, RGBA16F (the light, and in alpha what gets through) and R32F (the depth, in
+kilometres), three of each at the half size (the march, two pictures carried in turn: 12.4 MB at
+1920 × 1080), with the noises (8.6 MB), made at the first frame they are drawn, let go of when they
+go off, with the view, or when its world goes. Then (`nyx.clouds`, `cloudsAt()`):
+
+- **the sky**: its light and the sun's disk times what gets through both, plus the volumetric clouds'
+  light, and the high layer's behind them: the layer lies above the band (`volume + layer × what
+  gets through the volume`). Its altitude may be inside the band; it is still drawn behind it;
+- **what lies beyond them** (`nyx::cloudCoverBefore()`, the surfaces, the decals and the particles):
+  a point farther along its ray than the clouds' depth at its pixel takes them the same way, before
+  its fog: from above the band the ground under it is covered; from below, nothing on the ground is;
+- **the light shafts**: the sky's pixels stream only as much as all the clouds let through;
+- **the world's light**: not yet; the sun's light isn't shadowed by them either (below).
+
+### Presets
+
+*Preset* sets the clouds' and their lighting's values to a look at once
+(`ApplyVolumetricCloudsPreset()`): *Small Puffs*, a dense field of small, puffy, cauliflower-topped
+clouds low in the band; *Cumulus*, big heaps with bright tops and grey-violet bellies, smaller puffs
+round them, open blue between; *Broken*, a dense broken layer whose thin worn edges glow against a
+low sun over dark cores. *Custom* sets nothing. Whether the band is drawn, its seed, its wind and its
+quality stay as they are.
+
+It is the component's post-load step, which runs after the component is loaded, edited (also
+undone and redone) or changed in a running game: it sets the values when *Preset* isn't the preset
+they were last set to (*Applied Preset*, saved and hidden), so choosing one sets them once and they
+can be changed after; a scene saved with them changed loads with them changed. Undoing the choice
+of a preset brings back the preset before (whose values are set again, if it wasn't *Custom*), not
+the values changed by hand before it.
+
+### Its cost
+
+`NyxVolumetricCloudsGpuTests`, the median of 60 frames, RTX 3070 Ti, from 10 m looking 30 degrees
+round and 20 up, the component's defaults at a coverage of 0.5 (the shaders are compiled alike in a
+Debug and a Release build):
+
+| View | Carried (one pixel of each 4 × 4 marched) | Every pixel marched each frame |
+| --- | --- | --- |
+| 1280 × 720 | 0.79 ms | 2.05 ms |
+| 1920 × 1080 | 0.79 ms | 3.50 ms |
+
+Carried, the time hardly grows with the view: a quarter of the half size's 4 × 4 is one ray a 4 × 4,
+14 400 rays at 1280 × 720 and 32 400 at 1920 × 1080, fewer than the GPU runs at once, so the march
+takes about as long as its slowest rays, those towards the horizon through many clouds; the
+resolve, nine bilinear taps a pixel of the half size, is a small part. Every pixel marched (the
+frame a value is changed, the sun scrubbed): 3.5 ms at 1920 × 1080. The noises, when the seed
+changes: the frame that makes them takes 3.9 and 5.2 ms, every pixel marched in it. The scene pass
+is the same with them and without, within the spread. Within the plan's 1 to 2 ms at 1080p,
+carried; a game that scrubs its sun or changes the clouds' values every frame pays the full march.
+
+### Seeing it
+
+- *Volumetric Clouds* on an entity, with the *Environment*'s sky in its *Atmosphere* mode: every
+  value edited live, in the editor's views and a running game; *Preset* to start from a look.
+- *Debug View*: the weather map where each ray enters the band (coverage red, type green, density
+  blue), the sun's light alone, the sky's light alone, or which pixels were marched this frame (red),
+  carried (grey) or had nothing to be carried from (blue).
+- `Assets/Scenes/VolumetricCloudsTest.nyxscene` (written by `NyxVolumetricCloudsGpuTests
+  --write-scene`): cumulus over a town's wall, a time of day in the afternoon, a grade gold-green
+  at dusk; scrubbing the time turns them white to gold to dark. `NyxVolumetricCloudsGpuTests
+  --pictures` renders it with each preset lit as its reference picture, at noon, at sunset against
+  the sun and from the ground (into `NYX_SCENE_TEST_OUTPUT`).
+- Their passes are timed on the GPU per view, with the noises in the frames that make them
+  (`SceneViewGpuTimes::VolumetricClouds`, *volume* in the frame statistics, F8 in a game,
+  `gpu_volumetric_clouds_ms` in a benchmark's CSV, the editor's frame time tooltip).
+
+### Its limits, and the next steps
+
+- **Not yet**: their shadows on the ground, the trees and the fog (they would need a shadow map of
+  the band from the sun, the march's light depth from above); the light shafts masked by them in
+  the air (now only on the picture, by what they let through); their light in the sky's cube that
+  lights the world (the layer's capture is the way: the march from the cube's texels, at a low
+  resolution, made again as they move); the camera flying into and through them at cloud height.
+  The march already starts at the camera inside the band and the depth it writes covers a surface
+  beyond it; what is missing there is the near clouds' detail at a pixel's footprint, a denser
+  march close by, and the carried pictures' reprojection of near clouds as the camera flies.
+- **The haze between** is the sky blended in by the air's transmittance, as the layer's, not the
+  air's own light along the shorter path; the aerial perspective (step 3) is the exact way.
+- **Their sky light** is the irradiance cube made for the camera's height, with a fixed occlusion
+  by the height in the band, not the sky over each cloud.
+- **Carried pictures**: a part of the picture that comes into view (a fast turn) is blocky for up to
+  16 frames, and a cloud moving fast across the picture trails a little; a camera jump or a changed
+  value marches everything again (a slower frame).
+- **One span a ray**: from above, a ray grazing past the planet's curve doesn't see the clouds on its
+  far side again.
 
 ## Colour grading
 
@@ -1195,6 +1483,10 @@ The high cloud layer, on top of the sky made by the air: 0.11 ms at 1280 × 720 
 1920 × 1080 with cloudlets, 0.15 and 0.26 to 0.28 ms with cloudlets and streaks blended ([its
 cost](#its-cost)); without it, nothing is recorded and nothing changes.
 
+The volumetric clouds, on top of the sky made by the air: 0.79 ms at 1280 × 720 and at 1920 × 1080
+carried from frame to frame, 2.05 and 3.50 ms with every pixel marched each frame ([their
+cost](#its-cost-2)); without them, nothing is recorded and nothing changes.
+
 ## Later
 
 - Ambient occlusion: a temporal filter, once there is temporal antialiasing (fewer samples, less
@@ -1210,6 +1502,9 @@ cost](#its-cost)); without it, nothing is recorded and nothing changes.
   ambient from the sky at its own height; the sky's cube made from the camera's own height near the
   layer; a second layer, or a weather map placing its types; half
   size with a depth-aware upsample, if a scene needs the time; skipping the pixels a mesh covers.
+- The volumetric clouds: their shadows on the ground and in the fog; the light shafts masked by them
+  in the air; their light in the sky's cube that lights the world; the camera flying into and
+  through them; their haze by the aerial perspective; their sky light from the sky over each cloud.
 - The fog over a point light's or a decal's own light: the fog adds the sun's and the sky's only.
 - Colour grading: keys for the morning apart from the evening, once the time of day gives the
   sun's path; a view's switch to see its picture ungraded beside the graded one; the grade's

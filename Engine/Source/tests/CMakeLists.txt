@@ -554,6 +554,15 @@ add_dependencies(NyxCloudLayerTests NyxGeneratedReflection)
 set_property(TARGET NyxCloudLayerTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxCloudLayerTests COMMAND NyxCloudLayerTests)
 
+# The volumetric clouds without a GPU: where rays are inside their band from below, inside and above
+# it, the pixel of each 4 x 4 a frame marches, the wind carrying the noises with the world's time,
+# when everything is marched again, values in range, the presets, the component saved.
+add_executable(NyxVolumetricCloudsTests VolumetricCloudsTests.cpp)
+target_link_libraries(NyxVolumetricCloudsTests PRIVATE NyxEngine)
+add_dependencies(NyxVolumetricCloudsTests NyxGeneratedReflection)
+set_property(TARGET NyxVolumetricCloudsTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxVolumetricCloudsTests COMMAND NyxVolumetricCloudsTests)
+
 # Material files and their values without a GPU: reading and writing, offsets, layouts that change.
 add_executable(NyxMaterialTests MaterialTests.cpp)
 target_link_libraries(NyxMaterialTests PRIVATE NyxEngine)
@@ -728,6 +737,20 @@ nyx_copy_shaders_next_to(NyxCloudLayerGpuTests)
 nyx_copy_shader_compiler_next_to(NyxCloudLayerGpuTests)
 add_test(NAME NyxCloudLayerGpuTests COMMAND NyxCloudLayerGpuTests)
 add_test(NAME NyxCloudLayerGpuTestsMsaa COMMAND NyxCloudLayerGpuTests --msaa 4)
+
+# The volumetric clouds on a real GPU: the picture unchanged to the bit without them, clouds from the
+# ground at noon, at sunset and at midnight, from above the band, each preset, the frames carried
+# from the frames before the same as every pixel marched, the same sky at the same seed and time,
+# the ground under them covered, the light shafts held back, their GPU time, the test scene. Needs a
+# Vulkan device; its window stays hidden.
+add_executable(NyxVolumetricCloudsGpuTests VolumetricCloudsGpuTests.cpp)
+target_link_libraries(NyxVolumetricCloudsGpuTests PRIVATE NyxEngine)
+add_dependencies(NyxVolumetricCloudsGpuTests NyxGeneratedReflection)
+set_property(TARGET NyxVolumetricCloudsGpuTests PROPERTY FOLDER "Tests")
+nyx_copy_shaders_next_to(NyxVolumetricCloudsGpuTests)
+nyx_copy_shader_compiler_next_to(NyxVolumetricCloudsGpuTests)
+add_test(NAME NyxVolumetricCloudsGpuTests COMMAND NyxVolumetricCloudsGpuTests)
+add_test(NAME NyxVolumetricCloudsGpuTestsMsaa COMMAND NyxVolumetricCloudsGpuTests --msaa 4)
 
 # Ambient occlusion on a real GPU: a box's foot occluded and the open floor not, never the sun's
 # light, the radius, intensity and qualities, fog and decals, a dense instanced field, against a

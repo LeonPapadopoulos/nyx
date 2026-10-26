@@ -98,14 +98,59 @@ namespace nyx
         return View.CloudLight.get().Load(int3(int2(pixel), 0));
     }
 
-    // The clouds between the camera and a point of the world, at its pixel: none unless the shell
-    // lies between them, the camera on one side and the point on the other
+    // Whether the view draws volumetric clouds (nyx.volumetricclouds)
+    public bool hasVolumetricClouds()
+    {
+        return View.VolumetricClouds != 0;
+    }
+
+    // Their light and transmittance at a pixel of the view, filtered up from their half size: the
+    // mean of four bilinear taps half a texel round the pixel, a 2 x 2 box over the bilinear filter,
+    // smooth, and the march's 2 x 2 dither of its steps (VolumetricClouds.slang) evened out exactly
+    public float4 volumetricCloudsAt(float2 pixel)
+    {
+        const float2 texel = 1.0 / View.VolumetricCloudDetailOrigin.zw;
+        const float2 uv = pixel / View.ViewportSize;
+        const float2 half = 0.5 * texel;
+        const Texture2D clouds = View.VolumetricCloudLight.get();
+        return 0.25 * (clouds.SampleLevel(LinearClamp, uv + float2(-half.x, -half.y), 0.0) + clouds.SampleLevel(LinearClamp, uv + float2(half.x, -half.y), 0.0)
+            + clouds.SampleLevel(LinearClamp, uv + float2(-half.x, half.y), 0.0) + clouds.SampleLevel(LinearClamp, uv + float2(half.x, half.y), 0.0));
+    }
+
+    // How far along a pixel's ray they are, in kilometres: their nearest pixel of the half size
+    public float volumetricCloudDepthAt(float2 pixel)
+    {
+        const float2 extent = View.VolumetricCloudDetailOrigin.zw;
+        const int2 texel = clamp(int2(pixel / View.ViewportSize * extent), int2(0), int2(extent) - 1);
+        return View.VolumetricCloudDepth.get().Load(int3(texel, 0)).r;
+    }
+
+    // Every cloud along a pixel's ray: the volumetric clouds before the high layer, which lies
+    // above them. Their light (rgb), and what of the light from behind them gets through (a).
+    public float4 cloudsAt(float2 pixel)
+    {
+        float4 clouds = float4(0.0, 0.0, 0.0, 1.0);
+        if (hasCloudLayer())
+        {
+            clouds = cloudLightAt(pixel);
+        }
+        if (hasVolumetricClouds())
+        {
+            const float4 volume = volumetricCloudsAt(pixel);
+            clouds = float4(volume.rgb + clouds.rgb * volume.a, clouds.a * volume.a);
+        }
+        return clouds;
+    }
+
+    // The clouds between the camera and a point of the world, at its pixel: the high layer's only
+    // where its shell lies between them, the camera on one side and the point on the other; the
+    // volumetric clouds' only where the point is farther along the ray than they are
     public CloudCover cloudCoverBefore(float3 positionWS, float2 pixel)
     {
         CloudCover cover;
         cover.Transmittance = 1.0;
         cover.Light = float3(0.0);
-        if (!hasCloudLayer())
+        if (!hasCloudLayer() && !hasVolumetricClouds())
         {
             return cover;
         }
@@ -115,17 +160,25 @@ namespace nyx
         {
             return cover;
         }
-        const SkyPlanet planet = viewPlanet();
-        const float height = cloudCameraHeight();
-        const float pointHeight = skyHeightAlong(planet, height, ray.y / distance, distance);
-        const float altitude = View.CloudShell.x;
-        if ((height - altitude) * (pointHeight - altitude) >= 0.0)
+        if (hasCloudLayer())
         {
-            return cover;
+            const SkyPlanet planet = viewPlanet();
+            const float height = cloudCameraHeight();
+            const float pointHeight = skyHeightAlong(planet, height, ray.y / distance, distance);
+            const float altitude = View.CloudShell.x;
+            if ((height - altitude) * (pointHeight - altitude) < 0.0)
+            {
+                const float4 clouds = cloudLightAt(pixel);
+                cover.Transmittance = clouds.a;
+                cover.Light = clouds.rgb;
+            }
         }
-        const float4 clouds = cloudLightAt(pixel);
-        cover.Transmittance = clouds.a;
-        cover.Light = clouds.rgb;
+        if (hasVolumetricClouds() && distance > volumetricCloudDepthAt(pixel))
+        {
+            const float4 volume = volumetricCloudsAt(pixel);
+            cover.Light = volume.rgb + cover.Light * volume.a;
+            cover.Transmittance *= volume.a;
+        }
         return cover;
     }
 

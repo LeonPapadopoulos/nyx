@@ -9,6 +9,7 @@
 #include "RuntimeMeshComponent.h"
 #include "ScatterInstances.h"
 #include "SurfaceDecalComponent.h"
+#include "VolumetricCloudsComponent.h"
 
 #include "Generated/Runtime/Runtime.reflect.init.h"
 
@@ -74,6 +75,12 @@ namespace Nyx
 				? context.AssetResolver->ResolveMaterial(component.Material.Path)
 				: nullptr;
 		}
+
+		// A preset chosen for the volumetric clouds sets their values, once
+		void ApplyVolumetricCloudsPresetAfterLoad(VolumetricCloudsComponent& component, ScenePostLoadContext&)
+		{
+			ApplyVolumetricCloudsPreset(component);
+		}
 	}
 
 	void RegisterComponentTypes()
@@ -85,6 +92,7 @@ namespace Nyx
 		ComponentTypeRegistry::Get().SetPostLoad<MeshRendererComponent>(&ResolveMeshRendererAssets);
 		ComponentTypeRegistry::Get().SetPostLoad<SurfaceDecalComponent>(&ResolveSurfaceDecalAssets);
 		ComponentTypeRegistry::Get().SetPostLoad<EnvironmentComponent>(&FoldLegacySkyModeAfterLoad);
+		ComponentTypeRegistry::Get().SetPostLoad<VolumetricCloudsComponent>(&ApplyVolumetricCloudsPresetAfterLoad);
 		ComponentTypeRegistry::Get().SetPostLoad<GroundComponent>(&MakeGroundMeshAfterLoad);
 		ComponentTypeRegistry::Get().SetOnRemove<GroundComponent>(&RemoveGroundMesh);
 		ComponentTypeRegistry::Get().SetPostLoad<ScatterComponent>(&ScatterAfterLoad);

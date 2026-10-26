@@ -38,6 +38,7 @@ Editor/*.md
 !Assets/Scenes/LightShaftsTest.nyxscene
 !Assets/Scenes/LightsTest.nyxscene
 !Assets/Scenes/ParticlesTest.nyxscene
+!Assets/Scenes/VolumetricCloudsTest.nyxscene
 
 # Files the editor saves, e.g. the UI gallery's PNGs (Saved/Gallery)
 Saved/
