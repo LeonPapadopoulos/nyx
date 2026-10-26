@@ -18,6 +18,7 @@ namespace Nyx
 			{ "wait_for_gpu_ms", true },
 			{ "gpu_frame_ms", true },
 			{ "gpu_sky_ms", true },
+			{ "gpu_clouds_ms", true },
 			{ "gpu_shadows_ms", true },
 			{ "gpu_scene_ms", true },
 			{ "gpu_ambient_occlusion_ms", true },
@@ -61,6 +62,7 @@ namespace Nyx
 		const SceneViewFrameStats& views = render.Views;
 		sample[EFrameStat::GpuFrame] = render.GpuFrame;
 		sample[EFrameStat::GpuSky] = views.Gpu.Sky;
+		sample[EFrameStat::GpuClouds] = views.Gpu.Clouds;
 		sample[EFrameStat::GpuShadows] = views.Gpu.Shadows;
 		sample[EFrameStat::GpuScene] = views.Gpu.Scene;
 		sample[EFrameStat::GpuAmbientOcclusion] = views.Gpu.AmbientOcclusion;

@@ -1,10 +1,12 @@
 // The sky: the view's environment cube map on a cube around the camera, at the far plane, tinted
 // as the world's air says, with its glow round the sun, behind the height fog (nyx.atmosphere).
 // While the view draws the sky made by the air's scattering, that sky instead: its sky view table
-// and the sun's disk through the air (nyx.sky). Ported from Skybox.vert and .frag.
+// and the sun's disk through the air (nyx.sky), behind the high cloud layer's clouds (nyx.clouds).
+// Ported from Skybox.vert and .frag.
 
 import nyx.atmosphere;
 import nyx.bindless;
+import nyx.clouds;
 import nyx.sky;
 import nyx.view;
 
@@ -45,7 +47,12 @@ float4 skyColor(VertexOutput input)
     const float3 direction = normalize(input.Direction);
     if (nyx::hasSkyAtmosphere())
     {
-        const float3 light = nyx::skyAtmosphereRadiance(direction) + nyx::sunDiskRadiance(direction);
+        float3 light = nyx::skyAtmosphereRadiance(direction) + nyx::sunDiskRadiance(direction);
+        if (nyx::hasCloudLayer())
+        {
+            const float4 clouds = nyx::cloudLightAt(input.Position.xy);
+            light = light * clouds.a + clouds.rgb;
+        }
         return float4(nyx::skyFog(direction).apply(light), 1.0);
     }
     const float4 sky = View.Environment.Sample(nyx::LinearClamp, nyx::skyDirection(direction));

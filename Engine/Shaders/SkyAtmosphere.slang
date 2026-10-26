@@ -9,12 +9,13 @@
 //     axis and from the zenith (192 x 108): once scattered light with the multiple scattering on
 //     top, and the planet's lit ground below the horizon;
 //   - skyCube, skyCubeDownsample: the sky view as a cube with mips (64 a side), for the world's
-//     light; skyIrradiance: its diffuse light (16 a side); skySpecular: as a rougher surface
+//     light, the high cloud layer drawn into it while it lights the world (nyx.clouds); skyIrradiance: its diffuse light (16 a side); skySpecular: as a rougher surface
 //     reflects it with each mip (64 a side down to 2), as Environment.slang prefilters a cube map;
 //   - skyPreview: a table, or the cube unfolded, as an 8-bit picture for the editor's debug window.
 // Kilometres throughout (nyx.sky); images in General layout while they are written.
 
 import nyx.bindless;
+import nyx.clouds;
 import nyx.sky;
 
 // SkyConstants in VulkanSkyAtmosphere.cpp: the view's air, in kilometres
@@ -41,6 +42,16 @@ struct SkyConstants
     uint MultipleScatteringLut;
     uint SkyViewLut;
     uint SkyCube;
+    // The high cloud layer the cube draws (ViewConstants.CloudShell to CloudOrigin): 1 while it
+    // does; its noise in the bindless array; how much of it the cube has (Light Strength)
+    uint CloudLayer;
+    uint CloudNoise;
+    float CloudStrength;
+    uint CloudPadding;
+    float4 CloudShell;
+    float4 CloudShape;
+    float4 CloudWind;
+    float4 CloudOrigin;
 }
 [vk::binding(0, 1)] ConstantBuffer<SkyConstants> Sky;
 [vk::binding(1, 1)] [vk::image_format("rgba16f")] RWTexture2DArray<float4> Target;
@@ -366,7 +377,34 @@ float3 skyViewIn(float3 direction)
     return sampleTable(Sky.SkyViewLut, nyx::skyViewUv(p, height, direction.y, nyx::skyAzimuthCosine(direction, Sky.TowardsSun.xyz), bGround)).rgb;
 }
 
-// The sky as a cube, without the sun's disk, which lights the world by itself
+// What the cloud layer the cube draws is made from, by the constants: the camera's height the
+// tables are made for, the sun at the top of the air, and the sky's light on the clouds from above
+// and below, from the sky view (its mean over a few directions each way: the irradiance is made
+// from this cube, after it)
+nyx::CloudParams skyCloudParams()
+{
+    nyx::CloudParams p;
+    p.Planet = planet();
+    p.CameraHeight = Sky.TowardsSun.w;
+    p.Shell = Sky.CloudShell;
+    p.Shape = Sky.CloudShape;
+    p.Wind = Sky.CloudWind;
+    p.Origin = Sky.CloudOrigin;
+    p.SunLight = Sky.SunIlluminance.rgb / nyx::SkyPi;
+    p.TowardsSun = Sky.TowardsSun.xyz;
+    p.Noise = Sky.CloudNoise;
+    p.Transmittance = Sky.TransmittanceLut;
+    const float level = 0.5;
+    const float slope = 0.866;
+    p.SkyAbove = (skyViewIn(float3(0.0, 1.0, 0.0)) + skyViewIn(float3(slope, level, 0.0)) + skyViewIn(float3(-slope, level, 0.0)) + skyViewIn(float3(0.0, level, slope))
+        + skyViewIn(float3(0.0, level, -slope))) * 0.2;
+    p.SkyBelow = (skyViewIn(float3(0.0, -1.0, 0.0)) + skyViewIn(float3(slope, -level, 0.0)) + skyViewIn(float3(-slope, -level, 0.0)) + skyViewIn(float3(0.0, -level, slope))
+        + skyViewIn(float3(0.0, -level, -slope))) * 0.2;
+    return p;
+}
+
+// The sky as a cube, without the sun's disk, which lights the world by itself; while the cloud
+// layer lights the world, with its clouds over the sky as the camera sees them, by Light Strength
 [shader("compute")]
 [numthreads(8, 8, 1)]
 void skyCube(uint3 id : SV_DispatchThreadID)
@@ -375,7 +413,17 @@ void skyCube(uint3 id : SV_DispatchThreadID)
     {
         return;
     }
-    Target[id] = float4(skyViewIn(cubeDirection(id, Dispatch.Width)), 1.0);
+    const float3 direction = cubeDirection(id, Dispatch.Width);
+    float3 sky = skyViewIn(direction);
+    if (Sky.CloudLayer != 0)
+    {
+        // A texel's footprint: the ways to its neighbours
+        const float3 towardsX = cubeDirection(id + uint3(1, 0, 0), Dispatch.Width) - direction;
+        const float3 towardsY = cubeDirection(id + uint3(0, 1, 0), Dispatch.Width) - direction;
+        const float4 clouds = nyx::cloudLayerAlong(skyCloudParams(), direction, towardsX, towardsY);
+        sky = lerp(sky, sky * clouds.a + clouds.rgb, Sky.CloudStrength);
+    }
+    Target[id] = float4(sky, 1.0);
 }
 
 [shader("compute")]

@@ -185,7 +185,7 @@ namespace nyx
         return View.SkyAtmosphere != 0;
     }
 
-    SkyPlanet viewPlanet()
+    public SkyPlanet viewPlanet()
     {
         SkyPlanet planet;
         planet.Radius = View.PlanetRadius;

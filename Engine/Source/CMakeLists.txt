@@ -76,6 +76,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/MoveCharacterCommand.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/OrbitCameraComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ColorGradingComponent.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/CloudLayerComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/DirectionalLightComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/EnvironmentComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/TimeOfDayComponent.cpp
@@ -168,6 +169,8 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanAmbientOcclusion.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/LightShafts.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanLightShafts.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/CloudLayer.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanCloudLayer.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanParticles.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Multisampling.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Texture.cpp
@@ -285,6 +288,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/MoveCharacterCommand.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/OrbitCameraComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ColorGradingComponent.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/CloudLayerComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/DirectionalLightComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/EnvironmentComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/PointLightComponent.h
@@ -385,6 +389,8 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanAmbientOcclusion.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/LightShafts.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanLightShafts.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/CloudLayer.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanCloudLayer.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanParticles.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Multisampling.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Texture.h

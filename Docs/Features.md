@@ -338,7 +338,7 @@ costs next to nothing otherwise.
 - **F8 in a game window** (every build) shows the frame's numbers over the picture's top left: the
   frame rate and time with the last second's worst; on the CPU the updates, the simulation's fixed
   steps, extracting, culling, recording, the UI and waiting for the GPU; on the GPU the frame and
-  the scene views' sky tables (in the frames they are made), shadows, scene (with the MSAA
+  the scene views' sky tables (in the frames they are made), cloud layer, shadows, scene (with the MSAA
   resolve), ambient occlusion, particles, light shafts, bloom, picture and colour grading's bake; the scene views
   drawn and their MSAA samples, their draw calls (and how many draw many instances), instances
   drawn and culled, triangles, shadow cascades with their draw calls and
@@ -873,6 +873,53 @@ Shafts*, off by default; without one, or off, the picture is as it was, to the b
   km up; a sun behind the camera, below the horizon or far to the side, no intensity, and no
   environment, to the bit; no shafts in a debug view of the materials; a view whose world goes
   away; their GPU time; the test scene), the other reference pictures unchanged.
+
+## Cloud layer
+
+A *Cloud Layer* component on any entity puts a thin layer of high cloud in the sky made by the air
+(the *Environment*'s sky in its *Atmosphere* mode), in the editor's scene views and in the game
+alike: a field of small cloudlets, a mackerel sky, or streaks of cirrus, receding to the horizon.
+Without one, or off, or with another sky, the picture is as it was, to the bit.
+
+- **Shapes from seeded noise**: *Coverage*, *Type* (cloudlets to cirrus, blended), *Cloudlet Size*,
+  *Softness*, *Detail* (finer cells breaking up their edges), *Warp*, *Seed*; *Altitude* (4000 m)
+  and *Thickness*. The noise is a small tiling texture made by a compute shader when the seed
+  changes; the same seed at the same world time gives the same sky.
+- **Wind**: *Wind Direction* and *Wind Speed* carry the clouds with the world's time, a game's by
+  its steps (they stand still while it is paused), not the frame rate; the clouds stay put over the
+  ground as the camera moves.
+- **Lit by the sun through the air at their height**: white at noon, gold and red at sunset (the
+  layer keeps the sun a little after the ground has lost it), dark after it, the night sky's blue
+  at night; brighter towards the sun, their thin edges glowing against it (*Rim*, a silver lining);
+  the sky's own light on their shaded side (*Ambient*); *Brightness*. They fade into the haze
+  towards the horizon.
+- **From below, at and above its height**: from the ground it spreads overhead to the horizon; from
+  above (a treetop or a hill over it) it lies below the horizon, lit from above, with the open sky
+  above; crossing its height there is no sheet sweeping through the picture: the clouds near the
+  camera fade, those further off stay. Seen from above, the ground under it is covered by it; what
+  stands above it isn't.
+- **It lights the world** (*Lights The World*, on by default, and *Light Strength*): the sky's light
+  on the world has the clouds in it, so white clouds brighten and whiten the fill light, golden ones
+  at sunset warm it, heavy cover softens it, and above the layer its tops light the world from
+  below. Off, the world is lit as without the layer, to the bit. The sky's light is made again as
+  the wind moves the clouds, a little at a time (about 0.12 ms every second or so).
+- It holds back the light shafts where it covers the sun.
+- All with undo, saved in scenes and sent to a running game. `Assets/Scenes/CloudLayerTest.nyxscene`:
+  a field of cloudlets at dusk, graded gold-green, with a time of day to scrub.
+- About 0.11 ms of GPU time a 1280 × 720 view and 0.2 ms at 1920 × 1080; nothing without it ([Atmosphere](Design/atmosphere.md#the-high-cloud-layer) has how it works, its limits
+  and what the volumetric clouds will replace).
+- Tests: `NyxCloudLayerTests` (where rays meet the layer from below, at and above it, against a ray
+  marched in steps, none behind the ground; the clouds near the camera faded; values in range; the
+  wind carrying the pattern with the world's time, anchored in the world, after hours still exact;
+  when the sky's light is made again for the clouds; the component saved), `NyxCloudLayerGpuTests` (the picture unchanged to the bit without it, off,
+  or under the cube map's sky, and no GPU time; clouds at noon, brighter towards the sun, warmer at
+  sunset, dark at midnight; from 2 km above, the layer lit below the horizon and the open sky above
+  it to the bit; crossing it without a pop, the clouds by the camera gone; the same seed and time
+  the same picture, moved by the wind, another seed others; the ground under a low layer covered, a
+  column above it not; a white wall lit by the sky alone brighter and whiter under a white layer,
+  warmer at sunset, half way at half strength, the same to the bit with *Lights The World* off; a
+  ceiling above the layer lit from below by it; the sky's light made again as the wind moves it, not
+  every frame; the light shafts held back; its GPU time; the test scene; and again with MSAA), the other GPU tests' pictures unchanged to the bit.
 
 ## Colour grading
 

@@ -3,7 +3,8 @@
 // blur, as Mitchell's in GPU Gems 3), at half the view's size. What may stream is the scene's
 // light where the depth says it is the sky (or far enough away), the more of it the nearer the
 // sun; each pixel gathers it along its line towards the sun, so a gap's light streams out from it,
-// away from the sun, over what stands nearer. The tonemap adds what they gathered, times their
+// away from the sun, over what stands nearer. Where a high cloud layer lies over the sky, the sky
+// streams only as much as the clouds let through (their transmittance along the pixel's ray). The tonemap adds what they gathered, times their
 // colour (ViewConstants.LightShaftsColor). Every pass is one triangle over its target; its source
 // is in the draw's push constants:
 //   - MaterialOffset: the slot of its source (0 for the first, which reads the view's set);
@@ -48,9 +49,9 @@ float3 viewRay(float2 uv)
 }
 
 // 1. The light that may stream, halved: the four pixels' brightness, exposed and held below
-// MostLight, each as much as the depth lets through (the sky, which is at the far plane, all of it;
-// what stands nearer than the threshold none, all of it from twice as far), times the glow round
-// the sun
+// MostLight, each as much as the depth lets through (the sky, which is at the far plane, all of it,
+// or as much as the cloud layer lets through; what stands nearer than the threshold none, all of it
+// from twice as far), times the glow round the sun
 [shader("fragment")]
 float lightShaftsPrefilterFragment(float4 position : SV_Position) : SV_Target
 {
@@ -62,7 +63,11 @@ float lightShaftsPrefilterFragment(float4 position : SV_Position) : SV_Target
     {
         const int2 pixel = min(first + int2(index & 1, index >> 1), last);
         const float depth = View.SceneDepth.get().Load(int3(pixel, 0)).r;
-        const float through = depth <= 0.0 ? 1.0 : smoothstep(threshold, 2.0 * threshold, linearDepth(depth));
+        float through = depth <= 0.0 ? 1.0 : smoothstep(threshold, 2.0 * threshold, linearDepth(depth));
+        if (depth <= 0.0 && View.CloudLayer != 0)
+        {
+            through = View.CloudLight.get().Load(int3(pixel, 0)).a;
+        }
         const float3 hdr = View.Scene.get().Load(int3(pixel, 0)).rgb;
         light += min(nyx::luminance(max(hdr, 0.0)) * View.ExposureScale, MostLight) * through;
     }

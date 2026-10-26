@@ -13,6 +13,8 @@
 #include "ColorGradingComponent.h"
 #include "EnvironmentComponent.h"
 #include "LightShafts.h"
+#include "CloudLayer.h"
+#include "CloudLayerComponent.h"
 #include "TransformComponent.h"
 #include "TimeOfDay.h"
 #include "CameraProjection.h"
@@ -52,6 +54,13 @@
 
 namespace
 {
+	// Whether a view draws its cloud layer this frame: its noise and target made, under the sky made
+	// by the air, whose tables it reads
+	bool IsCloudLayerDrawn(const Nyx::SceneViewInstance& view)
+	{
+		return view.CloudLayer.IsDrawn() && view.SkyTables.IsMade() && view.SkyTables.bBuilt && view.Sky == Nyx::ESceneViewSky::Scene;
+	}
+
 	struct ProjectedPoint
 	{
 		glm::vec2 PixelPos{ 0.0f };
@@ -312,6 +321,10 @@ namespace Nyx
 			{
 				BindSceneSets(view, cmd);
 			});
+		CloudLayer.Initialize(Bindless, *ScenePipelineLayout, [this](SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
+			{
+				BindSceneSets(view, cmd);
+			});
 		ColorGrading.Initialize(Bindless);
 		SkyAtmosphere.Initialize(Bindless);
 
@@ -391,6 +404,7 @@ namespace Nyx
 			ColorGrading.Release(view.ColorGrading);
 			Particles.Release(view.Particles);
 			LightShafts.Release(view.LightShafts);
+			CloudLayer.Release(view.CloudLayer);
 			SkyAtmosphere.Release(view.SkyTables);
 			view.RenderTarget.Shutdown(Context);
 		}
@@ -414,6 +428,7 @@ namespace Nyx
 		ColorGrading.Shutdown();
 		Particles.Shutdown();
 		LightShafts.Shutdown();
+		CloudLayer.Shutdown();
 		SkyAtmosphere.Shutdown();
 		PassTimestamps = nullptr;
 		Bindless.Shutdown();
@@ -844,6 +859,12 @@ namespace Nyx
 		return view ? &view->LightShafts : nullptr;
 	}
 
+	const SceneViewCloudLayer* VulkanRenderer::GetSceneViewCloudLayer(uint64_t id) const
+	{
+		const SceneViewInstance* view = FindSceneView(id);
+		return view ? &view->CloudLayer : nullptr;
+	}
+
 	const SceneViewColorGrading* VulkanRenderer::GetSceneViewColorGrading(uint64_t id) const
 	{
 		const SceneViewInstance* view = FindSceneView(id);
@@ -938,6 +959,9 @@ namespace Nyx
 			{
 			case ETimedPass::Sky:
 				view->GpuTimes.Sky = milliseconds;
+				break;
+			case ETimedPass::Clouds:
+				view->GpuTimes.Clouds = milliseconds;
 				break;
 			case ETimedPass::Shadows:
 				view->GpuTimes.Shadows = milliseconds;
@@ -1732,7 +1756,19 @@ namespace Nyx
 			// black sky), made again in part as the air, the sun or its camera's height change
 			SceneViewSkyAtmosphere sky = view.SceneGlobals.SkyAtmosphere;
 			sky.bAtmosphere = sky.bAtmosphere && FindShownWorld(view) && view.Sky == ESceneViewSky::Scene;
-			SkyAtmosphere.Prepare(view.SkyTables, sky, std::exchange(view.SkyTables.bPreviewsAsked, false), view.SkyTables.AskedPreviewExposure);
+			// Its cloud layer's noise and target, under that sky only: it is lit by its tables; and
+			// while it lights the world, drawn into the sky's cube, which is made again as it moves
+			SceneViewCloudLayerSettings clouds = view.SceneGlobals.CloudLayer;
+			clouds.bClouds = clouds.bClouds && bLit && sky.bAtmosphere;
+			CloudLayer.Prepare(view.CloudLayer, view.RenderTarget.GetExtent(), clouds);
+			SceneViewCloudCapture capture;
+			capture.bClouds = clouds.bClouds && clouds.bLightsWorld && view.CloudLayer.NoiseSlot != 0;
+			if (capture.bClouds)
+			{
+				capture.Layer = clouds;
+				capture.NoiseSlot = view.CloudLayer.NoiseSlot;
+			}
+			SkyAtmosphere.Prepare(view.SkyTables, sky, std::exchange(view.SkyTables.bPreviewsAsked, false), view.SkyTables.AskedPreviewExposure, capture);
 		}
 
 		if (bNewSamples)
@@ -2639,6 +2675,23 @@ namespace Nyx
 			ubo.ColorGradingTable = grading.Slot;
 		}
 
+		// Its cloud layer, under the sky made by the air
+		if (ubo.SkyAtmosphere != 0 && IsCloudLayerDrawn(view))
+		{
+			const SceneViewCloudLayerSettings& clouds = view.CloudLayer.Settings;
+			ubo.CloudLayer = 1;
+			ubo.CloudLightTexture = view.CloudLayer.TargetSlot;
+			ubo.CloudNoiseTexture = view.CloudLayer.NoiseSlot;
+			ubo.CloudShell = glm::vec4(clouds.Altitude, clouds.Thickness, clouds.TileSize, clouds.Thickness * CloudExtinction);
+			ubo.CloudShape = glm::vec4(clouds.Coverage, clouds.Type, clouds.Softness, clouds.Detail);
+			ubo.CloudWind = glm::vec4(clouds.WindAxis, clouds.Warp, clouds.Rim);
+			ubo.CloudOrigin = glm::vec4(clouds.Origin, clouds.Brightness, clouds.Ambient);
+			// Lit as the air's sky is, by the light before the time of day fades it: the layer, high
+			// up, still sees the sun after it has set for the ground
+			ubo.CloudSun = glm::vec4(view.SceneGlobals.SunLightColor, 0.0f);
+			ubo.CloudInverseSkyViewProjection = glm::inverse(ubo.SkyboxViewProj);
+		}
+
 		// Its light shafts, in the frames its sun gives some
 		const SceneViewLightShafts& shafts = view.LightShafts;
 		if (shafts.Settings.IsDrawn() && shafts.Extent.width > 0)
@@ -2869,6 +2922,14 @@ namespace Nyx
 		{
 			LightShafts.CreatePipelines();
 		}
+		if (changed.contains("CloudLayer.slang") || changed.contains("CloudNoise.slang"))
+		{
+			CloudLayer.CreatePipelines();
+			for (SceneViewInstance& view : SceneViews)
+			{
+				CloudLayer.Invalidate(view.CloudLayer);
+			}
+		}
 		if (changed.contains("SkyAtmosphere.slang"))
 		{
 			SkyAtmosphere.CreatePipelines();
@@ -3010,6 +3071,7 @@ namespace Nyx
 			view.SceneGlobals.Shadows.bCastShadows = false;
 		}
 		ExtractSceneColorGrading(view, registry);
+		ExtractSceneCloudLayer(view, registry);
 	}
 
 	void VulkanRenderer::ExtractSceneEnvironment(SceneViewInstance& view, const Nyx::Registry& world)
@@ -3053,6 +3115,24 @@ namespace Nyx
 				}
 				bFound = true;
 				view.SceneGlobals.ColorGrading = Nyx::MakeSceneViewColorGrading(grading, view.SceneGlobals.LightDirectionWS);
+			});
+	}
+
+	void VulkanRenderer::ExtractSceneCloudLayer(SceneViewInstance& view, const Nyx::Registry& world)
+	{
+		view.SceneGlobals.CloudLayer = {};
+		bool bFound = false;
+		world.Each<Nyx::CloudLayerComponent>(
+			[&](Nyx::Entity, const Nyx::CloudLayerComponent& clouds)
+			{
+				if (bFound)
+				{
+					return;
+				}
+				bFound = true;
+				// Carried by the wind with the world's time: a game's, by its steps; the editor's, the
+				// renderer's
+				view.SceneGlobals.CloudLayer = Nyx::MakeSceneViewCloudLayerSettings(clouds, view.SceneGlobals.CameraWorldPos, static_cast<double>(GetWorldTime(&world)));
 			});
 	}
 
@@ -3117,6 +3197,7 @@ namespace Nyx
 			ColorGrading.Release(it->ColorGrading);
 			Particles.Release(it->Particles);
 			LightShafts.Release(it->LightShafts);
+			CloudLayer.Release(it->CloudLayer);
 			SkyAtmosphere.Release(it->SkyTables);
 
 			Bindless.RemoveTexture(it->HdrTextureSlot);
@@ -3337,8 +3418,17 @@ namespace Nyx
 		if (view.SkyTables.IsMade() && view.SkyTables.HasWork())
 		{
 			WritePassTimestamp(cmd, view, ETimedPass::Sky, false);
+			// The cloud layer's noise first, if new, for the cube that draws its clouds
+			CloudLayer.RecordNoise(view.CloudLayer, cmd);
 			SkyAtmosphere.Record(view.SkyTables, cmd);
 			WritePassTimestamp(cmd, view, ETimedPass::Sky, true);
+		}
+		// Its cloud layer, from those tables, for its scene pass and its light shafts
+		if (IsCloudLayerDrawn(view))
+		{
+			WritePassTimestamp(cmd, view, ETimedPass::Clouds, false);
+			CloudLayer.Draw(view, cmd);
+			WritePassTimestamp(cmd, view, ETimedPass::Clouds, true);
 		}
 		// Its shadow cascades, into the shadow map its scene pass reads
 		if (world && view.Shadows.CascadeCount > 0)

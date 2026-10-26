@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CloudLayer.h"
 #include "SkyAtmosphere.h"
 
 #include <glm/glm.hpp>
@@ -57,9 +58,12 @@ namespace Nyx
 		// A set a dispatch, all freed when the next ones are recorded
 		vk::raii::DescriptorPool Pool{ nullptr };
 
-		// What the tables were made from; whether they were made at all
+		// What the tables were made from; whether they were made at all; the cloud layer the cube was
+		// drawn with, and whether this frame makes the cube and its light again for it alone
 		SceneViewSkyAtmosphere Built;
 		bool bBuilt = false;
+		SceneViewCloudCapture BuiltClouds;
+		bool bCubePending = false;
 		// What this frame makes again (VulkanSkyAtmosphere::Prepare()), and whether it draws the
 		// pictures, and how bright
 		SkyAtmosphereChanges Pending;
@@ -69,12 +73,14 @@ namespace Nyx
 		// (IEditorRenderer::GetSceneViewSkyTablePictures())
 		bool bPreviewsAsked = false;
 		float AskedPreviewExposure = 1.0f;
-		// How many times each was made, for tests
+		// How many times each was made, for tests (CubeBuilds: the cube and its light, with the sky
+		// view or for the clouds alone)
 		uint32_t AirBuilds = 0;
 		uint32_t SkyViewBuilds = 0;
+		uint32_t CubeBuilds = 0;
 
 		bool IsMade() const { return SkyView.bHasSlot; }
-		bool HasWork() const { return Pending.bAir || Pending.bSkyView || bPreviews; }
+		bool HasWork() const { return Pending.bAir || Pending.bSkyView || bCubePending || bPreviews; }
 	};
 
 	// Which of a view's sky tables, for tests and the debug window
@@ -94,7 +100,10 @@ namespace Nyx
 	//   1. the transmittance and multiple scattering tables, when the air's settings change;
 	//   2. the sky view table round the camera, at its height, and from it the sky as a cube, its
 	//      diffuse light and its specular light, when the air, the sun or the camera's height
-	//      changes noticeably (GetSkyAtmosphereChanges()).
+	//      changes noticeably (GetSkyAtmosphereChanges());
+	//   3. the cube with the high cloud layer drawn into it, while the layer lights the world, and
+	//      its light, also when only the clouds changed or moved noticeably (IsCloudCaptureChanged()).
+	//      Its noise must be made before the tables are recorded.
 	// The view's sky pass reads the sky view and the transmittance per pixel (nyx.sky), its materials
 	// the cube's light instead of the sky cube map's (nyx.environment), its fog the horizon's colour.
 	class VulkanSkyAtmosphere
@@ -123,8 +132,8 @@ namespace Nyx
 		// While no frame is in flight and before this frame's passes are recorded: the view's tables
 		// made, or let go of when it draws no such sky (`wanted.bAtmosphere` false), and what of them
 		// this frame makes again; with `bPreviews`, the debug window's pictures too, exposed by
-		// `previewExposure`
-		void Prepare(SceneViewSkyTables& tables, const SceneViewSkyAtmosphere& wanted, bool bPreviews, float previewExposure);
+		// `previewExposure`; `clouds`, the cloud layer its cube draws (none: bClouds false)
+		void Prepare(SceneViewSkyTables& tables, const SceneViewSkyAtmosphere& wanted, bool bPreviews, float previewExposure, const SceneViewCloudCapture& clouds = {});
 		// What Prepare() found must be made, outside a render pass; the images end in
 		// ShaderReadOnlyOptimal layout for the view's passes
 		void Record(SceneViewSkyTables& tables, vk::raii::CommandBuffer& cmd);

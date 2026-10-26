@@ -5,6 +5,7 @@
 #include "VulkanBloom.h"
 #include "VulkanAmbientOcclusion.h"
 #include "VulkanLightShafts.h"
+#include "VulkanCloudLayer.h"
 #include "VulkanColorGrading.h"
 #include "EditorCamera.h"
 #include "PointLights.h"
@@ -115,6 +116,8 @@ namespace Nyx
 		SceneViewLightShafts LightShafts;
 		// Its sky's tables and light, while it draws the Atmosphere sky (VulkanSkyAtmosphere)
 		SceneViewSkyTables SkyTables;
+		// Its high cloud layer's noise and target, and its settings this frame (VulkanCloudLayer)
+		SceneViewCloudLayer CloudLayer;
 		// What its passes took on the GPU, in the last frame drawn; and its
 		// place among the views timed this frame (VulkanRenderer::PassTimestamps)
 		SceneViewGpuTimes GpuTimes;

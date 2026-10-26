@@ -40,8 +40,17 @@ namespace Nyx
 			uint32_t MultipleScatteringLut = 0;
 			uint32_t SkyViewLut = 0;
 			uint32_t SkyCube = 0;
+			// The cloud layer the cube draws: 1 while it does; its noise; how much of it
+			uint32_t CloudLayer = 0;
+			uint32_t CloudNoise = 0;
+			float CloudStrength = 0.0f;
+			uint32_t CloudPadding = 0;
+			glm::vec4 CloudShell{ 0.0f };
+			glm::vec4 CloudShape{ 0.0f };
+			glm::vec4 CloudWind{ 0.0f };
+			glm::vec4 CloudOrigin{ 0.0f };
 		};
-		static_assert(sizeof(SkyConstants) == 160, "SkyConstants must match SkyAtmosphere.slang");
+		static_assert(sizeof(SkyConstants) == 240, "SkyConstants must match SkyAtmosphere.slang");
 
 		// SkyDispatch in SkyAtmosphere.slang
 		struct SkyDispatch
@@ -125,7 +134,7 @@ namespace Nyx
 		}
 	}
 
-	void VulkanSkyAtmosphere::Prepare(SceneViewSkyTables& tables, const SceneViewSkyAtmosphere& wanted, bool bPreviews, float previewExposure)
+	void VulkanSkyAtmosphere::Prepare(SceneViewSkyTables& tables, const SceneViewSkyAtmosphere& wanted, bool bPreviews, float previewExposure, const SceneViewCloudCapture& clouds)
 	{
 		if (!wanted.bAtmosphere)
 		{
@@ -155,7 +164,14 @@ namespace Nyx
 			tables.Built = wanted;
 			tables.bBuilt = true;
 		}
-		if (tables.Pending.bAir || tables.Pending.bSkyView)
+		// The clouds in the cube: made again with it whenever it is, and alone when they moved
+		const bool bCube = tables.Pending.bAir || tables.Pending.bSkyView;
+		if (bCube || IsCloudCaptureChanged(tables.BuiltClouds, clouds))
+		{
+			tables.BuiltClouds = clouds;
+			tables.bCubePending = true;
+		}
+		if (tables.Pending.bAir || tables.Pending.bSkyView || tables.bCubePending)
 		{
 			WriteConstants(tables);
 		}
@@ -198,6 +214,18 @@ namespace Nyx
 		constants.MultipleScatteringLut = tables.MultipleScattering.Slot;
 		constants.SkyViewLut = tables.SkyView.Slot;
 		constants.SkyCube = tables.Cube.Slot;
+		const SceneViewCloudCapture& clouds = tables.BuiltClouds;
+		if (clouds.bClouds)
+		{
+			const SceneViewCloudLayerSettings& layer = clouds.Layer;
+			constants.CloudLayer = 1;
+			constants.CloudNoise = clouds.NoiseSlot;
+			constants.CloudStrength = layer.LightStrength;
+			constants.CloudShell = glm::vec4(layer.Altitude, layer.Thickness, layer.TileSize, layer.Thickness * CloudExtinction);
+			constants.CloudShape = glm::vec4(layer.Coverage, layer.Type, layer.Softness, layer.Detail);
+			constants.CloudWind = glm::vec4(layer.WindAxis, layer.Warp, layer.Rim);
+			constants.CloudOrigin = glm::vec4(layer.Origin, layer.Brightness, layer.Ambient);
+		}
 		void* mapped = tables.ConstantsMemory.mapMemory(0, sizeof(SkyConstants));
 		std::memcpy(mapped, &constants, sizeof(SkyConstants));
 		tables.ConstantsMemory.unmapMemory();
@@ -242,8 +270,15 @@ namespace Nyx
 			BeginWrite(cmd, tables.SkyView);
 			Dispatch(tables, cmd, "skySkyView", &dispatch, bindings, Groups(SkyViewWidth), Groups(SkyViewHeight), 1);
 			EndWrite(cmd, tables.SkyView);
+			++tables.SkyViewBuilds;
+		}
 
-			// The sky as a cube, and its mips
+		if (tables.Pending.bAir || tables.Pending.bSkyView || tables.bCubePending)
+		{
+			SkyDispatch dispatch;
+			Bindings bindings;
+
+			// The sky as a cube, the clouds in it while they light the world, and its mips
 			BeginWrite(cmd, tables.Cube);
 			dispatch.Width = CubeSize;
 			dispatch.Height = CubeSize;
@@ -287,7 +322,7 @@ namespace Nyx
 				Dispatch(tables, cmd, "skySpecular", &specular, specularBindings, Groups(specular.Width), Groups(specular.Width), 6);
 			}
 			EndWrite(cmd, tables.Specular);
-			++tables.SkyViewBuilds;
+			++tables.CubeBuilds;
 		}
 
 		// The debug window's pictures, each frame it is open
@@ -311,6 +346,7 @@ namespace Nyx
 			}
 		}
 		tables.Pending = {};
+		tables.bCubePending = false;
 	}
 
 	void VulkanSkyAtmosphere::Release(SceneViewSkyTables& tables)
@@ -330,6 +366,8 @@ namespace Nyx
 		tables.ConstantsMemory = nullptr;
 		tables.bBuilt = false;
 		tables.Pending = {};
+		tables.bCubePending = false;
+		tables.BuiltClouds = {};
 		tables.bPreviews = false;
 	}
 

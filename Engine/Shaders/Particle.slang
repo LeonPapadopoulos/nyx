@@ -11,6 +11,7 @@
 import nyx.bindless;
 import nyx.view;
 import nyx.atmosphere;
+import nyx.clouds;
 import nyx.environment;
 import nyx.lighting;
 
@@ -135,10 +136,12 @@ float4 particleFragment(ParticleVaryings input) : SV_Target
         alpha *= saturate(gap / soft);
     }
 
+    // Through the high cloud layer, where it lies between, and the fog
     const nyx::Fog fog = nyx::heightFog(input.PositionWS);
+    const nyx::CloudCover clouds = nyx::cloudCoverBefore(input.PositionWS, input.Position.xy);
     if (Object.CustomData.z < 0.5)
     {
-        return float4(input.Color.rgb * (alpha * fog.Transmittance), 0.0);
+        return float4(input.Color.rgb * (alpha * (fog.Transmittance * clouds.Transmittance)), 0.0);
     }
-    return float4(fog.applyPremultiplied(input.Color.rgb * alpha, alpha), alpha);
+    return float4(fog.applyPremultiplied(clouds.applyPremultiplied(input.Color.rgb * alpha, alpha), alpha), alpha);
 }

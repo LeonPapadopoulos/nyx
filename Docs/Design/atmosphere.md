@@ -1,13 +1,15 @@
 # Atmosphere
 
 The world's air, and what a camera and the sky's light make of it: height fog, a sky that follows
-the sun (made by the air's scattering, or the sky's cube map tinted), the time of day that turns the
-sun, bloom, ambient occlusion, light shafts and colour grading, and why they work as they do. The
-settings are on `EnvironmentComponent`, `TimeOfDayComponent` and `ColorGradingComponent` (`Scene`);
-the math is in `Engine/Source/Runtime/Render` (`Atmosphere.h`, `SkyAtmosphere.h`, `Bloom.h`,
+the sun (made by the air's scattering, or the sky's cube map tinted), a high layer of cloud in it,
+the time of day that turns the sun, bloom, ambient occlusion, light shafts and colour grading, and
+why they work as they do. The settings are on `EnvironmentComponent`, `CloudLayerComponent`,
+`TimeOfDayComponent` and `ColorGradingComponent` (`Scene`); the math is in
+`Engine/Source/Runtime/Render` (`Atmosphere.h`, `SkyAtmosphere.h`, `CloudLayer.h`, `Bloom.h`,
 `AmbientOcclusion.h`, `LightShafts.h`, `ColorGrading.h`), the passes in `VulkanSkyAtmosphere`,
-`VulkanBloom`, `VulkanAmbientOcclusion`, `VulkanLightShafts` and `VulkanColorGrading`, the shaders in
-`Engine/Shaders/Library/nyx/atmosphere.slang`, `sky.slang`, `surface.slang`, `SkyAtmosphere.slang`,
+`VulkanCloudLayer`, `VulkanBloom`, `VulkanAmbientOcclusion`, `VulkanLightShafts` and
+`VulkanColorGrading`, the shaders in `Engine/Shaders/Library/nyx/atmosphere.slang`, `sky.slang`,
+`clouds.slang`, `surface.slang`, `SkyAtmosphere.slang`, `CloudNoise.slang`, `CloudLayer.slang`,
 `Skybox.slang`, `Bloom.slang`, `AmbientOcclusion.slang`, `LightShafts.slang`, `ColorGrading.slang`
 and `Tonemap.slang`.
 
@@ -242,6 +244,8 @@ and prefiltered cube, untinted; the split-sum table is the same. So a surface th
 takes the sky's light: bluish by day, dimmer and warmer towards the sun at golden hour, and from
 below the planet's ground's (`NyxSkyAtmosphereGpuTests` checks a wall in the sun's shadow against
 the cubes it read back, within 1 of 255). Ambient occlusion dims it as it dims the cube map's.
+With a high cloud layer that lights the world, the cube has its clouds in it ([It lights the
+world](#it-lights-the-world)).
 
 The sky is much darker than a white surface in the sun, as it is outside: with the sun 70° up, the
 sky above the horizon is 0.12 on average, a sunlit white about 0.8, and the zenith deep blue. The
@@ -292,13 +296,10 @@ to the top first, which isn't done.
 
 ### What the next steps take from it
 
-- **A 2D cloud layer** (a sphere shell at an altitude, ray-intersected per sky pixel) is lit by the
-  sun's colour at its height: the transmittance table at the shell's height and the sun's angle
-  there (`nyx::transmittanceUv()` takes the height); its ambient from the sky view or the cube; it
-  is seen through the air between it and the camera (the transmittance along the view ray, the
-  table by the camera's height and angle, divided at the shell's for a ray that ends there), and
-  sits in the sky pass before the fog. The shell's intersection should use the same `h (2R + h)`
-  forms (`nyx::skyHeightSquare()`), with the shell's radius as the planet's plus its altitude.
+- **A 2D cloud layer**: built so ([The high cloud layer](#the-high-cloud-layer)): lit by the sun
+  through the transmittance table at the shell's height, its ambient from the irradiance cube, seen
+  through the air between it and the camera by the table's ratio along the ray, its shell met by
+  the same `h (2R + h)` forms.
 - **Volumetric clouds** the camera can be inside or above need, per sample: the transmittance
   table towards the sun from the sample's height, the multiple scattering table for their ambient
   part, and the aerial perspective (step 3's froxel volume, or for now the transmittance and
@@ -595,9 +596,10 @@ black sky (their light isn't the sun's).
   (step 9), gives each of these, at its place in space.
 - **Blocked by the depth on the picture**, not by the shadow map: a branch blocks as much as the
   pixels it covers; what is behind the camera or off the picture blocks nothing.
-- **Its brightness is the sky's round the sun**, not light scattered by the air: a bright cloud
-  near the sun streams, a dark one holds the light back; there is no fog density to set, only an
-  intensity. Fog makes no shafts brighter or longer.
+- **Its brightness is the sky's round the sun**, not light scattered by the air: under a clear sky
+  the sky streams by its brightness; where the cloud layer covers it, only as much as the clouds
+  let through (below); there is no fog density to set, only an intensity. Fog makes no shafts
+  brighter or longer.
 - What it does well: a few hundredths of a millisecond (below), any height, any sky, no volume.
 
 ### The camera at cloud height, and the clouds
@@ -606,14 +608,15 @@ Nothing in it knows where the ground is: the sun's place is a direction, the occ
 the depth and the light on the picture, and the fade is the light the air leaves at the camera's
 height. `NyxLightShaftsGpuTests` draws the same wall and sun 1.5 km up, with the same shafts.
 
-The cloud layer (the plan's step 6) is drawn in the sky pass, into the HDR scene, so its lit edges
-already stream by their brightness and its darker bodies less. To hold the sun's light back as a
-whole where the clouds are thick, it should give the shafts **the clouds' transmittance along each
-view ray** (1 clear sky, 0 thick cloud), at the scene's size or half of it, in a target of its own
-or a channel nothing else reads: the prefilter multiplies what the depth lets through by it, one
-lookup. Not the depth: the layer is kilometres away, beyond any useful threshold, and its edges are
-soft, which a depth can't say. Volumetric clouds the camera is in or above need the same, or the
-froxel fog, which takes the shafts' place there.
+The cloud layer gives the shafts **the clouds' transmittance along each view ray** (1 clear sky,
+0 thick cloud): its pass's target, at the view's size, holds it in its alpha, and the prefilter
+takes it for the sky's pixels in place of the depth's 1, one lookup ([The high cloud
+layer](#the-high-cloud-layer)). So a thick layer over the sun holds its shafts back as a whole,
+while the gaps between cloudlets still stream. Not the depth: the layer is kilometres away, beyond
+any useful threshold, and its edges are soft, which a depth can't say. `NyxCloudLayerGpuTests`
+finds the shaft through a window 25 of 255 brighter under a clear sky, 1 to 7 under an overcast
+layer. Volumetric clouds the camera is in or above need the same, or the froxel fog, which takes
+the shafts' place there.
 
 ### Seeing it
 
@@ -624,6 +627,293 @@ froxel fog, which takes the shafts' place there.
   scrubbing the time moves the shafts and sets them with the sun.
 - Their passes are timed on the GPU per view (`SceneViewGpuTimes::LightShafts`, *shafts* in the
   frame statistics, F8 in a game, `gpu_light_shafts_ms` in a benchmark's CSV).
+
+## The high cloud layer
+
+A thin layer of high cloud in the sky made by the air: a field of small cloudlets, a mackerel sky,
+or streaks of cirrus, made from seeded noise and carried by the wind with the world's time, lit by
+the sun through the air at its height, gold at sunset and dark after it, their thin edges bright
+against the sun, fading into the haze towards the horizon, and lighting the world through the sky's
+light. Seen from the ground, from a treetop at its height and from above it. The settings are a component of their own, `CloudLayerComponent`
+(*Cloud Layer*, `Scene`); the math in `CloudLayer.h`, the pass `VulkanCloudLayer`, the shaders
+`CloudNoise.slang` (its noise), `CloudLayer.slang` (the clouds per pixel) and
+`Library/nyx/clouds.slang` (the shell, and the clouds before what lies beyond it). It is the plan's
+step 6; the volumetric clouds of step 7, which the camera can be inside, are apart (below).
+
+Why a component of its own, not more settings on `EnvironmentComponent`: the air's settings are
+already two dozen; a cloud layer is a look of its own that a world may have or not with the same
+air; and the volumetric clouds later are another component (the plan's `CloudBandComponent`)
+beside it, not a mode of it: a world may have both, the high layer above the band. The world's
+first one counts; without one, with it off, or with the sky in another mode than *Atmosphere*
+(whose tables light it), there are no clouds and every picture is the same to the bit
+(`NyxCloudLayerGpuTests`, and the other GPU tests' pictures against the build before it, all 71 of
+five of them the same to the bit).
+
+### The shell
+
+The layer is a sphere round the planet's middle, *Altitude* (4000 m) above its ground, as the sky's
+tables are planet-centred, the camera always above the middle, in kilometres
+(`GetCloudShellHits()`, `nyx::cloudShellHits()`): a ray from the camera `h` up meets it where
+`t² + 2 r μ t + c = 0`, `r` the camera's distance from the middle, `μ` the ray's cosine with the up
+axis, `c = (h - a)(2R + h + a)` the difference of the squared radii taken by the heights, exactly,
+never as a difference of 6360 km numbers; each root the form without cancellation.
+
+- **From below** (`c < 0`) every ray leaves the shell once: overhead a few kilometres away,
+  towards the horizon farther, about 225 km on the level from the ground for a layer 4 km up.
+- **From above** a ray down meets it once if it then hits the ground, and twice if it grazes past
+  the planet (in, and out on its far side, the second behind the first); a ray up never does.
+- **Nothing behind the ground**: a crossing farther than the ground along the ray is dropped.
+
+`NyxCloudLayerTests` checks the crossings against a ray marched in steps of 2 m, from 10 m, 3 km,
+just below and just above the shell and 2 km above it, every way from straight up to straight down:
+the same count, within a metre (a part in 10⁵ hundreds of kilometres off). Each pixel's ray comes
+from the view's rotation and projection without its place (`CloudInverseSkyViewProjection`), so
+it is as exact far from the world's middle as near it; the shell's height uses the camera's own
+height (not the sky table's, which may be a metre and 1 % off: the wrong side of a layer the camera
+is close to).
+
+### Shapes from noise
+
+The noise is a square of 256 × 256 texels that tiles, RGBA16F with its mips (0.7 MB), made by a
+compute shader at the first frame the layer is drawn and when its *Seed* changes
+(`CloudNoise.slang`), never otherwise:
+
+- **r**, cloudlets: soft round domes, `(1 - d²)²`, one in each of 16 × 16 cells, each at a place
+  and of a radius (0.4 to 0.75 of a cell) of its own from the seed, merged where they meet: the
+  cellular (Worley-like) pattern of a mackerel sky;
+- **g**, the same in 32 × 32 cells, finer, which break up their edges (*Detail*);
+- **b**, fractal gradient noise of five octaves from 4 cells across, which the shader stretches
+  four times along the wind into streaks of cirrus;
+- **a**, fractal noise of four octaves from 2 cells across, large and slow: the domain warp and the
+  coverage's patches.
+
+Every octave's cells divide the square and their hashes wrap with it (Jarzynski and Olano's PCG
+hash of the cell and the seed), so it tiles; the mips are halvings. **Why a texture, not noise
+worked out per pixel:** the clouds are read at up to a few hundred kilometres along grazing rays,
+where a pixel covers dozens of cloudlets. A texture's mips, filtered anisotropically over each
+pixel's footprint, give their mean there for free; analytic noise would alias to glitter on the
+horizon unless each octave were faded by the footprint by hand, and it would pay its hashes three
+times a pixel (the cloud, the shadow towards the sun, a second crossing) where a texture pays a
+tap each. Made once, it costs nothing per frame; a new seed makes it again in a few hundredths of a
+millisecond.
+
+Per pixel (`CloudLayer.slang`), at the point the ray meets the shell:
+
+1. **Where over the pattern**: the point's offset from the camera over the ground, in the wind's
+   frame (along it and across it) and in squares (*Cloudlet Size* × 16, 6.4 km by default), plus
+   where the camera is over the pattern at the world's time (`Origin`, below).
+2. **Its footprint** comes from ray differentials, not from the neighbouring pixels' points: the
+   change of the ray to the next pixel (`ddx`, `ddy` of the direction, which is smooth everywhere)
+   carried onto the plane the shell touches there, `dP = t (dd - d (n·dd) / (n·d))`; so the edge
+   of the layer at the horizon, or between its first and second crossing, has no seam of a wrong
+   footprint. It is widened to at most four times as long as wide: a grazing ray's is far longer,
+   and wider samples along it cost less than sixteen of them (a 1080p view from 0.26 to 0.2 ms) and
+   look the same on the horizon's haze.
+3. **The field**: the pattern bent by the large noise (*Warp*), and the coverage there, moved up
+   and down by the largest noise but not at none or all; two trilinear taps.
+4. **The shape**: the cloudlets, cells a little shorter along the wind than across it (rows across
+   the wind), and the streaks along it, blended by *Type*; broken up by the fine cells; thresholded
+   by the coverage (`1 - 1.15 coverage`: overcast at 1), thicker towards each cloudlet's middle, the
+   edges soft over *Softness* of the way in. As the footprint covers more than a cell or two, the
+   density goes over to the coverage's mean, which a threshold of the filtered noise doesn't give:
+   so the layer thickens to a haze towards the horizon, as many cloudlets seen edge on do.
+
+### The wind and the world's time
+
+Where the camera is over the pattern (`MakeSceneViewCloudLayerSettings()`) is its place over the
+ground, along the wind (*Wind Direction*, round the up axis from +X towards -Z, as the time of day's
+sunrise) and across it, less *Wind Speed* times the world's time along it, in squares, in doubles on
+the CPU, kept between 0 and 16 squares, the period at which every scale the shader reads repeats.
+So:
+
+- the clouds are anchored in the world (a camera moving sideways passes under them) and carried by
+  the wind, the pattern over a point at a time a function of the seed, the point and the time
+  alone: the same sky for the same seed and time, on any machine;
+- **the world's time** is the renderer's for the world (`RenderWorld::Time`): a game's its steps',
+  drawn between the last two (`GetDrawnWorldTime()`), standing still while paused; the editor's,
+  whose world isn't stepped, the renderer's own, so the clouds drift there as a decal's pulse moves;
+- the origin never grows: after 100 hours of wind the GPU's numbers are as exact as at the start
+  (`NyxCloudLayerTests`: a step of the wind after 360 000 s within 10⁻⁶ of a square of its speed's).
+
+`NyxCloudLayerGpuTests` draws the same seed and time in a new view, its noise made again: the same
+picture to the bit; 30 s later another; and the picture 30 s later against the one a camera 600 m
+upwind saw 30 s before (the wind 20 m/s along +X): the same to the bit.
+
+### Lighting
+
+- **The sun at the layer**: the light's colour as it gives it (`ExtractedSceneGlobals::SunLightColor`,
+  before the time of day's fade, as the air's sky is lit) times the transmittance table from the
+  layer's height towards the sun, with the sun's cosine to the shell's own up there; none once the
+  sun is below the horizon seen from that height, fading over about half a degree as its disk goes
+  down. So it is gold and red as the sun sets, and the layer, 4 km up, keeps the sun about two
+  degrees after the ground has lost it, then goes dark.
+- **What a cloud does with it** is two-stream scattering of a slab whose optical depth is the
+  fake thickness from the noise (the density times *Thickness* times 60 per kilometre: 18 at a
+  cloudlet's middle by default), along the sun's slanted path: it lets `1 / (1 + 0.11 τ)` through,
+  scattered, and sends the rest back (0.11 is `3/4 (1 - g)`, the droplets' forward scattering `g`
+  about 0.85). Seen from the side the sun lights, what it sends back; from the other, what it lets
+  through less the light that goes straight through unscattered; each per part of what the cloud
+  hides, as it is blended. So from below a cloudlet's thin edges are bright and its middle greyer,
+  and from above its tops bright; the side is the sign of the sun and of the ray to the shell's up,
+  smoothed over a few degrees, so a sun in the shell's plane lights both alike.
+- **A forward lobe** on the light let through (Henyey-Greenstein, `g` 0.6), the more the thinner
+  the cloud: clouds near the sun are much brighter than away from it (`NyxCloudLayerGpuTests`: at
+  noon 206 197 183 of 255 towards the sun, 167 160 149 away).
+- **A rim**, the silver lining: a sharper lobe (`g` 0.75, at most 12 times the even light) on the
+  thin edges, `(1 - density)²`, by *Rim*.
+- **A low sun's light comes from the side**: the density a third of a cell towards the sun shadows
+  it, by `1 - |cos|` of the sun's angle to the shell's up: a sunset lights each cloudlet's sunward
+  side and leaves its far side darker; a sun overhead lights through tops and bases.
+- **The sky's own light**: the irradiance cube's light from above and below (the night sky's
+  light in it at night), more of the side the camera sees, by *Ambient*. At midnight the clouds are
+  the night sky's blue, dark (`NyxCloudLayerGpuTests`: 0 3 12 on average, against 127 136 143 at
+  noon at the same exposure).
+- *Brightness* times all of it.
+
+A sun of intensity 3 lights a white surface three times what the screen shows as white, and a
+sunlit cloud is as bright, so at exposure 0 the clouds are near white, as a sunlit wall is; the
+view's exposure or the grade brings their shading back. The GPU tests look at them a stop and a
+half darker.
+
+### Through the air, and near the camera
+
+- **The haze between**: the transmittance along the ray from the camera to the cloud, from the
+  table, the camera's over the cloud's (or, for a ray down into the ground, along it turned back).
+  The cloud's light is multiplied by it, and it hides what is behind it by its opacity times its
+  mean: so far off, where the air lets little of it through, the layer becomes the sky's own colour
+  behind it, which stands in for the air's light between (no aerial perspective of its own yet).
+- **Opacity**: `1 - e^(-τ / |μ|)`, `μ` the ray's cosine to the shell, at least 0.03: grazing rays
+  see the clouds as thick as at about 1.7 degrees, so the layer closes up towards the horizon.
+- **Near the camera** (`GetCloudNearFade()`): a cloud a quarter of the *Thickness* or nearer is
+  gone, all of it there from twice the thickness on, smoothly between. A thin 2D layer is a
+  surface; without this, a camera passing through it would see a sheet sweep through the picture.
+  With it, the camera's distance to the shell is the nearest any part of it can be: from 10 m below
+  the layer, everything within 82 degrees of straight up is clear (the sky to the bit, in the test),
+  the layer seen only as a band towards the horizon, which narrows as the camera rises, is gone at
+  its height (the rays up leave the shell at once, the rays down meet it far off), and from above
+  the near clouds below fade in as the camera rises away. `NyxCloudLayerGpuTests` draws the level
+  view from 20 m and 5 m below, at the layer and 5 m and 20 m above: the steps change the picture by
+  0.4 and 0.6 of 255 on average round the layer itself, 2 and 2.5 for the 15 m steps beside it,
+  against 56 from 2 km below to 2 km above.
+
+### What it is drawn over and under
+
+The pass runs per view before the scene pass, after the sky's tables it reads, into a target of the
+view's size (RGBA16F: the clouds' light, and in alpha the part of the light from behind them that
+gets through; 16.6 MB at 1920 × 1080), written whole, one triangle. Then:
+
+- **the sky** (`Skybox.slang`): its light and the sun's disk times what gets through, plus the
+  clouds' light, then the height fog over them, so fog lies over the clouds;
+- **what lies beyond the shell** (`nyx::cloudCoverBefore()`, in `surfaceFragment`,
+  `decalFragment` and the particles): a surface whose point is on the other side of the shell from
+  the camera (by the planet-centred heights) takes the clouds at its pixel the same way, before its
+  fog: from above a low layer the ground under it is covered, a column standing above it isn't
+  (`NyxCloudLayerGpuTests`, a layer 300 m up seen from 800 m). Nothing else is: a surface on the
+  camera's side of the shell is the same to the bit, so the layer never draws a sheet over a tree
+  below it seen from the ground, nor over a treetop above it seen from above;
+- **the light shafts**: the sky's pixels stream only as much as the clouds let through (above);
+- **the world's sky light**: the clouds are in the sky's cube that lights it (below); the sun's
+  light isn't shadowed by them (cloud shadows are later).
+
+### It lights the world
+
+While *Lights The World* is on (the default) and *Light Strength* above 0, the sky's cube, from which
+the world's diffuse and specular light are made ([Its light lights the world](#its-light-lights-the-world)),
+has the clouds in it, as the painted cube map had its clouds: white clouds brighten and whiten the
+fill light, golden ones at sunset warm it, heavy cover softens it, and from above the layer its
+sunlit tops below the horizon light the world from below.
+
+- **Drawn with the same code** as the pass: `skyCube` (`SkyAtmosphere.slang`) works out the clouds
+  in each texel's direction with `nyx::cloudLayerAlong()`, from what describes them
+  (`CloudParams`), here from the sky's own constants rather than the view's set: the layer's
+  settings, its noise and where the camera is over the pattern, the same as the view's; each
+  texel's footprint the ways to its neighbours; the camera's height the table's. The sky's light on
+  the clouds comes from the sky view, its mean over five directions above and five below (the
+  irradiance is made from this cube, after it). The texel is the sky times what gets through plus
+  the clouds' light, mixed with the sky alone by *Light Strength*: 1 as they look, 0 none.
+- **Off, or at strength 0**, the cube is made as without the layer, to the bit: `skyCube` takes no
+  other path (`NyxCloudLayerGpuTests`: a white wall lit by the sky alone, the same to the bit).
+- **Made again only when it must be** (`IsCloudCaptureChanged()`): with the sky view, as before
+  (the air, the sun, the camera's height); and for the clouds alone, the cube, its mips, its
+  irradiance and its specular light but not the sky view, when they come or go, a setting or their
+  noise changes, or the pattern moves under the camera by more than a 32nd of a cell
+  (`CloudCaptureTolerance`: 12.5 m at the default *Cloudlet Size*), carried by the wind or by the
+  camera going sideways. The cube's texels are 1.4 degrees, about 100 m of a layer 4 km overhead,
+  so a smaller move doesn't show in its light. A wind of 10 m/s makes it again every 1.25 s; the
+  test's 20 m/s, 15 times in 600 steps of a 60th of a second, 0.117 ms each: about 0.003 ms a frame
+  on average.
+- **The noise first**: a new seed's noise is made before the sky's tables, in the same frame, so the
+  cube never reads it before it is there; its time then counts in the sky's.
+- Near the layer, the table's camera height may be a metre and 1 % off the camera's (40 m at 4 km),
+  so the cube's clouds may be a little off the picture's there; the near fade keeps it soft.
+- `NyxCloudLayerGpuTests`, a white wall the sun doesn't reach, at exposure 0: at noon 153 158 169
+  under a clear sky, 226 217 203 under a white overcast layer, 194 191 187 with half its light; at
+  sunset 75 37 9 under the layer, 26 20 35 without its light; a ceiling 2 km above the layer, lit
+  from below, 244 237 228 by the clouds against 197 192 189 by the ground under the air.
+
+### Its cost
+
+`NyxCloudLayerGpuTests`, the median of 60 frames, RTX 3070 Ti, from 10 m looking 30 degrees round
+and 20 up (every pixel meets the layer once), three runs:
+
+| View | The cloud layer (cloudlets) | Cloudlets and streaks blended |
+| --- | --- | --- |
+| 1280 × 720 | 0.11 ms | 0.15 ms |
+| 1920 × 1080 | 0.20 ms | 0.26 to 0.28 ms |
+
+About nine texture taps a pixel (two trilinear for the field, two anisotropic for the shape and its
+detail, one more towards the sun, three of the transmittance table, two of the irradiance cube, the
+same for every pixel), and a second crossing only where a ray from above grazes past the planet.
+The noise, when its seed changes: about 0.03 ms more in that one frame. The sky's cube with the
+clouds in it, made again as they move: 0.117 ms each time (above), in the sky's time. Every pixel of the view
+pays it, also those a mesh covers: the sky pass can't tell the pass before it which those are. Half
+size with a careful upsample would halve it again, if a scene ever needs it; the cloudlets' sharp
+edges are why it is full size. The scene pass is the same with it and without, within the spread.
+
+### Seeing it
+
+- *Cloud Layer* on an entity, with the *Environment*'s sky in its *Atmosphere* mode: every value
+  edited live, in the editor's views and a running game.
+- `Assets/Scenes/CloudLayerTest.nyxscene` (written by `NyxCloudLayerGpuTests --write-scene`): the
+  plan's frame 1, a field of small cloudlets receding to the horizon at dusk, the time of day at
+  17:44 with the sun 3 degrees up behind them, and a colour grading whose key at that height is
+  the gold-green dusk; scrubbing the time turns them from white to gold to dark.
+- Its pass is timed on the GPU per view, with the noise in the frames that make it while it doesn't
+  light the world (`SceneViewGpuTimes::Clouds`, *clouds* in the frame statistics, F8 in a game,
+  `gpu_clouds_ms` in a benchmark's CSV, the editor's frame time tooltip); the sky's cube made again
+  for it, and the noise while it does, in the sky's (*sky*, `gpu_sky_ms`).
+
+### Its limits, and what the volumetric clouds take from it
+
+- **A surface, not a volume**: it has no height of its own; up close it fades rather than
+  surrounds the camera, and it can't be flown into, round or between. The plan's step 7 is the
+  volume, with the camera inside it.
+- **One layer, one shape a pixel**: no second layer of other cloud at another height, and the type
+  blends the two shapes everywhere rather than placing each by a weather map.
+- **No cloud shadows** on the ground, the trees or the fog (step 8); the clouds are in the sky's
+  light round the camera, the same everywhere, not shading the world under each cloud.
+- **The haze between** is the sky blended in by the air's transmittance, not the air's own light
+  along the shorter path: right in the earth's air and for a layer a few kilometres up, a little
+  off for a very low layer under thick haze. The aerial perspective (step 3) is the exact way.
+- **Lit from the camera's height's sky**: its ambient is the irradiance cube made for the camera,
+  not for the layer's height.
+- **Lighting is a slab's**: two-stream scattering with a fake thickness, no light between
+  cloudlets bouncing off each other, no light from below off the ground beyond the cube's.
+
+What the volumetric clouds (step 7) will reuse from it: the planet-centred shell math (their band
+is two shells; `GetCloudShellHits()` gives where a ray enters and leaves each, from below, inside
+and above), the camera's own height for it, the ray from the view without its place; the sun's
+light at a height from the transmittance table (`nyx::cloudSunLight()`), the air between by the
+table's ratio, the sky's light from the irradiance cube, all behind `CloudParams`, callable from a
+pixel or a compute pass; drawing into the sky's cube, so they light the world the same way; the
+wind's origin in doubles kept small, and the
+world's time; the noise made from the seed by a compute shader (their 3D noise the same way, with
+these hashes), filtered by ray differentials; the target with the light and what gets through,
+which the sky, the surfaces beyond and the light shafts already read, so a raymarched band can
+write the same target at a lower resolution and the rest needs nothing new; the near fade becomes
+the camera inside the band, marching from where it stands. What they replace: the slab's lighting
+by the band's march (Beer's law, the powder term, multiple scattering by octaves), the type blend by
+a weather map, and the high layer stays above them for cirrus.
 
 ## Colour grading
 
@@ -871,6 +1161,10 @@ against 0.017 ms without, the same within the spread: the tonemap's tap costs no
 measured. Well within the plan's millisecond for fog and shafts together. In the frames the sun
 gives none (behind the camera, off the picture, set), nothing is recorded and they take nothing.
 
+The high cloud layer, on top of the sky made by the air: 0.11 ms at 1280 × 720 and 0.20 ms at
+1920 × 1080 with cloudlets, 0.15 and 0.26 to 0.28 ms with cloudlets and streaks blended ([its
+cost](#its-cost)); without it, nothing is recorded and nothing changes.
+
 ## Later
 
 - Ambient occlusion: a temporal filter, once there is temporal antialiasing (fewer samples, less
@@ -881,7 +1175,11 @@ gives none (behind the camera, off the picture, set), nothing is recorded and th
   sees); a camera above the air; the sky's tables shared by the views of one world; moon and stars.
 - Volumetric fog: shadowed shafts of light, local fog volumes; it takes the light shafts' place,
   which could stay for what lies beyond its range.
-- Light shafts: the cloud layer's transmittance as their mask (above); a debug view of them alone.
+- Light shafts: a debug view of them alone.
+- The cloud layer: cloud shadows (the plan's step 8); its haze by the aerial perspective; its
+  ambient from the sky at its own height; the sky's cube made from the camera's own height near the
+  layer; a second layer, or a weather map placing its types; half
+  size with a depth-aware upsample, if a scene needs the time; skipping the pixels a mesh covers.
 - The fog over a point light's or a decal's own light: the fog adds the sun's and the sky's only.
 - Colour grading: keys for the morning apart from the evening, once the time of day gives the
   sun's path; a view's switch to see its picture ungraded beside the graded one; the grade's

@@ -16,6 +16,7 @@ __exported import nyx.bindless;
 __exported import nyx.view;
 __exported import nyx.environment;
 __exported import nyx.shadows;
+import nyx.clouds;
 import nyx.lighting;
 
 // -------------------------------------------------------------------------
@@ -472,6 +473,20 @@ nyx::Fog surfaceFog(VertexOutput vertex)
     return nyx::heightFog(vertex.PositionWS);
 }
 
+// The high cloud layer between the camera and the pixel, where it lies between them (seen from above
+// it, the ground below; from below, what stands above it); none in a debug view of the materials
+nyx::CloudCover surfaceClouds(VertexOutput vertex)
+{
+    if (nyx::isMaterialDebugView())
+    {
+        nyx::CloudCover none;
+        none.Transmittance = 1.0;
+        none.Light = float3(0.0);
+        return none;
+    }
+    return nyx::cloudCoverBefore(vertex.PositionWS, vertex.Position.xy);
+}
+
 // While the view has ambient occlusion, the sky's light apart, dimmed by the fog as the rest is
 // (the fog's own light goes with the rest: the occlusion doesn't dim it)
 bool writesAmbientApart()
@@ -484,15 +499,16 @@ public SceneTargets surfaceFragment<S : ISurface>(VertexOutput vertex, bool bFro
 {
     const ShadedPixel pixel = shadeSurfacePixel<S>(vertex, DecalInput::defaults(), bFrontFace);
     const nyx::Fog fog = surfaceFog(vertex);
+    const nyx::CloudCover clouds = surfaceClouds(vertex);
     SceneTargets targets;
     if (writesAmbientApart())
     {
-        targets.Color = float4(fog.apply(pixel.Direct + pixel.Emission), pixel.Opacity);
-        targets.Ambient = float4(pixel.Ambient * fog.Transmittance, pixel.Opacity);
+        targets.Color = float4(fog.apply(clouds.apply(pixel.Direct + pixel.Emission)), pixel.Opacity);
+        targets.Ambient = float4(pixel.Ambient * (fog.Transmittance * clouds.Transmittance), pixel.Opacity);
     }
     else
     {
-        targets.Color = float4(fog.apply(pixel.Direct + pixel.Ambient + pixel.Emission), pixel.Opacity);
+        targets.Color = float4(fog.apply(clouds.apply(pixel.Direct + pixel.Ambient + pixel.Emission)), pixel.Opacity);
         targets.Ambient = float4(0.0, 0.0, 0.0, pixel.Opacity);
     }
     return targets;
@@ -508,15 +524,16 @@ public SceneTargets decalFragment<S : ISurface>(VertexOutput vertex, bool bFront
 {
     const ShadedPixel pixel = shadeSurfacePixel<S>(vertex, objectDecalInput(), bFrontFace);
     const nyx::Fog fog = surfaceFog(vertex);
+    const nyx::CloudCover clouds = surfaceClouds(vertex);
     SceneTargets targets;
     if (writesAmbientApart())
     {
-        targets.Color = float4(fog.applyPremultiplied(pixel.Direct * pixel.Opacity + pixel.Emission, pixel.Opacity), pixel.Opacity);
-        targets.Ambient = float4(pixel.Ambient * (pixel.Opacity * fog.Transmittance), pixel.Opacity);
+        targets.Color = float4(fog.applyPremultiplied(clouds.applyPremultiplied(pixel.Direct * pixel.Opacity + pixel.Emission, pixel.Opacity), pixel.Opacity), pixel.Opacity);
+        targets.Ambient = float4(pixel.Ambient * (pixel.Opacity * (fog.Transmittance * clouds.Transmittance)), pixel.Opacity);
     }
     else
     {
-        targets.Color = float4(fog.applyPremultiplied((pixel.Direct + pixel.Ambient) * pixel.Opacity + pixel.Emission, pixel.Opacity), pixel.Opacity);
+        targets.Color = float4(fog.applyPremultiplied(clouds.applyPremultiplied((pixel.Direct + pixel.Ambient) * pixel.Opacity + pixel.Emission, pixel.Opacity), pixel.Opacity), pixel.Opacity);
         targets.Ambient = float4(0.0, 0.0, 0.0, pixel.Opacity);
     }
     return targets;

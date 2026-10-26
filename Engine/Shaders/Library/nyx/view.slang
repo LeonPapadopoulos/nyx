@@ -149,6 +149,26 @@ public struct ViewConstants
     public uint LightShaftsPadding1;
     public float4 LightShaftsSun;
     public float4 LightShaftsColor;
+
+    // The view's high cloud layer (VulkanCloudLayer; nyx.clouds, CloudLayer.slang): 1 while it is
+    // drawn, else 0 and nothing below is set. Its light along each pixel's ray and the part of the
+    // light from behind it that gets through (a), at the view's size; the noise it is made from.
+    // Its altitude and thickness in kilometres, the
+    // noise's square in kilometres over it, the shadow it throws on itself (w). Its coverage, type,
+    // edges' softness and detail. The wind's way in the world's x and z, the warp, the rim. Where
+    // the camera is over the pattern, in squares along the wind and across it, its brightness and
+    // the sky's light on it. The sun's light at the top of the air. The view's rotation and
+    // projection, without its place, inverted: from the picture to the way each pixel looks.
+    public uint CloudLayer;
+    public nyx::Texture CloudLight;
+    public nyx::Texture CloudNoise;
+    public uint CloudPadding;
+    public float4 CloudShell;
+    public float4 CloudShape;
+    public float4 CloudWind;
+    public float4 CloudOrigin;
+    public float4 CloudSun;
+    public float4x4 CloudInverseSkyViewProjection;
 }
 [vk::binding(0, 1)] public ConstantBuffer<ViewConstants> View;
 

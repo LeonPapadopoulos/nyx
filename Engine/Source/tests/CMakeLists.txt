@@ -545,6 +545,15 @@ add_dependencies(NyxLightShaftsTests NyxGeneratedReflection)
 set_property(TARGET NyxLightShaftsTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxLightShaftsTests COMMAND NyxLightShaftsTests)
 
+# The high cloud layer without a GPU: where rays meet its shell from below, at and above it, the
+# clouds near the camera faded, the wind carrying the pattern with the world's time, values in range,
+# the component saved.
+add_executable(NyxCloudLayerTests CloudLayerTests.cpp)
+target_link_libraries(NyxCloudLayerTests PRIVATE NyxEngine)
+add_dependencies(NyxCloudLayerTests NyxGeneratedReflection)
+set_property(TARGET NyxCloudLayerTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxCloudLayerTests COMMAND NyxCloudLayerTests)
+
 # Material files and their values without a GPU: reading and writing, offsets, layouts that change.
 add_executable(NyxMaterialTests MaterialTests.cpp)
 target_link_libraries(NyxMaterialTests PRIVATE NyxEngine)
@@ -705,6 +714,19 @@ nyx_copy_shaders_next_to(NyxLightShaftsGpuTests)
 nyx_copy_shader_compiler_next_to(NyxLightShaftsGpuTests)
 add_test(NAME NyxLightShaftsGpuTests COMMAND NyxLightShaftsGpuTests)
 add_test(NAME NyxLightShaftsGpuTestsMsaa COMMAND NyxLightShaftsGpuTests --msaa 4)
+
+# The high cloud layer on a real GPU: the picture unchanged to the bit without it, clouds from 10 m
+# at noon, at sunset and at midnight, from above the layer, crossing it, the same sky at the same
+# seed and time and moved by the wind, the ground under a low layer covered, the light shafts held
+# back, its GPU time, the test scene. Needs a Vulkan device; its window stays hidden.
+add_executable(NyxCloudLayerGpuTests CloudLayerGpuTests.cpp)
+target_link_libraries(NyxCloudLayerGpuTests PRIVATE NyxEngine)
+add_dependencies(NyxCloudLayerGpuTests NyxGeneratedReflection)
+set_property(TARGET NyxCloudLayerGpuTests PROPERTY FOLDER "Tests")
+nyx_copy_shaders_next_to(NyxCloudLayerGpuTests)
+nyx_copy_shader_compiler_next_to(NyxCloudLayerGpuTests)
+add_test(NAME NyxCloudLayerGpuTests COMMAND NyxCloudLayerGpuTests)
+add_test(NAME NyxCloudLayerGpuTestsMsaa COMMAND NyxCloudLayerGpuTests --msaa 4)
 
 # Ambient occlusion on a real GPU: a box's foot occluded and the open floor not, never the sun's
 # light, the radius, intensity and qualities, fog and decals, a dense instanced field, against a
