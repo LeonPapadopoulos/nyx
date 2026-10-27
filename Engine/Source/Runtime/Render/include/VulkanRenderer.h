@@ -34,6 +34,7 @@
 #include "SurfaceDecals.h"
 #include "PointLights.h"
 #include "Particles.h"
+#include "WindComponent.h"
 #include "AssetResolver.h"
 #include "GltfImporter.h"
 #include <imgui.h>
@@ -238,11 +239,23 @@ namespace Nyx
 		glm::vec4 VolumetricCloudSun{ 0.0f };
 		glm::vec4 VolumetricCloudMotion{ 0.0f };
 		glm::mat4 VolumetricCloudPreviousSkyViewProjection{ 1.0f };
+
+		// The world's wind (Wind.h), at the view's Time; and its texture of local air round its
+		// camera (VulkanLocalWind): its slot, 0 without one; the corner of its first cell, 1 / a
+		// cell's size (w); 1 / its size in metres along each axis, so a point's place in it is
+		// (point - corner) × this
+		Nyx::WindState Wind;
+		uint32_t LocalWindTexture = 0;
+		uint32_t LocalWindPadding0 = 0;
+		uint32_t LocalWindPadding1 = 0;
+		uint32_t LocalWindPadding2 = 0;
+		glm::vec4 LocalWindOrigin{ 0.0f };
+		glm::vec4 LocalWindScale{ 0.0f };
 	};
 
 	// The view's set (set 1) as nyx/view.slang reads it, in scalar layout; to whole 16 bytes, as
 	// std140 would be too
-	static_assert(sizeof(SceneUBO) == 1536, "SceneUBO must match ViewConstants in nyx/view.slang");
+	static_assert(sizeof(SceneUBO) == 1728, "SceneUBO must match ViewConstants in nyx/view.slang");
 
 	// One draw's push constants, the same for every scene pipeline: ObjectConstants in
 	// nyx/bindless.slang
@@ -362,6 +375,13 @@ namespace Nyx
 		DecalMaterialCache DecalMaterials;
 		// Its point lights, which each view culls for its own pixels
 		std::vector<RenderPointLight> PointLights;
+		// Its wind this frame, at its time (ExtractWind()): its game's where a game turns it
+		// (WindDriveComponent), else turned here, from frame to frame, towards its WindComponent; and
+		// that component's debug view and local air's texture
+		Nyx::WindState Wind;
+		Nyx::WindDrive WindDrive;
+		Nyx::EWindDebug WindDebug = Nyx::EWindDebug::Off;
+		Nyx::WindComponent WindSettings;
 		// Its particles, moved on each frame by its time, and the meshes its emitters name by path
 		RenderParticles Particles;
 		std::unordered_map<std::string, Nyx::Mesh*> ParticleMeshes;
@@ -466,6 +486,8 @@ namespace Nyx
 		// The view's shadows in the last frame: its cascades and what each drew; null for an
 		// unknown view. For tests.
 		const SceneViewShadows* GetSceneViewShadows(uint64_t id) const;
+		// For tests: the view's texture of local air (VulkanLocalWind)
+		const SceneViewLocalWind* GetSceneViewLocalWind(uint64_t id) const;
 		// The view's bloom in the last frame: its chain's levels and its settings; null for an
 		// unknown view. For tests.
 		const SceneViewBloom* GetSceneViewBloom(uint64_t id) const;
@@ -502,7 +524,7 @@ namespace Nyx
 		void SetWorldDebugDraw(const Nyx::Registry* world, const Nyx::DebugDraw* drawing) override;
 		void SetSceneViewShowDebugDrawing(uint64_t id, bool bShow) override;
 		void SetWorldInterpolation(const Nyx::Registry* world, const Nyx::FixedStepClock* clock) override;
-		void SetWorldParticleVelocityField(const Nyx::Registry* world, const Nyx::IParticleVelocityField* field) override;
+		void SetWorldWindField(const Nyx::Registry* world, const Nyx::IWindField* field) override;
 
 		Nyx::Mesh* GetCubeMesh() override;
 		Nyx::Mesh* GetSphereMesh() override;
@@ -617,6 +639,10 @@ namespace Nyx
 		// materials
 		void CullSceneViewParticles(SceneViewInstance& view, const RenderWorld& world, const Frustum& frustum);
 		// The world's particles moved on to its time, carried by its air, with each emitter's mesh
+		// The world's wind at its time this frame (RenderWorld::Wind)
+		void ExtractWind(RenderWorld& world);
+		// The view's wind debug lines and its texture of local air, round its camera
+		void PrepareSceneViewWind(SceneViewInstance& view, const RenderWorld& world);
 		void ExtractParticles(RenderWorld& world, std::optional<float> interpolation);
 		// The mesh an emitter's particles are drawn as: its path's, resolved once a world, else the cube
 		Nyx::Mesh* FindParticleMesh(RenderWorld& world, const std::string& path);
@@ -759,6 +785,7 @@ namespace Nyx
 		VulkanAmbientOcclusion AmbientOcclusion{ Context, Programs };
 		// Each view's colour grading table, baked before its picture pass when its grade changed
 		VulkanColorGrading ColorGrading{ Context, Programs };
+		VulkanLocalWind LocalWind{ Context };
 		// Each view's particles, after its ambient occlusion
 		VulkanParticles Particles{ Context, Programs };
 		// Each view's light shafts, after its particles, for its tonemap to add
@@ -892,8 +919,10 @@ namespace Nyx
 		// The clocks of the worlds drawn between steps (SetWorldInterpolation()), by world, kept so
 		// too; they give those worlds their time as well (GetWorldTime())
 		std::unordered_map<const Nyx::Registry*, const Nyx::FixedStepClock*> WorldInterpolationClocks;
-		// The air carrying the worlds' particles (SetWorldParticleVelocityField()), by world, kept so too
-		std::unordered_map<const Nyx::Registry*, const Nyx::IParticleVelocityField*> WorldParticleFields;
+		// The air the worlds' games keep on top of their wind (SetWorldWindField()), by world, kept so too
+		// The wind's debug view as lines, made again for each view that shows it
+		Nyx::DebugDraw WindDrawing;
+		std::unordered_map<const Nyx::Registry*, const Nyx::IWindField*> WorldWindFields;
 
 		// Seconds since the renderer was made, this frame: the time of worlds without a clock
 		const std::chrono::steady_clock::time_point StartTime = std::chrono::steady_clock::now();

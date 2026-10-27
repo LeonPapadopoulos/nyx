@@ -8,6 +8,7 @@
 #include "VulkanCloudLayer.h"
 #include "VulkanVolumetricClouds.h"
 #include "VulkanColorGrading.h"
+#include "VulkanLocalWind.h"
 #include "EditorCamera.h"
 #include "PointLights.h"
 #include "SceneViewTypes.h"
@@ -95,6 +96,10 @@ namespace Nyx
 		std::vector<SceneViewDraw> Draws;
 		SceneViewCullingStats Culling;
 		DebugLineRange CullingLines;
+		// Its world's wind over the ground round its camera as debug lines (WindComponent's Debug
+		// View), and its texture of the world's local air round its camera (VulkanLocalWind)
+		DebugLineRange WindLines;
+		SceneViewLocalWind LocalWind;
 		// Its shadows this frame, and what it shows of them (IRenderer::SetSceneViewShadowDebug())
 		SceneViewShadows Shadows;
 		ESceneViewShadowDebug ShadowDebug = ESceneViewShadowDebug::Off;

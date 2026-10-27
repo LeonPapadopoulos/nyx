@@ -1,6 +1,7 @@
 # Vertex colours that sway in the wind: grass, flowers, leaves. Each vertex bends by its mesh's
 # custom x (0 at a foot, 1 at a tip), each copy at its own phase (its instance's custom x, which a
-# scatter gives it). Strength 0.12 m and Flutter 0.35 bend a tip at most 0.162 m.
+# scatter gives it), in the world's wind (WindComponent). Strength 0.15 m and Flutter 0.35 bend a tip
+# less than 0.2025 m.
 Shader = Shaders/VertexColorWind.slang
 Roughness = 0.9
-MaxVertexOffset = 0.17
+MaxVertexOffset = 0.21

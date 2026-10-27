@@ -11,6 +11,7 @@
 #include "PhysicsWorld.h"
 #include "SimSystem.h"
 #include "TimeOfDayClock.h"
+#include "Wind.h"
 
 #include <cstdint>
 #include <memory>
@@ -19,7 +20,7 @@
 
 namespace Nyx
 {
-	class IParticleVelocityField;
+	class IWindField;
 
 	// The world a game runs: its entities, their physics, and the systems that change them each
 	// fixed step, in one order kept here rather than spread over registrations. The game's GameLayer
@@ -32,6 +33,8 @@ namespace Nyx
 	//    constraints follow their components and the bodies (PhysicsConstraints); the players'
 	//    MoveCharacterCommands go into their characters (ApplyMoveCharacterCommands()); the time of
 	//    day moves on to the step's end while it runs, and the sun turns to it (TimeOfDayClock);
+	//    the wind turns towards its WindComponent's values, and is as it is at the step's start
+	//    (UpdateWorldWind(), SimContext::Wind);
 	// 4. the systems of ESimStage::BeforePhysics, in the order they were added, e.g. to change
 	//    where the characters go (CharacterComponent::DesiredMove);
 	// 5. the characters walk, and write their transforms (PhysicsBodies::MoveCharacters());
@@ -72,12 +75,16 @@ namespace Nyx
 		void SetPhysicsDebugView(const std::optional<PhysicsDebugOptions>& options);
 		const std::optional<PhysicsDebugOptions>& GetPhysicsDebugView() const { return PhysicsDebugView; }
 
-		// The air the world's particles are carried by, as the game keeps it (its wind, the draught of
-		// a fire), which the game hands to the renderer once the systems are made
-		// (IRenderer::SetWorldParticleVelocityField()); none, the default: the environment's wind. A
-		// game module sets it in CreateSystems(), and it must live as long as the world's systems.
-		void SetParticleVelocityField(const IParticleVelocityField* field) { ParticleVelocityField = field; }
-		const IParticleVelocityField* GetParticleVelocityField() const { return ParticleVelocityField; }
+		// The air the game keeps on top of the world's wind (its own winds, the draught of a fire),
+		// which the game hands to the renderer once the systems are made (IRenderer::SetWorldWindField())
+		// for the particles and the grass and trees; none, the default: only the world's wind. A game
+		// module sets it in CreateSystems(), and it must live as long as the world's systems.
+		void SetWindField(const IWindField* field) { WindField = field; }
+		const IWindField* GetWindField() const { return WindField; }
+
+		// The world's wind as the last step began (UpdateWorldWind()), which the systems get too
+		// (SimContext::Wind); calm before the first step
+		const WindState& GetWind() const { return Wind; }
 
 		// Adds the system after those of its stage added before. It runs on every `everyNthStep`th
 		// step (1: every step), counted from step 0, so systems with the same interval run in the
@@ -117,7 +124,8 @@ namespace Nyx
 		CommandQueue Commands;
 		CommandQueue StepCommands;
 		std::optional<PhysicsDebugOptions> PhysicsDebugView;
-		const IParticleVelocityField* ParticleVelocityField = nullptr;
+		const IWindField* WindField = nullptr;
+		WindState Wind;
 		std::vector<SystemEntry> Systems;
 	};
 }

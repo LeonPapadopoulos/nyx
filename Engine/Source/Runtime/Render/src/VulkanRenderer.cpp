@@ -25,7 +25,8 @@
 #include "DrawnWorldTime.h"
 #include "MeshInstancesComponent.h"
 #include "MeshRendererComponent.h"
-#include "ParticleVelocityField.h"
+#include "WindDebug.h"
+#include "WindField.h"
 #include "RuntimeMeshComponent.h"
 #include "Paths.h"
 #include "Profiler.h"
@@ -339,6 +340,7 @@ namespace Nyx
 				BindSceneSets(view, cmd);
 			});
 		ColorGrading.Initialize(Bindless);
+		LocalWind.Initialize(Bindless);
 		SkyAtmosphere.Initialize(Bindless);
 
 		LoadSkyboxCubemap();
@@ -415,6 +417,7 @@ namespace Nyx
 			Bloom.Release(view.Bloom);
 			AmbientOcclusion.Release(view.AmbientOcclusion);
 			ColorGrading.Release(view.ColorGrading);
+			LocalWind.Release(view.LocalWind);
 			Particles.Release(view.Particles);
 			LightShafts.Release(view.LightShafts);
 			CloudLayer.Release(view.CloudLayer);
@@ -862,6 +865,12 @@ namespace Nyx
 		return view ? &view->Shadows : nullptr;
 	}
 
+	const SceneViewLocalWind* VulkanRenderer::GetSceneViewLocalWind(uint64_t id) const
+	{
+		const SceneViewInstance* view = FindSceneView(id);
+		return view ? &view->LocalWind : nullptr;
+	}
+
 	const SceneViewBloom* VulkanRenderer::GetSceneViewBloom(uint64_t id) const
 	{
 		const SceneViewInstance* view = FindSceneView(id);
@@ -1211,7 +1220,7 @@ namespace Nyx
 		}
 	}
 
-	void VulkanRenderer::SetWorldParticleVelocityField(const Nyx::Registry* world, const Nyx::IParticleVelocityField* field)
+	void VulkanRenderer::SetWorldWindField(const Nyx::Registry* world, const Nyx::IWindField* field)
 	{
 		if (!world)
 		{
@@ -1219,11 +1228,11 @@ namespace Nyx
 		}
 		if (field)
 		{
-			WorldParticleFields[world] = field;
+			WorldWindFields[world] = field;
 		}
 		else
 		{
-			WorldParticleFields.erase(world);
+			WorldWindFields.erase(world);
 		}
 	}
 
@@ -1484,6 +1493,7 @@ namespace Nyx
 			// Used to update Render Objects here (e.g. Transform)
 			const std::optional<float> interpolation = GetWorldInterpolation(world->Registry);
 			world->Time = GetWorldTime(world->Registry);
+			ExtractWind(*world);
 			ExtractRenderObjects(*world, interpolation);
 			ExtractSurfaceDecals(*world->Registry, interpolation, DecalAssets, world->DecalMaterials, world->Decals);
 			ExtractPointLights(*world->Registry, interpolation, world->PointLights);
@@ -1647,10 +1657,51 @@ namespace Nyx
 			});
 	}
 
+	void VulkanRenderer::ExtractWind(RenderWorld& world)
+	{
+		const Nyx::Registry& registry = *world.Registry;
+		const Nyx::WindComponent* wind = Nyx::FindWorldWind(registry);
+		world.WindDebug = wind ? wind->Debug : Nyx::EWindDebug::Off;
+		world.WindSettings = wind ? *wind : Nyx::WindComponent{};
+		const double time = static_cast<double>(world.Time);
+
+		// A game's world: the wind its steps turn, at the time it is drawn at
+		bool bDriven = false;
+		registry.Each<Nyx::WindDriveComponent>(
+			[&](Nyx::Entity, const Nyx::WindDriveComponent& driven)
+			{
+				if (!bDriven && driven.Drive.bStarted)
+				{
+					bDriven = true;
+					world.Wind = Nyx::EvaluateWind(driven.Drive, time);
+				}
+			});
+		if (bDriven)
+		{
+			return;
+		}
+
+		// Else the renderer's own, turned towards its values from frame to frame; a jump back in
+		// time (another world at the same address) starts it again
+		if (!wind)
+		{
+			world.WindDrive = Nyx::WindDrive{};
+			world.Wind = Nyx::WindState{};
+			return;
+		}
+		if (world.WindDrive.bStarted && time < world.WindDrive.Start)
+		{
+			world.WindDrive = Nyx::WindDrive{};
+		}
+		Nyx::SetWindTarget(world.WindDrive, *wind, time);
+		world.Wind = Nyx::EvaluateWind(world.WindDrive, time);
+	}
+
 	void VulkanRenderer::ExtractParticles(RenderWorld& world, std::optional<float> interpolation)
 	{
-		// The world's wind and its budget, from its first environment
+		// The world's wind, and its budget from its first environment
 		ParticleAir air;
+		air.Wind = world.Wind;
 		uint32_t worldMax = DefaultWorldMaxParticles;
 		bool bFound = false;
 		world.Registry->Each<Nyx::EnvironmentComponent>([&](Nyx::Entity, const Nyx::EnvironmentComponent& environment)
@@ -1658,12 +1709,11 @@ namespace Nyx
 				if (!bFound)
 				{
 					bFound = true;
-					air.Wind = environment.Wind;
 					worldMax = static_cast<uint32_t>(std::max(environment.MaxParticles, 0));
 				}
 			});
-		const auto field = WorldParticleFields.find(world.Registry);
-		air.Field = field != WorldParticleFields.end() ? field->second : nullptr;
+		const auto field = WorldWindFields.find(world.Registry);
+		air.Field = field != WorldWindFields.end() ? field->second : nullptr;
 		UpdateParticles(*world.Registry, world.Time, interpolation, air, worldMax, world.Particles);
 		for (RenderParticleEmitter& emitter : world.Particles.Emitters)
 		{
@@ -1730,6 +1780,7 @@ namespace Nyx
 			view.Particles.Draws.clear();
 			view.Culling = {};
 			view.CullingLines = {};
+			view.WindLines = {};
 			view.Shadows.CascadeCount = 0;
 
 			// A view drawn when shown and not shown in the frame before does nothing more: its
@@ -1748,6 +1799,11 @@ namespace Nyx
 				UpdateViewportSceneGlobals(view, *world->Registry);
 				CullSceneView(view, *world);
 				PrepareSceneViewShadows(view, *world);
+				PrepareSceneViewWind(view, *world);
+			}
+			else
+			{
+				LocalWind.Release(view.LocalWind);
 			}
 
 			// Its bloom's chain and its ambient occlusion's targets, for its size; none without a
@@ -1824,6 +1880,25 @@ namespace Nyx
 		Shadows.EnsureSize(shadowMapSize);
 		UploadFrameInstances();
 		Particles.Upload(FrameParticles);
+	}
+
+	void VulkanRenderer::PrepareSceneViewWind(SceneViewInstance& view, const RenderWorld& world)
+	{
+		const glm::vec3 camera = view.SceneGlobals.CameraWorldPos;
+		if (world.WindDebug != Nyx::EWindDebug::Off)
+		{
+			WindDrawing.Clear();
+			DrawWindDebug(WindDrawing, world.Wind, camera, world.WindSettings.GroundHeight, world.Time, world.WindDebug == Nyx::EWindDebug::ArrowsAndGustFronts);
+			view.WindLines = DebugLines.Add(WindDrawing);
+		}
+
+		// Its game's local air round its camera, for the grass and trees
+		const auto field = WorldWindFields.find(world.Registry);
+		LocalWindSettings settings;
+		settings.Cells = world.WindSettings.LocalAirCells;
+		settings.Layers = world.WindSettings.LocalAirLayers;
+		settings.CellSize = world.WindSettings.LocalAirCellSize;
+		LocalWind.Prepare(view.LocalWind, field != WorldWindFields.end() ? field->second : nullptr, camera, settings, world.Time);
 	}
 
 	void VulkanRenderer::CullSceneView(SceneViewInstance& view, const RenderWorld& world)
@@ -2766,6 +2841,19 @@ namespace Nyx
 			ubo.CloudInverseSkyViewProjection = glm::inverse(ubo.SkyboxViewProj);
 		}
 
+		// Its world's wind, at its time, and its texture of local air
+		if (world)
+		{
+			ubo.Wind = world->Wind;
+		}
+		if (view.LocalWind.Slot != 0)
+		{
+			const WindFieldGrid& grid = view.LocalWind.Grid;
+			ubo.LocalWindTexture = view.LocalWind.Slot;
+			ubo.LocalWindOrigin = glm::vec4(grid.Origin, 1.0f / grid.CellSize);
+			ubo.LocalWindScale = glm::vec4(1.0f / (glm::vec3(grid.Cells) * grid.CellSize), 0.0f);
+		}
+
 		// Its light shafts, in the frames its sun gives some
 		const SceneViewLightShafts& shafts = view.LightShafts;
 		if (shafts.Settings.IsDrawn() && shafts.Extent.width > 0)
@@ -3296,6 +3384,7 @@ namespace Nyx
 			Bloom.Release(it->Bloom);
 			AmbientOcclusion.Release(it->AmbientOcclusion);
 			ColorGrading.Release(it->ColorGrading);
+			LocalWind.Release(it->LocalWind);
 			Particles.Release(it->Particles);
 			LightShafts.Release(it->LightShafts);
 			CloudLayer.Release(it->CloudLayer);
@@ -3516,7 +3605,9 @@ namespace Nyx
 		// both, as what is blended comes after all that is opaque
 		const vk::ClearColorValue clear = vk::ClearColorValue(std::array<float, 4>{ 0.2f, 0.05f, 0.35f, 1.0f });
 		const RenderWorld* world = FindShownWorld(view);
-		// 0. Its sky's tables, when what they depend on changed, for its scene pass and its light
+		// 0. Its texture of local air, if it changed, for the vertex shaders that bend in it
+		LocalWind.Record(view.LocalWind, cmd);
+		// Its sky's tables, when what they depend on changed, for its scene pass and its light
 		if (view.SkyTables.IsMade() && view.SkyTables.HasWork())
 		{
 			WritePassTimestamp(cmd, view, ETimedPass::Sky, false);
@@ -3618,6 +3709,10 @@ namespace Nyx
 		if (view.CullingDebug != ESceneViewCullingDebug::Off)
 		{
 			DebugLines.Draw(view, view.CullingLines, cmd);
+		}
+		if (view.WindLines.VertexCount > 0)
+		{
+			DebugLines.Draw(view, view.WindLines, cmd);
 		}
 		if (view.ShadowDebug != ESceneViewShadowDebug::Off)
 		{

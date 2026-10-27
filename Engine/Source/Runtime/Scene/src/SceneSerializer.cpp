@@ -178,6 +178,10 @@ namespace Nyx
 			return false;
 		}
 
+		for (const auto step : ComponentTypeRegistry::Get().GetSceneLoadSteps())
+		{
+			step(loadedWorld);
+		}
 		GiveEveryEntityAUniqueGuid(loadedWorld, warnings);
 		warnings.Log(path.string());
 

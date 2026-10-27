@@ -33,6 +33,7 @@
 #include "SceneSerializer.h"
 #include "TestSupport.h"
 #include "TransformComponent.h"
+#include "WindComponent.h"
 
 #include <glm/gtc/quaternion.hpp>
 
@@ -363,8 +364,8 @@ namespace
 	// The scene to try the ground in by hand: the default ground in its vertex colours, with a Mesh
 	// Collider, crates on the flat place and up the valley's side, the character and an orbit camera,
 	// and grass round the flat place: the built-in crossed quads scattered over the ground, swaying in
-	// the wind (Materials/GroundTest/Grass.nyxmat, an instance of VertexColorWindTwoSided)
-	// behind it. The crates and the character have the character test scene's materials.
+	// the world's wind (Materials/GroundTest/Grass.nyxmat, an instance of VertexColorWindTwoSided, and
+	// a WindComponent) behind it. The crates and the character have the character test scene's materials.
 	void WriteSampleScene()
 	{
 		const GroundComponent values;
@@ -412,6 +413,10 @@ namespace
 
 		const Entity sun = AddNamed(world, "Sun", TransformComponent{ .Position = glm::vec3(0.0f, 5.0f, 0.0f), .Rotation = glm::quat(glm::radians(glm::vec3(-50.0f, 30.0f, 0.0f))) });
 		world.Add<DirectionalLightComponent>(sun, DirectionalLightComponent{});
+
+		// The wind the grass sways in, as the world's wind blows by default
+		const Entity wind = AddNamed(world, "Wind", TransformComponent{});
+		world.Add<WindComponent>(wind, WindComponent{});
 
 		const std::filesystem::path path = Nyx::Paths::GetAssetsDir() / SampleScenePath;
 		Require(SceneSerializer::SaveToFile(world, path), "The sample scene can't be saved");
@@ -468,6 +473,7 @@ namespace
 					"The sample scene's grass should have many copies, each with its own number");
 			});
 		Require(scatters == 1, "The sample scene should have its grass");
+		Require(FindWorldWind(world) != nullptr && game.GetWind().Speed > 0.0f, "The sample scene's grass should have a wind to sway in");
 	}
 }
 

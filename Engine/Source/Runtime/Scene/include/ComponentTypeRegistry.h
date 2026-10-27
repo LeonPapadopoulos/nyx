@@ -116,6 +116,19 @@ namespace Nyx
 		template<typename T>
 		void SetOverridableValues(void (*listValues)(const T& component, std::vector<OverridableValue>& out));
 
+		// Adds a step that runs on a whole scene once every entity of it was read from a file, before
+		// it is handed over: to carry what older scenes saved into what this build saves, such as a
+		// value that moved to a component of its own on the same entity. In the order added.
+		void AddSceneLoadStep(void (*step)(Registry& world))
+		{
+			SceneLoadSteps.push_back(step);
+		}
+
+		const std::vector<void (*)(Registry& world)>& GetSceneLoadSteps() const
+		{
+			return SceneLoadSteps;
+		}
+
 		const std::vector<ComponentTypeOps>& GetAll() const
 		{
 			return Types;
@@ -142,6 +155,7 @@ namespace Nyx
 		static std::function<std::vector<InspectedValue>(const void*)> MakeDescribe(std::vector<InspectedValue> (*describe)(const T& component));
 
 		std::vector<ComponentTypeOps> Types;
+		std::vector<void (*)(Registry& world)> SceneLoadSteps;
 
 		// The metadata RegisterRuntime() makes, and its names; deques, so they never move
 		std::deque<Nyx::Reflection::TypeMetadata> OwnMetadata;

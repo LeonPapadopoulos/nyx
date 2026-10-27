@@ -3,9 +3,9 @@
 Light from points, such as a lamp or a fire, and how it gets to the pixels; particles, such as
 sparks, embers and smoke, moved on the CPU and drawn instanced; and why they work as they do. The
 settings are on `PointLightComponent` and `ParticleEmitterComponent` (`Scene`), with the world's
-wind and particle budget on `EnvironmentComponent`; the math is in
-`Engine/Source/Runtime/Render/PointLights.h` and `Particles.h`, a game's air comes in through
-`ParticleVelocityField.h` (`Scene`); the renderer's part is in `VulkanRenderer` (`ExtractPointLights()`,
+particle budget on `EnvironmentComponent` and its wind on `WindComponent` ([Wind](wind.md)); the
+math is in `Engine/Source/Runtime/Render/PointLights.h` and `Particles.h`, a game's air comes in
+through `WindField.h` (`Scene`); the renderer's part is in `VulkanRenderer` (`ExtractPointLights()`,
 `ExtractParticles()`, `CullSceneView()`, `UpdateSceneUniforms()`) and `VulkanParticles`, the
 shaders in `Engine/Shaders/Library/nyx/view.slang`, `lighting.slang` and
 `Engine/Shaders/Particle.slang`.
@@ -135,9 +135,9 @@ a fire. Its settings:
   Distance*.
 - **Budget**: *Max Particles*, and *Seed*.
 
-The world's first *Environment* has the rest, under *Particles*: *Wind*, the air's speed
-everywhere, and *Max Particles*, the most alive in the world at once, every emitter's together
-(50 000 without an environment).
+The world's first *Environment* has the rest, under *Particles*: *Max Particles*, the most alive
+in the world at once, every emitter's together (50 000 without an environment). The air that
+carries them is the world's wind (its first *Wind*, [Wind](wind.md)) and a game's air on top.
 
 ### Simulated on the CPU, for the eye alone
 
@@ -170,12 +170,17 @@ editor and the game draw the same particles from the same components.
 
 ### Carried by the air
 
-`IParticleVelocityField` (`ParticleVelocityField.h`) is the seam a game's air comes in by: its
-wind, the draught of a fire, the air a moving body pushes, whatever field it keeps. A game gives one
-to a world (`IRenderer::SetWorldParticleVelocityField()`): a game module sets it on its game world
-as it makes its systems (`GameWorld::SetParticleVelocityField()`), and Nyx's game hands it on; the renderer asks it once per emitter a
-step for the air's speed at every one of the emitter's particles, in the world, at the world's time;
-without one, the environment's *Wind* is the air everywhere. *Drag* says how much a particle
+Each particle is carried towards the air's speed where it is: the world's wind there
+(`SampleWind()` on the world's `WindState`, gusts, eddies and the height profile included,
+[Wind](wind.md)) and what a game's air adds to it. `IWindField` (`WindField.h`) is the seam a game's
+air comes in by: its own winds, the draught of a fire, the air a moving body pushes, whatever field
+it keeps, as what it adds to the world's wind. A game gives one to a world
+(`IRenderer::SetWorldWindField()`): a game module sets it on its game world as it makes its systems
+(`GameWorld::SetWindField()`), and Nyx's game hands it on; the renderer asks it once per emitter a
+step for what it adds at every one of the emitter's particles, in the world, at the world's time
+(and for the grass's texture of local air, [Wind](wind.md#a-games-local-air-for-vegetation));
+without one, the world's wind alone. Scenes saved with the environment's old *Wind*, the same
+everywhere, get it back as a steady `WindComponent` as they load. *Drag* says how much a particle
 follows the air: sparks a little, smoke a lot. One call an emitter rather than one a particle, so a
 game's field can look up its cells for many particles at once; never written to, so the field may be
 anything that can answer.
@@ -239,7 +244,7 @@ the emitter.
 test scene with a fire: flames (additive billboards, rising by their buoyancy, growing then
 shrinking, yellow to red and gone), embers (small cubes, additive, glowing above the bloom's
 threshold, thrown up and spinning, falling back slowly), smoke (alpha, lit, rising and growing,
-drifting in the environment's wind), and a warm point light at the flames. A game would carry the
+drifting in the world's steady wind), and a warm point light at the flames. A game would carry the
 smoke by its own air field and flicker the light with the flames.
 
 ## Seeing it

@@ -9,6 +9,7 @@
 #include "PhysicsConstraints.h"
 #include "PhysicsMaterials.h"
 #include "PhysicsWorld.h"
+#include "Wind.h"
 
 #include <cstdint>
 
@@ -43,6 +44,10 @@ namespace Nyx
 		const PhysicsConstraints& Constraints;
 		// The physics materials the colliders name (GetPhysicsMaterial(context, entity) below)
 		PhysicsMaterials& Materials;
+		// The world's prevailing wind as the step begins (WindComponent, turned by UpdateWorldWind()),
+		// to be asked anywhere in the step with SampleWind(Wind, position, time); calm without one.
+		// Change the wind through its WindComponent, which it turns to over its Change Time.
+		const WindState& Wind;
 	};
 
 	// The physics material of the entity's collider, the engine's without one; a game's own numbers

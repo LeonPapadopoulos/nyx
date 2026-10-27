@@ -11,7 +11,8 @@
 #include "EnvironmentComponent.h"
 #include "Log.h"
 #include "ParticleEmitterComponent.h"
-#include "ParticleVelocityField.h"
+#include "WindComponent.h"
+#include "WindField.h"
 #include "Particles.h"
 #include "SceneSerializer.h"
 #include "TestSupport.h"
@@ -200,13 +201,27 @@ namespace
 		Require(particles.Instances.size() == particles.Alive && particles.Emitters.size() == 3, "Not every particle drawn");
 	}
 
-	// A game's air: blowing along +x at 3 m/s, and counting what it is asked
-	struct EastWind : IParticleVelocityField
+	// A steady wind, the same at every height: `speed` m/s along `direction` over the ground
+	WindState SteadyWind(const glm::vec2& direction, float speed)
+	{
+		WindState wind;
+		wind.Direction = glm::normalize(direction);
+		wind.Speed = speed;
+		return wind;
+	}
+
+	// A game's air: blowing along +x at 3 m/s on top of the world's wind, and counting what it is asked
+	struct EastWind : IWindField
 	{
 		mutable size_t Asked = 0;
 		mutable float LastTime = -1.0f;
 
-		void SampleVelocities(std::span<const glm::vec3> positions, float time, std::span<glm::vec3> outVelocities) const override
+		void SampleWindGrid(const WindFieldGrid& grid, float time, std::span<glm::vec3> outVelocities) const override
+		{
+			SampleWindGridAtCentres(*this, grid, time, outVelocities);
+		}
+
+		void SampleWind(std::span<const glm::vec3> positions, float time, std::span<glm::vec3> outVelocities) const override
 		{
 			Asked += positions.size();
 			LastTime = time;
@@ -246,7 +261,7 @@ namespace
 
 		// Without drag the wind does nothing; with it, the particle takes on its speed
 		ParticleAir wind;
-		wind.Wind = glm::vec3(0.0f, 0.0f, -2.0f);
+		wind.Wind = SteadyWind(glm::vec2(0.0f, -1.0f), 2.0f);
 		Require(Near(after(emitter, 60, wind).Position, glm::vec3(0.0f)), "The wind moves a particle without drag");
 		ParticleEmitterComponent dragged = emitter;
 		dragged.Drag = 10.0f;
@@ -254,15 +269,72 @@ namespace
 		Require(Near(blown.Velocity, glm::vec3(0.0f, 0.0f, -2.0f), 0.01f), "With drag, the particle doesn't take the wind's speed");
 		Require(blown.Position.z < -3.5f, "The wind doesn't carry it away");
 
-		// A game's field takes the wind's place, asked for every particle, with the world's time
+		// A game's air adds to the wind, asked for every particle, with the world's time
 		EastWind east;
 		ParticleAir field;
-		field.Wind = glm::vec3(0.0f, 0.0f, -2.0f);
+		field.Wind = SteadyWind(glm::vec2(0.0f, -1.0f), 2.0f);
 		field.Field = &east;
 		field.Time = 12.5f;
 		const Particle carried = after(dragged, 120, field);
-		Require(Near(carried.Velocity, glm::vec3(3.0f, 0.0f, 0.0f), 0.01f) && carried.Position.x > 5.0f, "The velocity field doesn't carry the particle along it");
+		Require(Near(carried.Velocity, glm::vec3(3.0f, 0.0f, -2.0f), 0.01f) && carried.Position.x > 5.0f && carried.Position.z < -3.5f,
+			"A game's air and the wind together don't carry the particle along both");
 		Require(east.Asked >= 119 && east.LastTime == 12.5f, "The field isn't asked for each particle each step with the time");
+
+		// Alone, a game's air carries it as it blows
+		ParticleAir only;
+		only.Field = &east;
+		Require(Near(after(dragged, 120, only).Velocity, glm::vec3(3.0f, 0.0f, 0.0f), 0.01f), "A game's air alone doesn't carry the particle along it");
+
+		// A gusty wind near the ground: slower than at the reference height, as the wind's own
+		// SampleWind() says at the particle
+		WindComponent breeze;
+		breeze.DirectionDegrees = 0.0f;
+		breeze.Speed = 5.0f;
+		ParticleAir gusty;
+		gusty.Wind = MakeSteadyWind(breeze, 10.0);
+		gusty.Time = 10.0f;
+		const Particle low = after(dragged, 120, gusty);
+		const glm::vec3 there = SampleWind(gusty.Wind, low.Position, gusty.Time);
+		Require(Near(low.Velocity, there, 0.15f) && low.Velocity.x > 0.0f && low.Velocity.x < 5.0f * (1.0f + breeze.Gustiness),
+			"A particle near the ground doesn't take the wind's speed there: " + std::to_string(low.Velocity.x) + ", " + std::to_string(low.Velocity.z) + " for " +
+				std::to_string(there.x) + ", " + std::to_string(there.z));
+	}
+
+	// The wind at an emitter's particles, sampled on a lattice round them and blended, is the wind at
+	// each to within a little; particles spread far apart are sampled one by one, exactly
+	void TestTheWindAtParticles()
+	{
+		WindComponent gusty;
+		gusty.Speed = 9.0f;
+		gusty.Turbulence = 0.4f;
+		const WindState wind = MakeSteadyWind(gusty, 33.0);
+		std::vector<glm::vec3> cluster;
+		uint32_t random = 7u;
+		const auto next = [&](float low, float high)
+		{
+			random = random * 1664525u + 1013904223u;
+			return low + (high - low) * static_cast<float>(random >> 8) / 16777216.0f;
+		};
+		for (int index = 0; index < 2000; ++index)
+		{
+			cluster.emplace_back(next(-2.0f, 2.0f), next(0.0f, 8.0f), next(-2.0f, 2.0f));
+		}
+		std::vector<glm::vec3> blended(cluster.size(), glm::vec3(0.0f));
+		AddParticleWind(wind, cluster, 33.0f, blended);
+		float worst = 0.0f;
+		for (size_t index = 0; index < cluster.size(); ++index)
+		{
+			worst = std::max(worst, glm::length(blended[index] - SampleWind(wind, cluster[index], 33.0f)));
+		}
+		Require(worst < 0.35f, "The wind blended at an emitter's particles is far from the wind at each: " + std::to_string(worst) + " m/s");
+
+		const std::vector<glm::vec3> spread = { glm::vec3(0.0f), glm::vec3(300.0f, 2.0f, -400.0f), glm::vec3(-90.0f, 40.0f, 15.0f) };
+		std::vector<glm::vec3> each(spread.size(), glm::vec3(1.0f));
+		AddParticleWind(wind, spread, 33.0f, each);
+		for (size_t index = 0; index < spread.size(); ++index)
+		{
+			Require(each[index] == glm::vec3(1.0f) + SampleWind(wind, spread[index], 33.0f), "Particles spread far apart don't get the wind at each, added");
+		}
 	}
 
 	void TestLocalSpace()
@@ -415,10 +487,17 @@ namespace
 			"The keys didn't load as saved");
 		Require(read->Shape == EParticleShape::Mesh && read->Blend == EParticleBlend::Alpha && read->bLocalSpace && read->bLit && read->Mesh.Path == "Meshes/Sphere.nyxmesh",
 			"The emitter's look didn't load as saved");
+		// A scene saved before the world had a wind of its own: its environment's wind is moved into
+		// one, steady and the same at every height, as fast and the same way
 		loaded.Each<EnvironmentComponent>([&](Entity, const EnvironmentComponent& component)
 			{
-				Require(component.Wind == environment.Wind && component.MaxParticles == 777, "The wind and the world's budget didn't load as saved");
+				Require(component.Wind == glm::vec3(0.0f) && component.MaxParticles == 777, "The world's budget didn't load as saved, or the old wind stayed");
 			});
+		const WindComponent* moved = FindWorldWind(loaded);
+		Require(moved != nullptr, "An old scene's environment wind didn't become the world's wind");
+		const glm::vec3 blows = SampleWind(MakeSteadyWind(*moved, 3.0), glm::vec3(5.0f, 40.0f, -7.0f), 3.0f);
+		Require(Near(blows, glm::vec3(1.0f, 0.0f, -2.0f), 1e-4f) && moved->Gustiness == 0.0f && moved->Turbulence == 0.0f,
+			"An old scene's wind doesn't blow steadily as it did: " + std::to_string(blows.x) + ", " + std::to_string(blows.z));
 	}
 }
 
@@ -433,6 +512,7 @@ int main()
 		TestBursts();
 		TestBudgets();
 		TestForcesAndAir();
+		TestTheWindAtParticles();
 		TestLocalSpace();
 		TestKeys();
 		TestBackToFront();

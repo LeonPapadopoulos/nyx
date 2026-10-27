@@ -26,7 +26,8 @@
 #include "MeshRendererComponent.h"
 #include "NameComponent.h"
 #include "ParticleEmitterComponent.h"
-#include "ParticleVelocityField.h"
+#include "WindComponent.h"
+#include "WindField.h"
 #include "Particles.h"
 #include "Paths.h"
 #include "PointLightComponent.h"
@@ -208,7 +209,7 @@ namespace
 		IEditorRenderer& renderer = gpu.Renderer;
 		renderer.DestroySceneView(view);
 		renderer.SetWorldInterpolation(&scene.World, nullptr);
-		renderer.SetWorldParticleVelocityField(&scene.World, nullptr);
+		renderer.SetWorldWindField(&scene.World, nullptr);
 		renderer.SetWorld(nullptr);
 		gpu.DrawFrames(1);
 	}
@@ -321,16 +322,35 @@ namespace
 	}
 
 	// Paused, still; stepped, moved on; carried by a game's velocity field; culled out of view
-	struct Updraft : IParticleVelocityField
+	struct Updraft : IWindField
 	{
-		void SampleVelocities(std::span<const glm::vec3>, float, std::span<glm::vec3> outVelocities) const override
+		void SampleWind(std::span<const glm::vec3>, float, std::span<glm::vec3> outVelocities) const override
 		{
 			for (glm::vec3& velocity : outVelocities)
 			{
 				velocity = glm::vec3(4.0f, 0.0f, 0.0f);
 			}
 		}
+
+		void SampleWindGrid(const WindFieldGrid& grid, float time, std::span<glm::vec3> outVelocities) const override
+		{
+			SampleWindGridAtCentres(*this, grid, time, outVelocities);
+		}
 	};
+
+	// A steady wind the same at every height, as an environment's wind was before the world had one
+	// of its own: `air` m/s over the ground
+	WindComponent SteadyWind(const glm::vec3& air)
+	{
+		WindComponent wind;
+		wind.DirectionDegrees = glm::degrees(std::atan2(-air.z, air.x));
+		wind.Speed = std::sqrt(air.x * air.x + air.z * air.z);
+		wind.Gustiness = 0.0f;
+		wind.Turbulence = 0.0f;
+		wind.GroundFactor = 1.0f;
+		wind.Aloft = 0.0f;
+		return wind;
+	}
 
 	void TestClockFieldAndCulling(SceneRenderer& gpu)
 	{
@@ -358,7 +378,7 @@ namespace
 
 		// Carried along +x by a game's air
 		Updraft updraft;
-		gpu.Renderer.SetWorldParticleVelocityField(&scene.World, &updraft);
+		gpu.Renderer.SetWorldWindField(&scene.World, &updraft);
 		const RgbaImage carried = Draw(gpu, scene, view, 60);
 		SaveIfAsked(carried, "Carried");
 		const auto brightnessOnSide = [&](const RgbaImage& image, bool bRight)
@@ -378,7 +398,7 @@ namespace
 			return sum;
 		};
 		Require(brightnessOnSide(carried, true) > brightnessOnSide(carried, false) * 4, "The velocity field doesn't carry the particles along +x");
-		gpu.Renderer.SetWorldParticleVelocityField(&scene.World, nullptr);
+		gpu.Renderer.SetWorldWindField(&scene.World, nullptr);
 
 		// Out of view: culled, the picture without it
 		scene.World.Get<TransformComponent>(emitter).Position = glm::vec3(0.0f, 0.0f, 30.0f);
@@ -426,8 +446,8 @@ namespace
 		environment.bFog = false;
 		environment.SkyMode = ESkyMode::CubeMap;
 		environment.bAmbientOcclusion = false;
-		environment.Wind = glm::vec3(0.8f, 0.0f, 0.0f);
 		scene.World.Add<EnvironmentComponent>(air, environment);
+		scene.World.Add<WindComponent>(air, SteadyWind(glm::vec3(0.8f, 0.0f, 0.0f)));
 		const Entity lamp = scene.World.CreateEntity();
 		scene.World.Add<TransformComponent>(lamp, Placed(glm::vec3(0.0f, -1.0f, -3.0f)));
 		scene.World.Add<PointLightComponent>(lamp, PointLightComponent{ .Color = glm::vec3(1.0f, 0.6f, 0.3f), .Intensity = 2.0f, .Range = 5.0f });
@@ -499,7 +519,7 @@ namespace
 	}
 
 	// The lights test scene with a fire in front of the camera: flames rising and shrinking, embers
-	// (small glowing cubes) thrown up, smoke rising and drifting in the environment's wind, lit by the
+	// (small glowing cubes) thrown up, smoke rising and drifting in the world's steady wind, lit by the
 	// fire's light
 	void WriteScene()
 	{
@@ -507,10 +527,13 @@ namespace
 		Registry world;
 		ScenePostLoadContext context{};
 		Require(SceneSerializer::LoadFromFile(assets / "Scenes/LightsTest.nyxscene", world, context), "The lights test scene can't be loaded");
-		world.Each<EnvironmentComponent>([&](Entity, EnvironmentComponent& environment)
-			{
-				environment.Wind = glm::vec3(0.8f, 0.0f, -0.4f);
-			});
+		std::vector<Entity> environments;
+		world.Each<EnvironmentComponent>([&](Entity entity, EnvironmentComponent&) { environments.push_back(entity); });
+		for (const Entity entity : environments)
+		{
+			world.Remove<WindComponent>(entity);
+			world.Add<WindComponent>(entity, SteadyWind(glm::vec3(0.8f, 0.0f, -0.4f)));
+		}
 
 		const glm::vec3 fire(2.5f, 0.35f, 1.5f);
 		uint64_t guid = 0xA7305F1AEull;

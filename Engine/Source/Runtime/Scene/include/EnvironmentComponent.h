@@ -8,6 +8,8 @@
 
 namespace Nyx
 {
+	class Registry;
+
 	// How many samples ambient occlusion takes a pixel: more are smoother and cost more
 	NYX_ENUM()
 	enum class EAmbientOcclusionQuality : uint8_t
@@ -37,9 +39,9 @@ namespace Nyx
 	// by the air's scattering from the sun's place (or its cube map tinted by the sun's colour),
 	// dimmer as the sun goes down, its light warmer and weaker the lower the sun is; bloom, the light of what is brightest spread round it; and
 	// ambient occlusion, the sky's light kept out of creases, corners and the feet of things; light
-	// shafts, the sun streaming through gaps in what stands before it; and for particles, the wind that carries them and how many the world has at most. The world's
-	// first such component counts; without one, nothing of this is drawn, no wind blows and the
-	// world has up to 50 000 particles.
+	// shafts, the sun streaming through gaps in what stands before it; and for particles, how many the world has at most (the wind that carries them is the world's
+	// WindComponent). The world's first such component counts; without one, nothing of this is drawn
+	// and the world has up to 50 000 particles.
 	NYX_REFLECT(Component, meta = (DisplayName = "Environment"))
 	struct EnvironmentComponent
 	{
@@ -212,7 +214,11 @@ namespace Nyx
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Light Shafts", DisplayName = "Tint", UI = Color, Tooltip = "Multiplies the shafts' colour, which is the sun's as it reaches the camera: white keeps the sun's"))
 		glm::vec3 LightShaftsTint{ 1.0f, 1.0f, 1.0f };
 
-		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Particles", DragSpeed = 0.05, Tooltip = "The air's speed everywhere, in metres a second, which carries particles by their drag; a game's air field takes its place"))
+		// The air's speed everywhere for particles, as scenes saved before the world had a wind of its
+		// own (WindComponent) have it. Read from those scenes and moved into a steady WindComponent on
+		// this entity as they load (MoveLegacyEnvironmentWind()), then 0; not shown, and nothing
+		// reads it after
+		NYX_PROPERTY(Serialize, Hidden)
 		glm::vec3 Wind{ 0.0f, 0.0f, 0.0f };
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Particles", DisplayName = "Max Particles", Tooltip = "The most particles alive in the world at once, every emitter's together; no more are born until some die"))
@@ -223,6 +229,12 @@ namespace Nyx
 	// sky's cube map as it is (ESkyMode::CubeMap), whatever the mode said, as it looked; on, the
 	// mode as it is. Then Follow Sun is on. The component's post-load step.
 	void FoldLegacySkyMode(EnvironmentComponent& environment);
+
+	// A scene's Wind, saved before the world had a wind of its own, moved into a WindComponent on the
+	// first environment's entity that has one, steady and as fast at every height, as it carried
+	// particles (its up and down is dropped, with a warning), unless the world has a wind already;
+	// then every environment's Wind is 0. Run on a whole scene as it loads.
+	void MoveLegacyEnvironmentWind(Registry& world);
 }
 
 #include "Generated/Runtime/EnvironmentComponent.reflect.h"

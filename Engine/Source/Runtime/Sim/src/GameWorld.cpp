@@ -4,6 +4,7 @@
 #include "Assertions.h"
 #include "CharacterCommands.h"
 #include "Profiler.h"
+#include "WindComponent.h"
 
 #include <algorithm>
 
@@ -30,8 +31,9 @@ namespace Nyx
 		Constraints.SyncBeforeStep(World, Physics, Bodies, Guids);
 		ApplyMoveCharacterCommands(World, Guids, StepCommands);
 		TimeOfDay.Step(World, step);
+		Wind = UpdateWorldWind(World, step.WorldTimeSeconds);
 
-		const SimContext context{ World, step, Debug, Physics, Bodies, Guids, StepCommands, Constraints, Materials };
+		const SimContext context{ World, step, Debug, Physics, Bodies, Guids, StepCommands, Constraints, Materials, Wind };
 		RunStage(ESimStage::BeforePhysics, context);
 
 		// Where the systems said they want to go, before the bodies move: they meet the characters

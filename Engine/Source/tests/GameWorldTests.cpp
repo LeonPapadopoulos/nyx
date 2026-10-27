@@ -5,7 +5,7 @@
 #include "GameWorld.h"
 #include "GuidComponent.h"
 #include "NameComponent.h"
-#include "ParticleVelocityField.h"
+#include "WindField.h"
 #include "TestSupport.h"
 
 #include <glm/glm.hpp>
@@ -387,12 +387,17 @@ namespace
 	}
 
 	// The same air everywhere, as a game's would be somewhere
-	class SteadyAir final : public Nyx::IParticleVelocityField
+	class SteadyAir final : public Nyx::IWindField
 	{
 	public:
-		void SampleVelocities(std::span<const glm::vec3> /*positions*/, float /*time*/, std::span<glm::vec3> outVelocities) const override
+		void SampleWind(std::span<const glm::vec3> /*positions*/, float /*time*/, std::span<glm::vec3> outVelocities) const override
 		{
 			std::fill(outVelocities.begin(), outVelocities.end(), glm::vec3(1.0f, 0.0f, 0.0f));
+		}
+
+		void SampleWindGrid(const Nyx::WindFieldGrid& grid, float time, std::span<glm::vec3> outVelocities) const override
+		{
+			Nyx::SampleWindGridAtCentres(*this, grid, time, outVelocities);
 		}
 	};
 
@@ -400,13 +405,13 @@ namespace
 	void TestTheWorldKeepsItsParticlesAir()
 	{
 		GameWorld world;
-		Require(world.GetParticleVelocityField() == nullptr, "A world should have no air for its particles until its game gives it one");
+		Require(world.GetWindField() == nullptr, "A world should have no air of its game's until its game gives it one");
 		const SteadyAir air;
-		world.SetParticleVelocityField(&air);
+		world.SetWindField(&air);
 		world.Step(MakeStep(0));
-		Require(world.GetParticleVelocityField() == &air, "A world should keep the air its game gave its particles");
-		world.SetParticleVelocityField(nullptr);
-		Require(world.GetParticleVelocityField() == nullptr, "A world given no air should have none");
+		Require(world.GetWindField() == &air, "A world should keep the air its game gave it");
+		world.SetWindField(nullptr);
+		Require(world.GetWindField() == nullptr, "A world given no air should have none");
 	}
 }
 

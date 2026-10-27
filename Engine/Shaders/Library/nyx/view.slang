@@ -2,6 +2,7 @@
 // declare its first fields as SceneUBO too. Its second binding is the view's point lights.
 
 import nyx.bindless;
+import nyx.wind;
 
 public struct ViewConstants
 {
@@ -214,6 +215,17 @@ public struct ViewConstants
     public float4 VolumetricCloudSun;
     public float4 VolumetricCloudMotion;
     public float4x4 VolumetricCloudPreviousSkyViewProjection;
+
+    // The world's wind (nyx.wind; Wind.h), at Time: calm without one. Its texture of a game's local
+    // air round the camera (VulkanLocalWind; nyx.worldwind reads both): 0 without one; the corner of
+    // its first cell and 1 / a cell's size (w); 1 / its size in metres along each axis.
+    public WindState Wind;
+    public nyx::Volume LocalWind;
+    public uint LocalWindPadding0;
+    public uint LocalWindPadding1;
+    public uint LocalWindPadding2;
+    public float4 LocalWindOrigin;
+    public float4 LocalWindScale;
 }
 [vk::binding(0, 1)] public ConstantBuffer<ViewConstants> View;
 

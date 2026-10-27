@@ -17,15 +17,22 @@
 // and 64 point lights in view, each reaching 6 m. The particles mode draws it with 10 emitters of
 // 2 000 particles each, half additive, half alpha blended, lit and sorted.
 //
+// The wind mode draws the ground test scene (Assets/Scenes/GroundTest.nyxscene: its grass, crossed
+// quads in Materials/GroundTest/Grass.nyxmat, swaying by Nyx's VertexColorWind) from above its
+// grass, still (no wind), in the world's default wind, and in it with a game's local air over all of
+// it that changes every frame (its texture filled and copied each frame); then the particles mode's
+// 10 emitters, still and in the default wind.
+//
 // The msaa mode measures multisample anti-aliasing (IRenderer::SetMsaaSamples()) at 1, 4 and 8
 // samples a pixel: the instanced field on its ground under a sun casting its shadows, with the
 // world's air (the environment's defaults: fog, the sky, bloom, ambient occlusion), the atmosphere
 // test scene as saved, then the lights and particles modes; and the memory of a 1920 x 1080 view's
 // targets at each count. The other modes draw with one sample, as before anti-aliasing.
 //
-// NyxInstancingBenchmark [plain|instanced|ground|lights|particles|msaa] [frames] [material]: one mode, or all; the field
+// NyxInstancingBenchmark [plain|instanced|ground|lights|particles|wind|msaa] [frames] [material]: one mode, or all; the field
 // drawn with another material than Materials/Untextured.nyxmat, e.g. one with a vertex function
-// (Materials/VertexColorWind.nyxmat), to measure what it costs.
+// (Materials/VertexColorWind.nyxmat), to measure what it costs; a swaying one is measured again in
+// the world's default wind.
 #include "AssetResolver.h"
 #include "CameraComponent.h"
 #include "ComponentRegistration.h"
@@ -41,6 +48,9 @@
 #include "SceneSerializer.h"
 #include "TransformComponent.h"
 #include "VulkanRenderer.h"
+#include "WindComponent.h"
+#include "WindField.h"
+#include "Particles.h"
 #include "RenderTestSupport.h"
 
 #if __has_include("MeshInstancesComponent.h")
@@ -444,6 +454,166 @@ namespace
 		gpu.DrawFrames(2);
 	}
 
+	// A game's local air everywhere, changing every frame: a swirl round the origin as strong as the
+	// time is, written into every cell asked for
+	struct Swirl final : IWindField
+	{
+		void SampleWind(std::span<const glm::vec3> positions, float time, std::span<glm::vec3> outVelocities) const override
+		{
+			for (size_t index = 0; index < positions.size(); ++index)
+			{
+				const glm::vec3& p = positions[index];
+				outVelocities[index] = glm::vec3(-p.z, 0.5f, p.x) * (0.1f + 0.05f * std::sin(time * 3.0f));
+			}
+		}
+
+		void SampleWindGrid(const WindFieldGrid& grid, float time, std::span<glm::vec3> outVelocities) const override
+		{
+			SampleWindGridAtCentres(*this, grid, time, outVelocities);
+		}
+	};
+
+	// The ground test scene's grass still, in the world's wind and with a game's local air; the
+	// particles mode's emitters still and in the wind
+	void RunWind(SceneRenderer& gpu, int frames)
+	{
+		// The contract alone: a million points of the default wind, steady and while it fades
+		{
+			std::vector<glm::vec3> points(1000000);
+			for (size_t index = 0; index < points.size(); ++index)
+			{
+				points[index] = glm::vec3(static_cast<float>(index % 1000) * 0.13f, static_cast<float>(index % 7) * 0.5f, static_cast<float>(index / 1000) * 0.11f);
+			}
+			std::vector<glm::vec3> velocities(points.size());
+			WindDrive drive;
+			SetWindTarget(drive, WindComponent{}, 0.0);
+			WindComponent turned;
+			turned.DirectionDegrees = 80.0f;
+			const WindState steady = EvaluateWind(drive, 10.0);
+			SetWindTarget(drive, turned, 10.0);
+			const WindState fading = EvaluateWind(drive, 12.0);
+			for (const auto& [name, wind] : { std::pair<const char*, WindState>{ "steady", steady }, std::pair<const char*, WindState>{ "fading", fading } })
+			{
+				std::fill(velocities.begin(), velocities.end(), glm::vec3(0.0f));
+				const auto start = std::chrono::steady_clock::now();
+				AddWind(wind, points, wind.Time, velocities);
+				const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+				std::printf("wind: AddWind() over a million points, %s: %.2f ms, %.1f ns a point (%.3f)\n", name, ms, ms * 1e6 / static_cast<double>(points.size()), velocities[12345].x);
+			}
+		}
+
+		Registry world;
+		AssetResolver resolver(gpu.Renderer);
+		ScenePostLoadContext context{};
+		context.AssetResolver = &resolver;
+		const std::filesystem::path path = Paths::GetAssetsDir() / "Scenes/GroundTest.nyxscene";
+		if (!SceneSerializer::LoadFromFile(path, world, context))
+		{
+			std::cout << "wind: " << path.string() << " can't be loaded\n";
+			return;
+		}
+		UpdateScatters(world);
+		size_t blades = 0;
+		world.Each<MeshInstancesComponent>([&](Entity, const MeshInstancesComponent& instances)
+			{
+				blades += instances.Instances ? instances.Instances->Transforms.size() : 0;
+			});
+		std::vector<Entity> winds;
+		world.Each<WindComponent>([&](Entity entity, const WindComponent&) { winds.push_back(entity); });
+		for (const Entity entity : winds)
+		{
+			world.Remove<WindComponent>(entity);
+		}
+		const Entity air = world.CreateEntity();
+		world.Each<CameraComponent>([&](Entity entity, CameraComponent&)
+			{
+				world.Get<TransformComponent>(entity) = TransformComponent{ .Position = glm::vec3(0.0f, 6.0f, 14.0f),
+					.Rotation = glm::quat(glm::radians(glm::vec3(-28.0f, 0.0f, 0.0f))),
+					.Scale = glm::vec3(1.0f) };
+			});
+
+		IEditorRenderer& renderer = gpu.Renderer;
+		renderer.SetWorld(&world);
+		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewCameraMode(view, EViewportCameraMode::ScenePrimaryCamera);
+		renderer.SetSceneViewSize(view, ViewWidth, ViewHeight);
+		gpu.DrawUntilShadersCompiled();
+		std::cout << "wind: the ground test scene, " << blades << " blades of grass, from above them\n";
+		std::cout << "  still:\n";
+		PrintTiming("camera", Measure(gpu, frames));
+		world.Add<WindComponent>(air, WindComponent{});
+		std::cout << "  in the default wind:\n";
+		PrintTiming("camera", Measure(gpu, frames));
+		Swirl swirl;
+		renderer.SetWorldWindField(&world, &swirl);
+		std::cout << "  in the default wind, with a game's local air changing every frame:\n";
+		PrintTiming("camera", Measure(gpu, frames));
+		renderer.SetWorldWindField(&world, nullptr);
+
+		// The particles mode's emitters, still and in the wind
+		world.Remove<WindComponent>(air);
+		for (int index = 0; index < 10; ++index)
+		{
+			const bool bSmoke = index % 2 == 1;
+			ParticleEmitterComponent emitter;
+			emitter.MaxParticles = 2000;
+			emitter.Lifetime = glm::vec2(1.5f, 2.5f);
+			emitter.Rate = 1500.0f;
+			emitter.SpawnRadius = 0.3f;
+			emitter.ConeAngle = 35.0f;
+			emitter.Speed = bSmoke ? glm::vec2(0.3f, 0.6f) : glm::vec2(1.5f, 3.0f);
+			emitter.Gravity = bSmoke ? 0.0f : 3.0f;
+			emitter.Buoyancy = bSmoke ? 0.5f : 0.0f;
+			emitter.Drag = 0.5f;
+			emitter.Size = bSmoke ? glm::vec2(0.3f, 0.5f) : glm::vec2(0.05f, 0.08f);
+			emitter.Blend = bSmoke ? EParticleBlend::Alpha : EParticleBlend::Additive;
+			emitter.Seed = index + 1;
+			const Entity entity = world.CreateEntity();
+			world.Add<TransformComponent>(entity, TransformComponent{ .Position = glm::vec3(-9.0f + index * 2.0f, 0.5f, 2.0f - (index % 3) * 3.0f) });
+			world.Add<ParticleEmitterComponent>(entity, emitter);
+		}
+		// Their CPU step alone (UpdateParticles()), as the renderer runs it, still and in the wind
+		for (const bool bWind : { false, true })
+		{
+			RenderParticles particles;
+			ParticleAir particleAir;
+			particleAir.Wind = bWind ? MakeSteadyWind(WindComponent{}, 0.0) : WindState{};
+			for (int frame = 0; frame < 300; ++frame)
+			{
+				UpdateParticles(world, static_cast<float>(frame) / 60.0f, std::nullopt, particleAir, 50000, particles);
+			}
+			std::vector<double> steps;
+			for (int frame = 300; frame < 300 + frames; ++frame)
+			{
+				const auto start = std::chrono::steady_clock::now();
+				UpdateParticles(world, static_cast<float>(frame) / 60.0f, std::nullopt, particleAir, 50000, particles);
+				steps.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
+			}
+			std::printf("  UpdateParticles() of 10 emitters, %u alive, %s: %.3f ms\n", particles.Alive, bWind ? "in the default wind" : "still", Median(steps));
+		}
+
+		gpu.DrawFrames(300);
+		std::cout << "  10 emitters of 2 000 particles, still:\n";
+		PrintTiming("camera", Measure(gpu, frames));
+		WindComponent steady;
+		steady.Gustiness = 0.0f;
+		steady.Turbulence = 0.0f;
+		steady.GroundFactor = 1.0f;
+		steady.Aloft = 0.0f;
+		world.Add<WindComponent>(air, steady);
+		gpu.DrawFrames(300);
+		std::cout << "  10 emitters of 2 000 particles, in a steady wind the same everywhere (as the environment's was):\n";
+		PrintTiming("camera", Measure(gpu, frames));
+		world.Get<WindComponent>(air) = WindComponent{};
+		gpu.DrawFrames(300);
+		std::cout << "  10 emitters of 2 000 particles, in the default wind:\n";
+		PrintTiming("camera", Measure(gpu, frames));
+
+		renderer.DestroySceneView(view);
+		renderer.SetWorld(nullptr);
+		gpu.DrawFrames(2);
+	}
+
 	// Anti-aliasing at 1, 4 and 8 samples a pixel: the field on its ground with its shadows and air,
 	// the atmosphere test scene, with lights and with particles, a 1920 x 1080 view's targets
 	void RunMsaa(SceneRenderer& gpu, int frames, const std::string& materialPath)
@@ -583,6 +753,22 @@ namespace
 			PrintTiming(shot.Name, Measure(gpu, frames));
 		}
 
+		// A swaying material again in the world's default wind: what reading it costs at every vertex
+		if (materialPath.find("Wind") != std::string::npos)
+		{
+			const Entity air = world.CreateEntity();
+			world.Add<WindComponent>(air, WindComponent{});
+			std::cout << "  in the world's default wind:\n";
+			for (const Shot& shot : shots)
+			{
+				TransformComponent& transform = world.Get<TransformComponent>(camera);
+				transform.Position = shot.Position;
+				transform.Rotation = shot.Rotation;
+				PrintTiming(shot.Name, Measure(gpu, frames));
+			}
+			world.DestroyEntity(air);
+		}
+
 		// On the ground, under the sun, without and with its shadows
 		if (mode != "plain")
 		{
@@ -648,7 +834,7 @@ int main(int argc, char** argv)
 		SceneRenderer gpu("NyxInstancingBenchmark");
 		gpu.Renderer.SetVSync(false);
 		Nyx::RegisterComponentTypes();
-		for (const char* mode : { "plain", "instanced", "ground", "lights", "particles", "msaa" })
+		for (const char* mode : { "plain", "instanced", "ground", "lights", "particles", "wind", "msaa" })
 		{
 			if (!only.empty() && only != mode)
 			{
@@ -672,6 +858,11 @@ int main(int argc, char** argv)
 			if (std::string(mode) == "particles")
 			{
 				RunParticles(gpu, frames);
+				continue;
+			}
+			if (std::string(mode) == "wind")
+			{
+				RunWind(gpu, frames);
 				continue;
 			}
 #if !NYX_BENCHMARK_INSTANCING

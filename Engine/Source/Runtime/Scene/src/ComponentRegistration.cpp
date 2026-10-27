@@ -10,8 +10,11 @@
 #include "ScatterInstances.h"
 #include "SurfaceDecalComponent.h"
 #include "VolumetricCloudsComponent.h"
+#include "WindComponent.h"
 
 #include "Generated/Runtime/Runtime.reflect.init.h"
+
+#include <format>
 
 namespace Nyx
 {
@@ -76,6 +79,18 @@ namespace Nyx
 				: nullptr;
 		}
 
+		// The world's wind as it runs: how fast and which way it blows now, and whether it is turning
+		std::vector<InspectedValue> DescribeWindDrive(const WindDriveComponent& component)
+		{
+			const WindDrive& drive = component.Drive;
+			const double end = drive.Start + drive.Seconds;
+			return {
+				{ "Turning From", std::format("{:.2f} m/s at {:.1f} degrees", drive.From.bBlowing ? drive.From.Speed : 0.0f, drive.From.DirectionDegrees) },
+				{ "Turning To", std::format("{:.2f} m/s at {:.1f} degrees", drive.To.bBlowing ? drive.To.Speed : 0.0f, drive.To.DirectionDegrees) },
+				{ "Over", std::format("{:.1f} s to {:.1f} s of the world's time", drive.Start, end) },
+			};
+		}
+
 		// A preset chosen for the volumetric clouds sets their values, once
 		void ApplyVolumetricCloudsPresetAfterLoad(VolumetricCloudsComponent& component, ScenePostLoadContext&)
 		{
@@ -101,5 +116,10 @@ namespace Nyx
 		// Made while the world runs and never saved; the editor shows what they are
 		ComponentTypeRegistry::Get().RegisterRuntime<RuntimeMeshComponent>("Nyx::RuntimeMeshComponent", "Mesh Made at Run Time", &DescribeRuntimeMesh);
 		ComponentTypeRegistry::Get().RegisterRuntime<MeshInstancesComponent>("Nyx::MeshInstancesComponent", "Mesh Instances", &DescribeMeshInstances);
+		ComponentTypeRegistry::Get().RegisterRuntime<WindDriveComponent>("Nyx::WindDriveComponent", "Wind Drive", &DescribeWindDrive);
+
+		// Scenes saved before the world had a wind of its own: the environment's, for particles, moved
+		// into one
+		ComponentTypeRegistry::Get().AddSceneLoadStep(&MoveLegacyEnvironmentWind);
 	}
 }

@@ -1,7 +1,7 @@
 #include "NyxPCH.h"
 #include "Particles.h"
 
-#include "ParticleVelocityField.h"
+#include "WindField.h"
 #include "PreviousTransformComponent.h"
 #include "TransformComponent.h"
 
@@ -98,6 +98,59 @@ namespace Nyx
 		return space;
 	}
 
+	void AddParticleWind(const WindState& wind, std::span<const glm::vec3> positions, float time, std::span<glm::vec3> airSpeeds)
+	{
+		if (!(wind.Speed > 0.0f) || positions.empty())
+		{
+			return;
+		}
+		glm::vec3 low = positions.front();
+		glm::vec3 high = positions.front();
+		for (const glm::vec3& position : positions)
+		{
+			low = glm::min(low, position);
+			high = glm::max(high, position);
+		}
+		// A quarter of the smallest eddy the wind has
+		const float eddies = std::max(wind.To.EddiesPerMetre, wind.PatternBlend < 1.0f ? wind.From.EddiesPerMetre : 0.0f);
+		const float cell = std::clamp(eddies > 0.0f ? 0.25f / eddies : ParticleWindCell, 0.05f, ParticleWindCell);
+		const glm::ivec3 cells = glm::ivec3(glm::floor((high - low) / cell)) + 2;
+		const size_t corners = static_cast<size_t>(cells.x) * static_cast<size_t>(cells.y) * static_cast<size_t>(cells.z);
+		if (corners * 2 > positions.size())
+		{
+			AddWind(wind, positions, time, airSpeeds);
+			return;
+		}
+
+		std::vector<glm::vec3> points;
+		points.reserve(corners);
+		for (int32_t z = 0; z < cells.z; ++z)
+		{
+			for (int32_t y = 0; y < cells.y; ++y)
+			{
+				for (int32_t x = 0; x < cells.x; ++x)
+				{
+					points.push_back(low + glm::vec3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z)) * cell);
+				}
+			}
+		}
+		std::vector<glm::vec3> lattice(points.size(), glm::vec3(0.0f));
+		AddWind(wind, points, time, lattice);
+
+		const auto at = [&](int32_t x, int32_t y, int32_t z) -> const glm::vec3& { return lattice[static_cast<size_t>(x + cells.x * (y + cells.y * z))]; };
+		for (size_t index = 0; index < positions.size(); ++index)
+		{
+			const glm::vec3 q = (positions[index] - low) / cell;
+			const glm::ivec3 c = glm::clamp(glm::ivec3(q), glm::ivec3(0), cells - 2);
+			const glm::vec3 f = glm::clamp(q - glm::vec3(c), 0.0f, 1.0f);
+			const glm::vec3 x00 = glm::mix(at(c.x, c.y, c.z), at(c.x + 1, c.y, c.z), f.x);
+			const glm::vec3 x10 = glm::mix(at(c.x, c.y + 1, c.z), at(c.x + 1, c.y + 1, c.z), f.x);
+			const glm::vec3 x01 = glm::mix(at(c.x, c.y, c.z + 1), at(c.x + 1, c.y, c.z + 1), f.x);
+			const glm::vec3 x11 = glm::mix(at(c.x, c.y + 1, c.z + 1), at(c.x + 1, c.y + 1, c.z + 1), f.x);
+			airSpeeds[index] += glm::mix(glm::mix(x00, x10, f.y), glm::mix(x01, x11, f.y), f.z);
+		}
+	}
+
 	void StepParticleEmitter(ParticleEmitterState& state, const ParticleEmitterComponent& emitter, const glm::mat4& emitterToWorld, float seconds,
 		const ParticleAir& air, uint32_t& worldBudget)
 	{
@@ -111,19 +164,25 @@ namespace Nyx
 		const glm::mat4 space = emitter.bLocalSpace ? entitySpace : glm::mat4(1.0f);
 		const glm::mat3 worldToSpace = glm::transpose(glm::mat3(space));
 
-		// The air's speed at each particle, in the particles' space: the field's, or the wind
+		// The air's speed at each particle, in the particles' space: the world's wind there and what a
+		// game's air adds to it
 		const float drag = std::max(emitter.Drag, 0.0f);
 		const float pull = 1.0f - std::exp(-drag * seconds);
 		std::vector<glm::vec3> airSpeeds;
-		if (pull > 0.0f && air.Field && !state.Particles.empty())
+		const bool bWind = air.Wind.Speed > 0.0f;
+		if (pull > 0.0f && (bWind || air.Field) && !state.Particles.empty())
 		{
 			std::vector<glm::vec3> positions(state.Particles.size());
 			for (size_t index = 0; index < positions.size(); ++index)
 			{
 				positions[index] = emitter.bLocalSpace ? glm::vec3(space * glm::vec4(state.Particles[index].Position, 1.0f)) : state.Particles[index].Position;
 			}
-			airSpeeds.resize(positions.size());
-			air.Field->SampleVelocities(positions, air.Time, airSpeeds);
+			airSpeeds.assign(positions.size(), glm::vec3(0.0f));
+			if (air.Field)
+			{
+				air.Field->SampleWind(positions, air.Time, airSpeeds);
+			}
+			AddParticleWind(air.Wind, positions, air.Time, airSpeeds);
 			if (emitter.bLocalSpace)
 			{
 				for (glm::vec3& speed : airSpeeds)
@@ -132,7 +191,7 @@ namespace Nyx
 				}
 			}
 		}
-		const glm::vec3 wind = worldToSpace * air.Wind;
+		const glm::vec3 still(0.0f);
 
 		// Aged, those past their life gone; then pulled, carried towards the air's speed and moved.
 		// One pass in plain floats, which a Debug build runs many times faster than glm's operators.
@@ -148,7 +207,7 @@ namespace Nyx
 			{
 				continue;
 			}
-			const glm::vec3& airSpeed = airSpeeds.empty() ? wind : airSpeeds[index];
+			const glm::vec3& airSpeed = airSpeeds.empty() ? still : airSpeeds[index];
 			glm::vec3& velocity = particle.Velocity;
 			velocity.x += kick.x;
 			velocity.y += kick.y;

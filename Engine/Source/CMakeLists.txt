@@ -31,6 +31,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/FileWatcher.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/BinaryArchive.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/MeshData.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Core/src/Wind.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/PointCloudRecognizer.cpp
 
     # Runtime/Net
@@ -80,6 +81,8 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/VolumetricCloudsComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/DirectionalLightComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/EnvironmentComponent.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/WindComponent.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/WindField.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/TimeOfDayComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/TimeOfDay.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/PointLightComponent.cpp
@@ -152,6 +155,8 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/SurfaceDecals.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/PointLights.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Particles.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/LocalWind.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/WindDebug.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/DrawnWorldTime.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Mesh.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/RuntimeMeshCache.cpp
@@ -165,6 +170,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanBloom.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/ColorGrading.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanColorGrading.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanLocalWind.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/SkyAtmosphere.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanSkyAtmosphere.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanAmbientOcclusion.cpp
@@ -244,6 +250,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/ClockTime.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/BinaryArchive.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/MeshData.h
+    ${NYX_ENGINE_ROOT}/Runtime/Core/include/Wind.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/PointCloudRecognizer.h
     
     ${NYX_ENGINE_ROOT}/Runtime/Core/src/NyxPCH.h
@@ -297,7 +304,8 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/EnvironmentComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/PointLightComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ParticleEmitterComponent.h
-    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ParticleVelocityField.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/WindField.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/WindComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/NameComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/PhysicsComponents.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ConstraintComponent.h
@@ -375,6 +383,8 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/SurfaceDecals.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/PointLights.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Particles.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/LocalWind.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/WindDebug.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/DrawnWorldTime.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Mesh.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/RuntimeMeshCache.h
@@ -388,6 +398,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanBloom.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/ColorGrading.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanColorGrading.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanLocalWind.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/SkyAtmosphere.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanSkyAtmosphere.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanAmbientOcclusion.h

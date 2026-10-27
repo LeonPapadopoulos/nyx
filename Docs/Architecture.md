@@ -469,6 +469,12 @@ How some systems work, and why they work that way:
   each vertex and an instance's or an entity's for each draw, their sizes on the GPU, and the time;
   a material's vertex function, which moves its meshes in the scene, the shadows, picking and the
   outline alike, compiled as two more entry points of its domain; the wind as the example.
+- [Wind](Design/wind.md): one wind for a world that grass, trees, particles and a game's own air
+  read (clouds next), through a small plain-data contract (`WindState`, `SampleWind()`, the same to the bit
+  on the GPU); gust fronts travelling over the land, a height profile; driven by its values and
+  turning to new ones smoothly, the phases integrated exactly and the patterns faded; a game's
+  local air on top, in a texture round the camera for the grass; who depends on whom; what is left
+  for the weather to come.
 - [Shadows](Design/shadows.md): the primary light's cascaded shadow maps, stable as the camera
   moves, one map for every view, culled per cascade, filtering and biases, the numbers.
 - [Atmosphere](Design/atmosphere.md): the world's air on one component, height fog integrated

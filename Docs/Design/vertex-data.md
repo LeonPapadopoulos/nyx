@@ -163,14 +163,13 @@ it:
 - A vertex bends by its mesh's `Custom.x` (0 where it holds still, a blade's foot; 1 where it
   bends most, its tip), each instance with its own phase from its `InstanceCustom.x`, which a
   scatter gives every copy.
-- The wind's settings are the material's: *Direction* along the ground, *Strength* (how far a tip
-  leans at a gust's peak, in metres), *Gustiness* (how much of the lean comes and goes), *Gust
-  Frequency* and *Gust Length* (gusts cross the ground along the wind, so neighbours lean together
-  and a field ripples), *Flutter* and *Flutter Frequency* (a quick sway on top, each copy at its
-  phase). Material values rather than a wind of the world's: simple, editable live, and one wind
-  for each look; a world's wind can come later as view constants the materials read.
-- A tip moves at most *Strength* × (1 + *Flutter*), 0.162 m with the defaults; the material's Max
-  Vertex Offset is 0.17.
+- The wind is the world's ([Wind](wind.md)): `nyx::windAt()` at each instance's origin, its gust
+  fronts crossing the ground so neighbours lean together and a field ripples, and a game's local
+  air on top. The material keeps only how it answers: *Response* (0 holds still), *Strength* (how
+  far a tip leans at most, in metres), *Stiffness* (the wind that leans it about 70 % of that),
+  *Flutter* and *Flutter Frequency* (a quick sway on top, each copy at its phase), *Wind Height*.
+- A tip moves less than *Strength* × (1 + *Flutter*), 0.2025 m with the defaults; the material's
+  Max Vertex Offset is 0.21.
 - The built-in *Crossed Quads* mesh (`Meshes/CrossedQuads.nyxmesh`, `MakeCrossedQuads()`) carries
   the weights: two upright quads crossed, the usual stand-in for small plants, its weight the
   square of the height's fraction so a lean curves. `Assets/Scenes/GroundTest.nyxscene` has a
@@ -208,8 +207,6 @@ dozen a copy, costs a few hundredths of that.
 - More than four numbers a vertex, as a second attribute, when a use needs them.
 - glTF's own custom attributes (`_CUSTOM`) read into the channels on import.
 - Half precision for the colour, UV and normal too, which would take the vertex below its old size.
-- A world's wind (direction, strength, gusts) as view constants every swaying material reads,
-  beside the time.
 - Bounds measured rather than declared, e.g. the function run on the CPU over a mesh's vertices,
   or a debug view that shows a vertex past its material's Max Vertex Offset.
 - The previous frame's offset, for motion vectors, when Nyx gets temporal effects.

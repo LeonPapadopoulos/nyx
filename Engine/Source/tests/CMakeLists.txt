@@ -504,6 +504,16 @@ add_dependencies(NyxParticleTests NyxGeneratedReflection)
 set_property(TARGET NyxParticleTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxParticleTests COMMAND NyxParticleTests)
 
+# The world's wind without a GPU: the contract with hand-made states, its height profile and gust
+# fronts crossing the land, turning to new values smoothly and the same whatever the steps, a driver
+# ramping it from calm to a storm on a game world, a game's local air on a grid, the debug view, an
+# old scene's environment wind moved into a wind of its own.
+add_executable(NyxWindTests WindTests.cpp)
+target_link_libraries(NyxWindTests PRIVATE NyxEngine)
+add_dependencies(NyxWindTests NyxGeneratedReflection)
+set_property(TARGET NyxWindTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxWindTests COMMAND NyxWindTests)
+
 # The directional light's cascades without a GPU: splits, the spheres round the view's slices, the
 # light's view of them, snapped to their texels.
 add_executable(NyxShadowCascadeTests ShadowCascadeTests.cpp)
@@ -802,6 +812,18 @@ nyx_copy_shaders_next_to(NyxParticleGpuTests)
 nyx_copy_shader_compiler_next_to(NyxParticleGpuTests)
 add_test(NAME NyxParticleGpuTests COMMAND NyxParticleGpuTests)
 add_test(NAME NyxParticleGpuTestsMsaa COMMAND NyxParticleGpuTests --msaa 4)
+
+# The world's wind on a real GPU: nyx.wind gives Wind.cpp's numbers to the bit; a view's materials
+# read its world's wind (the editor's own, a game's as its drive has it) and a game's local air on
+# top, its texture copied again only when it changes; grass bends in it, and not at a Response of 0.
+add_executable(NyxWindGpuTests WindGpuTests.cpp)
+target_link_libraries(NyxWindGpuTests PRIVATE NyxEngine)
+target_compile_definitions(NyxWindGpuTests PRIVATE NYX_TEST_SHADERS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/Shaders")
+add_dependencies(NyxWindGpuTests NyxGeneratedReflection)
+set_property(TARGET NyxWindGpuTests PROPERTY FOLDER "Tests")
+nyx_copy_shaders_next_to(NyxWindGpuTests)
+nyx_copy_shader_compiler_next_to(NyxWindGpuTests)
+add_test(NAME NyxWindGpuTests COMMAND NyxWindGpuTests)
 
 # How long the renderer takes for 50 000 small meshes in 200 cells and 300 more, drawn one by one
 # and instanced; not run by ctest, timing depends on the machine. Needs a Vulkan device.

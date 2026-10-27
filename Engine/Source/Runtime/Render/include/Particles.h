@@ -3,6 +3,7 @@
 #include "Entity.h"
 #include "ParticleEmitterComponent.h"
 #include "SceneCulling.h"
+#include "Wind.h"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -16,7 +17,7 @@
 
 namespace Nyx
 {
-	class IParticleVelocityField;
+	class IWindField;
 	class Mesh;
 	class Registry;
 
@@ -52,16 +53,27 @@ namespace Nyx
 		glm::vec3 Axis{ 0.0f, 0.0f, 1.0f };
 	};
 
-	// What the air does to an emitter's particles this step
+	// What the air does to an emitter's particles this step: at each particle, the prevailing wind
+	// and what a game's air adds to it
 	struct ParticleAir
 	{
-		// Its speed everywhere, in metres a second, without a field
-		glm::vec3 Wind{ 0.0f };
-		// A game's air, asked for every particle; null: the wind
-		const IParticleVelocityField* Field = nullptr;
-		// The world's time, for the field
+		// The world's wind (calm by default)
+		WindState Wind;
+		// A game's air on top of it, asked for every particle; null: none
+		const IWindField* Field = nullptr;
+		// The world's time, for both
 		float Time = 0.0f;
 	};
+
+	// How far apart, at most, the wind is sampled round an emitter's particles (AddParticleWind())
+	inline constexpr float ParticleWindCell = 2.0f;
+
+	// The world's wind at each of `positions`, added to `airSpeeds` (as many): sampled
+	// (SampleWind()) at the corners of a lattice round them, a quarter of the wind's smallest eddy
+	// apart and at most ParticleWindCell, and blended between, so an emitter's particles, close
+	// together, take a few dozen samples rather than one each; points too far apart for that are
+	// sampled one by one
+	void AddParticleWind(const WindState& wind, std::span<const glm::vec3> positions, float time, std::span<glm::vec3> airSpeeds);
 
 	// One emitter's particles and where its randomness and its life have got to
 	struct ParticleEmitterState

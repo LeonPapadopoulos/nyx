@@ -52,6 +52,8 @@ set(NYX_SHADER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/view.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/surface.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/volumetricclouds.slang
+    ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/wind.slang
+    ${CMAKE_CURRENT_SOURCE_DIR}/Library/nyx/worldwind.slang
 )
 
 set(NYX_SHADER_BUILD_DIR "${CMAKE_BINARY_DIR}/Binaries/$<CONFIG>/Shaders")

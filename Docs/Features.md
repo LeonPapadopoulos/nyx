@@ -1043,6 +1043,39 @@ editor's scene views and in the game alike.
   picked and its range drawn in the editor's views; a reference picture; the test scene), the other
   reference pictures unchanged.
 
+## Wind
+
+One wind for the world, which grass, trees, particles and a game's own air all take
+([Design: Wind](Design/wind.md)).
+
+- A *Wind* component (the world's first counts; without one the air is still): *Blowing*,
+  *Direction*, *Speed*; *Gusts*: *Gustiness*, *Frequency*, *Spacing*, *Patch Width*; *Turbulence*
+  and *Eddy Size*; *Height*: *Ground Height*, *Near Ground*, *Reference Height*, *Aloft*, *Aloft
+  Height* (slower near the ground, faster high up); *Change Time*; *Local Air* (the texture of a
+  game's air round the camera); *Debug View*. With undo, saved in scenes, sent to a running game.
+- **Gust fronts travel over the land** along the wind, each strong in some places along it and weak
+  in others, so a squall sweeps over the ground and neighbouring plants lean together.
+- **Steerable and smooth**: its values are targets, set in the editor or by a game (a weather
+  system later); it turns to them over *Change Time* without a jump in its gusts or eddies, and the
+  same targets at the same times give the same wind whatever the frames or steps.
+- **The same on the CPU and the GPU, to the bit**: one small contract (`WindState`,
+  `SampleWind()`, `nyx::sampleWind()` in `nyx.wind`), so a game's simulation and what is drawn
+  agree; a game's systems get it each step (`SimContext::Wind`).
+- **A game's own air on top** (`IWindField`, given with `GameWorld::SetWindField()`): carries the
+  particles, and is written into a coarse texture round each view's camera that grass and trees
+  bend in (`nyx::windAt()` in `nyx.worldwind`), copied to the GPU only when it changes.
+- Swaying materials keep only how they answer: `Materials/VertexColorWind.nyxmat` has *Response*
+  (0 holds still), *Strength*, *Stiffness*, *Flutter*, *Flutter Frequency*, *Wind Height*.
+- **Debug View**: arrows round the camera along the wind, as long as it is fast and warmer in a
+  gust, and the crests of the gust fronts.
+- Scenes saved with the environment's old particle *Wind* get it as a steady wind as they load.
+- Tests: `NyxWindTests` (hand-made winds, the profile, fronts carried downwind and stronger in
+  places, long winds, turning smoothly and the same whatever the steps, a driver ramping a game
+  world's wind from calm to a storm, a game's air on a grid, the debug view, old scenes),
+  `NyxWindGpuTests` (the GPU's numbers to the bit at 4096 points of four winds; the view's wind as
+  materials read it, the editor's, a game's mid-turn, a game's local air near and away; grass bends
+  in a gale and not at a *Response* of 0).
+
 ## Particles
 
 A *Particle Emitter* gives off particles from its entity, such as sparks, embers, smoke or a fire's
@@ -1057,10 +1090,11 @@ in the editor's scene views and in the game alike.
   *Emissive Intensity* (above 1, they glow and bloom), *Lit* (by the sun, the sky and the point
   lights, as smoke by a fire), *Soft Distance* (fading where they meet the ground). *Budget*: *Max
   Particles*, *Seed*. All with undo, saved in scenes and sent to a running game.
-- The *Environment*'s *Particles*: *Wind*, the air's speed everywhere, and *Max Particles*, the most
-  in the world at once (50 000 without an environment). A game can give a world its own air, which
-  is asked where each particle is (`IParticleVelocityField`): a game module's systems keep it, and
-  Nyx's game hands it to the renderer (`GameWorld::SetParticleVelocityField()`).
+- Carried by the world's wind ([Wind](#wind)) where each particle is, gusts and eddies included,
+  and by a game's own air on top, which is asked where each particle is (`IWindField`): a game
+  module's systems keep it, and Nyx's game hands it to the renderer (`GameWorld::SetWindField()`).
+  The *Environment*'s *Particles*: *Max Particles*, the most in the world at once (50 000 without
+  an environment). Scenes saved with the environment's old *Wind* get it as a steady wind.
 - Only for the eye: nothing in the world feels them. They follow the world's time: in a game they
   stand still while it is paused and move on with Step; in the editor they play as you edit. The
   same seed plays the same particles; a new seed starts the emitter again.
@@ -1075,7 +1109,8 @@ in the editor's scene views and in the game alike.
   Release at 1280 × 720 ([Lights and particles](Design/lights-and-particles.md#numbers)).
 - Tests: `NyxParticleTests` (the same particles from the same seed, others from another; a paused
   step changing nothing; lifetimes, the rate, bursts once and again; an emitter's budget and the
-  world's; gravity, buoyancy, the drag to the wind, a velocity field; the entity's space; the keys;
+  world's; gravity, buoyancy, the drag to the wind, a game's air on top of it and alone, near the
+  ground in a gusty wind; the entity's space; the keys;
   back to front; a world's emitters started, started again and forgotten; saved and loaded),
   `NyxParticleGpuTests` (one particle against the CPU's numbers: additive, alpha, its emissive
   intensity, lit by a red light or dark without one; hidden behind a box, soft where it meets the
@@ -1166,9 +1201,10 @@ A game can hand its materials numbers of its own, for a sway, a growth, a tint f
   (under *Material* in the material editor) says how far it moves a vertex at most, and what is
   culled is judged by bounds that much larger.
 - **Wind**: `Materials/VertexColorWind.nyxmat` (and `VertexColorWindTwoSided.nyxmat` for single
-  sheets) draws vertex colours that sway: each vertex as far as its custom x says (0 at a foot, 1
-  at a tip), each copy at its own phase, gusts crossing the ground along the wind. Its *Wind*
-  values: direction, strength, gustiness, gust frequency and length, flutter and its frequency.
+  sheets) draws vertex colours that sway in the world's wind ([Wind](#wind)): each vertex as far
+  as its custom x says (0 at a foot, 1 at a tip), each copy at its own phase, gust fronts crossing
+  the ground. Its *Wind* values are only how it answers: response (0 holds still), strength,
+  stiffness, flutter and its frequency, the height it feels the wind at.
   The built-in *Crossed Quads* mesh (`Meshes/CrossedQuads.nyxmesh`) carries the weights; the
   ground test scene has a scatter of them swaying round the flat place.
 - Tests: `NyxMeshTests` (the vertex as the GPU reads it, the channels back from half precision,

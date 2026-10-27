@@ -71,7 +71,7 @@ namespace Nyx
 
 	// Particles given off from the entity's position, such as sparks, embers or smoke: each born
 	// with a speed in a cone round a direction, pulled by gravity, carried by the air (the world's
-	// wind, or a game's air: IRenderer::SetWorldParticleVelocityField()) and lifted like smoke, its
+	// wind, WindComponent, and a game's air on top: IRenderer::SetWorldWindField()) and lifted like smoke, its
 	// size and colour changing over its life. Only for the eye: the renderer moves them, as the
 	// world's time goes on (standing still while a game is paused), and nothing in the world feels
 	// them. The same seed gives the same particles.
