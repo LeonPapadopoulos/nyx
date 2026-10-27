@@ -134,6 +134,19 @@ namespace Nyx
 			return hash;
 		}
 
+		// A frame in an entity's space, in its body's: the same for a body of its own, through where
+		// it sits for a part of a group's body
+		ConstraintFrame InBodySpace(const PhysicsBodies& bodies, Entity entity, const ConstraintFrame& frame)
+		{
+			const std::optional<BodyPartOf> part = bodies.FindPart(entity);
+			if (!part)
+			{
+				return frame;
+			}
+			return ConstraintFrame{ .Point = part->Pose.Position + part->Pose.Rotation * frame.Point,
+				.Rotation = glm::normalize(part->Pose.Rotation * frame.Rotation) };
+		}
+
 		ConstraintStateComponent& StateOf(Registry& world, Entity holder)
 		{
 			return world.Has<ConstraintStateComponent>(holder) ? world.Get<ConstraintStateComponent>(holder) : world.Add<ConstraintStateComponent>(holder);
@@ -182,7 +195,13 @@ namespace Nyx
 				continue;
 			}
 
-			const ConstraintDesc desc = DescribeConstraint(world, component, *bodyEntity, otherEntity, body, other);
+			ConstraintDesc desc = DescribeConstraint(world, component, *bodyEntity, otherEntity, body, other);
+			// An entity that is a part of a group's body holds by its frame there
+			desc.BodyFrame = InBodySpace(bodies, *bodyEntity, desc.BodyFrame);
+			if (otherEntity)
+			{
+				desc.OtherFrame = InBodySpace(bodies, *otherEntity, desc.OtherFrame);
+			}
 			const uint64_t hash = HashConstraint(desc);
 			// Its values or bodies changed, or a body was made again or went, taking it along
 			if (tracked.Constraint.IsValid() && (tracked.DescriptionHash != hash || !physics.HasConstraint(tracked.Constraint)))

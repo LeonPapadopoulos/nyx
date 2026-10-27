@@ -180,6 +180,40 @@ namespace Nyx
 			return triangles;
 		}
 
+		// One more value in an FNV-1a hash
+		template<typename T>
+		void HashValue(uint64_t& hash, const T& value)
+		{
+			unsigned char bytes[sizeof(value)];
+			std::memcpy(bytes, &value, sizeof(value));
+			for (const unsigned char byte : bytes)
+			{
+				hash = (hash ^ byte) * 1099511628211ull;
+			}
+		}
+
+		// What makes an entity's part of a group's body: its description and its surface
+		uint64_t HashMember(Entity entity, const BodyDesc& desc)
+		{
+			uint64_t hash = HashBody(desc);
+			HashValue(hash, entity.Value);
+			HashValue(hash, desc.Friction);
+			HashValue(hash, desc.Restitution);
+			return hash;
+		}
+
+		// What a group's body is made from: its entities, in order, each one's part (HashMember())
+		uint64_t HashGroup(const std::map<uint64_t, uint64_t>& memberHashes, const std::vector<Entity>& members)
+		{
+			uint64_t hash = 14695981039346656037ull;
+			for (const Entity member : members)
+			{
+				const auto found = memberHashes.find(member.Value);
+				HashValue(hash, found != memberHashes.end() ? found->second : 0ull);
+			}
+			return hash;
+		}
+
 		// Whether a transform was set from outside since the body was last put or left there.
 		// Transforms the bodies wrote themselves match exactly.
 		bool PoseMoved(const BodyPose& last, const BodyPose& now)
@@ -272,8 +306,25 @@ namespace Nyx
 			tracked.bSeen = false;
 		}
 
+		// Groups first: what goes keeps its entities' velocities for the bodies made in its place
+		std::map<uint64_t, KeptVelocity> kept;
+		const std::map<uint64_t, std::vector<Entity>> newGroups = UnmakeChangedGroups(world, physics, materials, kept);
+		std::set<uint64_t> joining;
+		for (const auto& [group, members] : newGroups)
+		{
+			for (const Entity member : members)
+			{
+				joining.insert(member.Value);
+			}
+		}
+
 		ForEachColliderEntity(world, [&](Entity entity)
 			{
+				// A part of a group's body
+				if (GroupOf.contains(entity.Value) || joining.contains(entity.Value))
+				{
+					return;
+				}
 				auto found = Bodies.find(entity.Value);
 				// An entity with two colliders is visited twice; its first visit decided
 				if (found != Bodies.end() && found->second.bSeen)
@@ -302,6 +353,12 @@ namespace Nyx
 					if (bMesh)
 					{
 						desc->Shape.Mesh = MakeTriangleMesh(world, entity);
+					}
+					// Out of a group's body: as its point of it moved
+					if (const auto velocity = kept.find(entity.Value); velocity != kept.end())
+					{
+						desc->LinearVelocity = velocity->second.Linear;
+						desc->AngularVelocity = velocity->second.Angular;
 					}
 					const BodyHandle body = !bMesh || desc->Shape.Mesh ? physics.CreateBody(*desc) : BodyHandle{};
 					if (!body.IsValid() && !bMesh)
@@ -376,6 +433,185 @@ namespace Nyx
 			else
 			{
 				++it;
+			}
+		}
+
+		MakeGroups(world, physics, materials, newGroups, kept);
+	}
+
+	std::map<uint64_t, std::vector<Entity>> PhysicsBodies::UnmakeChangedGroups(Registry& world, PhysicsWorld& physics, PhysicsMaterials& materials,
+		std::map<uint64_t, KeptVelocity>& kept)
+	{
+		// The groups asked for, of two entities or more: dynamic rigid bodies' colliders, by group, in
+		// the order of their entities
+		// Each entity described once a step, as a body of its own would be
+		std::map<uint64_t, std::vector<Entity>> wanted;
+		MemberHashes.clear();
+		world.Each<BodyGroupComponent>([&](Entity entity, BodyGroupComponent& group)
+			{
+				if (group.Group == 0 || world.Has<CharacterComponent>(entity))
+				{
+					return;
+				}
+				const std::optional<BodyDesc> desc = DescribeBody(world, materials, entity);
+				if (desc && desc->Motion == EBodyMotion::Dynamic && desc->Shape.Kind != EShapeKind::Mesh)
+				{
+					wanted[group.Group].push_back(entity);
+					MemberHashes[entity.Value] = HashMember(entity, *desc);
+				}
+			});
+		for (auto it = wanted.begin(); it != wanted.end();)
+		{
+			std::sort(it->second.begin(), it->second.end(), [](Entity a, Entity b)
+				{
+					return a.Value < b.Value;
+				});
+			it = it->second.size() < 2 ? wanted.erase(it) : std::next(it);
+		}
+
+		// Groups whose entities or their descriptions changed, or one of whose entities was put
+		// somewhere from outside, go; each entity keeps the velocity of its point of it, unless one was
+		// put somewhere, which stops them all, as a teleported body stops
+		for (auto it = Groups.begin(); it != Groups.end();)
+		{
+			TrackedGroup& group = it->second;
+			const auto asked = wanted.find(it->first);
+			bool bKeep = asked != wanted.end() && asked->second.size() == group.Members.size();
+			for (size_t index = 0; bKeep && index < group.Members.size(); ++index)
+			{
+				bKeep = asked->second[index] == group.Members[index].Owner;
+			}
+			bKeep = bKeep && HashGroup(MemberHashes, asked->second) == group.DescriptionHash;
+			bool bPutSomewhere = false;
+			for (const GroupMember& member : group.Members)
+			{
+				if (world.IsAlive(member.Owner) && world.Has<TransformComponent>(member.Owner))
+				{
+					const TransformComponent& transform = world.Get<TransformComponent>(member.Owner);
+					bPutSomewhere = bPutSomewhere || PoseMoved(member.LastPose, BodyPose{ transform.Position, transform.Rotation });
+				}
+			}
+			if (bKeep && !bPutSomewhere)
+			{
+				++it;
+				continue;
+			}
+
+			for (const GroupMember& member : group.Members)
+			{
+				if (!bPutSomewhere && world.IsAlive(member.Owner))
+				{
+					kept[member.Owner.Value] =
+						KeptVelocity{ physics.GetPointVelocity(group.Body, member.LastPose.Position), physics.GetAngularVelocity(group.Body) };
+				}
+				GroupOf.erase(member.Owner.Value);
+			}
+			physics.DestroyBody(group.Body);
+			it = Groups.erase(it);
+		}
+
+		// The groups to make: their entities' own bodies go, each keeping its velocity
+		for (auto it = wanted.begin(); it != wanted.end();)
+		{
+			if (Groups.contains(it->first))
+			{
+				it = wanted.erase(it);
+				continue;
+			}
+			for (const Entity member : it->second)
+			{
+				const auto own = Bodies.find(member.Value);
+				if (own == Bodies.end())
+				{
+					continue;
+				}
+				if (own->second.Body.IsValid() && !kept.contains(member.Value) && world.Has<TransformComponent>(member))
+				{
+					const TransformComponent& transform = world.Get<TransformComponent>(member);
+					const bool bPutSomewhere = PoseMoved(own->second.LastPose, BodyPose{ transform.Position, transform.Rotation });
+					kept[member.Value] = bPutSomewhere ? KeptVelocity{}
+													   : KeptVelocity{ physics.GetPointVelocity(own->second.Body, transform.Position),
+															 physics.GetAngularVelocity(own->second.Body) };
+				}
+				physics.DestroyBody(own->second.Body);
+				Bodies.erase(own);
+			}
+			++it;
+		}
+		return wanted;
+	}
+
+	void PhysicsBodies::MakeGroups(Registry& world, PhysicsWorld& physics, PhysicsMaterials& materials,
+		const std::map<uint64_t, std::vector<Entity>>& groups, const std::map<uint64_t, KeptVelocity>& kept)
+	{
+		for (const auto& [number, members] : groups)
+		{
+			// The first entity's frame is the body's, and its motion's values, damping and gravity, the
+			// body's; each entity a part where it is in that frame now
+			BodyDesc desc = *DescribeBody(world, materials, members.front());
+			const glm::quat inverse = glm::inverse(glm::normalize(desc.Rotation));
+			TrackedGroup group;
+			for (const Entity member : members)
+			{
+				const BodyDesc part = *DescribeBody(world, materials, member);
+				const BodyPose pose{ inverse * (part.Position - desc.Position), glm::normalize(inverse * glm::normalize(part.Rotation)) };
+				const auto velocity = kept.find(member.Value);
+				const KeptVelocity motion = velocity != kept.end() ? velocity->second : KeptVelocity{};
+				desc.Parts.push_back(BodyPart{ .Shape = part.Shape,
+					.Pose = pose,
+					.Mass = part.Mass,
+					.Density = part.Density,
+					.Friction = part.Friction,
+					.Restitution = part.Restitution,
+					.UserData = member.Value,
+					.LinearVelocity = motion.Linear,
+					.AngularVelocity = motion.Angular });
+				group.Members.push_back(GroupMember{ .Owner = member, .Pose = pose, .LastPose = BodyPose{ part.Position, part.Rotation } });
+			}
+
+			group.Body = physics.CreateBody(desc);
+			if (!group.Body.IsValid())
+			{
+				continue;
+			}
+			group.DescriptionHash = HashGroup(MemberHashes, members);
+			for (uint32_t part = 0; part < members.size(); ++part)
+			{
+				GroupOf[members[part].Value] = GroupPlace{ .Group = number, .Part = part };
+			}
+			Groups.emplace(number, std::move(group));
+		}
+	}
+
+	void PhysicsBodies::WriteBackGroups(Registry& world, PhysicsWorld& physics)
+	{
+		for (auto& [number, group] : Groups)
+		{
+			const BodyPose pose = physics.GetPose(group.Body);
+			for (GroupMember& member : group.Members)
+			{
+				if (!world.IsAlive(member.Owner) || !world.Has<TransformComponent>(member.Owner))
+				{
+					continue;
+				}
+				TransformComponent& transform = world.Get<TransformComponent>(member.Owner);
+				const BodyPose before{ transform.Position, transform.Rotation };
+				transform.Position = pose.Position + pose.Rotation * member.Pose.Position;
+				transform.Rotation = pose.Rotation * member.Pose.Rotation;
+				member.LastPose = BodyPose{ transform.Position, transform.Rotation };
+
+				// Drawn between where it was and where it is, as a body of its own is
+				if (PoseMoved(before, member.LastPose))
+				{
+					PreviousTransformComponent& previous = world.Has<PreviousTransformComponent>(member.Owner)
+						? world.Get<PreviousTransformComponent>(member.Owner)
+						: world.Add<PreviousTransformComponent>(member.Owner);
+					SetPreviousTransform(previous, before.Position, before.Rotation, transform);
+				}
+				else
+				{
+					world.Remove<PreviousTransformComponent>(member.Owner);
+				}
 			}
 		}
 	}
@@ -611,10 +847,15 @@ namespace Nyx
 				world.Remove<PreviousTransformComponent>(tracked.Owner);
 			}
 		}
+		WriteBackGroups(world, physics);
 	}
 
 	BodyHandle PhysicsBodies::FindBody(Entity entity) const
 	{
+		if (const auto grouped = GroupOf.find(entity.Value); grouped != GroupOf.end())
+		{
+			return Groups.at(grouped->second.Group).Body;
+		}
 		const auto found = Bodies.find(entity.Value);
 		if (found != Bodies.end())
 		{
@@ -641,7 +882,53 @@ namespace Nyx
 		{
 			return character->second.Owner;
 		}
+		// A group's body has its first entity's number
+		const auto grouped = GroupOf.find(owner);
+		if (grouped != GroupOf.end() && Groups.at(grouped->second.Group).Body == body)
+		{
+			return Groups.at(grouped->second.Group).Members.front().Owner;
+		}
 		return std::nullopt;
+	}
+
+	std::optional<Entity> PhysicsBodies::FindEntity(const PhysicsWorld& physics, const QueryHit& hit) const
+	{
+		const std::optional<Entity> owner = FindEntity(physics, hit.Body);
+		const auto grouped = owner ? GroupOf.find(owner->Value) : GroupOf.end();
+		if (grouped == GroupOf.end())
+		{
+			return owner;
+		}
+		const auto part = GroupOf.find(hit.PartUserData);
+		return part != GroupOf.end() && part->second.Group == grouped->second.Group ? Groups.at(part->second.Group).Members[part->second.Part].Owner
+																					: owner;
+	}
+
+	std::optional<BodyPartOf> PhysicsBodies::FindPart(Entity entity) const
+	{
+		const auto grouped = GroupOf.find(entity.Value);
+		if (grouped == GroupOf.end())
+		{
+			return std::nullopt;
+		}
+		const TrackedGroup& group = Groups.at(grouped->second.Group);
+		const uint32_t part = grouped->second.Part;
+		return BodyPartOf{ .Body = group.Body, .Part = part, .Pose = group.Members[part].Pose };
+	}
+
+	std::vector<Entity> PhysicsBodies::GetGroupEntities(const PhysicsWorld& physics, BodyHandle body) const
+	{
+		// A group's body has its first entity's number
+		std::vector<Entity> entities;
+		const auto grouped = body.IsValid() ? GroupOf.find(physics.GetUserData(body)) : GroupOf.end();
+		if (grouped != GroupOf.end() && Groups.at(grouped->second.Group).Body == body)
+		{
+			for (const GroupMember& member : Groups.at(grouped->second.Group).Members)
+			{
+				entities.push_back(member.Owner);
+			}
+		}
+		return entities;
 	}
 
 	CharacterHandle PhysicsBodies::FindCharacter(Entity entity) const

@@ -19,12 +19,14 @@
 #include <Jolt/Physics/Collision/CollideShape.h>
 #include <Jolt/Physics/Collision/CollisionCollectorImpl.h>
 #include <Jolt/Physics/Collision/ContactListener.h>
+#include <Jolt/Physics/Collision/PhysicsMaterial.h>
 #include <Jolt/Physics/Collision/RayCast.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/Collision/Shape/MeshShape.h>
 #include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
+#include <Jolt/Physics/Collision/Shape/StaticCompoundShape.h>
 #include <Jolt/Physics/Collision/ShapeCast.h>
 #include <Jolt/Physics/Constraints/DistanceConstraint.h>
 #include <Jolt/Physics/Constraints/FixedConstraint.h>
@@ -204,8 +206,46 @@ namespace Nyx
 			}
 		}
 
-		// A convex shape's density gives its mass and inertia; a mesh has none
-		JPH::ShapeRefC MakeShape(const BodyShape& shape, float density = 1000.0f)
+		// A part's own surface (BodyPart), kept on its shape. Every material Nyx gives a shape is one;
+		// a shape without one has Jolt's default, and the body's surface.
+		class PartMaterial final : public JPH::PhysicsMaterial
+		{
+		public:
+			PartMaterial(float friction, float restitution)
+				: Friction(friction)
+				, Restitution(restitution)
+			{
+			}
+
+			float Friction = 0.5f;
+			float Restitution = 0.0f;
+		};
+
+		const PartMaterial* FindPartMaterial(const JPH::Body& body, const JPH::SubShapeID& part)
+		{
+			const JPH::PhysicsMaterial* material = body.GetShape()->GetMaterial(part);
+			return material != nullptr && material != JPH::PhysicsMaterial::sDefault.GetPtr() ? static_cast<const PartMaterial*>(material) : nullptr;
+		}
+
+		// Two surfaces touching, as Jolt combines them by default, each the part's own where it has one
+		float CombineFriction(const JPH::Body& body1, const JPH::SubShapeID& part1, const JPH::Body& body2, const JPH::SubShapeID& part2)
+		{
+			const PartMaterial* material1 = FindPartMaterial(body1, part1);
+			const PartMaterial* material2 = FindPartMaterial(body2, part2);
+			return std::sqrt((material1 ? material1->Friction : body1.GetFriction()) * (material2 ? material2->Friction : body2.GetFriction()));
+		}
+
+		float CombineRestitution(const JPH::Body& body1, const JPH::SubShapeID& part1, const JPH::Body& body2, const JPH::SubShapeID& part2)
+		{
+			const PartMaterial* material1 = FindPartMaterial(body1, part1);
+			const PartMaterial* material2 = FindPartMaterial(body2, part2);
+			return std::max(material1 ? material1->Restitution : body1.GetRestitution(), material2 ? material2->Restitution : body2.GetRestitution());
+		}
+
+		// A convex shape's density gives its mass and inertia; a mesh has none. A part's shape has its
+		// surface and its owner's number besides.
+		JPH::ShapeRefC MakeShape(const BodyShape& shape, float density = 1000.0f, const JPH::PhysicsMaterial* material = nullptr,
+			uint64_t userData = 0)
 		{
 			JPH::ShapeSettings::ShapeResult result;
 			density = std::max(density, 0.001f);
@@ -213,15 +253,17 @@ namespace Nyx
 			{
 			case EShapeKind::Sphere:
 			{
-				JPH::SphereShapeSettings settings(std::max(shape.Radius, 0.001f));
+				JPH::SphereShapeSettings settings(std::max(shape.Radius, 0.001f), material);
 				settings.SetDensity(density);
+				settings.mUserData = userData;
 				result = settings.Create();
 				break;
 			}
 			case EShapeKind::Capsule:
 			{
-				JPH::CapsuleShapeSettings settings(std::max(shape.HalfHeight, 0.001f), std::max(shape.Radius, 0.001f));
+				JPH::CapsuleShapeSettings settings(std::max(shape.HalfHeight, 0.001f), std::max(shape.Radius, 0.001f), material);
 				settings.SetDensity(density);
+				settings.mUserData = userData;
 				result = settings.Create();
 				break;
 			}
@@ -263,8 +305,9 @@ namespace Nyx
 				// Jolt rounds a box's edges by a convex radius, which no half extent may be below
 				const glm::vec3 halfExtents = glm::max(shape.HalfExtents, glm::vec3(0.001f));
 				const float convexRadius = std::min(JPH::cDefaultConvexRadius, std::min({ halfExtents.x, halfExtents.y, halfExtents.z }) * 0.5f);
-				JPH::BoxShapeSettings settings(ToJolt(halfExtents), convexRadius);
+				JPH::BoxShapeSettings settings(ToJolt(halfExtents), convexRadius, material);
 				settings.SetDensity(density);
+				settings.mUserData = userData;
 				result = settings.Create();
 				break;
 			}
@@ -276,6 +319,75 @@ namespace Nyx
 				return nullptr;
 			}
 			return result.Get();
+		}
+
+		// A body made of parts: each its shape where it sits, with its own surface, its owner's number
+		// and its mass. Each keeps its index in the parts, since Jolt may keep them in another order.
+		JPH::ShapeRefC MakeCompoundShape(const std::vector<BodyPart>& parts)
+		{
+			JPH::StaticCompoundShapeSettings settings;
+			for (size_t index = 0; index < parts.size(); ++index)
+			{
+				const BodyPart& part = parts[index];
+				if (part.Shape.Kind == EShapeKind::Mesh)
+				{
+					LOG_ERROR("Physics: a body's part can't be a mesh, only a box, sphere or capsule");
+					return nullptr;
+				}
+				const JPH::Ref<PartMaterial> material = new PartMaterial(part.Friction, part.Restitution);
+				JPH::ShapeRefC shape = MakeShape(part.Shape, part.Density, material.GetPtr(), part.UserData);
+				// A part of a given mass: the density that gives it over its volume
+				if (shape && part.Mass > 0.0f && shape->GetVolume() > 0.0f)
+				{
+					shape = MakeShape(part.Shape, part.Mass / shape->GetVolume(), material.GetPtr(), part.UserData);
+				}
+				if (!shape)
+				{
+					return nullptr;
+				}
+				settings.AddShape(ToJolt(part.Pose.Position), ToJolt(part.Pose.Rotation), shape, static_cast<uint32_t>(index));
+			}
+
+			const JPH::ShapeSettings::ShapeResult result = settings.Create();
+			if (result.HasError())
+			{
+				LOG_ERROR("Physics: can't make a body of {0} parts: {1}", parts.size(), result.GetError().c_str());
+				return nullptr;
+			}
+			return result.Get();
+		}
+
+		// A body made of parts starts with their momentum together: its velocity is their momentum
+		// over its mass, its turning their angular momentum about its centre of mass (each part's own
+		// spin, and its momentum's moment) through its inverse inertia
+		void StartWithPartsMomentum(JPH::Body& body, const std::vector<BodyPart>& parts)
+		{
+			const JPH::CompoundShape& compound = static_cast<const JPH::CompoundShape&>(*body.GetShape());
+			const JPH::Quat rotation = body.GetRotation();
+			JPH::Vec3 momentum = JPH::Vec3::sZero();
+			JPH::Vec3 angularMomentum = JPH::Vec3::sZero();
+			for (JPH::uint index = 0; index < compound.GetNumSubShapes(); ++index)
+			{
+				const JPH::CompoundShape::SubShape& sub = compound.GetSubShape(index);
+				const BodyPart& part = parts[compound.GetCompoundUserData(index)];
+				const JPH::MassProperties properties = sub.mShape->GetMassProperties();
+				// Its inertia in the world's axes, and its centre from the body's centre of mass
+				const JPH::Mat44 turn = JPH::Mat44::sRotation(rotation * sub.GetRotation());
+				const JPH::Mat44 inertia = turn.Multiply3x3(properties.mInertia).Multiply3x3RightTransposed(turn);
+				const JPH::Vec3 offset = rotation * sub.GetPositionCOM();
+				const JPH::Vec3 partMomentum = properties.mMass * ToJolt(part.LinearVelocity);
+				momentum += partMomentum;
+				angularMomentum += inertia.Multiply3x3(ToJolt(part.AngularVelocity)) + offset.Cross(partMomentum);
+			}
+			body.SetLinearVelocityClamped(momentum * body.GetMotionProperties()->GetInverseMass());
+			body.SetAngularVelocityClamped(body.GetInverseInertia().Multiply3x3(angularMomentum));
+		}
+
+		// The owner's number of the part of `body` a query hit; the body's own for a body of one shape
+		uint64_t PartUserDataOf(const JPH::Body& body, const JPH::SubShapeID& part)
+		{
+			return body.GetShape()->GetSubType() == JPH::EShapeSubType::StaticCompound ? body.GetShape()->GetSubShapeUserData(part)
+																					  : body.GetUserData();
 		}
 
 		uint32_t DefaultWorkerThreads()
@@ -477,18 +589,17 @@ namespace Nyx
 			}
 		}
 
-		// A body's shape where the body is, in its axes: a box's 12 edges; a sphere's 3 circles; a
-		// capsule (DrawCapsule()); a mesh (DrawMeshShape())
-		void DrawBodyShape(DebugDraw& drawing, const JPH::Body& body, const glm::vec3& color, uint32_t maxMeshTriangles)
+		// One of a body's shapes, its origin at `center`, in the axes `rotation` turns: a box's 12
+		// edges; a sphere's 3 circles; a capsule (DrawCapsule()); a mesh (DrawMeshShape()); each part
+		// of a body made of several where it sits in the body
+		void DrawShape(DebugDraw& drawing, const JPH::Body& body, const JPH::Shape& shape, const glm::vec3& center, const glm::quat& rotation,
+			const glm::vec3& color, uint32_t maxMeshTriangles)
 		{
-			const glm::vec3 center = ToGlm(JPH::Vec3(body.GetPosition()));
-			const glm::quat rotation = ToGlm(body.GetRotation());
 			const glm::vec3 x = rotation * glm::vec3(1.0f, 0.0f, 0.0f);
 			const glm::vec3 y = rotation * glm::vec3(0.0f, 1.0f, 0.0f);
 			const glm::vec3 z = rotation * glm::vec3(0.0f, 0.0f, 1.0f);
 			constexpr float Turn = glm::two_pi<float>();
 
-			const JPH::Shape& shape = *body.GetShape();
 			switch (shape.GetSubType())
 			{
 			case JPH::EShapeSubType::Box:
@@ -518,10 +629,29 @@ namespace Nyx
 				DrawMeshShape(drawing, body, color, maxMeshTriangles);
 				break;
 			}
+			case JPH::EShapeSubType::StaticCompound:
+			{
+				// Jolt keeps each part about the body's centre of mass
+				const glm::vec3 centerOfMass = ToGlm(JPH::Vec3(body.GetCenterOfMassPosition()));
+				for (const JPH::CompoundShape::SubShape& part : static_cast<const JPH::CompoundShape&>(shape).GetSubShapes())
+				{
+					const glm::quat partRotation = rotation * ToGlm(part.GetRotation());
+					const glm::vec3 partCenter =
+						centerOfMass + rotation * ToGlm(part.GetPositionCOM()) - partRotation * ToGlm(part.mShape->GetCenterOfMass());
+					DrawShape(drawing, body, *part.mShape, partCenter, partRotation, color, maxMeshTriangles);
+				}
+				break;
+			}
 			default:
 				// A character's body, drawn with its character; PhysicsWorld makes no other shapes
 				break;
 			}
+		}
+
+		// A body's shape where the body is, in its axes
+		void DrawBodyShape(DebugDraw& drawing, const JPH::Body& body, const glm::vec3& color, uint32_t maxMeshTriangles)
+		{
+			DrawShape(drawing, body, *body.GetShape(), ToGlm(JPH::Vec3(body.GetPosition())), ToGlm(body.GetRotation()), color, maxMeshTriangles);
 		}
 
 		const glm::vec3& ColorOf(const JPH::Body& body, const PhysicsDebugOptions& options)
@@ -793,6 +923,9 @@ namespace Nyx
 				BroadPhaseFilter, PairFilter);
 			System.SetGravity(ToJolt(settings.Gravity));
 			System.SetContactListener(&Contacts);
+			// A body made of parts touches with each part's own surface
+			System.SetCombineFriction(CombineFriction);
+			System.SetCombineRestitution(CombineRestitution);
 			MaxContactEvents = settings.MaxContactEvents;
 			MaxConstraintBreaks = settings.MaxConstraintBreaks;
 		}
@@ -1020,13 +1153,14 @@ namespace Nyx
 
 	BodyHandle PhysicsWorld::CreateBody(const BodyDesc& desc)
 	{
+		const bool bParts = !desc.Parts.empty();
 		// Jolt can't give triangles a mass, nor collide two meshes
-		if (desc.Shape.Kind == EShapeKind::Mesh && desc.Motion != EBodyMotion::Static)
+		if (!bParts && desc.Shape.Kind == EShapeKind::Mesh && desc.Motion != EBodyMotion::Static)
 		{
 			LOG_ERROR("Physics: a mesh body can only be static");
 			return {};
 		}
-		const JPH::ShapeRefC shape = MakeShape(desc.Shape, desc.Density);
+		const JPH::ShapeRefC shape = bParts ? MakeCompoundShape(desc.Parts) : MakeShape(desc.Shape, desc.Density);
 		if (!shape)
 		{
 			return {};
@@ -1044,7 +1178,7 @@ namespace Nyx
 		settings.mAngularDamping = desc.AngularDamping;
 		settings.mGravityFactor = desc.GravityFactor;
 		settings.mUserData = desc.UserData;
-		if (desc.Mass > 0.0f && desc.Motion == EBodyMotion::Dynamic)
+		if (!bParts && desc.Mass > 0.0f && desc.Motion == EBodyMotion::Dynamic)
 		{
 			settings.mOverrideMassProperties = JPH::EOverrideMassProperties::CalculateInertia;
 			settings.mMassPropertiesOverride.mMass = desc.Mass;
@@ -1059,6 +1193,20 @@ namespace Nyx
 		}
 
 		Impl->bBroadPhaseStale = true;
+
+		// What it starts doing
+		if (bParts && desc.Motion == EBodyMotion::Dynamic)
+		{
+			const JPH::BodyLockWrite lock(Impl->System.GetBodyLockInterface(), id);
+			if (lock.Succeeded())
+			{
+				StartWithPartsMomentum(lock.GetBody(), desc.Parts);
+			}
+		}
+		else if (!bStatic && (desc.LinearVelocity != glm::vec3(0.0f) || desc.AngularVelocity != glm::vec3(0.0f)))
+		{
+			Impl->Bodies().SetLinearAndAngularVelocity(id, ToJolt(desc.LinearVelocity), ToJolt(desc.AngularVelocity));
+		}
 		return BodyHandle{ id.GetIndexAndSequenceNumber() };
 	}
 
@@ -1173,6 +1321,7 @@ namespace Nyx
 			.Normal = ToGlm(lock.GetBody().GetWorldSpaceSurfaceNormal(result.mSubShapeID2, point)),
 			.Distance = result.mFraction * maxDistance,
 			.UserData = lock.GetBody().GetUserData(),
+			.PartUserData = PartUserDataOf(lock.GetBody(), result.mSubShapeID2),
 		};
 	}
 
@@ -1204,12 +1353,18 @@ namespace Nyx
 
 		// Jolt's penetration axis points into the hit body
 		const JPH::ShapeCastResult& hit = collector.mHit;
+		const JPH::BodyLockRead lock(Impl->System.GetBodyLockInterface(), hit.mBodyID2);
+		if (!lock.Succeeded())
+		{
+			return std::nullopt;
+		}
 		return QueryHit{
 			.Body = ToHandle(hit.mBodyID2),
 			.Point = ToGlm(hit.mContactPointOn2),
 			.Normal = ToGlm(-hit.mPenetrationAxis.NormalizedOr(JPH::Vec3::sZero())),
 			.Distance = hit.mFraction * maxDistance,
-			.UserData = Impl->Bodies().GetUserData(hit.mBodyID2),
+			.UserData = lock.GetBody().GetUserData(),
+			.PartUserData = PartUserDataOf(lock.GetBody(), hit.mSubShapeID2),
 		};
 	}
 
@@ -1233,6 +1388,41 @@ namespace Nyx
 			JPH::RVec3::sZero(), collector, {}, layerFilter, bodyFilter);
 
 		// One hit per pair of touching sub shapes, in the order Jolt's threads left the broad phase in
+		std::vector<BodyHandle> bodies;
+		for (const JPH::CollideShapeResult& hit : collector.mHits)
+		{
+			bodies.push_back(ToHandle(hit.mBodyID2));
+		}
+		std::sort(bodies.begin(), bodies.end(), [](BodyHandle a, BodyHandle b)
+			{
+				return a.Value < b.Value;
+			});
+		bodies.erase(std::unique(bodies.begin(), bodies.end()), bodies.end());
+		return bodies;
+	}
+
+	std::vector<BodyHandle> PhysicsWorld::Overlap(BodyHandle body, const QueryFilter& filter, float margin) const
+	{
+		JPH::TransformedShape shape;
+		{
+			const JPH::BodyLockRead lock(Impl->System.GetBodyLockInterface(), ToJolt(body));
+			if (!lock.Succeeded() || lock.GetBody().GetShape()->GetType() == JPH::EShapeType::Mesh)
+			{
+				return {};
+			}
+			shape = lock.GetBody().GetTransformedShape();
+		}
+
+		JPH::CollideShapeSettings settings;
+		settings.mMaxSeparationDistance = std::max(margin, 0.0f);
+		QueryFilter others = filter;
+		others.Ignore = body;
+		JPH::AllHitCollisionCollector<JPH::CollideShapeCollector> collector;
+		const QueryLayerFilter layerFilter(others);
+		const QueryBodyFilter bodyFilter(others);
+		Impl->System.GetNarrowPhaseQuery().CollideShape(shape.mShape, JPH::Vec3::sOne(), shape.GetCenterOfMassTransform(), settings,
+			JPH::RVec3::sZero(), collector, {}, layerFilter, bodyFilter);
+
 		std::vector<BodyHandle> bodies;
 		for (const JPH::CollideShapeResult& hit : collector.mHits)
 		{
@@ -1502,6 +1692,16 @@ namespace Nyx
 		Impl->Bodies().SetLinearVelocity(ToJolt(body), ToJolt(velocity));
 	}
 
+	void PhysicsWorld::SetAngularVelocity(BodyHandle body, const glm::vec3& velocity)
+	{
+		Impl->Bodies().SetAngularVelocity(ToJolt(body), ToJolt(velocity));
+	}
+
+	glm::vec3 PhysicsWorld::GetPointVelocity(BodyHandle body, const glm::vec3& worldPoint) const
+	{
+		return ToGlm(Impl->Bodies().GetPointVelocity(ToJolt(body), JPH::RVec3(ToJolt(worldPoint))));
+	}
+
 	void PhysicsWorld::AddForce(BodyHandle body, const glm::vec3& force)
 	{
 		Impl->Bodies().AddForce(ToJolt(body), ToJolt(force));
@@ -1558,6 +1758,55 @@ namespace Nyx
 	glm::vec3 PhysicsWorld::GetCenterOfMass(BodyHandle body) const
 	{
 		return ToGlm(JPH::Vec3(Impl->Bodies().GetCenterOfMassPosition(ToJolt(body))));
+	}
+
+	glm::mat3 PhysicsWorld::GetInertia(BodyHandle body) const
+	{
+		const JPH::BodyLockRead lock(Impl->System.GetBodyLockInterface(), ToJolt(body));
+		if (!lock.Succeeded() || !lock.GetBody().IsDynamic())
+		{
+			return glm::mat3(0.0f);
+		}
+		const JPH::Mat44 inverse = lock.GetBody().GetInverseInertia();
+		glm::mat3 inverseInertia(0.0f);
+		for (int column = 0; column < 3; ++column)
+		{
+			inverseInertia[column] = ToGlm(inverse.GetColumn3(column));
+		}
+		return glm::determinant(inverseInertia) != 0.0f ? glm::inverse(inverseInertia) : glm::mat3(0.0f);
+	}
+
+	size_t PhysicsWorld::GetPartCount(BodyHandle body) const
+	{
+		const JPH::BodyLockRead lock(Impl->System.GetBodyLockInterface(), ToJolt(body));
+		if (!lock.Succeeded() || lock.GetBody().GetShape()->GetSubType() != JPH::EShapeSubType::StaticCompound)
+		{
+			return 0;
+		}
+		return static_cast<const JPH::CompoundShape&>(*lock.GetBody().GetShape()).GetNumSubShapes();
+	}
+
+	float PhysicsWorld::GetPartMass(BodyHandle body, size_t part) const
+	{
+		const JPH::BodyLockRead lock(Impl->System.GetBodyLockInterface(), ToJolt(body));
+		if (!lock.Succeeded() || lock.GetBody().GetShape()->GetSubType() != JPH::EShapeSubType::StaticCompound)
+		{
+			return 0.0f;
+		}
+		// Usually where it was given; else looked for
+		const JPH::CompoundShape& compound = static_cast<const JPH::CompoundShape&>(*lock.GetBody().GetShape());
+		if (part < compound.GetNumSubShapes() && compound.GetCompoundUserData(static_cast<JPH::uint>(part)) == part)
+		{
+			return compound.GetSubShape(static_cast<JPH::uint>(part)).mShape->GetMassProperties().mMass;
+		}
+		for (JPH::uint index = 0; index < compound.GetNumSubShapes(); ++index)
+		{
+			if (compound.GetCompoundUserData(index) == part)
+			{
+				return compound.GetSubShape(index).mShape->GetMassProperties().mMass;
+			}
+		}
+		return 0.0f;
 	}
 
 	bool PhysicsWorld::IsAwake(BodyHandle body) const

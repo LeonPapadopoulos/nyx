@@ -17,7 +17,8 @@ namespace Nyx
 	// What a ray hit first in a game world, such as the ray through the cursor (ScreenPointToRay())
 	struct PhysicsPick
 	{
-		// The entity whose body was hit; null for a body no entity owns, made outside PhysicsBodies
+		// The entity whose body was hit, the part's for a body made of several; null for a body no
+		// entity owns, made outside PhysicsBodies
 		Entity HitEntity;
 		glm::vec3 Point{ 0.0f };
 		// The surface's normal there, pointing back at the ray's origin

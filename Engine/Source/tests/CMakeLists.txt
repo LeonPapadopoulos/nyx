@@ -177,6 +177,15 @@ add_dependencies(NyxPhysicsBodiesTests NyxGeneratedReflection)
 set_property(TARGET NyxPhysicsBodiesTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxPhysicsBodiesTests COMMAND NyxPhysicsBodiesTests)
 
+# Bodies made of several entities: one body of their colliders, each part's mass and surface its
+# own, transforms following it, hits naming the part, constraints held by a part, momentum kept as a
+# group is made and broken up, made again when an entity is put somewhere, a character carried
+add_executable(NyxBodyGroupTests BodyGroupTests.cpp)
+target_link_libraries(NyxBodyGroupTests PRIVATE NyxEngine)
+add_dependencies(NyxBodyGroupTests NyxGeneratedReflection)
+set_property(TARGET NyxBodyGroupTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxBodyGroupTests COMMAND NyxBodyGroupTests)
+
 # Constraints in the game world: held at their rest, their load read back, switched off and on,
 # breaking, two bodies joined by a third entity, made again when they or their bodies change, motors
 # driven each step, scene files, live edits and the same steps from the same scene

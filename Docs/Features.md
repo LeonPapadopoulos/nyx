@@ -212,6 +212,10 @@ Rigid bodies on [Jolt](https://github.com/jrouwe/JoltPhysics), while a game runs
   and torque, on the entity's `ConstraintStateComponent`) and which broke
   (`SimContext::Constraints`). While the game runs, editing it makes it again; switching it and its
   motor reach it as they are.
+- A game can make several entities one rigid body while it runs (a *Body Group*, set by its
+  systems, never saved): each keeps its collider, its material and its mass, and moves with the
+  whole; a ray on it finds the entity it hit; made, the whole keeps their momentum, and broken up
+  each flies off as its place moved. A character stands on it and rides it as it moves and turns.
 - Moving bodies are drawn between their last two steps, so they move smoothly on monitors faster
   than the 60 steps a second; paused, where the last step left them. Kinematic bodies too, when a
   game's system moves them before the physics step.

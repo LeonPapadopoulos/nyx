@@ -5,6 +5,8 @@
 
 #include <glm/glm.hpp>
 
+#include <cstdint>
+
 // What makes an entity a physics body. A collider alone makes a static body, which others bump into
 // and which never moves; with a RigidBodyComponent too, the body moves. One collider an entity:
 // with more, the box is taken over the sphere, the sphere over the capsule, and the capsule over the
@@ -91,6 +93,18 @@ namespace Nyx
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Physics Material", DragSpeed = 0.01, Tooltip = "0: no bounce, 1: bounces back as fast as it came"))
 		float Restitution = 0.0f;
+	};
+
+	// Makes the entity's collider a part of one body with every other entity of the same Group, as a
+	// game joins things into one rigid whole (PhysicsBodies): each keeps its collider, its surface,
+	// its mass and its entity, and the body has their centre of mass and inertia together; each
+	// entity's transform follows the body. Only dynamic rigid bodies join: a static, kinematic or
+	// mesh collider keeps a body of its own, and a group of one entity is that entity's own body.
+	// Runtime only: not reflected, so never saved, edited or sent; a game's system sets it.
+	struct BodyGroupComponent
+	{
+		// 0: none
+		uint64_t Group = 0;
 	};
 }
 

@@ -14,7 +14,7 @@ namespace Nyx
 		{
 			return std::nullopt;
 		}
-		return PhysicsPick{ bodies.FindEntity(physics, hit->Body).value_or(Entity{}), hit->Point, hit->Normal, hit->Distance };
+		return PhysicsPick{ bodies.FindEntity(physics, *hit).value_or(Entity{}), hit->Point, hit->Normal, hit->Distance };
 	}
 
 	std::optional<PhysicsPick> PickPhysicsBody(

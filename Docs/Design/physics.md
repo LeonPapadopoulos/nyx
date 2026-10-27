@@ -187,6 +187,22 @@ constraints](physics-constraints-and-materials.md#tests).
     edit, is drawn where it was put, and the next step starts from there.
   - Bodies are kept by entity in a fixed order, so they are made and destroyed the same way each
     run. A body's user data is its entity, for `FindEntity()`; never saved.
+  - **Bodies made of several entities:** dynamic rigid bodies with the same `BodyGroupComponent`
+    (Scene, runtime only: a game's system sets it, nothing saves it) are one body
+    (`BodyDesc::Parts`, a Jolt compound shape), each entity's collider a part with its own mass or
+    density and its own friction and restitution (through Jolt's friction and restitution
+    callbacks, `BodyPart`), the body's mass, centre of mass and inertia theirs together. The first
+    entity's frame is the body's, and each entity keeps its place in it as the group was made;
+    after the step each entity's transform is the body's pose times that place. The group is made
+    again when its entities or one's description change: from each entity's velocity at its own
+    centre, so it keeps their momentum and angular momentum; an entity leaving keeps the velocity
+    its point had, so a spinning group broken up flies apart. A transform of one set from outside
+    makes it again where all are, stopped. A static, kinematic or mesh collider keeps a body of its
+    own, and a group of one entity is that entity's own body. `FindBody()` gives the group's body
+    for each, `FindPart()` an entity's part of it and its place, `GetGroupEntities()` the parts'
+    entities, `FindEntity(physics, hit)` the entity of the part a query hit
+    (`QueryHit::PartUserData`); a constraint on an entity of a group holds by its place in the
+    body, and two entities of one group hold nothing between them.
 - **Systems** get the physics world and the bodies in `SimContext`, and run before the physics step
   (`ESimStage::BeforePhysics`, e.g. to push) or after it (`AfterPhysics`, e.g. to react).
 - **The debug view**: `GameWorld::SetPhysicsDebugView(options)` draws the physics world into the
@@ -206,6 +222,15 @@ constraints](physics-constraints-and-materials.md#tests).
   put.
   `NyxSceneGpuTests` draws a cube halfway at half a step, where it is while paused or set from
   outside, and picks it where it is.
+- `NyxBodyGroupTests`: two boxes of 50 and 150 kg in one group are one body of 200 kg with its
+  centre of mass nearer the heavier, each part keeping its own mass, fall as one and land, and touch
+  the floor (`Overlap(body)`); out of the group, each is its own body again; a box of rubber on a box
+  of ice, the rubber the group's first, slides on the ice; two cubes grouped, one moving at 2 m/s,
+  move at 1 m/s and turn with their angular momentum about the centre; a spinning group broken up
+  gives each cube its point's velocity; a ray onto each part names its entity; a group held fixed by
+  its second entity's constraint stays; one entity moved from outside makes the group again there,
+  from rest; a character standing on a group moving at 1 m/s and turning at half a radian a second
+  is carried with it.
 - `NyxCharacterTests`: a character falls and lands on a floor; walks 6 m in 2 s at 3 m/s, no faster
   for a longer desired move, and slows at its acceleration; climbs a 0.25 m step and is stopped by a
   0.45 m one (step height 0.3 m); stays put on a 30 degree ramp and slides down a 60 degree one (max

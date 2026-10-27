@@ -57,6 +57,36 @@ namespace Nyx
 		std::shared_ptr<const TriangleMesh> Mesh;
 	};
 
+	// Where a body is: the position and rotation of its shape's origin
+	struct BodyPose
+	{
+		glm::vec3 Position{ 0.0f };
+		glm::quat Rotation{ 1.0f, 0.0f, 0.0f, 0.0f };
+	};
+
+	// One part of a body made of several (BodyDesc::Parts): its shape where it sits in the body, its
+	// own surface, its own mass, and what it was doing before it joined
+	struct BodyPart
+	{
+		// A box, sphere or capsule: a mesh has no mass to give
+		BodyShape Shape;
+		// Where its shape's origin is in the body's space
+		BodyPose Pose;
+		// In kg; 0: from its shape's volume at Density
+		float Mass = 0.0f;
+		float Density = 1000.0f;
+		// Its own: what touches it slides and bounces as this part says, whatever the others say
+		float Friction = 0.5f;
+		float Restitution = 0.0f;
+		// The owner's own number for the part, e.g. its entity's: a query that hits the part says it
+		// (QueryHit::PartUserData)
+		uint64_t UserData = 0;
+		// In world space: its velocity at its centre, and how it turned, before it joined. The body
+		// starts with its parts' momentum and angular momentum together.
+		glm::vec3 LinearVelocity{ 0.0f };
+		glm::vec3 AngularVelocity{ 0.0f };
+	};
+
 	// What a body is made with
 	struct BodyDesc
 	{
@@ -81,6 +111,14 @@ namespace Nyx
 		// Detects the moving bodies that enter and leave it (contact events) but pushes nothing, e.g. a
 		// trigger volume
 		bool bSensor = false;
+		// What a moving body starts doing, in world space: its centre of mass's velocity, and how it turns
+		glm::vec3 LinearVelocity{ 0.0f };
+		glm::vec3 AngularVelocity{ 0.0f };
+		// Not empty: the body is made of these parts (Jolt's compound shape) instead of Shape. Its mass,
+		// centre of mass and inertia are its parts' together, so Mass, Density, Friction and
+		// Restitution are each part's own; it starts with its parts' momentum (LinearVelocity and
+		// AngularVelocity aside).
+		std::vector<BodyPart> Parts;
 	};
 
 	// A body of a PhysicsWorld. Valid only in the world that made it, and only until destroyed; never
@@ -92,13 +130,6 @@ namespace Nyx
 
 		bool IsValid() const { return Value != InvalidValue; }
 		bool operator==(const BodyHandle&) const = default;
-	};
-
-	// Where a body is: the position and rotation of its shape's origin
-	struct BodyPose
-	{
-		glm::vec3 Position{ 0.0f };
-		glm::quat Rotation{ 1.0f, 0.0f, 0.0f, 0.0f };
 	};
 
 	// Which bodies a query sees
@@ -123,6 +154,8 @@ namespace Nyx
 		// How far the ray or the shape went before it hit
 		float Distance = 0.0f;
 		uint64_t UserData = 0;
+		// For a body made of parts, the hit part's (BodyPart::UserData); else the body's
+		uint64_t PartUserData = 0;
 	};
 
 	enum class EContactEvent : uint8_t
@@ -420,6 +453,9 @@ namespace Nyx
 			float maxDistance, const QueryFilter& filter = {}) const;
 		// The bodies a shape at `pose` overlaps, in handle order; none for a mesh
 		std::vector<BodyHandle> Overlap(const BodyShape& shape, const BodyPose& pose, const QueryFilter& filter = {}) const;
+		// The bodies a body's own shape, where it is now, overlaps or comes within `margin` of, in
+		// handle order, itself left out (filter.Ignore is the body); none for a mesh body
+		std::vector<BodyHandle> Overlap(BodyHandle body, const QueryFilter& filter = {}, float margin = 0.0f) const;
 
 		// Invalid when a body is invalid, or Body is Other, which is logged
 		ConstraintHandle CreateConstraint(const ConstraintDesc& desc);
@@ -451,6 +487,9 @@ namespace Nyx
 		glm::vec3 GetLinearVelocity(BodyHandle body) const;
 		glm::vec3 GetAngularVelocity(BodyHandle body) const;
 		void SetLinearVelocity(BodyHandle body, const glm::vec3& velocity);
+		void SetAngularVelocity(BodyHandle body, const glm::vec3& velocity);
+		// How fast a point of the body, in world space, moves: its centre's velocity and its turning
+		glm::vec3 GetPointVelocity(BodyHandle body, const glm::vec3& worldPoint) const;
 
 		// For the next step, in newtons, at the centre of mass or at a point in world space: a
 		// point off the centre of mass turns the body too
@@ -467,6 +506,13 @@ namespace Nyx
 		float GetFriction(BodyHandle body) const;
 		float GetRestitution(BodyHandle body) const;
 		glm::vec3 GetCenterOfMass(BodyHandle body) const;
+		// How hard it is to turn, about its centre of mass, in world space (kg m^2); nothing for a
+		// body that doesn't move by forces
+		glm::mat3 GetInertia(BodyHandle body) const;
+		// A body made of parts: how many, and each one's mass (in BodyDesc::Parts' order); 0 for a
+		// body of one shape
+		size_t GetPartCount(BodyHandle body) const;
+		float GetPartMass(BodyHandle body, size_t part) const;
 		// Resting bodies sleep and cost nothing until something touches or moves them
 		bool IsAwake(BodyHandle body) const;
 		uint64_t GetUserData(BodyHandle body) const;
