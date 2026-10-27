@@ -29,6 +29,8 @@ namespace Nyx
 				clouds.EdgeSoftness = 0.22f;
 				clouds.Wispiness = 0.3f;
 				clouds.Cellularity = 0.8f;
+				clouds.Lobes = 0.0f;
+				clouds.SkyOcclusion = 0.0f;
 				clouds.Brightness = 1.0f;
 				clouds.SilverLining = 1.0f;
 				clouds.SilverLiningSpread = 0.4f;
@@ -57,6 +59,8 @@ namespace Nyx
 				clouds.EdgeSoftness = 0.22f;
 				clouds.Wispiness = 0.4f;
 				clouds.Cellularity = 0.2f;
+				clouds.Lobes = 0.0f;
+				clouds.SkyOcclusion = 0.0f;
 				clouds.Brightness = 1.0f;
 				clouds.SilverLining = 1.0f;
 				clouds.SilverLiningSpread = 0.4f;
@@ -85,6 +89,8 @@ namespace Nyx
 				clouds.EdgeSoftness = 0.35f;
 				clouds.Wispiness = 1.0f;
 				clouds.Cellularity = 0.3f;
+				clouds.Lobes = 0.0f;
+				clouds.SkyOcclusion = 0.0f;
 				clouds.Brightness = 1.0f;
 				clouds.SilverLining = 2.5f;
 				clouds.SilverLiningSpread = 0.3f;
@@ -95,6 +101,37 @@ namespace Nyx
 				clouds.ShadowTint = glm::vec3(0.85f, 0.66f, 0.62f);
 				clouds.AerialPerspective = 1.5f;
 				clouds.Translucency = 0.8f;
+				break;
+			case EVolumetricCloudsPreset::BrightDay:
+				// Towering and bright: tall many-lobed heaps, crisp, brilliant white in the sun and blue in
+				// their shade, lit strongly by the sky, paling far off
+				clouds.BottomAltitude = 400.0f;
+				clouds.TopAltitude = 3000.0f;
+				clouds.Coverage = 0.5f;
+				clouds.CoverageVariation = 0.6f;
+				clouds.Type = 1.0f;
+				clouds.TypeVariation = 0.2f;
+				clouds.Density = 2.5f;
+				clouds.CloudSize = 900.0f;
+				clouds.WeatherSize = 6000.0f;
+				clouds.DetailSize = 45.0f;
+				clouds.Detail = 0.9f;
+				clouds.Billowiness = 0.95f;
+				clouds.EdgeSoftness = 0.06f;
+				clouds.Wispiness = 0.25f;
+				clouds.Cellularity = 0.3f;
+				clouds.Lobes = 1.0f;
+				clouds.SkyOcclusion = 0.7f;
+				clouds.Brightness = 1.9f;
+				clouds.SilverLining = 1.0f;
+				clouds.SilverLiningSpread = 0.4f;
+				clouds.Powder = 0.0f;
+				clouds.MultipleScattering = 0.5f;
+				clouds.Ambient = 1.4f;
+				clouds.SunlitTint = glm::vec3(1.0f, 0.96f, 0.88f);
+				clouds.ShadowTint = glm::vec3(0.5f, 0.72f, 1.3f);
+				clouds.AerialPerspective = 1.6f;
+				clouds.Translucency = 0.15f;
 				break;
 			case EVolumetricCloudsPreset::Custom:
 				break;

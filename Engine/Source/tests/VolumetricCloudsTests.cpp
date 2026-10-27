@@ -183,12 +183,15 @@ namespace
 		clouds.Steps = 2;
 		clouds.LightSteps = 100;
 		clouds.ShadowTint = glm::vec3(5.0f, -1.0f, 0.5f);
+		clouds.Lobes = 1.5f;
+		clouds.SkyOcclusion = -0.5f;
 		const SceneViewVolumetricCloudsSettings band = MakeSceneViewVolumetricCloudsSettings(clouds, glm::vec3(0.0f), 0.0);
 		Require(band.bClouds && band.Bottom == 0.0f && Near(band.Top, 0.1, 1e-6), "The band isn't held in range, its top above its bottom");
 		Require(band.Coverage == 1.0f && band.Density == 0.0f && band.EdgeSoftness == 0.01f, "The shape's values aren't held in range");
 		Require(Near(band.ShapeRepeat, 0.1 * VolumetricCloudNoiseCells, 1e-6), "The cloud size isn't held in range");
 		Require(band.Steps == 16 && band.LightSteps == 16, "The steps aren't held in range");
 		Require(band.ShadowTint == glm::vec3(4.0f, 0.0f, 0.5f), "The shadow tint isn't held in range (0 to 4: it may brighten too)");
+		Require(band.Lobes == 1.0f && band.SkyOcclusion == 0.0f, "The lobes or the sky's occlusion aren't held in range");
 
 		const SceneViewVolumetricCloudsSettings defaults = MakeSceneViewVolumetricCloudsSettings(VolumetricCloudsComponent{}, glm::vec3(0.0f), 0.0);
 		Require(Near(defaults.Bottom, 0.4, 1e-6) && Near(defaults.Top, 1.8, 1e-6) && Near(defaults.MaxDistance, 80.0, 1e-4), "The defaults aren't in kilometres");
@@ -270,6 +273,19 @@ namespace
 		}
 		Require(puffs.Cellularity > cumulus.Cellularity && broken.Wispiness > cumulus.Wispiness, "The small puffs aren't parted into cells, or the broken cloud isn't wispier");
 		Require(broken.SilverLining > cumulus.SilverLining, "The broken cloud's silver lining isn't stronger");
+		for (const VolumetricCloudsComponent* preset : { &puffs, &cumulus, &broken })
+		{
+			Require(preset->Lobes == 0.0f && preset->SkyOcclusion == 0.0f, "A preset from before Lobes and Sky Occlusion has them, so its look changed");
+		}
+
+		// The bright day: towering cumulus, the band tall enough for them, still at a game's scale (a
+		// base a few hundred metres up, tops under 3 km); many-lobed; blue in their shade
+		const VolumetricCloudsComponent brightDay = MakeVolumetricCloudsPreset(EVolumetricCloudsPreset::BrightDay);
+		Require(brightDay.AppliedPreset == EVolumetricCloudsPreset::BrightDay, "The bright day preset isn't marked as applied");
+		Require(brightDay.BottomAltitude >= 300.0f && brightDay.BottomAltitude <= 600.0f && brightDay.TopAltitude > cumulus.TopAltitude && brightDay.TopAltitude <= 3000.0f &&
+				brightDay.CloudSize <= 1000.0f && brightDay.Type > cumulus.Type,
+			"The bright day's cumulus aren't towering at a game's scale");
+		Require(brightDay.Lobes > 0.5f && brightDay.ShadowTint.z > brightDay.ShadowTint.x, "The bright day's cumulus aren't many-lobed, or not blue in their shade");
 
 		VolumetricCloudsComponent clouds = cumulus;
 		clouds.Coverage = 0.9f;
@@ -304,6 +320,8 @@ namespace
 		clouds.Resolution = EVolumetricCloudsResolution::Full;
 		clouds.Wispiness = 0.7f;
 		clouds.Cellularity = 0.6f;
+		clouds.Lobes = 0.4f;
+		clouds.SkyOcclusion = 0.6f;
 		clouds.SunlitTint = glm::vec3(1.0f, 0.9f, 0.8f);
 		clouds.AerialPerspective = 2.5f;
 		clouds.DebugView = EVolumetricCloudsDebug::WeatherMap;
@@ -323,7 +341,7 @@ namespace
 				Require(read.bClouds && read.Preset == EVolumetricCloudsPreset::Cumulus && read.AppliedPreset == EVolumetricCloudsPreset::Cumulus && read.Coverage == 0.33f &&
 						read.BottomAltitude == 1200.0f && read.TopAltitude == 7000.0f && read.ShadowTint == glm::vec3(0.7f, 0.6f, 0.9f) && read.Seed == 42 &&
 						read.WindDirectionDegrees == 135.0f && read.WindSpeed == 25.0f && read.Steps == 200 && read.Update == EVolumetricCloudsUpdate::Blocks4x4 &&
-						read.Resolution == EVolumetricCloudsResolution::Full && read.Wispiness == 0.7f && read.Cellularity == 0.6f && read.SunlitTint == glm::vec3(1.0f, 0.9f, 0.8f) &&
+						read.Resolution == EVolumetricCloudsResolution::Full && read.Wispiness == 0.7f && read.Cellularity == 0.6f && read.Lobes == 0.4f && read.SkyOcclusion == 0.6f && read.SunlitTint == glm::vec3(1.0f, 0.9f, 0.8f) &&
 						read.AerialPerspective == 2.5f && read.DebugView == EVolumetricCloudsDebug::WeatherMap,
 					"The volumetric clouds aren't read back as saved");
 			});

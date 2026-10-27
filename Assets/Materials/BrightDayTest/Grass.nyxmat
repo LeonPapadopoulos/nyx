@@ -1,0 +1,4 @@
+# The bright day scene's island grass: a fresh green
+Shader = Shaders/Standard.slang
+BaseColor = 0.12 0.32 0.08
+Roughness = 0.9

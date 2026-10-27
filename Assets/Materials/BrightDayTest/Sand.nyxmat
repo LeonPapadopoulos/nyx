@@ -1,0 +1,4 @@
+# The bright day scene's beach: pale warm sand
+Shader = Shaders/Standard.slang
+BaseColor = 0.62 0.55 0.42
+Roughness = 0.95

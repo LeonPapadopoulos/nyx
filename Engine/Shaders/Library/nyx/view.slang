@@ -190,7 +190,7 @@ public struct ViewConstants
     // the powder, the multiple scattering. The shadow tint and the aerial perspective. The sun's
     // light at the top of the air. How far the camera moved, less how far the wind carried the
     // clouds, since the frame before (kilometres). The sunlit tint and the wispiness. The
-    // cellularity and the translucency. The frame before's rotation and projection without its
+    // cellularity, the translucency, the lobes and the sky's occlusion. The frame before's rotation and projection without its
     // place.
     public uint VolumetricClouds;
     public nyx::Texture VolumetricCloudLight;

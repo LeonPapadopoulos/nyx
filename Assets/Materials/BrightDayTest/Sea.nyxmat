@@ -1,0 +1,4 @@
+# The bright day scene's sea, until there is water: deep blue, glossy
+Shader = Shaders/Standard.slang
+BaseColor = 0.005 0.03 0.12
+Roughness = 0.35

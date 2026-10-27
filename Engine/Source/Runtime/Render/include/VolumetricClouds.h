@@ -69,12 +69,14 @@ namespace Nyx
 		float EdgeSoftness = 0.35f;
 		float Wispiness = 0.5f;
 		float Cellularity = 0.0f;
+		float Lobes = 0.0f;
 		float Brightness = 1.0f;
 		float SilverLining = 1.0f;
 		float SilverLiningSpread = 0.4f;
 		float Powder = 0.5f;
 		float MultipleScattering = 0.5f;
 		float Ambient = 1.0f;
+		float SkyOcclusion = 0.0f;
 		glm::vec3 SunlitTint{ 1.0f, 0.97f, 0.9f };
 		glm::vec3 ShadowTint{ 0.85f, 0.82f, 0.95f };
 		float AerialPerspective = 1.5f;

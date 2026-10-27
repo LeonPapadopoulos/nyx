@@ -1,0 +1,4 @@
+# The bright day scene's tower top: painted red
+Shader = Shaders/Standard.slang
+BaseColor = 0.6 0.08 0.06
+Roughness = 0.6

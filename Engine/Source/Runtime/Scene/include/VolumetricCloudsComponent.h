@@ -22,6 +22,9 @@ namespace Nyx
 		Cumulus,
 		// Broken cloud whose thin edges glow against a low sun, dark cores, light through the gaps
 		Broken,
+		// A bright day: towering, many-lobed cumulus, brilliant white in the sun, blue in their shade
+		// (lit by the sky), fading pale towards the horizon
+		BrightDay,
 	};
 
 	// What the volumetric clouds show instead of their light, to see how they are made
@@ -83,7 +86,7 @@ namespace Nyx
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Clouds", DisplayName = "Clouds", Tooltip = "Whether the clouds are drawn (with the sky's Atmosphere mode only)"))
 		bool bClouds = true;
 
-		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Clouds", Tooltip = "Sets the clouds' and their lighting's values to a look: small puffs, cumulus, broken cloud against a low sun. The values can be changed after; Custom leaves them as they are"))
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Clouds", Tooltip = "Sets the clouds' and their lighting's values to a look: small puffs, cumulus, broken cloud against a low sun, a bright day's towering cumulus. The values can be changed after; Custom leaves them as they are"))
 		EVolumetricCloudsPreset Preset = EVolumetricCloudsPreset::Custom;
 
 		// The preset the values were last set to: a preset chosen that isn't it sets them
@@ -132,6 +135,9 @@ namespace Nyx
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Clouds", DragSpeed = 0.005, Tooltip = "How much the small billows and wisps are swirled (curl noise), 0 to 1: torn, wispy edges, the most at the clouds' bases"))
 		float Wispiness = 0.5f;
 
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Clouds", DragSpeed = 0.005, Tooltip = "How much the clouds' upper parts swell into round lobes half and a quarter of a Cloud Size across, 0 to 1: the many-lobed heads of towering cumulus, crisp up close; 0 none"))
+		float Lobes = 0.0f;
+
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Clouds", DragSpeed = 0.005, Tooltip = "How much the clouds part into separate cells, each about a Cloud Size, 0 to 1: high a field of distinct puffs with sky between"))
 		float Cellularity = 0.0f;
 
@@ -164,6 +170,9 @@ namespace Nyx
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Lighting", DragSpeed = 0.01, Tooltip = "How much the sky above and the ground below light the clouds, 0 to 10: their shaded sides and bellies, and at night all of them"))
 		float Ambient = 1.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Lighting", DisplayName = "Sky Occlusion", DragSpeed = 0.005, Tooltip = "How much the cloud just above a point holds back the sky's light on it, 0 to 1: lobes lit by the sky on top and darker beneath, so the heaps show their shapes in their shade too; costs two more samples a step. 0 the sky's light by the height in the band alone"))
+		float SkyOcclusion = 0.0f;
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Lighting", DragSpeed = 0.005, Tooltip = "How much of the sun's light the clouds carry through their bodies by scattering, 0 to 1: higher, glowing, translucent bodies even with the sun behind them; 0 dark cores against a low sun"))
 		float Translucency = 0.5f;

@@ -6,7 +6,8 @@
 //     and billowy) worn down where cellular noise of three octaves from 4, 8 and 16 cells is low,
 //     spread so its values are about evenly spread from 0 to 1: a threshold at 1 - c leaves about
 //     c of space inside; g the cells of 4 across alone, one octave (1 at each cell's point), which
-//     part the clouds into cells (Cellularity); b, a the cellular noises of 8 and 16 (not read yet);
+//     part the clouds into cells (Cellularity); b, a the cellular noises of 8 and 16, which swell its
+//     upper parts into round lobes (Lobes);
 //   - the details, 32 texels a side: r, g, b cellular noise of three octaves from 2, 4 and 8 cells,
 //     the small billows and wisps that wear the shapes' edges away;
 //   - the curl, 32 texels a side: the curl of three fields of gradient noise, a swirling flow with

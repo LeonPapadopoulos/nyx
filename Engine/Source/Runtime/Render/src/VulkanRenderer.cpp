@@ -2840,7 +2840,7 @@ namespace Nyx
 			ubo.VolumetricCloudLighting = glm::vec4(clouds.SilverLining, clouds.SilverLiningSpread, clouds.Powder, clouds.MultipleScattering);
 			ubo.VolumetricCloudShadowTint = glm::vec4(clouds.ShadowTint, clouds.AerialPerspective);
 			ubo.VolumetricCloudSunlitTint = glm::vec4(clouds.SunlitTint, clouds.Wispiness);
-			ubo.VolumetricCloudShaping = glm::vec4(clouds.Cellularity, clouds.Translucency, 0.0f, 0.0f);
+			ubo.VolumetricCloudShaping = glm::vec4(clouds.Cellularity, clouds.Translucency, clouds.Lobes, clouds.SkyOcclusion);
 			// Lit as the air's sky is, by the light before the time of day fades it
 			ubo.VolumetricCloudSun = glm::vec4(view.SceneGlobals.SunLightColor, 0.0f);
 			ubo.VolumetricCloudMotion = glm::vec4(volume.Motion, 0.0f);

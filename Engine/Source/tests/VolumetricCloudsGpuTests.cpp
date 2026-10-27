@@ -22,13 +22,17 @@
 //   - thick cloud over the sun weakens the light shafts through a window;
 //   - their GPU time at 1280 x 720 and 1920 x 1080 in each update mode, still and turning, the
 //     medians of 60 frames;
-//   - the volumetric clouds test scene, its sun set by its time of day, has its clouds.
+//   - the volumetric clouds test scene, its sun set by its time of day, has its clouds;
+//   - the bright day scene has its clouds, near white in the sun and blue in their shade.
 //
 // NYX_SCENE_TEST_OUTPUT=<folder> saves what was rendered there. NyxVolumetricCloudsGpuTests
 // --write-scene writes Assets/Scenes/VolumetricCloudsTest.nyxscene; --pictures only renders the test
 // scene's pictures of each preset (at noon, at sunset against the sun, from the ground, lit as its
 // reference, a low sun behind them, dusk over the hills, among them on the hills) into that folder;
-// --sequences only the update modes' test, which saves frames of a turning camera in each mode.
+// --sequences only the update modes' test, which saves frames of a turning camera in each mode;
+// --bright-day the bright day scene's pictures (its camera in the default mode and at Resolution
+// Full, and looking up) and its clouds' GPU time. --write-scene writes Scenes/BrightDayTest.nyxscene
+// too.
 #include "AssetResolver.h"
 #include "CameraComponent.h"
 #include "CameraProjection.h"
@@ -51,6 +55,7 @@
 #include "TimeOfDayComponent.h"
 #include "TransformComponent.h"
 #include "VolumetricCloudsComponent.h"
+#include "WindComponent.h"
 #include "VulkanRenderer.h"
 #include "RenderTestSupport.h"
 
@@ -1134,6 +1139,245 @@ namespace
 		std::cout << "Wrote " << (assets / ScenePath).string() << "\n";
 	}
 
+	constexpr const char* BrightDayScenePath = "Scenes/BrightDayTest.nyxscene";
+
+	void AddPart(Registry& world, const char* name, uint64_t guid, const glm::vec3& position, const glm::vec3& size, const char* material)
+	{
+		const Entity entity = AddEntity(world, name, guid, Placed(position, size));
+		MeshRendererComponent meshRenderer;
+		meshRenderer.Mesh = AssetReference{ .Type = "Mesh", .Path = "Meshes/Cube.nyxmesh" };
+		meshRenderer.Material = AssetReference{ .Type = "Material", .Path = std::string("Materials/BrightDayTest/") + material + ".nyxmat" };
+		world.Add<MeshRendererComponent>(entity, meshRenderer);
+	}
+
+	// The time of day of the bright day scene: a high noon sun (about 70 degrees up), ahead of the
+	// camera, a little right and above the picture: the clouds' tops lit, their faces in the sky's blue, the sea glinting
+	TimeOfDayComponent BrightDayTime()
+	{
+		TimeOfDayComponent timeOfDay;
+		timeOfDay.Hours = 12.6f;
+		timeOfDay.PathTiltDegrees = 20.0f;
+		timeOfDay.SunriseDirectionDegrees = 0.0f;
+		timeOfDay.Sun = EntityGuid{ 0xB21D000003ull };
+		// The camera looks along -Z: the sun's path turned so its noon is ahead of it (-Z), a little right
+		float bestDegrees = 0.0f;
+		float best = -2.0f;
+		for (float degrees = 0.0f; degrees < 360.0f; degrees += 5.0f)
+		{
+			timeOfDay.SunriseDirectionDegrees = degrees;
+			const glm::vec3 sun = GetSunDirection(timeOfDay, timeOfDay.Hours);
+			const float score = glm::dot(glm::normalize(glm::vec2(sun.x, sun.z)), glm::normalize(glm::vec2(0.4f, -1.0f)));
+			if (score > best)
+			{
+				best = score;
+				bestDegrees = degrees;
+			}
+		}
+		timeOfDay.SunriseDirectionDegrees = bestDegrees;
+		return timeOfDay;
+	}
+
+	// A bright, uplifting midday over the sea: towering cumulus on the Bright Day preset under a high
+	// sun, a deep saturated cyan sky (the environment's exposure, sky light, bloom and haze, and a
+	// grade), a gentle breeze carrying the clouds; the sea a wide flat glossy deep-blue plane, a small
+	// island with a jetty and a white tower in the foreground for scale, the camera at the island's
+	// edge looking out over the water
+	void WriteBrightDayScene()
+	{
+		Registry world;
+		AddPart(world, "Sea", 0xB21D000010ull, glm::vec3(0.0f, -0.5f, 0.0f), glm::vec3(60000.0f, 1.0f, 60000.0f), "Sea");
+		AddPart(world, "Beach", 0xB21D000011ull, glm::vec3(0.0f, 0.15f, 35.0f), glm::vec3(120.0f, 1.0f, 70.0f), "Sand");
+		AddPart(world, "Grass", 0xB21D000012ull, glm::vec3(-6.0f, 0.9f, 48.0f), glm::vec3(80.0f, 1.0f, 45.0f), "Grass");
+		AddPart(world, "Islet", 0xB21D000016ull, glm::vec3(-160.0f, 1.0f, -320.0f), glm::vec3(90.0f, 3.0f, 50.0f), "Grass");
+		AddPart(world, "Islet Shore", 0xB21D000017ull, glm::vec3(-160.0f, 0.2f, -320.0f), glm::vec3(104.0f, 1.0f, 62.0f), "Sand");
+		AddPart(world, "Jetty", 0xB21D000013ull, glm::vec3(10.0f, 1.2f, -18.0f), glm::vec3(4.0f, 0.4f, 40.0f), "Wood");
+		for (int post = 0; post < 5; ++post)
+		{
+			const float z = -38.0f + 9.0f * static_cast<float>(post);
+			AddPart(world, "Jetty Post", 0xB21D000020ull + post * 2, glm::vec3(8.2f, 0.4f, z), glm::vec3(0.4f, 2.0f, 0.4f), "Wood");
+			AddPart(world, "Jetty Post", 0xB21D000021ull + post * 2, glm::vec3(11.8f, 0.4f, z), glm::vec3(0.4f, 2.0f, 0.4f), "Wood");
+		}
+		AddPart(world, "Tower", 0xB21D000014ull, glm::vec3(-140.0f, 10.0f, -315.0f), glm::vec3(5.0f, 16.0f, 5.0f), "White");
+		AddPart(world, "Tower Top", 0xB21D000015ull, glm::vec3(-140.0f, 18.8f, -315.0f), glm::vec3(6.0f, 1.6f, 6.0f), "Red");
+
+		const Entity camera = AddEntity(world, "Camera", 0xB21D000001ull, Placed(glm::vec3(2.0f, 3.0f, 3.0f), glm::vec3(1.0f), Looking(-4.0f, 9.0f)));
+		CameraComponent lens;
+		lens.FovYDegrees = 55.0f;
+		lens.FarPlane = 25000.0f;
+		world.Add<CameraComponent>(camera, lens);
+
+		const Entity sun = AddEntity(world, "Sun", 0xB21D000003ull, Placed(glm::vec3(0.0f)));
+		DirectionalLightComponent light;
+		light.Intensity = 3.0f;
+		world.Add<DirectionalLightComponent>(sun, light);
+		const Entity clock = AddEntity(world, "Time Of Day", 0xB21D000004ull, Placed(glm::vec3(0.0f)));
+		world.Add<TimeOfDayComponent>(clock, BrightDayTime());
+
+		// High-key: brighter by half a stop, strong sky light in the shade, a soft glow on the brightest
+		// tops, a pale, luminous haze towards the horizon
+		const Entity air = AddEntity(world, "Environment", 0xB21D000005ull, Placed(glm::vec3(0.0f)));
+		EnvironmentComponent environment;
+		environment.FogDensity = 0.00004f;
+		environment.FogHeightFalloff = 0.001f;
+		environment.HazeBrightness = 1.2f;
+		environment.HazeTint = glm::vec3(0.88f, 0.96f, 1.08f);
+		environment.SkyLightIntensity = 1.0f;
+		environment.ExposureCompensation = 0.4f;
+		environment.BloomThreshold = 0.85f;
+		environment.BloomIntensity = 0.5f;
+		environment.BloomRadius = 0.75f;
+		world.Add<EnvironmentComponent>(air, environment);
+
+		// The deep, saturated cyan of the reference: cooler, more saturated, a touch more contrast,
+		// highlights warmed back to white
+		ColorGradingComponent grading;
+		grading.Grade.Temperature = -0.08f;
+		grading.Grade.Tint = -0.06f;
+		grading.Grade.Contrast = 1.08f;
+		grading.Grade.Saturation = 1.35f;
+		grading.Grade.Lift = glm::vec3(0.0f, 0.006f, 0.02f);
+		grading.Grade.ShadowTint = glm::vec3(0.3f, 0.6f, 1.0f);
+		grading.Grade.ShadowTintStrength = 0.2f;
+		grading.Grade.HighlightTint = glm::vec3(1.0f, 0.95f, 0.85f);
+		grading.Grade.HighlightTintStrength = 0.25f;
+		world.Add<ColorGradingComponent>(air, grading);
+
+		// A gentle breeze, which carries the clouds faster aloft
+		const Entity wind = AddEntity(world, "Wind", 0xB21D000006ull, Placed(glm::vec3(0.0f)));
+		WindComponent breeze;
+		breeze.DirectionDegrees = 200.0f;
+		breeze.Speed = 3.0f;
+		breeze.Gustiness = 0.3f;
+		breeze.Aloft = 1.5f;
+		world.Add<WindComponent>(wind, breeze);
+
+		const Entity band = AddEntity(world, "Volumetric Clouds", 0xB21D000007ull, Placed(glm::vec3(0.0f)));
+		VolumetricCloudsComponent clouds = MakeVolumetricCloudsPreset(EVolumetricCloudsPreset::BrightDay);
+		clouds.Seed = 3;
+		world.Add<VolumetricCloudsComponent>(band, clouds);
+
+		const std::filesystem::path assets = Paths::GetAssetsDir();
+		Require(SceneSerializer::SaveToFile(world, assets / BrightDayScenePath), "The bright day scene can't be saved");
+		std::cout << "Wrote " << (assets / BrightDayScenePath).string() << "\n";
+	}
+
+	// The bright day scene as the game loads it, paused at its world's time 0
+	struct BrightDayScene
+	{
+		Registry World;
+		FixedStepClock Clock;
+		Entity Camera;
+		Entity Band;
+	};
+
+	void LoadBrightDayScene(SceneRenderer& gpu, BrightDayScene& scene)
+	{
+		AssetResolver resolver(gpu.Renderer);
+		ScenePostLoadContext context{};
+		context.AssetResolver = &resolver;
+		Require(SceneSerializer::LoadFromFile(Paths::GetAssetsDir() / BrightDayScenePath, scene.World, context),
+			"The bright day scene can't be loaded; NyxVolumetricCloudsGpuTests --write-scene writes it");
+		scene.World.Each<VolumetricCloudsComponent>([&](Entity entity, const VolumetricCloudsComponent&) { scene.Band = entity; });
+		scene.World.Each<CameraComponent>([&](Entity entity, const CameraComponent&) { scene.Camera = entity; });
+		ApplyTimeOfDay(scene.World);
+		scene.Clock.SetPaused(true);
+		gpu.Renderer.SetWorldInterpolation(&scene.World, &scene.Clock);
+	}
+
+	// The bright day scene as the game loads it: its clouds drawn, near white in the sun (the
+	// brightest tenth of the cloud pixels) and blue in their shade (the darker half bluer than red by
+	// a good margin)
+	void TestBrightDayScene(SceneRenderer& gpu)
+	{
+		BrightDayScene scene;
+		LoadBrightDayScene(gpu, scene);
+		gpu.Renderer.SetWorld(&scene.World);
+		const uint64_t view = MakeView(gpu, 1280, 720, 0.0f);
+		const RgbaImage cloudy = Draw(gpu, view, SettledFrames);
+		SaveIfAsked(cloudy, "BrightDay");
+		Require(gpu.Renderer.GetSceneViewVolumetricClouds(view)->IsDrawn(), "The bright day scene's clouds aren't drawn");
+		scene.World.Get<VolumetricCloudsComponent>(scene.Band).bClouds = false;
+		const RgbaImage clear = Draw(gpu, view, 2);
+		scene.World.Get<VolumetricCloudsComponent>(scene.Band).bClouds = true;
+		std::vector<std::array<uint8_t, 3>> cloudPixels;
+		for (uint32_t y = 0; y < 720; ++y)
+		{
+			for (uint32_t x = 0; x < 1280; ++x)
+			{
+				if (std::abs(Luminance(PixelAt(cloudy, x, y)) - Luminance(PixelAt(clear, x, y))) > 4.0f)
+				{
+					cloudPixels.push_back(PixelAt(cloudy, x, y));
+				}
+			}
+		}
+		Require(cloudPixels.size() > 1280 * 720 / 6, "The bright day scene has too few clouds");
+		std::sort(cloudPixels.begin(), cloudPixels.end(), [](const auto& a, const auto& b) { return Luminance(a) < Luminance(b); });
+		const auto mean = [&](size_t from, size_t to)
+		{
+			glm::dvec3 sum(0.0);
+			for (size_t index = from; index < to; ++index)
+			{
+				sum += glm::dvec3(cloudPixels[index][0], cloudPixels[index][1], cloudPixels[index][2]);
+			}
+			return sum / static_cast<double>(to - from);
+		};
+		const glm::dvec3 shade = mean(0, cloudPixels.size() / 2);
+		const glm::dvec3 lit = mean(cloudPixels.size() - cloudPixels.size() / 10, cloudPixels.size());
+		std::cout << "The bright day scene: " << cloudPixels.size() << " pixels of cloud, the shaded half " << Text(shade) << ", the brightest tenth " << Text(lit) << "\n";
+		Require(shade.z > shade.x + 25.0, "The bright day scene's clouds aren't blue in their shade");
+		Require(lit.x > 215.0 && lit.y > 215.0 && lit.z > 215.0, "The bright day scene's sunlit clouds aren't near white");
+		gpu.Renderer.SetWorldInterpolation(&scene.World, nullptr);
+		EndView(gpu, view);
+	}
+
+	// The bright day scene's pictures: from its camera in the default update mode and at Resolution
+	// Full, and looking up, at 1280 x 720; and its clouds' GPU time at 1920 x 1080, the medians of 60
+	// frames, in the default mode and at Full
+	void RenderBrightDay(SceneRenderer& gpu)
+	{
+		BrightDayScene scene;
+		LoadBrightDayScene(gpu, scene);
+		gpu.Renderer.SetWorld(&scene.World);
+		uint64_t view = MakeView(gpu, 1280, 720, 0.0f);
+		VolumetricCloudsComponent& clouds = scene.World.Get<VolumetricCloudsComponent>(scene.Band);
+		TransformComponent& camera = scene.World.Get<TransformComponent>(scene.Camera);
+		const glm::quat ahead = camera.Rotation;
+		SaveIfAsked(Draw(gpu, view, SettledFrames), "BrightDay-Default");
+		clouds.Resolution = EVolumetricCloudsResolution::Full;
+		SaveIfAsked(Draw(gpu, view, SettledFrames), "BrightDay-Full");
+		clouds.Resolution = EVolumetricCloudsResolution::Half;
+		camera.Rotation = Looking(30.0f, 55.0f);
+		SaveIfAsked(Draw(gpu, view, SettledFrames), "BrightDay-Up");
+		camera.Rotation = ahead;
+		EndView(gpu, view);
+
+		gpu.Renderer.SetWorld(&scene.World);
+		view = MakeView(gpu, 1920, 1080, 0.0f);
+		const auto median = [&](float SceneViewGpuTimes::* pass)
+		{
+			std::vector<float> times;
+			gpu.DrawFrames(SettledFrames);
+			for (int frame = 0; frame < 60; ++frame)
+			{
+				gpu.DrawFrames(1);
+				times.push_back(gpu.Renderer.GetSceneViewGpuTimes(view)->*pass);
+			}
+			std::sort(times.begin(), times.end());
+			return times[times.size() / 2];
+		};
+		const float defaultTime = median(&SceneViewGpuTimes::VolumetricClouds);
+		const float frameScene = median(&SceneViewGpuTimes::Scene);
+		clouds.Resolution = EVolumetricCloudsResolution::Full;
+		const float fullTime = median(&SceneViewGpuTimes::VolumetricClouds);
+		clouds.Resolution = EVolumetricCloudsResolution::Half;
+		clouds.Update = EVolumetricCloudsUpdate::EveryPixel;
+		const float everyTime = median(&SceneViewGpuTimes::VolumetricClouds);
+		std::cout << "The bright day scene at 1920 x 1080: the clouds " << defaultTime << " ms in the default mode, " << everyTime << " ms marching every pixel, " << fullTime
+				  << " ms at Resolution Full (the medians of 60 frames); the scene pass " << frameScene << " ms\n";
+		gpu.Renderer.SetWorldInterpolation(&scene.World, nullptr);
+		EndView(gpu, view);
+	}
+
 	// The test scene as the game loads it, its sun turned by its time of day
 	struct TestScene
 	{
@@ -1259,6 +1503,7 @@ int main(int argc, char** argv)
 		if (argc > 1 && std::strcmp(argv[1], "--write-scene") == 0)
 		{
 			WriteScene();
+			WriteBrightDayScene();
 			return 0;
 		}
 		SceneRenderer gpu("NyxVolumetricCloudsGpuTests", MsaaSamplesFromArguments(argc, argv));
@@ -1270,6 +1515,11 @@ int main(int argc, char** argv)
 		if (argc > 1 && std::strcmp(argv[1], "--sequences") == 0)
 		{
 			TestUpdateModes(gpu);
+			return 0;
+		}
+		if (argc > 1 && std::strcmp(argv[1], "--bright-day") == 0)
+		{
+			RenderBrightDay(gpu);
 			return 0;
 		}
 		TestUnchangedWithout(gpu);
@@ -1285,6 +1535,7 @@ int main(int argc, char** argv)
 		TestGpuTime(gpu, 1280, 720);
 		TestGpuTime(gpu, 1920, 1080);
 		TestVolumetricCloudsTestScene(gpu);
+		TestBrightDayScene(gpu);
 	}
 	catch (const std::exception& error)
 	{

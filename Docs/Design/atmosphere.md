@@ -1028,7 +1028,8 @@ Three cubes of noise that tile, made by compute shaders when the clouds are firs
   `1 - c` leaves about `c` of space inside (0.22, 0.43 and 0.61 for 0.2, 0.4 and 0.6, measured). Its
   far mips, which average blobs and gaps together, are spread out again as much (their values
   huddle round the middle from the third mip on), so the clouds cover as much of the sky far off as
-  near. g, the cells of 4 across alone, one octave, 1 at each cell's point: *Cellularity*.
+  near. g, the cells of 4 across alone, one octave, 1 at each cell's point: *Cellularity*. b and a,
+  the cellular noises of 8 and 16 across (half and a quarter of a *Cloud Size*): *Lobes*.
 - **the details**, 32 texels a side, over *Detail Size* × 4: cellular noise of three octaves, the
   small billows and wisps.
 - **the curl**, 32 texels a side: the curl of a potential of three fields of fractal gradient noise
@@ -1046,6 +1047,12 @@ its top), with the weather there:
    off towards its top (`volumetricCloudHeightProfile()`). The field is multiplied by it, so the
    threshold rounds the tops.
 3. **Thresholded by the coverage**: `remap(field, 1 - coverage, 1, 0, 1)`.
+   **Swelled into lobes** by *Lobes* (0 by default, none): worn again by the gaps between the cells
+   of 8 and 16 across (seven tenths and three), squared, so each lobe is a dome worn little near its
+   middle and more towards the crease beside the next, not a cone with flat sides; from just above
+   the base (2 to 20 % of the band), so the sides of a heap are lumpy as well as its head. The
+   many-lobed heads of towering cumulus, at a size between the shapes and the details, crisp up
+   close.
 4. **Worn by the details**, by *Detail*, at two sizes, the second three times smaller weighing a
    third (the billows on the billows of a many-lobed top), the smaller only where the footprint
    shows them: cells worn into wisps at the base, round billows (the gaps between them worn,
@@ -1102,7 +1109,12 @@ Each sample in a cloud (`volumetricCloudSample()`):
 - **The sky's light**: the irradiance cube's from above, 15 % of it at the band's bottom to 70 % at
   its top (the clouds above hide it), and a quarter of the ground's from below, by *Ambient*, in
   *Shadow Tint*: the bellies grey-violet, the undersides warm at sunset, and at night the night
-  sky's blue, dark.
+  sky's blue, dark. With *Sky Occlusion* (0 by default, as before) the light from above is held back
+  by the cloud just over the sample too: the shapes (without the details) a quarter and three
+  quarters of a *Cloud Size* up, `e^(-1.5 (d₁ + d₂))` of it times the density of both (soft: the
+  sky's light comes from all round, not straight down), by *Sky Occlusion*. A lobe's top is lit by
+  the sky, its underside darker, so a heap shows its lobes in its shade as well as in the sun; two
+  more samples a step.
 - **The painted colours**: *Sunlit Tint* (cream by default) times all the sun's light, *Shadow Tint*
   times the light that only scattering brings and the sky's. The references are painted, not
   photographs: cream tops and warm undersides are a choice of these two, not of the air's.
@@ -1237,11 +1249,13 @@ frame they are drawn, let go of when they go off, with the view, or when its wor
 ### Presets
 
 *Preset* sets the clouds' and their lighting's values to a look at once
-(`ApplyVolumetricCloudsPreset()`), at a game's scale (bases 400 to 500 m, tops 1.5 to 1.8 km):
+(`ApplyVolumetricCloudsPreset()`), at a game's scale (bases 400 to 500 m, tops 1.5 to 3 km):
 *Small Puffs*, a field of small separate cells (220 m, *Cellularity* 0.8), short and crisp;
 *Cumulus*, big many-lobed heaps with grey-violet bellies, smaller puffs round them, open blue
 between; *Broken*, many small torn fragments (260 m, *Wispiness* 1), translucent, glowing against
-a low sun, warm undersides. *Custom* sets nothing. Whether the band is drawn, its seed, its wind and
+a low sun, warm undersides; *Bright Day*, the towering cumulus of a bright, cozy midday (a band
+from 400 m to 3 km, 900 m clouds, *Lobes* 1, *Sky Occlusion* 0.7), brilliant white in the sun and
+sky-blue in their shade (*Shadow Tint* 0.5, 0.72, 1.3), crisp, paling far off. *Custom* sets nothing. Whether the band is drawn, its seed, its wind and
 its quality stay as they are.
 
 It is the component's post-load step, which runs after the component is loaded, edited (also
@@ -1285,6 +1299,15 @@ scene pass is the same with them and without, within the spread.
   lit as its reference picture, at noon, at sunset against the sun, from the ground, with a low sun
   behind them, at dusk over the hills and from 470 m up among them where the hills rise into them
   (into `NYX_SCENE_TEST_OUTPUT`); `--sequences` the turning camera in each update mode.
+- `Assets/Scenes/BrightDayTest.nyxscene` (written by the same `--write-scene`): a bright midday over
+  the sea, the clouds on *Bright Day* under a sun about 70° up ahead of the camera, a gentle breeze
+  (a *Wind*) carrying them; an *Environment* for a high key (*Exposure Compensation* +0.4, little
+  fog, a luminous haze, a soft bloom on the brightest tops) and a grade for the saturated cyan sky
+  (cooler, more saturated, the highlights warmed back to white); the sea a wide flat glossy
+  deep-blue plane until there is water, a jetty and an islet with a white tower for scale.
+  `--bright-day` renders it in the default update mode, at *Resolution Full* and looking up, and
+  times its clouds: 0.9 ms in the default mode at 1920 × 1080, 3.5 ms marching every pixel, 1.5 ms
+  at *Resolution Full* (with *Sky Occlusion*'s two more samples a step).
 - Their passes are timed on the GPU per view, with the noises in the frames that make them
   (`SceneViewGpuTimes::VolumetricClouds`, *volume* in the frame statistics, F8 in a game,
   `gpu_volumetric_clouds_ms` in a benchmark's CSV, the editor's frame time tooltip).
@@ -1299,8 +1322,9 @@ scene pass is the same with them and without, within the spread.
   pictures' reprojection of near clouds as the camera flies are step 2's.
 - **The haze between** is the sky blended in by the air's transmittance, as the layer's, not the
   air's own light along the shorter path; the aerial perspective (step 3) is the exact way.
-- **Their sky light** is the irradiance cube made for the camera's height, with a fixed occlusion
-  by the height in the band, not the sky over each cloud.
+- **Their sky light** is the irradiance cube made for the camera's height, with an occlusion by the
+  height in the band and, with *Sky Occlusion*, by the cloud just above, not the sky over each
+  cloud.
 - **Carried pictures**: a part of the picture that comes into view is filled from the marched
   pixels round it until each of its pixels is marched (4 or 16 frames), a little soft; the carried
   clouds' edges are a little softer than marched ones while the camera turns slowly.

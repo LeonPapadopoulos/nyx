@@ -58,6 +58,7 @@ namespace Nyx
 		band.EdgeSoftness = std::clamp(clouds.EdgeSoftness, 0.01f, 1.0f);
 		band.Wispiness = std::clamp(clouds.Wispiness, 0.0f, 1.0f);
 		band.Cellularity = std::clamp(clouds.Cellularity, 0.0f, 1.0f);
+		band.Lobes = std::clamp(clouds.Lobes, 0.0f, 1.0f);
 		band.Brightness = std::clamp(clouds.Brightness, 0.0f, 10.0f);
 		band.SilverLining = std::clamp(clouds.SilverLining, 0.0f, 10.0f);
 		band.SilverLiningSpread = std::clamp(clouds.SilverLiningSpread, 0.0f, 1.0f);
@@ -68,6 +69,7 @@ namespace Nyx
 		band.ShadowTint = glm::clamp(clouds.ShadowTint, glm::vec3(0.0f), glm::vec3(4.0f));
 		band.AerialPerspective = std::clamp(clouds.AerialPerspective, 0.0f, 10.0f);
 		band.Translucency = std::clamp(clouds.Translucency, 0.0f, 1.0f);
+		band.SkyOcclusion = std::clamp(clouds.SkyOcclusion, 0.0f, 1.0f);
 		band.Steps = std::clamp(clouds.Steps, 16u, 512u);
 		band.LightSteps = std::clamp(clouds.LightSteps, 1u, 16u);
 		band.MaxDistance = std::clamp(clouds.MaxDistance, 1000.0f, 500000.0f) * 0.001f;
@@ -203,7 +205,7 @@ namespace Nyx
 	{
 		const SceneViewVolumetricCloudsSettings& a = marched.Settings;
 		const SceneViewVolumetricCloudsSettings& b = wanted.Settings;
-		if (a.Wispiness != b.Wispiness || a.Cellularity != b.Cellularity || a.SunlitTint != b.SunlitTint || a.AerialPerspective != b.AerialPerspective || a.Translucency != b.Translucency || a.BlockSize != b.BlockSize ||
+		if (a.Wispiness != b.Wispiness || a.Cellularity != b.Cellularity || a.Lobes != b.Lobes || a.SunlitTint != b.SunlitTint || a.AerialPerspective != b.AerialPerspective || a.Translucency != b.Translucency || a.SkyOcclusion != b.SkyOcclusion || a.BlockSize != b.BlockSize ||
 			a.bFullResolution != b.bFullResolution)
 		{
 			return true;

@@ -59,11 +59,20 @@ namespace nyx
     static const float VolumetricCloudSkyBelow = 0.15;
     static const float VolumetricCloudSkyAbove = 0.7;
     static const float VolumetricCloudGroundLight = 0.25;
+    // The sky's occlusion (Sky Occlusion): how dark the cloud above makes the sky's light, per unit
+    // of the density of its two samples (soft: the sky's light comes from all round, not straight
+    // down); the cells of the shape noise to a Cloud Size (VolumetricCloudNoiseCells)
+    static const float VolumetricCloudSkyShade = 3.0;
+    static const float VolumetricCloudSizeCells = 4.0;
     // The cells (Cellularity): the shapes' cellular noise from which they start and where they are
     // whole; how far the curl noise swirls the details, in their repeats; the finer details' size
     // against the details' and their share of the wear
     static const float VolumetricCloudCellEdge = 0.25;
     static const float VolumetricCloudCellMiddle = 0.7;
+    // The lobes (Lobes): the cells of 8 across' share of them against the 16's, and how much of the
+    // field their gaps wear away at the most
+    static const float VolumetricCloudLobeWeight = 0.7;
+    static const float VolumetricCloudLobeWear = 1.3;
     static const float VolumetricCloudSwirl = 0.3;
     static const float VolumetricCloudFinerDetail = 3.07;
     static const float VolumetricCloudFinerWeight = 0.35;
@@ -110,6 +119,10 @@ namespace nyx
         public float Cellularity;
         // How much of the sun's light the clouds carry through their bodies by scattering
         public float Translucency;
+        // How much their upper parts swell into round lobes
+        public float Lobes;
+        // How much the cloud just above a sample holds back the sky's light on it
+        public float SkyOcclusion;
         public float3 SunLight;
         public float3 TowardsSun;
         public uint Steps;
@@ -145,6 +158,8 @@ namespace nyx
         p.Wispiness = View.VolumetricCloudSunlitTint.w;
         p.Cellularity = View.VolumetricCloudShaping.x;
         p.Translucency = View.VolumetricCloudShaping.y;
+        p.Lobes = View.VolumetricCloudShaping.z;
+        p.SkyOcclusion = View.VolumetricCloudShaping.w;
         p.SunLight = View.VolumetricCloudSun.rgb;
         p.TowardsSun = normalize(View.LightDirection.xyz);
         p.Steps = View.VolumetricCloudSteps;
@@ -286,7 +301,7 @@ namespace nyx
         Volume shape;
         shape.Index = p.Shape;
         const float level = max(shapeLevel, 0.0);
-        const float2 noise = shape.SampleLevel(LinearWrap, float3(p.ShapeOrigin + xz * p.Repeats.y, height * p.Repeats.y), level).rg;
+        const float4 noise = shape.SampleLevel(LinearWrap, float3(p.ShapeOrigin + xz * p.Repeats.y, height * p.Repeats.y), level);
         const float spread = exp2(VolumetricCloudShapeHuddleRate * max(level - VolumetricCloudShapeHuddle, 0.0));
         // About evenly spread from 0 to 1, so a coverage c leaves about c of the sky's space inside;
         // kept to the cells' middles (g, 1 at each cell's point) as much as asked
@@ -296,6 +311,20 @@ namespace nyx
         if (base <= 0.0)
         {
             return 0.0;
+        }
+        // Lobes: the upper parts worn between the cells of 8 and 16 across (inverted, so what stays is
+        // round), from just above the base, crisper where the field is thin: the many-lobed heads and
+        // sides of a towering cumulus, at a size between the shapes' and the details'
+        if (p.Lobes > 0.0)
+        {
+            // Squared, so each lobe is a dome, worn little near its middle, more and more towards
+            // the crease between it and the next, not a cone with flat sides
+            const float gap = 1.0 - dot(noise.ba, float2(VolumetricCloudLobeWeight, 1.0 - VolumetricCloudLobeWeight));
+            base = saturate(volumetricCloudRemap(base, gap * gap * p.Lobes * VolumetricCloudLobeWear * smoothstep(0.02, 0.2, h), 1.0, 0.0, 1.0));
+            if (base <= 0.0)
+            {
+                return 0.0;
+            }
         }
         if (bDetail && p.Erosion.x > 0.0)
         {
@@ -462,7 +491,17 @@ namespace nyx
         if (p.Debug != VolumetricCloudDebugSunLight)
         {
             const float h = saturate((height - p.Band.x) / (p.Band.y - p.Band.x));
-            skyLight = (p.SkyAbove * lerp(VolumetricCloudSkyBelow, VolumetricCloudSkyAbove, h) + p.SkyBelow * VolumetricCloudGroundLight) * (p.Repeats.w * p.ShadowTint);
+            float above = lerp(VolumetricCloudSkyBelow, VolumetricCloudSkyAbove, h);
+            // Held back by the cloud a quarter and three quarters of a Cloud Size above (the shapes
+            // alone, without the details): a lobe's top lit by the sky, its underside darker
+            if (p.SkyOcclusion > 0.0)
+            {
+                const float size = 1.0 / (p.Repeats.y * VolumetricCloudSizeCells);
+                const float overhead = volumetricCloudDensity(p, point.xz, height + size * 0.25, weather, shapeLevel, detailLevel, false) +
+                    volumetricCloudDensity(p, point.xz, height + size * 0.75, weather, shapeLevel + 1.0, detailLevel, false);
+                above *= lerp(1.0, exp(-overhead * VolumetricCloudSkyShade), p.SkyOcclusion);
+            }
+            skyLight = (p.SkyAbove * above + p.SkyBelow * VolumetricCloudGroundLight) * (p.Repeats.w * p.ShadowTint);
         }
 
         const float stepThrough = exp(-extinction * length);

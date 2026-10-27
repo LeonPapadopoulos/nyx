@@ -1,0 +1,4 @@
+# The bright day scene's tower: whitewashed
+Shader = Shaders/Standard.slang
+BaseColor = 0.85 0.85 0.82
+Roughness = 0.8

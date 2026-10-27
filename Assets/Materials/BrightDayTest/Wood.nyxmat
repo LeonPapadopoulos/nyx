@@ -1,0 +1,4 @@
+# The bright day scene's jetty: weathered wood
+Shader = Shaders/Standard.slang
+BaseColor = 0.32 0.22 0.14
+Roughness = 0.85
