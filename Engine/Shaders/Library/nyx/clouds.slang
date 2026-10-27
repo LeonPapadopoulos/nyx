@@ -104,9 +104,9 @@ namespace nyx
         return View.VolumetricClouds != 0;
     }
 
-    // Their light and transmittance at a pixel of the view, filtered up from their half size: the
-    // mean of four bilinear taps half a texel round the pixel, a 2 x 2 box over the bilinear filter,
-    // smooth, and the march's 2 x 2 dither of its steps (VolumetricClouds.slang) evened out exactly
+    // Their light and transmittance at a pixel of the view, filtered up from the size they are
+    // marched at: the mean of four bilinear taps half a texel round the pixel, a 2 x 2 box over the
+    // bilinear filter, smooth where bilinear filtering alone shows the texels as creases
     public float4 volumetricCloudsAt(float2 pixel)
     {
         const float2 texel = 1.0 / View.VolumetricCloudDetailOrigin.zw;
@@ -117,12 +117,32 @@ namespace nyx
             + clouds.SampleLevel(LinearClamp, uv + float2(-half.x, half.y), 0.0) + clouds.SampleLevel(LinearClamp, uv + float2(half.x, half.y), 0.0));
     }
 
-    // How far along a pixel's ray they are, in kilometres: their nearest pixel of the half size
-    public float volumetricCloudDepthAt(float2 pixel)
+    // Where along a pixel's ray they are, in kilometres, at their nearest pixel: their light's mean
+    // depth (x), where they begin to hide what is behind (y) and where they have hidden nine tenths
+    // of it (z); and what gets through them without the haze (w)
+    public float4 volumetricCloudDepthAt(float2 pixel)
     {
         const float2 extent = View.VolumetricCloudDetailOrigin.zw;
         const int2 texel = clamp(int2(pixel / View.ViewportSize * extent), int2(0), int2(extent) - 1);
-        return View.VolumetricCloudDepth.get().Load(int3(texel, 0)).r;
+        return View.VolumetricCloudDepth.get().Load(int3(texel, 0));
+    }
+
+    // What of the sun's disk gets through every cloud along a pixel's ray, `direction` the way it
+    // looks: the volumetric clouds' own transmittance, without the haze between, which would let a
+    // bright disk shine through a thick cloud; the high layer's worked out along the ray, as its
+    // target keeps only what gets through with the haze
+    public float cloudSunThroughAt(float2 pixel, float3 direction)
+    {
+        float through = 1.0;
+        if (hasVolumetricClouds())
+        {
+            through = View.VolumetricCloudDepth.SampleLevel(LinearClamp, pixel / View.ViewportSize, 0.0).w;
+        }
+        if (hasCloudLayer())
+        {
+            through *= cloudLayerTransmittanceAlong(viewCloudParams(), direction, ddx(direction), ddy(direction));
+        }
+        return through;
     }
 
     // Every cloud along a pixel's ray: the volumetric clouds before the high layer, which lies
@@ -144,7 +164,7 @@ namespace nyx
 
     // The clouds between the camera and a point of the world, at its pixel: the high layer's only
     // where its shell lies between them, the camera on one side and the point on the other; the
-    // volumetric clouds' only where the point is farther along the ray than they are
+    // volumetric clouds' as much as the point is farther along the ray than where they begin
     public CloudCover cloudCoverBefore(float3 positionWS, float2 pixel)
     {
         CloudCover cover;
@@ -173,11 +193,19 @@ namespace nyx
                 cover.Light = clouds.rgb;
             }
         }
-        if (hasVolumetricClouds() && distance > volumetricCloudDepthAt(pixel))
+        if (hasVolumetricClouds())
         {
-            const float4 volume = volumetricCloudsAt(pixel);
-            cover.Light = volume.rgb + cover.Light * volume.a;
-            cover.Transmittance *= volume.a;
+            // As much of them as lies before the point: none before they begin, all of them beyond
+            // where they all but end, between as far as it is between, so a hillside among them is
+            // in fog rather than cut off
+            const float4 depths = volumetricCloudDepthAt(pixel);
+            const float before = saturate((distance - depths.y) / max(depths.z - depths.y, 1e-3));
+            if (before > 0.0)
+            {
+                const float4 volume = volumetricCloudsAt(pixel);
+                cover.Light = volume.rgb * before + cover.Light * lerp(1.0, volume.a, before);
+                cover.Transmittance *= lerp(1.0, volume.a, before);
+            }
         }
         return cover;
     }
@@ -474,6 +502,35 @@ namespace nyx
     // The clouds along a ray from the camera, nearest first: their light (rgb), and what of the
     // light from behind them gets through (a). `direction` normalised, and its changes to the
     // neighbouring footprints.
+    // What gets through the layer along a ray, without the haze between: its clouds' opacity where the
+    // ray meets its shell, nearest first; for the sun's disk (cloudSunThroughAt())
+    public float cloudLayerTransmittanceAlong(CloudParams p, float3 direction, float3 directionDx, float3 directionDy)
+    {
+        const CloudShellHits hits = cloudShellHits(p.Planet, p.CameraHeight, direction.y, p.Shell.x);
+        float through = 1.0;
+        for (int index = 0; index < hits.Count; ++index)
+        {
+            const float distance = index == 0 ? hits.Distances.x : hits.Distances.y;
+            const float3 hit = float3(0.0, p.Planet.Radius + p.CameraHeight, 0.0) + direction * distance;
+            const float3 up = normalize(hit);
+            const float slant = dot(up, direction);
+            const float safeSlant = slant >= 0.0 ? max(slant, 1e-3) : min(slant, -1e-3);
+            const float2 along = p.Wind.xy;
+            const float2 across = float2(-along.y, along.x);
+            const float tile = p.Shell.z;
+            const float2 offset = direction.xz * distance;
+            const float2 q = p.Origin.xy + float2(dot(offset, along), dot(offset, across)) / tile;
+            const float3 dPdx = distance * (directionDx - direction * (dot(up, directionDx) / safeSlant));
+            const float3 dPdy = distance * (directionDy - direction * (dot(up, directionDy) / safeSlant));
+            const float2 qdx = float2(dot(dPdx.xz, along), dot(dPdx.xz, across)) / tile;
+            const float2 qdy = float2(dot(dPdy.xz, along), dot(dPdy.xz, across)) / tile;
+            const float density = cloudDensity(p, cloudField(p, q, qdx, qdy), float2(0.0), qdx, qdy, true);
+            const float cover = 1.0 - exp(-density * p.Shell.w / max(abs(slant), CloudLeastSlant));
+            through *= 1.0 - cover * smoothstep(0.25, 2.0, distance / p.Shell.y);
+        }
+        return through;
+    }
+
     public float4 cloudLayerAlong(CloudParams p, float3 direction, float3 directionDx, float3 directionDy)
     {
         const CloudShellHits hits = cloudShellHits(p.Planet, p.CameraHeight, direction.y, p.Shell.x);

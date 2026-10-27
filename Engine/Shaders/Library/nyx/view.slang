@@ -175,19 +175,23 @@ public struct ViewConstants
     // The view's volumetric clouds (VulkanVolumetricClouds; nyx.volumetricclouds,
     // VolumetricClouds.slang): 1 while they are drawn, else 0 and nothing below is set. Their light
     // along each pixel's ray and the part of the light from behind them that gets through (a), at
-    // half the view's size, as this frame leaves them, and how far along the ray they are, in
-    // kilometres. What this frame marched (x: 1 for every pixel, else one of each 4 x 4; the debug
-    // view from the 8th bit up), and what it marched into; the frame before's light and depth; the
-    // noises (the shapes, the details, the weather map). The steps along a ray and towards the sun,
-    // and which pixel of each 4 x 4 this frame marches. The band's bottom and top, the farthest
+    // the size they are marched at, as this frame leaves them, and where along the ray they are, in
+    // kilometres (their light's mean depth, where they start, where they all but end) with what of
+    // the sun gets through them (w). What this frame marched (bit 0: every pixel; bits 1 to 3 the
+    // squares of which one pixel is marched, pixels a side; the debug view from the 8th bit up), and
+    // what it marched into; the frame before's light and depths; the noises (the shapes, the details,
+    // the weather map). The steps along a ray and towards the sun, which pixel of each square this
+    // frame marches, the curl noise that swirls the details. The band's bottom and top, the farthest
     // marched (kilometres) and the extinction a kilometre where they are densest. The coverage, its
     // variation, the type, its variation. The details, billowiness, edges' softness, brightness.
     // 1 / each noise's repeat in kilometres (the weather map's, the shapes', the details') and
     // the sky's light on them. Where the camera is over the weather map and the shapes (in
-    // repeats), over the details, and the half size. The silver lining, its spread, the powder,
-    // the multiple scattering. The shadow tint. The sun's light at the top of the air. How far the
-    // camera moved, less how far the wind carried the clouds, since the frame before (kilometres),
-    // and the frame before's rotation and projection without its place.
+    // repeats), over the details, and the size they are marched at. The silver lining, its spread,
+    // the powder, the multiple scattering. The shadow tint and the aerial perspective. The sun's
+    // light at the top of the air. How far the camera moved, less how far the wind carried the
+    // clouds, since the frame before (kilometres). The sunlit tint and the wispiness. The
+    // cellularity and the translucency. The frame before's rotation and projection without its
+    // place.
     public uint VolumetricClouds;
     public nyx::Texture VolumetricCloudLight;
     public nyx::Texture VolumetricCloudDepth;
@@ -203,7 +207,7 @@ public struct ViewConstants
     public uint VolumetricCloudLightSteps;
     public uint VolumetricCloudUpdateX;
     public uint VolumetricCloudUpdateY;
-    public uint VolumetricCloudPadding;
+    public nyx::Volume VolumetricCloudCurl;
     public float4 VolumetricCloudBand;
     public float4 VolumetricCloudCoverage;
     public float4 VolumetricCloudErosion;
@@ -214,6 +218,8 @@ public struct ViewConstants
     public float4 VolumetricCloudShadowTint;
     public float4 VolumetricCloudSun;
     public float4 VolumetricCloudMotion;
+    public float4 VolumetricCloudSunlitTint;
+    public float4 VolumetricCloudShaping;
     public float4x4 VolumetricCloudPreviousSkyViewProjection;
 
     // The world's wind (nyx.wind; Wind.h), at Time: calm without one. Its texture of a game's local

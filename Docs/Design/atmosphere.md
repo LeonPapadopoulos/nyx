@@ -952,8 +952,8 @@ a weather map, and the high layer stays above them for cirrus.
 ## The volumetric clouds
 
 Clouds with volume: a band of them between two altitudes round the planet's curve, marched along
-each pixel's ray, so they have bright sunlit tops and shaded bellies, thin edges that glow against
-the sun and dark cores, and are seen from the ground, from inside the band and from above it. A
+each pixel's ray, so they have bright sunlit tops and shaded bellies, thin, translucent edges that
+glow against the sun, and are seen from the ground, from inside the band and from above it. A
 weather map places them, 3D noise shapes them, the sun through the air and through the clouds
 themselves lights them, scattered many times. The settings are a component of their own,
 `VolumetricCloudsComponent` (*Volumetric Clouds*, `Scene`); the math in `VolumetricClouds.h`, the
@@ -970,15 +970,22 @@ in common. The world's first one counts; without one, with it off, or with the s
 than *Atmosphere* (whose tables light them), there are none and every picture is the same to the
 bit (`NyxVolumetricCloudsGpuTests`, and the other GPU tests' pictures against the build before it).
 
-### The band
+### The band, at a game's scale
 
-Two shells round the planet's middle, *Bottom Altitude* and *Top Altitude* above its ground (1500
-and 5000 m by default), in kilometres, planet-centred as the sky's tables and the high layer are.
+Two shells round the planet's middle, *Bottom Altitude* and *Top Altitude* above the world's height
+0 (the planet's ground the sky is made for), in kilometres, planet-centred as the sky's tables and
+the high layer are. 400 and 1800 m by default, and the presets alike: low enough for a camera on a
+hill, or on something that rises, to reach them, and for the clouds to read as clouds a few hundred
+metres across rather than as a far ceiling. *Cloud Size* (700 m), *Detail Size* (80 m) and *Weather
+Size* (5 km) are at the same scale. The whole range stays: bases from 0 to 20 km, tops to 30 km,
+clouds from 100 m to 50 km. A clouds' base at 0 starts at the world's height 0: they are as low as
+that, and a band from 0 still looks high only if its clouds are kilometres big.
+
 Where a ray is inside the band (`GetCloudBandSpan()`, `nyx::volumetricCloudBandSpan()`) comes from
 where it meets each shell (the layer's `GetCloudShellHits()`, exact by the heights):
 
 - **from below**, from where it leaves the bottom shell to where it leaves the top one; none where
-  it meets the ground first (from the ground, the level ray's span starts about 140 km off);
+  it meets the ground first;
 - **inside**, from the camera to where it leaves, through the bottom shell if it goes down into it,
   else the top;
 - **from above**, from where it enters the top shell to where it leaves through the bottom, or past
@@ -988,12 +995,12 @@ where it meets each shell (the layer's `GetCloudShellHits()`, exact by the heigh
 `NyxVolumetricCloudsTests` checks each end on a shell within a metre and the middle inside, from 2 m,
 800 m, just below the bottom, inside, just below and above the top, 7 and 20 km, every way from
 straight up to straight down; and that a ray found to miss has nothing of the band before the
-ground. The march stops at *Max Distance* (150 km) from the camera.
+ground. The march stops at *Max Distance* (80 km) from the camera.
 
 ### The weather map
 
-A square of 512 texels a side that tiles, laid over the ground, *Weather Size* × 4 across (48 km by
-default), carried by the wind (`VolumetricCloudWeather.slang`, made from the seed):
+A square of 512 texels a side that tiles, laid over the ground, *Weather Size* × 4 across, carried
+by the wind (`VolumetricCloudWeather.slang`, made from the seed):
 
 - **r, the coverage**: fractal gradient noise from 4 cells across, mixed with cellular noise, so
   there are patches and bands. *Coverage* is moved up and down by it, by *Coverage Variation* (0 an
@@ -1006,33 +1013,45 @@ default), carried by the wind (`VolumetricCloudWeather.slang`, made from the see
 
 ### Shapes from noise
 
-Two cubes of noise that tile, made by compute shaders when the clouds are first drawn and when the
+Three cubes of noise that tile, made by compute shaders when the clouds are first drawn and when the
 *Seed* changes (`VolumetricCloudNoise.slang`), never otherwise, with their mips:
 
-- **the shapes**, 128 texels a side (8 MB), over *Cloud Size* × 4: Perlin-Worley, fractal gradient
-  noise of five octaves lifted by cellular noise (round, billowy blobs), worn where cellular noise
-  of three finer octaves is low (Schneider's remap). That field is about normal, its mean 0.83 and
-  its deviation 0.056, so a threshold of it covers all or nothing; it is spread out by its
-  distribution (a logistic close to the normal's) to lie about evenly between 0 and 1, so that a
-  threshold at `1 - c` leaves about `c` of space inside (0.22, 0.43 and 0.61 for 0.2, 0.4 and 0.6,
-  measured). Its far mips, which average blobs and gaps together, are spread out again as much
-  (their values huddle round the middle from the third mip on), so the clouds cover as much of the
-  sky far off as near.
+- **the shapes**, 128 texels a side (8 MB), over *Cloud Size* × 4: r, Perlin-Worley, fractal gradient
+  noise of five octaves lifted by cellular noise (round, billowy blobs), worn where cellular noise of
+  three finer octaves is low (Schneider's remap). That field is about normal, its mean 0.83 and its
+  deviation 0.056, so a threshold of it covers all or nothing; it is spread out by its distribution
+  (a logistic close to the normal's) to lie about evenly between 0 and 1, so that a threshold at
+  `1 - c` leaves about `c` of space inside (0.22, 0.43 and 0.61 for 0.2, 0.4 and 0.6, measured). Its
+  far mips, which average blobs and gaps together, are spread out again as much (their values
+  huddle round the middle from the third mip on), so the clouds cover as much of the sky far off as
+  near. g, the cells of 4 across alone, one octave, 1 at each cell's point: *Cellularity*.
 - **the details**, 32 texels a side, over *Detail Size* × 4: cellular noise of three octaves, the
   small billows and wisps.
+- **the curl**, 32 texels a side: the curl of a potential of three fields of fractal gradient noise
+  (by differences a texel apart), a swirling flow without sources or sinks, which swirls the
+  details (*Wispiness*).
 
 Per sample (`nyx::volumetricCloudDensity()`), at its height `h` through the band (0 its bottom, 1
 its top), with the weather there:
 
-1. **How tall the type grows**: stratus a thin sheet at the bottom, small puffs the lower 20 to 45 %,
+1. **Parted into cells** by *Cellularity*: the field kept to where the cells are near their
+   middles (a smoothstep of g from 0.25 to 0.7), so a field of small puffs is a field of separate
+   puffs with sky between, receding in rows (the reference's frame 1), not a merged mass.
+2. **How tall the type grows**: stratus a thin sheet at the bottom, small puffs the lower 20 to 45 %,
    towering cumulus up to most of the band, blended by the type; each flat at the base and rounding
-   off towards its top (`volumetricCloudHeightProfile()`). The shapes' field is multiplied by it, so
-   the threshold rounds the tops.
-2. **Thresholded by the coverage**: `remap(field, 1 - coverage, 1, 0, 1)`.
-3. **Worn by the details**, by *Detail*: cells worn into wisps at the base, round billows (the gaps
-   between them worn, inverted cells) from a quarter of the way up, by *Billowiness*.
-4. **Its edges** as soft as *Edge Softness* says (the density reaches its full value that far in),
-   denser towards the middle so the light inside shades, times the weather's density.
+   off towards its top (`volumetricCloudHeightProfile()`). The field is multiplied by it, so the
+   threshold rounds the tops.
+3. **Thresholded by the coverage**: `remap(field, 1 - coverage, 1, 0, 1)`.
+4. **Worn by the details**, by *Detail*, at two sizes, the second three times smaller weighing a
+   third (the billows on the billows of a many-lobed top), the smaller only where the footprint
+   shows them: cells worn into wisps at the base, round billows (the gaps between them worn,
+   inverted cells) from a quarter of the way up, by *Billowiness*. Where they are looked up is
+   swirled first by the curl noise twice as large, by *Wispiness*, the most at the base: torn,
+   curling wisps (the reference's frame 3).
+5. **A fringe**, not a cut-off: `base (1 + s) / (base + s)`, `s` *Edge Softness*: thin where the
+   shape begins, rising smoothly to its fullest; at 0.35 a quarter of the density a tenth of the way
+   in, two thirds half way. The light passes through the thin fringe, so the clouds' edges are soft
+   and translucent, and glow against the sun.
 
 The extinction is the density times *Density* times 40 a kilometre (a cumulus's 0.04 a metre: 200 m
 of it lets a third through).
@@ -1055,120 +1074,169 @@ Each sample in a cloud (`volumetricCloudSample()`):
 - **The sun at the sample**: the light's colour as it gives it (`ExtractedSceneGlobals::SunLightColor`,
   before the time of day's fade, as the air's sky is lit) times the transmittance table from the
   sample's height towards the sun, with the sun's cosine to the sample's own up; none once the sun
-  is below the horizon seen from there, fading as its disk goes down. So gold and red at sunset,
-  the band's top keeping the sun a little longer than its bottom.
+  is below the horizon seen from there, fading as its disk goes down. So gold and red at sunset.
 - **Through the clouds towards the sun**: Beer's law over the optical depth of *Light Steps* (6)
   samples further and further apart (quadratically) up to 35 % of the band's thickness, at most
   1.5 km, the first with its details; and one twice as far, for the shadow of a large cloud beyond.
-  The samples are as jittered as the ray's, so their steps don't show as bands of shadow.
+  Half the samples where the shapes are averaged over the footprint (far off): their shadows are
+  soft there.
 - **Scattered once and many times** (Wrenninge's octaves, as Hillaire's Frostbite clouds have them):
-  four orders, each lit through 0.3 times the depth of the one before, by a lobe half as sharp, and
-  *Multiple Scattering* times as strong; the orders after the first in *Shadow Tint*. So a cloud's
-  inside, which the light reaches only by scattering, is lit softly and in the tint, not black.
+  four orders, each lit through 0.4 times the depth of the one before, by a lobe half as sharp, and
+  *Multiple Scattering* times as strong; the orders after the first in *Shadow Tint*.
+- **Carried through the body** (*Translucency*): what many scatterings carry through a cloud's
+  body falls off with the depth towards the sun as diffusion does, `1 / (1 + 0.1 τ)`, not as
+  Beer's law's `e^(-τ)`; times 0.15 and *Translucency*, in both tints. A body with the sun behind it
+  glows softly in the sun's colour rather than going black (the dark, solid masses lit only at a
+  thin rim of a low sun, which the octaves alone gave, are what this is for).
 - **The phase**: a dual-lobe Henyey-Greenstein, half a weak lobe backwards (`g` -0.2) and half a
   forward one (`g` from 0.9 to 0.5 by *Silver Lining Spread*), its light above even scattering
   times *Silver Lining*: the thin edges of a cloud against the sun glow.
 - **The powder** of thin edges (Schneider's): seen away from the sun, a sample's light is dimmed by
-  how thin it is, `1 - e^(-σ · 60 m)`, by *Powder*: the sunlit edges and creases are a little darker
-  than the insides, which gives the cauliflower its relief.
+  how thin it is, `1 - e^(-σ · 60 m)`, by *Powder*.
 - **The sky's light**: the irradiance cube's from above, 15 % of it at the band's bottom to 70 % at
   its top (the clouds above hide it), and a quarter of the ground's from below, by *Ambient*, in
-  *Shadow Tint*: the bellies grey-violet, and at night the night sky's blue, dark.
+  *Shadow Tint*: the bellies grey-violet, the undersides warm at sunset, and at night the night
+  sky's blue, dark.
+- **The painted colours**: *Sunlit Tint* (cream by default) times all the sun's light, *Shadow Tint*
+  times the light that only scattering brings and the sky's. The references are painted, not
+  photographs: cream tops and warm undersides are a choice of these two, not of the air's.
 - *Brightness* times all of it.
 
 Each sample adds what it scatters towards the camera as much as it hides (`(1 - e^(-σ Δt))` of what
-still gets through, the albedo taken as 1: energy-conserving, so a step's length changes how much
-it hides, not how bright it is).
+still gets through, the albedo taken as 1: energy-conserving).
 
 ### The march
 
 Along each ray inside the band, more steps along the longer rays towards the horizon, up to *Steps*
-(128): half of them through the band straight up, all of them from about four times its thickness.
-Coarse steps through the clear air test the shapes alone (no details, no light); where they find
-cloud, the step before it (where it may have begun) and every step through it are taken again in
-quarters, with the details and the light. The march stops once less than 0.5 % of the light gets
-through. Where in each step a pixel's samples are is the 2 × 2 Bayer matrix's order by the pixel
-(a quarter of a step apart), the same every frame, so a still picture stays still; the filter up to
-the view's size, a 2 × 2 box, evens them out exactly. A 4 × 4 matrix's sixteenths showed as a fine
-regular pattern on the near clouds' sides through any filter that kept their edges.
+(128): half of them through the band straight up, all of them from about four times its thickness;
+with the camera inside the band, closer together near it (spaced as the square of their number),
+where its clouds are big on the picture. Coarse steps through the clear air test the shapes alone
+(no details, no light); where they find cloud, the step before it (where it may have begun) and
+every step through it are taken again in quarters, with the details and the light. The march stops
+once less than 0.5 % of the light gets through.
 
-Each ray gives three numbers: the clouds' light, what of the light from behind them gets through,
-and how far along the ray they are (where their light comes from on average, weighed by how much
-each sample hid; where the band ends for a ray through none).
+Each sample sits in the middle of its step, for every pixel. Step 1 dithered it from pixel to pixel
+(a 2 × 2 or 4 × 4 Bayer matrix's order), which evens out banding; but the pixels carried from frame
+to frame (below) are resampled, and the dither's pattern then no longer lines up with the filter
+that evens it out: it showed as a grid while the camera turned. At a game's scale the steps through
+a cloud are a few metres (a coarse step through a 1.4 km band straight up is 22 m, its quarters
+5.5 m) and show no bands without it.
+
+Each ray gives: the clouds' light; what of the light from behind them gets through, the haze taken
+in; where along the ray they are, in kilometres: where their light comes from on average (their
+depth), where they begin to hide what is behind them (2 % hidden: their *front*) and where they have
+hidden nine tenths of it, or end (their *back*); and what gets through them without the haze (for
+the sun's disk, 0 where the march gave up).
 
 **Through the air**: the clouds' light is multiplied by the transmittance between the camera and
-that depth (the table's ratio, as the layer's), and they hide what is behind them by their opacity
-times its mean, so far off they melt into the sky behind them, which stands in for the haze's own
-light between (no aerial perspective of their own yet).
+their depth (the table's ratio, as the layer's) to the power *Aerial Perspective* (1.5), and they
+hide what is behind them by their opacity times its mean, so far off they melt into the sky behind
+them, which stands in for the haze's own light; above 1 they pale sooner than the air alone would
+pale them, as distant clouds in a painting do.
 
-### At half size, carried from frame to frame
+### Marched at a size, carried from frame to frame
 
-The march runs at half the view's size each way (960 × 540 at 1920 × 1080), and with *Temporal* on
-(the default) only one pixel of each 4 × 4 a frame, the one the frame's place in a Bayer matrix's
-order says (`GetVolumetricCloudUpdateOffset()`: every pixel once in 16 frames, those of
-neighbouring frames far apart). Two passes a frame (`VolumetricClouds.slang`):
+*Resolution*: the clouds are marched at half the view's size each way (960 × 540 at 1920 × 1080),
+or at its own. *Update*: each frame marches every pixel, or one pixel of each square of 2 × 2 or
+4 × 4 (the one the frame's place in a Bayer matrix's order says,
+`GetVolumetricCloudUpdateOffset()`: every pixel once in 4 or 16 frames, those of neighbouring frames
+far apart), the others carried from the frame before. Older scenes' *Temporal* folds into it as they
+load (`FoldLegacyVolumetricCloudsUpdate()`): off is *Every Pixel*, on keeps the default, *Blocks 4 x
+4*.
 
-1. **The march** (`volumetricCloudsMarchFragment`), into a quarter of its target each way: one ray
-   for each 4 × 4 of the half size.
-2. **The resolve** (`volumetricCloudsResolveFragment`), into one of two pictures of the half size,
-   from the march and the other one, the frame before's: the pixels marched this frame from the
-   march; every other pixel from where the clouds it looks at were in the frame before: as far
-   along its ray as the frame before's clouds at the pixel were, moved back by how far the camera
-   moved and the wind carried them since (`ViewConstants.VolumetricCloudMotion`), seen through the
-   frame before's rotation and projection. A point that lands exactly where it was (within a
-   hundredth of a texel) is taken as it was; else it is filtered by Catmull and Rom's cubic (nine
-   bilinear taps): sharp, so clouds carried frame after frame as the camera turns don't blur, as
-   bilinear filtering would blur them a little each time. Where that is off the picture, this
-   frame's marched pixels round it, blended.
+**More marched while the picture moves fast** (`GetVolumetricCloudScreenShift()`,
+`GetVolumetricCloudBlockSize()`): how far the picture moves under the camera since the frame before,
+the most any of its corners or its middle moves by the camera's turn, plus its move as seen at the
+nearest the clouds may be; past 1 % of the picture's height a frame, squares of 4 are marched as
+squares of 2; past 5 %, every pixel. A part of the height, so a bigger view marches as much more: 1 %
+is half a degree a frame for a 60-degree-high lens, 30 degrees a second at 60 frames; 5 % a fast
+turn, whose carried pixels would come from far and uncover much that has nothing to come from.
+
+Two passes a frame (`VolumetricClouds.slang`):
+
+1. **The march** (`volumetricCloudsMarchFragment`), into a part of its target each way: one ray for
+   each square.
+2. **The resolve** (`volumetricCloudsResolveFragment`), into one of two pictures, from the march and
+   the other one, the frame before's. For each pixel, where the clouds it looks at were in the frame
+   before: as far along its ray as the frame before's clouds at the pixel were, moved back by how far
+   the camera moved and the wind carried them (`ViewConstants.VolumetricCloudMotion`), seen through
+   the frame before's rotation and projection.
+   - **Still** (that point within a hundredth of a texel of the pixel): the pixels marched this frame
+     as marched, the others as they were. So a still picture, once every pixel was marched again, is
+     the one every pixel marched gives, to the bit (tested).
+   - **Moving**: the frame before's, filtered by Catmull and Rom's cubic (nine bilinear taps, sharp,
+     so clouds carried frame after frame don't blur as bilinear filtering would blur them a little
+     each time), held to what this frame's marched pixels round it span (their least and most, a
+     half of that span beyond, as the marched pixels are a square apart), by how far it moved (all of
+     it from a texel on); a marched pixel is blended with that by 30 %, so it doesn't stand out from
+     the carried ones round it (step 1 replaced it, and the squares showed as a cross pattern).
+   - **Nothing to carry** (it was off the picture): this frame's marched pixels round it, the 3 × 3
+     nearest, weighed by nearness (a tent a square and a half wide) and by how near each one's depth
+     is to the nearest one's, so a cloud's edge against the sky stays an edge rather than blocks.
+
+`NyxVolumetricCloudsGpuTests` turns a camera at 640 × 360 for 24 frames from a still start, in each
+mode, against *Every Pixel*'s frames of the same camera (the mean of each channel's difference, of
+255; `NyxVolumetricCloudsGpuTests --sequences` saves every 4th frame):
+
+| Turning | Blocks 2 x 2 | Blocks 4 x 4 |
+| --- | --- | --- |
+| 0.3 degrees a frame (squares of 4 stay 4) | 0.74 (worst frame 0.79) | 1.83 (2.40) |
+| 1.5 degrees a frame (90 a second; 4 marched as 2) | 1.16 (1.25) | 1.16 (1.25) |
+| 6 degrees a frame (every pixel) | 0 | 0 |
+
+What is left is the softness of resampling the carried pixels, at the clouds' edges; there is no
+pattern of the squares. Before the dither went, the same turns were 2.0 to 2.8.
 
 **Everything is marched again**, every pixel in one frame, when what the frames before were marched
 with no longer holds (`IsVolumetricCloudsLookChanged()`): the first frame, a new size, a new seed,
-any setting but the wind's place (a value dragged in the Details panel is seen at once, not over 16
-frames), or the sun turning more than 0.03 degrees in a frame (a time of day running a day in 20
-minutes turns it 0.005 degrees a frame at 60 frames a second; one scrubbed in the editor far more);
-and when the camera jumps or the wind carries the clouds more than 500 m in a frame. A pixel is
-marched again within 16 frames otherwise, so a sun turning slowly lights them all within a tenth of
-a degree and a half of each other.
-
-`NyxVolumetricCloudsGpuTests` checks that a still picture, carried for 17 frames, is the same to the
-bit as every pixel marched; and with the camera turned 3 degrees a frame for 5 frames, the part that
-was in view before within 1.4 of 255 on average of every pixel marched, which keeps, until a
-pixel is marched again, the dither of the pixel it was marched at (the left quarter that came into
-view, its pixels marched one of 16 a frame since, blocky until they are: 2.2 over the whole
-picture).
+any setting but the wind's place (a value dragged in the Details panel is seen at once), or the sun
+turning more than 0.03 degrees in a frame; and when the camera jumps or the wind carries the clouds
+more than 500 m in a frame.
 
 **Read filtered up** (`nyx::volumetricCloudsAt()`): the sky, the surfaces and the light shafts read
-the picture of the half size as the mean of four bilinear taps half a texel round each pixel (a 2 × 2
-box over the bilinear filter): smooth, and the march's 2 × 2 dither evened out exactly, which a cubic
-B-spline (tried first) only damps to a third. The clouds are worked out along each ray whatever
-stands in the way, so no depth-aware filter is needed: the sky's pixels next to a wall's edge read
-the clouds behind it as they are.
+the picture as the mean of four bilinear taps half a texel round each pixel (a 2 × 2 box over the
+bilinear filter), smooth where bilinear filtering alone shows the texels as creases. The clouds are
+worked out along each ray whatever stands in the way, so no depth-aware filter is needed.
 
 ### What it is drawn over and under
 
 The passes run per view after the high layer's pass, before the scene pass, reading the sky's
-tables. Their pictures, RGBA16F (the light, and in alpha what gets through) and R32F (the depth, in
-kilometres), three of each at the half size (the march, two pictures carried in turn: 12.4 MB at
-1920 × 1080), with the noises (8.6 MB), made at the first frame they are drawn, let go of when they
-go off, with the view, or when its world goes. Then (`nyx.clouds`, `cloudsAt()`):
+tables. Their pictures, two RGBA16F images each (the light and what gets through; the depth, the
+front, the back and what gets through without the haze), three of each (the march, two pictures
+carried in turn: 25 MB at 1920 × 1080 at half size, four times that at its own size), with the
+noises (11 MB with their mips), made at the first
+frame they are drawn, let go of when they go off, with the view, or when its world goes. Then
+(`nyx.clouds`):
 
-- **the sky**: its light and the sun's disk times what gets through both, plus the volumetric clouds'
-  light, and the high layer's behind them: the layer lies above the band (`volume + layer × what
-  gets through the volume`). Its altitude may be inside the band; it is still drawn behind it;
-- **what lies beyond them** (`nyx::cloudCoverBefore()`, the surfaces, the decals and the particles):
-  a point farther along its ray than the clouds' depth at its pixel takes them the same way, before
-  its fog: from above the band the ground under it is covered; from below, nothing on the ground is;
+- **the sky** (`cloudsAt()`): its light times what gets through both kinds of cloud, plus the
+  volumetric clouds' light, and the high layer's behind them (it lies above the band);
+- **the sun's disk**, apart (`cloudSunThroughAt()`): times what gets through the clouds *without* the
+  haze, the volumetric clouds' fourth value and the high layer's worked out along its ray (its target
+  keeps only what gets through with the haze), where the disk shows. Through the haze-adjusted
+  transmittance, which is high near a low sun (the far air lets little through, so the clouds there
+  hide little of the sky behind), a disk forty times as bright as a white surface shone through a
+  thick cloud as a sharp circle. Now it is gone behind thick cloud, and through thin cloud dimmed,
+  with the clouds' own forward glow round it. The bloom and the light shafts read the scene as
+  drawn, so they see the dimmed sun (`NyxVolumetricCloudsGpuTests`: at an exposure where the clear
+  disk is 232 of 255, 0.07 behind thick volumetric clouds and 52 behind a thick high layer);
+- **what stands among and beyond them** (`nyx::cloudCoverBefore()`, the surfaces, the decals and
+  the particles): as much of them as lies before the point: none before their front, all of them
+  beyond their back, between, the part of the way, their light by it and what gets through by it.
+  So a hillside rising into them is in their fog, more of it the further, rather than cut off at a
+  depth (`NyxVolumetricCloudsGpuTests`: among thin clouds, a wall 40 m away changes by 6 of 255 with
+  them, one 600 m away by 25); from above the band the ground under it is covered;
 - **the light shafts**: the sky's pixels stream only as much as all the clouds let through;
 - **the world's light**: not yet; the sun's light isn't shadowed by them either (below).
 
 ### Presets
 
 *Preset* sets the clouds' and their lighting's values to a look at once
-(`ApplyVolumetricCloudsPreset()`): *Small Puffs*, a dense field of small, puffy, cauliflower-topped
-clouds low in the band; *Cumulus*, big heaps with bright tops and grey-violet bellies, smaller puffs
-round them, open blue between; *Broken*, a dense broken layer whose thin worn edges glow against a
-low sun over dark cores. *Custom* sets nothing. Whether the band is drawn, its seed, its wind and its
-quality stay as they are.
+(`ApplyVolumetricCloudsPreset()`), at a game's scale (bases 400 to 500 m, tops 1.5 to 1.8 km):
+*Small Puffs*, a field of small separate cells (220 m, *Cellularity* 0.8), short and crisp;
+*Cumulus*, big many-lobed heaps with grey-violet bellies, smaller puffs round them, open blue
+between; *Broken*, many small torn fragments (260 m, *Wispiness* 1), translucent, glowing against
+a low sun, warm undersides. *Custom* sets nothing. Whether the band is drawn, its seed, its wind and
+its quality stay as they are.
 
 It is the component's post-load step, which runs after the component is loaded, edited (also
 undone and redone) or changed in a running game: it sets the values when *Preset* isn't the preset
@@ -1179,23 +1247,23 @@ the values changed by hand before it.
 
 ### Its cost
 
-`NyxVolumetricCloudsGpuTests`, the median of 60 frames, RTX 3070 Ti, from 10 m looking 30 degrees
+`NyxVolumetricCloudsGpuTests`, the medians of 60 frames, RTX 3070 Ti, from 10 m looking 30 degrees
 round and 20 up, the component's defaults at a coverage of 0.5 (the shaders are compiled alike in a
-Debug and a Release build):
+Debug and a Release build), still and turning 2 degrees a frame:
 
-| View | Carried (one pixel of each 4 × 4 marched) | Every pixel marched each frame |
-| --- | --- | --- |
-| 1280 × 720 | 0.79 ms | 2.05 ms |
-| 1920 × 1080 | 0.79 ms | 3.50 ms |
+| View | Every Pixel | Blocks 2 x 2 | Blocks 4 x 4 (the default) |
+| --- | --- | --- | --- |
+| 1280 × 720 | 2.94 ms, 3.04 turning | 1.67 ms, 1.71 turning | 1.29 ms, 1.63 turning |
+| 1920 × 1080 | 4.72 ms, 4.82 turning | 2.34 ms, 2.20 turning | 1.34 ms, 2.21 turning |
 
-Carried, the time hardly grows with the view: a quarter of the half size's 4 × 4 is one ray a 4 × 4,
-14 400 rays at 1280 × 720 and 32 400 at 1920 × 1080, fewer than the GPU runs at once, so the march
-takes about as long as its slowest rays, those towards the horizon through many clouds; the
-resolve, nine bilinear taps a pixel of the half size, is a small part. Every pixel marched (the
-frame a value is changed, the sun scrubbed): 3.5 ms at 1920 × 1080. The noises, when the seed
-changes: the frame that makes them takes 3.9 and 5.2 ms, every pixel marched in it. The scene pass
-is the same with them and without, within the spread. Within the plan's 1 to 2 ms at 1080p,
-carried; a game that scrubs its sun or changes the clouds' values every frame pays the full march.
+Turning 2 degrees a frame at 1920 × 1080 moves the picture 3 % of its height a frame, so squares of 4
+are marched as squares of 2 and cost as much. Carried, the time hardly grows with the view: the rays
+a frame are fewer than the GPU runs at once, so the march takes about as long as its slowest rays.
+The new shapes and light (the second details, the curl, the cells, the light carried through, the
+denser steps of the small clouds) cost about a third more than step 1's marching every pixel (3.5 ms
+then); the default's 1.3 ms is step 1's 0.8 ms plus that, and within the 1 to 2 ms aimed at. A new
+seed's frame (the noises, every pixel marched): 4.9 ms at 1280 × 720, 7.2 ms at 1920 × 1080. The
+scene pass is the same with them and without, within the spread.
 
 ### Seeing it
 
@@ -1205,31 +1273,31 @@ carried; a game that scrubs its sun or changes the clouds' values every frame pa
   blue), the sun's light alone, the sky's light alone, or which pixels were marched this frame (red),
   carried (grey) or had nothing to be carried from (blue).
 - `Assets/Scenes/VolumetricCloudsTest.nyxscene` (written by `NyxVolumetricCloudsGpuTests
-  --write-scene`): cumulus over a town's wall, a time of day in the afternoon, a grade gold-green
-  at dusk; scrubbing the time turns them white to gold to dark. `NyxVolumetricCloudsGpuTests
-  --pictures` renders it with each preset lit as its reference picture, at noon, at sunset against
-  the sun and from the ground (into `NYX_SCENE_TEST_OUTPUT`).
+  --write-scene`): cumulus over a town's wall, hills all round rising in a bowl into the clouds' base
+  (a *Ground*), a time of day in the afternoon, a grade gold-green at dusk; scrubbing the time turns
+  them white to gold to dark. `NyxVolumetricCloudsGpuTests --pictures` renders it with each preset
+  lit as its reference picture, at noon, at sunset against the sun, from the ground, with a low sun
+  behind them, at dusk over the hills and from 470 m up among them where the hills rise into them
+  (into `NYX_SCENE_TEST_OUTPUT`); `--sequences` the turning camera in each update mode.
 - Their passes are timed on the GPU per view, with the noises in the frames that make them
   (`SceneViewGpuTimes::VolumetricClouds`, *volume* in the frame statistics, F8 in a game,
   `gpu_volumetric_clouds_ms` in a benchmark's CSV, the editor's frame time tooltip).
 
 ### Its limits, and the next steps
 
-- **Not yet**: their shadows on the ground, the trees and the fog (they would need a shadow map of
-  the band from the sun, the march's light depth from above); the light shafts masked by them in
-  the air (now only on the picture, by what they let through); their light in the sky's cube that
-  lights the world (the layer's capture is the way: the march from the cube's texels, at a low
-  resolution, made again as they move); the camera flying into and through them at cloud height.
-  The march already starts at the camera inside the band and the depth it writes covers a surface
-  beyond it; what is missing there is the near clouds' detail at a pixel's footprint, a denser
-  march close by, and the carried pictures' reprojection of near clouds as the camera flies.
+- **Not yet**: their shadows on the ground, the trees and the fog; the light shafts masked by them
+  in the air (now only on the picture, by what they let through); their light in the sky's cube
+  that lights the world; flying through them. Being among them works (the march starts at the
+  camera, its steps closer near it; what stands among them is in their fog), but near clouds still
+  show the half size's softness and the details' scale; a denser march close by and the carried
+  pictures' reprojection of near clouds as the camera flies are step 2's.
 - **The haze between** is the sky blended in by the air's transmittance, as the layer's, not the
   air's own light along the shorter path; the aerial perspective (step 3) is the exact way.
 - **Their sky light** is the irradiance cube made for the camera's height, with a fixed occlusion
   by the height in the band, not the sky over each cloud.
-- **Carried pictures**: a part of the picture that comes into view (a fast turn) is blocky for up to
-  16 frames, and a cloud moving fast across the picture trails a little; a camera jump or a changed
-  value marches everything again (a slower frame).
+- **Carried pictures**: a part of the picture that comes into view is filled from the marched
+  pixels round it until each of its pixels is marched (4 or 16 frames), a little soft; the carried
+  clouds' edges are a little softer than marched ones while the camera turns slowly.
 - **One span a ray**: from above, a ray grazing past the planet's curve doesn't see the clouds on its
   far side again.
 
@@ -1483,9 +1551,10 @@ The high cloud layer, on top of the sky made by the air: 0.11 ms at 1280 × 720 
 1920 × 1080 with cloudlets, 0.15 and 0.26 to 0.28 ms with cloudlets and streaks blended ([its
 cost](#its-cost)); without it, nothing is recorded and nothing changes.
 
-The volumetric clouds, on top of the sky made by the air: 0.79 ms at 1280 × 720 and at 1920 × 1080
-carried from frame to frame, 2.05 and 3.50 ms with every pixel marched each frame ([their
-cost](#its-cost-2)); without them, nothing is recorded and nothing changes.
+The volumetric clouds, on top of the sky made by the air, in their default mode (one pixel of each
+4 × 4 a frame): 1.29 ms at 1280 × 720 and 1.34 ms at 1920 × 1080 with the camera still, 2.94 and
+4.72 ms with every pixel marched each frame ([their cost](#its-cost-2)); without them, nothing is
+recorded and nothing changes.
 
 ## Later
 
@@ -1503,8 +1572,9 @@ cost](#its-cost-2)); without them, nothing is recorded and nothing changes.
   layer; a second layer, or a weather map placing its types; half
   size with a depth-aware upsample, if a scene needs the time; skipping the pixels a mesh covers.
 - The volumetric clouds: their shadows on the ground and in the fog; the light shafts masked by them
-  in the air; their light in the sky's cube that lights the world; the camera flying into and
-  through them; their haze by the aerial perspective; their sky light from the sky over each cloud.
+  in the air; their light in the sky's cube that lights the world; the camera flying through them,
+  with a denser march close by; their haze by the aerial perspective; their sky light from the sky
+  over each cloud.
 - The fog over a point light's or a decal's own light: the fog adds the sun's and the sky's only.
 - Colour grading: keys for the morning apart from the evening, once the time of day gives the
   sun's path; a view's switch to see its picture ungraded beside the graded one; the grade's

@@ -91,9 +91,11 @@ namespace Nyx
 			};
 		}
 
-		// A preset chosen for the volumetric clouds sets their values, once
+		// Temporal from older scenes into Update; and a preset chosen for the volumetric clouds sets
+		// their values, once
 		void ApplyVolumetricCloudsPresetAfterLoad(VolumetricCloudsComponent& component, ScenePostLoadContext&)
 		{
+			FoldLegacyVolumetricCloudsUpdate(component);
 			ApplyVolumetricCloudsPreset(component);
 		}
 	}

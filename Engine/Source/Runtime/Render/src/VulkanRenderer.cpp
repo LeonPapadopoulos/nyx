@@ -2814,7 +2814,7 @@ namespace Nyx
 			ubo.VolumetricClouds = 1;
 			ubo.VolumetricCloudLightTexture = written.LightSlot;
 			ubo.VolumetricCloudDepthTexture = written.DepthSlot;
-			ubo.VolumetricCloudMode = (volume.bMarchAll ? 1u : 0u) | (clouds.Debug * 256u);
+			ubo.VolumetricCloudMode = (volume.bMarchAll ? 1u : 0u) | (volume.BlockSize * 2u) | (clouds.Debug * 256u);
 			ubo.VolumetricCloudMarchLightTexture = volume.March.LightSlot;
 			ubo.VolumetricCloudMarchDepthTexture = volume.March.DepthSlot;
 			ubo.VolumetricCloudPreviousLightTexture = before.LightSlot;
@@ -2826,6 +2826,7 @@ namespace Nyx
 			ubo.VolumetricCloudLightSteps = clouds.LightSteps;
 			ubo.VolumetricCloudUpdateX = volume.UpdateOffset.x;
 			ubo.VolumetricCloudUpdateY = volume.UpdateOffset.y;
+			ubo.VolumetricCloudCurlTexture = volume.Curl.Slot;
 			ubo.VolumetricCloudBand = glm::vec4(clouds.Bottom, clouds.Top, clouds.MaxDistance, clouds.Density * VolumetricCloudExtinction);
 			ubo.VolumetricCloudCoverage = glm::vec4(clouds.Coverage, clouds.CoverageVariation, clouds.Type, clouds.TypeVariation);
 			ubo.VolumetricCloudErosion = glm::vec4(clouds.Detail, clouds.Billowiness, clouds.EdgeSoftness, clouds.Brightness);
@@ -2833,7 +2834,9 @@ namespace Nyx
 			ubo.VolumetricCloudOrigins = glm::vec4(clouds.WeatherOrigin, clouds.ShapeOrigin);
 			ubo.VolumetricCloudDetailOrigin = glm::vec4(clouds.DetailOrigin, static_cast<float>(volume.Extent.width), static_cast<float>(volume.Extent.height));
 			ubo.VolumetricCloudLighting = glm::vec4(clouds.SilverLining, clouds.SilverLiningSpread, clouds.Powder, clouds.MultipleScattering);
-			ubo.VolumetricCloudShadowTint = glm::vec4(clouds.ShadowTint, 0.0f);
+			ubo.VolumetricCloudShadowTint = glm::vec4(clouds.ShadowTint, clouds.AerialPerspective);
+			ubo.VolumetricCloudSunlitTint = glm::vec4(clouds.SunlitTint, clouds.Wispiness);
+			ubo.VolumetricCloudShaping = glm::vec4(clouds.Cellularity, clouds.Translucency, 0.0f, 0.0f);
 			// Lit as the air's sky is, by the light before the time of day fades it
 			ubo.VolumetricCloudSun = glm::vec4(view.SceneGlobals.SunLightColor, 0.0f);
 			ubo.VolumetricCloudMotion = glm::vec4(volume.Motion, 0.0f);

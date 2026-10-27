@@ -51,8 +51,16 @@ float4 skyColor(VertexOutput input)
         float3 light = nyx::skyAtmosphereRadiance(direction) + nyx::sunDiskRadiance(direction);
         if (nyx::hasCloudLayer() || nyx::hasVolumetricClouds())
         {
+            // The sky behind the clouds through what gets through them with the haze between; the
+            // sun's disk through what gets through them alone, so it is gone behind a thick cloud
+            const float3 sky = nyx::skyAtmosphereRadiance(direction);
+            const float3 sun = nyx::sunDiskRadiance(direction);
             const float4 clouds = nyx::cloudsAt(input.Position.xy);
-            light = light * clouds.a + clouds.rgb;
+            light = sky * clouds.a + clouds.rgb;
+            if (any(sun > 0.0))
+            {
+                light += sun * nyx::cloudSunThroughAt(input.Position.xy, direction);
+            }
         }
         return float4(nyx::skyFog(direction).apply(light), 1.0);
     }

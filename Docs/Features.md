@@ -936,51 +936,68 @@ alike: a band of them between two altitudes round the planet's curve, seen from 
 inside and from above. Without one, or off, or with another sky, the picture is as it was, to the
 bit. A *Cloud Layer* can stay above them for thin cirrus.
 
+- **At a game's scale**: *Bottom Altitude* and *Top Altitude* above the world's height 0 (400 and
+  1800 m by default and in the presets), clouds a few hundred metres across (*Cloud Size* 700 m),
+  low enough to reach from a hill or on something that rises; the whole range from 0 to 20 km stays.
+  A hill rising into them is in their fog, more of it the further, not cut off.
 - **A weather map** places them: tiling, seeded, carried by the wind with the world's time, it gives
   each place its coverage, type and density, so the sky has patches and bands of cloud and open
   blue between. *Coverage*, *Coverage Variation* (0 an even field, 1 patches), *Type* (0 flat
   stratus, 0.5 small puffs, 1 towering cumulus), *Type Variation*, *Density*, *Weather Size*.
 - **Shapes from 3D noise**, made by compute shaders once per *Seed*: billowy Perlin-Worley shapes
-  (*Cloud Size*), worn at their edges by smaller billows and wisps (*Detail*, *Detail Size*),
-  rounder and more billowy at the top, wispy at the base (*Billowiness*), as soft at their edges as
-  asked (*Edge Softness*); their height by their type, flat at the base; *Bottom Altitude* and *Top
-  Altitude* (1500 to 5000 m by default).
+  (*Cloud Size*), parted into separate cells as much as asked (*Cellularity*), worn at their edges by
+  smaller billows and wisps at two sizes, many-lobed at the top, wispy at the base (*Detail*, *Detail
+  Size*, *Billowiness*), swirled by curl noise into torn wisps (*Wispiness*), thinning out over a
+  translucent fringe rather than cut off (*Edge Softness*); their height by their type, flat at the
+  base.
 - **Wind**: *Wind Direction* and *Wind Speed* carry them with the world's time, a game's by its
   steps (they stand still while it is paused); they stay put over the ground as the camera moves.
 - **Lighting**: the sun through the air (white at noon, gold at sunset, none after) and through the
-  clouds themselves (Beer's law), scattered once and many times, so their bellies aren't black
-  (*Multiple Scattering*), with a silver lining on their thin edges against the sun (*Silver
-  Lining*, *Silver Lining Spread*) and darker sunlit edges seen with the sun behind (*Powder*); the
-  sky above and the ground below on their shaded sides and at night (*Ambient*), deep inside in
-  *Shadow Tint* (grey-violet bellies); *Brightness*. They fade into the haze far off.
-- **Presets**: *Preset* sets the values to a look at once: *Small Puffs* (a dense field of small
-  cauliflower-topped clouds), *Cumulus* (big heaps, violet bellies, puffs round them, open blue),
-  *Broken* (broken cloud whose thin edges glow against a low sun); the values can be changed after,
-  and *Custom* leaves them.
-- **Cheap**: marched at half the view's size, one pixel of each 4 x 4 a frame, the others carried
-  from the frames before where the clouds were (the camera's turn and move and the wind taken back);
-  every pixel at once when something changes the look (a value, the seed, the sun turning more than
-  a few hundredths of a degree in a frame). *Quality*: *Steps*, *Light Steps*, *Max Distance*,
-  *Temporal* (off: every pixel every frame). About 0.8 ms of GPU time a frame at 1280 x 720 and at
-  1920 x 1080, 3.5 ms at 1920 x 1080 in a frame that marches every pixel.
-- They hold back the light shafts where they cover the sun, and cover what lies beyond them.
+  clouds themselves (Beer's law), scattered once and many times (*Multiple Scattering*) and carried
+  through their bodies (*Translucency*), so their bellies and backlit cores glow rather than going
+  black, with a silver lining on their thin edges against the sun (*Silver Lining*, *Silver Lining
+  Spread*) and darker sunlit edges seen with the sun behind (*Powder*); the sky above and the ground
+  below on their shaded sides and at night (*Ambient*); painted colours: *Sunlit Tint* (cream tops)
+  and *Shadow Tint* (grey-violet bellies, warm undersides); *Brightness*. They pale into the haze far
+  off, more than the air alone would pale them (*Aerial Perspective*).
+- **The sun's disk** is dimmed by what gets through the clouds themselves, the volumetric ones and
+  the high layer: gone behind thick cloud, not a sharp circle through it; the bloom and the light
+  shafts see it so.
+- **Presets**: *Preset* sets the values to a look at once: *Small Puffs* (a field of small separate
+  cells receding in rows), *Cumulus* (big many-lobed heaps, violet bellies, puffs round them, open
+  blue), *Broken* (many small torn fragments glowing against a low sun); the values can be changed
+  after, and *Custom* leaves them.
+- **Cheap**: *Resolution* (half the view's size, or its own) and *Update*: every pixel every frame,
+  or one pixel of each 2 x 2 or 4 x 4 a frame, the others carried from the frames before where the
+  clouds were (held to what this frame's marched pixels round them span, blended, so no pattern of
+  the squares shows while the camera turns), more marched while the picture moves fast; every pixel
+  at once when something changes the look. Older scenes' *Temporal* off loads as *Every Pixel*.
+  *Steps*, *Light Steps*, *Max Distance*. In the default, one pixel of each 4 x 4: 1.3 ms of GPU time
+  a frame at 1920 x 1080 with the camera still, 2.2 ms turning; 4.7 ms marching every pixel.
+- They hold back the light shafts where they cover the sun, and cover what lies among and beyond
+  them.
 - *Debug View* shows the weather map, the sun's or the sky's light alone, or which pixels were
   marched this frame.
 - All with undo, saved in scenes and sent to a running game. `Assets/Scenes/VolumetricCloudsTest.nyxscene`:
-  cumulus over a town's wall in the afternoon, with a time of day to scrub, graded gold-green at
-  dusk ([Atmosphere](Design/atmosphere.md#the-volumetric-clouds) has how they work, their cost and
-  their limits).
+  cumulus over a town's wall and hills rising into them, in the afternoon, with a time of day to
+  scrub, graded gold-green at dusk ([Atmosphere](Design/atmosphere.md#the-volumetric-clouds) has how
+  they work, their cost and their limits).
 - Tests: `NyxVolumetricCloudsTests` (where rays are inside the band from below, inside and above it,
-  each end on a shell, none past the ground; every pixel of a 4 x 4 marched in 16 frames; values in
-  range; the wind carrying the noises with the world's time, anchored in the world, after hours
-  still exact; when everything is marched again; the presets setting the values once; the component
-  saved), `NyxVolumetricCloudsGpuTests` (the picture unchanged to the bit without them, off, or under
-  the cube map's sky, and no GPU time; clouds by day, brighter towards the sun, warmer at sunset,
-  dark at midnight; from above, their tops lit and the open sky above to the bit; each preset; the
-  carried pictures the same to the bit as every pixel marched once settled, and close while the
-  camera turns; the same seed and time the same picture, moved by the wind, another seed others;
-  the ground under them covered from above; the light shafts held back; their GPU time; the test
-  scene; and again with MSAA), the other GPU tests' pictures unchanged to the bit.
+  each end on a shell, none past the ground; every pixel of a 2 x 2 or 4 x 4 marched in 4 or 16
+  frames, smaller squares while the picture moves fast, how far it moves; values in range; the wind
+  carrying the noises with the world's time, anchored in the world, after hours still exact; when
+  everything is marched again; the presets setting the values once, at a game's scale; older
+  scenes' *Temporal*; the component saved), `NyxVolumetricCloudsGpuTests` (the picture unchanged to
+  the bit without them, off, or under the cube map's sky, and no GPU time; clouds by day, thin ones
+  glowing towards the sun, thick ones' sunlit sides brighter away from it, the silver lining, warmer
+  at sunset, dark at midnight; from above, their tops lit and the open sky above to the bit; each
+  preset; still pictures in each update mode the same to the bit as every pixel marched, and a
+  turning camera's frames close to every pixel marched, every pixel marched turning fast; the sun's
+  disk gone behind thick volumetric clouds and a thick high layer; among the clouds, a near wall
+  less covered than a far one; the same seed and time the same picture, moved by the wind, another
+  seed others; the ground under them covered from above; the light shafts held back; their GPU time
+  in each mode; the test scene; and again with MSAA), the other GPU tests' pictures unchanged to the
+  bit.
 
 ## Colour grading
 

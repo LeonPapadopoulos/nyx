@@ -206,12 +206,13 @@ namespace Nyx
 		glm::mat4 CloudInverseSkyViewProjection{ 1.0f };
 
 		// The view's volumetric clouds (VulkanVolumetricClouds, nyx.volumetricclouds), while they are
-		// drawn: 1; their light and transmittance and their depth at half the view's size as this
-		// frame leaves them, in the bindless array; what this frame marches (bit 0: every pixel) and
-		// the debug view (from bit 8); what it marches into, the frame before's, the noises; the steps,
-		// the pixel of each 4 x 4 marched; the band, coverage, erosion, the noises' repeats and where
-		// the camera is over them, the lighting, the sun's light at the top of the air; how far the
-		// camera moved less the wind since the frame before, and its rotation and projection then
+		// drawn: 1; their light and transmittance and their depths as this frame leaves them, in the
+		// bindless array; what this frame marches (bit 0: every pixel; bits 1 to 3 the squares' side)
+		// and the debug view (from bit 8); what it marches into, the frame before's, the noises; the
+		// steps, the pixel of each square marched, the curl noise; the band, coverage, erosion, the
+		// noises' repeats and where the camera is over them, the lighting, the sun's light at the top
+		// of the air; how far the camera moved less the wind since the frame before; the sunlit tint
+		// and wispiness, the cellularity; its rotation and projection the frame before
 		uint32_t VolumetricClouds = 0;
 		uint32_t VolumetricCloudLightTexture = 0;
 		uint32_t VolumetricCloudDepthTexture = 0;
@@ -227,7 +228,7 @@ namespace Nyx
 		uint32_t VolumetricCloudLightSteps = 0;
 		uint32_t VolumetricCloudUpdateX = 0;
 		uint32_t VolumetricCloudUpdateY = 0;
-		uint32_t VolumetricCloudPadding = 0;
+		uint32_t VolumetricCloudCurlTexture = 0;
 		glm::vec4 VolumetricCloudBand{ 0.0f };
 		glm::vec4 VolumetricCloudCoverage{ 0.0f };
 		glm::vec4 VolumetricCloudErosion{ 0.0f };
@@ -238,6 +239,8 @@ namespace Nyx
 		glm::vec4 VolumetricCloudShadowTint{ 0.0f };
 		glm::vec4 VolumetricCloudSun{ 0.0f };
 		glm::vec4 VolumetricCloudMotion{ 0.0f };
+		glm::vec4 VolumetricCloudSunlitTint{ 0.0f };
+		glm::vec4 VolumetricCloudShaping{ 0.0f };
 		glm::mat4 VolumetricCloudPreviousSkyViewProjection{ 1.0f };
 
 		// The world's wind (Wind.h), at the view's Time; and its texture of local air round its
@@ -255,7 +258,7 @@ namespace Nyx
 
 	// The view's set (set 1) as nyx/view.slang reads it, in scalar layout; to whole 16 bytes, as
 	// std140 would be too
-	static_assert(sizeof(SceneUBO) == 1728, "SceneUBO must match ViewConstants in nyx/view.slang");
+	static_assert(sizeof(SceneUBO) == 1760, "SceneUBO must match ViewConstants in nyx/view.slang");
 
 	// One draw's push constants, the same for every scene pipeline: ObjectConstants in
 	// nyx/bindless.slang

@@ -2,37 +2,44 @@
 // made by the air, their world's time set by a clock:
 //   - without them the picture is the same to the bit as with them off, or with the sky in the cube
 //     map mode, which draws none; and no GPU time;
-//   - from the ground by day the sky has clouds (its variance well above the clear sky's), their
-//     sunlit sides away from the sun brighter than their shaded sides towards it, their edges
-//     towards it brighter with the silver lining than without; at sunset warmer than at noon; at
-//     midnight dark, in the night sky's blue;
-//   - from above the band, below the horizon the clouds, lit from above, brighter than the ground
-//     under the air; straight up the open sky, to the bit;
-//   - each preset gives clouds, the small puffs more and smaller than the cumulus;
-//   - the frames that carry the clouds from the frames before (one pixel of each 4 x 4 marched a
-//     frame) give, once every pixel was marched again, the same picture to the bit as marching them
-//     all; after the camera turns, the same within a little; their GPU time a sixteenth or so;
+//   - from the ground by day the sky has clouds (its variance well above the clear sky's); thin
+//     clouds brighter towards the sun than away (light through them), thick ones' sunlit sides away
+//     from it brighter than their shaded sides towards it; their edges towards it brighter with the
+//     silver lining than without; at sunset warmer than at noon; at midnight dark, in the night
+//     sky's blue;
+//   - from above the band, below the horizon their sunlit tops brighter than the ground under the
+//     air; straight up the open sky, to the bit;
+//   - each preset gives clouds, the small puffs more of the sky than the cumulus;
+//   - in each update mode, a still picture, once every pixel was marched again, the same to the bit
+//     as marching them all; a camera turning slowly, briskly and fast, each frame close to every
+//     pixel marched, fast turns marching every pixel;
+//   - the sun's disk gone behind thick volumetric clouds and behind a thick high layer;
+//   - among thin clouds, a near wall less covered by them than a far one, and not at all bare;
 //   - the same seed and time give the same picture, a new view's noises made again; another time
 //     another picture, the one a camera moved back against the wind saw before; another seed other
 //     clouds;
 //   - seen from above them, the ground under them covered;
 //   - thick cloud over the sun weakens the light shafts through a window;
-//   - their GPU time at 1280 x 720 and 1920 x 1080, the median of 60 frames;
+//   - their GPU time at 1280 x 720 and 1920 x 1080 in each update mode, still and turning, the
+//     medians of 60 frames;
 //   - the volumetric clouds test scene, its sun set by its time of day, has its clouds.
 //
 // NYX_SCENE_TEST_OUTPUT=<folder> saves what was rendered there. NyxVolumetricCloudsGpuTests
 // --write-scene writes Assets/Scenes/VolumetricCloudsTest.nyxscene; --pictures only renders the test
-// scene's pictures of each preset (at noon, at sunset against the sun, from the ground, and lit as its
-// reference) into that folder.
+// scene's pictures of each preset (at noon, at sunset against the sun, from the ground, lit as its
+// reference, a low sun behind them, dusk over the hills, among them on the hills) into that folder;
+// --sequences only the update modes' test, which saves frames of a turning camera in each mode.
 #include "AssetResolver.h"
 #include "CameraComponent.h"
 #include "CameraProjection.h"
+#include "CloudLayerComponent.h"
 #include "ColorGradingComponent.h"
 #include "ComponentRegistration.h"
 #include "DirectionalLightComponent.h"
 #include "Entity.h"
 #include "EnvironmentComponent.h"
 #include "FixedStepClock.h"
+#include "GroundComponent.h"
 #include "GuidComponent.h"
 #include "ImageFile.h"
 #include "Log.h"
@@ -473,16 +480,25 @@ namespace
 		std::cout << "By day from 10 m the sky's variance is " << cloudy.Variance << " with the clouds, " << clear.Variance << " clear\n";
 		Require(cloudy.Variance > 4.0 * clear.Variance + 20.0, "The day sky has no clouds: its variance " + std::to_string(cloudy.Variance) + " against " + std::to_string(clear.Variance));
 
-		// Away from the sun the clouds show their sunlit sides, towards it their shaded ones: brighter
-		// away (a thin layer is the other way round)
+		// Thin clouds let the sun's light through and glow towards it; thick ones show their sunlit
+		// sides away from the sun and their shaded ones towards it, brighter away (a thin layer is
+		// always the other way round)
 		scene.Look(glm::vec3(0.0f, 10.0f, 0.0f), 180.0f, 20.0f);
 		const auto [away, awayClear] = CloudyAndClear(gpu, scene, view, "NoonAwayFromSun");
-		const Clouds shaded = MeasureClouds(towards, towardsClear, skyRows);
-		const Clouds sunlit = MeasureClouds(away, awayClear, skyRows);
-		std::cout << "By day the clouds towards the sun are " << Text(shaded.Color) << " (" << shaded.Count << " pixels), away from it " << Text(sunlit.Color) << " (" << sunlit.Count
-				  << ")\n";
-		Require(sunlit.Count > skyRows * ViewWidth / 10 && shaded.Count > skyRows * ViewWidth / 10, "Too few pixels of cloud by day");
-		Require(sunlit.Luminance > shaded.Luminance + 5.0, "The clouds' sunlit sides away from the sun aren't brighter than their shaded sides towards it");
+		const Clouds through = MeasureClouds(towards, towardsClear, skyRows);
+		const Clouds back = MeasureClouds(away, awayClear, skyRows);
+		scene.Clouds().Density = 4.0f;
+		const auto [thickAway, thickAwayClear] = CloudyAndClear(gpu, scene, view, "NoonAwayFromSunThick");
+		scene.Look(glm::vec3(0.0f, 10.0f, 0.0f), 0.0f, 20.0f);
+		const auto [thickTowards, thickTowardsClear] = CloudyAndClear(gpu, scene, view, "NoonTowardsSunThick");
+		scene.Clouds().Density = TestClouds().Density;
+		const Clouds shaded = MeasureClouds(thickTowards, thickTowardsClear, skyRows);
+		const Clouds sunlit = MeasureClouds(thickAway, thickAwayClear, skyRows);
+		std::cout << "By day the clouds towards the sun are " << Text(through.Color) << " (" << through.Count << " pixels), away from it " << Text(back.Color) << " ("
+				  << back.Count << "); four times as dense, towards " << Text(shaded.Color) << ", away " << Text(sunlit.Color) << "\n";
+		Require(through.Count > skyRows * ViewWidth / 10 && back.Count > skyRows * ViewWidth / 10, "Too few pixels of cloud by day");
+		Require(through.Luminance > back.Luminance, "The clouds don't let the sun's light through towards it");
+		Require(sunlit.Luminance > shaded.Luminance + 5.0, "Thick clouds' sunlit sides away from the sun aren't brighter than their shaded sides towards it");
 
 		// Towards it, their thin edges glow: the brightest tenth of their pixels brighter with the silver
 		// lining than without
@@ -600,54 +616,217 @@ namespace
 		EndView(gpu, view);
 	}
 
-	// One pixel of each 4 x 4 marched a frame, the others carried: once each was marched again, the
-	// same to the bit as marching them all; after the camera turns, carried, within a little of it
-	void TestTemporal(SceneRenderer& gpu)
+	// The update modes' names, for what the tests print and save
+	const char* UpdateName(EVolumetricCloudsUpdate update)
+	{
+		switch (update)
+		{
+		case EVolumetricCloudsUpdate::EveryPixel:
+			return "EveryPixel";
+		case EVolumetricCloudsUpdate::Blocks2x2:
+			return "Blocks2x2";
+		case EVolumetricCloudsUpdate::Blocks4x4:
+			return "Blocks4x4";
+		}
+		return "?";
+	}
+
+	// The frames of a camera turning `degrees` a frame from a still start, in an update mode: the
+	// picture each frame, and how many pixels a side the squares marched were
+	struct Turn
+	{
+		std::vector<RgbaImage> Frames;
+		std::vector<uint32_t> Blocks;
+	};
+
+	Turn TurnCamera(SceneRenderer& gpu, SkyScene& scene, uint64_t view, EVolumetricCloudsUpdate update, float degrees, int frames)
+	{
+		scene.Clouds().Update = update;
+		scene.Look(glm::vec3(0.0f, 10.0f, 0.0f), 0.0f, 25.0f);
+		gpu.DrawFrames(SettledFrames);
+		Turn turn;
+		for (int frame = 1; frame <= frames; ++frame)
+		{
+			scene.Look(glm::vec3(0.0f, 10.0f, 0.0f), degrees * static_cast<float>(frame), 25.0f);
+			gpu.DrawFrames(1);
+			RgbaImage image;
+			Require(gpu.Renderer.ReadSceneViewPixels(view, image), "The scene view can't be read back");
+			turn.Frames.push_back(std::move(image));
+			turn.Blocks.push_back(gpu.Renderer.GetSceneViewVolumetricClouds(view)->BlockSize);
+		}
+		return turn;
+	}
+
+	// One pixel of each square marched a frame, the others carried. Still: once each was marched
+	// again, the same to the bit as marching them all. Turning slowly, briskly and fast: each frame
+	// against Every Pixel's of the same camera, within a little; faster, smaller squares marched.
+	void TestUpdateModes(SceneRenderer& gpu)
 	{
 		SkyScene scene(gpu.Renderer);
 		gpu.Renderer.SetWorld(&scene.World);
-		const uint64_t view = MakeView(gpu);
+		const uint64_t view = MakeView(gpu, 640, 360);
 		scene.SetSun(30.0f);
-		scene.Look(glm::vec3(0.0f, 10.0f, 0.0f), 30.0f, 25.0f);
 
-		const RgbaImage first = Draw(gpu, view, 1);
-		const uint32_t fullMarches = gpu.Renderer.GetSceneViewVolumetricClouds(view)->FullMarches;
-		const RgbaImage settled = Draw(gpu, view, SettledFrames);
-		Require(gpu.Renderer.GetSceneViewVolumetricClouds(view)->FullMarches == fullMarches, "A still camera marched every pixel again");
-		Require(settled.Pixels == first.Pixels, "A still picture of the clouds, carried, isn't the one with every pixel marched");
-
-		// Turned 3 degrees a frame for 5 frames, then still: carried, against every pixel marched
-		for (int frame = 1; frame <= 5; ++frame)
+		for (const EVolumetricCloudsUpdate update : { EVolumetricCloudsUpdate::Blocks2x2, EVolumetricCloudsUpdate::Blocks4x4 })
 		{
-			scene.Look(glm::vec3(0.0f, 10.0f, 0.0f), 30.0f + 3.0f * frame, 25.0f);
-			gpu.DrawFrames(1);
+			scene.Clouds().Update = update;
+			scene.Look(glm::vec3(0.0f, 10.0f, 0.0f), 30.0f, 25.0f);
+			const RgbaImage first = Draw(gpu, view, 1);
+			const uint32_t fullMarches = gpu.Renderer.GetSceneViewVolumetricClouds(view)->FullMarches;
+			const RgbaImage settled = Draw(gpu, view, SettledFrames);
+			Require(gpu.Renderer.GetSceneViewVolumetricClouds(view)->FullMarches == fullMarches, std::string(UpdateName(update)) + ": a still camera marched every pixel again");
+			Require(settled.Pixels == first.Pixels, std::string(UpdateName(update)) + ": a still picture of the clouds, carried, isn't the one with every pixel marched");
 		}
-		RgbaImage turned;
-		Require(gpu.Renderer.ReadSceneViewPixels(view, turned), "The scene view can't be read back");
-		SaveIfAsked(turned, "TemporalTurned");
-		scene.Clouds().bTemporal = false;
-		const RgbaImage marched = Draw(gpu, view, 1);
-		SaveIfAsked(marched, "TemporalMarched");
-		// The left quarter came into view as it turned (15 degrees of 93), its pixels marched one of
-		// each 4 x 4 a frame since; the rest was in view before, carried from where it was, keeping
-		// the dither of the pixel it was marched at until it is marched again
-		const auto columns = [](const RgbaImage& image, uint32_t first)
+
+		// 24 frames turning 0.3 degrees a frame (slow: squares of 4 stay 4), 1.5 (brisk: 90 degrees a
+		// second at 60 frames, squares of 4 marched as 2) and 6 (fast: every pixel), each mode against
+		// Every Pixel
+		constexpr int Frames = 24;
+		for (const auto& [degrees, speed] : { std::pair{ 0.3f, "Slow" }, std::pair{ 1.5f, "Brisk" }, std::pair{ 6.0f, "Fast" } })
 		{
-			RgbaImage part;
-			part.Width = image.Width - first;
-			part.Height = image.Height;
-			for (uint32_t y = 0; y < image.Height; ++y)
+			const Turn exact = TurnCamera(gpu, scene, view, EVolumetricCloudsUpdate::EveryPixel, degrees, Frames);
+			for (const EVolumetricCloudsUpdate update : { EVolumetricCloudsUpdate::EveryPixel, EVolumetricCloudsUpdate::Blocks2x2, EVolumetricCloudsUpdate::Blocks4x4 })
 			{
-				const auto row = image.Pixels.begin() + (static_cast<size_t>(y) * image.Width + first) * 4;
-				part.Pixels.insert(part.Pixels.end(), row, row + static_cast<size_t>(part.Width) * 4);
+				const Turn turn = update == EVolumetricCloudsUpdate::EveryPixel ? exact : TurnCamera(gpu, scene, view, update, degrees, Frames);
+				double error = 0.0;
+				double worst = 0.0;
+				uint32_t smallest = 4;
+				for (int frame = 0; frame < Frames; ++frame)
+				{
+					const double difference = MeanDifference(turn.Frames[frame], exact.Frames[frame]);
+					error += difference / Frames;
+					worst = std::max(worst, difference);
+					smallest = std::min(smallest, turn.Blocks[frame]);
+					if (frame % 4 == 3)
+					{
+						SaveIfAsked(turn.Frames[frame], std::string("Turn") + speed + "-" + UpdateName(update) + "-" + std::to_string(frame + 1));
+					}
+				}
+				std::cout << "Turning " << degrees << " degrees a frame, " << UpdateName(update) << " against Every Pixel: " << error << " of 255 on average over " << Frames
+						  << " frames, " << worst << " in the worst frame; the smallest squares marched " << smallest << "\n";
+				if (update == EVolumetricCloudsUpdate::Blocks2x2)
+				{
+					Require(error < 1.5 && worst < 2.0, std::string("Turning ") + speed + ", one pixel of each 2 x 2 is far from every pixel marched");
+				}
+				if (update == EVolumetricCloudsUpdate::Blocks4x4)
+				{
+					Require(error < 2.5 && worst < 3.5, std::string("Turning ") + speed + ", one pixel of each 4 x 4 is far from every pixel marched");
+					Require(degrees < 5.0f || smallest < 4, "Turning fast, squares of 4 are still marched");
+				}
 			}
-			return part;
+		}
+		scene.Clouds().Update = TestClouds().Update;
+		gpu.Renderer.SetWorldInterpolation(&scene.World, nullptr);
+		EndView(gpu, view);
+	}
+
+	// The sun's disk behind thick clouds is gone, not a sharp circle through them: the brightest
+	// pixel round it, at an exposure where the clear disk is near white and the sky near black, dark
+	// behind thick volumetric clouds and behind a thick high layer
+	void TestSunDisk(SceneRenderer& gpu)
+	{
+		SkyScene scene(gpu.Renderer);
+		scene.SetSun(25.0f);
+		scene.Look(glm::vec3(0.0f, 10.0f, 0.0f), 0.0f, 25.0f);
+		gpu.Renderer.SetWorld(&scene.World);
+		const uint64_t view = MakeView(gpu, ViewWidth, ViewHeight, -6.0f);
+		const auto brightestAtSun = [&](const RgbaImage& image)
+		{
+			float most = 0.0f;
+			for (uint32_t y = ViewHeight / 2 - 12; y < ViewHeight / 2 + 12; ++y)
+			{
+				for (uint32_t x = ViewWidth / 2 - 12; x < ViewWidth / 2 + 12; ++x)
+				{
+					most = std::max(most, Luminance(PixelAt(image, x, y)));
+				}
+			}
+			return most;
 		};
-		const double seen = MeanDifference(columns(turned, ViewWidth / 4), columns(marched, ViewWidth / 4));
-		const double whole = MeanDifference(turned, marched);
-		std::cout << "Turning, carried against every pixel marched: " << seen << " on average where it was in view before, " << whole << " over the whole picture\n";
-		Require(seen < 2.0 && whole < 3.0, "Carried while the camera turns, the clouds are far from every pixel marched");
-		scene.Clouds().bTemporal = true;
+		scene.Clouds().bClouds = false;
+		const RgbaImage clear = Draw(gpu, view);
+		SaveIfAsked(clear, "SunClear");
+		VolumetricCloudsComponent& clouds = scene.Clouds();
+		clouds.bClouds = true;
+		clouds.Coverage = 1.0f;
+		clouds.CoverageVariation = 0.0f;
+		clouds.Density = 4.0f;
+		const RgbaImage behindBand = Draw(gpu, view);
+		SaveIfAsked(behindBand, "SunBehindClouds");
+		clouds.bClouds = false;
+		CloudLayerComponent layer;
+		layer.Altitude = 4000.0f;
+		layer.Coverage = 1.0f;
+		layer.Thickness = 2000.0f;
+		layer.bLightsWorld = false;
+		scene.World.Add<CloudLayerComponent>(scene.Band, layer);
+		const RgbaImage behindLayer = Draw(gpu, view);
+		SaveIfAsked(behindLayer, "SunBehindLayer");
+		scene.World.Remove<CloudLayerComponent>(scene.Band);
+		std::cout << "The brightest pixel round the sun: " << brightestAtSun(clear) << " clear, " << brightestAtSun(behindBand) << " behind thick volumetric clouds, "
+				  << brightestAtSun(behindLayer) << " behind a thick high layer\n";
+		Require(brightestAtSun(clear) > 200.0f, "The test's clear sun isn't near white");
+		Require(brightestAtSun(behindBand) < 60.0f, "The sun's disk shows through thick volumetric clouds");
+		Require(brightestAtSun(behindLayer) < 60.0f, "The sun's disk shows through a thick high layer");
+		gpu.Renderer.SetWorldInterpolation(&scene.World, nullptr);
+		EndView(gpu, view);
+	}
+
+	// Among the clouds (the camera in a band from the ground up, thin as fog), a wall 40 m away is
+	// hardly covered by them and one 600 m away much more, but not as the sky behind is: fog, not a
+	// cut-off at the clouds' depth
+	void TestCoverAmongClouds(SceneRenderer& gpu)
+	{
+		LiveMaterialFile white("Materials/NyxVolumetricCloudsGpuTests-White.nyxmat");
+		white.Write("Shader = Shaders/Standard.slang\nBaseColor = 0.8 0.8 0.8\nRoughness = 1\n");
+		SkyScene scene(gpu.Renderer);
+		const auto wall = [&](float left, float right, float distance)
+		{
+			const Entity entity = scene.World.CreateEntity();
+			const float width = (right - left) * distance;
+			scene.World.Add<TransformComponent>(entity, Placed(glm::vec3(0.5f * (left + right) * distance, 150.0f, -distance), glm::vec3(width, distance, 1.0f)));
+			MeshRendererComponent meshRenderer;
+			meshRenderer.MeshAsset = gpu.Renderer.GetCubeMesh();
+			meshRenderer.MaterialAsset = gpu.Renderer.GetMaterial(white.Path);
+			scene.World.Add<MeshRendererComponent>(entity, meshRenderer);
+		};
+		// The near wall over the left of the picture, the far one over the right
+		wall(-1.0f, -0.05f, 40.0f);
+		wall(0.05f, 1.0f, 600.0f);
+		CameraComponent lens;
+		lens.FarPlane = 5000.0f;
+		scene.World.Get<CameraComponent>(scene.Camera) = lens;
+		VolumetricCloudsComponent& clouds = scene.Clouds();
+		clouds.BottomAltitude = 0.0f;
+		clouds.TopAltitude = 600.0f;
+		clouds.Coverage = 1.0f;
+		clouds.CoverageVariation = 0.0f;
+		clouds.Type = 1.0f;
+		clouds.TypeVariation = 0.0f;
+		clouds.Density = 0.15f;
+		scene.SetSun(40.0f);
+		scene.Look(glm::vec3(0.0f, 150.0f, 0.0f), 0.0f, 0.0f);
+		gpu.Renderer.SetWorld(&scene.World);
+		const uint64_t view = MakeView(gpu, ViewWidth, ViewHeight, 0.0f);
+		const auto [cloudy, clear] = CloudyAndClear(gpu, scene, view, "AmongClouds");
+		const auto change = [&](uint32_t firstColumn, uint32_t endColumn)
+		{
+			double sum = 0.0;
+			size_t count = 0;
+			for (uint32_t y = ViewHeight / 3; y < ViewHeight * 2 / 3; ++y)
+			{
+				for (uint32_t x = firstColumn; x < endColumn; ++x)
+				{
+					sum += std::abs(Luminance(PixelAt(cloudy, x, y)) - Luminance(PixelAt(clear, x, y)));
+					++count;
+				}
+			}
+			return sum / static_cast<double>(count);
+		};
+		const double near = change(ViewWidth / 10, ViewWidth * 4 / 10);
+		const double far = change(ViewWidth * 6 / 10, ViewWidth * 9 / 10);
+		std::cout << "Among the clouds, a wall 40 m away changes by " << near << " of 255 with them, one 600 m away by " << far << "\n";
+		Require(far > 10.0 && near < 0.5 * far, "Among the clouds, a far wall isn't covered more than a near one");
+		Require(near > 0.2, "Among the clouds, a wall 40 m away isn't in their fog at all");
 		gpu.Renderer.SetWorldInterpolation(&scene.World, nullptr);
 		EndView(gpu, view);
 	}
@@ -782,8 +961,9 @@ namespace
 		EndView(gpu, view);
 	}
 
-	// Their GPU time, the median of 60 frames, at a size: carried (one pixel of each 4 x 4 marched a
-	// frame), and every pixel marched; the scene pass's with them and without
+	// Their GPU time at a size, in each update mode: the median of 60 frames with the camera still,
+	// and of 60 frames turning 2 degrees a frame; the frame that makes the noises again; the scene
+	// pass's with them and without
 	void TestGpuTime(SceneRenderer& gpu, uint32_t width, uint32_t height)
 	{
 		SkyScene scene(gpu.Renderer);
@@ -791,23 +971,35 @@ namespace
 		scene.Look(glm::vec3(0.0f, 10.0f, 0.0f), 30.0f, 20.0f);
 		gpu.Renderer.SetWorld(&scene.World);
 		const uint64_t view = MakeView(gpu, width, height);
-		const auto median = [&](float SceneViewGpuTimes::* pass)
+		const auto median = [&](float SceneViewGpuTimes::* pass, float degrees)
 		{
 			std::vector<float> times;
 			gpu.DrawFrames(4);
 			for (int frame = 0; frame < 60; ++frame)
 			{
+				scene.Look(glm::vec3(0.0f, 10.0f, 0.0f), 30.0f + degrees * static_cast<float>(frame), 20.0f);
 				gpu.DrawFrames(1);
 				times.push_back(gpu.Renderer.GetSceneViewGpuTimes(view)->*pass);
 			}
+			scene.Look(glm::vec3(0.0f, 10.0f, 0.0f), 30.0f, 20.0f);
 			std::sort(times.begin(), times.end());
 			return times[times.size() / 2];
 		};
-		const float carried = median(&SceneViewGpuTimes::VolumetricClouds);
-		const float scenePass = median(&SceneViewGpuTimes::Scene);
-		scene.Clouds().bTemporal = false;
-		const float marched = median(&SceneViewGpuTimes::VolumetricClouds);
-		scene.Clouds().bTemporal = true;
+		const float scenePass = median(&SceneViewGpuTimes::Scene, 0.0f);
+		float stillDefault = 0.0f;
+		for (const EVolumetricCloudsUpdate update : { EVolumetricCloudsUpdate::EveryPixel, EVolumetricCloudsUpdate::Blocks2x2, EVolumetricCloudsUpdate::Blocks4x4 })
+		{
+			scene.Clouds().Update = update;
+			const float still = median(&SceneViewGpuTimes::VolumetricClouds, 0.0f);
+			const float turning = median(&SceneViewGpuTimes::VolumetricClouds, 2.0f);
+			std::cout << "At " << width << " x " << height << ", " << UpdateName(update) << ": " << still << " ms on the GPU still, " << turning
+					  << " ms turning 2 degrees a frame (the medians of 60 frames)\n";
+			if (update == TestClouds().Update)
+			{
+				stillDefault = still;
+			}
+		}
+		scene.Clouds().Update = TestClouds().Update;
 		// A new seed: its noises made again in the one frame, every pixel marched
 		gpu.DrawFrames(4);
 		scene.Clouds().Seed = 99;
@@ -816,10 +1008,9 @@ namespace
 		gpu.DrawFrames(1);
 		std::cout << "At " << width << " x " << height << " the frame that made the noises again took " << withNoise.VolumetricClouds << " ms\n";
 		scene.Clouds().bClouds = false;
-		const float sceneWithout = median(&SceneViewGpuTimes::Scene);
-		std::cout << "At " << width << " x " << height << " the volumetric clouds took " << carried << " ms on the GPU carried (the median of 60 frames), " << marched
-				  << " ms with every pixel marched each frame; the scene pass " << scenePass << " ms with them, " << sceneWithout << " ms without\n";
-		Require(carried > 0.0f && carried < 2.0f, "The volumetric clouds take more than two milliseconds: " + std::to_string(carried) + " ms");
+		const float sceneWithout = median(&SceneViewGpuTimes::Scene, 0.0f);
+		std::cout << "At " << width << " x " << height << " the scene pass took " << scenePass << " ms with them, " << sceneWithout << " ms without\n";
+		Require(stillDefault > 0.0f && stillDefault < 2.5f, "The volumetric clouds take more than 2.5 milliseconds in their default mode: " + std::to_string(stillDefault) + " ms");
 		gpu.Renderer.SetWorldInterpolation(&scene.World, nullptr);
 		EndView(gpu, view);
 	}
@@ -859,6 +1050,24 @@ namespace
 	{
 		Registry world;
 		AddBox(world, "Ground", 0xC10D500001ull, glm::vec3(0.0f, -0.5f, 0.0f), glm::vec3(4000.0f, 1.0f, 4000.0f), "Field");
+		// Hills all round, rising in a bowl into the clouds' base 400 m up
+		const Entity hills = AddEntity(world, "Hills", 0xC10D50000Aull, Placed(glm::vec3(0.0f, -2.0f, 0.0f)));
+		GroundComponent ground;
+		ground.Size = glm::vec2(9000.0f, 9000.0f);
+		ground.Spacing = 18.0f;
+		ground.Seed = 7;
+		ground.Octaves = 6;
+		ground.Frequency = 0.0007f;
+		ground.Amplitude = 160.0f;
+		ground.Basin = EGroundBasin::Bowl;
+		ground.BasinDepth = 520.0f;
+		ground.BasinFloor = 0.25f;
+		ground.FlatRadius = 400.0f;
+		ground.FlatBlend = 600.0f;
+		world.Add<GroundComponent>(hills, ground);
+		MeshRendererComponent hillsRenderer;
+		hillsRenderer.Material = AssetReference{ .Type = "Material", .Path = "Materials/VertexColor.nyxmat" };
+		world.Add<MeshRendererComponent>(hills, hillsRenderer);
 		AddBox(world, "Wall", 0xC10D500002ull, glm::vec3(0.0f, 12.0f, -160.0f), glm::vec3(600.0f, 24.0f, 6.0f), "Stone");
 		AddBox(world, "House", 0xC10D500003ull, glm::vec3(-38.0f, 5.0f, -40.0f), glm::vec3(22.0f, 10.0f, 14.0f), "Roof");
 		AddBox(world, "House 2", 0xC10D500004ull, glm::vec3(36.0f, 6.0f, -46.0f), glm::vec3(20.0f, 12.0f, 16.0f), "Roof");
@@ -866,7 +1075,7 @@ namespace
 		const Entity camera = AddEntity(world, "Camera", 0xC10D500005ull, Placed(glm::vec3(0.0f, 1.7f, 0.0f), glm::vec3(1.0f), Looking(0.0f, 14.0f)));
 		CameraComponent lens;
 		lens.FovYDegrees = 70.0f;
-		lens.FarPlane = 5000.0f;
+		lens.FarPlane = 12000.0f;
 		world.Add<CameraComponent>(camera, lens);
 
 		const Entity sun = AddEntity(world, "Sun", 0xC10D500006ull, Placed(glm::vec3(0.0f)));
@@ -986,7 +1195,8 @@ namespace
 	};
 
 	// The test scene's pictures of each preset: lit as its reference, at noon, at sunset against the
-	// sun, and from the ground looking over the town; at 1280 x 720, every pixel marched
+	// sun, from the ground looking over the town, a low sun behind them, dusk over the hills, and
+	// among them where the hills rise into them; at 1280 x 720, every pixel marched
 	void RenderPictures(SceneRenderer& gpu)
 	{
 		TestScene scene;
@@ -1006,16 +1216,21 @@ namespace
 		};
 		for (const Look& look : looks)
 		{
-			const std::array<Shot, 4> shots = {
+			const std::array<Shot, 7> shots = {
 				look.Reference,
 				Shot{ "Noon", 12.0f, 100.0f, 25.0f, 1.7f, 0.0f },
-				Shot{ "Sunset", 17.85f, 0.0f, 10.0f, 1.7f, 1.0f },
+				Shot{ "Sunset", 17.85f, 0.0f, 10.0f, 1.7f, 0.5f },
 				Shot{ "Ground", 15.5f, 150.0f, 6.0f, 1.7f, 0.0f },
+				// A low sun behind the clouds, from the ground; dusk over the hills; among the clouds 470 m
+				// up, where the hills rise into them
+				Shot{ "LowSun", 17.6f, 5.0f, 16.0f, 1.7f, 0.3f },
+				Shot{ "DuskHills", 17.95f, 25.0f, 5.0f, 1.7f, 1.0f },
+				Shot{ "InHills", 15.0f, 120.0f, 2.0f, 470.0f, 0.0f },
 			};
 			VolumetricCloudsComponent& clouds = scene.World.Get<VolumetricCloudsComponent>(scene.Band);
 			const VolumetricCloudsComponent preset = MakeVolumetricCloudsPreset(look.Preset);
 			clouds = preset;
-			clouds.bTemporal = false;
+			clouds.Update = EVolumetricCloudsUpdate::EveryPixel;
 			for (const Shot& shot : shots)
 			{
 				TimeOfDayComponent& timeOfDay = scene.World.Get<TimeOfDayComponent>(scene.TimeOfDay);
@@ -1052,11 +1267,18 @@ int main(int argc, char** argv)
 			RenderPictures(gpu);
 			return 0;
 		}
+		if (argc > 1 && std::strcmp(argv[1], "--sequences") == 0)
+		{
+			TestUpdateModes(gpu);
+			return 0;
+		}
 		TestUnchangedWithout(gpu);
 		TestFromBelow(gpu);
 		TestFromAbove(gpu);
 		TestPresets(gpu);
-		TestTemporal(gpu);
+		TestUpdateModes(gpu);
+		TestSunDisk(gpu);
+		TestCoverAmongClouds(gpu);
 		TestDeterminism(gpu);
 		TestGroundUnderTheClouds(gpu);
 		TestLightShafts(gpu);

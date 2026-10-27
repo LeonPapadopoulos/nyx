@@ -31,10 +31,19 @@ namespace Nyx
 	// cumulus's): 200 m of it lets a third through
 	inline constexpr float VolumetricCloudExtinction = 40.0f;
 
-	// The clouds are marched at half the view's size each way; with Temporal on, one pixel of every
-	// square of this many a side a frame, the others carried from the frame before
+	// The most pixels a side of the squares of which one pixel a frame is marched (Blocks4x4), the
+	// others carried from the frame before; and the frames in which each pixel of such a square is
+	// marched once
 	inline constexpr uint32_t VolumetricCloudUpdateSize = 4;
 	inline constexpr uint32_t VolumetricCloudUpdateFrames = VolumetricCloudUpdateSize * VolumetricCloudUpdateSize;
+
+	// How far the picture may move under the camera in a frame, as a part of its height, before
+	// squares of 4 are marched as squares of 2, and before squares of 2 as every pixel: a fast turn or
+	// move would otherwise carry more of the picture from where it no longer is, and uncover more
+	// that has nothing to be carried from. A part, so a view twice as big marches as much more
+	// (1 % is half a degree a frame for a 60-degree-high lens: 30 degrees a second at 60 frames).
+	inline constexpr float VolumetricCloudFastShift = 0.01f;
+	inline constexpr float VolumetricCloudFasterShift = 0.05f;
 
 	// The view's volumetric clouds (VolumetricCloudsComponent, in range, for its camera, at its world's
 	// time: MakeSceneViewVolumetricCloudsSettings()); none without the component, or with it off
@@ -43,8 +52,8 @@ namespace Nyx
 		bool bClouds = false;
 		uint32_t Seed = 1;
 		// The band, in kilometres above the ground
-		float Bottom = 1.5f;
-		float Top = 5.0f;
+		float Bottom = 0.4f;
+		float Top = 1.8f;
 		float Coverage = 0.45f;
 		float CoverageVariation = 0.6f;
 		float Type = 0.75f;
@@ -56,14 +65,19 @@ namespace Nyx
 		float WeatherRepeat = 48.0f;
 		float Detail = 0.6f;
 		float Billowiness = 0.8f;
-		float EdgeSoftness = 0.15f;
+		float EdgeSoftness = 0.35f;
+		float Wispiness = 0.5f;
+		float Cellularity = 0.0f;
 		float Brightness = 1.0f;
 		float SilverLining = 1.0f;
 		float SilverLiningSpread = 0.4f;
 		float Powder = 0.5f;
 		float MultipleScattering = 0.5f;
 		float Ambient = 1.0f;
-		glm::vec3 ShadowTint{ 0.85f, 0.85f, 0.95f };
+		glm::vec3 SunlitTint{ 1.0f, 0.97f, 0.9f };
+		glm::vec3 ShadowTint{ 0.85f, 0.82f, 0.95f };
+		float AerialPerspective = 1.5f;
+		float Translucency = 0.5f;
 		// The wind, in kilometres a second of the world's time, in the world's x and z
 		glm::vec2 WindVelocity{ 0.0f };
 		// Where the camera is over each noise at the world's time, in its repeats, between 0 and 1:
@@ -75,8 +89,11 @@ namespace Nyx
 		uint32_t Steps = 128;
 		uint32_t LightSteps = 6;
 		// In kilometres from the camera
-		float MaxDistance = 150.0f;
-		bool bTemporal = true;
+		float MaxDistance = 80.0f;
+		// The squares of which one pixel a frame is marched, pixels a side: 1 (every pixel), 2 or 4
+		// (EVolumetricCloudsUpdate); and whether at the view's own size rather than half of it
+		uint32_t BlockSize = 4;
+		bool bFullResolution = false;
 		// EVolumetricCloudsDebug
 		uint32_t Debug = 0;
 	};
@@ -105,10 +122,22 @@ namespace Nyx
 	};
 	CloudBandSpan GetCloudBandSpan(float planetRadius, float height, float cosZenith, float bottom, float top);
 
-	// Which pixel of each VolumetricCloudUpdateSize square the frame `frame` marches, x and y from 0:
-	// in a Bayer matrix's order, so that every pixel is marched once in VolumetricCloudUpdateFrames
-	// frames and those of neighbouring frames are far apart
-	glm::uvec2 GetVolumetricCloudUpdateOffset(uint32_t frame);
+	// Which pixel of each square `blockSize` pixels a side (1, 2 or 4) the frame `frame` marches, x and
+	// y from 0: in a Bayer matrix's order, so that every pixel is marched once in blockSize² frames and
+	// those of neighbouring frames are far apart
+	glm::uvec2 GetVolumetricCloudUpdateOffset(uint32_t frame, uint32_t blockSize);
+
+	// The squares a frame marches one pixel of, pixels a side: the asked `blockSize`, made smaller
+	// while the picture moves under the camera by `shift` (a part of its height) a frame (past
+	// VolumetricCloudFastShift, 4 becomes 2; past VolumetricCloudFasterShift, every pixel)
+	uint32_t GetVolumetricCloudBlockSize(uint32_t blockSize, float shift);
+
+	// How far the picture moves under the camera from the frame before to this one, in pixels of a
+	// picture `height` pixels high: the most any of its corners or its middle moves, turned by the
+	// camera's turn (the frame before's rotation and projection, without its place, against this
+	// one's), and shifted by the camera's move (`moved` kilometres) as seen at `distance` kilometres,
+	// the nearest the clouds may be
+	float GetVolumetricCloudScreenShift(const glm::mat4& previousSkyViewProjection, const glm::mat4& skyViewProjection, float height, const glm::vec3& moved, float distance);
 
 	// What the clouds' pixels are marched with that, if it changes, makes the frames before useless:
 	// everything is marched again. The settings without where the wind has carried them (which the
@@ -120,7 +149,7 @@ namespace Nyx
 	};
 
 	// How far the sun may turn in a frame before everything is marched again, in degrees: a pixel is
-	// marched again within 16 frames, so a sun turning less lights them all within a tenth of a
+	// marched again within 16 frames at most, so a sun turning less lights them all within a tenth of a
 	// degree and a half of each other. A time of day running a day in 20 minutes turns it 0.005
 	// degrees a frame at 60 frames a second; one dragged in the editor much more.
 	inline constexpr float VolumetricCloudSunTolerance = 0.03f;

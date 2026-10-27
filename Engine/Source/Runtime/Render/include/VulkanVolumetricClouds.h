@@ -26,9 +26,11 @@ namespace Nyx
 		uint32_t Slot = 0;
 	};
 
-	// A picture of the volumetric clouds at half the view's size: their light and what gets through
-	// (RGBA16F) and how far along each ray they are (R32F, kilometres), both in the bindless array,
-	// and the framebuffer that writes both
+	// A picture of the volumetric clouds at the size they are marched at: their light and what gets
+	// through, the haze between taken in (RGBA16F); and where along each ray they are, in kilometres,
+	// and what of the sun gets through them (RGBA16F: their light's mean depth, where they start,
+	// where they all but end, and what gets through them without the haze, for the sun's disk);
+	// both in the bindless array, and the framebuffer that writes both
 	struct VolumetricCloudPicture
 	{
 		vk::raii::Image Light{ nullptr };
@@ -63,6 +65,7 @@ namespace Nyx
 	{
 		VolumetricCloudNoise Shape;
 		VolumetricCloudNoise Detail;
+		VolumetricCloudNoise Curl;
 		VolumetricCloudNoise Weather;
 		// The seed they were made from, and whether this frame makes them again
 		uint32_t NoiseSeed = 0;
@@ -70,7 +73,7 @@ namespace Nyx
 		// A set a dispatch, freed when the next ones are recorded
 		vk::raii::DescriptorPool Pool{ nullptr };
 
-		// Half the view's size each way
+		// The size they are marched at: half the view's each way, or its own
 		vk::Extent2D Extent{ 0, 0 };
 		VolumetricCloudPicture March;
 		VolumetricCloudPicture Pictures[2];
@@ -81,7 +84,12 @@ namespace Nyx
 		// (kilometres), and its rotation and projection then
 		SceneViewVolumetricCloudsSettings Settings;
 		bool bMarchAll = true;
+		// The squares of which one pixel is marched this frame, pixels a side (1 every pixel), which
+		// pixel of each, and how far the picture moved under the camera since the frame before, in
+		// its pixels
+		uint32_t BlockSize = 1;
 		glm::uvec2 UpdateOffset{ 0 };
+		float Shift = 0.0f;
 		uint32_t Written = 0;
 		uint32_t Shown = 1;
 		glm::vec3 Motion{ 0.0f };
@@ -120,7 +128,7 @@ namespace Nyx
 
 		static constexpr vk::Format NoiseFormat = vk::Format::eR8G8B8A8Unorm;
 		static constexpr vk::Format LightFormat = vk::Format::eR16G16B16A16Sfloat;
-		static constexpr vk::Format DepthFormat = vk::Format::eR32Sfloat;
+		static constexpr vk::Format DepthFormat = vk::Format::eR16G16B16A16Sfloat;
 
 		// Both must outlive it
 		VulkanVolumetricClouds(VulkanContext& context, ShaderPrograms& programs);
@@ -165,6 +173,7 @@ namespace Nyx
 		vk::raii::PipelineLayout NoisePipelineLayout{ nullptr };
 		vk::raii::Pipeline ShapePipeline{ nullptr };
 		vk::raii::Pipeline DetailPipeline{ nullptr };
+		vk::raii::Pipeline CurlPipeline{ nullptr };
 		vk::raii::Pipeline VolumeDownsamplePipeline{ nullptr };
 		vk::raii::Pipeline WeatherPipeline{ nullptr };
 		vk::raii::Pipeline WeatherDownsamplePipeline{ nullptr };

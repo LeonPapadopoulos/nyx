@@ -8,6 +8,7 @@
 #include "VulkanRenderer.h"
 #include "VulkanUtil.h"
 
+#include <algorithm>
 #include <array>
 #include <span>
 
@@ -166,6 +167,7 @@ namespace Nyx
 	{
 		ShapePipeline = nullptr;
 		DetailPipeline = nullptr;
+		CurlPipeline = nullptr;
 		VolumeDownsamplePipeline = nullptr;
 		WeatherPipeline = nullptr;
 		WeatherDownsamplePipeline = nullptr;
@@ -228,6 +230,7 @@ namespace Nyx
 		};
 		ShapePipeline = makeCompute(NoiseProgram, "cloudShapeNoise");
 		DetailPipeline = makeCompute(NoiseProgram, "cloudDetailNoise");
+		CurlPipeline = makeCompute(NoiseProgram, "cloudCurlNoise");
 		VolumeDownsamplePipeline = makeCompute(NoiseProgram, "cloudNoiseDownsample");
 		WeatherPipeline = makeCompute(WeatherProgram, "cloudWeather");
 		WeatherDownsamplePipeline = makeCompute(WeatherProgram, "cloudWeatherDownsample");
@@ -299,7 +302,7 @@ namespace Nyx
 			clouds.NoiseSeed = settings.Seed;
 			clouds.bNoisePending = true;
 		}
-		const vk::Extent2D extent((frame.ViewExtent.width + 1) / 2, (frame.ViewExtent.height + 1) / 2);
+		const vk::Extent2D extent = settings.bFullResolution ? frame.ViewExtent : vk::Extent2D((frame.ViewExtent.width + 1) / 2, (frame.ViewExtent.height + 1) / 2);
 		if (clouds.Extent != extent)
 		{
 			ReleasePictures(clouds);
@@ -311,9 +314,19 @@ namespace Nyx
 		const VolumetricCloudsLook look{ settings, frame.TowardsSun };
 		const glm::vec3 moved = glm::vec3((frame.Camera - clouds.Last.Camera) * 0.001);
 		const glm::vec2 blown = settings.WindVelocity * static_cast<float>(frame.WorldTime - clouds.Last.WorldTime);
-		clouds.bMarchAll = !clouds.bDrawn || !settings.bTemporal || clouds.bNoisePending || IsVolumetricCloudsLookChanged(clouds.Marched, look) ||
+		// More marched while the picture moves fast under the camera: by its turn, and by its move as
+		// seen at the nearest the clouds may be
+		const float height = static_cast<float>(frame.Camera.y) * 0.001f;
+		const float nearest = std::max({ settings.Bottom - height, height - settings.Top, 0.05f });
+		clouds.Shift = clouds.bDrawn ? GetVolumetricCloudScreenShift(clouds.Last.SkyViewProjection, frame.SkyViewProjection, static_cast<float>(extent.height), moved, nearest) : 0.0f;
+		clouds.BlockSize = GetVolumetricCloudBlockSize(settings.BlockSize, clouds.Shift / static_cast<float>(std::max(extent.height, 1u)));
+		clouds.bMarchAll = clouds.BlockSize == 1 || !clouds.bDrawn || clouds.bNoisePending || IsVolumetricCloudsLookChanged(clouds.Marched, look) ||
 			glm::length(moved) > MostCarriedMove || glm::length(blown) > MostCarriedMove;
-		clouds.UpdateOffset = GetVolumetricCloudUpdateOffset(clouds.Frame);
+		if (clouds.bMarchAll)
+		{
+			clouds.BlockSize = 1;
+		}
+		clouds.UpdateOffset = GetVolumetricCloudUpdateOffset(clouds.Frame, clouds.BlockSize);
 		clouds.Written = clouds.Shown ^ 1u;
 		if (clouds.bDrawn)
 		{
@@ -350,8 +363,9 @@ namespace Nyx
 	{
 		MakeNoise(Context, *Bindless, clouds.Shape, VolumetricCloudShapeSize, VolumetricCloudShapeLevels, true);
 		MakeNoise(Context, *Bindless, clouds.Detail, VolumetricCloudDetailSize, VolumetricCloudDetailLevels, true);
+		MakeNoise(Context, *Bindless, clouds.Curl, VolumetricCloudDetailSize, VolumetricCloudDetailLevels, true);
 		MakeNoise(Context, *Bindless, clouds.Weather, VolumetricCloudWeatherSize, VolumetricCloudWeatherLevels, false);
-		const uint32_t sets = VolumetricCloudShapeLevels + VolumetricCloudDetailLevels + VolumetricCloudWeatherLevels;
+		const uint32_t sets = VolumetricCloudShapeLevels + 2 * VolumetricCloudDetailLevels + VolumetricCloudWeatherLevels;
 		const vk::DescriptorPoolSize poolSize(vk::DescriptorType::eStorageImage, sets * 2);
 		clouds.Pool = vk::raii::DescriptorPool(Context.GetDevice(), vk::DescriptorPoolCreateInfo({}, sets, poolSize));
 		clouds.bNoisePending = true;
@@ -370,6 +384,7 @@ namespace Nyx
 	{
 		ReleaseNoise(*Bindless, clouds.Shape);
 		ReleaseNoise(*Bindless, clouds.Detail);
+		ReleaseNoise(*Bindless, clouds.Curl);
 		ReleaseNoise(*Bindless, clouds.Weather);
 		clouds.NoiseSeed = 0;
 		clouds.bNoisePending = false;
@@ -446,6 +461,7 @@ namespace Nyx
 		};
 		record(clouds.Shape, VolumetricCloudShapeSize, VolumetricCloudShapeLevels, true, *ShapePipeline, *VolumeDownsamplePipeline);
 		record(clouds.Detail, VolumetricCloudDetailSize, VolumetricCloudDetailLevels, true, *DetailPipeline, *VolumeDownsamplePipeline);
+		record(clouds.Curl, VolumetricCloudDetailSize, VolumetricCloudDetailLevels, true, *CurlPipeline, *VolumeDownsamplePipeline);
 		record(clouds.Weather, VolumetricCloudWeatherSize, VolumetricCloudWeatherLevels, false, *WeatherPipeline, *WeatherDownsamplePipeline);
 		clouds.bNoisePending = false;
 		++clouds.NoiseBuilds;
@@ -477,10 +493,9 @@ namespace Nyx
 		}
 		RecordNoises(clouds, cmd);
 
-		// 1. The march: every pixel, or one of each 4 x 4 into a quarter of the target each way
-		const vk::Extent2D marched = clouds.bMarchAll ? clouds.Extent
-													  : vk::Extent2D((clouds.Extent.width + VolumetricCloudUpdateSize - 1) / VolumetricCloudUpdateSize,
-															(clouds.Extent.height + VolumetricCloudUpdateSize - 1) / VolumetricCloudUpdateSize);
+		// 1. The march: every pixel, or one of each square into a part of the target each way
+		const uint32_t block = clouds.BlockSize;
+		const vk::Extent2D marched((clouds.Extent.width + block - 1) / block, (clouds.Extent.height + block - 1) / block);
 		DrawPass(view, cmd, clouds.March, marched, *MarchPipeline);
 		// 2. This frame's picture, from the march and the frame before's
 		DrawPass(view, cmd, clouds.Pictures[clouds.Written], clouds.Extent, *ResolvePipeline);

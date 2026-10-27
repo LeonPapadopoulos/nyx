@@ -5,9 +5,12 @@
 //     five octaves from 4 cells across, lifted by cellular noise of 4 cells, so its blobs are round
 //     and billowy) worn down where cellular noise of three octaves from 4, 8 and 16 cells is low,
 //     spread so its values are about evenly spread from 0 to 1: a threshold at 1 - c leaves about
-//     c of space inside; g, b, a those cellular noises (not read yet);
+//     c of space inside; g the cells of 4 across alone, one octave (1 at each cell's point), which
+//     part the clouds into cells (Cellularity); b, a the cellular noises of 8 and 16 (not read yet);
 //   - the details, 32 texels a side: r, g, b cellular noise of three octaves from 2, 4 and 8 cells,
-//     the small billows and wisps that wear the shapes' edges away.
+//     the small billows and wisps that wear the shapes' edges away;
+//   - the curl, 32 texels a side: the curl of three fields of gradient noise, a swirling flow with
+//     no sources or sinks, which swirls the details into torn wisps (rgb: -1 to 1 as 0 to 1).
 // Images in General layout while they are written.
 
 import nyx.cloudnoise;
@@ -29,6 +32,8 @@ struct NoiseDispatch
 // The worn shapes' mean and deviation over the cube, before they are spread
 static const float ShapeMean = 0.83;
 static const float ShapeDeviation = 0.056;
+// What the curl's slopes are brought to about 1 by
+static const float CurlScale = 0.25;
 
 float3 texelMiddle(uint3 id)
 {
@@ -57,7 +62,7 @@ void cloudShapeNoise(uint3 id : SV_DispatchThreadID)
     // That is about normal, its mean 0.83 and its deviation 0.056 (measured over the cube): spread
     // evenly by its distribution (a logistic close to the normal's)
     const float field = 1.0 / (1.0 + exp(-1.702 * (worn - ShapeMean) / ShapeDeviation));
-    Target[id] = float4(field, worley4, worley8, worley16);
+    Target[id] = float4(field, nyx::cloudWorley(uvw, 4, seed, 10u), worley8, worley16);
 }
 
 [shader("compute")]
@@ -71,6 +76,33 @@ void cloudDetailNoise(uint3 id : SV_DispatchThreadID)
     const float3 uvw = texelMiddle(id);
     const uint seed = Dispatch.Seed;
     Target[id] = float4(nyx::cloudWorleyFbm(uvw, 2, seed, 40u), nyx::cloudWorleyFbm(uvw, 4, seed, 50u), nyx::cloudWorleyFbm(uvw, 8, seed, 60u), 1.0);
+}
+
+// The curl of a potential of three fields of fractal gradient noise, from 2 cells across, by
+// differences a texel apart (the cube tiles, so the texels beyond its faces are its far faces'):
+// about -1 to 1 each way
+float3 curlPotential(float3 uvw, uint seed)
+{
+    return float3(nyx::cloudPerlinFbm(uvw, 2, 3, 1.0, seed, 70u), nyx::cloudPerlinFbm(uvw, 2, 3, 1.0, seed, 80u), nyx::cloudPerlinFbm(uvw, 2, 3, 1.0, seed, 90u));
+}
+
+[shader("compute")]
+[numthreads(4, 4, 4)]
+void cloudCurlNoise(uint3 id : SV_DispatchThreadID)
+{
+    if (any(id >= Dispatch.Size))
+    {
+        return;
+    }
+    const float3 uvw = texelMiddle(id);
+    const uint seed = Dispatch.Seed;
+    const float e = 1.0 / float(Dispatch.Size);
+    const float3 dx = (curlPotential(uvw + float3(e, 0.0, 0.0), seed) - curlPotential(uvw - float3(e, 0.0, 0.0), seed)) / (2.0 * e);
+    const float3 dy = (curlPotential(uvw + float3(0.0, e, 0.0), seed) - curlPotential(uvw - float3(0.0, e, 0.0), seed)) / (2.0 * e);
+    const float3 dz = (curlPotential(uvw + float3(0.0, 0.0, e), seed) - curlPotential(uvw - float3(0.0, 0.0, e), seed)) / (2.0 * e);
+    // The potential's slopes are a few a unit of the cube for 2 cells across: brought to about 1
+    const float3 curl = float3(dy.z - dz.y, dz.x - dx.z, dx.y - dy.x) * CurlScale;
+    Target[id] = float4(saturate(curl * 0.5 + 0.5), 1.0);
 }
 
 // A mip from the one before: each texel the mean of its eight

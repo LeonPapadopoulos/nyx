@@ -565,8 +565,9 @@ set_property(TARGET NyxCloudLayerTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxCloudLayerTests COMMAND NyxCloudLayerTests)
 
 # The volumetric clouds without a GPU: where rays are inside their band from below, inside and above
-# it, the pixel of each 4 x 4 a frame marches, the wind carrying the noises with the world's time,
-# when everything is marched again, values in range, the presets, the component saved.
+# it, the pixel of each square a frame marches and smaller squares while the picture moves fast, the
+# wind carrying the noises with the world's time, when everything is marched again, values in range,
+# the presets, older scenes' Temporal, the component saved.
 add_executable(NyxVolumetricCloudsTests VolumetricCloudsTests.cpp)
 target_link_libraries(NyxVolumetricCloudsTests PRIVATE NyxEngine)
 add_dependencies(NyxVolumetricCloudsTests NyxGeneratedReflection)
@@ -749,10 +750,10 @@ add_test(NAME NyxCloudLayerGpuTests COMMAND NyxCloudLayerGpuTests)
 add_test(NAME NyxCloudLayerGpuTestsMsaa COMMAND NyxCloudLayerGpuTests --msaa 4)
 
 # The volumetric clouds on a real GPU: the picture unchanged to the bit without them, clouds from the
-# ground at noon, at sunset and at midnight, from above the band, each preset, the frames carried
-# from the frames before the same as every pixel marched, the same sky at the same seed and time,
-# the ground under them covered, the light shafts held back, their GPU time, the test scene. Needs a
-# Vulkan device; its window stays hidden.
+# ground at noon, at sunset and at midnight, from above the band, each preset, each update mode still
+# and turning against every pixel marched, the sun's disk behind thick cloud, a wall among the clouds
+# in their fog, the same sky at the same seed and time, the ground under them covered, the light
+# shafts held back, their GPU time, the test scene. Needs a Vulkan device; its window stays hidden.
 add_executable(NyxVolumetricCloudsGpuTests VolumetricCloudsGpuTests.cpp)
 target_link_libraries(NyxVolumetricCloudsGpuTests PRIVATE NyxEngine)
 add_dependencies(NyxVolumetricCloudsGpuTests NyxGeneratedReflection)
