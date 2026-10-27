@@ -1109,6 +1109,23 @@ namespace Nyx
 		return true;
 	}
 
+	std::optional<BoundingBox> VulkanRenderer::GetEntityDrawnBounds(const Nyx::Registry& world, Nyx::Entity entity) const
+	{
+		const RenderWorld* renderWorld = FindRenderWorld(&world);
+		if (!renderWorld)
+		{
+			return std::nullopt;
+		}
+		for (const RenderObject& object : renderWorld->Objects)
+		{
+			if (object.SourceEntity == entity)
+			{
+				return object.WorldBounds;
+			}
+		}
+		return std::nullopt;
+	}
+
 	bool VulkanRenderer::GetSceneViewCameraData(uint64_t sceneViewId, Nyx::SceneViewCameraData& outData) const
 	{
 		const SceneViewInstance* view = FindSceneView(sceneViewId);

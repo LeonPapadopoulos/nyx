@@ -240,6 +240,9 @@ contexts, and the context highest on the stack that binds a control gets it.
   Camera Component*, which sets its speed and look sensitivity. Nyx's scenes and new scenes have
   one on their camera; a scene without one has no fly camera, and the game's own camera gets the
   input.
+- **F** flies the scene view (the hovered one, else the one flown last) to the selected entity in
+  0.3 s, keeping the way it looks, close enough that it fills most of the picture: what it draws,
+  or a box of its scale where it draws nothing. Moving or looking stops the flight where it is.
 - An *Orbit Camera* circles its target entity (an entity picker in Details), looking at a point
   above it (*Target Offset*), at a distance it zooms between *Min* and *Max Distance* in *Zoom
   Steps*, its pitch kept between *Min* and *Max Pitch*. It follows the target as drawn between

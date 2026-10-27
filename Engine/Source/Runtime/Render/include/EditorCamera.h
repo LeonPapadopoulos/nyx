@@ -11,6 +11,8 @@ namespace Nyx
 	{
 		// Where its view starts, in metres: also where the first shadow cascade does
 		static constexpr float NearPlane = 0.1f;
+		// From the bottom of its picture to the top, in degrees
+		static constexpr float VerticalFieldOfViewDegrees = 60.0f;
 
 		float AspectRatio = 16.0f / 9.0f;
 
@@ -30,7 +32,7 @@ namespace Nyx
 
 		glm::mat4 GetProjectionMatrix() const
 		{
-			return MakePerspectiveProjection(glm::radians(60.0f), AspectRatio, NearPlane, 1000.0f);
+			return MakePerspectiveProjection(glm::radians(VerticalFieldOfViewDegrees), AspectRatio, NearPlane, 1000.0f);
 		}
 
 		glm::mat4 GetViewProjectionMatrix() const

@@ -14,6 +14,7 @@
 #include "ReflectionSourceRegistry.h"
 #include "ScatterInstances.h"
 #include "TimeOfDay.h"
+#include "TransformComponent.h"
 #include "EditorRenderer.h"
 #include "SceneSerializer.h"
 #include "UIChrome.h"
@@ -312,6 +313,7 @@ namespace Nyx::Editor
 		Materials.DrawNewMaterialPopup();
 
 		if (!SourceInspector.IsActive()) Editing.Gizmo.TickHotkeys();
+		if (!SourceInspector.IsActive() && !ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_F, false)) FrameSelection();
 
 		ApplyPendingPickResults();
 
@@ -536,5 +538,27 @@ namespace Nyx::Editor
 	void EditorLayer::ApplyPendingPickResults()
 	{
 		SceneViews.ApplyPickResults(Editing);
+	}
+
+	void EditorLayer::FrameSelection()
+	{
+		const std::optional<Nyx::Entity> selection = Editing.Scene.GetSelection();
+		const Nyx::Registry& registry = Editing.Scene.GetRegistry();
+		if (!selection || !registry.IsAlive(*selection))
+		{
+			return;
+		}
+
+		// What it draws, else a box of its scale where it is
+		if (const std::optional<Nyx::BoundingBox> bounds = Renderer->GetEntityDrawnBounds(registry, *selection))
+		{
+			CameraController->Frame(bounds->Min, bounds->Max);
+		}
+		else if (registry.Has<Nyx::TransformComponent>(*selection))
+		{
+			const Nyx::TransformComponent& transform = registry.Get<Nyx::TransformComponent>(*selection);
+			const glm::vec3 halfSize = glm::abs(transform.Scale) * 0.5f;
+			CameraController->Frame(transform.Position - halfSize, transform.Position + halfSize);
+		}
 	}
 }

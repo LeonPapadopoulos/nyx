@@ -90,6 +90,9 @@ namespace Nyx::Editor
 
 		void ApplyPendingPickResults();
 
+		// Flies a scene view's camera to see the selected entity whole (F)
+		void FrameSelection();
+
 		// Opens the workspace's panels and closes the other's, e.g. after switching
 		void ApplyWorkspacePanels();
 

@@ -4,6 +4,7 @@
 
 #include "ImageFile.h"
 #include "PainterDrawOptions.h"
+#include "SceneCulling.h"
 #include "ShaderLog.h"
 
 #include <glm/glm.hpp>
@@ -80,6 +81,10 @@ namespace Nyx
 		// moves it (EditorCameraController). Get returns false for an unknown view.
 		virtual void SetSceneViewEditorCameraTransform(uint64_t id, const glm::vec3& pos, const glm::vec3& rot) = 0;
 		virtual bool GetSceneViewEditorCameraTransform(uint64_t id, glm::vec3& outPos, glm::vec3& outRot) const = 0;
+
+		// Around what an entity of a world set here draws, where it was drawn last frame, its
+		// instances with it: what the editor frames it by. None for an entity drawing nothing.
+		virtual std::optional<BoundingBox> GetEntityDrawnBounds(const Nyx::Registry& world, Nyx::Entity entity) const = 0;
 
 		// Editor overlays are the grid, debug lines, picking and the selection outline. They are
 		// off by default; the editor turns them on for its scene views.

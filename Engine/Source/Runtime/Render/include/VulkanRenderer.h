@@ -482,6 +482,7 @@ namespace Nyx
 		virtual void SetSceneViewCameraMode(uint64_t id, EViewportCameraMode mode);
 		virtual void SetSceneViewEditorCameraTransform(uint64_t id, const glm::vec3& pos, const glm::vec3& rot);
 		bool GetSceneViewEditorCameraTransform(uint64_t id, glm::vec3& outPos, glm::vec3& outRot) const override;
+		std::optional<BoundingBox> GetEntityDrawnBounds(const Nyx::Registry& world, Nyx::Entity entity) const override;
 		void SetSceneViewShowEditorOverlays(uint64_t id, bool bShow) override;
 		void SetSceneViewExposure(uint64_t id, float stops) override;
 		void SetSceneViewSky(uint64_t id, ESceneViewSky sky, float rotationRadians) override;

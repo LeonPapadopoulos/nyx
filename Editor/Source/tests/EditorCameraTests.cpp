@@ -262,6 +262,89 @@ namespace
 		rig.Frame();
 		Require(Near(rig.Controller.GetMoveSpeed(), settings.MinSpeed), "The speed should stop at its minimum");
 	}
+
+	bool NearVec(const glm::vec3& a, const glm::vec3& b)
+	{
+		return glm::length(a - b) < 1e-3f;
+	}
+
+	// F: the hovered view flies to see the box whole, looking the way it did, eased over a few frames
+	void TestFrameFliesToTheBox()
+	{
+		Rig rig;
+		rig.Main.bHovered = true;
+		rig.Settle();
+		rig.Cameras.SetCamera(MainView, glm::vec3(0.0f), glm::vec3(0.0f, glm::radians(90.0f), 0.0f));
+
+		// Looking along -X with yaw 90 degrees; the box 20 m that way
+		const glm::vec3 boxMin(-21.0f, -1.0f, -1.0f);
+		const glm::vec3 boxMax(-19.0f, 1.0f, 1.0f);
+		const glm::vec3 framed = rig.Controller.GetFramingPosition(boxMin, boxMax, glm::vec3(-1.0f, 0.0f, 0.0f));
+		Require(NearVec(glm::vec3(framed.y, framed.z, 0.0f), glm::vec3(0.0f)) && framed.x > -19.0f, "The framing place should be in front of the box, on its axis");
+
+		const float radius = glm::length(boxMax - boxMin) * 0.5f;
+		const EditorCameraController::Settings& settings = rig.Controller.GetSettings();
+		const float halfAngle = glm::radians(settings.FieldOfViewDegrees) * 0.5f * settings.FrameFill;
+		Require(Near(framed.x, -20.0f + radius / std::sin(halfAngle)), "The box's sphere should take FrameFill of the picture's height");
+
+		rig.Controller.Frame(boxMin, boxMax);
+		rig.Frame();
+		Require(rig.Controller.IsFlying(), "Framing should fly, not jump");
+		const float firstX = rig.Of(MainView).Position.x;
+		Require(firstX < 0.0f && firstX > framed.x, "The first frame should be on the way");
+
+		for (int frame = 0; frame < 10 && rig.Controller.IsFlying(); ++frame)
+		{
+			rig.Frame();
+		}
+		Require(!rig.Controller.IsFlying(), "The flight should end after FrameFlightTime");
+		Require(NearVec(rig.Of(MainView).Position, framed), "The camera should end where it sees the box whole");
+		Require(NearVec(rig.Of(MainView).Rotation, glm::vec3(0.0f, glm::radians(90.0f), 0.0f)), "Framing keeps the way the camera looks");
+		Require(rig.Of(FloatingView).Position == glm::vec3(10.0f, 0.0f, 0.0f), "The other view shouldn't move");
+	}
+
+	// F pressed with the outliner focused: the view the input went to last
+	void TestFrameUsesTheLastView()
+	{
+		Rig rig;
+		rig.Floating.bHovered = true;
+		rig.Settle();
+		rig.Floating.bHovered = false;
+		rig.Settle();
+
+		rig.Controller.Frame(glm::vec3(30.0f, 0.0f, -10.0f), glm::vec3(31.0f, 1.0f, -9.0f));
+		for (int frame = 0; frame < 10; ++frame)
+		{
+			rig.Frame();
+		}
+		Require(rig.Of(FloatingView).Position != glm::vec3(10.0f, 0.0f, 0.0f), "The view flown last should frame it");
+		Require(rig.Of(MainView).Position == glm::vec3(0.0f), "The other view shouldn't move");
+	}
+
+	void TestMovingStopsTheFlight()
+	{
+		Rig rig;
+		rig.Main.bHovered = true;
+		rig.Settle();
+
+		const glm::vec3 boxMin(-1.0f, -1.0f, -51.0f);
+		const glm::vec3 boxMax(1.0f, 1.0f, -49.0f);
+		rig.Controller.Frame(boxMin, boxMax);
+		rig.Frame();
+		Require(rig.Controller.IsFlying(), "Expected a flight");
+
+		rig.Backend.Press(rig.Keyboard, Key(EKey::D), rig.Later());
+		rig.Frame();
+		Require(!rig.Controller.IsFlying(), "Moving should stop the flight");
+		const glm::vec3 stopped = rig.Of(MainView).Position;
+		rig.Backend.Release(rig.Keyboard, Key(EKey::D), rig.Later());
+		rig.Frame();
+		rig.Frame();
+		// D moves along X; the flight was along Z
+		Require(Near(rig.Of(MainView).Position.z, stopped.z), "The camera should stay where the flight stopped");
+		Require(!NearVec(rig.Of(MainView).Position, rig.Controller.GetFramingPosition(boxMin, boxMax, glm::vec3(0.0f, 0.0f, -1.0f))),
+			"Nor go on to the framing place");
+	}
 }
 
 int main()
@@ -278,6 +361,9 @@ int main()
 		TestRightClickOutsideDoesntLook();
 		TestLookEndsWhenViewCloses();
 		TestWheelChangesSpeed();
+		TestFrameFliesToTheBox();
+		TestFrameUsesTheLastView();
+		TestMovingStopsTheFlight();
 	}
 	catch (const std::exception& error)
 	{
