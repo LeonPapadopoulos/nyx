@@ -1662,6 +1662,7 @@ namespace Nyx
 		const Nyx::Registry& registry = *world.Registry;
 		const Nyx::WindComponent* wind = Nyx::FindWorldWind(registry);
 		world.WindDebug = wind ? wind->Debug : Nyx::EWindDebug::Off;
+		world.bHasWind = wind != nullptr;
 		world.WindSettings = wind ? *wind : Nyx::WindComponent{};
 		const double time = static_cast<double>(world.Time);
 
@@ -1674,6 +1675,7 @@ namespace Nyx
 				{
 					bDriven = true;
 					world.Wind = Nyx::EvaluateWind(driven.Drive, time);
+					world.WindTravel = Nyx::GetWindTravel(driven.Drive, time);
 				}
 			});
 		if (bDriven)
@@ -1687,6 +1689,7 @@ namespace Nyx
 		{
 			world.WindDrive = Nyx::WindDrive{};
 			world.Wind = Nyx::WindState{};
+			world.WindTravel = glm::dvec2(0.0);
 			return;
 		}
 		if (world.WindDrive.bStarted && time < world.WindDrive.Start)
@@ -1695,6 +1698,7 @@ namespace Nyx
 		}
 		Nyx::SetWindTarget(world.WindDrive, *wind, time);
 		world.Wind = Nyx::EvaluateWind(world.WindDrive, time);
+		world.WindTravel = Nyx::GetWindTravel(world.WindDrive, time);
 	}
 
 	void VulkanRenderer::ExtractParticles(RenderWorld& world, std::optional<float> interpolation)
@@ -3305,8 +3309,11 @@ namespace Nyx
 				}
 				bFound = true;
 				// Carried by the wind with the world's time: a game's, by its steps; the editor's, the
-				// renderer's
-				view.SceneGlobals.CloudLayer = Nyx::MakeSceneViewCloudLayerSettings(clouds, view.SceneGlobals.CameraWorldPos, static_cast<double>(GetWorldTime(&world)));
+				// renderer's. The world's wind at the layer's altitude, where it has one
+				const RenderWorld* shown = FindShownWorld(view);
+				const Nyx::CloudDrift drift = shown ? Nyx::GetCloudDrift(shown->Wind, shown->WindTravel, clouds.Altitude) : Nyx::CloudDrift{};
+				view.SceneGlobals.CloudLayer = Nyx::MakeSceneViewCloudLayerSettings(clouds, view.SceneGlobals.CameraWorldPos, static_cast<double>(GetWorldTime(&world)),
+					shown && shown->bHasWind ? &drift : nullptr);
 			});
 	}
 
@@ -3324,7 +3331,12 @@ namespace Nyx
 				bFound = true;
 				// Carried by the wind with the world's time: a game's, by its steps; the editor's, the
 				// renderer's
-				view.SceneGlobals.VolumetricClouds = Nyx::MakeSceneViewVolumetricCloudsSettings(clouds, view.SceneGlobals.CameraWorldPos, static_cast<double>(GetWorldTime(&world)));
+				// The world's wind at the middle of the band, where it has one
+				const RenderWorld* shown = FindShownWorld(view);
+				const Nyx::CloudDrift drift =
+					shown ? Nyx::GetCloudDrift(shown->Wind, shown->WindTravel, 0.5f * (clouds.BottomAltitude + clouds.TopAltitude)) : Nyx::CloudDrift{};
+				view.SceneGlobals.VolumetricClouds = Nyx::MakeSceneViewVolumetricCloudsSettings(clouds, view.SceneGlobals.CameraWorldPos, static_cast<double>(GetWorldTime(&world)),
+					shown && shown->bHasWind ? &drift : nullptr);
 			});
 	}
 

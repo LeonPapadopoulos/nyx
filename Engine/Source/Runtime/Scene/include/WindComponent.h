@@ -145,6 +145,13 @@ namespace Nyx
 	// The wind at `time` as the drive has it
 	WindState EvaluateWind(const WindDrive& drive, double time);
 
+	// How far the wind has carried what it carries at its reference height by `time`, in metres
+	// along the ground, not wrapped: the integral of its velocity, exact as its phases are; for
+	// what moves with the wind as a whole, such as clouds (scaled by the height profile at their
+	// altitude)
+	glm::dvec2 GetWindTravel(const WindDrive& drive, double time);
+	glm::dvec2 GetSteadyWindTravel(const WindComponent& wind, double time);
+
 	// Whether the drive is still turning at `time`
 	bool IsWindChanging(const WindDrive& drive, double time);
 

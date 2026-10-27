@@ -1,8 +1,10 @@
 #include "NyxPCH.h"
 #include "EnvironmentComponent.h"
 
+#include "CloudLayerComponent.h"
 #include "Entity.h"
 #include "Log.h"
+#include "VolumetricCloudsComponent.h"
 #include "WindComponent.h"
 
 #include <cmath>
@@ -58,6 +60,10 @@ namespace Nyx
 			wind.GroundFactor = 1.0f;
 			wind.Aloft = 0.0f;
 			bHasWind = true;
+
+			// The clouds blew by their own wind before; they still do
+			world.Each<CloudLayerComponent>([](Entity, CloudLayerComponent& clouds) { clouds.bOwnWind = true; });
+			world.Each<VolumetricCloudsComponent>([](Entity, VolumetricCloudsComponent& clouds) { clouds.bOwnWind = true; });
 		}
 	}
 }

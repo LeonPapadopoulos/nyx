@@ -233,7 +233,8 @@ namespace Nyx
 	// A scene's Wind, saved before the world had a wind of its own, moved into a WindComponent on the
 	// first environment's entity that has one, steady and as fast at every height, as it carried
 	// particles (its up and down is dropped, with a warning), unless the world has a wind already;
-	// then every environment's Wind is 0. Run on a whole scene as it loads.
+	// then every environment's Wind is 0. Clouds, which blew by their own wind, are set to keep
+	// doing so (Own Wind). Run on a whole scene as it loads.
 	void MoveLegacyEnvironmentWind(Registry& world);
 }
 

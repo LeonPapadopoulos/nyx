@@ -383,6 +383,10 @@ namespace Nyx
 		// that component's debug view and local air's texture
 		Nyx::WindState Wind;
 		Nyx::WindDrive WindDrive;
+		// Whether it has a WindComponent, and how far its wind has carried what it carries at its
+		// reference height by its time (GetWindTravel()), for its clouds
+		bool bHasWind = false;
+		glm::dvec2 WindTravel{ 0.0 };
 		Nyx::EWindDebug WindDebug = Nyx::EWindDebug::Off;
 		Nyx::WindComponent WindSettings;
 		// Its particles, moved on each frame by its time, and the meshes its emitters name by path

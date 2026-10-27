@@ -378,6 +378,16 @@ namespace Nyx
 		return MakeState(GetDriveValues(drive, time), GetDrivePhase(drive, time), GetDriveOffset(drive, time), time, fade.From, fade.To, GetFadeBlend(fade, time));
 	}
 
+	glm::dvec2 GetWindTravel(const WindDrive& drive, double time)
+	{
+		return drive.bStarted ? GetDriveOffset(drive, time) : glm::dvec2(0.0);
+	}
+
+	glm::dvec2 GetSteadyWindTravel(const WindComponent& wind, double time)
+	{
+		return GetEddyVelocity(GetValues(wind)) * time;
+	}
+
 	bool IsWindChanging(const WindDrive& drive, double time)
 	{
 		return drive.bStarted && drive.Seconds > 0.0 && time < drive.Start + drive.Seconds;

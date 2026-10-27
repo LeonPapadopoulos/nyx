@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Wind.h"
+
 #include <glm/glm.hpp>
 
 #include <cstdint>
@@ -85,11 +87,31 @@ namespace Nyx
 	// The view's cloud layer from the world's first CloudLayerComponent, in range, for a camera at
 	// `cameraPosition` (metres) at the world's time `worldTime` (seconds): the wind carries the
 	// pattern Wind Speed metres a second of it, so the same seed and time give the same sky
-	SceneViewCloudLayerSettings MakeSceneViewCloudLayerSettings(const CloudLayerComponent& clouds, const glm::vec3& cameraPosition, double worldTime);
+	// The world's wind as it carries clouds at an altitude, the mean wind without gusts or eddies:
+	// its way over the ground (normalised), its velocity there now (metres a second), and how far it
+	// has carried them by the world's time (metres, not wrapped)
+	struct CloudDrift
+	{
+		glm::vec2 Direction{ 1.0f, 0.0f };
+		glm::vec2 Velocity{ 0.0f };
+		glm::dvec2 Travel{ 0.0 };
+	};
+
+	// The drift of clouds at `altitude` metres in the world's `wind`, which has carried what it
+	// carries at its reference height `travel` metres (GetWindTravel()): both scaled by the wind's
+	// height profile at that altitude
+	CloudDrift GetCloudDrift(const WindState& wind, const glm::dvec2& travel, float altitude);
+
+	// With `drift`, a world's wind at the layer's altitude, the clouds are carried by it unless
+	// their component has Own Wind; without one, by their own Wind Direction and Wind Speed
+	SceneViewCloudLayerSettings MakeSceneViewCloudLayerSettings(const CloudLayerComponent& clouds, const glm::vec3& cameraPosition, double worldTime,
+		const CloudDrift* drift = nullptr);
 
 	// Where a point of the world (x and z in metres) is over the pattern at `worldTime`, in squares,
 	// along the wind and across it, not wrapped: what the shaders work out per pixel from Origin
 	glm::dvec2 GetCloudPatternPoint(const SceneViewCloudLayerSettings& clouds, const glm::dvec2& worldXZ, double worldTime, float windSpeed);
+	// The same for a wind that has carried the pattern `travel` metres over the ground
+	glm::dvec2 GetCloudPatternPoint(const SceneViewCloudLayerSettings& clouds, const glm::dvec2& worldXZ, const glm::dvec2& travel);
 
 	// Where a ray meets the layer's shell, `altitude` kilometres up round a planet of `planetRadius`,
 	// from a camera `height` kilometres up along a ray whose cosine with the up axis is `cosZenith`:

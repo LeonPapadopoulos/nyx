@@ -753,9 +753,13 @@ Per pixel (`CloudLayer.slang`), at the point the ray meets the shell:
 
 ### The wind and the world's time
 
-Where the camera is over the pattern (`MakeSceneViewCloudLayerSettings()`) is its place over the
-ground, along the wind (*Wind Direction*, round the up axis from +X towards -Z, as the time of day's
-sunrise) and across it, less *Wind Speed* times the world's time along it, in squares, in doubles on
+In a world with a wind of its own ([Wind](wind.md#clouds)) the layer is carried by that wind at its
+altitude, unless its *Own Wind* is on: its axis is the wind's way, and how far the wind has carried
+it is the wind's own travel scaled by its height profile there (`GetCloudDrift()`). Otherwise, as
+below, by its own wind. Where the camera is over the pattern (`MakeSceneViewCloudLayerSettings()`)
+is its place over the ground, along the wind (*Wind Direction*, round the up axis from +X towards -Z,
+as the time of day's sunrise) and across it, less *Wind Speed* times the world's time along it, in
+squares, in doubles on
 the CPU, kept between 0 and 16 squares, the period at which every scale the shader reads repeats.
 So:
 
@@ -1058,7 +1062,9 @@ of it lets a third through).
 
 ### The wind and the world's time
 
-The noises are carried by *Wind Speed* along *Wind Direction* (round the up axis from +X towards
+In a world with a wind of its own ([Wind](wind.md#clouds)) the noises are carried by that wind at
+the middle of the band, unless *Own Wind* is on (`GetCloudDrift()`). Otherwise the noises are
+carried by *Wind Speed* along *Wind Direction* (round the up axis from +X towards
 -Z) with the world's time, as the layer's: where the camera is over each of them
 (`MakeSceneViewVolumetricCloudsSettings()`) is its place over the ground less the wind times the
 world's time, in that noise's repeats, in doubles on the CPU, kept between 0 and 1; the shaders add

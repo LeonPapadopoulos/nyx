@@ -892,9 +892,10 @@ Without one, or off, or with another sky, the picture is as it was, to the bit.
   *Softness*, *Detail* (finer cells breaking up their edges), *Warp*, *Seed*; *Altitude* (4000 m)
   and *Thickness*. The noise is a small tiling texture made by a compute shader when the seed
   changes; the same seed at the same world time gives the same sky.
-- **Wind**: *Wind Direction* and *Wind Speed* carry the clouds with the world's time, a game's by
-  its steps (they stand still while it is paused), not the frame rate; the clouds stay put over the
-  ground as the camera moves.
+- **Wind**: the world's wind at the layer's altitude carries the clouds, their streaks along it
+  ([Wind](#wind)); with *Own Wind*, or in a world without a wind, *Wind Direction* and *Wind Speed*
+  do. With the world's time, a game's by its steps (they stand still while it is paused), not the
+  frame rate; the clouds stay put over the ground as the camera moves.
 - **Lit by the sun through the air at their height**: white at noon, gold and red at sunset (the
   layer keeps the sun a little after the ground has lost it), dark after it, the night sky's blue
   at night; brighter towards the sun, their thin edges glowing against it (*Rim*, a silver lining);
@@ -950,8 +951,10 @@ bit. A *Cloud Layer* can stay above them for thin cirrus.
   Size*, *Billowiness*), swirled by curl noise into torn wisps (*Wispiness*), thinning out over a
   translucent fringe rather than cut off (*Edge Softness*); their height by their type, flat at the
   base.
-- **Wind**: *Wind Direction* and *Wind Speed* carry them with the world's time, a game's by its
-  steps (they stand still while it is paused); they stay put over the ground as the camera moves.
+- **Wind**: the world's wind at the middle of the band carries them ([Wind](#wind)); with *Own
+  Wind*, or in a world without a wind, *Wind Direction* and *Wind Speed* do. With the world's time,
+  a game's by its steps (they stand still while it is paused); they stay put over the ground as the
+  camera moves.
 - **Lighting**: the sun through the air (white at noon, gold at sunset, none after) and through the
   clouds themselves (Beer's law), scattered once and many times (*Multiple Scattering*) and carried
   through their bodies (*Translucency*), so their bellies and backlit cores glow rather than going
@@ -1081,6 +1084,9 @@ One wind for the world, which grass, trees, particles and a game's own air all t
 - **A game's own air on top** (`IWindField`, given with `GameWorld::SetWindField()`): carries the
   particles, and is written into a coarse texture round each view's camera that grass and trees
   bend in (`nyx::windAt()` in `nyx.worldwind`), copied to the GPU only when it changes.
+- **Clouds** take it at their altitude, faster high up by its profile (the high layer at its
+  altitude, the volumetric clouds at the middle of their band), unless their *Own Wind* is on;
+  old scenes, which have no wind of their own, keep their clouds' wind.
 - Swaying materials keep only how they answer: `Materials/VertexColorWind.nyxmat` has *Response*
   (0 holds still), *Strength*, *Stiffness*, *Flutter*, *Flutter Frequency*, *Wind Height*.
 - **Debug View**: arrows round the camera along the wind, as long as it is fast and warmer in a

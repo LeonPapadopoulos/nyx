@@ -6,6 +6,7 @@
 
 namespace Nyx
 {
+	struct CloudDrift;
 	struct VolumetricCloudsComponent;
 
 	// The volumetric clouds as plain math (Docs/Design/atmosphere.md): a band between two shells round
@@ -101,12 +102,17 @@ namespace Nyx
 	// The view's volumetric clouds from the world's first VolumetricCloudsComponent, in range, for a
 	// camera at `cameraPosition` (metres) at the world's time `worldTime` (seconds): the wind carries
 	// the noises Wind Speed metres a second of it, so the same seed and time give the same sky
-	SceneViewVolumetricCloudsSettings MakeSceneViewVolumetricCloudsSettings(const VolumetricCloudsComponent& clouds, const glm::vec3& cameraPosition, double worldTime);
+	// With `drift`, a world's wind at the middle of the band (GetCloudDrift()), the clouds are carried
+	// by it unless their component has Own Wind; without one, by their own Wind Direction and Speed
+	SceneViewVolumetricCloudsSettings MakeSceneViewVolumetricCloudsSettings(const VolumetricCloudsComponent& clouds, const glm::vec3& cameraPosition, double worldTime,
+		const CloudDrift* drift = nullptr);
 
 	// Where a point of the world (x and z in metres) is over a noise that repeats every `repeat`
 	// kilometres at `worldTime`, carried by `windVelocity` (kilometres a second), in repeats, not
 	// wrapped: what the shaders work out per sample from the origins
 	glm::dvec2 GetVolumetricCloudPatternPoint(const glm::dvec2& worldXZ, double worldTime, const glm::vec2& windVelocity, double repeat);
+	// The same for a wind that has carried them `travel` metres over the ground
+	glm::dvec2 GetVolumetricCloudPatternPoint(const glm::dvec2& worldXZ, const glm::dvec2& travel, double repeat);
 
 	// Where a ray from a camera `height` kilometres up, `cosZenith` from the up axis, is inside the
 	// band from `bottom` to `top` kilometres round a planet of `planetRadius`: from Enter to Exit

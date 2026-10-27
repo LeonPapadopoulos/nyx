@@ -26,7 +26,18 @@ namespace Nyx
 		}
 	}
 
-	SceneViewCloudLayerSettings MakeSceneViewCloudLayerSettings(const CloudLayerComponent& clouds, const glm::vec3& cameraPosition, double worldTime)
+	CloudDrift GetCloudDrift(const WindState& wind, const glm::dvec2& travel, float altitude)
+	{
+		CloudDrift drift;
+		const float factor = GetWindHeightFactor(wind, altitude);
+		drift.Direction = wind.Direction;
+		drift.Velocity = wind.Direction * (wind.Speed * factor);
+		drift.Travel = travel * static_cast<double>(factor);
+		return drift;
+	}
+
+	SceneViewCloudLayerSettings MakeSceneViewCloudLayerSettings(const CloudLayerComponent& clouds, const glm::vec3& cameraPosition, double worldTime,
+		const CloudDrift* drift)
 	{
 		SceneViewCloudLayerSettings layer;
 		layer.bClouds = clouds.bClouds;
@@ -49,12 +60,22 @@ namespace Nyx
 		layer.LightStrength = std::clamp(clouds.LightStrength, 0.0f, 4.0f);
 		layer.bLightsWorld = clouds.bLightsWorld && layer.LightStrength > 0.0f;
 
-		// Round the up axis from +X towards -Z, as the time of day's sunrise
-		const double angle = static_cast<double>(clouds.WindDirectionDegrees) * DegreesToRadians;
-		layer.WindAxis = glm::vec2(static_cast<float>(std::cos(angle)), static_cast<float>(-std::sin(angle)));
-
-		const float windSpeed = std::clamp(clouds.WindSpeed, 0.0f, 200.0f);
-		const glm::dvec2 origin = GetCloudPatternPoint(layer, glm::dvec2(cameraPosition.x, cameraPosition.z), worldTime, windSpeed);
+		// The world's wind at the layer's altitude, its streaks along it; or its own, round the up
+		// axis from +X towards -Z, as the time of day's sunrise
+		const glm::dvec2 camera(cameraPosition.x, cameraPosition.z);
+		glm::dvec2 origin(0.0);
+		if (drift && !clouds.bOwnWind)
+		{
+			layer.WindAxis = glm::length(drift->Direction) > 0.0f ? glm::normalize(drift->Direction) : glm::vec2(1.0f, 0.0f);
+			origin = GetCloudPatternPoint(layer, camera, drift->Travel);
+		}
+		else
+		{
+			const double angle = static_cast<double>(clouds.WindDirectionDegrees) * DegreesToRadians;
+			layer.WindAxis = glm::vec2(static_cast<float>(std::cos(angle)), static_cast<float>(-std::sin(angle)));
+			const float windSpeed = std::clamp(clouds.WindSpeed, 0.0f, 200.0f);
+			origin = GetCloudPatternPoint(layer, camera, worldTime, windSpeed);
+		}
 		layer.Origin = glm::vec2(static_cast<float>(Wrap(origin.x, CloudNoisePeriod)), static_cast<float>(Wrap(origin.y, CloudNoisePeriod)));
 		return layer;
 	}
@@ -68,6 +89,15 @@ namespace Nyx
 		const glm::dvec2 kilometres = worldXZ * 0.001;
 		const double tile = static_cast<double>(clouds.TileSize);
 		return glm::dvec2((glm::dot(kilometres, along) - static_cast<double>(windSpeed) * 0.001 * worldTime) / tile, glm::dot(kilometres, across) / tile);
+	}
+
+	glm::dvec2 GetCloudPatternPoint(const SceneViewCloudLayerSettings& clouds, const glm::dvec2& worldXZ, const glm::dvec2& travel)
+	{
+		const glm::dvec2 along = glm::normalize(glm::dvec2(clouds.WindAxis));
+		const glm::dvec2 across(-along.y, along.x);
+		const glm::dvec2 kilometres = (worldXZ - travel) * 0.001;
+		const double tile = static_cast<double>(clouds.TileSize);
+		return glm::dvec2(glm::dot(kilometres, along) / tile, glm::dot(kilometres, across) / tile);
 	}
 
 	CloudShellHits GetCloudShellHits(float planetRadius, float height, float cosZenith, float altitude)

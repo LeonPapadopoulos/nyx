@@ -48,10 +48,13 @@ namespace Nyx
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Clouds", Tooltip = "Another seed, other clouds of the same kind: the same seed at the same world time gives the same sky"))
 		uint32_t Seed = 1;
 
-		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Wind", DisplayName = "Wind Direction", DragSpeed = 0.5, Tooltip = "Where the wind blows to, in degrees round the up axis from +X towards -Z; the streaks lie along it, the rows of cloudlets across it"))
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Wind", DisplayName = "Own Wind", Tooltip = "Whether the clouds blow by the Wind Direction and Wind Speed below even when the world has a wind (WindComponent): off, they are carried by the world's wind at their altitude; a world without one always uses these"))
+		bool bOwnWind = false;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Wind", DisplayName = "Wind Direction", DragSpeed = 0.5, Tooltip = "Own wind (Own Wind, or a world without a wind): where it blows to, in degrees round the up axis from +X towards -Z; the streaks lie along it, the rows of cloudlets across it"))
 		float WindDirectionDegrees = 30.0f;
 
-		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Wind", DisplayName = "Wind Speed", DragSpeed = 0.1, Tooltip = "How fast the clouds move, in metres a second of the world's time, 0 to 200"))
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Wind", DisplayName = "Wind Speed", DragSpeed = 0.1, Tooltip = "Own wind (Own Wind, or a world without a wind): how fast the clouds move, in metres a second of the world's time, 0 to 200"))
 		float WindSpeed = 10.0f;
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Lighting", DragSpeed = 0.01, Tooltip = "What the clouds' light is multiplied by, 0 to 10"))

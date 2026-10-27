@@ -32,7 +32,8 @@ namespace Nyx
 		constexpr std::array<uint32_t, 4> Bayer2 = { 0, 2, 3, 1 };
 	}
 
-	SceneViewVolumetricCloudsSettings MakeSceneViewVolumetricCloudsSettings(const VolumetricCloudsComponent& clouds, const glm::vec3& cameraPosition, double worldTime)
+	SceneViewVolumetricCloudsSettings MakeSceneViewVolumetricCloudsSettings(const VolumetricCloudsComponent& clouds, const glm::vec3& cameraPosition, double worldTime,
+		const CloudDrift* drift)
 	{
 		SceneViewVolumetricCloudsSettings band;
 		band.bClouds = clouds.bClouds;
@@ -74,12 +75,21 @@ namespace Nyx
 		band.bFullResolution = clouds.Resolution == EVolumetricCloudsResolution::Full;
 		band.Debug = static_cast<uint32_t>(clouds.DebugView);
 
-		// Round the up axis from +X towards -Z, as the time of day's sunrise
+		const glm::dvec2 camera(cameraPosition.x, cameraPosition.z);
+		if (drift && !clouds.bOwnWind)
+		{
+			// The world's wind at the middle of the band
+			band.WindVelocity = drift->Velocity * 0.001f;
+			band.WeatherOrigin = Wrap(GetVolumetricCloudPatternPoint(camera, drift->Travel, band.WeatherRepeat));
+			band.ShapeOrigin = Wrap(GetVolumetricCloudPatternPoint(camera, drift->Travel, band.ShapeRepeat));
+			band.DetailOrigin = Wrap(GetVolumetricCloudPatternPoint(camera, drift->Travel, band.DetailRepeat));
+			return band;
+		}
+
+		// Its own, round the up axis from +X towards -Z, as the time of day's sunrise
 		const double angle = static_cast<double>(clouds.WindDirectionDegrees) * DegreesToRadians;
 		const float speed = std::clamp(clouds.WindSpeed, 0.0f, 200.0f) * 0.001f;
 		band.WindVelocity = glm::vec2(static_cast<float>(std::cos(angle)), static_cast<float>(-std::sin(angle))) * speed;
-
-		const glm::dvec2 camera(cameraPosition.x, cameraPosition.z);
 		band.WeatherOrigin = Wrap(GetVolumetricCloudPatternPoint(camera, worldTime, band.WindVelocity, band.WeatherRepeat));
 		band.ShapeOrigin = Wrap(GetVolumetricCloudPatternPoint(camera, worldTime, band.WindVelocity, band.ShapeRepeat));
 		band.DetailOrigin = Wrap(GetVolumetricCloudPatternPoint(camera, worldTime, band.WindVelocity, band.DetailRepeat));
@@ -90,6 +100,11 @@ namespace Nyx
 	{
 		// Kilometres over the ground, less how far the wind carried the noise
 		return (worldXZ * 0.001 - glm::dvec2(windVelocity) * worldTime) / repeat;
+	}
+
+	glm::dvec2 GetVolumetricCloudPatternPoint(const glm::dvec2& worldXZ, const glm::dvec2& travel, double repeat)
+	{
+		return (worldXZ - travel) * 0.001 / repeat;
 	}
 
 	CloudBandSpan GetCloudBandSpan(float planetRadius, float height, float cosZenith, float bottom, float top)

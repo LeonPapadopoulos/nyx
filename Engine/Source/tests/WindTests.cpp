@@ -2,7 +2,10 @@
 // hand-made states, its height profile and gust fronts crossing the land along it; the wind turned
 // to new values smoothly and the same whatever the steps; a driver ramping it from calm to a storm
 // on a game world, whose systems read it; a game's local air on a grid; the debug view; an old
-// scene's environment wind moved into a wind of its own.
+// scene's environment wind moved into a wind of its own. Clouds, high cloud layer and volumetric,
+// carried by a hand-made wind at their altitude, or by their own with Own Wind.
+#include "CloudLayer.h"
+#include "CloudLayerComponent.h"
 #include "ComponentRegistration.h"
 #include "DebugDraw.h"
 #include "EnvironmentComponent.h"
@@ -10,6 +13,8 @@
 #include "LocalWind.h"
 #include "Log.h"
 #include "TestSupport.h"
+#include "VolumetricClouds.h"
+#include "VolumetricCloudsComponent.h"
 #include "Wind.h"
 #include "WindComponent.h"
 #include "WindDebug.h"
@@ -422,6 +427,76 @@ namespace
 		Require(!calm.GetLines().empty(), "The debug view of a calm wind draws nothing at all");
 	}
 
+	// How far the wind has carried things: steady, as fast as it blows; across a change, without a
+	// jump; the same for a drive as for the steady wind it starts as
+	void TestTheWindsTravel()
+	{
+		WindComponent breeze;
+		breeze.DirectionDegrees = 0.0f;
+		breeze.Speed = 5.0f;
+		Require(GetSteadyWindTravel(breeze, 10.0) == glm::dvec2(50.0, -0.0) || glm::length(GetSteadyWindTravel(breeze, 10.0) - glm::dvec2(50.0, 0.0)) < 1e-9,
+			"A steady wind hasn't carried things as far as it blows");
+		WindDrive drive;
+		SetWindTarget(drive, breeze, 0.0);
+		Require(glm::length(GetWindTravel(drive, 20.0) - GetSteadyWindTravel(breeze, 20.0)) < 1e-9, "A drive started steady doesn't carry things as the steady wind does");
+		WindComponent faster = breeze;
+		faster.Speed = 15.0f;
+		faster.DirectionDegrees = 90.0f;
+		const glm::dvec2 before = GetWindTravel(drive, 30.0);
+		SetWindTarget(drive, faster, 30.0);
+		Require(glm::length(GetWindTravel(drive, 30.0) - before) < 1e-9, "A change of the wind makes what it carries jump");
+		const glm::dvec2 later = GetWindTravel(drive, 100.0) - GetWindTravel(drive, 99.0);
+		Require(glm::length(later - glm::dvec2(0.0, -15.0)) < 1e-6, "After the change the wind doesn't carry things as fast as it blows, its new way");
+	}
+
+	// Clouds at an altitude in a hand-made wind: carried by it as far as it carried things at its
+	// reference height times its profile there, their streaks along it; with Own Wind, by their own
+	void TestCloudsTakeTheWindAtTheirAltitude()
+	{
+		WindState wind;
+		wind.Direction = glm::normalize(glm::vec2(0.6f, -0.8f));
+		wind.Speed = 6.0f;
+		wind.GroundFactor = 0.5f;
+		wind.InverseReferenceHeight = 0.1f;
+		wind.Aloft = 1.0f;
+		wind.InverseAloftSpan = 1.0f / 990.0f;
+		wind.AloftStart = 10.0f / 990.0f;
+		const glm::dvec2 travel(1200.0, -1600.0);
+		const CloudDrift drift = GetCloudDrift(wind, travel, 4000.0f);
+		Require(Near(drift.Velocity.x, 0.6f * 12.0f, 1e-3f) && Near(drift.Velocity.y, -0.8f * 12.0f, 1e-3f) && glm::length(drift.Travel - travel * 2.0) < 1e-6,
+			"Clouds high up aren't carried by the wind there, twice as fast as at its reference height");
+
+		const glm::vec3 camera(30.0f, 2.0f, -70.0f);
+		CloudLayerComponent layer;
+		const SceneViewCloudLayerSettings carried = MakeSceneViewCloudLayerSettings(layer, camera, 50.0, &drift);
+		Require(Near(carried.WindAxis.x, 0.6f) && Near(carried.WindAxis.y, -0.8f), "The layer's streaks don't lie along the world's wind");
+		// The pattern over a point is the pattern the wind has carried there from upwind
+		const glm::dvec2 point(100.0, 200.0);
+		const glm::dvec2 there = GetCloudPatternPoint(carried, point + drift.Travel, drift.Travel);
+		const glm::dvec2 before = GetCloudPatternPoint(carried, point, glm::dvec2(0.0));
+		Require(glm::length(there - before) < 1e-9, "The layer isn't carried as far as the world's wind carried it");
+		CloudLayerComponent own = layer;
+		own.bOwnWind = true;
+		const SceneViewCloudLayerSettings ownWind = MakeSceneViewCloudLayerSettings(own, camera, 50.0, &drift);
+		const SceneViewCloudLayerSettings alone = MakeSceneViewCloudLayerSettings(own, camera, 50.0);
+		Require(ownWind.Origin == alone.Origin && ownWind.WindAxis == alone.WindAxis, "With Own Wind the layer is carried by the world's wind");
+		Require(MakeSceneViewCloudLayerSettings(layer, camera, 50.0).Origin == alone.Origin, "Without a world wind the layer isn't carried by its own");
+
+		VolumetricCloudsComponent band;
+		const CloudDrift low = GetCloudDrift(wind, travel, 0.5f * (band.BottomAltitude + band.TopAltitude));
+		const SceneViewVolumetricCloudsSettings volume = MakeSceneViewVolumetricCloudsSettings(band, camera, 50.0, &low);
+		Require(glm::length(volume.WindVelocity - low.Velocity * 0.001f) < 1e-6f, "The volumetric clouds don't move with the world's wind in their band");
+		const glm::dvec2 weather = GetVolumetricCloudPatternPoint(point + low.Travel, low.Travel, volume.WeatherRepeat);
+		Require(glm::length(weather - GetVolumetricCloudPatternPoint(point, glm::dvec2(0.0), volume.WeatherRepeat)) < 1e-9,
+			"The volumetric clouds aren't carried as far as the world's wind carried them");
+		VolumetricCloudsComponent ownBand = band;
+		ownBand.bOwnWind = true;
+		const SceneViewVolumetricCloudsSettings ownVolume = MakeSceneViewVolumetricCloudsSettings(ownBand, camera, 50.0, &low);
+		const SceneViewVolumetricCloudsSettings aloneVolume = MakeSceneViewVolumetricCloudsSettings(ownBand, camera, 50.0);
+		Require(ownVolume.WeatherOrigin == aloneVolume.WeatherOrigin && ownVolume.WindVelocity == aloneVolume.WindVelocity,
+			"With Own Wind the volumetric clouds are carried by the world's wind");
+	}
+
 	// An old scene's wind is moved into one of its own only if the world has none
 	void TestTheOldWindMoves()
 	{
@@ -430,8 +505,13 @@ namespace
 		EnvironmentComponent environment;
 		environment.Wind = glm::vec3(0.0f, 0.0f, -3.0f);
 		world.Add<EnvironmentComponent>(first, environment);
+		const Entity sky = world.CreateEntity();
+		world.Add<CloudLayerComponent>(sky, CloudLayerComponent{});
+		world.Add<VolumetricCloudsComponent>(sky, VolumetricCloudsComponent{});
 		MoveLegacyEnvironmentWind(world);
 		Require(world.Has<WindComponent>(first) && world.Get<EnvironmentComponent>(first).Wind == glm::vec3(0.0f), "The environment's wind isn't moved into a wind");
+		Require(world.Get<CloudLayerComponent>(sky).bOwnWind && world.Get<VolumetricCloudsComponent>(sky).bOwnWind,
+			"An old scene's clouds, which blew by their own wind, don't keep doing so once it has a world wind");
 		Require(Near(SampleWind(MakeSteadyWind(world.Get<WindComponent>(first), 0.0), glm::vec3(0.0f, 500.0f, 0.0f), 0.0f), glm::vec3(0.0f, 0.0f, -3.0f)),
 			"The moved wind doesn't blow as the environment's did");
 
@@ -459,6 +539,8 @@ int main()
 		TestADriverRampsTheWind();
 		TestLocalAir();
 		TestTheDebugView();
+		TestTheWindsTravel();
+		TestCloudsTakeTheWindAtTheirAltitude();
 		TestTheOldWindMoves();
 	}
 	catch (const std::exception& error)

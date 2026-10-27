@@ -182,8 +182,29 @@ alone. It fades out over its outermost cells, so its edge never shows.
 
 ### Clouds
 
-Not yet: the high cloud layer and the volumetric clouds still blow by their own *Wind Direction*
-and *Wind Speed*. Taking the world's wind at their altitude is the next step.
+The high cloud layer (`CloudLayerComponent`) and the volumetric clouds (`VolumetricCloudsComponent`)
+take the world's wind at their altitude: the layer at its *Altitude*, the band at the middle of its
+*Bottom* and *Top Altitude*. They read it as a `CloudDrift` (`CloudLayer.h`, made by
+`GetCloudDrift()` from the world's `WindState`): the mean wind there, without gusts or eddies, which
+clouds kilometres across wouldn't show, and how far it has carried them, the wind's own travel at
+its reference height (`GetWindTravel()`, the exact integral of its velocity, in doubles, never
+wrapped) times its height profile at their altitude. So clouds at 4 km in the default wind (4 m/s,
+*Aloft* 1) drift at 8 m/s, their streaks along the wind, and turn and speed up with it, smoothly.
+
+- **Their own wind stays, as an override**: *Own Wind* on, the clouds blow by their *Wind Direction*
+  and *Wind Speed* as before. A world without a `WindComponent` always uses them, so every scene
+  saved before the wind looks as it did, and so do the clouds' tests and pictures.
+- **Old scenes**: one whose environment's particle wind is moved into a `WindComponent` as it loads
+  gets *Own Wind* on its clouds in the same step, so they still look as they did.
+- **Limits**: the travel is scaled by the profile as it is now, so a change of *Aloft* or the
+  reference height moves the clouds a little at once (by the change times how far the wind has
+  carried them); the layer's streaks turn with the wind about the world's origin while it turns.
+  Both are slow at cloud scale. The motion the volumetric clouds take back between frames is the
+  drift's velocity, as it was the own wind's.
+- Tests (`NyxWindTests`): a hand-made wind at 4 km carries both kinds twice as fast as at its
+  reference height, as far as its travel says, the layer's streaks along it; *Own Wind* and a world
+  without a wind give the clouds their own; the travel steady, across a change, after it; an old
+  scene's clouds keep their wind.
 
 ## The debug view
 
@@ -246,7 +267,7 @@ Release, 1280 x 720, RTX 3070 Ti, `NyxInstancingBenchmark wind` and `instanced .
   stronger *Gustiness* with closer *Spacing* and narrower *Patch Width*.
 - **Wind turning with height** (veering): a second direction in the profile, `WindState` growing by
   a direction aloft and `SampleWind()` turning between them with the same easing as the speed. The
-  readers don't change; clouds would get the turn at their altitude.
+  readers don't change; clouds would get the turn at their altitude (`GetCloudDrift()`).
 - **The wind pushing physics bodies**: a sim system reading `SimContext::Wind` and applying drag
   forces to bodies by their area, as a game's own air may push them today; it would
   live in `Sim` beside the physics systems, a reader like any other.
