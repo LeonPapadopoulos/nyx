@@ -18,6 +18,28 @@ What the editor and the game do. How the code behind them is organised is in
   (*New Material...*, and *New \<type\>* for each reflected asset type, such as *New Physics
   Material* or a game's own, every value written at its default).
 
+## The scene outliner
+
+The scene's entities by name, in folders of the editor's own
+([Scene outliner](Design/scene-outliner.md)).
+
+- **Search** at the top: shows the entities whose names have its text, whatever the case, and the
+  folders that hold them, open. Ctrl+F reaches it while the outliner has the focus; the cross
+  beside it empties it.
+- **Order**: drag a row before or after another; a line shows where it goes. A new entity goes
+  right after the selected one, in its folder (pasted and duplicated ones too), or at the end. The
+  order is saved in the scene, and each move is one undo step.
+- **Folders** only sort the outliner: they parent no transform and the game never sees them.
+  *New Folder* (the button, or right-click) makes one in the selected folder, or beside the
+  selected entity. Drag entities and folders into one (a box shows it) and out again, before or
+  after others or below the rows; folders nest, and show before the entities in theirs. Rename one
+  with a double click or F2; delete one with *Delete Selected* or its right-click menu, which keeps
+  what was in it a level up. Saved in the scene and undoable.
+- Which folders are open is remembered per scene, as the editor's own state
+  (`Saved/OutlinerFolders.txt`), not the scene's and not undone.
+- A scene saved before there was an outline loads unchanged, in its file's order.
+- Tests: `NyxEditorOutlinerTests`.
+
 ## Play
 
 - **Play** in the toolbar runs the open scene in `NyxGame.exe`, as a separate program, with

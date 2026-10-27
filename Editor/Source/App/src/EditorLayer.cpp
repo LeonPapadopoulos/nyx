@@ -13,6 +13,7 @@
 #include "PropertyWidgetRegistry.h"
 #include "ReflectionSourceRegistry.h"
 #include "ScatterInstances.h"
+#include "SceneOutlineEdits.h"
 #include "TimeOfDay.h"
 #include "TransformComponent.h"
 #include "EditorRenderer.h"
@@ -196,6 +197,9 @@ namespace Nyx::Editor
 			SceneViews.Read(*sceneViewSection);
 		}
 
+		// Which of the outliner's folders are closed, per scene
+		Outliner.Folders.SetFile(Nyx::Paths::GetSavedDir() / "OutlinerFolders.txt");
+
 		SpawnDefaultScene(Editing.Scene);
 		ResolveSceneRuntimeAssets();
 
@@ -315,7 +319,8 @@ namespace Nyx::Editor
 		Materials.DrawNewMaterialPopup();
 
 		if (!SourceInspector.IsActive()) Editing.Gizmo.TickHotkeys();
-		if (!SourceInspector.IsActive() && !ImGui::GetIO().WantTextInput && ImGui::IsKeyPressed(ImGuiKey_F, false)) FrameSelection();
+		// F alone: Ctrl+F is the outliner's search
+		if (!SourceInspector.IsActive() && !ImGui::GetIO().WantTextInput && ImGui::IsKeyChordPressed(ImGuiKey_F)) FrameSelection();
 
 		ApplyPendingPickResults();
 
@@ -393,7 +398,8 @@ namespace Nyx::Editor
 
 	bool EditorLayer::SaveCurrentScene(const std::filesystem::path& path)
 	{
-		if (!Nyx::SceneSerializer::SaveToFile(Editing.Scene.GetRegistry(), path))
+		const Nyx::SceneOutline outline = MakeSavedOutline(Editing.Scene);
+		if (!Nyx::SceneSerializer::SaveToFile(Editing.Scene.GetRegistry(), path, &outline))
 		{
 			LOG_ERROR("Failed to save scene to '{0}'", path.string());
 			Frame.SetSceneFileStatus("Couldn't save " + path.filename().string(), true);
@@ -412,7 +418,8 @@ namespace Nyx::Editor
 
 		// Keep the current scene and its pending edits until the replacement is ready.
 		Nyx::Registry loadedWorld;
-		if (!Nyx::SceneSerializer::LoadFromFile(path, loadedWorld, postLoadContext))
+		Nyx::SceneOutline loadedOutline;
+		if (!Nyx::SceneSerializer::LoadFromFile(path, loadedWorld, postLoadContext, &loadedOutline))
 		{
 			LOG_ERROR("Failed to load scene from '{0}'", path.string());
 			Frame.SetSceneFileStatus("Couldn't open " + path.filename().string(), true);
@@ -421,8 +428,10 @@ namespace Nyx::Editor
 
 		ForgetPreviousScene();
 		Editing.Scene.GetRegistry() = std::move(loadedWorld);
+		Editing.Scene.GetOutline() = std::move(loadedOutline);
 		Renderer->SetWorld(&Editing.Scene.GetRegistry());
 		CurrentScenePath = path;
+		Outliner.Folders.SetScene(path);
 
 		LOG_INFO("Loaded scene from '{0}'", path.string());
 		Frame.SetSceneFileStatus("Opened " + path.filename().string() + " at " + TimeOfDay(), false);
@@ -445,6 +454,7 @@ namespace Nyx::Editor
 		if (SaveCurrentScene(path))
 		{
 			CurrentScenePath = path;
+			Outliner.Folders.MoveScene(path);
 			AssetDb.Rescan();
 			return true;
 		}
@@ -456,8 +466,10 @@ namespace Nyx::Editor
 	{
 		ForgetPreviousScene();
 		Editing.Scene.GetRegistry().Clear();
+		Editing.Scene.GetOutline() = {};
 		Renderer->SetWorld(&Editing.Scene.GetRegistry());
 		CurrentScenePath.clear();
+		Outliner.Folders.SetScene({});
 		Frame.SetSceneFileStatus("New scene, not saved yet", false);
 		return true;
 	}

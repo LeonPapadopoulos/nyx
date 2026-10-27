@@ -63,7 +63,8 @@ namespace Nyx::Editor
 	}
 
 	std::optional<Nyx::Entity> PasteEntity(SceneDocument& scene, TransactionSystem& transactions, ITransactionDomain& domain,
-		EditorTransactionContext& context, const std::vector<std::byte>& copied, const char* label)
+		EditorTransactionContext& context, const std::vector<std::byte>& copied, const char* label,
+		const std::function<void(Nyx::Entity pasted, Transaction& step)>& alsoDo)
 	{
 		if (copied.empty())
 		{
@@ -108,6 +109,10 @@ namespace Nyx::Editor
 		transaction.Label = label;
 		transaction.Changes.push_back(Change{ EChangeKind::AddObject,
 			AddObjectChange{ .Target = target, .AfterCreate = CaptureRootObjectSnapshot(domain, context, target) } });
+		if (alsoDo)
+		{
+			alsoDo(entity, transaction);
+		}
 		transactions.Push(std::move(transaction));
 
 		return entity;

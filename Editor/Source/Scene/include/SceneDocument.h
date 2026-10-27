@@ -3,6 +3,7 @@
 #include "Entity.h"
 #include "EntityGuid.h"
 #include "NameComponent.h"
+#include "SceneOutline.h"
 
 #include <optional>
 #include <string>
@@ -36,8 +37,14 @@ namespace Nyx::Editor
 		std::optional<Nyx::Entity>& GetSelection() { return SelectedEntity; }
 		const std::optional<Nyx::Entity>& GetSelection() const { return SelectedEntity; }
 
+		// The outliner's folders and order, saved with the scene (SceneOutlineEdits.h). It may list
+		// entities that are gone, e.g. deleted ones, so that undo brings them back to their place.
+		Nyx::SceneOutline& GetOutline() { return Outline; }
+		const Nyx::SceneOutline& GetOutline() const { return Outline; }
+
 	private:
 		Nyx::Registry Registry;
+		Nyx::SceneOutline Outline;
 		std::optional<Nyx::Entity> SelectedEntity;
 
 		// Where FindEntity() last found each guid. Anyone can change the registry (GetRegistry(),

@@ -857,10 +857,11 @@ namespace Nyx::UI
 		ImGuiContext& g = *GImGui;
 		const Theme& theme = GetTheme();
 
-		// As ImGui::TreeNodeEx(): the open state is kept in the window's storage, per ID.
+		// As ImGui::TreeNodeEx(): the open state is kept in the window's storage, per ID, and
+		// SetNextItemOpen() sets it.
 		const ImGuiID id = window->GetID(label);
 		ImGuiStorage& storage = *window->DC.StateStorage;
-		bool bOpen = !options.bLeaf && storage.GetBool(id, options.bDefaultOpen);
+		bool bOpen = !options.bLeaf && ImGui::TreeNodeUpdateNextOpen(id, options.bDefaultOpen ? ImGuiTreeNodeFlags_DefaultOpen : 0);
 
 		// The row takes the whole width, whatever the indentation, so the pill spans it. For the
 		// layout it is only as wide as what it shows, as ImGui's SpanAvailWidth tree nodes are, so
@@ -901,7 +902,8 @@ namespace Nyx::UI
 			}
 		}
 		// A double click on the label; on the arrow, or with bToggleOnClick, each click already toggles.
-		if (!options.bLeaf && !options.bToggleOnClick && bHovered && !bOnArrow && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+		if (!options.bLeaf && !options.bToggleOnClick && options.bDoubleClickToggles && bHovered && !bOnArrow &&
+			ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
 		{
 			bToggle = true;
 		}
@@ -938,6 +940,11 @@ namespace Nyx::UI
 	void TreeRowEnd()
 	{
 		ImGui::TreePop();
+	}
+
+	float CalcTreeRowLabelOffset(ETreeRowIcon icon)
+	{
+		return TreeRowArrowWidth() + (icon != ETreeRowIcon::None ? TreeRowIconSize() + ImGui::GetStyle().ItemInnerSpacing.x : 0.0f);
 	}
 
 	bool CollapsingHeader(const char* label, bool bDefaultOpen)
@@ -1877,6 +1884,14 @@ namespace Nyx::UI
 			const float pi = 3.14159265f;
 			painter.AddArc(at(0.5f, 0.56f), size * 0.3f, std::max(1.0f, std::floor(size * 0.11f)), -0.5f * pi, pi, fill);
 			painter.AddTriangle(at(0.24f, 0.26f), at(0.54f, 0.06f), at(0.54f, 0.46f), fill);
+			break;
+		}
+		case EIcon::Clear:
+		{
+			// A cross
+			const float width = std::max(1.0f, std::floor(size * 0.12f));
+			painter.AddLine(at(0.22f, 0.22f), at(0.78f, 0.78f), width, EPainterLineCap::Round, fill);
+			painter.AddLine(at(0.78f, 0.22f), at(0.22f, 0.78f), width, EPainterLineCap::Round, fill);
 			break;
 		}
 		}

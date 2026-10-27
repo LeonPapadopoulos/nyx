@@ -5,6 +5,7 @@
 #include "GuidComponent.h"
 #include "Log.h"
 #include "ReflectedArchiveSerializer.h"
+#include "SceneOutline.h"
 
 #include <string>
 #include <unordered_set>
@@ -58,6 +59,41 @@ namespace
 			}
 		}
 
+		return true;
+	}
+
+	// What follows the entities: the editor's outline, if the file has one. Into outOutline, if
+	// given; otherwise skipped. Data after the entities that isn't an outline is left alone, with a
+	// warning, as a newer build may write more there.
+	bool ReadOutline(BinaryReader& reader, SceneOutline* outOutline, ReadWarnings& warnings)
+	{
+		if (reader.GetRemainingSize() == 0)
+		{
+			return true;
+		}
+
+		uint32_t marker = 0;
+		if (!reader.ReadUInt32(marker))
+		{
+			return false;
+		}
+		if (marker != SceneOutlineMarker)
+		{
+			warnings.Add("skipped data after the entities that this build doesn't know");
+			return true;
+		}
+
+		if (!outOutline)
+		{
+			return ReflectedArchiveSerializer::SkipObject(reader);
+		}
+
+		SceneOutline outline;
+		if (!ReflectedArchiveSerializer::DeserializeObject(reader, &outline, Nyx::Reflection::GetTypeMetadata<SceneOutline>(), warnings))
+		{
+			return false;
+		}
+		*outOutline = std::move(outline);
 		return true;
 	}
 
@@ -130,7 +166,7 @@ namespace Nyx
 		return true;
 	}
 
-	bool SceneSerializer::SaveToFile(const Registry& world, const std::filesystem::path& path)
+	bool SceneSerializer::SaveToFile(const Registry& world, const std::filesystem::path& path, const SceneOutline* outline)
 	{
 		BinaryWriter writer;
 
@@ -142,13 +178,23 @@ namespace Nyx
 			return false;
 		}
 
+		if (outline)
+		{
+			writer.WriteUInt32(SceneOutlineMarker);
+			if (!ReflectedArchiveSerializer::SerializeObject(writer, outline, Nyx::Reflection::GetTypeMetadata<SceneOutline>()))
+			{
+				return false;
+			}
+		}
+
 		return writer.SaveToFile(path);
 	}
 
 	bool SceneSerializer::LoadFromFile(
 		const std::filesystem::path& path,
 		Registry& outWorld,
-		ScenePostLoadContext postLoadContext)
+		ScenePostLoadContext postLoadContext,
+		SceneOutline* outOutline)
 	{
 		BinaryReader reader;
 		if (!reader.LoadFromFile(path))
@@ -171,7 +217,10 @@ namespace Nyx
 		error = "ends early or is damaged";
 		ReadWarnings warnings;
 
-		if (!ReadEntities(reader, loadedWorld, postLoadContext, warnings) || !reader.IsValid())
+		// An older scene has no outline: then the entities show in the order they were read
+		SceneOutline loadedOutline;
+		if (!ReadEntities(reader, loadedWorld, postLoadContext, warnings) ||
+			!ReadOutline(reader, outOutline ? &loadedOutline : nullptr, warnings) || !reader.IsValid())
 		{
 			warnings.Log(path.string());
 			LOG_ERROR("'{0}' {1}", path.string(), error);
@@ -187,6 +236,10 @@ namespace Nyx
 
 		// Moving keeps outWorld at its address, so pointers to it (such as the renderer's) stay valid
 		outWorld = std::move(loadedWorld);
+		if (outOutline)
+		{
+			*outOutline = std::move(loadedOutline);
+		}
 
 		return true;
 	}

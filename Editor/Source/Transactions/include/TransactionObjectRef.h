@@ -14,7 +14,9 @@ namespace Nyx::Editor
 		InputAsset,
 		// The assets edited by reflection in their own windows, a physics material among them
 		// (ReflectedAssetEditors), each by its own id
-		ReflectedAsset
+		ReflectedAsset,
+		// The scene's outline: the outliner's folders and order (SceneOutlineTransactionDomain)
+		SceneOutline
 	};
 
 	struct ObjectRef

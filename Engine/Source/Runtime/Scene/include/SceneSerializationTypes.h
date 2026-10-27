@@ -12,6 +12,9 @@ namespace Nyx
 	// Version 2: properties with name hash and kind (see ReflectedArchiveSerializer).
 	inline constexpr uint32_t SceneFileVersion = 2;
 
+	// Starts the editor's outline after a scene file's entities (SceneSerializer)
+	inline constexpr uint32_t SceneOutlineMarker = 0x4C54554F; // 'OUTL'
+
 	class IAssetResolver;
 
 	// What a component's post-load step (ComponentTypeRegistry::SetPostLoad()) is given besides the

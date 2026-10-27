@@ -324,6 +324,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ComponentInspection.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ComponentRegistration.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/SceneSerializer.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/SceneOutline.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/IAssetResolver.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/AssetReference.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/EntityGuidLookup.h

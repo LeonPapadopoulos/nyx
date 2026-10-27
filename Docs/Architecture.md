@@ -121,7 +121,7 @@ checks every `#include` against this table.
 | `Preferences` | The editor's preferences, the Preferences and Theme windows, opening source in the chosen editor | Common |
 | `DevTools` | The prototype and diagnostics tools, in Debug builds only (`NYX_DEV_TOOLS`): Painter Test, Mockup Overlay, ImGui's debug windows | Common |
 | `Properties` | Drawing and editing reflected properties: a widget per property kind (an entity reference's picker among them), a component's overridable values as one row each, inherited or overridden (`OverrideRows`), problems under the properties they are about, and the edit in progress | Common, Transactions, Assets |
-| `Scene` | The scene being edited: its document and undo, the outliner, details, gizmo, scene views (`SceneViewSet`: any number of `SceneViewPanel`s) and their cameras, scene files, copy and paste | Common, Transactions, Assets, Preferences, Properties |
+| `Scene` | The scene being edited: its document and undo, the outliner with its order and folders (`SceneOutlineEdits`) and their undo, details, gizmo, scene views (`SceneViewSet`: any number of `SceneViewPanel`s) and their cameras, scene files, copy and paste | Common, Transactions, Assets, Preferences, Properties |
 | `Play` | Play and Play All: the games, their windows and crash cards, the Game Link window, edits sent to the games | Transactions, Preferences, Scene |
 | `ReflectedAssets` | The assets of reflected asset types open for editing, physics materials and a game's own (`ReflectedAssetDocument`), with their undo, files read again and values for the games (`ReflectedAssetEditors`), and their windows (`ReflectedAssetWindows`) | Transactions, Properties |
 | `Input` | The Input window (*Window > Input*): the editor's or a running game's input, its history and traces; the input asset being edited, with its undo (`InputAssetDocument`), and the Tuning and Checks tabs | Common, Transactions, Properties, Play |
@@ -291,7 +291,8 @@ kind, so:
   limited.
 
 Versions: scene files are version 2 (`SceneFileVersion`); raise it only for a change these rules
-can't absorb. Raise `EditorLinkProtocolVersion` when a message changes in a way the other side
+can't absorb. The editor's outline follows the entities as a block of its own, which older builds
+and games never read ([Scene outliner](Design/scene-outliner.md)). Raise `EditorLinkProtocolVersion` when a message changes in a way the other side
 would misread; a new message type needs no new version, as a side that doesn't know a type skips
 it with a warning. `Hello`'s layout never changes.
 
@@ -507,6 +508,9 @@ How some systems work, and why they work that way:
   the numbers.
 - [Undo by guid](Design/undo-by-guid.md): why undo names entities by guid, and how it keeps
   components whole.
+- [Scene outliner](Design/scene-outliner.md): the outliner's order and folders as one outline per
+  scene rather than a component per entity, saved after the entities where games never read it,
+  its undo, entities it doesn't list, open folders as the editor's own state.
 - [Frame statistics](Design/frame-stats.md): each frame's CPU and GPU times and draw counts, made
   whole one frame late after its fence, windows of a second's average and worst without
   allocating, the game's overlay, benchmark mode, its CSV and camera path, what doesn't repeat

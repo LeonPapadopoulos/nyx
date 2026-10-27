@@ -2,6 +2,7 @@
 
 #include "EntityCopies.h"
 #include "RootObjectSnapshotUtils.h"
+#include "SceneOutlineEdits.h"
 #include "TransactionObjectRefHelpers.h"
 
 #include "imgui.h"
@@ -12,6 +13,7 @@ namespace Nyx::Editor
 	{
 		TransactionContext.ActiveScene = &Scene;
 		Transactions.RegisterDomain(EObjectDomain::SceneEntity, &EntityDomain);
+		Transactions.RegisterDomain(EObjectDomain::SceneOutline, &OutlineDomain);
 	}
 
 	void SceneEditor::CancelPendingEdits()
@@ -32,8 +34,10 @@ namespace Nyx::Editor
 		++SceneRevision;
 	}
 
-	void SceneEditor::CreateEntity()
+	void SceneEditor::CreateEntity(uint64_t folder)
 	{
+		const std::optional<Nyx::Entity> selected = Scene.GetSelection();
+		const Nyx::EntityGuid after = selected ? Scene.GetGuid(*selected) : Nyx::EntityGuid{};
 		const Nyx::Entity newEntity = Scene.CreateEntity("New Entity");
 		Scene.GetSelection() = newEntity;
 
@@ -50,6 +54,10 @@ namespace Nyx::Editor
 		Transaction transaction{};
 		transaction.Label = "Create Entity";
 		transaction.Changes.push_back(std::move(change));
+		for (Change& placed : PlaceNewEntity(Scene, Scene.GetGuid(newEntity), after, folder))
+		{
+			transaction.Changes.push_back(std::move(placed));
+		}
 
 		Transactions.Push(std::move(transaction));
 	}
@@ -128,8 +136,17 @@ namespace Nyx::Editor
 		// A new entity can move components in memory; edits in progress point at components
 		CancelPendingEdits();
 
+		const std::optional<Nyx::Entity> selected = Scene.GetSelection();
+		const Nyx::EntityGuid after = selected ? Scene.GetGuid(*selected) : Nyx::EntityGuid{};
+		const auto place = [&](Nyx::Entity pasted, Transaction& step)
+		{
+			for (Change& placed : PlaceNewEntity(Scene, Scene.GetGuid(pasted), after, 0))
+			{
+				step.Changes.push_back(std::move(placed));
+			}
+		};
 		if (const std::optional<Nyx::Entity> pasted =
-				Nyx::Editor::PasteEntity(Scene, Transactions, EntityDomain, TransactionContext, copied, label))
+				Nyx::Editor::PasteEntity(Scene, Transactions, EntityDomain, TransactionContext, copied, label, place))
 		{
 			Scene.GetSelection() = *pasted;
 		}

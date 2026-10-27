@@ -23,6 +23,9 @@ set(NYX_EDITOR_SOURCES
     Scene/src/SceneDocument.cpp
     Scene/src/TransformGizmo.cpp
     Scene/src/SceneEntityTransactionDomain.cpp
+    Scene/src/SceneOutlineTransactionDomain.cpp
+    Scene/src/SceneOutlineEdits.cpp
+    Scene/src/OutlinerFolderStates.cpp
 
     # Properties
     Properties/src/InspectorDrawContext.cpp
@@ -107,6 +110,9 @@ set(NYX_EDITOR_HEADERS
     Scene/include/TransformGizmo.h
     Scene/include/TransactionObjectRefHelpers.h
     Scene/include/SceneEntityTransactionDomain.h
+    Scene/include/SceneOutlineTransactionDomain.h
+    Scene/include/SceneOutlineEdits.h
+    Scene/include/OutlinerFolderStates.h
 
     # Properties
     Properties/include/InspectorDrawContext.h
@@ -315,6 +321,14 @@ if(BUILD_TESTING)
     target_precompile_headers(NyxEditorPanelTests REUSE_FROM NyxEditorLib)
     set_property(TARGET NyxEditorPanelTests PROPERTY FOLDER "Tests")
     add_test(NAME NyxEditorPanelTests COMMAND NyxEditorPanelTests)
+
+    # The outliner: its search, the order of its rows, its folders, and their undo and saving
+    add_executable(NyxEditorOutlinerTests tests/SceneOutlinerTests.cpp)
+    target_include_directories(NyxEditorOutlinerTests PRIVATE ${NYX_TEST_SUPPORT_DIR})
+    target_link_libraries(NyxEditorOutlinerTests PRIVATE NyxEditorLib)
+    target_precompile_headers(NyxEditorOutlinerTests REUSE_FROM NyxEditorLib)
+    set_property(TARGET NyxEditorOutlinerTests PROPERTY FOLDER "Tests")
+    add_test(NAME NyxEditorOutlinerTests COMMAND NyxEditorOutlinerTests)
 
     # The layout kept between runs: the workspaces' layout files, docking, the window's placement
     add_executable(NyxEditorLayoutTests tests/EditorLayoutTests.cpp)

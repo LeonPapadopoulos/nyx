@@ -79,6 +79,8 @@ namespace Nyx::UI
 		Locate,
 		// Puts a value back to what it was given, e.g. takes an override away
 		Reset,
+		// Empties a field, e.g. a search
+		Clear,
 	};
 
 	// A button with an icon, alone (a label of "##Play") or before its label; a size of 0 on an
@@ -149,6 +151,9 @@ namespace Nyx::UI
 		// a heading in a list (the details panel's categories and structs). It never reports
 		// bClicked then.
 		bool bToggleOnClick = false;
+		// A double click on the label opens and closes it; off for a row whose double click does
+		// something else, e.g. renames it
+		bool bDoubleClickToggles = true;
 		ETreeRowIcon Icon = ETreeRowIcon::None;
 	};
 
@@ -161,9 +166,13 @@ namespace Nyx::UI
 	};
 
 	// One row of a tree or a list, e.g. the outliner's entities. Behaves like ImGui::TreeNodeEx()
-	// with OpenOnArrow; ImGui keeps the open state, per ID, and IsItemHovered() and the like work
-	// after it.
+	// with OpenOnArrow; ImGui keeps the open state, per ID, ImGui::SetNextItemOpen() sets it, and
+	// IsItemHovered() and the like work after it.
 	TreeRowResult TreeRow(const char* label, const TreeRowOptions& options = TreeRowOptions{});
+
+	// How far right of where a tree row starts (the cursor before it) its label starts: past the
+	// arrow, and the icon, if any. The arrow is CalcTreeRowLabelOffset(ETreeRowIcon::None) wide.
+	float CalcTreeRowLabelOffset(ETreeRowIcon icon);
 
 	// Ends the children of a row that was open, as ImGui::TreePop() does
 	void TreeRowEnd();

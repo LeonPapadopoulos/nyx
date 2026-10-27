@@ -5,6 +5,7 @@
 #include "InspectorDrawContext.h"
 #include "SceneDocument.h"
 #include "SceneEntityTransactionDomain.h"
+#include "SceneOutlineTransactionDomain.h"
 #include "TransactionSystem.h"
 #include "TransformGizmo.h"
 
@@ -34,11 +35,14 @@ namespace Nyx::Editor
 		// in progress refer to entities of the old scene.
 		void ForgetScene();
 
-		// Add Entity and Delete in the outliner; both are undoable.
-		void CreateEntity();
+		// Add Entity and Delete in the outliner; both are undoable. A new entity goes right after the
+		// selection in the outliner, in its folder; without a selection, at the end of `folder` (an
+		// outliner folder's id, 0 for the top).
+		void CreateEntity(uint64_t folder = 0);
 		void DeleteSelectedEntity();
 
-		// A pasted or duplicated entity gets a new guid and becomes the selection.
+		// A pasted or duplicated entity gets a new guid and becomes the selection. It goes right
+		// after the selection in the outliner, as a new entity does.
 		void DuplicateSelectedEntity();
 		void CopySelectedEntity();
 		void PasteEntity();
@@ -62,6 +66,8 @@ namespace Nyx::Editor
 		uint64_t SceneRevision = 0;
 
 		SceneEntityTransactionDomain EntityDomain;
+		// The outliner's folders and order (SceneOutlineEdits.h)
+		SceneOutlineTransactionDomain OutlineDomain;
 		TransactionSystem Transactions;
 		EditorTransactionContext TransactionContext;
 

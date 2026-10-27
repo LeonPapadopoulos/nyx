@@ -755,16 +755,17 @@ namespace
 			return items;
 		}
 
-		// The outliner's rows are the last of its items, in the order the entities were made
+		// The entity's row in the outliner, as drawn last
 		ImRect GetOutlinerRow(Entity entity) const
 		{
-			const std::vector<ImRect> items = Find([](const Item& item)
+			for (const SceneOutlinerPanel::DrawnRow& row : Outliner.GetDrawnRows())
+			{
+				if (row.Folder == 0 && row.Entity == entity)
 				{
-					return item.WindowName == "Scene Outliner";
-				});
-			const size_t rows = 2;
-			Require(items.size() >= rows, "The outliner should show both entities");
-			return items[items.size() - rows + (entity == Cube ? 0 : 1)];
+					return ImRect(row.Min, row.Max);
+				}
+			}
+			throw std::runtime_error("The outliner should show both entities");
 		}
 
 		HeadlessUI UI;
