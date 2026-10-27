@@ -6,6 +6,7 @@
 #include "ImGuiInput.h"
 #include "InputAsset.h"
 #include "Log.h"
+#include "MeshRendererComponent.h"
 #include "EditorRenderer.h"
 #include "FrameStatsOverlay.h"
 #include "OrbitCameras.h"
@@ -307,6 +308,8 @@ namespace Nyx::Game
 		// Scatters follow their surfaces as they are after the steps and the live edits, also while
 		// the world is paused
 		Nyx::UpdateScatters(World.GetRegistry());
+		// Mesh renderers the steps added or gave other assets get them before they are drawn
+		Nyx::ResolveChangedMeshRenderers(World.GetRegistry(), *AssetResolver);
 		// The sun to a time of day set by a live edit while paused; the steps turn it as time runs
 		Nyx::ApplyTimeOfDay(World.GetRegistry());
 	}

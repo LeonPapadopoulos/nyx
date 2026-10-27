@@ -316,6 +316,8 @@ it with a warning. `Hello`'s layout never changes.
    and no saved component, which undo, scene files and the editor link would not know had
    changed. What it added can be taken away in a `SetOnRemove()` step, which runs when the
    component is removed through its type's ops (the editor's Remove Component, undoing an Add).
+   A Mesh Renderer a game's step adds or gives another mesh or material has had no post-load
+   step: the game and the editor look its assets up each frame (`ResolveChangedMeshRenderers()`).
 5. A component the world makes while it runs and never saves, such as a system's own state, is a
    **run-time** type: a reflected one made so after it is registered (`SetRuntime<T>()`, in
    `ComponentRegistration.cpp` or a game module's `RegisterTypes()`), one that isn't reflected

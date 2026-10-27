@@ -319,6 +319,36 @@ namespace
 
 	// Each way a post-load step runs in a game, through a scene's load and live edits, gives it the
 	// world and the entity of the component, where it may add what it derives from the component
+	// A renderer a game's step adds, or gives another material, is looked up once, not every frame
+	void TestMeshRenderersChangedByCodeAreResolved()
+	{
+		Registry world;
+		const Entity bar = world.CreateEntity();
+		MeshRendererComponent renderer;
+		renderer.Mesh = AssetReference{ "Mesh", "Meshes/Cube.nyxmesh" };
+		renderer.Material = AssetReference{ "Material", "Materials/A.nyxmat" };
+		world.Add<MeshRendererComponent>(bar, renderer);
+
+		TestAssetResolver resolver;
+		ResolveChangedMeshRenderers(world, resolver);
+		Require(resolver.MeshRequests == std::vector<std::string>{ "Meshes/Cube.nyxmesh" } &&
+				resolver.MaterialRequests == std::vector<std::string>{ "Materials/A.nyxmat" },
+			"A renderer added by code should have its mesh and material looked up");
+
+		ResolveChangedMeshRenderers(world, resolver);
+		Require(resolver.MeshRequests.size() == 1 && resolver.MaterialRequests.size() == 1, "Nor again while its paths stay");
+
+		world.Get<MeshRendererComponent>(bar).Material = AssetReference{ "Material", "Materials/B.nyxmat" };
+		ResolveChangedMeshRenderers(world, resolver);
+		Require(resolver.MaterialRequests.size() == 2 && resolver.MaterialRequests.back() == "Materials/B.nyxmat",
+			"A material set by code should be looked up");
+
+		world.Get<MeshRendererComponent>(bar).ExtraMaterials.push_back(MeshMaterialSlot{ AssetReference{ "Material", "Materials/C.nyxmat" } });
+		ResolveChangedMeshRenderers(world, resolver);
+		Require(resolver.MaterialRequests.size() == 4 && resolver.MaterialRequests.back() == "Materials/C.nyxmat",
+			"A slot added by code should be looked up, with the rest");
+	}
+
 	void TestPostLoadStepsKnowTheirEntity()
 	{
 		ComponentTypeRegistry::Get().SetPostLoad<CameraComponent>(&RecordPostLoad);
@@ -652,6 +682,7 @@ int main()
 		TestRendererMessages();
 		// Last: it gives the camera a post-load step of its own
 		TestPostLoadStepsKnowTheirEntity();
+		TestMeshRenderersChangedByCodeAreResolved();
 
 		std::cout << "All live edit tests passed.\n";
 		return 0;

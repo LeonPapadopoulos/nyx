@@ -299,6 +299,8 @@ namespace Nyx::Editor
 		// Scatters follow their surfaces, which their own post-load steps change, e.g. a ground edited
 		// or loaded after the scatter
 		Nyx::UpdateScatters(Editing.Scene.GetRegistry());
+		// Mesh renderers made by code, e.g. a game module's post-load step, get their assets
+		Nyx::ResolveChangedMeshRenderers(Editing.Scene.GetRegistry(), *AssetResolver);
 		// The sun turns to the time of day as it is set, edited or undone; time doesn't run here
 		Nyx::ApplyTimeOfDay(Editing.Scene.GetRegistry());
 

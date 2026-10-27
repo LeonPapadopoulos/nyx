@@ -14,6 +14,8 @@ namespace Nyx
 {
 	class Mesh;
 	struct Material;
+	class IAssetResolver;
+	class Registry;
 }
 
 namespace Nyx
@@ -55,7 +57,21 @@ namespace Nyx
 		Nyx::Material* MaterialAsset = nullptr;
 		// ExtraMaterials' materials, slot 1 first; null for a slot without one
 		std::vector<Nyx::Material*> ExtraMaterialAssets;
+
+		// The paths the assets above were looked up for (ResolveMeshRendererAssets()), so a renderer
+		// whose paths a game's step set is looked up again
+		std::string ResolvedMeshPath;
+		std::string ResolvedMaterialPath;
+		std::vector<std::string> ResolvedExtraMaterialPaths;
 	};
+
+	// Looks up the assets of its paths, and remembers them; without a resolver, none
+	void ResolveMeshRendererAssets(MeshRendererComponent& component, IAssetResolver* resolver);
+
+	// Looks up the assets of every renderer whose paths aren't the ones they were looked up for:
+	// one a game's step added, or gave another mesh or material, e.g. a glowing bar it puts up or a
+	// material it changes as something burns. Call once a frame, after the steps.
+	void ResolveChangedMeshRenderers(Registry& world, IAssetResolver& resolver);
 
 	// What the sections of `slot` are drawn with: slot 0's is MaterialAsset; a later slot's is its
 	// own, or MaterialAsset for a slot without one

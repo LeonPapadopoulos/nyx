@@ -21,28 +21,9 @@ namespace Nyx
 	namespace
 	{
 		// A loaded MeshRenderer only knows the paths of its mesh and materials; look up the assets.
-		void ResolveMeshRendererAssets(MeshRendererComponent& component, ScenePostLoadContext& context)
+		void ResolveMeshRendererAssetsAfterLoad(MeshRendererComponent& component, ScenePostLoadContext& context)
 		{
-			if (!context.AssetResolver)
-			{
-				component.MeshAsset = nullptr;
-				component.MaterialAsset = nullptr;
-				component.ExtraMaterialAssets.clear();
-				return;
-			}
-
-			component.MeshAsset =
-				component.Mesh.IsValid() ? context.AssetResolver->ResolveMesh(component.Mesh.Path) : nullptr;
-
-			component.MaterialAsset =
-				component.Material.IsValid() ? context.AssetResolver->ResolveMaterial(component.Material.Path) : nullptr;
-
-			component.ExtraMaterialAssets.clear();
-			for (const MeshMaterialSlot& slot : component.ExtraMaterials)
-			{
-				component.ExtraMaterialAssets.push_back(
-					slot.Material.IsValid() ? context.AssetResolver->ResolveMaterial(slot.Material.Path) : nullptr);
-			}
+			ResolveMeshRendererAssets(component, context.AssetResolver);
 		}
 
 		// A ground's mesh is derived from its values: made, or made again, wherever it is loaded, added or
@@ -106,7 +87,7 @@ namespace Nyx
 		Nyx::Reflection::Generated::RegisterRuntimeReflectedTypes();
 
 		// Components that need more than their reflected properties after being loaded.
-		ComponentTypeRegistry::Get().SetPostLoad<MeshRendererComponent>(&ResolveMeshRendererAssets);
+		ComponentTypeRegistry::Get().SetPostLoad<MeshRendererComponent>(&ResolveMeshRendererAssetsAfterLoad);
 		ComponentTypeRegistry::Get().SetPostLoad<SurfaceDecalComponent>(&ResolveSurfaceDecalAssets);
 		ComponentTypeRegistry::Get().SetPostLoad<EnvironmentComponent>(&FoldLegacySkyModeAfterLoad);
 		ComponentTypeRegistry::Get().SetPostLoad<VolumetricCloudsComponent>(&ApplyVolumetricCloudsPresetAfterLoad);
