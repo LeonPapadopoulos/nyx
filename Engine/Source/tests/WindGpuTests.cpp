@@ -309,6 +309,13 @@ struct NyxWindProbe : ISurface
 		glm::vec3 Min{ -3.0f, -2.0f, -3.0f };
 		glm::vec3 Max{ 3.0f, 2.0f, 3.0f };
 		mutable int Asked = 0;
+		// 0: asked every frame; otherwise what it says while its air stays the same
+		uint64_t Version = 0;
+
+		uint64_t GetVersion() const override
+		{
+			return Version;
+		}
 
 		void SampleWind(std::span<const glm::vec3> positions, float, std::span<glm::vec3> outVelocities) const override
 		{
@@ -503,6 +510,17 @@ struct NyxWindProbe : ISurface
 			gale.Min.x = -2.0f;
 			scene.Draw(2);
 			Require(local->UploadCount > uploads, "The texture of local air isn't copied again when it changes");
+
+			// A field that says its version is asked again only when the version changes
+			gale.Version = 7;
+			scene.Draw(1);
+			const int asked = gale.Asked;
+			scene.Draw(4);
+			Require(gale.Asked == asked, "A field whose version stays the same is asked again for the local air");
+			gale.Min.x = -1.0f;
+			gale.Version = 8;
+			scene.Draw(1);
+			Require(gale.Asked > asked, "A field whose version changes isn't asked again for the local air");
 		}
 		{
 			WindScene scene(gpu, awayProbe);

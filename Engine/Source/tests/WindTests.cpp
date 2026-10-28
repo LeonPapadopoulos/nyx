@@ -87,6 +87,33 @@ namespace
 		Require(SameBits(MakeSteadyWind(gusty, 77.0), wind), "The same values at the same time make another wind");
 	}
 
+	// A box of cells at once, as SampleWind() gives each cell, to the bit, added to what is there
+	void TestABoxOfCells()
+	{
+		WindComponent gusty;
+		gusty.Speed = 7.0f;
+		const WindState wind = MakeSteadyWind(gusty, 77.0);
+		const glm::ivec3 first(-3, -1, 5);
+		const glm::ivec3 cells(5, 4, 3);
+		const float cellSize = 0.5f;
+		std::vector<glm::vec3> velocities(static_cast<size_t>(cells.x * cells.y * cells.z), glm::vec3(1.0f, 2.0f, 3.0f));
+		AddWindToCells(wind, first, cells, cellSize, 77.3f, velocities);
+		size_t index = 0;
+		for (int32_t z = 0; z < cells.z; ++z)
+		{
+			for (int32_t y = 0; y < cells.y; ++y)
+			{
+				for (int32_t x = 0; x < cells.x; ++x, ++index)
+				{
+					const glm::vec3 centre = (glm::vec3(first + glm::ivec3(x, y, z)) + 0.5f) * cellSize;
+					const glm::vec3 expected = glm::vec3(1.0f, 2.0f, 3.0f) + SampleWind(wind, centre, 77.3f);
+					Require(std::memcmp(&velocities[index], &expected, sizeof(glm::vec3)) == 0,
+						"A box of cells doesn't get each cell's wind to the bit at " + Describe(centre) + ": " + Describe(velocities[index]) + " for " + Describe(expected));
+				}
+			}
+		}
+	}
+
 	// Slower near the ground, its speed at the reference height, faster aloft up to Aloft Height
 	void TestTheHeightProfile()
 	{
@@ -532,6 +559,7 @@ int main()
 		Nyx::Logger::Get().Init();
 		RegisterComponentTypes();
 		TestTheContract();
+		TestABoxOfCells();
 		TestTheHeightProfile();
 		TestGustFrontsTravel();
 		TestLongWinds();

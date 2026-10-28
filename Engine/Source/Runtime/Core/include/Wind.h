@@ -98,6 +98,14 @@ namespace Nyx
 	// moment's phases worked out once, for many points at once (an emitter's particles)
 	void AddWind(const WindState& wind, std::span<const glm::vec3> positions, float time, std::span<glm::vec3> inOutVelocities);
 
+	// SampleWind() at the centres of a box of cells of `cellSize` metres, the first at `firstCell`
+	// (its centre at (firstCell + 0.5) x cellSize), `cells` of them each way, x fastest, then y, then
+	// z, added to `inOutVelocities` (one a cell): the same numbers to the bit, each column's fronts and
+	// eddies and each layer's height worked out once, so a box costs about as many points as it has
+	// columns (a grid of air a game carries things in)
+	void AddWindToCells(const WindState& wind, const glm::ivec3& firstCell, const glm::ivec3& cells, float cellSize, float time,
+		std::span<glm::vec3> inOutVelocities);
+
 	// How strongly a gust front is blowing at `position` at `time`: 0 between fronts, up to 1 at the
 	// peak of the strongest; the wind there is (1 + Gustiness × this) times as fast
 	float SampleWindGust(const WindState& wind, const glm::vec3& position, float time);

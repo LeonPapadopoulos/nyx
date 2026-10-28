@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 namespace Nyx
 {
@@ -184,15 +185,31 @@ namespace Nyx
 
 	namespace
 	{
+		// What a column of the wind has at every height: the front passing and the eddies
+		struct WindColumn
+		{
+			float Gust = 0.0f;
+			glm::vec2 Swirl{ 0.0f };
+		};
+
+		WindColumn SampleColumn(const WindState& wind, const glm::vec3& position, const WindMoment& moment)
+		{
+			return WindColumn{ BlendedGust(wind, position, moment.Phase), BlendedEddies(wind, position, moment.Move) };
+		}
+
+		// The wind in a column where the height's profile makes it `speed`
+		glm::vec3 SampleInColumnAt(const WindState& wind, const WindColumn& column, float speed)
+		{
+			const float gusting = speed * (1.0f + wind.Gustiness * column.Gust);
+			const float swirling = speed * wind.Turbulence;
+			const float x = wind.Direction.x * gusting + column.Swirl.x * swirling;
+			const float z = wind.Direction.y * gusting + column.Swirl.y * swirling;
+			return glm::vec3(x, 0.0f, z);
+		}
+
 		glm::vec3 SampleAt(const WindState& wind, const glm::vec3& position, const WindMoment& moment)
 		{
-			const float speed = wind.Speed * GetWindHeightFactor(wind, position.y);
-			const float gusting = speed * (1.0f + wind.Gustiness * BlendedGust(wind, position, moment.Phase));
-			const glm::vec2 swirl = BlendedEddies(wind, position, moment.Move);
-			const float swirling = speed * wind.Turbulence;
-			const float x = wind.Direction.x * gusting + swirl.x * swirling;
-			const float z = wind.Direction.y * gusting + swirl.y * swirling;
-			return glm::vec3(x, 0.0f, z);
+			return SampleInColumnAt(wind, SampleColumn(wind, position, moment), wind.Speed * GetWindHeightFactor(wind, position.y));
 		}
 	}
 
@@ -216,6 +233,41 @@ namespace Nyx
 		for (size_t index = 0; index < count; ++index)
 		{
 			inOutVelocities[index] += SampleAt(wind, positions[index], moment);
+		}
+	}
+
+	void AddWindToCells(const WindState& wind, const glm::ivec3& firstCell, const glm::ivec3& cells, float cellSize, float time,
+		std::span<glm::vec3> inOutVelocities)
+	{
+		if (!(wind.Speed > 0.0f) || cells.x <= 0 || cells.y <= 0 || cells.z <= 0)
+		{
+			return;
+		}
+		const WindMoment moment = GetMoment(wind, time);
+		const auto centre = [cellSize](int32_t first, int32_t index) { return (static_cast<float>(first + index) + 0.5f) * cellSize; };
+		const size_t row = static_cast<size_t>(cells.x);
+		const size_t layer = row * static_cast<size_t>(cells.y);
+		// Each layer's speed, as the height's profile makes it
+		std::vector<float> speeds(static_cast<size_t>(cells.y));
+		for (int32_t y = 0; y < cells.y; ++y)
+		{
+			speeds[static_cast<size_t>(y)] = wind.Speed * GetWindHeightFactor(wind, centre(firstCell.y, y));
+		}
+		for (int32_t z = 0; z < cells.z; ++z)
+		{
+			for (int32_t x = 0; x < cells.x; ++x)
+			{
+				// Fronts and eddies don't change up a column; only the height's profile does
+				const WindColumn column = SampleColumn(wind, glm::vec3(centre(firstCell.x, x), 0.0f, centre(firstCell.z, z)), moment);
+				for (int32_t y = 0; y < cells.y; ++y)
+				{
+					const size_t index = static_cast<size_t>(x) + row * static_cast<size_t>(y) + layer * static_cast<size_t>(z);
+					if (index < inOutVelocities.size())
+					{
+						inOutVelocities[index] += SampleInColumnAt(wind, column, speeds[static_cast<size_t>(y)]);
+					}
+				}
+			}
 		}
 	}
 }

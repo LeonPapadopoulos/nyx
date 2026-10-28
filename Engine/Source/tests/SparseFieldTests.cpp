@@ -13,6 +13,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace
@@ -214,6 +215,46 @@ namespace
 		Require(field.GetBrickCount() == 8 && field.HasBrick(hot), "The cap should hold, and the requested bricks stay");
 	}
 
+	// Bricks made and freed in any order are linked with the bricks round them as if made at once:
+	// spreading over them gives the same bits
+	void TestBricksComingAndGoing()
+	{
+		const glm::vec3 near(0.0f);
+		const glm::vec3 nearEnd(7.9f);
+		const glm::vec3 beside(8.0f, 0.0f, 0.0f);
+		const glm::vec3 besideEnd(11.9f, 7.9f, 7.9f);
+
+		ScalarField changed(SparseFieldSettings{}, 0.0f);
+		changed.Allocate(beside, besideEnd);
+		changed.Allocate(glm::vec3(40.0f), glm::vec3(47.9f));
+		changed.ClearRequests();
+		changed.Allocate(near, nearEnd);
+		changed.FreeSettled(1e30f);
+		changed.Allocate(beside, besideEnd);
+		changed.Allocate(glm::vec3(-4.0f, 0.0f, 0.0f), glm::vec3(-0.1f, 3.9f, 3.9f));
+
+		ScalarField made(SparseFieldSettings{}, 0.0f);
+		made.Allocate(glm::vec3(-4.0f, 0.0f, 0.0f), glm::vec3(-0.1f, 3.9f, 3.9f));
+		made.Allocate(near, besideEnd);
+		Require(changed.GetBricks() == made.GetBricks(), "The same bricks should be there");
+
+		for (ScalarField* field : { &changed, &made })
+		{
+			field->AddSource(glm::vec3(3.9f), glm::vec3(4.1f), 100.0f);
+			field->AddSource(glm::vec3(8.1f, 1.0f, 1.0f), glm::vec3(8.3f, 1.2f, 1.2f), 50.0f);
+			for (int i = 0; i < 20; ++i)
+			{
+				field->Diffuse(0.5f, Step);
+			}
+		}
+		std::vector<float> a;
+		std::vector<float> b;
+		std::as_const(changed).ForEachCell([&](glm::vec3, const float& value) { a.push_back(value); });
+		std::as_const(made).ForEachCell([&](glm::vec3, const float& value) { b.push_back(value); });
+		Require(a.size() == b.size() && std::memcmp(a.data(), b.data(), a.size() * sizeof(float)) == 0,
+			"Bricks made and freed one by one should spread as bricks made at once");
+	}
+
 	// The ambient wherever no brick is near; the cells' values, and between them, where one is
 	void TestSamplingOutsideBricks()
 	{
@@ -389,6 +430,7 @@ int main()
 		TestDiffusionStable();
 		TestAdvectionMovesDownwind();
 		TestCapHolds();
+		TestBricksComingAndGoing();
 		TestSamplingOutsideBricks();
 		TestDeterministic();
 		TestCostAtCap();

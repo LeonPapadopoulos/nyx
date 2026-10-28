@@ -42,7 +42,17 @@ namespace Nyx
 			wind.Grid = grid;
 			MakeTexture(wind);
 		}
+		// The same air in the same cells as last time: nothing to fill or copy
+		const uint64_t version = field->GetVersion();
+		if (version != 0 && version == wind.SampledVersion && field == wind.SampledField && grid.Origin == wind.Grid.Origin &&
+			grid.CellSize == wind.Grid.CellSize)
+		{
+			return;
+		}
 		wind.Grid = grid;
+		wind.SampledField = field;
+		wind.SampledVersion = version;
+		++wind.SampleCount;
 
 		// The field writes only where it has air
 		wind.Velocities.assign(grid.GetCellCount(), glm::vec3(0.0f));
@@ -59,8 +69,10 @@ namespace Nyx
 			Bindless->RemoveTexture(wind.TextureSlot);
 		}
 		const uint64_t uploads = wind.UploadCount;
+		const uint64_t samples = wind.SampleCount;
 		wind = SceneViewLocalWind{};
 		wind.UploadCount = uploads;
+		wind.SampleCount = samples;
 	}
 
 	void VulkanLocalWind::MakeTexture(SceneViewLocalWind& wind)

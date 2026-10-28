@@ -165,7 +165,8 @@ namespace Nyx
 		}
 
 		size_t refused = 0;
-		bool bChanged = false;
+		// Each brick's deviation, found once for the call: no brick's values change during it
+		std::vector<float> deviations;
 		for (const Wanted& brick : wanted)
 		{
 			if (FindSlot(brick.Coord) >= 0)
@@ -178,11 +179,16 @@ namespace Nyx
 				// The least important brick not requested: nearest the ambient, the last in order on a tie
 				int32_t leastImportant = -1;
 				float leastDeviation = std::numeric_limits<float>::max();
+				deviations.resize(Slots.size(), -1.0f);
 				for (const int32_t slot : Order)
 				{
 					if (!Slots[slot].bRequested)
 					{
-						const float deviation = GetDeviation(Slots[slot]);
+						float& deviation = deviations[static_cast<size_t>(slot)];
+						if (deviation < 0.0f)
+						{
+							deviation = GetDeviation(Slots[slot]);
+						}
 						if (deviation <= leastDeviation)
 						{
 							leastDeviation = deviation;
@@ -200,12 +206,6 @@ namespace Nyx
 
 			const int32_t slot = MakeBrick(brick.Coord);
 			Slots[slot].bRequested = true;
-			bChanged = true;
-		}
-
-		if (bChanged)
-		{
-			UpdateNeighbours();
 		}
 		return refused;
 	}
@@ -224,10 +224,6 @@ namespace Nyx
 		for (const int32_t slot : settled)
 		{
 			FreeBrick(slot);
-		}
-		if (!settled.empty())
-		{
-			UpdateNeighbours();
 		}
 		return settled.size();
 	}
@@ -575,6 +571,23 @@ namespace Nyx
 			return Slots[other].Coord < value;
 		});
 		Order.insert(place, slot);
+
+		// Its neighbours, and it theirs: only the bricks round it change
+		for (int32_t dz = -1; dz <= 1; ++dz)
+		{
+			for (int32_t dy = -1; dy <= 1; ++dy)
+			{
+				for (int32_t dx = -1; dx <= 1; ++dx)
+				{
+					const int32_t other = FindSlot(BrickCoord{ coord.X + dx, coord.Y + dy, coord.Z + dz });
+					Slots[slot].Neighbours[GetNeighbourIndex(dx, dy, dz)] = other;
+					if (other >= 0 && other != slot)
+					{
+						Slots[other].Neighbours[GetNeighbourIndex(-dx, -dy, -dz)] = slot;
+					}
+				}
+			}
+		}
 		return slot;
 	}
 
@@ -582,29 +595,23 @@ namespace Nyx
 	void SparseField<T>::FreeBrick(int32_t slot)
 	{
 		Order.erase(std::find(Order.begin(), Order.end(), slot));
-		Slots[slot].Values[0].clear();
-		Slots[slot].Values[1].clear();
-		FreeSlots.push_back(slot);
-	}
-
-	template<typename T>
-	void SparseField<T>::UpdateNeighbours()
-	{
-		for (const int32_t slot : Order)
+		for (int32_t dz = -1; dz <= 1; ++dz)
 		{
-			Brick& brick = Slots[slot];
-			for (int32_t dz = -1; dz <= 1; ++dz)
+			for (int32_t dy = -1; dy <= 1; ++dy)
 			{
-				for (int32_t dy = -1; dy <= 1; ++dy)
+				for (int32_t dx = -1; dx <= 1; ++dx)
 				{
-					for (int32_t dx = -1; dx <= 1; ++dx)
+					const int32_t other = Slots[slot].Neighbours[GetNeighbourIndex(dx, dy, dz)];
+					if (other >= 0 && other != slot)
 					{
-						brick.Neighbours[GetNeighbourIndex(dx, dy, dz)] =
-							FindSlot(BrickCoord{ brick.Coord.X + dx, brick.Coord.Y + dy, brick.Coord.Z + dz });
+						Slots[other].Neighbours[GetNeighbourIndex(-dx, -dy, -dz)] = -1;
 					}
 				}
 			}
 		}
+		Slots[slot].Values[0].clear();
+		Slots[slot].Values[1].clear();
+		FreeSlots.push_back(slot);
 	}
 
 	template<typename T>

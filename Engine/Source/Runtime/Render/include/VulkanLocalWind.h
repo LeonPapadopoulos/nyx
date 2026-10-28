@@ -33,6 +33,12 @@ namespace Nyx
 		bool bWritten = false;
 		// Copies made, for tests and the frame stats
 		uint64_t UploadCount = 0;
+		// The field and its version the cells were last filled from: while both and the grid are
+		// the same, they are kept (IWindField::GetVersion())
+		const IWindField* SampledField = nullptr;
+		uint64_t SampledVersion = 0;
+		// Times the cells were filled, for tests
+		uint64_t SampleCount = 0;
 	};
 
 	// Each view's texture of local air (Docs/Design/wind.md): filled on the CPU from the world's wind

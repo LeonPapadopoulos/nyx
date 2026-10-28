@@ -165,9 +165,9 @@ namespace Nyx
 		};
 
 		int32_t FindSlot(BrickCoord coord) const;
+		// Each links the brick with the bricks round it, or unlinks it
 		int32_t MakeBrick(BrickCoord coord);
 		void FreeBrick(int32_t slot);
-		void UpdateNeighbours();
 		float GetDeviation(const Brick& brick) const;
 
 		// A cell's current value, by global cell coordinates, near a brick

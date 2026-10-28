@@ -48,6 +48,15 @@ namespace Nyx
 		// the grid's order), which comes filled with 0: a field that knows where it is writes only
 		// its own cells; SampleWindGridAtCentres() asks SampleWind() for every one
 		virtual void SampleWindGrid(const WindFieldGrid& grid, float time, std::span<glm::vec3> outVelocities) const = 0;
+
+		// A number that changes whenever what the field gives changes, at any time too: while it is
+		// the same, the air is the same everywhere and what was asked of the field may be kept (the
+		// texture of local air is filled again only when it or the grid changes). 0, as by default:
+		// it can't say, and is asked again every time.
+		virtual uint64_t GetVersion() const
+		{
+			return 0;
+		}
 	};
 
 	// SampleWindGrid() by asking the field's SampleWind() for the centre of every cell
