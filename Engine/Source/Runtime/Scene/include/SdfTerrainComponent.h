@@ -110,11 +110,22 @@ namespace Nyx
 		bool bRidged = false;
 	};
 
+	// How an SDF terrain's chunks are meshed (FieldMesher.h). Saved as its number.
+	NYX_ENUM()
+	enum class ESdfTerrainMesher : uint8_t
+	{
+		// A vertex in each cell the surface crosses; sharp where its material is in Sharp Materials
+		Dual,
+		// Vertices on the grid's edges, every one smooth
+		MarchingCubes
+	};
+
 	// Terrain as a signed field over a volume, so it can overhang, hollow out and float: a stack of
 	// layers, each joined to what the ones before it made, evaluated in order. Its value at a point
 	// (SampleTerrain(), SdfTerrain.h) is a function of these values alone, the same on every machine:
 	// negative inside, positive outside, 0 on the surface. Heights are along the entity's Y, around
-	// it.
+	// it. Meshed in chunks round the camera, in the editor and the game (TerrainChunks.h), and drawn
+	// by the entity's Mesh Renderer.
 	NYX_REFLECT(Component, meta = (DisplayName = "SDF Terrain"))
 	struct SdfTerrainComponent
 	{
@@ -123,6 +134,18 @@ namespace Nyx
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Terrain", Tooltip = "Evaluated in order, each joined to what the ones before it made"))
 		std::vector<SdfTerrainLayer> Layers{ SdfTerrainLayer{} };
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "View Distance", Category = "Chunks", DragSpeed = 4.0, Tooltip = "How far from the camera, in metres, chunks of 32 m are made and drawn"))
+		float ViewDistance = 256.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Chunks", Tooltip = "Dual: a vertex in each cell, sharp edges for the Sharp Materials; Marching Cubes: vertices on the grid's edges, all smooth"))
+		ESdfTerrainMesher Mesher = ESdfTerrainMesher::Dual;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Sharp Materials", Category = "Chunks", Tooltip = "The material numbers whose surfaces keep sharp edges and corners, such as cliffs (Dual only)"))
+		std::vector<uint32_t> SharpMaterials;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Material Colours", Category = "Chunks", UI = Color, Tooltip = "Each material number's vertex colour, linear RGB, from 0; a number past the list is white"))
+		std::vector<glm::vec3> MaterialColors{ glm::vec3(0.13f, 0.30f, 0.05f), glm::vec3(0.22f, 0.14f, 0.07f), glm::vec3(0.26f, 0.25f, 0.23f) };
 	};
 }
 

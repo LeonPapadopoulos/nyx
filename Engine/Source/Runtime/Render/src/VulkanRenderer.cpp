@@ -28,6 +28,7 @@
 #include "WindDebug.h"
 #include "WindField.h"
 #include "RuntimeMeshComponent.h"
+#include "TerrainChunks.h"
 #include "Paths.h"
 #include "Profiler.h"
 
@@ -1608,25 +1609,24 @@ namespace Nyx
 					return;
 				}
 
-				// A mesh made at run time takes the place of the one loaded by its path; it is uploaded
-				// here, before this frame records a draw, when it is new or its revision changed
-				Nyx::Mesh* mesh = registry.Has<Nyx::RuntimeMeshComponent>(entity)
-					? RuntimeMeshes.Acquire(Context, registry.Get<Nyx::RuntimeMeshComponent>(entity))
-					: meshRenderer.MeshAsset;
-				if (!mesh || !meshRenderer.MaterialAsset)
+				if (!meshRenderer.MaterialAsset)
 				{
 					return;
 				}
 
-				glm::mat4 worldTransform = glm::mat4(1.0f);
-				glm::mat4 drawTransform = glm::mat4(1.0f);
+				glm::mat4 entityWorld = glm::mat4(1.0f);
+				glm::mat4 entityDraw = glm::mat4(1.0f);
 
 				if (registry.Has<Nyx::TransformComponent>(entity))
 				{
-					worldTransform = registry.Get<Nyx::TransformComponent>(entity).ToMatrix();
-					drawTransform = Nyx::GetDrawnTransform(registry, entity, interpolation).ToMatrix();
+					entityWorld = registry.Get<Nyx::TransformComponent>(entity).ToMatrix();
+					entityDraw = Nyx::GetDrawnTransform(registry, entity, interpolation).ToMatrix();
 				}
 
+				// An object of the entity: its mesh at these transforms, with the entity's instances if
+				// `bWithInstances` and it has them
+				auto addObject = [&](Nyx::Mesh* mesh, const glm::mat4& worldTransform, const glm::mat4& drawTransform, bool bWithInstances)
+				{
 				RenderObject obj{};
 				obj.SourceEntity = entity;
 				obj.MeshAsset = mesh;
@@ -1644,7 +1644,7 @@ namespace Nyx
 				// Instanced: the mesh at every transform of its instances, uploaded here as a mesh made
 				// at run time is, and culled cell by cell where it is drawn. Without instances to
 				// draw, nothing.
-				if (registry.Has<Nyx::MeshInstancesComponent>(entity))
+				if (bWithInstances && registry.Has<Nyx::MeshInstancesComponent>(entity))
 				{
 					const MeshInstanceCache::Instances* instances = MeshInstances.Acquire(Context, registry.Get<Nyx::MeshInstancesComponent>(entity),
 						BoundingBox{ obj.LocalBoundsMin, obj.LocalBoundsMax });
@@ -1697,8 +1697,33 @@ namespace Nyx
 				// Dense picking ID: 1..N, with 0 reserved for "nothing"
 				world.PickingIdToEntity.push_back(entity);
 				obj.PickingId = static_cast<uint32_t>(world.PickingIdToEntity.size());
-
 				world.Objects.push_back(obj);
+				};
+
+				// An SDF terrain: an object for each chunk, around its corner, culled and drawn as any
+				// mesh made at run time; picking one picks the terrain
+				if (registry.Has<Nyx::TerrainChunksComponent>(entity))
+				{
+					for (const Nyx::TerrainChunk& chunk : registry.Get<Nyx::TerrainChunksComponent>(entity).Chunks)
+					{
+						if (Nyx::Mesh* mesh = RuntimeMeshes.Acquire(Context, chunk.Mesh))
+						{
+							const glm::mat4 corner = glm::translate(glm::mat4(1.0f), chunk.Origin);
+							addObject(mesh, entityWorld * corner, entityDraw * corner, false);
+						}
+					}
+					return;
+				}
+
+				// A mesh made at run time takes the place of the one loaded by its path; it is uploaded
+				// here, before this frame records a draw, when it is new or its revision changed
+				Nyx::Mesh* mesh = registry.Has<Nyx::RuntimeMeshComponent>(entity)
+					? RuntimeMeshes.Acquire(Context, registry.Get<Nyx::RuntimeMeshComponent>(entity))
+					: meshRenderer.MeshAsset;
+				if (mesh)
+				{
+					addObject(mesh, entityWorld, entityDraw, true);
+				}
 			});
 	}
 

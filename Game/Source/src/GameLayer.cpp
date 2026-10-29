@@ -12,6 +12,8 @@
 #include "OrbitCameras.h"
 #include "PhysicsPick.h"
 #include "ScatterInstances.h"
+#include "JobSystem.h"
+#include "TerrainChunks.h"
 #include "SceneSerializer.h"
 #include "ThirdPersonPlayer.h"
 #include "TimeOfDay.h"
@@ -308,6 +310,12 @@ namespace Nyx::Game
 		// Scatters follow their surfaces as they are after the steps and the live edits, also while
 		// the world is paused
 		Nyx::UpdateScatters(World.GetRegistry());
+		// SDF terrains' chunks round the camera
+		if (const std::optional<Nyx::WorldCamera> camera = Nyx::FindPrimaryCamera(World.GetRegistry()))
+		{
+			const glm::vec3 viewpoint = camera->Transform.Position;
+			Nyx::UpdateTerrainChunks(World.GetRegistry(), std::span<const glm::vec3>(&viewpoint, 1), Nyx::JobSystem::Get());
+		}
 		// Mesh renderers the steps added or gave other assets get them before they are drawn
 		Nyx::ResolveChangedMeshRenderers(World.GetRegistry(), *AssetResolver);
 		// The sun to a time of day set by a live edit while paused; the steps turn it as time runs

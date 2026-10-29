@@ -119,6 +119,16 @@ add_dependencies(NyxMeshMemoryPoolTests NyxGeneratedReflection)
 set_property(TARGET NyxMeshMemoryPoolTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxMeshMemoryPoolTests COMMAND NyxMeshMemoryPoolTests)
 
+# An SDF terrain's chunks without a GPU: made on the workers round a viewpoint, the same bits as made
+# directly, let go of and made anew as it moves, made again for new values while the old stay, gone
+# with the terrain, none for an empty one, round a moved one; the sample scene. --write-scene writes
+# Assets/Scenes/SdfTerrainTest.nyxscene.
+add_executable(NyxTerrainChunksTests TerrainChunksTests.cpp)
+target_link_libraries(NyxTerrainChunksTests PRIVATE NyxEngine)
+add_dependencies(NyxTerrainChunksTests NyxGeneratedReflection)
+set_property(TARGET NyxTerrainChunksTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxTerrainChunksTests COMMAND NyxTerrainChunksTests)
+
 # The component type registry: types register once; a second type of a name already taken, such as
 # a game module's type named like one of the engine's, is refused.
 add_executable(NyxComponentTypeRegistryTests ComponentTypeRegistryTests.cpp)
@@ -699,6 +709,16 @@ set_property(TARGET NyxRuntimeMeshGpuTests PROPERTY FOLDER "Tests")
 nyx_copy_shaders_next_to(NyxRuntimeMeshGpuTests)
 nyx_copy_shader_compiler_next_to(NyxRuntimeMeshGpuTests)
 add_test(NAME NyxRuntimeMeshGpuTests COMMAND NyxRuntimeMeshGpuTests)
+
+# An SDF terrain's chunks on a real GPU: made round the camera, drawn one object a chunk, picked as
+# the terrain, drawn where the terrain is moved. Needs a Vulkan device; its window stays hidden.
+add_executable(NyxTerrainChunksGpuTests TerrainChunksGpuTests.cpp)
+target_link_libraries(NyxTerrainChunksGpuTests PRIVATE NyxEngine)
+add_dependencies(NyxTerrainChunksGpuTests NyxGeneratedReflection)
+set_property(TARGET NyxTerrainChunksGpuTests PROPERTY FOLDER "Tests")
+nyx_copy_shaders_next_to(NyxTerrainChunksGpuTests)
+nyx_copy_shader_compiler_next_to(NyxTerrainChunksGpuTests)
+add_test(NAME NyxTerrainChunksGpuTests COMMAND NyxTerrainChunksGpuTests)
 
 # Instanced drawing and culling on a real GPU: a mesh drawn at every transform of its instances as
 # it would be on an entity for each, uploaded again only for a new revision, picked, culled by cell

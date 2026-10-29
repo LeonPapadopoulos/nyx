@@ -1438,8 +1438,26 @@ decided: by default a valley about 128 by 128 m, nearly flat in the middle, its 
 ## SDF terrain
 
 An *SDF Terrain* is terrain as a signed field over a volume rather than a height at each point, so
-it can overhang, hollow out and float. So far it is its values, the field made from them and meshes
-of it made by code; nothing draws it or collides with it yet.
+it can overhang, hollow out and float. It is drawn in chunks round the camera, in the editor and the
+game, at one level of detail; nothing collides with it yet.
+
+- Add an *SDF Terrain* and a *Mesh Renderer* with `Materials/VertexColor.nyxmat` (its *Mesh* left
+  empty). Its chunks, 32 m cubes of 1 m cells, are made round every scene view's camera in the
+  editor and round the primary camera in the game, within *View Distance*, on the job system's
+  workers, nearest first; chunks the surface doesn't cross (all air or all solid) are never made.
+  The first view of a 128 m terrain takes about a tenth of a second on 19 workers; once made, an
+  update costs about 0.03 ms a frame. They are drawn by the entity's Mesh Renderer, one object
+  each, culled, shadowed and picked as one entity. When a value changes, every chunk is made again,
+  each drawn as it was until its new mesh is in; chunks a chunk past the view distance go. Never
+  saved.
+- *Chunks*: *View Distance*, *Mesher* (*Dual*, with sharp edges for the *Sharp Materials*, or
+  *Marching Cubes*), *Sharp Materials* (material numbers), *Material Colours* (each material
+  number's vertex colour).
+- The editor's details panel shows *Terrain Chunks* in its *Runtime* section: chunks drawn, wanted
+  and being made, skipped, triangles, and the last chunk's times.
+- `Assets/Scenes/SdfTerrainTest.nyxscene` (written by `NyxTerrainChunksTests --write-scene`):
+  terraced hills with tunnels under them, a floating landmass of sharp stone with a hanging
+  underside and chambers inside, a sun and a camera that flies.
 
 - *Layers*, evaluated in order, each joined to what the ones before made by *Combine*: *Add* (solid
   where it is), *Carve* (cut out of what came before) or *Intersect*, rounded over *Blend Radius*.
@@ -1484,6 +1502,10 @@ of it made by code; nothing draws it or collides with it yet.
   points, golden values the same in Debug and Release), `NyxSdfTerrainTests` (flat ground exact,
   batches the same bits, golden values, never steeper than the bound, box ranges and rays against
   dense sampling, a thin slab never passed through, materials, blends, tunnels in their band, seeds),
+  `NyxTerrainChunksTests` (chunks made on the workers the same bits as made directly, only where the
+  surface is, within the view distance, let go of and made anew as the camera moves, made again
+  for new values while the old stay, gone with the terrain; the sample scene),
+  `NyxTerrainChunksGpuTests` (the chunks drawn, picked as the terrain, drawn where it is moved),
   `NyxFieldMesherTests` (a sphere closed with the right area, a box's corners kept sharp and rounded
   smooth, thin shapes closed and wound consistently, neighbouring chunks meeting, sky visibility,
   materials, a golden mesh the same in Debug and Release; marching cubes on the same shapes, closed

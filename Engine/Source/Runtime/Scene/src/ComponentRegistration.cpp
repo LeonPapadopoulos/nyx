@@ -9,6 +9,7 @@
 #include "RuntimeMeshComponent.h"
 #include "ScatterInstances.h"
 #include "SurfaceDecalComponent.h"
+#include "TerrainChunks.h"
 #include "VolumetricCloudsComponent.h"
 #include "WindComponent.h"
 
@@ -95,11 +96,15 @@ namespace Nyx
 		ComponentTypeRegistry::Get().SetOnRemove<GroundComponent>(&RemoveGroundMesh);
 		ComponentTypeRegistry::Get().SetPostLoad<ScatterComponent>(&ScatterAfterLoad);
 		ComponentTypeRegistry::Get().SetOnRemove<ScatterComponent>(&RemoveScatter);
+		// An SDF terrain's chunks are made each frame round the cameras (UpdateTerrainChunks()), and
+		// go with it
+		ComponentTypeRegistry::Get().SetOnRemove<SdfTerrainComponent>(&RemoveTerrainChunks);
 
 		// Made while the world runs and never saved; the editor shows what they are
 		ComponentTypeRegistry::Get().RegisterRuntime<RuntimeMeshComponent>("Nyx::RuntimeMeshComponent", "Mesh Made at Run Time", &DescribeRuntimeMesh);
 		ComponentTypeRegistry::Get().RegisterRuntime<MeshInstancesComponent>("Nyx::MeshInstancesComponent", "Mesh Instances", &DescribeMeshInstances);
 		ComponentTypeRegistry::Get().RegisterRuntime<WindDriveComponent>("Nyx::WindDriveComponent", "Wind Drive", &DescribeWindDrive);
+		ComponentTypeRegistry::Get().RegisterRuntime<TerrainChunksComponent>("Nyx::TerrainChunksComponent", "Terrain Chunks", &DescribeTerrainChunks);
 
 		// Scenes saved before the world had a wind of its own: the environment's, for particles, moved
 		// into one
