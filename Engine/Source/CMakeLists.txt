@@ -96,6 +96,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/GroundComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/GradientNoise.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/GradientNoiseAvx2.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/FieldMesher.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/SdfTerrain.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/GroundMesh.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ScatterComponent.cpp
@@ -325,6 +326,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/GradientNoise.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/GradientNoise3D.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/SmoothMinimum.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/FieldMesher.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/SdfTerrain.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/SdfTerrainComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/GroundMesh.h

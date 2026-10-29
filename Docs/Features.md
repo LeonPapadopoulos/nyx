@@ -1430,8 +1430,8 @@ decided: by default a valley about 128 by 128 m, nearly flat in the middle, its 
 ## SDF terrain
 
 An *SDF Terrain* is terrain as a signed field over a volume rather than a height at each point, so
-it can overhang, hollow out and float. So far it is its values and the field made from them; nothing
-draws it or collides with it yet.
+it can overhang, hollow out and float. So far it is its values, the field made from them and meshes
+of it made by code; nothing draws it or collides with it yet.
 
 - *Layers*, evaluated in order, each joined to what the ones before made by *Combine*: *Add* (solid
   where it is), *Carve* (cut out of what came before) or *Intersect*, rounded over *Blend Radius*.
@@ -1452,13 +1452,28 @@ draws it or collides with it yet.
   `GetTerrainValueRange()` what it can be over a box (all air, all solid, or neither), and
   `GetTerrainNormal()` and `RayCastTerrain()` the way out and where a ray meets the surface. The same
   on every machine.
+- Its meshes (`FieldMesher.h`): `SampleTerrainGrid()` samples it on a grid, `MakeFieldMesh()` makes
+  the surface of any sampled field by dual meshing: a vertex in each cell the surface crosses (one for
+  each separate piece of it there), a quad for each grid edge it crosses. A vertex of a material
+  marked sharp goes where its crossings' planes meet, so cliffs and cut faces keep their edges and
+  corners, the others at the middle of their crossings; given the field itself (the settings'
+  *Field*), the crossings are found on it and the planes come from its gradient, which keeps a box's
+  corners to a few millimetres. A sharp vertex whose quads would face the wrong way goes back to the
+  middle. Each vertex has the field's normal, how much of the sky it sees (rays through the field,
+  past the grid where the field is given) and its material, in its custom numbers. Chunks side by
+  side meet without a gap: each makes the quads of its own edges, from a grid two samples wider
+  before it and one after. Where a cell face has all four edges crossed and both cells join its two
+  curves, four triangles share an edge: dual meshing's known limit.
 - Its 3D noise (`GradientNoise.h`): `SampleGradientNoise3D()`, fractal and ridged octaves, their
   batches, and proven bounds of value and slope; `SmoothMinimum.h`, the rounded minimum and
   maximum.
 - Tests: `NyxGradientNoiseTests` (the noise within its bounds, batches the same bits as single
   points, golden values the same in Debug and Release), `NyxSdfTerrainTests` (flat ground exact,
   batches the same bits, golden values, never steeper than the bound, box ranges and rays against
-  dense sampling, a thin slab never passed through, materials, blends, tunnels in their band, seeds).
+  dense sampling, a thin slab never passed through, materials, blends, tunnels in their band, seeds),
+  `NyxFieldMesherTests` (a sphere closed with the right area, a box's corners kept sharp and rounded
+  smooth, thin shapes closed and wound consistently, neighbouring chunks meeting, sky visibility,
+  materials, a golden mesh the same in Debug and Release).
 
 ## Scattering
 

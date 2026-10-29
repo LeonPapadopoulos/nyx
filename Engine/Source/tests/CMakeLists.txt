@@ -102,6 +102,15 @@ add_dependencies(NyxSdfTerrainTests NyxGeneratedReflection)
 set_property(TARGET NyxSdfTerrainTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxSdfTerrainTests COMMAND NyxSdfTerrainTests)
 
+# Dual meshing of a sampled field: a sphere closed with the right area, a box's corners sharp or
+# rounded, thin shapes closed and facing out, neighbouring chunks meeting, sky visibility,
+# materials, the golden mesh. Prints how long a chunk takes to sample and mesh.
+add_executable(NyxFieldMesherTests FieldMesherTests.cpp)
+target_link_libraries(NyxFieldMesherTests PRIVATE NyxEngine)
+add_dependencies(NyxFieldMesherTests NyxGeneratedReflection)
+set_property(TARGET NyxFieldMesherTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxFieldMesherTests COMMAND NyxFieldMesherTests)
+
 # The component type registry: types register once; a second type of a name already taken, such as
 # a game module's type named like one of the engine's, is refused.
 add_executable(NyxComponentTypeRegistryTests ComponentTypeRegistryTests.cpp)

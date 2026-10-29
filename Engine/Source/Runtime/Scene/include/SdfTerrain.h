@@ -1,5 +1,6 @@
 #pragma once
 
+#include "FieldMesher.h"
 #include "SdfTerrainComponent.h"
 
 #include <glm/glm.hpp>
@@ -44,6 +45,10 @@ namespace Nyx
 	// SampleTerrain() point by point, in batches of noise eight at a time where the processor can
 	void SampleTerrainBatch(const SdfTerrainComponent& terrain, const float* x, const float* y, const float* z, size_t count, float* outValues,
 		uint32_t* outMaterials = nullptr);
+
+	// The terrain on a grid of `size` samples `cellSize` apart from `origin` (FieldGrid), values and
+	// materials, in one batch: what a mesh of it is made from (MakeFieldMesh())
+	FieldGrid SampleTerrainGrid(const SdfTerrainComponent& terrain, const glm::vec3& origin, float cellSize, const glm::ivec3& size);
 
 	// The most the value can change a metre, in any direction; 0 for a terrain with no layers
 	float GetTerrainMaxSlope(const SdfTerrainComponent& terrain);

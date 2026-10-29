@@ -392,6 +392,37 @@ namespace Nyx
 		return SampleTerrain(terrain, point).Value;
 	}
 
+	FieldGrid SampleTerrainGrid(const SdfTerrainComponent& terrain, const glm::vec3& origin, float cellSize, const glm::ivec3& size)
+	{
+		FieldGrid grid;
+		grid.Size = glm::max(size, glm::ivec3(0));
+		grid.Origin = origin;
+		grid.CellSize = cellSize;
+		const size_t count = size_t(grid.Size.x) * size_t(grid.Size.y) * size_t(grid.Size.z);
+		std::vector<float> x(count);
+		std::vector<float> y(count);
+		std::vector<float> z(count);
+		for (int k = 0; k < grid.Size.z; ++k)
+		{
+			for (int j = 0; j < grid.Size.y; ++j)
+			{
+				for (int i = 0; i < grid.Size.x; ++i)
+				{
+					// From whole numbers of cells, so a sample is at the same place whichever grid
+					// asks for it
+					const size_t index = grid.IndexOf(i, j, k);
+					x[index] = origin.x + float(i) * cellSize;
+					y[index] = origin.y + float(j) * cellSize;
+					z[index] = origin.z + float(k) * cellSize;
+				}
+			}
+		}
+		grid.Values.resize(count);
+		grid.Materials.resize(count);
+		SampleTerrainBatch(terrain, x.data(), y.data(), z.data(), count, grid.Values.data(), grid.Materials.data());
+		return grid;
+	}
+
 	float GetTerrainMaxSlope(const SdfTerrainComponent& terrain)
 	{
 		float slope = 0.0f;
