@@ -1221,6 +1221,10 @@ worked out in a pass of its own, every pixel near a bolt every frame, into a pic
 `nyx::volumetricCloudsAt()` adds, filtered the same way; never carried, so a flash leaves nothing
 behind ([Lightning](lightning.md#step-2-the-clouds-lit-by-it)).
 
+**Cloud modifiers** change the density at every sample: columns cleared, rings thickened, the clouds
+swirled round an axis; each ray going through only the shapes it comes near
+([Lightning](lightning.md#step-4-cloud-modifiers)).
+
 ### What it is drawn over and under
 
 The passes run per view after the high layer's pass, before the scene pass, reading the sky's

@@ -522,6 +522,15 @@ add_dependencies(NyxLightningTests NyxGeneratedReflection)
 set_property(TARGET NyxLightningTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxLightningTests COMMAND NyxLightningTests)
 
+# Cloud modifiers without a GPU: a shape's strength over its life, what a cleared column, a thickened
+# ring and a swirl do at a point as the clouds' shader does it, the nearest a view takes, a world's,
+# a lightning entity's channel, the component saved.
+add_executable(NyxCloudModifierTests CloudModifierTests.cpp)
+target_link_libraries(NyxCloudModifierTests PRIVATE NyxEngine)
+add_dependencies(NyxCloudModifierTests NyxGeneratedReflection)
+set_property(TARGET NyxCloudModifierTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxCloudModifierTests COMMAND NyxCloudModifierTests)
+
 # The world's wind without a GPU: the contract with hand-made states, its height profile and gust
 # fronts crossing the land, turning to new values smoothly and the same whatever the steps, a driver
 # ramping it from calm to a storm on a game world, a game's local air on a grid, the debug view, an

@@ -244,6 +244,17 @@ public struct ViewConstants
     public uint CloudLightningPadding1;
     public float4 CloudLightningColors[4];
     public float4 CloudLightningPoints[16];
+
+    // The cloud modifiers' shapes the volumetric clouds are changed by (CloudModifiers.h,
+    // nyx.volumetricclouds): how many (0: none, and nothing below is set); three for each: its middle
+    // from the camera in the world's x and z, its radius and width (kilometres); its bottom and top
+    // above the world's height 0 (kilometres), its strength, its shape (0 a cleared column, 1 a
+    // thickened ring, 2 a swirl); a swirl's angle at its radius (radians)
+    public uint CloudModifierCount;
+    public uint CloudModifierPadding0;
+    public uint CloudModifierPadding1;
+    public uint CloudModifierPadding2;
+    public float4 CloudModifiers[24];
 }
 [vk::binding(0, 1)] public ConstantBuffer<ViewConstants> View;
 

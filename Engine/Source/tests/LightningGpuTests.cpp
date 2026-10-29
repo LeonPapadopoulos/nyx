@@ -14,7 +14,10 @@
 //     are the same to the bit; once it goes, the very next frame is the picture without it to the
 //     bit, marching one pixel of each 4 x 4 a frame (nothing carried); with it, a still picture in
 //     4 x 4 is the one every pixel marched gives, to the bit; the bolt's top hidden in the cloud;
-//     the clouds' lightning pass's GPU time at 1920 x 1080, beside the march's in each mode.
+//     the clouds' lightning pass's GPU time at 1920 x 1080, beside the march's in each mode;
+//   - a cloud modifier's cleared column takes the clouds away where it is (the picture there near the
+//     clear sky's), its thickened ring adds cloud, its swirl turns them further as time goes on, while
+//     without one a later time is the same picture; a column's channel parts them; their GPU cost.
 //
 // --look renders a column and a strike framed as the references are (Lightning-Look-*), to compare
 // side by side. --clouds renders the clouds' tests alone and saves their pictures.
@@ -32,6 +35,7 @@
 #include "LightningComponent.h"
 #include "Log.h"
 #include "MeshRendererComponent.h"
+#include "CloudModifierComponent.h"
 #include "TransformComponent.h"
 #include "VolumetricCloudsComponent.h"
 #include "VulkanRenderer.h"
@@ -602,6 +606,8 @@ namespace
 			column.SideArcRate = 0.0f;
 			column.StrayBoltRate = 0.0f;
 			column.Width = 3.0f;
+			// Its light alone: its channel in the clouds is TestCloudModifiers()'s
+			column.bChannel = false;
 			World.Add<LightningComponent>(Bolt, column);
 
 			Clock.SetPaused(true);
@@ -699,6 +705,144 @@ namespace
 		scene.Clouds().Update = EVolumetricCloudsUpdate::EveryPixel;
 		const RgbaImage every = Draw(gpu, view, 3);
 		Require(DifferentPixels(blocks, every) == 0, "Lit by a bolt, the clouds in 4 x 4 differ from every pixel marched in " + std::to_string(DifferentPixels(blocks, every)) + " pixels");
+		EndCloudyView(gpu, scene, view);
+	}
+
+	// The mean of the differences of every channel of the pixels in a square round `pixel`
+	float MeanDifference(const RgbaImage& a, const RgbaImage& b, const glm::ivec2& pixel, int reach)
+	{
+		float sum = 0.0f;
+		int count = 0;
+		for (int y = std::max(pixel.y - reach, 0); y <= std::min(pixel.y + reach, static_cast<int>(a.Height) - 1); ++y)
+		{
+			for (int x = std::max(pixel.x - reach, 0); x <= std::min(pixel.x + reach, static_cast<int>(a.Width) - 1); ++x)
+			{
+				const size_t offset = (static_cast<size_t>(y) * a.Width + x) * 4;
+				for (int channel = 0; channel < 3; ++channel)
+				{
+					sum += std::abs(float(a.Pixels[offset + channel]) - float(b.Pixels[offset + channel]));
+				}
+				++count;
+			}
+		}
+		return sum / static_cast<float>(std::max(count, 1) * 3);
+	}
+
+	// A cloud modifier on its own: a cleared column, a thickened ring, a swirl; then a column's channel
+	void TestCloudModifiers(SceneRenderer& gpu)
+	{
+		CloudyScene scene;
+		scene.Lightning().bEnabled = false;
+		// The camera looking up at the band over a point 1.5 km ahead
+		scene.World.Get<TransformComponent>(scene.Camera).Rotation = glm::angleAxis(glm::radians(25.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+		scene.Clouds().Update = EVolumetricCloudsUpdate::EveryPixel;
+		scene.Clouds().Coverage = 0.95f;
+		uint64_t view = MakeCloudyView(gpu, scene);
+		const glm::vec3 over(0.0f, 0.0f, -1500.0f);
+		const glm::ivec2 middle = scene.Pixel(glm::vec3(0.0f, 700.0f, -1500.0f));
+		const RgbaImage cloudy = Draw(gpu, view, 3);
+		scene.Clouds().bClouds = false;
+		const RgbaImage clear = Draw(gpu, view, 3);
+		scene.Clouds().bClouds = true;
+		SaveIfAsked(cloudy, "ModifierNone");
+
+		// A cleared column over it, as wide as the stretch of the ray in the band: the clouds there gone,
+		// near the clear sky
+		const Entity entity = scene.World.CreateEntity();
+		scene.World.Add<TransformComponent>(entity, Placed(over));
+		CloudModifierComponent modifier;
+		CloudModifier column;
+		column.Shape = ECloudModifierShape::ClearColumn;
+		column.Radius = 1500.0f;
+		column.Width = 200.0f;
+		column.Strength = 1.0f;
+		column.FadeIn = 0.0f;
+		modifier.Shapes = { column };
+		scene.World.Add<CloudModifierComponent>(entity, modifier);
+		const RgbaImage cleared = Draw(gpu, view, 3);
+		SaveIfAsked(cleared, "ModifierColumn");
+		const float before = MeanDifference(cloudy, clear, middle, 5);
+		const float after = MeanDifference(cleared, clear, middle, 5);
+		std::cout << "Over a cleared column, the picture differs from the clear sky by " << after << " (by " << before << " without it)\n";
+		Require(before > 10.0f && after < before * 0.25f, "A cleared column doesn't take the clouds away");
+		Require(BrightnessAt(cleared, glm::ivec2(3, ViewHeight - 3)) == BrightnessAt(cloudy, glm::ivec2(3, ViewHeight - 3)), "A cleared column changes what is far from it");
+
+		// A thickened ring round it, with thinner clouds: more cloud where the ring is
+		scene.Clouds().Coverage = 0.45f;
+		const RgbaImage thin = Draw(gpu, view, 3);
+		CloudModifier ring = column;
+		ring.Shape = ECloudModifierShape::ThickenRing;
+		ring.Radius = 1.0f;
+		ring.Width = 900.0f;
+		ring.Strength = 3.0f;
+		scene.World.Get<CloudModifierComponent>(entity).Shapes = { ring };
+		const RgbaImage thick = Draw(gpu, view, 3);
+		SaveIfAsked(thick, "ModifierRing");
+		Require(MeanDifference(thick, clear, middle, 5) > MeanDifference(thin, clear, middle, 5) + 5.0f, "A thickened ring adds no cloud");
+
+		// A swirl: a later time another picture; without one, the same (no wind)
+		scene.Clouds().Coverage = 0.6f;
+		scene.World.Get<CloudModifierComponent>(entity).bEnabled = false;
+		const RgbaImage still = Draw(gpu, view, 3);
+		scene.Clock = FixedStepClock{};
+		scene.Clock.SetPaused(true);
+		scene.Clock.SetStepSeconds(40.0);
+		scene.Clock.StepOnce();
+		Require(scene.Clock.Advance(0.0) == 1, "The test's clock can't be set");
+		Require(DifferentPixels(still, Draw(gpu, view, 3)) == 0, "Without a modifier or a wind, a later time changes the clouds");
+		CloudModifier swirl = column;
+		swirl.Shape = ECloudModifierShape::Swirl;
+		swirl.Radius = 800.0f;
+		swirl.Strength = 3.0f;
+		scene.World.Get<CloudModifierComponent>(entity).Shapes = { swirl };
+		scene.World.Get<CloudModifierComponent>(entity).bEnabled = true;
+		const RgbaImage turnedLater = Draw(gpu, view, 3);
+		SaveIfAsked(turnedLater, "ModifierSwirl");
+		Require(DifferentPixels(turnedLater, still) > 1000, "A swirl doesn't turn the clouds");
+
+		// A column's channel parts them where it comes out of them
+		scene.World.Get<CloudModifierComponent>(entity).bEnabled = false;
+		scene.World.Get<TransformComponent>(scene.Bolt).Position = over;
+		scene.Lightning().bEnabled = true;
+		scene.Lightning().bCloudLight = false;
+		scene.Lightning().Brightness = 0.0f;
+		scene.Lightning().bChannel = true;
+		scene.Lightning().ChannelRadius = 1400.0f;
+		scene.Lightning().ChannelClear = 1.0f;
+		scene.Lightning().ChannelSwirl = 0.0f;
+		const RgbaImage parted = Draw(gpu, view, 3);
+		SaveIfAsked(parted, "Channel");
+		Require(MeanDifference(parted, clear, middle, 5) < MeanDifference(still, clear, middle, 5) * 0.5f, "A column's channel doesn't part the clouds");
+
+		// Their cost at 1920 x 1080, marching every pixel: the march with the channel's shapes over it,
+		// with as many shapes as a view takes far off (each sample going through them all, changing
+		// nothing), and without
+		EndCloudyView(gpu, scene, view);
+		view = MakeCloudyView(gpu, scene, 1920, 1080);
+		const auto median = [&]()
+		{
+			std::vector<float> times;
+			for (int frame = 0; frame < 30; ++frame)
+			{
+				gpu.DrawFrames(1);
+				times.push_back(gpu.Renderer.GetSceneViewGpuTimes(view)->VolumetricClouds);
+			}
+			std::sort(times.begin(), times.end());
+			return times[times.size() / 2];
+		};
+		const float withChannel = median();
+		scene.Lightning().bEnabled = false;
+		CloudModifierComponent& distant = scene.World.Get<CloudModifierComponent>(entity);
+		distant.bEnabled = true;
+		CloudModifier faraway = column;
+		faraway.Radius = 100.0f;
+		distant.Shapes.assign(MaxCloudModifiers, faraway);
+		scene.World.Get<TransformComponent>(entity).Position = glm::vec3(50000.0f, 0.0f, 0.0f);
+		const float withFar = median();
+		distant.bEnabled = false;
+		const float without = median();
+		std::cout << "  marching every pixel at 1920 x 1080: " << without << " ms without shapes, " << withFar << " ms with " << MaxCloudModifiers
+				  << " far off, changing nothing, " << withChannel << " ms with a channel's two over them (more cloud in its ring)\n";
 		EndCloudyView(gpu, scene, view);
 	}
 
@@ -810,6 +954,11 @@ int main(int argc, char** argv)
 			TestCloudLightningTime(gpu);
 			return 0;
 		}
+		if (argc > 1 && std::strcmp(argv[1], "--modifiers") == 0)
+		{
+			TestCloudModifiers(gpu);
+			return 0;
+		}
 		TestUnchangedWithout(gpu);
 		TestBolt(gpu);
 		TestLights(gpu);
@@ -818,6 +967,7 @@ int main(int argc, char** argv)
 		TestGpuTime(gpu);
 		TestCloudsLit(gpu);
 		TestCloudLightningTime(gpu);
+		TestCloudModifiers(gpu);
 	}
 	catch (const std::exception& error)
 	{

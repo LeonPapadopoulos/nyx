@@ -136,6 +136,10 @@ namespace nyx
         public uint Curl;
         public uint Weather;
         public uint Transmittance;
+        // How many cloud modifiers' shapes change them (ViewConstants.CloudModifiers), and which of
+        // them a ray's samples can come near (a bit each; volumetricCloudModifierMask())
+        public uint Modifiers;
+        public uint ModifierMask;
     }
 
     // What the clouds along the view's rays are made from, by its set
@@ -175,6 +179,8 @@ namespace nyx
         p.Curl = View.VolumetricCloudCurl.Index;
         p.Weather = View.VolumetricCloudWeather.Index;
         p.Transmittance = View.TransmittanceLut.Index;
+        p.Modifiers = View.CloudModifierCount;
+        p.ModifierMask = p.Modifiers >= 32u ? 0xffffffffu : (1u << p.Modifiers) - 1u;
         return p;
     }
 
@@ -280,14 +286,126 @@ namespace nyx
         return result;
     }
 
+    // What the cloud modifiers' shapes do at a point `xz` kilometres from the camera over the ground
+    // and `height` up (GetCloudModifierEffect() in CloudModifiers.h, in metres there): what the
+    // coverage and the density are multiplied by (the cleared columns'), what is added to the coverage
+    // (the thickened rings'; the density times 1 + it), and where the shapes are looked up instead
+    // (the swirls')
+    public struct CloudModifierEffect
+    {
+        public float Keep;
+        public float Add;
+        public float2 Lookup;
+    }
+
+    // How far from its middle a shape changes the clouds at all, in kilometres: a column to its soft
+    // edge, a ring three times its half width past its radius, a swirl (which fades as 1 / the
+    // distance squared) eight times its radius
+    float cloudModifierReach(float4 place, float4 shape)
+    {
+        const uint kind = uint(shape.w + 0.5);
+        const float edge = max(place.w * 0.5, 1e-6);
+        return kind == 0u ? place.z + edge : (kind == 1u ? place.z + 3.0 * edge : place.z * 8.0);
+    }
+
+    // Which of the shapes the samples of a ray `direction` from `enter` to `exit` (kilometres) can come
+    // near, theirs towards the sun included (as far as twice the light's reach): a bit for each whose
+    // reach the ray's stretch over the ground passes within that of. The density samples go through
+    // those alone, so shapes far from a pixel cost it one test each, not one at every sample.
+    public uint volumetricCloudModifierMask(VolumetricCloudParams p, float3 direction, float enter, float exit)
+    {
+        uint mask = 0u;
+        const float margin = 2.0 * min((p.Band.y - p.Band.x) * VolumetricCloudLightReach, VolumetricCloudMostLightReach) + 0.05;
+        const float2 from = direction.xz * enter;
+        const float2 along = direction.xz * (exit - enter);
+        const float alongSquared = max(dot(along, along), 1e-12);
+        for (uint index = 0; index < p.Modifiers && index < 32u; ++index)
+        {
+            const float4 place = View.CloudModifiers[index * 3];
+            const float4 shape = View.CloudModifiers[index * 3 + 1];
+            const float part = saturate(dot(place.xy - from, along) / alongSquared);
+            const float2 nearest = from + along * part;
+            const float reach = cloudModifierReach(place, shape) + margin;
+            if (dot(place.xy - nearest, place.xy - nearest) < reach * reach)
+            {
+                mask |= 1u << index;
+            }
+        }
+        return mask;
+    }
+
+    public CloudModifierEffect cloudModifiersAt(VolumetricCloudParams p, float2 xz, float height)
+    {
+        CloudModifierEffect effect;
+        effect.Keep = 1.0;
+        effect.Add = 0.0;
+        effect.Lookup = xz;
+        uint mask = p.ModifierMask;
+        while (mask != 0u)
+        {
+            const uint index = firstbitlow(mask);
+            mask &= mask - 1u;
+            const float4 place = View.CloudModifiers[index * 3];
+            const float4 shape = View.CloudModifiers[index * 3 + 1];
+            const float radius = place.z;
+            const float edge = max(place.w * 0.5, 1e-6);
+            const float2 offset = effect.Lookup - place.xy;
+            const float distance = length(offset);
+            const uint kind = uint(shape.w + 0.5);
+            // Beyond a column's edge, or three times a ring's half width from its middle, nothing
+            if ((kind == 0u && distance >= radius + edge) || (kind == 1u && abs(distance - radius) >= 3.0 * edge))
+            {
+                continue;
+            }
+            // Soft at its top and bottom over half its width
+            const float vertical = saturate((height - shape.x) / edge) * saturate((shape.y - height) / edge);
+            if (vertical <= 0.0)
+            {
+                continue;
+            }
+            if (kind == 0u)
+            {
+                effect.Keep *= 1.0 - shape.z * vertical * (1.0 - smoothstep(radius - edge, radius + edge, distance));
+            }
+            else if (kind == 1u)
+            {
+                const float across = (distance - radius) / edge;
+                effect.Add += shape.z * vertical * exp(-across * across);
+            }
+            else
+            {
+                // Turned as much as its angle within the radius, less as 1 / the distance squared
+                // beyond; looked up turned back, so the clouds show turned forwards
+                const float ratio = distance > radius ? radius / distance : 1.0;
+                const float angle = -View.CloudModifiers[index * 3 + 2].x * vertical * ratio * ratio;
+                float sine;
+                float cosine;
+                sincos(angle, sine, cosine);
+                effect.Lookup = place.xy + float2(offset.x * cosine - offset.y * sine, offset.x * sine + offset.y * cosine);
+            }
+        }
+        return effect;
+    }
+
     // The clouds' density at a point `xz` kilometres from the camera over the ground and `height`
     // up, 0 or more (times the band's extinction a kilometre): the shapes' noise, parted into cells
     // by Cellularity, rounded by the type's height and thresholded by the coverage; with `bDetail`,
     // worn away at its edges by the details, swirled by curl noise (wisps), wispy at the base and
     // billowy at the top in two sizes (many-lobed tops); thinning out over a fringe as wide as asked.
-    // `shapeLevel` and `detailLevel` the noises' mips for the footprint there.
-    public float volumetricCloudDensity(VolumetricCloudParams p, float2 xz, float height, VolumetricCloudWeather weather, float shapeLevel, float detailLevel, bool bDetail)
+    // `shapeLevel` and `detailLevel` the noises' mips for the footprint there. The cloud modifiers'
+    // shapes change the coverage and the density there, and where the shapes are looked up.
+    public float volumetricCloudDensity(VolumetricCloudParams p, float2 point, float height, VolumetricCloudWeather pointWeather, float shapeLevel, float detailLevel, bool bDetail)
     {
+        VolumetricCloudWeather weather = pointWeather;
+        float2 xz = point;
+        float keep = 1.0;
+        if (p.ModifierMask != 0u)
+        {
+            const CloudModifierEffect effect = cloudModifiersAt(p, point, height);
+            weather.Coverage = saturate(weather.Coverage * effect.Keep + effect.Add * 0.5);
+            keep = effect.Keep * (1.0 + effect.Add);
+            xz = effect.Lookup;
+        }
         const float h = (height - p.Band.x) / (p.Band.y - p.Band.x);
         if (h <= 0.0 || h >= 1.0 || weather.Coverage <= 0.0)
         {
@@ -357,7 +475,7 @@ namespace nyx
         // A fringe: thin at the edges, rising smoothly to its fullest within Edge Softness of the way
         // in, never cut off
         const float softness = p.Erosion.z;
-        return base * (1.0 + softness) / (base + softness) * weather.Density;
+        return base * (1.0 + softness) / (base + softness) * weather.Density * keep;
     }
 
     // The optical depth from a point towards the sun through the clouds: a few samples further and
@@ -546,8 +664,9 @@ namespace nyx
 
     // `direction` normalised; `jitter`, 0 to 1, where in each step its sample is, so the steps don't
     // show as bands
-    public VolumetricCloudsResult volumetricCloudsAlong(VolumetricCloudParams p, float3 direction, float jitter)
+    public VolumetricCloudsResult volumetricCloudsAlong(VolumetricCloudParams rayParams, float3 direction, float jitter)
     {
+        VolumetricCloudParams p = rayParams;
         VolumetricCloudsResult result;
         result.Light = float3(0.0);
         result.Transmittance = 1.0;
@@ -583,6 +702,11 @@ namespace nyx
         const float thickness = p.Band.y - p.Band.x;
         const float length = exit - enter;
         const uint count = clamp(uint(float(p.Steps) * 0.5 * sqrt(length / thickness)), max(p.Steps / 4u, 8u), p.Steps);
+        // The shapes this ray's samples can come near, the rest left out of every sample
+        if (p.Modifiers != 0u)
+        {
+            p.ModifierMask = volumetricCloudModifierMask(p, direction, enter, exit);
+        }
         const bool bNear = enter <= 0.0;
         VolumetricCloudMarch march;
         march.Light = float3(0.0);
@@ -740,8 +864,9 @@ namespace nyx
     // as much as it hides; through the clouds before that stretch (their shapes,
     // VolumetricCloudLightningBefore samples) and faded into the air between as the clouds' own light
     // is. `jitter`, 0 to 1, where in each coarse step its probe is.
-    public float3 volumetricCloudsLightningAlong(VolumetricCloudParams p, float3 direction, float jitter)
+    public float3 volumetricCloudsLightningAlong(VolumetricCloudParams rayParams, float3 direction, float jitter)
     {
+        VolumetricCloudParams p = rayParams;
         if (View.CloudLightningCount == 0u)
         {
             return float3(0.0);
@@ -753,6 +878,10 @@ namespace nyx
         if (exit <= enter)
         {
             return float3(0.0);
+        }
+        if (p.Modifiers != 0u)
+        {
+            p.ModifierMask = volumetricCloudModifierMask(p, direction, band.x, exit);
         }
 
         // What of its light gets back through the clouds before

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CloudModifiers.h"
 #include "Entity.h"
 #include "LightningComponent.h"
 #include "PointLights.h"
@@ -95,6 +96,27 @@ namespace Nyx
 
 	// The bolt on at the world's time `time`, if any: a division and a hash, however late
 	LightningEvent FindLightningEvent(const LightningComponent& lightning, float time);
+
+	// Where slot `slot`'s strike lands (within Strike Radius of `position`) and starts (Height up,
+	// moved by Top Spread), from its seed and slot alone
+	struct LightningPlace
+	{
+		glm::vec3 Ground{ 0.0f };
+		glm::vec3 Top{ 0.0f };
+	};
+	LightningPlace GetLightningStrikePlace(const LightningComponent& lightning, const glm::vec3& position, uint32_t slot);
+
+	// The shapes a lightning entity at `position` changes the volumetric clouds by at the world's time
+	// `time` (Channel), appended to `outModifiers`: for each strike that started within Channel Linger
+	// (each column standing, or ended within it), a cleared column of Channel Radius round where it
+	// starts (a column's axis) and a thickened ring twice as far out, opening over Channel Open and
+	// closing over the second half of the linger; round a column a swirl too (Channel Swirl). None
+	// with Channel off, or the lightning off
+	void AddLightningChannelModifiers(const LightningComponent& lightning, const glm::vec3& position, float time, Entity entity, std::vector<RenderCloudModifier>& outModifiers);
+
+	// The world's lightning entities' channels at its time, appended to `outModifiers`, each placed
+	// where its entity is drawn
+	void ExtractLightningChannels(const Registry& world, float time, std::optional<float> interpolation, std::vector<RenderCloudModifier>& outModifiers);
 
 	// A strike's flashes: when each comes down (seconds from the strike's start; the first when the
 	// leader reaches the ground) and how bright it is at its peak (1 for the first), and when its

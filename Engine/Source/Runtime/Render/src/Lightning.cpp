@@ -244,6 +244,11 @@ namespace Nyx
 		clamped.CloudLightColor = glm::max(lightning.CloudLightColor, glm::vec3(0.0f));
 		clamped.CloudLightIntensity = std::max(lightning.CloudLightIntensity, 0.0f);
 		clamped.CloudLightReach = std::clamp(lightning.CloudLightReach, 1.0f, 20000.0f);
+		clamped.ChannelRadius = std::max(lightning.ChannelRadius, 0.0f);
+		clamped.ChannelClear = Saturate(lightning.ChannelClear);
+		clamped.ChannelPileUp = std::clamp(lightning.ChannelPileUp, 0.0f, 4.0f);
+		clamped.ChannelOpen = std::max(lightning.ChannelOpen, 0.0f);
+		clamped.ChannelLinger = std::clamp(lightning.ChannelLinger, 0.0f, 600.0f);
 		return clamped;
 	}
 
@@ -351,6 +356,15 @@ namespace Nyx
 		event.Age = age;
 		event.Length = length;
 		return event;
+	}
+
+	LightningPlace GetLightningStrikePlace(const LightningComponent& lightning, const glm::vec3& position, uint32_t slot)
+	{
+		LightningRandom place(HashLightning(HashLightning(lightning.Seed, slot), 0x9au));
+		LightningPlace result;
+		result.Ground = position + InDisc(place, lightning.StrikeRadius);
+		result.Top = result.Ground + glm::vec3(0.0f, lightning.Height, 0.0f) + InDisc(place, lightning.TopSpread);
+		return result;
 	}
 
 	LightningStrokes MakeLightningStrokes(const LightningComponent& lightning, uint32_t seed, float leaderTime, float fadeTime)
@@ -760,12 +774,12 @@ namespace Nyx
 			return;
 		}
 		const uint32_t seed = HashLightning(lightning.Seed, event.Slot);
-		LightningRandom place(HashLightning(seed, 0x9au));
 
 		if (lightning.Mode == ELightningMode::Strike)
 		{
-			frame.Ground = position + InDisc(place, lightning.StrikeRadius);
-			frame.Top = frame.Ground + glm::vec3(0.0f, lightning.Height, 0.0f) + InDisc(place, lightning.TopSpread);
+			const LightningPlace place = GetLightningStrikePlace(lightning, position, event.Slot);
+			frame.Ground = place.Ground;
+			frame.Top = place.Top;
 			frame.Brightness = AddStrike(lightning, frame.Top, frame.Ground, seed, event.Age, lightning.LeaderTime, lightning.FadeTime, 1.0f, frame.Shape, &frame.Channel);
 		}
 		else
@@ -1165,5 +1179,88 @@ namespace Nyx
 		rect.X1 = std::clamp(static_cast<int32_t>(std::ceil(maxX)) + 1, 0, whole.X1);
 		rect.Y1 = std::clamp(static_cast<int32_t>(std::ceil(maxY)) + 1, 0, whole.Y1);
 		return rect;
+	}
+
+
+	void AddLightningChannelModifiers(const LightningComponent& component, const glm::vec3& position, float time, Entity entity, std::vector<RenderCloudModifier>& outModifiers)
+	{
+		const LightningComponent lightning = GetClampedLightning(component);
+		if (!lightning.bEnabled || !lightning.bChannel || lightning.ChannelRadius <= 0.0f)
+		{
+			return;
+		}
+		const double since = static_cast<double>(time) - static_cast<double>(lightning.StartTime);
+		if (since < 0.0)
+		{
+			return;
+		}
+		// The slots whose bolt may still part the clouds: their bolt and the linger after it
+		const float standing = lightning.Mode == ELightningMode::Sustained ? GetLightningLength(lightning) : 0.0f;
+		uint32_t last = 0;
+		uint32_t first = 0;
+		if (lightning.bRepeat)
+		{
+			last = static_cast<uint32_t>(std::min(std::floor(since / static_cast<double>(lightning.Interval)), 4.0e9));
+			const double back = std::ceil(static_cast<double>(lightning.ChannelLinger + std::min(standing, lightning.Interval)) / static_cast<double>(lightning.Interval)) + 1.0;
+			first = last > back ? last - static_cast<uint32_t>(back) : 0;
+		}
+		for (uint32_t slot = first; slot <= last; ++slot)
+		{
+			const float start = GetLightningStart(lightning, slot);
+			const float elapsed = time - start;
+			const float lifetime = standing + lightning.ChannelLinger;
+			if (elapsed < 0.0f || elapsed >= lifetime)
+			{
+				continue;
+			}
+			const float open = lightning.ChannelOpen > 0.0f ? Saturate(elapsed / lightning.ChannelOpen) : 1.0f;
+			const float closing = std::isinf(lifetime) || lightning.ChannelLinger <= 0.0f ? 1.0f : Saturate((lifetime - elapsed) / (0.5f * lightning.ChannelLinger));
+			const float fade = open * closing;
+			if (fade <= 0.0f)
+			{
+				continue;
+			}
+			const glm::vec3 top = lightning.Mode == ELightningMode::Strike ? GetLightningStrikePlace(lightning, position, slot).Top : position;
+			RenderCloudModifier modifier;
+			modifier.SourceEntity = entity;
+			modifier.Center = glm::vec2(top.x, top.z);
+			modifier.Height = top.y;
+			modifier.Bottom = -1.0e6f;
+			modifier.Top = 1.0e6f;
+			const float radius = lightning.ChannelRadius;
+			if (lightning.ChannelClear > 0.0f)
+			{
+				modifier.Shape = ECloudModifierShape::ClearColumn;
+				modifier.Radius = radius;
+				modifier.Width = std::max(radius * 0.8f, 1.0f);
+				modifier.Strength = lightning.ChannelClear * fade;
+				outModifiers.push_back(modifier);
+			}
+			if (lightning.ChannelPileUp > 0.0f)
+			{
+				modifier.Shape = ECloudModifierShape::ThickenRing;
+				modifier.Radius = radius * 2.0f;
+				modifier.Width = std::max(radius * 1.5f, 1.0f);
+				modifier.Strength = lightning.ChannelPileUp * fade;
+				outModifiers.push_back(modifier);
+			}
+			if (lightning.Mode == ELightningMode::Sustained && lightning.ChannelSwirl != 0.0f)
+			{
+				modifier.Shape = ECloudModifierShape::Swirl;
+				modifier.Radius = radius * 2.5f;
+				modifier.Width = std::max(radius * 1.5f, 1.0f);
+				modifier.Strength = fade;
+				modifier.Angle = lightning.ChannelSwirl * glm::two_pi<float>() / 60.0f * elapsed * fade;
+				outModifiers.push_back(modifier);
+			}
+		}
+	}
+
+	void ExtractLightningChannels(const Registry& world, float time, std::optional<float> interpolation, std::vector<RenderCloudModifier>& outModifiers)
+	{
+		world.Each<LightningComponent>([&](Entity entity, const LightningComponent& lightning)
+			{
+				AddLightningChannelModifiers(lightning, GetDrawnTransform(world, entity, interpolation).Position, time, entity, outModifiers);
+			});
 	}
 }

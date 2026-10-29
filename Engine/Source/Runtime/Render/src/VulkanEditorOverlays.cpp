@@ -274,6 +274,27 @@ namespace Nyx
 					OverlayDrawing.Box(emitter.Bounds.Min, emitter.Bounds.Max, outlineColor);
 				}
 			}
+			// A selected cloud modifier's shapes: a circle of each one's radius (and a ring's width round
+			// it) at its bottom, or its entity's height for one over the whole band
+			for (const RenderCloudModifier& modifier : world.CloudModifiers)
+			{
+				if (modifier.SourceEntity != *SelectedEntity)
+				{
+					continue;
+				}
+				const float height = modifier.Bottom > -1.0e5f ? modifier.Bottom : modifier.Height;
+				const glm::vec3 middle(modifier.Center.x, height, modifier.Center.y);
+				constexpr int Segments = 64;
+				for (const float radius : { modifier.Radius, modifier.Shape == ECloudModifierShape::ThickenRing ? modifier.Radius + modifier.Width * 0.5f : -1.0f })
+				{
+					for (int segment = 0; radius > 0.0f && segment < Segments; ++segment)
+					{
+						const float a0 = glm::two_pi<float>() * static_cast<float>(segment) / Segments;
+						const float a1 = glm::two_pi<float>() * static_cast<float>(segment + 1) / Segments;
+						OverlayDrawing.Line(middle + glm::vec3(std::cos(a0), 0.0f, std::sin(a0)) * radius, middle + glm::vec3(std::cos(a1), 0.0f, std::sin(a1)) * radius, outlineColor);
+					}
+				}
+			}
 			// A selected lightning entity's reach: where its strikes land (a column's radius) as a
 			// circle on its ground, and a line up to where they start
 			for (const RenderLightningBolt& bolt : world.Lightning)

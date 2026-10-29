@@ -1038,6 +1038,27 @@ bit. A *Cloud Layer* can stay above them for thin cirrus.
   in each mode; the test scene; the bright day scene, its sunlit tops near white and its shade blue;
   and again with MSAA), the other GPU tests' pictures unchanged to the bit.
 
+## Cloud modifiers
+
+A *Cloud Modifier* component changes the volumetric clouds round its entity by its *Shapes*, each
+animated by the world's time: a *Clear Column* (a hole through them, *Radius* with a soft edge
+*Width* wide, *Strength* how much thins out), a *Thicken Ring* (denser cloud round the axis, as if
+piled up), a *Swirl* (the clouds turned round the axis, further the longer it goes on, *Strength*
+turns a minute: a vortex). Each between *Bottom* and *Top* (the whole band by default), from *Start
+Time* for *Duration* (0: for ever), fading in and out over *Fade In* and *Fade Out*. A selected one's
+shapes are drawn as circles. Lightning parts the clouds the same way ([Lightning](#lightning)).
+
+- Every sample of the clouds takes them: their shapes, their light and shadow, the lightning's glow.
+  A view takes the 8 nearest; each pixel only those its ray comes near, so shapes elsewhere cost it
+  nothing. Without one the picture is as it was, to the bit.
+- All with undo, saved in scenes and sent to a running game.
+- Tests: `NyxCloudModifierTests` (a shape's strength over its life; a column, a ring and a swirl at
+  a point as the shader does them; heights; the nearest a view takes; a world's; a lightning
+  entity's channel lingering and closing, a column's with its swirl; saved and loaded),
+  `NyxLightningGpuTests` (a cleared column leaving the clear sky, a ring adding cloud, a swirl
+  turning them as time goes on while without one a later time is the same picture, a column's
+  channel parting them; their cost).
+
 ## Colour grading
 
 A *Color Grading* component on any entity grades the picture, in the editor's scene views and in
@@ -1219,6 +1240,10 @@ Sustained). Without one, or off, the picture is as it was, to the bit.
   (CSV `gpu_cloud_lightning_ms`). Its line goes into the cloud before it (*Cloud Hiding*), the
   cloud's glow taking over.
 - Kilometres off, past the camera's far plane, a bolt still shows against the sky.
+- **Its channel**: a bolt parts the volumetric clouds where it comes out of them and piles them up
+  round the hole, a column swirls them too, for *Channel Linger* after (*Channel*, *Channel Radius*,
+  *Channel Clear*, *Channel Pile Up*, *Channel Swirl*, *Channel Open*), by the same shapes as a
+  [Cloud Modifier](#cloud-modifiers)'s.
 - Only for the eye, and worked out from its values and the world's time alone: the same seed and
   time give the same bolt to the bit; in a game it stands still while paused and moves on with
   Step; in the editor it plays as you edit.

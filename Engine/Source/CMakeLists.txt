@@ -88,6 +88,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/PointLightComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ParticleEmitterComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/LightningComponent.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/CloudModifierComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/NameComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/PhysicsComponents.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ConstraintComponent.cpp
@@ -157,6 +158,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/PointLights.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Particles.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Lightning.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/CloudModifiers.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/LocalWind.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/WindDebug.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/DrawnWorldTime.cpp
@@ -308,6 +310,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/PointLightComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ParticleEmitterComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/LightningComponent.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/CloudModifierComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/WindField.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/WindComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/NameComponent.h
@@ -389,6 +392,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/PointLights.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Particles.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Lightning.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/CloudModifiers.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/LocalWind.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/WindDebug.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/DrawnWorldTime.h

@@ -268,11 +268,22 @@ namespace Nyx
 		uint32_t CloudLightningPadding1 = 0;
 		std::array<glm::vec4, MaxLightningCloudLights> CloudLightningColors{};
 		std::array<glm::vec4, MaxLightningCloudLights * LightningCloudLightPoints> CloudLightningPoints{};
+
+		// The cloud modifiers' shapes the volumetric clouds are changed by (CloudModifiers.h,
+		// nyx.volumetricclouds): how many (0: none, and nothing below is set); three for each: its
+		// middle from the camera in the world's x and z, its radius and width (kilometres); its bottom
+		// and top above the world's height 0 (kilometres), its strength, its shape
+		// (ECloudModifierShape); a swirl's angle at its radius (radians)
+		uint32_t CloudModifierCount = 0;
+		uint32_t CloudModifierPadding0 = 0;
+		uint32_t CloudModifierPadding1 = 0;
+		uint32_t CloudModifierPadding2 = 0;
+		std::array<glm::vec4, MaxCloudModifiers * 3> CloudModifiers{};
 	};
 
 	// The view's set (set 1) as nyx/view.slang reads it, in scalar layout; to whole 16 bytes, as
 	// std140 would be too
-	static_assert(sizeof(SceneUBO) == 2096, "SceneUBO must match ViewConstants in nyx/view.slang");
+	static_assert(sizeof(SceneUBO) == 2496, "SceneUBO must match ViewConstants in nyx/view.slang");
 
 	// One draw's push constants, the same for every scene pipeline: ObjectConstants in
 	// nyx/bindless.slang
@@ -409,6 +420,9 @@ namespace Nyx
 		// Its lightning entities at its time, with the bolts on (ExtractLightning()); their lights are
 		// in PointLights after the entities' own
 		std::vector<RenderLightningBolt> Lightning;
+		// The shapes its volumetric clouds are changed by at its time: its cloud modifiers', then its
+		// lightning's channels (each view takes the nearest few)
+		std::vector<RenderCloudModifier> CloudModifiers;
 		// Dense picking IDs: ID i is the entity at i - 1, 0 is nothing
 		std::vector<Nyx::Entity> PickingIdToEntity;
 		// This frame's time of what moves by itself in the world, such as a decal's pulse, in

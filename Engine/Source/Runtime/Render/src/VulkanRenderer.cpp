@@ -1542,6 +1542,10 @@ namespace Nyx
 			// The lightning's bolts at the world's time, their lights after the entities' own (no icons,
 			// not picked), the entities by their icons
 			ExtractLightning(*world->Registry, world->Time, interpolation, world->Lightning, world->PointLights);
+			// The shapes its clouds are changed by: its cloud modifiers', its lightning's channels
+			world->CloudModifiers.clear();
+			ExtractCloudModifiers(*world->Registry, world->Time, world->CloudModifiers);
+			ExtractLightningChannels(*world->Registry, world->Time, interpolation, world->CloudModifiers);
 			for (RenderLightningBolt& bolt : world->Lightning)
 			{
 				world->PickingIdToEntity.push_back(bolt.SourceEntity);
@@ -2942,6 +2946,23 @@ namespace Nyx
 			ubo.VolumetricCloudMotion = glm::vec4(volume.Motion, 0.0f);
 			ubo.VolumetricCloudPreviousSkyViewProjection = volume.PreviousSkyViewProjection;
 			ubo.CloudInverseSkyViewProjection = glm::inverse(ubo.SkyboxViewProj);
+
+			// The shapes that change them, the nearest few, from the camera in kilometres
+			if (world && !world->CloudModifiers.empty())
+			{
+				const glm::dvec3 camera(view.SceneGlobals.CameraWorldPos);
+				std::vector<RenderCloudModifier> modifiers;
+				PickViewCloudModifiers(world->CloudModifiers, glm::vec2(view.SceneGlobals.CameraWorldPos.x, view.SceneGlobals.CameraWorldPos.z), modifiers);
+				ubo.CloudModifierCount = static_cast<uint32_t>(modifiers.size());
+				for (size_t index = 0; index < modifiers.size(); ++index)
+				{
+					const RenderCloudModifier& modifier = modifiers[index];
+					const glm::vec2 center(glm::dvec2(modifier.Center) - glm::dvec2(camera.x, camera.z));
+					ubo.CloudModifiers[index * 3] = glm::vec4(center * 0.001f, modifier.Radius * 0.001f, modifier.Width * 0.001f);
+					ubo.CloudModifiers[index * 3 + 1] = glm::vec4(modifier.Bottom * 0.001f, modifier.Top * 0.001f, modifier.Strength, static_cast<float>(modifier.Shape));
+					ubo.CloudModifiers[index * 3 + 2] = glm::vec4(modifier.Angle, 0.0f, 0.0f, 0.0f);
+				}
+			}
 
 			// The bolts' lines of light in them, from the camera in kilometres
 			if (!volume.Lightning.empty() && volume.LightningSlot != 0)

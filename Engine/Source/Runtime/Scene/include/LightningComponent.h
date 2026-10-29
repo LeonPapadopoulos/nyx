@@ -218,6 +218,27 @@ namespace Nyx
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Cloud Light", DisplayName = "Cloud Light Reach", DragSpeed = 5.0, Tooltip = "How far from the bolt the clouds glow, in metres: none beyond. Shorter is cheaper"))
 		float CloudLightReach = 800.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Channel", DisplayName = "Channel", Tooltip = "Whether a bolt parts the volumetric clouds where it comes out of them and piles them up round it, and a column swirls them, for as long as Channel Linger after"))
+		bool bChannel = true;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Channel", DisplayName = "Channel Radius", DragSpeed = 1.0, Tooltip = "How wide the hole it makes in the clouds is, in metres; the piled up ring is twice as far out"))
+		float ChannelRadius = 120.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Channel", DisplayName = "Channel Clear", DragSpeed = 0.005, Tooltip = "How much of the clouds in the hole thins out, 0 to 1"))
+		float ChannelClear = 0.8f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Channel", DisplayName = "Channel Pile Up", DragSpeed = 0.005, Tooltip = "How much denser the clouds round the hole grow, 0 to 4"))
+		float ChannelPileUp = 0.6f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Channel", DisplayName = "Channel Swirl", DragSpeed = 0.05, Tooltip = "Sustained: how fast the clouds swirl round the column, in turns a minute; 0 none"))
+		float ChannelSwirl = 2.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Channel", DisplayName = "Channel Open", DragSpeed = 0.01, Tooltip = "Over how many seconds the hole opens from a bolt's start"))
+		float ChannelOpen = 0.4f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Channel", DisplayName = "Channel Linger", DragSpeed = 0.1, Tooltip = "How long the hole and the ring stay after a strike, or after a column ends, in seconds, closing over the second half of it"))
+		float ChannelLinger = 6.0f;
 	};
 }
 
