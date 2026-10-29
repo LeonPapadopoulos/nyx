@@ -1239,6 +1239,9 @@ Sustained). Without one, or off, the picture is as it was, to the bit.
   1920 × 1080 for a bolt whose reach covers half the clouds, about 1 ms over a whole dense storm
   (CSV `gpu_cloud_lightning_ms`). Its line goes into the cloud before it (*Cloud Hiding*), the
   cloud's glow taking over.
+- `Assets/Scenes/LightningTest.nyxscene`: gentle hills at dusk under an overcast, a strike somewhere
+  over them every few seconds and a sustained column off to one side, both lighting the clouds from
+  within and parting them ([Lightning](Design/lightning.md#step-4-a-test-scene)).
 - Kilometres off, past the camera's far plane, a bolt still shows against the sky.
 - **Its channel**: a bolt parts the volumetric clouds where it comes out of them and piles them up
   round the hole, a column swirls them too, for *Channel Linger* after (*Channel*, *Channel Radius*,
@@ -1265,7 +1268,8 @@ Sustained). Without one, or off, the picture is as it was, to the bit.
   volumetric clouds, those round a column glowing and those far from it unchanged to the bit, the
   frame after it the picture without it to the bit in 4 x 4, 4 x 4 the same as every pixel marched
   while it shines, the column past the far plane shown below the cloud's base; the clouds' lightning
-  pass's GPU time beside the march's; and again with MSAA).
+  pass's GPU time beside the march's; the test scene loaded, a flash brightening its clouds; and
+  again with MSAA).
 
 ## Anti-aliasing
 

@@ -18,9 +18,11 @@
 //   - a cloud modifier's cleared column takes the clouds away where it is (the picture there near the
 //     clear sky's), its thickened ring adds cloud, its swirl turns them further as time goes on, while
 //     without one a later time is the same picture; a column's channel parts them; their GPU cost.
+//   - the test scene loads, and a strike's flash brightens its clouds.
 //
 // --look renders a column and a strike framed as the references are (Lightning-Look-*), to compare
-// side by side. --clouds renders the clouds' tests alone and saves their pictures.
+// side by side. --clouds and --modifiers render those tests alone and save their pictures.
+// --write-scene writes Assets/Scenes/LightningTest.nyxscene; --scene runs its test alone.
 //
 // NYX_SCENE_TEST_OUTPUT=<folder> saves what was rendered there.
 #include "CameraComponent.h"
@@ -35,7 +37,14 @@
 #include "LightningComponent.h"
 #include "Log.h"
 #include "MeshRendererComponent.h"
+#include "AssetResolver.h"
 #include "CloudModifierComponent.h"
+#include "GroundComponent.h"
+#include "GroundMesh.h"
+#include "GuidComponent.h"
+#include "NameComponent.h"
+#include "Paths.h"
+#include "SceneSerializer.h"
 #include "TransformComponent.h"
 #include "VolumetricCloudsComponent.h"
 #include "VulkanRenderer.h"
@@ -936,13 +945,200 @@ namespace
 	}
 }
 
+namespace
+{
+	constexpr const char* TestScenePath = "Scenes/LightningTest.nyxscene";
+
+	Entity AddEntity(Registry& world, const char* name, uint64_t guid, const TransformComponent& transform)
+	{
+		const Entity entity = world.CreateEntity();
+		world.Add<NameComponent>(entity, NameComponent{ name });
+		world.Add<GuidComponent>(entity, GuidComponent{ EntityGuid{ guid } });
+		world.Add<TransformComponent>(entity, transform);
+		return entity;
+	}
+
+	// Gentle hills at dusk under an overcast of volumetric clouds; a strike somewhere within 300 m of a
+	// point 900 m ahead every few seconds, and a sustained column standing off to the right for four
+	// seconds in every eight, both parting the clouds; the camera on the ground looking at both
+	void WriteTestScene()
+	{
+		Registry world;
+		const Entity hills = AddEntity(world, "Hills", 0xC01004000001ull, Placed(glm::vec3(0.0f)));
+		GroundComponent ground;
+		ground.Size = glm::vec2(6000.0f, 6000.0f);
+		ground.Spacing = 10.0f;
+		ground.Seed = 7;
+		ground.Octaves = 4;
+		ground.Frequency = 0.0018f;
+		ground.Amplitude = 30.0f;
+		ground.Basin = EGroundBasin::None;
+		ground.FlatRadius = 20.0f;
+		ground.FlatBlend = 60.0f;
+		ground.GrassColor = glm::vec3(0.12f, 0.15f, 0.07f);
+		world.Add<GroundComponent>(hills, ground);
+		MeshRendererComponent hillsRenderer;
+		hillsRenderer.Material = AssetReference{ .Type = "Material", .Path = "Materials/VertexColor.nyxmat" };
+		world.Add<MeshRendererComponent>(hills, hillsRenderer);
+		const auto onGround = [&](float x, float z)
+		{
+			return glm::vec3(x, SampleGroundHeight(ground, x, z), z);
+		};
+
+		// On the ground looking ahead, a little up, the strikes left of the middle, the column right
+		const Entity camera = AddEntity(world, "Camera", 0xC01004000002ull,
+			Placed(onGround(0.0f, 0.0f) + glm::vec3(0.0f, 12.0f, 0.0f), glm::vec3(1.0f), glm::angleAxis(glm::radians(12.0f), glm::vec3(1.0f, 0.0f, 0.0f))));
+		CameraComponent lens;
+		lens.FovYDegrees = 60.0f;
+		lens.FarPlane = 10000.0f;
+		world.Add<CameraComponent>(camera, lens);
+
+		// Dusk: the sun just over the horizon, low behind the camera's left
+		const Entity sun = AddEntity(world, "Sun", 0xC01004000003ull, Placed(glm::vec3(0.0f), glm::vec3(1.0f),
+			glm::quatLookAt(-glm::normalize(glm::vec3(-0.5f, std::sin(glm::radians(3.0f)), 0.85f)), glm::vec3(0.0f, 1.0f, 0.0f))));
+		DirectionalLightComponent light;
+		light.Intensity = 1.2f;
+		world.Add<DirectionalLightComponent>(sun, light);
+
+		const Entity air = AddEntity(world, "Environment", 0xC01004000004ull, Placed(glm::vec3(0.0f)));
+		EnvironmentComponent environment;
+		environment.FogDensity = 0.0015f;
+		environment.BloomThreshold = 1.0f;
+		environment.BloomIntensity = 0.5f;
+		world.Add<EnvironmentComponent>(air, environment);
+
+		const Entity band = AddEntity(world, "Clouds", 0xC01004000005ull, Placed(glm::vec3(0.0f)));
+		VolumetricCloudsComponent clouds = MakeVolumetricCloudsPreset(EVolumetricCloudsPreset::Cumulus);
+		clouds.Preset = EVolumetricCloudsPreset::Custom;
+		clouds.AppliedPreset = EVolumetricCloudsPreset::Custom;
+		clouds.BottomAltitude = 500.0f;
+		clouds.TopAltitude = 1800.0f;
+		clouds.Coverage = 0.75f;
+		clouds.Density = 1.2f;
+		clouds.WindSpeed = 3.0f;
+		clouds.Seed = 5;
+		world.Add<VolumetricCloudsComponent>(band, clouds);
+
+		const Entity strikes = AddEntity(world, "Lightning Strikes", 0xC01004000006ull, Placed(onGround(-250.0f, -900.0f)));
+		LightningComponent strike;
+		strike.StartTime = 1.0f;
+		strike.Interval = 4.0f;
+		strike.IntervalJitter = 0.6f;
+		strike.Height = 650.0f;
+		strike.StrikeRadius = 300.0f;
+		strike.TopSpread = 100.0f;
+		strike.LightIntensity = 40000.0f;
+		strike.LightRange = 450.0f;
+		strike.CloudLightReach = 900.0f;
+		strike.ChannelRadius = 110.0f;
+		strike.ChannelLinger = 5.0f;
+		world.Add<LightningComponent>(strikes, strike);
+
+		const Entity column = AddEntity(world, "Lightning Column", 0xC01004000007ull, Placed(onGround(450.0f, -1000.0f)));
+		LightningComponent sustained;
+		sustained.Mode = ELightningMode::Sustained;
+		sustained.StartTime = 2.0f;
+		sustained.Interval = 8.0f;
+		sustained.Duration = 4.0f;
+		sustained.Height = 800.0f;
+		sustained.LightIntensity = 1200.0f;
+		sustained.LightRange = 200.0f;
+		sustained.CloudLightReach = 900.0f;
+		sustained.ChannelRadius = 150.0f;
+		sustained.ChannelSwirl = 3.0f;
+		world.Add<LightningComponent>(column, sustained);
+
+		const std::filesystem::path assets = Paths::GetAssetsDir();
+		Require(SceneSerializer::SaveToFile(world, assets / TestScenePath), "The lightning test scene can't be saved");
+		std::cout << "Wrote " << (assets / TestScenePath).string() << "\n";
+	}
+
+	// The test scene as the game loads it: it loads, and a strike's flash brightens its clouds (the
+	// column held off, so only the strike changes the picture)
+	void TestScene(SceneRenderer& gpu)
+	{
+		Registry world;
+		AssetResolver resolver(gpu.Renderer);
+		ScenePostLoadContext context{};
+		context.AssetResolver = &resolver;
+		Require(SceneSerializer::LoadFromFile(Paths::GetAssetsDir() / TestScenePath, world, context),
+			"The lightning test scene can't be loaded; NyxLightningGpuTests --write-scene writes it");
+		std::optional<Entity> strikes;
+		world.Each<LightningComponent>([&](Entity entity, LightningComponent& lightning)
+			{
+				if (lightning.Mode == ELightningMode::Strike)
+				{
+					strikes = entity;
+				}
+				else
+				{
+					lightning.bEnabled = false;
+				}
+			});
+		Require(strikes.has_value(), "The lightning test scene has no strikes");
+
+		FixedStepClock clock;
+		const auto setTime = [&](double seconds)
+		{
+			clock = FixedStepClock{};
+			clock.SetPaused(true);
+			clock.SetStepSeconds(seconds);
+			clock.StepOnce();
+			clock.Advance(0.0);
+		};
+		setTime(0.0);
+		IEditorRenderer& renderer = gpu.Renderer;
+		renderer.SetWorld(&world);
+		renderer.SetWorldInterpolation(&world, &clock);
+		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewCameraMode(view, EViewportCameraMode::ScenePrimaryCamera);
+		renderer.SetSceneViewSize(view, 640, 360);
+		renderer.SetSceneViewSky(view, ESceneViewSky::Scene, 0.0f);
+		gpu.DrawUntilShadersCompiled();
+
+		const LightningComponent lightning = GetClampedLightning(world.Get<LightningComponent>(*strikes));
+		const double start = GetLightningStart(lightning, 1);
+		setTime(start - 0.5);
+		const RgbaImage quiet = Draw(gpu, view, 20);
+		setTime(start + lightning.LeaderTime + 0.005);
+		const RgbaImage flash = Draw(gpu, view, 20);
+		SaveIfAsked(quiet, "SceneQuiet");
+		SaveIfAsked(flash, "SceneFlash");
+		Require(!gpu.Renderer.GetSceneViewVolumetricClouds(view)->Lightning.empty(), "At a flash the test scene's clouds aren't lit by it");
+		// The sky, the top half of the picture, brighter at the flash
+		float sumFlash = 0.0f;
+		float sumQuiet = 0.0f;
+		for (size_t pixel = 0; pixel < flash.Pixels.size() / 2; pixel += 4)
+		{
+			sumFlash += flash.Pixels[pixel] + flash.Pixels[pixel + 1] + flash.Pixels[pixel + 2];
+			sumQuiet += quiet.Pixels[pixel] + quiet.Pixels[pixel + 1] + quiet.Pixels[pixel + 2];
+		}
+		Require(sumFlash > sumQuiet * 1.1f, "A flash doesn't brighten the test scene's clouds");
+
+		renderer.DestroySceneView(view);
+		renderer.SetWorldInterpolation(&world, nullptr);
+		renderer.SetWorld(nullptr);
+		gpu.DrawFrames(1);
+	}
+}
+
 int main(int argc, char** argv)
 {
 	Nyx::Logger::Get().Init();
 	try
 	{
 		RegisterComponentTypes();
+		if (argc > 1 && std::strcmp(argv[1], "--write-scene") == 0)
+		{
+			WriteTestScene();
+			return 0;
+		}
 		SceneRenderer gpu("NyxLightningGpuTests", MsaaSamplesFromArguments(argc, argv));
+		if (argc > 1 && std::strcmp(argv[1], "--scene") == 0)
+		{
+			TestScene(gpu);
+			return 0;
+		}
 		if (argc > 1 && std::strcmp(argv[1], "--look") == 0)
 		{
 			RenderLook(gpu);
@@ -968,6 +1164,7 @@ int main(int argc, char** argv)
 		TestCloudsLit(gpu);
 		TestCloudLightningTime(gpu);
 		TestCloudModifiers(gpu);
+		TestScene(gpu);
 	}
 	catch (const std::exception& error)
 	{
