@@ -1439,25 +1439,41 @@ decided: by default a valley about 128 by 128 m, nearly flat in the middle, its 
 
 An *SDF Terrain* is terrain as a signed field over a volume rather than a height at each point, so
 it can overhang, hollow out and float. It is drawn in chunks round the camera, in the editor and the
-game, at one level of detail; nothing collides with it yet.
+game, coarser the farther; nothing collides with it yet.
 
 - Add an *SDF Terrain* and a *Mesh Renderer* with `Materials/VertexColor.nyxmat` (its *Mesh* left
-  empty). Its chunks, 32 m cubes of 1 m cells, are made round every scene view's camera in the
-  editor and round the primary camera in the game, within *View Distance*, on the job system's
-  workers, nearest first; chunks the surface doesn't cross (all air or all solid) are never made.
-  The first view of a 128 m terrain takes about a tenth of a second on 19 workers; once made, an
-  update costs about 0.03 ms a frame. They are drawn by the entity's Mesh Renderer, one object
-  each, culled, shadowed and picked as one entity. When a value changes, every chunk is made again,
-  each drawn as it was until its new mesh is in; chunks a chunk past the view distance go. Never
-  saved.
-- *Chunks*: *View Distance*, *Mesher* (*Dual*, with sharp edges for the *Sharp Materials*, or
-  *Marching Cubes*), *Sharp Materials* (material numbers), *Material Colours* (each material
-  number's vertex colour).
-- The editor's details panel shows *Terrain Chunks* in its *Runtime* section: chunks drawn, wanted
-  and being made, skipped, triangles, and the last chunk's times.
+  empty). Its chunks are 32 cells a side: at level of detail 0 cells of 1 m, each level up twice
+  the size (64 m chunks of 2 m cells at level 1, 4 km at level 7). They are chosen round every scene
+  view's camera in the editor and round the primary camera in the game, out to *View Distance*, as
+  an octree: the finest level out to *Level Distance* of its chunks (4: 128 m), each coarser one
+  twice as far; balanced, so chunks that touch, even at a corner, are at most one level apart; a
+  chunk split stays split until the camera is a fifth farther than where it split. The choice is
+  made on a worker; the chunks the surface crosses (not all air or all solid) are meshed on the job
+  system's workers, nearest first, uploaded a few a frame while those drawn stay drawn, then all
+  drawn at once in their place, so the seams always meet their neighbours; then the chunks are
+  chosen again if the camera moved. They are drawn by the entity's Mesh Renderer, one object each,
+  culled, shadowed and picked as one entity. When a value changes, every chunk is made again, those
+  drawn staying until all the new ones are in. Never saved.
+- Seams: next to a coarser chunk, a chunk's samples on the faces, edges and corners it shares with
+  it are the coarser one's, and between them their average, so both meet the same surface there.
+  The dual mesh joins its cells to the coarser chunk's across those faces (triangles where two of
+  its cells are one coarser cell), which it works out itself, the same bits as the coarser chunk
+  does; marching cubes meshes a coarser chunk's cells next to finer ones with the finer samples on
+  their shared faces and edges. Chunks meet without a gap at every seam: the edges well within the
+  view distance all have two triangles.
+- *Chunks*: *View Distance*, *Level Distance*, *Finest Level* (0, or -1 for cells of half a metre
+  nearest the camera, in 16 m chunks), *Near Shadow Levels* (the finest levels cast into every
+  shadow cascade; each coarser one only from one cascade further out, and into the last at least),
+  *Mesher* (*Dual*, with sharp edges for the *Sharp Materials*, or *Marching Cubes*), *Sharp
+  Materials* (material numbers), *Material Colours* (each material number's vertex colour), *Debug
+  View* (*Levels*: a colour for each level; *Seams*: those darker and the triangles joining levels
+  bright).
+- The editor's details panel shows *Terrain Chunks* in its *Runtime* section: chunks drawn, next
+  and being made, by level, those next to another level, skipped, triangles, how many times all
+  were replaced, and the last chunk's and the last choice's times.
 - `Assets/Scenes/SdfTerrainTest.nyxscene` (written by `NyxTerrainChunksTests --write-scene`):
   terraced hills with tunnels under them, a floating landmass of sharp stone with a hanging
-  underside and chambers inside, a sun and a camera that flies.
+  underside and chambers inside, out to 2 km, a sun and a camera that flies.
 
 - *Layers*, evaluated in order, each joined to what the ones before made by *Combine*: *Add* (solid
   where it is), *Carve* (cut out of what came before) or *Intersect*, rounded over *Blend Radius*.
@@ -1488,7 +1504,8 @@ game, at one level of detail; nothing collides with it yet.
   middle. Each vertex has the field's normal, how much of the sky it sees (rays through the field,
   past the grid where the field is given) and its material, in its custom numbers. Chunks side by
   side meet without a gap: each makes the quads of its own edges, from a grid two samples wider
-  before it and one after. Where a cell face has all four edges crossed and both cells join its two
+  before it and one after. With seams (the settings' *Seams*) it meets cells twice or half the size
+  beyond its box of samples too. Where a cell face has all four edges crossed and both cells join its two
   curves, four triangles share an edge: dual meshing's known limit.
 - `MakeMarchingFieldMesh()` makes the same surface by marching cubes, to compare the two: a vertex on
   each crossed grid edge, shared by the cells round it, and in each cell polygons through them, the
@@ -1502,10 +1519,13 @@ game, at one level of detail; nothing collides with it yet.
   points, golden values the same in Debug and Release), `NyxSdfTerrainTests` (flat ground exact,
   batches the same bits, golden values, never steeper than the bound, box ranges and rays against
   dense sampling, a thin slab never passed through, materials, blends, tunnels in their band, seeds),
-  `NyxTerrainChunksTests` (chunks made on the workers the same bits as made directly, only where the
-  surface is, within the view distance, let go of and made anew as the camera moves, made again
-  for new values while the old stay, gone with the terrain; the sample scene),
-  `NyxTerrainChunksGpuTests` (the chunks drawn, picked as the terrain, drawn where it is moved),
+  `NyxTerrainChunksTests` (the octree covering the view distance once, balanced, each level where
+  its distance says, held by the hysteresis; every seam closed with both meshers and half-metre
+  cells; chunks made on the workers the same bits as made directly, only where the surface is,
+  within the view distance, replaced all at once, let go of and made anew as the camera moves, made
+  again for new values while the old stay, gone with the terrain; the sample scene),
+  `NyxTerrainChunksGpuTests` (the chunks drawn at three levels, picked as the terrain, in the debug
+  view's colours, drawn where it is moved),
   `NyxFieldMesherTests` (a sphere closed with the right area, a box's corners kept sharp and rounded
   smooth, thin shapes closed and wound consistently, neighbouring chunks meeting, sky visibility,
   materials, a golden mesh the same in Debug and Release; marching cubes on the same shapes, closed

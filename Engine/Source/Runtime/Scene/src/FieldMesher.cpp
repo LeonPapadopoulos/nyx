@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <memory>
+#include <unordered_map>
 
 // Every operation as written, never fused into a multiply-add: the same mesh on every machine
 #pragma fp_contract(off)
@@ -178,6 +180,8 @@ namespace Nyx
 			glm::vec3 MassLocal{ 0.5f };
 			uint32_t Material = 0;
 			bool bSharp = false;
+			// Its grid: 0 the mesh's own, 1 that of the coarser cells round it (FieldSeams::Coarser)
+			uint8_t Level = 0;
 			// A quad of this mesh joins it, so it goes into the mesh
 			bool bUsed = false;
 			// A sharp vertex's crossings (Mesher::SharpCrossings)
@@ -197,6 +201,8 @@ namespace Nyx
 			float OutsideValue = 0.0f;
 			// The field at Point, once found on it
 			float PointValue = 0.0f;
+			// How far from Point its gradient is taken: a twentieth of its cell
+			float Step = 0.0f;
 		};
 
 		// What is known of a cell once its vertices are made
@@ -384,19 +390,61 @@ namespace Nyx
 			glm::ivec3 CellCounts{ 0 };
 		};
 
+		bool IsGridValid(const FieldGrid& grid)
+		{
+			const size_t samples = size_t(std::max(grid.Size.x, 0)) * size_t(std::max(grid.Size.y, 0)) * size_t(std::max(grid.Size.z, 0));
+			return glm::all(glm::greaterThanEqual(grid.Size, glm::ivec3(2))) && grid.Values.size() == samples &&
+				(grid.Materials.empty() || grid.Materials.size() == samples);
+		}
+
+		// A grid's cells as a mesher has them: the grid, what it reads of it, and each cell's record
+		struct MeshLevel
+		{
+			MeshLevel(const FieldGrid& grid, const FieldMeshSettings& settings) : Grid(grid), View(grid, settings)
+			{
+				Cells.resize(size_t(View.CellCounts.x) * size_t(View.CellCounts.y) * size_t(View.CellCounts.z));
+			}
+
+			size_t CellIndex(const glm::ivec3& cell) const
+			{
+				return size_t(cell.x) + size_t(View.CellCounts.x) * (size_t(cell.y) + size_t(View.CellCounts.y) * size_t(cell.z));
+			}
+
+			const FieldGrid& Grid;
+			GridView View;
+			std::vector<CellRecord> Cells;
+		};
+
+		int FloorHalf(int value)
+		{
+			return value >= 0 ? value / 2 : -((1 - value) / 2);
+		}
+
 		class Mesher
 		{
 		public:
-			Mesher(const FieldGrid& grid, const FieldMeshSettings& settings) : Grid(grid), Settings(settings), View(grid, settings)
+			Mesher(const FieldGrid& grid, const FieldMeshSettings& settings) : Grid(grid), Settings(settings), Fine(grid, settings), View(Fine.View)
 			{
 				CellCounts = glm::max(grid.Size - 1, glm::ivec3(0));
-				Cells.resize(size_t(CellCounts.x) * size_t(CellCounts.y) * size_t(CellCounts.z));
+				bSeams = static_cast<bool>(settings.Seams.CellSizes);
 				for (int axis = 0; axis < 3; ++axis)
 				{
+					if (bSeams)
+					{
+						// The box of samples, with a cell round it for the quads of the edges on its faces
+						QuadMin[axis] = std::clamp(settings.QuadMin[axis], 1, std::max(grid.Size[axis] - 2, 1));
+						QuadMax[axis] = std::clamp(settings.QuadMax[axis], QuadMin[axis], std::max(grid.Size[axis] - 2, 1));
+						continue;
+					}
 					QuadMin[axis] = settings.QuadMin[axis] > 0 ? settings.QuadMin[axis] : 1;
 					QuadMax[axis] = settings.QuadMax[axis] > 0 ? settings.QuadMax[axis] : grid.Size[axis] - 1;
 					QuadMin[axis] = std::max(QuadMin[axis], 1);
 					QuadMax[axis] = std::min(QuadMax[axis], grid.Size[axis] - 1);
+				}
+				if (bSeams && settings.Seams.Coarser != nullptr && IsGridValid(*settings.Seams.Coarser))
+				{
+					Coarse = std::make_unique<MeshLevel>(*settings.Seams.Coarser, settings);
+					CoarseOffset = glm::ivec3(glm::round((settings.Seams.Coarser->Origin - grid.Origin) / grid.CellSize));
 				}
 			}
 
@@ -411,21 +459,33 @@ namespace Nyx
 			}
 
 		private:
+			// Its vertices, in order round it: four, or three where two of its cells were one
 			struct Quad
 			{
 				int32_t V[4];
+				int Count;
 				int Axis;
 				int Sign;
 			};
 
-			size_t CellIndex(const glm::ivec3& cell) const
+			MeshLevel& LevelOf(int level)
 			{
-				return size_t(cell.x) + size_t(CellCounts.x) * (size_t(cell.y) + size_t(CellCounts.y) * size_t(cell.z));
+				return level == 0 ? Fine : *Coarse;
 			}
 
+			const MeshLevel& LevelOf(int level) const
+			{
+				return level == 0 ? Fine : *Coarse;
+			}
+
+			// Where a vertex is in the grid's cells: a coarser one's cell twice the size
 			glm::vec3 GridPosition(const WorkVertex& vertex) const
 			{
-				return glm::vec3(vertex.Cell) + vertex.Local;
+				if (vertex.Level == 0)
+				{
+					return glm::vec3(vertex.Cell) + vertex.Local;
+				}
+				return (glm::vec3(vertex.Cell) + vertex.Local) * 2.0f + glm::vec3(CoarseOffset);
 			}
 
 			bool IsSharp(uint32_t material) const
@@ -433,9 +493,19 @@ namespace Nyx
 				return material < Settings.SharpMaterials.size() && Settings.SharpMaterials[material];
 			}
 
-			// The cells round the grid edge from `from` along `axis`, counter-clockwise about it; false if
-			// one is outside the grid
-			bool GetCellsAround(const glm::ivec3& from, int axis, glm::ivec3 outCells[4], int outEdges[4]) const
+			bool IsCellInBox(const glm::ivec3& cell) const
+			{
+				return glm::all(glm::greaterThanEqual(cell, QuadMin)) && glm::all(glm::lessThan(cell, QuadMax));
+			}
+
+			bool IsOnBoxFace(const glm::ivec3& sample) const
+			{
+				return glm::any(glm::equal(sample, QuadMin)) || glm::any(glm::equal(sample, QuadMax));
+			}
+
+			// The cells round the grid edge from `from` along `axis`, counter-clockwise about it, in a
+			// level's grid; false if one is outside it
+			bool GetCellsAround(const MeshLevel& level, const glm::ivec3& from, int axis, glm::ivec3 outCells[4], int outEdges[4]) const
 			{
 				const int b = (axis + 1) % 3;
 				const int c = (axis + 2) % 3;
@@ -444,7 +514,7 @@ namespace Nyx
 					glm::ivec3 cell = from;
 					cell[b] += Around[n][0] - 1;
 					cell[c] += Around[n][1] - 1;
-					if (!View.IsCellInGrid(cell))
+					if (!level.View.IsCellInGrid(cell))
 					{
 						return false;
 					}
@@ -455,10 +525,21 @@ namespace Nyx
 				return true;
 			}
 
-			// The cell's pieces of surface and their vertices, made the first time they are needed
-			CellRecord& GetCell(const glm::ivec3& cell)
+			// Whether a face of a grid's cell, across `axis` at `sample`, lies where the cells beyond are
+			// twice the size: its curves are then the coarser face's, cut in four, joined as its middle
+			// decides
+			bool IsCoarserFace(const glm::ivec3& sample, int axis) const
 			{
-				CellRecord& record = Cells[CellIndex(cell)];
+				glm::vec3 middle = glm::vec3(sample) + 0.5f;
+				middle[axis] = float(sample[axis]);
+				return Settings.Seams.CellSizes(middle).y > 1.5f;
+			}
+
+			// The cell's pieces of surface and their vertices, made the first time they are needed
+			CellRecord& GetCell(int levelIndex, const glm::ivec3& cell)
+			{
+				MeshLevel& level = LevelOf(levelIndex);
+				CellRecord& record = level.Cells[level.CellIndex(cell)];
 				if (record.bMade)
 				{
 					return record;
@@ -466,12 +547,15 @@ namespace Nyx
 				record.bMade = true;
 				record.EdgePiece.fill(-1);
 
-				const CellValues values = ReadCell(Grid, cell);
+				const CellValues values = ReadCell(level.Grid, cell);
 				bool bInside[8] = {};
 				for (int corner = 0; corner < 8; ++corner)
 				{
 					bInside[corner] = IsInside(values.Corner[corner]);
 				}
+				// A cell of this grid not well inside the box may have faces on coarser cells
+				const bool bNearSeams = bSeams && levelIndex == 0 &&
+					!(glm::all(glm::greaterThan(cell, QuadMin)) && glm::all(glm::lessThan(cell, QuadMax - 1)));
 
 				// Crossed edges joined into pieces through the faces: a face with two crossed edges
 				// joins them; one with four joins each pair round a corner its middle cuts off
@@ -480,8 +564,9 @@ namespace Nyx
 				{
 					parents[edge] = edge;
 				}
-				for (const CellFace& face : Faces)
+				for (int faceIndex = 0; faceIndex < 6; ++faceIndex)
 				{
+					const CellFace& face = Faces[faceIndex];
 					int crossed[4] = {};
 					int count = 0;
 					for (int k = 0; k < 4; ++k)
@@ -497,8 +582,23 @@ namespace Nyx
 					}
 					else if (count == 4)
 					{
-						const float middle = values.Corner[face.Corners[0]] + values.Corner[face.Corners[1]] + values.Corner[face.Corners[2]] +
+						float middle = values.Corner[face.Corners[0]] + values.Corner[face.Corners[1]] + values.Corner[face.Corners[2]] +
 							values.Corner[face.Corners[3]];
+						const int axis = faceIndex / 2;
+						glm::ivec3 sample = cell;
+						sample[axis] += faceIndex % 2;
+						if (bNearSeams && IsCoarserFace(sample, axis))
+						{
+							// A quarter of a coarser face: its middle is the corner with odd indices
+							for (int k = 0; k < 4; ++k)
+							{
+								const glm::ivec3 at = cell + CornerOffset(face.Corners[k]);
+								if ((at[(axis + 1) % 3] & 1) != 0 && (at[(axis + 2) % 3] & 1) != 0)
+								{
+									middle = values.Corner[face.Corners[k]];
+								}
+							}
+						}
 						// Inside corners joined across the face: the outside ones are cut off, else
 						// the inside ones
 						const bool bCutOutside = IsInside(middle);
@@ -532,7 +632,7 @@ namespace Nyx
 				{
 					return record;
 				}
-				if (pieces > 1)
+				if (pieces > 1 && levelIndex == 0)
 				{
 					++SplitCells;
 				}
@@ -540,13 +640,14 @@ namespace Nyx
 				record.FirstVertex = static_cast<int32_t>(Vertices.size());
 				for (int piece = 0; piece < pieces; ++piece)
 				{
-					Vertices.push_back(MakeVertex(cell, values, bInside, record, piece));
+					Vertices.push_back(MakeVertex(levelIndex, cell, values, bInside, record, piece));
 				}
 				return record;
 			}
 
-			WorkVertex MakeVertex(const glm::ivec3& cell, const CellValues& values, const bool bInside[8], const CellRecord& record, int piece)
+			WorkVertex MakeVertex(int levelIndex, const glm::ivec3& cell, const CellValues& values, const bool bInside[8], const CellRecord& record, int piece)
 			{
+				const MeshLevel& level = LevelOf(levelIndex);
 				glm::vec3 crossings[EdgeCount];
 				glm::vec3 gradients[EdgeCount];
 				Crossing ends[EdgeCount];
@@ -565,18 +666,18 @@ namespace Nyx
 					glm::vec3 point = glm::vec3(CornerOffset(cellEdge.From));
 					point[cellEdge.Axis] = t;
 					crossings[count] = point;
-					const glm::vec3 fromGradient = SampleGradient(Grid, cell + CornerOffset(cellEdge.From));
-					const glm::vec3 toGradient = SampleGradient(Grid, cell + CornerOffset(cellEdge.To));
+					const glm::vec3 fromGradient = SampleGradient(level.Grid, cell + CornerOffset(cellEdge.From));
+					const glm::vec3 toGradient = SampleGradient(level.Grid, cell + CornerOffset(cellEdge.To));
 					gradients[count] = fromGradient + (toGradient - fromGradient) * t;
 
 					const int insideCorner = bInside[cellEdge.From] ? cellEdge.From : cellEdge.To;
 					const int outsideCorner = bInside[cellEdge.From] ? cellEdge.To : cellEdge.From;
-					ends[count].Inside = View.CellCorner(cell + CornerOffset(insideCorner));
-					ends[count].Outside = View.CellCorner(cell + CornerOffset(outsideCorner));
+					ends[count].Inside = level.View.CellCorner(cell + CornerOffset(insideCorner));
+					ends[count].Outside = level.View.CellCorner(cell + CornerOffset(outsideCorner));
 					ends[count].InsideValue = values.Corner[insideCorner];
 					ends[count].OutsideValue = values.Corner[outsideCorner];
 					const glm::ivec3 at = cell + CornerOffset(insideCorner);
-					materials[count] = Grid.GetMaterial(at.x, at.y, at.z);
+					materials[count] = level.Grid.GetMaterial(at.x, at.y, at.z);
 					++count;
 				}
 
@@ -606,6 +707,7 @@ namespace Nyx
 
 				WorkVertex vertex;
 				vertex.Cell = cell;
+				vertex.Level = static_cast<uint8_t>(levelIndex);
 				vertex.Material = material;
 				vertex.MassLocal = mass;
 				vertex.Local = mass;
@@ -617,28 +719,170 @@ namespace Nyx
 					for (int k = 0; k < count; ++k)
 					{
 						Crossing crossing = ends[k];
-						crossing.Point = View.CellCorner(cell) + crossings[k] * Grid.CellSize;
+						crossing.Point = level.View.CellCorner(cell) + crossings[k] * level.Grid.CellSize;
 						crossing.Gradient = gradients[k];
+						crossing.Step = 0.05f * level.Grid.CellSize;
 						SharpCrossings.push_back(crossing);
 					}
 				}
 				return vertex;
 			}
 
+			// The piece of a coarser cell that the crossing of a finer edge on its face belongs to: that
+			// of the coarser edge it is half of, or, for one across the face's middle, that of the
+			// coarser edge its curve over the face, cut in four, reaches; -1 if none
+			int GetCoarsePiece(const CellRecord& record, const glm::ivec3& coarseCell, const glm::ivec3& from, int axis) const
+			{
+				const glm::ivec3 relative = from - CoarseOffset;
+				const int b = (axis + 1) % 3;
+				const int c = (axis + 2) % 3;
+				const bool bOddB = (relative[b] & 1) != 0;
+				const bool bOddC = (relative[c] & 1) != 0;
+				if (!bOddB && !bOddC)
+				{
+					glm::ivec3 start;
+					start[axis] = FloorHalf(relative[axis]);
+					start[b] = relative[b] / 2;
+					start[c] = relative[c] / 2;
+					const glm::ivec3 corner = start - coarseCell;
+					if (corner[axis] != 0 || glm::any(glm::lessThan(corner, glm::ivec3(0))) || glm::any(glm::greaterThan(corner, glm::ivec3(1))))
+					{
+						return -1;
+					}
+					const int bits = corner.x | (corner.y << 1) | (corner.z << 2);
+					return record.EdgePiece[EdgeBetween(bits, bits | (1 << axis))];
+				}
+				if (bOddB && bOddC)
+				{
+					return -1;
+				}
+
+				// Across the face whose normal is `normal`, in the cell's middle along `across`
+				const int across = bOddB ? b : c;
+				const int normal = bOddB ? c : b;
+				const int side = relative[normal] / 2 - coarseCell[normal];
+				if (side < 0 || side > 1)
+				{
+					return -1;
+				}
+				// The face's samples as the finer grid has them, [along axis][along across]
+				float v[3][3];
+				glm::ivec3 base;
+				base[axis] = coarseCell[axis] * 2 + CoarseOffset[axis];
+				base[across] = coarseCell[across] * 2 + CoarseOffset[across];
+				base[normal] = from[normal];
+				for (int i = 0; i < 3; ++i)
+				{
+					for (int j = 0; j < 3; ++j)
+					{
+						glm::ivec3 at = base;
+						at[axis] += i;
+						at[across] += j;
+						if (glm::any(glm::lessThan(at, glm::ivec3(0))) || glm::any(glm::greaterThanEqual(at, Grid.Size)))
+						{
+							return -1;
+						}
+						v[i][j] = Grid.GetValue(at.x, at.y, at.z);
+					}
+				}
+				// Its twelve finer edges: along `axis` (i, j) as i * 3 + j, along `across` (i, j) as 6 + i * 2 + j
+				std::array<int, 12> parents{};
+				for (int n = 0; n < 12; ++n)
+				{
+					parents[n] = n;
+				}
+				auto findRoot = [&](int n)
+				{
+					while (parents[n] != n)
+					{
+						parents[n] = parents[parents[n]];
+						n = parents[n];
+					}
+					return n;
+				};
+				auto join = [&](int p, int q)
+				{
+					const int rootP = findRoot(p);
+					const int rootQ = findRoot(q);
+					if (rootP != rootQ)
+					{
+						parents[std::max(rootP, rootQ)] = std::min(rootP, rootQ);
+					}
+				};
+				for (int i = 0; i < 2; ++i)
+				{
+					for (int j = 0; j < 2; ++j)
+					{
+						const float corners[4] = { v[i][j], v[i + 1][j], v[i + 1][j + 1], v[i][j + 1] };
+						const int edges[4] = { i * 3 + j, 6 + (i + 1) * 2 + j, i * 3 + j + 1, 6 + i * 2 + j };
+						int crossed[4] = {};
+						int count = 0;
+						for (int k = 0; k < 4; ++k)
+						{
+							if (IsInside(corners[k]) != IsInside(corners[(k + 1) % 4]))
+							{
+								crossed[count++] = edges[k];
+							}
+						}
+						if (count == 2)
+						{
+							join(crossed[0], crossed[1]);
+						}
+						else if (count == 4)
+						{
+							const bool bCutOutside = IsInside(v[1][1]);
+							for (int k = 0; k < 4; ++k)
+							{
+								if (IsInside(corners[k]) != bCutOutside)
+								{
+									join(edges[(k + 3) % 4], edges[k]);
+								}
+							}
+						}
+					}
+				}
+				const int root = findRoot((from[axis] - base[axis]) * 3 + 1);
+				// The coarser edges round the face, as finer edges on them
+				for (int n = 0; n < 12; ++n)
+				{
+					const bool bAlongAxis = n < 6;
+					const int i = bAlongAxis ? n / 3 : (n - 6) / 2;
+					const int j = bAlongAxis ? n % 3 : (n - 6) % 2;
+					if ((bAlongAxis ? j : i) == 1 || findRoot(n) != root)
+					{
+						continue;
+					}
+					const bool bCrossed = bAlongAxis ? IsInside(v[i][j]) != IsInside(v[i + 1][j]) : IsInside(v[i][j]) != IsInside(v[i][j + 1]);
+					if (!bCrossed)
+					{
+						continue;
+					}
+					const int bits = (side << normal) | ((bAlongAxis ? 0 : i / 2) << axis) | ((bAlongAxis ? j / 2 : 0) << across);
+					const int piece = record.EdgePiece[EdgeBetween(bits, bits | (1 << (bAlongAxis ? axis : across)))];
+					if (piece >= 0)
+					{
+						return piece;
+					}
+				}
+				return -1;
+			}
+
 			void MakeQuads()
 			{
+				// With seams, the edges of the box of samples, those on its faces as the seams say
+				const glm::ivec3 last = bSeams ? QuadMax : QuadMax - 1;
 				for (int axis = 0; axis < 3; ++axis)
 				{
-					for (int k = QuadMin.z; k < QuadMax.z; ++k)
+					for (int k = QuadMin.z; k <= last.z; ++k)
 					{
-						for (int j = QuadMin.y; j < QuadMax.y; ++j)
+						for (int j = QuadMin.y; j <= last.y; ++j)
 						{
-							for (int i = QuadMin.x; i < QuadMax.x; ++i)
+							for (int i = QuadMin.x; i <= last.x; ++i)
 							{
 								const glm::ivec3 from(i, j, k);
 								glm::ivec3 to = from;
 								to[axis] += 1;
-								if (to[axis] > Grid.Size[axis] - 1)
+								if (to[axis] > (bSeams ? QuadMax[axis] : Grid.Size[axis] - 1))
 								{
 									continue;
 								}
@@ -648,29 +892,67 @@ namespace Nyx
 								{
 									continue;
 								}
+								if (bSeams && (IsOnBoxFace(from) || IsOnBoxFace(to)) && Settings.Seams.MakesEdge && !Settings.Seams.MakesEdge(from, axis))
+								{
+									continue;
+								}
 
 								glm::ivec3 cells[4];
 								int edges[4];
-								if (!GetCellsAround(from, axis, cells, edges))
+								if (!GetCellsAround(Fine, from, axis, cells, edges))
 								{
 									continue;
 								}
 								int32_t quad[4] = {};
-								for (int n = 0; n < 4; ++n)
+								bool bComplete = true;
+								for (int n = 0; n < 4 && bComplete; ++n)
 								{
-									const CellRecord& record = GetCell(cells[n]);
+									// Beyond the box where the cells are twice the size: the coarser cell
+									if (bSeams && !IsCellInBox(cells[n]) && Settings.Seams.CellSizes(glm::vec3(cells[n]) + 0.5f).y > 1.5f)
+									{
+										const glm::ivec3 coarseCell(FloorHalf(cells[n].x - CoarseOffset.x), FloorHalf(cells[n].y - CoarseOffset.y),
+											FloorHalf(cells[n].z - CoarseOffset.z));
+										if (!Coarse || !Coarse->View.IsCellInGrid(coarseCell))
+										{
+											bComplete = false;
+											break;
+										}
+										const CellRecord& record = GetCell(1, coarseCell);
+										const int piece = GetCoarsePiece(record, coarseCell, from, axis);
+										bComplete = piece >= 0 && record.FirstVertex >= 0;
+										quad[n] = bComplete ? record.FirstVertex + piece : 0;
+										continue;
+									}
+									const CellRecord& record = GetCell(0, cells[n]);
 									quad[n] = record.FirstVertex + record.EdgePiece[edges[n]];
+								}
+								if (!bComplete)
+								{
+									continue;
 								}
 								// Facing out: towards the outside end of the edge
 								if (!bFromInside)
 								{
 									std::swap(quad[1], quad[3]);
 								}
-								for (const int32_t index : quad)
+								// Two of its cells one coarser cell: a triangle
+								Quad made{ {}, 0, axis, bFromInside ? 1 : -1 };
+								for (int n = 0; n < 4; ++n)
 								{
-									Vertices[index].bUsed = true;
+									if (quad[n] != quad[(n + 1) % 4])
+									{
+										made.V[made.Count++] = quad[n];
+									}
 								}
-								Quads.push_back({ { quad[0], quad[1], quad[2], quad[3] }, axis, bFromInside ? 1 : -1 });
+								if (made.Count < 3)
+								{
+									continue;
+								}
+								for (int n = 0; n < made.Count; ++n)
+								{
+									Vertices[made.V[n]].bUsed = true;
+								}
+								Quads.push_back(made);
 							}
 						}
 					}
@@ -688,21 +970,22 @@ namespace Nyx
 					{
 						continue;
 					}
+					const int levelIndex = Vertices[v].Level;
 					const glm::ivec3 cell = Vertices[v].Cell;
-					const CellRecord& record = Cells[CellIndex(cell)];
+					const std::array<int8_t, EdgeCount> pieces = LevelOf(levelIndex).Cells[LevelOf(levelIndex).CellIndex(cell)].EdgePiece;
 					for (int edge = 0; edge < EdgeCount; ++edge)
 					{
-						if (record.EdgePiece[edge] < 0)
+						if (pieces[edge] < 0)
 						{
 							continue;
 						}
 						glm::ivec3 cells[4];
 						int edges[4];
-						if (GetCellsAround(cell + CornerOffset(Edges[edge].From), Edges[edge].Axis, cells, edges))
+						if (GetCellsAround(LevelOf(levelIndex), cell + CornerOffset(Edges[edge].From), Edges[edge].Axis, cells, edges))
 						{
 							for (const glm::ivec3& around : cells)
 							{
-								GetCell(around);
+								GetCell(levelIndex, around);
 							}
 						}
 					}
@@ -757,7 +1040,6 @@ namespace Nyx
 				if (Settings.Field)
 				{
 					RefineCrossings();
-					const float step = 0.05f * Grid.CellSize;
 					std::vector<glm::vec3> points;
 					points.reserve(SharpCrossings.size() * 3);
 					for (const Crossing& crossing : SharpCrossings)
@@ -765,7 +1047,7 @@ namespace Nyx
 						for (int axis = 0; axis < 3; ++axis)
 						{
 							glm::vec3 point = crossing.Point;
-							point[axis] += step;
+							point[axis] += crossing.Step;
 							points.push_back(point);
 						}
 					}
@@ -785,7 +1067,8 @@ namespace Nyx
 					{
 						continue;
 					}
-					const glm::vec3 corner = View.CellCorner(vertex.Cell);
+					const MeshLevel& level = LevelOf(vertex.Level);
+					const glm::vec3 corner = level.View.CellCorner(vertex.Cell);
 					const glm::vec3 mass = vertex.MassLocal;
 					float a[6] = {};
 					glm::vec3 b(0.0f);
@@ -798,7 +1081,7 @@ namespace Nyx
 							continue;
 						}
 						const glm::vec3 n = crossing.Gradient / length;
-						const glm::vec3 local = (crossing.Point - corner) / Grid.CellSize;
+						const glm::vec3 local = (crossing.Point - corner) / level.Grid.CellSize;
 						a[0] += n.x * n.x;
 						a[1] += n.x * n.y;
 						a[2] += n.x * n.z;
@@ -816,8 +1099,8 @@ namespace Nyx
 			}
 
 			// A sharp vertex whose quads would face the wrong way goes back to its middle. Judged from its
-			// own cell and its neighbours alone (they at their middles), so both chunks that have a cell
-			// decide the same for it.
+			// own cell and its neighbours alone (they at their middles), in its own grid, so every mesh
+			// that has a cell decides the same for it.
 			void UnfoldShared(FieldMeshStats& stats)
 			{
 				for (size_t v = 0; v < Vertices.size(); ++v)
@@ -827,7 +1110,8 @@ namespace Nyx
 					{
 						continue;
 					}
-					const CellRecord& own = Cells[CellIndex(vertex.Cell)];
+					const MeshLevel& level = LevelOf(vertex.Level);
+					const CellRecord& own = level.Cells[level.CellIndex(vertex.Cell)];
 					const int piece = static_cast<int>(v) - own.FirstVertex;
 					bool bFolds = false;
 					for (int edge = 0; edge < EdgeCount && !bFolds; ++edge)
@@ -840,7 +1124,7 @@ namespace Nyx
 						const int axis = Edges[edge].Axis;
 						glm::ivec3 cells[4];
 						int edges[4];
-						if (!GetCellsAround(from, axis, cells, edges))
+						if (!GetCellsAround(level, from, axis, cells, edges))
 						{
 							continue;
 						}
@@ -852,11 +1136,11 @@ namespace Nyx
 								corners[n] = vertex.Local;
 								continue;
 							}
-							const CellRecord& record = Cells[CellIndex(cells[n])];
+							const CellRecord& record = level.Cells[level.CellIndex(cells[n])];
 							const WorkVertex& other = Vertices[record.FirstVertex + record.EdgePiece[edges[n]]];
 							corners[n] = glm::vec3(cells[n] - vertex.Cell) + other.MassLocal;
 						}
-						const bool bFromInside = IsInside(Grid.GetValue(from.x, from.y, from.z));
+						const bool bFromInside = IsInside(level.Grid.GetValue(from.x, from.y, from.z));
 						if (!bFromInside)
 						{
 							std::swap(corners[1], corners[3]);
@@ -873,16 +1157,45 @@ namespace Nyx
 				}
 			}
 
-			// Whether no other chunk has the cell: its quads, and the cells they join, are all this mesh's
-			bool IsPrivateCell(const glm::ivec3& cell) const
+			// Whether no other mesh has the cell: its quads, and the cells they join, are all this mesh's
+			bool IsPrivateCell(const WorkVertex& vertex) const
 			{
-				return glm::all(glm::greaterThanEqual(cell, QuadMin)) && glm::all(glm::lessThan(cell, QuadMax - 1));
+				const glm::ivec3& cell = vertex.Cell;
+				if (vertex.Level != 0)
+				{
+					return false;
+				}
+				if (!bSeams)
+				{
+					return glm::all(glm::greaterThanEqual(cell, QuadMin)) && glm::all(glm::lessThan(cell, QuadMax - 1));
+				}
+				// Every one of its twelve edges made here
+				if (!IsCellInBox(cell))
+				{
+					return false;
+				}
+				for (const CellEdge& edge : Edges)
+				{
+					const glm::ivec3 from = cell + CornerOffset(edge.From);
+					glm::ivec3 to = from;
+					to[edge.Axis] += 1;
+					if ((IsOnBoxFace(from) || IsOnBoxFace(to)) && Settings.Seams.MakesEdge && !Settings.Seams.MakesEdge(from, edge.Axis))
+					{
+						return false;
+					}
+				}
+				return true;
 			}
 
-			// The quad's two triangles: split along the diagonal whose triangles both face out, or along
-			// the shorter one if both or neither do
-			void Triangulate(const Quad& quad, int32_t outTriangles[2][3]) const
+			// The quad's triangles: a triangle as it is; a quad split along the diagonal whose triangles
+			// both face out, or along the shorter one if both or neither do
+			int Triangulate(const Quad& quad, int32_t outTriangles[2][3]) const
 			{
+				if (quad.Count == 3)
+				{
+					std::copy(quad.V, quad.V + 3, outTriangles[0]);
+					return 1;
+				}
 				const glm::vec3 p0 = GridPosition(Vertices[quad.V[0]]);
 				const glm::vec3 p1 = GridPosition(Vertices[quad.V[1]]);
 				const glm::vec3 p2 = GridPosition(Vertices[quad.V[2]]);
@@ -902,13 +1215,19 @@ namespace Nyx
 					const int32_t triangles[2][3] = { { quad.V[0], quad.V[1], quad.V[3] }, { quad.V[1], quad.V[2], quad.V[3] } };
 					std::copy(&triangles[0][0], &triangles[0][0] + 6, &outTriangles[0][0]);
 				}
+				return 2;
 			}
 
-			// The quad's two triangles for the mesh: split along the diagonal whose triangles agree best
-			// with the field's normals at their corners (the worst of the two, as a cosine), the
-			// shorter one on a tie
-			void TriangulateByNormals(const Quad& quad, const std::vector<uint32_t>& remap, const std::vector<glm::vec3>& normals, int32_t outTriangles[2][3]) const
+			// The quad's triangles for the mesh: a triangle as it is; a quad split along the diagonal
+			// whose triangles agree best with the field's normals at their corners (the worst of the
+			// two, as a cosine), the shorter one on a tie
+			int TriangulateByNormals(const Quad& quad, const std::vector<uint32_t>& remap, const std::vector<glm::vec3>& normals, int32_t outTriangles[2][3]) const
 			{
+				if (quad.Count == 3)
+				{
+					std::copy(quad.V, quad.V + 3, outTriangles[0]);
+					return 1;
+				}
 				auto agreement = [&](int32_t a, int32_t b, int32_t c)
 				{
 					const glm::vec3 pa = GridPosition(Vertices[a]);
@@ -925,9 +1244,10 @@ namespace Nyx
 				const bool bFirst = first != second ? first > second : glm::dot(d02, d02) <= glm::dot(d13, d13);
 				const int32_t triangles[2][2][3] = { { { v[0], v[1], v[2] }, { v[0], v[2], v[3] } }, { { v[0], v[1], v[3] }, { v[1], v[2], v[3] } } };
 				std::copy(&triangles[bFirst ? 0 : 1][0][0], &triangles[bFirst ? 0 : 1][0][0] + 6, &outTriangles[0][0]);
+				return 2;
 			}
 
-			// Then, as the triangles really are: a sharp vertex of a cell no other chunk has whose
+			// Then, as the triangles really are: a sharp vertex of a cell no other mesh has whose
 			// triangles face the wrong way goes back to its middle, until none does
 			void UnfoldPrivate(FieldMeshStats& stats)
 			{
@@ -937,18 +1257,19 @@ namespace Nyx
 					for (const Quad& quad : Quads)
 					{
 						int32_t triangles[2][3];
-						Triangulate(quad, triangles);
-						for (const auto& triangle : triangles)
+						const int count = Triangulate(quad, triangles);
+						for (int t = 0; t < count; ++t)
 						{
+							const int32_t* triangle = triangles[t];
 							if (FacesAlong(GridPosition(Vertices[triangle[0]]), GridPosition(Vertices[triangle[1]]), GridPosition(Vertices[triangle[2]]),
 									quad.Axis, quad.Sign))
 							{
 								continue;
 							}
-							for (const int32_t index : triangle)
+							for (int n = 0; n < 3; ++n)
 							{
-								WorkVertex& vertex = Vertices[index];
-								if (vertex.bSharp && vertex.Local != vertex.MassLocal && IsPrivateCell(vertex.Cell))
+								WorkVertex& vertex = Vertices[triangle[n]];
+								if (vertex.bSharp && vertex.Local != vertex.MassLocal && IsPrivateCell(vertex))
 								{
 									vertex.Local = vertex.MassLocal;
 									++stats.UnfoldedVertices;
@@ -965,12 +1286,12 @@ namespace Nyx
 			}
 
 			// The corners' gradients blended trilinearly at a point of the cell
-			glm::vec3 BlendGradients(const glm::ivec3& cell, const glm::vec3& local) const
+			static glm::vec3 BlendGradients(const FieldGrid& grid, const glm::ivec3& cell, const glm::vec3& local)
 			{
 				glm::vec3 corners[8];
 				for (int corner = 0; corner < 8; ++corner)
 				{
-					corners[corner] = SampleGradient(Grid, cell + CornerOffset(corner));
+					corners[corner] = SampleGradient(grid, cell + CornerOffset(corner));
 				}
 				const glm::vec3 x0 = corners[0] + (corners[1] - corners[0]) * local.x;
 				const glm::vec3 x1 = corners[2] + (corners[3] - corners[2]) * local.x;
@@ -999,31 +1320,48 @@ namespace Nyx
 				for (size_t u = 0; u < used.size(); ++u)
 				{
 					const WorkVertex& vertex = Vertices[used[u]];
-					const glm::vec3 gradient = BlendGradients(vertex.Cell, vertex.Local);
+					const glm::vec3 gradient = BlendGradients(LevelOf(vertex.Level).Grid, vertex.Cell, vertex.Local);
 					const float length = glm::length(gradient);
 					normals[u] = length > 0.0f ? gradient / length : glm::vec3(0.0f, 1.0f, 0.0f);
 				}
-				std::vector<glm::ivec3> cells(used.size());
-				std::vector<glm::vec3> locals(used.size());
-				for (size_t u = 0; u < used.size(); ++u)
+				// Each grid's vertices' sky through that grid
+				std::vector<float> sky(used.size(), 1.0f);
+				for (int levelIndex = 0; levelIndex < (Coarse ? 2 : 1); ++levelIndex)
 				{
-					cells[u] = Vertices[used[u]].Cell;
-					locals[u] = Vertices[used[u]].Local;
+					std::vector<size_t> ofLevel;
+					std::vector<glm::ivec3> cells;
+					std::vector<glm::vec3> locals;
+					std::vector<glm::vec3> levelNormals;
+					for (size_t u = 0; u < used.size(); ++u)
+					{
+						if (Vertices[used[u]].Level == levelIndex)
+						{
+							ofLevel.push_back(u);
+							cells.push_back(Vertices[used[u]].Cell);
+							locals.push_back(Vertices[used[u]].Local);
+							levelNormals.push_back(normals[u]);
+						}
+					}
+					std::vector<float> levelSky;
+					LevelOf(levelIndex).View.ComputeSkyVisibility(cells, locals, levelNormals, levelSky);
+					for (size_t n = 0; n < ofLevel.size(); ++n)
+					{
+						sky[ofLevel[n]] = levelSky[n];
+					}
 				}
-				std::vector<float> sky;
-				View.ComputeSkyVisibility(cells, locals, normals, sky);
 
 				MeshData mesh;
 				mesh.Vertices.resize(used.size());
 				for (size_t u = 0; u < used.size(); ++u)
 				{
 					const WorkVertex& work = Vertices[used[u]];
+					const MeshLevel& level = LevelOf(work.Level);
 					Vertex& vertex = mesh.Vertices[u];
-					vertex.Position = View.CellCorner(work.Cell) + work.Local * Grid.CellSize;
+					vertex.Position = level.View.CellCorner(work.Cell) + work.Local * level.Grid.CellSize;
 					vertex.Normal = normals[u];
 					const glm::vec3 side = std::fabs(normals[u].z) < 0.9f ? glm::vec3(0.0f, 0.0f, 1.0f) : glm::vec3(1.0f, 0.0f, 0.0f);
 					vertex.Tangent = glm::vec4(glm::normalize(glm::cross(side, normals[u])), 1.0f);
-					vertex.Custom = glm::vec4(sky[u], float(work.Material), work.bSharp ? 1.0f : 0.0f, 0.0f);
+					vertex.Custom = glm::vec4(sky[u], float(work.Material), work.bSharp ? 1.0f : 0.0f, work.Level != 0 ? 1.0f : 0.0f);
 					stats.SharpVertices += work.bSharp ? 1u : 0u;
 				}
 
@@ -1031,9 +1369,15 @@ namespace Nyx
 				for (const Quad& quad : Quads)
 				{
 					int32_t triangles[2][3];
-					TriangulateByNormals(quad, remap, normals, triangles);
-					for (const auto& triangle : triangles)
+					const int count = TriangulateByNormals(quad, remap, normals, triangles);
+					bool bSeam = false;
+					for (int n = 0; n < quad.Count; ++n)
 					{
+						bSeam = bSeam || Vertices[quad.V[n]].Level != 0;
+					}
+					for (int t = 0; t < count; ++t)
+					{
+						const int32_t* triangle = triangles[t];
 						// Against the field's own normals at its corners: what would show as a triangle
 						// turned inside out
 						const glm::vec3 a = GridPosition(Vertices[triangle[0]]);
@@ -1043,9 +1387,10 @@ namespace Nyx
 						{
 							++stats.BackFacingTriangles;
 						}
-						for (const int32_t index : triangle)
+						stats.SeamTriangles += bSeam ? 1u : 0u;
+						for (int n = 0; n < 3; ++n)
 						{
-							mesh.Indices.push_back(remap[index]);
+							mesh.Indices.push_back(remap[triangle[n]]);
 						}
 					}
 				}
@@ -1058,11 +1403,16 @@ namespace Nyx
 
 			const FieldGrid& Grid;
 			const FieldMeshSettings& Settings;
-			GridView View;
+			MeshLevel Fine;
+			// Where coarser cells are, theirs (FieldSeams::Coarser), their samples' indices less
+			// CoarseOffset twice the grid's
+			std::unique_ptr<MeshLevel> Coarse;
+			glm::ivec3 CoarseOffset{ 0 };
+			const GridView& View;
 			glm::ivec3 CellCounts{ 0 };
+			bool bSeams = false;
 			glm::ivec3 QuadMin{ 1 };
 			glm::ivec3 QuadMax{ 1 };
-			std::vector<CellRecord> Cells;
 			std::vector<WorkVertex> Vertices;
 			std::vector<Crossing> SharpCrossings;
 			std::vector<Quad> Quads;
@@ -1082,6 +1432,7 @@ namespace Nyx
 					CellMin[axis] = std::max(settings.QuadMin[axis] > 0 ? settings.QuadMin[axis] : 0, 0);
 					CellMax[axis] = std::min(settings.QuadMax[axis] > 0 ? settings.QuadMax[axis] : View.CellCounts[axis], View.CellCounts[axis]);
 				}
+				bSeams = static_cast<bool>(settings.Seams.CellSizes);
 				EdgeVertices.assign(grid.Values.size() * 3, -1);
 			}
 
@@ -1108,7 +1459,35 @@ namespace Nyx
 				glm::vec3 Local{ 0.0f };
 				glm::vec3 Normal{ 0.0f, 1.0f, 0.0f };
 				uint32_t Material = 0;
+				// On an edge of finer cells, made where this mesh's cells meet them: where it is, worked
+				// out as the finer mesh does (Cell and Local only near it)
+				bool bExact = false;
+				glm::vec3 Exact{ 0.0f };
+				// On a face or edge shared with cells of another size: its normal from the field, this
+				// far either side, as the other mesh has it
+				bool bSeam = false;
+				float NormalStep = 0.0f;
 			};
+
+			// Whether a sample is on a face of the box of samples [CellMin, CellMax]
+			bool IsOnBoxFace(const glm::ivec3& sample) const
+			{
+				return glm::any(glm::equal(sample, CellMin)) || glm::any(glm::equal(sample, CellMax));
+			}
+
+			static glm::vec3 FaceMiddle(const glm::ivec3& sample, int axis)
+			{
+				glm::vec3 middle = glm::vec3(sample) + 0.5f;
+				middle[axis] = float(sample[axis]);
+				return middle;
+			}
+
+			static glm::vec3 EdgeMiddle(const glm::ivec3& from, int axis)
+			{
+				glm::vec3 middle(from);
+				middle[axis] += 0.5f;
+				return middle;
+			}
 
 			// The vertex on the grid edge from `from` along `axis`, made the first time a cell needs it
 			int32_t GetEdgeVertex(const glm::ivec3& from, int axis)
@@ -1136,45 +1515,44 @@ namespace Nyx
 				vertex.Normal = length > 0.0f ? gradient / length : glm::vec3(0.0f, 1.0f, 0.0f);
 				const glm::ivec3 inside = IsInside(fromValue) ? from : to;
 				vertex.Material = Grid.GetMaterial(inside.x, inside.y, inside.z);
+				// An edge on a face shared with coarser cells: theirs cut in two, as they have it
+				if (bSeams && (IsOnBoxFace(from) || IsOnBoxFace(to)) && Settings.Seams.CellSizes(EdgeMiddle(from, axis)).y > 1.5f)
+				{
+					vertex.bSeam = true;
+					vertex.NormalStep = 0.05f * Grid.CellSize;
+				}
 
 				index = static_cast<int32_t>(Vertices.size());
 				Vertices.push_back(vertex);
 				return index;
 			}
 
-			// Whether two of a cell's edges lie on one of its faces
-			static bool ShareFace(int a, int b)
+			// The faces of a cell an edge of it lies on, as bits of the faces' numbers (CellFace)
+			static int EdgeFaceMask(int edge)
 			{
-				auto faces = [](int edge, int out[2])
+				int mask = 0;
+				for (int axis = 0; axis < 3; ++axis)
 				{
-					const int axis = Edges[edge].Axis;
-					int count = 0;
-					for (int other = 0; other < 3; ++other)
+					if (axis != Edges[edge].Axis)
 					{
-						if (other != axis)
-						{
-							out[count++] = other * 2 + ((Edges[edge].From >> other) & 1);
-						}
+						mask |= 1 << (axis * 2 + ((Edges[edge].From >> axis) & 1));
 					}
-				};
-				int facesA[2];
-				int facesB[2];
-				faces(a, facesA);
-				faces(b, facesB);
-				return facesA[0] == facesB[0] || facesA[0] == facesB[1] || facesA[1] == facesB[0] || facesA[1] == facesB[1];
+				}
+				return mask;
 			}
 
-			// A loop's polygon as a fan from a vertex none of whose diagonals lies on a face of the cell:
-			// the cell across that face could make the same diagonal, and four triangles would share it.
-			// Where no vertex will do (a loop through a face twice), a fan round a vertex in its middle.
-			void AddPolygon(const glm::ivec3& cell, const int loopEdges[], const int32_t loop[], int length)
+			// A loop's polygon as a fan from a vertex none of whose diagonals lies on a face of the cell
+			// (`faceMasks`, the faces each of the loop's edges lies on): the cell across that face could
+			// make the same diagonal, and four triangles would share it. Where no vertex will do (a loop
+			// through a face twice), a fan round a vertex in its middle.
+			void AddPolygon(const glm::ivec3& cell, const int faceMasks[], const int32_t loop[], int length)
 			{
 				for (int first = 0; first < length; ++first)
 				{
 					bool bFits = true;
 					for (int k = 2; k + 1 < length && bFits; ++k)
 					{
-						bFits = !ShareFace(loopEdges[first], loopEdges[(first + k) % length]);
+						bFits = (faceMasks[first] & faceMasks[(first + k) % length]) == 0;
 					}
 					if (!bFits)
 					{
@@ -1191,11 +1569,13 @@ namespace Nyx
 				middle.Cell = cell;
 				middle.Local = glm::vec3(0.0f);
 				glm::vec3 normal(0.0f);
+				bool bSeam = false;
 				for (int n = 0; n < length; ++n)
 				{
 					const EdgeVertex& vertex = Vertices[loop[n]];
 					middle.Local += glm::vec3(vertex.Cell - cell) + vertex.Local;
 					normal += vertex.Normal;
+					bSeam = bSeam || vertex.bExact;
 				}
 				middle.Local /= float(length);
 				const float normalLength = glm::length(normal);
@@ -1206,6 +1586,10 @@ namespace Nyx
 				for (int n = 0; n < length; ++n)
 				{
 					Triangles.push_back({ centre, loop[n], loop[(n + 1) % length] });
+				}
+				if (bSeam)
+				{
+					SeamCentres.push_back(centre);
 				}
 			}
 
@@ -1219,9 +1603,51 @@ namespace Nyx
 					bInside[corner] = IsInside(values.Corner[corner]);
 					insideCount += bInside[corner] ? 1 : 0;
 				}
+
+				// The samples between its corners never cross where its corners don't
 				if (insideCount == 0 || insideCount == 8)
 				{
 					return;
+				}
+
+				// A cell on the box's faces: those shared with finer cells, and its edges on them, make it
+				// a cell of their samples
+				const bool bOnBox = bSeams && (glm::any(glm::equal(cell, CellMin)) || glm::any(glm::equal(cell + 1, CellMax)));
+				if (bOnBox)
+				{
+					bool bFinerFace[6] = {};
+					bool bSplit[EdgeCount] = {};
+					bool bAny = false;
+					for (int face = 0; face < 6; ++face)
+					{
+						glm::ivec3 sample = cell;
+						sample[face / 2] += face % 2;
+						if (sample[face / 2] == CellMin[face / 2] || sample[face / 2] == CellMax[face / 2])
+						{
+							bFinerFace[face] = Settings.Seams.CellSizes(FaceMiddle(sample, face / 2)).x < 0.75f;
+							bAny = bAny || bFinerFace[face];
+						}
+					}
+					for (int edge = 0; edge < EdgeCount; ++edge)
+					{
+						const glm::ivec3 from = cell + CornerOffset(Edges[edge].From);
+						glm::ivec3 to = from;
+						to[Edges[edge].Axis] += 1;
+						for (int face = 0; face < 6; ++face)
+						{
+							bSplit[edge] = bSplit[edge] || (bFinerFace[face] && (EdgeFaceMask(edge) & (1 << face)) != 0);
+						}
+						if (!bSplit[edge] && IsOnBoxFace(from) && IsOnBoxFace(to))
+						{
+							bSplit[edge] = Settings.Seams.CellSizes(EdgeMiddle(from, Edges[edge].Axis)).x < 0.75f;
+						}
+						bAny = bAny || bSplit[edge];
+					}
+					if (bAny)
+					{
+						MakeMixedCell(cell, values, bFinerFace, bSplit);
+						return;
+					}
 				}
 
 				// On each face, its curves from one crossed edge to the next, each the way round that has
@@ -1260,8 +1686,24 @@ namespace Nyx
 					}
 					else if (count == 4)
 					{
-						const float middle = values.Corner[face.Corners[0]] + values.Corner[face.Corners[1]] + values.Corner[face.Corners[2]] +
+						float middle = values.Corner[face.Corners[0]] + values.Corner[face.Corners[1]] + values.Corner[face.Corners[2]] +
 							values.Corner[face.Corners[3]];
+						const int axis = faceIndex / 2;
+						glm::ivec3 sample = cell;
+						sample[axis] += faceIndex % 2;
+						if (bOnBox && (sample[axis] == CellMin[axis] || sample[axis] == CellMax[axis]) &&
+							Settings.Seams.CellSizes(FaceMiddle(sample, axis)).y > 1.5f)
+						{
+							// A quarter of a coarser face: its middle is the corner with odd indices
+							for (int k = 0; k < 4; ++k)
+							{
+								const glm::ivec3 at = cell + CornerOffset(face.Corners[k]);
+								if ((at[(axis + 1) % 3] & 1) != 0 && (at[(axis + 2) % 3] & 1) != 0)
+								{
+									middle = values.Corner[face.Corners[k]];
+								}
+							}
+						}
 						const bool bCutOutside = IsInside(middle);
 						for (int k = 0; k < 4; ++k)
 						{
@@ -1317,20 +1759,20 @@ namespace Nyx
 					{
 						continue;
 					}
-					int loopEdges[EdgeCount];
+					int faceMasks[EdgeCount];
 					int32_t loop[EdgeCount];
 					int length = 0;
 					for (int edge = start; !visited[edge] && length < EdgeCount; edge = next[edge])
 					{
 						visited[edge] = true;
-						loopEdges[length] = edge;
+						faceMasks[length] = EdgeFaceMask(edge);
 						loop[length++] = GetEdgeVertex(cell + CornerOffset(Edges[edge].From), Edges[edge].Axis);
 						if (next[edge] < 0)
 						{
 							break;
 						}
 					}
-					AddPolygon(cell, loopEdges, loop, length);
+					AddPolygon(cell, faceMasks, loop, length);
 					++polygons;
 				}
 				if (polygons > 1)
@@ -1339,8 +1781,406 @@ namespace Nyx
 				}
 			}
 
+			// A cell next to finer cells: each face it shares with them cut in four, each edge on them in
+			// two, the samples between its corners as both meshes take them (InterpolateSeamSample()).
+			// Points of the cell are counted in half cells, 0 to 2 on each axis; its edges become segments
+			// between them, a cell's or a half, joined into loops through its faces and quarter faces as a
+			// cell's edges are.
+			void MakeMixedCell(const glm::ivec3& cell, const CellValues& values, const bool bFinerFace[6], const bool bSplit[EdgeCount])
+			{
+				++SeamCells;
+				auto pointIndex = [](const glm::ivec3& point) { return point.x + 3 * (point.y + 3 * point.z); };
+				float pointValues[27] = {};
+				uint32_t pointMaterials[27] = {};
+				for (int corner = 0; corner < 8; ++corner)
+				{
+					const glm::ivec3 at = cell + CornerOffset(corner);
+					pointValues[pointIndex(CornerOffset(corner) * 2)] = values.Corner[corner];
+					pointMaterials[pointIndex(CornerOffset(corner) * 2)] = Grid.GetMaterial(at.x, at.y, at.z);
+				}
+				for (int edge = 0; edge < EdgeCount; ++edge)
+				{
+					if (bSplit[edge])
+					{
+						const glm::ivec3 from = CornerOffset(Edges[edge].From) * 2;
+						glm::ivec3 middle = from;
+						middle[Edges[edge].Axis] = 1;
+						const float ends[2] = { values.Corner[Edges[edge].From], values.Corner[Edges[edge].To] };
+						pointValues[pointIndex(middle)] = InterpolateSeamSample(ends, 2);
+						pointMaterials[pointIndex(middle)] = pointMaterials[pointIndex(from)];
+					}
+				}
+				for (int face = 0; face < 6; ++face)
+				{
+					if (!bFinerFace[face])
+					{
+						continue;
+					}
+					const int axis = face / 2;
+					const int low = axis == 0 ? 1 : 0;
+					const int high = axis == 2 ? 1 : 2;
+					// Its corners in order of its two axes, the lowest first
+					float corners[4];
+					int base = 0;
+					for (int n = 0; n < 4; ++n)
+					{
+						const int corner = ((face % 2) << axis) | ((n & 1) << low) | (((n >> 1) & 1) << high);
+						corners[n] = values.Corner[corner];
+						if (n == 0)
+						{
+							base = corner;
+						}
+					}
+					glm::ivec3 middle(1);
+					middle[axis] = (face % 2) * 2;
+					pointValues[pointIndex(middle)] = InterpolateSeamSample(corners, 4);
+					pointMaterials[pointIndex(middle)] = pointMaterials[pointIndex(CornerOffset(base) * 2)];
+				}
+
+				// The segments: each edge whole or in halves, and on each finer face the four from its
+				// middle to its edges' middles
+				struct Segment
+				{
+					glm::ivec3 From{ 0 };
+					int Axis = 0;
+					int Length = 2;
+					int FaceMask = 0;
+					bool bCrossed = false;
+				};
+				std::vector<Segment> segments;
+				segments.reserve(48);
+				auto addSegment = [&](const glm::ivec3& from, int axis, int length)
+				{
+					Segment segment;
+					segment.From = from;
+					segment.Axis = axis;
+					segment.Length = length;
+					glm::ivec3 to = from;
+					to[axis] += length;
+					for (int other = 0; other < 3; ++other)
+					{
+						if (other != axis && (from[other] == 0 || from[other] == 2))
+						{
+							segment.FaceMask |= 1 << (other * 2 + from[other] / 2);
+						}
+					}
+					segment.bCrossed = IsInside(pointValues[pointIndex(from)]) != IsInside(pointValues[pointIndex(to)]);
+					segments.push_back(segment);
+				};
+				auto findSegment = [&](const glm::ivec3& from, int axis, int length)
+				{
+					for (size_t n = 0; n < segments.size(); ++n)
+					{
+						if (segments[n].From == from && segments[n].Axis == axis && segments[n].Length == length)
+						{
+							return static_cast<int>(n);
+						}
+					}
+					return -1;
+				};
+				for (int edge = 0; edge < EdgeCount; ++edge)
+				{
+					const glm::ivec3 from = CornerOffset(Edges[edge].From) * 2;
+					if (bSplit[edge])
+					{
+						glm::ivec3 middle = from;
+						middle[Edges[edge].Axis] = 1;
+						addSegment(from, Edges[edge].Axis, 1);
+						addSegment(middle, Edges[edge].Axis, 1);
+					}
+					else
+					{
+						addSegment(from, Edges[edge].Axis, 2);
+					}
+				}
+				for (int face = 0; face < 6; ++face)
+				{
+					if (!bFinerFace[face])
+					{
+						continue;
+					}
+					const int axis = face / 2;
+					glm::ivec3 middle(1);
+					middle[axis] = (face % 2) * 2;
+					for (int other = 0; other < 3; ++other)
+					{
+						if (other != axis)
+						{
+							glm::ivec3 before = middle;
+							before[other] = 0;
+							addSegment(before, other, 1);
+							addSegment(middle, other, 1);
+						}
+					}
+				}
+
+				// The curves on each face, or on each quarter of a finer one, as on a cell's face
+				std::vector<int> next(segments.size(), -1);
+				auto addCurves = [&](const glm::ivec3 points[4], const int sides[4], const glm::vec3& outward, float middle)
+				{
+					bool bInsidePoint[4];
+					for (int k = 0; k < 4; ++k)
+					{
+						bInsidePoint[k] = IsInside(pointValues[pointIndex(points[k])]);
+					}
+					int crossed[4] = {};
+					int count = 0;
+					for (int k = 0; k < 4; ++k)
+					{
+						if (bInsidePoint[k] != bInsidePoint[(k + 1) % 4])
+						{
+							crossed[count++] = k;
+						}
+					}
+					int curves[2][3] = {};
+					int curveCount = 0;
+					if (count == 2)
+					{
+						const int a = crossed[0];
+						const int b = crossed[1];
+						curves[0][0] = a;
+						curves[0][1] = b;
+						curves[0][2] = (b == a + 1) ? b : (a == 0 && b == 3 ? 0 : -1);
+						curveCount = 1;
+					}
+					else if (count == 4)
+					{
+						const bool bCutOutside = IsInside(middle);
+						for (int k = 0; k < 4; ++k)
+						{
+							if (bInsidePoint[k] != bCutOutside)
+							{
+								curves[curveCount][0] = (k + 3) % 4;
+								curves[curveCount][1] = k;
+								curves[curveCount][2] = k;
+								++curveCount;
+							}
+						}
+					}
+					for (int c = 0; c < curveCount; ++c)
+					{
+						int from = curves[c][0];
+						int to = curves[c][1];
+						const int cut = curves[c][2];
+						int reference = cut;
+						bool bWantRight = cut >= 0 && bInsidePoint[cut];
+						if (cut < 0)
+						{
+							for (int k = 0; k < 4; ++k)
+							{
+								if (bInsidePoint[k])
+								{
+									reference = k;
+									break;
+								}
+							}
+							bWantRight = true;
+						}
+						const glm::vec3 fromMiddle = glm::vec3(points[from] + points[(from + 1) % 4]);
+						const glm::vec3 toMiddle = glm::vec3(points[to] + points[(to + 1) % 4]);
+						const glm::vec3 corner = glm::vec3(points[reference]) * 2.0f;
+						const bool bRight = glm::dot(outward, glm::cross(toMiddle - fromMiddle, corner - fromMiddle)) < 0.0f;
+						if (bRight != bWantRight)
+						{
+							std::swap(from, to);
+						}
+						next[sides[from]] = sides[to];
+					}
+				};
+				// The segment from point `a` to point `b`, `length` apart along one axis
+				auto between = [&](const glm::ivec3& a, const glm::ivec3& b, int length)
+				{
+					int axis = 0;
+					while (a[axis] == b[axis])
+					{
+						++axis;
+					}
+					return findSegment(a[axis] < b[axis] ? a : b, axis, length);
+				};
+				for (int face = 0; face < 6; ++face)
+				{
+					const CellFace& cellFace = Faces[face];
+					glm::vec3 outward(0.0f);
+					outward[face / 2] = (face % 2) != 0 ? 1.0f : -1.0f;
+					if (!bFinerFace[face])
+					{
+						// Its corners, and on each side the segment the side's crossing is on
+						glm::ivec3 points[4];
+						int sides[4];
+						for (int k = 0; k < 4; ++k)
+						{
+							points[k] = CornerOffset(cellFace.Corners[k]) * 2;
+						}
+						for (int k = 0; k < 4; ++k)
+						{
+							const int edge = cellFace.Edges[k];
+							const glm::ivec3 from = CornerOffset(Edges[edge].From) * 2;
+							sides[k] = findSegment(from, Edges[edge].Axis, 2);
+							if (bSplit[edge])
+							{
+								glm::ivec3 middle = from;
+								middle[Edges[edge].Axis] = 1;
+								const int first = findSegment(from, Edges[edge].Axis, 1);
+								sides[k] = segments[first].bCrossed ? first : findSegment(middle, Edges[edge].Axis, 1);
+							}
+						}
+						const float middle = values.Corner[cellFace.Corners[0]] + values.Corner[cellFace.Corners[1]] + values.Corner[cellFace.Corners[2]] +
+							values.Corner[cellFace.Corners[3]];
+						addCurves(points, sides, outward, middle);
+						continue;
+					}
+					// Its quarters, each round from its corner of the face: the face's middle decides them
+					const int axis = face / 2;
+					glm::ivec3 centre(1);
+					centre[axis] = (face % 2) * 2;
+					for (int k = 0; k < 4; ++k)
+					{
+						const glm::ivec3 corner = CornerOffset(cellFace.Corners[k]) * 2;
+						const glm::ivec3 afterCorner = (corner + CornerOffset(cellFace.Corners[(k + 1) % 4]) * 2) / 2;
+						const glm::ivec3 beforeCorner = (corner + CornerOffset(cellFace.Corners[(k + 3) % 4]) * 2) / 2;
+						const glm::ivec3 points[4] = { corner, afterCorner, centre, beforeCorner };
+						const int sides[4] = { between(points[0], points[1], 1), between(points[1], points[2], 1), between(points[2], points[3], 1),
+							between(points[3], points[0], 1) };
+						addCurves(points, sides, outward, pointValues[pointIndex(centre)]);
+					}
+				}
+
+				// The loops, each from its lowest segment, as polygons
+				std::vector<bool> visited(segments.size(), false);
+				int polygons = 0;
+				std::vector<int> faceMasks;
+				std::vector<int32_t> loop;
+				for (size_t start = 0; start < segments.size(); ++start)
+				{
+					if (next[start] < 0 || visited[start])
+					{
+						continue;
+					}
+					faceMasks.clear();
+					loop.clear();
+					for (int segment = static_cast<int>(start); !visited[segment] && loop.size() < segments.size(); segment = next[segment])
+					{
+						visited[segment] = true;
+						faceMasks.push_back(segments[segment].FaceMask);
+						loop.push_back(GetSegmentVertex(cell, segments[segment].From, segments[segment].Axis, segments[segment].Length, pointValues, pointMaterials));
+						if (next[segment] < 0)
+						{
+							break;
+						}
+					}
+					AddPolygon(cell, faceMasks.data(), loop.data(), static_cast<int>(loop.size()));
+					++polygons;
+				}
+				if (polygons > 1)
+				{
+					++SplitCells;
+				}
+			}
+
+			// A segment's vertex: a whole edge's, or that of a finer edge, the same bits as the finer
+			// mesh's vertex on it
+			int32_t GetSegmentVertex(const glm::ivec3& cell, const glm::ivec3& from, int axis, int length, const float* pointValues, const uint32_t* pointMaterials)
+			{
+				if (length == 2)
+				{
+					return GetEdgeVertex(cell + from / 2, axis);
+				}
+				const glm::ivec3 fine = cell * 2 + from;
+				const uint64_t key = (uint64_t(uint32_t(fine.x) & 0xFFFFFu) | (uint64_t(uint32_t(fine.y) & 0xFFFFFu) << 20) |
+					(uint64_t(uint32_t(fine.z) & 0xFFFFFu) << 40)) * 3 + uint64_t(axis);
+				const auto found = FineVertices.find(key);
+				if (found != FineVertices.end())
+				{
+					return found->second;
+				}
+				auto pointIndex = [](const glm::ivec3& point) { return point.x + 3 * (point.y + 3 * point.z); };
+				glm::ivec3 to = from;
+				to[axis] += 1;
+				const float fromValue = pointValues[pointIndex(from)];
+				const float toValue = pointValues[pointIndex(to)];
+				const float t = std::clamp(fromValue / (fromValue - toValue), 0.001f, 0.999f);
+				const float half = Grid.CellSize * 0.5f;
+
+				EdgeVertex vertex;
+				vertex.Cell = cell;
+				vertex.Local = glm::vec3(from) * 0.5f;
+				vertex.Local[axis] += t * 0.5f;
+				vertex.bExact = true;
+				vertex.Exact = View.CellCorner(cell) + glm::vec3(from) * half;
+				vertex.Exact[axis] = vertex.Exact[axis] + t * half;
+				vertex.Material = pointMaterials[pointIndex(IsInside(fromValue) ? from : to)];
+				vertex.bSeam = true;
+				vertex.NormalStep = 0.05f * half;
+				// Without the field, the cell's corners' gradients blended there
+				glm::vec3 corners[8];
+				for (int corner = 0; corner < 8; ++corner)
+				{
+					corners[corner] = SampleGradient(Grid, cell + CornerOffset(corner));
+				}
+				const glm::vec3& l = vertex.Local;
+				const glm::vec3 x0 = corners[0] + (corners[1] - corners[0]) * l.x;
+				const glm::vec3 x1 = corners[2] + (corners[3] - corners[2]) * l.x;
+				const glm::vec3 x2 = corners[4] + (corners[5] - corners[4]) * l.x;
+				const glm::vec3 x3 = corners[6] + (corners[7] - corners[6]) * l.x;
+				const glm::vec3 gradient = (x0 + (x1 - x0) * l.y) + ((x2 + (x3 - x2) * l.y) - (x0 + (x1 - x0) * l.y)) * l.z;
+				const float gradientLength = glm::length(gradient);
+				vertex.Normal = gradientLength > 0.0f ? gradient / gradientLength : glm::vec3(0.0f, 1.0f, 0.0f);
+
+				const int32_t index = static_cast<int32_t>(Vertices.size());
+				Vertices.push_back(vertex);
+				FineVertices.emplace(key, index);
+				return index;
+			}
+
+			glm::vec3 PositionOf(const EdgeVertex& vertex) const
+			{
+				return vertex.bExact ? vertex.Exact : View.CellCorner(vertex.Cell) + vertex.Local * Grid.CellSize;
+			}
+
 			MeshData Finish(FieldMeshStats& stats)
 			{
+				// Seam vertices' normals from the field, as the mesh on the other side has them: its
+				// differences along each axis from the vertex, all asked for at once
+				if (Settings.Field)
+				{
+					std::vector<glm::vec3> points;
+					std::vector<size_t> asked;
+					for (size_t v = 0; v < Vertices.size(); ++v)
+					{
+						if (Vertices[v].bSeam)
+						{
+							const glm::vec3 position = PositionOf(Vertices[v]);
+							points.push_back(position);
+							for (int axis = 0; axis < 3; ++axis)
+							{
+								glm::vec3 point = position;
+								point[axis] += Vertices[v].NormalStep;
+								points.push_back(point);
+							}
+							asked.push_back(v);
+						}
+					}
+					std::vector<float> fieldValues;
+					if (!points.empty())
+					{
+						View.AskField(points, fieldValues);
+					}
+					for (size_t n = 0; n < asked.size(); ++n)
+					{
+						const float* at = fieldValues.data() + n * 4;
+						const glm::vec3 gradient(at[1] - at[0], at[2] - at[0], at[3] - at[0]);
+						const float length = glm::length(gradient);
+						if (length > 0.0f)
+						{
+							Vertices[asked[n]].Normal = gradient / length;
+						}
+					}
+				}
+				for (const int32_t centre : SeamCentres)
+				{
+					Vertices[centre].bSeam = true;
+				}
+
 				std::vector<glm::ivec3> cells(Vertices.size());
 				std::vector<glm::vec3> locals(Vertices.size());
 				std::vector<glm::vec3> normals(Vertices.size());
@@ -1358,11 +2198,11 @@ namespace Nyx
 				for (size_t v = 0; v < Vertices.size(); ++v)
 				{
 					Vertex& vertex = mesh.Vertices[v];
-					vertex.Position = View.CellCorner(Vertices[v].Cell) + Vertices[v].Local * Grid.CellSize;
+					vertex.Position = PositionOf(Vertices[v]);
 					vertex.Normal = normals[v];
 					const glm::vec3 side = std::fabs(normals[v].z) < 0.9f ? glm::vec3(0.0f, 0.0f, 1.0f) : glm::vec3(1.0f, 0.0f, 0.0f);
 					vertex.Tangent = glm::vec4(glm::normalize(glm::cross(side, normals[v])), 1.0f);
-					vertex.Custom = glm::vec4(sky[v], float(Vertices[v].Material), 0.0f, 0.0f);
+					vertex.Custom = glm::vec4(sky[v], float(Vertices[v].Material), 0.0f, Vertices[v].bSeam ? 1.0f : 0.0f);
 				}
 				mesh.Indices.reserve(Triangles.size() * 3);
 				for (const auto& triangle : Triangles)
@@ -1374,6 +2214,10 @@ namespace Nyx
 					{
 						++stats.BackFacingTriangles;
 					}
+					if (Vertices[triangle[0]].bSeam || Vertices[triangle[1]].bSeam || Vertices[triangle[2]].bSeam)
+					{
+						++stats.SeamTriangles;
+					}
 					for (const int32_t index : triangle)
 					{
 						mesh.Indices.push_back(static_cast<uint32_t>(index));
@@ -1382,6 +2226,7 @@ namespace Nyx
 				stats.Vertices = static_cast<uint32_t>(mesh.Vertices.size());
 				stats.Triangles = static_cast<uint32_t>(Triangles.size());
 				stats.SplitCells = SplitCells;
+				stats.SeamCells = SeamCells;
 				return mesh;
 			}
 
@@ -1390,19 +2235,18 @@ namespace Nyx
 			GridView View;
 			glm::ivec3 CellMin{ 0 };
 			glm::ivec3 CellMax{ 0 };
+			bool bSeams = false;
 			// Each grid edge's vertex: three a sample, one along each axis; -1 where none is made yet
 			std::vector<int32_t> EdgeVertices;
+			// The vertices on finer edges, by their start in half cells and axis
+			std::unordered_map<uint64_t, int32_t> FineVertices;
 			std::vector<EdgeVertex> Vertices;
 			std::vector<std::array<int32_t, 3>> Triangles;
+			// Middle vertices of polygons through finer edges
+			std::vector<int32_t> SeamCentres;
 			uint32_t SplitCells = 0;
+			uint32_t SeamCells = 0;
 		};
-
-		bool IsGridValid(const FieldGrid& grid)
-		{
-			const size_t samples = size_t(std::max(grid.Size.x, 0)) * size_t(std::max(grid.Size.y, 0)) * size_t(std::max(grid.Size.z, 0));
-			return glm::all(glm::greaterThanEqual(grid.Size, glm::ivec3(2))) && grid.Values.size() == samples &&
-				(grid.Materials.empty() || grid.Materials.size() == samples);
-		}
 	}
 
 	MeshData MakeFieldMesh(const FieldGrid& grid, const FieldMeshSettings& settings, FieldMeshStats* outStats)

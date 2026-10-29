@@ -1,6 +1,7 @@
 // An SDF terrain's chunks on a real GPU: hills with tunnels and a floating landmass, made round the
-// camera, drawn by the terrain's Mesh Renderer, one object a chunk; a click on them picks the
-// terrain; moved, the terrain is drawn where it went.
+// camera at three levels of detail, drawn by the terrain's Mesh Renderer, one object a chunk; a
+// click on them picks the terrain; the debug view of levels and seams draws them in their colours;
+// moved, the terrain is drawn where it went.
 //
 // NYX_SCENE_TEST_OUTPUT=<folder> saves what was rendered there.
 #include "CameraComponent.h"
@@ -52,6 +53,7 @@ namespace
 		SdfTerrainComponent terrain;
 		terrain.Seed = 7;
 		terrain.ViewDistance = 160.0f;
+		terrain.LevelDistance = 2.0f;
 		terrain.Layers.clear();
 		SdfTerrainLayer hills;
 		hills.Amplitude = 14.0f;
@@ -135,7 +137,7 @@ namespace
 			{
 				UpdateTerrainChunks(World, { &CameraPosition, 1 }, JobSystem::Get());
 				const TerrainChunksStats& stats = World.Get<TerrainChunksComponent>(Terrain).Stats;
-				if (stats.Pending == 0 && stats.Resident >= stats.Wanted && stats.Wanted > 0)
+				if (stats.bSettled && stats.Pending == 0 && stats.Resident > 0)
 				{
 					return;
 				}
@@ -179,13 +181,28 @@ namespace
 		const TerrainChunksComponent& chunks = scene.World.Get<TerrainChunksComponent>(scene.Terrain);
 		const size_t covered = CountChanged(sky, drawn);
 		Require(covered > ViewWidth * ViewHeight / 3, "The terrain should cover much of the view, not " + std::to_string(covered) + " pixels");
-		std::cout << "Terrain: " << chunks.Stats.Resident << " chunks, " << chunks.Stats.Triangles << " triangles, " << covered << " pixels\n";
+		std::cout << "Terrain: " << chunks.Stats.Resident << " chunks, " << chunks.Stats.WithSeams << " with seams, " << chunks.Stats.Triangles << " triangles, "
+				  << covered << " pixels\n";
+		Require(chunks.Stats.WithSeams > 0, "The terrain should be drawn at more than one level");
 
 		Nyx::IEditorRenderer& renderer = gpu.Renderer;
 		renderer.RequestPick(scene.View, ViewWidth / 2, ViewHeight * 3 / 4);
 		gpu.DrawFrames(3);
 		const Nyx::IEditorRenderer::PickResult picked = renderer.ConsumeLastPickResult(scene.View);
 		Require(picked.bHasNewResult && picked.HitEntity == scene.Terrain, "A click on the chunks should pick the terrain");
+
+		// The debug view: the levels in their colours, the seams between them bright
+		scene.World.Get<SdfTerrainComponent>(scene.Terrain).DebugView = ESdfTerrainDebugView::Seams;
+		scene.MakeChunks();
+		const RgbaImage seams = scene.Draw();
+		SaveIfAsked(seams, "Seams");
+		size_t bright = 0;
+		for (size_t pixel = 0; pixel < seams.Pixels.size(); pixel += 4)
+		{
+			bright += seams.Pixels[pixel] > 150 && seams.Pixels[pixel + 2] > 120 && seams.Pixels[pixel + 1] < 100 ? 1 : 0;
+		}
+		Require(CountChanged(drawn, seams) > covered / 2, "The debug view should colour the terrain anew");
+		Require(bright > 50, "The debug view should show the seams bright, not " + std::to_string(bright) + " pixels");
 
 		scene.World.Get<TransformComponent>(scene.Terrain).Position.x += 400.0f;
 		const RgbaImage moved = scene.Draw();

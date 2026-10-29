@@ -1700,16 +1700,23 @@ namespace Nyx
 				world.Objects.push_back(obj);
 				};
 
-				// An SDF terrain: an object for each chunk, around its corner, culled and drawn as any
-				// mesh made at run time; picking one picks the terrain
+				// An SDF terrain: an object for each chunk drawn, around its corner, culled and drawn as
+				// any mesh made at run time, coarse ones casting into the far cascades only; picking one
+				// picks the terrain. Those to be drawn next are uploaded only.
 				if (registry.Has<Nyx::TerrainChunksComponent>(entity))
 				{
 					for (const Nyx::TerrainChunk& chunk : registry.Get<Nyx::TerrainChunksComponent>(entity).Chunks)
 					{
-						if (Nyx::Mesh* mesh = RuntimeMeshes.Acquire(Context, chunk.Mesh))
+						Nyx::Mesh* mesh = RuntimeMeshes.Acquire(Context, chunk.Mesh);
+						if (mesh && chunk.bDrawn)
 						{
 							const glm::mat4 corner = glm::translate(glm::mat4(1.0f), chunk.Origin);
+							const size_t objects = world.Objects.size();
 							addObject(mesh, entityWorld * corner, entityDraw * corner, false);
+							if (world.Objects.size() > objects)
+							{
+								world.Objects.back().FirstShadowCascade = chunk.FirstShadowCascade;
+							}
 						}
 					}
 					return;
@@ -2126,7 +2133,7 @@ namespace Nyx
 	}
 
 	void VulkanRenderer::CullDraws(const RenderWorld& world, const Frustum& frustum, const glm::vec3& viewPoint, bool bCastersOnly, std::vector<SceneViewDraw>& outDraws,
-		SceneViewCullingStats& stats)
+		SceneViewCullingStats& stats, uint32_t cascade, uint32_t cascadeCount)
 	{
 		const size_t firstDraw = outDraws.size();
 		std::vector<uint32_t> drawnOnce;
@@ -2134,7 +2141,7 @@ namespace Nyx
 		for (uint32_t index = 0; index < world.Objects.size(); ++index)
 		{
 			const RenderObject& obj = world.Objects[index];
-			if (bCastersOnly && !obj.bCastShadows)
+			if (bCastersOnly && (!obj.bCastShadows || (cascade < obj.FirstShadowCascade && cascade + 1 < cascadeCount)))
 			{
 				continue;
 			}
@@ -2260,7 +2267,8 @@ namespace Nyx
 			// What casts into it, by its own frustum, as the view's camera culls
 			shadows.Draws[index].clear();
 			shadows.Culling[index] = {};
-			CullDraws(world, MakeFrustum(cascade.ViewProjection), view.SceneGlobals.CameraWorldPos, true, shadows.Draws[index], shadows.Culling[index]);
+			CullDraws(world, MakeFrustum(cascade.ViewProjection), view.SceneGlobals.CameraWorldPos, true, shadows.Draws[index], shadows.Culling[index], index,
+				settings.CascadeCount);
 		}
 		shadows.CascadeCount = settings.CascadeCount;
 	}

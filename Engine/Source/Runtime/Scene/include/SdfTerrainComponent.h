@@ -120,6 +120,20 @@ namespace Nyx
 		MarchingCubes
 	};
 
+	// What an SDF terrain's chunks show in place of their materials' colours, to see how they are
+	// made. Saved as its number.
+	NYX_ENUM()
+	enum class ESdfTerrainDebugView : uint8_t
+	{
+		// Their materials' colours
+		None,
+		// A colour for each level of detail
+		Levels,
+		// Each level's colour, darker, and the triangles that join a chunk to one of another level
+		// bright
+		Seams
+	};
+
 	// Terrain as a signed field over a volume, so it can overhang, hollow out and float: a stack of
 	// layers, each joined to what the ones before it made, evaluated in order. Its value at a point
 	// (SampleTerrain(), SdfTerrain.h) is a function of these values alone, the same on every machine:
@@ -135,8 +149,17 @@ namespace Nyx
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Terrain", Tooltip = "Evaluated in order, each joined to what the ones before it made"))
 		std::vector<SdfTerrainLayer> Layers{ SdfTerrainLayer{} };
 
-		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "View Distance", Category = "Chunks", DragSpeed = 4.0, Tooltip = "How far from the camera, in metres, chunks of 32 m are made and drawn"))
-		float ViewDistance = 256.0f;
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "View Distance", Category = "Chunks", DragSpeed = 4.0, Tooltip = "How far from the camera, in metres, chunks are made and drawn, coarser the farther"))
+		float ViewDistance = 1024.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Level Distance", Category = "Chunks", DragSpeed = 0.05, Tooltip = "How far each level of detail reaches, in its own chunks: the finest (32 m chunks of 1 m cells) this many chunks from the camera, each coarser one (cells twice the size) twice as far. 2 to 16"))
+		float LevelDistance = 4.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Finest Level", Category = "Chunks", Tooltip = "The finest level of detail, nearest the camera: 0 for cells of 1 m, -1 for cells of half a metre (16 m chunks)"))
+		int32_t FinestLevel = 0;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Near Shadow Levels", Category = "Chunks", Tooltip = "How many of the finest levels of detail cast into every shadow cascade; each coarser one casts only from one cascade further out, and into the last at least"))
+		int32_t NearShadowLevels = 2;
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Chunks", Tooltip = "Dual: a vertex in each cell, sharp edges for the Sharp Materials; Marching Cubes: vertices on the grid's edges, all smooth"))
 		ESdfTerrainMesher Mesher = ESdfTerrainMesher::Dual;
@@ -146,6 +169,9 @@ namespace Nyx
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Material Colours", Category = "Chunks", UI = Color, Tooltip = "Each material number's vertex colour, linear RGB, from 0; a number past the list is white"))
 		std::vector<glm::vec3> MaterialColors{ glm::vec3(0.13f, 0.30f, 0.05f), glm::vec3(0.22f, 0.14f, 0.07f), glm::vec3(0.26f, 0.25f, 0.23f) };
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Debug View", Category = "Chunks", Tooltip = "Levels: a colour for each level of detail; Seams: those darker and the triangles joining levels bright"))
+		ESdfTerrainDebugView DebugView = ESdfTerrainDebugView::None;
 	};
 }
 

@@ -28,6 +28,50 @@ namespace Nyx
 		uint32_t GetMaterial(int i, int j, int k) const { return Materials.empty() ? 0u : Materials[IndexOf(i, j, k)]; }
 	};
 
+	// Where a grid meets cells twice or half the size of its own, as a chunk meets one at another level
+	// of detail, so that the meshes of both meet without a gap. The mesh's own region is the box of
+	// samples [QuadMin, QuadMax] (QuadMax included); past its faces, and on them, other places may
+	// have other cells, inside it none. The coarser cells' corners are the grid's samples with even
+	// indices. Both meshes take a face shared by coarser and finer cells as the coarser cells' face,
+	// cut in four, its samples between their corners their average: the grid's samples on such a face
+	// (and past it) are the caller's to make so, the coarser mesh makes them itself (Interpolate
+	// SeamSample()).
+	//
+	// The dual mesh joins coarser cells: an edge on a face it shares with them gets a quad (a
+	// triangle where two of its cells are one) from the finer cells' vertices and theirs, which it
+	// makes itself, the same bits as the coarser mesh does, from the coarser samples (Coarser).
+	// Marching cubes meshes its own cells next to finer ones with the finer samples on their shared
+	// faces and edges, as the finer mesh has them.
+	struct FieldSeams
+	{
+		// The size of the cells at a point of the grid (in samples from its origin), as a multiple of
+		// the grid's own: the finest and the coarsest (x and y) of all the places whose closed
+		// boxes have it, each 0.5, 1 or 2. Unset: no seams, and QuadMin and QuadMax as without.
+		std::function<glm::vec2(const glm::vec3& at)> CellSizes;
+		// Dual: whether this mesh makes the quad of an edge with an end on a face of the box; it must
+		// be the finest mesh that has the edge, and only one of those. Every edge strictly within
+		// the box it makes.
+		std::function<bool(const glm::ivec3& from, int axis)> MakesEdge;
+		// Dual: the coarser cells' samples, with as many cells round the box's faces as its quads
+		// join and those cells' neighbours need: two cells beyond the box, and one sample more.
+		// CellSize twice the grid's, Origin at one of its even samples.
+		const FieldGrid* Coarser = nullptr;
+	};
+
+	// The value both meshes take at a sample of the finer cells on a face shared with coarser ones:
+	// at their corners, the sample; between two, their average; in a face's middle, the average of its
+	// four corners; in a cell's middle, of its eight. `corners` are the coarser cells' corners round
+	// it, as many as that, in order of the axes it is between them on, the lowest first.
+	inline float InterpolateSeamSample(const float* corners, int count)
+	{
+		float sum = corners[0];
+		for (int n = 1; n < count; ++n)
+		{
+			sum += corners[n];
+		}
+		return count == 1 ? sum : sum * (1.0f / float(count));
+	}
+
 	struct FieldMeshSettings
 	{
 		// Which quads this mesh makes: those of the grid edges starting at a sample from QuadMin up to
@@ -57,6 +101,9 @@ namespace Nyx
 		// past the grid; without it, the planes come from the samples' gradients, which blend near a
 		// corner, and the sky is open past the grid.
 		std::function<void(const float* x, const float* y, const float* z, size_t count, float* outValues)> Field;
+
+		// Where it meets cells of other sizes; none by default
+		FieldSeams Seams;
 	};
 
 	// What making a mesh did, for tests and the frame stats
@@ -72,6 +119,9 @@ namespace Nyx
 		uint32_t UnfoldedVertices = 0;
 		// Triangles facing against the field's normals at their corners: turned inside out
 		uint32_t BackFacingTriangles = 0;
+		// Triangles joining cells of another size (FieldSeams), and cells meshed with finer samples
+		uint32_t SeamTriangles = 0;
+		uint32_t SeamCells = 0;
 	};
 
 	// The surface where the field crosses 0, by dual meshing: a vertex in every cell the surface
