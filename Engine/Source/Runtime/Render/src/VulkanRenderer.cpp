@@ -651,6 +651,8 @@ namespace Nyx
 		// draws of it, with the lines that shows; then the frame's debug lines go up
 		SceneTime = std::chrono::duration<float>(sceneStart - StartTime).count();
 		ExtractRenderWorlds();
+		// The meshes made at run time uploaded while extracting, copied in before anything draws
+		RuntimeMeshes.RecordUploads(cmd);
 		PendingSceneTimes.Extract = MillisecondsSince(sceneStart);
 		const std::chrono::steady_clock::time_point cullStart = std::chrono::steady_clock::now();
 		{

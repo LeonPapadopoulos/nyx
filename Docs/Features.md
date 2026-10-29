@@ -678,6 +678,12 @@ mesh is made again as it grows.
   (`SetRuntimeMesh()`, `MarkRuntimeMeshChanged()`). Entities sharing one `MeshData` share its upload.
   A mesh no view draws any more is let go of. Data that isn't a valid mesh isn't drawn, and is
   logged once a revision.
+- Its buffers are in GPU memory the renderer keeps in blocks of 64 MB (`MeshMemoryPool`), each bound
+  to its part of a block, so a mesh costs no allocation of its own and a world can have thousands
+  (drivers allow few allocations, often 4096); 2500 small meshes fit in one block. Its data is
+  copied in through a staging buffer by the frame's commands before anything draws
+  (`MeshUploads`), and the GPU reads it from its own memory. A block that empties goes, but the
+  last stays for the next meshes.
 - It is drawn, picked, outlined when selected, shows its bounds, is drawn between steps when it
   moves, and carries surface decals, as a mesh loaded by its path does.
 - It isn't saved, edited or sent to a game: whoever made it makes it again after a scene is loaded.
@@ -689,9 +695,11 @@ mesh is made again as it grows.
   its revision; while Play runs, as the game has it ([Runtime inspection](#runtime-inspection)).
 - A *Mesh Collider* makes it ground to stand on ([Physics](#physics)).
 - Tests: `NyxMeshTests` (which meshes are valid, the sections a mesh without any is drawn in, the
-  bounds), `NyxRuntimeMeshGpuTests` (a sphere made in code draws exactly as the built-in sphere;
+  bounds), `NyxMeshMemoryPoolTests` (the pool's free ranges: aligned, apart, first fit, merged when
+  given back), `NyxRuntimeMeshGpuTests` (a sphere made in code draws exactly as the built-in sphere;
   changed and its revision raised it is drawn anew, unchanged it is uploaded once; entities sharing
-  a mesh share its upload, and one nobody draws is let go of; one that isn't valid draws nothing; a
+  a mesh share its upload, and one nobody draws is let go of; 2500 meshes in one block of the pool,
+  their memory given back when let go of and used again; one that isn't valid draws nothing; a
   click picks it, selected it is outlined; two sections draw with two materials; a decal on it is
   drawn), `NyxEditorPanelTests` (what the details panel says of it).
 

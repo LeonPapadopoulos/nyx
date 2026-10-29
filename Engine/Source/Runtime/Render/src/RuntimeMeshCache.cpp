@@ -53,7 +53,7 @@ namespace Nyx
 		entry.Gpu = std::make_unique<Mesh>("RuntimeMesh");
 		const MeshBounds bounds = ComputeMeshBounds(data);
 		entry.Gpu->SetLocalBounds(bounds.Min, bounds.Max);
-		entry.Gpu->Upload(context, data);
+		entry.Gpu->UploadPooled(context, data, Pool, Uploads);
 		++UploadCount;
 	}
 
@@ -75,14 +75,22 @@ namespace Nyx
 		}
 	}
 
+	void RuntimeMeshCache::RecordUploads(const vk::raii::CommandBuffer& cmd)
+	{
+		Uploads.Record(cmd);
+	}
+
 	void RuntimeMeshCache::ReleaseRetired()
 	{
 		Retired.clear();
+		Uploads.ReleaseRetired();
 	}
 
 	void RuntimeMeshCache::Clear()
 	{
 		Entries.clear();
 		Retired.clear();
+		Uploads.Clear();
+		Pool.Clear();
 	}
 }

@@ -3,7 +3,8 @@
 // while drawing on without a change uploads nothing; entities that share a mesh share its upload,
 // and a mesh nobody draws any more is let go of; a mesh that isn't valid draws nothing; a click
 // picks it and its selection is outlined; two sections draw with the materials of their two slots,
-// a slot without one with the first; a surface decal on it is drawn.
+// a slot without one with the first; a surface decal on it is drawn; thousands of meshes in a block
+// or two of the pool's memory, given back when let go of.
 //
 // NYX_SCENE_TEST_OUTPUT=<folder> saves what was rendered there.
 #include "CameraComponent.h"
@@ -26,6 +27,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace
 {
@@ -315,6 +317,73 @@ namespace
 		}
 		Require(brightened > 500, "The decal on the mesh made in code brightens only " + std::to_string(brightened) + " pixels");
 	}
+	// Thousands of meshes, each an entity's own: drawn, all in a block or two of the pool's memory
+	// instead of an allocation each, their data copied in by the frame; let go of, their memory goes
+	// back; made again, they fit in what the pool has
+	void TestManyMeshes(SceneRenderer& gpu)
+	{
+		TestScene scene(gpu, false);
+		Material* material = gpu.Renderer.GetMaterial("Materials/Untextured.nyxmat");
+		gpu.DrawUntilShadersCompiled();
+		const RgbaImage empty = scene.Draw();
+
+		constexpr int Side = 50;
+		std::vector<Entity> entities;
+		auto addAll = [&]
+		{
+			for (int row = 0; row < Side; ++row)
+			{
+				for (int column = 0; column < Side; ++column)
+				{
+					const auto mesh = std::make_shared<MeshData>();
+					const glm::vec2 corner(-2.0f + 4.0f * float(column) / Side, -1.2f + 2.4f * float(row) / Side);
+					AddRectangle(*mesh, corner, corner + glm::vec2(0.04f));
+					entities.push_back(scene.AddRuntimeMesh(mesh, material));
+				}
+			}
+		};
+		addAll();
+		const RgbaImage drawn = scene.Draw();
+		SaveIfAsked(drawn, "Many");
+
+		const RuntimeMeshCache& meshes = gpu.Renderer.GetRuntimeMeshes();
+		const MeshMemoryPool::Stats full = meshes.GetPoolStats();
+		Require(meshes.GetMeshCount() == Side * Side, "Every mesh should be on the GPU");
+		Require(full.Allocations == 2 * Side * Side, "Each mesh should have its vertices and indices in the pool, not " + std::to_string(full.Allocations));
+		Require(full.Blocks <= 2, "Thousands of small meshes should fit in a block or two, not " + std::to_string(full.Blocks));
+		Require(drawn.Pixels != empty.Pixels, "The meshes should be drawn");
+		size_t changed = 0;
+		for (size_t pixel = 0; pixel < drawn.Pixels.size(); pixel += 4)
+		{
+			changed += drawn.Pixels[pixel] != empty.Pixels[pixel] ? 1 : 0;
+		}
+		Require(changed > 2000, "The many rectangles should cover many pixels, not " + std::to_string(changed));
+
+		for (const Entity entity : entities)
+		{
+			scene.World.Remove<RuntimeMeshComponent>(entity);
+		}
+		scene.Draw(3);
+		const MeshMemoryPool::Stats emptied = meshes.GetPoolStats();
+		Require(meshes.GetMeshCount() == 0 && emptied.Allocations == 0 && emptied.UsedBytes == 0, "Meshes let go of should give their memory back");
+		Require(emptied.Blocks <= 1, "An emptied pool should keep one block at most");
+
+		for (const Entity entity : entities)
+		{
+			scene.World.DestroyEntity(entity);
+		}
+		entities.clear();
+		addAll();
+		const RgbaImage again = scene.Draw();
+		Require(meshes.GetPoolStats().Blocks <= full.Blocks, "Meshes made again should fit in the blocks the pool had");
+		Require(again.Pixels == drawn.Pixels, "Meshes made again should be drawn as they were");
+		std::cout << "Many meshes: " << full.Allocations << " buffers in " << full.Blocks << " blocks, " << full.UsedBytes << " bytes used of " << full.BlockBytes
+				  << "\n";
+		for (const Entity entity : entities)
+		{
+			scene.World.DestroyEntity(entity);
+		}
+	}
 }
 
 int main()
@@ -328,6 +397,7 @@ int main()
 		TestPickingAndOutline(gpu);
 		TestTwoSections(gpu);
 		TestDecalOnIt(gpu);
+		TestManyMeshes(gpu);
 	}
 	catch (const std::exception& error)
 	{

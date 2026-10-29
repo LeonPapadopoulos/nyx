@@ -256,6 +256,57 @@ namespace Nyx
 		BoundContext = &context;
 	}
 
+	namespace
+	{
+		// New with every upload of any mesh, never 0
+		uint64_t NextUploadId()
+		{
+			static uint64_t LastUploadId = 0;
+			return ++LastUploadId;
+		}
+
+		// A buffer of `size` bytes for `usage`, bound to memory from the pool
+		vk::raii::Buffer CreatePooledBuffer(VulkanContext& context, vk::DeviceSize size, vk::BufferUsageFlags usage, MeshMemoryPool& pool,
+			MeshMemoryAllocation& outAllocation)
+		{
+			vk::BufferCreateInfo info{};
+			info.size = size;
+			info.usage = usage | vk::BufferUsageFlagBits::eTransferDst;
+			info.sharingMode = vk::SharingMode::eExclusive;
+			vk::raii::Buffer buffer(context.GetDevice(), info);
+			outAllocation = pool.Allocate(context, buffer.getMemoryRequirements());
+			buffer.bindMemory(outAllocation.Memory, outAllocation.Offset);
+			return buffer;
+		}
+	}
+
+	bool Mesh::UploadPooled(VulkanContext& context, const MeshData& data, MeshMemoryPool& pool, MeshUploads& uploads)
+	{
+		BoundContext = &context;
+		Release();
+		Pool = &pool;
+
+		if (!data.Vertices.empty())
+		{
+			const vk::DeviceSize size = sizeof(GpuVertex) * data.Vertices.size();
+			VertexBuffer = CreatePooledBuffer(context, size, vk::BufferUsageFlagBits::eVertexBuffer, pool, VertexAllocation);
+			auto* staging = static_cast<GpuVertex*>(uploads.Reserve(context, size, *VertexBuffer));
+			std::transform(data.Vertices.begin(), data.Vertices.end(), staging, ToGpuVertex);
+		}
+		if (!data.Indices.empty())
+		{
+			const vk::DeviceSize size = sizeof(uint32_t) * data.Indices.size();
+			IndexBuffer = CreatePooledBuffer(context, size, vk::BufferUsageFlagBits::eIndexBuffer, pool, IndexAllocation);
+			std::memcpy(uploads.Reserve(context, size, *IndexBuffer), data.Indices.data(), static_cast<size_t>(size));
+		}
+
+		VertexCount = static_cast<uint32_t>(data.Vertices.size());
+		IndexCount = static_cast<uint32_t>(data.Indices.size());
+		Sections = GetMeshSections(data);
+		UploadId = NextUploadId();
+		return true;
+	}
+
 	bool Mesh::Upload(VulkanContext& context, const MeshData& data)
 	{
 		BoundContext = &context;
@@ -275,9 +326,7 @@ namespace Nyx
 		VertexCount = static_cast<uint32_t>(data.Vertices.size());
 		IndexCount = static_cast<uint32_t>(data.Indices.size());
 		Sections = GetMeshSections(data);
-
-		static uint64_t LastUploadId = 0;
-		UploadId = ++LastUploadId;
+		UploadId = NextUploadId();
 
 		return true;
 	}
@@ -293,6 +342,16 @@ namespace Nyx
 		VertexBufferMemory = nullptr;
 		VertexBufferOffset = 0;
 		VertexCount = 0;
+
+		// The buffers are gone, so their memory goes back to the pool
+		if (Pool != nullptr)
+		{
+			Pool->Free(VertexAllocation);
+			Pool->Free(IndexAllocation);
+			VertexAllocation = {};
+			IndexAllocation = {};
+			Pool = nullptr;
+		}
 
 		Sections.clear();
 		UploadId = 0;

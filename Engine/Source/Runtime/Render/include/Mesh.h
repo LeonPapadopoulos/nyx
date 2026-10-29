@@ -1,5 +1,6 @@
 #pragma once
 #include "MeshData.h"
+#include "MeshMemoryPool.h"
 #include "Resource.h"
 #include <vulkan/vulkan.hpp>
 #include "VulkanContext.h"
@@ -170,7 +171,14 @@ namespace Nyx
 		// @todo: How else can we get the VulkanContext info during DoLoad()
 		void SetContext(VulkanContext& context);
 
+		// Into buffers with memory of their own, written by the CPU, which the GPU reads as it draws:
+		// for the few meshes the renderer keeps (the built-in cube, sphere and plane)
 		bool Upload(VulkanContext& context, const MeshData& data);
+		// Into buffers bound to memory the pool keeps, on the GPU, filled by copies the frame records
+		// before it draws (MeshUploads::Record()): no allocation of its own, so thousands of meshes
+		// can be uploaded. The pool must outlive the mesh, and the copies must be recorded in the
+		// frame that draws it.
+		bool UploadPooled(VulkanContext& context, const MeshData& data, MeshMemoryPool& pool, MeshUploads& uploads);
 		void Release();
 
 		bool DoLoad() override;
@@ -221,6 +229,11 @@ namespace Nyx
 		vk::raii::DeviceMemory IndexBufferMemory{ nullptr };
 		vk::DeviceSize IndexBufferOffset = 0;
 		uint32_t IndexCount = 0;
+
+		// Where the buffers' memory is, when it is the pool's (UploadPooled())
+		MeshMemoryPool* Pool = nullptr;
+		MeshMemoryAllocation VertexAllocation;
+		MeshMemoryAllocation IndexAllocation;
 
 		std::vector<MeshSection> Sections;
 		uint64_t UploadId = 0;

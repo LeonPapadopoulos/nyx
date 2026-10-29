@@ -167,6 +167,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/WindDebug.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/DrawnWorldTime.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/Mesh.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/MeshMemoryPool.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/RuntimeMeshCache.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/MeshInstanceCache.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/SceneCulling.cpp
@@ -408,6 +409,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/WindDebug.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/DrawnWorldTime.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/Mesh.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/MeshMemoryPool.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/RuntimeMeshCache.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/MeshInstanceCache.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/SceneCulling.h

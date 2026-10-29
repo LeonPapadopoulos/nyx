@@ -111,6 +111,14 @@ add_dependencies(NyxFieldMesherTests NyxGeneratedReflection)
 set_property(TARGET NyxFieldMesherTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxFieldMesherTests COMMAND NyxFieldMesherTests)
 
+# The mesh memory pool's free ranges: aligned, apart, first fit, refused when full, merged when given
+# back, gaps filled again. No GPU needed.
+add_executable(NyxMeshMemoryPoolTests MeshMemoryPoolTests.cpp)
+target_link_libraries(NyxMeshMemoryPoolTests PRIVATE NyxEngine)
+add_dependencies(NyxMeshMemoryPoolTests NyxGeneratedReflection)
+set_property(TARGET NyxMeshMemoryPoolTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxMeshMemoryPoolTests COMMAND NyxMeshMemoryPoolTests)
+
 # The component type registry: types register once; a second type of a name already taken, such as
 # a game module's type named like one of the engine's, is refused.
 add_executable(NyxComponentTypeRegistryTests ComponentTypeRegistryTests.cpp)
@@ -682,7 +690,7 @@ add_test(NAME NyxSceneGpuTests COMMAND NyxSceneGpuTests)
 add_test(NAME NyxSceneGpuTestsMsaa COMMAND NyxSceneGpuTests --msaa 4)
 
 # Meshes made at run time on a real GPU: drawn as the same mesh loaded, redrawn when changed, picked,
-# outlined, two sections with two materials, a decal on one. Needs a Vulkan device; its window stays
+# outlined, two sections with two materials, a decal on one, thousands in the pool's memory. Needs a Vulkan device; its window stays
 # hidden.
 add_executable(NyxRuntimeMeshGpuTests RuntimeMeshGpuTests.cpp)
 target_link_libraries(NyxRuntimeMeshGpuTests PRIVATE NyxEngine)

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "MeshData.h"
+#include "MeshMemoryPool.h"
 
 #include <cstdint>
 #include <memory>
@@ -22,7 +23,9 @@ namespace Nyx
 	//
 	// Meshes are uploaded into new buffers while the worlds are extracted, before the frame records a
 	// draw: the last frame's GPU work is done by then (one frame in flight), and this frame's draws
-	// use the new buffers. A mesh replaced or let go of is kept until after the next frame's fence
+	// use the new buffers. Their memory is the cache's pool's (MeshMemoryPool), so a mesh costs no
+	// allocation of its own, and their data is copied in by the frame's commands (RecordUploads(),
+	// before anything draws). A mesh replaced or let go of is kept until after the next frame's fence
 	// (ReleaseRetired()), as views let go of are, so it is never destroyed while the GPU may read it.
 	class RuntimeMeshCache
 	{
@@ -37,6 +40,8 @@ namespace Nyx
 		Mesh* Acquire(VulkanContext& context, const RuntimeMeshComponent& component);
 		// After every shown world was extracted: the meshes none of them drew this frame are retired
 		void EndFrame();
+		// The copies of this frame's uploads, into the frame's commands before its first draw
+		void RecordUploads(const vk::raii::CommandBuffer& cmd);
 		// After the last frame's fence: what was retired before it is destroyed
 		void ReleaseRetired();
 		// Every mesh, at once; only once the GPU is idle
@@ -45,6 +50,9 @@ namespace Nyx
 		size_t GetMeshCount() const { return Entries.size(); }
 		// How many uploads there were, for tests
 		uint64_t GetUploadCount() const { return UploadCount; }
+		// The pool's blocks and what is in them, and the bytes the last frame copied
+		MeshMemoryPool::Stats GetPoolStats() const { return Pool.GetStats(); }
+		uint64_t GetBytesLastUploaded() const { return Uploads.GetBytesLastRecorded(); }
 
 	private:
 		struct Entry
@@ -59,6 +67,10 @@ namespace Nyx
 		};
 
 		void Upload(VulkanContext& context, Entry& entry, uint64_t revision);
+
+		// Before the meshes, so they are destroyed after them: a mesh gives its memory back to the pool
+		MeshMemoryPool Pool;
+		MeshUploads Uploads;
 
 		std::unordered_map<const MeshData*, Entry> Entries;
 		// Replaced or let go of since the last frame's fence
