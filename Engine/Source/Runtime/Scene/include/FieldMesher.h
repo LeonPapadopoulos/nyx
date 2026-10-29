@@ -95,4 +95,15 @@ namespace Nyx
 	// crossings), Custom.z 1 if sharp. A function of the grid and the settings alone: the same bits
 	// every time, and a cell two chunks share the same bits in both.
 	MeshData MakeFieldMesh(const FieldGrid& grid, const FieldMeshSettings& settings = {}, FieldMeshStats* outStats = nullptr);
+
+	// The same surface by marching cubes, as Transvoxel's regular cells make it, to compare with the
+	// dual mesh: a vertex where the surface crosses each grid edge, shared by the cells round it, and
+	// in each cell polygons through those vertices, counter-clockwise from outside, fanned into
+	// triangles. A cell's polygons are the loops its crossed edges make, joined through its faces as
+	// MakeFieldMesh() joins them (a face with all four edges crossed joins its inside corners when
+	// its middle is inside), so both cells sharing a face agree and the mesh is closed and manifold.
+	// Every vertex smooth: it can't keep a sharp edge. The settings' QuadMin and QuadMax are the cells
+	// it meshes here (0 or less: all of them); SharpMaterials and SharpBias aren't used. Normals, sky
+	// visibility and materials as MakeFieldMesh()'s, Custom.z 0.
+	MeshData MakeMarchingFieldMesh(const FieldGrid& grid, const FieldMeshSettings& settings = {}, FieldMeshStats* outStats = nullptr);
 }

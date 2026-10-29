@@ -235,10 +235,159 @@ namespace Nyx
 			return glm::cross(b - a, c - a)[axis] * float(sign) > 0.0f;
 		}
 
+		// A grid and its settings as both meshers read them: where its cells are, the field within it
+		// and past it, and how much sky a point on the surface sees
+		struct GridView
+		{
+			GridView(const FieldGrid& grid, const FieldMeshSettings& settings)
+				: Grid(grid), Settings(settings), CellCounts(glm::max(grid.Size - 1, glm::ivec3(0)))
+			{
+			}
+
+			bool IsCellInGrid(const glm::ivec3& cell) const
+			{
+				return glm::all(glm::greaterThanEqual(cell, glm::ivec3(0))) && glm::all(glm::lessThan(cell, CellCounts));
+			}
+
+			// Where a cell's first corner is in the grid's space: whole cells from the origin, the same bits
+			// in every grid whose origin is whole cells from this one's
+			glm::vec3 CellCorner(const glm::ivec3& cell) const
+			{
+				return Grid.Origin + glm::vec3(cell) * Grid.CellSize;
+			}
+
+			// The field at points in the grid's space, asked of the settings' field in one go
+			void AskField(const std::vector<glm::vec3>& points, std::vector<float>& outValues) const
+			{
+				std::vector<float> x(points.size());
+				std::vector<float> y(points.size());
+				std::vector<float> z(points.size());
+				for (size_t n = 0; n < points.size(); ++n)
+				{
+					x[n] = points[n].x;
+					y[n] = points[n].y;
+					z[n] = points[n].z;
+				}
+				outValues.resize(points.size());
+				Settings.Field(x.data(), y.data(), z.data(), points.size(), outValues.data());
+			}
+
+			// The field at `local` from a cell's corner, in cells, if that is within the grid
+			bool SampleGrid(const glm::ivec3& cell, const glm::vec3& local, float& outValue) const
+			{
+				const glm::vec3 whole = glm::floor(local);
+				glm::ivec3 at = cell + glm::ivec3(whole);
+				glm::vec3 within = local - whole;
+				// The far faces of the grid belong to its last cells
+				for (int axis = 0; axis < 3; ++axis)
+				{
+					if (at[axis] == CellCounts[axis] && within[axis] == 0.0f)
+					{
+						at[axis] -= 1;
+						within[axis] = 1.0f;
+					}
+				}
+				if (!IsCellInGrid(at))
+				{
+					return false;
+				}
+				outValue = ReadCell(Grid, at).At(within);
+				return true;
+			}
+
+			// How much of the sky each vertex sees: rays over the sky's half of the directions, each
+			// weighted by how squarely the vertex faces it, blocked where the field is inside
+			void ComputeSkyVisibility(const std::vector<glm::ivec3>& cells, const std::vector<glm::vec3>& locals, const std::vector<glm::vec3>& normals,
+			std::vector<float>& outVisibility) const
+			{
+				outVisibility.assign(cells.size(), 1.0f);
+				if (!(Settings.SkyReach > 0.0f))
+				{
+					return;
+				}
+
+				// Straight up and six round it 45 degrees up, written out rather than from sine and cosine,
+				// which a C library may round its own way
+				const std::vector<glm::vec3> directions{ { 0.0f, 1.0f, 0.0f }, { 0.70710677f, 0.70710677f, 0.0f }, { 0.35355338f, 0.70710677f, 0.61237244f },
+					{ -0.35355338f, 0.70710677f, 0.61237244f }, { -0.70710677f, 0.70710677f, 0.0f }, { -0.35355338f, 0.70710677f, -0.61237244f },
+					{ 0.35355338f, 0.70710677f, -0.61237244f } };
+				// A cell, then twice as far each time
+				std::vector<float> distances;
+				for (float distance = 1.0f; distance * Grid.CellSize <= Settings.SkyReach; distance *= 2.0f)
+				{
+					distances.push_back(distance);
+				}
+
+				std::vector<uint8_t> blocked(cells.size() * directions.size(), 0);
+				// Points past the grid, asked of the field in one go
+				std::vector<glm::vec3> farPoints;
+				std::vector<size_t> farRays;
+				for (size_t u = 0; u < cells.size(); ++u)
+				{
+					const glm::vec3 start = locals[u] + normals[u] * 0.5f;
+					for (size_t d = 0; d < directions.size(); ++d)
+					{
+						if (!(glm::dot(directions[d], normals[u]) > 0.0f))
+						{
+							continue;
+						}
+						const size_t ray = u * directions.size() + d;
+						for (const float distance : distances)
+						{
+							const glm::vec3 local = start + directions[d] * distance;
+							float value = 0.0f;
+							if (SampleGrid(cells[u], local, value))
+							{
+								if (IsInside(value))
+								{
+									blocked[ray] = 1;
+									break;
+								}
+							}
+							else if (Settings.Field)
+							{
+								farPoints.push_back(CellCorner(cells[u]) + local * Grid.CellSize);
+								farRays.push_back(ray);
+							}
+						}
+					}
+				}
+				if (!farPoints.empty())
+				{
+					std::vector<float> values;
+					AskField(farPoints, values);
+					for (size_t n = 0; n < farRays.size(); ++n)
+					{
+						if (IsInside(values[n]))
+						{
+							blocked[farRays[n]] = 1;
+						}
+					}
+				}
+
+				for (size_t u = 0; u < cells.size(); ++u)
+				{
+					float open = 0.0f;
+					float total = 0.0f;
+					for (size_t d = 0; d < directions.size(); ++d)
+					{
+						const float weight = std::max(glm::dot(directions[d], normals[u]), 0.0f);
+						total += weight;
+						open += blocked[u * directions.size() + d] != 0 ? 0.0f : weight;
+					}
+					outVisibility[u] = total > 0.0f ? open / total : 0.0f;
+				}
+			}
+
+			const FieldGrid& Grid;
+			const FieldMeshSettings& Settings;
+			glm::ivec3 CellCounts{ 0 };
+		};
+
 		class Mesher
 		{
 		public:
-			Mesher(const FieldGrid& grid, const FieldMeshSettings& settings) : Grid(grid), Settings(settings)
+			Mesher(const FieldGrid& grid, const FieldMeshSettings& settings) : Grid(grid), Settings(settings), View(grid, settings)
 			{
 				CellCounts = glm::max(grid.Size - 1, glm::ivec3(0));
 				Cells.resize(size_t(CellCounts.x) * size_t(CellCounts.y) * size_t(CellCounts.z));
@@ -274,18 +423,6 @@ namespace Nyx
 				return size_t(cell.x) + size_t(CellCounts.x) * (size_t(cell.y) + size_t(CellCounts.y) * size_t(cell.z));
 			}
 
-			bool IsCellInGrid(const glm::ivec3& cell) const
-			{
-				return glm::all(glm::greaterThanEqual(cell, glm::ivec3(0))) && glm::all(glm::lessThan(cell, CellCounts));
-			}
-
-			// Where a cell's first corner is in the grid's space: whole cells from the origin, the same bits
-			// in every grid whose origin is whole cells from this one's
-			glm::vec3 CellCorner(const glm::ivec3& cell) const
-			{
-				return Grid.Origin + glm::vec3(cell) * Grid.CellSize;
-			}
-
 			glm::vec3 GridPosition(const WorkVertex& vertex) const
 			{
 				return glm::vec3(vertex.Cell) + vertex.Local;
@@ -307,7 +444,7 @@ namespace Nyx
 					glm::ivec3 cell = from;
 					cell[b] += Around[n][0] - 1;
 					cell[c] += Around[n][1] - 1;
-					if (!IsCellInGrid(cell))
+					if (!View.IsCellInGrid(cell))
 					{
 						return false;
 					}
@@ -434,8 +571,8 @@ namespace Nyx
 
 					const int insideCorner = bInside[cellEdge.From] ? cellEdge.From : cellEdge.To;
 					const int outsideCorner = bInside[cellEdge.From] ? cellEdge.To : cellEdge.From;
-					ends[count].Inside = CellCorner(cell + CornerOffset(insideCorner));
-					ends[count].Outside = CellCorner(cell + CornerOffset(outsideCorner));
+					ends[count].Inside = View.CellCorner(cell + CornerOffset(insideCorner));
+					ends[count].Outside = View.CellCorner(cell + CornerOffset(outsideCorner));
 					ends[count].InsideValue = values.Corner[insideCorner];
 					ends[count].OutsideValue = values.Corner[outsideCorner];
 					const glm::ivec3 at = cell + CornerOffset(insideCorner);
@@ -480,7 +617,7 @@ namespace Nyx
 					for (int k = 0; k < count; ++k)
 					{
 						Crossing crossing = ends[k];
-						crossing.Point = CellCorner(cell) + crossings[k] * Grid.CellSize;
+						crossing.Point = View.CellCorner(cell) + crossings[k] * Grid.CellSize;
 						crossing.Gradient = gradients[k];
 						SharpCrossings.push_back(crossing);
 					}
@@ -572,22 +709,6 @@ namespace Nyx
 				}
 			}
 
-			// The field at points in the grid's space, asked of the settings' field in one go
-			void AskField(const std::vector<glm::vec3>& points, std::vector<float>& outValues) const
-			{
-				std::vector<float> x(points.size());
-				std::vector<float> y(points.size());
-				std::vector<float> z(points.size());
-				for (size_t n = 0; n < points.size(); ++n)
-				{
-					x[n] = points[n].x;
-					y[n] = points[n].y;
-					z[n] = points[n].z;
-				}
-				outValues.resize(points.size());
-				Settings.Field(x.data(), y.data(), z.data(), points.size(), outValues.data());
-			}
-
 			// Each sharp crossing found on the field itself, along its edge: false position, its
 			// bracket kept between an inside and an outside point, two steps for all of them at once
 			void RefineCrossings()
@@ -602,7 +723,7 @@ namespace Nyx
 						const float t = std::clamp(crossing.InsideValue / (crossing.InsideValue - crossing.OutsideValue), 0.0f, 1.0f);
 						points[n] = crossing.Inside + (crossing.Outside - crossing.Inside) * t;
 					}
-					AskField(points, values);
+					View.AskField(points, values);
 					for (size_t n = 0; n < SharpCrossings.size(); ++n)
 					{
 						Crossing& crossing = SharpCrossings[n];
@@ -649,7 +770,7 @@ namespace Nyx
 						}
 					}
 					std::vector<float> values;
-					AskField(points, values);
+					View.AskField(points, values);
 					for (size_t n = 0; n < SharpCrossings.size(); ++n)
 					{
 						const float* at = values.data() + n * 3;
@@ -664,7 +785,7 @@ namespace Nyx
 					{
 						continue;
 					}
-					const glm::vec3 corner = CellCorner(vertex.Cell);
+					const glm::vec3 corner = View.CellCorner(vertex.Cell);
 					const glm::vec3 mass = vertex.MassLocal;
 					float a[6] = {};
 					glm::vec3 b(0.0f);
@@ -843,113 +964,6 @@ namespace Nyx
 				}
 			}
 
-			// The field at `local` from a cell's corner, in cells, if that is within the grid
-			bool SampleGrid(const glm::ivec3& cell, const glm::vec3& local, float& outValue) const
-			{
-				const glm::vec3 whole = glm::floor(local);
-				glm::ivec3 at = cell + glm::ivec3(whole);
-				glm::vec3 within = local - whole;
-				// The far faces of the grid belong to its last cells
-				for (int axis = 0; axis < 3; ++axis)
-				{
-					if (at[axis] == CellCounts[axis] && within[axis] == 0.0f)
-					{
-						at[axis] -= 1;
-						within[axis] = 1.0f;
-					}
-				}
-				if (!IsCellInGrid(at))
-				{
-					return false;
-				}
-				outValue = ReadCell(Grid, at).At(within);
-				return true;
-			}
-
-			// How much of the sky each vertex sees: rays over the sky's half of the directions, each
-			// weighted by how squarely the vertex faces it, blocked where the field is inside
-			void ComputeSkyVisibility(const std::vector<size_t>& used, const std::vector<glm::vec3>& normals, std::vector<float>& outVisibility) const
-			{
-				outVisibility.assign(used.size(), 1.0f);
-				if (!(Settings.SkyReach > 0.0f))
-				{
-					return;
-				}
-
-				// Straight up and six round it 45 degrees up, written out rather than from sine and cosine,
-				// which a C library may round its own way
-				const std::vector<glm::vec3> directions{ { 0.0f, 1.0f, 0.0f }, { 0.70710677f, 0.70710677f, 0.0f }, { 0.35355338f, 0.70710677f, 0.61237244f },
-					{ -0.35355338f, 0.70710677f, 0.61237244f }, { -0.70710677f, 0.70710677f, 0.0f }, { -0.35355338f, 0.70710677f, -0.61237244f },
-					{ 0.35355338f, 0.70710677f, -0.61237244f } };
-				// A cell, then twice as far each time
-				std::vector<float> distances;
-				for (float distance = 1.0f; distance * Grid.CellSize <= Settings.SkyReach; distance *= 2.0f)
-				{
-					distances.push_back(distance);
-				}
-
-				std::vector<uint8_t> blocked(used.size() * directions.size(), 0);
-				// Points past the grid, asked of the field in one go
-				std::vector<glm::vec3> farPoints;
-				std::vector<size_t> farRays;
-				for (size_t u = 0; u < used.size(); ++u)
-				{
-					const WorkVertex& vertex = Vertices[used[u]];
-					const glm::vec3 start = vertex.Local + normals[u] * 0.5f;
-					for (size_t d = 0; d < directions.size(); ++d)
-					{
-						if (!(glm::dot(directions[d], normals[u]) > 0.0f))
-						{
-							continue;
-						}
-						const size_t ray = u * directions.size() + d;
-						for (const float distance : distances)
-						{
-							const glm::vec3 local = start + directions[d] * distance;
-							float value = 0.0f;
-							if (SampleGrid(vertex.Cell, local, value))
-							{
-								if (IsInside(value))
-								{
-									blocked[ray] = 1;
-									break;
-								}
-							}
-							else if (Settings.Field)
-							{
-								farPoints.push_back(CellCorner(vertex.Cell) + local * Grid.CellSize);
-								farRays.push_back(ray);
-							}
-						}
-					}
-				}
-				if (!farPoints.empty())
-				{
-					std::vector<float> values;
-					AskField(farPoints, values);
-					for (size_t n = 0; n < farRays.size(); ++n)
-					{
-						if (IsInside(values[n]))
-						{
-							blocked[farRays[n]] = 1;
-						}
-					}
-				}
-
-				for (size_t u = 0; u < used.size(); ++u)
-				{
-					float open = 0.0f;
-					float total = 0.0f;
-					for (size_t d = 0; d < directions.size(); ++d)
-					{
-						const float weight = std::max(glm::dot(directions[d], normals[u]), 0.0f);
-						total += weight;
-						open += blocked[u * directions.size() + d] != 0 ? 0.0f : weight;
-					}
-					outVisibility[u] = total > 0.0f ? open / total : 0.0f;
-				}
-			}
-
 			// The corners' gradients blended trilinearly at a point of the cell
 			glm::vec3 BlendGradients(const glm::ivec3& cell, const glm::vec3& local) const
 			{
@@ -989,8 +1003,15 @@ namespace Nyx
 					const float length = glm::length(gradient);
 					normals[u] = length > 0.0f ? gradient / length : glm::vec3(0.0f, 1.0f, 0.0f);
 				}
+				std::vector<glm::ivec3> cells(used.size());
+				std::vector<glm::vec3> locals(used.size());
+				for (size_t u = 0; u < used.size(); ++u)
+				{
+					cells[u] = Vertices[used[u]].Cell;
+					locals[u] = Vertices[used[u]].Local;
+				}
 				std::vector<float> sky;
-				ComputeSkyVisibility(used, normals, sky);
+				View.ComputeSkyVisibility(cells, locals, normals, sky);
 
 				MeshData mesh;
 				mesh.Vertices.resize(used.size());
@@ -998,7 +1019,7 @@ namespace Nyx
 				{
 					const WorkVertex& work = Vertices[used[u]];
 					Vertex& vertex = mesh.Vertices[u];
-					vertex.Position = CellCorner(work.Cell) + work.Local * Grid.CellSize;
+					vertex.Position = View.CellCorner(work.Cell) + work.Local * Grid.CellSize;
 					vertex.Normal = normals[u];
 					const glm::vec3 side = std::fabs(normals[u].z) < 0.9f ? glm::vec3(0.0f, 0.0f, 1.0f) : glm::vec3(1.0f, 0.0f, 0.0f);
 					vertex.Tangent = glm::vec4(glm::normalize(glm::cross(side, normals[u])), 1.0f);
@@ -1037,6 +1058,7 @@ namespace Nyx
 
 			const FieldGrid& Grid;
 			const FieldMeshSettings& Settings;
+			GridView View;
 			glm::ivec3 CellCounts{ 0 };
 			glm::ivec3 QuadMin{ 1 };
 			glm::ivec3 QuadMax{ 1 };
@@ -1046,17 +1068,366 @@ namespace Nyx
 			std::vector<Quad> Quads;
 			uint32_t SplitCells = 0;
 		};
+
+		// Marching cubes: the surface's vertices on the crossed grid edges, shared by every cell round
+		// an edge, and in each cell the loops of its crossed edges, joined through its faces as the dual
+		// mesher joins them, as polygons facing out, fanned into triangles
+		class MarchingMesher
+		{
+		public:
+			MarchingMesher(const FieldGrid& grid, const FieldMeshSettings& settings) : Grid(grid), Settings(settings), View(grid, settings)
+			{
+				for (int axis = 0; axis < 3; ++axis)
+				{
+					CellMin[axis] = std::max(settings.QuadMin[axis] > 0 ? settings.QuadMin[axis] : 0, 0);
+					CellMax[axis] = std::min(settings.QuadMax[axis] > 0 ? settings.QuadMax[axis] : View.CellCounts[axis], View.CellCounts[axis]);
+				}
+				EdgeVertices.assign(grid.Values.size() * 3, -1);
+			}
+
+			MeshData Make(FieldMeshStats& stats)
+			{
+				for (int k = CellMin.z; k < CellMax.z; ++k)
+				{
+					for (int j = CellMin.y; j < CellMax.y; ++j)
+					{
+						for (int i = CellMin.x; i < CellMax.x; ++i)
+						{
+							MakeCell(glm::ivec3(i, j, k));
+						}
+					}
+				}
+				return Finish(stats);
+			}
+
+		private:
+			struct EdgeVertex
+			{
+				// The edge's start, and where along it the surface crosses, in cells
+				glm::ivec3 Cell{ 0 };
+				glm::vec3 Local{ 0.0f };
+				glm::vec3 Normal{ 0.0f, 1.0f, 0.0f };
+				uint32_t Material = 0;
+			};
+
+			// The vertex on the grid edge from `from` along `axis`, made the first time a cell needs it
+			int32_t GetEdgeVertex(const glm::ivec3& from, int axis)
+			{
+				int32_t& index = EdgeVertices[Grid.IndexOf(from.x, from.y, from.z) * 3 + size_t(axis)];
+				if (index >= 0)
+				{
+					return index;
+				}
+				glm::ivec3 to = from;
+				to[axis] += 1;
+				const float fromValue = Grid.GetValue(from.x, from.y, from.z);
+				const float toValue = Grid.GetValue(to.x, to.y, to.z);
+				// Kept a thousandth of a cell off the ends: a sample exactly at 0 would otherwise put the
+				// vertices of all its crossed edges at one point
+				const float t = std::clamp(fromValue / (fromValue - toValue), 0.001f, 0.999f);
+
+				EdgeVertex vertex;
+				vertex.Cell = from;
+				vertex.Local[axis] = t;
+				const glm::vec3 fromGradient = SampleGradient(Grid, from);
+				const glm::vec3 toGradient = SampleGradient(Grid, to);
+				const glm::vec3 gradient = fromGradient + (toGradient - fromGradient) * t;
+				const float length = glm::length(gradient);
+				vertex.Normal = length > 0.0f ? gradient / length : glm::vec3(0.0f, 1.0f, 0.0f);
+				const glm::ivec3 inside = IsInside(fromValue) ? from : to;
+				vertex.Material = Grid.GetMaterial(inside.x, inside.y, inside.z);
+
+				index = static_cast<int32_t>(Vertices.size());
+				Vertices.push_back(vertex);
+				return index;
+			}
+
+			// Whether two of a cell's edges lie on one of its faces
+			static bool ShareFace(int a, int b)
+			{
+				auto faces = [](int edge, int out[2])
+				{
+					const int axis = Edges[edge].Axis;
+					int count = 0;
+					for (int other = 0; other < 3; ++other)
+					{
+						if (other != axis)
+						{
+							out[count++] = other * 2 + ((Edges[edge].From >> other) & 1);
+						}
+					}
+				};
+				int facesA[2];
+				int facesB[2];
+				faces(a, facesA);
+				faces(b, facesB);
+				return facesA[0] == facesB[0] || facesA[0] == facesB[1] || facesA[1] == facesB[0] || facesA[1] == facesB[1];
+			}
+
+			// A loop's polygon as a fan from a vertex none of whose diagonals lies on a face of the cell:
+			// the cell across that face could make the same diagonal, and four triangles would share it.
+			// Where no vertex will do (a loop through a face twice), a fan round a vertex in its middle.
+			void AddPolygon(const glm::ivec3& cell, const int loopEdges[], const int32_t loop[], int length)
+			{
+				for (int first = 0; first < length; ++first)
+				{
+					bool bFits = true;
+					for (int k = 2; k + 1 < length && bFits; ++k)
+					{
+						bFits = !ShareFace(loopEdges[first], loopEdges[(first + k) % length]);
+					}
+					if (!bFits)
+					{
+						continue;
+					}
+					for (int n = 1; n + 1 < length; ++n)
+					{
+						Triangles.push_back({ loop[first], loop[(first + n) % length], loop[(first + n + 1) % length] });
+					}
+					return;
+				}
+
+				EdgeVertex middle;
+				middle.Cell = cell;
+				middle.Local = glm::vec3(0.0f);
+				glm::vec3 normal(0.0f);
+				for (int n = 0; n < length; ++n)
+				{
+					const EdgeVertex& vertex = Vertices[loop[n]];
+					middle.Local += glm::vec3(vertex.Cell - cell) + vertex.Local;
+					normal += vertex.Normal;
+				}
+				middle.Local /= float(length);
+				const float normalLength = glm::length(normal);
+				middle.Normal = normalLength > 0.0f ? normal / normalLength : glm::vec3(0.0f, 1.0f, 0.0f);
+				middle.Material = Vertices[loop[0]].Material;
+				const int32_t centre = static_cast<int32_t>(Vertices.size());
+				Vertices.push_back(middle);
+				for (int n = 0; n < length; ++n)
+				{
+					Triangles.push_back({ centre, loop[n], loop[(n + 1) % length] });
+				}
+			}
+
+			void MakeCell(const glm::ivec3& cell)
+			{
+				const CellValues values = ReadCell(Grid, cell);
+				bool bInside[8] = {};
+				int insideCount = 0;
+				for (int corner = 0; corner < 8; ++corner)
+				{
+					bInside[corner] = IsInside(values.Corner[corner]);
+					insideCount += bInside[corner] ? 1 : 0;
+				}
+				if (insideCount == 0 || insideCount == 8)
+				{
+					return;
+				}
+
+				// On each face, its curves from one crossed edge to the next, each the way round that has
+				// the inside of the face on its right seen from outside the cell, so every loop runs
+				// counter-clockwise seen from the air
+				std::array<int, EdgeCount> next;
+				next.fill(-1);
+				for (int faceIndex = 0; faceIndex < 6; ++faceIndex)
+				{
+					const CellFace& face = Faces[faceIndex];
+					glm::vec3 outward(0.0f);
+					outward[faceIndex / 2] = (faceIndex % 2) != 0 ? 1.0f : -1.0f;
+
+					int crossed[4] = {};
+					int count = 0;
+					for (int k = 0; k < 4; ++k)
+					{
+						if (bInside[face.Corners[k]] != bInside[face.Corners[(k + 1) % 4]])
+						{
+							crossed[count++] = k;
+						}
+					}
+
+					// Each curve: its two edges and the corner it cuts off, or -1 for one across the face
+					int curves[2][3] = {};
+					int curveCount = 0;
+					if (count == 2)
+					{
+						const int a = crossed[0];
+						const int b = crossed[1];
+						const int cut = (b == a + 1) ? face.Corners[b] : (a == 0 && b == 3 ? face.Corners[0] : -1);
+						curves[curveCount][0] = face.Edges[a];
+						curves[curveCount][1] = face.Edges[b];
+						curves[curveCount][2] = cut;
+						++curveCount;
+					}
+					else if (count == 4)
+					{
+						const float middle = values.Corner[face.Corners[0]] + values.Corner[face.Corners[1]] + values.Corner[face.Corners[2]] +
+							values.Corner[face.Corners[3]];
+						const bool bCutOutside = IsInside(middle);
+						for (int k = 0; k < 4; ++k)
+						{
+							if (bInside[face.Corners[k]] != bCutOutside)
+							{
+								curves[curveCount][0] = face.Edges[(k + 3) % 4];
+								curves[curveCount][1] = face.Edges[k];
+								curves[curveCount][2] = face.Corners[k];
+								++curveCount;
+							}
+						}
+					}
+
+					for (int c = 0; c < curveCount; ++c)
+					{
+						int from = curves[c][0];
+						int to = curves[c][1];
+						const int cut = curves[c][2];
+						// The corner to have on the right: the inside one it cuts off, or across from the
+						// outside one it cuts off; for a curve across the face, an inside corner
+						int reference = cut;
+						bool bWantRight = cut >= 0 && bInside[cut];
+						if (cut < 0)
+						{
+							for (int k = 0; k < 4; ++k)
+							{
+								if (bInside[face.Corners[k]])
+								{
+									reference = face.Corners[k];
+									break;
+								}
+							}
+							bWantRight = true;
+						}
+						const glm::vec3 fromMiddle = glm::vec3(CornerOffset(Edges[from].From)) + glm::vec3(CornerOffset(Edges[from].To)) * 1.0f;
+						const glm::vec3 toMiddle = glm::vec3(CornerOffset(Edges[to].From)) + glm::vec3(CornerOffset(Edges[to].To)) * 1.0f;
+						const glm::vec3 corner = glm::vec3(CornerOffset(reference)) * 2.0f;
+						const bool bRight = glm::dot(outward, glm::cross(toMiddle - fromMiddle, corner - fromMiddle)) < 0.0f;
+						if (bRight != bWantRight)
+						{
+							std::swap(from, to);
+						}
+						next[from] = to;
+					}
+				}
+
+				// The loops, each from its lowest edge, as polygons
+				std::array<bool, EdgeCount> visited{};
+				int polygons = 0;
+				for (int start = 0; start < EdgeCount; ++start)
+				{
+					if (next[start] < 0 || visited[start])
+					{
+						continue;
+					}
+					int loopEdges[EdgeCount];
+					int32_t loop[EdgeCount];
+					int length = 0;
+					for (int edge = start; !visited[edge] && length < EdgeCount; edge = next[edge])
+					{
+						visited[edge] = true;
+						loopEdges[length] = edge;
+						loop[length++] = GetEdgeVertex(cell + CornerOffset(Edges[edge].From), Edges[edge].Axis);
+						if (next[edge] < 0)
+						{
+							break;
+						}
+					}
+					AddPolygon(cell, loopEdges, loop, length);
+					++polygons;
+				}
+				if (polygons > 1)
+				{
+					++SplitCells;
+				}
+			}
+
+			MeshData Finish(FieldMeshStats& stats)
+			{
+				std::vector<glm::ivec3> cells(Vertices.size());
+				std::vector<glm::vec3> locals(Vertices.size());
+				std::vector<glm::vec3> normals(Vertices.size());
+				for (size_t v = 0; v < Vertices.size(); ++v)
+				{
+					cells[v] = Vertices[v].Cell;
+					locals[v] = Vertices[v].Local;
+					normals[v] = Vertices[v].Normal;
+				}
+				std::vector<float> sky;
+				View.ComputeSkyVisibility(cells, locals, normals, sky);
+
+				MeshData mesh;
+				mesh.Vertices.resize(Vertices.size());
+				for (size_t v = 0; v < Vertices.size(); ++v)
+				{
+					Vertex& vertex = mesh.Vertices[v];
+					vertex.Position = View.CellCorner(Vertices[v].Cell) + Vertices[v].Local * Grid.CellSize;
+					vertex.Normal = normals[v];
+					const glm::vec3 side = std::fabs(normals[v].z) < 0.9f ? glm::vec3(0.0f, 0.0f, 1.0f) : glm::vec3(1.0f, 0.0f, 0.0f);
+					vertex.Tangent = glm::vec4(glm::normalize(glm::cross(side, normals[v])), 1.0f);
+					vertex.Custom = glm::vec4(sky[v], float(Vertices[v].Material), 0.0f, 0.0f);
+				}
+				mesh.Indices.reserve(Triangles.size() * 3);
+				for (const auto& triangle : Triangles)
+				{
+					const glm::vec3 a = glm::vec3(Vertices[triangle[0]].Cell) + Vertices[triangle[0]].Local;
+					const glm::vec3 facing = glm::cross(glm::vec3(Vertices[triangle[1]].Cell) + Vertices[triangle[1]].Local - a,
+						glm::vec3(Vertices[triangle[2]].Cell) + Vertices[triangle[2]].Local - a);
+					if (glm::dot(facing, normals[triangle[0]] + normals[triangle[1]] + normals[triangle[2]]) < 0.0f)
+					{
+						++stats.BackFacingTriangles;
+					}
+					for (const int32_t index : triangle)
+					{
+						mesh.Indices.push_back(static_cast<uint32_t>(index));
+					}
+				}
+				stats.Vertices = static_cast<uint32_t>(mesh.Vertices.size());
+				stats.Triangles = static_cast<uint32_t>(Triangles.size());
+				stats.SplitCells = SplitCells;
+				return mesh;
+			}
+
+			const FieldGrid& Grid;
+			const FieldMeshSettings& Settings;
+			GridView View;
+			glm::ivec3 CellMin{ 0 };
+			glm::ivec3 CellMax{ 0 };
+			// Each grid edge's vertex: three a sample, one along each axis; -1 where none is made yet
+			std::vector<int32_t> EdgeVertices;
+			std::vector<EdgeVertex> Vertices;
+			std::vector<std::array<int32_t, 3>> Triangles;
+			uint32_t SplitCells = 0;
+		};
+
+		bool IsGridValid(const FieldGrid& grid)
+		{
+			const size_t samples = size_t(std::max(grid.Size.x, 0)) * size_t(std::max(grid.Size.y, 0)) * size_t(std::max(grid.Size.z, 0));
+			return glm::all(glm::greaterThanEqual(grid.Size, glm::ivec3(2))) && grid.Values.size() == samples &&
+				(grid.Materials.empty() || grid.Materials.size() == samples);
+		}
 	}
 
 	MeshData MakeFieldMesh(const FieldGrid& grid, const FieldMeshSettings& settings, FieldMeshStats* outStats)
 	{
 		FieldMeshStats stats;
 		MeshData mesh;
-		const size_t samples = size_t(std::max(grid.Size.x, 0)) * size_t(std::max(grid.Size.y, 0)) * size_t(std::max(grid.Size.z, 0));
-		if (glm::all(glm::greaterThanEqual(grid.Size, glm::ivec3(2))) && grid.Values.size() == samples &&
-			(grid.Materials.empty() || grid.Materials.size() == samples))
+		if (IsGridValid(grid))
 		{
 			Mesher mesher(grid, settings);
+			mesh = mesher.Make(stats);
+		}
+		if (outStats != nullptr)
+		{
+			*outStats = stats;
+		}
+		return mesh;
+	}
+
+	MeshData MakeMarchingFieldMesh(const FieldGrid& grid, const FieldMeshSettings& settings, FieldMeshStats* outStats)
+	{
+		FieldMeshStats stats;
+		MeshData mesh;
+		if (IsGridValid(grid))
+		{
+			MarchingMesher mesher(grid, settings);
 			mesh = mesher.Make(stats);
 		}
 		if (outStats != nullptr)

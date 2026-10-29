@@ -494,6 +494,123 @@ namespace
 		Require(hash == Golden, "The terrain's mesh changed");
 	}
 
+	// Marching cubes, on the same shapes: closed and manifold everywhere, the sphere's area and
+	// normals right, a box's corners rounded, thin shapes wound consistently, two chunks meeting,
+	// open ground seeing the sky, materials, and a golden mesh
+	void TestMarching()
+	{
+		const glm::vec3 center(17.3f, 17.1f, 16.8f);
+		const Field sphere = Sphere(center, 10.0f);
+		FieldMeshStats stats;
+		const MeshData mesh = Nyx::MakeMarchingFieldMesh(SampleField(sphere, glm::vec3(0.0f), 1.0f, glm::ivec3(35)), {}, &stats);
+		Require(Nyx::CheckMeshData(mesh).empty(), "Marching: the sphere's mesh should be valid");
+		RequireClosed({ &mesh }, "Marching sphere");
+		RequireFacingOut(mesh, sphere, "Marching sphere");
+		const float expected = 4.0f * 3.14159265f * 100.0f;
+		Require(std::fabs(Area(mesh) - expected) < expected * 0.02f, "Marching: the sphere's area should be within 2 %: " + std::to_string(Area(mesh)));
+		for (const Nyx::Vertex& vertex : mesh.Vertices)
+		{
+			Require(std::fabs(glm::length(vertex.Position - center) - 10.0f) < 0.1f, "Marching: the sphere's vertices should be on it");
+			Require(glm::dot(vertex.Normal, glm::normalize(vertex.Position - center)) > 0.99f, "Marching: the sphere's normals should point out");
+		}
+		Require(int(stats.Vertices) - int(CountEdges({ &mesh }).size()) + int(stats.Triangles) == 2, "Marching: the sphere should be one closed surface");
+		std::cout << "Marching sphere: " << stats.Vertices << " vertices, " << stats.Triangles << " triangles\n";
+
+		const glm::vec3 boxCenter(17.37f, 17.21f, 16.93f);
+		const glm::vec3 half(8.3f, 6.7f, 5.4f);
+		const Field box = Box(boxCenter, half);
+		const MeshData boxMesh = Nyx::MakeMarchingFieldMesh(SampleField(box, glm::vec3(0.0f), 1.0f, glm::ivec3(35)));
+		RequireClosed({ &boxMesh }, "Marching box");
+		RequireFacingOut(boxMesh, box, "Marching box");
+		float worst = 0.0f;
+		for (int corner = 0; corner < 8; ++corner)
+		{
+			const glm::vec3 sign(corner & 1 ? 1.0f : -1.0f, corner & 2 ? 1.0f : -1.0f, corner & 4 ? 1.0f : -1.0f);
+			worst = std::max(worst, NearestVertex(boxMesh, boxCenter + sign * half));
+		}
+		Require(worst > 0.2f, "Marching can't keep a box's corners");
+		std::cout << "Marching box: the farthest corner " << worst << " m from a vertex\n";
+
+		const std::vector<std::pair<std::string, Field>> shapes{
+			{ "Plate", Box(glm::vec3(17.2f, 17.3f, 16.9f), glm::vec3(10.0f, 0.45f, 9.0f)) },
+			{ "Tilted plate", [](const glm::vec3& p)
+				{
+					const glm::vec3 n = glm::normalize(glm::vec3(0.3f, 1.0f, 0.2f));
+					const float slab = std::fabs(glm::dot(p - glm::vec3(17.0f), n)) - 0.35f;
+					return std::max(slab, glm::length(p - glm::vec3(17.0f)) - 12.0f);
+				} },
+			{ "Rod", [](const glm::vec3& p) { return std::max(glm::length(glm::vec2(p.y - 17.2f, p.z - 16.9f)) - 0.45f, std::fabs(p.x - 17.0f) - 12.0f); } },
+			{ "Two sheets", [](const glm::vec3& p) { return std::max(std::fabs(std::fabs(p.y - 17.0f) - 0.8f) - 0.3f, glm::length(p - glm::vec3(17.0f)) - 12.0f); } },
+		};
+		for (const auto& [name, field] : shapes)
+		{
+			FieldMeshStats shapeStats;
+			const MeshData shape = Nyx::MakeMarchingFieldMesh(SampleField(field, glm::vec3(0.0f), 1.0f, glm::ivec3(35)), {}, &shapeStats);
+			const std::string what = "Marching " + name;
+			Require(!shape.Indices.empty(), what + ": should make a mesh");
+			RequireClosed({ &shape }, what);
+			RequireConsistentWinding(shape, what);
+			std::cout << what << ": " << shapeStats.Triangles << " triangles, " << shapeStats.SplitCells << " cells with more than one polygon, "
+					  << shapeStats.BackFacingTriangles << " against the normals\n";
+		}
+
+		FieldMeshSettings chunk;
+		chunk.QuadMin = glm::ivec3(2);
+		chunk.QuadMax = glm::ivec3(34);
+		const Field across = Sphere(glm::vec3(32.4f, 16.3f, 16.7f), 12.0f);
+		const MeshData left = Nyx::MakeMarchingFieldMesh(SampleField(across, glm::vec3(-2.0f), 1.0f, glm::ivec3(36)), chunk);
+		const MeshData right = Nyx::MakeMarchingFieldMesh(SampleField(across, glm::vec3(30.0f, -2.0f, -2.0f), 1.0f, glm::ivec3(36)), chunk);
+		Require(!left.Indices.empty() && !right.Indices.empty(), "Marching: both chunks should have part of the sphere");
+		RequireClosed({ &left, &right }, "Marching, two chunks");
+
+		const Field ground = [](const glm::vec3& p) { return p.y - 10.3f; };
+		for (const Nyx::Vertex& vertex : Nyx::MakeMarchingFieldMesh(SampleField(ground, glm::vec3(0.0f), 1.0f, glm::ivec3(35))).Vertices)
+		{
+			Require(vertex.Custom.x > 0.99f, "Marching: flat open ground should see the whole sky");
+		}
+		for (const Nyx::Vertex& vertex : Nyx::MakeMarchingFieldMesh(SampleField(sphere, glm::vec3(0.0f), 1.0f, glm::ivec3(35),
+				 [&](const glm::vec3& p) { return p.x < center.x ? 1u : 2u; })).Vertices)
+		{
+			if (vertex.Position.x < center.x - 1.5f)
+			{
+				Require(vertex.Custom.y == 1.0f, "Marching: vertices on the left half should be material 1");
+			}
+			if (vertex.Position.x > center.x + 1.5f)
+			{
+				Require(vertex.Custom.y == 2.0f, "Marching: vertices on the right half should be material 2");
+			}
+		}
+
+		const Nyx::SdfTerrainComponent terrain = MakeTerrain();
+		const MeshData terrainMesh = Nyx::MakeMarchingFieldMesh(Nyx::SampleTerrainGrid(terrain, glm::vec3(-18.0f), 1.0f, glm::ivec3(36)), chunk);
+		uint64_t hash = 0xCBF29CE484222325ull;
+		auto add = [&](uint32_t bits)
+		{
+			for (int byte = 0; byte < 4; ++byte)
+			{
+				hash ^= (bits >> (byte * 8)) & 0xFFu;
+				hash *= 0x100000001B3ull;
+			}
+		};
+		for (const Nyx::Vertex& vertex : terrainMesh.Vertices)
+		{
+			for (int axis = 0; axis < 3; ++axis)
+			{
+				add(BitsOf(vertex.Position[axis]));
+				add(BitsOf(vertex.Normal[axis]));
+			}
+			add(BitsOf(vertex.Custom.x));
+			add(BitsOf(vertex.Custom.y));
+		}
+		for (const uint32_t index : terrainMesh.Indices)
+		{
+			add(index);
+		}
+		constexpr uint64_t Golden = 0xc473ada261ff950eull;
+		std::cout << std::hex << "Golden marching mesh hash: 0x" << hash << std::dec << "\n";
+		Require(hash == Golden, "The terrain's marching mesh changed");
+	}
+
 	// Not a test: a chunk of terrain sampled, and meshed smooth, sharp from the samples and sharp by
 	// the terrain itself, each with and without sky visibility
 	void PrintTimings()
@@ -504,7 +621,7 @@ namespace
 		const FieldGrid grid = Nyx::SampleTerrainGrid(terrain, glm::vec3(30.0f, -18.0f, -18.0f), 1.0f, glm::ivec3(36));
 		std::cout << "A chunk of terrain: sampled in " << milliseconds(start, std::chrono::steady_clock::now()) << " ms\n";
 
-		for (int variant = 0; variant < 3; ++variant)
+		for (int variant = 0; variant < 4; ++variant)
 		{
 			for (const float reach : { 16.0f, 0.0f })
 			{
@@ -512,17 +629,17 @@ namespace
 				settings.QuadMin = glm::ivec3(2);
 				settings.QuadMax = glm::ivec3(34);
 				settings.SkyReach = reach;
-				if (variant > 0)
+				if (variant == 1 || variant == 2)
 				{
 					settings.SharpMaterials = { false, true };
 				}
-				if (variant > 1)
+				if (variant == 2)
 				{
 					settings.Field = [&](const float* x, const float* y, const float* z, size_t count, float* out) { Nyx::SampleTerrainBatch(terrain, x, y, z, count, out); };
 				}
 				FieldMeshStats stats;
 				const auto before = std::chrono::steady_clock::now();
-				const MeshData mesh = Nyx::MakeFieldMesh(grid, settings, &stats);
+				const MeshData mesh = variant == 3 ? Nyx::MakeMarchingFieldMesh(grid, settings, &stats) : Nyx::MakeFieldMesh(grid, settings, &stats);
 				const double time = milliseconds(before, std::chrono::steady_clock::now());
 				// Against the terrain's own gradient where they are, which the normals only approximate
 				int againstTerrain = 0;
@@ -534,7 +651,7 @@ namespace
 						++againstTerrain;
 					}
 				}
-				const char* names[3] = { "smooth", "sharp from the samples", "sharp by the terrain" };
+				const char* names[4] = { "dual, smooth", "dual, sharp from the samples", "dual, sharp by the terrain", "marching cubes" };
 				std::cout << "  meshed " << names[variant] << (reach > 0.0f ? ", with sky: " : ", without sky: ") << time << " ms; " << stats.Vertices << " vertices, "
 						  << stats.Triangles << " triangles, " << stats.SplitCells << " cells split, " << stats.BackFacingTriangles << " against the normals, " << againstTerrain
 						  << " against the terrain\n";
@@ -554,6 +671,7 @@ int main()
 		TestSkyVisibility();
 		TestMaterials();
 		TestGoldenMesh();
+		TestMarching();
 		PrintTimings();
 	}
 	catch (const std::exception& error)

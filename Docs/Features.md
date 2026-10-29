@@ -1464,6 +1464,11 @@ of it made by code; nothing draws it or collides with it yet.
   side meet without a gap: each makes the quads of its own edges, from a grid two samples wider
   before it and one after. Where a cell face has all four edges crossed and both cells join its two
   curves, four triangles share an edge: dual meshing's known limit.
+- `MakeMarchingFieldMesh()` makes the same surface by marching cubes, to compare the two: a vertex on
+  each crossed grid edge, shared by the cells round it, and in each cell polygons through them, the
+  loops its crossed edges make joined through its faces by the same rule, fanned into triangles so
+  that no diagonal lies on a face of the cell. Closed and manifold everywhere, about as many
+  triangles as the dual mesh, but every vertex smooth: no sharp edges or corners.
 - Its 3D noise (`GradientNoise.h`): `SampleGradientNoise3D()`, fractal and ridged octaves, their
   batches, and proven bounds of value and slope; `SmoothMinimum.h`, the rounded minimum and
   maximum.
@@ -1473,7 +1478,8 @@ of it made by code; nothing draws it or collides with it yet.
   dense sampling, a thin slab never passed through, materials, blends, tunnels in their band, seeds),
   `NyxFieldMesherTests` (a sphere closed with the right area, a box's corners kept sharp and rounded
   smooth, thin shapes closed and wound consistently, neighbouring chunks meeting, sky visibility,
-  materials, a golden mesh the same in Debug and Release).
+  materials, a golden mesh the same in Debug and Release; marching cubes on the same shapes, closed
+  and manifold; how long each takes on a chunk of terrain).
 
 ## Scattering
 
