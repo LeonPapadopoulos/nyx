@@ -100,6 +100,9 @@ namespace Nyx
 		uint32_t ParticleEmitters = 0;
 		uint32_t ParticleEmittersCulled = 0;
 		uint32_t Particles = 0;
+		// The world's lightning bolts on this frame, and those wholly out of view
+		uint32_t Lightning = 0;
+		uint32_t LightningCulled = 0;
 		// Meshes left out, each instance one: an entity out of view, or every instance of a cell
 		uint32_t InstancesCulled = 0;
 		// The draw calls the draws are recorded as, one for each section of a mesh, and those of them
@@ -127,6 +130,8 @@ namespace Nyx
 			ParticleEmitters += other.ParticleEmitters;
 			ParticleEmittersCulled += other.ParticleEmittersCulled;
 			Particles += other.Particles;
+			Lightning += other.Lightning;
+			LightningCulled += other.LightningCulled;
 			return *this;
 		}
 	};
@@ -191,7 +196,7 @@ namespace Nyx
 	// on the device. Its sky's tables, in the frames they are made again (VulkanSkyAtmosphere), its
 	// cloud layer (VulkanCloudLayer; with its noise in the frames that make it), its volumetric clouds
 	// (VulkanVolumetricClouds; with their noises in the frames that make them), its shadow cascades,
-	// its scene pass (the objects, the sky and the decals, and with MSAA the resolve at its end), its ambient occlusion, its particles, its light shafts, its bloom, and its picture
+	// its scene pass (the objects, the sky and the decals, and with MSAA the resolve at its end), its ambient occlusion, its lightning's bolts, its particles, its light shafts, its bloom, and its picture
 	// (the tonemap, and the overlays and lines over it). Its colour grading's bake, in a frame that
 	// baked its table again (its lookup is the tonemap's, in the picture).
 	struct SceneViewGpuTimes
@@ -202,13 +207,14 @@ namespace Nyx
 		float Shadows = 0.0f;
 		float Scene = 0.0f;
 		float AmbientOcclusion = 0.0f;
+		float Lightning = 0.0f;
 		float Particles = 0.0f;
 		float LightShafts = 0.0f;
 		float Bloom = 0.0f;
 		float Picture = 0.0f;
 		float ColorGrading = 0.0f;
 
-		float GetTotal() const { return Sky + Clouds + VolumetricClouds + Shadows + Scene + AmbientOcclusion + Particles + LightShafts + Bloom + Picture + ColorGrading; }
+		float GetTotal() const { return Sky + Clouds + VolumetricClouds + Shadows + Scene + AmbientOcclusion + Lightning + Particles + LightShafts + Bloom + Picture + ColorGrading; }
 
 		SceneViewGpuTimes& operator+=(const SceneViewGpuTimes& other)
 		{
@@ -218,6 +224,7 @@ namespace Nyx
 			Shadows += other.Shadows;
 			Scene += other.Scene;
 			AmbientOcclusion += other.AmbientOcclusion;
+			Lightning += other.Lightning;
 			Particles += other.Particles;
 			LightShafts += other.LightShafts;
 			Bloom += other.Bloom;

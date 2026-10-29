@@ -45,7 +45,7 @@ namespace
 		render.WaitForGpu = 9.0f;
 		render.GpuFrame = 12.0f;
 		render.SceneViews = 2;
-		render.Views.Gpu = SceneViewGpuTimes{ .Sky = 0.0625f, .Clouds = 0.03125f, .VolumetricClouds = 0.015625f, .Shadows = 3.0f, .Scene = 6.0f, .AmbientOcclusion = 1.0f, .Particles = 0.75f, .LightShafts = 0.375f, .Bloom = 0.5f, .Picture = 0.25f, .ColorGrading = 0.125f };
+		render.Views.Gpu = SceneViewGpuTimes{ .Sky = 0.0625f, .Clouds = 0.03125f, .VolumetricClouds = 0.015625f, .Shadows = 3.0f, .Scene = 6.0f, .AmbientOcclusion = 1.0f, .Lightning = 0.1875f, .Particles = 0.75f, .LightShafts = 0.375f, .Bloom = 0.5f, .Picture = 0.25f, .ColorGrading = 0.125f };
 		render.MsaaSamples = 4;
 		render.Views.Scene.DrawCalls = 120;
 		render.Views.Scene.InstancedDrawCalls = 40;
@@ -63,6 +63,8 @@ namespace
 		render.Views.Scene.ParticleEmitters = 5;
 		render.Views.Scene.ParticleEmittersCulled = 2;
 		render.Views.Scene.Particles = 900;
+		render.Views.Scene.Lightning = 3;
+		render.Views.Scene.LightningCulled = 1;
 
 		const FrameStatsSample sample = MakeFrameStatsSample(render, ApplicationFrameTimes{ .Update = 0.5f, .Simulation = 2.0f, .SimulationSteps = 2, .LateUpdate = 0.25f });
 		Require(sample.Frame == 42, "The sample should be the renderer's frame");
@@ -72,7 +74,7 @@ namespace
 				Near(sample[EFrameStat::UI], 0.75) && Near(sample[EFrameStat::WaitForGpu], 9.0),
 			"The renderer's CPU times");
 		Require(Near(sample[EFrameStat::GpuFrame], 12.0) && Near(sample[EFrameStat::GpuSky], 0.0625) && Near(sample[EFrameStat::GpuClouds], 0.03125) && Near(sample[EFrameStat::GpuVolumetricClouds], 0.015625) && Near(sample[EFrameStat::GpuShadows], 3.0) && Near(sample[EFrameStat::GpuScene], 6.0) &&
-				Near(sample[EFrameStat::GpuAmbientOcclusion], 1.0) && Near(sample[EFrameStat::GpuParticles], 0.75) && Near(sample[EFrameStat::GpuLightShafts], 0.375) && Near(sample[EFrameStat::GpuBloom], 0.5) &&
+				Near(sample[EFrameStat::GpuAmbientOcclusion], 1.0) && Near(sample[EFrameStat::GpuLightning], 0.1875) && Near(sample[EFrameStat::GpuParticles], 0.75) && Near(sample[EFrameStat::GpuLightShafts], 0.375) && Near(sample[EFrameStat::GpuBloom], 0.5) &&
 				Near(sample[EFrameStat::GpuPicture], 0.25) && Near(sample[EFrameStat::GpuColorGrading], 0.125),
 			"The GPU times");
 		Require(sample[EFrameStat::SceneViews] == 2.0 && sample[EFrameStat::DrawCalls] == 120.0 && sample[EFrameStat::InstancedDrawCalls] == 40.0 &&
@@ -85,6 +87,7 @@ namespace
 		Require(sample[EFrameStat::MsaaSamples] == 4.0, "The samples a pixel");
 		Require(sample[EFrameStat::PointLights] == 8.0, "The lights lit are those neither culled nor dropped");
 		Require(sample[EFrameStat::ParticleEmitters] == 3.0 && sample[EFrameStat::Particles] == 900.0, "The emitters drawn and their particles");
+		Require(sample[EFrameStat::LightningBolts] == 2.0, "The bolts drawn are those not culled");
 	}
 
 	void TestViewsAddUp()
@@ -198,7 +201,7 @@ namespace
 		}
 		Require(lines.size() == 1 + 2 + 3, "A header, a row a frame and three summary rows, not " + std::to_string(lines.size()) + " lines");
 		Require(lines[0].starts_with("frame,time_s,frame_ms,update_ms,simulation_ms,"), "The header: " + lines[0]);
-		Require(lines[0].ends_with(",decals,point_lights,particle_emitters,particles"), "The header should end with the last numbers: " + lines[0]);
+		Require(lines[0].ends_with(",decals,point_lights,particle_emitters,particles,lightning_bolts"), "The header should end with the last numbers: " + lines[0]);
 
 		const auto columns = [](const std::string& line)
 		{

@@ -21,6 +21,7 @@
 #include "VulkanCloudLayer.h"
 #include "VulkanVolumetricClouds.h"
 #include "VulkanColorGrading.h"
+#include "VulkanLightning.h"
 #include "VulkanParticles.h"
 #include "VulkanSkyAtmosphere.h"
 #include "Mesh.h"
@@ -33,6 +34,7 @@
 #include "Multisampling.h"
 #include "SurfaceDecals.h"
 #include "PointLights.h"
+#include "Lightning.h"
 #include "Particles.h"
 #include "WindComponent.h"
 #include "AssetResolver.h"
@@ -392,6 +394,9 @@ namespace Nyx
 		// Its particles, moved on each frame by its time, and the meshes its emitters name by path
 		RenderParticles Particles;
 		std::unordered_map<std::string, Nyx::Mesh*> ParticleMeshes;
+		// Its lightning entities at its time, with the bolts on (ExtractLightning()); their lights are
+		// in PointLights after the entities' own
+		std::vector<RenderLightningBolt> Lightning;
 		// Dense picking IDs: ID i is the entity at i - 1, 0 is nothing
 		std::vector<Nyx::Entity> PickingIdToEntity;
 		// This frame's time of what moves by itself in the world, such as a decal's pulse, in
@@ -646,6 +651,10 @@ namespace Nyx
 		// additive ones, appended to this frame's particle stream; none in a debug view of the
 		// materials
 		void CullSceneViewParticles(SceneViewInstance& view, const RenderWorld& world, const Frustum& frustum);
+		// The view's lightning draws (SceneViewInstance::Lightning): the bolts on and in view, their
+		// strips facing its camera appended to this frame's lightning stream; none in a debug view of
+		// the materials
+		void CullSceneViewLightning(SceneViewInstance& view, const RenderWorld& world, const Frustum& frustum);
 		// The world's particles moved on to its time, carried by its air, with each emitter's mesh
 		// The world's wind at its time this frame (RenderWorld::Wind)
 		void ExtractWind(RenderWorld& world);
@@ -794,7 +803,9 @@ namespace Nyx
 		// Each view's colour grading table, baked before its picture pass when its grade changed
 		VulkanColorGrading ColorGrading{ Context, Programs };
 		VulkanLocalWind LocalWind{ Context };
-		// Each view's particles, after its ambient occlusion
+		// Each view's lightning, after its ambient occlusion and before its particles
+		VulkanLightning Lightning{ Context, Programs };
+		// Each view's particles, after its lightning
 		VulkanParticles Particles{ Context, Programs };
 		// Each view's light shafts, after its particles, for its tonemap to add
 		VulkanLightShafts LightShafts{ Context, Programs };
@@ -806,6 +817,8 @@ namespace Nyx
 		VulkanVolumetricClouds VolumetricClouds{ Context, Programs };
 		// This frame's particles of every view, in the order they are drawn
 		std::vector<ParticleInstanceData> FrameParticles;
+		// This frame's lightning strips of every view, in the order they are drawn
+		std::vector<LightningVertex> FrameLightning;
 
 		// The GPU times of each view's passes (SceneViewGpuTimes), for the first MaxTimedViews views:
 		// a pair of timestamps a pass a view, reset at the frame's start and read after its fence.
@@ -818,6 +831,7 @@ namespace Nyx
 			Shadows,
 			Scene,
 			AmbientOcclusion,
+			Lightning,
 			Particles,
 			LightShafts,
 			Bloom,

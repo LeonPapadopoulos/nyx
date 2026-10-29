@@ -28,7 +28,7 @@ namespace Nyx
 		// The GPU: the frame's whole command buffer, and the scene views' passes (the sky's tables
 		// in the frames they are made; the cloud layer, with its noise in the frames that make it; the
 		// volumetric clouds, with their noises in the frames that make them;
-		// the scene pass with the MSAA resolve at its end; the light shafts in the frames the sun
+		// the scene pass with the MSAA resolve at its end; the lightning's bolts; the light shafts in the frames the sun
 		// gives some; the colour grading's bake, in frames that bake)
 		GpuFrame,
 		GpuSky,
@@ -37,6 +37,7 @@ namespace Nyx
 		GpuShadows,
 		GpuScene,
 		GpuAmbientOcclusion,
+		GpuLightning,
 		GpuParticles,
 		GpuLightShafts,
 		GpuBloom,
@@ -46,7 +47,7 @@ namespace Nyx
 		// of them drew (SceneViewFrameStats), summed: their scene passes' draw calls, those of many
 		// instances, the instances drawn and culled, the triangles; their shadow cascades, their
 		// draw calls and triangles; the surface decals; the point lights each lit its pixels with;
-		// the particle emitters drawn, and their particles
+		// the particle emitters drawn, and their particles; the lightning bolts drawn
 		SceneViews,
 		MsaaSamples,
 		DrawCalls,
@@ -61,6 +62,7 @@ namespace Nyx
 		PointLights,
 		ParticleEmitters,
 		Particles,
+		LightningBolts,
 		Count
 	};
 

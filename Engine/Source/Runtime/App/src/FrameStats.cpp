@@ -23,6 +23,7 @@ namespace Nyx
 			{ "gpu_shadows_ms", true },
 			{ "gpu_scene_ms", true },
 			{ "gpu_ambient_occlusion_ms", true },
+			{ "gpu_lightning_ms", true },
 			{ "gpu_particles_ms", true },
 			{ "gpu_light_shafts_ms", true },
 			{ "gpu_bloom_ms", true },
@@ -42,6 +43,7 @@ namespace Nyx
 			{ "point_lights", false },
 			{ "particle_emitters", false },
 			{ "particles", false },
+			{ "lightning_bolts", false },
 		} };
 		return infos[std::min(static_cast<size_t>(stat), FrameStatCount - 1)];
 	}
@@ -68,6 +70,7 @@ namespace Nyx
 		sample[EFrameStat::GpuShadows] = views.Gpu.Shadows;
 		sample[EFrameStat::GpuScene] = views.Gpu.Scene;
 		sample[EFrameStat::GpuAmbientOcclusion] = views.Gpu.AmbientOcclusion;
+		sample[EFrameStat::GpuLightning] = views.Gpu.Lightning;
 		sample[EFrameStat::GpuParticles] = views.Gpu.Particles;
 		sample[EFrameStat::GpuLightShafts] = views.Gpu.LightShafts;
 		sample[EFrameStat::GpuBloom] = views.Gpu.Bloom;
@@ -88,6 +91,7 @@ namespace Nyx
 		sample[EFrameStat::PointLights] = views.Scene.PointLights - std::min(views.Scene.PointLights, views.Scene.PointLightsCulled + views.Scene.PointLightsDropped);
 		sample[EFrameStat::ParticleEmitters] = views.Scene.ParticleEmitters - std::min(views.Scene.ParticleEmitters, views.Scene.ParticleEmittersCulled);
 		sample[EFrameStat::Particles] = views.Scene.Particles;
+		sample[EFrameStat::LightningBolts] = views.Scene.Lightning - std::min(views.Scene.Lightning, views.Scene.LightningCulled);
 		return sample;
 	}
 

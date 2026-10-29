@@ -422,9 +422,9 @@ namespace Nyx::Editor
 		ImGui::Text("CPU: update %.2f, simulation %.2f, extract %.2f, cull %.2f, record %.2f, UI %.2f, waiting for the GPU %.2f",
 			average[EFrameStat::Update], average[EFrameStat::Simulation], average[EFrameStat::Extract], average[EFrameStat::Cull], average[EFrameStat::Record],
 			average[EFrameStat::UI], average[EFrameStat::WaitForGpu]);
-		ImGui::Text("GPU: %.2f ms; the scene views' sky %.2f, clouds %.2f, volumetric clouds %.2f, shadows %.2f, scenes %.2f, ambient occlusion %.2f, particles %.2f, light shafts %.2f, bloom %.2f, pictures %.2f, grading %.2f",
+		ImGui::Text("GPU: %.2f ms; the scene views' sky %.2f, clouds %.2f, volumetric clouds %.2f, shadows %.2f, scenes %.2f, ambient occlusion %.2f, lightning %.2f, particles %.2f, light shafts %.2f, bloom %.2f, pictures %.2f, grading %.2f",
 			average[EFrameStat::GpuFrame], average[EFrameStat::GpuSky], average[EFrameStat::GpuClouds], average[EFrameStat::GpuVolumetricClouds], average[EFrameStat::GpuShadows], average[EFrameStat::GpuScene], average[EFrameStat::GpuAmbientOcclusion],
-			average[EFrameStat::GpuParticles], average[EFrameStat::GpuLightShafts], average[EFrameStat::GpuBloom], average[EFrameStat::GpuPicture], average[EFrameStat::GpuColorGrading]);
+			average[EFrameStat::GpuLightning], average[EFrameStat::GpuParticles], average[EFrameStat::GpuLightShafts], average[EFrameStat::GpuBloom], average[EFrameStat::GpuPicture], average[EFrameStat::GpuColorGrading]);
 		ImGui::Text("%.0f scene views at %.0fx MSAA: %.0f draw calls, %.0f instances, %.0f culled, %.0f triangles; shadows %.0f draw calls",
 			average[EFrameStat::SceneViews], average[EFrameStat::MsaaSamples], average[EFrameStat::DrawCalls], average[EFrameStat::Instances],
 			average[EFrameStat::InstancesCulled], average[EFrameStat::Triangles], average[EFrameStat::ShadowDrawCalls]);

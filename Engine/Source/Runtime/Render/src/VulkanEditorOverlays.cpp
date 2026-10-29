@@ -11,6 +11,8 @@
 #include "VulkanRenderer.h"
 #include "VulkanUtil.h"
 
+#include <glm/gtc/constants.hpp>
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -210,6 +212,10 @@ namespace Nyx
 		// light (DrawPickingPass()).
 		for (const RenderPointLight& light : world.PointLights)
 		{
+			if (!light.bIcon)
+			{
+				continue;
+			}
 			const glm::vec3 color = light.Color / std::max(light.Color.r, std::max(light.Color.g, light.Color.b));
 			const float diagonal = PointLightIconRadius / std::sqrt(3.0f);
 			for (const glm::vec3 arm : { glm::vec3(PointLightIconRadius, 0.0f, 0.0f), glm::vec3(0.0f, PointLightIconRadius, 0.0f), glm::vec3(0.0f, 0.0f, PointLightIconRadius),
@@ -226,8 +232,19 @@ namespace Nyx
 				glm::vec3(0.85f, 0.85f, 0.85f));
 		}
 
-		// A selected decal's quad, a selected light's range and a selected emitter's particles'
-		// bounds, in the selection outline's colour
+		// Each lightning entity's icon: a small zig-zag of lines, pale yellow, which a click picks too
+		for (const RenderLightningBolt& bolt : world.Lightning)
+		{
+			const glm::vec3 color(1.0f, 0.95f, 0.55f);
+			const float r = LightningIconRadius;
+			const glm::vec3 p = bolt.WorldPosition;
+			OverlayDrawing.Line(p + glm::vec3(0.15f * r, r, 0.0f), p + glm::vec3(-0.35f * r, 0.05f * r, 0.0f), color);
+			OverlayDrawing.Line(p + glm::vec3(-0.35f * r, 0.05f * r, 0.0f), p + glm::vec3(0.3f * r, 0.0f, 0.0f), color);
+			OverlayDrawing.Line(p + glm::vec3(0.3f * r, 0.0f, 0.0f), p + glm::vec3(-0.15f * r, -r, 0.0f), color);
+		}
+
+		// A selected decal's quad, a selected light's range, a selected emitter's particles' bounds
+		// and a selected lightning entity's reach, in the selection outline's colour
 		if (SelectedEntity && world.Registry == World)
 		{
 			const glm::vec3 outlineColor = glm::vec3(OutlineCompositePushConstants{}.VisibleOutlineColor);
@@ -244,7 +261,7 @@ namespace Nyx
 			}
 			for (const RenderPointLight& light : world.PointLights)
 			{
-				if (light.SourceEntity == *SelectedEntity)
+				if (light.SourceEntity == *SelectedEntity && light.bIcon)
 				{
 					OverlayDrawing.Sphere(light.WorldPosition, light.Range, outlineColor);
 					OverlayDrawing.Sphere(light.WorldPosition, PointLightIconRadius, outlineColor);
@@ -255,6 +272,27 @@ namespace Nyx
 				if (emitter.SourceEntity == *SelectedEntity)
 				{
 					OverlayDrawing.Box(emitter.Bounds.Min, emitter.Bounds.Max, outlineColor);
+				}
+			}
+			// A selected lightning entity's reach: where its strikes land (a column's radius) as a
+			// circle on its ground, and a line up to where they start
+			for (const RenderLightningBolt& bolt : world.Lightning)
+			{
+				if (bolt.SourceEntity != *SelectedEntity)
+				{
+					continue;
+				}
+				OverlayDrawing.Line(bolt.WorldPosition, bolt.WorldPosition + glm::vec3(0.0f, bolt.Height, 0.0f), outlineColor);
+				if (bolt.StrikeRadius > 0.0f)
+				{
+					constexpr int Segments = 48;
+					for (int segment = 0; segment < Segments; ++segment)
+					{
+						const float a0 = glm::two_pi<float>() * static_cast<float>(segment) / Segments;
+						const float a1 = glm::two_pi<float>() * static_cast<float>(segment + 1) / Segments;
+						OverlayDrawing.Line(bolt.WorldPosition + glm::vec3(std::cos(a0), 0.0f, std::sin(a0)) * bolt.StrikeRadius,
+							bolt.WorldPosition + glm::vec3(std::cos(a1), 0.0f, std::sin(a1)) * bolt.StrikeRadius, outlineColor);
+					}
 				}
 			}
 		}
@@ -1470,9 +1508,9 @@ namespace Nyx
 			}
 		}
 
-		// Then the point lights' and the particle emitters' icons, as balls, so a click on one selects
+		// Then the point lights', the particle emitters' and the lightning entities' icons, as balls, so a click on one selects
 		// its entity
-		if (!world.PointLights.empty() || !world.Particles.Emitters.empty())
+		if (!world.PointLights.empty() || !world.Particles.Emitters.empty() || !world.Lightning.empty())
 		{
 			cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *PickingPipeline);
 			SetMeshFaces(cmd, false, false);
@@ -1480,6 +1518,10 @@ namespace Nyx
 			cmd.bindIndexBuffer(IconMesh->GetIndexBuffer(), 0, vk::IndexType::eUint32);
 			for (const RenderPointLight& light : world.PointLights)
 			{
+				if (!light.bIcon)
+				{
+					continue;
+				}
 				ObjectConstants object{};
 				// The sphere mesh is a metre across
 				object.Model = glm::scale(glm::translate(glm::mat4(1.0f), light.WorldPosition), glm::vec3(PointLightIconRadius * 2.0f));
@@ -1492,6 +1534,14 @@ namespace Nyx
 				ObjectConstants object{};
 				object.Model = glm::scale(glm::translate(glm::mat4(1.0f), emitter.WorldPosition), glm::vec3(ParticleEmitterIconRadius * 2.0f));
 				object.EntityId = emitter.PickingId;
+				cmd.pushConstants<ObjectConstants>(ScenePipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, { object });
+				cmd.drawIndexed(IconMesh->GetIndexCount(), 1, 0, 0, 0);
+			}
+			for (const RenderLightningBolt& bolt : world.Lightning)
+			{
+				ObjectConstants object{};
+				object.Model = glm::scale(glm::translate(glm::mat4(1.0f), bolt.WorldPosition), glm::vec3(LightningIconRadius * 2.0f));
+				object.EntityId = bolt.PickingId;
 				cmd.pushConstants<ObjectConstants>(ScenePipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, { object });
 				cmd.drawIndexed(IconMesh->GetIndexCount(), 1, 0, 0, 0);
 			}

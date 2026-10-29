@@ -19,6 +19,7 @@ set(NYX_SHADER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/LightShafts.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/ColorGrading.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Particle.slang
+    ${CMAKE_CURRENT_SOURCE_DIR}/Lightning.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/SkyAtmosphere.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/CloudNoise.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/CloudLayer.slang

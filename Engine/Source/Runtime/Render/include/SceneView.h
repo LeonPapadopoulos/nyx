@@ -15,6 +15,7 @@
 #include "ShadowCascades.h"
 #include "VulkanDebugLines.h"
 #include "VulkanEditorOverlays.h"
+#include "VulkanLightning.h"
 #include "VulkanParticles.h"
 #include "VulkanSkyAtmosphere.h"
 
@@ -115,6 +116,8 @@ namespace Nyx
 		SceneViewAmbientOcclusion AmbientOcclusion;
 		// Its colour grading: its lookup table, and its grade this frame (VulkanColorGrading)
 		SceneViewColorGrading ColorGrading;
+		// Its lightning's bolts this frame, and their pass's framebuffer (VulkanLightning)
+		SceneViewLightning Lightning;
 		// Its particles this frame, and their pass's framebuffer (VulkanParticles)
 		SceneViewParticles Particles;
 		// Its light shafts: their targets at half its size, and its settings this frame

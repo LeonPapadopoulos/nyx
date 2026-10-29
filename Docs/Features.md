@@ -1173,6 +1173,61 @@ in the editor's scene views and in the game alike.
   intensity, lit by a red light or dark without one; hidden behind a box, soft where it meets the
   floor; paused, stepped, carried by a velocity field, culled out of view; its icon picked; a
   reference picture of sparks, smoke and embers; the test scene).
+
+## Lightning
+
+A *Lightning* component puts bolts of light between the sky and the ground over its entity, in the
+editor's scene views and in the game alike: short, flickering strikes (*Mode* Strike), or a
+sustained column, a braid of filaments twisting round one axis from the sky to the ground (*Mode*
+Sustained). Without one, or off, the picture is as it was, to the bit.
+
+- **When**: from *Start Time* (the world's time), again every *Interval* on average with *Repeat*,
+  each start moved at random by *Interval Jitter*; a column stands for *Duration* (0: for as long
+  as it is on). A game strikes now by setting *Start Time* to its world's time. *Seed*.
+- **A strike** lands anywhere within *Strike Radius* of the entity, from *Height* up (moved by
+  *Top Spread*): a faint leader comes down over *Leader Time* with its branches, then the return
+  stroke flashes the channel at full brightness, then more strokes come down the same channel
+  (*Min Strokes* to *Max Strokes*, *Stroke Interval* apart, each dying by *Stroke Decay*), then it
+  glows on and fades over *Fade Time*: it flickers by itself.
+- **A column** takes a new shape *Reform Rate* times a second (12: a drawn animation's "on twos", so
+  it boils rather than flickers): *Min Filaments* to *Max Filaments* winding round the axis by
+  *Twist*, within *Column Radius*, in big angular strokes (*Column Kinks*, *Column Jaggedness*) that
+  meet at joins and split apart again (*Joins*), thick to thin along them (*Filament Width*, *Width
+  Variation*), with hot blobs at the joins and a few kinks (*Knots*, *Knot Size*), their glow strong
+  low down and patchy (*Glow Height*, *Glow Patchiness*); now and then a side arc whips outward (*Side Arc Rate*, *Side
+  Arc Length*) or a lone bolt strikes beside it (*Stray Bolt Rate*, *Stray Bolt Distance*).
+- **Shape**: paths split by midpoint displacement with forks: *Jaggedness*, *Detail*, *Branch
+  Chance*, *Branch Length*, *Branch Depth*.
+- **Look**: strips facing the camera, a narrow hot core, the only part past white (*Core Color*,
+  *Brightness*, *Core Width*), a coloured body (*Body Color*, *Body Brightness*, *Width*) and a soft
+  glow falling off to its edges (*Glow Color*, *Glow Strength*, *Glow Width*), the body's edge as
+  hard as drawn by hand (*Sharpness*), round at the joins and ends, blooming; by default an orange
+  body with red-orange edges; far bolts are kept at least *Min Pixel Width* pixels wide, so they don't
+  flicker in and out; *Branch Brightness*, *Leader Brightness*. Hidden behind what is in front of
+  it, through the fog and behind the clouds before it.
+- **Light**: it lights the world round it through *Light Count* point lights up its lowest stretch
+  (*Light Color*, *Light Intensity*, *Light Range*), the same lights every lit surface, decal and
+  lit particle takes; none while no bolt is on.
+- Only for the eye, and worked out from its values and the world's time alone: the same seed and
+  time give the same bolt to the bit; in a game it stands still while paused and moves on with
+  Step; in the editor it plays as you edit.
+- **In the editor**: each lightning entity shows as a small zig-zag of lines, which a click
+  selects; a selected one shows where its strikes land (a circle on the ground) and a line up to
+  where they start. *Debug > Culling Bounds* shows its box.
+- At 1920 × 1080 its pass takes 0.03 ms of GPU time at a strike's flash and 0.05 ms on a column;
+  the frame statistics show it (*lightning*, CSV `gpu_lightning_ms` and `lightning_bolts`)
+  ([Lightning](Design/lightning.md#numbers)).
+- All with undo, saved in scenes and sent to a running game.
+- Tests: `NyxLightningTests` (the schedule, never overlapping, a day later as exact; a strike's
+  leader, flashes, afterglow and branches; a column's reform frames, braid, joins, knots, its glow
+  falling with height, fade, side arcs and stray bolts; paths' ends, band, branches, arrivals, budgets, the same seed the same path to
+  the bit; the leader revealing them; strips facing the camera, round caps, mitres held, widened
+  far off; the lights; a world's lightning; saved and loaded), `NyxLightningGpuTests` (unchanged to
+  the bit off and between bolts; the channel near white where the CPU's path is, the bloom
+  spreading it, the leader dimmer, hidden behind a wall; its lights lighting the floor; the same
+  time the same picture, another seed another; a column boiling; its icon picked; its GPU time; and
+  again with MSAA).
+
 ## Anti-aliasing
 
 The edges of what the scene views draw are smoothed by multisample anti-aliasing: a stalk, a wire

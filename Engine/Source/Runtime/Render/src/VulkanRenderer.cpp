@@ -323,6 +323,10 @@ namespace Nyx
 			{
 				BindSceneSets(view, cmd);
 			});
+		Lightning.Initialize(Bindless, *ScenePipelineLayout, [this](SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
+			{
+				BindSceneSets(view, cmd);
+			});
 		Particles.Initialize(*ScenePipelineLayout, [this](SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
 			{
 				BindSceneSets(view, cmd);
@@ -418,6 +422,7 @@ namespace Nyx
 			AmbientOcclusion.Release(view.AmbientOcclusion);
 			ColorGrading.Release(view.ColorGrading);
 			LocalWind.Release(view.LocalWind);
+			Lightning.Release(view.Lightning);
 			Particles.Release(view.Particles);
 			LightShafts.Release(view.LightShafts);
 			CloudLayer.Release(view.CloudLayer);
@@ -443,6 +448,7 @@ namespace Nyx
 		Bloom.Shutdown();
 		AmbientOcclusion.Shutdown();
 		ColorGrading.Shutdown();
+		Lightning.Shutdown();
 		Particles.Shutdown();
 		LightShafts.Shutdown();
 		CloudLayer.Shutdown();
@@ -597,6 +603,7 @@ namespace Nyx
 		MeshInstances.ReleaseRetired();
 		RetiredFrameInstanceBuffers.clear();
 		Particles.ReleaseRetired();
+		Lightning.ReleaseRetired();
 	}
 
 	std::optional<uint32_t> VulkanRenderer::AcquireImage(FrameClock& clock)
@@ -1004,6 +1011,9 @@ namespace Nyx
 				break;
 			case ETimedPass::AmbientOcclusion:
 				view->GpuTimes.AmbientOcclusion = milliseconds;
+				break;
+			case ETimedPass::Lightning:
+				view->GpuTimes.Lightning = milliseconds;
 				break;
 			case ETimedPass::Particles:
 				view->GpuTimes.Particles = milliseconds;
@@ -1526,6 +1536,14 @@ namespace Nyx
 				world->PickingIdToEntity.push_back(light.SourceEntity);
 				light.PickingId = static_cast<uint32_t>(world->PickingIdToEntity.size());
 			}
+			// The lightning's bolts at the world's time, their lights after the entities' own (no icons,
+			// not picked), the entities by their icons
+			ExtractLightning(*world->Registry, world->Time, interpolation, world->Lightning, world->PointLights);
+			for (RenderLightningBolt& bolt : world->Lightning)
+			{
+				world->PickingIdToEntity.push_back(bolt.SourceEntity);
+				bolt.PickingId = static_cast<uint32_t>(world->PickingIdToEntity.size());
+			}
 			ExtractParticles(*world, interpolation);
 			for (RenderParticleEmitter& emitter : world->Particles.Emitters)
 			{
@@ -1767,6 +1785,7 @@ namespace Nyx
 	{
 		FrameInstances.clear();
 		FrameParticles.clear();
+		FrameLightning.clear();
 		// A new sample count (SetMsaaSamples()): every view's targets made again for it, as for a
 		// new size, then what draws into their scene pass
 		const vk::SampleCountFlagBits samples = ChooseSceneSamples();
@@ -1799,6 +1818,7 @@ namespace Nyx
 			view.Draws.clear();
 			view.PointLights.clear();
 			view.Particles.Draws.clear();
+			view.Lightning.Draws.clear();
 			view.Culling = {};
 			view.CullingLines = {};
 			view.WindLines = {};
@@ -1846,8 +1866,10 @@ namespace Nyx
 			if (!bLit)
 			{
 				view.Particles.Draws.clear();
+				view.Lightning.Draws.clear();
 			}
 			Particles.Prepare(view.Particles, view.RenderTarget, bTargetsNew);
+			Lightning.Prepare(view.Lightning, view.RenderTarget, bTargetsNew);
 			// Its light shafts' targets, for its size, while its world's sky shows (not a studio's or
 			// black sky, whose light isn't the sun's)
 			SceneViewLightShaftsSettings shafts = view.SceneGlobals.LightShafts;
@@ -1901,6 +1923,7 @@ namespace Nyx
 		Shadows.EnsureSize(shadowMapSize);
 		UploadFrameInstances();
 		Particles.Upload(FrameParticles);
+		Lightning.Upload(FrameLightning);
 	}
 
 	void VulkanRenderer::PrepareSceneViewWind(SceneViewInstance& view, const RenderWorld& world)
@@ -1948,10 +1971,38 @@ namespace Nyx
 		view.Culling.PointLightsDropped = lights.Dropped;
 
 		CullSceneViewParticles(view, world, frustum);
+		CullSceneViewLightning(view, world, frustum);
 
 		if (view.CullingDebug != ESceneViewCullingDebug::Off)
 		{
 			AddCullingLines(view, world, frustum, cullingViewProjection);
+		}
+	}
+
+	void VulkanRenderer::CullSceneViewLightning(SceneViewInstance& view, const RenderWorld& world, const Frustum& frustum)
+	{
+		const LightningPixelScale pixels = GetLightningPixelScale(view.SceneGlobals.Projection, view.RenderTarget.GetExtent().height);
+		for (const RenderLightningBolt& bolt : world.Lightning)
+		{
+			if (!bolt.bDrawn)
+			{
+				continue;
+			}
+			++view.Culling.Lightning;
+			if (!IsBoxVisible(frustum, bolt.Bounds))
+			{
+				++view.Culling.LightningCulled;
+				continue;
+			}
+			SceneViewLightningDraw draw;
+			draw.FirstVertex = static_cast<uint32_t>(FrameLightning.size());
+			BuildLightningStrips(bolt.Shape, bolt.Look, view.SceneGlobals.CameraWorldPos, pixels, FrameLightning);
+			draw.VertexCount = static_cast<uint32_t>(FrameLightning.size()) - draw.FirstVertex;
+			draw.Look = bolt.Look;
+			if (draw.VertexCount > 0)
+			{
+				view.Lightning.Draws.push_back(draw);
+			}
 		}
 	}
 
@@ -2240,6 +2291,13 @@ namespace Nyx
 			if (emitter.InstanceCount > 0)
 			{
 				CullingDrawing.Box(emitter.Bounds.Min, emitter.Bounds.Max, IsBoxVisible(frustum, emitter.Bounds) ? drawnColor : culledColor);
+			}
+		}
+		for (const RenderLightningBolt& bolt : world.Lightning)
+		{
+			if (bolt.bDrawn)
+			{
+				CullingDrawing.Box(bolt.Bounds.Min, bolt.Bounds.Max, IsBoxVisible(frustum, bolt.Bounds) ? drawnColor : culledColor);
 			}
 		}
 
@@ -3104,6 +3162,10 @@ namespace Nyx
 		{
 			Particles.CreatePipelines();
 		}
+		if (changed.contains("Lightning.slang"))
+		{
+			Lightning.CreatePipelines();
+		}
 		if (changed.contains("LightShafts.slang"))
 		{
 			LightShafts.CreatePipelines();
@@ -3417,6 +3479,7 @@ namespace Nyx
 			AmbientOcclusion.Release(it->AmbientOcclusion);
 			ColorGrading.Release(it->ColorGrading);
 			LocalWind.Release(it->LocalWind);
+			Lightning.Release(it->Lightning);
 			Particles.Release(it->Particles);
 			LightShafts.Release(it->LightShafts);
 			CloudLayer.Release(it->CloudLayer);
@@ -3692,7 +3755,16 @@ namespace Nyx
 			WritePassTimestamp(cmd, view, ETimedPass::AmbientOcclusion, true);
 		}
 
-		// Its particles, over the scene with its occluded sky's light, tested against its depth
+		// Its lightning's bolts, over the scene with its occluded sky's light, tested against its depth
+		if (!view.Lightning.Draws.empty())
+		{
+			WritePassTimestamp(cmd, view, ETimedPass::Lightning, false);
+			Lightning.Draw(view, cmd);
+			WritePassTimestamp(cmd, view, ETimedPass::Lightning, true);
+		}
+
+		// Its particles, over the scene with its occluded sky's light and its bolts, tested against its
+		// depth
 		if (!view.Particles.Draws.empty())
 		{
 			WritePassTimestamp(cmd, view, ETimedPass::Particles, false);

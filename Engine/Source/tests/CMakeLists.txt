@@ -513,6 +513,15 @@ add_dependencies(NyxParticleTests NyxGeneratedReflection)
 set_property(TARGET NyxParticleTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxParticleTests COMMAND NyxParticleTests)
 
+# Lightning without a GPU: the schedule, a strike's flashes and a column's reform frames, paths
+# split with forks and revealed by the leader, the strips facing the camera, the lights along the
+# channel, a world's lightning, the component saved.
+add_executable(NyxLightningTests LightningTests.cpp)
+target_link_libraries(NyxLightningTests PRIVATE NyxEngine)
+add_dependencies(NyxLightningTests NyxGeneratedReflection)
+set_property(TARGET NyxLightningTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxLightningTests COMMAND NyxLightningTests)
+
 # The world's wind without a GPU: the contract with hand-made states, its height profile and gust
 # fronts crossing the land, turning to new values smoothly and the same whatever the steps, a driver
 # ramping it from calm to a storm on a game world, a game's local air on a grid, the debug view, an
@@ -822,6 +831,19 @@ nyx_copy_shaders_next_to(NyxParticleGpuTests)
 nyx_copy_shader_compiler_next_to(NyxParticleGpuTests)
 add_test(NAME NyxParticleGpuTests COMMAND NyxParticleGpuTests)
 add_test(NAME NyxParticleGpuTestsMsaa COMMAND NyxParticleGpuTests --msaa 4)
+
+# Lightning on a real GPU, its time a paused clock's: unchanged to the bit off and between bolts, the
+# channel near white where the CPU's path is, the bloom spreading it, the leader dimmer, hidden
+# behind a wall; its lights lighting the floor; the same time the same picture; a column boiling; its
+# icon picked; its GPU time at 1920 x 1080. Needs a Vulkan device; its window stays hidden.
+add_executable(NyxLightningGpuTests LightningGpuTests.cpp)
+target_link_libraries(NyxLightningGpuTests PRIVATE NyxEngine)
+add_dependencies(NyxLightningGpuTests NyxGeneratedReflection)
+set_property(TARGET NyxLightningGpuTests PROPERTY FOLDER "Tests")
+nyx_copy_shaders_next_to(NyxLightningGpuTests)
+nyx_copy_shader_compiler_next_to(NyxLightningGpuTests)
+add_test(NAME NyxLightningGpuTests COMMAND NyxLightningGpuTests)
+add_test(NAME NyxLightningGpuTestsMsaa COMMAND NyxLightningGpuTests --msaa 4)
 
 # The world's wind on a real GPU: nyx.wind gives Wind.cpp's numbers to the bit; a view's materials
 # read its world's wind (the editor's own, a game's as its drive has it) and a game's local air on

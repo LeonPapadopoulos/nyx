@@ -52,6 +52,9 @@ namespace Nyx
 
 		// Its entity's picking id in its world; 0 until given one
 		uint32_t PickingId = 0;
+		// Whether the editor shows an icon for it and a click on it picks it: a PointLightComponent's;
+		// not the lights a bolt lights the world through (Lightning.h)
+		bool bIcon = true;
 	};
 
 	// The world's point lights to draw, in the order the world holds them: those that give light, a
