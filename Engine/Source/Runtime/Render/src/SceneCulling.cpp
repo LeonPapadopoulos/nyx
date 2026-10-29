@@ -50,6 +50,11 @@ namespace Nyx
 		return BoundingBox{ box.Min - glm::vec3(margin), box.Max + glm::vec3(margin) };
 	}
 
+	float GetBoxDistance(const BoundingBox& box, const glm::vec3& point)
+	{
+		return glm::length(glm::max(glm::max(box.Min - point, point - box.Max), glm::vec3(0.0f)));
+	}
+
 	BoundingBox UniteBoxes(const BoundingBox& a, const BoundingBox& b)
 	{
 		return BoundingBox{ glm::min(a.Min, b.Min), glm::max(a.Max, b.Max) };
@@ -145,13 +150,14 @@ namespace Nyx
 		return cells;
 	}
 
-	uint32_t AppendInstanceRuns(std::span<const InstanceCullCell> cells, const Frustum* frustum, std::vector<InstanceRun>& outRuns)
+	uint32_t AppendInstanceRuns(std::span<const InstanceCullCell> cells, const Frustum* frustum, std::vector<InstanceRun>& outRuns,
+		const DrawDistanceLimit* limit)
 	{
 		uint32_t drawn = 0;
 		const size_t firstRun = outRuns.size();
 		for (const InstanceCullCell& cell : cells)
 		{
-			if (frustum && !IsBoxVisible(*frustum, cell.Bounds))
+			if ((frustum && !IsBoxVisible(*frustum, cell.Bounds)) || (limit && !IsBoxInDrawDistance(*limit, cell.Bounds)))
 			{
 				continue;
 			}

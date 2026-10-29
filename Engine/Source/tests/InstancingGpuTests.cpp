@@ -379,6 +379,44 @@ namespace
 			Require(bounds.Pixels != culled.Pixels, "The culling's bounds aren't drawn");
 		}
 	}
+	// A Mesh Renderer's draw distance: the field's cells beyond it aren't drawn, nor the sphere
+	// beyond its own; measured from the camera to the nearest point of each one's bounds
+	void TestDrawDistance(SceneRenderer& gpu)
+	{
+		TestScene scene(gpu, false);
+		auto field = std::make_shared<MeshInstances>();
+		for (const float z : { 0.0f, -4.0f, -8.0f, -12.0f })
+		{
+			field->Cells.push_back(MeshInstanceCell{ .BoundsMin = glm::vec3(-1.5f, -1.0f, z),
+				.BoundsMax = glm::vec3(1.5f, -1.0f, z),
+				.First = static_cast<uint32_t>(field->Transforms.size()),
+				.Count = 3 });
+			for (const float x : { -1.5f, 0.0f, 1.5f })
+			{
+				field->Transforms.push_back(glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(x, -1.0f, z)), glm::vec3(0.5f)));
+			}
+		}
+		Material* material = gpu.Renderer.GetMaterial("Materials/Untextured.nyxmat");
+		const Entity cells = scene.AddInstanced(Unmoved(), gpu.Renderer.GetCubeMesh(), material, field);
+		const Entity sphere = scene.AddMesh(Unmoved(), gpu.Renderer.GetSphereMesh(), material);
+		gpu.DrawUntilShadersCompiled();
+		const RgbaImage everything = scene.Draw();
+		Require(scene.Culling().CellsCulled == 0 && scene.Culling().ObjectsCulled == 0, "Without a draw distance, everything in view should be drawn");
+
+		// The camera is 6 m back: the two nearest rows are within 11 m, the sphere's bounds 5.5 m off
+		scene.World.Get<MeshRendererComponent>(cells).DrawDistance = 11.0f;
+		scene.World.Get<MeshRendererComponent>(sphere).DrawDistance = 4.0f;
+		const RgbaImage near = scene.Draw();
+		SaveIfAsked(near, "DrawDistance");
+		Require(scene.Culling().CellsCulled == 2, "The two rows beyond the draw distance should be culled, not " + std::to_string(scene.Culling().CellsCulled));
+		Require(scene.Culling().ObjectsCulled == 1 && scene.Culling().Instances == 6, "The sphere beyond its draw distance should be culled, six cubes drawn");
+		Require(near.Pixels != everything.Pixels, "What is beyond the draw distance should be gone from the picture");
+
+		// Far enough again, everything
+		scene.World.Get<MeshRendererComponent>(cells).DrawDistance = 100.0f;
+		scene.World.Get<MeshRendererComponent>(sphere).DrawDistance = 0.0f;
+		Require(scene.Draw().Pixels == everything.Pixels, "Within its draw distance, everything should be drawn as before");
+	}
 }
 
 int main()
@@ -391,6 +429,7 @@ int main()
 		TestRevisionReuploads(gpu);
 		TestPicking(gpu);
 		TestCulling(gpu);
+		TestDrawDistance(gpu);
 	}
 	catch (const std::exception& error)
 	{

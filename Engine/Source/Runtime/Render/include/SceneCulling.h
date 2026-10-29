@@ -31,6 +31,22 @@ namespace Nyx
 	// vertex at most
 	BoundingBox ExpandBox(const BoundingBox& box, float margin);
 
+	// How far `point` is from the nearest point of the box: 0 inside it
+	float GetBoxDistance(const BoundingBox& box, const glm::vec3& point);
+
+	// How far from a camera something is drawn (MeshRendererComponent::DrawDistance): a box farther
+	// from `From` than `Distance` isn't
+	struct DrawDistanceLimit
+	{
+		glm::vec3 From{ 0.0f };
+		float Distance = 0.0f;
+	};
+
+	inline bool IsBoxInDrawDistance(const DrawDistanceLimit& limit, const BoundingBox& box)
+	{
+		return GetBoxDistance(box, limit.From) <= limit.Distance;
+	}
+
 	// What a camera sees: six planes facing inwards (left, right, bottom, top, and the two of the
 	// depth range), each of unit normal, so a point p is on its inner side where
 	// dot(plane.xyz, p) + plane.w >= 0. Made from the camera's view and projection; what is wholly
@@ -87,8 +103,9 @@ namespace Nyx
 	};
 
 	// The runs of instances to draw, appended to `outRuns`: those of every cell, or with a frustum
-	// those of the cells not wholly outside it (`cells` in the frustum's space). A cell that
-	// follows on from the one before in the transforms joins its run. Returns how many cells are
-	// drawn.
-	uint32_t AppendInstanceRuns(std::span<const InstanceCullCell> cells, const Frustum* frustum, std::vector<InstanceRun>& outRuns);
+	// those of the cells not wholly outside it (`cells` in the frustum's space), and with a limit
+	// those within its distance. A cell that follows on from the one before in the transforms joins
+	// its run. Returns how many cells are drawn.
+	uint32_t AppendInstanceRuns(std::span<const InstanceCullCell> cells, const Frustum* frustum, std::vector<InstanceRun>& outRuns,
+		const DrawDistanceLimit* limit = nullptr);
 }

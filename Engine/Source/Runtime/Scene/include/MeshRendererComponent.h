@@ -43,6 +43,9 @@ namespace Nyx
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Rendering", DisplayName = "Cast Shadows", Tooltip = "Whether the mesh casts shadows from the primary light; a hidden mesh casts none"))
 		bool bCastShadows = true;
 
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Rendering", DisplayName = "Draw Distance", DragSpeed = 1.0, Tooltip = "Farther from the camera than this, in metres, it isn't drawn, nor its shadow; drawn instanced, each cell of its instances by itself, so a scatter of small plants kilometres across costs only its near part. 0: drawn at any distance"))
+		float DrawDistance = 0.0f;
+
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Rendering", Tooltip = "The materials of slots 1, 2 and on, for a mesh whose sections ask for them, such as a tree's leaves beside its trunk"))
 		std::vector<Nyx::MeshMaterialSlot> ExtraMaterials;
 

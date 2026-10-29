@@ -202,6 +202,27 @@ namespace
 		std::vector<InstanceRun> none;
 		Require(AppendInstanceRuns(moved, &frustum, none) == 0 && none.empty(), "Cells moved out of view should draw nothing");
 	}
+	// How far a box is from a point, and the cells within a draw distance of the camera
+	void TestDrawDistance()
+	{
+		const BoundingBox box = BoxAround(glm::vec3(0.0f, 0.0f, -10.0f), 1.0f);
+		Require(GetBoxDistance(box, glm::vec3(0.0f, 0.0f, -10.5f)) == 0.0f, "A point inside a box should be 0 from it");
+		Require(std::abs(GetBoxDistance(box, glm::vec3(0.0f)) - 9.0f) < 1e-5f, "A box should be as far as its nearest side");
+		Require(std::abs(GetBoxDistance(box, glm::vec3(4.0f, 0.0f, -6.0f)) - std::sqrt(18.0f)) < 1e-5f, "A box should be as far as its nearest edge");
+
+		const Frustum frustum = MakeTestFrustum();
+		const std::vector<InstanceCullCell> cells = {
+			{ BoxAround(glm::vec3(0.0f, 0.0f, -10.0f), 1.0f), 0, 4 },
+			{ BoxAround(glm::vec3(0.0f, 0.0f, -20.0f), 1.0f), 4, 4 },
+			{ BoxAround(glm::vec3(-10.0f, 0.0f, -10.0f), 1.0f), 8, 4 },
+		};
+		const DrawDistanceLimit limit{ .From = glm::vec3(0.0f), .Distance = 15.0f };
+		std::vector<InstanceRun> runs;
+		Require(AppendInstanceRuns(cells, &frustum, runs, &limit) == 2, "The cells within 15 m should be drawn, the one 19 m off not");
+		Require(runs.size() == 2 && runs[0].First == 0 && runs[1].First == 8, "The cell beyond the distance should break the run");
+		std::vector<InstanceRun> unlimited;
+		Require(AppendInstanceRuns(cells, &frustum, unlimited) == 3, "Without a limit, every cell in view should be drawn");
+	}
 }
 
 int main()
@@ -213,6 +234,7 @@ int main()
 		TestTransformedBoxes();
 		TestInstanceCells();
 		TestCellsInsideOutsideAndStraddling();
+		TestDrawDistance();
 	}
 	catch (const std::exception& error)
 	{

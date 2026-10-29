@@ -356,6 +356,9 @@ namespace Nyx
 		// (MeshRendererComponent::bCastShadows) and one of its sections' materials' at least
 		// (Material::bCastShadows); the cascades draw only the sections whose materials cast
 		bool bCastShadows = true;
+		// How far from the view's camera it is drawn, its instances cell by cell; 0 at any distance
+		// (MeshRendererComponent::DrawDistance)
+		float DrawDistance = 0.0f;
 		// Drawn once, its instance's custom numbers in the stream (MeshRendererComponent::Custom);
 		// drawn instanced, each instance has its own
 		glm::vec4 Custom{ 0.0f };
@@ -662,10 +665,11 @@ namespace Nyx
 		// alike (the same mesh, each section with the same material) as one draw of their
 		// transforms in this frame's instance stream; with the view's culling debug, its bounds
 		void CullSceneView(SceneViewInstance& view, const RenderWorld& world);
-		// The draws of what of the world is inside `frustum`, as CullSceneView() makes them, appended
-		// to `outDraws`, with what was culled in `stats`; with `bCastersOnly`, of the objects that
-		// cast shadows alone
-		void CullDraws(const RenderWorld& world, const Frustum& frustum, bool bCastersOnly, std::vector<SceneViewDraw>& outDraws, SceneViewCullingStats& stats);
+		// The draws of what of the world is inside `frustum`, and within its draw distance of
+		// `viewPoint`, as CullSceneView() makes them, appended to `outDraws`, with what was culled in
+		// `stats`; with `bCastersOnly`, of the objects that cast shadows alone
+		void CullDraws(const RenderWorld& world, const Frustum& frustum, const glm::vec3& viewPoint, bool bCastersOnly, std::vector<SceneViewDraw>& outDraws,
+			SceneViewCullingStats& stats);
 		// The view's shadow cascades this frame, if its world's primary light casts shadows and
 		// something casts them: each fitted round its slice of the view, snapped to its texels, and
 		// what casts into it culled by its own frustum (SceneViewInstance::Shadows)

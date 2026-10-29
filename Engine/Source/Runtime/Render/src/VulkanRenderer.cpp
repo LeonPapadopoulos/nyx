@@ -1633,6 +1633,7 @@ namespace Nyx
 				obj.DrawTransform = drawTransform;
 				obj.bMirrored = glm::determinant(glm::mat3(drawTransform)) < 0.0f;
 				obj.bCastShadows = meshRenderer.bCastShadows;
+				obj.DrawDistance = std::max(meshRenderer.DrawDistance, 0.0f);
 				obj.Custom = meshRenderer.Custom;
 				obj.LocalBoundsMin = mesh->GetLocalBoundsMin();
 				obj.LocalBoundsMax = mesh->GetLocalBoundsMax();
@@ -1982,7 +1983,7 @@ namespace Nyx
 			view.FrozenCullingViewProjection.reset();
 		}
 		const Frustum frustum = MakeFrustum(cullingViewProjection);
-		CullDraws(world, frustum, false, view.Draws, view.Culling);
+		CullDraws(world, frustum, view.SceneGlobals.CameraWorldPos, false, view.Draws, view.Culling);
 
 		// The point lights whose light reaches into view
 		const PointLightCullStats lights = CullPointLights(world.PointLights, frustum, view.SceneGlobals.CameraWorldPos, MaxViewPointLights, view.PointLights);
@@ -2097,7 +2098,8 @@ namespace Nyx
 		}
 	}
 
-	void VulkanRenderer::CullDraws(const RenderWorld& world, const Frustum& frustum, bool bCastersOnly, std::vector<SceneViewDraw>& outDraws, SceneViewCullingStats& stats)
+	void VulkanRenderer::CullDraws(const RenderWorld& world, const Frustum& frustum, const glm::vec3& viewPoint, bool bCastersOnly, std::vector<SceneViewDraw>& outDraws,
+		SceneViewCullingStats& stats)
 	{
 		const size_t firstDraw = outDraws.size();
 		std::vector<uint32_t> drawnOnce;
@@ -2110,7 +2112,8 @@ namespace Nyx
 				continue;
 			}
 			++stats.Objects;
-			if (!IsBoxVisible(frustum, obj.WorldBounds))
+			const DrawDistanceLimit limit{ .From = viewPoint, .Distance = obj.DrawDistance };
+			if (!IsBoxVisible(frustum, obj.WorldBounds) || (obj.DrawDistance > 0.0f && !IsBoxInDrawDistance(limit, obj.WorldBounds)))
 			{
 				++stats.ObjectsCulled;
 				stats.InstancesCulled += obj.CellCount == 0 ? 1 : CountInstances(world, obj);
@@ -2124,7 +2127,8 @@ namespace Nyx
 
 			// Instanced: the cells in view, each run of them one draw
 			runs.clear();
-			const uint32_t drawnCells = AppendInstanceRuns(std::span(world.Cells).subspan(obj.FirstCell, obj.CellCount), &frustum, runs);
+			const uint32_t drawnCells =
+				AppendInstanceRuns(std::span(world.Cells).subspan(obj.FirstCell, obj.CellCount), &frustum, runs, obj.DrawDistance > 0.0f ? &limit : nullptr);
 			stats.Cells += obj.CellCount;
 			stats.CellsCulled += obj.CellCount - drawnCells;
 			uint32_t drawnInstances = 0;
@@ -2229,7 +2233,7 @@ namespace Nyx
 			// What casts into it, by its own frustum, as the view's camera culls
 			shadows.Draws[index].clear();
 			shadows.Culling[index] = {};
-			CullDraws(world, MakeFrustum(cascade.ViewProjection), true, shadows.Draws[index], shadows.Culling[index]);
+			CullDraws(world, MakeFrustum(cascade.ViewProjection), view.SceneGlobals.CameraWorldPos, true, shadows.Draws[index], shadows.Culling[index]);
 		}
 		shadows.CascadeCount = settings.CascadeCount;
 	}
