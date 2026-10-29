@@ -1427,6 +1427,39 @@ decided: by default a valley about 128 by 128 m, nearly flat in the middle, its 
   it; a character stands on it and a crate slides down the valley's side; the sample scene),
   `NyxEditorPanelTests` (added, edited, undone, removed and undone again in the editor).
 
+## SDF terrain
+
+An *SDF Terrain* is terrain as a signed field over a volume rather than a height at each point, so
+it can overhang, hollow out and float. So far it is its values and the field made from them; nothing
+draws it or collides with it yet.
+
+- *Layers*, evaluated in order, each joined to what the ones before made by *Combine*: *Add* (solid
+  where it is), *Carve* (cut out of what came before) or *Intersect*, rounded over *Blend Radius*.
+  Each gives the surfaces it makes its *Material* number; carving keeps what it cuts.
+  - *Heightfield*: ground at *Height*, lifted and lowered by *Amplitude* metres of noise, with
+    *Terraces*.
+  - *Landmass*: a floating mass round *Center*: a top at *Height* (roughened by *Amplitude*, with
+    terraces), an underside *Depth* below it hanging another *Underside Depth* in ridges, an edge at
+    *Radius* going in and out by *Edge Roughness*, its rim rounded over *Rounding*.
+  - *Tunnels*: about *Radius* wide, winding where two noises are both near 0; *Chambers*: open where
+    a noise is high, *Openness* of the band; both between *Height* and *Depth* below it.
+  - *Detail*: every surface before it pushed in and out by *Amplitude*.
+  - *Noise*: *Seed* (added to the terrain's *Seed*), *Octaves*, *Frequency*, *Lacunarity*, *Gain*,
+    *Ridged* for sharp crests.
+- The field (`SdfTerrain.h`): `SampleTerrain()` gives the value at a point (negative inside, 0 on the
+  surface) and its material, `SampleTerrainBatch()` many points, the same bits, with the 3D noise
+  eight points at a time. `GetTerrainMaxSlope()` is a proven bound on how fast it changes,
+  `GetTerrainValueRange()` what it can be over a box (all air, all solid, or neither), and
+  `GetTerrainNormal()` and `RayCastTerrain()` the way out and where a ray meets the surface. The same
+  on every machine.
+- Its 3D noise (`GradientNoise.h`): `SampleGradientNoise3D()`, fractal and ridged octaves, their
+  batches, and proven bounds of value and slope; `SmoothMinimum.h`, the rounded minimum and
+  maximum.
+- Tests: `NyxGradientNoiseTests` (the noise within its bounds, batches the same bits as single
+  points, golden values the same in Debug and Release), `NyxSdfTerrainTests` (flat ground exact,
+  batches the same bits, golden values, never steeper than the bound, box ranges and rays against
+  dense sampling, a thin slab never passed through, materials, blends, tunnels in their band, seeds).
+
 ## Scattering
 
 A *Scatter* puts many copies of its entity's mesh over another entity's surface, such as plants

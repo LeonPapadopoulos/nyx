@@ -93,6 +93,15 @@ add_dependencies(NyxGradientNoiseTests NyxGeneratedReflection)
 set_property(TARGET NyxGradientNoiseTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxGradientNoiseTests COMMAND NyxGradientNoiseTests)
 
+# The SDF terrain's field: flat ground exact, batches the same bits, golden values, the slope bound,
+# box ranges and rays against dense sampling, a thin slab never passed through, materials, smooth
+# blends, tunnels in their band, seeds. Prints how loose the bounds are and how fast it samples.
+add_executable(NyxSdfTerrainTests SdfTerrainTests.cpp)
+target_link_libraries(NyxSdfTerrainTests PRIVATE NyxEngine)
+add_dependencies(NyxSdfTerrainTests NyxGeneratedReflection)
+set_property(TARGET NyxSdfTerrainTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxSdfTerrainTests COMMAND NyxSdfTerrainTests)
+
 # The component type registry: types register once; a second type of a name already taken, such as
 # a game module's type named like one of the engine's, is refused.
 add_executable(NyxComponentTypeRegistryTests ComponentTypeRegistryTests.cpp)
