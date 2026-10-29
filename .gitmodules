@@ -26,3 +26,6 @@
 [submodule "Dependencies/SDL"]
 	path = Dependencies/SDL
 	url = https://github.com/libsdl-org/SDL.git
+[submodule "Dependencies/Transvoxel"]
+	path = Dependencies/Transvoxel
+	url = https://github.com/EricLengyel/Transvoxel
