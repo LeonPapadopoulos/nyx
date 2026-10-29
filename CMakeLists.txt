@@ -10,6 +10,92 @@ endif()
 # Solution Name
 project(Nyx)
 
+# ~Start build configurations (Docs/Architecture.md, "Build configurations")
+# - Debug: nothing optimised, the debug C++ runtime and its checked containers.
+# - DebugGame: the engine, the editor and the libraries they use optimised as in Development; the
+#   game's own code (nyx_mark_game_code()) unoptimised, to step through it.
+# - Development: everything optimised, with debug information, Nyx's asserts, logging and profiler.
+# - Release: everything optimised, without asserts: what ships.
+# All the code of one program must use the same C++ runtime and checked containers, or MSVC refuses
+# to link it (LNK2038). So DebugGame and Development use the release runtime, as Release does
+# (/MD, CMake's default for every configuration but Debug), with no checked containers
+# (_ITERATOR_DEBUG_LEVEL 0) and NDEBUG. These are cache entries, so that a game's repository, which
+# adds Nyx as a subdirectory, has them for its own targets too.
+set(CMAKE_CONFIGURATION_TYPES "Debug;DebugGame;Development;Release" CACHE STRING "Build configurations, set by Nyx" FORCE)
+if(MSVC)
+    # /Zo: better debug information for optimised code
+    set(nyxDevelopmentFlags "/O2 /Ob2 /Zo /DNDEBUG")
+    set(nyxDebugGameFlags "/Zo /DNDEBUG")
+    set(nyxLinkerFlags "/debug /INCREMENTAL")
+else()
+    set(nyxDevelopmentFlags "-O2 -g -DNDEBUG")
+    set(nyxDebugGameFlags "-g -DNDEBUG")
+    set(nyxLinkerFlags "")
+endif()
+foreach(language C CXX)
+    set(CMAKE_${language}_FLAGS_DEVELOPMENT "${nyxDevelopmentFlags}" CACHE STRING "Set by Nyx" FORCE)
+    # Without an optimisation level: each target gets its own, see _nyx_set_debuggame_optimization()
+    set(CMAKE_${language}_FLAGS_DEBUGGAME "${nyxDebugGameFlags}" CACHE STRING "Set by Nyx" FORCE)
+endforeach()
+foreach(binary EXE SHARED MODULE)
+    set(CMAKE_${binary}_LINKER_FLAGS_DEVELOPMENT "${nyxLinkerFlags}" CACHE STRING "Set by Nyx" FORCE)
+    set(CMAKE_${binary}_LINKER_FLAGS_DEBUGGAME "${nyxLinkerFlags}" CACHE STRING "Set by Nyx" FORCE)
+endforeach()
+# Debug information (/Zi) in every configuration but Release, as CMake gives Debug
+set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,DebugGame,Development>:ProgramDatabase>" CACHE STRING "Set by Nyx" FORCE)
+
+# The optimisation levels DebugGame gives a target or a file, as lists in `optimized` and
+# `unoptimized`. A macro: the functions below run in other folders' scopes, a game's included.
+macro(_nyx_optimization_flags)
+    if(MSVC)
+        set(optimized /O2 /Ob2)
+        set(unoptimized /Od /Ob0)
+    else()
+        set(optimized -O2)
+        set(unoptimized -O0)
+    endif()
+endmacro()
+
+# nyx_mark_game_code(<target>...)
+#
+# Marks targets as a game's own code: DebugGame compiles them unoptimised, everything else as in
+# Development. nyx_add_game_module() marks the module; a game marks its own programs and tests.
+function(nyx_mark_game_code)
+    set_target_properties(${ARGN} PROPERTIES NYX_GAME_CODE ON)
+endfunction()
+
+# nyx_optimize_game_sources(<target> <file>...)
+#
+# Compiles these files of a game code target optimised in DebugGame, as the engine is: for hot
+# loops that are too slow unoptimised. #pragma optimize can't do it (Optimization.h). Relative
+# files are taken from the folder of the CMakeLists.txt that calls it.
+function(nyx_optimize_game_sources target)
+    _nyx_optimization_flags()
+    set_property(SOURCE ${ARGN} TARGET_DIRECTORY ${target} APPEND PROPERTY COMPILE_OPTIONS
+        "$<$<CONFIG:DebugGame>:${optimized}>")
+endfunction()
+
+# Gives each target in <directory> and the folders under it its optimisation in DebugGame: none for
+# game code, Development's for the rest.
+function(_nyx_set_debuggame_optimization directory)
+    _nyx_optimization_flags()
+    get_property(targets DIRECTORY "${directory}" PROPERTY BUILDSYSTEM_TARGETS)
+    foreach(target IN LISTS targets)
+        get_target_property(type ${target} TYPE)
+        if(type MATCHES "^(EXECUTABLE|STATIC_LIBRARY|SHARED_LIBRARY|MODULE_LIBRARY|OBJECT_LIBRARY)$")
+            target_compile_options(${target} PRIVATE
+                "$<$<AND:$<CONFIG:DebugGame>,$<COMPILE_LANGUAGE:C,CXX>>:$<IF:$<BOOL:$<TARGET_PROPERTY:NYX_GAME_CODE>>,${unoptimized},${optimized}>>")
+        endif()
+    endforeach()
+    get_property(subdirectories DIRECTORY "${directory}" PROPERTY SUBDIRECTORIES)
+    foreach(subdirectory IN LISTS subdirectories)
+        _nyx_set_debuggame_optimization("${subdirectory}")
+    endforeach()
+endfunction()
+# Once every target is made: at the end of the top folder, a game's when Nyx is part of one
+cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}" CALL _nyx_set_debuggame_optimization "${CMAKE_SOURCE_DIR}")
+# ~End build configurations
+
 # ~Start setup shared output directories
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Binaries)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Binaries)
@@ -24,9 +110,9 @@ foreach(CONFIG ${CMAKE_CONFIGURATION_TYPES})
 endforeach()
 # ~End setup shared output directories
 
-# The editor's prototype and diagnostics tools (Painter Test, Mockup Overlay). While on, Debug
-# builds have them; Release builds, which are what ships, never do.
-option(NYX_DEV_TOOLS "Build the editor's prototype and diagnostics tools into Debug builds" ON)
+# The editor's prototype and diagnostics tools (Painter Test, Mockup Overlay). While on, every
+# configuration but Release has them; Release builds, which are what ships, never do.
+option(NYX_DEV_TOOLS "Build the editor's prototype and diagnostics tools into every configuration but Release" ON)
 
 # The Tracy profiler in every program (Profiler.h). It collects nothing until a viewer connects;
 # off, nothing of Tracy is compiled or linked.
@@ -64,7 +150,7 @@ endif()
 
 # Jolt, the physics engine (Engine/Source/Runtime/Physics), as a static library. Built with the
 # same runtime library and flags as Nyx, without link-time optimization, without its own profiler,
-# its GPU compute, its object streams or its install target. Its asserts are on in Debug.
+# its GPU compute, its object streams or its install target. Its asserts are on in Debug only.
 set(USE_STATIC_MSVC_RUNTIME_LIBRARY OFF CACHE BOOL "" FORCE)
 set(OVERRIDE_CXX_FLAGS OFF CACHE BOOL "" FORCE)
 set(INTERPROCEDURAL_OPTIMIZATION OFF CACHE BOOL "" FORCE)

@@ -181,8 +181,8 @@ set(NYX_EDITOR_HEADERS
 
 # The prototype and diagnostics tools (NYX_DEV_TOOLS), with the painter's test sheet that Painter
 # Test shows. The library has them in every configuration, so the test targets can test them; an
-# executable only takes the library's objects it uses, and NyxEditor uses them in Debug builds
-# only, where NYX_DEV_TOOLS lets EditorLayer own them.
+# executable only takes the library's objects it uses, and NyxEditor uses them in every
+# configuration but Release, where NYX_DEV_TOOLS lets EditorLayer own them.
 set(NYX_DEV_TOOLS_DIR ${PROJECT_SOURCE_DIR}/Engine/Source/DevTools)
 set(NYX_EDITOR_DEV_TOOL_SOURCES
     DevTools/src/ImGuiDebugTools.cpp
@@ -198,14 +198,14 @@ set(NYX_EDITOR_DEV_TOOL_HEADERS
     DevTools/include/SkyTablesWindow.h
     ${NYX_DEV_TOOLS_DIR}/include/PainterTestSheet.h
 )
-add_compile_definitions("NYX_DEV_TOOLS=$<AND:$<BOOL:${NYX_DEV_TOOLS}>,$<CONFIG:Debug>>")
+add_compile_definitions("NYX_DEV_TOOLS=$<AND:$<BOOL:${NYX_DEV_TOOLS}>,$<NOT:$<CONFIG:Release>>>")
 
 # The editor and its test targets keep debug information in the object files (/Z7), not in a
 # compiler PDB (/Zi). They share the editor library's precompiled header, and with /Zi each of
 # them compiles into its own copy of the library's compiler PDB. Parallel builds then write these
 # same-named copies at once, which corrupts them (linker warnings LNK4020 and LNK4204). With /Z7
 # there is no compiler PDB to copy: the header's types are in cmake_pch.obj.
-set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>")
+set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,DebugGame,Development>:Embedded>")
 
 set(NYX_EDITOR_REFLECTION_SOURCES "${CMAKE_BINARY_DIR}/Generated/Runtime/Runtime.reflect.sources.cpp")
 
@@ -279,9 +279,9 @@ function(nyx_add_editor_program)
 
     # The editor shares the library's precompiled header, so it needs the settings this folder gives
     # its targets; the function may be called from any folder, where they don't apply.
-    target_compile_definitions(NyxEditor PRIVATE "NYX_DEV_TOOLS=$<AND:$<BOOL:${NYX_DEV_TOOLS}>,$<CONFIG:Debug>>")
+    target_compile_definitions(NyxEditor PRIVATE "NYX_DEV_TOOLS=$<AND:$<BOOL:${NYX_DEV_TOOLS}>,$<NOT:$<CONFIG:Release>>>")
     set_target_properties(NyxEditor PROPERTIES
-        MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>"
+        MSVC_DEBUG_INFORMATION_FORMAT "$<$<CONFIG:Debug,DebugGame,Development>:Embedded>"
     )
     target_precompile_headers(NyxEditor REUSE_FROM NyxEditorLib)
 

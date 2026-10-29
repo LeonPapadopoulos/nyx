@@ -250,6 +250,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/FixedStepClock.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/DebugDraw.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/Profiler.h
+    ${NYX_ENGINE_ROOT}/Runtime/Core/include/Optimization.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/FileWatcher.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/StringUtil.h
     ${NYX_ENGINE_ROOT}/Runtime/Core/include/ClockTime.h
@@ -639,9 +640,9 @@ foreach(NYX_ENGINE_TARGET NyxEngineCommon NyxEngine NyxEditorEngine)
     # NYXENGINE_STATIC turns NYXENGINE_API (NyxEngineAPI.h) into nothing: no DLL exports needed.
     target_compile_definitions(${NYX_ENGINE_TARGET}
         PUBLIC NYXENGINE_STATIC
-        PUBLIC $<$<CONFIG:Debug>:ENGINE_DEBUG>
+        PUBLIC $<$<NOT:$<CONFIG:Release>>:ENGINE_DEBUG> # Debug, DebugGame and Development: the debug keys and tools
         PUBLIC $<$<CONFIG:Release>:ENGINE_RELEASE>
-        PUBLIC $<$<CONFIG:Debug>:ASSERTIONS_ENABLED>
+        PUBLIC $<$<NOT:$<CONFIG:Release>>:ASSERTIONS_ENABLED> # ASSERT() (Assertions.h): not in Release
         PUBLIC "NYX_DEBUG_DRAW=$<NOT:$<CONFIG:Release>>" # DebugDraw.h: none in Release builds
         PUBLIC VULKAN_HPP_HANDLE_ERROR_OUT_OF_DATE_AS_SUCCESS # Same vulkan.hpp behavior wherever it is included
         PUBLIC GLM_ENABLE_EXPERIMENTAL # Quaternion utilities, used by the public TransformComponent.h

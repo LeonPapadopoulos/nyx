@@ -52,6 +52,7 @@ endfunction()
 #   player's controller: it turns input into commands for the simulation each frame
 #   (PlayerController.h).
 #   All are qualified names, e.g. MyGame::RegisterTypes; the module defines them in its SOURCES.
+# The module is game code (nyx_mark_game_code()): DebugGame compiles it unoptimised.
 # Relative folders and files are taken from the folder of the CMakeLists.txt that calls it.
 function(nyx_add_game_module name)
     cmake_parse_arguments(PARSE_ARGV 1 ARG "" "REGISTER;SYSTEMS;PLAYER" "SOURCES;REFLECT_DIRS;INCLUDE_DIRS")
@@ -204,6 +205,9 @@ namespace Nyx
     add_library(${name}EditorGlue OBJECT "${editorGlue}" "${sourcesCpp}")
     target_link_libraries(${name}EditorGlue PRIVATE NyxEditorLib ${name})
     add_dependencies(${name}EditorGlue ${name}Reflection)
+
+    # The game's own code: unoptimised in DebugGame
+    nyx_mark_game_code(${name} ${name}GameGlue ${name}EditorGlue)
 
     set_target_properties(${name} ${name}Reflection ${name}GameGlue ${name}EditorGlue PROPERTIES FOLDER "GameModules/${name}")
 endfunction()

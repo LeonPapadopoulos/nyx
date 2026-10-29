@@ -143,7 +143,7 @@ What a running game made of an entity while it runs, in the editor's Details pan
   game's last log lines, and **Restart** (the same game again, with the scene as it is now),
   **Copy** and **Dismiss**.
 - A game that crashes before it is linked still gets a card, with its exit code.
-- In Debug builds, Ctrl+Alt+Shift+C in a game window crashes it on purpose, to try this.
+- In every build but Release, Ctrl+Alt+Shift+C in a game window crashes it on purpose, to try this.
 - `NyxGameInstanceTests` crashes a stand-in game for real and checks the report.
 
 ## A game's player
@@ -302,7 +302,7 @@ contexts, and the context highest on the stack that binds a control gets it.
   each frame's traces in the Timeline. `NyxGame.exe --input-replay <file>` plays a recording into
   the game itself instead of its devices, with the game's own actions and contexts, then goes on
   with the devices.
-- In Debug builds, Ctrl+Alt+Shift+I shows the same over a game.
+- In every build but Release, Ctrl+Alt+Shift+I shows the same over a game.
 - The bindings and their tuning are data, in `Input\Default.nyxinput` in the project's assets, or
   else the engine's (`Assets\Input\Default.nyxinput` in Nyx's own build). The editor writes it
   from the built-in defaults when there is none. A pad model's profile can tune bindings while
@@ -341,13 +341,29 @@ Code can draw lines over a world to show what it does: forces, anchors, bounds, 
   them (`IRenderer::SetSceneViewShowDebugDrawing()`).
 - Release builds compile debug drawing out: drawing does nothing there.
 - The editor's overlays draw each object's axes and bounds the same way.
-- **The physics debug view**: F3 in a game window (Debug builds) shows every body's shape, coloured
+- **The physics debug view**: F3 in a game window (every build but Release) shows every body's shape, coloured
   by how it moves (static grey, kinematic blue, awake green, asleep dark green, sensors yellow),
   a mesh's triangles' edges (a mesh of more than 8192 triangles as its bounds, so it doesn't crowd
   out everything else), characters' capsules in orange, the
   last step's contact points with their normals in red, and constraints that are on as pink lines
   between their anchors. It changes with the next step, so while paused, with Step. A cyan cross and arrow
   show where the cursor points at a body, and the surface's normal there ([Cursor rays](#cursor-rays)).
+
+## Build configurations
+
+Four, chosen in Visual Studio's configuration box, with `--config` or with `ctest -C`; each
+builds into its own `Binaries\<configuration>` ([Architecture](Architecture.md#build-configurations)).
+
+- **Debug**: nothing optimised, the debug runtime with its checked containers and Vulkan's
+  validation layers. A game's tight loops run tens of times slower than in Release.
+- **DebugGame**: the engine, the editor and the libraries optimised, the game's own code not:
+  to step through the game at nearly the engine's speed. A game marks its targets with
+  `nyx_mark_game_code()`, and may optimise its hottest files with `nyx_optimize_game_sources()`.
+- **Development**: everything optimised, with debug information, asserts, the debug keys and
+  tools, logging and the profiler: for playing and profiling every day.
+- **Release**: what ships: no asserts, debug keys, debug drawing or dev tools.
+- `NYX_DISABLE_OPTIMIZATION` ... `NYX_ENABLE_OPTIMIZATION` (`Optimization.h`) around functions
+  turns optimisation off there, to step through one file of an optimised build.
 
 ## Profiling
 
@@ -440,11 +456,11 @@ Debug tools:
   painted yet. `NyxEditorPanelTests` checks that the editor's panels leave none.
 - *Debug > Painter Heatmap* colours each 8x8 tile of every OS window by the painter's work there:
   the commands its pixels walk, or how many draws cover it.
-- In Debug builds (`NYX_DEV_TOOLS`), *Debug > Painter Test* shows the painter's test sheet (every
+- In every build but Release (`NYX_DEV_TOOLS`), *Debug > Painter Test* shows the painter's test sheet (every
   shape it can draw, zoomable, with a tile heatmap and a comparison with ImDrawList), the sheet
   painted inside a window, the widget gallery in every state (*Save PNG* writes it to
   `Saved/Gallery`), the scene views' blur, and what painting costs on the CPU and the GPU.
-- In Debug builds, *Debug > Mockup Overlay* lays an image from disk half transparent over the
+- In every build but Release, *Debug > Mockup Overlay* lays an image from disk half transparent over the
   editor, to match a design.
 
 Tests: `NyxUIChromeTests` (cards, splitters, tab bars and scrollbars, without a GPU),
@@ -636,7 +652,7 @@ What lies under a point of a view, for clicking on the world.
 - `RaycastSurfaceDecals()` finds the nearest decal whose quad a ray passes through from the front,
   and where on it (its UV), in front of the surface it lies on: what the cursor points at when it
   is over a mark.
-- In a game window, the physics debug view (F3, Debug builds) shows where the cursor points at a
+- In a game window, the physics debug view (F3, every build but Release) shows where the cursor points at a
   body. It follows the cursor with each step, so not while paused.
 - Tests: `NyxCursorRayTests` (a point drawn on a pixel lies on that pixel's ray, for cameras moved
   and turned, at the centre and the corners; picking a box drawn there, the floor behind it when
@@ -722,7 +738,7 @@ cascaded shadow maps, near shadows sharp and far ones coarser, steady as the cam
   (texels across each cascade, 256 to 4096). All with undo, saved in scenes and sent to a running
   game.
 - The editor's free camera shows the scene's sun and its shadows, as the game's camera does.
-- **Seeing it**: *Debug > Shadow Cascades* in the editor (F5 in a Debug build of the game) tints the
+- **Seeing it**: *Debug > Shadow Cascades* in the editor (F5 in the game, every build but Release) tints the
   picture by the cascade each surface's shadow comes from (red, green, blue, yellow, nearest first)
   and shows each cascade's shadow map along the bottom left. The profiler has a zone per cascade.
 - Four cascades of 2048 texels cost the instancing benchmark's field of 50 000 cubes, on a ground,
@@ -771,7 +787,7 @@ the sun. Without one, nothing changes.
     Its tables are made again only when the air, the sun or the
     camera's height changes: about 0.13 ms of GPU time then, nothing otherwise
     ([Atmosphere](Design/atmosphere.md#the-sky-made-by-the-air)). *Debug > Sky Tables* in the
-    editor (Debug builds) shows them.
+    editor (every build but Release) shows them.
   - **Tinted Cube Map**: the sky's cube map and its light take the sun's hue (*Sun Tint*) and dim
     through dusk to *Night Brightness*; the sun's light warms and weakens as it goes down, through
     more air (*Sun Reddening*), and is gone once it has set; a glow round the sun (*Sun Glow*, *Sun
@@ -847,7 +863,7 @@ decals glow, in the editor's scene views and in the game alike. On with an *Envi
   scenes and sent to a running game.
 - Each scene view has its own, made for its size. `Materials/Emissive.nyxmat` glows orange; a
   `MaskedDecal` with an intensity above 1 glows in its colour. The atmosphere test scene has both.
-- **Seeing it**: *Debug > Bloom* in the editor (F6 in a Debug build of the game) shows the bloom
+- **Seeing it**: *Debug > Bloom* in the editor (F6 in the game, every build but Release) shows the bloom
   alone.
 - Its passes take about 0.05 ms of GPU time a 1280 × 720 view ([Atmosphere](Design/atmosphere.md#numbers)).
 - Tests: `NyxAtmosphereTests` (the levels, their sizes, the threshold's knee, the settings in
@@ -869,7 +885,7 @@ without one, nothing changes. Only the sky's light is dimmed, never the sun's.
   scenes and sent to a running game.
 - Found from the scene's depth at half the view's size, blurred and filtered up along edges, in
   every scene view; it works the same on instanced meshes, decals and through fog.
-- **Seeing it**: *Debug > Ambient Occlusion* in the editor (F6 twice in a Debug build of the game)
+- **Seeing it**: *Debug > Ambient Occlusion* in the editor (F6 twice in the game, every build but Release)
   shows the occlusion, white where all of the sky's light reaches.
 - It takes about 0.1 ms of GPU time a 1280 × 720 view ([Atmosphere](Design/atmosphere.md#numbers)).
 - Tests: `NyxAtmosphereTests` (its size, samples and settings; a slice of the sky open, beside a
@@ -1280,7 +1296,7 @@ into dots that crawl as the camera moves, and edges are no longer staircases.
 - 4 samples a pixel by default; 1 (off), 2, 4 or 8 in *Window > Preferences > Anti-aliasing*,
   changed at once in every scene view, saved with the editor's preferences and given to the games
   Play starts. More than the GPU can do is the most it can.
-- The game takes `--msaa <samples>` on its command line; F7 in a Debug build cycles 1, 2, 4, 8.
+- The game takes `--msaa <samples>` on its command line; F7 in every build but Release cycles 1, 2, 4, 8.
   A game sets it with `IRenderer::SetMsaaSamples()`.
 - The sky, decals, fog, point lights, ambient occlusion, bloom, instanced meshes, two-sided
   materials, materials that cast no shadows and vertex functions all work with it; particles are
@@ -1318,7 +1334,7 @@ entity, and every scene view draws only what its camera can see.
   small). Cells in view that follow on in the transforms are one draw.
 - **Batching**: entities drawn once that draw alike, the same mesh with the same material in each
   section (many trees on one cached mesh, say), are drawn in one draw.
-- **Seeing it**: *Debug > Culling Bounds* in the editor (F4 in a Debug build of the game) draws the
+- **Seeing it**: *Debug > Culling Bounds* in the editor (F4 in the game, every build but Release) draws the
   bounds each view culls by, green drawn and red culled; *Freeze Culling* (F4 again) keeps culling
   by where the camera was, its frustum in yellow, while the camera moves on and shows what was left
   out. `IRenderer::SetSceneViewCullingDebug()`.

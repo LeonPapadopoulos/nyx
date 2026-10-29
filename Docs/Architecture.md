@@ -71,8 +71,8 @@ Each folder of `Runtime` has one namespace: `Nyx`, except `Net` (`Nyx::Net`), `I
 Known issue: `Platform` includes `UI` because `WindowsWindow` paints the title bar and the dock
 space. Both belong in the editor; once they move there, `Platform` no longer needs `UI`.
 
-`DevTools` holds the painter's test sheet. It is in no library: the editor compiles it in Debug
-builds, and the painter tests compile it.
+`DevTools` holds the painter's test sheet. It is in no library: the editor compiles it in every
+configuration but Release, and the painter tests compile it.
 
 Beyond the table:
 
@@ -119,7 +119,7 @@ checks every `#include` against this table.
 | `Materials` | The material open for editing, the Parameters and preview windows, New Material, the Shader Log | — |
 | `Transactions` | Undo and redo: transactions, their changes, snapshots of objects | Common |
 | `Preferences` | The editor's preferences, the Preferences and Theme windows, opening source in the chosen editor | Common |
-| `DevTools` | The prototype and diagnostics tools, in Debug builds only (`NYX_DEV_TOOLS`): Painter Test, Mockup Overlay, ImGui's debug windows | Common |
+| `DevTools` | The prototype and diagnostics tools, in every configuration but Release (`NYX_DEV_TOOLS`): Painter Test, Mockup Overlay, ImGui's debug windows | Common |
 | `Properties` | Drawing and editing reflected properties: a widget per property kind (an entity reference's picker among them), a component's overridable values as one row each, inherited or overridden (`OverrideRows`), problems under the properties they are about, and the edit in progress | Common, Transactions, Assets |
 | `Scene` | The scene being edited: its document and undo, the outliner with its order and folders (`SceneOutlineEdits`) and their undo, details, gizmo, scene views (`SceneViewSet`: any number of `SceneViewPanel`s) and their cameras, scene files, copy and paste | Common, Transactions, Assets, Preferences, Properties |
 | `Play` | Play and Play All: the games, their windows and crash cards, the Game Link window, edits sent to the games | Transactions, Preferences, Scene |
@@ -302,6 +302,42 @@ can't absorb. The editor's outline follows the entities as a block of its own, w
 and games never read ([Scene outliner](Design/scene-outliner.md)). Raise `EditorLinkProtocolVersion` when a message changes in a way the other side
 would misread; a new message type needs no new version, as a side that doesn't know a type skips
 it with a warning. `Hello`'s layout never changes.
+
+## Build configurations
+
+The top `CMakeLists.txt` sets four, in the spirit of Unreal's:
+
+| | Engine, editor, libraries | Game code | Runtime | Asserts, debug keys, dev tools | Debug info |
+| --- | --- | --- | --- | --- | --- |
+| `Debug` | `/Od /Ob0 /RTC1` | `/Od /Ob0 /RTC1` | `/MDd`, checked containers | yes | yes |
+| `DebugGame` | `/O2 /Ob2` | `/Od /Ob0` | `/MD` | yes | yes |
+| `Development` | `/O2 /Ob2` | `/O2 /Ob2` | `/MD` | yes | yes |
+| `Release` | `/O2 /Ob2` | `/O2 /Ob2` | `/MD` | no | no |
+
+- All the code of one program must share a C++ runtime and its level of checked containers, or
+  MSVC refuses to link it (LNK2038). So DebugGame can't mix a Debug game with an optimised engine:
+  it compiles everything, the dependencies included, against the release runtime (`/MD`,
+  `_ITERATOR_DEBUG_LEVEL` 0, `NDEBUG`) and differs only in the optimisation of each target.
+- **Game code** is what `nyx_mark_game_code(<target>...)` marks (the target property
+  `NYX_GAME_CODE`): `nyx_add_game_module()` marks the module, and a game marks its own programs
+  and tests. Nyx's own targets, its tests among them, are engine code. Once every target is made
+  (a deferred call at the end of the top folder, a game's when Nyx is part of one),
+  `_nyx_set_debuggame_optimization()` gives each its DebugGame optimisation by that property.
+- `ENGINE_DEBUG`, `ASSERTIONS_ENABLED` (`ASSERT()`), `NYX_DEBUG_DRAW` and `NYX_DEV_TOOLS` are on in
+  every configuration but Release, `ENGINE_RELEASE` in Release only. `NDEBUG`, with it Vulkan's
+  validation layers off, follows the runtime: only Debug has the layers. Jolt's own asserts are
+  in Debug only. The profiler (`NYX_PROFILER`) and logging are in every configuration.
+- The flags are cache entries Nyx sets (`CMAKE_<LANG>_FLAGS_DEVELOPMENT`, `..._DEBUGGAME`, the
+  linker's, `CMAKE_MSVC_DEBUG_INFORMATION_FORMAT`), so a game's repository has them for its own
+  targets too. The editor keeps its debug information in its objects (`/Z7`) in every
+  configuration that has any.
+- **One file the other way** (`Optimization.h`): `NYX_DISABLE_OPTIMIZATION` ...
+  `NYX_ENABLE_OPTIMIZATION` (MSVC's `#pragma optimize`) turns optimisation off for the functions
+  between them, to step through one engine file of an optimised build. It can't optimise a file
+  compiled `/Od /Ob0`: inlining stays off, and the inline functions of the headers above it, such
+  as glm's, are compiled unoptimised before it. For that, `nyx_optimize_game_sources(<target>
+  <file>...)` compiles a game's hot files `/O2 /Ob2` in DebugGame (a per-file option, which the
+  Visual Studio generator puts in place of the target's; Ninja warns D9025 that it overrides it).
 
 ## How to add...
 
