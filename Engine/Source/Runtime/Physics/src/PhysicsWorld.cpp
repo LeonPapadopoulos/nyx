@@ -2,6 +2,7 @@
 #include "PhysicsWorld.h"
 
 #include "DebugDraw.h"
+#include "JobSystem.h"
 #include "Log.h"
 #include "Profiler.h"
 
@@ -9,7 +10,8 @@
 #include <Jolt/Jolt.h>
 
 #include <Jolt/Core/Factory.h>
-#include <Jolt/Core/JobSystemThreadPool.h>
+#include <Jolt/Core/FixedSizeFreeList.h>
+#include <Jolt/Core/JobSystemWithBarrier.h>
 #include <Jolt/Core/TempAllocator.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Body/BodyLock.h>
@@ -390,11 +392,82 @@ namespace Nyx
 																					  : body.GetUserData();
 		}
 
-		uint32_t DefaultWorkerThreads()
+		// Jolt's jobs on a Nyx job system's workers, so the physics step shares the program's cores
+		// with everything else instead of keeping threads of its own. Jolt keeps its jobs, their
+		// dependencies and its barriers (JobSystemWithBarrier): a job is queued here once nothing
+		// holds it back, at the highest priority, and the thread waiting at a barrier runs the
+		// barrier's jobs itself as well, so a step finishes even while every worker is busy.
+		class SharedJoltJobs final : public JPH::JobSystemWithBarrier
 		{
-			const uint32_t cores = std::max(std::thread::hardware_concurrency(), 2u);
-			return std::min(cores - 1, 8u);
-		}
+		public:
+			SharedJoltJobs(Nyx::JobSystem& workers, uint32_t maxJobs, uint32_t maxBarriers)
+				: JPH::JobSystemWithBarrier(maxBarriers), Workers(workers)
+			{
+				FreeJobs.Init(maxJobs, maxJobs);
+			}
+
+			int GetMaxConcurrency() const override { return static_cast<int>(Workers.GetWorkerCount()) + 1; }
+
+			JobHandle CreateJob(const char* name, JPH::ColorArg color, const JobFunction& function, JPH::uint32 dependencies) override
+			{
+				uint32_t index = AvailableJobs::cInvalidObjectIndex;
+				while ((index = FreeJobs.ConstructObject(name, color, this, function, dependencies)) == AvailableJobs::cInvalidObjectIndex)
+				{
+					// More jobs at once than a step makes: wait for one to finish, as Jolt's pool does
+					JPH_ASSERT(false, "No jobs available!");
+					std::this_thread::yield();
+				}
+				Job* job = &FreeJobs.Get(index);
+				// Held before queueing, since the job may run and finish at once
+				JobHandle handle(job);
+				if (dependencies == 0)
+				{
+					QueueJob(job);
+				}
+				return handle;
+			}
+
+		protected:
+			void QueueJob(Job* job) override
+			{
+				job->AddRef();
+				const RawJob raw{ .Run = &Run, .Data = job };
+				Workers.Submit({ &raw, 1 }, EJobPriority::High);
+			}
+
+			void QueueJobs(Job** jobs, JPH::uint count) override
+			{
+				// In batches, each under one lock of the job system
+				constexpr JPH::uint BatchSize = 64;
+				RawJob batch[BatchSize];
+				for (JPH::uint first = 0; first < count; first += BatchSize)
+				{
+					const JPH::uint size = std::min(BatchSize, count - first);
+					for (JPH::uint i = 0; i < size; ++i)
+					{
+						jobs[first + i]->AddRef();
+						batch[i] = RawJob{ .Run = &Run, .Data = jobs[first + i] };
+					}
+					Workers.Submit({ batch, size }, EJobPriority::High);
+				}
+			}
+
+			void FreeJob(Job* job) override { FreeJobs.DestructObject(job); }
+
+		private:
+			using AvailableJobs = JPH::FixedSizeFreeList<Job>;
+
+			// Runs it unless the barrier's thread already has (a job runs once, whoever gets to it)
+			static void Run(void* data)
+			{
+				Job* job = static_cast<Job*>(data);
+				job->Execute();
+				job->Release();
+			}
+
+			Nyx::JobSystem& Workers;
+			AvailableJobs FreeJobs;
+		};
 
 		BodyHandle ToHandle(const JPH::BodyID& id)
 		{
@@ -916,8 +989,7 @@ namespace Nyx
 	struct PhysicsWorld::Implementation
 	{
 		explicit Implementation(const PhysicsSettings& settings)
-			: Jobs(JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers,
-				  static_cast<int>(settings.WorkerThreads != 0 ? settings.WorkerThreads : DefaultWorkerThreads()))
+			: Jobs(settings.Jobs != nullptr ? *settings.Jobs : JobSystem::Get(), JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers)
 		{
 			System.Init(settings.MaxBodies, 0, settings.MaxBodyPairs, settings.MaxContactConstraints, BroadPhaseMap,
 				BroadPhaseFilter, PairFilter);
@@ -1091,7 +1163,7 @@ namespace Nyx
 
 		// Scratch memory for a step
 		JPH::TempAllocatorImpl Temp{ 16 * 1024 * 1024 };
-		JPH::JobSystemThreadPool Jobs;
+		SharedJoltJobs Jobs;
 
 		// Jolt keeps references to these; they are made before the system and go after it
 		BroadPhaseLayerMap BroadPhaseMap;

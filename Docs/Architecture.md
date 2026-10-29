@@ -50,12 +50,12 @@ doesn't allow, and on a table that goes round in a circle, so a new dependency s
 
 | Folder | What it holds | Includes from |
 | --- | --- | --- |
-| `Core` | Logging, assertions, paths, text helpers, child processes, the crash handler, file watching, the frame rate limiter, the fixed step clock, `BinaryArchive`, the profiler macros (`Profiler.h`), debug drawing (`DebugDraw`), meshes as plain data (`MeshData`: vertices with four custom channels for the materials, indices and sections, `CheckMeshData()`, `ComputeMeshBounds()`), shapes drawn by hand told apart (`PointCloudRecognizer`, the $P point-cloud recogniser, and its template text) | — |
+| `Core` | Logging, assertions, paths, text helpers, child processes, the crash handler, file watching, the frame rate limiter, the fixed step clock, the job system (`JobSystem`: the program's worker threads, jobs by priority, cancelling, groups), `BinaryArchive`, the profiler macros (`Profiler.h`), debug drawing (`DebugDraw`), meshes as plain data (`MeshData`: vertices with four custom channels for the materials, indices and sections, `CheckMeshData()`, `ComputeMeshBounds()`), shapes drawn by hand told apart (`PointCloudRecognizer`, the $P point-cloud recogniser, and its template text) | — |
 | `Reflection` | Type, property and enum metadata, and the `NYX_REFLECT`, `NYX_PROPERTY` and `NYX_ENUM` macros; not under `Runtime` | — |
 | `Net` | TCP connections and the messages they carry | Core |
 | `Input` | Keyboard, mouse and gamepads (through SDL3), gathered from backends into one `InputFrame` per frame; the router: context stacks, actions, the value pipeline, triggers and their traces; the input's history and its view (`InputDebugView`), painted with the UI's widgets; input assets (`.nyxinput`), saved through reflection, and their tuning layers; the checks and recipes for bindings; the input's stream and recordings (`.nyxinputrec`); the game's fly cameras, for entities with a `FlyCameraComponent` (`UpdateFlyCameras()`), and its orbit cameras' input (`OrbitCameraInput`, `Input::UpdateOrbitCameras()`) | Core, Reflection, Scene, UI |
 | `Scene` | Entities and components (the physics components, `ConstraintComponent` with its runtime `ConstraintStateComponent`, `CharacterComponent` and `OrbitCameraComponent` among them, and the moves along the ground relative to a camera, `GetGroundMove()`), the component registry, scene files, the tagged binary format, surface anchors (`SurfaceAnchor`: a point, normal and tangent on an entity that move with it), overridable values (`ValueOverride`, `OverridableValue`: a component's overrides of values it inherits from elsewhere, and what its type's provider lists, `SetOverridableValues<T>()`), surface decals (`SurfaceDecalComponent`), point lights (`PointLightComponent`), particle emitters (`ParticleEmitterComponent`), lightning (`LightningComponent`: strikes and sustained columns, their timing, shape, look and lights and their channel in the clouds), cloud modifiers (`CloudModifierComponent`: shapes that clear, thicken or swirl the volumetric clouds, animated by the world's time) and the air a game carries them by (`IParticleVelocityField`), meshes made at run time (`RuntimeMeshComponent`, not saved), a mesh drawn at many transforms (`MeshInstancesComponent`, not saved, each instance with custom numbers for the materials), the ground (`GroundComponent`, its heights `SampleGroundHeight()` and its mesh `MakeGroundMesh()`, made in its post-load step), scattering (`ScatterComponent`: copies of an entity's mesh over another entity's mesh, `ScatterOnMesh()`, into the entity's `MeshInstancesComponent`, made in its post-load step and following its surface and the blockers each frame, `UpdateScatters()`, cell by cell so an edit makes only the cells it reaches again; `ScatterBlockerComponent` keeps copies out of an entity's collider or a circle round it; a noise mask), gradient noise shared by the ground and the scatter (`SampleGradientNoise()`), the world's air (`EnvironmentComponent`: height fog, the sky following the sun, made by the air's scattering or a tinted cube map, bloom, ambient occlusion, light shafts, the wind and the most particles), the high cloud layer (`CloudLayerComponent`), the volumetric clouds (`VolumetricCloudsComponent`: a band between two altitudes, its weather, shapes, lighting and quality, how its pixels are marched each frame, and presets at a game's scale that set its values once, `ApplyVolumetricCloudsPreset()`, its post-load step, which also folds older scenes' Temporal into the update, `FoldLegacyVolumetricCloudsUpdate()`), the time of day (`TimeOfDayComponent`: the time, the sun's path and which entity is the sun; `TimeOfDay.h`: the sun's direction and rotation at an hour, its light fading below the horizon, the world's sun turned to the time each frame, `ApplyTimeOfDay()`), colour grading (`ColorGradingComponent`: a grade, or grades at heights of the sun blended by it), a camera's view and projection and the ray back through a point of its picture (`CameraProjection.h`), run-time component types, made while the world runs and never saved (`EComponentTypeFlags::Runtime`), and what an entity's are (`InspectRuntimeComponents()`) | Core, Reflection |
-| `Physics` | Rigid bodies, their shapes (boxes, spheres, capsules, static triangle meshes), collisions and the physics step, constraints (each end in its body's own space, limits, motors, the load they held, switched off and on, breaking), and characters, on Jolt (`PhysicsWorld`); Jolt's headers stay inside | Core |
+| `Physics` | Rigid bodies, their shapes (boxes, spheres, capsules, static triangle meshes), collisions and the physics step, constraints (each end in its body's own space, limits, motors, the load they held, switched off and on, breaking), and characters, on Jolt (`PhysicsWorld`), its step's jobs on the job system's workers; Jolt's headers stay inside | Core |
 | `Sim` | The game world: its entities, their physics bodies and characters kept in step with the physics components, several entities one body where a game groups them (`PhysicsBodies`, `BodyGroupComponent`), their constraints with their `ConstraintComponent`s (`PhysicsConstraints`), the physics materials their colliders name, read once, kept and changed live (`PhysicsMaterials`, `GetPhysicsMaterial()`), and the simulation systems each fixed step runs, in order (`GameWorld`, `ISimSystem`), the players' commands each step applies (`CommandQueue`), the time of day moving on with the steps while it runs, the same whatever the frames (`TimeOfDayClock`), the entity a ray hits first (`PickPhysicsBody()`), the orbit cameras following their targets as drawn (`UpdateOrbitCameras()`), the air a game gives its world's particles (`GameWorld::SetParticleVelocityField()`), fields over the world kept only where something happens (`SparseField`: bricks of cells under a cap, sources, diffusion, decay, advection, sampling, deterministic) | Core, Reflection, Scene, Physics, Assets |
 | `Assets` | Asset files as plain data: images, materials and their options (`MaterialOptions`, reflected, e.g. two-sided), reflected assets (`ReflectedAssetText`: a reflected struct's values as `Name = value` lines, the file's other lines kept; `ReflectedAssetTypes`: the asset types a game or Nyx registers with their struct and check, and who listens for their live text), physics materials (`.nyxphysmat`, one of them: `PhysicsMaterialData`, reflected, with a game's own extras), glTF meshes, shader compile requests and results; `Scene` for `AssetReference` | Core, Reflection, Scene |
 | `UI` | The painter, and the painted UI drawn with it on top of ImGui, the dock space among it (`Nyx::UI::DockSpace()`, docked windows down to `DockedWindowMinWidth`) | Core, Reflection |
@@ -231,6 +231,30 @@ and `NYX_PROFILE_MESSAGE()`. They wrap Tracy, and only `Profiler.h` includes Tra
   `DrawFrameOnDevice()` and `VulkanUIBackend`, a shadow cascade's recording each its own
   (*Shadow cascade 0* to *3*). Each frame ends with a frame mark; `main()` names
   the main thread.
+
+### Jobs
+
+`JobSystem` (`Core`) is the program's worker threads: one a core but the main thread's, made on
+first use (`JobSystem::Get()`), so everything that works in the background shares the same cores
+instead of each system keeping threads of its own.
+
+- **Jobs by priority:** `Schedule()` queues a function as `High` (what a frame or a step waits for:
+  the physics step), `Normal` (wanted soon) or `Low` (background). A worker takes every `High` job
+  before any `Normal` one, and so on; within a priority, in the order scheduled.
+- **Handles and groups:** a `JobHandle` tells whether its job is queued, running, done or cancelled,
+  and `Cancel()` takes a queued job out so it never runs. A `JobGroup` counts its jobs until they
+  finish or are cancelled; `Wait()` returns when it is empty. Only threads that aren't workers wait,
+  and a job never waits for another job.
+- **Jobs without handles** (`Submit()`, `RawJob`) are for code that keeps its own job objects:
+  physics puts Jolt's jobs on the workers this way, at `High`, and Jolt's barrier also runs them on
+  the stepping thread, so a step finishes even while every worker is busy with long jobs.
+- **The same numbers on any thread:** every worker starts with the floating-point state (rounding,
+  denormals) of the thread that made the job system, so a job rounds as the main thread does; the
+  physics step gives the same results, to the bit, on one worker as on several.
+- **When it goes**, at the program's end, what hasn't started is cancelled and what is running
+  finishes.
+- Workers are named *Nyx Worker 0* and up in the debugger and the profiler; each job is a *Job* zone.
+- Tests: `NyxJobSystemTests`.
 
 ## Who owns what
 
@@ -473,6 +497,7 @@ more ([Reflected assets](Design/reflected-assets.md)). Anything else:
 
 | What | Where it is filled |
 | --- | --- |
+| `JobSystem::Get()` | made with one worker a core but one on first use, in practice by the first `PhysicsWorld`; it stops when the program ends |
 | `Logger::Get()` | `Init()` in `main()` (`EntryPoint.h`); the game adds a sink for the editor link (`EditorLinkLogSink::Install()`) |
 | `ComponentTypeRegistry::Get()` | `RegisterComponentTypes()`, then the game module's `RegisterTypes()`, in `Application`'s constructor |
 | `ReflectedAssetTypes::Get()` | `RegisterEngineAssetTypes()`, then the game module's `RegisterTypes()`, in `Application`'s constructor; whoever reads assets of a type listens for their live text while the game runs (`ReflectedAssetListener`) |

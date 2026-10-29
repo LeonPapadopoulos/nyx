@@ -75,6 +75,15 @@ add_dependencies(NyxFixedStepClockTests NyxGeneratedReflection)
 set_property(TARGET NyxFixedStepClockTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxFixedStepClockTests COMMAND NyxFixedStepClockTests)
 
+# The job system: every job once, on a worker, by priority then in order; cancelling; groups; jobs
+# without handles; queued jobs cancelled when it goes; the workers' floating-point state; the physics
+# step on its workers, the same whatever their number.
+add_executable(NyxJobSystemTests JobSystemTests.cpp)
+target_link_libraries(NyxJobSystemTests PRIVATE NyxEngine)
+add_dependencies(NyxJobSystemTests NyxGeneratedReflection)
+set_property(TARGET NyxJobSystemTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxJobSystemTests COMMAND NyxJobSystemTests)
+
 # The component type registry: types register once; a second type of a name already taken, such as
 # a game module's type named like one of the engine's, is refused.
 add_executable(NyxComponentTypeRegistryTests ComponentTypeRegistryTests.cpp)

@@ -11,6 +11,7 @@
 namespace Nyx
 {
 	class DebugDraw;
+	class JobSystem;
 
 	// How a body moves: not at all, only where it is put (MoveKinematic(); pushes dynamic bodies, is
 	// pushed by nothing), or by forces, gravity and collisions
@@ -406,8 +407,9 @@ namespace Nyx
 		uint32_t MaxBodies = 16384;
 		uint32_t MaxBodyPairs = 16384;
 		uint32_t MaxContactConstraints = 8192;
-		// Threads that run the step besides the caller's; 0: one per core but one, at most 8
-		uint32_t WorkerThreads = 0;
+		// The workers that run the step besides the caller's, at the highest priority; none: the
+		// program's (JobSystem::Get()). It must outlive the world.
+		JobSystem* Jobs = nullptr;
 		// Contact events kept until taken; later ones are dropped, so a world nobody listens to doesn't grow
 		uint32_t MaxContactEvents = 8192;
 		// Constraint breaks kept until taken, the same way
@@ -418,7 +420,7 @@ namespace Nyx
 	// Bodies collide by their motion: static with moving, moving with everything; sensors see moving
 	// bodies only. Characters walk among them (Jolt's CharacterVirtual), each with a kinematic body
 	// inside, so the others see it. The caller owns the world and calls everything from one thread;
-	// Jolt's own threads run inside Step() only. Same bodies, made in the same order and stepped the
+	// its jobs run on the job system's workers inside Step() only. Same bodies, made in the same order and stepped the
 	// same way, give the same results and the same contact events.
 	class PhysicsWorld
 	{
