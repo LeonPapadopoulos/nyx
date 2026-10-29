@@ -106,15 +106,23 @@ namespace nyx
 
     // Their light and transmittance at a pixel of the view, filtered up from the size they are
     // marched at: the mean of four bilinear taps half a texel round the pixel, a 2 x 2 box over the
-    // bilinear filter, smooth where bilinear filtering alone shows the texels as creases
+    // bilinear filter, smooth where bilinear filtering alone shows the texels as creases. In frames a
+    // bolt lights them, its light in them added, filtered the same way.
     public float4 volumetricCloudsAt(float2 pixel)
     {
         const float2 texel = 1.0 / View.VolumetricCloudDetailOrigin.zw;
         const float2 uv = pixel / View.ViewportSize;
         const float2 half = 0.5 * texel;
         const Texture2D clouds = View.VolumetricCloudLight.get();
-        return 0.25 * (clouds.SampleLevel(LinearClamp, uv + float2(-half.x, -half.y), 0.0) + clouds.SampleLevel(LinearClamp, uv + float2(half.x, -half.y), 0.0)
+        float4 result = 0.25 * (clouds.SampleLevel(LinearClamp, uv + float2(-half.x, -half.y), 0.0) + clouds.SampleLevel(LinearClamp, uv + float2(half.x, -half.y), 0.0)
             + clouds.SampleLevel(LinearClamp, uv + float2(-half.x, half.y), 0.0) + clouds.SampleLevel(LinearClamp, uv + float2(half.x, half.y), 0.0));
+        if (View.CloudLightningCount != 0u)
+        {
+            const Texture2D lightning = View.CloudLightningLight.get();
+            result.rgb += 0.25 * (lightning.SampleLevel(LinearClamp, uv + float2(-half.x, -half.y), 0.0).rgb + lightning.SampleLevel(LinearClamp, uv + float2(half.x, -half.y), 0.0).rgb
+                + lightning.SampleLevel(LinearClamp, uv + float2(-half.x, half.y), 0.0).rgb + lightning.SampleLevel(LinearClamp, uv + float2(half.x, half.y), 0.0).rgb);
+        }
+        return result;
     }
 
     // Where along a pixel's ray they are, in kilometres, at their nearest pixel: their light's mean

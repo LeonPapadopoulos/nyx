@@ -7,8 +7,9 @@
 // foot, meeting at joins, its glow strong low down. Paths: their ends kept, jagged within a band, branches heading down, arrivals along the
 // channel, budgets held, the same seed the same path to the bit; the leader revealing them by
 // arrival. Strips facing the camera, mitred and held at sharp kinks, widened far off and dimmed by
-// the square root. The lights along the channel, none while off. A world's lightning listed with
-// its lights; the component saved and loaded.
+// the square root. The lights along the channel, none while off. The lines of light in the clouds:
+// along the channel or the axis, as bright as asked, the brightest kept, the rectangle of the picture
+// they show on. A world's lightning listed with its lights; the component saved and loaded.
 #include "ComponentRegistration.h"
 #include "Entity.h"
 #include "Lightning.h"
@@ -488,6 +489,64 @@ namespace
 		Require(lights.empty(), "No bolt, no lights");
 	}
 
+	void TestCloudLights()
+	{
+		LightningComponent lightning;
+		lightning.StartTime = 0.0f;
+		const LightningComponent clamped = GetClampedLightning(lightning);
+		LightningFrame flash;
+		EvaluateLightning(lightning, glm::vec3(0.0f), GetLightningStart(clamped, 0) + clamped.LeaderTime + 0.001f, flash);
+		const std::optional<LightningCloudLight> line = MakeLightningCloudLight(lightning, flash);
+		Require(line.has_value(), "A flash lights the clouds");
+		const LightningPath& channel = flash.Shape.Paths[*flash.Channel];
+		Require(glm::distance(line->Points.front(), flash.Shape.Points[channel.FirstPoint].Position) < 1e-3f && glm::distance(line->Points.back(), flash.Ground) < 1e-3f,
+			"The line of light runs down the channel from its top to the ground");
+		Require(glm::distance(line->Color, clamped.CloudLightColor * (clamped.CloudLightIntensity * flash.Brightness)) < 1e-3f && line->Reach == clamped.CloudLightReach,
+			"The line of light is as bright as asked, as far as asked");
+		LightningComponent off = lightning;
+		off.bCloudLight = false;
+		Require(!MakeLightningCloudLight(off, flash).has_value() && !MakeLightningCloudLight(lightning, LightningFrame{}).has_value(), "Off, or nothing on, no line of light");
+
+		// A column's axis
+		LightningComponent column = lightning;
+		column.Mode = ELightningMode::Sustained;
+		column.Duration = 0.0f;
+		column.bRepeat = false;
+		LightningFrame standing;
+		EvaluateLightning(column, glm::vec3(5.0f, 0.0f, 5.0f), 1.0f, standing);
+		const std::optional<LightningCloudLight> axis = MakeLightningCloudLight(column, standing);
+		Require(axis.has_value() && axis->Points.front() == standing.Top && axis->Points.back() == standing.Ground, "A column's line of light is its axis");
+
+		// The brightest kept
+		std::vector<RenderLightningBolt> bolts(6);
+		for (size_t index = 0; index < bolts.size(); ++index)
+		{
+			LightningCloudLight light;
+			light.Color = glm::vec3(static_cast<float>((index * 7) % 6) + 1.0f);
+			light.Reach = 100.0f;
+			bolts[index].CloudLight = light;
+		}
+		std::vector<LightningCloudLight> picked;
+		PickLightningCloudLights(bolts, picked);
+		Require(picked.size() == MaxLightningCloudLights && picked[0].Color.r == 6.0f && picked[3].Color.r == 3.0f, "The brightest lines of light are kept, the brightest first");
+
+		// The rectangle they show on
+		const glm::mat4 viewProjection = glm::perspective(glm::radians(60.0f), 16.0f / 9.0f, 1.0f, 100000.0f) * glm::lookAt(glm::vec3(0.0f), glm::vec3(0.0f, 0.0f, -1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+		LightningCloudLight ahead;
+		for (uint32_t index = 0; index < LightningCloudLightPoints; ++index)
+		{
+			ahead.Points[index] = glm::vec3(0.0f, 1000.0f - 300.0f * static_cast<float>(index), -5000.0f);
+		}
+		ahead.Reach = 300.0f;
+		const LightningRect rect = GetLightningCloudRect(std::span<const LightningCloudLight>(&ahead, 1), viewProjection, glm::uvec2(960, 540));
+		Require(!rect.IsEmpty() && rect.X0 > 300 && rect.X1 < 660 && rect.X0 >= 0 && rect.Y1 <= 540, "A line of light ahead shows on a part of the picture round it");
+		LightningCloudLight behind = ahead;
+		behind.Points[3] = glm::vec3(0.0f, 0.0f, 100.0f);
+		const LightningRect whole = GetLightningCloudRect(std::span<const LightningCloudLight>(&behind, 1), viewProjection, glm::uvec2(960, 540));
+		Require(whole.X0 == 0 && whole.Y0 == 0 && whole.X1 == 960 && whole.Y1 == 540, "A line of light reaching behind the camera may show anywhere");
+		Require(GetLightningCloudRect({}, viewProjection, glm::uvec2(960, 540)).IsEmpty(), "No lines of light, nothing");
+	}
+
 	void TestWorld()
 	{
 		Registry world;
@@ -557,6 +616,7 @@ int main()
 		TestEvaluate();
 		TestStrips();
 		TestLights();
+		TestCloudLights();
 		TestWorld();
 		TestSavedAndLoaded();
 	}

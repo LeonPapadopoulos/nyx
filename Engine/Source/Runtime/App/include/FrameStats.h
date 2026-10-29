@@ -27,13 +27,15 @@ namespace Nyx
 		WaitForGpu,
 		// The GPU: the frame's whole command buffer, and the scene views' passes (the sky's tables
 		// in the frames they are made; the cloud layer, with its noise in the frames that make it; the
-		// volumetric clouds, with their noises in the frames that make them;
+		// volumetric clouds, with their noises in the frames that make them; the lightning's light in
+		// them, in frames a bolt lights them;
 		// the scene pass with the MSAA resolve at its end; the lightning's bolts; the light shafts in the frames the sun
 		// gives some; the colour grading's bake, in frames that bake)
 		GpuFrame,
 		GpuSky,
 		GpuClouds,
 		GpuVolumetricClouds,
+		GpuCloudLightning,
 		GpuShadows,
 		GpuScene,
 		GpuAmbientOcclusion,

@@ -189,6 +189,9 @@ namespace Nyx
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Look", DisplayName = "Leader Brightness", DragSpeed = 0.005, Tooltip = "Strike: how bright the leader is on its way down, against a flash, 0 to 1"))
 		float LeaderBrightness = 0.12f;
 
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Look", DisplayName = "Cloud Hiding", DragSpeed = 0.05, Tooltip = "How soon the clouds before the bolt hide its line, 1 to 16: 1 as much as they hide what is behind them, higher sooner, so the line goes into the cloud and its glow shows instead"))
+		float CloudHiding = 4.0f;
+
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Light", DisplayName = "Lights", Tooltip = "Whether the bolts light the world round them, through point lights along their lowest stretch"))
 		bool bLights = true;
 
@@ -203,6 +206,18 @@ namespace Nyx
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Light", DisplayName = "Light Range", DragSpeed = 1.0, Tooltip = "How far each light reaches, in metres: shorter is cheaper"))
 		float LightRange = 250.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Cloud Light", DisplayName = "Cloud Light", Tooltip = "Whether the bolt lights the volumetric clouds round it from within, as a line of light along it"))
+		bool bCloudLight = true;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Cloud Light", DisplayName = "Cloud Light Color", UI = Color))
+		glm::vec3 CloudLightColor{ 1.0f, 0.6f, 0.25f };
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Cloud Light", DisplayName = "Cloud Light Intensity", DragSpeed = 0.5, Tooltip = "How brightly the clouds glow right by the bolt at a flash's peak, as the sun's light is measured; less further away"))
+		float CloudLightIntensity = 15.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Cloud Light", DisplayName = "Cloud Light Reach", DragSpeed = 5.0, Tooltip = "How far from the bolt the clouds glow, in metres: none beyond. Shorter is cheaper"))
+		float CloudLightReach = 800.0f;
 	};
 }
 

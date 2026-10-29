@@ -1012,6 +1012,9 @@ namespace Nyx
 			case ETimedPass::AmbientOcclusion:
 				view->GpuTimes.AmbientOcclusion = milliseconds;
 				break;
+			case ETimedPass::CloudLightning:
+				view->GpuTimes.CloudLightning = milliseconds;
+				break;
 			case ETimedPass::Lightning:
 				view->GpuTimes.Lightning = milliseconds;
 				break;
@@ -1896,6 +1899,19 @@ namespace Nyx
 			cloudFrame.WorldTime = static_cast<double>(shownWorld ? shownWorld->Time : SceneTime);
 			cloudFrame.TowardsSun = view.SceneGlobals.LightDirectionWS;
 			VolumetricClouds.Prepare(view.VolumetricClouds, cloudFrame, volume);
+			// The bolts that light them, and the part of their picture they can show on
+			view.VolumetricClouds.Lightning.clear();
+			view.VolumetricClouds.LightningArea = {};
+			if (shownWorld && view.VolumetricClouds.IsDrawn())
+			{
+				PickLightningCloudLights(shownWorld->Lightning, view.VolumetricClouds.Lightning);
+				const vk::Extent2D extent = view.VolumetricClouds.Extent;
+				view.VolumetricClouds.LightningArea = GetLightningCloudRect(view.VolumetricClouds.Lightning, view.SceneGlobals.ViewProjection, glm::uvec2(extent.width, extent.height));
+				if (view.VolumetricClouds.LightningArea.IsEmpty())
+				{
+					view.VolumetricClouds.Lightning.clear();
+				}
+			}
 			SceneViewCloudCapture capture;
 			capture.bClouds = clouds.bClouds && clouds.bLightsWorld && view.CloudLayer.NoiseSlot != 0;
 			if (capture.bClouds)
@@ -1979,8 +1995,13 @@ namespace Nyx
 		}
 	}
 
-	void VulkanRenderer::CullSceneViewLightning(SceneViewInstance& view, const RenderWorld& world, const Frustum& frustum)
+	void VulkanRenderer::CullSceneViewLightning(SceneViewInstance& view, const RenderWorld& world, const Frustum& viewFrustum)
 	{
+		// By the frustum's sides alone: a bolt kilometres off, past the camera's far plane, still shows
+		// against the sky (Lightning.slang holds it at the far plane)
+		Frustum frustum = viewFrustum;
+		frustum.Planes[4] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+		frustum.Planes[5] = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
 		const LightningPixelScale pixels = GetLightningPixelScale(view.SceneGlobals.Projection, view.RenderTarget.GetExtent().height);
 		for (const RenderLightningBolt& bolt : world.Lightning)
 		{
@@ -2921,6 +2942,23 @@ namespace Nyx
 			ubo.VolumetricCloudMotion = glm::vec4(volume.Motion, 0.0f);
 			ubo.VolumetricCloudPreviousSkyViewProjection = volume.PreviousSkyViewProjection;
 			ubo.CloudInverseSkyViewProjection = glm::inverse(ubo.SkyboxViewProj);
+
+			// The bolts' lines of light in them, from the camera in kilometres
+			if (!volume.Lightning.empty() && volume.LightningSlot != 0)
+			{
+				ubo.CloudLightningCount = static_cast<uint32_t>(volume.Lightning.size());
+				ubo.CloudLightningTexture = volume.LightningSlot;
+				const glm::dvec3 camera(view.SceneGlobals.CameraWorldPos);
+				for (size_t light = 0; light < volume.Lightning.size(); ++light)
+				{
+					const LightningCloudLight& line = volume.Lightning[light];
+					ubo.CloudLightningColors[light] = glm::vec4(line.Color, line.Reach * 0.001f);
+					for (uint32_t point = 0; point < LightningCloudLightPoints; ++point)
+					{
+						ubo.CloudLightningPoints[light * LightningCloudLightPoints + point] = glm::vec4(glm::vec3((glm::dvec3(line.Points[point]) - camera) * 0.001), 0.0f);
+					}
+				}
+			}
 		}
 
 		// Its world's wind, at its time, and its texture of local air
@@ -3724,6 +3762,13 @@ namespace Nyx
 			WritePassTimestamp(cmd, view, ETimedPass::VolumetricClouds, false);
 			VolumetricClouds.Draw(view, cmd);
 			WritePassTimestamp(cmd, view, ETimedPass::VolumetricClouds, true);
+			// The bolts' light in them, every pixel within their reach, never carried
+			if (!view.VolumetricClouds.Lightning.empty())
+			{
+				WritePassTimestamp(cmd, view, ETimedPass::CloudLightning, false);
+				VolumetricClouds.DrawLightning(view, cmd);
+				WritePassTimestamp(cmd, view, ETimedPass::CloudLightning, true);
+			}
 		}
 		// Its shadow cascades, into the shadow map its scene pass reads
 		if (world && view.Shadows.CascadeCount > 0)

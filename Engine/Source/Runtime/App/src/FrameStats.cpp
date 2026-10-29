@@ -20,6 +20,7 @@ namespace Nyx
 			{ "gpu_sky_ms", true },
 			{ "gpu_clouds_ms", true },
 			{ "gpu_volumetric_clouds_ms", true },
+			{ "gpu_cloud_lightning_ms", true },
 			{ "gpu_shadows_ms", true },
 			{ "gpu_scene_ms", true },
 			{ "gpu_ambient_occlusion_ms", true },
@@ -67,6 +68,7 @@ namespace Nyx
 		sample[EFrameStat::GpuSky] = views.Gpu.Sky;
 		sample[EFrameStat::GpuClouds] = views.Gpu.Clouds;
 		sample[EFrameStat::GpuVolumetricClouds] = views.Gpu.VolumetricClouds;
+		sample[EFrameStat::GpuCloudLightning] = views.Gpu.CloudLightning;
 		sample[EFrameStat::GpuShadows] = views.Gpu.Shadows;
 		sample[EFrameStat::GpuScene] = views.Gpu.Scene;
 		sample[EFrameStat::GpuAmbientOcclusion] = views.Gpu.AmbientOcclusion;

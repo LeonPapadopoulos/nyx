@@ -10,7 +10,10 @@
 //      marched pixels as marched. Moving, the frame before's held to what this frame's marched
 //      pixels round it span, the marched pixels blended with it, so the squares don't show; where
 //      it was off the picture, this frame's marched pixels round it, weighed by nearness and by how
-//      near their depths are.
+//      near their depths are;
+//   3. in frames a bolt lights them, the lightning (volumetricCloudsLightningFragment): every pixel
+//      within the bolts' reach, their light in the clouds, into a picture of its own, never carried
+//      (nyx::volumetricCloudsAt() adds it).
 // Written: their light (rgb) and what gets through (a); their light's mean depth, where they begin
 // and all but end (kilometres) and what of the sun gets through them (a); which the sky, the
 // surfaces among and beyond them and the light shafts read (nyx.clouds), filtered up to the view's
@@ -255,4 +258,14 @@ VolumetricCloudTargets volumetricCloudsResolveFragment(float4 position : SV_Posi
     }
     targets.Light = held;
     return updateDebug(targets, float3(0.12, 0.12, 0.12));
+}
+
+// 3. The lightning's light in the clouds, every pixel within the bolts' reach (the pass's scissor),
+// worked out again each frame. Its samples at their steps' middles, the same for every pixel: not
+// accumulated from frame to frame, a dither from pixel to pixel would show as a pattern
+[shader("fragment")]
+float4 volumetricCloudsLightningFragment(float4 position : SV_Position) : SV_Target
+{
+    const float2 pixel = floor(position.xy);
+    return float4(nyx::volumetricCloudsLightningAlong(nyx::viewVolumetricCloudParams(), cloudPixelRay(pixel + 0.5), StepPlace), 1.0);
 }

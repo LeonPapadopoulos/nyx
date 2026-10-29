@@ -126,6 +126,26 @@ namespace Nyx
 			picture.DepthSlot = bindless.AddTexture(*picture.DepthView);
 		}
 
+		void MakeLightningPicture(VulkanContext& context, VulkanBindless& bindless, vk::RenderPass renderPass, SceneViewVolumetricClouds& clouds, vk::Extent2D extent)
+		{
+			MakeTarget(context, extent, VulkanVolumetricClouds::LightFormat, clouds.LightningImage, clouds.LightningMemory, clouds.LightningView);
+			clouds.LightningFramebuffer = vk::raii::Framebuffer(context.GetDevice(), vk::FramebufferCreateInfo({}, renderPass, *clouds.LightningView, extent.width, extent.height, 1));
+			clouds.LightningSlot = bindless.AddTexture(*clouds.LightningView);
+		}
+
+		void ReleaseLightningPicture(VulkanBindless& bindless, SceneViewVolumetricClouds& clouds)
+		{
+			if (clouds.LightningSlot != 0)
+			{
+				bindless.RemoveTexture(clouds.LightningSlot);
+			}
+			clouds.LightningSlot = 0;
+			clouds.LightningFramebuffer = nullptr;
+			clouds.LightningView = nullptr;
+			clouds.LightningImage = nullptr;
+			clouds.LightningMemory = nullptr;
+		}
+
 		void ReleasePicture(VulkanBindless& bindless, VolumetricCloudPicture& picture)
 		{
 			if (picture.LightSlot != 0)
@@ -173,6 +193,8 @@ namespace Nyx
 		WeatherDownsamplePipeline = nullptr;
 		MarchPipeline = nullptr;
 		ResolvePipeline = nullptr;
+		LightningPipeline = nullptr;
+		LightningPass = nullptr;
 		RenderPass = nullptr;
 		NoisePipelineLayout = nullptr;
 		NoiseSetLayout = nullptr;
@@ -215,6 +237,16 @@ namespace Nyx
 			color.finalLayout = vk::ImageLayout::eShaderReadOnlyOptimal;
 		}
 		RenderPass = vk::raii::RenderPass(Context.GetDevice(), vk::RenderPassCreateInfo({}, attachments, subpass, dependencies));
+
+		// The lightning's light: its picture cleared, written where the bolts can show
+		const vk::AttachmentReference lightningReference(0, vk::ImageLayout::eColorAttachmentOptimal);
+		vk::SubpassDescription lightningSubpass{};
+		lightningSubpass.pipelineBindPoint = vk::PipelineBindPoint::eGraphics;
+		lightningSubpass.colorAttachmentCount = 1;
+		lightningSubpass.pColorAttachments = &lightningReference;
+		vk::AttachmentDescription lightning = attachments[0];
+		lightning.loadOp = vk::AttachmentLoadOp::eClear;
+		LightningPass = vk::raii::RenderPass(Context.GetDevice(), vk::RenderPassCreateInfo({}, lightning, lightningSubpass, dependencies));
 	}
 
 	void VulkanVolumetricClouds::CreatePipelines()
@@ -235,8 +267,8 @@ namespace Nyx
 		WeatherPipeline = makeCompute(WeatherProgram, "cloudWeather");
 		WeatherDownsamplePipeline = makeCompute(WeatherProgram, "cloudWeatherDownsample");
 
-		// One triangle over the target, no vertices, no depth, no blending
-		const auto makeGraphics = [&](const std::string& fragmentName)
+		// One triangle over the target, no vertices, no depth, no blending; `targets` colour targets
+		const auto makeGraphics = [&](const std::string& fragmentName, vk::RenderPass renderPass, uint32_t targets)
 		{
 			const std::string vertexName = "volumetricCloudsVertex";
 			vk::raii::ShaderModule vertexModule = CreateShaderModule(Context, Programs.GetSpirv(CloudsProgram, vertexName));
@@ -261,7 +293,7 @@ namespace Nyx
 			blendAttachments[0].colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG | vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
 			blendAttachments[1].colorWriteMask = blendAttachments[0].colorWriteMask;
 			vk::PipelineColorBlendStateCreateInfo colorBlending{};
-			colorBlending.attachmentCount = static_cast<uint32_t>(blendAttachments.size());
+			colorBlending.attachmentCount = targets;
 			colorBlending.pAttachments = blendAttachments.data();
 			const std::span<const vk::DynamicState> dynamicStates = std::span<const vk::DynamicState>(MeshDynamicStates).first(2);
 			vk::PipelineDynamicStateCreateInfo dynamicState({}, static_cast<uint32_t>(dynamicStates.size()), dynamicStates.data());
@@ -278,11 +310,12 @@ namespace Nyx
 			info.pColorBlendState = &colorBlending;
 			info.pDynamicState = &dynamicState;
 			info.layout = ScenePipelineLayout;
-			info.renderPass = *RenderPass;
+			info.renderPass = renderPass;
 			return vk::raii::Pipeline(device, Context.GetPipelineCache(), info);
 		};
-		MarchPipeline = makeGraphics("volumetricCloudsMarchFragment");
-		ResolvePipeline = makeGraphics("volumetricCloudsResolveFragment");
+		MarchPipeline = makeGraphics("volumetricCloudsMarchFragment", *RenderPass, 2);
+		ResolvePipeline = makeGraphics("volumetricCloudsResolveFragment", *RenderPass, 2);
+		LightningPipeline = makeGraphics("volumetricCloudsLightningFragment", *LightningPass, 1);
 	}
 
 	void VulkanVolumetricClouds::Prepare(SceneViewVolumetricClouds& clouds, const VolumetricCloudsFrame& frame, const SceneViewVolumetricCloudsSettings& settings)
@@ -376,6 +409,7 @@ namespace Nyx
 		MakePicture(Context, *Bindless, *RenderPass, clouds.March, extent);
 		MakePicture(Context, *Bindless, *RenderPass, clouds.Pictures[0], extent);
 		MakePicture(Context, *Bindless, *RenderPass, clouds.Pictures[1], extent);
+		MakeLightningPicture(Context, *Bindless, *LightningPass, clouds, extent);
 		clouds.Extent = extent;
 		clouds.bDrawn = false;
 	}
@@ -402,6 +436,7 @@ namespace Nyx
 		ReleasePicture(*Bindless, clouds.March);
 		ReleasePicture(*Bindless, clouds.Pictures[0]);
 		ReleasePicture(*Bindless, clouds.Pictures[1]);
+		ReleaseLightningPicture(*Bindless, clouds);
 		clouds.Extent = vk::Extent2D{ 0, 0 };
 		clouds.bDrawn = false;
 	}
@@ -510,5 +545,27 @@ namespace Nyx
 		{
 			++clouds.FullMarches;
 		}
+	}
+
+	void VulkanVolumetricClouds::DrawLightning(SceneViewInstance& view, vk::raii::CommandBuffer& cmd)
+	{
+		SceneViewVolumetricClouds& clouds = view.VolumetricClouds;
+		if (!clouds.IsDrawn() || clouds.Lightning.empty() || clouds.LightningArea.IsEmpty() || !*clouds.LightningFramebuffer)
+		{
+			return;
+		}
+		const vk::Extent2D extent = clouds.Extent;
+		const vk::ClearValue black(vk::ClearColorValue(std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 0.0f }));
+		cmd.beginRenderPass(vk::RenderPassBeginInfo(*LightningPass, *clouds.LightningFramebuffer, vk::Rect2D({ 0, 0 }, extent), black), vk::SubpassContents::eInline);
+		cmd.setViewport(0, vk::Viewport(0.0f, 0.0f, static_cast<float>(extent.width), static_cast<float>(extent.height), 0.0f, 1.0f));
+		// Only where the bolts' reach can show: the rest stays cleared
+		const LightningRect& area = clouds.LightningArea;
+		cmd.setScissor(0, vk::Rect2D({ area.X0, area.Y0 }, { static_cast<uint32_t>(area.X1 - area.X0), static_cast<uint32_t>(area.Y1 - area.Y0) }));
+		cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, *LightningPipeline);
+		BindSceneSets(view, cmd);
+		const ObjectConstants object{};
+		cmd.pushConstants<ObjectConstants>(ScenePipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, { object });
+		cmd.draw(3, 1, 0, 0);
+		cmd.endRenderPass();
 	}
 }

@@ -3,7 +3,8 @@
 // occlusion and before its particles into the view's lightning picture, each pixel the brightest of
 // the strips over it, then that picture added to the scene in HDR; with no depth buffer: each pixel is
 // tested against the scene's depth, which it reads (View.SceneDepth), and fades out over the soft
-// distance in front of what is behind it. Its light is dimmed by the fog and by the clouds before it,
+// distance in front of what is behind it. A bolt past the camera's far plane is held at it and
+// shows against the sky, which is as far as can be. Its light is dimmed by the fog and by the clouds before it,
 // so a bolt's top inside the clouds is hidden. Across a strip: a narrow white core, the
 // coloured body round it, and a glow falling off to the strip's edges, by each pixel's distance to
 // its stretch of path; a round sprite the same from its middle out. The draw's push constants hold
@@ -11,7 +12,8 @@
 //   - 0: the core's colour times its brightness, and its half width against the glow's (w);
 //   - 1: the body's, and its half width against the glow's (w);
 //   - 2: the glow's, and the soft distance in metres (w);
-//   - 3: y how hard the core's and the body's edges are (Sharpness, 0 soft peaks to 1 a step).
+//   - 3: x the power of the clouds' transmittance its light is dimmed by (Cloud Hiding), y how hard
+//     the core's and the body's edges are (Sharpness, 0 soft peaks to 1 a step).
 
 import nyx.bindless;
 import nyx.view;
@@ -52,6 +54,8 @@ LightningVaryings lightningVertex(LightningVertex input)
 {
     LightningVaryings output;
     output.Position = mul(View.ViewProjection, float4(input.Position.xyz, 1.0));
+    // Past the far plane (0, reversed), held at it rather than cut off
+    output.Position.z = max(output.Position.z, 0.0);
     output.PositionWS = input.Position.xyz;
     output.Start = input.Start;
     output.End = input.End;
@@ -82,20 +86,24 @@ float4 lightningFragment(LightningVaryings input) : SV_Target
     const float4 core = lookColumn(0);
     const float4 body = lookColumn(1);
     const float4 glow = lookColumn(2);
+    const float cloudHiding = lookColumn(3).x;
     const float sharpness = lookColumn(3).y;
 
     // Behind what the scene drew there, nothing; just in front of it, fading in over the soft
-    // distance
-    const float sceneDepth = linearDepth(View.SceneDepth.get().Load(int3(int2(input.Position.xy), 0)).r);
-    const float gap = sceneDepth - linearDepth(input.Position.z);
-    if (gap <= 0.0)
-    {
-        discard;
-    }
+    // distance; over the sky (depth at the far plane), all of it, however far
     float alpha = 1.0;
-    if (glow.w > 0.0)
+    const float depth = View.SceneDepth.get().Load(int3(int2(input.Position.xy), 0)).r;
+    if (depth > 0.0)
     {
-        alpha = saturate(gap / glow.w);
+        const float gap = linearDepth(depth) - dot(input.PositionWS - View.CameraPosition.xyz, View.CameraForward.xyz);
+        if (gap <= 0.0)
+        {
+            discard;
+        }
+        if (glow.w > 0.0)
+        {
+            alpha = saturate(gap / glow.w);
+        }
     }
 
     // The core and the body: soft peaks of their half widths, or as hard as Sharpness says, a step at
@@ -112,10 +120,11 @@ float4 lightningFragment(LightningVaryings input) : SV_Target
     const float glowShape = edge * edge * exp(-3.0 * across) * lerp(input.Intensity.z, input.Intensity.w, part);
     const float3 light = (core.rgb * coreShape + body.rgb * bodyShape + glow.rgb * glowShape) * intensity;
 
-    // Through the clouds, where they lie between, and the fog
+    // Through the fog, and the clouds where they lie between, which hide its line sooner than what is
+    // behind them (most of its light that gets through them is scattered off its line: their glow)
     const nyx::Fog fog = nyx::heightFog(input.PositionWS);
     const nyx::CloudCover clouds = nyx::cloudCoverBefore(input.PositionWS, input.Position.xy);
-    return float4(light * (alpha * fog.Transmittance * clouds.Transmittance), 0.0);
+    return float4(light * (alpha * fog.Transmittance * pow(saturate(clouds.Transmittance), cloudHiding)), 0.0);
 }
 
 // The view's lightning picture over the scene: one triangle, added; the picture's slot in the

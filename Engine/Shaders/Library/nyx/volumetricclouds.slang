@@ -632,4 +632,198 @@ namespace nyx
         result.Transmittance = 1.0 - (1.0 - march.Through) * dot(air, float3(1.0 / 3.0));
         return result;
     }
+
+    // -------------------------------------------------------------------------
+    // The lightning's light in the clouds (Docs/Design/lightning.md): each bolt a line of light
+    // (ViewConstants.CloudLightning...), scattered towards the camera by the cloud within its reach,
+    // dimmed by the cloud along a short path towards it. Worked out every frame for every pixel near
+    // a bolt, in a pass of its own (VolumetricClouds.slang), never carried from frame to frame.
+    // -------------------------------------------------------------------------
+
+    // The coarse steps along the stretch of a ray within a bolt's reach (each probing the shapes alone),
+    // the fine samples each step that finds cloud is taken in again (with the details and the bolt's
+    // light), and the samples of the shapes before the stretch
+    public static const int VolumetricCloudLightningSteps = 32;
+    public static const int VolumetricCloudLightningFineSteps = 2;
+    public static const int VolumetricCloudLightningBefore = 8;
+    // How near a line of light it is as bright as right by it, in kilometres: a line's light falls
+    // off as 1 / d, softened within this
+    static const float VolumetricCloudLightningNear = 0.05;
+    // How far towards a bolt a point looks for the cloud between, in kilometres, at most
+    static const float VolumetricCloudLightningShade = 0.3;
+    // The light that comes straight through the cloud between, and, softer, scattered on through it
+    static const float VolumetricCloudLightningStraight = 0.7;
+    static const float VolumetricCloudLightningScattered = 0.3;
+
+    // The bolts' light at a point from the camera (kilometres, `height` above the ground): each line
+    // of light's colour, falling off as 1 / d from its nearest point (softened near it) and windowed
+    // to nothing at its reach, dimmed by the cloud's shapes on the way towards it
+    public float3 volumetricCloudLightningAt(VolumetricCloudParams p, float3 point, float height, float shapeLevel)
+    {
+        float3 sum = float3(0.0);
+        for (uint light = 0; light < View.CloudLightningCount; ++light)
+        {
+            const float4 color = View.CloudLightningColors[light];
+            const float reach = color.w;
+            float nearest = 1e9;
+            float3 closest = point;
+            for (uint segment = 0; segment < 3; ++segment)
+            {
+                const float3 a = View.CloudLightningPoints[light * 4 + segment].xyz;
+                const float3 b = View.CloudLightningPoints[light * 4 + segment + 1].xyz;
+                const float3 along = b - a;
+                const float part = saturate(dot(point - a, along) / max(dot(along, along), 1e-10));
+                const float3 on = a + along * part;
+                const float distance = length(point - on);
+                if (distance < nearest)
+                {
+                    nearest = distance;
+                    closest = on;
+                }
+            }
+            if (nearest >= reach)
+            {
+                continue;
+            }
+            const float ratio = nearest / reach;
+            const float window = (1.0 - ratio * ratio) * (1.0 - ratio * ratio);
+            const float falloff = window / (1.0 + nearest / VolumetricCloudLightningNear);
+
+            // The cloud between: a sample of the shapes half way towards the bolt, for the whole way
+            const float shade = min(nearest, VolumetricCloudLightningShade);
+            const float3 towards = nearest > 1e-6 ? (closest - point) / nearest : float3(0.0, 1.0, 0.0);
+            const float3 at = point + towards * (shade * 0.5);
+            const float atHeight = height + towards.y * (shade * 0.5);
+            const float depth = volumetricCloudDensity(p, at.xz, atHeight, volumetricCloudWeatherAt(p, at.xz), shapeLevel + 1.0, 0.0, false) * shade * p.Band.w;
+            const float through = VolumetricCloudLightningStraight * exp(-depth) + VolumetricCloudLightningScattered * exp(-depth * 0.25);
+            sum += color.rgb * (falloff * through);
+        }
+        return sum;
+    }
+
+    // Where a ray from the camera, `direction` normalised, is within any bolt's reach: the boxes round
+    // their lines widened by their reach; (near, far), far no further than near where it never is
+    float2 volumetricCloudLightningSpan(float3 direction)
+    {
+        float near = 1e9;
+        float far = -1e9;
+        const float3 safe = float3(abs(direction.x) < 1e-8 ? 1e-8 : direction.x, abs(direction.y) < 1e-8 ? 1e-8 : direction.y, abs(direction.z) < 1e-8 ? 1e-8 : direction.z);
+        const float3 inverse = 1.0 / safe;
+        for (uint light = 0; light < View.CloudLightningCount; ++light)
+        {
+            float3 low = View.CloudLightningPoints[light * 4].xyz;
+            float3 high = low;
+            for (uint point = 1; point < 4; ++point)
+            {
+                low = min(low, View.CloudLightningPoints[light * 4 + point].xyz);
+                high = max(high, View.CloudLightningPoints[light * 4 + point].xyz);
+            }
+            const float reach = View.CloudLightningColors[light].w;
+            const float3 t0 = (low - reach) * inverse;
+            const float3 t1 = (high + reach) * inverse;
+            const float3 entering = min(t0, t1);
+            const float3 leaving = max(t0, t1);
+            const float enter = max(max(entering.x, entering.y), max(entering.z, 0.0));
+            const float leave = min(min(leaving.x, leaving.y), leaving.z);
+            if (leave > enter)
+            {
+                near = min(near, enter);
+                far = max(far, leave);
+            }
+        }
+        return float2(near, far);
+    }
+
+    // The bolts' light in the clouds along a ray from the camera, as the camera sees it: the clouds
+    // within their reach and inside the band marched (coarse steps by the shapes alone, those in cloud
+    // again in fine samples with their details), each sample's bolt light scattered towards the camera
+    // as much as it hides; through the clouds before that stretch (their shapes,
+    // VolumetricCloudLightningBefore samples) and faded into the air between as the clouds' own light
+    // is. `jitter`, 0 to 1, where in each coarse step its probe is.
+    public float3 volumetricCloudsLightningAlong(VolumetricCloudParams p, float3 direction, float jitter)
+    {
+        if (View.CloudLightningCount == 0u)
+        {
+            return float3(0.0);
+        }
+        const float2 band = volumetricCloudBandSpan(p, direction.y);
+        const float2 lit = volumetricCloudLightningSpan(direction);
+        const float enter = max(band.x, lit.x);
+        const float exit = min(min(band.y, p.Band.z), lit.y);
+        if (exit <= enter)
+        {
+            return float3(0.0);
+        }
+
+        // What of its light gets back through the clouds before
+        float through = 1.0;
+        if (enter > band.x)
+        {
+            const float step = (enter - band.x) / float(VolumetricCloudLightningBefore);
+            for (int index = 0; index < VolumetricCloudLightningBefore; ++index)
+            {
+                through *= exp(-volumetricCloudShapeAlong(p, direction, band.x + (float(index) + 0.5) * step) * p.Band.w * step);
+            }
+        }
+        if (through < VolumetricCloudOpaque)
+        {
+            return float3(0.0);
+        }
+
+        // Coarse steps through the clear air, by the shapes alone; where one finds cloud, it and the step
+        // before (where the cloud may have begun) taken again in fine samples, at their middles
+        float3 light = float3(0.0);
+        float depthSum = 0.0;
+        float hiddenSum = 0.0;
+        const float step = (exit - enter) / float(VolumetricCloudLightningSteps);
+        const float fineStep = step / float(VolumetricCloudLightningFineSteps);
+        bool bInside = false;
+        int fineUntil = -1;
+        for (int index = 0; index < VolumetricCloudLightningSteps && through >= VolumetricCloudOpaque; ++index)
+        {
+            const bool bFound = volumetricCloudShapeAlong(p, direction, enter + (float(index) + jitter) * step) > 0.0;
+            if (!bFound && !bInside)
+            {
+                bInside = false;
+                continue;
+            }
+            for (int coarse = max(index - 1, fineUntil + 1); coarse <= index; ++coarse)
+            {
+                for (int fine = 0; fine < VolumetricCloudLightningFineSteps && through >= VolumetricCloudOpaque; ++fine)
+                {
+                    const float t = enter + float(coarse) * step + (float(fine) + 0.5) * fineStep;
+                    const float height = skyHeightAlong(p.Planet, p.CameraHeight, direction.y, t);
+                    const float3 point = direction * t;
+                    const VolumetricCloudWeather weather = volumetricCloudWeatherAt(p, point.xz);
+                    const float footprint = max(t * p.PixelAngle, 1e-5);
+                    const float shapeLevel = log2(footprint * p.Repeats.y * VolumetricCloudShapeTexels);
+                    const float detailLevel = log2(footprint * p.Repeats.z * VolumetricCloudDetailTexels);
+                    const float density = volumetricCloudDensity(p, point.xz, height, weather, shapeLevel, detailLevel, true);
+                    if (density <= 0.0)
+                    {
+                        continue;
+                    }
+                    const float stepThrough = exp(-density * p.Band.w * fineStep);
+                    const float hidden = through * (1.0 - stepThrough);
+                    light += volumetricCloudLightningAt(p, point, height, shapeLevel) * (hidden * p.Erosion.w);
+                    depthSum += hidden * t;
+                    hiddenSum += hidden;
+                    through *= stepThrough;
+                }
+            }
+            fineUntil = index;
+            bInside = bFound;
+        }
+        if (hiddenSum <= 0.0)
+        {
+            return float3(0.0);
+        }
+
+        // Faded into the air between the camera and where it is, as the clouds' own light
+        const float depth = depthSum / hiddenSum;
+        const float3 camera = float3(0.0, p.Planet.Radius + p.CameraHeight, 0.0);
+        const float3 point = camera + direction * depth;
+        const float pointHeight = skyHeightAlong(p.Planet, p.CameraHeight, direction.y, depth);
+        return light * pow(volumetricCloudAir(p, direction, pointHeight, dot(normalize(point), direction)), p.AerialPerspective);
+    }
 }

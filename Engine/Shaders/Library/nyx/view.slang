@@ -232,6 +232,18 @@ public struct ViewConstants
     public uint LocalWindPadding2;
     public float4 LocalWindOrigin;
     public float4 LocalWindScale;
+
+    // The lightning's lines of light in the volumetric clouds (VolumetricClouds.slang's lightning
+    // pass, nyx.volumetricclouds; Lightning.h): how many (0: none, and nothing below is set), the
+    // picture of their light in the clouds at the size the clouds are marched at; each one's colour
+    // times its brightness and its reach (w, kilometres); each one's 4 points from the camera, in
+    // kilometres
+    public uint CloudLightningCount;
+    public nyx::Texture CloudLightningLight;
+    public uint CloudLightningPadding0;
+    public uint CloudLightningPadding1;
+    public float4 CloudLightningColors[4];
+    public float4 CloudLightningPoints[16];
 }
 [vk::binding(0, 1)] public ConstantBuffer<ViewConstants> View;
 

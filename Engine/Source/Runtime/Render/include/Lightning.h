@@ -10,6 +10,7 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <vector>
 
 namespace Nyx
@@ -37,6 +38,11 @@ namespace Nyx
 
 	// The most return strokes a strike has
 	inline constexpr int32_t MaxLightningStrokes = 10;
+
+	// The most bolts that light a view's volumetric clouds at once, and the points of each one's line
+	// of light (ViewConstants.CloudLightning...)
+	inline constexpr uint32_t MaxLightningCloudLights = 4;
+	inline constexpr uint32_t LightningCloudLightPoints = 4;
 
 	// A stray bolt beside a column: a short strike of its own
 	inline constexpr float LightningStrayLeaderTime = 0.04f;
@@ -231,6 +237,21 @@ namespace Nyx
 	// Range, into `outLights` (appended), with no icon; none while it is off or dark
 	void AddLightningLights(const LightningComponent& lightning, const LightningFrame& frame, Entity entity, std::vector<RenderPointLight>& outLights);
 
+	// A bolt as a line of light in the volumetric clouds: its main channel (a column's axis) as a
+	// polyline of a few points from its top to the ground, in the world, its colour times its
+	// brightness at the moment, and how far from it the clouds glow, in metres
+	struct LightningCloudLight
+	{
+		std::array<glm::vec3, LightningCloudLightPoints> Points{};
+		glm::vec3 Color{ 0.0f };
+		float Reach = 0.0f;
+	};
+
+	// A frame's line of light for the clouds: its main channel (the leader's path while it comes
+	// down; a column's axis) at evenly spaced arrivals, Cloud Light Color times Cloud Light Intensity
+	// times its brightness, Cloud Light Reach; none with Cloud Light off, or nothing on
+	std::optional<LightningCloudLight> MakeLightningCloudLight(const LightningComponent& lightning, const LightningFrame& frame);
+
 	// How a bolt's strips look, as its draw's push constants give them to Lightning.slang: each
 	// colour times its brightness, and its core's and body's half widths against the glow's
 	struct LightningLook
@@ -247,6 +268,8 @@ namespace Nyx
 		float Sharpness = 0.8f;
 		// Over how many metres it fades in front of what is behind it
 		float SoftDistance = 0.5f;
+		// The power of the clouds' transmittance before it that its light is dimmed by
+		float CloudHiding = 4.0f;
 	};
 	LightningLook MakeLightningLook(const LightningComponent& lightning);
 
@@ -304,6 +327,8 @@ namespace Nyx
 		LightningLook Look;
 		// The box round its strips at their widest, without the widening for far views
 		BoundingBox Bounds;
+		// Its line of light in the volumetric clouds, while it gives one
+		std::optional<LightningCloudLight> CloudLight;
 		// Its entity's picking id in its world; 0 until given one
 		uint32_t PickingId = 0;
 	};
@@ -314,4 +339,25 @@ namespace Nyx
 	// appended to `outLights`
 	void ExtractLightning(const Registry& world, float time, std::optional<float> interpolation, std::vector<RenderLightningBolt>& outBolts,
 		std::vector<RenderPointLight>& outLights);
+
+	// The lines of light a view's volumetric clouds are lit by: the bolts' brightest
+	// MaxLightningCloudLights, into `outLights` (cleared first); ties by the world's order
+	void PickLightningCloudLights(std::span<const RenderLightningBolt> bolts, std::vector<LightningCloudLight>& outLights);
+
+	// A rectangle of pixels, from (X0, Y0) to before (X1, Y1)
+	struct LightningRect
+	{
+		int32_t X0 = 0;
+		int32_t Y0 = 0;
+		int32_t X1 = 0;
+		int32_t Y1 = 0;
+
+		bool IsEmpty() const { return X1 <= X0 || Y1 <= Y0; }
+	};
+
+	// The part of a picture `extent` pixels big that the lines of light's reach can show on, seen by
+	// `viewProjection` (the world's to the clip space's): their boxes, widened by their reach,
+	// projected, and a pixel more round; the whole picture when a corner of one is behind the camera;
+	// empty when there are none
+	LightningRect GetLightningCloudRect(std::span<const LightningCloudLight> lights, const glm::mat4& viewProjection, const glm::uvec2& extent);
 }

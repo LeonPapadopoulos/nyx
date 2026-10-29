@@ -236,10 +236,14 @@ namespace Nyx
 		clamped.Sharpness = Saturate(lightning.Sharpness);
 		clamped.BranchBrightness = Saturate(lightning.BranchBrightness);
 		clamped.LeaderBrightness = Saturate(lightning.LeaderBrightness);
+		clamped.CloudHiding = std::clamp(lightning.CloudHiding, 1.0f, 16.0f);
 		clamped.LightCount = std::clamp(lightning.LightCount, 1, 8);
 		clamped.LightColor = glm::max(lightning.LightColor, glm::vec3(0.0f));
 		clamped.LightIntensity = std::max(lightning.LightIntensity, 0.0f);
 		clamped.LightRange = std::max(lightning.LightRange, 0.0f);
+		clamped.CloudLightColor = glm::max(lightning.CloudLightColor, glm::vec3(0.0f));
+		clamped.CloudLightIntensity = std::max(lightning.CloudLightIntensity, 0.0f);
+		clamped.CloudLightReach = std::clamp(lightning.CloudLightReach, 1.0f, 20000.0f);
 		return clamped;
 	}
 
@@ -859,6 +863,7 @@ namespace Nyx
 		look.HalfWidth = 0.5f * lightning.Width * lightning.GlowWidth;
 		look.MinPixelWidth = lightning.MinPixelWidth;
 		look.Sharpness = lightning.Sharpness;
+		look.CloudHiding = lightning.CloudHiding;
 		return look;
 	}
 
@@ -1027,6 +1032,7 @@ namespace Nyx
 				bolt.Height = clamped.Height;
 				EvaluateLightning(lightning, GetDrawnTransform(world, entity, interpolation).Position, time, frame);
 				AddLightningLights(lightning, frame, entity, outLights);
+				bolt.CloudLight = MakeLightningCloudLight(lightning, frame);
 				if (frame.bActive && !frame.Shape.Paths.empty())
 				{
 					bolt.bDrawn = true;
@@ -1046,5 +1052,118 @@ namespace Nyx
 				}
 				outBolts.push_back(std::move(bolt));
 			});
+	}
+
+	std::optional<LightningCloudLight> MakeLightningCloudLight(const LightningComponent& component, const LightningFrame& frame)
+	{
+		const LightningComponent lightning = GetClampedLightning(component);
+		if (!frame.bActive || !lightning.bCloudLight || frame.Brightness <= 0.0f || lightning.CloudLightIntensity <= 0.0f)
+		{
+			return std::nullopt;
+		}
+		LightningCloudLight light;
+		light.Color = lightning.CloudLightColor * (lightning.CloudLightIntensity * frame.Brightness);
+		light.Reach = lightning.CloudLightReach;
+		if (std::max(light.Color.r, std::max(light.Color.g, light.Color.b)) <= 0.0f)
+		{
+			return std::nullopt;
+		}
+		constexpr float Last = static_cast<float>(LightningCloudLightPoints - 1);
+		// A column's axis, from its top down
+		if (lightning.Mode == ELightningMode::Sustained || frame.Shape.Paths.empty())
+		{
+			for (uint32_t index = 0; index < LightningCloudLightPoints; ++index)
+			{
+				light.Points[index] = glm::mix(frame.Top, frame.Ground, static_cast<float>(index) / Last);
+			}
+			return light;
+		}
+		// A strike's channel, or the leader's path while it comes down, at evenly spaced arrivals
+		const LightningPath& path = frame.Shape.Paths[frame.Channel.value_or(0)];
+		const LightningPoint* points = frame.Shape.Points.data() + path.FirstPoint;
+		const float first = points[0].Arrival;
+		const float last = points[path.PointCount - 1].Arrival;
+		uint32_t at = 0;
+		for (uint32_t index = 0; index < LightningCloudLightPoints; ++index)
+		{
+			const float arrival = glm::mix(first, last, static_cast<float>(index) / Last);
+			while (at + 2 < path.PointCount && points[at + 1].Arrival < arrival)
+			{
+				++at;
+			}
+			const float part = Saturate((arrival - points[at].Arrival) / std::max(points[at + 1].Arrival - points[at].Arrival, 1e-6f));
+			light.Points[index] = glm::mix(points[at].Position, points[at + 1].Position, part);
+		}
+		return light;
+	}
+
+	void PickLightningCloudLights(std::span<const RenderLightningBolt> bolts, std::vector<LightningCloudLight>& outLights)
+	{
+		outLights.clear();
+		std::vector<const LightningCloudLight*> lights;
+		for (const RenderLightningBolt& bolt : bolts)
+		{
+			if (bolt.CloudLight)
+			{
+				lights.push_back(&*bolt.CloudLight);
+			}
+		}
+		const auto brightness = [](const LightningCloudLight* light)
+		{
+			return std::max(light->Color.r, std::max(light->Color.g, light->Color.b));
+		};
+		std::stable_sort(lights.begin(), lights.end(), [&](const LightningCloudLight* a, const LightningCloudLight* b)
+			{
+				return brightness(a) > brightness(b);
+			});
+		for (size_t index = 0; index < lights.size() && index < MaxLightningCloudLights; ++index)
+		{
+			outLights.push_back(*lights[index]);
+		}
+	}
+
+	LightningRect GetLightningCloudRect(std::span<const LightningCloudLight> lights, const glm::mat4& viewProjection, const glm::uvec2& extent)
+	{
+		if (lights.empty())
+		{
+			return {};
+		}
+		const LightningRect whole{ 0, 0, static_cast<int32_t>(extent.x), static_cast<int32_t>(extent.y) };
+		float minX = std::numeric_limits<float>::max();
+		float minY = std::numeric_limits<float>::max();
+		float maxX = -std::numeric_limits<float>::max();
+		float maxY = -std::numeric_limits<float>::max();
+		for (const LightningCloudLight& light : lights)
+		{
+			glm::vec3 low = light.Points[0];
+			glm::vec3 high = light.Points[0];
+			for (const glm::vec3& point : light.Points)
+			{
+				low = glm::min(low, point);
+				high = glm::max(high, point);
+			}
+			low -= glm::vec3(light.Reach);
+			high += glm::vec3(light.Reach);
+			for (int corner = 0; corner < 8; ++corner)
+			{
+				const glm::vec3 point((corner & 1) ? high.x : low.x, (corner & 2) ? high.y : low.y, (corner & 4) ? high.z : low.z);
+				const glm::vec4 clip = viewProjection * glm::vec4(point, 1.0f);
+				if (clip.w <= 1e-4f)
+				{
+					return whole;
+				}
+				const glm::vec2 pixel = (glm::vec2(clip) / clip.w * 0.5f + 0.5f) * glm::vec2(extent);
+				minX = std::min(minX, pixel.x);
+				minY = std::min(minY, pixel.y);
+				maxX = std::max(maxX, pixel.x);
+				maxY = std::max(maxY, pixel.y);
+			}
+		}
+		LightningRect rect;
+		rect.X0 = std::clamp(static_cast<int32_t>(std::floor(minX)) - 1, 0, whole.X1);
+		rect.Y0 = std::clamp(static_cast<int32_t>(std::floor(minY)) - 1, 0, whole.Y1);
+		rect.X1 = std::clamp(static_cast<int32_t>(std::ceil(maxX)) + 1, 0, whole.X1);
+		rect.Y1 = std::clamp(static_cast<int32_t>(std::ceil(maxY)) + 1, 0, whole.Y1);
+		return rect;
 	}
 }

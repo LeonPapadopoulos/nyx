@@ -274,7 +274,7 @@ namespace Nyx
 			// The look in the model matrix's columns (Lightning.slang)
 			ObjectConstants object{};
 			object.Model = glm::mat4(glm::vec4(draw.Look.Core, draw.Look.CoreFraction), glm::vec4(draw.Look.Body, draw.Look.BodyFraction),
-				glm::vec4(draw.Look.Glow, draw.Look.SoftDistance), glm::vec4(0.0f, draw.Look.Sharpness, 0.0f, 1.0f));
+				glm::vec4(draw.Look.Glow, draw.Look.SoftDistance), glm::vec4(draw.Look.CloudHiding, draw.Look.Sharpness, 0.0f, 1.0f));
 			cmd.pushConstants<ObjectConstants>(ScenePipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, { object });
 			cmd.draw(draw.VertexCount, 1, draw.FirstVertex, 0);
 		}

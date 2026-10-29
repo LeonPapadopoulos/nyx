@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Lightning.h"
 #include "VolumetricClouds.h"
 
 #include <vulkan/vulkan_raii.hpp>
@@ -108,6 +109,18 @@ namespace Nyx
 		uint32_t NoiseBuilds = 0;
 		uint32_t FullMarches = 0;
 
+		// The lightning's light in them (Docs/Design/lightning.md): a picture at the size they are
+		// marched at, written whole each frame a bolt lights them, never carried; this frame's lines of
+		// light (PickLightningCloudLights()) and the rectangle of the picture they can show on (the
+		// rest cleared)
+		vk::raii::Image LightningImage{ nullptr };
+		vk::raii::DeviceMemory LightningMemory{ nullptr };
+		vk::raii::ImageView LightningView{ nullptr };
+		vk::raii::Framebuffer LightningFramebuffer{ nullptr };
+		uint32_t LightningSlot = 0;
+		std::vector<LightningCloudLight> Lightning;
+		LightningRect LightningArea;
+
 		bool IsDrawn() const { return Settings.bClouds && Extent.width > 0 && Shape.Slot != 0; }
 	};
 
@@ -117,8 +130,11 @@ namespace Nyx
 	//      VolumetricCloudWeather.slang's compute shaders, each with its mips;
 	//   2. the march (VolumetricClouds.slang), at half the view's size: every pixel, or with Temporal
 	//      one of each 4 x 4 a frame;
-	//   3. the resolve: this frame's picture, from the march and the frame before's.
-	// Both passes are one triangle with the scene pipelines' layout, reading the view's set. The sky
+	//   3. the resolve: this frame's picture, from the march and the frame before's;
+	//   4. in frames a bolt lights them (DrawLightning()), its light in them, every pixel within its
+	//      reach, into a picture of its own the readers add (nyx::volumetricCloudsAt()), never carried
+	//      from frame to frame, so a flash leaves nothing behind.
+	// The passes are one triangle with the scene pipelines' layout, reading the view's set. The sky
 	// pass draws the sky behind them, the surfaces beyond them are covered, the light shafts are held
 	// back by what of the light gets through (nyx.clouds).
 	class VulkanVolumetricClouds
@@ -152,6 +168,10 @@ namespace Nyx
 		// ShaderReadOnlyOptimal layout for the scene pass and the light shafts. Nothing for clouds not
 		// drawn.
 		void Draw(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
+		// After Draw(), in a frame the view's lines of light are set (SceneViewVolumetricClouds::
+		// Lightning): their light in the clouds into its picture, cleared, within their rectangle; left
+		// in ShaderReadOnlyOptimal layout. Nothing without them.
+		void DrawLightning(SceneViewInstance& view, vk::raii::CommandBuffer& cmd);
 
 	private:
 		void CreateRenderPass();
@@ -181,5 +201,8 @@ namespace Nyx
 		vk::raii::RenderPass RenderPass{ nullptr };
 		vk::raii::Pipeline MarchPipeline{ nullptr };
 		vk::raii::Pipeline ResolvePipeline{ nullptr };
+		// The lightning's light in them: one colour target, cleared
+		vk::raii::RenderPass LightningPass{ nullptr };
+		vk::raii::Pipeline LightningPipeline{ nullptr };
 	};
 }

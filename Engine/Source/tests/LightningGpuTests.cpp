@@ -9,10 +9,17 @@
 //   - the same time gives the same picture to the bit, another strike another;
 //   - a column draws its braid, and boils: another reform frame, another picture;
 //   - a click on its icon selects it;
-//   - its GPU and CPU time at 1920 x 1080, a strike's flash and a column, the medians of 60 frames.
+//   - its GPU and CPU time at 1920 x 1080, a strike's flash and a column, the medians of 60 frames;
+//   - under the air's sky with volumetric clouds: the clouds round a column glow, those far from it
+//     are the same to the bit; once it goes, the very next frame is the picture without it to the
+//     bit, marching one pixel of each 4 x 4 a frame (nothing carried); with it, a still picture in
+//     4 x 4 is the one every pixel marched gives, to the bit; the bolt's top hidden in the cloud;
+//     the clouds' lightning pass's GPU time at 1920 x 1080, beside the march's in each mode.
 //
-// NYX_SCENE_TEST_OUTPUT=<folder> saves what was rendered there. --look renders a column and a strike
-// framed as the references are (Lightning-Look-*), to compare side by side.
+// --look renders a column and a strike framed as the references are (Lightning-Look-*), to compare
+// side by side. --clouds renders the clouds' tests alone and saves their pictures.
+//
+// NYX_SCENE_TEST_OUTPUT=<folder> saves what was rendered there.
 #include "CameraComponent.h"
 #include "CameraProjection.h"
 #include "ComponentRegistration.h"
@@ -513,6 +520,223 @@ namespace
 		EndView(gpu, scene, view);
 	}
 
+	float Luminance(const RgbaImage& image, const glm::ivec2& pixel)
+	{
+		const size_t offset = (static_cast<size_t>(pixel.y) * image.Width + pixel.x) * 4;
+		return 0.2126f * image.Pixels[offset] + 0.7152f * image.Pixels[offset + 1] + 0.0722f * image.Pixels[offset + 2];
+	}
+
+	// The mean luminance of a square of pixels round `pixel`
+	float MeanLuminance(const RgbaImage& image, const glm::ivec2& pixel, int reach)
+	{
+		float sum = 0.0f;
+		int count = 0;
+		for (int y = std::max(pixel.y - reach, 0); y <= std::min(pixel.y + reach, static_cast<int>(image.Height) - 1); ++y)
+		{
+			for (int x = std::max(pixel.x - reach, 0); x <= std::min(pixel.x + reach, static_cast<int>(image.Width) - 1); ++x)
+			{
+				sum += Luminance(image, glm::ivec2(x, y));
+				++count;
+			}
+		}
+		return sum / static_cast<float>(std::max(count, 1));
+	}
+
+	// Frames after which every pixel of the clouds was marched again since a change: 16, and the one
+	// that changed
+	constexpr int SettledFrames = 18;
+
+	// The air's sky at dusk with an overcast of volumetric clouds, their base at 400 m, still (no
+	// wind), the camera on the ground looking up at them; a standing column 2.5 km ahead, its top in
+	// them; the world's time a paused clock's
+	struct CloudyScene
+	{
+		Registry World;
+		FixedStepClock Clock;
+		Entity Camera;
+		Entity Air;
+		Entity Band;
+		Entity Bolt;
+		CameraComponent Lens;
+		glm::uvec2 Size{ ViewWidth, ViewHeight };
+
+		CloudyScene()
+		{
+			Camera = World.CreateEntity();
+			World.Add<TransformComponent>(Camera, Placed(glm::vec3(0.0f, 10.0f, 0.0f), glm::vec3(1.0f), glm::angleAxis(glm::radians(14.0f), glm::vec3(1.0f, 0.0f, 0.0f))));
+			World.Add<CameraComponent>(Camera, Lens);
+
+			const Entity sun = World.CreateEntity();
+			const glm::vec3 towardsSun(0.0f, std::sin(glm::radians(6.0f)), std::cos(glm::radians(6.0f)));
+			World.Add<TransformComponent>(sun, Placed(glm::vec3(0.0f), glm::vec3(1.0f), glm::quatLookAt(-towardsSun, glm::vec3(0.0f, 1.0f, 0.0f))));
+			DirectionalLightComponent light;
+			light.Intensity = 3.0f;
+			light.bCastShadows = false;
+			World.Add<DirectionalLightComponent>(sun, light);
+
+			Air = World.CreateEntity();
+			EnvironmentComponent environment;
+			environment.bFog = false;
+			environment.bBloom = false;
+			environment.bAmbientOcclusion = false;
+			environment.bLightShafts = false;
+			World.Add<EnvironmentComponent>(Air, environment);
+
+			Band = World.CreateEntity();
+			VolumetricCloudsComponent clouds;
+			clouds.Coverage = 0.8f;
+			clouds.Type = 0.4f;
+			clouds.BottomAltitude = 400.0f;
+			clouds.TopAltitude = 1400.0f;
+			clouds.WindSpeed = 0.0f;
+			World.Add<VolumetricCloudsComponent>(Band, clouds);
+
+			Bolt = World.CreateEntity();
+			World.Add<TransformComponent>(Bolt, Placed(glm::vec3(0.0f, 0.0f, -2500.0f)));
+			LightningComponent column;
+			column.Mode = ELightningMode::Sustained;
+			column.Duration = 0.0f;
+			column.bRepeat = false;
+			column.StartTime = 0.0f;
+			column.Height = 1300.0f;
+			column.SideArcRate = 0.0f;
+			column.StrayBoltRate = 0.0f;
+			column.Width = 3.0f;
+			World.Add<LightningComponent>(Bolt, column);
+
+			Clock.SetPaused(true);
+			Clock.SetStepSeconds(10.0);
+			Clock.StepOnce();
+			Require(Clock.Advance(0.0) == 1, "The test's clock can't be set");
+		}
+
+		VolumetricCloudsComponent& Clouds()
+		{
+			return World.Get<VolumetricCloudsComponent>(Band);
+		}
+
+		LightningComponent& Lightning()
+		{
+			return World.Get<LightningComponent>(Bolt);
+		}
+
+		glm::ivec2 Pixel(const glm::vec3& point) const
+		{
+			const std::optional<glm::vec2> pixel = WorldToScreenPoint(World.Get<TransformComponent>(Camera), Lens, glm::vec2(Size), point);
+			Require(pixel && pixel->x >= 0.0f && pixel->y >= 0.0f && pixel->x < static_cast<float>(Size.x) && pixel->y < static_cast<float>(Size.y),
+				"A point the test looks at is out of the picture");
+			return glm::ivec2(glm::floor(*pixel));
+		}
+	};
+
+	uint64_t MakeCloudyView(SceneRenderer& gpu, CloudyScene& scene, uint32_t width = ViewWidth, uint32_t height = ViewHeight)
+	{
+		IEditorRenderer& renderer = gpu.Renderer;
+		scene.Size = glm::uvec2(width, height);
+		renderer.SetWorld(&scene.World);
+		renderer.SetWorldInterpolation(&scene.World, &scene.Clock);
+		const uint64_t view = renderer.CreateSceneView();
+		renderer.SetSceneViewCameraMode(view, EViewportCameraMode::ScenePrimaryCamera);
+		renderer.SetSceneViewSize(view, width, height);
+		renderer.SetSceneViewSky(view, ESceneViewSky::Scene, 0.0f);
+		gpu.DrawUntilShadersCompiled();
+		return view;
+	}
+
+	void EndCloudyView(SceneRenderer& gpu, CloudyScene& scene, uint64_t view)
+	{
+		IEditorRenderer& renderer = gpu.Renderer;
+		renderer.DestroySceneView(view);
+		renderer.SetWorldInterpolation(&scene.World, nullptr);
+		renderer.SetWorld(nullptr);
+		gpu.DrawFrames(1);
+	}
+
+	// The clouds round a column glow, far from it they are the same to the bit; the frame after it
+	// goes is the picture without it, to the bit, in 4 x 4; with it, 4 x 4 is every pixel marched, to
+	// the bit; the bolt's top hidden in the cloud
+	void TestCloudsLit(SceneRenderer& gpu)
+	{
+		CloudyScene scene;
+		const uint64_t view = MakeCloudyView(gpu, scene);
+		scene.Clouds().Update = EVolumetricCloudsUpdate::Blocks4x4;
+		scene.Lightning().bEnabled = false;
+		const RgbaImage without = Draw(gpu, view, SettledFrames);
+		SaveIfAsked(without, "CloudsWithout");
+		scene.Lightning().bEnabled = true;
+		const RgbaImage lit = Draw(gpu, view, SettledFrames);
+		SaveIfAsked(lit, "CloudsLit");
+
+		// Round it the cloud's base glows; far from it, the same to the bit
+		const glm::ivec2 base = scene.Pixel(glm::vec3(120.0f, 480.0f, -2500.0f));
+		const float litBase = MeanLuminance(lit, base, 4);
+		const float darkBase = MeanLuminance(without, base, 4);
+		std::cout << "The cloud's base by the column: " << darkBase << " without it, " << litBase << " lit by it\n";
+		Require(litBase > darkBase + 15.0f, "The clouds by the column don't glow");
+		Require(BrightnessAt(lit, glm::ivec2(3, 3)) == BrightnessAt(without, glm::ivec2(3, 3)), "The clouds far from the column change");
+		const SceneViewGpuTimes* times = gpu.Renderer.GetSceneViewGpuTimes(view);
+		Require(times && times->CloudLightning > 0.0f, "The clouds' lightning pass takes no GPU time");
+
+		// The column below the cloud's base, 2.5 km off, past the camera's far plane: shown against the
+		// sky; its top in the cloud hidden, the cloud's glow there instead
+		const glm::ivec2 low = scene.Pixel(glm::vec3(0.0f, 200.0f, -2500.0f));
+		Require(BrightestNear(lit, low, 3) >= 600, "The column below the clouds, past the far plane, doesn't show");
+		const SceneViewCullingStats* stats = gpu.Renderer.GetSceneViewCullingStats(view);
+		Require(stats && stats->Lightning == 1 && stats->LightningCulled == 0, "The column past the far plane is culled");
+
+		// The very next frame after it goes: the picture without it, nothing of it carried
+		scene.Lightning().bEnabled = false;
+		const RgbaImage after = Draw(gpu, view, 1);
+		Require(DifferentPixels(after, without) == 0, "The frame after the column went differs from the picture without it in " +
+			std::to_string(DifferentPixels(after, without)) + " pixels: its light was carried");
+		// Its times are read a frame late, after the frame's fence
+		gpu.DrawFrames(2);
+		Require(gpu.Renderer.GetSceneViewGpuTimes(view)->CloudLightning == 0.0f, "Without a bolt, the clouds' lightning pass still takes GPU time");
+
+		// With it, a still picture marched one pixel of each 4 x 4 a frame is every pixel marched's
+		scene.Lightning().bEnabled = true;
+		const RgbaImage blocks = Draw(gpu, view, SettledFrames);
+		scene.Clouds().Update = EVolumetricCloudsUpdate::EveryPixel;
+		const RgbaImage every = Draw(gpu, view, 3);
+		Require(DifferentPixels(blocks, every) == 0, "Lit by a bolt, the clouds in 4 x 4 differ from every pixel marched in " + std::to_string(DifferentPixels(blocks, every)) + " pixels");
+		EndCloudyView(gpu, scene, view);
+	}
+
+	// The clouds' lightning pass's GPU time at 1920 x 1080, and the march's in each mode beside it
+	void TestCloudLightningTime(SceneRenderer& gpu)
+	{
+		CloudyScene scene;
+		const uint64_t view = MakeCloudyView(gpu, scene, 1920, 1080);
+		const auto median = [&](float SceneViewGpuTimes::* pass)
+		{
+			std::vector<float> times;
+			gpu.DrawFrames(SettledFrames);
+			for (int frame = 0; frame < 60; ++frame)
+			{
+				gpu.DrawFrames(1);
+				times.push_back(gpu.Renderer.GetSceneViewGpuTimes(view)->*pass);
+			}
+			std::sort(times.begin(), times.end());
+			return times[times.size() / 2];
+		};
+		const float lightning = median(&SceneViewGpuTimes::CloudLightning);
+		SaveIfAsked(Draw(gpu, view, 1), "CloudsLitFull");
+		const SceneViewVolumetricClouds* clouds = gpu.Renderer.GetSceneViewVolumetricClouds(view);
+		Require(clouds && !clouds->LightningArea.IsEmpty(), "The column's light shows on no part of the clouds' picture");
+		const LightningRect area = clouds->LightningArea;
+		const float part = static_cast<float>((area.X1 - area.X0) * (area.Y1 - area.Y0)) / static_cast<float>(clouds->Extent.width * clouds->Extent.height);
+		std::cout << "At 1920 x 1080 the clouds' lightning pass took " << lightning << " ms on the GPU over " << static_cast<int>(part * 100.0f + 0.5f)
+				  << " % of their picture (" << area.X1 - area.X0 << " x " << area.Y1 - area.Y0 << " of " << clouds->Extent.width << " x " << clouds->Extent.height << ")\n";
+		for (const EVolumetricCloudsUpdate update : { EVolumetricCloudsUpdate::Blocks4x4, EVolumetricCloudsUpdate::EveryPixel })
+		{
+			scene.Clouds().Update = update;
+			const float march = median(&SceneViewGpuTimes::VolumetricClouds);
+			std::cout << "  their march " << (update == EVolumetricCloudsUpdate::EveryPixel ? "marching every pixel" : "in 4 x 4") << ": " << march << " ms\n";
+		}
+		Require(lightning > 0.0f && lightning < 3.0f, "The clouds' lightning pass takes 3 milliseconds or more");
+		EndCloudyView(gpu, scene, view);
+	}
+
 	// The pass's GPU time at 1920 x 1080, held at a strike's flash and on a column, and the CPU's time
 	// to work out the bolt and its strips
 	void TestGpuTime(SceneRenderer& gpu)
@@ -580,12 +804,20 @@ int main(int argc, char** argv)
 			RenderLook(gpu);
 			return 0;
 		}
+		if (argc > 1 && std::strcmp(argv[1], "--clouds") == 0)
+		{
+			TestCloudsLit(gpu);
+			TestCloudLightningTime(gpu);
+			return 0;
+		}
 		TestUnchangedWithout(gpu);
 		TestBolt(gpu);
 		TestLights(gpu);
 		TestDeterminismAndColumn(gpu);
 		TestEditorIcon(gpu);
 		TestGpuTime(gpu);
+		TestCloudsLit(gpu);
+		TestCloudLightningTime(gpu);
 	}
 	catch (const std::exception& error)
 	{

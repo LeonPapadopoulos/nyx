@@ -1216,6 +1216,11 @@ the picture as the mean of four bilinear taps half a texel round each pixel (a 2
 bilinear filter), smooth where bilinear filtering alone shows the texels as creases. The clouds are
 worked out along each ray whatever stands in the way, so no depth-aware filter is needed.
 
+**Lightning's light in them** changes within a frame, which the carried picture can't follow: it is
+worked out in a pass of its own, every pixel near a bolt every frame, into a picture of its own that
+`nyx::volumetricCloudsAt()` adds, filtered the same way; never carried, so a flash leaves nothing
+behind ([Lightning](lightning.md#step-2-the-clouds-lit-by-it)).
+
 ### What it is drawn over and under
 
 The passes run per view after the high layer's pass, before the scene pass, reading the sky's

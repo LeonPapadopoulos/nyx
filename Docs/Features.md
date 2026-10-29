@@ -1007,6 +1007,8 @@ bit. A *Cloud Layer* can stay above them for thin cirrus.
   clouds were (held to what this frame's marched pixels round them span, blended, so no pattern of
   the squares shows while the camera turns), more marched while the picture moves fast; every pixel
   at once when something changes the look. Older scenes' *Temporal* off loads as *Every Pixel*.
+  Lightning's light in them is worked out apart, every pixel near a bolt every frame, so it never
+  smears ([Lightning](#lightning)).
   *Steps*, *Light Steps*, *Max Distance*. In the default, one pixel of each 4 x 4: 1.3 ms of GPU time
   a frame at 1920 x 1080 with the camera still, 2.2 ms turning; 4.7 ms marching every pixel.
 - They hold back the light shafts where they cover the sun, and cover what lies among and beyond
@@ -1208,6 +1210,15 @@ Sustained). Without one, or off, the picture is as it was, to the bit.
 - **Light**: it lights the world round it through *Light Count* point lights up its lowest stretch
   (*Light Color*, *Light Intensity*, *Light Range*), the same lights every lit surface, decal and
   lit particle takes; none while no bolt is on.
+- **The clouds lit by it**: the volumetric clouds round a bolt glow from within, as lit by a line of
+  light along it (*Cloud Light Color*, *Cloud Light Intensity*), fading to nothing at *Cloud Light
+  Reach*, dimmed by the cloud between, their far sides dark. Worked out every frame for every pixel
+  near the bolt, apart from the clouds' own picture: whatever the clouds' *Update*, a flash leaves
+  nothing behind, and the frame after it is the picture without it. 0.24 ms of GPU time at
+  1920 × 1080 for a bolt whose reach covers half the clouds, about 1 ms over a whole dense storm
+  (CSV `gpu_cloud_lightning_ms`). Its line goes into the cloud before it (*Cloud Hiding*), the
+  cloud's glow taking over.
+- Kilometres off, past the camera's far plane, a bolt still shows against the sky.
 - Only for the eye, and worked out from its values and the world's time alone: the same seed and
   time give the same bolt to the bit; in a game it stands still while paused and moves on with
   Step; in the editor it plays as you edit.
@@ -1225,8 +1236,11 @@ Sustained). Without one, or off, the picture is as it was, to the bit.
   far off; the lights; a world's lightning; saved and loaded), `NyxLightningGpuTests` (unchanged to
   the bit off and between bolts; the channel near white where the CPU's path is, the bloom
   spreading it, the leader dimmer, hidden behind a wall; its lights lighting the floor; the same
-  time the same picture, another seed another; a column boiling; its icon picked; its GPU time; and
-  again with MSAA).
+  time the same picture, another seed another; a column boiling; its icon picked; its GPU time; under
+  volumetric clouds, those round a column glowing and those far from it unchanged to the bit, the
+  frame after it the picture without it to the bit in 4 x 4, 4 x 4 the same as every pixel marched
+  while it shines, the column past the far plane shown below the cloud's base; the clouds' lightning
+  pass's GPU time beside the march's; and again with MSAA).
 
 ## Anti-aliasing
 

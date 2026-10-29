@@ -256,11 +256,23 @@ namespace Nyx
 		uint32_t LocalWindPadding2 = 0;
 		glm::vec4 LocalWindOrigin{ 0.0f };
 		glm::vec4 LocalWindScale{ 0.0f };
+
+		// The lightning's lines of light in the volumetric clouds (VolumetricClouds.slang's lightning
+		// pass, Lightning.h): how many (0: none, and nothing below is set), the picture of their light
+		// in the clouds at the size the clouds are marched at; each one's colour times its brightness
+		// and its reach (w, kilometres); each one's points from the camera, in kilometres,
+		// LightningCloudLightPoints a light
+		uint32_t CloudLightningCount = 0;
+		uint32_t CloudLightningTexture = 0;
+		uint32_t CloudLightningPadding0 = 0;
+		uint32_t CloudLightningPadding1 = 0;
+		std::array<glm::vec4, MaxLightningCloudLights> CloudLightningColors{};
+		std::array<glm::vec4, MaxLightningCloudLights * LightningCloudLightPoints> CloudLightningPoints{};
 	};
 
 	// The view's set (set 1) as nyx/view.slang reads it, in scalar layout; to whole 16 bytes, as
 	// std140 would be too
-	static_assert(sizeof(SceneUBO) == 1760, "SceneUBO must match ViewConstants in nyx/view.slang");
+	static_assert(sizeof(SceneUBO) == 2096, "SceneUBO must match ViewConstants in nyx/view.slang");
 
 	// One draw's push constants, the same for every scene pipeline: ObjectConstants in
 	// nyx/bindless.slang
@@ -832,6 +844,7 @@ namespace Nyx
 			Scene,
 			AmbientOcclusion,
 			Lightning,
+			CloudLightning,
 			Particles,
 			LightShafts,
 			Bloom,

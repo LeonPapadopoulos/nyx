@@ -195,7 +195,8 @@ namespace Nyx
 	// (VulkanRenderer::GetSceneViewGpuTimes()): 0 for a pass that didn't run, and without timestamps
 	// on the device. Its sky's tables, in the frames they are made again (VulkanSkyAtmosphere), its
 	// cloud layer (VulkanCloudLayer; with its noise in the frames that make it), its volumetric clouds
-	// (VulkanVolumetricClouds; with their noises in the frames that make them), its shadow cascades,
+	// (VulkanVolumetricClouds; with their noises in the frames that make them) and the lightning's
+	// light in them (in frames a bolt lights them), its shadow cascades,
 	// its scene pass (the objects, the sky and the decals, and with MSAA the resolve at its end), its ambient occlusion, its lightning's bolts, its particles, its light shafts, its bloom, and its picture
 	// (the tonemap, and the overlays and lines over it). Its colour grading's bake, in a frame that
 	// baked its table again (its lookup is the tonemap's, in the picture).
@@ -204,6 +205,7 @@ namespace Nyx
 		float Sky = 0.0f;
 		float Clouds = 0.0f;
 		float VolumetricClouds = 0.0f;
+		float CloudLightning = 0.0f;
 		float Shadows = 0.0f;
 		float Scene = 0.0f;
 		float AmbientOcclusion = 0.0f;
@@ -214,13 +216,14 @@ namespace Nyx
 		float Picture = 0.0f;
 		float ColorGrading = 0.0f;
 
-		float GetTotal() const { return Sky + Clouds + VolumetricClouds + Shadows + Scene + AmbientOcclusion + Lightning + Particles + LightShafts + Bloom + Picture + ColorGrading; }
+		float GetTotal() const { return Sky + Clouds + VolumetricClouds + CloudLightning + Shadows + Scene + AmbientOcclusion + Lightning + Particles + LightShafts + Bloom + Picture + ColorGrading; }
 
 		SceneViewGpuTimes& operator+=(const SceneViewGpuTimes& other)
 		{
 			Sky += other.Sky;
 			Clouds += other.Clouds;
 			VolumetricClouds += other.VolumetricClouds;
+			CloudLightning += other.CloudLightning;
 			Shadows += other.Shadows;
 			Scene += other.Scene;
 			AmbientOcclusion += other.AmbientOcclusion;

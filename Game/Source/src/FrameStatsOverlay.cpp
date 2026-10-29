@@ -131,8 +131,8 @@ namespace Nyx::Game
 		if (bGpu)
 		{
 			ImGui::Text("GPU  %.2f ms  worst %.2f", shown[EFrameStat::GpuFrame], worst[EFrameStat::GpuFrame]);
-			ImGui::Text("     sky %.2f  clouds %.2f  volume %.2f  shadows %.2f  scene %.2f  occlusion %.2f  lightning %.2f  particles %.2f  shafts %.2f  bloom %.2f  picture %.2f  grading %.2f", shown[EFrameStat::GpuSky],
-				shown[EFrameStat::GpuClouds], shown[EFrameStat::GpuVolumetricClouds], shown[EFrameStat::GpuShadows], shown[EFrameStat::GpuScene], shown[EFrameStat::GpuAmbientOcclusion], shown[EFrameStat::GpuLightning], shown[EFrameStat::GpuParticles], shown[EFrameStat::GpuLightShafts],
+			ImGui::Text("     sky %.2f  clouds %.2f  volume %.2f  cloud lightning %.2f  shadows %.2f  scene %.2f  occlusion %.2f  lightning %.2f  particles %.2f  shafts %.2f  bloom %.2f  picture %.2f  grading %.2f", shown[EFrameStat::GpuSky],
+				shown[EFrameStat::GpuClouds], shown[EFrameStat::GpuVolumetricClouds], shown[EFrameStat::GpuCloudLightning], shown[EFrameStat::GpuShadows], shown[EFrameStat::GpuScene], shown[EFrameStat::GpuAmbientOcclusion], shown[EFrameStat::GpuLightning], shown[EFrameStat::GpuParticles], shown[EFrameStat::GpuLightShafts],
 				shown[EFrameStat::GpuBloom], shown[EFrameStat::GpuPicture], shown[EFrameStat::GpuColorGrading]);
 		}
 		else
