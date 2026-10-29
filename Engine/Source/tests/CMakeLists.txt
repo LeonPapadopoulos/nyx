@@ -84,6 +84,15 @@ add_dependencies(NyxJobSystemTests NyxGeneratedReflection)
 set_property(TARGET NyxJobSystemTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxJobSystemTests COMMAND NyxJobSystemTests)
 
+# 3D noise and the smooth minimum: 0 at the lattice corners, within the proven bounds of value and
+# slope, eight points at a time the same bits as one, the golden values, fractal and ridged noise in
+# their ranges, the smooth minimum's offset and slope. Prints how fast the noise samples.
+add_executable(NyxGradientNoiseTests GradientNoiseTests.cpp)
+target_link_libraries(NyxGradientNoiseTests PRIVATE NyxEngine)
+add_dependencies(NyxGradientNoiseTests NyxGeneratedReflection)
+set_property(TARGET NyxGradientNoiseTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxGradientNoiseTests COMMAND NyxGradientNoiseTests)
+
 # The component type registry: types register once; a second type of a name already taken, such as
 # a game module's type named like one of the engine's, is refused.
 add_executable(NyxComponentTypeRegistryTests ComponentTypeRegistryTests.cpp)

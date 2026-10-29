@@ -95,6 +95,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ConstraintComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/GroundComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/GradientNoise.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/GradientNoiseAvx2.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/GroundMesh.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ScatterComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ScatterInstances.cpp
@@ -321,6 +322,8 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ConstraintComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/GroundComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/GradientNoise.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/GradientNoise3D.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/SmoothMinimum.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/GroundMesh.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ScatterComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ScatterInstances.h
@@ -571,6 +574,17 @@ add_custom_target(NyxGeneratedReflection
 target_sources(NyxEngineCommon PRIVATE
     "${NYX_RUNTIME_REFLECTION_INIT_CPP}"
 )
+
+# The 3D noise eight points at a time: AVX2 for this file alone, which the engine calls only where the
+# processor has it (IsNoiseBatchSimd()). Without the precompiled header, which is built for the
+# engine's own instruction set.
+if(MSVC)
+    set_source_files_properties(${NYX_ENGINE_ROOT}/Runtime/Scene/src/GradientNoiseAvx2.cpp
+        PROPERTIES COMPILE_OPTIONS "/arch:AVX2" SKIP_PRECOMPILE_HEADERS ON)
+else()
+    set_source_files_properties(${NYX_ENGINE_ROOT}/Runtime/Scene/src/GradientNoiseAvx2.cpp
+        PROPERTIES COMPILE_OPTIONS "-mavx2;-ffp-contract=off" SKIP_PRECOMPILE_HEADERS ON)
+endif()
 
 set_source_files_properties(
     "${NYX_REFLECTION_STAMP}"
