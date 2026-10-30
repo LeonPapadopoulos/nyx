@@ -1469,7 +1469,10 @@ game, coarser the farther, and collides while the world runs.
   nearest the camera, in 16 m chunks), *Near Shadow Levels* (the finest levels cast into every
   shadow cascade; each coarser one only from one cascade further out, and into the last at least),
   *Mesher* (*Dual*, with sharp edges for the *Sharp Materials*, or *Marching Cubes*), *Sharp
-  Materials* (material numbers), *Material Colours* (each material number's vertex colour), *Debug
+  Materials* (material numbers), *Sky Shading* (how much of the sky each vertex sees, in its
+  mesh's Custom.x, for a material to darken what the sky lights in hollows; off by default, 1
+  everywhere, and chunks made about twice as fast; no material reads it yet), *Material Colours*
+  (each material number's vertex colour), *Debug
   View* (*Levels*: a colour for each level; *Seams*: those darker and the triangles joining levels
   bright).
 - The editor's details panel shows *Terrain Chunks* in its *Runtime* section: chunks drawn, next
@@ -1505,7 +1508,7 @@ game, coarser the farther, and collides while the world runs.
   - For new edits alone, the camera where it was, the chunks are chosen again at once, without a
     worker's round trip, and made before anything else, each one's sampling and sky shared out
     among the workers free (`JobSystem::ParallelFor()`), the same bits: in the sample scene a dig is
-    drawn 2 to 3 frames after it is made.
+    drawn 2 to 3 frames after it is made (without *Sky Shading*).
   - Drawn and in collision together: each holds what it made for new edits until the other has its
     own, then both go in, the near levels' chunks with collision and the coarser ones once made; if
     that takes longer than *Activation Deadline* (0.25 s), each goes in when it is ready, and the

@@ -251,6 +251,12 @@ namespace Nyx
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Chunks", Tooltip = "Dual: a vertex in each cell, sharp edges for the Sharp Materials; Marching Cubes: vertices on the grid's edges, all smooth"))
 		ESdfTerrainMesher Mesher = ESdfTerrainMesher::Dual;
 
+		// Each vertex's sky visibility in its mesh's Custom.x (FieldMeshSettings::SkyReach), for a
+		// material that darkens what the sky lights in hollows; off, 1 everywhere, and chunks are made
+		// about twice as fast. No material reads it yet.
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Sky Shading", Category = "Chunks", Tooltip = "How much of the sky each vertex sees, for its material (the mesh's Custom.x); off, 1 everywhere and the chunks made about twice as fast. No material reads it yet"))
+		bool bSkyShading = false;
+
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Sharp Materials", Category = "Chunks", Tooltip = "The material numbers whose surfaces keep sharp edges and corners, such as cliffs (Dual only)"))
 		std::vector<uint32_t> SharpMaterials;
 

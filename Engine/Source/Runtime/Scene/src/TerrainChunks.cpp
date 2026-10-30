@@ -758,6 +758,11 @@ namespace Nyx
 			askedMax = glm::max(askedMax, coarse.Origin + glm::vec3(coarse.Size - 1) * coarse.CellSize + cell);
 		}
 		const bool bRecordAsked = outSamples != nullptr;
+		// Its sky only if asked for
+		if (!terrain.bSkyShading)
+		{
+			settings.SkyReach = 0.0f;
+		}
 		// The sky's parts ask from other threads
 		std::mutex askedLock;
 		settings.RunParts = runParts;
@@ -896,6 +901,7 @@ namespace Nyx
 		Hasher hasher;
 		hasher.Value(terrain.Seed);
 		hasher.Value(terrain.Mesher);
+		hasher.Value(terrain.bSkyShading);
 		hasher.Value(terrain.DebugView);
 		hasher.Value(terrain.Layers.size());
 		for (const SdfTerrainLayer& layer : terrain.Layers)
