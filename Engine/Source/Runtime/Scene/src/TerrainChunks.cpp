@@ -164,6 +164,8 @@ namespace Nyx
 		// New edits' chunks this many levels past the finest drawn go live with collision; those past
 		// them follow when they are made
 		constexpr int NearEditLevels = 1;
+		// The most edits after an undone one the chunks are chosen again for on the main thread
+		constexpr size_t MaxEditsChosenHere = 64;
 		// A viewpoint moved this far, as a part of the finest level's chunk, chooses the chunks again
 		constexpr float ReplanDistance = 0.125f;
 		// A chunk's vertices are at whole parts of a metre this fine
@@ -244,6 +246,10 @@ namespace Nyx
 			// as they would be made now, by one choice after another
 			std::shared_ptr<const std::vector<uint64_t>> EditRuns;
 			std::shared_ptr<TerrainChunkKeeps> Keeps;
+			// Where the edits are, for the copy; and how many of the edits the chunks' fields have seen
+			// are still the same, for the next choice to rewind them to (none: all)
+			std::shared_ptr<const TerrainEditIndex> EditIndex;
+			size_t RewindTo = std::numeric_limits<size_t>::max();
 			// Where the viewpoints were when the chunks were last chosen for the values now
 			std::optional<std::vector<glm::vec3>> PlannedFrom;
 			// Where they were when the tree drawn or next was chosen, whatever the values, and what is
@@ -925,16 +931,25 @@ namespace Nyx
 		return field;
 	}
 
-	const TerrainChunkField& TerrainChunkFields::Get(const SdfTerrainComponent& terrain, const TerrainChunkId& id)
+	const TerrainChunkField& TerrainChunkFields::Get(const SdfTerrainComponent& terrain, const TerrainChunkId& id, const TerrainEditIndex* index)
 	{
 		auto [it, bAdded] = Known.try_emplace(PackId(id));
 		if (bAdded || it->second.Reach.Seen > terrain.Edits.size())
 		{
 			it->second = BeginTerrainChunkField(terrain, id);
 		}
-		ContinueTerrainBoxEdits(terrain, it->second.Surface);
-		ContinueTerrainBoxEdits(terrain, it->second.Reach);
+		ContinueTerrainBoxEdits(terrain, it->second.Surface, index);
+		ContinueTerrainBoxEdits(terrain, it->second.Reach, index);
 		return it->second;
+	}
+
+	void TerrainChunkFields::Rewind(const SdfTerrainComponent& terrain, size_t same)
+	{
+		for (auto& [packed, field] : Known)
+		{
+			RewindTerrainBoxEdits(terrain, field.Surface, same);
+			RewindTerrainBoxEdits(terrain, field.Reach, same);
+		}
 	}
 
 	double GetTerrainEditClock()
@@ -1030,16 +1045,20 @@ namespace Nyx
 		// Of a choice's leaves, whether the surface crosses each, and the edits each is wanted with:
 		// those it is drawn with while no edit since can change it, else those reaching it
 		void ChooseEdits(Detail::TerrainStreaming::Plan& plan, TerrainChunkFields& fields, TerrainChunkKeeps& keeps, const std::vector<uint64_t>& runs,
-			const std::unordered_map<uint64_t, MadeChunk>& made)
+			const TerrainEditIndex& editIndex, size_t rewindTo, const std::unordered_map<uint64_t, MadeChunk>& made)
 		{
 			const SdfTerrainComponent& snapshot = *plan.Snapshot;
+			if (rewindTo != std::numeric_limits<size_t>::max())
+			{
+				fields.Rewind(snapshot, rewindTo);
+			}
 			plan.Surface.resize(plan.Tree.Leaves.size());
 			plan.ChunkEdits.resize(plan.Tree.Leaves.size());
 			const float slope = GetTerrainMaxSlope(snapshot);
 			for (size_t index = 0; index < plan.Tree.Leaves.size(); ++index)
 			{
 				const TerrainChunkId& id = plan.Tree.Leaves[index];
-				const TerrainChunkField& field = fields.Get(snapshot, id);
+				const TerrainChunkField& field = fields.Get(snapshot, id, &editIndex);
 				plan.Surface[index] = field.HasSurface();
 				plan.ChunkEdits[index] = field.GetEdits();
 				if (const auto found = made.find(PackId(id)); found != made.end())
@@ -1059,6 +1078,8 @@ namespace Nyx
 			std::shared_ptr<TerrainChunkFields> fields = streaming.Fields;
 			std::shared_ptr<const std::vector<uint64_t>> runs = streaming.EditRuns;
 			std::shared_ptr<TerrainChunkKeeps> keeps = streaming.Keeps;
+			std::shared_ptr<const TerrainEditIndex> index = streaming.EditIndex;
+			const size_t rewindTo = std::exchange(streaming.RewindTo, std::numeric_limits<size_t>::max());
 			std::unordered_map<uint64_t, MadeChunk> made = GetMadeChunks(chunks, streaming.Shape);
 			const TerrainLevelSettings settings = GetLevelSettings(terrain);
 			TerrainChunkTree previous;
@@ -1066,7 +1087,8 @@ namespace Nyx
 			const uint64_t shape = streaming.Shape;
 			const uint64_t edits = streaming.Edits;
 			streaming.PlanJob = jobs.Schedule(
-				[planning, snapshot, fields, runs, keeps, made = std::move(made), settings, previous = std::move(previous), viewpoints = std::move(viewpoints), shape, edits]
+				[planning, snapshot, fields, runs, keeps, index, rewindTo, made = std::move(made), settings, previous = std::move(previous), viewpoints = std::move(viewpoints), shape,
+					edits]
 				{
 					const auto start = std::chrono::steady_clock::now();
 					Detail::TerrainStreaming::Plan plan;
@@ -1076,7 +1098,7 @@ namespace Nyx
 					plan.Viewpoints = viewpoints;
 					plan.Tree = SelectTerrainChunks(viewpoints, settings, &previous);
 					plan.Neighbourhoods = GetTerrainNeighbourhoods(plan.Tree);
-					ChooseEdits(plan, *fields, *keeps, *runs, made);
+					ChooseEdits(plan, *fields, *keeps, *runs, *index, rewindTo, made);
 					plan.Milliseconds = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
 					std::lock_guard lock(planning->Lock);
 					planning->Result = std::move(plan);
@@ -1172,6 +1194,10 @@ namespace Nyx
 				std::vector<uint64_t> runs;
 				HashTerrainEditRuns(terrain, runs);
 				streaming.EditRuns = std::make_shared<const std::vector<uint64_t>>(std::move(runs));
+				auto index = std::make_shared<TerrainEditIndex>();
+				index->Update(terrain, 0);
+				streaming.EditIndex = std::move(index);
+				streaming.RewindTo = std::numeric_limits<size_t>::max();
 				streaming.PlannedFrom.reset();
 				streaming.Next.reset();
 				streaming.NextChunks.clear();
@@ -1184,18 +1210,21 @@ namespace Nyx
 				std::erase_if(chunks.Chunks, [](const TerrainChunk& chunk) { return !chunk.bDrawn; });
 			}
 			// New edits: a copy for the jobs, and the chunks chosen again as soon as the next ones are
-			// drawn, with what was known of them carried over if the edits only add to those before;
-			// the chunks being made go on, each kept if its edits are those it is wanted with
-			else if (terrain.Edits.size() != streaming.Snapshot->Edits.size() || !ExtendsTerrainEdits(terrain, *streaming.Snapshot))
+			// drawn, what was known of them carried over, rewound to the first edit that changed (an
+			// undo); the chunks being made go on, each kept if its edits are those it is wanted with
+			else if (const size_t same = CountSameTerrainEdits(terrain, *streaming.Snapshot);
+					 same != terrain.Edits.size() || same != streaming.Snapshot->Edits.size())
 			{
-				const bool bExtends = ExtendsTerrainEdits(terrain, *streaming.Snapshot);
-				if (!bExtends)
+				if (same < streaming.Snapshot->Edits.size())
 				{
-					streaming.Fields = std::make_shared<TerrainChunkFields>();
+					streaming.RewindTo = std::min(streaming.RewindTo, same);
 				}
-				std::vector<uint64_t> runs = bExtends ? *streaming.EditRuns : std::vector<uint64_t>{};
+				std::vector<uint64_t> runs(streaming.EditRuns->begin(), streaming.EditRuns->begin() + std::ptrdiff_t(same + 1));
 				HashTerrainEditRuns(terrain, runs);
 				streaming.EditRuns = std::make_shared<const std::vector<uint64_t>>(std::move(runs));
+				auto index = std::make_shared<TerrainEditIndex>(*streaming.EditIndex);
+				index->Update(terrain, same);
+				streaming.EditIndex = std::move(index);
 				streaming.Edits = HashTerrainEdits(terrain);
 				streaming.Snapshot = std::make_shared<const SdfTerrainComponent>(terrain);
 				streaming.PlannedFrom.reset();
@@ -1235,7 +1264,10 @@ namespace Nyx
 			if (!streaming.PlanInFlight && !streaming.Next && !viewpoints.empty() &&
 				(!streaming.PlannedFrom || HasMoved(*streaming.PlannedFrom, viewpoints, GetReplanDistance(terrain))))
 			{
-				if (streaming.ChosenFrom && !HasMoved(*streaming.ChosenFrom, viewpoints, GetReplanDistance(terrain)) && !streaming.Drawn.Leaves.empty() &&
+				// An edit taken away from far back makes the chunks go through every edit after it again:
+				// on a worker
+				const bool bDeepRewind = streaming.RewindTo != std::numeric_limits<size_t>::max() && streaming.Snapshot->Edits.size() > streaming.RewindTo + MaxEditsChosenHere;
+				if (!bDeepRewind && streaming.ChosenFrom && !HasMoved(*streaming.ChosenFrom, viewpoints, GetReplanDistance(terrain)) && !streaming.Drawn.Leaves.empty() &&
 					streaming.DrawnNeighbourhoods.size() == streaming.Drawn.Leaves.size())
 				{
 					const auto start = std::chrono::steady_clock::now();
@@ -1246,7 +1278,8 @@ namespace Nyx
 					plan.Viewpoints = *streaming.ChosenFrom;
 					plan.Tree = streaming.Drawn;
 					plan.Neighbourhoods = streaming.DrawnNeighbourhoods;
-					ChooseEdits(plan, *streaming.Fields, *streaming.Keeps, *streaming.EditRuns, GetMadeChunks(chunks, streaming.Shape));
+					ChooseEdits(plan, *streaming.Fields, *streaming.Keeps, *streaming.EditRuns, *streaming.EditIndex,
+					std::exchange(streaming.RewindTo, std::numeric_limits<size_t>::max()), GetMadeChunks(chunks, streaming.Shape));
 					plan.Milliseconds = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
 					TakePlan(chunks, streaming, plan, activation, terrain.ActivationDeadline, now);
 				}

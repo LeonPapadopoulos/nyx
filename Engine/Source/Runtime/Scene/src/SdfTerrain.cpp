@@ -886,29 +886,231 @@ namespace Nyx
 				   a.Material == b.Material;
 		}
 
+		// An edit's shape's box, its blend left out
+		std::pair<glm::vec3, glm::vec3> ShapeBounds(const SdfTerrainEdit& edit)
+		{
+			SdfTerrainEdit sharp = edit;
+			sharp.BlendRadius = 0.0f;
+			sharp.Mode = ESdfTerrainEditMode::Subtract;
+			glm::vec3 low;
+			glm::vec3 high;
+			GetTerrainEditSignBounds(sharp, low, high);
+			return { low, high };
+		}
+
+		// Into the box's range and reach
+		void TakeEdit(const SdfTerrainEdit& edit, const Interval& own, Interval& range, TerrainBoxEdits& box, size_t index)
+		{
+			range = EditInterval(edit, own, range);
+			box.Reach.Revision = std::max(box.Reach.Revision, edit.Revision);
+			HashEdit(box.Reach.Hash, edit);
+			++box.Reach.Count;
+			box.Reaching.push_back(static_cast<uint32_t>(index));
+			box.RangesAfter.push_back({ range.Low, range.High });
+			box.ReachesAfter.push_back(box.Reach);
+		}
+
 		// The edits from `box.Seen` on that can change a value in its box, each given to `visit`, the
-		// box's range carried past each
+		// box's range carried past each. With an index, only those it finds near enough: an edit
+		// reaches the box only if its shape's distance from the box's centre is within the half
+		// diagonal, the farthest the values are from 0 and its blend radius (its range over the box
+		// is that distance less the half diagonal, against the values less its blend radius), and the
+		// distance to a shape is never less than to its box. The values widen as edits are taken: past
+		// what the index was asked for, it is asked again from there.
 		template <typename Visit>
-		void ContinueBox(const SdfTerrainComponent& terrain, TerrainBoxEdits& box, Visit&& visit)
+		void ContinueBox(const SdfTerrainComponent& terrain, TerrainBoxEdits& box, const TerrainEditIndex* index, Visit&& visit)
 		{
 			Interval range{ box.Range.Lowest, box.Range.Highest };
-			for (size_t index = box.Seen; index < terrain.Edits.size(); ++index)
+			auto consider = [&](size_t at)
 			{
-				const SdfTerrainEdit& edit = terrain.Edits[index];
+				const SdfTerrainEdit& edit = terrain.Edits[at];
 				const Interval own = ShapeDistance(edit).Range(box.BoxMin, box.BoxMax);
 				if (CanEditChange(edit, own, range.Low, range.High))
 				{
-					range = EditInterval(edit, own, range);
-					box.Reach.Revision = std::max(box.Reach.Revision, edit.Revision);
-					HashEdit(box.Reach.Hash, edit);
-					++box.Reach.Count;
+					TakeEdit(edit, own, range, box, at);
 					visit(edit);
+				}
+			};
+			// A few edits are quicker looked at than asked of the index
+			constexpr size_t FewEdits = 64;
+			if (index == nullptr || index->GetCount() != terrain.Edits.size() || terrain.Edits.size() - std::min(box.Seen, terrain.Edits.size()) <= FewEdits)
+			{
+				for (size_t at = box.Seen; at < terrain.Edits.size(); ++at)
+				{
+					consider(at);
+				}
+			}
+			else
+			{
+				const glm::vec3 center = (box.BoxMin + box.BoxMax) * 0.5f;
+				const float half = glm::length(box.BoxMax - box.BoxMin) * 0.5f;
+				std::vector<uint32_t> near;
+				size_t from = box.Seen;
+				while (from < terrain.Edits.size())
+				{
+					const float farthest = std::max({ -range.Low, range.High, 0.0f });
+					const float reach = half + farthest + index->GetMaxBlendRadius();
+					const float asked = reach + 1e-3f * (1.0f + reach);
+					near.clear();
+					index->Find(center - asked, center + asked, from, near);
+					size_t next = terrain.Edits.size();
+					for (const uint32_t at : near)
+					{
+						consider(at);
+						if (std::max({ -range.Low, range.High, 0.0f }) > farthest)
+						{
+							next = size_t(at) + 1;
+							break;
+						}
+					}
+					from = next;
 				}
 			}
 			box.Seen = terrain.Edits.size();
 			box.Range.Lowest = range.Low;
 			box.Range.Highest = range.High;
 		}
+	}
+
+	void TerrainEditIndex::Update(const SdfTerrainComponent& terrain, size_t same)
+	{
+		auto key = [](const glm::ivec3& cell)
+		{
+			auto part = [](int value) { return uint64_t(uint32_t(value + (1 << 20)) & 0x1FFFFFu); };
+			return part(cell.x) | (part(cell.y) << 21) | (part(cell.z) << 42);
+		};
+		// Those from `same` on go; each cell's are in order, so they are its last
+		same = std::min(same, Bounds.size());
+		if (same == 0)
+		{
+			Cells.clear();
+			Large.clear();
+			Bounds.clear();
+			MaxBlendRadius = 0.0f;
+		}
+		while (Bounds.size() > same)
+		{
+			const uint32_t at = static_cast<uint32_t>(Bounds.size() - 1);
+			const auto [low, high] = Bounds.back();
+			if (!Large.empty() && Large.back() == at)
+			{
+				Large.pop_back();
+			}
+			else
+			{
+				for (int z = low.z; z <= high.z; ++z)
+				{
+					for (int y = low.y; y <= high.y; ++y)
+					{
+						for (int x = low.x; x <= high.x; ++x)
+						{
+							const auto cell = Cells.find(key({ x, y, z }));
+							if (cell != Cells.end() && !cell->second.empty() && cell->second.back() == at)
+							{
+								cell->second.pop_back();
+							}
+						}
+					}
+				}
+			}
+			Bounds.pop_back();
+		}
+		for (size_t at = Bounds.size(); at < terrain.Edits.size(); ++at)
+		{
+			const SdfTerrainEdit& edit = terrain.Edits[at];
+			const auto [shapeLow, shapeHigh] = ShapeBounds(edit);
+			const glm::ivec3 low(glm::floor(shapeLow / CellSize));
+			const glm::ivec3 high(glm::floor(shapeHigh / CellSize));
+			Bounds.push_back({ low, high });
+			MaxBlendRadius = std::max(MaxBlendRadius, edit.BlendRadius);
+			const glm::ivec3 span = high - low + 1;
+			if (int64_t(span.x) * span.y * span.z > MaxCells)
+			{
+				Large.push_back(static_cast<uint32_t>(at));
+				continue;
+			}
+			for (int z = low.z; z <= high.z; ++z)
+			{
+				for (int y = low.y; y <= high.y; ++y)
+				{
+					for (int x = low.x; x <= high.x; ++x)
+					{
+						Cells[key({ x, y, z })].push_back(static_cast<uint32_t>(at));
+					}
+				}
+			}
+		}
+	}
+
+	void TerrainEditIndex::Find(const glm::vec3& boxMin, const glm::vec3& boxMax, size_t from, std::vector<uint32_t>& out) const
+	{
+		auto key = [](const glm::ivec3& cell)
+		{
+			auto part = [](int value) { return uint64_t(uint32_t(value + (1 << 20)) & 0x1FFFFFu); };
+			return part(cell.x) | (part(cell.y) << 21) | (part(cell.z) << 42);
+		};
+		const size_t first = out.size();
+		for (const uint32_t at : Large)
+		{
+			if (at >= from)
+			{
+				out.push_back(at);
+			}
+		}
+		const glm::ivec3 low(glm::floor(boxMin / CellSize));
+		const glm::ivec3 high(glm::floor(boxMax / CellSize));
+		const glm::ivec3 span = high - low + 1;
+		if (int64_t(span.x) * span.y * span.z > int64_t(Cells.size()))
+		{
+			// A box over more cells than there are: through every cell instead
+			for (const auto& [cellKey, edits] : Cells)
+			{
+				const glm::ivec3 cell(int((cellKey & 0x1FFFFF)) - (1 << 20), int(((cellKey >> 21) & 0x1FFFFF)) - (1 << 20), int(((cellKey >> 42) & 0x1FFFFF)) - (1 << 20));
+				if (glm::all(glm::greaterThanEqual(cell, low)) && glm::all(glm::lessThanEqual(cell, high)))
+				{
+					for (auto it = std::lower_bound(edits.begin(), edits.end(), uint32_t(from)); it != edits.end(); ++it)
+					{
+						out.push_back(*it);
+					}
+				}
+			}
+		}
+		else
+		{
+			for (int z = low.z; z <= high.z; ++z)
+			{
+				for (int y = low.y; y <= high.y; ++y)
+				{
+					for (int x = low.x; x <= high.x; ++x)
+					{
+						const auto cell = Cells.find(key({ x, y, z }));
+						if (cell == Cells.end())
+						{
+							continue;
+						}
+						for (auto it = std::lower_bound(cell->second.begin(), cell->second.end(), uint32_t(from)); it != cell->second.end(); ++it)
+						{
+							out.push_back(*it);
+						}
+					}
+				}
+			}
+		}
+		std::sort(out.begin() + first, out.end());
+		out.erase(std::unique(out.begin() + first, out.end()), out.end());
+	}
+
+	size_t CountSameTerrainEdits(const SdfTerrainComponent& terrain, const SdfTerrainComponent& earlier)
+	{
+		const size_t count = std::min(terrain.Edits.size(), earlier.Edits.size());
+		for (size_t at = 0; at < count; ++at)
+		{
+			if (!IsSameEdit(terrain.Edits[at], earlier.Edits[at]))
+			{
+				return at;
+			}
+		}
+		return count;
 	}
 
 	TerrainBoxEdits BeginTerrainBoxEdits(const SdfTerrainComponent& terrain, const glm::vec3& boxMin, const glm::vec3& boxMax)
@@ -930,13 +1132,39 @@ namespace Nyx
 		box.BoxMax = boxMax;
 		box.Range.Lowest = low - margin;
 		box.Range.Highest = std::max(high, low) + margin;
+		box.Layers = box.Range;
 		box.Reach.Hash = EditHashStart;
 		return box;
 	}
 
-	void ContinueTerrainBoxEdits(const SdfTerrainComponent& terrain, TerrainBoxEdits& box)
+	void ContinueTerrainBoxEdits(const SdfTerrainComponent& terrain, TerrainBoxEdits& box, const TerrainEditIndex* index)
 	{
-		ContinueBox(terrain, box, [](const SdfTerrainEdit&) {});
+		ContinueBox(terrain, box, index, [](const SdfTerrainEdit&) {});
+	}
+
+	void RewindTerrainBoxEdits(const SdfTerrainComponent& /*terrain*/, TerrainBoxEdits& box, size_t count)
+	{
+		if (box.Seen <= count)
+		{
+			return;
+		}
+		// As it was after the last of the first `count` that reached it: the same arithmetic, in the
+		// same order, as continuing over them made
+		const size_t kept = size_t(std::lower_bound(box.Reaching.begin(), box.Reaching.end(), uint32_t(std::min<size_t>(count, UINT32_MAX))) - box.Reaching.begin());
+		box.Reaching.resize(kept);
+		box.RangesAfter.resize(kept);
+		box.ReachesAfter.resize(kept);
+		box.Range = kept == 0 ? box.Layers : box.RangesAfter.back();
+		if (kept == 0)
+		{
+			box.Reach = {};
+			box.Reach.Hash = EditHashStart;
+		}
+		else
+		{
+			box.Reach = box.ReachesAfter.back();
+		}
+		box.Seen = count;
 	}
 
 	TerrainEditsReach GetTerrainEditsReaching(const SdfTerrainComponent& terrain, const glm::vec3& boxMin, const glm::vec3& boxMax)
@@ -950,7 +1178,7 @@ namespace Nyx
 	{
 		TerrainBoxEdits box = BeginTerrainBoxEdits(terrain, boxMin, boxMax);
 		std::vector<SdfTerrainEdit> kept;
-		ContinueBox(terrain, box, [&](const SdfTerrainEdit& edit) { kept.push_back(edit); });
+		ContinueBox(terrain, box, nullptr, [&](const SdfTerrainEdit& edit) { kept.push_back(edit); });
 		terrain.Edits = std::move(kept);
 		return box.Reach;
 	}

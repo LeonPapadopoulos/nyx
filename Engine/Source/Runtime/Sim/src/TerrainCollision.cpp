@@ -296,6 +296,7 @@ namespace Nyx
 			state.DrawnKeeps.Forget();
 			state.EditRuns.clear();
 			HashTerrainEditRuns(terrain, state.EditRuns);
+			state.EditIndex.Update(terrain, 0);
 			state.Waiting.clear();
 			for (auto& [key, job] : jobs.InFlight)
 			{
@@ -303,16 +304,14 @@ namespace Nyx
 			}
 			jobs.InFlight.clear();
 		}
-		// New edits: what was known of the chunks carried over if they only add to those before; the
-		// jobs go on, each kept if its edits are those its chunk is wanted with
-		else if (terrain.Edits.size() != state.Snapshot->Edits.size() || !ExtendsTerrainEdits(terrain, *state.Snapshot))
+		// New edits: what was known of the chunks carried over, rewound to the first edit that
+		// changed (an undo); the jobs go on, each kept if its edits are those its chunk is wanted with
+		else if (const size_t same = CountSameTerrainEdits(terrain, *state.Snapshot); same != terrain.Edits.size() || same != state.Snapshot->Edits.size())
 		{
-			if (!ExtendsTerrainEdits(terrain, *state.Snapshot))
-			{
-				state.Fields.Forget();
-				state.EditRuns.clear();
-			}
+			state.Fields.Rewind(terrain, same);
+			state.EditRuns.resize(same + 1);
 			HashTerrainEditRuns(terrain, state.EditRuns);
+			state.EditIndex.Update(terrain, same);
 			state.Edits = HashTerrainEdits(terrain);
 			state.Snapshot = std::make_shared<const SdfTerrainComponent>(terrain);
 		}
@@ -322,7 +321,7 @@ namespace Nyx
 		}
 		const double clock = GetTerrainEditClock();
 		NoteTerrainEdits(world.Get<TerrainEditActivationComponent>(state.Owner), ETerrainEditPart::Collision, state.Edits, clock);
-		auto field = [&](uint64_t packed) -> const TerrainChunkField& { return state.Fields.Get(*state.Snapshot, { level, UnpackKey(packed) }); };
+		auto field = [&](uint64_t packed) -> const TerrainChunkField& { return state.Fields.Get(*state.Snapshot, { level, UnpackKey(packed) }, &state.EditIndex); };
 
 		// The moving bodies, in the terrain's space
 		const glm::mat4 toWorld = transform.ToMatrix();

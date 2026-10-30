@@ -648,6 +648,87 @@ namespace
 		}
 	}
 
+	bool SameBox(const Nyx::TerrainBoxEdits& a, const Nyx::TerrainBoxEdits& b)
+	{
+		return a.Seen == b.Seen && a.Reach.Hash == b.Reach.Hash && a.Reach.Count == b.Reach.Count && a.Reaching == b.Reaching &&
+			   BitsOf(a.Range.Lowest) == BitsOf(b.Range.Lowest) && BitsOf(a.Range.Highest) == BitsOf(b.Range.Highest);
+	}
+
+	// The edits' index: a box continued through it is the box continued through every edit, the same
+	// bits, as edits are added one at a time, with edits large and small and far apart; a box rewound
+	// to fewer edits is the box taken over those; an edit changed in the middle, the index brought up
+	// from there and the boxes rewound to it and continued, are as if made anew
+	void TestEditIndex()
+	{
+		SdfTerrainComponent growing = MakeRich();
+		const SdfTerrainComponent edited = MakeEdited();
+		Nyx::TerrainEditIndex index;
+		Sequence sequence;
+		for (size_t n = 0; n < edited.Edits.size(); ++n)
+		{
+			Nyx::SdfTerrainEdit edit = edited.Edits[n];
+			// Some far off, one huge
+			if (n % 7 == 3)
+			{
+				edit.Position += glm::vec3(400.0f, 0.0f, -300.0f);
+				edit.End += glm::vec3(400.0f, 0.0f, -300.0f);
+			}
+			if (n == 11)
+			{
+				edit.Radius = 300.0f;
+				edit.Shape = Nyx::ESdfTerrainEditShape::Sphere;
+			}
+			growing.Edits.push_back(edit);
+			index.Update(growing, growing.Edits.size() - 1);
+		}
+		Require(index.GetCount() == growing.Edits.size(), "The index should have every edit");
+
+		std::vector<Nyx::TerrainBoxEdits> plain;
+		std::vector<Nyx::TerrainBoxEdits> indexed;
+		for (int box = 0; box < 60; ++box)
+		{
+			const glm::vec3 low = PointNearEdits(sequence) + glm::vec3(box % 4 == 0 ? 400.0f : 0.0f, 0.0f, box % 4 == 0 ? -300.0f : 0.0f);
+			const glm::vec3 high = low + glm::vec3(sequence.Between(1.0f, 80.0f));
+			plain.push_back(Nyx::BeginTerrainBoxEdits(growing, low, high));
+			Nyx::ContinueTerrainBoxEdits(growing, plain.back());
+			indexed.push_back(Nyx::BeginTerrainBoxEdits(growing, low, high));
+			Nyx::ContinueTerrainBoxEdits(growing, indexed.back(), &index);
+			Require(SameBox(plain.back(), indexed.back()), "A box continued through the index should be the box continued through every edit");
+		}
+
+		// Rewound to the first 25: as if taken over those alone
+		SdfTerrainComponent first = growing;
+		first.Edits.resize(25);
+		for (size_t n = 0; n < plain.size(); ++n)
+		{
+			Nyx::TerrainBoxEdits rewound = indexed[n];
+			Nyx::RewindTerrainBoxEdits(growing, rewound, 25);
+			Nyx::TerrainBoxEdits fresh = Nyx::BeginTerrainBoxEdits(first, plain[n].BoxMin, plain[n].BoxMax);
+			Nyx::ContinueTerrainBoxEdits(first, fresh);
+			Require(SameBox(rewound, fresh), "A box rewound to fewer edits should be the box taken over those");
+		}
+
+		// The tenth changed: the same before it, the index and boxes brought up from there
+		SdfTerrainComponent changed = growing;
+		changed.Edits[10].Position += glm::vec3(3.0f, -1.0f, 2.0f);
+		changed.Edits[10].Mode = Nyx::ESdfTerrainEditMode::Add;
+		const size_t same = Nyx::CountSameTerrainEdits(changed, growing);
+		Require(same == 10, "Edits changed at the tenth should be the same for ten");
+		Nyx::TerrainEditIndex moved = index;
+		moved.Update(changed, same);
+		Nyx::TerrainEditIndex anew;
+		anew.Update(changed, 0);
+		for (size_t n = 0; n < plain.size(); ++n)
+		{
+			Nyx::TerrainBoxEdits carried = indexed[n];
+			Nyx::RewindTerrainBoxEdits(growing, carried, same);
+			Nyx::ContinueTerrainBoxEdits(changed, carried, &moved);
+			Nyx::TerrainBoxEdits fresh = Nyx::BeginTerrainBoxEdits(changed, plain[n].BoxMin, plain[n].BoxMax);
+			Nyx::ContinueTerrainBoxEdits(changed, fresh, &anew);
+			Require(SameBox(carried, fresh), "A box rewound to an edit changed and continued should be as if made anew");
+		}
+	}
+
 	// Not a test: a chunk's samples near the surface, in a batch
 	void PrintTimings()
 	{
@@ -794,6 +875,7 @@ int main()
 		TestSeeds();
 		TestShapes();
 		TestEdits();
+		TestEditIndex();
 		PrintTimings();
 	}
 	catch (const std::exception& error)

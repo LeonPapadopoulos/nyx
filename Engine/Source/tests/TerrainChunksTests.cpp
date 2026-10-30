@@ -6,7 +6,7 @@
 // distance; drawn all at once, a tree at a time; moving away lets them go and makes new ones; new
 // values make them again while the old ones stay drawn; another view distance alone makes nothing
 // again; edits make only the chunks they reach again, drawn with collision's or at the deadline;
-// the terrain brush's strokes, rays and ring;
+// an undo costing what an edit does; the terrain brush's strokes, rays and ring;
 // removing the terrain takes them and its jobs away; a terrain with no layers has none; a
 // terrain entity moved has its chunks round it; the sample scene's terrain is made. Prints how long
 // a view takes to make.
@@ -657,6 +657,126 @@ namespace
 			AppendTerrainEdit(dug, edit);
 		}
 		Require(dug.Edits.size() == 1 && SampleTerrainValue(dug, lower->LocalPoint - glm::vec3(0.0f, 1.0f, 0.0f)) > 0.0f, "The brush should dig where it meets the terrain");
+
+		// Rays over hills dug and heaped 300 times meet them where a ray through every edit does
+		SdfTerrainComponent& hills = world.Get<SdfTerrainComponent>(high);
+		hills = MakeTerrain();
+		uint32_t seed = 0x2545F491u;
+		auto next = [&](float low, float high)
+		{
+			seed = seed * 1664525u + 1013904223u;
+			return low + (high - low) * float(seed >> 8) * (1.0f / 16777216.0f);
+		};
+		for (int n = 0; n < 300; ++n)
+		{
+			SdfTerrainEdit edit;
+			edit.Mode = n % 3 == 0 ? ESdfTerrainEditMode::Add : ESdfTerrainEditMode::Subtract;
+			edit.Position = glm::vec3(next(-120.0f, 120.0f), next(-12.0f, 12.0f), next(-120.0f, 120.0f));
+			edit.Radius = next(1.0f, 4.0f);
+			AppendTerrainEdit(hills, edit);
+		}
+		double brushMs = 0.0;
+		double wholeMs = 0.0;
+		int met = 0;
+		for (int n = 0; n < 40; ++n)
+		{
+			const glm::vec3 from = glm::vec3(next(-100.0f, 100.0f), 60.0f, next(-100.0f, 100.0f)) + glm::vec3(0.0f, 20.0f, 0.0f);
+			const glm::vec3 to = glm::vec3(next(-100.0f, 100.0f), -5.0f, next(-100.0f, 100.0f)) + glm::vec3(0.0f, 20.0f, 0.0f);
+			const Ray ray{ from, glm::normalize(to - from) };
+			auto clock = std::chrono::steady_clock::now();
+			const std::optional<TerrainBrushHit> brush = CastTerrainBrush(world, ray, 1000.0f, high);
+			brushMs += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - clock).count();
+			clock = std::chrono::steady_clock::now();
+			const std::optional<TerrainRayHit> whole = RayCastTerrain(hills, ray.Origin - glm::vec3(0.0f, 20.0f, 0.0f), ray.Direction, 1000.0f);
+			wholeMs += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - clock).count();
+			Require(brush.has_value() == whole.has_value(), "A ray past many edits should meet the terrain where a ray through them all does");
+			if (brush)
+			{
+				Require(std::fabs(brush->Distance - whole->Distance) < 0.02f, "A ray past many edits should meet it at the same place, not " +
+					std::to_string(brush->Distance) + " m against " + std::to_string(whole->Distance));
+				++met;
+			}
+		}
+		Require(met > 30, "Most rays should meet the hills");
+		std::cout << "Brush rays past 300 edits: " << std::fixed << std::setprecision(2) << brushMs / 40.0 << " ms a ray, through every edit "
+				  << wholeMs / 40.0 << " ms\n";
+	}
+
+	// The longest a frame took on the main thread until the chunks settled, in milliseconds
+	double LongestFrameUntilSettled(Registry& world, std::span<const glm::vec3> viewpoints, JobSystem& jobs, Entity terrain)
+	{
+		const auto start = std::chrono::steady_clock::now();
+		double longest = 0.0;
+		for (;;)
+		{
+			const auto frame = std::chrono::steady_clock::now();
+			UpdateTerrainChunks(world, viewpoints, jobs);
+			longest = std::max(longest, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - frame).count());
+			const TerrainChunksStats& stats = world.Get<TerrainChunksComponent>(terrain).Stats;
+			if (stats.bSettled && stats.Pending == 0)
+			{
+				return longest;
+			}
+			Require(std::chrono::steady_clock::now() - start < std::chrono::seconds(60), "The chunks should settle within a minute");
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}
+	}
+
+	// Undo costs what an edit does: with 400 edits on the hills, undoing the last, or one in the
+	// middle, takes the main thread no longer than making one; after each, every chunk the same bits
+	// as made now
+	void TestUndoCost()
+	{
+		JobSystem jobs(4);
+		Registry world;
+		const Entity terrain = AddTerrain(world, MakeTerrain());
+		const glm::vec3 viewpoint(5.0f, 12.0f, -3.0f);
+		uint32_t seed = 0x51ED270Bu;
+		auto next = [&](float low, float high)
+		{
+			seed = seed * 1664525u + 1013904223u;
+			return low + (high - low) * float(seed >> 8) * (1.0f / 16777216.0f);
+		};
+		for (int n = 0; n < 400; ++n)
+		{
+			SdfTerrainEdit edit;
+			edit.Mode = n % 4 == 0 ? ESdfTerrainEditMode::Add : ESdfTerrainEditMode::Subtract;
+			edit.Position = glm::vec3(next(-150.0f, 150.0f), next(-8.0f, 10.0f), next(-150.0f, 150.0f));
+			edit.Radius = next(1.0f, 3.0f);
+			AppendTerrainEdit(world.Get<SdfTerrainComponent>(terrain), edit);
+		}
+		UpdateUntilSettled(world, { &viewpoint, 1 }, jobs, terrain);
+		auto requireAsMadeNow = [&](const char* when)
+		{
+			const SdfTerrainComponent& values = world.Get<SdfTerrainComponent>(terrain);
+			for (const TerrainChunk& chunk : world.Get<TerrainChunksComponent>(terrain).Chunks)
+			{
+				const MeshData direct = MakeTerrainChunkMesh(values, { chunk.Level, chunk.Key }, chunk.Neighbourhood);
+				Require(chunk.Mesh.Mesh ? SameMesh(*chunk.Mesh.Mesh, direct) : direct.Indices.empty(), std::string(when) + ", every chunk should be the same bits as made now");
+			}
+		};
+
+		SdfTerrainEdit dig;
+		dig.Position = glm::vec3(8.0f, 0.0f, -1.0f);
+		dig.Radius = 2.5f;
+		AppendTerrainEdit(world.Get<SdfTerrainComponent>(terrain), dig);
+		const double edited = LongestFrameUntilSettled(world, { &viewpoint, 1 }, jobs, terrain);
+		requireAsMadeNow("After an edit");
+
+		world.Get<SdfTerrainComponent>(terrain).Edits.pop_back();
+		const double undone = LongestFrameUntilSettled(world, { &viewpoint, 1 }, jobs, terrain);
+		requireAsMadeNow("After an undo");
+
+		std::vector<SdfTerrainEdit>& edits = world.Get<SdfTerrainComponent>(terrain).Edits;
+		edits.erase(edits.begin() + 200);
+		const double middle = LongestFrameUntilSettled(world, { &viewpoint, 1 }, jobs, terrain);
+		requireAsMadeNow("After an edit in the middle taken away");
+
+		Require(undone < std::max(4.0, 3.0 * edited) && middle < std::max(8.0, 6.0 * edited),
+			"An undo should cost the main thread about what an edit does, not " + std::to_string(undone) + " and " + std::to_string(middle) + " ms against " +
+				std::to_string(edited));
+		std::cout << "With 400 edits, the longest frame: " << std::fixed << std::setprecision(2) << edited << " ms for an edit, " << undone
+				  << " ms for its undo, " << middle << " ms for one in the middle taken away\n";
 	}
 
 	// Moving away lets the chunks behind go and makes those ahead, the chunks drawn changing only all
@@ -954,7 +1074,7 @@ int main(int argc, char** argv)
 				 TestSeamsAreClosed(ESdfTerrainMesher::MarchingCubes, -1);
 			 } },
 			{ "viewpoint", TestChunksRoundAViewpoint }, { "moving", TestMovingAndViewDistance }, { "values", TestNewValues },
-			{ "removed", TestRemovedEmptyAndMoved }, { "edits", TestEdits }, { "brush", TestBrush }, { "scene", TestTheSampleScene }, { "time", TimeAView } };
+			{ "removed", TestRemovedEmptyAndMoved }, { "edits", TestEdits }, { "undo", TestUndoCost }, { "brush", TestBrush }, { "scene", TestTheSampleScene }, { "time", TimeAView } };
 		const char* only = argc > 2 && std::strcmp(argv[1], "--only") == 0 ? argv[2] : nullptr;
 		for (const auto& [name, test] : tests)
 		{

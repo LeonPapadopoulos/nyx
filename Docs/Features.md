@@ -1511,8 +1511,13 @@ game, coarser the farther, and collides while the world runs.
     onto it; a dynamic body whose middle they did is left to the physics to push out; one they took
     the terrain from under has lost its support; every dynamic body round them is woken. Each is
     told on the terrain's *Terrain Collision* (`TerrainCollisionComponent::Events`) for that step.
-  - Edits are a list on the terrain, not yet in a spatial index: a chunk passes them all once to
-    keep those reaching it, and a query of the whole terrain (a sample, a ray) passes them all.
+  - Where the edits are is kept in an index of 32 m cells (`TerrainEditIndex`), so a chunk new to
+    the view looks only at the edits near enough to reach it, the same ones as going through them
+    all. An undo costs what an edit does: what is known of each chunk is rewound to the first edit
+    that changed, from the edits that reached it, so only the chunks the undone edits reached are
+    made again; an edit taken away from far back has the chunks chosen again on a worker. The
+    brush's ray goes in stretches of 32 m, each with only the edits along it. A copy for a chunk
+    and a sample of the whole terrain still pass every edit once.
 - The terrain brush (`TerrainBrush.h`): edits where a ray meets the terrain, a stroke of them a
   *Spacing* of the radius apart (a capsule's rods end to end, one smooth trench or ridge), with a
   *Shape*, *Mode*, *Radius*, *Blend Radius*, *Material* and *Reach*.

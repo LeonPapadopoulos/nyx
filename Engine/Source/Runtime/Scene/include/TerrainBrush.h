@@ -55,7 +55,8 @@ namespace Nyx
 	};
 
 	// The SDF terrain a ray in the world meets first within `reach` metres (RayCastTerrain(), through
-	// each terrain entity's transform), or only `terrain` if given; none if it meets none
+	// each terrain entity's transform, in stretches each with only the edits along it), or only
+	// `terrain` if given; none if it meets none
 	std::optional<TerrainBrushHit> CastTerrainBrush(const Registry& world, const Ray& ray, float reach, std::optional<Entity> terrain = std::nullopt);
 
 	// One edit of the brush at `to`, in the terrain's space: a ball, a cube along the terrain's axes,

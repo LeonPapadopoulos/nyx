@@ -296,12 +296,14 @@ namespace Nyx
 	void GetTerrainChunkReach(const TerrainChunkId& id, glm::vec3& outMin, glm::vec3& outMax);
 
 	// Each chunk's field as it is asked for, for one terrain's values: kept, and continued over the
-	// edits added since (one shape's range an edit), so a chunk costs its one sample once. Forget()
-	// when the values or an edit seen changed (ExtendsTerrainEdits()).
+	// edits added since (one shape's range an edit; through the index, only those near), so a chunk
+	// costs its one sample once. When edits it has seen changed or went, Rewind() to how many are
+	// the same (CountSameTerrainEdits()): an undo costs what an edit does. Forget() for new values.
 	class TerrainChunkFields
 	{
 	public:
-		const TerrainChunkField& Get(const SdfTerrainComponent& terrain, const TerrainChunkId& id);
+		const TerrainChunkField& Get(const SdfTerrainComponent& terrain, const TerrainChunkId& id, const TerrainEditIndex* index = nullptr);
+		void Rewind(const SdfTerrainComponent& terrain, size_t same);
 		void Forget() { Known.clear(); }
 
 	private:

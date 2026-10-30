@@ -8,6 +8,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <unordered_map>
+#include <vector>
 
 namespace Nyx
 {
@@ -103,22 +105,60 @@ namespace Nyx
 		uint64_t Hash = 0;
 	};
 
+	// Where a terrain's edits are, in cells of 32 m, to find those that can reach a box without going
+	// through them all. Brought up to the terrain's edits after they change, those from the first
+	// that changed taken again, so a new edit costs one.
+	class TerrainEditIndex
+	{
+	public:
+		// `same`: how many of the edits it has are still the terrain's (CountSameTerrainEdits())
+		void Update(const SdfTerrainComponent& terrain, size_t same);
+
+		// In order, the edits from `from` on whose shapes come into the box
+		void Find(const glm::vec3& boxMin, const glm::vec3& boxMax, size_t from, std::vector<uint32_t>& out) const;
+
+		size_t GetCount() const { return Bounds.size(); }
+		// The largest blend radius among them, or that was
+		float GetMaxBlendRadius() const { return MaxBlendRadius; }
+
+	private:
+		static constexpr float CellSize = 32.0f;
+		// Edits that would fill more cells than this are looked at for every box
+		static constexpr int MaxCells = 512;
+		std::unordered_map<uint64_t, std::vector<uint32_t>> Cells;
+		std::vector<uint32_t> Large;
+		std::vector<std::pair<glm::ivec3, glm::ivec3>> Bounds;
+		float MaxBlendRadius = 0.0f;
+	};
+
+	// How many of the terrain's edits, from the first, are those of `earlier`
+	size_t CountSameTerrainEdits(const SdfTerrainComponent& terrain, const SdfTerrainComponent& earlier);
+
 	// What is known of a box's values with the edits taken one after another: a range they are within,
 	// by the layers and the edits seen so far, and those of the edits that reach it. Begun from the
 	// layers (their range, tightened by their value at the centre: one sample), then continued over
 	// the edits added after those seen, an edit at a time, so a box kept across edits costs one shape's
-	// range an edit. Begun again when an edit seen changed or went.
+	// range an edit; with the terrain's index (TerrainEditIndex), only the edits near enough to reach
+	// it are looked at, the same ones found. Rewound when edits it has seen change or go: back to
+	// having seen only the first `count`, as it was after the last of them that reached it.
 	struct TerrainBoxEdits
 	{
 		glm::vec3 BoxMin{ 0.0f };
 		glm::vec3 BoxMax{ 0.0f };
 		TerrainValueRange Range;
-		// How many of the terrain's edits it has taken
+		// How many of the terrain's edits it has taken, and which of them reach it, with its range and
+		// reach after each
 		size_t Seen = 0;
 		TerrainEditsReach Reach;
+		std::vector<uint32_t> Reaching;
+		std::vector<TerrainValueRange> RangesAfter;
+		std::vector<TerrainEditsReach> ReachesAfter;
+		// The layers' range, which it began from
+		TerrainValueRange Layers;
 	};
 	TerrainBoxEdits BeginTerrainBoxEdits(const SdfTerrainComponent& terrain, const glm::vec3& boxMin, const glm::vec3& boxMax);
-	void ContinueTerrainBoxEdits(const SdfTerrainComponent& terrain, TerrainBoxEdits& box);
+	void ContinueTerrainBoxEdits(const SdfTerrainComponent& terrain, TerrainBoxEdits& box, const TerrainEditIndex* index = nullptr);
+	void RewindTerrainBoxEdits(const SdfTerrainComponent& terrain, TerrainBoxEdits& box, size_t count);
 
 	TerrainEditsReach GetTerrainEditsReaching(const SdfTerrainComponent& terrain, const glm::vec3& boxMin, const glm::vec3& boxMax);
 

@@ -103,6 +103,7 @@ namespace Nyx
 			// What is known of each chunk's values, for the values now; the hashes of the edits' runs,
 			// and which bodies, and which chunks drawn, are still as they would be made now
 			TerrainChunkFields Fields;
+			TerrainEditIndex EditIndex;
 			std::vector<uint64_t> EditRuns;
 			TerrainChunkKeeps Keeps;
 			TerrainChunkKeeps DrawnKeeps;

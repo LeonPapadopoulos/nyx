@@ -9,6 +9,38 @@
 
 namespace Nyx
 {
+	namespace
+	{
+		// A ray through the terrain in stretches of 32 m, each through a copy with only the edits that
+		// can change the field along it (KeepTerrainEditsReaching(), the same bits there), so a ray
+		// past many edits passes each once a stretch rather than at every step. A stretch goes a metre
+		// into the next, so a crossing near its end is found in it, never from inside the next.
+		std::optional<TerrainRayHit> CastThroughEdits(const SdfTerrainComponent& terrain, const glm::vec3& origin, const glm::vec3& direction, float maxDistance)
+		{
+			if (terrain.Edits.empty())
+			{
+				return RayCastTerrain(terrain, origin, direction, maxDistance);
+			}
+			constexpr float Stretch = 32.0f;
+			constexpr float Overlap = 1.0f;
+			for (float from = 0.0f; from < maxDistance; from += Stretch)
+			{
+				const float length = std::min(Stretch + Overlap, maxDistance - from);
+				const glm::vec3 start = origin + direction * from;
+				const glm::vec3 end = start + direction * length;
+				// A little round it for the normal's samples
+				SdfTerrainComponent near = terrain;
+				KeepTerrainEditsReaching(near, glm::min(start, end) - 0.1f, glm::max(start, end) + 0.1f);
+				if (std::optional<TerrainRayHit> hit = RayCastTerrain(near, start, direction, length))
+				{
+					hit->Distance += from;
+					return hit;
+				}
+			}
+			return std::nullopt;
+		}
+	}
+
 	std::optional<TerrainBrushHit> CastTerrainBrush(const Registry& world, const Ray& ray, float reach, std::optional<Entity> terrain)
 	{
 		std::optional<TerrainBrushHit> nearest;
@@ -30,7 +62,7 @@ namespace Nyx
 				{
 					return;
 				}
-				const std::optional<TerrainRayHit> hit = RayCastTerrain(values, origin, along / stretch, reach * stretch);
+				const std::optional<TerrainRayHit> hit = CastThroughEdits(values, origin, along / stretch, reach * stretch);
 				if (!hit || (nearest && hit->Distance / stretch >= nearest->Distance))
 				{
 					return;
