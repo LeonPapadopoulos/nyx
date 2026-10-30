@@ -1215,6 +1215,26 @@ namespace Nyx
 		uint32_t NextCharacter = 0;
 	};
 
+	struct PreparedShape
+	{
+		JPH::ShapeRefC Shape;
+		bool bMesh = false;
+	};
+
+	std::shared_ptr<const PreparedShape> PrepareBodyShape(const BodyShape& shape, float density)
+	{
+		InitializeJoltOnce();
+		JPH::ShapeRefC made = MakeShape(shape, density);
+		if (!made)
+		{
+			return nullptr;
+		}
+		auto prepared = std::make_shared<PreparedShape>();
+		prepared->Shape = std::move(made);
+		prepared->bMesh = shape.Kind == EShapeKind::Mesh;
+		return prepared;
+	}
+
 	PhysicsWorld::PhysicsWorld(const PhysicsSettings& settings)
 	{
 		InitializeJoltOnce();
@@ -1225,14 +1245,15 @@ namespace Nyx
 
 	BodyHandle PhysicsWorld::CreateBody(const BodyDesc& desc)
 	{
-		const bool bParts = !desc.Parts.empty();
+		const bool bParts = !desc.Prepared && !desc.Parts.empty();
 		// Jolt can't give triangles a mass, nor collide two meshes
-		if (!bParts && desc.Shape.Kind == EShapeKind::Mesh && desc.Motion != EBodyMotion::Static)
+		const bool bMesh = desc.Prepared ? desc.Prepared->bMesh : !bParts && desc.Shape.Kind == EShapeKind::Mesh;
+		if (bMesh && desc.Motion != EBodyMotion::Static)
 		{
 			LOG_ERROR("Physics: a mesh body can only be static");
 			return {};
 		}
-		const JPH::ShapeRefC shape = bParts ? MakeCompoundShape(desc.Parts) : MakeShape(desc.Shape, desc.Density);
+		const JPH::ShapeRefC shape = desc.Prepared ? desc.Prepared->Shape : (bParts ? MakeCompoundShape(desc.Parts) : MakeShape(desc.Shape, desc.Density));
 		if (!shape)
 		{
 			return {};

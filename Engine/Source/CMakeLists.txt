@@ -126,6 +126,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/PhysicsConstraints.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/PhysicsMaterials.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/PhysicsPick.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Sim/src/TerrainCollision.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/OrbitCameras.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/CharacterCommands.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/TimeOfDayClock.cpp
@@ -364,6 +365,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/PhysicsConstraints.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/PhysicsMaterials.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/PhysicsPick.h
+    ${NYX_ENGINE_ROOT}/Runtime/Sim/include/TerrainCollision.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/OrbitCameras.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/CharacterCommands.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/SparseField.h

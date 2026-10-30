@@ -10,6 +10,7 @@
 #include "PhysicsMaterials.h"
 #include "PhysicsWorld.h"
 #include "SimSystem.h"
+#include "TerrainCollision.h"
 #include "TimeOfDayClock.h"
 #include "Wind.h"
 
@@ -28,7 +29,8 @@ namespace Nyx
 	// 0. the commands players added since the last step become this step's (SimContext::Commands);
 	// 1. the debug drawing moves on: what the last step drew goes, timed shapes age;
 	// 2. bodies and characters follow the physics components, their physics materials and the
-	//    transforms set since the last step (PhysicsBodies);
+	//    transforms set since the last step (PhysicsBodies); the SDF terrains' chunks round the
+	//    moving bodies get their bodies (TerrainCollision);
 	// 3. the lookup from guid to entity is made again, in the memory it had (SimContext::Guids);
 	//    constraints follow their components and the bodies (PhysicsConstraints); the players'
 	//    MoveCharacterCommands go into their characters (ApplyMoveCharacterCommands()); the time of
@@ -62,6 +64,7 @@ namespace Nyx
 		PhysicsWorld& GetPhysics() { return Physics; }
 		const PhysicsWorld& GetPhysics() const { return Physics; }
 		const PhysicsBodies& GetBodies() const { return Bodies; }
+		const TerrainCollision& GetTerrainCollision() const { return TerrainColliders; }
 		const PhysicsConstraints& GetConstraints() const { return Constraints; }
 		// The physics materials the colliders name, read once and kept; a game's tools hand it the
 		// editor's values (PhysicsMaterials::SetText())
@@ -116,6 +119,7 @@ namespace Nyx
 		DebugDraw Debug;
 		PhysicsWorld Physics;
 		PhysicsBodies Bodies;
+		TerrainCollision TerrainColliders;
 		PhysicsConstraints Constraints;
 		PhysicsMaterials Materials;
 		TimeOfDayClock TimeOfDay;

@@ -117,6 +117,39 @@ namespace Nyx
 		std::shared_ptr<Detail::TerrainStreaming> Streaming;
 	};
 
+	// What an SDF terrain's collision is doing while the world runs (TerrainCollision, in the game
+	// world's step), for the editor and the stats
+	struct TerrainCollisionStats
+	{
+		// Chunks wanted round the moving bodies and along where they are going, those with a body, and
+		// those being made
+		uint32_t Wanted = 0;
+		uint32_t Resident = 0;
+		uint32_t Pending = 0;
+		// Wanted chunks all air or all solid, never given a body
+		uint32_t Skipped = 0;
+		uint64_t Triangles = 0;
+		// Bodies in or next to a chunk wanted that has no body yet, and those that will reach one sooner
+		// than a chunk takes to make: going faster than collision can follow
+		uint32_t Uncovered = 0;
+		uint32_t Outrunning = 0;
+		// Made since the world began, and those made from a chunk drawn at the finest level
+		uint64_t Made = 0;
+		uint64_t Shared = 0;
+		// The longest a chunk took from being asked for to its body, lately, in seconds
+		double WorstSeconds = 0.0;
+	};
+
+	// An SDF terrain's collision, on the terrain's entity while the world runs: written by the game
+	// world's step, for the details panel. Run-time only, never saved.
+	struct TerrainCollisionComponent
+	{
+		TerrainCollisionStats Stats;
+	};
+
+	// What the collision is doing, for the editor's details panel
+	std::vector<InspectedValue> DescribeTerrainCollision(const TerrainCollisionComponent& component);
+
 	// How long a chunk took, and what it made
 	struct TerrainChunkTimes
 	{

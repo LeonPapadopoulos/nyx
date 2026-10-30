@@ -129,6 +129,12 @@ add_dependencies(NyxTerrainChunksTests NyxGeneratedReflection)
 set_property(TARGET NyxTerrainChunksTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxTerrainChunksTests COMMAND NyxTerrainChunksTests)
 
+add_executable(NyxTerrainCollisionTests TerrainCollisionTests.cpp)
+target_link_libraries(NyxTerrainCollisionTests PRIVATE NyxEngine)
+add_dependencies(NyxTerrainCollisionTests NyxGeneratedReflection)
+set_property(TARGET NyxTerrainCollisionTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxTerrainCollisionTests COMMAND NyxTerrainCollisionTests)
+
 # The component type registry: types register once; a second type of a name already taken, such as
 # a game module's type named like one of the engine's, is refused.
 add_executable(NyxComponentTypeRegistryTests ComponentTypeRegistryTests.cpp)

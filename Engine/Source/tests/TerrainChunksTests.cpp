@@ -21,6 +21,7 @@
 #include "MeshRendererComponent.h"
 #include "NameComponent.h"
 #include "Paths.h"
+#include "PhysicsComponents.h"
 #include "SceneSerializer.h"
 #include "SdfTerrain.h"
 #include "TerrainChunks.h"
@@ -561,7 +562,8 @@ namespace
 
 	// The scene to look at the terrain in by hand: terraced hills with tunnels and chambers under them,
 	// cliffs of stone kept sharp, and a floating landmass with a hanging underside above them, in
-	// their vertex colours, out to 2 km at coarser levels, a sun, and a camera that flies
+	// their vertex colours, out to 2 km at coarser levels, a sun, a camera that flies, and balls that
+	// fall on the hills in Play
 	SdfTerrainComponent MakeSampleTerrain()
 	{
 		SdfTerrainComponent terrain;
@@ -638,6 +640,17 @@ namespace
 
 		const Entity sun = AddNamed(world, "Sun", TransformComponent{ .Position = glm::vec3(0.0f, 50.0f, 0.0f), .Rotation = glm::quat(glm::radians(glm::vec3(-45.0f, 35.0f, 0.0f))) });
 		world.Add<DirectionalLightComponent>(sun, DirectionalLightComponent{});
+
+		// Balls above the hills in front of the camera, which fall and roll on them in Play
+		for (int n = 0; n < 6; ++n)
+		{
+			const Entity ball = AddNamed(world, "Ball " + std::to_string(n + 1),
+				TransformComponent{ .Position = glm::vec3(-45.0f + float(n % 3) * 6.0f, 45.0f + float(n) * 4.0f, 50.0f - float(n / 3) * 6.0f), .Scale = glm::vec3(2.0f) });
+			world.Add<MeshRendererComponent>(ball, MeshRendererComponent{ .Mesh = AssetReference{ .Type = "Mesh", .Path = "Meshes/Sphere.nyxmesh" },
+				.Material = AssetReference{ .Type = "Material", .Path = "Materials/Untextured.nyxmat" }, .bVisible = true });
+			world.Add<SphereColliderComponent>(ball, SphereColliderComponent{});
+			world.Add<RigidBodyComponent>(ball, RigidBodyComponent{});
+		}
 
 		const std::filesystem::path path = Nyx::Paths::GetAssetsDir() / SampleScenePath;
 		Require(SceneSerializer::SaveToFile(world, path), "The sample scene can't be saved");

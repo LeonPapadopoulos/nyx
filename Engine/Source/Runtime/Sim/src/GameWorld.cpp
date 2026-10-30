@@ -27,6 +27,7 @@ namespace Nyx
 		Debug.Advance(seconds);
 
 		Bodies.SyncBeforeStep(World, Physics, Materials, seconds);
+		TerrainColliders.SyncBeforeStep(World, Physics, Bodies);
 		RefreshEntityGuidLookup(World, Guids);
 		Constraints.SyncBeforeStep(World, Physics, Bodies, Guids);
 		ApplyMoveCharacterCommands(World, Guids, StepCommands);

@@ -84,4 +84,12 @@ namespace Nyx
 	// hits at once. It can step past a wall thinner than a centimetre, never a thicker one.
 	std::optional<TerrainRayHit> RayCastTerrain(const SdfTerrainComponent& terrain, const glm::vec3& origin, const glm::vec3& direction,
 		float maxDistance);
+
+	// The nearest place a ball of `clearance` metres round `point` is out of the terrain, to push
+	// something out of new terrain: the point itself if it is out already, else along the way out
+	// (the normal, taken again each step) in steps of a tenth of the clearance, at least a centimetre
+	// and at most 25 cm, within `maxDistance`. Out means the point and 26 points round it at the
+	// clearance (the faces, edges and corners of a cube, made unit) all outside. Nothing if none is
+	// found. A function of the terrain's values alone, usable where no chunk is made.
+	std::optional<glm::vec3> FindTerrainFreePoint(const SdfTerrainComponent& terrain, const glm::vec3& point, float clearance, float maxDistance);
 }

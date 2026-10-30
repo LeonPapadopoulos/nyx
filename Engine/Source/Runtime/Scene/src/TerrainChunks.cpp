@@ -1041,4 +1041,17 @@ namespace Nyx
 			{ "Last Choice", std::format("{:.2f} ms", stats.LastPlanMilliseconds) },
 		};
 	}
+
+	std::vector<InspectedValue> DescribeTerrainCollision(const TerrainCollisionComponent& component)
+	{
+		const TerrainCollisionStats& stats = component.Stats;
+		return {
+			{ "Chunks", std::format("{} with bodies, {} wanted, {} being made", stats.Resident, stats.Wanted, stats.Pending) },
+			{ "Skipped", std::format("{} all air or all solid", stats.Skipped) },
+			{ "Triangles", std::to_string(stats.Triangles) },
+			{ "Bodies Ahead", std::format("{} without collision yet, {} faster than it can follow", stats.Uncovered, stats.Outrunning) },
+			{ "Made", std::format("{}, {} from chunks drawn", stats.Made, stats.Shared) },
+			{ "Worst Chunk", std::format("{:.0f} ms from asked for to its body", stats.WorstSeconds * 1000.0) },
+		};
+	}
 }

@@ -170,6 +170,9 @@ namespace Nyx
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Material Colours", Category = "Chunks", UI = Color, Tooltip = "Each material number's vertex colour, linear RGB, from 0; a number past the list is white"))
 		std::vector<glm::vec3> MaterialColors{ glm::vec3(0.13f, 0.30f, 0.05f), glm::vec3(0.22f, 0.14f, 0.07f), glm::vec3(0.26f, 0.25f, 0.23f) };
 
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Collision Distance", Category = "Collision", DragSpeed = 1.0, Tooltip = "How far round every character and moving body, in metres, the finest chunks have collision while the world runs, and along where each is going for the next 2 s; 0: no collision"))
+		float CollisionDistance = 64.0f;
+
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Debug View", Category = "Chunks", Tooltip = "Levels: a colour for each level of detail; Seams: those darker and the triangles joining levels bright"))
 		ESdfTerrainDebugView DebugView = ESdfTerrainDebugView::None;
 	};

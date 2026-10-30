@@ -556,4 +556,63 @@ namespace Nyx
 		}
 		return std::nullopt;
 	}
+
+	std::optional<glm::vec3> FindTerrainFreePoint(const SdfTerrainComponent& terrain, const glm::vec3& point, float clearance, float maxDistance)
+	{
+		const float radius = std::max(clearance, 0.0f);
+		// The 26 ways from a cube's middle to its faces, edges and corners, made unit: written out, the
+		// same bits everywhere
+		std::vector<glm::vec3> around;
+		for (int z = -1; z <= 1; ++z)
+		{
+			for (int y = -1; y <= 1; ++y)
+			{
+				for (int x = -1; x <= 1; ++x)
+				{
+					const int count = std::abs(x) + std::abs(y) + std::abs(z);
+					if (count == 0)
+					{
+						continue;
+					}
+					const float scale = count == 1 ? 1.0f : (count == 2 ? 0.70710677f : 0.57735026f);
+					around.push_back(glm::vec3(float(x), float(y), float(z)) * scale);
+				}
+			}
+		}
+		std::vector<float> x(around.size() + 1);
+		std::vector<float> y(around.size() + 1);
+		std::vector<float> z(around.size() + 1);
+		std::vector<float> values(around.size() + 1);
+		auto isFree = [&](const glm::vec3& at)
+		{
+			x[0] = at.x;
+			y[0] = at.y;
+			z[0] = at.z;
+			for (size_t n = 0; n < around.size(); ++n)
+			{
+				const glm::vec3 probe = at + around[n] * radius;
+				x[n + 1] = probe.x;
+				y[n + 1] = probe.y;
+				z[n + 1] = probe.z;
+			}
+			SampleTerrainBatch(terrain, x.data(), y.data(), z.data(), values.size(), values.data());
+			return std::all_of(values.begin(), values.end(), [](float value) { return value >= 0.0f; });
+		};
+
+		glm::vec3 at = point;
+		if (isFree(at))
+		{
+			return at;
+		}
+		const float step = std::clamp(radius * 0.1f, 0.01f, 0.25f);
+		for (float travelled = step; travelled <= maxDistance; travelled += step)
+		{
+			at += GetTerrainNormal(terrain, at) * step;
+			if (isFree(at))
+			{
+				return at;
+			}
+		}
+		return std::nullopt;
+	}
 }

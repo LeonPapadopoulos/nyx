@@ -58,6 +58,14 @@ namespace Nyx
 		std::shared_ptr<const TriangleMesh> Mesh;
 	};
 
+	// A body's shape made ahead of its body (PrepareBodyShape()), e.g. a mesh's on a worker, so that
+	// making the body (BodyDesc::Prepared) costs little; for any world
+	struct PreparedShape;
+
+	// Makes the shape now, on any thread, as CreateBody() would make it: a mesh's tree of triangles and
+	// its smooth edges. Empty when it can't be made, which is logged.
+	std::shared_ptr<const PreparedShape> PrepareBodyShape(const BodyShape& shape, float density = 1000.0f);
+
 	// Where a body is: the position and rotation of its shape's origin
 	struct BodyPose
 	{
@@ -120,6 +128,8 @@ namespace Nyx
 		// Restitution are each part's own; it starts with its parts' momentum (LinearVelocity and
 		// AngularVelocity aside).
 		std::vector<BodyPart> Parts;
+		// Set: the body's shape, made ahead (PrepareBodyShape()), in place of Shape and Parts
+		std::shared_ptr<const PreparedShape> Prepared;
 	};
 
 	// A body of a PhysicsWorld. Valid only in the world that made it, and only until destroyed; never

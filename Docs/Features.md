@@ -208,6 +208,9 @@ Rigid bodies on [Jolt](https://github.com/jrouwe/JoltPhysics), while a game runs
   after a second at most. A ray from behind a triangle passes through it, as from under a ground. Its
   *Smooth Edge Degrees* says where two triangles meet flat enough that what slides over the edge
   doesn't catch on it.
+- An *SDF Terrain* collides by its own static bodies, chunk by chunk round the moving bodies
+  ([SDF terrain](#sdf-terrain)). `PrepareBodyShape()` makes a body's shape ahead, on any thread,
+  e.g. a mesh's on a worker, and a body made from it (`BodyDesc::Prepared`) costs little.
 - While the game runs, moving an entity in the editor puts its body there and stops it; changing a
   collider or rigid body makes the body again.
 - A collider's *Material* names a physics material (`.nyxphysmat`), or none for the engine's
@@ -1439,7 +1442,7 @@ decided: by default a valley about 128 by 128 m, nearly flat in the middle, its 
 
 An *SDF Terrain* is terrain as a signed field over a volume rather than a height at each point, so
 it can overhang, hollow out and float. It is drawn in chunks round the camera, in the editor and the
-game, coarser the farther; nothing collides with it yet.
+game, coarser the farther, and collides while the world runs.
 
 - Add an *SDF Terrain* and a *Mesh Renderer* with `Materials/VertexColor.nyxmat` (its *Mesh* left
   empty). Its chunks are 32 cells a side: at level of detail 0 cells of 1 m, each level up twice
@@ -1471,9 +1474,23 @@ game, coarser the farther; nothing collides with it yet.
 - The editor's details panel shows *Terrain Chunks* in its *Runtime* section: chunks drawn, next
   and being made, by level, those next to another level, skipped, triangles, how many times all
   were replaced, and the last chunk's and the last choice's times.
+- Collision, while the world runs (in the game, and in the editor's play): the finest level's chunks
+  within *Collision Distance* (64 m) of every character and moving body, and within 4 m of where
+  each is going over the next 2 s by its velocity and gravity, get a static body each, their
+  triangles those the chunk is drawn with (the drawn mesh itself where the chunk is drawn at that
+  level with no other level round it). Made on the job system's workers, those a body could reach
+  soonest first, a few bodies a step; a chunk farther than wanted loses its body; new values make
+  them again while the old ones stay; a sleeping body keeps the chunks it rests in. A body without
+  collision yet where it is, or going faster than it can follow, is counted (*Terrain Collision* in
+  the *Runtime* section: chunks with bodies, wanted and being made, those bodies, how long a chunk
+  lately took), for the game to slow or hold it. *Collision Distance* 0: none.
+- `FindTerrainFreePoint()`: the nearest place out of the terrain with room round it, along the way
+  out from a point inside, to push something out of new terrain; from the field, where no chunk is
+  made too.
 - `Assets/Scenes/SdfTerrainTest.nyxscene` (written by `NyxTerrainChunksTests --write-scene`):
   terraced hills with tunnels under them, a floating landmass of sharp stone with a hanging
-  underside and chambers inside, out to 2 km, a sun and a camera that flies.
+  underside and chambers inside, out to 2 km, a sun, a camera that flies, and six balls that fall on
+  the hills in Play.
 
 - *Layers*, evaluated in order, each joined to what the ones before made by *Combine*: *Add* (solid
   where it is), *Carve* (cut out of what came before) or *Intersect*, rounded over *Blend Radius*.
@@ -1525,7 +1542,11 @@ game, coarser the farther; nothing collides with it yet.
   within the view distance, replaced all at once, let go of and made anew as the camera moves, made
   again for new values while the old stay, gone with the terrain; the sample scene),
   `NyxTerrainChunksGpuTests` (the chunks drawn at three levels, picked as the terrain, in the debug
-  view's colours, drawn where it is moved),
+  view's colours, drawn where it is moved), `NyxTerrainCollisionTests` (the way out of a hill, a
+  ball resting on the hills, a character walking 60 m on them, one falling 200 m past a floating
+  landmass's cliff at 60 m/s and landing on the hills below with collision always ahead, rays
+  meeting the collision where they meet the drawn triangles, bodies following the movers, made
+  again for new values, gone with the terrain),
   `NyxFieldMesherTests` (a sphere closed with the right area, a box's corners kept sharp and rounded
   smooth, thin shapes closed and wound consistently, neighbouring chunks meeting, sky visibility,
   materials, a golden mesh the same in Debug and Release; marching cubes on the same shapes, closed
