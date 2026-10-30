@@ -389,14 +389,13 @@ namespace Nyx
 		}
 		// The edits a chunk's body is wanted with: its body's while no edit since can change it, else
 		// the drawn chunk's while none can change that, else those reaching it now
-		const float slope = GetTerrainMaxSlope(*state.Snapshot);
 		auto wantedEdits = [&](uint64_t packed) -> uint64_t
 		{
 			const uint64_t now = field(packed).GetEdits();
 			const TerrainChunkId id{ level, UnpackKey(packed) };
 			if (const auto resident = state.Chunks.find(packed); resident != state.Chunks.end() && resident->second.Shape == state.Shape && resident->second.Samples)
 			{
-				const uint64_t kept = state.Keeps.Get(*state.Snapshot, state.EditRuns, id, resident->second.Edits, resident->second.Samples.get(), now, slope);
+				const uint64_t kept = state.Keeps.Get(*state.Snapshot, state.EditRuns, id, resident->second.Edits, resident->second.Samples.get(), now);
 				if (kept == resident->second.Edits)
 				{
 					return kept;
@@ -404,7 +403,7 @@ namespace Nyx
 			}
 			if (const auto found = drawn.find(packed); found != drawn.end())
 			{
-				return state.DrawnKeeps.Get(*state.Snapshot, state.EditRuns, id, found->second.Edits, found->second.Samples.get(), now, slope);
+				return state.DrawnKeeps.Get(*state.Snapshot, state.EditRuns, id, found->second.Edits, found->second.Samples.get(), now);
 			}
 			return now;
 		};
@@ -690,11 +689,19 @@ namespace Nyx
 			const glm::ivec3 key = UnpackKey(packed);
 			const uint64_t jobShape = state.Shape;
 			const uint64_t jobEdits = edits;
+			// In place of a body of other edits: soonest, its parts on every worker free
+			const bool bEdit = resident != state.Chunks.end() && resident->second.Shape == state.Shape && resident->second.Edits != edits;
+			FieldRunParts runParts;
+			if (bEdit)
+			{
+				JobSystem* workers = Workers;
+				runParts = [workers](size_t count, const std::function<void(size_t)>& part) { workers->ParallelFor(count, part); };
+			}
 			const uint64_t jobPlacement = state.Placement;
 			const glm::vec3 scale = transform.Scale;
 			const auto asked = std::chrono::steady_clock::now();
 			JobHandle job = Workers->Schedule(
-				[shared, snapshot, mesh, sharedSamples, key, level, jobShape, jobEdits, jobPlacement, scale, asked]
+				[shared, snapshot, mesh, sharedSamples, key, level, jobShape, jobEdits, jobPlacement, scale, asked, runParts]
 				{
 					Detail::TerrainCollisionJobs::Done done;
 					done.Key = key;
@@ -704,7 +711,7 @@ namespace Nyx
 					done.Asked = asked;
 					done.bShared = mesh != nullptr;
 					auto samples = std::make_shared<TerrainChunkSamples>();
-					const MeshData made = mesh ? MeshData{} : MakeTerrainChunkMesh(*snapshot, { level, key }, {}, nullptr, samples.get());
+					const MeshData made = mesh ? MeshData{} : MakeTerrainChunkMesh(*snapshot, { level, key }, {}, nullptr, samples.get(), runParts);
 					done.Samples = mesh ? sharedSamples : std::move(samples);
 					const MeshData& source = mesh ? *mesh : made;
 					if (!source.Indices.empty())
@@ -722,7 +729,7 @@ namespace Nyx
 					std::lock_guard lock(shared->Lock);
 					shared->Finished.push_back(std::move(done));
 				},
-				EJobPriority::Normal);
+				bEdit ? EJobPriority::High : EJobPriority::Normal);
 			jobs.InFlight.emplace(packed, Detail::TerrainCollisionJobs::Scheduled{ job, jobShape, jobEdits });
 		}
 

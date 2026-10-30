@@ -72,6 +72,10 @@ namespace Nyx
 		return count == 1 ? sum : sum * (1.0f / float(count));
 	}
 
+	// Runs `count` parts, each once, on any threads, and returns once all have run, e.g. through
+	// JobSystem::ParallelFor(); what is run in parts comes out the same bits as run at once
+	using FieldRunParts = std::function<void(size_t count, const std::function<void(size_t)>& part)>;
+
 	struct FieldMeshSettings
 	{
 		// Which quads this mesh makes: those of the grid edges starting at a sample from QuadMin up to
@@ -104,6 +108,10 @@ namespace Nyx
 
 		// Where it meets cells of other sizes; none by default
 		FieldSeams Seams;
+
+		// To share the sky's rays out among threads, the vertices in parts; none: all here. The Field
+		// is then asked from those threads too.
+		FieldRunParts RunParts;
 	};
 
 	// What making a mesh did, for tests and the frame stats

@@ -324,64 +324,83 @@ namespace Nyx
 					distances.push_back(distance);
 				}
 
+				// The vertices in parts, each its points past the grid asked of the field in one go: the
+				// same bits however they are batched
+				constexpr size_t PartVertices = 256;
 				std::vector<uint8_t> blocked(cells.size() * directions.size(), 0);
-				// Points past the grid, asked of the field in one go
-				std::vector<glm::vec3> farPoints;
-				std::vector<size_t> farRays;
-				for (size_t u = 0; u < cells.size(); ++u)
+				auto runPart = [&](size_t part)
 				{
-					const glm::vec3 start = locals[u] + normals[u] * 0.5f;
-					for (size_t d = 0; d < directions.size(); ++d)
+					const size_t first = part * PartVertices;
+					const size_t last = std::min(first + PartVertices, cells.size());
+					std::vector<glm::vec3> farPoints;
+					std::vector<size_t> farRays;
+					for (size_t u = first; u < last; ++u)
 					{
-						if (!(glm::dot(directions[d], normals[u]) > 0.0f))
+						const glm::vec3 start = locals[u] + normals[u] * 0.5f;
+						for (size_t d = 0; d < directions.size(); ++d)
 						{
-							continue;
-						}
-						const size_t ray = u * directions.size() + d;
-						for (const float distance : distances)
-						{
-							const glm::vec3 local = start + directions[d] * distance;
-							float value = 0.0f;
-							if (SampleGrid(cells[u], local, value))
+							if (!(glm::dot(directions[d], normals[u]) > 0.0f))
 							{
-								if (IsInside(value))
+								continue;
+							}
+							const size_t ray = u * directions.size() + d;
+							for (const float distance : distances)
+							{
+								const glm::vec3 local = start + directions[d] * distance;
+								float value = 0.0f;
+								if (SampleGrid(cells[u], local, value))
 								{
-									blocked[ray] = 1;
-									break;
+									if (IsInside(value))
+									{
+										blocked[ray] = 1;
+										break;
+									}
+								}
+								else if (Settings.Field)
+								{
+									farPoints.push_back(CellCorner(cells[u]) + local * Grid.CellSize);
+									farRays.push_back(ray);
 								}
 							}
-							else if (Settings.Field)
+						}
+					}
+					if (!farPoints.empty())
+					{
+						std::vector<float> values;
+						AskField(farPoints, values);
+						for (size_t n = 0; n < farRays.size(); ++n)
+						{
+							if (IsInside(values[n]))
 							{
-								farPoints.push_back(CellCorner(cells[u]) + local * Grid.CellSize);
-								farRays.push_back(ray);
+								blocked[farRays[n]] = 1;
 							}
 						}
 					}
-				}
-				if (!farPoints.empty())
-				{
-					std::vector<float> values;
-					AskField(farPoints, values);
-					for (size_t n = 0; n < farRays.size(); ++n)
-					{
-						if (IsInside(values[n]))
-						{
-							blocked[farRays[n]] = 1;
-						}
-					}
-				}
 
-				for (size_t u = 0; u < cells.size(); ++u)
-				{
-					float open = 0.0f;
-					float total = 0.0f;
-					for (size_t d = 0; d < directions.size(); ++d)
+					for (size_t u = first; u < last; ++u)
 					{
-						const float weight = std::max(glm::dot(directions[d], normals[u]), 0.0f);
-						total += weight;
-						open += blocked[u * directions.size() + d] != 0 ? 0.0f : weight;
+						float open = 0.0f;
+						float total = 0.0f;
+						for (size_t d = 0; d < directions.size(); ++d)
+						{
+							const float weight = std::max(glm::dot(directions[d], normals[u]), 0.0f);
+							total += weight;
+							open += blocked[u * directions.size() + d] != 0 ? 0.0f : weight;
+						}
+						outVisibility[u] = total > 0.0f ? open / total : 0.0f;
 					}
-					outVisibility[u] = total > 0.0f ? open / total : 0.0f;
+				};
+				const size_t parts = (cells.size() + PartVertices - 1) / PartVertices;
+				if (Settings.RunParts && parts > 1)
+				{
+					Settings.RunParts(parts, runPart);
+				}
+				else
+				{
+					for (size_t part = 0; part < parts; ++part)
+					{
+						runPart(part);
+					}
 				}
 			}
 

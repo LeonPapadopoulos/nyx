@@ -1,8 +1,8 @@
 // The job system (JobSystem): every job runs once, on a worker; higher priorities first, each in
 // the order scheduled; cancelling a queued job, not a running or finished one; groups waited for;
-// jobs without handles; what is queued when it goes is cancelled; workers take the floating-point
-// state of the thread that made it; the physics step runs on its workers, the same whatever their
-// number.
+// jobs without handles; parts shared out, by jobs too; what is queued when it goes is cancelled;
+// workers take the floating-point state of the thread that made it; the physics step runs on its
+// workers, the same whatever their number.
 #include "JobSystem.h"
 #include "Log.h"
 #include "PhysicsWorld.h"
@@ -315,6 +315,45 @@ namespace
 		}
 		Require(bMoved, "The boxes should have fallen");
 	}
+
+	// Parts shared out: every part runs once, the caller taking some; jobs on every worker sharing
+	// out their own parts at once all finish, as none waits for a queued job
+	void TestParallelFor()
+	{
+		JobSystem jobs(4);
+		constexpr size_t Parts = 1000;
+		std::vector<std::atomic<int>> runs(Parts);
+		std::atomic<int> here = 0;
+		const std::thread::id caller = std::this_thread::get_id();
+		jobs.ParallelFor(Parts, [&](size_t part)
+			{
+				runs[part].fetch_add(1);
+				if (std::this_thread::get_id() == caller)
+				{
+					here.fetch_add(1);
+				}
+			});
+		for (size_t part = 0; part < Parts; ++part)
+		{
+			Require(runs[part].load() == 1, "Part " + std::to_string(part) + " ran " + std::to_string(runs[part].load()) + " times, not once");
+		}
+		Require(here.load() > 0, "The caller should take parts too");
+
+		// A job on every worker, each sharing out its own parts
+		JobGroup group;
+		std::atomic<int> sum = 0;
+		for (int job = 0; job < 8; ++job)
+		{
+			jobs.Schedule(
+				[&]
+				{
+					jobs.ParallelFor(64, [&](size_t) { sum.fetch_add(1); });
+				},
+				EJobPriority::Normal, &group);
+		}
+		jobs.Wait(group);
+		Require(sum.load() == 8 * 64, "Jobs sharing out their parts at once should all finish, every part once");
+	}
 }
 
 int main()
@@ -326,6 +365,7 @@ int main()
 		TestPrioritiesFirst();
 		TestCancel();
 		TestRawJobs();
+		TestParallelFor();
 		TestGoingCancelsQueued();
 		TestWorkersTakeTheFloatingPointState();
 		TestPhysicsOnTheWorkers();

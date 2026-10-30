@@ -737,7 +737,8 @@ namespace Nyx
 		return SampleTerrain(terrain, point).Value;
 	}
 
-	FieldGrid SampleTerrainGrid(const SdfTerrainComponent& terrain, const glm::vec3& origin, float cellSize, const glm::ivec3& size)
+	FieldGrid SampleTerrainGrid(const SdfTerrainComponent& terrain, const glm::vec3& origin, float cellSize, const glm::ivec3& size,
+		const FieldRunParts& runParts)
 	{
 		FieldGrid grid;
 		grid.Size = glm::max(size, glm::ivec3(0));
@@ -748,15 +749,16 @@ namespace Nyx
 		grid.Materials.resize(count);
 
 		// In bricks of 4 x 4 x 4, a block each, so a block's bounds are tight and leave out the layers
-		// that can't reach it
-		std::array<float, BlockSize> x;
-		std::array<float, BlockSize> y;
-		std::array<float, BlockSize> z;
-		std::array<float, BlockSize> values;
-		std::array<uint32_t, BlockSize> materials;
-		std::array<size_t, BlockSize> indices;
-		for (int brickZ = 0; brickZ < grid.Size.z; brickZ += 4)
+		// that can't reach it; a slab of bricks a part
+		auto slab = [&](size_t part)
 		{
+			std::array<float, BlockSize> x;
+			std::array<float, BlockSize> y;
+			std::array<float, BlockSize> z;
+			std::array<float, BlockSize> values;
+			std::array<uint32_t, BlockSize> materials;
+			std::array<size_t, BlockSize> indices;
+			const int brickZ = int(part) * 4;
 			for (int brickY = 0; brickY < grid.Size.y; brickY += 4)
 			{
 				for (int brickX = 0; brickX < grid.Size.x; brickX += 4)
@@ -785,6 +787,18 @@ namespace Nyx
 						grid.Materials[indices[m]] = materials[m];
 					}
 				}
+			}
+		};
+		const size_t slabs = size_t((grid.Size.z + 3) / 4);
+		if (runParts && slabs > 1)
+		{
+			runParts(slabs, slab);
+		}
+		else
+		{
+			for (size_t part = 0; part < slabs; ++part)
+			{
+				slab(part);
 			}
 		}
 		return grid;

@@ -50,7 +50,7 @@ doesn't allow, and on a table that goes round in a circle, so a new dependency s
 
 | Folder | What it holds | Includes from |
 | --- | --- | --- |
-| `Core` | Logging, assertions, paths, text helpers, child processes, the crash handler, file watching, the frame rate limiter, the fixed step clock, the job system (`JobSystem`: the program's worker threads, jobs by priority, cancelling, groups), `BinaryArchive`, the profiler macros (`Profiler.h`), debug drawing (`DebugDraw`), meshes as plain data (`MeshData`: vertices with four custom channels for the materials, indices and sections, `CheckMeshData()`, `ComputeMeshBounds()`), shapes drawn by hand told apart (`PointCloudRecognizer`, the $P point-cloud recogniser, and its template text) | — |
+| `Core` | Logging, assertions, paths, text helpers, child processes, the crash handler, file watching, the frame rate limiter, the fixed step clock, the job system (`JobSystem`: the program's worker threads, jobs by priority, cancelling, groups, parts of one piece of work shared out, `ParallelFor()`), `BinaryArchive`, the profiler macros (`Profiler.h`), debug drawing (`DebugDraw`), meshes as plain data (`MeshData`: vertices with four custom channels for the materials, indices and sections, `CheckMeshData()`, `ComputeMeshBounds()`), shapes drawn by hand told apart (`PointCloudRecognizer`, the $P point-cloud recogniser, and its template text) | — |
 | `Reflection` | Type, property and enum metadata, and the `NYX_REFLECT`, `NYX_PROPERTY` and `NYX_ENUM` macros; not under `Runtime` | — |
 | `Net` | TCP connections and the messages they carry | Core |
 | `Input` | Keyboard, mouse and gamepads (through SDL3), gathered from backends into one `InputFrame` per frame; the router: context stacks, actions, the value pipeline, triggers and their traces; the input's history and its view (`InputDebugView`), painted with the UI's widgets; input assets (`.nyxinput`), saved through reflection, and their tuning layers; the checks and recipes for bindings; the input's stream and recordings (`.nyxinputrec`); the game's fly cameras, for entities with a `FlyCameraComponent` (`UpdateFlyCameras()`), and its orbit cameras' input (`OrbitCameraInput`, `Input::UpdateOrbitCameras()`) | Core, Reflection, Scene, UI |
@@ -245,6 +245,11 @@ instead of each system keeping threads of its own.
   and `Cancel()` takes a queued job out so it never runs. A `JobGroup` counts its jobs until they
   finish or are cancelled; `Wait()` returns when it is empty. Only threads that aren't workers wait,
   and a job never waits for another job.
+- **Parts shared out:** `ParallelFor()` runs the parts of one piece of work on the calling thread
+  and on workers free to help, and returns once all have run. The caller takes parts too and waits
+  only for parts already running elsewhere, never for a queued job, so a job may call it: a helper
+  that starts after the parts are gone returns at once. An SDF terrain's chunk made for an edit
+  shares out its sampling and its sky this way.
 - **Jobs without handles** (`Submit()`, `RawJob`) are for code that keeps its own job objects:
   physics puts Jolt's jobs on the workers this way, at `High`, and Jolt's barrier also runs them on
   the stepping thread, so a step finishes even while every worker is busy with long jobs.

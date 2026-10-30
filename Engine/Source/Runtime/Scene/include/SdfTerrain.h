@@ -50,7 +50,9 @@ namespace Nyx
 
 	// The terrain on a grid of `size` samples `cellSize` apart from `origin` (FieldGrid), values and
 	// materials, in one batch: what a mesh of it is made from (MakeFieldMesh())
-	FieldGrid SampleTerrainGrid(const SdfTerrainComponent& terrain, const glm::vec3& origin, float cellSize, const glm::ivec3& size);
+	// With `runParts`, its bricks' slabs in parts, the same bits.
+	FieldGrid SampleTerrainGrid(const SdfTerrainComponent& terrain, const glm::vec3& origin, float cellSize, const glm::ivec3& size,
+		const FieldRunParts& runParts = {});
 
 	// The most the value can change a metre, in any direction; 0 for a terrain with no layers
 	float GetTerrainMaxSlope(const SdfTerrainComponent& terrain);

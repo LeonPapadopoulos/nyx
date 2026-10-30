@@ -150,6 +150,12 @@ namespace Nyx
 		// worker waiting for others would hold one of them up.
 		void Wait(const JobGroup& group) const;
 
+		// Runs `part(index)` for every index below `count`, each once, here and on workers free to
+		// help, and returns once all have run. The caller takes parts too and only ever waits for
+		// parts already running elsewhere, never for a job still queued, so a job may call it: helpers
+		// that start after the parts are gone return at once. At most `maxHelpers` workers help.
+		void ParallelFor(size_t count, const std::function<void(size_t)>& part, EJobPriority priority = EJobPriority::High, uint32_t maxHelpers = UINT32_MAX);
+
 		JobSystemStats GetStats() const;
 
 	private:

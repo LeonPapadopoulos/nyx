@@ -247,6 +247,50 @@ namespace Nyx
 		}
 	}
 
+	void JobSystem::ParallelFor(size_t count, const std::function<void(size_t)>& part, EJobPriority priority, uint32_t maxHelpers)
+	{
+		const size_t helpers = std::min<size_t>({ count > 0 ? count - 1 : 0, Workers.size(), maxHelpers });
+		if (helpers == 0)
+		{
+			for (size_t index = 0; index < count; ++index)
+			{
+				part(index);
+			}
+			return;
+		}
+
+		// The parts not taken yet, and those done: a helper reads the part only once it has taken an
+		// index below the count, which the caller waits for, so it never outlives the call
+		struct Shared
+		{
+			std::atomic<size_t> Next = 0;
+			std::atomic<size_t> Done = 0;
+			const std::function<void(size_t)>* Part = nullptr;
+			size_t Count = 0;
+		};
+		auto shared = std::make_shared<Shared>();
+		shared->Part = &part;
+		shared->Count = count;
+		auto take = [](Shared& state)
+		{
+			for (size_t index = state.Next.fetch_add(1, std::memory_order_relaxed); index < state.Count;
+				 index = state.Next.fetch_add(1, std::memory_order_relaxed))
+			{
+				(*state.Part)(index);
+				state.Done.fetch_add(1, std::memory_order_release);
+			}
+		};
+		for (size_t helper = 0; helper < helpers; ++helper)
+		{
+			Schedule([shared, take] { take(*shared); }, priority);
+		}
+		take(*shared);
+		while (shared->Done.load(std::memory_order_acquire) < count)
+		{
+			std::this_thread::yield();
+		}
+	}
+
 	JobSystemStats JobSystem::GetStats() const
 	{
 		JobSystemStats stats;

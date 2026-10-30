@@ -922,6 +922,68 @@ namespace
 
 	const std::filesystem::path SampleScenePath = "Scenes/SdfTerrainTest.nyxscene";
 
+	// Not a test: digs in the sample scene as the editor makes them, on every worker at 60 frames a
+	// second, where its camera looks; how long each takes to be drawn, and where the time goes
+	void TimeAnEdit()
+	{
+		Registry world;
+		Require(SceneSerializer::LoadFromFile(Nyx::Paths::GetAssetsDir() / SampleScenePath, world),
+			"The sample scene can't be loaded; NyxTerrainChunksTests --write-scene writes it");
+		Entity terrain;
+		world.Each<SdfTerrainComponent>([&](Entity entity, SdfTerrainComponent&) { terrain = entity; });
+		TransformComponent camera;
+		world.Each<CameraComponent>([&](Entity entity, CameraComponent&) { camera = world.Get<TransformComponent>(entity); });
+		const glm::vec3 viewpoint = camera.Position;
+		JobSystem& jobs = JobSystem::Get();
+		UpdateUntilSettled(world, { &viewpoint, 1 }, jobs, terrain);
+
+		const glm::vec3 forward = camera.Rotation * glm::vec3(0.0f, 0.0f, -1.0f);
+		for (int dig = 0; dig < 6; ++dig)
+		{
+			const glm::vec3 aim = glm::normalize(forward + glm::vec3(0.04f * float(dig - 3), -0.15f, 0.0f));
+			const std::optional<TerrainBrushHit> hit = CastTerrainBrush(world, Ray{ viewpoint, aim }, 2000.0f, terrain);
+			Require(hit.has_value(), "The camera should look at the terrain");
+			const TerrainChunksStats before = world.Get<TerrainChunksComponent>(terrain).Stats;
+			SdfTerrainEdit edit;
+			edit.Position = hit->LocalPoint;
+			edit.Radius = 2.0f;
+			edit.BlendRadius = 0.5f;
+			AppendTerrainEdit(world.Get<SdfTerrainComponent>(terrain), edit);
+
+			const auto start = std::chrono::steady_clock::now();
+			int frames = 0;
+			double longest = 0.0;
+			double planned = -1.0;
+			for (;;)
+			{
+				const auto due = std::chrono::steady_clock::now() + std::chrono::microseconds(16667);
+				const auto frame = std::chrono::steady_clock::now();
+				UpdateTerrainChunks(world, { &viewpoint, 1 }, jobs);
+				longest = std::max(longest, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - frame).count());
+				++frames;
+				const TerrainChunksStats& stats = world.Get<TerrainChunksComponent>(terrain).Stats;
+				if (planned < 0.0 && (stats.Pending > 0 || stats.Swaps > before.Swaps))
+				{
+					planned = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+				}
+				if (stats.bSettled && stats.Pending == 0)
+				{
+					break;
+				}
+				while (std::chrono::steady_clock::now() < due)
+				{
+					std::this_thread::yield();
+				}
+			}
+			const double drawn = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+			const TerrainChunksComponent& chunks = world.Get<TerrainChunksComponent>(terrain);
+			std::cout << std::fixed << std::setprecision(1) << "A dig " << glm::length(hit->Point - viewpoint) << " m away: drawn after " << drawn << " ms, "
+					  << frames << " frames; " << (chunks.Stats.Made - before.Made) << " chunks made, jobs begun after " << planned
+					  << " ms; the last chunk sampled in " << chunks.Stats.LastSampleMilliseconds << " ms, meshed in " << chunks.Stats.LastMeshMilliseconds
+					  << " ms; the longest frame " << longest << " ms; finest level " << world.Get<SdfTerrainComponent>(terrain).FinestLevel << "\n";
+		}
+	}
+
 	Entity AddNamed(Registry& world, const std::string& name, const TransformComponent& transform)
 	{
 		const Entity entity = world.CreateEntity();
@@ -1075,12 +1137,21 @@ int main(int argc, char** argv)
 			 } },
 			{ "viewpoint", TestChunksRoundAViewpoint }, { "moving", TestMovingAndViewDistance }, { "values", TestNewValues },
 			{ "removed", TestRemovedEmptyAndMoved }, { "edits", TestEdits }, { "undo", TestUndoCost }, { "brush", TestBrush }, { "scene", TestTheSampleScene }, { "time", TimeAView } };
+		// Not run unless asked for: a measure of the sample scene, not a check
+		const std::vector<std::pair<std::string, void (*)()>> measures{ { "editdelay", TimeAnEdit } };
 		const char* only = argc > 2 && std::strcmp(argv[1], "--only") == 0 ? argv[2] : nullptr;
 		for (const auto& [name, test] : tests)
 		{
 			if (only == nullptr || ("," + std::string(only) + ",").find("," + name + ",") != std::string::npos)
 			{
 				test();
+			}
+		}
+		for (const auto& [name, measure] : measures)
+		{
+			if (only != nullptr && ("," + std::string(only) + ",").find("," + name + ",") != std::string::npos)
+			{
+				measure();
 			}
 		}
 	}

@@ -1495,14 +1495,17 @@ game, coarser the farther, and collides while the world runs.
   the next step; code that owns the world adds one by `AppendTerrainEdit()`.
   - Only the chunks an edit can change are made again. A chunk made keeps what its mesh read of
     the field (`TerrainChunkSamples`): the meshers read a sample's value only near the surface,
-    elsewhere only whether it is inside, the field itself only round sharp vertices and up the
-    sky's rays. So an edit that can't turn the field's sign in the chunk's grids or up its sky's
-    rays (45 degrees and steeper from the surface), nor change a sample near its surface, leaves
-    its mesh the same bits, and the chunk stays drawn; a few metres' dig makes a handful of chunks
+    elsewhere only whether it is inside, the field itself only round sharp vertices (the points
+    they asked, kept with what they got) and up the sky's rays. So an edit that can't turn the
+    field's sign in the chunk's grids or up its sky's rays (45 degrees and steeper from the
+    surface), nor change a sample near its surface or a value a sharp vertex asked for, leaves its
+    mesh the same bits, and the chunk stays drawn; a few metres' dig makes a handful of chunks
     again. Collision's bodies are kept the same way. A chunk made again is made from a copy of the
     terrain with only the edits reaching what it samples, the same bits.
   - For new edits alone, the camera where it was, the chunks are chosen again at once, without a
-    worker's round trip.
+    worker's round trip, and made before anything else, each one's sampling and sky shared out
+    among the workers free (`JobSystem::ParallelFor()`), the same bits: in the sample scene a dig is
+    drawn 2 to 3 frames after it is made.
   - Drawn and in collision together: each holds what it made for new edits until the other has its
     own, then both go in, the near levels' chunks with collision and the coarser ones once made; if
     that takes longer than *Activation Deadline* (0.25 s), each goes in when it is ready, and the

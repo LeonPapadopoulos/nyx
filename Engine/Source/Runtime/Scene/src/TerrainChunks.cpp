@@ -505,10 +505,8 @@ namespace Nyx
 		// A grid's bricks near the surface into `out`: those of 4 x 4 x 4 cells (their samples, the
 		// faces between them shared) the surface crosses (inside and outside samples both), and those
 		// next to them, even at a corner, and those overlapping `alsoNear` (another grid's, a cell
-		// round them). A brick the surface crosses with an inside sample of a sharp material was
-		// asked the field in, if the mesher asks.
-		void AddNearSurfaceBricks(const FieldGrid& grid, const std::vector<bool>& sharpMaterials, bool bAsks,
-			const std::vector<TerrainChunkSamples::Brick>* alsoNear, std::vector<TerrainChunkSamples::Brick>& out)
+		// round them)
+		void AddNearSurfaceBricks(const FieldGrid& grid, const std::vector<TerrainChunkSamples::Brick>* alsoNear, std::vector<TerrainChunkSamples::Brick>& out)
 		{
 			constexpr int Cells = 4;
 			const glm::ivec3 count = glm::max((grid.Size - 1 + (Cells - 1)) / Cells, glm::ivec3(1));
@@ -534,7 +532,6 @@ namespace Nyx
 						read.Brick.Highest = -std::numeric_limits<float>::max();
 						bool bInside = false;
 						bool bOutside = false;
-						bool bSharpInside = false;
 						for (int k = first.z; k <= last.z; ++k)
 						{
 							for (int j = first.y; j <= last.y; ++j)
@@ -548,14 +545,11 @@ namespace Nyx
 									const bool bIn = value < 0.0f;
 									bInside = bInside || bIn;
 									bOutside = bOutside || !bIn;
-									const uint32_t material = grid.GetMaterial(i, j, k);
-									bSharpInside = bSharpInside || (bIn && material < sharpMaterials.size() && sharpMaterials[material]);
 								}
 							}
 						}
 						read.bCrossed = bInside && bOutside;
 						read.Brick.bCrossed = read.bCrossed;
-						read.Brick.bAsked = bAsks && read.bCrossed && bSharpInside;
 					}
 				}
 			}
@@ -597,7 +591,7 @@ namespace Nyx
 		}
 	}
 
-	bool CanTerrainEditChangeChunk(const TerrainChunkSamples& samples, const SdfTerrainEdit& edit, float maxSlope)
+	bool CanTerrainEditChangeChunk(const TerrainChunkSamples& samples, const SdfTerrainEdit& edit)
 	{
 		if (CanTerrainEditTurnSign(edit, samples.GridMin, samples.GridMax))
 		{
@@ -629,13 +623,9 @@ namespace Nyx
 		{
 			return false;
 		}
-		// Round a crossing the field is within the slope times a cell of 0, so within that of the
-		// brick's samples
-		const float asked = maxSlope * samples.CellSize * 1.1f;
 		for (const TerrainChunkSamples::Brick& brick : samples.NearSurface)
 		{
-			if (CanTerrainEditChangeValues(edit, brick.Min, brick.Max, brick.Lowest, brick.Highest) ||
-				(brick.bAsked && CanTerrainEditChangeValues(edit, brick.Min - samples.CellSize, brick.Max + samples.CellSize, brick.Lowest - asked, brick.Highest + asked)))
+			if (CanTerrainEditChangeValues(edit, brick.Min, brick.Max, brick.Lowest, brick.Highest))
 			{
 				return true;
 			}
@@ -644,7 +634,7 @@ namespace Nyx
 	}
 
 	uint64_t TerrainChunkKeeps::Get(const SdfTerrainComponent& terrain, const std::vector<uint64_t>& runs, const TerrainChunkId& id, uint64_t madeEdits,
-		const TerrainChunkSamples* samples, uint64_t now, float maxSlope)
+		const TerrainChunkSamples* samples, uint64_t now)
 	{
 		// Made with the first edits of these, the same ones
 		const size_t count = terrain.Edits.size();
@@ -659,7 +649,7 @@ namespace Nyx
 		}
 		for (; kept.Seen < count && !kept.bChanged; ++kept.Seen)
 		{
-			kept.bChanged = CanTerrainEditChangeChunk(*samples, terrain.Edits[kept.Seen], maxSlope);
+			kept.bChanged = CanTerrainEditChangeChunk(*samples, terrain.Edits[kept.Seen]);
 		}
 		kept.Seen = count;
 		kept.SeenHash = runs[count];
@@ -667,7 +657,7 @@ namespace Nyx
 	}
 
 	MeshData MakeTerrainChunkMesh(const SdfTerrainComponent& allEdits, const TerrainChunkId& id, const TerrainNeighbourhood& neighbourhood, TerrainChunkTimes* outTimes,
-		TerrainChunkSamples* outSamples)
+		TerrainChunkSamples* outSamples, const FieldRunParts& runParts)
 	{
 		const auto start = std::chrono::steady_clock::now();
 		// With only the edits that can change what it samples: the same bits, far fewer edits to pass
@@ -685,7 +675,7 @@ namespace Nyx
 		const glm::vec3 corner = ChunkCorner(id);
 		// Two cells before the corner and one past the far side: the cells the chunk's quads join, and
 		// the samples either side of their corners
-		FieldGrid grid = SampleTerrainGrid(terrain, corner - 2.0f * cell, cell, glm::ivec3(TerrainChunkCells + 4));
+		FieldGrid grid = SampleTerrainGrid(terrain, corner - 2.0f * cell, cell, glm::ivec3(TerrainChunkCells + 4), runParts);
 
 		// Next to coarser chunks: their samples, three of their cells round this one, and this one's
 		// samples where they touch theirs and between them their average
@@ -693,7 +683,7 @@ namespace Nyx
 		FieldGrid coarse;
 		if (bCoarser)
 		{
-			coarse = SampleTerrainGrid(terrain, corner - 6.0f * cell, 2.0f * cell, glm::ivec3(TerrainChunkCells / 2 + 7));
+			coarse = SampleTerrainGrid(terrain, corner - 6.0f * cell, 2.0f * cell, glm::ivec3(TerrainChunkCells / 2 + 7), runParts);
 			for (int k = 0; k < grid.Size.z; ++k)
 			{
 				for (int j = 0; j < grid.Size.y; ++j)
@@ -756,7 +746,34 @@ namespace Nyx
 				settings.SharpMaterials[material] = true;
 			}
 		}
-		settings.Field = [&terrain](const float* x, const float* y, const float* z, size_t count, float* out) { SampleTerrainBatch(terrain, x, y, z, count, out); };
+		// Where the mesher asks the field itself in its grids, a cell round them (round sharp vertices'
+		// crossings), and what it got: what its mesh read there; past them the sky's rays, which read
+		// only whether it is inside
+		std::vector<glm::vec4> asked;
+		glm::vec3 askedMin = grid.Origin - cell;
+		glm::vec3 askedMax = grid.Origin + glm::vec3(grid.Size - 1) * cell + cell;
+		if (bCoarser)
+		{
+			askedMin = glm::min(askedMin, coarse.Origin - cell);
+			askedMax = glm::max(askedMax, coarse.Origin + glm::vec3(coarse.Size - 1) * coarse.CellSize + cell);
+		}
+		const bool bRecordAsked = outSamples != nullptr;
+		// The sky's parts ask from other threads
+		std::mutex askedLock;
+		settings.RunParts = runParts;
+		settings.Field = [&terrain, &asked, &askedLock, askedMin, askedMax, bRecordAsked](const float* x, const float* y, const float* z, size_t count, float* out)
+		{
+			SampleTerrainBatch(terrain, x, y, z, count, out);
+			for (size_t i = 0; i < count && bRecordAsked; ++i)
+			{
+				const glm::vec3 point(x[i], y[i], z[i]);
+				if (glm::all(glm::greaterThanEqual(point, askedMin)) && glm::all(glm::lessThanEqual(point, askedMax)))
+				{
+					std::lock_guard lock(askedLock);
+					asked.push_back(glm::vec4(point, out[i]));
+				}
+			}
+		};
 		// Next to another level, or nothing, the seams: what is round it by the neighbourhood, and of
 		// the edges on its faces those it makes, as the finest chunks that have them, the last of them
 		if (std::any_of(neighbourhood.Levels.begin(), neighbourhood.Levels.end(), [](int8_t level) { return level != 0; }))
@@ -785,26 +802,47 @@ namespace Nyx
 		{
 			TerrainChunkSamples& read = *outSamples;
 			read = {};
-			const bool bAsks = terrain.Mesher == ESdfTerrainMesher::Dual;
-			AddNearSurfaceBricks(grid, settings.SharpMaterials, bAsks, nullptr, read.NearSurface);
+			AddNearSurfaceBricks(grid, nullptr, read.NearSurface);
 			if (bCoarser)
 			{
 				const std::vector<TerrainChunkSamples::Brick> fine = read.NearSurface;
-				AddNearSurfaceBricks(coarse, settings.SharpMaterials, bAsks, &fine, read.NearSurface);
+				AddNearSurfaceBricks(coarse, &fine, read.NearSurface);
+			}
+			// The points asked, in bricks of the finer grid's size: each the box of its points and
+			// the lowest and highest the field was at them
+			std::unordered_map<uint64_t, TerrainChunkSamples::Brick> askedBricks;
+			for (const glm::vec4& point : asked)
+			{
+				const glm::ivec3 at(glm::floor((glm::vec3(point) - grid.Origin) / (4.0f * cell)));
+				auto [it, bAdded] = askedBricks.try_emplace(PackId({ 0, at }));
+				TerrainChunkSamples::Brick& brick = it->second;
+				if (bAdded)
+				{
+					brick.Min = brick.Max = glm::vec3(point);
+					brick.Lowest = brick.Highest = point.w;
+					brick.bAsked = true;
+					continue;
+				}
+				brick.Min = glm::min(brick.Min, glm::vec3(point));
+				brick.Max = glm::max(brick.Max, glm::vec3(point));
+				brick.Lowest = std::min(brick.Lowest, point.w);
+				brick.Highest = std::max(brick.Highest, point.w);
+			}
+			for (const auto& [key, brick] : askedBricks)
+			{
+				read.NearSurface.push_back(brick);
 			}
 			read.CellSize = cell;
-			const float asked = GetTerrainMaxSlope(terrain) * cell * 1.1f;
 			read.NearMin = glm::vec3(std::numeric_limits<float>::max());
 			read.NearMax = glm::vec3(-std::numeric_limits<float>::max());
 			read.NearLowest = std::numeric_limits<float>::max();
 			read.NearHighest = -std::numeric_limits<float>::max();
 			for (const TerrainChunkSamples::Brick& brick : read.NearSurface)
 			{
-				const float round = brick.bAsked ? cell : 0.0f;
-				read.NearMin = glm::min(read.NearMin, brick.Min - round);
-				read.NearMax = glm::max(read.NearMax, brick.Max + round);
-				read.NearLowest = std::min(read.NearLowest, brick.Lowest - (brick.bAsked ? asked : 0.0f));
-				read.NearHighest = std::max(read.NearHighest, brick.Highest + (brick.bAsked ? asked : 0.0f));
+				read.NearMin = glm::min(read.NearMin, brick.Min);
+				read.NearMax = glm::max(read.NearMax, brick.Max);
+				read.NearLowest = std::min(read.NearLowest, brick.Lowest);
+				read.NearHighest = std::max(read.NearHighest, brick.Highest);
 			}
 			// The grids' box: the finer one's, and the coarser one's round it
 			read.GridMin = grid.Origin;
@@ -1054,7 +1092,6 @@ namespace Nyx
 			}
 			plan.Surface.resize(plan.Tree.Leaves.size());
 			plan.ChunkEdits.resize(plan.Tree.Leaves.size());
-			const float slope = GetTerrainMaxSlope(snapshot);
 			for (size_t index = 0; index < plan.Tree.Leaves.size(); ++index)
 			{
 				const TerrainChunkId& id = plan.Tree.Leaves[index];
@@ -1063,7 +1100,7 @@ namespace Nyx
 				plan.ChunkEdits[index] = field.GetEdits();
 				if (const auto found = made.find(PackId(id)); found != made.end())
 				{
-					plan.ChunkEdits[index] = keeps.Get(snapshot, runs, id, found->second.Edits, found->second.Samples.get(), field.GetEdits(), slope);
+					plan.ChunkEdits[index] = keeps.Get(snapshot, runs, id, found->second.Edits, found->second.Samples.get(), field.GetEdits());
 				}
 			}
 		}
@@ -1390,8 +1427,15 @@ namespace Nyx
 					const TerrainNeighbourhood neighbourhood = chunk.Neighbourhood;
 					const uint64_t jobShape = streaming.Shape;
 					const uint64_t jobEdits = chunk.Edits;
+					// For new edits on the tree drawn, waited for: soonest, its parts on every worker free
+					const bool bEdit = streaming.NextEdits != streaming.DrawnEdits && streaming.Next->Leaves == streaming.Drawn.Leaves;
+					FieldRunParts runParts;
+					if (bEdit)
+					{
+						runParts = [&jobs](size_t count, const std::function<void(size_t)>& part) { jobs.ParallelFor(count, part); };
+					}
 					JobHandle handle = jobs.Schedule(
-						[shared, snapshot, id, neighbourhood, jobShape, jobEdits]
+						[shared, snapshot, id, neighbourhood, jobShape, jobEdits, runParts]
 						{
 							Detail::TerrainStreaming::Done done;
 							done.Id = id;
@@ -1399,12 +1443,12 @@ namespace Nyx
 							done.Edits = jobEdits;
 							done.Neighbourhood = neighbourhood;
 							auto samples = std::make_shared<TerrainChunkSamples>();
-							done.Mesh = std::make_shared<const MeshData>(MakeTerrainChunkMesh(*snapshot, id, neighbourhood, &done.Times, samples.get()));
+							done.Mesh = std::make_shared<const MeshData>(MakeTerrainChunkMesh(*snapshot, id, neighbourhood, &done.Times, samples.get(), runParts));
 							done.Samples = std::move(samples);
 							std::lock_guard lock(shared->Lock);
 							shared->Finished.push_back(std::move(done));
 						},
-						EJobPriority::Normal);
+						bEdit ? EJobPriority::High : EJobPriority::Normal);
 					streaming.Jobs.emplace(packed, Detail::TerrainStreaming::InFlight{ handle, jobShape, jobEdits, neighbourhood.Hash() });
 				}
 
