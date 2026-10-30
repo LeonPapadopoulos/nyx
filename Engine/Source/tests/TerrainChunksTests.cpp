@@ -6,6 +6,7 @@
 // distance; drawn all at once, a tree at a time; moving away lets them go and makes new ones; new
 // values make them again while the old ones stay drawn; another view distance alone makes nothing
 // again; edits make only the chunks they reach again, drawn with collision's or at the deadline;
+// the terrain brush's strokes, rays and ring;
 // removing the terrain takes them and its jobs away; a terrain with no layers has none; a
 // terrain entity moved has its chunks round it; the sample scene's terrain is made. Prints how long
 // a view takes to make.
@@ -25,6 +26,7 @@
 #include "PhysicsComponents.h"
 #include "SceneSerializer.h"
 #include "SdfTerrain.h"
+#include "TerrainBrush.h"
 #include "TerrainChunks.h"
 #include "TestSupport.h"
 #include "TransformComponent.h"
@@ -579,6 +581,60 @@ namespace
 		std::cout << "With collision: drawn at the deadline after " << waited * 1000.0 << " ms; with it ready at 50 ms, after " << together * 1000.0 << " ms\n";
 	}
 
+	// The terrain brush: a stroke's edits a spacing apart, those between filled in, a capsule's rods
+	// joined end to end; a ray meeting the nearest of two terrains through their transforms, or the
+	// one asked for; its ring on the surface's plane; its dig a dig
+	void TestBrush()
+	{
+		TerrainBrushSettings settings;
+		settings.Radius = 2.0f;
+		settings.Spacing = 0.5f;
+		TerrainBrushStroke balls(settings, Entity{});
+		Require(balls.MoveTo(glm::vec3(0.0f)).size() == 1, "A stroke should make its first edit where it starts");
+		Require(balls.MoveTo(glm::vec3(0.4f, 0.0f, 0.0f)).empty(), "A stroke shouldn't make another before it has gone its spacing");
+		const std::vector<SdfTerrainEdit> jump = balls.MoveTo(glm::vec3(3.4f, 0.0f, 0.0f));
+		Require(jump.size() == 3 && std::fabs(jump[0].Position.x - 1.0f) < 1e-5f && std::fabs(jump[2].Position.x - 3.0f) < 1e-5f,
+			"A stroke that jumps should fill in its edits a spacing apart");
+
+		settings.Shape = ESdfTerrainEditShape::Capsule;
+		TerrainBrushStroke rods(settings, Entity{});
+		rods.MoveTo(glm::vec3(0.0f));
+		const std::vector<SdfTerrainEdit> joined = rods.MoveTo(glm::vec3(0.0f, 0.0f, 2.5f));
+		Require(joined.size() == 2 && joined[0].Position == glm::vec3(0.0f) && joined[0].End == joined[1].Position && joined[1].End.z == 2.0f,
+			"A capsule stroke's rods should join end to end");
+
+		Registry world;
+		SdfTerrainComponent flat;
+		flat.Layers[0].Height = 0.0f;
+		flat.Layers[0].Amplitude = 0.0f;
+		const Entity low = AddTerrain(world, flat, glm::vec3(10.0f, 5.0f, 0.0f));
+		const Entity high = AddTerrain(world, flat, glm::vec3(0.0f, 20.0f, 0.0f));
+		const Ray down{ glm::vec3(12.0f, 50.0f, 3.0f), glm::vec3(0.0f, -1.0f, 0.0f) };
+		const std::optional<TerrainBrushHit> hit = CastTerrainBrush(world, down, 1000.0f);
+		Require(hit && hit->Terrain == high && std::fabs(hit->Point.y - 20.0f) < 0.02f && std::fabs(hit->Distance - 30.0f) < 0.02f,
+			"A ray should meet the nearest terrain where it is");
+		const std::optional<TerrainBrushHit> lower = CastTerrainBrush(world, down, 1000.0f, low);
+		Require(lower && lower->Terrain == low && std::fabs(lower->Point.y - 5.0f) < 0.02f && std::fabs(lower->LocalPoint.y) < 0.02f &&
+					std::fabs(lower->LocalPoint.x - 2.0f) < 1e-4f && glm::length(lower->Normal - glm::vec3(0.0f, 1.0f, 0.0f)) < 1e-3f,
+			"A ray should meet the terrain asked for, in its space too");
+		Require(!CastTerrainBrush(world, down, 20.0f, low), "A ray shouldn't meet a terrain past its reach");
+
+		for (const glm::vec3& point : GetTerrainBrushOutline(*lower, 2.0f))
+		{
+			Require(std::fabs(glm::length(point - lower->Point) - 2.0f) < 1e-4f && std::fabs(point.y - lower->Point.y) < 1e-4f,
+				"The brush's ring should be its radius round the hit, on the surface's plane");
+		}
+
+		SdfTerrainComponent& dug = world.Get<SdfTerrainComponent>(low);
+		settings.Shape = ESdfTerrainEditShape::Sphere;
+		TerrainBrushStroke dig(settings, low);
+		for (const SdfTerrainEdit& edit : dig.MoveTo(lower->LocalPoint))
+		{
+			AppendTerrainEdit(dug, edit);
+		}
+		Require(dug.Edits.size() == 1 && SampleTerrainValue(dug, lower->LocalPoint - glm::vec3(0.0f, 1.0f, 0.0f)) > 0.0f, "The brush should dig where it meets the terrain");
+	}
+
 	// Moving away lets the chunks behind go and makes those ahead, the chunks drawn changing only all
 	// at once; another view distance alone makes nothing again
 	void TestMovingAndViewDistance()
@@ -874,7 +930,7 @@ int main(int argc, char** argv)
 				 TestSeamsAreClosed(ESdfTerrainMesher::MarchingCubes, -1);
 			 } },
 			{ "viewpoint", TestChunksRoundAViewpoint }, { "moving", TestMovingAndViewDistance }, { "values", TestNewValues },
-			{ "removed", TestRemovedEmptyAndMoved }, { "edits", TestEdits }, { "scene", TestTheSampleScene }, { "time", TimeAView } };
+			{ "removed", TestRemovedEmptyAndMoved }, { "edits", TestEdits }, { "brush", TestBrush }, { "scene", TestTheSampleScene }, { "time", TimeAView } };
 		const char* only = argc > 2 && std::strcmp(argv[1], "--only") == 0 ? argv[2] : nullptr;
 		for (const auto& [name, test] : tests)
 		{

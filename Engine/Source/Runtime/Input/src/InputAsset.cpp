@@ -9,6 +9,7 @@
 #include "PropertyValueAccess.h"
 #include "ReflectedArchiveSerializer.h"
 #include "ReflectionUtils.h"
+#include "TerrainBrushInput.h"
 #include "ThirdPersonInput.h"
 
 #include <algorithm>
@@ -568,6 +569,16 @@ namespace Nyx::Input
 			asset.Actions.push_back(std::move(action));
 		}
 		for (InputContextData& context : ThirdPersonInput::MakeContextsData(ThirdPersonInput::Settings{}))
+		{
+			asset.Contexts.push_back(std::move(context));
+		}
+
+		// Its terrain brush
+		for (InputActionData& action : TerrainBrushInput::MakeActionsData())
+		{
+			asset.Actions.push_back(std::move(action));
+		}
+		for (InputContextData& context : TerrainBrushInput::MakeContextsData(TerrainBrushInput::Settings{}))
 		{
 			asset.Contexts.push_back(std::move(context));
 		}

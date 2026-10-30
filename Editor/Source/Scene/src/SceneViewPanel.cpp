@@ -180,8 +180,11 @@ namespace Nyx::Editor
 			// While an entity reference's eyedropper waits, a click picks for it (ApplyPickResult()),
 			// even on the gizmo
 			const bool bPickingEntity = editing.DetailsContext.EntityPick.IsWaiting();
-			const bool bGizmoConsumedInteraction =
-				editing.Gizmo.TickAndDraw(
+			// The terrain brush, while on for the selected terrain, in place of the gizmo and picking
+			const bool bBrush = !bShowingGameView && !bPickingEntity && editing.TerrainBrush.IsActive(editing.Scene);
+			const bool bGizmoConsumedInteraction = bBrush
+				? editing.TerrainBrush.TickAndDraw(*Renderer, editing.Scene, editing.Transactions, SceneViewId, imageMin, imageSize, bImageHovered)
+				: editing.Gizmo.TickAndDraw(
 					*Renderer,
 					editing.Scene,
 					editing.Transactions,

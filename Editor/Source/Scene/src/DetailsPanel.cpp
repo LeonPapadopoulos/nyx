@@ -8,6 +8,7 @@
 #include "ReflectedArchiveSerializer.h"
 #include "ReflectedPropertyDrawer.h"
 #include "ReflectionSourceRegistry.h"
+#include "SdfTerrainComponent.h"
 #include "SceneEditor.h"
 #include "TransactionObjectRefHelpers.h"
 #include "UIWidgets.h"
@@ -171,6 +172,12 @@ namespace Nyx::Editor
 			}
 
 			ImGui::PopID();
+		}
+
+		// An SDF terrain's brush, after its components
+		if (world.Has<Nyx::SdfTerrainComponent>(selectedEntity))
+		{
+			editing.TerrainBrush.DrawDetails();
 		}
 
 		DrawRuntimeSection(world, selectedEntity);

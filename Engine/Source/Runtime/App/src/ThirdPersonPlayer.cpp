@@ -12,6 +12,7 @@ namespace Nyx
 {
 	ThirdPersonPlayer::ThirdPersonPlayer(Input::InputSystem& input)
 		: ThirdPerson(input, Input::ThirdPersonInput::Settings{})
+		, TerrainBrush(input)
 	{
 	}
 
@@ -43,6 +44,14 @@ namespace Nyx
 				frame.Commands.Add(*command);
 			}
 		}
+
+		// Looking around, the cursor is captured: the brush aims where the camera looks
+		TerrainBrush.Update(frame, character && bFreeLook ? frame.ViewCenterRay : frame.CursorRay);
+	}
+
+	void ThirdPersonPlayer::DrawUI(const PlayerView& view)
+	{
+		TerrainBrush.DrawUI(view);
 	}
 
 	std::optional<Entity> FindThirdPersonCharacter(const Registry& world)

@@ -20,6 +20,7 @@ namespace Nyx::Editor
 	{
 		DetailsContext.CancelPendingEdits();
 		Gizmo.CancelInteraction();
+		TerrainBrush.EndStroke(Scene, Transactions);
 	}
 
 	void SceneEditor::ForgetScene()

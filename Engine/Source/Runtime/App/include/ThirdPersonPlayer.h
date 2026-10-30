@@ -2,6 +2,7 @@
 
 #include "Entity.h"
 #include "PlayerController.h"
+#include "PlayerTerrainBrush.h"
 #include "ThirdPersonInput.h"
 
 #include <optional>
@@ -13,6 +14,8 @@ namespace Nyx
 	// W/A/S/D or the left stick relative to where the camera looks, Space or the pad's south button
 	// to jump. It asks for the orbit camera's free look while exploring; Tab switches to holding the
 	// right mouse button to look, with the cursor free, and back. Its input is ThirdPersonInput's.
+	// Where the world has an SDF terrain it carries a terrain brush (PlayerTerrainBrush, B), aimed at
+	// the picture's middle while exploring and at the cursor otherwise.
 	class ThirdPersonPlayer final : public IPlayerController
 	{
 	public:
@@ -21,6 +24,7 @@ namespace Nyx
 		explicit ThirdPersonPlayer(Input::InputSystem& input);
 
 		void Update(const PlayerFrame& frame) override;
+		void DrawUI(const PlayerView& view) override;
 
 		bool IsFreeLook() const
 		{
@@ -29,6 +33,7 @@ namespace Nyx
 
 	private:
 		Input::ThirdPersonInput ThirdPerson;
+		PlayerTerrainBrush TerrainBrush;
 		bool bFreeLook = true;
 	};
 

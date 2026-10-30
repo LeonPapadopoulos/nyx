@@ -6,6 +6,7 @@
 #include "SceneDocument.h"
 #include "SceneEntityTransactionDomain.h"
 #include "SceneOutlineTransactionDomain.h"
+#include "TerrainBrushTool.h"
 #include "TransactionSystem.h"
 #include "TransformGizmo.h"
 
@@ -27,8 +28,9 @@ namespace Nyx::Editor
 		SceneEditor(const SceneEditor&) = delete;
 		SceneEditor& operator=(const SceneEditor&) = delete;
 
-		// Drops the details panel's and the gizmo's edits in progress without applying them. Needed
-		// before anything that can move components in memory, since those edits point at components.
+		// Drops the details panel's and the gizmo's edits in progress without applying them, and ends
+		// the terrain brush's stroke as an undo step. Needed before anything that can move components
+		// in memory, since those edits point at components.
 		void CancelPendingEdits();
 
 		// Before the scene's registry is replaced (Open, New): undo steps, the selection and edits
@@ -75,6 +77,9 @@ namespace Nyx::Editor
 		InspectorDrawContext DetailsContext;
 
 		TransformGizmo Gizmo;
+
+		// Paints the selected SDF terrain in the scene views while on, in place of the gizmo
+		TerrainBrushTool TerrainBrush;
 
 		// Loads the assets of entities after edits, undo and redo, e.g. the mesh of a typed mesh
 		// path. Subscribed once the editor has an asset resolver.

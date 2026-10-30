@@ -35,6 +35,7 @@
 #include "ScatterBlockerComponent.h"
 #include "ScatterComponent.h"
 #include "ScatterInstances.h"
+#include "SdfTerrainComponent.h"
 #include "SceneEditor.h"
 #include "SceneFilePopups.h"
 #include "SceneOutlinerPanel.h"
@@ -550,6 +551,40 @@ namespace
 		Require(!world.Has<RuntimeMeshComponent>(ground), "A removed ground should take its mesh with it");
 		editing.Undo();
 		Require(world.Has<GroundComponent>(ground) && world.Has<RuntimeMeshComponent>(ground), "Undoing the removal should bring the ground and its mesh back");
+	}
+
+	// The terrain brush: on only with a terrain selected; a stroke's edits one undo step, undone and
+	// redone whole; a stroke that edits nothing no step
+	void TestTerrainBrushStroke()
+	{
+		SceneEditor editing;
+		Registry& world = editing.Scene.GetRegistry();
+		const Entity terrain = editing.Scene.CreateEntity("Terrain");
+		world.Add<SdfTerrainComponent>(terrain, SdfTerrainComponent{});
+		TerrainBrushTool& brush = editing.TerrainBrush;
+		brush.bOn = true;
+		Require(!brush.IsActive(editing.Scene), "The brush should need a terrain selected");
+		editing.Scene.GetSelection() = terrain;
+		Require(brush.IsActive(editing.Scene), "The brush should be on for a selected terrain");
+
+		brush.Settings.Radius = 2.0f;
+		brush.Settings.Spacing = 0.5f;
+		Require(brush.BeginStroke(editing.Scene, terrain, ESdfTerrainEditMode::Subtract), "A stroke should begin on a terrain");
+		brush.StrokeTo(editing.Scene, glm::vec3(0.0f));
+		brush.StrokeTo(editing.Scene, glm::vec3(5.0f, 0.0f, 0.0f));
+		Require(brush.EndStroke(editing.Scene, editing.Transactions), "A stroke that edits should be an undo step");
+		const std::vector<SdfTerrainEdit>& edits = world.Get<SdfTerrainComponent>(terrain).Edits;
+		Require(edits.size() == 6 && edits.front().Revision == 1 && edits.back().Revision == 6, "A 5 m stroke a metre apart should make 6 edits, revisions 1 to 6");
+
+		editing.Undo();
+		Require(world.Get<SdfTerrainComponent>(terrain).Edits.empty(), "Undoing a stroke should take all its edits");
+		editing.Redo();
+		Require(world.Get<SdfTerrainComponent>(terrain).Edits.size() == 6, "Redoing a stroke should bring them all back");
+
+		Require(brush.BeginStroke(editing.Scene, terrain, ESdfTerrainEditMode::Add), "Another stroke should begin");
+		Require(!brush.EndStroke(editing.Scene, editing.Transactions), "A stroke that edits nothing should be no undo step");
+		brush.bOn = false;
+		Require(!brush.IsActive(editing.Scene), "The brush should be off when turned off");
 	}
 
 	// A scatter and a blocker in the editor, followed each frame as EditorLayer::OnUpdate() follows
@@ -2356,6 +2391,7 @@ int main()
 		TestRuntimeDetails();
 		TestGroundFollowsEdits();
 		TestScatterFollowsBlockers();
+		TestTerrainBrushStroke();
 		TestDetailsHaveNoConflictingIds();
 		TestEntityReferenceCombo();
 		TestEntityReferenceDropFromOutliner();

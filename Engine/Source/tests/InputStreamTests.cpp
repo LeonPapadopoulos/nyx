@@ -253,7 +253,7 @@ namespace
 				{
 					const Nyx::Net::Message message = Nyx::MakeNetMessage(Nyx::InputDefinitionsMessage{ record.Bytes });
 					const Nyx::EditorLinkMessageText text = Nyx::DescribeEditorLinkMessage(message);
-					Require(text.Name == "InputDefinitions" && text.Summary == "11 actions, 10 contexts", "Definitions described: " + text.Summary);
+					Require(text.Name == "InputDefinitions" && text.Summary == "15 actions, 12 contexts", "Definitions described: " + text.Summary);
 					Require(text.Details.find("Context: FlyCamera (100), 7 bindings") != std::string::npos, "With every context: " + text.Details);
 
 					Nyx::InputDefinitionsMessage read;

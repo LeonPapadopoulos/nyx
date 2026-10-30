@@ -129,7 +129,7 @@ namespace
 		Nyx::ReadWarnings warnings;
 		const std::optional<InputAssetData> loaded = LoadInputAsset(path, warnings);
 		Require(loaded.has_value(), "And reads back");
-		Require(loaded->Contexts.size() == 8 && loaded->Contexts[0].Name == "EditorFlyCamera", "With the editor's and the game's contexts");
+		Require(loaded->Contexts.size() == 10 && loaded->Contexts[0].Name == "EditorFlyCamera", "With the editor's and the game's contexts");
 		Require(loaded->Contexts[0].Bindings[1].SwizzleY == -1, "Negative swizzles stay");
 		Require(loaded->PadProfiles.size() == 1 && loaded->PadProfiles[0].Model == EGamepadModel::DualShock4, "The profile's model stays");
 		Require(Near(loaded->PadProfiles[0].Overrides[0].Value, 0.25f), "And its override");

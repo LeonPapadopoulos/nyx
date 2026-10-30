@@ -21,7 +21,8 @@ namespace Nyx::Editor
 	struct EditorPreferences;
 
 	// A window that shows one of the renderer's scene views, with the transform gizmo, and selects
-	// what is clicked in it. With ambilight on, the view's blurred picture glows onto the editor
+	// what is clicked in it; while the terrain brush is on for the selected terrain, paints it
+	// instead (TerrainBrushTool). With ambilight on, the view's blurred picture glows onto the editor
 	// around it. The editor has any number of them (SceneViewSet), each numbered: "Scene",
 	// "Scene 2", "Scene 3"...
 	class SceneViewPanel

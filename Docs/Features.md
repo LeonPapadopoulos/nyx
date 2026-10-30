@@ -160,7 +160,8 @@ What a running game made of an entity while it runs, in the editor's Details pan
   in the next step, once, and the cursor's ray reaches the player.
 - The engine has one command of its own, `MoveCharacterCommand`, which walks a character; a
   game's player makes it from the Walk and Jump actions (`MakeMoveCharacterCommand()`). Without a
-  game module's player, Nyx's game uses its own, which does just that (`ThirdPersonPlayer`).
+  game module's player, Nyx's game uses its own, which does just that (`ThirdPersonPlayer`), and
+  where the world has an SDF terrain, carries a terrain brush ([SDF terrain](#sdf-terrain)).
 
 ## The game on its own
 
@@ -1507,6 +1508,19 @@ game, coarser the farther, and collides while the world runs.
     told on the terrain's *Terrain Collision* (`TerrainCollisionComponent::Events`) for that step.
   - Edits are a list on the terrain, not yet in a spatial index: a chunk passes them all once to
     keep those reaching it, and a query of the whole terrain (a sample, a ray) passes them all.
+- The terrain brush (`TerrainBrush.h`): edits where a ray meets the terrain, a stroke of them a
+  *Spacing* of the radius apart (a capsule's rods end to end, one smooth trench or ridge), with a
+  *Shape*, *Mode*, *Radius*, *Blend Radius*, *Material* and *Reach*.
+  - In the editor: select an SDF terrain and tick *Paint in the scene views* in its *Terrain Brush*
+    section of the Details panel. A scene view then shows the brush's ring where the mouse meets
+    the terrain, in place of the gizmo, and the left button paints a stroke, with Shift the other
+    of dig and heap; clicks don't select meanwhile. Each stroke is one undo step.
+  - In the game, Nyx's own player (`ThirdPersonPlayer`, through `PlayerTerrainBrush`): B turns the
+    brush on and off; while on, the left mouse button digs and Shift with it heaps up, by
+    `SdfTerrainEditCommand`s, aimed at the picture's middle while exploring and at the cursor
+    otherwise, and the wheel sizes it (not the camera's zoom or speed meanwhile); a ring shows where
+    it lands, a line what it does. Its input is `TerrainBrushInput`'s (in the default input asset;
+    added when an asset hasn't it).
 - `Assets/Scenes/SdfTerrainTest.nyxscene` (written by `NyxTerrainChunksTests --write-scene`):
   terraced hills with tunnels under them, a floating landmass of sharp stone with a hanging
   underside and chambers inside, out to 2 km, a sun, a camera that flies, and six balls that fall on
@@ -1576,7 +1590,8 @@ game, coarser the farther, and collides while the world runs.
   within the view distance, replaced all at once, let go of and made anew as the camera moves, made
   again for new values while the old stay, gone with the terrain; a dig making only the chunks it
   reaches again, undone, a stroke of edits while chunks are made leaving none stale, drawn with
-  collision or at the deadline; the sample scene),
+  collision or at the deadline; the terrain brush's strokes, rays and ring; the sample scene),
+  `NyxEditorPanelTests` (among the rest, a terrain brush stroke one undo step),
   `NyxTerrainChunksGpuTests` (the chunks drawn at three levels, picked as the terrain, in the debug
   view's colours, drawn where it is moved), `NyxTerrainCollisionTests` (the way out of a hill, a
   ball resting on the hills, a character walking 60 m on them, one falling 200 m past a floating

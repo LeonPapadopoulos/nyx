@@ -58,6 +58,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/FlyCameras.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/OrbitCameraInput.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/ThirdPersonInput.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Input/src/TerrainBrushInput.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputInspection.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputHistory.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Input/src/InputDebugView.cpp
@@ -99,6 +100,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/GradientNoiseAvx2.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/FieldMesher.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/SdfTerrain.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/TerrainBrush.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/TerrainChunks.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/GroundMesh.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ScatterComponent.cpp
@@ -240,6 +242,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/App/src/FrameStats.cpp
     ${NYX_ENGINE_ROOT}/Runtime/App/src/GameLaunchOptions.cpp
     ${NYX_ENGINE_ROOT}/Runtime/App/src/ThirdPersonPlayer.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/App/src/PlayerTerrainBrush.cpp
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/src/ReflectionUtils.cpp
@@ -294,6 +297,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Input/include/FlyCameras.h
     ${NYX_ENGINE_ROOT}/Runtime/Input/include/OrbitCameraInput.h
     ${NYX_ENGINE_ROOT}/Runtime/Input/include/ThirdPersonInput.h
+    ${NYX_ENGINE_ROOT}/Runtime/Input/include/TerrainBrushInput.h
     ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputInspection.h
     ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputHistory.h
     ${NYX_ENGINE_ROOT}/Runtime/Input/include/InputDebugView.h
@@ -335,6 +339,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/FieldMesher.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/SdfTerrain.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/SdfTerrainComponent.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/TerrainBrush.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/TerrainChunks.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/GroundMesh.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ScatterComponent.h
@@ -494,6 +499,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/App/include/GameModule.h
     ${NYX_ENGINE_ROOT}/Runtime/App/include/GameLaunchOptions.h
     ${NYX_ENGINE_ROOT}/Runtime/App/include/ThirdPersonPlayer.h
+    ${NYX_ENGINE_ROOT}/Runtime/App/include/PlayerTerrainBrush.h
 
     # Reflection
     ${NYX_ENGINE_ROOT}/Reflection/include/ReflectionTypes.h
