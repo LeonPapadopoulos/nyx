@@ -58,6 +58,16 @@ namespace Nyx
 #endif
 			NYX_PROFILE_THREAD(name.c_str());
 		}
+
+		// A notch below the threads that made the job system: where every core has a worker, the main
+		// thread's frame still gets its core whenever it is ready to run, rather than waiting its turn
+		// behind the background work
+		void LowerThreadPriority()
+		{
+#if defined(_WIN32)
+			SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+#endif
+		}
 	}
 
 	JobGroup::~JobGroup()
@@ -279,6 +289,7 @@ namespace Nyx
 	{
 		SetFloatingPointState(floatingPointState);
 		NameThread(index);
+		LowerThreadPriority();
 
 		Entry entry;
 		while (Take(entry))

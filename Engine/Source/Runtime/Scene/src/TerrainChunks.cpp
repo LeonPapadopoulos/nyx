@@ -761,6 +761,7 @@ namespace Nyx
 
 		void UpdateTerrain(Registry& world, Entity entity, const SdfTerrainComponent& terrain, std::span<const glm::vec3> worldViewpoints, JobSystem& jobs)
 		{
+
 			if (!world.Has<TerrainChunksComponent>(entity))
 			{
 				world.Add<TerrainChunksComponent>(entity, TerrainChunksComponent{});
@@ -956,7 +957,22 @@ namespace Nyx
 					{
 						next.insert(version);
 					}
-					std::erase_if(chunks.Chunks, [&](const TerrainChunk& chunk) { return !next.contains(VersionOf(chunk)); });
+					// Those replaced let go of on a worker: freeing hundreds of meshes at once costs the
+					// main thread milliseconds
+					std::vector<TerrainChunk> replaced;
+					std::erase_if(chunks.Chunks, [&](TerrainChunk& chunk)
+						{
+							if (next.contains(VersionOf(chunk)))
+							{
+								return false;
+							}
+							replaced.push_back(std::move(chunk));
+							return true;
+						});
+					if (!replaced.empty())
+					{
+						jobs.Schedule([replaced = std::move(replaced)] {}, EJobPriority::Low);
+					}
 					for (TerrainChunk& chunk : chunks.Chunks)
 					{
 						chunk.bDrawn = true;

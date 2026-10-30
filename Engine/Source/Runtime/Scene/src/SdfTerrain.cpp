@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstring>
+#include <limits>
 
 // Every operation as written, never fused into a multiply-add: the terrain is the same bits wherever
 // it is sampled
@@ -237,9 +239,48 @@ namespace Nyx
 			size_t Count = 0;
 		};
 
-		void SampleLayer(const SdfTerrainComponent& terrain, const SdfTerrainLayer& layer, const Block& block, float* out)
+		// A noise over X and Z alone (at Y = 0) for every point of a block, each different place once:
+		// a brick's points share their X and Z four times over. Places are told apart by their bits, so
+		// each gets exactly the value it would on its own.
+		void SampleFlatNoise(const FractalNoise3D& noise, bool bRidged, const Block& block, float* out)
 		{
 			static const std::array<float, BlockSize> Zeros{};
+			std::array<float, BlockSize> x;
+			std::array<float, BlockSize> z;
+			std::array<uint64_t, BlockSize> places;
+			std::array<uint8_t, BlockSize> placeOf;
+			size_t count = 0;
+			for (size_t i = 0; i < block.Count; ++i)
+			{
+				uint32_t xBits = 0;
+				uint32_t zBits = 0;
+				std::memcpy(&xBits, &block.X[i], sizeof(float));
+				std::memcpy(&zBits, &block.Z[i], sizeof(float));
+				const uint64_t place = uint64_t(xBits) | (uint64_t(zBits) << 32);
+				size_t found = 0;
+				while (found < count && places[found] != place)
+				{
+					++found;
+				}
+				if (found == count)
+				{
+					places[count] = place;
+					x[count] = block.X[i];
+					z[count] = block.Z[i];
+					++count;
+				}
+				placeOf[i] = static_cast<uint8_t>(found);
+			}
+			std::array<float, BlockSize> values;
+			SampleNoise(noise, bRidged, x.data(), Zeros.data(), z.data(), count, values.data());
+			for (size_t i = 0; i < block.Count; ++i)
+			{
+				out[i] = values[placeOf[i]];
+			}
+		}
+
+		void SampleLayer(const SdfTerrainComponent& terrain, const SdfTerrainLayer& layer, const Block& block, float* out)
+		{
 			std::array<float, BlockSize> first;
 			std::array<float, BlockSize> second;
 			std::array<float, BlockSize> third;
@@ -248,7 +289,7 @@ namespace Nyx
 			{
 			case ESdfTerrainLayerKind::Heightfield:
 			{
-				SampleNoise(MakeNoise(terrain, layer, ENoiseRole::Main), layer.bRidged, block.X, Zeros.data(), block.Z, block.Count, first.data());
+				SampleFlatNoise(MakeNoise(terrain, layer, ENoiseRole::Main), layer.bRidged, block, first.data());
 				for (size_t i = 0; i < block.Count; ++i)
 				{
 					const float height = Terrace(layer, layer.Height + layer.Amplitude * first[i]);
@@ -258,9 +299,9 @@ namespace Nyx
 			}
 			case ESdfTerrainLayerKind::Landmass:
 			{
-				SampleNoise(MakeNoise(terrain, layer, ENoiseRole::Main), layer.bRidged, block.X, Zeros.data(), block.Z, block.Count, first.data());
-				SampleNoise(MakeNoise(terrain, layer, ENoiseRole::Second), true, block.X, Zeros.data(), block.Z, block.Count, second.data());
-				SampleNoise(MakeNoise(terrain, layer, ENoiseRole::Third), false, block.X, Zeros.data(), block.Z, block.Count, third.data());
+				SampleFlatNoise(MakeNoise(terrain, layer, ENoiseRole::Main), layer.bRidged, block, first.data());
+				SampleFlatNoise(MakeNoise(terrain, layer, ENoiseRole::Second), true, block, second.data());
+				SampleFlatNoise(MakeNoise(terrain, layer, ENoiseRole::Third), false, block, third.data());
 				for (size_t i = 0; i < block.Count; ++i)
 				{
 					const float top = Terrace(layer, layer.Height + layer.Amplitude * first[i]);
@@ -411,6 +452,29 @@ namespace Nyx
 			return {};
 		}
 
+		// Whether joining a layer whose value lies within `layer` over a block can change values that lie
+		// within [lowest, highest] there: false only where the join is proven to give each value back
+		// exactly, so skipping it is the same bits. A smooth join returns the plain one exactly where the
+		// two are at least its radius apart (SmoothMinimum()), so the layer must be that far off, with a
+		// margin for the rounding of the comparison.
+		bool CanChange(const SdfTerrainLayer& layer, const Interval& range, float lowest, float highest)
+		{
+			const float radius = std::max(layer.BlendRadius, 0.0f);
+			auto clear = [&](float apart, float a, float b) { return apart > radius + 1e-5f * (1.0f + std::fabs(a) + std::fabs(b) + radius); };
+			switch (layer.Combine)
+			{
+			case ESdfTerrainCombine::Add:
+				// The minimum keeps what was there while the layer is above it
+				return !clear(range.Low - highest, range.Low, highest);
+			case ESdfTerrainCombine::Carve:
+				// The maximum with the layer's negative keeps it while that is below it
+				return !clear(range.Low + lowest, range.Low, lowest);
+			case ESdfTerrainCombine::Intersect:
+				return !clear(lowest - range.High, lowest, range.High);
+			}
+			return true;
+		}
+
 		void SampleBlock(const SdfTerrainComponent& terrain, const Block& block, float* outValues, uint32_t* outMaterials)
 		{
 			std::array<float, BlockSize> layerValues;
@@ -420,9 +484,26 @@ namespace Nyx
 				outMaterials[i] = 0;
 			}
 
+			// The block's bounds, and what its values are between so far, to leave out the layers that
+			// can't change them: a shape far off, a landmass beside it
+			glm::vec3 boxMin(std::numeric_limits<float>::max());
+			glm::vec3 boxMax(-std::numeric_limits<float>::max());
+			for (size_t i = 0; i < block.Count; ++i)
+			{
+				const glm::vec3 point(block.X[i], block.Y[i], block.Z[i]);
+				boxMin = glm::min(boxMin, point);
+				boxMax = glm::max(boxMax, point);
+			}
+			float lowest = SdfTerrainEmptyValue;
+			float highest = SdfTerrainEmptyValue;
+
 			for (const SdfTerrainLayer& layer : terrain.Layers)
 			{
 				if (!IsLayerActive(layer))
+				{
+					continue;
+				}
+				if (layer.Kind != ESdfTerrainLayerKind::Detail && !CanChange(layer, LayerRange(layer, boxMin, boxMax), lowest, highest))
 				{
 					continue;
 				}
@@ -434,38 +515,46 @@ namespace Nyx
 					{
 						outValues[i] = outValues[i] + layerValues[i];
 					}
-					continue;
 				}
-
-				const float radius = layer.BlendRadius;
-				switch (layer.Combine)
+				else
 				{
-				case ESdfTerrainCombine::Add:
-					for (size_t i = 0; i < block.Count; ++i)
+					const float radius = layer.BlendRadius;
+					switch (layer.Combine)
 					{
-						if (layerValues[i] < outValues[i])
+					case ESdfTerrainCombine::Add:
+						for (size_t i = 0; i < block.Count; ++i)
 						{
-							outMaterials[i] = layer.Material;
+							if (layerValues[i] < outValues[i])
+							{
+								outMaterials[i] = layer.Material;
+							}
+							outValues[i] = SmoothMinimum(outValues[i], layerValues[i], radius);
 						}
-						outValues[i] = SmoothMinimum(outValues[i], layerValues[i], radius);
-					}
-					break;
-				case ESdfTerrainCombine::Carve:
-					for (size_t i = 0; i < block.Count; ++i)
-					{
-						outValues[i] = SmoothMaximum(outValues[i], -layerValues[i], radius);
-					}
-					break;
-				case ESdfTerrainCombine::Intersect:
-					for (size_t i = 0; i < block.Count; ++i)
-					{
-						if (layerValues[i] > outValues[i])
+						break;
+					case ESdfTerrainCombine::Carve:
+						for (size_t i = 0; i < block.Count; ++i)
 						{
-							outMaterials[i] = layer.Material;
+							outValues[i] = SmoothMaximum(outValues[i], -layerValues[i], radius);
 						}
-						outValues[i] = SmoothMaximum(outValues[i], layerValues[i], radius);
+						break;
+					case ESdfTerrainCombine::Intersect:
+						for (size_t i = 0; i < block.Count; ++i)
+						{
+							if (layerValues[i] > outValues[i])
+							{
+								outMaterials[i] = layer.Material;
+							}
+							outValues[i] = SmoothMaximum(outValues[i], layerValues[i], radius);
+						}
+						break;
 					}
-					break;
+				}
+				lowest = outValues[0];
+				highest = outValues[0];
+				for (size_t i = 1; i < block.Count; ++i)
+				{
+					lowest = std::min(lowest, outValues[i]);
+					highest = std::max(highest, outValues[i]);
 				}
 			}
 		}
@@ -501,27 +590,49 @@ namespace Nyx
 		grid.Origin = origin;
 		grid.CellSize = cellSize;
 		const size_t count = size_t(grid.Size.x) * size_t(grid.Size.y) * size_t(grid.Size.z);
-		std::vector<float> x(count);
-		std::vector<float> y(count);
-		std::vector<float> z(count);
-		for (int k = 0; k < grid.Size.z; ++k)
+		grid.Values.resize(count);
+		grid.Materials.resize(count);
+
+		// In bricks of 4 x 4 x 4, a block each, so a block's bounds are tight and leave out the layers
+		// that can't reach it
+		std::array<float, BlockSize> x;
+		std::array<float, BlockSize> y;
+		std::array<float, BlockSize> z;
+		std::array<float, BlockSize> values;
+		std::array<uint32_t, BlockSize> materials;
+		std::array<size_t, BlockSize> indices;
+		for (int brickZ = 0; brickZ < grid.Size.z; brickZ += 4)
 		{
-			for (int j = 0; j < grid.Size.y; ++j)
+			for (int brickY = 0; brickY < grid.Size.y; brickY += 4)
 			{
-				for (int i = 0; i < grid.Size.x; ++i)
+				for (int brickX = 0; brickX < grid.Size.x; brickX += 4)
 				{
-					// From whole numbers of cells, so a sample is at the same place whichever grid
-					// asks for it
-					const size_t index = grid.IndexOf(i, j, k);
-					x[index] = origin.x + float(i) * cellSize;
-					y[index] = origin.y + float(j) * cellSize;
-					z[index] = origin.z + float(k) * cellSize;
+					size_t n = 0;
+					for (int k = brickZ; k < std::min(brickZ + 4, grid.Size.z); ++k)
+					{
+						for (int j = brickY; j < std::min(brickY + 4, grid.Size.y); ++j)
+						{
+							for (int i = brickX; i < std::min(brickX + 4, grid.Size.x); ++i)
+							{
+								// From whole numbers of cells, so a sample is at the same place whichever
+								// grid asks for it
+								x[n] = origin.x + float(i) * cellSize;
+								y[n] = origin.y + float(j) * cellSize;
+								z[n] = origin.z + float(k) * cellSize;
+								indices[n] = grid.IndexOf(i, j, k);
+								++n;
+							}
+						}
+					}
+					SampleTerrainBatch(terrain, x.data(), y.data(), z.data(), n, values.data(), materials.data());
+					for (size_t m = 0; m < n; ++m)
+					{
+						grid.Values[indices[m]] = values[m];
+						grid.Materials[indices[m]] = materials[m];
+					}
 				}
 			}
 		}
-		grid.Values.resize(count);
-		grid.Materials.resize(count);
-		SampleTerrainBatch(terrain, x.data(), y.data(), z.data(), count, grid.Values.data(), grid.Materials.data());
 		return grid;
 	}
 

@@ -38,7 +38,8 @@ namespace Nyx
 		// The GPU mesh to draw the component with this frame, uploaded if new or changed; null for no
 		// data, an empty mesh or one that isn't valid
 		Mesh* Acquire(VulkanContext& context, const RuntimeMeshComponent& component);
-		// After every shown world was extracted: the meshes none of them drew this frame are retired
+		// After every shown world was extracted: the meshes none of them drew this frame are retired,
+		// their data let go of on a worker (JobSystem::Get())
 		void EndFrame();
 		// The copies of this frame's uploads, into the frame's commands before its first draw
 		void RecordUploads(const vk::raii::CommandBuffer& cmd);

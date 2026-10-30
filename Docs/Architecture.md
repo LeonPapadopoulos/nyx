@@ -251,6 +251,10 @@ instead of each system keeping threads of its own.
 - **The same numbers on any thread:** every worker starts with the floating-point state (rounding,
   denormals) of the thread that made the job system, so a job rounds as the main thread does; the
   physics step gives the same results, to the bit, on one worker as on several.
+- **Below the main thread:** workers run a notch below normal priority (on Windows), so with a
+  worker on every core the main thread still gets one whenever it is ready, instead of waiting its
+  turn behind background work. Measured with the SDF terrain's chunks on all 19 workers: the main
+  thread's frame from 0.7 ms with frames of 20 ms to 0.2 ms with a few of 2 to 7 ms.
 - **When it goes**, at the program's end, what hasn't started is cancelled and what is running
   finishes.
 - Workers are named *Nyx Worker 0* and up in the debugger and the profiler; each job is a *Job* zone.

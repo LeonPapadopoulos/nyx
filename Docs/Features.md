@@ -679,8 +679,8 @@ mesh is made again as it grows.
 - The renderer puts each mesh on the GPU once, when it is first drawn, and again only when the
   component's revision goes up: change the data, or give new data, then raise it
   (`SetRuntimeMesh()`, `MarkRuntimeMeshChanged()`). Entities sharing one `MeshData` share its upload.
-  A mesh no view draws any more is let go of. Data that isn't a valid mesh isn't drawn, and is
-  logged once a revision.
+  A mesh no view draws any more is let go of, its data on a worker, so hundreds let go of at once
+  cost the frame nothing. Data that isn't a valid mesh isn't drawn, and is logged once a revision.
 - Its buffers are in GPU memory the renderer keeps in blocks of 64 MB (`MeshMemoryPool`), each bound
   to its part of a block, so a mesh costs no allocation of its own and a world can have thousands
   (drivers allow few allocations, often 4096); 2500 small meshes fit in one block. Its data is
@@ -1513,7 +1513,11 @@ game, coarser the farther, and collides while the world runs.
     *Ridged* for sharp crests.
 - The field (`SdfTerrain.h`): `SampleTerrain()` gives the value at a point (negative inside, 0 on the
   surface) and its material, `SampleTerrainBatch()` many points, the same bits, with the 3D noise
-  eight points at a time. `GetTerrainMaxSlope()` is a proven bound on how fast it changes,
+  eight points at a time. A batch goes in blocks of 64 points, and a layer that is proven not to
+  change a block's values (its range over the block's bounds keeps clear of them by its blend
+  radius: a shape far off, a landmass beside it) is left out of that block; a noise over X and Z
+  alone is worked out once for each different place in a block; `SampleTerrainGrid()` samples in
+  bricks of 4 x 4 x 4, so a block's bounds are tight. Neither changes a bit. `GetTerrainMaxSlope()` is a proven bound on how fast it changes,
   `GetTerrainValueRange()` what it can be over a box (all air, all solid, or neither), and
   `GetTerrainNormal()` and `RayCastTerrain()` the way out and where a ray meets the surface. The same
   on every machine.

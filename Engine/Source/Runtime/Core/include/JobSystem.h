@@ -113,7 +113,8 @@ namespace Nyx
 	//
 	// Every worker starts with the floating-point state (rounding, denormals) of the thread that made
 	// the job system, so a job gives the same numbers whichever thread runs it, and the same as on
-	// that thread.
+	// that thread. Workers run a notch below normal priority (on Windows), so the main thread gets a
+	// core whenever it is ready, even with a worker on every core.
 	class NYXENGINE_API JobSystem
 	{
 	public:

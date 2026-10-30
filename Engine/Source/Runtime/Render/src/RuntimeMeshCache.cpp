@@ -1,6 +1,7 @@
 #include "NyxPCH.h"
 #include "RuntimeMeshCache.h"
 
+#include "JobSystem.h"
 #include "Log.h"
 #include "Mesh.h"
 #include "RuntimeMeshComponent.h"
@@ -59,6 +60,9 @@ namespace Nyx
 
 	void RuntimeMeshCache::EndFrame()
 	{
+		// The data of meshes no longer drawn let go of on a worker: a terrain replacing hundreds of
+		// chunks at once would free them all in one frame otherwise
+		std::vector<std::shared_ptr<const MeshData>> released;
 		for (auto it = Entries.begin(); it != Entries.end();)
 		{
 			if (it->second.bDrawn)
@@ -71,7 +75,12 @@ namespace Nyx
 			{
 				Retired.push_back(std::move(it->second.Gpu));
 			}
+			released.push_back(std::move(it->second.Source));
 			it = Entries.erase(it);
+		}
+		if (!released.empty())
+		{
+			JobSystem::Get().Schedule([released = std::move(released)] {}, EJobPriority::Low);
 		}
 	}
 
