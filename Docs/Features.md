@@ -1493,11 +1493,16 @@ game, coarser the farther, and collides while the world runs.
   *Paint* the material only). Each has the terrain's next *Revision*; they are saved with the scene.
   A game asks for one by an `SdfTerrainEditCommand` (the terrain's guid and the edit), applied by
   the next step; code that owns the world adds one by `AppendTerrainEdit()`.
-  - Only the chunks an edit can change are made again: each chunk keeps which edits reach all it
-    samples (its own and the coarser grid round it, and its sky), carried from edit to edit, so an
-    edit costs a chunk one shape's range; a chunk is made from a copy with only those, the same
-    bits. An edit deep in the ground changes the values under the surface tens of metres round
-    it, so a dig of a few metres makes some tens of chunks again.
+  - Only the chunks an edit can change are made again. A chunk made keeps what its mesh read of
+    the field (`TerrainChunkSamples`): the meshers read a sample's value only near the surface,
+    elsewhere only whether it is inside, the field itself only round sharp vertices and up the
+    sky's rays. So an edit that can't turn the field's sign in the chunk's grids or up its sky's
+    rays (45 degrees and steeper from the surface), nor change a sample near its surface, leaves
+    its mesh the same bits, and the chunk stays drawn; a few metres' dig makes a handful of chunks
+    again. Collision's bodies are kept the same way. A chunk made again is made from a copy of the
+    terrain with only the edits reaching what it samples, the same bits.
+  - For new edits alone, the camera where it was, the chunks are chosen again at once, without a
+    worker's round trip.
   - Drawn and in collision together: each holds what it made for new edits until the other has its
     own, then both go in, the near levels' chunks with collision and the coarser ones once made; if
     that takes longer than *Activation Deadline* (0.25 s), each goes in when it is ready, and the

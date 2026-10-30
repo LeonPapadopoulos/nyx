@@ -126,12 +126,28 @@ namespace Nyx
 	// a chunk is made from
 	TerrainEditsReach KeepTerrainEditsReaching(SdfTerrainComponent& terrain, const glm::vec3& boxMin, const glm::vec3& boxMax);
 
+	// Whether an edit can change a value somewhere in the box that is between `lowest` and `highest`
+	// (a value it can't change it leaves the same bits), and whether it can turn the value's sign
+	// anywhere in the box whatever the values (a dig only within its blend radius and a quarter of it
+	// of its shape, a heap likewise, paint never)
+	bool CanTerrainEditChangeValues(const SdfTerrainEdit& edit, const glm::vec3& boxMin, const glm::vec3& boxMax, float lowest, float highest);
+	bool CanTerrainEditTurnSign(const SdfTerrainEdit& edit, const glm::vec3& boxMin, const glm::vec3& boxMax);
+
+	// A box outside which an edit can't turn the value's sign: its shape's, its blend radius and a
+	// quarter of it wider; none for paint
+	bool GetTerrainEditSignBounds(const SdfTerrainEdit& edit, glm::vec3& outMin, glm::vec3& outMax);
+
 	// Whether the terrain's edits are those of `earlier` (the same, in the same order) and maybe more
 	// after them: what was known of boxes from those can be continued
 	bool ExtendsTerrainEdits(const SdfTerrainComponent& terrain, const SdfTerrainComponent& earlier);
 
 	// A hash of every edit, telling one set of edits from another; never 0
 	uint64_t HashTerrainEdits(const SdfTerrainComponent& terrain);
+
+	// A hash of each run of the edits from the first: `hashes[n]` of the first n, `hashes[0]` of
+	// none. Carried on from those given, which must be the terrain's first ones (cleared when an
+	// edit among them changed), so a new edit costs one.
+	void HashTerrainEditRuns(const SdfTerrainComponent& terrain, std::vector<uint64_t>& hashes);
 
 	// The nearest place a ball of `clearance` metres round `point` is out of the terrain, to push
 	// something out of new terrain: the point itself if it is out already, else along the way out

@@ -58,6 +58,8 @@ namespace Nyx
 		bool operator==(const TerrainNeighbourhood&) const = default;
 	};
 
+	struct TerrainChunkSamples;
+
 	// One chunk of an SDF terrain, drawn or made to be drawn next
 	struct TerrainChunk
 	{
@@ -66,11 +68,13 @@ namespace Nyx
 		glm::vec3 Origin{ 0.0f };
 		// Around Origin; no data for a chunk the surface passes by
 		RuntimeMeshComponent Mesh;
-		// What it was made from (HashSdfTerrainShape()), with which edits (TerrainChunkField::GetEdits()),
-		// and against
+		// What it was made from (HashSdfTerrainShape()), with which edits (TerrainChunkField::GetEdits()
+		// when made, kept while later ones can't change it, TerrainChunkKeeps), and against; what it
+		// read of the field
 		uint64_t Shape = 0;
 		uint64_t Edits = 0;
 		TerrainNeighbourhood Neighbourhood;
+		std::shared_ptr<const TerrainChunkSamples> Samples;
 		// Drawn, or uploaded only, waiting for all the chunks it is drawn with
 		bool bDrawn = false;
 		// The first shadow cascade it casts into (SdfTerrainComponent::NearShadowLevels)
@@ -189,6 +193,75 @@ namespace Nyx
 		uint32_t SeamTriangles = 0;
 	};
 
+	// What a chunk's mesh read of the field, to tell an edit that can't change it. The meshers read
+	// a sample's value only near the surface (in a cell the surface crosses, or the cell next to one,
+	// for its gradient), elsewhere only whether it is inside, and the field itself only round a sharp
+	// vertex's crossings and along the sky's rays, whether it is inside. Its vertices are in the
+	// cells the surface crosses, and its sky's rays go from half a cell off them up to SkyReach, at
+	// least 45 degrees up. So: its grids' bricks of 4 x 4 x 4 cells near the surface (one the surface
+	// crosses and those next to it), each with the lowest and highest of its samples, whether the
+	// surface crosses it, and whether a sharp vertex asked the field in it; and its grids' box.
+	struct TerrainChunkSamples
+	{
+		struct Brick
+		{
+			glm::vec3 Min{ 0.0f };
+			glm::vec3 Max{ 0.0f };
+			float Lowest = 0.0f;
+			float Highest = 0.0f;
+			bool bCrossed = false;
+			bool bAsked = false;
+		};
+		std::vector<Brick> NearSurface;
+		// The bricks' bounds together, round those asked one cell farther and over the values
+		// there, to tell most edits apart at once
+		glm::vec3 NearMin{ 0.0f };
+		glm::vec3 NearMax{ 0.0f };
+		float NearLowest = 0.0f;
+		float NearHighest = 0.0f;
+		glm::vec3 GridMin{ 0.0f };
+		glm::vec3 GridMax{ 0.0f };
+		// Its finer grid's cell, and how far its sky's rays go
+		float CellSize = 1.0f;
+		float SkyReach = 0.0f;
+		// How many of the terrain's edits it was made with, and their hash (HashTerrainEditRuns())
+		size_t Edits = 0;
+		uint64_t EditsHash = 0;
+	};
+
+	// Whether an edit after those a chunk was made with can change its mesh: whether it can turn
+	// the field's sign in its grids or up a sky's ray from a brick the surface crosses (a box the
+	// edit's sign bounds, GetTerrainEditSignBounds(), against the cone 45 degrees up from the brick),
+	// or change a sample in a brick near the surface, or the field where a sharp vertex asked it
+	// (within `maxSlope` times a cell of a crossing, so within that of the brick's samples). One that
+	// can't leaves the mesh the same bits.
+	bool CanTerrainEditChangeChunk(const TerrainChunkSamples& samples, const SdfTerrainEdit& edit, float maxSlope);
+
+	// Which chunks made earlier are still the mesh they would be made now, carried edit to edit:
+	// a chunk is wanted with the edits it was made with (its TerrainChunk::Edits) while no edit since
+	// can change it (CanTerrainEditChangeChunk()), else with those reaching it now. Kept by chunk;
+	// Forget() when the values changed.
+	class TerrainChunkKeeps
+	{
+	public:
+		// `madeEdits` and `samples` are the chunk's as made, `now` the edits reaching it now
+		// (TerrainChunkField::GetEdits()), `runs` the terrain's HashTerrainEditRuns()
+		uint64_t Get(const SdfTerrainComponent& terrain, const std::vector<uint64_t>& runs, const TerrainChunkId& id, uint64_t madeEdits,
+			const TerrainChunkSamples* samples, uint64_t now, float maxSlope);
+		void Forget() { Known.clear(); }
+
+	private:
+		struct Kept
+		{
+			uint64_t Edits = 0;
+			// The edits looked at so far, by the hash of those up to there
+			size_t Seen = 0;
+			uint64_t SeenHash = 0;
+			bool bChanged = false;
+		};
+		std::unordered_map<uint64_t, Kept> Known;
+	};
+
 	// The mesh of a chunk: the terrain sampled at its level from two cells before its corner to one
 	// past its far side, meshed by the terrain's mesher (the dual one with the terrain itself for its sharp
 	// vertices' planes), its positions relative to its corner, its vertices coloured by their
@@ -197,9 +270,9 @@ namespace Nyx
 	// ones' and between them their average, and the dual mesh joins its cells to the coarser ones';
 	// next to a finer one marching cubes meshes its cells there with the finer samples. Chunks side
 	// by side meet without a gap, at one level or two. A function of the terrain's values, the id and
-	// the neighbourhood alone.
+	// the neighbourhood alone. With `outSamples`, what it read (TerrainChunkSamples).
 	MeshData MakeTerrainChunkMesh(const SdfTerrainComponent& terrain, const TerrainChunkId& id, const TerrainNeighbourhood& neighbourhood = {},
-		TerrainChunkTimes* outTimes = nullptr);
+		TerrainChunkTimes* outTimes = nullptr, TerrainChunkSamples* outSamples = nullptr);
 
 	// A hash of every value a chunk's mesh is made from: all but those choosing the chunks
 	// (ViewDistance, LevelDistance, FinestLevel) and their shadows, and the edits, which each chunk

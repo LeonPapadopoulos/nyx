@@ -955,6 +955,20 @@ namespace Nyx
 		return box.Reach;
 	}
 
+	void HashTerrainEditRuns(const SdfTerrainComponent& terrain, std::vector<uint64_t>& hashes)
+	{
+		if (hashes.empty() || hashes.size() > terrain.Edits.size() + 1)
+		{
+			hashes.assign(1, EditHashStart);
+		}
+		for (size_t index = hashes.size() - 1; index < terrain.Edits.size(); ++index)
+		{
+			uint64_t hash = hashes.back();
+			HashEdit(hash, terrain.Edits[index]);
+			hashes.push_back(hash);
+		}
+	}
+
 	uint64_t HashTerrainEdits(const SdfTerrainComponent& terrain)
 	{
 		uint64_t hash = EditHashStart;
@@ -963,6 +977,59 @@ namespace Nyx
 			HashEdit(hash, edit);
 		}
 		return hash != 0 ? hash : 1;
+	}
+
+	bool CanTerrainEditChangeValues(const SdfTerrainEdit& edit, const glm::vec3& boxMin, const glm::vec3& boxMax, float lowest, float highest)
+	{
+		return CanEditChange(edit, ShapeDistance(edit).Range(boxMin, boxMax), lowest, highest);
+	}
+
+	bool CanTerrainEditTurnSign(const SdfTerrainEdit& edit, const glm::vec3& boxMin, const glm::vec3& boxMax)
+	{
+		// A smooth join moves a value only within its radius of the other, and by at most a quarter of
+		// it: a value crosses 0 only where the shape's distance is within both of 0
+		if (edit.Mode == ESdfTerrainEditMode::Paint)
+		{
+			return false;
+		}
+		const float radius = std::max(edit.BlendRadius, 0.0f);
+		const float reach = radius + SmoothMinimumMaxOffset(radius);
+		const Interval own = ShapeDistance(edit).Range(boxMin, boxMax);
+		return own.Low < reach + 1e-4f * (1.0f + reach + std::fabs(own.Low));
+	}
+
+	bool GetTerrainEditSignBounds(const SdfTerrainEdit& edit, glm::vec3& outMin, glm::vec3& outMax)
+	{
+		if (edit.Mode == ESdfTerrainEditMode::Paint)
+		{
+			return false;
+		}
+		const float blend = std::max(edit.BlendRadius, 0.0f);
+		const float reach = blend + SmoothMinimumMaxOffset(blend);
+		float around = 0.0f;
+		switch (edit.Shape)
+		{
+		case ESdfTerrainEditShape::Sphere:
+			outMin = edit.Position;
+			outMax = edit.Position;
+			around = std::fabs(edit.Radius);
+			break;
+		case ESdfTerrainEditShape::Capsule:
+			outMin = glm::min(edit.Position, edit.End);
+			outMax = glm::max(edit.Position, edit.End);
+			around = std::fabs(edit.Radius);
+			break;
+		case ESdfTerrainEditShape::Box:
+			// Turned any way, within its half diagonal of its middle
+			outMin = edit.Position;
+			outMax = edit.Position;
+			around = glm::length(glm::abs(edit.HalfSize));
+			break;
+		}
+		const float margin = 1e-4f * (1.0f + around + reach);
+		outMin -= around + reach + margin;
+		outMax += around + reach + margin;
+		return true;
 	}
 
 	bool ExtendsTerrainEdits(const SdfTerrainComponent& terrain, const SdfTerrainComponent& earlier)

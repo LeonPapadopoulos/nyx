@@ -37,7 +37,7 @@ namespace Nyx
 	//   a few a step, in place of the one it replaces. Bodies a chunk farther than wanted go.
 	// - New values make every chunk again, the old bodies staying until each one's new body is in;
 	//   the terrain entity moved makes them all again where it is now; a terrain gone takes its bodies.
-	// - New edits make the chunks they reach again (TerrainChunkField), the new bodies held until the
+	// - New edits make the chunks they can change again (TerrainChunkKeeps), the new bodies held until the
 	//   drawn chunks have them too, or the terrain's Activation Deadline (TerrainEditActivationComponent),
 	//   then put in all at once. Then, by the values before and after: a character the edits put
 	//   inside the terrain is pushed out (FindTerrainFreePoint()); a dynamic body whose middle they
@@ -85,6 +85,8 @@ namespace Nyx
 			uint64_t Shape = 0;
 			uint64_t Edits = 0;
 			uint32_t Triangles = 0;
+			// What its mesh read of the field, to keep it through edits that can't change it
+			std::shared_ptr<const TerrainChunkSamples> Samples;
 		};
 
 		struct TerrainState
@@ -98,8 +100,12 @@ namespace Nyx
 			std::shared_ptr<const SdfTerrainComponent> Snapshot;
 			// The values with the edits last live, to tell what new ones changed round a body
 			std::shared_ptr<const SdfTerrainComponent> LiveSnapshot;
-			// What is known of each chunk's values, for the values now
+			// What is known of each chunk's values, for the values now; the hashes of the edits' runs,
+			// and which bodies, and which chunks drawn, are still as they would be made now
 			TerrainChunkFields Fields;
+			std::vector<uint64_t> EditRuns;
+			TerrainChunkKeeps Keeps;
+			TerrainChunkKeeps DrawnKeeps;
 			std::unordered_map<uint64_t, ChunkBody> Chunks;
 			std::shared_ptr<Detail::TerrainCollisionJobs> Jobs;
 			// Bodies made for new edits in place of others, waiting for them to go live; an empty shape
@@ -110,6 +116,7 @@ namespace Nyx
 				uint64_t Edits = 0;
 				uint32_t Triangles = 0;
 				bool bShared = false;
+				std::shared_ptr<const TerrainChunkSamples> Samples;
 			};
 			std::unordered_map<uint64_t, Held> Waiting;
 			uint64_t Made = 0;

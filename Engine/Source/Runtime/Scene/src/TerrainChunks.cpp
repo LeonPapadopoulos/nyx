@@ -240,8 +240,17 @@ namespace Nyx
 			// What is known of each chunk's values, for the values now: asked once a chunk and carried
 			// across edits, by one choice after another
 			std::shared_ptr<TerrainChunkFields> Fields;
+			// The hashes of the edits' runs (HashTerrainEditRuns()), and which chunks drawn are still
+			// as they would be made now, by one choice after another
+			std::shared_ptr<const std::vector<uint64_t>> EditRuns;
+			std::shared_ptr<TerrainChunkKeeps> Keeps;
 			// Where the viewpoints were when the chunks were last chosen for the values now
 			std::optional<std::vector<glm::vec3>> PlannedFrom;
+			// Where they were when the tree drawn or next was chosen, whatever the values, and what is
+			// round each of the trees' leaves
+			std::optional<std::vector<glm::vec3>> ChosenFrom;
+			std::vector<TerrainNeighbourhood> DrawnNeighbourhoods;
+			std::vector<TerrainNeighbourhood> NextNeighbourhoods;
 
 			// The tree drawn and the edits it was made with, and the next one, its chunks the surface
 			// crosses, nearest first, and what they are made from
@@ -280,6 +289,7 @@ namespace Nyx
 				TerrainNeighbourhood Neighbourhood;
 				std::shared_ptr<const MeshData> Mesh;
 				TerrainChunkTimes Times;
+				std::shared_ptr<const TerrainChunkSamples> Samples;
 			};
 			std::mutex Lock;
 			std::vector<Done> Finished;
@@ -484,7 +494,174 @@ namespace Nyx
 		return neighbourhoods;
 	}
 
-	MeshData MakeTerrainChunkMesh(const SdfTerrainComponent& allEdits, const TerrainChunkId& id, const TerrainNeighbourhood& neighbourhood, TerrainChunkTimes* outTimes)
+	namespace
+	{
+		// A grid's bricks near the surface into `out`: those of 4 x 4 x 4 cells (their samples, the
+		// faces between them shared) the surface crosses (inside and outside samples both), and those
+		// next to them, even at a corner, and those overlapping `alsoNear` (another grid's, a cell
+		// round them). A brick the surface crosses with an inside sample of a sharp material was
+		// asked the field in, if the mesher asks.
+		void AddNearSurfaceBricks(const FieldGrid& grid, const std::vector<bool>& sharpMaterials, bool bAsks,
+			const std::vector<TerrainChunkSamples::Brick>* alsoNear, std::vector<TerrainChunkSamples::Brick>& out)
+		{
+			constexpr int Cells = 4;
+			const glm::ivec3 count = glm::max((grid.Size - 1 + (Cells - 1)) / Cells, glm::ivec3(1));
+			struct Read
+			{
+				TerrainChunkSamples::Brick Brick;
+				bool bCrossed = false;
+			};
+			std::vector<Read> bricks(size_t(count.x) * size_t(count.y) * size_t(count.z));
+			auto indexOf = [&](const glm::ivec3& b) { return size_t(b.x) + size_t(count.x) * (size_t(b.y) + size_t(count.y) * size_t(b.z)); };
+			for (int bz = 0; bz < count.z; ++bz)
+			{
+				for (int by = 0; by < count.y; ++by)
+				{
+					for (int bx = 0; bx < count.x; ++bx)
+					{
+						const glm::ivec3 first = glm::ivec3(bx, by, bz) * Cells;
+						const glm::ivec3 last = glm::min(first + Cells, grid.Size - 1);
+						Read& read = bricks[indexOf({ bx, by, bz })];
+						read.Brick.Min = grid.Origin + glm::vec3(first) * grid.CellSize;
+						read.Brick.Max = grid.Origin + glm::vec3(last) * grid.CellSize;
+						read.Brick.Lowest = std::numeric_limits<float>::max();
+						read.Brick.Highest = -std::numeric_limits<float>::max();
+						bool bInside = false;
+						bool bOutside = false;
+						bool bSharpInside = false;
+						for (int k = first.z; k <= last.z; ++k)
+						{
+							for (int j = first.y; j <= last.y; ++j)
+							{
+								for (int i = first.x; i <= last.x; ++i)
+								{
+									const float value = grid.GetValue(i, j, k);
+									read.Brick.Lowest = std::min(read.Brick.Lowest, value);
+									read.Brick.Highest = std::max(read.Brick.Highest, value);
+									// As the meshers tell inside: below 0
+									const bool bIn = value < 0.0f;
+									bInside = bInside || bIn;
+									bOutside = bOutside || !bIn;
+									const uint32_t material = grid.GetMaterial(i, j, k);
+									bSharpInside = bSharpInside || (bIn && material < sharpMaterials.size() && sharpMaterials[material]);
+								}
+							}
+						}
+						read.bCrossed = bInside && bOutside;
+						read.Brick.bCrossed = read.bCrossed;
+						read.Brick.bAsked = bAsks && read.bCrossed && bSharpInside;
+					}
+				}
+			}
+			for (int bz = 0; bz < count.z; ++bz)
+			{
+				for (int by = 0; by < count.y; ++by)
+				{
+					for (int bx = 0; bx < count.x; ++bx)
+					{
+						const Read& read = bricks[indexOf({ bx, by, bz })];
+						bool bNear = false;
+						for (int dz = -1; dz <= 1 && !bNear; ++dz)
+						{
+							for (int dy = -1; dy <= 1 && !bNear; ++dy)
+							{
+								for (int dx = -1; dx <= 1 && !bNear; ++dx)
+								{
+									const glm::ivec3 other(bx + dx, by + dy, bz + dz);
+									bNear = glm::all(glm::greaterThanEqual(other, glm::ivec3(0))) && glm::all(glm::lessThan(other, count)) && bricks[indexOf(other)].bCrossed;
+								}
+							}
+						}
+						if (!bNear && alsoNear != nullptr)
+						{
+							bNear = std::any_of(alsoNear->begin(), alsoNear->end(),
+								[&](const TerrainChunkSamples::Brick& near)
+								{
+									return glm::all(glm::lessThanEqual(read.Brick.Min, near.Max + grid.CellSize)) &&
+										   glm::all(glm::lessThanEqual(near.Min - grid.CellSize, read.Brick.Max));
+								});
+						}
+						if (bNear)
+						{
+							out.push_back(read.Brick);
+						}
+					}
+				}
+			}
+		}
+	}
+
+	bool CanTerrainEditChangeChunk(const TerrainChunkSamples& samples, const SdfTerrainEdit& edit, float maxSlope)
+	{
+		if (CanTerrainEditTurnSign(edit, samples.GridMin, samples.GridMax))
+		{
+			return true;
+		}
+		// Up a sky's ray, from half a cell off a brick the surface crosses: a point there is at least
+		// as high above where the ray began as it is away from it sideways, and within the reach
+		glm::vec3 signMin;
+		glm::vec3 signMax;
+		if (samples.SkyReach > 0.0f && GetTerrainEditSignBounds(edit, signMin, signMax))
+		{
+			for (const TerrainChunkSamples::Brick& brick : samples.NearSurface)
+			{
+				if (!brick.bCrossed)
+				{
+					continue;
+				}
+				const glm::vec3 low = brick.Min - 0.5f * samples.CellSize;
+				const glm::vec3 high = brick.Max + 0.5f * samples.CellSize;
+				const glm::vec3 apart = glm::max(glm::max(low - signMax, signMin - high), glm::vec3(0.0f));
+				const float sideways = std::sqrt(apart.x * apart.x + apart.z * apart.z);
+				if (signMax.y - low.y + 1e-3f >= sideways && glm::length(apart) <= samples.SkyReach + 1e-3f)
+				{
+					return true;
+				}
+			}
+		}
+		if (samples.NearSurface.empty() || !CanTerrainEditChangeValues(edit, samples.NearMin, samples.NearMax, samples.NearLowest, samples.NearHighest))
+		{
+			return false;
+		}
+		// Round a crossing the field is within the slope times a cell of 0, so within that of the
+		// brick's samples
+		const float asked = maxSlope * samples.CellSize * 1.1f;
+		for (const TerrainChunkSamples::Brick& brick : samples.NearSurface)
+		{
+			if (CanTerrainEditChangeValues(edit, brick.Min, brick.Max, brick.Lowest, brick.Highest) ||
+				(brick.bAsked && CanTerrainEditChangeValues(edit, brick.Min - samples.CellSize, brick.Max + samples.CellSize, brick.Lowest - asked, brick.Highest + asked)))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	uint64_t TerrainChunkKeeps::Get(const SdfTerrainComponent& terrain, const std::vector<uint64_t>& runs, const TerrainChunkId& id, uint64_t madeEdits,
+		const TerrainChunkSamples* samples, uint64_t now, float maxSlope)
+	{
+		// Made with the first edits of these, the same ones
+		const size_t count = terrain.Edits.size();
+		if (samples == nullptr || samples->Edits > count || runs.size() != count + 1 || runs[samples->Edits] != samples->EditsHash)
+		{
+			return now;
+		}
+		Kept& kept = Known[PackId(id)];
+		if (kept.Edits != madeEdits || kept.Seen < samples->Edits || kept.Seen > count || runs[kept.Seen] != kept.SeenHash)
+		{
+			kept = Kept{ madeEdits, samples->Edits, samples->EditsHash, false };
+		}
+		for (; kept.Seen < count && !kept.bChanged; ++kept.Seen)
+		{
+			kept.bChanged = CanTerrainEditChangeChunk(*samples, terrain.Edits[kept.Seen], maxSlope);
+		}
+		kept.Seen = count;
+		kept.SeenHash = runs[count];
+		return kept.bChanged ? now : madeEdits;
+	}
+
+	MeshData MakeTerrainChunkMesh(const SdfTerrainComponent& allEdits, const TerrainChunkId& id, const TerrainNeighbourhood& neighbourhood, TerrainChunkTimes* outTimes,
+		TerrainChunkSamples* outSamples)
 	{
 		const auto start = std::chrono::steady_clock::now();
 		// With only the edits that can change what it samples: the same bits, far fewer edits to pass
@@ -596,6 +773,47 @@ namespace Nyx
 		}
 		FieldMeshStats stats;
 		MeshData mesh = terrain.Mesher == ESdfTerrainMesher::MarchingCubes ? MakeMarchingFieldMesh(grid, settings, &stats) : MakeFieldMesh(grid, settings, &stats);
+
+		// What it read, the coarser grid's bricks over the finer one's near the surface too
+		if (outSamples != nullptr)
+		{
+			TerrainChunkSamples& read = *outSamples;
+			read = {};
+			const bool bAsks = terrain.Mesher == ESdfTerrainMesher::Dual;
+			AddNearSurfaceBricks(grid, settings.SharpMaterials, bAsks, nullptr, read.NearSurface);
+			if (bCoarser)
+			{
+				const std::vector<TerrainChunkSamples::Brick> fine = read.NearSurface;
+				AddNearSurfaceBricks(coarse, settings.SharpMaterials, bAsks, &fine, read.NearSurface);
+			}
+			read.CellSize = cell;
+			const float asked = GetTerrainMaxSlope(terrain) * cell * 1.1f;
+			read.NearMin = glm::vec3(std::numeric_limits<float>::max());
+			read.NearMax = glm::vec3(-std::numeric_limits<float>::max());
+			read.NearLowest = std::numeric_limits<float>::max();
+			read.NearHighest = -std::numeric_limits<float>::max();
+			for (const TerrainChunkSamples::Brick& brick : read.NearSurface)
+			{
+				const float round = brick.bAsked ? cell : 0.0f;
+				read.NearMin = glm::min(read.NearMin, brick.Min - round);
+				read.NearMax = glm::max(read.NearMax, brick.Max + round);
+				read.NearLowest = std::min(read.NearLowest, brick.Lowest - (brick.bAsked ? asked : 0.0f));
+				read.NearHighest = std::max(read.NearHighest, brick.Highest + (brick.bAsked ? asked : 0.0f));
+			}
+			// The grids' box: the finer one's, and the coarser one's round it
+			read.GridMin = grid.Origin;
+			read.GridMax = grid.Origin + glm::vec3(grid.Size - 1) * grid.CellSize;
+			if (bCoarser)
+			{
+				read.GridMin = glm::min(read.GridMin, coarse.Origin);
+				read.GridMax = glm::max(read.GridMax, coarse.Origin + glm::vec3(coarse.Size - 1) * coarse.CellSize);
+			}
+			read.SkyReach = settings.SkyReach;
+			std::vector<uint64_t> runs;
+			HashTerrainEditRuns(allEdits, runs);
+			read.Edits = allEdits.Edits.size();
+			read.EditsHash = runs.back();
+		}
 
 		// Around the chunk's corner, at whole 4096ths of a metre: a vertex two chunks share is at the
 		// same place in both meshes before (the meshers work in the terrain's space), so at the same
@@ -790,20 +1008,65 @@ namespace Nyx
 			return VersionOf({ chunk.Level, chunk.Key }, chunk.Shape, chunk.Edits, chunk.Neighbourhood);
 		}
 
-		// The chunks chosen on a worker, whether the surface crosses each, and the edits reaching each
-		void SchedulePlan(Detail::TerrainStreaming& streaming, const SdfTerrainComponent& terrain, std::vector<glm::vec3> viewpoints, JobSystem& jobs)
+		// The chunks drawn, as made
+		struct MadeChunk
+		{
+			uint64_t Edits = 0;
+			std::shared_ptr<const TerrainChunkSamples> Samples;
+		};
+		std::unordered_map<uint64_t, MadeChunk> GetMadeChunks(const TerrainChunksComponent& chunks, uint64_t shape)
+		{
+			std::unordered_map<uint64_t, MadeChunk> made;
+			for (const TerrainChunk& chunk : chunks.Chunks)
+			{
+				if (chunk.bDrawn && chunk.Shape == shape && chunk.Samples)
+				{
+					made.emplace(PackId({ chunk.Level, chunk.Key }), MadeChunk{ chunk.Edits, chunk.Samples });
+				}
+			}
+			return made;
+		}
+
+		// Of a choice's leaves, whether the surface crosses each, and the edits each is wanted with:
+		// those it is drawn with while no edit since can change it, else those reaching it
+		void ChooseEdits(Detail::TerrainStreaming::Plan& plan, TerrainChunkFields& fields, TerrainChunkKeeps& keeps, const std::vector<uint64_t>& runs,
+			const std::unordered_map<uint64_t, MadeChunk>& made)
+		{
+			const SdfTerrainComponent& snapshot = *plan.Snapshot;
+			plan.Surface.resize(plan.Tree.Leaves.size());
+			plan.ChunkEdits.resize(plan.Tree.Leaves.size());
+			const float slope = GetTerrainMaxSlope(snapshot);
+			for (size_t index = 0; index < plan.Tree.Leaves.size(); ++index)
+			{
+				const TerrainChunkId& id = plan.Tree.Leaves[index];
+				const TerrainChunkField& field = fields.Get(snapshot, id);
+				plan.Surface[index] = field.HasSurface();
+				plan.ChunkEdits[index] = field.GetEdits();
+				if (const auto found = made.find(PackId(id)); found != made.end())
+				{
+					plan.ChunkEdits[index] = keeps.Get(snapshot, runs, id, found->second.Edits, found->second.Samples.get(), field.GetEdits(), slope);
+				}
+			}
+		}
+
+		// The chunks chosen on a worker, and their edits (ChooseEdits())
+		void SchedulePlan(Detail::TerrainStreaming& streaming, const TerrainChunksComponent& chunks, const SdfTerrainComponent& terrain,
+			std::vector<glm::vec3> viewpoints, JobSystem& jobs)
 		{
 			auto planning = std::make_shared<Detail::TerrainStreaming::Planning>();
 			streaming.PlanInFlight = planning;
 			std::shared_ptr<const SdfTerrainComponent> snapshot = streaming.Snapshot;
 			std::shared_ptr<TerrainChunkFields> fields = streaming.Fields;
+			std::shared_ptr<const std::vector<uint64_t>> runs = streaming.EditRuns;
+			std::shared_ptr<TerrainChunkKeeps> keeps = streaming.Keeps;
+			std::unordered_map<uint64_t, MadeChunk> made = GetMadeChunks(chunks, streaming.Shape);
 			const TerrainLevelSettings settings = GetLevelSettings(terrain);
 			TerrainChunkTree previous;
 			previous.Split = streaming.Drawn.Split;
 			const uint64_t shape = streaming.Shape;
 			const uint64_t edits = streaming.Edits;
 			streaming.PlanJob = jobs.Schedule(
-				[planning, snapshot, fields, settings, previous = std::move(previous), viewpoints = std::move(viewpoints), shape, edits]
+				[planning, snapshot, fields, runs, keeps, made = std::move(made), settings, previous = std::move(previous), viewpoints = std::move(viewpoints), shape, edits]
 				{
 					const auto start = std::chrono::steady_clock::now();
 					Detail::TerrainStreaming::Plan plan;
@@ -813,14 +1076,7 @@ namespace Nyx
 					plan.Viewpoints = viewpoints;
 					plan.Tree = SelectTerrainChunks(viewpoints, settings, &previous);
 					plan.Neighbourhoods = GetTerrainNeighbourhoods(plan.Tree);
-					plan.Surface.resize(plan.Tree.Leaves.size());
-					plan.ChunkEdits.resize(plan.Tree.Leaves.size());
-					for (size_t index = 0; index < plan.Tree.Leaves.size(); ++index)
-					{
-						const TerrainChunkField& field = fields->Get(*snapshot, plan.Tree.Leaves[index]);
-						plan.Surface[index] = field.HasSurface();
-						plan.ChunkEdits[index] = field.GetEdits();
-					}
+					ChooseEdits(plan, *fields, *keeps, *runs, made);
 					plan.Milliseconds = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
 					std::lock_guard lock(planning->Lock);
 					planning->Result = std::move(plan);
@@ -833,7 +1089,12 @@ namespace Nyx
 			TerrainEditActivationComponent& activation, float deadline, double now)
 		{
 			chunks.Stats.LastPlanMilliseconds = plan.Milliseconds;
-			streaming.PlannedFrom = plan.Viewpoints;
+			// Chosen for edits since changed: chosen again once these are drawn
+			if (plan.Edits == streaming.Edits)
+			{
+				streaming.PlannedFrom = plan.Viewpoints;
+			}
+			streaming.ChosenFrom = plan.Viewpoints;
 			std::vector<Detail::TerrainStreaming::Wanted> wanted;
 			uint32_t skipped = 0;
 			for (size_t index = 0; index < plan.Tree.Leaves.size(); ++index)
@@ -865,11 +1126,13 @@ namespace Nyx
 			}
 			if (bSame && (plan.Edits == streaming.DrawnEdits || ActivateTerrainEdits(activation, ETerrainEditPart::Draw, plan.Edits, now, deadline)))
 			{
+				streaming.DrawnNeighbourhoods = std::move(plan.Neighbourhoods);
 				streaming.Drawn = std::move(plan.Tree);
 				streaming.DrawnEdits = plan.Edits;
 				streaming.DrawnSkipped = skipped;
 				return;
 			}
+			streaming.NextNeighbourhoods = std::move(plan.Neighbourhoods);
 			streaming.Next = std::move(plan.Tree);
 			streaming.NextChunks = std::move(wanted);
 			streaming.NextSkipped = skipped;
@@ -905,6 +1168,10 @@ namespace Nyx
 				streaming.Edits = HashTerrainEdits(terrain);
 				streaming.Snapshot = std::make_shared<const SdfTerrainComponent>(terrain);
 				streaming.Fields = std::make_shared<TerrainChunkFields>();
+				streaming.Keeps = std::make_shared<TerrainChunkKeeps>();
+				std::vector<uint64_t> runs;
+				HashTerrainEditRuns(terrain, runs);
+				streaming.EditRuns = std::make_shared<const std::vector<uint64_t>>(std::move(runs));
 				streaming.PlannedFrom.reset();
 				streaming.Next.reset();
 				streaming.NextChunks.clear();
@@ -921,10 +1188,14 @@ namespace Nyx
 			// the chunks being made go on, each kept if its edits are those it is wanted with
 			else if (terrain.Edits.size() != streaming.Snapshot->Edits.size() || !ExtendsTerrainEdits(terrain, *streaming.Snapshot))
 			{
-				if (!ExtendsTerrainEdits(terrain, *streaming.Snapshot))
+				const bool bExtends = ExtendsTerrainEdits(terrain, *streaming.Snapshot);
+				if (!bExtends)
 				{
 					streaming.Fields = std::make_shared<TerrainChunkFields>();
 				}
+				std::vector<uint64_t> runs = bExtends ? *streaming.EditRuns : std::vector<uint64_t>{};
+				HashTerrainEditRuns(terrain, runs);
+				streaming.EditRuns = std::make_shared<const std::vector<uint64_t>>(std::move(runs));
 				streaming.Edits = HashTerrainEdits(terrain);
 				streaming.Snapshot = std::make_shared<const SdfTerrainComponent>(terrain);
 				streaming.PlannedFrom.reset();
@@ -958,11 +1229,31 @@ namespace Nyx
 				}
 			}
 
-			// Nothing being chosen or made: chosen again once a viewpoint has moved, or for new values
+			// Nothing being chosen or made: chosen again once a viewpoint has moved, or for new values or
+			// edits; for them alone, the viewpoints still where the tree drawn was chosen, that tree's
+			// chunks here at once, without a worker's round trip
 			if (!streaming.PlanInFlight && !streaming.Next && !viewpoints.empty() &&
 				(!streaming.PlannedFrom || HasMoved(*streaming.PlannedFrom, viewpoints, GetReplanDistance(terrain))))
 			{
-				SchedulePlan(streaming, terrain, viewpoints, jobs);
+				if (streaming.ChosenFrom && !HasMoved(*streaming.ChosenFrom, viewpoints, GetReplanDistance(terrain)) && !streaming.Drawn.Leaves.empty() &&
+					streaming.DrawnNeighbourhoods.size() == streaming.Drawn.Leaves.size())
+				{
+					const auto start = std::chrono::steady_clock::now();
+					Detail::TerrainStreaming::Plan plan;
+					plan.Shape = streaming.Shape;
+					plan.Edits = streaming.Edits;
+					plan.Snapshot = streaming.Snapshot;
+					plan.Viewpoints = *streaming.ChosenFrom;
+					plan.Tree = streaming.Drawn;
+					plan.Neighbourhoods = streaming.DrawnNeighbourhoods;
+					ChooseEdits(plan, *streaming.Fields, *streaming.Keeps, *streaming.EditRuns, GetMadeChunks(chunks, streaming.Shape));
+					plan.Milliseconds = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+					TakePlan(chunks, streaming, plan, activation, terrain.ActivationDeadline, now);
+				}
+				else
+				{
+					SchedulePlan(streaming, chunks, terrain, viewpoints, jobs);
+				}
 			}
 
 			// What the workers made, kept if the next tree still wants it
@@ -1032,6 +1323,7 @@ namespace Nyx
 						made.Origin = ChunkCorner(chunk.Id);
 						made.Shape = streaming.Shape;
 						made.Edits = chunk.Edits;
+						made.Samples = std::move(ready->second.Samples);
 						made.Neighbourhood = chunk.Neighbourhood;
 						if (ready->second.Mesh && !ready->second.Mesh->Indices.empty())
 						{
@@ -1073,7 +1365,9 @@ namespace Nyx
 							done.Shape = jobShape;
 							done.Edits = jobEdits;
 							done.Neighbourhood = neighbourhood;
-							done.Mesh = std::make_shared<const MeshData>(MakeTerrainChunkMesh(*snapshot, id, neighbourhood, &done.Times));
+							auto samples = std::make_shared<TerrainChunkSamples>();
+							done.Mesh = std::make_shared<const MeshData>(MakeTerrainChunkMesh(*snapshot, id, neighbourhood, &done.Times, samples.get()));
+							done.Samples = std::move(samples);
 							std::lock_guard lock(shared->Lock);
 							shared->Finished.push_back(std::move(done));
 						},
@@ -1164,6 +1458,7 @@ namespace Nyx
 					}
 					streaming.Drawn = std::move(*streaming.Next);
 					streaming.DrawnEdits = streaming.NextEdits;
+					streaming.DrawnNeighbourhoods = std::move(streaming.NextNeighbourhoods);
 					streaming.DrawnSkipped = streaming.NextSkipped;
 					streaming.Next.reset();
 					streaming.NextChunks.clear();

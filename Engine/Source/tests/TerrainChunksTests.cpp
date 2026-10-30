@@ -452,8 +452,8 @@ namespace
 		}
 	}
 
-	// Edits: only the chunks they reach are made again, the others kept as they were, each with the
-	// edits reaching it and the same bits as made directly; undone, the chunks are as before. With no
+	// Edits: only the chunks they can change are made again, the others kept as they were, every
+	// one the same bits as made directly now; undone, the chunks are as before. With no
 	// collision running a dig is drawn as soon as its chunks are made; with collision running but not
 	// ready, at the deadline; with it ready, at once.
 	void TestEdits()
@@ -483,24 +483,21 @@ namespace
 		uint32_t changed = 0;
 		for (const TerrainChunk& chunk : chunks.Chunks)
 		{
+			// Kept or made again, the same bits as made now
 			const TerrainChunkId id{ chunk.Level, chunk.Key };
-			glm::vec3 low;
-			glm::vec3 high;
-			GetTerrainChunkReach(id, low, high);
-			Require(chunk.Edits == GetTerrainEditsReaching(values, low, high).Hash, "A chunk should be made with the edits reaching it");
+			const MeshData direct = MakeTerrainChunkMesh(values, id, chunk.Neighbourhood);
+			Require(chunk.Mesh.Mesh ? SameMesh(*chunk.Mesh.Mesh, direct) : direct.Indices.empty(), "Every chunk should be the same bits as made now");
 			const auto old = before.find({ chunk.Level, chunk.Key.x, chunk.Key.y, chunk.Key.z });
 			Require(old != before.end(), "A dig standing still should draw the same chunks");
 			if (old->second.first == chunk.Edits)
 			{
-				Require(old->second.second == chunk.Mesh.Mesh.get(), "A chunk the dig doesn't reach should be kept");
+				Require(old->second.second == chunk.Mesh.Mesh.get(), "A chunk the dig can't change should be kept");
 				continue;
 			}
 			++changed;
-			const MeshData direct = MakeTerrainChunkMesh(values, id, chunk.Neighbourhood);
-			Require(chunk.Mesh.Mesh ? SameMesh(*chunk.Mesh.Mesh, direct) : direct.Indices.empty(), "A chunk made again should be the same bits as made directly");
 		}
 		const uint64_t made = chunks.Stats.Made - madeBefore;
-		Require(changed > 0 && made == changed, "Only the chunks a dig reaches should be made again: " + std::to_string(made) + " made, " + std::to_string(changed) + " reached");
+		Require(changed > 0 && made == changed, "Only the chunks a dig can change should be made again: " + std::to_string(made) + " made, " + std::to_string(changed) + " changed");
 		const TerrainEditActivationComponent& activation = world.Get<TerrainEditActivationComponent>(terrain);
 		Require(activation.Live == HashTerrainEdits(values) && activation.Late == 0, "Without collision a dig should go live as soon as it is drawn");
 		std::string byLevel;
@@ -554,12 +551,39 @@ namespace
 		for (const TerrainChunk& chunk : world.Get<TerrainChunksComponent>(terrain).Chunks)
 		{
 			const TerrainChunkId id{ chunk.Level, chunk.Key };
-			glm::vec3 low;
-			glm::vec3 high;
-			GetTerrainChunkReach(id, low, high);
-			Require(chunk.Edits == GetTerrainEditsReaching(values, low, high).Hash, "After a stroke, every chunk should be made with the edits reaching it now");
 			const MeshData direct = MakeTerrainChunkMesh(values, id, chunk.Neighbourhood);
 			Require(chunk.Mesh.Mesh ? SameMesh(*chunk.Mesh.Mesh, direct) : direct.Indices.empty(), "After a stroke, every chunk should be the same bits as made directly");
+		}
+		// Many edits of every shape and mode, some blended, some down by the tunnels' sharp walls, in
+		// batches: settled, every chunk kept or made again the same bits as made now
+		uint32_t seed = 0x9E3779B9u;
+		auto next = [&](float low, float high)
+		{
+			seed = seed * 1664525u + 1013904223u;
+			return low + (high - low) * float(seed >> 8) * (1.0f / 16777216.0f);
+		};
+		for (int batch = 0; batch < 4; ++batch)
+		{
+			for (int n = 0; n < 6; ++n)
+			{
+				SdfTerrainEdit random;
+				random.Shape = static_cast<ESdfTerrainEditShape>((batch * 6 + n) % 3);
+				random.Mode = static_cast<ESdfTerrainEditMode>((batch * 6 + n) / 3 % 3);
+				random.Position = ground->Point + glm::vec3(next(-40.0f, 40.0f), next(-25.0f, 4.0f), next(-40.0f, 40.0f));
+				random.End = random.Position + glm::vec3(next(-5.0f, 5.0f), next(-2.0f, 2.0f), next(-5.0f, 5.0f));
+				random.HalfSize = glm::vec3(next(0.5f, 3.0f), next(0.5f, 3.0f), next(0.5f, 3.0f));
+				random.Rotation = glm::vec3(next(-30.0f, 30.0f), next(0.0f, 360.0f), next(-30.0f, 30.0f));
+				random.Radius = next(0.5f, 4.0f);
+				random.BlendRadius = n % 2 == 0 ? next(0.2f, 1.5f) : 0.0f;
+				random.Material = 1 + uint32_t(n % 3);
+				AppendTerrainEdit(world.Get<SdfTerrainComponent>(terrain), random);
+			}
+			UpdateUntilSettled(world, { &viewpoint, 1 }, jobs, terrain);
+			for (const TerrainChunk& chunk : world.Get<TerrainChunksComponent>(terrain).Chunks)
+			{
+				const MeshData direct = MakeTerrainChunkMesh(values, { chunk.Level, chunk.Key }, chunk.Neighbourhood);
+				Require(chunk.Mesh.Mesh ? SameMesh(*chunk.Mesh.Mesh, direct) : direct.Indices.empty(), "After many edits, every chunk should be the same bits as made directly");
+			}
 		}
 		world.Get<SdfTerrainComponent>(terrain).Edits.clear();
 		UpdateUntilSettled(world, { &viewpoint, 1 }, jobs, terrain);

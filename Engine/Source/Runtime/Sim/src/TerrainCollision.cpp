@@ -39,6 +39,7 @@ namespace Nyx
 				uint64_t Edits = 0;
 				uint64_t Placement = 0;
 				std::shared_ptr<const PreparedShape> Prepared;
+				std::shared_ptr<const TerrainChunkSamples> Samples;
 				uint32_t Triangles = 0;
 				bool bShared = false;
 				std::chrono::steady_clock::time_point Asked;
@@ -291,6 +292,10 @@ namespace Nyx
 			state.Snapshot = std::make_shared<const SdfTerrainComponent>(terrain);
 			state.LiveSnapshot = state.Snapshot;
 			state.Fields.Forget();
+			state.Keeps.Forget();
+			state.DrawnKeeps.Forget();
+			state.EditRuns.clear();
+			HashTerrainEditRuns(terrain, state.EditRuns);
 			state.Waiting.clear();
 			for (auto& [key, job] : jobs.InFlight)
 			{
@@ -305,7 +310,9 @@ namespace Nyx
 			if (!ExtendsTerrainEdits(terrain, *state.Snapshot))
 			{
 				state.Fields.Forget();
+				state.EditRuns.clear();
 			}
+			HashTerrainEditRuns(terrain, state.EditRuns);
 			state.Edits = HashTerrainEdits(terrain);
 			state.Snapshot = std::make_shared<const SdfTerrainComponent>(terrain);
 		}
@@ -362,6 +369,46 @@ namespace Nyx
 		}
 		// Of them, those the surface crosses
 		auto hasSurface = [&](uint64_t packed) { return field(packed).HasSurface(); };
+
+		// The chunks drawn at this level with no other level round it, whose meshes are the bodies'
+		struct Drawn
+		{
+			std::shared_ptr<const MeshData> Mesh;
+			uint64_t Edits = 0;
+			std::shared_ptr<const TerrainChunkSamples> Samples;
+		};
+		std::unordered_map<uint64_t, Drawn> drawn;
+		if (world.Has<TerrainChunksComponent>(state.Owner))
+		{
+			for (const TerrainChunk& chunk : world.Get<TerrainChunksComponent>(state.Owner).Chunks)
+			{
+				if (chunk.bDrawn && chunk.Level == level && chunk.Shape == state.Shape && chunk.Neighbourhood == TerrainNeighbourhood{} && chunk.Mesh.Mesh && chunk.Samples)
+				{
+					drawn.emplace(PackKey(chunk.Key), Drawn{ chunk.Mesh.Mesh, chunk.Edits, chunk.Samples });
+				}
+			}
+		}
+		// The edits a chunk's body is wanted with: its body's while no edit since can change it, else
+		// the drawn chunk's while none can change that, else those reaching it now
+		const float slope = GetTerrainMaxSlope(*state.Snapshot);
+		auto wantedEdits = [&](uint64_t packed) -> uint64_t
+		{
+			const uint64_t now = field(packed).GetEdits();
+			const TerrainChunkId id{ level, UnpackKey(packed) };
+			if (const auto resident = state.Chunks.find(packed); resident != state.Chunks.end() && resident->second.Shape == state.Shape && resident->second.Samples)
+			{
+				const uint64_t kept = state.Keeps.Get(*state.Snapshot, state.EditRuns, id, resident->second.Edits, resident->second.Samples.get(), now, slope);
+				if (kept == resident->second.Edits)
+				{
+					return kept;
+				}
+			}
+			if (const auto found = drawn.find(packed); found != drawn.end())
+			{
+				return state.DrawnKeeps.Get(*state.Snapshot, state.EditRuns, id, found->second.Edits, found->second.Samples.get(), now, slope);
+			}
+			return now;
+		};
 		std::vector<std::pair<float, uint64_t>> order;
 		uint32_t skipped = 0;
 		for (const auto& [packed, time] : wanted)
@@ -382,14 +429,14 @@ namespace Nyx
 		// after those wanted
 		for (const auto& [packed, chunk] : state.Chunks)
 		{
-			const uint64_t edits = field(packed).GetEdits();
+			const uint64_t edits = wantedEdits(packed);
 			if (chunk.Shape != state.Shape || chunk.Edits == edits)
 			{
 				continue;
 			}
 			if (!hasSurface(packed))
 			{
-				state.Waiting[packed] = TerrainState::Held{ nullptr, edits, 0, false };
+				state.Waiting[packed] = TerrainState::Held{ nullptr, edits, 0, false, nullptr };
 			}
 			else if (!wanted.contains(packed))
 			{
@@ -429,7 +476,7 @@ namespace Nyx
 				jobs.InFlight.erase(job);
 			}
 			state.WorstSeconds = std::max(state.WorstSeconds, std::chrono::duration<double>(now - done.Asked).count());
-			if ((!wanted.contains(packed) && !kept.contains(packed)) || done.Edits != field(packed).GetEdits())
+			if ((!wanted.contains(packed) && !kept.contains(packed)) || done.Edits != wantedEdits(packed))
 			{
 				continue;
 			}
@@ -437,11 +484,12 @@ namespace Nyx
 			chunk.Shape = done.Shape;
 			chunk.Edits = done.Edits;
 			chunk.Triangles = done.Triangles;
+			chunk.Samples = done.Samples;
 			// In place of a body of other edits: held until these edits are live
 			const auto resident = state.Chunks.find(packed);
 			if (!bLive && resident != state.Chunks.end() && resident->second.Shape == state.Shape && resident->second.Edits != done.Edits)
 			{
-				state.Waiting[packed] = TerrainState::Held{ done.Prepared, done.Edits, done.Triangles, done.bShared };
+				state.Waiting[packed] = TerrainState::Held{ done.Prepared, done.Edits, done.Triangles, done.bShared, done.Samples };
 				continue;
 			}
 			if (resident != state.Chunks.end() && resident->second.Shape == state.Shape && resident->second.Edits != done.Edits)
@@ -465,7 +513,7 @@ namespace Nyx
 		bool bReady = true;
 		for (const auto& [packed, chunk] : state.Chunks)
 		{
-			const uint64_t edits = field(packed).GetEdits();
+			const uint64_t edits = wantedEdits(packed);
 			if (chunk.Shape == state.Shape && chunk.Edits != edits)
 			{
 				const auto waiting = state.Waiting.find(packed);
@@ -482,7 +530,7 @@ namespace Nyx
 		{
 			for (const auto& [packed, held] : state.Waiting)
 			{
-				if (held.Edits != field(packed).GetEdits())
+				if (held.Edits != wantedEdits(packed))
 				{
 					continue;
 				}
@@ -490,6 +538,7 @@ namespace Nyx
 				chunk.Shape = state.Shape;
 				chunk.Edits = held.Edits;
 				chunk.Triangles = held.Triangles;
+				chunk.Samples = held.Samples;
 				PutBody(physics, state, packed, chunk, held.Prepared, toWorld, transform.Rotation, size);
 				++state.Made;
 				state.Shared += held.bShared ? 1u : 0u;
@@ -608,23 +657,12 @@ namespace Nyx
 		}
 
 		// The soonest wanted chunks without a body of the values now to the workers, from the chunk
-		// drawn where the terrain's chunks have it at this level with no other level round it
-		std::unordered_map<uint64_t, std::shared_ptr<const MeshData>> drawn;
-		if (world.Has<TerrainChunksComponent>(state.Owner))
-		{
-			for (const TerrainChunk& chunk : world.Get<TerrainChunksComponent>(state.Owner).Chunks)
-			{
-				if (chunk.Level == level && chunk.Shape == state.Shape && chunk.Neighbourhood == TerrainNeighbourhood{} && chunk.Mesh.Mesh &&
-					chunk.Edits == field(PackKey(chunk.Key)).GetEdits())
-				{
-					drawn.emplace(PackKey(chunk.Key), chunk.Mesh.Mesh);
-				}
-			}
-		}
+		// drawn where the terrain's chunks have it at this level with no other level round it, of the
+		// edits wanted
 		const uint32_t maxJobs = std::max(Workers->GetWorkerCount(), 1u);
 		for (const auto& [time, packed] : order)
 		{
-			const uint64_t edits = field(packed).GetEdits();
+			const uint64_t edits = wantedEdits(packed);
 			const auto resident = state.Chunks.find(packed);
 			const auto waiting = state.Waiting.find(packed);
 			if ((resident != state.Chunks.end() && resident->second.Shape == state.Shape && resident->second.Edits == edits) ||
@@ -647,7 +685,9 @@ namespace Nyx
 			std::shared_ptr<Detail::TerrainCollisionJobs> shared = state.Jobs;
 			std::shared_ptr<const SdfTerrainComponent> snapshot = state.Snapshot;
 			const auto found = drawn.find(packed);
-			std::shared_ptr<const MeshData> mesh = found != drawn.end() ? found->second : nullptr;
+			const bool bShare = found != drawn.end() && found->second.Edits == edits;
+			std::shared_ptr<const MeshData> mesh = bShare ? found->second.Mesh : nullptr;
+			std::shared_ptr<const TerrainChunkSamples> sharedSamples = bShare ? found->second.Samples : nullptr;
 			const glm::ivec3 key = UnpackKey(packed);
 			const uint64_t jobShape = state.Shape;
 			const uint64_t jobEdits = edits;
@@ -655,7 +695,7 @@ namespace Nyx
 			const glm::vec3 scale = transform.Scale;
 			const auto asked = std::chrono::steady_clock::now();
 			JobHandle job = Workers->Schedule(
-				[shared, snapshot, mesh, key, level, jobShape, jobEdits, jobPlacement, scale, asked]
+				[shared, snapshot, mesh, sharedSamples, key, level, jobShape, jobEdits, jobPlacement, scale, asked]
 				{
 					Detail::TerrainCollisionJobs::Done done;
 					done.Key = key;
@@ -664,7 +704,9 @@ namespace Nyx
 					done.Placement = jobPlacement;
 					done.Asked = asked;
 					done.bShared = mesh != nullptr;
-					const MeshData made = mesh ? MeshData{} : MakeTerrainChunkMesh(*snapshot, { level, key });
+					auto samples = std::make_shared<TerrainChunkSamples>();
+					const MeshData made = mesh ? MeshData{} : MakeTerrainChunkMesh(*snapshot, { level, key }, {}, nullptr, samples.get());
+					done.Samples = mesh ? sharedSamples : std::move(samples);
 					const MeshData& source = mesh ? *mesh : made;
 					if (!source.Indices.empty())
 					{
