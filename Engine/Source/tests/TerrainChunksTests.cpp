@@ -5,7 +5,8 @@
 // workers round a viewpoint, each the same bits as the chunk made directly, all within the view
 // distance; drawn all at once, a tree at a time; moving away lets them go and makes new ones; new
 // values make them again while the old ones stay drawn; another view distance alone makes nothing
-// again; removing the terrain takes them and its jobs away; a terrain with no layers has none; a
+// again; edits make only the chunks they reach again, drawn with collision's or at the deadline;
+// removing the terrain takes them and its jobs away; a terrain with no layers has none; a
 // terrain entity moved has its chunks round it; the sample scene's terrain is made. Prints how long
 // a view takes to make.
 //
@@ -39,10 +40,12 @@
 #include <iomanip>
 #include <iostream>
 #include <map>
+#include <optional>
 #include <span>
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <tuple>
 #include <vector>
 
 namespace
@@ -408,6 +411,174 @@ namespace
 		return drawn;
 	}
 
+	// The chunks drawn: each one's edits and mesh
+	std::map<std::tuple<int, int, int, int>, std::pair<uint64_t, const MeshData*>> DrawnEdits(const TerrainChunksComponent& chunks)
+	{
+		std::map<std::tuple<int, int, int, int>, std::pair<uint64_t, const MeshData*>> drawn;
+		for (const TerrainChunk& chunk : chunks.Chunks)
+		{
+			if (chunk.bDrawn)
+			{
+				drawn[{ chunk.Level, chunk.Key.x, chunk.Key.y, chunk.Key.z }] = { chunk.Edits, chunk.Mesh.Mesh.get() };
+			}
+		}
+		return drawn;
+	}
+
+	// Frames until settled with a collision part seen each frame, ready for the edits after `readyAfter`
+	// seconds (never, below 0); the seconds it took
+	double UpdateUntilSettledWithCollision(Registry& world, std::span<const glm::vec3> viewpoints, JobSystem& jobs, Entity terrain, double readyAfter)
+	{
+		const auto start = std::chrono::steady_clock::now();
+		for (;;)
+		{
+			const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+			TerrainEditActivationComponent& activation = world.Get<TerrainEditActivationComponent>(terrain);
+			activation.CollisionSeen = GetTerrainEditClock();
+			if (readyAfter >= 0.0 && elapsed >= readyAfter)
+			{
+				activation.CollisionReady = activation.Latest;
+			}
+			UpdateTerrainChunks(world, viewpoints, jobs);
+			const TerrainChunksStats& stats = world.Get<TerrainChunksComponent>(terrain).Stats;
+			if (stats.bSettled && stats.Pending == 0)
+			{
+				return elapsed;
+			}
+			Require(elapsed < 60.0, "The chunks should settle within a minute");
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}
+	}
+
+	// Edits: only the chunks they reach are made again, the others kept as they were, each with the
+	// edits reaching it and the same bits as made directly; undone, the chunks are as before. With no
+	// collision running a dig is drawn as soon as its chunks are made; with collision running but not
+	// ready, at the deadline; with it ready, at once.
+	void TestEdits()
+	{
+		JobSystem jobs(4);
+		Registry world;
+		const Entity terrain = AddTerrain(world, MakeTerrain());
+		const glm::vec3 viewpoint(5.0f, 12.0f, -3.0f);
+		UpdateUntilSettled(world, { &viewpoint, 1 }, jobs, terrain);
+		const auto before = DrawnEdits(world.Get<TerrainChunksComponent>(terrain));
+		const uint64_t madeBefore = world.Get<TerrainChunksComponent>(terrain).Stats.Made;
+
+		const std::optional<TerrainRayHit> ground = RayCastTerrain(world.Get<SdfTerrainComponent>(terrain), viewpoint, glm::vec3(0.0f, -1.0f, 0.0f), 100.0f);
+		Require(ground.has_value(), "There should be ground under the viewpoint");
+		SdfTerrainEdit dig;
+		dig.Position = ground->Point;
+		dig.Radius = 3.0f;
+		AppendTerrainEdit(world.Get<SdfTerrainComponent>(terrain), dig);
+		const auto start = std::chrono::steady_clock::now();
+		UpdateUntilSettled(world, { &viewpoint, 1 }, jobs, terrain);
+		const double digSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+
+		const SdfTerrainComponent& values = world.Get<SdfTerrainComponent>(terrain);
+		const TerrainChunksComponent& chunks = world.Get<TerrainChunksComponent>(terrain);
+		const auto after = DrawnEdits(chunks);
+		Require(after.size() == before.size(), "A dig standing still should draw the same chunks");
+		uint32_t changed = 0;
+		for (const TerrainChunk& chunk : chunks.Chunks)
+		{
+			const TerrainChunkId id{ chunk.Level, chunk.Key };
+			glm::vec3 low;
+			glm::vec3 high;
+			GetTerrainChunkReach(id, low, high);
+			Require(chunk.Edits == GetTerrainEditsReaching(values, low, high).Hash, "A chunk should be made with the edits reaching it");
+			const auto old = before.find({ chunk.Level, chunk.Key.x, chunk.Key.y, chunk.Key.z });
+			Require(old != before.end(), "A dig standing still should draw the same chunks");
+			if (old->second.first == chunk.Edits)
+			{
+				Require(old->second.second == chunk.Mesh.Mesh.get(), "A chunk the dig doesn't reach should be kept");
+				continue;
+			}
+			++changed;
+			const MeshData direct = MakeTerrainChunkMesh(values, id, chunk.Neighbourhood);
+			Require(chunk.Mesh.Mesh ? SameMesh(*chunk.Mesh.Mesh, direct) : direct.Indices.empty(), "A chunk made again should be the same bits as made directly");
+		}
+		const uint64_t made = chunks.Stats.Made - madeBefore;
+		Require(changed > 0 && made == changed, "Only the chunks a dig reaches should be made again: " + std::to_string(made) + " made, " + std::to_string(changed) + " reached");
+		const TerrainEditActivationComponent& activation = world.Get<TerrainEditActivationComponent>(terrain);
+		Require(activation.Live == HashTerrainEdits(values) && activation.Late == 0, "Without collision a dig should go live as soon as it is drawn");
+		std::string byLevel;
+		for (int level = TerrainFinestLevel; level <= TerrainCoarsestLevel; ++level)
+		{
+			uint32_t of = 0;
+			uint32_t again = 0;
+			for (const TerrainChunk& chunk : chunks.Chunks)
+			{
+				if (chunk.Level == level)
+				{
+					++of;
+					again += before.at({ chunk.Level, chunk.Key.x, chunk.Key.y, chunk.Key.z }).first != chunk.Edits ? 1u : 0u;
+				}
+			}
+			if (of > 0)
+			{
+				byLevel += " " + std::to_string(level) + ": " + std::to_string(again) + " of " + std::to_string(of) + ",";
+			}
+		}
+		byLevel.pop_back();
+		std::cout << "A dig (slope bound " << GetTerrainMaxSlope(values) << "): " << changed << " of " << after.size() << " chunks made again (by level" << byLevel << "), drawn after " << std::fixed
+				  << std::setprecision(1) << digSeconds * 1000.0 << " ms\n";
+
+		// Undone: as before
+		world.Get<SdfTerrainComponent>(terrain).Edits.pop_back();
+		UpdateUntilSettled(world, { &viewpoint, 1 }, jobs, terrain);
+		for (const TerrainChunk& chunk : world.Get<TerrainChunksComponent>(terrain).Chunks)
+		{
+			const auto old = before.find({ chunk.Level, chunk.Key.x, chunk.Key.y, chunk.Key.z });
+			Require(old != before.end() && old->second.first == chunk.Edits, "Undone, every chunk should be made with the edits before");
+		}
+
+		// Edits every frame while the chunks for those before are being made, one undone on the way:
+		// settled, nothing made for edits since gone is drawn
+		for (int n = 0; n < 12; ++n)
+		{
+			SdfTerrainEdit stroke = dig;
+			stroke.Position += glm::vec3(float(n) * 1.5f, 0.0f, 0.0f);
+			stroke.Radius = 1.5f;
+			stroke.Mode = n % 3 == 2 ? ESdfTerrainEditMode::Add : ESdfTerrainEditMode::Subtract;
+			AppendTerrainEdit(world.Get<SdfTerrainComponent>(terrain), stroke);
+			if (n == 7)
+			{
+				world.Get<SdfTerrainComponent>(terrain).Edits.erase(world.Get<SdfTerrainComponent>(terrain).Edits.begin() + 3);
+			}
+			UpdateTerrainChunks(world, { &viewpoint, 1 }, jobs);
+			std::this_thread::sleep_for(std::chrono::milliseconds(3));
+		}
+		UpdateUntilSettled(world, { &viewpoint, 1 }, jobs, terrain);
+		for (const TerrainChunk& chunk : world.Get<TerrainChunksComponent>(terrain).Chunks)
+		{
+			const TerrainChunkId id{ chunk.Level, chunk.Key };
+			glm::vec3 low;
+			glm::vec3 high;
+			GetTerrainChunkReach(id, low, high);
+			Require(chunk.Edits == GetTerrainEditsReaching(values, low, high).Hash, "After a stroke, every chunk should be made with the edits reaching it now");
+			const MeshData direct = MakeTerrainChunkMesh(values, id, chunk.Neighbourhood);
+			Require(chunk.Mesh.Mesh ? SameMesh(*chunk.Mesh.Mesh, direct) : direct.Indices.empty(), "After a stroke, every chunk should be the same bits as made directly");
+		}
+		world.Get<SdfTerrainComponent>(terrain).Edits.clear();
+		UpdateUntilSettled(world, { &viewpoint, 1 }, jobs, terrain);
+
+		// Collision running and never ready: drawn at the deadline
+		const float deadline = world.Get<SdfTerrainComponent>(terrain).ActivationDeadline;
+		AppendTerrainEdit(world.Get<SdfTerrainComponent>(terrain), dig);
+		const double waited = UpdateUntilSettledWithCollision(world, { &viewpoint, 1 }, jobs, terrain, -1.0);
+		Require(waited >= double(deadline) && world.Get<TerrainEditActivationComponent>(terrain).Late == 1, "With collision not ready, a dig should be drawn at the deadline");
+
+		// Collision ready soon after, the deadline far off: drawn once both are
+		world.Get<SdfTerrainComponent>(terrain).ActivationDeadline = 30.0f;
+		SdfTerrainEdit heap = dig;
+		heap.Mode = ESdfTerrainEditMode::Add;
+		heap.Radius = 2.0f;
+		AppendTerrainEdit(world.Get<SdfTerrainComponent>(terrain), heap);
+		const double together = UpdateUntilSettledWithCollision(world, { &viewpoint, 1 }, jobs, terrain, 0.05);
+		Require(together >= 0.05 && world.Get<TerrainEditActivationComponent>(terrain).Late == 1, "With collision ready, an edit should be drawn with it");
+		std::cout << "With collision: drawn at the deadline after " << waited * 1000.0 << " ms; with it ready at 50 ms, after " << together * 1000.0 << " ms\n";
+	}
+
 	// Moving away lets the chunks behind go and makes those ahead, the chunks drawn changing only all
 	// at once; another view distance alone makes nothing again
 	void TestMovingAndViewDistance()
@@ -703,7 +874,7 @@ int main(int argc, char** argv)
 				 TestSeamsAreClosed(ESdfTerrainMesher::MarchingCubes, -1);
 			 } },
 			{ "viewpoint", TestChunksRoundAViewpoint }, { "moving", TestMovingAndViewDistance }, { "values", TestNewValues },
-			{ "removed", TestRemovedEmptyAndMoved }, { "scene", TestTheSampleScene }, { "time", TimeAView } };
+			{ "removed", TestRemovedEmptyAndMoved }, { "edits", TestEdits }, { "scene", TestTheSampleScene }, { "time", TimeAView } };
 		const char* only = argc > 2 && std::strcmp(argv[1], "--only") == 0 ? argv[2] : nullptr;
 		for (const auto& [name, test] : tests)
 		{

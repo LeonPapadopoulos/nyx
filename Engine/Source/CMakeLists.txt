@@ -76,6 +76,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/FlyCameraComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/CharacterComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/MoveCharacterCommand.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/SdfTerrainEditCommand.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/OrbitCameraComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ColorGradingComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/CloudLayerComponent.cpp
@@ -129,6 +130,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/TerrainCollision.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/OrbitCameras.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/CharacterCommands.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Sim/src/TerrainEditCommands.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/TimeOfDayClock.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/SparseField.cpp
 
@@ -310,6 +312,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/FlyCameraComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/CharacterComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/MoveCharacterCommand.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/SdfTerrainEditCommand.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/OrbitCameraComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ColorGradingComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/CloudLayerComponent.h
@@ -368,6 +371,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/TerrainCollision.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/OrbitCameras.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/CharacterCommands.h
+    ${NYX_ENGINE_ROOT}/Runtime/Sim/include/TerrainEditCommands.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/SparseField.h
 
     # Runtime/Physics

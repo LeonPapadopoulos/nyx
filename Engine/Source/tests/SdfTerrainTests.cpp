@@ -6,6 +6,7 @@
 // stay in their band; another seed, another terrain; placed shapes are their distances, turned
 // exactly, carved into an arch, within their ranges. Prints how loose the bounds are and how fast it
 // samples.
+#include "FieldMesher.h"
 #include "SdfTerrain.h"
 #include "TestSupport.h"
 
@@ -461,6 +462,192 @@ namespace
 		Require(differ > 150, "Another seed should give another terrain");
 	}
 
+	// Edits on the rich terrain near its surface: digs, heaps and paint of every shape, some blended
+	SdfTerrainComponent MakeEdited()
+	{
+		SdfTerrainComponent terrain = MakeRich();
+		Sequence sequence;
+		for (int i = 0; i < 60; ++i)
+		{
+			Nyx::SdfTerrainEdit edit;
+			edit.Shape = static_cast<Nyx::ESdfTerrainEditShape>(i % 3);
+			edit.Mode = static_cast<Nyx::ESdfTerrainEditMode>((i / 3) % 3);
+			edit.Position = glm::vec3(sequence.Between(-40.0f, 40.0f), sequence.Between(-15.0f, 25.0f), sequence.Between(-40.0f, 40.0f));
+			edit.End = edit.Position + glm::vec3(sequence.Between(-6.0f, 6.0f), sequence.Between(-3.0f, 3.0f), sequence.Between(-6.0f, 6.0f));
+			edit.HalfSize = glm::vec3(sequence.Between(0.5f, 4.0f), sequence.Between(0.5f, 4.0f), sequence.Between(0.5f, 4.0f));
+			edit.Rotation = glm::vec3(sequence.Between(-40.0f, 40.0f), sequence.Between(0.0f, 360.0f), sequence.Between(-40.0f, 40.0f));
+			edit.Radius = sequence.Between(0.5f, 5.0f);
+			edit.BlendRadius = (i % 4 == 0) ? sequence.Between(0.2f, 2.0f) : 0.0f;
+			edit.Material = 4 + uint32_t(i % 3);
+			Nyx::AppendTerrainEdit(terrain, edit);
+		}
+		return terrain;
+	}
+
+	glm::vec3 PointNearEdits(Sequence& sequence)
+	{
+		return { sequence.Between(-50.0f, 50.0f), sequence.Between(-25.0f, 35.0f), sequence.Between(-50.0f, 50.0f) };
+	}
+
+	// Edits: a dig is air where it was solid, a heap solid where it was air and of its material, paint
+	// the material alone; revisions count up; a batch the same bits as single points; boxes' ranges
+	// and the slope bound hold over them; a terrain left only the edits reaching a box is the same bits
+	// in that box, and an edit far away reaches nothing
+	void TestEdits()
+	{
+		SdfTerrainComponent flat = MakeFlat(0.0f);
+		Require(Nyx::GetTerrainRevision(flat) == 0, "A terrain without edits should be revision 0");
+		Nyx::SdfTerrainEdit dig;
+		dig.Position = glm::vec3(5.0f, 0.0f, 5.0f);
+		dig.Radius = 3.0f;
+		Require(Nyx::AppendTerrainEdit(flat, dig) == 1, "The first edit should be revision 1");
+		Require(std::fabs(Nyx::SampleTerrainValue(flat, dig.Position) - 3.0f) < 1e-6f, "A dig's middle should be its radius out of the ground");
+		Require(Nyx::SampleTerrainValue(flat, glm::vec3(5.0f, -2.0f, 5.0f)) > 0.0f, "Inside a dig should be air");
+		Require(Nyx::SampleTerrainValue(flat, glm::vec3(20.0f, -2.0f, 5.0f)) == -2.0f, "Away from a dig the ground should be as it was");
+
+		Nyx::SdfTerrainEdit heap;
+		heap.Shape = Nyx::ESdfTerrainEditShape::Box;
+		heap.Mode = Nyx::ESdfTerrainEditMode::Add;
+		heap.Position = glm::vec3(-10.0f, 3.0f, 0.0f);
+		heap.HalfSize = glm::vec3(2.0f, 3.0f, 2.0f);
+		heap.Material = 7;
+		Require(Nyx::AppendTerrainEdit(flat, heap) == 2 && Nyx::GetTerrainRevision(flat) == 2, "The second edit should be revision 2");
+		const Nyx::TerrainSample onHeap = Nyx::SampleTerrain(flat, glm::vec3(-10.0f, 4.0f, 0.0f));
+		Require(onHeap.Value < 0.0f && onHeap.Material == 7, "Inside a heap should be solid, of its material");
+
+		Nyx::SdfTerrainEdit paint;
+		paint.Shape = Nyx::ESdfTerrainEditShape::Capsule;
+		paint.Mode = Nyx::ESdfTerrainEditMode::Paint;
+		paint.Position = glm::vec3(30.0f, 0.0f, -5.0f);
+		paint.End = glm::vec3(30.0f, 0.0f, 5.0f);
+		paint.Radius = 2.0f;
+		paint.Material = 9;
+		Nyx::AppendTerrainEdit(flat, paint);
+		const Nyx::TerrainSample painted = Nyx::SampleTerrain(flat, glm::vec3(30.0f, -1.0f, 0.0f));
+		Require(painted.Value == -1.0f && painted.Material == 9, "Paint should change the material alone");
+		Require(Nyx::SampleTerrain(flat, glm::vec3(30.0f, 3.0f, 0.0f)).Value == 3.0f, "Paint shouldn't add ground");
+
+		const SdfTerrainComponent terrain = MakeEdited();
+		Require(Nyx::GetTerrainRevision(terrain) == 60, "60 edits should be revision 60");
+		Sequence sequence;
+		constexpr size_t Count = 4099;
+		std::vector<float> x(Count);
+		std::vector<float> y(Count);
+		std::vector<float> z(Count);
+		for (size_t i = 0; i < Count; ++i)
+		{
+			const glm::vec3 point = PointNearEdits(sequence);
+			x[i] = point.x;
+			y[i] = point.y;
+			z[i] = point.z;
+		}
+		std::vector<float> values(Count);
+		std::vector<uint32_t> materials(Count);
+		Nyx::SampleTerrainBatch(terrain, x.data(), y.data(), z.data(), Count, values.data(), materials.data());
+		int differFromUnedited = 0;
+		const SdfTerrainComponent unedited = MakeRich();
+		for (size_t i = 0; i < Count; ++i)
+		{
+			const Nyx::TerrainSample single = Nyx::SampleTerrain(terrain, glm::vec3(x[i], y[i], z[i]));
+			Require(BitsOf(single.Value) == BitsOf(values[i]) && single.Material == materials[i], "An edited batch should be the same bits as single points");
+			if (Nyx::SampleTerrain(unedited, glm::vec3(x[i], y[i], z[i])).Value != single.Value)
+			{
+				++differFromUnedited;
+			}
+		}
+		Require(differFromUnedited > 100, "Edits should change the terrain round them");
+
+		const float bound = Nyx::GetTerrainMaxSlope(terrain);
+		float steepest = 0.0f;
+		for (int box = 0; box < 80; ++box)
+		{
+			const glm::vec3 low = PointNearEdits(sequence);
+			const glm::vec3 high = low + glm::vec3(sequence.Between(0.5f, 12.0f));
+			const Nyx::TerrainValueRange range = Nyx::GetTerrainValueRange(terrain, low, high);
+			for (int n = 0; n < 512; ++n)
+			{
+				const glm::vec3 point = low + (high - low) * glm::vec3(float(n % 8), float((n / 8) % 8), float(n / 64)) / 7.0f;
+				const float value = Nyx::SampleTerrainValue(terrain, point);
+				Require(value >= range.Lowest && value <= range.Highest, "An edited value should be within its box's range");
+				const glm::vec3 near = point + glm::vec3(0.05f, -0.03f, 0.02f);
+				steepest = std::max(steepest, std::fabs(Nyx::SampleTerrainValue(terrain, near) - value) / glm::length(near - point));
+			}
+		}
+		Require(steepest <= bound * 1.001f, "Edits should never be steeper than the bound");
+
+		// Chunk-sized boxes: the edits reaching one, kept alone, sample the same bits in it
+		size_t keptMost = 0;
+		size_t keptLeast = terrain.Edits.size();
+		for (int box = 0; box < 40; ++box)
+		{
+			const glm::vec3 origin = PointNearEdits(sequence) - glm::vec3(8.0f);
+			constexpr float CellSize = 0.5f;
+			const glm::ivec3 size(33);
+			const glm::vec3 boxMax = origin + glm::vec3(size - 1) * CellSize;
+			SdfTerrainComponent kept = terrain;
+			const Nyx::TerrainEditsReach reach = Nyx::KeepTerrainEditsReaching(kept, origin, boxMax);
+			const Nyx::TerrainEditsReach asked = Nyx::GetTerrainEditsReaching(terrain, origin, boxMax);
+			Require(reach.Count == kept.Edits.size() && asked.Count == reach.Count && asked.Hash == reach.Hash && asked.Revision == reach.Revision,
+				"Asking which edits reach a box should be what keeping them keeps");
+			Require(reach.Revision == (kept.Edits.empty() ? 0 : kept.Edits.back().Revision), "The reach's revision should be its latest edit's");
+			keptMost = std::max(keptMost, kept.Edits.size());
+			keptLeast = std::min(keptLeast, kept.Edits.size());
+			const Nyx::FieldGrid all = Nyx::SampleTerrainGrid(terrain, origin, CellSize, size);
+			const Nyx::FieldGrid some = Nyx::SampleTerrainGrid(kept, origin, CellSize, size);
+			for (size_t i = 0; i < all.Values.size(); ++i)
+			{
+				Require(BitsOf(all.Values[i]) == BitsOf(some.Values[i]) && all.Materials[i] == some.Materials[i],
+					"A terrain left the edits reaching a box should be the same bits in it");
+			}
+		}
+		Require(keptMost < terrain.Edits.size() && keptLeast < keptMost, "A box should keep only some of the edits");
+		std::cout << "Edits: a 16 m box keeps " << keptLeast << " to " << keptMost << " of " << terrain.Edits.size() << "\n";
+
+		Nyx::SdfTerrainEdit far = dig;
+		far.Position = glm::vec3(1000.0f, 0.0f, 0.0f);
+		SdfTerrainComponent withFar = terrain;
+		Nyx::AppendTerrainEdit(withFar, far);
+		Require(Nyx::GetTerrainEditsReaching(withFar, glm::vec3(-10.0f), glm::vec3(10.0f)).Hash == Nyx::GetTerrainEditsReaching(terrain, glm::vec3(-10.0f), glm::vec3(10.0f)).Hash,
+			"An edit far away shouldn't reach a box");
+		Require(Nyx::ExtendsTerrainEdits(withFar, terrain) && !Nyx::ExtendsTerrainEdits(terrain, withFar), "An edit added should extend the edits");
+		SdfTerrainComponent undone = withFar;
+		undone.Edits.pop_back();
+		Nyx::SdfTerrainEdit other = far;
+		other.Position.x += 1.0f;
+		Nyx::AppendTerrainEdit(undone, other);
+		Require(!Nyx::ExtendsTerrainEdits(undone, withFar) && undone.Edits.back().Revision == withFar.Edits.back().Revision,
+			"An edit undone and another made in its place shouldn't extend the edits, of the same revision");
+
+		// A box carried across edits added one at a time is the box taken over them all at once
+		SdfTerrainComponent growing = MakeRich();
+		std::vector<Nyx::TerrainBoxEdits> boxes;
+		for (int box = 0; box < 20; ++box)
+		{
+			const glm::vec3 low = PointNearEdits(sequence);
+			boxes.push_back(Nyx::BeginTerrainBoxEdits(growing, low, low + glm::vec3(sequence.Between(2.0f, 30.0f))));
+		}
+		for (const Nyx::SdfTerrainEdit& edit : terrain.Edits)
+		{
+			growing.Edits.push_back(edit);
+			for (Nyx::TerrainBoxEdits& box : boxes)
+			{
+				Nyx::ContinueTerrainBoxEdits(growing, box);
+			}
+		}
+		for (const Nyx::TerrainBoxEdits& box : boxes)
+		{
+			const Nyx::TerrainEditsReach all = Nyx::GetTerrainEditsReaching(terrain, box.BoxMin, box.BoxMax);
+			Require(box.Seen == terrain.Edits.size() && box.Reach.Hash == all.Hash && box.Reach.Count == all.Count, "A box carried across edits should be the box taken at once");
+			const Nyx::TerrainValueRange range = Nyx::GetTerrainValueRange(terrain, box.BoxMin, box.BoxMax);
+			for (int n = 0; n < 125; ++n)
+			{
+				const glm::vec3 point = box.BoxMin + (box.BoxMax - box.BoxMin) * glm::vec3(float(n % 5), float((n / 5) % 5), float(n / 25)) / 4.0f;
+				const float value = Nyx::SampleTerrainValue(terrain, point);
+				Require(value >= box.Range.Lowest && value <= box.Range.Highest, "A box's range carried across edits should hold its values");
+			}
+		}
+	}
+
 	// Not a test: a chunk's samples near the surface, in a batch
 	void PrintTimings()
 	{
@@ -606,6 +793,7 @@ int main()
 		TestTunnelsStayInTheirBand();
 		TestSeeds();
 		TestShapes();
+		TestEdits();
 		PrintTimings();
 	}
 	catch (const std::exception& error)

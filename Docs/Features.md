@@ -1487,6 +1487,26 @@ game, coarser the farther, and collides while the world runs.
 - `FindTerrainFreePoint()`: the nearest place out of the terrain with room round it, along the way
   out from a point inside, to push something out of new terrain; from the field, where no chunk is
   made too.
+- Edits: dig, heap or paint a sphere, a capsule or a turned box into the terrain, rounded into it
+  over a *Blend Radius*, after all its layers in the order made (*Subtract*, *Add* with a material,
+  *Paint* the material only). Each has the terrain's next *Revision*; they are saved with the scene.
+  A game asks for one by an `SdfTerrainEditCommand` (the terrain's guid and the edit), applied by
+  the next step; code that owns the world adds one by `AppendTerrainEdit()`.
+  - Only the chunks an edit can change are made again: each chunk keeps which edits reach all it
+    samples (its own and the coarser grid round it, and its sky), carried from edit to edit, so an
+    edit costs a chunk one shape's range; a chunk is made from a copy with only those, the same
+    bits. An edit deep in the ground changes the values under the surface tens of metres round
+    it, so a dig of a few metres makes some tens of chunks again.
+  - Drawn and in collision together: each holds what it made for new edits until the other has its
+    own, then both go in, the near levels' chunks with collision and the coarser ones once made; if
+    that takes longer than *Activation Deadline* (0.25 s), each goes in when it is ready, and the
+    *Terrain Edit Activation* panel counts it. Outside the game, drawing doesn't wait.
+  - Then, by the values before and after: a character the edits put inside the terrain is pushed out
+    onto it; a dynamic body whose middle they did is left to the physics to push out; one they took
+    the terrain from under has lost its support; every dynamic body round them is woken. Each is
+    told on the terrain's *Terrain Collision* (`TerrainCollisionComponent::Events`) for that step.
+  - Edits are a list on the terrain, not yet in a spatial index: a chunk passes them all once to
+    keep those reaching it, and a query of the whole terrain (a sample, a ray) passes them all.
 - `Assets/Scenes/SdfTerrainTest.nyxscene` (written by `NyxTerrainChunksTests --write-scene`):
   terraced hills with tunnels under them, a floating landmass of sharp stone with a hanging
   underside and chambers inside, out to 2 km, a sun, a camera that flies, and six balls that fall on
@@ -1546,18 +1566,25 @@ game, coarser the farther, and collides while the world runs.
   points, golden values the same in Debug and Release), `NyxSdfTerrainTests` (flat ground exact,
   batches the same bits, golden values, never steeper than the bound, box ranges and rays against
   dense sampling, a thin slab never passed through, materials, blends, tunnels in their band, seeds,
-  placed shapes their distances, turned exactly, carved into an arch, within their ranges),
+  placed shapes their distances, turned exactly, carved into an arch, within their ranges; edits:
+  digs, heaps and paint, batches the same bits, within box ranges and the slope bound, a copy with
+  only the edits reaching a box the same bits in it, a box carried across edits as if taken at
+  once),
   `NyxTerrainChunksTests` (the octree covering the view distance once, balanced, each level where
   its distance says, held by the hysteresis; every seam closed with both meshers and half-metre
   cells; chunks made on the workers the same bits as made directly, only where the surface is,
   within the view distance, replaced all at once, let go of and made anew as the camera moves, made
-  again for new values while the old stay, gone with the terrain; the sample scene),
+  again for new values while the old stay, gone with the terrain; a dig making only the chunks it
+  reaches again, undone, a stroke of edits while chunks are made leaving none stale, drawn with
+  collision or at the deadline; the sample scene),
   `NyxTerrainChunksGpuTests` (the chunks drawn at three levels, picked as the terrain, in the debug
   view's colours, drawn where it is moved), `NyxTerrainCollisionTests` (the way out of a hill, a
   ball resting on the hills, a character walking 60 m on them, one falling 200 m past a floating
   landmass's cliff at 60 m/s and landing on the hills below with collision always ahead, rays
   meeting the collision where they meet the drawn triangles, bodies following the movers, made
-  again for new values, gone with the terrain; the sample scene's balls landing on its hills),
+  again for new values, gone with the terrain; a dig under a crate at rest that it falls into, a
+  heap made on a character that is pushed onto it, a dig drawn and in collision in the same frame;
+  the sample scene's balls landing on its hills),
   `NyxFieldMesherTests` (a sphere closed with the right area, a box's corners kept sharp and rounded
   smooth, thin shapes closed and wound consistently, neighbouring chunks meeting, sky visibility,
   materials, a golden mesh the same in Debug and Release; marching cubes on the same shapes, closed

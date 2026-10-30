@@ -85,6 +85,54 @@ namespace Nyx
 	std::optional<TerrainRayHit> RayCastTerrain(const SdfTerrainComponent& terrain, const glm::vec3& origin, const glm::vec3& direction,
 		float maxDistance);
 
+	// Adds an edit after the others (SdfTerrainComponent::Edits), its revision the next one: returns
+	// that revision. Only what makes the world's revisions (the editor's scene, a game's host) edits.
+	uint64_t AppendTerrainEdit(SdfTerrainComponent& terrain, SdfTerrainEdit edit);
+
+	// The latest edit's revision; 0 with none
+	uint64_t GetTerrainRevision(const SdfTerrainComponent& terrain);
+
+	// The edits that can change a value somewhere in a box (by the interval arithmetic of the layers'
+	// and the edits' ranges; one that can't is exactly no change there): how many, the latest of their
+	// revisions (0 for none), and a hash of them all, which tells a box made with them from one made
+	// with others, even of the same revisions (an undone edit's number made again)
+	struct TerrainEditsReach
+	{
+		uint32_t Count = 0;
+		uint64_t Revision = 0;
+		uint64_t Hash = 0;
+	};
+
+	// What is known of a box's values with the edits taken one after another: a range they are within,
+	// by the layers and the edits seen so far, and those of the edits that reach it. Begun from the
+	// layers (their range, tightened by their value at the centre: one sample), then continued over
+	// the edits added after those seen, an edit at a time, so a box kept across edits costs one shape's
+	// range an edit. Begun again when an edit seen changed or went.
+	struct TerrainBoxEdits
+	{
+		glm::vec3 BoxMin{ 0.0f };
+		glm::vec3 BoxMax{ 0.0f };
+		TerrainValueRange Range;
+		// How many of the terrain's edits it has taken
+		size_t Seen = 0;
+		TerrainEditsReach Reach;
+	};
+	TerrainBoxEdits BeginTerrainBoxEdits(const SdfTerrainComponent& terrain, const glm::vec3& boxMin, const glm::vec3& boxMax);
+	void ContinueTerrainBoxEdits(const SdfTerrainComponent& terrain, TerrainBoxEdits& box);
+
+	TerrainEditsReach GetTerrainEditsReaching(const SdfTerrainComponent& terrain, const glm::vec3& boxMin, const glm::vec3& boxMax);
+
+	// Leaves the terrain only those edits, so sampling in the box is the same bits with far fewer: what
+	// a chunk is made from
+	TerrainEditsReach KeepTerrainEditsReaching(SdfTerrainComponent& terrain, const glm::vec3& boxMin, const glm::vec3& boxMax);
+
+	// Whether the terrain's edits are those of `earlier` (the same, in the same order) and maybe more
+	// after them: what was known of boxes from those can be continued
+	bool ExtendsTerrainEdits(const SdfTerrainComponent& terrain, const SdfTerrainComponent& earlier);
+
+	// A hash of every edit, telling one set of edits from another; never 0
+	uint64_t HashTerrainEdits(const SdfTerrainComponent& terrain);
+
 	// The nearest place a ball of `clearance` metres round `point` is out of the terrain, to push
 	// something out of new terrain: the point itself if it is out already, else along the way out
 	// (the normal, taken again each step) in steps of a tenth of the clearance, at least a centimetre

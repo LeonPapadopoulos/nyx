@@ -3,10 +3,13 @@
 // surface; a character walks across them on the ground; one falling past a floating landmass's cliff
 // at 60 m/s, stepped as a game steps, lands on the hills below without ever missing collision; the collision is the chunks'
 // triangles as drawn, those drawn shared; bodies follow the movers, are made again for new values
-// and go with the terrain or its collision; the sample scene's balls come to rest on its hills.
+// and go with the terrain or its collision; edits by command take the ground from a crate at rest,
+// which falls, and push a character out of a heap made on it, and are drawn and in collision in the
+// same frame; the sample scene's balls come to rest on its hills.
 #include "CharacterComponent.h"
 #include "ComponentRegistration.h"
 #include "GameWorld.h"
+#include "GuidComponent.h"
 #include "JobSystem.h"
 #include "Log.h"
 #include "Paths.h"
@@ -14,6 +17,7 @@
 #include "SceneSerializer.h"
 #include "SdfTerrain.h"
 #include "SdfTerrainComponent.h"
+#include "SdfTerrainEditCommand.h"
 #include "TerrainChunks.h"
 #include "TestSupport.h"
 #include "TransformComponent.h"
@@ -24,6 +28,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <optional>
@@ -52,14 +57,18 @@ namespace
 			}
 		}
 
-		// As a game steps: no sooner than the clock, so the workers have the time they would
+		// As a game steps: no sooner than the clock, so the workers have the time they would; yielding
+		// rather than sleeping, which the system may round up to twice a step
 		void RunInTime(int count)
 		{
 			for (int i = 0; i < count; ++i)
 			{
 				const auto due = std::chrono::steady_clock::now() + std::chrono::microseconds(int64_t(StepSeconds * 1e6f));
 				Run(1);
-				std::this_thread::sleep_until(due);
+				while (std::chrono::steady_clock::now() < due)
+				{
+					std::this_thread::yield();
+				}
 			}
 		}
 	};
@@ -431,6 +440,187 @@ namespace
 		Require(world.GetTerrainCollision().GetBodyCount() == 0, "With the terrain gone, no bodies");
 	}
 
+	// The ground under a point as the collision has it, by a ray down at static bodies
+	std::optional<float> CollisionBelow(GameWorld& world, const glm::vec3& point)
+	{
+		QueryFilter filter;
+		filter.bMoving = false;
+		const std::optional<QueryHit> hit = world.GetPhysics().RayCast(point, glm::vec3(0.0f, -1.0f, 0.0f), 100.0f, filter);
+		return hit ? std::optional<float>(hit->Point.y) : std::nullopt;
+	}
+
+	void SendEdit(GameWorld& world, EntityGuid terrain, const SdfTerrainEdit& edit)
+	{
+		SdfTerrainEditCommand command;
+		command.Terrain = terrain;
+		command.Edit = edit;
+		world.GetCommands().Add(command);
+	}
+
+	// Edits by command: a dig under a crate at rest takes its support, which wakes it, and it falls
+	// in; a heap made where a character stands puts it inside, and it is pushed out on top; a command
+	// for no terrain does nothing
+	void TestEditsUnderBodies()
+	{
+		GameWorld world;
+		Steps steps{ world };
+		Registry& registry = world.GetRegistry();
+		const Entity terrain = AddTerrain(registry, MakeHills());
+		const EntityGuid guid{ 0x7E44A1 };
+		registry.Add<GuidComponent>(terrain, GuidComponent{ guid });
+		const SdfTerrainComponent& values = registry.Get<SdfTerrainComponent>(terrain);
+
+		const glm::vec3 above(-6.0f, 0.0f, 9.0f);
+		const Entity crate = registry.CreateEntity();
+		registry.Add<TransformComponent>(crate, TransformComponent{ .Position = glm::vec3(above.x, SurfaceBelow(values, above + glm::vec3(0.0f, 50.0f, 0.0f)) + 0.5f, above.z) });
+		registry.Add<BoxColliderComponent>(crate, BoxColliderComponent{ .HalfExtents = glm::vec3(0.4f) });
+		registry.Add<RigidBodyComponent>(crate, RigidBodyComponent{ .GravityFactor = 0.0f });
+		const glm::vec3 stand(12.0f, 0.0f, -4.0f);
+		const Entity walker = registry.CreateEntity();
+		registry.Add<TransformComponent>(walker, TransformComponent{ .Position = glm::vec3(stand.x, SurfaceBelow(values, stand + glm::vec3(0.0f, 50.0f, 0.0f)) + 0.1f, stand.z) });
+		registry.Add<CharacterComponent>(walker, CharacterComponent{ .GravityFactor = 0.0f });
+		steps.Run(1);
+		StepUntilCovered(world, steps, terrain);
+		registry.Get<RigidBodyComponent>(crate).GravityFactor = 1.0f;
+		registry.Get<CharacterComponent>(walker).GravityFactor = 1.0f;
+		// Its body made again for the gravity: asked for by its entity each time
+		auto isAwake = [&] { return world.GetPhysics().IsAwake(world.GetBodies().FindBody(crate)); };
+		steps.Run(1);
+		for (int step = 0; step < 60 * 10 && isAwake(); ++step)
+		{
+			steps.Run(1);
+		}
+		Require(!isAwake(), "The crate should come to rest and sleep");
+		const glm::vec3 resting = registry.Get<TransformComponent>(crate).Position;
+		const glm::vec3 standing = registry.Get<TransformComponent>(walker).Position;
+
+		// A command for no terrain: nothing
+		SdfTerrainEdit dig;
+		dig.Position = resting - glm::vec3(0.0f, 0.4f, 0.0f);
+		dig.Radius = 2.5f;
+		SendEdit(world, EntityGuid{ 0x1234 }, dig);
+		steps.Run(1);
+		Require(values.Edits.empty(), "A command for no terrain should do nothing");
+
+		// The dig and the heap at once
+		SendEdit(world, guid, dig);
+		SdfTerrainEdit heap;
+		heap.Mode = ESdfTerrainEditMode::Add;
+		heap.Position = standing;
+		heap.Radius = 1.5f;
+		heap.Material = 3;
+		SendEdit(world, guid, heap);
+		const auto start = std::chrono::steady_clock::now();
+		std::vector<TerrainEditEvent> events;
+		double liveSeconds = -1.0;
+		for (int step = 0; step < 60 * 5; ++step)
+		{
+			steps.RunInTime(1);
+			const TerrainCollisionComponent& collision = registry.Get<TerrainCollisionComponent>(terrain);
+			events.insert(events.end(), collision.Events.begin(), collision.Events.end());
+			if (liveSeconds < 0.0 && !collision.Events.empty())
+			{
+				liveSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+			}
+		}
+		Require(values.Edits.size() == 2 && values.Edits[0].Revision == 1 && values.Edits[1].Revision == 2, "The commands should become the terrain's edits 1 and 2");
+		const TerrainEditActivationComponent& activation = registry.Get<TerrainEditActivationComponent>(terrain);
+		Require(activation.Live == HashTerrainEdits(values) && activation.Late == 0, "The edits should go live without the deadline, with no drawing to wait for");
+
+		auto eventFor = [&](Entity body, ETerrainEditEvent kind)
+		{
+			return std::find_if(events.begin(), events.end(), [&](const TerrainEditEvent& event) { return event.Body == body && event.Kind == kind; });
+		};
+		Require(eventFor(crate, ETerrainEditEvent::LostSupport) != events.end(), "The crate should lose its support to the dig under it");
+		const glm::vec3 fallen = registry.Get<TransformComponent>(crate).Position;
+		Require(fallen.y < resting.y - 1.0f, "The crate should fall into the dig, not stay at " + Describe(fallen) + " from " + Describe(resting));
+		Require(SampleTerrainValue(values, fallen) > 0.0f, "The crate should be in the dig, not in the terrain");
+
+		const auto pushed = eventFor(walker, ETerrainEditEvent::InsideNewTerrain);
+		Require(pushed != events.end(), "The character should be pushed out of the heap made on it");
+		// On the heap as its collision has it, the chunk's triangles, a little under the field's
+		// rounded top
+		const glm::vec3 feet = registry.Get<TransformComponent>(walker).Position;
+		const std::optional<float> heapTop = CollisionBelow(world, glm::vec3(feet.x, standing.y + 10.0f, feet.z));
+		Require(heapTop && *heapTop > standing.y + 1.0f, "The heap should rise over where the character stood");
+		Require(feet.y > *heapTop - 0.1f, "The character should be on the heap, not in it: feet at " + Describe(feet) + ", heap top " + std::to_string(*heapTop));
+		std::cout << "Edits under bodies: live after " << std::fixed << std::setprecision(1) << liveSeconds * 1000.0 << " ms; the crate fell " << resting.y - fallen.y
+				  << " m, the character pushed " << glm::length(pushed->To - pushed->From) << " m onto the heap\n";
+	}
+
+	// Drawn and in collision together: with the chunks drawn round the character too, a dig beside it
+	// changes the collision and the chunks drawn in the same frame; its time from the command to both
+	void TestEditsDrawnWithCollision()
+	{
+		GameWorld world;
+		Steps steps{ world };
+		Registry& registry = world.GetRegistry();
+		SdfTerrainComponent hills = MakeHills();
+		hills.ViewDistance = 300.0f;
+		// Together however long the chunks take to make, in Debug too
+		hills.ActivationDeadline = 60.0f;
+		const Entity terrain = AddTerrain(registry, hills);
+		const EntityGuid guid{ 0x7E44A2 };
+		registry.Add<GuidComponent>(terrain, GuidComponent{ guid });
+		const SdfTerrainComponent& values = registry.Get<SdfTerrainComponent>(terrain);
+		const glm::vec3 stand(4.0f, 0.0f, 3.0f);
+		const float ground = SurfaceBelow(values, stand + glm::vec3(0.0f, 50.0f, 0.0f));
+		const Entity walker = registry.CreateEntity();
+		registry.Add<TransformComponent>(walker, TransformComponent{ .Position = glm::vec3(stand.x, ground + 0.1f, stand.z) });
+		registry.Add<CharacterComponent>(walker, CharacterComponent{ .GravityFactor = 0.0f });
+		const glm::vec3 viewpoint(stand.x, ground + 2.0f, stand.z);
+		JobSystem& jobs = JobSystem::Get();
+		auto frame = [&]
+		{
+			UpdateTerrainChunks(registry, { &viewpoint, 1 }, jobs);
+			steps.RunInTime(1);
+		};
+		frame();
+		StepUntilCovered(world, steps, terrain);
+		for (int n = 0; n < 60 * 30 && !registry.Get<TerrainChunksComponent>(terrain).Stats.bSettled; ++n)
+		{
+			frame();
+		}
+		Require(registry.Get<TerrainChunksComponent>(terrain).Stats.bSettled, "The chunks round the character should be drawn");
+		const uint64_t before = registry.Get<TerrainChunksComponent>(terrain).Chunks.front().Edits;
+
+		// A dig 3 m to the side of the character, where nothing stands
+		const glm::vec3 probe(stand.x + 3.0f, ground + 10.0f, stand.z);
+		SdfTerrainEdit dig;
+		dig.Position = glm::vec3(probe.x, SurfaceBelow(values, probe), probe.z);
+		dig.Radius = 2.0f;
+		const float oldGround = *CollisionBelow(world, probe);
+		SendEdit(world, guid, dig);
+		const auto start = std::chrono::steady_clock::now();
+		int drawnFrame = -1;
+		int collisionFrame = -1;
+		double drawnSeconds = 0.0;
+		for (int n = 0; n < 60 * 60 && (drawnFrame < 0 || collisionFrame < 0); ++n)
+		{
+			frame();
+			const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+			bool bDrawn = false;
+			for (const TerrainChunk& chunk : registry.Get<TerrainChunksComponent>(terrain).Chunks)
+			{
+				bDrawn = bDrawn || (chunk.bDrawn && chunk.Edits != before && chunk.Level == registry.Get<SdfTerrainComponent>(terrain).FinestLevel);
+			}
+			if (bDrawn && drawnFrame < 0)
+			{
+				drawnFrame = n;
+				drawnSeconds = elapsed;
+			}
+			const std::optional<float> now = CollisionBelow(world, probe);
+			if (now && *now < oldGround - 1.0f && collisionFrame < 0)
+			{
+				collisionFrame = n;
+			}
+		}
+		Require(drawnFrame >= 0 && collisionFrame >= 0, "The dig should be drawn and in collision");
+		Require(std::abs(drawnFrame - collisionFrame) <= 1, "The dig should be drawn and in collision together, not frames " + std::to_string(drawnFrame) + " and " + std::to_string(collisionFrame));
+		std::cout << std::fixed << std::setprecision(1) << "A dig drawn at frame " << drawnFrame << " and in collision at frame " << collisionFrame << ", " << drawnSeconds * 1000.0
+				  << " ms after its command\n";
+	}
+
 	// The sample scene run for 10 s: its balls fall on the hills, never into them, and land and roll
 	// on what is under them (the hills, or a tunnel's floor where one rolls in)
 	void TestTheSampleScene()
@@ -480,6 +670,8 @@ int main()
 		TestAFastFallPastTheCliff();
 		TestTheSameTrianglesAsDrawn();
 		TestBodiesComeAndGo();
+		TestEditsUnderBodies();
+		TestEditsDrawnWithCollision();
 		TestTheSampleScene();
 	}
 	catch (const std::exception& error)

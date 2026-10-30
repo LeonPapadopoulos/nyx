@@ -153,12 +153,80 @@ namespace Nyx
 		Seams
 	};
 
+	// The shape of an edit to an SDF terrain. Saved as its number: new shapes go at the end.
+	NYX_ENUM()
+	enum class ESdfTerrainEditShape : uint8_t
+	{
+		// A ball of Radius round Position
+		Sphere,
+		// A rod of Radius from Position to End, round at both ends
+		Capsule,
+		// A box at Position, Half Size each way along its own axes, turned by Rotation
+		Box
+	};
+
+	// What an edit does. Saved as its number: new modes go at the end.
+	NYX_ENUM()
+	enum class ESdfTerrainEditMode : uint8_t
+	{
+		// Cuts its shape out: a dig
+		Subtract,
+		// Fills its shape in, of its Material
+		Add,
+		// Gives the terrain in its shape its Material, its surface left as it is
+		Paint
+	};
+
+	// One edit of an SDF terrain: a shape and what it does, numbered by the revision it made. Edits
+	// apply after every layer, in the order of their revisions (AppendTerrainEdit(), SdfTerrain.h).
+	NYX_REFLECT()
+	struct SdfTerrainEdit
+	{
+		// The terrain's revision this edit made: 1 for the first, one more for each after it
+		NYX_PROPERTY(Serialize)
+		uint64_t Revision = 0;
+
+		NYX_PROPERTY(Serialize)
+		ESdfTerrainEditShape Shape = ESdfTerrainEditShape::Sphere;
+
+		NYX_PROPERTY(Serialize)
+		ESdfTerrainEditMode Mode = ESdfTerrainEditMode::Subtract;
+
+		// In the terrain's space, in metres: a sphere's or box's middle, a capsule's one end
+		NYX_PROPERTY(Serialize)
+		glm::vec3 Position{ 0.0f };
+
+		// A capsule's other end
+		NYX_PROPERTY(Serialize)
+		glm::vec3 End{ 0.0f };
+
+		// A box's half size along each of its axes, and how it is turned, in degrees about X, then Y,
+		// then Z
+		NYX_PROPERTY(Serialize)
+		glm::vec3 HalfSize{ 1.0f };
+
+		NYX_PROPERTY(Serialize)
+		glm::vec3 Rotation{ 0.0f };
+
+		// A sphere's and a capsule's
+		NYX_PROPERTY(Serialize)
+		float Radius = 1.0f;
+
+		// Over how many metres it blends into the terrain, rounding the edge it makes; 0: sharp
+		NYX_PROPERTY(Serialize)
+		float BlendRadius = 0.0f;
+
+		// Add and Paint: the material number it gives
+		NYX_PROPERTY(Serialize)
+		uint32_t Material = 0;
+	};
+
 	// Terrain as a signed field over a volume, so it can overhang, hollow out and float: a stack of
-	// layers, each joined to what the ones before it made, evaluated in order. Its value at a point
-	// (SampleTerrain(), SdfTerrain.h) is a function of these values alone, the same on every machine:
-	// negative inside, positive outside, 0 on the surface. Heights are along the entity's Y, around
-	// it. Meshed in chunks round the camera, in the editor and the game (TerrainChunks.h), and drawn
-	// by the entity's Mesh Renderer.
+	// layers, each joined to what the ones before it made, evaluated in order, then the edits made to
+	// it, in the order of their revisions. Its value at a point (SampleTerrain(), SdfTerrain.h) is a
+	// function of these values alone, the same on every machine: negative inside, positive outside, 0
+	// on the surface. Heights are along the entity's Y, around it. Meshed in chunks round the camera,
+	// in the editor and the game (TerrainChunks.h), and drawn by the entity's Mesh Renderer.
 	NYX_REFLECT(Component, meta = (DisplayName = "SDF Terrain"))
 	struct SdfTerrainComponent
 	{
@@ -194,6 +262,13 @@ namespace Nyx
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Debug View", Category = "Chunks", Tooltip = "Levels: a colour for each level of detail; Seams: those darker and the triangles joining levels bright"))
 		ESdfTerrainDebugView DebugView = ESdfTerrainDebugView::None;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Activation Deadline", Category = "Edits", DragSpeed = 0.01, Tooltip = "How long, in seconds, an edit waits for its collision and its drawn chunks to be ready together before each goes live as soon as it is ready"))
+		float ActivationDeadline = 0.25f;
+
+		// What has been dug, filled and painted, in the order of the revisions (AppendTerrainEdit())
+		NYX_PROPERTY(Serialize)
+		std::vector<SdfTerrainEdit> Edits;
 	};
 }
 

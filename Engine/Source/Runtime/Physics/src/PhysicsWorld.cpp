@@ -1907,6 +1907,11 @@ namespace Nyx
 		return Impl->Bodies().IsActive(ToJolt(body));
 	}
 
+	void PhysicsWorld::Wake(BodyHandle body)
+	{
+		Impl->Bodies().ActivateBody(ToJolt(body));
+	}
+
 	uint64_t PhysicsWorld::GetUserData(BodyHandle body) const
 	{
 		return Impl->Bodies().GetUserData(ToJolt(body));

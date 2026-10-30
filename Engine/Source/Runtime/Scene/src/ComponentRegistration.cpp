@@ -106,6 +106,8 @@ namespace Nyx
 		ComponentTypeRegistry::Get().RegisterRuntime<WindDriveComponent>("Nyx::WindDriveComponent", "Wind Drive", &DescribeWindDrive);
 		ComponentTypeRegistry::Get().RegisterRuntime<TerrainChunksComponent>("Nyx::TerrainChunksComponent", "Terrain Chunks", &DescribeTerrainChunks);
 		ComponentTypeRegistry::Get().RegisterRuntime<TerrainCollisionComponent>("Nyx::TerrainCollisionComponent", "Terrain Collision", &DescribeTerrainCollision);
+		ComponentTypeRegistry::Get().RegisterRuntime<TerrainEditActivationComponent>("Nyx::TerrainEditActivationComponent", "Terrain Edit Activation",
+			&DescribeTerrainEditActivation);
 
 		// Scenes saved before the world had a wind of its own: the environment's, for particles, moved
 		// into one

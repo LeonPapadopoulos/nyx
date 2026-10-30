@@ -28,6 +28,7 @@ namespace Nyx
 			{
 				JobHandle Job;
 				uint64_t Shape = 0;
+				uint64_t Edits = 0;
 			};
 			std::unordered_map<uint64_t, Scheduled> InFlight;
 
@@ -35,6 +36,7 @@ namespace Nyx
 			{
 				glm::ivec3 Key{ 0 };
 				uint64_t Shape = 0;
+				uint64_t Edits = 0;
 				uint64_t Placement = 0;
 				std::shared_ptr<const PreparedShape> Prepared;
 				uint32_t Triangles = 0;
@@ -85,7 +87,17 @@ namespace Nyx
 			glm::vec3 Velocity{ 0.0f };
 			// Asleep: only the chunks it rests in
 			bool bAwake = true;
+			Entity Owner;
+			// One or the other
+			CharacterHandle Character;
+			BodyHandle Body;
 		};
+
+		float DistanceToChunk(const glm::vec3& point, uint64_t packed, float size)
+		{
+			const glm::vec3 corner = glm::vec3(UnpackKey(packed)) * size;
+			return glm::length(point - glm::clamp(point, corner, corner + size));
+		}
 
 		// The chunks of `level` whose boxes come within `radius` of `point`, each needed at `time` and
 		// `secondsPerMetre` later for each metre it is away, unless it is needed sooner already
@@ -162,6 +174,33 @@ namespace Nyx
 		return BodyOwners.size();
 	}
 
+	void TerrainCollision::PutBody(PhysicsWorld& physics, TerrainState& state, uint64_t packed, const ChunkBody& made,
+		const std::shared_ptr<const PreparedShape>& prepared, const glm::mat4& toWorld, const glm::quat& rotation, float size)
+	{
+		ChunkBody chunk = made;
+		if (prepared)
+		{
+			BodyDesc desc;
+			desc.Prepared = prepared;
+			desc.Motion = EBodyMotion::Static;
+			desc.Position = glm::vec3(toWorld * glm::vec4(glm::vec3(UnpackKey(packed)) * size, 1.0f));
+			desc.Rotation = rotation;
+			desc.UserData = state.Owner.Value;
+			chunk.Body = physics.CreateBody(desc);
+		}
+		const auto old = state.Chunks.find(packed);
+		if (old != state.Chunks.end() && old->second.Body.IsValid())
+		{
+			BodyOwners.erase(old->second.Body.Value);
+			physics.DestroyBody(old->second.Body);
+		}
+		if (chunk.Body.IsValid())
+		{
+			BodyOwners.emplace(chunk.Body.Value, state.Owner);
+		}
+		state.Chunks[packed] = chunk;
+	}
+
 	void TerrainCollision::Release(PhysicsWorld& physics, TerrainState& state)
 	{
 		for (auto& [key, chunk] : state.Chunks)
@@ -173,6 +212,7 @@ namespace Nyx
 			}
 		}
 		state.Chunks.clear();
+		state.Waiting.clear();
 		for (auto& [key, job] : state.Jobs->InFlight)
 		{
 			Workers->Cancel(job.Job);
@@ -247,14 +287,35 @@ namespace Nyx
 		if (shape != state.Shape || !state.Snapshot)
 		{
 			state.Shape = shape;
+			state.Edits = HashTerrainEdits(terrain);
 			state.Snapshot = std::make_shared<const SdfTerrainComponent>(terrain);
-			state.Surface.clear();
+			state.LiveSnapshot = state.Snapshot;
+			state.Fields.Forget();
+			state.Waiting.clear();
 			for (auto& [key, job] : jobs.InFlight)
 			{
 				Workers->Cancel(job.Job);
 			}
 			jobs.InFlight.clear();
 		}
+		// New edits: what was known of the chunks carried over if they only add to those before; the
+		// jobs go on, each kept if its edits are those its chunk is wanted with
+		else if (terrain.Edits.size() != state.Snapshot->Edits.size() || !ExtendsTerrainEdits(terrain, *state.Snapshot))
+		{
+			if (!ExtendsTerrainEdits(terrain, *state.Snapshot))
+			{
+				state.Fields.Forget();
+			}
+			state.Edits = HashTerrainEdits(terrain);
+			state.Snapshot = std::make_shared<const SdfTerrainComponent>(terrain);
+		}
+		if (!world.Has<TerrainEditActivationComponent>(state.Owner))
+		{
+			world.Add<TerrainEditActivationComponent>(state.Owner, TerrainEditActivationComponent{});
+		}
+		const double clock = GetTerrainEditClock();
+		NoteTerrainEdits(world.Get<TerrainEditActivationComponent>(state.Owner), ETerrainEditPart::Collision, state.Edits, clock);
+		auto field = [&](uint64_t packed) -> const TerrainChunkField& { return state.Fields.Get(*state.Snapshot, { level, UnpackKey(packed) }); };
 
 		// The moving bodies, in the terrain's space
 		const glm::mat4 toWorld = transform.ToMatrix();
@@ -268,7 +329,7 @@ namespace Nyx
 				if (character.IsValid())
 				{
 					const CharacterState moving = physics.GetCharacterState(character);
-					movers.push_back({ glm::vec3(toTerrain * glm::vec4(moving.Position, 1.0f)), turnToTerrain * moving.Velocity, true });
+					movers.push_back({ glm::vec3(toTerrain * glm::vec4(moving.Position, 1.0f)), turnToTerrain * moving.Velocity, true, entity, character, {} });
 				}
 			});
 		world.Each<RigidBodyComponent>([&](Entity entity, RigidBodyComponent& rigidBody)
@@ -279,7 +340,7 @@ namespace Nyx
 					return;
 				}
 				movers.push_back({ glm::vec3(toTerrain * glm::vec4(physics.GetPose(body).Position, 1.0f)), turnToTerrain * physics.GetLinearVelocity(body),
-					physics.IsAwake(body) });
+					physics.IsAwake(body), entity, {}, body });
 			});
 
 		// The chunks wanted, by when they are needed: round each mover now, then along its way
@@ -300,20 +361,7 @@ namespace Nyx
 			}
 		}
 		// Of them, those the surface crosses
-		auto hasSurface = [&](uint64_t packed)
-		{
-			const auto found = state.Surface.find(packed);
-			if (found != state.Surface.end())
-			{
-				return found->second;
-			}
-			const float cell = GetTerrainCellSize(level);
-			const glm::vec3 corner = glm::vec3(UnpackKey(packed)) * size;
-			const TerrainValueRange range = GetTerrainValueRange(terrain, corner - 2.0f * cell, corner + size + cell);
-			const bool bSurface = !range.IsAllAir() && !range.IsAllSolid();
-			state.Surface.emplace(packed, bSurface);
-			return bSurface;
-		};
+		auto hasSurface = [&](uint64_t packed) { return field(packed).HasSurface(); };
 		std::vector<std::pair<float, uint64_t>> order;
 		uint32_t skipped = 0;
 		for (const auto& [packed, time] : wanted)
@@ -329,6 +377,26 @@ namespace Nyx
 		}
 		std::sort(order.begin(), order.end());
 
+		// Bodies of other edits than their chunks' now: one the edits left without surface gets an
+		// empty body, to go in with the others; those only kept round the bodies are made again too,
+		// after those wanted
+		for (const auto& [packed, chunk] : state.Chunks)
+		{
+			const uint64_t edits = field(packed).GetEdits();
+			if (chunk.Shape != state.Shape || chunk.Edits == edits)
+			{
+				continue;
+			}
+			if (!hasSurface(packed))
+			{
+				state.Waiting[packed] = TerrainState::Held{ nullptr, edits, 0, false };
+			}
+			else if (!wanted.contains(packed))
+			{
+				order.push_back({ std::numeric_limits<float>::max(), packed });
+			}
+		}
+
 		// What the workers made: bodies in place of those they replace, a few a step
 		std::vector<Detail::TerrainCollisionJobs::Done> finished;
 		{
@@ -339,6 +407,10 @@ namespace Nyx
 		state.WorstSeconds *= 0.995;
 		uint32_t made = 0;
 		std::vector<Detail::TerrainCollisionJobs::Done> later;
+		TerrainEditActivationComponent& activation = world.Get<TerrainEditActivationComponent>(state.Owner);
+		const bool bLive = activation.Live == state.Edits;
+		// The chunks whose bodies new edits changed this step
+		std::vector<uint64_t> changed;
 		for (Detail::TerrainCollisionJobs::Done& done : finished)
 		{
 			const uint64_t packed = PackKey(done.Key);
@@ -351,36 +423,33 @@ namespace Nyx
 				later.push_back(std::move(done));
 				continue;
 			}
-			jobs.InFlight.erase(packed);
+			const auto job = jobs.InFlight.find(packed);
+			if (job != jobs.InFlight.end() && job->second.Edits == done.Edits)
+			{
+				jobs.InFlight.erase(job);
+			}
 			state.WorstSeconds = std::max(state.WorstSeconds, std::chrono::duration<double>(now - done.Asked).count());
-			if (!wanted.contains(packed) && !kept.contains(packed))
+			if ((!wanted.contains(packed) && !kept.contains(packed)) || done.Edits != field(packed).GetEdits())
 			{
 				continue;
 			}
 			ChunkBody chunk;
 			chunk.Shape = done.Shape;
+			chunk.Edits = done.Edits;
 			chunk.Triangles = done.Triangles;
-			if (done.Prepared)
+			// In place of a body of other edits: held until these edits are live
+			const auto resident = state.Chunks.find(packed);
+			if (!bLive && resident != state.Chunks.end() && resident->second.Shape == state.Shape && resident->second.Edits != done.Edits)
 			{
-				BodyDesc desc;
-				desc.Prepared = done.Prepared;
-				desc.Motion = EBodyMotion::Static;
-				desc.Position = glm::vec3(toWorld * glm::vec4(glm::vec3(done.Key) * size, 1.0f));
-				desc.Rotation = transform.Rotation;
-				desc.UserData = state.Owner.Value;
-				chunk.Body = physics.CreateBody(desc);
+				state.Waiting[packed] = TerrainState::Held{ done.Prepared, done.Edits, done.Triangles, done.bShared };
+				continue;
 			}
-			const auto old = state.Chunks.find(packed);
-			if (old != state.Chunks.end() && old->second.Body.IsValid())
+			if (resident != state.Chunks.end() && resident->second.Shape == state.Shape && resident->second.Edits != done.Edits)
 			{
-				BodyOwners.erase(old->second.Body.Value);
-				physics.DestroyBody(old->second.Body);
+				changed.push_back(packed);
 			}
-			if (chunk.Body.IsValid())
-			{
-				BodyOwners.emplace(chunk.Body.Value, state.Owner);
-			}
-			state.Chunks[packed] = chunk;
+			state.Waiting.erase(packed);
+			PutBody(physics, state, packed, chunk, done.Prepared, toWorld, transform.Rotation, size);
 			++state.Made;
 			state.Shared += done.bShared ? 1u : 0u;
 			++made;
@@ -389,6 +458,128 @@ namespace Nyx
 		{
 			std::lock_guard lock(jobs.Lock);
 			jobs.Finished.insert(jobs.Finished.begin(), std::make_move_iterator(later.begin()), std::make_move_iterator(later.end()));
+		}
+
+		// The edits live once the drawn chunks have them too, or by the deadline: the bodies held go in
+		// all at once
+		bool bReady = true;
+		for (const auto& [packed, chunk] : state.Chunks)
+		{
+			const uint64_t edits = field(packed).GetEdits();
+			if (chunk.Shape == state.Shape && chunk.Edits != edits)
+			{
+				const auto waiting = state.Waiting.find(packed);
+				bReady = bReady && waiting != state.Waiting.end() && waiting->second.Edits == edits;
+			}
+		}
+		bool bGo = activation.Live == state.Edits;
+		if (!bGo && bReady)
+		{
+			bGo = ActivateTerrainEdits(activation, ETerrainEditPart::Collision, state.Edits, clock, terrain.ActivationDeadline);
+		}
+		const bool bLate = activation.PendingSince >= 0.0 && clock - activation.PendingSince > double(std::max(terrain.ActivationDeadline, 0.0f));
+		if (bGo || bLate)
+		{
+			for (const auto& [packed, held] : state.Waiting)
+			{
+				if (held.Edits != field(packed).GetEdits())
+				{
+					continue;
+				}
+				ChunkBody chunk;
+				chunk.Shape = state.Shape;
+				chunk.Edits = held.Edits;
+				chunk.Triangles = held.Triangles;
+				PutBody(physics, state, packed, chunk, held.Prepared, toWorld, transform.Rotation, size);
+				++state.Made;
+				state.Shared += held.bShared ? 1u : 0u;
+				changed.push_back(packed);
+			}
+			state.Waiting.clear();
+		}
+
+		// What they did to the bodies round them, against the values last live: a character the
+		// terrain is in now pushed out, its lower or upper ball whichever is deeper, again until both
+		// are out; a dynamic body whose middle it is in left to the physics to push out; one that had
+		// terrain under it and hasn't now, lost its support; the dynamic bodies there all woken
+		std::vector<TerrainEditEvent> events;
+		const glm::vec3 up = glm::normalize(turnToTerrain * glm::vec3(0.0f, 1.0f, 0.0f));
+		for (const Mover& mover : changed.empty() ? std::vector<Mover>{} : movers)
+		{
+			const bool bCharacter = mover.Character.IsValid();
+			const float height = bCharacter ? std::max(world.Get<CharacterComponent>(mover.Owner).Height, 0.0f) : 0.0f;
+			const float radius = bCharacter ? std::max(world.Get<CharacterComponent>(mover.Owner).Radius, 0.01f) : 0.0f;
+			const float margin = height + radius + LookaheadMargin;
+			if (std::none_of(changed.begin(), changed.end(), [&](uint64_t packed) { return DistanceToChunk(mover.Position, packed, size) <= margin; }))
+			{
+				continue;
+			}
+			// The edits reaching round it alone, the same bits there, far fewer to sample
+			const float around = height + radius + PushOutReach + SupportDepth + 1.0f;
+			SdfTerrainComponent local = *state.Snapshot;
+			KeepTerrainEditsReaching(local, mover.Position - around, mover.Position + around);
+			SdfTerrainComponent before = *state.LiveSnapshot;
+			KeepTerrainEditsReaching(before, mover.Position - around, mover.Position + around);
+			if (!bCharacter)
+			{
+				physics.Wake(mover.Body);
+			}
+
+			glm::vec3 position = mover.Position;
+			bool bInside = false;
+			for (int pass = 0; pass < (bCharacter ? 3 : 1); ++pass)
+			{
+				const glm::vec3 lower = position + up * radius;
+				const glm::vec3 upper = position + up * std::max(height - radius, radius);
+				const float lowerValue = SampleTerrainValue(local, lower);
+				const float upperValue = SampleTerrainValue(local, upper);
+				// A character half its radius in, a body's middle in
+				const float inside = 0.5f * radius;
+				if (lowerValue >= inside && upperValue >= inside)
+				{
+					break;
+				}
+				bInside = true;
+				if (!bCharacter)
+				{
+					break;
+				}
+				const glm::vec3 ball = lowerValue <= upperValue ? lower : upper;
+				const std::optional<glm::vec3> free = FindTerrainFreePoint(local, ball, radius, height + PushOutReach);
+				if (!free)
+				{
+					break;
+				}
+				position += *free - ball;
+			}
+			const glm::vec3 from = glm::vec3(toWorld * glm::vec4(mover.Position, 1.0f));
+			if (bInside)
+			{
+				const glm::vec3 to = glm::vec3(toWorld * glm::vec4(position, 1.0f));
+				if (bCharacter && position != mover.Position)
+				{
+					physics.TeleportCharacter(mover.Character, to);
+				}
+				events.push_back({ mover.Owner, ETerrainEditEvent::InsideNewTerrain, from, to });
+				++state.InsideNewTerrain;
+				continue;
+			}
+			// Support: terrain under it, within SupportDepth, then and not now
+			bool bLost = false;
+			for (float depth = 0.25f; depth <= SupportDepth && !bLost; depth += 0.25f)
+			{
+				const glm::vec3 below = mover.Position - up * depth;
+				bLost = SampleTerrainValue(before, below) < 0.0f && SampleTerrainValue(local, below) >= 0.0f;
+			}
+			if (bLost)
+			{
+				events.push_back({ mover.Owner, ETerrainEditEvent::LostSupport, from, from });
+				++state.LostSupport;
+			}
+		}
+		if (bGo || bLate)
+		{
+			state.LiveSnapshot = state.Snapshot;
 		}
 
 		// Chunks a chunk farther than wanted go, and their jobs if they haven't started
@@ -423,7 +614,8 @@ namespace Nyx
 		{
 			for (const TerrainChunk& chunk : world.Get<TerrainChunksComponent>(state.Owner).Chunks)
 			{
-				if (chunk.Level == level && chunk.Shape == state.Shape && chunk.Neighbourhood == TerrainNeighbourhood{} && chunk.Mesh.Mesh)
+				if (chunk.Level == level && chunk.Shape == state.Shape && chunk.Neighbourhood == TerrainNeighbourhood{} && chunk.Mesh.Mesh &&
+					chunk.Edits == field(PackKey(chunk.Key)).GetEdits())
 				{
 					drawn.emplace(PackKey(chunk.Key), chunk.Mesh.Mesh);
 				}
@@ -432,10 +624,21 @@ namespace Nyx
 		const uint32_t maxJobs = std::max(Workers->GetWorkerCount(), 1u);
 		for (const auto& [time, packed] : order)
 		{
+			const uint64_t edits = field(packed).GetEdits();
 			const auto resident = state.Chunks.find(packed);
-			if ((resident != state.Chunks.end() && resident->second.Shape == state.Shape) || jobs.InFlight.contains(packed))
+			const auto waiting = state.Waiting.find(packed);
+			if ((resident != state.Chunks.end() && resident->second.Shape == state.Shape && resident->second.Edits == edits) ||
+				(waiting != state.Waiting.end() && waiting->second.Edits == edits))
 			{
 				continue;
+			}
+			if (const auto job = jobs.InFlight.find(packed); job != jobs.InFlight.end())
+			{
+				if (job->second.Edits == edits || !Workers->Cancel(job->second.Job))
+				{
+					continue;
+				}
+				jobs.InFlight.erase(job);
 			}
 			if (jobs.InFlight.size() >= maxJobs)
 			{
@@ -447,15 +650,17 @@ namespace Nyx
 			std::shared_ptr<const MeshData> mesh = found != drawn.end() ? found->second : nullptr;
 			const glm::ivec3 key = UnpackKey(packed);
 			const uint64_t jobShape = state.Shape;
+			const uint64_t jobEdits = edits;
 			const uint64_t jobPlacement = state.Placement;
 			const glm::vec3 scale = transform.Scale;
 			const auto asked = std::chrono::steady_clock::now();
 			JobHandle job = Workers->Schedule(
-				[shared, snapshot, mesh, key, level, jobShape, jobPlacement, scale, asked]
+				[shared, snapshot, mesh, key, level, jobShape, jobEdits, jobPlacement, scale, asked]
 				{
 					Detail::TerrainCollisionJobs::Done done;
 					done.Key = key;
 					done.Shape = jobShape;
+					done.Edits = jobEdits;
 					done.Placement = jobPlacement;
 					done.Asked = asked;
 					done.bShared = mesh != nullptr;
@@ -477,7 +682,7 @@ namespace Nyx
 					shared->Finished.push_back(std::move(done));
 				},
 				EJobPriority::Normal);
-			jobs.InFlight.emplace(packed, Detail::TerrainCollisionJobs::Scheduled{ job, jobShape });
+			jobs.InFlight.emplace(packed, Detail::TerrainCollisionJobs::Scheduled{ job, jobShape, jobEdits });
 		}
 
 		// What it did, and the bodies collision can't keep up with
@@ -488,6 +693,9 @@ namespace Nyx
 		stats.Made = state.Made;
 		stats.Shared = state.Shared;
 		stats.WorstSeconds = state.WorstSeconds;
+		stats.Waiting = static_cast<uint32_t>(state.Waiting.size());
+		stats.InsideNewTerrain = state.InsideNewTerrain;
+		stats.LostSupport = state.LostSupport;
 		for (const auto& [packed, chunk] : state.Chunks)
 		{
 			stats.Resident += chunk.Shape == state.Shape ? 1u : 0u;
@@ -525,5 +733,6 @@ namespace Nyx
 			world.Add<TerrainCollisionComponent>(state.Owner, TerrainCollisionComponent{});
 		}
 		world.Get<TerrainCollisionComponent>(state.Owner).Stats = stats;
+		world.Get<TerrainCollisionComponent>(state.Owner).Events = std::move(events);
 	}
 }

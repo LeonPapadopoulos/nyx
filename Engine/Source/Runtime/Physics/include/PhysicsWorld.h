@@ -525,8 +525,10 @@ namespace Nyx
 		// body of one shape
 		size_t GetPartCount(BodyHandle body) const;
 		float GetPartMass(BodyHandle body, size_t part) const;
-		// Resting bodies sleep and cost nothing until something touches or moves them
+		// Resting bodies sleep and cost nothing until something touches or moves them; taking away what
+		// one rests on doesn't wake it, Wake() does
 		bool IsAwake(BodyHandle body) const;
+		void Wake(BodyHandle body);
 		uint64_t GetUserData(BodyHandle body) const;
 
 		// Invalid when its shape can't be made or the world is full, which is logged. Its body

@@ -4,6 +4,7 @@
 #include "Assertions.h"
 #include "CharacterCommands.h"
 #include "Profiler.h"
+#include "TerrainEditCommands.h"
 #include "WindComponent.h"
 
 #include <algorithm>
@@ -31,6 +32,7 @@ namespace Nyx
 		RefreshEntityGuidLookup(World, Guids);
 		Constraints.SyncBeforeStep(World, Physics, Bodies, Guids);
 		ApplyMoveCharacterCommands(World, Guids, StepCommands);
+		ApplyTerrainEditCommands(World, Guids, StepCommands);
 		TimeOfDay.Step(World, step);
 		Wind = UpdateWorldWind(World, step.WorldTimeSeconds);
 

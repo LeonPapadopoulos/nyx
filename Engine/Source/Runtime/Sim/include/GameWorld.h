@@ -30,10 +30,12 @@ namespace Nyx
 	// 1. the debug drawing moves on: what the last step drew goes, timed shapes age;
 	// 2. bodies and characters follow the physics components, their physics materials and the
 	//    transforms set since the last step (PhysicsBodies); the SDF terrains' chunks round the
-	//    moving bodies get their bodies (TerrainCollision);
+	//    moving bodies get their bodies, and the edits since the last step go live in them
+	//    (TerrainCollision);
 	// 3. the lookup from guid to entity is made again, in the memory it had (SimContext::Guids);
 	//    constraints follow their components and the bodies (PhysicsConstraints); the players'
-	//    MoveCharacterCommands go into their characters (ApplyMoveCharacterCommands()); the time of
+	//    MoveCharacterCommands go into their characters (ApplyMoveCharacterCommands()), and their
+	//    SdfTerrainEditCommands onto their terrains (ApplyTerrainEditCommands()); the time of
 	//    day moves on to the step's end while it runs, and the sun turns to it (TimeOfDayClock);
 	//    the wind turns towards its WindComponent's values, and is as it is at the step's start
 	//    (UpdateWorldWind(), SimContext::Wind);

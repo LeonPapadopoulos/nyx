@@ -4,6 +4,7 @@
 #include "Entity.h"
 #include "MeshData.h"
 #include "RuntimeMeshComponent.h"
+#include "SdfTerrain.h"
 #include "SdfTerrainComponent.h"
 
 #include <glm/glm.hpp>
@@ -12,6 +13,7 @@
 #include <cstdint>
 #include <memory>
 #include <span>
+#include <unordered_map>
 #include <vector>
 
 namespace Nyx
@@ -64,8 +66,10 @@ namespace Nyx
 		glm::vec3 Origin{ 0.0f };
 		// Around Origin; no data for a chunk the surface passes by
 		RuntimeMeshComponent Mesh;
-		// What it was made from (HashSdfTerrainShape()) and against
+		// What it was made from (HashSdfTerrainShape()), with which edits (TerrainChunkField::GetEdits()),
+		// and against
 		uint64_t Shape = 0;
+		uint64_t Edits = 0;
 		TerrainNeighbourhood Neighbourhood;
 		// Drawn, or uploaded only, waiting for all the chunks it is drawn with
 		bool bDrawn = false;
@@ -138,13 +142,39 @@ namespace Nyx
 		uint64_t Shared = 0;
 		// The longest a chunk took from being asked for to its body, lately, in seconds
 		double WorstSeconds = 0.0;
+		// Bodies made for new edits, waiting for them to go live
+		uint32_t Waiting = 0;
+		// Bodies new terrain was put in, and bodies terrain was taken from under, since the world began
+		uint64_t InsideNewTerrain = 0;
+		uint64_t LostSupport = 0;
+	};
+
+	// What edits going live in collision did to a body (TerrainCollision)
+	enum class ETerrainEditEvent : uint8_t
+	{
+		// The edits put it inside the terrain: a character moved out, From to To; a dynamic body left
+		// to the physics, To the same as From
+		InsideNewTerrain,
+		// They took away the terrain under it
+		LostSupport
+	};
+	struct TerrainEditEvent
+	{
+		// The character's or the dynamic body's entity
+		Entity Body;
+		ETerrainEditEvent Kind = ETerrainEditEvent::InsideNewTerrain;
+		// Where it was, and where it is now, in the world's space
+		glm::vec3 From{ 0.0f };
+		glm::vec3 To{ 0.0f };
 	};
 
 	// An SDF terrain's collision, on the terrain's entity while the world runs: written by the game
-	// world's step, for the details panel. Run-time only, never saved.
+	// world's step, for the details panel and the game. Run-time only, never saved.
 	struct TerrainCollisionComponent
 	{
 		TerrainCollisionStats Stats;
+		// What edits that went live this step did to bodies; none the steps they don't
+		std::vector<TerrainEditEvent> Events;
 	};
 
 	// What the collision is doing, for the editor's details panel
@@ -172,8 +202,86 @@ namespace Nyx
 		TerrainChunkTimes* outTimes = nullptr);
 
 	// A hash of every value a chunk's mesh is made from: all but those choosing the chunks
-	// (ViewDistance, LevelDistance, FinestLevel) and their shadows
+	// (ViewDistance, LevelDistance, FinestLevel) and their shadows, and the edits, which each chunk
+	// tells apart by those reaching it (TerrainChunkField)
 	uint64_t HashSdfTerrainShape(const SdfTerrainComponent& terrain);
+
+	// What is known of a chunk's values, carried across edits (TerrainBoxEdits): over the samples its
+	// mesh is made from, whether the surface may cross them; over all the field its mesh can sample
+	// (those, the coarser grid round it, and its vertices' sky, SkyReach past it), the edits that can
+	// change it, which a chunk made with them is told apart by. MakeTerrainChunkMesh() samples a copy
+	// of the terrain with only those.
+	struct TerrainChunkField
+	{
+		TerrainBoxEdits Surface;
+		TerrainBoxEdits Reach;
+
+		bool HasSurface() const { return !Surface.Range.IsAllAir() && !Surface.Range.IsAllSolid(); }
+		uint64_t GetEdits() const { return Reach.Reach.Hash; }
+	};
+	TerrainChunkField BeginTerrainChunkField(const SdfTerrainComponent& terrain, const TerrainChunkId& id);
+	void GetTerrainChunkReach(const TerrainChunkId& id, glm::vec3& outMin, glm::vec3& outMax);
+
+	// Each chunk's field as it is asked for, for one terrain's values: kept, and continued over the
+	// edits added since (one shape's range an edit), so a chunk costs its one sample once. Forget()
+	// when the values or an edit seen changed (ExtendsTerrainEdits()).
+	class TerrainChunkFields
+	{
+	public:
+		const TerrainChunkField& Get(const SdfTerrainComponent& terrain, const TerrainChunkId& id);
+		void Forget() { Known.clear(); }
+
+	private:
+		std::unordered_map<uint64_t, TerrainChunkField> Known;
+	};
+
+	// Edits made live in drawing and in collision together: each part holds what it made for new
+	// edits until the other has made its own too, or the terrain's Activation Deadline has passed since
+	// they came, so a hole is neither seen before it can be fallen into nor fallen into before it is
+	// seen. A part that hasn't run for a while (collision outside the game) isn't waited for. On the
+	// terrain's entity, kept by its chunks (UpdateTerrainChunks()) and its collision
+	// (TerrainCollision). Run-time only, never saved.
+	struct TerrainEditActivationComponent
+	{
+		// The edits as last seen (HashTerrainEdits()), those each part has made all it needs for, and
+		// those live in both; 0: none yet
+		uint64_t Latest = 0;
+		uint64_t DrawReady = 0;
+		uint64_t CollisionReady = 0;
+		uint64_t Live = 0;
+		// When edits not live yet came, and when each part last ran, in seconds of the steady clock;
+		// below 0: never
+		double PendingSince = -1.0;
+		double DrawSeen = -1.0;
+		double CollisionSeen = -1.0;
+		// Edits made live, those of them by the deadline with a part not ready, and the last one's
+		// time from its edits coming to live
+		uint64_t Activations = 0;
+		uint64_t Late = 0;
+		double LastSeconds = 0.0;
+	};
+
+	enum class ETerrainEditPart : uint8_t
+	{
+		Draw,
+		Collision
+	};
+
+	// How long a part may not run before it isn't waited for, in seconds
+	constexpr double TerrainEditPartTimeout = 0.5;
+
+	// A part's edits as it knows them, each time it runs; the first edits seen are live already
+	void NoteTerrainEdits(TerrainEditActivationComponent& activation, ETerrainEditPart part, uint64_t edits, double now);
+
+	// The part has made all it needs for `edits`: whether they are live, made so now if the other part
+	// has made its own, isn't running, or the deadline has passed since they came
+	bool ActivateTerrainEdits(TerrainEditActivationComponent& activation, ETerrainEditPart part, uint64_t edits, double now, float deadline);
+
+	// The steady clock in seconds, what the activation's times are in
+	double GetTerrainEditClock();
+
+	// What the activation is doing, for the editor's details panel
+	std::vector<InspectedValue> DescribeTerrainEditActivation(const TerrainEditActivationComponent& component);
 
 	// Which chunks are drawn round viewpoints, at which levels
 	struct TerrainLevelSettings
@@ -207,8 +315,11 @@ namespace Nyx
 	// crosses (their range, GetTerrainValueRange(), is neither all air nor all solid) are meshed on the
 	// job system's workers, nearest first, a few at a time, uploaded a few a frame while the chunks
 	// drawn stay drawn, then all drawn at once in their place, so their seams always match; then the
-	// next tree is chosen if a viewpoint moved. New values start again from the chunks drawn. The
-	// entity gets its TerrainChunksComponent here.
+	// next tree is chosen if a viewpoint moved. New values start again from the chunks drawn. New
+	// edits choose the tree again and make its chunks they reach again; on the tree drawn, those of
+	// the finest two levels drawn go in as soon as they are all made and collision has its own
+	// (TerrainEditActivationComponent), the coarser ones once they are made. The entity gets its
+	// TerrainChunksComponent here.
 	void UpdateTerrainChunks(Registry& world, std::span<const glm::vec3> viewpoints, JobSystem& jobs);
 
 	// The terrain's remove step: its chunks go with it, and its jobs are cancelled

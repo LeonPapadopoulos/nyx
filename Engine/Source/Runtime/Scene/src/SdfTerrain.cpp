@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <span>
 
 // Every operation as written, never fused into a multiply-add: the terrain is the same bits wherever
 // it is sampled
@@ -172,12 +173,12 @@ namespace Nyx
 		}
 
 		// From the terrain's space into a box's own: the inverse of its rotation about X, then Y, then Z
-		glm::mat3 BoxInverseRotation(const SdfTerrainLayer& layer)
+		glm::mat3 BoxInverseRotation(const glm::vec3& rotation)
 		{
 			float sx, cx, sy, cy, sz, cz;
-			SinCosDegrees(layer.Rotation.x, sx, cx);
-			SinCosDegrees(layer.Rotation.y, sy, cy);
-			SinCosDegrees(layer.Rotation.z, sz, cz);
+			SinCosDegrees(rotation.x, sx, cx);
+			SinCosDegrees(rotation.y, sy, cy);
+			SinCosDegrees(rotation.z, sz, cz);
 			// Columns: each axis of the box in the terrain's space, Z * Y * X
 			const glm::mat3 aboutX(glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f, cx, sx), glm::vec3(0.0f, -sx, cx));
 			const glm::mat3 aboutY(glm::vec3(cy, 0.0f, -sy), glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(sy, 0.0f, cy));
@@ -185,46 +186,100 @@ namespace Nyx
 			return glm::transpose(aboutZ * aboutY * aboutX);
 		}
 
-		// The distance to a placed shape, negative inside: exact, so its slope is 1
+		// The distance to a placed shape, a layer's or an edit's, negative inside: exact, so its slope
+		// is 1
 		struct ShapeDistance
 		{
-			explicit ShapeDistance(const SdfTerrainLayer& layer) : Layer(layer)
+			enum class EKind : uint8_t
 			{
-				if (layer.Kind == ESdfTerrainLayerKind::Box)
+				Box,
+				Sphere,
+				Capsule,
+				None
+			};
+
+			explicit ShapeDistance(const SdfTerrainLayer& layer) : Position(layer.Position), End(layer.End), Radius(layer.Radius)
+			{
+				switch (layer.Kind)
 				{
-					ToBox = BoxInverseRotation(layer);
-					Rounding = std::clamp(layer.Rounding, 0.0f, std::min({ layer.HalfSize.x, layer.HalfSize.y, layer.HalfSize.z }));
-					Inner = glm::max(layer.HalfSize - Rounding, glm::vec3(0.0f));
+				case ESdfTerrainLayerKind::Box:
+					SetBox(layer.HalfSize, layer.Rotation, layer.Rounding);
+					break;
+				case ESdfTerrainLayerKind::Sphere:
+					Kind = EKind::Sphere;
+					break;
+				case ESdfTerrainLayerKind::Capsule:
+					Kind = EKind::Capsule;
+					break;
+				default:
+					break;
 				}
+			}
+
+			explicit ShapeDistance(const SdfTerrainEdit& edit) : Position(edit.Position), End(edit.End), Radius(edit.Radius)
+			{
+				switch (edit.Shape)
+				{
+				case ESdfTerrainEditShape::Box:
+					SetBox(edit.HalfSize, edit.Rotation, 0.0f);
+					break;
+				case ESdfTerrainEditShape::Sphere:
+					Kind = EKind::Sphere;
+					break;
+				case ESdfTerrainEditShape::Capsule:
+					Kind = EKind::Capsule;
+					break;
+				}
+			}
+
+			void SetBox(const glm::vec3& halfSize, const glm::vec3& rotation, float rounding)
+			{
+				Kind = EKind::Box;
+				ToBox = BoxInverseRotation(rotation);
+				Rounding = std::clamp(rounding, 0.0f, std::min({ halfSize.x, halfSize.y, halfSize.z }));
+				Inner = glm::max(halfSize - Rounding, glm::vec3(0.0f));
 			}
 
 			float At(const glm::vec3& point) const
 			{
-				switch (Layer.Kind)
+				switch (Kind)
 				{
-				case ESdfTerrainLayerKind::Box:
+				case EKind::Box:
 				{
-					const glm::vec3 local = ToBox * (point - Layer.Position);
+					const glm::vec3 local = ToBox * (point - Position);
 					const glm::vec3 q = glm::abs(local) - Inner;
 					const float outside = glm::length(glm::max(q, glm::vec3(0.0f)));
 					const float inside = std::min(std::max(q.x, std::max(q.y, q.z)), 0.0f);
 					return outside + inside - Rounding;
 				}
-				case ESdfTerrainLayerKind::Sphere:
-					return glm::length(point - Layer.Position) - Layer.Radius;
-				case ESdfTerrainLayerKind::Capsule:
+				case EKind::Sphere:
+					return glm::length(point - Position) - Radius;
+				case EKind::Capsule:
 				{
-					const glm::vec3 along = Layer.End - Layer.Position;
+					const glm::vec3 along = End - Position;
 					const float lengthSquared = glm::dot(along, along);
-					const float t = lengthSquared > 0.0f ? std::clamp(glm::dot(point - Layer.Position, along) / lengthSquared, 0.0f, 1.0f) : 0.0f;
-					return glm::length(point - (Layer.Position + along * t)) - Layer.Radius;
+					const float t = lengthSquared > 0.0f ? std::clamp(glm::dot(point - Position, along) / lengthSquared, 0.0f, 1.0f) : 0.0f;
+					return glm::length(point - (Position + along * t)) - Radius;
 				}
 				default:
 					return SdfTerrainEmptyValue;
 				}
 			}
 
-			const SdfTerrainLayer& Layer;
+			// What it can be in a box: within half the box's diagonal of its value at the box's middle,
+			// widened by a hair for the rounding of that value
+			Interval Range(const glm::vec3& boxMin, const glm::vec3& boxMax) const
+			{
+				const float value = At((boxMin + boxMax) * 0.5f);
+				const float reach = glm::length(boxMax - boxMin) * 0.5f;
+				const float margin = 1e-4f * (1.0f + std::fabs(value) + reach);
+				return { value - reach - margin, value + reach + margin };
+			}
+
+			EKind Kind = EKind::None;
+			glm::vec3 Position{ 0.0f };
+			glm::vec3 End{ 0.0f };
+			float Radius = 0.0f;
 			glm::mat3 ToBox{ 1.0f };
 			float Rounding = 0.0f;
 			glm::vec3 Inner{ 0.0f };
@@ -440,14 +495,7 @@ namespace Nyx
 			case ESdfTerrainLayerKind::Box:
 			case ESdfTerrainLayerKind::Sphere:
 			case ESdfTerrainLayerKind::Capsule:
-			{
-				// A distance: within half the box's diagonal of its value at the box's middle, widened
-				// by a hair for the rounding of that value
-				const float value = ShapeDistance(layer).At((boxMin + boxMax) * 0.5f);
-				const float reach = glm::length(boxMax - boxMin) * 0.5f;
-				const float margin = 1e-4f * (1.0f + std::fabs(value) + reach);
-				return { value - reach - margin, value + reach + margin };
-			}
+				return ShapeDistance(layer).Range(boxMin, boxMax);
 			}
 			return {};
 		}
@@ -457,11 +505,11 @@ namespace Nyx
 		// exactly, so skipping it is the same bits. A smooth join returns the plain one exactly where the
 		// two are at least its radius apart (SmoothMinimum()), so the layer must be that far off, with a
 		// margin for the rounding of the comparison.
-		bool CanChange(const SdfTerrainLayer& layer, const Interval& range, float lowest, float highest)
+		bool CanChange(ESdfTerrainCombine combine, float blendRadius, const Interval& range, float lowest, float highest)
 		{
-			const float radius = std::max(layer.BlendRadius, 0.0f);
+			const float radius = std::max(blendRadius, 0.0f);
 			auto clear = [&](float apart, float a, float b) { return apart > radius + 1e-5f * (1.0f + std::fabs(a) + std::fabs(b) + radius); };
-			switch (layer.Combine)
+			switch (combine)
 			{
 			case ESdfTerrainCombine::Add:
 				// The minimum keeps what was there while the layer is above it
@@ -475,7 +523,72 @@ namespace Nyx
 			return true;
 		}
 
-		void SampleBlock(const SdfTerrainComponent& terrain, const Block& block, float* outValues, uint32_t* outMaterials)
+		// What the layers can make the value in a box, by the interval arithmetic of their ranges
+		Interval LayersRange(const SdfTerrainComponent& terrain, const glm::vec3& boxMin, const glm::vec3& boxMax)
+		{
+			Interval range{ SdfTerrainEmptyValue, SdfTerrainEmptyValue };
+			for (const SdfTerrainLayer& layer : terrain.Layers)
+			{
+				if (!IsLayerActive(layer))
+				{
+					continue;
+				}
+				const Interval own = LayerRange(layer, boxMin, boxMax);
+				const float offset = SmoothMinimumMaxOffset(layer.BlendRadius);
+				if (layer.Kind == ESdfTerrainLayerKind::Detail)
+				{
+					range = { range.Low + own.Low, range.High + own.High };
+					continue;
+				}
+				switch (layer.Combine)
+				{
+				case ESdfTerrainCombine::Add:
+					range = { std::min(range.Low, own.Low) - offset, std::min(range.High, own.High) };
+					break;
+				case ESdfTerrainCombine::Carve:
+					range = { std::max(range.Low, -own.High), std::max(range.High, -own.Low) + offset };
+					break;
+				case ESdfTerrainCombine::Intersect:
+					range = { std::max(range.Low, own.Low), std::max(range.High, own.High) + offset };
+					break;
+				}
+			}
+			return range;
+		}
+
+		// The same for an edit: a dig as a carve, a fill as an add; paint changes no value, only the
+		// material where its shape is
+		bool CanEditChange(const SdfTerrainEdit& edit, const Interval& range, float lowest, float highest)
+		{
+			switch (edit.Mode)
+			{
+			case ESdfTerrainEditMode::Subtract:
+				return CanChange(ESdfTerrainCombine::Carve, edit.BlendRadius, range, lowest, highest);
+			case ESdfTerrainEditMode::Add:
+				return CanChange(ESdfTerrainCombine::Add, edit.BlendRadius, range, lowest, highest);
+			case ESdfTerrainEditMode::Paint:
+				return range.Low < 0.0f;
+			}
+			return true;
+		}
+
+		// What an edit makes of values within `range`, as the interval arithmetic of the ranges does it
+		Interval EditInterval(const SdfTerrainEdit& edit, const Interval& own, const Interval& range)
+		{
+			const float offset = SmoothMinimumMaxOffset(edit.BlendRadius);
+			switch (edit.Mode)
+			{
+			case ESdfTerrainEditMode::Subtract:
+				return { std::max(range.Low, -own.High), std::max(range.High, -own.Low) + offset };
+			case ESdfTerrainEditMode::Add:
+				return { std::min(range.Low, own.Low) - offset, std::min(range.High, own.High) };
+			case ESdfTerrainEditMode::Paint:
+				return range;
+			}
+			return range;
+		}
+
+		void SampleBlock(const SdfTerrainComponent& terrain, std::span<const SdfTerrainEdit> edits, const Block& block, float* outValues, uint32_t* outMaterials)
 		{
 			std::array<float, BlockSize> layerValues;
 			for (size_t i = 0; i < block.Count; ++i)
@@ -503,7 +616,7 @@ namespace Nyx
 				{
 					continue;
 				}
-				if (layer.Kind != ESdfTerrainLayerKind::Detail && !CanChange(layer, LayerRange(layer, boxMin, boxMax), lowest, highest))
+				if (layer.Kind != ESdfTerrainLayerKind::Detail && !CanChange(layer.Combine, layer.BlendRadius, LayerRange(layer, boxMin, boxMax), lowest, highest))
 				{
 					continue;
 				}
@@ -557,6 +670,47 @@ namespace Nyx
 					highest = std::max(highest, outValues[i]);
 				}
 			}
+
+			// Then the edits, in the order of their revisions, those that can't change the block left out
+			for (const SdfTerrainEdit& edit : edits)
+			{
+				const ShapeDistance shape(edit);
+				if (!CanEditChange(edit, shape.Range(boxMin, boxMax), lowest, highest))
+				{
+					continue;
+				}
+				const float radius = edit.BlendRadius;
+				for (size_t i = 0; i < block.Count; ++i)
+				{
+					const float value = shape.At(glm::vec3(block.X[i], block.Y[i], block.Z[i]));
+					switch (edit.Mode)
+					{
+					case ESdfTerrainEditMode::Subtract:
+						outValues[i] = SmoothMaximum(outValues[i], -value, radius);
+						break;
+					case ESdfTerrainEditMode::Add:
+						if (value < outValues[i])
+						{
+							outMaterials[i] = edit.Material;
+						}
+						outValues[i] = SmoothMinimum(outValues[i], value, radius);
+						break;
+					case ESdfTerrainEditMode::Paint:
+						if (value < 0.0f)
+						{
+							outMaterials[i] = edit.Material;
+						}
+						break;
+					}
+				}
+				lowest = outValues[0];
+				highest = outValues[0];
+				for (size_t i = 1; i < block.Count; ++i)
+				{
+					lowest = std::min(lowest, outValues[i]);
+					highest = std::max(highest, outValues[i]);
+				}
+			}
 		}
 	}
 
@@ -567,7 +721,7 @@ namespace Nyx
 		for (size_t first = 0; first < count; first += BlockSize)
 		{
 			const Block block{ x + first, y + first, z + first, std::min(BlockSize, count - first) };
-			SampleBlock(terrain, block, outValues + first, outMaterials != nullptr ? outMaterials + first : materials.data());
+			SampleBlock(terrain, terrain.Edits, block, outValues + first, outMaterials != nullptr ? outMaterials + first : materials.data());
 		}
 	}
 
@@ -636,51 +790,39 @@ namespace Nyx
 		return grid;
 	}
 
+	namespace
+	{
+		float LayersSlope(const SdfTerrainComponent& terrain)
+		{
+			float slope = 0.0f;
+			for (const SdfTerrainLayer& layer : terrain.Layers)
+			{
+				if (!IsLayerActive(layer))
+				{
+					continue;
+				}
+				const float own = LayerSlope(terrain, layer);
+				// A sum moves as fast as both parts; a minimum or maximum, smooth or not, as fast as the
+				// faster
+				slope = layer.Kind == ESdfTerrainLayerKind::Detail ? slope + own : std::max(slope, own);
+			}
+			return slope;
+		}
+	}
+
 	float GetTerrainMaxSlope(const SdfTerrainComponent& terrain)
 	{
-		float slope = 0.0f;
-		for (const SdfTerrainLayer& layer : terrain.Layers)
-		{
-			if (!IsLayerActive(layer))
-			{
-				continue;
-			}
-			const float own = LayerSlope(terrain, layer);
-			// A sum moves as fast as both parts; a minimum or maximum, smooth or not, as fast as the
-			// faster
-			slope = layer.Kind == ESdfTerrainLayerKind::Detail ? slope + own : std::max(slope, own);
-		}
-		return slope;
+		// Every edit's shape is a distance, which changes a metre a metre at most
+		const float slope = LayersSlope(terrain);
+		return terrain.Edits.empty() ? slope : std::max(slope, 1.0f);
 	}
 
 	TerrainValueRange GetTerrainValueRange(const SdfTerrainComponent& terrain, const glm::vec3& boxMin, const glm::vec3& boxMax)
 	{
-		Interval range{ SdfTerrainEmptyValue, SdfTerrainEmptyValue };
-		for (const SdfTerrainLayer& layer : terrain.Layers)
+		Interval range = LayersRange(terrain, boxMin, boxMax);
+		for (const SdfTerrainEdit& edit : terrain.Edits)
 		{
-			if (!IsLayerActive(layer))
-			{
-				continue;
-			}
-			const Interval own = LayerRange(layer, boxMin, boxMax);
-			const float offset = SmoothMinimumMaxOffset(layer.BlendRadius);
-			if (layer.Kind == ESdfTerrainLayerKind::Detail)
-			{
-				range = { range.Low + own.Low, range.High + own.High };
-				continue;
-			}
-			switch (layer.Combine)
-			{
-			case ESdfTerrainCombine::Add:
-				range = { std::min(range.Low, own.Low) - offset, std::min(range.High, own.High) };
-				break;
-			case ESdfTerrainCombine::Carve:
-				range = { std::max(range.Low, -own.High), std::max(range.High, -own.Low) + offset };
-				break;
-			case ESdfTerrainCombine::Intersect:
-				range = { std::max(range.Low, own.Low), std::max(range.High, own.High) + offset };
-				break;
-			}
+			range = EditInterval(edit, ShapeDistance(edit).Range(boxMin, boxMax), range);
 		}
 
 		// The value at the centre, widened by how far it can change to the corners
@@ -697,6 +839,146 @@ namespace Nyx
 		result.Lowest = low - margin;
 		result.Highest = std::max(high, low) + margin;
 		return result;
+	}
+
+	uint64_t AppendTerrainEdit(SdfTerrainComponent& terrain, SdfTerrainEdit edit)
+	{
+		edit.Revision = GetTerrainRevision(terrain) + 1;
+		terrain.Edits.push_back(edit);
+		return edit.Revision;
+	}
+
+	uint64_t GetTerrainRevision(const SdfTerrainComponent& terrain)
+	{
+		return terrain.Edits.empty() ? 0 : terrain.Edits.back().Revision;
+	}
+
+	namespace
+	{
+		constexpr uint64_t EditHashStart = 0xCBF29CE484222325ull;
+
+		void HashEdit(uint64_t& hash, const SdfTerrainEdit& edit)
+		{
+			auto add = [&](const void* data, size_t size)
+			{
+				const auto* bytes = static_cast<const uint8_t*>(data);
+				for (size_t i = 0; i < size; ++i)
+				{
+					hash = (hash ^ bytes[i]) * 0x100000001B3ull;
+				}
+			};
+			add(&edit.Revision, sizeof(edit.Revision));
+			add(&edit.Shape, sizeof(edit.Shape));
+			add(&edit.Mode, sizeof(edit.Mode));
+			add(&edit.Position, sizeof(edit.Position));
+			add(&edit.End, sizeof(edit.End));
+			add(&edit.HalfSize, sizeof(edit.HalfSize));
+			add(&edit.Rotation, sizeof(edit.Rotation));
+			add(&edit.Radius, sizeof(edit.Radius));
+			add(&edit.BlendRadius, sizeof(edit.BlendRadius));
+			add(&edit.Material, sizeof(edit.Material));
+		}
+
+		bool IsSameEdit(const SdfTerrainEdit& a, const SdfTerrainEdit& b)
+		{
+			return a.Revision == b.Revision && a.Shape == b.Shape && a.Mode == b.Mode && a.Position == b.Position && a.End == b.End &&
+				   a.HalfSize == b.HalfSize && a.Rotation == b.Rotation && a.Radius == b.Radius && a.BlendRadius == b.BlendRadius &&
+				   a.Material == b.Material;
+		}
+
+		// The edits from `box.Seen` on that can change a value in its box, each given to `visit`, the
+		// box's range carried past each
+		template <typename Visit>
+		void ContinueBox(const SdfTerrainComponent& terrain, TerrainBoxEdits& box, Visit&& visit)
+		{
+			Interval range{ box.Range.Lowest, box.Range.Highest };
+			for (size_t index = box.Seen; index < terrain.Edits.size(); ++index)
+			{
+				const SdfTerrainEdit& edit = terrain.Edits[index];
+				const Interval own = ShapeDistance(edit).Range(box.BoxMin, box.BoxMax);
+				if (CanEditChange(edit, own, range.Low, range.High))
+				{
+					range = EditInterval(edit, own, range);
+					box.Reach.Revision = std::max(box.Reach.Revision, edit.Revision);
+					HashEdit(box.Reach.Hash, edit);
+					++box.Reach.Count;
+					visit(edit);
+				}
+			}
+			box.Seen = terrain.Edits.size();
+			box.Range.Lowest = range.Low;
+			box.Range.Highest = range.High;
+		}
+	}
+
+	TerrainBoxEdits BeginTerrainBoxEdits(const SdfTerrainComponent& terrain, const glm::vec3& boxMin, const glm::vec3& boxMax)
+	{
+		// The layers' range, tightened by the layers' value at the centre widened by their slope to the
+		// corners, as GetTerrainValueRange() does for the whole field
+		const Interval layers = LayersRange(terrain, boxMin, boxMax);
+		const glm::vec3 center = (boxMin + boxMax) * 0.5f;
+		float atCenter = SdfTerrainEmptyValue;
+		uint32_t material = 0;
+		SampleBlock(terrain, {}, Block{ &center.x, &center.y, &center.z, 1 }, &atCenter, &material);
+		const float reach = LayersSlope(terrain) * glm::length(boxMax - center);
+		const float low = std::max(layers.Low, atCenter - reach);
+		const float high = std::min(layers.High, atCenter + reach);
+		const float margin = 1e-4f * std::max({ 1.0f, std::fabs(low), std::fabs(high) });
+
+		TerrainBoxEdits box;
+		box.BoxMin = boxMin;
+		box.BoxMax = boxMax;
+		box.Range.Lowest = low - margin;
+		box.Range.Highest = std::max(high, low) + margin;
+		box.Reach.Hash = EditHashStart;
+		return box;
+	}
+
+	void ContinueTerrainBoxEdits(const SdfTerrainComponent& terrain, TerrainBoxEdits& box)
+	{
+		ContinueBox(terrain, box, [](const SdfTerrainEdit&) {});
+	}
+
+	TerrainEditsReach GetTerrainEditsReaching(const SdfTerrainComponent& terrain, const glm::vec3& boxMin, const glm::vec3& boxMax)
+	{
+		TerrainBoxEdits box = BeginTerrainBoxEdits(terrain, boxMin, boxMax);
+		ContinueTerrainBoxEdits(terrain, box);
+		return box.Reach;
+	}
+
+	TerrainEditsReach KeepTerrainEditsReaching(SdfTerrainComponent& terrain, const glm::vec3& boxMin, const glm::vec3& boxMax)
+	{
+		TerrainBoxEdits box = BeginTerrainBoxEdits(terrain, boxMin, boxMax);
+		std::vector<SdfTerrainEdit> kept;
+		ContinueBox(terrain, box, [&](const SdfTerrainEdit& edit) { kept.push_back(edit); });
+		terrain.Edits = std::move(kept);
+		return box.Reach;
+	}
+
+	uint64_t HashTerrainEdits(const SdfTerrainComponent& terrain)
+	{
+		uint64_t hash = EditHashStart;
+		for (const SdfTerrainEdit& edit : terrain.Edits)
+		{
+			HashEdit(hash, edit);
+		}
+		return hash != 0 ? hash : 1;
+	}
+
+	bool ExtendsTerrainEdits(const SdfTerrainComponent& terrain, const SdfTerrainComponent& earlier)
+	{
+		if (terrain.Edits.size() < earlier.Edits.size())
+		{
+			return false;
+		}
+		for (size_t index = 0; index < earlier.Edits.size(); ++index)
+		{
+			if (!IsSameEdit(terrain.Edits[index], earlier.Edits[index]))
+			{
+				return false;
+			}
+		}
+		return true;
 	}
 
 	glm::vec3 GetTerrainNormal(const SdfTerrainComponent& terrain, const glm::vec3& point, float step)
