@@ -3,7 +3,8 @@
 // never steeper than its slope bound; over a box it stays within its range, checked against dense
 // sampling; rays hit where dense marching finds the surface, and never pass through a thin slab;
 // materials follow the layer that made a surface; smooth blends stay within their offset; tunnels
-// stay in their band; another seed, another terrain. Prints how loose the bounds are and how fast it
+// stay in their band; another seed, another terrain; placed shapes are their distances, turned
+// exactly, carved into an arch, within their ranges. Prints how loose the bounds are and how fast it
 // samples.
 #include "SdfTerrain.h"
 #include "TestSupport.h"
@@ -488,6 +489,105 @@ namespace
 		std::cout << "A chunk's " << x.size() << " samples of every kind of layer: " << milliseconds << " ms, " << milliseconds * 1e6 / double(x.size())
 				  << " ns a sample\n";
 	}
+
+	// Placed shapes: a ball, a rod and a box, turned and rounded, their values the distances to them
+	// (negative inside); a box turned a quarter is the box with its sides swapped (to the rounding of
+	// adding its sides' squares in another order); a
+	// wall carved by a rod is an arch; within their ranges and slope bound against dense sampling
+	void TestShapes()
+	{
+		SdfTerrainComponent terrain;
+		terrain.Layers.clear();
+		SdfTerrainLayer ball = MakeLayer(ESdfTerrainLayerKind::Sphere);
+		ball.Position = glm::vec3(10.0f, 5.0f, 0.0f);
+		ball.Radius = 3.0f;
+		terrain.Layers.push_back(ball);
+		Require(std::fabs(Nyx::SampleTerrainValue(terrain, ball.Position) + 3.0f) < 1e-6f, "A ball's middle should be its radius inside");
+		Require(std::fabs(Nyx::SampleTerrainValue(terrain, ball.Position + glm::vec3(0.0f, 7.0f, 0.0f)) - 4.0f) < 1e-5f, "4 m off a ball should be 4");
+
+		SdfTerrainComponent rodOnly;
+		rodOnly.Layers.clear();
+		SdfTerrainLayer rod = MakeLayer(ESdfTerrainLayerKind::Capsule);
+		rod.Position = glm::vec3(0.0f, 0.0f, 0.0f);
+		rod.End = glm::vec3(0.0f, 0.0f, 10.0f);
+		rod.Radius = 1.0f;
+		rodOnly.Layers.push_back(rod);
+		Require(std::fabs(Nyx::SampleTerrainValue(rodOnly, glm::vec3(3.0f, 0.0f, 5.0f)) - 2.0f) < 1e-5f, "3 m from a rod's middle should be 2 off it");
+		Require(std::fabs(Nyx::SampleTerrainValue(rodOnly, glm::vec3(0.0f, 0.0f, 13.0f)) - 2.0f) < 1e-5f, "3 m past a rod's end should be 2 off it");
+
+		SdfTerrainComponent boxOnly;
+		boxOnly.Layers.clear();
+		SdfTerrainLayer box = MakeLayer(ESdfTerrainLayerKind::Box);
+		box.Position = glm::vec3(0.0f, 2.0f, 0.0f);
+		box.HalfSize = glm::vec3(4.0f, 2.0f, 1.0f);
+		box.Rounding = 0.0f;
+		boxOnly.Layers.push_back(box);
+		Require(std::fabs(Nyx::SampleTerrainValue(boxOnly, glm::vec3(6.0f, 2.0f, 0.0f)) - 2.0f) < 1e-6f, "2 m off a box's side should be 2");
+		Require(std::fabs(Nyx::SampleTerrainValue(boxOnly, glm::vec3(0.0f, 2.0f, 0.0f)) + 1.0f) < 1e-6f, "A box's middle should be its least half size inside");
+		// Turned 30 degrees about Y: 2 m off its side along its own X
+		boxOnly.Layers[0].Rotation = glm::vec3(0.0f, 30.0f, 0.0f);
+		const glm::vec3 alongX(0.8660254f, 0.0f, -0.5f);
+		Require(std::fabs(Nyx::SampleTerrainValue(boxOnly, box.Position + alongX * 6.0f) - 2.0f) < 1e-4f, "Turned, 2 m off its side should still be 2");
+		// A quarter turn: its sides swapped
+		boxOnly.Layers[0].Rotation = glm::vec3(0.0f, 90.0f, 0.0f);
+		SdfTerrainComponent swapped = boxOnly;
+		swapped.Layers[0].Rotation = glm::vec3(0.0f);
+		swapped.Layers[0].HalfSize = glm::vec3(1.0f, 2.0f, 4.0f);
+		Sequence sequence;
+		for (int i = 0; i < 1000; ++i)
+		{
+			const glm::vec3 point(sequence.Between(-8.0f, 8.0f), sequence.Between(-4.0f, 8.0f), sequence.Between(-8.0f, 8.0f));
+			Require(std::fabs(Nyx::SampleTerrainValue(boxOnly, point) - Nyx::SampleTerrainValue(swapped, point)) < 1e-5f, "A box turned a quarter should be its sides swapped");
+		}
+
+		// An arch: a wall carved by a rod through it, open under the rod, solid above
+		SdfTerrainComponent arch;
+		arch.Layers.clear();
+		SdfTerrainLayer wall = MakeLayer(ESdfTerrainLayerKind::Box);
+		wall.Position = glm::vec3(0.0f, 4.0f, 0.0f);
+		wall.HalfSize = glm::vec3(6.0f, 4.0f, 1.0f);
+		wall.Rounding = 0.25f;
+		arch.Layers.push_back(wall);
+		SdfTerrainLayer opening = MakeLayer(ESdfTerrainLayerKind::Capsule);
+		opening.Combine = ESdfTerrainCombine::Carve;
+		opening.Position = glm::vec3(0.0f, 2.0f, -3.0f);
+		opening.End = glm::vec3(0.0f, 2.0f, 3.0f);
+		opening.Radius = 2.0f;
+		opening.Material = 1;
+		arch.Layers.push_back(opening);
+		Require(Nyx::SampleTerrainValue(arch, glm::vec3(0.0f, 2.0f, 0.0f)) > 0.0f, "An arch should be open under it");
+		Require(Nyx::SampleTerrainValue(arch, glm::vec3(0.0f, 6.0f, 0.0f)) < 0.0f && Nyx::SampleTerrainValue(arch, glm::vec3(4.5f, 2.0f, 0.0f)) < 0.0f,
+			"An arch should be solid above and beside its opening");
+
+		// Ranges and the slope bound, shapes blended into hills
+		SdfTerrainComponent mixed = MakeFlat(0.0f);
+		SdfTerrainLayer turned = wall;
+		turned.Rotation = glm::vec3(10.0f, 35.0f, -20.0f);
+		turned.BlendRadius = 1.0f;
+		mixed.Layers.push_back(turned);
+		mixed.Layers.push_back(opening);
+		SdfTerrainLayer pillar = rod;
+		pillar.End = glm::vec3(5.0f, 9.0f, 3.0f);
+		mixed.Layers.push_back(pillar);
+		const float bound = Nyx::GetTerrainMaxSlope(mixed);
+		float steepest = 0.0f;
+		for (int box = 0; box < 60; ++box)
+		{
+			const glm::vec3 low(sequence.Between(-10.0f, 8.0f), sequence.Between(-4.0f, 8.0f), sequence.Between(-10.0f, 8.0f));
+			const glm::vec3 high = low + glm::vec3(sequence.Between(0.5f, 6.0f));
+			const Nyx::TerrainValueRange range = Nyx::GetTerrainValueRange(mixed, low, high);
+			for (int n = 0; n < 512; ++n)
+			{
+				const glm::vec3 point = low + (high - low) * glm::vec3(float(n % 8), float((n / 8) % 8), float(n / 64)) / 7.0f;
+				const float value = Nyx::SampleTerrainValue(mixed, point);
+				Require(value >= range.Lowest && value <= range.Highest, "A shape's value should be within its box's range");
+				const glm::vec3 near = point + glm::vec3(0.05f, -0.03f, 0.02f);
+				steepest = std::max(steepest, std::fabs(Nyx::SampleTerrainValue(mixed, near) - value) / glm::length(near - point));
+			}
+		}
+		Require(steepest <= bound * 1.001f, "Shapes should never be steeper than the bound");
+		std::cout << "Shapes: steepest " << steepest << " a metre, bound " << bound << "\n";
+	}
 }
 
 int main()
@@ -505,6 +605,7 @@ int main()
 		TestSmoothBlend();
 		TestTunnelsStayInTheirBand();
 		TestSeeds();
+		TestShapes();
 		PrintTimings();
 	}
 	catch (const std::exception& error)

@@ -642,6 +642,10 @@ namespace Nyx
 			hasher.Value(layer.Lacunarity);
 			hasher.Value(layer.Gain);
 			hasher.Value(layer.bRidged);
+			hasher.Value(layer.Position);
+			hasher.Value(layer.HalfSize);
+			hasher.Value(layer.End);
+			hasher.Value(layer.Rotation);
 		}
 		hasher.Value(terrain.SharpMaterials.size());
 		for (const uint32_t material : terrain.SharpMaterials)

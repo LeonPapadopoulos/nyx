@@ -1503,6 +1503,12 @@ game, coarser the farther, and collides while the world runs.
   - *Tunnels*: about *Radius* wide, winding where two noises are both near 0; *Chambers*: open where
     a noise is high, *Openness* of the band; both between *Height* and *Depth* below it.
   - *Detail*: every surface before it pushed in and out by *Amplitude*.
+  - Placed shapes, exact distances: *Box* (at *Position*, *Half Size* each way along its own axes,
+    turned by *Rotation* in degrees about X, then Y, then Z, its edges rounded by *Rounding*),
+    *Sphere* (*Radius* round *Position*) and *Capsule* (*Radius* from *Position* to *End*). Carved,
+    a box is a tunnel, a capsule an arch's opening; added and blended, columns and walls. The
+    turning's sine and cosine come from a fixed polynomial, so the field stays the same bits on every
+    machine.
   - *Noise*: *Seed* (added to the terrain's *Seed*), *Octaves*, *Frequency*, *Lacunarity*, *Gain*,
     *Ridged* for sharp crests.
 - The field (`SdfTerrain.h`): `SampleTerrain()` gives the value at a point (negative inside, 0 on the
@@ -1535,7 +1541,8 @@ game, coarser the farther, and collides while the world runs.
 - Tests: `NyxGradientNoiseTests` (the noise within its bounds, batches the same bits as single
   points, golden values the same in Debug and Release), `NyxSdfTerrainTests` (flat ground exact,
   batches the same bits, golden values, never steeper than the bound, box ranges and rays against
-  dense sampling, a thin slab never passed through, materials, blends, tunnels in their band, seeds),
+  dense sampling, a thin slab never passed through, materials, blends, tunnels in their band, seeds,
+  placed shapes their distances, turned exactly, carved into an arch, within their ranges),
   `NyxTerrainChunksTests` (the octree covering the view distance once, balanced, each level where
   its distance says, held by the hysteresis; every seam closed with both meshers and half-metre
   cells; chunks made on the workers the same bits as made directly, only where the surface is,
@@ -1546,11 +1553,23 @@ game, coarser the farther, and collides while the world runs.
   ball resting on the hills, a character walking 60 m on them, one falling 200 m past a floating
   landmass's cliff at 60 m/s and landing on the hills below with collision always ahead, rays
   meeting the collision where they meet the drawn triangles, bodies following the movers, made
-  again for new values, gone with the terrain),
+  again for new values, gone with the terrain; the sample scene's balls landing on its hills),
   `NyxFieldMesherTests` (a sphere closed with the right area, a box's corners kept sharp and rounded
   smooth, thin shapes closed and wound consistently, neighbouring chunks meeting, sky visibility,
   materials, a golden mesh the same in Debug and Release; marching cubes on the same shapes, closed
   and manifold; how long each takes on a chunk of terrain).
+- Gate 1 (`NyxTerrainGate`, `NyxTerrainGateGpu`, not in ctest: they take minutes): the test volume
+  (`TerrainGateVolume.h`: gentle ground and on it a mound with a 2 m tunnel, a 2 m wall, an arch,
+  columns 2 m thick and apart under a mass, a cliff with a 1 m ledge and a cave, and a floating
+  landmass high above) with each mesher at 1 m and half-metre cells. The first prints the report on
+  the CPU as Markdown: chunks skipped against sampling every quarter cell, rays against dense
+  marching and through the wall, each feature at every level against its two-cell limit, a
+  flythrough checked for cracks, shared and wound edges and triangles against the gradient at each
+  stop, characters walking the features and falling at 60 m/s, the main thread's time each frame
+  (`NYX_GATE_WORKERS` to make the chunks on fewer workers), a chunk on one thread, a view after a
+  jump, the meshes' memory. The second, the terrain's GPU time against the views without it.
+  `NyxTerrainGate --write-scene` writes `Assets/Scenes/SdfTerrainGate.nyxscene`, the volume with a
+  character to walk.
 
 ## Scattering
 

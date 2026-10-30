@@ -152,6 +152,82 @@ namespace Nyx
 			return MaxOf(below, above);
 		}
 
+		// The sine and cosine of an angle in degrees, by a fixed polynomial in doubles: only arithmetic
+		// that IEEE 754 rounds the same everywhere, where a C library's sin() may round its own way
+		void SinCosDegrees(float degrees, float& outSine, float& outCosine)
+		{
+			// To a multiple of 90 degrees and a remainder of at most 45, in radians
+			const double turns = std::floor((double(degrees) + 45.0) / 90.0);
+			const double x = (double(degrees) - turns * 90.0) * 0.017453292519943295;
+			const double x2 = x * x;
+			const double sine = x * (1.0 + x2 * (-1.0 / 6.0 + x2 * (1.0 / 120.0 + x2 * (-1.0 / 5040.0 + x2 * (1.0 / 362880.0 + x2 * (-1.0 / 39916800.0))))));
+			const double cosine = 1.0 + x2 * (-0.5 + x2 * (1.0 / 24.0 + x2 * (-1.0 / 720.0 + x2 * (1.0 / 40320.0 + x2 * (-1.0 / 3628800.0)))));
+			const int quarter = int(turns - 4.0 * std::floor(turns / 4.0));
+			const double sines[4] = { sine, cosine, -sine, -cosine };
+			const double cosines[4] = { cosine, -sine, -cosine, sine };
+			outSine = float(sines[quarter]);
+			outCosine = float(cosines[quarter]);
+		}
+
+		// From the terrain's space into a box's own: the inverse of its rotation about X, then Y, then Z
+		glm::mat3 BoxInverseRotation(const SdfTerrainLayer& layer)
+		{
+			float sx, cx, sy, cy, sz, cz;
+			SinCosDegrees(layer.Rotation.x, sx, cx);
+			SinCosDegrees(layer.Rotation.y, sy, cy);
+			SinCosDegrees(layer.Rotation.z, sz, cz);
+			// Columns: each axis of the box in the terrain's space, Z * Y * X
+			const glm::mat3 aboutX(glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f, cx, sx), glm::vec3(0.0f, -sx, cx));
+			const glm::mat3 aboutY(glm::vec3(cy, 0.0f, -sy), glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(sy, 0.0f, cy));
+			const glm::mat3 aboutZ(glm::vec3(cz, sz, 0.0f), glm::vec3(-sz, cz, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+			return glm::transpose(aboutZ * aboutY * aboutX);
+		}
+
+		// The distance to a placed shape, negative inside: exact, so its slope is 1
+		struct ShapeDistance
+		{
+			explicit ShapeDistance(const SdfTerrainLayer& layer) : Layer(layer)
+			{
+				if (layer.Kind == ESdfTerrainLayerKind::Box)
+				{
+					ToBox = BoxInverseRotation(layer);
+					Rounding = std::clamp(layer.Rounding, 0.0f, std::min({ layer.HalfSize.x, layer.HalfSize.y, layer.HalfSize.z }));
+					Inner = glm::max(layer.HalfSize - Rounding, glm::vec3(0.0f));
+				}
+			}
+
+			float At(const glm::vec3& point) const
+			{
+				switch (Layer.Kind)
+				{
+				case ESdfTerrainLayerKind::Box:
+				{
+					const glm::vec3 local = ToBox * (point - Layer.Position);
+					const glm::vec3 q = glm::abs(local) - Inner;
+					const float outside = glm::length(glm::max(q, glm::vec3(0.0f)));
+					const float inside = std::min(std::max(q.x, std::max(q.y, q.z)), 0.0f);
+					return outside + inside - Rounding;
+				}
+				case ESdfTerrainLayerKind::Sphere:
+					return glm::length(point - Layer.Position) - Layer.Radius;
+				case ESdfTerrainLayerKind::Capsule:
+				{
+					const glm::vec3 along = Layer.End - Layer.Position;
+					const float lengthSquared = glm::dot(along, along);
+					const float t = lengthSquared > 0.0f ? std::clamp(glm::dot(point - Layer.Position, along) / lengthSquared, 0.0f, 1.0f) : 0.0f;
+					return glm::length(point - (Layer.Position + along * t)) - Layer.Radius;
+				}
+				default:
+					return SdfTerrainEmptyValue;
+				}
+			}
+
+			const SdfTerrainLayer& Layer;
+			glm::mat3 ToBox{ 1.0f };
+			float Rounding = 0.0f;
+			glm::vec3 Inner{ 0.0f };
+		};
+
 		// One block of points: what one layer's own shape is there (for Detail, how far it pushes)
 		struct Block
 		{
@@ -229,6 +305,17 @@ namespace Nyx
 				}
 				break;
 			}
+			case ESdfTerrainLayerKind::Box:
+			case ESdfTerrainLayerKind::Sphere:
+			case ESdfTerrainLayerKind::Capsule:
+			{
+				const ShapeDistance shape(layer);
+				for (size_t i = 0; i < block.Count; ++i)
+				{
+					out[i] = shape.At(glm::vec3(block.X[i], block.Y[i], block.Z[i]));
+				}
+				break;
+			}
 			}
 		}
 
@@ -256,6 +343,10 @@ namespace Nyx
 				return std::max(CaveScale(layer) * NoiseSlope(main, layer.bRidged), 1.0f);
 			case ESdfTerrainLayerKind::Detail:
 				return std::fabs(layer.Amplitude) * NoiseSlope(main, false);
+			case ESdfTerrainLayerKind::Box:
+			case ESdfTerrainLayerKind::Sphere:
+			case ESdfTerrainLayerKind::Capsule:
+				return 1.0f;
 			}
 			return 0.0f;
 		}
@@ -305,6 +396,17 @@ namespace Nyx
 			}
 			case ESdfTerrainLayerKind::Detail:
 				return Scaled(layer.Amplitude, -GradientNoise3DMaxValue, GradientNoise3DMaxValue);
+			case ESdfTerrainLayerKind::Box:
+			case ESdfTerrainLayerKind::Sphere:
+			case ESdfTerrainLayerKind::Capsule:
+			{
+				// A distance: within half the box's diagonal of its value at the box's middle, widened
+				// by a hair for the rounding of that value
+				const float value = ShapeDistance(layer).At((boxMin + boxMax) * 0.5f);
+				const float reach = glm::length(boxMax - boxMin) * 0.5f;
+				const float margin = 1e-4f * (1.0f + std::fabs(value) + reach);
+				return { value - reach - margin, value + reach + margin };
+			}
 			}
 			return {};
 		}

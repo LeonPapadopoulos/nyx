@@ -23,7 +23,14 @@ namespace Nyx
 		// Open chambers where a noise is high, within a band of heights
 		Chambers,
 		// Small bumps over every surface the layers before made: their surfaces pushed in and out
-		Detail
+		Detail,
+		// A box at Position, Half Size each way along its own axes, turned by Rotation, its edges
+		// rounded by Rounding
+		Box,
+		// A ball of Radius round Position
+		Sphere,
+		// A rod of Radius from Position to End, round at both ends
+		Capsule
 	};
 
 	// How a layer's shape joins what the layers before it made. Saved as its number.
@@ -46,7 +53,7 @@ namespace Nyx
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Tooltip = "Off: as if it weren't there"))
 		bool bEnabled = true;
 
-		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Tooltip = "Heightfield: ground at a height; Landmass: a floating mass with an underside; Tunnels and Chambers: caves; Detail: bumps on every surface before it"))
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Tooltip = "Heightfield: ground at a height; Landmass: a floating mass with an underside; Tunnels and Chambers: caves; Detail: bumps on every surface before it; Box, Sphere and Capsule: shapes placed where they are"))
 		ESdfTerrainLayerKind Kind = ESdfTerrainLayerKind::Heightfield;
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Tooltip = "Add: solid where it is; Carve: cut out of what came before (caves usually); Intersect: solid only where both are. Detail ignores it"))
@@ -70,7 +77,7 @@ namespace Nyx
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Shape", DragSpeed = 1.0, Tooltip = "Landmass: its centre along X and Z, in metres"))
 		glm::vec2 Center{ 0.0f };
 
-		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Shape", DragSpeed = 0.5, Tooltip = "In metres. Landmass: from its centre to its edge; Tunnels: about how wide they are"))
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Shape", DragSpeed = 0.5, Tooltip = "In metres. Landmass: from its centre to its edge; Tunnels: about how wide they are; Sphere and Capsule: their radius"))
 		float Radius = 200.0f;
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Underside Depth", Category = "Shape", DragSpeed = 0.5, Tooltip = "Landmass: how far, in metres, its underside hangs below Depth in ridges"))
@@ -79,7 +86,7 @@ namespace Nyx
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Edge Roughness", Category = "Shape", DragSpeed = 0.5, Tooltip = "Landmass: how far, in metres, its edge goes in and out round its radius"))
 		float EdgeRoughness = 40.0f;
 
-		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Shape", DragSpeed = 0.1, Tooltip = "Landmass: over how many metres its rim is rounded where top and edge meet; 0: a sharp rim"))
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Shape", DragSpeed = 0.1, Tooltip = "Landmass: over how many metres its rim is rounded where top and edge meet; Box: how round its edges are; 0: sharp"))
 		float Rounding = 4.0f;
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Shape", DragSpeed = 0.01, Tooltip = "Chambers: how much of the band is open, 0 to 1: the noise is open above 1 minus this"))
@@ -108,6 +115,18 @@ namespace Nyx
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Noise", Tooltip = "Ridged noise: sharp crests instead of round hills (Heightfield, Landmass top, Chambers)"))
 		bool bRidged = false;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Placed", DragSpeed = 0.1, Tooltip = "In metres, in the terrain's space. Box and Sphere: their middle; Capsule: one end"))
+		glm::vec3 Position{ 0.0f };
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Half Size", Category = "Placed", DragSpeed = 0.05, Tooltip = "Box: half its size along each of its axes, in metres"))
+		glm::vec3 HalfSize{ 1.0f };
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Placed", DragSpeed = 0.1, Tooltip = "Capsule: its other end, in metres, in the terrain's space"))
+		glm::vec3 End{ 0.0f, 2.0f, 0.0f };
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Placed", DragSpeed = 0.5, Tooltip = "Box: how it is turned, in degrees about X, then Y, then Z"))
+		glm::vec3 Rotation{ 0.0f };
 	};
 
 	// How an SDF terrain's chunks are meshed (FieldMesher.h). Saved as its number.

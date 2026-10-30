@@ -135,6 +135,13 @@ add_dependencies(NyxTerrainCollisionTests NyxGeneratedReflection)
 set_property(TARGET NyxTerrainCollisionTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxTerrainCollisionTests COMMAND NyxTerrainCollisionTests)
 
+# The SDF terrain's Gate 1 report on the CPU: the test volume with each mesher at 1 m and half-metre
+# cells, its field, meshes, features, collision and times. Not a test: it takes minutes.
+add_executable(NyxTerrainGate TerrainGate.cpp TerrainGateVolume.h)
+target_link_libraries(NyxTerrainGate PRIVATE NyxEngine)
+add_dependencies(NyxTerrainGate NyxGeneratedReflection)
+set_property(TARGET NyxTerrainGate PROPERTY FOLDER "Tests")
+
 # The component type registry: types register once; a second type of a name already taken, such as
 # a game module's type named like one of the engine's, is refused.
 add_executable(NyxComponentTypeRegistryTests ComponentTypeRegistryTests.cpp)
@@ -725,6 +732,16 @@ set_property(TARGET NyxTerrainChunksGpuTests PROPERTY FOLDER "Tests")
 nyx_copy_shaders_next_to(NyxTerrainChunksGpuTests)
 nyx_copy_shader_compiler_next_to(NyxTerrainChunksGpuTests)
 add_test(NAME NyxTerrainChunksGpuTests COMMAND NyxTerrainChunksGpuTests)
+
+# The SDF terrain's Gate 1 report on the GPU: the test volume's GPU time, scene and shadows, against
+# the same views without it, with each mesher at 1 m and half-metre cells. Needs a Vulkan device;
+# not a test.
+add_executable(NyxTerrainGateGpu TerrainGateGpu.cpp TerrainGateVolume.h)
+target_link_libraries(NyxTerrainGateGpu PRIVATE NyxEngine)
+add_dependencies(NyxTerrainGateGpu NyxGeneratedReflection)
+set_property(TARGET NyxTerrainGateGpu PROPERTY FOLDER "Tests")
+nyx_copy_shaders_next_to(NyxTerrainGateGpu)
+nyx_copy_shader_compiler_next_to(NyxTerrainGateGpu)
 
 # Instanced drawing and culling on a real GPU: a mesh drawn at every transform of its instances as
 # it would be on an entity for each, uploaded again only for a new revision, picked, culled by cell
