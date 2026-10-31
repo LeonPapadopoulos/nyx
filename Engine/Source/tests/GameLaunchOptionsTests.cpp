@@ -39,7 +39,7 @@ namespace
 		const GameLaunchOptions options = Parse({}, warnings);
 		Require(warnings.empty(), "No arguments should give no warnings");
 		Require(options.ScenePath.empty() && !options.bWaitForDebugger && !options.EditorPort && options.LinkLogPath.empty() &&
-					!options.bInputBackground && options.InputRecordPath.empty() && options.InputReplayPath.empty() && !options.WindowSize && !options.WindowPosition && options.WindowTitle.empty() && !options.MsaaSamples,
+					!options.bInputBackground && options.InputRecordPath.empty() && options.InputReplayPath.empty() && !options.WindowSize && !options.WindowPosition && options.WindowTitle.empty() && !options.MsaaSamples && !options.bNoVSync,
 			"No arguments should leave every option at its default");
 	}
 
@@ -59,6 +59,7 @@ namespace
 		written.MsaaSamples = 8;
 		written.bWindowHidden = true;
 		written.bShowFrameStats = true;
+		written.bNoVSync = true;
 		written.BenchmarkSeconds = 12.5;
 		written.BenchmarkWarmupSeconds = 0.1;
 		written.BenchmarkOutPath = "Benchmarks/Valley at night.csv";
@@ -82,6 +83,7 @@ namespace
 		Require(read.MsaaSamples == written.MsaaSamples, "MSAA samples differ after a round trip");
 		Require(read.bWindowHidden, "--window-hidden lost in a round trip");
 		Require(read.bShowFrameStats, "--frame-stats lost in a round trip");
+		Require(read.bNoVSync, "--no-vsync lost in a round trip");
 		Require(read.BenchmarkSeconds == written.BenchmarkSeconds, "Benchmark seconds differ after a round trip");
 		Require(read.BenchmarkWarmupSeconds == written.BenchmarkWarmupSeconds, "Benchmark warm-up seconds differ after a round trip");
 		Require(read.BenchmarkOutPath == written.BenchmarkOutPath, "Benchmark output path differs after a round trip");

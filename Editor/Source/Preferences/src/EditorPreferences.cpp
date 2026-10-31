@@ -144,6 +144,7 @@ namespace Nyx::Editor
 
 		text += std::string("ConsoleWindowsInPlayAll=") + (bConsoleWindowsInPlayAll ? "1\n" : "0\n");
 		text += std::string("GamepadsDriveAllGames=") + (bGamepadsDriveAllGames ? "1\n" : "0\n");
+		text += std::string("GamesWithoutVSync=") + (bGamesWithoutVSync ? "1\n" : "0\n");
 		text += std::string("Ambilight=") + (bAmbilight ? "1\n" : "0\n");
 		text += "AmbilightStrength=" + FormatFloat(AmbilightStrength) + "\n";
 		text += "AmbilightReach=" + FormatFloat(AmbilightReach) + "\n";
@@ -195,6 +196,8 @@ namespace Nyx::Editor
 			else if (setting == "ConsoleWindowsInPlayAll=0") bConsoleWindowsInPlayAll = false;
 			else if (setting == "GamepadsDriveAllGames=1") bGamepadsDriveAllGames = true;
 			else if (setting == "GamepadsDriveAllGames=0") bGamepadsDriveAllGames = false;
+			else if (setting == "GamesWithoutVSync=1") bGamesWithoutVSync = true;
+			else if (setting == "GamesWithoutVSync=0") bGamesWithoutVSync = false;
 			else if (setting == "Ambilight=1") bAmbilight = true;
 			else if (setting == "Ambilight=0") bAmbilight = false;
 			else if (setting.starts_with("AmbilightStrength="))

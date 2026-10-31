@@ -53,6 +53,13 @@ add_dependencies(NyxGameLaunchOptionsTests NyxGeneratedReflection)
 set_property(TARGET NyxGameLaunchOptionsTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxGameLaunchOptionsTests COMMAND NyxGameLaunchOptionsTests)
 
+# The swapchain's present mode for vsync on and off, without a GPU.
+add_executable(NyxPresentModeTests PresentModeTests.cpp)
+target_link_libraries(NyxPresentModeTests PRIVATE NyxEngine)
+add_dependencies(NyxPresentModeTests NyxGeneratedReflection)
+set_property(TARGET NyxPresentModeTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxPresentModeTests COMMAND NyxPresentModeTests)
+
 # Frame statistics without a GPU: a frame's numbers, their windows' averages and worst, the graph's
 # history; a benchmark's summary, its CSV and its camera path.
 add_executable(NyxFrameStatsTests FrameStatsTests.cpp)

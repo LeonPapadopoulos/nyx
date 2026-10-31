@@ -71,6 +71,9 @@ namespace Nyx
 		// The frame's numbers are shown over the picture from the start, as F8 shows them
 		bool bShowFrameStats = false;
 
+		// The game draws as fast as it can rather than at the monitor's refresh, e.g. to profile it
+		bool bNoVSync = false;
+
 		// Benchmark mode: the game waits BenchmarkWarmupSeconds (or the default) for the scene to
 		// settle and its shaders to compile, records every frame for this many seconds without
 		// vsync, writes them to BenchmarkOutPath (or the default) as CSV, and quits. Unset: no

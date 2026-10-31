@@ -101,6 +101,11 @@ namespace Nyx::Game
 				GetRenderer().SetMsaaSamples(*options.MsaaSamples);
 			}
 
+			if (options.bNoVSync)
+			{
+				GetRenderer().SetVSync(false);
+			}
+
 			// Attaching loads the scene
 			auto gameLayer = std::make_unique<GameLayer>(scenePath);
 			GameLayer& game = *gameLayer;
@@ -136,7 +141,7 @@ namespace Nyx::Game
 // Usage: NyxGame.exe [scene file] [--wait-for-debugger] [--editor-port <port>] [--link-log <file>]
 //                    [--window-size <width>x<height>] [--window-pos <x>,<y>] [--window-title <text>]
 //                    [--input-background] [--input-record <file>] [--input-replay <file>] [--msaa <samples>]
-//                    [--window-hidden] [--frame-stats]
+//                    [--window-hidden] [--frame-stats] [--no-vsync]
 //                    [--benchmark <seconds> [--benchmark-out <file.csv>] [--benchmark-warmup <seconds>]
 //                     [--benchmark-camera <file>]]
 // - Without a scene file, the game runs Scenes/Default.nyxscene from the project's assets, or else
@@ -157,6 +162,9 @@ namespace Nyx::Game
 // - With --window-hidden, the window is never shown, e.g. for an automated test.
 // - With --frame-stats, the frame's numbers show over the picture from the start; F8 shows and
 //   hides them in every build.
+// - With --no-vsync, the game draws as fast as it can rather than at the monitor's refresh, so a
+//   profiler shows what a frame costs rather than the wait for the monitor; the editor's
+//   preference for the games Play starts.
 // - With --benchmark, the game waits for the scene to settle (--benchmark-warmup, 3 s by default,
 //   and until no shader compiles), records every frame's numbers for the seconds given without
 //   vsync, writes them as CSV (--benchmark-out, else Saved/Benchmarks/<scene>-<time>.csv) and quits

@@ -47,6 +47,10 @@ namespace Nyx::Editor
 		// have the focus (--input-background), e.g. to play all games of Play All with one pad
 		bool bGamepadsDriveAllGames = false;
 
+		// Whether the games Play starts draw as fast as they can rather than at the monitor's
+		// refresh (--no-vsync), e.g. to see in a profiler what a frame costs
+		bool bGamesWithoutVSync = false;
+
 		// Ambilight: the scene views' pictures glow onto the editor around them. Strength is the
 		// glow's opacity at the picture's edge, from 0 to 1; reach is how far it goes, in pixels,
 		// up to MaxAmbilightReach.

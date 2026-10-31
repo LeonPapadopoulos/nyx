@@ -31,10 +31,13 @@ namespace Nyx
 		// Whether the images can be copied out (a transfer source), for screenshots
 		bool CanCopyImages() const { return bCanCopyImages; }
 
-		// Vsync presents in FIFO mode; without, in mailbox where the GPU has it. Takes effect when
-		// the swapchain is next created.
+		// Vsync presents in FIFO mode; without, in mailbox where the GPU has it, else immediate.
+		// Takes effect when the swapchain is next created.
 		void SetVSync(bool bVSync) { bVSyncWanted = bVSync; }
 		bool IsVSync() const { return bVSyncWanted; }
+
+		// The present mode for vsync on or off out of those the surface offers (FIFO always is)
+		static vk::PresentModeKHR ChooseSwapPresentMode(const std::vector<vk::PresentModeKHR>& presentModes, bool bVSync);
 
 	private:
 		void CreateSwapchain(VulkanContext& context, GLFWwindow* window);
@@ -44,7 +47,6 @@ namespace Nyx
 
 		static uint32_t ChooseSwapMinImageCount(const vk::SurfaceCapabilitiesKHR& capabilities);
 		static vk::SurfaceFormatKHR ChooseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>& formats);
-		static vk::PresentModeKHR ChooseSwapPresentMode(const std::vector<vk::PresentModeKHR>& presentModes, bool bVSync);
 		static vk::Extent2D ChooseSwapExtent(GLFWwindow* window, const vk::SurfaceCapabilitiesKHR& capabilities);
 
 	private:

@@ -59,6 +59,7 @@ namespace Nyx::Editor
 			launchOptions.bWaitForDebugger = bGameWaitsForDebugger;
 			launchOptions.bInputBackground = preferences.bGamepadsDriveAllGames;
 			launchOptions.MsaaSamples = preferences.MsaaSamples;
+			launchOptions.bNoVSync = preferences.bGamesWithoutVSync;
 			LaunchGame(planned.Name, launchOptions, planned.bConsoleWindow);
 		}
 

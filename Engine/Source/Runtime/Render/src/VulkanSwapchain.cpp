@@ -244,13 +244,16 @@ namespace Nyx
 		{
 			return vk::PresentModeKHR::eFifo;
 		}
-		return std::ranges::any_of(availablePresentModes,
-				   [](const vk::PresentModeKHR value)
-				   {
-					   return vk::PresentModeKHR::eMailbox == value;
-				   })
-			? vk::PresentModeKHR::eMailbox
-			: vk::PresentModeKHR::eFifo;
+		// Without vsync: mailbox draws as fast as the GPU can and shows the newest whole frame;
+		// immediate, where there is no mailbox, may tear but isn't held to the monitor either
+		for (const vk::PresentModeKHR wanted : { vk::PresentModeKHR::eMailbox, vk::PresentModeKHR::eImmediate })
+		{
+			if (std::ranges::find(availablePresentModes, wanted) != availablePresentModes.end())
+			{
+				return wanted;
+			}
+		}
+		return vk::PresentModeKHR::eFifo;
 	}
 
 	vk::Extent2D VulkanSwapchain::ChooseSwapExtent(GLFWwindow* window, const vk::SurfaceCapabilitiesKHR& capabilities)

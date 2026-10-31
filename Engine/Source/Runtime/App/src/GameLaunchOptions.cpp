@@ -208,6 +208,11 @@ namespace Nyx
 			arguments.push_back("--frame-stats");
 		}
 
+		if (options.bNoVSync)
+		{
+			arguments.push_back("--no-vsync");
+		}
+
 		if (options.BenchmarkSeconds)
 		{
 			arguments.push_back("--benchmark");
@@ -350,6 +355,10 @@ namespace Nyx
 			else if (argument == "--frame-stats")
 			{
 				options.bShowFrameStats = true;
+			}
+			else if (argument == "--no-vsync")
+			{
+				options.bNoVSync = true;
 			}
 			else if (argument == "--benchmark")
 			{

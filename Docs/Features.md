@@ -74,6 +74,9 @@ The scene's entities by name, in folders of the editor's own
 - The pads drive only the game whose window has the focus, unless *Gamepads Drive All Games* is
   on in Play's right-click menu (`NyxGame.exe --input-background`); switching it reaches running
   games at once.
+- The games draw at the monitor's refresh (vsync) unless *Games Without VSync* is on in Play's
+  right-click menu (`NyxGame.exe --no-vsync`), from the next Play: then as fast as they can, so a
+  profiler shows what a frame costs rather than the wait for the monitor.
 - Play setups are saved with the editor preferences in `%LOCALAPPDATA%\Nyx\Editor.ini`.
 - Tests: `NyxPlayWallTests` (the setups and the tiling), `NyxGameInstanceTests` (several games
   as real processes, copies of the test program standing in for them; Pause and Step through
@@ -176,6 +179,9 @@ NyxGame.exe [scene file] [--window-size <width>x<height>] [--window-pos <x>,<y>]
   main one.
 - `--window-hidden` never shows the window, e.g. for an automated test; `--frame-stats` and
   `--benchmark` are under [Frame statistics and benchmarks](#frame-statistics-and-benchmarks).
+- The game draws at the monitor's refresh (vsync); `--no-vsync` draws as fast as it can, in
+  mailbox mode where the GPU has it, else immediate (which may tear). `NyxPresentModeTests`
+  tests the choice.
 - `NyxGameLaunchOptionsTests` tests the command line.
 
 ## NyxDump

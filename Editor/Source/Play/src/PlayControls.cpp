@@ -206,6 +206,8 @@ namespace Nyx::Editor
 			session.SetGamepadsDriveAllGames(preferences.bGamepadsDriveAllGames);
 		}
 		ImGui::SetItemTooltip("The pads drive every running game, also those whose window doesn't have the focus. Off: only the game with the focus.");
+		bChanged |= NYX_UI(Nyx::UI::Checkbox("Games Without VSync", &preferences.bGamesWithoutVSync));
+		ImGui::SetItemTooltip("The games Play starts draw as fast as they can rather than at the monitor's refresh, so a profiler shows what a frame costs. From the next Play.");
 		NYX_UI(Nyx::UI::MenuItem("Game Waits for Debugger", nullptr, &session.bGameWaitsForDebugger));
 
 		if (bChanged)
