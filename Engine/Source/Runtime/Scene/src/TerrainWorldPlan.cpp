@@ -28,7 +28,8 @@ namespace Nyx
 			RiftBendZ,
 			Pins,
 			Meander,
-			Lakes
+			Lakes,
+			Tunnels
 		};
 
 		uint32_t Mix(uint32_t value)
@@ -468,6 +469,23 @@ namespace Nyx
 		Blur(sea, nodes, blur, 2);
 		Blur(rough, nodes, blur, 2);
 
+		// Tunnels: the same for their share of the land above the sea, leaning towards rough land
+		const FractalNoise3D tunnelNoise = PlanNoise(seed, EPlanNoise::Tunnels, 1.0f / regionSize, 3);
+		std::vector<float> tunnelScore(count);
+		scores.clear();
+		forEach([&](int, int, size_t index, const glm::vec2& point)
+			{
+				tunnelScore[index] = Noise(tunnelNoise, point) + 0.8f * rough[index];
+				if (land[index] != 0 && sea[index] < 0.5f)
+				{
+					scores.push_back(tunnelScore[index]);
+				}
+			});
+		const float tunnelThreshold = Threshold(scores, std::clamp(made.Tunnels, 0.0f, 1.0f));
+		std::vector<float> tunnels(count);
+		forEach([&](int, int, size_t index, const glm::vec2&) { tunnels[index] = land[index] != 0 && sea[index] < 0.5f && tunnelScore[index] >= tunnelThreshold ? 1.0f : 0.0f; });
+		Blur(tunnels, nodes, blur, 2);
+
 		// The base heights
 		std::vector<float>& height = plan->Height;
 		height.resize(count);
@@ -710,9 +728,7 @@ namespace Nyx
 				const float calm = SmoothStep(0.0f, 80.0f, plan->Channel[index]) * (1.0f - basin[index]);
 				plan->PlainsAmplitude[index] = std::max(made.PlainsHeight, 0.0f) * (1.0f - rough[index]) * (1.0f - 0.6f * sea[index]) * calm;
 				plan->RoughAmplitude[index] = std::max(made.RoughHeight, 0.0f) * rough[index] * (1.0f - sea[index]) * calm;
-				plan->Tunnels[index] = std::clamp(std::clamp(made.Tunnels, 0.0f, 1.0f) * (0.25f + 0.75f * rough[index]) * (1.0f - sea[index])
-						+ pull(ESdfTerrainLandform::Tunnels, index, point) - sea[index],
-					0.0f, 1.0f);
+				plan->Tunnels[index] = std::clamp((tunnels[index] + pull(ESdfTerrainLandform::Tunnels, index, point)) * (1.0f - sea[index]), 0.0f, 1.0f);
 				const ESdfTerrainLandform landform = sea[index] >= 0.5f ? ESdfTerrainLandform::Sea
 					: plan->Rift[index] < 0.0f                          ? ESdfTerrainLandform::Rift
 					: rough[index] >= 0.5f                              ? ESdfTerrainLandform::Roughland
@@ -728,6 +744,9 @@ namespace Nyx
 		plan->ChannelSlope = GridSlope(plan->Channel, nodes);
 		plan->BedSlope = GridSlope(plan->ChannelBed, nodes);
 		plan->TunnelsSlope = GridSlope(plan->Tunnels, nodes);
+		plan->MaxPlainsAmplitude = *std::max_element(plan->PlainsAmplitude.begin(), plan->PlainsAmplitude.end());
+		plan->MaxRoughAmplitude = *std::max_element(plan->RoughAmplitude.begin(), plan->RoughAmplitude.end());
+		plan->bTunnels = std::any_of(plan->Tunnels.begin(), plan->Tunnels.end(), [](float tunnels) { return tunnels > 0.0f; });
 		return plan;
 	}
 
@@ -742,6 +761,37 @@ namespace Nyx
 			&& a.RiftLength == b.RiftLength && a.RiftWidth == b.RiftWidth && a.RiftDepth == b.RiftDepth && a.RiftFlare == b.RiftFlare && a.RiftRoughness == b.RiftRoughness
 			&& a.Rivers == b.Rivers && a.RiverWidth == b.RiverWidth && a.RiverDepth == b.RiverDepth && a.Lakes == b.Lakes && a.LakeRadius == b.LakeRadius
 			&& a.LakeDepth == b.LakeDepth && a.Tunnels == b.Tunnels && a.TunnelWidth == b.TunnelWidth && a.TunnelSpacing == b.TunnelSpacing;
+	}
+
+	uint64_t HashTerrainWorldPlan(const SdfTerrainWorldPlan& plan)
+	{
+		uint64_t hash = 0xCBF29CE484222325ull;
+		auto add = [&](const auto& value)
+		{
+			const auto* bytes = reinterpret_cast<const uint8_t*>(&value);
+			for (size_t i = 0; i < sizeof(value); ++i)
+			{
+				hash = (hash ^ bytes[i]) * 0x100000001B3ull;
+			}
+		};
+		for (const float value : { plan.Size, plan.RegionSize, plan.Height, plan.Thickness, plan.UndersideDepth, plan.EdgeRoughness, plan.Rounding, plan.Sea, plan.SeaLevel,
+				 plan.SeaDepth, plan.Roughland, plan.RoughLift, plan.RoughHeight, plan.PlainsHeight, plan.RiftLength, plan.RiftWidth, plan.RiftDepth, plan.RiftFlare,
+				 plan.RiftRoughness, plan.RiverWidth, plan.RiverDepth, plan.LakeRadius, plan.LakeDepth, plan.Tunnels, plan.TunnelWidth, plan.TunnelSpacing })
+		{
+			add(value);
+		}
+		add(plan.Rifts);
+		add(plan.Rivers);
+		add(plan.Lakes);
+		add(plan.Pins.size());
+		for (const SdfTerrainPlanPin& pin : plan.Pins)
+		{
+			add(pin.Landform);
+			add(pin.Position);
+			add(pin.Radius);
+			add(pin.Strength);
+		}
+		return hash;
 	}
 
 	std::shared_ptr<const TerrainWorldPlan> GetTerrainWorldPlan(const SdfTerrainComponent& terrain)
@@ -768,5 +818,25 @@ namespace Nyx
 			Kept.erase(Kept.begin());
 		}
 		return plan;
+	}
+
+	bool PrepareTerrainWorldPlan(SdfTerrainComponent& terrain)
+	{
+		if (!UsesTerrainWorldPlan(terrain))
+		{
+			return false;
+		}
+		std::shared_ptr<const TerrainWorldPlan> plan = GetTerrainWorldPlan(terrain);
+		if (plan == terrain.Planned)
+		{
+			return false;
+		}
+		terrain.Planned = std::move(plan);
+		return true;
+	}
+
+	bool UsesTerrainWorldPlan(const SdfTerrainComponent& terrain)
+	{
+		return std::any_of(terrain.Layers.begin(), terrain.Layers.end(), [](const SdfTerrainLayer& layer) { return layer.bEnabled && layer.Kind == ESdfTerrainLayerKind::Plan; });
 	}
 }

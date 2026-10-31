@@ -112,6 +112,11 @@ namespace Nyx
 		float BedSlope = 0.0f;
 		float TunnelsSlope = 0.0f;
 
+		// The most of each amplitude anywhere, and whether there are tunnels anywhere
+		float MaxPlainsAmplitude = 0.0f;
+		float MaxRoughAmplitude = 0.0f;
+		bool bTunnels = false;
+
 		// A grid blended between its four nodes round the point (along X and Z); its edge nodes past the
 		// grid
 		float At(const std::vector<float>& grid, float x, float z) const;
@@ -134,8 +139,19 @@ namespace Nyx
 	// Whether two plans' values are all the same
 	bool IsSameTerrainWorldPlan(const SdfTerrainWorldPlan& a, const SdfTerrainWorldPlan& b);
 
+	// A hash of a plan's values, for what its ground is made from
+	uint64_t HashTerrainWorldPlan(const SdfTerrainWorldPlan& plan);
+
 	// The plan the terrain's seed and plan make: its own (SdfTerrainComponent::Planned) when that is
 	// up to date, else one kept for the process, made the first time it is asked for. Safe from any
 	// thread.
 	std::shared_ptr<const TerrainWorldPlan> GetTerrainWorldPlan(const SdfTerrainComponent& terrain);
+
+	// Brings the terrain's own plan up to date, so sampling finds it at once; what owns the terrain
+	// calls it before its jobs read it (UpdateTerrainChunks(), the collision's sync). True if it was
+	// made again.
+	bool PrepareTerrainWorldPlan(SdfTerrainComponent& terrain);
+
+	// Whether any of the terrain's enabled layers is a Plan layer
+	bool UsesTerrainWorldPlan(const SdfTerrainComponent& terrain);
 }

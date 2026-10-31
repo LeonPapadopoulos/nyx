@@ -3,6 +3,7 @@
 
 #include "GradientNoise.h"
 #include "SmoothMinimum.h"
+#include "TerrainWorldPlan.h"
 
 #include <algorithm>
 #include <array>
@@ -31,7 +32,11 @@ namespace Nyx
 		{
 			Main,
 			Second,
-			Third
+			Third,
+			// A Plan layer's rift walls and tunnels
+			Fourth,
+			Fifth,
+			Sixth
 		};
 
 		FractalNoise3D MakeNoise(const SdfTerrainComponent& terrain, const SdfTerrainLayer& layer, ENoiseRole role)
@@ -743,6 +748,148 @@ namespace Nyx
 			}
 		}
 
+		// A Plan layer's ground (TerrainWorldPlan.h), each part between the plan's nodes blended:
+		// - a slab from the top (base height, the plains' noise and rough land's crests by their
+		//   amplitudes) down to the underside (Thickness below the base, hanging Underside Depth in
+		//   ridges), its edge where the plan's is, rounded over Rounding;
+		// - carved out of it, each only where it reaches: a rift down to Rift Depth below the base,
+		//   wider by Rift Flare a metre up, its walls going in and out by Rift Roughness; a river's bed
+		//   and the air above it; tunnels, winding where two noises are near 0 as the Tunnels kind's,
+		//   from Tunnel Width wide where the plan's tunnels are 1 to closed where they are 0, from 6 m
+		//   below the base down half the thickness, 80 m at most.
+		constexpr float PlanTunnelTop = 6.0f;
+		// Where the plan has no tunnels, how far they are from opening
+		constexpr float PlanTunnelClosed = 0.5f;
+		// The rift walls' noise: bumps of 24 m
+		constexpr float PlanWallFrequency = 1.0f / 24.0f;
+
+		float PlanTunnelBand(const SdfTerrainWorldPlan& made)
+		{
+			return std::clamp(made.Thickness * 0.5f, 10.0f, 80.0f);
+		}
+
+		float PlanTunnelScale(const SdfTerrainWorldPlan& made)
+		{
+			return 0.5f * std::max(made.TunnelSpacing, 4.0f);
+		}
+
+		FractalNoise3D PlanNoise(const SdfTerrainComponent& terrain, const SdfTerrainLayer& layer, ENoiseRole role)
+		{
+			FractalNoise3D noise = MakeNoise(terrain, layer, role);
+			noise.Octaves = role == ENoiseRole::Fourth ? 2 : 3;
+			noise.Frequency = role == ENoiseRole::Fourth ? PlanWallFrequency : 1.0f / std::max(terrain.Plan.TunnelSpacing, 4.0f);
+			noise.Lacunarity = 2.0f;
+			noise.Gain = 0.5f;
+			return noise;
+		}
+
+		// What each carve's air (negative inside) can be over a box, from the plan's bounds there
+		Interval PlanRiftAir(const SdfTerrainWorldPlan& made, const TerrainWorldPlan::Bounds& bounds, float lowY, float highY)
+		{
+			const float flare = std::max(made.RiftFlare, 0.0f);
+			const float floorLow = bounds.LowHeight - made.RiftDepth;
+			const float floorHigh = bounds.HighHeight - made.RiftDepth;
+			const float wall = std::fabs(made.RiftRoughness) * GradientNoise3DMaxValue;
+			const Interval rift{ bounds.LowRift - flare * (highY - floorLow) - wall, bounds.HighRift - flare * (lowY - floorHigh) + wall };
+			return MaxOf(rift, { floorLow - highY, floorHigh - lowY });
+		}
+
+		Interval PlanChannelAir(const TerrainWorldPlan::Bounds& bounds, float lowY, float highY)
+		{
+			return MaxOf({ bounds.LowChannel, bounds.HighChannel }, { bounds.LowBed - highY, bounds.HighBed - lowY });
+		}
+
+		Interval PlanTunnelAir(const SdfTerrainWorldPlan& made, const TerrainWorldPlan::Bounds& bounds, float lowY, float highY)
+		{
+			const float width = std::max(made.TunnelWidth, 0.0f);
+			const Interval tunnel{ PlanTunnelClosed - (0.5f * width + PlanTunnelClosed) * bounds.HighTunnels, PlanTunnelScale(made) * 2.0f * GradientNoise3DMaxValue + PlanTunnelClosed };
+			const float band = PlanTunnelBand(made);
+			const Interval below{ (bounds.LowHeight - PlanTunnelTop - band) - highY, (bounds.HighHeight - PlanTunnelTop - band) - lowY };
+			const Interval above{ lowY - (bounds.HighHeight - PlanTunnelTop), highY - (bounds.LowHeight - PlanTunnelTop) };
+			return MaxOf(tunnel, MaxOf(below, above));
+		}
+
+		// Whether carving `air` out of values no lower than `lowest` can change any: false only where
+		// the maximum is proven to give each back exactly
+		bool CanCarve(const Interval& air, float lowest)
+		{
+			return !(-air.Low + 1e-5f * (1.0f + std::fabs(air.Low) + std::fabs(lowest)) < lowest);
+		}
+
+		void SamplePlan(const SdfTerrainComponent& terrain, const SdfTerrainLayer& layer, const Block& block, float* out)
+		{
+			const std::shared_ptr<const TerrainWorldPlan> planned = GetTerrainWorldPlan(terrain);
+			const TerrainWorldPlan& plan = *planned;
+			const SdfTerrainWorldPlan& made = plan.Made;
+			std::array<float, BlockSize> plains;
+			std::array<float, BlockSize> crests;
+			std::array<float, BlockSize> hang;
+			std::array<float, BlockSize> edge;
+			std::array<float, BlockSize> height;
+			SampleFlatNoise(MakeNoise(terrain, layer, ENoiseRole::Main), false, block, plains.data());
+			SampleFlatNoise(MakeNoise(terrain, layer, ENoiseRole::Second), true, block, crests.data());
+			SampleFlatNoise(MakeNoise(terrain, layer, ENoiseRole::Third), true, block, hang.data());
+			SampleFlatNoise(plan.EdgeNoise, false, block, edge.data());
+			glm::vec3 boxMin(std::numeric_limits<float>::max());
+			glm::vec3 boxMax(-std::numeric_limits<float>::max());
+			for (size_t i = 0; i < block.Count; ++i)
+			{
+				const float x = block.X[i];
+				const float z = block.Z[i];
+				height[i] = plan.At(plan.Height, x, z);
+				const float top = height[i] + plan.At(plan.PlainsAmplitude, x, z) * plains[i] + plan.At(plan.RoughAmplitude, x, z) * crests[i];
+				const float underside = (height[i] - made.Thickness) - made.UndersideDepth * hang[i];
+				const float slab = std::max(block.Y[i] - top, underside - block.Y[i]);
+				const float rim = std::sqrt(x * x + z * z) - (plan.Radius + made.EdgeRoughness * edge[i]);
+				out[i] = SmoothMaximum(slab, rim, made.Rounding);
+				boxMin = glm::min(boxMin, glm::vec3(x, block.Y[i], z));
+				boxMax = glm::max(boxMax, glm::vec3(x, block.Y[i], z));
+			}
+
+			// The carves, each where it can change the block's values
+			const TerrainWorldPlan::Bounds bounds = plan.GetRange(glm::vec2(boxMin.x, boxMin.z), glm::vec2(boxMax.x, boxMax.z));
+			auto lowest = [&] { return *std::min_element(out, out + block.Count); };
+			if (CanCarve(PlanRiftAir(made, bounds, boxMin.y, boxMax.y), lowest()))
+			{
+				std::array<float, BlockSize> wall;
+				SampleNoise(PlanNoise(terrain, layer, ENoiseRole::Fourth), false, block.X, block.Y, block.Z, block.Count, wall.data());
+				const float flare = std::max(made.RiftFlare, 0.0f);
+				for (size_t i = 0; i < block.Count; ++i)
+				{
+					const float floor = height[i] - made.RiftDepth;
+					const float rift = plan.At(plan.Rift, block.X[i], block.Z[i]) - flare * (block.Y[i] - floor) + made.RiftRoughness * wall[i];
+					out[i] = std::max(out[i], -std::max(rift, floor - block.Y[i]));
+				}
+			}
+			if (CanCarve(PlanChannelAir(bounds, boxMin.y, boxMax.y), lowest()))
+			{
+				for (size_t i = 0; i < block.Count; ++i)
+				{
+					const float channel = plan.At(plan.Channel, block.X[i], block.Z[i]);
+					const float bed = plan.At(plan.ChannelBed, block.X[i], block.Z[i]);
+					out[i] = std::max(out[i], -std::max(channel, bed - block.Y[i]));
+				}
+			}
+			if (plan.bTunnels && CanCarve(PlanTunnelAir(made, bounds, boxMin.y, boxMax.y), lowest()))
+			{
+				std::array<float, BlockSize> first;
+				std::array<float, BlockSize> second;
+				SampleNoise(PlanNoise(terrain, layer, ENoiseRole::Fifth), false, block.X, block.Y, block.Z, block.Count, first.data());
+				SampleNoise(PlanNoise(terrain, layer, ENoiseRole::Sixth), false, block.X, block.Y, block.Z, block.Count, second.data());
+				const float scale = PlanTunnelScale(made);
+				const float width = std::max(made.TunnelWidth, 0.0f);
+				const float band = PlanTunnelBand(made);
+				for (size_t i = 0; i < block.Count; ++i)
+				{
+					const float open = plan.At(plan.Tunnels, block.X[i], block.Z[i]);
+					const float tunnel = scale * (std::fabs(first[i]) + std::fabs(second[i])) + PlanTunnelClosed - (0.5f * width + PlanTunnelClosed) * open;
+					const float top = height[i] - PlanTunnelTop;
+					const float inBand = std::max((top - band) - block.Y[i], block.Y[i] - top);
+					out[i] = std::max(out[i], -std::max(tunnel, inBand));
+				}
+			}
+		}
+
 		void SampleLayer(const SdfTerrainComponent& terrain, const SdfTerrainLayer& layer, const Block& block, float* out)
 		{
 			std::array<float, BlockSize> first;
@@ -821,6 +968,9 @@ namespace Nyx
 				}
 				break;
 			}
+			case ESdfTerrainLayerKind::Plan:
+				SamplePlan(terrain, layer, block, out);
+				break;
 			}
 		}
 
@@ -852,12 +1002,68 @@ namespace Nyx
 			case ESdfTerrainLayerKind::Sphere:
 			case ESdfTerrainLayerKind::Capsule:
 				return 1.0f;
+			case ESdfTerrainLayerKind::Plan:
+			{
+				// Each part's: an amplitude blended between nodes times a noise changes by both
+				const std::shared_ptr<const TerrainWorldPlan> planned = GetTerrainWorldPlan(terrain);
+				const TerrainWorldPlan& plan = *planned;
+				const SdfTerrainWorldPlan& made = plan.Made;
+				const float top = plan.HeightSlope + plan.MaxPlainsAmplitude * NoiseSlope(main, false) + plan.PlainsSlope * GradientNoise3DMaxValue
+					+ plan.MaxRoughAmplitude * NoiseSlope(MakeNoise(terrain, layer, ENoiseRole::Second), true) + plan.RoughSlope;
+				const float underside = plan.HeightSlope + std::fabs(made.UndersideDepth) * NoiseSlope(MakeNoise(terrain, layer, ENoiseRole::Third), true);
+				const float rim = 1.0f + std::fabs(made.EdgeRoughness) * NoiseSlope(plan.EdgeNoise, false);
+				const float flare = std::max(made.RiftFlare, 0.0f);
+				const float across = plan.RiftSlope + flare * plan.HeightSlope;
+				const float rift = std::sqrt(across * across + flare * flare) + std::fabs(made.RiftRoughness) * NoiseSlope(PlanNoise(terrain, layer, ENoiseRole::Fourth), false);
+				const float floor = std::sqrt(1.0f + plan.HeightSlope * plan.HeightSlope);
+				const float bed = std::sqrt(1.0f + plan.BedSlope * plan.BedSlope);
+				float slope = std::max({ std::sqrt(1.0f + top * top), std::sqrt(1.0f + underside * underside), rim, rift, floor, plan.ChannelSlope, bed });
+				if (plan.bTunnels)
+				{
+					const float tunnel = PlanTunnelScale(made)
+							* (NoiseSlope(PlanNoise(terrain, layer, ENoiseRole::Fifth), false) + NoiseSlope(PlanNoise(terrain, layer, ENoiseRole::Sixth), false))
+						+ (0.5f * std::max(made.TunnelWidth, 0.0f) + PlanTunnelClosed) * plan.TunnelsSlope;
+					slope = std::max(slope, tunnel);
+				}
+				return slope;
+			}
 			}
 			return 0.0f;
 		}
 
 		// What the layer's own value can be in the box
-		Interval LayerRange(const SdfTerrainLayer& layer, const glm::vec3& boxMin, const glm::vec3& boxMax)
+		Interval PlanRange(const SdfTerrainComponent& terrain, const glm::vec3& boxMin, const glm::vec3& boxMax)
+		{
+			const std::shared_ptr<const TerrainWorldPlan> planned = GetTerrainWorldPlan(terrain);
+			const TerrainWorldPlan& plan = *planned;
+			const SdfTerrainWorldPlan& made = plan.Made;
+			const TerrainWorldPlan::Bounds bounds = plan.GetRange(glm::vec2(boxMin.x, boxMin.z), glm::vec2(boxMax.x, boxMax.z));
+			const float topLowest = bounds.LowHeight - bounds.HighPlains * GradientNoise3DMaxValue;
+			const float topHighest = bounds.HighHeight + bounds.HighPlains * GradientNoise3DMaxValue + bounds.HighRough;
+			const Interval hang = Scaled(made.UndersideDepth, 0.0f, 1.0f);
+			const float undersideLowest = (bounds.LowHeight - made.Thickness) - hang.High;
+			const float undersideHighest = (bounds.HighHeight - made.Thickness) - hang.Low;
+			const Interval slab = MaxOf({ boxMin.y - topHighest, boxMax.y - topLowest }, { undersideLowest - boxMax.y, undersideHighest - boxMin.y });
+
+			const glm::vec2 nearest = glm::clamp(glm::vec2(0.0f), glm::vec2(boxMin.x, boxMin.z), glm::vec2(boxMax.x, boxMax.z));
+			const glm::vec2 farthest(std::max(std::fabs(boxMin.x), std::fabs(boxMax.x)), std::max(std::fabs(boxMin.z), std::fabs(boxMax.z)));
+			const Interval rough = Scaled(made.EdgeRoughness, -GradientNoise3DMaxValue, GradientNoise3DMaxValue);
+			const Interval rim{ glm::length(nearest) - (plan.Radius + rough.High), glm::length(farthest) - (plan.Radius + rough.Low) };
+			Interval range = MaxOf(slab, rim);
+			range.High += SmoothMinimumMaxOffset(made.Rounding);
+
+			// Each carve lifts what is below its air's negative to it
+			auto carve = [&](const Interval& air) { range = { std::max(range.Low, -air.High), std::max(range.High, -air.Low) }; };
+			carve(PlanRiftAir(made, bounds, boxMin.y, boxMax.y));
+			carve(PlanChannelAir(bounds, boxMin.y, boxMax.y));
+			if (plan.bTunnels)
+			{
+				carve(PlanTunnelAir(made, bounds, boxMin.y, boxMax.y));
+			}
+			return range;
+		}
+
+		Interval LayerRange(const SdfTerrainComponent& terrain, const SdfTerrainLayer& layer, const glm::vec3& boxMin, const glm::vec3& boxMax)
 		{
 			switch (layer.Kind)
 			{
@@ -905,6 +1111,8 @@ namespace Nyx
 			case ESdfTerrainLayerKind::Sphere:
 			case ESdfTerrainLayerKind::Capsule:
 				return ShapeDistance(layer).Range(boxMin, boxMax);
+			case ESdfTerrainLayerKind::Plan:
+				return PlanRange(terrain, boxMin, boxMax);
 			}
 			return {};
 		}
@@ -942,7 +1150,7 @@ namespace Nyx
 				{
 					continue;
 				}
-				const Interval own = LayerRange(layer, boxMin, boxMax);
+				const Interval own = LayerRange(terrain, layer, boxMin, boxMax);
 				const float offset = SmoothMinimumMaxOffset(layer.BlendRadius);
 				if (layer.Kind == ESdfTerrainLayerKind::Detail)
 				{
@@ -1104,7 +1312,7 @@ namespace Nyx
 					{
 						continue;
 					}
-					if (layer.Kind != ESdfTerrainLayerKind::Detail && !CanChange(layer.Combine, layer.BlendRadius, LayerRange(layer, boxMin, boxMax), lowest, highest))
+					if (layer.Kind != ESdfTerrainLayerKind::Detail && !CanChange(layer.Combine, layer.BlendRadius, LayerRange(terrain, layer, boxMin, boxMax), lowest, highest))
 					{
 						continue;
 					}
@@ -2271,6 +2479,10 @@ namespace Nyx
 			add(layer.End);
 			add(layer.Rotation);
 		}
+		if (UsesTerrainWorldPlan(terrain))
+		{
+			add(HashTerrainWorldPlan(terrain.Plan));
+		}
 		return hash;
 	}
 
@@ -2326,7 +2538,7 @@ namespace Nyx
 			SdfTerrainComponent terrain;
 			terrain.Seed = 11;
 			terrain.Layers.clear();
-			for (int kind = 0; kind <= int(ESdfTerrainLayerKind::Capsule); ++kind)
+			for (int kind = 0; kind <= int(ESdfTerrainLayerKind::Plan); ++kind)
 			{
 				SdfTerrainLayer layer;
 				layer.Kind = ESdfTerrainLayerKind(kind);

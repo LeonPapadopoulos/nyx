@@ -1592,6 +1592,12 @@ game, coarser the farther, and collides while the world runs.
     a box is a tunnel, a capsule an arch's opening; added and blended, columns and walls. The
     turning's sine and cosine come from a fixed polynomial, so the field stays the same bits on every
     machine.
+  - *Plan*: the *World Plan* made into ground: the landmass from its top (the plan's height, the
+    plains' noise and rough land's ridged crests, each by how much of it is there) down to its
+    underside, hanging in ridges, out to its edge; the sea's floor below the sea's level; rifts down
+    to *Rift Depth* below the ground, wider higher up, their walls in ledges and hollows, open
+    below where deeper than the landmass; river beds; tunnels where the plan has them, from 6 m
+    under the ground down to half its thickness. Its own *Noise* shapes the plains and the crests.
   - *Noise*: *Seed* (added to the terrain's *Seed*), *Octaves*, *Frequency*, *Lacunarity*, *Gain*,
     *Ridged* for sharp crests.
 - *World Plan*: what the world is made of and in what proportions, worked out once from the
@@ -1601,7 +1607,7 @@ game, coarser the farther, and collides while the world runs.
   standing *Rough Lift* higher, the rest plains; *Rifts* cut from outside the edge inland, *Rift
   Length* long and *Rift Width* wide, narrowing; *Rivers* from the highest rough land down to the
   sea, over the edge, into a rift or another river, their beds never rising; *Lakes* dug into the
-  plains and filled to where they spill; *Tunnels*, most in rough land. *Region Size* is about how
+  plains and filled to where they spill; *Tunnels* of the land above the sea, most under rough land. *Region Size* is about how
   wide a stretch of one kind is. *Pins* steer it: more plains, rough land, sea or tunnels round a
   place, or a rift that passes it, the seed still shaping the rest. A 2 km plan takes about 15 ms, a
   20 km one under 2 s.
@@ -1640,7 +1646,10 @@ game, coarser the farther, and collides while the world runs.
   points, golden values the same in Debug and Release), `NyxSdfTerrainTests` (flat ground exact,
   batches the same bits, golden values, never steeper than the bound, box ranges and rays against
   dense sampling, a thin slab never passed through, materials, blends, tunnels in their band, seeds,
-  placed shapes their distances, turned exactly, carved into an arch, within their ranges; edits:
+  placed shapes their distances, turned exactly, carved into an arch, within their ranges; a Plan
+  layer the same bits in batches, within its bound and ranges, the plains at their height, the sea's
+  floor below its level, rifts open, air under the underside and past the edge, river beds open,
+  tunnels where pinned, golden values; edits:
   digs, heaps and paint, batches the same bits, within box ranges and the slope bound, a copy with
   only the edits reaching a box the same bits in it, a box carried across edits as if taken at
   once),

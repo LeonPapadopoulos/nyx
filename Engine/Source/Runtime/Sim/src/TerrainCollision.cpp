@@ -9,6 +9,7 @@
 #include "SdfTerrain.h"
 #include "SdfTerrainComponent.h"
 #include "TerrainChunks.h"
+#include "TerrainWorldPlan.h"
 #include "TransformComponent.h"
 
 #include <algorithm>
@@ -274,6 +275,7 @@ namespace Nyx
 		// made from, the rest a few at a time
 		constexpr size_t BakesMadeAStep = 32;
 		SdfTerrainComponent& terrain = world.Get<SdfTerrainComponent>(state.Owner);
+		PrepareTerrainWorldPlan(terrain);
 		RestoreTerrainBakes(terrain, state.Snapshot.get(), BakesMadeAStep);
 		const int level = std::clamp(terrain.FinestLevel, TerrainFinestLevel, TerrainCoarsestLevel);
 		const float size = GetTerrainChunkSize(level);

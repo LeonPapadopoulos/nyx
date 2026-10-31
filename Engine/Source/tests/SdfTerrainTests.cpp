@@ -11,6 +11,7 @@
 #include "BinaryArchive.h"
 #include "SdfTerrain.h"
 #include "TerrainSave.h"
+#include "TerrainWorldPlan.h"
 #include "TestSupport.h"
 
 #include <glm/glm.hpp>
@@ -1209,6 +1210,141 @@ namespace
 	}
 
 	// Not a test: a chunk's samples near the surface, in a batch
+	// A world plan made into ground by a Plan layer, with tunnels pinned in and a rift pinned through
+	SdfTerrainComponent MakePlanned()
+	{
+		SdfTerrainComponent terrain;
+		terrain.Seed = 4;
+		terrain.Layers = { MakeLayer(ESdfTerrainLayerKind::Plan) };
+		terrain.Layers[0].Frequency = 0.006f;
+		terrain.Layers[0].Octaves = 4;
+		terrain.Plan.Pins = { Nyx::SdfTerrainPlanPin{ .Landform = Nyx::ESdfTerrainLandform::Tunnels, .Position = glm::vec2(150.0f, 150.0f), .Radius = 200.0f },
+			Nyx::SdfTerrainPlanPin{ .Landform = Nyx::ESdfTerrainLandform::Rift, .Position = glm::vec2(-300.0f, -200.0f) } };
+		return terrain;
+	}
+
+	// A Plan layer: batches the same bits as single points, never steeper than its bound, within box
+	// ranges; the ground where the plan says: the plains at their height, the sea's floor below its
+	// level, a rift open down to its floor, air under the underside and past the edge, a river's bed
+	// open, tunnels where they were pinned; golden values
+	void TestPlanLayer()
+	{
+		using Nyx::TerrainWorldPlan;
+		const SdfTerrainComponent terrain = MakePlanned();
+		const std::shared_ptr<const TerrainWorldPlan> plan = Nyx::GetTerrainWorldPlan(terrain);
+		const Nyx::SdfTerrainWorldPlan& made = terrain.Plan;
+		Sequence sequence;
+		auto randomPoint = [&] { return glm::vec3(sequence.Between(-1100.0f, 1100.0f), sequence.Between(-320.0f, 140.0f), sequence.Between(-1100.0f, 1100.0f)); };
+
+		constexpr size_t Count = 4096;
+		std::vector<float> x(Count);
+		std::vector<float> y(Count);
+		std::vector<float> z(Count);
+		for (size_t i = 0; i < Count; ++i)
+		{
+			const glm::vec3 point = randomPoint();
+			x[i] = point.x;
+			y[i] = point.y;
+			z[i] = point.z;
+		}
+		std::vector<float> values(Count);
+		Nyx::SampleTerrainBatch(terrain, x.data(), y.data(), z.data(), Count, values.data());
+		uint64_t hash = 0xCBF29CE484222325ull;
+		for (size_t i = 0; i < Count; ++i)
+		{
+			Require(BitsOf(Nyx::SampleTerrainValue(terrain, glm::vec3(x[i], y[i], z[i]))) == BitsOf(values[i]), "A Plan layer's batch should be the same bits as one point");
+			hash = HashBits(hash, BitsOf(values[i]));
+		}
+		constexpr uint64_t Golden = 0x547e91374c8a829full;
+		std::cout << std::hex << "Plan layer golden hash: 0x" << hash << std::dec << "\n";
+		Require(hash == Golden, "A Plan layer's values changed");
+
+		const float bound = Nyx::GetTerrainMaxSlope(terrain);
+		float steepest = 0.0f;
+		for (int i = 0; i < 20000; ++i)
+		{
+			const glm::vec3 a = randomPoint();
+			const glm::vec3 b = a + glm::vec3(sequence.Between(-1.0f, 1.0f), sequence.Between(-1.0f, 1.0f), sequence.Between(-1.0f, 1.0f));
+			const float apart = glm::length(b - a);
+			if (apart > 1e-3f)
+			{
+				steepest = std::max(steepest, std::fabs(Nyx::SampleTerrainValue(terrain, b) - Nyx::SampleTerrainValue(terrain, a)) / apart);
+			}
+		}
+		Require(steepest <= bound * 1.001f, "A Plan layer should never be steeper than its bound: " + std::to_string(steepest) + " > " + std::to_string(bound));
+		std::cout << "Plan layer slope: steepest measured " << steepest << " a metre, bound " << bound << "\n";
+
+		int settled = 0;
+		for (int box = 0; box < 120; ++box)
+		{
+			// Half the boxes near the surface, where the carves are
+			glm::vec3 low = randomPoint();
+			if (box % 2 == 0)
+			{
+				low.y = plan->At(plan->Height, low.x, low.z) - sequence.Between(0.0f, 40.0f);
+			}
+			const glm::vec3 high = low + glm::vec3(sequence.Between(1.0f, 24.0f));
+			const Nyx::TerrainValueRange range = Nyx::GetTerrainValueRange(terrain, low, high);
+			settled += range.IsAllAir() || range.IsAllSolid() ? 1 : 0;
+			constexpr int Steps = 10;
+			for (int i = 0; i <= Steps; ++i)
+			{
+				for (int j = 0; j <= Steps; ++j)
+				{
+					for (int k = 0; k <= Steps; ++k)
+					{
+						const float value = Nyx::SampleTerrainValue(terrain, low + (high - low) * glm::vec3(float(i), float(j), float(k)) / float(Steps));
+						Require(value >= range.Lowest && value <= range.Highest, "A Plan layer's value should be within its box's range");
+					}
+				}
+			}
+		}
+		std::cout << "Plan layer ranges: " << settled << " of 120 boxes settled\n";
+
+		// Nodes of each kind, well inside it
+		auto findNode = [&](auto&& wanted) -> std::optional<glm::vec2>
+		{
+			for (int j = 0; j < plan->Nodes; ++j)
+			{
+				for (int i = 0; i < plan->Nodes; ++i)
+				{
+					if (wanted(plan->IndexOf(i, j)))
+					{
+						return plan->PointOf(i, j);
+					}
+				}
+			}
+			return std::nullopt;
+		};
+		auto value = [&](const glm::vec2& at, float height) { return Nyx::SampleTerrainValue(terrain, glm::vec3(at.x, height, at.y)); };
+		const std::optional<glm::vec2> plains = findNode([&](size_t index)
+			{ return plan->Landform[index] == uint8_t(Nyx::ESdfTerrainLandform::Plains) && plan->Channel[index] >= TerrainWorldPlan::MaxReach && plan->Rift[index] >= TerrainWorldPlan::MaxReach && plan->Tunnels[index] == 0.0f
+				  && plan->Height[index] == made.Height && std::fabs(plan->PointOf(int(index % size_t(plan->Nodes)), int(index / size_t(plan->Nodes))).x) < 500.0f; });
+		Require(plains.has_value(), "There should be open plains");
+		Require(value(*plains, made.Height + made.PlainsHeight * 2.0f + 1.0f) > 0.0f && value(*plains, made.Height - made.PlainsHeight * 2.0f - 1.0f) < 0.0f, "The plains should be at their height");
+		Require(value(*plains, made.Height - made.Thickness + 5.0f) < 0.0f && value(*plains, made.Height - made.Thickness - made.UndersideDepth - 5.0f) > 0.0f,
+			"The landmass should be solid down to its underside and open below it");
+		const std::optional<glm::vec2> sea = findNode([&](size_t index) { return plan->Landform[index] == uint8_t(Nyx::ESdfTerrainLandform::Sea) && plan->Height[index] < made.SeaLevel - made.SeaDepth * 0.9f && plan->Rift[index] >= TerrainWorldPlan::MaxReach; });
+		Require(sea.has_value() && value(*sea, made.SeaLevel - 1.0f) > 0.0f && value(*sea, made.SeaLevel - made.SeaDepth - made.PlainsHeight - 2.0f) < 0.0f, "The sea's floor should be below its level");
+		const std::optional<glm::vec2> rift = findNode([&](size_t index) { return plan->Rift[index] < -15.0f && plan->Landform[index] != uint8_t(Nyx::ESdfTerrainLandform::Sea); });
+		Require(rift.has_value(), "There should be a rift");
+		const float riftHeight = plan->At(plan->Height, rift->x, rift->y);
+		Require(value(*rift, riftHeight - 10.0f) > 0.0f && value(*rift, riftHeight - made.Thickness * 0.5f) > 0.0f, "A rift should be open down through the landmass");
+		Require(value(glm::vec2(made.Size, 0.0f), made.Height) > 0.0f, "Past the edge should be air");
+		const TerrainWorldPlan::River& river = plan->Rivers.front();
+		const size_t middle = river.Points.size() / 2;
+		Require(value(river.Points[middle], river.Beds[middle] + 1.0f) > 0.0f, "A river's bed should be open above it");
+		int open = 0;
+		for (int i = 0; i < 2000; ++i)
+		{
+			const glm::vec2 at(150.0f + sequence.Between(-100.0f, 100.0f), 150.0f + sequence.Between(-100.0f, 100.0f));
+			const float height = plan->At(plan->Height, at.x, at.y);
+			open += value(at, height - sequence.Between(8.0f, 70.0f)) > 0.0f ? 1 : 0;
+		}
+		std::cout << "Plan layer tunnels: " << open << " of 2000 points in their band open\n";
+		Require(open > 40, "Tunnels should be open where they were pinned");
+	}
+
 	void PrintTimings()
 	{
 		const SdfTerrainComponent terrain = MakeRich();
@@ -1235,6 +1371,14 @@ namespace
 		const double milliseconds = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
 		std::cout << "A chunk's " << x.size() << " samples of every kind of layer: " << milliseconds << " ms, " << milliseconds * 1e6 / double(x.size())
 				  << " ns a sample\n";
+
+		// A Plan layer's finest chunk on the plains' surface, with tunnels pinned under it
+		const SdfTerrainComponent planned = MakePlanned();
+		Nyx::SampleTerrainValue(planned, glm::vec3(0.0f));
+		const auto planStart = std::chrono::steady_clock::now();
+		const Nyx::FieldGrid grid = Nyx::SampleTerrainGrid(planned, glm::vec3(130.0f, planned.Plan.Height - 20.0f, 130.0f), 1.0f, glm::ivec3(Side));
+		const double planMilliseconds = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - planStart).count();
+		std::cout << "A Plan layer's chunk of " << grid.Values.size() << " samples over tunnels: " << planMilliseconds << " ms\n";
 	}
 
 	// Placed shapes: a ball, a rod and a box, turned and rounded, their values the distances to them
@@ -1357,6 +1501,7 @@ int main()
 		TestTunnelsStayInTheirBand();
 		TestSeeds();
 		TestShapes();
+		TestPlanLayer();
 		TestEdits();
 		TestEditIndex();
 		TestBakes();

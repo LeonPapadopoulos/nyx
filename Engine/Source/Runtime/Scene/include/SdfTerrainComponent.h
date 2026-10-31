@@ -31,7 +31,11 @@ namespace Nyx
 		// A ball of Radius round Position
 		Sphere,
 		// A rod of Radius from Position to End, round at both ends
-		Capsule
+		Capsule,
+		// The terrain's world plan (SdfTerrainComponent::Plan) made into ground: a floating landmass of
+		// plains and rough land, its underside hanging below, sea floors, rifts from its edge, river
+		// beds and tunnels where the plan put them; the plains' and rough land's noise from its own
+		Plan
 	};
 
 	// How a layer's shape joins what the layers before it made. Saved as its number.
@@ -54,7 +58,7 @@ namespace Nyx
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Tooltip = "Off: as if it weren't there"))
 		bool bEnabled = true;
 
-		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Tooltip = "Heightfield: ground at a height; Landmass: a floating mass with an underside; Tunnels and Chambers: caves; Detail: bumps on every surface before it; Box, Sphere and Capsule: shapes placed where they are"))
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Tooltip = "Heightfield: ground at a height; Landmass: a floating mass with an underside; Tunnels and Chambers: caves; Detail: bumps on every surface before it; Box, Sphere and Capsule: shapes placed where they are; Plan: the World Plan made into ground"))
 		ESdfTerrainLayerKind Kind = ESdfTerrainLayerKind::Heightfield;
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Tooltip = "Add: solid where it is; Carve: cut out of what came before (caves usually); Intersect: solid only where both are. Detail ignores it"))
@@ -279,7 +283,8 @@ namespace Nyx
 	};
 
 	// What a world is made of, in what proportions, worked out once from the terrain's seed
-	// (MakeTerrainWorldPlan(), TerrainWorldPlan.h) on a grid of 16 m: a floating landmass of plains and rough land with sea on it, rifts cut from its edge
+	// (MakeTerrainWorldPlan(), TerrainWorldPlan.h) on a grid of 16 m and made into ground by a Plan
+	// layer: a floating landmass of plains and rough land with sea on it, rifts cut from its edge
 	// inland, rivers running down to the sea, a lake, a rift or over the edge, lakes, and tunnels.
 	// Never saved itself: the same seed and these values make the same plan on every machine.
 	NYX_REFLECT()
@@ -363,7 +368,7 @@ namespace Nyx
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Lake Depth", Category = "Water", DragSpeed = 0.1, Tooltip = "How deep a lake's basin is dug, in metres"))
 		float LakeDepth = 8.0f;
 
-		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Tunnels", DragSpeed = 0.01, Tooltip = "How much tunnels there are, 0 to 1: most in rough land, none under the sea"))
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Tunnels", DragSpeed = 0.01, Tooltip = "How much of the land above the sea has tunnels under it, 0 to 1: most in rough land"))
 		float Tunnels = 0.5f;
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Tunnel Width", Category = "Tunnels", DragSpeed = 0.1, Tooltip = "About how wide a tunnel is, in metres"))
@@ -393,7 +398,7 @@ namespace Nyx
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Terrain", Tooltip = "Evaluated in order, each joined to what the ones before it made"))
 		std::vector<SdfTerrainLayer> Layers{ SdfTerrainLayer{} };
 
-		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "World Plan", Category = "Terrain", Tooltip = "What the world is made of and in what proportions"))
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "World Plan", Category = "Terrain", Tooltip = "What the world is made of and in what proportions, for a Plan layer to make into ground"))
 		SdfTerrainWorldPlan Plan;
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "View Distance", Category = "Chunks", DragSpeed = 4.0, Tooltip = "How far from the camera, in metres, chunks are made and drawn, coarser the farther"))
@@ -441,7 +446,7 @@ namespace Nyx
 		std::vector<SdfTerrainEdit> Edits;
 
 		// The plan made from Seed and Plan, run-time only: made again when either changes
-		// (GetTerrainWorldPlan(), TerrainWorldPlan.h)
+		// (PrepareTerrainWorldPlan(), TerrainWorldPlan.h)
 		std::shared_ptr<const TerrainWorldPlan> Planned;
 	};
 }

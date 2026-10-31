@@ -4,6 +4,7 @@
 #include "FieldMesher.h"
 #include "JobSystem.h"
 #include "SdfTerrain.h"
+#include "TerrainWorldPlan.h"
 #include "TransformComponent.h"
 
 #include <algorithm>
@@ -937,6 +938,10 @@ namespace Nyx
 			hasher.Value(layer.End);
 			hasher.Value(layer.Rotation);
 		}
+		if (UsesTerrainWorldPlan(terrain))
+		{
+			hasher.Value(HashTerrainWorldPlan(terrain.Plan));
+		}
 		hasher.Value(terrain.SharpMaterials.size());
 		for (const uint32_t material : terrain.SharpMaterials)
 		{
@@ -1231,6 +1236,7 @@ namespace Nyx
 			// Bakes without their values (the edits loaded or put back by an undo), those of the jobs'
 			// copy, the rest a few a frame
 			constexpr size_t BakesMadeAFrame = 32;
+			PrepareTerrainWorldPlan(terrain);
 			RestoreTerrainBakes(terrain, streaming.Snapshot.get(), BakesMadeAFrame);
 
 			// New values: a copy for the jobs, what was known of the old ones forgotten, their jobs
