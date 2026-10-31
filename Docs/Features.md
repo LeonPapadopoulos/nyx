@@ -1538,6 +1538,13 @@ game, coarser the farther, and collides while the world runs.
     Many points sampled at once look only at the edits near each block of them (cells of 4 m
     round the points), the same ones as going through them all. In the sample terrain, a chunk
     under 1600 brush edits samples in under twice the time it does with none (from 14 times).
+  - The edits' canonical form (`TerrainSave.h`): the same bytes on every machine for the same
+    edits, little-endian, floats as their bits, in revision order, bakes with their values and the
+    layers they were made with (`WriteTerrainEdits()`); read back, edits not whole, of a later
+    version or that no terrain makes are refused (`ReadTerrainEdits()`). Region hashes, to tell
+    where two machines' terrains differ: for each region of 256 m an edit comes into, a hash of the
+    seed and layers and those edits' bytes up to a revision (`HashTerrainRegions()`), the same
+    whether bakes have their values.
 - The terrain brush (`TerrainBrush.h`): edits where a ray meets the terrain, a stroke of them a
   *Spacing* of the radius apart (a capsule's rods end to end, one smooth trench or ridge), with a
   *Shape*, *Mode*, *Radius*, *Blend Radius*, *Material* and *Reach*.

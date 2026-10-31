@@ -671,7 +671,7 @@ namespace Nyx
 			const EditsLookup* round = nullptr)
 		{
 			constexpr size_t Count = SdfTerrainBakedBrick::Count;
-			auto baked = std::make_shared<SdfTerrainBakedBrick>();
+			std::array<float, Count> values;
 			std::vector<float> x(Count);
 			std::vector<float> y(Count);
 			std::vector<float> z(Count);
@@ -698,35 +698,9 @@ namespace Nyx
 			for (size_t first = 0; first < Count; first += BlockSize)
 			{
 				const Block block{ x.data() + first, y.data() + first, z.data() + first, std::min(BlockSize, Count - first) };
-				SampleBlock(terrain, edits, block, baked->Values.data() + first, materials.data() + first, &lookup, true);
+				SampleBlock(terrain, edits, block, values.data() + first, materials.data() + first, &lookup, true);
 			}
-			for (int eighth = 0; eighth < 8; ++eighth)
-			{
-				const glm::ivec3 from = glm::ivec3(eighth & 1, (eighth >> 1) & 1, (eighth >> 2) & 1) * ((SdfTerrainBakeCorners - 1) / 2);
-				float lowest = std::numeric_limits<float>::max();
-				float highest = -std::numeric_limits<float>::max();
-				for (int k = from.z; k <= from.z + (SdfTerrainBakeCorners - 1) / 2; ++k)
-				{
-					for (int j = from.y; j <= from.y + (SdfTerrainBakeCorners - 1) / 2; ++j)
-					{
-						for (int i = from.x; i <= from.x + (SdfTerrainBakeCorners - 1) / 2; ++i)
-						{
-							const float value = baked->Values[CornerIndex(i, j, k)];
-							lowest = std::min(lowest, value);
-							highest = std::max(highest, value);
-						}
-					}
-				}
-				baked->Lowest[size_t(eighth)] = lowest;
-				baked->Highest[size_t(eighth)] = highest;
-			}
-			if (std::all_of(materials.begin(), materials.end(), [&](uint32_t material) { return material == materials[0]; }))
-			{
-				materials.resize(1);
-			}
-			baked->Materials = std::move(materials);
-			baked->Layers = HashTerrainLayers(terrain);
-			return baked;
+			return MakeTerrainBakedBrick(values, std::move(materials), HashTerrainLayers(terrain));
 		}
 
 		// A noise over X and Z alone (at Y = 0) for every point of a block, each different place once:
@@ -1947,6 +1921,14 @@ namespace Nyx
 		return true;
 	}
 
+	void GetTerrainEditBounds(const SdfTerrainEdit& edit, glm::vec3& outMin, glm::vec3& outMax)
+	{
+		if (!GetTerrainEditSignBounds(edit, outMin, outMax))
+		{
+			std::tie(outMin, outMax) = ShapeBounds(edit);
+		}
+	}
+
 	bool ExtendsTerrainEdits(const SdfTerrainComponent& terrain, const SdfTerrainComponent& earlier)
 	{
 		if (terrain.Edits.size() < earlier.Edits.size())
@@ -2142,10 +2124,7 @@ namespace Nyx
 			}
 			glm::vec3 low;
 			glm::vec3 high;
-			if (!GetTerrainEditSignBounds(edit, low, high))
-			{
-				std::tie(low, high) = ShapeBounds(edit);
-			}
+			GetTerrainEditBounds(edit, low, high);
 			const glm::ivec3 span = Nyx::BrickOf(high) - Nyx::BrickOf(low) + 1;
 			if (int64_t(span.x) * span.y * span.z > MaxBricks)
 			{
@@ -2293,5 +2272,50 @@ namespace Nyx
 			add(layer.Rotation);
 		}
 		return hash;
+	}
+
+	std::shared_ptr<const SdfTerrainBakedBrick> GetTerrainBakeValues(const SdfTerrainComponent& terrain, size_t index)
+	{
+		const SdfTerrainEdit& bake = terrain.Edits[index];
+		if (bake.Baked && bake.Baked->Layers == HashTerrainLayers(terrain))
+		{
+			return bake.Baked;
+		}
+		return MakeBakedBrick(terrain, std::span<const SdfTerrainEdit>(terrain.Edits).first(index), BrickCorner(bake));
+	}
+
+	std::shared_ptr<const SdfTerrainBakedBrick> MakeTerrainBakedBrick(const std::array<float, SdfTerrainBakedBrick::Count>& values, std::vector<uint32_t> materials,
+		uint64_t layers)
+	{
+		auto baked = std::make_shared<SdfTerrainBakedBrick>();
+		baked->Values = values;
+		constexpr int Half = (SdfTerrainBakeCorners - 1) / 2;
+		for (int eighth = 0; eighth < 8; ++eighth)
+		{
+			const glm::ivec3 from = glm::ivec3(eighth & 1, (eighth >> 1) & 1, (eighth >> 2) & 1) * Half;
+			float lowest = std::numeric_limits<float>::max();
+			float highest = -std::numeric_limits<float>::max();
+			for (int k = from.z; k <= from.z + Half; ++k)
+			{
+				for (int j = from.y; j <= from.y + Half; ++j)
+				{
+					for (int i = from.x; i <= from.x + Half; ++i)
+					{
+						const float value = values[CornerIndex(i, j, k)];
+						lowest = std::min(lowest, value);
+						highest = std::max(highest, value);
+					}
+				}
+			}
+			baked->Lowest[size_t(eighth)] = lowest;
+			baked->Highest[size_t(eighth)] = highest;
+		}
+		if (!materials.empty() && std::all_of(materials.begin(), materials.end(), [&](uint32_t material) { return material == materials[0]; }))
+		{
+			materials.resize(1);
+		}
+		baked->Materials = std::move(materials);
+		baked->Layers = layers;
+		return baked;
 	}
 }

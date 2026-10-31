@@ -168,6 +168,15 @@ namespace Nyx
 	// A hash of the seed and the layers: what a bake's values are made from besides the edits
 	uint64_t HashTerrainLayers(const SdfTerrainComponent& terrain);
 
+	// The values of the bake at `index` among the terrain's edits: its own, or, if it has none or they
+	// were made with other layers, made now from the edits before it (the same bits)
+	std::shared_ptr<const SdfTerrainBakedBrick> GetTerrainBakeValues(const SdfTerrainComponent& terrain, size_t index);
+
+	// A bake's values from its corners' values and materials (one for all, or one a corner; all the
+	// same, one) and the layers they were made with, each eighth's range worked out
+	std::shared_ptr<const SdfTerrainBakedBrick> MakeTerrainBakedBrick(const std::array<float, SdfTerrainBakedBrick::Count>& values, std::vector<uint32_t> materials,
+		uint64_t layers);
+
 	// The edits that can change a value somewhere in a box (by the interval arithmetic of the layers'
 	// and the edits' ranges; one that can't is exactly no change there): how many, the latest of their
 	// revisions (0 for none), and a hash of them all, which tells a box made with them from one made
@@ -250,6 +259,9 @@ namespace Nyx
 	// A box outside which an edit can't turn the value's sign: its shape's, its blend radius and a
 	// quarter of it wider; none for paint
 	bool GetTerrainEditSignBounds(const SdfTerrainEdit& edit, glm::vec3& outMin, glm::vec3& outMax);
+
+	// A box round where an edit does its work: where it can turn the sign, a paint's shape
+	void GetTerrainEditBounds(const SdfTerrainEdit& edit, glm::vec3& outMin, glm::vec3& outMax);
 
 	// Whether the terrain's edits are those of `earlier` (the same, in the same order) and maybe more
 	// after them: what was known of boxes from those can be continued

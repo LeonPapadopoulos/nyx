@@ -7,7 +7,9 @@
 // exactly, carved into an arch, within their ranges. Prints how loose the bounds are and how fast it
 // samples.
 #include "FieldMesher.h"
+#include "BinaryArchive.h"
 #include "SdfTerrain.h"
+#include "TerrainSave.h"
 #include "TestSupport.h"
 
 #include <glm/glm.hpp>
@@ -18,6 +20,7 @@
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -881,6 +884,127 @@ namespace
 				  << " without), steepest in a brick " << steepest << "\n";
 	}
 
+	// The edits' canonical form: written and read back, the same edits and bakes, the same bits
+	// sampled; the same bytes whether bakes have their values; the bytes of a set of edits as written
+	// on every machine (golden); edits not whole, of a later version or that no terrain makes not read.
+	// Region hashes: the same with bakes' values or without; an edit changing only its regions'; at a
+	// revision, those of the edits up to it; other layers, every one's
+	void TestSaveFormat()
+	{
+		SdfTerrainComponent terrain = MakeEdited();
+		for (const glm::ivec3& brick : { glm::ivec3(0, 0, 0), glm::ivec3(-1, 0, 2), glm::ivec3(1, -1, -1) })
+		{
+			Nyx::AppendTerrainBake(terrain, brick);
+		}
+		Nyx::SdfTerrainEdit late;
+		late.Position = glm::vec3(3.0f, 2.0f, 4.0f);
+		late.Radius = 2.0f;
+		Nyx::AppendTerrainEdit(terrain, late);
+
+		Nyx::BinaryWriter writer;
+		Nyx::WriteTerrainEdits(terrain, writer);
+		Nyx::BinaryReader reader;
+		reader.LoadFromMemory(writer.GetBytes());
+		SdfTerrainComponent loaded = terrain;
+		Require(Nyx::ReadTerrainEdits(reader, loaded.Edits) && reader.GetRemainingSize() == 0, "Edits written should be read back whole");
+		Require(Nyx::HashTerrainEdits(loaded) == Nyx::HashTerrainEdits(terrain) && Nyx::CountSameTerrainEdits(loaded, terrain) == terrain.Edits.size(),
+			"Edits read back should be the edits written");
+		for (size_t at = 0; at < terrain.Edits.size(); ++at)
+		{
+			if (terrain.Edits[at].Kind == Nyx::ESdfTerrainEditKind::Bake)
+			{
+				Require(loaded.Edits[at].Baked && loaded.Edits[at].Baked->Values == terrain.Edits[at].Baked->Values &&
+							loaded.Edits[at].Baked->Materials == terrain.Edits[at].Baked->Materials && loaded.Edits[at].Baked->Lowest == terrain.Edits[at].Baked->Lowest &&
+							loaded.Edits[at].Baked->Layers == terrain.Edits[at].Baked->Layers,
+					"A bake read back should have its values, the same bits");
+			}
+		}
+		Require(Nyx::RestoreTerrainBakes(loaded) == 0, "Bakes read back should need nothing made again");
+		const Nyx::FieldGrid written = Nyx::SampleTerrainGrid(terrain, glm::vec3(-12.3f, -9.1f, -14.7f), 0.7f, glm::ivec3(36));
+		const Nyx::FieldGrid read = Nyx::SampleTerrainGrid(loaded, glm::vec3(-12.3f, -9.1f, -14.7f), 0.7f, glm::ivec3(36));
+		Require(written.Values == read.Values && written.Materials == read.Materials, "Edits read back should sample the same bits");
+
+		SdfTerrainComponent lost = terrain;
+		for (Nyx::SdfTerrainEdit& edit : lost.Edits)
+		{
+			edit.Baked.reset();
+		}
+		Nyx::BinaryWriter lostWriter;
+		Nyx::WriteTerrainEdits(lost, lostWriter);
+		Require(lostWriter.GetBytes() == writer.GetBytes(), "Bakes without their values should write the same bytes");
+
+		// Golden: the bytes of these edits, as on every machine
+		uint64_t hash = 0xCBF29CE484222325ull;
+		for (const std::byte byte : writer.GetBytes())
+		{
+			hash = (hash ^ uint64_t(byte)) * 0x100000001B3ull;
+		}
+		std::cout << "Save format: " << terrain.Edits.size() << " edits in " << writer.GetBytes().size() << " bytes, their hash 0x" << std::hex << hash << std::dec << "\n";
+		constexpr uint64_t Golden = 0x786200d6eb32b17bull;
+		Require(hash == Golden, "The edits' bytes should be as on every machine");
+
+		// Not read: cut short, a later version, an unknown kind, a value not finite, revisions not
+		// counting up
+		auto rejects = [&](std::vector<std::byte> bytes, const char* what)
+		{
+			Nyx::BinaryReader bad;
+			bad.LoadFromMemory(std::move(bytes));
+			std::vector<Nyx::SdfTerrainEdit> edits{ Nyx::SdfTerrainEdit{} };
+			Require(!Nyx::ReadTerrainEdits(bad, edits) && edits.empty(), what);
+		};
+		std::vector<std::byte> bytes = writer.GetBytes();
+		rejects(std::vector<std::byte>(bytes.begin(), bytes.end() - 5), "Edits cut short shouldn't be read");
+		std::vector<std::byte> later = bytes;
+		later[4] = std::byte(Nyx::TerrainEditsFormatVersion + 1);
+		rejects(later, "Edits of a later version shouldn't be read");
+		constexpr size_t First = 16;
+		std::vector<std::byte> kind = bytes;
+		kind[First + 8] = std::byte(7);
+		rejects(kind, "An edit of an unknown kind shouldn't be read");
+		std::vector<std::byte> infinite = bytes;
+		const float notFinite = std::numeric_limits<float>::infinity();
+		std::memcpy(infinite.data() + First + 11, &notFinite, sizeof(notFinite));
+		rejects(infinite, "An edit with a value not finite shouldn't be read");
+		std::vector<std::byte> backwards = bytes;
+		const uint64_t big = 1000;
+		std::memcpy(backwards.data() + First, &big, sizeof(big));
+		rejects(backwards, "Edits whose revisions don't count up shouldn't be read");
+
+		// Region hashes
+		const std::vector<Nyx::TerrainRegionHash> regions = Nyx::HashTerrainRegions(terrain);
+		Require(regions.size() >= 2 && regions == Nyx::HashTerrainRegions(lost), "Regions should hash the same whether bakes have their values");
+		SdfTerrainComponent moved = terrain;
+		moved.Edits[5].Material += 1;
+		const std::vector<Nyx::TerrainRegionHash> movedRegions = Nyx::HashTerrainRegions(moved);
+		int differ = 0;
+		for (size_t n = 0; n < regions.size(); ++n)
+		{
+			glm::vec3 editLow;
+			glm::vec3 editHigh;
+			Nyx::GetTerrainEditBounds(terrain.Edits[5], editLow, editHigh);
+			const glm::vec3 regionLow = glm::vec3(regions[n].Region) * Nyx::TerrainRegionSize;
+			const bool bReached = glm::all(glm::lessThanEqual(regionLow, editHigh + 1.0f)) && glm::all(glm::lessThanEqual(editLow - 1.0f, regionLow + Nyx::TerrainRegionSize));
+			Require(movedRegions[n].Region == regions[n].Region, "An edit of another material should leave the regions listed");
+			if (movedRegions[n].Hash != regions[n].Hash)
+			{
+				Require(bReached, "An edit changed should change only its regions' hashes");
+				++differ;
+			}
+		}
+		Require(differ > 0, "An edit changed should change its regions' hashes");
+		SdfTerrainComponent earlier = terrain;
+		earlier.Edits.resize(30);
+		Require(Nyx::HashTerrainRegions(terrain, earlier.Edits.back().Revision) == Nyx::HashTerrainRegions(earlier), "Regions at a revision should hash the edits up to it");
+		SdfTerrainComponent otherLayers = terrain;
+		otherLayers.Layers[0].Seed += 1;
+		const std::vector<Nyx::TerrainRegionHash> otherRegions = Nyx::HashTerrainRegions(otherLayers);
+		for (size_t n = 0; n < regions.size(); ++n)
+		{
+			Require(otherRegions[n].Hash != regions[n].Hash, "Other layers should change every region's hash");
+		}
+		std::cout << "Save format: " << regions.size() << " regions hashed, " << differ << " changed by an edit of another material\n";
+	}
+
 	bool SameBox(const Nyx::TerrainBoxEdits& a, const Nyx::TerrainBoxEdits& b)
 	{
 		return a.Seen == b.Seen && a.Reach.Hash == b.Reach.Hash && a.Reach.Count == b.Reach.Count && a.Reaching == b.Reaching &&
@@ -1110,6 +1234,7 @@ int main()
 		TestEdits();
 		TestEditIndex();
 		TestBakes();
+		TestSaveFormat();
 		PrintTimings();
 	}
 	catch (const std::exception& error)
