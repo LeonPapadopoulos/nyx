@@ -318,6 +318,35 @@ namespace
 
 	// Parts shared out: every part runs once, the caller taking some; jobs on every worker sharing
 	// out their own parts at once all finish, as none waits for a queued job
+	// For tests: a function run before each job with a handle, on its worker, so jobs can be held
+	// up; set again while jobs run, the new one from then on; empty, none
+	void TestBeforeEachJob()
+	{
+		JobSystem jobs(2);
+		std::atomic<int> before = 0;
+		jobs.SetBeforeEachJob([&] { before.fetch_add(1); });
+		JobGroup group;
+		std::atomic<int> ran = 0;
+		for (int n = 0; n < 50; ++n)
+		{
+			jobs.Schedule([&] { ran.fetch_add(1); }, EJobPriority::Normal, &group);
+		}
+		jobs.Wait(group);
+		Require(ran == 50 && before == 50, "The function should run before each job");
+		std::atomic<int> held = 0;
+		jobs.SetBeforeEachJob([&] { held.fetch_add(1); std::this_thread::sleep_for(std::chrono::microseconds(200)); });
+		for (int n = 0; n < 20; ++n)
+		{
+			jobs.Schedule([&] { ran.fetch_add(1); }, EJobPriority::Normal, &group);
+		}
+		jobs.Wait(group);
+		Require(held == 20 && before == 50, "Another function set should run instead");
+		jobs.SetBeforeEachJob({});
+		jobs.Schedule([&] { ran.fetch_add(1); }, EJobPriority::Normal, &group);
+		jobs.Wait(group);
+		Require(ran == 71 && held == 20, "An empty function should run nothing before a job");
+	}
+
 	void TestParallelFor()
 	{
 		JobSystem jobs(4);
@@ -366,6 +395,7 @@ int main()
 		TestCancel();
 		TestRawJobs();
 		TestParallelFor();
+		TestBeforeEachJob();
 		TestGoingCancelsQueued();
 		TestWorkersTakeTheFloatingPointState();
 		TestPhysicsOnTheWorkers();

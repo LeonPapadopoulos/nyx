@@ -142,6 +142,13 @@ target_link_libraries(NyxTerrainGate PRIVATE NyxEngine)
 add_dependencies(NyxTerrainGate NyxGeneratedReflection)
 set_property(TARGET NyxTerrainGate PROPERTY FOLDER "Tests")
 
+# The SDF terrain's Gate 2 report: edits drawn and in collision, jobs held up on purpose, two worlds,
+# saving and loading, a planted mismatch, baking. Not a test: it takes minutes.
+add_executable(NyxTerrainGate2 TerrainGate2.cpp)
+target_link_libraries(NyxTerrainGate2 PRIVATE NyxEngine)
+add_dependencies(NyxTerrainGate2 NyxGeneratedReflection)
+set_property(TARGET NyxTerrainGate2 PROPERTY FOLDER "Tests")
+
 # The component type registry: types register once; a second type of a name already taken, such as
 # a game module's type named like one of the engine's, is refused.
 add_executable(NyxComponentTypeRegistryTests ComponentTypeRegistryTests.cpp)

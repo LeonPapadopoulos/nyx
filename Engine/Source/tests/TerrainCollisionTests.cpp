@@ -458,8 +458,8 @@ namespace
 	}
 
 	// Edits by command: a dig under a crate at rest takes its support, which wakes it, and it falls
-	// in; a heap made where a character stands puts it inside, and it is pushed out on top; a command
-	// for no terrain does nothing
+	// in; a heap made where a character stands puts it inside, and it is pushed out on top, and out of
+	// a box heaped over it too; a command for no terrain does nothing
 	void TestEditsUnderBodies()
 	{
 		GameWorld world;
@@ -544,8 +544,31 @@ namespace
 		const std::optional<float> heapTop = CollisionBelow(world, glm::vec3(feet.x, standing.y + 10.0f, feet.z));
 		Require(heapTop && *heapTop > standing.y + 1.0f, "The heap should rise over where the character stood");
 		Require(feet.y > *heapTop - 0.1f, "The character should be on the heap, not in it: feet at " + Describe(feet) + ", heap top " + std::to_string(*heapTop));
+		// A box heaped over it, from under its feet to over its head: its nearest face is the one on
+		// the ground, out of which the way out turns back; it comes out on top
+		SdfTerrainEdit box;
+		box.Shape = ESdfTerrainEditShape::Box;
+		box.Mode = ESdfTerrainEditMode::Add;
+		box.Position = feet + glm::vec3(0.3f, 0.6f, -0.2f);
+		box.HalfSize = glm::vec3(1.5f, 1.0f, 1.5f);
+		SendEdit(world, guid, box);
+		const float pushedOnHeap = glm::length(pushed->To - pushed->From);
+		const size_t before = events.size();
+		for (int step = 0; step < 60 * 3; ++step)
+		{
+			steps.RunInTime(1);
+			const TerrainCollisionComponent& collision = registry.Get<TerrainCollisionComponent>(terrain);
+			events.insert(events.end(), collision.Events.begin(), collision.Events.end());
+		}
+		// Taken after the events grew, which moves them
+		const auto boxed = std::find_if(events.begin() + std::ptrdiff_t(before), events.end(),
+			[&](const TerrainEditEvent& event) { return event.Body == walker && event.Kind == ETerrainEditEvent::InsideNewTerrain; });
+		const glm::vec3 onBox = registry.Get<TransformComponent>(walker).Position;
+		Require(boxed != events.end() && onBox.y > box.Position.y + box.HalfSize.y - 0.1f && SampleTerrainValue(values, onBox + glm::vec3(0.0f, 0.05f, 0.0f)) > -0.05f,
+			"A character a box is heaped over should be pushed out on top of it, not left at " + Describe(onBox));
 		std::cout << "Edits under bodies: live after " << std::fixed << std::setprecision(1) << liveSeconds * 1000.0 << " ms; the crate fell " << resting.y - fallen.y
-				  << " m, the character pushed " << glm::length(pushed->To - pushed->From) << " m onto the heap\n";
+				  << " m, the character pushed " << pushedOnHeap << " m onto the heap, then " << glm::length(boxed->To - boxed->From)
+				  << " m onto a box over it\n";
 	}
 
 	// Drawn and in collision together: with the chunks drawn round the character too, a dig beside it

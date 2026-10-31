@@ -329,6 +329,13 @@ namespace Nyx
 		}
 	}
 
+	void JobSystem::SetBeforeEachJob(std::function<void()> before)
+	{
+		std::lock_guard lock(Lock);
+		BeforeEachJobs.push_back(std::make_unique<std::function<void()>>(std::move(before)));
+		BeforeEachJob.store(BeforeEachJobs.back().get(), std::memory_order_release);
+	}
+
 	void JobSystem::WorkerMain(uint32_t index, uint32_t floatingPointState)
 	{
 		SetFloatingPointState(floatingPointState);
@@ -357,6 +364,10 @@ namespace Nyx
 			}
 
 			Running.fetch_add(1, std::memory_order_relaxed);
+			if (const std::function<void()>* before = BeforeEachJob.load(std::memory_order_acquire); before != nullptr && *before)
+			{
+				(*before)();
+			}
 			{
 				NYX_PROFILE_SCOPE("Job");
 				state.Work();

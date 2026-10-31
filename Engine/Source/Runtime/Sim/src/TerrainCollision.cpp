@@ -596,7 +596,13 @@ namespace Nyx
 					break;
 				}
 				const glm::vec3 ball = lowerValue <= upperValue ? lower : upper;
-				const std::optional<glm::vec3> free = FindTerrainFreePoint(local, ball, radius, height + PushOutReach);
+				std::optional<glm::vec3> free = FindTerrainFreePoint(local, ball, radius, height + PushOutReach);
+				// Where the way out leads nowhere, straight up: out of a box heaped on the ground the
+				// nearest face can be the one on the ground, below which the way out turns back
+				for (float lift = 0.1f; !free && lift <= height + PushOutReach; lift += 0.1f)
+				{
+					free = FindTerrainFreePoint(local, ball + up * lift, radius, 0.0f);
+				}
 				if (!free)
 				{
 					break;

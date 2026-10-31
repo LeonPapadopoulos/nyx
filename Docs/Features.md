@@ -1514,7 +1514,8 @@ game, coarser the farther, and collides while the world runs.
     that takes longer than *Activation Deadline* (0.25 s), each goes in when it is ready, and the
     *Terrain Edit Activation* panel counts it. Outside the game, drawing doesn't wait.
   - Then, by the values before and after: a character the edits put inside the terrain is pushed out
-    onto it; a dynamic body whose middle they did is left to the physics to push out; one they took
+    onto it (the way out the field points, or straight up where that leads nowhere, as out of a box
+    heaped over it on the ground); a dynamic body whose middle they did is left to the physics to push out; one they took
     the terrain from under has lost its support; every dynamic body round them is woken. Each is
     told on the terrain's *Terrain Collision* (`TerrainCollisionComponent::Events`) for that step.
   - Where the edits are is kept in an index of 32 m cells (`TerrainEditIndex`), so a chunk new to
@@ -1664,6 +1665,14 @@ game, coarser the farther, and collides while the world runs.
   jump, the meshes' memory. The second, the terrain's GPU time against the views without it.
   `NyxTerrainGate --write-scene` writes `Assets/Scenes/SdfTerrainGate.nyxscene`, the volume with a
   character to walk.
+- Gate 2 (`NyxTerrainGate2`, not in ctest: it takes a minute): edits and persistence on the sample
+  terrain in a game world with characters, printed as Markdown. Digs of 4 m and boxes heaped on
+  characters, and a rift of 120 m, from their commands to drawn and in collision; how far any
+  character is ever inside once they are live; jobs held up at random (`JobSystem::SetBeforeEachJob()`),
+  every frame the finest chunks drawn checked against the live edits and the collision under each
+  edit against the meshes of the edits live in the last step; two worlds' region hashes and shared
+  chunks; a save loaded, its samples, and edited on; a planted mismatch repaired; a chunk sampled
+  under brush edits against none.
 
 ## Scattering
 

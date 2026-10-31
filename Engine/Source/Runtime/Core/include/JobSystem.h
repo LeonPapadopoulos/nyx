@@ -158,6 +158,11 @@ namespace Nyx
 
 		JobSystemStats GetStats() const;
 
+		// For tests: called on the worker before each job with a handle runs, to hold jobs up on
+		// purpose (a sleep of its choosing), so they finish late and out of order; empty for none.
+		// It can be set while jobs run; each is kept until the job system stops.
+		void SetBeforeEachJob(std::function<void()> before);
+
 	private:
 		struct Entry
 		{
@@ -181,5 +186,7 @@ namespace Nyx
 		std::atomic<uint32_t> Running = 0;
 		std::atomic<uint64_t> Finished = 0;
 		std::atomic<uint64_t> Cancelled = 0;
+		std::vector<std::unique_ptr<std::function<void()>>> BeforeEachJobs;
+		std::atomic<const std::function<void()>*> BeforeEachJob = nullptr;
 	};
 }
