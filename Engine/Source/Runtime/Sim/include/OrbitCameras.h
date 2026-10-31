@@ -6,6 +6,8 @@
 
 namespace Nyx
 {
+	class PhysicsWorld;
+
 	// The world's orbit cameras (OrbitCameraComponent), once per frame after the frame's fixed steps
 	// (ILayer::OnLateUpdate()): each turns by its LookDelta and zooms by its ZoomDelta, clearing them,
 	// keeps its pitch and distance in their limits, and is put on its target where the target is
@@ -14,10 +16,19 @@ namespace Nyx
 	// as they are), so it doesn't judder against a character moving in steps. A camera whose target
 	// isn't in the world is left alone. A camera without a TransformComponent is skipped.
 	//
-	// Walls aren't handled yet: the camera can end up behind one, or inside it. When play shows it's
-	// needed, cast a sphere of about the near plane's size from the point it looks at towards where
-	// it would be (PhysicsWorld::ShapeCast(), leaving out the target's body), and put it at the hit
-	// distance when that is nearer, coming back out smoothly. That needs the game world's physics,
-	// which is why this lives in Sim.
-	void UpdateOrbitCameras(Registry& world, float deltaTime, std::optional<float> interpolation);
+	//
+	// With the game world's physics, it keeps out of what is fixed in the world, the terrain's
+	// collision too: a ball of ProbeRadius cast from the point it looks at towards where it would be
+	// (PhysicsWorld::ShapeCast(), static bodies only, so neither its target nor what moves pushes it)
+	// puts it in front of what the ball hits, at once, and it goes back out to its distance over
+	// about ReturnSeconds once that is clear.
+	void UpdateOrbitCameras(Registry& world, float deltaTime, std::optional<float> interpolation, const PhysicsWorld* physics = nullptr);
+
+	namespace OrbitCameraLimits
+	{
+		// In metres: a little more than a camera's near plane, so the picture never cuts into a wall
+		constexpr float ProbeRadius = 0.2f;
+		// About two thirds of the way back out in this many seconds
+		constexpr float ReturnSeconds = 0.25f;
+	}
 }

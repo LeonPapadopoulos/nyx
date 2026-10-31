@@ -133,7 +133,7 @@ namespace Nyx::Editor
 		}
 		if (Stroke && StrokeViewId == sceneViewId && hit)
 		{
-			StrokeTo(scene, hit->LocalPoint);
+			StrokeTo(scene, hit->LocalPoint, ImGui::GetIO().DeltaTime);
 		}
 		return true;
 	}
@@ -155,7 +155,7 @@ namespace Nyx::Editor
 		return true;
 	}
 
-	void TerrainBrushTool::StrokeTo(SceneDocument& scene, const glm::vec3& localPoint)
+	void TerrainBrushTool::StrokeTo(SceneDocument& scene, const glm::vec3& localPoint, float seconds)
 	{
 		Nyx::Registry& world = scene.GetRegistry();
 		if (!Stroke || !world.IsAlive(Stroke->GetTerrain()) || !world.Has<Nyx::SdfTerrainComponent>(Stroke->GetTerrain()))
@@ -163,7 +163,7 @@ namespace Nyx::Editor
 			return;
 		}
 		Nyx::SdfTerrainComponent& terrain = world.Get<Nyx::SdfTerrainComponent>(Stroke->GetTerrain());
-		for (const Nyx::SdfTerrainEdit& edit : Stroke->MoveTo(localPoint))
+		for (const Nyx::SdfTerrainEdit& edit : Stroke->MoveTo(localPoint, seconds))
 		{
 			Nyx::AppendTerrainEdit(terrain, edit);
 			Nyx::BakeTerrainBricks(terrain, BakeCounts);

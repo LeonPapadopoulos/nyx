@@ -5,24 +5,30 @@
 // triangles as drawn, those drawn shared; bodies follow the movers, are made again for new values
 // and go with the terrain or its collision; edits by command take the ground from a crate at rest,
 // which falls, and push a character out of a heap made on it, and are drawn and in collision in the
-// same frame; the sample scene's balls come to rest on its hills.
+// same frame; a player's brush held at, under and round a character never leaves it in the ground;
+// the sample scene's balls come to rest on its hills.
 #include "CharacterComponent.h"
 #include "ComponentRegistration.h"
 #include "GameWorld.h"
 #include "GuidComponent.h"
 #include "JobSystem.h"
 #include "Log.h"
+#include "MoveCharacterCommand.h"
+#include "OrbitCameraComponent.h"
+#include "OrbitCameras.h"
 #include "Paths.h"
 #include "PhysicsComponents.h"
 #include "SceneSerializer.h"
 #include "SdfTerrain.h"
 #include "SdfTerrainComponent.h"
 #include "SdfTerrainEditCommand.h"
+#include "TerrainBrush.h"
 #include "TerrainChunks.h"
 #include "TestSupport.h"
 #include "TransformComponent.h"
 
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -644,6 +650,174 @@ namespace
 				  << " ms after its command\n";
 	}
 
+	// A player's brush held at, under and round a character, as a game has it: aimed from an orbit
+	// camera kept out of the ground (UpdateOrbitCameras() with physics) at a place ahead of the
+	// character, the chunks drawn round it, the brush going there at its Speed. Whatever it does, the
+	// character is never more than its radius into the terrain as its collision has it, nor in it for
+	// more than a few frames now and then, never after, and stands on the ground at the end; heaps of
+	// the largest brush put it on top. Held in one place, a dig goes down no faster than the brush's
+	// speed, rather than as fast as the frames come, which went through the ground in seconds.
+	void TestBrushingRoundACharacter()
+	{
+		struct Case
+		{
+			const char* Name;
+			// Where it aims, ahead of the character away from the camera, in metres
+			float Ahead;
+			// One after the other, each held for Seconds: true digs, false heaps
+			std::vector<bool> Digs;
+			float Seconds;
+			float Radius = 1.5f;
+			// Walking that way meanwhile, at the walk speed
+			glm::vec3 Walk{ 0.0f };
+			// The camera's height over where it looks, in degrees
+			float Pitch = 30.0f;
+		};
+		const std::vector<Case> cases = {
+			{ "dig at the feet", 0.0f, { true }, 3.0f },
+			{ "heap at the feet", 0.0f, { false }, 3.0f },
+			{ "heap 1 m ahead", 1.0f, { false }, 3.0f },
+			{ "heap, then dig, at the feet", 0.0f, { false, true }, 2.0f },
+			{ "a 4 m heap at the feet", 0.0f, { false }, 2.0f, 4.0f },
+			{ "a 12 m heap at the feet", 0.0f, { false }, 2.0f, 12.0f },
+			{ "walking, digging at the feet", 0.0f, { true }, 3.0f, 1.5f, glm::vec3(0.0f, 0.0f, -1.0f) },
+			{ "walking, heaping 2 m ahead", 2.0f, { false }, 3.0f, 1.5f, glm::vec3(0.0f, 0.0f, -1.0f) },
+			{ "a low camera, digging at the feet", 0.0f, { true }, 3.0f, 1.5f, glm::vec3(0.0f), 5.0f },
+		};
+		const EntityGuid characterGuid{ 0x3A1C0 };
+		const float speed = 2.0f;
+		for (const Case& test : cases)
+		{
+			GameWorld world;
+			Steps steps{ world };
+			Registry& registry = world.GetRegistry();
+			// Without the tunnels, so a dig doesn't open into one
+			SdfTerrainComponent hills = MakeHills();
+			hills.Layers.resize(1);
+			hills.ViewDistance = 300.0f;
+			const Entity terrain = AddTerrain(registry, hills);
+			const EntityGuid guid{ 0x7E44B0 };
+			registry.Add<GuidComponent>(terrain, GuidComponent{ guid });
+			const SdfTerrainComponent& values = registry.Get<SdfTerrainComponent>(terrain);
+			const glm::vec3 stand(4.0f, 0.0f, 3.0f);
+			const float ground = SurfaceBelow(values, stand + glm::vec3(0.0f, 50.0f, 0.0f));
+			const Entity walker = registry.CreateEntity();
+			registry.Add<TransformComponent>(walker, TransformComponent{ .Position = glm::vec3(stand.x, ground + 0.1f, stand.z) });
+			const CharacterComponent& character = registry.Add<CharacterComponent>(walker, CharacterComponent{});
+			registry.Add<GuidComponent>(walker, GuidComponent{ characterGuid });
+			// Behind it, looking at it from Pitch above
+			const Entity eye = registry.CreateEntity();
+			const glm::vec3 looked = glm::vec3(stand.x, ground + 1.6f, stand.z);
+			const glm::vec3 behind = looked + glm::vec3(0.0f, std::sin(glm::radians(test.Pitch)), std::cos(glm::radians(test.Pitch))) * 4.0f;
+			registry.Add<TransformComponent>(eye, TransformComponent{ .Position = behind, .Rotation = glm::quatLookAt(glm::normalize(looked - behind), glm::vec3(0.0f, 1.0f, 0.0f)) });
+			registry.Add<OrbitCameraComponent>(eye, OrbitCameraComponent{ .Target = characterGuid });
+
+			JobSystem& jobs = JobSystem::Get();
+			glm::vec3 viewpoint = looked;
+			auto frame = [&]
+			{
+				UpdateTerrainChunks(registry, { &viewpoint, 1 }, jobs);
+				steps.RunInTime(1);
+				UpdateOrbitCameras(registry, StepSeconds, std::nullopt, &world.GetPhysics());
+			};
+			frame();
+			StepUntilCovered(world, steps, terrain);
+			for (int n = 0; n < 60 * 30 && !registry.Get<TerrainChunksComponent>(terrain).Stats.bSettled; ++n)
+			{
+				frame();
+			}
+			Require(registry.Get<TerrainChunksComponent>(terrain).Stats.bSettled, "The chunks round the character should be drawn");
+			frame();
+
+			// The terrain as its collision has it: its edits that are live
+			std::vector<uint64_t> runs;
+			auto liveValue = [&](const glm::vec3& point)
+			{
+				runs.clear();
+				HashTerrainEditRuns(values, runs);
+				const uint64_t live = registry.Get<TerrainEditActivationComponent>(terrain).Live;
+				SdfTerrainComponent copy = values;
+				for (size_t n = 0; n < runs.size(); ++n)
+				{
+					if (runs[n] == live)
+					{
+						copy.Edits.resize(n);
+					}
+				}
+				return SampleTerrainValue(copy, point);
+			};
+			// Its lower ball's middle, in the terrain how far, below 0
+			auto lowerBall = [&] { return registry.Get<TransformComponent>(walker).Position + glm::vec3(0.0f, character.Radius, 0.0f); };
+
+			const glm::vec3 start = registry.Get<TransformComponent>(walker).Position;
+			float lowest = start.y;
+			float worst = 0.0f;
+			int inside = 0;
+			int frames = 0;
+			float digSeconds = 0.0f;
+			for (bool dig : test.Digs)
+			{
+				TerrainBrushSettings settings;
+				settings.Radius = test.Radius;
+				settings.Reach = 60.0f;
+				settings.Speed = speed;
+				settings.Mode = dig ? ESdfTerrainEditMode::Subtract : ESdfTerrainEditMode::Add;
+				std::optional<TerrainBrushStroke> stroke;
+				for (int n = 0; n < int(test.Seconds * 60.0f); ++n, ++frames)
+				{
+					world.GetCommands().Add(MoveCharacterCommand{ .Character = characterGuid, .Move = test.Walk });
+					const glm::vec3 feet = registry.Get<TransformComponent>(walker).Position;
+					viewpoint = feet + glm::vec3(0.0f, 1.6f, 0.0f);
+					const glm::vec3 camera = registry.Get<TransformComponent>(eye).Position;
+					const glm::vec3 target = feet + glm::vec3(0.0f, 0.0f, -test.Ahead);
+					if (const std::optional<TerrainBrushHit> hit = CastTerrainBrush(registry, Ray{ camera, glm::normalize(target - camera) }, settings.Reach, terrain))
+					{
+						if (!stroke)
+						{
+							stroke.emplace(settings, terrain);
+						}
+						for (const SdfTerrainEdit& edit : stroke->MoveTo(hit->LocalPoint, StepSeconds))
+						{
+							SendEdit(world, guid, edit);
+						}
+					}
+					frame();
+					const float value = liveValue(lowerBall());
+					inside += value < -0.05f ? 1 : 0;
+					worst = std::min(worst, value);
+					lowest = std::min(lowest, registry.Get<TransformComponent>(walker).Position.y);
+				}
+				digSeconds += dig ? test.Seconds : 0.0f;
+			}
+			// Then two seconds standing
+			world.GetCommands().Add(MoveCharacterCommand{ .Character = characterGuid, .Move = glm::vec3(0.0f) });
+			int insideAfter = 0;
+			for (int n = 0; n < 120; ++n)
+			{
+				frame();
+				insideAfter += liveValue(lowerBall()) < -0.05f ? 1 : 0;
+			}
+			const glm::vec3 end = registry.Get<TransformComponent>(walker).Position;
+			const glm::vec3 camera = registry.Get<TransformComponent>(eye).Position;
+			const std::optional<TerrainRayHit> under = RayCastTerrain(values, lowerBall(), glm::vec3(0.0f, -1.0f, 0.0f), 50.0f);
+			std::cout << std::fixed << std::setprecision(2) << test.Name << ": " << values.Edits.size() << " edits; in the terrain " << inside << " of " << frames
+					  << " frames, at most " << std::max(0.0f, -worst) << " m; went from " << start.y << " m down to " << lowest << " m and stands at " << end.y << " m\n";
+			Require(worst > -character.Radius, std::string(test.Name) + ": the character should never be more than its radius in the terrain, not " + std::to_string(-worst) + " m");
+			Require(inside * 10 <= frames, std::string(test.Name) + ": the character should be in the terrain a few frames now and then, not " + std::to_string(inside) + " of " + std::to_string(frames));
+			Require(insideAfter == 0, std::string(test.Name) + ": the character shouldn't be left in the terrain");
+			// The collision's triangles cut across a small round pit a little above its bottom
+			Require(under && under->Distance < character.Radius + 0.5f, std::string(test.Name) + ": the character should stand on the ground at the end, at " + Describe(end) + ", the ground "
+					+ (under ? std::to_string(under->Distance) + " m under its lower ball" : std::string("not under it")));
+			Require(liveValue(camera) > -0.1f, std::string(test.Name) + ": the camera shouldn't be left in the ground, at " + Describe(camera));
+			Require(start.y - lowest <= speed * test.Radius * digSeconds + 2.0f * test.Radius + 1.0f,
+				std::string(test.Name) + ": the dig should go down no faster than the brush's speed, not " + std::to_string(start.y - lowest) + " m");
+			if (test.Radius > 3.0f)
+			{
+				Require(end.y > start.y + test.Radius, std::string(test.Name) + ": the character should be on top of the heap, not at " + Describe(end));
+			}
+		}
+	}
+
 	// The sample scene run for 10 s: its balls fall on the hills, never into them, and land and roll
 	// on what is under them (the hills, or a tunnel's floor where one rolls in)
 	void TestTheSampleScene()
@@ -695,6 +869,7 @@ int main()
 		TestBodiesComeAndGo();
 		TestEditsUnderBodies();
 		TestEditsDrawnWithCollision();
+		TestBrushingRoundACharacter();
 		TestTheSampleScene();
 	}
 	catch (const std::exception& error)

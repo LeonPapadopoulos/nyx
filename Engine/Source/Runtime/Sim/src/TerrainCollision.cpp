@@ -567,10 +567,25 @@ namespace Nyx
 			{
 				continue;
 			}
-			// The edits reaching round it alone, the same bits there, far fewer to sample
+			// As deep as the new edits round it could have buried it, the largest of them across: how
+			// far up its way out may go
 			const float around = height + radius + PushOutReach + SupportDepth + 1.0f;
+			float buried = 0.0f;
+			for (size_t n = CountSameTerrainEdits(*state.Snapshot, *state.LiveSnapshot); n < state.Snapshot->Edits.size(); ++n)
+			{
+				glm::vec3 editMin;
+				glm::vec3 editMax;
+				GetTerrainEditBounds(state.Snapshot->Edits[n], editMin, editMax);
+				if (glm::all(glm::lessThanEqual(editMin, mover.Position + around)) && glm::all(glm::greaterThanEqual(editMax, mover.Position - around)))
+				{
+					buried = std::max(buried, glm::length(editMax - editMin));
+				}
+			}
+			const float lifts = height + PushOutReach + buried;
+			// The edits reaching round it and up that way alone, the same bits there, far fewer to sample
+			const glm::vec3 top = mover.Position + up * lifts;
 			SdfTerrainComponent local = *state.Snapshot;
-			KeepTerrainEditsReaching(local, mover.Position - around, mover.Position + around);
+			KeepTerrainEditsReaching(local, glm::min(mover.Position, top) - around, glm::max(mover.Position, top) + around);
 			SdfTerrainComponent before = *state.LiveSnapshot;
 			KeepTerrainEditsReaching(before, mover.Position - around, mover.Position + around);
 			if (!bCharacter)
@@ -600,8 +615,9 @@ namespace Nyx
 				const glm::vec3 ball = lowerValue <= upperValue ? lower : upper;
 				std::optional<glm::vec3> free = FindTerrainFreePoint(local, ball, radius, height + PushOutReach);
 				// Where the way out leads nowhere, straight up: out of a box heaped on the ground the
-				// nearest face can be the one on the ground, below which the way out turns back
-				for (float lift = 0.1f; !free && lift <= height + PushOutReach; lift += 0.1f)
+				// nearest face can be the one on the ground, below which the way out turns back; out of
+				// a heap bigger than the way out reaches, up to its top
+				for (float lift = 0.1f; !free && lift <= lifts; lift += lift < height + PushOutReach ? 0.1f : 0.25f)
 				{
 					free = FindTerrainFreePoint(local, ball + up * lift, radius, 0.0f);
 				}

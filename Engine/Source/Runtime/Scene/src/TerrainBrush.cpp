@@ -98,14 +98,25 @@ namespace Nyx
 	{
 	}
 
-	std::vector<SdfTerrainEdit> TerrainBrushStroke::MoveTo(const glm::vec3& localPoint)
+	std::vector<SdfTerrainEdit> TerrainBrushStroke::MoveTo(const glm::vec3& target, float seconds)
 	{
 		std::vector<SdfTerrainEdit> edits;
 		if (!Last)
 		{
-			edits.push_back(MakeTerrainBrushEdit(Settings, localPoint, localPoint));
-			Last = localPoint;
+			edits.push_back(MakeTerrainBrushEdit(Settings, target, target));
+			Last = target;
+			Tip = target;
 			return edits;
+		}
+		// With a Speed, only so far towards it
+		glm::vec3 localPoint = target;
+		if (Settings.Speed > 0.0f)
+		{
+			const float most = Settings.Speed * std::max(Settings.Radius, TerrainBrushMinRadius) * std::max(seconds, 0.0f);
+			const glm::vec3 way = target - Tip;
+			const float length = glm::length(way);
+			Tip = length > most ? Tip + way * (most / length) : target;
+			localPoint = Tip;
 		}
 		const float step = std::max(std::max(Settings.Radius, TerrainBrushMinRadius) * Settings.Spacing, TerrainBrushMinSpacing);
 		const float distance = glm::length(localPoint - *Last);

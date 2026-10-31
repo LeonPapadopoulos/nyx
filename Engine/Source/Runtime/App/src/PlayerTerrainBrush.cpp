@@ -19,6 +19,8 @@ namespace Nyx
 	{
 		Settings.Radius = 1.5f;
 		Settings.Reach = 60.0f;
+		// Held in one place, it digs or heaps 3 m a second at this size
+		Settings.Speed = 2.0f;
 	}
 
 	void PlayerTerrainBrush::Update(const PlayerFrame& frame, const std::optional<Ray>& aim)
@@ -72,7 +74,7 @@ namespace Nyx
 			Stroke.emplace(stroke, Hit->Terrain);
 		}
 		const EntityGuid terrain = world.Get<GuidComponent>(Hit->Terrain).Guid;
-		for (const SdfTerrainEdit& edit : Stroke->MoveTo(Hit->LocalPoint))
+		for (const SdfTerrainEdit& edit : Stroke->MoveTo(Hit->LocalPoint, frame.DeltaSeconds))
 		{
 			frame.Commands.Add(SdfTerrainEditCommand{ .Terrain = terrain, .Edit = edit });
 		}

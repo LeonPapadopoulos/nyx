@@ -10,7 +10,8 @@ namespace Nyx
 {
 	// A player's terrain brush, for a player controller to carry: B turns it on and off while the
 	// world has an SDF terrain; while on, the left mouse button digs and with Shift heaps up where the
-	// aim meets the terrain, a stroke as long as it is held (TerrainBrushStroke), each edit an
+	// aim meets the terrain, a stroke as long as it is held (TerrainBrushStroke), going there at the
+	// settings' Speed, so held in one place it digs or heaps at a walking pace, each edit an
 	// SdfTerrainEditCommand, and the wheel makes it bigger or smaller. It aims along the ray the
 	// player gives it each frame: the picture's middle while looking around, the cursor otherwise.
 	// Its UI is a ring where it would land and a line saying what it does.

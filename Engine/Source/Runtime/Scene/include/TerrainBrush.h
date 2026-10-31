@@ -37,6 +37,9 @@ namespace Nyx
 
 		NYX_PROPERTY(Edit, Serialize, meta = (DragSpeed = 1.0, Tooltip = "How far a ray looks for the terrain, in metres"))
 		float Reach = 1000.0f;
+
+		NYX_PROPERTY(Edit, Serialize, meta = (DragSpeed = 0.1, Tooltip = "How many radii a second a stroke may go towards where it aims, so held in one place it digs or heaps at that speed, not as fast as the frames come; 0: no limit"))
+		float Speed = 0.0f;
 	};
 
 	// The smallest radius and spacing a brush uses, whatever its settings say
@@ -66,6 +69,9 @@ namespace Nyx
 	// A stroke of the brush across one terrain: its first edit where it starts, then one each time it
 	// has gone Spacing times the radius from the last, those between filled in when it jumps, the
 	// rod's from the one before. In the terrain's space, so a stroke on a moving terrain stays on it.
+	// With a Speed, it goes towards where it is moved at most that fast: a dig held in one place
+	// finds the terrain further in after each edit, and without one it goes down as fast as the
+	// frames come.
 	class TerrainBrushStroke
 	{
 	public:
@@ -76,13 +82,16 @@ namespace Nyx
 			return Terrain;
 		}
 
-		// The edits the brush makes going to `localPoint`; none until it has gone far enough
-		std::vector<SdfTerrainEdit> MoveTo(const glm::vec3& localPoint);
+		// The edits the brush makes going to `localPoint`, `seconds` after it was last moved; none until
+		// it has gone far enough
+		std::vector<SdfTerrainEdit> MoveTo(const glm::vec3& localPoint, float seconds = 0.0f);
 
 	private:
 		TerrainBrushSettings Settings;
 		Entity Terrain;
 		std::optional<glm::vec3> Last;
+		// Where it has got to on its way, with a Speed
+		glm::vec3 Tip{ 0.0f };
 	};
 
 	// The brush's outline where it meets the terrain, to draw: a ring of the radius in the plane of

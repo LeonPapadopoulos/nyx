@@ -43,9 +43,10 @@ namespace Nyx::Editor
 			const ImVec2& imageMin, const ImVec2& imageSize, bool bImageHovered);
 
 		// A stroke without a view, as TickAndDraw() makes one: begun on a terrain in a mode, taken to
-		// points in the terrain's space, ended as one undo step (false if it made no edit)
+		// points in the terrain's space, `seconds` after the last (for the settings' Speed), ended as
+		// one undo step (false if it made no edit)
 		bool BeginStroke(SceneDocument& scene, Nyx::Entity terrain, Nyx::ESdfTerrainEditMode mode);
-		void StrokeTo(SceneDocument& scene, const glm::vec3& localPoint);
+		void StrokeTo(SceneDocument& scene, const glm::vec3& localPoint, float seconds = 0.0f);
 		bool EndStroke(SceneDocument& scene, TransactionSystem& transactions);
 		bool IsStroking() const
 		{

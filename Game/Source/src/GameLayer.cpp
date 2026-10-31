@@ -305,8 +305,9 @@ namespace Nyx::Game
 
 	void GameLayer::OnLateUpdate(float deltaTime)
 	{
-		// On their targets as they are drawn this frame, after the frame's steps
-		Nyx::UpdateOrbitCameras(World.GetRegistry(), deltaTime, static_cast<float>(SimulationClock->GetDrawFactor()));
+		// On their targets as they are drawn this frame, after the frame's steps, kept out of walls and
+		// the ground
+		Nyx::UpdateOrbitCameras(World.GetRegistry(), deltaTime, static_cast<float>(SimulationClock->GetDrawFactor()), &World.GetPhysics());
 		// Scatters follow their surfaces as they are after the steps and the live edits, also while
 		// the world is paused
 		Nyx::UpdateScatters(World.GetRegistry());

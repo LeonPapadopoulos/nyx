@@ -3,6 +3,7 @@
 
 #include "GuidComponent.h"
 #include "OrbitCameraComponent.h"
+#include "PhysicsWorld.h"
 #include "PreviousTransformComponent.h"
 #include "TransformComponent.h"
 
@@ -14,7 +15,7 @@
 
 namespace Nyx
 {
-	void UpdateOrbitCameras(Registry& world, float deltaTime, std::optional<float> interpolation)
+	void UpdateOrbitCameras(Registry& world, float deltaTime, std::optional<float> interpolation, const PhysicsWorld* physics)
 	{
 		world.Each<OrbitCameraComponent>(
 			[&](Entity entity, OrbitCameraComponent& orbit)
@@ -67,11 +68,29 @@ namespace Nyx
 					// The same smoothing at any frame rate
 					orbit.FollowPoint = glm::mix(orbit.FollowPoint, goal, 1.0f - std::exp(-std::max(deltaTime, 0.0f) / orbit.FollowSmoothing));
 				}
-				orbit.bStarted = true;
-
 				transform.Rotation = glm::normalize(
 					glm::angleAxis(orbit.Yaw, glm::vec3(0.0f, 1.0f, 0.0f)) * glm::angleAxis(orbit.Pitch, glm::vec3(1.0f, 0.0f, 0.0f)));
-				transform.Position = orbit.FollowPoint - transform.Rotation * glm::vec3(0.0f, 0.0f, -1.0f) * orbit.CurrentDistance;
+				const glm::vec3 back = -(transform.Rotation * glm::vec3(0.0f, 0.0f, -1.0f));
+
+				// In front of what is fixed in the way at once, back out smoothly
+				float distance = orbit.CurrentDistance;
+				if (physics)
+				{
+					QueryFilter filter;
+					filter.bMoving = false;
+					const BodyShape probe{ .Kind = EShapeKind::Sphere, .Radius = OrbitCameraLimits::ProbeRadius };
+					if (const std::optional<QueryHit> hit = physics->ShapeCast(probe, BodyPose{ .Position = orbit.FollowPoint }, back, orbit.CurrentDistance, filter))
+					{
+						distance = std::min(distance, hit->Distance);
+					}
+					if (orbit.bStarted && distance > orbit.ClearDistance)
+					{
+						distance = glm::mix(orbit.ClearDistance, distance, 1.0f - std::exp(-std::max(deltaTime, 0.0f) / OrbitCameraLimits::ReturnSeconds));
+					}
+				}
+				orbit.ClearDistance = distance;
+				orbit.bStarted = true;
+				transform.Position = orbit.FollowPoint + back * distance;
 			});
 	}
 }

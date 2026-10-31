@@ -58,6 +58,9 @@ namespace Nyx
 		float Pitch = 0.0f;
 		float CurrentDistance = 0.0f;
 		glm::vec3 FollowPoint{ 0.0f };
+		// How far from that point it is now, CurrentDistance unless something fixed is in the way
+		// (UpdateOrbitCameras() with physics)
+		float ClearDistance = 0.0f;
 		// Whether it has taken its angles from the camera yet, and the Distance it last took, so a
 		// live edit of Distance counts
 		bool bStarted = false;

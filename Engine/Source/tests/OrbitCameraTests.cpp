@@ -1,7 +1,9 @@
 // The orbit camera (UpdateOrbitCameras()) on a world without a window: it starts from where the
 // camera looks, keeps its distance and offset from a moving target, follows the target where it is
 // drawn between steps, smooths its following at any frame rate, clamps its pitch and its zoom, wraps
-// its yaw, leaves the camera alone without a target, and takes a live edit of its distance. The
+// its yaw, leaves the camera alone without a target, and takes a live edit of its distance. With
+// physics it keeps in front of a wall between it and its target at once, not a body that moves, and
+// goes back out smoothly once the wall is gone. The
 // ground helpers turn a stick's input into a move relative to it. The component is saved with the
 // scene, without its runtime values.
 #include "ComponentRegistration.h"
@@ -9,6 +11,7 @@
 #include "Log.h"
 #include "OrbitCameraComponent.h"
 #include "OrbitCameras.h"
+#include "PhysicsWorld.h"
 #include "PreviousTransformComponent.h"
 #include "SceneSerializer.h"
 #include "TestSupport.h"
@@ -255,6 +258,41 @@ namespace
 		Require(Near(GetGroundMove(0.0f, glm::vec2(0.5f, 0.0f)), glm::vec3(0.5f, 0.0f, 0.0f)), "A half-pushed stick should walk at half speed");
 	}
 
+	// A wall behind the target: the camera in front of it at once, a ball of ProbeRadius clear of it;
+	// a body that moves there doesn't; with the wall gone, back out over about ReturnSeconds
+	void TestItKeepsOutOfWalls()
+	{
+		Rig rig(0.0f);
+		PhysicsWorld physics;
+		auto frame = [&] { UpdateOrbitCameras(rig.World, FrameSeconds, std::nullopt, &physics); };
+		frame();
+		const glm::vec3 looksAt = rig.Orbit().FollowPoint;
+		Require(std::abs(rig.CameraTransform().Position.z - (looksAt.z + rig.Orbit().Distance)) < 1e-4f, "Nothing in the way: at its distance");
+
+		// A crate there that moves: nothing
+		const BodyHandle crate = physics.CreateBody(BodyDesc{ .Shape = BodyShape{ .HalfExtents = glm::vec3(3.0f, 3.0f, 0.1f) }, .Position = glm::vec3(0.0f, looksAt.y, 2.0f), .GravityFactor = 0.0f });
+		frame();
+		Require(std::abs(rig.CameraTransform().Position.z - (looksAt.z + rig.Orbit().Distance)) < 1e-4f, "A body that moves shouldn't push it in");
+		physics.DestroyBody(crate);
+
+		const BodyHandle wall = physics.CreateBody(BodyDesc{ .Shape = BodyShape{ .HalfExtents = glm::vec3(3.0f, 3.0f, 0.1f) }, .Position = glm::vec3(0.0f, looksAt.y, 2.0f), .Motion = EBodyMotion::Static });
+		frame();
+		const float inFront = 2.0f - 0.1f - OrbitCameraLimits::ProbeRadius;
+		Require(std::abs(rig.CameraTransform().Position.z - inFront) < 0.02f, "A wall behind it: in front of it at once, not at " + Describe(rig.CameraTransform().Position));
+		Require(std::abs(glm::length(rig.LooksAlong()) - 1.0f) < 1e-4f && rig.LooksAlong().z < -0.99f, "Still looking at its target");
+
+		physics.DestroyBody(wall);
+		frame();
+		const float firstFrame = rig.CameraTransform().Position.z;
+		Require(firstFrame > inFront && firstFrame < inFront + 0.2f, "The wall gone: back out smoothly, not at once to " + std::to_string(firstFrame));
+		for (int n = 0; n < int(2.0f / FrameSeconds); ++n)
+		{
+			frame();
+		}
+		Require(std::abs(rig.CameraTransform().Position.z - (looksAt.z + rig.Orbit().Distance)) < 0.01f, "After two seconds, back at its distance");
+		std::cout << "In front of a wall at " << inFront << " m, then back out\n";
+	}
+
 	void TestScenesKeepOrbitCameras(const std::filesystem::path& directory)
 	{
 		Nyx::RegisterComponentTypes();
@@ -294,6 +332,7 @@ int main()
 		TestYawWraps();
 		TestWithoutATargetItIsLeftAlone();
 		TestGroundMoves();
+		TestItKeepsOutOfWalls();
 		TestScenesKeepOrbitCameras(directory.Path);
 	}
 	catch (const std::exception& error)

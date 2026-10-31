@@ -655,7 +655,7 @@ namespace
 	}
 
 	// The terrain brush: a stroke's edits a spacing apart, those between filled in, a capsule's rods
-	// joined end to end; a ray meeting the nearest of two terrains through their transforms, or the
+	// joined end to end, one with a speed going no faster; a ray meeting the nearest of two terrains through their transforms, or the
 	// one asked for; its ring on the surface's plane; its dig a dig
 	void TestBrush()
 	{
@@ -675,6 +675,18 @@ namespace
 		const std::vector<SdfTerrainEdit> joined = rods.MoveTo(glm::vec3(0.0f, 0.0f, 2.5f));
 		Require(joined.size() == 2 && joined[0].Position == glm::vec3(0.0f) && joined[0].End == joined[1].Position && joined[1].End.z == 2.0f,
 			"A capsule stroke's rods should join end to end");
+
+		// With a speed of 2 radii a second: a jump of 6 m comes a second at a time, 4 m and then the rest
+		settings.Shape = ESdfTerrainEditShape::Sphere;
+		settings.Speed = 2.0f;
+		TerrainBrushStroke paced(settings, Entity{});
+		paced.MoveTo(glm::vec3(0.0f));
+		const std::vector<SdfTerrainEdit> first = paced.MoveTo(glm::vec3(6.0f, 0.0f, 0.0f), 1.0f);
+		Require(first.size() == 4 && std::fabs(first.back().Position.x - 4.0f) < 1e-5f, "A stroke with a speed should go no faster than it");
+		const std::vector<SdfTerrainEdit> rest = paced.MoveTo(glm::vec3(6.0f, 0.0f, 0.0f), 1.0f);
+		Require(rest.size() == 2 && std::fabs(rest.back().Position.x - 6.0f) < 1e-5f, "A stroke with a speed should get there in the end");
+		Require(paced.MoveTo(glm::vec3(10.0f, 0.0f, 0.0f)).empty(), "A stroke with a speed shouldn't move in no time");
+		settings.Speed = 0.0f;
 
 		Registry world;
 		SdfTerrainComponent flat;

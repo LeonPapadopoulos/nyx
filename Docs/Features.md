@@ -272,8 +272,10 @@ contexts, and the context highest on the stack that binds a control gets it.
 - An *Orbit Camera* circles its target entity (an entity picker in Details), looking at a point
   above it (*Target Offset*), at a distance it zooms between *Min* and *Max Distance* in *Zoom
   Steps*, its pitch kept between *Min* and *Max Pitch*. It follows the target as drawn between
-  steps, smoothed by *Follow Smoothing*, and starts from where the scene placed the camera. Walls
-  don't stop it yet.
+  steps, smoothed by *Follow Smoothing*, and starts from where the scene placed the camera. In the
+  game it keeps out of walls and the ground, the terrain's too: where something fixed is between
+  it and its target, it comes in front of it at once, and goes back out smoothly once it is clear;
+  what moves doesn't push it in.
 - In the game, the right stick turns an orbit camera, the wheel zooms it, and the mouse turns it
   while the right button is held, leaving the cursor free to point with otherwise. A game's player
   can ask for free look instead, where the mouse turns it without a button and the cursor is
@@ -1519,7 +1521,8 @@ game, coarser the farther, and collides while the world runs.
     *Terrain Edit Activation* panel counts it. Outside the game, drawing doesn't wait.
   - Then, by the values before and after: a character the edits put inside the terrain is pushed out
     onto it (the way out the field points, or straight up where that leads nowhere, as out of a box
-    heaped over it on the ground); a dynamic body whose middle they did is left to the physics to push out; one they took
+    heaped over it on the ground, as far up as the largest of the new edits round it, so a heap of
+    the largest brush puts it on top); a dynamic body whose middle they did is left to the physics to push out; one they took
     the terrain from under has lost its support; every dynamic body round them is woken. Each is
     told on the terrain's *Terrain Collision* (`TerrainCollisionComponent::Events`) for that step.
   - Where the edits are is kept in an index of 32 m cells (`TerrainEditIndex`), so a chunk new to
@@ -1563,7 +1566,9 @@ game, coarser the farther, and collides while the world runs.
     a region without a bake first (`BakeTerrainRegion()`).
 - The terrain brush (`TerrainBrush.h`): edits where a ray meets the terrain, a stroke of them a
   *Spacing* of the radius apart (a capsule's rods end to end, one smooth trench or ridge), with a
-  *Shape*, *Mode*, *Radius*, *Blend Radius*, *Material* and *Reach*.
+  *Shape*, *Mode*, *Radius*, *Blend Radius*, *Material*, *Reach* and *Speed*: how many radii a
+  second a stroke may go towards where it aims, so held in one place it digs or heaps at that
+  speed (0, the editor's: as fast as it is moved).
   - In the editor: select an SDF terrain and tick *Paint in the scene views* in its *Terrain Brush*
     section of the Details panel. A scene view then shows the brush's ring where the mouse meets
     the terrain, in place of the gizmo, and the left button paints a stroke, with Shift the other
@@ -1571,8 +1576,10 @@ game, coarser the farther, and collides while the world runs.
   - In the game, Nyx's own player (`ThirdPersonPlayer`, through `PlayerTerrainBrush`): B turns the
     brush on and off; while on, the left mouse button digs and Shift with it heaps up, by
     `SdfTerrainEditCommand`s, aimed at the picture's middle while exploring and at the cursor
-    otherwise, and the wheel sizes it (not the camera's zoom or speed meanwhile); a ring shows where
-    it lands, a line what it does. Its input is `TerrainBrushInput`'s (in the default input asset;
+    otherwise, and the wheel sizes it (not the camera's zoom or speed meanwhile); held, it goes
+    there at 2 radii a second (3 m a second at its first size), so a dig held in one place goes
+    down at a walking pace rather than through the ground in seconds; a ring shows where it lands,
+    a line what it does. Its input is `TerrainBrushInput`'s (in the default input asset;
     added when an asset hasn't it).
 - `Assets/Scenes/SdfTerrainWorld.nyxscene` (written by `NyxTerrainGate3 --write-scene`): a world
   plan 2 km wide made into ground, with its water and flat colours by rules (grass, rough grass,
@@ -1697,6 +1704,8 @@ game, coarser the farther, and collides while the world runs.
   meeting the collision where they meet the drawn triangles, bodies following the movers, made
   again for new values, gone with the terrain; a dig under a crate at rest that it falls into, a
   heap made on a character that is pushed onto it, a dig drawn and in collision in the same frame;
+  a player's brush held at, under and round a character, aimed from an orbit camera, never leaving
+  it in the ground, the largest heaps putting it on top, digs going down no faster than its speed;
   the sample scene's balls landing on its hills),
   `NyxFieldMesherTests` (a sphere closed with the right area, a box's corners kept sharp and rounded
   smooth, thin shapes closed and wound consistently, neighbouring chunks meeting, sky visibility,
