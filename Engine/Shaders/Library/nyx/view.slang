@@ -258,11 +258,12 @@ public struct ViewConstants
 
     // The terrain's occlusion volume round the camera (VulkanTerrainOcclusion, nyx.terrainocclusion):
     // its levels (0: none, and nothing below is set), finest first, and how strongly it dims the sky's
-    // light, 0 to 1; each level's texture's slot, and the corner of the window it holds in the world
-    // (xyz) with its cells' size (w)
+    // light, 0 to 1, and whether it shades the sun's light past the shadow maps (1) or not (0); each
+    // level's texture's slot, and the corner of the window it holds in the world (xyz) with its
+    // cells' size (w)
     public uint TerrainOcclusionLevels;
     public float TerrainOcclusionStrength;
-    public uint TerrainOcclusionPadding0;
+    public uint TerrainFarShadows;
     public uint TerrainOcclusionPadding1;
     public uint4 TerrainOcclusionVolumes[2];
     public float4 TerrainOcclusionWindows[6];

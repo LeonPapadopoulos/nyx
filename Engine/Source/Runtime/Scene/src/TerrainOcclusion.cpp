@@ -147,6 +147,11 @@ namespace Nyx
 			}
 		}
 
+		bool KeepsOcclusion(const SdfTerrainComponent& terrain)
+		{
+			return terrain.SkyOcclusion > 0.0f || terrain.bFarShadows;
+		}
+
 		uint8_t ToSolid(float value, float cellSize)
 		{
 			return uint8_t(std::lround(std::clamp(0.5f - value / cellSize, 0.0f, 1.0f) * 255.0f));
@@ -244,6 +249,7 @@ namespace Nyx
 			const SdfTerrainComponent& terrain = world.Get<SdfTerrainComponent>(entity);
 			TerrainOcclusionComponent& occlusion = world.Get<TerrainOcclusionComponent>(entity);
 			occlusion.Strength = std::clamp(terrain.SkyOcclusion, 0.0f, 1.0f);
+			occlusion.bFarShadows = terrain.bFarShadows;
 			std::shared_ptr<Detail::TerrainOcclusionFill>& last = occlusion.Fill;
 
 			// Done: what it made goes in, all at once
@@ -372,7 +378,7 @@ namespace Nyx
 		std::vector<Entity> gone;
 		world.Each<TerrainOcclusionComponent>([&](Entity entity, TerrainOcclusionComponent&)
 			{
-				if (!world.Has<SdfTerrainComponent>(entity) || world.Get<SdfTerrainComponent>(entity).SkyOcclusion <= 0.0f)
+				if (!world.Has<SdfTerrainComponent>(entity) || !KeepsOcclusion(world.Get<SdfTerrainComponent>(entity)))
 				{
 					gone.push_back(entity);
 				}
@@ -395,7 +401,7 @@ namespace Nyx
 		std::vector<Entity> terrains;
 		world.Each<SdfTerrainComponent>([&](Entity entity, SdfTerrainComponent& terrain)
 			{
-				if (terrain.SkyOcclusion > 0.0f && !terrain.Layers.empty())
+				if (KeepsOcclusion(terrain) && !terrain.Layers.empty())
 				{
 					terrains.push_back(entity);
 				}
@@ -413,7 +419,8 @@ namespace Nyx
 	float SampleTerrainOcclusion(const TerrainOcclusionComponent& occlusion, int level, const glm::vec3& point)
 	{
 		const TerrainOcclusionLevel& in = occlusion.Levels[size_t(level)];
-		if (in.Solid.empty() || glm::any(glm::lessThan(point, in.GetWindowMin())) || glm::any(glm::greaterThanEqual(point, in.GetWindowMax())))
+		if (in.Solid.empty() || glm::any(glm::lessThan(point, in.GetWindowMin() + Margin * in.CellSize)) ||
+			glm::any(glm::greaterThanEqual(point, in.GetWindowMax() - Margin * in.CellSize)))
 		{
 			return -1.0f;
 		}
@@ -480,6 +487,48 @@ namespace Nyx
 			weights += weight;
 		}
 		return glm::mix(1.0f, seen / weights, occlusion.Strength);
+	}
+
+	float GetTerrainSunVisibility(const TerrainOcclusionComponent& occlusion, const glm::vec3& point, const glm::vec3& normal, const glm::vec3& toSun)
+	{
+		if (!occlusion.bReady || !occlusion.bFarShadows)
+		{
+			return 1.0f;
+		}
+		// The finest level that holds the point: no step finer than its cells
+		int first = 0;
+		while (first < Levels && SampleTerrainOcclusion(occlusion, first, point) < 0.0f)
+		{
+			++first;
+		}
+		if (first == Levels)
+		{
+			return 1.0f;
+		}
+		const float cell = occlusion.Levels[size_t(first)].CellSize;
+		const glm::vec3 l = glm::normalize(toSun);
+		const glm::vec3 start = point + glm::normalize(normal) * (1.5f * cell);
+		float through = 1.0f;
+		float t = cell;
+		for (int step = 0; step < SunMaxSteps && t < SunMaxDistance && through > 0.01f; ++step)
+		{
+			const float width = std::max(2.0f * t * SunConeTangent, cell);
+			const glm::vec3 at = start + l * t;
+			int level = std::clamp(int(std::floor(std::log2(width / FinestCell))), first, Levels - 1);
+			float solid = SampleTerrainOcclusion(occlusion, level, at);
+			while (solid < 0.0f && level + 1 < Levels)
+			{
+				solid = SampleTerrainOcclusion(occlusion, ++level, at);
+			}
+			if (solid < 0.0f)
+			{
+				break;
+			}
+			const float stride = StepWidths * width;
+			through *= std::pow(1.0f - std::min(solid, 0.999f), stride / occlusion.Levels[size_t(level)].CellSize);
+			t += stride;
+		}
+		return through;
 	}
 
 	std::vector<InspectedValue> DescribeTerrainOcclusion(const TerrainOcclusionComponent& component)

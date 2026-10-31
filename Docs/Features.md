@@ -1647,8 +1647,15 @@ game, coarser the farther, and collides while the world runs.
   block all air or all solid without sampling; a step of the camera only the slab it comes to; an
   edit only what it reaches), copied to the GPU only when a level changed, and traced by the
   surface shaders in five cones from each pixel (nyx.terrainocclusion), about 0.4 to 1.3 ms at
-  1280 x 720 with the Gate 3 region in view. Less than 1 keeps that part of the sky's light; 0 keeps
-  no volume. *Terrain Occlusion* in the details panel's *Runtime* section: its levels and fills.
+  1280 x 720 with the Gate 3 region in view. Less than 1 keeps that part of the sky's light.
+  *Terrain Occlusion* in the details panel's *Runtime* section: its levels and fills.
+- Far shadows (*Far Shadows* in the terrain's *Lighting*, on by default): past the sun's *Shadow
+  Distance*, where its shadow maps end, the terrain still shades what the sun reaches, from the same
+  volume: one narrow cone towards the sun from each pixel, out to about a kilometre, soft as the
+  sun's shadows are far off; the maps fade into it over their last tenth. Rifts, crests, hills'
+  far sides and the underside are in shadow kilometres off, where before nothing past 80 m was.
+  About 0.1 to 0.5 ms more at 1280 x 720. The volume is kept while *Sky Occlusion* is above 0 or
+  *Far Shadows* is on.
 - The field (`SdfTerrain.h`): `SampleTerrain()` gives the value at a point (negative inside, 0 on the
   surface) and its material, `SampleTerrainBatch()` many points, the same bits, with the 3D noise
   eight points at a time. A batch goes in blocks of 64 points, and a layer that is proven not to
@@ -1698,7 +1705,8 @@ game, coarser the farther, and collides while the world runs.
   kept up to date, the world plan's scene with its character on the ground),
   `NyxTerrainOcclusionTests` (the volume's cells as sampled at every level, moving and edits
   filling only what they reach and the same as from nothing, the sky seen over open ground, under a
-  roof, down a trench and in a closed tunnel),
+  roof, down a trench and in a closed tunnel, the sun's light gone under the roof and there beside
+  it and far off),
   `NyxTerrainWorldPlanTests` (the same bits from the same seed and another world from another, each
   kind about its share, pins making their kind, rifts opening the edge, rivers ending at an outlet
   with beds never rising, lakes holding water, boxes' bounds and the grids' slopes; `--maps <folder>`
@@ -1713,7 +1721,7 @@ game, coarser the farther, and collides while the world runs.
   `NyxEditorPanelTests` (among the rest, a terrain brush stroke one undo step),
   `NyxTerrainChunksGpuTests` (the chunks drawn at three levels, picked as the terrain, in the debug
   view's colours, drawn where it is moved; a closed chamber next to black with sky occlusion and
-  open ground as without), `NyxTerrainCollisionTests` (the way out of a hill, a
+  open ground as without; a slab's shadow on the ground past the sun's shadow distance), `NyxTerrainCollisionTests` (the way out of a hill, a
   ball resting on the hills, a character walking 60 m on them, one falling 200 m past a floating
   landmass's cliff at 60 m/s and landing on the hills below with collision always ahead, rays
   meeting the collision where they meet the drawn triangles, bodies following the movers, made

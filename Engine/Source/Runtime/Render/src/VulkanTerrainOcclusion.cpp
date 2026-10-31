@@ -37,6 +37,7 @@ namespace Nyx
 		const bool bNewSource = occlusion.Source != volume;
 		occlusion.Source = volume;
 		occlusion.Strength = volume->Strength;
+		occlusion.bFarShadows = volume->bFarShadows;
 		for (int index = 0; index < TerrainOcclusion::Levels; ++index)
 		{
 			SceneViewTerrainOcclusion::Level& level = occlusion.Levels[size_t(index)];

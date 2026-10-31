@@ -3067,6 +3067,7 @@ namespace Nyx
 		{
 			ubo.TerrainOcclusionLevels = Nyx::TerrainOcclusion::Levels;
 			ubo.TerrainOcclusionStrength = view.TerrainOcclusion.Strength;
+			ubo.TerrainFarShadows = view.TerrainOcclusion.bFarShadows ? 1u : 0u;
 			for (size_t level = 0; level < view.TerrainOcclusion.Levels.size(); ++level)
 			{
 				ubo.TerrainOcclusionVolumes[level] = view.TerrainOcclusion.Levels[level].Slot;

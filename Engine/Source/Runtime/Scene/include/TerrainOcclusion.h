@@ -19,7 +19,8 @@ namespace Nyx
 	// An SDF terrain's occlusion volume: how solid the terrain is round the camera, in nested levels
 	// of cells, each twice the size of the one before, so the renderer can dim the sky's light on
 	// everything near it by how much of the sky the terrain hides (nyx.terrainocclusion): tunnels,
-	// the bottoms of rifts, under overhangs and the underside. Kept up to date while the world runs,
+	// the bottoms of rifts, under overhangs and the underside; and shade what the sun reaches past
+	// its shadow maps (nyx.shadows). Kept up to date while the world runs,
 	// in the editor and the game, by UpdateTerrainChunks():
 	// - Each level a window of Size cells a side round the first viewpoint, moving in steps of Step
 	//   cells, its cells kept where they are as it moves (a cell at its world cell's index modulo
@@ -44,6 +45,9 @@ namespace Nyx
 		constexpr int Step = 8;
 		// A block filled by one job, cells a side
 		constexpr int Block = 16;
+		// How many cells from its window's edge a level is read, no nearer: there a GPU's filter
+		// would reach round to the cells at the other side
+		constexpr float Margin = 2.0f;
 
 		// The sky's visibility, as the shader works it out (nyx.terrainocclusion, the same numbers):
 		// cones from a point off the surface, one along its normal and Cones - 1 round it tilted by
@@ -56,6 +60,14 @@ namespace Nyx
 		constexpr float StepWidths = 1.0f;
 		constexpr float MaxDistance = 256.0f;
 		constexpr int MaxSteps = 24;
+
+		// The sun's light past its shadow maps, as the shader works it out: one cone towards the sun,
+		// SunConeTangent wide either side (a little softer than the sun), from a cell and a half off
+		// the surface in the finest level that holds the point, marched as the sky's cones are but
+		// never finer than that level, out to SunMaxDistance metres
+		constexpr float SunConeTangent = 0.04f;
+		constexpr float SunMaxDistance = 1024.0f;
+		constexpr int SunMaxSteps = 32;
 	}
 
 	struct TerrainOcclusionLevel
@@ -86,8 +98,10 @@ namespace Nyx
 		bool bReady = false;
 		// A fill is being made on the workers
 		bool bFilling = false;
-		// How dark it makes what it hides, 0 to 1 (SdfTerrainComponent::SkyOcclusion)
+		// How dark it makes what it hides, 0 to 1 (SdfTerrainComponent::SkyOcclusion), and whether it
+		// shades the sun's light past the shadow maps (SdfTerrainComponent::bFarShadows)
 		float Strength = 1.0f;
+		bool bFarShadows = true;
 		// How many fills went in, the last's cells sampled and time
 		uint32_t Fills = 0;
 		uint64_t LastSampled = 0;
@@ -96,17 +110,22 @@ namespace Nyx
 		std::shared_ptr<Detail::TerrainOcclusionFill> Fill;
 	};
 
-	// Keeps the occlusion volume of every SDF terrain with Sky Occlusion on round the first
-	// viewpoint; called by UpdateTerrainChunks()
+	// Keeps the occlusion volume of every SDF terrain with Sky Occlusion or Far Shadows on round the
+	// first viewpoint; called by UpdateTerrainChunks()
 	void UpdateTerrainOcclusion(Registry& world, std::span<const glm::vec3> viewpoints, JobSystem& jobs);
 
 	// How solid a level is at a point in the world, between its cells' middles as a GPU filters it;
-	// below 0 outside its window
+	// below 0 outside its window or within Margin cells of its edge
 	float SampleTerrainOcclusion(const TerrainOcclusionComponent& occlusion, int level, const glm::vec3& point);
 
 	// How much of the sky a surface at `point` facing `normal` sees past the terrain, 0 to 1, dimmed
 	// by the volume's Strength, as the renderer's shader works it out; 1 where the volume isn't ready
 	float GetTerrainSkyVisibility(const TerrainOcclusionComponent& occlusion, const glm::vec3& point, const glm::vec3& normal);
+
+	// How much of the sun's light reaches a surface at `point` facing `normal` past the terrain, 0 to 1,
+	// `toSun` the way to the sun, as the renderer's shader works it out past the shadow maps; 1 where
+	// the volume isn't ready, Far Shadows are off or the point is outside every window
+	float GetTerrainSunVisibility(const TerrainOcclusionComponent& occlusion, const glm::vec3& point, const glm::vec3& normal, const glm::vec3& toSun);
 
 	std::vector<InspectedValue> DescribeTerrainOcclusion(const TerrainOcclusionComponent& component);
 }

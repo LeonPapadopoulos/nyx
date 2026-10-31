@@ -282,11 +282,12 @@ namespace Nyx
 
 		// The terrain's occlusion volume round the camera (VulkanTerrainOcclusion,
 		// nyx.terrainocclusion): its levels (0: none, and nothing below is set), finest first, and how
-		// strongly it dims the sky's light, 0 to 1; each level's texture's slot, and the corner of the
-		// window it holds in the world (xyz) with its cells' size (w)
+		// strongly it dims the sky's light, 0 to 1, and whether it shades the sun's light past the
+		// shadow maps (1) or not (0); each level's texture's slot, and the corner of the window it
+		// holds in the world (xyz) with its cells' size (w)
 		uint32_t TerrainOcclusionLevels = 0;
 		float TerrainOcclusionStrength = 0.0f;
-		uint32_t TerrainOcclusionPadding0 = 0;
+		uint32_t TerrainFarShadows = 0;
 		uint32_t TerrainOcclusionPadding1 = 0;
 		std::array<uint32_t, 8> TerrainOcclusionVolumes{};
 		std::array<glm::vec4, TerrainOcclusion::Levels> TerrainOcclusionWindows{};

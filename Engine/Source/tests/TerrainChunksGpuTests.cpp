@@ -2,7 +2,8 @@
 // camera at three levels of detail, drawn by the terrain's Mesh Renderer, one object a chunk; a
 // click on them picks the terrain; the debug view of levels and seams draws them in their colours;
 // moved, the terrain is drawn where it went. Its occlusion volume darkens a closed chamber's sky
-// light to next to nothing and leaves open ground as it was.
+// light to next to nothing and leaves open ground as it was, and shades ground past the sun's
+// shadow distance under a slab held over it.
 //
 // NYX_SCENE_TEST_OUTPUT=<folder> saves what was rendered there.
 #include "CameraComponent.h"
@@ -149,7 +150,8 @@ namespace
 			{
 				UpdateTerrainChunks(World, { &CameraPosition, 1 }, JobSystem::Get());
 				const TerrainChunksStats& stats = World.Get<TerrainChunksComponent>(Terrain).Stats;
-				const bool bOcclusion = World.Get<SdfTerrainComponent>(Terrain).SkyOcclusion <= 0.0f ||
+				const SdfTerrainComponent& values = World.Get<SdfTerrainComponent>(Terrain);
+				const bool bOcclusion = (values.SkyOcclusion <= 0.0f && !values.bFarShadows) ||
 										(World.Has<TerrainOcclusionComponent>(Terrain) && World.Get<TerrainOcclusionComponent>(Terrain).bReady &&
 											!World.Get<TerrainOcclusionComponent>(Terrain).bFilling);
 				if (stats.bSettled && stats.Pending == 0 && stats.Resident > 0 && bOcclusion)
@@ -272,6 +274,49 @@ namespace
 	}
 }
 
+	// Far shadows: a slab held 30 m over flat ground, the camera 150 m off, the sun's shadow distance
+	// 40 m: the ground under the slab in shadow with them, lit without
+	void TestFarShadows(SceneRenderer& gpu)
+	{
+		SdfTerrainComponent ground;
+		ground.ViewDistance = 400.0f;
+		ground.Layers[0].Height = 0.0f;
+		ground.Layers[0].Amplitude = 0.0f;
+		ground.SkyOcclusion = 0.0f;
+		SdfTerrainEdit slab;
+		slab.Shape = ESdfTerrainEditShape::Box;
+		slab.Mode = ESdfTerrainEditMode::Add;
+		slab.Position = glm::vec3(0.0f, 30.0f, 0.0f);
+		slab.HalfSize = glm::vec3(30.0f, 3.0f, 30.0f);
+		AppendTerrainEdit(ground, slab);
+		TerrainScene scene(gpu, ground);
+		scene.World.Each<DirectionalLightComponent>([](Entity, DirectionalLightComponent& sun) { sun.ShadowDistance = 40.0f; });
+		gpu.DrawUntilShadersCompiled();
+		scene.Look(glm::vec3(-150.0f, 60.0f, -60.0f), glm::vec3(0.0f, 0.0f, 0.0f));
+
+		scene.World.Get<SdfTerrainComponent>(scene.Terrain).bFarShadows = true;
+		scene.MakeChunks();
+		const RgbaImage with = scene.Draw();
+		scene.World.Get<SdfTerrainComponent>(scene.Terrain).bFarShadows = false;
+		scene.MakeChunks();
+		const RgbaImage without = scene.Draw();
+		SaveIfAsked(with, "FarShadows");
+		SaveIfAsked(without, "NoFarShadows");
+		const size_t darker = [&]
+		{
+			size_t count = 0;
+			for (size_t pixel = 0; pixel < with.Pixels.size(); pixel += 4)
+			{
+				const int a = with.Pixels[pixel] + with.Pixels[pixel + 1] + with.Pixels[pixel + 2];
+				const int b = without.Pixels[pixel] + without.Pixels[pixel + 1] + without.Pixels[pixel + 2];
+				count += a < b * 3 / 4 ? 1 : 0;
+			}
+			return count;
+		}();
+		std::cout << "Far shadows: " << darker << " pixels in the slab's shadow past the shadow distance\n";
+		Require(darker > 2000, "The slab should shade the ground past the sun's shadow distance, not " + std::to_string(darker) + " pixels");
+	}
+
 int main()
 {
 	try
@@ -280,6 +325,7 @@ int main()
 		SceneRenderer gpu("NyxTerrainChunksGpuTests", 1);
 		TestChunksDrawn(gpu);
 		TestSkyOcclusion(gpu);
+		TestFarShadows(gpu);
 	}
 	catch (const std::exception& error)
 	{

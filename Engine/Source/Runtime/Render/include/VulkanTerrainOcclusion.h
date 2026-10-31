@@ -35,9 +35,10 @@ namespace Nyx
 			glm::vec4 Window{ 0.0f };
 		};
 		std::array<Level, TerrainOcclusion::Levels> Levels;
-		// The volume it was last filled from, and how strongly it dims
+		// The volume it was last filled from, how strongly it dims the sky and whether it shades the sun
 		const TerrainOcclusionComponent* Source = nullptr;
 		float Strength = 0.0f;
+		bool bFarShadows = false;
 		// Copies made, for tests
 		uint64_t UploadCount = 0;
 

@@ -468,6 +468,11 @@ namespace Nyx
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Sky Occlusion", Category = "Lighting", DragSpeed = 0.01, Tooltip = "0 to 1: how much the terrain round the camera dims the sky's light on everything near it, by how much of the sky it hides: tunnels, rifts, under overhangs, the underside; 0 not at all"))
 		float SkyOcclusion = 1.0f;
 
+		// Whether the terrain shades what the sun reaches past the sun's shadow maps (its Shadow
+		// Distance), from the same volume: rifts, crests and the underside in shadow kilometres off
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Far Shadows", Category = "Lighting", Tooltip = "The terrain's shadows past the sun's Shadow Distance, from the same volume as the sky occlusion, out to about a kilometre from each place: rifts, crests and the underside in shadow far off"))
+		bool bFarShadows = true;
+
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Sharp Materials", Category = "Chunks", Tooltip = "The material numbers whose surfaces keep sharp edges and corners, such as cliffs (Dual only)"))
 		std::vector<uint32_t> SharpMaterials;
 

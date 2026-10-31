@@ -2,9 +2,11 @@
 // in by its depth along the camera's view, the point moved towards the light and out along its
 // normal by the light's biases, then the map's texels around it compared with it, filtered
 // (PCF, each tap bilinear over four texels): 1 where the sun reaches it, 0 in shadow. Shadows
-// fade out over the last tenth of the shadow distance.
+// fade out over the last tenth of the shadow distance, into the terrain's far shadows past it
+// (nyx.terrainocclusion), where a world has them.
 
 import nyx.bindless;
+import nyx.terrainocclusion;
 import nyx.view;
 
 namespace nyx
@@ -97,10 +99,11 @@ namespace nyx
         {
             return 1.0;
         }
+        // Past the maps' reach, the terrain's far shadows alone
         const uint cascade = shadowCascadeAt(positionWS);
         if (cascade >= View.ShadowCascadeCount)
         {
-            return 1.0;
+            return terrainSunVisibility(positionWS, normalWS, l);
         }
 
         // Moved by the biases, in the cascade's texels: what shades a surface is a little above it.
@@ -128,8 +131,9 @@ namespace nyx
         const float taps = float((2 * reach + 1) * (2 * reach + 1));
         lit /= taps;
 
-        // Faded out towards the shadow distance, so shadows don't end at a line
+        // Faded out towards the shadow distance into the terrain's far shadows, so shadows don't end
+        // at a line
         const float fade = saturate((viewDepth(positionWS) - 0.9 * View.ShadowDistance) / (0.1 * View.ShadowDistance));
-        return lerp(lit, 1.0, fade);
+        return lerp(lit, fade > 0.0 ? terrainSunVisibility(positionWS, normalWS, l) : 1.0, fade);
     }
 }

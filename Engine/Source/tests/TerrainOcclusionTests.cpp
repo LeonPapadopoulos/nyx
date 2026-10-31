@@ -3,8 +3,9 @@
 // come to, the same as a fill made there from nothing; an edit fills again only what it reaches, the
 // same as a fill made with it from nothing; the sky's visibility as the shader works it out is
 // nearly all of it over open ground, less down a trench the deeper, little at its bottom, none in a closed
-// tunnel, less under a roof than beside it; Sky Occlusion 0 keeps no volume. Prints how long a fill
-// from nothing takes.
+// tunnel, less under a roof than beside it; the sun's light, past the shadow maps, gone under the
+// roof and there beside it, gone with Far Shadows off; Sky Occlusion 0 and Far Shadows off keep no
+// volume. Prints how long a fill from nothing takes.
 #include "ComponentRegistration.h"
 #include "Entity.h"
 #include "JobSystem.h"
@@ -219,10 +220,23 @@ namespace
 		Require(trench < 0.4f && trench < halfway, "A deep trench's bottom should see little of the sky, less than higher up it");
 		Require(tunnel < 0.05f, "A closed tunnel should see none of the sky, not " + std::to_string(tunnel));
 
-		world.Get<SdfTerrainComponent>(terrain).SkyOcclusion = 0.0f;
+		// The sun high over the roof
+		const glm::vec3 toSun = glm::normalize(glm::vec3(0.2f, 1.0f, 0.1f));
+		const float shaded = GetTerrainSunVisibility(occlusion, glm::vec3(0.0f, 0.0f, -20.0f), up, toSun);
+		const float sunny = GetTerrainSunVisibility(occlusion, glm::vec3(0.0f, 0.0f, -45.0f), up, toSun);
+		const float farOff = GetTerrainSunVisibility(occlusion, glm::vec3(400.0f, 0.0f, 300.0f), up, toSun);
+		std::cout << "The sun: under the roof " << shaded << ", beside it " << sunny << ", 500 m off " << farOff << "\n";
+		Require(shaded < 0.1f, "Under the roof should be in the terrain's shadow, not " + std::to_string(shaded));
+		Require(sunny > 0.9f && farOff > 0.9f, "Open ground should be in the sun, near and far");
+		world.Get<SdfTerrainComponent>(terrain).bFarShadows = false;
 		const glm::vec3 viewpoint(0.0f, 2.0f, 20.0f);
 		UpdateTerrainOcclusion(world, { &viewpoint, 1 }, JobSystem::Get());
-		Require(!world.Has<TerrainOcclusionComponent>(terrain), "Sky Occlusion 0 should keep no volume");
+		Require(GetTerrainSunVisibility(world.Get<TerrainOcclusionComponent>(terrain), glm::vec3(0.0f, 0.0f, -20.0f), up, toSun) == 1.0f,
+			"Far Shadows off should leave the sun's light alone");
+
+		world.Get<SdfTerrainComponent>(terrain).SkyOcclusion = 0.0f;
+		UpdateTerrainOcclusion(world, { &viewpoint, 1 }, JobSystem::Get());
+		Require(!world.Has<TerrainOcclusionComponent>(terrain), "Sky Occlusion 0 and Far Shadows off should keep no volume");
 	}
 }
 
