@@ -6,6 +6,7 @@
 #include <glm/glm.hpp>
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 namespace Nyx
@@ -62,4 +63,35 @@ namespace Nyx
 		size_t Lakes = 0;
 	};
 	TerrainPlanShares GetTerrainWorldPlanShares(const TerrainWorldPlan& plan);
+
+	// One seed of a plan, for comparing many (the editor's Plan Seeds): its plan, shares and how long
+	// it took to make. Safe on any thread.
+	struct TerrainPlanSeed
+	{
+		uint32_t Seed = 0;
+		std::shared_ptr<const TerrainWorldPlan> Plan;
+		TerrainPlanShares Shares;
+		double Milliseconds = 0.0;
+	};
+	TerrainPlanSeed MakeTerrainPlanSeed(uint32_t seed, const SdfTerrainWorldPlan& plan);
+
+	// How the seeds' shares spread: each kind's least, mean and most, and the rivers' and lakes'
+	// fewest and most
+	struct TerrainPlanSpread
+	{
+		struct Range
+		{
+			float Least = 0.0f;
+			float Mean = 0.0f;
+			float Most = 0.0f;
+		};
+		Range Sea;
+		Range Roughland;
+		Range Rift;
+		Range Tunnels;
+		Range Rivers;
+		Range Lakes;
+		Range Milliseconds;
+	};
+	TerrainPlanSpread GetTerrainPlanSpread(const std::vector<TerrainPlanSeed>& seeds);
 }

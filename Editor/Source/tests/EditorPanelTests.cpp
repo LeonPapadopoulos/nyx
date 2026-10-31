@@ -615,15 +615,25 @@ namespace
 
 	// The plan map's edits: a pin added, moved, sized, changed and removed, each an undo step undone
 	// and redone; the seed stepped; nothing changed, no undo step; the pin under a point by its
-	// middle, then its ring, the last on top
+	// middle, then its ring, the last on top; the terrain the plan's windows show, the selected one
+	// with a Plan layer, else the first
 	void TestTerrainPlanEdits()
 	{
 		SceneEditor editing;
 		Registry& world = editing.Scene.GetRegistry();
+		Require(!FindPlannedTerrain(editing), "A scene without a planned terrain should show none");
+		const Entity flat = editing.Scene.CreateEntity("Flat");
+		world.Add<SdfTerrainComponent>(flat, SdfTerrainComponent{});
 		const Entity terrain = editing.Scene.CreateEntity("Terrain");
 		SdfTerrainComponent values;
 		values.Layers[0].Kind = ESdfTerrainLayerKind::Plan;
 		world.Add<SdfTerrainComponent>(terrain, values);
+		const Entity other = editing.Scene.CreateEntity("Other");
+		world.Add<SdfTerrainComponent>(other, values);
+		editing.Scene.GetSelection() = flat;
+		Require(FindPlannedTerrain(editing) == terrain, "Without a planned terrain selected, the first planned one");
+		editing.Scene.GetSelection() = other;
+		Require(FindPlannedTerrain(editing) == other, "A planned terrain selected should be shown");
 		auto pinsOf = [&]() -> const std::vector<SdfTerrainPlanPin>& { return world.Get<SdfTerrainComponent>(terrain).Plan.Pins; };
 
 		SdfTerrainPlanPin sea;

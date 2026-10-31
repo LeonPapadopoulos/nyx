@@ -60,28 +60,6 @@ namespace Nyx::Editor
 				return IM_COL32(150, 235, 120, 255);
 			}
 		}
-
-		// The selected entity if it is a terrain with a Plan layer, else the scene's first
-		std::optional<Nyx::Entity> FindPlannedTerrain(SceneEditor& editing)
-		{
-			Nyx::Registry& world = editing.Scene.GetRegistry();
-			const std::optional<Nyx::Entity>& selected = editing.Scene.GetSelection();
-			if (selected && world.IsAlive(*selected) && world.Has<Nyx::SdfTerrainComponent>(*selected) &&
-				Nyx::UsesTerrainWorldPlan(world.Get<Nyx::SdfTerrainComponent>(*selected)))
-			{
-				return selected;
-			}
-			std::optional<Nyx::Entity> first;
-			world.Each<Nyx::SdfTerrainComponent>(
-				[&](Nyx::Entity entity, Nyx::SdfTerrainComponent& terrain)
-				{
-					if (!first && Nyx::UsesTerrainWorldPlan(terrain))
-					{
-						first = entity;
-					}
-				});
-			return first;
-		}
 	}
 
 	void TerrainPlanWindow::Draw(Nyx::IEditorRenderer& renderer, SceneEditor& editing)

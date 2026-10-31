@@ -27,6 +27,7 @@
 #include "SkyTablesWindow.h"
 #endif
 #include "TerrainPlanWindow.h"
+#include "TerrainSeedsWindow.h"
 
 #include "imgui.h"
 
@@ -182,6 +183,8 @@ namespace Nyx::Editor
 
 			// The scene's SDF terrain's world plan from above
 			NYX_UI(Nyx::UI::MenuItem("Plan Map", nullptr, &Editor.PlanMap.bOpen));
+			// Many seeds of that plan side by side
+			NYX_UI(Nyx::UI::MenuItem("Plan Seeds", nullptr, &Editor.PlanSeeds.bOpen));
 
 			// The game's log and the editor link's messages
 			if (NYX_UI(Nyx::UI::MenuItem("Game Link", nullptr, Editor.bShowGameLink)))

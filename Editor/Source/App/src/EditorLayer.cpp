@@ -381,6 +381,7 @@ namespace Nyx::Editor
 
 		InputWindow.Draw(*Input);
 		PlanMap.Draw(*Renderer, Editing);
+		PlanSeeds.Draw(*Renderer, Editing);
 
 		if (bShowGameLink)
 		{

@@ -3,7 +3,8 @@
 // rivers run down to an outlet, their beds never rising; lakes fill their basins; a box's bounds
 // hold every blended value in it, and the slopes every change; its map has a pixel a node in its
 // kind's colour, clear off the landmass, each overlay its own, and its readout and shares say what
-// the nodes are. Prints how long a world of 2 and of
+// the nodes are; a seed of it made alone the same as the plan of that seed, and many seeds' shares
+// spread round what was asked. Prints how long a world of 2 and of
 // 20 km takes. --maps <folder> writes maps of a few seeds and plans as PNGs.
 #include "Log.h"
 #include "TerrainWorldPlan.h"
@@ -155,6 +156,32 @@ namespace
 			"The shares should be the nodes' counts");
 		std::cout << "The map: " << kinds.Width << " pixels a side; sea " << shares.Sea << ", rough land " << shares.Roughland << ", rifts " << shares.Rift << ", tunnels "
 				  << shares.Tunnels << "\n";
+	}
+
+	// Seeds side by side: one made alone has the plan of that seed and its shares; sixteen spread
+	// round what was asked, least below most, the mean between
+	void TestSeeds()
+	{
+		using namespace Nyx;
+		const SdfTerrainWorldPlan made;
+		const TerrainPlanSeed seven = MakeTerrainPlanSeed(7, made);
+		const auto alone = MakeTerrainWorldPlan(7, made);
+		Require(seven.Seed == 7 && seven.Plan && seven.Plan->Landform == alone->Landform && seven.Plan->Height == alone->Height,
+			"A seed made alone should be the plan of that seed");
+		Require(seven.Shares.Sea == GetTerrainWorldPlanShares(*alone).Sea, "Its shares should be its plan's");
+		std::vector<TerrainPlanSeed> seeds;
+		for (uint32_t seed = 1; seed <= 16; ++seed)
+		{
+			seeds.push_back(MakeTerrainPlanSeed(seed, made));
+		}
+		const TerrainPlanSpread spread = GetTerrainPlanSpread(seeds);
+		for (const TerrainPlanSpread::Range* range : { &spread.Sea, &spread.Roughland, &spread.Rift, &spread.Tunnels, &spread.Rivers, &spread.Lakes })
+		{
+			Require(range->Least <= range->Mean + 1e-5f && range->Mean <= range->Most + 1e-5f, "The mean should lie between the least and the most");
+		}
+		Require(std::fabs(spread.Sea.Least - made.Sea) < 0.03f && std::fabs(spread.Sea.Most - made.Sea) < 0.03f, "Every seed's sea should be about its share");
+		std::cout << "Sixteen seeds: sea " << spread.Sea.Least << " to " << spread.Sea.Most << ", rough land " << spread.Roughland.Least << " to " << spread.Roughland.Most
+				  << ", rivers " << spread.Rivers.Least << " to " << spread.Rivers.Most << ", a plan in " << spread.Milliseconds.Mean << " ms\n";
 	}
 
 	ESdfTerrainLandform LandformAt(const TerrainWorldPlan& plan, const glm::vec2& point)
@@ -373,6 +400,7 @@ int main(int argc, char** argv)
 		TestWater();
 		TestBoundsAndSlopes();
 		TestMap();
+		TestSeeds();
 		PrintTimings();
 	}
 	catch (const std::exception& error)

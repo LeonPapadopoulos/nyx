@@ -3,6 +3,7 @@
 #include "ReflectedPropertyAccess.h"
 #include "SceneDocument.h"
 #include "SceneEditor.h"
+#include "TerrainWorldPlan.h"
 #include "TransactionObjectRefHelpers.h"
 #include "TransactionSystem.h"
 #include "TransactionTypes.h"
@@ -58,6 +59,27 @@ namespace Nyx::Editor
 			editing.Transactions.Push(std::move(transaction));
 			return true;
 		}
+	}
+
+	std::optional<Nyx::Entity> FindPlannedTerrain(SceneEditor& editing)
+	{
+		Nyx::Registry& world = editing.Scene.GetRegistry();
+		const std::optional<Nyx::Entity>& selected = editing.Scene.GetSelection();
+		if (selected && world.IsAlive(*selected) && world.Has<Nyx::SdfTerrainComponent>(*selected) &&
+			Nyx::UsesTerrainWorldPlan(world.Get<Nyx::SdfTerrainComponent>(*selected)))
+		{
+			return selected;
+		}
+		std::optional<Nyx::Entity> first;
+		world.Each<Nyx::SdfTerrainComponent>(
+			[&](Nyx::Entity entity, Nyx::SdfTerrainComponent& terrain)
+			{
+				if (!first && Nyx::UsesTerrainWorldPlan(terrain))
+				{
+					first = entity;
+				}
+			});
+		return first;
 	}
 
 	bool SetTerrainPlanPins(SceneEditor& editing, Nyx::Entity terrain, const std::vector<Nyx::SdfTerrainPlanPin>& pins, const char* label)

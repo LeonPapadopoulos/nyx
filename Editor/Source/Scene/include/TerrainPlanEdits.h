@@ -14,6 +14,10 @@ namespace Nyx::Editor
 {
 	class SceneEditor;
 
+	// The terrain whose world plan the Plan Map and Plan Seeds show: the selected entity if it is an SDF
+	// terrain with a Plan layer, else the scene's first
+	std::optional<Nyx::Entity> FindPlannedTerrain(SceneEditor& editing);
+
 	// Edits of an SDF terrain's world plan from its map (TerrainPlanWindow), each one undo step that
 	// running games get. Return false, and change nothing, for an entity without a terrain or when
 	// nothing would change.

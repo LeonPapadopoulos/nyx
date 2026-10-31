@@ -1638,6 +1638,14 @@ game, coarser the farther, and collides while the world runs.
     double-click adds a pin of the kind in *New pin* (a *Rift* pin, 60 m: a rift passes there); a
     right-click on a pin changes its kind or removes it; *<* and *>* step the seed, *Roll* picks
     one.
+  - *Window > Plan Seeds*: many seeds of the same terrain's plan side by side, to tell whether the
+    plan makes good worlds in general rather than for one seed: *Run* makes 16, 36 or 64 seeds from
+    *First seed* on the workers (`MakeTerrainPlanSeed()`), each a small map with its seed and its
+    sea and rough land under it, the rest of its shares, rivers and lakes on hover; above them each
+    share's mean, least and most across the seeds, the rivers' and lakes', and how long a plan took
+    (`GetTerrainPlanSpread()`). A click on one gives the terrain that seed, an undo step; the
+    terrain's own is outlined. Changed since a run, the plan says so until run again. The shares
+    hardly change from seed to seed, as the plan holds them; where things lie is what does.
 - Water, for a terrain with a *Plan* layer (`TerrainWater.h`): where it stands, worked out from the
   plan and the ground as it is now, edits and all, on a worker whenever the layers, plan or edits
   change (the ground found again only where edits reached: about 100 ms for 2 km on every worker,
@@ -1722,7 +1730,8 @@ game, coarser the farther, and collides while the world runs.
   `NyxTerrainWorldPlanTests` (the same bits from the same seed and another world from another, each
   kind about its share, pins making their kind, rifts opening the edge, rivers ending at an outlet
   with beds never rising, lakes holding water, boxes' bounds and the grids' slopes; the map a pixel
-  a node in its kinds' colours, each overlay its own, its readout and shares; `--maps <folder>`
+  a node in its kinds' colours, each overlay its own, its readout and shares; a seed made alone as
+  the plan of that seed, sixteen seeds' shares spread round what was asked; `--maps <folder>`
   writes maps of a few seeds and plans),
   `NyxTerrainChunksTests` (the octree covering the view distance once, balanced, each level where
   its distance says, held by the hysteresis; every seam closed with both meshers and half-metre
@@ -1733,7 +1742,7 @@ game, coarser the farther, and collides while the world runs.
   collision or at the deadline; material rules down a rift's side, each vertex the first it meets; the terrain brush's strokes, rays and ring; the sample scene),
   `NyxEditorPanelTests` (among the rest, a terrain brush stroke one undo step; the plan map's pins
   added, moved, sized, changed and removed and the seed stepped, each undone and redone, the pin
-  under a point),
+  under a point, the terrain the plan's windows show),
   `NyxTerrainChunksGpuTests` (the chunks drawn at three levels, picked as the terrain, in the debug
   view's colours, drawn where it is moved; a closed chamber next to black with sky occlusion and
   open ground as without; a slab's shadow on the ground past the sun's shadow distance), `NyxTerrainCollisionTests` (the way out of a hill, a

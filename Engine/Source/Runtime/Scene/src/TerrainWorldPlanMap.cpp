@@ -2,7 +2,9 @@
 #include "TerrainWorldPlanMap.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <functional>
 
 namespace Nyx
 {
@@ -179,5 +181,45 @@ namespace Nyx
 		shares.Rivers = plan.Rivers.size();
 		shares.Lakes = plan.Lakes.size();
 		return shares;
+	}
+
+	TerrainPlanSeed MakeTerrainPlanSeed(uint32_t seed, const SdfTerrainWorldPlan& plan)
+	{
+		TerrainPlanSeed made;
+		made.Seed = seed;
+		const auto start = std::chrono::steady_clock::now();
+		made.Plan = MakeTerrainWorldPlan(seed, plan);
+		made.Milliseconds = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+		made.Shares = GetTerrainWorldPlanShares(*made.Plan);
+		return made;
+	}
+
+	TerrainPlanSpread GetTerrainPlanSpread(const std::vector<TerrainPlanSeed>& seeds)
+	{
+		TerrainPlanSpread spread;
+		if (seeds.empty())
+		{
+			return spread;
+		}
+		auto range = [&](const std::function<float(const TerrainPlanSeed&)>& of)
+		{
+			TerrainPlanSpread::Range result{ of(seeds.front()), 0.0f, of(seeds.front()) };
+			for (const TerrainPlanSeed& seed : seeds)
+			{
+				const float value = of(seed);
+				result.Least = std::min(result.Least, value);
+				result.Most = std::max(result.Most, value);
+				result.Mean += value / float(seeds.size());
+			}
+			return result;
+		};
+		spread.Sea = range([](const TerrainPlanSeed& seed) { return seed.Shares.Sea; });
+		spread.Roughland = range([](const TerrainPlanSeed& seed) { return seed.Shares.Roughland; });
+		spread.Rift = range([](const TerrainPlanSeed& seed) { return seed.Shares.Rift; });
+		spread.Tunnels = range([](const TerrainPlanSeed& seed) { return seed.Shares.Tunnels; });
+		spread.Rivers = range([](const TerrainPlanSeed& seed) { return float(seed.Shares.Rivers); });
+		spread.Lakes = range([](const TerrainPlanSeed& seed) { return float(seed.Shares.Lakes); });
+		spread.Milliseconds = range([](const TerrainPlanSeed& seed) { return float(seed.Milliseconds); });
+		return spread;
 	}
 }
