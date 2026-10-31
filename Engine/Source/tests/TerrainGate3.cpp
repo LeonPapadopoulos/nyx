@@ -26,6 +26,7 @@
 #include "SdfTerrain.h"
 #include "SdfTerrainComponent.h"
 #include "TerrainChunks.h"
+#include "TerrainOcclusion.h"
 #include "TerrainGate3Region.h"
 #include "TerrainWater.h"
 #include "TerrainWorldPlan.h"
@@ -98,7 +99,8 @@ namespace
 		scene.World.Add<MeshRendererComponent>(scene.Terrain, meshRenderer);
 	}
 
-	// Drawn from the viewpoint once its chunks and water are made, saved; how long they took
+	// Drawn from the viewpoint once its chunks, water and occlusion volume are made, saved; how long
+	// they took
 	double Shoot(Scene& scene, SceneRenderer& gpu, uint64_t view, const Viewpoint& viewpoint, const std::filesystem::path& path)
 	{
 		TransformComponent& transform = scene.World.Get<TransformComponent>(scene.Camera);
@@ -110,7 +112,9 @@ namespace
 			UpdateTerrainChunks(scene.World, { &viewpoint.Position, 1 }, JobSystem::Get());
 			const TerrainChunksStats& stats = scene.World.Get<TerrainChunksComponent>(scene.Terrain).Stats;
 			const bool bWater = scene.World.Has<TerrainWaterComponent>(scene.Terrain) && scene.World.Get<TerrainWaterComponent>(scene.Terrain).Made > 0;
-			if (stats.bSettled && stats.Pending == 0 && bWater)
+			const bool bOcclusion = scene.World.Has<TerrainOcclusionComponent>(scene.Terrain) && scene.World.Get<TerrainOcclusionComponent>(scene.Terrain).bReady &&
+									!scene.World.Get<TerrainOcclusionComponent>(scene.Terrain).bFilling;
+			if (stats.bSettled && stats.Pending == 0 && bWater && bOcclusion)
 			{
 				break;
 			}

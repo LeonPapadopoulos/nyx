@@ -109,6 +109,15 @@ add_dependencies(NyxTerrainWorldPlanTests NyxGeneratedReflection)
 set_property(TARGET NyxTerrainWorldPlanTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxTerrainWorldPlanTests COMMAND NyxTerrainWorldPlanTests)
 
+# An SDF terrain's occlusion volume (TerrainOcclusion.h): its cells as sampled at every level,
+# moving and edits filling only what they reach, the sky seen over open ground, in a trench, a
+# tunnel and under a roof. No GPU needed.
+add_executable(NyxTerrainOcclusionTests TerrainOcclusionTests.cpp)
+target_link_libraries(NyxTerrainOcclusionTests PRIVATE NyxEngine)
+add_dependencies(NyxTerrainOcclusionTests NyxGeneratedReflection)
+set_property(TARGET NyxTerrainOcclusionTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxTerrainOcclusionTests COMMAND NyxTerrainOcclusionTests)
+
 add_executable(NyxTerrainWaterTests TerrainWaterTests.cpp)
 target_link_libraries(NyxTerrainWaterTests PRIVATE NyxEngine)
 add_dependencies(NyxTerrainWaterTests NyxGeneratedReflection)

@@ -462,6 +462,12 @@ namespace Nyx
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Sky Shading", Category = "Chunks", Tooltip = "How much of the sky each vertex sees, for its material (the mesh's Custom.x); off, 1 everywhere and the chunks made about twice as fast. No material reads it yet"))
 		bool bSkyShading = false;
 
+		// How much the terrain round the camera dims the sky's light on everything near it, by how much
+		// of the sky it hides (TerrainOcclusion.h): tunnels, rifts, under overhangs; 0: not at all,
+		// and no occlusion volume is kept
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Sky Occlusion", Category = "Lighting", DragSpeed = 0.01, Tooltip = "0 to 1: how much the terrain round the camera dims the sky's light on everything near it, by how much of the sky it hides: tunnels, rifts, under overhangs, the underside; 0 not at all"))
+		float SkyOcclusion = 1.0f;
+
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Sharp Materials", Category = "Chunks", Tooltip = "The material numbers whose surfaces keep sharp edges and corners, such as cliffs (Dual only)"))
 		std::vector<uint32_t> SharpMaterials;
 

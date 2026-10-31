@@ -347,6 +347,7 @@ namespace Nyx
 			});
 		ColorGrading.Initialize(Bindless);
 		LocalWind.Initialize(Bindless);
+		TerrainOcclusion.Initialize(Bindless);
 		SkyAtmosphere.Initialize(Bindless);
 
 		LoadSkyboxCubemap();
@@ -424,6 +425,7 @@ namespace Nyx
 			AmbientOcclusion.Release(view.AmbientOcclusion);
 			ColorGrading.Release(view.ColorGrading);
 			LocalWind.Release(view.LocalWind);
+			TerrainOcclusion.Release(view.TerrainOcclusion);
 			Lightning.Release(view.Lightning);
 			Particles.Release(view.Particles);
 			LightShafts.Release(view.LightShafts);
@@ -1528,6 +1530,16 @@ namespace Nyx
 			const std::optional<float> interpolation = GetWorldInterpolation(world->Registry);
 			world->Time = GetWorldTime(world->Registry);
 			ExtractWind(*world);
+			// Its terrain's occlusion volume, the first ready
+			world->TerrainOcclusion = nullptr;
+			world->Registry->Each<Nyx::TerrainOcclusionComponent>(
+				[&](Nyx::Entity, const Nyx::TerrainOcclusionComponent& occlusion)
+				{
+					if (world->TerrainOcclusion == nullptr && occlusion.bReady)
+					{
+						world->TerrainOcclusion = &occlusion;
+					}
+				});
 			ExtractRenderObjects(*world, interpolation);
 			ExtractSurfaceDecals(*world->Registry, interpolation, DecalAssets, world->DecalMaterials, world->Decals);
 			ExtractPointLights(*world->Registry, interpolation, world->PointLights);
@@ -1897,10 +1909,12 @@ namespace Nyx
 				CullSceneView(view, *world);
 				PrepareSceneViewShadows(view, *world);
 				PrepareSceneViewWind(view, *world);
+				TerrainOcclusion.Prepare(view.TerrainOcclusion, world->TerrainOcclusion);
 			}
 			else
 			{
 				LocalWind.Release(view.LocalWind);
+				TerrainOcclusion.Release(view.TerrainOcclusion);
 			}
 
 			// Its bloom's chain and its ambient occlusion's targets, for its size; none without a
@@ -3048,6 +3062,18 @@ namespace Nyx
 			ubo.LocalWindScale = glm::vec4(1.0f / (glm::vec3(grid.Cells) * grid.CellSize), 0.0f);
 		}
 
+		// Its terrain's occlusion volume, once every level holds a window
+		if (view.TerrainOcclusion.IsDrawn())
+		{
+			ubo.TerrainOcclusionLevels = Nyx::TerrainOcclusion::Levels;
+			ubo.TerrainOcclusionStrength = view.TerrainOcclusion.Strength;
+			for (size_t level = 0; level < view.TerrainOcclusion.Levels.size(); ++level)
+			{
+				ubo.TerrainOcclusionVolumes[level] = view.TerrainOcclusion.Levels[level].Slot;
+				ubo.TerrainOcclusionWindows[level] = view.TerrainOcclusion.Levels[level].Window;
+			}
+		}
+
 		// Its light shafts, in the frames its sun gives some
 		const SceneViewLightShafts& shafts = view.LightShafts;
 		if (shafts.Settings.IsDrawn() && shafts.Extent.width > 0)
@@ -3591,6 +3617,7 @@ namespace Nyx
 			AmbientOcclusion.Release(it->AmbientOcclusion);
 			ColorGrading.Release(it->ColorGrading);
 			LocalWind.Release(it->LocalWind);
+			TerrainOcclusion.Release(it->TerrainOcclusion);
 			Lightning.Release(it->Lightning);
 			Particles.Release(it->Particles);
 			LightShafts.Release(it->LightShafts);
@@ -3814,6 +3841,8 @@ namespace Nyx
 		const RenderWorld* world = FindShownWorld(view);
 		// 0. Its texture of local air, if it changed, for the vertex shaders that bend in it
 		LocalWind.Record(view.LocalWind, cmd);
+		// Its terrain occlusion volume's levels that changed, for the sky's light
+		TerrainOcclusion.Record(view.TerrainOcclusion, cmd);
 		// Its sky's tables, when what they depend on changed, for its scene pass and its light
 		if (view.SkyTables.IsMade() && view.SkyTables.HasWork())
 		{

@@ -255,6 +255,17 @@ public struct ViewConstants
     public uint CloudModifierPadding1;
     public uint CloudModifierPadding2;
     public float4 CloudModifiers[24];
+
+    // The terrain's occlusion volume round the camera (VulkanTerrainOcclusion, nyx.terrainocclusion):
+    // its levels (0: none, and nothing below is set), finest first, and how strongly it dims the sky's
+    // light, 0 to 1; each level's texture's slot, and the corner of the window it holds in the world
+    // (xyz) with its cells' size (w)
+    public uint TerrainOcclusionLevels;
+    public float TerrainOcclusionStrength;
+    public uint TerrainOcclusionPadding0;
+    public uint TerrainOcclusionPadding1;
+    public uint4 TerrainOcclusionVolumes[2];
+    public float4 TerrainOcclusionWindows[6];
 }
 [vk::binding(0, 1)] public ConstantBuffer<ViewConstants> View;
 

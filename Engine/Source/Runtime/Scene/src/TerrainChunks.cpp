@@ -4,6 +4,7 @@
 #include "FieldMesher.h"
 #include "JobSystem.h"
 #include "SdfTerrain.h"
+#include "TerrainOcclusion.h"
 #include "TerrainWater.h"
 #include "TerrainWorldPlan.h"
 #include "TransformComponent.h"
@@ -1671,6 +1672,7 @@ namespace Nyx
 			UpdateTerrain(world, entity, world.Get<SdfTerrainComponent>(entity), viewpoints, jobs);
 		}
 		UpdateTerrainWater(world, jobs);
+		UpdateTerrainOcclusion(world, viewpoints, jobs);
 	}
 
 	void RemoveTerrainChunks(Registry& world, Entity entity)
@@ -1682,6 +1684,10 @@ namespace Nyx
 		if (world.Has<TerrainWaterComponent>(entity))
 		{
 			world.Remove<TerrainWaterComponent>(entity);
+		}
+		if (world.Has<TerrainOcclusionComponent>(entity))
+		{
+			world.Remove<TerrainOcclusionComponent>(entity);
 		}
 		if (!world.Has<TerrainChunksComponent>(entity))
 		{

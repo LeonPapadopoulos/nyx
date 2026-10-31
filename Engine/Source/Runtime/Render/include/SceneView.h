@@ -9,6 +9,7 @@
 #include "VulkanVolumetricClouds.h"
 #include "VulkanColorGrading.h"
 #include "VulkanLocalWind.h"
+#include "VulkanTerrainOcclusion.h"
 #include "EditorCamera.h"
 #include "PointLights.h"
 #include "SceneViewTypes.h"
@@ -101,6 +102,8 @@ namespace Nyx
 		// View), and its texture of the world's local air round its camera (VulkanLocalWind)
 		DebugLineRange WindLines;
 		SceneViewLocalWind LocalWind;
+		// Its copy of its world's terrain occlusion volume, for the sky's light (VulkanTerrainOcclusion)
+		SceneViewTerrainOcclusion TerrainOcclusion;
 		// Its shadows this frame, and what it shows of them (IRenderer::SetSceneViewShadowDebug())
 		SceneViewShadows Shadows;
 		ESceneViewShadowDebug ShadowDebug = ESceneViewShadowDebug::Off;

@@ -103,6 +103,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/TerrainBrush.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/TerrainSave.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/TerrainWorldPlan.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/TerrainOcclusion.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/TerrainWater.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/TerrainChunks.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/GroundMesh.cpp
@@ -189,6 +190,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/ColorGrading.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanColorGrading.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanLocalWind.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanTerrainOcclusion.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/SkyAtmosphere.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanSkyAtmosphere.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanAmbientOcclusion.cpp
@@ -345,6 +347,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/TerrainBrush.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/TerrainSave.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/TerrainWorldPlan.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/TerrainOcclusion.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/TerrainWater.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/TerrainChunks.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/GroundMesh.h
@@ -441,6 +444,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/ColorGrading.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanColorGrading.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanLocalWind.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanTerrainOcclusion.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/SkyAtmosphere.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanSkyAtmosphere.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanAmbientOcclusion.h

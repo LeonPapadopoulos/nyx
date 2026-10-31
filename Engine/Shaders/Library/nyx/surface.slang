@@ -18,6 +18,7 @@ __exported import nyx.environment;
 __exported import nyx.shadows;
 import nyx.clouds;
 import nyx.lighting;
+import nyx.terrainocclusion;
 
 // -------------------------------------------------------------------------
 // Attributes a material's fields can carry. The editor reads them through reflection
@@ -442,7 +443,9 @@ ShadedPixel shadeSurfacePixel<S : ISurface>(VertexOutput vertex, DecalInput deca
     }
     else
     {
-        const nyx::SurfaceLight light = nyx::lightSurfaceApart(o.BaseColor, o.Metallic, o.Roughness, o.Occlusion, normalize(o.Normal), input.ViewWS,
+        // The sky's light dimmed by the terrain round it too, by the surface's own normal
+        const float occlusion = o.Occlusion * nyx::terrainSkyVisibility(input.PositionWS, input.NormalWS);
+        const nyx::SurfaceLight light = nyx::lightSurfaceApart(o.BaseColor, o.Metallic, o.Roughness, occlusion, normalize(o.Normal), input.ViewWS,
             input.PositionWS, nyx::sunShadow(input.PositionWS, input.NormalWS));
         pixel.Direct = light.Direct;
         pixel.Ambient = light.Ambient;

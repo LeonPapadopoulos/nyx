@@ -279,11 +279,22 @@ namespace Nyx
 		uint32_t CloudModifierPadding1 = 0;
 		uint32_t CloudModifierPadding2 = 0;
 		std::array<glm::vec4, MaxCloudModifiers * 3> CloudModifiers{};
+
+		// The terrain's occlusion volume round the camera (VulkanTerrainOcclusion,
+		// nyx.terrainocclusion): its levels (0: none, and nothing below is set), finest first, and how
+		// strongly it dims the sky's light, 0 to 1; each level's texture's slot, and the corner of the
+		// window it holds in the world (xyz) with its cells' size (w)
+		uint32_t TerrainOcclusionLevels = 0;
+		float TerrainOcclusionStrength = 0.0f;
+		uint32_t TerrainOcclusionPadding0 = 0;
+		uint32_t TerrainOcclusionPadding1 = 0;
+		std::array<uint32_t, 8> TerrainOcclusionVolumes{};
+		std::array<glm::vec4, TerrainOcclusion::Levels> TerrainOcclusionWindows{};
 	};
 
 	// The view's set (set 1) as nyx/view.slang reads it, in scalar layout; to whole 16 bytes, as
 	// std140 would be too
-	static_assert(sizeof(SceneUBO) == 2496, "SceneUBO must match ViewConstants in nyx/view.slang");
+	static_assert(sizeof(SceneUBO) == 2640, "SceneUBO must match ViewConstants in nyx/view.slang");
 
 	// One draw's push constants, the same for every scene pipeline: ObjectConstants in
 	// nyx/bindless.slang
@@ -429,6 +440,8 @@ namespace Nyx
 		// The shapes its volumetric clouds are changed by at its time: its cloud modifiers', then its
 		// lightning's channels (each view takes the nearest few)
 		std::vector<RenderCloudModifier> CloudModifiers;
+		// Its terrain's occlusion volume, the first ready one, for the sky's light; none without
+		const Nyx::TerrainOcclusionComponent* TerrainOcclusion = nullptr;
 		// Dense picking IDs: ID i is the entity at i - 1, 0 is nothing
 		std::vector<Nyx::Entity> PickingIdToEntity;
 		// This frame's time of what moves by itself in the world, such as a decal's pulse, in
@@ -837,6 +850,8 @@ namespace Nyx
 		// Each view's colour grading table, baked before its picture pass when its grade changed
 		VulkanColorGrading ColorGrading{ Context, Programs };
 		VulkanLocalWind LocalWind{ Context };
+		// Each view's copy of its world's terrain occlusion volume
+		VulkanTerrainOcclusion TerrainOcclusion{ Context };
 		// Each view's lightning, after its ambient occlusion and before its particles
 		VulkanLightning Lightning{ Context, Programs };
 		// Each view's particles, after its lightning

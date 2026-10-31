@@ -1638,6 +1638,17 @@ game, coarser the farther, and collides while the world runs.
   from where they land, pooling in hollows, to the sea, a lake or an edge; below the cut their old
   course is dry. *Terrain Water* in the details panel's *Runtime* section: its cells of sea and of
   lakes, rivers and falls, how often and how long it was worked out.
+- Sky occlusion (`TerrainOcclusion.h`, *Sky Occlusion* in the terrain's *Lighting*, 1 by default):
+  the terrain round the camera dims the sky's light on everything near it by how much of the sky
+  it hides, so tunnels go dark, rifts darken towards their bottoms, and under overhangs and the
+  underside is darker than out in the open; the sun's light and shadows are as before. From an
+  occlusion volume of how solid the terrain is, 6 levels of 64 cells a side from 1 m to 32 m cells
+  (64 m to 2 km across) round the first camera, filled on the workers (from nothing a few ms, a
+  block all air or all solid without sampling; a step of the camera only the slab it comes to; an
+  edit only what it reaches), copied to the GPU only when a level changed, and traced by the
+  surface shaders in five cones from each pixel (nyx.terrainocclusion), about 0.4 to 1.3 ms at
+  1280 x 720 with the Gate 3 region in view. Less than 1 keeps that part of the sky's light; 0 keeps
+  no volume. *Terrain Occlusion* in the details panel's *Runtime* section: its levels and fills.
 - The field (`SdfTerrain.h`): `SampleTerrain()` gives the value at a point (negative inside, 0 on the
   surface) and its material, `SampleTerrainBatch()` many points, the same bits, with the 3D noise
   eight points at a time. A batch goes in blocks of 64 points, and a layer that is proven not to
@@ -1685,6 +1696,9 @@ game, coarser the farther, and collides while the world runs.
   making it fall there and the ground kept outside the dig giving the same water as all of it
   again, a lake whose rim is cut dropping, the water made again after an edit while the chunks are
   kept up to date, the world plan's scene with its character on the ground),
+  `NyxTerrainOcclusionTests` (the volume's cells as sampled at every level, moving and edits
+  filling only what they reach and the same as from nothing, the sky seen over open ground, under a
+  roof, down a trench and in a closed tunnel),
   `NyxTerrainWorldPlanTests` (the same bits from the same seed and another world from another, each
   kind about its share, pins making their kind, rifts opening the edge, rivers ending at an outlet
   with beds never rising, lakes holding water, boxes' bounds and the grids' slopes; `--maps <folder>`
@@ -1698,7 +1712,8 @@ game, coarser the farther, and collides while the world runs.
   collision or at the deadline; material rules down a rift's side, each vertex the first it meets; the terrain brush's strokes, rays and ring; the sample scene),
   `NyxEditorPanelTests` (among the rest, a terrain brush stroke one undo step),
   `NyxTerrainChunksGpuTests` (the chunks drawn at three levels, picked as the terrain, in the debug
-  view's colours, drawn where it is moved), `NyxTerrainCollisionTests` (the way out of a hill, a
+  view's colours, drawn where it is moved; a closed chamber next to black with sky occlusion and
+  open ground as without), `NyxTerrainCollisionTests` (the way out of a hill, a
   ball resting on the hills, a character walking 60 m on them, one falling 200 m past a floating
   landmass's cliff at 60 m/s and landing on the hills below with collision always ahead, rays
   meeting the collision where they meet the drawn triangles, bodies following the movers, made
