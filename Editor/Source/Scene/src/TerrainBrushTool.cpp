@@ -166,6 +166,7 @@ namespace Nyx::Editor
 		for (const Nyx::SdfTerrainEdit& edit : Stroke->MoveTo(localPoint))
 		{
 			Nyx::AppendTerrainEdit(terrain, edit);
+			Nyx::BakeTerrainBricks(terrain, BakeCounts);
 			bStrokeEdited = true;
 		}
 	}

@@ -5,6 +5,7 @@
 #include <glm/glm.hpp>
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 namespace Nyx
@@ -177,8 +178,22 @@ namespace Nyx
 		Paint
 	};
 
-	// One edit of an SDF terrain: a shape and what it does, numbered by the revision it made. Edits
-	// apply after every layer, in the order of their revisions (AppendTerrainEdit(), SdfTerrain.h).
+	// What an entry of an SDF terrain's edits is. Saved as its number: new kinds go at the end.
+	NYX_ENUM()
+	enum class ESdfTerrainEditKind : uint8_t
+	{
+		// A shape and what it does to the terrain
+		Shape,
+		// The terrain's values in a brick, as the edits before it made them, in place of those edits and
+		// the layers there (BakeTerrainBricks(), SdfTerrain.h)
+		Bake
+	};
+
+	struct SdfTerrainBakedBrick;
+
+	// One edit of an SDF terrain: a shape and what it does, numbered by the revision it made, or a
+	// bake. Edits apply after every layer, in the order of their revisions (AppendTerrainEdit(),
+	// SdfTerrain.h).
 	NYX_REFLECT()
 	struct SdfTerrainEdit
 	{
@@ -187,12 +202,16 @@ namespace Nyx
 		uint64_t Revision = 0;
 
 		NYX_PROPERTY(Serialize)
+		ESdfTerrainEditKind Kind = ESdfTerrainEditKind::Shape;
+
+		NYX_PROPERTY(Serialize)
 		ESdfTerrainEditShape Shape = ESdfTerrainEditShape::Sphere;
 
 		NYX_PROPERTY(Serialize)
 		ESdfTerrainEditMode Mode = ESdfTerrainEditMode::Subtract;
 
-		// In the terrain's space, in metres: a sphere's or box's middle, a capsule's one end
+		// In the terrain's space, in metres: a sphere's or box's middle, a capsule's one end; a bake's
+		// brick's lowest corner
 		NYX_PROPERTY(Serialize)
 		glm::vec3 Position{ 0.0f };
 
@@ -219,6 +238,10 @@ namespace Nyx
 		// Add and Paint: the material number it gives
 		NYX_PROPERTY(Serialize)
 		uint32_t Material = 0;
+
+		// A bake's values, made from the edits before it: run-time only, never saved, made again from
+		// those where missing (RestoreTerrainBakes(), SdfTerrain.h)
+		std::shared_ptr<const SdfTerrainBakedBrick> Baked;
 	};
 
 	// Terrain as a signed field over a volume, so it can overhang, hollow out and float: a stack of
@@ -269,10 +292,14 @@ namespace Nyx
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Debug View", Category = "Chunks", Tooltip = "Levels: a colour for each level of detail; Seams: those darker and the triangles joining levels bright"))
 		ESdfTerrainDebugView DebugView = ESdfTerrainDebugView::None;
 
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Bake After", Category = "Edits", Tooltip = "How many edits come near a brick of 8 m before it is baked: its values kept as they are then, so sampling there skips the layers and the edits before; undone with them. 0: never"))
+		uint32_t BakeAfter = 16;
+
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Activation Deadline", Category = "Edits", DragSpeed = 0.01, Tooltip = "How long, in seconds, an edit waits for its collision and its drawn chunks to be ready together before each goes live as soon as it is ready"))
 		float ActivationDeadline = 0.25f;
 
-		// What has been dug, filled and painted, in the order of the revisions (AppendTerrainEdit())
+		// What has been dug, filled and painted, and baked, in the order of the revisions
+		// (AppendTerrainEdit())
 		NYX_PROPERTY(Serialize)
 		std::vector<SdfTerrainEdit> Edits;
 	};

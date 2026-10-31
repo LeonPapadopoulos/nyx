@@ -593,7 +593,11 @@ namespace Nyx
 
 	bool CanTerrainEditChangeChunk(const TerrainChunkSamples& samples, const SdfTerrainEdit& edit)
 	{
-		if (CanTerrainEditTurnSign(edit, samples.GridMin, samples.GridMax))
+		// A bake leaves every value on the corners of its cells, 1 m apart, the same bits: a chunk of
+		// cells that size or larger samples only those, so only the points its mesher asked between
+		// them and its sky's rays can change
+		const bool bOnCorners = edit.Kind == ESdfTerrainEditKind::Bake && samples.CellSize >= SdfTerrainBakeBrickSize / float(SdfTerrainBakeCorners - 1);
+		if (!bOnCorners && CanTerrainEditTurnSign(edit, samples.GridMin, samples.GridMax))
 		{
 			return true;
 		}
@@ -625,7 +629,7 @@ namespace Nyx
 		}
 		for (const TerrainChunkSamples::Brick& brick : samples.NearSurface)
 		{
-			if (CanTerrainEditChangeValues(edit, brick.Min, brick.Max, brick.Lowest, brick.Highest))
+			if ((brick.bAsked || !bOnCorners) && CanTerrainEditChangeValues(edit, brick.Min, brick.Max, brick.Lowest, brick.Highest))
 			{
 				return true;
 			}
@@ -1206,7 +1210,7 @@ namespace Nyx
 			streaming.bNextNearDrawn = false;
 		}
 
-		void UpdateTerrain(Registry& world, Entity entity, const SdfTerrainComponent& terrain, std::span<const glm::vec3> worldViewpoints, JobSystem& jobs)
+		void UpdateTerrain(Registry& world, Entity entity, SdfTerrainComponent& terrain, std::span<const glm::vec3> worldViewpoints, JobSystem& jobs)
 		{
 			if (!world.Has<TerrainEditActivationComponent>(entity))
 			{
@@ -1223,6 +1227,11 @@ namespace Nyx
 			}
 			Detail::TerrainStreaming& streaming = *chunks.Streaming;
 			streaming.Workers = &jobs;
+
+			// Bakes without their values (the edits loaded or put back by an undo), those of the jobs'
+			// copy, the rest a few a frame
+			constexpr size_t BakesMadeAFrame = 32;
+			RestoreTerrainBakes(terrain, streaming.Snapshot.get(), BakesMadeAFrame);
 
 			// New values: a copy for the jobs, what was known of the old ones forgotten, their jobs
 			// cancelled and what they made let go of; the chunks drawn stay until the next ones are in

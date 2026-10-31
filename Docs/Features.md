@@ -1524,6 +1524,20 @@ game, coarser the farther, and collides while the world runs.
     made again; an edit taken away from far back has the chunks chosen again on a worker. The
     brush's ray goes in stretches of 32 m, each with only the edits along it. A copy for a chunk
     and a sample of the whole terrain still pass every edit once.
+  - Baking: once *Bake After* edits (16) have come near a brick of 8 m (within a brick of where
+    they can dig or heap), the host bakes it, an edit of its own with the next revision: the
+    terrain's values on the corners of its cells of 1 m, kept as the edits so far made them.
+    Sampling in the brick then takes those blended and only the edits after, no layer and no edit
+    before. On the corners it is the same bits as without, so the chunks of 1 m and coarser are
+    the same; between them (finer chunks, sharp vertices, the sky's rays), the corners blended. A
+    bake is undone with the edits before it, which stay: the editor's brush bakes as it paints, in
+    the stroke's undo step, and the game after its step's edits (`BakeTerrainBricks()`). A bake's
+    values are never saved: made again when the edits are loaded, or put back by an undo, from
+    the chunks' copy where its edits are the same, else from the edits before it, a few a frame,
+    sampled the same bits meanwhile (`RestoreTerrainBakes()`); and made again for other layers.
+    Many points sampled at once look only at the edits near each block of them (cells of 4 m
+    round the points), the same ones as going through them all. In the sample terrain, a chunk
+    under 1600 brush edits samples in under twice the time it does with none (from 14 times).
 - The terrain brush (`TerrainBrush.h`): edits where a ray meets the terrain, a stroke of them a
   *Spacing* of the radius apart (a capsule's rods end to end, one smooth trench or ridge), with a
   *Shape*, *Mode*, *Radius*, *Blend Radius*, *Material* and *Reach*.

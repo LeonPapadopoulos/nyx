@@ -585,11 +585,10 @@ namespace
 			const glm::ivec3 size(33);
 			const glm::vec3 boxMax = origin + glm::vec3(size - 1) * CellSize;
 			SdfTerrainComponent kept = terrain;
-			const Nyx::TerrainEditsReach reach = Nyx::KeepTerrainEditsReaching(kept, origin, boxMax);
+			Nyx::KeepTerrainEditsReaching(kept, origin, boxMax);
 			const Nyx::TerrainEditsReach asked = Nyx::GetTerrainEditsReaching(terrain, origin, boxMax);
-			Require(reach.Count == kept.Edits.size() && asked.Count == reach.Count && asked.Hash == reach.Hash && asked.Revision == reach.Revision,
-				"Asking which edits reach a box should be what keeping them keeps");
-			Require(reach.Revision == (kept.Edits.empty() ? 0 : kept.Edits.back().Revision), "The reach's revision should be its latest edit's");
+			Require(asked.Count == kept.Edits.size(), "Asking which edits reach a box should be what keeping them keeps");
+			Require(asked.Revision == (kept.Edits.empty() ? 0 : kept.Edits.back().Revision), "The reach's revision should be its latest edit's");
 			keptMost = std::max(keptMost, kept.Edits.size());
 			keptLeast = std::min(keptLeast, kept.Edits.size());
 			const Nyx::FieldGrid all = Nyx::SampleTerrainGrid(terrain, origin, CellSize, size);
@@ -646,6 +645,240 @@ namespace
 				Require(value >= box.Range.Lowest && value <= box.Range.Highest, "A box's range carried across edits should hold its values");
 			}
 		}
+	}
+
+	// Bakes: on the corners of the bricks' cells the same bits as without them, between them the
+	// corners blended, and edits after a bake over it; many points at once, and a terrain left the
+	// edits reaching a box, the same bits as single points; the slope bound and boxes' ranges hold;
+	// bakes without their values the same bits, and made again the same; made again for other layers;
+	// undone with the edits; due after Bake After edits near a brick, and never with 0
+	void TestBakes()
+	{
+		const SdfTerrainComponent plain = MakeEdited();
+		SdfTerrainComponent baked = plain;
+		Sequence sequence;
+		std::vector<glm::ivec3> bricks;
+		for (int z = -2; z <= 1; ++z)
+		{
+			for (int y = -1; y <= 1; ++y)
+			{
+				for (int x = -2; x <= 1; ++x)
+				{
+					bricks.push_back({ x, y, z });
+				}
+			}
+		}
+		for (const glm::ivec3& brick : bricks)
+		{
+			const uint64_t revision = Nyx::AppendTerrainBake(baked, brick);
+			Require(revision == Nyx::GetTerrainRevision(baked) && baked.Edits.back().Kind == Nyx::ESdfTerrainEditKind::Bake && baked.Edits.back().Baked,
+				"A bake should be an edit of its own, with the next revision and its values");
+		}
+		// Edits after the bakes, then some bricks baked again over them
+		SdfTerrainComponent after = plain;
+		for (int i = 0; i < 20; ++i)
+		{
+			Nyx::SdfTerrainEdit edit;
+			edit.Shape = static_cast<Nyx::ESdfTerrainEditShape>(i % 3);
+			edit.Mode = static_cast<Nyx::ESdfTerrainEditMode>(i % 3);
+			edit.Position = glm::vec3(sequence.Between(-14.0f, 14.0f), sequence.Between(-8.0f, 8.0f), sequence.Between(-14.0f, 14.0f));
+			edit.End = edit.Position + glm::vec3(sequence.Between(-3.0f, 3.0f), 0.0f, sequence.Between(-3.0f, 3.0f));
+			edit.HalfSize = glm::vec3(sequence.Between(0.5f, 2.0f));
+			edit.Radius = sequence.Between(0.5f, 3.0f);
+			edit.BlendRadius = i % 2 == 0 ? 0.5f : 0.0f;
+			edit.Material = 8;
+			Nyx::AppendTerrainEdit(baked, edit);
+			Nyx::AppendTerrainEdit(after, edit);
+		}
+		for (size_t n = 0; n < bricks.size(); n += 3)
+		{
+			Nyx::AppendTerrainBake(baked, bricks[n]);
+		}
+		const size_t bakes = size_t(std::count_if(baked.Edits.begin(), baked.Edits.end(), [](const Nyx::SdfTerrainEdit& edit) { return edit.Kind == Nyx::ESdfTerrainEditKind::Bake; }));
+
+		// On the corners, the same bits as without bakes: a grid of 1 m cells over the bricks and past
+		// them, a batch, single points
+		const glm::vec3 origin(-19.0f, -11.0f, -21.0f);
+		const glm::ivec3 size(40, 26, 38);
+		const Nyx::FieldGrid withBakes = Nyx::SampleTerrainGrid(baked, origin, 1.0f, size);
+		const Nyx::FieldGrid without = Nyx::SampleTerrainGrid(after, origin, 1.0f, size);
+		for (size_t i = 0; i < withBakes.Values.size(); ++i)
+		{
+			Require(BitsOf(withBakes.Values[i]) == BitsOf(without.Values[i]) && withBakes.Materials[i] == without.Materials[i],
+				"On the corners of the bricks' cells, bakes should be the same bits as the edits they were made from");
+		}
+		for (int n = 0; n < 300; ++n)
+		{
+			const glm::vec3 corner = glm::floor(glm::vec3(sequence.Between(-20.0f, 20.0f), sequence.Between(-12.0f, 12.0f), sequence.Between(-20.0f, 20.0f)));
+			const Nyx::TerrainSample a = Nyx::SampleTerrain(baked, corner);
+			const Nyx::TerrainSample b = Nyx::SampleTerrain(after, corner);
+			Require(BitsOf(a.Value) == BitsOf(b.Value) && a.Material == b.Material, "A single corner should be the same bits with bakes");
+		}
+
+		// Between the corners of a brick baked last with nothing after: the corners blended
+		SdfTerrainComponent once = plain;
+		Nyx::AppendTerrainBake(once, glm::ivec3(0, 0, 0));
+		int between = 0;
+		for (int n = 0; n < 400; ++n)
+		{
+			const glm::vec3 point(sequence.Between(0.0f, 8.0f), sequence.Between(0.0f, 8.0f), sequence.Between(0.0f, 8.0f));
+			const glm::vec3 low = glm::min(glm::floor(point), glm::vec3(7.0f));
+			const glm::vec3 t = point - low;
+			float corners[8];
+			for (int c = 0; c < 8; ++c)
+			{
+				corners[c] = Nyx::SampleTerrainValue(plain, low + glm::vec3(float(c & 1), float((c >> 1) & 1), float((c >> 2) & 1)));
+			}
+			auto mix = [](float a, float b, float along) { return a * (1.0f - along) + b * along; };
+			const float expected = mix(mix(mix(corners[0], corners[1], t.x), mix(corners[2], corners[3], t.x), t.y),
+				mix(mix(corners[4], corners[5], t.x), mix(corners[6], corners[7], t.x), t.y), t.z);
+			const float value = Nyx::SampleTerrainValue(once, point);
+			Require(BitsOf(value) == BitsOf(expected), "Between its corners a bake should be their values blended");
+			between += value != Nyx::SampleTerrainValue(plain, point) ? 1 : 0;
+		}
+		Require(between > 100, "Between its corners a bake should differ from the edits it was made from");
+
+		// Many points at once (each block's bakes looked up, the edits found near), and the edits
+		// reaching a box kept alone, the same bits as single points
+		constexpr size_t Count = 3001;
+		std::vector<float> x(Count);
+		std::vector<float> y(Count);
+		std::vector<float> z(Count);
+		for (size_t i = 0; i < Count; ++i)
+		{
+			x[i] = sequence.Between(-22.0f, 22.0f);
+			y[i] = sequence.Between(-14.0f, 14.0f);
+			z[i] = sequence.Between(-22.0f, 22.0f);
+		}
+		std::vector<float> values(Count);
+		std::vector<uint32_t> materials(Count);
+		Nyx::SampleTerrainBatch(baked, x.data(), y.data(), z.data(), Count, values.data(), materials.data());
+		for (size_t i = 0; i < Count; ++i)
+		{
+			const Nyx::TerrainSample single = Nyx::SampleTerrain(baked, glm::vec3(x[i], y[i], z[i]));
+			Require(BitsOf(single.Value) == BitsOf(values[i]) && single.Material == materials[i], "A baked batch should be the same bits as single points");
+		}
+		for (int box = 0; box < 12; ++box)
+		{
+			const glm::vec3 low(sequence.Between(-24.0f, 8.0f), sequence.Between(-14.0f, 2.0f), sequence.Between(-24.0f, 8.0f));
+			const glm::ivec3 cells(33);
+			const glm::vec3 high = low + glm::vec3(cells - 1) * 0.5f;
+			SdfTerrainComponent kept = baked;
+			Nyx::KeepTerrainEditsReaching(kept, low, high);
+			Require(kept.Edits.size() < baked.Edits.size(), "A box should keep only some of the edits and bakes");
+			const Nyx::FieldGrid all = Nyx::SampleTerrainGrid(baked, low, 0.5f, cells);
+			const Nyx::FieldGrid some = Nyx::SampleTerrainGrid(kept, low, 0.5f, cells);
+			for (size_t i = 0; i < all.Values.size(); ++i)
+			{
+				const glm::ivec3 at(int(i % 33), int((i / 33) % 33), int(i / (33 * 33)));
+				const Nyx::TerrainSample single = Nyx::SampleTerrain(baked, low + glm::vec3(at) * 0.5f);
+				Require(BitsOf(all.Values[i]) == BitsOf(some.Values[i]) && all.Materials[i] == some.Materials[i] && BitsOf(single.Value) == BitsOf(all.Values[i]),
+					"A baked terrain left the edits reaching a box should be the same bits in it");
+			}
+		}
+
+		// The slope bound within bricks, and boxes' ranges anywhere
+		const float bound = Nyx::GetTerrainMaxSlope(baked);
+		Require(bound > Nyx::GetTerrainMaxSlope(after), "Bakes should widen the slope bound");
+		float steepest = 0.0f;
+		for (int n = 0; n < 2000; ++n)
+		{
+			const glm::vec3 brick(bricks[size_t(n) % bricks.size()]);
+			const glm::vec3 point = brick * 8.0f + glm::vec3(sequence.Between(0.1f, 7.8f), sequence.Between(0.1f, 7.8f), sequence.Between(0.1f, 7.8f));
+			const glm::vec3 near = point + glm::vec3(sequence.Between(-0.05f, 0.05f), sequence.Between(-0.05f, 0.05f), sequence.Between(-0.05f, 0.05f));
+			steepest = std::max(steepest, std::fabs(Nyx::SampleTerrainValue(baked, near) - Nyx::SampleTerrainValue(baked, point)) / std::max(glm::length(near - point), 1e-4f));
+		}
+		Require(steepest <= bound * 1.001f, "A baked brick should never be steeper than the bound");
+		for (int box = 0; box < 60; ++box)
+		{
+			const glm::vec3 low(sequence.Between(-22.0f, 14.0f), sequence.Between(-12.0f, 8.0f), sequence.Between(-22.0f, 14.0f));
+			const glm::vec3 high = low + glm::vec3(sequence.Between(0.3f, 12.0f));
+			const Nyx::TerrainValueRange range = Nyx::GetTerrainValueRange(baked, low, high);
+			Nyx::TerrainBoxEdits carried = Nyx::BeginTerrainBoxEdits(baked, low, high);
+			Nyx::ContinueTerrainBoxEdits(baked, carried);
+			for (int n = 0; n < 216; ++n)
+			{
+				const glm::vec3 point = low + (high - low) * glm::vec3(float(n % 6), float((n / 6) % 6), float(n / 36)) / 5.0f;
+				const float value = Nyx::SampleTerrainValue(baked, point);
+				Require(value >= range.Lowest && value <= range.Highest && value >= carried.Range.Lowest && value <= carried.Range.Highest,
+					"A baked value should be within its box's range");
+			}
+		}
+
+		// Without their values (loaded, or put back by an undo): the same bits, then made again the same
+		SdfTerrainComponent lost = baked;
+		for (Nyx::SdfTerrainEdit& edit : lost.Edits)
+		{
+			edit.Baked.reset();
+		}
+		for (int n = 0; n < 200; ++n)
+		{
+			const glm::vec3 point(sequence.Between(-18.0f, 18.0f), sequence.Between(-10.0f, 10.0f), sequence.Between(-18.0f, 18.0f));
+			const Nyx::TerrainSample a = Nyx::SampleTerrain(baked, point);
+			const Nyx::TerrainSample b = Nyx::SampleTerrain(lost, point);
+			Require(BitsOf(a.Value) == BitsOf(b.Value) && a.Material == b.Material, "A bake without its values should sample the same bits");
+		}
+		const Nyx::FieldGrid lostGrid = Nyx::SampleTerrainGrid(lost, origin, 1.0f, size);
+		Require(lostGrid.Values == withBakes.Values, "Bakes without their values should sample the same corners");
+		SdfTerrainComponent fromEarlier = lost;
+		Require(Nyx::RestoreTerrainBakes(fromEarlier, &baked) == 0, "Bakes should take the values of the same edits before");
+		Require(Nyx::RestoreTerrainBakes(lost, nullptr, 5) == 5, "At most so many bakes should be made");
+		Require(Nyx::RestoreTerrainBakes(lost) == bakes - 5 && Nyx::RestoreTerrainBakes(lost) == 0, "Every bake without values should be made");
+		for (size_t at = 0; at < baked.Edits.size(); ++at)
+		{
+			if (baked.Edits[at].Kind == Nyx::ESdfTerrainEditKind::Bake)
+			{
+				Require(lost.Edits[at].Baked->Values == baked.Edits[at].Baked->Values && lost.Edits[at].Baked->Materials == baked.Edits[at].Baked->Materials &&
+							lost.Edits[at].Baked->Lowest == baked.Edits[at].Baked->Lowest && fromEarlier.Edits[at].Baked == baked.Edits[at].Baked,
+					"A bake made again should be the same bits");
+			}
+		}
+		SdfTerrainComponent otherLayers = baked;
+		otherLayers.Layers[0].Amplitude += 1.0f;
+		Require(Nyx::RestoreTerrainBakes(otherLayers, &baked) == bakes, "Bakes made with other layers should be made again, not taken");
+
+		// Undone with the edits: back to those before them
+		SdfTerrainComponent undone = baked;
+		undone.Edits.resize(plain.Edits.size());
+		const Nyx::FieldGrid undoneGrid = Nyx::SampleTerrainGrid(undone, origin, 0.5f, size);
+		const Nyx::FieldGrid plainGrid = Nyx::SampleTerrainGrid(plain, origin, 0.5f, size);
+		Require(undoneGrid.Values == plainGrid.Values && undoneGrid.Materials == plainGrid.Materials && Nyx::HashTerrainEdits(undone) == Nyx::HashTerrainEdits(plain),
+			"Bakes undone with the edits should leave the terrain as it was");
+
+		// Due after Bake After edits near a brick, once each; never with 0
+		SdfTerrainComponent flat = MakeFlat(0.0f);
+		Nyx::TerrainBakeCounts counts;
+		Nyx::SdfTerrainEdit dab;
+		dab.Position = glm::vec3(4.0f, 0.0f, 4.0f);
+		dab.Radius = 1.0f;
+		for (uint32_t n = 1; n < flat.BakeAfter; ++n)
+		{
+			Nyx::AppendTerrainEdit(flat, dab);
+			Require(Nyx::BakeTerrainBricks(flat, counts) == 0, "No brick should be baked before Bake After edits near it");
+		}
+		Nyx::AppendTerrainEdit(flat, dab);
+		const size_t made = Nyx::BakeTerrainBricks(flat, counts);
+		Require(made >= 1 && flat.Edits.back().Kind == Nyx::ESdfTerrainEditKind::Bake && Nyx::BakeTerrainBricks(flat, counts) == 0,
+			"Bake After edits near a brick should bake it once");
+		bool bBrickBaked = false;
+		for (const Nyx::SdfTerrainEdit& edit : flat.Edits)
+		{
+			bBrickBaked = bBrickBaked || (edit.Kind == Nyx::ESdfTerrainEditKind::Bake && edit.Position == glm::vec3(0.0f, -8.0f, 0.0f));
+		}
+		Require(bBrickBaked, "The brick the edits were in should be baked");
+		flat.Edits.resize(flat.Edits.size() - made - 3);
+		Nyx::AppendTerrainEdit(flat, dab);
+		Require(Nyx::BakeTerrainBricks(flat, counts) == 0, "After an undo, the edits should be counted from there");
+		SdfTerrainComponent never = MakeFlat(0.0f);
+		never.BakeAfter = 0;
+		Nyx::TerrainBakeCounts neverCounts;
+		for (int n = 0; n < 40; ++n)
+		{
+			Nyx::AppendTerrainEdit(never, dab);
+			Require(Nyx::BakeTerrainBricks(never, neverCounts) == 0, "Bake After 0 should never bake");
+		}
+		std::cout << "Bakes: " << bakes << " over " << after.Edits.size() << " edits, slope bound " << bound << " (" << Nyx::GetTerrainMaxSlope(after)
+				  << " without), steepest in a brick " << steepest << "\n";
 	}
 
 	bool SameBox(const Nyx::TerrainBoxEdits& a, const Nyx::TerrainBoxEdits& b)
@@ -876,6 +1109,7 @@ int main()
 		TestShapes();
 		TestEdits();
 		TestEditIndex();
+		TestBakes();
 		PrintTimings();
 	}
 	catch (const std::exception& error)

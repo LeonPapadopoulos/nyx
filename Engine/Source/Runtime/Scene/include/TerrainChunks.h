@@ -234,8 +234,9 @@ namespace Nyx
 	// Whether an edit after those a chunk was made with can change its mesh: whether it can turn
 	// the field's sign in its grids or up a sky's ray from a brick the surface crosses (a box the
 	// edit's sign bounds, GetTerrainEditSignBounds(), against the cone 45 degrees up from the brick),
-	// or change a sample in a brick near the surface or a value the mesher asked the field for. One
-	// that can't leaves the mesh the same bits.
+	// or change a sample in a brick near the surface or a value the mesher asked the field for; a
+	// bake, for a chunk of cells of 1 m or larger, only the last two. One that can't leaves the mesh
+	// the same bits.
 	bool CanTerrainEditChangeChunk(const TerrainChunkSamples& samples, const SdfTerrainEdit& edit);
 
 	// Which chunks made earlier are still the mesh they would be made now, carried edit to edit:

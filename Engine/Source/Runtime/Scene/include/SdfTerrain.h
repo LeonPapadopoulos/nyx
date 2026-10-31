@@ -5,9 +5,12 @@
 
 #include <glm/glm.hpp>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
+#include <set>
 #include <unordered_map>
 #include <vector>
 
@@ -96,6 +99,75 @@ namespace Nyx
 	// The latest edit's revision; 0 with none
 	uint64_t GetTerrainRevision(const SdfTerrainComponent& terrain);
 
+	// Baking: a brick's values kept as the edits so far made them, so sampling there no longer passes
+	// the layers and those edits. A bake is an edit of its own (ESdfTerrainEditKind::Bake), after
+	// those it was made from, numbered with them; it is undone with them (the edits stay), and every
+	// machine makes the same of it. A brick is 8 cells of 1 m along each axis, its lowest corner on
+	// whole multiples of 8 m.
+	constexpr float SdfTerrainBakeBrickSize = 8.0f;
+	constexpr int SdfTerrainBakeCorners = 9;
+
+	// A bake's values (SdfTerrainEdit::Baked): the terrain's at the corners of its brick's cells, x
+	// fastest, as the edits before it made them. In its brick, the terrain's value is then its cell's
+	// corners' blended (trilinear), its material the nearest corner's, and the edits after the bake
+	// apply over those. On the corners themselves, those are the same bits as without the bake, so
+	// chunks of 1 m cells and coarser sample just the same; between them, they are off by how much
+	// the terrain bends within a cell (finer chunks, a sharp vertex's crossings, the sky's rays), and
+	// at a face onto a brick not baked the value can step by that much.
+	struct SdfTerrainBakedBrick
+	{
+		static constexpr size_t Count = size_t(SdfTerrainBakeCorners) * SdfTerrainBakeCorners * SdfTerrainBakeCorners;
+		std::array<float, Count> Values{};
+		// One for each corner, or one for all when they are all the same
+		std::vector<uint32_t> Materials;
+		// The lowest and highest of the values in each eighth of the brick (its 5 x 5 x 5 corners), x
+		// fastest
+		std::array<float, 8> Lowest{};
+		std::array<float, 8> Highest{};
+		// The seed and layers they were made with (HashTerrainLayers()): with others, they are made again
+		uint64_t Layers = 0;
+	};
+
+	// Bakes the brick at `brick` (its lowest corner over 8 m) after the terrain's edits, with the next
+	// revision; returns it. Only what makes the world's revisions bakes (AppendTerrainEdit()).
+	uint64_t AppendTerrainBake(SdfTerrainComponent& terrain, const glm::ivec3& brick);
+
+	// Which bricks are due a bake: how many edits have come near each since its last bake (within a
+	// brick of where it can turn the value's sign, of its shape for paint); an edit over more than
+	// 64 bricks counts for none, as it is cheap to sample as it is. Brought up to the terrain's edits
+	// as they are added, all of them the first time; when those it saw changed (an undo), from there on.
+	class TerrainBakeCounts
+	{
+	public:
+		void Update(const SdfTerrainComponent& terrain);
+
+		// The bricks Bake After edits or more have come near, in order
+		const std::set<uint64_t>& GetDue() const { return Due; }
+		static glm::ivec3 BrickOf(uint64_t key);
+
+	private:
+		std::unordered_map<uint64_t, uint32_t> Near;
+		std::set<uint64_t> Due;
+		size_t Seen = 0;
+		uint64_t SeenHash = 0;
+		uint32_t Threshold = 0;
+		bool bStarted = false;
+	};
+
+	// After the host's new edits: bakes each brick that the terrain's Bake After edits have come near
+	// since its last bake, in order of their places. How many it baked.
+	size_t BakeTerrainBricks(SdfTerrainComponent& terrain, TerrainBakeCounts& counts);
+
+	// Gives the terrain's bakes that have no values (its edits loaded, or put back by an undo), or
+	// values made with other layers, those of `earlier`'s where its layers and its edits up to there
+	// are the same (CountSameTerrainEdits()), and makes at most `most` of the rest, in order, each
+	// from the edits before it. How many it made. Until then, sampling makes what it needs of one as
+	// it goes: the same bits, more slowly.
+	size_t RestoreTerrainBakes(SdfTerrainComponent& terrain, const SdfTerrainComponent* earlier = nullptr, size_t most = SIZE_MAX);
+
+	// A hash of the seed and the layers: what a bake's values are made from besides the edits
+	uint64_t HashTerrainLayers(const SdfTerrainComponent& terrain);
+
 	// The edits that can change a value somewhere in a box (by the interval arithmetic of the layers'
 	// and the edits' ranges; one that can't is exactly no change there): how many, the latest of their
 	// revisions (0 for none), and a hash of them all, which tells a box made with them from one made
@@ -164,9 +236,9 @@ namespace Nyx
 
 	TerrainEditsReach GetTerrainEditsReaching(const SdfTerrainComponent& terrain, const glm::vec3& boxMin, const glm::vec3& boxMax);
 
-	// Leaves the terrain only those edits, so sampling in the box is the same bits with far fewer: what
-	// a chunk is made from
-	TerrainEditsReach KeepTerrainEditsReaching(SdfTerrainComponent& terrain, const glm::vec3& boxMin, const glm::vec3& boxMax);
+	// Leaves the terrain only those edits, and of a brick's bakes only the last, so sampling in the box
+	// is the same bits with far fewer: what a chunk is made from
+	void KeepTerrainEditsReaching(SdfTerrainComponent& terrain, const glm::vec3& boxMin, const glm::vec3& boxMax);
 
 	// Whether an edit can change a value somewhere in the box that is between `lowest` and `highest`
 	// (a value it can't change it leaves the same bits), and whether it can turn the value's sign

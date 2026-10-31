@@ -2,6 +2,7 @@
 
 #include "Entity.h"
 #include "InspectorDrawContext.h"
+#include "SdfTerrain.h"
 #include "TerrainBrush.h"
 #include "TransactionObjectRef.h"
 
@@ -56,6 +57,8 @@ namespace Nyx::Editor
 
 	private:
 		std::optional<Nyx::TerrainBrushStroke> Stroke;
+		// The bricks the strokes' edits made due a bake, baked as they go: in the stroke's undo step
+		Nyx::TerrainBakeCounts BakeCounts;
 		uint64_t StrokeViewId = 0;
 		bool bStrokeEdited = false;
 		// The terrain's edits before the stroke, recorded with them after as one change of the array

@@ -35,6 +35,7 @@
 #include "ScatterBlockerComponent.h"
 #include "ScatterComponent.h"
 #include "ScatterInstances.h"
+#include "SdfTerrain.h"
 #include "SdfTerrainComponent.h"
 #include "SceneEditor.h"
 #include "SceneFilePopups.h"
@@ -580,6 +581,30 @@ namespace
 		Require(world.Get<SdfTerrainComponent>(terrain).Edits.empty(), "Undoing a stroke should take all its edits");
 		editing.Redo();
 		Require(world.Get<SdfTerrainComponent>(terrain).Edits.size() == 6, "Redoing a stroke should bring them all back");
+
+		// A long stroke in one place bakes as it paints; its bakes are undone and redone with it, the
+		// terrain the same bits
+		Require(brush.BeginStroke(editing.Scene, terrain, ESdfTerrainEditMode::Subtract), "A long stroke should begin");
+		for (int n = 0; n < 20; ++n)
+		{
+			brush.StrokeTo(editing.Scene, glm::vec3(n % 2 == 0 ? 2.0f : 0.0f, 0.0f, 0.0f));
+		}
+		Require(brush.EndStroke(editing.Scene, editing.Transactions), "A long stroke should be an undo step");
+		auto bakesOf = [&]
+		{
+			const std::vector<SdfTerrainEdit>& all = world.Get<SdfTerrainComponent>(terrain).Edits;
+			return size_t(std::count_if(all.begin(), all.end(), [](const SdfTerrainEdit& edit) { return edit.Kind == ESdfTerrainEditKind::Bake; }));
+		};
+		const size_t bakes = bakesOf();
+		const glm::vec3 between(0.6f, -0.7f, 0.3f);
+		const float painted = SampleTerrainValue(world.Get<SdfTerrainComponent>(terrain), between);
+		Require(bakes > 0, "A long stroke in one place should bake the bricks there");
+		editing.Undo();
+		Require(world.Get<SdfTerrainComponent>(terrain).Edits.size() == 6 && bakesOf() == 0, "Undoing a stroke should take its bakes with its edits");
+		editing.Redo();
+		Require(bakesOf() == bakes && SampleTerrainValue(world.Get<SdfTerrainComponent>(terrain), between) == painted, "Redoing a stroke should bring its bakes back, the same bits");
+		Require(RestoreTerrainBakes(world.Get<SdfTerrainComponent>(terrain)) == bakes && SampleTerrainValue(world.Get<SdfTerrainComponent>(terrain), between) == painted,
+			"Its bakes' values should be made again, the same bits");
 
 		Require(brush.BeginStroke(editing.Scene, terrain, ESdfTerrainEditMode::Add), "Another stroke should begin");
 		Require(!brush.EndStroke(editing.Scene, editing.Transactions), "A stroke that edits nothing should be no undo step");

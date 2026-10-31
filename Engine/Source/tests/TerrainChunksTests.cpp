@@ -585,6 +585,50 @@ namespace
 				Require(chunk.Mesh.Mesh ? SameMesh(*chunk.Mesh.Mesh, direct) : direct.Indices.empty(), "After many edits, every chunk should be the same bits as made directly");
 			}
 		}
+
+		// Painting in one place, baked as it goes: settled, every chunk the same bits as made directly;
+		// the bakes' values lost (as loading or an undo leaves them), the same, and made again; undone
+		// to before the painting, the same
+		const size_t beforePainting = values.Edits.size();
+		TerrainBakeCounts counts;
+		for (int n = 0; n < 40; ++n)
+		{
+			SdfTerrainEdit dab = dig;
+			dab.Position += glm::vec3(next(-3.0f, 3.0f), next(-1.0f, 1.0f), next(-3.0f, 3.0f));
+			dab.Radius = next(1.0f, 2.0f);
+			dab.BlendRadius = 0.5f;
+			dab.Mode = n % 4 == 3 ? ESdfTerrainEditMode::Add : ESdfTerrainEditMode::Subtract;
+			AppendTerrainEdit(world.Get<SdfTerrainComponent>(terrain), dab);
+			BakeTerrainBricks(world.Get<SdfTerrainComponent>(terrain), counts);
+			if (n % 8 == 0)
+			{
+				UpdateTerrainChunks(world, { &viewpoint, 1 }, jobs);
+			}
+		}
+		const size_t painted = size_t(std::count_if(values.Edits.begin(), values.Edits.end(), [](const SdfTerrainEdit& edit) { return edit.Kind == ESdfTerrainEditKind::Bake; }));
+		Require(painted > 0, "Painting in one place should bake bricks there");
+		auto sameAsDirect = [&](const char* what)
+		{
+			UpdateUntilSettled(world, { &viewpoint, 1 }, jobs, terrain);
+			for (const TerrainChunk& chunk : world.Get<TerrainChunksComponent>(terrain).Chunks)
+			{
+				const MeshData direct = MakeTerrainChunkMesh(values, { chunk.Level, chunk.Key }, chunk.Neighbourhood);
+				Require(chunk.Mesh.Mesh ? SameMesh(*chunk.Mesh.Mesh, direct) : direct.Indices.empty(), what);
+			}
+		};
+		sameAsDirect("Painted and baked, every chunk should be the same bits as made directly");
+		const uint64_t madeBeforeLoss = world.Get<TerrainChunksComponent>(terrain).Stats.Made;
+		for (SdfTerrainEdit& edit : world.Get<SdfTerrainComponent>(terrain).Edits)
+		{
+			edit.Baked.reset();
+		}
+		sameAsDirect("Its bakes' values lost, every chunk should be the same bits as made directly");
+		Require(world.Get<TerrainChunksComponent>(terrain).Stats.Made == madeBeforeLoss, "Bakes losing their values should make no chunk again");
+		Require(std::all_of(values.Edits.begin(), values.Edits.end(), [](const SdfTerrainEdit& edit) { return edit.Kind != ESdfTerrainEditKind::Bake || edit.Baked; }),
+			"The bakes' values should be made again");
+		world.Get<SdfTerrainComponent>(terrain).Edits.resize(beforePainting);
+		sameAsDirect("The painting undone, every chunk should be the same bits as made directly");
+		std::cout << "Painting: 40 edits, " << painted << " bakes\n";
 		world.Get<SdfTerrainComponent>(terrain).Edits.clear();
 		UpdateUntilSettled(world, { &viewpoint, 1 }, jobs, terrain);
 
@@ -984,6 +1028,68 @@ namespace
 		}
 	}
 
+	SdfTerrainComponent MakeSampleTerrain();
+
+	// Not a test: how long the finest chunk at a place in the sample terrain takes to sample, on one
+	// thread, under more and more brush edits there (digs and heaps where a ray down meets the
+	// ground, within 12 m), against none; with and without baking
+	void TimeSamplingUnderEdits(uint32_t bakeAfter)
+	{
+		SdfTerrainComponent terrain = MakeSampleTerrain();
+		terrain.BakeAfter = bakeAfter;
+		TerrainBakeCounts counts;
+		const std::optional<TerrainRayHit> ground = RayCastTerrain(terrain, glm::vec3(-36.0f, 200.0f, 44.0f), glm::vec3(0.0f, -1.0f, 0.0f), 400.0f);
+		Require(ground.has_value(), "The sample terrain should have ground there");
+		const TerrainChunkId id{ 0, glm::ivec3(glm::floor(ground->Point / GetTerrainChunkSize(0))) };
+		auto time = [&]
+		{
+			double best = 1e9;
+			for (int run = 0; run < 5; ++run)
+			{
+				TerrainChunkTimes times;
+				MakeTerrainChunkMesh(terrain, id, TerrainNeighbourhood{}, &times);
+				best = std::min(best, times.SampleMilliseconds);
+			}
+			return best;
+		};
+		const double none = time();
+		std::cout << std::fixed << std::setprecision(2) << "Bake After " << bakeAfter << ": a chunk sampled in " << none << " ms with no edits\n";
+		uint32_t seed = 12345u;
+		auto random = [&]
+		{
+			seed = seed * 1664525u + 1013904223u;
+			return float(seed >> 8) / float(1u << 24);
+		};
+		size_t shapes = 0;
+		for (const size_t count : { 50u, 200u, 800u, 1600u })
+		{
+			double longest = 0.0;
+			while (shapes < count)
+			{
+				const glm::vec3 above = ground->Point + glm::vec3((random() - 0.5f) * 24.0f, 60.0f, (random() - 0.5f) * 24.0f);
+				const std::optional<TerrainRayHit> hit = RayCastTerrain(terrain, above, glm::vec3(0.0f, -1.0f, 0.0f), 200.0f);
+				if (!hit)
+				{
+					continue;
+				}
+				SdfTerrainEdit edit;
+				edit.Mode = random() < 0.7f ? ESdfTerrainEditMode::Subtract : ESdfTerrainEditMode::Add;
+				edit.Position = hit->Point;
+				edit.Radius = 1.5f + random() * 1.5f;
+				edit.BlendRadius = 0.5f;
+				const auto start = std::chrono::steady_clock::now();
+				AppendTerrainEdit(terrain, edit);
+				BakeTerrainBricks(terrain, counts);
+				longest = std::max(longest, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
+				++shapes;
+			}
+			const double with = time();
+			const size_t bakes = size_t(std::count_if(terrain.Edits.begin(), terrain.Edits.end(), [](const SdfTerrainEdit& made) { return made.Kind == ESdfTerrainEditKind::Bake; }));
+			std::cout << "  under " << count << " edits: " << with << " ms, " << (with / none) << " times; " << bakes << " bakes, an edit and its bakes made in "
+					  << longest << " ms at most\n";
+		}
+	}
+
 	Entity AddNamed(Registry& world, const std::string& name, const TransformComponent& transform)
 	{
 		const Entity entity = world.CreateEntity();
@@ -1138,7 +1244,7 @@ int main(int argc, char** argv)
 			{ "viewpoint", TestChunksRoundAViewpoint }, { "moving", TestMovingAndViewDistance }, { "values", TestNewValues },
 			{ "removed", TestRemovedEmptyAndMoved }, { "edits", TestEdits }, { "undo", TestUndoCost }, { "brush", TestBrush }, { "scene", TestTheSampleScene }, { "time", TimeAView } };
 		// Not run unless asked for: a measure of the sample scene, not a check
-		const std::vector<std::pair<std::string, void (*)()>> measures{ { "editdelay", TimeAnEdit } };
+		const std::vector<std::pair<std::string, void (*)()>> measures{ { "editdelay", TimeAnEdit }, { "editcost", [] { TimeSamplingUnderEdits(0); TimeSamplingUnderEdits(16); } } };
 		const char* only = argc > 2 && std::strcmp(argv[1], "--only") == 0 ? argv[2] : nullptr;
 		for (const auto& [name, test] : tests)
 		{

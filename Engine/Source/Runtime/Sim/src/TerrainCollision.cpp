@@ -270,7 +270,11 @@ namespace Nyx
 
 	void TerrainCollision::SyncTerrain(Registry& world, PhysicsWorld& physics, const PhysicsBodies& bodies, TerrainState& state)
 	{
-		const SdfTerrainComponent& terrain = world.Get<SdfTerrainComponent>(state.Owner);
+		// Bakes without their values (the edits loaded or put back), those of the copy the bodies are
+		// made from, the rest a few at a time
+		constexpr size_t BakesMadeAStep = 32;
+		SdfTerrainComponent& terrain = world.Get<SdfTerrainComponent>(state.Owner);
+		RestoreTerrainBakes(terrain, state.Snapshot.get(), BakesMadeAStep);
 		const int level = std::clamp(terrain.FinestLevel, TerrainFinestLevel, TerrainCoarsestLevel);
 		const float size = GetTerrainChunkSize(level);
 		Detail::TerrainCollisionJobs& jobs = *state.Jobs;
