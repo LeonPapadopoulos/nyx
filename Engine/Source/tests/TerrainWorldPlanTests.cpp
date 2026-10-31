@@ -84,8 +84,8 @@ namespace
 				const float seaShare = ShareOf(*plan, ESdfTerrainLandform::Sea);
 				const float roughShare = ShareOf(*plan, ESdfTerrainLandform::Roughland, true);
 				std::cout << "Sea " << sea << ", rough land " << rough << ": " << seaShare << " of the land under the sea, " << roughShare << " of the rest rough\n";
-				Require(std::fabs(seaShare - sea) < 0.08f, "The sea should take about its share");
-				Require(std::fabs(roughShare - rough) < 0.1f, "Rough land should take about its share");
+				Require(std::fabs(seaShare - sea) < 0.02f, "The sea should take its share");
+				Require(std::fabs(roughShare - rough) < 0.02f, "Rough land should take its share");
 			}
 		}
 		SdfTerrainWorldPlan none;

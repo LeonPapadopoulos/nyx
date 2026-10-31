@@ -484,9 +484,11 @@ namespace Nyx
 			}
 		};
 
-		// The sea and lakes over their cells and the cells beside them, at the highest water beside a
-		// cell
+		// The sea and lakes over their cells and the shore's cells beside them, at the water beside: the
+		// ground hides what is under it. Not beside water where the ground is well above it, where a
+		// tunnel or cave below would show it.
 		const float half = TerrainWater::CellSize * 0.5f;
+		constexpr float ShoreReach = 3.0f;
 		for (int j = 0; j < water.Cells; ++j)
 		{
 			for (int i = 0; i < water.Cells; ++i)
@@ -503,7 +505,7 @@ namespace Nyx
 					const int ni = i + side.Di;
 					const int nj = j + side.Dj;
 					if (body == EBody::None && ni >= 0 && nj >= 0 && ni < water.Cells && nj < water.Cells && water.Body[water.IndexOf(ni, nj)] != EBody::None
-						&& water.Level[water.IndexOf(ni, nj)] > level)
+						&& water.Level[water.IndexOf(ni, nj)] > level && water.Ground[index] < water.Level[water.IndexOf(ni, nj)] + ShoreReach)
 					{
 						level = water.Level[water.IndexOf(ni, nj)];
 						body = water.Body[water.IndexOf(ni, nj)];

@@ -1255,7 +1255,7 @@ namespace
 			Require(BitsOf(Nyx::SampleTerrainValue(terrain, glm::vec3(x[i], y[i], z[i]))) == BitsOf(values[i]), "A Plan layer's batch should be the same bits as one point");
 			hash = HashBits(hash, BitsOf(values[i]));
 		}
-		constexpr uint64_t Golden = 0x9cdfc145b66f4962ull;
+		constexpr uint64_t Golden = 0xa7cc4a7a53bf3c6eull;
 		std::cout << std::hex << "Plan layer golden hash: 0x" << hash << std::dec << "\n";
 		Require(hash == Golden, "A Plan layer's values changed");
 

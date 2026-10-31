@@ -2,10 +2,15 @@
 // ground below its level, pouring off where it reaches none; lakes filled above their ground; no
 // river over air; a rift dug across a river makes it fall there and run on from below, the same as
 // working everything out again; a lake whose rim is cut drops; the water kept up to date while the
-// chunks are, made again after an edit.
+// chunks are, made again after an edit; the world plan's scene, if written, with its character on
+// the ground.
+#include "CharacterComponent.h"
+#include "ComponentRegistration.h"
 #include "Entity.h"
 #include "JobSystem.h"
 #include "Log.h"
+#include "Paths.h"
+#include "SceneSerializer.h"
 #include "SdfTerrain.h"
 #include "TerrainChunks.h"
 #include "TerrainWater.h"
@@ -17,6 +22,7 @@
 
 #include <chrono>
 #include <cstring>
+#include <filesystem>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -212,17 +218,57 @@ namespace
 	}
 }
 
+namespace
+{
+	// The world plan's test scene (NyxTerrainGate3 --write-scene): its terrain has a Plan layer and
+	// water, and its character stands on the ground
+	void TestTheWorldScene()
+	{
+		// Written, not kept in the repository
+		const std::filesystem::path path = Nyx::Paths::GetAssetsDir() / "Scenes/SdfTerrainWorld.nyxscene";
+		if (!std::filesystem::exists(path))
+		{
+			std::cout << "The world plan's scene isn't written (NyxTerrainGate3 --write-scene): not tested\n";
+			return;
+		}
+		Registry world;
+		Require(SceneSerializer::LoadFromFile(path, world), "The world plan's scene can't be loaded");
+		Entity terrain;
+		bool bFound = false;
+		world.Each<SdfTerrainComponent>([&](Entity entity, SdfTerrainComponent&)
+			{
+				terrain = entity;
+				bFound = true;
+			});
+		Require(bFound && UsesTerrainWorldPlan(world.Get<SdfTerrainComponent>(terrain)), "The scene's terrain should have a Plan layer");
+		glm::vec3 feet(0.0f);
+		world.Each<CharacterComponent>([&](Entity entity, CharacterComponent&) { feet = world.Get<TransformComponent>(entity).Position; });
+		const std::optional<TerrainRayHit> ground = RayCastTerrain(world.Get<SdfTerrainComponent>(terrain), feet, glm::vec3(0.0f, -1.0f, 0.0f), 10.0f);
+		Require(ground.has_value() && feet.y - ground->Point.y < 2.0f, "The scene's character should stand on the ground");
+		world.Get<SdfTerrainComponent>(terrain).ViewDistance = 256.0f;
+		const auto start = std::chrono::steady_clock::now();
+		while (!world.Has<TerrainWaterComponent>(terrain) || world.Get<TerrainWaterComponent>(terrain).Made == 0)
+		{
+			UpdateTerrainChunks(world, { &feet, 1 }, JobSystem::Get());
+			Require(std::chrono::steady_clock::now() - start < std::chrono::seconds(60), "The scene's water should be worked out within a minute");
+			std::this_thread::sleep_for(std::chrono::milliseconds(5));
+		}
+	}
+}
+
 int main()
 {
 	try
 	{
 		std::cout << std::unitbuf;
 		Nyx::Logger::Get().Init();
+		Nyx::RegisterComponentTypes();
 		TerrainWater water;
 		TestTheWater(water);
 		TestRiftAcrossARiver(water);
 		TestLakeDrains(water);
 		TestKeptUpToDate();
+		TestTheWorldScene();
 	}
 	catch (const std::exception& error)
 	{

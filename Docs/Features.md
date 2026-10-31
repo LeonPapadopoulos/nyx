@@ -1574,6 +1574,10 @@ game, coarser the farther, and collides while the world runs.
     otherwise, and the wheel sizes it (not the camera's zoom or speed meanwhile); a ring shows where
     it lands, a line what it does. Its input is `TerrainBrushInput`'s (in the default input asset;
     added when an asset hasn't it).
+- `Assets/Scenes/SdfTerrainWorld.nyxscene` (written by `NyxTerrainGate3 --write-scene`): a world
+  plan 2 km wide made into ground, with its water and flat colours by rules (grass, rough grass,
+  dirt, stone, dark stone, sand, silt), thin fog, and a character beside a rift's inland end to walk
+  in Play or the game.
 - `Assets/Scenes/SdfTerrainTest.nyxscene` (written by `NyxTerrainChunksTests --write-scene`):
   terraced hills with tunnels under them, a floating landmass of sharp stone with a hanging
   underside and chambers inside, out to 2 km, a sun, a camera that flies, and six balls that fall on
@@ -1673,7 +1677,7 @@ game, coarser the farther, and collides while the world runs.
   level and pouring off, lakes above their ground, no river over air, a rift dug across a river
   making it fall there and the ground kept outside the dig giving the same water as all of it
   again, a lake whose rim is cut dropping, the water made again after an edit while the chunks are
-  kept up to date),
+  kept up to date, the world plan's scene with its character on the ground),
   `NyxTerrainWorldPlanTests` (the same bits from the same seed and another world from another, each
   kind about its share, pins making their kind, rifts opening the edge, rivers ending at an outlet
   with beds never rising, lakes holding water, boxes' bounds and the grids' slopes; `--maps <folder>`
@@ -1718,6 +1722,13 @@ game, coarser the farther, and collides while the world runs.
   edit against the meshes of the edits live in the last step; two worlds' region hashes and shared
   chunks; a save loaded, its samples, and edited on; a planted mismatch repaired; a chunk sampled
   under brush edits against none.
+- Gate 3 (`NyxTerrainGate3`, not in ctest): whether plains, rough land, rifts, the sea, the underside
+  and tunnels fit together in one world, and how the world plan steers them. `--report <folder>`
+  writes maps of a few seeds and plans (more sea, rough and rifted, plains, pinned) with their
+  shares, rivers, lakes and the time to make their plan and water, pictures of the test region
+  from high above, along a rift, at a shore, in a tunnel and under the edge, and each plan from
+  above, with `report.md`; `--shots <folder> [seed]` the region's pictures alone; `--write-scene`
+  the scene above.
 
 ## Scattering
 

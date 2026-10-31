@@ -134,6 +134,29 @@ namespace Nyx
 			}
 		}
 
+		// A blurred weight bent so that its share of the counted nodes is at 0.5 or above, as before the
+		// blur: the weight its share has goes to 0.5, 0 and 1 stay
+		void KeepShare(std::vector<float>& weight, const std::vector<uint8_t>& counted, float share)
+		{
+			if (!(share > 0.0f))
+			{
+				return;
+			}
+			std::vector<float> values;
+			for (size_t index = 0; index < weight.size(); ++index)
+			{
+				if (counted[index] != 0)
+				{
+					values.push_back(weight[index]);
+				}
+			}
+			const float middle = std::clamp(Threshold(std::move(values), share), 1e-3f, 1.0f - 1e-3f);
+			for (float& value : weight)
+			{
+				value = value <= middle ? 0.5f * value / middle : 0.5f + 0.5f * (value - middle) / (1.0f - middle);
+			}
+		}
+
 		// The distance from a point to a segment, and how far along it the nearest point is, 0 to 1
 		float SegmentDistance(const glm::vec2& point, const glm::vec2& a, const glm::vec2& b, float& outAlong)
 		{
@@ -469,6 +492,10 @@ namespace Nyx
 		const int blur = std::max(1, int(regionSize * 0.08f / Cell));
 		Blur(sea, nodes, std::max(1, int(regionSize * 0.2f / Cell)), 2);
 		Blur(rough, nodes, blur, 2);
+		KeepShare(sea, land, std::clamp(made.Sea, 0.0f, 0.8f));
+		std::vector<uint8_t> aboveSea(count);
+		forEach([&](int, int, size_t index, const glm::vec2&) { aboveSea[index] = land[index] != 0 && sea[index] < 0.5f ? 1 : 0; });
+		KeepShare(rough, aboveSea, std::clamp(made.Roughland, 0.0f, 1.0f));
 
 		// Tunnels: the same for their share of the land above the sea, leaning towards rough land
 		const FractalNoise3D tunnelNoise = PlanNoise(seed, EPlanNoise::Tunnels, 1.0f / regionSize, 3);
@@ -486,6 +513,7 @@ namespace Nyx
 		std::vector<float> tunnels(count);
 		forEach([&](int, int, size_t index, const glm::vec2&) { tunnels[index] = land[index] != 0 && sea[index] < 0.5f && tunnelScore[index] >= tunnelThreshold ? 1.0f : 0.0f; });
 		Blur(tunnels, nodes, blur, 2);
+		KeepShare(tunnels, aboveSea, std::clamp(made.Tunnels, 0.0f, 1.0f));
 
 		// The base heights
 		std::vector<float>& height = plan->Height;
