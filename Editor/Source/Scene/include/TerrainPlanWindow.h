@@ -24,6 +24,11 @@ namespace Nyx::Editor
 	// lakes, shaded by an overlay (height, slope, tunnels); its pins as rings; each scene view's
 	// camera as a wedge; what the plan made the place under the mouse to be. The wheel zooms round
 	// the mouse, the right or middle button drags it, Fit shows all of it. X runs right, Z down.
+	//
+	// Steering it (TerrainPlanEdits.h), each an undo step, the plan made again when the mouse lets
+	// go: a pin's middle dragged moves it, its ring sizes it; a double-click adds a pin of the kind
+	// chosen (a Rift pin: a rift passes there); a right-click on a pin changes its kind or removes
+	// it; the seed stepped or rolled.
 	class TerrainPlanWindow
 	{
 	public:
@@ -31,6 +36,8 @@ namespace Nyx::Editor
 
 		bool bOpen = false;
 		Nyx::ETerrainPlanMapOverlay Overlay = Nyx::ETerrainPlanMapOverlay::Kinds;
+		// What a double-click adds
+		Nyx::ESdfTerrainLandform NewPinKind = Nyx::ESdfTerrainLandform::Plains;
 
 	private:
 		// The map's picture, and the plan and overlay it was drawn from
@@ -40,5 +47,10 @@ namespace Nyx::Editor
 		// The terrain's point at the map's middle, and how many pixels a metre is; 0 fits it
 		glm::vec2 Center{ 0.0f };
 		float PixelsPerMetre = 0.0f;
+		// The pin being dragged, as it is now, and whether by its ring; the pin the menu is for
+		std::optional<size_t> Dragged;
+		bool bDraggingRing = false;
+		Nyx::SdfTerrainPlanPin DraggedPin;
+		std::optional<size_t> MenuPin;
 	};
 }

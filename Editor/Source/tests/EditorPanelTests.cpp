@@ -38,6 +38,7 @@
 #include "SdfTerrain.h"
 #include "SdfTerrainComponent.h"
 #include "SceneEditor.h"
+#include "TerrainPlanEdits.h"
 #include "SceneFilePopups.h"
 #include "SceneOutlinerPanel.h"
 #include "SceneSerializer.h"
@@ -610,6 +611,61 @@ namespace
 		Require(!brush.EndStroke(editing.Scene, editing.Transactions), "A stroke that edits nothing should be no undo step");
 		brush.bOn = false;
 		Require(!brush.IsActive(editing.Scene), "The brush should be off when turned off");
+	}
+
+	// The plan map's edits: a pin added, moved, sized, changed and removed, each an undo step undone
+	// and redone; the seed stepped; nothing changed, no undo step; the pin under a point by its
+	// middle, then its ring, the last on top
+	void TestTerrainPlanEdits()
+	{
+		SceneEditor editing;
+		Registry& world = editing.Scene.GetRegistry();
+		const Entity terrain = editing.Scene.CreateEntity("Terrain");
+		SdfTerrainComponent values;
+		values.Layers[0].Kind = ESdfTerrainLayerKind::Plan;
+		world.Add<SdfTerrainComponent>(terrain, values);
+		auto pinsOf = [&]() -> const std::vector<SdfTerrainPlanPin>& { return world.Get<SdfTerrainComponent>(terrain).Plan.Pins; };
+
+		SdfTerrainPlanPin sea;
+		sea.Landform = ESdfTerrainLandform::Sea;
+		sea.Position = glm::vec2(100.0f, -50.0f);
+		Require(SetTerrainPlanPins(editing, terrain, { sea }, "Add Plan Pin") && pinsOf().size() == 1, "A pin should be added");
+		Require(!SetTerrainPlanPins(editing, terrain, { sea }, "Add Plan Pin"), "The same pins should be no undo step");
+		std::vector<SdfTerrainPlanPin> moved = pinsOf();
+		moved[0].Position = glm::vec2(300.0f, 20.0f);
+		moved[0].Radius = 400.0f;
+		Require(SetTerrainPlanPins(editing, terrain, moved, "Move Plan Pin"), "A pin should be moved and sized");
+		moved[0].Landform = ESdfTerrainLandform::Rift;
+		Require(SetTerrainPlanPins(editing, terrain, moved, "Change Plan Pin") && pinsOf()[0].Landform == ESdfTerrainLandform::Rift, "A pin's kind should change");
+		editing.Undo();
+		Require(pinsOf()[0].Landform == ESdfTerrainLandform::Sea && pinsOf()[0].Position == glm::vec2(300.0f, 20.0f), "Undo should take the change back");
+		editing.Undo();
+		Require(pinsOf()[0].Position == sea.Position && pinsOf()[0].Radius == sea.Radius, "Undo should move the pin back");
+		editing.Redo();
+		editing.Redo();
+		Require(pinsOf()[0].Landform == ESdfTerrainLandform::Rift && pinsOf()[0].Radius == 400.0f, "Redo should bring both back");
+		Require(SetTerrainPlanPins(editing, terrain, {}, "Remove Plan Pin") && pinsOf().empty(), "A pin should be removed");
+		editing.Undo();
+		Require(pinsOf().size() == 1, "Undo should bring a removed pin back");
+
+		const uint32_t seed = world.Get<SdfTerrainComponent>(terrain).Seed;
+		Require(SetTerrainSeed(editing, terrain, seed + 1) && world.Get<SdfTerrainComponent>(terrain).Seed == seed + 1, "The seed should step");
+		Require(!SetTerrainSeed(editing, terrain, seed + 1), "The same seed should be no undo step");
+		editing.Undo();
+		Require(world.Get<SdfTerrainComponent>(terrain).Seed == seed, "Undo should take the seed back");
+		Require(!SetTerrainSeed(editing, editing.Scene.CreateEntity("Not a terrain"), 5), "An entity without a terrain should change nothing");
+
+		SdfTerrainPlanPin under;
+		under.Position = glm::vec2(0.0f);
+		under.Radius = 100.0f;
+		SdfTerrainPlanPin over = under;
+		over.Position = glm::vec2(10.0f, 0.0f);
+		const std::vector<SdfTerrainPlanPin> two = { under, over };
+		const std::optional<TerrainPinHit> middle = FindTerrainPinAt(two, glm::vec2(9.0f, 0.0f), 5.0f);
+		Require(middle && middle->Index == 1 && !middle->bRing, "A pin's middle should be found, the last on top");
+		const std::optional<TerrainPinHit> ring = FindTerrainPinAt(two, glm::vec2(-98.0f, 0.0f), 5.0f);
+		Require(ring && ring->Index == 0 && ring->bRing, "A pin's ring should be found");
+		Require(!FindTerrainPinAt(two, glm::vec2(50.0f, 50.0f), 5.0f), "Between them, nothing");
 	}
 
 	// A scatter and a blocker in the editor, followed each frame as EditorLayer::OnUpdate() follows
@@ -2417,6 +2473,7 @@ int main()
 		TestGroundFollowsEdits();
 		TestScatterFollowsBlockers();
 		TestTerrainBrushStroke();
+		TestTerrainPlanEdits();
 		TestDetailsHaveNoConflictingIds();
 		TestEntityReferenceCombo();
 		TestEntityReferenceDropFromOutliner();

@@ -6,6 +6,7 @@
 #include "NameComponent.h"
 #include "SceneEditor.h"
 #include "SdfTerrainComponent.h"
+#include "TerrainPlanEdits.h"
 #include "TerrainWorldPlan.h"
 #include "TransformComponent.h"
 #include "UIWidgets.h"
@@ -16,6 +17,7 @@
 #include <array>
 #include <cmath>
 #include <format>
+#include <random>
 #include <string>
 
 namespace Nyx::Editor
@@ -114,6 +116,23 @@ namespace Nyx::Editor
 		// What it shows: the terrain, the overlay, all of it
 		const std::string name = world.Has<Nyx::NameComponent>(*terrain) ? world.Get<Nyx::NameComponent>(*terrain).Name : std::string("Terrain");
 		NYX_UI(ImGui::Text("%s, seed %u", name.c_str(), values.Seed));
+		// Another world of the same plan
+		ImGui::SameLine();
+		if (NYX_UI(Nyx::UI::Button("<")) && values.Seed > 0)
+		{
+			SetTerrainSeed(editing, *terrain, values.Seed - 1);
+		}
+		ImGui::SameLine();
+		if (NYX_UI(Nyx::UI::Button(">")))
+		{
+			SetTerrainSeed(editing, *terrain, values.Seed + 1);
+		}
+		ImGui::SameLine();
+		if (NYX_UI(Nyx::UI::Button("Roll")))
+		{
+			std::random_device random;
+			SetTerrainSeed(editing, *terrain, random());
+		}
 		ImGui::SameLine();
 		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 7.0f);
 		if (NYX_UI(Nyx::UI::BeginCombo("##Overlay", OverlayNames[size_t(Overlay)])))
@@ -131,6 +150,20 @@ namespace Nyx::Editor
 		if (NYX_UI(Nyx::UI::Button("Fit")))
 		{
 			PixelsPerMetre = 0.0f;
+		}
+		ImGui::SameLine();
+		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 8.0f);
+		if (NYX_UI(Nyx::UI::BeginCombo("New pin", LandformName(NewPinKind))))
+		{
+			for (const Nyx::ESdfTerrainLandform kind : { Nyx::ESdfTerrainLandform::Plains, Nyx::ESdfTerrainLandform::Roughland, Nyx::ESdfTerrainLandform::Sea,
+					 Nyx::ESdfTerrainLandform::Tunnels, Nyx::ESdfTerrainLandform::Rift })
+			{
+				if (NYX_UI(Nyx::UI::Selectable(LandformName(kind), kind == NewPinKind)))
+				{
+					NewPinKind = kind;
+				}
+			}
+			Nyx::UI::EndCombo();
 		}
 
 		// Its picture, drawn again when the plan or the overlay changed
@@ -182,14 +215,97 @@ namespace Nyx::Editor
 			Center -= glm::vec2(io.MouseDelta.x, io.MouseDelta.y) / PixelsPerMetre;
 		}
 
+		// Steering: a pin dragged by its middle or ring, the plan made again when the mouse lets go;
+		// a double-click adds one; a right-click, not a drag, opens a pin's menu
+		const std::vector<Nyx::SdfTerrainPlanPin>& pins = values.Plan.Pins;
+		const glm::vec2 under = toPlan(io.MousePos);
+		const float tolerance = 8.0f / PixelsPerMetre;
+		if (bHovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && !FindTerrainPinAt(pins, under, tolerance))
+		{
+			std::vector<Nyx::SdfTerrainPlanPin> added = pins;
+			Nyx::SdfTerrainPlanPin pin;
+			pin.Landform = NewPinKind;
+			pin.Position = under;
+			pin.Radius = NewPinKind == Nyx::ESdfTerrainLandform::Rift ? 60.0f : 250.0f;
+			added.push_back(pin);
+			SetTerrainPlanPins(editing, *terrain, added, "Add Plan Pin");
+			Dragged.reset();
+		}
+		else if (bHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+		{
+			if (const std::optional<TerrainPinHit> hit = FindTerrainPinAt(pins, under, tolerance))
+			{
+				Dragged = hit->Index;
+				bDraggingRing = hit->bRing;
+				DraggedPin = pins[hit->Index];
+			}
+		}
+		if (Dragged && *Dragged >= pins.size())
+		{
+			Dragged.reset();
+		}
+		if (Dragged && ImGui::IsMouseDown(ImGuiMouseButton_Left))
+		{
+			if (bDraggingRing)
+			{
+				DraggedPin.Radius = std::max(glm::length(under - DraggedPin.Position), 10.0f);
+			}
+			else
+			{
+				DraggedPin.Position += glm::vec2(io.MouseDelta.x, io.MouseDelta.y) / PixelsPerMetre;
+			}
+		}
+		else if (Dragged)
+		{
+			std::vector<Nyx::SdfTerrainPlanPin> moved = pins;
+			moved[*Dragged] = DraggedPin;
+			SetTerrainPlanPins(editing, *terrain, moved, bDraggingRing ? "Size Plan Pin" : "Move Plan Pin");
+			Dragged.reset();
+		}
+		if (bHovered && ImGui::IsMouseReleased(ImGuiMouseButton_Right) && ImGui::GetMouseDragDelta(ImGuiMouseButton_Right, 0.0f).x == 0.0f &&
+			ImGui::GetMouseDragDelta(ImGuiMouseButton_Right, 0.0f).y == 0.0f)
+		{
+			if (const std::optional<TerrainPinHit> hit = FindTerrainPinAt(pins, under, tolerance))
+			{
+				MenuPin = hit->Index;
+				ImGui::OpenPopup("##PlanPin");
+			}
+		}
+		if (ImGui::BeginPopup("##PlanPin"))
+		{
+			if (MenuPin && *MenuPin < pins.size())
+			{
+				for (const Nyx::ESdfTerrainLandform kind : { Nyx::ESdfTerrainLandform::Plains, Nyx::ESdfTerrainLandform::Roughland, Nyx::ESdfTerrainLandform::Sea,
+					 Nyx::ESdfTerrainLandform::Tunnels, Nyx::ESdfTerrainLandform::Rift })
+				{
+					if (NYX_UI(Nyx::UI::Selectable(LandformName(kind), pins[*MenuPin].Landform == kind)))
+					{
+						std::vector<Nyx::SdfTerrainPlanPin> changed = pins;
+						changed[*MenuPin].Landform = kind;
+						SetTerrainPlanPins(editing, *terrain, changed, "Change Plan Pin");
+					}
+				}
+				Nyx::UI::Separator();
+				if (NYX_UI(Nyx::UI::Selectable("Remove")))
+				{
+					std::vector<Nyx::SdfTerrainPlanPin> removed = pins;
+					removed.erase(removed.begin() + std::ptrdiff_t(*MenuPin));
+					SetTerrainPlanPins(editing, *terrain, removed, "Remove Plan Pin");
+					MenuPin.reset();
+				}
+			}
+			ImGui::EndPopup();
+		}
+
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		drawList->PushClipRect(origin, ImVec2(origin.x + size.x, origin.y + size.y), true);
 		drawList->AddRectFilled(origin, ImVec2(origin.x + size.x, origin.y + size.y), IM_COL32(22, 24, 28, 255));
 		drawList->AddImage(ImTextureRef(renderer.GetUIImageTextureId(Image)), toScreen(planMin), toScreen(planMin + glm::vec2(across)));
 
 		// The pins: a ring as far as each steers, its kind by its colour
-		for (const Nyx::SdfTerrainPlanPin& pin : values.Plan.Pins)
+		for (size_t index = 0; index < values.Plan.Pins.size(); ++index)
 		{
+			const Nyx::SdfTerrainPlanPin& pin = Dragged && *Dragged == index ? DraggedPin : values.Plan.Pins[index];
 			const ImVec2 at = toScreen(pin.Position);
 			const ImU32 colour = PinColour(pin.Landform);
 			drawList->AddCircle(at, std::max(pin.Radius * PixelsPerMetre, 3.0f), colour, 48, 2.0f);
@@ -231,7 +347,6 @@ namespace Nyx::Editor
 		// What is under the mouse
 		if (bHovered)
 		{
-			const glm::vec2 under = toPlan(io.MousePos);
 			const Nyx::TerrainPlanReadout readout = Nyx::ReadTerrainWorldPlan(*plan, under);
 			const std::string line = readout.bLand
 				? std::format("x {:.0f}, z {:.0f}: {}, ground {:.0f} m, slope {:.0f} degrees, tunnels {:.1f}, a rift's floor {:.0f} m off", under.x, under.y,
@@ -241,7 +356,7 @@ namespace Nyx::Editor
 		}
 		else
 		{
-			NYX_UI(ImGui::TextDisabled("The wheel zooms, the right or middle button drags"));
+			NYX_UI(ImGui::TextDisabled("The wheel zooms, the right or middle button drags; a double-click adds a pin, its middle moves it, its ring sizes it"));
 		}
 		ImGui::End();
 	}

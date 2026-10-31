@@ -1633,6 +1633,11 @@ game, coarser the farther, and collides while the world runs.
     camera as a wedge; under the mouse, what the plan made the place (`ReadTerrainWorldPlan()`). The
     wheel zooms round the mouse, the right or middle button drags, *Fit* shows all of it; X runs
     right and Z down. It is drawn again whenever the plan changes.
+  - Steering on the map (`TerrainPlanEdits.h`), each an undo step that running games get, the plan
+    made again when the mouse lets go: a pin's middle dragged moves it, its ring sizes it; a
+    double-click adds a pin of the kind in *New pin* (a *Rift* pin, 60 m: a rift passes there); a
+    right-click on a pin changes its kind or removes it; *<* and *>* step the seed, *Roll* picks
+    one.
 - Water, for a terrain with a *Plan* layer (`TerrainWater.h`): where it stands, worked out from the
   plan and the ground as it is now, edits and all, on a worker whenever the layers, plan or edits
   change (the ground found again only where edits reached: about 100 ms for 2 km on every worker,
@@ -1726,7 +1731,9 @@ game, coarser the farther, and collides while the world runs.
   again for new values while the old stay, gone with the terrain; a dig making only the chunks it
   reaches again, undone, a stroke of edits while chunks are made leaving none stale, drawn with
   collision or at the deadline; material rules down a rift's side, each vertex the first it meets; the terrain brush's strokes, rays and ring; the sample scene),
-  `NyxEditorPanelTests` (among the rest, a terrain brush stroke one undo step),
+  `NyxEditorPanelTests` (among the rest, a terrain brush stroke one undo step; the plan map's pins
+  added, moved, sized, changed and removed and the seed stepped, each undone and redone, the pin
+  under a point),
   `NyxTerrainChunksGpuTests` (the chunks drawn at three levels, picked as the terrain, in the debug
   view's colours, drawn where it is moved; a closed chamber next to black with sky occlusion and
   open ground as without; a slab's shadow on the ground past the sun's shadow distance), `NyxTerrainCollisionTests` (the way out of a hill, a
