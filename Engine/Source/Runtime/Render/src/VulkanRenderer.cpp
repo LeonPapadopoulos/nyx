@@ -29,6 +29,7 @@
 #include "WindField.h"
 #include "RuntimeMeshComponent.h"
 #include "TerrainChunks.h"
+#include "TerrainWater.h"
 #include "Paths.h"
 #include "Profiler.h"
 
@@ -1716,6 +1717,19 @@ namespace Nyx
 							if (world.Objects.size() > objects)
 							{
 								world.Objects.back().FirstShadowCascade = chunk.FirstShadowCascade;
+							}
+						}
+					}
+					// Its water, in the water's vertex colours, casting no shadow
+					if (registry.Has<Nyx::TerrainWaterComponent>(entity))
+					{
+						if (Nyx::Mesh* water = RuntimeMeshes.Acquire(Context, registry.Get<Nyx::TerrainWaterComponent>(entity).Mesh))
+						{
+							const size_t objects = world.Objects.size();
+							addObject(water, entityWorld, entityDraw, false);
+							if (world.Objects.size() > objects)
+							{
+								world.Objects.back().bCastShadows = false;
 							}
 						}
 					}

@@ -109,6 +109,12 @@ add_dependencies(NyxTerrainWorldPlanTests NyxGeneratedReflection)
 set_property(TARGET NyxTerrainWorldPlanTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxTerrainWorldPlanTests COMMAND NyxTerrainWorldPlanTests)
 
+add_executable(NyxTerrainWaterTests TerrainWaterTests.cpp)
+target_link_libraries(NyxTerrainWaterTests PRIVATE NyxEngine)
+add_dependencies(NyxTerrainWaterTests NyxGeneratedReflection)
+set_property(TARGET NyxTerrainWaterTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxTerrainWaterTests COMMAND NyxTerrainWaterTests)
+
 # Dual meshing of a sampled field: a sphere closed with the right area, a box's corners sharp or
 # rounded, thin shapes closed and facing out, neighbouring chunks meeting, sky visibility,
 # materials, the golden mesh. Prints how long a chunk takes to sample and mesh.

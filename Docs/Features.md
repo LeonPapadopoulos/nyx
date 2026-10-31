@@ -1611,6 +1611,18 @@ game, coarser the farther, and collides while the world runs.
   wide a stretch of one kind is. *Pins* steer it: more plains, rough land, sea or tunnels round a
   place, or a rift that passes it, the seed still shaping the rest. A 2 km plan takes about 15 ms, a
   20 km one under 2 s.
+- Water, for a terrain with a *Plan* layer (`TerrainWater.h`): where it stands, worked out from the
+  plan and the ground as it is now, edits and all, on a worker whenever the layers, plan or edits
+  change (the ground found again only where edits reached: about 100 ms for 2 km on every worker,
+  a few ms after an edit), drawn with the terrain in flat colours and never saved, as the same
+  ground always gives the same water. The sea fills everything connected to the plan's sea below
+  its level, and pours off the edge and into what is far deeper than its floor; lakes fill from the
+  lowest ground near their middle up to where they spill, so one whose rim is cut drops; rivers run
+  along their beds a little below the ground beside them, and where the ground under a bed is gone
+  (a rift or a dig across it) fall there, to the ground below or into the air, and run on downhill
+  from where they land, pooling in hollows, to the sea, a lake or an edge; below the cut their old
+  course is dry. *Terrain Water* in the details panel's *Runtime* section: its cells of sea and of
+  lakes, rivers and falls, how often and how long it was worked out.
 - The field (`SdfTerrain.h`): `SampleTerrain()` gives the value at a point (negative inside, 0 on the
   surface) and its material, `SampleTerrainBatch()` many points, the same bits, with the 3D noise
   eight points at a time. A batch goes in blocks of 64 points, and a layer that is proven not to
@@ -1653,6 +1665,11 @@ game, coarser the farther, and collides while the world runs.
   digs, heaps and paint, batches the same bits, within box ranges and the slope bound, a copy with
   only the edits reaching a box the same bits in it, a box carried across edits as if taken at
   once),
+  `NyxTerrainWaterTests` (the same water alone and on the workers, the sea only on ground below its
+  level and pouring off, lakes above their ground, no river over air, a rift dug across a river
+  making it fall there and the ground kept outside the dig giving the same water as all of it
+  again, a lake whose rim is cut dropping, the water made again after an edit while the chunks are
+  kept up to date),
   `NyxTerrainWorldPlanTests` (the same bits from the same seed and another world from another, each
   kind about its share, pins making their kind, rifts opening the edge, rivers ending at an outlet
   with beds never rising, lakes holding water, boxes' bounds and the grids' slopes; `--maps <folder>`

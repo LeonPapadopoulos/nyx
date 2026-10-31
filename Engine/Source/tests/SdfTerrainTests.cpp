@@ -1255,7 +1255,7 @@ namespace
 			Require(BitsOf(Nyx::SampleTerrainValue(terrain, glm::vec3(x[i], y[i], z[i]))) == BitsOf(values[i]), "A Plan layer's batch should be the same bits as one point");
 			hash = HashBits(hash, BitsOf(values[i]));
 		}
-		constexpr uint64_t Golden = 0x547e91374c8a829full;
+		constexpr uint64_t Golden = 0x9cdfc145b66f4962ull;
 		std::cout << std::hex << "Plan layer golden hash: 0x" << hash << std::dec << "\n";
 		Require(hash == Golden, "A Plan layer's values changed");
 
@@ -1324,8 +1324,11 @@ namespace
 		Require(value(*plains, made.Height + made.PlainsHeight * 2.0f + 1.0f) > 0.0f && value(*plains, made.Height - made.PlainsHeight * 2.0f - 1.0f) < 0.0f, "The plains should be at their height");
 		Require(value(*plains, made.Height - made.Thickness + 5.0f) < 0.0f && value(*plains, made.Height - made.Thickness - made.UndersideDepth - 5.0f) > 0.0f,
 			"The landmass should be solid down to its underside and open below it");
-		const std::optional<glm::vec2> sea = findNode([&](size_t index) { return plan->Landform[index] == uint8_t(Nyx::ESdfTerrainLandform::Sea) && plan->Height[index] < made.SeaLevel - made.SeaDepth * 0.9f && plan->Rift[index] >= TerrainWorldPlan::MaxReach; });
-		Require(sea.has_value() && value(*sea, made.SeaLevel - 1.0f) > 0.0f && value(*sea, made.SeaLevel - made.SeaDepth - made.PlainsHeight - 2.0f) < 0.0f, "The sea's floor should be below its level");
+		const std::optional<glm::vec2> sea = findNode([&](size_t index) { return plan->Landform[index] == uint8_t(Nyx::ESdfTerrainLandform::Sea) && plan->Height[index] < made.SeaLevel - made.SeaDepth * 0.5f && plan->Rift[index] >= TerrainWorldPlan::MaxReach
+				  && plan->EdgeValue(plan->PointOf(int(index % size_t(plan->Nodes)), int(index / size_t(plan->Nodes))).x, plan->PointOf(int(index % size_t(plan->Nodes)), int(index / size_t(plan->Nodes))).y) < -40.0f; });
+		Require(sea.has_value(), "There should be sea away from the edge");
+		const float seaFloor = plan->At(plan->Height, sea->x, sea->y) - plan->At(plan->PlainsAmplitude, sea->x, sea->y) * 2.0f - 2.0f;
+		Require(value(*sea, made.SeaLevel - 1.0f) > 0.0f && value(*sea, seaFloor) < 0.0f, "The sea's floor should be below its level");
 		const std::optional<glm::vec2> rift = findNode([&](size_t index) { return plan->Rift[index] < -15.0f && plan->Landform[index] != uint8_t(Nyx::ESdfTerrainLandform::Sea); });
 		Require(rift.has_value(), "There should be a rift");
 		const float riftHeight = plan->At(plan->Height, rift->x, rift->y);

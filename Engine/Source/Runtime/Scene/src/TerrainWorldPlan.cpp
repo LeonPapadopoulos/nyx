@@ -464,9 +464,10 @@ namespace Nyx
 		std::vector<float> rough(count);
 		forEach([&](int, int, size_t index, const glm::vec2&) { rough[index] = land[index] != 0 && sea[index] == 0.0f && roughScore[index] >= roughThreshold ? 1.0f : 0.0f; });
 
-		// Each blurred into a weight that goes from 0 to 1 over a few nodes, so they blend
+		// Each blurred into a weight that goes from 0 to 1 over a few nodes, so they blend; the sea over
+		// more, so its shores slope
 		const int blur = std::max(1, int(regionSize * 0.08f / Cell));
-		Blur(sea, nodes, blur, 2);
+		Blur(sea, nodes, std::max(1, int(regionSize * 0.2f / Cell)), 2);
 		Blur(rough, nodes, blur, 2);
 
 		// Tunnels: the same for their share of the land above the sea, leaning towards rough land
