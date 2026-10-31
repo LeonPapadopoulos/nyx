@@ -102,6 +102,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/SdfTerrain.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/TerrainBrush.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/TerrainSave.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/TerrainWorldPlan.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/TerrainChunks.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/GroundMesh.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ScatterComponent.cpp
@@ -342,6 +343,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/SdfTerrainComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/TerrainBrush.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/TerrainSave.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/TerrainWorldPlan.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/TerrainChunks.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/GroundMesh.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ScatterComponent.h

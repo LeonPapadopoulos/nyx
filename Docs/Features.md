@@ -1594,6 +1594,17 @@ game, coarser the farther, and collides while the world runs.
     machine.
   - *Noise*: *Seed* (added to the terrain's *Seed*), *Octaves*, *Frequency*, *Lacunarity*, *Gain*,
     *Ridged* for sharp crests.
+- *World Plan*: what the world is made of and in what proportions, worked out once from the
+  terrain's *Seed* on a grid of 16 m (`MakeTerrainWorldPlan()`, `TerrainWorldPlan.h`), the same on
+  every machine and never saved: a floating landmass about *Size* wide with an edge going in and out
+  by *Edge Roughness*; *Sea* of it under the sea, mostly by the edge; *Roughland* of the rest rough,
+  standing *Rough Lift* higher, the rest plains; *Rifts* cut from outside the edge inland, *Rift
+  Length* long and *Rift Width* wide, narrowing; *Rivers* from the highest rough land down to the
+  sea, over the edge, into a rift or another river, their beds never rising; *Lakes* dug into the
+  plains and filled to where they spill; *Tunnels*, most in rough land. *Region Size* is about how
+  wide a stretch of one kind is. *Pins* steer it: more plains, rough land, sea or tunnels round a
+  place, or a rift that passes it, the seed still shaping the rest. A 2 km plan takes about 15 ms, a
+  20 km one under 2 s.
 - The field (`SdfTerrain.h`): `SampleTerrain()` gives the value at a point (negative inside, 0 on the
   surface) and its material, `SampleTerrainBatch()` many points, the same bits, with the 3D noise
   eight points at a time. A batch goes in blocks of 64 points, and a layer that is proven not to
@@ -1633,6 +1644,10 @@ game, coarser the farther, and collides while the world runs.
   digs, heaps and paint, batches the same bits, within box ranges and the slope bound, a copy with
   only the edits reaching a box the same bits in it, a box carried across edits as if taken at
   once),
+  `NyxTerrainWorldPlanTests` (the same bits from the same seed and another world from another, each
+  kind about its share, pins making their kind, rifts opening the edge, rivers ending at an outlet
+  with beds never rising, lakes holding water, boxes' bounds and the grids' slopes; `--maps <folder>`
+  writes maps of a few seeds and plans),
   `NyxTerrainChunksTests` (the octree covering the view distance once, balanced, each level where
   its distance says, held by the hysteresis; every seam closed with both meshers and half-metre
   cells; chunks made on the workers the same bits as made directly, only where the surface is,

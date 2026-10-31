@@ -244,6 +244,140 @@ namespace Nyx
 		std::shared_ptr<const SdfTerrainBakedBrick> Baked;
 	};
 
+	// A kind of ground a world plan places (SdfTerrainWorldPlan). Saved as its number: new kinds go at
+	// the end.
+	NYX_ENUM()
+	enum class ESdfTerrainLandform : uint8_t
+	{
+		// Low, gentle ground
+		Plains,
+		// Higher, broken ground with crests
+		Roughland,
+		// A deep cut from the landmass's edge inland
+		Rift,
+		// Ground below the sea's level
+		Sea,
+		// Tunnels through the ground
+		Tunnels
+	};
+
+	// A place a world plan is steered to make one kind of ground: the seed still shapes it, round it
+	NYX_REFLECT()
+	struct SdfTerrainPlanPin
+	{
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Tooltip = "Plains, Roughland, Sea and Tunnels: more of that kind round it; Rift: a rift passes it"))
+		ESdfTerrainLandform Landform = ESdfTerrainLandform::Plains;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DragSpeed = 4.0, Tooltip = "Along X and Z, in metres, in the terrain's space"))
+		glm::vec2 Position{ 0.0f };
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DragSpeed = 4.0, Tooltip = "How far round it, in metres, it steers"))
+		float Radius = 250.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DragSpeed = 0.05, Tooltip = "How strongly: 1 nearly always wins at its middle, 0 does nothing"))
+		float Strength = 1.0f;
+	};
+
+	// What a world is made of, in what proportions, worked out once from the terrain's seed
+	// (MakeTerrainWorldPlan(), TerrainWorldPlan.h) on a grid of 16 m: a floating landmass of plains and rough land with sea on it, rifts cut from its edge
+	// inland, rivers running down to the sea, a lake, a rift or over the edge, lakes, and tunnels.
+	// Never saved itself: the same seed and these values make the same plan on every machine.
+	NYX_REFLECT()
+	struct SdfTerrainWorldPlan
+	{
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "World", DragSpeed = 8.0, Tooltip = "How wide the world is, in metres: the landmass lies within a square this wide round the terrain's middle"))
+		float Size = 2048.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Region Size", Category = "World", DragSpeed = 4.0, Tooltip = "About how wide, in metres, a stretch of one kind of ground is"))
+		float RegionSize = 450.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "World", DragSpeed = 1.0, Tooltip = "The plains' height, in metres"))
+		float Height = 20.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "World", DragSpeed = 1.0, Tooltip = "How thick the landmass is, in metres, from its top down to where its underside starts hanging"))
+		float Thickness = 140.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Underside Depth", Category = "World", DragSpeed = 1.0, Tooltip = "How far, in metres, its underside hangs below that in ridges"))
+		float UndersideDepth = 90.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Edge Roughness", Category = "World", DragSpeed = 1.0, Tooltip = "How far, in metres, its edge goes in and out"))
+		float EdgeRoughness = 160.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "World", DragSpeed = 0.1, Tooltip = "Over how many metres its rim is rounded where the top meets the edge"))
+		float Rounding = 6.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Sea", DragSpeed = 0.01, Tooltip = "How much of the landmass is under the sea, 0 to 0.8; mostly by its edge, where it pours off"))
+		float Sea = 0.2f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Sea Level", Category = "Sea", DragSpeed = 0.5, Tooltip = "The sea's height, in metres"))
+		float SeaLevel = 0.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Sea Depth", Category = "Sea", DragSpeed = 0.5, Tooltip = "How deep, in metres, the sea's floor lies below its level, away from the shore"))
+		float SeaDepth = 25.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Rough Land", DragSpeed = 0.01, Tooltip = "How much of the land above the sea is rough, 0 to 1; the rest is plains"))
+		float Roughland = 0.35f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Rough Lift", Category = "Rough Land", DragSpeed = 0.5, Tooltip = "How much higher, in metres, rough land stands than the plains"))
+		float RoughLift = 35.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Rough Height", Category = "Rough Land", DragSpeed = 0.5, Tooltip = "How far, in metres, rough land's crests rise and its hollows fall"))
+		float RoughHeight = 50.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Plains Height", Category = "Rough Land", DragSpeed = 0.1, Tooltip = "How far, in metres, the plains rise and fall"))
+		float PlainsHeight = 5.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Rifts", Tooltip = "How many rifts are cut from the edge inland, besides those Rift pins ask for"))
+		uint32_t Rifts = 2;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Rift Length", Category = "Rifts", DragSpeed = 4.0, Tooltip = "How far inland, in metres, a rift reaches"))
+		float RiftLength = 800.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Rift Width", Category = "Rifts", DragSpeed = 0.5, Tooltip = "How wide, in metres, a rift is at its floor at the edge, narrowing inland"))
+		float RiftWidth = 60.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Rift Depth", Category = "Rifts", DragSpeed = 1.0, Tooltip = "How deep, in metres, a rift is cut below the ground's height; deeper than the landmass is thick, open below"))
+		float RiftDepth = 180.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Rift Flare", Category = "Rifts", DragSpeed = 0.01, Tooltip = "How much wider a rift is a metre higher up, from its floor"))
+		float RiftFlare = 0.15f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Rift Roughness", Category = "Rifts", DragSpeed = 0.1, Tooltip = "How far, in metres, a rift's walls go in and out in ledges and hollows"))
+		float RiftRoughness = 6.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Water", Tooltip = "How many rivers, from high ground down to the sea, a lake, a rift or over the edge"))
+		uint32_t Rivers = 3;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "River Width", Category = "Water", DragSpeed = 0.1, Tooltip = "How wide a river's bed is, in metres"))
+		float RiverWidth = 12.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "River Depth", Category = "Water", DragSpeed = 0.1, Tooltip = "How deep a river's bed is cut, in metres"))
+		float RiverDepth = 3.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Water", Tooltip = "How many lakes are dug in the plains"))
+		uint32_t Lakes = 2;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Lake Radius", Category = "Water", DragSpeed = 1.0, Tooltip = "About how far a lake's basin reaches from its middle, in metres"))
+		float LakeRadius = 90.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Lake Depth", Category = "Water", DragSpeed = 0.1, Tooltip = "How deep a lake's basin is dug, in metres"))
+		float LakeDepth = 8.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Tunnels", DragSpeed = 0.01, Tooltip = "How much tunnels there are, 0 to 1: most in rough land, none under the sea"))
+		float Tunnels = 0.5f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Tunnel Width", Category = "Tunnels", DragSpeed = 0.1, Tooltip = "About how wide a tunnel is, in metres"))
+		float TunnelWidth = 9.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Tunnel Spacing", Category = "Tunnels", DragSpeed = 1.0, Tooltip = "About how far apart, in metres, tunnels wind"))
+		float TunnelSpacing = 70.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Tooltip = "Places steered to one kind of ground"))
+		std::vector<SdfTerrainPlanPin> Pins;
+	};
+
+	struct TerrainWorldPlan;
+
 	// Terrain as a signed field over a volume, so it can overhang, hollow out and float: a stack of
 	// layers, each joined to what the ones before it made, evaluated in order, then the edits made to
 	// it, in the order of their revisions. Its value at a point (SampleTerrain(), SdfTerrain.h) is a
@@ -258,6 +392,9 @@ namespace Nyx
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Terrain", Tooltip = "Evaluated in order, each joined to what the ones before it made"))
 		std::vector<SdfTerrainLayer> Layers{ SdfTerrainLayer{} };
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "World Plan", Category = "Terrain", Tooltip = "What the world is made of and in what proportions"))
+		SdfTerrainWorldPlan Plan;
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "View Distance", Category = "Chunks", DragSpeed = 4.0, Tooltip = "How far from the camera, in metres, chunks are made and drawn, coarser the farther"))
 		float ViewDistance = 1024.0f;
@@ -302,6 +439,10 @@ namespace Nyx
 		// (AppendTerrainEdit())
 		NYX_PROPERTY(Serialize)
 		std::vector<SdfTerrainEdit> Edits;
+
+		// The plan made from Seed and Plan, run-time only: made again when either changes
+		// (GetTerrainWorldPlan(), TerrainWorldPlan.h)
+		std::shared_ptr<const TerrainWorldPlan> Planned;
 	};
 }
 

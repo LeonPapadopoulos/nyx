@@ -102,6 +102,13 @@ add_dependencies(NyxSdfTerrainTests NyxGeneratedReflection)
 set_property(TARGET NyxSdfTerrainTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxSdfTerrainTests COMMAND NyxSdfTerrainTests)
 
+# The world plan; --maps <folder> writes maps of a few seeds and plans
+add_executable(NyxTerrainWorldPlanTests TerrainWorldPlanTests.cpp TerrainWorldPlanMap.h)
+target_link_libraries(NyxTerrainWorldPlanTests PRIVATE NyxEngine)
+add_dependencies(NyxTerrainWorldPlanTests NyxGeneratedReflection)
+set_property(TARGET NyxTerrainWorldPlanTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxTerrainWorldPlanTests COMMAND NyxTerrainWorldPlanTests)
+
 # Dual meshing of a sampled field: a sphere closed with the right area, a box's corners sharp or
 # rounded, thin shapes closed and facing out, neighbouring chunks meeting, sky visibility,
 # materials, the golden mesh. Prints how long a chunk takes to sample and mesh.
