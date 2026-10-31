@@ -32,6 +32,7 @@
 #include "TerrainBrush.h"
 #include "TerrainChunks.h"
 #include "TerrainSave.h"
+#include "TerrainWorldPlan.h"
 #include "TestSupport.h"
 #include "TransformComponent.h"
 
@@ -970,6 +971,70 @@ namespace
 
 	const std::filesystem::path SampleScenePath = "Scenes/SdfTerrainTest.nyxscene";
 
+	// Material rules on a Plan layer's ground: every vertex of the material they apply over takes the
+	// first rule it meets, by its slope, height, depth below the plan's ground and the plan's kind of
+	// ground there, and that material's colour; down a rift's side, its walls deep down are one
+	// material, its steep upper walls another and the ground beside it its own
+	void TestMaterialRules()
+	{
+		SdfTerrainComponent terrain;
+		terrain.Seed = 2;
+		terrain.Layers = { SdfTerrainLayer{ .Kind = ESdfTerrainLayerKind::Plan, .Frequency = 0.006f } };
+		terrain.MaterialColors = { glm::vec3(0.0f), glm::vec3(0.1f), glm::vec3(0.2f), glm::vec3(0.3f), glm::vec3(0.4f), glm::vec3(0.5f), glm::vec3(0.6f) };
+		terrain.MaterialRules = { SdfTerrainMaterialRule{ .Material = 6, .MinSlope = 110.0f }, SdfTerrainMaterialRule{ .Material = 2, .MinDepth = 12.0f },
+			SdfTerrainMaterialRule{ .Material = 3, .MinSlope = 42.0f }, SdfTerrainMaterialRule{ .Material = 9, .MaxHeight = -1000.0f },
+			SdfTerrainMaterialRule{ .Material = 5, .bOnLandform = true, .Landform = ESdfTerrainLandform::Roughland } };
+		PrepareTerrainWorldPlan(terrain);
+		const std::shared_ptr<const TerrainWorldPlan> plan = GetTerrainWorldPlan(terrain);
+
+		std::optional<glm::vec2> rift;
+		for (int j = 0; j < plan->Nodes && !rift; ++j)
+		{
+			for (int i = 0; i < plan->Nodes && !rift; ++i)
+			{
+				const size_t index = plan->IndexOf(i, j);
+				if (plan->Rift[index] < -2.0f && plan->Rift[index] > -10.0f && plan->Landform[index] != uint8_t(ESdfTerrainLandform::Sea)
+					&& plan->EdgeValue(plan->PointOf(i, j).x, plan->PointOf(i, j).y) < -200.0f)
+				{
+					rift = plan->PointOf(i, j);
+				}
+			}
+		}
+		Require(rift.has_value(), "There should be a rift");
+		// The chunks round a place on its wall, from below the ground to above it
+		const float size = GetTerrainChunkSize(0);
+		const float height = plan->At(plan->Height, rift->x, rift->y);
+		std::array<size_t, 10> counts{};
+		for (int chunk = 0; chunk < 5 * 9; ++chunk)
+		{
+			const glm::ivec3 offset(chunk % 3 - 1, chunk / 9 - 3, (chunk / 3) % 3 - 1);
+			const TerrainChunkId id{ 0, glm::ivec3(int(std::floor(rift->x / size)), int(std::floor(height / size)), int(std::floor(rift->y / size))) + offset };
+			const glm::vec3 corner = glm::vec3(id.Key) * size;
+			const MeshData mesh = MakeTerrainChunkMesh(terrain, id);
+			for (const Vertex& vertex : mesh.Vertices)
+			{
+				const glm::vec3 point = vertex.Position + corner;
+				const float slope = glm::degrees(std::acos(std::clamp(vertex.Normal.y / glm::length(vertex.Normal), -1.0f, 1.0f)));
+				const float depth = plan->At(plan->Height, point.x, point.z) - point.y;
+				const glm::ivec2 node = plan->NodeOf(glm::vec2(point.x, point.z));
+				const bool bRough = plan->Landform[plan->IndexOf(node.x, node.y)] == uint8_t(ESdfTerrainLandform::Roughland);
+				// Away from the rules' edges, where rounding could tip it either way
+				if (std::fabs(slope - 110.0f) < 0.1f || std::fabs(slope - 42.0f) < 0.1f || std::fabs(depth - 12.0f) < 0.01f)
+				{
+					continue;
+				}
+				const uint32_t expected = slope >= 110.0f ? 6 : depth >= 12.0f ? 2 : slope >= 42.0f ? 3 : bRough ? 5 : 0;
+				const uint32_t material = uint32_t(vertex.Custom.y);
+				Require(material == expected, "A vertex should take the first rule it meets: " + std::to_string(material) + " not " + std::to_string(expected));
+				Require(vertex.Color == terrain.MaterialColors[expected], "A vertex should have its material's colour");
+				++counts[expected];
+			}
+		}
+		std::cout << "Material rules down a rift's side: " << counts[2] << " deep, " << counts[3] << " steep, " << counts[6] << " overhanging, " << counts[5]
+				  << " rough, " << counts[0] << " the rest\n";
+		Require(counts[2] > 100 && counts[3] > 10 && counts[0] + counts[5] > 100, "The rift's walls deep down, its steep upper walls and the ground beside it should each have their material");
+	}
+
 	// Not a test: digs in the sample scene as the editor makes them, on every worker at 60 frames a
 	// second, where its camera looks; how long each takes to be drawn, and where the time goes
 	void TimeAnEdit()
@@ -1390,7 +1455,7 @@ int main(int argc, char** argv)
 				 TestSeamsAreClosed(ESdfTerrainMesher::MarchingCubes, -1);
 			 } },
 			{ "viewpoint", TestChunksRoundAViewpoint }, { "moving", TestMovingAndViewDistance }, { "values", TestNewValues },
-			{ "removed", TestRemovedEmptyAndMoved }, { "edits", TestEdits }, { "undo", TestUndoCost }, { "brush", TestBrush }, { "twoworlds", TestTwoWorlds }, { "scene", TestTheSampleScene }, { "time", TimeAView } };
+			{ "removed", TestRemovedEmptyAndMoved }, { "edits", TestEdits }, { "undo", TestUndoCost }, { "brush", TestBrush }, { "twoworlds", TestTwoWorlds }, { "rules", TestMaterialRules }, { "scene", TestTheSampleScene }, { "time", TimeAView } };
 		// Not run unless asked for: a measure of the sample scene, not a check
 		const std::vector<std::pair<std::string, void (*)()>> measures{ { "editdelay", TimeAnEdit }, { "editcost", [] { TimeSamplingUnderEdits(0); TimeSamplingUnderEdits(16); } } };
 		const char* only = argc > 2 && std::strcmp(argv[1], "--only") == 0 ? argv[2] : nullptr;

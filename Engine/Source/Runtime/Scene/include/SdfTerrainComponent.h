@@ -381,6 +381,46 @@ namespace Nyx
 		std::vector<SdfTerrainPlanPin> Pins;
 	};
 
+	// A rule giving an SDF terrain's surfaces a material by where they lie and which way they face
+	// (SdfTerrainComponent::MaterialRules): a surface of material Over that meets all its conditions
+	// is drawn as Material instead
+	NYX_REFLECT()
+	struct SdfTerrainMaterialRule
+	{
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Tooltip = "Off: as if it weren't there"))
+		bool bEnabled = true;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Tooltip = "The material number of the surfaces it can change, as the layers and edits made them"))
+		uint32_t Over = 0;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Tooltip = "The material number it gives them"))
+		uint32_t Material = 1;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Min Slope", DragSpeed = 0.5, Tooltip = "In degrees from flat: 0 flat, 90 a wall, 180 an overhang's underside"))
+		float MinSlope = 0.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Max Slope", DragSpeed = 0.5, Tooltip = "In degrees from flat"))
+		float MaxSlope = 180.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Min Height", DragSpeed = 0.5, Tooltip = "In metres, in the terrain's space"))
+		float MinHeight = -100000.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Max Height", DragSpeed = 0.5, Tooltip = "In metres, in the terrain's space"))
+		float MaxHeight = 100000.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Min Depth", DragSpeed = 0.5, Tooltip = "How far below the World Plan's ground height there, in metres: walls of rifts and tunnels deep down. 0 without a Plan layer"))
+		float MinDepth = -100000.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Max Depth", DragSpeed = 0.5, Tooltip = "How far below the World Plan's ground height there, in metres"))
+		float MaxDepth = 100000.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "On Landform", Tooltip = "Only where the World Plan made one kind of ground (with a Plan layer)"))
+		bool bOnLandform = false;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Tooltip = "That kind of ground"))
+		ESdfTerrainLandform Landform = ESdfTerrainLandform::Plains;
+	};
+
 	struct TerrainWorldPlan;
 
 	// Terrain as a signed field over a volume, so it can overhang, hollow out and float: a stack of
@@ -427,6 +467,9 @@ namespace Nyx
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Material Colours", Category = "Chunks", UI = Color, Tooltip = "Each material number's vertex colour, linear RGB, from 0; a number past the list is white"))
 		std::vector<glm::vec3> MaterialColors{ glm::vec3(0.13f, 0.30f, 0.05f), glm::vec3(0.22f, 0.14f, 0.07f), glm::vec3(0.26f, 0.25f, 0.23f) };
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Material Rules", Category = "Chunks", Tooltip = "In order, the first a surface meets gives it its material: by its slope, height, depth below the World Plan's ground and the kind of ground there"))
+		std::vector<SdfTerrainMaterialRule> MaterialRules;
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Collision Distance", Category = "Collision", DragSpeed = 1.0, Tooltip = "How far round every character and moving body, in metres, the finest chunks have collision while the world runs, and along where each is going for the next 2 s; 0: no collision"))
 		float CollisionDistance = 64.0f;

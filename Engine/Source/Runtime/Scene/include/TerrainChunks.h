@@ -282,6 +282,34 @@ namespace Nyx
 	// tells apart by those reaching it (TerrainChunkField)
 	uint64_t HashSdfTerrainShape(const SdfTerrainComponent& terrain);
 
+	// A terrain's material rules (SdfTerrainComponent::MaterialRules) ready to apply to a mesh's
+	// vertices: the first a vertex meets gives it its material
+	class TerrainMaterialRules
+	{
+	public:
+		explicit TerrainMaterialRules(const SdfTerrainComponent& terrain);
+
+		// The material of a vertex of `material` at `point` (the terrain's space) facing `normal`
+		uint32_t MaterialOf(uint32_t material, const glm::vec3& point, const glm::vec3& normal) const;
+
+	private:
+		struct Rule
+		{
+			uint32_t Over = 0;
+			uint32_t Material = 0;
+			// The slopes as the normal's up component: the most and the least
+			float MostUp = 1.0f;
+			float LeastUp = -1.0f;
+			float MinHeight = 0.0f;
+			float MaxHeight = 0.0f;
+			float MinDepth = 0.0f;
+			float MaxDepth = 0.0f;
+			int Landform = -1;
+		};
+		std::vector<Rule> Rules;
+		std::shared_ptr<const TerrainWorldPlan> Plan;
+	};
+
 	// What is known of a chunk's values, carried across edits (TerrainBoxEdits): over the samples its
 	// mesh is made from, whether the surface may cross them; over all the field its mesh can sample
 	// (those, the coarser grid round it, and its vertices' sky, SkyReach past it), the edits that can

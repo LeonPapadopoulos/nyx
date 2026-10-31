@@ -875,10 +875,12 @@ namespace Nyx
 		// 4096th, and from there to a corner within 4 km is exact, the same bits in both once the
 		// corner is added back
 		const glm::vec3 levelColor = LevelColor(id.Level);
+		const TerrainMaterialRules rules(terrain);
 		for (Vertex& vertex : mesh.Vertices)
 		{
 			vertex.Position = glm::round(vertex.Position * PositionSteps) * (1.0f / PositionSteps) - corner;
-			const uint32_t material = static_cast<uint32_t>(vertex.Custom.y);
+			const uint32_t material = rules.MaterialOf(static_cast<uint32_t>(vertex.Custom.y), vertex.Position + corner, vertex.Normal);
+			vertex.Custom.y = static_cast<float>(material);
 			switch (terrain.DebugView)
 			{
 			case ESdfTerrainDebugView::Levels:
@@ -900,6 +902,59 @@ namespace Nyx
 			outTimes->SeamTriangles = stats.SeamTriangles;
 		}
 		return mesh;
+	}
+
+	TerrainMaterialRules::TerrainMaterialRules(const SdfTerrainComponent& terrain)
+	{
+		for (const SdfTerrainMaterialRule& rule : terrain.MaterialRules)
+		{
+			if (!rule.bEnabled)
+			{
+				continue;
+			}
+			Rule ready;
+			ready.Over = rule.Over;
+			ready.Material = rule.Material;
+			// Drawn only, so the C library's cosine will do
+			ready.MostUp = std::cos(glm::radians(std::clamp(rule.MinSlope, 0.0f, 180.0f)));
+			ready.LeastUp = std::cos(glm::radians(std::clamp(rule.MaxSlope, 0.0f, 180.0f)));
+			ready.MinHeight = rule.MinHeight;
+			ready.MaxHeight = rule.MaxHeight;
+			ready.MinDepth = rule.MinDepth;
+			ready.MaxDepth = rule.MaxDepth;
+			ready.Landform = rule.bOnLandform ? int(rule.Landform) : -1;
+			Rules.push_back(ready);
+		}
+		if (!Rules.empty() && UsesTerrainWorldPlan(terrain))
+		{
+			Plan = GetTerrainWorldPlan(terrain);
+		}
+	}
+
+	uint32_t TerrainMaterialRules::MaterialOf(uint32_t material, const glm::vec3& point, const glm::vec3& normal) const
+	{
+		if (Rules.empty())
+		{
+			return material;
+		}
+		const float up = normal.y / std::max(glm::length(normal), 1e-6f);
+		float depth = 0.0f;
+		int landform = -1;
+		if (Plan)
+		{
+			depth = Plan->At(Plan->Height, point.x, point.z) - point.y;
+			const glm::ivec2 node = Plan->NodeOf(glm::vec2(point.x, point.z));
+			landform = Plan->Landform[Plan->IndexOf(node.x, node.y)];
+		}
+		for (const Rule& rule : Rules)
+		{
+			if (rule.Over == material && up <= rule.MostUp && up >= rule.LeastUp && point.y >= rule.MinHeight && point.y <= rule.MaxHeight && depth >= rule.MinDepth
+				&& depth <= rule.MaxDepth && (rule.Landform < 0 || rule.Landform == landform))
+			{
+				return rule.Material;
+			}
+		}
+		return material;
 	}
 
 	uint64_t HashSdfTerrainShape(const SdfTerrainComponent& terrain)
@@ -947,6 +1002,21 @@ namespace Nyx
 		for (const uint32_t material : terrain.SharpMaterials)
 		{
 			hasher.Value(material);
+		}
+		hasher.Value(terrain.MaterialRules.size());
+		for (const SdfTerrainMaterialRule& rule : terrain.MaterialRules)
+		{
+			hasher.Value(rule.bEnabled);
+			hasher.Value(rule.Over);
+			hasher.Value(rule.Material);
+			hasher.Value(rule.MinSlope);
+			hasher.Value(rule.MaxSlope);
+			hasher.Value(rule.MinHeight);
+			hasher.Value(rule.MaxHeight);
+			hasher.Value(rule.MinDepth);
+			hasher.Value(rule.MaxDepth);
+			hasher.Value(rule.bOnLandform);
+			hasher.Value(rule.Landform);
 		}
 		hasher.Value(terrain.MaterialColors.size());
 		for (const glm::vec3& color : terrain.MaterialColors)

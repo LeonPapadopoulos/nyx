@@ -1472,7 +1472,11 @@ game, coarser the farther, and collides while the world runs.
   Materials* (material numbers), *Sky Shading* (how much of the sky each vertex sees, in its
   mesh's Custom.x, for a material to darken what the sky lights in hollows; off by default, 1
   everywhere, and chunks made about twice as fast; no material reads it yet), *Material Colours*
-  (each material number's vertex colour), *Debug
+  (each material number's vertex colour), *Material Rules* (in order, the first a surface of the
+  rule's *Over* material meets gives it the rule's *Material*: by its slope, from 0 flat through 90
+  a wall to 180 facing down, its height, its depth below the world plan's ground height there, and
+  the plan's kind of ground there; so grass on the plains, stone on cliffs and deep in rifts, sand
+  along the shore; the material number goes in the vertex's custom numbers too), *Debug
   View* (*Levels*: a colour for each level; *Seams*: those darker and the triangles joining levels
   bright).
 - The editor's details panel shows *Terrain Chunks* in its *Runtime* section: chunks drawn, next
@@ -1680,7 +1684,7 @@ game, coarser the farther, and collides while the world runs.
   within the view distance, replaced all at once, let go of and made anew as the camera moves, made
   again for new values while the old stay, gone with the terrain; a dig making only the chunks it
   reaches again, undone, a stroke of edits while chunks are made leaving none stale, drawn with
-  collision or at the deadline; the terrain brush's strokes, rays and ring; the sample scene),
+  collision or at the deadline; material rules down a rift's side, each vertex the first it meets; the terrain brush's strokes, rays and ring; the sample scene),
   `NyxEditorPanelTests` (among the rest, a terrain brush stroke one undo step),
   `NyxTerrainChunksGpuTests` (the chunks drawn at three levels, picked as the terrain, in the debug
   view's colours, drawn where it is moved), `NyxTerrainCollisionTests` (the way out of a hill, a
