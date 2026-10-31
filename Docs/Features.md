@@ -1545,6 +1545,17 @@ game, coarser the farther, and collides while the world runs.
     where two machines' terrains differ: for each region of 256 m an edit comes into, a hash of the
     seed and layers and those edits' bytes up to a revision (`HashTerrainRegions()`), the same
     whether bakes have their values.
+  - Checkpoints: a terrain's edits at its revision with the generator's fingerprint (the field's
+    values at fixed points of a terrain of every kind of layer and edit,
+    `GetTerrainGeneratorFingerprint()`), its layers' hash and its region hashes, saved whole or not
+    at all (`SaveTerrainCheckpoint()`). Loading refuses another generator's or another terrain's,
+    leaving the terrain as it was, and lists, and logs, the regions not as they were written
+    (`LoadTerrainCheckpoint()`). A machine joining reads the host's checkpoint, then takes the edits
+    after it as they come, each with the host's revision (`WriteTerrainEdits()` after a revision,
+    `TakeTerrainEdits()`), making its bakes' values itself. Where its region hashes differ from the
+    host's (`FindTerrainRegionMismatches()`), it takes the host's bakes there and uses their values
+    from then on, logged (`WriteTerrainRegionRepair()`, `ApplyTerrainRegionRepair()`); the host bakes
+    a region without a bake first (`BakeTerrainRegion()`).
 - The terrain brush (`TerrainBrush.h`): edits where a ray meets the terrain, a stroke of them a
   *Spacing* of the radius apart (a capsule's rods end to end, one smooth trench or ridge), with a
   *Shape*, *Mode*, *Radius*, *Blend Radius*, *Material* and *Reach*.

@@ -7,6 +7,7 @@
 // exactly, carved into an arch, within their ranges. Prints how loose the bounds are and how fast it
 // samples.
 #include "FieldMesher.h"
+#include "Log.h"
 #include "BinaryArchive.h"
 #include "SdfTerrain.h"
 #include "TerrainSave.h"
@@ -15,10 +16,12 @@
 #include <glm/glm.hpp>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <iostream>
 #include <limits>
 #include <optional>
@@ -1005,6 +1008,125 @@ namespace
 		std::cout << "Save format: " << regions.size() << " regions hashed, " << differ << " changed by an edit of another material\n";
 	}
 
+	// Checkpoints: saved and loaded, the same edits, bakes, revision and region hashes; a save over an
+	// old one replaces it whole, one that can't be written leaves nothing; another generator's or
+	// another terrain's not opened, the terrain left as it was; one changed after it was written
+	// read with the regions that differ listed. Joining: the edits after a checkpoint taken, only
+	// after the latest and in order. Repair: a region planted with other values found, and the
+	// host's bakes there taken; a region without a bake baked by the host first.
+	void TestCheckpoints()
+	{
+		SdfTerrainComponent host = MakeEdited();
+		Nyx::TerrainBakeCounts counts;
+		host.BakeAfter = 4;
+		Sequence sequence;
+		for (int n = 0; n < 24; ++n)
+		{
+			Nyx::SdfTerrainEdit dab;
+			dab.Position = glm::vec3(sequence.Between(-6.0f, 6.0f), sequence.Between(-2.0f, 4.0f), sequence.Between(-6.0f, 6.0f));
+			dab.Radius = sequence.Between(1.0f, 2.5f);
+			dab.Mode = n % 3 == 0 ? Nyx::ESdfTerrainEditMode::Add : Nyx::ESdfTerrainEditMode::Subtract;
+			Nyx::AppendTerrainEdit(host, dab);
+			Nyx::BakeTerrainBricks(host, counts);
+		}
+		const std::filesystem::path path = std::filesystem::temp_directory_path() / "NyxSdfTerrainTests.nyxterrain";
+		std::filesystem::remove(path);
+		Require(Nyx::SaveTerrainCheckpoint(MakeEdited(), path) && Nyx::SaveTerrainCheckpoint(host, path), "A checkpoint should be saved over an old one");
+		Require(!Nyx::SaveTerrainCheckpoint(host, path.parent_path() / "No Such Folder" / "x.nyxterrain") &&
+					!std::filesystem::exists(path.parent_path() / "No Such Folder"),
+			"A checkpoint that can't be written should leave nothing");
+
+		SdfTerrainComponent loaded = MakeEdited();
+		loaded.Edits.clear();
+		const Nyx::TerrainCheckpointRead read = Nyx::LoadTerrainCheckpoint(path, loaded);
+		Require(read.Result == Nyx::ETerrainCheckpointRead::Read && read.Revision == Nyx::GetTerrainRevision(host) && read.Mismatched.empty(),
+			"A checkpoint saved should be loaded whole, at its revision");
+		Require(Nyx::HashTerrainEdits(loaded) == Nyx::HashTerrainEdits(host) && Nyx::HashTerrainRegions(loaded) == Nyx::HashTerrainRegions(host),
+			"A checkpoint loaded should be the same edits and region hashes");
+		const Nyx::FieldGrid hostGrid = Nyx::SampleTerrainGrid(host, glm::vec3(-10.5f, -6.25f, -9.75f), 0.5f, glm::ivec3(42));
+		const Nyx::FieldGrid loadedGrid = Nyx::SampleTerrainGrid(loaded, glm::vec3(-10.5f, -6.25f, -9.75f), 0.5f, glm::ivec3(42));
+		Require(hostGrid.Values == loadedGrid.Values && hostGrid.Materials == loadedGrid.Materials, "A checkpoint loaded should sample the same bits");
+
+		// Not opened: another generator, another terrain; changed after it was written: read, listed
+		Nyx::BinaryWriter written;
+		Nyx::WriteTerrainCheckpoint(host, written);
+		auto readBytes = [&](std::vector<std::byte> bytes, SdfTerrainComponent& into)
+		{
+			Nyx::BinaryReader in;
+			in.LoadFromMemory(std::move(bytes));
+			return Nyx::ReadTerrainCheckpoint(in, into);
+		};
+		std::vector<std::byte> otherGenerator = written.GetBytes();
+		otherGenerator[8] ^= std::byte(1);
+		SdfTerrainComponent untouched = MakeEdited();
+		Require(readBytes(otherGenerator, untouched).Result == Nyx::ETerrainCheckpointRead::OtherGenerator && Nyx::HashTerrainEdits(untouched) == Nyx::HashTerrainEdits(MakeEdited()),
+			"Another generator's checkpoint shouldn't be opened, the terrain left as it was");
+		SdfTerrainComponent otherTerrain = MakeEdited();
+		otherTerrain.Seed += 1;
+		Require(readBytes(written.GetBytes(), otherTerrain).Result == Nyx::ETerrainCheckpointRead::OtherLayers, "Another terrain's checkpoint shouldn't be opened");
+		Require(readBytes(std::vector<std::byte>(written.GetBytes().begin(), written.GetBytes().end() - 3), untouched).Result == Nyx::ETerrainCheckpointRead::Unreadable,
+			"A checkpoint cut short shouldn't be opened");
+		std::vector<std::byte> changed = written.GetBytes();
+		changed[changed.size() - 1] ^= std::byte(1);
+		SdfTerrainComponent planted = MakeEdited();
+		const Nyx::TerrainCheckpointRead changedRead = readBytes(changed, planted);
+		Require(changedRead.Result == Nyx::ETerrainCheckpointRead::Read && changedRead.Mismatched.size() == 1, "A checkpoint changed after it was written should list the region");
+
+		// Joining: a checkpoint at a revision, then the edits after it
+		SdfTerrainComponent joiner = MakeEdited();
+		SdfTerrainComponent early = host;
+		early.Edits.resize(host.Edits.size() / 2);
+		Nyx::BinaryWriter checkpoint;
+		Nyx::WriteTerrainCheckpoint(early, checkpoint);
+		Require(readBytes(checkpoint.GetBytes(), joiner).Result == Nyx::ETerrainCheckpointRead::Read, "A joiner should read the host's checkpoint");
+		Nyx::BinaryWriter afterBytes;
+		Nyx::WriteTerrainEdits(host, afterBytes, Nyx::GetTerrainRevision(joiner));
+		Nyx::BinaryReader afterReader;
+		afterReader.LoadFromMemory(afterBytes.GetBytes());
+		std::vector<Nyx::SdfTerrainEdit> after;
+		Require(Nyx::ReadTerrainEdits(afterReader, after) && after.size() == host.Edits.size() - early.Edits.size(), "The edits after a checkpoint should be those after its revision");
+		for (Nyx::SdfTerrainEdit& edit : after)
+		{
+			edit.Baked.reset();
+		}
+		SdfTerrainComponent gap = joiner;
+		Require(Nyx::TakeTerrainEdits(gap, std::span<const Nyx::SdfTerrainEdit>(after).subspan(1)) && gap.Edits.size() == joiner.Edits.size() + after.size() - 1,
+			"Edits after a gap should be taken as they come");
+		Require(!Nyx::TakeTerrainEdits(gap, after), "Edits before the latest shouldn't be taken");
+		Require(Nyx::TakeTerrainEdits(joiner, after) && Nyx::HashTerrainRegions(joiner) == Nyx::HashTerrainRegions(host),
+			"A joiner should come to the host's region hashes, its bakes made by itself");
+
+		// Repair: a bake's values planted other; found, the host's taken
+		size_t bakeAt = 0;
+		while (joiner.Edits[bakeAt].Kind != Nyx::ESdfTerrainEditKind::Bake)
+		{
+			++bakeAt;
+		}
+		std::array<float, Nyx::SdfTerrainBakedBrick::Count> other = Nyx::GetTerrainBakeValues(joiner, bakeAt)->Values;
+		other[400] += 0.01f;
+		joiner.Edits[bakeAt].Baked = Nyx::MakeTerrainBakedBrick(other, joiner.Edits[bakeAt].Baked->Materials, joiner.Edits[bakeAt].Baked->Layers);
+		const std::vector<glm::ivec3> mismatched = Nyx::FindTerrainRegionMismatches(Nyx::HashTerrainRegions(host), Nyx::HashTerrainRegions(joiner));
+		const glm::ivec3 region(glm::floor(joiner.Edits[bakeAt].Position / Nyx::TerrainRegionSize));
+		Require(mismatched.size() == 1 && mismatched[0] == region, "A planted mismatch should be found in its region alone");
+		Nyx::BinaryWriter repair;
+		Nyx::WriteTerrainRegionRepair(host, region, repair);
+		Nyx::BinaryReader repairReader;
+		repairReader.LoadFromMemory(repair.GetBytes());
+		Require(Nyx::ApplyTerrainRegionRepair(joiner, region, repairReader) && Nyx::HashTerrainRegions(joiner) == Nyx::HashTerrainRegions(host),
+			"A region repaired should take the host's values");
+		Nyx::BinaryReader wrongRegion;
+		wrongRegion.LoadFromMemory(repair.GetBytes());
+		Require(!Nyx::ApplyTerrainRegionRepair(joiner, region + glm::ivec3(1, 0, 0), wrongRegion), "A repair of another region shouldn't be taken");
+
+		// A region without a bake is baked by the host first
+		SdfTerrainComponent bare = MakeEdited();
+		const size_t baked = Nyx::BakeTerrainRegion(bare, glm::ivec3(0, 0, 0));
+		Require(baked > 0 && bare.Edits.back().Kind == Nyx::ESdfTerrainEditKind::Bake && Nyx::BakeTerrainRegion(bare, glm::ivec3(0, 0, 0)) == 0,
+			"A region without a bake should be baked by the host, once");
+		std::filesystem::remove(path);
+		std::cout << "Checkpoints: " << host.Edits.size() << " edits saved and loaded, " << baked << " bricks baked for a region's repair\n";
+	}
+
 	bool SameBox(const Nyx::TerrainBoxEdits& a, const Nyx::TerrainBoxEdits& b)
 	{
 		return a.Seen == b.Seen && a.Reach.Hash == b.Reach.Hash && a.Reach.Count == b.Reach.Count && a.Reaching == b.Reaching &&
@@ -1219,6 +1341,10 @@ int main()
 {
 	try
 	{
+		// Each line out at once, so a crash leaves what came before it
+		std::cout << std::unitbuf;
+		// Logged: a checkpoint's mismatch, a repair
+		Nyx::Logger::Get().Init();
 		TestFlatGround();
 		TestBatchSameBits();
 		TestGoldenValues();
@@ -1235,6 +1361,7 @@ int main()
 		TestEditIndex();
 		TestBakes();
 		TestSaveFormat();
+		TestCheckpoints();
 		PrintTimings();
 	}
 	catch (const std::exception& error)

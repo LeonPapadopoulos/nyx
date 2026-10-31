@@ -168,6 +168,11 @@ namespace Nyx
 	// A hash of the seed and the layers: what a bake's values are made from besides the edits
 	uint64_t HashTerrainLayers(const SdfTerrainComponent& terrain);
 
+	// The generator's fingerprint: a hash of the values a terrain of every kind of layer, with an edit
+	// of every shape and mode, has at fixed points. The same wherever the field's code is the same and
+	// rounds the same; another where it changed, so saves made with one aren't opened with another.
+	uint64_t GetTerrainGeneratorFingerprint();
+
 	// The values of the bake at `index` among the terrain's edits: its own, or, if it has none or they
 	// were made with other layers, made now from the edits before it (the same bits)
 	std::shared_ptr<const SdfTerrainBakedBrick> GetTerrainBakeValues(const SdfTerrainComponent& terrain, size_t index);

@@ -2318,4 +2318,67 @@ namespace Nyx
 		baked->Layers = layers;
 		return baked;
 	}
+
+	uint64_t GetTerrainGeneratorFingerprint()
+	{
+		static const uint64_t Fingerprint = []
+		{
+			SdfTerrainComponent terrain;
+			terrain.Seed = 11;
+			terrain.Layers.clear();
+			for (int kind = 0; kind <= int(ESdfTerrainLayerKind::Capsule); ++kind)
+			{
+				SdfTerrainLayer layer;
+				layer.Kind = ESdfTerrainLayerKind(kind);
+				layer.Combine = kind == int(ESdfTerrainLayerKind::Tunnels) || kind == int(ESdfTerrainLayerKind::Chambers) ? ESdfTerrainCombine::Carve
+																														   : ESdfTerrainCombine::Add;
+				layer.BlendRadius = kind % 2 == 0 ? 1.5f : 0.0f;
+				layer.Material = uint32_t(kind);
+				layer.Height = kind == int(ESdfTerrainLayerKind::Landmass) ? 60.0f : 5.0f;
+				layer.Depth = 30.0f;
+				layer.Radius = kind >= int(ESdfTerrainLayerKind::Box) ? 6.0f : 50.0f;
+				layer.TerraceHeight = kind == 0 ? 4.0f : 0.0f;
+				layer.bRidged = kind == int(ESdfTerrainLayerKind::Landmass);
+				layer.Seed = uint32_t(kind + 1);
+				layer.Octaves = 3;
+				layer.Frequency = 0.03f;
+				layer.Position = glm::vec3(float(kind) * 7.0f - 20.0f, 10.0f, 3.0f);
+				layer.End = layer.Position + glm::vec3(4.0f, 6.0f, -2.0f);
+				layer.HalfSize = glm::vec3(3.0f, 2.0f, 4.0f);
+				layer.Rotation = glm::vec3(10.0f, 30.0f, -20.0f);
+				terrain.Layers.push_back(layer);
+			}
+			for (int n = 0; n < 9; ++n)
+			{
+				SdfTerrainEdit edit;
+				edit.Shape = ESdfTerrainEditShape(n % 3);
+				edit.Mode = ESdfTerrainEditMode(n / 3);
+				edit.Position = glm::vec3(float(n) * 5.0f - 20.0f, 4.0f, float(n % 4) * 3.0f);
+				edit.End = edit.Position + glm::vec3(3.0f, 1.0f, 0.0f);
+				edit.HalfSize = glm::vec3(2.0f, 1.0f, 1.5f);
+				edit.Rotation = glm::vec3(0.0f, 45.0f, 10.0f);
+				edit.Radius = 2.5f;
+				edit.BlendRadius = n % 2 == 0 ? 0.5f : 0.0f;
+				edit.Material = 9;
+				AppendTerrainEdit(terrain, edit);
+			}
+			uint64_t hash = EditHashStart;
+			for (int n = 0; n < 512; ++n)
+			{
+				const glm::vec3 point(float(n % 8) * 6.1f - 24.0f, float((n / 8) % 8) * 9.3f - 10.0f, float(n / 64) * 5.7f - 20.0f);
+				const TerrainSample sample = SampleTerrain(terrain, point);
+				uint32_t bits = 0;
+				std::memcpy(&bits, &sample.Value, sizeof(bits));
+				for (const uint32_t word : { bits, sample.Material })
+				{
+					for (int byte = 0; byte < 4; ++byte)
+					{
+						hash = (hash ^ ((word >> (8 * byte)) & 0xFFu)) * 0x100000001B3ull;
+					}
+				}
+			}
+			return hash;
+		}();
+		return Fingerprint;
+	}
 }

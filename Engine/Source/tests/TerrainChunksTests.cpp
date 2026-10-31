@@ -6,12 +6,15 @@
 // distance; drawn all at once, a tree at a time; moving away lets them go and makes new ones; new
 // values make them again while the old ones stay drawn; another view distance alone makes nothing
 // again; edits make only the chunks they reach again, drawn with collision's or at the deadline;
-// an undo costing what an edit does; the terrain brush's strokes, rays and ring;
+// an undo costing what an edit does; the terrain brush's strokes, rays and ring; two worlds, a
+// host and machines joining it, coming to the same region hashes, saved and loaded, a mismatch
+// repaired;
 // removing the terrain takes them and its jobs away; a terrain with no layers has none; a
 // terrain entity moved has its chunks round it; the sample scene's terrain is made. Prints how long
 // a view takes to make.
 //
 // NyxTerrainChunksTests --write-scene writes the sample scene, Assets/Scenes/SdfTerrainTest.nyxscene.
+#include "BinaryArchive.h"
 #include "CameraComponent.h"
 #include "ComponentRegistration.h"
 #include "DirectionalLightComponent.h"
@@ -28,6 +31,7 @@
 #include "SdfTerrain.h"
 #include "TerrainBrush.h"
 #include "TerrainChunks.h"
+#include "TerrainSave.h"
 #include "TestSupport.h"
 #include "TransformComponent.h"
 
@@ -1028,6 +1032,150 @@ namespace
 		}
 	}
 
+	// Two worlds in one process, a host and a machine that joined it, their chunks made in different
+	// orders (other viewpoints, other numbers of workers) while digs, heaps and paint overlap and the
+	// host bakes: the joiner taking the host's edits as they come and making its bakes' values
+	// itself, a second one joining late from a checkpoint; settled, all three the same region hashes,
+	// and the chunks both have the same bits. Saved, the worlds let go and the save loaded into a new
+	// one: the same hashes and samples. A bake planted with other values in one region: found there
+	// alone, and repaired from the host's.
+	void TestTwoWorlds()
+	{
+		JobSystem hostJobs(4);
+		JobSystem joinerJobs(2);
+		Registry hostWorld;
+		Registry joinerWorld;
+		const Entity hostTerrain = AddTerrain(hostWorld, MakeTerrain());
+		const Entity joinerTerrain = AddTerrain(joinerWorld, MakeTerrain());
+		const glm::vec3 hostView(5.0f, 12.0f, -3.0f);
+		const glm::vec3 joinerView(14.0f, 16.0f, 4.0f);
+		SdfTerrainComponent& host = hostWorld.Get<SdfTerrainComponent>(hostTerrain);
+		SdfTerrainComponent& joiner = joinerWorld.Get<SdfTerrainComponent>(joinerTerrain);
+		host.BakeAfter = 6;
+		TerrainBakeCounts counts;
+		const std::optional<TerrainRayHit> ground = RayCastTerrain(host, hostView, glm::vec3(0.0f, -1.0f, 0.0f), 100.0f);
+		Require(ground.has_value(), "There should be ground under the host's viewpoint");
+
+		// What the joiner is sent: the host's edits after its own latest, as bytes, read back without
+		// the bakes' values so it makes them itself
+		auto send = [&](SdfTerrainComponent& to)
+		{
+			BinaryWriter bytes;
+			WriteTerrainEdits(host, bytes, GetTerrainRevision(to));
+			BinaryReader in;
+			in.LoadFromMemory(bytes.GetBytes());
+			std::vector<SdfTerrainEdit> edits;
+			Require(ReadTerrainEdits(in, edits), "The host's edits should be read");
+			for (SdfTerrainEdit& edit : edits)
+			{
+				edit.Baked.reset();
+			}
+			Require(TakeTerrainEdits(to, edits), "The host's edits should be taken after the joiner's own");
+		};
+		uint32_t seed = 0x1234567u;
+		auto next = [&](float low, float high)
+		{
+			seed = seed * 1664525u + 1013904223u;
+			return low + (high - low) * float(seed >> 8) * (1.0f / 16777216.0f);
+		};
+		SdfTerrainComponent late;
+		for (int round = 0; round < 30; ++round)
+		{
+			for (int n = 0; n < 3; ++n)
+			{
+				SdfTerrainEdit edit;
+				edit.Shape = static_cast<ESdfTerrainEditShape>((round + n) % 3);
+				edit.Mode = static_cast<ESdfTerrainEditMode>((round * 3 + n) % 5 == 4 ? 2 : ((round * 3 + n) % 5 == 3 ? 1 : 0));
+				edit.Position = ground->Point + glm::vec3(next(-8.0f, 8.0f), next(-3.0f, 2.0f), next(-8.0f, 8.0f));
+				edit.End = edit.Position + glm::vec3(next(-3.0f, 3.0f), 0.0f, next(-3.0f, 3.0f));
+				edit.HalfSize = glm::vec3(next(0.5f, 2.0f));
+				edit.Radius = next(1.0f, 2.5f);
+				edit.BlendRadius = n == 0 ? 0.5f : 0.0f;
+				edit.Material = 1 + uint32_t(n);
+				AppendTerrainEdit(host, edit);
+				BakeTerrainBricks(host, counts);
+			}
+			if (round % 4 == 0)
+			{
+				send(joiner);
+			}
+			if (round == 15)
+			{
+				// Joining late, from a checkpoint
+				BinaryWriter checkpoint;
+				WriteTerrainCheckpoint(host, checkpoint);
+				BinaryReader in;
+				in.LoadFromMemory(checkpoint.GetBytes());
+				late = MakeTerrain();
+				Require(ReadTerrainCheckpoint(in, late).Result == ETerrainCheckpointRead::Read, "A late joiner should read the host's checkpoint");
+			}
+			UpdateTerrainChunks(hostWorld, { &hostView, 1 }, hostJobs);
+			UpdateTerrainChunks(joinerWorld, { &joinerView, 1 }, joinerJobs);
+		}
+		send(joiner);
+		send(late);
+		UpdateUntilSettled(hostWorld, { &hostView, 1 }, hostJobs, hostTerrain);
+		UpdateUntilSettled(joinerWorld, { &joinerView, 1 }, joinerJobs, joinerTerrain);
+		const size_t bakes = size_t(std::count_if(host.Edits.begin(), host.Edits.end(), [](const SdfTerrainEdit& edit) { return edit.Kind == ESdfTerrainEditKind::Bake; }));
+		Require(bakes > 0, "The host should have baked where the edits overlap");
+		const std::vector<TerrainRegionHash> hashes = HashTerrainRegions(host);
+		Require(hashes == HashTerrainRegions(joiner) && hashes == HashTerrainRegions(late), "Both joiners should come to the host's region hashes");
+
+		// The chunks both made, the same bits
+		std::map<std::tuple<int, int, int, int>, const TerrainChunk*> hostChunks;
+		for (const TerrainChunk& chunk : hostWorld.Get<TerrainChunksComponent>(hostTerrain).Chunks)
+		{
+			hostChunks[{ chunk.Level, chunk.Key.x, chunk.Key.y, chunk.Key.z }] = &chunk;
+		}
+		int shared = 0;
+		for (const TerrainChunk& chunk : joinerWorld.Get<TerrainChunksComponent>(joinerTerrain).Chunks)
+		{
+			const auto found = hostChunks.find({ chunk.Level, chunk.Key.x, chunk.Key.y, chunk.Key.z });
+			if (found == hostChunks.end() || found->second->Neighbourhood != chunk.Neighbourhood || !chunk.Mesh.Mesh || !found->second->Mesh.Mesh)
+			{
+				continue;
+			}
+			Require(SameMesh(*chunk.Mesh.Mesh, *found->second->Mesh.Mesh), "A chunk both worlds made should be the same bits");
+			++shared;
+		}
+		Require(shared > 10, "The worlds should share many chunks, not " + std::to_string(shared));
+
+		// Saved, let go of, loaded into a new world
+		const std::filesystem::path path = std::filesystem::temp_directory_path() / "NyxTerrainChunksTests.nyxterrain";
+		Require(SaveTerrainCheckpoint(host, path), "The host's terrain should be saved");
+		const FieldGrid before = SampleTerrainGrid(host, ground->Point - glm::vec3(12.0f), 0.5f, glm::ivec3(48));
+		{
+			Registry loadedWorld;
+			const Entity loadedTerrain = AddTerrain(loadedWorld, MakeTerrain());
+			SdfTerrainComponent& loaded = loadedWorld.Get<SdfTerrainComponent>(loadedTerrain);
+			const TerrainCheckpointRead read = LoadTerrainCheckpoint(path, loaded);
+			Require(read.Result == ETerrainCheckpointRead::Read && read.Mismatched.empty() && HashTerrainRegions(loaded) == hashes, "The save loaded should have the same region hashes");
+			const FieldGrid after = SampleTerrainGrid(loaded, ground->Point - glm::vec3(12.0f), 0.5f, glm::ivec3(48));
+			Require(after.Values == before.Values && after.Materials == before.Materials, "The save loaded should sample the same bits");
+			UpdateUntilSettled(loadedWorld, { &hostView, 1 }, hostJobs, loadedTerrain);
+		}
+		std::filesystem::remove(path);
+
+		// A bake planted with other values: found in its region alone, repaired from the host's
+		size_t bakeAt = joiner.Edits.size();
+		while (joiner.Edits[--bakeAt].Kind != ESdfTerrainEditKind::Bake)
+		{
+		}
+		std::array<float, SdfTerrainBakedBrick::Count> other = GetTerrainBakeValues(joiner, bakeAt)->Values;
+		other[123] += 0.02f;
+		joiner.Edits[bakeAt].Baked = MakeTerrainBakedBrick(other, GetTerrainBakeValues(joiner, bakeAt)->Materials, HashTerrainLayers(joiner));
+		const std::vector<glm::ivec3> mismatched = FindTerrainRegionMismatches(hashes, HashTerrainRegions(joiner));
+		const glm::ivec3 region(glm::floor(joiner.Edits[bakeAt].Position / TerrainRegionSize));
+		Require(mismatched.size() == 1 && mismatched[0] == region, "A planted mismatch should be found in its region alone");
+		BinaryWriter repair;
+		WriteTerrainRegionRepair(host, region, repair);
+		BinaryReader repairIn;
+		repairIn.LoadFromMemory(repair.GetBytes());
+		Require(ApplyTerrainRegionRepair(joiner, region, repairIn) && HashTerrainRegions(joiner) == hashes, "The mismatch should be repaired from the host's bakes");
+		std::cout << "Two worlds: " << host.Edits.size() << " edits, " << bakes << " bakes, " << hashes.size() << " regions the same, " << shared
+				  << " chunks made by both the same bits; saved, loaded and a planted mismatch repaired\n";
+	}
+
 	SdfTerrainComponent MakeSampleTerrain();
 
 	// Not a test: how long the finest chunk at a place in the sample terrain takes to sample, on one
@@ -1242,7 +1390,7 @@ int main(int argc, char** argv)
 				 TestSeamsAreClosed(ESdfTerrainMesher::MarchingCubes, -1);
 			 } },
 			{ "viewpoint", TestChunksRoundAViewpoint }, { "moving", TestMovingAndViewDistance }, { "values", TestNewValues },
-			{ "removed", TestRemovedEmptyAndMoved }, { "edits", TestEdits }, { "undo", TestUndoCost }, { "brush", TestBrush }, { "scene", TestTheSampleScene }, { "time", TimeAView } };
+			{ "removed", TestRemovedEmptyAndMoved }, { "edits", TestEdits }, { "undo", TestUndoCost }, { "brush", TestBrush }, { "twoworlds", TestTwoWorlds }, { "scene", TestTheSampleScene }, { "time", TimeAView } };
 		// Not run unless asked for: a measure of the sample scene, not a check
 		const std::vector<std::pair<std::string, void (*)()>> measures{ { "editdelay", TimeAnEdit }, { "editcost", [] { TimeSamplingUnderEdits(0); TimeSamplingUnderEdits(16); } } };
 		const char* only = argc > 2 && std::strcmp(argv[1], "--only") == 0 ? argv[2] : nullptr;

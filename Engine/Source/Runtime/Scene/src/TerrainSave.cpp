@@ -2,6 +2,7 @@
 #include "TerrainSave.h"
 
 #include "BinaryArchive.h"
+#include "Log.h"
 #include "SdfTerrain.h"
 
 #include <algorithm>
@@ -9,6 +10,7 @@
 #include <bit>
 #include <cmath>
 #include <map>
+#include <set>
 #include <span>
 #include <tuple>
 
@@ -20,6 +22,7 @@ namespace Nyx
 	namespace
 	{
 		constexpr uint32_t Letters = 0x4445544Eu; // NTED
+		constexpr uint32_t CheckpointLetters = 0x4B43544Eu; // NTCK
 
 		void WriteVector(BinaryWriter& out, const glm::vec3& value)
 		{
@@ -132,12 +135,13 @@ namespace Nyx
 		}
 	}
 
-	void WriteTerrainEdits(const SdfTerrainComponent& terrain, BinaryWriter& out)
+	void WriteTerrainEdits(const SdfTerrainComponent& terrain, BinaryWriter& out, uint64_t after)
 	{
+		const auto first = std::partition_point(terrain.Edits.begin(), terrain.Edits.end(), [&](const SdfTerrainEdit& edit) { return edit.Revision <= after; });
 		out.WriteUInt32(Letters);
 		out.WriteUInt32(TerrainEditsFormatVersion);
-		out.WriteUInt64(terrain.Edits.size());
-		for (size_t index = 0; index < terrain.Edits.size(); ++index)
+		out.WriteUInt64(uint64_t(terrain.Edits.end() - first));
+		for (size_t index = size_t(first - terrain.Edits.begin()); index < terrain.Edits.size(); ++index)
 		{
 			WriteEdit(terrain, index, out);
 		}
@@ -184,9 +188,15 @@ namespace Nyx
 			const size_t start = bytes.GetBytes().size();
 			WriteEdit(terrain, index, bytes);
 			spans.push_back({ start, bytes.GetBytes().size() - start });
+			// A bake's brick is in one region: 32 bricks to a region's side
 			glm::vec3 low;
 			glm::vec3 high;
 			GetTerrainEditBounds(terrain.Edits[index], low, high);
+			if (terrain.Edits[index].Kind == ESdfTerrainEditKind::Bake)
+			{
+				low = terrain.Edits[index].Position;
+				high = low;
+			}
 			const glm::ivec3 from(glm::floor(low / TerrainRegionSize));
 			const glm::ivec3 to(glm::floor(high / TerrainRegionSize));
 			const glm::ivec3 span = to - from + 1;
@@ -228,5 +238,225 @@ namespace Nyx
 			hashes.push_back({ glm::ivec3(x, y, z), hash != 0 ? hash : 1 });
 		}
 		return hashes;
+	}
+
+	std::vector<glm::ivec3> FindTerrainRegionMismatches(std::span<const TerrainRegionHash> a, std::span<const TerrainRegionHash> b)
+	{
+		std::map<std::tuple<int, int, int>, std::pair<uint64_t, uint64_t>> both;
+		for (const TerrainRegionHash& region : a)
+		{
+			both[{ region.Region.z, region.Region.y, region.Region.x }].first = region.Hash;
+		}
+		for (const TerrainRegionHash& region : b)
+		{
+			both[{ region.Region.z, region.Region.y, region.Region.x }].second = region.Hash;
+		}
+		std::vector<glm::ivec3> differ;
+		for (const auto& [key, hashes] : both)
+		{
+			if (hashes.first != hashes.second)
+			{
+				const auto& [z, y, x] = key;
+				differ.push_back({ x, y, z });
+			}
+		}
+		return differ;
+	}
+
+	void WriteTerrainCheckpoint(const SdfTerrainComponent& terrain, BinaryWriter& out)
+	{
+		out.WriteUInt32(CheckpointLetters);
+		out.WriteUInt32(TerrainCheckpointVersion);
+		out.WriteUInt64(GetTerrainGeneratorFingerprint());
+		out.WriteUInt64(HashTerrainLayers(terrain));
+		out.WriteUInt64(GetTerrainRevision(terrain));
+		BinaryWriter edits;
+		WriteTerrainEdits(terrain, edits);
+		out.WriteBlock(edits);
+		const std::vector<TerrainRegionHash> regions = HashTerrainRegions(terrain);
+		out.WriteUInt32(static_cast<uint32_t>(regions.size()));
+		for (const TerrainRegionHash& region : regions)
+		{
+			out.WriteInt32(region.Region.x);
+			out.WriteInt32(region.Region.y);
+			out.WriteInt32(region.Region.z);
+			out.WriteUInt64(region.Hash);
+		}
+	}
+
+	bool SaveTerrainCheckpoint(const SdfTerrainComponent& terrain, const std::filesystem::path& path)
+	{
+		BinaryWriter out;
+		WriteTerrainCheckpoint(terrain, out);
+		return out.SaveToFile(path);
+	}
+
+	TerrainCheckpointRead ReadTerrainCheckpoint(BinaryReader& in, SdfTerrainComponent& terrain)
+	{
+		TerrainCheckpointRead read;
+		uint32_t letters = 0;
+		uint32_t version = 0;
+		uint64_t fingerprint = 0;
+		uint64_t layers = 0;
+		if (!in.ReadUInt32(letters) || letters != CheckpointLetters || !in.ReadUInt32(version) || version == 0 || version > TerrainCheckpointVersion ||
+			!in.ReadUInt64(fingerprint) || !in.ReadUInt64(layers) || !in.ReadUInt64(read.Revision))
+		{
+			return read;
+		}
+		if (fingerprint != GetTerrainGeneratorFingerprint())
+		{
+			read.Result = ETerrainCheckpointRead::OtherGenerator;
+			return read;
+		}
+		if (layers != HashTerrainLayers(terrain))
+		{
+			read.Result = ETerrainCheckpointRead::OtherLayers;
+			return read;
+		}
+		BinaryReader block;
+		SdfTerrainComponent loaded = terrain;
+		uint32_t regionCount = 0;
+		if (!in.ReadBlock(block) || !ReadTerrainEdits(block, loaded.Edits) || block.GetRemainingSize() != 0 || GetTerrainRevision(loaded) != read.Revision ||
+			!in.ReadUInt32(regionCount) || regionCount > in.GetRemainingSize() / 20)
+		{
+			return read;
+		}
+		std::vector<TerrainRegionHash> written(regionCount);
+		for (TerrainRegionHash& region : written)
+		{
+			if (!in.ReadInt32(region.Region.x) || !in.ReadInt32(region.Region.y) || !in.ReadInt32(region.Region.z) || !in.ReadUInt64(region.Hash))
+			{
+				return read;
+			}
+		}
+		read.Mismatched = FindTerrainRegionMismatches(written, HashTerrainRegions(loaded));
+		for (const glm::ivec3& region : read.Mismatched)
+		{
+			LOG_WARNING("Terrain: region ({0}, {1}, {2}) of a checkpoint at revision {3} isn't as it was written (generator {4:x})", region.x, region.y, region.z,
+				read.Revision, fingerprint);
+		}
+		terrain.Edits = std::move(loaded.Edits);
+		read.Result = ETerrainCheckpointRead::Read;
+		return read;
+	}
+
+	TerrainCheckpointRead LoadTerrainCheckpoint(const std::filesystem::path& path, SdfTerrainComponent& terrain)
+	{
+		BinaryReader in;
+		if (!in.LoadFromFile(path))
+		{
+			return {};
+		}
+		return ReadTerrainCheckpoint(in, terrain);
+	}
+
+	bool TakeTerrainEdits(SdfTerrainComponent& terrain, std::span<const SdfTerrainEdit> edits)
+	{
+		uint64_t latest = GetTerrainRevision(terrain);
+		for (const SdfTerrainEdit& edit : edits)
+		{
+			if (edit.Revision <= latest)
+			{
+				return false;
+			}
+			latest = edit.Revision;
+		}
+		terrain.Edits.insert(terrain.Edits.end(), edits.begin(), edits.end());
+		return true;
+	}
+
+	namespace
+	{
+		glm::ivec3 RegionOf(const glm::vec3& point)
+		{
+			return glm::ivec3(glm::floor(point / TerrainRegionSize));
+		}
+	}
+
+	void WriteTerrainRegionRepair(const SdfTerrainComponent& host, const glm::ivec3& region, BinaryWriter& out)
+	{
+		std::vector<size_t> bakes;
+		for (size_t index = 0; index < host.Edits.size(); ++index)
+		{
+			if (host.Edits[index].Kind == ESdfTerrainEditKind::Bake && RegionOf(host.Edits[index].Position) == region)
+			{
+				bakes.push_back(index);
+			}
+		}
+		out.WriteUInt32(static_cast<uint32_t>(bakes.size()));
+		for (const size_t index : bakes)
+		{
+			WriteEdit(host, index, out);
+		}
+	}
+
+	bool ApplyTerrainRegionRepair(SdfTerrainComponent& terrain, const glm::ivec3& region, BinaryReader& in)
+	{
+		uint32_t count = 0;
+		if (!in.ReadUInt32(count))
+		{
+			return false;
+		}
+		std::vector<std::pair<size_t, std::shared_ptr<const SdfTerrainBakedBrick>>> taken;
+		for (uint32_t n = 0; n < count; ++n)
+		{
+			SdfTerrainEdit bake;
+			if (!ReadEdit(in, bake) || bake.Kind != ESdfTerrainEditKind::Bake || RegionOf(bake.Position) != region)
+			{
+				return false;
+			}
+			const auto ours = std::lower_bound(terrain.Edits.begin(), terrain.Edits.end(), bake.Revision,
+				[](const SdfTerrainEdit& edit, uint64_t revision) { return edit.Revision < revision; });
+			if (ours == terrain.Edits.end() || ours->Revision != bake.Revision || ours->Kind != ESdfTerrainEditKind::Bake || ours->Position != bake.Position)
+			{
+				return false;
+			}
+			taken.push_back({ size_t(ours - terrain.Edits.begin()), bake.Baked });
+		}
+		for (auto& [index, baked] : taken)
+		{
+			terrain.Edits[index].Baked = std::move(baked);
+		}
+		LOG_WARNING("Terrain: region ({0}, {1}, {2}) differed from the host's at revision {3} (generator {4:x}); its {5} bakes now take the host's values", region.x,
+			region.y, region.z, GetTerrainRevision(terrain), GetTerrainGeneratorFingerprint(), taken.size());
+		return true;
+	}
+
+	size_t BakeTerrainRegion(SdfTerrainComponent& host, const glm::ivec3& region)
+	{
+		for (const SdfTerrainEdit& edit : host.Edits)
+		{
+			if (edit.Kind == ESdfTerrainEditKind::Bake && RegionOf(edit.Position) == region)
+			{
+				return 0;
+			}
+		}
+		// The bricks in the region the edits come into
+		const glm::ivec3 first = region * int(TerrainRegionSize / SdfTerrainBakeBrickSize);
+		const glm::ivec3 last = first + int(TerrainRegionSize / SdfTerrainBakeBrickSize) - 1;
+		std::set<std::tuple<int, int, int>> bricks;
+		for (const SdfTerrainEdit& edit : host.Edits)
+		{
+			glm::vec3 low;
+			glm::vec3 high;
+			GetTerrainEditBounds(edit, low, high);
+			const glm::ivec3 from = glm::max(glm::ivec3(glm::floor(low / SdfTerrainBakeBrickSize)), first);
+			const glm::ivec3 to = glm::min(glm::ivec3(glm::floor(high / SdfTerrainBakeBrickSize)), last);
+			for (int z = from.z; z <= to.z; ++z)
+			{
+				for (int y = from.y; y <= to.y; ++y)
+				{
+					for (int x = from.x; x <= to.x; ++x)
+					{
+						bricks.insert({ z, y, x });
+					}
+				}
+			}
+		}
+		for (const auto& [z, y, x] : bricks)
+		{
+			AppendTerrainBake(host, { x, y, z });
+		}
+		return bricks.size();
 	}
 }
