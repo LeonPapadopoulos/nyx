@@ -26,6 +26,7 @@
 #include "PainterTestWindow.h"
 #include "SkyTablesWindow.h"
 #endif
+#include "TerrainPlanWindow.h"
 
 #include "imgui.h"
 
@@ -178,6 +179,9 @@ namespace Nyx::Editor
 
 			// Devices, actions and why they fire or not, contexts, the control map, events, timeline
 			NYX_UI(Nyx::UI::MenuItem("Input", nullptr, &Editor.InputWindow.bOpen));
+
+			// The scene's SDF terrain's world plan from above
+			NYX_UI(Nyx::UI::MenuItem("Plan Map", nullptr, &Editor.PlanMap.bOpen));
 
 			// The game's log and the editor link's messages
 			if (NYX_UI(Nyx::UI::MenuItem("Game Link", nullptr, Editor.bShowGameLink)))

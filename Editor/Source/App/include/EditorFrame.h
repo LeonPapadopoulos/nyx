@@ -32,6 +32,7 @@ namespace Nyx::Editor
 	class PainterTestWindow;
 	class SkyTablesWindow;
 #endif
+	class TerrainPlanWindow;
 
 	// The editor's part of the window's frame: the titlebar with the menus, the workspace tabs,
 	// the open scene and Play, and the status bar
@@ -56,6 +57,7 @@ namespace Nyx::Editor
 			MaterialWorkspace& Materials;
 			bool& bAssetBrowserVisible;
 			InputPanel& InputWindow;
+			TerrainPlanWindow& PlanMap;
 			bool& bShowGameLink;
 			SceneViewSet& SceneViews;
 #if NYX_DEV_TOOLS

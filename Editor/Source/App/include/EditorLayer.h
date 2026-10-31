@@ -35,6 +35,7 @@
 #include "PainterTestWindow.h"
 #include "SkyTablesWindow.h"
 #endif
+#include "TerrainPlanWindow.h"
 
 #include <filesystem>
 #include <memory>
@@ -160,6 +161,8 @@ namespace Nyx::Editor
 
 		// Window > Input: the editor's own input, with its traces
 		InputPanel InputWindow;
+		// The world plan of the scene's SDF terrain from above
+		TerrainPlanWindow PlanMap;
 
 		// The assets of reflected asset types being edited (physics materials, a game's own types),
 		// with the scene's undo, and their windows
@@ -186,6 +189,7 @@ namespace Nyx::Editor
 			.Materials = Materials,
 			.bAssetBrowserVisible = bAssetBrowserVisible,
 			.InputWindow = InputWindow,
+			.PlanMap = PlanMap,
 			.bShowGameLink = bShowGameLink,
 			.SceneViews = SceneViews,
 #if NYX_DEV_TOOLS

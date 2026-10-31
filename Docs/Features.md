@@ -1626,6 +1626,13 @@ game, coarser the farther, and collides while the world runs.
   wide a stretch of one kind is. *Pins* steer it: more plains, rough land, sea or tunnels round a
   place, or a rift that passes it, the seed still shaping the rest. A 2 km plan takes about 15 ms, a
   20 km one under 2 s.
+  - *Window > Plan Map* in the editor: the selected terrain's plan (else the scene's first terrain
+    with a *Plan* layer) from above, a pixel a node (`DrawTerrainWorldPlanMap()`,
+    `TerrainWorldPlanMap.h`): its kinds in their colours, rivers and lakes, an overlay of its
+    *Height*, *Slope* or *Tunnels*; its pins as rings in their kind's colour; each scene view's
+    camera as a wedge; under the mouse, what the plan made the place (`ReadTerrainWorldPlan()`). The
+    wheel zooms round the mouse, the right or middle button drags, *Fit* shows all of it; X runs
+    right and Z down. It is drawn again whenever the plan changes.
 - Water, for a terrain with a *Plan* layer (`TerrainWater.h`): where it stands, worked out from the
   plan and the ground as it is now, edits and all, on a worker whenever the layers, plan or edits
   change (the ground found again only where edits reached: about 100 ms for 2 km on every worker,
@@ -1709,7 +1716,8 @@ game, coarser the farther, and collides while the world runs.
   it and far off),
   `NyxTerrainWorldPlanTests` (the same bits from the same seed and another world from another, each
   kind about its share, pins making their kind, rifts opening the edge, rivers ending at an outlet
-  with beds never rising, lakes holding water, boxes' bounds and the grids' slopes; `--maps <folder>`
+  with beds never rising, lakes holding water, boxes' bounds and the grids' slopes; the map a pixel
+  a node in its kinds' colours, each overlay its own, its readout and shares; `--maps <folder>`
   writes maps of a few seeds and plans),
   `NyxTerrainChunksTests` (the octree covering the view distance once, balanced, each level where
   its distance says, held by the hysteresis; every seam closed with both meshers and half-metre

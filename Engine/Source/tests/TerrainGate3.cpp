@@ -30,7 +30,7 @@
 #include "TerrainGate3Region.h"
 #include "TerrainWater.h"
 #include "TerrainWorldPlan.h"
-#include "TerrainWorldPlanMap.h"
+#include "TerrainWorldPlanPicture.h"
 #include "TransformComponent.h"
 #include "VulkanRenderer.h"
 #include "RenderTestSupport.h"

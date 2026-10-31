@@ -1,14 +1,19 @@
 // The world plan (TerrainWorldPlan.h): the same seed and plan make the same bits, another seed
 // another world; each kind of ground takes about its share; pins steer it; rifts open the edge;
 // rivers run down to an outlet, their beds never rising; lakes fill their basins; a box's bounds
-// hold every blended value in it, and the slopes every change. Prints how long a world of 2 and of
+// hold every blended value in it, and the slopes every change; its map has a pixel a node in its
+// kind's colour, clear off the landmass, each overlay its own, and its readout and shares say what
+// the nodes are. Prints how long a world of 2 and of
 // 20 km takes. --maps <folder> writes maps of a few seeds and plans as PNGs.
 #include "Log.h"
 #include "TerrainWorldPlan.h"
 #include "TerrainWorldPlanMap.h"
+#include "TerrainWorldPlanPicture.h"
 #include "TestSupport.h"
 
 #include <glm/glm.hpp>
+
+#include <optional>
 
 #include <chrono>
 #include <cmath>
@@ -93,6 +98,63 @@ namespace
 		none.Roughland = 0.0f;
 		const auto flat = Nyx::MakeTerrainWorldPlan(3, none);
 		Require(ShareOf(*flat, ESdfTerrainLandform::Sea) == 0.0f && ShareOf(*flat, ESdfTerrainLandform::Roughland) == 0.0f, "None of a kind should make none");
+	}
+
+	// The map: a pixel a node, clear off the landmass, the sea blue and the plains green in Kinds,
+	// each overlay another picture; the readout what the node is; the shares its nodes' counts
+	void TestMap()
+	{
+		using namespace Nyx;
+		const auto plan = Nyx::MakeTerrainWorldPlan(3, SdfTerrainWorldPlan{});
+		const TerrainPlanMapImage kinds = DrawTerrainWorldPlanMap(*plan);
+		Require(kinds.Width == uint32_t(plan->Nodes) && kinds.Height == uint32_t(plan->Nodes) && kinds.Pixels.size() == size_t(plan->Nodes) * plan->Nodes * 4,
+			"The map should have a pixel a node");
+		std::optional<size_t> sea;
+		std::optional<size_t> plains;
+		std::optional<size_t> off;
+		size_t land = 0;
+		size_t seaNodes = 0;
+		for (size_t index = 0; index < plan->Landform.size(); ++index)
+		{
+			const uint8_t landform = plan->Landform[index];
+			const uint8_t* pixel = &kinds.Pixels[index * 4];
+			if (landform == TerrainWorldPlan::NotLand)
+			{
+				off = off ? off : std::optional<size_t>(index);
+				Require(pixel[3] == 0, "Off the landmass should be clear");
+				continue;
+			}
+			++land;
+			seaNodes += landform == uint8_t(ESdfTerrainLandform::Sea) ? 1 : 0;
+			Require(pixel[3] == 255, "The landmass should be opaque");
+			// Away from rivers and lakes, drawn over the kinds
+			const bool bWater = pixel[2] > 200 && pixel[1] > 140;
+			if (!bWater && landform == uint8_t(ESdfTerrainLandform::Sea) && !sea)
+			{
+				sea = index;
+				Require(pixel[2] > pixel[0] && pixel[2] > pixel[1], "The sea should be blue");
+			}
+			if (!bWater && landform == uint8_t(ESdfTerrainLandform::Plains) && !plains)
+			{
+				plains = index;
+				Require(pixel[1] > pixel[0] && pixel[1] > pixel[2], "The plains should be green");
+			}
+		}
+		Require(sea && plains && off, "The plan should have sea, plains and somewhere off the landmass");
+		for (const ETerrainPlanMapOverlay overlay : { ETerrainPlanMapOverlay::Height, ETerrainPlanMapOverlay::Slope, ETerrainPlanMapOverlay::Tunnels })
+		{
+			Require(DrawTerrainWorldPlanMap(*plan, overlay).Pixels != kinds.Pixels, "Each overlay should draw another picture");
+		}
+		auto pointOf = [&](size_t index) { return plan->PointOf(int(index % size_t(plan->Nodes)), int(index / size_t(plan->Nodes))); };
+		const TerrainPlanReadout atSea = ReadTerrainWorldPlan(*plan, pointOf(*sea));
+		Require(atSea.bLand && atSea.Landform == ESdfTerrainLandform::Sea && atSea.Height < plan->Made.SeaLevel, "The readout should say the sea is sea, below its level");
+		Require(ReadTerrainWorldPlan(*plan, pointOf(*plains)).Landform == ESdfTerrainLandform::Plains, "The readout should say the plains are plains");
+		Require(!ReadTerrainWorldPlan(*plan, pointOf(*off)).bLand && !ReadTerrainWorldPlan(*plan, glm::vec2(1.0e5f)).bLand, "Off the landmass should read as no land");
+		const TerrainPlanShares shares = GetTerrainWorldPlanShares(*plan);
+		Require(std::fabs(shares.Sea - float(seaNodes) / float(land)) < 1e-6f && shares.Rivers == plan->Rivers.size() && shares.Lakes == plan->Lakes.size(),
+			"The shares should be the nodes' counts");
+		std::cout << "The map: " << kinds.Width << " pixels a side; sea " << shares.Sea << ", rough land " << shares.Roughland << ", rifts " << shares.Rift << ", tunnels "
+				  << shares.Tunnels << "\n";
 	}
 
 	ESdfTerrainLandform LandformAt(const TerrainWorldPlan& plan, const glm::vec2& point)
@@ -310,6 +372,7 @@ int main(int argc, char** argv)
 		TestRifts();
 		TestWater();
 		TestBoundsAndSlopes();
+		TestMap();
 		PrintTimings();
 	}
 	catch (const std::exception& error)

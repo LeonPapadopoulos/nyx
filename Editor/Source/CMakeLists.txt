@@ -23,6 +23,7 @@ set(NYX_EDITOR_SOURCES
     Scene/src/SceneDocument.cpp
     Scene/src/TransformGizmo.cpp
     Scene/src/TerrainBrushTool.cpp
+    Scene/src/TerrainPlanWindow.cpp
     Scene/src/SceneEntityTransactionDomain.cpp
     Scene/src/SceneOutlineTransactionDomain.cpp
     Scene/src/SceneOutlineEdits.cpp
@@ -110,6 +111,7 @@ set(NYX_EDITOR_HEADERS
     Scene/include/SceneDocument.h
     Scene/include/TransformGizmo.h
     Scene/include/TerrainBrushTool.h
+    Scene/include/TerrainPlanWindow.h
     Scene/include/TransactionObjectRefHelpers.h
     Scene/include/SceneEntityTransactionDomain.h
     Scene/include/SceneOutlineTransactionDomain.h

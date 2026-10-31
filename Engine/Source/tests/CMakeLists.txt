@@ -103,7 +103,7 @@ set_property(TARGET NyxSdfTerrainTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxSdfTerrainTests COMMAND NyxSdfTerrainTests)
 
 # The world plan; --maps <folder> writes maps of a few seeds and plans
-add_executable(NyxTerrainWorldPlanTests TerrainWorldPlanTests.cpp TerrainWorldPlanMap.h)
+add_executable(NyxTerrainWorldPlanTests TerrainWorldPlanTests.cpp TerrainWorldPlanPicture.h)
 target_link_libraries(NyxTerrainWorldPlanTests PRIVATE NyxEngine)
 add_dependencies(NyxTerrainWorldPlanTests NyxGeneratedReflection)
 set_property(TARGET NyxTerrainWorldPlanTests PROPERTY FOLDER "Tests")
@@ -773,7 +773,7 @@ nyx_copy_shaders_next_to(NyxTerrainGateGpu)
 nyx_copy_shader_compiler_next_to(NyxTerrainGateGpu)
 
 # Gate 3: the test region, its report (--report <folder>), pictures (--shots <folder> [seed]) and scene (--write-scene); not in ctest
-add_executable(NyxTerrainGate3 TerrainGate3.cpp TerrainGate3Region.h TerrainWorldPlanMap.h)
+add_executable(NyxTerrainGate3 TerrainGate3.cpp TerrainGate3Region.h TerrainWorldPlanPicture.h)
 target_link_libraries(NyxTerrainGate3 PRIVATE NyxEngine)
 add_dependencies(NyxTerrainGate3 NyxGeneratedReflection)
 set_property(TARGET NyxTerrainGate3 PROPERTY FOLDER "Tests")

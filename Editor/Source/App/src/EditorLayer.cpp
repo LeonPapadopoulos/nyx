@@ -380,6 +380,7 @@ namespace Nyx::Editor
 		ApplyFrameRate();
 
 		InputWindow.Draw(*Input);
+		PlanMap.Draw(*Renderer, Editing);
 
 		if (bShowGameLink)
 		{
