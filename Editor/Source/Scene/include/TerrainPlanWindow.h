@@ -28,7 +28,9 @@ namespace Nyx::Editor
 	// Steering it (TerrainPlanEdits.h), each an undo step, the plan made again when the mouse lets
 	// go: a pin's middle dragged moves it, its ring sizes it; a double-click adds a pin of the kind
 	// chosen (a Rift pin: a rift passes there); a right-click on a pin changes its kind or removes
-	// it; the seed stepped or rolled.
+	// it; the seed stepped or rolled. A Rift pin's path: Extend Path in its menu, then each
+	// double-click adds a place the rift passes after the last, until Escape or a right-click; a
+	// place dragged moves it, right-clicked removes it.
 	class TerrainPlanWindow
 	{
 	public:
@@ -51,6 +53,11 @@ namespace Nyx::Editor
 		std::optional<size_t> Dragged;
 		bool bDraggingRing = false;
 		Nyx::SdfTerrainPlanPin DraggedPin;
+		// The place of its path being dragged, -1 for none
+		int DraggedPlace = -1;
 		std::optional<size_t> MenuPin;
+		int MenuPlace = -1;
+		// The Rift pin double-clicks add places to the path of
+		std::optional<size_t> Extending;
 	};
 }

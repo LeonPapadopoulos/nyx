@@ -96,6 +96,16 @@ namespace Nyx::Editor
 	{
 		for (size_t index = pins.size(); index-- > 0;)
 		{
+			for (size_t place = pins[index].Path.size(); place-- > 0;)
+			{
+				if (glm::length(point - pins[index].Path[place]) <= tolerance)
+				{
+					return TerrainPinHit{ index, false, int(place) };
+				}
+			}
+		}
+		for (size_t index = pins.size(); index-- > 0;)
+		{
 			if (glm::length(point - pins[index].Position) <= tolerance)
 			{
 				return TerrainPinHit{ index, false };

@@ -251,8 +251,9 @@ namespace Nyx
 			return std::sqrt(alongX * alongX + alongZ * alongZ) / Cell * 1.001f + 1e-6f;
 		}
 
-		// A rift's line from outside the edge inland: towards its pin, if it has one, then on, bending
-		// with the noise, never turning back towards the edge
+		// A rift's line from outside the edge inland: towards its pin, if it has one, and through its
+		// path's places in order, ending past the last; without, on inland, bending with the noise,
+		// never turning back towards the edge
 		std::vector<glm::vec2> PlanRift(const TerrainWorldPlan& plan, const SdfTerrainWorldPlan& made, uint32_t seed, uint32_t index, const SdfTerrainPlanPin* pin)
 		{
 			glm::vec2 outward;
@@ -288,30 +289,43 @@ namespace Nyx
 			const glm::vec2 inward = -outward;
 			glm::vec2 heading = inward;
 			float length = std::max(made.RiftLength, 0.0f) + made.RiftWidth;
-			bool bPassed = pin == nullptr;
+			// The places it goes through: the pin's, then its path's
+			std::vector<glm::vec2> targets;
 			if (pin != nullptr)
 			{
-				length = std::max(length, glm::length(pin->Position - point) + made.RiftWidth * 2.0f);
+				targets.push_back(pin->Position);
+				targets.insert(targets.end(), pin->Path.begin(), pin->Path.end());
+				float along = glm::length(targets.front() - point);
+				for (size_t n = 1; n < targets.size(); ++n)
+				{
+					along += glm::length(targets[n] - targets[n - 1]);
+				}
+				length = pin->Path.empty() ? std::max(length, along + made.RiftWidth * 2.0f) : along + made.RiftWidth * 2.0f;
 			}
+			size_t next = 0;
 			const FractalNoise3D bendX = PlanNoise(seed + index, EPlanNoise::RiftBendX, 1.0f / std::max(made.RegionSize * 0.7f, 32.0f), 2);
 			const FractalNoise3D bendZ = PlanNoise(seed + index, EPlanNoise::RiftBendZ, 1.0f / std::max(made.RegionSize * 0.7f, 32.0f), 2);
 			std::vector<glm::vec2> points{ point };
 			for (float travelled = 0.0f; travelled < length; travelled += Cell)
 			{
-				if (!bPassed)
+				const bool bTowards = next < targets.size();
+				// Along a path, more towards each place and bent less, so it passes them
+				const bool bPath = bTowards && pin != nullptr && !pin->Path.empty();
+				if (bTowards)
 				{
-					heading = Normalized(heading * 0.6f + Normalized(pin->Position - point) * 0.4f);
+					heading = bPath ? Normalized(heading * 0.3f + Normalized(targets[next] - point) * 0.7f) : Normalized(heading * 0.6f + Normalized(targets[next] - point) * 0.4f);
 				}
-				heading = Normalized(heading + glm::vec2(Noise(bendX, point), Noise(bendZ, point)) * 0.35f);
-				if (heading.x * inward.x + heading.y * inward.y < 0.2f)
+				heading = Normalized(heading + glm::vec2(Noise(bendX, point), Noise(bendZ, point)) * (bPath ? 0.15f : 0.35f));
+				// Inland, unless a path leads it elsewhere
+				if (heading.x * inward.x + heading.y * inward.y < 0.2f && (!bTowards || next == 0))
 				{
 					heading = Normalized(heading + inward * 0.5f);
 				}
 				point += heading * Cell;
 				points.push_back(point);
-				if (!bPassed && glm::length(pin->Position - point) < Cell)
+				while (next < targets.size() && glm::length(targets[next] - point) < (pin->Path.empty() ? Cell : Cell * 0.5f))
 				{
-					bPassed = true;
+					++next;
 				}
 			}
 			return points;
@@ -783,7 +797,8 @@ namespace Nyx
 	{
 		const bool bSamePins = a.Pins.size() == b.Pins.size()
 			&& std::equal(a.Pins.begin(), a.Pins.end(), b.Pins.begin(),
-				[](const SdfTerrainPlanPin& x, const SdfTerrainPlanPin& y) { return x.Landform == y.Landform && x.Position == y.Position && x.Radius == y.Radius && x.Strength == y.Strength; });
+				[](const SdfTerrainPlanPin& x, const SdfTerrainPlanPin& y)
+				{ return x.Landform == y.Landform && x.Position == y.Position && x.Radius == y.Radius && x.Strength == y.Strength && x.Path == y.Path; });
 		return bSamePins && a.Size == b.Size && a.RegionSize == b.RegionSize && a.Height == b.Height && a.Thickness == b.Thickness && a.UndersideDepth == b.UndersideDepth
 			&& a.EdgeRoughness == b.EdgeRoughness && a.Rounding == b.Rounding && a.Sea == b.Sea && a.SeaLevel == b.SeaLevel && a.SeaDepth == b.SeaDepth
 			&& a.Roughland == b.Roughland && a.RoughLift == b.RoughLift && a.RoughHeight == b.RoughHeight && a.PlainsHeight == b.PlainsHeight && a.Rifts == b.Rifts
@@ -819,6 +834,11 @@ namespace Nyx
 			add(pin.Position);
 			add(pin.Radius);
 			add(pin.Strength);
+			add(pin.Path.size());
+			for (const glm::vec2& place : pin.Path)
+			{
+				add(place);
+			}
 		}
 		return hash;
 	}

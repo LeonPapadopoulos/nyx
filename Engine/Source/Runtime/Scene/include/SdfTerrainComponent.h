@@ -280,6 +280,11 @@ namespace Nyx
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DragSpeed = 0.05, Tooltip = "How strongly: 1 nearly always wins at its middle, 0 does nothing"))
 		float Strength = 1.0f;
+
+		// A Rift pin's way on: the rift comes in from the edge to the pin, then passes these in order
+		// and ends past the last
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DragSpeed = 4.0, Tooltip = "Rift: the places, along X and Z, the rift passes in order after the pin, ending past the last"))
+		std::vector<glm::vec2> Path;
 	};
 
 	// What a world is made of, in what proportions, worked out once from the terrain's seed

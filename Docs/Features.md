@@ -1666,6 +1666,13 @@ game, coarser the farther, and collides while the world runs.
     double-click adds a pin of the kind in *New pin* (a *Rift* pin, 60 m: a rift passes there); a
     right-click on a pin changes its kind or removes it; *<* and *>* step the seed, *Roll* picks
     one.
+  - A rift's path (`SdfTerrainPlanPin::Path`): a *Rift* pin's rift comes in from the edge to it, then
+    passes the path's places in order and ends past the last, turning wherever they lead. On the map,
+    *Extend Path* in the pin's menu, then each double-click adds a place after the last, until
+    Escape or a right-click; a place is a square on the rift's line, dragged to move it,
+    right-clicked to remove it; *Clear Path* in the pin's menu. `NyxTerrainWorldPlanTests` (a rift
+    passes its pin and each place of its path, for four seeds), `NyxEditorPanelTests` (a path's
+    places found on the map).
   - *Window > Plan Seeds*: many seeds of the same terrain's plan side by side, to tell whether the
     plan makes good worlds in general rather than for one seed: *Run* makes 16, 36 or 64 seeds from
     *First seed* on the workers (`MakeTerrainPlanSeed()`), each a small map with its seed and its

@@ -209,6 +209,22 @@ namespace
 		const auto rifted = Nyx::MakeTerrainWorldPlan(2, made);
 		Require(rifted->At(rifted->Rift, 200.0f, -100.0f) < 0.0f, "A Rift pin should have a rift pass it");
 
+		// A rift's path: through the pin, then each place in turn, turning back the way it came
+		SdfTerrainPlanPin path{ .Landform = ESdfTerrainLandform::Rift, .Position = glm::vec2(300.0f, 0.0f) };
+		path.Path = { glm::vec2(100.0f, 150.0f), glm::vec2(-100.0f, 100.0f), glm::vec2(-150.0f, -150.0f) };
+		made.Pins = { path };
+		for (uint32_t seed = 1; seed <= 4; ++seed)
+		{
+			const auto pathed = Nyx::MakeTerrainWorldPlan(seed, made);
+			Require(pathed->At(pathed->Rift, path.Position.x, path.Position.y) < 0.0f, "A rift with a path should pass its pin");
+			for (const glm::vec2& place : path.Path)
+			{
+				Require(pathed->At(pathed->Rift, place.x, place.y) < 0.0f, "A rift with a path should pass each of its places");
+			}
+		}
+		Require(Nyx::HashTerrainWorldPlan(made) != Nyx::HashTerrainWorldPlan(SdfTerrainWorldPlan{ .Pins = { SdfTerrainPlanPin{ .Landform = ESdfTerrainLandform::Rift, .Position = path.Position } } }),
+			"A pin's path should be part of the plan");
+
 		made.Pins = { SdfTerrainPlanPin{ .Landform = ESdfTerrainLandform::Tunnels, .Position = inland, .Radius = 150.0f } };
 		made.Tunnels = 0.0f;
 		const auto tunnelled = Nyx::MakeTerrainWorldPlan(2, made);

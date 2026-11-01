@@ -198,7 +198,20 @@ namespace Nyx::Editor
 		const std::vector<Nyx::SdfTerrainPlanPin>& pins = values.Plan.Pins;
 		const glm::vec2 under = toPlan(io.MousePos);
 		const float tolerance = 8.0f / PixelsPerMetre;
-		if (bHovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && !FindTerrainPinAt(pins, under, tolerance))
+		// A rift's path being extended, until Escape, a right-click or its pin is gone
+		if (Extending && (*Extending >= pins.size() || pins[*Extending].Landform != Nyx::ESdfTerrainLandform::Rift || ImGui::IsKeyPressed(ImGuiKey_Escape) ||
+							 (bHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right))))
+		{
+			Extending.reset();
+		}
+		if (Extending && bHovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+		{
+			std::vector<Nyx::SdfTerrainPlanPin> extended = pins;
+			extended[*Extending].Path.push_back(under);
+			SetTerrainPlanPins(editing, *terrain, extended, "Extend Rift Path");
+			Dragged.reset();
+		}
+		else if (bHovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && !FindTerrainPinAt(pins, under, tolerance))
 		{
 			std::vector<Nyx::SdfTerrainPlanPin> added = pins;
 			Nyx::SdfTerrainPlanPin pin;
@@ -215,6 +228,7 @@ namespace Nyx::Editor
 			{
 				Dragged = hit->Index;
 				bDraggingRing = hit->bRing;
+				DraggedPlace = hit->Place;
 				DraggedPin = pins[hit->Index];
 			}
 		}
@@ -224,7 +238,11 @@ namespace Nyx::Editor
 		}
 		if (Dragged && ImGui::IsMouseDown(ImGuiMouseButton_Left))
 		{
-			if (bDraggingRing)
+			if (DraggedPlace >= 0 && size_t(DraggedPlace) < DraggedPin.Path.size())
+			{
+				DraggedPin.Path[size_t(DraggedPlace)] += glm::vec2(io.MouseDelta.x, io.MouseDelta.y) / PixelsPerMetre;
+			}
+			else if (bDraggingRing)
 			{
 				DraggedPin.Radius = std::max(glm::length(under - DraggedPin.Position), 10.0f);
 			}
@@ -237,8 +255,9 @@ namespace Nyx::Editor
 		{
 			std::vector<Nyx::SdfTerrainPlanPin> moved = pins;
 			moved[*Dragged] = DraggedPin;
-			SetTerrainPlanPins(editing, *terrain, moved, bDraggingRing ? "Size Plan Pin" : "Move Plan Pin");
+			SetTerrainPlanPins(editing, *terrain, moved, DraggedPlace >= 0 ? "Move Rift Path Place" : (bDraggingRing ? "Size Plan Pin" : "Move Plan Pin"));
 			Dragged.reset();
+			DraggedPlace = -1;
 		}
 		if (bHovered && ImGui::IsMouseReleased(ImGuiMouseButton_Right) && ImGui::GetMouseDragDelta(ImGuiMouseButton_Right, 0.0f).x == 0.0f &&
 			ImGui::GetMouseDragDelta(ImGuiMouseButton_Right, 0.0f).y == 0.0f)
@@ -246,13 +265,38 @@ namespace Nyx::Editor
 			if (const std::optional<TerrainPinHit> hit = FindTerrainPinAt(pins, under, tolerance))
 			{
 				MenuPin = hit->Index;
+				MenuPlace = hit->Place;
 				ImGui::OpenPopup("##PlanPin");
 			}
 		}
 		if (ImGui::BeginPopup("##PlanPin"))
 		{
-			if (MenuPin && *MenuPin < pins.size())
+			if (MenuPin && *MenuPin < pins.size() && MenuPlace >= 0 && size_t(MenuPlace) < pins[*MenuPin].Path.size())
 			{
+				if (NYX_UI(Nyx::UI::Selectable("Remove Place")))
+				{
+					std::vector<Nyx::SdfTerrainPlanPin> removed = pins;
+					removed[*MenuPin].Path.erase(removed[*MenuPin].Path.begin() + MenuPlace);
+					SetTerrainPlanPins(editing, *terrain, removed, "Remove Rift Path Place");
+					MenuPin.reset();
+				}
+			}
+			else if (MenuPin && *MenuPin < pins.size())
+			{
+				if (pins[*MenuPin].Landform == Nyx::ESdfTerrainLandform::Rift)
+				{
+					if (NYX_UI(Nyx::UI::Selectable("Extend Path")))
+					{
+						Extending = *MenuPin;
+					}
+					if (!pins[*MenuPin].Path.empty() && NYX_UI(Nyx::UI::Selectable("Clear Path")))
+					{
+						std::vector<Nyx::SdfTerrainPlanPin> cleared = pins;
+						cleared[*MenuPin].Path.clear();
+						SetTerrainPlanPins(editing, *terrain, cleared, "Clear Rift Path");
+					}
+					Nyx::UI::Separator();
+				}
 				for (const Nyx::ESdfTerrainLandform kind : { Nyx::ESdfTerrainLandform::Plains, Nyx::ESdfTerrainLandform::Roughland, Nyx::ESdfTerrainLandform::Sea,
 					 Nyx::ESdfTerrainLandform::Tunnels, Nyx::ESdfTerrainLandform::Rift })
 				{
@@ -286,6 +330,19 @@ namespace Nyx::Editor
 			const Nyx::SdfTerrainPlanPin& pin = Dragged && *Dragged == index ? DraggedPin : values.Plan.Pins[index];
 			const ImVec2 at = toScreen(pin.Position);
 			const ImU32 colour = PinColour(pin.Landform);
+			// A rift's path: a line through its places, each a square
+			ImVec2 from = at;
+			for (const glm::vec2& place : pin.Path)
+			{
+				const ImVec2 to = toScreen(place);
+				drawList->AddLine(from, to, colour, Extending && *Extending == index ? 3.0f : 2.0f);
+				drawList->AddRectFilled(ImVec2(to.x - 4.0f, to.y - 4.0f), ImVec2(to.x + 4.0f, to.y + 4.0f), colour);
+				from = to;
+			}
+			if (Extending && *Extending == index && bHovered)
+			{
+				drawList->AddLine(from, io.MousePos, colour, 1.0f);
+			}
 			drawList->AddCircle(at, std::max(pin.Radius * PixelsPerMetre, 3.0f), colour, 48, 2.0f);
 			drawList->AddCircleFilled(at, 4.0f, colour);
 			drawList->AddText(ImVec2(at.x + 6.0f, at.y - 6.0f), colour, LandformName(pin.Landform));
@@ -335,6 +392,10 @@ namespace Nyx::Editor
 		else
 		{
 			NYX_UI(ImGui::TextDisabled("The wheel zooms, the right or middle button drags; a double-click adds a pin, its middle moves it, its ring sizes it"));
+		}
+		if (Extending)
+		{
+			NYX_UI(ImGui::TextDisabled("Double-clicks add places to the rift's path; Escape or a right-click ends"));
 		}
 		ImGui::End();
 	}

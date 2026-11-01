@@ -619,6 +619,19 @@ namespace
 	// with a Plan layer, else the first
 	void TestTerrainPlanEdits()
 	{
+		// A rift's path: its places found before its middle and ring, the last first
+		{
+			Nyx::SdfTerrainPlanPin rift;
+			rift.Landform = Nyx::ESdfTerrainLandform::Rift;
+			rift.Position = glm::vec2(0.0f, 0.0f);
+			rift.Radius = 60.0f;
+			rift.Path = { glm::vec2(100.0f, 0.0f), glm::vec2(100.0f, 2.0f) };
+			const std::optional<TerrainPinHit> place = FindTerrainPinAt({ rift }, glm::vec2(100.0f, 1.5f), 4.0f);
+			Require(place && place->Index == 0 && place->Place == 1, "A path's place should be found, the last first");
+			const std::optional<TerrainPinHit> middle = FindTerrainPinAt({ rift }, glm::vec2(1.0f, 0.0f), 4.0f);
+			Require(middle && middle->Place == -1 && !middle->bRing, "A rift pin's middle should still be found");
+		}
+
 		SceneEditor editing;
 		Registry& world = editing.Scene.GetRegistry();
 		Require(!FindPlannedTerrain(editing), "A scene without a planned terrain should show none");
