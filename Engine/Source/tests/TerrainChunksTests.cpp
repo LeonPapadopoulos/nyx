@@ -309,6 +309,7 @@ namespace
 		SdfTerrainComponent terrain = MakeTerrain();
 		terrain.Mesher = mesher;
 		terrain.FinestLevel = finestLevel;
+		terrain.LevelDistance = levelDistance;
 		TerrainLevelSettings settings;
 		settings.ViewDistance = 200.0f;
 		settings.LevelDistance = levelDistance;
@@ -439,6 +440,47 @@ namespace
 		{
 			Require(shared == 0, "Marching cubes: no edge should be shared by four triangles");
 		}
+
+		// Slid towards the coarser level as the shaders slide them, seen from the viewpoint: a vertex
+		// two chunks share in the same place in both, so the seams stay closed while blending
+		if (mesher != ESdfTerrainMesher::Dual)
+		{
+			return;
+		}
+		std::map<Point, std::pair<glm::vec3, int>> slid;
+		uint32_t sameLevel = 0;
+		uint32_t apart = 0;
+		float widest = 0.0f;
+		glm::vec3 firstApart(0.0f);
+		for (size_t index = 0; index < tree.Leaves.size(); ++index)
+		{
+			const int level = tree.Leaves[index].Level;
+			const float merged = levelDistance * GetTerrainChunkSize(level);
+			const float start = merged * 0.65f;
+			const glm::vec3 corner = CornerOf(tree.Leaves[index]);
+			for (const Vertex& vertex : meshes[index].Vertices)
+			{
+				const glm::vec3 position = vertex.Position + corner;
+				if (glm::length(position - viewpoint) > checked)
+				{
+					continue;
+				}
+				const float along = level >= TerrainCoarsestLevel ? 0.0f : std::clamp((glm::length(position - viewpoint) - start) / (merged - start), 0.0f, 1.0f);
+				const glm::vec3 moved = position + glm::vec3(vertex.Tangent) * along;
+				const auto [it, bAdded] = slid.try_emplace(bitsOf(position), moved, level);
+				const float distance = glm::length(it->second.first - moved);
+				if (!bAdded && distance > 1e-3f)
+				{
+					sameLevel += it->second.second == level ? 1 : 0;
+					firstApart = apart == 0 ? position : firstApart;
+					++apart;
+					widest = std::max(widest, distance);
+				}
+			}
+		}
+		std::cout << "Dual, finest level " << finestLevel << ", blending: " << apart << " shared vertices apart (" << sameLevel << " between chunks of one level), the widest by " << widest << " m\n";
+		Require(apart == 0, "Blending: a vertex two chunks share should slide to the same place in both; " + std::to_string(apart) + " apart, by up to " +
+			std::to_string(widest) + " m, the first at " + std::to_string(firstApart.x) + ", " + std::to_string(firstApart.y) + ", " + std::to_string(firstApart.z));
 	}
 
 	// Round a viewpoint: every chunk of the tree the surface crosses drawn, each the same bits as made

@@ -782,11 +782,12 @@ namespace Nyx
 			askedMin = glm::min(askedMin, coarse.Origin - cell);
 			askedMax = glm::max(askedMax, coarse.Origin + glm::vec3(coarse.Size - 1) * coarse.CellSize + cell);
 		}
-		// The coarser level's samples for the places its vertices slide to: two of its cells before the
-		// corner, one past the far side, as a coarser chunk's grid has them round these cells
+		// The coarser level's samples for the places its vertices slide to: three of its cells before the
+		// corner and past the far side, so that every coarser cell round a vertex of this mesh, its
+		// neighbours' cells next to it included, is made whole, as in every chunk that has the vertex
 		const bool bMorph = terrain.bLevelBlending && terrain.Mesher == ESdfTerrainMesher::Dual;
-		const glm::vec3 morphOrigin = corner - 4.0f * cell;
-		const glm::ivec3 morphSize(TerrainChunkCells / 2 + 4);
+		const glm::vec3 morphOrigin = corner - 6.0f * cell;
+		const glm::ivec3 morphSize(TerrainChunkCells / 2 + 7);
 		if (bMorph)
 		{
 			askedMin = glm::min(askedMin, morphOrigin - cell);
@@ -840,7 +841,11 @@ namespace Nyx
 		// Where the coarser level has each vertex, in its tangent: the vertex of the coarser cell it is
 		// in, as the coarser chunk makes it, the same bits, from its samples at even indices and a
 		// shell of samples round them; the nearest of them where the cell has more than one, or of the
-		// cells round it where it has none
+		// cells round it where it has none. Every chunk with the vertex finds the same: the cells by
+		// its place in the world at whole 4096ths, as the positions are below, ties by place. Where
+		// another level's chunk is next to it, it stays: a vertex in a coarser chunk's place is that
+		// chunk's, and one within a cell of a finer chunk's place that chunk has too, neither sliding
+		// in the other, so the seams between levels stay closed.
 		if (bMorph && !mesh.Vertices.empty())
 		{
 			FieldGrid parent;
@@ -860,7 +865,7 @@ namespace Nyx
 				{
 					for (int i = 0; i < parent.Size.x; ++i)
 					{
-						const glm::ivec3 fine = 2 * glm::ivec3(i, j, k) - 2;
+						const glm::ivec3 fine = 2 * glm::ivec3(i, j, k) - 4;
 						const size_t index = parent.IndexOf(i, j, k);
 						if (glm::all(glm::greaterThanEqual(fine, glm::ivec3(0))) && glm::all(glm::lessThan(fine, grid.Size)))
 						{
@@ -889,24 +894,50 @@ namespace Nyx
 				}
 			}
 			FieldMeshSettings coarser;
-			coarser.QuadMin = glm::ivec3(2);
-			coarser.QuadMax = glm::ivec3(2 + TerrainChunkCells / 2);
+			// Every cell but the outermost made whole: the quads of every edge of cells 1 to size - 3
+			coarser.QuadMin = glm::ivec3(1);
+			coarser.QuadMax = parent.Size - 1;
 			coarser.SharpMaterials = settings.SharpMaterials;
 			coarser.SkyReach = 0.0f;
 			coarser.Field = settings.Field;
 			const MeshData coarse = MakeFieldMesh(parent, coarser);
 
-			// The coarser vertices by their cells
+			// The coarser vertices by their cells in the world
+			auto snap = [](const glm::vec3& point) { return glm::round(point * PositionSteps) * (1.0f / PositionSteps); };
+			auto cellOf = [&](const glm::vec3& point) { return glm::ivec3(glm::floor(point / parent.CellSize)); };
 			std::unordered_map<uint64_t, std::vector<glm::vec3>> byCell;
-			auto cellOf = [&](const glm::vec3& point) { return glm::ivec3(glm::floor((point - parent.Origin) / parent.CellSize)); };
 			for (const Vertex& vertex : coarse.Vertices)
 			{
-				byCell[PackId({ 0, cellOf(vertex.Position) })].push_back(vertex.Position);
+				const glm::vec3 place = snap(vertex.Position);
+				byCell[PackId({ 0, cellOf(place) })].push_back(place);
 			}
+			// Next to another level: in a coarser chunk's place, or within a cell of a finer one's
+			const bool bFiner = std::any_of(neighbourhood.Levels.begin(), neighbourhood.Levels.end(), [](int8_t level) { return level == -1; });
+			auto stays = [&](const glm::vec3& place)
+			{
+				const glm::vec3 local = (place - corner) / cell;
+				bool bStays = false;
+				if (bCoarser)
+				{
+					ForPlacesAt(local, [&](const glm::ivec3& offset) { bStays = bStays || neighbourhood.At(offset) == 1; });
+				}
+				for (int n = 0; n < 27 && bFiner && !bStays; ++n)
+				{
+					ForPlacesAt(local + glm::vec3(NeighbourOffset(n)), [&](const glm::ivec3& offset) { bStays = bStays || neighbourhood.At(offset) == -1; });
+				}
+				return bStays;
+			};
+			auto before = [](const glm::vec3& a, const glm::vec3& b) { return a.x != b.x ? a.x < b.x : (a.y != b.y ? a.y < b.y : a.z < b.z); };
 			for (Vertex& vertex : mesh.Vertices)
 			{
-				const glm::ivec3 at = cellOf(vertex.Position);
-				glm::vec3 target = vertex.Position;
+				const glm::vec3 from = snap(vertex.Position);
+				if (stays(from))
+				{
+					vertex.Tangent = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+					continue;
+				}
+				const glm::ivec3 at = cellOf(from);
+				glm::vec3 target = from;
 				float nearest = std::numeric_limits<float>::max();
 				for (int ring = 0; ring <= 1 && nearest == std::numeric_limits<float>::max(); ++ring)
 				{
@@ -923,8 +954,8 @@ namespace Nyx
 								}
 								for (const glm::vec3& place : found->second)
 								{
-									const float apart = glm::length(place - vertex.Position);
-									if (apart < nearest)
+									const float apart = glm::length(place - from);
+									if (apart < nearest || (apart == nearest && before(place, target)))
 									{
 										nearest = apart;
 										target = place;
@@ -934,9 +965,7 @@ namespace Nyx
 						}
 					}
 				}
-				// At whole 4096ths, as the positions are below
-				const glm::vec3 from = glm::round(vertex.Position * PositionSteps) * (1.0f / PositionSteps);
-				vertex.Tangent = glm::vec4(glm::round(target * PositionSteps) * (1.0f / PositionSteps) - from, 1.0f);
+				vertex.Tangent = glm::vec4(target - from, 1.0f);
 			}
 		}
 
