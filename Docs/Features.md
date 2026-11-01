@@ -705,6 +705,13 @@ prefab changes.
 - **Prefabs come from the asset folders** through the asset resolver (`IAssetResolver::ResolvePrefab()`,
   `PrefabLibrary`), each read once. An instance whose prefab is gone loads with what the scene has
   of it, a warning saying so.
+- **Spawning in a game**: a player's `SpawnPrefabCommand` (the prefab, the guid, where) makes an
+  instance at the start of the next step (`ApplySpawnPrefabCommands()`), before the game's systems,
+  from the prefabs the game world is given (`GameWorld::SetAssetResolver()`; NyxGame gives its asset
+  resolver). Whoever asks picks the guid, so later commands can name the instance before it is there,
+  and the same bytes can go to another machine; its parts' guids follow from it. A command without a
+  guid, with one the world or an earlier command of the step has, or whose prefab isn't there is
+  dropped, with a warning. The instance's bodies are made the next step, as any new entity's.
 - Overrides are compared and saved property by property of a component; a struct property, such as
   a mesh's reference, counts as one value. A value set back to the prefab's is no override.
 - Tests: `NyxPrefabTests`.

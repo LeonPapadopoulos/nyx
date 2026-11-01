@@ -144,6 +144,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/OrbitCameras.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/CharacterCommands.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/TerrainEditCommands.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Sim/src/PrefabCommands.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/TimeOfDayClock.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/SparseField.cpp
 
@@ -384,6 +385,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/PreviousTransformComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ParentComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/Prefab.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/SpawnPrefabCommand.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/RuntimeMeshComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/MeshInstancesComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/SurfaceDecalComponent.h
@@ -400,6 +402,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/OrbitCameras.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/CharacterCommands.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/TerrainEditCommands.h
+    ${NYX_ENGINE_ROOT}/Runtime/Sim/include/PrefabCommands.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/SparseField.h
 
     # Runtime/Physics

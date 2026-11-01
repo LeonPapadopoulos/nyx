@@ -80,6 +80,8 @@ namespace Nyx::Game
 		ImGui::GetIO().IniFilename = nullptr;
 
 		AssetResolver = std::make_unique<Nyx::AssetResolver>(*Renderer);
+		// The prefabs of what the players' commands spawn
+		World.SetAssetResolver(AssetResolver.get());
 
 		Nyx::ScenePostLoadContext postLoadContext{};
 		postLoadContext.AssetResolver = AssetResolver.get();

@@ -2,11 +2,12 @@
 // its parts with guids made from its own and placed by it; a scene with instances saved as what
 // differs from the prefab and loaded back the same, also after the prefab changed under the
 // instance's overrides; components added to and taken from an instance; an instance whose prefab
-// is gone.
+// is gone; instances spawned by players' commands in a game's world.
 #include "BinaryArchive.h"
 #include "ComponentRegistration.h"
 #include "Entity.h"
 #include "EntityGuidLookup.h"
+#include "GameWorld.h"
 #include "GuidComponent.h"
 #include "IAssetResolver.h"
 #include "Log.h"
@@ -16,6 +17,7 @@
 #include "PointLightComponent.h"
 #include "Prefab.h"
 #include "SceneSerializer.h"
+#include "SpawnPrefabCommand.h"
 #include "TestSupport.h"
 #include "TransformComponent.h"
 
@@ -329,6 +331,67 @@ namespace
 		Require(Find(loaded, Nyx::GetPrefabPartGuid(EntityGuid{ 0xE5 }, EntityGuid{ 0x30 })).has_value(),
 			"A part the scene has values of should keep its guid without its prefab");
 	}
+
+	size_t CountEntities(const Nyx::GameWorld& world)
+	{
+		return CountEntities(world.GetRegistry());
+	}
+
+	Nyx::SpawnPrefabCommand MakeSpawn(const char* path, EntityGuid guid, const glm::vec3& position)
+	{
+		return Nyx::SpawnPrefabCommand{ .Prefab = Nyx::AssetReference{ "Prefab", path }, .Guid = guid, .Position = position };
+	}
+
+	// A player's commands make instances at the start of the next step; a taken guid, no guid or a
+	// prefab that isn't there drops one. What a spawned instance has works as any entity: its body
+	// falls.
+	void TestCommandsSpawnInstances()
+	{
+		Nyx::Tests::TestDirectory directory("NyxPrefabTests");
+		std::unique_ptr<Lamp> lamp = MakeLamp();
+		lamp->World.Add<Nyx::RigidBodyComponent>(lamp->Post, Nyx::RigidBodyComponent{});
+		TestPrefabs prefabs;
+		prefabs.Prefabs[LampPath] = SaveAndLoad(lamp->World, lamp->Post, directory.Path / "Lamp.nyxprefab");
+
+		// Without anything to resolve prefabs, nothing is spawned
+		{
+			Nyx::GameWorld world;
+			world.GetCommands().Add(MakeSpawn(LampPath, EntityGuid{ 0xF1 }, glm::vec3(0.0f)));
+			world.Step(Nyx::StepTime{ 1.0 / 60.0, 0, 0.0 });
+			Require(CountEntities(world) == 0, "Without prefabs, a spawn should be dropped");
+		}
+
+		Nyx::GameWorld world;
+		world.SetAssetResolver(&prefabs);
+		world.GetCommands().Add(MakeSpawn(LampPath, EntityGuid{ 0xF1 }, glm::vec3(0.0f, 10.0f, 0.0f)));
+		world.GetCommands().Add(MakeSpawn(LampPath, EntityGuid{ 0xF1 }, glm::vec3(5.0f, 10.0f, 0.0f)));
+		world.GetCommands().Add(MakeSpawn(LampPath, EntityGuid{}, glm::vec3(0.0f)));
+		world.GetCommands().Add(MakeSpawn("Prefabs/Missing.nyxprefab", EntityGuid{ 0xF2 }, glm::vec3(0.0f)));
+		Require(CountEntities(world) == 0, "Commands should wait for the next step");
+		world.Step(Nyx::StepTime{ 1.0 / 60.0, 0, 0.0 });
+
+		const Registry& registry = world.GetRegistry();
+		Require(CountEntities(world) == 3, "One instance, its root and two parts, should be spawned; the others dropped");
+		const std::optional<Entity> root = Find(registry, EntityGuid{ 0xF1 });
+		Require(root && registry.Has<PrefabInstanceComponent>(*root) && registry.Has<Nyx::BoxColliderComponent>(*root),
+			"The instance's root should have the guid asked for and its prefab's components");
+		Require(Near(registry.Get<TransformComponent>(*root).Position, glm::vec3(0.0f, 10.0f, 0.0f)), "The root should be where it was asked");
+		const std::optional<Entity> light = Find(registry, Nyx::GetPrefabPartGuid(EntityGuid{ 0xF1 }, EntityGuid{ 0x30 }));
+		Require(light && Near(registry.Get<TransformComponent>(*light).Position, glm::vec3(1.0f, 13.0f, 0.0f)),
+			"A part should have its guid made from the root's, placed by it");
+
+		// A guid spawned in an earlier step is taken too
+		world.GetCommands().Add(MakeSpawn(LampPath, EntityGuid{ 0xF1 }, glm::vec3(0.0f)));
+		world.Step(Nyx::StepTime{ 1.0 / 60.0, 1, 1.0 / 60.0 });
+		Require(CountEntities(world) == 3, "A spawn with a guid the world has should be dropped");
+
+		// Its body is made, and falls
+		for (uint64_t step = 2; step < 30; ++step)
+		{
+			world.Step(Nyx::StepTime{ 1.0 / 60.0, step, static_cast<double>(step) / 60.0 });
+		}
+		Require(registry.Get<TransformComponent>(*Find(registry, EntityGuid{ 0xF1 })).Position.y < 9.5f, "A spawned rigid body should fall");
+	}
 }
 
 int main()
@@ -342,6 +405,7 @@ int main()
 		TestScenesKeepOnlyWhatDiffers();
 		TestOverridesOutliveChangesOfThePrefab();
 		TestAnInstanceWithoutItsPrefab();
+		TestCommandsSpawnInstances();
 	}
 	catch (const std::exception& error)
 	{

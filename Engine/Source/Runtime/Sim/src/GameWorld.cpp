@@ -3,6 +3,7 @@
 
 #include "Assertions.h"
 #include "CharacterCommands.h"
+#include "PrefabCommands.h"
 #include "Profiler.h"
 #include "TerrainEditCommands.h"
 #include "WindComponent.h"
@@ -31,6 +32,7 @@ namespace Nyx
 		TerrainColliders.SyncBeforeStep(World, Physics, Bodies);
 		RefreshEntityGuidLookup(World, Guids);
 		Constraints.SyncBeforeStep(World, Physics, Bodies, Guids);
+		ApplySpawnPrefabCommands(World, Guids, StepCommands, Assets);
 		ApplyMoveCharacterCommands(World, Guids, StepCommands);
 		ApplyTerrainEditCommands(World, Guids, StepCommands);
 		TimeOfDay.Step(World, step);

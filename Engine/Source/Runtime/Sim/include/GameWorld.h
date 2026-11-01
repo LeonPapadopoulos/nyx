@@ -21,6 +21,7 @@
 
 namespace Nyx
 {
+	class IAssetResolver;
 	class IWindField;
 
 	// The world a game runs: its entities, their physics, and the systems that change them each
@@ -34,6 +35,7 @@ namespace Nyx
 	//    (TerrainCollision);
 	// 3. the lookup from guid to entity is made again, in the memory it had (SimContext::Guids);
 	//    constraints follow their components and the bodies (PhysicsConstraints); the players'
+	//    SpawnPrefabCommands make their instances (ApplySpawnPrefabCommands()), their
 	//    MoveCharacterCommands go into their characters (ApplyMoveCharacterCommands()), and their
 	//    SdfTerrainEditCommands onto their terrains (ApplyTerrainEditCommands()); the time of
 	//    day moves on to the step's end while it runs, and the sun turns to it (TimeOfDayClock);
@@ -87,6 +89,11 @@ namespace Nyx
 		void SetWindField(const IWindField* field) { WindField = field; }
 		const IWindField* GetWindField() const { return WindField; }
 
+		// Where the prefabs and assets of what the players' commands make come from, e.g. the
+		// instances of SpawnPrefabCommands; none, the default: such commands are dropped. It must live
+		// as long as the world.
+		void SetAssetResolver(IAssetResolver* assets) { Assets = assets; }
+
 		// The world's wind as the last step began (UpdateWorldWind()), which the systems get too
 		// (SimContext::Wind); calm before the first step
 		const WindState& GetWind() const { return Wind; }
@@ -131,6 +138,7 @@ namespace Nyx
 		CommandQueue StepCommands;
 		std::optional<PhysicsDebugOptions> PhysicsDebugView;
 		const IWindField* WindField = nullptr;
+		IAssetResolver* Assets = nullptr;
 		WindState Wind;
 		std::vector<SystemEntry> Systems;
 	};
