@@ -79,6 +79,10 @@ namespace Nyx
 		bool bDrawn = false;
 		// The first shadow cascade it casts into (SdfTerrainComponent::NearShadowLevels)
 		uint32_t FirstShadowCascade = 0;
+		// From how far from the camera its vertices slide towards the coarser level's places (its
+		// mesh's tangents, SdfTerrainComponent::bLevelBlending), and by how far they are there: the
+		// distance at which the coarser chunk takes its place. In the terrain's space; zero for none.
+		glm::vec2 Morph{ 0.0f };
 	};
 
 	namespace Detail

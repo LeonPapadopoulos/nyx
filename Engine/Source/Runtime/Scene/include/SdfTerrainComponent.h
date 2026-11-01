@@ -456,6 +456,13 @@ namespace Nyx
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Chunks", Tooltip = "Dual: a vertex in each cell, sharp edges for the Sharp Materials; Marching Cubes: vertices on the grid's edges, all smooth"))
 		ESdfTerrainMesher Mesher = ESdfTerrainMesher::Dual;
 
+		// Each chunk's vertices slide towards where the next coarser level has them as the camera goes
+		// farther, all the way by the time that level takes the chunk's place (geomorphing), so a
+		// chunk changing its level of detail doesn't jump; Dual only. The places ride in the mesh's
+		// tangents (TerrainChunk::Morph).
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Level Blending", Category = "Chunks", Tooltip = "Each chunk's vertices slide towards the coarser level's shape as the camera goes farther, so a chunk changing its level of detail doesn't jump (Dual only)"))
+		bool bLevelBlending = true;
+
 		// Each vertex's sky visibility in its mesh's Custom.x (FieldMeshSettings::SkyReach), for a
 		// material that darkens what the sky lights in hollows; off, 1 everywhere, and chunks are made
 		// about twice as fast. No material reads it yet.

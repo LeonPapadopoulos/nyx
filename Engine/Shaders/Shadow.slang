@@ -12,7 +12,7 @@ float4 shadowVertex(VertexInput input) : SV_Position
     // The draw's transform after the instance's, as transformSurfaceVertex() places a mesh
     const float4x4 instance = transpose(float4x4(input.Instance0, input.Instance1, input.Instance2, input.Instance3));
     const float4x4 model = mul(Object.Model, instance);
-    return nyx::shadowCasterPosition(mul(model, float4(input.Position, 1.0)));
+    return nyx::shadowCasterPosition(mul(model, float4(morphedPosition(input, model), 1.0)));
 }
 
 struct DebugVertexOutput

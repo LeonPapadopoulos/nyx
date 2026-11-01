@@ -1480,10 +1480,21 @@ game, coarser the farther, and collides while the world runs.
   does; marching cubes meshes a coarser chunk's cells next to finer ones with the finer samples on
   their shared faces and edges. Chunks meet without a gap at every seam: the edges well within the
   view distance all have two triangles.
+- Level blending (geomorphing, *Level Blending*, on by default, Dual only): each chunk's vertices
+  slide towards where the next coarser level has them as the camera goes farther, from 0.65 of the
+  distance at which that level takes the chunk's place, all the way by it, so a chunk changing its
+  level doesn't jump. Each vertex goes to the vertex of the coarser cell it is in, as the coarser
+  chunk makes it, the same bits, from the chunk's samples at even indices and a shell of samples
+  round them (or the nearest such vertex round it): carried in the mesh's tangents
+  (`TerrainChunk::Morph`, `ObjectConstants::Morph`, `morphedPosition()` in nyx.surface), in the
+  scene and its shadows (picking takes the vertices where they are). A coarser chunk next to finer
+  ones only begins to slide past where they reach, so the seams stay closed.
+  `NyxTerrainChunksTests` (a chunk's vertices slid all the way land on the coarser chunk's).
 - *Chunks*: *View Distance*, *Level Distance*, *Finest Level* (0, or -1 for cells of half a metre
   nearest the camera, in 16 m chunks), *Near Shadow Levels* (the finest levels cast into every
   shadow cascade; each coarser one only from one cascade further out, and into the last at least),
-  *Mesher* (*Dual*, with sharp edges for the *Sharp Materials*, or *Marching Cubes*), *Sharp
+  *Mesher* (*Dual*, with sharp edges for the *Sharp Materials*, or *Marching Cubes*), *Level
+  Blending*, *Sharp
   Materials* (material numbers), *Sky Shading* (how much of the sky each vertex sees, in its
   mesh's Custom.x, for a material to darken what the sky lights in hollows; off by default, 1
   everywhere, and chunks made about twice as fast; no material reads it yet), *Material Colours*

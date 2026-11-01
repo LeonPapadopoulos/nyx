@@ -314,10 +314,17 @@ namespace Nyx
 		// Added to the instance stream's custom numbers: an entity drawn once from the identity
 		// buffer (the editor's passes) has its MeshRendererComponent::Custom here; else zero
 		glm::vec4 InstanceCustom{ 0.0f };
+		// A terrain chunk's vertices sliding to the coarser level's places (RenderObject::Morph): from
+		// how far from the camera (x) and 1 over the distance to all the way (y); y 0 for none
+		glm::vec4 Morph{ 0.0f };
 	};
 
-	// Within the 128 bytes of push constants every Vulkan device has
-	static_assert(sizeof(ObjectConstants) == 112, "ObjectConstants must match nyx/bindless.slang");
+	// The 128 bytes of push constants every Vulkan device has
+	static_assert(sizeof(ObjectConstants) == 128, "ObjectConstants must match nyx/bindless.slang");
+
+	struct RenderObject;
+	// ObjectConstants::Morph for an object
+	glm::vec4 GetMorphConstants(const RenderObject& object);
 
 	struct Transform
 	{
@@ -377,6 +384,10 @@ namespace Nyx
 		// Drawn once, its instance's custom numbers in the stream (MeshRendererComponent::Custom);
 		// drawn instanced, each instance has its own
 		glm::vec4 Custom{ 0.0f };
+		// An SDF terrain's chunk: from how far from the camera its vertices slide towards the coarser
+		// level's places (its mesh's tangents), and by how far they are there, in metres in the world
+		// (TerrainChunk::Morph); zero for none
+		glm::vec2 Morph{ 0.0f };
 
 		// Its mesh's bounds, in the entity's space; drawn instanced, around all of its instances
 		glm::vec3 LocalBoundsMin{ -0.5f, -0.5f, -0.5f };

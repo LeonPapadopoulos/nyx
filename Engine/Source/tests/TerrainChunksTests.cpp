@@ -220,6 +220,90 @@ namespace
 	// The chunks of a tree, all meshed against their neighbourhoods and put together: every edge of
 	// a triangle well within the view distance has two triangles, one each way round, wherever two
 	// levels meet. With a level distance past the view distance, all one level, to compare.
+	// Level blending: a chunk's vertices slid all the way (their tangents) are where the coarser
+	// chunk has its vertices, at levels 0 and 1; none slide with Marching Cubes or blending off. The
+	// distances they slide over: from 0.65 of where the coarser level takes the chunk's place.
+	void TestLevelBlending()
+	{
+		SdfTerrainComponent terrain = MakeTerrain();
+		auto cornerOf = [](const TerrainChunkId& id) { return glm::vec3(id.Key) * GetTerrainChunkSize(id.Level); };
+		size_t vertices = 0;
+		size_t landed = 0;
+		size_t moved = 0;
+		for (const int level : { 0, 1 })
+		{
+			for (int x = -2; x <= 1; ++x)
+			{
+				for (int y = -1; y <= 0; ++y)
+				{
+					for (int z = -2; z <= 1; ++z)
+					{
+						const TerrainChunkId id{ level, glm::ivec3(x, y, z) };
+						const MeshData fine = MakeTerrainChunkMesh(terrain, id, TerrainNeighbourhood{});
+						if (fine.Vertices.empty())
+						{
+							continue;
+						}
+						const TerrainChunkId parentId{ level + 1, glm::ivec3(glm::floor(glm::vec3(id.Key) * 0.5f)) };
+						const MeshData parent = MakeTerrainChunkMesh(terrain, parentId, TerrainNeighbourhood{});
+						std::vector<glm::vec3> places;
+						for (const Vertex& vertex : parent.Vertices)
+						{
+							places.push_back(vertex.Position + cornerOf(parentId));
+						}
+						for (const Vertex& vertex : fine.Vertices)
+						{
+							const glm::vec3 target = vertex.Position + cornerOf(id) + glm::vec3(vertex.Tangent);
+							float nearest = std::numeric_limits<float>::max();
+							for (const glm::vec3& place : places)
+							{
+								nearest = std::min(nearest, glm::length(place - target));
+							}
+							++vertices;
+							landed += nearest < 1e-3f ? 1 : 0;
+							moved += glm::length(glm::vec3(vertex.Tangent)) > 1e-4f ? 1 : 0;
+						}
+					}
+				}
+			}
+		}
+		std::cout << "Level blending: " << landed << " of " << vertices << " vertices land on the coarser chunk's, " << moved << " move" << std::endl;
+		Require(vertices > 1000 && landed >= vertices * 95 / 100, "A chunk's vertices slid all the way should be the coarser chunk's: " + std::to_string(landed) + " of " + std::to_string(vertices));
+		Require(moved > vertices / 2, "Most of a chunk's vertices should slide somewhere");
+
+		SdfTerrainComponent marching = terrain;
+		marching.Mesher = ESdfTerrainMesher::MarchingCubes;
+		SdfTerrainComponent off = terrain;
+		off.bLevelBlending = false;
+		for (const SdfTerrainComponent* still : { &marching, &off })
+		{
+			const MeshData mesh = MakeTerrainChunkMesh(*still, TerrainChunkId{ 0, glm::ivec3(0, -1, 0) }, TerrainNeighbourhood{});
+			Require(!mesh.Vertices.empty(), "The chunk under the middle should have a surface");
+			for (const Vertex& vertex : mesh.Vertices)
+			{
+				Require(std::fabs(glm::length(glm::vec3(vertex.Tangent)) - 1.0f) < 1e-3f, "With Marching Cubes or blending off, the tangents should be the mesher's, of unit length");
+			}
+		}
+		Require(HashSdfTerrainShape(off) != HashSdfTerrainShape(terrain), "Blending should be part of the terrain's shape");
+
+		// Drawn chunks carry the distances, in the terrain's space
+		Registry world;
+		const Entity entity = world.CreateEntity();
+		world.Add<TransformComponent>(entity, TransformComponent{});
+		world.Add<SdfTerrainComponent>(entity, terrain);
+		const glm::vec3 viewpoint(0.0f, 4.0f, 0.0f);
+		UpdateUntilSettled(world, { &viewpoint, 1 }, JobSystem::Get(), entity);
+		bool bAny = false;
+		for (const TerrainChunk& chunk : world.Get<TerrainChunksComponent>(entity).Chunks)
+		{
+			const float merged = terrain.LevelDistance * GetTerrainChunkSize(chunk.Level);
+			Require(std::fabs(chunk.Morph.y - merged) < 1e-3f && std::fabs(chunk.Morph.x - merged * 0.65f) < 1e-3f,
+				"A chunk should slide from 0.65 of the distance at which the coarser level takes its place to it");
+			bAny = true;
+		}
+		Require(bAny, "There should be chunks");
+	}
+
 	void TestSeamsAreClosed(ESdfTerrainMesher mesher, int finestLevel, float levelDistance = 2.0f)
 	{
 		SdfTerrainComponent terrain = MakeTerrain();
@@ -1466,7 +1550,7 @@ int main(int argc, char** argv)
 				 TestSeamsAreClosed(ESdfTerrainMesher::Dual, -1);
 				 TestSeamsAreClosed(ESdfTerrainMesher::MarchingCubes, -1);
 			 } },
-			{ "viewpoint", TestChunksRoundAViewpoint }, { "moving", TestMovingAndViewDistance }, { "values", TestNewValues },
+			{ "blending", TestLevelBlending }, { "viewpoint", TestChunksRoundAViewpoint }, { "moving", TestMovingAndViewDistance }, { "values", TestNewValues },
 			{ "removed", TestRemovedEmptyAndMoved }, { "edits", TestEdits }, { "undo", TestUndoCost }, { "brush", TestBrush }, { "twoworlds", TestTwoWorlds }, { "rules", TestMaterialRules }, { "scene", TestTheSampleScene }, { "time", TimeAView } };
 		// Not run unless asked for: a measure of the sample scene, not a check
 		const std::vector<std::pair<std::string, void (*)()>> measures{ { "editdelay", TimeAnEdit }, { "editcost", [] { TimeSamplingUnderEdits(0); TimeSamplingUnderEdits(16); } } };

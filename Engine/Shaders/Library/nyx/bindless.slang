@@ -30,6 +30,10 @@ public struct ObjectConstants
     // Added to the instance stream's custom numbers (SurfaceInput.InstanceCustom): an entity drawn
     // once from the identity buffer, as the editor's passes draw it, has its own here; else zero
     public float4 InstanceCustom;
+    // A terrain chunk's vertices sliding to the coarser level's places (nyx.surface's
+    // morphedPosition()): from how far from the camera (x), and 1 over the distance to all the way
+    // (y); y 0 for none
+    public float4 Morph;
 }
 [vk::push_constant] public ConstantBuffer<ObjectConstants> Object;
 

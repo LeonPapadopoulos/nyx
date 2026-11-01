@@ -260,6 +260,20 @@ float4 instanceCustom(VertexInput input)
     return input.InstanceCustom + Object.InstanceCustom;
 }
 
+// Where the vertex is in the mesh's space: an SDF terrain's chunk's slide towards where the coarser
+// level has them (their tangents) the farther they are from the camera, all the way by the distance
+// at which that level takes the chunk's place (Object.Morph); every other mesh's as it is
+public float3 morphedPosition(VertexInput input, float4x4 model)
+{
+    if (Object.Morph.y <= 0.0)
+    {
+        return input.Position;
+    }
+    const float3 positionWS = mul(model, float4(input.Position, 1.0)).xyz;
+    const float along = saturate((distance(positionWS, View.CameraPosition.xyz) - Object.Morph.x) * Object.Morph.y);
+    return input.Position + input.Tangent.xyz * along;
+}
+
 // The vertex placed in the world by `model`, at `position` with `normal` in the mesh's space, then
 // moved by `offsetWS` in the world
 VertexOutput placeSurfaceVertex(VertexInput input, float4x4 model, float3 position, float3 normal, float3 offsetWS)
@@ -271,8 +285,9 @@ VertexOutput placeSurfaceVertex(VertexInput input, float4x4 model, float3 positi
     output.Color = input.Color;
     output.UV = input.UV;
     output.NormalWS = mul(normalMatrix(model), normal);
-    // Tangents lie along the surface, so they follow the model itself
-    output.TangentWS = float4(mul((float3x3)model, input.Tangent.xyz), input.Tangent.w);
+    // Tangents lie along the surface, so they follow the model itself; a sliding terrain chunk's
+    // carry where its vertices slide to instead
+    output.TangentWS = Object.Morph.y > 0.0 ? float4(1.0, 0.0, 0.0, 1.0) : float4(mul((float3x3)model, input.Tangent.xyz), input.Tangent.w);
     output.PositionWS = positionWS.xyz;
     output.Custom = input.Custom;
     output.InstanceCustom = instanceCustom(input);
@@ -283,7 +298,8 @@ VertexOutput placeSurfaceVertex(VertexInput input, float4x4 model, float3 positi
 // another entry point, an entry point crashes Slang 2026.1 when compiled through its API.)
 public VertexOutput transformSurfaceVertex(VertexInput input)
 {
-    return placeSurfaceVertex(input, objectToWorld(input), input.Position, input.Normal, float3(0.0));
+    const float4x4 model = objectToWorld(input);
+    return placeSurfaceVertex(input, model, morphedPosition(input, model), input.Normal, float3(0.0));
 }
 
 // The vertex as the material's vertex function moves it, the material loaded from the material
@@ -291,7 +307,7 @@ public VertexOutput transformSurfaceVertex(VertexInput input)
 SurfaceVertex displaceSurfaceVertex<S : ISurfaceVertex>(VertexInput input, float4x4 model)
 {
     SurfaceVertex vertex;
-    vertex.Position = input.Position;
+    vertex.Position = morphedPosition(input, model);
     vertex.Normal = input.Normal;
     vertex.OffsetWS = float3(0.0);
     vertex.Color = input.Color;

@@ -193,6 +193,23 @@ namespace Nyx
 			return static_cast<uint32_t>(std::max(level - ClampLevel(terrain.FinestLevel) - std::max(terrain.NearShadowLevels, 1) + 1, 0));
 		}
 
+		// A chunk's vertices begin sliding to the coarser level's places at this share of the distance
+		// at which that level takes its place. A coarser chunk next to it begins sliding farther out
+		// than the finer ones reach with the hysteresis (twice the distance times this, against 1.2
+		// times it), so the seam between them stays closed.
+		constexpr float MorphStart = 0.65f;
+
+		glm::vec2 GetChunkMorph(const SdfTerrainComponent& terrain, int level)
+		{
+			if (!terrain.bLevelBlending || terrain.Mesher != ESdfTerrainMesher::Dual || level >= TerrainCoarsestLevel)
+			{
+				return glm::vec2(0.0f);
+			}
+			// Where its parent splits (SelectTerrainChunks())
+			const float merged = std::clamp(terrain.LevelDistance, 2.0f, 16.0f) * GetTerrainChunkSize(level);
+			return glm::vec2(merged * MorphStart, merged);
+		}
+
 		bool HasMoved(const std::vector<glm::vec3>& from, const std::vector<glm::vec3>& to, float distance)
 		{
 			if (from.size() != to.size())
@@ -765,6 +782,16 @@ namespace Nyx
 			askedMin = glm::min(askedMin, coarse.Origin - cell);
 			askedMax = glm::max(askedMax, coarse.Origin + glm::vec3(coarse.Size - 1) * coarse.CellSize + cell);
 		}
+		// The coarser level's samples for the places its vertices slide to: two of its cells before the
+		// corner, one past the far side, as a coarser chunk's grid has them round these cells
+		const bool bMorph = terrain.bLevelBlending && terrain.Mesher == ESdfTerrainMesher::Dual;
+		const glm::vec3 morphOrigin = corner - 4.0f * cell;
+		const glm::ivec3 morphSize(TerrainChunkCells / 2 + 4);
+		if (bMorph)
+		{
+			askedMin = glm::min(askedMin, morphOrigin - cell);
+			askedMax = glm::max(askedMax, morphOrigin + glm::vec3(morphSize - 1) * (2.0f * cell) + cell);
+		}
 		const bool bRecordAsked = outSamples != nullptr;
 		// Its sky only if asked for
 		if (!terrain.bSkyShading)
@@ -809,6 +836,109 @@ namespace Nyx
 		}
 		FieldMeshStats stats;
 		MeshData mesh = terrain.Mesher == ESdfTerrainMesher::MarchingCubes ? MakeMarchingFieldMesh(grid, settings, &stats) : MakeFieldMesh(grid, settings, &stats);
+
+		// Where the coarser level has each vertex, in its tangent: the vertex of the coarser cell it is
+		// in, as the coarser chunk makes it, the same bits, from its samples at even indices and a
+		// shell of samples round them; the nearest of them where the cell has more than one, or of the
+		// cells round it where it has none
+		if (bMorph && !mesh.Vertices.empty())
+		{
+			FieldGrid parent;
+			parent.Origin = morphOrigin;
+			parent.CellSize = 2.0f * cell;
+			parent.Size = morphSize;
+			const size_t count = size_t(parent.Size.x) * size_t(parent.Size.y) * size_t(parent.Size.z);
+			parent.Values.resize(count);
+			parent.Materials.resize(count);
+			std::vector<float> xs;
+			std::vector<float> ys;
+			std::vector<float> zs;
+			std::vector<size_t> shell;
+			for (int k = 0; k < parent.Size.z; ++k)
+			{
+				for (int j = 0; j < parent.Size.y; ++j)
+				{
+					for (int i = 0; i < parent.Size.x; ++i)
+					{
+						const glm::ivec3 fine = 2 * glm::ivec3(i, j, k) - 2;
+						const size_t index = parent.IndexOf(i, j, k);
+						if (glm::all(glm::greaterThanEqual(fine, glm::ivec3(0))) && glm::all(glm::lessThan(fine, grid.Size)))
+						{
+							parent.Values[index] = grid.GetValue(fine.x, fine.y, fine.z);
+							parent.Materials[index] = grid.GetMaterial(fine.x, fine.y, fine.z);
+							continue;
+						}
+						// From whole numbers of the finer cells, as a grid asks
+						xs.push_back(corner.x + float(fine.x - 2) * cell);
+						ys.push_back(corner.y + float(fine.y - 2) * cell);
+						zs.push_back(corner.z + float(fine.z - 2) * cell);
+						shell.push_back(index);
+					}
+				}
+			}
+			std::vector<float> values(shell.size());
+			std::vector<uint32_t> materials(shell.size());
+			SampleTerrainBatch(terrain, edits, xs.data(), ys.data(), zs.data(), shell.size(), values.data(), materials.data());
+			for (size_t n = 0; n < shell.size(); ++n)
+			{
+				parent.Values[shell[n]] = values[n];
+				parent.Materials[shell[n]] = materials[n];
+				if (bRecordAsked)
+				{
+					asked.push_back(glm::vec4(xs[n], ys[n], zs[n], values[n]));
+				}
+			}
+			FieldMeshSettings coarser;
+			coarser.QuadMin = glm::ivec3(2);
+			coarser.QuadMax = glm::ivec3(2 + TerrainChunkCells / 2);
+			coarser.SharpMaterials = settings.SharpMaterials;
+			coarser.SkyReach = 0.0f;
+			coarser.Field = settings.Field;
+			const MeshData coarse = MakeFieldMesh(parent, coarser);
+
+			// The coarser vertices by their cells
+			std::unordered_map<uint64_t, std::vector<glm::vec3>> byCell;
+			auto cellOf = [&](const glm::vec3& point) { return glm::ivec3(glm::floor((point - parent.Origin) / parent.CellSize)); };
+			for (const Vertex& vertex : coarse.Vertices)
+			{
+				byCell[PackId({ 0, cellOf(vertex.Position) })].push_back(vertex.Position);
+			}
+			for (Vertex& vertex : mesh.Vertices)
+			{
+				const glm::ivec3 at = cellOf(vertex.Position);
+				glm::vec3 target = vertex.Position;
+				float nearest = std::numeric_limits<float>::max();
+				for (int ring = 0; ring <= 1 && nearest == std::numeric_limits<float>::max(); ++ring)
+				{
+					for (int dz = -ring; dz <= ring; ++dz)
+					{
+						for (int dy = -ring; dy <= ring; ++dy)
+						{
+							for (int dx = -ring; dx <= ring; ++dx)
+							{
+								const auto found = byCell.find(PackId({ 0, at + glm::ivec3(dx, dy, dz) }));
+								if (found == byCell.end())
+								{
+									continue;
+								}
+								for (const glm::vec3& place : found->second)
+								{
+									const float apart = glm::length(place - vertex.Position);
+									if (apart < nearest)
+									{
+										nearest = apart;
+										target = place;
+									}
+								}
+							}
+						}
+					}
+				}
+				// At whole 4096ths, as the positions are below
+				const glm::vec3 from = glm::round(vertex.Position * PositionSteps) * (1.0f / PositionSteps);
+				vertex.Tangent = glm::vec4(glm::round(target * PositionSteps) * (1.0f / PositionSteps) - from, 1.0f);
+			}
+		}
 
 		// What it read, the coarser grid's bricks over the finer one's near the surface too
 		if (outSamples != nullptr)
@@ -860,6 +990,11 @@ namespace Nyx
 			// The grids' box: the finer one's, and the coarser one's round it
 			read.GridMin = grid.Origin;
 			read.GridMax = grid.Origin + glm::vec3(grid.Size - 1) * grid.CellSize;
+			if (bMorph)
+			{
+				read.GridMin = glm::min(read.GridMin, morphOrigin);
+				read.GridMax = glm::max(read.GridMax, morphOrigin + glm::vec3(morphSize - 1) * (2.0f * cell));
+			}
 			if (bCoarser)
 			{
 				read.GridMin = glm::min(read.GridMin, coarse.Origin);
@@ -967,6 +1102,7 @@ namespace Nyx
 		Hasher hasher;
 		hasher.Value(terrain.Seed);
 		hasher.Value(terrain.Mesher);
+		hasher.Value(terrain.bLevelBlending);
 		hasher.Value(terrain.bSkyShading);
 		hasher.Value(terrain.DebugView);
 		hasher.Value(terrain.Layers.size());
@@ -1650,6 +1786,7 @@ namespace Nyx
 			for (TerrainChunk& chunk : chunks.Chunks)
 			{
 				chunk.FirstShadowCascade = GetFirstShadowCascade(terrain, chunk.Level);
+				chunk.Morph = GetChunkMorph(terrain, chunk.Level);
 				if (!chunk.bDrawn)
 				{
 					continue;

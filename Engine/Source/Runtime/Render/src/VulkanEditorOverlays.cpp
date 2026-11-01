@@ -58,6 +58,7 @@ namespace Nyx
 		{
 			object.InstanceCustom = obj.Custom;
 		}
+		object.Morph = GetMorphConstants(obj);
 		// Section by section, with the faces its material draws, and its vertex function if it has one
 		for (uint32_t index = obj.FirstSection; index < obj.FirstSection + obj.SectionCount; ++index)
 		{

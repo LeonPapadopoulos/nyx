@@ -590,6 +590,15 @@ namespace Nyx
 		return clock;
 	}
 
+	glm::vec4 GetMorphConstants(const RenderObject& object)
+	{
+		if (!(object.Morph.y > object.Morph.x))
+		{
+			return glm::vec4(0.0f);
+		}
+		return glm::vec4(object.Morph.x, 1.0f / (object.Morph.y - object.Morph.x), 0.0f, 0.0f);
+	}
+
 	void VulkanRenderer::WaitForLastFrame(FrameClock& clock)
 	{
 		NYX_PROFILE_FUNCTION();
@@ -1729,6 +1738,8 @@ namespace Nyx
 							if (world.Objects.size() > objects)
 							{
 								world.Objects.back().FirstShadowCascade = chunk.FirstShadowCascade;
+								// Its distances in the world, as far as the terrain is scaled
+								world.Objects.back().Morph = chunk.Morph * glm::length(glm::vec3(entityWorld[0]));
 							}
 						}
 					}
@@ -2332,6 +2343,7 @@ namespace Nyx
 				ObjectConstants object{};
 				object.Model = draw.Model;
 				object.CustomData2 = glm::vec2(static_cast<float>(cascade), 0.0f);
+				object.Morph = GetMorphConstants(obj);
 				for (uint32_t index = obj.FirstSection; index < obj.FirstSection + obj.SectionCount; ++index)
 				{
 					const RenderSection& section = world.Sections[index];
@@ -2470,6 +2482,7 @@ namespace Nyx
 				object.Model = draw.Model;
 				object.MaterialOffset = section.MaterialAsset->MaterialOffset;
 				object.EntityId = obj.PickingId;
+				object.Morph = GetMorphConstants(obj);
 				cmd.pushConstants<ObjectConstants>(*ScenePipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, { object });
 				cmd.drawIndexed(section.IndexCount, draw.InstanceCount, section.FirstIndex, 0, draw.FirstInstance);
 			}
