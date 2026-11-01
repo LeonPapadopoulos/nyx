@@ -145,6 +145,21 @@ namespace Nyx
 		MarchingCubes
 	};
 
+	// How an SDF terrain's chunks change their level of detail without jumping. Saved as its number.
+	NYX_ENUM()
+	enum class ESdfTerrainLevelBlending : uint8_t
+	{
+		// At once: a chunk of another level takes the place of those it replaces in one frame
+		Off,
+		// Each chunk's vertices slide towards where the coarser level has them as the camera goes
+		// farther (geomorphing; Dual only): smooth, but where the two levels differ (a tunnel near the
+		// surface, an overhang) some triangles stretch or fold, dark patches from afar
+		Slide,
+		// The chunks of the new level and those they replace both drawn for Fade Time, the new ones
+		// on more pixels each frame and the old on the rest, by a dither: each always its own shape
+		Fade
+	};
+
 	// What an SDF terrain's chunks show in place of their materials' colours, to see how they are
 	// made. Saved as its number.
 	NYX_ENUM()
@@ -651,12 +666,15 @@ namespace Nyx
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Chunks", Tooltip = "Dual: a vertex in each cell, sharp edges for the Sharp Materials; Marching Cubes: vertices on the grid's edges, all smooth"))
 		ESdfTerrainMesher Mesher = ESdfTerrainMesher::Dual;
 
-		// Each chunk's vertices slide towards where the next coarser level has them as the camera goes
-		// farther, all the way by the time that level takes the chunk's place (geomorphing), so a
-		// chunk changing its level of detail doesn't jump; Dual only. The places ride in the mesh's
-		// tangents (TerrainChunk::Morph).
-		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Level Blending", Category = "Chunks", Tooltip = "Each chunk's vertices slide towards the coarser level's shape as the camera goes farther, so a chunk changing its level of detail doesn't jump (Dual only)"))
-		bool bLevelBlending = true;
+		// How a chunk changing its level of detail doesn't jump: Slide, its vertices sliding towards
+		// where the next coarser level has them as the camera goes farther (the places ride in the
+		// mesh's tangents, TerrainChunk::Morph); Fade, the new level's chunks dithered in over the
+		// old ones (TerrainChunk::Fade); Off, at once
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Level Blending", Category = "Chunks", Tooltip = "Fade: the new level's chunks dithered in over the old ones for Fade Time, each its own shape; Slide: each chunk's vertices slide towards the coarser level's shape as the camera goes farther (Dual only; can fold where the levels differ); Off: at once"))
+		ESdfTerrainLevelBlending LevelBlending = ESdfTerrainLevelBlending::Fade;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Fade Time", Category = "Chunks", DragSpeed = 0.01, Tooltip = "Fade: how long, in seconds, the new level's chunks take to take the old ones' place"))
+		float FadeTime = 0.5f;
 
 		// Each vertex's sky visibility in its mesh's Custom.x (FieldMeshSettings::SkyReach), for a
 		// material that darkens what the sky lights in hollows; off, 1 everywhere, and chunks are made

@@ -592,11 +592,8 @@ namespace Nyx
 
 	glm::vec4 GetMorphConstants(const RenderObject& object)
 	{
-		if (!(object.Morph.y > object.Morph.x))
-		{
-			return glm::vec4(0.0f);
-		}
-		return glm::vec4(object.Morph.x, 1.0f / (object.Morph.y - object.Morph.x), 0.0f, 0.0f);
+		const glm::vec2 morph = object.Morph.y > object.Morph.x ? glm::vec2(object.Morph.x, 1.0f / (object.Morph.y - object.Morph.x)) : glm::vec2(0.0f);
+		return glm::vec4(morph, object.Fade);
 	}
 
 	void VulkanRenderer::WaitForLastFrame(FrameClock& clock)
@@ -1727,22 +1724,39 @@ namespace Nyx
 				// picks the terrain. Those to be drawn next are uploaded only.
 				if (registry.Has<Nyx::TerrainChunksComponent>(entity))
 				{
-					for (const Nyx::TerrainChunk& chunk : registry.Get<Nyx::TerrainChunksComponent>(entity).Chunks)
+					// Those the last change of levels replaced too while they fade out, casting no shadow
+					const Nyx::TerrainChunksComponent& chunks = registry.Get<Nyx::TerrainChunksComponent>(entity);
+					auto addChunk = [&](const Nyx::TerrainChunk& chunk)
 					{
 						Nyx::Mesh* mesh = RuntimeMeshes.Acquire(Context, chunk.Mesh);
-						if (mesh && chunk.bDrawn)
+						if (!mesh || !chunk.bDrawn)
 						{
-							const glm::mat4 corner = glm::translate(glm::mat4(1.0f), chunk.Origin);
-							const size_t objects = world.Objects.size();
-							addObject(mesh, entityWorld * corner, entityDraw * corner, false);
-							if (world.Objects.size() > objects)
+							return;
+						}
+						const glm::mat4 corner = glm::translate(glm::mat4(1.0f), chunk.Origin);
+						const size_t objects = world.Objects.size();
+						addObject(mesh, entityWorld * corner, entityDraw * corner, false);
+						if (world.Objects.size() > objects)
+						{
+							RenderObject& object = world.Objects.back();
+							object.FirstShadowCascade = chunk.FirstShadowCascade;
+							// Its distances in the world, as far as the terrain is scaled
+							object.Morph = chunk.Morph * glm::length(glm::vec3(entityWorld[0]));
+							object.bTwoSided = chunk.Morph.y > 0.0f;
+							if (chunk.Fade < 1.0f)
 							{
-								world.Objects.back().FirstShadowCascade = chunk.FirstShadowCascade;
-								// Its distances in the world, as far as the terrain is scaled
-								world.Objects.back().Morph = chunk.Morph * glm::length(glm::vec3(entityWorld[0]));
-								world.Objects.back().bTwoSided = true;
+								object.Fade = chunk.bFadingOut ? glm::vec2(1.0f - chunk.Fade, 2.0f) : glm::vec2(chunk.Fade, 1.0f);
+								object.bCastShadows = object.bCastShadows && !chunk.bFadingOut;
 							}
 						}
+					};
+					for (const Nyx::TerrainChunk& chunk : chunks.Chunks)
+					{
+						addChunk(chunk);
+					}
+					for (const Nyx::TerrainChunk& chunk : chunks.Fading)
+					{
+						addChunk(chunk);
 					}
 					// Its water, in the water's vertex colours, casting no shadow
 					if (registry.Has<Nyx::TerrainWaterComponent>(entity))

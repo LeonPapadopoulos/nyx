@@ -248,7 +248,7 @@ namespace Nyx
 
 		glm::vec2 GetChunkMorph(const SdfTerrainComponent& terrain, int level)
 		{
-			if (!terrain.bLevelBlending || terrain.Mesher != ESdfTerrainMesher::Dual || level >= TerrainCoarsestLevel)
+			if (terrain.LevelBlending != ESdfTerrainLevelBlending::Slide || terrain.Mesher != ESdfTerrainMesher::Dual || level >= TerrainCoarsestLevel)
 			{
 				return glm::vec2(0.0f);
 			}
@@ -832,7 +832,7 @@ namespace Nyx
 		// The coarser level's samples for the places its vertices slide to: three of its cells before the
 		// corner and past the far side, so that every coarser cell round a vertex of this mesh, its
 		// neighbours' cells next to it included, is made whole, as in every chunk that has the vertex
-		const bool bMorph = terrain.bLevelBlending && terrain.Mesher == ESdfTerrainMesher::Dual;
+		const bool bMorph = terrain.LevelBlending == ESdfTerrainLevelBlending::Slide && terrain.Mesher == ESdfTerrainMesher::Dual;
 		const glm::vec3 morphOrigin = corner - 6.0f * cell;
 		const glm::ivec3 morphSize(TerrainChunkCells / 2 + 7);
 		if (bMorph)
@@ -1207,7 +1207,8 @@ namespace Nyx
 		Hasher hasher;
 		hasher.Value(terrain.Seed);
 		hasher.Value(terrain.Mesher);
-		hasher.Value(terrain.bLevelBlending);
+		// Only sliding changes the meshes
+		hasher.Value(terrain.LevelBlending == ESdfTerrainLevelBlending::Slide);
 		hasher.Value(terrain.bSkyShading);
 		hasher.Value(terrain.DebugView);
 		hasher.Value(terrain.Layers.size());
@@ -1852,7 +1853,9 @@ namespace Nyx
 						next.insert(version);
 					}
 					// Those replaced let go of on a worker: freeing hundreds of meshes at once costs the
-					// main thread milliseconds
+					// main thread milliseconds. Fading, a change of levels (not of edits, which go
+					// live at once) keeps them, fading out while the new ones fade in; a fade not done
+					// yet is done now
 					std::vector<TerrainChunk> replaced;
 					std::erase_if(chunks.Chunks, [&](TerrainChunk& chunk)
 						{
@@ -1863,13 +1866,31 @@ namespace Nyx
 							replaced.push_back(std::move(chunk));
 							return true;
 						});
-					if (!replaced.empty())
+					const bool bFade = terrain.LevelBlending == ESdfTerrainLevelBlending::Fade && terrain.FadeTime > 0.0f &&
+						streaming.NextEdits == streaming.DrawnEdits && streaming.Next->Leaves != streaming.Drawn.Leaves && !replaced.empty();
+					if (!chunks.Fading.empty())
 					{
-						jobs.Schedule([replaced = std::move(replaced)] {}, EJobPriority::Low);
+						jobs.Schedule([done = std::move(chunks.Fading)] {}, EJobPriority::Low);
+						chunks.Fading.clear();
 					}
 					for (TerrainChunk& chunk : chunks.Chunks)
 					{
+						chunk.Fade = bFade && !chunk.bDrawn ? 0.0f : 1.0f;
 						chunk.bDrawn = true;
+					}
+					if (bFade)
+					{
+						for (TerrainChunk& chunk : replaced)
+						{
+							chunk.Fade = 1.0f;
+							chunk.bFadingOut = true;
+						}
+						chunks.Fading = std::move(replaced);
+						chunks.FadeStart = now;
+					}
+					else if (!replaced.empty())
+					{
+						jobs.Schedule([replaced = std::move(replaced)] {}, EJobPriority::Low);
 					}
 					streaming.Drawn = std::move(*streaming.Next);
 					streaming.DrawnEdits = streaming.NextEdits;
@@ -1880,6 +1901,30 @@ namespace Nyx
 					streaming.NextSnapshot.reset();
 					streaming.Ready.clear();
 					++chunks.Stats.Swaps;
+				}
+			}
+
+			// The fade's progress, by the clock; done, those faded out let go of
+			if (!chunks.Fading.empty())
+			{
+				const float seconds = float(now - chunks.FadeStart);
+				const float done = terrain.FadeTime > 0.0f && terrain.LevelBlending == ESdfTerrainLevelBlending::Fade ? std::clamp(seconds / terrain.FadeTime, 0.0f, 1.0f) : 1.0f;
+				for (TerrainChunk& chunk : chunks.Chunks)
+				{
+					chunk.Fade = chunk.Fade < 1.0f ? std::max(done, 1e-3f) : 1.0f;
+				}
+				for (TerrainChunk& chunk : chunks.Fading)
+				{
+					chunk.Fade = 1.0f - done;
+				}
+				if (done >= 1.0f)
+				{
+					for (TerrainChunk& chunk : chunks.Chunks)
+					{
+						chunk.Fade = 1.0f;
+					}
+					jobs.Schedule([done = std::move(chunks.Fading)] {}, EJobPriority::Low);
+					chunks.Fading.clear();
 				}
 			}
 

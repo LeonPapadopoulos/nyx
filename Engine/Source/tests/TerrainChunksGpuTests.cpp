@@ -389,10 +389,16 @@ namespace
 			std::sscanf(at, "%f,%f,%f,%f,%f,%f", &eye.x, &eye.y, &eye.z, &target.x, &target.y, &target.z);
 		}
 		scene.Look(eye, target);
-		auto draw = [&](bool bBlending)
+		auto draw = [&](ESdfTerrainLevelBlending blending)
 		{
-			scene.World.Get<SdfTerrainComponent>(scene.Terrain).bLevelBlending = bBlending;
+			scene.World.Get<SdfTerrainComponent>(scene.Terrain).LevelBlending = blending;
 			scene.MakeChunks();
+			// A fade over
+			for (const auto start = std::chrono::steady_clock::now(); !scene.World.Get<TerrainChunksComponent>(scene.Terrain).Fading.empty();)
+			{
+				UpdateTerrainChunks(scene.World, { &scene.CameraPosition, 1 }, JobSystem::Get());
+				Require(std::chrono::steady_clock::now() - start < std::chrono::seconds(5), "A fade should end");
+			}
 			const auto start = std::chrono::steady_clock::now();
 			while (!scene.World.Has<TerrainWaterComponent>(scene.Terrain) || scene.World.Get<TerrainWaterComponent>(scene.Terrain).Made == 0)
 			{
@@ -402,8 +408,10 @@ namespace
 			}
 			return scene.Draw();
 		};
-		const RgbaImage blended = draw(true);
-		const RgbaImage plain = draw(false);
+		const RgbaImage blended = draw(ESdfTerrainLevelBlending::Slide);
+		const RgbaImage plain = draw(ESdfTerrainLevelBlending::Off);
+		const RgbaImage faded = draw(ESdfTerrainLevelBlending::Fade);
+		Require(CountChanged(faded, plain) == 0, "Fading, with no fade under way, should draw what blending off does");
 		SaveIfAsked(blended, "BlendingFromAfar");
 		SaveIfAsked(plain, "NoBlendingFromAfar");
 		Nyx::SceneViewCameraData camera;
@@ -445,9 +453,68 @@ namespace
 				}
 			}
 		}
-		std::cout << "Blending from afar: " << darker << " pixels of ground much darker than without it, at" << where << "\n";
+		std::cout << "Blending from afar: sliding, " << darker << " pixels of ground much darker than without it, at" << where << "; fading, the same as off" << "\n";
 		// A few: a far chunk blended shows the coarser level's own shape, which differs, nearer
 		Require(darker < 40, "Level blending should make no part of the ground much darker from afar, not " + std::to_string(darker) + " pixels");
+	}
+
+	// Halfway through a fade the chunks fading in and those fading out between them cover the ground:
+	// no more of it missing than settled, nothing much darker
+	void TestHalfwayThroughAFade(SceneRenderer& gpu)
+	{
+		SdfTerrainComponent region = TerrainGate3::MakeRegion();
+		region.LevelBlending = ESdfTerrainLevelBlending::Fade;
+		region.FadeTime = 30.0f;
+		region.ViewDistance = 3000.0f;
+		TerrainScene scene(gpu, region);
+		gpu.DrawUntilShadersCompiled();
+		const glm::vec3 from(0.0f, 350.0f, 500.0f);
+		const glm::vec3 to(0.0f, 260.0f, 300.0f);
+		scene.Look(from, glm::vec3(0.0f, 0.0f, 0.0f));
+		scene.MakeChunks();
+		// Its water too, so both pictures have it
+		for (const auto start = std::chrono::steady_clock::now();
+			 !scene.World.Has<TerrainWaterComponent>(scene.Terrain) || scene.World.Get<TerrainWaterComponent>(scene.Terrain).Made == 0;)
+		{
+			UpdateTerrainChunks(scene.World, { &scene.CameraPosition, 1 }, JobSystem::Get());
+			Require(std::chrono::steady_clock::now() - start < std::chrono::seconds(60), "The water should be worked out within a minute");
+			std::this_thread::sleep_for(std::chrono::milliseconds(5));
+		}
+		scene.Look(to, glm::vec3(0.0f, 0.0f, -200.0f));
+		TerrainChunksComponent& chunks = scene.World.Get<TerrainChunksComponent>(scene.Terrain);
+		const uint64_t swaps = chunks.Stats.Swaps;
+		const auto start = std::chrono::steady_clock::now();
+		while (chunks.Stats.Swaps == swaps)
+		{
+			UpdateTerrainChunks(scene.World, { &scene.CameraPosition, 1 }, JobSystem::Get());
+			Require(std::chrono::steady_clock::now() - start < std::chrono::seconds(60), "Moving should change the levels");
+			std::this_thread::sleep_for(std::chrono::milliseconds(2));
+		}
+		Require(!chunks.Fading.empty(), "A fade should be under way");
+		// Halfway: the fade's clock moved on to its middle
+		chunks.FadeStart -= double(region.FadeTime) * 0.5;
+		UpdateTerrainChunks(scene.World, { &scene.CameraPosition, 1 }, JobSystem::Get());
+		const RgbaImage halfway = scene.Draw();
+		const size_t fadingOut = chunks.Fading.size();
+		chunks.FadeStart -= double(region.FadeTime);
+		UpdateTerrainChunks(scene.World, { &scene.CameraPosition, 1 }, JobSystem::Get());
+		Require(chunks.Fading.empty(), "Past its time the fade should be over");
+		const RgbaImage settled = scene.Draw();
+		SaveIfAsked(halfway, "HalfwayThroughAFade");
+		SaveIfAsked(settled, "AfterAFade");
+		// Much different: sky where there was ground, or the like
+		size_t apart = 0;
+		for (size_t pixel = 0; pixel < halfway.Pixels.size(); pixel += 4)
+		{
+			int difference = 0;
+			for (int channel = 0; channel < 3; ++channel)
+			{
+				difference += std::abs(int(halfway.Pixels[pixel + channel]) - int(settled.Pixels[pixel + channel]));
+			}
+			apart += difference > 150 ? 1 : 0;
+		}
+		std::cout << "Halfway through a fade: " << fadingOut << " chunks fading out, " << apart << " pixels much different from after it" << "\n";
+		Require(apart * 200 < halfway.Pixels.size() / 4, "Halfway through a fade, the ground should be covered as after it: " + std::to_string(apart) + " pixels much different");
 	}
 
 int main()
@@ -461,6 +528,7 @@ int main()
 		TestFogInTheTerrain(gpu);
 		TestFarShadows(gpu);
 		TestBlendingFromAfar(gpu);
+		TestHalfwayThroughAFade(gpu);
 	}
 	catch (const std::exception& error)
 	{

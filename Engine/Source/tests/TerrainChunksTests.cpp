@@ -261,6 +261,7 @@ namespace
 	void TestLevelBlending()
 	{
 		SdfTerrainComponent terrain = MakeTerrain();
+		terrain.LevelBlending = ESdfTerrainLevelBlending::Slide;
 		auto cornerOf = [](const TerrainChunkId& id) { return glm::vec3(id.Key) * GetTerrainChunkSize(id.Level); };
 		size_t vertices = 0;
 		size_t landed = 0;
@@ -346,17 +347,20 @@ namespace
 		SdfTerrainComponent marching = terrain;
 		marching.Mesher = ESdfTerrainMesher::MarchingCubes;
 		SdfTerrainComponent off = terrain;
-		off.bLevelBlending = false;
-		for (const SdfTerrainComponent* still : { &marching, &off })
+		off.LevelBlending = ESdfTerrainLevelBlending::Off;
+		SdfTerrainComponent fade = terrain;
+		fade.LevelBlending = ESdfTerrainLevelBlending::Fade;
+		for (const SdfTerrainComponent* still : { &marching, &off, &fade })
 		{
 			const MeshData mesh = MakeTerrainChunkMesh(*still, TerrainChunkId{ 0, glm::ivec3(0, -1, 0) }, TerrainNeighbourhood{});
 			Require(!mesh.Vertices.empty(), "The chunk under the middle should have a surface");
 			for (const Vertex& vertex : mesh.Vertices)
 			{
-				Require(std::fabs(glm::length(glm::vec3(vertex.Tangent)) - 1.0f) < 1e-3f, "With Marching Cubes or blending off, the tangents should be the mesher's, of unit length");
+				Require(std::fabs(glm::length(glm::vec3(vertex.Tangent)) - 1.0f) < 1e-3f, "With Marching Cubes, blending off or fading, the tangents should be the mesher's, of unit length");
 			}
 		}
-		Require(HashSdfTerrainShape(off) != HashSdfTerrainShape(terrain), "Blending should be part of the terrain's shape");
+		Require(HashSdfTerrainShape(off) != HashSdfTerrainShape(terrain), "Sliding should be part of the terrain's shape");
+		Require(HashSdfTerrainShape(off) == HashSdfTerrainShape(fade), "Fading should make the same meshes as blending off");
 
 		// Drawn chunks carry the distances, in the terrain's space
 		Registry world;
@@ -381,6 +385,7 @@ namespace
 		SdfTerrainComponent terrain = MakeTerrain();
 		terrain.Mesher = mesher;
 		terrain.FinestLevel = finestLevel;
+		terrain.LevelBlending = ESdfTerrainLevelBlending::Slide;
 		terrain.LevelDistance = levelDistance;
 		TerrainLevelSettings settings;
 		settings.ViewDistance = 200.0f;
@@ -562,6 +567,7 @@ namespace
 	void TestFromFarAbove()
 	{
 		SdfTerrainComponent terrain = TerrainGate3::MakeRegion();
+		terrain.LevelBlending = ESdfTerrainLevelBlending::Slide;
 		PrepareTerrainWorldPlan(terrain);
 		TerrainLevelSettings settings;
 		settings.ViewDistance = 3000.0f;
@@ -704,6 +710,70 @@ namespace
 		Require(open == 0, "From far above, no edge should be open");
 		Require(apart == 0, "From far above, no shared vertex should slide apart");
 		Require(visible * 100 < triangles, "From far above, sliding should turn few triangles over: " + std::to_string(visible) + " by a square metre or more");
+	}
+
+	// Fading: a change of levels keeps the chunks it replaces, fading out while the new ones fade in,
+	// by the clock, then lets them go; an edit goes live at once, fading nothing
+	void TestFading()
+	{
+		Registry world;
+		const Entity entity = world.CreateEntity();
+		world.Add<TransformComponent>(entity, TransformComponent{});
+		SdfTerrainComponent terrain = MakeTerrain();
+		terrain.LevelBlending = ESdfTerrainLevelBlending::Fade;
+		terrain.FadeTime = 0.4f;
+		terrain.ViewDistance = 400.0f;
+		world.Add<SdfTerrainComponent>(entity, terrain);
+		const glm::vec3 here(0.0f, 4.0f, 0.0f);
+		const glm::vec3 there(300.0f, 4.0f, 0.0f);
+		UpdateUntilSettled(world, { &here, 1 }, JobSystem::Get(), entity);
+		const TerrainChunksComponent& chunks = world.Get<TerrainChunksComponent>(entity);
+		// Let a first fade finish
+		for (const auto start = std::chrono::steady_clock::now(); !chunks.Fading.empty();)
+		{
+			UpdateTerrainChunks(world, { &here, 1 }, JobSystem::Get());
+			Require(std::chrono::steady_clock::now() - start < std::chrono::seconds(5), "A fade should end");
+		}
+		const uint64_t swaps = chunks.Stats.Swaps;
+		const auto start = std::chrono::steady_clock::now();
+		while (chunks.Stats.Swaps == swaps)
+		{
+			UpdateTerrainChunks(world, { &there, 1 }, JobSystem::Get());
+			Require(std::chrono::steady_clock::now() - start < std::chrono::seconds(60), "Moving away should change the levels");
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}
+		const size_t fadingIn = std::count_if(chunks.Chunks.begin(), chunks.Chunks.end(), [](const TerrainChunk& chunk) { return chunk.Fade < 1.0f && !chunk.bFadingOut; });
+		const bool bAllOut = std::all_of(chunks.Fading.begin(), chunks.Fading.end(), [](const TerrainChunk& chunk) { return chunk.bFadingOut && chunk.bDrawn; });
+		std::cout << "Fading: " << chunks.Fading.size() << " chunks fading out, " << fadingIn << " in, " << chunks.Chunks.size() - fadingIn << " the same" << std::endl;
+		Require(!chunks.Fading.empty() && bAllOut, "A change of levels should keep the chunks it replaces, fading out");
+		Require(fadingIn > 0, "The new chunks should fade in");
+		UpdateTerrainChunks(world, { &there, 1 }, JobSystem::Get());
+		const float early = chunks.Fading.empty() ? 1.0f : chunks.Fading.front().Fade;
+		std::this_thread::sleep_for(std::chrono::milliseconds(250));
+		UpdateTerrainChunks(world, { &there, 1 }, JobSystem::Get());
+		Require(!chunks.Fading.empty() && chunks.Fading.front().Fade < early, "Those fading out should fade by the clock");
+		std::this_thread::sleep_for(std::chrono::milliseconds(250));
+		UpdateTerrainChunks(world, { &there, 1 }, JobSystem::Get());
+		Require(chunks.Fading.empty() && std::all_of(chunks.Chunks.begin(), chunks.Chunks.end(), [](const TerrainChunk& chunk) { return chunk.Fade == 1.0f; }),
+			"After Fade Time, those replaced should be gone and the new ones whole");
+
+		// An edit: at once
+		UpdateUntilSettled(world, { &there, 1 }, JobSystem::Get(), entity);
+		SdfTerrainEdit dig;
+		dig.Position = there + glm::vec3(0.0f, -4.0f, 0.0f);
+		dig.Radius = 3.0f;
+		AppendTerrainEdit(world.Get<SdfTerrainComponent>(entity), dig);
+		const uint64_t before = chunks.Stats.Swaps;
+		const auto edited = std::chrono::steady_clock::now();
+		while (chunks.Stats.Swaps == before)
+		{
+			UpdateTerrainChunks(world, { &there, 1 }, JobSystem::Get());
+			Require(std::chrono::steady_clock::now() - edited < std::chrono::seconds(60), "The edit should be drawn");
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}
+		Require(chunks.Fading.empty(), "An edit should go live at once, fading nothing");
+		RemoveTerrainChunks(world, entity);
+		JobSystem::Get().Wait(JobGroup{});
 	}
 
 	// Round a viewpoint: every chunk of the tree the surface crosses drawn, each the same bits as made
@@ -1815,7 +1885,7 @@ int main(int argc, char** argv)
 				 TestSeamsAreClosed(ESdfTerrainMesher::Dual, -1);
 				 TestSeamsAreClosed(ESdfTerrainMesher::MarchingCubes, -1);
 			 } },
-			{ "blending", TestLevelBlending }, { "far", TestFromFarAbove }, { "viewpoint", TestChunksRoundAViewpoint }, { "moving", TestMovingAndViewDistance }, { "values", TestNewValues },
+			{ "blending", TestLevelBlending }, { "far", TestFromFarAbove }, { "fading", TestFading }, { "viewpoint", TestChunksRoundAViewpoint }, { "moving", TestMovingAndViewDistance }, { "values", TestNewValues },
 			{ "removed", TestRemovedEmptyAndMoved }, { "edits", TestEdits }, { "undo", TestUndoCost }, { "brush", TestBrush }, { "twoworlds", TestTwoWorlds }, { "rules", TestMaterialRules }, { "scene", TestTheSampleScene }, { "time", TimeAView } };
 		// Not run unless asked for: a measure of the sample scene, not a check
 		const std::vector<std::pair<std::string, void (*)()>> measures{ { "editdelay", TimeAnEdit }, { "editcost", [] { TimeSamplingUnderEdits(0); TimeSamplingUnderEdits(16); } } };

@@ -33,6 +33,8 @@ public struct ObjectConstants
     // A terrain chunk's vertices sliding to the coarser level's places (nyx.surface's
     // morphedPosition()): from how far from the camera (x), and 1 over the distance to all the way
     // (y); y 0 for none
+    // An SDF terrain chunk's: its vertices' slide (from, 1 / over how far) and its fade (the
+    // dither's share it is drawn on, 1 fading in or 2 out, 0 neither)
     public float4 Morph;
 }
 [vk::push_constant] public ConstantBuffer<ObjectConstants> Object;

@@ -516,9 +516,28 @@ bool writesAmbientApart()
     return View.AmbientOcclusion != 0 && !nyx::isMaterialDebugView();
 }
 
+// An SDF terrain chunk fading (Object.Morph.zw): drawn on the pixels of a dither below its share
+// fading in, those at or above the share fading out, so the chunks fading in and those fading out
+// each have the pixels the other leaves
+bool isFadedAway(float2 pixel)
+{
+    const float mode = Object.Morph.w;
+    if (mode < 0.5)
+    {
+        return false;
+    }
+    // Interleaved gradient noise: a threshold a pixel, 0 to 1, spread evenly over the screen
+    const float threshold = frac(52.9829189 * frac(dot(floor(pixel), float2(0.06711056, 0.00583715))));
+    return mode < 1.5 ? threshold >= Object.Morph.z : threshold < Object.Morph.z;
+}
+
 [shader("fragment")]
 public SceneTargets surfaceFragment<S : ISurface>(VertexOutput vertex, bool bFrontFace : SV_IsFrontFace)
 {
+    if (isFadedAway(vertex.Position.xy))
+    {
+        discard;
+    }
     const ShadedPixel pixel = shadeSurfacePixel<S>(vertex, DecalInput::defaults(), bFrontFace);
     const nyx::Fog fog = surfaceFog(vertex);
     const nyx::CloudCover clouds = surfaceClouds(vertex);

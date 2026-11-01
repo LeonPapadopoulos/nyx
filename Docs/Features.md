@@ -1510,16 +1510,26 @@ game, coarser the farther, and collides while the world runs.
   does; marching cubes meshes a coarser chunk's cells next to finer ones with the finer samples on
   their shared faces and edges. Chunks meet without a gap at every seam: the edges well within the
   view distance all have two triangles.
-- Level blending (geomorphing, *Level Blending*, on by default, Dual only): each chunk's vertices
-  slide towards where the next coarser level has them as the camera goes farther, from 0.65 of the
-  distance at which that level takes the chunk's place, all the way by it, so a chunk changing its
-  level doesn't jump. Each vertex goes to the vertex of the coarser cell it is in, as the coarser
-  chunk makes it, the same bits, from the chunk's samples at even indices and a shell of samples
-  round them (or the nearest such vertex round it): carried in the mesh's tangents
-  (`TerrainChunk::Morph`, `ObjectConstants::Morph`, `morphedPosition()` in nyx.surface), in the
-  scene and its shadows (picking takes the vertices where they are). A coarser chunk next to finer
-  ones only begins to slide past where they reach, so the seams stay closed.
-  `NyxTerrainChunksTests` (a chunk's vertices slid all the way land on the coarser chunk's).
+- *Level Blending*: how a chunk changing its level of detail doesn't jump.
+  - *Fade* (the default): when the levels change, the chunks they replace stay drawn beside the new
+    ones for *Fade Time* (0.5 s), the new ones on more of a dither's pixels each frame and the old on
+    the rest (`TerrainChunk::Fade`, `TerrainChunksComponent::Fading`, `ObjectConstants::Morph`'s z
+    and w, `isFadedAway()` in nyx.surface), then the old let go of; each always its own shape, so
+    nothing folds or stretches. The fading out cast no shadow; an edit goes live at once, fading
+    nothing. Only the chunks changing level are drawn twice, while they fade.
+  - *Slide* (geomorphing, Dual only): each chunk's vertices slide towards the next coarser level's
+    surface as the camera goes farther, from 0.65 of the distance at which that level takes the
+    chunk's place, all the way by it: each to the nearest point of the coarser mesh's triangles round
+    it, those facing its way first, the same bits in every chunk that has it, carried in the mesh's
+    tangents (`TerrainChunk::Morph`, `morphedPosition()` in nyx.surface), in the scene and its
+    shadows. Next to another level's chunks it doesn't slide, so the seams stay closed; drawn from
+    both sides for the few triangles it turns over. Where the levels differ (a tunnel near the
+    surface, an overhang) some triangles still stretch or fold: small dark patches far off.
+  - *Off*: at once.
+  - `NyxTerrainChunksTests` (sliding: slid vertices on the coarser chunk's surface, no seam apart,
+    from far above few turned over; fading: the replaced chunks fade out by the clock and go, an edit
+    fades nothing), `NyxTerrainChunksGpuTests` (from afar, sliding makes few ground pixels much
+    darker than off, fading none; halfway through a fade the ground covered as after it).
 - *Chunks*: *View Distance*, *Level Distance*, *Finest Level* (0, or -1 for cells of half a metre
   nearest the camera, in 16 m chunks), *Near Shadow Levels* (the finest levels cast into every
   shadow cascade; each coarser one only from one cascade further out, and into the last at least),

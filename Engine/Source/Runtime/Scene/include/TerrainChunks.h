@@ -80,9 +80,13 @@ namespace Nyx
 		// The first shadow cascade it casts into (SdfTerrainComponent::NearShadowLevels)
 		uint32_t FirstShadowCascade = 0;
 		// From how far from the camera its vertices slide towards the coarser level's places (its
-		// mesh's tangents, SdfTerrainComponent::bLevelBlending), and by how far they are there: the
+		// mesh's tangents, SdfTerrainComponent::LevelBlending Slide), and by how far they are there: the
 		// distance at which the coarser chunk takes its place. In the terrain's space; zero for none.
 		glm::vec2 Morph{ 0.0f };
+		// Fading (Level Blending Fade): how much of it is drawn, 0 to 1, a dither choosing the pixels;
+		// fading in, or out on the pixels the chunks fading in leave (TerrainChunksComponent::Fading)
+		float Fade = 1.0f;
+		bool bFadingOut = false;
 	};
 
 	namespace Detail
@@ -124,6 +128,10 @@ namespace Nyx
 	struct TerrainChunksComponent
 	{
 		std::vector<TerrainChunk> Chunks;
+		// Those the last change of levels replaced, fading out for Fade Time, drawn but nothing else
+		std::vector<TerrainChunk> Fading;
+		// When the fade started, in seconds of the clock the updates keep (GetTerrainEditClock())
+		double FadeStart = 0.0;
 		TerrainChunksStats Stats;
 		// The jobs in flight and what they made, shared with them
 		std::shared_ptr<Detail::TerrainStreaming> Streaming;

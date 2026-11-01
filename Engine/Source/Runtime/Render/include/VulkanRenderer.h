@@ -375,10 +375,10 @@ namespace Nyx
 		// Its transform mirrors it (a negative determinant, e.g. one scale negative): its triangles
 		// wind the other way round on the screen (SetMeshFaces())
 		bool bMirrored = false;
-		// Drawn from both sides whatever its materials say: an SDF terrain's chunk, whose vertices
-		// sliding towards the coarser level (Morph) turn a few far triangles over where the two levels
-		// split their quads differently; drawn, they are lit by the field's normals like the rest, and
-		// the ground shows no holes
+		// Drawn from both sides whatever its materials say: an SDF terrain's chunk sliding, whose
+		// vertices sliding towards the coarser level (Morph) turn a few far triangles over where the
+		// two levels split their quads differently; drawn, they are lit by the field's normals like
+		// the rest, and the ground shows no holes
 		bool bTwoSided = false;
 		// Whether it casts the primary light's shadows: its Mesh Renderer's Cast Shadows
 		// (MeshRendererComponent::bCastShadows) and one of its sections' materials' at least
@@ -397,6 +397,10 @@ namespace Nyx
 		// level's places (its mesh's tangents), and by how far they are there, in metres in the world
 		// (TerrainChunk::Morph); zero for none
 		glm::vec2 Morph{ 0.0f };
+		// An SDF terrain's chunk fading (TerrainChunk::Fade): the share of a dither's pixels it is
+		// drawn on, and whether fading in (1: the pixels below the share) or out (2: those above
+		// it); 0 for neither
+		glm::vec2 Fade{ 1.0f, 0.0f };
 
 		// Its mesh's bounds, in the entity's space; drawn instanced, around all of its instances
 		glm::vec3 LocalBoundsMin{ -0.5f, -0.5f, -0.5f };
