@@ -27,6 +27,10 @@ namespace Nyx::Editor
 			Nyx::SdfTerrainWorldPlan Plan;
 			uint64_t PlanHash = 0;
 			std::vector<Nyx::TerrainPlanSeed> Seeds;
+			// With checks: the terrain as it was, and each seed's test
+			bool bChecks = false;
+			Nyx::SdfTerrainComponent Terrain;
+			std::vector<Nyx::TerrainSeedTest> Tests;
 			std::atomic<uint32_t> Remaining{ 0 };
 			bool bImagesMade = false;
 		};
@@ -63,6 +67,7 @@ namespace Nyx::Editor
 			Images.push_back(renderer.CreateUIImage(picture));
 		}
 		Spread = Nyx::GetTerrainPlanSpread(Run->Seeds);
+		Summary = Run->bChecks ? Nyx::SummariseTerrainSeeds(Run->Tests) : Nyx::TerrainSeedSummary{};
 		Run->bImagesMade = true;
 	}
 
@@ -105,6 +110,12 @@ namespace Nyx::Editor
 			Nyx::UI::EndCombo();
 		}
 		ImGui::SameLine();
+		NYX_UI(Nyx::UI::Checkbox("Checks", &bChecks));
+		if (ImGui::IsItemHovered())
+		{
+			ImGui::SetTooltip("Each seed's world made and checked too: its Place Rules and Route Checks, one seed after another");
+		}
+		ImGui::SameLine();
 		if (NYX_UI(Nyx::UI::Button("Run")) && !bRunning)
 		{
 			auto run = std::make_shared<Detail::TerrainSeedsRun>();
@@ -112,7 +123,29 @@ namespace Nyx::Editor
 			run->PlanHash = Nyx::HashTerrainWorldPlan(values.Plan);
 			run->Seeds.resize(Count);
 			run->Remaining.store(Count, std::memory_order_release);
-			for (uint32_t index = 0; index < Count; ++index)
+			run->bChecks = bChecks;
+			if (bChecks)
+			{
+				// One seed after another, each on the workers: a traversal graph a seed at once is a lot
+				run->Terrain = values;
+				run->Terrain.Planned.reset();
+				run->Tests.resize(Count);
+				Nyx::JobSystem::Get().Schedule(
+					[run, first = FirstSeed]
+					{
+						Nyx::TerrainSeedTestOptions options;
+						options.bChunks = false;
+						for (uint32_t index = 0; index < uint32_t(run->Tests.size()); ++index)
+						{
+							run->Tests[index] = Nyx::TestTerrainSeed(run->Terrain, first + index, options, &Nyx::JobSystem::Get());
+							run->Seeds[index] = run->Tests[index].Plan;
+							run->Remaining.fetch_sub(1, std::memory_order_acq_rel);
+						}
+					},
+					Nyx::EJobPriority::Low);
+				Run = run;
+			}
+			for (uint32_t index = 0; index < Count && !bChecks; ++index)
 			{
 				Nyx::JobSystem::Get().Schedule(
 					[run, index, seed = FirstSeed + index]
@@ -150,6 +183,19 @@ namespace Nyx::Editor
 			RangeOf(Spread.Rift, true).c_str(), RangeOf(Spread.Tunnels, true).c_str()));
 		NYX_UI(ImGui::Text("Rivers %s, lakes %s; a plan made in %.0f ms on average", RangeOf(Spread.Rivers, false).c_str(), RangeOf(Spread.Lakes, false).c_str(),
 			Spread.Milliseconds.Mean));
+		if (Run->bChecks && Summary.Checked == 0)
+		{
+			NYX_UI(ImGui::TextDisabled("Not checked: the terrain has no Place Rules"));
+		}
+		else if (Run->bChecks)
+		{
+			std::string failing;
+			for (size_t index = 0; index < Summary.FailingMost.size() && index < 3; ++index)
+			{
+				failing += std::format("{}{} ({})", index == 0 ? "; failing most: " : ", ", Summary.FailingMost[index].first, Summary.FailingMost[index].second);
+			}
+			NYX_UI(ImGui::Text("Passed %u of %u, a seed checked in %.0f ms on average%s", Summary.Passed, Summary.Checked, Summary.Total.Mean, failing.c_str()));
+		}
 		NYX_UI(ImGui::Separator());
 
 		// The maps, as many to a row as fit; a click gives the terrain that seed
@@ -176,15 +222,30 @@ namespace Nyx::Editor
 			const ImVec2 far(corner.x + thumbnail, corner.y + thumbnail);
 			drawList->AddRectFilled(corner, far, IM_COL32(22, 24, 28, 255));
 			drawList->AddImage(ImTextureRef(renderer.GetUIImageTextureId(Images[index])), corner, far);
+			const Nyx::TerrainSeedTest* test = Run->bChecks && index < Run->Tests.size() && Run->Tests[index].bChecked ? &Run->Tests[index] : nullptr;
+			if (test)
+			{
+				drawList->AddRect(ImVec2(corner.x + 2.0f, corner.y + 2.0f), ImVec2(far.x - 2.0f, far.y - 2.0f), test->bPassed ? IM_COL32(90, 220, 90, 255) : IM_COL32(235, 70, 70, 255),
+					0.0f, 0, 3.0f);
+			}
 			if (seed.Seed == values.Seed || bHovered)
 			{
 				drawList->AddRect(corner, far, seed.Seed == values.Seed ? IM_COL32(255, 210, 90, 255) : IM_COL32(255, 255, 255, 160), 0.0f, 0, 2.0f);
 			}
 			if (bHovered)
 			{
-				ImGui::SetTooltip("Seed %u: sea %s, rough land %s, rifts %s, tunnels %s, %zu rivers, %zu lakes; a click gives the terrain this seed", seed.Seed,
+				std::string checks;
+				if (test)
+				{
+					checks = test->bPassed ? "\nPassed its checks" : "\nFailed:";
+					for (const std::string& failure : test->Failures)
+					{
+						checks += "\n  " + failure;
+					}
+				}
+				ImGui::SetTooltip("Seed %u: sea %s, rough land %s, rifts %s, tunnels %s, %zu rivers, %zu lakes; a click gives the terrain this seed%s", seed.Seed,
 					Percent(seed.Shares.Sea).c_str(), Percent(seed.Shares.Roughland).c_str(), Percent(seed.Shares.Rift).c_str(), Percent(seed.Shares.Tunnels).c_str(),
-					seed.Shares.Rivers, seed.Shares.Lakes);
+					seed.Shares.Rivers, seed.Shares.Lakes, checks.c_str());
 			}
 			NYX_UI(ImGui::Text("%u", seed.Seed));
 			NYX_UI(ImGui::TextDisabled("%s sea, %s rough", Percent(seed.Shares.Sea).c_str(), Percent(seed.Shares.Roughland).c_str()));

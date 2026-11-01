@@ -154,6 +154,20 @@ add_dependencies(NyxTerrainTraversalTests NyxGeneratedReflection)
 set_property(TARGET NyxTerrainTraversalTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxTerrainTraversalTests COMMAND NyxTerrainTraversalTests)
 
+# Batch seed tests: a seed tested finds the terrain's places with it, checks its routes, times its
+# parts; a rule nothing meets fails every seed and fails most; the report says so.
+add_executable(NyxTerrainSeedTests TerrainSeedTests.cpp)
+target_link_libraries(NyxTerrainSeedTests PRIVATE NyxEngine)
+add_dependencies(NyxTerrainSeedTests NyxGeneratedReflection)
+set_property(TARGET NyxTerrainSeedTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxTerrainSeedTests COMMAND NyxTerrainSeedTests)
+
+# Batch seed tests offline, a report (--scene <file> --first <seed> --count <seeds> --out <report.md>); not in ctest
+add_executable(NyxTerrainSeeds TerrainSeeds.cpp TerrainGate3Region.h)
+target_link_libraries(NyxTerrainSeeds PRIVATE NyxEngine)
+add_dependencies(NyxTerrainSeeds NyxGeneratedReflection)
+set_property(TARGET NyxTerrainSeeds PROPERTY FOLDER "Tests")
+
 # Dual meshing of a sampled field: a sphere closed with the right area, a box's corners sharp or
 # rounded, thin shapes closed and facing out, neighbouring chunks meeting, sky visibility,
 # materials, the golden mesh. Prints how long a chunk takes to sample and mesh.

@@ -1681,6 +1681,18 @@ game, coarser the farther, and collides while the world runs.
     (`GetTerrainPlanSpread()`). A click on one gives the terrain that seed, an undo step; the
     terrain's own is outlined. Changed since a run, the plan says so until run again. The shares
     hardly change from seed to seed, as the plan holds them; where things lie is what does.
+    *Checks*: each seed's world is made and checked too (`TestTerrainSeed()`,
+    `TerrainSeedTests.h`), one seed after another on the workers: its places found and its Route
+    Checks checked; each map framed green where it passed and red where it failed, with what failed
+    on hover; above them how many passed, what failed most and how long a seed took.
+  - Batch seed tests offline: `NyxTerrainSeeds [--scene <file>] [--first <seed>] [--count <seeds>]
+    [--out <report.md>] [--no-checks]` makes and checks that many seeds of a scene's terrain (its
+    first with a *Plan* layer, its rules and checks), or of Gate 3's region, and writes a report
+    (`WriteTerrainSeedReport()`): how many passed, what failed most (a rule by what its tries missed
+    by most, a check by its places), how the shares spread, how long the plan, places, water and
+    traversal took, the worst chunk at the places (or at spots over the land) on one thread, and a
+    line a seed. A 2 km seed with a check takes 2 to 3 s, nearly all of it the traversal graph.
+    `NyxTerrainSeedTests`.
 - Water, for a terrain with a *Plan* layer (`TerrainWater.h`): where it stands, worked out from the
   plan and the ground as it is now, edits and all, on a worker whenever the layers, plan or edits
   change (the ground found again only where edits reached: about 100 ms for 2 km on every worker,

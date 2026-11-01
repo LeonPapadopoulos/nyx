@@ -1,5 +1,6 @@
 #pragma once
 
+#include "TerrainSeedTests.h"
 #include "TerrainWorldPlanMap.h"
 
 #include <cstdint>
@@ -25,7 +26,10 @@ namespace Nyx::Editor
 	// a run of seeds from First Seed made on the job system's workers, each as a small map with its
 	// shares of sea, rough land, rifts and tunnels and its rivers and lakes; how each spreads across
 	// them (least, mean, most); a click on one gives the terrain that seed, an undo step. A run is of
-	// the plan as it was: changed since, it says so until run again.
+	// the plan as it was: changed since, it says so until run again. With Checks, each seed's world is
+	// also made and checked (TerrainSeedTests.h), one seed after another: its places found and its
+	// Route Checks checked, each map framed green where it passed and red where it failed, with what
+	// failed on hover, and how many passed and what failed most above them.
 	class TerrainSeedsWindow
 	{
 	public:
@@ -34,6 +38,7 @@ namespace Nyx::Editor
 		bool bOpen = false;
 		uint32_t FirstSeed = 1;
 		uint32_t Count = 36;
+		bool bChecks = false;
 
 	private:
 		void TakeImages(Nyx::IEditorRenderer& renderer);
@@ -42,5 +47,6 @@ namespace Nyx::Editor
 		// Each seed's map, once the run is done, and how they spread
 		std::vector<uint64_t> Images;
 		Nyx::TerrainPlanSpread Spread;
+		Nyx::TerrainSeedSummary Summary;
 	};
 }
