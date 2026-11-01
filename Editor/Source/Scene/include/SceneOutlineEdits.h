@@ -20,14 +20,14 @@ namespace Nyx::Editor
 	// step that replaces its arrays (SceneOutlineTransactionDomain). Edits take lists of entities
 	// and folders, so a selection of several can be moved as one.
 
-	// One row of the outliner: a folder, with what it holds, or an entity
+	// One row of the outliner: a folder, with what it holds, or an entity, with its children
 	struct OutlineNode
 	{
 		// A folder's id; 0 for an entity
 		uint64_t Folder = 0;
 		Nyx::Entity Entity{};
 
-		// A folder's subfolders, then its entities
+		// A folder's subfolders, then its entities; an entity's children (ParentComponent)
 		std::vector<OutlineNode> Children;
 
 		bool IsFolder() const
@@ -37,16 +37,18 @@ namespace Nyx::Editor
 	};
 
 	// The rows at the top of the outliner: the top's folders, then its entities. Every entity with
-	// a name shows once: where the outline puts it, or, if it doesn't list it, at the top after
-	// the listed ones, in the order the registry has their names. A folder whose parent is gone, or
-	// whose parents make a loop, shows at the top.
+	// a name shows once: a child under its parent, among its siblings in the outline's order,
+	// whatever folder the outline gives it; another where the outline puts it, or, if it doesn't
+	// list it, at the top after the listed ones, in the order the registry has their names. A folder
+	// whose parent is gone, or whose parents make a loop, shows at the top, as does an entity whose
+	// parents make a loop.
 	std::vector<OutlineNode> BuildOutlineTree(const SceneDocument& scene);
 
 	// Whether an entity's name has `filter` in it, whatever the case; every name has an empty one
 	bool NameMatchesFilter(std::string_view name, std::string_view filter);
 
-	// The tree with only the entities whose name matches the filter, and the folders that hold
-	// one of them, at any depth
+	// The tree with only the entities whose name matches the filter, and the folders and parents
+	// that hold one of them, at any depth
 	std::vector<OutlineNode> FilterOutlineTree(const std::vector<OutlineNode>& tree, const SceneDocument& scene, std::string_view filter);
 
 	// Where something dragged in the outliner goes
@@ -60,6 +62,8 @@ namespace Nyx::Editor
 		Into,
 		// At the end of the top
 		End,
+		// A child of the row's entity, after its others
+		Onto,
 	};
 
 	struct OutlineDrop
@@ -80,11 +84,14 @@ namespace Nyx::Editor
 
 	// Whether the items can go there. Folders come before entities in a folder, so entities go
 	// before or after entities and folders before or after folders; a folder never goes into
-	// itself or a folder inside it.
+	// itself or a folder inside it. Entities go onto an entity, as its children; beside a child,
+	// they get its parent; in a folder or at the end of the top, they lose theirs. An entity never
+	// goes onto or beside one below it, and needs a transform to get a parent.
 	bool CanDropInOutline(const SceneDocument& scene, const OutlineItems& items, const OutlineDrop& drop);
 
-	// Moves the items there, keeping their order, as one undo step ("Move in Outliner"). False,
-	// and no step, if they can't go there or are there already.
+	// Moves the items there, keeping their order, as one undo step ("Move in Outliner", or "Set
+	// Parent" with the parent the place gives them, each entity staying where it is in the world,
+	// SetParent()). False, and no step, if they can't go there or are there already.
 	bool MoveInOutline(SceneEditor& editing, const OutlineItems& items, const OutlineDrop& drop);
 
 	// A new folder, "New Folder" or "New Folder (2)" and so on so that its siblings' names differ,
@@ -101,7 +108,7 @@ namespace Nyx::Editor
 	// The folder with this id, if the outline has it (0 never)
 	const Nyx::SceneOutlineFolder* FindOutlineFolder(const Nyx::SceneOutline& outline, uint64_t folder);
 
-	// The folder the entity shows in; 0 for the top
+	// The folder the entity shows in, for a child its topmost parent's; 0 for the top
 	uint64_t GetOutlineFolderOf(const SceneDocument& scene, Nyx::EntityGuid entity);
 
 	// For an entity just made (Add Entity, paste, duplicate): puts it right after `after`, in its

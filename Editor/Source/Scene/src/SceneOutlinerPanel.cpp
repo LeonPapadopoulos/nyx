@@ -4,6 +4,7 @@
 #include "ImGuiSource.h"
 #include "NameComponent.h"
 #include "SceneEditor.h"
+#include "TransformParents.h"
 #include "UITheme.h"
 #include "UIWidgets.h"
 #include "WindowPainter.h"
@@ -87,7 +88,7 @@ namespace Nyx::Editor
 			ShownSelection = selection;
 			if (selection)
 			{
-				Reveal(editing, GetOutlineFolderOf(editing.Scene, editing.Scene.GetGuid(*selection)));
+				RevealEntity(editing, *selection);
 			}
 		}
 
@@ -269,7 +270,7 @@ namespace Nyx::Editor
 			}
 			else
 			{
-				DrawEntityRow(editing, node);
+				DrawEntityRow(editing, node, bFiltering);
 			}
 		}
 	}
@@ -381,22 +382,42 @@ namespace Nyx::Editor
 		}
 	}
 
-	void SceneOutlinerPanel::DrawEntityRow(SceneEditor& editing, const OutlineNode& node)
+	void SceneOutlinerPanel::DrawEntityRow(SceneEditor& editing, const OutlineNode& node, bool bFiltering)
 	{
 		std::optional<Nyx::Entity>& selection = editing.Scene.GetSelection();
 		const Nyx::Entity entity = node.Entity;
 		const std::string name = editing.Scene.GetRegistry().Get<Nyx::NameComponent>(entity).Name;
+		const EntityGuid guid = editing.Scene.GetGuid(entity);
 
 		Nyx::UI::TreeRowOptions row;
 		row.bSelected = selection.has_value() && selection.value() == entity;
-		row.bLeaf = true;
+		row.bLeaf = node.Children.empty();
+		row.bDoubleClickToggles = false;
 		row.Icon = Nyx::UI::ETreeRowIcon::Entity;
 
 		const std::string label = name + "##" + std::to_string(entity.Index());
 
+		// Its children show unless it was closed; while searching, to show what matches
+		const bool bShownOpen = bFiltering || !ClosedEntities.contains(guid);
+		if (!row.bLeaf)
+		{
+			ImGui::SetNextItemOpen(bShownOpen);
+		}
 		const float contentX = ImGui::GetCursorScreenPos().x;
-		const bool bClicked = NYX_UI(Nyx::UI::TreeRow(label.c_str(), row)).bClicked;
+		const Nyx::UI::TreeRowResult result = NYX_UI(Nyx::UI::TreeRow(label.c_str(), row));
+		const bool bClicked = result.bClicked;
 		DrawnRows.push_back(DrawnRow{ .Entity = entity, .Min = ImGui::GetItemRectMin(), .Max = ImGui::GetItemRectMax(), .ContentX = contentX });
+		if (!row.bLeaf && !bFiltering && result.bOpen != bShownOpen)
+		{
+			if (result.bOpen)
+			{
+				ClosedEntities.erase(guid);
+			}
+			else
+			{
+				ClosedEntities.insert(guid);
+			}
+		}
 
 		if (bClicked)
 		{
@@ -423,7 +444,6 @@ namespace Nyx::Editor
 
 		// An entity can be dragged elsewhere in the outliner, and onto a field that names one, e.g. a
 		// surface anchor's host
-		const EntityGuid guid = editing.Scene.GetGuid(entity);
 		if (guid.IsValid() && ImGui::BeginDragDropSource())
 		{
 			SetEntityDragPayload(guid, name);
@@ -431,7 +451,13 @@ namespace Nyx::Editor
 		}
 		if (guid.IsValid())
 		{
-			DropOnRow(editing, 0, guid, false, contentX);
+			DropOnRow(editing, 0, guid, result.bOpen, contentX);
+		}
+
+		if (result.bOpen)
+		{
+			DrawRows(editing, node.Children, bFiltering);
+			Nyx::UI::TreeRowEnd();
 		}
 	}
 
@@ -502,30 +528,38 @@ namespace Nyx::Editor
 		}
 	}
 
-	void SceneOutlinerPanel::DropOnRow(SceneEditor& editing, uint64_t folder, Nyx::EntityGuid entity, bool bOpenFolder, float contentX)
+	void SceneOutlinerPanel::DropOnRow(SceneEditor& editing, uint64_t folder, Nyx::EntityGuid entity, bool bOpen, float contentX)
 	{
 		if (!ImGui::BeginDragDropTarget())
 		{
 			return;
 		}
 
-		// An entity's row: before it in its upper half, after it in its lower. A folder's row takes
-		// entities into it; folders go before it at its top, after it at its bottom unless it is
-		// open (its rows follow), and into it between.
+		// An entity's row: entities onto it in its middle, as its children; before it at its top,
+		// after it at its bottom unless it is open (its children follow), and folders before it in its
+		// upper half, after it in its lower. A folder's row takes entities into it; folders go before
+		// it at its top, after it at its bottom unless it is open (its rows follow), and into it
+		// between.
 		const OutlineItems items = GetDraggedItems();
 		const ImVec2 rowMin = ImGui::GetItemRectMin();
 		const ImVec2 rowMax = ImGui::GetItemRectMax();
 		const float along = (ImGui::GetIO().MousePos.y - rowMin.y) / std::max(1.0f, rowMax.y - rowMin.y);
 		OutlineDrop drop{ .Folder = folder, .Entity = entity };
-		if (folder == 0)
+		if (folder == 0 && items.Entities.empty())
 		{
 			drop.Place = along < 0.5f ? EOutlinePlace::Before : EOutlinePlace::After;
+		}
+		else if (folder == 0)
+		{
+			drop.Place = along < 0.25f ? EOutlinePlace::Before
+				: along > 0.75f && !bOpen ? EOutlinePlace::After
+										 : EOutlinePlace::Onto;
 		}
 		else if (!items.Folders.empty() && along < 0.25f)
 		{
 			drop.Place = EOutlinePlace::Before;
 		}
-		else if (!items.Folders.empty() && along > 0.75f && !bOpenFolder)
+		else if (!items.Folders.empty() && along > 0.75f && !bOpen)
 		{
 			drop.Place = EOutlinePlace::After;
 		}
@@ -537,7 +571,8 @@ namespace Nyx::Editor
 		if (AcceptDrop(editing, drop))
 		{
 			const float y = drop.Place == EOutlinePlace::After ? rowMax.y : rowMin.y;
-			Hint = drop.Place == EOutlinePlace::Into ? DropHint{ ImVec2(contentX, rowMin.y), rowMax, true }
+			const bool bBox = drop.Place == EOutlinePlace::Into || drop.Place == EOutlinePlace::Onto;
+			Hint = bBox ? DropHint{ ImVec2(contentX, rowMin.y), rowMax, true }
 				: DropHint{ ImVec2(contentX, y), ImVec2(rowMax.x, y), false };
 		}
 		ImGui::EndDragDropTarget();
@@ -572,10 +607,21 @@ namespace Nyx::Editor
 
 		const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(ImGui::GetDragDropPayload()->DataType,
 			ImGuiDragDropFlags_AcceptBeforeDelivery | ImGuiDragDropFlags_AcceptNoDrawDefaultRect);
-		if (payload && payload->IsDelivery() && MoveInOutline(editing, items, drop) && drop.Place == EOutlinePlace::Into)
+		if (payload && payload->IsDelivery() && MoveInOutline(editing, items, drop))
 		{
-			// What went into a folder shows
-			Reveal(editing, drop.Folder);
+			// What went into a folder or onto an entity shows
+			if (drop.Place == EOutlinePlace::Into)
+			{
+				Reveal(editing, drop.Folder);
+			}
+			else if (drop.Place == EOutlinePlace::Onto)
+			{
+				ClosedEntities.erase(drop.Entity);
+				if (const std::optional<Nyx::Entity> target = editing.Scene.FindEntity(drop.Entity))
+				{
+					RevealEntity(editing, *target);
+				}
+			}
 		}
 		return payload != nullptr;
 	}
@@ -596,6 +642,18 @@ namespace Nyx::Editor
 			const Nyx::SceneOutlineFolder* found = FindOutlineFolder(outline, folder);
 			folder = found ? found->Parent : 0;
 		}
+	}
+
+	void SceneOutlinerPanel::RevealEntity(const SceneEditor& editing, Nyx::Entity entity)
+	{
+		const Nyx::Registry& world = editing.Scene.GetRegistry();
+		std::optional<Nyx::Entity> above = FindParent(world, entity);
+		for (size_t step = 0; above && *above != entity && step <= ClosedEntities.size(); ++step)
+		{
+			ClosedEntities.erase(editing.Scene.GetGuid(*above));
+			above = FindParent(world, *above);
+		}
+		Reveal(editing, GetOutlineFolderOf(editing.Scene, editing.Scene.GetGuid(entity)));
 	}
 
 	void SceneOutlinerPanel::StartRename(SceneEditor& editing, uint64_t folder)

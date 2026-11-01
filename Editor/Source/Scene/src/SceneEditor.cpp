@@ -4,6 +4,7 @@
 #include "RootObjectSnapshotUtils.h"
 #include "SceneOutlineEdits.h"
 #include "TransactionObjectRefHelpers.h"
+#include "TransformParents.h"
 
 #include "imgui.h"
 
@@ -71,26 +72,31 @@ namespace Nyx::Editor
 			return;
 		}
 
-		const Nyx::Entity entityToDelete = *selection;
-		const ObjectRef rootRef = MakeSceneEntityRef(Scene, entityToDelete);
-		RootObjectSnapshot snapshot = CaptureRootObjectSnapshot(EntityDomain, TransactionContext, rootRef);
+		// With its children, at any depth: one undo brings them all back
+		Transaction transaction{};
+		transaction.Label = "Delete Entity";
+		for (const Nyx::Entity entityToDelete : GetSelfAndBelow(Scene.GetRegistry(), *selection))
+		{
+			const ObjectRef rootRef = MakeSceneEntityRef(Scene, entityToDelete);
+			RootObjectSnapshot snapshot = CaptureRootObjectSnapshot(EntityDomain, TransactionContext, rootRef);
+			if (!Scene.DestroyEntity(entityToDelete))
+			{
+				continue;
+			}
 
-		if (!Scene.DestroyEntity(entityToDelete))
+			Change change{};
+			change.Kind = EChangeKind::DeleteObject;
+			change.Payload = DeleteObjectChange{
+				.Target = rootRef,
+				.BeforeDelete = std::move(snapshot)
+			};
+			transaction.Changes.push_back(std::move(change));
+		}
+
+		if (transaction.IsEmpty())
 		{
 			return;
 		}
-
-		Change change{};
-		change.Kind = EChangeKind::DeleteObject;
-		change.Payload = DeleteObjectChange{
-			.Target = rootRef,
-			.BeforeDelete = snapshot
-		};
-
-		Transaction transaction{};
-		transaction.Label = "Delete Entity";
-		transaction.Changes.push_back(std::move(change));
-
 		Transactions.Push(std::move(transaction));
 		selection.reset();
 	}

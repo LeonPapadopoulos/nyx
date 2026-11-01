@@ -1,14 +1,17 @@
-// The Scene Outliner: its search, the order of its rows, its folders, their undo and how scenes save
-// them. Drawn headless with ImGui, driven by mouse and keys as by hand.
+// The Scene Outliner: its search, the order of its rows, its folders, children under their parents,
+// their undo and how scenes save them. Drawn headless with ImGui, driven by mouse and keys as by hand.
 #include "ComponentRegistration.h"
 #include "GuidComponent.h"
 #include "Log.h"
 #include "NameComponent.h"
+#include "ParentComponent.h"
 #include "OutlinerFolderStates.h"
 #include "SceneEditor.h"
 #include "SceneOutlineEdits.h"
 #include "SceneOutlinerPanel.h"
 #include "SceneSerializer.h"
+#include "TransformComponent.h"
+#include "TransformParents.h"
 #include "UIWidgets.h"
 #include "HeadlessUI.h"
 #include "TestSupport.h"
@@ -38,7 +41,8 @@ namespace
 		return found ? found->Name : "?";
 	}
 
-	// The tree as text: entities by name, folders as [Name: what it holds]
+	// The tree as text: entities by name, with their children as Name(children), folders as
+	// [Name: what it holds]
 	std::string Describe(const SceneDocument& scene, const std::vector<OutlineNode>& nodes)
 	{
 		std::string text;
@@ -53,6 +57,10 @@ namespace
 			else
 			{
 				text += scene.GetRegistry().Get<NameComponent>(node.Entity).Name;
+				if (!node.Children.empty())
+				{
+					text += "(" + Describe(scene, node.Children) + ")";
+				}
 			}
 		}
 		return text;
@@ -555,6 +563,107 @@ namespace
 
 	// New Folder, renaming by F2 and by a double click, Esc keeping the old name, Delete Selected
 	// deleting a selected folder but not what is in it
+	// Children show under their parents. An entity dropped onto another's row becomes its child,
+	// one dropped beside a child its sibling, one dropped below the rows or into a folder loses its
+	// parent, each keeping where it is in the world and one undo step; an entity never goes below
+	// itself. The search shows a child with its parents. Deleting a parent deletes its children,
+	// duplicating it copies them.
+	void TestChildrenShowUnderTheirParents()
+	{
+		OutlinerFixture fixture;
+		SceneEditor& editing = fixture.Editing;
+		editing.Transactions.Subscribe(&editing.Hierarchy);
+		Registry& world = editing.Scene.GetRegistry();
+		const auto make = [&](const char* name, float x)
+		{
+			const Entity entity = editing.Scene.CreateEntity(name);
+			TransformComponent transform;
+			transform.Position = glm::vec3(x, 0.0f, 0.0f);
+			world.Add<TransformComponent>(entity, transform);
+			return entity;
+		};
+		const Entity a = make("A", 1.0f);
+		const Entity b = make("B", 2.0f);
+		const Entity c = make("C", 3.0f);
+		const Entity d = make("D", 4.0f);
+		const uint64_t folder = CreateOutlineFolder(editing, 0);
+		RenameOutlineFolder(editing, folder, "F");
+		fixture.Frames(3);
+		RequireOutline(editing.Scene, "[F] A B C D", "The entities should show at the top");
+
+		// Over the middle of A's row, a box round it
+		fixture.MoveTo(OutlinerFixture::At(fixture.Row(c), 0.5f));
+		ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+		fixture.Frame();
+		const SceneOutlinerPanel::DrawnRow rowA = fixture.Row(a);
+		fixture.MoveTo(OutlinerFixture::At(rowA, 0.5f));
+		fixture.Frame();
+		const std::optional<SceneOutlinerPanel::DropHint> ontoA = fixture.Outliner.GetDropHint();
+		Require(ontoA && ontoA->bBox && std::abs(ontoA->Min.y - rowA.Min.y) < 0.5f, "Over the middle of A's row, C should show a box round it");
+		ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+		fixture.Frames(2);
+		RequireOutline(editing.Scene, "[F] A(C) B D", "C dropped onto A should become A's child");
+		Require(FindParent(world, c) == a && world.Get<TransformComponent>(c).Position.x == 3.0f, "C should have A as its parent, where it was");
+
+		fixture.DragTo(OutlinerFixture::At(fixture.Row(d), 0.5f), OutlinerFixture::At(fixture.Row(c), 0.5f));
+		RequireOutline(editing.Scene, "[F] A(C(D)) B", "D dropped onto C should become C's child");
+		Require(fixture.Row(d).ContentX > fixture.Row(c).ContentX && fixture.Row(c).ContentX > fixture.Row(a).ContentX,
+			"Children should show indented under their parents");
+
+		fixture.DragTo(OutlinerFixture::At(fixture.Row(b), 0.5f), OutlinerFixture::At(fixture.Row(d), 0.1f));
+		RequireOutline(editing.Scene, "[F] A(C(B D))", "B dropped before D should become D's sibling, before it");
+		Require(FindParent(world, b) == c, "B should have D's parent");
+
+		// Never below itself: A onto D, nor beside it
+		fixture.DragTo(OutlinerFixture::At(fixture.Row(a), 0.5f), OutlinerFixture::At(fixture.Row(d), 0.5f));
+		fixture.DragTo(OutlinerFixture::At(fixture.Row(a), 0.5f), OutlinerFixture::At(fixture.Row(d), 0.1f));
+		RequireOutline(editing.Scene, "[F] A(C(B D))", "An entity dropped onto or beside one below it should move nothing");
+
+		// Below the rows, and into a folder: no parent, still where it was
+		fixture.DragTo(OutlinerFixture::At(fixture.Row(d), 0.5f), ImVec2(100.0f, 560.0f));
+		RequireOutline(editing.Scene, "[F] A(C(B)) D", "D dropped below the rows should lose its parent");
+		Require(!world.Has<ParentComponent>(d) && world.Get<TransformComponent>(d).Position.x == 4.0f, "D should keep where it is");
+		fixture.DragTo(OutlinerFixture::At(fixture.Row(b), 0.5f), OutlinerFixture::At(fixture.FolderRow(folder), 0.5f));
+		RequireOutline(editing.Scene, "[F: B] A(C) D", "B dropped into a folder should lose its parent");
+
+		editing.Undo();
+		editing.Undo();
+		RequireOutline(editing.Scene, "[F] A(C(B D))", "Undo should give B and D their parent back, in their places");
+
+		// The search shows a child with its parents
+		fixture.Outliner.Folders.SetOpen(folder, true);
+		RequireOutline(editing.Scene, "[F] A(C(B D))", "Searching changes nothing in the outline");
+		Require(Describe(editing.Scene, FilterOutlineTree(BuildOutlineTree(editing.Scene), editing.Scene, "d")) == "A(C(D))",
+			"Searching for D should show it under its parents");
+
+		// Deleting C takes B and D along; one undo brings all three back
+		const EntityGuid guidC = GuidOf(editing.Scene, c);
+		const EntityGuid guidD = GuidOf(editing.Scene, d);
+		editing.Scene.GetSelection() = c;
+		editing.DeleteSelectedEntity();
+		RequireOutline(editing.Scene, "[F] A", "Deleting C should delete its children too");
+		editing.Undo();
+		RequireOutline(editing.Scene, "[F] A(C(B D))", "Undoing the delete should bring C back with its children");
+		Require(editing.Scene.FindEntity(guidD).has_value(), "D should come back with its guid");
+
+		// Duplicating C copies B and D: the copies name the copied C, which keeps A
+		editing.Scene.GetSelection() = *editing.Scene.FindEntity(guidC);
+		editing.DuplicateSelectedEntity();
+		const std::optional<Entity> copy = editing.Scene.GetSelection();
+		Require(copy && GuidOf(editing.Scene, *copy) != guidC, "Duplicating should select a new entity");
+		Require(FindParent(world, *copy) == editing.Scene.FindEntity(GuidOf(editing.Scene, a)), "The copy should keep its original's parent");
+		const std::vector<Entity> copiedChildren = FindChildren(world, *copy);
+		Require(copiedChildren.size() == 2, "The copy should have copies of both children");
+		for (const Entity child : copiedChildren)
+		{
+			Require(GuidOf(editing.Scene, child) != GuidOf(editing.Scene, b) && GuidOf(editing.Scene, child) != guidD,
+				"The children's copies should have guids of their own");
+		}
+		Require(FindChildren(world, *editing.Scene.FindEntity(guidC)).size() == 2, "The original should keep its children");
+		editing.Undo();
+		RequireOutline(editing.Scene, "[F] A(C(B D))", "Undoing the duplicate should take all three copies away");
+	}
+
 	void TestFolderCommands()
 	{
 		OutlinerFixture fixture;
@@ -682,6 +791,7 @@ int main()
 		TestNewEntitiesGoAfterTheSelection();
 		TestSearchFiltersByName();
 		TestDraggingRows();
+		TestChildrenShowUnderTheirParents();
 		TestFolderCommands();
 		TestFolderStatesAreRememberedPerScene();
 	}

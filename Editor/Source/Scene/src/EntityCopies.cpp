@@ -4,15 +4,19 @@
 #include "GuidComponent.h"
 #include "Log.h"
 #include "NameComponent.h"
+#include "ParentComponent.h"
 #include "ReflectedArchiveSerializer.h"
 #include "RootObjectSnapshotUtils.h"
 #include "SceneDocument.h"
 #include "SceneSerializer.h"
 #include "TransactionObjectRefHelpers.h"
 #include "TransactionSystem.h"
+#include "TransformParents.h"
 
 #include <cctype>
+#include <cstdint>
 #include <set>
+#include <unordered_map>
 
 namespace
 {
@@ -52,11 +56,17 @@ namespace Nyx::Editor
 			return {};
 		}
 
+		// The entity, then everything below it, each parent before its children
+		const std::vector<Nyx::Entity> entities = GetSelfAndBelow(world, entity);
 		Nyx::BinaryWriter writer;
-		if (!Nyx::SceneSerializer::WriteEntity(world, entity, writer))
+		writer.WriteUInt32(static_cast<uint32_t>(entities.size()));
+		for (const Nyx::Entity copied : entities)
 		{
-			LOG_WARNING("Copy: the entity can't be copied, since a component can't be written");
-			return {};
+			if (!Nyx::SceneSerializer::WriteEntity(world, copied, writer))
+			{
+				LOG_WARNING("Copy: the entity can't be copied, since a component can't be written");
+				return {};
+			}
 		}
 
 		return writer.GetBytes();
@@ -72,50 +82,94 @@ namespace Nyx::Editor
 		}
 
 		Nyx::Registry& world = scene.GetRegistry();
-		const Nyx::Entity entity = world.CreateEntity();
-
-		// Assets are loaded by ComponentPostLoadSubscriber when the paste is recorded below
 		Nyx::BinaryReader reader;
 		reader.LoadFromMemory(copied);
-		Nyx::ScenePostLoadContext noAssets{};
-		Nyx::ReadWarnings warnings;
-		const bool bRead = Nyx::SceneSerializer::ReadEntity(reader, world, entity, noAssets, warnings) && reader.IsValid();
-		warnings.Log("Paste");
-
-		if (!bRead)
+		uint32_t count = 0;
+		if (!reader.ReadUInt32(count) || count == 0)
 		{
-			world.DestroyEntity(entity);
 			LOG_ERROR("Paste: the copied entity can't be read");
 			return std::nullopt;
 		}
 
-		// A guid of its own, and a name that tells it apart. The copy normally has both already.
-		if (!world.Has<Nyx::GuidComponent>(entity))
+		// Assets are loaded by ComponentPostLoadSubscriber when the paste is recorded below
+		std::vector<Nyx::Entity> pasted;
+		Nyx::ScenePostLoadContext noAssets{};
+		Nyx::ReadWarnings warnings;
+		bool bRead = true;
+		for (uint32_t index = 0; index < count && bRead; ++index)
 		{
-			world.Add<Nyx::GuidComponent>(entity, Nyx::GuidComponent{});
+			const Nyx::Entity entity = world.CreateEntity();
+			pasted.push_back(entity);
+			bRead = Nyx::SceneSerializer::ReadEntity(reader, world, entity, noAssets, warnings) && reader.IsValid();
 		}
-		world.Get<Nyx::GuidComponent>(entity).Guid = Nyx::EntityGuid::Generate();
+		warnings.Log("Paste");
 
-		if (!world.Has<Nyx::NameComponent>(entity))
+		if (!bRead)
 		{
-			world.Add<Nyx::NameComponent>(entity, Nyx::NameComponent{ "Entity" });
+			for (const Nyx::Entity entity : pasted)
+			{
+				world.DestroyEntity(entity);
+			}
+			LOG_ERROR("Paste: the copied entity can't be read");
+			return std::nullopt;
 		}
-		Nyx::NameComponent& name = world.Get<Nyx::NameComponent>(entity);
+
+		// Guids of their own: a guid names exactly one entity. The copies' children name their
+		// copied parents; the first keeps the parent the original has.
+		std::unordered_map<Nyx::EntityGuid, Nyx::EntityGuid> copies;
+		for (const Nyx::Entity entity : pasted)
+		{
+			if (!world.Has<Nyx::GuidComponent>(entity))
+			{
+				world.Add<Nyx::GuidComponent>(entity, Nyx::GuidComponent{});
+			}
+			Nyx::EntityGuid& guid = world.Get<Nyx::GuidComponent>(entity).Guid;
+			const Nyx::EntityGuid original = guid;
+			guid = Nyx::EntityGuid::Generate();
+			if (original.IsValid())
+			{
+				copies[original] = guid;
+			}
+		}
+		for (size_t index = 1; index < pasted.size(); ++index)
+		{
+			if (world.Has<Nyx::ParentComponent>(pasted[index]))
+			{
+				Nyx::ParentComponent& link = world.Get<Nyx::ParentComponent>(pasted[index]);
+				if (const auto copy = copies.find(link.Parent); copy != copies.end())
+				{
+					link.Parent = copy->second;
+				}
+			}
+		}
+
+		// A name that tells the copy apart; its children keep theirs
+		const Nyx::Entity root = pasted.front();
+		for (const Nyx::Entity entity : pasted)
+		{
+			if (!world.Has<Nyx::NameComponent>(entity))
+			{
+				world.Add<Nyx::NameComponent>(entity, Nyx::NameComponent{ "Entity" });
+			}
+		}
+		Nyx::NameComponent& name = world.Get<Nyx::NameComponent>(root);
 		name.Name = MakeCopyName(scene, name.Name.empty() ? std::string("Entity") : name.Name);
-
-		const ObjectRef target = MakeSceneEntityRef(scene, entity);
 
 		Transaction transaction;
 		transaction.Label = label;
-		transaction.Changes.push_back(Change{ EChangeKind::AddObject,
-			AddObjectChange{ .Target = target, .AfterCreate = CaptureRootObjectSnapshot(domain, context, target) } });
+		for (const Nyx::Entity entity : pasted)
+		{
+			const ObjectRef target = MakeSceneEntityRef(scene, entity);
+			transaction.Changes.push_back(Change{ EChangeKind::AddObject,
+				AddObjectChange{ .Target = target, .AfterCreate = CaptureRootObjectSnapshot(domain, context, target) } });
+		}
 		if (alsoDo)
 		{
-			alsoDo(entity, transaction);
+			alsoDo(root, transaction);
 		}
 		transactions.Push(std::move(transaction));
 
-		return entity;
+		return root;
 	}
 
 	std::string MakeCopyName(const SceneDocument& scene, const std::string& name)

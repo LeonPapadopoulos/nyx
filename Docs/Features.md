@@ -26,10 +26,21 @@ The scene's entities by name, in folders of the editor's own
 - **Search** at the top: shows the entities whose names have its text, whatever the case, and the
   folders that hold them, open. Ctrl+F reaches it while the outliner has the focus; the cross
   beside it empties it.
+- **Children** show under their parents (see Parents), indented, and close and open as folders
+  do; which are closed isn't saved. Drag an entity onto the middle of another's row (a box shows
+  it) to make it that entity's child, before or after a child to make it its sibling, into a folder
+  or below the rows to take its parent away: it stays where it is in the world, and each drop is one
+  undo step. An entity never goes onto or beside one below it. A child never shows in a folder of
+  its own: it shows under its topmost parent's row. The search shows a child that matches with its
+  parents above it.
+- **Deleting, copying and duplicating** an entity takes its children along, at any depth: one undo
+  brings back all that was deleted; the copies get guids of their own, the copied children name
+  the copied parent, and the copy keeps the original's parent.
 - **Order**: drag a row before or after another; a line shows where it goes. A new entity goes
   right after the selected one, in its folder (pasted and duplicated ones too), or at the end. The
   order is saved in the scene, and each move is one undo step.
-- **Folders** only sort the outliner: they parent no transform and the game never sees them.
+- **Folders** only sort the outliner: they parent no transform (children do, see Parents) and the
+  game never sees them.
   *New Folder* (the button, or right-click) makes one in the selected folder, or beside the
   selected entity. Drag entities and folders into one (a box shows it) and out again, before or
   after others or below the rows; folders nest, and show before the entities in theirs. Rename one
@@ -659,7 +670,10 @@ turns and scales with it, down chains of any length.
   then multiplied axis by axis.
 - `SetLocalTransform()` gives the local values that keep an entity where it is under another
   parent.
-- Tests: `NyxTransformHierarchyTests`, `NyxGameLinkSubscriberTests`, `NyxEditorPanelTests`.
+- **In the outliner** children show under their parents, and dragging an entity onto another's
+  row gives it that parent (see The scene outliner).
+- Tests: `NyxTransformHierarchyTests`, `NyxGameLinkSubscriberTests`, `NyxEditorPanelTests`,
+  `NyxEditorOutlinerTests`.
 
 ## Surface anchors
 

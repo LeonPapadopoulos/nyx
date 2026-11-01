@@ -10,17 +10,19 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace Nyx::Editor
 {
 	class SceneEditor;
 
-	// The "Scene Outliner" window: the scene's entities by name, in folders of the editor's own
-	// (SceneOutlineEdits.h), which sort them and do nothing else. At the top a search, which Ctrl+F
+	// The "Scene Outliner" window: the scene's entities by name, children under their parents, in
+	// folders of the editor's own (SceneOutlineEdits.h), which sort them and do nothing else. At the top a search, which Ctrl+F
 	// reaches while the outliner has the focus: it shows only the entities whose names have its
 	// text, whatever the case, and the folders that hold them, open. Then Add Entity, New Folder,
-	// Delete and Duplicate. Rows are dragged before or after others and into folders; a folder is
+	// Delete and Duplicate. Rows are dragged before or after others, into folders, and onto an
+	// entity's row, which makes them its children, keeping where they are; a folder is
 	// renamed with a double click or F2. A right-click menu offers Duplicate, Copy, Paste and
 	// Copy Guid for an entity, New Folder, Rename and Delete for a folder. An entity dragged from it
 	// can also be dropped on a field that names one (EntityDragDrop.h).
@@ -89,12 +91,13 @@ namespace Nyx::Editor
 		void DrawToolbar(SceneEditor& editing);
 		void DrawRows(SceneEditor& editing, const std::vector<OutlineNode>& rows, bool bFiltering);
 		void DrawFolderRow(SceneEditor& editing, const OutlineNode& node, bool bFiltering);
-		void DrawEntityRow(SceneEditor& editing, const OutlineNode& node);
+		void DrawEntityRow(SceneEditor& editing, const OutlineNode& node, bool bFiltering);
 		void DrawMenus(SceneEditor& editing);
 
 		// While something is dragged over the row just drawn (a folder, or else an entity): where it
-		// would go, shown by a line or a box, and moved there when dropped
-		void DropOnRow(SceneEditor& editing, uint64_t folder, Nyx::EntityGuid entity, bool bOpenFolder, float contentX);
+		// would go, shown by a line or a box, and moved there when dropped. bOpen: the row shows rows
+		// inside it below it.
+		void DropOnRow(SceneEditor& editing, uint64_t folder, Nyx::EntityGuid entity, bool bOpen, float contentX);
 		// The room below the rows: the end of the top
 		void DropBelowRows(SceneEditor& editing);
 		// Takes what is dragged if it can go there; moves it there once it is dropped. False if it
@@ -104,6 +107,8 @@ namespace Nyx::Editor
 		void SelectFolder(SceneEditor& editing, uint64_t folder);
 		// Opens the folder and those it is in
 		void Reveal(const SceneEditor& editing, uint64_t folder);
+		// Opens the entity's parents and the folder they show in
+		void RevealEntity(const SceneEditor& editing, Nyx::Entity entity);
 		void StartRename(SceneEditor& editing, uint64_t folder);
 		// A new folder where the selection is, selected and being renamed
 		void NewFolder(SceneEditor& editing);
@@ -116,6 +121,9 @@ namespace Nyx::Editor
 		uint64_t PressedFolder = 0;
 
 		uint64_t SelectedFolder = 0;
+
+		// Entities whose children are hidden; the others show theirs. Not saved.
+		std::unordered_set<Nyx::EntityGuid> ClosedEntities;
 		// The scene's selection as of the last frame: one made elsewhere, e.g. in a scene view, shows
 		// the folders it is in open
 		std::optional<Nyx::Entity> ShownSelection;

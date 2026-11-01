@@ -4,13 +4,14 @@
 #include "GuidComponent.h"
 #include "ParentComponent.h"
 #include "PhysicsComponents.h"
+#include "ReflectedPropertyAccess.h"
 #include "RootObjectSnapshotUtils.h"
 #include "SceneDocument.h"
-#include "TransactionDiffUtil.h"
 #include "TransactionObjectRefHelpers.h"
 #include "TransactionSystem.h"
 #include "TransformComponent.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <utility>
 
@@ -61,6 +62,18 @@ namespace Nyx::Editor
 
 	bool SetParent(SceneDocument& scene, TransactionSystem& transactions, Nyx::Entity entity, std::optional<Nyx::Entity> parent)
 	{
+		Transaction transaction;
+		transaction.Label = parent ? "Set Parent" : "Clear Parent";
+		if (!ChangeParent(scene, entity, parent, transaction.Changes))
+		{
+			return false;
+		}
+		transactions.Push(std::move(transaction));
+		return true;
+	}
+
+	bool ChangeParent(SceneDocument& scene, Nyx::Entity entity, std::optional<Nyx::Entity> parent, std::vector<Change>& changes)
+	{
 		Nyx::Registry& world = scene.GetRegistry();
 		const ObjectRef target = MakeSceneEntityRef(scene, entity);
 		if (!target.IsValid() || !world.Has<Nyx::TransformComponent>(entity))
@@ -79,12 +92,8 @@ namespace Nyx::Editor
 			}
 			SubobjectSnapshot beforeRemove = CaptureSubobjectSnapshot(&world.Get<Nyx::ParentComponent>(entity), linkType);
 			world.Remove<Nyx::ParentComponent>(entity);
-
-			Transaction transaction;
-			transaction.Label = "Clear Parent";
-			transaction.Changes.push_back(
+			changes.push_back(
 				Change{ EChangeKind::RemoveSubobject, RemoveSubobjectChange{ .Target = target, .BeforeRemove = std::move(beforeRemove) } });
-			transactions.Push(std::move(transaction));
 			return true;
 		}
 
@@ -98,24 +107,73 @@ namespace Nyx::Editor
 		link.Parent = world.Get<Nyx::GuidComponent>(*parent).Guid;
 		Nyx::SetLocalTransform(link, world.Get<Nyx::TransformComponent>(*parent), world.Get<Nyx::TransformComponent>(entity));
 
-		// Another parent: one value edit of the link
+		// Another parent: a value edit of each of the link's values that changed
 		if (world.Has<Nyx::ParentComponent>(entity))
 		{
 			Nyx::ParentComponent& existing = world.Get<Nyx::ParentComponent>(entity);
-			TransactionDiffUtil diff;
-			diff.TakeSnapshot(target, &existing, linkType);
+			const Nyx::ParentComponent before = existing;
 			existing = link;
-			return diff.CommitChanges("Set Parent", transactions);
+			for (size_t index = 0; index < linkType.PropertyCount; ++index)
+			{
+				const Nyx::Reflection::PropertyMetadata& property = linkType.Properties[index];
+				Nyx::Reflection::PropertyValue beforeValue = ReadReflectedPropertyValue(&before, property);
+				Nyx::Reflection::PropertyValue afterValue = ReadReflectedPropertyValue(&existing, property);
+				if (!Nyx::Reflection::ArePropertyValuesEqual(beforeValue, afterValue))
+				{
+					changes.push_back(Change{ EChangeKind::SetValue,
+						SetValueChange{ .Target = target, .TypeMetadata = &linkType, .PropertyIndex = index, .Before = std::move(beforeValue), .After = std::move(afterValue) } });
+				}
+			}
+			return true;
 		}
 
-		// The first parent: the link is added, with its values, as one step
+		// The first parent: the link is added, with its values
 		Nyx::ParentComponent& added = world.Add<Nyx::ParentComponent>(entity, link);
-		Transaction transaction;
-		transaction.Label = "Set Parent";
-		transaction.Changes.push_back(
+		changes.push_back(
 			Change{ EChangeKind::AddSubobject, AddSubobjectChange{ .Target = target, .AfterAdd = CaptureSubobjectSnapshot(&added, linkType) } });
-		transactions.Push(std::move(transaction));
 		return true;
+	}
+
+	std::vector<Nyx::Entity> FindChildren(const Nyx::Registry& world, Nyx::Entity entity)
+	{
+		std::vector<Nyx::Entity> children;
+		if (!world.Has<Nyx::GuidComponent>(entity))
+		{
+			return children;
+		}
+		const Nyx::EntityGuid guid = world.Get<Nyx::GuidComponent>(entity).Guid;
+		world.Each<Nyx::ParentComponent>(
+			[&](Nyx::Entity child, const Nyx::ParentComponent& link)
+			{
+				if (guid.IsValid() && link.Parent == guid && child != entity)
+				{
+					children.push_back(child);
+				}
+			});
+		return children;
+	}
+
+	std::vector<Nyx::Entity> GetSelfAndBelow(const Nyx::Registry& world, Nyx::Entity entity)
+	{
+		std::vector<Nyx::Entity> entities;
+		if (!world.IsAlive(entity))
+		{
+			return entities;
+		}
+		entities.push_back(entity);
+
+		// Level by level; an entity met again (a circle) isn't taken twice
+		for (size_t next = 0; next < entities.size(); ++next)
+		{
+			for (const Nyx::Entity child : FindChildren(world, entities[next]))
+			{
+				if (std::find(entities.begin(), entities.end(), child) == entities.end())
+				{
+					entities.push_back(child);
+				}
+			}
+		}
+		return entities;
 	}
 
 	void FollowWorldTransform(Nyx::Registry& world, Nyx::Entity entity)

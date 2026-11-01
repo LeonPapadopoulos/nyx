@@ -2,15 +2,19 @@
 
 #include "GuidComponent.h"
 #include "NameComponent.h"
+#include "ParentComponent.h"
 #include "ReflectedPropertyAccess.h"
 #include "ReflectionUtils.h"
 #include "SceneDocument.h"
 #include "SceneEditor.h"
 #include "SceneOutlineTransactionDomain.h"
+#include "TransformComponent.h"
+#include "TransformParents.h"
 
 #include <algorithm>
 #include <cctype>
 #include <functional>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -169,6 +173,62 @@ namespace
 		return found != outline.Entities.end() ? &*found : nullptr;
 	}
 
+	// The folder an entity shows in: its own, or for a child its topmost parent's, whose row it is under
+	uint64_t FindShownFolder(const SceneDocument& scene, const SceneOutline& outline, EntityGuid entity)
+	{
+		const Registry& world = scene.GetRegistry();
+		if (const std::optional<Entity> found = scene.FindEntity(entity))
+		{
+			Entity top = *found;
+			for (size_t step = 0; step <= outline.Entities.size(); ++step)
+			{
+				const std::optional<Entity> parent = FindParent(world, top);
+				if (!parent || *parent == *found)
+				{
+					break;
+				}
+				top = *parent;
+			}
+			entity = scene.GetGuid(top);
+		}
+		const SceneOutlineEntity* listed = FindListed(outline, entity);
+		return listed ? listed->Folder : 0;
+	}
+
+	// The entities named by the items that the scene has
+	std::vector<Entity> FindItemEntities(const SceneDocument& scene, const OutlineItems& items)
+	{
+		std::vector<Entity> entities;
+		for (const EntityGuid guid : items.Entities)
+		{
+			if (const std::optional<Entity> entity = scene.FindEntity(guid))
+			{
+				entities.push_back(*entity);
+			}
+		}
+		return entities;
+	}
+
+	// The parent a drop gives the entities: the row's entity for Onto, its parent beside it, none in a
+	// folder, beside one or at the end of the top
+	std::optional<Entity> FindDropParent(const SceneDocument& scene, const OutlineDrop& drop)
+	{
+		const std::optional<Entity> target = drop.Folder == 0 && drop.Entity.IsValid() ? scene.FindEntity(drop.Entity) : std::nullopt;
+		if (!target)
+		{
+			return std::nullopt;
+		}
+		if (drop.Place == EOutlinePlace::Onto)
+		{
+			return target;
+		}
+		if (drop.Place == EOutlinePlace::Before || drop.Place == EOutlinePlace::After)
+		{
+			return FindParent(scene.GetRegistry(), *target);
+		}
+		return std::nullopt;
+	}
+
 	bool IsSameOutline(const SceneOutline& a, const SceneOutline& b)
 	{
 		return SaveReflectedProperty(&a, OutlineType(), FoldersProperty()) == SaveReflectedProperty(&b, OutlineType(), FoldersProperty()) &&
@@ -198,17 +258,22 @@ namespace
 		return changes;
 	}
 
-	// Makes `after` the scene's outline as one undo step, unless the outliner would show the same
-	bool CommitOutline(SceneEditor& editing, const char* label, SceneOutline after)
+	// Makes `after` the scene's outline as one undo step, after `changes` already made, e.g. new
+	// parents; nothing if there are none and the outliner would show the same
+	bool CommitOutline(SceneEditor& editing, const char* label, SceneOutline after, std::vector<Change> changes = {})
 	{
-		if (IsSameOutline(MakeCompleteOutline(editing.Scene), after))
+		if (changes.empty() && IsSameOutline(MakeCompleteOutline(editing.Scene), after))
 		{
 			return false;
 		}
 
 		Transaction transaction;
 		transaction.Label = label;
-		transaction.Changes = ReplaceOutline(editing.Scene, std::move(after));
+		transaction.Changes = std::move(changes);
+		for (Change& change : ReplaceOutline(editing.Scene, std::move(after)))
+		{
+			transaction.Changes.push_back(std::move(change));
+		}
 		if (transaction.IsEmpty())
 		{
 			return false;
@@ -237,26 +302,69 @@ namespace
 		elements = std::move(others);
 	}
 
+	// An entity's row with its children's below it, at any depth
+	OutlineNode BuildEntityNode(Entity entity, const std::unordered_map<uint32_t, std::vector<Entity>>& children)
+	{
+		OutlineNode node{ .Entity = entity };
+		if (const auto found = children.find(entity.Index()); found != children.end())
+		{
+			for (const Entity child : found->second)
+			{
+				node.Children.push_back(BuildEntityNode(child, children));
+			}
+		}
+		return node;
+	}
+
 	std::vector<OutlineNode> BuildChildren(uint64_t folder,
 		const std::unordered_map<uint64_t, std::vector<uint64_t>>& subfolders,
-		const std::unordered_map<uint64_t, std::vector<Entity>>& entities)
+		const std::unordered_map<uint64_t, std::vector<Entity>>& entities,
+		const std::unordered_map<uint32_t, std::vector<Entity>>& children)
 	{
-		std::vector<OutlineNode> children;
+		std::vector<OutlineNode> nodes;
 		if (const auto found = subfolders.find(folder); found != subfolders.end())
 		{
 			for (const uint64_t subfolder : found->second)
 			{
-				children.push_back(OutlineNode{ .Folder = subfolder, .Children = BuildChildren(subfolder, subfolders, entities) });
+				nodes.push_back(OutlineNode{ .Folder = subfolder, .Children = BuildChildren(subfolder, subfolders, entities, children) });
 			}
 		}
 		if (const auto found = entities.find(folder); found != entities.end())
 		{
 			for (const Entity entity : found->second)
 			{
-				children.push_back(OutlineNode{ .Entity = entity });
+				nodes.push_back(BuildEntityNode(entity, children));
 			}
 		}
-		return children;
+		return nodes;
+	}
+
+	// The parent the outliner shows an entity under: its parent, if that shows too and the chain
+	// above it doesn't go round in a circle; else none, and it shows in its folder
+	std::optional<Entity> FindShownParent(const SceneDocument& scene, const NamedEntities& named, Entity entity)
+	{
+		const Registry& world = scene.GetRegistry();
+		const auto shownParent = [&](Entity of) -> std::optional<Entity>
+		{
+			if (!world.Has<ParentComponent>(of))
+			{
+				return std::nullopt;
+			}
+			const auto found = named.ByGuid.find(world.Get<ParentComponent>(of).Parent);
+			return found != named.ByGuid.end() && found->second != of ? std::optional<Entity>(found->second) : std::nullopt;
+		};
+
+		const std::optional<Entity> parent = shownParent(entity);
+		std::optional<Entity> above = parent;
+		for (size_t step = 0; above; ++step)
+		{
+			if (*above == entity || step > named.InOrder.size())
+			{
+				return std::nullopt;
+			}
+			above = shownParent(*above);
+		}
+		return parent;
 	}
 }
 
@@ -274,13 +382,15 @@ namespace Nyx::Editor
 			subfolders[folder.Parent].push_back(folder.Id);
 		}
 
-		std::unordered_map<uint64_t, std::vector<Entity>> entities;
+		// In the outline's order, then those it doesn't list; children under their parents, in that
+		// order among their siblings, whatever folder the outline gives them
+		std::vector<std::pair<Entity, uint64_t>> ordered;
 		std::unordered_set<EntityGuid> shown;
 		for (const SceneOutlineEntity& listed : outline.Entities)
 		{
 			if (const auto found = named.ByGuid.find(listed.Entity); found != named.ByGuid.end())
 			{
-				entities[listed.Folder].push_back(found->second);
+				ordered.emplace_back(found->second, listed.Folder);
 				shown.insert(listed.Entity);
 			}
 		}
@@ -289,11 +399,25 @@ namespace Nyx::Editor
 			const EntityGuid guid = scene.GetGuid(entity);
 			if (!guid.IsValid() || !shown.contains(guid))
 			{
-				entities[0].push_back(entity);
+				ordered.emplace_back(entity, 0);
 			}
 		}
 
-		return BuildChildren(0, subfolders, entities);
+		std::unordered_map<uint64_t, std::vector<Entity>> entities;
+		std::unordered_map<uint32_t, std::vector<Entity>> children;
+		for (const auto& [entity, folder] : ordered)
+		{
+			if (const std::optional<Entity> parent = FindShownParent(scene, named, entity))
+			{
+				children[parent->Index()].push_back(entity);
+			}
+			else
+			{
+				entities[folder].push_back(entity);
+			}
+		}
+
+		return BuildChildren(0, subfolders, entities, children);
 	}
 
 	bool NameMatchesFilter(std::string_view name, std::string_view filter)
@@ -328,9 +452,14 @@ namespace Nyx::Editor
 					kept.push_back(std::move(folder));
 				}
 			}
-			else if (NameMatchesFilter(scene.GetRegistry().Get<NameComponent>(node.Entity).Name, filter))
+			else
 			{
-				kept.push_back(node);
+				// An entity whose name matches, or one with a child below it that does
+				OutlineNode entity{ .Entity = node.Entity, .Children = FilterOutlineTree(node.Children, scene, filter) };
+				if (!entity.Children.empty() || NameMatchesFilter(scene.GetRegistry().Get<NameComponent>(node.Entity).Name, filter))
+				{
+					kept.push_back(std::move(entity));
+				}
 			}
 		}
 		return kept;
@@ -344,6 +473,25 @@ namespace Nyx::Editor
 		}
 
 		SceneOutline outline = MakeCompleteOutline(scene);
+
+		// An entity given a parent needs a transform, and never goes below itself: not onto or beside
+		// an entity below it
+		const Registry& world = scene.GetRegistry();
+		const std::vector<Entity> entities = FindItemEntities(scene, items);
+		const std::optional<Entity> target = drop.Folder == 0 && drop.Entity.IsValid() ? scene.FindEntity(drop.Entity) : std::nullopt;
+		const std::optional<Entity> parent = FindDropParent(scene, drop);
+		for (const Entity entity : entities)
+		{
+			if ((target && IsSelfOrBelow(world, *target, entity)) || (parent && !world.Has<TransformComponent>(entity)))
+			{
+				return false;
+			}
+		}
+		if (drop.Place == EOutlinePlace::Onto)
+		{
+			return target && items.Folders.empty() && world.Has<TransformComponent>(*target);
+		}
+
 		const auto movesFolderInto = [&](uint64_t folder)
 		{
 			return std::any_of(items.Folders.begin(), items.Folders.end(),
@@ -395,9 +543,11 @@ namespace Nyx::Editor
 		{
 			target = FindOutlineFolder(outline, drop.Folder)->Parent;
 		}
-		else if (bBeside)
+		else if (bBeside || drop.Place == EOutlinePlace::Onto)
 		{
-			target = FindListed(outline, drop.Entity)->Folder;
+			// Beside a child, or onto an entity: where its topmost parent shows, so the entities
+			// show there if they lose their parent later
+			target = FindShownFolder(editing.Scene, outline, drop.Entity);
 		}
 
 		const std::unordered_set<EntityGuid> entities(items.Entities.begin(), items.Entities.end());
@@ -442,7 +592,18 @@ namespace Nyx::Editor
 				return beside != others.end() ? static_cast<size_t>(beside - others.begin()) + after : others.size();
 			});
 
-		return CommitOutline(editing, "Move in Outliner", std::move(outline));
+		// The parent the place gives them, keeping each where it is in the world
+		std::vector<Change> parentChanges;
+		const std::optional<Entity> parent = FindDropParent(editing.Scene, drop);
+		for (const Entity entity : FindItemEntities(editing.Scene, items))
+		{
+			if (FindParent(editing.Scene.GetRegistry(), entity) != parent)
+			{
+				ChangeParent(editing.Scene, entity, parent, parentChanges);
+			}
+		}
+
+		return CommitOutline(editing, parent ? "Set Parent" : "Move in Outliner", std::move(outline), std::move(parentChanges));
 	}
 
 	uint64_t CreateOutlineFolder(SceneEditor& editing, uint64_t parent)
@@ -570,8 +731,7 @@ namespace Nyx::Editor
 	{
 		SceneOutline outline = scene.GetOutline();
 		Tidy(outline);
-		const SceneOutlineEntity* listed = FindListed(outline, entity);
-		return listed ? listed->Folder : 0;
+		return FindShownFolder(scene, outline, entity);
 	}
 
 	std::vector<Change> PlaceNewEntity(SceneDocument& scene, Nyx::EntityGuid entity, Nyx::EntityGuid after, uint64_t folder)

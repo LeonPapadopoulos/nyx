@@ -1,8 +1,10 @@
 #pragma once
 
 #include "Entity.h"
+#include "TransactionTypes.h"
 
 #include <optional>
+#include <vector>
 
 namespace Nyx::Editor
 {
@@ -20,6 +22,17 @@ namespace Nyx::Editor
 	// false, and changes nothing, if the parent is the entity or below it, if either has no transform,
 	// or if the entity has that parent already.
 	bool SetParent(SceneDocument& scene, TransactionSystem& transactions, Nyx::Entity entity, std::optional<Nyx::Entity> parent);
+
+	// The same, appending what undo needs to `changes` instead of recording a step, for an edit that
+	// does more in the same step, e.g. a move in the outliner that also orders the entity
+	bool ChangeParent(SceneDocument& scene, Nyx::Entity entity, std::optional<Nyx::Entity> parent, std::vector<Change>& changes);
+
+	// The entities whose parent is this one, in the order the world has their links
+	std::vector<Nyx::Entity> FindChildren(const Nyx::Registry& world, Nyx::Entity entity);
+
+	// The entity and everything below it, each parent before its children: what deleting, copying and
+	// duplicating it takes along
+	std::vector<Nyx::Entity> GetSelfAndBelow(const Nyx::Registry& world, Nyx::Entity entity);
 
 	// After the entity was moved in the world by hand, as the gizmo does: its local values follow,
 	// so it stays where it was put. Nothing for an entity without a parent.
