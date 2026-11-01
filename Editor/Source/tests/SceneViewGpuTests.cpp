@@ -2,6 +2,7 @@
 // drawn only while they are shown, the Debug menu's culling and shadow views reaching views opened
 // later, and the views' section of the layout files read back. Needs a Vulkan device; its window
 // stays hidden.
+#include "DebugDraw.h"
 #include "DirectionalLightComponent.h"
 #include "EditorCameraController.h"
 #include "EditorPreferences.h"
@@ -268,6 +269,28 @@ namespace
 		views.SetCullingDebug(ESceneViewCullingDebug::Off);
 		editor.Picture(frozen);
 		Require(gpu.Renderer.GetSceneViewCullingStats(frozen.GetViewId())->ObjectsCulled == 2, "Culling unfrozen should cull by the camera again");
+
+		// Debug > Object Bounds: off, no object's box or axes; on, the views open and those opened
+		// after draw them (where there is debug drawing: not in Release)
+		const SceneViewPanel& unbounded = views.Open();
+		const RgbaImage plain = editor.Picture(unbounded);
+		views.SetShowObjectBounds(true);
+		const SceneViewPanel& bounded = views.Open();
+		const auto differing = [&](const RgbaImage& image)
+		{
+			size_t count = 0;
+			for (size_t n = 0; n < image.Pixels.size() && n < plain.Pixels.size(); ++n)
+			{
+				count += image.Pixels[n] != plain.Pixels[n] ? 1 : 0;
+			}
+			return count;
+		};
+		const size_t boundedPixels = differing(editor.Picture(bounded));
+		const size_t unboundedPixels = differing(editor.Picture(unbounded));
+		Require(Nyx::DebugDraw::Enabled ? boundedPixels > 50 && unboundedPixels > 50 : boundedPixels == 0,
+			"Object Bounds should draw the objects' boxes in the views open and opened after: " + std::to_string(boundedPixels) + " and " + std::to_string(unboundedPixels) + " pixels");
+		views.SetShowObjectBounds(false);
+		Require(differing(editor.Picture(bounded)) == 0, "Object Bounds off should draw no boxes");
 	}
 
 	void TestSectionReadsBack(SceneRenderer& gpu)

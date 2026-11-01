@@ -159,14 +159,15 @@ namespace Nyx
 		// Before the views are drawn: picking for a click, and the selection masks, which the
 		// outline is drawn from
 		void DrawPasses(SceneViewInstance& view, const RenderWorld& world, vk::raii::CommandBuffer& cmd);
-		// Over the view's picture: the grid, and with a world its debug lines and the selection
-		// outline
+		// Over the view's picture: the grid, and with a world its debug lines (its objects' bounds
+		// and axes where the view shows them) and the selection outline
 		void Draw(SceneViewInstance& view, const RenderWorld* world, vk::raii::CommandBuffer& cmd);
 
 		// The world's objects' axes and bounds, the world's axes, the outline of a selected decal's
 		// quad (a decal has no mesh for the selection outline), each point light's and particle
 		// emitter's icon, a selected light's range and a selected emitter's particles' bounds, into
-		// this frame's debug lines (world.OverlayLines), once per frame
+		// this frame's debug lines (world.OverlayLines, the objects' world.ObjectBoundsLines), once
+		// per frame
 		void AddDebugLines(RenderWorld& world);
 
 		// A click at a pixel of the view, which shows `worldRevision` of its world; picked from in
@@ -272,7 +273,8 @@ namespace Nyx
 		// Grid
 		vk::raii::Pipeline GridPipeline{ nullptr };
 
-		// The objects' axes and bounds, drawn anew each frame (AddDebugLines())
+		// The overlays' lines and the objects' axes and bounds, drawn anew each frame (AddDebugLines())
 		DebugDraw OverlayDrawing;
+		DebugDraw ObjectBoundsDrawing;
 	};
 }

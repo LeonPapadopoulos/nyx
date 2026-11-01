@@ -362,8 +362,11 @@ Code can draw lines over a world to show what it does: forces, anchors, bounds, 
   seconds stays that long in the world's time, so pausing the game keeps it.
 - The game's view draws them over the scene, depth tested, in the colours given. A view can hide
   them (`IRenderer::SetSceneViewShowDebugDrawing()`).
-- Release builds compile debug drawing out: drawing does nothing there.
-- The editor's overlays draw each object's axes and bounds the same way.
+- Release builds compile debug drawing out: drawing does nothing there, and the editor's lines
+  (object bounds, a selected decal's outline, the navigation polygons, wind arrows) aren't drawn
+  either; the GPU tests that look for lines pass by them there.
+- The editor's overlays draw each object's axes and bounds the same way, in yellow, when
+  *Debug > Object Bounds* is on (off by default; every scene view, those opened later too).
 - **The physics debug view**: F3 in a game window (every build but Release) shows every body's shape, coloured
   by how it moves (static grey, kinematic blue, awake green, asleep dark green, sensors yellow),
   a mesh's triangles' edges (a mesh of more than 8192 triangles as its bounds, so it doesn't crowd
@@ -529,7 +532,7 @@ variable `NYX_PAINTER_TEST_OUTPUT` naming a folder, it saves what it painted as 
   closed but the last. *Window > Game View in ...* shows a view the way the game sees the scene,
   through its primary camera and without the editor's overlays. The views open, each one's camera
   and whether it shows the game are kept with the layout. *Debug > Culling Bounds*, *Freeze
-  Culling* and *Shadow Cascades* reach every view, those opened later too.
+  Culling*, *Object Bounds* and *Shadow Cascades* reach every view, those opened later too.
 - `NyxEditorLayoutTests` saves and loads layouts headless: the docking, the window's placement,
   saving while running, switching workspaces, Reset Layout and keeping the window on the monitors.
   `NyxEditorPanelTests` drags docked panels narrow. `NyxEditorSceneViewGpuTests` opens and closes

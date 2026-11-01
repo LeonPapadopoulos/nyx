@@ -264,6 +264,12 @@ namespace Nyx::Editor
 					Editor.SceneViews.SetCullingDebug(culling == mode ? Nyx::ESceneViewCullingDebug::Off : mode);
 				}
 			}
+			// Every scene view's objects' bounds and axes, in yellow
+			bool bObjectBounds = Editor.SceneViews.GetShowObjectBounds();
+			if (NYX_UI(Nyx::UI::MenuItem("Object Bounds", nullptr, &bObjectBounds)))
+			{
+				Editor.SceneViews.SetShowObjectBounds(bObjectBounds);
+			}
 			// Every scene view's shadows: tinted by the cascade each surface's shadow comes from, and
 			// the cascades' shadow maps along the bottom
 			const bool bShadowCascades = Editor.SceneViews.GetShadowDebug() != Nyx::ESceneViewShadowDebug::Off;

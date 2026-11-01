@@ -89,6 +89,8 @@ namespace Nyx
 		// Editor overlays are the grid, debug lines, picking and the selection outline. They are
 		// off by default; the editor turns them on for its scene views.
 		virtual void SetSceneViewShowEditorOverlays(uint64_t id, bool bShow) = 0;
+		// With its overlays, each object's bounds and axes; off by default
+		virtual void SetSceneViewShowObjectBounds(uint64_t id, bool bShow) = 0;
 
 		// The last compile of every shader that compiled since the start, the engine's and the
 		// materials', with what the compiler said: for the Shader Log

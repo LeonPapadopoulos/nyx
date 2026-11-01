@@ -1755,7 +1755,8 @@ namespace
 				++outlined;
 			}
 		}
-		Require(outlined > 200, "Selecting the decal outlines only " + std::to_string(outlined) + " pixels");
+		// Its outline is debug lines, which Release hasn't (NYX_DEBUG_DRAW)
+		Require(!Nyx::DebugDraw::Enabled || outlined > 200, "Selecting the decal outlines only " + std::to_string(outlined) + " pixels");
 
 		renderer.SetSelectedEntity(std::nullopt);
 		renderer.DestroySceneView(view);
@@ -1765,9 +1766,15 @@ namespace
 
 	// A world's debug drawing: drawn in a view of the world without the editor's overlays, as the
 	// game's view is, over the scene and in its colour; gone when the view hides it or the drawing
-	// is taken away
+	// is taken away. Not in Release, which has none.
 	void TestWorldDebugDrawing(SceneRenderer& gpu)
 	{
+		// Release has no debug drawing (NYX_DEBUG_DRAW): nothing to draw
+		if (!Nyx::DebugDraw::Enabled)
+		{
+			std::cout << "World debug drawing: none in this configuration, skipped" << std::endl;
+			return;
+		}
 		Nyx::IRenderer& renderer = gpu.Renderer;
 		Registry world;
 		const Entity camera = world.CreateEntity();

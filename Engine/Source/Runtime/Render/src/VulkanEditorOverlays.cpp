@@ -194,19 +194,25 @@ namespace Nyx
 		if (world)
 		{
 			DebugLines.Draw(view, world->OverlayLines, cmd);
+			if (view.bShowObjectBounds)
+			{
+				DebugLines.Draw(view, world->ObjectBoundsLines, cmd);
+			}
 			DrawSelectionOutline(view, cmd);
 		}
 	}
 
 	void VulkanEditorOverlays::AddDebugLines(RenderWorld& world)
 	{
-		// Each object's axes and bounds
-		OverlayDrawing.Clear();
+		// Each object's axes and bounds, for the views that show them
+		ObjectBoundsDrawing.Clear();
 		for (const RenderObject& obj : world.Objects)
 		{
-			OverlayDrawing.Axes(obj.WorldTransform, 0.75f);
-			OverlayDrawing.Box(obj.WorldTransform, obj.LocalBoundsMin, obj.LocalBoundsMax, glm::vec3(1.0f, 1.0f, 0.2f));
+			ObjectBoundsDrawing.Axes(obj.WorldTransform, 0.75f);
+			ObjectBoundsDrawing.Box(obj.WorldTransform, obj.LocalBoundsMin, obj.LocalBoundsMax, glm::vec3(1.0f, 1.0f, 0.2f));
 		}
+		world.ObjectBoundsLines = DebugLines.Add(ObjectBoundsDrawing);
+		OverlayDrawing.Clear();
 
 		// Each point light's icon, a star of seven lines in its colour at its brightest: along the
 		// axes and the diagonals, few lines for many lights. A click on the ball round it picks the

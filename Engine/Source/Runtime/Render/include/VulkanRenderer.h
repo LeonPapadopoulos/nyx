@@ -473,9 +473,10 @@ namespace Nyx
 		// seconds: the world's own where it is drawn between steps (a game's, paused or stepped
 		// with it), else the renderer's
 		float Time = 0.0f;
-		// This frame's debug lines of the world: the editor overlays' (its objects' bounds and axes)
-		// and its debug drawing's (IRenderer::SetWorldDebugDraw())
+		// This frame's debug lines of the world: the editor overlays' (its objects' bounds and axes
+		// apart, for the views that show them) and its debug drawing's (IRenderer::SetWorldDebugDraw())
 		DebugLineRange OverlayLines;
+		DebugLineRange ObjectBoundsLines;
 		DebugLineRange DebugDrawLines;
 	};
 
@@ -559,6 +560,7 @@ namespace Nyx
 		bool GetSceneViewEditorCameraTransform(uint64_t id, glm::vec3& outPos, glm::vec3& outRot) const override;
 		std::optional<BoundingBox> GetEntityDrawnBounds(const Nyx::Registry& world, Nyx::Entity entity) const override;
 		void SetSceneViewShowEditorOverlays(uint64_t id, bool bShow) override;
+		void SetSceneViewShowObjectBounds(uint64_t id, bool bShow) override;
 		void SetSceneViewExposure(uint64_t id, float stops) override;
 		void SetSceneViewSky(uint64_t id, ESceneViewSky sky, float rotationRadians) override;
 		void SetSceneViewDebug(uint64_t id, ESceneViewDebug view) override;

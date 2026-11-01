@@ -816,6 +816,14 @@ namespace Nyx
 		}
 	}
 
+	void VulkanRenderer::SetSceneViewShowObjectBounds(uint64_t id, bool bShow)
+	{
+		if (SceneViewInstance* view = FindSceneView(id))
+		{
+			view->bShowObjectBounds = bShow;
+		}
+	}
+
 	void VulkanRenderer::SetSceneViewShowEditorOverlays(uint64_t id, bool bShow)
 	{
 		if (SceneViewInstance* view = FindSceneView(id))
@@ -1220,6 +1228,7 @@ namespace Nyx
 		world->Decals.clear();
 		world->PickingIdToEntity.clear();
 		world->OverlayLines = {};
+		world->ObjectBoundsLines = {};
 		world->DebugDrawLines = {};
 	}
 

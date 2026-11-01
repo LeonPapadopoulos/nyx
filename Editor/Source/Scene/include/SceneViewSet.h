@@ -73,6 +73,10 @@ namespace Nyx::Editor
 		// later too; the material preview's view keeps its own
 		void SetViewDebug(Nyx::ESceneViewDebug view);
 		Nyx::ESceneViewDebug GetViewDebug() const { return ViewDebug; }
+		// Whether every view shows each object's bounds and axes (the Debug menu's Object Bounds),
+		// views opened later too; off by default
+		void SetShowObjectBounds(bool bShow);
+		bool GetShowObjectBounds() const { return bShowObjectBounds; }
 
 		const std::vector<std::unique_ptr<SceneViewPanel>>& GetViews() const { return Views; }
 		// The views' windows, e.g. for the default layout to dock
@@ -98,6 +102,7 @@ namespace Nyx::Editor
 		Nyx::ESceneViewCullingDebug CullingDebug = Nyx::ESceneViewCullingDebug::Off;
 		Nyx::ESceneViewShadowDebug ShadowDebug = Nyx::ESceneViewShadowDebug::Off;
 		Nyx::ESceneViewDebug ViewDebug = Nyx::ESceneViewDebug::Lit;
+		bool bShowObjectBounds = false;
 
 		SceneViewPacing Pacing;
 	};
