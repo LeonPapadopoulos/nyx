@@ -370,10 +370,12 @@ public struct SceneTargets
 // What the material is given at the pixel. On a triangle's back, which only a two-sided material
 // draws (MaterialOptions), the normal is turned round, and the bitangent's side with it, so that
 // the bitangent still points up the image: the back is lit as a front, a normal map's bumps
-// mirrored through the sheet.
+// mirrored through the sheet. A sliding terrain chunk's (Object.Morph) are drawn from both sides
+// for the few triangles its sliding turns over; its normals are the field's, right on either face,
+// so they stay as they are.
 SurfaceInput makeSurfaceInput(VertexOutput vertex, DecalInput decal, bool bFrontFace)
 {
-    const float side = bFrontFace ? 1.0 : -1.0;
+    const float side = bFrontFace || Object.Morph.y > 0.0 ? 1.0 : -1.0;
     SurfaceInput input;
     input.UV = vertex.UV;
     input.Color = vertex.Color;

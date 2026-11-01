@@ -92,7 +92,7 @@ namespace Nyx
 			}
 			object.MaterialOffset = material ? material->MaterialOffset : 0;
 			cmd.pushConstants<ObjectConstants>(ScenePipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, { object });
-			SetMeshFaces(cmd, material && material->bTwoSided, obj.bMirrored);
+			SetMeshFaces(cmd, (material && material->bTwoSided) || obj.bTwoSided, obj.bMirrored);
 			for (const InstanceRun& run : runs)
 			{
 				cmd.drawIndexed(section.IndexCount, run.Count, section.FirstIndex, 0, run.First);

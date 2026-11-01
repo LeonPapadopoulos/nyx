@@ -375,6 +375,11 @@ namespace Nyx
 		// Its transform mirrors it (a negative determinant, e.g. one scale negative): its triangles
 		// wind the other way round on the screen (SetMeshFaces())
 		bool bMirrored = false;
+		// Drawn from both sides whatever its materials say: an SDF terrain's chunk, whose vertices
+		// sliding towards the coarser level (Morph) turn a few far triangles over where the two levels
+		// split their quads differently; drawn, they are lit by the field's normals like the rest, and
+		// the ground shows no holes
+		bool bTwoSided = false;
 		// Whether it casts the primary light's shadows: its Mesh Renderer's Cast Shadows
 		// (MeshRendererComponent::bCastShadows) and one of its sections' materials' at least
 		// (Material::bCastShadows); the cascades draw only the sections whose materials cast

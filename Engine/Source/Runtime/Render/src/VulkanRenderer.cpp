@@ -1740,6 +1740,7 @@ namespace Nyx
 								world.Objects.back().FirstShadowCascade = chunk.FirstShadowCascade;
 								// Its distances in the world, as far as the terrain is scaled
 								world.Objects.back().Morph = chunk.Morph * glm::length(glm::vec3(entityWorld[0]));
+								world.Objects.back().bTwoSided = true;
 							}
 						}
 					}
@@ -2359,7 +2360,7 @@ namespace Nyx
 					}
 					object.MaterialOffset = section.MaterialAsset->MaterialOffset;
 					cmd.pushConstants<ObjectConstants>(*ScenePipelineLayout, vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment, 0, { object });
-					SetMeshFaces(cmd, section.MaterialAsset->bTwoSided, obj.bMirrored);
+					SetMeshFaces(cmd, section.MaterialAsset->bTwoSided || obj.bTwoSided, obj.bMirrored);
 					cmd.drawIndexed(section.IndexCount, draw.InstanceCount, section.FirstIndex, 0, draw.FirstInstance);
 				}
 			}
@@ -2476,7 +2477,7 @@ namespace Nyx
 			{
 				const RenderSection& section = world.Sections[index];
 				cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, **section.MaterialAsset->Pipeline);
-				SetMeshFaces(cmd, section.MaterialAsset->bTwoSided, obj.bMirrored);
+				SetMeshFaces(cmd, section.MaterialAsset->bTwoSided || obj.bTwoSided, obj.bMirrored);
 
 				ObjectConstants object{};
 				object.Model = draw.Model;

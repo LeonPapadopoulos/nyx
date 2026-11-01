@@ -31,6 +31,7 @@
 #include "SdfTerrain.h"
 #include "TerrainBrush.h"
 #include "TerrainChunks.h"
+#include "TerrainGate3Region.h"
 #include "TerrainSave.h"
 #include "TerrainWorldPlan.h"
 #include "TestSupport.h"
@@ -223,6 +224,40 @@ namespace
 	// Level blending: a chunk's vertices slid all the way (their tangents) are where the coarser
 	// chunk has its vertices, at levels 0 and 1; none slide with Marching Cubes or blending off. The
 	// distances they slide over: from 0.65 of where the coarser level takes the chunk's place.
+	// The nearest point of a triangle to a point
+	glm::vec3 ClosestOnTriangle(const glm::vec3& point, const glm::vec3& a, const glm::vec3& b, const glm::vec3& c)
+	{
+		const glm::vec3 ab = b - a;
+		const glm::vec3 ac = c - a;
+		const glm::vec3 normal = glm::cross(ab, ac);
+		const float area = glm::dot(normal, normal);
+		if (area > 1e-12f)
+		{
+			// Inside it, straight down onto its plane
+			const glm::vec3 onPlane = point - normal * (glm::dot(point - a, normal) / area);
+			const float u = glm::dot(glm::cross(b - onPlane, c - onPlane), normal) / area;
+			const float v = glm::dot(glm::cross(c - onPlane, a - onPlane), normal) / area;
+			if (u >= 0.0f && v >= 0.0f && u + v <= 1.0f)
+			{
+				return onPlane;
+			}
+		}
+		// Else on one of its edges
+		auto onEdge = [&](const glm::vec3& from, const glm::vec3& to)
+		{
+			const glm::vec3 along = to - from;
+			const float length = glm::dot(along, along);
+			return from + along * (length > 0.0f ? std::clamp(glm::dot(point - from, along) / length, 0.0f, 1.0f) : 0.0f);
+		};
+		const glm::vec3 candidates[3] = { onEdge(a, b), onEdge(b, c), onEdge(c, a) };
+		glm::vec3 best = candidates[0];
+		for (const glm::vec3& candidate : candidates)
+		{
+			best = glm::length(candidate - point) < glm::length(best - point) ? candidate : best;
+		}
+		return best;
+	}
+
 	void TestLevelBlending()
 	{
 		SdfTerrainComponent terrain = MakeTerrain();
@@ -230,6 +265,7 @@ namespace
 		size_t vertices = 0;
 		size_t landed = 0;
 		size_t moved = 0;
+		float farthest = 0.0f;
 		for (const int level : { 0, 1 })
 		{
 			for (int x = -2; x <= 1; ++x)
@@ -246,29 +282,65 @@ namespace
 						}
 						const TerrainChunkId parentId{ level + 1, glm::ivec3(glm::floor(glm::vec3(id.Key) * 0.5f)) };
 						const MeshData parent = MakeTerrainChunkMesh(terrain, parentId, TerrainNeighbourhood{});
-						std::vector<glm::vec3> places;
-						for (const Vertex& vertex : parent.Vertices)
+						// The coarser chunk's triangles by 4 m cells, each in every cell its box meets
+						std::map<std::array<int, 3>, std::vector<size_t>> byCell;
+						auto cellOf = [](const glm::vec3& point) { return std::array<int, 3>{ int(std::floor(point.x / 4.0f)), int(std::floor(point.y / 4.0f)), int(std::floor(point.z / 4.0f)) }; };
+						const glm::vec3 parentCorner = cornerOf(parentId);
+						for (size_t t = 0; t + 2 < parent.Indices.size(); t += 3)
 						{
-							places.push_back(vertex.Position + cornerOf(parentId));
+							const glm::vec3 a = parent.Vertices[parent.Indices[t]].Position + parentCorner;
+							const glm::vec3 b = parent.Vertices[parent.Indices[t + 1]].Position + parentCorner;
+							const glm::vec3 c = parent.Vertices[parent.Indices[t + 2]].Position + parentCorner;
+							const std::array<int, 3> low = cellOf(glm::min(a, glm::min(b, c)));
+							const std::array<int, 3> high = cellOf(glm::max(a, glm::max(b, c)));
+							for (int x = low[0]; x <= high[0]; ++x)
+							{
+								for (int y = low[1]; y <= high[1]; ++y)
+								{
+									for (int z = low[2]; z <= high[2]; ++z)
+									{
+										byCell[{ x, y, z }].push_back(t);
+									}
+								}
+							}
 						}
 						for (const Vertex& vertex : fine.Vertices)
 						{
 							const glm::vec3 target = vertex.Position + cornerOf(id) + glm::vec3(vertex.Tangent);
 							float nearest = std::numeric_limits<float>::max();
-							for (const glm::vec3& place : places)
+							const std::array<int, 3> at = cellOf(target);
+							for (int dx = -1; dx <= 1; ++dx)
 							{
-								nearest = std::min(nearest, glm::length(place - target));
+								for (int dy = -1; dy <= 1; ++dy)
+								{
+									for (int dz = -1; dz <= 1; ++dz)
+									{
+										const auto found = byCell.find({ at[0] + dx, at[1] + dy, at[2] + dz });
+										if (found == byCell.end())
+										{
+											continue;
+										}
+										for (const size_t t : found->second)
+										{
+											const glm::vec3 a = parent.Vertices[parent.Indices[t]].Position + parentCorner;
+											const glm::vec3 b = parent.Vertices[parent.Indices[t + 1]].Position + parentCorner;
+											const glm::vec3 c = parent.Vertices[parent.Indices[t + 2]].Position + parentCorner;
+											nearest = std::min(nearest, glm::length(ClosestOnTriangle(target, a, b, c) - target));
+										}
+									}
+								}
 							}
 							++vertices;
-							landed += nearest < 1e-3f ? 1 : 0;
+							landed += nearest < 2e-3f ? 1 : 0;
+							farthest = nearest < 4.0f ? std::max(farthest, nearest) : farthest;
 							moved += glm::length(glm::vec3(vertex.Tangent)) > 1e-4f ? 1 : 0;
 						}
 					}
 				}
 			}
 		}
-		std::cout << "Level blending: " << landed << " of " << vertices << " vertices land on the coarser chunk's, " << moved << " move" << std::endl;
-		Require(vertices > 1000 && landed >= vertices * 95 / 100, "A chunk's vertices slid all the way should be the coarser chunk's: " + std::to_string(landed) + " of " + std::to_string(vertices));
+		std::cout << "Level blending: " << landed << " of " << vertices << " vertices land on the coarser chunk's surface, " << moved << " move, the farthest off " << farthest << " m" << std::endl;
+		Require(vertices > 1000 && landed >= vertices * 95 / 100, "A chunk's vertices slid all the way should be on the coarser chunk's surface: " + std::to_string(landed) + " of " + std::to_string(vertices));
 		Require(moved > vertices / 2, "Most of a chunk's vertices should slide somewhere");
 
 		SdfTerrainComponent marching = terrain;
@@ -481,6 +553,139 @@ namespace
 		std::cout << "Dual, finest level " << finestLevel << ", blending: " << apart << " shared vertices apart (" << sameLevel << " between chunks of one level), the widest by " << widest << " m\n";
 		Require(apart == 0, "Blending: a vertex two chunks share should slide to the same place in both; " + std::to_string(apart) + " apart, by up to " +
 			std::to_string(widest) + " m, the first at " + std::to_string(firstApart.x) + ", " + std::to_string(firstApart.y) + ", " + std::to_string(firstApart.z));
+	}
+
+	// Gate 3's region from high above, every level out to its view distance: no edge with one
+	// triangle but at the view's edge, no vertex two chunks share sliding apart, and few triangles
+	// turned over by the sliding, seen from there (the chunks are drawn from both sides for them,
+	// RenderObject::bTwoSided)
+	void TestFromFarAbove()
+	{
+		SdfTerrainComponent terrain = TerrainGate3::MakeRegion();
+		PrepareTerrainWorldPlan(terrain);
+		TerrainLevelSettings settings;
+		settings.ViewDistance = 3000.0f;
+		settings.LevelDistance = terrain.LevelDistance;
+		settings.FinestLevel = terrain.FinestLevel;
+		const glm::vec3 viewpoint(0.0f, 900.0f, 400.0f);
+		const TerrainChunkTree tree = SelectTerrainChunks({ &viewpoint, 1 }, settings);
+		const std::vector<TerrainNeighbourhood> neighbourhoods = GetTerrainNeighbourhoods(tree);
+		std::vector<MeshData> meshes(tree.Leaves.size());
+		JobGroup group;
+		for (size_t index = 0; index < tree.Leaves.size(); ++index)
+		{
+			JobSystem::Get().Schedule([&, index] { meshes[index] = MakeTerrainChunkMesh(terrain, tree.Leaves[index], neighbourhoods[index]); }, EJobPriority::Normal, &group);
+		}
+		JobSystem::Get().Wait(group);
+
+		using Point = std::array<uint32_t, 3>;
+		auto bitsOf = [](const glm::vec3& position)
+		{
+			const glm::vec3 same = position + glm::vec3(0.0f);
+			Point point;
+			std::memcpy(point.data(), &same, sizeof(glm::vec3));
+			return point;
+		};
+		auto slide = [&](const Vertex& vertex, const glm::vec3& corner, int level)
+		{
+			const glm::vec3 position = vertex.Position + corner;
+			if (level >= TerrainCoarsestLevel)
+			{
+				return position;
+			}
+			const float merged = terrain.LevelDistance * GetTerrainChunkSize(level);
+			const float start = merged * 0.65f;
+			const float along = std::clamp((glm::length(position - viewpoint) - start) / (merged - start), 0.0f, 1.0f);
+			return position + glm::vec3(vertex.Tangent) * along;
+		};
+		std::map<std::pair<Point, Point>, int> edges;
+		std::map<Point, glm::vec3> slid;
+		uint32_t apart = 0;
+		uint32_t turned = 0;
+		uint32_t turnedThere = 0;
+		uint32_t visible = 0;
+		uint32_t collapsed = 0;
+		uint64_t triangles = 0;
+		std::array<uint32_t, TerrainCoarsestLevel - TerrainFinestLevel + 1> turnedByLevel{};
+		glm::vec3 firstTurned(0.0f);
+		for (size_t index = 0; index < tree.Leaves.size(); ++index)
+		{
+			const MeshData& mesh = meshes[index];
+			const int level = tree.Leaves[index].Level;
+			const glm::vec3 corner = CornerOf(tree.Leaves[index]);
+			for (const Vertex& vertex : mesh.Vertices)
+			{
+				const glm::vec3 moved = slide(vertex, corner, level);
+				const auto [it, bAdded] = slid.try_emplace(bitsOf(vertex.Position + corner), moved);
+				apart += !bAdded && glm::length(it->second - moved) > 1e-3f ? 1 : 0;
+			}
+			for (size_t t = 0; t + 2 < mesh.Indices.size(); t += 3)
+			{
+				++triangles;
+				glm::vec3 still[3];
+				glm::vec3 moved[3];
+				for (int n = 0; n < 3; ++n)
+				{
+					const Vertex& vertex = mesh.Vertices[mesh.Indices[t + n]];
+					still[n] = vertex.Position + corner;
+					moved[n] = slide(vertex, corner, level);
+				}
+				for (int n = 0; n < 3; ++n)
+				{
+					const Point a = bitsOf(still[n]);
+					const Point b = bitsOf(still[(n + 1) % 3]);
+					if (a != b)
+					{
+						edges[a < b ? std::make_pair(a, b) : std::make_pair(b, a)] += 1;
+					}
+				}
+				const glm::vec3 before = glm::cross(still[1] - still[0], still[2] - still[0]);
+				const glm::vec3 after = glm::cross(moved[1] - moved[0], moved[2] - moved[0]);
+				{
+					glm::vec3 full[3];
+					for (int n = 0; n < 3; ++n)
+					{
+						full[n] = still[n] + glm::vec3(mesh.Vertices[mesh.Indices[t + n]].Tangent);
+					}
+					const glm::vec3 there = glm::cross(full[1] - full[0], full[2] - full[0]);
+					turnedThere += glm::dot(before, there) < 0.0f && glm::length(before) > 0.01f && glm::length(there) > 0.01f ? 1 : 0;
+					collapsed += glm::length(there) <= 0.01f ? 1 : 0;
+				}
+				// Turned over: facing the other way, by more than a sliver's worth
+				if (glm::dot(before, after) < 0.0f && glm::length(before) > 0.01f)
+				{
+					firstTurned = turned == 0 ? still[0] : firstTurned;
+					++turned;
+					++turnedByLevel[size_t(level - TerrainFinestLevel)];
+				}
+				// Turned over and big enough to see: at least a square metre facing away
+				visible += glm::dot(before, after) < 0.0f && glm::length(after) > 2.0f ? 1 : 0;
+			}
+		}
+		uint32_t open = 0;
+		glm::vec3 firstOpen(0.0f);
+		const float checked = settings.ViewDistance - 4.0f * GetTerrainChunkSize(TerrainCoarsestLevel - 2);
+		for (const auto& [ends, count] : edges)
+		{
+			glm::vec3 a;
+			std::memcpy(&a, ends.first.data(), sizeof(glm::vec3));
+			if (count % 2 != 0 && glm::length(glm::vec2(a.x - viewpoint.x, a.z - viewpoint.z)) < std::min(checked, 900.0f))
+			{
+				firstOpen = open == 0 ? a : firstOpen;
+				++open;
+			}
+		}
+		std::string levels;
+		for (const uint32_t count : turnedByLevel)
+		{
+			levels += std::to_string(count) + " ";
+		}
+		std::cout << "From far above: " << tree.Leaves.size() << " chunks, " << triangles << " triangles; " << open << " open edges (the first at " << firstOpen.x << ", "
+				  << firstOpen.y << ", " << firstOpen.z << "), " << apart << " shared vertices apart, " << turned << " triangles turned over by sliding (by level: " << levels
+				  << "the first at " << firstTurned.x << ", " << firstTurned.y << ", " << firstTurned.z << "); slid all the way " << turnedThere << " turned over, " << collapsed << " collapsed; " << visible << " turned over by a square metre or more\n";
+		Require(open == 0, "From far above, no edge should be open");
+		Require(apart == 0, "From far above, no shared vertex should slide apart");
+		Require(visible * 200 < triangles, "From far above, sliding should turn few triangles over: " + std::to_string(visible) + " by a square metre or more");
 	}
 
 	// Round a viewpoint: every chunk of the tree the surface crosses drawn, each the same bits as made
@@ -1592,7 +1797,7 @@ int main(int argc, char** argv)
 				 TestSeamsAreClosed(ESdfTerrainMesher::Dual, -1);
 				 TestSeamsAreClosed(ESdfTerrainMesher::MarchingCubes, -1);
 			 } },
-			{ "blending", TestLevelBlending }, { "viewpoint", TestChunksRoundAViewpoint }, { "moving", TestMovingAndViewDistance }, { "values", TestNewValues },
+			{ "blending", TestLevelBlending }, { "far", TestFromFarAbove }, { "viewpoint", TestChunksRoundAViewpoint }, { "moving", TestMovingAndViewDistance }, { "values", TestNewValues },
 			{ "removed", TestRemovedEmptyAndMoved }, { "edits", TestEdits }, { "undo", TestUndoCost }, { "brush", TestBrush }, { "twoworlds", TestTwoWorlds }, { "rules", TestMaterialRules }, { "scene", TestTheSampleScene }, { "time", TimeAView } };
 		// Not run unless asked for: a measure of the sample scene, not a check
 		const std::vector<std::pair<std::string, void (*)()>> measures{ { "editdelay", TimeAnEdit }, { "editcost", [] { TimeSamplingUnderEdits(0); TimeSamplingUnderEdits(16); } } };
