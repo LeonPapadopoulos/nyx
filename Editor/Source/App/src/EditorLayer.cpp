@@ -218,6 +218,12 @@ namespace Nyx::Editor
 
 		// Edits, undo and redo load the assets they need, as loading a scene does
 		Editing.AssetLoader.SetPostLoadContext(Nyx::ScenePostLoadContext{ .AssetResolver = AssetResolver.get() });
+		Editing.Assets = AssetResolver.get();
+		Editing.AssetTypes = &AssetTypes;
+		Editing.AssetFileWritten = [this]()
+		{
+			AssetDb.Rescan();
+		};
 		Editing.Transactions.Subscribe(&Editing.AssetLoader);
 
 		// Edits show up live in the game started with Play

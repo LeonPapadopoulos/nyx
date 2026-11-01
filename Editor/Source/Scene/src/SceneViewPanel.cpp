@@ -1,6 +1,9 @@
 #include "SceneViewPanel.h"
 
 #include "AssetDragDrop.h"
+#include "CameraProjection.h"
+#include "Prefab.h"
+#include "PrefabEdits.h"
 #include "ComponentEdits.h"
 #include "EditorCameraController.h"
 #include "EditorPreferences.h"
@@ -153,6 +156,23 @@ namespace Nyx::Editor
 			// is back (ApplyPickResult())
 			if (!bShowingGameView && AssetTypes && ImGui::BeginDragDropTarget())
 			{
+				// A prefab: an instance where the mouse points into the world, at once
+				if (std::optional<std::string> prefab = AcceptAssetDrop(*AssetTypes, Nyx::PrefabAssetType))
+				{
+					Nyx::SceneViewCameraData viewData{};
+					if (Renderer->GetSceneViewCameraData(SceneViewId, viewData) && imageSize.x > 0.0f && imageSize.y > 0.0f)
+					{
+						const ImVec2 mouse = ImGui::GetMousePos();
+						const float x = (mouse.x - imageMin.x) / imageSize.x * 2.0f - 1.0f;
+						const float y = (mouse.y - imageMin.y) / imageSize.y * 2.0f - 1.0f;
+						glm::vec4 nearPoint = viewData.InverseViewProjection * glm::vec4(x, y, Nyx::NearPlaneDepth, 1.0f);
+						glm::vec4 farPoint = viewData.InverseViewProjection * glm::vec4(x, y, Nyx::FarPlaneDepth, 1.0f);
+						nearPoint /= nearPoint.w;
+						farPoint /= farPoint.w;
+						const Nyx::Ray ray{ glm::vec3(nearPoint), glm::normalize(glm::vec3(farPoint - nearPoint)) };
+						PlacePrefab(editing, *prefab, FindPrefabDropPoint(editing.Scene.GetRegistry(), ray));
+					}
+				}
 				if (std::optional<std::string> material = AcceptAssetDrop(*AssetTypes, "Material"))
 				{
 					Nyx::SceneViewCameraData viewData{};

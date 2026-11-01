@@ -76,6 +76,11 @@ namespace Nyx::Editor
 			{ L"Nyx themes", L"*.nyxtheme" },
 			{ L"All files", L"*.*" },
 		};
+
+		constexpr COMDLG_FILTERSPEC PrefabFilters[] = {
+			{ L"Prefabs", L"*.nyxprefab" },
+			{ L"All files", L"*.*" },
+		};
 	}
 
 	std::optional<std::filesystem::path> ChooseImageFile()
@@ -105,6 +110,12 @@ namespace Nyx::Editor
 	{
 		return ShowFileDialog(
 			DialogOptions{ .bSave = true, .Title = L"Save the theme as", .Filters = ThemeFilters, .Folder = folder, .Name = name, .DefaultExtension = L"nyxtheme" });
+	}
+
+	std::optional<std::filesystem::path> ChoosePrefabFileToSave(const std::filesystem::path& folder, const std::wstring& name)
+	{
+		return ShowFileDialog(
+			DialogOptions{ .bSave = true, .Title = L"Save the prefab as", .Filters = PrefabFilters, .Folder = folder, .Name = name, .DefaultExtension = L"nyxprefab" });
 	}
 
 	bool ShowInFileExplorer(const std::filesystem::path& path)

@@ -705,6 +705,18 @@ prefab changes.
 - **Prefabs come from the asset folders** through the asset resolver (`IAssetResolver::ResolvePrefab()`,
   `PrefabLibrary`), each read once. An instance whose prefab is gone loads with what the scene has
   of it, a warning saying so.
+- **In the editor**:
+  - *Create Prefab...* (the outliner's right-click menu) saves the selected entity and what is below
+    it as a prefab in an asset folder and makes them an instance of it, where they are, as one undo
+    step: the entity stays, the root; those below are made again as its parts, so what named them by
+    guid names nothing afterwards. Not for an instance yet.
+  - A prefab dragged from the asset browser into a scene view places an instance where the mouse
+    points (on an SDF terrain, else on the ground plane, else 10 m ahead), turned and scaled as the
+    prefab's root; dropped below the outliner's rows, at the origin. Selected, one undo step.
+  - Duplicating or copying an instance copies its parts as the copy's, their guids made from the
+    copy's root; a part copied without its instance becomes a plain entity.
+  - *Unpack Prefab* makes an instance plain entities that no longer follow the prefab, one undo step.
+  - NyxDump prints `.nyxprefab` files as it prints scenes.
 - **Spawning in a game**: a player's `SpawnPrefabCommand` (the prefab, the guid, where) makes an
   instance at the start of the next step (`ApplySpawnPrefabCommands()`), before the game's systems,
   from the prefabs the game world is given (`GameWorld::SetAssetResolver()`; NyxGame gives its asset
@@ -714,7 +726,7 @@ prefab changes.
   dropped, with a warning. The instance's bodies are made the next step, as any new entity's.
 - Overrides are compared and saved property by property of a component; a struct property, such as
   a mesh's reference, counts as one value. A value set back to the prefab's is no override.
-- Tests: `NyxPrefabTests`.
+- Tests: `NyxPrefabTests`, `NyxEditorPanelTests`.
 
 ## Surface anchors
 

@@ -3,6 +3,8 @@
 #include "BinaryArchive.h"
 #include "ComponentTypeRegistry.h"
 #include "ReflectedArchivePrinter.h"
+#include "Prefab.h"
+#include "SceneSerializationTypes.h"
 #include "SceneSerializer.h"
 
 #include <string>
@@ -81,13 +83,26 @@ namespace Nyx
 		uint32_t version = 0;
 		std::string error;
 
-		if (!SceneSerializer::ReadHeader(reader, version, error))
+		// A prefab has the entities as a scene has them, behind its own magic
+		BinaryReader prefabHeader;
+		uint32_t magic = 0;
+		const bool bPrefab = prefabHeader.LoadFromFile(path) && prefabHeader.ReadUInt32(magic) && magic == PrefabFileMagic;
+		if (bPrefab)
+		{
+			reader.ReadUInt32(magic);
+			if (!reader.ReadUInt32(version) || version != SceneFileVersion)
+			{
+				outText += "'" + path.string() + "' is a prefab of another version than this build reads.\n";
+				return false;
+			}
+		}
+		else if (!SceneSerializer::ReadHeader(reader, version, error))
 		{
 			outText += "'" + path.string() + "' " + error + ".\n";
 			return false;
 		}
 
-		outText += "Scene file '" + path.string() + "'\n";
+		outText += (bPrefab ? "Prefab file '" : "Scene file '") + path.string() + "'\n";
 		outText += "Version " + std::to_string(version) + "\n";
 
 		if (!PrintEntities(reader, outText))

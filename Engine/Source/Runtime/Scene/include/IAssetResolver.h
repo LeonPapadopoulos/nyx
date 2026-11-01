@@ -25,5 +25,10 @@ namespace Nyx
 		{
 			return nullptr;
 		}
+
+		// Reads the prefab again the next time it is resolved, e.g. after its file was written
+		virtual void ForgetPrefab(const std::string& /*prefabPath*/)
+		{
+		}
 	};
 }

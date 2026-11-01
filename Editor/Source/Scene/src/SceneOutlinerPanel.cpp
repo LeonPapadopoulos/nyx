@@ -1,7 +1,13 @@
 #include "SceneOutlinerPanel.h"
 
+#include "AssetDragDrop.h"
 #include "EntityDragDrop.h"
+#include "FileDialogs.h"
+#include "Paths.h"
+#include "Prefab.h"
+#include "PrefabEdits.h"
 #include "ImGuiSource.h"
+#include "Log.h"
 #include "NameComponent.h"
 #include "SceneEditor.h"
 #include "TransformParents.h"
@@ -486,6 +492,30 @@ namespace Nyx::Editor
 				NewFolder(editing);
 			}
 			NYX_UI(Nyx::UI::Separator());
+			const bool bInstance = selection && FindPrefabInstanceRoot(editing.Scene.GetRegistry(), *selection).has_value();
+			if (NYX_UI(Nyx::UI::MenuItem("Create Prefab...", nullptr, false, selection.has_value() && !bInstance)) && selection)
+			{
+				const std::string name = editing.Scene.GetRegistry().Get<Nyx::NameComponent>(*selection).Name;
+				const std::filesystem::path folder = Nyx::Paths::GetAssetSearchDirs().empty() ? std::filesystem::path() : Nyx::Paths::GetAssetSearchDirs().front();
+				if (const std::optional<std::filesystem::path> file = ChoosePrefabFileToSave(folder, std::filesystem::path(name).wstring()))
+				{
+					if (const std::optional<std::string> prefabPath = GetAssetPathOf(*file))
+					{
+						CreatePrefab(editing, *selection, *file, *prefabPath);
+					}
+					else
+					{
+						LOG_WARNING("Create Prefab: '{0}' isn't in an asset folder, where scenes find their prefabs", file->string());
+					}
+				}
+			}
+			ImGui::SetItemTooltip("Saves the entity and what is below it as a prefab, and makes them an instance of it");
+			if (NYX_UI(Nyx::UI::MenuItem("Unpack Prefab", nullptr, false, bInstance)) && selection)
+			{
+				UnpackPrefab(editing, *selection);
+			}
+			ImGui::SetItemTooltip("Makes the instance plain entities, which no longer follow the prefab");
+			NYX_UI(Nyx::UI::Separator());
 			// As saved scenes, logs and NyxDump show it, e.g. 0x5F3A9C2D1E4B7A10
 			const EntityGuid guid = selection ? editing.Scene.GetGuid(*selection) : EntityGuid{};
 			if (NYX_UI(Nyx::UI::MenuItem("Copy Guid", nullptr, false, guid.IsValid())))
@@ -589,6 +619,14 @@ namespace Nyx::Editor
 		const ImRect room(ImVec2(window->WorkRect.Min.x, top.y), ImVec2(window->WorkRect.Max.x, std::max(window->InnerRect.Max.y, top.y + rowHeight)));
 		if (ImGui::BeginDragDropTargetCustom(room, ImGui::GetID("##BelowRows")))
 		{
+			// A prefab from the asset browser: an instance at the origin
+			if (editing.AssetTypes)
+			{
+				if (const std::optional<std::string> prefab = AcceptAssetDrop(*editing.AssetTypes, Nyx::PrefabAssetType))
+				{
+					PlacePrefab(editing, *prefab, glm::vec3(0.0f));
+				}
+			}
 			if (AcceptDrop(editing, OutlineDrop{ .Place = EOutlinePlace::End }))
 			{
 				Hint = DropHint{ ImVec2(room.Min.x, top.y), ImVec2(room.Max.x, top.y), false };

@@ -2,6 +2,7 @@
 
 #include "AssetDatabase.h"
 #include "EditorLayer.h"
+#include "Prefab.h"
 #include "ReflectedAssetTypes.h"
 
 namespace Nyx::Editor
@@ -22,6 +23,14 @@ namespace Nyx::Editor
 			{
 				editor.LoadCurrentScene(entry.AbsolutePath);
 			} });
+
+		// Placed by dragging it into a scene view or the outliner; opening one comes later
+		registry.Register(AssetTypeDescriptor{
+			.TypeId = std::string(Nyx::PrefabAssetType),
+			.DisplayName = "Prefab",
+			.Extensions = { std::string(Nyx::PrefabExtension) },
+			.bBrowsable = true,
+			.bOpenOnDoubleClick = false });
 
 		registry.Register(AssetTypeDescriptor{
 			.TypeId = "Mesh",

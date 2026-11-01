@@ -9,12 +9,12 @@
 #include <string>
 
 // NyxDump: prints Nyx data files as readable text, to see exactly what was saved.
-// Usage: NyxDump <file.nyxscene | file.nyxlinklog | file.nyxinput | file.nyxinputrec>
+// Usage: NyxDump <file.nyxscene | file.nyxprefab | file.nyxlinklog | file.nyxinput | file.nyxinputrec>
 int main(int argc, char** argv)
 {
 	if (argc != 2)
 	{
-		std::cerr << "Usage: NyxDump <file.nyxscene | file.nyxlinklog | file.nyxinput | file.nyxinputrec>\n";
+		std::cerr << "Usage: NyxDump <file.nyxscene | file.nyxprefab | file.nyxlinklog | file.nyxinput | file.nyxinputrec>\n";
 		return 1;
 	}
 

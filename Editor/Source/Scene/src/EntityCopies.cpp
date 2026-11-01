@@ -5,6 +5,7 @@
 #include "Log.h"
 #include "NameComponent.h"
 #include "ParentComponent.h"
+#include "Prefab.h"
 #include "ReflectedArchiveSerializer.h"
 #include "RootObjectSnapshotUtils.h"
 #include "SceneDocument.h"
@@ -126,6 +127,22 @@ namespace Nyx::Editor
 			Nyx::EntityGuid& guid = world.Get<Nyx::GuidComponent>(entity).Guid;
 			const Nyx::EntityGuid original = guid;
 			guid = Nyx::EntityGuid::Generate();
+
+			// A part of a copied instance: a part of the copy, its guid made from the copy's root's.
+			// Copied without its instance: no part, as its instance would read it into its own.
+			if (world.Has<Nyx::PrefabPartComponent>(entity))
+			{
+				Nyx::PrefabPartComponent& part = world.Get<Nyx::PrefabPartComponent>(entity);
+				if (const auto instance = copies.find(part.Instance); instance != copies.end())
+				{
+					part.Instance = instance->second;
+					guid = Nyx::GetPrefabPartGuid(part.Instance, part.Local);
+				}
+				else
+				{
+					world.Remove<Nyx::PrefabPartComponent>(entity);
+				}
+			}
 			if (original.IsValid())
 			{
 				copies[original] = guid;

@@ -41,4 +41,9 @@ namespace Nyx
 	{
 		return Prefabs.Find(prefabPath);
 	}
+
+	void AssetResolver::ForgetPrefab(const std::string& prefabPath)
+	{
+		Prefabs.Forget(prefabPath);
+	}
 }

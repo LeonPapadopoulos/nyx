@@ -12,11 +12,18 @@
 #include "TransformHierarchySubscriber.h"
 
 #include <cstddef>
+#include <functional>
 #include <cstdint>
 #include <vector>
 
+namespace Nyx
+{
+	class IAssetResolver;
+}
+
 namespace Nyx::Editor
 {
+	class AssetTypeRegistry;
 	// The scene being edited and how it is edited: undo, the details panel's and the gizmo's edits
 	// in progress, and the entity clipboard. The panels draw it and the scene views pick in it;
 	// this class has no UI of its own besides the editing hotkeys.
@@ -89,6 +96,15 @@ namespace Nyx::Editor
 		// Places children relative to their parents after edits, undo and redo. Subscribed after the
 		// game link.
 		TransformHierarchySubscriber Hierarchy{ Scene };
+
+		// Where prefabs and the assets of what edits make come from (PrefabEdits.h); set by the editor
+		Nyx::IAssetResolver* Assets = nullptr;
+
+		// The asset types, for what can be dragged in from the asset browser; set by the editor
+		const AssetTypeRegistry* AssetTypes = nullptr;
+
+		// Called after an edit wrote an asset file, e.g. Create Prefab, so the asset browser lists it
+		std::function<void()> AssetFileWritten;
 
 	private:
 		// Selects the entity a pasted copy or duplicate became, after dropping edits in progress.

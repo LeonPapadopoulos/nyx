@@ -13,7 +13,10 @@
 #include "ImGuiSource.h"
 #include "Log.h"
 #include "NameComponent.h"
+#include "IAssetResolver.h"
 #include "ParentComponent.h"
+#include "Prefab.h"
+#include "PrefabEdits.h"
 #include "Painter.h"
 #include "PainterTestWindow.h"
 #include "PhysicsComponents.h"
@@ -66,6 +69,8 @@
 #include <cfloat>
 #include <cmath>
 #include <filesystem>
+#include <map>
+#include <memory>
 #include <fstream>
 #include <functional>
 #include <iostream>
@@ -894,6 +899,148 @@ namespace
 			Require(ImGui::GetCurrentContext()->HoveredIdPreviousFrameItemCount <= 1,
 				"Two items in a child's details share an ID (under the mouse at y = " + std::to_string(y) + ")");
 		}
+	}
+
+	// Reads prefabs from a folder of its own, as the editor's asset resolver does from the asset folders
+	class FolderPrefabs final : public IAssetResolver
+	{
+	public:
+		explicit FolderPrefabs(std::filesystem::path folder)
+			: Folder(std::move(folder))
+		{
+		}
+
+		Mesh* ResolveMesh(const std::string&) override
+		{
+			return nullptr;
+		}
+		Material* ResolveMaterial(const std::string&) override
+		{
+			return nullptr;
+		}
+		const PrefabAsset* ResolvePrefab(const std::string& path) override
+		{
+			if (!Prefabs.contains(path))
+			{
+				auto prefab = std::make_unique<PrefabAsset>();
+				std::string error;
+				Prefabs[path] = prefab->LoadFromFile(Folder / path, error) ? std::move(prefab) : nullptr;
+			}
+			return Prefabs[path].get();
+		}
+		void ForgetPrefab(const std::string& path) override
+		{
+			Prefabs.erase(path);
+		}
+
+	private:
+		std::filesystem::path Folder;
+		std::map<std::string, std::unique_ptr<PrefabAsset>> Prefabs;
+	};
+
+	// Create Prefab turns an entity and those below it into an instance of a new prefab, keeping
+	// where they are; Place Prefab puts another one into the scene; duplicating an instance gives its
+	// parts guids made from the copy's root, copying a part alone makes no part; Unpack Prefab makes
+	// plain entities of an instance; each one undo step. Where a prefab dropped on a view goes.
+	void TestPrefabsInTheEditor()
+	{
+		Nyx::Tests::TestDirectory directory("NyxEditorPrefabTests");
+		std::filesystem::create_directories(directory.Path / "Prefabs");
+		FolderPrefabs prefabs(directory.Path);
+
+		SceneEditor editing;
+		editing.Transactions.Subscribe(&editing.Hierarchy);
+		editing.Assets = &prefabs;
+		Registry& world = editing.Scene.GetRegistry();
+
+		const auto make = [&](const char* name, const glm::vec3& position)
+		{
+			const Entity entity = editing.Scene.CreateEntity(name);
+			TransformComponent transform;
+			transform.Position = position;
+			world.Add<TransformComponent>(entity, transform);
+			return entity;
+		};
+		const Entity post = make("Post", glm::vec3(5.0f, 0.0f, 0.0f));
+		world.Add<BoxColliderComponent>(post, BoxColliderComponent{});
+		const Entity arm = make("Arm", glm::vec3(0.0f));
+		world.Add<ParentComponent>(arm, ParentComponent{ .Parent = editing.Scene.GetGuid(post), .LocalPosition = glm::vec3(0.0f, 3.0f, 0.0f) });
+		const Entity light = make("Light", glm::vec3(0.0f));
+		world.Add<ParentComponent>(light, ParentComponent{ .Parent = editing.Scene.GetGuid(arm), .LocalPosition = glm::vec3(1.0f, 0.0f, 0.0f) });
+		editing.Hierarchy.Update();
+		const EntityGuid postGuid = editing.Scene.GetGuid(post);
+		const EntityGuid armGuid = editing.Scene.GetGuid(arm);
+		const EntityGuid lightGuid = editing.Scene.GetGuid(light);
+		const auto count = [&]()
+		{
+			size_t entities = 0;
+			world.ForEachEntity([&](Entity) { ++entities; });
+			return entities;
+		};
+
+		// Create Prefab: the post stays, its parts are made again with guids from it, where they were
+		const std::string lampPath = "Prefabs/Lamp.nyxprefab";
+		Require(CreatePrefab(editing, post, directory.Path / lampPath, lampPath), "Create Prefab failed");
+		Require(std::filesystem::exists(directory.Path / lampPath), "Create Prefab should write the prefab");
+		Require(world.Has<PrefabInstanceComponent>(post) && world.Get<PrefabInstanceComponent>(post).Prefab.Path == lampPath,
+			"The entity should become the instance's root");
+		Require(!editing.Scene.FindEntity(armGuid) && count() == 3, "The entities below it should be made again as parts");
+		const std::optional<Entity> lightPart = editing.Scene.FindEntity(GetPrefabPartGuid(postGuid, lightGuid));
+		Require(lightPart && world.Has<PrefabPartComponent>(*lightPart), "A part's guid should be made from the root's");
+		Require(glm::length(world.Get<TransformComponent>(*lightPart).Position - glm::vec3(6.0f, 3.0f, 0.0f)) < 1e-4f, "The parts should stay where they were");
+		Require(!CreatePrefab(editing, post, directory.Path / "Prefabs/Again.nyxprefab", "Prefabs/Again.nyxprefab"),
+			"An instance can't become a prefab yet");
+
+		editing.Undo();
+		Require(!world.Has<PrefabInstanceComponent>(post) && editing.Scene.FindEntity(armGuid) && editing.Scene.FindEntity(lightGuid) && count() == 3,
+			"Undoing Create Prefab should bring the plain entities back");
+		editing.Redo();
+		Require(world.Has<PrefabInstanceComponent>(post) && editing.Scene.FindEntity(GetPrefabPartGuid(postGuid, armGuid)), "Redo should make the instance again");
+
+		// Place Prefab: another instance, selected, one step
+		const std::optional<Entity> placed = PlacePrefab(editing, lampPath, glm::vec3(0.0f, 0.0f, 20.0f));
+		Require(placed && editing.Scene.GetSelection() == placed && count() == 6, "Place Prefab should make an instance and select it");
+		const EntityGuid placedGuid = editing.Scene.GetGuid(*placed);
+		Require(world.Get<NameComponent>(*placed).Name == "Post" && world.Has<BoxColliderComponent>(*placed), "The instance should have the prefab root's name and components");
+		const std::optional<Entity> placedLight = editing.Scene.FindEntity(GetPrefabPartGuid(placedGuid, lightGuid));
+		Require(placedLight && glm::length(world.Get<TransformComponent>(*placedLight).Position - glm::vec3(1.0f, 3.0f, 20.0f)) < 1e-4f,
+			"The placed instance's parts should be placed by it");
+		Require(!PlacePrefab(editing, "Prefabs/Missing.nyxprefab", glm::vec3(0.0f)), "A missing prefab should place nothing");
+		editing.Undo();
+		Require(count() == 3 && !editing.Scene.FindEntity(placedGuid), "Undoing Place Prefab should take the whole instance away");
+		editing.Redo();
+		const Entity again = *editing.Scene.FindEntity(placedGuid);
+
+		// Duplicate: the copy's parts are its own
+		editing.Scene.GetSelection() = again;
+		editing.DuplicateSelectedEntity();
+		const Entity copy = *editing.Scene.GetSelection();
+		const EntityGuid copyGuid = editing.Scene.GetGuid(copy);
+		const std::optional<Entity> copiedLight = editing.Scene.FindEntity(GetPrefabPartGuid(copyGuid, lightGuid));
+		Require(copyGuid != placedGuid && copiedLight && world.Get<PrefabPartComponent>(*copiedLight).Instance == copyGuid,
+			"A duplicate's parts should have guids made from the duplicate, and name it");
+		Require(world.Get<ParentComponent>(*copiedLight).Parent == GetPrefabPartGuid(copyGuid, armGuid), "A duplicate's parts should hang from each other");
+
+		// A part copied alone is no part
+		editing.Scene.GetSelection() = *copiedLight;
+		editing.CopySelectedEntity();
+		editing.PasteEntity();
+		Require(!world.Has<PrefabPartComponent>(*editing.Scene.GetSelection()), "A part pasted without its instance should be a plain entity");
+
+		// Unpack: plain entities, as they are
+		Require(UnpackPrefab(editing, *editing.Scene.FindEntity(GetPrefabPartGuid(placedGuid, armGuid))), "Unpack from a part failed");
+		Require(!world.Has<PrefabInstanceComponent>(again) && !world.Has<PrefabPartComponent>(*editing.Scene.FindEntity(GetPrefabPartGuid(placedGuid, lightGuid))),
+			"Unpacking should take the marks of the instance and its parts away");
+		Require(!UnpackPrefab(editing, again), "A plain entity can't be unpacked");
+		editing.Undo();
+		Require(world.Has<PrefabInstanceComponent>(again) && FindPrefabInstanceRoot(world, *editing.Scene.FindEntity(GetPrefabPartGuid(placedGuid, lightGuid))) == again,
+			"Undoing Unpack should make them an instance again");
+
+		// Dropped on a view: on the ground ahead, or 10 m out
+		Require(glm::length(FindPrefabDropPoint(world, Ray{ glm::vec3(0.0f, 10.0f, 0.0f), glm::vec3(0.0f, -1.0f, 0.0f) }) - glm::vec3(0.0f)) < 1e-4f,
+			"A ray down should meet the ground");
+		Require(glm::length(FindPrefabDropPoint(world, Ray{ glm::vec3(0.0f, 10.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f) }) - glm::vec3(0.0f, 20.0f, 0.0f)) < 1e-4f,
+			"A ray up should go 10 m out");
 	}
 
 	// A cube and a decal, the decal selected: its details at the top left, the outliner beside them.
@@ -2637,6 +2784,7 @@ int main()
 		// Last: it gives the camera a post-load step of its own
 		TestPostLoadStepsKnowTheirEntity();
 		TestParenting();
+		TestPrefabsInTheEditor();
 	}
 	catch (const std::exception& error)
 	{

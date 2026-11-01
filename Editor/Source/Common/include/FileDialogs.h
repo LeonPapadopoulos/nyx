@@ -19,6 +19,10 @@ namespace Nyx::Editor
 	// when the name has no extension, and choosing a file that exists asks first
 	std::optional<std::filesystem::path> ChooseThemeFileToSave(const std::filesystem::path& folder, const std::wstring& name);
 
+	// Where to save a prefab (*.nyxprefab), starting in `folder` with `name` filled in; ".nyxprefab" is
+	// added when the name has no extension, and choosing a file that exists asks first
+	std::optional<std::filesystem::path> ChoosePrefabFileToSave(const std::filesystem::path& folder, const std::wstring& name);
+
 	// For an input recording (*.nyxinputrec), starting in `folder` if it is there
 	std::optional<std::filesystem::path> ChooseInputRecording(const std::filesystem::path& folder);
 
