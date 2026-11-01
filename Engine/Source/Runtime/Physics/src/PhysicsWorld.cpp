@@ -397,6 +397,11 @@ namespace Nyx
 		// dependencies and its barriers (JobSystemWithBarrier): a job is queued here once nothing
 		// holds it back, at the highest priority, and the thread waiting at a barrier runs the
 		// barrier's jobs itself as well, so a step finishes even while every worker is busy.
+		//
+		// A job the barrier's thread ran is still queued on the workers, holding a reference to it in
+		// the free list here, until a worker gets to it; with every worker busy (the terrain's chunks,
+		// say) that can be after the step and after the world is gone. So the queued entries are
+		// counted, and going waits for the workers to have let go of every one.
 		class SharedJoltJobs final : public JPH::JobSystemWithBarrier
 		{
 		public:
@@ -404,6 +409,14 @@ namespace Nyx
 				: JPH::JobSystemWithBarrier(maxBarriers), Workers(workers)
 			{
 				FreeJobs.Init(maxJobs, maxJobs);
+			}
+
+			~SharedJoltJobs() override
+			{
+				while (Queued.load(std::memory_order_acquire) != 0)
+				{
+					std::this_thread::yield();
+				}
 			}
 
 			int GetMaxConcurrency() const override { return static_cast<int>(Workers.GetWorkerCount()) + 1; }
@@ -431,6 +444,7 @@ namespace Nyx
 			void QueueJob(Job* job) override
 			{
 				job->AddRef();
+				Queued.fetch_add(1, std::memory_order_relaxed);
 				const RawJob raw{ .Run = &Run, .Data = job };
 				Workers.Submit({ &raw, 1 }, EJobPriority::High);
 			}
@@ -448,6 +462,7 @@ namespace Nyx
 						jobs[first + i]->AddRef();
 						batch[i] = RawJob{ .Run = &Run, .Data = jobs[first + i] };
 					}
+					Queued.fetch_add(size, std::memory_order_relaxed);
 					Workers.Submit({ batch, size }, EJobPriority::High);
 				}
 			}
@@ -461,12 +476,17 @@ namespace Nyx
 			static void Run(void* data)
 			{
 				Job* job = static_cast<Job*>(data);
+				// Taken first: letting go of the job may free it
+				SharedJoltJobs* owner = static_cast<SharedJoltJobs*>(job->GetJobSystem());
 				job->Execute();
 				job->Release();
+				owner->Queued.fetch_sub(1, std::memory_order_acq_rel);
 			}
 
 			Nyx::JobSystem& Workers;
 			AvailableJobs FreeJobs;
+			// Entries on the workers not yet run
+			std::atomic<uint32_t> Queued = 0;
 		};
 
 		BodyHandle ToHandle(const JPH::BodyID& id)

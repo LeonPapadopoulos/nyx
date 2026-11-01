@@ -5,6 +5,7 @@
 // two bodies joined, the same results over 600 steps. The debug view: the lines of each shape, colours by
 // motion, contacts after a landing, constraints, and nothing when switched off.
 #include "DebugDraw.h"
+#include "JobSystem.h"
 #include "Log.h"
 #include "PhysicsWorld.h"
 #include "TestSupport.h"
@@ -14,12 +15,16 @@
 #include <glm/gtc/quaternion.hpp>
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cmath>
 #include <optional>
 #include <iostream>
 #include <iterator>
+#include <memory>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace
@@ -767,6 +772,54 @@ namespace
 		Require(first == second, "The same constrained scene should end exactly alike after 600 steps");
 	}
 
+	// A world stepped while every worker is busy, its jobs run by the stepping thread, still has them
+	// queued on the workers; going, it waits until the workers have let go of them rather than leave
+	// them pointing into its freed memory
+	void TestAWorldGoesOnlyOnceTheWorkersLetGoOfItsJobs()
+	{
+		JobSystem workers(2);
+		std::atomic<bool> bHeld = true;
+		std::atomic<uint32_t> busy = 0;
+		for (uint32_t index = 0; index < workers.GetWorkerCount(); ++index)
+		{
+			workers.Schedule([&]
+				{
+					busy.fetch_add(1);
+					while (bHeld.load())
+					{
+						std::this_thread::sleep_for(std::chrono::milliseconds(1));
+					}
+				});
+		}
+		while (busy.load() < workers.GetWorkerCount())
+		{
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}
+
+		PhysicsSettings settings;
+		settings.Jobs = &workers;
+		auto world = std::make_unique<PhysicsWorld>(settings);
+		AddFloor(*world);
+		for (int index = 0; index < 8; ++index)
+		{
+			AddBox(*world, glm::vec3(float(index) * 1.5f, 2.0f, 0.0f));
+		}
+		RunSteps(*world, 10);
+
+		std::atomic<bool> bGone = false;
+		std::thread going([&]
+			{
+				world.reset();
+				bGone.store(true);
+			});
+		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		const bool bWaited = !bGone.load();
+		bHeld.store(false);
+		going.join();
+		Require(bWaited, "A world should wait for the busy workers to let go of its jobs before it goes");
+		Require(bGone.load(), "The world should go once the workers have let go of its jobs");
+	}
+
 	// The lines of the drawing in a colour
 	std::vector<DebugLine> LinesOf(const DebugDraw& drawing, const glm::vec3& color)
 	{
@@ -970,6 +1023,7 @@ int main()
 		TestAConstraintBreaksPastItsMaxLoad();
 		TestAConstraintJoinsTwoBodies();
 		TestConstraintsGiveTheSameResultsOver600Steps();
+		TestAWorldGoesOnlyOnceTheWorkersLetGoOfItsJobs();
 		if constexpr (DebugDraw::Enabled)
 		{
 			TestDebugViewDrawsEachShape();
