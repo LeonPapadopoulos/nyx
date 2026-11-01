@@ -54,6 +54,10 @@ namespace Nyx
 	// (cleared first), parents before their children. Goes through the linked entities only, not the
 	// whole world.
 	void UpdateTransformHierarchy(Registry& world, const EntityGuidLookup& guids, std::vector<Entity>* outMoved = nullptr);
+
+	// The entity and everything below it, each parent before its children, children in the order
+	// the world has their links; an entity met again (a circle) only once
+	std::vector<Entity> GetTransformSubtree(const Registry& world, Entity entity);
 }
 
 #include "Generated/Runtime/ParentComponent.reflect.h"

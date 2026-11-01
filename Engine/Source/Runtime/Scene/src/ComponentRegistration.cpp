@@ -1,11 +1,13 @@
 #include "ComponentRegistration.h"
 
 #include "ComponentTypeRegistry.h"
+#include "EntityGuidLookup.h"
 #include "EnvironmentComponent.h"
 #include "GroundMesh.h"
 #include "IAssetResolver.h"
 #include "MeshInstancesComponent.h"
 #include "MeshRendererComponent.h"
+#include "ParentComponent.h"
 #include "RuntimeMeshComponent.h"
 #include "ScatterInstances.h"
 #include "SurfaceDecalComponent.h"
@@ -78,6 +80,13 @@ namespace Nyx
 			};
 		}
 
+		// After a scene is read: children placed by their parents, among them the parts of prefab
+		// instances, made before their root's own transform was read
+		void PlaceChildrenAfterLoad(Registry& world)
+		{
+			UpdateTransformHierarchy(world, MakeEntityGuidLookup(world));
+		}
+
 		// Temporal from older scenes into Update; and a preset chosen for the volumetric clouds sets
 		// their values, once
 		void ApplyVolumetricCloudsPresetAfterLoad(VolumetricCloudsComponent& component, ScenePostLoadContext&)
@@ -105,6 +114,8 @@ namespace Nyx
 		// go with it
 		ComponentTypeRegistry::Get().SetOnRemove<SdfTerrainComponent>(&RemoveTerrainChunks);
 		ComponentTypeRegistry::Get().SetOnRemove<TerrainPlaceCopiesComponent>(&RemoveTerrainPlaceCopies);
+
+		ComponentTypeRegistry::Get().AddSceneLoadStep(&PlaceChildrenAfterLoad);
 
 		// Made while the world runs and never saved; the editor shows what they are
 		ComponentTypeRegistry::Get().RegisterRuntime<RuntimeMeshComponent>("Nyx::RuntimeMeshComponent", "Mesh Made at Run Time", &DescribeRuntimeMesh);

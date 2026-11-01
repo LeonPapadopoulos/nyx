@@ -1,6 +1,7 @@
 #pragma once
 
 #include "IAssetResolver.h"
+#include "Prefab.h"
 
 namespace Nyx
 {
@@ -18,8 +19,16 @@ namespace Nyx
 
 		Nyx::Mesh* ResolveMesh(const std::string& meshPath) override;
 		Nyx::Material* ResolveMaterial(const std::string& materialPath) override;
+		const Nyx::PrefabAsset* ResolvePrefab(const std::string& prefabPath) override;
+
+		// The prefabs read so far, e.g. to read one again after its file changed
+		Nyx::PrefabLibrary& GetPrefabs()
+		{
+			return Prefabs;
+		}
 
 	private:
 		Nyx::IRenderer& Renderer;
+		Nyx::PrefabLibrary Prefabs;
 	};
 }

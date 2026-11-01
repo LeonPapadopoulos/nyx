@@ -425,7 +425,8 @@ namespace Nyx::Editor
 	bool EditorLayer::SaveCurrentScene(const std::filesystem::path& path)
 	{
 		const Nyx::SceneOutline outline = MakeSavedOutline(Editing.Scene);
-		if (!Nyx::SceneSerializer::SaveToFile(Editing.Scene.GetRegistry(), path, &outline))
+		// Instances of prefabs as what differs from their prefabs
+		if (!Nyx::SceneSerializer::SaveToFile(Editing.Scene.GetRegistry(), path, &outline, AssetResolver.get()))
 		{
 			LOG_ERROR("Failed to save scene to '{0}'", path.string());
 			Frame.SetSceneFileStatus("Couldn't save " + path.filename().string(), true);

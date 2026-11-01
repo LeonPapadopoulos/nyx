@@ -2,6 +2,7 @@
 #include "ParentComponent.h"
 
 #include "EntityGuidLookup.h"
+#include "GuidComponent.h"
 #include "TransformComponent.h"
 
 #include <algorithm>
@@ -83,6 +84,36 @@ namespace Nyx
 		link.LocalPosition = DivideOrZero(inverseRotation * (world.Position - parentWorld.Position), parentWorld.Scale);
 		link.LocalRotation = glm::normalize(inverseRotation * world.Rotation);
 		link.LocalScale = DivideOrZero(world.Scale, parentWorld.Scale);
+	}
+
+	std::vector<Entity> GetTransformSubtree(const Registry& world, Entity entity)
+	{
+		std::vector<Entity> entities;
+		if (!world.IsAlive(entity))
+		{
+			return entities;
+		}
+		entities.push_back(entity);
+
+		// Level by level: the children of what was found, until nothing more is
+		for (size_t next = 0; next < entities.size(); ++next)
+		{
+			const Entity parent = entities[next];
+			if (!world.Has<GuidComponent>(parent) || !world.Get<GuidComponent>(parent).Guid.IsValid())
+			{
+				continue;
+			}
+			const EntityGuid guid = world.Get<GuidComponent>(parent).Guid;
+			world.Each<ParentComponent>(
+				[&](Entity child, const ParentComponent& link)
+				{
+					if (link.Parent == guid && std::find(entities.begin(), entities.end(), child) == entities.end())
+					{
+						entities.push_back(child);
+					}
+				});
+		}
+		return entities;
 	}
 
 	void UpdateTransformHierarchy(Registry& world, const EntityGuidLookup& guids, std::vector<Entity>* outMoved)

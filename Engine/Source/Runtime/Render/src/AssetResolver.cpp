@@ -36,4 +36,9 @@ namespace Nyx
 		// A file that can't be read gives a material all the same, which shows it: magenta
 		return Renderer.GetMaterial(materialPath);
 	}
+
+	const Nyx::PrefabAsset* AssetResolver::ResolvePrefab(const std::string& prefabPath)
+	{
+		return Prefabs.Find(prefabPath);
+	}
 }

@@ -10,6 +10,7 @@ namespace Nyx
 {
 	class BinaryReader;
 	class BinaryWriter;
+	class IAssetResolver;
 	class ReadWarnings;
 	struct SceneOutline;
 
@@ -23,6 +24,12 @@ namespace Nyx
 	//   Outline:   optional, after the entities: SceneOutlineMarker (u32) | the SceneOutline as a
 	//              property block. The editor's alone; scenes saved before it ended after their
 	//              entities, and builds from before it stop reading there too.
+	//
+	// An instance of a prefab (Prefab.h) is saved as what differs from its prefab, when saving is
+	// given the prefabs: its root's guid and PrefabInstanceComponent first, then the rest of it
+	// (WritePrefabInstanceEntity()); a part only if it differs, its PrefabPartComponent first.
+	// Loading makes the instance from its prefab when it reads the root's PrefabInstanceComponent,
+	// then reads the rest on top, and a part's record into the part the instance made.
 	class SceneSerializer
 	{
 	public:
@@ -32,14 +39,17 @@ namespace Nyx
 
 		// Replaces the destination only after the complete scene has been written successfully.
 		// Serialization or file I/O failures return false without overwriting the previous file.
-		// With an outline, the editor's outliner (SceneOutline.h), saves it after the entities.
-		static bool SaveToFile(const Registry& world, const std::filesystem::path& path, const SceneOutline* outline = nullptr);
+		// With an outline, the editor's outliner (SceneOutline.h), saves it after the entities. With
+		// prefabs, saves their instances as what differs from them; without, whole.
+		static bool SaveToFile(const Registry& world, const std::filesystem::path& path, const SceneOutline* outline = nullptr,
+			IAssetResolver* prefabs = nullptr);
 
 		// Replaces everything in outWorld with the scene from the file; if the file can't be loaded,
 		// outWorld stays as it was. Only the current version is read, as version 1 stored values
 		// without names. Afterwards every entity has a guid no other entity in the scene has.
 		// outOutline, if given, gets the scene's outline, empty if it has none; a game passes none,
-		// and the outline is skipped.
+		// and the outline is skipped. Instances of prefabs are made from the prefabs the context's
+		// asset resolver gives (IAssetResolver::ResolvePrefab()).
 		static bool LoadFromFile(
 			const std::filesystem::path& path,
 			Registry& outWorld,
@@ -51,7 +61,8 @@ namespace Nyx
 		static bool WriteEntity(const Registry& world, Entity entity, BinaryWriter& writer);
 
 		// Reads what WriteEntity wrote into an entity of the world. Returns false if the data is cut
-		// off or damaged; the entity may have some of its components then.
+		// off or damaged; the entity may have some of its components then. Makes no instance of a
+		// prefab: an entity written whole has all it needs.
 		static bool ReadEntity(
 			BinaryReader& reader,
 			Registry& world,

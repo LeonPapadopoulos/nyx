@@ -269,6 +269,14 @@ add_dependencies(NyxSurfaceAnchorTests NyxGeneratedReflection)
 set_property(TARGET NyxSurfaceAnchorTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxSurfaceAnchorTests COMMAND NyxSurfaceAnchorTests)
 
+# Prefabs: saved and read, instances made from them with their parts, scenes saving instances as what
+# differs from their prefab, overrides kept when the prefab changes, an instance without its prefab
+add_executable(NyxPrefabTests PrefabTests.cpp)
+target_link_libraries(NyxPrefabTests PRIVATE NyxEngine)
+add_dependencies(NyxPrefabTests NyxGeneratedReflection)
+set_property(TARGET NyxPrefabTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxPrefabTests COMMAND NyxPrefabTests)
+
 # Transform hierarchy: a child following its parent, local values made from a place in the world,
 # chains in any order, links to nothing and circles moving nothing, a child saved and loaded
 add_executable(NyxTransformHierarchyTests TransformHierarchyTests.cpp)

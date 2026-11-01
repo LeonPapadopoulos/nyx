@@ -3,11 +3,15 @@
 #include "ComponentTypeRegistry.h"
 #include "Entity.h"
 #include "GuidComponent.h"
+#include "IAssetResolver.h"
 #include "Log.h"
+#include "Prefab.h"
 #include "ReflectedArchiveSerializer.h"
 #include "SceneOutline.h"
 
+#include <optional>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -16,8 +20,9 @@ namespace
 {
 	using namespace Nyx;
 
-	// Everything after the header: entity count, then the entities with their components
-	bool WriteEntities(const Registry& world, BinaryWriter& writer)
+	// Everything after the header: entity count, then the entities with their components. With
+	// prefabs, their instances as what differs from them, parts that differ in nothing left out.
+	bool WriteEntities(const Registry& world, BinaryWriter& writer, IAssetResolver* prefabs)
 	{
 		std::vector<Entity> entities;
 		world.ForEachEntity([&](Entity entity)
@@ -25,18 +30,58 @@ namespace
 				entities.push_back(entity);
 			});
 
-		writer.WriteUInt32(static_cast<uint32_t>(entities.size()));
+		// The prefab of each instance, by its root's guid, for its parts
+		std::unordered_map<EntityGuid, const PrefabAsset*> instances;
+		if (prefabs)
+		{
+			world.Each<PrefabInstanceComponent>(
+				[&](Entity entity, const PrefabInstanceComponent& instance)
+				{
+					const PrefabAsset* prefab = instance.Prefab.IsValid() ? prefabs->ResolvePrefab(instance.Prefab.Path) : nullptr;
+					if (prefab && world.Has<GuidComponent>(entity))
+					{
+						instances.emplace(world.Get<GuidComponent>(entity).Guid, prefab);
+					}
+				});
+		}
+		const auto findPrefab = [&](Entity entity) -> const PrefabAsset*
+		{
+			const EntityGuid instance = world.Has<PrefabInstanceComponent>(entity) && world.Has<GuidComponent>(entity)
+				? world.Get<GuidComponent>(entity).Guid
+				: world.Has<PrefabPartComponent>(entity) ? world.Get<PrefabPartComponent>(entity).Instance
+														 : EntityGuid{};
+			const auto found = instance.IsValid() ? instances.find(instance) : instances.end();
+			return found != instances.end() ? found->second : nullptr;
+		};
 
+		BinaryWriter records;
+		uint32_t count = 0;
 		for (Entity entity : entities)
 		{
-			if (!SceneSerializer::WriteEntity(world, entity, writer))
+			bool bNothing = false;
+			const PrefabAsset* prefab = findPrefab(entity);
+			const bool bWritten = prefab ? WritePrefabInstanceEntity(world, entity, *prefab, records, &bNothing)
+										 : SceneSerializer::WriteEntity(world, entity, records);
+			if (!bWritten)
 			{
 				return false;
 			}
+			count += bNothing ? 0 : 1;
 		}
 
+		writer.WriteUInt32(count);
+		writer.WriteBytes(records.GetBytes().data(), records.GetBytes().size());
 		return true;
 	}
+
+	// While a scene file is read: the parts its instances made, by guid, for the parts' records
+	struct PrefabLoad
+	{
+		std::unordered_map<EntityGuid, Entity> Parts;
+	};
+
+	bool ReadEntityOfScene(BinaryReader& reader, Registry& world, Entity entity, ScenePostLoadContext& postLoadContext,
+		ReadWarnings& warnings, PrefabLoad* prefabs);
 
 	// Properties with name hash and kind. Component types this build doesn't know are skipped.
 	bool ReadEntities(
@@ -51,9 +96,10 @@ namespace
 			return false;
 		}
 
+		PrefabLoad prefabs;
 		for (uint32_t entityIndex = 0; entityIndex < entityCount; ++entityIndex)
 		{
-			if (!SceneSerializer::ReadEntity(reader, outWorld, outWorld.CreateEntity(), postLoadContext, warnings))
+			if (!ReadEntityOfScene(reader, outWorld, outWorld.CreateEntity(), postLoadContext, warnings, &prefabs))
 			{
 				return false;
 			}
@@ -166,14 +212,14 @@ namespace Nyx
 		return true;
 	}
 
-	bool SceneSerializer::SaveToFile(const Registry& world, const std::filesystem::path& path, const SceneOutline* outline)
+	bool SceneSerializer::SaveToFile(const Registry& world, const std::filesystem::path& path, const SceneOutline* outline, IAssetResolver* prefabs)
 	{
 		BinaryWriter writer;
 
 		writer.WriteUInt32(SceneFileMagic);
 		writer.WriteUInt32(SceneFileVersion);
 
-		if (!WriteEntities(world, writer))
+		if (!WriteEntities(world, writer, prefabs))
 		{
 			return false;
 		}
@@ -286,6 +332,24 @@ namespace Nyx
 		ScenePostLoadContext& postLoadContext,
 		ReadWarnings& warnings)
 	{
+		return ReadEntityOfScene(reader, world, entity, postLoadContext, warnings, nullptr);
+	}
+}
+
+namespace
+{
+	using namespace Nyx;
+
+	// ReadEntity(), and with prefabs, as a scene file has its instances: a root's
+	// PrefabInstanceComponent makes the instance from its prefab, then what follows is read on top;
+	// a record that starts with a PrefabPartComponent is read into the part its instance made
+	bool ReadEntityOfScene(BinaryReader& reader, Registry& world, Entity entity, ScenePostLoadContext& postLoadContext,
+		ReadWarnings& warnings, PrefabLoad* prefabs)
+	{
+		// The record's own entity, while its components go into a part made earlier; or the part made
+		// earlier that a whole record of it takes the place of
+		std::optional<Entity> readInto;
+		std::optional<Entity> replaced;
 		uint32_t componentCount = 0;
 		if (!reader.ReadUInt32(componentCount))
 		{
@@ -327,6 +391,76 @@ namespace Nyx
 				postLoadContext.Entity = entity;
 				ops->PostLoad(component, postLoadContext);
 			}
+
+			if (!prefabs)
+			{
+				continue;
+			}
+
+			// The root of an instance: made from its prefab, then the rest is read on top
+			if (ops->TypeMetadata == &Nyx::Reflection::GetTypeMetadata<PrefabInstanceComponent>() && world.Has<GuidComponent>(entity))
+			{
+				const PrefabInstanceComponent& instance = world.Get<PrefabInstanceComponent>(entity);
+				const PrefabAsset* prefab = postLoadContext.AssetResolver && instance.Prefab.IsValid()
+					? postLoadContext.AssetResolver->ResolvePrefab(instance.Prefab.Path)
+					: nullptr;
+				if (!prefab)
+				{
+					warnings.Add("an instance of '" + instance.Prefab.Path + "' has only what the scene has of it, as the prefab isn't there");
+					continue;
+				}
+				std::vector<Entity> parts;
+				ApplyPrefab(world, entity, *prefab, postLoadContext, &parts);
+				for (const Entity part : parts)
+				{
+					prefabs->Parts.emplace(world.Get<GuidComponent>(part).Guid, part);
+				}
+			}
+
+			// A part's record: if it starts with its PrefabPartComponent, what follows goes into the part
+			// its instance made; a part written whole takes the made part's place
+			else if (ops->TypeMetadata == &Nyx::Reflection::GetTypeMetadata<PrefabPartComponent>() && !readInto)
+			{
+				const PrefabPartComponent& part = world.Get<PrefabPartComponent>(entity);
+				const auto made = prefabs->Parts.find(GetPrefabPartGuid(part.Instance, part.Local));
+				if (made == prefabs->Parts.end())
+				{
+					// Still with the guid it has wherever it is made, so undo and the outline find it
+					warnings.Add("a part of an instance whose prefab isn't there, or no longer has it, has only what the scene has of it");
+					if (!world.Has<GuidComponent>(entity))
+					{
+						world.Add<GuidComponent>(entity, GuidComponent{ GetPrefabPartGuid(part.Instance, part.Local) });
+					}
+					continue;
+				}
+				if (componentIndex != 0)
+				{
+					replaced = made->second;
+					made->second = entity;
+					continue;
+				}
+				readInto = entity;
+				entity = made->second;
+				world.Get<PrefabPartComponent>(entity).RemovedComponents = world.Get<PrefabPartComponent>(*readInto).RemovedComponents;
+			}
+		}
+
+		// The part read into: without the components it took away, and the record's entity gone
+		if (readInto)
+		{
+			const std::vector<std::string> removed = world.Get<PrefabPartComponent>(entity).RemovedComponents;
+			for (const std::string& name : removed)
+			{
+				if (const ComponentTypeOps* removedOps = ComponentTypeRegistry::Get().FindByName(name); removedOps && removedOps->Has(world, entity))
+				{
+					removedOps->Remove(world, entity);
+				}
+			}
+			world.DestroyEntity(*readInto);
+		}
+		if (replaced)
+		{
+			world.DestroyEntity(*replaced);
 		}
 
 		return true;

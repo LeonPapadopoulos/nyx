@@ -675,6 +675,40 @@ turns and scales with it, down chains of any length.
 - Tests: `NyxTransformHierarchyTests`, `NyxGameLinkSubscriberTests`, `NyxEditorPanelTests`,
   `NyxEditorOutlinerTests`.
 
+## Prefabs
+
+A prefab is an entity kept as an asset with everything below it (its children, at any depth), to
+be placed many times. A placed copy, an *instance*, keeps only which prefab it is, its own guid,
+transform and parent, and what it changes; everything else comes from the prefab, also after the
+prefab changes.
+
+- **The file** (`.nyxprefab`, `PrefabAsset::SaveToFile()`) holds the entity and those below it as
+  scene files hold entities, the root first and without its parent. Their guids are ids within the
+  prefab. A prefab can't hold an instance yet.
+- **An instance** is an entity with a `PrefabInstanceComponent` naming the prefab, its root.
+  `ApplyPrefab()` gives it the prefab root's components it hasn't got, and makes each other entity
+  of the prefab as a *part* below it: an entity with a `PrefabPartComponent` (its instance and the
+  prefab entity it is made from), placed relative to its parent as in the prefab, with the guid
+  `GetPrefabPartGuid(instance, prefab entity)`, the same at every load and unique per instance.
+- **Scene files keep only what differs** when saving is given the prefabs (the editor gives its
+  asset resolver): an instance's root as its guid, its `PrefabInstanceComponent`, its transform and
+  parent, and of each other component the properties that differ from the prefab root's, or the
+  component whole if it added it; a part only if something of it differs, and then only that, its
+  guid and place in the world made again when it loads. Twenty unchanged instances of a three-entity
+  prefab take under a third of what they take whole. A component the prefab has and an instance
+  doesn't is listed in its `RemovedComponents` and stays away when it loads.
+- **Loading** makes an instance from its prefab when it reads the root's `PrefabInstanceComponent`
+  and reads what the file has of it on top, so a value the instance didn't change follows the
+  prefab, and what the prefab gained reaches it; a value it changed stays. Then every child is
+  placed by its parent, in the editor and in a game. A scene saved without the prefabs (the editor's
+  Play does so) has its instances whole, which load as they were.
+- **Prefabs come from the asset folders** through the asset resolver (`IAssetResolver::ResolvePrefab()`,
+  `PrefabLibrary`), each read once. An instance whose prefab is gone loads with what the scene has
+  of it, a warning saying so.
+- Overrides are compared and saved property by property of a component; a struct property, such as
+  a mesh's reference, counts as one value. A value set back to the prefab's is no override.
+- Tests: `NyxPrefabTests`.
+
 ## Surface anchors
 
 A `SurfaceAnchor` property hangs something on another entity's surface, such as a mark drawn on a
