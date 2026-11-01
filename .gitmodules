@@ -29,3 +29,6 @@
 [submodule "Dependencies/Transvoxel"]
 	path = Dependencies/Transvoxel
 	url = https://github.com/EricLengyel/Transvoxel
+[submodule "Dependencies/recastnavigation"]
+	path = Dependencies/recastnavigation
+	url = https://github.com/recastnavigation/recastnavigation.git
