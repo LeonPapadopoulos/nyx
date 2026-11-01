@@ -1704,6 +1704,12 @@ game, coarser the farther, and collides while the world runs.
   far sides and the underside are in shadow kilometres off, where before nothing past 80 m was.
   About 0.1 to 0.5 ms more at 1280 x 720. The volume is kept while *Sky Occlusion* is above 0 or
   *Far Shadows* is on.
+- The height fog within 24 m of the camera (`TerrainOcclusion::FogReach`) is lit as the camera is,
+  by the sky and the sun it sees past the terrain, worked out once a frame on the CPU from the same
+  volume (`GetTerrainSkyVisibility()`, `GetTerrainSunVisibility()`, the view's `TerrainFog`): in a
+  tunnel or down a rift the fog round the camera is dark, as its walls are, and what the fog adds
+  is dimmed by how much of it is that near part. The fog farther off is lit as before.
+  `NyxTerrainChunksGpuTests` (the fog in a closed chamber next to black).
 - The field (`SdfTerrain.h`): `SampleTerrain()` gives the value at a point (negative inside, 0 on the
   surface) and its material, `SampleTerrainBatch()` many points, the same bits, with the 3D noise
   eight points at a time. A batch goes in blocks of 64 points, and a layer that is proven not to

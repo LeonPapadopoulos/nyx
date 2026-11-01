@@ -3087,6 +3087,15 @@ namespace Nyx
 				ubo.TerrainOcclusionVolumes[level] = view.TerrainOcclusion.Levels[level].Slot;
 				ubo.TerrainOcclusionWindows[level] = view.TerrainOcclusion.Levels[level].Window;
 			}
+			// The fog near the camera lit as the camera is: in a tunnel by little of the sky and none of
+			// the sun, as its walls and floor are
+			if (const TerrainOcclusionComponent* volume = view.TerrainOcclusion.Source)
+			{
+				const glm::vec3 eye(ubo.CameraWorldPos);
+				const glm::vec3 toSun = glm::length(glm::vec3(ubo.LightDirectionWS)) > 0.0f ? glm::normalize(glm::vec3(ubo.LightDirectionWS)) : glm::vec3(0.0f, 1.0f, 0.0f);
+				ubo.TerrainFog = glm::vec4(GetTerrainSkyVisibility(*volume, eye, glm::vec3(0.0f, 1.0f, 0.0f)), GetTerrainSunVisibility(*volume, eye, toSun, toSun),
+					TerrainOcclusion::FogReach, 0.0f);
+			}
 		}
 
 		// Its light shafts, in the frames its sun gives some

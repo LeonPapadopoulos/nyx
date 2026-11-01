@@ -8,6 +8,7 @@
 // NYX_SCENE_TEST_OUTPUT=<folder> saves what was rendered there.
 #include "CameraComponent.h"
 #include "DirectionalLightComponent.h"
+#include "EnvironmentComponent.h"
 #include "Entity.h"
 #include "ImageFile.h"
 #include "JobSystem.h"
@@ -272,6 +273,43 @@ namespace
 		Require(insideOpen > 10.0 && inside < insideOpen * 0.2, "A closed chamber should be next to black with sky occlusion");
 		Require(over > overOpen * 0.9, "Open ground should be much the same with sky occlusion");
 	}
+
+	// The height fog in a closed chamber: lit as the camera there is, by next to none of the sky, so
+	// as dark as its walls with sky occlusion, glowing without
+	void TestFogInTheTerrain(SceneRenderer& gpu)
+	{
+		SdfTerrainComponent ground;
+		ground.ViewDistance = 160.0f;
+		ground.Layers[0].Height = 0.0f;
+		ground.Layers[0].Amplitude = 0.0f;
+		SdfTerrainEdit chamber;
+		chamber.Shape = ESdfTerrainEditShape::Box;
+		chamber.Position = glm::vec3(0.0f, -14.0f, 0.0f);
+		chamber.HalfSize = glm::vec3(12.0f, 4.0f, 12.0f);
+		AppendTerrainEdit(ground, chamber);
+		TerrainScene scene(gpu, ground);
+		EnvironmentComponent air;
+		air.bFog = true;
+		air.FogDensity = 0.08f;
+		air.FogHeightFalloff = 0.0f;
+		air.FogHeight = -14.0f;
+		scene.World.Add<EnvironmentComponent>(scene.World.CreateEntity(), air);
+		gpu.DrawUntilShadersCompiled();
+
+		scene.Look(glm::vec3(-8.0f, -15.0f, -8.0f), glm::vec3(8.0f, -17.0f, 8.0f));
+		scene.World.Get<SdfTerrainComponent>(scene.Terrain).SkyOcclusion = 1.0f;
+		scene.MakeChunks();
+		const RgbaImage with = scene.Draw();
+		scene.World.Get<SdfTerrainComponent>(scene.Terrain).SkyOcclusion = 0.0f;
+		scene.MakeChunks();
+		const RgbaImage without = scene.Draw();
+		SaveIfAsked(with, "ChamberFog-Occluded");
+		SaveIfAsked(without, "ChamberFog-Open");
+		const double inside = MeanBrightness(with);
+		const double insideOpen = MeanBrightness(without);
+		std::cout << "Fog in a closed chamber: " << inside << " of " << insideOpen << " bright" << std::endl;
+		Require(insideOpen > 10.0 && inside < insideOpen * 0.2, "The fog in a closed chamber should be next to black with sky occlusion");
+	}
 }
 
 	// Far shadows: a slab held 30 m over flat ground, the camera 150 m off, the sun's shadow distance
@@ -325,6 +363,7 @@ int main()
 		SceneRenderer gpu("NyxTerrainChunksGpuTests", 1);
 		TestChunksDrawn(gpu);
 		TestSkyOcclusion(gpu);
+		TestFogInTheTerrain(gpu);
 		TestFarShadows(gpu);
 	}
 	catch (const std::exception& error)

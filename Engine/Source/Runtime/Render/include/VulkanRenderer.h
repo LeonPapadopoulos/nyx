@@ -291,11 +291,15 @@ namespace Nyx
 		uint32_t TerrainOcclusionPadding1 = 0;
 		std::array<uint32_t, 8> TerrainOcclusionVolumes{};
 		std::array<glm::vec4, TerrainOcclusion::Levels> TerrainOcclusionWindows{};
+		// What the terrain round the camera leaves the fog near it (nyx.atmosphere): how much of the
+		// sky (x) and of the sun (y) the camera sees past it, and over how many metres from the camera
+		// (z) the fog is lit as there; 1, 1 and 0 without a volume
+		glm::vec4 TerrainFog{ 1.0f, 1.0f, 0.0f, 0.0f };
 	};
 
 	// The view's set (set 1) as nyx/view.slang reads it, in scalar layout; to whole 16 bytes, as
 	// std140 would be too
-	static_assert(sizeof(SceneUBO) == 2640, "SceneUBO must match ViewConstants in nyx/view.slang");
+	static_assert(sizeof(SceneUBO) == 2656, "SceneUBO must match ViewConstants in nyx/view.slang");
 
 	// One draw's push constants, the same for every scene pipeline: ObjectConstants in
 	// nyx/bindless.slang

@@ -267,6 +267,10 @@ public struct ViewConstants
     public uint TerrainOcclusionPadding1;
     public uint4 TerrainOcclusionVolumes[2];
     public float4 TerrainOcclusionWindows[6];
+    // What the terrain round the camera leaves the fog near it: how much of the sky (x) and of the
+    // sun (y) the camera sees past it, and over how many metres from the camera (z) the fog is lit as
+    // there; 1, 1 and 0 without a volume
+    public float4 TerrainFog;
 }
 [vk::binding(0, 1)] public ConstantBuffer<ViewConstants> View;
 

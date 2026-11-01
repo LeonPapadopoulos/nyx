@@ -68,6 +68,9 @@ namespace Nyx
 		constexpr float SunConeTangent = 0.04f;
 		constexpr float SunMaxDistance = 1024.0f;
 		constexpr int SunMaxSteps = 32;
+		// The height fog within this many metres of the camera is lit as the camera is, by the sky and
+		// the sun it sees past the terrain (nyx.atmosphere): in a tunnel or down a rift, dark
+		constexpr float FogReach = 24.0f;
 	}
 
 	struct TerrainOcclusionLevel

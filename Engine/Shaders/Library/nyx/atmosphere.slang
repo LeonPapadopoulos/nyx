@@ -75,8 +75,20 @@ namespace nyx
         const float startHeight = View.CameraPosition.y + direction.y * startDistance;
         const float depth = fogDepthAlong(density, View.FogShape.x, View.FogShape.y, startHeight, direction.y, distance - startDistance);
         fog.Transmittance = max(exp(-depth), 1.0 - View.FogShape.w);
-        const float3 own = hasSkyAtmosphere() ? skyAtmosphereFogColor(direction) * View.FogColor.rgb : View.FogColor.rgb;
-        fog.Inscattering = own + View.FogSun.rgb * henyeyGreenstein(dot(direction, normalize(View.LightDirection.xyz)), View.FogSun.w);
+        float3 own = hasSkyAtmosphere() ? skyAtmosphereFogColor(direction) * View.FogColor.rgb : View.FogColor.rgb;
+        float3 sun = View.FogSun.rgb * henyeyGreenstein(dot(direction, normalize(View.LightDirection.xyz)), View.FogSun.w);
+
+        // The fog near the camera, within the terrain round it, lit only by the sky and the sun the
+        // camera sees past it: its share of what the fog adds by how much of the fog it is
+        const float nearReach = min(distance - startDistance, View.TerrainFog.z);
+        if (nearReach > 0.0 && (View.TerrainFog.x < 1.0 || View.TerrainFog.y < 1.0))
+        {
+            const float nearDepth = fogDepthAlong(density, View.FogShape.x, View.FogShape.y, startHeight, direction.y, nearReach);
+            const float near = (1.0 - exp(-nearDepth)) / max(1.0 - exp(-depth), 1e-6);
+            own *= lerp(1.0, View.TerrainFog.x, saturate(near));
+            sun *= lerp(1.0, View.TerrainFog.y, saturate(near));
+        }
+        fog.Inscattering = own + sun;
         return fog;
     }
 
