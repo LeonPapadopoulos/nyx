@@ -5,6 +5,7 @@
 #include "JobSystem.h"
 #include "SdfTerrain.h"
 #include "TerrainOcclusion.h"
+#include "TerrainNavigation.h"
 #include "TerrainPlacement.h"
 #include "TerrainTraversal.h"
 #include "TerrainWater.h"
@@ -1965,6 +1966,7 @@ namespace Nyx
 		UpdateTerrainWater(world, jobs);
 		UpdateTerrainPlaces(world, jobs);
 		UpdateTerrainTraversal(world, jobs);
+		UpdateTerrainNavigation(world, viewpoints, jobs);
 		UpdateTerrainOcclusion(world, viewpoints, jobs);
 	}
 
@@ -1985,6 +1987,10 @@ namespace Nyx
 		if (world.Has<TerrainTraversalComponent>(entity))
 		{
 			world.Remove<TerrainTraversalComponent>(entity);
+		}
+		if (world.Has<TerrainNavigationComponent>(entity))
+		{
+			world.Remove<TerrainNavigationComponent>(entity);
 		}
 		if (world.Has<TerrainOcclusionComponent>(entity))
 		{

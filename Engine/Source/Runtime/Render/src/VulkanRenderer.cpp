@@ -29,6 +29,7 @@
 #include "WindField.h"
 #include "RuntimeMeshComponent.h"
 #include "TerrainChunks.h"
+#include "TerrainNavigation.h"
 #include "TerrainWater.h"
 #include "Paths.h"
 #include "Profiler.h"
@@ -1916,6 +1917,7 @@ namespace Nyx
 			view.Culling = {};
 			view.CullingLines = {};
 			view.WindLines = {};
+			view.NavigationLines = {};
 			view.Shadows.CascadeCount = 0;
 
 			// A view drawn when shown and not shown in the frame before does nothing more: its
@@ -2045,6 +2047,21 @@ namespace Nyx
 			DrawWindDebug(WindDrawing, world.Wind, camera, world.WindSettings.GroundHeight, world.Time, world.WindDebug == Nyx::EWindDebug::ArrowsAndGustFronts);
 			view.WindLines = DebugLines.Add(WindDrawing);
 		}
+
+		// The navigation polygons of its world's terrains that show them, within 200 m of its camera
+		NavigationDrawing.Clear();
+		world.Registry->Each<Nyx::TerrainNavigationComponent>(
+			[&](Nyx::Entity entity, const Nyx::TerrainNavigationComponent& navigation)
+			{
+				if (!world.Registry->Has<Nyx::SdfTerrainComponent>(entity) || !world.Registry->Get<Nyx::SdfTerrainComponent>(entity).Navigation.bShow)
+				{
+					return;
+				}
+				const glm::mat4 toWorld = world.Registry->Has<Nyx::TransformComponent>(entity) ? world.Registry->Get<Nyx::TransformComponent>(entity).ToMatrix() : glm::mat4(1.0f);
+				const glm::vec3 local = glm::vec3(glm::inverse(toWorld) * glm::vec4(camera, 1.0f));
+				Nyx::DrawTerrainNavigation(NavigationDrawing, navigation, toWorld, local, 200.0f);
+			});
+		view.NavigationLines = DebugLines.Add(NavigationDrawing);
 
 		// Its game's local air round its camera, for the grass and trees
 		const auto field = WorldWindFields.find(world.Registry);
@@ -4012,6 +4029,10 @@ namespace Nyx
 		if (view.WindLines.VertexCount > 0)
 		{
 			DebugLines.Draw(view, view.WindLines, cmd);
+		}
+		if (view.NavigationLines.VertexCount > 0)
+		{
+			DebugLines.Draw(view, view.NavigationLines, cmd);
 		}
 		if (view.ShadowDebug != ESceneViewShadowDebug::Off)
 		{

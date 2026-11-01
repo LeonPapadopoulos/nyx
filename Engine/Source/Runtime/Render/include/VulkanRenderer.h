@@ -1020,6 +1020,7 @@ namespace Nyx
 		// The air the worlds' games keep on top of their wind (SetWorldWindField()), by world, kept so too
 		// The wind's debug view as lines, made again for each view that shows it
 		Nyx::DebugDraw WindDrawing;
+		Nyx::DebugDraw NavigationDrawing;
 		std::unordered_map<const Nyx::Registry*, const Nyx::IWindField*> WorldWindFields;
 
 		// Seconds since the renderer was made, this frame: the time of worlds without a clock

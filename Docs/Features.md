@@ -1831,6 +1831,20 @@ game, coarser the farther, and collides while the world runs.
     on its ground, its kind, dry, its footprint and clearance checked against the field again, its
     spacing and nearness; another rule leaving the others as they were; a rule nothing meets taking
     8 seeds, then its *Fallback*; kept up to date, never for an edit; copies at the places.
+- Navigation tiles (`TerrainNavigation.h`, *Navigation* in the terrain's values, off by default), for
+  characters a game moves to find their way: Recast's walkable polygons in one Detour navigation
+  mesh, a tile a 32 m column of the finest chunks, within *Distance* of the viewpoints, made on the
+  workers as the chunks are and let go of past half as far again. Each from the field meshed at 1 m
+  cells (as the finest chunks and collision are), slab by slab where the field's value ranges say
+  the surface can be, with a border so its edges meet its neighbours', for a character of *Agent
+  Radius*, *Agent Height*, *Step Height* and *Walk Slope* at *Cell Size*; polygons under the water's
+  level are for swimming. A tile is made again when an edit's shape meets it (about 60 ms a tile
+  on its own). `FindTerrainNavigationPath()` (through the water too if asked, at three times the
+  cost), `FindTerrainNavigationPoint()`; *Show* draws the polygons round the camera in the scene
+  views, walkable green, under water blue; *Terrain Navigation* in the details panel's *Runtime*
+  section: its tiles, polygons and times. Recast and Detour are a submodule
+  (`Dependencies/recastnavigation`). `NyxTerrainNavigationTests` (a path on the ground across the
+  plains, round a trench, round a dig made into the 6 tiles it reaches).
 - Sky occlusion (`TerrainOcclusion.h`, *Sky Occlusion* in the terrain's *Lighting*, 1 by default):
   the terrain round the camera dims the sky's light on everything near it by how much of the sky
   it hides, so tunnels go dark, rifts darken towards their bottoms, and under overhangs and the

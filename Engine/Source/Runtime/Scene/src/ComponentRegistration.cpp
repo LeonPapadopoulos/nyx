@@ -11,6 +11,7 @@
 #include "SurfaceDecalComponent.h"
 #include "TerrainChunks.h"
 #include "TerrainOcclusion.h"
+#include "TerrainNavigation.h"
 #include "TerrainPlacement.h"
 #include "TerrainTraversal.h"
 #include "TerrainWater.h"
@@ -112,6 +113,7 @@ namespace Nyx
 		ComponentTypeRegistry::Get().RegisterRuntime<TerrainChunksComponent>("Nyx::TerrainChunksComponent", "Terrain Chunks", &DescribeTerrainChunks);
 		ComponentTypeRegistry::Get().RegisterRuntime<TerrainCollisionComponent>("Nyx::TerrainCollisionComponent", "Terrain Collision", &DescribeTerrainCollision);
 		ComponentTypeRegistry::Get().RegisterRuntime<TerrainWaterComponent>("Nyx::TerrainWaterComponent", "Terrain Water", &DescribeTerrainWater);
+		ComponentTypeRegistry::Get().RegisterRuntime<TerrainNavigationComponent>("Nyx::TerrainNavigationComponent", "Terrain Navigation", &DescribeTerrainNavigation);
 		ComponentTypeRegistry::Get().RegisterRuntime<TerrainPlacesComponent>("Nyx::TerrainPlacesComponent", "Terrain Places", &DescribeTerrainPlaces);
 		ComponentTypeRegistry::Get().RegisterRuntime<TerrainTraversalComponent>("Nyx::TerrainTraversalComponent", "Terrain Traversal", &DescribeTerrainTraversal);
 		ComponentTypeRegistry::Get().RegisterRuntime<TerrainOcclusionComponent>("Nyx::TerrainOcclusionComponent", "Terrain Occlusion", &DescribeTerrainOcclusion);

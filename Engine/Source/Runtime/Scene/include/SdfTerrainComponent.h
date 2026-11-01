@@ -631,6 +631,37 @@ namespace Nyx
 		uint32_t Approaches = 1;
 	};
 
+	// An SDF terrain's navigation tiles (TerrainNavigation.h): Recast's walkable polygons, a tile of
+	// 32 m a column of the finest chunks, round the viewpoints, for characters a game moves to find
+	// their way; what a character is, in metres
+	NYX_REFLECT()
+	struct SdfTerrainNavigation
+	{
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Tooltip = "Off: no tiles are made"))
+		bool bEnabled = false;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DragSpeed = 4.0, Tooltip = "How far round each viewpoint, in metres, the tiles are made"))
+		float Distance = 96.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Agent Radius", DragSpeed = 0.01, Tooltip = "How far from walls, in metres, a character keeps"))
+		float AgentRadius = 0.4f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Agent Height", DragSpeed = 0.01, Tooltip = "How much room, in metres, a character needs over the ground"))
+		float AgentHeight = 1.8f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Step Height", DragSpeed = 0.01, Tooltip = "How high a step, in metres, a character takes"))
+		float StepHeight = 0.5f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Walk Slope", DragSpeed = 0.5, Tooltip = "How steep, in degrees, ground can be walked"))
+		float WalkSlope = 45.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Cell Size", DragSpeed = 0.01, Tooltip = "How finely, in metres, the ground is looked at along X and Z; finer, slower"))
+		float CellSize = 0.25f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Tooltip = "Its polygons drawn as lines in the scene views, round the camera: walkable green, under water blue"))
+		bool bShow = false;
+	};
+
 	struct TerrainWorldPlan;
 
 	// Terrain as a signed field over a volume, so it can overhang, hollow out and float: a stack of
@@ -710,6 +741,9 @@ namespace Nyx
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Route Checks", Category = "Places", Tooltip = "Whether the places can be reached: every place of one rule from the first of another, by what is allowed, by enough separate ways"))
 		std::vector<SdfTerrainRouteCheck> RouteChecks;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Navigation", Tooltip = "Walkable polygons round the viewpoints for characters a game moves to find their way"))
+		SdfTerrainNavigation Navigation;
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Collision Distance", Category = "Collision", DragSpeed = 1.0, Tooltip = "How far round every character and moving body, in metres, the finest chunks have collision while the world runs, and along where each is going for the next 2 s; 0: no collision"))
 		float CollisionDistance = 64.0f;

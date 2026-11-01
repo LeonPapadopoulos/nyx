@@ -166,6 +166,13 @@ set(JPH_USE_CPU_COMPUTE OFF CACHE BOOL "" FORCE)
 add_subdirectory(Dependencies/JoltPhysics/Build)
 target_compile_definitions(Jolt PUBLIC "$<$<CONFIG:Debug>:JPH_ENABLE_ASSERTS>")
 
+# Recast and Detour, navigation meshes and paths over them (Engine/Source/Runtime/Scene's
+# TerrainNavigation.cpp), as static libraries, without their demo, tests or examples
+set(RECASTNAVIGATION_DEMO OFF CACHE BOOL "" FORCE)
+set(RECASTNAVIGATION_TESTS OFF CACHE BOOL "" FORCE)
+set(RECASTNAVIGATION_EXAMPLES OFF CACHE BOOL "" FORCE)
+add_subdirectory(Dependencies/recastnavigation)
+
 # Tests
 include(CTest)
 

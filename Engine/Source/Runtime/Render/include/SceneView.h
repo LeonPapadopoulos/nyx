@@ -101,6 +101,9 @@ namespace Nyx
 		// Its world's wind over the ground round its camera as debug lines (WindComponent's Debug
 		// View), and its texture of the world's local air round its camera (VulkanLocalWind)
 		DebugLineRange WindLines;
+		// Its world's SDF terrains' navigation polygons round its camera, where they ask to be shown
+		// (SdfTerrainNavigation::bShow)
+		DebugLineRange NavigationLines;
 		SceneViewLocalWind LocalWind;
 		// Its copy of its world's terrain occlusion volume, for the sky's light (VulkanTerrainOcclusion)
 		SceneViewTerrainOcclusion TerrainOcclusion;

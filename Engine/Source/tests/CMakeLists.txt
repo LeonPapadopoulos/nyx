@@ -168,6 +168,14 @@ target_link_libraries(NyxTerrainSeeds PRIVATE NyxEngine)
 add_dependencies(NyxTerrainSeeds NyxGeneratedReflection)
 set_property(TARGET NyxTerrainSeeds PROPERTY FOLDER "Tests")
 
+# Navigation tiles of an SDF terrain: made round a viewpoint, a path on the ground, round a trench,
+# a dig made into the tiles it reaches and the path round it.
+add_executable(NyxTerrainNavigationTests TerrainNavigationTests.cpp)
+target_link_libraries(NyxTerrainNavigationTests PRIVATE NyxEngine)
+add_dependencies(NyxTerrainNavigationTests NyxGeneratedReflection)
+set_property(TARGET NyxTerrainNavigationTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxTerrainNavigationTests COMMAND NyxTerrainNavigationTests)
+
 # Dual meshing of a sampled field: a sphere closed with the right area, a box's corners sharp or
 # rounded, thin shapes closed and facing out, neighbouring chunks meeting, sky visibility,
 # materials, the golden mesh. Prints how long a chunk takes to sample and mesh.

@@ -108,6 +108,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/TerrainPlacement.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/TerrainTraversal.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/TerrainSeedTests.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/TerrainNavigation.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/TerrainWorldPlanMap.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/TerrainChunks.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/GroundMesh.cpp
@@ -357,6 +358,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/TerrainPlacement.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/TerrainTraversal.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/TerrainSeedTests.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/TerrainNavigation.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/TerrainWorldPlanMap.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/TerrainChunks.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/GroundMesh.h
@@ -686,6 +688,9 @@ foreach(NYX_ENGINE_TARGET NyxEngineCommon NyxEngine NyxEditorEngine)
 
     # Physics (PhysicsWorld.cpp) on Jolt, whose headers only the Physics folder includes
     target_link_libraries(${NYX_ENGINE_TARGET} PRIVATE Jolt)
+    # The SDF terrain's navigation tiles (TerrainNavigation.cpp) on Recast and Detour, whose headers
+    # only that file includes
+    target_link_libraries(${NYX_ENGINE_TARGET} PRIVATE Recast Detour)
 
     # The profiler (Profiler.h): Tracy's client, PUBLIC so every program gets it, or nothing at all
     target_compile_definitions(${NYX_ENGINE_TARGET} PUBLIC "NYX_PROFILER=$<BOOL:${NYX_PROFILER}>")
