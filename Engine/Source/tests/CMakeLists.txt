@@ -75,6 +75,13 @@ add_dependencies(NyxFrameRateLimiterTests NyxGeneratedReflection)
 set_property(TARGET NyxFrameRateLimiterTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxFrameRateLimiterTests COMMAND NyxFrameRateLimiterTests)
 
+# Windows' places through GLFW: a custom titlebar window has no frame, so it is where it is put.
+add_executable(NyxWindowFrameTests WindowFrameTests.cpp)
+target_link_libraries(NyxWindowFrameTests PRIVATE NyxEngine glfw)
+add_dependencies(NyxWindowFrameTests NyxGeneratedReflection)
+set_property(TARGET NyxWindowFrameTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxWindowFrameTests COMMAND NyxWindowFrameTests)
+
 # The fixed simulation tick: steps per frame at any frame rate, the cap, pause and step, time scale.
 add_executable(NyxFixedStepClockTests FixedStepClockTests.cpp)
 target_link_libraries(NyxFixedStepClockTests PRIVATE NyxEngine)
