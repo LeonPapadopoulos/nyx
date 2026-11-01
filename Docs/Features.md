@@ -1693,6 +1693,28 @@ game, coarser the farther, and collides while the world runs.
   from where they land, pooling in hollows, to the sea, a lake or an edge; below the cut their old
   course is dry. *Terrain Water* in the details panel's *Runtime* section: its cells of sea and of
   lakes, rivers and falls, how often and how long it was worked out.
+- *Place Rules*, for a terrain with a *Plan* layer (`TerrainPlacement.h`): kinds of places a world
+  is made with, found on its ground when the world is made, from the terrain's layers, plan and
+  seed and never its edits, so the same world has the same places. Each rule asks for *Count*
+  places: a footprint *Radius* wide no steeper than *Max Slope* from its middle, *Clearance* free
+  above it, within the *Height Range*, on the kinds of ground it allows (*Plains*, *Rough Land*,
+  *Tunnels*, *Rifts*, *Sea*), out of the sea and the lakes (*Dry*), *Spacing* from its own others
+  and *Apart* from other rules' footprints, and within *Near Distance* of an earlier rule's place
+  (*Near*). Places are tried at random from the terrain's seed and the rule's *Name*, the field
+  itself checking each (the ground from above, round the footprint, the space over it); where not
+  enough are found, the rule tries its next seed, up to 8, then its *Fallback* places (the
+  template's layout) stand in for the rest. The same places on every machine; found on a worker
+  whenever the layers, plan, seed or rules change (`PlaceOnTerrain()`): a few milliseconds for a
+  dozen places on a 2 km world. *Terrain Places* in the details panel's *Runtime* section: each
+  rule's places found, from its *Fallback*, its seeds and tries, and what its tries missed by most.
+  - On the *Plan Map*: a diamond at each place, a colour a rule, hollow where the *Fallback* gave
+    it, its footprint once zoomed in, its rule and ground under the mouse; *Places* hides them.
+  - *Terrain Place Copies*: copies of its entity's mesh at one rule's places (*Terrain*, *Rule*,
+    *Scale*), turned by each place's own yaw, placeholders for what a world puts there.
+  - `NyxTerrainPlacementTests`: the same places alone and on the workers, every time; each place
+    on its ground, its kind, dry, its footprint and clearance checked against the field again, its
+    spacing and nearness; another rule leaving the others as they were; a rule nothing meets taking
+    8 seeds, then its *Fallback*; kept up to date, never for an edit; copies at the places.
 - Sky occlusion (`TerrainOcclusion.h`, *Sky Occlusion* in the terrain's *Lighting*, 1 by default):
   the terrain round the camera dims the sky's light on everything near it by how much of the sky
   it hides, so tunnels go dark, rifts darken towards their bottoms, and under overhangs and the

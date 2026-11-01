@@ -21,8 +21,9 @@ namespace Nyx::Editor
 
 	// The world plan of an SDF terrain with a Plan layer, from above (Window > Plan Map): the
 	// selected terrain's, else the scene's first. The kinds of ground in their colours, rivers and
-	// lakes, shaded by an overlay (height, slope, tunnels); its pins as rings; each scene view's
-	// camera as a wedge; what the plan made the place under the mouse to be. The wheel zooms round
+	// lakes, shaded by an overlay (height, slope, tunnels); its pins as rings; the places its Place
+	// Rules found (TerrainPlacement.h) as diamonds, a colour a rule, hollow where a rule's Fallback
+	// gave them, with their footprints once zoomed in; each scene view's camera as a wedge; what the plan made the place under the mouse to be. The wheel zooms round
 	// the mouse, the right or middle button drags it, Fit shows all of it. X runs right, Z down.
 	//
 	// Steering it (TerrainPlanEdits.h), each an undo step, the plan made again when the mouse lets
@@ -40,6 +41,7 @@ namespace Nyx::Editor
 		Nyx::ETerrainPlanMapOverlay Overlay = Nyx::ETerrainPlanMapOverlay::Kinds;
 		// What a double-click adds
 		Nyx::ESdfTerrainLandform NewPinKind = Nyx::ESdfTerrainLandform::Plains;
+		bool bShowPlaces = true;
 
 	private:
 		// The map's picture, and the plan and overlay it was drawn from

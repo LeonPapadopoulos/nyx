@@ -138,6 +138,14 @@ add_dependencies(NyxTerrainWaterTests NyxGeneratedReflection)
 set_property(TARGET NyxTerrainWaterTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxTerrainWaterTests COMMAND NyxTerrainWaterTests)
 
+# Place Rules on an SDF terrain with a world plan: the same places on the workers and every time,
+# each meeting its rule by the field, the next seeds then the Fallback, kept up to date, copies at them.
+add_executable(NyxTerrainPlacementTests TerrainPlacementTests.cpp)
+target_link_libraries(NyxTerrainPlacementTests PRIVATE NyxEngine)
+add_dependencies(NyxTerrainPlacementTests NyxGeneratedReflection)
+set_property(TARGET NyxTerrainPlacementTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxTerrainPlacementTests COMMAND NyxTerrainPlacementTests)
+
 # Dual meshing of a sampled field: a sphere closed with the right area, a box's corners sharp or
 # rounded, thin shapes closed and facing out, neighbouring chunks meeting, sky visibility,
 # materials, the golden mesh. Prints how long a chunk takes to sample and mesh.

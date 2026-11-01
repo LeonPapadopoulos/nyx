@@ -7,6 +7,7 @@
 #include "SceneEditor.h"
 #include "SdfTerrainComponent.h"
 #include "TerrainPlanEdits.h"
+#include "TerrainPlacement.h"
 #include "TerrainWorldPlan.h"
 #include "TransformComponent.h"
 #include "UIWidgets.h"
@@ -59,6 +60,14 @@ namespace Nyx::Editor
 			default:
 				return IM_COL32(150, 235, 120, 255);
 			}
+		}
+
+		// A Place Rule's diamonds, by its number
+		ImU32 RuleColour(uint32_t rule)
+		{
+			static constexpr std::array<ImU32, 6> Colours = { IM_COL32(255, 220, 80, 255), IM_COL32(80, 230, 230, 255), IM_COL32(255, 120, 200, 255),
+				IM_COL32(255, 160, 60, 255), IM_COL32(170, 255, 120, 255), IM_COL32(200, 170, 255, 255) };
+			return Colours[rule % Colours.size()];
 		}
 	}
 
@@ -129,6 +138,8 @@ namespace Nyx::Editor
 		{
 			PixelsPerMetre = 0.0f;
 		}
+		ImGui::SameLine();
+		NYX_UI(Nyx::UI::Checkbox("Places", &bShowPlaces));
 		ImGui::SameLine();
 		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 8.0f);
 		if (NYX_UI(Nyx::UI::BeginCombo("New pin", LandformName(NewPinKind))))
@@ -348,6 +359,37 @@ namespace Nyx::Editor
 			drawList->AddText(ImVec2(at.x + 6.0f, at.y - 6.0f), colour, LandformName(pin.Landform));
 		}
 
+		// The places the rules found: a diamond each, hollow from a Fallback; their footprints once
+		// they are a few pixels across; what is under the mouse named
+		const Nyx::TerrainPlacesComponent* places = world.Has<Nyx::TerrainPlacesComponent>(*terrain) ? &world.Get<Nyx::TerrainPlacesComponent>(*terrain) : nullptr;
+		const Nyx::TerrainPlace* hoveredPlace = nullptr;
+		if (bShowPlaces && places && places->Placement)
+		{
+			for (const Nyx::TerrainPlace& place : places->Placement->Places)
+			{
+				const ImVec2 at = toScreen(glm::vec2(place.Position.x, place.Position.z));
+				const ImU32 colour = RuleColour(place.Rule);
+				const float radius = place.Rule < values.PlaceRules.size() ? values.PlaceRules[place.Rule].Radius * PixelsPerMetre : 0.0f;
+				if (radius > 4.0f)
+				{
+					drawList->AddCircle(at, radius, colour, 32, 1.0f);
+				}
+				const ImVec2 diamond[4] = { ImVec2(at.x, at.y - 5.0f), ImVec2(at.x + 5.0f, at.y), ImVec2(at.x, at.y + 5.0f), ImVec2(at.x - 5.0f, at.y) };
+				if (place.bFallback)
+				{
+					drawList->AddPolyline(diamond, 4, colour, ImDrawFlags_Closed, 1.5f);
+				}
+				else
+				{
+					drawList->AddConvexPolyFilled(diamond, 4, colour);
+				}
+				if (bHovered && std::fabs(io.MousePos.x - at.x) < 6.0f && std::fabs(io.MousePos.y - at.y) < 6.0f)
+				{
+					hoveredPlace = &place;
+				}
+			}
+		}
+
 		// Each scene view's camera, in the terrain's space: where it is and which way it looks
 		const glm::mat4 toTerrain = world.Has<Nyx::TransformComponent>(*terrain) ? glm::inverse(world.Get<Nyx::TransformComponent>(*terrain).ToMatrix()) : glm::mat4(1.0f);
 		for (const uint64_t view : renderer.GetSceneViewIds())
@@ -380,7 +422,14 @@ namespace Nyx::Editor
 		drawList->PopClipRect();
 
 		// What is under the mouse
-		if (bHovered)
+		if (hoveredPlace)
+		{
+			const std::string rule = hoveredPlace->Rule < values.PlaceRules.size() ? values.PlaceRules[hoveredPlace->Rule].Name : std::string("?");
+			const std::string line = std::format("{}{}: x {:.0f}, z {:.0f}, ground {:.1f} m", rule, hoveredPlace->bFallback ? " (its Fallback)" : "",
+				hoveredPlace->Position.x, hoveredPlace->Position.z, hoveredPlace->Position.y);
+			NYX_UI(ImGui::TextUnformatted(line.c_str()));
+		}
+		else if (bHovered)
 		{
 			const Nyx::TerrainPlanReadout readout = Nyx::ReadTerrainWorldPlan(*plan, under);
 			const std::string line = readout.bLand

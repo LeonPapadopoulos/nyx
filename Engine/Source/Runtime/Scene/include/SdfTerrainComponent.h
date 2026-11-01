@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace Nyx
@@ -426,6 +427,71 @@ namespace Nyx
 		ESdfTerrainLandform Landform = ESdfTerrainLandform::Plains;
 	};
 
+	// A kind of place a world is made with, found on an SDF terrain with a Plan layer when its world is
+	// made (SdfTerrainComponent::PlaceRules, PlaceOnTerrain(), TerrainPlacement.h): Count places on its
+	// ground from above, each a footprint of Radius that is no steeper than Max Slope, has Clearance
+	// free above it, lies on the kinds of ground allowed, within the Height Range, out of the water if
+	// asked, apart from the others and near an earlier rule's place if asked. Where the seed's places
+	// can't all be found, the rule's places are sought again with its next seed, up to 8 times, then
+	// the Fallback places (the template's layout) stand in for the rest. The same on every machine.
+	NYX_REFLECT()
+	struct SdfTerrainPlaceRule
+	{
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Tooltip = "Off: as if it weren't there"))
+		bool bEnabled = true;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Tooltip = "What its places are called, for other rules' Near and for Terrain Place Copies"))
+		std::string Name = "Place";
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Tooltip = "How many places"))
+		uint32_t Count = 1;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DragSpeed = 0.5, Tooltip = "How far round its middle, in metres, the ground must be fit"))
+		float Radius = 8.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Max Slope", DragSpeed = 0.5, Tooltip = "In degrees: how steeply the ground over its footprint may rise or fall from its middle"))
+		float MaxSlope = 15.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DragSpeed = 0.5, Tooltip = "How high, in metres, the space above its footprint must be free of terrain"))
+		float Clearance = 6.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Height Range", DragSpeed = 0.5, Tooltip = "Only where the ground is between these heights, in metres"))
+		glm::vec2 HeightRange{ -1000.0f, 1000.0f };
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Ground", Tooltip = "On the plan's plains"))
+		bool bPlains = true;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Rough Land", Category = "Ground", Tooltip = "On the plan's rough land"))
+		bool bRoughland = true;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Ground", Tooltip = "Over the plan's tunnels"))
+		bool bTunnels = true;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Ground", Tooltip = "In the plan's rifts, on their floors"))
+		bool bRifts = false;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Ground", Tooltip = "Where the plan has sea"))
+		bool bSea = false;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Ground", Tooltip = "Not under the sea's level, nor under a lake's"))
+		bool bDry = true;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Distances", DragSpeed = 1.0, Tooltip = "The least distance, in metres, between two of its places"))
+		float Spacing = 100.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Distances", DragSpeed = 0.5, Tooltip = "The least distance, in metres, between its footprints and other rules' places' footprints"))
+		float Apart = 8.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Distances", Tooltip = "Another, earlier rule's Name: each place within Near Distance of one of its places. Empty: anywhere"))
+		std::string Near;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Near Distance", Category = "Distances", DragSpeed = 1.0, Tooltip = "Between how many metres from the nearest of Near's places"))
+		glm::vec2 NearDistance{ 0.0f, 300.0f };
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Distances", DragSpeed = 4.0, Tooltip = "Where its places are, along X and Z, when not enough can be found by the rule: the template's layout"))
+		std::vector<glm::vec2> Fallback;
+	};
+
 	struct TerrainWorldPlan;
 
 	// Terrain as a signed field over a volume, so it can overhang, hollow out and float: a stack of
@@ -493,6 +559,9 @@ namespace Nyx
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Material Rules", Category = "Chunks", Tooltip = "In order, the first a surface meets gives it its material: by its slope, height, depth below the World Plan's ground and the kind of ground there"))
 		std::vector<SdfTerrainMaterialRule> MaterialRules;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Place Rules", Category = "Places", Tooltip = "Kinds of places found on the ground when the world is made, in order, each by its footprint, slope, clearance, kind of ground and distances (needs a Plan layer)"))
+		std::vector<SdfTerrainPlaceRule> PlaceRules;
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Collision Distance", Category = "Collision", DragSpeed = 1.0, Tooltip = "How far round every character and moving body, in metres, the finest chunks have collision while the world runs, and along where each is going for the next 2 s; 0: no collision"))
 		float CollisionDistance = 64.0f;

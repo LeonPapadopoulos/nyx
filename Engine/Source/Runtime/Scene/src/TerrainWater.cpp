@@ -33,61 +33,10 @@ namespace Nyx
 
 		using EBody = TerrainWater::EBody;
 
-		// The ground's search down a column: samples this far apart, 64 at a time, then the crossing
-		// halved to a couple of centimetres. It can step over ground thinner than a step.
-		constexpr float ColumnStep = 1.5f;
-		constexpr int ColumnBatch = 64;
-		constexpr int Halvings = 7;
-
-		// The first surface down a column from `top` to `bottom`; NoGround if there is none
+		// The first surface down a column (FindTerrainGround()); NoGround if there is none
 		float FindGround(const SdfTerrainComponent& terrain, const glm::vec2& point, float top, float bottom)
 		{
-			std::array<float, ColumnBatch> x;
-			std::array<float, ColumnBatch> y;
-			std::array<float, ColumnBatch> z;
-			std::array<float, ColumnBatch> values;
-			x.fill(point.x);
-			z.fill(point.y);
-			float above = top;
-			if (SampleTerrainValue(terrain, glm::vec3(point.x, top, point.y)) <= 0.0f)
-			{
-				return top;
-			}
-			for (float from = top; from > bottom; from -= ColumnStep * float(ColumnBatch))
-			{
-				for (int n = 0; n < ColumnBatch; ++n)
-				{
-					y[size_t(n)] = from - ColumnStep * float(n + 1);
-				}
-				SampleTerrainBatch(terrain, x.data(), y.data(), z.data(), size_t(ColumnBatch), values.data());
-				for (int n = 0; n < ColumnBatch; ++n)
-				{
-					if (y[size_t(n)] < bottom)
-					{
-						return TerrainWater::NoGround;
-					}
-					if (values[size_t(n)] <= 0.0f)
-					{
-						// Between the last sample above and this one, halved
-						float below = y[size_t(n)];
-						for (int halving = 0; halving < Halvings; ++halving)
-						{
-							const float middle = (above + below) * 0.5f;
-							if (SampleTerrainValue(terrain, glm::vec3(point.x, middle, point.y)) > 0.0f)
-							{
-								above = middle;
-							}
-							else
-							{
-								below = middle;
-							}
-						}
-						return (above + below) * 0.5f;
-					}
-					above = y[size_t(n)];
-				}
-			}
-			return TerrainWater::NoGround;
+			return FindTerrainGround(terrain, point, top, bottom).value_or(TerrainWater::NoGround);
 		}
 
 		bool HasGround(float ground)

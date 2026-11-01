@@ -300,4 +300,9 @@ namespace Nyx
 	// clearance (the faces, edges and corners of a cube, made unit) all outside. Nothing if none is
 	// found. A function of the terrain's values alone, usable where no chunk is made.
 	std::optional<glm::vec3> FindTerrainFreePoint(const SdfTerrainComponent& terrain, const glm::vec3& point, float clearance, float maxDistance);
+
+	// The first surface down a column at a point along X and Z, from `top` to `bottom`: samples 1.5 m
+	// apart, 64 at a time, then the crossing halved to a couple of centimetres; `top` itself where it
+	// is inside, nothing where there is no surface. It can step over ground thinner than a step.
+	std::optional<float> FindTerrainGround(const SdfTerrainComponent& terrain, const glm::vec2& point, float top, float bottom);
 }

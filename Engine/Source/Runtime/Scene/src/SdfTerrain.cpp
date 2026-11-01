@@ -2668,4 +2668,57 @@ namespace Nyx
 		}();
 		return Fingerprint;
 	}
+
+	std::optional<float> FindTerrainGround(const SdfTerrainComponent& terrain, const glm::vec2& point, float top, float bottom)
+	{
+		constexpr float Step = 1.5f;
+		constexpr int Batch = 64;
+		constexpr int Halvings = 7;
+		std::array<float, Batch> x;
+		std::array<float, Batch> y;
+		std::array<float, Batch> z;
+		std::array<float, Batch> values;
+		x.fill(point.x);
+		z.fill(point.y);
+		float above = top;
+		if (SampleTerrainValue(terrain, glm::vec3(point.x, top, point.y)) <= 0.0f)
+		{
+			return top;
+		}
+		for (float from = top; from > bottom; from -= Step * float(Batch))
+		{
+			for (int n = 0; n < Batch; ++n)
+			{
+				y[size_t(n)] = from - Step * float(n + 1);
+			}
+			SampleTerrainBatch(terrain, x.data(), y.data(), z.data(), size_t(Batch), values.data());
+			for (int n = 0; n < Batch; ++n)
+			{
+				if (y[size_t(n)] < bottom)
+				{
+					return std::nullopt;
+				}
+				if (values[size_t(n)] <= 0.0f)
+				{
+					// Between the last sample above and this one, halved
+					float below = y[size_t(n)];
+					for (int halving = 0; halving < Halvings; ++halving)
+					{
+						const float middle = (above + below) * 0.5f;
+						if (SampleTerrainValue(terrain, glm::vec3(point.x, middle, point.y)) > 0.0f)
+						{
+							above = middle;
+						}
+						else
+						{
+							below = middle;
+						}
+					}
+					return (above + below) * 0.5f;
+				}
+				above = y[size_t(n)];
+			}
+		}
+		return std::nullopt;
+	}
 }
