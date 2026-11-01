@@ -12,6 +12,7 @@
 namespace Nyx
 {
 	class IEditorRenderer;
+	struct TerrainTraversal;
 	struct TerrainWorldPlan;
 }
 
@@ -23,7 +24,9 @@ namespace Nyx::Editor
 	// selected terrain's, else the scene's first. The kinds of ground in their colours, rivers and
 	// lakes, shaded by an overlay (height, slope, tunnels); its pins as rings; the places its Place
 	// Rules found (TerrainPlacement.h) as diamonds, a colour a rule, hollow where a rule's Fallback
-	// gave them, with their footprints once zoomed in; each scene view's camera as a wedge; what the plan made the place under the mouse to be. The wheel zooms round
+	// gave them, with their footprints once zoomed in; a place clicked, what can be reached from it
+	// by the traversal graph (TerrainTraversal.h, kept while the terrain has Route Checks): walking
+	// green, swimming blue, climbing yellow, jumping orange, nothing red; each scene view's camera as a wedge; what the plan made the place under the mouse to be. The wheel zooms round
 	// the mouse, the right or middle button drags it, Fit shows all of it. X runs right, Z down.
 	//
 	// Steering it (TerrainPlanEdits.h), each an undo step, the plan made again when the mouse lets
@@ -42,6 +45,8 @@ namespace Nyx::Editor
 		// What a double-click adds
 		Nyx::ESdfTerrainLandform NewPinKind = Nyx::ESdfTerrainLandform::Plains;
 		bool bShowPlaces = true;
+		// The place what can be reached is shown from, by its index; none: no reach shown
+		std::optional<size_t> ReachFrom;
 
 	private:
 		// The map's picture, and the plan and overlay it was drawn from
@@ -61,5 +66,9 @@ namespace Nyx::Editor
 		int MenuPlace = -1;
 		// The Rift pin double-clicks add places to the path of
 		std::optional<size_t> Extending;
+		// The reach's picture, a pixel a column, and the graph and place it was drawn from
+		uint64_t ReachImage = 0;
+		std::shared_ptr<const Nyx::TerrainTraversal> ReachDrawn;
+		size_t ReachDrawnFrom = 0;
 	};
 }

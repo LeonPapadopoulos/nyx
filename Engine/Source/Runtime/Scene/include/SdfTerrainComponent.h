@@ -492,6 +492,61 @@ namespace Nyx
 		std::vector<glm::vec2> Fallback;
 	};
 
+	// How a world made on an SDF terrain is crossed, for checking it when it is made (TerrainTraversal.h):
+	// what a character is and can do, in metres
+	NYX_REFLECT()
+	struct SdfTerrainTraversal
+	{
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DragSpeed = 0.1, Tooltip = "How far apart, in metres, the ground is looked at; at most 2048 a side, wider on larger worlds"))
+		float Spacing = 4.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DragSpeed = 0.05, Tooltip = "How much room, in metres, a character needs over the ground"))
+		float Headroom = 2.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Walk Slope", DragSpeed = 0.5, Tooltip = "How steep, in degrees, ground can be walked up"))
+		float WalkSlope = 40.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Step Height", DragSpeed = 0.05, Tooltip = "How high a step, in metres, walking takes besides the slope"))
+		float StepHeight = 0.5f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Climb Height", DragSpeed = 0.1, Tooltip = "How high, in metres, climbing goes up where walking can't"))
+		float ClimbHeight = 6.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Drop Height", DragSpeed = 0.1, Tooltip = "How far down, in metres, a character can drop safely, walking"))
+		float DropHeight = 6.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Gap Width", DragSpeed = 0.1, Tooltip = "How wide a gap, in metres, a jump crosses to ground about as high"))
+		float GapWidth = 6.0f;
+	};
+
+	// Whether a made world's places can be reached (TerrainTraversal.h): every place of the To rule
+	// from the first of the From rule, by walking and what else is allowed, each by at least
+	// Approaches separate ways
+	NYX_REFLECT()
+	struct SdfTerrainRouteCheck
+	{
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Tooltip = "Off: as if it weren't there"))
+		bool bEnabled = true;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Tooltip = "The Place Rule whose first place the ways start from"))
+		std::string From;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Tooltip = "The Place Rule whose every place must be reached"))
+		std::string To;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Tooltip = "Up more than walking can, up to the Climb Height"))
+		bool bClimb = false;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Tooltip = "Over gaps up to the Gap Width"))
+		bool bGap = false;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Tooltip = "Through the sea and lakes"))
+		bool bSwim = false;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Tooltip = "How many separate ways (sharing no 16 m cell) each place needs at least"))
+		uint32_t Approaches = 1;
+	};
+
 	struct TerrainWorldPlan;
 
 	// Terrain as a signed field over a volume, so it can overhang, hollow out and float: a stack of
@@ -562,6 +617,12 @@ namespace Nyx
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Place Rules", Category = "Places", Tooltip = "Kinds of places found on the ground when the world is made, in order, each by its footprint, slope, clearance, kind of ground and distances (needs a Plan layer)"))
 		std::vector<SdfTerrainPlaceRule> PlaceRules;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Places", Tooltip = "What a character is and can do, for the Route Checks"))
+		SdfTerrainTraversal Traversal;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Route Checks", Category = "Places", Tooltip = "Whether the places can be reached: every place of one rule from the first of another, by what is allowed, by enough separate ways"))
+		std::vector<SdfTerrainRouteCheck> RouteChecks;
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Collision Distance", Category = "Collision", DragSpeed = 1.0, Tooltip = "How far round every character and moving body, in metres, the finest chunks have collision while the world runs, and along where each is going for the next 2 s; 0: no collision"))
 		float CollisionDistance = 64.0f;

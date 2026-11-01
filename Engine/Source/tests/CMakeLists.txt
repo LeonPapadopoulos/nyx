@@ -146,6 +146,14 @@ add_dependencies(NyxTerrainPlacementTests NyxGeneratedReflection)
 set_property(TARGET NyxTerrainPlacementTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxTerrainPlacementTests COMMAND NyxTerrainPlacementTests)
 
+# The traversal graph of an SDF terrain with a world plan: the same on the workers, floors on the
+# ground, edges as their heights ask, routes, a gap jumped, approaches counted, Route Checks kept.
+add_executable(NyxTerrainTraversalTests TerrainTraversalTests.cpp)
+target_link_libraries(NyxTerrainTraversalTests PRIVATE NyxEngine)
+add_dependencies(NyxTerrainTraversalTests NyxGeneratedReflection)
+set_property(TARGET NyxTerrainTraversalTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxTerrainTraversalTests COMMAND NyxTerrainTraversalTests)
+
 # Dual meshing of a sampled field: a sphere closed with the right area, a box's corners sharp or
 # rounded, thin shapes closed and facing out, neighbouring chunks meeting, sky visibility,
 # materials, the golden mesh. Prints how long a chunk takes to sample and mesh.

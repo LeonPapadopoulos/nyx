@@ -6,6 +6,7 @@
 #include "SdfTerrain.h"
 #include "TerrainOcclusion.h"
 #include "TerrainPlacement.h"
+#include "TerrainTraversal.h"
 #include "TerrainWater.h"
 #include "TerrainWorldPlan.h"
 #include "TransformComponent.h"
@@ -1844,6 +1845,7 @@ namespace Nyx
 		}
 		UpdateTerrainWater(world, jobs);
 		UpdateTerrainPlaces(world, jobs);
+		UpdateTerrainTraversal(world, jobs);
 		UpdateTerrainOcclusion(world, viewpoints, jobs);
 	}
 
@@ -1860,6 +1862,10 @@ namespace Nyx
 		if (world.Has<TerrainPlacesComponent>(entity))
 		{
 			world.Remove<TerrainPlacesComponent>(entity);
+		}
+		if (world.Has<TerrainTraversalComponent>(entity))
+		{
+			world.Remove<TerrainTraversalComponent>(entity);
 		}
 		if (world.Has<TerrainOcclusionComponent>(entity))
 		{

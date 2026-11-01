@@ -8,6 +8,7 @@
 #include "SdfTerrainComponent.h"
 #include "TerrainPlanEdits.h"
 #include "TerrainPlacement.h"
+#include "TerrainTraversal.h"
 #include "TerrainWorldPlan.h"
 #include "TransformComponent.h"
 #include "UIWidgets.h"
@@ -363,7 +364,61 @@ namespace Nyx::Editor
 		// they are a few pixels across; what is under the mouse named
 		const Nyx::TerrainPlacesComponent* places = world.Has<Nyx::TerrainPlacesComponent>(*terrain) ? &world.Get<Nyx::TerrainPlacesComponent>(*terrain) : nullptr;
 		const Nyx::TerrainPlace* hoveredPlace = nullptr;
-		if (bShowPlaces && places && places->Placement)
+		const bool bPlaces = bShowPlaces && places && places->Placement;
+		for (size_t index = 0; bPlaces && bHovered && index < places->Placement->Places.size(); ++index)
+		{
+			const Nyx::TerrainPlace& place = places->Placement->Places[index];
+			const ImVec2 at = toScreen(glm::vec2(place.Position.x, place.Position.z));
+			if (std::fabs(io.MousePos.x - at.x) < 6.0f && std::fabs(io.MousePos.y - at.y) < 6.0f)
+			{
+				hoveredPlace = &place;
+			}
+		}
+
+		// What can be reached from a place clicked: a pixel a column, by its highest floor
+		if (hoveredPlace && bHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !Dragged)
+		{
+			ReachFrom = size_t(hoveredPlace - places->Placement->Places.data());
+		}
+		const Nyx::TerrainTraversalComponent* traversal = world.Has<Nyx::TerrainTraversalComponent>(*terrain) ? &world.Get<Nyx::TerrainTraversalComponent>(*terrain) : nullptr;
+		const bool bReach = ReachFrom && places && places->Placement && *ReachFrom < places->Placement->Places.size() && traversal && traversal->Traversal;
+		if (bReach && (traversal->Traversal != ReachDrawn || *ReachFrom != ReachDrawnFrom || ReachImage == 0))
+		{
+			const Nyx::TerrainTraversal& graph = *traversal->Traversal;
+			const std::optional<uint32_t> start = Nyx::FindTerrainFloor(graph, places->Placement->Places[*ReachFrom].Position);
+			const std::vector<uint8_t> reach = start ? Nyx::GetTerrainReach(graph, *start) : std::vector<uint8_t>(graph.Floors(), 0);
+			static constexpr std::array<std::array<uint8_t, 4>, 5> Colours = { { { 230, 60, 60, 150 }, { 90, 220, 90, 110 }, { 80, 150, 255, 140 }, { 255, 225, 70, 150 },
+				{ 255, 140, 40, 160 } } };
+			Nyx::RgbaImage picture;
+			picture.Width = uint32_t(graph.Columns);
+			picture.Height = uint32_t(graph.Columns);
+			picture.Pixels.assign(size_t(graph.Columns) * size_t(graph.Columns) * 4, 0);
+			for (size_t column = 0; column + 1 < graph.ColumnFirst.size(); ++column)
+			{
+				if (graph.ColumnFirst[column] == graph.ColumnFirst[column + 1])
+				{
+					continue;
+				}
+				const std::array<uint8_t, 4>& colour = Colours[std::min<size_t>(reach[graph.ColumnFirst[column]], Colours.size() - 1)];
+				std::copy(colour.begin(), colour.end(), picture.Pixels.begin() + std::ptrdiff_t(column * 4));
+			}
+			if (ReachImage != 0)
+			{
+				renderer.DestroyUIImage(ReachImage);
+			}
+			ReachImage = renderer.CreateUIImage(picture);
+			ReachDrawn = traversal->Traversal;
+			ReachDrawnFrom = *ReachFrom;
+		}
+		if (bReach && ReachImage != 0)
+		{
+			const Nyx::TerrainTraversal& graph = *ReachDrawn;
+			const glm::vec2 half(0.5f * graph.Values.Spacing);
+			const glm::vec2 far = graph.Origin + glm::vec2(float(graph.Columns) * graph.Values.Spacing) - half;
+			drawList->AddImage(ImTextureRef(renderer.GetUIImageTextureId(ReachImage)), toScreen(graph.Origin - half), toScreen(far));
+		}
+
+		if (bPlaces)
 		{
 			for (const Nyx::TerrainPlace& place : places->Placement->Places)
 			{
@@ -382,10 +437,6 @@ namespace Nyx::Editor
 				else
 				{
 					drawList->AddConvexPolyFilled(diamond, 4, colour);
-				}
-				if (bHovered && std::fabs(io.MousePos.x - at.x) < 6.0f && std::fabs(io.MousePos.y - at.y) < 6.0f)
-				{
-					hoveredPlace = &place;
 				}
 			}
 		}
@@ -445,6 +496,22 @@ namespace Nyx::Editor
 		if (Extending)
 		{
 			NYX_UI(ImGui::TextDisabled("Double-clicks add places to the rift's path; Escape or a right-click ends"));
+		}
+		if (ReachFrom)
+		{
+			if (!traversal || !traversal->Traversal)
+			{
+				NYX_UI(ImGui::TextDisabled("Reach: the terrain needs a Route Check for its traversal graph"));
+			}
+			else
+			{
+				NYX_UI(ImGui::TextDisabled("Reach from the place clicked: walking green, swimming blue, climbing yellow, jumping orange, nothing red"));
+				ImGui::SameLine();
+				if (NYX_UI(Nyx::UI::Button("Hide Reach")))
+				{
+					ReachFrom.reset();
+				}
+			}
 		}
 		ImGui::End();
 	}

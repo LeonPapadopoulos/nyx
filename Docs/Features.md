@@ -1711,6 +1711,29 @@ game, coarser the farther, and collides while the world runs.
     it, its footprint once zoomed in, its rule and ground under the mouse; *Places* hides them.
   - *Terrain Place Copies*: copies of its entity's mesh at one rule's places (*Terrain*, *Rule*,
     *Scale*), turned by each place's own yaw, placeholders for what a world puts there.
+  - *Route Checks* and the traversal graph (`TerrainTraversal.h`): whether a world's places can be
+    reached, checked when it is made. The graph (`BuildTerrainTraversal()`): columns *Spacing*
+    apart over the plan's square (4 m, at most 2048 a side), each with its floors from above, ground
+    with *Headroom* over it (the top, a rift's floor, a tunnel's), and from each floor edges to the
+    floors round it, tagged by what crossing needs: *Walk* (no steeper than *Walk Slope* with *Step
+    Height*, with ground on the way, or down no more than *Drop Height*), *Climb* (up to *Climb
+    Height*), *Gap* (a jump up to *Gap Width* over no ground to ground about as high), *Swim* (under
+    the sea's or a lake's level). From the terrain's layers and plan, never its edits; a 2 km world
+    is 529 x 529 columns, about 200 000 floors, built in 1 to 2 s on the workers. A *Route Check*
+    passes when every place of its *To* rule is reached from the first of its *From* rule with
+    walking and what it allows (*Climb*, *Gap*, *Swim*), each by at least *Approaches* separate
+    ways: ways that share no 16 m cell (`CountTerrainApproaches()`), so a tunnel or a ramp counts
+    once however wide. Routes (`FindTerrainRoute()`), what each floor needs to be reached
+    (`GetTerrainReach()`). Kept on a worker while the terrain has checks, after its places;
+    *Terrain Traversal* in the details panel: the graph's size and time, each check passed or failed
+    and why.
+  - On the *Plan Map*, a place clicked: what can be reached from it, walking green, swimming blue,
+    climbing yellow, jumping orange, nothing red; *Hide Reach*.
+  - `NyxTerrainTraversalTests`: the same graph alone and on the workers; floors on the ground with
+    their headroom, under others in tunnels, wet in the water; every edge's tag as its heights ask;
+    a route made of edges, its reach; a trench walked round in 131 m and jumped in 26; approaches on
+    graphs made by hand (a walled square 0, one way in 1, two 2, open ground 4 of 4); the Route
+    Checks of the world kept up to date, a check to a rule not there failing.
   - `NyxTerrainPlacementTests`: the same places alone and on the workers, every time; each place
     on its ground, its kind, dry, its footprint and clearance checked against the field again, its
     spacing and nearness; another rule leaving the others as they were; a rule nothing meets taking

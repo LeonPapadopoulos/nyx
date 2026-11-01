@@ -12,6 +12,7 @@
 #include "TerrainChunks.h"
 #include "TerrainOcclusion.h"
 #include "TerrainPlacement.h"
+#include "TerrainTraversal.h"
 #include "TerrainWater.h"
 #include "VolumetricCloudsComponent.h"
 #include "WindComponent.h"
@@ -112,6 +113,7 @@ namespace Nyx
 		ComponentTypeRegistry::Get().RegisterRuntime<TerrainCollisionComponent>("Nyx::TerrainCollisionComponent", "Terrain Collision", &DescribeTerrainCollision);
 		ComponentTypeRegistry::Get().RegisterRuntime<TerrainWaterComponent>("Nyx::TerrainWaterComponent", "Terrain Water", &DescribeTerrainWater);
 		ComponentTypeRegistry::Get().RegisterRuntime<TerrainPlacesComponent>("Nyx::TerrainPlacesComponent", "Terrain Places", &DescribeTerrainPlaces);
+		ComponentTypeRegistry::Get().RegisterRuntime<TerrainTraversalComponent>("Nyx::TerrainTraversalComponent", "Terrain Traversal", &DescribeTerrainTraversal);
 		ComponentTypeRegistry::Get().RegisterRuntime<TerrainOcclusionComponent>("Nyx::TerrainOcclusionComponent", "Terrain Occlusion", &DescribeTerrainOcclusion);
 		ComponentTypeRegistry::Get().RegisterRuntime<TerrainEditActivationComponent>("Nyx::TerrainEditActivationComponent", "Terrain Edit Activation",
 			&DescribeTerrainEditActivation);
