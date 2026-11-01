@@ -2,6 +2,7 @@
 
 #include "BinaryArchive.h"
 #include "GuidComponent.h"
+#include "JobSystem.h"
 #include "Log.h"
 #include "ParentComponent.h"
 #include "Prefab.h"
@@ -50,7 +51,7 @@ namespace Nyx::Editor
 		editing->AssetTypes = Scene.AssetTypes;
 		editing->AssetFileWritten = Scene.AssetFileWritten;
 		editing->PrefabRoot = world.Get<Nyx::GuidComponent>(prefab.GetEntities().front()).Guid;
-		editing->AssetLoader.SetPostLoadContext(Nyx::ScenePostLoadContext{ .AssetResolver = Scene.Assets });
+		editing->AssetLoader.SetPostLoadContext(Nyx::ScenePostLoadContext{ .AssetResolver = Scene.Assets, .Background = &Nyx::JobSystem::Get() });
 		editing->Transactions.Subscribe(&editing->AssetLoader);
 		editing->Transactions.Subscribe(&editing->Hierarchy);
 		editing->Transactions.Subscribe(&Revisions);

@@ -16,6 +16,7 @@ namespace Nyx
 	inline constexpr uint32_t SceneOutlineMarker = 0x4C54554F; // 'OUTL'
 
 	class IAssetResolver;
+	class JobSystem;
 
 	// What a component's post-load step (ComponentTypeRegistry::SetPostLoad()) is given besides the
 	// component: whatever resolves its assets, and the world and entity it belongs to. With them the
@@ -31,5 +32,9 @@ namespace Nyx
 		// keeps its handle), so keep neither past it.
 		Registry* World = nullptr;
 		Nyx::Entity Entity{};
+		// Where derived content that takes long may be made in the background, e.g. a scatter's
+		// instances: a step that can leaves it to that, and what the entity has stays until it is
+		// ready. Null: made at once, as a game loading its scene wants.
+		JobSystem* Background = nullptr;
 	};
 }

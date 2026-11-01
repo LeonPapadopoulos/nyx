@@ -1,19 +1,22 @@
 #pragma once
 
 #include "Entity.h"
+#include "JobSystem.h"
 #include "MeshData.h"
 #include "MeshInstancesComponent.h"
+#include "Progress.h"
 #include "ScatterComponent.h"
 
 #include <glm/glm.hpp>
 
+#include <atomic>
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <vector>
 
 namespace Nyx
 {
-	class JobSystem;
 	struct SdfTerrainComponent;
 
 	// At most this many instances a scatter, whatever its density: 64 MB of transforms
@@ -128,22 +131,49 @@ namespace Nyx
 		uint32_t CellsKeptApart = 0;
 	};
 
+	// How a scatter's cells are made: with a job system, across its workers, helped at its priority,
+	// the same to the bit as one after another here, without one. With a progress task, its total is
+	// set to the cells to make, a step for each pass that cuts or throws a cell, and each is counted
+	// as it is done.
+	struct ScatterWork
+	{
+		JobSystem* Jobs = nullptr;
+		EJobPriority Priority = EJobPriority::High;
+		ProgressTask* Progress = nullptr;
+	};
+
+	// A scatter's cells being made again in the background (UpdateScatter() given a job system), and
+	// what it made once done: copies of everything it is made from go with it, so nothing of the
+	// world is read meanwhile. Run-time only.
+	struct ScatterJob
+	{
+		JobSystem* Jobs = nullptr;
+		JobHandle Handle;
+		// Set once the rest is
+		std::atomic<bool> bDone = false;
+		std::shared_ptr<ScatterCells> Cells;
+		// Null when they are the same as before
+		std::shared_ptr<const MeshInstances> Instances;
+		// As ScatterComponent's, for what it was made from
+		uint64_t MadeFrom = 0;
+		std::weak_ptr<const MeshData> MadeOn;
+	};
+
 	// Makes the cells again where something changed: all of them for other values; for another
 	// surface (surfaceKey, e.g. its mesh's revision and where it lies, differs), the cells whose
 	// pieces of it changed; for blockers added, removed or changed, the cells they reached before or
 	// after. Then the cells after each of those within the spacing, to keep apart from them again.
 	// The surface's space goes into the scatter's by surfaceToScatter. True if any cell was made again.
-	// With a job system, the cells are made across its workers, the same to the bit; without, one
-	// after another here.
+	// How the work's cells are made (ScatterWork).
 	bool UpdateScatterCells(ScatterCells& cells, const ScatterComponent& scatter, const MeshData& surface, const glm::mat4& surfaceToScatter, uint64_t surfaceKey,
-		std::span<const ScatterBlocker> blockers, JobSystem* jobs = nullptr);
+		std::span<const ScatterBlocker> blockers, const ScatterWork& work = {});
 
 	// The same on an SDF terrain whose space goes into the scatter's by terrainToScatter: each cell's
 	// ground cut from the terrain itself (ScatterOnTerrain()); all of them for other values or another
 	// terrain (terrainKey differs), else the cells the edits added or taken away since reach, and the
-	// blockers'. True if any cell was made again. With a job system, across its workers, as above.
+	// blockers'. True if any cell was made again.
 	bool UpdateScatterCellsOnTerrain(ScatterCells& cells, const ScatterComponent& scatter, const SdfTerrainComponent& terrain, const glm::mat4& terrainToScatter,
-		uint64_t terrainKey, std::span<const ScatterBlocker> blockers, JobSystem* jobs = nullptr);
+		uint64_t terrainKey, std::span<const ScatterBlocker> blockers, const ScatterWork& work = {});
 
 	// The cells' kept instances, one cell after another, each non-empty cell with the bounds of its
 	// origins
@@ -191,14 +221,19 @@ namespace Nyx
 	// (ScatterComponent::Cells, UpdateScatterCells()). A surface that has no mesh yet, or none of
 	// this world, gives no instances, until UpdateScatters() finds it has one. The cells are made
 	// across the workers of JobSystem::Get().
-	void UpdateScatter(ScatterComponent& scatter, Registry& world, Entity entity);
+	//
+	// With `background`, the cells are made in a job of that job system instead (ScatterComponent::Job,
+	// a progress task "Scattering" and the entity's name), and the scatter keeps its last instances
+	// until a later call finds the job done and puts its in, the same to the bit; then, if anything
+	// changed meanwhile, another job starts from its cells. One job a scatter at a time.
+	void UpdateScatter(ScatterComponent& scatter, Registry& world, Entity entity, JobSystem* background = nullptr);
 
 	// UpdateScatter() for every scatter of the world: each frame, in the editor and the game, so the
 	// instances follow their surfaces and the blockers, which other entities' steps and the editor
 	// change, in whatever order they were loaded. Costs a guid lookup, a hash and a look at each
 	// blocker a scatter when nothing changed.
-	void UpdateScatters(Registry& world);
+	void UpdateScatters(Registry& world, JobSystem* background = nullptr);
 
-	// Its remove step: the instances go with the component
+	// Its remove step: the instances go with the component, and its job, if not started yet
 	void RemoveScatter(Registry& world, Entity entity);
 }

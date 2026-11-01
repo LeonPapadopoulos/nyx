@@ -46,9 +46,12 @@ namespace Nyx
 
 		// A scatter's instances are derived the same way, from its values and its surface's mesh. A
 		// surface loaded after it, or changed by its own step, is found by UpdateScatters() each frame.
+		// Where the context has a job system for the background, it is left to UpdateScatters() given
+		// that, which its caller runs each frame: then a scene's scatters are made once, from the whole
+		// scene, not first from the part read so far, without the blockers read after them.
 		void ScatterAfterLoad(ScatterComponent& component, ScenePostLoadContext& context)
 		{
-			if (context.World)
+			if (context.World && !context.Background)
 			{
 				UpdateScatter(component, *context.World, context.Entity);
 			}

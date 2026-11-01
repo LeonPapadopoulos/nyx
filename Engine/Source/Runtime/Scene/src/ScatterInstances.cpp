@@ -4,6 +4,8 @@
 #include "GradientNoise.h"
 #include "GuidComponent.h"
 #include "JobSystem.h"
+#include "NameComponent.h"
+#include "Progress.h"
 #include "PhysicsComponents.h"
 #include "Profiler.h"
 #include "RuntimeMeshComponent.h"
@@ -867,13 +869,15 @@ namespace Nyx
 
 		// Throws the marked cells' points again, then keeps them and the cells after them within the
 		// spacing apart from the cells before them again; true if any was marked
-		bool ThrowMarkedCells(ScatterCells& cells, const ScatterComponent& scatter, const std::vector<uint8_t>& marked, JobSystem* jobs);
+		bool ThrowMarkedCells(ScatterCells& cells, const ScatterComponent& scatter, const std::vector<uint8_t>& marked, const ScatterWork& work);
 
-		// The cells set in `cells` (one byte each), each given to `make` once: across the job system's
-		// workers if there is one, else one after another here. Each pass over the cells writes only
-		// the cell it is given, so the order makes no difference.
-		void ForEachSetCell(JobSystem* jobs, const std::vector<uint8_t>& cells, const std::function<void(size_t)>& make)
+		// The cells set in `cells` (one byte each), each given to `make` once: across the work's job
+		// system's workers if it has one, else one after another here. Each pass over the cells writes
+		// only the cell it is given, so the order makes no difference. `bCounted`: each one done is a
+		// step of the work's progress.
+		void ForEachSetCell(const ScatterWork& work, const std::vector<uint8_t>& cells, bool bCounted, const std::function<void(size_t)>& make)
 		{
+			ProgressTask* const progress = bCounted ? work.Progress : nullptr;
 			std::vector<size_t> set;
 			for (size_t index = 0; index < cells.size(); ++index)
 			{
@@ -882,15 +886,28 @@ namespace Nyx
 					set.push_back(index);
 				}
 			}
-			if (!jobs)
+			const auto makeOne = [&](size_t index)
+			{
+				make(index);
+				if (progress)
+				{
+					progress->Advance();
+				}
+			};
+			if (!work.Jobs)
 			{
 				for (const size_t index : set)
 				{
-					make(index);
+					makeOne(index);
 				}
 				return;
 			}
-			jobs->ParallelFor(set.size(), [&](size_t part) { make(set[part]); });
+			work.Jobs->ParallelFor(set.size(), [&](size_t part) { makeOne(set[part]); }, work.Priority);
+		}
+
+		uint32_t CountSet(const std::vector<uint8_t>& cells)
+		{
+			return static_cast<uint32_t>(std::count(cells.begin(), cells.end(), uint8_t{ 1 }));
 		}
 
 		// An SDF terrain's ground: a ray down every metre, from the top of the scatter's height range
@@ -1104,7 +1121,7 @@ namespace Nyx
 	}
 
 	bool UpdateScatterCells(ScatterCells& cells, const ScatterComponent& scatter, const MeshData& surface, const glm::mat4& surfaceToScatter, uint64_t surfaceKey,
-		std::span<const ScatterBlocker> blockers, JobSystem* jobs)
+		std::span<const ScatterBlocker> blockers, const ScatterWork& work)
 	{
 		NYX_PROFILE_FUNCTION();
 		cells.CellsThrown = 0;
@@ -1130,11 +1147,15 @@ namespace Nyx
 		cells.Values = values;
 		cells.Surface = surfaceKey;
 		cells.Blockers.assign(blockers.begin(), blockers.end());
-		return ThrowMarkedCells(cells, scatter, marked, jobs);
+		if (work.Progress)
+		{
+			work.Progress->SetTotal(CountSet(marked));
+		}
+		return ThrowMarkedCells(cells, scatter, marked, work);
 	}
 
 	bool UpdateScatterCellsOnTerrain(ScatterCells& cells, const ScatterComponent& scatter, const SdfTerrainComponent& terrain, const glm::mat4& terrainToScatter,
-		uint64_t terrainKey, std::span<const ScatterBlocker> blockers, JobSystem* jobs)
+		uint64_t terrainKey, std::span<const ScatterBlocker> blockers, const ScatterWork& work)
 	{
 		NYX_PROFILE_FUNCTION();
 		cells.CellsThrown = 0;
@@ -1178,18 +1199,23 @@ namespace Nyx
 			withPlan->Planned = plan;
 		}
 		const SdfTerrainComponent& sampled = withPlan ? *withPlan : terrain;
-		ForEachSetCell(jobs, marked, [&](size_t index) { CutTerrainCell(cells.Cells[index], scatter, sampled, plan.get(), terrainToScatter); });
+		if (work.Progress)
+		{
+			// Cut, then thrown
+			work.Progress->SetTotal(2 * uint64_t{ CountSet(marked) });
+		}
+		ForEachSetCell(work, marked, true, [&](size_t index) { CutTerrainCell(cells.Cells[index], scatter, sampled, plan.get(), terrainToScatter); });
 		cells.bMade = true;
 		cells.Values = values;
 		cells.Surface = terrainKey;
 		cells.Blockers.assign(blockers.begin(), blockers.end());
 		cells.TerrainEdits = std::move(edits);
-		return ThrowMarkedCells(cells, scatter, marked, jobs);
+		return ThrowMarkedCells(cells, scatter, marked, work);
 	}
 
 	namespace
 	{
-		bool ThrowMarkedCells(ScatterCells& cells, const ScatterComponent& scatter, const std::vector<uint8_t>& marked, JobSystem* jobs)
+		bool ThrowMarkedCells(ScatterCells& cells, const ScatterComponent& scatter, const std::vector<uint8_t>& marked, const ScatterWork& work)
 		{
 			if (std::find(marked.begin(), marked.end(), uint8_t{ 1 }) == marked.end())
 			{
@@ -1202,12 +1228,12 @@ namespace Nyx
 			const uint32_t cellCount = static_cast<uint32_t>(cells.Cells.size());
 			const uint32_t maxPoints = std::max(MaxScatterPoints / cellCount, 1u);
 			const uint32_t maxKept = std::max(MaxScatterInstances / cellCount, 1u);
-			ForEachSetCell(jobs, marked,
+			ForEachSetCell(work, marked, true,
 				[&](size_t index)
 				{
 					ThrowPoints(cells, static_cast<uint32_t>(index % cells.Columns), static_cast<uint32_t>(index / cells.Columns), scatter, limits, maxPoints, maxKept);
 				});
-			cells.CellsThrown += static_cast<uint32_t>(std::count(marked.begin(), marked.end(), uint8_t{ 1 }));
+			cells.CellsThrown += CountSet(marked);
 
 			// Each cell thrown again, and those after it within the spacing, keep apart from the cells
 			// before them again
@@ -1232,12 +1258,12 @@ namespace Nyx
 				}
 			}
 			// Each cell looks at what the cells before it threw, not what they kept, so all may at once
-			ForEachSetCell(jobs, keepApart,
+			ForEachSetCell(work, keepApart, false,
 				[&](size_t index)
 				{
 					KeepApart(cells, static_cast<uint32_t>(index % cells.Columns), static_cast<uint32_t>(index / cells.Columns), scatter.Spacing, reach);
 				});
-			cells.CellsKeptApart += static_cast<uint32_t>(std::count(keepApart.begin(), keepApart.end(), uint8_t{ 1 }));
+			cells.CellsKeptApart += CountSet(keepApart);
 			return true;
 		}
 	}
@@ -1337,7 +1363,45 @@ namespace Nyx
 		return hash;
 	}
 
-	void UpdateScatter(ScatterComponent& scatter, Registry& world, Entity entity)
+	namespace
+	{
+		// Makes the cells again where something changed, on what the scatter stands on
+		bool MakeScatterCells(ScatterCells& cells, const ScatterComponent& scatter, EScatterGround ground, const SdfTerrainComponent* terrain, const MeshData* mesh,
+			const glm::mat4& surfaceToScatter, uint64_t surfaceKey, std::span<const ScatterBlocker> blockers, const ScatterWork& work)
+		{
+			switch (ground)
+			{
+			case EScatterGround::Terrain:
+				return UpdateScatterCellsOnTerrain(cells, scatter, *terrain, surfaceToScatter, surfaceKey, blockers, work);
+			case EScatterGround::Plane:
+				return UpdateScatterCells(cells, scatter, MakeScatterPlane(scatter), glm::mat4(1.0f), surfaceKey, blockers, work);
+			case EScatterGround::Mesh:
+				return UpdateScatterCells(cells, scatter, *mesh, surfaceToScatter, surfaceKey, blockers, work);
+			case EScatterGround::Nothing:
+				break;
+			}
+			return false;
+		}
+
+		void GiveScatterInstances(Registry& world, Entity entity, std::shared_ptr<const MeshInstances> instances)
+		{
+			MeshInstancesComponent& component = world.Has<MeshInstancesComponent>(entity) ? world.Get<MeshInstancesComponent>(entity)
+																						  : world.Add<MeshInstancesComponent>(entity);
+			SetMeshInstances(component, std::move(instances));
+		}
+
+		// What the progress bar calls a scatter's job: by its entity's name, if it has one
+		std::string GetScatterTaskName(Registry& world, Entity entity)
+		{
+			if (world.Has<NameComponent>(entity) && !world.Get<NameComponent>(entity).Name.empty())
+			{
+				return "Scattering " + world.Get<NameComponent>(entity).Name;
+			}
+			return "Scattering";
+		}
+	}
+
+	void UpdateScatter(ScatterComponent& scatter, Registry& world, Entity entity, JobSystem* background)
 	{
 		if (!world.IsAlive(entity))
 		{
@@ -1400,70 +1464,119 @@ namespace Nyx
 			AddToHash(madeFrom, blocker.second);
 		}
 		const std::shared_ptr<const MeshData> mesh = surfaceMesh ? surfaceMesh->Mesh : nullptr;
+
+		// A job in the background: its instances go in once it is done, then the scatter is made again
+		// below if anything changed meanwhile; until then the last ones stay. One cancelled before it
+		// started (its component removed while a copy of it waited) is made again.
+		if (scatter.Job)
+		{
+			if (scatter.Job->bDone.load(std::memory_order_acquire))
+			{
+				const std::shared_ptr<ScatterJob> done = std::move(scatter.Job);
+				scatter.Job.reset();
+				scatter.Cells = done->Cells;
+				if (done->Instances)
+				{
+					GiveScatterInstances(world, entity, done->Instances);
+				}
+				scatter.MadeFrom = done->MadeFrom;
+				scatter.MadeOn = done->MadeOn;
+			}
+			else if (scatter.Job->Handle.GetState() == EJobState::Cancelled)
+			{
+				scatter.Job.reset();
+			}
+			else
+			{
+				return;
+			}
+		}
+
 		const bool bHasInstances = world.Has<MeshInstancesComponent>(entity) && world.Get<MeshInstancesComponent>(entity).Instances;
 		if (scatter.MadeFrom == madeFrom && scatter.MadeOn.lock() == mesh && bHasInstances)
 		{
 			return;
 		}
 
-		std::shared_ptr<MeshInstances> instances;
 		if (ground == EScatterGround::Nothing)
 		{
-			instances = std::make_shared<MeshInstances>();
+			GiveScatterInstances(world, entity, std::make_shared<MeshInstances>());
 			scatter.Cells.reset();
-		}
-		else
-		{
-			// The cells say what they were made from, so any will do to start from; ones a copy of
-			// the component shares are copied before they change
-			if (!scatter.Cells)
-			{
-				scatter.Cells = std::make_shared<ScatterCells>();
-			}
-			else if (scatter.Cells.use_count() > 1)
-			{
-				scatter.Cells = std::make_shared<ScatterCells>(*scatter.Cells);
-			}
-			// Another mesh at the same revision: cut it again
-			if (scatter.MadeOn.lock() != mesh)
-			{
-				scatter.Cells->Surface = ~surfaceKey;
-			}
-
-			std::vector<ScatterBlocker> placed;
-			placed.reserve(blockers.size());
-			for (const auto& [values, hash] : blockers)
-			{
-				placed.push_back(PlaceBlocker(values, hash, scatterToWorld));
-			}
-			JobSystem& jobs = JobSystem::Get();
-			const bool bChanged = ground == EScatterGround::Terrain
-				? UpdateScatterCellsOnTerrain(*scatter.Cells, scatter, *surfaceTerrain, surfaceToScatter, surfaceKey, placed, &jobs)
-				: ground == EScatterGround::Plane ? UpdateScatterCells(*scatter.Cells, scatter, MakeScatterPlane(scatter), glm::mat4(1.0f), surfaceKey, placed, &jobs)
-												 : UpdateScatterCells(*scatter.Cells, scatter, *mesh, surfaceToScatter, surfaceKey, placed, &jobs);
-			if (bChanged || !bHasInstances)
-			{
-				instances = std::make_shared<MeshInstances>(CollectScatterInstances(*scatter.Cells));
-			}
+			scatter.MadeFrom = madeFrom;
+			scatter.MadeOn = mesh;
+			return;
 		}
 
-		if (instances)
+		std::vector<ScatterBlocker> placed;
+		placed.reserve(blockers.size());
+		for (const auto& [values, hash] : blockers)
 		{
-			MeshInstancesComponent& component = world.Has<MeshInstancesComponent>(entity) ? world.Get<MeshInstancesComponent>(entity)
-																						  : world.Add<MeshInstancesComponent>(entity);
-			SetMeshInstances(component, std::move(instances));
+			placed.push_back(PlaceBlocker(values, hash, scatterToWorld));
 		}
+
+		// The cells say what they were made from, so any will do to start from; ones a copy of the
+		// component shares are copied before they change
+		std::shared_ptr<ScatterCells> cells = scatter.Cells.use_count() == 1 ? std::move(scatter.Cells)
+			: scatter.Cells											 ? std::make_shared<ScatterCells>(*scatter.Cells)
+																	 : std::make_shared<ScatterCells>();
+		// Another mesh at the same revision: cut it again
+		if (scatter.MadeOn.lock() != mesh)
+		{
+			cells->Surface = ~surfaceKey;
+		}
+
+		if (background)
+		{
+			// The job has its own of everything: the values, the cells, a copy of the terrain or the
+			// mesh's data, which a new mesh replaces rather than changes
+			auto job = std::make_shared<ScatterJob>();
+			job->Jobs = background;
+			job->Cells = std::move(cells);
+			job->MadeFrom = madeFrom;
+			job->MadeOn = mesh;
+			ScatterComponent values = scatter;
+			values.Cells.reset();
+			values.Job.reset();
+			std::shared_ptr<SdfTerrainComponent> terrain = surfaceTerrain ? std::make_shared<SdfTerrainComponent>(*surfaceTerrain) : nullptr;
+			ProgressTask progress = ProgressTracker::Get().Start(GetScatterTaskName(world, entity), 0);
+			job->Handle = background->Schedule(
+				[job, values = std::move(values), terrain = std::move(terrain), mesh, ground, surfaceToScatter, surfaceKey, placed = std::move(placed), bHasInstances,
+					progress = std::move(progress)]() mutable
+				{
+					if (terrain)
+					{
+						PrepareTerrainWorldPlan(*terrain);
+					}
+					const ScatterWork work{ .Jobs = job->Jobs, .Priority = EJobPriority::Low, .Progress = &progress };
+					if (MakeScatterCells(*job->Cells, values, ground, terrain.get(), mesh.get(), surfaceToScatter, surfaceKey, placed, work) || !bHasInstances)
+					{
+						job->Instances = std::make_shared<MeshInstances>(CollectScatterInstances(*job->Cells));
+					}
+					progress = ProgressTask();
+					job->bDone.store(true, std::memory_order_release);
+				},
+				EJobPriority::Low);
+			scatter.Job = std::move(job);
+			return;
+		}
+
+		const bool bChanged = MakeScatterCells(*cells, scatter, ground, surfaceTerrain, mesh.get(), surfaceToScatter, surfaceKey, placed, ScatterWork{ .Jobs = &JobSystem::Get() });
+		if (bChanged || !bHasInstances)
+		{
+			GiveScatterInstances(world, entity, std::make_shared<MeshInstances>(CollectScatterInstances(*cells)));
+		}
+		scatter.Cells = std::move(cells);
 		scatter.MadeFrom = madeFrom;
 		scatter.MadeOn = mesh;
 	}
 
-	void UpdateScatters(Registry& world)
+	void UpdateScatters(Registry& world, JobSystem* background)
 	{
 		NYX_PROFILE_FUNCTION();
 		world.Each<ScatterComponent>(
-			[&world](Entity entity, ScatterComponent& scatter)
+			[&world, background](Entity entity, ScatterComponent& scatter)
 			{
-				UpdateScatter(scatter, world, entity);
+				UpdateScatter(scatter, world, entity, background);
 			});
 	}
 
@@ -1472,7 +1585,14 @@ namespace Nyx
 		world.Remove<MeshInstancesComponent>(entity);
 		if (world.Has<ScatterComponent>(entity))
 		{
-			world.Get<ScatterComponent>(entity).Cells.reset();
+			ScatterComponent& scatter = world.Get<ScatterComponent>(entity);
+			scatter.Cells.reset();
+			// One running finishes for nobody
+			if (scatter.Job && scatter.Job->Jobs)
+			{
+				scatter.Job->Jobs->Cancel(scatter.Job->Handle);
+			}
+			scatter.Job.reset();
 		}
 	}
 }

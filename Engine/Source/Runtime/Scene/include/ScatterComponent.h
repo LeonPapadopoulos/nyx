@@ -13,6 +13,7 @@ namespace Nyx
 {
 	struct MeshData;
 	struct ScatterCells;
+	struct ScatterJob;
 
 	// Many copies of its entity's mesh, scattered over a surface: another entity's run-time mesh, such
 	// as a ground's, sampled by the area of its triangles, so any mesh will do. Which points are kept
@@ -111,6 +112,9 @@ namespace Nyx
 		// place makes only the cells it reaches again. A copy of the component that shares them copies
 		// them before they change.
 		std::shared_ptr<ScatterCells> Cells;
+		// The cells being made again in the background, if they are (UpdateScatter() given a job
+		// system); a copy of the component waits for the same job
+		std::shared_ptr<ScatterJob> Job;
 	};
 }
 

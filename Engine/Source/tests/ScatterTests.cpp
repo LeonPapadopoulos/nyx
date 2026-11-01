@@ -8,7 +8,9 @@
 // the density as it should, and a scatter that opts out grows through them. A blocker moved, added,
 // edited or removed, and a surface changed in one place, make only the cells they reach again, and
 // what that makes is exactly what scattering all of it makes. Cells made across a job system's
-// workers are those made one after another, to the bit. The noise mask is the same every time,
+// workers are those made one after another, to the bit. Made in the background, a scatter keeps its
+// last instances until its job is done, then has those made at once, also when changed, removed or
+// copied while it ran, and a scene loaded so leaves them to each frame's update. The noise mask is the same every time,
 // covers about half at a threshold of 0.5, and inverted gives the complement. The post-load step, as
 // a scene's load, the editor and a live edit run it, makes the instances, makes nothing again for
 // nothing new, and makes them again when the scatter, its surface's mesh or where the surface lies
@@ -24,7 +26,9 @@
 #include "JobSystem.h"
 #include "Log.h"
 #include "MeshInstancesComponent.h"
+#include "NameComponent.h"
 #include "PhysicsComponents.h"
+#include "Progress.h"
 #include "RuntimeMeshComponent.h"
 #include "ScatterBlockerComponent.h"
 #include "ScatterComponent.h"
@@ -39,9 +43,11 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <filesystem>
 #include <functional>
 #include <iostream>
 #include <memory>
@@ -49,6 +55,7 @@
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace
@@ -1002,15 +1009,15 @@ namespace
 		world.Get<TransformComponent>(blocker).Position = glm::vec3(7.0f, 0.0f, -3.0f);
 		const std::vector<ScatterBlocker> after = GatherScatterBlockers(world, glm::mat4(1.0f));
 
-		using Update = std::function<bool(ScatterCells&, std::span<const ScatterBlocker>, JobSystem*)>;
+		using Update = std::function<bool(ScatterCells&, std::span<const ScatterBlocker>, const ScatterWork&)>;
 		const auto compare = [&](const std::string& what, const Update& update)
 		{
 			ScatterCells alone;
 			ScatterCells across;
 			for (const std::vector<ScatterBlocker>* blockers : { &before, &after })
 			{
-				update(alone, *blockers, nullptr);
-				update(across, *blockers, &jobs);
+				update(alone, *blockers, ScatterWork{});
+				update(across, *blockers, ScatterWork{ .Jobs = &jobs });
 				const MeshInstances expected = CollectScatterInstances(alone);
 				Require(expected.Transforms.size() > 1000, what + ": the scatter should have copies, not " + std::to_string(expected.Transforms.size()));
 				RequireSameInstances(CollectScatterInstances(across), expected, what);
@@ -1019,13 +1026,164 @@ namespace
 			}
 			Require(alone.CellsThrown < alone.Columns * alone.Rows, what + ": a blocker moved should make only the cells it reaches again");
 		};
-		compare("On an SDF terrain", [&](ScatterCells& cells, std::span<const ScatterBlocker> blockers, JobSystem* with)
-			{ return UpdateScatterCellsOnTerrain(cells, values, terrain, glm::mat4(1.0f), 1, blockers, with); });
-		compare("On a mesh", [&](ScatterCells& cells, std::span<const ScatterBlocker> blockers, JobSystem* with)
-			{ return UpdateScatterCells(cells, values, mesh, glm::mat4(1.0f), 1, blockers, with); });
+		compare("On an SDF terrain", [&](ScatterCells& cells, std::span<const ScatterBlocker> blockers, const ScatterWork& work)
+			{ return UpdateScatterCellsOnTerrain(cells, values, terrain, glm::mat4(1.0f), 1, blockers, work); });
+		compare("On a mesh", [&](ScatterCells& cells, std::span<const ScatterBlocker> blockers, const ScatterWork& work)
+			{ return UpdateScatterCells(cells, values, mesh, glm::mat4(1.0f), 1, blockers, work); });
 		const MeshData plane = MakeScatterPlane(values);
-		compare("On the plane", [&](ScatterCells& cells, std::span<const ScatterBlocker> blockers, JobSystem* with)
-			{ return UpdateScatterCells(cells, values, plane, glm::mat4(1.0f), 1, blockers, with); });
+		compare("On the plane", [&](ScatterCells& cells, std::span<const ScatterBlocker> blockers, const ScatterWork& work)
+			{ return UpdateScatterCells(cells, values, plane, glm::mat4(1.0f), 1, blockers, work); });
+	}
+
+	// UpdateScatters() with a job system until no scatter has a job any more, as the editor does each
+	// frame
+	void FinishScatterJobs(Registry& world, JobSystem& jobs)
+	{
+		const auto start = std::chrono::steady_clock::now();
+		for (;;)
+		{
+			UpdateScatters(world, &jobs);
+			bool bPending = false;
+			world.Each<ScatterComponent>([&](Entity, const ScatterComponent& scatter) { bPending = bPending || scatter.Job != nullptr; });
+			if (!bPending)
+			{
+				return;
+			}
+			Require(std::chrono::steady_clock::now() - start < std::chrono::seconds(60), "A scatter's job should be done within a minute");
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		}
+	}
+
+	// Holds the only worker of a job system until it goes, so the jobs after it wait in the queue
+	class WorkerHold
+	{
+	public:
+		explicit WorkerHold(JobSystem& jobs)
+		{
+			jobs.Schedule(
+				[this]
+				{
+					while (!bOpen.load())
+					{
+						std::this_thread::sleep_for(std::chrono::milliseconds(1));
+					}
+					bLeft.store(true);
+				},
+				EJobPriority::High);
+		}
+		~WorkerHold()
+		{
+			bOpen.store(true);
+			while (!bLeft.load())
+			{
+				std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			}
+		}
+
+	private:
+		std::atomic<bool> bOpen = false;
+		std::atomic<bool> bLeft = false;
+	};
+
+	// Made in the background (UpdateScatter() given a job system), as the editor does: the scatter
+	// keeps its last instances while its job runs, and gets those made at once, to the bit, when it is
+	// done, a progress task named after its entity counting the cells meanwhile; a scatter changed
+	// while its job runs is made again from it, as made at once; removed, its job is cancelled; a copy
+	// of the component that waited for a cancelled job is made again; a scene loaded with a job system
+	// in its context leaves its scatters to UpdateScatters(), which makes them from the whole scene
+	void TestScatterInTheBackground()
+	{
+		ScatterComponent values = OnGround();
+		values.Size = glm::vec2(48.0f, 48.0f);
+		values.CellSize = 4.0f;
+		values.Density = 1.0f;
+		values.Spacing = 0.5f;
+		const auto atOnce = [](const ScatterComponent& scatter)
+		{
+			Registry world;
+			AddTerrain(world);
+			const Entity entity = AddScatter(world, scatter);
+			return *world.Get<MeshInstancesComponent>(entity).Instances;
+		};
+
+		JobSystem jobs(1);
+		Registry world;
+		AddTerrain(world);
+		const Entity scatter = world.CreateEntity();
+		world.Add<GuidComponent>(scatter, GuidComponent{ EntityGuid::Generate() });
+		world.Add<NameComponent>(scatter, NameComponent{ "Grass" });
+		world.Add<TransformComponent>(scatter, TransformComponent{});
+		world.Add<ScatterComponent>(scatter, values);
+		const auto instances = [&]() { return world.Get<MeshInstancesComponent>(scatter).Instances; };
+		{
+			WorkerHold hold(jobs);
+			UpdateScatters(world, &jobs);
+			Require(world.Get<ScatterComponent>(scatter).Job != nullptr, "A scatter given a job system should be made in a job");
+			Require(!world.Has<MeshInstancesComponent>(scatter), "A scatter should have no instances before its first job is done");
+			const std::vector<ProgressReport> reports = ProgressTracker::Get().GetReports();
+			Require(reports.size() == 1 && reports[0].Name == "Scattering Grass", "A scatter's job should be a progress task named after its entity");
+			UpdateScatters(world, &jobs);
+			Require(world.Get<ScatterComponent>(scatter).Job != nullptr, "A scatter should wait for its job");
+		}
+		FinishScatterJobs(world, jobs);
+		RequireSameInstances(*instances(), atOnce(values), "Made in the background");
+		Require(ProgressTracker::Get().GetReports().empty(), "A scatter's progress task should end with its job");
+		const std::shared_ptr<const MeshInstances> first = instances();
+		UpdateScatters(world, &jobs);
+		Require(world.Get<ScatterComponent>(scatter).Job == nullptr && instances() == first, "A scatter with nothing new should start no job");
+
+		// Changed while its job runs: the last instances stay, then those of the change
+		ScatterComponent denser = values;
+		denser.Density = 2.0f;
+		{
+			WorkerHold hold(jobs);
+			world.Get<ScatterComponent>(scatter).Seed = 9;
+			UpdateScatters(world, &jobs);
+			Require(world.Get<ScatterComponent>(scatter).Job != nullptr, "A scatter changed should be made again in a job");
+			world.Get<ScatterComponent>(scatter).Seed = values.Seed;
+			world.Get<ScatterComponent>(scatter).Density = denser.Density;
+			UpdateScatters(world, &jobs);
+			Require(instances() == first, "A scatter should keep its last instances while its job runs");
+		}
+		FinishScatterJobs(world, jobs);
+		RequireSameInstances(*instances(), atOnce(denser), "Changed while its job ran");
+
+		// A copy of the component that waits for a job cancelled with the original is made again
+		ScatterComponent copy;
+		{
+			WorkerHold hold(jobs);
+			world.Get<ScatterComponent>(scatter).Density = values.Density;
+			UpdateScatters(world, &jobs);
+			copy = world.Get<ScatterComponent>(scatter);
+			Require(copy.Job != nullptr, "The copy should wait for the same job");
+			RemoveScatter(world, scatter);
+			world.Remove<ScatterComponent>(scatter);
+			Require(!world.Has<MeshInstancesComponent>(scatter), "A scatter removed should take its instances with it");
+		}
+		Require(copy.Job->Handle.GetState() == EJobState::Cancelled, "Removing a scatter should cancel its job that hadn't started");
+		world.Add<ScatterComponent>(scatter, copy);
+		FinishScatterJobs(world, jobs);
+		RequireSameInstances(*instances(), atOnce(values), "A copy that waited for a cancelled job");
+
+		// A scene loaded with a job system in its context leaves its scatters to UpdateScatters()
+		const std::filesystem::path path = std::filesystem::temp_directory_path() / "NyxScatterBackground.nyxscene";
+		Require(SceneSerializer::SaveToFile(world, path), "The scene should be saved");
+		Registry loaded;
+		Require(SceneSerializer::LoadFromFile(path, loaded, ScenePostLoadContext{ .Background = &jobs }), "The scene should load");
+		bool bLeft = true;
+		loaded.Each<ScatterComponent>([&](Entity entity, const ScatterComponent& loadedScatter)
+			{ bLeft = bLeft && !loadedScatter.Job && !loaded.Has<MeshInstancesComponent>(entity); });
+		Require(bLeft, "A scene loaded with a job system should leave its scatters to UpdateScatters()");
+		FinishScatterJobs(loaded, jobs);
+		uint32_t loadedScatters = 0;
+		loaded.Each<MeshInstancesComponent>(
+			[&](Entity, const MeshInstancesComponent& component)
+			{
+				RequireSameInstances(*component.Instances, atOnce(values), "Loaded in the background");
+				++loadedScatters;
+			});
+		Require(loadedScatters == 1, "The loaded scene's scatter should have its instances");
+		std::filesystem::remove(path);
 	}
 
 	void TestTheNoiseMask()
@@ -1358,6 +1516,7 @@ int main()
 		TestEditsMakeOnlyTheirCellsAgain();
 		TestOnAnSdfTerrain();
 		TestCellsMadeAcrossWorkersAreTheSame();
+		TestScatterInTheBackground();
 		TestTheNoiseMask();
 		TestTheInvertedMaskIsTheComplement();
 		TestAScatterCanIgnoreBlockers();

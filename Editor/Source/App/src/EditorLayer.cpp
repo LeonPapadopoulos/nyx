@@ -219,8 +219,9 @@ namespace Nyx::Editor
 			}
 		}
 
-		// Edits, undo and redo load the assets they need, as loading a scene does
-		Editing.AssetLoader.SetPostLoadContext(Nyx::ScenePostLoadContext{ .AssetResolver = AssetResolver.get() });
+		// Edits, undo and redo load the assets they need, as loading a scene does, and make what takes
+		// long in the background
+		Editing.AssetLoader.SetPostLoadContext(Nyx::ScenePostLoadContext{ .AssetResolver = AssetResolver.get(), .Background = &Nyx::JobSystem::Get() });
 		Editing.Assets = AssetResolver.get();
 		Editing.AssetTypes = &AssetTypes;
 		Editing.AssetFileWritten = [this]()
@@ -358,9 +359,9 @@ namespace Nyx::Editor
 		}
 
 		// Scatters follow their surfaces, which their own post-load steps change, e.g. a ground edited
-		// or loaded after the scatter
+		// or loaded after the scatter; made in the background, so the editor never waits for one
 		Nyx::Registry& shown = GetEditing().Scene.GetRegistry();
-		Nyx::UpdateScatters(shown);
+		Nyx::UpdateScatters(shown, &Nyx::JobSystem::Get());
 		// SDF terrains' chunks round the scene views' cameras, as they were last drawn
 		{
 			std::vector<glm::vec3> viewpoints;
@@ -507,6 +508,7 @@ namespace Nyx::Editor
 
 		Nyx::ScenePostLoadContext postLoadContext{};
 		postLoadContext.AssetResolver = AssetResolver.get();
+		postLoadContext.Background = &Nyx::JobSystem::Get();
 
 		// Keep the current scene and its pending edits until the replacement is ready.
 		Nyx::Registry loadedWorld;
