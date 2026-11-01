@@ -23,6 +23,10 @@ namespace Nyx
 
 	constexpr uint32_t RegistryInvalidIndex = std::numeric_limits<uint32_t>::max();
 
+	// A number no component pool of any registry had before, from any thread: what a pool's version
+	// becomes when it changes (Registry::GetVersion())
+	NYXENGINE_API uint64_t MakeComponentPoolVersion();
+
 	struct IComponentPool
 	{
 		virtual ~IComponentPool() = default;
@@ -55,6 +59,7 @@ namespace Nyx
 			Sparse[entityIndex] = denseIndex;
 			Entities.push_back(entity);
 			Components.emplace_back(std::forward<Args>(args)...);
+			Version = MakeComponentPoolVersion();
 
 			return Components.back();
 		}
@@ -113,6 +118,7 @@ namespace Nyx
 			Components.pop_back();
 			Entities.pop_back();
 			Sparse[entityIndex] = RegistryInvalidIndex;
+			Version = MakeComponentPoolVersion();
 
 			return true;
 		}
@@ -127,12 +133,14 @@ namespace Nyx
 			Sparse.clear();
 			Entities.clear();
 			Components.clear();
+			Version = MakeComponentPoolVersion();
 		}
 
 	private:
 		std::vector<uint32_t> Sparse;
 		std::vector<Entity> Entities;
 		std::vector<T> Components;
+		uint64_t Version = MakeComponentPoolVersion();
 	};
 
 	class NYXENGINE_API Registry
@@ -181,6 +189,17 @@ namespace Nyx
 
 		template<typename Func>
 		void ForEachEntity(Func&& func) const;
+
+		// Changes whenever an entity gets or loses a T, also by being destroyed, and when
+		// MarkChanged<T>() says a T's values changed; never the same in two registries. A system that
+		// keeps what it found among the T's can tell at a glance whether to look again. 0 while no
+		// entity ever had one.
+		template<typename T>
+		uint64_t GetVersion() const;
+
+		// Changes T's version, e.g. after values a system keeps track of were changed in place
+		template<typename T>
+		void MarkChanged();
 
 	private:
 		struct EntitySlot
@@ -303,6 +322,19 @@ namespace Nyx
 		{
 			func(pool->Entities[i], pool->Components[i]);
 		}
+	}
+
+	template<typename T>
+	uint64_t Registry::GetVersion() const
+	{
+		const ComponentPool<T>* pool = TryGetPool<T>();
+		return pool ? pool->Version : 0;
+	}
+
+	template<typename T>
+	void Registry::MarkChanged()
+	{
+		GetOrCreatePool<T>().Version = MakeComponentPoolVersion();
 	}
 
 	template<typename Func>

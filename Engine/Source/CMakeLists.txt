@@ -145,6 +145,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/CharacterCommands.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/TerrainEditCommands.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/PrefabCommands.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Sim/src/TransformFollowers.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/TimeOfDayClock.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/SparseField.cpp
 
@@ -403,6 +404,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/CharacterCommands.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/TerrainEditCommands.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/PrefabCommands.h
+    ${NYX_ENGINE_ROOT}/Runtime/Sim/include/TransformFollowers.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/SparseField.h
 
     # Runtime/Physics

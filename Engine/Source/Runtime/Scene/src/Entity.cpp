@@ -3,8 +3,17 @@
 
 #include "Log.h"
 
+#include <atomic>
+
 namespace Nyx
 {
+	uint64_t MakeComponentPoolVersion()
+	{
+		// Counts up from 1, so 0 stays "no pool"
+		static std::atomic<uint64_t> next{ 1 };
+		return next.fetch_add(1, std::memory_order_relaxed);
+	}
+
 	Registry::~Registry() = default;
 
 	Entity Registry::CreateEntity()

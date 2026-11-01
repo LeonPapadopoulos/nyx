@@ -12,6 +12,7 @@
 #include "SimSystem.h"
 #include "TerrainCollision.h"
 #include "TimeOfDayClock.h"
+#include "TransformFollowers.h"
 #include "Wind.h"
 
 #include <cstdint>
@@ -48,7 +49,9 @@ namespace Nyx
 	// 7. dynamic bodies write their poses into their transforms, and where they were before into
 	//    their PreviousTransformComponents, as do kinematic bodies the systems moved; constraints
 	//    write what they held into their ConstraintStateComponents, and those that broke switch off;
-	//    the physics debug view is drawn, if on;
+	//    the children that follow their parents in the game are placed by them, parents first
+	//    (TransformFollowers): a parent a system of ESimStage::AfterPhysics moves takes them along
+	//    a step later; the physics debug view is drawn, if on;
 	// 8. the systems of ESimStage::AfterPhysics, in the order they were added.
 	class GameWorld
 	{
@@ -70,6 +73,7 @@ namespace Nyx
 		const PhysicsBodies& GetBodies() const { return Bodies; }
 		const TerrainCollision& GetTerrainCollision() const { return TerrainColliders; }
 		const PhysicsConstraints& GetConstraints() const { return Constraints; }
+		const TransformFollowers& GetFollowers() const { return Followers; }
 		// The physics materials the colliders name, read once and kept; a game's tools hand it the
 		// editor's values (PhysicsMaterials::SetText())
 		PhysicsMaterials& GetPhysicsMaterials() { return Materials; }
@@ -130,6 +134,7 @@ namespace Nyx
 		PhysicsBodies Bodies;
 		TerrainCollision TerrainColliders;
 		PhysicsConstraints Constraints;
+		TransformFollowers Followers;
 		PhysicsMaterials Materials;
 		TimeOfDayClock TimeOfDay;
 		EntityGuidLookup Guids;

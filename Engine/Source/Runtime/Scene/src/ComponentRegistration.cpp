@@ -80,6 +80,16 @@ namespace Nyx
 			};
 		}
 
+		// A link's values read, from a file, an edit or the editor while a game runs: what keeps track
+		// of the links (TransformFollowers) looks at them again
+		void MarkTransformLinksChangedAfterLoad(ParentComponent&, ScenePostLoadContext& context)
+		{
+			if (context.World)
+			{
+				context.World->MarkChanged<ParentComponent>();
+			}
+		}
+
 		// After a scene is read: children placed by their parents, among them the parts of prefab
 		// instances, made before their root's own transform was read
 		void PlaceChildrenAfterLoad(Registry& world)
@@ -109,6 +119,7 @@ namespace Nyx
 		ComponentTypeRegistry::Get().SetPostLoad<GroundComponent>(&MakeGroundMeshAfterLoad);
 		ComponentTypeRegistry::Get().SetOnRemove<GroundComponent>(&RemoveGroundMesh);
 		ComponentTypeRegistry::Get().SetPostLoad<ScatterComponent>(&ScatterAfterLoad);
+		ComponentTypeRegistry::Get().SetPostLoad<ParentComponent>(&MarkTransformLinksChangedAfterLoad);
 		ComponentTypeRegistry::Get().SetOnRemove<ScatterComponent>(&RemoveScatter);
 		// An SDF terrain's chunks are made each frame round the cameras (UpdateTerrainChunks()), and
 		// go with it

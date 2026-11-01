@@ -285,6 +285,14 @@ add_dependencies(NyxTransformHierarchyTests NyxGeneratedReflection)
 set_property(TARGET NyxTransformHierarchyTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxTransformHierarchyTests COMMAND NyxTransformHierarchyTests)
 
+# Children following their parents in the game world: with falling and kinematic bodies, chains, live
+# edits, a parent destroyed and back, a spawned prefab's part; the component pools' versions
+add_executable(NyxTransformFollowerTests TransformFollowerTests.cpp)
+target_link_libraries(NyxTransformFollowerTests PRIVATE NyxEngine)
+add_dependencies(NyxTransformFollowerTests NyxGeneratedReflection)
+set_property(TARGET NyxTransformFollowerTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxTransformFollowerTests COMMAND NyxTransformFollowerTests)
+
 # Surface decals: the quad following its host, what the renderer extracts of a world's decals, a
 # decal saved and loaded, the time a game's world's decals pulse by
 add_executable(NyxSurfaceDecalTests SurfaceDecalTests.cpp)

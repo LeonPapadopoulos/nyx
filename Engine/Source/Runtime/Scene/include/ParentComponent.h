@@ -17,10 +17,12 @@ namespace Nyx
 	// Links an entity's transform to another entity's: it is placed relative to its parent, and moves,
 	// turns and scales with it. Only children have one. The entity's TransformComponent stays its
 	// place in the world, which everything else reads; the editor works it out from the parent's and
-	// the local values here after every edit (UpdateTransformHierarchy()). A game never does: it uses
-	// the world transforms the scene was saved with, and the links do nothing there. The details
-	// panel shows it inside the Transform section, not as a component of its own: the parent as a
-	// row that keeps the entity where it is when changed, and the local values as the transform.
+	// the local values here after every edit (UpdateTransformHierarchy()). A game places children so
+	// when a scene loads and a prefab is spawned, and then uses the world transforms as they are,
+	// unless a child follows in the game (bFollowInGame): then the game places it again each step its
+	// parent moved (TransformFollowers, in Sim). The details panel shows it inside the Transform
+	// section, not as a component of its own: the parent as a row that keeps the entity where it is
+	// when changed, and the local values as the transform.
 	NYX_REFLECT(Component, meta = (DisplayName = "Parent"))
 	struct ParentComponent
 	{
@@ -36,6 +38,10 @@ namespace Nyx
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Transform", DisplayName = "Scale", DragSpeed = 0.1, Tooltip = "Relative to the parent"))
 		glm::vec3 LocalScale{ 1.0f };
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Transform", DisplayName = "Follows in Game",
+			Tooltip = "Comes along when the parent moves in the game; off, it stays where it was placed. A dynamic body never follows: join it with a constraint"))
+		bool bFollowInGame = false;
 	};
 
 	// Where a child with these local values is in the world, its parent at `parentWorld`. A parent
@@ -54,6 +60,19 @@ namespace Nyx
 	// (cleared first), parents before their children. Goes through the linked entities only, not the
 	// whole world.
 	void UpdateTransformHierarchy(Registry& world, const EntityGuidLookup& guids, std::vector<Entity>* outMoved = nullptr);
+
+	// A child and its parent, which the world has
+	struct TransformLink
+	{
+		Entity Child;
+		Entity Parent;
+	};
+
+	// The world's links whose parent is there, both with a transform, parents before their children,
+	// the same depth in the order the world has them; those in or below a circle left out. Only those
+	// that follow in the game (ParentComponent::bFollowInGame), with bFollowingOnly. `guids` must be
+	// up to date with the world.
+	std::vector<TransformLink> GetOrderedTransformLinks(const Registry& world, const EntityGuidLookup& guids, bool bFollowingOnly);
 
 	// The entity and everything below it, each parent before its children, children in the order
 	// the world has their links; an entity met again (a circle) only once

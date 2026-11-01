@@ -659,15 +659,37 @@ turns and scales with it, down chains of any length.
   see Entity references), and changing it, to another entity or None, keeps the entity where it is
   (`SetParent()`), as one undo step. A parent below the entity is refused. For a child the section's
   Position, Rotation and Scale are relative to the parent, and *In the World* shows where that puts
-  it, greyed. A warning says when the parent isn't in the scene, or when an entity above moves in
-  a game (a rigid body or a character), which the child won't follow there.
+  it, greyed. A warning says when the parent isn't in the scene, when an entity above moves in a
+  game (a rigid body or a character) and the child won't follow it there, and when a child that
+  follows has a body physics moves.
 - **The gizmo** moves a child in world or local space as any entity; the drag changes and records
   its values relative to the parent (`FollowWorldTransform()`).
 - **Undo records what was edited**: a parent's transform, a child's local values or its parent,
   never the children's world transforms, which follow.
 - **A running game gets the children's new world transforms** after the edit that moved them. A
-  game has no hierarchy: it uses the world transforms the scene was saved with, and the Parent
-  component does nothing there.
+  game places children by their parents when a scene loads and a prefab is spawned, then uses the
+  world transforms as they are: the Parent component does nothing more there, unless the child
+  *Follows in Game*.
+- **Follows in Game** (`ParentComponent::bFollowInGame`, in the Transform section) makes a child come
+  along in a game when its parent moves: after each physics step the game world places it by its
+  parent, parents before their children (`TransformFollowers`, in Sim), so the systems after physics
+  see it where it belongs. Off by default, so set dressing costs nothing.
+  - What follows is found once and kept, found again only when the links change: a link added,
+    removed or read from a file, a spawn or the editor's edits, which the Parent component's pool
+    version tells (`Registry::GetVersion()`, `MarkChanged()`). A world without followers costs one
+    comparison a step; a step in which links changed, one pass over them.
+  - Each step only a follower whose parent, transform or local values changed is placed; it is drawn
+    between its steps as bodies are (`PreviousTransformComponent`).
+  - A kinematic body that follows moves to its place over the next step and pushes what it meets,
+    so physics sees it a step late; joining bodies exactly is a body group's or a constraint's. A
+    dynamic body or a character never follows, with a warning once.
+  - A chain follows only where every link up to what moves follows. A follower whose parent is
+    destroyed stays where it is, and follows again once the parent is back, e.g. by undo in the
+    editor; a spawned prefab's following part, from the step after the spawn. A parent that a system
+    after physics moves takes its followers along a step later.
+  - The editor's edits reach a running game as any: following switched on or off, or its local
+    values changed, are followed from the next step.
+  - Not yet: a character carried by what it stands on, and attaching and detaching while a game runs.
 - A parent that isn't there (deleted, or none picked) or a chain that goes round in a circle leaves
   the entity where it is. A parent scaled unevenly with a turned child would skew it; the scale is
   then multiplied axis by axis.
@@ -675,8 +697,8 @@ turns and scales with it, down chains of any length.
   parent.
 - **In the outliner** children show under their parents, and dragging an entity onto another's
   row gives it that parent (see The scene outliner).
-- Tests: `NyxTransformHierarchyTests`, `NyxGameLinkSubscriberTests`, `NyxEditorPanelTests`,
-  `NyxEditorOutlinerTests`.
+- Tests: `NyxTransformHierarchyTests`, `NyxTransformFollowerTests`, `NyxGameLinkSubscriberTests`,
+  `NyxEditorPanelTests`, `NyxEditorOutlinerTests`.
 
 ## Prefabs
 

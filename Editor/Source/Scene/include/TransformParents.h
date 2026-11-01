@@ -38,7 +38,14 @@ namespace Nyx::Editor
 	// so it stays where it was put. Nothing for an entity without a parent.
 	void FollowWorldTransform(Nyx::Registry& world, Nyx::Entity entity);
 
-	// Whether an entity above this one moves while a game runs (a rigid body or a character): a game
-	// has no hierarchy, so the entity stays behind there
+	// Whether an entity above this one moves while a game runs (a rigid body or a character)
 	bool HasParentMovingInGame(const Nyx::Registry& world, Nyx::Entity entity);
+
+	// Whether the entity comes along in a game with what moves above it: it and every entity up to
+	// that one follow in the game (ParentComponent::bFollowInGame). Nothing above it moving, false.
+	bool FollowsMovingParentInGame(const Nyx::Registry& world, Nyx::Entity entity);
+
+	// Whether physics moves the entity in a game, so it can't follow its parent there: a dynamic body
+	// or a character
+	bool IsMovedByPhysicsInGame(const Nyx::Registry& world, Nyx::Entity entity);
 }

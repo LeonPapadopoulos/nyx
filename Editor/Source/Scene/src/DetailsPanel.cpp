@@ -81,9 +81,13 @@ namespace Nyx::Editor
 			{
 				DrawWarningRow("The parent isn't in the scene: this entity stays where it is");
 			}
-			else if (link && HasParentMovingInGame(world, entity))
+			else if (link && link->bFollowInGame && IsMovedByPhysicsInGame(world, entity))
 			{
-				DrawWarningRow("A parent moves in the game (a rigid body or a character): this entity won't follow it there");
+				DrawWarningRow("Physics moves this entity's body in the game, so it won't follow: join it to its parent with a constraint, or make its Rigid Body kinematic");
+			}
+			else if (link && HasParentMovingInGame(world, entity) && !FollowsMovingParentInGame(world, entity))
+			{
+				DrawWarningRow("A parent moves in the game (a rigid body or a character): tick Follows in Game, here and on each entity between, for this one to come along");
 			}
 			ImGui::PopID();
 

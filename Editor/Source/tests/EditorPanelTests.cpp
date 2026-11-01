@@ -880,6 +880,15 @@ namespace
 		Require(!HasParentMovingInGame(world, child), "A still parent shouldn't warn");
 		world.Add<RigidBodyComponent>(parent, RigidBodyComponent{});
 		Require(HasParentMovingInGame(world, child), "A parent with a rigid body moves in the game");
+		Require(!FollowsMovingParentInGame(world, child), "A child that doesn't follow in the game stays behind there");
+		world.Get<ParentComponent>(child).bFollowInGame = true;
+		Require(FollowsMovingParentInGame(world, child) && !IsMovedByPhysicsInGame(world, child), "A child that follows comes along");
+		world.Add<RigidBodyComponent>(child, RigidBodyComponent{});
+		Require(IsMovedByPhysicsInGame(world, child), "A child with a dynamic body is moved by physics, not its parent");
+		world.Get<RigidBodyComponent>(child).bKinematic = true;
+		Require(!IsMovedByPhysicsInGame(world, child), "A kinematic child can follow");
+		world.Remove<RigidBodyComponent>(child);
+		world.Get<ParentComponent>(child).bFollowInGame = false;
 
 		// The Transform section of a child, with its warning, draws with no two items sharing an ID
 		editing.Scene.GetSelection() = child;

@@ -195,4 +195,32 @@ namespace Nyx::Editor
 				return world.Has<Nyx::RigidBodyComponent>(above) || world.Has<Nyx::CharacterComponent>(above);
 			});
 	}
+
+	bool FollowsMovingParentInGame(const Nyx::Registry& world, Nyx::Entity entity)
+	{
+		// Up the chain while each follows; a circle ends once every entity on it was met
+		std::vector<Nyx::Entity> met;
+		Nyx::Entity current = entity;
+		while (world.Has<Nyx::ParentComponent>(current) && world.Get<Nyx::ParentComponent>(current).bFollowInGame)
+		{
+			const std::optional<Nyx::Entity> parent = FindParent(world, current);
+			if (!parent || std::find(met.begin(), met.end(), *parent) != met.end())
+			{
+				return false;
+			}
+			if (world.Has<Nyx::RigidBodyComponent>(*parent) || world.Has<Nyx::CharacterComponent>(*parent))
+			{
+				return true;
+			}
+			met.push_back(*parent);
+			current = *parent;
+		}
+		return false;
+	}
+
+	bool IsMovedByPhysicsInGame(const Nyx::Registry& world, Nyx::Entity entity)
+	{
+		return (world.Has<Nyx::RigidBodyComponent>(entity) && !world.Get<Nyx::RigidBodyComponent>(entity).bKinematic) ||
+			world.Has<Nyx::CharacterComponent>(entity);
+	}
 }

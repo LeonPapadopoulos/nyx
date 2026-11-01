@@ -116,18 +116,17 @@ namespace Nyx
 		return entities;
 	}
 
-	void UpdateTransformHierarchy(Registry& world, const EntityGuidLookup& guids, std::vector<Entity>* outMoved)
+	std::vector<TransformLink> GetOrderedTransformLinks(const Registry& world, const EntityGuidLookup& guids, bool bFollowingOnly)
 	{
-		if (outMoved)
-		{
-			outMoved->clear();
-		}
-
 		std::vector<Link> links;
 		uint32_t highestChildIndex = 0;
 		world.Each<ParentComponent>(
 			[&](Entity child, const ParentComponent& link)
 			{
+				if (bFollowingOnly && !link.bFollowInGame)
+				{
+					return;
+				}
 				const std::optional<Entity> parent = link.Parent.IsValid() ? FindEntityByGuid(world, guids, link.Parent) : std::nullopt;
 				if (parent && *parent != child && world.Has<TransformComponent>(*parent) && world.Has<TransformComponent>(child))
 				{
@@ -138,7 +137,7 @@ namespace Nyx
 
 		if (links.empty())
 		{
-			return;
+			return {};
 		}
 
 		// Each child's link by its entity's index, to find a parent's own link
@@ -172,9 +171,24 @@ namespace Nyx
 				return links[left].Depth < links[right].Depth;
 			});
 
+		std::vector<TransformLink> ordered;
+		ordered.reserve(order.size());
 		for (const int32_t index : order)
 		{
-			const Link& link = links[index];
+			ordered.push_back(TransformLink{ links[index].Child, links[index].Parent });
+		}
+		return ordered;
+	}
+
+	void UpdateTransformHierarchy(Registry& world, const EntityGuidLookup& guids, std::vector<Entity>* outMoved)
+	{
+		if (outMoved)
+		{
+			outMoved->clear();
+		}
+
+		for (const TransformLink& link : GetOrderedTransformLinks(world, guids, false))
+		{
 			const TransformComponent placed =
 				GetChildWorldTransform(world.Get<TransformComponent>(link.Parent), world.Get<ParentComponent>(link.Child));
 

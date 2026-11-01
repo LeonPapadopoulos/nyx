@@ -47,6 +47,7 @@ namespace Nyx
 		Physics.Step(seconds);
 		Bodies.WriteBackAfterStep(World, Physics);
 		Constraints.ReadBackAfterStep(World, Physics);
+		Followers.Update(World, Guids);
 		if (PhysicsDebugView)
 		{
 			Physics.DrawDebug(Debug, *PhysicsDebugView);
