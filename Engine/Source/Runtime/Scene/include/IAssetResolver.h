@@ -20,8 +20,9 @@ namespace Nyx
 		virtual Nyx::Material* ResolveMaterial(const std::string& materialId) = 0;
 
 		// The prefab at the path ("Prefabs/Wall.nyxprefab"), which instances are made from and saved
-		// against; null if there is none, as without a prefab library
-		virtual const Nyx::PrefabAsset* ResolvePrefab(const std::string& /*prefabPath*/)
+		// against; null if there is none, as without a prefab library. The editor changes it when
+		// values are applied to it (PrefabAsset::GetEditableTemplate()).
+		virtual Nyx::PrefabAsset* ResolvePrefab(const std::string& /*prefabPath*/)
 		{
 			return nullptr;
 		}

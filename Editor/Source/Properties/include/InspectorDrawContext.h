@@ -8,6 +8,8 @@
 #include "TransactionSystem.h"
 
 #include <glm/glm.hpp>
+#include <cstddef>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -110,5 +112,13 @@ namespace Nyx::Editor
 		TransformRotationEditState TransformRotationEdit;
 
 		OverrideEditState OverrideEdit;
+
+		// While a prefab instance's component is drawn: its properties that differ from its prefab's,
+		// by index, of this type, marked with the accent at the row's left. A right-click on a marked
+		// row offers Revert to Prefab and Apply to Prefab, which call PrefabValueAction (bApply) once
+		// the menu is closed; none, nothing is marked.
+		const std::vector<size_t>* PrefabOverrides = nullptr;
+		const Nyx::Reflection::TypeMetadata* PrefabOverridesType = nullptr;
+		std::function<void(size_t propertyIndex, bool bApply)> PrefabValueAction;
 	};
 }

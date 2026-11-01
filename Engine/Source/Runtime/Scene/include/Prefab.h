@@ -88,6 +88,22 @@ namespace Nyx
 		// The same, from a file's bytes
 		bool LoadFromMemory(const std::vector<std::byte>& bytes, std::string& outError);
 
+		// The prefab as its file has it, e.g. to keep it as it was before it is changed
+		std::vector<std::byte> SaveToMemory() const;
+
+		// Writes the template as the prefab's file; false, and the file as it was, if it can't
+		bool SaveToFile(const std::filesystem::path& path) const;
+
+		// The template, to change its values, as the editor applies an instance's to it; Refresh()
+		// once changed, before instances are made from it again
+		Registry& GetEditableTemplate()
+		{
+			return *Template;
+		}
+
+		// After the template was changed: what instances are made from follows it
+		void Refresh();
+
 		bool IsEmpty() const
 		{
 			return Entities.empty();
@@ -141,13 +157,29 @@ namespace Nyx
 	// be written at all.
 	bool WritePrefabInstanceEntity(const Registry& world, Entity entity, const PrefabAsset& prefab, BinaryWriter& writer, bool* outbNothing = nullptr);
 
+	// The prefab's entity an instance's entity is made from: the root's for its root, the one it
+	// names for a part; none for another entity, or a part of an entity the prefab no longer has
+	std::optional<Entity> FindPrefabEntityOf(const Registry& world, Entity entity, const PrefabAsset& prefab);
+
+	// The Serialize properties of a component whose values differ from the prefab's component of its
+	// type, by index: what the instance overrides. `component` and `prefabComponent` are of `type`.
+	// A part's parent is never one: its guid is made, not taken from the prefab.
+	std::vector<size_t> FindPrefabOverrides(const void* component, const void* prefabComponent, const Nyx::Reflection::TypeMetadata& type, bool bPart);
+
+	// Makes the instance again from its prefab as the asset resolver of `context` has it now, keeping
+	// what the instance changes from `before`, the prefab as it was: the values it overrides, the
+	// components it added and took away, its guid, transform and parent. Its parts are made again,
+	// with the same guids, in new entities. The prefab's new values and components reach it, ones it
+	// lost go. False, and nothing changed, if a component can't be written.
+	bool ReapplyPrefab(Registry& world, Entity root, const PrefabAsset& before, ScenePostLoadContext& context);
+
 	// The prefabs that instances name, read once each from the asset folders and kept
 	class PrefabLibrary
 	{
 	public:
 		// The prefab at the path, relative to an asset folder ("Prefabs/Wall.nyxprefab"); null if it
 		// can't be read, which is logged once
-		const PrefabAsset* Find(const std::string& path);
+		PrefabAsset* Find(const std::string& path);
 
 		// Reads the prefab again on the next Find(), e.g. after its file changed
 		void Forget(const std::string& path);

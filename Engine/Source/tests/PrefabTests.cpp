@@ -58,7 +58,7 @@ namespace
 		{
 			return nullptr;
 		}
-		const PrefabAsset* ResolvePrefab(const std::string& path) override
+		PrefabAsset* ResolvePrefab(const std::string& path) override
 		{
 			const auto found = Prefabs.find(path);
 			return found != Prefabs.end() ? found->second.get() : nullptr;
@@ -332,6 +332,49 @@ namespace
 			"A part the scene has values of should keep its guid without its prefab");
 	}
 
+	// The prefab changed while an instance is in the world: made again, it keeps what it changes and
+	// gets what the prefab gained
+	void TestAnInstanceFollowsItsChangedPrefab()
+	{
+		Nyx::Tests::TestDirectory directory("NyxPrefabTests");
+		const std::unique_ptr<Lamp> lamp = MakeLamp();
+		TestPrefabs prefabs;
+		prefabs.Prefabs[LampPath] = SaveAndLoad(lamp->World, lamp->Post, directory.Path / "Lamp.nyxprefab");
+		PrefabAsset& prefab = *prefabs.Prefabs[LampPath];
+
+		Registry world;
+		const Entity root = Place(world, prefab, EntityGuid{ 0x77 }, glm::vec3(0.0f, 0.0f, 3.0f));
+		const EntityGuid armGuid = Nyx::GetPrefabPartGuid(EntityGuid{ 0x77 }, EntityGuid{ 0x20 });
+		const EntityGuid lightGuid = Nyx::GetPrefabPartGuid(EntityGuid{ 0x77 }, EntityGuid{ 0x30 });
+		world.Get<Nyx::PointLightComponent>(*Find(world, lightGuid)).Color = glm::vec3(1.0f, 0.0f, 0.0f);
+		world.Add<Nyx::SphereColliderComponent>(root, Nyx::SphereColliderComponent{});
+		world.Remove<Nyx::NameComponent>(*Find(world, armGuid));
+
+		// The prefab as it was, then changed: a brighter, blue light, a rigid body on the post
+		std::string error;
+		PrefabAsset before;
+		Require(before.LoadFromMemory(prefab.SaveToMemory(), error), "A prefab's bytes should read back: " + error);
+		Registry& prefabWorld = prefab.GetEditableTemplate();
+		const Entity prefabLight = *prefab.FindLocal(EntityGuid{ 0x30 });
+		prefabWorld.Get<Nyx::PointLightComponent>(prefabLight).Intensity = 9.0f;
+		prefabWorld.Get<Nyx::PointLightComponent>(prefabLight).Color = glm::vec3(0.0f, 0.0f, 1.0f);
+		prefabWorld.Add<Nyx::RigidBodyComponent>(prefab.GetRoot(), Nyx::RigidBodyComponent{});
+		prefab.Refresh();
+
+		Nyx::ScenePostLoadContext context{ .AssetResolver = &prefabs };
+		Require(Nyx::ReapplyPrefab(world, root, before, context), "Making the instance again failed");
+		Nyx::UpdateTransformHierarchy(world, Nyx::MakeEntityGuidLookup(world));
+		const std::optional<Entity> light = Find(world, lightGuid);
+		Require(light && world.Get<Nyx::PointLightComponent>(*light).Color == glm::vec3(1.0f, 0.0f, 0.0f), "The instance's own colour should stay");
+		Require(world.Get<Nyx::PointLightComponent>(*light).Intensity == 9.0f, "A value it didn't change should follow the prefab");
+		Require(world.Has<Nyx::RigidBodyComponent>(root) && world.Has<Nyx::SphereColliderComponent>(root),
+			"The root should get the prefab's new component and keep the one it added");
+		Require(!world.Has<Nyx::NameComponent>(*Find(world, armGuid)), "A component the part took away should stay away");
+		Require(Near(world.Get<TransformComponent>(*light).Position, glm::vec3(1.0f, 3.0f, 3.0f)) && Near(world.Get<TransformComponent>(root).Position, glm::vec3(0.0f, 0.0f, 3.0f)),
+			"The instance should stay where it is, its parts placed by it");
+		Require(CountEntities(world) == 3, "The parts should be made again, not added to");
+	}
+
 	size_t CountEntities(const Nyx::GameWorld& world)
 	{
 		return CountEntities(world.GetRegistry());
@@ -406,6 +449,7 @@ int main()
 		TestOverridesOutliveChangesOfThePrefab();
 		TestAnInstanceWithoutItsPrefab();
 		TestCommandsSpawnInstances();
+		TestAnInstanceFollowsItsChangedPrefab();
 	}
 	catch (const std::exception& error)
 	{

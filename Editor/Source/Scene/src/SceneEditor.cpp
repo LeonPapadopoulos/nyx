@@ -15,6 +15,12 @@ namespace Nyx::Editor
 		TransactionContext.ActiveScene = &Scene;
 		Transactions.RegisterDomain(EObjectDomain::SceneEntity, &EntityDomain);
 		Transactions.RegisterDomain(EObjectDomain::SceneOutline, &OutlineDomain);
+		Transactions.RegisterDomain(EObjectDomain::Prefab, &PrefabDomain);
+		PrefabDomain.SetAssets(&Assets);
+		PrefabDomain.BeforeChange = [this](const std::string& prefabPath)
+		{
+			Prefabs.Remember(prefabPath);
+		};
 	}
 
 	void SceneEditor::CancelPendingEdits()

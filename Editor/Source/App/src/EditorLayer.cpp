@@ -3,6 +3,8 @@
 #include "Application.h"
 #include "Assertions.h"
 #include "DefaultScene.h"
+#include "Prefab.h"
+#include "PrefabEdits.h"
 #include "EditorLinkMessages.h"
 #include "ImGuiSource.h"
 #include "InputAsset.h"
@@ -229,6 +231,14 @@ namespace Nyx::Editor
 		// Edits show up live in the game started with Play
 		Editing.Transactions.Subscribe(&Games.GetEditSubscriber());
 
+		// Then prefabs changed by an edit are saved and their instances made again, as when another
+		// program changes their files
+		Editing.Transactions.Subscribe(&Editing.Prefabs);
+		for (const std::filesystem::path& folder : Nyx::Paths::GetAssetSearchDirs())
+		{
+			PrefabFiles.Watch(folder);
+		}
+
 		// Then children are placed relative to their parents, and the games get where they moved
 		Editing.Hierarchy.SetOnMoved([this](const std::vector<Nyx::Entity>& moved)
 			{
@@ -271,6 +281,18 @@ namespace Nyx::Editor
 #if NYX_DEV_TOOLS
 		DebugTools.BeforeFrame();
 #endif
+
+		// Prefabs whose files another program changed: their instances follow them
+		for (const std::filesystem::path& changed : PrefabFiles.TakeChanges())
+		{
+			if (changed.extension() == Nyx::PrefabExtension)
+			{
+				if (const std::optional<std::string> prefabPath = GetAssetPathOf(changed))
+				{
+					Editing.Prefabs.FileChanged(*prefabPath);
+				}
+			}
+		}
 
 		// A workspace chosen last frame: its layout, which ImGui loads between frames
 		if (Layouts.ApplyPending())

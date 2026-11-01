@@ -234,6 +234,121 @@ namespace Nyx
 		return true;
 	}
 
+	std::vector<std::byte> PrefabAsset::SaveToMemory() const
+	{
+		BinaryWriter writer;
+		writer.WriteUInt32(PrefabFileMagic);
+		writer.WriteUInt32(SceneFileVersion);
+		writer.WriteUInt32(static_cast<uint32_t>(Entities.size()));
+		for (const Entity entity : Entities)
+		{
+			SceneSerializer::WriteEntity(*Template, entity, writer);
+		}
+		return writer.GetBytes();
+	}
+
+	bool PrefabAsset::SaveToFile(const std::filesystem::path& path) const
+	{
+		BinaryWriter writer;
+		const std::vector<std::byte> bytes = SaveToMemory();
+		writer.WriteBytes(bytes.data(), bytes.size());
+		return writer.SaveToFile(path);
+	}
+
+	void PrefabAsset::Refresh()
+	{
+		ByLocal.clear();
+		for (size_t index = 0; index < Entities.size(); ++index)
+		{
+			BinaryWriter writer;
+			SceneSerializer::WriteEntity(*Template, Entities[index], writer);
+			EntityBytes[index] = writer.GetBytes();
+			if (Template->Has<GuidComponent>(Entities[index]))
+			{
+				ByLocal.emplace(Template->Get<GuidComponent>(Entities[index]).Guid, Entities[index]);
+			}
+		}
+	}
+
+	std::optional<Entity> FindPrefabEntityOf(const Registry& world, Entity entity, const PrefabAsset& prefab)
+	{
+		if (prefab.IsEmpty())
+		{
+			return std::nullopt;
+		}
+		if (world.Has<PrefabInstanceComponent>(entity))
+		{
+			return prefab.GetRoot();
+		}
+		if (world.Has<PrefabPartComponent>(entity))
+		{
+			return prefab.FindLocal(world.Get<PrefabPartComponent>(entity).Local);
+		}
+		return std::nullopt;
+	}
+
+	std::vector<size_t> FindPrefabOverrides(const void* component, const void* prefabComponent, const Reflection::TypeMetadata& type, bool bPart)
+	{
+		return FindDifferentProperties(component, prefabComponent, type, bPart && &type == &Reflection::GetTypeMetadata<ParentComponent>() ? std::string_view("Parent") : std::string_view());
+	}
+
+	bool ReapplyPrefab(Registry& world, Entity root, const PrefabAsset& before, ScenePostLoadContext& context)
+	{
+		if (!world.Has<GuidComponent>(root) || !world.Has<PrefabInstanceComponent>(root))
+		{
+			return false;
+		}
+		const EntityGuid rootGuid = world.Get<GuidComponent>(root).Guid;
+
+		// What the instance has of its own, against the prefab as it was: its root, then its parts
+		std::vector<Entity> parts;
+		for (const Entity below : GetTransformSubtree(world, root))
+		{
+			if (below != root && world.Has<PrefabPartComponent>(below) && world.Get<PrefabPartComponent>(below).Instance == rootGuid)
+			{
+				parts.push_back(below);
+			}
+		}
+		BinaryWriter records;
+		uint32_t count = 0;
+		for (size_t index = 0; index <= parts.size(); ++index)
+		{
+			bool bNothing = false;
+			if (!WritePrefabInstanceEntity(world, index == 0 ? root : parts[index - 1], before, records, &bNothing))
+			{
+				return false;
+			}
+			count += bNothing ? 0 : 1;
+		}
+
+		// The instance taken back to its own: the root keeps its guid, mark, transform and parent
+		for (const ComponentTypeOps& ops : ComponentTypeRegistry::Get().GetAll())
+		{
+			const bool bKept = IsOwnType(ops) || IsType<TransformComponent>(ops) || IsType<ParentComponent>(ops);
+			if (!ops.IsRuntime() && !bKept && ops.Has(world, root))
+			{
+				ops.Remove(world, root);
+			}
+		}
+		for (const Entity part : parts)
+		{
+			world.DestroyEntity(part);
+		}
+
+		// And made again, as loading a scene makes it
+		BinaryReader reader;
+		reader.LoadFromMemory(records.GetBytes());
+		ReadWarnings warnings;
+		SceneSerializer::PrefabReadState state;
+		bool bRead = true;
+		for (uint32_t index = 0; index < count && bRead; ++index)
+		{
+			bRead = SceneSerializer::ReadSceneEntity(reader, world, index == 0 ? root : world.CreateEntity(), context, warnings, &state);
+		}
+		warnings.Log("Prefab instance " + GuidToText(rootGuid));
+		return bRead;
+	}
+
 	std::optional<Entity> PrefabAsset::FindLocal(EntityGuid local) const
 	{
 		const auto found = ByLocal.find(local);
@@ -411,7 +526,7 @@ namespace Nyx
 		return WriteComponents(writer, components);
 	}
 
-	const PrefabAsset* PrefabLibrary::Find(const std::string& path)
+	PrefabAsset* PrefabLibrary::Find(const std::string& path)
 	{
 		if (const auto found = Prefabs.find(path); found != Prefabs.end())
 		{

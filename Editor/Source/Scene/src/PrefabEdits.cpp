@@ -1,6 +1,12 @@
 #include "PrefabEdits.h"
 
 #include "AssetReference.h"
+#include "BinaryArchive.h"
+#include "ReflectedArchiveSerializer.h"
+#include "ComponentTypeRegistry.h"
+#include "ParentComponent.h"
+#include "ReflectedPropertyAccess.h"
+#include "ReflectionUtils.h"
 #include "GuidComponent.h"
 #include "IAssetResolver.h"
 #include "Log.h"
@@ -34,6 +40,206 @@ namespace Nyx::Editor
 		{
 			return Nyx::AssetReference{ .Type = std::string(Nyx::PrefabAssetType), .Path = prefabPath };
 		}
+
+		// Copies the property of `source` into `destination` (an object of `ownerType` at `location` in
+		// the component), recording each value that changed, or with bKeep each value whether or not,
+		// as undo steps hold them: a struct field by field, an array whole
+		void AppendCopy(std::vector<Change>& changes, const ObjectRef& target, void* destination, const void* source,
+			const Nyx::Reflection::TypeMetadata& ownerType, size_t index, const SubobjectPath& location, bool bKeep)
+		{
+			const Nyx::Reflection::PropertyMetadata& property = ownerType.Properties[index];
+			if (!Nyx::Reflection::HasFlag(property.Flags, Nyx::Reflection::EPropertyFlags::Serialize))
+			{
+				return;
+			}
+			if (Nyx::Reflection::IsStructProperty(property))
+			{
+				const Nyx::Reflection::TypeMetadata* nested = Nyx::Reflection::TryGetNestedType(property);
+				if (!nested)
+				{
+					return;
+				}
+				SubobjectPath inside = location;
+				if (!inside.SubobjectType)
+				{
+					inside.SubobjectType = &ownerType;
+				}
+				inside.PropertyIndices.push_back(index);
+				void* destinationStruct = Nyx::Reflection::GetPropertyAddress(destination, property);
+				const void* sourceStruct = Nyx::Reflection::GetPropertyAddress(const_cast<void*>(source), property);
+				for (size_t field = 0; field < nested->PropertyCount; ++field)
+				{
+					AppendCopy(changes, target, destinationStruct, sourceStruct, *nested, field, inside, bKeep);
+				}
+				return;
+			}
+			if (Nyx::Reflection::TryGetArray(property))
+			{
+				std::vector<std::byte> before = SaveReflectedProperty(destination, ownerType, index);
+				std::vector<std::byte> after = SaveReflectedProperty(source, ownerType, index);
+				if (bKeep || before != after)
+				{
+					LoadReflectedProperty(destination, ownerType, after);
+					changes.push_back(Change{ EChangeKind::ReplaceArray,
+						ReplaceArrayChange{ .Target = target, .TypeMetadata = &ownerType, .PropertyIndex = index, .Location = location, .Before = std::move(before), .After = std::move(after) } });
+				}
+				return;
+			}
+			Nyx::Reflection::PropertyValue before = ReadReflectedPropertyValue(destination, property);
+			Nyx::Reflection::PropertyValue after = ReadReflectedPropertyValue(source, property);
+			if (bKeep || !Nyx::Reflection::ArePropertyValuesEqual(before, after))
+			{
+				WriteReflectedPropertyValue(destination, property, after);
+				changes.push_back(Change{ EChangeKind::SetValue,
+					SetValueChange{ .Target = target, .TypeMetadata = &ownerType, .PropertyIndex = index, .Before = std::move(before), .After = std::move(after), .Location = location } });
+			}
+		}
+	}
+
+	std::optional<PrefabSource> FindPrefabSource(SceneEditor& editing, Nyx::Entity entity)
+	{
+		const Nyx::Registry& world = editing.Scene.GetRegistry();
+		const std::optional<Nyx::Entity> root = FindPrefabInstanceRoot(world, entity);
+		if (!root || !editing.Assets)
+		{
+			return std::nullopt;
+		}
+		const std::string& path = world.Get<Nyx::PrefabInstanceComponent>(*root).Prefab.Path;
+		Nyx::PrefabAsset* prefab = editing.Assets->ResolvePrefab(path);
+		const std::optional<Nyx::Entity> prefabEntity = prefab ? Nyx::FindPrefabEntityOf(world, entity, *prefab) : std::nullopt;
+		if (!prefabEntity)
+		{
+			return std::nullopt;
+		}
+		return PrefabSource{ .Prefab = prefab, .Path = path, .Entity = *prefabEntity, .bPart = !world.Has<Nyx::PrefabInstanceComponent>(entity) };
+	}
+
+	bool FollowsPrefab(const Nyx::Registry& world, Nyx::Entity entity, const Nyx::ComponentTypeOps& componentType)
+	{
+		const Nyx::Reflection::TypeMetadata* type = componentType.TypeMetadata;
+		if (componentType.IsRuntime() || type == &Nyx::Reflection::GetTypeMetadata<Nyx::GuidComponent>() ||
+			type == &Nyx::Reflection::GetTypeMetadata<Nyx::PrefabInstanceComponent>() || type == &Nyx::Reflection::GetTypeMetadata<Nyx::PrefabPartComponent>())
+		{
+			return false;
+		}
+		const bool bRoot = world.Has<Nyx::PrefabInstanceComponent>(entity);
+		return !(bRoot && (type == &Nyx::Reflection::GetTypeMetadata<Nyx::TransformComponent>() || type == &Nyx::Reflection::GetTypeMetadata<Nyx::ParentComponent>())) &&
+			!(!bRoot && type == &Nyx::Reflection::GetTypeMetadata<Nyx::TransformComponent>());
+	}
+
+	std::vector<size_t> FindOverriddenProperties(SceneEditor& editing, Nyx::Entity entity, const Nyx::ComponentTypeOps& componentType)
+	{
+		const Nyx::Registry& world = editing.Scene.GetRegistry();
+		const std::optional<PrefabSource> source = FindPrefabSource(editing, entity);
+		if (!source || !FollowsPrefab(world, entity, componentType) || !componentType.Has(world, entity) ||
+			!componentType.Has(source->Prefab->GetTemplate(), source->Entity))
+		{
+			return {};
+		}
+		return Nyx::FindPrefabOverrides(componentType.GetConst(world, entity), componentType.GetConst(source->Prefab->GetTemplate(), source->Entity),
+			*componentType.TypeMetadata, source->bPart);
+	}
+
+	bool IsAddedToInstance(SceneEditor& editing, Nyx::Entity entity, const Nyx::ComponentTypeOps& componentType)
+	{
+		const Nyx::Registry& world = editing.Scene.GetRegistry();
+		const std::optional<PrefabSource> source = FindPrefabSource(editing, entity);
+		return source && FollowsPrefab(world, entity, componentType) && componentType.Has(world, entity) &&
+			!componentType.Has(source->Prefab->GetTemplate(), source->Entity);
+	}
+
+	bool RevertToPrefab(SceneEditor& editing, Nyx::Entity entity, const Nyx::ComponentTypeOps& componentType, std::optional<size_t> propertyIndex)
+	{
+		const std::vector<size_t> overridden = FindOverriddenProperties(editing, entity, componentType);
+		const std::optional<PrefabSource> source = FindPrefabSource(editing, entity);
+		if (overridden.empty() || !source)
+		{
+			return false;
+		}
+		editing.CancelPendingEdits();
+		Nyx::Registry& world = editing.Scene.GetRegistry();
+		void* component = componentType.Get(world, entity);
+		const void* prefabComponent = componentType.GetConst(source->Prefab->GetTemplate(), source->Entity);
+
+		Transaction transaction;
+		transaction.Label = "Revert to Prefab";
+		for (const size_t index : overridden)
+		{
+			if (!propertyIndex || *propertyIndex == index)
+			{
+				AppendCopy(transaction.Changes, MakeSceneEntityRef(editing.Scene, entity), component, prefabComponent, *componentType.TypeMetadata, index, {}, false);
+			}
+		}
+		if (transaction.IsEmpty())
+		{
+			return false;
+		}
+		editing.Transactions.Push(std::move(transaction));
+		return true;
+	}
+
+	bool ApplyToPrefab(SceneEditor& editing, Nyx::Entity entity, const Nyx::ComponentTypeOps& componentType, std::optional<size_t> propertyIndex)
+	{
+		const std::optional<PrefabSource> source = FindPrefabSource(editing, entity);
+		Nyx::Registry& world = editing.Scene.GetRegistry();
+		if (!source || !FollowsPrefab(world, entity, componentType) || !componentType.Has(world, entity))
+		{
+			return false;
+		}
+		editing.CancelPendingEdits();
+		editing.Prefabs.Remember(source->Path);
+
+		Nyx::Registry& prefabWorld = source->Prefab->GetEditableTemplate();
+		const Nyx::EntityGuid local = prefabWorld.Get<Nyx::GuidComponent>(source->Entity).Guid;
+		const ObjectRef prefabRef = editing.PrefabDomain.GetRef(source->Path, local);
+		const void* component = componentType.GetConst(world, entity);
+		Transaction transaction;
+		transaction.Label = "Apply to Prefab";
+
+		// A component the instance added: the prefab gets it whole
+		if (!componentType.Has(prefabWorld, source->Entity))
+		{
+			if (propertyIndex)
+			{
+				return false;
+			}
+			void* added = componentType.Add(prefabWorld, source->Entity);
+			Nyx::BinaryWriter writer;
+			Nyx::ReflectedArchiveSerializer::SerializeObject(writer, component, *componentType.TypeMetadata);
+			LoadReflectedProperty(added, *componentType.TypeMetadata, writer.GetBytes());
+			transaction.Changes.push_back(Change{ EChangeKind::AddSubobject,
+				AddSubobjectChange{ .Target = prefabRef, .AfterAdd = CaptureSubobjectSnapshot(added, *componentType.TypeMetadata) } });
+
+			// The instance's own, kept in the step: undone, the prefab loses it and the instance keeps it
+			void* own = componentType.Get(world, entity);
+			for (size_t index = 0; index < componentType.TypeMetadata->PropertyCount; ++index)
+			{
+				AppendCopy(transaction.Changes, MakeSceneEntityRef(editing.Scene, entity), own, component, *componentType.TypeMetadata, index, {}, true);
+			}
+			editing.Transactions.Push(std::move(transaction));
+			return true;
+		}
+
+		const std::vector<size_t> overridden = FindOverriddenProperties(editing, entity, componentType);
+		void* prefabComponent = componentType.Get(prefabWorld, source->Entity);
+		void* instanceComponent = componentType.Get(world, entity);
+		for (const size_t index : overridden)
+		{
+			if (!propertyIndex || *propertyIndex == index)
+			{
+				AppendCopy(transaction.Changes, prefabRef, prefabComponent, component, *componentType.TypeMetadata, index, {}, false);
+
+				// The instance's own value, kept in the step: undoing it gives the prefab its value back,
+				// and the instance keeps this one
+				AppendCopy(transaction.Changes, MakeSceneEntityRef(editing.Scene, entity), instanceComponent, component, *componentType.TypeMetadata, index, {}, true);
+			}
+		}
+		if (transaction.IsEmpty())
+		{
+			return false;
+		}
+		editing.Transactions.Push(std::move(transaction));
+		return true;
 	}
 
 	glm::vec3 FindPrefabDropPoint(const Nyx::Registry& world, const Nyx::Ray& ray)

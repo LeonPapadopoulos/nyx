@@ -74,11 +74,7 @@ namespace
 		return true;
 	}
 
-	// While a scene file is read: the parts its instances made, by guid, for the parts' records
-	struct PrefabLoad
-	{
-		std::unordered_map<EntityGuid, Entity> Parts;
-	};
+	using PrefabLoad = SceneSerializer::PrefabReadState;
 
 	bool ReadEntityOfScene(BinaryReader& reader, Registry& world, Entity entity, ScenePostLoadContext& postLoadContext,
 		ReadWarnings& warnings, PrefabLoad* prefabs);
@@ -333,6 +329,12 @@ namespace Nyx
 		ReadWarnings& warnings)
 	{
 		return ReadEntityOfScene(reader, world, entity, postLoadContext, warnings, nullptr);
+	}
+
+	bool SceneSerializer::ReadSceneEntity(BinaryReader& reader, Registry& world, Entity entity, ScenePostLoadContext& postLoadContext,
+		ReadWarnings& warnings, PrefabReadState* prefabs)
+	{
+		return ReadEntityOfScene(reader, world, entity, postLoadContext, warnings, prefabs);
 	}
 }
 

@@ -719,6 +719,19 @@ prefab changes.
   - Duplicating or copying an instance copies its parts as the copy's, their guids made from the
     copy's root; a part copied without its instance becomes a plain entity.
   - *Unpack Prefab* makes an instance plain entities that no longer follow the prefab, one undo step.
+  - **Overrides in the details panel**: the top says which prefab an instance's root or part follows.
+    A value that differs from the prefab's is marked with the accent at its rows' left; a component
+    with such values says *(overridden)* in its header, one the instance added *(added to the
+    instance)*. A root's transform and parent are its own, never marked; a part's values relative to
+    its parent are. Right-click a marked value for *Revert to Prefab* (the prefab's value) or *Apply
+    to Prefab* (the instance's value into the prefab), or a component's header for all its values, or
+    to apply a component the instance added. Each is one undo step.
+  - **Applying** saves the prefab and makes each of its instances in the scene again
+    (`ReapplyPrefab()`): what each overrides stays, the rest follows the prefab, its parts come back
+    with the same guids. Undoing an Apply takes the prefab and the other instances back and leaves the
+    instance that applied its value (`PrefabTransactionDomain`, `PrefabSubscriber`). A prefab file
+    changed by another program, or by hand, reaches the instances the same way. A running game gets
+    the instances as they are at the next Play.
   - NyxDump prints `.nyxprefab` files as it prints scenes.
 - **Spawning in a game**: a player's `SpawnPrefabCommand` (the prefab, the guid, where) makes an
   instance at the start of the next step (`ApplySpawnPrefabCommands()`), before the game's systems,

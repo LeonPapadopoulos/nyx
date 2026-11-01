@@ -8,6 +8,8 @@
 #include "ImGuiSource.h"
 #include "Log.h"
 #include "ParentComponent.h"
+#include "Prefab.h"
+#include "PrefabEdits.h"
 #include "ReflectedArchiveSerializer.h"
 #include "ReflectedPropertyDrawer.h"
 #include "ReflectionSourceRegistry.h"
@@ -198,6 +200,14 @@ namespace Nyx::Editor
 		}
 
 		NYX_UI(ImGui::Text("Entity: %u", selectedEntity.Index()));
+
+		// Which prefab it follows, if it is an instance's root or part
+		if (const std::optional<Nyx::Entity> instanceRoot = FindPrefabInstanceRoot(world, selectedEntity))
+		{
+			const std::string& prefabPath = world.Get<Nyx::PrefabInstanceComponent>(*instanceRoot).Prefab.Path;
+			NYX_UI(ImGui::TextDisabled(*instanceRoot == selectedEntity ? "Instance of %s" : "Part of an instance of %s", prefabPath.c_str()));
+			ImGui::SetItemTooltip("Values that differ from the prefab are marked at their left; right-click one, or a component's header, to revert it or apply it to the prefab");
+		}
 		NYX_UI(Nyx::UI::Separator());
 
 		// @todo: Move away from manually hardcoding the visuals of
@@ -224,6 +234,16 @@ namespace Nyx::Editor
 
 		// Set after the loop too: it adds or removes the parent link
 		std::optional<std::optional<Nyx::Entity>> parentToSet;
+
+		// A value, or a component, reverted to or applied to the prefab, after the loop: making the
+		// instances again moves their components
+		struct PrefabAction
+		{
+			const Nyx::ComponentTypeOps* Component = nullptr;
+			std::optional<size_t> Property;
+			bool bApply = false;
+		};
+		std::optional<PrefabAction> prefabAction;
 		const Nyx::Reflection::TypeMetadata& transformType = Nyx::Reflection::GetTypeMetadata<Nyx::TransformComponent>();
 		const Nyx::Reflection::TypeMetadata& linkType = Nyx::Reflection::GetTypeMetadata<Nyx::ParentComponent>();
 
@@ -242,7 +262,16 @@ namespace Nyx::Editor
 			ImGui::PushID(displayName);
 			UI::SourceDeclarationScope componentSource(ReflectionSourceRegistry::Get().Find(*componentType.TypeMetadata));
 
-			const bool bComponentOpen = NYX_UI(Nyx::UI::CollapsingHeader(displayName));
+			// Of a prefab instance: what differs from the prefab, and whether the instance added it.
+			// The parent link is drawn in the Transform section, its own values marked there.
+			const std::vector<size_t> overridden = FindOverriddenProperties(editing, selectedEntity, componentType);
+			const std::vector<size_t> linkOverridden = componentType.TypeMetadata == &transformType && world.Has<Nyx::ParentComponent>(selectedEntity)
+				? FindOverriddenProperties(editing, selectedEntity, *Nyx::ComponentTypeRegistry::Get().FindByTypeMetadata(linkType))
+				: std::vector<size_t>{};
+			const bool bAdded = IsAddedToInstance(editing, selectedEntity, componentType);
+			const std::string header = std::string(displayName) + (bAdded ? " (added to the instance)" : !overridden.empty() || !linkOverridden.empty() ? " (overridden)" : "") +
+				"###" + displayName;
+			const bool bComponentOpen = NYX_UI(Nyx::UI::CollapsingHeader(header.c_str()));
 
 			// Right-click on the header: Remove, except for the guid and name every entity keeps
 			if (CanAddOrRemoveComponent(componentType))
@@ -259,6 +288,18 @@ namespace Nyx::Editor
 					{
 						componentToRemove = &componentType;
 					}
+					if (!overridden.empty() || bAdded)
+					{
+						NYX_UI(Nyx::UI::Separator());
+						if (NYX_UI(Nyx::UI::MenuItem("Revert to Prefab", nullptr, false, !overridden.empty())))
+						{
+							prefabAction = PrefabAction{ .Component = &componentType };
+						}
+						if (NYX_UI(Nyx::UI::MenuItem("Apply to Prefab")))
+						{
+							prefabAction = PrefabAction{ .Component = &componentType, .bApply = true };
+						}
+					}
 					ImGui::EndPopup();
 				}
 			}
@@ -267,7 +308,15 @@ namespace Nyx::Editor
 			{
 				// The component's own properties; the drawer extends the location for structs inside it
 				drawContext.CurrentLocation = {};
-				if (componentType.TypeMetadata == &transformType)
+				const bool bTransform = componentType.TypeMetadata == &transformType;
+				const Nyx::ComponentTypeOps* marked = bTransform ? Nyx::ComponentTypeRegistry::Get().FindByTypeMetadata(linkType) : &componentType;
+				drawContext.PrefabOverrides = bTransform ? &linkOverridden : &overridden;
+				drawContext.PrefabOverridesType = marked ? marked->TypeMetadata : nullptr;
+				drawContext.PrefabValueAction = [&prefabAction, marked](size_t propertyIndex, bool bApply)
+				{
+					prefabAction = PrefabAction{ .Component = marked, .Property = propertyIndex, .bApply = bApply };
+				};
+				if (bTransform)
 				{
 					parentToSet = DrawTransformSection(world, selectedEntity, *static_cast<Nyx::TransformComponent*>(component), drawContext);
 				}
@@ -275,6 +324,9 @@ namespace Nyx::Editor
 				{
 					DrawReflectedTypeTable(component, *componentType.TypeMetadata, drawContext);
 				}
+				drawContext.PrefabOverrides = nullptr;
+				drawContext.PrefabOverridesType = nullptr;
+				drawContext.PrefabValueAction = nullptr;
 			}
 
 			ImGui::PopID();
@@ -322,9 +374,21 @@ namespace Nyx::Editor
 
 		// Adding or removing can move other components of that type in memory, so edits in progress,
 		// which point at components, are dropped first. A click on a menu has ended them already.
-		if (componentToAdd || componentToRemove || parentToSet)
+		if (componentToAdd || componentToRemove || parentToSet || prefabAction)
 		{
 			editing.CancelPendingEdits();
+		}
+
+		if (prefabAction && prefabAction->Component)
+		{
+			if (prefabAction->bApply)
+			{
+				ApplyToPrefab(editing, selectedEntity, *prefabAction->Component, prefabAction->Property);
+			}
+			else
+			{
+				RevertToPrefab(editing, selectedEntity, *prefabAction->Component, prefabAction->Property);
+			}
 		}
 
 		if (parentToSet && !SetParent(editing.Scene, editing.Transactions, selectedEntity, *parentToSet) && *parentToSet &&

@@ -918,7 +918,7 @@ namespace
 		{
 			return nullptr;
 		}
-		const PrefabAsset* ResolvePrefab(const std::string& path) override
+		PrefabAsset* ResolvePrefab(const std::string& path) override
 		{
 			if (!Prefabs.contains(path))
 			{
@@ -1041,6 +1041,143 @@ namespace
 			"A ray down should meet the ground");
 		Require(glm::length(FindPrefabDropPoint(world, Ray{ glm::vec3(0.0f, 10.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f) }) - glm::vec3(0.0f, 20.0f, 0.0f)) < 1e-4f,
 			"A ray up should go 10 m out");
+	}
+
+	// What differs from the prefab is found per property; Revert gives the instance the prefab's value;
+	// Apply gives the prefab the instance's, saves it and its other instances follow, and undo takes
+	// that back while the instance keeps its value; a component the instance added is applied whole;
+	// a prefab file changed by another program reaches the instances too. The details of an instance
+	// with overrides draw.
+	void TestOverridesRevertAndApply()
+	{
+		HeadlessUI ui;
+		RegisterDefaultPropertyWidgets();
+		Nyx::Tests::TestDirectory directory("NyxEditorPrefabTests");
+		std::filesystem::create_directories(directory.Path / "Prefabs");
+		FolderPrefabs prefabs(directory.Path);
+
+		SceneEditor editing;
+		editing.Transactions.Subscribe(&editing.Prefabs);
+		editing.Transactions.Subscribe(&editing.Hierarchy);
+		editing.Assets = &prefabs;
+		editing.Prefabs.FindFile = [&](const std::string& path)
+		{
+			return directory.Path / path;
+		};
+		Registry& world = editing.Scene.GetRegistry();
+
+		const Entity post = editing.Scene.CreateEntity("Post");
+		world.Add<TransformComponent>(post, TransformComponent{});
+		world.Add<BoxColliderComponent>(post, BoxColliderComponent{ .HalfExtents = glm::vec3(0.5f) });
+		const Entity arm = editing.Scene.CreateEntity("Arm");
+		world.Add<TransformComponent>(arm, TransformComponent{});
+		world.Add<ParentComponent>(arm, ParentComponent{ .Parent = editing.Scene.GetGuid(post), .LocalPosition = glm::vec3(0.0f, 3.0f, 0.0f) });
+		const EntityGuid armLocal = editing.Scene.GetGuid(arm);
+		const std::string lampPath = "Prefabs/Lamp.nyxprefab";
+		Require(CreatePrefab(editing, post, directory.Path / lampPath, lampPath), "Create Prefab failed");
+		const Entity a = post;
+		const Entity b = *PlacePrefab(editing, lampPath, glm::vec3(10.0f, 0.0f, 0.0f));
+		const EntityGuid guidB = editing.Scene.GetGuid(b);
+		const ComponentTypeOps& box = *ComponentTypeRegistry::Get().FindByTypeMetadata(Nyx::Reflection::GetTypeMetadata<BoxColliderComponent>());
+		const ComponentTypeOps& link = *ComponentTypeRegistry::Get().FindByTypeMetadata(Nyx::Reflection::GetTypeMetadata<ParentComponent>());
+		const ComponentTypeOps& transform = *ComponentTypeRegistry::Get().FindByTypeMetadata(Nyx::Reflection::GetTypeMetadata<TransformComponent>());
+		const auto boxOf = [&](EntityGuid guid) { return world.Get<BoxColliderComponent>(*editing.Scene.FindEntity(guid)).HalfExtents; };
+		const auto armOf = [&](EntityGuid root) { return *editing.Scene.FindEntity(GetPrefabPartGuid(root, armLocal)); };
+		const EntityGuid guidA = editing.Scene.GetGuid(a);
+
+		// A's box made bigger: overridden there, not in B; a root's own transform is never one
+		{
+			TransactionDiffUtil diff;
+			diff.TakeSnapshot(MakeSceneEntityRef(editing.Scene, a), &world.Get<BoxColliderComponent>(a), Nyx::Reflection::GetTypeMetadata<BoxColliderComponent>());
+			world.Get<BoxColliderComponent>(a).HalfExtents = glm::vec3(2.0f);
+			Require(diff.CommitChanges("Edit Property", editing.Transactions), "The edit recorded nothing");
+		}
+		Require(FindOverriddenProperties(editing, a, box).size() == 1 && FindOverriddenProperties(editing, b, box).empty(), "Only A's box should differ from the prefab");
+		Require(FollowsPrefab(world, armOf(guidA), link) && !FollowsPrefab(world, a, transform), "A root's transform is its own");
+
+		// Revert, and undo it
+		Require(RevertToPrefab(editing, a, box), "Revert to Prefab failed");
+		Require(boxOf(guidA) == glm::vec3(0.5f) && FindOverriddenProperties(editing, a, box).empty(), "Revert should give A the prefab's value");
+		editing.Undo();
+		Require(boxOf(guidA) == glm::vec3(2.0f), "Undoing Revert should give A its value back");
+
+		// Apply: the prefab and B follow A; the file is saved
+		Require(ApplyToPrefab(editing, a, box), "Apply to Prefab failed");
+		Require(boxOf(guidB) == glm::vec3(2.0f) && FindOverriddenProperties(editing, a, box).empty(), "B should follow the prefab A applied to");
+		{
+			PrefabAsset saved;
+			std::string error;
+			Require(saved.LoadFromFile(directory.Path / lampPath, error) && saved.GetTemplate().Get<BoxColliderComponent>(saved.GetRoot()).HalfExtents == glm::vec3(2.0f),
+				"Apply should save the prefab");
+		}
+		editing.Undo();
+		Require(boxOf(guidB) == glm::vec3(0.5f) && boxOf(guidA) == glm::vec3(2.0f), "Undoing Apply should take the prefab and B back, and leave A its value");
+		editing.Redo();
+		Require(boxOf(guidB) == glm::vec3(2.0f) && boxOf(guidA) == glm::vec3(2.0f), "Redoing Apply should give the prefab and B the value again");
+
+		// A part's value relative to its parent, applied: B's part moves
+		{
+			const Entity armA = armOf(guidA);
+			TransactionDiffUtil diff;
+			diff.TakeSnapshot(MakeSceneEntityRef(editing.Scene, armA), &world.Get<ParentComponent>(armA), Nyx::Reflection::GetTypeMetadata<ParentComponent>());
+			world.Get<ParentComponent>(armA).LocalPosition = glm::vec3(0.0f, 5.0f, 0.0f);
+			Require(diff.CommitChanges("Edit Property", editing.Transactions), "The part's edit recorded nothing");
+		}
+		Require(FindOverriddenProperties(editing, armOf(guidA), link).size() == 1, "A part's local position should be its override, its parent's guid never");
+		Require(ApplyToPrefab(editing, armOf(guidA), link), "Applying a part's value failed");
+		Require(glm::length(world.Get<TransformComponent>(armOf(guidB)).Position - glm::vec3(10.0f, 5.0f, 0.0f)) < 1e-4f, "B's part should move as the prefab's did");
+
+		// A component A added, applied whole
+		AddComponent(editing.Scene, editing.Transactions, a, *ComponentTypeRegistry::Get().FindByTypeMetadata(Nyx::Reflection::GetTypeMetadata<SphereColliderComponent>()));
+		const ComponentTypeOps& sphere = *ComponentTypeRegistry::Get().FindByTypeMetadata(Nyx::Reflection::GetTypeMetadata<SphereColliderComponent>());
+		Require(IsAddedToInstance(editing, a, sphere), "A component A added should be its own");
+		Require(ApplyToPrefab(editing, a, sphere) && world.Has<SphereColliderComponent>(*editing.Scene.FindEntity(guidB)), "B should get a component applied to the prefab");
+		editing.Undo();
+		Require(!world.Has<SphereColliderComponent>(*editing.Scene.FindEntity(guidB)) && world.Has<SphereColliderComponent>(*editing.Scene.FindEntity(guidA)),
+			"Undoing it should take it from B, and leave it to A");
+
+		// Another program writes the prefab: the instances follow, A keeping what it overrides
+		{
+			TransactionDiffUtil diff;
+			const Entity rootA = *editing.Scene.FindEntity(guidA);
+			diff.TakeSnapshot(MakeSceneEntityRef(editing.Scene, rootA), &world.Get<BoxColliderComponent>(rootA), Nyx::Reflection::GetTypeMetadata<BoxColliderComponent>());
+			world.Get<BoxColliderComponent>(rootA).HalfExtents = glm::vec3(3.0f);
+			Require(diff.CommitChanges("Edit Property", editing.Transactions), "The edit recorded nothing");
+		}
+		{
+			PrefabAsset written;
+			std::string error;
+			Require(written.LoadFromFile(directory.Path / lampPath, error), "The prefab should read: " + error);
+			written.GetEditableTemplate().Get<BoxColliderComponent>(written.GetRoot()).HalfExtents = glm::vec3(7.0f);
+			written.Refresh();
+			Require(written.SaveToFile(directory.Path / lampPath), "Writing the prefab failed");
+		}
+		editing.Prefabs.FileChanged(lampPath);
+		Require(boxOf(guidB) == glm::vec3(7.0f) && boxOf(guidA) == glm::vec3(3.0f), "A prefab file changed elsewhere should reach B, and leave A its override");
+		editing.Prefabs.FileChanged(lampPath);
+		Require(boxOf(guidB) == glm::vec3(7.0f), "The same file again should change nothing");
+
+		// The details of an instance with overrides, and of its part, draw with no two items sharing an ID
+		DetailsPanel details;
+		const auto draw = [&]()
+		{
+			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+			ImGui::SetNextWindowSize(ImVec2(400.0f, 780.0f));
+			details.Draw(editing);
+		};
+		for (const Entity selected : { *editing.Scene.FindEntity(guidA), armOf(guidA) })
+		{
+			editing.Scene.GetSelection() = selected;
+			ui.Frame(draw);
+			ui.Frame(draw);
+			for (float y = 0.0f; y < 780.0f; y += 6.0f)
+			{
+				ImGui::GetIO().AddMousePosEvent(40.0f, y);
+				ui.Frame(draw);
+				Require(ImGui::GetCurrentContext()->HoveredIdPreviousFrameItemCount <= 1,
+					"Two items in an instance's details share an ID (under the mouse at y = " + std::to_string(y) + ")");
+			}
+		}
 	}
 
 	// A cube and a decal, the decal selected: its details at the top left, the outliner beside them.
@@ -2785,6 +2922,7 @@ int main()
 		TestPostLoadStepsKnowTheirEntity();
 		TestParenting();
 		TestPrefabsInTheEditor();
+		TestOverridesRevertAndApply();
 	}
 	catch (const std::exception& error)
 	{

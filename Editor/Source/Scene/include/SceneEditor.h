@@ -3,6 +3,7 @@
 #include "ComponentPostLoadSubscriber.h"
 #include "EditorTransactionContext.h"
 #include "InspectorDrawContext.h"
+#include "PrefabTransactions.h"
 #include "SceneDocument.h"
 #include "SceneEntityTransactionDomain.h"
 #include "SceneOutlineTransactionDomain.h"
@@ -105,6 +106,11 @@ namespace Nyx::Editor
 
 		// Called after an edit wrote an asset file, e.g. Create Prefab, so the asset browser lists it
 		std::function<void()> AssetFileWritten;
+
+		// The prefabs' entities in undo steps, and what saves a prefab and makes its instances again
+		// after one changed (PrefabTransactions.h); subscribed after the game link, before Hierarchy
+		PrefabTransactionDomain PrefabDomain;
+		PrefabSubscriber Prefabs{ *this };
 
 	private:
 		// Selects the entity a pasted copy or duplicate became, after dropping edits in progress.

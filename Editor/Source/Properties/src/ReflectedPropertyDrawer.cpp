@@ -13,7 +13,11 @@
 #include "ReflectionSourceRegistry.h"
 #include "UITheme.h"
 #include "UIWidgets.h"
+#include "WindowPainter.h"
 
+#include <imgui_internal.h>
+
+#include <algorithm>
 #include <functional>
 #include <map>
 #include <optional>
@@ -317,7 +321,69 @@ namespace
 		Nyx::Editor::InspectorDrawContext& drawContext,
 		const Nyx::Reflection::TypeMetadata& ownerType);
 
+	// A prefab instance's value that differs from its prefab's: the accent at the left of its rows,
+	// and their right-click menu
+	static void DrawPrefabOverrideMark(Nyx::Editor::InspectorDrawContext& drawContext, size_t propertyIndex, float top, float bottom)
+	{
+		const ImGuiWindow* window = ImGui::GetCurrentWindow();
+		const float left = window->WorkRect.Min.x - ImGui::GetStyle().WindowPadding.x * 0.5f - 1.5f;
+		Nyx::UI::GetWindowPainter().AddRoundedRect(Nyx::UI::PainterRect{ { left, top + 1.0f }, { left + 3.0f, bottom - 1.0f } }, 1.5f,
+			Nyx::UI::PainterStyle::Filled(Nyx::UI::GetTheme().Accent));
+
+		ImGui::PushID(static_cast<int>(propertyIndex));
+		ImGui::PushID("##PrefabValue");
+		const bool bHovered = ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(ImVec2(window->WorkRect.Min.x - 8.0f, top), ImVec2(window->WorkRect.Max.x, bottom), false);
+		if (bHovered && ImGui::GetIO().MousePos.x < window->WorkRect.Min.x + 8.0f)
+		{
+			ImGui::SetTooltip("Differs from the prefab; right-click to revert it or apply it to the prefab");
+		}
+		if (bHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+		{
+			ImGui::OpenPopup("##Menu");
+		}
+		if (Nyx::UI::BeginPopup("##Menu"))
+		{
+			if (NYX_UI(Nyx::UI::MenuItem("Revert to Prefab")) && drawContext.PrefabValueAction)
+			{
+				drawContext.PrefabValueAction(propertyIndex, false);
+			}
+			if (NYX_UI(Nyx::UI::MenuItem("Apply to Prefab")) && drawContext.PrefabValueAction)
+			{
+				drawContext.PrefabValueAction(propertyIndex, true);
+			}
+			ImGui::EndPopup();
+		}
+		ImGui::PopID();
+		ImGui::PopID();
+	}
+
+	static bool DrawPropertyRowContents(
+		void* object,
+		const Nyx::Reflection::PropertyMetadata& property,
+		Nyx::Editor::InspectorDrawContext& drawContext,
+		const Nyx::Reflection::TypeMetadata& ownerType);
+
 	static bool DrawPropertyRow(
+		void* object,
+		const Nyx::Reflection::PropertyMetadata& property,
+		Nyx::Editor::InspectorDrawContext& drawContext,
+		const Nyx::Reflection::TypeMetadata& ownerType)
+	{
+		// A component's own property that differs from its prefab's is marked over all its rows
+		const size_t index = static_cast<size_t>(&property - ownerType.Properties);
+		const bool bOverridden = drawContext.PrefabOverrides && drawContext.PrefabOverridesType == &ownerType && !drawContext.CurrentLocation.SubobjectType &&
+			std::find(drawContext.PrefabOverrides->begin(), drawContext.PrefabOverrides->end(), index) != drawContext.PrefabOverrides->end();
+		if (!bOverridden)
+		{
+			return DrawPropertyRowContents(object, property, drawContext, ownerType);
+		}
+		const float top = ImGui::GetCursorScreenPos().y;
+		const bool bChanged = DrawPropertyRowContents(object, property, drawContext, ownerType);
+		DrawPrefabOverrideMark(drawContext, index, top, ImGui::GetCursorScreenPos().y);
+		return bChanged;
+	}
+
+	static bool DrawPropertyRowContents(
 		void* object,
 		const Nyx::Reflection::PropertyMetadata& property,
 		Nyx::Editor::InspectorDrawContext& drawContext,

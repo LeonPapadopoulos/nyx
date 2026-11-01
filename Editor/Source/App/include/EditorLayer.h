@@ -3,6 +3,7 @@
 #include "AssetBrowserPanel.h"
 #include "AssetDatabase.h"
 #include "AssetResolver.h"
+#include "FileWatcher.h"
 #include "AssetTypeRegistry.h"
 #include "CrashCardsPanel.h"
 #include "DetailsPanel.h"
@@ -108,6 +109,9 @@ namespace Nyx::Editor
 
 		// Turns the asset paths in components into the renderer's assets; created in OnAttach.
 		std::unique_ptr<Nyx::AssetResolver> AssetResolver;
+
+		// The asset folders, for prefab files changed by other programs (PrefabSubscriber::FileChanged())
+		Nyx::FileWatcher PrefabFiles;
 
 		// The asset types the editor knows (RegisterEditorAssetTypes()), filled in OnAttach
 		AssetTypeRegistry AssetTypes;

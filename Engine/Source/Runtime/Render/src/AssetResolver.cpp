@@ -37,7 +37,7 @@ namespace Nyx
 		return Renderer.GetMaterial(materialPath);
 	}
 
-	const Nyx::PrefabAsset* AssetResolver::ResolvePrefab(const std::string& prefabPath)
+	Nyx::PrefabAsset* AssetResolver::ResolvePrefab(const std::string& prefabPath)
 	{
 		return Prefabs.Find(prefabPath);
 	}

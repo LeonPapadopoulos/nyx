@@ -16,7 +16,9 @@ namespace Nyx::Editor
 		// (ReflectedAssetEditors), each by its own id
 		ReflectedAsset,
 		// The scene's outline: the outliner's folders and order (SceneOutlineTransactionDomain)
-		SceneOutline
+		SceneOutline,
+		// The prefabs' own entities, which Apply to Prefab changes (PrefabTransactionDomain)
+		Prefab
 	};
 
 	struct ObjectRef

@@ -1,10 +1,12 @@
 #pragma once
 
 #include "Entity.h"
+#include "EntityGuid.h"
 #include "SceneSerializationTypes.h"
 
 #include <filesystem>
 #include <string>
+#include <unordered_map>
 
 namespace Nyx
 {
@@ -69,5 +71,23 @@ namespace Nyx
 			Entity entity,
 			ScenePostLoadContext& postLoadContext,
 			ReadWarnings& warnings);
+
+		// While a scene's entities are read: the parts its instances made, by guid
+		struct PrefabReadState
+		{
+			std::unordered_map<EntityGuid, Entity> Parts;
+		};
+
+		// ReadEntity() as a scene file's entities are read, with their prefab instances: a root's
+		// PrefabInstanceComponent makes the instance from its prefab (the context's asset resolver),
+		// then what follows is read on top; a part's record goes into the part its instance made,
+		// which `prefabs` keeps between the records
+		static bool ReadSceneEntity(
+			BinaryReader& reader,
+			Registry& world,
+			Entity entity,
+			ScenePostLoadContext& postLoadContext,
+			ReadWarnings& warnings,
+			PrefabReadState* prefabs);
 	};
 }
