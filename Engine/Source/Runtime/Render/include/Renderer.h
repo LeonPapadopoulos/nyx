@@ -147,6 +147,11 @@ namespace Nyx
 		// is drawn every frame, e.g. one read back offscreen.
 		virtual void SetSceneViewDrawnWhenShown(uint64_t id, bool bWhenShown) = 0;
 
+		// A held view draws nothing, shown or not: it shows the picture it drew last, e.g. while
+		// another program should have the GPU. One with no picture yet, new or of another size,
+		// is drawn anyway. Each frame the caller says again; not held unless it does.
+		virtual void SetSceneViewHeld(uint64_t id, bool bHeld) = 0;
+
 		virtual void SetSceneViewSize(uint64_t id, uint32_t width, uint32_t height) = 0;
 
 		virtual Extent2D GetSceneViewExtent(uint64_t id) const = 0;

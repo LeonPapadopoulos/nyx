@@ -460,6 +460,11 @@ namespace Nyx
 		return static_cast<bool>(glfwGetWindowAttrib(Window, GLFW_MAXIMIZED));
 	}
 
+	bool WindowsWindow::IsFocused() const
+	{
+		return glfwGetWindowAttrib(Window, GLFW_FOCUSED) == GLFW_TRUE;
+	}
+
 	void WindowsWindow::StartUIInput()
 	{
 		InputBackend->HookImGuiWindows();

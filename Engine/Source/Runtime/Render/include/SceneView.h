@@ -184,5 +184,8 @@ namespace Nyx
 		bool bDrawnWhenShown = false;
 		mutable bool bShownSincePrepared = false;
 		bool bDrawnThisFrame = false;
+		// Holding its picture this frame (IRenderer::SetSceneViewHeld()), until the frame's views
+		// are prepared
+		bool bHeld = false;
 	};
 }

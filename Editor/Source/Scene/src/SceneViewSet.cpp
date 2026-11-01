@@ -1,11 +1,13 @@
 #include "SceneViewSet.h"
 
+#include "EditorPreferences.h"
 #include "EditorRenderer.h"
 
 #include <glm/glm.hpp>
 
 #include <algorithm>
 #include <charconv>
+#include <chrono>
 #include <cmath>
 #include <optional>
 #include <set>
@@ -150,11 +152,31 @@ namespace Nyx::Editor
 		}
 	}
 
+	bool SceneViewPacing::Hold(double seconds, bool bGameInFront, uint32_t rate)
+	{
+		if (bGameInFront && rate > 0 && seconds - LastDrawn < 1.0 / double(rate))
+		{
+			return true;
+		}
+		LastDrawn = seconds;
+		return false;
+	}
+
 	void SceneViewSet::Draw(SceneEditor& editing, const EditorPreferences& preferences, EditorCameraController& cameraController)
 	{
 		if (!bShown)
 		{
 			return;
+		}
+
+		const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+		const bool bHold = Pacing.Hold(seconds, bGameInFront, preferences.SceneViewRateWhilePlaying);
+		if (Renderer)
+		{
+			for (const std::unique_ptr<SceneViewPanel>& view : Views)
+			{
+				Renderer->SetSceneViewHeld(view->GetViewId(), bHold);
+			}
 		}
 
 		const bool bCanClose = Views.size() > 1;

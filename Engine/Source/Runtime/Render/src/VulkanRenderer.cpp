@@ -1894,8 +1894,9 @@ namespace Nyx
 
 			// A view drawn when shown and not shown in the frame before does nothing more: its
 			// picture stays as it was drawn last
-			view.bDrawnThisFrame = !view.bDrawnWhenShown || view.bShownSincePrepared;
+			view.bDrawnThisFrame = (!view.bDrawnWhenShown || view.bShownSincePrepared) && (!view.bHeld || view.bTargetsNotDrawn);
 			view.bShownSincePrepared = false;
+			view.bHeld = false;
 			if (!view.bDrawnThisFrame)
 			{
 				continue;
@@ -3650,6 +3651,14 @@ namespace Nyx
 		if (SceneViewInstance* view = FindSceneView(id))
 		{
 			view->bDrawnWhenShown = bWhenShown;
+		}
+	}
+
+	void VulkanRenderer::SetSceneViewHeld(uint64_t id, bool bHeld)
+	{
+		if (SceneViewInstance* view = FindSceneView(id))
+		{
+			view->bHeld = bHeld;
 		}
 	}
 

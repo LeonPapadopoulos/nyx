@@ -864,6 +864,40 @@ namespace
 			"A view shown again should draw what the view drawn every frame does: they differ by " + std::to_string(MaxDifference(again, reference)));
 		Require(MaxDifference(again, before) > 40, "A view shown again should draw where the camera is now, not show what it drew before");
 
+		// Held while shown, as the editor's views while a game is in front: nothing drawn, the picture
+		// drawn last kept though the camera moves; drawn again once let go; one of another size drawn
+		// anyway, having no picture to keep
+		const auto drawHeld = [&](int frames)
+		{
+			for (int frame = 0; frame < frames; ++frame)
+			{
+				gpu.Renderer.DrawFrame([&]()
+					{
+						renderer.SetSceneViewHeld(whenShown, true);
+						renderer.GetSceneViewTextureId(whenShown);
+					});
+			}
+		};
+		drawHeld(3);
+		requireIdle("while held");
+		scene.World.Each<CameraComponent>([&](Entity camera, CameraComponent&)
+			{
+				scene.World.Get<TransformComponent>(camera).Position.x -= 1.5f;
+			});
+		drawHeld(2);
+		RgbaImage held;
+		Require(gpu.Renderer.ReadSceneViewPixels(whenShown, held) && MaxDifference(held, again) <= 2, "A view held should keep the picture it drew last");
+		// The frame after the last held one is held still, its numbers read the frame after that
+		drawShown(3);
+		stats = renderer.GetSceneViewFrameStats(whenShown);
+		Require(stats && stats->bDrawn, "A view no longer held should be drawn again");
+		renderer.SetSceneViewSize(whenShown, ViewWidth / 2, ViewHeight / 2);
+		// Drawn in the first frame at its new size, its numbers read the frame after
+		drawHeld(2);
+		stats = renderer.GetSceneViewFrameStats(whenShown);
+		Require(stats && stats->bDrawn, "A view held at a new size, with no picture yet, should be drawn");
+		renderer.SetSceneViewSize(whenShown, ViewWidth, ViewHeight);
+
 		renderer.SetMsaaSamples(samples);
 		renderer.DestroySceneView(always);
 		renderer.DestroySceneView(whenShown);

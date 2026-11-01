@@ -148,6 +148,9 @@ namespace Nyx
 
 		virtual bool ShouldClose() const = 0;
 
+		// Whether the window has the keyboard's focus: the one in front of the others
+		virtual bool IsFocused() const = 0;
+
 		// Makes ShouldClose() true, as if the user closed the window
 		virtual void RequestClose() = 0;
 

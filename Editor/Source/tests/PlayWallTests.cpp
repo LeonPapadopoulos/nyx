@@ -2,6 +2,7 @@
 // which games Play and Play All start.
 #include "EditorPreferences.h"
 #include "PlayWall.h"
+#include "SceneViewSet.h"
 #include "TestSupport.h"
 
 #include <cmath>
@@ -40,6 +41,7 @@ namespace
 		written.bVSync = false;
 		written.FrameRateCap = 144;
 		written.MsaaSamples = 8;
+		written.SceneViewRateWhilePlaying = 15;
 		written.Theme = "Ashen Garden.nyxtheme";
 		written.PlaySetups = {
 			PlaySetup{ .Name = "Phone, portrait", .Width = 390, .Height = 844, .bInPlayAll = false },
@@ -55,6 +57,7 @@ namespace
 		Require(!read.bAmbilight && read.AmbilightStrength == 0.35f && read.AmbilightReach == 123.5f, "The ambilight settings differ after a round trip");
 		Require(!read.bVSync && read.FrameRateCap == 144, "The frame rate settings differ after a round trip");
 		Require(read.MsaaSamples == 8, "The anti-aliasing samples differ after a round trip");
+		Require(read.SceneViewRateWhilePlaying == 15, "The scene views' rate while playing differs after a round trip");
 		Require(read.Theme == "Ashen Garden.nyxtheme", "The theme differs after a round trip");
 		Require(read.PlaySetups == written.PlaySetups, "The play setups differ after a round trip (a comma in a name?)");
 
@@ -64,6 +67,22 @@ namespace
 		EditorPreferences loaded;
 		Require(loaded.Load(path) && loaded.PlaySetups == written.PlaySetups, "The play setups differ after saving and loading");
 		std::filesystem::remove(path);
+	}
+
+	// The scene views while a game is in front: drawn 5 times a second, holding their pictures in
+	// between; every frame with the editor in front, or at the rate 0
+	void TestSceneViewPacing()
+	{
+		SceneViewPacing pacing;
+		int drawn = 0;
+		for (int frame = 0; frame < 165; ++frame)
+		{
+			drawn += pacing.Hold(frame / 165.0, true, 5) ? 0 : 1;
+		}
+		Require(drawn == 5, "Five frames a second should be drawn with a game in front, not " + std::to_string(drawn));
+		Require(!pacing.Hold(1.001, false, 5) && !pacing.Hold(1.002, false, 5), "With the editor in front, every frame should be drawn");
+		Require(pacing.Hold(1.003, true, 5), "Just after a frame drawn, a game in front holds the picture");
+		Require(!pacing.Hold(1.004, true, 0) && !pacing.Hold(1.005, true, 0), "At the rate 0, every frame should be drawn");
 	}
 
 	void TestPreferencesDefaultsAndDamage()
@@ -82,6 +101,12 @@ namespace
 		Require(old.bVSync && old.FrameRateCap == 0, "Without saved frame rate settings, vsync should be on and the frame rate uncapped");
 		Require(old.Theme.empty(), "Without a saved theme, the default theme should be loaded");
 		Require(old.MsaaSamples == 4, "Without saved anti-aliasing, the scene views should draw with 4 samples a pixel");
+		Require(old.SceneViewRateWhilePlaying == 5, "Without a saved rate, the scene views should draw 5 times a second while a game is in front");
+
+		// A rate other than those offered keeps the rate there was; every frame is one
+		EditorPreferences rates;
+		rates.FromText("SceneViewRateWhilePlaying=0\nSceneViewRateWhilePlaying=7\nSceneViewRateWhilePlaying=often\n");
+		Require(rates.SceneViewRateWhilePlaying == 0, "Rates not offered should be skipped, every frame kept");
 
 		// A sample count other than those offered keeps the count there was
 		EditorPreferences samples;
@@ -271,6 +296,7 @@ int main()
 	{
 		TestPreferencesRoundTrip();
 		TestPreferencesDefaultsAndDamage();
+		TestSceneViewPacing();
 		TestArrangeFits();
 		TestArrangeRows();
 		TestArrangeShrinks();

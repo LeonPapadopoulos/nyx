@@ -803,6 +803,7 @@ namespace Nyx
 		void DestroySceneView(uint64_t id);
 		void DestroySceneViewNow(uint64_t id);
 		void SetSceneViewDrawnWhenShown(uint64_t id, bool bWhenShown) override;
+		void SetSceneViewHeld(uint64_t id, bool bHeld) override;
 
 		void SetSceneViewSize(uint64_t id, uint32_t width, uint32_t height) override;
 

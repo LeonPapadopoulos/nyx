@@ -358,6 +358,7 @@ namespace Nyx::Editor
 		Details.SetGameInspection(Games.GetEntityInspection());
 		Details.Draw(Editing);
 		Materials.Draw(*Renderer, Editing);
+		SceneViews.bGameInFront = Games.IsRunning() && !Window->IsFocused();
 		SceneViews.Draw(Editing, Preferences, *CameraController);
 
 		// Values being dragged or typed reach a running game every frame, not only when the edit ends

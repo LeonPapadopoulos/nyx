@@ -45,6 +45,7 @@ namespace Nyx
 		void SetFrameRateCap(uint32_t framesPerSecond) override;
 		uint32_t GetFrameRateCap() const override;
 		virtual bool ShouldClose() const override;
+		bool IsFocused() const override;
 		void RequestClose() override;
 
 		void SetFrameContent(WindowFrameContent content) override;

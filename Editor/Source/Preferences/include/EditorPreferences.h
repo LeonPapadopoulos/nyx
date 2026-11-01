@@ -51,6 +51,11 @@ namespace Nyx::Editor
 		// refresh (--no-vsync), e.g. to see in a profiler what a frame costs
 		bool bGamesWithoutVSync = false;
 
+		// How many times a second the scene views draw while a game Play started is in front, one of
+		// SceneViewRatesWhilePlaying, 0 for every frame: the editor's frames take the GPU from the game
+		uint32_t SceneViewRateWhilePlaying = 5;
+		static constexpr uint32_t SceneViewRatesWhilePlaying[] = { 0, 1, 5, 15, 30 };
+
 		// Ambilight: the scene views' pictures glow onto the editor around them. Strength is the
 		// glow's opacity at the picture's edge, from 0 to 1; reach is how far it goes, in pixels,
 		// up to MaxAmbilightReach.

@@ -149,6 +149,29 @@ namespace Nyx::Editor
 			bSave = true;
 		}
 
+		// "Every frame", then each rate offered; the rate saved is always one of them (FromText())
+		std::vector<std::string> rateNames;
+		int rate = 0;
+		for (const uint32_t offered : EditorPreferences::SceneViewRatesWhilePlaying)
+		{
+			if (offered == preferences.SceneViewRateWhilePlaying)
+			{
+				rate = static_cast<int>(rateNames.size());
+			}
+			rateNames.push_back(offered == 0 ? std::string("Every frame") : std::to_string(offered) + " a second");
+		}
+		std::vector<const char*> rateItems;
+		for (const std::string& name : rateNames)
+		{
+			rateItems.push_back(name.c_str());
+		}
+		if (NYX_UI(Nyx::UI::Combo("Scene views while playing", &rate, rateItems)))
+		{
+			preferences.SceneViewRateWhilePlaying = EditorPreferences::SceneViewRatesWhilePlaying[rate];
+			bSave = true;
+		}
+		ImGui::SetItemTooltip("How often the scene views draw while a game Play started is in front, so the editor leaves the GPU to the game; at once again when the editor is in front.");
+
 		if (bSave && !preferences.Save(EditorPreferences::GetUserFile()))
 		{
 			SourceNavigationStatus = "Could not save user preferences.";

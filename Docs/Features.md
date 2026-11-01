@@ -456,6 +456,13 @@ leaving out what an opaque shape hides.
 - **Frame rate**: *Window > Preferences* holds the editor's frame rate back, so it doesn't keep
   the GPU busy drawing frames the monitor never shows: *Vsync* (on by default) and a *Frame rate
   cap* of 30 to 240 fps, with or without vsync.
+- **While a game Play started is in front** (the editor's window hasn't the focus while one runs),
+  the scene views draw 5 times a second and show the picture they drew last in between, so the
+  editor's frames don't hold up the game's on the GPU; every frame again once the editor is in
+  front. *Window > Preferences*, *Frame rate*, *Scene views while playing*: every frame, 1, 5, 15
+  or 30 a second. A view held so (`IRenderer::SetSceneViewHeld()`) draws nothing, unless it has no
+  picture yet (new, resized, a new sample count). `NyxSceneGpuTests` (a view held), `NyxPlayWallTests`
+  (the pacing, the preference).
 - **Scene views** draw their picking pass only for a click, and their selection masks only
   while something is selected and what they show changed. A scene view, or the material preview,
   is drawn at all only while its window shows it: behind another tab, or in a workspace not shown,

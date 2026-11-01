@@ -21,6 +21,17 @@ namespace Nyx::Editor
 	class SceneEditor;
 	struct EditorPreferences;
 
+	// When the scene views draw while a game Play started is in front: at most `rate` times a second
+	// (0: every frame), each frame between showing the picture drawn last, so the editor leaves the
+	// GPU to the game. Drawn again at once when the editor is in front again.
+	struct SceneViewPacing
+	{
+		// Whether this frame's views hold their pictures rather than draw; `seconds` from any start
+		bool Hold(double seconds, bool bGameInFront, uint32_t rate);
+
+		double LastDrawn = -1e9;
+	};
+
 	// The editor's scene views: any number of SceneViewPanels, each with a scene view of its own in
 	// the renderer and its own free camera. Window > New Scene View opens one more; any can be
 	// closed but the last. The layout files keep which are open, with each one's camera and
@@ -47,6 +58,10 @@ namespace Nyx::Editor
 
 		// Whether the views are drawn: not in the Materials workspace
 		bool bShown = true;
+
+		// Whether a game Play started is in front (the editor's window hasn't the focus while one
+		// runs): the views draw only EditorPreferences::SceneViewRateWhilePlaying times a second
+		bool bGameInFront = false;
 
 		// What every scene view of the renderer shows of its culling and its shadows (the Debug
 		// menu), views opened later too
@@ -83,5 +98,7 @@ namespace Nyx::Editor
 		Nyx::ESceneViewCullingDebug CullingDebug = Nyx::ESceneViewCullingDebug::Off;
 		Nyx::ESceneViewShadowDebug ShadowDebug = Nyx::ESceneViewShadowDebug::Off;
 		Nyx::ESceneViewDebug ViewDebug = Nyx::ESceneViewDebug::Lit;
+
+		SceneViewPacing Pacing;
 	};
 }
