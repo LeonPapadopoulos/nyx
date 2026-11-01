@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 namespace Nyx
 {
@@ -22,6 +23,11 @@ namespace Nyx
 	// a blocker changes, the cells that reaches are made again (UpdateScatters(), each frame). A noise
 	// mask thins them in patches. Everything is in the entity's space: the area around it, heights
 	// along its Y, slopes against it, the noise over its X and Z.
+	//
+	// The surface may be an SDF terrain: its ground from above, found by the field itself, never by
+	// its chunks, so the copies are where they are at any level of detail; kept to some of its
+	// materials, where the sky is open above, in its plan's rifts and on its sea's floor or not; made
+	// again where its edits change the ground (ScatterOnTerrain()).
 	NYX_REFLECT(Component, meta = (DisplayName = "Scatter"))
 	struct ScatterComponent
 	{
@@ -81,6 +87,18 @@ namespace Nyx
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Cell Size", Category = "Culling", DragSpeed = 0.5, Tooltip = "The copies are made and grouped in squares this many metres a side: the renderer culls them whole, and an edit makes only the squares it reaches again"))
 		float CellSize = 16.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Terrain Materials", Category = "Terrain", Tooltip = "On an SDF terrain: only on its ground of these material numbers; none: on any"))
+		std::vector<uint32_t> TerrainMaterials;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Open Sky", Category = "Terrain", Tooltip = "On an SDF terrain: only where none of it is overhead for 64 m: not in tunnels, under overhangs or under the landmass"))
+		bool bOpenSky = true;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "In Rifts", Category = "Terrain", Tooltip = "On an SDF terrain with a world plan: in its rifts too"))
+		bool bInRifts = true;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "On Sea Floor", Category = "Terrain", Tooltip = "On an SDF terrain with a world plan: on its sea's floor too"))
+		bool bOnSeaFloor = false;
 
 		// What the instances were made from (HashScatterValues(), the surface's revision and where it
 		// lies, the blockers), so a step with nothing changed makes nothing again. Not reflected: a

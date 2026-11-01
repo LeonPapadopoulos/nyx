@@ -1858,6 +1858,19 @@ over a ground ([Design: Scattering](Design/scattering.md)).
   is exactly what scattering all of it gives.
 - The surface's triangles are sampled by their area, square by square, so any mesh works; the same
   values, surface and blockers give the same copies on every machine.
+- On an SDF terrain (the *Surface* an entity with one): its ground from above, found by the field
+  itself rather than its chunks, so the copies stay put at every level of detail: a ray down the
+  entity's Y every metre across each square, from the top of its *Height Range* down (within a
+  kilometre), so a range under a roof or an overhang finds the ground beneath it; each four hits
+  two triangles, sampled as a mesh's are
+  (`ScatterOnTerrain()`). *Terrain*: *Terrain Materials* (only on ground of those material numbers;
+  none: any), *Open Sky* (on by default: only where none of the terrain is overhead for 64 m, not
+  in tunnels or under overhangs), *In Rifts* (on) and *On Sea Floor* (off) for a terrain with a
+  world plan. A square down a cliff (its hits more than 3 m apart in height) is left out. The
+  terrain's edits make the squares they reach again, and an undo the same; its values or where it
+  lies, all of them. `NyxScatterTests` (on the ground, the same every time; kept to a painted
+  material; on top of a roof from above, and out from under it with Open Sky; a dig making only its cells again, copies down in it, its undo
+  putting them back).
 - The copies are a `MeshInstancesComponent` (transforms relative to the entity, in cells with
   bounds), which the renderer draws; any code can fill one.
 - Scattering about 50,000 copies on the default 128 m ground takes about 210 ms in a Debug

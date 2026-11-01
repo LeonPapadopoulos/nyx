@@ -7,9 +7,15 @@
 #include "Profiler.h"
 #include "RuntimeMeshComponent.h"
 #include "ScatterBlockerComponent.h"
+#include "SdfTerrain.h"
+#include "SdfTerrainComponent.h"
+#include "TerrainChunks.h"
+#include "TerrainWorldPlan.h"
+#include "TerrainWorldPlanMap.h"
 #include "TransformComponent.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -853,8 +859,145 @@ namespace Nyx
 			// Its surface has no mesh, or is no entity of the world
 			Nothing,
 			Plane,
-			Mesh
+			Mesh,
+			Terrain
 		};
+
+		// Throws the marked cells' points again, then keeps them and the cells after them within the
+		// spacing apart from the cells before them again; true if any was marked
+		bool ThrowMarkedCells(ScatterCells& cells, const ScatterComponent& scatter, const std::vector<uint8_t>& marked);
+
+		// An SDF terrain's ground: a ray down every metre, from the top of the scatter's height range
+		// down to its bottom, each within this far of the scatter's origin; the sky open above for this
+		// far; a square left out down a cliff
+		constexpr float GroundStep = 1.0f;
+		constexpr float GroundRayHeight = 1024.0f;
+		constexpr float OpenSkyReach = 64.0f;
+		constexpr float CliffHeight = 3.0f;
+
+		// A cell's pieces cut from the terrain's ground, as CutSurface() cuts a mesh's
+		void CutTerrainCell(ScatterCells::Cell& cell, const ScatterComponent& scatter, const SdfTerrainComponent& terrain, const TerrainWorldPlan* plan,
+			const glm::mat4& terrainToScatter)
+		{
+			const glm::mat4 scatterToTerrain = glm::inverse(terrainToScatter);
+			const glm::mat3 normalTransform = glm::transpose(glm::inverse(glm::mat3(terrainToScatter)));
+			const glm::vec3 down = glm::normalize(glm::vec3(scatterToTerrain * glm::vec4(0.0f, -1.0f, 0.0f, 0.0f)));
+			const float rayTop = std::clamp(scatter.HeightRange.y, -GroundRayHeight, GroundRayHeight);
+			const float rayBottom = std::clamp(scatter.HeightRange.x, -GroundRayHeight, rayTop);
+			const float rayLength = glm::length(glm::vec3(scatterToTerrain * glm::vec4(0.0f, rayTop - rayBottom, 0.0f, 0.0f)));
+			const int columns = std::max(1, int(std::ceil((cell.Max.x - cell.Min.x) / GroundStep)));
+			const int rows = std::max(1, int(std::ceil((cell.Max.y - cell.Min.y) / GroundStep)));
+			struct Ground
+			{
+				bool bKept = false;
+				glm::vec3 Position{ 0.0f };
+				glm::vec3 Normal{ 0.0f, 1.0f, 0.0f };
+			};
+			std::vector<Ground> grounds(size_t(columns + 1) * size_t(rows + 1));
+			for (int j = 0; j <= rows; ++j)
+			{
+				for (int i = 0; i <= columns; ++i)
+				{
+					const float x = cell.Min.x + (cell.Max.x - cell.Min.x) * float(i) / float(columns);
+					const float z = cell.Min.y + (cell.Max.y - cell.Min.y) * float(j) / float(rows);
+					const glm::vec3 top(scatterToTerrain * glm::vec4(x, rayTop, z, 1.0f));
+					const std::optional<TerrainRayHit> hit = RayCastTerrain(terrain, top, down, rayLength);
+					if (!hit)
+					{
+						continue;
+					}
+					bool bKept = scatter.TerrainMaterials.empty() || std::find(scatter.TerrainMaterials.begin(), scatter.TerrainMaterials.end(), hit->Material) != scatter.TerrainMaterials.end();
+					if (bKept && plan != nullptr && (!scatter.bInRifts || !scatter.bOnSeaFloor))
+					{
+						const TerrainPlanReadout readout = ReadTerrainWorldPlan(*plan, glm::vec2(hit->Point.x, hit->Point.z));
+						bKept = !(readout.Landform == ESdfTerrainLandform::Rift && !scatter.bInRifts) && !(readout.Landform == ESdfTerrainLandform::Sea && !scatter.bOnSeaFloor);
+					}
+					if (bKept && scatter.bOpenSky)
+					{
+						bKept = !RayCastTerrain(terrain, hit->Point + hit->Normal * 0.25f - down * 0.25f, -down, OpenSkyReach);
+					}
+					Ground& ground = grounds[size_t(i) + size_t(columns + 1) * size_t(j)];
+					ground.bKept = bKept;
+					ground.Position = glm::vec3(terrainToScatter * glm::vec4(hit->Point, 1.0f));
+					ground.Normal = glm::normalize(normalTransform * hit->Normal);
+				}
+			}
+			cell.Pieces.clear();
+			for (int j = 0; j < rows; ++j)
+			{
+				for (int i = 0; i < columns; ++i)
+				{
+					const Ground* corners[4] = { &grounds[size_t(i) + size_t(columns + 1) * size_t(j)], &grounds[size_t(i + 1) + size_t(columns + 1) * size_t(j)],
+						&grounds[size_t(i + 1) + size_t(columns + 1) * size_t(j + 1)], &grounds[size_t(i) + size_t(columns + 1) * size_t(j + 1)] };
+					float low = std::numeric_limits<float>::max();
+					float high = -std::numeric_limits<float>::max();
+					bool bKept = true;
+					for (const Ground* corner : corners)
+					{
+						bKept = bKept && corner->bKept;
+						low = std::min(low, corner->Position.y);
+						high = std::max(high, corner->Position.y);
+					}
+					if (!bKept || high - low > CliffHeight)
+					{
+						continue;
+					}
+					for (const std::array<int, 3>& triangle : { std::array<int, 3>{ 0, 1, 2 }, std::array<int, 3>{ 0, 2, 3 } })
+					{
+						ScatterCells::Piece piece;
+						for (int n = 0; n < 3; ++n)
+						{
+							piece.Positions[n] = corners[triangle[size_t(n)]]->Position;
+							piece.Normals[n] = corners[triangle[size_t(n)]]->Normal;
+						}
+						if (GetArea(piece.Positions[0], piece.Positions[1], piece.Positions[2]) > 0.0f)
+						{
+							cell.Pieces.push_back(piece);
+						}
+					}
+				}
+			}
+			cell.AreasUpTo.resize(cell.Pieces.size());
+			double total = 0.0;
+			for (size_t piece = 0; piece < cell.Pieces.size(); ++piece)
+			{
+				total += static_cast<double>(GetArea(cell.Pieces[piece].Positions[0], cell.Pieces[piece].Positions[1], cell.Pieces[piece].Positions[2]));
+				cell.AreasUpTo[piece] = total;
+			}
+			cell.SurfaceHash = HashPieces(cell.Pieces);
+		}
+
+		// The terrain's edits as the cells keep them: what each reaches of the scatter's X and Z
+		std::vector<ScatterCells::TerrainEdit> DescribeTerrainEdits(const SdfTerrainComponent& terrain, const glm::mat4& terrainToScatter)
+		{
+			std::vector<ScatterCells::TerrainEdit> edits;
+			for (const SdfTerrainEdit& edit : terrain.Edits)
+			{
+				if (edit.Kind == ESdfTerrainEditKind::Bake)
+				{
+					continue;
+				}
+				glm::vec3 low;
+				glm::vec3 high;
+				GetTerrainEditBounds(edit, low, high);
+				ScatterCells::TerrainEdit seen;
+				seen.Revision = edit.Revision;
+				seen.Min = glm::vec2(std::numeric_limits<float>::max());
+				seen.Max = glm::vec2(-std::numeric_limits<float>::max());
+				for (int corner = 0; corner < 8; ++corner)
+				{
+					const glm::vec3 point((corner & 1) ? high.x : low.x, (corner & 2) ? high.y : low.y, (corner & 4) ? high.z : low.z);
+					const glm::vec3 inScatter(terrainToScatter * glm::vec4(point, 1.0f));
+					seen.Min = glm::min(seen.Min, glm::vec2(inScatter.x, inScatter.z));
+					seen.Max = glm::max(seen.Max, glm::vec2(inScatter.x, inScatter.z));
+				}
+				// Its squares' corners a step round it are made again too
+				seen.Min -= GroundStep;
+				seen.Max += GroundStep;
+				edits.push_back(seen);
+			}
+			return edits;
+		}
 	}
 
 	std::vector<ScatterBlocker> GatherScatterBlockers(const Registry& world, const glm::mat4& scatterToWorld)
@@ -961,63 +1104,122 @@ namespace Nyx
 		cells.Values = values;
 		cells.Surface = surfaceKey;
 		cells.Blockers.assign(blockers.begin(), blockers.end());
-		if (std::find(marked.begin(), marked.end(), uint8_t{ 1 }) == marked.end())
-		{
-			return false;
-		}
+		return ThrowMarkedCells(cells, scatter, marked);
+	}
 
-		// At most a cell's share of the instances and points each, so that no cell depends on how
-		// many the others have
-		const ScatterLimits limits(scatter);
-		const uint32_t cellCount = static_cast<uint32_t>(cells.Cells.size());
-		const uint32_t maxPoints = std::max(MaxScatterPoints / cellCount, 1u);
-		const uint32_t maxKept = std::max(MaxScatterInstances / cellCount, 1u);
-		for (uint32_t row = 0; row < cells.Rows; ++row)
+	bool UpdateScatterCellsOnTerrain(ScatterCells& cells, const ScatterComponent& scatter, const SdfTerrainComponent& terrain, const glm::mat4& terrainToScatter,
+		uint64_t terrainKey, std::span<const ScatterBlocker> blockers)
+	{
+		NYX_PROFILE_FUNCTION();
+		cells.CellsThrown = 0;
+		cells.CellsKeptApart = 0;
+		const uint64_t values = HashScatterValues(scatter);
+		std::vector<ScatterCells::TerrainEdit> edits = DescribeTerrainEdits(terrain, terrainToScatter);
+		std::vector<uint8_t> marked;
+		if (!cells.bMade || cells.Values != values || cells.Surface != terrainKey)
 		{
-			for (uint32_t column = 0; column < cells.Columns; ++column)
+			SetUpCells(cells, scatter);
+			marked.assign(cells.Cells.size(), 1);
+		}
+		else
+		{
+			// The edits from the first that differs on, those taken away and those added
+			marked.assign(cells.Cells.size(), 0);
+			size_t same = 0;
+			while (same < edits.size() && same < cells.TerrainEdits.size() && edits[same].Revision == cells.TerrainEdits[same].Revision)
 			{
-				if (marked[static_cast<size_t>(row) * cells.Columns + column])
+				++same;
+			}
+			for (const std::vector<ScatterCells::TerrainEdit>* list : { &cells.TerrainEdits, &edits })
+			{
+				for (size_t index = same; index < list->size(); ++index)
 				{
-					ThrowPoints(cells, column, row, scatter, limits, maxPoints, maxKept);
-					++cells.CellsThrown;
+					ScatterBlocker reach;
+					reach.ReachMin = (*list)[index].Min;
+					reach.ReachMax = (*list)[index].Max;
+					MarkReached(cells, reach, marked);
 				}
 			}
+			MarkChangedBlockers(cells, cells.Blockers, blockers, marked);
 		}
-
-		// Each cell thrown again, and those after it within the spacing, keep apart from the cells
-		// before them again
-		const uint32_t reach = GetSpacingReach(cells, scatter.Spacing);
-		std::vector<uint8_t> keepApart = marked;
-		for (uint32_t row = 0; row < cells.Rows; ++row)
+		const std::shared_ptr<const TerrainWorldPlan> plan = UsesTerrainWorldPlan(terrain) ? GetTerrainWorldPlan(terrain) : nullptr;
+		for (size_t index = 0; index < cells.Cells.size(); ++index)
 		{
-			for (uint32_t column = 0; column < cells.Columns; ++column)
+			if (marked[index])
 			{
-				if (!marked[static_cast<size_t>(row) * cells.Columns + column])
+				CutTerrainCell(cells.Cells[index], scatter, terrain, plan.get(), terrainToScatter);
+			}
+		}
+		cells.bMade = true;
+		cells.Values = values;
+		cells.Surface = terrainKey;
+		cells.Blockers.assign(blockers.begin(), blockers.end());
+		cells.TerrainEdits = std::move(edits);
+		return ThrowMarkedCells(cells, scatter, marked);
+	}
+
+	namespace
+	{
+		bool ThrowMarkedCells(ScatterCells& cells, const ScatterComponent& scatter, const std::vector<uint8_t>& marked)
+		{
+			if (std::find(marked.begin(), marked.end(), uint8_t{ 1 }) == marked.end())
+			{
+				return false;
+			}
+
+			// At most a cell's share of the instances and points each, so that no cell depends on how
+			// many the others have
+			const ScatterLimits limits(scatter);
+			const uint32_t cellCount = static_cast<uint32_t>(cells.Cells.size());
+			const uint32_t maxPoints = std::max(MaxScatterPoints / cellCount, 1u);
+			const uint32_t maxKept = std::max(MaxScatterInstances / cellCount, 1u);
+			for (uint32_t row = 0; row < cells.Rows; ++row)
+			{
+				for (uint32_t column = 0; column < cells.Columns; ++column)
 				{
-					continue;
-				}
-				for (uint32_t laterRow = row; laterRow <= std::min(row + reach, cells.Rows - 1); ++laterRow)
-				{
-					const uint32_t firstColumn = laterRow == row ? column + 1 : (column > reach ? column - reach : 0);
-					for (uint32_t laterColumn = firstColumn; laterColumn <= std::min(column + reach, cells.Columns - 1); ++laterColumn)
+					if (marked[static_cast<size_t>(row) * cells.Columns + column])
 					{
-						keepApart[static_cast<size_t>(laterRow) * cells.Columns + laterColumn] = 1;
+						ThrowPoints(cells, column, row, scatter, limits, maxPoints, maxKept);
+						++cells.CellsThrown;
 					}
 				}
 			}
-		}
-		for (uint32_t row = 0; row < cells.Rows; ++row)
-		{
-			for (uint32_t column = 0; column < cells.Columns; ++column)
+
+			// Each cell thrown again, and those after it within the spacing, keep apart from the cells
+			// before them again
+			const uint32_t reach = GetSpacingReach(cells, scatter.Spacing);
+			std::vector<uint8_t> keepApart = marked;
+			for (uint32_t row = 0; row < cells.Rows; ++row)
 			{
-				if (keepApart[static_cast<size_t>(row) * cells.Columns + column])
+				for (uint32_t column = 0; column < cells.Columns; ++column)
 				{
-					KeepApart(cells, column, row, scatter.Spacing, reach);
-					++cells.CellsKeptApart;
+					if (!marked[static_cast<size_t>(row) * cells.Columns + column])
+					{
+						continue;
+					}
+					for (uint32_t laterRow = row; laterRow <= std::min(row + reach, cells.Rows - 1); ++laterRow)
+					{
+						const uint32_t firstColumn = laterRow == row ? column + 1 : (column > reach ? column - reach : 0);
+						for (uint32_t laterColumn = firstColumn; laterColumn <= std::min(column + reach, cells.Columns - 1); ++laterColumn)
+						{
+							keepApart[static_cast<size_t>(laterRow) * cells.Columns + laterColumn] = 1;
+						}
+					}
 				}
 			}
+			for (uint32_t row = 0; row < cells.Rows; ++row)
+			{
+				for (uint32_t column = 0; column < cells.Columns; ++column)
+				{
+					if (keepApart[static_cast<size_t>(row) * cells.Columns + column])
+					{
+						KeepApart(cells, column, row, scatter.Spacing, reach);
+						++cells.CellsKeptApart;
+					}
+				}
+			}
+			return true;
 		}
-		return true;
 	}
 
 	MeshInstances CollectScatterInstances(const ScatterCells& cells)
@@ -1061,6 +1263,15 @@ namespace Nyx
 		return CollectScatterInstances(cells);
 	}
 
+	MeshInstances ScatterOnTerrain(const ScatterComponent& scatter, const SdfTerrainComponent& terrain, const glm::mat4& terrainToScatter,
+		std::span<const ScatterBlocker> blockers)
+	{
+		NYX_PROFILE_FUNCTION();
+		ScatterCells cells;
+		UpdateScatterCellsOnTerrain(cells, scatter, terrain, terrainToScatter, 0, blockers);
+		return CollectScatterInstances(cells);
+	}
+
 	MeshData MakeScatterPlane(const ScatterComponent& scatter)
 	{
 		const glm::vec2 halfSize = GetHalfSize(scatter);
@@ -1092,9 +1303,14 @@ namespace Nyx
 		{
 			AddToHash(hash, value);
 		}
-		for (const bool flag : { scatter.bUseBlockers, scatter.bNoiseMask, scatter.bNoiseInvert })
+		for (const bool flag : { scatter.bUseBlockers, scatter.bNoiseMask, scatter.bNoiseInvert, scatter.bOpenSky, scatter.bInRifts, scatter.bOnSeaFloor })
 		{
 			AddToHash(hash, flag);
+		}
+		AddToHash(hash, scatter.TerrainMaterials.size());
+		for (const uint32_t material : scatter.TerrainMaterials)
+		{
+			AddToHash(hash, material);
 		}
 		AddToHash(hash, scatter.Seed);
 		AddToHash(hash, scatter.NoiseSeed);
@@ -1110,6 +1326,7 @@ namespace Nyx
 
 		EScatterGround ground = EScatterGround::Plane;
 		const RuntimeMeshComponent* surfaceMesh = nullptr;
+		const SdfTerrainComponent* surfaceTerrain = nullptr;
 		const glm::mat4 scatterToWorld = GetTransform(world, entity);
 		glm::mat4 surfaceToScatter(1.0f);
 		if (scatter.Surface.IsValid())
@@ -1120,6 +1337,12 @@ namespace Nyx
 			{
 				ground = EScatterGround::Mesh;
 				surfaceMesh = &world.Get<RuntimeMeshComponent>(*surface);
+				surfaceToScatter = glm::inverse(scatterToWorld) * GetTransform(world, *surface);
+			}
+			else if (surface && world.Has<SdfTerrainComponent>(*surface))
+			{
+				ground = EScatterGround::Terrain;
+				surfaceTerrain = &world.Get<SdfTerrainComponent>(*surface);
 				surfaceToScatter = glm::inverse(scatterToWorld) * GetTransform(world, *surface);
 			}
 		}
@@ -1133,6 +1356,11 @@ namespace Nyx
 			AddToHash(surfaceKey, surfaceMesh->Revision);
 			AddMatrixToHash(surfaceKey, surfaceToScatter);
 		}
+		if (surfaceTerrain)
+		{
+			AddToHash(surfaceKey, HashSdfTerrainShape(*surfaceTerrain));
+			AddMatrixToHash(surfaceKey, surfaceToScatter);
+		}
 		std::vector<std::pair<BlockerValues, uint64_t>> blockers;
 		if (scatter.bUseBlockers && ground != EScatterGround::Nothing)
 		{
@@ -1140,6 +1368,12 @@ namespace Nyx
 		}
 		uint64_t madeFrom = HashScatterValues(scatter);
 		AddToHash(madeFrom, surfaceKey);
+		// A terrain's edits by their count and the last one's revision: an undo takes the last away
+		if (surfaceTerrain)
+		{
+			AddToHash(madeFrom, surfaceTerrain->Edits.size());
+			AddToHash(madeFrom, surfaceTerrain->Edits.empty() ? uint64_t(0) : surfaceTerrain->Edits.back().Revision);
+		}
 		AddToHash(madeFrom, blockers.size());
 		for (const auto& blocker : blockers)
 		{
@@ -1182,9 +1416,10 @@ namespace Nyx
 			{
 				placed.push_back(PlaceBlocker(values, hash, scatterToWorld));
 			}
-			const bool bChanged = ground == EScatterGround::Plane
-				? UpdateScatterCells(*scatter.Cells, scatter, MakeScatterPlane(scatter), glm::mat4(1.0f), surfaceKey, placed)
-				: UpdateScatterCells(*scatter.Cells, scatter, *mesh, surfaceToScatter, surfaceKey, placed);
+			const bool bChanged = ground == EScatterGround::Terrain
+				? UpdateScatterCellsOnTerrain(*scatter.Cells, scatter, *surfaceTerrain, surfaceToScatter, surfaceKey, placed)
+				: ground == EScatterGround::Plane ? UpdateScatterCells(*scatter.Cells, scatter, MakeScatterPlane(scatter), glm::mat4(1.0f), surfaceKey, placed)
+												 : UpdateScatterCells(*scatter.Cells, scatter, *mesh, surfaceToScatter, surfaceKey, placed);
 			if (bChanged || !bHasInstances)
 			{
 				instances = std::make_shared<MeshInstances>(CollectScatterInstances(*scatter.Cells));

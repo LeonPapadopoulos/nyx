@@ -28,6 +28,8 @@
 #include "ScatterComponent.h"
 #include "ScatterInstances.h"
 #include "SceneSerializer.h"
+#include "SdfTerrain.h"
+#include "SdfTerrainComponent.h"
 #include "TestSupport.h"
 #include "TransformComponent.h"
 
@@ -123,6 +125,19 @@ namespace
 		world.Add<GroundComponent>(ground, GroundComponent{});
 		RunPostLoad<GroundComponent>(world, ground);
 		return ground;
+	}
+
+	// Flat SDF ground 3 m up, its surface's guid the ground's
+	Entity AddTerrain(Registry& world)
+	{
+		SdfTerrainComponent terrain;
+		terrain.Layers[0].Height = 3.0f;
+		terrain.Layers[0].Amplitude = 0.0f;
+		const Entity entity = world.CreateEntity();
+		world.Add<GuidComponent>(entity, GuidComponent{ GroundGuid });
+		world.Add<TransformComponent>(entity, TransformComponent{});
+		world.Add<SdfTerrainComponent>(entity, terrain);
+		return entity;
 	}
 
 	Entity AddScatter(Registry& world, const ScatterComponent& scatter, const TransformComponent& transform = {})
@@ -723,6 +738,94 @@ namespace
 		}
 	}
 
+	// On an SDF terrain: on its ground, the same every time; kept to a material painted on it, out
+	// from under a roof with Open Sky; a dig making only the cells it reaches again, the copies down
+	// in it, and its undo putting them back
+	void TestOnAnSdfTerrain()
+	{
+		Registry world;
+		const Entity terrain = AddTerrain(world);
+		ScatterComponent values = OnGround();
+		values.Size = glm::vec2(32.0f, 32.0f);
+		values.CellSize = 4.0f;
+		values.Density = 1.0f;
+		values.Spacing = 0.5f;
+		const Entity scatter = AddScatter(world, values);
+		const auto instances = [&]() -> const MeshInstances& { return *world.Get<MeshInstancesComponent>(scatter).Instances; };
+		Require(instances().Transforms.size() > 300, "A scatter on an SDF terrain should have copies, not " + std::to_string(instances().Transforms.size()));
+		for (const glm::mat4& transform : instances().Transforms)
+		{
+			Require(std::fabs(OriginOf(transform).y - 3.0f) < 0.02f, "A copy on an SDF terrain should stand on its ground: " + Describe(OriginOf(transform)));
+		}
+		Require(HashTransforms(instances()) == HashTransforms(ScatterOnTerrain(values, world.Get<SdfTerrainComponent>(terrain), glm::mat4(1.0f))),
+			"On an SDF terrain, the same values should give the same copies");
+
+		// Painted
+		SdfTerrainComponent painted = world.Get<SdfTerrainComponent>(terrain);
+		SdfTerrainEdit paint;
+		paint.Mode = ESdfTerrainEditMode::Paint;
+		paint.Position = glm::vec3(8.0f, 3.0f, 8.0f);
+		paint.Radius = 5.0f;
+		paint.Material = 2;
+		AppendTerrainEdit(painted, paint);
+		ScatterComponent onPaint = values;
+		onPaint.TerrainMaterials = { 2 };
+		const MeshInstances painting = ScatterOnTerrain(onPaint, painted, glm::mat4(1.0f));
+		Require(painting.Transforms.size() > 10, "Copies should be on the material painted");
+		for (const glm::mat4& transform : painting.Transforms)
+		{
+			Require(glm::length(glm::vec2(OriginOf(transform).x, OriginOf(transform).z) - glm::vec2(8.0f)) < 6.0f, "Copies kept to a material should be where it is");
+		}
+
+		// Under a roof: from above, on top of it
+		SdfTerrainComponent roofed = world.Get<SdfTerrainComponent>(terrain);
+		SdfTerrainEdit roof;
+		roof.Shape = ESdfTerrainEditShape::Box;
+		roof.Mode = ESdfTerrainEditMode::Add;
+		roof.Position = glm::vec3(-8.0f, 12.0f, 0.0f);
+		roof.HalfSize = glm::vec3(8.0f, 1.0f, 16.0f);
+		AppendTerrainEdit(roofed, roof);
+		size_t onRoof = 0;
+		for (const glm::mat4& transform : ScatterOnTerrain(values, roofed, glm::mat4(1.0f)).Transforms)
+		{
+			onRoof += OriginOf(transform).y > 12.0f ? 1 : 0;
+		}
+		Require(onRoof > 100, "From above, copies should be on top of the roof");
+		for (const bool bOpenSky : { true, false })
+		{
+			// Under the roof: from below it down
+			ScatterComponent sky = values;
+			sky.bOpenSky = bOpenSky;
+			sky.HeightRange = glm::vec2(-10.0f, 8.0f);
+			size_t under = 0;
+			for (const glm::mat4& transform : ScatterOnTerrain(sky, roofed, glm::mat4(1.0f)).Transforms)
+			{
+				under += OriginOf(transform).x < -1.0f && OriginOf(transform).y < 5.0f ? 1 : 0;
+			}
+			Require(bOpenSky ? under == 0 : under > 100, std::string("With Open Sky ") + (bOpenSky ? "on, no copy should be under the roof" : "off, copies should be under the roof"));
+		}
+
+		// Dug: the cells it reaches made again, copies down in it; undone, back as they were
+		const uint64_t before = HashTransforms(instances());
+		SdfTerrainEdit dig;
+		dig.Position = glm::vec3(-8.0f, 3.0f, -8.0f);
+		dig.Radius = 3.0f;
+		AppendTerrainEdit(world.Get<SdfTerrainComponent>(terrain), dig);
+		UpdateScatters(world);
+		const uint32_t thrown = world.Get<ScatterComponent>(scatter).Cells->CellsThrown;
+		Require(thrown > 0 && thrown <= 16, "A dig should make only the cells it reaches again, not " + std::to_string(thrown) + " of 64");
+		size_t down = 0;
+		for (const glm::mat4& transform : instances().Transforms)
+		{
+			down += OriginOf(transform).y < 2.0f ? 1 : 0;
+		}
+		Require(down > 5, "Copies should be down in the dig");
+		RequireSameInstances(instances(), ScatterOnTerrain(values, world.Get<SdfTerrainComponent>(terrain), glm::mat4(1.0f)), "Copies after a dig");
+		world.Get<SdfTerrainComponent>(terrain).Edits.pop_back();
+		UpdateScatters(world);
+		Require(HashTransforms(instances()) == before, "The dig undone, the copies should be as they were");
+	}
+
 	void TestEditsMakeOnlyTheirCellsAgain()
 	{
 		Registry world;
@@ -1199,6 +1302,7 @@ int main()
 		TestBlockersKeepCopiesAway();
 		TestTheFalloffThinsTheDensity();
 		TestEditsMakeOnlyTheirCellsAgain();
+		TestOnAnSdfTerrain();
 		TestTheNoiseMask();
 		TestTheInvertedMaskIsTheComplement();
 		TestAScatterCanIgnoreBlockers();

@@ -13,6 +13,8 @@
 
 namespace Nyx
 {
+	struct SdfTerrainComponent;
+
 	// At most this many instances a scatter, whatever its density: 64 MB of transforms
 	constexpr uint32_t MaxScatterInstances = 1u << 20;
 
@@ -109,6 +111,15 @@ namespace Nyx
 		std::vector<Cell> Cells;
 		// The blockers the cells were made with
 		std::vector<ScatterBlocker> Blockers;
+		// On an SDF terrain, the edits the cells were made with: each one's revision, and what it
+		// reaches of the scatter's X and Z (bakes left out, which change no ground)
+		struct TerrainEdit
+		{
+			uint64_t Revision = 0;
+			glm::vec2 Min{ 0.0f };
+			glm::vec2 Max{ 0.0f };
+		};
+		std::vector<TerrainEdit> TerrainEdits;
 
 		// What the last update did: cells whose points were thrown again, and cells whose kept
 		// instances were looked at again, those and the ones after them within the spacing
@@ -123,6 +134,13 @@ namespace Nyx
 	// The surface's space goes into the scatter's by surfaceToScatter. True if any cell was made again.
 	bool UpdateScatterCells(ScatterCells& cells, const ScatterComponent& scatter, const MeshData& surface, const glm::mat4& surfaceToScatter, uint64_t surfaceKey,
 		std::span<const ScatterBlocker> blockers);
+
+	// The same on an SDF terrain whose space goes into the scatter's by terrainToScatter: each cell's
+	// ground cut from the terrain itself (ScatterOnTerrain()); all of them for other values or another
+	// terrain (terrainKey differs), else the cells the edits added or taken away since reach, and the
+	// blockers'. True if any cell was made again.
+	bool UpdateScatterCellsOnTerrain(ScatterCells& cells, const ScatterComponent& scatter, const SdfTerrainComponent& terrain, const glm::mat4& terrainToScatter,
+		uint64_t terrainKey, std::span<const ScatterBlocker> blockers);
 
 	// The cells' kept instances, one cell after another, each non-empty cell with the bounds of its
 	// origins
@@ -142,6 +160,16 @@ namespace Nyx
 	// alone, the same on every machine: integer hashes, and arithmetic that IEEE 754 rounds the same
 	// everywhere.
 	MeshInstances ScatterOnMesh(const ScatterComponent& scatter, const MeshData& surface, const glm::mat4& surfaceToScatter,
+		std::span<const ScatterBlocker> blockers = {});
+
+	// On an SDF terrain: its ground from above, a ray down the scatter's Y every metre across each
+	// cell (RayCastTerrain()) from the top of its Height Range to the bottom (within 1 km of it), so a
+	// range under a roof or an overhang finds the ground beneath it; each square of four hits two triangles, sampled as a mesh's are (by
+	// area, the slope and height limits against the field's normals). A square is left out where a
+	// hit is on none of the Terrain Materials, has some of the terrain overhead within 64 m (Open
+	// Sky), is in a rift or under the sea of the terrain's plan (In Rifts, On Sea Floor), or where its
+	// hits are more than 3 m apart in height, down a cliff. The same on every machine, as the field is.
+	MeshInstances ScatterOnTerrain(const ScatterComponent& scatter, const SdfTerrainComponent& terrain, const glm::mat4& terrainToScatter,
 		std::span<const ScatterBlocker> blockers = {});
 
 	// On the flat plane through the scatter entity, across its area: where a scatter without a
