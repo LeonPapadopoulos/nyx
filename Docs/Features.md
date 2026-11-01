@@ -1515,8 +1515,10 @@ game, coarser the farther, and collides while the world runs.
     field's sign in the chunk's grids or up its sky's rays (45 degrees and steeper from the
     surface), nor change a sample near its surface or a value a sharp vertex asked for, leaves its
     mesh the same bits, and the chunk stays drawn; a few metres' dig makes a handful of chunks
-    again. Collision's bodies are kept the same way. A chunk made again is made from a copy of the
-    terrain with only the edits reaching what it samples, the same bits.
+    again. Collision's bodies are kept the same way. A chunk made again samples with only the edits
+    reaching it, the same bits, found without copying the terrain (`GetTerrainEditsReaching()`,
+    `SampleTerrainGrid()` given them): of a brick's bakes only the last, passed by before anything
+    else is worked out for them, and bakes of bricks it doesn't meet.
   - For new edits alone, the camera where it was, the chunks are chosen again at once, without a
     worker's round trip, and made before anything else, each one's sampling and sky shared out
     among the workers free (`JobSystem::ParallelFor()`), the same bits: in the sample scene a dig is
@@ -1536,8 +1538,8 @@ game, coarser the farther, and collides while the world runs.
     all. An undo costs what an edit does: what is known of each chunk is rewound to the first edit
     that changed, from the edits that reached it, so only the chunks the undone edits reached are
     made again; an edit taken away from far back has the chunks chosen again on a worker. The
-    brush's ray goes in stretches of 32 m, each with only the edits along it. A copy for a chunk
-    and a sample of the whole terrain still pass every edit once.
+    brush's ray goes in stretches of 32 m, each with only the edits along it. A chunk and a sample
+    of the whole terrain still pass every edit once.
   - Baking: once *Bake After* edits (16) have come near a brick of 8 m (within a brick of where
     they can dig or heap), the host bakes it, an edit of its own with the next revision: the
     terrain's values on the corners of its cells of 1 m, kept as the edits so far made them.
@@ -1551,7 +1553,9 @@ game, coarser the farther, and collides while the world runs.
     sampled the same bits meanwhile (`RestoreTerrainBakes()`); and made again for other layers.
     Many points sampled at once look only at the edits near each block of them (cells of 4 m
     round the points), the same ones as going through them all. In the sample terrain, a chunk
-    under 1600 brush edits samples in under twice the time it does with none (from 14 times).
+    under 50 to 1600 brush edits samples in 1.25 to 1.35 times the time it does with none, its
+    edits found in 0.03 to 0.3 ms (from 14 times before baking, and 1.2 to 1.9 with every edit
+    copied for it); with *Bake After* 8, 1.1 to 1.3 times (`NyxTerrainGate2`).
   - The edits' canonical form (`TerrainSave.h`): the same bytes on every machine for the same
     edits, little-endian, floats as their bits, in revision order, bakes with their values and the
     layers they were made with (`WriteTerrainEdits()`); read back, edits not whole, of a later

@@ -668,21 +668,22 @@ namespace Nyx
 	{
 		const auto start = std::chrono::steady_clock::now();
 		// With only the edits that can change what it samples: the same bits, far fewer edits to pass
-		std::optional<SdfTerrainComponent> reached;
+		std::vector<SdfTerrainEdit> reaching;
 		if (!allEdits.Edits.empty())
 		{
 			glm::vec3 low;
 			glm::vec3 high;
 			GetTerrainChunkReach(id, low, high);
-			reached = allEdits;
-			KeepTerrainEditsReaching(*reached, low, high);
+			reaching = GetTerrainEditsReaching(allEdits, allEdits.Edits, low, high);
 		}
-		const SdfTerrainComponent& terrain = reached ? *reached : allEdits;
+		const std::span<const SdfTerrainEdit> edits(reaching);
+		const SdfTerrainComponent& terrain = allEdits;
+		const auto gathered = std::chrono::steady_clock::now();
 		const float cell = GetTerrainCellSize(id.Level);
 		const glm::vec3 corner = ChunkCorner(id);
 		// Two cells before the corner and one past the far side: the cells the chunk's quads join, and
 		// the samples either side of their corners
-		FieldGrid grid = SampleTerrainGrid(terrain, corner - 2.0f * cell, cell, glm::ivec3(TerrainChunkCells + 4), runParts);
+		FieldGrid grid = SampleTerrainGrid(terrain, edits, corner - 2.0f * cell, cell, glm::ivec3(TerrainChunkCells + 4), runParts);
 
 		// Next to coarser chunks: their samples, three of their cells round this one, and this one's
 		// samples where they touch theirs and between them their average
@@ -690,7 +691,7 @@ namespace Nyx
 		FieldGrid coarse;
 		if (bCoarser)
 		{
-			coarse = SampleTerrainGrid(terrain, corner - 6.0f * cell, 2.0f * cell, glm::ivec3(TerrainChunkCells / 2 + 7), runParts);
+			coarse = SampleTerrainGrid(terrain, edits, corner - 6.0f * cell, 2.0f * cell, glm::ivec3(TerrainChunkCells / 2 + 7), runParts);
 			for (int k = 0; k < grid.Size.z; ++k)
 			{
 				for (int j = 0; j < grid.Size.y; ++j)
@@ -773,9 +774,9 @@ namespace Nyx
 		// The sky's parts ask from other threads
 		std::mutex askedLock;
 		settings.RunParts = runParts;
-		settings.Field = [&terrain, &asked, &askedLock, askedMin, askedMax, bRecordAsked](const float* x, const float* y, const float* z, size_t count, float* out)
+		settings.Field = [&terrain, edits, &asked, &askedLock, askedMin, askedMax, bRecordAsked](const float* x, const float* y, const float* z, size_t count, float* out)
 		{
-			SampleTerrainBatch(terrain, x, y, z, count, out);
+			SampleTerrainBatch(terrain, edits, x, y, z, count, out);
 			for (size_t i = 0; i < count && bRecordAsked; ++i)
 			{
 				const glm::vec3 point(x[i], y[i], z[i]);
@@ -898,6 +899,9 @@ namespace Nyx
 		if (outTimes != nullptr)
 		{
 			outTimes->SampleMilliseconds = std::chrono::duration<double, std::milli>(sampled - start).count();
+			outTimes->EditsMilliseconds = std::chrono::duration<double, std::milli>(gathered - start).count();
+			outTimes->EditsReaching = edits.size();
+			outTimes->Edits = allEdits.Edits.size();
 			outTimes->MeshMilliseconds = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - sampled).count();
 			outTimes->Triangles = static_cast<uint32_t>(mesh.Indices.size() / 3);
 			outTimes->SeamTriangles = stats.SeamTriangles;

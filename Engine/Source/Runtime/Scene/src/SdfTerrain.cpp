@@ -22,6 +22,7 @@
 
 namespace Nyx
 {
+
 	namespace
 	{
 		// Points sampled together, a multiple of eight for the noise's batches
@@ -1503,20 +1504,26 @@ namespace Nyx
 
 	namespace
 	{
-		void SampleBatch(const SdfTerrainComponent& terrain, const float* x, const float* y, const float* z, size_t count, float* outValues, uint32_t* outMaterials,
-			const EditsLookup* lookup)
+		void SampleBatch(const SdfTerrainComponent& terrain, std::span<const SdfTerrainEdit> edits, const float* x, const float* y, const float* z, size_t count,
+			float* outValues, uint32_t* outMaterials, const EditsLookup* lookup)
 		{
 			std::array<uint32_t, BlockSize> materials;
 			for (size_t first = 0; first < count; first += BlockSize)
 			{
 				const Block block{ x + first, y + first, z + first, std::min(BlockSize, count - first) };
-				SampleBlock(terrain, terrain.Edits, block, outValues + first, outMaterials != nullptr ? outMaterials + first : materials.data(), lookup);
+				SampleBlock(terrain, edits, block, outValues + first, outMaterials != nullptr ? outMaterials + first : materials.data(), lookup);
 			}
 		}
 	}
 
 	void SampleTerrainBatch(const SdfTerrainComponent& terrain, const float* x, const float* y, const float* z, size_t count, float* outValues,
 		uint32_t* outMaterials)
+	{
+		SampleTerrainBatch(terrain, terrain.Edits, x, y, z, count, outValues, outMaterials);
+	}
+
+	void SampleTerrainBatch(const SdfTerrainComponent& terrain, std::span<const SdfTerrainEdit> edits, const float* x, const float* y, const float* z, size_t count,
+		float* outValues, uint32_t* outMaterials)
 	{
 		// Many points: the bakes found for each block at once
 		std::optional<EditsLookup> lookup;
@@ -1529,9 +1536,9 @@ namespace Nyx
 				low = glm::min(low, glm::vec3(x[i], y[i], z[i]));
 				high = glm::max(high, glm::vec3(x[i], y[i], z[i]));
 			}
-			lookup = LookAtEdits(terrain.Edits, low, high);
+			lookup = LookAtEdits(edits, low, high);
 		}
-		SampleBatch(terrain, x, y, z, count, outValues, outMaterials, lookup ? &*lookup : nullptr);
+		SampleBatch(terrain, edits, x, y, z, count, outValues, outMaterials, lookup ? &*lookup : nullptr);
 	}
 
 	TerrainSample SampleTerrain(const SdfTerrainComponent& terrain, const glm::vec3& point)
@@ -1549,6 +1556,12 @@ namespace Nyx
 	FieldGrid SampleTerrainGrid(const SdfTerrainComponent& terrain, const glm::vec3& origin, float cellSize, const glm::ivec3& size,
 		const FieldRunParts& runParts)
 	{
+		return SampleTerrainGrid(terrain, terrain.Edits, origin, cellSize, size, runParts);
+	}
+
+	FieldGrid SampleTerrainGrid(const SdfTerrainComponent& terrain, std::span<const SdfTerrainEdit> edits, const glm::vec3& origin, float cellSize,
+		const glm::ivec3& size, const FieldRunParts& runParts)
+	{
 		FieldGrid grid;
 		grid.Size = glm::max(size, glm::ivec3(0));
 		grid.Origin = origin;
@@ -1559,7 +1572,7 @@ namespace Nyx
 
 		// In bricks of 4 x 4 x 4, a block each, so a block's bounds are tight and leave out the layers
 		// that can't reach it; a slab of bricks a part
-		const EditsLookup lookup = LookAtEdits(terrain.Edits, origin, origin + glm::vec3(glm::max(grid.Size - 1, glm::ivec3(0))) * cellSize);
+		const EditsLookup lookup = LookAtEdits(edits, origin, origin + glm::vec3(glm::max(grid.Size - 1, glm::ivec3(0))) * cellSize);
 		auto slab = [&](size_t part)
 		{
 			std::array<float, BlockSize> x;
@@ -1590,7 +1603,7 @@ namespace Nyx
 							}
 						}
 					}
-					SampleBatch(terrain, x.data(), y.data(), z.data(), n, values.data(), materials.data(), &lookup);
+					SampleBatch(terrain, edits, x.data(), y.data(), z.data(), n, values.data(), materials.data(), &lookup);
 					for (size_t m = 0; m < n; ++m)
 					{
 						grid.Values[indices[m]] = values[m];
@@ -2023,20 +2036,82 @@ namespace Nyx
 
 	void KeepTerrainEditsReaching(SdfTerrainComponent& terrain, const glm::vec3& boxMin, const glm::vec3& boxMax)
 	{
-		TerrainBoxEdits box = BeginTerrainBoxEdits(terrain, boxMin, boxMax);
-		std::vector<SdfTerrainEdit> kept;
-		ContinueBox<false>(terrain, box, nullptr, [&](const SdfTerrainEdit& edit) { kept.push_back(edit); });
-		// Of a brick's bakes only the last, which holds every point the others did
-		std::unordered_set<uint64_t> baked;
-		for (size_t at = kept.size(); at-- > 0;)
+		terrain.Edits = GetTerrainEditsReaching(terrain, terrain.Edits, boxMin, boxMax);
+	}
+
+	std::vector<SdfTerrainEdit> GetTerrainEditsReaching(const SdfTerrainComponent& terrain, std::span<const SdfTerrainEdit> edits, const glm::vec3& boxMin,
+		const glm::vec3& boxMax)
+	{
+		// Of a brick's bakes only the last, which holds every point the others did: the field is the
+		// same bits without the others anywhere, so they are passed by before anything is worked out
+		// for them, back from the last edit
+		// A bake of a brick the box doesn't meet can't change a value in it either. Those it meets
+		// are in a grid of the box's bricks, a point on a brick's face in the brick before it too,
+		// unless there are too many of them, as round a coarse chunk
+		thread_local std::vector<uint8_t> superseded;
+		thread_local std::vector<uint8_t> baked;
+		thread_local std::unordered_set<uint64_t> bakedFar;
+		superseded.assign(edits.size(), 0);
+		glm::ivec3 low;
+		glm::ivec3 high;
+		for (int axis = 0; axis < 3; ++axis)
 		{
-			if (IsBake(kept[at]) && !baked.insert(BrickKey(BrickOf(kept[at].Position))).second)
+			low[axis] = int(std::floor(boxMin[axis] / SdfTerrainBakeBrickSize)) - 1;
+			high[axis] = int(std::floor(boxMax[axis] / SdfTerrainBakeBrickSize));
+		}
+		const glm::ivec3 span = high - low + 1;
+		constexpr int64_t MaxGridBricks = 1 << 16;
+		const bool bGrid = int64_t(span.x) * span.y * span.z <= MaxGridBricks;
+		if (bGrid)
+		{
+			baked.assign(size_t(span.x) * size_t(span.y) * size_t(span.z), 0);
+		}
+		bakedFar.clear();
+		for (size_t at = edits.size(); at-- > 0;)
+		{
+			const SdfTerrainEdit& edit = edits[at];
+			if (!IsBake(edit))
 			{
-				kept[at].Revision = 0;
+				continue;
+			}
+			const glm::ivec3 brick = BrickOf(edit.Position);
+			if (!BrickMeets(BrickCorner(edit), boxMin, boxMax))
+			{
+				superseded[at] = 1;
+			}
+			else if (bGrid)
+			{
+				const glm::ivec3 local = brick - low;
+				uint8_t& seen = baked[size_t(local.x) + size_t(span.x) * (size_t(local.y) + size_t(span.y) * size_t(local.z))];
+				superseded[at] = seen;
+				seen = 1;
+			}
+			else if (!bakedFar.insert(BrickKey(brick)).second)
+			{
+				superseded[at] = 1;
 			}
 		}
-		std::erase_if(kept, [](const SdfTerrainEdit& edit) { return IsBake(edit) && edit.Revision == 0; });
-		terrain.Edits = std::move(kept);
+
+		// Then those of the rest that can change a value in the box, as ContinueTerrainBoxEdits()
+		// takes them
+		const TerrainBoxEdits box = BeginTerrainBoxEdits(terrain, boxMin, boxMax);
+		Interval range{ box.Range.Lowest, box.Range.Highest };
+		std::vector<SdfTerrainEdit> kept;
+		for (size_t at = 0; at < edits.size(); ++at)
+		{
+			if (superseded[at] != 0)
+			{
+				continue;
+			}
+			const SdfTerrainEdit& edit = edits[at];
+			const EditOwn own = GetEditOwn(edit, boxMin, boxMax);
+			if (CanEditChange(edit, own, range.Low, range.High))
+			{
+				range = EditInterval(edit, own, range);
+				kept.push_back(edit);
+			}
+		}
+		return kept;
 	}
 
 	void HashTerrainEditRuns(const SdfTerrainComponent& terrain, std::vector<uint64_t>& hashes)

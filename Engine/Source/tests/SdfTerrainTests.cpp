@@ -26,6 +26,7 @@
 #include <iostream>
 #include <limits>
 #include <optional>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -775,12 +776,29 @@ namespace
 			Require(kept.Edits.size() < baked.Edits.size(), "A box should keep only some of the edits and bakes");
 			const Nyx::FieldGrid all = Nyx::SampleTerrainGrid(baked, low, 0.5f, cells);
 			const Nyx::FieldGrid some = Nyx::SampleTerrainGrid(kept, low, 0.5f, cells);
+			// The same edits found without changing the terrain, sampled without copying it
+			const std::vector<Nyx::SdfTerrainEdit> reaching = Nyx::GetTerrainEditsReaching(baked, baked.Edits, low, high);
+			Require(reaching.size() == kept.Edits.size(), "The edits reaching a box should be the same found either way");
+			const Nyx::FieldGrid given = Nyx::SampleTerrainGrid(baked, reaching, low, 0.5f, cells);
 			for (size_t i = 0; i < all.Values.size(); ++i)
 			{
 				const glm::ivec3 at(int(i % 33), int((i / 33) % 33), int(i / (33 * 33)));
 				const Nyx::TerrainSample single = Nyx::SampleTerrain(baked, low + glm::vec3(at) * 0.5f);
 				Require(BitsOf(all.Values[i]) == BitsOf(some.Values[i]) && all.Materials[i] == some.Materials[i] && BitsOf(single.Value) == BitsOf(all.Values[i]),
 					"A baked terrain left the edits reaching a box should be the same bits in it");
+				Require(BitsOf(given.Values[i]) == BitsOf(all.Values[i]) && given.Materials[i] == all.Materials[i],
+					"Sampled with the edits reaching a box given, a terrain should be the same bits in it");
+			}
+			// Of a brick's bakes, only the last
+			std::set<uint64_t> bricksKept;
+			for (const Nyx::SdfTerrainEdit& edit : reaching)
+			{
+				if (edit.Kind == Nyx::ESdfTerrainEditKind::Bake)
+				{
+					const glm::ivec3 brick(glm::floor(edit.Position / Nyx::SdfTerrainBakeBrickSize));
+					Require(bricksKept.insert((uint64_t(uint32_t(brick.x) & 0xFFFFF) << 40) | (uint64_t(uint32_t(brick.y) & 0xFFFFF) << 20) | uint64_t(uint32_t(brick.z) & 0xFFFFF)).second,
+						"Only a brick's last bake should reach a box");
+				}
 			}
 		}
 

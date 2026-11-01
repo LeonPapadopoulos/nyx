@@ -672,14 +672,24 @@ namespace
 		TerrainBakeCounts counts;
 		const glm::vec3 place(-36.0f, SurfaceBelow(terrain, glm::vec3(-36.0f, 0.0f, 44.0f)), 44.0f);
 		const TerrainChunkId id{ 0, glm::ivec3(glm::floor(place / GetTerrainChunkSize(0))) };
+		double gathering = 0.0;
+		size_t reaching = 0;
+		size_t all = 0;
 		auto time = [&]
 		{
+			// The best of many: at 3 ms a chunk, the spread between runs is as wide as the margin
 			double best = 1e9;
-			for (int run = 0; run < 5; ++run)
+			for (int run = 0; run < 15; ++run)
 			{
 				TerrainChunkTimes times;
 				MakeTerrainChunkMesh(terrain, id, TerrainNeighbourhood{}, &times);
-				best = std::min(best, times.SampleMilliseconds);
+				if (times.SampleMilliseconds < best)
+				{
+					best = times.SampleMilliseconds;
+					gathering = times.EditsMilliseconds;
+					reaching = times.EditsReaching;
+					all = times.Edits;
+				}
 			}
 			return best;
 		};
@@ -710,7 +720,9 @@ namespace
 			}
 			const double with = time();
 			worst = std::max(worst, with / none);
-			measured += "; " + std::to_string(count) + " edits " + Fixed(with, 2) + " ms (" + Fixed(with / none, 2) + " times)";
+
+			measured += "; " + std::to_string(count) + " edits " + Fixed(with, 2) + " ms (" + Fixed(with / none, 2) + " times; " + std::to_string(reaching) + " of " +
+				std::to_string(all) + " edits and bakes kept, found in " + Fixed(gathering, 2) + " ms)";
 		}
 		Report("Baking keeps sampling a chunk under many edits within 20% of without", "the finest chunk, brush edits within 12 m, one thread: " + measured, worst <= 1.2);
 	}

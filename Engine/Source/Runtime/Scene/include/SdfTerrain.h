@@ -11,6 +11,7 @@
 #include <memory>
 #include <optional>
 #include <set>
+#include <span>
 #include <unordered_map>
 #include <vector>
 
@@ -50,12 +51,18 @@ namespace Nyx
 	// SampleTerrain() point by point, in batches of noise eight at a time where the processor can
 	void SampleTerrainBatch(const SdfTerrainComponent& terrain, const float* x, const float* y, const float* z, size_t count, float* outValues,
 		uint32_t* outMaterials = nullptr);
+	// The same with `edits` in place of the terrain's own, such as those reaching where the points are
+	// (GetTerrainEditsReaching()), without copying the terrain
+	void SampleTerrainBatch(const SdfTerrainComponent& terrain, std::span<const SdfTerrainEdit> edits, const float* x, const float* y, const float* z, size_t count,
+		float* outValues, uint32_t* outMaterials = nullptr);
 
 	// The terrain on a grid of `size` samples `cellSize` apart from `origin` (FieldGrid), values and
 	// materials, in one batch: what a mesh of it is made from (MakeFieldMesh())
 	// With `runParts`, its bricks' slabs in parts, the same bits.
 	FieldGrid SampleTerrainGrid(const SdfTerrainComponent& terrain, const glm::vec3& origin, float cellSize, const glm::ivec3& size,
 		const FieldRunParts& runParts = {});
+	FieldGrid SampleTerrainGrid(const SdfTerrainComponent& terrain, std::span<const SdfTerrainEdit> edits, const glm::vec3& origin, float cellSize,
+		const glm::ivec3& size, const FieldRunParts& runParts = {});
 
 	// The most the value can change a metre, in any direction; 0 for a terrain with no layers
 	float GetTerrainMaxSlope(const SdfTerrainComponent& terrain);
@@ -253,6 +260,12 @@ namespace Nyx
 	// Leaves the terrain only those edits, and of a brick's bakes only the last, so sampling in the box
 	// is the same bits with far fewer: what a chunk is made from
 	void KeepTerrainEditsReaching(SdfTerrainComponent& terrain, const glm::vec3& boxMin, const glm::vec3& boxMax);
+
+	// The same edits out of `edits` (the terrain's, or a list like them), copied, without changing the
+	// terrain: a chunk's, made without copying every edit first. Bakes a later bake of their brick
+	// holds are passed by first, before anything is worked out for them.
+	std::vector<SdfTerrainEdit> GetTerrainEditsReaching(const SdfTerrainComponent& terrain, std::span<const SdfTerrainEdit> edits, const glm::vec3& boxMin,
+		const glm::vec3& boxMax);
 
 	// Whether an edit can change a value somewhere in the box that is between `lowest` and `highest`
 	// (a value it can't change it leaves the same bits), and whether it can turn the value's sign

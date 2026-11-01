@@ -188,6 +188,11 @@ namespace Nyx
 	struct TerrainChunkTimes
 	{
 		double SampleMilliseconds = 0.0;
+		// Of the sampling, how long finding the edits that reach it took
+		double EditsMilliseconds = 0.0;
+		// How many edits it was made with, of how many
+		size_t EditsReaching = 0;
+		size_t Edits = 0;
 		double MeshMilliseconds = 0.0;
 		uint32_t Triangles = 0;
 		uint32_t SeamTriangles = 0;
