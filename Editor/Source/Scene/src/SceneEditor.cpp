@@ -4,6 +4,7 @@
 #include "RootObjectSnapshotUtils.h"
 #include "SceneOutlineEdits.h"
 #include "TransactionObjectRefHelpers.h"
+#include "TransformComponent.h"
 #include "TransformParents.h"
 
 #include "imgui.h"
@@ -48,6 +49,12 @@ namespace Nyx::Editor
 		const Nyx::EntityGuid after = selected ? Scene.GetGuid(*selected) : Nyx::EntityGuid{};
 		const Nyx::Entity newEntity = Scene.CreateEntity("New Entity");
 		Scene.GetSelection() = newEntity;
+		// In prefab mode, where the root is, to be its child
+		const std::optional<Nyx::Entity> prefabRoot = PrefabRoot.IsValid() ? Scene.FindEntity(PrefabRoot) : std::nullopt;
+		if (prefabRoot && Scene.GetRegistry().Has<Nyx::TransformComponent>(*prefabRoot))
+		{
+			Scene.GetRegistry().Add<Nyx::TransformComponent>(newEntity, Scene.GetRegistry().Get<Nyx::TransformComponent>(*prefabRoot));
+		}
 
 		const ObjectRef rootRef = MakeSceneEntityRef(Scene, newEntity);
 		RootObjectSnapshot snapshot = CaptureRootObjectSnapshot(EntityDomain, TransactionContext, rootRef);
@@ -65,6 +72,10 @@ namespace Nyx::Editor
 		for (Change& placed : PlaceNewEntity(Scene, Scene.GetGuid(newEntity), after, folder))
 		{
 			transaction.Changes.push_back(std::move(placed));
+		}
+		if (prefabRoot && Scene.GetRegistry().Has<Nyx::TransformComponent>(newEntity))
+		{
+			ChangeParent(Scene, newEntity, *prefabRoot, transaction.Changes);
 		}
 
 		Transactions.Push(std::move(transaction));

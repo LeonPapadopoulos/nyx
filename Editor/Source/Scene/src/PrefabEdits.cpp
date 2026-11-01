@@ -257,6 +257,11 @@ namespace Nyx::Editor
 
 	std::optional<Nyx::Entity> PlacePrefab(SceneEditor& editing, const std::string& prefabPath, const glm::vec3& position)
 	{
+		if (editing.PrefabRoot.IsValid())
+		{
+			LOG_WARNING("Place Prefab: a prefab can't hold an instance of a prefab yet");
+			return std::nullopt;
+		}
 		const Nyx::PrefabAsset* prefab = editing.Assets ? editing.Assets->ResolvePrefab(prefabPath) : nullptr;
 		if (!prefab)
 		{
@@ -304,7 +309,7 @@ namespace Nyx::Editor
 	{
 		Nyx::Registry& world = editing.Scene.GetRegistry();
 		const std::vector<Nyx::Entity> entities = GetSelfAndBelow(world, entity);
-		if (entities.empty() || !world.Has<Nyx::GuidComponent>(entity))
+		if (entities.empty() || !world.Has<Nyx::GuidComponent>(entity) || editing.PrefabRoot.IsValid())
 		{
 			return false;
 		}

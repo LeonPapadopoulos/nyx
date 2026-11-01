@@ -19,6 +19,7 @@
 #include "PlayControls.h"
 #include "PlaySession.h"
 #include "PreferencesWindow.h"
+#include "PrefabMode.h"
 #include "ReflectedAssetEditors.h"
 #include "ReflectedAssetWindows.h"
 #include "SceneEditor.h"
@@ -39,10 +40,14 @@
 #include "TerrainPlanWindow.h"
 #include "TerrainSeedsWindow.h"
 
+#include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
+#include <vector>
 
 namespace Nyx::Tests
 {
@@ -87,6 +92,15 @@ namespace Nyx::Editor
 		// the assets folder), opened
 		void CreateReflectedAsset(const Nyx::ReflectedAssetType& type, const std::filesystem::path& folder);
 
+		// Opens a prefab ("Prefabs/Lamp.nyxprefab") in prefab mode from the next frame on, leaving the
+		// one open first
+		void OpenPrefab(const std::string& prefabPath);
+		// Writes the prefab open in prefab mode; the scene's instances follow it
+		bool SavePrefab();
+		// Back to the scene, then `then`, from the next frame on; asks first whether to save the
+		// prefab's changes, if it has any, and does neither if that is cancelled
+		void LeavePrefab(std::function<void()> then = {});
+
 	private:
 		// Vsync and the frame rate cap, from the preferences, to the window
 		void ApplyFrameRate();
@@ -101,6 +115,19 @@ namespace Nyx::Editor
 
 		// Called before destroying the old registry, once its replacement is ready.
 		void ForgetPreviousScene();
+
+		// What the panels and scene views show and edit: the prefab's in prefab mode, else the scene's
+		SceneEditor& GetEditing()
+		{
+			return Prefab.IsOpen() ? Prefab.GetEditing() : Editing;
+		}
+
+		// Prefab mode begun, with the scene views looking at the prefab, and ended, with them looking
+		// where they looked in the scene
+		void EnterPrefab(const std::string& prefabPath);
+		void ClosePrefab();
+		// Whether to save the prefab's changes before leaving it: Save, Discard or Cancel
+		void DrawLeavePrefabPopup();
 
 	private:
 		Nyx::IWindow* Window = nullptr;
@@ -119,6 +146,23 @@ namespace Nyx::Editor
 		std::filesystem::path CurrentScenePath;
 
 		SceneEditor Editing;
+
+		// A prefab open on its own, which the panels show in place of the scene. Opening and leaving
+		// one wait for the next frame, as the panels hold its editing while they draw: the prefab to
+		// open, whether to leave, what to do once left, and whether to ask about its changes first.
+		PrefabMode Prefab{ Editing };
+		std::optional<std::string> PendingPrefab;
+		bool bLeavePrefab = false;
+		std::function<void()> AfterLeavingPrefab;
+		bool bAskToLeavePrefab = false;
+		// The scene views' cameras as they were in the scene
+		struct SceneViewCamera
+		{
+			uint64_t View = 0;
+			glm::vec3 Position{ 0.0f };
+			glm::vec3 Rotation{ 0.0f };
+		};
+		std::vector<SceneViewCamera> SceneCameras;
 
 		EditorPreferences Preferences;
 #if NYX_DEV_TOOLS
@@ -190,6 +234,9 @@ namespace Nyx::Editor
 			.NewScene = [this]() { NewScene(); },
 			.SaveScene = [this]() { SaveScene(); },
 			.SceneFiles = SceneFiles,
+			.Prefab = Prefab,
+			.SavePrefab = [this]() { SavePrefab(); },
+			.LeavePrefab = [this]() { LeavePrefab(); },
 			.SourceInspector = SourceInspector,
 			.PreferencesPanel = PreferencesPanel,
 			.ThemeEditor = ThemeEditor,

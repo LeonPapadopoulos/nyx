@@ -86,6 +86,9 @@ namespace Nyx::Editor
 		// Flies a view's camera to see the box whole in its middle, from the next Update()
 		void Frame(const glm::vec3& boxMin, const glm::vec3& boxMax);
 
+		// The way a free camera turned so looks (yaw round Y, then pitch round X, from looking along -Z)
+		static glm::vec3 GetForward(const glm::vec3& rotationRadians);
+
 		// Where a camera looking along `forward` sees the box whole in its middle
 		glm::vec3 GetFramingPosition(const glm::vec3& boxMin, const glm::vec3& boxMax, const glm::vec3& forward) const;
 

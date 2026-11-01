@@ -21,6 +21,7 @@ set(NYX_EDITOR_SOURCES
     Scene/src/TransformHierarchySubscriber.cpp
     Scene/src/TransformParents.cpp
     Scene/src/PrefabEdits.cpp
+    Scene/src/PrefabMode.cpp
     Scene/src/PrefabTransactions.cpp
     Scene/src/ComponentEdits.cpp
     Scene/src/EntityCopies.cpp
@@ -115,6 +116,7 @@ set(NYX_EDITOR_HEADERS
     Scene/include/TransformHierarchySubscriber.h
     Scene/include/TransformParents.h
     Scene/include/PrefabEdits.h
+    Scene/include/PrefabMode.h
     Scene/include/PrefabTransactions.h
     Scene/include/ComponentEdits.h
     Scene/include/EntityCopies.h

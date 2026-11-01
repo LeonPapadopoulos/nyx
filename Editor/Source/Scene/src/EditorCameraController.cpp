@@ -25,6 +25,11 @@ namespace Nyx::Editor
 		}
 	}
 
+	glm::vec3 EditorCameraController::GetForward(const glm::vec3& rotationRadians)
+	{
+		return ForwardOf(rotationRadians);
+	}
+
 	EditorCameraController::EditorCameraController(InputSystem& input)
 		: Fly(input, { .FlyContextName = "EditorFlyCamera", .MouseLookContextName = "EditorMouseLook", .Priority = FlyCameraPriority })
 		, MoveSpeed(CameraSettings.StartSpeed)

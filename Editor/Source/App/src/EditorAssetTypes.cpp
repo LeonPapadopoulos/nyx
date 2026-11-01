@@ -24,13 +24,17 @@ namespace Nyx::Editor
 				editor.LoadCurrentScene(entry.AbsolutePath);
 			} });
 
-		// Placed by dragging it into a scene view or the outliner; opening one comes later
+		// Placed by dragging it into a scene view or the outliner; opened in prefab mode
 		registry.Register(AssetTypeDescriptor{
 			.TypeId = std::string(Nyx::PrefabAssetType),
 			.DisplayName = "Prefab",
 			.Extensions = { std::string(Nyx::PrefabExtension) },
 			.bBrowsable = true,
-			.bOpenOnDoubleClick = false });
+			.bOpenOnDoubleClick = true,
+			.Activate = [&editor](const AssetEntry& entry)
+			{
+				editor.OpenPrefab(entry.RelativePath.generic_string());
+			} });
 
 		registry.Register(AssetTypeDescriptor{
 			.TypeId = "Mesh",

@@ -17,6 +17,7 @@
 #include "ParentComponent.h"
 #include "Prefab.h"
 #include "PrefabEdits.h"
+#include "PrefabMode.h"
 #include "Painter.h"
 #include "PainterTestWindow.h"
 #include "PhysicsComponents.h"
@@ -1178,6 +1179,114 @@ namespace
 					"Two items in an instance's details share an ID (under the mouse at y = " + std::to_string(y) + ")");
 			}
 		}
+	}
+
+	// Prefab mode: the prefab's entities open on their own, with an undo of their own and the guids
+	// the prefab gives them; a new entity becomes the root's child; Save writes the prefab and the
+	// scene's instances follow it, keeping what they override. Save refuses an entity outside the
+	// root and a deleted root, and nothing makes an instance of a prefab in a prefab.
+	void TestPrefabMode()
+	{
+		Nyx::Tests::TestDirectory directory("NyxEditorPrefabModeTests");
+		std::filesystem::create_directories(directory.Path / "Prefabs");
+		FolderPrefabs prefabs(directory.Path);
+
+		SceneEditor editing;
+		editing.Transactions.Subscribe(&editing.Prefabs);
+		editing.Transactions.Subscribe(&editing.Hierarchy);
+		editing.Assets = &prefabs;
+		editing.Prefabs.FindFile = [&](const std::string& path)
+		{
+			return directory.Path / path;
+		};
+		Registry& world = editing.Scene.GetRegistry();
+
+		const Entity post = editing.Scene.CreateEntity("Post");
+		world.Add<TransformComponent>(post, TransformComponent{});
+		world.Add<BoxColliderComponent>(post, BoxColliderComponent{ .HalfExtents = glm::vec3(0.5f) });
+		const Entity arm = editing.Scene.CreateEntity("Arm");
+		world.Add<TransformComponent>(arm, TransformComponent{});
+		world.Add<ParentComponent>(arm, ParentComponent{ .Parent = editing.Scene.GetGuid(post), .LocalPosition = glm::vec3(0.0f, 3.0f, 0.0f) });
+		const EntityGuid armLocal = editing.Scene.GetGuid(arm);
+		const std::string lampPath = "Prefabs/Lamp.nyxprefab";
+		Require(CreatePrefab(editing, post, directory.Path / lampPath, lampPath), "Create Prefab failed");
+		const EntityGuid guidA = editing.Scene.GetGuid(post);
+		const EntityGuid guidB = editing.Scene.GetGuid(*PlacePrefab(editing, lampPath, glm::vec3(10.0f, 0.0f, 0.0f)));
+		const auto boxOf = [&](EntityGuid guid) { return world.Get<BoxColliderComponent>(*editing.Scene.FindEntity(guid)).HalfExtents; };
+		const auto editBox = [](SceneEditor& where, Entity entity, float halfExtent)
+		{
+			TransactionDiffUtil diff;
+			diff.TakeSnapshot(MakeSceneEntityRef(where.Scene, entity), &where.Scene.GetRegistry().Get<BoxColliderComponent>(entity), Nyx::Reflection::GetTypeMetadata<BoxColliderComponent>());
+			where.Scene.GetRegistry().Get<BoxColliderComponent>(entity).HalfExtents = glm::vec3(halfExtent);
+			Require(diff.CommitChanges("Edit Property", where.Transactions), "The edit recorded nothing");
+		};
+		// A overrides its box
+		editBox(editing, *editing.Scene.FindEntity(guidA), 2.0f);
+
+		// Opened: the prefab's two entities, by the prefab's guids, the arm placed below the root
+		PrefabMode mode(editing);
+		std::string error;
+		Require(mode.Open(lampPath, error), "The prefab should open: " + error);
+		SceneEditor& prefab = mode.GetEditing();
+		Registry& prefabWorld = prefab.Scene.GetRegistry();
+		const auto countOf = [](Registry& registry)
+		{
+			size_t count = 0;
+			registry.Each<GuidComponent>([&](Entity, const GuidComponent&) { ++count; });
+			return count;
+		};
+		Require(countOf(prefabWorld) == 2 && prefab.Scene.FindEntity(prefab.PrefabRoot) && prefab.Scene.FindEntity(armLocal), "The prefab's entities should open with its guids");
+		const Entity prefabRoot = *prefab.Scene.FindEntity(prefab.PrefabRoot);
+		Require(FindParent(prefabWorld, *prefab.Scene.FindEntity(armLocal)) == prefabRoot && !mode.IsDirty(), "The arm should be the root's child, nothing changed yet");
+
+		// An edit of its own undo, which the scene's hasn't got
+		editBox(prefab, prefabRoot, 1.0f);
+		Require(mode.IsDirty(), "An edit should leave the prefab with changes");
+		prefab.Undo();
+		Require(prefabWorld.Get<BoxColliderComponent>(prefabRoot).HalfExtents == glm::vec3(0.5f) && boxOf(guidA) == glm::vec3(2.0f), "The prefab's undo should be its own");
+		prefab.Redo();
+
+		// A new entity is the root's child
+		prefab.CreateEntity();
+		const Entity added = *prefab.Scene.GetSelection();
+		const EntityGuid addedLocal = prefab.Scene.GetGuid(added);
+		Require(FindParent(prefabWorld, added) == prefabRoot, "A new entity in a prefab should be its root's child");
+		prefab.Undo();
+		Require(countOf(prefabWorld) == 2, "Undo should take the new entity away");
+		prefab.Redo();
+		Require(countOf(prefabWorld) == 3 && FindParent(prefabWorld, *prefab.Scene.FindEntity(addedLocal)) == prefabRoot, "Redo should bring it back, the root's child");
+
+		// No instance of a prefab in a prefab
+		Require(!PlacePrefab(prefab, lampPath, glm::vec3(0.0f)) && countOf(prefabWorld) == 3, "A prefab shouldn't take an instance of a prefab");
+
+		// Saved: B follows, A keeps its override, both get the new part
+		Require(mode.Save(error), "Save failed: " + error);
+		Require(!mode.IsDirty(), "Saved, the prefab has no changes");
+		Require(boxOf(guidB) == glm::vec3(1.0f) && boxOf(guidA) == glm::vec3(2.0f), "B should follow the saved prefab, A keep its box");
+		Require(editing.Scene.FindEntity(GetPrefabPartGuid(guidA, addedLocal)) && editing.Scene.FindEntity(GetPrefabPartGuid(guidB, addedLocal)), "The instances should get the new part");
+		{
+			PrefabAsset saved;
+			Require(saved.LoadFromFile(directory.Path / lampPath, error) && saved.GetEntities().size() == 3, "The file should have the three entities");
+		}
+		// The file watcher's echo of that save changes nothing
+		editing.Prefabs.FileChanged(lampPath);
+		Require(boxOf(guidB) == glm::vec3(1.0f) && boxOf(guidA) == glm::vec3(2.0f), "The saved file again should change nothing");
+
+		// An entity outside the root, and the root deleted: refused, the file as it was
+		Require(SetParent(prefab.Scene, prefab.Transactions, *prefab.Scene.FindEntity(addedLocal), std::nullopt), "Unparenting failed");
+		Require(!mode.Save(error) && error.find("below its root") != std::string::npos, "Save should refuse an entity outside the root");
+		prefab.Undo();
+		prefab.Scene.GetSelection() = *prefab.Scene.FindEntity(prefab.PrefabRoot);
+		prefab.DeleteSelectedEntity();
+		Require(!mode.Save(error) && error.find("root was deleted") != std::string::npos, "Save should refuse a prefab without its root");
+		prefab.Undo();
+		Require(mode.Save(error), "Undone, it should save again: " + error);
+
+		// Closed: the scene's undo is as it was, A's override its last step
+		mode.Close();
+		Require(!mode.IsOpen(), "Close should close it");
+		editing.Undo();
+		Require(boxOf(guidA) == glm::vec3(0.5f) && boxOf(guidB) == glm::vec3(1.0f), "The scene's undo should still undo A's own edit");
 	}
 
 	// A cube and a decal, the decal selected: its details at the top left, the outliner beside them.
@@ -2923,6 +3032,7 @@ int main()
 		TestParenting();
 		TestPrefabsInTheEditor();
 		TestOverridesRevertAndApply();
+		TestPrefabMode();
 	}
 	catch (const std::exception& error)
 	{

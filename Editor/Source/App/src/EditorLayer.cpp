@@ -23,6 +23,7 @@
 #include "EditorRenderer.h"
 #include "SceneSerializer.h"
 #include "UIChrome.h"
+#include "UIWidgets.h"
 
 #include "imgui.h"
 
@@ -226,6 +227,10 @@ namespace Nyx::Editor
 		{
 			AssetDb.Rescan();
 		};
+		Editing.OpenPrefab = [this](const std::string& prefabPath)
+		{
+			OpenPrefab(prefabPath);
+		};
 		Editing.Transactions.Subscribe(&Editing.AssetLoader);
 
 		// Edits show up live in the game started with Play
@@ -282,6 +287,20 @@ namespace Nyx::Editor
 		DebugTools.BeforeFrame();
 #endif
 
+		// Prefab mode left, and what that was for, and a prefab opened, as asked last frame
+		if (std::exchange(bLeavePrefab, false))
+		{
+			ClosePrefab();
+			if (const std::function<void()> then = std::exchange(AfterLeavingPrefab, {}))
+			{
+				then();
+			}
+		}
+		if (PendingPrefab)
+		{
+			EnterPrefab(*std::exchange(PendingPrefab, std::nullopt));
+		}
+
 		// Prefabs whose files another program changed: their instances follow them
 		for (const std::filesystem::path& changed : PrefabFiles.TakeChanges())
 		{
@@ -327,8 +346,8 @@ namespace Nyx::Editor
 			Games.SendToGames(Nyx::MakeNetMessage(values));
 		}
 		// The entity the Details panel's Runtime section showed last frame is asked about in the first
-		// game, a few times a second
-		Games.InspectEntity(Details.GetInspectedEntity());
+		// game, a few times a second; none of a prefab's
+		Games.InspectEntity(Prefab.IsOpen() ? std::nullopt : Details.GetInspectedEntity());
 		Games.Update();
 
 		// A game that crashed gets a crash card, with its last log lines
@@ -340,7 +359,8 @@ namespace Nyx::Editor
 
 		// Scatters follow their surfaces, which their own post-load steps change, e.g. a ground edited
 		// or loaded after the scatter
-		Nyx::UpdateScatters(Editing.Scene.GetRegistry());
+		Nyx::Registry& shown = GetEditing().Scene.GetRegistry();
+		Nyx::UpdateScatters(shown);
 		// SDF terrains' chunks round the scene views' cameras, as they were last drawn
 		{
 			std::vector<glm::vec3> viewpoints;
@@ -352,15 +372,15 @@ namespace Nyx::Editor
 					viewpoints.push_back(camera.CameraWorldPos);
 				}
 			}
-			Nyx::UpdateTerrainChunks(Editing.Scene.GetRegistry(), viewpoints, Nyx::JobSystem::Get());
+			Nyx::UpdateTerrainChunks(shown, viewpoints, Nyx::JobSystem::Get());
 		}
 		// Mesh renderers made by code, e.g. a game module's post-load step, get their assets
-		Nyx::ResolveChangedMeshRenderers(Editing.Scene.GetRegistry(), *AssetResolver);
+		Nyx::ResolveChangedMeshRenderers(shown, *AssetResolver);
 		// The sun turns to the time of day as it is set, edited or undone; time doesn't run here
-		Nyx::ApplyTimeOfDay(Editing.Scene.GetRegistry());
+		Nyx::ApplyTimeOfDay(shown);
 
 		// Keep renderer-facing selection state up to date before rendering
-		Renderer->SetSelectedEntity(Editing.Scene.GetSelection());
+		Renderer->SetSelectedEntity(GetEditing().Scene.GetSelection());
 	}
 
 	void EditorLayer::OnUI()
@@ -369,7 +389,8 @@ namespace Nyx::Editor
 		Layouts.BuildDefaultLayout(ImGui::GetID("MyDockspace"), SceneViews.GetTitles());
 		Materials.DrawNewMaterialPopup();
 
-		if (!SourceInspector.IsActive()) Editing.Gizmo.TickHotkeys();
+		SceneEditor& editing = GetEditing();
+		if (!SourceInspector.IsActive()) editing.Gizmo.TickHotkeys();
 		// F alone: Ctrl+F is the outliner's search
 		if (!SourceInspector.IsActive() && !ImGui::GetIO().WantTextInput && ImGui::IsKeyChordPressed(ImGuiKey_F)) FrameSelection();
 
@@ -390,22 +411,31 @@ namespace Nyx::Editor
 			AssetBrowser.Draw();
 		}
 
-		Outliner.Draw(Editing);
+		Outliner.Draw(editing);
 		Details.SetGameInspection(Games.GetEntityInspection());
-		Details.Draw(Editing);
-		Materials.Draw(*Renderer, Editing);
+		Details.Draw(editing);
+		Materials.Draw(*Renderer, editing);
 		SceneViews.bGameInFront = Games.IsRunning() && !Window->IsFocused();
-		SceneViews.Draw(Editing, Preferences, *CameraController);
+		SceneViews.Draw(editing, Preferences, *CameraController);
 
 		// Values being dragged or typed reach a running game every frame, not only when the edit ends
-		Editing.DetailsContext.PreviewPendingEdits();
-		Editing.Gizmo.PreviewActiveEdit(Editing.Transactions);
+		editing.DetailsContext.PreviewPendingEdits();
+		editing.Gizmo.PreviewActiveEdit(editing.Transactions);
 
 		AssetEditorWindows.Draw(AssetEditors, Editing.Transactions, &AssetDb);
 
 		// The Parameters window's undo and save keys are the material's while it has focus; an asset
 		// window's save key is its asset's
-		if (!SourceInspector.IsActive() && !Materials.HandleHotkeys() && !AssetEditorWindows.HandleHotkeys(AssetEditors)) Editing.HandleHotkeys();
+		if (!SourceInspector.IsActive() && !Materials.HandleHotkeys() && !AssetEditorWindows.HandleHotkeys(AssetEditors))
+		{
+			// In prefab mode, Ctrl+S saves the prefab
+			if (Prefab.IsOpen() && !ImGui::GetIO().WantTextInput && ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_S))
+			{
+				SavePrefab();
+			}
+			editing.HandleHotkeys();
+		}
+		DrawLeavePrefabPopup();
 		PreferencesPanel.Draw(Preferences, SourceInspector);
 		// The theme window remembers the theme loaded in the preferences
 		const std::string theme = Preferences.Theme;
@@ -417,8 +447,8 @@ namespace Nyx::Editor
 		ApplyFrameRate();
 
 		InputWindow.Draw(*Input);
-		PlanMap.Draw(*Renderer, Editing);
-		PlanSeeds.Draw(*Renderer, Editing);
+		PlanMap.Draw(*Renderer, editing);
+		PlanSeeds.Draw(*Renderer, editing);
 
 		if (bShowGameLink)
 		{
@@ -468,6 +498,13 @@ namespace Nyx::Editor
 
 	bool EditorLayer::LoadCurrentScene(const std::filesystem::path& path)
 	{
+		// Out of prefab mode first
+		if (Prefab.IsOpen())
+		{
+			LeavePrefab([this, path]() { LoadCurrentScene(path); });
+			return false;
+		}
+
 		Nyx::ScenePostLoadContext postLoadContext{};
 		postLoadContext.AssetResolver = AssetResolver.get();
 
@@ -521,6 +558,12 @@ namespace Nyx::Editor
 
 	bool EditorLayer::NewScene()
 	{
+		if (Prefab.IsOpen())
+		{
+			LeavePrefab([this]() { NewScene(); });
+			return false;
+		}
+
 		ForgetPreviousScene();
 		Editing.Scene.GetRegistry().Clear();
 		Editing.Scene.GetOutline() = {};
@@ -608,13 +651,13 @@ namespace Nyx::Editor
 
 	void EditorLayer::ApplyPendingPickResults()
 	{
-		SceneViews.ApplyPickResults(Editing);
+		SceneViews.ApplyPickResults(GetEditing());
 	}
 
 	void EditorLayer::FrameSelection()
 	{
-		const std::optional<Nyx::Entity> selection = Editing.Scene.GetSelection();
-		const Nyx::Registry& registry = Editing.Scene.GetRegistry();
+		const std::optional<Nyx::Entity> selection = GetEditing().Scene.GetSelection();
+		const Nyx::Registry& registry = GetEditing().Scene.GetRegistry();
 		if (!selection || !registry.IsAlive(*selection))
 		{
 			return;
@@ -631,5 +674,144 @@ namespace Nyx::Editor
 			const glm::vec3 halfSize = glm::abs(transform.Scale) * 0.5f;
 			CameraController->Frame(transform.Position - halfSize, transform.Position + halfSize);
 		}
+	}
+
+	void EditorLayer::OpenPrefab(const std::string& prefabPath)
+	{
+		if (Prefab.IsOpen() && Prefab.GetPath() == prefabPath)
+		{
+			return;
+		}
+		LeavePrefab([this, prefabPath]() { PendingPrefab = prefabPath; });
+	}
+
+	bool EditorLayer::SavePrefab()
+	{
+		const std::string name = std::filesystem::path(Prefab.GetPath()).filename().string();
+		std::string error;
+		if (!Prefab.Save(error))
+		{
+			LOG_ERROR("Couldn't save prefab '{0}': {1}", Prefab.GetPath(), error);
+			Frame.SetSceneFileStatus("Couldn't save " + name + ": " + error, true);
+			return false;
+		}
+		Frame.SetSceneFileStatus("Saved " + name + " at " + TimeOfDay(), false);
+		return true;
+	}
+
+	void EditorLayer::LeavePrefab(std::function<void()> then)
+	{
+		AfterLeavingPrefab = std::move(then);
+		if (Prefab.IsDirty())
+		{
+			bAskToLeavePrefab = true;
+		}
+		else
+		{
+			bLeavePrefab = true;
+		}
+	}
+
+	void EditorLayer::EnterPrefab(const std::string& prefabPath)
+	{
+		Editing.CancelPendingEdits();
+		std::string error;
+		if (!Prefab.Open(prefabPath, error))
+		{
+			LOG_ERROR("Couldn't open prefab '{0}': it {1}", prefabPath, error);
+			Frame.SetSceneFileStatus("Couldn't open " + std::filesystem::path(prefabPath).filename().string(), true);
+			return;
+		}
+		SceneEditor& prefab = Prefab.GetEditing();
+		// Widgets keep no drag or text edit of the scene's entities for the prefab's, nor back
+		prefab.SceneRevision = ++Editing.SceneRevision;
+		++Editing.SceneRevision;
+		Renderer->SetWorld(&prefab.Scene.GetRegistry());
+
+		// The views look at the whole prefab the way they looked, and where they looked in the scene
+		// again on the way back
+		const Nyx::Registry& world = prefab.Scene.GetRegistry();
+		std::optional<Nyx::BoundingBox> box;
+		world.Each<Nyx::TransformComponent>(
+			[&](Nyx::Entity entity, const Nyx::TransformComponent& transform)
+			{
+				const glm::vec3 half = glm::abs(transform.Scale) * 0.5f;
+				const Nyx::BoundingBox bounds = Renderer->GetEntityDrawnBounds(world, entity).value_or(Nyx::BoundingBox{ transform.Position - half, transform.Position + half });
+				box = box ? Nyx::BoundingBox{ glm::min(box->Min, bounds.Min), glm::max(box->Max, bounds.Max) } : bounds;
+			});
+		SceneCameras.clear();
+		for (const std::unique_ptr<SceneViewPanel>& view : SceneViews.GetViews())
+		{
+			SceneViewCamera camera{ .View = view->GetViewId() };
+			if (!Renderer->GetSceneViewEditorCameraTransform(camera.View, camera.Position, camera.Rotation))
+			{
+				continue;
+			}
+			SceneCameras.push_back(camera);
+			if (box)
+			{
+				const glm::vec3 position = CameraController->GetFramingPosition(box->Min, box->Max, EditorCameraController::GetForward(camera.Rotation));
+				Renderer->SetSceneViewEditorCameraTransform(camera.View, position, camera.Rotation);
+			}
+		}
+		Frame.SetSceneFileStatus("Editing prefab " + std::filesystem::path(prefabPath).filename().string(), false);
+	}
+
+	void EditorLayer::ClosePrefab()
+	{
+		if (!Prefab.IsOpen())
+		{
+			return;
+		}
+		Prefab.GetEditing().CancelPendingEdits();
+		Renderer->SetWorld(&Editing.Scene.GetRegistry());
+		for (const SceneViewCamera& camera : SceneCameras)
+		{
+			Renderer->SetSceneViewEditorCameraTransform(camera.View, camera.Position, camera.Rotation);
+		}
+		SceneCameras.clear();
+		Prefab.Close();
+		Frame.SetSceneFileStatus("Back in " + GetCurrentSceneDisplayName(), false);
+	}
+
+	void EditorLayer::DrawLeavePrefabPopup()
+	{
+		constexpr const char* Title = "Save Prefab Changes?";
+		if (bAskToLeavePrefab)
+		{
+			ImGui::OpenPopup(Title);
+			bAskToLeavePrefab = false;
+		}
+		if (!Nyx::UI::BeginPopupModal(Title, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			return;
+		}
+		NYX_UI(ImGui::Text("%s has changes that aren't saved.", std::filesystem::path(Prefab.GetPath()).filename().string().c_str()));
+		ImGui::Spacing();
+		// Enter saves, Escape cancels; a save that fails leaves the prefab open, and the status bar
+		// says why
+		if (NYX_UI(Nyx::UI::Button("Save")) || ImGui::IsKeyPressed(ImGuiKey_Enter, false))
+		{
+			bLeavePrefab = SavePrefab();
+			// Not leaving: what it was for isn't done either
+			if (!bLeavePrefab)
+			{
+				AfterLeavingPrefab = {};
+			}
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::SameLine();
+		if (NYX_UI(Nyx::UI::Button("Discard")))
+		{
+			bLeavePrefab = true;
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::SameLine();
+		if (NYX_UI(Nyx::UI::Button("Cancel")) || ImGui::IsKeyPressed(ImGuiKey_Escape, false))
+		{
+			AfterLeavingPrefab = {};
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndPopup();
 	}
 }

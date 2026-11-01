@@ -18,6 +18,7 @@ namespace Nyx::Editor
 	class MaterialWorkspace;
 	class PlayControls;
 	class PlaySession;
+	class PrefabMode;
 	class PreferencesWindow;
 	class SceneEditor;
 	class SceneFilePopups;
@@ -50,6 +51,12 @@ namespace Nyx::Editor
 			std::function<void()> NewScene;
 			std::function<void()> SaveScene;
 			SceneFilePopups& SceneFiles;
+
+			// Prefab mode: the prefab open, which the Edit menu edits in place of the scene, and what
+			// its Save and Back do
+			PrefabMode& Prefab;
+			std::function<void()> SavePrefab;
+			std::function<void()> LeavePrefab;
 
 			// The windows the menus open and close
 			UISourceInspector& SourceInspector;
@@ -89,15 +96,20 @@ namespace Nyx::Editor
 		void SetSceneFileStatus(std::string text, bool bFailed);
 
 	private:
-		// The titlebar, one row: the logo, the menus, the open scene and Play. The status bar: the
+		// The titlebar, one row: the logo, the menus, the open scene, in prefab mode the prefab with
+		// Save and Back, and Play. The status bar: the
 		// last scene saved or opened, errors logged, the graphics API and the frame rate.
 		void DrawTitlebar(const Nyx::WindowFrameArea& area);
 		void DrawStatusBar(const Nyx::WindowFrameArea& area);
 		// Over the frame time: the last second's, where the time went and what was drawn
 		void DrawFrameTimeTooltip();
 
-		// New, Save, Save As and Load, in the File menu and the scene's own
+		// New, Save, Save As and Load, in the File menu and the scene's own; in prefab mode, Save
+		// Prefab and Back to Scene first
 		void DrawSceneMenuItems();
+
+		// The scene's editing, or in prefab mode the prefab's
+		SceneEditor& GetEditing();
 
 		// The titlebar's workspace tabs
 		void DrawWorkspaceTabs(const Nyx::WindowFrameArea& area);

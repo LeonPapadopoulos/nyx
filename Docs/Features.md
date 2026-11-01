@@ -732,6 +732,16 @@ prefab changes.
     instance that applied its value (`PrefabTransactionDomain`, `PrefabSubscriber`). A prefab file
     changed by another program, or by hand, reaches the instances the same way. A running game gets
     the instances as they are at the next Play.
+  - **Prefab mode** (`PrefabMode`): double-click a prefab in the asset browser, or *Edit Prefab* on an
+    instance in the outliner, to open it on its own. The outliner, details panel and scene views show
+    and edit its entities in place of the scene's, with every tool they have and an undo of their
+    own; the views look at it whole, lit by the default light. A new entity becomes a child of the
+    root, as a prefab has one; no instance of a prefab can be placed in it yet. The titlebar shows
+    the prefab beside the scene, with an asterisk while it has changes, *Save* (Ctrl+S) and *Back*. Saving
+    writes the file, and the scene's instances follow it as after an Apply, keeping what they
+    override; it refuses while the root is deleted or an entity isn't below it. *Back*, opening
+    another prefab or scene, or a new scene asks first whether to save the changes. The scene, its
+    undo, selection and the views' cameras are as they were on the way back.
   - NyxDump prints `.nyxprefab` files as it prints scenes.
 - **Spawning in a game**: a player's `SpawnPrefabCommand` (the prefab, the guid, where) makes an
   instance at the start of the next step (`ApplySpawnPrefabCommands()`), before the game's systems,

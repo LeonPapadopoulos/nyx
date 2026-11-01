@@ -15,6 +15,7 @@
 #include <cstddef>
 #include <functional>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace Nyx
@@ -106,6 +107,14 @@ namespace Nyx::Editor
 
 		// Called after an edit wrote an asset file, e.g. Create Prefab, so the asset browser lists it
 		std::function<void()> AssetFileWritten;
+
+		// Opens a prefab ("Prefabs/Lamp.nyxprefab") in prefab mode (PrefabMode.h), e.g. the outliner's
+		// Edit Prefab; set by the editor, none in prefab mode
+		std::function<void(const std::string& prefabPath)> OpenPrefab;
+
+		// In prefab mode, the prefab's root: a new entity becomes its child, as a prefab has one root,
+		// and no instance of a prefab can be made (prefabs in prefabs come later). None for a scene.
+		Nyx::EntityGuid PrefabRoot;
 
 		// The prefabs' entities in undo steps, and what saves a prefab and makes its instances again
 		// after one changed (PrefabTransactions.h); subscribed after the game link, before Hierarchy

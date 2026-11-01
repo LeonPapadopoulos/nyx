@@ -492,8 +492,15 @@ namespace Nyx::Editor
 				NewFolder(editing);
 			}
 			NYX_UI(Nyx::UI::Separator());
-			const bool bInstance = selection && FindPrefabInstanceRoot(editing.Scene.GetRegistry(), *selection).has_value();
-			if (NYX_UI(Nyx::UI::MenuItem("Create Prefab...", nullptr, false, selection.has_value() && !bInstance)) && selection)
+			const std::optional<Nyx::Entity> instance = selection ? FindPrefabInstanceRoot(editing.Scene.GetRegistry(), *selection) : std::nullopt;
+			const bool bInstance = instance.has_value();
+			const bool bPrefabMode = editing.PrefabRoot.IsValid();
+			if (NYX_UI(Nyx::UI::MenuItem("Edit Prefab", nullptr, false, bInstance && editing.OpenPrefab != nullptr)) && instance)
+			{
+				editing.OpenPrefab(editing.Scene.GetRegistry().Get<Nyx::PrefabInstanceComponent>(*instance).Prefab.Path);
+			}
+			ImGui::SetItemTooltip("Opens the prefab on its own in prefab mode");
+			if (NYX_UI(Nyx::UI::MenuItem("Create Prefab...", nullptr, false, selection.has_value() && !bInstance && !bPrefabMode)) && selection)
 			{
 				const std::string name = editing.Scene.GetRegistry().Get<Nyx::NameComponent>(*selection).Name;
 				const std::filesystem::path folder = Nyx::Paths::GetAssetSearchDirs().empty() ? std::filesystem::path() : Nyx::Paths::GetAssetSearchDirs().front();

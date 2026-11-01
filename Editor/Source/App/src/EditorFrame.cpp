@@ -7,6 +7,7 @@
 #include "MaterialWorkspace.h"
 #include "PlayControls.h"
 #include "PlaySession.h"
+#include "PrefabMode.h"
 #include "PreferencesWindow.h"
 #include "EditorRenderer.h"
 #include "SceneEditor.h"
@@ -126,27 +127,28 @@ namespace Nyx::Editor
 		if (Nyx::UI::BeginPopup("##TitlebarEditMenu"))
 		{
 			// What the shortcuts do (SceneEditor::HandleHotkeys())
+			SceneEditor& editing = GetEditing();
 			if (NYX_UI(Nyx::UI::MenuItem("Undo", "Ctrl+Z")))
 			{
-				Editor.Editing.Undo();
+				editing.Undo();
 			}
 			if (NYX_UI(Nyx::UI::MenuItem("Redo", "Ctrl+Y")))
 			{
-				Editor.Editing.Redo();
+				editing.Redo();
 			}
 			Nyx::UI::Separator();
-			const bool bHasSelection = Editor.Editing.Scene.GetSelection().has_value();
+			const bool bHasSelection = editing.Scene.GetSelection().has_value();
 			if (NYX_UI(Nyx::UI::MenuItem("Copy", "Ctrl+C", false, bHasSelection)))
 			{
-				Editor.Editing.CopySelectedEntity();
+				editing.CopySelectedEntity();
 			}
-			if (NYX_UI(Nyx::UI::MenuItem("Paste", "Ctrl+V", false, Editor.Editing.CanPaste())))
+			if (NYX_UI(Nyx::UI::MenuItem("Paste", "Ctrl+V", false, editing.CanPaste())))
 			{
-				Editor.Editing.PasteEntity();
+				editing.PasteEntity();
 			}
 			if (NYX_UI(Nyx::UI::MenuItem("Duplicate", "Ctrl+D", false, bHasSelection)))
 			{
-				Editor.Editing.DuplicateSelectedEntity();
+				editing.DuplicateSelectedEntity();
 			}
 			ImGui::EndPopup();
 		}
@@ -317,12 +319,36 @@ namespace Nyx::Editor
 			ImGui::OpenPopup("##TitlebarSceneMenu");
 		}
 		ImGui::SetItemTooltip("%s", Editor.CurrentScenePath.empty() ? "Not saved yet" : Editor.CurrentScenePath.string().c_str());
-		const float sceneRight = ImGui::GetItemRectMax().x;
+		float sceneRight = ImGui::GetItemRectMax().x;
 		PlaceMenuUnderLastItem();
 		if (Nyx::UI::BeginPopup("##TitlebarSceneMenu"))
 		{
 			DrawSceneMenuItems();
 			ImGui::EndPopup();
+		}
+
+		// In prefab mode, the prefab open, with an asterisk while it has changes not saved, then Save and Back
+		if (Editor.Prefab.IsOpen())
+		{
+			NextOnLine(BarGap * 0.5f, area.Y);
+			NYX_UI(Nyx::UI::BarDivider(area.Height));
+			const std::string prefabLabel = std::filesystem::path(Editor.Prefab.GetPath()).stem().string() + " (prefab)" + (Editor.Prefab.IsDirty() ? " *" : "") + "##PrefabName";
+			NextOnLine(BarGap * 0.5f - MenuButtonPadding, menuTop);
+			NYX_UI(Nyx::UI::MenuBarButton(prefabLabel.c_str(), MenuButtonSize(prefabLabel.c_str()), false));
+			ImGui::SetItemTooltip("Prefab mode: %s on its own, with its own undo", Editor.Prefab.GetPath().c_str());
+			NextOnLine(0.0f, menuTop);
+			if (NYX_UI(Nyx::UI::MenuBarButton("Save##Prefab", MenuButtonSize("Save##Prefab"), false)))
+			{
+				Editor.SavePrefab();
+			}
+			ImGui::SetItemTooltip("Writes the prefab (Ctrl+S); the scene's instances follow it");
+			NextOnLine(0.0f, menuTop);
+			if (NYX_UI(Nyx::UI::MenuBarButton("Back##Prefab", MenuButtonSize("Back##Prefab"), false)))
+			{
+				Editor.LeavePrefab();
+			}
+			ImGui::SetItemTooltip("Back to the scene, as it was");
+			sceneRight = ImGui::GetItemRectMax().x;
 		}
 
 		// Play and the buttons beside it in the middle of the titlebar, unless the scene's name reaches there
@@ -332,8 +358,26 @@ namespace Nyx::Editor
 		Editor.Play.DrawButtons(Editor.Games, Editor.Preferences, PlayButtonSize, PlayButtonSpacing);
 	}
 
+	SceneEditor& EditorFrame::GetEditing()
+	{
+		return Editor.Prefab.IsOpen() ? Editor.Prefab.GetEditing() : Editor.Editing;
+	}
+
 	void EditorFrame::DrawSceneMenuItems()
 	{
+		if (Editor.Prefab.IsOpen())
+		{
+			if (NYX_UI(Nyx::UI::MenuItem("Save Prefab", "Ctrl+S")))
+			{
+				Editor.SavePrefab();
+			}
+			if (NYX_UI(Nyx::UI::MenuItem("Back to Scene")))
+			{
+				Editor.LeavePrefab();
+			}
+			NYX_UI(Nyx::UI::Separator());
+		}
+
 		if (NYX_UI(Nyx::UI::MenuItem("New Scene")))
 		{
 			Editor.NewScene();
