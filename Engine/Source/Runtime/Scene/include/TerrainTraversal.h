@@ -97,6 +97,25 @@ namespace Nyx
 	// way (vertex-disjoint over cells), so a tunnel or a ramp counts once however wide it is
 	uint32_t CountTerrainApproaches(const TerrainTraversal& traversal, uint32_t from, const glm::vec3& to, float radius, uint8_t tags, uint32_t most = 8);
 
+	// The cells the approaches are counted over, for tags, made once for many places: each floor's
+	// node (a 16 m cell's floors joined within it), and the nodes split in two, in and out, with the
+	// arcs between them
+	struct TerrainApproachCells
+	{
+		uint8_t Tags = 0;
+		std::vector<uint32_t> NodeOf;
+		uint32_t Nodes = 0;
+		std::vector<uint32_t> ArcTo;
+		std::vector<int32_t> ArcCapacity;
+		std::vector<uint32_t> VertexFirst;
+		std::vector<uint32_t> VertexArcs;
+	};
+	TerrainApproachCells MakeTerrainApproachCells(const TerrainTraversal& traversal, uint8_t tags);
+	uint32_t CountTerrainApproaches(const TerrainApproachCells& cells, const TerrainTraversal& traversal, uint32_t from, const glm::vec3& to, float radius, uint32_t most = 8);
+
+	// Which floors can be reached from `from` by edges with only the tags allowed, 1 each
+	std::vector<uint8_t> ReachTerrainFloors(const TerrainTraversal& traversal, uint32_t from, uint8_t tags);
+
 	// A Route Check (SdfTerrainRouteCheck) as the world is: whether every place of its To rule can be
 	// reached from the first place of its From rule, with how many separate ways each
 	struct TerrainRouteResult

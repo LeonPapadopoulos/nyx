@@ -824,6 +824,15 @@ set_property(TARGET NyxTerrainGate3 PROPERTY FOLDER "Tests")
 nyx_copy_shaders_next_to(NyxTerrainGate3)
 nyx_copy_shader_compiler_next_to(NyxTerrainGate3)
 
+# A full-size world, 20 km, measured (--report <report.md>), its views drawn (--shots <folder>) and a
+# scene to walk (--write-scene); not in ctest
+add_executable(NyxTerrainFullSize TerrainFullSize.cpp TerrainGate3Region.h)
+target_link_libraries(NyxTerrainFullSize PRIVATE NyxEngine)
+add_dependencies(NyxTerrainFullSize NyxGeneratedReflection)
+set_property(TARGET NyxTerrainFullSize PROPERTY FOLDER "Tests")
+nyx_copy_shaders_next_to(NyxTerrainFullSize)
+nyx_copy_shader_compiler_next_to(NyxTerrainFullSize)
+
 # Instanced drawing and culling on a real GPU: a mesh drawn at every transform of its instances as
 # it would be on an entity for each, uploaded again only for a new revision, picked, culled by cell
 # and by entity, a view's culling frozen and shown. Needs a Vulkan device; its window stays hidden.

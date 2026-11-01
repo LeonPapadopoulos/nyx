@@ -1693,6 +1693,16 @@ game, coarser the farther, and collides while the world runs.
     traversal took, the worst chunk at the places (or at spots over the land) on one thread, and a
     line a seed. A 2 km seed with a check takes 2 to 3 s, nearly all of it the traversal graph.
     `NyxTerrainSeedTests`.
+  - A full-size world measured: `NyxTerrainFullSize --report <report.md>` makes Gate 3's region's
+    values 20 km wide (more rifts, rivers and lakes, a few Place Rules and a Route Check) and times
+    each part with what it holds: on 19 workers the plan 2 s (46 MB), the water 12 to 23 s
+    (57 MB), the places 0.1 s, the traversal graph (2047 columns a side, 10 m apart) 44 s (163 MB),
+    the check 0.1 s. Then the chunks round four views, chosen and made alone and in a world from none:
+    from 3 km up 164 chunks, beneath the underside 554, down in a rift 1103, round two characters
+    10 km apart 1804 (6.6 M triangles, 333 MB of mesh), each 2.3 to 5 s alone. Floats 10 km out are
+    1 mm apart, a vertex off by at most 0.12 px half a metre from the camera, so no camera-relative
+    drawing is needed at 20 km. `--shots <folder>` draws the four views, `--write-scene` writes
+    `Assets/Scenes/SdfTerrainFullWorld.nyxscene` with a character 9 km out.
 - Water, for a terrain with a *Plan* layer (`TerrainWater.h`): where it stands, worked out from the
   plan and the ground as it is now, edits and all, on a worker whenever the layers, plan or edits
   change (the ground found again only where edits reached: about 100 ms for 2 km on every worker,
@@ -1735,8 +1745,9 @@ game, coarser the farther, and collides while the world runs.
     passes when every place of its *To* rule is reached from the first of its *From* rule with
     walking and what it allows (*Climb*, *Gap*, *Swim*), each by at least *Approaches* separate
     ways: ways that share no 16 m cell (`CountTerrainApproaches()`), so a tunnel or a ramp counts
-    once however wide. Routes (`FindTerrainRoute()`), what each floor needs to be reached
-    (`GetTerrainReach()`). Kept on a worker while the terrain has checks, after its places;
+    once however wide; the cells made once a check (`MakeTerrainApproachCells()`), only where more
+    than one way is asked. Routes (`FindTerrainRoute()`), what each floor needs to be reached
+    (`GetTerrainReach()`), what tags reach (`ReachTerrainFloors()`). Kept on a worker while the terrain has checks, after its places;
     *Terrain Traversal* in the details panel: the graph's size and time, each check passed or failed
     and why.
   - On the *Plan Map*, a place clicked: what can be reached from it, walking green, swimming blue,

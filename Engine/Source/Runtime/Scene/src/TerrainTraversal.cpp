@@ -436,8 +436,9 @@ namespace Nyx
 			return std::nullopt;
 		}
 		const glm::vec3 goal = traversal.PlaceOf(to);
-		std::unordered_map<uint32_t, float> costs;
-		std::unordered_map<uint32_t, std::pair<uint32_t, uint8_t>> cameFrom;
+		std::vector<float> costs(traversal.Floors(), std::numeric_limits<float>::max());
+		std::vector<uint32_t> cameFrom(traversal.Floors(), UINT32_MAX);
+		std::vector<uint8_t> cameBy(traversal.Floors(), 0);
 		using Entry = std::pair<float, uint32_t>;
 		std::priority_queue<Entry, std::vector<Entry>, std::greater<Entry>> open;
 		costs[from] = 0.0f;
@@ -450,16 +451,10 @@ namespace Nyx
 			{
 				TerrainRoute route;
 				route.Length = costs[to];
-				for (uint32_t at = to;;)
+				for (uint32_t at = to; at != UINT32_MAX; at = cameFrom[at])
 				{
 					route.Floors.push_back(at);
-					const auto back = cameFrom.find(at);
-					if (back == cameFrom.end())
-					{
-						break;
-					}
-					route.Tags |= back->second.second;
-					at = back->second.first;
+					route.Tags |= cameBy[at];
 				}
 				std::reverse(route.Floors.begin(), route.Floors.end());
 				return route;
@@ -478,13 +473,13 @@ namespace Nyx
 				}
 				const uint32_t target = traversal.EdgeTargets[edge];
 				const float through = cost + EdgeCost(traversal, floor, target, tag);
-				const auto known = costs.find(target);
-				if (known != costs.end() && known->second <= through)
+				if (costs[target] <= through)
 				{
 					continue;
 				}
 				costs[target] = through;
-				cameFrom[target] = { floor, tag };
+				cameFrom[target] = floor;
+				cameBy[target] = tag;
 				open.emplace(through + glm::length(goal - traversal.PlaceOf(target)), target);
 			}
 		}
@@ -533,22 +528,26 @@ namespace Nyx
 		return reach;
 	}
 
-	uint32_t CountTerrainApproaches(const TerrainTraversal& traversal, uint32_t from, const glm::vec3& to, float radius, uint8_t tags, uint32_t most)
+	TerrainApproachCells MakeTerrainApproachCells(const TerrainTraversal& traversal, uint8_t tags)
 	{
-		if (from >= traversal.Floors() || most == 0)
-		{
-			return 0;
-		}
-		// The cells: a floor's 16 m cell, and of the floors in a cell those joined within it one node
+		TerrainApproachCells cells;
+		cells.Tags = tags;
 		const size_t floors = traversal.Floors();
-		const int cellColumns = std::max(int(std::round(ApproachCell / traversal.Values.Spacing)), 1);
-		std::vector<uint32_t> cellOf(floors);
-		for (uint32_t floor = 0; floor < uint32_t(floors); ++floor)
+		if (floors == 0)
 		{
-			const uint32_t column = traversal.ColumnOf(floor);
-			const int i = int(column % uint32_t(traversal.Columns)) / cellColumns;
-			const int j = int(column / uint32_t(traversal.Columns)) / cellColumns;
-			cellOf[floor] = uint32_t(i) + uint32_t(j) * uint32_t((traversal.Columns + cellColumns - 1) / cellColumns);
+			return cells;
+		}
+		// A floor's 16 m cell, and of the floors in a cell those joined within it one node
+		const int cellColumns = std::max(int(std::round(ApproachCell / traversal.Values.Spacing)), 1);
+		const uint32_t cellsAcross = uint32_t((traversal.Columns + cellColumns - 1) / cellColumns);
+		std::vector<uint32_t> cellOf(floors);
+		for (size_t column = 0; column + 1 < traversal.ColumnFirst.size(); ++column)
+		{
+			const uint32_t cell = uint32_t(int(column % size_t(traversal.Columns)) / cellColumns) + uint32_t(int(column / size_t(traversal.Columns)) / cellColumns) * cellsAcross;
+			for (uint32_t floor = traversal.ColumnFirst[column]; floor < traversal.ColumnFirst[column + 1]; ++floor)
+			{
+				cellOf[floor] = cell;
+			}
 		}
 		std::vector<uint32_t> parents(floors);
 		for (uint32_t floor = 0; floor < uint32_t(floors); ++floor)
@@ -566,107 +565,198 @@ namespace Nyx
 				}
 			}
 		}
-		// Nodes numbered; the place's floors one node, the sink
-		std::unordered_map<uint32_t, uint32_t> nodeOfRoot;
-		std::vector<uint32_t> nodeOf(floors);
-		const glm::vec2 goal(to.x, to.z);
-		constexpr uint32_t Sink = 0;
-		uint32_t nodes = 1;
+		cells.NodeOf.resize(floors);
+		std::vector<uint32_t> nodeOfRoot(floors, UINT32_MAX);
 		for (uint32_t floor = 0; floor < uint32_t(floors); ++floor)
 		{
-			const glm::vec3 place = traversal.PlaceOf(floor);
-			if (glm::length(glm::vec2(place.x, place.z) - goal) <= radius && std::fabs(place.y - to.y) <= traversal.Values.ClimbHeight + traversal.Values.Headroom)
+			uint32_t& node = nodeOfRoot[FindRoot(parents, floor)];
+			if (node == UINT32_MAX)
 			{
-				nodeOf[floor] = Sink;
-				continue;
+				node = cells.Nodes++;
 			}
-			const uint32_t root = FindRoot(parents, floor);
-			const auto [it, bAdded] = nodeOfRoot.try_emplace(root, nodes);
-			nodes += bAdded ? 1 : 0;
-			nodeOf[floor] = it->second;
-		}
-		const uint32_t source = nodeOf[from];
-		if (source == Sink)
-		{
-			return most;
+			cells.NodeOf[floor] = node;
 		}
 
-		// Vertex-disjoint ways: each node but the source and sink split in two, in and out, joined by a
-		// capacity of one; the cells' edges between them, unbounded
-		struct Arc
-		{
-			uint32_t To;
-			int32_t Capacity;
-		};
-		std::vector<std::vector<uint32_t>> arcsOf(size_t(nodes) * 2);
-		std::vector<Arc> arcs;
-		auto inOf = [](uint32_t node) { return node * 2; };
-		auto outOf = [&](uint32_t node) { return node == Sink || node == source ? node * 2 : node * 2 + 1; };
-		auto addArc = [&](uint32_t a, uint32_t b, int32_t capacity)
-		{
-			arcsOf[a].push_back(uint32_t(arcs.size()));
-			arcs.push_back({ b, capacity });
-			arcsOf[b].push_back(uint32_t(arcs.size()));
-			arcs.push_back({ a, 0 });
-		};
-		for (uint32_t node = 1; node < nodes; ++node)
-		{
-			if (node != source)
-			{
-				addArc(inOf(node), outOf(node), 1);
-			}
-		}
-		std::unordered_map<uint64_t, uint8_t> linked;
+		// Each node split in two, in (2n) and out (2n + 1), joined by a capacity of one; the cells'
+		// edges between them unbounded. Arcs in pairs, each with its way back after it
+		std::vector<std::pair<uint32_t, uint32_t>> links;
 		for (uint32_t floor = 0; floor < uint32_t(floors); ++floor)
 		{
 			for (uint32_t edge = traversal.EdgeFirst[floor]; edge < traversal.EdgeFirst[floor + 1]; ++edge)
 			{
-				const uint32_t a = nodeOf[floor];
-				const uint32_t b = nodeOf[traversal.EdgeTargets[edge]];
-				if ((traversal.EdgeTags[edge] & tags) == 0 || a == b || a == Sink || b == source)
+				const uint32_t a = cells.NodeOf[floor];
+				const uint32_t b = cells.NodeOf[traversal.EdgeTargets[edge]];
+				if ((traversal.EdgeTags[edge] & tags) != 0 && a != b)
 				{
-					continue;
-				}
-				if (linked.try_emplace((uint64_t(a) << 32) | b, 1).second)
-				{
-					addArc(outOf(a), inOf(b), 1 << 20);
+					links.emplace_back(a, b);
 				}
 			}
 		}
-
-		// Ways found one at a time, by breadth first through what is left
-		uint32_t ways = 0;
-		std::vector<int64_t> cameBy(arcsOf.size());
-		while (ways < most)
+		std::sort(links.begin(), links.end());
+		links.erase(std::unique(links.begin(), links.end()), links.end());
+		const size_t vertices = size_t(cells.Nodes) * 2;
+		cells.ArcTo.reserve((size_t(cells.Nodes) + links.size()) * 2);
+		cells.ArcCapacity.reserve(cells.ArcTo.capacity());
+		std::vector<uint32_t> arcFrom;
+		arcFrom.reserve(cells.ArcTo.capacity());
+		auto addArc = [&](uint32_t a, uint32_t b, int32_t capacity)
 		{
-			std::fill(cameBy.begin(), cameBy.end(), -1);
-			std::vector<uint32_t> open{ outOf(source) };
-			cameBy[outOf(source)] = -2;
-			for (size_t at = 0; at < open.size() && cameBy[inOf(Sink)] == -1; ++at)
+			arcFrom.push_back(a);
+			cells.ArcTo.push_back(b);
+			cells.ArcCapacity.push_back(capacity);
+			arcFrom.push_back(b);
+			cells.ArcTo.push_back(a);
+			cells.ArcCapacity.push_back(0);
+		};
+		for (uint32_t node = 0; node < cells.Nodes; ++node)
+		{
+			addArc(node * 2, node * 2 + 1, 1);
+		}
+		for (const auto& [a, b] : links)
+		{
+			addArc(a * 2 + 1, b * 2, 1 << 20);
+		}
+		// Each vertex's arcs, by where they leave from
+		cells.VertexFirst.assign(vertices + 1, 0);
+		for (const uint32_t from : arcFrom)
+		{
+			++cells.VertexFirst[from + 1];
+		}
+		for (size_t vertex = 0; vertex < vertices; ++vertex)
+		{
+			cells.VertexFirst[vertex + 1] += cells.VertexFirst[vertex];
+		}
+		cells.VertexArcs.resize(arcFrom.size());
+		std::vector<uint32_t> filled(cells.VertexFirst.begin(), cells.VertexFirst.end() - 1);
+		for (uint32_t arc = 0; arc < uint32_t(arcFrom.size()); ++arc)
+		{
+			cells.VertexArcs[filled[arcFrom[arc]]++] = arc;
+		}
+		return cells;
+	}
+
+	uint32_t CountTerrainApproaches(const TerrainApproachCells& cells, const TerrainTraversal& traversal, uint32_t from, const glm::vec3& to, float radius, uint32_t most)
+	{
+		if (from >= traversal.Floors() || from >= cells.NodeOf.size() || most == 0)
+		{
+			return 0;
+		}
+		// The place's nodes: of the floors within its radius and about its height
+		std::vector<uint32_t> sinks;
+		const glm::vec2 goal(to.x, to.z);
+		const glm::ivec2 low = glm::ivec2(glm::floor((goal - radius - traversal.Origin) / traversal.Values.Spacing));
+		const glm::ivec2 high = glm::ivec2(glm::ceil((goal + radius - traversal.Origin) / traversal.Values.Spacing));
+		for (int j = std::max(low.y, 0); j <= std::min(high.y, traversal.Columns - 1); ++j)
+		{
+			for (int i = std::max(low.x, 0); i <= std::min(high.x, traversal.Columns - 1); ++i)
 			{
-				for (const uint32_t arc : arcsOf[open[at]])
+				if (glm::length(traversal.PointOf(i, j) - goal) > radius)
 				{
-					if (arcs[arc].Capacity > 0 && cameBy[arcs[arc].To] == -1)
+					continue;
+				}
+				const size_t column = traversal.IndexOf(i, j);
+				for (uint32_t floor = traversal.ColumnFirst[column]; floor < traversal.ColumnFirst[column + 1]; ++floor)
+				{
+					if (std::fabs(traversal.FloorHeights[floor] - to.y) <= traversal.Values.ClimbHeight + traversal.Values.Headroom)
 					{
-						cameBy[arcs[arc].To] = arc;
-						open.push_back(arcs[arc].To);
+						sinks.push_back(cells.NodeOf[floor]);
 					}
 				}
 			}
-			if (cameBy[inOf(Sink)] == -1)
+		}
+		const uint32_t source = cells.NodeOf[from];
+		if (std::find(sinks.begin(), sinks.end(), source) != sinks.end())
+		{
+			return most;
+		}
+		if (sinks.empty())
+		{
+			return 0;
+		}
+
+		// Ways found one at a time, by breadth first through what is left from the source's out to any
+		// sink's in, the sinks' own split never taken, so ways may end in the same one; the
+		// capacities given back afterwards
+		std::vector<int32_t> capacity = cells.ArcCapacity;
+		std::vector<uint8_t> bSink(cells.Nodes, 0);
+		for (const uint32_t sink : sinks)
+		{
+			bSink[sink] = 1;
+		}
+		std::vector<int32_t> cameBy(size_t(cells.Nodes) * 2);
+		std::vector<uint32_t> open;
+		uint32_t ways = 0;
+		while (ways < most)
+		{
+			std::fill(cameBy.begin(), cameBy.end(), -1);
+			open.assign(1, source * 2 + 1);
+			cameBy[source * 2 + 1] = -2;
+			int64_t reached = -1;
+			for (size_t at = 0; at < open.size() && reached < 0; ++at)
+			{
+				const uint32_t vertex = open[at];
+				for (uint32_t n = cells.VertexFirst[vertex]; n < cells.VertexFirst[vertex + 1]; ++n)
+				{
+					const uint32_t arc = cells.VertexArcs[n];
+					const uint32_t next = cells.ArcTo[arc];
+					if (capacity[arc] <= 0 || cameBy[next] != -1)
+					{
+						continue;
+					}
+					cameBy[next] = int32_t(arc);
+					if ((next & 1u) == 0 && bSink[next / 2] != 0)
+					{
+						reached = next;
+						break;
+					}
+					open.push_back(next);
+				}
+			}
+			if (reached < 0)
 			{
 				break;
 			}
-			for (uint32_t at = inOf(Sink); cameBy[at] >= 0;)
+			for (uint32_t at = uint32_t(reached); cameBy[at] >= 0;)
 			{
 				const uint32_t arc = uint32_t(cameBy[at]);
-				arcs[arc].Capacity -= 1;
-				arcs[arc ^ 1u].Capacity += 1;
-				at = arcs[arc ^ 1u].To;
+				capacity[arc] -= 1;
+				capacity[arc ^ 1u] += 1;
+				at = cells.ArcTo[arc ^ 1u];
 			}
 			++ways;
 		}
 		return ways;
+	}
+
+	uint32_t CountTerrainApproaches(const TerrainTraversal& traversal, uint32_t from, const glm::vec3& to, float radius, uint8_t tags, uint32_t most)
+	{
+		return CountTerrainApproaches(MakeTerrainApproachCells(traversal, tags), traversal, from, to, radius, most);
+	}
+
+	std::vector<uint8_t> ReachTerrainFloors(const TerrainTraversal& traversal, uint32_t from, uint8_t tags)
+	{
+		std::vector<uint8_t> reached(traversal.Floors(), 0);
+		if (from >= traversal.Floors())
+		{
+			return reached;
+		}
+		std::vector<uint32_t> open{ from };
+		reached[from] = 1;
+		while (!open.empty())
+		{
+			const uint32_t floor = open.back();
+			open.pop_back();
+			for (uint32_t edge = traversal.EdgeFirst[floor]; edge < traversal.EdgeFirst[floor + 1]; ++edge)
+			{
+				const uint32_t target = traversal.EdgeTargets[edge];
+				if ((traversal.EdgeTags[edge] & tags) != 0 && reached[target] == 0)
+				{
+					reached[target] = 1;
+					open.push_back(target);
+				}
+			}
+		}
+		return reached;
 	}
 
 	std::vector<TerrainRouteResult> CheckTerrainRoutes(const SdfTerrainComponent& terrain, const TerrainPlacement& placement, const TerrainTraversal& traversal)
@@ -703,7 +793,11 @@ namespace Nyx
 				result.Why = std::format("{} has no place on a floor to start from", check.From);
 				continue;
 			}
+			// What is reached at all, once; the cells for the separate ways only where more than one is
+			// asked
 			const uint8_t tags = uint8_t(TerrainWalk | (check.bClimb ? TerrainClimb : 0) | (check.bGap ? TerrainGap : 0) | (check.bSwim ? TerrainSwim : 0));
+			const std::vector<uint8_t> reached = ReachTerrainFloors(traversal, *from, tags);
+			const std::optional<TerrainApproachCells> cells = check.Approaches > 1 ? std::optional<TerrainApproachCells>(MakeTerrainApproachCells(traversal, tags)) : std::nullopt;
 			const float radius = terrain.PlaceRules[*toRule].Radius + traversal.Values.Spacing * 2.0f;
 			result.FewestApproaches = UINT32_MAX;
 			for (const TerrainPlace& place : placement.Places)
@@ -714,13 +808,14 @@ namespace Nyx
 				}
 				++result.Places;
 				const std::optional<uint32_t> to = FindTerrainFloor(traversal, place.Position);
-				if (!to || !FindTerrainRoute(traversal, *from, *to, tags))
+				if (!to || reached[*to] == 0)
 				{
 					result.FewestApproaches = 0;
 					continue;
 				}
 				++result.Reached;
-				result.FewestApproaches = std::min(result.FewestApproaches, CountTerrainApproaches(traversal, *from, place.Position, radius, tags, std::max(check.Approaches, 1u)));
+				const uint32_t ways = cells ? CountTerrainApproaches(*cells, traversal, *from, place.Position, radius, check.Approaches) : 1u;
+				result.FewestApproaches = std::min(result.FewestApproaches, ways);
 			}
 			result.FewestApproaches = result.Places == 0 ? 0 : result.FewestApproaches;
 			result.bPassed = result.Places > 0 && result.Reached == result.Places && result.FewestApproaches >= check.Approaches;
