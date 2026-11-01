@@ -719,6 +719,21 @@ namespace Nyx::UI
 		}
 	}
 
+	void StatusProgress(const char* text, float fraction, float height)
+	{
+		ImGuiWindow* window = ImGui::GetCurrentWindow();
+		if (window->SkipItems)
+		{
+			return;
+		}
+
+		ImRect rect;
+		if (AddPlainItem(*window, CalcStatusProgressSize(text, height), rect))
+		{
+			PaintStatusProgress(GetWindowPainter(), ToPainterRect(rect), text, fraction);
+		}
+	}
+
 	void TitlebarLogo(const char* name, float height)
 	{
 		ImGuiWindow* window = ImGui::GetCurrentWindow();
@@ -1683,6 +1698,11 @@ namespace Nyx::UI
 		// A status item's round icon, this much of the item's height, and the gap after it
 		constexpr float StatusIconFraction = 0.6f;
 		constexpr float StatusIconGap = 0.3f;
+		// A status item's progress bar: this long and this thick, as parts of the item's height, and
+		// the gap after it
+		constexpr float StatusProgressLength = 5.0f;
+		constexpr float StatusProgressThickness = 0.28f;
+		constexpr float StatusProgressGap = 0.4f;
 		// The logo's circle, this much of the titlebar's height, and the gap after it
 		constexpr float LogoFraction = 0.65f;
 		constexpr float LogoGap = 0.3f;
@@ -2002,6 +2022,26 @@ namespace Nyx::UI
 			}
 			textLeft += size + std::floor(height * StatusIconGap);
 		}
+		PaintText(painter, glm::floor(glm::vec2(textLeft, middle - ImGui::GetFontSize() * 0.5f)), theme.Text, text);
+	}
+
+	void PaintStatusProgress(WindowPainter& painter, const PainterRect& rect, std::string_view text, float fraction)
+	{
+		// A track in the slider's colours, filled from the left as far as is done
+		const Theme& theme = GetTheme();
+		const float height = rect.GetHeight();
+		const float middle = (rect.Min.y + rect.Max.y) * 0.5f;
+		const float length = std::floor(height * StatusProgressLength);
+		const float halfThickness = std::max(1.0f, std::floor(height * StatusProgressThickness * 0.5f));
+		const PainterRect track{ { rect.Min.x, middle - halfThickness }, { rect.Min.x + length, middle + halfThickness } };
+		painter.AddRoundedRect(track, halfThickness, PainterStyle::Filled(theme.Track));
+		const float filled = std::clamp(fraction, 0.0f, 1.0f) * length;
+		if (filled > 0.0f)
+		{
+			painter.AddRoundedRect(PainterRect{ track.Min, { track.Min.x + std::max(filled, halfThickness * 2.0f), track.Max.y } }, halfThickness,
+				PainterStyle::Filled(theme.Accent));
+		}
+		const float textLeft = rect.Min.x + length + std::floor(height * StatusProgressGap);
 		PaintText(painter, glm::floor(glm::vec2(textLeft, middle - ImGui::GetFontSize() * 0.5f)), theme.Text, text);
 	}
 
@@ -2457,6 +2497,11 @@ namespace Nyx::UI
 	{
 		const float iconWidth = icon != EStatusIcon::None ? std::floor(height * StatusIconFraction) + std::floor(height * StatusIconGap) : 0.0f;
 		return glm::vec2(std::floor(iconWidth + CalcTextSize(text).x), height);
+	}
+
+	glm::vec2 CalcStatusProgressSize(const char* text, float height)
+	{
+		return glm::vec2(std::floor(height * StatusProgressLength) + std::floor(height * StatusProgressGap) + std::floor(CalcTextSize(text).x), height);
 	}
 
 	glm::vec2 CalcTitlebarLogoSize(const char* name, float height)

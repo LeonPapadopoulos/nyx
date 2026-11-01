@@ -98,6 +98,12 @@ add_dependencies(NyxJobSystemTests NyxGeneratedReflection)
 set_property(TARGET NyxJobSystemTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxJobSystemTests COMMAND NyxJobSystemTests)
 
+add_executable(NyxProgressTests ProgressTests.cpp)
+target_link_libraries(NyxProgressTests PRIVATE NyxEngine)
+add_dependencies(NyxProgressTests NyxGeneratedReflection)
+set_property(TARGET NyxProgressTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxProgressTests COMMAND NyxProgressTests)
+
 # 3D noise and the smooth minimum: 0 at the lattice corners, within the proven bounds of value and
 # slope, eight points at a time the same bits as one, the golden values, fractal and ridged noise in
 # their ranges, the smooth minimum's offset and slope. Prints how fast the noise samples.

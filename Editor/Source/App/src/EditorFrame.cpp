@@ -9,6 +9,7 @@
 #include "PlaySession.h"
 #include "PrefabMode.h"
 #include "PreferencesWindow.h"
+#include "Progress.h"
 #include "EditorRenderer.h"
 #include "SceneEditor.h"
 #include "SceneFilePopups.h"
@@ -52,6 +53,8 @@ namespace Nyx::Editor
 		constexpr float PlayButtonSpacing = 2.0f;
 		// The status bar's items, and the room on each side of the dividers between them
 		constexpr float StatusGap = 20.0f;
+		// How long a task in the background goes on before the status bar shows it, in seconds
+		constexpr double ProgressShownAfter = 0.25;
 
 		// A menu bar button's size: its label (without what follows "##"), with room on both sides
 		glm::vec2 MenuButtonSize(const char* label)
@@ -403,6 +406,7 @@ namespace Nyx::Editor
 	{
 		// At the left: what F8 does while it inspects, or else the last scene saved or opened
 		ImGui::SetCursorScreenPos(ImVec2(area.X + BarMargin, area.Y));
+		bool bLeftItem = true;
 		if (Editor.SourceInspector.IsActive())
 		{
 			NYX_UI(Nyx::UI::StatusItem("Inspect UI: click source, Shift-click widget, Esc cancels", Nyx::UI::EStatusIcon::None, area.Height));
@@ -411,6 +415,12 @@ namespace Nyx::Editor
 		{
 			NYX_UI(Nyx::UI::StatusItem(SceneFileStatus.c_str(), bSceneFileStatusFailed ? Nyx::UI::EStatusIcon::Error : Nyx::UI::EStatusIcon::Ok, area.Height));
 		}
+		else
+		{
+			bLeftItem = false;
+		}
+		// Then the work going on in the background
+		DrawProgress(area, bLeftItem);
 
 		// At the right: the errors logged, the graphics API, and the frame rate and time: the last
 		// second's average, ImGui's until the first second has passed
@@ -463,6 +473,44 @@ namespace Nyx::Editor
 			{
 				DrawFrameTimeTooltip();
 			}
+		}
+	}
+
+	void EditorFrame::DrawProgress(const Nyx::WindowFrameArea& area, bool bAfterItem)
+	{
+		// Tasks shown once they have gone on a moment, so quick ones don't flicker
+		const double now = Nyx::GetProgressClock();
+		std::vector<Nyx::ProgressReport> reports = Nyx::ProgressTracker::Get().GetReports();
+		std::erase_if(reports, [now](const Nyx::ProgressReport& report) { return now - report.Started < ProgressShownAfter; });
+		if (reports.empty())
+		{
+			return;
+		}
+
+		// The bar's: the task with the most of its own left
+		const Nyx::ProgressReport& biggest = *std::max_element(reports.begin(), reports.end(),
+			[](const Nyx::ProgressReport& a, const Nyx::ProgressReport& b) { return a.GetLeft() < b.GetLeft(); });
+		std::string text = biggest.Name + " " + std::to_string(static_cast<int>(biggest.GetFraction() * 100.0f)) + "%";
+		if (reports.size() > 1)
+		{
+			text += " (" + std::to_string(reports.size()) + " tasks)";
+		}
+
+		if (bAfterItem)
+		{
+			NextOnLine(StatusGap, area.Y);
+			NYX_UI(Nyx::UI::BarDivider(area.Height));
+			NextOnLine(StatusGap, area.Y);
+		}
+		NYX_UI(Nyx::UI::StatusProgress(text.c_str(), biggest.GetFraction(), area.Height));
+		if (ImGui::BeginItemTooltip())
+		{
+			for (const Nyx::ProgressReport& report : reports)
+			{
+				ImGui::Text("%s: %d%%, %llu of %llu", report.Name.c_str(), static_cast<int>(report.GetFraction() * 100.0f),
+					static_cast<unsigned long long>(report.Done), static_cast<unsigned long long>(report.Total));
+			}
+			ImGui::EndTooltip();
 		}
 	}
 

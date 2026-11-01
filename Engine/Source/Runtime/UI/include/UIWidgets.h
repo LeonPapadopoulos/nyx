@@ -118,6 +118,10 @@ namespace Nyx::UI
 	// works after it, e.g. for a tooltip.
 	void StatusItem(const char* text, EStatusIcon icon, float height);
 
+	// An item of a status bar for work going on: a bar filled `fraction` (0 to 1) of the way, then
+	// text, as tall as `height`. IsItemHovered() works after it, e.g. for a tooltip.
+	void StatusProgress(const char* text, float fraction, float height);
+
 	// The application's mark and name, `height` tall
 	void TitlebarLogo(const char* name, float height);
 
@@ -313,6 +317,7 @@ namespace Nyx::UI
 	void PaintDocumentTab(WindowPainter& painter, const PainterRect& rect, std::string_view label, const WidgetLook& look, const WidgetLook& closeLook);
 	// `rect`: the item, icon and text, as tall as the bar's content
 	void PaintStatusItem(WindowPainter& painter, const PainterRect& rect, std::string_view text, EStatusIcon icon);
+	void PaintStatusProgress(WindowPainter& painter, const PainterRect& rect, std::string_view text, float fraction);
 	void PaintTitlebarLogo(WindowPainter& painter, const PainterRect& rect, std::string_view name);
 	// `on`: the knob's way from off (0) to on (1)
 	void PaintToggle(WindowPainter& painter, const PainterRect& rect, std::string_view label, float on, const WidgetLook& look);
@@ -391,6 +396,7 @@ namespace Nyx::UI
 	glm::vec2 CalcBarTabSize(const char* label, float height);
 	glm::vec2 CalcDocumentTabSize(const char* label, float height);
 	glm::vec2 CalcStatusItemSize(const char* text, EStatusIcon icon, float height);
+	glm::vec2 CalcStatusProgressSize(const char* text, float height);
 	glm::vec2 CalcTitlebarLogoSize(const char* name, float height);
 	glm::vec2 CalcToggleSize(const char* label);
 	// The slider's frame, ImGui's item width wide

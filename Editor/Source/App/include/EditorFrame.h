@@ -98,9 +98,13 @@ namespace Nyx::Editor
 	private:
 		// The titlebar, one row: the logo, the menus, the open scene, in prefab mode the prefab with
 		// Save and Back, and Play. The status bar: the
-		// last scene saved or opened, errors logged, the graphics API and the frame rate.
+		// last scene saved or opened, work going on in the background, errors logged, the graphics
+		// API and the frame rate.
 		void DrawTitlebar(const Nyx::WindowFrameArea& area);
 		void DrawStatusBar(const Nyx::WindowFrameArea& area);
+		// The work going on (ProgressTracker): a bar for the task with the most left, every task on
+		// hover; nothing while there is none. `bAfterItem`: a divider first.
+		void DrawProgress(const Nyx::WindowFrameArea& area, bool bAfterItem);
 		// Over the frame time: the last second's, where the time went and what was drawn
 		void DrawFrameTimeTooltip();
 
