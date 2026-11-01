@@ -13,6 +13,7 @@
 
 namespace Nyx
 {
+	class JobSystem;
 	struct SdfTerrainComponent;
 
 	// At most this many instances a scatter, whatever its density: 64 MB of transforms
@@ -132,15 +133,17 @@ namespace Nyx
 	// pieces of it changed; for blockers added, removed or changed, the cells they reached before or
 	// after. Then the cells after each of those within the spacing, to keep apart from them again.
 	// The surface's space goes into the scatter's by surfaceToScatter. True if any cell was made again.
+	// With a job system, the cells are made across its workers, the same to the bit; without, one
+	// after another here.
 	bool UpdateScatterCells(ScatterCells& cells, const ScatterComponent& scatter, const MeshData& surface, const glm::mat4& surfaceToScatter, uint64_t surfaceKey,
-		std::span<const ScatterBlocker> blockers);
+		std::span<const ScatterBlocker> blockers, JobSystem* jobs = nullptr);
 
 	// The same on an SDF terrain whose space goes into the scatter's by terrainToScatter: each cell's
 	// ground cut from the terrain itself (ScatterOnTerrain()); all of them for other values or another
 	// terrain (terrainKey differs), else the cells the edits added or taken away since reach, and the
-	// blockers'. True if any cell was made again.
+	// blockers'. True if any cell was made again. With a job system, across its workers, as above.
 	bool UpdateScatterCellsOnTerrain(ScatterCells& cells, const ScatterComponent& scatter, const SdfTerrainComponent& terrain, const glm::mat4& terrainToScatter,
-		uint64_t terrainKey, std::span<const ScatterBlocker> blockers);
+		uint64_t terrainKey, std::span<const ScatterBlocker> blockers, JobSystem* jobs = nullptr);
 
 	// The cells' kept instances, one cell after another, each non-empty cell with the bounds of its
 	// origins
@@ -186,7 +189,8 @@ namespace Nyx
 	// and raises their revision, unless they were made from the same values on the same surface,
 	// lying the same way, with the same blockers. Makes again only the cells that changed
 	// (ScatterComponent::Cells, UpdateScatterCells()). A surface that has no mesh yet, or none of
-	// this world, gives no instances, until UpdateScatters() finds it has one.
+	// this world, gives no instances, until UpdateScatters() finds it has one. The cells are made
+	// across the workers of JobSystem::Get().
 	void UpdateScatter(ScatterComponent& scatter, Registry& world, Entity entity);
 
 	// UpdateScatter() for every scatter of the world: each frame, in the editor and the game, so the

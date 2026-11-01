@@ -7,7 +7,8 @@
 // boxes, spheres, capsules) keep every instance out of their shape and margin, their falloff thins
 // the density as it should, and a scatter that opts out grows through them. A blocker moved, added,
 // edited or removed, and a surface changed in one place, make only the cells they reach again, and
-// what that makes is exactly what scattering all of it makes. The noise mask is the same every time,
+// what that makes is exactly what scattering all of it makes. Cells made across a job system's
+// workers are those made one after another, to the bit. The noise mask is the same every time,
 // covers about half at a threshold of 0.5, and inverted gives the complement. The post-load step, as
 // a scene's load, the editor and a live edit run it, makes the instances, makes nothing again for
 // nothing new, and makes them again when the scatter, its surface's mesh or where the surface lies
@@ -20,6 +21,7 @@
 #include "GroundComponent.h"
 #include "GroundMesh.h"
 #include "GuidComponent.h"
+#include "JobSystem.h"
 #include "Log.h"
 #include "MeshInstancesComponent.h"
 #include "PhysicsComponents.h"
@@ -40,9 +42,11 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <functional>
 #include <iostream>
 #include <memory>
 #include <set>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -974,6 +978,56 @@ namespace
 		RequireSameInstances(instances(), scatterAll(), "The scatter moved");
 	}
 
+	// The cells made across a job system's workers are those made one after another here, to the
+	// bit: on an SDF terrain, a mesh and the plane, with blockers and spacing, all of them at first and
+	// then the cells a moved blocker reaches
+	void TestCellsMadeAcrossWorkersAreTheSame()
+	{
+		JobSystem jobs(8);
+		Registry world;
+		const Entity ground = AddGround(world);
+		const MeshData& mesh = *world.Get<RuntimeMeshComponent>(ground).Mesh;
+		SdfTerrainComponent terrain;
+		terrain.Layers[0].Height = 3.0f;
+		terrain.Layers[0].Amplitude = 4.0f;
+
+		ScatterComponent values;
+		values.Size = glm::vec2(48.0f, 48.0f);
+		values.CellSize = 4.0f;
+		values.Density = 2.0f;
+		values.Spacing = 0.6f;
+		const Entity blocker = AddBlocker(world, ScatterBlockerComponent{ .Shape = EScatterBlockerShape::Circle, .Radius = 2.0f, .Margin = 0.5f, .Falloff = 2.0f },
+			TransformComponent{ .Position = glm::vec3(-6.0f, 0.0f, 4.0f) });
+		const std::vector<ScatterBlocker> before = GatherScatterBlockers(world, glm::mat4(1.0f));
+		world.Get<TransformComponent>(blocker).Position = glm::vec3(7.0f, 0.0f, -3.0f);
+		const std::vector<ScatterBlocker> after = GatherScatterBlockers(world, glm::mat4(1.0f));
+
+		using Update = std::function<bool(ScatterCells&, std::span<const ScatterBlocker>, JobSystem*)>;
+		const auto compare = [&](const std::string& what, const Update& update)
+		{
+			ScatterCells alone;
+			ScatterCells across;
+			for (const std::vector<ScatterBlocker>* blockers : { &before, &after })
+			{
+				update(alone, *blockers, nullptr);
+				update(across, *blockers, &jobs);
+				const MeshInstances expected = CollectScatterInstances(alone);
+				Require(expected.Transforms.size() > 1000, what + ": the scatter should have copies, not " + std::to_string(expected.Transforms.size()));
+				RequireSameInstances(CollectScatterInstances(across), expected, what);
+				Require(across.CellsThrown == alone.CellsThrown && across.CellsKeptApart == alone.CellsKeptApart,
+					what + ": the same cells should be made again across the workers");
+			}
+			Require(alone.CellsThrown < alone.Columns * alone.Rows, what + ": a blocker moved should make only the cells it reaches again");
+		};
+		compare("On an SDF terrain", [&](ScatterCells& cells, std::span<const ScatterBlocker> blockers, JobSystem* with)
+			{ return UpdateScatterCellsOnTerrain(cells, values, terrain, glm::mat4(1.0f), 1, blockers, with); });
+		compare("On a mesh", [&](ScatterCells& cells, std::span<const ScatterBlocker> blockers, JobSystem* with)
+			{ return UpdateScatterCells(cells, values, mesh, glm::mat4(1.0f), 1, blockers, with); });
+		const MeshData plane = MakeScatterPlane(values);
+		compare("On the plane", [&](ScatterCells& cells, std::span<const ScatterBlocker> blockers, JobSystem* with)
+			{ return UpdateScatterCells(cells, values, plane, glm::mat4(1.0f), 1, blockers, with); });
+	}
+
 	void TestTheNoiseMask()
 	{
 		ScatterComponent mask;
@@ -1303,6 +1357,7 @@ int main()
 		TestTheFalloffThinsTheDensity();
 		TestEditsMakeOnlyTheirCellsAgain();
 		TestOnAnSdfTerrain();
+		TestCellsMadeAcrossWorkersAreTheSame();
 		TestTheNoiseMask();
 		TestTheInvertedMaskIsTheComplement();
 		TestAScatterCanIgnoreBlockers();
