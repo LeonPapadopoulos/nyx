@@ -16,7 +16,10 @@
 #include "MeshRendererComponent.h"
 #include "SdfTerrainComponent.h"
 #include "SdfTerrain.h"
+#include "SceneSerializer.h"
 #include "TerrainChunks.h"
+#include "TerrainGate3Region.h"
+#include "TerrainWater.h"
 #include "TerrainOcclusion.h"
 #include "TransformComponent.h"
 #include "VulkanRenderer.h"
@@ -26,6 +29,7 @@
 #include <glm/gtc/quaternion.hpp>
 
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>
@@ -355,6 +359,97 @@ namespace
 		Require(darker > 2000, "The slab should shade the ground past the sun's shadow distance, not " + std::to_string(darker) + " pixels");
 	}
 
+	// Gate 3's region from high above, with level blending and without: the sliding makes no part
+	// of the ground much darker, as triangles slid onto the wrong surface or turned over would
+	void TestBlendingFromAfar(SceneRenderer& gpu)
+	{
+		SdfTerrainComponent region = TerrainGate3::MakeRegion();
+		// Another scene's terrain, its first with a Plan layer, to look at it the same way
+		if (const char* other = std::getenv("NYX_FAR_SCENE"))
+		{
+			Registry loaded;
+			Require(SceneSerializer::LoadFromFile(other, loaded), std::string("Can't load ") + other);
+			loaded.Each<SdfTerrainComponent>([&](Entity, SdfTerrainComponent& found) { region = found; });
+			std::cout << "The terrain of " << other << ": seed " << region.Seed << ", " << region.Layers.size() << " layers, " << region.Plan.Pins.size() << " pins, "
+					  << region.Plan.Overrides.size() << " overrides, " << region.Edits.size() << " edits, Finest Level " << region.FinestLevel << ", Level Distance "
+					  << region.LevelDistance << ", View Distance " << region.ViewDistance << "\n";
+		}
+		region.ViewDistance = std::max(region.ViewDistance, 3000.0f);
+		if (const char* levels = std::getenv("NYX_FAR_LEVEL_DISTANCE"))
+		{
+			region.LevelDistance = float(std::atof(levels));
+		}
+		TerrainScene scene(gpu, region);
+		gpu.DrawUntilShadersCompiled();
+		const char* at = std::getenv("NYX_FAR_VIEW");
+		glm::vec3 eye(0.0f, 350.0f, 500.0f);
+		glm::vec3 target(0.0f, 0.0f, 0.0f);
+		if (at != nullptr)
+		{
+			std::sscanf(at, "%f,%f,%f,%f,%f,%f", &eye.x, &eye.y, &eye.z, &target.x, &target.y, &target.z);
+		}
+		scene.Look(eye, target);
+		auto draw = [&](bool bBlending)
+		{
+			scene.World.Get<SdfTerrainComponent>(scene.Terrain).bLevelBlending = bBlending;
+			scene.MakeChunks();
+			const auto start = std::chrono::steady_clock::now();
+			while (!scene.World.Has<TerrainWaterComponent>(scene.Terrain) || scene.World.Get<TerrainWaterComponent>(scene.Terrain).Made == 0)
+			{
+				UpdateTerrainChunks(scene.World, { &scene.CameraPosition, 1 }, JobSystem::Get());
+				Require(std::chrono::steady_clock::now() - start < std::chrono::seconds(60), "The water should be worked out within a minute");
+				std::this_thread::sleep_for(std::chrono::milliseconds(5));
+			}
+			return scene.Draw();
+		};
+		const RgbaImage blended = draw(true);
+		const RgbaImage plain = draw(false);
+		SaveIfAsked(blended, "BlendingFromAfar");
+		SaveIfAsked(plain, "NoBlendingFromAfar");
+		Nyx::SceneViewCameraData camera;
+		Require(gpu.Renderer.GetSceneViewCameraData(scene.View, camera), "The view's camera");
+		size_t darker = 0;
+		std::string where;
+		for (uint32_t y = 0; y < blended.Height; ++y)
+		{
+			for (uint32_t x = 0; x < blended.Width; ++x)
+			{
+				const size_t pixel = (size_t(y) * blended.Width + x) * 4;
+				const int a = blended.Pixels[pixel] + blended.Pixels[pixel + 1] + blended.Pixels[pixel + 2];
+				const int b = plain.Pixels[pixel] + plain.Pixels[pixel + 1] + plain.Pixels[pixel + 2];
+				// Ground round it, green: not an edge against the sky or a rift moving by a pixel
+				bool bGround = x > 0 && y > 0 && x + 1 < blended.Width && y + 1 < blended.Height;
+				for (int dy = -1; dy <= 1 && bGround; ++dy)
+				{
+					for (int dx = -1; dx <= 1 && bGround; ++dx)
+					{
+						const size_t near = (size_t(int(y) + dy) * blended.Width + size_t(int(x) + dx)) * 4;
+						bGround = plain.Pixels[near + 1] > plain.Pixels[near + 2] && plain.Pixels[near + 1] > plain.Pixels[near];
+					}
+				}
+				if (bGround && a * 5 < b * 3)
+				{
+					// Where it is: the ray through it down to the ground
+					if (darker < 6)
+					{
+						const glm::vec2 ndc((float(x) + 0.5f) / float(blended.Width) * 2.0f - 1.0f, (float(y) + 0.5f) / float(blended.Height) * 2.0f - 1.0f);
+						const glm::vec4 far = camera.InverseViewProjection * glm::vec4(ndc, 1.0f, 1.0f);
+						const glm::vec3 direction = glm::normalize(glm::vec3(far) / far.w - camera.CameraWorldPos);
+						const std::optional<TerrainRayHit> hit = RayCastTerrain(region, camera.CameraWorldPos, direction, 4000.0f);
+						if (hit)
+						{
+							where += " (" + std::to_string(int(hit->Point.x)) + ", " + std::to_string(int(hit->Point.y)) + ", " + std::to_string(int(hit->Point.z)) + ")";
+						}
+					}
+					++darker;
+				}
+			}
+		}
+		std::cout << "Blending from afar: " << darker << " pixels of ground much darker than without it, at" << where << "\n";
+		// A few: a far chunk blended shows the coarser level's own shape, which differs, nearer
+		Require(darker < 40, "Level blending should make no part of the ground much darker from afar, not " + std::to_string(darker) + " pixels");
+	}
+
 int main()
 {
 	try
@@ -365,6 +460,7 @@ int main()
 		TestSkyOcclusion(gpu);
 		TestFogInTheTerrain(gpu);
 		TestFarShadows(gpu);
+		TestBlendingFromAfar(gpu);
 	}
 	catch (const std::exception& error)
 	{

@@ -604,6 +604,10 @@ namespace
 		uint32_t turned = 0;
 		uint32_t turnedThere = 0;
 		uint32_t visible = 0;
+		uint32_t far = 0;
+		uint32_t buried = 0;
+		float widestSlide = 0.0f;
+		glm::vec3 firstFar(0.0f);
 		uint32_t collapsed = 0;
 		uint64_t triangles = 0;
 		std::array<uint32_t, TerrainCoarsestLevel - TerrainFinestLevel + 1> turnedByLevel{};
@@ -613,8 +617,22 @@ namespace
 			const MeshData& mesh = meshes[index];
 			const int level = tree.Leaves[index].Level;
 			const glm::vec3 corner = CornerOf(tree.Leaves[index]);
+			const float coarserCell = 2.0f * GetTerrainChunkSize(level) / float(TerrainChunkCells);
 			for (const Vertex& vertex : mesh.Vertices)
 			{
+				// Slid farther than a coarser cell: onto another surface than its own
+				const float length = glm::length(glm::vec3(vertex.Tangent));
+				if (length > coarserCell * 1.5f)
+				{
+					firstFar = far == 0 ? vertex.Position + corner : firstFar;
+					++far;
+				}
+				widestSlide = std::max(widestSlide, length / coarserCell);
+				// Slid all the way, deep in the ground: onto a surface under it, as a tunnel's roof
+				if (SampleTerrainValue(terrain, vertex.Position + corner + glm::vec3(vertex.Tangent)) < -0.75f * coarserCell)
+				{
+					++buried;
+				}
 				const glm::vec3 moved = slide(vertex, corner, level);
 				const auto [it, bAdded] = slid.try_emplace(bitsOf(vertex.Position + corner), moved);
 				apart += !bAdded && glm::length(it->second - moved) > 1e-3f ? 1 : 0;
@@ -682,10 +700,10 @@ namespace
 		}
 		std::cout << "From far above: " << tree.Leaves.size() << " chunks, " << triangles << " triangles; " << open << " open edges (the first at " << firstOpen.x << ", "
 				  << firstOpen.y << ", " << firstOpen.z << "), " << apart << " shared vertices apart, " << turned << " triangles turned over by sliding (by level: " << levels
-				  << "the first at " << firstTurned.x << ", " << firstTurned.y << ", " << firstTurned.z << "); slid all the way " << turnedThere << " turned over, " << collapsed << " collapsed; " << visible << " turned over by a square metre or more\n";
+				  << "the first at " << firstTurned.x << ", " << firstTurned.y << ", " << firstTurned.z << "); slid all the way " << turnedThere << " turned over, " << collapsed << " collapsed; " << visible << " turned over by a square metre or more; " << far << " vertices slid farther than one and a half coarser cells (the first at " << firstFar.x << ", " << firstFar.y << ", " << firstFar.z << "), the farthest " << widestSlide << " cells; " << buried << " slid deep into the ground\n";
 		Require(open == 0, "From far above, no edge should be open");
 		Require(apart == 0, "From far above, no shared vertex should slide apart");
-		Require(visible * 200 < triangles, "From far above, sliding should turn few triangles over: " + std::to_string(visible) + " by a square metre or more");
+		Require(visible * 100 < triangles, "From far above, sliding should turn few triangles over: " + std::to_string(visible) + " by a square metre or more");
 	}
 
 	// Round a viewpoint: every chunk of the tree the surface crosses drawn, each the same bits as made

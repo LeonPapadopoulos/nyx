@@ -201,6 +201,51 @@ namespace Nyx
 		// times it), so the seam between them stays closed.
 		constexpr float MorphStart = 0.65f;
 
+		// The nearest point of a triangle to a point (Ericson's, by its regions)
+		glm::vec3 ClosestOnTriangle(const glm::vec3& point, const glm::vec3& a, const glm::vec3& b, const glm::vec3& c)
+		{
+			const glm::vec3 ab = b - a;
+			const glm::vec3 ac = c - a;
+			const glm::vec3 ap = point - a;
+			const float d1 = glm::dot(ab, ap);
+			const float d2 = glm::dot(ac, ap);
+			if (d1 <= 0.0f && d2 <= 0.0f)
+			{
+				return a;
+			}
+			const glm::vec3 bp = point - b;
+			const float d3 = glm::dot(ab, bp);
+			const float d4 = glm::dot(ac, bp);
+			if (d3 >= 0.0f && d4 <= d3)
+			{
+				return b;
+			}
+			const float vc = d1 * d4 - d3 * d2;
+			if (vc <= 0.0f && d1 >= 0.0f && d3 <= 0.0f)
+			{
+				return a + ab * (d1 / (d1 - d3));
+			}
+			const glm::vec3 cp = point - c;
+			const float d5 = glm::dot(ab, cp);
+			const float d6 = glm::dot(ac, cp);
+			if (d6 >= 0.0f && d5 <= d6)
+			{
+				return c;
+			}
+			const float vb = d5 * d2 - d1 * d6;
+			if (vb <= 0.0f && d2 >= 0.0f && d6 <= 0.0f)
+			{
+				return a + ac * (d2 / (d2 - d6));
+			}
+			const float va = d3 * d6 - d5 * d4;
+			if (va <= 0.0f && (d4 - d3) >= 0.0f && (d5 - d6) >= 0.0f)
+			{
+				return b + (c - b) * ((d4 - d3) / ((d4 - d3) + (d5 - d6)));
+			}
+			const float denominator = 1.0f / (va + vb + vc);
+			return a + ab * (vb * denominator) + ac * (vc * denominator);
+		}
+
 		glm::vec2 GetChunkMorph(const SdfTerrainComponent& terrain, int level)
 		{
 			if (!terrain.bLevelBlending || terrain.Mesher != ESdfTerrainMesher::Dual || level >= TerrainCoarsestLevel)
@@ -840,11 +885,18 @@ namespace Nyx
 		FieldMeshStats stats;
 		MeshData mesh = terrain.Mesher == ESdfTerrainMesher::MarchingCubes ? MakeMarchingFieldMesh(grid, settings, &stats) : MakeFieldMesh(grid, settings, &stats);
 
-		// Where the coarser level has each vertex, in its tangent: the vertex of the coarser cell it is
-		// in, as the coarser chunk makes it, the same bits, from its samples at even indices and a
-		// shell of samples round them; the nearest of them where the cell has more than one, or of the
-		// cells round it where it has none. Every chunk with the vertex finds the same: the cells by
-		// its place in the world at whole 4096ths, as the positions are below, ties by place. Where
+		// Where the coarser level has each vertex, in its tangent: the nearest point of the coarser
+		// level's surface, its triangles as the coarser chunk makes them, the same bits, from its samples
+		// at even indices and a shell of samples round them. Not the vertex of the coarser cell it is
+		// in: where the two levels split their quads along different diagonals, triangles slid to
+		// cells' vertices turn over and the surface shows holes from afar, and where a cell holds a
+		// tunnel's roof as well as the ground, the ground's vertices slide down onto it, dark patches
+		// from afar; the nearest point moves neighbours alike, and all the way the chunk lies on the
+		// coarser one's surface. Of the triangles facing about the way the vertex does first (others
+		// count as a coarser cell farther), so it keeps to its own surface. Every chunk
+		// with the vertex finds the same: the triangles by the cells their vertices are in, at whole
+		// 4096ths in the world as the positions are below, of the cells round the vertex's, ties by
+		// place. Where
 		// another level's chunk is next to it, it stays: a vertex in a coarser chunk's place is that
 		// chunk's, and one within a cell of a finer chunk's place that chunk has too, neither sliding
 		// in the other, so the seams between levels stay closed.
@@ -904,14 +956,25 @@ namespace Nyx
 			coarser.Field = settings.Field;
 			const MeshData coarse = MakeFieldMesh(parent, coarser);
 
-			// The coarser vertices by their cells in the world
+			// The coarser triangles by the cells their vertices are in, in the world
 			auto snap = [](const glm::vec3& point) { return glm::round(point * PositionSteps) * (1.0f / PositionSteps); };
 			auto cellOf = [&](const glm::vec3& point) { return glm::ivec3(glm::floor(point / parent.CellSize)); };
-			std::unordered_map<uint64_t, std::vector<glm::vec3>> byCell;
-			for (const Vertex& vertex : coarse.Vertices)
+			std::vector<glm::vec3> places(coarse.Vertices.size());
+			for (size_t index = 0; index < places.size(); ++index)
 			{
-				const glm::vec3 place = snap(vertex.Position);
-				byCell[PackId({ 0, cellOf(place) })].push_back(place);
+				places[index] = snap(coarse.Vertices[index].Position);
+			}
+			std::unordered_map<uint64_t, std::vector<uint32_t>> byCell;
+			for (uint32_t triangle = 0; triangle + 2 < uint32_t(coarse.Indices.size()); triangle += 3)
+			{
+				for (int corner = 0; corner < 3; ++corner)
+				{
+					std::vector<uint32_t>& list = byCell[PackId({ 0, cellOf(places[coarse.Indices[triangle + corner]]) })];
+					if (list.empty() || list.back() != triangle)
+					{
+						list.push_back(triangle);
+					}
+				}
 			}
 			// Next to another level: in a coarser chunk's place, or within a cell of a finer one's
 			const bool bFiner = std::any_of(neighbourhood.Levels.begin(), neighbourhood.Levels.end(), [](int8_t level) { return level == -1; });
@@ -930,6 +993,7 @@ namespace Nyx
 				return bStays;
 			};
 			auto before = [](const glm::vec3& a, const glm::vec3& b) { return a.x != b.x ? a.x < b.x : (a.y != b.y ? a.y < b.y : a.z < b.z); };
+			std::vector<uint32_t> candidates;
 			for (Vertex& vertex : mesh.Vertices)
 			{
 				const glm::vec3 from = snap(vertex.Position);
@@ -941,32 +1005,42 @@ namespace Nyx
 				const glm::ivec3 at = cellOf(from);
 				glm::vec3 target = from;
 				float nearest = std::numeric_limits<float>::max();
-				for (int ring = 0; ring <= 1 && nearest == std::numeric_limits<float>::max(); ++ring)
+				std::vector<uint32_t>& seen = candidates;
+				seen.clear();
+				for (int dz = -1; dz <= 1; ++dz)
 				{
-					for (int dz = -ring; dz <= ring; ++dz)
+					for (int dy = -1; dy <= 1; ++dy)
 					{
-						for (int dy = -ring; dy <= ring; ++dy)
+						for (int dx = -1; dx <= 1; ++dx)
 						{
-							for (int dx = -ring; dx <= ring; ++dx)
+							const auto found = byCell.find(PackId({ 0, at + glm::ivec3(dx, dy, dz) }));
+							if (found != byCell.end())
 							{
-								const auto found = byCell.find(PackId({ 0, at + glm::ivec3(dx, dy, dz) }));
-								if (found == byCell.end())
-								{
-									continue;
-								}
-								for (const glm::vec3& place : found->second)
-								{
-									const float apart = glm::length(place - from);
-									if (apart < nearest || (apart == nearest && before(place, target)))
-									{
-										nearest = apart;
-										target = place;
-									}
-								}
+								seen.insert(seen.end(), found->second.begin(), found->second.end());
 							}
 						}
 					}
 				}
+				std::sort(seen.begin(), seen.end());
+				seen.erase(std::unique(seen.begin(), seen.end()), seen.end());
+				for (const uint32_t triangle : seen)
+				{
+					const glm::vec3& a = places[coarse.Indices[triangle]];
+					const glm::vec3& b = places[coarse.Indices[triangle + 1]];
+					const glm::vec3& c = places[coarse.Indices[triangle + 2]];
+					const glm::vec3 place = ClosestOnTriangle(from, a, b, c);
+					// A triangle facing another way than the vertex counts as a coarser cell farther: the
+					// vertex's own surface first, not a tunnel's wall under it
+					const glm::vec3 facing = glm::cross(b - a, c - a);
+					const bool bSameWay = glm::dot(facing, vertex.Normal) > 0.5f * glm::length(facing);
+					const float apart = glm::length(place - from) + (bSameWay ? 0.0f : parent.CellSize);
+					if (apart < nearest || (apart == nearest && before(place, target)))
+					{
+						nearest = apart;
+						target = place;
+					}
+				}
+				target = snap(target);
 				vertex.Tangent = glm::vec4(target - from, 1.0f);
 			}
 		}
