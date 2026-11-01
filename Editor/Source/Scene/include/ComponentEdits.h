@@ -16,7 +16,8 @@ namespace Nyx::Editor
 
 	// Whether the details panel offers to add and remove components of this type. Not the guid
 	// (undo, files and the game link find entities by it) or the name (the outliner shows it):
-	// every entity keeps exactly those. Not a run-time type, which the world makes itself.
+	// every entity keeps exactly those. Not the parent link, which the Transform section's Parent row
+	// sets (SetParent()). Not a run-time type, which the world makes itself.
 	bool CanAddOrRemoveComponent(const Nyx::ComponentTypeOps& componentType);
 
 	// Adds a component with its default values to the entity, and records that for undo. Returns

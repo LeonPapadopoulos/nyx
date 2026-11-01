@@ -13,6 +13,7 @@
 #include "ImGuiSource.h"
 #include "Log.h"
 #include "NameComponent.h"
+#include "ParentComponent.h"
 #include "Painter.h"
 #include "PainterTestWindow.h"
 #include "PhysicsComponents.h"
@@ -47,6 +48,7 @@
 #include "TransactionDiffUtil.h"
 #include "TransactionObjectRefHelpers.h"
 #include "TransformComponent.h"
+#include "TransformParents.h"
 #include "UIAnimation.h"
 #include "UIChrome.h"
 #include "UIDiagnostics.h"
@@ -62,6 +64,7 @@
 
 #include <algorithm>
 #include <cfloat>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -775,6 +778,121 @@ namespace
 			ui.Frame(draw);
 			Require(ImGui::GetCurrentContext()->HoveredIdPreviousFrameItemCount <= 1,
 				"Two items in the details panel share an ID (under the mouse at y = " + std::to_string(y) + ")");
+		}
+	}
+
+	bool NearTransforms(const TransformComponent& a, const TransformComponent& b)
+	{
+		return glm::length(a.Position - b.Position) < 1e-4f && std::abs(std::abs(glm::dot(a.Rotation, b.Rotation)) - 1.0f) < 1e-4f &&
+			glm::length(a.Scale - b.Scale) < 1e-4f;
+	}
+
+	// Giving an entity a parent, another one and none keeps it where it is, each one undo step; it
+	// then follows its parent; a parent below the entity is refused; the gizmo's moves become local
+	// values; the link is offered neither to add nor to remove; the Transform section draws a child
+	void TestParenting()
+	{
+		HeadlessUI ui;
+		RegisterDefaultPropertyWidgets();
+
+		SceneEditor editing;
+		editing.Transactions.Subscribe(&editing.Hierarchy);
+		Registry& world = editing.Scene.GetRegistry();
+
+		TransformComponent parentPlace;
+		parentPlace.Position = glm::vec3(10.0f, 0.0f, 0.0f);
+		parentPlace.Rotation = glm::normalize(glm::quat(glm::radians(glm::vec3(0.0f, 90.0f, 0.0f))));
+		parentPlace.Scale = glm::vec3(2.0f);
+		TransformComponent childPlace;
+		childPlace.Position = glm::vec3(12.0f, 3.0f, -1.0f);
+		childPlace.Rotation = glm::normalize(glm::quat(glm::radians(glm::vec3(30.0f, 0.0f, 10.0f))));
+
+		const Entity parent = editing.Scene.CreateEntity("Parent");
+		world.Add<TransformComponent>(parent, parentPlace);
+		const Entity child = editing.Scene.CreateEntity("Child");
+		world.Add<TransformComponent>(child, childPlace);
+		const Entity other = editing.Scene.CreateEntity("Other");
+		world.Add<TransformComponent>(other, TransformComponent{});
+
+		Require(SetParent(editing.Scene, editing.Transactions, child, parent), "Setting a parent failed");
+		Require(FindParent(world, child) == parent, "The child should have its parent");
+		Require(NearTransforms(world.Get<TransformComponent>(child), childPlace), "Setting a parent should keep the child where it is");
+		Require(!SetParent(editing.Scene, editing.Transactions, child, parent), "Setting the parent it has should change nothing");
+		Require(!SetParent(editing.Scene, editing.Transactions, parent, child), "A parent below the entity should be refused");
+		Require(!SetParent(editing.Scene, editing.Transactions, parent, parent), "An entity can't be its own parent");
+		Require(!FindParent(world, parent), "A refused parent should change nothing");
+
+		editing.Undo();
+		Require(!world.Has<ParentComponent>(child) && NearTransforms(world.Get<TransformComponent>(child), childPlace),
+			"Undoing Set Parent should take the link away and leave the child where it is");
+		editing.Redo();
+		Require(FindParent(world, child) == parent, "Redoing Set Parent should link it again");
+
+		// Moving the parent moves the child
+		{
+			TransactionDiffUtil diff;
+			TransformComponent& transform = world.Get<TransformComponent>(parent);
+			diff.TakeSnapshot(MakeSceneEntityRef(editing.Scene, parent), &transform, Nyx::Reflection::GetTypeMetadata<TransformComponent>());
+			transform.Position.y += 5.0f;
+			Require(diff.CommitChanges("Translate Entity", editing.Transactions), "Moving the parent recorded nothing");
+		}
+		Require(std::abs(world.Get<TransformComponent>(child).Position.y - (childPlace.Position.y + 5.0f)) < 1e-4f,
+			"The child should follow its parent");
+		editing.Undo();
+		Require(NearTransforms(world.Get<TransformComponent>(child), childPlace), "Undoing the parent's move should take the child back");
+
+		// Another parent, then none: still where it is
+		Require(SetParent(editing.Scene, editing.Transactions, child, other), "Setting another parent failed");
+		Require(FindParent(world, child) == other && NearTransforms(world.Get<TransformComponent>(child), childPlace),
+			"Another parent should keep the child where it is");
+		Require(SetParent(editing.Scene, editing.Transactions, child, std::nullopt), "Clearing the parent failed");
+		Require(!world.Has<ParentComponent>(child) && NearTransforms(world.Get<TransformComponent>(child), childPlace),
+			"Clearing the parent should keep the child where it is");
+		editing.Undo();
+		editing.Undo();
+		Require(FindParent(world, child) == parent, "Undoing both should give the first parent back");
+
+		// The gizmo moves the child in the world; its local values follow, and the drag records them
+		{
+			TransactionDiffUtil diff;
+			diff.TakeSnapshot(MakeSceneEntityRef(editing.Scene, child), &world.Get<ParentComponent>(child),
+				Nyx::Reflection::GetTypeMetadata<ParentComponent>());
+			world.Get<TransformComponent>(child).Position = glm::vec3(0.0f, 1.0f, 2.0f);
+			FollowWorldTransform(world, child);
+			Require(diff.CommitChanges("Translate Entity", editing.Transactions), "The child's move recorded nothing");
+		}
+		Require(glm::length(world.Get<TransformComponent>(child).Position - glm::vec3(0.0f, 1.0f, 2.0f)) < 1e-4f,
+			"A child moved by hand should stay where it was put");
+		editing.Undo();
+		Require(NearTransforms(world.Get<TransformComponent>(child), childPlace), "Undoing the child's move should put it back");
+
+		// The link is set by the Parent row, never added or removed as a component
+		const ComponentTypeOps* linkOps = ComponentTypeRegistry::Get().FindByTypeMetadata(Nyx::Reflection::GetTypeMetadata<ParentComponent>());
+		Require(linkOps && !CanAddOrRemoveComponent(*linkOps), "The parent link shouldn't be offered to add or remove");
+
+		// A parent that moves in the game
+		Require(!HasParentMovingInGame(world, child), "A still parent shouldn't warn");
+		world.Add<RigidBodyComponent>(parent, RigidBodyComponent{});
+		Require(HasParentMovingInGame(world, child), "A parent with a rigid body moves in the game");
+
+		// The Transform section of a child, with its warning, draws with no two items sharing an ID
+		editing.Scene.GetSelection() = child;
+		DetailsPanel details;
+		const auto draw = [&]()
+		{
+			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+			ImGui::SetNextWindowSize(ImVec2(400.0f, 780.0f));
+			details.Draw(editing);
+		};
+		ui.Frame(draw);
+		ui.Frame(draw);
+		for (float y = 0.0f; y < 780.0f; y += 3.0f)
+		{
+			ImGui::GetIO().AddMousePosEvent(40.0f, y);
+			ui.Frame(draw);
+			ui.Frame(draw);
+			Require(ImGui::GetCurrentContext()->HoveredIdPreviousFrameItemCount <= 1,
+				"Two items in a child's details share an ID (under the mouse at y = " + std::to_string(y) + ")");
 		}
 	}
 
@@ -2518,6 +2636,7 @@ int main()
 		TestAnimationsEaseAndAreForgotten();
 		// Last: it gives the camera a post-load step of its own
 		TestPostLoadStepsKnowTheirEntity();
+		TestParenting();
 	}
 	catch (const std::exception& error)
 	{

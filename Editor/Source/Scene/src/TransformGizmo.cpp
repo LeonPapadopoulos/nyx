@@ -3,6 +3,8 @@
 
 #include "CameraProjection.h"
 #include "TransformComponent.h"
+#include "ParentComponent.h"
+#include "TransformParents.h"
 #include "ImGuiSource.h"
 #include "TransactionSystem.h"
 #include "TransactionObjectRef.h"
@@ -1051,6 +1053,22 @@ namespace Nyx::Editor
 		State.Operation = operation;
 	}
 
+	void TransformGizmo::BeginTransformDiff(SceneDocument& scene, Nyx::Entity entity, Nyx::TransformComponent& transform)
+	{
+		// A child is placed by its values relative to its parent: those are what the drag changes, and
+		// its place in the world follows them (FollowWorldTransform() each frame)
+		Nyx::Registry& world = scene.GetRegistry();
+		ActiveTransformDiff.emplace();
+		if (FindParent(world, entity))
+		{
+			ActiveTransformDiff->TakeSnapshot(Nyx::Editor::MakeSceneEntityRef(scene, entity), &world.Get<Nyx::ParentComponent>(entity),
+				Nyx::Reflection::GetTypeMetadata<Nyx::ParentComponent>());
+			return;
+		}
+		ActiveTransformDiff->TakeSnapshot(Nyx::Editor::MakeSceneEntityRef(scene, entity), &transform,
+			Nyx::Reflection::GetTypeMetadata<Nyx::TransformComponent>());
+	}
+
 	void TransformGizmo::PreviewActiveEdit(Nyx::Editor::TransactionSystem& transactions)
 	{
 		if (State.bDragging && ActiveTransformDiff.has_value())
@@ -1115,11 +1133,7 @@ namespace Nyx::Editor
 			{
 				State.ActiveSceneViewId = sceneViewId;
 
-				ActiveTransformDiff.emplace();
-				ActiveTransformDiff->TakeSnapshot(
-					Nyx::Editor::MakeSceneEntityRef(scene, entity),
-					&transform,
-					Nyx::Reflection::GetTypeMetadata<Nyx::TransformComponent>());
+				BeginTransformDiff(scene, entity, transform);
 
 				BeginTranslateDrag(viewData, entity, transform, gizmoOrigin, imageScreenMin, imageSize);
 				bConsumed = true;
@@ -1128,6 +1142,7 @@ namespace Nyx::Editor
 			if (State.bDragging && State.ActiveSceneViewId == sceneViewId)
 			{
 				UpdateTranslateDrag(viewData, transform, imageScreenMin, imageSize);
+				FollowWorldTransform(world, entity);
 
 				if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))
 				{
@@ -1161,11 +1176,7 @@ namespace Nyx::Editor
 			{
 				State.ActiveSceneViewId = sceneViewId;
 
-				ActiveTransformDiff.emplace();
-				ActiveTransformDiff->TakeSnapshot(
-					Nyx::Editor::MakeSceneEntityRef(scene, entity),
-					&transform,
-					Nyx::Reflection::GetTypeMetadata<Nyx::TransformComponent>());
+				BeginTransformDiff(scene, entity, transform);
 
 				BeginRotateDrag(viewData, entity, transform, gizmoOrigin, imageScreenMin, imageSize);
 				bConsumed = true;
@@ -1174,6 +1185,7 @@ namespace Nyx::Editor
 			if (State.bDragging && State.ActiveSceneViewId == sceneViewId)
 			{
 				UpdateRotateDrag(viewData, transform, imageScreenMin, imageSize);
+				FollowWorldTransform(world, entity);
 
 				if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))
 				{
@@ -1207,11 +1219,7 @@ namespace Nyx::Editor
 			{
 				State.ActiveSceneViewId = sceneViewId;
 
-				ActiveTransformDiff.emplace();
-				ActiveTransformDiff->TakeSnapshot(
-					Nyx::Editor::MakeSceneEntityRef(scene, entity),
-					&transform,
-					Nyx::Reflection::GetTypeMetadata<Nyx::TransformComponent>());
+				BeginTransformDiff(scene, entity, transform);
 
 				BeginScaleDrag(viewData, entity, transform, gizmoOrigin, imageScreenMin, imageSize);
 				bConsumed = true;
@@ -1220,6 +1228,7 @@ namespace Nyx::Editor
 			if (State.bDragging && State.ActiveSceneViewId == sceneViewId)
 			{
 				UpdateScaleDrag(viewData, transform, imageScreenMin, imageSize);
+				FollowWorldTransform(world, entity);
 
 				if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))
 				{

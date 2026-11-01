@@ -6,6 +6,7 @@
 #include "TransactionDiffUtil.h"
 #include "GuidComponent.h"
 #include "NameComponent.h"
+#include "ParentComponent.h"
 #include "RootObjectSnapshotUtils.h"
 #include "SceneDocument.h"
 #include "TransactionObjectRefHelpers.h"
@@ -16,7 +17,8 @@ namespace Nyx::Editor
 	bool CanAddOrRemoveComponent(const Nyx::ComponentTypeOps& componentType)
 	{
 		return !componentType.IsRuntime() && componentType.TypeMetadata != &Nyx::Reflection::GetTypeMetadata<Nyx::GuidComponent>() &&
-			componentType.TypeMetadata != &Nyx::Reflection::GetTypeMetadata<Nyx::NameComponent>();
+			componentType.TypeMetadata != &Nyx::Reflection::GetTypeMetadata<Nyx::NameComponent>() &&
+			componentType.TypeMetadata != &Nyx::Reflection::GetTypeMetadata<Nyx::ParentComponent>();
 	}
 
 	bool AddComponent(SceneDocument& scene, TransactionSystem& transactions, Nyx::Entity entity,

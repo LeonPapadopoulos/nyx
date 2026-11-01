@@ -18,20 +18,23 @@ namespace Nyx
 	// turns and scales with it. Only children have one. The entity's TransformComponent stays its
 	// place in the world, which everything else reads; the editor works it out from the parent's and
 	// the local values here after every edit (UpdateTransformHierarchy()). A game never does: it uses
-	// the world transforms the scene was saved with, and the links do nothing there.
+	// the world transforms the scene was saved with, and the links do nothing there. The details
+	// panel shows it inside the Transform section, not as a component of its own: the parent as a
+	// row that keeps the entity where it is when changed, and the local values as the transform.
 	NYX_REFLECT(Component, meta = (DisplayName = "Parent"))
 	struct ParentComponent
 	{
-		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Tooltip = "The entity this one is placed relative to; 0 or one that isn't there leaves it where it is"))
+		// Hidden: the Transform section's Parent row changes it, keeping the entity where it is
+		NYX_PROPERTY(Edit, Undo, Serialize, Hidden, meta = (Tooltip = "The entity this one is placed relative to; 0 or one that isn't there leaves it where it is"))
 		EntityGuid Parent;
 
-		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Local", DragSpeed = 0.1))
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Transform", DisplayName = "Position", DragSpeed = 0.1, Tooltip = "Relative to the parent"))
 		glm::vec3 LocalPosition{ 0.0f };
 
-		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Local", UI = Degrees))
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Transform", DisplayName = "Rotation", UI = Degrees, Tooltip = "Relative to the parent"))
 		glm::quat LocalRotation{ 1.0f, 0.0f, 0.0f, 0.0f };
 
-		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Local", DragSpeed = 0.1))
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Transform", DisplayName = "Scale", DragSpeed = 0.1, Tooltip = "Relative to the parent"))
 		glm::vec3 LocalScale{ 1.0f };
 	};
 

@@ -276,6 +276,10 @@ namespace Nyx::Editor
 			const ImVec2& imageScreenMin,
 			const ImVec2& imageSize);
 
+		// Snapshots what a drag of the entity changes: its transform, or for a child its values relative
+		// to its parent
+		void BeginTransformDiff(SceneDocument& scene, Nyx::Entity entity, Nyx::TransformComponent& transform);
+
 	private:
 		TransformGizmoState State;
 

@@ -637,9 +637,18 @@ An entity with a *Parent* component is placed relative to another entity, its pa
 turns and scales with it, down chains of any length.
 
 - **The transform stays the place in the world**, which the renderer, physics and everything else
-  read. The Parent component holds the parent (picked by name, see Entity references) and the
-  entity's local position, rotation and scale; the editor places the entity from those after every
-  edit, undo, redo and drag preview, and after loading a scene (`UpdateTransformHierarchy()`).
+  read. The Parent component holds the parent and the entity's local position, rotation and scale;
+  the editor places the entity from those after every edit, undo, redo and drag preview, and after
+  loading a scene (`UpdateTransformHierarchy()`).
+- **In the details panel** the Parent component isn't a section of its own, nor offered by Add
+  Component: the Transform section starts with a *Parent* row (picked as entity references are,
+  see Entity references), and changing it, to another entity or None, keeps the entity where it is
+  (`SetParent()`), as one undo step. A parent below the entity is refused. For a child the section's
+  Position, Rotation and Scale are relative to the parent, and *In the World* shows where that puts
+  it, greyed. A warning says when the parent isn't in the scene, or when an entity above moves in
+  a game (a rigid body or a character), which the child won't follow there.
+- **The gizmo** moves a child in world or local space as any entity; the drag changes and records
+  its values relative to the parent (`FollowWorldTransform()`).
 - **Undo records what was edited**: a parent's transform, a child's local values or its parent,
   never the children's world transforms, which follow.
 - **A running game gets the children's new world transforms** after the edit that moved them. A
@@ -650,7 +659,7 @@ turns and scales with it, down chains of any length.
   then multiplied axis by axis.
 - `SetLocalTransform()` gives the local values that keep an entity where it is under another
   parent.
-- Tests: `NyxTransformHierarchyTests`, `NyxGameLinkSubscriberTests`.
+- Tests: `NyxTransformHierarchyTests`, `NyxGameLinkSubscriberTests`, `NyxEditorPanelTests`.
 
 ## Surface anchors
 

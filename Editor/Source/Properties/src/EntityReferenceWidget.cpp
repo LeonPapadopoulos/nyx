@@ -100,21 +100,18 @@ namespace Nyx::Editor
 		return "Missing (" + Nyx::GuidToText(guid) + ")";
 	}
 
-	bool DrawEntityReferenceWidget(const PropertyWidgetArgs& args)
+	std::optional<Nyx::EntityGuid> DrawEntityReferenceField(
+		InspectorDrawContext& context, Nyx::EntityGuid current, const Nyx::Reflection::PropertyMetadata& pickKey, bool bReadOnly)
 	{
-		InspectorDrawContext& context = *args.DrawContext;
-		uint64_t& value = Nyx::Reflection::AccessProperty<uint64_t>(args.Object, *args.Property);
-		const Nyx::EntityGuid current{ value };
 		const std::optional<Nyx::Entity> entity =
 			context.Entities && current.IsValid() ? Nyx::FindEntityByGuid(*context.Entities, current) : std::nullopt;
-		const bool bReadOnly = Nyx::Reflection::HasFlag(args.Property->Flags, Nyx::Reflection::EPropertyFlags::ReadOnly);
 
 		std::optional<Nyx::EntityGuid> chosen;
 
 		// The eyedropper, when this reference is the one picking: takes the entity a scene view
 		// picked, or stops on Esc
 		EntityPickState& pick = context.EntityPick;
-		bool bPicking = pick.Property == args.Property && pick.Target == context.CurrentObjectRef &&
+		bool bPicking = pick.Property == &pickKey && pick.Target == context.CurrentObjectRef &&
 			pick.Location == context.CurrentLocation;
 		if (bPicking)
 		{
@@ -148,7 +145,7 @@ namespace Nyx::Editor
 			{
 				pick.Target = context.CurrentObjectRef;
 				pick.Location = context.CurrentLocation;
-				pick.Property = args.Property;
+				pick.Property = &pickKey;
 				pick.bDrawn = true;
 			}
 		}
@@ -191,7 +188,21 @@ namespace Nyx::Editor
 			ImGui::SetTooltip("%s", current.IsValid() ? Nyx::GuidToText(current).c_str() : "No entity: drop one from the outliner here");
 		}
 
-		if (!chosen || chosen->Value == value)
+		if (!chosen || *chosen == current)
+		{
+			return std::nullopt;
+		}
+		return chosen;
+	}
+
+	bool DrawEntityReferenceWidget(const PropertyWidgetArgs& args)
+	{
+		InspectorDrawContext& context = *args.DrawContext;
+		uint64_t& value = Nyx::Reflection::AccessProperty<uint64_t>(args.Object, *args.Property);
+		const bool bReadOnly = Nyx::Reflection::HasFlag(args.Property->Flags, Nyx::Reflection::EPropertyFlags::ReadOnly);
+
+		const std::optional<Nyx::EntityGuid> chosen = DrawEntityReferenceField(context, Nyx::EntityGuid{ value }, *args.Property, bReadOnly);
+		if (!chosen)
 		{
 			return false;
 		}

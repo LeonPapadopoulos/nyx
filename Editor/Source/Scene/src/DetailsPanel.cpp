@@ -3,14 +3,20 @@
 #include "BinaryArchive.h"
 #include "ComponentEdits.h"
 #include "ComponentTypeRegistry.h"
+#include "EntityReferenceWidget.h"
 #include "GuidComponent.h"
 #include "ImGuiSource.h"
+#include "Log.h"
+#include "ParentComponent.h"
 #include "ReflectedArchiveSerializer.h"
 #include "ReflectedPropertyDrawer.h"
 #include "ReflectionSourceRegistry.h"
 #include "SdfTerrainComponent.h"
 #include "SceneEditor.h"
 #include "TransactionObjectRefHelpers.h"
+#include "TransformComponent.h"
+#include "TransformParents.h"
+#include "UITheme.h"
 #include "UIWidgets.h"
 
 #include "imgui.h"
@@ -22,6 +28,93 @@
 
 namespace Nyx::Editor
 {
+	namespace
+	{
+		const Nyx::Reflection::PropertyMetadata& GetParentProperty()
+		{
+			const Nyx::Reflection::TypeMetadata& linkType = Nyx::Reflection::GetTypeMetadata<Nyx::ParentComponent>();
+			for (size_t index = 0; index < linkType.PropertyCount; ++index)
+			{
+				if (std::string_view(linkType.Properties[index].Name) == "Parent")
+				{
+					return linkType.Properties[index];
+				}
+			}
+			return linkType.Properties[0];
+		}
+
+		// A row of text in the colour of warnings, under the property it is about
+		void DrawWarningRow(const char* text)
+		{
+			Nyx::UI::BeginPropertyRow("##Warning");
+			const glm::vec4& warning = Nyx::UI::GetTheme().StatusWarning;
+			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(warning.r, warning.g, warning.b, warning.a));
+			NYX_UI(ImGui::TextWrapped("%s", text));
+			ImGui::PopStyleColor();
+			Nyx::UI::EndPropertyRow();
+		}
+
+		// The Transform section: the entity's parent, then for a child its values relative to the
+		// parent, editable, and its place in the world, greyed; for an entity without a parent its
+		// transform as any component's properties. Returns the parent chosen this frame (none for
+		// None), to be set once the panel is drawn, as it adds or removes the link.
+		std::optional<std::optional<Nyx::Entity>> DrawTransformSection(Nyx::Registry& world, Nyx::Entity entity,
+			Nyx::TransformComponent& transform, InspectorDrawContext& drawContext)
+		{
+			std::optional<std::optional<Nyx::Entity>> chosenParent;
+
+			Nyx::ParentComponent* link = world.Has<Nyx::ParentComponent>(entity) ? &world.Get<Nyx::ParentComponent>(entity) : nullptr;
+			const Nyx::Reflection::PropertyMetadata& parentProperty = GetParentProperty();
+
+			ImGui::PushID("##Parent");
+			Nyx::UI::BeginPropertyRow("Parent##Row");
+			ImGui::SetItemTooltip("The entity this one moves, turns and scales with; changing it keeps this one where it is");
+			if (const std::optional<Nyx::EntityGuid> chosen =
+					DrawEntityReferenceField(drawContext, link ? link->Parent : Nyx::EntityGuid{}, parentProperty, false))
+			{
+				chosenParent = chosen->IsValid() ? Nyx::FindEntityByGuid(world, *chosen) : std::nullopt;
+			}
+			Nyx::UI::EndPropertyRow();
+			if (link && link->Parent.IsValid() && !FindParent(world, entity))
+			{
+				DrawWarningRow("The parent isn't in the scene: this entity stays where it is");
+			}
+			else if (link && HasParentMovingInGame(world, entity))
+			{
+				DrawWarningRow("A parent moves in the game (a rigid body or a character): this entity won't follow it there");
+			}
+			ImGui::PopID();
+
+			const Nyx::Reflection::TypeMetadata& transformType = Nyx::Reflection::GetTypeMetadata<Nyx::TransformComponent>();
+			if (!link)
+			{
+				DrawReflectedTypeTable(&transform, transformType, drawContext);
+				return chosenParent;
+			}
+
+			// Relative to the parent: what is saved and undone
+			DrawReflectedTypeTable(link, Nyx::Reflection::GetTypeMetadata<Nyx::ParentComponent>(), drawContext);
+
+			// In the world: worked out from the parent, so not edited here
+			ImGui::PushID("##World");
+			Nyx::UI::TreeRowOptions options;
+			options.bToggleOnClick = true;
+			if (NYX_UI(Nyx::UI::TreeRow("In the World", options)).bOpen)
+			{
+				ImGui::BeginDisabled();
+				for (size_t index = 0; index < transformType.PropertyCount; ++index)
+				{
+					DrawReflectedProperty(&transform, transformType, index, drawContext);
+				}
+				ImGui::EndDisabled();
+				Nyx::UI::TreeRowEnd();
+			}
+			ImGui::PopID();
+
+			return chosenParent;
+		}
+	}
+
 	std::optional<RuntimeSection> GetRuntimeSection(const Nyx::Registry& world, Nyx::Entity entity, const std::optional<GameInspection>& game)
 	{
 		if (!game)
@@ -129,11 +222,17 @@ namespace Nyx::Editor
 		// Removed after the loop, so it isn't drawn after it is gone
 		const Nyx::ComponentTypeOps* componentToRemove = nullptr;
 
+		// Set after the loop too: it adds or removes the parent link
+		std::optional<std::optional<Nyx::Entity>> parentToSet;
+		const Nyx::Reflection::TypeMetadata& transformType = Nyx::Reflection::GetTypeMetadata<Nyx::TransformComponent>();
+		const Nyx::Reflection::TypeMetadata& linkType = Nyx::Reflection::GetTypeMetadata<Nyx::ParentComponent>();
+
 		// One collapsible section per component of the entity, showing its reflected properties; the
 		// run-time ones after them, in the Runtime section
 		for (const Nyx::ComponentTypeOps& componentType : Nyx::ComponentTypeRegistry::Get().GetAll())
 		{
-			void* component = componentType.IsRuntime() ? nullptr : componentType.Get(world, selectedEntity);
+			// The parent link is drawn inside the Transform section
+			void* component = componentType.IsRuntime() || componentType.TypeMetadata == &linkType ? nullptr : componentType.Get(world, selectedEntity);
 			if (!component)
 			{
 				continue;
@@ -168,7 +267,14 @@ namespace Nyx::Editor
 			{
 				// The component's own properties; the drawer extends the location for structs inside it
 				drawContext.CurrentLocation = {};
-				DrawReflectedTypeTable(component, *componentType.TypeMetadata, drawContext);
+				if (componentType.TypeMetadata == &transformType)
+				{
+					parentToSet = DrawTransformSection(world, selectedEntity, *static_cast<Nyx::TransformComponent*>(component), drawContext);
+				}
+				else
+				{
+					DrawReflectedTypeTable(component, *componentType.TypeMetadata, drawContext);
+				}
 			}
 
 			ImGui::PopID();
@@ -216,9 +322,15 @@ namespace Nyx::Editor
 
 		// Adding or removing can move other components of that type in memory, so edits in progress,
 		// which point at components, are dropped first. A click on a menu has ended them already.
-		if (componentToAdd || componentToRemove)
+		if (componentToAdd || componentToRemove || parentToSet)
 		{
 			editing.CancelPendingEdits();
+		}
+
+		if (parentToSet && !SetParent(editing.Scene, editing.Transactions, selectedEntity, *parentToSet) && *parentToSet &&
+			IsSelfOrBelow(world, **parentToSet, selectedEntity))
+		{
+			LOG_WARNING("An entity can't be placed below itself, or below an entity placed below it");
 		}
 
 		if (componentToAdd)
