@@ -120,6 +120,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/SurfaceAnchor.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ValueOverride.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/PreviousTransformComponent.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ParentComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/MeshInstancesComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/RuntimeMeshComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/SurfaceDecalComponent.cpp
@@ -378,6 +379,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/SurfaceAnchor.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ValueOverride.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/PreviousTransformComponent.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ParentComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/RuntimeMeshComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/MeshInstancesComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/SurfaceDecalComponent.h

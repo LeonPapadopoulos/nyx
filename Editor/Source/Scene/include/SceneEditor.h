@@ -9,6 +9,7 @@
 #include "TerrainBrushTool.h"
 #include "TransactionSystem.h"
 #include "TransformGizmo.h"
+#include "TransformHierarchySubscriber.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -84,6 +85,10 @@ namespace Nyx::Editor
 		// Loads the assets of entities after edits, undo and redo, e.g. the mesh of a typed mesh
 		// path. Subscribed once the editor has an asset resolver.
 		ComponentPostLoadSubscriber AssetLoader{ Scene };
+
+		// Places children relative to their parents after edits, undo and redo. Subscribed after the
+		// game link.
+		TransformHierarchySubscriber Hierarchy{ Scene };
 
 	private:
 		// Selects the entity a pasted copy or duplicate became, after dropping edits in progress.

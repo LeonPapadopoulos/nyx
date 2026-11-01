@@ -1,5 +1,6 @@
 // The editor's edits, undo and redo become live edit messages, and a second world (the game's)
-// that applies them ends up like the editor's after every step.
+// that applies them ends up like the editor's after every step. Children follow their parents through
+// edits, drags, undo and redo, in the editor and in the game.
 #include "AssetReference.h"
 #include "CameraComponent.h"
 #include "ComponentEdits.h"
@@ -15,6 +16,7 @@
 #include "LiveEdits.h"
 #include "Log.h"
 #include "MeshRendererComponent.h"
+#include "ParentComponent.h"
 #include "ReflectedPropertyAccess.h"
 #include "ReflectionUtils.h"
 #include "RootObjectSnapshotUtils.h"
@@ -25,6 +27,7 @@
 #include "TransactionObjectRefHelpers.h"
 #include "TransactionSystem.h"
 #include "TransformComponent.h"
+#include "TransformHierarchySubscriber.h"
 #include "TestSupport.h"
 
 #include <iostream>
@@ -105,6 +108,7 @@ namespace
 		GameLinkSubscriber GameEdits{ Scene };
 		TestAssetResolver Assets;
 		ComponentPostLoadSubscriber AssetLoader{ Scene };
+		TransformHierarchySubscriber Hierarchy{ Scene };
 
 		Registry Game;
 		std::vector<EEditorLinkMessage> Sent;
@@ -114,6 +118,11 @@ namespace
 			Transactions.RegisterDomain(EObjectDomain::SceneEntity, &Domain);
 			Transactions.Subscribe(&AssetLoader);
 			Transactions.Subscribe(&GameEdits);
+			Hierarchy.SetOnMoved([this](const std::vector<Entity>& moved)
+				{
+					GameEdits.SendTransforms(moved);
+				});
+			Transactions.Subscribe(&Hierarchy);
 			Context.ActiveScene = &Scene;
 			AssetLoader.SetPostLoadContext(ScenePostLoadContext{ .AssetResolver = &Assets });
 		}
@@ -521,6 +530,80 @@ namespace
 		Require(test.TakeSent() == std::vector{ EEditorLinkMessage::SetProperties }, "The details panel's drag wasn't previewed");
 	}
 
+	// A child placed relative to its parent: moving, dragging and undoing the parent, editing the
+	// child's local values, deleting the parent and bringing it back. The game has no hierarchy; it
+	// gets the children's world transforms and ends up like the editor every time.
+	void TestChildrenFollowTheirParents()
+	{
+		EditorAndGame test;
+		Registry& world = test.Scene.GetRegistry();
+
+		const Entity parent = test.Scene.CreateEntity("Parent");
+		world.Add<TransformComponent>(parent, TransformComponent{});
+		const Entity child = test.Scene.CreateEntity("Child");
+		world.Add<TransformComponent>(child, TransformComponent{});
+		const Entity grandchild = test.Scene.CreateEntity("Grandchild");
+		world.Add<TransformComponent>(grandchild, TransformComponent{});
+		const EntityGuid parentGuid = world.Get<GuidComponent>(parent).Guid;
+		world.Add<ParentComponent>(child, ParentComponent{ .Parent = parentGuid, .LocalPosition = glm::vec3(0.0f, 1.0f, 0.0f) });
+		world.Add<ParentComponent>(grandchild,
+			ParentComponent{ .Parent = world.Get<GuidComponent>(child).Guid, .LocalPosition = glm::vec3(1.0f, 0.0f, 0.0f) });
+
+		// As loading a scene does
+		test.Hierarchy.Update();
+		Require(world.Get<TransformComponent>(grandchild).Position == glm::vec3(1.0f, 1.0f, 0.0f), "Updating should place a chain");
+
+		test.Play();
+		test.SendEdits("Play");
+		test.TakeSent();
+
+		// The parent moved: its edit, then where the children went
+		test.Edit(parent, world.Get<TransformComponent>(parent), "Translate Entity",
+			[](TransformComponent& transform) { transform.Position = glm::vec3(10.0f, 0.0f, 0.0f); });
+		Require(world.Get<TransformComponent>(grandchild).Position == glm::vec3(11.0f, 1.0f, 0.0f), "The children should follow their parent");
+		test.SendEdits("Move the parent");
+		Require(test.TakeSent() == std::vector(3, EEditorLinkMessage::SetProperties), "A move should send the parent and each child");
+
+		Require(test.Transactions.Undo(test.Context), "Undo failed");
+		Require(world.Get<TransformComponent>(grandchild).Position == glm::vec3(1.0f, 1.0f, 0.0f), "Undo should take the children back with the parent");
+		test.SendEdits("Undo the move");
+		Require(test.Transactions.Redo(test.Context), "Redo failed");
+		test.SendEdits("Redo the move");
+
+		// A drag: every frame's preview places the children
+		TransformComponent& parentTransform = world.Get<TransformComponent>(parent);
+		TransactionDiffUtil drag;
+		drag.TakeSnapshot(MakeSceneEntityRef(test.Scene, parent), &parentTransform, Nyx::Reflection::GetTypeMetadata<TransformComponent>());
+		parentTransform.Position.z = 5.0f;
+		Require(drag.PreviewChanges("Drag Entity", test.Transactions), "The drag wasn't previewed");
+		Require(world.Get<TransformComponent>(child).Position == glm::vec3(10.0f, 1.0f, 5.0f), "A drag should take the children along");
+		test.SendEdits("Drag the parent");
+		Require(drag.CommitChanges("Translate Entity", test.Transactions), "The end of the drag recorded nothing");
+		test.SendEdits("End of the drag");
+
+		// The child's local values: it and the grandchild move, the parent stays
+		test.Edit(child, world.Get<ParentComponent>(child), "Edit Property",
+			[](ParentComponent& link) { link.LocalPosition = glm::vec3(0.0f, 2.0f, 0.0f); });
+		Require(world.Get<TransformComponent>(grandchild).Position == glm::vec3(11.0f, 2.0f, 5.0f), "Editing a child's local values should move it and its children");
+		test.SendEdits("Edit the child's local position");
+		Require(test.Transactions.Undo(test.Context), "Undo of the local position failed");
+		Require(world.Get<TransformComponent>(grandchild).Position == glm::vec3(11.0f, 1.0f, 5.0f), "Undo should put the child back");
+		test.SendEdits("Undo the local position");
+
+		// The parent deleted: the children stay where they were; brought back, they follow it again
+		test.DeleteEntity(parent);
+		test.SendEdits("Delete the parent");
+		Require(world.Get<TransformComponent>(child).Position == glm::vec3(10.0f, 1.0f, 5.0f), "A child should stay where it is when its parent is deleted");
+		Require(test.Transactions.Undo(test.Context), "Undo of the delete failed");
+		test.SendEdits("Undo the delete");
+		const std::optional<Entity> restored = test.Scene.FindEntity(parentGuid);
+		Require(restored.has_value(), "Undo didn't bring the parent back");
+		test.Edit(*restored, world.Get<TransformComponent>(*restored), "Translate Entity",
+			[](TransformComponent& transform) { transform.Position = glm::vec3(0.0f); });
+		Require(world.Get<TransformComponent>(grandchild).Position == glm::vec3(1.0f, 1.0f, 0.0f), "The children should follow a parent brought back by undo");
+		test.SendEdits("Move the parent brought back");
+	}
+
 	const ComponentTypeOps& GetComponentOps(const Nyx::Reflection::TypeMetadata& type)
 	{
 		const ComponentTypeOps* ops = ComponentTypeRegistry::Get().FindByTypeMetadata(type);
@@ -761,6 +844,7 @@ int main()
 		TestUndoKeepsWholeComponents();
 		TestEditsLoadAssets();
 		TestValuesWhileDragging();
+		TestChildrenFollowTheirParents();
 		TestAddingAndRemovingComponents();
 		TestDuplicateAndPaste();
 		TestCopyNames();

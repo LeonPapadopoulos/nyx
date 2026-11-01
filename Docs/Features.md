@@ -631,6 +631,27 @@ follows the source, also when the source changes.
 - Tests: `NyxEditorGameModuleTests` (the test module's lantern: rows, overriding, reset, a value
   not listed, undo of each, the range, a component without a provider), `NyxComponentTypeRegistryTests`.
 
+## Parents
+
+An entity with a *Parent* component is placed relative to another entity, its parent, and moves,
+turns and scales with it, down chains of any length.
+
+- **The transform stays the place in the world**, which the renderer, physics and everything else
+  read. The Parent component holds the parent (picked by name, see Entity references) and the
+  entity's local position, rotation and scale; the editor places the entity from those after every
+  edit, undo, redo and drag preview, and after loading a scene (`UpdateTransformHierarchy()`).
+- **Undo records what was edited**: a parent's transform, a child's local values or its parent,
+  never the children's world transforms, which follow.
+- **A running game gets the children's new world transforms** after the edit that moved them. A
+  game has no hierarchy: it uses the world transforms the scene was saved with, and the Parent
+  component does nothing there.
+- A parent that isn't there (deleted, or none picked) or a chain that goes round in a circle leaves
+  the entity where it is. A parent scaled unevenly with a turned child would skew it; the scale is
+  then multiplied axis by axis.
+- `SetLocalTransform()` gives the local values that keep an entity where it is under another
+  parent.
+- Tests: `NyxTransformHierarchyTests`, `NyxGameLinkSubscriberTests`.
+
 ## Surface anchors
 
 A `SurfaceAnchor` property hangs something on another entity's surface, such as a mark drawn on a

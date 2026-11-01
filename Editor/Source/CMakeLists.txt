@@ -18,6 +18,7 @@ set(NYX_EDITOR_SOURCES
     Scene/src/SceneFilePopups.cpp
     Scene/src/DefaultScene.cpp
     Scene/src/ComponentPostLoadSubscriber.cpp
+    Scene/src/TransformHierarchySubscriber.cpp
     Scene/src/ComponentEdits.cpp
     Scene/src/EntityCopies.cpp
     Scene/src/SceneDocument.cpp
@@ -108,6 +109,7 @@ set(NYX_EDITOR_HEADERS
     Scene/include/SceneFilePopups.h
     Scene/include/DefaultScene.h
     Scene/include/ComponentPostLoadSubscriber.h
+    Scene/include/TransformHierarchySubscriber.h
     Scene/include/ComponentEdits.h
     Scene/include/EntityCopies.h
     Scene/include/SceneDocument.h

@@ -6,6 +6,7 @@
 #include "LiveEdits.h"
 #include "Log.h"
 #include "SceneDocument.h"
+#include "TransformComponent.h"
 #include "TransactionObjectRefHelpers.h"
 
 #include <algorithm>
@@ -155,6 +156,36 @@ namespace Nyx::Editor
 			LOG_WARNING("Game link: {0} MB of edits are waiting for a game that doesn't take them; it won't get edits until the next Play",
 				PendingBytes / (1024 * 1024));
 			EndSession();
+		}
+	}
+
+	void GameLinkSubscriber::SendTransforms(const std::vector<Nyx::Entity>& entities)
+	{
+		if (!bSessionActive)
+		{
+			return;
+		}
+
+		const Nyx::ComponentTypeOps* transformOps =
+			Nyx::ComponentTypeRegistry::Get().FindByTypeMetadata(Nyx::Reflection::GetTypeMetadata<Nyx::TransformComponent>());
+		if (!transformOps)
+		{
+			return;
+		}
+
+		std::vector<size_t> propertyIndices(transformOps->TypeMetadata->PropertyCount);
+		for (size_t index = 0; index < propertyIndices.size(); ++index)
+		{
+			propertyIndices[index] = index;
+		}
+
+		const Nyx::Registry& world = Scene.GetRegistry();
+		for (const Entity entity : entities)
+		{
+			if (std::optional<Nyx::SetPropertiesMessage> message = Nyx::MakeSetPropertiesMessage(world, entity, *transformOps, propertyIndices))
+			{
+				Keep(Nyx::MakeNetMessage(*message));
+			}
 		}
 	}
 

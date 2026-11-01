@@ -261,6 +261,14 @@ add_dependencies(NyxSurfaceAnchorTests NyxGeneratedReflection)
 set_property(TARGET NyxSurfaceAnchorTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxSurfaceAnchorTests COMMAND NyxSurfaceAnchorTests)
 
+# Transform hierarchy: a child following its parent, local values made from a place in the world,
+# chains in any order, links to nothing and circles moving nothing, a child saved and loaded
+add_executable(NyxTransformHierarchyTests TransformHierarchyTests.cpp)
+target_link_libraries(NyxTransformHierarchyTests PRIVATE NyxEngine)
+add_dependencies(NyxTransformHierarchyTests NyxGeneratedReflection)
+set_property(TARGET NyxTransformHierarchyTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxTransformHierarchyTests COMMAND NyxTransformHierarchyTests)
+
 # Surface decals: the quad following its host, what the renderer extracts of a world's decals, a
 # decal saved and loaded, the time a game's world's decals pulse by
 add_executable(NyxSurfaceDecalTests SurfaceDecalTests.cpp)

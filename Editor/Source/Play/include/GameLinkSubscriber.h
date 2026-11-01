@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Entity.h"
 #include "NetConnection.h"
 #include "TransactionDomain.h"
 
@@ -48,6 +49,11 @@ namespace Nyx::Editor
 
 		// The messages for the edits since the last call, in order
 		std::vector<Nyx::Net::Message> TakeMessages();
+
+		// The world transforms of entities that moved without an edit of their own, e.g. children
+		// placed again after their parent was moved (TransformHierarchySubscriber), after the edit's
+		// messages
+		void SendTransforms(const std::vector<Nyx::Entity>& entities);
 
 		// A message of another kind for the games, e.g. a compiled shader, in order with the
 		// edits; dropped while no session is active

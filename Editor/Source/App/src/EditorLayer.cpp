@@ -29,6 +29,7 @@
 #include <algorithm>
 #include <ctime>
 #include <utility>
+#include <vector>
 
 namespace Nyx::Editor
 {
@@ -221,6 +222,13 @@ namespace Nyx::Editor
 
 		// Edits show up live in the game started with Play
 		Editing.Transactions.Subscribe(&Games.GetEditSubscriber());
+
+		// Then children are placed relative to their parents, and the games get where they moved
+		Editing.Hierarchy.SetOnMoved([this](const std::vector<Nyx::Entity>& moved)
+			{
+				Games.GetEditSubscriber().SendTransforms(moved);
+			});
+		Editing.Transactions.Subscribe(&Editing.Hierarchy);
 
 		// Edits of the input asset share the scene's undo, and reach the input system at once
 		InputAsset.Attach(Editing.Transactions);
@@ -448,6 +456,8 @@ namespace Nyx::Editor
 		Editing.Scene.GetRegistry() = std::move(loadedWorld);
 		Editing.Scene.GetOutline() = std::move(loadedOutline);
 		Renderer->SetWorld(&Editing.Scene.GetRegistry());
+		// A child's local values are what counts in the editor; its saved world transform may be older
+		Editing.Hierarchy.Update();
 		CurrentScenePath = path;
 		Outliner.Folders.SetScene(path);
 
