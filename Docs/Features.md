@@ -1673,6 +1673,22 @@ game, coarser the farther, and collides while the world runs.
     right-clicked to remove it; *Clear Path* in the pin's menu. `NyxTerrainWorldPlanTests` (a rift
     passes its pin and each place of its path, for four seeds), `NyxEditorPanelTests` (a path's
     places found on the map).
+  - Hand overrides (*Overrides*, `SdfTerrainPlanOverride`): drawn by hand over what the seed makes
+    and made again with it every time the plan is, so they survive regeneration (another seed,
+    another value, a pin moved): *Landform* (more of a kind of ground along a stroke, as a pin
+    steers round itself), *Height* (the plan's ground raised or lowered along a stroke, before the
+    rifts, lakes and rivers are worked out on it), *Stamp* (a ball or a turned box cut out of the
+    ground or added to it at each point, its middle *Height* above the plan's ground as made). Each
+    reaches *Radius* round its stroke, falling off smoothly. Its points are from its *Pin*'s middle
+    when it has one, so it moves with the pin; a pin removed leaves its overrides where they are.
+    - On the *Plan Map*, *Tool*: *Paint* (a *Kind*), *Raise* and *Lower* (*By* metres), *Cut* and
+      *Heap* (a ball every so far along the stroke), all *Brush* wide; each stroke an undo step, its
+      own pin's if it starts in a pin's ring. They show as wide lines and circles; a right-click on
+      one removes it. *Pins* is the tool the pins are dragged and added with.
+    - `NyxTerrainWorldPlanTests`: a painted stroke makes rough land along it for four seeds; a raised
+      one lifts the ground on it by its height for two seeds and nowhere else; a pin's moves with it;
+      a cut leaves air where the ground was and a heap ground where the air was, a box's range still
+      holding every value near them, the ground from above the heap's top.
   - *Window > Plan Seeds*: many seeds of the same terrain's plan side by side, to tell whether the
     plan makes good worlds in general rather than for one seed: *Run* makes 16, 36 or 64 seeds from
     *First seed* on the workers (`MakeTerrainPlanSeed()`), each a small map with its seed and its

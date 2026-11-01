@@ -91,6 +91,68 @@ namespace Nyx
 			return pull;
 		}
 
+		// How far a point is from a stroke through the points (from the point itself, for one)
+		float StrokeDistance(const std::vector<glm::vec2>& points, const glm::vec2& point)
+		{
+			if (points.size() == 1)
+			{
+				return glm::length(point - points.front());
+			}
+			float nearest = std::numeric_limits<float>::max();
+			for (size_t n = 0; n + 1 < points.size(); ++n)
+			{
+				const glm::vec2 a = points[n];
+				const glm::vec2 along = points[n + 1] - a;
+				const float length = glm::dot(along, along);
+				const float t = length > 0.0f ? std::clamp(glm::dot(point - a, along) / length, 0.0f, 1.0f) : 0.0f;
+				nearest = std::min(nearest, glm::length(point - (a + along * t)));
+			}
+			return nearest;
+		}
+
+		// A stroke's reach at a point: 1 on it, falling smoothly to 0 at `radius` (moved in and out by
+		// the noise, about -1 to 1, as a pin's edge is)
+		float StrokeReach(const std::vector<glm::vec2>& points, float radius, const glm::vec2& point, float noise)
+		{
+			const float reach = std::max(radius, 1.0f) * (1.0f + 0.35f * std::clamp(noise, -1.0f, 1.0f));
+			const float apart = StrokeDistance(points, point);
+			const float t = std::min(apart * apart / (reach * reach), 1.0f);
+			return (1.0f - t) * (1.0f - t);
+		}
+
+		// The enabled overrides of one kind, with their points in the world and the box they reach
+		struct PlacedOverride
+		{
+			const SdfTerrainPlanOverride* Override = nullptr;
+			std::vector<glm::vec2> Points;
+			glm::vec2 Low{ 0.0f };
+			glm::vec2 High{ 0.0f };
+		};
+		std::vector<PlacedOverride> PlaceOverrides(const SdfTerrainWorldPlan& made, ESdfTerrainOverrideKind kind)
+		{
+			std::vector<PlacedOverride> placed;
+			for (const SdfTerrainPlanOverride& override : made.Overrides)
+			{
+				if (!override.bEnabled || override.Kind != kind || override.Points.empty())
+				{
+					continue;
+				}
+				PlacedOverride& added = placed.emplace_back();
+				added.Override = &override;
+				added.Points = GetTerrainPlanOverridePoints(made, override);
+				added.Low = added.High = added.Points.front();
+				for (const glm::vec2& point : added.Points)
+				{
+					added.Low = glm::min(added.Low, point);
+					added.High = glm::max(added.High, point);
+				}
+				const float reach = std::max(override.Radius, 1.0f) * 1.35f;
+				added.Low -= reach;
+				added.High += reach;
+			}
+			return placed;
+		}
+
 		// The value with `share` of the values at or above it; above them all for none
 		float Threshold(std::vector<float> values, float share)
 		{
@@ -465,7 +527,20 @@ namespace Nyx
 		const FractalNoise3D pinNoise = PlanNoise(seed, EPlanNoise::Pins, 1.0f / (regionSize * 0.5f), 3);
 		std::vector<float> pinEdge(count);
 		forEach([&](int, int, size_t index, const glm::vec2& point) { pinEdge[index] = Noise(pinNoise, point) * 1.5f; });
-		auto pull = [&](ESdfTerrainLandform landform, size_t index, const glm::vec2& point) { return PinsPull(made, landform, point, pinEdge[index]); };
+		// The pins' pull, and the hand-drawn kinds' along their strokes
+		const std::vector<PlacedOverride> painted = PlaceOverrides(made, ESdfTerrainOverrideKind::Landform);
+		auto pull = [&](ESdfTerrainLandform landform, size_t index, const glm::vec2& point)
+		{
+			float pulled = PinsPull(made, landform, point, pinEdge[index]);
+			for (const PlacedOverride& stroke : painted)
+			{
+				if (stroke.Override->Landform == landform && glm::all(glm::greaterThanEqual(point, stroke.Low)) && glm::all(glm::lessThanEqual(point, stroke.High)))
+				{
+					pulled += stroke.Override->Strength * StrokeReach(stroke.Points, stroke.Override->Radius, point, pinEdge[index]);
+				}
+			}
+			return pulled;
+		};
 
 		// Sea: where its noise, leaning towards the edge, and its pins are highest, for its share of the
 		// land
@@ -537,6 +612,19 @@ namespace Nyx
 				const float ground = made.Height + rough[index] * made.RoughLift;
 				height[index] = ground + ((made.SeaLevel - made.SeaDepth) - ground) * sea[index];
 			});
+		// Raised and lowered by hand, before the rifts, lakes and rivers are worked out on them
+		for (const PlacedOverride& stroke : PlaceOverrides(made, ESdfTerrainOverrideKind::Height))
+		{
+			const glm::ivec2 low = plan->NodeOf(stroke.Low);
+			const glm::ivec2 high = plan->NodeOf(stroke.High);
+			for (int j = low.y; j <= high.y; ++j)
+			{
+				for (int i = low.x; i <= high.x; ++i)
+				{
+					height[plan->IndexOf(i, j)] += stroke.Override->Height * StrokeReach(stroke.Points, stroke.Override->Radius, plan->PointOf(i, j), 0.0f);
+				}
+			}
+		}
 
 		// Rifts, those pins ask for first, from outside the edge inland
 		plan->Rift.assign(count, TerrainWorldPlan::MaxReach);
@@ -780,6 +868,43 @@ namespace Nyx
 			});
 
 		MakeBounds(*plan);
+
+		// The stamps, over the ground as it is now made; the blocks an added one stands over reach
+		// up to its top, so what searches down from their highest starts above it
+		for (const PlacedOverride& stamp : PlaceOverrides(made, ESdfTerrainOverrideKind::Stamp))
+		{
+			const SdfTerrainPlanOverride& values = *stamp.Override;
+			for (const glm::vec2& point : stamp.Points)
+			{
+				SdfTerrainLayer& shape = plan->Stamps.emplace_back();
+				shape.Kind = values.Shape == ESdfTerrainStampShape::Box ? ESdfTerrainLayerKind::Box : ESdfTerrainLayerKind::Sphere;
+				shape.Combine = values.bCarve ? ESdfTerrainCombine::Carve : ESdfTerrainCombine::Add;
+				shape.Position = glm::vec3(point.x, plan->At(plan->Height, point.x, point.y) + values.Height, point.y);
+				shape.Radius = std::max(values.Radius, 0.1f);
+				shape.HalfSize = glm::max(values.HalfSize, glm::vec3(0.1f));
+				shape.Rotation = glm::vec3(0.0f, values.Yaw, 0.0f);
+				shape.Rounding = 0.0f;
+				// A turned box reaches along X and Z at most its half diagonal there
+				const float across = shape.Kind == ESdfTerrainLayerKind::Sphere ? shape.Radius : glm::length(glm::vec2(shape.HalfSize.x, shape.HalfSize.z));
+				const glm::vec3 reach(across, shape.Kind == ESdfTerrainLayerKind::Sphere ? shape.Radius : shape.HalfSize.y, across);
+				if (shape.Combine != ESdfTerrainCombine::Add)
+				{
+					continue;
+				}
+				const float top = shape.Position.y + reach.y;
+				const glm::vec2 middle(shape.Position.x, shape.Position.z);
+				const glm::ivec2 low = glm::ivec2(glm::floor((middle - across - plan->Origin) / Cell)) / TerrainWorldPlan::BlockNodes;
+				const glm::ivec2 high = glm::ivec2(glm::floor((middle + across - plan->Origin) / Cell)) / TerrainWorldPlan::BlockNodes;
+				for (int bj = std::max(low.y - 1, 0); bj <= std::min(high.y + 1, plan->Blocks - 1); ++bj)
+				{
+					for (int bi = std::max(low.x - 1, 0); bi <= std::min(high.x + 1, plan->Blocks - 1); ++bi)
+					{
+						TerrainWorldPlan::Bounds& bounds = plan->BlockBounds[size_t(bi) + size_t(bj) * size_t(plan->Blocks)];
+						bounds.HighHeight = std::max(bounds.HighHeight, top);
+					}
+				}
+			}
+		}
 		plan->HeightSlope = GridSlope(plan->Height, nodes);
 		plan->PlainsSlope = GridSlope(plan->PlainsAmplitude, nodes);
 		plan->RoughSlope = GridSlope(plan->RoughAmplitude, nodes);
@@ -793,13 +918,31 @@ namespace Nyx
 		return plan;
 	}
 
+	std::vector<glm::vec2> GetTerrainPlanOverridePoints(const SdfTerrainWorldPlan& plan, const SdfTerrainPlanOverride& override)
+	{
+		const glm::vec2 from = override.Pin >= 0 && size_t(override.Pin) < plan.Pins.size() ? plan.Pins[size_t(override.Pin)].Position : glm::vec2(0.0f);
+		std::vector<glm::vec2> points;
+		for (const glm::vec2& point : override.Points)
+		{
+			points.push_back(from + point);
+		}
+		return points;
+	}
+
 	bool IsSameTerrainWorldPlan(const SdfTerrainWorldPlan& a, const SdfTerrainWorldPlan& b)
 	{
 		const bool bSamePins = a.Pins.size() == b.Pins.size()
 			&& std::equal(a.Pins.begin(), a.Pins.end(), b.Pins.begin(),
 				[](const SdfTerrainPlanPin& x, const SdfTerrainPlanPin& y)
 				{ return x.Landform == y.Landform && x.Position == y.Position && x.Radius == y.Radius && x.Strength == y.Strength && x.Path == y.Path; });
-		return bSamePins && a.Size == b.Size && a.RegionSize == b.RegionSize && a.Height == b.Height && a.Thickness == b.Thickness && a.UndersideDepth == b.UndersideDepth
+		const bool bSameOverrides = a.Overrides.size() == b.Overrides.size()
+			&& std::equal(a.Overrides.begin(), a.Overrides.end(), b.Overrides.begin(),
+				[](const SdfTerrainPlanOverride& x, const SdfTerrainPlanOverride& y)
+				{
+					return x.bEnabled == y.bEnabled && x.Kind == y.Kind && x.Pin == y.Pin && x.Points == y.Points && x.Radius == y.Radius && x.Landform == y.Landform
+						&& x.Strength == y.Strength && x.Height == y.Height && x.Shape == y.Shape && x.bCarve == y.bCarve && x.HalfSize == y.HalfSize && x.Yaw == y.Yaw;
+				});
+		return bSamePins && bSameOverrides && a.Size == b.Size && a.RegionSize == b.RegionSize && a.Height == b.Height && a.Thickness == b.Thickness && a.UndersideDepth == b.UndersideDepth
 			&& a.EdgeRoughness == b.EdgeRoughness && a.Rounding == b.Rounding && a.Sea == b.Sea && a.SeaLevel == b.SeaLevel && a.SeaDepth == b.SeaDepth
 			&& a.Roughland == b.Roughland && a.RoughLift == b.RoughLift && a.RoughHeight == b.RoughHeight && a.PlainsHeight == b.PlainsHeight && a.Rifts == b.Rifts
 			&& a.RiftLength == b.RiftLength && a.RiftWidth == b.RiftWidth && a.RiftDepth == b.RiftDepth && a.RiftFlare == b.RiftFlare && a.RiftRoughness == b.RiftRoughness
@@ -839,6 +982,26 @@ namespace Nyx
 			{
 				add(place);
 			}
+		}
+		add(plan.Overrides.size());
+		for (const SdfTerrainPlanOverride& override : plan.Overrides)
+		{
+			add(override.bEnabled);
+			add(override.Kind);
+			add(override.Pin);
+			add(override.Points.size());
+			for (const glm::vec2& point : override.Points)
+			{
+				add(point);
+			}
+			add(override.Radius);
+			add(override.Landform);
+			add(override.Strength);
+			add(override.Height);
+			add(override.Shape);
+			add(override.bCarve);
+			add(override.HalfSize);
+			add(override.Yaw);
 		}
 		return hash;
 	}

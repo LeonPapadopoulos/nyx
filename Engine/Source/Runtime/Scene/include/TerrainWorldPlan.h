@@ -79,6 +79,11 @@ namespace Nyx
 		};
 		std::vector<Lake> Lakes;
 
+		// The hand overrides' stamps (SdfTerrainPlanOverride), each a sphere or box layer at its place in
+		// the world, its middle above the plan's ground as finally made, added or cut as its Combine
+		// says; a Plan layer joins them to its ground
+		std::vector<SdfTerrainLayer> Stamps;
+
 		// The seed and plan it was made from
 		uint32_t Seed = 0;
 		SdfTerrainWorldPlan Made;
@@ -135,6 +140,9 @@ namespace Nyx
 
 	// Works the plan out; at 2 km a few milliseconds, at 20 km about a second
 	std::shared_ptr<const TerrainWorldPlan> MakeTerrainWorldPlan(uint32_t seed, const SdfTerrainWorldPlan& plan);
+
+	// A hand override's points in the world, along X and Z: from its pin's middle, or the terrain's
+	std::vector<glm::vec2> GetTerrainPlanOverridePoints(const SdfTerrainWorldPlan& plan, const SdfTerrainPlanOverride& override);
 
 	// Whether two plans' values are all the same
 	bool IsSameTerrainWorldPlan(const SdfTerrainWorldPlan& a, const SdfTerrainWorldPlan& b);

@@ -22,8 +22,22 @@ namespace Nyx::Editor
 	// running games get. Return false, and change nothing, for an entity without a terrain or when
 	// nothing would change.
 
-	// The plan's pins become `pins` (moved, resized, added, changed or removed)
+	// The plan's pins become `pins` (moved, resized, added, changed or removed). A pin removed takes
+	// none of its hand overrides with it: they stay where they are, the terrain's; those of the pins
+	// after it are numbered down with them.
 	bool SetTerrainPlanPins(SceneEditor& editing, Nyx::Entity terrain, const std::vector<Nyx::SdfTerrainPlanPin>& pins, const char* label);
+
+	// The plan's hand overrides become `overrides` (drawn, changed or removed)
+	bool SetTerrainPlanOverrides(SceneEditor& editing, Nyx::Entity terrain, const std::vector<Nyx::SdfTerrainPlanOverride>& overrides, const char* label);
+
+	// A hand override of points in the world given to the pin it starts in (its first point within
+	// a pin's ring, the last drawn first, as it lies on top), its points made from the pin's middle;
+	// else the terrain's
+	Nyx::SdfTerrainPlanOverride AnchorTerrainPlanOverride(const std::vector<Nyx::SdfTerrainPlanPin>& pins, Nyx::SdfTerrainPlanOverride override);
+
+	// The hand override under a point of the plan, `tolerance` metres either way of its stroke or
+	// stamps; the last drawn first
+	std::optional<size_t> FindTerrainPlanOverrideAt(const Nyx::SdfTerrainWorldPlan& plan, const glm::vec2& point, float tolerance);
 
 	// The terrain's seed: another world of the same plan
 	bool SetTerrainSeed(SceneEditor& editing, Nyx::Entity terrain, uint32_t seed);

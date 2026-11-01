@@ -4,9 +4,12 @@
 // hold every blended value in it, and the slopes every change; its map has a pixel a node in its
 // kind's colour, clear off the landmass, each overlay its own, and its readout and shares say what
 // the nodes are; a seed of it made alone the same as the plan of that seed, and many seeds' shares
-// spread round what was asked. Prints how long a world of 2 and of
+// spread round what was asked; hand overrides painting a kind along a stroke, raising the ground
+// along one, cutting and heaping stamps into the field with its bounds holding, a pin's following
+// the pin, all kept with another seed. Prints how long a world of 2 and of
 // 20 km takes. --maps <folder> writes maps of a few seeds and plans as PNGs.
 #include "Log.h"
+#include "SdfTerrain.h"
 #include "TerrainWorldPlan.h"
 #include "TerrainWorldPlanMap.h"
 #include "TerrainWorldPlanPicture.h"
@@ -232,6 +235,123 @@ namespace
 		Require(tunnelled->At(tunnelled->Tunnels, -inland.x, -inland.y) == 0.0f, "No tunnels should be made away from it with none asked for");
 	}
 
+	// Hand overrides: kept through another seed, a pin's moving with it
+	void TestOverrides()
+	{
+		using Nyx::ESdfTerrainOverrideKind;
+		using Nyx::SdfTerrainPlanOverride;
+		SdfTerrainWorldPlan made;
+		made.Rifts = 0;
+		made.Lakes = 0;
+		made.Rivers = 0;
+		made.Sea = 0.1f;
+		made.Roughland = 0.1f;
+
+		// Rough land painted along a stroke
+		SdfTerrainPlanOverride paint;
+		paint.Kind = ESdfTerrainOverrideKind::Landform;
+		paint.Landform = ESdfTerrainLandform::Roughland;
+		paint.Points = { glm::vec2(-300.0f, -100.0f), glm::vec2(0.0f, -100.0f), glm::vec2(300.0f, -100.0f) };
+		paint.Radius = 90.0f;
+		SdfTerrainWorldPlan painted = made;
+		painted.Overrides = { paint };
+		for (uint32_t seed = 1; seed <= 4; ++seed)
+		{
+			const auto plan = Nyx::MakeTerrainWorldPlan(seed, painted);
+			for (const glm::vec2& point : paint.Points)
+			{
+				Require(LandformAt(*plan, point) == ESdfTerrainLandform::Roughland, "A painted stroke should make its kind of ground along it");
+			}
+		}
+		Require(Nyx::HashTerrainWorldPlan(painted) != Nyx::HashTerrainWorldPlan(made) && !Nyx::IsSameTerrainWorldPlan(painted, made), "An override should be part of the plan");
+
+		// The ground raised along a stroke, the same with another seed; nowhere else
+		SdfTerrainPlanOverride raise;
+		raise.Kind = ESdfTerrainOverrideKind::Height;
+		raise.Height = 30.0f;
+		raise.Points = { glm::vec2(-100.0f, 200.0f), glm::vec2(100.0f, 200.0f) };
+		raise.Radius = 60.0f;
+		SdfTerrainWorldPlan raised = made;
+		raised.Overrides = { raise };
+		for (const uint32_t seed : { 2u, 7u })
+		{
+			const auto before = Nyx::MakeTerrainWorldPlan(seed, made);
+			const auto after = Nyx::MakeTerrainWorldPlan(seed, raised);
+			const float lift = after->At(after->Height, 0.0f, 200.0f) - before->At(before->Height, 0.0f, 200.0f);
+			// Between nodes up to 8 m off the stroke, where it lifts 96% of its height
+			Require(lift > 28.0f && lift < 30.5f, "A raised stroke should lift the ground on it by its height, not " + std::to_string(lift));
+			Require(after->At(after->Height, 0.0f, -300.0f) == before->At(before->Height, 0.0f, -300.0f), "Away from it the ground should be as it was");
+		}
+
+		// A pin's override moves with it
+		SdfTerrainWorldPlan pinned = made;
+		pinned.Pins = { SdfTerrainPlanPin{ .Landform = ESdfTerrainLandform::Plains, .Position = glm::vec2(200.0f, 100.0f), .Radius = 250.0f } };
+		SdfTerrainPlanOverride onPin = raise;
+		onPin.Pin = 0;
+		onPin.Points = { glm::vec2(0.0f) };
+		pinned.Overrides = { onPin };
+		SdfTerrainWorldPlan unraised = pinned;
+		unraised.Overrides.clear();
+		for (const glm::vec2& where : { glm::vec2(200.0f, 100.0f), glm::vec2(-250.0f, -50.0f) })
+		{
+			pinned.Pins[0].Position = where;
+			unraised.Pins[0].Position = where;
+			const auto with = Nyx::MakeTerrainWorldPlan(3, pinned);
+			const auto without = Nyx::MakeTerrainWorldPlan(3, unraised);
+			const float lift = with->At(with->Height, where.x, where.y) - without->At(without->Height, where.x, where.y);
+			Require(lift > 28.0f && lift < 30.5f, "A pin's override should move with it");
+		}
+
+		// Stamps cut and heaped into the field, its bounds still holding them
+		Nyx::SdfTerrainComponent terrain;
+		terrain.Seed = 2;
+		terrain.Layers.clear();
+		Nyx::SdfTerrainLayer ground;
+		ground.Kind = Nyx::ESdfTerrainLayerKind::Plan;
+		terrain.Layers.push_back(ground);
+		terrain.Plan = made;
+		const glm::vec2 cutAt(0.0f, 0.0f);
+		const glm::vec2 heapAt(150.0f, 0.0f);
+		const auto plain = Nyx::MakeTerrainWorldPlan(terrain.Seed, made);
+		const float cutGround = plain->At(plain->Height, cutAt.x, cutAt.y);
+		const float heapGround = plain->At(plain->Height, heapAt.x, heapAt.y);
+		const glm::vec3 inCut(cutAt.x, cutGround - 8.0f, cutAt.y);
+		const glm::vec3 inHeap(heapAt.x, heapGround + 12.0f, heapAt.y);
+		Require(Nyx::SampleTerrainValue(terrain, inCut) < 0.0f && Nyx::SampleTerrainValue(terrain, inHeap) > 0.0f, "Before the stamps: ground under the cut, air over the heap");
+		SdfTerrainPlanOverride cut;
+		cut.Kind = ESdfTerrainOverrideKind::Stamp;
+		cut.Points = { cutAt };
+		cut.Radius = 15.0f;
+		cut.Height = 0.0f;
+		SdfTerrainPlanOverride heap = cut;
+		heap.Points = { heapAt };
+		heap.bCarve = false;
+		heap.Shape = Nyx::ESdfTerrainStampShape::Box;
+		heap.HalfSize = glm::vec3(10.0f, 20.0f, 10.0f);
+		heap.Yaw = 30.0f;
+		terrain.Plan.Overrides = { cut, heap };
+		Nyx::PrepareTerrainWorldPlan(terrain);
+		Require(terrain.Planned->Stamps.size() == 2, "Each stamp's point should be a stamp");
+		Require(Nyx::SampleTerrainValue(terrain, inCut) > 0.0f, "A cut stamp should leave air where the ground was");
+		Require(Nyx::SampleTerrainValue(terrain, inHeap) < 0.0f, "A heaped stamp should leave ground where the air was");
+		uint32_t n = 0;
+		for (int box = 0; box < 200; ++box)
+		{
+			const glm::vec2 near = (box % 2 == 0 ? cutAt : heapAt) + glm::vec2(Spread(n++) - 0.5f, Spread(n++) - 0.5f) * 60.0f;
+			const glm::vec3 low(near.x, (box % 2 == 0 ? cutGround : heapGround) - 25.0f + Spread(n++) * 30.0f, near.y);
+			const glm::vec3 high = low + glm::vec3(2.0f + Spread(n++) * 20.0f);
+			const Nyx::TerrainValueRange range = Nyx::GetTerrainValueRange(terrain, low, high);
+			for (int sample = 0; sample < 30; ++sample)
+			{
+				const glm::vec3 point = low + glm::vec3(Spread(n++), Spread(n++), Spread(n++)) * (high - low);
+				const float value = Nyx::SampleTerrainValue(terrain, point);
+				Require(value >= range.Lowest - 1e-3f && value <= range.Highest + 1e-3f, "A box's range should hold every value in it, the stamps' too: " + std::to_string(value) + " not in " + std::to_string(range.Lowest) + " to " + std::to_string(range.Highest) + (box % 2 == 0 ? " by the cut" : " by the heap") + " at " + std::to_string(point.x) + ", " + std::to_string(point.y) + ", " + std::to_string(point.z));
+			}
+		}
+		const std::optional<float> top = Nyx::FindTerrainGround(terrain, heapAt, terrain.Planned->GetRange(heapAt - 16.0f, heapAt + 16.0f).HighHeight + 60.0f, heapGround - 100.0f);
+		Require(top && std::fabs(*top - (heapGround + 20.0f)) < 0.5f, "The ground from above should be the heap's top");
+	}
+
 	void TestRifts()
 	{
 		for (uint32_t seed = 1; seed <= 6; ++seed)
@@ -412,6 +532,7 @@ int main(int argc, char** argv)
 		TestSameBits();
 		TestShares();
 		TestPins();
+		TestOverrides();
 		TestRifts();
 		TestWater();
 		TestBoundsAndSlopes();

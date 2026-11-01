@@ -27,6 +27,7 @@ namespace Nyx::Editor
 	namespace
 	{
 		constexpr std::array<const char*, 4> OverlayNames = { "Kinds", "Height", "Slope", "Tunnels" };
+		constexpr std::array<const char*, 6> ToolNames = { "Pins", "Paint", "Raise", "Lower", "Cut", "Heap" };
 
 		const char* LandformName(Nyx::ESdfTerrainLandform landform)
 		{
@@ -156,6 +157,52 @@ namespace Nyx::Editor
 			Nyx::UI::EndCombo();
 		}
 
+		// The tool, and its brush
+		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 6.0f);
+		if (NYX_UI(Nyx::UI::BeginCombo("Tool", ToolNames[size_t(Tool)])))
+		{
+			for (size_t tool = 0; tool < ToolNames.size(); ++tool)
+			{
+				if (NYX_UI(Nyx::UI::Selectable(ToolNames[tool], size_t(Tool) == tool)))
+				{
+					Tool = ETerrainPlanTool(tool);
+					Stroke.clear();
+				}
+			}
+			Nyx::UI::EndCombo();
+		}
+		if (Tool != ETerrainPlanTool::Pins)
+		{
+			ImGui::SameLine();
+			ImGui::SetNextItemWidth(ImGui::GetFontSize() * 6.0f);
+			NYX_UI(ImGui::DragFloat("Brush", &BrushRadius, 1.0f, 4.0f, 1000.0f, "%.0f m"));
+			BrushRadius = std::clamp(BrushRadius, 4.0f, 1000.0f);
+		}
+		if (Tool == ETerrainPlanTool::Paint)
+		{
+			ImGui::SameLine();
+			ImGui::SetNextItemWidth(ImGui::GetFontSize() * 8.0f);
+			if (NYX_UI(Nyx::UI::BeginCombo("Kind", LandformName(BrushLandform))))
+			{
+				for (const Nyx::ESdfTerrainLandform kind : { Nyx::ESdfTerrainLandform::Plains, Nyx::ESdfTerrainLandform::Roughland, Nyx::ESdfTerrainLandform::Sea,
+						 Nyx::ESdfTerrainLandform::Tunnels })
+				{
+					if (NYX_UI(Nyx::UI::Selectable(LandformName(kind), kind == BrushLandform)))
+					{
+						BrushLandform = kind;
+					}
+				}
+				Nyx::UI::EndCombo();
+			}
+		}
+		if (Tool == ETerrainPlanTool::Raise || Tool == ETerrainPlanTool::Lower)
+		{
+			ImGui::SameLine();
+			ImGui::SetNextItemWidth(ImGui::GetFontSize() * 6.0f);
+			NYX_UI(ImGui::DragFloat("By", &BrushHeight, 0.5f, 0.5f, 500.0f, "%.1f m"));
+			BrushHeight = std::clamp(BrushHeight, 0.5f, 500.0f);
+		}
+
 		// Its picture, drawn again when the plan or the overlay changed
 		if (plan != Drawn || Overlay != DrawnOverlay || Image == 0)
 		{
@@ -210,20 +257,21 @@ namespace Nyx::Editor
 		const std::vector<Nyx::SdfTerrainPlanPin>& pins = values.Plan.Pins;
 		const glm::vec2 under = toPlan(io.MousePos);
 		const float tolerance = 8.0f / PixelsPerMetre;
+		const bool bPinTool = Tool == ETerrainPlanTool::Pins;
 		// A rift's path being extended, until Escape, a right-click or its pin is gone
 		if (Extending && (*Extending >= pins.size() || pins[*Extending].Landform != Nyx::ESdfTerrainLandform::Rift || ImGui::IsKeyPressed(ImGuiKey_Escape) ||
 							 (bHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right))))
 		{
 			Extending.reset();
 		}
-		if (Extending && bHovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+		if (Extending && bPinTool && bHovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
 		{
 			std::vector<Nyx::SdfTerrainPlanPin> extended = pins;
 			extended[*Extending].Path.push_back(under);
 			SetTerrainPlanPins(editing, *terrain, extended, "Extend Rift Path");
 			Dragged.reset();
 		}
-		else if (bHovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && !FindTerrainPinAt(pins, under, tolerance))
+		else if (bPinTool && bHovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && !FindTerrainPinAt(pins, under, tolerance))
 		{
 			std::vector<Nyx::SdfTerrainPlanPin> added = pins;
 			Nyx::SdfTerrainPlanPin pin;
@@ -234,7 +282,7 @@ namespace Nyx::Editor
 			SetTerrainPlanPins(editing, *terrain, added, "Add Plan Pin");
 			Dragged.reset();
 		}
-		else if (bHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+		else if (bPinTool && bHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
 		{
 			if (const std::optional<TerrainPinHit> hit = FindTerrainPinAt(pins, under, tolerance))
 			{
@@ -271,6 +319,47 @@ namespace Nyx::Editor
 			Dragged.reset();
 			DraggedPlace = -1;
 		}
+		// A stroke of the other tools: a point every so far while the left button is down, made into an
+		// override when it lets go
+		if (!bPinTool && bHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+		{
+			Stroke = { under };
+		}
+		const bool bStamps = Tool == ETerrainPlanTool::Cut || Tool == ETerrainPlanTool::Heap;
+		if (!bPinTool && !Stroke.empty() && ImGui::IsMouseDown(ImGuiMouseButton_Left))
+		{
+			if (glm::length(under - Stroke.back()) >= BrushRadius * (bStamps ? 1.2f : 0.4f))
+			{
+				Stroke.push_back(under);
+			}
+		}
+		else if (!bPinTool && !Stroke.empty())
+		{
+			Nyx::SdfTerrainPlanOverride drawn;
+			drawn.Points = Stroke;
+			drawn.Radius = BrushRadius;
+			switch (Tool)
+			{
+			case ETerrainPlanTool::Paint:
+				drawn.Kind = Nyx::ESdfTerrainOverrideKind::Landform;
+				drawn.Landform = BrushLandform;
+				break;
+			case ETerrainPlanTool::Raise:
+			case ETerrainPlanTool::Lower:
+				drawn.Kind = Nyx::ESdfTerrainOverrideKind::Height;
+				drawn.Height = Tool == ETerrainPlanTool::Raise ? BrushHeight : -BrushHeight;
+				break;
+			default:
+				drawn.Kind = Nyx::ESdfTerrainOverrideKind::Stamp;
+				drawn.bCarve = Tool == ETerrainPlanTool::Cut;
+				drawn.Height = drawn.bCarve ? 0.0f : -BrushRadius * 0.5f;
+				break;
+			}
+			std::vector<Nyx::SdfTerrainPlanOverride> overrides = values.Plan.Overrides;
+			overrides.push_back(AnchorTerrainPlanOverride(pins, std::move(drawn)));
+			SetTerrainPlanOverrides(editing, *terrain, overrides, Tool == ETerrainPlanTool::Paint ? "Paint Plan" : (bStamps ? "Stamp Plan" : "Raise Plan"));
+			Stroke.clear();
+		}
 		if (bHovered && ImGui::IsMouseReleased(ImGuiMouseButton_Right) && ImGui::GetMouseDragDelta(ImGuiMouseButton_Right, 0.0f).x == 0.0f &&
 			ImGui::GetMouseDragDelta(ImGuiMouseButton_Right, 0.0f).y == 0.0f)
 		{
@@ -280,6 +369,22 @@ namespace Nyx::Editor
 				MenuPlace = hit->Place;
 				ImGui::OpenPopup("##PlanPin");
 			}
+			else if (const std::optional<size_t> drawnAt = FindTerrainPlanOverrideAt(values.Plan, under, tolerance))
+			{
+				MenuOverride = drawnAt;
+				ImGui::OpenPopup("##PlanOverride");
+			}
+		}
+		if (ImGui::BeginPopup("##PlanOverride"))
+		{
+			if (MenuOverride && *MenuOverride < values.Plan.Overrides.size() && NYX_UI(Nyx::UI::Selectable("Remove")))
+			{
+				std::vector<Nyx::SdfTerrainPlanOverride> removed = values.Plan.Overrides;
+				removed.erase(removed.begin() + std::ptrdiff_t(*MenuOverride));
+				SetTerrainPlanOverrides(editing, *terrain, removed, "Remove Plan Override");
+				MenuOverride.reset();
+			}
+			ImGui::EndPopup();
 		}
 		if (ImGui::BeginPopup("##PlanPin"))
 		{
@@ -335,6 +440,45 @@ namespace Nyx::Editor
 		drawList->PushClipRect(origin, ImVec2(origin.x + size.x, origin.y + size.y), true);
 		drawList->AddRectFilled(origin, ImVec2(origin.x + size.x, origin.y + size.y), IM_COL32(22, 24, 28, 255));
 		drawList->AddImage(ImTextureRef(renderer.GetUIImageTextureId(Image)), toScreen(planMin), toScreen(planMin + glm::vec2(across)));
+
+		// The hand overrides: a stroke as wide as it reaches, a stamp as a circle; the one being drawn
+		auto drawStroke = [&](const std::vector<glm::vec2>& points, float radius, ImU32 colour, bool bStampsOf)
+		{
+			for (size_t n = 0; n < points.size(); ++n)
+			{
+				const ImVec2 at = toScreen(points[n]);
+				if (bStampsOf)
+				{
+					drawList->AddCircle(at, std::max(radius * PixelsPerMetre, 3.0f), colour, 32, 2.0f);
+					continue;
+				}
+				drawList->AddCircleFilled(at, std::max(radius * PixelsPerMetre, 2.0f), (colour & 0x00FFFFFFu) | 0x30000000u, 24);
+				if (n + 1 < points.size())
+				{
+					drawList->AddLine(at, toScreen(points[n + 1]), colour, 2.0f);
+				}
+			}
+		};
+		for (const Nyx::SdfTerrainPlanOverride& override : values.Plan.Overrides)
+		{
+			if (!override.bEnabled)
+			{
+				continue;
+			}
+			const bool bStampOverride = override.Kind == Nyx::ESdfTerrainOverrideKind::Stamp;
+			const ImU32 colour = override.Kind == Nyx::ESdfTerrainOverrideKind::Landform ? PinColour(override.Landform)
+				: bStampOverride ? (override.bCarve ? IM_COL32(255, 90, 90, 255) : IM_COL32(230, 200, 120, 255))
+								 : (override.Height >= 0.0f ? IM_COL32(255, 255, 255, 255) : IM_COL32(60, 60, 70, 255));
+			drawStroke(Nyx::GetTerrainPlanOverridePoints(values.Plan, override), override.Radius, colour, bStampOverride);
+		}
+		if (!Stroke.empty())
+		{
+			drawStroke(Stroke, BrushRadius, IM_COL32(255, 255, 255, 200), Tool == ETerrainPlanTool::Cut || Tool == ETerrainPlanTool::Heap);
+		}
+		if (Tool != ETerrainPlanTool::Pins && bHovered)
+		{
+			drawList->AddCircle(io.MousePos, BrushRadius * PixelsPerMetre, IM_COL32(255, 255, 255, 120), 48, 1.0f);
+		}
 
 		// The pins: a ring as far as each steers, its kind by its colour
 		for (size_t index = 0; index < values.Plan.Pins.size(); ++index)

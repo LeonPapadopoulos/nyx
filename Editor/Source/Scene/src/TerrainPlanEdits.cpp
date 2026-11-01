@@ -8,6 +8,7 @@
 #include "TransactionSystem.h"
 #include "TransactionTypes.h"
 
+#include <algorithm>
 #include <string_view>
 #include <utility>
 
@@ -84,7 +85,82 @@ namespace Nyx::Editor
 
 	bool SetTerrainPlanPins(SceneEditor& editing, Nyx::Entity terrain, const std::vector<Nyx::SdfTerrainPlanPin>& pins, const char* label)
 	{
-		return ChangeProperty(editing, terrain, "Plan", label, [&](Nyx::SdfTerrainComponent& values) { values.Plan.Pins = pins; });
+		return ChangeProperty(editing, terrain, "Plan", label,
+			[&](Nyx::SdfTerrainComponent& values)
+			{
+				// One gone: the first that differs, or the last
+				const std::vector<Nyx::SdfTerrainPlanPin>& before = values.Plan.Pins;
+				if (pins.size() + 1 == before.size())
+				{
+					size_t gone = 0;
+					while (gone < pins.size() && pins[gone].Position == before[gone].Position && pins[gone].Landform == before[gone].Landform
+						&& pins[gone].Radius == before[gone].Radius)
+					{
+						++gone;
+					}
+					for (Nyx::SdfTerrainPlanOverride& override : values.Plan.Overrides)
+					{
+						if (override.Pin == int32_t(gone))
+						{
+							override.Points = Nyx::GetTerrainPlanOverridePoints(values.Plan, override);
+							override.Pin = -1;
+						}
+						else if (override.Pin > int32_t(gone))
+						{
+							--override.Pin;
+						}
+					}
+				}
+				values.Plan.Pins = pins;
+			});
+	}
+
+	bool SetTerrainPlanOverrides(SceneEditor& editing, Nyx::Entity terrain, const std::vector<Nyx::SdfTerrainPlanOverride>& overrides, const char* label)
+	{
+		return ChangeProperty(editing, terrain, "Plan", label, [&](Nyx::SdfTerrainComponent& values) { values.Plan.Overrides = overrides; });
+	}
+
+	Nyx::SdfTerrainPlanOverride AnchorTerrainPlanOverride(const std::vector<Nyx::SdfTerrainPlanPin>& pins, Nyx::SdfTerrainPlanOverride override)
+	{
+		override.Pin = -1;
+		if (override.Points.empty())
+		{
+			return override;
+		}
+		for (size_t index = pins.size(); index-- > 0;)
+		{
+			if (glm::length(override.Points.front() - pins[index].Position) <= pins[index].Radius)
+			{
+				override.Pin = int32_t(index);
+				for (glm::vec2& point : override.Points)
+				{
+					point -= pins[index].Position;
+				}
+				break;
+			}
+		}
+		return override;
+	}
+
+	std::optional<size_t> FindTerrainPlanOverrideAt(const Nyx::SdfTerrainWorldPlan& plan, const glm::vec2& point, float tolerance)
+	{
+		for (size_t index = plan.Overrides.size(); index-- > 0;)
+		{
+			const std::vector<glm::vec2> points = Nyx::GetTerrainPlanOverridePoints(plan, plan.Overrides[index]);
+			for (size_t n = 0; n < points.size(); ++n)
+			{
+				const glm::vec2 a = points[n];
+				const glm::vec2 b = n + 1 < points.size() ? points[n + 1] : a;
+				const glm::vec2 along = b - a;
+				const float length = glm::dot(along, along);
+				const float t = length > 0.0f ? std::clamp(glm::dot(point - a, along) / length, 0.0f, 1.0f) : 0.0f;
+				if (glm::length(point - (a + along * t)) <= tolerance)
+				{
+					return index;
+				}
+			}
+		}
+		return std::nullopt;
 	}
 
 	bool SetTerrainSeed(SceneEditor& editing, Nyx::Entity terrain, uint32_t seed)

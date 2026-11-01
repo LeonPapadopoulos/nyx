@@ -288,6 +288,72 @@ namespace Nyx
 		std::vector<glm::vec2> Path;
 	};
 
+	// What a hand override of a world plan does (SdfTerrainPlanOverride). Saved as its number.
+	NYX_ENUM()
+	enum class ESdfTerrainOverrideKind : uint8_t
+	{
+		// More of one kind of ground along its stroke, as a pin steers round itself
+		Landform,
+		// The plan's ground raised along its stroke by Height (lowered below 0), before its water
+		Height,
+		// A shape added to the ground or cut out of it at each of its points
+		Stamp
+	};
+
+	// A stamp's shape. Saved as its number.
+	NYX_ENUM()
+	enum class ESdfTerrainStampShape : uint8_t
+	{
+		// A ball of Radius
+		Sphere,
+		// A box of Half Size each way, turned about its up by Yaw
+		Box
+	};
+
+	// A hand override of a world plan (SdfTerrainWorldPlan::Overrides): drawn by hand over what the seed
+	// makes, and made again with it every time the plan is (another seed, another value, a pin moved),
+	// so it survives regeneration. Its points are from its pin's middle when it has one, so it moves
+	// with the pin; else from the terrain's middle.
+	NYX_REFLECT()
+	struct SdfTerrainPlanOverride
+	{
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Tooltip = "Off: as if it weren't there"))
+		bool bEnabled = true;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Tooltip = "Landform: more of a kind of ground along it; Height: the ground raised or lowered along it; Stamp: a shape added or cut at each point"))
+		ESdfTerrainOverrideKind Kind = ESdfTerrainOverrideKind::Landform;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Tooltip = "The pin it belongs to, by its number from 0: its points are from the pin's middle and move with it. -1: the terrain's"))
+		int32_t Pin = -1;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DragSpeed = 1.0, Tooltip = "Its stroke, or its stamps' places, along X and Z, from its pin's middle (or the terrain's)"))
+		std::vector<glm::vec2> Points;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DragSpeed = 0.5, Tooltip = "How far round its stroke it reaches, in metres, falling off smoothly; a sphere stamp's radius"))
+		float Radius = 60.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Tooltip = "Landform: the kind of ground it asks for"))
+		ESdfTerrainLandform Landform = ESdfTerrainLandform::Plains;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DragSpeed = 0.05, Tooltip = "Landform: how strongly, as a pin's Strength"))
+		float Strength = 1.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DragSpeed = 0.5, Tooltip = "Height: how far, in metres, the ground is raised at its stroke (below 0: lowered); Stamp: its middle above the plan's ground"))
+		float Height = 10.0f;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Stamp", Tooltip = "A ball or a box"))
+		ESdfTerrainStampShape Shape = ESdfTerrainStampShape::Sphere;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Stamp", Tooltip = "Cut out of the ground; off: added to it"))
+		bool bCarve = true;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Half Size", Category = "Stamp", DragSpeed = 0.5, Tooltip = "A box's half size each way, in metres"))
+		glm::vec3 HalfSize{ 12.0f, 8.0f, 12.0f };
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Stamp", DragSpeed = 1.0, Tooltip = "A box's turn about its up, in degrees"))
+		float Yaw = 0.0f;
+	};
+
 	// What a world is made of, in what proportions, worked out once from the terrain's seed
 	// (MakeTerrainWorldPlan(), TerrainWorldPlan.h) on a grid of 16 m and made into ground by a Plan
 	// layer: a floating landmass of plains and rough land with sea on it, rifts cut from its edge
@@ -385,6 +451,9 @@ namespace Nyx
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Tooltip = "Places steered to one kind of ground"))
 		std::vector<SdfTerrainPlanPin> Pins;
+
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Tooltip = "Drawn by hand over what the seed makes, made again with it: kinds of ground, the ground raised or lowered, shapes added or cut; a pin's move with it"))
+		std::vector<SdfTerrainPlanOverride> Overrides;
 	};
 
 	// A rule giving an SDF terrain's surfaces a material by where they lie and which way they face

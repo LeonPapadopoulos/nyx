@@ -889,6 +889,26 @@ namespace Nyx
 					out[i] = std::max(out[i], -std::max(tunnel, inBand));
 				}
 			}
+
+			// The hand overrides' stamps, each added or cut where it can change a value of the block: a
+			// cut wherever its negative distance can be above the lowest value (deep in the ground too),
+			// one added wherever its distance can be below the highest (high in the air too)
+			for (const SdfTerrainLayer& stamp : plan.Stamps)
+			{
+				const ShapeDistance shape(stamp);
+				const bool bCarve = stamp.Combine == ESdfTerrainCombine::Carve;
+				const Interval reach = shape.Range(boxMin, boxMax);
+				const float highest = *std::max_element(out, out + block.Count);
+				if (bCarve ? !CanCarve(reach, lowest()) : !(reach.Low < highest + 1e-5f * (1.0f + std::fabs(reach.Low) + std::fabs(highest))))
+				{
+					continue;
+				}
+				for (size_t i = 0; i < block.Count; ++i)
+				{
+					const float distance = shape.At(glm::vec3(block.X[i], block.Y[i], block.Z[i]));
+					out[i] = bCarve ? std::max(out[i], -distance) : std::min(out[i], distance);
+				}
+			}
 		}
 
 		void SampleLayer(const SdfTerrainComponent& terrain, const SdfTerrainLayer& layer, const Block& block, float* out)
@@ -1060,6 +1080,19 @@ namespace Nyx
 			if (plan.bTunnels)
 			{
 				carve(PlanTunnelAir(made, bounds, boxMin.y, boxMax.y));
+			}
+			// A stamp cut lifts as a carve does; one added lowers what is above its distance to it
+			for (const SdfTerrainLayer& stamp : plan.Stamps)
+			{
+				const Interval shape = ShapeDistance(stamp).Range(boxMin, boxMax);
+				if (stamp.Combine == ESdfTerrainCombine::Carve)
+				{
+					carve(shape);
+				}
+				else
+				{
+					range = { std::min(range.Low, shape.Low), std::min(range.High, shape.High) };
+				}
 			}
 			return range;
 		}

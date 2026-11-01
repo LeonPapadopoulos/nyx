@@ -35,6 +35,22 @@ namespace Nyx::Editor
 	// it; the seed stepped or rolled. A Rift pin's path: Extend Path in its menu, then each
 	// double-click adds a place the rift passes after the last, until Escape or a right-click; a
 	// place dragged moves it, right-clicked removes it.
+	//
+	// Drawing over the plan by hand (SdfTerrainPlanOverride), with the Tool chosen, each stroke an undo
+	// step, kept through every regeneration: Paint (more of a kind of ground along the stroke), Raise
+	// and Lower (the ground along it), Cut and Heap (a ball cut or added every so far along it), all
+	// Brush wide; a stroke starting in a pin's ring belongs to the pin and moves with it. They show as
+	// wide lines and circles; a right-click on one removes it.
+	enum class ETerrainPlanTool : uint8_t
+	{
+		Pins,
+		Paint,
+		Raise,
+		Lower,
+		Cut,
+		Heap
+	};
+
 	class TerrainPlanWindow
 	{
 	public:
@@ -45,6 +61,12 @@ namespace Nyx::Editor
 		// What a double-click adds
 		Nyx::ESdfTerrainLandform NewPinKind = Nyx::ESdfTerrainLandform::Plains;
 		bool bShowPlaces = true;
+		ETerrainPlanTool Tool = ETerrainPlanTool::Pins;
+		// The tools' stroke: how far round it they reach, the kind Paint asks for, how far Raise and
+		// Lower move the ground
+		float BrushRadius = 60.0f;
+		Nyx::ESdfTerrainLandform BrushLandform = Nyx::ESdfTerrainLandform::Roughland;
+		float BrushHeight = 15.0f;
 		// The place what can be reached is shown from, by its index; none: no reach shown
 		std::optional<size_t> ReachFrom;
 
@@ -66,6 +88,9 @@ namespace Nyx::Editor
 		int MenuPlace = -1;
 		// The Rift pin double-clicks add places to the path of
 		std::optional<size_t> Extending;
+		// The stroke being drawn, in the terrain's space; the override the menu is for
+		std::vector<glm::vec2> Stroke;
+		std::optional<size_t> MenuOverride;
 		// The reach's picture, a pixel a column, and the graph and place it was drawn from
 		uint64_t ReachImage = 0;
 		std::shared_ptr<const Nyx::TerrainTraversal> ReachDrawn;
