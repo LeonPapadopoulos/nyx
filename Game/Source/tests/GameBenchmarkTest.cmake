@@ -33,7 +33,7 @@ if(lineCount LESS 14)
 endif()
 
 list(GET lines 0 header)
-if(NOT header MATCHES "^frame,time_s,frame_ms,.*,gpu_frame_ms,.*,draw_calls,.*,decals,point_lights,particle_emitters,particles,lightning_bolts$")
+if(NOT header MATCHES "^frame,time_s,frame_ms,.*,gpu_frame_ms,.*,draw_calls,.*,decals,point_lights,particle_emitters,particles,lightning_bolts,grass_blades$")
     message(FATAL_ERROR "The CSV's header is '${header}'")
 endif()
 string(REGEX MATCHALL "," headerCommas "${header}")

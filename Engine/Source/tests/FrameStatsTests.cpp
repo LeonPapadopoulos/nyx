@@ -201,7 +201,7 @@ namespace
 		}
 		Require(lines.size() == 1 + 2 + 3, "A header, a row a frame and three summary rows, not " + std::to_string(lines.size()) + " lines");
 		Require(lines[0].starts_with("frame,time_s,frame_ms,update_ms,simulation_ms,"), "The header: " + lines[0]);
-		Require(lines[0].ends_with(",decals,point_lights,particle_emitters,particles,lightning_bolts"), "The header should end with the last numbers: " + lines[0]);
+		Require(lines[0].ends_with(",decals,point_lights,particle_emitters,particles,lightning_bolts,grass_blades"), "The header should end with the last numbers: " + lines[0]);
 
 		const auto columns = [](const std::string& line)
 		{

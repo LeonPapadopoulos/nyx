@@ -223,6 +223,25 @@ namespace
 		scene.World.Get<GrassFieldComponent>(scene.Meadow).TerrainMaterials = {};
 	}
 
+	// More blades than a view's buffer holds at first and more ground points than the tiles' buffer
+	// holds at first: both grow, and every blade is still drawn
+	void TestGrowsToFit(SceneRenderer& gpu)
+	{
+		GrassScene scene(gpu);
+		gpu.DrawUntilShadersCompiled();
+		scene.MakeChunks();
+		GrassFieldComponent& grass = scene.World.Get<GrassFieldComponent>(scene.Meadow);
+		scene.Settle(30);
+		const uint32_t blades = scene.Blades();
+		grass.FullDensityDistance = 60.0f;
+		grass.Range = 150.0f;
+		scene.Settle(120);
+		const VulkanGrass::Stats stats = gpu.Renderer.GetGrassStats();
+		std::cout << "Grown: " << scene.Blades() << " blades, " << stats.Tiles << " tiles, point buffer " << stats.PointBytes / (1024 * 1024) << " MiB, " << stats.TileBytes / (1024 * 1024) << " MiB of it used\n";
+		Require(scene.Blades() > blades * 2, "More blades within more of the field, whatever has to grow");
+		Require(stats.TilesWaiting == 0, "Every tile is made");
+	}
+
 	// Standing still without wind; in a wind the blades move from frame to frame, and lean its way
 	void TestWind(SceneRenderer& gpu)
 	{
@@ -391,6 +410,7 @@ int main()
 		Nyx::Logger::Get().Init();
 		SceneRenderer gpu("NyxGrassGpuTests");
 		TestBladesDrawn(gpu);
+		TestGrowsToFit(gpu);
 		TestWind(gpu);
 		TestFollowsEdits(gpu);
 		TestUnderOverhang(gpu);

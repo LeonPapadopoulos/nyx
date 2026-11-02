@@ -801,6 +801,21 @@ namespace Nyx
 							{
 								continue;
 							}
+							// Across the ground only, before anything is looked up: most of a terrain's
+							// chunks are too far for its grass
+							bool bNear = false;
+							const float chunkSize = Nyx::TerrainChunkCells * std::ldexp(1.0f, chunk.Level) * scale;
+							const glm::vec3 chunkCorner(surfaceWorld * glm::vec4(chunk.Origin, 1.0f));
+							for (const glm::vec3& camera : cameras)
+							{
+								const float acrossX = std::max({ chunkCorner.x - camera.x, camera.x - chunkCorner.x - chunkSize, 0.0f });
+								const float acrossZ = std::max({ chunkCorner.z - camera.z, camera.z - chunkCorner.z - chunkSize, 0.0f });
+								bNear = bNear || acrossX * acrossX + acrossZ * acrossZ <= reach * reach;
+							}
+							if (!bNear)
+							{
+								continue;
+							}
 							Nyx::Mesh* mesh = RuntimeMeshes.Acquire(Context, chunk.Mesh);
 							if (mesh == nullptr)
 							{
@@ -808,15 +823,6 @@ namespace Nyx
 							}
 							const glm::mat4 model = surfaceWorld * glm::translate(glm::mat4(1.0f), chunk.Origin);
 							const BoundingBox bounds = TransformBox(BoundingBox{ mesh->GetLocalBoundsMin(), mesh->GetLocalBoundsMax() }, model);
-							bool bNear = false;
-							for (const glm::vec3& camera : cameras)
-							{
-								bNear = bNear || GetBoxDistance(bounds, camera) <= reach;
-							}
-							if (!bNear)
-							{
-								continue;
-							}
 							meshes.push_back(GrassSurfaceMesh{ .Data = chunk.Mesh.Mesh, .Revision = chunk.Mesh.Revision, .Gpu = mesh, .Model = model, .WorldBounds = bounds,
 								.Morph = glm::vec2(chunk.Morph.x * scale, chunk.Morph.y > 0.0f ? chunk.Morph.y / scale : 0.0f), .bHasMaterials = true, .Triangles = mesh->GetIndexCount() / 3 });
 						}
