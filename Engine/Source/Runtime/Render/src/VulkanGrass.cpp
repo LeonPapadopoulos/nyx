@@ -104,7 +104,7 @@ namespace Nyx
 			float NormalRounding, SelfShadow, Translucency, Roughness;
 			float FullDensityDistance, Range;
 			uint32_t Seed;
-			uint32_t Padding;
+			float RootToGround;
 		};
 		static_assert(sizeof(GrassKindValues) == 144, "nyx.grass's GrassKind is laid out alike");
 
@@ -173,6 +173,7 @@ namespace Nyx
 			values.FullDensityDistance = settings.FullDensityDistance;
 			values.Range = settings.Range;
 			values.Seed = settings.Seed;
+			values.RootToGround = std::clamp(component.RootToGround, 0.0f, 1.0f);
 			return values;
 		}
 

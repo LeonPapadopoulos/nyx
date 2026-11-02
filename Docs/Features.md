@@ -2104,7 +2104,8 @@ nothing a blade on the CPU or in the scene file. Each entity with one is one kin
 - *Blades*: *Height*, *Width*, *Lean*, each with a *Variance*, and *Bend*. *Clumps*: *Clump Size*,
   and how much a clump decides its blades' height, facing, lean towards its middle and colour.
   *Patches*: *Patch Size*, and how much larger patches change the height and dry the tips.
-- *Colours*: *Root*, *Tip*, *Dry Color*, *Color Variance*. *Wind*: *Wind Response*, *Stiffness*,
+- *Colours*: *Root*, *Root To Ground* (how much a blade's foot takes the colour and light of the ground
+  beneath it, so grass follows the terrain's colours by itself), *Tip*, *Dry Color*, *Color Variance*. *Wind*: *Wind Response*, *Stiffness*,
   *Flutter*. *Shading*: *Normal Rounding* (0 flat and hard-lit like a facet, 1 soft and rounded),
   *Self Shadow*, *Translucency*, *Roughness*.
 - The blades grow on the terrain's drawn chunks, on whatever faces up: on top of an overhang and

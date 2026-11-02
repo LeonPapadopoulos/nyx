@@ -86,7 +86,7 @@ namespace nyx
         public float FullDensityDistance;
         public float Range;
         public uint Seed;
-        public uint _Padding;
+        public float RootToGround;
     }
 
     // Mixes two numbers and a seed into 32 bits that look random

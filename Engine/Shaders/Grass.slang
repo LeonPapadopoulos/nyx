@@ -150,7 +150,8 @@ void grassBlades(uint3 id : SV_DispatchThreadID)
     const float towardsGround = smoothstep(kind.Range * 0.55, kind.Range * 0.9, distance);
     const float3 ground = nyx::unpackGrassColor(point.Ground);
     const float3 tipColor = lerp(bladeTip, ground, towardsGround);
-    const float3 rootColor = lerp(bladeRoot, ground, towardsGround);
+    // Its foot rises out of the ground it grows on, as far as the kind says
+    const float3 rootColor = lerp(lerp(bladeRoot, ground, kind.RootToGround), ground, towardsGround);
 
     const bool bNear = distance < NearShapeDistance;
     const uint capacity = bNear ? Tile.NearCapacity : Tile.FarCapacity;
@@ -292,10 +293,15 @@ Targets grassFragment(VertexOutput input, bool bFrontFace : SV_IsFrontFace)
     const float3 flat = normalize(input.NormalWS) * (bFrontFace ? 1.0 : -1.0);
     const float3 rounded = normalize(flat + input.AcrossWS * input.Side * 0.9);
     const float3 near = normalize(lerp(flat, rounded, kind.NormalRounding));
-    const float3 normal = normalize(lerp(near, input.GroundNormal, smoothstep(kind.Range * 0.25, kind.Range * 0.7, distance)));
-    // Dark at its foot, where little light gets down, and in the middle of its clump
     const float low = 1.0 - saturate(input.Along);
-    const float shade = (1.0 - kind.SelfShadow * low * low) * (1.0 - kind.SelfShadow * 0.5 * input.ClumpShade * low);
+    // A foot that takes the ground's colour takes its light too
+    const float footOnGround = kind.RootToGround * low * low;
+    const float towardsGroundLight = max(smoothstep(kind.Range * 0.25, kind.Range * 0.7, distance), footOnGround);
+    const float3 normal = normalize(lerp(near, input.GroundNormal, towardsGroundLight));
+    // Dark at its foot, where little light gets down, and in the middle of its clump; less so where
+    // the foot is to match the ground
+    const float selfShadow = kind.SelfShadow * (1.0 - kind.RootToGround);
+    const float shade = (1.0 - selfShadow * low * low) * (1.0 - selfShadow * 0.5 * input.ClumpShade * low);
     const float3 baseColor = input.Color * shade;
     Targets targets;
     if (nyx::isMaterialDebugView())

@@ -96,6 +96,9 @@ namespace Nyx
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Root", Category = "Colours", UI = Color, Tooltip = "Linear RGB, at the foot of a blade"))
 		glm::vec3 RootColor{ 0.08f, 0.20f, 0.04f };
 
+		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Root To Ground", Category = "Colours", DragSpeed = 0.005, Tooltip = "How much a blade's foot takes the colour and light of the ground beneath it, 0 to 1: 0 the Root colour, 1 rising out of the ground wherever it grows"))
+		float RootToGround = 0.5f;
+
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Tip", Category = "Colours", UI = Color, Tooltip = "Linear RGB, at the tip of a blade"))
 		glm::vec3 TipColor{ 0.30f, 0.50f, 0.11f };
 

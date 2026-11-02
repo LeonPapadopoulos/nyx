@@ -114,6 +114,7 @@ namespace
 		grass.Seed = 7;
 		grass.Density = 33.0f;
 		grass.NormalRounding = 0.25f;
+		grass.RootToGround = 0.75f;
 		grass.TerrainMaterials = { 2, 5 };
 		grass.TipColor = glm::vec3(0.1f, 0.2f, 0.3f);
 
@@ -127,7 +128,7 @@ namespace
 		loaded.Each<GrassFieldComponent>([&](Entity, const GrassFieldComponent& read)
 			{
 				bFound = true;
-				Require(read.Seed == 7 && read.Density == 33.0f && read.NormalRounding == 0.25f, "The numbers aren't read back as saved");
+				Require(read.Seed == 7 && read.Density == 33.0f && read.NormalRounding == 0.25f && read.RootToGround == 0.75f, "The numbers aren't read back as saved");
 				Require(read.TerrainMaterials.size() == 2 && read.TerrainMaterials[1] == 5, "The materials aren't read back as saved");
 				Require(read.TipColor == glm::vec3(0.1f, 0.2f, 0.3f), "The colours aren't read back as saved");
 			});

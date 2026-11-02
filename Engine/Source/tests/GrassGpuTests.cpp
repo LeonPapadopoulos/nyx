@@ -193,6 +193,14 @@ namespace
 		look.Translucency = 0.0f;
 		Require(CountChanged(rounded, scene.Settle(3)) > 500, "Translucency changes the blades' light");
 		look.Translucency = 0.6f;
+		look.RootToGround = 1.0f;
+		const RgbaImage footOnGround = scene.Settle(3);
+		SaveIfAsked(footOnGround, "CloseRootToGround");
+		look.RootToGround = 0.0f;
+		const RgbaImage footApart = scene.Settle(3);
+		SaveIfAsked(footApart, "CloseRootApart");
+		Require(CountChanged(footOnGround, footApart) > 500, "Root To Ground changes the blades' feet");
+		look.RootToGround = 0.5f;
 		scene.Look(glm::vec3(0.0f, 4.0f, 20.0f), glm::vec3(0.0f, 0.0f, -10.0f));
 		scene.Settle();
 		const uint32_t blades = scene.Blades();
