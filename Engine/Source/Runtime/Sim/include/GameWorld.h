@@ -36,8 +36,10 @@ namespace Nyx
 	//    (TerrainCollision);
 	// 3. the lookup from guid to entity is made again, in the memory it had (SimContext::Guids);
 	//    constraints follow their components and the bodies (PhysicsConstraints); the players'
-	//    SpawnPrefabCommands make their instances (ApplySpawnPrefabCommands()), their
-	//    MoveCharacterCommands go into their characters (ApplyMoveCharacterCommands()), and their
+	//    SpawnPrefabCommands make their instances (ApplySpawnPrefabCommands()), which are in the
+	//    lookup from then on; their DestroyEntityCommands, DetachEntityCommands and
+	//    AttachEntityCommands take entities away and change their parents (ApplyHierarchyCommands());
+	//    their MoveCharacterCommands go into their characters (ApplyMoveCharacterCommands()), and their
 	//    SdfTerrainEditCommands onto their terrains (ApplyTerrainEditCommands()); the time of
 	//    day moves on to the step's end while it runs, and the sun turns to it (TimeOfDayClock);
 	//    the wind turns towards its WindComponent's values, and is as it is at the step's start
@@ -144,6 +146,8 @@ namespace Nyx
 		std::optional<PhysicsDebugOptions> PhysicsDebugView;
 		const IWindField* WindField = nullptr;
 		IAssetResolver* Assets = nullptr;
+		// The step's spawned roots, in the memory of the last step's
+		std::vector<Entity> Spawned;
 		WindState Wind;
 		std::vector<SystemEntry> Systems;
 	};

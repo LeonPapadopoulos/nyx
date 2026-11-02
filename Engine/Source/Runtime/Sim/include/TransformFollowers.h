@@ -28,7 +28,7 @@ namespace Nyx
 	//   or a character never follows, as physics moves it, with a warning once: a constraint or a body
 	//   group joins bodies.
 	// - A follower whose parent is gone stays where it is, and follows again once an entity with the
-	//   parent's guid is there, e.g. from the step after a spawn.
+	//   parent's guid is there, e.g. brought back by the editor's undo.
 	class TransformFollowers
 	{
 	public:

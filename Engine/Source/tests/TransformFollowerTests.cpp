@@ -4,6 +4,9 @@
 // values edited live are followed at once; a kinematic follower pushes what it meets; a dynamic one
 // never follows; one whose parent is destroyed stays, and follows the parent brought back; a
 // spawned prefab's part follows its root; a component pool's version changes with what it holds.
+// The players' commands that change parents and take entities away (EntityCommands.h): attached, a
+// thing comes along where it was put, and detached it stays; a circle is refused; destroyed, an
+// entity goes with what is below it and its bodies; a command names an instance spawned the same step.
 #include "ComponentRegistration.h"
 #include "ComponentTypeRegistry.h"
 #include "EditorLinkMessages.h"
@@ -18,6 +21,7 @@
 #include "PreviousTransformComponent.h"
 #include "ReflectionUtils.h"
 #include "SimSystem.h"
+#include "EntityCommands.h"
 #include "SpawnPrefabCommand.h"
 #include "TestSupport.h"
 #include "TransformComponent.h"
@@ -290,6 +294,96 @@ namespace
 			"With its parent back, the follower should follow it again " + Text(PositionOf(game, follower)));
 	}
 
+	size_t CountEntities(const Registry& world)
+	{
+		size_t count = 0;
+		world.Each<GuidComponent>([&](Entity, const GuidComponent&) { ++count; });
+		return count;
+	}
+
+	void TestAttachAndDetach()
+	{
+		GameWorld game;
+		Registry& world = game.GetRegistry();
+		const EntityGuid crate{ 0x90 }, lantern{ 0x91 };
+		AddFallingBody(world, crate, glm::vec3(0.0f, 30.0f, 0.0f));
+		AddEntity(world, lantern, glm::vec3(2.0f, 31.0f, 0.0f));
+		Steps steps{ game };
+
+		// Attached: comes along, where it was put relative to the crate
+		const glm::vec3 offset = PositionOf(game, lantern) - PositionOf(game, crate);
+		game.GetCommands().Add(AttachEntityCommand{ .Entity = lantern, .Parent = crate });
+		steps.Run(20);
+		Require(PositionOf(game, crate).y < 29.8f && Near(PositionOf(game, lantern), PositionOf(game, crate) + offset),
+			"The attached lantern should come along where it was " + Text(PositionOf(game, lantern)));
+
+		// A circle is refused: the crate can't go below its own child
+		game.GetCommands().Add(AttachEntityCommand{ .Entity = crate, .Parent = lantern });
+		steps.Run(1);
+		Require(!world.Has<ParentComponent>(*FindEntityByGuid(world, crate)), "Attaching the crate below its child should be dropped");
+
+		// Detached: stays where it was dropped, drawn there
+		game.GetCommands().Add(DetachEntityCommand{ .Entity = lantern });
+		steps.Run(1);
+		const glm::vec3 dropped = PositionOf(game, lantern);
+		steps.Run(10);
+		const Entity lanternEntity = *FindEntityByGuid(world, lantern);
+		Require(!world.Has<ParentComponent>(lanternEntity) && !world.Has<PreviousTransformComponent>(lanternEntity) && Near(PositionOf(game, lantern), dropped),
+			"The detached lantern should stay where it was dropped");
+		Require(game.GetFollowers().GetFollowerCount() == 0, "Nothing should follow any more");
+	}
+
+	void TestDestroyTakesWhatIsBelow()
+	{
+		GameWorld game;
+		Registry& world = game.GetRegistry();
+		const EntityGuid cart{ 0xA0 }, post{ 0xA1 }, lamp{ 0xA2 }, other{ 0xA3 };
+		AddFallingBody(world, cart, glm::vec3(0.0f, 30.0f, 0.0f));
+		AddChild(world, post, cart, glm::vec3(0.0f, 30.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), true);
+		AddChild(world, lamp, post, glm::vec3(0.0f, 31.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), false);
+		AddFallingBody(world, other, glm::vec3(10.0f, 30.0f, 0.0f));
+		Steps steps{ game };
+		steps.Run(2);
+		Require(game.GetBodies().GetBodyCount() == 2, "Both carts should have bodies");
+
+		game.GetCommands().Add(DestroyEntityCommand{ .Entity = cart });
+		game.GetCommands().Add(DestroyEntityCommand{ .Entity = EntityGuid{ 0xAF } });
+		steps.Run(2);
+		Require(CountEntities(world) == 1 && FindEntityByGuid(world, other), "The cart should go with what is below it, the other cart stay");
+		Require(game.GetBodies().GetBodyCount() == 1 && game.GetFollowers().GetFollowerCount() == 0, "The cart's body should go with it");
+	}
+
+	void TestCommandsNameWhatTheStepSpawned(const std::filesystem::path& folder)
+	{
+		Registry source;
+		const Entity root = AddFallingBody(source, EntityGuid{ 0xB0 }, glm::vec3(0.0f));
+		AddChild(source, EntityGuid{ 0xB1 }, EntityGuid{ 0xB0 }, glm::vec3(0.0f), glm::vec3(0.0f, 2.0f, 0.0f), false);
+		TestPrefabs prefabs;
+		const std::filesystem::path file = folder / "Barrow.nyxprefab";
+		Require(PrefabAsset::SaveToFile(source, root, file), "Saving the prefab failed");
+		auto prefab = std::make_unique<PrefabAsset>();
+		std::string error;
+		Require(prefab->LoadFromFile(file, error), "Reading the prefab failed: " + error);
+		prefabs.Prefabs["Prefabs/Barrow.nyxprefab"] = std::move(prefab);
+
+		GameWorld game;
+		game.SetAssetResolver(&prefabs);
+		const EntityGuid kept{ 0xBE }, gone{ 0xBF }, sack{ 0xBD };
+		AddEntity(game.GetRegistry(), sack, glm::vec3(0.0f, 21.0f, 0.0f));
+		const AssetReference barrow{ "Prefab", "Prefabs/Barrow.nyxprefab" };
+		game.GetCommands().Add(SpawnPrefabCommand{ .Prefab = barrow, .Guid = kept, .Position = glm::vec3(0.0f, 20.0f, 0.0f) });
+		game.GetCommands().Add(SpawnPrefabCommand{ .Prefab = barrow, .Guid = gone, .Position = glm::vec3(5.0f, 20.0f, 0.0f) });
+		game.GetCommands().Add(DestroyEntityCommand{ .Entity = gone });
+		game.GetCommands().Add(AttachEntityCommand{ .Entity = sack, .Parent = kept });
+		Steps steps{ game };
+		steps.Run(1);
+		Require(!FindEntityByGuid(game.GetRegistry(), gone) && !FindEntityByGuid(game.GetRegistry(), GetPrefabPartGuid(gone, EntityGuid{ 0xB1 })),
+			"An instance destroyed the step it was spawned should go with its part");
+		steps.Run(20);
+		Require(PositionOf(game, kept).y < 19.5f && Near(PositionOf(game, sack), PositionOf(game, kept) + glm::vec3(0.0f, 1.0f, 0.0f)),
+			"A sack attached the step its barrow was spawned should come along " + Text(PositionOf(game, sack)));
+	}
+
 	void TestASpawnedPartFollows(const std::filesystem::path& folder)
 	{
 		Registry source;
@@ -354,6 +448,9 @@ int main()
 		TestAParentDestroyedAndBroughtBack();
 		TestASpawnedPartFollows(directory.Path);
 		TestPoolVersions();
+		TestAttachAndDetach();
+		TestDestroyTakesWhatIsBelow();
+		TestCommandsNameWhatTheStepSpawned(directory.Path);
 	}
 	catch (const std::exception& error)
 	{

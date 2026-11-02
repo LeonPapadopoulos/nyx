@@ -144,6 +144,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/TerrainCollision.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/OrbitCameras.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/CharacterCommands.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Sim/src/HierarchyCommands.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/TerrainEditCommands.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/PrefabCommands.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/TransformFollowers.cpp
@@ -389,6 +390,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ParentComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/Prefab.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/SpawnPrefabCommand.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/EntityCommands.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/RuntimeMeshComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/MeshInstancesComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/SurfaceDecalComponent.h
@@ -404,6 +406,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/TerrainCollision.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/OrbitCameras.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/CharacterCommands.h
+    ${NYX_ENGINE_ROOT}/Runtime/Sim/include/HierarchyCommands.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/TerrainEditCommands.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/PrefabCommands.h
     ${NYX_ENGINE_ROOT}/Runtime/Sim/include/TransformFollowers.h

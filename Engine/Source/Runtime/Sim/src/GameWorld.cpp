@@ -3,6 +3,7 @@
 
 #include "Assertions.h"
 #include "CharacterCommands.h"
+#include "HierarchyCommands.h"
 #include "PrefabCommands.h"
 #include "Profiler.h"
 #include "TerrainEditCommands.h"
@@ -32,7 +33,13 @@ namespace Nyx
 		TerrainColliders.SyncBeforeStep(World, Physics, Bodies);
 		RefreshEntityGuidLookup(World, Guids);
 		Constraints.SyncBeforeStep(World, Physics, Bodies, Guids);
-		ApplySpawnPrefabCommands(World, Guids, StepCommands, Assets);
+		ApplySpawnPrefabCommands(World, Guids, StepCommands, Assets, &Spawned);
+		// What was spawned, in the lookup at once, so the step's other commands and systems find it
+		if (!Spawned.empty())
+		{
+			RefreshEntityGuidLookup(World, Guids);
+		}
+		ApplyHierarchyCommands(World, Guids, StepCommands);
 		ApplyMoveCharacterCommands(World, Guids, StepCommands);
 		ApplyTerrainEditCommands(World, Guids, StepCommands);
 		TimeOfDay.Step(World, step);

@@ -685,11 +685,12 @@ turns and scales with it, down chains of any length.
     dynamic body or a character never follows, with a warning once.
   - A chain follows only where every link up to what moves follows. A follower whose parent is
     destroyed stays where it is, and follows again once the parent is back, e.g. by undo in the
-    editor; a spawned prefab's following part, from the step after the spawn. A parent that a system
+    editor; a spawned prefab's following part, from the step it is spawned. A parent that a system
     after physics moves takes its followers along a step later.
   - The editor's edits reach a running game as any: following switched on or off, or its local
     values changed, are followed from the next step.
-  - Not yet: a character carried by what it stands on, and attaching and detaching while a game runs.
+  - Attaching and detaching while a game runs are players' commands (see Prefabs). Not yet: a
+    character carried by what it stands on.
 - A parent that isn't there (deleted, or none picked) or a chain that goes round in a circle leaves
   the entity where it is. A parent scaled unevenly with a turned child would skew it; the scale is
   then multiplied axis by axis.
@@ -771,10 +772,21 @@ prefab changes.
   resolver). Whoever asks picks the guid, so later commands can name the instance before it is there,
   and the same bytes can go to another machine; its parts' guids follow from it. A command without a
   guid, with one the world or an earlier command of the step has, or whose prefab isn't there is
-  dropped, with a warning. The instance's bodies are made the next step, as any new entity's.
+  dropped, with a warning. The instance is in the guid lookup from its step on, so the step's other
+  commands and systems find it; its bodies are made the next step, as any new entity's.
+- **Destroying, attaching and detaching in a game** (`EntityCommands.h`, `ApplyHierarchyCommands()`):
+  a player's `DestroyEntityCommand` takes an entity away with everything below it, an instance with
+  its parts; `AttachEntityCommand` gives it a parent, keeping it where it is in the world, following
+  in the game unless asked not to (see Parents), e.g. a thing picked up; `DetachEntityCommand` takes
+  the parent away and leaves it where it is, e.g. a thing dropped. Applied at the start of the next
+  step after the spawns, so they can name an instance spawned the same step: every destroy, then
+  every detach, then every attach, each in the order they came. Dropped with a warning: a guid the
+  world hasn't got, an attach without both transforms or below itself, a detach without a parent.
+  What was destroyed loses its bodies at the next step's start. A dynamic body attached doesn't
+  follow until its game makes it kinematic.
 - Overrides are compared and saved property by property of a component; a struct property, such as
   a mesh's reference, counts as one value. A value set back to the prefab's is no override.
-- Tests: `NyxPrefabTests`, `NyxEditorPanelTests`.
+- Tests: `NyxPrefabTests`, `NyxEditorPanelTests`, `NyxTransformFollowerTests`.
 
 ## Surface anchors
 
