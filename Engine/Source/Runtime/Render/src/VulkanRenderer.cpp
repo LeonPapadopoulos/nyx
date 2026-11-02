@@ -1054,6 +1054,12 @@ namespace Nyx
 			case ETimedPass::ColorGrading:
 				view->GpuTimes.ColorGrading = milliseconds;
 				break;
+			case ETimedPass::Grass:
+				view->GpuTimes.Grass = milliseconds;
+				break;
+			case ETimedPass::GrassDraw:
+				view->GpuTimes.GrassDraw = milliseconds;
+				break;
 			default:
 				break;
 			}

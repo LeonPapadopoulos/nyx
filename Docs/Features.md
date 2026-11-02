@@ -2092,6 +2092,24 @@ game, coarser the farther, and collides while the world runs.
   above, with `report.md`; `--shots <folder> [seed]` the region's pictures alone; `--write-scene`
   the scene above.
 
+## Grass
+
+*Grass Field* grows single blades of grass over another entity's surface, made and culled on the GPU with
+nothing a blade on the CPU or in the scene file. Each entity with one is one kind of grass.
+
+- *Surface*: an SDF terrain, or an entity with a mesh made at run time such as a *Ground*; none: its
+  own entity. *Density*: blades a square metre near the camera. *Full Density Distance*: how far they
+  stay that dense. *Range*: where the last ones go. *Seed*: other blades for the same values.
+- *Limits*: *Slope Range*, *Height Range*, *Terrain Materials*, *Use Blockers*.
+- *Blades*: *Height*, *Width*, *Lean*, each with a *Variance*, and *Bend*. *Clumps*: *Clump Size*,
+  and how much a clump decides its blades' height, facing, lean towards its middle and colour.
+  *Patches*: *Patch Size*, and how much larger patches change the height and dry the tips.
+- *Colours*: *Root*, *Tip*, *Dry Color*, *Color Variance*. *Wind*: *Wind Response*, *Stiffness*,
+  *Flutter*. *Shading*: *Normal Rounding* (0 flat and hard-lit like a facet, 1 soft and rounded),
+  *Self Shadow*, *Translucency*, *Roughness*.
+- The frame statistics show its compute passes as `gpu_grass_ms`, and drawing it as
+  `gpu_grass_draw_ms`, which is part of `gpu_scene_ms`.
+
 ## Scattering
 
 A *Scatter* puts many copies of its entity's mesh over another entity's surface, such as plants

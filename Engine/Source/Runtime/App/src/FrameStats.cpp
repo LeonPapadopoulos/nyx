@@ -30,6 +30,8 @@ namespace Nyx
 			{ "gpu_bloom_ms", true },
 			{ "gpu_picture_ms", true },
 			{ "gpu_color_grading_ms", true },
+			{ "gpu_grass_ms", true },
+			{ "gpu_grass_draw_ms", true },
 			{ "scene_views", false },
 			{ "msaa_samples", false },
 			{ "draw_calls", false },
@@ -78,6 +80,8 @@ namespace Nyx
 		sample[EFrameStat::GpuBloom] = views.Gpu.Bloom;
 		sample[EFrameStat::GpuPicture] = views.Gpu.Picture;
 		sample[EFrameStat::GpuColorGrading] = views.Gpu.ColorGrading;
+		sample[EFrameStat::GpuGrass] = views.Gpu.Grass;
+		sample[EFrameStat::GpuGrassDraw] = views.Gpu.GrassDraw;
 
 		sample[EFrameStat::SceneViews] = render.SceneViews;
 		sample[EFrameStat::MsaaSamples] = render.MsaaSamples;

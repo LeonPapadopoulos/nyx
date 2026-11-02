@@ -915,6 +915,8 @@ namespace Nyx
 			Bloom,
 			Picture,
 			ColorGrading,
+			Grass,
+			GrassDraw,
 			Count
 		};
 		static constexpr uint32_t MaxTimedViews = 8;

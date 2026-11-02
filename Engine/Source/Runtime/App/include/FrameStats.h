@@ -30,7 +30,8 @@ namespace Nyx
 		// volumetric clouds, with their noises in the frames that make them; the lightning's light in
 		// them, in frames a bolt lights them;
 		// the scene pass with the MSAA resolve at its end; the lightning's bolts; the light shafts in the frames the sun
-		// gives some; the colour grading's bake, in frames that bake)
+		// gives some; the colour grading's bake, in frames that bake; the grass's compute passes, and
+		// drawing it, which is part of the scene pass)
 		GpuFrame,
 		GpuSky,
 		GpuClouds,
@@ -45,6 +46,8 @@ namespace Nyx
 		GpuBloom,
 		GpuPicture,
 		GpuColorGrading,
+		GpuGrass,
+		GpuGrassDraw,
 		// The scene views drawn and the samples a pixel they drew with (MSAA, 1 without), and what all
 		// of them drew (SceneViewFrameStats), summed: their scene passes' draw calls, those of many
 		// instances, the instances drawn and culled, the triangles; their shadow cascades, their

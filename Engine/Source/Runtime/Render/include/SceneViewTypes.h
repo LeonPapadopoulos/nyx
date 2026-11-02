@@ -199,7 +199,9 @@ namespace Nyx
 	// light in them (in frames a bolt lights them), its shadow cascades,
 	// its scene pass (the objects, the sky and the decals, and with MSAA the resolve at its end), its ambient occlusion, its lightning's bolts, its particles, its light shafts, its bloom, and its picture
 	// (the tonemap, and the overlays and lines over it). Its colour grading's bake, in a frame that
-	// baked its table again (its lookup is the tonemap's, in the picture).
+	// baked its table again (its lookup is the tonemap's, in the picture). Its grass's compute passes (the
+	// ground points of the tiles made that frame, and the blades); GrassDraw, drawing them, is part of
+	// the scene pass's time, so it isn't added to the total again.
 	struct SceneViewGpuTimes
 	{
 		float Sky = 0.0f;
@@ -215,8 +217,10 @@ namespace Nyx
 		float Bloom = 0.0f;
 		float Picture = 0.0f;
 		float ColorGrading = 0.0f;
+		float Grass = 0.0f;
+		float GrassDraw = 0.0f;
 
-		float GetTotal() const { return Sky + Clouds + VolumetricClouds + CloudLightning + Shadows + Scene + AmbientOcclusion + Lightning + Particles + LightShafts + Bloom + Picture + ColorGrading; }
+		float GetTotal() const { return Sky + Clouds + VolumetricClouds + CloudLightning + Shadows + Scene + AmbientOcclusion + Lightning + Particles + LightShafts + Bloom + Picture + ColorGrading + Grass; }
 
 		SceneViewGpuTimes& operator+=(const SceneViewGpuTimes& other)
 		{
@@ -233,6 +237,8 @@ namespace Nyx
 			Bloom += other.Bloom;
 			Picture += other.Picture;
 			ColorGrading += other.ColorGrading;
+			Grass += other.Grass;
+			GrassDraw += other.GrassDraw;
 			return *this;
 		}
 	};

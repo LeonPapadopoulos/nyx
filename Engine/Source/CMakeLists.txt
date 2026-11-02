@@ -116,6 +116,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ScatterComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ScatterInstances.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ScatterBlockerComponent.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/GrassFieldComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/EntityGuid.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/GuidComponent.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/EntityGuidLookup.cpp
@@ -208,6 +209,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/LightShafts.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanLightShafts.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/CloudLayer.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/Grass.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanCloudLayer.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VolumetricClouds.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanVolumetricClouds.cpp
@@ -371,6 +373,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ScatterComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ScatterInstances.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ScatterBlockerComponent.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/GrassFieldComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/EntityGuid.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/GuidComponent.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/TypedHandle.h
@@ -475,6 +478,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/LightShafts.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanLightShafts.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/CloudLayer.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/Grass.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanCloudLayer.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VolumetricClouds.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanVolumetricClouds.h

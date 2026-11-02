@@ -419,6 +419,14 @@ add_dependencies(NyxScatterTests NyxGeneratedReflection)
 set_property(TARGET NyxScatterTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxScatterTests COMMAND NyxScatterTests)
 
+# The grass without a GPU (Grass.h): its values in range, how many blades are drawn at a distance, the
+# nested grid and the blades' ranks, the component saved and read back
+add_executable(NyxGrassTests GrassTests.cpp)
+target_link_libraries(NyxGrassTests PRIVATE NyxEngine)
+add_dependencies(NyxGrassTests NyxGeneratedReflection)
+set_property(TARGET NyxGrassTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxGrassTests COMMAND NyxGrassTests)
+
 # How long a physics step takes with 1000 bodies; not run by ctest, timing depends on the machine
 add_executable(NyxPhysicsBenchmark PhysicsBenchmark.cpp)
 target_link_libraries(NyxPhysicsBenchmark PRIVATE NyxEngine)
