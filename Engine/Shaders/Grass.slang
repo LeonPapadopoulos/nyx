@@ -11,6 +11,7 @@ import nyx.lighting;
 import nyx.shadows;
 import nyx.terrainocclusion;
 import nyx.view;
+import nyx.worldwind;
 
 [vk::binding(0, 2)] StructuredBuffer<nyx::GrassPoint> Points;
 [vk::binding(1, 2)] StructuredBuffer<nyx::GrassKind> Kinds;
@@ -124,6 +125,17 @@ void grassBlades(uint3 id : SV_DispatchThreadID)
 
     const float lean = kind.Lean + kind.LeanVariance * (nyx::grassRandom(hash, 16) * 2.0 - 1.0);
     float2 tip = way * sin(clamp(lean, 0.0, 1.5)) * height;
+
+    // The wind where most of it is, over all it leans by: gusts cross the field as bands of blades
+    // bowing, each as the air reaches it. How far it bends with the speed: less and less, up to a most.
+    const float3 wind = nyx::windAt(base + float3(0.0, height * 0.7, 0.0), View.Time);
+    const float windSpeed = length(wind.xz);
+    const float windShare = windSpeed / kind.Stiffness;
+    const float windBend = kind.WindResponse * windShare / sqrt(1.0 + windShare * windShare);
+    if (windSpeed > 0.001)
+    {
+        tip += wind.xz / windSpeed * windBend * height;
+    }
     tip *= min(MaxLeanShare * height / max(length(tip), 0.0001), 1.0);
 
     // The clump's tone and how dry the tips are; the blade's own brightness
@@ -155,10 +167,10 @@ void grassBlades(uint3 id : SV_DispatchThreadID)
     const float2 tipPacked = clamp(tip / nyx::GrassBladeTipUnit + 32768.0, 0.0, 65535.0);
     blade.Tip = uint(tipPacked.x) | (uint(tipPacked.y) << 16);
     const uint towardsFar = uint(smoothstep(NearShapeDistance * 0.75, NearShapeDistance, distance) * 255.0);
-    blade.Shape = uint(saturate(kind.Bend) * 255.0) | ((hash >> 24) << 8) | (towardsFar << 16) | (uint(clumpShade * 255.0) << 24);
+    blade.Shape = uint(saturate(kind.Bend + windBend * 0.4) * 255.0) | ((hash >> 24) << 8) | (towardsFar << 16) | (uint(clumpShade * 255.0) << 24);
     blade.TipColor = nyx::packGrassColor(tipColor);
     blade.RootColor = nyx::packGrassColor(rootColor);
-    blade.Extras = (point.NormalRandom & 65535u) | (Tile.Kind << 16);
+    blade.Extras = (point.NormalRandom & 65535u) | (Tile.Kind << 16) | (uint(saturate(windBend) * 255.0) << 24);
     BladesWritten[(bNear ? 0u : Tile.NearCapacity) + index] = blade;
 }
 
@@ -228,14 +240,20 @@ VertexOutput grassVertex(uint vertexId : SV_VulkanVertexID, uint instanceId : SV
     const float3 tangent = normalize(bezierTangent(p1, p2, tip, t));
     const float3 normal = normalize(cross(across, tangent));
 
-    const float3 positionWS = blade.Base + bezier(p1, p2, tip, t) + across * side * width * 0.5 * (1.0 - t * t);
+    // The flutter: each blade at its own phase, the tip most, more the harder it blows
+    const nyx::GrassKind kind = Kinds[(blade.Extras >> 16) & 255u];
+    const float windShare = float(blade.Extras >> 24) / 255.0;
+    const float phase = float((blade.Shape >> 8) & 255u) / 255.0 * 6.2831853;
+    const float flutter = sin(View.Time * (5.0 + phase) + phase + t * 3.0) * kind.Flutter * windShare * t * t * height * 0.12;
+
+    const float3 positionWS = blade.Base + bezier(p1, p2, tip, t) + across * side * width * 0.5 * (1.0 - t * t) + normal * flutter;
 
     VertexOutput output;
     output.Position = mul(View.ViewProjection, float4(positionWS, 1.0));
     output.Color = lerp(nyx::unpackGrassColor(blade.RootColor), nyx::unpackGrassColor(blade.TipColor), t);
     output.NormalWS = normal;
     output.PositionWS = positionWS;
-    output.Kind = blade.Extras >> 16;
+    output.Kind = (blade.Extras >> 16) & 255u;
     return output;
 }
 

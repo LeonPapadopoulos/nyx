@@ -1,7 +1,7 @@
 // The grass on a real GPU: blades over an SDF terrain, about as many as the values ask for, drawn in
 // the view's picture; none where the slope, the material or the height rule them out; gone where the
-// ground is dug away and back on new ground, with only the tiles the edit reached made again; under
-// an overhang as on top of it; and nothing made again while the camera stands still.
+// ground is dug away; under an overhang as on top of it; moving in a wind and still without one; and
+// nothing made again while the camera stands still.
 //
 // NYX_SCENE_TEST_OUTPUT=<folder> saves what was rendered there.
 #include "CameraComponent.h"
@@ -17,6 +17,7 @@
 #include "SdfTerrainComponent.h"
 #include "TerrainChunks.h"
 #include "TransformComponent.h"
+#include "WindComponent.h"
 #include "VulkanRenderer.h"
 
 #include <glm/glm.hpp>
@@ -208,6 +209,32 @@ namespace
 		scene.World.Get<GrassFieldComponent>(scene.Meadow).TerrainMaterials = {};
 	}
 
+	// Standing still without wind; in a wind the blades move from frame to frame, and lean its way
+	void TestWind(SceneRenderer& gpu)
+	{
+		GrassScene scene(gpu);
+		gpu.DrawUntilShadersCompiled();
+		scene.Look(glm::vec3(0.0f, 1.5f, 10.0f), glm::vec3(0.0f, 0.3f, 0.0f));
+		scene.MakeChunks();
+		const RgbaImage still = scene.Settle();
+		Require(CountChanged(still, scene.Settle(2)) == 0, "Without wind nothing moves");
+
+		WindComponent wind;
+		wind.Speed = 8.0f;
+		wind.Gustiness = 1.0f;
+		const Entity air = scene.World.CreateEntity();
+		scene.World.Add<WindComponent>(air, wind);
+		const RgbaImage blown = scene.Settle();
+		SaveIfAsked(blown, "Wind");
+		Require(CountChanged(still, blown) > ViewWidth * ViewHeight / 20, "The wind bends the blades");
+		Require(CountChanged(blown, scene.Settle(4)) > ViewWidth * ViewHeight / 50, "They keep moving");
+
+		// Wind Response 0: as without wind again
+		scene.World.Get<GrassFieldComponent>(scene.Meadow).WindResponse = 0.0f;
+		const RgbaImage held = scene.Settle();
+		Require(CountChanged(held, scene.Settle(2)) == 0, "With no response they stand still in it");
+	}
+
 	// Dug away: fewer blades at once, and only the tiles reached made again; filled in again, back
 	void TestFollowsEdits(SceneRenderer& gpu)
 	{
@@ -271,6 +298,7 @@ int main()
 		Nyx::Logger::Get().Init();
 		SceneRenderer gpu("NyxGrassGpuTests");
 		TestBladesDrawn(gpu);
+		TestWind(gpu);
 		TestFollowsEdits(gpu);
 		TestUnderOverhang(gpu);
 	}

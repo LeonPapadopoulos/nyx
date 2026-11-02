@@ -127,7 +127,7 @@ namespace Nyx
 			vk::Extent3D(static_cast<uint32_t>(wind.Grid.Cells.x), static_cast<uint32_t>(wind.Grid.Cells.y), static_cast<uint32_t>(wind.Grid.Cells.z)));
 		cmd.copyBufferToImage(*wind.Staging, *wind.Image, vk::ImageLayout::eTransferDstOptimal, copy);
 		TransitionImageLayout(*cmd, *wind.Image, Whole, vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal,
-			vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferWrite, vk::PipelineStageFlagBits::eVertexShader | vk::PipelineStageFlagBits::eFragmentShader,
+			vk::PipelineStageFlagBits::eTransfer, vk::AccessFlagBits::eTransferWrite, vk::PipelineStageFlagBits::eVertexShader | vk::PipelineStageFlagBits::eFragmentShader | vk::PipelineStageFlagBits::eComputeShader,
 			vk::AccessFlagBits::eShaderRead);
 
 		wind.Uploaded = wind.Texels;
