@@ -176,6 +176,10 @@ namespace
 		scene.World.Get<GrassFieldComponent>(scene.Meadow).bGrass = true;
 		const RgbaImage grown = scene.Settle();
 		SaveIfAsked(grown, "Plain");
+		scene.Look(glm::vec3(2.0f, 1.2f, 12.0f), glm::vec3(0.0f, 0.3f, 0.0f));
+		SaveIfAsked(scene.Settle(), "Close");
+		scene.Look(glm::vec3(0.0f, 4.0f, 20.0f), glm::vec3(0.0f, 0.0f, -10.0f));
+		scene.Settle();
 		const uint32_t blades = scene.Blades();
 		std::cout << "Blades on the plain: " << blades << ", tiles " << gpu.Renderer.GetGrassStats().Tiles << "\n";
 		// Looking along the plain, a good share of a field 100 m in range at 60 a square metre near by

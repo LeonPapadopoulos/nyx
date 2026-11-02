@@ -83,7 +83,22 @@ void grassBlades(uint3 id : SV_DispatchThreadID)
     const float random1 = float(random >> 8) / 255.0;
     const uint hash = nyx::grassHash(random, point.Place, kind.Seed + 3u);
 
-    const float height = kind.Height * (1.0 + kind.HeightVariance * (random0 * 2.0 - 1.0)) * growth;
+    // Its clump: the nearest found when the tile was made, one of the nine round the blade
+    const int2 clumpCell = int2(floor(base.xz / kind.ClumpSize)) + int2(int((point.RankClump >> 16) & 3u) - 1, int((point.RankClump >> 18) & 3u) - 1);
+    const uint clumpPlace = nyx::grassHash(uint(clumpCell.x), uint(clumpCell.y), kind.Seed + 1u);
+    const uint clumpValues = nyx::grassHash(uint(clumpCell.x), uint(clumpCell.y), kind.Seed + 4u);
+    const float2 clumpCentre = (float2(clumpCell) + float2(nyx::grassRandom(clumpPlace), nyx::grassRandom(clumpPlace, 16))) * kind.ClumpSize;
+    const float clumpHeight = float(clumpValues & 255u) / 255.0;
+    const float clumpFacing = float((clumpValues >> 8) & 255u) / 255.0 * 6.2831853;
+    const float clumpTone = float((clumpValues >> 16) & 255u) / 255.0;
+    const float clumpDry = float(clumpValues >> 24) / 255.0;
+
+    // The patches: taller and drier here and there, over more than a clump
+    const float patch = nyx::grassPatch(base.xz / kind.PatchSize, kind.Seed + 5u);
+    const float patchDry = nyx::grassPatch(base.xz / (kind.PatchSize * 0.7) + 31.7, kind.Seed + 6u);
+
+    const float heightShare = lerp(random0, clumpHeight, kind.ClumpHeight);
+    const float height = kind.Height * (1.0 + kind.HeightVariance * (heightShare * 2.0 - 1.0)) * lerp(1.0, patch * 2.0, kind.PatchHeight) * growth;
 
     // In view, with room for how far it can reach
     const float3 middle = base + float3(0.0, height * 0.5, 0.0);
@@ -99,16 +114,31 @@ void grassBlades(uint3 id : SV_DispatchThreadID)
     const float widening = min(sqrt(1.0 / max(share, 0.0625)), 4.0);
     const float width = kind.Width * (1.0 + kind.WidthVariance * (nyx::grassRandom(hash) * 2.0 - 1.0)) * widening;
 
+    // Its own way, its clump's, and towards the clump's middle
     const float facing = random1 * 6.2831853;
+    const float2 towardsCentre = clumpCentre - base.xz;
+    const float fromCentre = length(towardsCentre);
+    float2 way = lerp(float2(cos(facing), sin(facing)), float2(cos(clumpFacing), sin(clumpFacing)), kind.ClumpFacing);
+    way += towardsCentre / max(fromCentre, 0.001) * kind.ClumpPull * 2.0;
+    way /= max(length(way), 0.0001);
+
     const float lean = kind.Lean + kind.LeanVariance * (nyx::grassRandom(hash, 16) * 2.0 - 1.0);
-    float2 tip = float2(cos(facing), sin(facing)) * sin(clamp(lean, 0.0, 1.5)) * height;
+    float2 tip = way * sin(clamp(lean, 0.0, 1.5)) * height;
     tip *= min(MaxLeanShare * height / max(length(tip), 0.0001), 1.0);
+
+    // The clump's tone and how dry the tips are; the blade's own brightness
+    const float dryness = saturate(smoothstep(0.45, 0.85, patchDry) * kind.PatchDryness + (clumpDry - 0.5) * kind.ClumpColor * 0.5);
+    const float brightness = (1.0 + (clumpTone - 0.5) * kind.ClumpColor) * (1.0 + (float(hash >> 16 & 255u) / 255.0 - 0.5) * 2.0 * kind.ColorVariance);
+    const float3 bladeTip = lerp(kind.TipColor, kind.DryColor, dryness) * brightness;
+    const float3 bladeRoot = kind.RootColor * brightness;
+    // Darker towards the clump's middle, where less light gets down
+    const float clumpShade = saturate(1.0 - fromCentre / kind.ClumpSize);
 
     // Far blades take the ground's colour, last of all
     const float towardsGround = smoothstep(kind.Range * 0.55, kind.Range * 0.9, distance);
     const float3 ground = nyx::unpackGrassColor(point.Ground);
-    const float3 tipColor = lerp(kind.TipColor, ground, towardsGround);
-    const float3 rootColor = lerp(kind.RootColor, ground, towardsGround);
+    const float3 tipColor = lerp(bladeTip, ground, towardsGround);
+    const float3 rootColor = lerp(bladeRoot, ground, towardsGround);
 
     const bool bNear = distance < NearShapeDistance;
     const uint capacity = bNear ? Tile.NearCapacity : Tile.FarCapacity;
@@ -125,7 +155,7 @@ void grassBlades(uint3 id : SV_DispatchThreadID)
     const float2 tipPacked = clamp(tip / nyx::GrassBladeTipUnit + 32768.0, 0.0, 65535.0);
     blade.Tip = uint(tipPacked.x) | (uint(tipPacked.y) << 16);
     const uint towardsFar = uint(smoothstep(NearShapeDistance * 0.75, NearShapeDistance, distance) * 255.0);
-    blade.Shape = uint(saturate(kind.Bend) * 255.0) | ((hash >> 24) << 8) | (towardsFar << 16);
+    blade.Shape = uint(saturate(kind.Bend) * 255.0) | ((hash >> 24) << 8) | (towardsFar << 16) | (uint(clumpShade * 255.0) << 24);
     blade.TipColor = nyx::packGrassColor(tipColor);
     blade.RootColor = nyx::packGrassColor(rootColor);
     blade.Extras = (point.NormalRandom & 65535u) | (Tile.Kind << 16);

@@ -131,6 +131,21 @@ namespace nyx
         return c * c;
     }
 
+    // Smooth noise over the ground, 0 to 1, a patch about each unit of `place`
+    public float grassPatch(float2 place, uint seed)
+    {
+        const float2 cell = floor(place);
+        const float2 along = place - cell;
+        const float2 smooth = along * along * (3.0 - 2.0 * along);
+        const int x = int(cell.x);
+        const int z = int(cell.y);
+        const float a = grassRandom(grassHash(uint(x), uint(z), seed));
+        const float b = grassRandom(grassHash(uint(x + 1), uint(z), seed));
+        const float c = grassRandom(grassHash(uint(x), uint(z + 1), seed));
+        const float d = grassRandom(grassHash(uint(x + 1), uint(z + 1), seed));
+        return lerp(lerp(a, b, smooth.x), lerp(c, d, smooth.x), smooth.y);
+    }
+
     // GetGrassDrawnShare() in Grass.cpp
     public float grassDrawnShare(float fullDensityDistance, float range, float distance)
     {
