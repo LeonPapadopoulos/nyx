@@ -2097,8 +2097,7 @@ game, coarser the farther, and collides while the world runs.
 *Grass Field* grows single blades of grass over another entity's surface, made and culled on the GPU with
 nothing a blade on the CPU or in the scene file. Each entity with one is one kind of grass.
 
-- *Surface*: an SDF terrain, or an entity with a mesh made at run time such as a *Ground*; none: its
-  own entity. *Density*: blades a square metre near the camera. *Full Density Distance*: how far they
+- *Surface*: an SDF terrain; none: its own entity. *Density*: blades a square metre near the camera. *Full Density Distance*: how far they
   stay that dense. *Range*: where the last ones go. *Seed*: other blades for the same values.
 - *Limits*: *Slope Range*, *Height Range*, *Terrain Materials*, *Use Blockers*.
 - *Blades*: *Height*, *Width*, *Lean*, each with a *Variance*, and *Bend*. *Clumps*: *Clump Size*,
@@ -2107,7 +2106,13 @@ nothing a blade on the CPU or in the scene file. Each entity with one is one kin
 - *Colours*: *Root*, *Tip*, *Dry Color*, *Color Variance*. *Wind*: *Wind Response*, *Stiffness*,
   *Flutter*. *Shading*: *Normal Rounding* (0 flat and hard-lit like a facet, 1 soft and rounded),
   *Self Shadow*, *Translucency*, *Roughness*.
-- The frame statistics show its compute passes as `gpu_grass_ms`, and drawing it as
+- The blades grow on the terrain's drawn chunks, on whatever faces up: on top of an overhang and
+  beneath it, in caves, on new ground, and not where the ground was dug away. Only the chunks an edit
+  reaches are made again, and only when they change.
+- Past *Full Density Distance* the blades thin out and grow wider, each growing from nothing as it
+  comes in; near *Range* they take the colour of the ground beneath them. No blade pops.
+- It casts no shadows, a click goes through it to what it grows on, and physics doesn't know it.
+- The frame statistics show the blades drawn as `grass_blades`, its compute passes as `gpu_grass_ms`, and drawing it as
   `gpu_grass_draw_ms`, which is part of `gpu_scene_ms`.
 
 ## Scattering

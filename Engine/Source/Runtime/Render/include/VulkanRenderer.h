@@ -588,6 +588,9 @@ namespace Nyx
 		// The view's colour grading in the last frame: its grade, what its table was baked from and
 		// how often; null for an unknown view. For tests.
 		const SceneViewColorGrading* GetSceneViewColorGrading(uint64_t id) const;
+		// The grass's tiles this frame, and what the view drew of it the frame before
+		VulkanGrass::Stats GetGrassStats() const { return Grass.GetStats(); }
+		const SceneViewGrass* GetSceneViewGrass(uint64_t id) const;
 		// The view's grading table as it is on the GPU, x fastest, then y, then z; empty without one.
 		// Between frames; waits for the GPU. For tests.
 		std::vector<glm::vec4> ReadSceneViewColorGradingTable(uint64_t id);
@@ -692,6 +695,9 @@ namespace Nyx
 		uint64_t GetShownWorldRevision(const SceneViewInstance& view) const;
 		// Every shown world's objects and debug lines; forgets worlds no view shows any more
 		void ExtractRenderWorlds();
+		// The worlds' grass this frame: the tiles round the cameras of the views that show them
+		// (VulkanGrass), once the views' cameras are known and the meshes uploaded
+		void PrepareGrass();
 		// How far into its next step the world is drawn this frame (SetWorldInterpolation()), for its
 		// meshes and decals alike: none for a world drawn as it is; paused, 1, the last step's poses
 		std::optional<float> GetWorldInterpolation(const Nyx::Registry* registry) const;
@@ -877,6 +883,7 @@ namespace Nyx
 		VulkanAmbientOcclusion AmbientOcclusion{ Context, Programs };
 		// Each view's colour grading table, baked before its picture pass when its grade changed
 		VulkanColorGrading ColorGrading{ Context, Programs };
+		VulkanGrass Grass{ Context, Programs };
 		VulkanLocalWind LocalWind{ Context };
 		// Each view's copy of its world's terrain occlusion volume
 		VulkanTerrainOcclusion TerrainOcclusion{ Context };

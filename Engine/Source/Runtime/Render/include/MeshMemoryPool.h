@@ -109,7 +109,7 @@ namespace Nyx
 		// Where to write `size` bytes that this frame copies into `destination`, from its start
 		void* Reserve(VulkanContext& context, vk::DeviceSize size, vk::Buffer destination);
 		// The reserved copies into the command buffer, and a barrier that makes them visible to
-		// vertex and index reads
+		// vertex and index reads, and to compute (the grass's tiles)
 		void Record(const vk::raii::CommandBuffer& cmd);
 		// After the frame's fence: the staging buffer is free again
 		void ReleaseRetired();

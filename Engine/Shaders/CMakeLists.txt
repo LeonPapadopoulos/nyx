@@ -27,7 +27,9 @@ set(NYX_SHADER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/VolumetricCloudWeather.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/VolumetricClouds.slang
     ${CMAKE_CURRENT_SOURCE_DIR}/Grid.vert
-    ${CMAKE_CURRENT_SOURCE_DIR}/Grid.frag
+    ${CMAKE_CURRENT_SOURCE_DIR}/Grass.slang
+    GrassPoints.slang
+    Grid.frag
     ${CMAKE_CURRENT_SOURCE_DIR}/DebugLines.vert
     ${CMAKE_CURRENT_SOURCE_DIR}/DebugLines.frag
     ${CMAKE_CURRENT_SOURCE_DIR}/Picking.vert

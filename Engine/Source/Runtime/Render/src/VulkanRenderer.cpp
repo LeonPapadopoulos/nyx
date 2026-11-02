@@ -10,6 +10,9 @@
 #include "Atmosphere.h"
 #include "Bloom.h"
 #include "ColorGrading.h"
+#include "Grass.h"
+#include "GrassFieldComponent.h"
+#include "GuidComponent.h"
 #include "ColorGradingComponent.h"
 #include "EnvironmentComponent.h"
 #include "LightShafts.h"
@@ -347,6 +350,7 @@ namespace Nyx
 				BindSceneSets(view, cmd);
 			});
 		ColorGrading.Initialize(Bindless);
+		Grass.Initialize(*Bindless.GetSetLayout(), *SceneDescriptorSetLayout);
 		LocalWind.Initialize(Bindless);
 		TerrainOcclusion.Initialize(Bindless);
 		SkyAtmosphere.Initialize(Bindless);
@@ -368,6 +372,7 @@ namespace Nyx
 
 		// Shared pipelines
 		CreateSkyboxPipeline();
+		Grass.CreateDrawPipeline(GetSceneRenderPass(), GetSceneSamples());
 		CreateTonemapPipeline();
 
 		// 2D shapes, the scene views' blur for glows and glass, and the frame's GPU times
@@ -425,6 +430,7 @@ namespace Nyx
 			Bloom.Release(view.Bloom);
 			AmbientOcclusion.Release(view.AmbientOcclusion);
 			ColorGrading.Release(view.ColorGrading);
+			Grass.Release(view.Grass);
 			LocalWind.Release(view.LocalWind);
 			TerrainOcclusion.Release(view.TerrainOcclusion);
 			Lightning.Release(view.Lightning);
@@ -453,6 +459,7 @@ namespace Nyx
 		Bloom.Shutdown();
 		AmbientOcclusion.Shutdown();
 		ColorGrading.Shutdown();
+		Grass.Shutdown();
 		Lightning.Shutdown();
 		Particles.Shutdown();
 		LightShafts.Shutdown();
@@ -545,6 +552,12 @@ namespace Nyx
 			NYX_PROFILE_SCOPE("Read back last frame");
 			UI.ReadLastFrame();
 			ReadBackPickResults();
+			for (SceneViewInstance& view : SceneViews)
+			{
+				Grass.ReadStats(view.Grass);
+				view.Culling.GrassBlades = view.Grass.NearBlades + view.Grass.FarBlades;
+				view.Culling.Triangles += uint64_t(view.Grass.NearBlades) * VulkanGrass::NearTriangles + uint64_t(view.Grass.FarBlades) * VulkanGrass::FarTriangles;
+			}
 			ReadPassTimestamps();
 			CompleteFrameStats();
 		}
@@ -669,6 +682,7 @@ namespace Nyx
 		{
 			NYX_PROFILE_SCOPE("Culling");
 			PrepareSceneViews();
+			PrepareGrass();
 		}
 		PendingSceneTimes.Cull = MillisecondsSince(cullStart);
 		DebugLines.Upload();
@@ -726,6 +740,80 @@ namespace Nyx
 				Overlays.DrawPasses(view, *world, cmd);
 			}
 		}
+	}
+
+	void VulkanRenderer::PrepareGrass()
+	{
+		Grass.BeginFrame();
+		std::vector<glm::vec3> cameras;
+		std::vector<GrassSurfaceMesh> meshes;
+		for (const std::unique_ptr<RenderWorld>& worldPointer : RenderWorlds)
+		{
+			const RenderWorld& world = *worldPointer;
+			if (world.Registry == nullptr)
+			{
+				continue;
+			}
+			cameras.clear();
+			for (const SceneViewInstance& view : SceneViews)
+			{
+				if (view.bDrawnThisFrame && FindShownWorld(view) == &world)
+				{
+					cameras.push_back(view.SceneGlobals.CameraWorldPos);
+				}
+			}
+			if (cameras.empty())
+			{
+				continue;
+			}
+			Nyx::Registry& registry = const_cast<Nyx::Registry&>(*world.Registry);
+			registry.Each<Nyx::GrassFieldComponent>([&](Nyx::Entity entity, const Nyx::GrassFieldComponent& component)
+				{
+					if (!component.bGrass)
+					{
+						return;
+					}
+					std::optional<Nyx::Entity> surface = component.Surface.IsValid() ? Nyx::FindEntityByGuid(registry, component.Surface) : std::optional<Nyx::Entity>(entity);
+					if (!surface)
+					{
+						return;
+					}
+					meshes.clear();
+					const glm::mat4 surfaceWorld = registry.Has<Nyx::TransformComponent>(*surface) ? registry.Get<Nyx::TransformComponent>(*surface).ToMatrix() : glm::mat4(1.0f);
+					const float reach = Nyx::MakeGrassSettings(component).Range + 32.0f;
+					if (registry.Has<Nyx::TerrainChunksComponent>(*surface))
+					{
+						const float scale = glm::length(glm::vec3(surfaceWorld[0]));
+						for (const Nyx::TerrainChunk& chunk : registry.Get<Nyx::TerrainChunksComponent>(*surface).Chunks)
+						{
+							if (!chunk.bDrawn || !chunk.Mesh.Mesh)
+							{
+								continue;
+							}
+							Nyx::Mesh* mesh = RuntimeMeshes.Acquire(Context, chunk.Mesh);
+							if (mesh == nullptr)
+							{
+								continue;
+							}
+							const glm::mat4 model = surfaceWorld * glm::translate(glm::mat4(1.0f), chunk.Origin);
+							const BoundingBox bounds = TransformBox(BoundingBox{ mesh->GetLocalBoundsMin(), mesh->GetLocalBoundsMax() }, model);
+							bool bNear = false;
+							for (const glm::vec3& camera : cameras)
+							{
+								bNear = bNear || GetBoxDistance(bounds, camera) <= reach;
+							}
+							if (!bNear)
+							{
+								continue;
+							}
+							meshes.push_back(GrassSurfaceMesh{ .Data = chunk.Mesh.Mesh, .Revision = chunk.Mesh.Revision, .Gpu = mesh, .Model = model, .WorldBounds = bounds,
+								.Morph = glm::vec2(chunk.Morph.x * scale, chunk.Morph.y > 0.0f ? chunk.Morph.y / scale : 0.0f), .bHasMaterials = true });
+						}
+					}
+					Grass.AddKind(world.Revision, entity.Value, component, meshes, cameras);
+				});
+		}
+		Grass.EndKinds();
 	}
 
 	void VulkanRenderer::ApplyPendingMaterialValues()
@@ -871,6 +959,12 @@ namespace Nyx
 			// Frozen anew where the camera is at the next frame
 			view->FrozenCullingViewProjection.reset();
 		}
+	}
+
+	const SceneViewGrass* VulkanRenderer::GetSceneViewGrass(uint64_t id) const
+	{
+		const SceneViewInstance* view = FindSceneView(id);
+		return view ? &view->Grass : nullptr;
 	}
 
 	const SceneViewCullingStats* VulkanRenderer::GetSceneViewCullingStats(uint64_t id) const
@@ -2104,6 +2198,7 @@ namespace Nyx
 			view.FrozenCullingViewProjection.reset();
 		}
 		const Frustum frustum = MakeFrustum(cullingViewProjection);
+		view.GrassFrustum = frustum;
 		CullDraws(world, frustum, view.SceneGlobals.CameraWorldPos, false, view.Draws, view.Culling);
 
 		// The point lights whose light reaches into view
@@ -2566,12 +2661,13 @@ namespace Nyx
 		bindings[0].binding = 0;
 		bindings[0].descriptorType = vk::DescriptorType::eUniformBuffer;
 		bindings[0].descriptorCount = 1;
-		bindings[0].stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment;
+		// Compute too: the grass's blades read the view (VulkanGrass)
+		bindings[0].stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eCompute;
 		// The view's point lights (nyx.view's PointLights)
 		bindings[1].binding = 1;
 		bindings[1].descriptorType = vk::DescriptorType::eStorageBuffer;
 		bindings[1].descriptorCount = 1;
-		bindings[1].stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment;
+		bindings[1].stageFlags = vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment | vk::ShaderStageFlagBits::eCompute;
 
 		vk::DescriptorSetLayoutCreateInfo layoutInfo{};
 		layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
@@ -2623,6 +2719,7 @@ namespace Nyx
 	{
 		Context.WaitIdle();
 		CreateSkyboxPipeline();
+		Grass.CreateDrawPipeline(GetSceneRenderPass(), GetSceneSamples());
 		Materials.RebuildScenePipelines();
 		LOG_INFO("The scene views draw with {} sample(s) a pixel", static_cast<uint32_t>(MsaaSamples));
 	}
@@ -3359,6 +3456,11 @@ namespace Nyx
 		{
 			AmbientOcclusion.CreatePipelines();
 		}
+		if (changed.contains("GrassPoints.slang") || changed.contains("Grass.slang"))
+		{
+			Grass.CreateComputePipelines();
+			Grass.CreateDrawPipeline(GetSceneRenderPass(), GetSceneSamples());
+		}
 		if (changed.contains("ColorGrading.slang"))
 		{
 			ColorGrading.CreatePipelines();
@@ -3687,6 +3789,7 @@ namespace Nyx
 			Bloom.Release(it->Bloom);
 			AmbientOcclusion.Release(it->AmbientOcclusion);
 			ColorGrading.Release(it->ColorGrading);
+			Grass.Release(it->Grass);
 			LocalWind.Release(it->LocalWind);
 			TerrainOcclusion.Release(it->TerrainOcclusion);
 			Lightning.Release(it->Lightning);
@@ -3959,11 +4062,25 @@ namespace Nyx
 			DrawShadowCascades(view, *world, cmd);
 			WritePassTimestamp(cmd, view, ETimedPass::Shadows, true);
 		}
+		if (world)
+		{
+			// The tiles made this frame with the first view drawn, then this view's blades
+			WritePassTimestamp(cmd, view, ETimedPass::Grass, false);
+			Grass.RecordTiles(cmd);
+			Grass.RecordBlades(view.Grass, world->Revision, view.SceneGlobals.CameraWorldPos, view.GrassFrustum, Bindless.GetSet(), *view.SceneDescriptorSets.front(), cmd);
+			WritePassTimestamp(cmd, view, ETimedPass::Grass, true);
+		}
 		WritePassTimestamp(cmd, view, ETimedPass::Scene, false);
 		view.RenderTarget.BeginScenePass(cmd, clear);
 		if (world)
 		{
 			DrawRenderObjects(view, *world, cmd);
+			if (view.Grass.bDrawn)
+			{
+				WritePassTimestamp(cmd, view, ETimedPass::GrassDraw, false);
+				Grass.Draw(view.Grass, Bindless.GetSet(), *view.SceneDescriptorSets.front(), cmd);
+				WritePassTimestamp(cmd, view, ETimedPass::GrassDraw, true);
+			}
 		}
 		DrawSkybox(view, cmd);
 		if (world)

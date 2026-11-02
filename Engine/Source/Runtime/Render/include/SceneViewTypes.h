@@ -103,6 +103,8 @@ namespace Nyx
 		// The world's lightning bolts on this frame, and those wholly out of view
 		uint32_t Lightning = 0;
 		uint32_t LightningCulled = 0;
+		// The blades of grass drawn
+		uint32_t GrassBlades = 0;
 		// Meshes left out, each instance one: an entity out of view, or every instance of a cell
 		uint32_t InstancesCulled = 0;
 		// The draw calls the draws are recorded as, one for each section of a mesh, and those of them
@@ -132,6 +134,7 @@ namespace Nyx
 			Particles += other.Particles;
 			Lightning += other.Lightning;
 			LightningCulled += other.LightningCulled;
+			GrassBlades += other.GrassBlades;
 			return *this;
 		}
 	};

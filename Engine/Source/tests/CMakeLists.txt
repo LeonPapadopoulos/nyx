@@ -852,6 +852,16 @@ nyx_copy_shaders_next_to(NyxTerrainChunksGpuTests)
 nyx_copy_shader_compiler_next_to(NyxTerrainChunksGpuTests)
 add_test(NAME NyxTerrainChunksGpuTests COMMAND NyxTerrainChunksGpuTests)
 
+# The grass on a real GPU: blades over an SDF terrain and how many, what rules them out, following
+# edits, under an overhang
+add_executable(NyxGrassGpuTests GrassGpuTests.cpp)
+target_link_libraries(NyxGrassGpuTests PRIVATE NyxEngine)
+add_dependencies(NyxGrassGpuTests NyxGeneratedReflection)
+set_property(TARGET NyxGrassGpuTests PROPERTY FOLDER "Tests")
+nyx_copy_shaders_next_to(NyxGrassGpuTests)
+nyx_copy_shader_compiler_next_to(NyxGrassGpuTests)
+add_test(NAME NyxGrassGpuTests COMMAND NyxGrassGpuTests)
+
 # The SDF terrain's Gate 1 report on the GPU: the test volume's GPU time, scene and shadows, against
 # the same views without it, with each mesher at 1 m and half-metre cells. Needs a Vulkan device;
 # not a test.

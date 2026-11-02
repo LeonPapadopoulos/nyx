@@ -52,7 +52,8 @@ namespace Nyx
 		// of them drew (SceneViewFrameStats), summed: their scene passes' draw calls, those of many
 		// instances, the instances drawn and culled, the triangles; their shadow cascades, their
 		// draw calls and triangles; the surface decals; the point lights each lit its pixels with;
-		// the particle emitters drawn, and their particles; the lightning bolts drawn
+		// the particle emitters drawn, and their particles; the lightning bolts drawn; the blades of
+		// grass drawn
 		SceneViews,
 		MsaaSamples,
 		DrawCalls,
@@ -68,6 +69,7 @@ namespace Nyx
 		ParticleEmitters,
 		Particles,
 		LightningBolts,
+		GrassBlades,
 		Count
 	};
 

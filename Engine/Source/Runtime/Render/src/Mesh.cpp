@@ -289,14 +289,14 @@ namespace Nyx
 		if (!data.Vertices.empty())
 		{
 			const vk::DeviceSize size = sizeof(GpuVertex) * data.Vertices.size();
-			VertexBuffer = CreatePooledBuffer(context, size, vk::BufferUsageFlagBits::eVertexBuffer, pool, VertexAllocation);
+			VertexBuffer = CreatePooledBuffer(context, size, vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eStorageBuffer, pool, VertexAllocation);
 			auto* staging = static_cast<GpuVertex*>(uploads.Reserve(context, size, *VertexBuffer));
 			std::transform(data.Vertices.begin(), data.Vertices.end(), staging, ToGpuVertex);
 		}
 		if (!data.Indices.empty())
 		{
 			const vk::DeviceSize size = sizeof(uint32_t) * data.Indices.size();
-			IndexBuffer = CreatePooledBuffer(context, size, vk::BufferUsageFlagBits::eIndexBuffer, pool, IndexAllocation);
+			IndexBuffer = CreatePooledBuffer(context, size, vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eStorageBuffer, pool, IndexAllocation);
 			std::memcpy(uploads.Reserve(context, size, *IndexBuffer), data.Indices.data(), static_cast<size_t>(size));
 		}
 

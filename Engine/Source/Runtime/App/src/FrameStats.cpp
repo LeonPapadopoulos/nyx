@@ -47,6 +47,7 @@ namespace Nyx
 			{ "particle_emitters", false },
 			{ "particles", false },
 			{ "lightning_bolts", false },
+			{ "grass_blades", false },
 		} };
 		return infos[std::min(static_cast<size_t>(stat), FrameStatCount - 1)];
 	}
@@ -98,6 +99,7 @@ namespace Nyx
 		sample[EFrameStat::ParticleEmitters] = views.Scene.ParticleEmitters - std::min(views.Scene.ParticleEmitters, views.Scene.ParticleEmittersCulled);
 		sample[EFrameStat::Particles] = views.Scene.Particles;
 		sample[EFrameStat::LightningBolts] = views.Scene.Lightning - std::min(views.Scene.Lightning, views.Scene.LightningCulled);
+		sample[EFrameStat::GrassBlades] = views.Scene.GrassBlades;
 		return sample;
 	}
 

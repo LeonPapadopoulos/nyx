@@ -228,8 +228,8 @@ namespace Nyx
 
 		vk::MemoryBarrier barrier{};
 		barrier.srcAccessMask = vk::AccessFlagBits::eTransferWrite;
-		barrier.dstAccessMask = vk::AccessFlagBits::eVertexAttributeRead | vk::AccessFlagBits::eIndexRead;
-		cmd.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eVertexInput, {}, barrier, {}, {});
+		barrier.dstAccessMask = vk::AccessFlagBits::eVertexAttributeRead | vk::AccessFlagBits::eIndexRead | vk::AccessFlagBits::eShaderRead;
+		cmd.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer, vk::PipelineStageFlagBits::eVertexInput | vk::PipelineStageFlagBits::eComputeShader, {}, barrier, {}, {});
 	}
 
 	void MeshUploads::ReleaseRetired()

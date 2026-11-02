@@ -201,6 +201,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanBloom.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/ColorGrading.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanColorGrading.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanGrass.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanLocalWind.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/VulkanTerrainOcclusion.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Render/src/SkyAtmosphere.cpp
@@ -470,6 +471,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanBloom.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/ColorGrading.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanColorGrading.h
+    ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanGrass.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanLocalWind.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/VulkanTerrainOcclusion.h
     ${NYX_ENGINE_ROOT}/Runtime/Render/include/SkyAtmosphere.h

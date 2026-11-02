@@ -8,6 +8,7 @@
 #include "VulkanCloudLayer.h"
 #include "VulkanVolumetricClouds.h"
 #include "VulkanColorGrading.h"
+#include "VulkanGrass.h"
 #include "VulkanLocalWind.h"
 #include "VulkanTerrainOcclusion.h"
 #include "EditorCamera.h"
@@ -122,6 +123,9 @@ namespace Nyx
 		// Its ambient occlusion: its targets at half its size, and its settings this frame
 		// (VulkanAmbientOcclusion)
 		SceneViewAmbientOcclusion AmbientOcclusion;
+		// Its grass: the blades it draws this frame (VulkanGrass); the frustum they are culled by
+		SceneViewGrass Grass;
+		Frustum GrassFrustum;
 		// Its colour grading: its lookup table, and its grade this frame (VulkanColorGrading)
 		SceneViewColorGrading ColorGrading;
 		// Its lightning's bolts this frame, and their pass's framebuffer (VulkanLightning)
