@@ -189,6 +189,13 @@ struct VertexOutput
     float3 Color : COLOR;
     float3 NormalWS : NORMAL;
     float3 PositionWS : POSITION_WS;
+    // Across the blade, and which side of it: -1 to 1
+    float3 AcrossWS : ACROSS;
+    float Side : SIDE;
+    // Up the blade, 0 to 1
+    float Along : ALONG;
+    nointerpolation float3 GroundNormal : GROUND_NORMAL;
+    nointerpolation float ClumpShade : CLUMP_SHADE;
     nointerpolation uint Kind : KIND;
 }
 
@@ -246,13 +253,23 @@ VertexOutput grassVertex(uint vertexId : SV_VulkanVertexID, uint instanceId : SV
     const float phase = float((blade.Shape >> 8) & 255u) / 255.0 * 6.2831853;
     const float flutter = sin(View.Time * (5.0 + phase) + phase + t * 3.0) * kind.Flutter * windShare * t * t * height * 0.12;
 
-    const float3 positionWS = blade.Base + bezier(p1, p2, tip, t) + across * side * width * 0.5 * (1.0 - t * t) + normal * flutter;
+    // Seen edge on a blade would be a line: it is widened there, so the field stays as full from any side
+    const float3 curve = blade.Base + bezier(p1, p2, tip, t);
+    const float edgeOn = 1.0 - abs(dot(normal, normalize(View.CameraPosition.xyz - curve)));
+    const float thickened = width * (1.0 + 1.5 * edgeOn * edgeOn * edgeOn);
+
+    const float3 positionWS = curve + across * side * thickened * 0.5 * (1.0 - t * t) + normal * flutter;
 
     VertexOutput output;
     output.Position = mul(View.ViewProjection, float4(positionWS, 1.0));
     output.Color = lerp(nyx::unpackGrassColor(blade.RootColor), nyx::unpackGrassColor(blade.TipColor), t);
     output.NormalWS = normal;
     output.PositionWS = positionWS;
+    output.AcrossWS = across;
+    output.Side = side;
+    output.Along = t;
+    output.GroundNormal = nyx::unpackGrassNormal(blade.Extras & 65535u);
+    output.ClumpShade = float(blade.Shape >> 24) / 255.0;
     output.Kind = (blade.Extras >> 16) & 255u;
     return output;
 }
@@ -267,17 +284,35 @@ struct Targets
 Targets grassFragment(VertexOutput input, bool bFrontFace : SV_IsFrontFace)
 {
     const nyx::GrassKind kind = Kinds[input.Kind];
-    const float3 normal = normalize(input.NormalWS) * (bFrontFace ? 1.0 : -1.0);
-    const float3 view = normalize(View.CameraPosition.xyz - input.PositionWS);
+    const float3 toCamera = View.CameraPosition.xyz - input.PositionWS;
+    const float distance = length(toCamera);
+    const float3 view = toCamera / max(distance, 0.001);
+    // Its normal turned out towards each edge, as if the flat blade were rounded; far away the
+    // ground's, so the field doesn't sparkle where its blades are smaller than a pixel
+    const float3 flat = normalize(input.NormalWS) * (bFrontFace ? 1.0 : -1.0);
+    const float3 rounded = normalize(flat + input.AcrossWS * input.Side * 0.9);
+    const float3 near = normalize(lerp(flat, rounded, kind.NormalRounding));
+    const float3 normal = normalize(lerp(near, input.GroundNormal, smoothstep(kind.Range * 0.25, kind.Range * 0.7, distance)));
+    // Dark at its foot, where little light gets down, and in the middle of its clump
+    const float low = 1.0 - saturate(input.Along);
+    const float shade = (1.0 - kind.SelfShadow * low * low) * (1.0 - kind.SelfShadow * 0.5 * input.ClumpShade * low);
+    const float3 baseColor = input.Color * shade;
     Targets targets;
     if (nyx::isMaterialDebugView())
     {
-        targets.Color = float4(View.DebugView == nyx::DebugNormal ? normal * 0.5 + 0.5 : input.Color, 1.0);
+        targets.Color = float4(View.DebugView == nyx::DebugNormal ? normal * 0.5 + 0.5 : baseColor, 1.0);
         targets.Ambient = float4(0.0, 0.0, 0.0, 1.0);
         return targets;
     }
-    const float occlusion = nyx::terrainSkyVisibility(input.PositionWS, float3(0.0, 1.0, 0.0));
-    const nyx::SurfaceLight light = nyx::lightSurfaceApart(input.Color, 0.0, kind.Roughness, occlusion, normal, view, input.PositionWS, nyx::sunShadow(input.PositionWS, normal));
+    const float occlusion = nyx::terrainSkyVisibility(input.PositionWS, input.GroundNormal) * shade;
+    // The sun's shadow by the ground's normal: one that lights a blade from behind falls on it as well
+    const float sun = nyx::sunShadow(input.PositionWS, input.GroundNormal);
+    nyx::SurfaceLight light = nyx::lightSurfaceApart(baseColor, 0.0, kind.Roughness, occlusion, normal, view, input.PositionWS, sun);
+    // The sun through the blade: on its side away from the sun, brightest looking towards it, the
+    // light taking the colour of what it passed through
+    const float3 toSun = normalize(View.LightDirection.xyz);
+    const float through = saturate(dot(-normal, toSun)) * 0.4 + pow(saturate(dot(-view, toSun)), 3.0) * 0.6;
+    light.Direct += baseColor * sqrt(max(baseColor, 0.0)) * View.LightColor.rgb * sun * kind.Translucency * through * saturate(input.Along * 1.5);
     const nyx::Fog fog = nyx::heightFog(input.PositionWS);
     const nyx::CloudCover clouds = nyx::cloudCoverBefore(input.PositionWS, input.Position.xy);
     if (View.AmbientOcclusion != 0)

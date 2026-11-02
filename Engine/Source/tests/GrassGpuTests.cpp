@@ -179,6 +179,17 @@ namespace
 		SaveIfAsked(grown, "Plain");
 		scene.Look(glm::vec3(2.0f, 1.2f, 12.0f), glm::vec3(0.0f, 0.3f, 0.0f));
 		SaveIfAsked(scene.Settle(), "Close");
+		// The two looks of a blade's light, and the sun through it
+		GrassFieldComponent& look = scene.World.Get<GrassFieldComponent>(scene.Meadow);
+		const RgbaImage rounded = scene.Settle(3);
+		look.NormalRounding = 0.0f;
+		const RgbaImage flat = scene.Settle(3);
+		SaveIfAsked(flat, "CloseFlat");
+		Require(CountChanged(rounded, flat) > ViewWidth * ViewHeight / 20, "Normal Rounding changes the blades' light");
+		look.NormalRounding = 1.0f;
+		look.Translucency = 0.0f;
+		Require(CountChanged(rounded, scene.Settle(3)) > 500, "Translucency changes the blades' light");
+		look.Translucency = 0.6f;
 		scene.Look(glm::vec3(0.0f, 4.0f, 20.0f), glm::vec3(0.0f, 0.0f, -10.0f));
 		scene.Settle();
 		const uint32_t blades = scene.Blades();

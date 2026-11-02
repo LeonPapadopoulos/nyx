@@ -55,7 +55,7 @@ namespace Nyx
 		float HeightVariance = 0.35f;
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Blades", DragSpeed = 0.001, Tooltip = "How wide a blade is at its foot, in metres, on average"))
-		float Width = 0.025f;
+		float Width = 0.035f;
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Width Variance", Category = "Blades", DragSpeed = 0.005, Tooltip = "How much blades differ in width, 0 to 1, as a share of Width"))
 		float WidthVariance = 0.3f;
@@ -94,7 +94,7 @@ namespace Nyx
 		float PatchDryness = 0.35f;
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Root", Category = "Colours", UI = Color, Tooltip = "Linear RGB, at the foot of a blade"))
-		glm::vec3 RootColor{ 0.05f, 0.13f, 0.025f };
+		glm::vec3 RootColor{ 0.08f, 0.20f, 0.04f };
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Tip", Category = "Colours", UI = Color, Tooltip = "Linear RGB, at the tip of a blade"))
 		glm::vec3 TipColor{ 0.30f, 0.50f, 0.11f };
@@ -118,7 +118,7 @@ namespace Nyx
 		float NormalRounding = 1.0f;
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (DisplayName = "Self Shadow", Category = "Shading", DragSpeed = 0.005, Tooltip = "How dark the grass is low down and in the middle of its clumps, 0 to 1"))
-		float SelfShadow = 0.6f;
+		float SelfShadow = 0.45f;
 
 		NYX_PROPERTY(Edit, Undo, Serialize, meta = (Category = "Shading", DragSpeed = 0.005, Tooltip = "How bright blades glow with the sun behind them, 0 to 1"))
 		float Translucency = 0.6f;
