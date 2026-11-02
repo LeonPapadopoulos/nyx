@@ -20,6 +20,19 @@ struct MeshVertex
 [vk::binding(2, 0)] RWStructuredBuffer<nyx::GrassPoint> Points;
 [vk::binding(3, 0)] RWStructuredBuffer<nyx::GrassTileCount> Tiles;
 
+// A scatter blocker reaching the tile (ScatterBlocker, GetBlockerDensity())
+struct Blocker
+{
+    float4x4 WorldToShape;
+    float3 Size;
+    float Margin;
+    float Falloff;
+    // ScatterBlocker::EKind: a circle, a box, a sphere, a capsule
+    uint Kind;
+    uint2 _Padding;
+}
+[vk::binding(4, 0)] StructuredBuffer<Blocker> Blockers;
+
 struct Tile
 {
     float4x4 Model;
@@ -28,8 +41,9 @@ struct Tile
     uint Capacity;
     uint Slot;
     float CellSize;
-    // The level of the grid it keeps (Grass.h)
-    uint Level;
+    // In the low 2 bits the level of the grid it keeps (Grass.h); from bit 8 its first blocker, 12
+    // bits, and how many, 12 bits
+    uint LevelAndBlockers;
     uint Seed;
     uint MaterialMask;
     float2 NormalYRange;
@@ -88,6 +102,34 @@ int2 nearestClump(float2 place)
     return nearest;
 }
 
+float blockerDensity(Blocker blocker, float3 point)
+{
+    const float3 inShape = mul(blocker.WorldToShape, float4(point, 1.0)).xyz;
+    float distance;
+    if (blocker.Kind == 1u)
+    {
+        const float3 beyond = abs(inShape) - blocker.Size;
+        distance = length(max(beyond, 0.0)) + min(max(beyond.x, max(beyond.y, beyond.z)), 0.0);
+    }
+    else if (blocker.Kind == 2u)
+    {
+        distance = length(inShape) - blocker.Size.x;
+    }
+    else if (blocker.Kind == 3u)
+    {
+        distance = length(float3(inShape.x, inShape.y - clamp(inShape.y, -blocker.Size.y, blocker.Size.y), inShape.z)) - blocker.Size.x;
+    }
+    else
+    {
+        distance = length(inShape.xz) - blocker.Size.x;
+    }
+    if (distance <= blocker.Margin)
+    {
+        return 0.0;
+    }
+    return blocker.Falloff > 0.0 ? smoothstep(blocker.Margin, blocker.Margin + blocker.Falloff, distance) : 1.0;
+}
+
 // The material number in a vertex's half float (Vertex::Custom.y), without half floats on the device
 float materialOf(MeshVertex vertex)
 {
@@ -131,7 +173,9 @@ void grassPoints(uint3 id : SV_DispatchThreadID)
     }
 
     // The cells over it of the grid the tile keeps; a blade may lie anywhere in its cell
-    const int step = 1 << Constants.Level;
+    const int step = 1 << (Constants.LevelAndBlockers & 3u);
+    const uint firstBlocker = (Constants.LevelAndBlockers >> 8) & 4095u;
+    const uint blockers = Constants.LevelAndBlockers >> 20;
     const float2 low = min(p0.xz, min(p1.xz, p2.xz)) / Constants.CellSize;
     const float2 high = max(p0.xz, max(p1.xz, p2.xz)) / Constants.CellSize;
     const int firstColumn = int(floor(low.x / float(step))) * step;
@@ -167,6 +211,20 @@ void grassPoints(uint3 id : SV_DispatchThreadID)
             if ((Constants.MaterialMask & (1u << (uint(material + 0.5) & 31u))) == 0)
             {
                 continue;
+            }
+
+            // What the blockers leave, by a number of its own
+            if (blockers > 0u)
+            {
+                float density = 1.0;
+                for (uint blocker = 0u; blocker < blockers; ++blocker)
+                {
+                    density *= blockerDensity(Blockers[firstBlocker + blocker], float3(place.x, y, place.y));
+                }
+                if (nyx::grassRandom(nyx::grassHash(uint(column), uint(row), Constants.Seed + 7u)) >= density)
+                {
+                    continue;
+                }
             }
 
             uint index = 0;

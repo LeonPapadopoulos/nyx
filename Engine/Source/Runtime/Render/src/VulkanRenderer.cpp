@@ -13,6 +13,8 @@
 #include "Grass.h"
 #include "GrassFieldComponent.h"
 #include "GuidComponent.h"
+#include "RuntimeMeshComponent.h"
+#include "ScatterInstances.h"
 #include "ColorGradingComponent.h"
 #include "EnvironmentComponent.h"
 #include "LightShafts.h"
@@ -767,6 +769,15 @@ namespace Nyx
 				continue;
 			}
 			Nyx::Registry& registry = const_cast<Nyx::Registry&>(*world.Registry);
+			bool bAnyUsesBlockers = false;
+			registry.Each<Nyx::GrassFieldComponent>([&](Nyx::Entity, const Nyx::GrassFieldComponent& component)
+				{
+					bAnyUsesBlockers = bAnyUsesBlockers || (component.bGrass && component.bUseBlockers);
+				});
+			if (bAnyUsesBlockers)
+			{
+				Grass.SetBlockers(world.Revision, Nyx::GatherScatterBlockers(registry, glm::mat4(1.0f)));
+			}
 			registry.Each<Nyx::GrassFieldComponent>([&](Nyx::Entity entity, const Nyx::GrassFieldComponent& component)
 				{
 					if (!component.bGrass)
@@ -807,7 +818,33 @@ namespace Nyx
 								continue;
 							}
 							meshes.push_back(GrassSurfaceMesh{ .Data = chunk.Mesh.Mesh, .Revision = chunk.Mesh.Revision, .Gpu = mesh, .Model = model, .WorldBounds = bounds,
-								.Morph = glm::vec2(chunk.Morph.x * scale, chunk.Morph.y > 0.0f ? chunk.Morph.y / scale : 0.0f), .bHasMaterials = true });
+								.Morph = glm::vec2(chunk.Morph.x * scale, chunk.Morph.y > 0.0f ? chunk.Morph.y / scale : 0.0f), .bHasMaterials = true, .Triangles = mesh->GetIndexCount() / 3 });
+						}
+					}
+					else if (registry.Has<Nyx::RuntimeMeshComponent>(*surface))
+					{
+						// Any other mesh made at run time, such as a ground's, cut up into tiles
+						const Nyx::RuntimeMeshComponent& runtimeMesh = registry.Get<Nyx::RuntimeMeshComponent>(*surface);
+						Nyx::Mesh* mesh = runtimeMesh.Mesh ? RuntimeMeshes.Acquire(Context, runtimeMesh) : nullptr;
+						vk::Buffer indices;
+						const std::vector<Nyx::GrassMeshPart>* parts = mesh ? Grass.GetMeshParts(runtimeMesh.Mesh, runtimeMesh.Revision, indices) : nullptr;
+						if (parts != nullptr)
+						{
+							for (uint32_t part = 0; part < parts->size(); ++part)
+							{
+								const Nyx::GrassMeshPart& piece = (*parts)[part];
+								const BoundingBox bounds = TransformBox(piece.LocalBounds, surfaceWorld);
+								bool bNear = false;
+								for (const glm::vec3& camera : cameras)
+								{
+									bNear = bNear || GetBoxDistance(bounds, camera) <= reach;
+								}
+								if (bNear)
+								{
+									meshes.push_back(GrassSurfaceMesh{ .Data = runtimeMesh.Mesh, .Revision = runtimeMesh.Revision, .Gpu = mesh, .Model = surfaceWorld, .WorldBounds = bounds,
+										.Part = part, .PartIndices = indices, .PartFirstByte = piece.FirstByte, .Triangles = piece.Triangles });
+								}
+							}
 						}
 					}
 					Grass.AddKind(world.Revision, entity.Value, component, meshes, cameras);

@@ -11,8 +11,11 @@
 #include "ImageFile.h"
 #include "JobSystem.h"
 #include "Log.h"
+#include "MeshData.h"
 #include "MeshRendererComponent.h"
 #include "RenderTestSupport.h"
+#include "RuntimeMeshComponent.h"
+#include "ScatterBlockerComponent.h"
 #include "SdfTerrain.h"
 #include "SdfTerrainComponent.h"
 #include "TerrainChunks.h"
@@ -272,6 +275,85 @@ namespace
 		Require(CountChanged(before, dug) > 500, "The pit is in the picture");
 	}
 
+	// On a mesh that isn't a terrain, cut up into tiles; a blocker keeps it away, and moved it makes
+	// only the tiles it reaches again
+	void TestMeshAndBlockers(SceneRenderer& gpu)
+	{
+		GrassScene scene(gpu);
+		gpu.DrawUntilShadersCompiled();
+		scene.World.Get<GrassFieldComponent>(scene.Meadow).bGrass = false;
+
+		const float half = 150.0f;
+		const int cells = 150;
+		auto data = std::make_shared<MeshData>();
+		for (int row = 0; row <= cells; ++row)
+		{
+			for (int column = 0; column <= cells; ++column)
+			{
+				Vertex vertex;
+				vertex.Position = glm::vec3(-half + 2.0f * half * column / cells, 40.0f, -half + 2.0f * half * row / cells);
+				vertex.Normal = glm::vec3(0.0f, 1.0f, 0.0f);
+				vertex.Color = glm::vec3(0.1f, 0.2f, 0.05f);
+				data->Vertices.push_back(vertex);
+			}
+		}
+		for (int row = 0; row < cells; ++row)
+		{
+			for (int column = 0; column < cells; ++column)
+			{
+				const uint32_t a = row * (cells + 1) + column;
+				const uint32_t b = a + 1;
+				const uint32_t c = a + cells + 1;
+				const uint32_t d = c + 1;
+				data->Indices.insert(data->Indices.end(), { a, c, b, b, c, d });
+			}
+		}
+		const Entity floor = scene.World.CreateEntity();
+		scene.World.Add<TransformComponent>(floor, TransformComponent{});
+		RuntimeMeshComponent runtimeMesh;
+		SetRuntimeMesh(runtimeMesh, data);
+		scene.World.Add<RuntimeMeshComponent>(floor, runtimeMesh);
+		MeshRendererComponent meshRenderer;
+		meshRenderer.MaterialAsset = gpu.Renderer.GetMaterial("Materials/VertexColor.nyxmat");
+		scene.World.Add<MeshRendererComponent>(floor, meshRenderer);
+		scene.World.Add<GrassFieldComponent>(floor, GrassFieldComponent{});
+
+		scene.Look(glm::vec3(0.0f, 70.0f, 0.1f), glm::vec3(0.0f, 40.0f, 0.0f));
+		for (int wait = 0; wait < 200 && gpu.Renderer.GetGrassStats().Tiles == 0; ++wait)
+		{
+			gpu.DrawFrames(1);
+			std::this_thread::sleep_for(std::chrono::milliseconds(5));
+		}
+		scene.Settle();
+		const uint32_t blades = scene.Blades();
+		std::cout << "Blades on the mesh: " << blades << ", tiles " << gpu.Renderer.GetGrassStats().Tiles << "\n";
+		Require(blades > 1000, "A mesh that isn't a terrain grows blades");
+
+		const Entity post = scene.World.CreateEntity();
+		scene.World.Add<TransformComponent>(post, TransformComponent{ .Position = glm::vec3(0.0f, 40.0f, 0.0f) });
+		ScatterBlockerComponent blocker;
+		blocker.Shape = EScatterBlockerShape::Circle;
+		blocker.Radius = 10.0f;
+		blocker.Margin = 0.0f;
+		scene.World.Add<ScatterBlockerComponent>(post, blocker);
+		scene.Settle();
+		const uint32_t blocked = scene.Blades();
+		SaveIfAsked(scene.Settle(2), "Blocker");
+		std::cout << "Blades with a blocker: " << blocked << "\n";
+		Require(blocked < blades, "A blocker keeps the blades away");
+
+		const uint64_t before = gpu.Renderer.GetGrassStats().TilesMadeInAll;
+		scene.World.Get<TransformComponent>(post).Position.x = 4.0f;
+		scene.Settle();
+		const uint64_t made = gpu.Renderer.GetGrassStats().TilesMadeInAll - before;
+		std::cout << "Tiles made again for a blocker moved: " << made << "\n";
+		Require(made > 0 && made <= 9, "Moved, it makes only the tiles it reaches again");
+
+		scene.World.Get<GrassFieldComponent>(floor).bUseBlockers = false;
+		scene.Settle();
+		Require(scene.Blades() > blocked, "With Use Blockers off they grow through it");
+	}
+
 	// A slab held over the plain: blades under it and on it
 	void TestUnderOverhang(SceneRenderer& gpu)
 	{
@@ -312,6 +394,7 @@ int main()
 		TestWind(gpu);
 		TestFollowsEdits(gpu);
 		TestUnderOverhang(gpu);
+		TestMeshAndBlockers(gpu);
 	}
 	catch (const std::exception& error)
 	{

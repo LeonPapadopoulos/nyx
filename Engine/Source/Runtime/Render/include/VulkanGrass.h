@@ -1,7 +1,9 @@
 #pragma once
 
 #include "Grass.h"
+#include "JobSystem.h"
 #include "MeshMemoryPool.h"
+#include "ScatterInstances.h"
 #include "SceneCulling.h"
 
 #include <glm/glm.hpp>
@@ -35,7 +37,25 @@ namespace Nyx
 		glm::vec2 Morph{ 0.0f };
 		// An SDF terrain's: its vertices have material numbers
 		bool bHasMaterials = false;
+		// Which of its triangles: all of them, or a part of a large one cut up (GetMeshParts())
+		uint32_t Part = 0;
+		vk::Buffer PartIndices;
+		vk::DeviceSize PartFirstByte = 0;
+		uint32_t Triangles = 0;
 	};
+
+	// A large mesh's triangles by squares of its X and Z, so each square is a tile: a mesh that isn't
+	// made in chunks, such as a ground's. Cut on a worker when first asked for, and kept for its
+	// revision.
+	struct GrassMeshPart
+	{
+		BoundingBox LocalBounds;
+		vk::DeviceSize FirstByte = 0;
+		uint32_t Triangles = 0;
+	};
+
+	// How wide the squares are, as a terrain's finest chunks
+	inline constexpr float GrassMeshPartSize = 32.0f;
 
 	// A view's grass on the GPU: the blades it draws this frame and the arguments of the draws. Made
 	// at the first frame it has grass, and larger when the blades don't fit.
@@ -87,6 +107,10 @@ namespace Nyx
 		void BeginFrame();
 		// A kind of grass this frame, with the cameras of the views that show it, and the tiles it needs
 		void AddKind(uint64_t worldRevision, uint64_t entity, const GrassFieldComponent& component, const std::vector<GrassSurfaceMesh>& meshes, const std::vector<glm::vec3>& cameras);
+		// The scatter blockers of a world this frame, in the world's space, before its kinds
+		void SetBlockers(uint64_t worldRevision, std::vector<ScatterBlocker> blockers);
+		// The parts of a mesh, and the buffer of their indices; none yet while it is being cut
+		const std::vector<GrassMeshPart>* GetMeshParts(const std::shared_ptr<const MeshData>& data, uint64_t revision, vk::Buffer& outIndices);
 		// After the last kind: tiles nothing needs are let go of, the nearest ones to be made chosen
 		void EndKinds();
 
@@ -112,6 +136,8 @@ namespace Nyx
 			uint32_t Tiles = 0;
 			uint32_t TilesMade = 0;
 			uint32_t TilesWaiting = 0;
+			// Since it began, to tell how much a change made again
+			uint64_t TilesMadeInAll = 0;
 			uint64_t PointBytes = 0;
 			uint64_t TileBytes = 0;
 		};
@@ -124,6 +150,15 @@ namespace Nyx
 		{
 			std::shared_ptr<const MeshData> Data;
 			Mesh* Gpu = nullptr;
+			vk::Buffer Indices;
+			vk::DeviceSize FirstIndexByte = 0;
+			uint32_t Triangles = 0;
+			// Of the blockers that reach it, when they were last looked through
+			uint64_t BlockersSeen = 0;
+			uint64_t BlockersHash = 0;
+			uint32_t FirstBlocker = 0;
+			uint32_t BlockerCount = 0;
+			bool bUseBlockers = true;
 			uint64_t MadeFrom = 0;
 			uint64_t WantedFrom = 0;
 			uint64_t FirstByte = 0;
@@ -153,6 +188,7 @@ namespace Nyx
 			uint64_t World = 0;
 			uint64_t Entity = 0;
 			const MeshData* Data = nullptr;
+			uint32_t Part = 0;
 			bool operator==(const TileKey&) const = default;
 		};
 		struct TileKeyHash
@@ -192,6 +228,33 @@ namespace Nyx
 		vk::raii::Buffer KindValues{ nullptr };
 		vk::raii::DeviceMemory KindValuesMemory{ nullptr };
 		void* KindValuesMapped = nullptr;
+
+		// GrassPoints.slang's Blocker, written for the tiles made in a frame
+		vk::raii::Buffer BlockerValues{ nullptr };
+		vk::raii::DeviceMemory BlockerValuesMemory{ nullptr };
+		void* BlockerValuesMapped = nullptr;
+
+		struct WorldBlockers
+		{
+			uint64_t Hash = 0;
+			std::vector<ScatterBlocker> Blockers;
+		};
+		std::unordered_map<uint64_t, WorldBlockers> Blockers;
+
+		struct MeshCut
+		{
+			std::shared_ptr<const MeshData> Data;
+			uint64_t Revision = 0;
+			uint64_t LastFrame = 0;
+			std::vector<GrassMeshPart> Parts;
+			std::vector<uint32_t> Indices;
+			std::shared_ptr<JobGroup> Job;
+			vk::raii::Buffer Buffer{ nullptr };
+			vk::raii::DeviceMemory Memory{ nullptr };
+			bool bReady = false;
+		};
+		std::unordered_map<const MeshData*, std::unique_ptr<MeshCut>> MeshCuts;
+		uint64_t TilesMadeInAll = 0;
 
 		std::unordered_map<TileKey, Tile, TileKeyHash> Tiles;
 		std::vector<uint32_t> FreeSlots;

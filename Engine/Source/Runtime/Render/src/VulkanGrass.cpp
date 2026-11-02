@@ -32,6 +32,9 @@ namespace Nyx
 		constexpr uint32_t MaxKinds = 32;
 		constexpr uint32_t MaxTiles = 1024;
 		constexpr uint32_t MaxTilesMadeAFrame = 16;
+		// The most blockers a tile takes in, and those of the tiles made in a frame
+		constexpr uint32_t MaxBlockersATile = 255;
+		constexpr uint32_t MaxBlockersAFrame = 4095;
 		// A tile's room over what its grid's cells need, for ground in layers
 		constexpr float LayerRoom = 1.25f;
 		// Where a tile's level is chosen from: this much nearer than its nearest camera, so it has the
@@ -58,7 +61,7 @@ namespace Nyx
 			uint32_t Capacity = 0;
 			uint32_t Slot = 0;
 			float CellSize = 0.0f;
-			uint32_t Level = 0;
+			uint32_t LevelAndBlockers = 0;
 			uint32_t Seed = 0;
 			uint32_t MaterialMask = 0;
 			glm::vec2 NormalYRange{ 0.0f };
@@ -104,6 +107,23 @@ namespace Nyx
 			uint32_t Padding;
 		};
 		static_assert(sizeof(GrassKindValues) == 144, "nyx.grass's GrassKind is laid out alike");
+
+		// GrassPoints.slang's Blocker
+		struct BlockerValuesGpu
+		{
+			glm::mat4 WorldToShape{ 1.0f };
+			glm::vec3 Size{ 0.0f };
+			float Margin = 0.0f;
+			float Falloff = 0.0f;
+			uint32_t Kind = 0;
+			uint32_t Padding[2]{};
+		};
+		static_assert(sizeof(BlockerValuesGpu) == 96, "GrassPoints.slang's Blocker is laid out alike");
+
+		bool DoesBlockerReach(const ScatterBlocker& blocker, const BoundingBox& box)
+		{
+			return blocker.ReachMax.x >= box.Min.x && blocker.ReachMin.x <= box.Max.x && blocker.ReachMax.y >= box.Min.z && blocker.ReachMin.y <= box.Max.z;
+		}
 
 		float Radians(float degrees)
 		{
@@ -192,6 +212,7 @@ namespace Nyx
 		hash = Mix(hash, key.World);
 		hash = Mix(hash, key.Entity);
 		hash = Mix(hash, key.Data);
+		hash = Mix(hash, key.Part);
 		return static_cast<size_t>(hash);
 	}
 
@@ -207,8 +228,8 @@ namespace Nyx
 		ViewLayout = viewLayout;
 		vk::raii::Device& device = Context.GetDevice();
 
-		// A tile's making: the mesh's vertices and indices, the points, the counts
-		std::array<vk::DescriptorSetLayoutBinding, 4> tileBindings{};
+		// A tile's making: the mesh's vertices and indices, the points, the counts, the blockers
+		std::array<vk::DescriptorSetLayoutBinding, 5> tileBindings{};
 		for (uint32_t index = 0; index < tileBindings.size(); ++index)
 		{
 			tileBindings[index] = vk::DescriptorSetLayoutBinding(index, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eCompute);
@@ -217,7 +238,7 @@ namespace Nyx
 		const vk::DescriptorSetLayout tileLayout = *TileSetLayout;
 		const vk::PushConstantRange tileRange(vk::ShaderStageFlagBits::eCompute, 0, sizeof(TileConstants));
 		TilePipelineLayout = vk::raii::PipelineLayout(device, vk::PipelineLayoutCreateInfo({}, tileLayout, tileRange));
-		const vk::DescriptorPoolSize tilePoolSize(vk::DescriptorType::eStorageBuffer, MaxTilesMadeAFrame * 4);
+		const vk::DescriptorPoolSize tilePoolSize(vk::DescriptorType::eStorageBuffer, MaxTilesMadeAFrame * 5);
 		TileSets = vk::raii::DescriptorPool(device, vk::DescriptorPoolCreateInfo({}, MaxTilesMadeAFrame, tilePoolSize));
 
 		// A view's blades and their draws: the points, the kinds, the blades written, the arguments,
@@ -256,6 +277,18 @@ namespace Nyx
 		KindValues = nullptr;
 		KindValuesMemory = nullptr;
 		KindValuesMapped = nullptr;
+		BlockerValues = nullptr;
+		BlockerValuesMemory = nullptr;
+		BlockerValuesMapped = nullptr;
+		Blockers.clear();
+		for (auto& [data, cut] : MeshCuts)
+		{
+			if (cut->Job)
+			{
+				JobSystem::Get().Wait(*cut->Job);
+			}
+		}
+		MeshCuts.clear();
 		DrawPipeline = nullptr;
 		BladesDonePipeline = nullptr;
 		BladesPipeline = nullptr;
@@ -352,6 +385,9 @@ namespace Nyx
 		CreateBuffer(Context, MaxKinds * sizeof(GrassKindValues), vk::BufferUsageFlagBits::eStorageBuffer, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
 			KindValues, KindValuesMemory);
 		KindValuesMapped = KindValuesMemory.mapMemory(0, VK_WHOLE_SIZE);
+		CreateBuffer(Context, MaxBlockersAFrame * sizeof(BlockerValuesGpu), vk::BufferUsageFlagBits::eStorageBuffer, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent,
+			BlockerValues, BlockerValuesMemory);
+		BlockerValuesMapped = BlockerValuesMemory.mapMemory(0, VK_WHOLE_SIZE);
 		CreateBuffer(Context, FirstPointBytes, vk::BufferUsageFlagBits::eStorageBuffer, vk::MemoryPropertyFlagBits::eDeviceLocal, Points, PointsMemory);
 		PointRanges = std::make_unique<RangeAllocator>(FirstPointBytes);
 		++PointsGeneration;
@@ -362,11 +398,104 @@ namespace Nyx
 		++Frame;
 		KindCount = 0;
 		TilesToMake.clear();
+		Blockers.clear();
 		CurrentStats = {};
 		if (*TileSets != VK_NULL_HANDLE)
 		{
 			TileSets.reset();
 		}
+	}
+
+	void VulkanGrass::SetBlockers(uint64_t worldRevision, std::vector<ScatterBlocker> blockers)
+	{
+		uint64_t hash = 0;
+		for (const ScatterBlocker& blocker : blockers)
+		{
+			hash = Mix(hash ? hash : 14695981039346656037ull, blocker.Hash);
+		}
+		Blockers[worldRevision] = WorldBlockers{ .Hash = hash, .Blockers = std::move(blockers) };
+	}
+
+	const std::vector<GrassMeshPart>* VulkanGrass::GetMeshParts(const std::shared_ptr<const MeshData>& data, uint64_t revision, vk::Buffer& outIndices)
+	{
+		std::unique_ptr<MeshCut>& slot = MeshCuts[data.get()];
+		if (!slot || slot->Revision != revision)
+		{
+			if (slot && slot->Job)
+			{
+				JobSystem::Get().Wait(*slot->Job);
+			}
+			slot = std::make_unique<MeshCut>();
+			slot->Data = data;
+			slot->Revision = revision;
+			slot->Job = std::make_shared<JobGroup>();
+			MeshCut* cut = slot.get();
+			const uint64_t alignment = (*Context.GetPhysicalDevice()).getProperties().limits.minStorageBufferOffsetAlignment;
+			JobSystem::Get().Schedule([cut, alignment]()
+				{
+					const MeshData& mesh = *cut->Data;
+					std::unordered_map<uint64_t, std::vector<uint32_t>> squares;
+					for (size_t index = 0; index + 2 < mesh.Indices.size(); index += 3)
+					{
+						const glm::vec3& a = mesh.Vertices[mesh.Indices[index]].Position;
+						const glm::vec3& b = mesh.Vertices[mesh.Indices[index + 1]].Position;
+						const glm::vec3& c = mesh.Vertices[mesh.Indices[index + 2]].Position;
+						const int32_t column = static_cast<int32_t>(std::floor((a.x + b.x + c.x) / (3.0f * GrassMeshPartSize)));
+						const int32_t row = static_cast<int32_t>(std::floor((a.z + b.z + c.z) / (3.0f * GrassMeshPartSize)));
+						std::vector<uint32_t>& square = squares[(uint64_t(uint32_t(column)) << 32) | uint32_t(row)];
+						square.insert(square.end(), { mesh.Indices[index], mesh.Indices[index + 1], mesh.Indices[index + 2] });
+					}
+					std::vector<std::pair<uint64_t, std::vector<uint32_t>*>> ordered;
+					ordered.reserve(squares.size());
+					for (auto& [key, indices] : squares)
+					{
+						ordered.emplace_back(key, &indices);
+					}
+					std::sort(ordered.begin(), ordered.end(), [](const auto& left, const auto& right) { return left.first < right.first; });
+					for (const auto& [key, indices] : ordered)
+					{
+						GrassMeshPart part;
+						part.FirstByte = cut->Indices.size() * sizeof(uint32_t);
+						part.Triangles = static_cast<uint32_t>(indices->size() / 3);
+						part.LocalBounds.Min = glm::vec3(FLT_MAX);
+						part.LocalBounds.Max = glm::vec3(-FLT_MAX);
+						for (const uint32_t vertex : *indices)
+						{
+							part.LocalBounds.Min = glm::min(part.LocalBounds.Min, mesh.Vertices[vertex].Position);
+							part.LocalBounds.Max = glm::max(part.LocalBounds.Max, mesh.Vertices[vertex].Position);
+						}
+						cut->Indices.insert(cut->Indices.end(), indices->begin(), indices->end());
+						// Each part where the device can bind it
+						while ((cut->Indices.size() * sizeof(uint32_t)) % alignment != 0)
+						{
+							cut->Indices.push_back(0);
+						}
+						cut->Parts.push_back(part);
+					}
+				}, EJobPriority::Normal, slot->Job.get());
+		}
+		MeshCut& cut = *slot;
+		cut.LastFrame = Frame;
+		if (!cut.bReady)
+		{
+			if (!cut.Job->IsDone())
+			{
+				return nullptr;
+			}
+			cut.Job.reset();
+			if (!cut.Indices.empty())
+			{
+				const vk::DeviceSize bytes = cut.Indices.size() * sizeof(uint32_t);
+				CreateBuffer(Context, bytes, vk::BufferUsageFlagBits::eStorageBuffer, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, cut.Buffer, cut.Memory);
+				void* mapped = cut.Memory.mapMemory(0, bytes);
+				std::memcpy(mapped, cut.Indices.data(), bytes);
+				cut.Memory.unmapMemory();
+			}
+			cut.Indices = {};
+			cut.bReady = true;
+		}
+		outIndices = *cut.Buffer;
+		return &cut.Parts;
 	}
 
 	void VulkanGrass::AddKind(uint64_t worldRevision, uint64_t entity, const GrassFieldComponent& component, const std::vector<GrassSurfaceMesh>& meshes, const std::vector<glm::vec3>& cameras)
@@ -390,6 +519,8 @@ namespace Nyx
 		pointsFrom = Mix(pointsFrom, settings.HeightRange);
 		pointsFrom = Mix(pointsFrom, settings.MaterialMask);
 		pointsFrom = Mix(pointsFrom, clumpSize);
+		pointsFrom = Mix(pointsFrom, component.bUseBlockers);
+		const auto worldBlockers = Blockers.find(worldRevision);
 
 		for (const GrassSurfaceMesh& mesh : meshes)
 		{
@@ -402,9 +533,13 @@ namespace Nyx
 			{
 				continue;
 			}
-			Tile& tile = Tiles[TileKey{ worldRevision, entity, mesh.Data.get() }];
+			Tile& tile = Tiles[TileKey{ worldRevision, entity, mesh.Data.get(), mesh.Part }];
 			tile.Data = mesh.Data;
 			tile.Gpu = mesh.Gpu;
+			tile.Indices = mesh.PartIndices;
+			tile.FirstIndexByte = mesh.PartFirstByte;
+			tile.Triangles = mesh.Triangles;
+			tile.bUseBlockers = component.bUseBlockers;
 			tile.Kind = kind;
 			tile.WorldRevision = worldRevision;
 			tile.LastFrame = Frame;
@@ -423,6 +558,24 @@ namespace Nyx
 			uint64_t madeFrom = pointsFrom;
 			madeFrom = Mix(madeFrom, mesh.Revision);
 			madeFrom = Mix(madeFrom, mesh.Model);
+			madeFrom = Mix(madeFrom, mesh.Part);
+			// Only the blockers that reach it, gone through again only when any of the world's changed
+			if (component.bUseBlockers && worldBlockers != Blockers.end())
+			{
+				if (tile.BlockersSeen != worldBlockers->second.Hash)
+				{
+					tile.BlockersSeen = worldBlockers->second.Hash;
+					tile.BlockersHash = 0;
+					for (const ScatterBlocker& blocker : worldBlockers->second.Blockers)
+					{
+						if (DoesBlockerReach(blocker, mesh.WorldBounds))
+						{
+							tile.BlockersHash = Mix(tile.BlockersHash ? tile.BlockersHash : 14695981039346656037ull, blocker.Hash);
+						}
+					}
+				}
+				madeFrom = Mix(madeFrom, tile.BlockersHash);
+			}
 			tile.WantedFrom = madeFrom;
 
 			// A level it can make do with and one it should give back blades for
@@ -542,6 +695,20 @@ namespace Nyx
 
 		CurrentStats.Tiles = static_cast<uint32_t>(Tiles.size());
 		CurrentStats.TilesMade = static_cast<uint32_t>(TilesToMake.size());
+		TilesMadeInAll += TilesToMake.size();
+		CurrentStats.TilesMadeInAll = TilesMadeInAll;
+		// Meshes no kind asked for this frame
+		for (auto it = MeshCuts.begin(); it != MeshCuts.end();)
+		{
+			if (it->second->LastFrame != Frame && (!it->second->Job || it->second->Job->IsDone()))
+			{
+				it = MeshCuts.erase(it);
+			}
+			else
+			{
+				++it;
+			}
+		}
 		CurrentStats.PointBytes = PointRanges ? PointRanges->GetSize() : 0;
 		CurrentStats.TileBytes = PointRanges ? PointRanges->GetSize() - PointRanges->GetFreeBytes() : 0;
 	}
@@ -567,12 +734,12 @@ namespace Nyx
 		{
 			TileConstants constants;
 			constants.Model = tile.Model;
-			constants.Triangles = tile.Gpu->GetIndexCount() / 3;
+			constants.Triangles = tile.Triangles;
 			constants.FirstPoint = static_cast<uint32_t>(tile.FirstByte / PointBytes);
 			constants.Capacity = tile.Capacity;
 			constants.Slot = tile.Slot;
 			constants.CellSize = tile.Settings.CellSize;
-			constants.Level = tile.Level;
+			constants.LevelAndBlockers = tile.Level | (tile.FirstBlocker << 8) | (tile.BlockerCount << 20);
 			constants.Seed = tile.Settings.Seed;
 			constants.MaterialMask = tile.Settings.MaterialMask;
 			constants.NormalYRange = tile.Settings.NormalYRange;
@@ -583,20 +750,52 @@ namespace Nyx
 			return constants;
 		};
 
+		// The blockers that reach each tile, for this frame
+		uint32_t blockersWritten = 0;
+		for (Tile* tile : TilesToMake)
+		{
+			tile->FirstBlocker = blockersWritten;
+			tile->BlockerCount = 0;
+			const auto world = Blockers.find(tile->WorldRevision);
+			if (!tile->bUseBlockers || world == Blockers.end())
+			{
+				continue;
+			}
+			for (const ScatterBlocker& blocker : world->second.Blockers)
+			{
+				if (blockersWritten >= MaxBlockersAFrame || tile->BlockerCount >= MaxBlockersATile || !DoesBlockerReach(blocker, tile->WorldBounds))
+				{
+					continue;
+				}
+				BlockerValuesGpu values;
+				values.WorldToShape = blocker.ScatterToShape;
+				values.Size = blocker.Size;
+				values.Margin = blocker.Margin;
+				values.Falloff = blocker.Falloff;
+				values.Kind = static_cast<uint32_t>(blocker.Kind);
+				std::memcpy(static_cast<BlockerValuesGpu*>(BlockerValuesMapped) + blockersWritten, &values, sizeof(values));
+				++blockersWritten;
+				++tile->BlockerCount;
+			}
+		}
+
 		cmd.bindPipeline(vk::PipelineBindPoint::eCompute, *PointsPipeline);
 		for (const Tile* tile : TilesToMake)
 		{
 			const vk::DescriptorSet set = (*device).allocateDescriptorSets(vk::DescriptorSetAllocateInfo(*TileSets, setLayout)).front();
 			sets.push_back(set);
 			const vk::DescriptorBufferInfo vertices(tile->Gpu->GetVertexBuffer(), 0, VK_WHOLE_SIZE);
-			const vk::DescriptorBufferInfo indices(tile->Gpu->GetIndexBuffer(), 0, VK_WHOLE_SIZE);
+			const vk::DescriptorBufferInfo indices = tile->Indices ? vk::DescriptorBufferInfo(tile->Indices, tile->FirstIndexByte, tile->Triangles * vk::DeviceSize(3) * sizeof(uint32_t))
+																   : vk::DescriptorBufferInfo(tile->Gpu->GetIndexBuffer(), 0, VK_WHOLE_SIZE);
+			const vk::DescriptorBufferInfo blockers(*BlockerValues, 0, VK_WHOLE_SIZE);
 			const vk::DescriptorBufferInfo points(*Points, 0, VK_WHOLE_SIZE);
 			const vk::DescriptorBufferInfo counts(*TileCounts, 0, VK_WHOLE_SIZE);
-			const std::array<vk::WriteDescriptorSet, 4> writes = {
+			const std::array<vk::WriteDescriptorSet, 5> writes = {
 				vk::WriteDescriptorSet(set, 0, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr, &vertices),
 				vk::WriteDescriptorSet(set, 1, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr, &indices),
 				vk::WriteDescriptorSet(set, 2, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr, &points),
 				vk::WriteDescriptorSet(set, 3, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr, &counts),
+				vk::WriteDescriptorSet(set, 4, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr, &blockers),
 			};
 			device.updateDescriptorSets(writes, {});
 			cmd.bindDescriptorSets(vk::PipelineBindPoint::eCompute, *TilePipelineLayout, 0, set, {});
