@@ -12,7 +12,10 @@
 #include <algorithm>
 #include <cmath>
 #include <initializer_list>
+#include <cstring>
 #include <limits>
+#include <optional>
+#include <span>
 #include <string>
 #include <type_traits>
 #include <utility>
@@ -122,6 +125,101 @@ namespace
 		const TypeMetadata& typeMetadata,
 		const std::string& objectPath,
 		ReadWarnings& warnings);
+
+	// One property of a block as it is stored: its name's hash, and its bytes from there to its value's end
+	struct StoredProperty
+	{
+		uint32_t NameHash = 0;
+		std::span<const std::byte> Bytes;
+	};
+
+	uint32_t ReadStoredUInt32(std::span<const std::byte> bytes, size_t offset)
+	{
+		uint32_t value = 0;
+		std::memcpy(&value, bytes.data() + offset, sizeof(value));
+		return value;
+	}
+
+	// The bytes of a value that starts at `offset`; none known for a kind this build hasn't got, or
+	// one that goes past the end
+	std::optional<size_t> GetStoredValueSize(EPropertyKind kind, std::span<const std::byte> bytes, size_t offset)
+	{
+		size_t size = 0;
+		switch (kind)
+		{
+		case EPropertyKind::Bool:
+			size = 1;
+			break;
+		case EPropertyKind::Int32:
+		case EPropertyKind::UInt32:
+		case EPropertyKind::Float:
+		case EPropertyKind::Enum:
+			size = 4;
+			break;
+		case EPropertyKind::UInt64:
+		case EPropertyKind::Vec2:
+			size = 8;
+			break;
+		case EPropertyKind::Vec3:
+			size = 12;
+			break;
+		case EPropertyKind::Vec4:
+		case EPropertyKind::Quat:
+			size = 16;
+			break;
+		case EPropertyKind::String:
+		case EPropertyKind::Struct:
+		case EPropertyKind::Array:
+			if (bytes.size() < offset + sizeof(uint32_t))
+			{
+				return std::nullopt;
+			}
+			size = sizeof(uint32_t) + ReadStoredUInt32(bytes, offset);
+			break;
+		default:
+			return std::nullopt;
+		}
+
+		if (bytes.size() < offset + size)
+		{
+			return std::nullopt;
+		}
+		return size;
+	}
+
+	// The properties of a whole property block, its size in front; false if it isn't whole
+	bool SplitPropertyBlock(std::span<const std::byte> block, std::vector<StoredProperty>& outProperties)
+	{
+		constexpr size_t Start = sizeof(uint32_t) + sizeof(uint16_t);
+		if (block.size() < Start || ReadStoredUInt32(block, 0) != block.size() - sizeof(uint32_t))
+		{
+			return false;
+		}
+
+		uint16_t count = 0;
+		std::memcpy(&count, block.data() + sizeof(uint32_t), sizeof(count));
+
+		outProperties.clear();
+		outProperties.reserve(count);
+		size_t offset = Start;
+		for (uint16_t index = 0; index < count; ++index)
+		{
+			constexpr size_t Tag = sizeof(uint32_t) + sizeof(uint8_t);
+			if (block.size() < offset + Tag)
+			{
+				return false;
+			}
+			const EPropertyKind kind = static_cast<EPropertyKind>(std::to_integer<uint8_t>(block[offset + sizeof(uint32_t)]));
+			const std::optional<size_t> valueSize = GetStoredValueSize(kind, block, offset + Tag);
+			if (!valueSize)
+			{
+				return false;
+			}
+			outProperties.push_back(StoredProperty{ ReadStoredUInt32(block, offset), block.subspan(offset, Tag + *valueSize) });
+			offset += Tag + *valueSize;
+		}
+		return offset == block.size();
+	}
 
 	// Writes an array property's value: its elements' kind and count, then each element
 	bool WriteArray(BinaryWriter& writer, const void* object, const PropertyMetadata& property)
@@ -505,6 +603,59 @@ namespace Nyx
 		ReadWarnings& warnings)
 	{
 		return ReadObject(reader, object, typeMetadata, typeMetadata.Name, warnings);
+	}
+
+	bool ReflectedArchiveSerializer::WriteChangedProperties(
+		BinaryWriter& writer,
+		std::span<const std::byte> block,
+		std::span<const std::byte> base,
+		bool& outbChanged)
+	{
+		outbChanged = false;
+
+		std::vector<StoredProperty> properties;
+		std::vector<StoredProperty> baseProperties;
+		if (!SplitPropertyBlock(block, properties) || !SplitPropertyBlock(base, baseProperties))
+		{
+			return false;
+		}
+
+		BinaryWriter changed;
+		uint16_t changedCount = 0;
+		for (size_t index = 0; index < properties.size(); ++index)
+		{
+			const StoredProperty& property = properties[index];
+
+			// Mostly at the same place, as one build wrote both blocks
+			const StoredProperty* other = index < baseProperties.size() && baseProperties[index].NameHash == property.NameHash ? &baseProperties[index] : nullptr;
+			if (!other)
+			{
+				const auto found = std::find_if(baseProperties.begin(), baseProperties.end(),
+					[&property](const StoredProperty& candidate)
+					{
+						return candidate.NameHash == property.NameHash;
+					});
+				other = found != baseProperties.end() ? &*found : nullptr;
+			}
+
+			if (!other || other->Bytes.size() != property.Bytes.size() || std::memcmp(other->Bytes.data(), property.Bytes.data(), property.Bytes.size()) != 0)
+			{
+				changed.WriteBytes(property.Bytes.data(), property.Bytes.size());
+				++changedCount;
+			}
+		}
+
+		if (changedCount == 0)
+		{
+			return true;
+		}
+
+		BinaryWriter out;
+		out.WriteUInt16(changedCount);
+		out.WriteBytes(changed.GetBytes().data(), changed.GetBytes().size());
+		writer.WriteBlock(out);
+		outbChanged = true;
+		return true;
 	}
 
 	bool ReflectedArchiveSerializer::SkipObject(BinaryReader& reader)

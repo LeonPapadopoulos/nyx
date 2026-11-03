@@ -53,6 +53,10 @@ namespace Nyx
 		uint64_t GetStepIndex() const { return StepIndex; }
 		double GetWorldTimeSeconds() const;
 
+		// Puts the clock at this many steps and this world time, e.g. those of a save being loaded: the
+		// next step is number `stepIndex`, at that time, and what was waiting for a step is dropped
+		void SetTime(uint64_t stepIndex, double worldTimeSeconds);
+
 		// While paused, real time doesn't count and no steps run.
 		void SetPaused(bool paused);
 		bool IsPaused() const { return Paused; }

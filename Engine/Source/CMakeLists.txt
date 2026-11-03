@@ -134,6 +134,7 @@ set(NYX_ENGINE_SOURCES
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ComponentInspection.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/ComponentRegistration.cpp
     ${NYX_ENGINE_ROOT}/Runtime/Scene/src/SceneSerializer.cpp
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/src/WorldSave.cpp
 
     # Runtime/Sim
     ${NYX_ENGINE_ROOT}/Runtime/Sim/src/CommandQueue.cpp
@@ -384,6 +385,7 @@ set(NYX_ENGINE_HEADERS
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ComponentInspection.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/ComponentRegistration.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/SceneSerializer.h
+    ${NYX_ENGINE_ROOT}/Runtime/Scene/include/WorldSave.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/SceneOutline.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/IAssetResolver.h
     ${NYX_ENGINE_ROOT}/Runtime/Scene/include/AssetReference.h

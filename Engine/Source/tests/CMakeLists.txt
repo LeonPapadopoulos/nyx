@@ -283,6 +283,14 @@ add_dependencies(NyxPrefabTests NyxGeneratedReflection)
 set_property(TARGET NyxPrefabTests PROPERTY FOLDER "Tests")
 add_test(NAME NyxPrefabTests COMMAND NyxPrefabTests)
 
+# Save games: a running world saved and loaded by guid, as what differs from its scene: entities made
+# at run time, changed, destroyed; the clock; children left where they were; old and damaged saves
+add_executable(NyxWorldSaveTests WorldSaveTests.cpp)
+target_link_libraries(NyxWorldSaveTests PRIVATE NyxEngine)
+add_dependencies(NyxWorldSaveTests NyxGeneratedReflection)
+set_property(TARGET NyxWorldSaveTests PROPERTY FOLDER "Tests")
+add_test(NAME NyxWorldSaveTests COMMAND NyxWorldSaveTests)
+
 # Transform hierarchy: a child following its parent, local values made from a place in the world,
 # chains in any order, links to nothing and circles moving nothing, a child saved and loaded
 add_executable(NyxTransformHierarchyTests TransformHierarchyTests.cpp)

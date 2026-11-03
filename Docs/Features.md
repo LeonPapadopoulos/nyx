@@ -792,6 +792,40 @@ prefab changes.
   a mesh's reference, counts as one value. A value set back to the prefab's is no override.
 - Tests: `NyxPrefabTests`, `NyxEditorPanelTests`, `NyxTransformFollowerTests`.
 
+## Save games
+
+A save (`.nyxsave`, `WorldSave.h`) keeps a running world as what differs from the scene it started
+from, its entities named by guid. It is a file of its own, and loading it reads the scene first and
+puts the save on top.
+
+- **What it holds:** the scene's path and a hash of its file, the clock (`WorldSaveClock`, which
+  `FixedStepClock::SetTime()` sets again) and three lists: the scene's entities that are gone; the
+  scene's entities that changed, with the components they lost, the components they got whole and of
+  the others only the properties that differ; and the entities made at run time, whole. A struct or
+  an array counts as one value, as in a prefab's overrides. An entity without a guid isn't saved:
+  whatever made it, such as a system's helper, makes it again. Nor are run-time component types,
+  bodies or the systems' own state.
+- **The same rules as scenes:** the tagged binary format, so added, removed and retyped properties and
+  unknown component types are handled as in a scene. Sections carry their sizes, so a build skips the
+  ones it doesn't know. A save of a later version is refused.
+- **What it doesn't hold follows the scene:** a value the world didn't change comes from the scene as it
+  is now, and so do entities the world didn't touch and new ones. What the save has of an entity the
+  scene lost is dropped, with a warning; a scene that changed is logged, and a scene that is gone refuses
+  the load.
+- **Children stay where they were saved.** The scene's load places them by their parents, then the
+  save goes on top and they aren't placed again: a child that doesn't follow its parent may have been
+  left behind.
+- **In code:** `MakeWorldSaveBase()` after the scene loads and before the first step keeps what saves are
+  compared with. `SaveWorldToFile()` saves, written whole or not at all. Its parts can be run apart:
+  `TakeWorldSnapshot()` between steps, `WriteWorldSave()` on any thread, as it touches no world.
+  `LoadWorldSave()` replaces a world no step has run in yet, leaves it as it was on failure, and hands
+  back the base and the clock.
+- Not yet: prefab instances spawned at run time as what differs from their prefabs (they are saved
+  whole), velocities (a body falling stops and falls again), terrain edits in their own form (they are
+  saved as a property of the terrain), a game's own state and saving from the game.
+- Tests: `NyxWorldSaveTests`, `NyxFixedStepClockTests`. `NyxWorldSaveTests --measure` prints what a
+  snapshot and the comparison cost.
+
 ## Surface anchors
 
 A `SurfaceAnchor` property hangs something on another entity's surface, such as a mark drawn on a

@@ -147,6 +147,30 @@ namespace
 		Require(clock.GetStepIndex() == 6, "Steps should go on counting up");
 		Require(Near(clock.GetWorldTimeSeconds(), 4.0 * Step + 0.2), "World time should go on from where it was");
 	}
+
+	// A clock put at a save's step and time goes on from there as the one saved would have
+	void TestSetTime()
+	{
+		FixedStepClock saved;
+		saved.SetStepSeconds(0.1);
+		saved.Advance(0.25);
+		saved.SetStepSeconds(Step);
+		saved.Advance(Step);
+
+		FixedStepClock loaded;
+		loaded.Advance(Step * 0.5);
+		loaded.SetStepSeconds(saved.GetStepSeconds());
+		loaded.SetTime(saved.GetStepIndex(), saved.GetWorldTimeSeconds());
+		Require(loaded.GetStepIndex() == saved.GetStepIndex(), "The clock should be at the step it was given");
+		Require(loaded.GetWorldTimeSeconds() == saved.GetWorldTimeSeconds(), "The clock should be at the time it was given");
+		Require(loaded.GetInterpolationFactor() == 0.0, "What was waiting for a step should be gone");
+
+		Require(loaded.Advance(Step) == 1, "The next step should come after a step's time");
+		const Nyx::StepTime next = loaded.GetFrameStep(0);
+		const uint64_t stepsBefore = saved.GetStepIndex();
+		const double timeBefore = saved.GetWorldTimeSeconds();
+		Require(next.StepIndex == stepsBefore && next.WorldTimeSeconds == timeBefore, "The next step should be the one the saved clock runs next");
+	}
 }
 
 int main()
@@ -159,6 +183,7 @@ int main()
 		TestPauseAndStepOnce();
 		TestTimeScale();
 		TestStepIndexAndWorldTime();
+		TestSetTime();
 	}
 	catch (const std::exception& error)
 	{

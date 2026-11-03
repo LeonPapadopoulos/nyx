@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <map>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -76,6 +77,17 @@ namespace Nyx
 
 		// Skips one property block, for example of a component type this build doesn't know.
 		static bool SkipObject(BinaryReader& reader);
+
+		// Compares two property blocks by their bytes, without their types: writes as one property block
+		// the properties of `block` that `base` has with other bytes, or hasn't got. A struct or an array
+		// counts as one value. Nothing is written if none differs, which outbChanged tells. Returns false,
+		// with nothing written, if either block isn't whole. The same value is written as the same bytes,
+		// so what didn't change never differs.
+		static bool WriteChangedProperties(
+			BinaryWriter& writer,
+			std::span<const std::byte> block,
+			std::span<const std::byte> base,
+			bool& outbChanged);
 
 		// One value of any kind except Struct and Array, without its kind in front.
 		static void WriteValue(BinaryWriter& writer, const Nyx::Reflection::PropertyValue& value);

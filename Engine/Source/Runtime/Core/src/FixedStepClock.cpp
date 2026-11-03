@@ -76,6 +76,15 @@ namespace Nyx
 		return BaseWorldTimeSeconds + static_cast<double>(StepIndex - BaseStepIndex) * StepSeconds;
 	}
 
+	void FixedStepClock::SetTime(uint64_t stepIndex, double worldTimeSeconds)
+	{
+		StepIndex = stepIndex;
+		FrameFirstStep = stepIndex;
+		BaseStepIndex = stepIndex;
+		BaseWorldTimeSeconds = worldTimeSeconds;
+		Accumulator = 0.0;
+	}
+
 	void FixedStepClock::SetPaused(bool paused)
 	{
 		Paused = paused;

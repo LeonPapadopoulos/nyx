@@ -1,0 +1,499 @@
+#include "NyxPCH.h"
+#include "WorldSave.h"
+
+#include "ComponentTypeRegistry.h"
+#include "EntityGuidLookup.h"
+#include "GuidComponent.h"
+#include "ReflectedArchiveSerializer.h"
+#include "SceneSerializer.h"
+
+#include <bit>
+#include <chrono>
+#include <fstream>
+#include <map>
+#include <optional>
+#include <span>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+
+namespace
+{
+	using namespace Nyx;
+
+	constexpr std::string_view HeaderSection = "Header";
+	constexpr std::string_view DestroyedSection = "Destroyed";
+	constexpr std::string_view ChangedSection = "Changed";
+	constexpr std::string_view MadeSection = "Made";
+
+	// FNV-1a over the file's bytes; 0 if it can't be read
+	uint64_t HashFile(const std::filesystem::path& path)
+	{
+		std::ifstream file(path, std::ios::binary);
+		if (!file)
+		{
+			return 0;
+		}
+
+		uint64_t hash = 14695981039346656037ull;
+		char buffer[65536];
+		while (file.read(buffer, sizeof(buffer)) || file.gcount() > 0)
+		{
+			for (std::streamsize index = 0; index < file.gcount(); ++index)
+			{
+				hash = (hash ^ static_cast<uint8_t>(buffer[index])) * 1099511628211ull;
+			}
+		}
+		return hash;
+	}
+
+	std::span<const std::byte> GetComponentBytes(const WorldSnapshot& snapshot, const WorldSnapshot::Component& component)
+	{
+		return std::span<const std::byte>(snapshot.Bytes.GetBytes()).subspan(component.Offset, component.Size);
+	}
+
+	std::span<const WorldSnapshot::Component> GetComponents(const WorldSnapshot& snapshot, const WorldSnapshot::SavedEntity& entity)
+	{
+		return std::span<const WorldSnapshot::Component>(snapshot.Components).subspan(entity.FirstComponent, entity.ComponentCount);
+	}
+
+	void WriteSection(BinaryWriter& out, std::string_view name, const BinaryWriter& section)
+	{
+		out.WriteString(std::string(name));
+		out.WriteBlock(section);
+	}
+
+	// An entity of the snapshot, whole, as SceneSerializer::WriteEntity() stores it
+	void WriteWholeEntity(const WorldSnapshot& snapshot, const WorldSnapshot::SavedEntity& entity, BinaryWriter& out)
+	{
+		out.WriteUInt32(entity.ComponentCount);
+		for (const WorldSnapshot::Component& component : GetComponents(snapshot, entity))
+		{
+			const std::span<const std::byte> bytes = GetComponentBytes(snapshot, component);
+			out.WriteString(component.Type->Name);
+			out.WriteBytes(bytes.data(), bytes.size());
+		}
+	}
+
+	// What differs between an entity and how it was: the components taken away, those it got whole,
+	// and of the others the properties that differ. False if a component's bytes aren't whole.
+	bool WriteEntityChanges(const WorldSnapshot& baseSnapshot, const WorldSnapshot::SavedEntity& baseEntity, const WorldSnapshot& snapshot,
+		const WorldSnapshot::SavedEntity& entity, BinaryWriter& outRecord, bool& outbChanged)
+	{
+		const auto findComponent = [](std::span<const WorldSnapshot::Component> components, const Nyx::Reflection::TypeMetadata* type) -> const WorldSnapshot::Component*
+		{
+			for (const WorldSnapshot::Component& component : components)
+			{
+				if (component.Type == type)
+				{
+					return &component;
+				}
+			}
+			return nullptr;
+		};
+
+		const std::span<const WorldSnapshot::Component> components = GetComponents(snapshot, entity);
+		const std::span<const WorldSnapshot::Component> baseComponents = GetComponents(baseSnapshot, baseEntity);
+
+		BinaryWriter removed;
+		uint32_t removedCount = 0;
+		for (const WorldSnapshot::Component& baseComponent : baseComponents)
+		{
+			if (!findComponent(components, baseComponent.Type))
+			{
+				removed.WriteString(baseComponent.Type->Name);
+				++removedCount;
+			}
+		}
+
+		BinaryWriter changed;
+		uint32_t changedCount = 0;
+		for (const WorldSnapshot::Component& component : components)
+		{
+			const std::span<const std::byte> bytes = GetComponentBytes(snapshot, component);
+			const WorldSnapshot::Component* baseComponent = findComponent(baseComponents, component.Type);
+			if (!baseComponent)
+			{
+				changed.WriteString(component.Type->Name);
+				changed.WriteBytes(bytes.data(), bytes.size());
+				++changedCount;
+				continue;
+			}
+
+			// Written to one side first: the name goes in front only if something differs
+			BinaryWriter properties;
+			bool bDiffers = false;
+			if (!ReflectedArchiveSerializer::WriteChangedProperties(properties, bytes, GetComponentBytes(baseSnapshot, *baseComponent), bDiffers))
+			{
+				return false;
+			}
+			if (bDiffers)
+			{
+				changed.WriteString(component.Type->Name);
+				changed.WriteBytes(properties.GetBytes().data(), properties.GetBytes().size());
+				++changedCount;
+			}
+		}
+
+		outbChanged = removedCount != 0 || changedCount != 0;
+		if (outbChanged)
+		{
+			outRecord.WriteUInt64(entity.Guid.Value);
+			outRecord.WriteUInt32(removedCount);
+			outRecord.WriteBytes(removed.GetBytes().data(), removed.GetBytes().size());
+			outRecord.WriteUInt32(changedCount);
+			outRecord.WriteBytes(changed.GetBytes().data(), changed.GetBytes().size());
+		}
+		return true;
+	}
+
+	bool ReadDestroyed(BinaryReader& section, Registry& world, const EntityGuidLookup& guids)
+	{
+		uint32_t count = 0;
+		if (!section.ReadUInt32(count))
+		{
+			return false;
+		}
+		for (uint32_t index = 0; index < count; ++index)
+		{
+			uint64_t guid = 0;
+			if (!section.ReadUInt64(guid))
+			{
+				return false;
+			}
+			// One the scene no longer has is gone anyway
+			if (const std::optional<Entity> entity = FindEntityByGuid(world, guids, EntityGuid{ guid }))
+			{
+				world.DestroyEntity(*entity);
+			}
+		}
+		return true;
+	}
+
+	bool ReadChanged(BinaryReader& section, Registry& world, const EntityGuidLookup& guids, ScenePostLoadContext& postLoadContext, ReadWarnings& warnings)
+	{
+		uint32_t count = 0;
+		if (!section.ReadUInt32(count))
+		{
+			return false;
+		}
+		for (uint32_t index = 0; index < count; ++index)
+		{
+			BinaryReader record;
+			uint64_t guid = 0;
+			uint32_t removedCount = 0;
+			if (!section.ReadBlock(record) || !record.ReadUInt64(guid) || !record.ReadUInt32(removedCount))
+			{
+				return false;
+			}
+
+			const std::optional<Entity> entity = FindEntityByGuid(world, guids, EntityGuid{ guid });
+			if (!entity)
+			{
+				warnings.Add("dropped what the save has of an entity its scene no longer has");
+				continue;
+			}
+
+			for (uint32_t removedIndex = 0; removedIndex < removedCount; ++removedIndex)
+			{
+				std::string name;
+				if (!record.ReadString(name))
+				{
+					return false;
+				}
+				if (const ComponentTypeOps* ops = ComponentTypeRegistry::Get().FindByName(name))
+				{
+					ops->Remove(world, *entity);
+				}
+			}
+
+			if (!SceneSerializer::ReadEntity(record, world, *entity, postLoadContext, warnings))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	bool ReadMade(BinaryReader& section, Registry& world, const EntityGuidLookup& guids, ScenePostLoadContext& postLoadContext, ReadWarnings& warnings)
+	{
+		uint32_t count = 0;
+		if (!section.ReadUInt32(count))
+		{
+			return false;
+		}
+		SceneSerializer::PrefabReadState prefabs;
+		for (uint32_t index = 0; index < count; ++index)
+		{
+			BinaryReader record;
+			uint64_t guid = 0;
+			if (!section.ReadBlock(record) || !record.ReadUInt64(guid))
+			{
+				return false;
+			}
+
+			// The scene got an entity of this guid after the save was made: the scene's stays
+			if (FindEntityByGuid(world, guids, EntityGuid{ guid }))
+			{
+				warnings.Add("dropped an entity the save made, as its scene now has one of that guid");
+				continue;
+			}
+
+			if (!SceneSerializer::ReadSceneEntity(record, world, world.CreateEntity(), postLoadContext, warnings, &prefabs))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+}
+
+namespace Nyx
+{
+	bool TakeWorldSnapshot(const Registry& world, WorldSnapshot& outSnapshot)
+	{
+		outSnapshot = WorldSnapshot{};
+
+		std::vector<const ComponentTypeOps*> saved;
+		for (const ComponentTypeOps& ops : ComponentTypeRegistry::Get().GetAll())
+		{
+			if (!ops.IsRuntime())
+			{
+				saved.push_back(&ops);
+			}
+		}
+
+		bool bWritten = true;
+		world.ForEachEntity([&](Entity entity)
+			{
+				if (!bWritten || !world.Has<GuidComponent>(entity) || !world.Get<GuidComponent>(entity).Guid.IsValid())
+				{
+					return;
+				}
+
+				WorldSnapshot::SavedEntity savedEntity;
+				savedEntity.Guid = world.Get<GuidComponent>(entity).Guid;
+				savedEntity.FirstComponent = static_cast<uint32_t>(outSnapshot.Components.size());
+				for (const ComponentTypeOps* ops : saved)
+				{
+					const void* component = ops->GetConst(world, entity);
+					if (!component)
+					{
+						continue;
+					}
+					const size_t offset = outSnapshot.Bytes.GetBytes().size();
+					if (!ReflectedArchiveSerializer::SerializeObject(outSnapshot.Bytes, component, *ops->TypeMetadata))
+					{
+						bWritten = false;
+						return;
+					}
+					outSnapshot.Components.push_back(WorldSnapshot::Component{ ops->TypeMetadata, offset, outSnapshot.Bytes.GetBytes().size() - offset });
+					++savedEntity.ComponentCount;
+				}
+				outSnapshot.Entities.push_back(savedEntity);
+			});
+		return bWritten;
+	}
+
+	bool MakeWorldSaveBase(const std::filesystem::path& scenePath, const Registry& world, WorldSaveBase& outBase)
+	{
+		outBase.ScenePath = scenePath.generic_string();
+		outBase.SceneHash = HashFile(scenePath);
+		return TakeWorldSnapshot(world, outBase.Entities);
+	}
+
+	bool WriteWorldSave(const WorldSaveBase& base, const WorldSnapshot& snapshot, const WorldSaveClock& clock, BinaryWriter& out)
+	{
+		WorldSaveHeader header;
+		header.ScenePath = base.ScenePath;
+		header.SceneHash = base.SceneHash;
+		header.StepIndex = clock.StepIndex;
+		header.WorldTimeBits = std::bit_cast<uint64_t>(clock.WorldTimeSeconds);
+		header.StepSecondsBits = std::bit_cast<uint64_t>(clock.StepSeconds);
+		header.SavedAtUnixSeconds = static_cast<uint64_t>(
+			std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count());
+
+		BinaryWriter headerSection;
+		if (!ReflectedArchiveSerializer::SerializeObject(headerSection, &header, Nyx::Reflection::GetTypeMetadata<WorldSaveHeader>()))
+		{
+			return false;
+		}
+
+		std::unordered_map<EntityGuid, const WorldSnapshot::SavedEntity*> baseByGuid;
+		baseByGuid.reserve(base.Entities.Entities.size());
+		for (const WorldSnapshot::SavedEntity& entity : base.Entities.Entities)
+		{
+			baseByGuid.emplace(entity.Guid, &entity);
+		}
+
+		BinaryWriter changedRecords;
+		uint32_t changedCount = 0;
+		BinaryWriter madeRecords;
+		uint32_t madeCount = 0;
+		std::unordered_set<EntityGuid> stillThere;
+		stillThere.reserve(snapshot.Entities.size());
+		for (const WorldSnapshot::SavedEntity& entity : snapshot.Entities)
+		{
+			stillThere.insert(entity.Guid);
+
+			BinaryWriter record;
+			const auto found = baseByGuid.find(entity.Guid);
+			if (found == baseByGuid.end())
+			{
+				record.WriteUInt64(entity.Guid.Value);
+				WriteWholeEntity(snapshot, entity, record);
+				madeRecords.WriteBlock(record);
+				++madeCount;
+				continue;
+			}
+
+			bool bChanged = false;
+			if (!WriteEntityChanges(base.Entities, *found->second, snapshot, entity, record, bChanged))
+			{
+				return false;
+			}
+			if (bChanged)
+			{
+				changedRecords.WriteBlock(record);
+				++changedCount;
+			}
+		}
+
+		BinaryWriter destroyedGuids;
+		uint32_t destroyedCount = 0;
+		for (const WorldSnapshot::SavedEntity& entity : base.Entities.Entities)
+		{
+			if (!stillThere.contains(entity.Guid))
+			{
+				destroyedGuids.WriteUInt64(entity.Guid.Value);
+				++destroyedCount;
+			}
+		}
+
+		const auto writeCounted = [&out](std::string_view name, uint32_t count, const BinaryWriter& records)
+		{
+			BinaryWriter section;
+			section.WriteUInt32(count);
+			section.WriteBytes(records.GetBytes().data(), records.GetBytes().size());
+			WriteSection(out, name, section);
+		};
+
+		out.WriteUInt32(WorldSaveMagic);
+		out.WriteUInt32(WorldSaveVersion);
+		WriteSection(out, HeaderSection, headerSection);
+		writeCounted(DestroyedSection, destroyedCount, destroyedGuids);
+		writeCounted(ChangedSection, changedCount, changedRecords);
+		writeCounted(MadeSection, madeCount, madeRecords);
+		return true;
+	}
+
+	bool SaveWorldToFile(const WorldSaveBase& base, const Registry& world, const WorldSaveClock& clock, const std::filesystem::path& path)
+	{
+		WorldSnapshot snapshot;
+		if (!TakeWorldSnapshot(world, snapshot))
+		{
+			return false;
+		}
+		BinaryWriter out;
+		return WriteWorldSave(base, snapshot, clock, out) && out.SaveToFile(path);
+	}
+
+	bool LoadWorldSave(const std::filesystem::path& path, Registry& outWorld, ScenePostLoadContext postLoadContext, WorldSaveBase& outBase,
+		WorldSaveClock& outClock, std::string& outError)
+	{
+		BinaryReader reader;
+		if (!reader.LoadFromFile(path))
+		{
+			outError = "can't be read";
+			return false;
+		}
+
+		uint32_t magic = 0;
+		uint32_t version = 0;
+		if (!reader.ReadUInt32(magic) || magic != WorldSaveMagic || !reader.ReadUInt32(version) || version == 0)
+		{
+			outError = "is not a save";
+			return false;
+		}
+		if (version > WorldSaveVersion)
+		{
+			outError = "is a save of version " + std::to_string(version) + ", but this build only reads up to version " + std::to_string(WorldSaveVersion);
+			return false;
+		}
+
+		const std::string damaged = "ends early or is damaged";
+		ReadWarnings warnings;
+		std::map<std::string, BinaryReader, std::less<>> sections;
+		while (reader.GetRemainingSize() > 0)
+		{
+			std::string name;
+			BinaryReader section;
+			if (!reader.ReadString(name) || !reader.ReadBlock(section))
+			{
+				outError = damaged;
+				return false;
+			}
+			if (name != HeaderSection && name != DestroyedSection && name != ChangedSection && name != MadeSection)
+			{
+				warnings.Add("skipped section '" + name + "', which this build doesn't know");
+				continue;
+			}
+			sections.emplace(std::move(name), std::move(section));
+		}
+
+		const auto header = sections.find(HeaderSection);
+		WorldSaveHeader saved;
+		if (header == sections.end() ||
+			!ReflectedArchiveSerializer::DeserializeObject(header->second, &saved, Nyx::Reflection::GetTypeMetadata<WorldSaveHeader>(), warnings))
+		{
+			outError = damaged;
+			return false;
+		}
+
+		// Into a separate world, so that outWorld stays as it was if anything fails
+		Registry loadedWorld;
+		if (!SceneSerializer::LoadFromFile(saved.ScenePath, loadedWorld, postLoadContext))
+		{
+			outError = "needs the scene '" + saved.ScenePath + "', which can't be loaded";
+			return false;
+		}
+
+		WorldSaveBase loadedBase;
+		if (!MakeWorldSaveBase(saved.ScenePath, loadedWorld, loadedBase))
+		{
+			outError = "needs the scene '" + saved.ScenePath + "', which can't be compared with";
+			return false;
+		}
+		if (loadedBase.SceneHash != saved.SceneHash)
+		{
+			warnings.Add("its scene '" + saved.ScenePath + "' has changed since it was saved");
+		}
+
+		const EntityGuidLookup guids = MakeEntityGuidLookup(loadedWorld);
+		const auto read = [&sections](std::string_view name) -> BinaryReader*
+		{
+			const auto found = sections.find(name);
+			return found != sections.end() ? &found->second : nullptr;
+		};
+
+		// A section a later version left out has nothing to do
+		BinaryReader* destroyed = read(DestroyedSection);
+		BinaryReader* changed = read(ChangedSection);
+		BinaryReader* made = read(MadeSection);
+		if ((destroyed && !ReadDestroyed(*destroyed, loadedWorld, guids)) ||
+			(changed && !ReadChanged(*changed, loadedWorld, guids, postLoadContext, warnings)) ||
+			(made && !ReadMade(*made, loadedWorld, guids, postLoadContext, warnings)))
+		{
+			warnings.Log(path.string());
+			outError = damaged;
+			return false;
+		}
+		warnings.Log(path.string());
+
+		// Moving keeps outWorld at its address, so pointers to it (such as the renderer's) stay valid
+		outWorld = std::move(loadedWorld);
+		outBase = std::move(loadedBase);
+		outClock = WorldSaveClock{ saved.StepIndex, std::bit_cast<double>(saved.WorldTimeBits), std::bit_cast<double>(saved.StepSecondsBits) };
+		return true;
+	}
+}
