@@ -2075,6 +2075,14 @@ namespace Nyx
 		character->RefreshContacts(Impl->System.GetDefaultBroadPhaseLayerFilter(ObjectLayers::Moving), layerFilter, {}, {}, Impl->Temp);
 	}
 
+	void PhysicsWorld::SetCharacterVelocity(CharacterHandle handle, const glm::vec3& velocity)
+	{
+		if (JPH::CharacterVirtual* character = Impl->FindCharacter(handle))
+		{
+			character->SetLinearVelocity(ToJolt(velocity));
+		}
+	}
+
 	BodyHandle PhysicsWorld::GetCharacterBody(CharacterHandle handle) const
 	{
 		const JPH::CharacterVirtual* character = Impl->FindCharacter(handle);

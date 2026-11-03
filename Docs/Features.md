@@ -805,6 +805,14 @@ puts the save on top.
   an array counts as one value, as in a prefab's overrides. An entity without a guid isn't saved:
   whatever made it, such as a system's helper, makes it again. Nor are run-time component types,
   bodies or the systems' own state.
+- **Prefab instances:** one of the scene is compared with the scene, like its other entities. One made
+  at run time is saved as what differs from its prefab, with where each part is and the parts that are
+  gone. Loading makes it from the prefab as it is now: a value the world didn't change follows it, what
+  the save has of a part the prefab lost is dropped with a warning, and a part it gained is made where
+  the instance is. An instance whose prefab isn't there at loading keeps only its root's own.
+- **How fast things go:** the velocities of moving dynamic bodies and characters are saved
+  (`WorldSaveMotion`), and their new bodies start with them, a group's as the momentum of its entities.
+  What rests wakes up and settles again, as nothing says it slept.
 - **The same rules as scenes:** the tagged binary format, so added, removed and retyped properties and
   unknown component types are handled as in a scene. Sections carry their sizes, so a build skips the
   ones it doesn't know. A save of a later version is refused.
@@ -816,13 +824,13 @@ puts the save on top.
   save goes on top and they aren't placed again: a child that doesn't follow its parent may have been
   left behind.
 - **In code:** `MakeWorldSaveBase()` after the scene loads and before the first step keeps what saves are
-  compared with. `SaveWorldToFile()` saves, written whole or not at all. Its parts can be run apart:
-  `TakeWorldSnapshot()` between steps, `WriteWorldSave()` on any thread, as it touches no world.
-  `LoadWorldSave()` replaces a world no step has run in yet, leaves it as it was on failure, and hands
-  back the base and the clock.
-- Not yet: prefab instances spawned at run time as what differs from their prefabs (they are saved
-  whole), velocities (a body falling stops and falls again), terrain edits in their own form (they are
-  saved as a property of the terrain), a game's own state and saving from the game.
+  compared with. `GameWorld::SaveToFile()` saves, written whole or not at all. Its parts can be run apart:
+  `GameWorld::TakeSaveSnapshot()` between steps, `WriteWorldSave()` on any thread, as it touches no world.
+  `GameWorld::LoadSave()` replaces a world no step has run in yet, leaves it as it was on failure, and
+  hands back the base and the clock. `SaveWorldToFile()` and `LoadWorldSave()` do the same with a
+  `Registry` alone, without velocities.
+- Not yet: terrain edits in their own form (they are saved as a property of the terrain), a game's own
+  state and saving from the game.
 - Tests: `NyxWorldSaveTests`, `NyxFixedStepClockTests`. `NyxWorldSaveTests --measure` prints what a
   snapshot and the comparison cost.
 

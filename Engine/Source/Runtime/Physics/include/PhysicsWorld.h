@@ -546,6 +546,8 @@ namespace Nyx
 		CharacterState GetCharacterState(CharacterHandle character) const;
 		// Puts it there at once (its feet), without moving it through what lies between, and stops it
 		void TeleportCharacter(CharacterHandle character, const glm::vec3& position);
+		// How fast it goes as its next move starts, e.g. one going on from a save
+		void SetCharacterVelocity(CharacterHandle character, const glm::vec3& velocity);
 		// The kinematic body inside it, e.g. for QueryFilter::Ignore; it has the character's user data
 		BodyHandle GetCharacterBody(CharacterHandle character) const;
 

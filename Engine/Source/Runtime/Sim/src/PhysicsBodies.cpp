@@ -2,6 +2,7 @@
 #include "PhysicsBodies.h"
 
 #include "CharacterComponent.h"
+#include "EntityGuidLookup.h"
 #include "GuidComponent.h"
 #include "Log.h"
 #include "NameComponent.h"
@@ -11,6 +12,7 @@
 #include "Profiler.h"
 #include "RuntimeMeshComponent.h"
 #include "TransformComponent.h"
+#include "WorldSave.h"
 
 #include <algorithm>
 #include <cmath>
@@ -307,7 +309,8 @@ namespace Nyx
 		}
 
 		// Groups first: what goes keeps its entities' velocities for the bodies made in its place
-		std::map<uint64_t, KeptVelocity> kept;
+		std::map<uint64_t, KeptVelocity> kept = std::move(StartVelocities);
+		StartVelocities.clear();
 		const std::map<uint64_t, std::vector<Entity>> newGroups = UnmakeChangedGroups(world, physics, materials, kept);
 		std::set<uint64_t> joining;
 		for (const auto& [group, members] : newGroups)
@@ -354,7 +357,7 @@ namespace Nyx
 					{
 						desc->Shape.Mesh = MakeTriangleMesh(world, entity);
 					}
-					// Out of a group's body: as its point of it moved
+					// Out of a group's body: as its point of it moved. After a load: as it went when saved
 					if (const auto velocity = kept.find(entity.Value); velocity != kept.end())
 					{
 						desc->LinearVelocity = velocity->second.Linear;
@@ -419,7 +422,7 @@ namespace Nyx
 			});
 
 		WarnOfRigidBodiesWithoutCollider(world);
-		SyncCharacters(world, physics);
+		SyncCharacters(world, physics, kept);
 
 		// Bodies whose collider or entity is gone
 		for (auto it = Bodies.begin(); it != Bodies.end();)
@@ -638,7 +641,49 @@ namespace Nyx
 		return tracked.PendingStillSteps >= MeshSettleSteps || tracked.StaleSteps >= MeshMostStaleSteps;
 	}
 
-	void PhysicsBodies::SyncCharacters(Registry& world, PhysicsWorld& physics)
+	void PhysicsBodies::GetMotions(const Registry& world, const PhysicsWorld& physics, std::vector<WorldSaveMotion>& outMotions) const
+	{
+		const auto add = [&](Entity entity, const glm::vec3& linear, const glm::vec3& angular)
+		{
+			if ((linear != glm::vec3(0.0f) || angular != glm::vec3(0.0f)) && world.IsAlive(entity) && world.Has<GuidComponent>(entity))
+			{
+				outMotions.push_back(WorldSaveMotion{ .Guid = world.Get<GuidComponent>(entity).Guid, .Linear = linear, .Angular = angular });
+			}
+		};
+
+		for (const auto& [key, tracked] : Bodies)
+		{
+			if (tracked.bDynamic && tracked.Body.IsValid())
+			{
+				add(tracked.Owner, physics.GetLinearVelocity(tracked.Body), physics.GetAngularVelocity(tracked.Body));
+			}
+		}
+		for (const auto& [number, group] : Groups)
+		{
+			for (const GroupMember& member : group.Members)
+			{
+				add(member.Owner, physics.GetPointVelocity(group.Body, member.LastPose.Position), physics.GetAngularVelocity(group.Body));
+			}
+		}
+		for (const auto& [key, tracked] : Characters)
+		{
+			add(tracked.Owner, physics.GetCharacterState(tracked.Character).Velocity, glm::vec3(0.0f));
+		}
+	}
+
+	void PhysicsBodies::SetStartMotions(const Registry& world, const std::vector<WorldSaveMotion>& motions)
+	{
+		const EntityGuidLookup guids = MakeEntityGuidLookup(world);
+		for (const WorldSaveMotion& motion : motions)
+		{
+			if (const std::optional<Entity> entity = FindEntityByGuid(world, guids, motion.Guid))
+			{
+				StartVelocities[entity->Value] = KeptVelocity{ motion.Linear, motion.Angular };
+			}
+		}
+	}
+
+	void PhysicsBodies::SyncCharacters(Registry& world, PhysicsWorld& physics, const std::map<uint64_t, KeptVelocity>& kept)
 	{
 		for (auto& [key, tracked] : Characters)
 		{
@@ -670,6 +715,11 @@ namespace Nyx
 					if (!made.IsValid())
 					{
 						return;
+					}
+					if (const auto velocity = kept.find(entity.Value); velocity != kept.end())
+					{
+						physics.SetCharacterVelocity(made, velocity->second.Linear);
+						character.Velocity = velocity->second.Linear;
 					}
 					Characters.emplace(entity.Value,
 						TrackedCharacter{ .Owner = entity,

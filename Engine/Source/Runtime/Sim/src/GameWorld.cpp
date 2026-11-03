@@ -8,6 +8,7 @@
 #include "Profiler.h"
 #include "TerrainEditCommands.h"
 #include "WindComponent.h"
+#include "WorldSave.h"
 
 #include <algorithm>
 
@@ -18,6 +19,35 @@ namespace Nyx
 		ASSERT(system && "A GameWorld needs a system to add.");
 		Systems.push_back(SystemEntry{ std::move(system), std::max(everyNthStep, 1u), stage });
 		return *Systems.back().System;
+	}
+
+	bool GameWorld::TakeSaveSnapshot(WorldSnapshot& outSnapshot) const
+	{
+		if (!TakeWorldSnapshot(World, outSnapshot, Assets))
+		{
+			return false;
+		}
+		Bodies.GetMotions(World, Physics, outSnapshot.Motions);
+		return true;
+	}
+
+	bool GameWorld::SaveToFile(const WorldSaveBase& base, const WorldSaveClock& clock, const std::filesystem::path& path) const
+	{
+		WorldSnapshot snapshot;
+		BinaryWriter out;
+		return TakeSaveSnapshot(snapshot) && WriteWorldSave(base, snapshot, clock, out) && out.SaveToFile(path);
+	}
+
+	bool GameWorld::LoadSave(const std::filesystem::path& path, const ScenePostLoadContext& postLoadContext, WorldSaveBase& outBase, WorldSaveClock& outClock,
+		std::string& outError)
+	{
+		std::vector<WorldSaveMotion> motions;
+		if (!LoadWorldSave(path, World, postLoadContext, outBase, outClock, outError, &motions))
+		{
+			return false;
+		}
+		Bodies.SetStartMotions(World, motions);
+		return true;
 	}
 
 	void GameWorld::Step(const StepTime& step)

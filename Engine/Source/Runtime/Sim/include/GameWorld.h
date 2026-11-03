@@ -16,14 +16,20 @@
 #include "Wind.h"
 
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace Nyx
 {
 	class IAssetResolver;
 	class IWindField;
+	struct ScenePostLoadContext;
+	struct WorldSaveBase;
+	struct WorldSaveClock;
+	struct WorldSnapshot;
 
 	// The world a game runs: its entities, their physics, and the systems that change them each
 	// fixed step, in one order kept here rather than spread over registrations. The game's GameLayer
@@ -112,6 +118,18 @@ namespace Nyx
 
 		// One step of the world, in the order above
 		void Step(const StepTime& step);
+
+		// What a save of this world is made from (WorldSave.h), between its steps: its entities, the
+		// prefabs of its instances (SetAssetResolver()) and how fast its bodies and characters go.
+		// False if a component can't be written.
+		bool TakeSaveSnapshot(WorldSnapshot& outSnapshot) const;
+		// All of a save at once, as SaveWorldToFile() does: between its steps, and false, with a file
+		// already there left as it was, if it can't.
+		bool SaveToFile(const WorldSaveBase& base, const WorldSaveClock& clock, const std::filesystem::path& path) const;
+		// LoadWorldSave() into this world, which no step may have run in yet, and its bodies and
+		// characters go on as fast as they went
+		bool LoadSave(const std::filesystem::path& path, const ScenePostLoadContext& postLoadContext, WorldSaveBase& outBase, WorldSaveClock& outClock,
+			std::string& outError);
 
 		// Where players' commands go between steps (IPlayerController): the next step hands them to
 		// its systems, then they are gone. Only those systems change the simulated world.

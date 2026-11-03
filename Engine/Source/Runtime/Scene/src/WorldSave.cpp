@@ -4,9 +4,14 @@
 #include "ComponentTypeRegistry.h"
 #include "EntityGuidLookup.h"
 #include "GuidComponent.h"
+#include "IAssetResolver.h"
+#include "ParentComponent.h"
+#include "Prefab.h"
 #include "ReflectedArchiveSerializer.h"
 #include "SceneSerializer.h"
+#include "TransformComponent.h"
 
+#include <algorithm>
 #include <bit>
 #include <chrono>
 #include <fstream>
@@ -25,6 +30,8 @@ namespace
 	constexpr std::string_view DestroyedSection = "Destroyed";
 	constexpr std::string_view ChangedSection = "Changed";
 	constexpr std::string_view MadeSection = "Made";
+	constexpr std::string_view InstancesSection = "Instances";
+	constexpr std::string_view MotionsSection = "Motions";
 
 	// FNV-1a over the file's bytes; 0 if it can't be read
 	uint64_t HashFile(const std::filesystem::path& path)
@@ -57,6 +64,41 @@ namespace
 		return std::span<const WorldSnapshot::Component>(snapshot.Components).subspan(entity.FirstComponent, entity.ComponentCount);
 	}
 
+	const WorldSnapshot::Component* FindComponent(std::span<const WorldSnapshot::Component> components, const Nyx::Reflection::TypeMetadata& type)
+	{
+		for (const WorldSnapshot::Component& component : components)
+		{
+			if (component.Type == &type)
+			{
+				return &component;
+			}
+		}
+		return nullptr;
+	}
+
+	template <typename T>
+	const WorldSnapshot::Component* FindComponent(std::span<const WorldSnapshot::Component> components)
+	{
+		return FindComponent(components, Nyx::Reflection::GetTypeMetadata<T>());
+	}
+
+	template <typename T>
+	bool IsType(const WorldSnapshot::Component& component)
+	{
+		return component.Type == &Nyx::Reflection::GetTypeMetadata<T>();
+	}
+
+	// The values of a snapshot's component again, for what isn't told from its bytes
+	template <typename T>
+	bool ReadValues(const WorldSnapshot& snapshot, const WorldSnapshot::Component& component, T& outValues)
+	{
+		const std::span<const std::byte> bytes = GetComponentBytes(snapshot, component);
+		BinaryReader reader;
+		reader.LoadFromMemory(std::vector<std::byte>(bytes.begin(), bytes.end()));
+		ReadWarnings warnings;
+		return ReflectedArchiveSerializer::DeserializeObject(reader, &outValues, Nyx::Reflection::GetTypeMetadata<T>(), warnings);
+	}
+
 	void WriteSection(BinaryWriter& out, std::string_view name, const BinaryWriter& section)
 	{
 		out.WriteString(std::string(name));
@@ -80,18 +122,6 @@ namespace
 	bool WriteEntityChanges(const WorldSnapshot& baseSnapshot, const WorldSnapshot::SavedEntity& baseEntity, const WorldSnapshot& snapshot,
 		const WorldSnapshot::SavedEntity& entity, BinaryWriter& outRecord, bool& outbChanged)
 	{
-		const auto findComponent = [](std::span<const WorldSnapshot::Component> components, const Nyx::Reflection::TypeMetadata* type) -> const WorldSnapshot::Component*
-		{
-			for (const WorldSnapshot::Component& component : components)
-			{
-				if (component.Type == type)
-				{
-					return &component;
-				}
-			}
-			return nullptr;
-		};
-
 		const std::span<const WorldSnapshot::Component> components = GetComponents(snapshot, entity);
 		const std::span<const WorldSnapshot::Component> baseComponents = GetComponents(baseSnapshot, baseEntity);
 
@@ -99,7 +129,7 @@ namespace
 		uint32_t removedCount = 0;
 		for (const WorldSnapshot::Component& baseComponent : baseComponents)
 		{
-			if (!findComponent(components, baseComponent.Type))
+			if (!FindComponent(components, *baseComponent.Type))
 			{
 				removed.WriteString(baseComponent.Type->Name);
 				++removedCount;
@@ -111,7 +141,7 @@ namespace
 		for (const WorldSnapshot::Component& component : components)
 		{
 			const std::span<const std::byte> bytes = GetComponentBytes(snapshot, component);
-			const WorldSnapshot::Component* baseComponent = findComponent(baseComponents, component.Type);
+			const WorldSnapshot::Component* baseComponent = FindComponent(baseComponents, *component.Type);
 			if (!baseComponent)
 			{
 				changed.WriteString(component.Type->Name);
@@ -144,6 +174,186 @@ namespace
 			outRecord.WriteUInt32(changedCount);
 			outRecord.WriteBytes(changed.GetBytes().data(), changed.GetBytes().size());
 		}
+		return true;
+	}
+
+	// A root or a part of an instance made at run time as what differs from its prefab, as a scene's
+	// load reads it. As a scene file has one (WritePrefabInstanceEntity()), but where a part is and which
+	// parent it has may be anything in a running world, so each part has its transform, and its parent's
+	// guid if that isn't the one its instance makes. The root's transform goes before its
+	// PrefabInstanceComponent, so that a part its prefab has gained since is made where it belongs.
+	bool WriteInstanceEntity(const WorldSnapshot& snapshot, const WorldSnapshot::SavedEntity& entity, const WorldSnapshot::Prefab& prefab,
+		const WorldSnapshot::SavedEntity& prefabEntity, EntityGuid instance, BinaryWriter& out)
+	{
+		const std::span<const WorldSnapshot::Component> components = GetComponents(snapshot, entity);
+		const std::span<const WorldSnapshot::Component> prefabComponents = GetComponents(prefab.Entities, prefabEntity);
+		const bool bRoot = entity.Guid == instance;
+
+		const auto isMark = [](const WorldSnapshot::Component& component)
+		{
+			return IsType<GuidComponent>(component) || IsType<PrefabInstanceComponent>(component) || IsType<PrefabPartComponent>(component);
+		};
+
+		std::vector<std::string> removed;
+		for (const WorldSnapshot::Component& component : prefabComponents)
+		{
+			const bool bOwn = isMark(component) || (bRoot && (IsType<TransformComponent>(component) || IsType<ParentComponent>(component)));
+			if (!bOwn && !FindComponent(components, *component.Type))
+			{
+				removed.push_back(component.Type->Name);
+			}
+		}
+
+		BinaryWriter written;
+		uint32_t count = 0;
+		const auto writeWhole = [&](const WorldSnapshot::Component* component)
+		{
+			if (component)
+			{
+				const std::span<const std::byte> bytes = GetComponentBytes(snapshot, *component);
+				written.WriteString(component->Type->Name);
+				written.WriteBytes(bytes.data(), bytes.size());
+				++count;
+			}
+		};
+		const auto writeMark = [&]<typename T>(T& mark)
+		{
+			const Nyx::Reflection::TypeMetadata& type = Nyx::Reflection::GetTypeMetadata<T>();
+			const WorldSnapshot::Component* component = FindComponent(components, type);
+			if (!component || !ReadValues(snapshot, *component, mark))
+			{
+				return false;
+			}
+			mark.RemovedComponents = removed;
+			written.WriteString(type.Name);
+			++count;
+			return ReflectedArchiveSerializer::SerializeObject(written, &mark, type);
+		};
+
+		const WorldSnapshot::Component* transform = FindComponent<TransformComponent>(components);
+		PrefabInstanceComponent instanceMark;
+		PrefabPartComponent partMark;
+		if (bRoot)
+		{
+			writeWhole(FindComponent<GuidComponent>(components));
+			writeWhole(transform);
+			writeWhole(FindComponent<ParentComponent>(components));
+			if (!writeMark(instanceMark))
+			{
+				return false;
+			}
+		}
+		else
+		{
+			if (!writeMark(partMark))
+			{
+				return false;
+			}
+			writeWhole(transform);
+		}
+
+		for (const WorldSnapshot::Component& component : components)
+		{
+			if (isMark(component) || IsType<TransformComponent>(component) || (bRoot && IsType<ParentComponent>(component)))
+			{
+				continue;
+			}
+			const WorldSnapshot::Component* prefabComponent = FindComponent(prefabComponents, *component.Type);
+			if (!prefabComponent)
+			{
+				writeWhole(&component);
+				continue;
+			}
+
+			// A part's parent is compared with the one its instance makes: the prefab's has its own ids
+			BinaryWriter madeLink;
+			std::span<const std::byte> compared = GetComponentBytes(prefab.Entities, *prefabComponent);
+			if (IsType<ParentComponent>(component))
+			{
+				ParentComponent link;
+				if (!ReadValues(prefab.Entities, *prefabComponent, link))
+				{
+					return false;
+				}
+				link.Parent = link.Parent == prefab.Root ? instance : GetPrefabPartGuid(instance, link.Parent);
+				if (!ReflectedArchiveSerializer::SerializeObject(madeLink, &link, *component.Type))
+				{
+					return false;
+				}
+				compared = madeLink.GetBytes();
+			}
+
+			BinaryWriter properties;
+			bool bDiffers = false;
+			if (!ReflectedArchiveSerializer::WriteChangedProperties(properties, GetComponentBytes(snapshot, component), compared, bDiffers))
+			{
+				return false;
+			}
+			if (bDiffers)
+			{
+				written.WriteString(component.Type->Name);
+				written.WriteBytes(properties.GetBytes().data(), properties.GetBytes().size());
+				++count;
+			}
+		}
+
+		out.WriteUInt32(count);
+		out.WriteBytes(written.GetBytes().data(), written.GetBytes().size());
+		return true;
+	}
+
+	// An instance made at run time: its root, its parts as they are, and those that are gone, which
+	// loading would make again. outWritten gets the guids of what it holds.
+	bool WriteInstance(const WorldSnapshot& snapshot, const WorldSnapshot::SavedEntity& root, const WorldSnapshot::Prefab& prefab,
+		const std::unordered_map<EntityGuid, const WorldSnapshot::SavedEntity*>& byGuid, BinaryWriter& outRecord, std::unordered_set<EntityGuid>& outWritten)
+	{
+		const auto prefabRoot = std::find_if(prefab.Entities.Entities.begin(), prefab.Entities.Entities.end(),
+			[&prefab](const WorldSnapshot::SavedEntity& entity)
+			{
+				return entity.Guid == prefab.Root;
+			});
+		if (prefabRoot == prefab.Entities.Entities.end())
+		{
+			return false;
+		}
+
+		outRecord.WriteUInt64(root.Guid.Value);
+		if (!WriteInstanceEntity(snapshot, root, prefab, *prefabRoot, root.Guid, outRecord))
+		{
+			return false;
+		}
+		outWritten.insert(root.Guid);
+
+		BinaryWriter parts;
+		uint32_t partCount = 0;
+		BinaryWriter gone;
+		uint32_t goneCount = 0;
+		for (const WorldSnapshot::SavedEntity& prefabEntity : prefab.Entities.Entities)
+		{
+			if (prefabEntity.Guid == prefab.Root)
+			{
+				continue;
+			}
+			const EntityGuid guid = GetPrefabPartGuid(root.Guid, prefabEntity.Guid);
+			const auto found = byGuid.find(guid);
+			if (found == byGuid.end() || !FindComponent<PrefabPartComponent>(GetComponents(snapshot, *found->second)))
+			{
+				gone.WriteUInt64(guid.Value);
+				++goneCount;
+				continue;
+			}
+			if (!WriteInstanceEntity(snapshot, *found->second, prefab, prefabEntity, root.Guid, parts))
+			{
+				return false;
+			}
+			outWritten.insert(guid);
+			++partCount;
+		}
+
+		outRecord.WriteUInt32(partCount);
+		outRecord.WriteBytes(parts.GetBytes().data(), parts.GetBytes().size());
+		outRecord.WriteUInt32(goneCount);
+		outRecord.WriteBytes(gone.GetBytes().data(), gone.GetBytes().size());
 		return true;
 	}
 
@@ -246,11 +456,96 @@ namespace
 		}
 		return true;
 	}
+
+	bool ReadInstances(BinaryReader& section, Registry& world, const EntityGuidLookup& guids, ScenePostLoadContext& postLoadContext, ReadWarnings& warnings)
+	{
+		uint32_t count = 0;
+		if (!section.ReadUInt32(count))
+		{
+			return false;
+		}
+		for (uint32_t index = 0; index < count; ++index)
+		{
+			BinaryReader record;
+			uint64_t guid = 0;
+			if (!section.ReadBlock(record) || !record.ReadUInt64(guid))
+			{
+				return false;
+			}
+
+			if (FindEntityByGuid(world, guids, EntityGuid{ guid }))
+			{
+				warnings.Add("dropped an instance the save made, as its scene now has an entity of that guid");
+				continue;
+			}
+
+			SceneSerializer::PrefabReadState prefabs;
+			uint32_t partCount = 0;
+			if (!SceneSerializer::ReadSceneEntity(record, world, world.CreateEntity(), postLoadContext, warnings, &prefabs) || !record.ReadUInt32(partCount))
+			{
+				return false;
+			}
+
+			// A part's record goes into the part its instance made, and its own entity with it. If that
+			// stays, the prefab no longer has the part, and the record is too little to be an entity.
+			for (uint32_t part = 0; part < partCount; ++part)
+			{
+				const Entity read = world.CreateEntity();
+				if (!SceneSerializer::ReadSceneEntity(record, world, read, postLoadContext, warnings, &prefabs))
+				{
+					return false;
+				}
+				if (world.IsAlive(read))
+				{
+					warnings.Add("dropped what the save has of a part its prefab no longer has");
+					world.DestroyEntity(read);
+				}
+			}
+
+			uint32_t goneCount = 0;
+			if (!record.ReadUInt32(goneCount))
+			{
+				return false;
+			}
+			for (uint32_t gone = 0; gone < goneCount; ++gone)
+			{
+				uint64_t part = 0;
+				if (!record.ReadUInt64(part))
+				{
+					return false;
+				}
+				if (const auto made = prefabs.Parts.find(EntityGuid{ part }); made != prefabs.Parts.end())
+				{
+					world.DestroyEntity(made->second);
+				}
+			}
+		}
+		return true;
+	}
+
+	bool ReadMotions(BinaryReader& section, std::vector<WorldSaveMotion>& outMotions, ReadWarnings& warnings)
+	{
+		uint32_t count = 0;
+		if (!section.ReadUInt32(count))
+		{
+			return false;
+		}
+		for (uint32_t index = 0; index < count; ++index)
+		{
+			WorldSaveMotion motion;
+			if (!ReflectedArchiveSerializer::DeserializeObject(section, &motion, Nyx::Reflection::GetTypeMetadata<WorldSaveMotion>(), warnings))
+			{
+				return false;
+			}
+			outMotions.push_back(motion);
+		}
+		return true;
+	}
 }
 
 namespace Nyx
 {
-	bool TakeWorldSnapshot(const Registry& world, WorldSnapshot& outSnapshot)
+	bool TakeWorldSnapshot(const Registry& world, WorldSnapshot& outSnapshot, IAssetResolver* prefabs)
 	{
 		outSnapshot = WorldSnapshot{};
 
@@ -291,6 +586,19 @@ namespace Nyx
 					++savedEntity.ComponentCount;
 				}
 				outSnapshot.Entities.push_back(savedEntity);
+
+				if (prefabs && world.Has<PrefabInstanceComponent>(entity))
+				{
+					const std::string& path = world.Get<PrefabInstanceComponent>(entity).Prefab.Path;
+					const PrefabAsset* prefab = !path.empty() && !outSnapshot.Prefabs.contains(path) ? prefabs->ResolvePrefab(path) : nullptr;
+					if (prefab && !prefab->IsEmpty())
+					{
+						auto taken = std::make_shared<WorldSnapshot::Prefab>();
+						taken->Root = prefab->GetTemplate().Get<GuidComponent>(prefab->GetRoot()).Guid;
+						bWritten = TakeWorldSnapshot(prefab->GetTemplate(), taken->Entities);
+						outSnapshot.Prefabs.emplace(path, std::move(taken));
+					}
+				}
 			});
 		return bWritten;
 	}
@@ -326,24 +634,72 @@ namespace Nyx
 			baseByGuid.emplace(entity.Guid, &entity);
 		}
 
+		std::unordered_map<EntityGuid, const WorldSnapshot::SavedEntity*> byGuid;
+		byGuid.reserve(snapshot.Entities.size());
+		for (const WorldSnapshot::SavedEntity& entity : snapshot.Entities)
+		{
+			byGuid.emplace(entity.Guid, &entity);
+		}
+
+		// The instances made at run time, as what differs from their prefabs. One whose prefab the
+		// snapshot hasn't got is written whole: its root before anything else made, since reading
+		// it makes its parts, which their own records then take the place of.
+		BinaryWriter instanceRecords;
+		uint32_t instanceCount = 0;
+		BinaryWriter madeRoots;
+		uint32_t madeCount = 0;
+		std::unordered_set<EntityGuid> inInstances;
+		for (const WorldSnapshot::SavedEntity& entity : snapshot.Entities)
+		{
+			const WorldSnapshot::Component* mark = FindComponent<PrefabInstanceComponent>(GetComponents(snapshot, entity));
+			if (!mark || baseByGuid.contains(entity.Guid))
+			{
+				continue;
+			}
+
+			PrefabInstanceComponent instance;
+			if (!ReadValues(snapshot, *mark, instance))
+			{
+				return false;
+			}
+
+			BinaryWriter record;
+			if (const auto prefab = snapshot.Prefabs.find(instance.Prefab.Path); prefab != snapshot.Prefabs.end())
+			{
+				if (!WriteInstance(snapshot, entity, *prefab->second, byGuid, record, inInstances))
+				{
+					return false;
+				}
+				instanceRecords.WriteBlock(record);
+				++instanceCount;
+			}
+			else
+			{
+				record.WriteUInt64(entity.Guid.Value);
+				WriteWholeEntity(snapshot, entity, record);
+				madeRoots.WriteBlock(record);
+				++madeCount;
+				inInstances.insert(entity.Guid);
+			}
+		}
+
 		BinaryWriter changedRecords;
 		uint32_t changedCount = 0;
 		BinaryWriter madeRecords;
-		uint32_t madeCount = 0;
-		std::unordered_set<EntityGuid> stillThere;
-		stillThere.reserve(snapshot.Entities.size());
+		madeRecords.WriteBytes(madeRoots.GetBytes().data(), madeRoots.GetBytes().size());
 		for (const WorldSnapshot::SavedEntity& entity : snapshot.Entities)
 		{
-			stillThere.insert(entity.Guid);
-
 			BinaryWriter record;
 			const auto found = baseByGuid.find(entity.Guid);
 			if (found == baseByGuid.end())
 			{
-				record.WriteUInt64(entity.Guid.Value);
-				WriteWholeEntity(snapshot, entity, record);
-				madeRecords.WriteBlock(record);
-				++madeCount;
+				if (!inInstances.contains(entity.Guid))
+				{
+					record.WriteUInt64(entity.Guid.Value);
+					WriteWholeEntity(snapshot, entity, record);
+					madeRecords.WriteBlock(record);
+					++madeCount;
+				}
 				continue;
 			}
 
@@ -363,10 +719,19 @@ namespace Nyx
 		uint32_t destroyedCount = 0;
 		for (const WorldSnapshot::SavedEntity& entity : base.Entities.Entities)
 		{
-			if (!stillThere.contains(entity.Guid))
+			if (!byGuid.contains(entity.Guid))
 			{
 				destroyedGuids.WriteUInt64(entity.Guid.Value);
 				++destroyedCount;
+			}
+		}
+
+		BinaryWriter motionRecords;
+		for (const WorldSaveMotion& motion : snapshot.Motions)
+		{
+			if (!ReflectedArchiveSerializer::SerializeObject(motionRecords, &motion, Nyx::Reflection::GetTypeMetadata<WorldSaveMotion>()))
+			{
+				return false;
 			}
 		}
 
@@ -384,13 +749,15 @@ namespace Nyx
 		writeCounted(DestroyedSection, destroyedCount, destroyedGuids);
 		writeCounted(ChangedSection, changedCount, changedRecords);
 		writeCounted(MadeSection, madeCount, madeRecords);
+		writeCounted(InstancesSection, instanceCount, instanceRecords);
+		writeCounted(MotionsSection, static_cast<uint32_t>(snapshot.Motions.size()), motionRecords);
 		return true;
 	}
 
-	bool SaveWorldToFile(const WorldSaveBase& base, const Registry& world, const WorldSaveClock& clock, const std::filesystem::path& path)
+	bool SaveWorldToFile(const WorldSaveBase& base, const Registry& world, const WorldSaveClock& clock, const std::filesystem::path& path, IAssetResolver* prefabs)
 	{
 		WorldSnapshot snapshot;
-		if (!TakeWorldSnapshot(world, snapshot))
+		if (!TakeWorldSnapshot(world, snapshot, prefabs))
 		{
 			return false;
 		}
@@ -399,7 +766,7 @@ namespace Nyx
 	}
 
 	bool LoadWorldSave(const std::filesystem::path& path, Registry& outWorld, ScenePostLoadContext postLoadContext, WorldSaveBase& outBase,
-		WorldSaveClock& outClock, std::string& outError)
+		WorldSaveClock& outClock, std::string& outError, std::vector<WorldSaveMotion>* outMotions)
 	{
 		BinaryReader reader;
 		if (!reader.LoadFromFile(path))
@@ -433,7 +800,7 @@ namespace Nyx
 				outError = damaged;
 				return false;
 			}
-			if (name != HeaderSection && name != DestroyedSection && name != ChangedSection && name != MadeSection)
+			if (name != HeaderSection && name != DestroyedSection && name != ChangedSection && name != MadeSection && name != InstancesSection && name != MotionsSection)
 			{
 				warnings.Add("skipped section '" + name + "', which this build doesn't know");
 				continue;
@@ -480,9 +847,14 @@ namespace Nyx
 		BinaryReader* destroyed = read(DestroyedSection);
 		BinaryReader* changed = read(ChangedSection);
 		BinaryReader* made = read(MadeSection);
+		BinaryReader* instances = read(InstancesSection);
+		BinaryReader* motionRecords = read(MotionsSection);
+		std::vector<WorldSaveMotion> motions;
 		if ((destroyed && !ReadDestroyed(*destroyed, loadedWorld, guids)) ||
 			(changed && !ReadChanged(*changed, loadedWorld, guids, postLoadContext, warnings)) ||
-			(made && !ReadMade(*made, loadedWorld, guids, postLoadContext, warnings)))
+			(made && !ReadMade(*made, loadedWorld, guids, postLoadContext, warnings)) ||
+			(instances && !ReadInstances(*instances, loadedWorld, guids, postLoadContext, warnings)) ||
+			(motionRecords && !ReadMotions(*motionRecords, motions, warnings)))
 		{
 			warnings.Log(path.string());
 			outError = damaged;
@@ -494,6 +866,10 @@ namespace Nyx
 		outWorld = std::move(loadedWorld);
 		outBase = std::move(loadedBase);
 		outClock = WorldSaveClock{ saved.StepIndex, std::bit_cast<double>(saved.WorldTimeBits), std::bit_cast<double>(saved.StepSecondsBits) };
+		if (outMotions)
+		{
+			*outMotions = std::move(motions);
+		}
 		return true;
 	}
 }

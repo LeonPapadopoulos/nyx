@@ -44,6 +44,7 @@ namespace Nyx
 	// again where they all are now, stopped. After the step, each entity's transform is the body's
 	// pose times its place in it.
 	class PhysicsMaterials;
+	struct WorldSaveMotion;
 
 	// Where an entity's collider is as a part of a body made of several (BodyGroupComponent)
 	struct BodyPartOf
@@ -89,6 +90,13 @@ namespace Nyx
 		static constexpr uint32_t MeshSettleSteps = 15;
 		static constexpr uint32_t MeshMostStaleSteps = 60;
 		size_t GetCharacterCount() const { return Characters.size(); }
+
+		// For a save: how fast the dynamic bodies and characters of entities with guids are going,
+		// those that are moving; a group's entities each with the velocity at its centre
+		void GetMotions(const Registry& world, const PhysicsWorld& physics, std::vector<WorldSaveMotion>& outMotions) const;
+		// After a load: the bodies and characters the next SyncBeforeStep() makes for these entities
+		// start with these velocities; a group's as the momentum of its entities
+		void SetStartMotions(const Registry& world, const std::vector<WorldSaveMotion>& motions);
 
 	private:
 		struct TrackedBody
@@ -164,7 +172,7 @@ namespace Nyx
 			const std::map<uint64_t, KeptVelocity>& kept);
 		void WriteBackGroups(Registry& world, PhysicsWorld& physics);
 
-		void SyncCharacters(Registry& world, PhysicsWorld& physics);
+		void SyncCharacters(Registry& world, PhysicsWorld& physics, const std::map<uint64_t, KeptVelocity>& kept);
 
 		// Whether a mesh body whose description is now `hash` is made again this step: at once if it
 		// has no body or wasn't a mesh; else once the new description has held still for
@@ -193,5 +201,7 @@ namespace Nyx
 		// The entities warned of; one leaves it once it has a collider, so a later loss warns again
 		std::set<uint64_t> WarnedWithoutCollider;
 		std::set<uint64_t> WarnedStillMesh;
+		// What the next SyncBeforeStep() starts the bodies it makes with, by entity
+		std::map<uint64_t, KeptVelocity> StartVelocities;
 	};
 }
