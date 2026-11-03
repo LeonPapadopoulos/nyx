@@ -31,6 +31,12 @@ namespace Nyx::Editor
 		EditorTransactionContext& context, const std::vector<std::byte>& copied, const char* label,
 		const std::function<void(Nyx::Entity pasted, Transaction& step)>& alsoDo = {});
 
+	// The same for several copies, as one undo step: returns the first of each. alsoDo is called for
+	// each of them. What can't be read is left out.
+	std::vector<Nyx::Entity> PasteEntities(SceneDocument& scene, TransactionSystem& transactions, ITransactionDomain& domain,
+		EditorTransactionContext& context, const std::vector<std::vector<std::byte>>& copies, const char* label,
+		const std::function<void(Nyx::Entity pasted, Transaction& step)>& alsoDo = {});
+
 	// A name for a copy that no entity of the scene has: "Cube" and "Cube (2)" become "Cube (2)",
 	// or "Cube (3)" if that is taken, and so on
 	std::string MakeCopyName(const SceneDocument& scene, const std::string& name);

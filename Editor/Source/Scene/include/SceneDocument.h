@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace Nyx
 {
@@ -34,8 +35,22 @@ namespace Nyx::Editor
 		// The entity's guid; invalid if it has none
 		Nyx::EntityGuid GetGuid(Nyx::Entity entity) const;
 
-		std::optional<Nyx::Entity>& GetSelection() { return SelectedEntity; }
+		// The selected entity that the details panel, the gizmo and so on act on: the last of
+		// GetSelectedEntities()
 		const std::optional<Nyx::Entity>& GetSelection() const { return SelectedEntity; }
+
+		// All the selected entities, as the outliner selects several
+		const std::vector<Nyx::Entity>& GetSelectedEntities() const { return SelectedEntities; }
+		bool IsSelected(Nyx::Entity entity) const;
+
+		// Selects the entity alone, or nothing
+		void Select(std::optional<Nyx::Entity> entity);
+		void SelectEntities(std::vector<Nyx::Entity> entities);
+
+		// The selection by guid, and back: undo and redo can bring an entity back in another slot.
+		// What is gone by then is no longer selected.
+		std::vector<Nyx::EntityGuid> GetSelectedGuids() const;
+		void SelectGuids(const std::vector<Nyx::EntityGuid>& guids);
 
 		// The outliner's folders and order, saved with the scene (SceneOutlineEdits.h). It may list
 		// entities that are gone, e.g. deleted ones, so that undo brings them back to their place.
@@ -46,6 +61,7 @@ namespace Nyx::Editor
 		Nyx::Registry Registry;
 		Nyx::SceneOutline Outline;
 		std::optional<Nyx::Entity> SelectedEntity;
+		std::vector<Nyx::Entity> SelectedEntities;
 
 		// Where FindEntity() last found each guid. Anyone can change the registry (GetRegistry(),
 		// Open, New), so an entry is only trusted after checking that its entity is alive and still

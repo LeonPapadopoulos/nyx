@@ -49,6 +49,10 @@ The scene's entities by name, in folders of the editor's own
 - Which folders are open is remembered per scene, as the editor's own state
   (`Saved/OutlinerFolders.txt`), not the scene's and not undone.
 - A scene saved before there was an outline loads unchanged, in its file's order.
+- **Several rows** are selected with Ctrl+click and Shift+click, folders and entities alike. Dragging a
+  selected row takes all that is selected; Delete, Duplicate, Copy and Paste take all the selected
+  entities, as one undo step, a child going with a parent selected too. The Details panel, the gizmo
+  and the scene views' highlight show the entity selected last.
 - Tests: `NyxEditorOutlinerTests`.
 
 ## Play
@@ -557,7 +561,7 @@ struct TransformComponent
 
 Properties can be numbers, vectors, quaternions, strings, reflected structs, enum classes
 declared with `NYX_ENUM()`, and `std::vector`s of any of these; enums are saved as their
-enumerators' numbers. The details panel edits an array's elements, and adds, removes and moves
+enumerators' numbers. The details panel's search (Ctrl+F) shows the components and properties with its text in their names. It edits an array's elements, and adds, removes and moves
 them (right-click an element), with undo.
 
 During the build, `NyxHeaderTool` reads every header in `Engine/Source/Runtime/Scene/include` and

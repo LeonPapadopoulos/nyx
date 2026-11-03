@@ -110,7 +110,7 @@ namespace
 		RegisterDefaultPropertyWidgets();
 		SceneEditor editing;
 		const Entity lantern = editing.Scene.CreateEntity("Lantern");
-		editing.Scene.GetSelection() = lantern;
+		editing.Scene.Select(lantern);
 		answer.Entity = editing.Scene.GetGuid(lantern);
 
 		const std::optional<RuntimeSection> section = GetRuntimeSection(editing.Scene.GetRegistry(), lantern, GameInspection{ "Game 1", &answer });
@@ -150,7 +150,7 @@ namespace
 			Editing.Scene.GetRegistry().Add<TestLanternComponent>(Lantern, TestLanternComponent{});
 			Marker = Editing.Scene.CreateEntity("Marker");
 			Editing.Scene.GetRegistry().Add<TestMarkerComponent>(Marker, TestMarkerComponent{ .Overrides = { { "Reach", 3.0f } } });
-			Editing.Scene.GetSelection() = Lantern;
+			Editing.Scene.Select(Lantern);
 
 			Mark(SourceLocation(OverridesMarker, 1), SourceLocation(NameMarker, 1));
 			Nyx::UI::SetSourceItemCallback(&Collect, this);
@@ -385,7 +385,7 @@ namespace
 	void TestOverridesWithoutProvider()
 	{
 		OverridesFixture fixture;
-		fixture.Editing.Scene.GetSelection() = fixture.Marker;
+		fixture.Editing.Scene.Select(fixture.Marker);
 		fixture.Frame();
 		Require(fixture.CountNameFields() == 1, "Without a provider the overrides should be an array, with its element's name");
 	}

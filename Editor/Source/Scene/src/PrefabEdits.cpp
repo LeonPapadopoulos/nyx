@@ -301,7 +301,7 @@ namespace Nyx::Editor
 			transaction.Changes.push_back(std::move(placed));
 		}
 		editing.Transactions.Push(std::move(transaction));
-		editing.Scene.GetSelection() = root;
+		editing.Scene.Select(root);
 		return root;
 	}
 

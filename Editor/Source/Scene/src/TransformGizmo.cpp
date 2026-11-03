@@ -1086,7 +1086,7 @@ namespace Nyx::Editor
 		const ImVec2& imageSize,
 		bool bImageHovered)
 	{
-		auto& selection = scene.GetSelection();
+		const auto& selection = scene.GetSelection();
 		if (!selection.has_value())
 		{
 			State.HoveredAxis = ETransformGizmoAxis::None;

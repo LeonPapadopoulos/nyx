@@ -237,7 +237,7 @@ namespace
 
 		// A deleted entity isn't saved in the outline
 		const Entity gone = editing.Scene.CreateEntity("Gone");
-		editing.Scene.GetSelection() = gone;
+		editing.Scene.Select(gone);
 		editing.DeleteSelectedEntity();
 
 		const std::filesystem::path path = directory.Path / "Arranged.nyxscene";
@@ -340,7 +340,7 @@ namespace
 		RequireOutline(editing.Scene, "[Other] [New Folder] C A B", "Other should be first at the top");
 
 		// A deleted entity comes back to its place
-		editing.Scene.GetSelection() = a;
+		editing.Scene.Select(a);
 		editing.DeleteSelectedEntity();
 		RequireOutline(editing.Scene, "[Other] [New Folder] C B", "A should be gone");
 		editing.Undo();
@@ -389,7 +389,7 @@ namespace
 			OutlineDrop{ .Place = EOutlinePlace::Into, .Folder = folder });
 		RequireOutline(editing.Scene, "[F: Inside Last] A B", "The scene should be arranged");
 
-		editing.Scene.GetSelection() = a;
+		editing.Scene.Select(a);
 		editing.CreateEntity();
 		RequireOutline(editing.Scene, "[F: Inside Last] A New Entity B", "A new entity should go after the selected one");
 		editing.Undo();
@@ -397,17 +397,17 @@ namespace
 		editing.Redo();
 		RequireOutline(editing.Scene, "[F: Inside Last] A New Entity B", "Redoing Add Entity should put it back after A");
 
-		editing.Scene.GetSelection() = inside;
+		editing.Scene.Select(inside);
 		editing.DuplicateSelectedEntity();
 		RequireOutline(editing.Scene, "[F: Inside Inside (2) Last] A New Entity B", "A duplicate should go after the original, in its folder");
 		editing.Undo();
 		RequireOutline(editing.Scene, "[F: Inside Last] A New Entity B", "Undoing a duplicate should take it out of the outline");
 
-		editing.Scene.GetSelection().reset();
+		editing.Scene.Select(std::nullopt);
 		editing.CreateEntity(folder);
 		RequireOutline(editing.Scene, "[F: Inside Last New Entity] A New Entity B", "Without a selection, a new entity should go into the folder named");
 		editing.Undo();
-		editing.Scene.GetSelection().reset();
+		editing.Scene.Select(std::nullopt);
 		editing.CreateEntity();
 		RequireOutline(editing.Scene, "[F: Inside Last] A New Entity B New Entity", "Without a selection, a new entity should go at the end");
 	}
@@ -639,7 +639,7 @@ namespace
 		// Deleting C takes B and D along; one undo brings all three back
 		const EntityGuid guidC = GuidOf(editing.Scene, c);
 		const EntityGuid guidD = GuidOf(editing.Scene, d);
-		editing.Scene.GetSelection() = c;
+		editing.Scene.Select(c);
 		editing.DeleteSelectedEntity();
 		RequireOutline(editing.Scene, "[F] A", "Deleting C should delete its children too");
 		editing.Undo();
@@ -647,7 +647,7 @@ namespace
 		Require(editing.Scene.FindEntity(guidD).has_value(), "D should come back with its guid");
 
 		// Duplicating C copies B and D: the copies name the copied C, which keeps A
-		editing.Scene.GetSelection() = *editing.Scene.FindEntity(guidC);
+		editing.Scene.Select(*editing.Scene.FindEntity(guidC));
 		editing.DuplicateSelectedEntity();
 		const std::optional<Entity> copy = editing.Scene.GetSelection();
 		Require(copy && GuidOf(editing.Scene, *copy) != guidC, "Duplicating should select a new entity");
@@ -664,13 +664,145 @@ namespace
 		RequireOutline(editing.Scene, "[F] A(C(B D))", "Undoing the duplicate should take all three copies away");
 	}
 
+	void TestSelectingSeveral()
+	{
+		OutlinerFixture fixture;
+		SceneEditor& editing = fixture.Editing;
+		SceneDocument& scene = editing.Scene;
+		const Entity a = scene.CreateEntity("A");
+		const Entity b = scene.CreateEntity("B");
+		const Entity c = scene.CreateEntity("C");
+		const Entity d = scene.CreateEntity("D");
+		const uint64_t folder = CreateOutlineFolder(editing, 0);
+		RenameOutlineFolder(editing, folder, "F");
+		const uint64_t other = CreateOutlineFolder(editing, 0);
+		RenameOutlineFolder(editing, other, "G");
+		fixture.Frames(3);
+
+		const auto clickWith = [&](ImGuiKey key, ImVec2 at)
+		{
+			ImGui::GetIO().AddKeyEvent(key, true);
+			fixture.Frame();
+			fixture.Click(at);
+			ImGui::GetIO().AddKeyEvent(key, false);
+			fixture.Frame();
+		};
+		const auto selected = [&]()
+		{
+			return scene.GetSelectedEntities();
+		};
+
+		// Ctrl+click adds and takes away; the last selected is what the details and the gizmo show
+		fixture.Click(OutlinerFixture::At(fixture.Row(a), 0.5f));
+		clickWith(ImGuiMod_Ctrl, OutlinerFixture::At(fixture.Row(c), 0.5f));
+		Require(selected() == std::vector<Entity>{ a, c } && scene.GetSelection() == c, "Ctrl+click should add to the selection");
+		clickWith(ImGuiMod_Ctrl, OutlinerFixture::At(fixture.Row(c), 0.5f));
+		Require(selected() == std::vector<Entity>{ a } && scene.GetSelection() == a, "Ctrl+click on a selected row should take it away");
+
+		// Shift+click: from the row clicked last to this one, up or down, as they show
+		fixture.Click(OutlinerFixture::At(fixture.Row(b), 0.5f));
+		clickWith(ImGuiMod_Shift, OutlinerFixture::At(fixture.Row(d), 0.5f));
+		Require(selected() == std::vector<Entity>{ b, c, d } && scene.GetSelection() == d, "Shift+click should select the rows between");
+		clickWith(ImGuiMod_Shift, OutlinerFixture::At(fixture.FolderRow(other), 0.5f));
+		Require(selected() == std::vector<Entity>{ a, b } && fixture.Outliner.GetSelectedFolder() == other,
+			"Shift+click should go up from the same row, over folders too");
+
+		// A plain click on a selected row leaves it alone
+		fixture.Click(OutlinerFixture::At(fixture.Row(b), 0.5f));
+		Require(selected() == std::vector<Entity>{ b } && fixture.Outliner.GetSelectedFolders().empty(), "A click should select only its row");
+
+		// A selection made elsewhere is what is selected, without folders
+		fixture.Click(OutlinerFixture::At(fixture.FolderRow(other), 0.5f));
+		clickWith(ImGuiMod_Ctrl, OutlinerFixture::At(fixture.Row(a), 0.5f));
+		Require(fixture.Outliner.GetSelectedFolder() == other && scene.GetSelection() == a, "Ctrl+click should select a folder and an entity together");
+		scene.Select(d);
+		fixture.Frame();
+		Require(fixture.Outliner.GetSelectedFolders().empty(), "A selection made elsewhere should leave no folder selected");
+
+		// Dragging a selected row takes all that is selected, as one undo step, and keeps it selected
+		fixture.Click(OutlinerFixture::At(fixture.Row(a), 0.5f));
+		clickWith(ImGuiMod_Ctrl, OutlinerFixture::At(fixture.Row(c), 0.5f));
+		fixture.DragTo(OutlinerFixture::At(fixture.Row(c), 0.5f), OutlinerFixture::At(fixture.FolderRow(folder), 0.5f));
+		RequireOutline(scene, "[F: A C] [G] B D", "Dragging a selected row should move all that is selected");
+		Require(selected() == std::vector<Entity>{ a, c }, "Dragging should keep the selection");
+		editing.Undo();
+		RequireOutline(scene, "[F] [G] A B C D", "One undo should bring them all back");
+		fixture.Frames(2);
+
+		// Dragging another row takes only that row
+		fixture.DragTo(OutlinerFixture::At(fixture.Row(d), 0.5f), OutlinerFixture::At(fixture.FolderRow(other), 0.5f));
+		RequireOutline(scene, "[F] [G: D] A B C", "Dragging a row that isn't selected should move only it");
+		Require(selected() == std::vector<Entity>{ a, c }, "Dragging another row should leave the selection");
+		editing.Undo();
+		fixture.Frames(2);
+
+		// A folder and entities go into another folder together
+		fixture.Click(OutlinerFixture::At(fixture.FolderRow(other), 0.5f));
+		clickWith(ImGuiMod_Ctrl, OutlinerFixture::At(fixture.Row(b), 0.5f));
+		fixture.DragTo(OutlinerFixture::At(fixture.Row(b), 0.5f), OutlinerFixture::At(fixture.FolderRow(folder), 0.2f));
+		RequireOutline(scene, "[F: [G] B] A C D", "A folder and an entity should go into a folder together");
+		editing.Undo();
+		fixture.Frames(2);
+
+		// What is below or in another selected row stays where it is in that one
+		scene.GetRegistry().Add<TransformComponent>(a, TransformComponent{});
+		scene.GetRegistry().Add<TransformComponent>(b, TransformComponent{});
+		Require(MoveInOutline(editing, OutlineItems{ .Entities = { GuidOf(scene, b) } }, OutlineDrop{ .Place = EOutlinePlace::Onto, .Entity = GuidOf(scene, a) }), "B should go under A");
+		const OutlineItems family = LeaveOutWhatGoesAlong(scene, OutlineItems{ .Entities = { GuidOf(scene, b), GuidOf(scene, a) } });
+		Require(family.Entities == std::vector<EntityGuid>{ GuidOf(scene, a) }, "A child should go along with its selected parent");
+		editing.Undo();
+		const OutlineItems left = LeaveOutWhatGoesAlong(scene, OutlineItems{ .Entities = { GuidOf(scene, c), GuidOf(scene, d) }, .Folders = { folder } });
+		Require(left.Entities.size() == 2 && left.Folders.size() == 1, "Items side by side should all move");
+		MoveInOutline(editing, OutlineItems{ .Entities = { GuidOf(scene, c) }, .Folders = { other } }, OutlineDrop{ .Place = EOutlinePlace::Into, .Folder = folder });
+		RequireOutline(scene, "[F: [G] C] A B D", "The folder and the entity should go in");
+		const OutlineItems nested = LeaveOutWhatGoesAlong(scene, OutlineItems{ .Entities = { GuidOf(scene, c), GuidOf(scene, d) }, .Folders = { folder, other } });
+		Require(nested.Folders == std::vector<uint64_t>{ folder } && nested.Entities == std::vector<EntityGuid>{ GuidOf(scene, d) },
+			"What is in a listed folder should go along with it");
+		editing.Undo();
+		fixture.Frames(2);
+
+		// Delete, duplicate, copy and paste take all that is selected, as one undo step
+		scene.SelectEntities({ a, c });
+		const EntityGuid guidA = GuidOf(scene, a);
+		const EntityGuid guidC = GuidOf(scene, c);
+		editing.DuplicateSelectedEntity();
+		RequireOutline(scene, "[F] [G] A B C A (2) C (2) D", "Duplicate should copy all that is selected, in order, after the last selected");
+		Require(selected().size() == 2 && selected().front() != a, "The copies should be selected");
+		editing.Undo();
+		RequireOutline(scene, "[F] [G] A B C D", "One undo should take the copies away");
+		scene.SelectGuids({ guidA, guidC });
+		editing.CopySelectedEntity();
+		editing.PasteEntity();
+		Require(selected().size() == 2, "Paste should make all that was copied");
+		editing.Undo();
+		scene.SelectGuids({ guidA, guidC });
+		editing.DeleteSelectedEntity();
+		RequireOutline(scene, "[F] [G] B D", "Delete should take all that is selected");
+		Require(selected().empty(), "Nothing should be selected after Delete");
+		editing.Undo();
+		RequireOutline(scene, "[F] [G] A B C D", "One undo should bring them all back");
+
+		// Undo finds the selection by guid; what is gone is no longer selected
+		const Entity e = scene.CreateEntity("E");
+		scene.SelectEntities({ *scene.FindEntity(guidA), e });
+		scene.DestroyEntity(e);
+		Require(selected().size() == 1 && scene.GetSelection() == scene.FindEntity(guidA), "A deleted entity should leave the selection");
+
+		// Folders deleted together are one step
+		fixture.Frames(2);
+		Require(DeleteOutlineFolders(editing, { folder, other }), "Both folders should go");
+		RequireOutline(scene, "A B C D", "The folders should be gone");
+		editing.Undo();
+		RequireOutline(scene, "[F] [G] A B C D", "One undo should bring both back");
+	}
+
 	void TestFolderCommands()
 	{
 		OutlinerFixture fixture;
 		SceneEditor& editing = fixture.Editing;
 		const Entity a = editing.Scene.CreateEntity("A");
 		const Entity b = editing.Scene.CreateEntity("B");
-		editing.Scene.GetSelection() = b;
+		editing.Scene.Select(b);
 		fixture.Frames(3);
 
 		// New Folder: beside the selected entity, selected, its name ready to type over
@@ -792,6 +924,7 @@ int main()
 		TestSearchFiltersByName();
 		TestDraggingRows();
 		TestChildrenShowUnderTheirParents();
+		TestSelectingSeveral();
 		TestFolderCommands();
 		TestFolderStatesAreRememberedPerScene();
 	}

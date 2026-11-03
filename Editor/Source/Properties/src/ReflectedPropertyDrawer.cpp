@@ -7,6 +7,7 @@
 
 #include "PropertyWidgetRegistry.h"
 #include "ReflectionUtils.h"
+#include "SearchRow.h"
 #include "ImGuiSource.h"
 #include "OverrideRows.h"
 #include "PropertyValueAccess.h"
@@ -57,9 +58,51 @@ namespace
 		return Nyx::Reflection::HasFlag(property.Flags, Nyx::Reflection::EPropertyFlags::ReadOnly);
 	}
 
+	// How many structs and arrays deep a search looks
+	static constexpr int MaxFilterDepth = 8;
+
 	static const char* GetPropertyDisplayName(const Nyx::Reflection::PropertyMetadata& property)
 	{
 		return (property.DisplayName && property.DisplayName[0]) ? property.DisplayName : property.Name;
+	}
+
+	static bool TypeHasFilterMatch(const Nyx::Reflection::TypeMetadata& typeMetadata, std::string_view filter, int depth);
+
+	// Whether a search shows the property: by its name, or by one inside it. An array can hold its
+	// own type, so this looks only so deep.
+	static bool PropertyHasFilterMatch(const Nyx::Reflection::PropertyMetadata& property, std::string_view filter, int depth)
+	{
+		if (Nyx::Editor::NameMatchesFilter(GetPropertyDisplayName(property), filter))
+		{
+			return true;
+		}
+		if (depth <= 0)
+		{
+			return false;
+		}
+		if (const Nyx::Reflection::TypeMetadata* nestedType = Nyx::Reflection::TryGetNestedType(property))
+		{
+			return TypeHasFilterMatch(*nestedType, filter, depth - 1);
+		}
+		if (const auto* array = Nyx::Reflection::TryGetArray(property); array && Nyx::Reflection::IsStructProperty(array->Element))
+		{
+			const Nyx::Reflection::TypeMetadata* elementType = Nyx::Editor::GetArrayElementType(*array);
+			return elementType && TypeHasFilterMatch(*elementType, filter, depth - 1);
+		}
+		return false;
+	}
+
+	static bool TypeHasFilterMatch(const Nyx::Reflection::TypeMetadata& typeMetadata, std::string_view filter, int depth)
+	{
+		for (size_t index = 0; index < typeMetadata.PropertyCount; ++index)
+		{
+			const Nyx::Reflection::PropertyMetadata& property = typeMetadata.Properties[index];
+			if (!IsPropertyHidden(property) && PropertyHasFilterMatch(property, filter, depth))
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 
 	static void DrawPropertyTooltipIfHovered(const Nyx::Reflection::PropertyMetadata& property)
@@ -369,6 +412,23 @@ namespace
 		Nyx::Editor::InspectorDrawContext& drawContext,
 		const Nyx::Reflection::TypeMetadata& ownerType)
 	{
+		// A search: a property with it in its name is drawn whole, another only for what it holds
+		const std::string_view filter = drawContext.PropertyFilter;
+		if (!filter.empty())
+		{
+			if (Nyx::Editor::NameMatchesFilter(GetPropertyDisplayName(property), filter))
+			{
+				drawContext.PropertyFilter = {};
+				const bool bChanged = DrawPropertyRow(object, property, drawContext, ownerType);
+				drawContext.PropertyFilter = filter;
+				return bChanged;
+			}
+			if (!PropertyHasFilterMatch(property, filter, MaxFilterDepth))
+			{
+				return false;
+			}
+		}
+
 		// A component's own property that differs from its prefab's is marked over all its rows
 		const size_t index = static_cast<size_t>(&property - ownerType.Properties);
 		const bool bOverridden = drawContext.PrefabOverrides && drawContext.PrefabOverridesType == &ownerType && !drawContext.CurrentLocation.SubobjectType &&
@@ -724,6 +784,24 @@ namespace
 	}
 }
 
+bool Nyx::Editor::ReflectedTypeHasMatch(const Nyx::Reflection::TypeMetadata& typeMetadata, std::string_view filter)
+{
+	if (TypeHasFilterMatch(typeMetadata, filter, MaxFilterDepth))
+	{
+		return true;
+	}
+	for (size_t index = 0; index < typeMetadata.PropertyCount; ++index)
+	{
+		const Nyx::Reflection::PropertyMetadata& property = typeMetadata.Properties[index];
+		const char* category = GetPropertyCategory(property);
+		if (!IsPropertyHidden(property) && category && category[0] != '\0' && Nyx::Editor::NameMatchesFilter(category, filter))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 bool Nyx::Editor::DrawReflectedProperty(
 	void* object,
 	const Nyx::Reflection::TypeMetadata& typeMetadata,
@@ -755,14 +833,24 @@ bool Nyx::Editor::DrawReflectedTypeTable(
 	// category may be named like its component ("Rigid Body"), whose header shares the scope, or
 	// like a property
 	ImGui::PushID("##Categories");
+	const std::string_view filter = drawContext.PropertyFilter;
 	for (const auto& [category, indices] : buckets.ByCategory)
 	{
-		if (BeginPropertyGroupRow(category.c_str()))
+		// A search: a category with it in its name is drawn whole, another for what it holds
+		const bool bWhole = Nyx::Editor::NameMatchesFilter(category, filter);
+		const bool bShown = bWhole || std::any_of(indices.begin(), indices.end(),
+			[&](size_t propertyIndex)
+			{
+				return PropertyHasFilterMatch(typeMetadata.Properties[propertyIndex], filter, MaxFilterDepth);
+			});
+		if (bShown && BeginPropertyGroupRow(category.c_str()))
 		{
+			drawContext.PropertyFilter = bWhole ? std::string_view{} : filter;
 			for (size_t propertyIndex : indices)
 			{
 				bAnyChanged |= DrawPropertyRow(object, typeMetadata.Properties[propertyIndex], drawContext, typeMetadata);
 			}
+			drawContext.PropertyFilter = filter;
 
 			Nyx::UI::TreeRowEnd();
 		}

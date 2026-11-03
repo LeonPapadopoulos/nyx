@@ -15,6 +15,7 @@
 #include "ReflectionSourceRegistry.h"
 #include "SdfTerrainComponent.h"
 #include "SceneEditor.h"
+#include "SearchRow.h"
 #include "TransactionObjectRefHelpers.h"
 #include "TransformComponent.h"
 #include "TransformParents.h"
@@ -23,6 +24,7 @@
 
 #include "imgui.h"
 
+#include <algorithm>
 #include <cfloat>
 #include <optional>
 #include <string>
@@ -68,28 +70,31 @@ namespace Nyx::Editor
 			Nyx::ParentComponent* link = world.Has<Nyx::ParentComponent>(entity) ? &world.Get<Nyx::ParentComponent>(entity) : nullptr;
 			const Nyx::Reflection::PropertyMetadata& parentProperty = GetParentProperty();
 
-			ImGui::PushID("##Parent");
-			Nyx::UI::BeginPropertyRow("Parent##Row");
-			ImGui::SetItemTooltip("The entity this one moves, turns and scales with; changing it keeps this one where it is");
-			if (const std::optional<Nyx::EntityGuid> chosen =
-					DrawEntityReferenceField(drawContext, link ? link->Parent : Nyx::EntityGuid{}, parentProperty, false))
+			if (NameMatchesFilter("Parent", drawContext.PropertyFilter))
 			{
-				chosenParent = chosen->IsValid() ? Nyx::FindEntityByGuid(world, *chosen) : std::nullopt;
+				ImGui::PushID("##Parent");
+				Nyx::UI::BeginPropertyRow("Parent##Row");
+				ImGui::SetItemTooltip("The entity this one moves, turns and scales with; changing it keeps this one where it is");
+				if (const std::optional<Nyx::EntityGuid> chosen =
+						DrawEntityReferenceField(drawContext, link ? link->Parent : Nyx::EntityGuid{}, parentProperty, false))
+				{
+					chosenParent = chosen->IsValid() ? Nyx::FindEntityByGuid(world, *chosen) : std::nullopt;
+				}
+				Nyx::UI::EndPropertyRow();
+				if (link && link->Parent.IsValid() && !FindParent(world, entity))
+				{
+					DrawWarningRow("The parent isn't in the scene: this entity stays where it is");
+				}
+				else if (link && link->bFollowInGame && IsMovedByPhysicsInGame(world, entity))
+				{
+					DrawWarningRow("Physics moves this entity's body in the game, so it won't follow: join it to its parent with a constraint, or make its Rigid Body kinematic");
+				}
+				else if (link && HasParentMovingInGame(world, entity) && !FollowsMovingParentInGame(world, entity))
+				{
+					DrawWarningRow("A parent moves in the game (a rigid body or a character): tick Follows in Game, here and on each entity between, for this one to come along");
+				}
+				ImGui::PopID();
 			}
-			Nyx::UI::EndPropertyRow();
-			if (link && link->Parent.IsValid() && !FindParent(world, entity))
-			{
-				DrawWarningRow("The parent isn't in the scene: this entity stays where it is");
-			}
-			else if (link && link->bFollowInGame && IsMovedByPhysicsInGame(world, entity))
-			{
-				DrawWarningRow("Physics moves this entity's body in the game, so it won't follow: join it to its parent with a constraint, or make its Rigid Body kinematic");
-			}
-			else if (link && HasParentMovingInGame(world, entity) && !FollowsMovingParentInGame(world, entity))
-			{
-				DrawWarningRow("A parent moves in the game (a rigid body or a character): tick Follows in Game, here and on each entity between, for this one to come along");
-			}
-			ImGui::PopID();
 
 			const Nyx::Reflection::TypeMetadata& transformType = Nyx::Reflection::GetTypeMetadata<Nyx::TransformComponent>();
 			if (!link)
@@ -102,9 +107,18 @@ namespace Nyx::Editor
 			DrawReflectedTypeTable(link, Nyx::Reflection::GetTypeMetadata<Nyx::ParentComponent>(), drawContext);
 
 			// In the world: worked out from the parent, so not edited here
+			const bool bSearching = !drawContext.PropertyFilter.empty();
+			if (bSearching && !ReflectedTypeHasMatch(transformType, drawContext.PropertyFilter))
+			{
+				return chosenParent;
+			}
 			ImGui::PushID("##World");
 			Nyx::UI::TreeRowOptions options;
 			options.bToggleOnClick = true;
+			if (bSearching)
+			{
+				ImGui::SetNextItemOpen(true);
+			}
 			if (NYX_UI(Nyx::UI::TreeRow("In the World", options)).bOpen)
 			{
 				ImGui::BeginDisabled();
@@ -150,6 +164,7 @@ namespace Nyx::Editor
 		InspectedEntity.reset();
 
 		InspectorDrawContext& drawContext = editing.DetailsContext;
+		ScratchContext.PropertyFilter = {};
 
 		// An entity reference picks only while it is drawn: closing its component or the panel, or
 		// selecting another entity, stops the eyedropper
@@ -165,9 +180,10 @@ namespace Nyx::Editor
 		{
 			if (editing.Scene.GetRegistry().IsAlive(*toSelect))
 			{
-				editing.Scene.GetSelection() = *toSelect;
+				editing.Scene.Select(*toSelect);
 			}
 		}
+		drawContext.PropertyFilter = {};
 	}
 
 	void DetailsPanel::DrawWindow(SceneEditor& editing)
@@ -183,7 +199,7 @@ namespace Nyx::Editor
 			return;
 		}
 
-		auto& selection = editing.Scene.GetSelection();
+		const auto& selection = editing.Scene.GetSelection();
 		auto& world = editing.Scene.GetRegistry();
 
 		if (!selection.has_value())
@@ -198,12 +214,16 @@ namespace Nyx::Editor
 		if (!world.IsAlive(selectedEntity))
 		{
 			NYX_UI(ImGui::TextUnformatted("Selected entity is no longer valid."));
-			selection.reset();
+			editing.Scene.Select(std::nullopt);
 			ImGui::End();
 			return;
 		}
 
 		NYX_UI(ImGui::Text("Entity: %u", selectedEntity.Index()));
+		if (const size_t selectedCount = editing.Scene.GetSelectedEntities().size(); selectedCount > 1)
+		{
+			NYX_UI(ImGui::TextDisabled("%zu selected; these are the details of the last", selectedCount));
+		}
 
 		// Which prefab it follows, if it is an instance's root or part
 		if (const std::optional<Nyx::Entity> instanceRoot = FindPrefabInstanceRoot(world, selectedEntity))
@@ -212,6 +232,12 @@ namespace Nyx::Editor
 			NYX_UI(ImGui::TextDisabled(*instanceRoot == selectedEntity ? "Instance of %s" : "Part of an instance of %s", prefabPath.c_str()));
 			ImGui::SetItemTooltip("Values that differ from the prefab are marked at their left; right-click one, or a component's header, to revert it or apply it to the prefab");
 		}
+
+		if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_F))
+		{
+			bFocusSearch = true;
+		}
+		DrawSearchRow(Filter, bFocusSearch, "Shows the components and properties whose names have this in them (Ctrl+F)");
 		NYX_UI(Nyx::UI::Separator());
 
 		// @todo: Move away from manually hardcoding the visuals of
@@ -223,6 +249,11 @@ namespace Nyx::Editor
 		// cannot carry an active drag or a cached text edit over from the previous scene.
 		ImGui::PushID(std::to_string(editing.SceneRevision).c_str());
 		ImGui::PushID(static_cast<int>(selectedEntity.Value));
+
+		// Open while searching, in an ID scope of its own, so that what was open shows again after it
+		const bool bSearching = !Filter.empty();
+		bool bAnyShown = false;
+		ImGui::PushID(bSearching ? "##Searching" : "##All");
 
 		// @todo: Find a more robust (and automated) naming approach,
 		// so we can easily, and reliably avoid Naming collisions among UI elements.
@@ -251,6 +282,11 @@ namespace Nyx::Editor
 		const Nyx::Reflection::TypeMetadata& transformType = Nyx::Reflection::GetTypeMetadata<Nyx::TransformComponent>();
 		const Nyx::Reflection::TypeMetadata& linkType = Nyx::Reflection::GetTypeMetadata<Nyx::ParentComponent>();
 
+		const auto hasMatch = [&](const Nyx::Reflection::TypeMetadata& type)
+		{
+			return ReflectedTypeHasMatch(type, Filter);
+		};
+
 		// One collapsible section per component of the entity, showing its reflected properties; the
 		// run-time ones after them, in the Runtime section
 		for (const Nyx::ComponentTypeOps& componentType : Nyx::ComponentTypeRegistry::Get().GetAll())
@@ -262,7 +298,18 @@ namespace Nyx::Editor
 				continue;
 			}
 
+			// A search: a component with it in its name whole, another for the properties that have it
 			const char* displayName = componentType.TypeMetadata->DisplayName;
+			const bool bTransformSection = componentType.TypeMetadata == &transformType;
+			const bool bWhole = NameMatchesFilter(displayName, Filter);
+			if (!bWhole && !hasMatch(*componentType.TypeMetadata) &&
+				!(bTransformSection && (NameMatchesFilter("Parent", Filter) || (world.Has<Nyx::ParentComponent>(selectedEntity) && hasMatch(linkType)))))
+			{
+				continue;
+			}
+			bAnyShown = true;
+			drawContext.PropertyFilter = bWhole ? std::string_view{} : std::string_view(Filter);
+
 			ImGui::PushID(displayName);
 			UI::SourceDeclarationScope componentSource(ReflectionSourceRegistry::Get().Find(*componentType.TypeMetadata));
 
@@ -275,6 +322,10 @@ namespace Nyx::Editor
 			const bool bAdded = IsAddedToInstance(editing, selectedEntity, componentType);
 			const std::string header = std::string(displayName) + (bAdded ? " (added to the instance)" : !overridden.empty() || !linkOverridden.empty() ? " (overridden)" : "") +
 				"###" + displayName;
+			if (bSearching)
+			{
+				ImGui::SetNextItemOpen(true);
+			}
 			const bool bComponentOpen = NYX_UI(Nyx::UI::CollapsingHeader(header.c_str()));
 
 			// Right-click on the header: Remove, except for the guid and name every entity keeps
@@ -336,13 +387,20 @@ namespace Nyx::Editor
 			ImGui::PopID();
 		}
 
+		drawContext.PropertyFilter = {};
+
 		// An SDF terrain's brush, after its components
 		if (world.Has<Nyx::SdfTerrainComponent>(selectedEntity))
 		{
-			editing.TerrainBrush.DrawDetails();
+			bAnyShown |= editing.TerrainBrush.DrawDetails(Filter);
 		}
 
-		DrawRuntimeSection(world, selectedEntity);
+		bAnyShown |= DrawRuntimeSection(world, selectedEntity);
+
+		if (bSearching && !bAnyShown)
+		{
+			NYX_UI(ImGui::TextDisabled("No component or property here has \"%s\"", Filter.c_str()));
+		}
 
 		// The component types the entity doesn't have yet
 		NYX_UI(ImGui::Spacing());
@@ -413,18 +471,41 @@ namespace Nyx::Editor
 
 		ImGui::PopID();
 		ImGui::PopID();
+		ImGui::PopID();
 		ImGui::End();
 	}
 
-	void DetailsPanel::DrawRuntimeSection(const Nyx::Registry& world, Nyx::Entity entity)
+	bool DetailsPanel::DrawRuntimeSection(const Nyx::Registry& world, Nyx::Entity entity)
 	{
 		const std::optional<RuntimeSection> section = GetRuntimeSection(world, entity, Game);
 		if (!section)
 		{
-			return;
+			return false;
+		}
+
+		// A search: the section with it in its name whole, else the components that have it
+		const std::string_view filter = NameMatchesFilter("Runtime", Filter) ? std::string_view{} : std::string_view(Filter);
+		const auto componentHasMatch = [&](const Nyx::InspectedComponent& component)
+		{
+			const Nyx::ComponentTypeOps* ops = Nyx::ComponentTypeRegistry::Get().FindByName(component.Type);
+			return NameMatchesFilter(component.DisplayName.empty() ? component.Type : component.DisplayName, filter) ||
+				(ops && ReflectedTypeHasMatch(*ops->TypeMetadata, filter)) ||
+				std::any_of(component.Values.begin(), component.Values.end(),
+					[&](const Nyx::InspectedValue& value)
+					{
+						return NameMatchesFilter(value.Name, filter);
+					});
+		};
+		if (!filter.empty() && std::none_of(section->Components.begin(), section->Components.end(), componentHasMatch))
+		{
+			return false;
 		}
 
 		ImGui::PushID("##Runtime");
+		if (!Filter.empty())
+		{
+			ImGui::SetNextItemOpen(true);
+		}
 		const bool bOpen = NYX_UI(Nyx::UI::CollapsingHeader("Runtime"));
 		ImGui::SetItemTooltip("Made while the world runs and never saved; while Play runs, as the game has it, a few times a second");
 		if (bOpen)
@@ -437,16 +518,24 @@ namespace Nyx::Editor
 			NYX_UI(ImGui::TextDisabled("%s", section->Source.c_str()));
 			for (const Nyx::InspectedComponent& component : section->Components)
 			{
-				DrawInspectedComponent(component);
+				if (filter.empty() || componentHasMatch(component))
+				{
+					DrawInspectedComponent(component, filter);
+				}
 			}
 		}
 		ImGui::PopID();
+		return true;
 	}
 
-	void DetailsPanel::DrawInspectedComponent(const Nyx::InspectedComponent& component)
+	void DetailsPanel::DrawInspectedComponent(const Nyx::InspectedComponent& component, std::string_view filter)
 	{
 		ImGui::PushID(component.Type.c_str());
 		const std::string& name = component.DisplayName.empty() ? component.Type : component.DisplayName;
+		if (NameMatchesFilter(name, filter))
+		{
+			filter = {};
+		}
 		Nyx::UI::TreeRowOptions options;
 		options.bDefaultOpen = true;
 		options.bToggleOnClick = true;
@@ -470,9 +559,11 @@ namespace Nyx::Editor
 				if (Nyx::ReflectedArchiveSerializer::DeserializeObject(reader, object, *ops->TypeMetadata, warnings))
 				{
 					ScratchContext.CurrentLocation = {};
+					ScratchContext.PropertyFilter = filter;
 					ImGui::BeginDisabled();
 					DrawReflectedTypeTable(object, *ops->TypeMetadata, ScratchContext);
 					ImGui::EndDisabled();
+					ScratchContext.PropertyFilter = {};
 				}
 				else
 				{
@@ -486,6 +577,10 @@ namespace Nyx::Editor
 
 			for (const Nyx::InspectedValue& value : component.Values)
 			{
+				if (!NameMatchesFilter(value.Name, filter))
+				{
+					continue;
+				}
 				Nyx::UI::BeginPropertyRow(value.Name.c_str());
 				NYX_UI(ImGui::TextDisabled("%s", value.Value.c_str()));
 				Nyx::UI::EndPropertyRow();

@@ -1,5 +1,7 @@
 #include "TerrainBrushTool.h"
 
+#include "SearchRow.h"
+
 #include "CameraProjection.h"
 #include "EditorRenderer.h"
 #include "ImGuiSource.h"
@@ -63,16 +65,33 @@ namespace Nyx::Editor
 		return bOn && selection && scene.GetRegistry().IsAlive(*selection) && scene.GetRegistry().Has<Nyx::SdfTerrainComponent>(*selection);
 	}
 
-	void TerrainBrushTool::DrawDetails()
+	bool TerrainBrushTool::DrawDetails(std::string_view filter)
 	{
+		const Nyx::Reflection::TypeMetadata& settingsType = Nyx::Reflection::GetTypeMetadata<Nyx::TerrainBrushSettings>();
+		const bool bWhole = NameMatchesFilter("Terrain Brush", filter);
+		if (!bWhole && !ReflectedTypeHasMatch(settingsType, filter))
+		{
+			return false;
+		}
+
 		ImGui::PushID("##TerrainBrush");
+		if (!filter.empty())
+		{
+			ImGui::SetNextItemOpen(true);
+		}
 		if (NYX_UI(Nyx::UI::CollapsingHeader("Terrain Brush")))
 		{
-			NYX_UI(Nyx::UI::Checkbox("Paint in the scene views", &bOn));
-			NYX_UI(ImGui::TextDisabled("Left mouse: a stroke, one undo step; Shift: dig and heap the other way"));
-			DrawReflectedTypeTable(&Settings, Nyx::Reflection::GetTypeMetadata<Nyx::TerrainBrushSettings>(), SettingsContext);
+			if (bWhole)
+			{
+				NYX_UI(Nyx::UI::Checkbox("Paint in the scene views", &bOn));
+				NYX_UI(ImGui::TextDisabled("Left mouse: a stroke, one undo step; Shift: dig and heap the other way"));
+			}
+			SettingsContext.PropertyFilter = bWhole ? std::string_view{} : filter;
+			DrawReflectedTypeTable(&Settings, settingsType, SettingsContext);
+			SettingsContext.PropertyFilter = {};
 		}
 		ImGui::PopID();
+		return true;
 	}
 
 	bool TerrainBrushTool::TickAndDraw(Nyx::IEditorRenderer& renderer, SceneDocument& scene, TransactionSystem& transactions, uint64_t sceneViewId,

@@ -34,8 +34,9 @@ namespace Nyx::Editor
 		// On, and the selection has an SDF terrain
 		bool IsActive(const SceneDocument& scene) const;
 
-		// Its section in the Details panel: on or off, and its settings
-		void DrawDetails();
+		// Its section in the Details panel: on or off, and its settings. A search (`filter`) shows it
+		// open if its name or a setting's has it; returns whether it was drawn.
+		bool DrawDetails(std::string_view filter = {});
 
 		// In a scene view, with its picture at `imageMin`, `imageSize` big. Returns whether it takes
 		// the mouse there: while it is active over the picture, and while its stroke goes on.

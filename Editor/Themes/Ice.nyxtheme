@@ -83,7 +83,7 @@ RowHovered                 = #0000000D
 RowPillMargin              = 4
 RowPillInset               = 1
 IndentGuide                = #00000017
-FolderIcon                 = #5D6670
+FolderIcon                 = #C9971F
 EntityIcon                 = #4A5560
 
 [Fields]

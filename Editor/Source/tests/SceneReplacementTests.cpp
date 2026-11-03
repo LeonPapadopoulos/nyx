@@ -167,7 +167,7 @@ namespace Nyx::Tests
 			gizmo.ActiveTransformDiff->TakeSnapshot(target, &transform, transformType);
 			transform.Position.y = 3.0f;
 
-			editor.Editing.Scene.GetSelection() = entity;
+			editor.Editing.Scene.Select(entity);
 			renderer.SetSelectedEntity(entity);
 			editor.CurrentScenePath = "old.nyxscene";
 			for (auto& view : renderer.SceneViews)

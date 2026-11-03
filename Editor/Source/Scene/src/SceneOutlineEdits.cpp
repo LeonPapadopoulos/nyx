@@ -12,7 +12,6 @@
 #include "TransformParents.h"
 
 #include <algorithm>
-#include <cctype>
 #include <functional>
 #include <optional>
 #include <unordered_map>
@@ -366,6 +365,67 @@ namespace
 		}
 		return parent;
 	}
+
+	// Takes the folder out, not what is in it: that goes where the folder was
+	bool RemoveFolder(SceneOutline& outline, uint64_t folder)
+	{
+		const auto found = std::find_if(outline.Folders.begin(), outline.Folders.end(),
+			[&](const SceneOutlineFolder& candidate)
+			{
+				return candidate.Id == folder;
+			});
+		if (found == outline.Folders.end())
+		{
+			return false;
+		}
+		const uint64_t parent = found->Parent;
+
+		// Its subfolders where it was, among the others of its parent: after as many of the folders
+		// that stay as were before it
+		size_t staying = 0;
+		for (auto before = outline.Folders.begin(); before != found; ++before)
+		{
+			staying += before->Parent != folder ? 1 : 0;
+		}
+		outline.Folders.erase(found);
+		MoveElements<SceneOutlineFolder>(
+			outline.Folders,
+			[&](const SceneOutlineFolder& candidate)
+			{
+				return candidate.Parent == folder;
+			},
+			[&](SceneOutlineFolder& subfolder)
+			{
+				subfolder.Parent = parent;
+			},
+			[&](const std::vector<SceneOutlineFolder>&)
+			{
+				return staying;
+			});
+
+		// Its entities first among those of its parent, as it showed above them
+		MoveElements<SceneOutlineEntity>(
+			outline.Entities,
+			[&](const SceneOutlineEntity& entity)
+			{
+				return entity.Folder == folder;
+			},
+			[&](SceneOutlineEntity& entity)
+			{
+				entity.Folder = parent;
+			},
+			[&](const std::vector<SceneOutlineEntity>& others)
+			{
+				const auto first = std::find_if(others.begin(), others.end(),
+					[&](const SceneOutlineEntity& entity)
+					{
+						return entity.Folder == parent;
+					});
+				return static_cast<size_t>(first - others.begin());
+			});
+
+		return true;
+	}
 }
 
 namespace Nyx::Editor
@@ -420,20 +480,6 @@ namespace Nyx::Editor
 		return BuildChildren(0, subfolders, entities, children);
 	}
 
-	bool NameMatchesFilter(std::string_view name, std::string_view filter)
-	{
-		const auto lower = [](char c)
-		{
-			return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-		};
-		return filter.empty() ||
-			std::search(name.begin(), name.end(), filter.begin(), filter.end(),
-				[&](char a, char b)
-				{
-					return lower(a) == lower(b);
-				}) != name.end();
-	}
-
 	std::vector<OutlineNode> FilterOutlineTree(const std::vector<OutlineNode>& tree, const SceneDocument& scene, std::string_view filter)
 	{
 		if (filter.empty())
@@ -463,6 +509,45 @@ namespace Nyx::Editor
 			}
 		}
 		return kept;
+	}
+
+	OutlineItems LeaveOutWhatGoesAlong(const SceneDocument& scene, const OutlineItems& items)
+	{
+		const Registry& world = scene.GetRegistry();
+		const SceneOutline outline = MakeCompleteOutline(scene);
+		const auto isInListedFolder = [&](uint64_t folder)
+		{
+			return std::any_of(items.Folders.begin(), items.Folders.end(),
+				[&](uint64_t listed)
+				{
+					return IsInside(outline, folder, listed);
+				});
+		};
+
+		OutlineItems left;
+		for (const uint64_t folder : items.Folders)
+		{
+			const SceneOutlineFolder* found = FindOutlineFolder(outline, folder);
+			if (!found || !isInListedFolder(found->Parent))
+			{
+				left.Folders.push_back(folder);
+			}
+		}
+		const std::vector<Entity> entities = FindItemEntities(scene, items);
+		for (const Entity entity : entities)
+		{
+			const bool bBelowAnother = std::any_of(entities.begin(), entities.end(),
+				[&](Entity other)
+				{
+					return other != entity && IsSelfOrBelow(world, entity, other);
+				});
+			const EntityGuid guid = scene.GetGuid(entity);
+			if (!bBelowAnother && !isInListedFolder(GetOutlineFolderOf(scene, guid)))
+			{
+				left.Entities.push_back(guid);
+			}
+		}
+		return left;
 	}
 
 	bool CanDropInOutline(const SceneDocument& scene, const OutlineItems& items, const OutlineDrop& drop)
@@ -654,63 +739,18 @@ namespace Nyx::Editor
 
 	bool DeleteOutlineFolder(SceneEditor& editing, uint64_t folder)
 	{
+		return DeleteOutlineFolders(editing, { folder });
+	}
+
+	bool DeleteOutlineFolders(SceneEditor& editing, const std::vector<uint64_t>& folders)
+	{
 		SceneOutline outline = MakeCompleteOutline(editing.Scene);
-		const auto found = std::find_if(outline.Folders.begin(), outline.Folders.end(),
-			[&](const SceneOutlineFolder& candidate)
-			{
-				return candidate.Id == folder;
-			});
-		if (found == outline.Folders.end())
+		bool bAny = false;
+		for (const uint64_t folder : folders)
 		{
-			return false;
+			bAny |= RemoveFolder(outline, folder);
 		}
-		const uint64_t parent = found->Parent;
-
-		// Its subfolders where it was, among the others of its parent: after as many of the folders
-		// that stay as were before it
-		size_t staying = 0;
-		for (auto before = outline.Folders.begin(); before != found; ++before)
-		{
-			staying += before->Parent != folder ? 1 : 0;
-		}
-		outline.Folders.erase(found);
-		MoveElements<SceneOutlineFolder>(
-			outline.Folders,
-			[&](const SceneOutlineFolder& candidate)
-			{
-				return candidate.Parent == folder;
-			},
-			[&](SceneOutlineFolder& subfolder)
-			{
-				subfolder.Parent = parent;
-			},
-			[&](const std::vector<SceneOutlineFolder>&)
-			{
-				return staying;
-			});
-
-		// Its entities first among those of its parent, as it showed above them
-		MoveElements<SceneOutlineEntity>(
-			outline.Entities,
-			[&](const SceneOutlineEntity& entity)
-			{
-				return entity.Folder == folder;
-			},
-			[&](SceneOutlineEntity& entity)
-			{
-				entity.Folder = parent;
-			},
-			[&](const std::vector<SceneOutlineEntity>& others)
-			{
-				const auto first = std::find_if(others.begin(), others.end(),
-					[&](const SceneOutlineEntity& entity)
-					{
-						return entity.Folder == parent;
-					});
-				return static_cast<size_t>(first - others.begin());
-			});
-
-		return CommitOutline(editing, "Delete Folder", std::move(outline));
+		return bAny && CommitOutline(editing, folders.size() > 1 ? "Delete Folders" : "Delete Folder", std::move(outline));
 	}
 
 	const Nyx::SceneOutlineFolder* FindOutlineFolder(const Nyx::SceneOutline& outline, uint64_t folder)

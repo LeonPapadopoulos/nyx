@@ -54,7 +54,8 @@ namespace Nyx::Editor
 		void DeleteSelectedEntity();
 
 		// A pasted or duplicated entity gets a new guid and becomes the selection. It goes right
-		// after the selection in the outliner, as a new entity does.
+		// after the selection in the outliner, as a new entity does. These and Delete take all that
+		// is selected, as one undo step; a child goes with its parent if that is selected too.
 		void DuplicateSelectedEntity();
 		void CopySelectedEntity();
 		void PasteEntity();
@@ -123,10 +124,10 @@ namespace Nyx::Editor
 
 	private:
 		// Selects the entity a pasted copy or duplicate became, after dropping edits in progress.
-		void PasteAndSelect(const std::vector<std::byte>& copied, const char* label);
+		void PasteAndSelect(const std::vector<std::vector<std::byte>>& copied, const char* label);
 
 		// The copied entity, as scene files store it (EntityCopies.h); the editor's own clipboard,
 		// so it survives deleting the entity and opening another scene
-		std::vector<std::byte> EntityClipboard;
+		std::vector<std::vector<std::byte>> EntityClipboard;
 	};
 }

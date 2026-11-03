@@ -3,6 +3,7 @@
 #include "Entity.h"
 #include "EntityGuid.h"
 #include "SceneOutline.h"
+#include "SearchRow.h"
 #include "TransactionTypes.h"
 
 #include <cstdint>
@@ -44,9 +45,6 @@ namespace Nyx::Editor
 	// parents make a loop.
 	std::vector<OutlineNode> BuildOutlineTree(const SceneDocument& scene);
 
-	// Whether an entity's name has `filter` in it, whatever the case; every name has an empty one
-	bool NameMatchesFilter(std::string_view name, std::string_view filter);
-
 	// The tree with only the entities whose name matches the filter, and the folders and parents
 	// that hold one of them, at any depth
 	std::vector<OutlineNode> FilterOutlineTree(const std::vector<OutlineNode>& tree, const SceneDocument& scene, std::string_view filter);
@@ -82,6 +80,10 @@ namespace Nyx::Editor
 		std::vector<uint64_t> Folders;
 	};
 
+	// The items without those that move along with another of them: an entity below a listed entity
+	// or in a listed folder, a folder inside a listed folder
+	OutlineItems LeaveOutWhatGoesAlong(const SceneDocument& scene, const OutlineItems& items);
+
 	// Whether the items can go there. Folders come before entities in a folder, so entities go
 	// before or after entities and folders before or after folders; a folder never goes into
 	// itself or a folder inside it. Entities go onto an entity, as its children; beside a child,
@@ -104,6 +106,7 @@ namespace Nyx::Editor
 	// Deletes the folder, not what is in it: its subfolders and entities go to the folder it was
 	// in, where it was, before the entities already there. One undo step.
 	bool DeleteOutlineFolder(SceneEditor& editing, uint64_t folder);
+	bool DeleteOutlineFolders(SceneEditor& editing, const std::vector<uint64_t>& folders);
 
 	// The folder with this id, if the outline has it (0 never)
 	const Nyx::SceneOutlineFolder* FindOutlineFolder(const Nyx::SceneOutline& outline, uint64_t folder);

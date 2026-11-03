@@ -130,7 +130,7 @@ namespace Nyx::UI
 		float RowPillMargin = 4.0f;
 		float RowPillInset = 1.0f;
 		glm::vec4 IndentGuide{ 1.0f, 1.0f, 1.0f, 0.08f };
-		glm::vec4 FolderIcon{ 0.788f, 0.804f, 0.839f, 1.0f };
+		glm::vec4 FolderIcon{ 0.914f, 0.745f, 0.333f, 1.0f };
 		glm::vec4 EntityIcon{ 0.788f, 0.804f, 0.839f, 1.0f };
 
 		// Fields: text, number and search fields (InputText(), DragScalar(), SearchField()). ImGui

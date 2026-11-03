@@ -75,7 +75,7 @@ namespace Nyx::Editor
 				const std::string name = world.Has<Nyx::NameComponent>(entity) ? world.Get<Nyx::NameComponent>(entity).Name : std::string("Entity");
 				Users.push_back({ name, [&editing, entity]()
 					{
-						editing.Scene.GetSelection() = entity;
+						editing.Scene.Select(entity);
 					} });
 			});
 		Parameters.Draw(renderer, MaterialParametersPanel::Choices{

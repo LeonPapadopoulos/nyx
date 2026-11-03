@@ -12,6 +12,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace Nyx::Editor
@@ -112,6 +113,11 @@ namespace Nyx::Editor
 		TransformRotationEditState TransformRotationEdit;
 
 		OverrideEditState OverrideEdit;
+
+		// A search: only the properties with this in their names are drawn, whatever the case, and the
+		// structs and arrays that hold one; those with it in their own names or their category's are
+		// drawn whole. Empty draws them all.
+		std::string_view PropertyFilter;
 
 		// While a prefab instance's component is drawn: its properties that differ from its prefab's,
 		// by index, of this type, marked with the accent at the row's left. A right-click on a marked

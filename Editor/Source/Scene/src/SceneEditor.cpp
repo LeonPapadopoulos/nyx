@@ -9,6 +9,36 @@
 
 #include "imgui.h"
 
+namespace
+{
+	using namespace Nyx::Editor;
+
+	// A copy of each selected entity, but for those below another selected one, which go with it
+	std::vector<std::vector<std::byte>> CopySelected(const SceneDocument& scene)
+	{
+		const Nyx::Registry& world = scene.GetRegistry();
+		const std::vector<Nyx::Entity>& selected = scene.GetSelectedEntities();
+		std::vector<std::vector<std::byte>> copies;
+		for (const Nyx::Entity entity : selected)
+		{
+			const bool bGoesAlong = world.IsAlive(entity) && std::any_of(selected.begin(), selected.end(),
+				[&](Nyx::Entity other)
+				{
+					return other != entity && world.IsAlive(other) && IsSelfOrBelow(world, entity, other);
+				});
+			if (bGoesAlong)
+			{
+				continue;
+			}
+			if (std::vector<std::byte> copied = CopyEntity(scene, entity); !copied.empty())
+			{
+				copies.push_back(std::move(copied));
+			}
+		}
+		return copies;
+	}
+}
+
 namespace Nyx::Editor
 {
 	SceneEditor::SceneEditor()
@@ -38,7 +68,7 @@ namespace Nyx::Editor
 
 		// Undo steps and the selection refer to entities by handle. In the new scene, the same
 		// handles name other entities, so undo would change the wrong ones.
-		Scene.GetSelection().reset();
+		Scene.Select(std::nullopt);
 		Transactions.Clear();
 		++SceneRevision;
 	}
@@ -48,7 +78,7 @@ namespace Nyx::Editor
 		const std::optional<Nyx::Entity> selected = Scene.GetSelection();
 		const Nyx::EntityGuid after = selected ? Scene.GetGuid(*selected) : Nyx::EntityGuid{};
 		const Nyx::Entity newEntity = Scene.CreateEntity("New Entity");
-		Scene.GetSelection() = newEntity;
+		Scene.Select(newEntity);
 		// In prefab mode, where the root is, to be its child
 		const std::optional<Nyx::Entity> prefabRoot = PrefabRoot.IsValid() ? Scene.FindEntity(PrefabRoot) : std::nullopt;
 		if (prefabRoot && Scene.GetRegistry().Has<Nyx::TransformComponent>(*prefabRoot))
@@ -83,31 +113,39 @@ namespace Nyx::Editor
 
 	void SceneEditor::DeleteSelectedEntity()
 	{
-		std::optional<Nyx::Entity>& selection = Scene.GetSelection();
-		if (!selection)
+		const std::vector<Nyx::Entity> selected = Scene.GetSelectedEntities();
+		if (selected.empty())
 		{
 			return;
 		}
 
 		// With its children, at any depth: one undo brings them all back
 		Transaction transaction{};
-		transaction.Label = "Delete Entity";
-		for (const Nyx::Entity entityToDelete : GetSelfAndBelow(Scene.GetRegistry(), *selection))
+		transaction.Label = selected.size() > 1 ? "Delete Entities" : "Delete Entity";
+		for (const Nyx::Entity root : selected)
 		{
-			const ObjectRef rootRef = MakeSceneEntityRef(Scene, entityToDelete);
-			RootObjectSnapshot snapshot = CaptureRootObjectSnapshot(EntityDomain, TransactionContext, rootRef);
-			if (!Scene.DestroyEntity(entityToDelete))
+			// Gone already if it is below another that was selected
+			if (!Scene.GetRegistry().IsAlive(root))
 			{
 				continue;
 			}
+			for (const Nyx::Entity entityToDelete : GetSelfAndBelow(Scene.GetRegistry(), root))
+			{
+				const ObjectRef rootRef = MakeSceneEntityRef(Scene, entityToDelete);
+				RootObjectSnapshot snapshot = CaptureRootObjectSnapshot(EntityDomain, TransactionContext, rootRef);
+				if (!Scene.DestroyEntity(entityToDelete))
+				{
+					continue;
+				}
 
-			Change change{};
-			change.Kind = EChangeKind::DeleteObject;
-			change.Payload = DeleteObjectChange{
-				.Target = rootRef,
-				.BeforeDelete = std::move(snapshot)
-			};
-			transaction.Changes.push_back(std::move(change));
+				Change change{};
+				change.Kind = EChangeKind::DeleteObject;
+				change.Payload = DeleteObjectChange{
+					.Target = rootRef,
+					.BeforeDelete = std::move(snapshot)
+				};
+				transaction.Changes.push_back(std::move(change));
+			}
 		}
 
 		if (transaction.IsEmpty())
@@ -115,18 +153,12 @@ namespace Nyx::Editor
 			return;
 		}
 		Transactions.Push(std::move(transaction));
-		selection.reset();
+		Scene.Select(std::nullopt);
 	}
 
 	void SceneEditor::CopySelectedEntity()
 	{
-		const std::optional<Nyx::Entity>& selection = Scene.GetSelection();
-		if (!selection)
-		{
-			return;
-		}
-
-		std::vector<std::byte> copied = CopyEntity(Scene, *selection);
+		std::vector<std::vector<std::byte>> copied = CopySelected(Scene);
 		if (!copied.empty())
 		{
 			EntityClipboard = std::move(copied);
@@ -135,14 +167,12 @@ namespace Nyx::Editor
 
 	void SceneEditor::DuplicateSelectedEntity()
 	{
-		const std::optional<Nyx::Entity>& selection = Scene.GetSelection();
-		if (!selection)
-		{
-			return;
-		}
-
 		// Like copy and paste, but the clipboard keeps what it had
-		PasteAndSelect(CopyEntity(Scene, *selection), "Duplicate Entity");
+		const std::vector<std::vector<std::byte>> copied = CopySelected(Scene);
+		if (!copied.empty())
+		{
+			PasteAndSelect(copied, copied.size() > 1 ? "Duplicate Entities" : "Duplicate Entity");
+		}
 	}
 
 	void SceneEditor::PasteEntity()
@@ -152,50 +182,51 @@ namespace Nyx::Editor
 			return;
 		}
 
-		PasteAndSelect(EntityClipboard, "Paste Entity");
+		PasteAndSelect(EntityClipboard, EntityClipboard.size() > 1 ? "Paste Entities" : "Paste Entity");
 	}
 
-	void SceneEditor::PasteAndSelect(const std::vector<std::byte>& copied, const char* label)
+	void SceneEditor::PasteAndSelect(const std::vector<std::vector<std::byte>>& copied, const char* label)
 	{
 		// A new entity can move components in memory; edits in progress point at components
 		CancelPendingEdits();
 
+		// Each right after the one before, the first after the selection
 		const std::optional<Nyx::Entity> selected = Scene.GetSelection();
-		const Nyx::EntityGuid after = selected ? Scene.GetGuid(*selected) : Nyx::EntityGuid{};
+		Nyx::EntityGuid after = selected ? Scene.GetGuid(*selected) : Nyx::EntityGuid{};
 		const auto place = [&](Nyx::Entity pasted, Transaction& step)
 		{
-			for (Change& placed : PlaceNewEntity(Scene, Scene.GetGuid(pasted), after, 0))
+			const Nyx::EntityGuid guid = Scene.GetGuid(pasted);
+			for (Change& placed : PlaceNewEntity(Scene, guid, after, 0))
 			{
 				step.Changes.push_back(std::move(placed));
 			}
+			after = guid;
 		};
-		if (const std::optional<Nyx::Entity> pasted =
-				Nyx::Editor::PasteEntity(Scene, Transactions, EntityDomain, TransactionContext, copied, label, place))
+		std::vector<Nyx::Entity> pasted = PasteEntities(Scene, Transactions, EntityDomain, TransactionContext, copied, label, place);
+		if (!pasted.empty())
 		{
-			Scene.GetSelection() = *pasted;
+			Scene.SelectEntities(std::move(pasted));
 		}
 	}
 
 	void SceneEditor::Undo()
 	{
 		// The assets of what undo changed are loaded by AssetLoader
-		std::optional<Nyx::Entity>& selection = Scene.GetSelection();
-		const Nyx::EntityGuid selectedGuid = selection ? Scene.GetGuid(*selection) : Nyx::EntityGuid{};
+		const std::vector<Nyx::EntityGuid> selected = Scene.GetSelectedGuids();
 
-		if (Transactions.Undo(TransactionContext) && selectedGuid.IsValid())
+		if (Transactions.Undo(TransactionContext) && !selected.empty())
 		{
-			selection = Scene.FindEntity(selectedGuid);
+			Scene.SelectGuids(selected);
 		}
 	}
 
 	void SceneEditor::Redo()
 	{
-		std::optional<Nyx::Entity>& selection = Scene.GetSelection();
-		const Nyx::EntityGuid selectedGuid = selection ? Scene.GetGuid(*selection) : Nyx::EntityGuid{};
+		const std::vector<Nyx::EntityGuid> selected = Scene.GetSelectedGuids();
 
-		if (Transactions.Redo(TransactionContext) && selectedGuid.IsValid())
+		if (Transactions.Redo(TransactionContext) && !selected.empty())
 		{
-			selection = Scene.FindEntity(selectedGuid);
+			Scene.SelectGuids(selected);
 		}
 	}
 

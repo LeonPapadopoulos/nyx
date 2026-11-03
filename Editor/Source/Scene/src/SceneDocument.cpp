@@ -3,6 +3,9 @@
 #include "Entity.h"
 #include "GuidComponent.h"
 
+#include <algorithm>
+#include <utility>
+
 namespace Nyx::Editor
 {
 	Nyx::Entity SceneDocument::CreateEntity(const std::string& name)
@@ -17,12 +20,56 @@ namespace Nyx::Editor
 
 	bool SceneDocument::DestroyEntity(Nyx::Entity entity)
 	{
-		if (SelectedEntity.has_value() && SelectedEntity.value() == entity)
+		if (IsSelected(entity))
 		{
-			SelectedEntity.reset();
+			std::vector<Nyx::Entity> others = SelectedEntities;
+			std::erase(others, entity);
+			SelectEntities(std::move(others));
 		}
 
 		return Registry.DestroyEntity(entity);
+	}
+
+	bool SceneDocument::IsSelected(Nyx::Entity entity) const
+	{
+		return std::find(SelectedEntities.begin(), SelectedEntities.end(), entity) != SelectedEntities.end();
+	}
+
+	void SceneDocument::Select(std::optional<Nyx::Entity> entity)
+	{
+		SelectEntities(entity ? std::vector<Nyx::Entity>{ *entity } : std::vector<Nyx::Entity>{});
+	}
+
+	void SceneDocument::SelectEntities(std::vector<Nyx::Entity> entities)
+	{
+		SelectedEntities = std::move(entities);
+		SelectedEntity = SelectedEntities.empty() ? std::nullopt : std::optional<Nyx::Entity>(SelectedEntities.back());
+	}
+
+	std::vector<Nyx::EntityGuid> SceneDocument::GetSelectedGuids() const
+	{
+		std::vector<Nyx::EntityGuid> guids;
+		for (const Nyx::Entity entity : SelectedEntities)
+		{
+			if (const Nyx::EntityGuid guid = GetGuid(entity); guid.IsValid())
+			{
+				guids.push_back(guid);
+			}
+		}
+		return guids;
+	}
+
+	void SceneDocument::SelectGuids(const std::vector<Nyx::EntityGuid>& guids)
+	{
+		std::vector<Nyx::Entity> entities;
+		for (const Nyx::EntityGuid guid : guids)
+		{
+			if (const std::optional<Nyx::Entity> entity = FindEntity(guid))
+			{
+				entities.push_back(*entity);
+			}
+		}
+		SelectEntities(std::move(entities));
 	}
 
 	std::optional<Nyx::Entity> SceneDocument::FindEntity(Nyx::EntityGuid guid) const

@@ -282,8 +282,7 @@ namespace Nyx::Editor
 		// selection is found again by guid
 		Editing.DetailsContext.CancelPendingEdits();
 		Editing.Gizmo.CancelInteraction();
-		std::optional<Nyx::Entity>& selection = Editing.Scene.GetSelection();
-		const Nyx::EntityGuid selected = selection ? Editing.Scene.GetGuid(*selection) : Nyx::EntityGuid{};
+		const std::vector<Nyx::EntityGuid> selected = Editing.Scene.GetSelectedGuids();
 
 		Nyx::Registry& world = Editing.Scene.GetRegistry();
 		std::vector<Nyx::Entity> roots;
@@ -304,9 +303,9 @@ namespace Nyx::Editor
 			}
 		}
 
-		if (selected.IsValid())
+		if (!selected.empty())
 		{
-			selection = Editing.Scene.FindEntity(selected);
+			Editing.Scene.SelectGuids(selected);
 		}
 	}
 }

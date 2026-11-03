@@ -10,6 +10,7 @@
 #include "Log.h"
 #include "NameComponent.h"
 #include "SceneEditor.h"
+#include "SearchRow.h"
 #include "TransformParents.h"
 #include "UITheme.h"
 #include "UIWidgets.h"
@@ -28,29 +29,6 @@ namespace
 
 	// Folders dragged in the outliner: the payload is the folder's id
 	constexpr const char* FolderDragPayload = "NYX_OUTLINER_FOLDER";
-
-	// What is being dragged, if the outliner can take it
-	OutlineItems GetDraggedItems()
-	{
-		OutlineItems items;
-		const ImGuiPayload* payload = ImGui::GetDragDropPayload();
-		if (!payload || payload->DataSize != sizeof(uint64_t))
-		{
-			return items;
-		}
-
-		uint64_t value = 0;
-		std::memcpy(&value, payload->Data, sizeof(value));
-		if (payload->IsDataType(EntityDragPayload))
-		{
-			items.Entities.push_back(Nyx::EntityGuid{ value });
-		}
-		else if (payload->IsDataType(FolderDragPayload))
-		{
-			items.Folders.push_back(value);
-		}
-		return items;
-	}
 
 	std::string Trim(const std::string& text)
 	{
@@ -75,23 +53,25 @@ namespace Nyx::Editor
 			return;
 		}
 
-		std::optional<Nyx::Entity>& selection = editing.Scene.GetSelection();
+		const std::optional<Nyx::Entity>& selection = editing.Scene.GetSelection();
 		const Nyx::SceneOutline& outline = editing.Scene.GetOutline();
 
-		// A folder is selected only while no entity is, and while it is there: undo may take it away
-		if (selection || !FindOutlineFolder(outline, SelectedFolder))
-		{
-			SelectedFolder = 0;
-		}
+		// A folder is selected while it is there: undo may take it away
+		std::erase_if(SelectedFolders,
+			[&](uint64_t folder)
+			{
+				return !FindOutlineFolder(outline, folder);
+			});
 		if (!FindOutlineFolder(outline, RenamingFolder))
 		{
 			RenamingFolder = 0;
 		}
 
 		// An entity selected elsewhere, e.g. in a scene view, shows in its folder
-		if (selection != ShownSelection)
+		if (editing.Scene.GetSelectedEntities() != ShownSelection)
 		{
-			ShownSelection = selection;
+			ShownSelection = editing.Scene.GetSelectedEntities();
+			SelectedFolders.clear();
 			if (selection)
 			{
 				RevealEntity(editing, *selection);
@@ -105,13 +85,13 @@ namespace Nyx::Editor
 			{
 				bFocusSearch = true;
 			}
-			else if (SelectedFolder != 0 && !ImGui::GetIO().WantTextInput && ImGui::IsKeyChordPressed(ImGuiKey_F2))
+			else if (SelectedFolders.size() == 1 && !selection && !ImGui::GetIO().WantTextInput && ImGui::IsKeyChordPressed(ImGuiKey_F2))
 			{
-				StartRename(editing, SelectedFolder);
+				StartRename(editing, GetSelectedFolder());
 			}
 		}
 
-		DrawSearch();
+		DrawSearchRow(Filter, bFocusSearch, "Shows the entities whose names have this in them (Ctrl+F)");
 		DrawToolbar(editing);
 		NYX_UI(Nyx::UI::Separator());
 
@@ -164,23 +144,24 @@ namespace Nyx::Editor
 			{
 				if (PressedEntity && editing.Scene.GetRegistry().IsAlive(*PressedEntity))
 				{
-					selection = *PressedEntity;
+					ClickRow(editing, 0, *PressedEntity, bPressedCtrl, bPressedShift);
 				}
 				else if (PressedFolder != 0)
 				{
-					SelectFolder(editing, PressedFolder);
+					ClickRow(editing, PressedFolder, Nyx::Entity{}, bPressedCtrl, bPressedShift);
 				}
 				PressedEntity.reset();
 				PressedFolder = 0;
 			}
 
-			// A click below the rows selects nothing; a right-click there offers to add
+			// A click below the rows selects nothing, unless it means to add to the selection; a
+			// right-click there offers to add
 			if (ImGui::IsWindowHovered() && !ImGui::IsAnyItemHovered())
 			{
-				if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) || ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+				const bool bAdding = ImGui::GetIO().KeyCtrl || ImGui::GetIO().KeyShift;
+				if ((ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !bAdding) || ImGui::IsMouseClicked(ImGuiMouseButton_Right))
 				{
-					selection.reset();
-					SelectedFolder = 0;
+					SetSelection(editing, {}, {});
 				}
 				if (ImGui::IsMouseClicked(ImGuiMouseButton_Right))
 				{
@@ -195,28 +176,6 @@ namespace Nyx::Editor
 		ImGui::End();
 	}
 
-	void SceneOutlinerPanel::DrawSearch()
-	{
-		const float clearSize = ImGui::GetFrameHeight();
-		if (bFocusSearch)
-		{
-			ImGui::SetKeyboardFocusHere();
-			bFocusSearch = false;
-		}
-		ImGui::SetNextItemWidth(std::max(1.0f, ImGui::GetContentRegionAvail().x - clearSize - ImGui::GetStyle().ItemSpacing.x));
-		NYX_UI(Nyx::UI::SearchField("##Search", &Filter, "Search"));
-		ImGui::SetItemTooltip("Shows the entities whose names have this in them (Ctrl+F)");
-
-		ImGui::SameLine();
-		ImGui::BeginDisabled(Filter.empty());
-		if (NYX_UI(Nyx::UI::IconButton("##ClearSearch", Nyx::UI::EIcon::Clear, glm::vec2(clearSize))))
-		{
-			Filter.clear();
-		}
-		ImGui::EndDisabled();
-		ImGui::SetItemTooltip("Clear the search");
-	}
-
 	void SceneOutlinerPanel::DrawToolbar(SceneEditor& editing)
 	{
 		const std::optional<Nyx::Entity>& selection = editing.Scene.GetSelection();
@@ -228,8 +187,8 @@ namespace Nyx::Editor
 			{
 				Reveal(editing, GetOutlineFolderOf(editing.Scene, editing.Scene.GetGuid(*selection)));
 			}
-			Reveal(editing, SelectedFolder);
-			editing.CreateEntity(SelectedFolder);
+			Reveal(editing, GetSelectedFolder());
+			editing.CreateEntity(GetSelectedFolder());
 		}
 
 		ImGui::SameLine();
@@ -241,17 +200,10 @@ namespace Nyx::Editor
 
 		ImGui::SameLine();
 		const bool bHasSelection = selection.has_value();
-		ImGui::BeginDisabled(!bHasSelection && SelectedFolder == 0);
+		ImGui::BeginDisabled(!bHasSelection && SelectedFolders.empty());
 		if (NYX_UI(Nyx::UI::Button("Delete Selected")))
 		{
-			if (bHasSelection)
-			{
-				editing.DeleteSelectedEntity();
-			}
-			else if (DeleteOutlineFolder(editing, SelectedFolder))
-			{
-				SelectedFolder = 0;
-			}
+			DeleteSelection(editing);
 		}
 		ImGui::EndDisabled();
 		ImGui::SetItemTooltip("A folder goes, what is in it stays: it moves up a level.");
@@ -298,7 +250,7 @@ namespace Nyx::Editor
 		// renamed, the name's field takes the label's place
 		const std::string label = (bRenaming ? std::string() : name) + "##Folder" + std::to_string(id);
 		Nyx::UI::TreeRowOptions row;
-		row.bSelected = SelectedFolder == id;
+		row.bSelected = std::find(SelectedFolders.begin(), SelectedFolders.end(), id) != SelectedFolders.end();
 		row.bLeaf = node.Children.empty();
 		row.bDoubleClickToggles = false;
 		row.Icon = Nyx::UI::ETreeRowIcon::Folder;
@@ -330,6 +282,8 @@ namespace Nyx::Editor
 			{
 				PressedFolder = id;
 				PressedEntity.reset();
+				bPressedCtrl = ImGui::GetIO().KeyCtrl;
+				bPressedShift = ImGui::GetIO().KeyShift;
 			}
 			else
 			{
@@ -339,21 +293,22 @@ namespace Nyx::Editor
 
 		// A double click on the name renames it; on the arrow it opens and closes it
 		const bool bOnName = ImGui::GetIO().MousePos.x >= contentX + Nyx::UI::CalcTreeRowLabelOffset(Nyx::UI::ETreeRowIcon::None);
-		if (!bRenaming && bOnName && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+		const bool bModified = ImGui::GetIO().KeyCtrl || ImGui::GetIO().KeyShift;
+		if (!bRenaming && !bModified && bOnName && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
 		{
 			StartRename(editing, id);
 		}
 
 		if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
 		{
-			SelectFolder(editing, id);
+			RightClickRow(editing, id, Nyx::Entity{});
 			ImGui::OpenPopup(FolderMenu);
 		}
 
 		if (!bRenaming && ImGui::BeginDragDropSource())
 		{
 			ImGui::SetDragDropPayload(FolderDragPayload, &id, sizeof(id));
-			ImGui::TextUnformatted(name.c_str());
+			ImGui::TextUnformatted(GetDragLabel(editing, row.bSelected, name).c_str());
 			ImGui::EndDragDropSource();
 		}
 		DropOnRow(editing, id, {}, result.bOpen, contentX);
@@ -390,13 +345,12 @@ namespace Nyx::Editor
 
 	void SceneOutlinerPanel::DrawEntityRow(SceneEditor& editing, const OutlineNode& node, bool bFiltering)
 	{
-		std::optional<Nyx::Entity>& selection = editing.Scene.GetSelection();
 		const Nyx::Entity entity = node.Entity;
 		const std::string name = editing.Scene.GetRegistry().Get<Nyx::NameComponent>(entity).Name;
 		const EntityGuid guid = editing.Scene.GetGuid(entity);
 
 		Nyx::UI::TreeRowOptions row;
-		row.bSelected = selection.has_value() && selection.value() == entity;
+		row.bSelected = editing.Scene.IsSelected(entity);
 		row.bLeaf = node.Children.empty();
 		row.bDoubleClickToggles = false;
 		row.Icon = Nyx::UI::ETreeRowIcon::Entity;
@@ -434,17 +388,19 @@ namespace Nyx::Editor
 			{
 				PressedEntity = entity;
 				PressedFolder = 0;
+				bPressedCtrl = ImGui::GetIO().KeyCtrl;
+				bPressedShift = ImGui::GetIO().KeyShift;
 			}
 			else
 			{
-				selection = entity;
+				ClickRow(editing, 0, entity, false, false);
 			}
 		}
 
-		// Right-click: selects the entity and offers what the hotkeys do
+		// Right-click: selects the entity, unless it is selected already, and offers what the hotkeys do
 		if (ImGui::IsItemClicked(ImGuiMouseButton_Right))
 		{
-			selection = entity;
+			RightClickRow(editing, 0, entity);
 			ImGui::OpenPopup(EntityMenu);
 		}
 
@@ -452,7 +408,7 @@ namespace Nyx::Editor
 		// surface anchor's host
 		if (guid.IsValid() && ImGui::BeginDragDropSource())
 		{
-			SetEntityDragPayload(guid, name);
+			SetEntityDragPayload(guid, GetDragLabel(editing, row.bSelected, name));
 			ImGui::EndDragDropSource();
 		}
 		if (guid.IsValid())
@@ -469,7 +425,9 @@ namespace Nyx::Editor
 
 	void SceneOutlinerPanel::DrawMenus(SceneEditor& editing)
 	{
-		std::optional<Nyx::Entity>& selection = editing.Scene.GetSelection();
+		const std::optional<Nyx::Entity>& selection = editing.Scene.GetSelection();
+		// What names one entity or instance is for one alone
+		const bool bOne = editing.Scene.GetSelectedEntities().size() == 1;
 
 		// After the rows, so a new entity doesn't appear while the rows are being drawn
 		if (Nyx::UI::BeginPopup("##EntityMenu"))
@@ -495,12 +453,12 @@ namespace Nyx::Editor
 			const std::optional<Nyx::Entity> instance = selection ? FindPrefabInstanceRoot(editing.Scene.GetRegistry(), *selection) : std::nullopt;
 			const bool bInstance = instance.has_value();
 			const bool bPrefabMode = editing.PrefabRoot.IsValid();
-			if (NYX_UI(Nyx::UI::MenuItem("Edit Prefab", nullptr, false, bInstance && editing.OpenPrefab != nullptr)) && instance)
+			if (NYX_UI(Nyx::UI::MenuItem("Edit Prefab", nullptr, false, bOne && bInstance && editing.OpenPrefab != nullptr)) && instance)
 			{
 				editing.OpenPrefab(editing.Scene.GetRegistry().Get<Nyx::PrefabInstanceComponent>(*instance).Prefab.Path);
 			}
 			ImGui::SetItemTooltip("Opens the prefab on its own in prefab mode");
-			if (NYX_UI(Nyx::UI::MenuItem("Create Prefab...", nullptr, false, selection.has_value() && !bInstance && !bPrefabMode)) && selection)
+			if (NYX_UI(Nyx::UI::MenuItem("Create Prefab...", nullptr, false, bOne && !bInstance && !bPrefabMode)) && selection)
 			{
 				const std::string name = editing.Scene.GetRegistry().Get<Nyx::NameComponent>(*selection).Name;
 				const std::filesystem::path folder = Nyx::Paths::GetAssetSearchDirs().empty() ? std::filesystem::path() : Nyx::Paths::GetAssetSearchDirs().front();
@@ -517,7 +475,7 @@ namespace Nyx::Editor
 				}
 			}
 			ImGui::SetItemTooltip("Saves the entity and what is below it as a prefab, and makes them an instance of it");
-			if (NYX_UI(Nyx::UI::MenuItem("Unpack Prefab", nullptr, false, bInstance)) && selection)
+			if (NYX_UI(Nyx::UI::MenuItem("Unpack Prefab", nullptr, false, bOne && bInstance)) && selection)
 			{
 				UnpackPrefab(editing, *selection);
 			}
@@ -525,7 +483,7 @@ namespace Nyx::Editor
 			NYX_UI(Nyx::UI::Separator());
 			// As saved scenes, logs and NyxDump show it, e.g. 0x5F3A9C2D1E4B7A10
 			const EntityGuid guid = selection ? editing.Scene.GetGuid(*selection) : EntityGuid{};
-			if (NYX_UI(Nyx::UI::MenuItem("Copy Guid", nullptr, false, guid.IsValid())))
+			if (NYX_UI(Nyx::UI::MenuItem("Copy Guid", nullptr, false, bOne && guid.IsValid())))
 			{
 				ImGui::SetClipboardText(GuidToText(guid).c_str());
 			}
@@ -534,18 +492,19 @@ namespace Nyx::Editor
 
 		if (Nyx::UI::BeginPopup("##FolderMenu"))
 		{
-			const uint64_t folder = SelectedFolder;
+			const uint64_t folder = GetSelectedFolder();
 			if (NYX_UI(Nyx::UI::MenuItem("New Folder", nullptr, false, folder != 0)))
 			{
 				NewFolder(editing);
 			}
-			if (NYX_UI(Nyx::UI::MenuItem("Rename", "F2", false, folder != 0)))
+			if (NYX_UI(Nyx::UI::MenuItem("Rename", "F2", false, SelectedFolders.size() == 1)))
 			{
 				StartRename(editing, folder);
 			}
-			if (NYX_UI(Nyx::UI::MenuItem("Delete Folder", nullptr, false, folder != 0)) && DeleteOutlineFolder(editing, folder))
+			if (NYX_UI(Nyx::UI::MenuItem(SelectedFolders.size() > 1 ? "Delete Folders" : "Delete Folder", nullptr, false, folder != 0)) &&
+				DeleteOutlineFolders(editing, SelectedFolders))
 			{
-				SelectedFolder = 0;
+				SelectedFolders.clear();
 			}
 			ImGui::SetItemTooltip("What is in it stays: it moves up a level.");
 			ImGui::EndPopup();
@@ -574,10 +533,10 @@ namespace Nyx::Editor
 
 		// An entity's row: entities onto it in its middle, as its children; before it at its top,
 		// after it at its bottom unless it is open (its children follow), and folders before it in its
-		// upper half, after it in its lower. A folder's row takes entities into it; folders go before
-		// it at its top, after it at its bottom unless it is open (its rows follow), and into it
-		// between.
-		const OutlineItems items = GetDraggedItems();
+		// upper half, after it in its lower. A folder's row takes entities into it, and folders with
+		// them; folders alone go before it at its top, after it at its bottom unless it is open (its
+		// rows follow), and into it between.
+		const OutlineItems items = GetDraggedItems(editing);
 		const ImVec2 rowMin = ImGui::GetItemRectMin();
 		const ImVec2 rowMax = ImGui::GetItemRectMax();
 		const float along = (ImGui::GetIO().MousePos.y - rowMin.y) / std::max(1.0f, rowMax.y - rowMin.y);
@@ -592,11 +551,11 @@ namespace Nyx::Editor
 				: along > 0.75f && !bOpen ? EOutlinePlace::After
 										 : EOutlinePlace::Onto;
 		}
-		else if (!items.Folders.empty() && along < 0.25f)
+		else if (items.Entities.empty() && along < 0.25f)
 		{
 			drop.Place = EOutlinePlace::Before;
 		}
-		else if (!items.Folders.empty() && along > 0.75f && !bOpen)
+		else if (items.Entities.empty() && along > 0.75f && !bOpen)
 		{
 			drop.Place = EOutlinePlace::After;
 		}
@@ -644,7 +603,7 @@ namespace Nyx::Editor
 
 	bool SceneOutlinerPanel::AcceptDrop(SceneEditor& editing, const OutlineDrop& drop)
 	{
-		const OutlineItems items = GetDraggedItems();
+		const OutlineItems items = GetDraggedItems(editing);
 		if (!CanDropInOutline(editing.Scene, items, drop))
 		{
 			return false;
@@ -671,11 +630,147 @@ namespace Nyx::Editor
 		return payload != nullptr;
 	}
 
+	OutlineItems SceneOutlinerPanel::GetDraggedItems(const SceneEditor& editing) const
+	{
+		OutlineItems items;
+		const ImGuiPayload* payload = ImGui::GetDragDropPayload();
+		if (!payload || payload->DataSize != sizeof(uint64_t))
+		{
+			return items;
+		}
+
+		uint64_t value = 0;
+		std::memcpy(&value, payload->Data, sizeof(value));
+		bool bSelected = false;
+		if (payload->IsDataType(EntityDragPayload))
+		{
+			items.Entities.push_back(Nyx::EntityGuid{ value });
+			const std::optional<Nyx::Entity> entity = editing.Scene.FindEntity(items.Entities.front());
+			bSelected = entity && editing.Scene.IsSelected(*entity);
+		}
+		else if (payload->IsDataType(FolderDragPayload))
+		{
+			items.Folders.push_back(value);
+			bSelected = std::find(SelectedFolders.begin(), SelectedFolders.end(), value) != SelectedFolders.end();
+		}
+		return bSelected ? LeaveOutWhatGoesAlong(editing.Scene, OutlineItems{ editing.Scene.GetSelectedGuids(), SelectedFolders }) : items;
+	}
+
+	std::string SceneOutlinerPanel::GetDragLabel(const SceneEditor& editing, bool bSelected, const std::string& name) const
+	{
+		const size_t count = editing.Scene.GetSelectedEntities().size() + SelectedFolders.size();
+		return bSelected && count > 1 ? std::to_string(count) + " items" : name;
+	}
+
+	void SceneOutlinerPanel::ClickRow(SceneEditor& editing, uint64_t folder, Nyx::Entity entity, bool bCtrl, bool bShift)
+	{
+		const auto findRow = [&](uint64_t rowFolder, Nyx::Entity rowEntity)
+		{
+			return std::find_if(DrawnRows.begin(), DrawnRows.end(),
+				[&](const DrawnRow& row)
+				{
+					return rowFolder != 0 ? row.Folder == rowFolder : row.Folder == 0 && row.Entity == rowEntity;
+				});
+		};
+
+		std::vector<Nyx::Entity> entities;
+		std::vector<uint64_t> folders;
+
+		// From the row clicked before to this one, as they show, this one the last selected
+		const auto anchor = findRow(AnchorFolder, AnchorEntity);
+		const auto clicked = findRow(folder, entity);
+		if (bShift && anchor != DrawnRows.end() && clicked != DrawnRows.end())
+		{
+			const auto first = std::min(anchor, clicked);
+			const auto last = std::max(anchor, clicked);
+			for (auto row = first; row != last + 1; ++row)
+			{
+				if (row != clicked && row->Folder != 0)
+				{
+					folders.push_back(row->Folder);
+				}
+				else if (row != clicked)
+				{
+					entities.push_back(row->Entity);
+				}
+			}
+			if (folder != 0)
+			{
+				folders.push_back(folder);
+			}
+			else
+			{
+				entities.push_back(entity);
+			}
+			SetSelection(editing, std::move(entities), std::move(folders));
+			return;
+		}
+
+		// Ctrl: as selected, with this one added or taken away
+		if (bCtrl)
+		{
+			entities = editing.Scene.GetSelectedEntities();
+			folders = SelectedFolders;
+		}
+		if (folder != 0)
+		{
+			if (std::erase(folders, folder) == 0)
+			{
+				folders.push_back(folder);
+			}
+		}
+		else if (std::erase(entities, entity) == 0)
+		{
+			entities.push_back(entity);
+		}
+		AnchorFolder = folder;
+		AnchorEntity = entity;
+		SetSelection(editing, std::move(entities), std::move(folders));
+	}
+
+	void SceneOutlinerPanel::RightClickRow(SceneEditor& editing, uint64_t folder, Nyx::Entity entity)
+	{
+		std::vector<Nyx::Entity> entities = editing.Scene.GetSelectedEntities();
+		std::vector<uint64_t> folders = SelectedFolders;
+		const bool bSelected = folder != 0 ? std::erase(folders, folder) != 0 : std::erase(entities, entity) != 0;
+		if (!bSelected)
+		{
+			entities.clear();
+			folders.clear();
+			AnchorFolder = folder;
+			AnchorEntity = entity;
+		}
+		if (folder != 0)
+		{
+			folders.push_back(folder);
+		}
+		else
+		{
+			entities.push_back(entity);
+		}
+		SetSelection(editing, std::move(entities), std::move(folders));
+	}
+
+	void SceneOutlinerPanel::SetSelection(SceneEditor& editing, std::vector<Nyx::Entity> entities, std::vector<uint64_t> folders)
+	{
+		editing.Scene.SelectEntities(std::move(entities));
+		ShownSelection = editing.Scene.GetSelectedEntities();
+		SelectedFolders = std::move(folders);
+	}
+
+	void SceneOutlinerPanel::DeleteSelection(SceneEditor& editing)
+	{
+		editing.DeleteSelectedEntity();
+		ShownSelection = editing.Scene.GetSelectedEntities();
+		if (DeleteOutlineFolders(editing, SelectedFolders))
+		{
+			SelectedFolders.clear();
+		}
+	}
+
 	void SceneOutlinerPanel::SelectFolder(SceneEditor& editing, uint64_t folder)
 	{
-		editing.Scene.GetSelection().reset();
-		ShownSelection.reset();
-		SelectedFolder = folder;
+		SetSelection(editing, {}, { folder });
 	}
 
 	void SceneOutlinerPanel::Reveal(const SceneEditor& editing, uint64_t folder)
@@ -719,8 +814,8 @@ namespace Nyx::Editor
 	{
 		// In the selected folder, or in the selected entity's, beside it
 		const std::optional<Nyx::Entity>& selection = editing.Scene.GetSelection();
-		const uint64_t parent = SelectedFolder != 0 ? SelectedFolder
-			: selection                             ? GetOutlineFolderOf(editing.Scene, editing.Scene.GetGuid(*selection))
+		const uint64_t parent = GetSelectedFolder() != 0 ? GetSelectedFolder()
+			: selection                                  ? GetOutlineFolderOf(editing.Scene, editing.Scene.GetGuid(*selection))
 													: 0;
 		if (const uint64_t folder = CreateOutlineFolder(editing, parent))
 		{

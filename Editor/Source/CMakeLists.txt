@@ -94,6 +94,7 @@ set(NYX_EDITOR_SOURCES
     Common/src/UISourceInspector.cpp
     Common/src/ReflectedPropertyAccess.cpp
     Common/src/EntityDragDrop.cpp
+    Common/src/SearchRow.cpp
 )
 
 set(NYX_EDITOR_HEADERS
@@ -195,6 +196,7 @@ set(NYX_EDITOR_HEADERS
     Common/include/UISourceInspector.h
     Common/include/ReflectedPropertyAccess.h
     Common/include/EntityDragDrop.h
+    Common/include/SearchRow.h
 )
 
 # The prototype and diagnostics tools (NYX_DEV_TOOLS), with the painter's test sheet that Painter

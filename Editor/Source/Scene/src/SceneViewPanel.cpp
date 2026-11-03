@@ -98,7 +98,7 @@ namespace Nyx::Editor
 
 		if (!result.HitEntity.has_value() || editing.Scene.GetRegistry().IsAlive(*result.HitEntity))
 		{
-			editing.Scene.GetSelection() = result.HitEntity;
+			editing.Scene.Select(result.HitEntity);
 		}
 	}
 

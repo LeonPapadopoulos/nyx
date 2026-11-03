@@ -45,41 +45,13 @@ namespace
 
 		return name.substr(0, open);
 	}
-}
 
-namespace Nyx::Editor
-{
-	std::vector<std::byte> CopyEntity(const SceneDocument& scene, Nyx::Entity entity)
-	{
-		const Nyx::Registry& world = scene.GetRegistry();
-		if (!world.IsAlive(entity))
-		{
-			return {};
-		}
-
-		// The entity, then everything below it, each parent before its children
-		const std::vector<Nyx::Entity> entities = GetSelfAndBelow(world, entity);
-		Nyx::BinaryWriter writer;
-		writer.WriteUInt32(static_cast<uint32_t>(entities.size()));
-		for (const Nyx::Entity copied : entities)
-		{
-			if (!Nyx::SceneSerializer::WriteEntity(world, copied, writer))
-			{
-				LOG_WARNING("Copy: the entity can't be copied, since a component can't be written");
-				return {};
-			}
-		}
-
-		return writer.GetBytes();
-	}
-
-	std::optional<Nyx::Entity> PasteEntity(SceneDocument& scene, TransactionSystem& transactions, ITransactionDomain& domain,
-		EditorTransactionContext& context, const std::vector<std::byte>& copied, const char* label,
-		const std::function<void(Nyx::Entity pasted, Transaction& step)>& alsoDo)
+	// Makes the entities of one copy, the first with a name of its own; none if it can't be read
+	std::vector<Nyx::Entity> ReadCopy(Nyx::Editor::SceneDocument& scene, const std::vector<std::byte>& copied)
 	{
 		if (copied.empty())
 		{
-			return std::nullopt;
+			return {};
 		}
 
 		Nyx::Registry& world = scene.GetRegistry();
@@ -89,7 +61,7 @@ namespace Nyx::Editor
 		if (!reader.ReadUInt32(count) || count == 0)
 		{
 			LOG_ERROR("Paste: the copied entity can't be read");
-			return std::nullopt;
+			return {};
 		}
 
 		// Assets are loaded by ComponentPostLoadSubscriber when the paste is recorded below
@@ -112,7 +84,7 @@ namespace Nyx::Editor
 				world.DestroyEntity(entity);
 			}
 			LOG_ERROR("Paste: the copied entity can't be read");
-			return std::nullopt;
+			return {};
 		}
 
 		// Guids of their own: a guid names exactly one entity. The copies' children name their
@@ -170,23 +142,77 @@ namespace Nyx::Editor
 			}
 		}
 		Nyx::NameComponent& name = world.Get<Nyx::NameComponent>(root);
-		name.Name = MakeCopyName(scene, name.Name.empty() ? std::string("Entity") : name.Name);
+		name.Name = Nyx::Editor::MakeCopyName(scene, name.Name.empty() ? std::string("Entity") : name.Name);
 
+		return pasted;
+	}
+}
+
+namespace Nyx::Editor
+{
+	std::vector<std::byte> CopyEntity(const SceneDocument& scene, Nyx::Entity entity)
+	{
+		const Nyx::Registry& world = scene.GetRegistry();
+		if (!world.IsAlive(entity))
+		{
+			return {};
+		}
+
+		// The entity, then everything below it, each parent before its children
+		const std::vector<Nyx::Entity> entities = GetSelfAndBelow(world, entity);
+		Nyx::BinaryWriter writer;
+		writer.WriteUInt32(static_cast<uint32_t>(entities.size()));
+		for (const Nyx::Entity copied : entities)
+		{
+			if (!Nyx::SceneSerializer::WriteEntity(world, copied, writer))
+			{
+				LOG_WARNING("Copy: the entity can't be copied, since a component can't be written");
+				return {};
+			}
+		}
+
+		return writer.GetBytes();
+	}
+
+	std::optional<Nyx::Entity> PasteEntity(SceneDocument& scene, TransactionSystem& transactions, ITransactionDomain& domain,
+		EditorTransactionContext& context, const std::vector<std::byte>& copied, const char* label,
+		const std::function<void(Nyx::Entity pasted, Transaction& step)>& alsoDo)
+	{
+		const std::vector<Nyx::Entity> pasted = PasteEntities(scene, transactions, domain, context, { copied }, label, alsoDo);
+		return pasted.empty() ? std::nullopt : std::optional<Nyx::Entity>(pasted.front());
+	}
+
+	std::vector<Nyx::Entity> PasteEntities(SceneDocument& scene, TransactionSystem& transactions, ITransactionDomain& domain,
+		EditorTransactionContext& context, const std::vector<std::vector<std::byte>>& copies, const char* label,
+		const std::function<void(Nyx::Entity pasted, Transaction& step)>& alsoDo)
+	{
+		std::vector<Nyx::Entity> roots;
 		Transaction transaction;
 		transaction.Label = label;
-		for (const Nyx::Entity entity : pasted)
+		for (const std::vector<std::byte>& copied : copies)
 		{
-			const ObjectRef target = MakeSceneEntityRef(scene, entity);
-			transaction.Changes.push_back(Change{ EChangeKind::AddObject,
-				AddObjectChange{ .Target = target, .AfterCreate = CaptureRootObjectSnapshot(domain, context, target) } });
+			const std::vector<Nyx::Entity> pasted = ReadCopy(scene, copied);
+			if (pasted.empty())
+			{
+				continue;
+			}
+			for (const Nyx::Entity entity : pasted)
+			{
+				const ObjectRef target = MakeSceneEntityRef(scene, entity);
+				transaction.Changes.push_back(Change{ EChangeKind::AddObject,
+					AddObjectChange{ .Target = target, .AfterCreate = CaptureRootObjectSnapshot(domain, context, target) } });
+			}
+			if (alsoDo)
+			{
+				alsoDo(pasted.front(), transaction);
+			}
+			roots.push_back(pasted.front());
 		}
-		if (alsoDo)
+		if (!roots.empty())
 		{
-			alsoDo(root, transaction);
+			transactions.Push(std::move(transaction));
 		}
-		transactions.Push(std::move(transaction));
-
-		return root;
+		return roots;
 	}
 
 	std::string MakeCopyName(const SceneDocument& scene, const std::string& name)

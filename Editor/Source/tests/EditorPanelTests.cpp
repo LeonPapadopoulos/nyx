@@ -6,6 +6,7 @@
 #include "ComponentTypeRegistry.h"
 #include "CrashCardsPanel.h"
 #include "DetailsPanel.h"
+#include "ReflectedPropertyDrawer.h"
 #include "EditorPreferences.h"
 #include "EntityReferenceWidget.h"
 #include "GroundComponent.h"
@@ -136,7 +137,7 @@ namespace
 
 		// Takes the deleted entity's slot, so undo brings it back in another one
 		const Entity other = editing.Scene.CreateEntity("Other");
-		editing.Scene.GetSelection() = other;
+		editing.Scene.Select(other);
 
 		editing.Undo();
 		Require(editing.Scene.GetSelection() == other, "Undo should keep the selection on the same entity");
@@ -144,7 +145,7 @@ namespace
 		const std::optional<Entity> restored = editing.Scene.FindEntity(firstGuid);
 		Require(restored.has_value() && *restored != other, "Undo should restore the deleted entity in a free slot");
 
-		editing.Scene.GetSelection() = *restored;
+		editing.Scene.Select(*restored);
 		editing.Redo();
 		Require(!editing.Scene.GetSelection(), "Redoing the delete should clear the selection of the deleted entity");
 	}
@@ -154,7 +155,7 @@ namespace
 		SceneEditor editing;
 		const Entity cube = editing.Scene.CreateEntity("Cube");
 		editing.Scene.GetRegistry().Add<TransformComponent>(cube, TransformComponent{});
-		editing.Scene.GetSelection() = cube;
+		editing.Scene.Select(cube);
 
 		Require(!editing.CanPaste(), "Nothing should be pasteable before a copy");
 		editing.PasteEntity();
@@ -166,7 +167,7 @@ namespace
 		Require(editing.Scene.GetGuid(duplicate) != editing.Scene.GetGuid(cube), "A duplicate should get a new guid");
 		Require(!editing.CanPaste(), "Duplicate should leave the clipboard alone");
 
-		editing.Scene.GetSelection() = cube;
+		editing.Scene.Select(cube);
 		editing.CopySelectedEntity();
 		Require(editing.CanPaste(), "Copy should fill the clipboard");
 		editing.PasteEntity();
@@ -199,7 +200,7 @@ namespace
 		};
 
 		const Entity cube = editing.Scene.CreateEntity("Cube");
-		editing.Scene.GetSelection() = cube;
+		editing.Scene.Select(cube);
 
 		ui.Press(ImGuiKey_D, true, false, handle);
 		Require(CountEntities(editing) == 2, "Ctrl+D should duplicate");
@@ -214,7 +215,7 @@ namespace
 		ui.Press(ImGuiKey_Y, true, false, handle);
 		Require(CountEntities(editing) == 2, "Ctrl+Y should redo");
 
-		editing.Scene.GetSelection() = cube;
+		editing.Scene.Select(cube);
 		ui.Press(ImGuiKey_C, true, false, handle);
 		ui.Press(ImGuiKey_V, true, false, handle);
 		Require(CountEntities(editing) == 3 && editing.CanPaste(), "Ctrl+C and Ctrl+V should copy and paste");
@@ -239,7 +240,7 @@ namespace
 				details.Draw(editing);
 			});
 
-		editing.Scene.GetSelection() = cube;
+		editing.Scene.Select(cube);
 		ui.Frame([&]()
 			{
 				outliner.Draw(editing);
@@ -277,7 +278,7 @@ namespace
 		SceneEditor editing;
 		const Entity cube = editing.Scene.CreateEntity("A cube with a long name that would want room");
 		editing.Scene.GetRegistry().Add<TransformComponent>(cube, TransformComponent{});
-		editing.Scene.GetSelection() = cube;
+		editing.Scene.Select(cube);
 		SceneOutlinerPanel outliner;
 		DetailsPanel details;
 		GameLinkPanel gameLink;
@@ -448,7 +449,7 @@ namespace
 		answer.Components.push_back(InspectedComponent{ .Type = "Nyx::TransformComponent", .DisplayName = "Transform", .Properties = transformBlock.GetBytes() });
 		answer.Components.push_back(InspectedComponent{ .Type = "Game::Unknown", .DisplayName = "Unknown", .Properties = transformBlock.GetBytes() });
 
-		editing.Scene.GetSelection() = ground;
+		editing.Scene.Select(ground);
 		DetailsPanel details;
 		const auto draw = [&]()
 		{
@@ -466,7 +467,7 @@ namespace
 		Require(details.GetInspectedEntity() == editing.Scene.GetGuid(ground), "The Runtime section should show the game's answer for the entity");
 
 		// While Play runs, every entity has the section, even one without run-time components here
-		editing.Scene.GetSelection() = plain;
+		editing.Scene.Select(plain);
 		ui.Frame(draw);
 		Require(details.GetInspectedEntity() == editing.Scene.GetGuid(plain), "While a game runs, any entity should be asked about");
 
@@ -474,7 +475,7 @@ namespace
 		ui.Frame(draw);
 		Require(!details.GetInspectedEntity(), "Without a game or run-time components, nothing should be asked about");
 
-		editing.Scene.GetSelection() = ground;
+		editing.Scene.Select(ground);
 		details.bOpen = false;
 		ui.Frame(draw);
 		Require(!details.GetInspectedEntity(), "A closed panel should ask about nothing");
@@ -575,7 +576,7 @@ namespace
 		TerrainBrushTool& brush = editing.TerrainBrush;
 		brush.bOn = true;
 		Require(!brush.IsActive(editing.Scene), "The brush should need a terrain selected");
-		editing.Scene.GetSelection() = terrain;
+		editing.Scene.Select(terrain);
 		Require(brush.IsActive(editing.Scene), "The brush should be on for a selected terrain");
 
 		brush.Settings.Radius = 2.0f;
@@ -652,9 +653,9 @@ namespace
 		world.Add<SdfTerrainComponent>(terrain, values);
 		const Entity other = editing.Scene.CreateEntity("Other");
 		world.Add<SdfTerrainComponent>(other, values);
-		editing.Scene.GetSelection() = flat;
+		editing.Scene.Select(flat);
 		Require(FindPlannedTerrain(editing) == terrain, "Without a planned terrain selected, the first planned one");
-		editing.Scene.GetSelection() = other;
+		editing.Scene.Select(other);
 		Require(FindPlannedTerrain(editing) == other, "A planned terrain selected should be shown");
 		auto pinsOf = [&]() -> const std::vector<SdfTerrainPlanPin>& { return world.Get<SdfTerrainComponent>(terrain).Plan.Pins; };
 
@@ -753,6 +754,65 @@ namespace
 	// conflicting ID"). The mouse goes down the details panel row by row, over an entity with every
 	// physics component: a category named like its component ("Rigid Body") or a property must
 	// never share an item's ID.
+	void TestDetailsSearch()
+	{
+		HeadlessUI ui;
+		RegisterDefaultPropertyWidgets();
+
+		SceneEditor editing;
+		const Entity cube = editing.Scene.CreateEntity("Cube");
+		editing.Scene.GetRegistry().Add<TransformComponent>(cube, TransformComponent{});
+		editing.Scene.Select(cube);
+		DetailsPanel details;
+
+		const auto draw = [&]()
+		{
+			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+			ImGui::SetNextWindowSize(ImVec2(420.0f, 700.0f));
+			details.Draw(editing);
+		};
+		const auto height = [&]()
+		{
+			for (int frame = 0; frame < 3; ++frame)
+			{
+				ui.Frame(draw);
+			}
+			return ImGui::FindWindowByName("Details")->ContentSize.y;
+		};
+		const auto search = [&](const char* text)
+		{
+			for (size_t count = details.GetFilter().size(); count > 0; --count)
+			{
+				ui.Press(ImGuiKey_Backspace, false, false, draw);
+			}
+			ImGui::GetIO().AddInputCharactersUTF8(text);
+			return height();
+		};
+
+		const float all = height();
+		ui.Frame([&]()
+			{
+				draw();
+				ImGui::SetWindowFocus("Details");
+			});
+		ui.Frame(draw);
+		ui.Press(ImGuiKey_F, true, false, draw);
+		ui.Frame(draw);
+		ui.Frame(draw);
+		const float none = search("no such name");
+		Require(details.GetFilter() == "no such name", "Ctrl+F should reach the search");
+
+		const float oneProperty = search("POSITION");
+		Require(oneProperty > none, "A property's name should show its component's section, whatever the case");
+		const float wholeComponent = search("transform");
+		Require(wholeComponent > oneProperty, "A component's name should show all its properties");
+		const float closedAgain = search("");
+		Require(closedAgain == all, "What was closed before the search should be closed after it");
+
+		Require(ReflectedTypeHasMatch(Nyx::Reflection::GetTypeMetadata<TransformComponent>(), "posit"), "A part of a property's name should match");
+		Require(!ReflectedTypeHasMatch(Nyx::Reflection::GetTypeMetadata<TransformComponent>(), "no such name"), "Another name shouldn't");
+	}
+
 	void TestDetailsHaveNoConflictingIds()
 	{
 		HeadlessUI ui;
@@ -765,7 +825,7 @@ namespace
 		world.Add<BoxColliderComponent>(crate, BoxColliderComponent{});
 		world.Add<RigidBodyComponent>(crate, RigidBodyComponent{});
 		world.Add<PhysicsMaterialComponent>(crate, PhysicsMaterialComponent{});
-		editing.Scene.GetSelection() = crate;
+		editing.Scene.Select(crate);
 
 		DetailsPanel details;
 		const auto draw = [&]()
@@ -891,7 +951,7 @@ namespace
 		world.Get<ParentComponent>(child).bFollowInGame = false;
 
 		// The Transform section of a child, with its warning, draws with no two items sharing an ID
-		editing.Scene.GetSelection() = child;
+		editing.Scene.Select(child);
 		DetailsPanel details;
 		const auto draw = [&]()
 		{
@@ -1022,7 +1082,7 @@ namespace
 		const Entity again = *editing.Scene.FindEntity(placedGuid);
 
 		// Duplicate: the copy's parts are its own
-		editing.Scene.GetSelection() = again;
+		editing.Scene.Select(again);
 		editing.DuplicateSelectedEntity();
 		const Entity copy = *editing.Scene.GetSelection();
 		const EntityGuid copyGuid = editing.Scene.GetGuid(copy);
@@ -1032,7 +1092,7 @@ namespace
 		Require(world.Get<ParentComponent>(*copiedLight).Parent == GetPrefabPartGuid(copyGuid, armGuid), "A duplicate's parts should hang from each other");
 
 		// A part copied alone is no part
-		editing.Scene.GetSelection() = *copiedLight;
+		editing.Scene.Select(*copiedLight);
 		editing.CopySelectedEntity();
 		editing.PasteEntity();
 		Require(!world.Has<PrefabPartComponent>(*editing.Scene.GetSelection()), "A part pasted without its instance should be a plain entity");
@@ -1177,7 +1237,7 @@ namespace
 		};
 		for (const Entity selected : { *editing.Scene.FindEntity(guidA), armOf(guidA) })
 		{
-			editing.Scene.GetSelection() = selected;
+			editing.Scene.Select(selected);
 			ui.Frame(draw);
 			ui.Frame(draw);
 			for (float y = 0.0f; y < 780.0f; y += 6.0f)
@@ -1285,7 +1345,7 @@ namespace
 		Require(SetParent(prefab.Scene, prefab.Transactions, *prefab.Scene.FindEntity(addedLocal), std::nullopt), "Unparenting failed");
 		Require(!mode.Save(error) && error.find("below its root") != std::string::npos, "Save should refuse an entity outside the root");
 		prefab.Undo();
-		prefab.Scene.GetSelection() = *prefab.Scene.FindEntity(prefab.PrefabRoot);
+		prefab.Scene.Select(*prefab.Scene.FindEntity(prefab.PrefabRoot));
 		prefab.DeleteSelectedEntity();
 		Require(!mode.Save(error) && error.find("root was deleted") != std::string::npos, "Save should refuse a prefab without its root");
 		prefab.Undo();
@@ -1312,7 +1372,7 @@ namespace
 			world.Add<TransformComponent>(Cube, TransformComponent{});
 			Decal = Editing.Scene.CreateEntity("Decal");
 			world.Add<SurfaceDecalComponent>(Decal, SurfaceDecalComponent{});
-			Editing.Scene.GetSelection() = Decal;
+			Editing.Scene.Select(Decal);
 
 			ReflectionSourceRegistry::Get().Register(GetHostProperty(), SourceLocation(HostMarker, 1));
 			Nyx::UI::SetSourceItemCallback(&Collect, this);
@@ -1556,11 +1616,11 @@ namespace
 
 		fixture.Frame();
 		fixture.Press(fixture.GetHostItems()[0].GetCenter());
-		fixture.Editing.Scene.GetSelection() = fixture.Cube;
+		fixture.Editing.Scene.Select(fixture.Cube);
 		fixture.Frame();
 		Require(!pick.IsWaiting(), "Selecting another entity should stop the eyedropper");
 
-		fixture.Editing.Scene.GetSelection() = fixture.Decal;
+		fixture.Editing.Scene.Select(fixture.Decal);
 		fixture.Editing.Scene.GetRegistry().Get<SurfaceDecalComponent>(fixture.Decal).Anchor.Host = cubeGuid;
 		fixture.Frame();
 		fixture.Press(fixture.GetHostItems()[1].GetCenter());
@@ -1572,7 +1632,7 @@ namespace
 		Require(DescribeEntityReference(&world, missing) == "Missing (0x0000000000001234)",
 			"A guid no entity has should show as missing, with the guid");
 
-		fixture.Editing.Scene.GetSelection() = fixture.Decal;
+		fixture.Editing.Scene.Select(fixture.Decal);
 		fixture.Editing.Scene.GetRegistry().Get<SurfaceDecalComponent>(fixture.Decal).Anchor.Host = missing;
 		fixture.Frame();
 		fixture.Press(fixture.GetHostItems()[1].GetCenter());
@@ -2764,7 +2824,7 @@ namespace
 		SceneEditor editing;
 		const Entity cube = editing.Scene.CreateEntity("Cube");
 		editing.Scene.GetRegistry().Add<TransformComponent>(cube, TransformComponent{});
-		editing.Scene.GetSelection() = cube;
+		editing.Scene.Select(cube);
 
 		SceneOutlinerPanel outliner;
 		DetailsPanel details;
@@ -3017,6 +3077,7 @@ int main()
 		TestScatterFollowsBlockers();
 		TestTerrainBrushStroke();
 		TestTerrainPlanEdits();
+		TestDetailsSearch();
 		TestDetailsHaveNoConflictingIds();
 		TestEntityReferenceCombo();
 		TestEntityReferenceDropFromOutliner();

@@ -8,6 +8,7 @@
 
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace Nyx::Editor
@@ -40,6 +41,9 @@ namespace Nyx::Editor
 	// Component, and Remove Component on a component header's right-click menu. Run-time components
 	// (ComponentTypeOps::IsRuntime()), which the world makes itself and never saves, are shown greyed
 	// in a Runtime section after them: the editor's own world's, or while Play runs, a running game's.
+	// At the top a search, which Ctrl+F reaches while the panel has the focus: it shows the components
+	// with its text in their names, whole and open, and of the others only the properties that have
+	// it. Of several selected entities it shows the one selected last.
 	class DetailsPanel
 	{
 	public:
@@ -59,14 +63,24 @@ namespace Nyx::Editor
 			return InspectedEntity;
 		}
 
+		// The search's text
+		const std::string& GetFilter() const
+		{
+			return Filter;
+		}
+
 		bool bOpen = true;
 
 	private:
 		void DrawWindow(SceneEditor& editing);
-		void DrawRuntimeSection(const Nyx::Registry& world, Nyx::Entity entity);
-		void DrawInspectedComponent(const Nyx::InspectedComponent& component);
+		// Whether it drew anything
+		bool DrawRuntimeSection(const Nyx::Registry& world, Nyx::Entity entity);
+		void DrawInspectedComponent(const Nyx::InspectedComponent& component, std::string_view filter);
 
 	private:
+		std::string Filter;
+		bool bFocusSearch = false;
+
 		std::optional<GameInspection> Game;
 		std::optional<Nyx::EntityGuid> InspectedEntity;
 
