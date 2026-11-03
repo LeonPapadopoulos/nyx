@@ -9,6 +9,8 @@
 #include "Prefab.h"
 #include "ReflectedArchiveSerializer.h"
 #include "SceneSerializer.h"
+#include "SdfTerrain.h"
+#include "TerrainSave.h"
 #include "TransformComponent.h"
 
 #include <algorithm>
@@ -32,6 +34,26 @@ namespace
 	constexpr std::string_view MadeSection = "Made";
 	constexpr std::string_view InstancesSection = "Instances";
 	constexpr std::string_view MotionsSection = "Motions";
+	constexpr std::string_view TerrainsSection = "Terrains";
+
+	// A terrain's properties but its edits, which a save holds on their own
+	const std::vector<size_t>& GetTerrainPropertiesWithoutEdits()
+	{
+		static const std::vector<size_t> Properties = []
+		{
+			const Nyx::Reflection::TypeMetadata& type = Nyx::Reflection::GetTypeMetadata<SdfTerrainComponent>();
+			std::vector<size_t> properties;
+			for (size_t index = 0; index < type.PropertyCount; ++index)
+			{
+				if (std::string_view(type.Properties[index].Name) != "Edits")
+				{
+					properties.push_back(index);
+				}
+			}
+			return properties;
+		}();
+		return Properties;
+	}
 
 	// FNV-1a over the file's bytes; 0 if it can't be read
 	uint64_t HashFile(const std::filesystem::path& path)
@@ -523,6 +545,126 @@ namespace
 		return true;
 	}
 
+	// The terrains whose edits aren't those of the base. Every edit stays, so all can be undone later.
+	void WriteTerrains(const WorldSaveBase& base, const WorldSnapshot& snapshot, BinaryWriter& outRecords, uint32_t& outCount)
+	{
+		outCount = 0;
+		for (const WorldSnapshot::Terrain& terrain : snapshot.Terrains)
+		{
+			const auto scene = std::find_if(base.Entities.Terrains.begin(), base.Entities.Terrains.end(),
+				[&terrain](const WorldSnapshot::Terrain& candidate)
+				{
+					return candidate.Guid == terrain.Guid;
+				});
+			const bool bFromScene = scene != base.Entities.Terrains.end();
+			const size_t sceneCount = bFromScene ? scene->Values.Edits.size() : 0;
+			const size_t kept = bFromScene ? CountSameTerrainEdits(terrain.Values, scene->Values) : 0;
+			if (bFromScene && kept == sceneCount && kept == terrain.Values.Edits.size())
+			{
+				continue;
+			}
+
+			std::vector<uint64_t> runs;
+			if (bFromScene)
+			{
+				HashTerrainEditRuns(scene->Values, runs);
+			}
+
+			BinaryWriter edits;
+			WriteTerrainEdits(terrain.Values, edits, kept > 0 ? terrain.Values.Edits[kept - 1].Revision : 0);
+
+			BinaryWriter record;
+			record.WriteUInt64(terrain.Guid.Value);
+			record.WriteUInt8(bFromScene ? 1 : 0);
+			record.WriteUInt64(kept);
+			record.WriteUInt64(sceneCount);
+			record.WriteUInt64(bFromScene ? runs[kept] : 0);
+			record.WriteUInt64(GetTerrainGeneratorFingerprint());
+			record.WriteUInt64(HashTerrainLayers(terrain.Values));
+			record.WriteBlock(edits);
+			outRecords.WriteBlock(record);
+			++outCount;
+		}
+	}
+
+	bool ReadTerrains(BinaryReader& section, Registry& world, ReadWarnings& warnings)
+	{
+		uint32_t count = 0;
+		if (!section.ReadUInt32(count))
+		{
+			return false;
+		}
+
+		const EntityGuidLookup guids = MakeEntityGuidLookup(world);
+		for (uint32_t index = 0; index < count; ++index)
+		{
+			BinaryReader record;
+			BinaryReader block;
+			uint64_t guid = 0;
+			uint8_t bFromScene = 0;
+			uint64_t kept = 0;
+			uint64_t sceneCount = 0;
+			uint64_t sceneHash = 0;
+			uint64_t generator = 0;
+			uint64_t layers = 0;
+			std::vector<SdfTerrainEdit> saved;
+			if (!section.ReadBlock(record) || !record.ReadUInt64(guid) || !record.ReadUInt8(bFromScene) || !record.ReadUInt64(kept) || !record.ReadUInt64(sceneCount) ||
+				!record.ReadUInt64(sceneHash) || !record.ReadUInt64(generator) || !record.ReadUInt64(layers) || !record.ReadBlock(block) || !ReadTerrainEdits(block, saved))
+			{
+				return false;
+			}
+
+			const std::optional<Entity> entity = FindEntityByGuid(world, guids, EntityGuid{ guid });
+			if (!entity || !world.Has<SdfTerrainComponent>(*entity))
+			{
+				warnings.Add("dropped the edits of a terrain the world no longer has");
+				continue;
+			}
+			SdfTerrainComponent& terrain = world.Get<SdfTerrainComponent>(*entity);
+
+			// What the save's bakes were made from is still there, or they make their values again
+			bool bSameGround = generator == GetTerrainGeneratorFingerprint() && layers == HashTerrainLayers(terrain);
+			if (!bSameGround)
+			{
+				warnings.Add("the generator or the layers of a terrain have changed since it was saved, so the ground under its edits may differ");
+			}
+
+			if (bFromScene != 0)
+			{
+				std::vector<uint64_t> runs;
+				HashTerrainEditRuns(terrain, runs);
+				const bool bSameEdits = terrain.Edits.size() == sceneCount && kept < runs.size() && runs[static_cast<size_t>(kept)] == sceneHash;
+				if (!bSameEdits)
+				{
+					warnings.Add("the edits a scene gives its terrain have changed since it was saved");
+					bSameGround = false;
+				}
+
+				// All of the scene's if the world had undone none of them, its new ones too
+				const size_t keep = kept == sceneCount ? terrain.Edits.size() : std::min(static_cast<size_t>(kept), terrain.Edits.size());
+				terrain.Edits.erase(terrain.Edits.begin() + static_cast<std::ptrdiff_t>(keep), terrain.Edits.end());
+			}
+			else
+			{
+				terrain.Edits.clear();
+			}
+
+			// Numbered on from the terrain's, the same as they were if nothing has changed
+			uint64_t revision = GetTerrainRevision(terrain);
+			terrain.Edits.reserve(terrain.Edits.size() + saved.size());
+			for (SdfTerrainEdit& edit : saved)
+			{
+				edit.Revision = ++revision;
+				if (!bSameGround)
+				{
+					edit.Baked.reset();
+				}
+				terrain.Edits.push_back(std::move(edit));
+			}
+		}
+		return true;
+	}
+
 	bool ReadMotions(BinaryReader& section, std::vector<WorldSaveMotion>& outMotions, ReadWarnings& warnings)
 	{
 		uint32_t count = 0;
@@ -577,7 +719,14 @@ namespace Nyx
 						continue;
 					}
 					const size_t offset = outSnapshot.Bytes.GetBytes().size();
-					if (!ReflectedArchiveSerializer::SerializeObject(outSnapshot.Bytes, component, *ops->TypeMetadata))
+					const bool bTerrain = ops->TypeMetadata == &Nyx::Reflection::GetTypeMetadata<SdfTerrainComponent>();
+					if (bTerrain)
+					{
+						outSnapshot.Terrains.push_back(WorldSnapshot::Terrain{ savedEntity.Guid, *static_cast<const SdfTerrainComponent*>(component) });
+					}
+					const bool bValues = bTerrain ? ReflectedArchiveSerializer::SerializeProperties(outSnapshot.Bytes, component, *ops->TypeMetadata, GetTerrainPropertiesWithoutEdits())
+												  : ReflectedArchiveSerializer::SerializeObject(outSnapshot.Bytes, component, *ops->TypeMetadata);
+					if (!bValues)
 					{
 						bWritten = false;
 						return;
@@ -751,6 +900,11 @@ namespace Nyx
 		writeCounted(MadeSection, madeCount, madeRecords);
 		writeCounted(InstancesSection, instanceCount, instanceRecords);
 		writeCounted(MotionsSection, static_cast<uint32_t>(snapshot.Motions.size()), motionRecords);
+
+		BinaryWriter terrainRecords;
+		uint32_t terrainCount = 0;
+		WriteTerrains(base, snapshot, terrainRecords, terrainCount);
+		writeCounted(TerrainsSection, terrainCount, terrainRecords);
 		return true;
 	}
 
@@ -800,7 +954,7 @@ namespace Nyx
 				outError = damaged;
 				return false;
 			}
-			if (name != HeaderSection && name != DestroyedSection && name != ChangedSection && name != MadeSection && name != InstancesSection && name != MotionsSection)
+			if (name != HeaderSection && name != DestroyedSection && name != ChangedSection && name != MadeSection && name != InstancesSection && name != MotionsSection && name != TerrainsSection)
 			{
 				warnings.Add("skipped section '" + name + "', which this build doesn't know");
 				continue;
@@ -849,12 +1003,14 @@ namespace Nyx
 		BinaryReader* made = read(MadeSection);
 		BinaryReader* instances = read(InstancesSection);
 		BinaryReader* motionRecords = read(MotionsSection);
+		BinaryReader* terrains = read(TerrainsSection);
 		std::vector<WorldSaveMotion> motions;
 		if ((destroyed && !ReadDestroyed(*destroyed, loadedWorld, guids)) ||
 			(changed && !ReadChanged(*changed, loadedWorld, guids, postLoadContext, warnings)) ||
 			(made && !ReadMade(*made, loadedWorld, guids, postLoadContext, warnings)) ||
 			(instances && !ReadInstances(*instances, loadedWorld, guids, postLoadContext, warnings)) ||
-			(motionRecords && !ReadMotions(*motionRecords, motions, warnings)))
+			(motionRecords && !ReadMotions(*motionRecords, motions, warnings)) ||
+			(terrains && !ReadTerrains(*terrains, loadedWorld, warnings)))
 		{
 			warnings.Log(path.string());
 			outError = damaged;

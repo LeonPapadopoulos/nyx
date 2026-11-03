@@ -5,6 +5,7 @@
 #include "Entity.h"
 #include "ReflectionMacros.h"
 #include "SceneSerializationTypes.h"
+#include "SdfTerrainComponent.h"
 
 #include <glm/glm.hpp>
 
@@ -49,10 +50,19 @@ namespace Nyx
 	//              of each other component the properties that differ from the prefab, or whole if
 	//              the prefab's entity hasn't got it. What it doesn't hold follows the prefab.
 	//   Motions:   count (u32) | a WorldSaveMotion as a property block for each
+	//   Terrains:  count (u32) | records, each with its size in front, one per SDF terrain whose edits
+	//              aren't those of the scene: guid (u64) | whether it is a difference from the scene's
+	//              terrain (u8) | how many of the scene's edits it still has, from the first (u64) |
+	//              how many the scene had (u64) | a hash of those it has (HashTerrainEditRuns(), u64) |
+	//              the generator's fingerprint (u64) | the seed and layers' hash (u64) | the edits after
+	//              those, in their canonical form (WriteTerrainEdits()), as a block. Everything else
+	//              of a terrain is a component like any other, without its Edits, which the
+	//              comparison of properties leaves out.
 	//
-	// Version 1 had no Instances or Motions; it is read as it is.
+	// Version 1 had no Instances or Motions, and versions 1 and 2 no Terrains, a terrain's edits a
+	// property; they are read as they are.
 	inline constexpr uint32_t WorldSaveMagic = 0x56534E4E; // 'NNSV'
-	inline constexpr uint32_t WorldSaveVersion = 2;
+	inline constexpr uint32_t WorldSaveVersion = 3;
 	inline constexpr std::string_view WorldSaveExtension = ".nyxsave";
 
 	// Where a world's time is, from its clock (FixedStepClock): what a save keeps, and what a load
@@ -130,6 +140,14 @@ namespace Nyx
 		// A prefab's entities as they were then, and which is its root
 		struct Prefab;
 
+		// An SDF terrain as it was then, with all its edits, whose bakes' values it shares: copying
+		// them is cheap, and a worker makes those they haven't got
+		struct Terrain
+		{
+			EntityGuid Guid;
+			SdfTerrainComponent Values;
+		};
+
 		std::vector<SavedEntity> Entities;
 		std::vector<Component> Components;
 		BinaryWriter Bytes;
@@ -140,6 +158,8 @@ namespace Nyx
 
 		// Moving bodies and characters; a world's physics adds them (GameWorld::TakeSaveSnapshot())
 		std::vector<WorldSaveMotion> Motions;
+
+		std::vector<Terrain> Terrains;
 	};
 
 	struct WorldSnapshot::Prefab
@@ -188,6 +208,9 @@ namespace Nyx
 	// its bodies went: GameWorld::LoadSave() hands them to the bodies. Instances are made from the
 	// prefabs the context's asset resolver gives as they are now: what the save has of a part a prefab
 	// no longer has is dropped, with a warning; a part it has gained is made where the instance is.
+	// A terrain's edits are the scene's it still had, the scene's new ones included, then the save's in
+	// their order, all there to undo. If the generator, the seed and layers or the scene's edits have
+	// changed, that is a warning, and the save's bakes make their values again.
 	bool LoadWorldSave(const std::filesystem::path& path, Registry& outWorld, ScenePostLoadContext postLoadContext, WorldSaveBase& outBase,
 		WorldSaveClock& outClock, std::string& outError, std::vector<WorldSaveMotion>* outMotions = nullptr);
 }

@@ -829,8 +829,13 @@ puts the save on top.
   `GameWorld::LoadSave()` replaces a world no step has run in yet, leaves it as it was on failure, and
   hands back the base and the clock. `SaveWorldToFile()` and `LoadWorldSave()` do the same with a
   `Registry` alone, without velocities.
-- Not yet: terrain edits in their own form (they are saved as a property of the terrain), a game's own
-  state and saving from the game.
+- **Terrain edits:** a terrain's edits are saved on their own, in their canonical form, as those after
+  the ones the scene gave it that it still has. Every edit and bake stays, so all of them can be undone
+  after a load. Bakes keep their values, so nothing has to be made again. If the generator, the seed and
+  layers or the scene's edits have changed, the save still loads, with a warning: the scene's edits
+  come first, the save's on top with their revisions numbered on, and its bakes make their values again.
+  What a machine joining is sent is still refused in that case.
+- Not yet: a game's own state and saving from the game.
 - Tests: `NyxWorldSaveTests`, `NyxFixedStepClockTests`. `NyxWorldSaveTests --measure` prints what a
   snapshot and the comparison cost.
 

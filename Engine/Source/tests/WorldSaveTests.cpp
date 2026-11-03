@@ -4,7 +4,8 @@
 // left behind by their parents staying there; the clock and the time of day going on; a save made on
 // another thread from a snapshot; sections and types a build doesn't know, later versions, damage and
 // a missing scene; instances of prefabs made at run time as what differs from their prefabs, following
-// changes to them; those of the scene; bodies and characters going on as fast as they went. With
+// changes to them; those of the scene; bodies and characters going on as fast as they went; a terrain's
+// edits on their own, there to undo, and loading when the ground under them has changed. With
 // --measure, in a Release build, what taking a snapshot costs.
 #include "BinaryArchive.h"
 #include "CharacterComponent.h"
@@ -23,8 +24,12 @@
 #include "PointLightComponent.h"
 #include "Prefab.h"
 #include "ReflectionUtils.h"
+#include "ReflectedArchiveSerializer.h"
 #include "SceneSerializer.h"
+#include "SdfTerrain.h"
+#include "SdfTerrainEditCommand.h"
 #include "SpawnPrefabCommand.h"
+#include "TerrainSave.h"
 #include "TestSupport.h"
 #include "TimeOfDayComponent.h"
 #include "TransformComponent.h"
@@ -528,6 +533,8 @@ namespace
 			emptyTail.WriteBlock(noRecords);
 			emptyTail.WriteString("Motions");
 			emptyTail.WriteBlock(noRecords);
+			emptyTail.WriteString("Terrains");
+			emptyTail.WriteBlock(noRecords);
 
 			Nyx::BinaryWriter record;
 			record.WriteUInt64(PlainGuid.Value);
@@ -565,6 +572,8 @@ namespace
 			newSections.WriteString("Instances");
 			newSections.WriteBlock(noRecords);
 			newSections.WriteString("Motions");
+			newSections.WriteBlock(noRecords);
+			newSections.WriteString("Terrains");
 			newSections.WriteBlock(noRecords);
 			first.WriteBytes(good.data(), good.size() - newSections.GetBytes().size());
 			std::vector<std::byte> bytes = first.GetBytes();
@@ -959,6 +968,318 @@ namespace
 		Require(loaded.TakeSaveSnapshot(again) && again.Motions.size() == 4, "A loaded world's bodies should have their motions, too");
 	}
 
+	constexpr EntityGuid GroundGuid{ 801 };
+	constexpr uint64_t SceneEdits = 6;
+
+	// A hole somewhere near the origin, the nth a little along from the last: all near one brick
+	Nyx::SdfTerrainEdit Hole(int n)
+	{
+		Nyx::SdfTerrainEdit edit;
+		edit.Mode = Nyx::ESdfTerrainEditMode::Subtract;
+		edit.Position = glm::vec3(1.0f + 0.3f * float(n), 0.0f, 1.0f + 0.2f * float(n % 5));
+		edit.Radius = 1.5f;
+		return edit;
+	}
+
+	std::filesystem::path WriteGround(const std::filesystem::path& folder, int extraSceneEdits = 0, uint32_t seed = 1)
+	{
+		Registry scene;
+		const Entity ground = Add(scene, GroundGuid, "Ground");
+		Nyx::SdfTerrainComponent terrain;
+		terrain.Seed = seed;
+		terrain.BakeAfter = 4;
+		for (int n = 0; n < int(SceneEdits) + extraSceneEdits; ++n)
+		{
+			Nyx::AppendTerrainEdit(terrain, Hole(100 + n));
+		}
+		scene.Add<Nyx::SdfTerrainComponent>(ground, std::move(terrain));
+		const std::filesystem::path path = folder / "Ground.nyxscene";
+		Require(Nyx::SceneSerializer::SaveToFile(scene, path), "The scene should be saved");
+		return path;
+	}
+
+	const Nyx::SdfTerrainComponent& GroundOf(const Registry& world)
+	{
+		return world.Get<Nyx::SdfTerrainComponent>(Find(world, GroundGuid));
+	}
+
+	void Dig(GameWorld& world, int from, int count)
+	{
+		for (int n = from; n < from + count; ++n)
+		{
+			world.GetCommands().Add(Nyx::SdfTerrainEditCommand{ .Terrain = GroundGuid, .Edit = Hole(n) });
+		}
+	}
+
+	size_t CountBakes(const Nyx::SdfTerrainComponent& terrain, bool bWithValues)
+	{
+		return size_t(std::count_if(terrain.Edits.begin(), terrain.Edits.end(),
+			[&](const Nyx::SdfTerrainEdit& edit)
+			{
+				return edit.Kind == Nyx::ESdfTerrainEditKind::Bake && (!bWithValues || edit.Baked);
+			}));
+	}
+
+	// The terrain's values around the holes, for comparing to the bit
+	std::vector<float> SampleGround(const Nyx::SdfTerrainComponent& terrain)
+	{
+		std::vector<float> values;
+		for (int x = -2; x < 10; ++x)
+		{
+			for (int z = -2; z < 6; ++z)
+			{
+				values.push_back(Nyx::SampleTerrainValue(terrain, glm::vec3(float(x) + 0.25f, -0.5f, float(z) + 0.25f)));
+			}
+		}
+		return values;
+	}
+
+	void TestTerrainEditsComeBack()
+	{
+		const TestDirectory folder("NyxWorldSave");
+		const std::filesystem::path scene = WriteGround(folder.Path);
+		const std::filesystem::path save = folder.Path / "Dug.nyxsave";
+
+		GameWorld running;
+		WorldSaveBase base;
+		StartWorld(running, scene, base);
+		const Registry& ran = running.GetRegistry();
+
+		// Nothing dug: the scene's edits aren't saved over again
+		Require(running.SaveToFile(base, RunSteps(running, 0, 1), save), "The world should be saved");
+		Require(std::filesystem::file_size(save) < 400, "A terrain with only its scene's edits should save nothing of them, not " + std::to_string(std::filesystem::file_size(save)) + " bytes");
+		const std::vector<float> asInTheScene = SampleGround(GroundOf(ran));
+
+		// Dug, in steps, so it bakes
+		for (uint64_t step = 1; step < 11; ++step)
+		{
+			Dig(running, int(step), 2);
+			RunSteps(running, step, 1);
+		}
+		const WorldSaveClock clock{ 11, 11.0 * Step, Step };
+		const size_t bakes = CountBakes(GroundOf(ran), false);
+		Require(bakes > 0, "Digging in one place should have baked it");
+		Require(running.SaveToFile(base, clock, save), "The world should be saved");
+
+		GameWorld loaded;
+		WorldSaveBase loadedBase;
+		WorldSaveClock loadedClock;
+		std::string error;
+		Require(loaded.LoadSave(save, {}, loadedBase, loadedClock, error), "The save should load, but it " + error);
+		const Nyx::SdfTerrainComponent& came = GroundOf(loaded.GetRegistry());
+		Require(Nyx::HashTerrainEdits(came) == Nyx::HashTerrainEdits(GroundOf(ran)), "The edits should come back as they were");
+		Require(Nyx::GetTerrainRevision(came) == Nyx::GetTerrainRevision(GroundOf(ran)), "The terrain's revision should come back");
+		Require(CountBakes(came, true) >= bakes, "The bakes should come back with their values");
+		Require(SampleGround(came) == SampleGround(GroundOf(ran)), "The ground should be the same to the bit");
+		Require(Nyx::HashTerrainRegions(came) == Nyx::HashTerrainRegions(GroundOf(ran)), "The regions should hash the same");
+		RequireSameWorld(ran, loaded.GetRegistry(), "Loaded with a dug terrain");
+
+		// Saved again: still only what is after the scene's
+		const std::filesystem::path again = folder.Path / "Again.nyxsave";
+		Require(loaded.SaveToFile(loadedBase, loadedClock, again), "The loaded world should be saved");
+		Require(std::filesystem::file_size(again) == std::filesystem::file_size(save), "A load saved again should be no bigger");
+
+		// Dug on, the bricks count on: the same bakes at the same revisions as without the load
+		for (uint64_t step = 0; step < 10; ++step)
+		{
+			Dig(running, 50 + int(step), 2);
+			RunSteps(running, clock.StepIndex + step, 1);
+			Dig(loaded, 50 + int(step), 2);
+			RunSteps(loaded, clock.StepIndex + step, 1);
+		}
+		Require(Nyx::HashTerrainEdits(GroundOf(loaded.GetRegistry())) == Nyx::HashTerrainEdits(GroundOf(ran)), "Digging on should make the same edits and bakes as without the load");
+
+		// Undone after a load, back past what was saved, down to what the scene had: the ground as it was
+		GameWorld undone;
+		WorldSaveBase undoneBase;
+		WorldSaveClock undoneClock;
+		Require(undone.LoadSave(save, {}, undoneBase, undoneClock, error), "The save should load, but it " + error);
+		Nyx::SdfTerrainComponent& undoing = undone.GetRegistry().Get<Nyx::SdfTerrainComponent>(Find(undone.GetRegistry(), GroundGuid));
+		Require(undoing.Edits.size() > SceneEdits, "All the edits should be there to undo");
+		undoing.Edits.resize(SceneEdits);
+		Require(SampleGround(undoing) == asInTheScene, "Undoing after a load should give the ground as it was");
+
+		// And undone into the scene's own, then dug anew, saved and loaded
+		undoing.Edits.resize(SceneEdits - 2);
+		Nyx::AppendTerrainEdit(undoing, Hole(70));
+		const std::filesystem::path third = folder.Path / "Third.nyxsave";
+		Require(undone.SaveToFile(undoneBase, undoneClock, third), "The world should be saved");
+		GameWorld thirdWorld;
+		WorldSaveBase thirdBase;
+		WorldSaveClock thirdClock;
+		Require(thirdWorld.LoadSave(third, {}, thirdBase, thirdClock, error), "The save should load, but it " + error);
+		Require(Nyx::HashTerrainEdits(GroundOf(thirdWorld.GetRegistry())) == Nyx::HashTerrainEdits(undoing), "A scene's edit undone should stay undone");
+
+		// A terrain made at run time: all its edits are the save's
+		constexpr EntityGuid MadeGround{ 802 };
+		{
+			Registry& world = thirdWorld.GetRegistry();
+			Nyx::SdfTerrainComponent terrain;
+			Nyx::AppendTerrainEdit(terrain, Hole(1));
+			Nyx::AppendTerrainBake(terrain, glm::ivec3(0));
+			world.Add<Nyx::SdfTerrainComponent>(Add(world, MadeGround, "Made ground"), terrain);
+			const std::filesystem::path fourth = folder.Path / "Fourth.nyxsave";
+			Require(thirdWorld.SaveToFile(thirdBase, thirdClock, fourth), "The world should be saved");
+			Registry back;
+			WorldSaveBase backBase;
+			WorldSaveClock backClock;
+			MustLoad(fourth, back, backBase, backClock);
+			const Nyx::SdfTerrainComponent& made = back.Get<Nyx::SdfTerrainComponent>(Find(back, MadeGround));
+			Require(Nyx::HashTerrainEdits(made) == Nyx::HashTerrainEdits(terrain), "A terrain made at run time should have its edits");
+			Require(CountBakes(made, true) == 1, "A terrain made at run time should have its bake's values");
+		}
+
+		// Cut off in its terrain's edits: refused
+		{
+			const std::vector<std::byte> bytes = ReadBytes(save);
+			const std::filesystem::path cut = folder.Path / "Cut.nyxsave";
+			WriteFile(cut, std::span<const std::byte>(bytes).first(bytes.size() - 10));
+			RequireRefused(cut, "ends early", "A save cut off in its terrain's edits");
+		}
+	}
+
+	// The ground under a save's edits has changed: it loads, its bakes making their values again
+	void TestTerrainEditsOnOtherGround()
+	{
+		const TestDirectory folder("NyxWorldSave");
+		const std::filesystem::path save = folder.Path / "Dug.nyxsave";
+		const std::filesystem::path scene = WriteGround(folder.Path);
+
+		GameWorld running;
+		WorldSaveBase base;
+		StartWorld(running, scene, base);
+		for (uint64_t step = 0; step < 10; ++step)
+		{
+			Dig(running, int(step), 2);
+			RunSteps(running, step, 1);
+		}
+		const Nyx::SdfTerrainComponent dug = GroundOf(running.GetRegistry());
+		const size_t saved = dug.Edits.size() - SceneEdits;
+		const size_t bakes = CountBakes(dug, false);
+		Require(bakes > 0, "Digging in one place should have baked it");
+		Require(running.SaveToFile(base, WorldSaveClock{ 10, 10.0 * Step, Step }, save), "The world should be saved");
+		const std::vector<std::byte> bytes = ReadBytes(save);
+
+		// Another generator
+		{
+			std::vector<std::byte> other = bytes;
+			const uint64_t fingerprint = Nyx::GetTerrainGeneratorFingerprint();
+			const std::byte* first = reinterpret_cast<const std::byte*>(&fingerprint);
+			const auto at = std::search(other.begin(), other.end(), first, first + sizeof(fingerprint));
+			Require(at != other.end(), "A save should say which generator made its terrain");
+			*at ^= std::byte{ 1 };
+			const std::filesystem::path otherSave = folder.Path / "Other.nyxsave";
+			WriteFile(otherSave, other);
+
+			Registry world;
+			WorldSaveBase loadedBase;
+			WorldSaveClock clock;
+			MustLoad(otherSave, world, loadedBase, clock);
+			Require(Nyx::HashTerrainEdits(GroundOf(world)) == Nyx::HashTerrainEdits(dug), "Another generator should still give the same edits");
+			Require(CountBakes(GroundOf(world), false) == bakes && CountBakes(GroundOf(world), true) == 0, "Another generator's bakes should make their values again");
+			Require(SampleGround(GroundOf(world)) == SampleGround(dug), "With values made again, the same generator gives the same ground");
+		}
+
+		// Another seed in the scene, which the world didn't change: followed, the edits on top
+		{
+			WriteGround(folder.Path, 0, 2);
+			Registry world;
+			WorldSaveBase loadedBase;
+			WorldSaveClock clock;
+			MustLoad(save, world, loadedBase, clock);
+			Require(GroundOf(world).Seed == 2, "A seed the world didn't change should follow the scene");
+			Require(GroundOf(world).Edits.size() == dug.Edits.size(), "The edits should stay on other layers");
+			Require(CountBakes(GroundOf(world), true) == 0, "Bakes of other layers should make their values again");
+		}
+
+		// New edits in the scene: first, and the save's on top, numbered on
+		{
+			WriteGround(folder.Path, 3);
+			Registry world;
+			WorldSaveBase loadedBase;
+			WorldSaveClock clock;
+			MustLoad(save, world, loadedBase, clock);
+			const Nyx::SdfTerrainComponent& terrain = GroundOf(world);
+			Require(terrain.Edits.size() == SceneEdits + 3 + saved, "The scene's new edits and the save's should all be there");
+			for (size_t at = 0; at < terrain.Edits.size(); ++at)
+			{
+				Require(terrain.Edits[at].Revision == at + 1, "The revisions should count on");
+			}
+			Require(terrain.Edits[SceneEdits].Position == Hole(100 + int(SceneEdits)).Position, "The scene's new edit should come before the save's");
+			Require(CountBakes(terrain, true) == 0, "Bakes on other edits should make their values again");
+			Require(Nyx::RestoreTerrainBakes(world.Get<Nyx::SdfTerrainComponent>(Find(world, GroundGuid))) == bakes, "They should be made from what is there");
+		}
+
+		// The terrain gone from the scene: the rest loads
+		{
+			Registry empty;
+			Add(empty, PlainGuid, "Plain");
+			Require(Nyx::SceneSerializer::SaveToFile(empty, scene), "The scene should be saved");
+			Registry world;
+			WorldSaveBase loadedBase;
+			WorldSaveClock clock;
+			MustLoad(save, world, loadedBase, clock);
+			Require(!Nyx::FindEntityByGuid(world, GroundGuid), "The save shouldn't make a terrain its scene lost");
+		}
+	}
+
+	// Saves of versions before Terrains have a terrain's edits as a property of it
+	void TestTerrainEditsAsAProperty()
+	{
+		const TestDirectory folder("NyxWorldSave");
+		const std::filesystem::path scene = WriteGround(folder.Path);
+		const std::filesystem::path save = folder.Path / "Old.nyxsave";
+
+		Registry running;
+		WorldSaveBase base;
+		Require(Nyx::SceneSerializer::LoadFromFile(scene, running), "The scene should load");
+		Require(Nyx::MakeWorldSaveBase(scene, running, base), "The world should give a base");
+
+		Nyx::BinaryWriter header;
+		Require(Nyx::WriteWorldSave(base, base.Entities, {}, header), "An unchanged world should be written");
+		Nyx::BinaryWriter noRecords;
+		noRecords.WriteUInt32(0);
+		Nyx::BinaryWriter emptyTail;
+		for (const char* name : { "Changed", "Made", "Instances", "Motions", "Terrains" })
+		{
+			emptyTail.WriteString(name);
+			emptyTail.WriteBlock(noRecords);
+		}
+
+		Nyx::SdfTerrainComponent dug = GroundOf(running);
+		Nyx::AppendTerrainEdit(dug, Hole(1));
+		const Nyx::Reflection::TypeMetadata& type = Nyx::Reflection::GetTypeMetadata<Nyx::SdfTerrainComponent>();
+		size_t editsProperty = type.PropertyCount;
+		for (size_t index = 0; index < type.PropertyCount; ++index)
+		{
+			editsProperty = std::string_view(type.Properties[index].Name) == "Edits" ? index : editsProperty;
+		}
+		Nyx::BinaryWriter record;
+		record.WriteUInt64(GroundGuid.Value);
+		record.WriteUInt32(0);
+		record.WriteUInt32(1);
+		record.WriteString(type.Name);
+		Require(Nyx::ReflectedArchiveSerializer::SerializeProperties(record, &dug, type, { editsProperty }), "The edits should be written");
+		Nyx::BinaryWriter changed;
+		changed.WriteUInt32(1);
+		changed.WriteBlock(record);
+
+		Nyx::BinaryWriter old;
+		old.WriteBytes(header.GetBytes().data(), header.GetBytes().size() - emptyTail.GetBytes().size());
+		old.WriteString("Changed");
+		old.WriteBlock(changed);
+		std::vector<std::byte> bytes = old.GetBytes();
+		const uint32_t version = 2;
+		std::memcpy(bytes.data() + sizeof(uint32_t), &version, sizeof(version));
+		WriteFile(save, bytes);
+
+		Registry world;
+		WorldSaveBase loadedBase;
+		WorldSaveClock clock;
+		MustLoad(save, world, loadedBase, clock);
+		Require(Nyx::HashTerrainEdits(GroundOf(world)) == Nyx::HashTerrainEdits(dug), "A terrain's edits as a property should load");
+	}
+
 	// Not a test: what taking a snapshot costs, the part of saving that holds up the world's thread
 	void MeasureSnapshot()
 	{
@@ -997,6 +1318,46 @@ namespace
 			}
 			std::cout << count << " entities: snapshot " << snapshotMs << " ms (" << bytes / 1024 << " KB), comparing " << writeMs << " ms\n";
 		}
+
+		// A terrain dug many times, a bake to each 20 edits: its edits copied on the world's thread,
+		// written on a worker, its bakes' values there already
+		for (const int count : { 1000, 10000, 100000 })
+		{
+			Registry world;
+			Nyx::SdfTerrainComponent terrain;
+			for (int n = 0; n < count; ++n)
+			{
+				Nyx::AppendTerrainEdit(terrain, Hole(n % 40));
+				if (n % 20 == 0)
+				{
+					Nyx::AppendTerrainBake(terrain, glm::ivec3(n % 400 / 20, 0, 0));
+				}
+			}
+			const Entity ground = Add(world, GroundGuid, "Ground");
+			WorldSaveBase base;
+			base.ScenePath = "Measured.nyxscene";
+			Require(Nyx::TakeWorldSnapshot(world, base.Entities), "The world should give a snapshot");
+			world.Add<Nyx::SdfTerrainComponent>(ground, std::move(terrain));
+			Nyx::RestoreTerrainBakes(world.Get<Nyx::SdfTerrainComponent>(ground));
+
+			double snapshotMs = 1e9;
+			double writeMs = 1e9;
+			size_t bytes = 0;
+			for (int run = 0; run < 5; ++run)
+			{
+				Nyx::WorldSnapshot snapshot;
+				const auto start = std::chrono::steady_clock::now();
+				Require(Nyx::TakeWorldSnapshot(world, snapshot), "The world should give a snapshot");
+				const auto taken = std::chrono::steady_clock::now();
+				Nyx::BinaryWriter out;
+				Require(Nyx::WriteWorldSave(base, snapshot, {}, out), "The save should be written");
+				const auto written = std::chrono::steady_clock::now();
+				snapshotMs = std::min(snapshotMs, std::chrono::duration<double, std::milli>(taken - start).count());
+				writeMs = std::min(writeMs, std::chrono::duration<double, std::milli>(written - taken).count());
+				bytes = out.GetBytes().size();
+			}
+			std::cout << count << " terrain edits: snapshot " << snapshotMs << " ms, writing " << writeMs << " ms (" << bytes / 1024 << " KB)\n";
+		}
 	}
 }
 
@@ -1020,6 +1381,9 @@ int main(int argc, char** argv)
 		TestInstancesMadeAtRunTimeComeBack();
 		TestInstancesOfTheSceneComeBack();
 		TestBodiesGoOnMoving();
+		TestTerrainEditsComeBack();
+		TestTerrainEditsOnOtherGround();
+		TestTerrainEditsAsAProperty();
 	}
 	catch (const std::exception& error)
 	{
