@@ -158,6 +158,17 @@ namespace Nyx::Editor
 		return RuntimeSection{ game->GameName + ", step " + std::to_string(game->Answer->Step), game->Answer->Components };
 	}
 
+	std::vector<const Nyx::ComponentTypeOps*> GetDetailsComponents(const Nyx::Registry& world, Nyx::Entity entity)
+	{
+		std::vector<const Nyx::ComponentTypeOps*> components = Nyx::ComponentTypeRegistry::Get().GetInDetailsOrder();
+		std::erase_if(components, [&](const Nyx::ComponentTypeOps* componentType)
+			{
+				return componentType->IsRuntime() || componentType->TypeMetadata == &Nyx::Reflection::GetTypeMetadata<Nyx::ParentComponent>() ||
+					!componentType->Has(world, entity);
+			});
+		return components;
+	}
+
 	void DetailsPanel::Draw(SceneEditor& editing)
 	{
 		// Set again if the Runtime section is drawn open
@@ -289,14 +300,10 @@ namespace Nyx::Editor
 
 		// One collapsible section per component of the entity, showing its reflected properties; the
 		// run-time ones after them, in the Runtime section
-		for (const Nyx::ComponentTypeOps& componentType : Nyx::ComponentTypeRegistry::Get().GetAll())
+		for (const Nyx::ComponentTypeOps* shownType : GetDetailsComponents(world, selectedEntity))
 		{
-			// The parent link is drawn inside the Transform section
-			void* component = componentType.IsRuntime() || componentType.TypeMetadata == &linkType ? nullptr : componentType.Get(world, selectedEntity);
-			if (!component)
-			{
-				continue;
-			}
+			const Nyx::ComponentTypeOps& componentType = *shownType;
+			void* component = componentType.Get(world, selectedEntity);
 
 			// A search: a component with it in its name whole, another for the properties that have it
 			const char* displayName = componentType.TypeMetadata->DisplayName;

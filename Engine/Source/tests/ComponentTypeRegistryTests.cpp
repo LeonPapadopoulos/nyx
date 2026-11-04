@@ -3,6 +3,8 @@
 // Run-time types, reflected or not, are never saved, and are what InspectRuntimeComponents() gives.
 // An entity the editor asks about is marked while it asks, and the mark forgotten once it stops.
 // A type's provider of overridable values lists what an instance inherits.
+// The Details panel's order is its own: Transform first, types without a place last, and the order
+// types are saved in stays the one they registered in.
 #include "BinaryArchive.h"
 #include "ComponentInspection.h"
 #include "ComponentRegistration.h"
@@ -11,9 +13,13 @@
 #include "Log.h"
 #include "NameComponent.h"
 #include "ReflectedArchiveSerializer.h"
+#include "ParentComponent.h"
+#include "PhysicsComponents.h"
 #include "SceneSerializer.h"
 #include "TestSupport.h"
+#include "TransformComponent.h"
 
+#include <algorithm>
 #include <iostream>
 #include <stdexcept>
 
@@ -126,6 +132,37 @@ namespace
 			"A module type named like an engine type should leave the engine's in place");
 		Require(!registry.FindByTypeMetadata(Nyx::Reflection::GetTypeMetadata<TakesEngineNameComponent>()),
 			"A module type named like an engine type should be refused");
+	}
+
+	void TestDetailsOrder()
+	{
+		ComponentTypeRegistry& registry = ComponentTypeRegistry::Get();
+		const auto place = [&](const Nyx::Reflection::TypeMetadata& type)
+		{
+			const std::vector<const Nyx::ComponentTypeOps*> ordered = registry.GetInDetailsOrder();
+			const auto found = std::find(ordered.begin(), ordered.end(), registry.FindByTypeMetadata(type));
+			Require(found != ordered.end(), "Every registered type should have a place");
+			return found - ordered.begin();
+		};
+		const Nyx::Reflection::TypeMetadata& lantern = Nyx::Reflection::GetTypeMetadata<ModuleLanternComponent>();
+		const Nyx::Reflection::TypeMetadata& transform = Nyx::Reflection::GetTypeMetadata<Nyx::TransformComponent>();
+		const Nyx::Reflection::TypeMetadata& body = Nyx::Reflection::GetTypeMetadata<Nyx::RigidBodyComponent>();
+
+		Require(registry.GetInDetailsOrder().size() == registry.GetAll().size(), "Every registered type should be there once");
+		Require(place(transform) == 0, "Transform should come first");
+		Require(place(Nyx::Reflection::GetTypeMetadata<Nyx::NameComponent>()) < place(body), "A lower order should come first");
+		Require(place(body) < place(lantern), "A type without a place should come after those with one");
+		// The lantern was registered before the engine's types
+		Require(place(lantern) < place(Nyx::Reflection::GetTypeMetadata<Nyx::ParentComponent>()), "Types without a place should stay in the order registered");
+
+		// A game module's type among the engine's
+		const std::vector<Nyx::ComponentTypeOps>& all = registry.GetAll();
+		const Nyx::ComponentTypeOps* savedAt = registry.FindByTypeMetadata(lantern);
+		const Nyx::ComponentTypeOps* firstSaved = all.data();
+		registry.SetDetailsOrder<ModuleLanternComponent>(105);
+		Require(place(lantern) == 1, "A type should go where its order says");
+		Require(place(transform) == 0, "Transform should stay first");
+		Require(registry.FindByTypeMetadata(lantern) == savedAt && all.data() == firstSaved, "The order of saving should not change");
 	}
 }
 
@@ -280,6 +317,7 @@ int main()
 		TestTypesRegisterOnce();
 		TestSecondTypeOfANameIsRefused();
 		TestEngineTypesWinOverModuleTypes();
+		TestDetailsOrder();
 		TestRuntimeTypes();
 		TestInspectionRequests();
 		TestOverridableValues();

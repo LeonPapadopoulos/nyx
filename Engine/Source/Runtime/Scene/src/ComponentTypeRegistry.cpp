@@ -1,6 +1,7 @@
 #include "ComponentTypeRegistry.h"
 #include "Log.h"
 
+#include <algorithm>
 #include <string>
 
 namespace Nyx
@@ -61,6 +62,21 @@ namespace Nyx
 		LOG_ERROR("Component type '{0}' isn't registered, {1} is ignored. Register it first.", typeMetadata.Name, what);
 		ASSERT(false && "Register the component type first.");
 		return nullptr;
+	}
+
+	std::vector<const ComponentTypeOps*> ComponentTypeRegistry::GetInDetailsOrder() const
+	{
+		std::vector<const ComponentTypeOps*> ordered;
+		ordered.reserve(Types.size());
+		for (const ComponentTypeOps& ops : Types)
+		{
+			ordered.push_back(&ops);
+		}
+		std::stable_sort(ordered.begin(), ordered.end(), [](const ComponentTypeOps* a, const ComponentTypeOps* b)
+			{
+				return a->DetailsOrder < b->DetailsOrder;
+			});
+		return ordered;
 	}
 
 	const ComponentTypeOps* ComponentTypeRegistry::FindByTypeMetadata(

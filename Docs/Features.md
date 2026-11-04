@@ -561,7 +561,9 @@ struct TransformComponent
 
 Properties can be numbers, vectors, quaternions, strings, reflected structs, enum classes
 declared with `NYX_ENUM()`, and `std::vector`s of any of these; enums are saved as their
-enumerators' numbers. The details panel's search (Ctrl+F) shows the components and properties with its text in their names. It edits an array's elements, and adds, removes and moves
+enumerators' numbers. The details panel shows an entity's components in a fixed order, Transform first, whatever order they
+were added in; a game module's types come after the engine's unless they set a place
+(`SetDetailsOrder<T>()`). The details panel's search (Ctrl+F) shows the components and properties with its text in their names. It edits an array's elements, and adds, removes and moves
 them (right-click an element), with undo.
 
 During the build, `NyxHeaderTool` reads every header in `Engine/Source/Runtime/Scene/include` and

@@ -813,6 +813,33 @@ namespace
 		Require(!ReflectedTypeHasMatch(Nyx::Reflection::GetTypeMetadata<TransformComponent>(), "no such name"), "Another name shouldn't");
 	}
 
+	void TestDetailsOrder()
+	{
+		SceneEditor editing;
+		Registry& world = editing.Scene.GetRegistry();
+		const Entity crate = editing.Scene.CreateEntity("Crate");
+
+		const auto names = [&]()
+		{
+			std::vector<std::string> shown;
+			for (const Nyx::ComponentTypeOps* componentType : GetDetailsComponents(world, crate))
+			{
+				shown.emplace_back(componentType->TypeMetadata->DisplayName);
+			}
+			return shown;
+		};
+
+		Require(names() == std::vector<std::string>{ "Name Component", "Guid Component" }, "Without a transform, the name should come first");
+
+		// Added in another order than they are shown; the parent link is drawn inside Transform's section
+		world.Add<BoxColliderComponent>(crate, BoxColliderComponent{});
+		world.Add<RigidBodyComponent>(crate, RigidBodyComponent{});
+		world.Add<ParentComponent>(crate, ParentComponent{});
+		world.Add<TransformComponent>(crate, TransformComponent{});
+		Require(names() == std::vector<std::string>{ "Transform Component", "Name Component", "Guid Component", "Rigid Body", "Box Collider" },
+			"An entity's components should show in the panel's order");
+	}
+
 	void TestDetailsHaveNoConflictingIds()
 	{
 		HeadlessUI ui;
@@ -3078,6 +3105,7 @@ int main()
 		TestTerrainBrushStroke();
 		TestTerrainPlanEdits();
 		TestDetailsSearch();
+		TestDetailsOrder();
 		TestDetailsHaveNoConflictingIds();
 		TestEntityReferenceCombo();
 		TestEntityReferenceDropFromOutliner();

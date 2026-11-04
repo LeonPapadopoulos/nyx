@@ -11,6 +11,11 @@
 #include <string_view>
 #include <vector>
 
+namespace Nyx
+{
+	struct ComponentTypeOps;
+}
+
 namespace Nyx::Editor
 {
 	class SceneEditor;
@@ -36,6 +41,11 @@ namespace Nyx::Editor
 	// The Runtime section of an entity: a running game's answer while there is a game, else the
 	// world's own run-time components; none when there is no game and the entity has none
 	std::optional<RuntimeSection> GetRuntimeSection(const Nyx::Registry& world, Nyx::Entity entity, const std::optional<GameInspection>& game);
+
+	// The components of an entity that have a section of their own in the Details panel, in the order
+	// shown (ComponentTypeRegistry::GetInDetailsOrder()): not the run-time ones, nor the parent link,
+	// which is drawn inside Transform
+	std::vector<const Nyx::ComponentTypeOps*> GetDetailsComponents(const Nyx::Registry& world, Nyx::Entity entity);
 
 	// The "Details" window: the selected entity's components with their reflected properties, Add
 	// Component, and Remove Component on a component header's right-click menu. Run-time components

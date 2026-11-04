@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -65,6 +66,10 @@ namespace Nyx
 		// of the component's values may decide which values there are.
 		std::function<void(const void* component, std::vector<OverridableValue>& out)> ListOverridableValues;
 
+		// Where the Details panel shows it among an entity's components: lower first, and of one
+		// order, the first registered first. A type that sets none comes after those that do.
+		int DetailsOrder = std::numeric_limits<int>::max();
+
 		bool IsRuntime() const
 		{
 			return (static_cast<uint8_t>(Flags) & static_cast<uint8_t>(EComponentTypeFlags::Runtime)) != 0;
@@ -116,6 +121,12 @@ namespace Nyx
 		template<typename T>
 		void SetOverridableValues(void (*listValues)(const T& component, std::vector<OverridableValue>& out));
 
+		// Sets where the Details panel shows components of a registered reflected type T
+		// (ComponentTypeOps::DetailsOrder). The engine's own are numbered in RegisterComponentTypes(), so
+		// a game module, in its RegisterTypes(), can place a type among them.
+		template<typename T>
+		void SetDetailsOrder(int order);
+
 		// Adds a step that runs on a whole scene once every entity of it was read from a file, before
 		// it is handed over: to carry what older scenes saved into what this build saves, such as a
 		// value that moved to a component of its own on the same entity. In the order added.
@@ -129,10 +140,15 @@ namespace Nyx
 			return SceneLoadSteps;
 		}
 
+		// In the order registered, which is what scene files and undo's snapshots are written in
 		const std::vector<ComponentTypeOps>& GetAll() const
 		{
 			return Types;
 		}
+
+		// Every type in the order the Details panel shows them (ComponentTypeOps::DetailsOrder). The
+		// pointers last until the next type is registered.
+		std::vector<const ComponentTypeOps*> GetInDetailsOrder() const;
 
 		const ComponentTypeOps* FindByTypeMetadata(const Nyx::Reflection::TypeMetadata& typeMetadata) const;
 		const ComponentTypeOps* FindByName(std::string_view name) const;
@@ -230,6 +246,15 @@ namespace Nyx
 			{
 				listValues(*static_cast<const T*>(component), out);
 			};
+		}
+	}
+
+	template<typename T>
+	void ComponentTypeRegistry::SetDetailsOrder(int order)
+	{
+		if (ComponentTypeOps* ops = FindRegistered(Nyx::Reflection::GetTypeMetadata<T>(), "setting its place in the Details panel"))
+		{
+			ops->DetailsOrder = order;
 		}
 	}
 

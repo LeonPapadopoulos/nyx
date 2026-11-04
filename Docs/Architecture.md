@@ -407,6 +407,10 @@ The top `CMakeLists.txt` sets four, in the spirit of Unreal's:
    lists what an instance can override with `SetOverridableValues<T>()`, in
    `ComponentRegistration.cpp` or a game module's `RegisterTypes()`. The Details panel then shows
    every value, inherited or overridden ([Overridable values](Design/overridable-values.md)).
+7. Where the Details panel shows a component among an entity's others is its `SetDetailsOrder<T>()`,
+   lower first. The engine's are numbered in one list in `ComponentRegistration.cpp`, with room left
+   in each kind for a game module's `RegisterTypes()` to place its own; a type without one comes after
+   them. `GetAll()` stays in the order registered, which saving and undo write in.
 
 ### Generated content
 
